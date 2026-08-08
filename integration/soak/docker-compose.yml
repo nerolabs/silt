@@ -1,0 +1,114 @@
+# Soak / scale topology: one flat bridge network, a seed (which also hosts the
+# registry), a pool of holder daemons, and one extra holder labelled
+# "caretaker" (legacy name — no -care link is wired, so no active repair loop
+# runs; churn survival rests on replication + erasure margin). Every daemon
+# self-advertises its container IP
+# (node.sh) so it is dialable on the flat net.
+#
+#   10.120.0.0/24  (isolated subnet; avoids ranges used by sibling harnesses)
+#     seed        10.120.0.10   -serve-registry, holds content
+#     holderNN    10.120.0.2N   pool of holders (the erasure/replica substrate)
+#     caretaker   10.120.0.40   an extra holder (legacy name; no -care wired)
+#
+# The seed's NodeID isn't known until it boots, so run.sh starts the seed
+# first, reads `peer:`/`registry:` from its log, exports SEED_PEER/SEED_REG,
+# then starts the holders bootstrapped against it.
+
+networks:
+  soaknet:
+    driver: bridge
+    ipam:
+      config: [{ subnet: 10.120.0.0/24 }]
+
+services:
+  seed:
+    image: silt-soak
+    entrypoint: ["node.sh"]
+    environment:
+      ADV_PORT: "4001"
+    command:
+      - silt
+      - daemon
+      - -listen=0.0.0.0:4001
+      - -serve-registry=0.0.0.0:4003
+      - -store=/data
+      - -capacity=${CAPACITY:-4G}
+      - -mdns=false
+      - -log=info
+    networks:
+      soaknet:
+        ipv4_address: 10.120.0.10
+
+  holder01: &holder
+    image: silt-soak
+    entrypoint: ["node.sh"]
+    environment:
+      ADV_PORT: "4001"
+    command:
+      - silt
+      - daemon
+      - -listen=0.0.0.0:4001
+      - -store=/data
+      - -capacity=${CAPACITY:-4G}
+      - -mdns=false
+      - -log=info
+      - -bootstrap=${SEED_PEER:-unset}
+      - -registry=${SEED_REG:-unset}
+    networks:
+      soaknet:
+        ipv4_address: 10.120.0.21
+
+  holder02:
+    <<: *holder
+    networks: { soaknet: { ipv4_address: 10.120.0.22 } }
+  holder03:
+    <<: *holder
+    networks: { soaknet: { ipv4_address: 10.120.0.23 } }
+  holder04:
+    <<: *holder
+    networks: { soaknet: { ipv4_address: 10.120.0.24 } }
+  holder05:
+    <<: *holder
+    networks: { soaknet: { ipv4_address: 10.120.0.25 } }
+  holder06:
+    <<: *holder
+    networks: { soaknet: { ipv4_address: 10.120.0.26 } }
+  holder07:
+    <<: *holder
+    networks: { soaknet: { ipv4_address: 10.120.0.27 } }
+  holder08:
+    <<: *holder
+    networks: { soaknet: { ipv4_address: 10.120.0.28 } }
+  holder09:
+    <<: *holder
+    networks: { soaknet: { ipv4_address: 10.120.0.29 } }
+  holder10:
+    <<: *holder
+    networks: { soaknet: { ipv4_address: 10.120.0.30 } }
+  holder11:
+    <<: *holder
+    networks: { soaknet: { ipv4_address: 10.120.0.31 } }
+  holder12:
+    <<: *holder
+    networks: { soaknet: { ipv4_address: 10.120.0.32 } }
+
+  # Caretaker: repairs content published through it as holders churn, so the
+  # soak measures steady-state health rather than slow bleed. Same daemon,
+  # just another holder in the pool from the network's point of view.
+  caretaker:
+    <<: *holder
+    networks: { soaknet: { ipv4_address: 10.120.0.40 } }
+
+  # Ephemeral fetch client: `docker compose run --rm --no-deps client …` spins
+  # a fresh, storage-less container that fetches a link and exits — a clean
+  # vantage every time, so a fetch can never be served from a warm local store.
+  # Gets a DHCP address on the flat net; never brought up by `up`.
+  client:
+    image: silt-soak
+    entrypoint: ["node.sh"]
+    environment:
+      ADV_PORT: "4001"
+    command: ["silt", "help"]
+    networks:
+      - soaknet
+    profiles: ["client"]
