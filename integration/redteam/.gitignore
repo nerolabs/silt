@@ -1,0 +1,3 @@
+# The linux silt binary is built on the host by run.sh and COPYed into the
+# image. It is a build artifact, never committed.
+silt
