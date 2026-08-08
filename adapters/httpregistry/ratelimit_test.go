@@ -37,6 +37,48 @@ func TestRateLimiterBurstThenThrottleThenRefill(t *testing.T) {
 	}
 }
 
+// TestBucketMapIsBounded is the F-3 hardening regression: the per-IP bucket map is a
+// bounded resource — a flood that cycles source IPs cannot grow it without bound (it
+// would otherwise be its OWN cost vector). It never exceeds maxBuckets, and a
+// recently-active IP survives the sampled-LRU eviction that a flood triggers.
+func TestBucketMapIsBounded(t *testing.T) {
+	l := newIPRateLimiter(10, 5)
+	defer l.close()
+	base := time.Unix(4_000_000, 0)
+
+	// Pre-seed one IP and keep it hot (most-recent `last`), so the sampled-LRU eviction
+	// prefers older flood entries over it.
+	const hot = "203.0.113.1"
+	l.allow(hot, base.Add(time.Duration(maxBuckets+50)*time.Second))
+
+	// Flood far more distinct IPs than the cap, each older than `hot`.
+	for i := 0; i < maxBuckets+5000; i++ {
+		l.allow("10."+itoa(i/65536%256)+"."+itoa(i/256%256)+"."+itoa(i%256), base.Add(time.Duration(i)*time.Second))
+	}
+	l.mu.Lock()
+	n := len(l.buckets)
+	_, hotAlive := l.buckets[hot]
+	l.mu.Unlock()
+	if n > maxBuckets {
+		t.Fatalf("F-3: the bucket map must stay ≤ maxBuckets (%d); got %d", maxBuckets, n)
+	}
+	if !hotAlive {
+		t.Fatal("F-3: a recently-active IP must survive the sampled-LRU eviction under a distinct-IP flood")
+	}
+}
+
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	var b []byte
+	for n > 0 {
+		b = append([]byte{byte('0' + n%10)}, b...)
+		n /= 10
+	}
+	return string(b)
+}
+
 // TestRateLimiterIsPerIP: one noisy client does not throttle another.
 func TestRateLimiterIsPerIP(t *testing.T) {
 	l := newIPRateLimiter(1, 2)

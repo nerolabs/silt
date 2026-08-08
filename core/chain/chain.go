@@ -133,6 +133,28 @@ type Config struct {
 	// single one-time proof. Decay is a deterministic function of block height, so
 	// every replica expires standing in lockstep. Zero (default) = no expiry.
 	BondTTLBlocks uint64
+	// WSCheckpoint is a WEAK-SUBJECTIVITY checkpoint (F-1): a recent trusted block
+	// (height + hash) this replica refuses to reorg AT OR BEFORE, regardless of fork
+	// weight. silt is weakly subjective — a node syncing from genesis (or long
+	// offline) cannot distinguish the real matured chain from a forged long-range one
+	// on chain data alone (Buterin WS; Gaži–Kiayias–Russell stake-bleeding) — so the
+	// one-way maturity latch is only safe if a fresh node is ALSO pinned to a recent
+	// trusted state out-of-band. Every production PoS chain does exactly this
+	// (Ethereum checkpoint-sync, Cosmos ADR-044 unbonding, Casper finality); Bitcoin
+	// removed its hardcoded checkpoints once cheaper protections existed. A reorg that
+	// rewrites history at/before the checkpoint is rejected as a long-range attack.
+	// The trusting window (how recent the checkpoint must be) is the weak-subjectivity
+	// period, bounded by BondTTLBlocks + slashing depth (the eviction/unbonding
+	// analogue). Zero Height = no checkpoint (genesis-trusting; safe only at launch,
+	// on a trusted swarm, or before the network has matured). See docs/design/m0.md §10.
+	WSCheckpoint WSCheckpoint
+}
+
+// WSCheckpoint is a recent trusted (height, hash) a replica will not reorg before.
+// See Config.WSCheckpoint.
+type WSCheckpoint struct {
+	Height uint64
+	Hash   ports.Hash
 }
 
 func DefaultConfig() Config {
@@ -216,6 +238,18 @@ type BondReg struct {
 	Size      int64      `cbor:"3,keyasint"`
 	Answer    []byte     `cbor:"4,keyasint,omitempty"`
 	Sig       []byte     `cbor:"5,keyasint,omitempty"`
+	// Domain is the validator's committed failure-domain label (A axis, D-C2): a
+	// self-declared AS/rack/geo hash (the same domainID gossiped for DHT diversity,
+	// H5-B), now COMMITTED in the bond so the concentration metric can count
+	// address-diverse participants deterministically (C2Metric NakamotoDomains).
+	// Signed (see signingBytes) so it binds to the validator. 0 = unset (treated as
+	// independent — behavior identical to pre-A-axis chains). HONESTLY WEAK: a
+	// declared domain is free to claim; it only costs a distinct real network
+	// position insofar as the transport layer (H5-B) refuses to route to a validator
+	// whose declared domain does not match its observed /24. It PRICES concentration
+	// (a splitter must declare — and be routable from — distinct domains), it does
+	// not CLOSE it (Kwon; the honest whale remains — m0.md §10).
+	Domain uint64 `cbor:"6,keyasint,omitempty"`
 }
 
 // ValidatorID is the NodeID (hash of the public key) that a registration bonds.
@@ -231,7 +265,17 @@ func (r BondReg) signingBytes(nonce uint64) []byte {
 	var sz [16]byte
 	binary.BigEndian.PutUint64(sz[:8], uint64(r.Size))
 	binary.BigEndian.PutUint64(sz[8:], nonce)
-	return append(b, sz[:]...)
+	b = append(b, sz[:]...)
+	// Bind the committed domain (A axis) — but ONLY when set, so a domain-0 bond
+	// signs the exact pre-A-axis message and every existing/genesis signature still
+	// verifies (backward-compatible; no BlockVersion bump needed).
+	if r.Domain != 0 {
+		var d [8]byte
+		binary.BigEndian.PutUint64(d[:], r.Domain)
+		b = append(b, []byte("silt/chain/bondreg/domain/v1")...)
+		b = append(b, d[:]...)
+	}
+	return b
 }
 
 var encMode cbor.EncMode
@@ -318,20 +362,22 @@ func DecodeBlocks(raw []byte) ([]Block, error) {
 }
 
 var (
-	ErrLowReputation  = errors.New("chain: reputation below threshold")
-	ErrNoQuorum       = errors.New("chain: insufficient valid attestations")
-	ErrBadSignature   = errors.New("chain: bad signature")
-	ErrWrongParent    = errors.New("chain: block does not extend the local head")
-	ErrDupRoot        = errors.New("chain: root already registered")
-	ErrUseConsensus   = errors.New("chain: replica is read-only; entries are committed via consensus")
-	ErrAnchorRequired = errors.New("chain: immature network requires anchor attestations (training wheels)")
-	ErrTokenRequired  = errors.New("chain: entry has no publish token (required)")
-	ErrTokenSpent     = errors.New("chain: publish token serial already spent (double-spend)")
-	ErrBlockVersion   = errors.New("chain: unsupported block version")
-	ErrPublisherEntry = errors.New("chain: entry carries a durable Publisher (records permanent linkage; publish unlinkably or run an explicitly trusted deployment)")
-	ErrEmptyFork      = errors.New("chain: cannot reconcile an empty fork")
-	ErrNoGenesis      = errors.New("chain: local replica has no genesis to anchor a reconcile")
-	ErrForeignGenesis = errors.New("chain: fork does not share our genesis (refusing to swap chains)")
+	ErrLowReputation      = errors.New("chain: reputation below threshold")
+	ErrNoQuorum           = errors.New("chain: insufficient valid attestations")
+	ErrBadSignature       = errors.New("chain: bad signature")
+	ErrWrongParent        = errors.New("chain: block does not extend the local head")
+	ErrDupRoot            = errors.New("chain: root already registered")
+	ErrUseConsensus       = errors.New("chain: replica is read-only; entries are committed via consensus")
+	ErrAnchorRequired     = errors.New("chain: immature network requires anchor attestations (training wheels)")
+	ErrDeMatureQuorum     = errors.New("chain: de-matured network requires a real-bond super-quorum (≥⅔ of live bonded weight)")
+	ErrPreCheckpointReorg = errors.New("chain: fork rewrites history at or before the weak-subjectivity checkpoint (long-range reorg refused)")
+	ErrTokenRequired      = errors.New("chain: entry has no publish token (required)")
+	ErrTokenSpent         = errors.New("chain: publish token serial already spent (double-spend)")
+	ErrBlockVersion       = errors.New("chain: unsupported block version")
+	ErrPublisherEntry     = errors.New("chain: entry carries a durable Publisher (records permanent linkage; publish unlinkably or run an explicitly trusted deployment)")
+	ErrEmptyFork          = errors.New("chain: cannot reconcile an empty fork")
+	ErrNoGenesis          = errors.New("chain: local replica has no genesis to anchor a reconcile")
+	ErrForeignGenesis     = errors.New("chain: fork does not share our genesis (refusing to swap chains)")
 	// ErrRevokeUnknownRoot rejects a takedown that names a root the chain has
 	// never committed. Without this a quorum could revoke a competitor's
 	// unpublished hash, or a hash that never existed — arbitrary censorship of
@@ -372,6 +418,20 @@ type Chain struct {
 	// ever committed a block — the monotonic decentralization signal the
 	// training wheels shed on (see Mature).
 	validatorsSeen map[ports.NodeID]bool
+	// everMature is the ONE-WAY MATURITY LATCH (F-1): true once Mature() has held
+	// at ANY committed height. The launch anchors are load-bearing only while this
+	// is FALSE, so once a network is first certified decentralized the zero-bond
+	// anchors NEVER become load-bearing again — the one-way ratchet immutable #3
+	// promises. Like validatorsSeen/bonded it is a pure, monotonic function of the
+	// committed block sequence (latched in apply, re-derived on Reload, carried
+	// across a reorg by adopt), so every replica agrees on it as a CONSENSUS fact.
+	// It is never reset. The old code gated anchors on the LIVE Mature(), which
+	// re-armed the wheels whenever concentration rose — even from one honest whale
+	// growing REAL bond — handing a zero-bond anchor permanent power, or halting the
+	// chain if the anchors were gone. De-maturation liveness AFTER the latch is
+	// carried by the real-bond super-quorum fallback (RequiredQuorum), never by
+	// re-arming anchors. See docs/design/m0.md §10 (F-1).
+	everMature bool
 	// Publisher-privacy publish tokens (F1): when tokenQuorum > 0 every entry
 	// must carry a PublishToken blind-signed by that many distinct qualified
 	// validators (issuer keys from issuerKey), and spent records each serial so
@@ -408,6 +468,11 @@ type Chain struct {
 	// within the TTL window is pruned from `bonded`. Deterministic (a function of
 	// block height), so every replica decays standing identically.
 	bondRegHeight map[ports.NodeID]uint64
+	// bondDomain records the committed A-axis failure-domain label from each
+	// validator's LATEST bond registration (0 = unset). A pure function of the
+	// committed blocks, so C2Metric can count address-diverse participants
+	// deterministically (NakamotoDomains). See BondReg.Domain.
+	bondDomain map[ports.NodeID]uint64
 	// slashed is the set of validators evicted for a proven equivocation (F2). A
 	// slashed id is disqualified and cannot re-earn bonded standing, so a proven
 	// double-sign costs standing in the OBJECTIVE set, not only the rep ledger.
@@ -429,6 +494,7 @@ func New(cfg Config, rep func(ports.NodeID) int64) *Chain {
 		bondRootOwner:  make(map[ports.Hash]ports.NodeID),
 		bondRootProven: make(map[ports.Hash]bool),
 		bondRegHeight:  make(map[ports.NodeID]uint64),
+		bondDomain:     make(map[ports.NodeID]uint64),
 		slashed:        make(map[ports.NodeID]bool)}
 }
 
@@ -466,7 +532,10 @@ func (c *Chain) Objective() bool { return c.objective() }
 // exemption: it grants ELIGIBILITY, never fork-choice WEIGHT (weight is always
 // summed real bond), so a declared anchor cannot outweigh a real bond.
 func (c *Chain) launchAnchor(id ports.NodeID) bool {
-	return len(c.cfg.Anchors) > 0 && c.cfg.Anchors[id] && !c.Mature()
+	// Gated on the one-way latch, not the live Mature(): once the network has ever
+	// matured, anchors lose bond-free eligibility FOREVER (F-1). An anchor that
+	// registered its own real bond stays a normal validator on that real weight.
+	return len(c.cfg.Anchors) > 0 && c.cfg.Anchors[id] && !c.everMature
 }
 
 // attesterQualified reports whether id may have its attestation counted toward
@@ -563,12 +632,13 @@ func BondRegNonce(prev ports.Hash) uint64 {
 // for BondRegNonce(prev); the chain re-verifies it via the injected bond verifier
 // (SetBondVerifier). The signature binds the (root, size, nonce) claim to the
 // validator's key so a non-holder cannot register a bond it does not own.
-func NewBondReg(signer ed25519.PrivateKey, root ports.Hash, size int64, answer []byte, prev ports.Hash) BondReg {
+func NewBondReg(signer ed25519.PrivateKey, root ports.Hash, size int64, answer []byte, prev ports.Hash, domain uint64) BondReg {
 	r := BondReg{
 		Validator: append([]byte(nil), signer.Public().(ed25519.PublicKey)...),
 		Root:      root,
 		Size:      size,
 		Answer:    answer,
+		Domain:    domain, // committed A-axis label (0 = unset); signed via signingBytes
 	}
 	r.Sig = ed25519.Sign(signer, r.signingBytes(BondRegNonce(prev)))
 	return r
@@ -713,14 +783,31 @@ func (c *Chain) RequireTokens(quorum int, issuerKey func(ports.NodeID) *rsa.Publ
 // spinning up many minimum bonds, then capture consensus once the wheels shed —
 // this is cost-to-corrupt over bond-distinct operators: a set whose weight is
 // dominated by a few bonds has a LOW coefficient and stays immature no matter how
-// many satellite keys are added. It reads the CURRENT bonded set, so maturity
-// RE-ENGAGES the wheels if decentralization later drops (the post-shed escape
-// hatch). Legacy mode has no on-chain bonded set, so it falls back to the head
-// count of distinct qualified validators seen.
+// many satellite keys are added. It reads the CURRENT bonded set — the LIVE metric.
+// It does NOT gate the anchors: that is the one-way latch EverMature() (F-1), so a
+// later drop in decentralization can never re-arm the wheels. Mature() vs
+// EverMature() diverge only in the de-maturation window, which the real-bond
+// super-quorum handles. Legacy mode has no on-chain bonded set, so it falls back to
+// the head count of distinct qualified validators seen.
 func (c *Chain) Mature() bool {
 	if c.cfg.MatureValidators <= 0 {
 		return true
 	}
+	return c.matureNow()
+}
+
+// EverMature reports the one-way maturity LATCH (F-1): whether the network has
+// been certified mature at ANY committed height. This — not the live Mature() — is
+// what gates the launch anchors, so once a network first decentralizes the anchors
+// never re-arm. A pure function of the committed blocks (see the everMature field).
+func (c *Chain) EverMature() bool { return c.everMature }
+
+// matureNow is the LIVE maturity metric over the CURRENT bonded set. Mature()
+// wraps it; the latch (everMature) is what gates anchors. The two diverge exactly
+// in the de-maturation window (everMature && !matureNow): the network matured, then
+// concentration/attrition dropped it back below the bar — handled by the real-bond
+// super-quorum, never by re-arming anchors (F-1).
+func (c *Chain) matureNow() bool {
 	if !c.objective() {
 		n := 0
 		for id := range c.validatorsSeen {
@@ -730,11 +817,18 @@ func (c *Chain) Mature() bool {
 		}
 		return n >= c.cfg.MatureValidators
 	}
-	// Objective maturity gates on the OPERATOR-discounted coefficient, so a stake
-	// split across many keys must clear MatureValidators × M distinct bonds — the
-	// split half of the skew+split attack (D-C2). At M=1 this is the plain
-	// bond-distinct coefficient (unchanged behavior).
-	return c.C2Metric().NakamotoOperators >= c.cfg.MatureValidators
+	// Objective maturity gates on the OPERATOR-discounted coefficient AND the
+	// address-diverse coefficient (A axis, D-C2), whichever is smaller — so a stake
+	// split across many keys must clear MatureValidators × M distinct bonds AND
+	// MatureValidators distinct declared domains. At M=1 with no domains set this is
+	// the plain bond-distinct coefficient (unchanged behavior). min() only ever RAISES
+	// the bar to shed, so it can never weaken an existing config.
+	m := c.C2Metric()
+	k := m.NakamotoOperators
+	if m.NakamotoDomains < k {
+		k = m.NakamotoDomains
+	}
+	return k >= c.cfg.MatureValidators
 }
 
 // C2 is the concentration measurement behind the "no quiet capture" axis (D-C2):
@@ -770,6 +864,31 @@ type C2 struct {
 	Participants int
 	// Margin is the operator margin M the coefficient was discounted by (≥1).
 	Margin int
+	// NakamotoDomains is the Nakamoto coefficient over ADDRESS-DIVERSE groups (A axis,
+	// D-C2): the fewest DISTINCT declared failure-domains whose combined weight exceeds
+	// ⌊total/3⌋. Bonds sharing a declared domain aggregate into one group, so a stake
+	// split across many keys in one domain does not inflate it — only distinct domains
+	// do. With no domains set it equals NakamotoBonds (unchanged). The maturity shed
+	// gates on min(NakamotoOperators, NakamotoDomains), so a splitter must clear BOTH
+	// k·M distinct bonds AND k distinct domains. Weak signal (a domain is declared,
+	// H5-B-cross-checked at the transport layer, not proven) — pricing, not proof.
+	NakamotoDomains int
+	// DistinctDomains is the number of address-diversity groups counted (distinct
+	// non-zero declared domains + each unset-domain bond as its own group).
+	DistinctDomains int
+	// HHI is the Herfindahl–Hirschman concentration index over the participating
+	// bonds: Σ(share²) ∈ [1/n, 1]. 1 = one bond holds everything; 1/n = perfectly
+	// even. A high HHI is the **honest-whale** signal C2 cannot close on-chain (Kwon):
+	// surfaced as an out-of-band observability veto — measurement that makes
+	// concentration LOUD, never consensus enforcement (D-C2 / F-1 follow-up).
+	HHI float64
+	// Gini is the Gini coefficient of the bonded-weight distribution ∈ [0,1]:
+	// 0 = perfectly even, →1 = one holder. A companion inequality signal to HHI.
+	Gini float64
+	// TopShare is the largest single bond's fraction of participating weight ∈ [0,1].
+	// The most interpretable capture signal: a bond approaching ⅓ is one step from
+	// the Byzantine capture fraction (⌊total/3⌋) — the honest-whale alarm threshold.
+	TopShare float64
 }
 
 // C2Metric computes the concentration measurement over the participating,
@@ -781,6 +900,8 @@ type C2 struct {
 // committed chain state.
 func (c *Chain) C2Metric() C2 {
 	sizes := make([]int64, 0, len(c.validatorsSeen))
+	domainWeight := make(map[uint64]int64) // A axis: non-zero domains aggregated
+	var zeroDomainWeights []int64          // domain 0 (unset) → each its own group
 	var total int64
 	for id := range c.validatorsSeen {
 		if c.cfg.Anchors[id] || c.slashed[id] {
@@ -789,6 +910,11 @@ func (c *Chain) C2Metric() C2 {
 		if sz := c.bonded[id]; sz >= c.cfg.MinBond {
 			sizes = append(sizes, sz)
 			total += sz
+			if d := c.bondDomain[id]; d != 0 {
+				domainWeight[d] += sz // same declared domain → one group (no split inflation)
+			} else {
+				zeroDomainWeights = append(zeroDomainWeights, sz) // unset → independent
+			}
 		}
 	}
 	m := C2{TotalBondedBytes: total, Participants: len(sizes), Margin: c.operatorMargin()}
@@ -808,6 +934,44 @@ func (c *Chain) C2Metric() C2 {
 		}
 	}
 	m.NakamotoOperators = m.NakamotoBonds / m.Margin // ⌊k̂/M⌋, conservative
+	// A axis (D-C2): NakamotoDomains is the Nakamoto coefficient over ADDRESS-DIVERSE
+	// groups — bonds sharing a declared domain aggregate into one group, so splitting
+	// a stake across many keys in ONE domain does NOT inflate the count; only distinct
+	// declared domains do (the earned-per-network-position cost the flat margin M only
+	// assumes). Domain 0 (unset) is independent, so a chain with no domains set yields
+	// NakamotoDomains == NakamotoBonds — behavior identical to a pre-A-axis chain.
+	groups := make([]int64, 0, len(domainWeight)+len(zeroDomainWeights))
+	for _, w := range domainWeight {
+		groups = append(groups, w)
+	}
+	groups = append(groups, zeroDomainWeights...)
+	m.DistinctDomains = len(groups)
+	sort.Slice(groups, func(i, j int) bool { return groups[i] > groups[j] })
+	var gcum int64
+	m.NakamotoDomains = len(groups)
+	for i, w := range groups {
+		gcum += w
+		if gcum > threshold {
+			m.NakamotoDomains = i + 1
+			break
+		}
+	}
+	// Concentration observability (D-C2 / F-1 follow-up): HHI, Gini, and the top
+	// bond's share. C2 cannot CLOSE the honest-whale residue on-chain (Kwon), so this
+	// is an out-of-band veto that makes a concentration event LOUD — measurement, not
+	// enforcement. sizes is sorted largest-first; ftotal > 0 here.
+	n := len(sizes)
+	ftotal := float64(total)
+	m.TopShare = float64(sizes[0]) / ftotal
+	var hhi, giniNum float64
+	for i, sz := range sizes {
+		share := float64(sz) / ftotal
+		hhi += share * share
+		// Gini numerator for a DESCENDING-sorted distribution: Σ (n−1−2i)·xᵢ.
+		giniNum += float64(n-1-2*i) * float64(sz)
+	}
+	m.HHI = hhi
+	m.Gini = giniNum / (float64(n) * ftotal)
 	return m
 }
 
@@ -1012,10 +1176,13 @@ func (c *Chain) ValidateCommit(b *Block) error {
 	if req := c.RequiredQuorum(); valid < req {
 		return fmt.Errorf("%w: %d qualified, need %d", ErrNoQuorum, valid, req)
 	}
-	// Training wheels: while immature, the quorum must ALSO carry anchor
-	// sign-off, so a Sybil quorum can't capture a young network before it has
-	// decentralized. Sheds automatically once the network is Mature.
-	if len(c.cfg.Anchors) > 0 && c.cfg.AnchorQuorum > 0 && !c.Mature() {
+	// Training wheels: while the network has NEVER YET matured, the quorum must
+	// ALSO carry anchor sign-off, so a Sybil quorum can't capture a young network
+	// before it has decentralized. Gated on the one-way latch (everMature), NOT the
+	// live Mature() — so a later drop in decentralization (e.g. an honest whale
+	// concentrating real bond) can never re-arm the anchors (F-1). Once matured,
+	// de-maturation liveness is the real-bond super-quorum (RequiredQuorum), not this.
+	if len(c.cfg.Anchors) > 0 && c.cfg.AnchorQuorum > 0 && !c.everMature {
 		anchors := 0
 		for id := range seen { // seen = the distinct qualified attesters
 			if c.cfg.Anchors[id] {
@@ -1025,6 +1192,45 @@ func (c *Chain) ValidateCommit(b *Block) error {
 		if anchors < c.cfg.AnchorQuorum {
 			return fmt.Errorf("%w: %d of required %d", ErrAnchorRequired, anchors, c.cfg.AnchorQuorum)
 		}
+	}
+	// De-maturation super-quorum (F-1, ships WITH the latch): once matured, the
+	// anchors never re-arm — but if live decentralization has since dropped below the
+	// bar (everMature && !matureNow, e.g. an honest whale concentrated real bond or
+	// small bonds lapsed), a commit instead needs a real-bond SUPER-MAJORITY: ≥⅔ of
+	// the LIVE bonded weight, no anchor sign-off. This is the center-less replacement
+	// for the retired anchor net — it keeps liveness for a genuinely-willing real
+	// quorum (the HALT horn stays dead) and preserves accountable safety (any two ⅔
+	// super-quorums share > ⅓ of the weight, so they intersect in honest bond). In
+	// the normal mature-and-still-decentralized case this is a no-op.
+	if c.everMature && c.objective() && !c.matureNow() {
+		if err := c.requireDeMatureSuperQuorum(b, seen); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// requireDeMatureSuperQuorum enforces the F-1 de-maturation rule: the committing
+// coalition (proposer + the distinct qualified attesters `seen`) must control ≥⅔ of
+// the live bonded weight. Only real committed bond counts (in the de-maturation
+// window launchAnchor is false, so `seen` is bonded validators only). A pure function
+// of the committed bonded set, so every replica agrees.
+func (c *Chain) requireDeMatureSuperQuorum(b *Block, seen map[ports.NodeID]bool) error {
+	var total int64
+	for _, w := range c.bonded {
+		total += w
+	}
+	if total <= 0 {
+		return nil // no bonded weight to measure against (nothing to protect)
+	}
+	committed := c.bonded[b.ProposerID()]
+	for id := range seen {
+		committed += c.bonded[id]
+	}
+	need := (2*total + 2) / 3 // ⌈2·total/3⌉
+	if committed < need {
+		return fmt.Errorf("%w: coalition holds %d MiB of %d MiB bonded (need ≥%d MiB)",
+			ErrDeMatureQuorum, committed>>20, total>>20, need>>20)
 	}
 	return nil
 }
@@ -1230,6 +1436,7 @@ func (c *Chain) apply(b Block) {
 		}
 		c.bonded[id] = r.Size
 		c.bondRegHeight[id] = b.Height // reset the TTL clock on every (re)registration (G4)
+		c.bondDomain[id] = r.Domain    // committed A-axis label (0 = unset); latest wins
 	}
 	// OBJECTIVE RE-CHALLENGE (retest G4): standing lapses if not renewed with a
 	// fresh proof within BondTTLBlocks. A validator that registers once and then
@@ -1259,6 +1466,13 @@ func (c *Chain) apply(b Block) {
 		if id != b.ProposerID() && c.attesterQualified(id) {
 			c.validatorsSeen[id] = true
 		}
+	}
+	// Latch maturity (F-1): once the network is first certified mature, record it
+	// permanently, so the launch anchors never re-arm. Checked AFTER this block's
+	// bonds/slashes/TTL are applied, so it reflects the post-block bonded set.
+	// Monotonic — only ever set, never cleared.
+	if !c.everMature && c.Mature() {
+		c.everMature = true
 	}
 }
 
@@ -1332,6 +1546,18 @@ func (c *Chain) Reconcile(fork []Block) (bool, error) {
 	if fork[0].Height != 0 || fork[0].Hash() != c.blocks[0].Hash() {
 		return false, ErrForeignGenesis // must branch from our own genesis
 	}
+	// Weak-subjectivity guard (F-1): refuse — regardless of weight — any fork that does
+	// not contain the trusted checkpoint block, i.e. that rewrites finalized history at
+	// or before it. This is the long-range-attack defense that makes the maturity latch
+	// safe for a fresh/long-offline node. Cheap and positional (fork blocks are
+	// contiguous from genesis, so index == height; the block hash covers the height, so
+	// a match pins the exact checkpoint block). Checked before the replay so a
+	// long-range fork is rejected without doing the work.
+	if cp := c.cfg.WSCheckpoint; cp.Height > 0 {
+		if uint64(len(fork)) <= cp.Height || fork[cp.Height].Hash() != cp.Hash {
+			return false, ErrPreCheckpointReorg
+		}
+	}
 	// Re-validate the candidate history end to end in a fresh replica.
 	tmp := New(c.cfg, c.rep)
 	tmp.tokenQuorum, tmp.issuerKey = c.tokenQuorum, c.issuerKey
@@ -1387,7 +1613,9 @@ func (c *Chain) adopt(t *Chain) {
 	c.bondRootOwner = t.bondRootOwner
 	c.bondRootProven = t.bondRootProven
 	c.bondRegHeight = t.bondRegHeight
+	c.bondDomain = t.bondDomain
 	c.slashed = t.slashed
+	c.everMature = t.everMature // the maturity latch is a function of the adopted history (F-1)
 }
 
 func (c *Chain) LookupRoot(root ports.Hash) (ports.Entry, bool) {

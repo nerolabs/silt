@@ -128,6 +128,9 @@ func ServeTLS(addr string, ident *identity.Identity, reg ports.Registry) (boundA
 }
 
 func serve(addr string, reg ports.Registry, tlsCfg *tls.Config) (boundAddr string, shutdown func(), err error) {
+	// Read-cost bounding (#48): a per-IP rate limit + server timeouts keep a public
+	// registry cheap to run and hard to exhaust (slowloris, lookup floods).
+	lim := newIPRateLimiter(defaultRatePerSec, defaultBurst)
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("POST /publish", func(w http.ResponseWriter, r *http.Request) {
@@ -173,18 +176,15 @@ func serve(addr string, reg ports.Registry, tlsCfg *tls.Config) (boundAddr strin
 		json.NewEncoder(w).Encode(toJSON(e))
 	})
 
-	mux.HandleFunc("GET /all", func(w http.ResponseWriter, r *http.Request) {
-		entries, err := reg.All(r.Context())
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		out := make([]entryJSON, 0, len(entries))
-		for _, e := range entries {
-			out = append(out, toJSON(e))
-		}
-		json.NewEncoder(w).Encode(out)
-	})
+	// GET /all is DELIBERATELY NOT SERVED on the public mux (red-team blind-2026-08-08
+	// F-3). It serialized the whole registry O(N) with no pagination, an unbounded
+	// per-request cost that an interim work-pricing bounded only per-SOURCE — a
+	// distributed dump (one request per source IP) no per-IP counter can touch. It is
+	// used only by an operator's OWN CLI/UI, which reads the registry IN-PROCESS (the
+	// daemon's local chainhost/fileregistry), never over this wire. Removing it deletes
+	// the amplification and the distributed variant outright. A client asking for /all
+	// over HTTP now gets 404 by design; the operator UI degrades gracefully. If a public
+	// bulk-read is ever wanted, add it back paginated (cursor + hard page cap) + priced.
 
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -193,10 +193,8 @@ func serve(addr string, reg ports.Registry, tlsCfg *tls.Config) (boundAddr strin
 	if tlsCfg != nil {
 		ln = tls.NewListener(ln, tlsCfg)
 	}
-	// Read-cost bounding (#48): a per-IP rate limit + server timeouts keep a public
-	// registry cheap to run and hard to exhaust (slowloris, lookup floods, unbounded
-	// /all serialization).
-	lim := newIPRateLimiter(defaultRatePerSec, defaultBurst)
+	// Server timeouts round out the read-cost bounding (#48) against slowloris and slow
+	// reads/writes (the per-IP limiter `lim` is created above; /all is priced by work).
 	srv := &http.Server{
 		Handler:           lim.limit(mux),
 		ReadHeaderTimeout: 5 * time.Second,
@@ -295,6 +293,12 @@ func (c *Client) Lookup(ctx context.Context, root ports.Hash) (ports.Entry, bool
 	return e, err == nil, err
 }
 
+// ErrAllNotServed is returned by a remote client's All(): a registry no longer
+// serves a bulk /all dump on its public mux (F-3). A caller should degrade (list
+// nothing / use /lookup), not treat it as a hard error. An operator listing its OWN
+// registry reads it in-process, not through this client, so is unaffected.
+var ErrAllNotServed = errors.New("httpregistry: /all is not served on the public registry mux (use per-root lookup)")
+
 func (c *Client) All(ctx context.Context) ([]ports.Entry, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", c.base+"/all", nil)
 	if err != nil {
@@ -305,6 +309,9 @@ func (c *Client) All(ctx context.Context) ([]ports.Entry, error) {
 		return nil, fmt.Errorf("httpregistry all: %w", err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, ErrAllNotServed
+	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("httpregistry all: %s", resp.Status)
 	}
