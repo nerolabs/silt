@@ -359,6 +359,24 @@ func (n *Node) fetchFrom(id ports.ChunkID, provs []ports.NodeID, done func(bool)
 			return
 		}
 		transient := false
+		// Only skip cooled-down holders if a live alternative exists this sweep.
+		// The negative cache is an optimization — it must NEVER be the reason a
+		// fetch fails (#226 vs #69). A required chunk (e.g. a manifest chunk)
+		// can have a single provider that timed out transiently — a node that
+		// restarted and is already re-announcing — and if it's the only
+		// candidate we must dial it, not report the content unreachable.
+		now := n.clock.Now()
+		anyLive := false
+		for _, p := range provs {
+			if p == n.id {
+				continue
+			}
+			if until, dead := n.deadUntil[p]; dead && now < until {
+				continue
+			}
+			anyLive = true
+			break
+		}
 		var try func(i int)
 		try = func(i int) {
 			if i >= len(provs) {
@@ -379,10 +397,13 @@ func (n *Node) fetchFrom(id ports.ChunkID, provs []ports.NodeID, done func(bool)
 			// column, every sweep (#226). A cooldown skip is NOT transient —
 			// it must not trigger the FetchAttempts re-sweep amplification;
 			// the shard just goes unfetched this round and a later sweep, past
-			// the holder's cooldown, re-probes in case it recovered.
-			if until, dead := n.deadUntil[provs[i]]; dead && n.clock.Now() < until {
-				try(i + 1)
-				return
+			// the holder's cooldown, re-probes in case it recovered. Guarded by
+			// anyLive so we never skip our only remaining candidate (#69).
+			if anyLive {
+				if until, dead := n.deadUntil[provs[i]]; dead && now < until {
+					try(i + 1)
+					return
+				}
 			}
 			n.request(provs[i], ports.Message{Kind: ports.MsgFetchChunk, ChunkID: id},
 				func(resp ports.Message, err error) {

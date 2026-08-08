@@ -74,6 +74,28 @@ func TestFetchNegativeCachesDeadHolder(t *testing.T) {
 	}
 }
 
+// TestFetchDialsSoleCooledHolder is the #69 regression: the negative cache
+// must NEVER be the reason a fetch fails. A required chunk (e.g. a manifest
+// chunk) can have a single provider that timed out transiently — a node that
+// restarted and is already re-announcing — and if it's the only candidate it
+// must be dialed, not skipped-to-empty and reported unreachable. Broke the
+// cross-NAT reprovide test (#69) before the anyLive guard.
+func TestFetchDialsSoleCooledHolder(t *testing.T) {
+	c := ports.NewChunk([]byte("sole provider, recovered after a transient timeout"))
+	fetcher, provID, sched := twoNode(t, DefaultConfig(), c, nil)
+	// The fetcher recently failed to reach provID, so it's in cooldown — but
+	// provID has since recovered and now serves the chunk.
+	fetcher.deadUntil[provID] = fetcher.clock.Now().Add(fetcher.cfg.HolderCooldown)
+
+	var got, done bool
+	fetcher.fetchFrom(c.ID, []ports.NodeID{provID}, func(ok bool) { got, done = ok, true })
+	sched.Run()
+
+	if !done || !got {
+		t.Fatalf("a sole cooled-but-recovered provider must be dialed, not skipped to empty (#69): done=%v got=%v", done, got)
+	}
+}
+
 // TestFetchWithoutCooldownRedialsDeadHolder is the inverted control: disable
 // the negative cache (HolderCooldown=0) and the SAME dead holder is re-dialed
 // on every fetch — the starvation the fix removes. It proves the cache, not

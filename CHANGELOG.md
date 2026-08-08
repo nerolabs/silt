@@ -93,6 +93,19 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
     before any demand→standing fusion — now stated as such.
 
 ### Fixed
+- **Repair no longer starves on stale records to dead holders** (2026-08-09) — Field-test finding F2
+  (`integration/churn/`): the repair fetch loop (`fetchStripeByColumn` → `fetchFrom`) dials providers
+  serially, each dead holder costing a full `RequestTimeout`, and a single timeout re-sweeps the whole
+  provider list up to `FetchAttempts` times — with nothing skipping a holder we just failed to reach
+  (`n.reachable` was write-only). Routing-table eviction doesn't remove the *provider record* other
+  nodes still hold, so the next lookup resurfaces the same corpse and re-dials it at full timeout every
+  sweep; under churn one stripe could exceed `RepairInterval` on timeouts alone. Added a **failed-holder
+  negative cache**: a request timeout stamps `deadUntil[peer] = now + HolderCooldown` (30s), and the
+  fetch/repair dial path skips a holder still in cooldown — but **only when a live alternative exists**
+  (`anyLive`), so the cache can never be the reason a fetch fails (a sole provider that timed out
+  transiently and has since re-announced is still dialed, preserving cross-NAT reprovide, #69). Stamped
+  centrally (so `NetGet` benefits too) but consulted only in the fetch path, leaving consensus/DHT
+  re-probes untouched; the map is bounded (`maxDeadHolders`). Regressions in `fetch_deadcache_test.go`.
 - **Acceptance-pass documentation gaps** (2026-08-08) — From the fresh-operator acceptance pass (all
   nine flows worked; these were doc/test issues, not broken capabilities):
   - `docs/user-seam.md` Role 4 "become a validator" walkthrough errored as written — the default
