@@ -1,0 +1,5 @@
+# Built on the host by run.sh (linux binaries) and COPYed into the image.
+# Never commit binaries.
+silt-v1
+silt-v2
+.seed-override.yml

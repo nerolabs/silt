@@ -12,7 +12,8 @@ growth to surface leaks or unbounded growth.
               flat bridge net 10.120.0.0/24
    seed(+registry) 10.120.0.10   ── holds content, hosts the registry
    holder01..12    10.120.0.2x   ── the replica / erasure substrate
-   caretaker       10.120.0.40   ── repairs care-published content over churn
+   caretaker       10.120.0.40   ── an extra holder (name is legacy; no -care
+                                    link wired, so no active repair loop runs)
    client (ephemeral)            ── fresh, storage-less fetch vantage each time
 ```
 

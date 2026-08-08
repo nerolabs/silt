@@ -1,12 +1,14 @@
 # Soak / scale topology: one flat bridge network, a seed (which also hosts the
-# registry), a pool of holder daemons, and a caretaker that repairs published
-# content as holders churn. Every daemon self-advertises its container IP
+# registry), a pool of holder daemons, and one extra holder labelled
+# "caretaker" (legacy name — no -care link is wired, so no active repair loop
+# runs; churn survival rests on replication + erasure margin). Every daemon
+# self-advertises its container IP
 # (node.sh) so it is dialable on the flat net.
 #
 #   10.120.0.0/24  (isolated subnet; avoids ranges used by sibling harnesses)
 #     seed        10.120.0.10   -serve-registry, holds content
 #     holderNN    10.120.0.2N   pool of holders (the erasure/replica substrate)
-#     caretaker   10.120.0.40   repairs care-published content across churn
+#     caretaker   10.120.0.40   an extra holder (legacy name; no -care wired)
 #
 # The seed's NodeID isn't known until it boots, so run.sh starts the seed
 # first, reads `peer:`/`registry:` from its log, exports SEED_PEER/SEED_REG,

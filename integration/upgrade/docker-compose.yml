@@ -1,0 +1,75 @@
+# Rolling-upgrade / on-disk-format-stability topology (field test #11).
+#
+#            ┌──────────── swarm 10.130.0.0/24 ────────────┐
+#            │                                              │
+#   seed 10.130.0.10  ──(registry+relay+validator, /data on seed-data)
+#     │                                                     │
+#   holderA 10.130.0.11 ─(EC holder, publishes; /data on holderA-data)
+#   holderB 10.130.0.12 ─(EC holder;             /data on holderB-data)
+#
+# All three /data live on NAMED VOLUMES so they survive a container recreate —
+# the recreate (with a different SILT_VERSION) IS the binary upgrade. run.sh
+# drives: publish on V1 → control fetch → upgrade (whole-swarm or ROLLING) →
+# assert reload lines + a bit-perfect fetch on V2 over the unchanged stores.
+#
+# Each service's version is a per-service env var (SEED_VER / HOLDERA_VER /
+# HOLDERB_VER), so run.sh can `up -d --force-recreate` ONE service on a new
+# version while the others keep serving — that's the rolling upgrade.
+
+networks:
+  swarm:
+    driver: bridge
+    ipam:
+      config: [{ subnet: 10.130.0.0/24 }]   # isolated from the other harnesses
+
+volumes:
+  seed-data:
+  holderA-data:
+  holderB-data:
+
+services:
+  # Persistent rendezvous: hosts the registry, relays, and keeps a chain replica
+  # as a validator (so we exercise chain persistence across the upgrade too).
+  seed:
+    image: silt-upgrade
+    environment:
+      SILT_VERSION: ${SEED_VER:-v1}
+      NODE_IP: 10.130.0.10
+      ROLE: seed
+      REG_SERVE: 0.0.0.0:4003
+      VALIDATOR: 1
+      CAPACITY: 1               # rendezvous only: refuse content so it lives on the holders
+      EXTRA: -id-seed=1         # deterministic NodeID → a registry ref the driver can build up front
+    volumes:
+      - seed-data:/data
+    networks:
+      swarm:
+        ipv4_address: 10.130.0.10
+
+  holderA:
+    image: silt-upgrade
+    environment:
+      SILT_VERSION: ${HOLDERA_VER:-v1}
+      NODE_IP: 10.130.0.11
+      ROLE: holder
+      CAPACITY: 5G
+      BOOTSTRAP: ${SEED_ID:-unset}@10.130.0.10:4001
+    volumes:
+      - holderA-data:/data
+    networks:
+      swarm:
+        ipv4_address: 10.130.0.11
+
+  holderB:
+    image: silt-upgrade
+    environment:
+      SILT_VERSION: ${HOLDERB_VER:-v1}
+      NODE_IP: 10.130.0.12
+      ROLE: holder
+      CAPACITY: 5G
+      BOOTSTRAP: ${SEED_ID:-unset}@10.130.0.10:4001
+    volumes:
+      - holderB-data:/data
+    networks:
+      swarm:
+        ipv4_address: 10.130.0.12

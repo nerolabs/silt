@@ -66,7 +66,9 @@ trap cleanup EXIT INT TERM
 store_objects() {
   local svc total=0 n
   for svc in "${HOLDERS[@]}"; do
-    n=$(dc exec -T "$svc" sh -c 'ls /data/objects 2>/dev/null | wc -l' 2>/dev/null | tr -d ' \r\n')
+    # diskstore fans chunks two levels deep (objects/<2hex>/<hash>), so a flat
+    # `ls objects` counts ≤256 prefix dirs, not chunks — count files instead.
+    n=$(dc exec -T "$svc" sh -c 'find /data/objects -type f 2>/dev/null | wc -l' 2>/dev/null | tr -d ' \r\n')
     [ -n "$n" ] && total=$((total + n))
   done
   echo "$total"
@@ -148,8 +150,11 @@ for i in $(seq 1 "$FILES"); do
   f="$WORK/f$i.bin"
   head -c "$FILE_BYTES" /dev/urandom > "$f"
   want=$(shasum -a 256 "$f" | awk '{print $1}')
-  # publish from an ephemeral client container (keeps nothing), care-published
-  # via the caretaker so repair keeps it alive across churn.
+  # Publish from the caretaker container (an ordinary holder here — NB: no
+  # -care link is wired, so no active repair loop runs; survival under churn
+  # rests on 3x replication + the erasure margin + a killed holder returning
+  # on its persisted store, not on caretaker repair). Wiring real repair is a
+  # follow-up (see the harness README / build-to-defects).
   dc cp "$f" caretaker:/tmp/pub.bin >/dev/null 2>&1
   out=$(dc exec -T caretaker sh -c "silt swarm add /tmp/pub.bin -peers '$PEERS' -registry '$SEED_REG'" 2>&1)
   link=$(echo "$out" | grep -oE 'silt:v1:[A-Za-z0-9_:-]+' | head -1)
