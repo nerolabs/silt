@@ -13,6 +13,9 @@ integration/nat/probe.bin
 # host-built binary for the churn integration harness (rebuilt by run.sh)
 integration/churn/silt
 
+# host-built binary for the consensus/partition-heal harness (rebuilt by run.sh)
+integration/consensus/silt
+
 # top-level built binary (go build -o silt ./cmd/silt) and default stores
 /silt
 .silt/
@@ -23,3 +26,4 @@ _examples_*/
 
 # stray legacy build artifact (old project name; see audit 2026-08-06)
 /shardnet
+integration/audit/silt
