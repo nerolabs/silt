@@ -1,0 +1,260 @@
+# Byzantine red-team on a flat Docker net (#184 validator accountability).
+#
+# One honest bonded quorum + three concrete, wire-reachable adversaries. Every
+# daemon is a REAL silt process talking over REAL TCP on one bridge network —
+# no in-process sim, no simulated flags. The adversarial behaviors are the
+# repo's own RED-TEAM / TEST-HARNESS flags (`silt daemon -h`):
+#
+#   -equivocate "idX,idYZ"   double-sign at height 1 (honest replicas slash it)
+#   -forge-block <peerID>    proposal with a FORGED proposer sig (honest rejects)
+#   -lowbond-propose <peerID> under-bonded proposer (honest refuses to attest)
+#
+# The honest validators use the earned-bonded-standing recipe the e2e tests and
+# examples/flow4 prove commits over TCP: legacy subjective consensus
+# (-objective=false), -min-rep 100, -quorum 1, a real 8M bond, fast -bond-audit
+# so standing warms in seconds. Adversary/honest IDs are deterministic
+# (-id-seed), so run.sh learns every ID up front with `silt id` and wires the
+# `-attesters` / `-forge-block` / `-lowbond-propose` / `-equivocate` targets.
+#
+# run.sh brings services up SELECTIVELY per scenario (compose profiles), so the
+# equivocation topology (H1/H2 + adversary double-signing both) and the
+# forged/low-bond topology (a fresh honest target H3 + one crafted proposal) do
+# not cross-contaminate.
+
+networks:
+  rt:
+    driver: bridge
+    ipam:
+      config: [{ subnet: 10.110.0.0/24 }]
+
+# The bond audit (challenge peers, refresh own standing) runs every 1s so
+# earned standing crosses the -min-rep 100 bar within a few seconds — the same
+# knob the e2e accountability tests use.
+x-honest: &honest
+  image: silt-redteam
+  networks: [rt]
+
+services:
+  # ── POSITIVE CONTROL — the honest quorum ─────────────────────────────────
+  # H1 and H2 are two honest, mutually-auditing validators. On their own they
+  # earn standing and commit a normal block (positive control: the quorum is
+  # otherwise healthy, so a later rejection is a real defence, not a dead swarm).
+  # H1 also serves the registry so a publish can commit.
+  h1:
+    <<: *honest
+    command:
+      - silt
+      - daemon
+      - -id-seed=1
+      - -listen=0.0.0.0:4001
+      - -advertise=10.110.0.11:4001
+      - -serve-registry=0.0.0.0:4003
+      - -store=/data
+      - -validator
+      - -objective=false
+      - -min-rep=100
+      - -quorum=1
+      - -attesters=${ID_H2:-unset}
+      - -bond=8M
+      - -bond-audit=1s
+      - -capacity=1G
+      - -mdns=false
+      - -debug
+    networks:
+      rt:
+        ipv4_address: 10.110.0.11
+
+  h2:
+    <<: *honest
+    command:
+      - silt
+      - daemon
+      - -id-seed=2
+      - -listen=0.0.0.0:4001
+      - -advertise=10.110.0.12:4001
+      - -store=/data
+      - -validator
+      - -objective=false
+      - -min-rep=100
+      - -quorum=1
+      - -attesters=${ID_H1:-unset}
+      - -bootstrap=${ID_H1:-unset}@10.110.0.11:4001
+      - -bond=8M
+      - -bond-audit=1s
+      - -capacity=1G
+      - -mdns=false
+      - -debug
+    networks:
+      rt:
+        ipv4_address: 10.110.0.12
+
+  # ── Scenario 1: EQUIVOCATOR ──────────────────────────────────────────────
+  # Mirrors e2e/equivocation_test.go EXACTLY, decoupled from the positive
+  # control so the topologies don't cross-contaminate:
+  #   equiv-a  (adversary, bootstrap ANCHOR): -attesters "idX,idYZ",
+  #            -equivocate "idX,idYZ". Once it has earned standing with BOTH, it
+  #            double-signs — block X onto equiv-x, heavier fork (Y,Z) onto equiv-yz.
+  #   equiv-x  (honest DETECTOR): holds A's block X, -attesters idYZ so it SYNCS
+  #            the heavier Y,Z fork from equiv-yz, reconciles, catches A signing
+  #            two blocks at height 1, and SLASHES A.
+  #   equiv-yz (honest recipient of the heavier fork): NO -attesters, so it never
+  #            syncs the X-fork and stays a clean recipient of Y,Z.
+  # equiv-a is the anchor both honest nodes bootstrap off, so A directly
+  # exchanges bond challenges with both and earns standing with each.
+  equiv-a:
+    <<: *honest
+    profiles: [equiv]
+    command:
+      - silt
+      - daemon
+      - -id-seed=6001
+      - -listen=0.0.0.0:4001
+      - -advertise=10.110.0.21:4001
+      - -store=/data
+      - -validator
+      - -objective=false
+      - -min-rep=100
+      - -quorum=1
+      - -attesters=${ID_EQUIV_X:-unset},${ID_EQUIV_YZ:-unset}
+      - -equivocate=${ID_EQUIV_X:-unset},${ID_EQUIV_YZ:-unset}
+      - -bond=8M
+      - -bond-audit=1s
+      - -capacity=1G
+      - -mdns=false
+      - -debug
+    networks:
+      rt:
+        ipv4_address: 10.110.0.21
+
+  equiv-x:
+    <<: *honest
+    profiles: [equiv]
+    command:
+      - silt
+      - daemon
+      - -id-seed=6002
+      - -listen=0.0.0.0:4001
+      - -advertise=10.110.0.22:4001
+      - -store=/data
+      - -validator
+      - -objective=false
+      - -min-rep=100
+      - -quorum=1
+      - -attesters=${ID_EQUIV_YZ:-unset}
+      - -bootstrap=${ID_EQUIV_A:-unset}@10.110.0.21:4001
+      - -bond=8M
+      - -bond-audit=1s
+      - -capacity=1G
+      - -mdns=false
+      - -debug
+    networks:
+      rt:
+        ipv4_address: 10.110.0.22
+
+  equiv-yz:
+    <<: *honest
+    profiles: [equiv]
+    command:
+      - silt
+      - daemon
+      - -id-seed=6003
+      - -listen=0.0.0.0:4001
+      - -advertise=10.110.0.23:4001
+      - -store=/data
+      - -validator
+      - -objective=false
+      - -min-rep=100
+      - -quorum=1
+      - -bootstrap=${ID_EQUIV_A:-unset}@10.110.0.21:4001
+      - -bond=8M
+      - -bond-audit=1s
+      - -capacity=1G
+      - -mdns=false
+      - -debug
+    networks:
+      rt:
+        ipv4_address: 10.110.0.23
+
+  # ── Scenarios 2 & 3: FORGED BLOCK and LOW-BOND PROPOSE ───────────────────
+  # H3 is a fresh honest target (its own store). The forger and the low-bond
+  # proposer each send ONE crafted proposal to H3 and report whether H3 refused
+  # it. Mirrors e2e/proposal_reject_test.go:
+  #   forger:  -forge-block idH3       (corrupted proposer signature)
+  #   lowbond: -bond 128K -lowbond-propose idH3  (under-bonded proposer)
+  h3:
+    <<: *honest
+    profiles: [propose]
+    command:
+      - silt
+      - daemon
+      - -id-seed=8001
+      - -listen=0.0.0.0:4001
+      - -advertise=10.110.0.31:4001
+      - -store=/data
+      - -validator
+      - -objective=false
+      - -min-rep=100
+      - -quorum=1
+      - -bond=8M
+      - -bond-audit=1s
+      - -capacity=1G
+      - -mdns=false
+      - -debug
+    networks:
+      rt:
+        ipv4_address: 10.110.0.31
+
+  forger:
+    <<: *honest
+    profiles: [propose]
+    command:
+      - silt
+      - daemon
+      - -id-seed=8002
+      - -listen=0.0.0.0:4001
+      - -advertise=10.110.0.32:4001
+      - -store=/data
+      - -validator
+      - -objective=false
+      - -min-rep=100
+      - -quorum=1
+      - -forge-block=${ID_H3:-unset}
+      - -bootstrap=${ID_H3:-unset}@10.110.0.31:4001
+      - -bond=8M
+      - -bond-audit=1s
+      - -capacity=1G
+      - -mdns=false
+      - -debug
+    networks:
+      rt:
+        ipv4_address: 10.110.0.32
+
+  lowbond:
+    <<: *honest
+    profiles: [propose]
+    command:
+      - silt
+      - daemon
+      - -id-seed=8004
+      - -listen=0.0.0.0:4001
+      - -advertise=10.110.0.33:4001
+      - -store=/data
+      - -validator
+      - -objective=false
+      - -min-rep=100
+      - -quorum=1
+      - -lowbond-propose=${ID_H3:-unset}
+      - -bootstrap=${ID_H3:-unset}@10.110.0.31:4001
+      # A tiny 128K bond, far below the -min-rep 100 bar — the proposal is
+      # otherwise well-formed and correctly signed, so the ONLY reason for
+      # refusal is the insufficient bond. Opt out of the anti-release floor so
+      # the sub-floor bond is accepted onto the plot at all.
+      - -bond=128K
+      - -min-bond-floor=0
+      - -bond-audit=1s
+      - -capacity=1G
+      - -mdns=false
+      - -debug
+    networks:
+      rt:
+        ipv4_address: 10.110.0.33
