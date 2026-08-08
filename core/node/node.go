@@ -81,6 +81,11 @@ type Config struct {
 	// linearly per attempt. FetchAttempts <= 1 disables the retry.
 	FetchAttempts int
 	FetchBackoff  ports.Duration
+	// HolderCooldown is how long the fetch/repair loop skips a holder after a
+	// dial to it timed out, so stale provider records to dead holders can't make
+	// a churny swarm re-dial the same corpses at full RequestTimeout every
+	// sweep (#226). 0 disables the negative cache (every provider re-dialed).
+	HolderCooldown ports.Duration
 	// BondAuditInterval is how often a validator challenges the storage
 	// bonds of the validators it knows, and BondMaxAge is how long a bond
 	// may go un-re-proven before its standing decays — so consensus
@@ -164,6 +169,7 @@ func DefaultConfig() Config {
 		ReachabilityTimeout: 3 * ports.Second,
 		FetchAttempts:       3,
 		FetchBackoff:        200 * ports.Millisecond,
+		HolderCooldown:      30 * ports.Second, // skip a timed-out holder for ~½ a repair interval before re-probing (#226)
 
 		BondAuditInterval: 60 * ports.Second,
 		BondMaxAge:        300 * ports.Second, // ~5 audit intervals unproven → standing lapses
@@ -174,6 +180,11 @@ func DefaultConfig() Config {
 }
 
 var ErrTimeout = errors.New("node: request timed out")
+
+// maxDeadHolders bounds the failed-holder negative cache (#226): past this
+// many entries a stamp sweeps out lapsed cooldowns before adding one, so
+// ephemeral-identity churn can't grow the map without limit.
+const maxDeadHolders = 4096
 
 // Stats are per-node counters the sim reports on.
 type Stats struct {
@@ -222,6 +233,15 @@ type Node struct {
 	// restart re-seeds from live peers instead of reloading every dead
 	// ephemeral identity we ever heard from (#43).
 	reachable map[ports.NodeID]ports.Time
+
+	// deadUntil is a negative cache of holders a fetch just failed to reach:
+	// a dialer skips a holder still in cooldown instead of eating another full
+	// RequestTimeout on it. Stale provider records to dead holders otherwise
+	// let a churny swarm re-dial the same corpses every repair sweep, starving
+	// the serial fetch loop on timeouts (#226). Stamped on any request timeout;
+	// consulted only in the fetch/repair dial path so consensus/DHT re-probes
+	// are unaffected. Cooldown expiry lets a recovered holder back in.
+	deadUntil map[ports.NodeID]ports.Time
 
 	// reachability probes (our AutoNAT): a check sends helpers a nonce and
 	// waits for one to dial us back. reachProbes maps an outstanding nonce
@@ -506,6 +526,7 @@ func New(id ports.NodeID, cfg Config, clock ports.Clock, tr ports.Transport, sto
 		provs:           dht.NewProviders(),
 		pending:         make(map[uint64]*pending),
 		reachable:       make(map[ports.NodeID]ports.Time),
+		deadUntil:       make(map[ports.NodeID]ports.Time),
 		reachProbes:     make(map[uint64]*reachProbe),
 		proofs:          make(map[ports.ChunkID]ports.StorageProof),
 		peerDomains:     make(map[ports.NodeID]uint64),
@@ -586,6 +607,25 @@ func (n *Node) request(to ports.NodeID, msg ports.Message, cb func(ports.Message
 		n.Stats.Timeouts++
 		n.table.Remove(to)
 		delete(n.reachable, to) // no longer proven reachable (#43)
+		// Negative-cache the corpse so the fetch/repair loop skips it for a
+		// cooldown instead of re-eating a full RequestTimeout on the same dead
+		// holder every sweep (#226). A reply later (n.reachable set in handle)
+		// doesn't clear this, but cooldown expiry re-admits a recovered holder.
+		if n.cfg.HolderCooldown > 0 {
+			now := n.clock.Now()
+			// Keep the map from growing without bound under ephemeral-identity
+			// churn: once it's large, drop entries whose cooldown already
+			// lapsed (they'd be re-admitted on next dial anyway). Cheap because
+			// it only sweeps past a threshold, not on every timeout.
+			if len(n.deadUntil) >= maxDeadHolders {
+				for id, until := range n.deadUntil {
+					if now >= until {
+						delete(n.deadUntil, id)
+					}
+				}
+			}
+			n.deadUntil[to] = now.Add(n.cfg.HolderCooldown)
+		}
 		n.logf(ports.LogDebug, "request timeout", "to", to, "kind", msg.Kind)
 		cb(ports.Message{}, fmt.Errorf("%w (to %s)", ErrTimeout, to))
 	})

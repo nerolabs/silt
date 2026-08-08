@@ -374,6 +374,16 @@ func (n *Node) fetchFrom(id ports.ChunkID, provs []ports.NodeID, done func(bool)
 				try(i + 1)
 				return
 			}
+			// Skip a holder we recently failed to reach: a stale record to a
+			// dead node otherwise costs a full RequestTimeout here, every
+			// column, every sweep (#226). A cooldown skip is NOT transient —
+			// it must not trigger the FetchAttempts re-sweep amplification;
+			// the shard just goes unfetched this round and a later sweep, past
+			// the holder's cooldown, re-probes in case it recovered.
+			if until, dead := n.deadUntil[provs[i]]; dead && n.clock.Now() < until {
+				try(i + 1)
+				return
+			}
 			n.request(provs[i], ports.Message{Kind: ports.MsgFetchChunk, ChunkID: id},
 				func(resp ports.Message, err error) {
 					if err == nil && resp.Found {
