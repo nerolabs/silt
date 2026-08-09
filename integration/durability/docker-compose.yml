@@ -1,0 +1,76 @@
+# Long-horizon DURABILITY under full membership turnover, on one flat network.
+#
+#   seed ── registry + bootstrap (holds no content: -capacity 1)
+#     ├─ holder×N ── real disk stores; killed PERMANENTLY over time and replaced
+#     │              by fresh EMPTY holders (docker compose --scale re-creates)
+#     └─ caretaker ── holds the care link, repairs lost shards onto survivors
+#
+# The outcome under test is the core promise: does content OUTLIVE THE NODES?
+# Not "does one repair fire" — but, as holders permanently depart and fresh empty
+# ones replace them (the swarm's membership fully rotates while its size holds),
+# does a fetch stay bit-perfect and does redundancy RECOVER after each departure?
+# run.sh drives the turnover and reads the caretaker's "repair sweep complete
+# reachable=N" (the #235 observability) to watch redundancy heal, not just hope.
+#
+# role.sh self-advertises each container's IP (a wildcard bind isn't dialable).
+
+networks:
+  swarm:
+    driver: bridge
+    ipam:
+      config: [{ subnet: 10.70.0.0/24 }]
+
+services:
+  seed:
+    image: silt-durability
+    entrypoint: ["role.sh"]
+    command:
+      - silt
+      - daemon
+      - -listen=0.0.0.0:4001
+      - -serve-registry=0.0.0.0:4003
+      - -store=/data
+      - -capacity=1
+      - -mdns=false
+      - -log=info
+    networks: [swarm]
+
+  holder:
+    image: silt-durability
+    entrypoint: ["role.sh"]
+    command:
+      - silt
+      - daemon
+      - -listen=0.0.0.0:4001
+      - -store=/data
+      - -capacity=5G
+      - -mdns=false
+      - -log=info
+      - -bootstrap=${SEED_PEER:-unset}
+      - -registry=${SEED_REG:-unset}
+    networks: [swarm]
+
+  caretaker:
+    image: silt-durability
+    entrypoint: ["role.sh"]
+    command:
+      - silt
+      - daemon
+      - -listen=0.0.0.0:4001
+      - -store=/data
+      - -capacity=5G
+      - -mdns=false
+      - -log=info
+      - -bootstrap=${SEED_PEER:-unset}
+      - -registry=${SEED_REG:-unset}
+      - -care=${CARE_LINK:-none}
+    networks: [swarm]
+
+  # One-off ephemeral publish/fetch box: run.sh drives it with `docker compose
+  # run --rm client sh -c "silt swarm add|get …"`, a fresh container (fresh
+  # ephemeral identity) each time. No role.sh — `run` overrides the command.
+  client:
+    image: silt-durability
+    entrypoint: []
+    command: ["silt", "help"]
+    networks: [swarm]
