@@ -286,6 +286,24 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
     takedown of a shared root.
 
 ### Added
+- **New field test: durability under permanent holder loss (`integration/durability`)** (2026-08-10) —
+  Tests the core promise cynically — *does content outlive the nodes that held it?* A `seed + 16 holders +
+  caretaker` swarm publishes a file at `replication=1` (every column single-copy, the honest stress), then
+  **permanently kills holders one at a time and never replaces them** so the pool shrinks onto ever-fewer
+  survivors. Crucially it kills **without** re-scaling: an earlier `rm -f`+`--scale` design let Docker
+  recycle a dead holder's IP to a fresh **empty** identity, and the caretaker dialing `old-NodeID@that-IP`
+  hit a TLS-pin *impostor* — a Docker artifact (real infra doesn't recycle IPs in seconds) that masqueraded
+  as "content lost." Shrinking the swarm removes the artifact and isolates the real mechanic:
+  reconstruct-from-parity (`k=10` of `n=16`) + re-scatter onto survivors. It reads **two separate oracles** —
+  the caretaker's `repair below k` log (authoritative, unrecoverable content loss) for **durability**, and a
+  warm-peer `swarm get` (every survivor handed as a direct peer) for **retrieval**, so a discovery flake is
+  never miscounted as loss. **Finding:** durability **held** — across 10 permanent departures (16→6 holders)
+  no stripe ever fell below `k` and the caretaker performed **13 reconstructions**, so the bytes provably
+  survived — but a fresh client's end-to-end **retrieval** stayed bit-perfect only down to ~11 survivors,
+  then degraded (the **#43 retrieval surface under permanent loss**: *durable is not the same as
+  retrievable*). Exits 0 as a FINDING (`EXPECT=pass` to hard-fail; `MIN_SURVIVORS=11` for the
+  retrieval-healthy clean PASS). True membership **rotation** (fresh VMs = fresh IPs) is the cloud test's
+  job. Wired into `run-all.sh` (slow tier).
 - **New field test: retrieval / discoverability at scale (`integration/retrieval`)** (2026-08-09) —
   Measures the most basic user promise — *can I get my content back?* — on a real multi-holder swarm as
   short-lived publisher/fetcher identities churn the DHT (#43/#60). It publishes files, optionally pollutes

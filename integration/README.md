@@ -152,6 +152,7 @@ KEEP=1 ./integration/<name>/run.sh     # leave the topology up to poke at
 | `nat/holepunch.sh` | cone NAT upgrades relay→direct (#27); `NAT_MODE=symmetric` falls back to the relay |
 | `nat/loadtest.sh` | fetch-under-load: many concurrent fetches through a bandwidth-capped relay (#65) |
 | `churn/run.sh` | repair-under-churn: kill holders, caretaker reconstructs + re-scatters, stays bit-perfect |
+| `durability/run.sh` | durability under permanent loss: shrink the swarm (no replacement), caretaker re-scatters, content outlives the nodes |
 | `consensus/run.sh` | objective on-chain-bond fork-choice: partition → heal to the heavier chain |
 | `redteam/run.sh` | #184 accountability: equivocator slashed, forged block rejected, low-bond proposer refused |
 | `audit/run.sh` | a "liar" deletes data but keeps proofs → the loss is caught and repaired |

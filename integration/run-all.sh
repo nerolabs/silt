@@ -36,6 +36,7 @@ SUITES_CATALOG=(
   "economy|gate|180|Per-byte earning + blind-signed, publisher-unlinkable credits"
   "churn|gate|540|Repair-under-churn: kill holders, caretaker reconstructs from parity + re-scatters, bit-perfect"
   "soak|slow|400|Sustained load + gentle churn: bit-perfect throughout, no crash-loop, bounded memory"
+  "durability|slow|1800|Durability under permanent loss: shrink the swarm, caretaker reconstructs+re-scatters, content outlives the nodes (surfaces the durability↔retrievability boundary)"
   "retrieval|slow|900|Retrieval/discoverability at scale + identity churn: cold-fetch success-rate floor (reproduces #43)"
   "upgrade|slow|180|Rolling binary upgrade on a persisted store (reproduces the #237 format-migration FINDING)"
 )
