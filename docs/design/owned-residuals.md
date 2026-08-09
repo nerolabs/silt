@@ -124,6 +124,54 @@ discount, C2 no quiet capture, the demand→standing firewall) — those are hel
   copy answer for N identities, i.e. that escapes the Moran–Wichs / Fisch trilemma. (If none
   can, silt's separation is permanently correct — which is itself a publishable result.)
 
+### A5. Partial-storage recompute discount on C1 — the disclosed `ε*` (BREAK 1)
+- **Class:** **research-frontier** (Option A is the known close; H-track). Anchors: Fisch,
+  *Tight Proofs of Space and Replication* (EUROCRYPT 2019); the DRSample space-time tradeoff.
+- **What it is:** a red-team pass (2026-08-08) showed that on silt's **single-layer**
+  DRSample+chain bond graph, a prover can **delete a fraction ε of the plot** (keeping the 32-byte
+  Merkle leaves) and **recompute** any dropped block on demand from its predecessor + DRSample
+  parents, then pass the exact `bond.VerifySpaceTime` the live wire runs — earning full standing
+  for the *advertised* size while holding `(1−ε)` of the disk. Measured on the shipped graph:
+  recompute is ~free at ε≤0.10 (depth ≈1), and the work explodes past the **~0.25 knee**. So C1
+  as originally written (`(1 − o(1))`, a *vanishing* discount) is false; the honest statement is
+  `≥ (1 − ε*)·q·C_honest` with a **disclosed `ε*` = 0.20**.
+- **Why not closed (precisely):** recomputed bytes are **content-identical** to stored ones, so
+  **no content check can distinguish them** (`verifyLabels` is a public, recomputable predicate) —
+  verified against the code. Enforcement is therefore inherently the **time/sequential-depth leg**,
+  not a content check. A *single-layer* depth-robust graph concedes a constant-fraction shave by
+  construction; only a **stacked, multi-layer** tight-PoS construction (Option A) recovers the
+  `(1 − o(1))` bound.
+- **How it's bounded today (the residual is a gradient + a re-pricing, not a flat give-away):**
+  - **Disclosed** `ε*=0.20` — the rational/serial attack point and the floor the graph concedes.
+  - **Enforced** against a **work-bound (serial/rational) disk-saver** past the ~0.25 work knee by
+    the **reply-latency gate** on the live bond challenge (`node.Config.BondMaxAnswerLatency`,
+    daemon `-bond-answer-latency`, default 1.5 s): past the knee the recompute is a large sequential
+    cost, so a reply slower than the (generously-margined) deadline earns no standing. **Soft**
+    (wall-clock ⇒ fastest-evaluator-sensitive), so the reliable boundary sits at the ~0.25 knee,
+    conservatively — and the disclosed `ε*=0.20 ≤` that boundary, so the 0.20–0.25 band is
+    conceded-and-disclosed on the safe side.
+  - **Priced (not free) against a parallel adversary.** A parallel prover is bounded by recompute
+    **depth** rather than **work**, and can hold *less* disk — but it **re-pays the recompute on
+    every audit, per identity, forever** (a compute-for-storage re-pricing, silt's "re-priced, not
+    prevented" idiom, *not* a free discount). By Brent's theorem the parallelism required to reach a
+    given ε grows **super-exponentially** (`cores ≥ work/depth`: ~10² cores to be depth-bound at
+    ε≈0.25, ~10⁵ at ε≈0.30, ~10¹³ to approach ε≈0.5). So the **realistic** parallel exposure is
+    ≈ ε0.30 (compute-repriced), and the ε≈0.5 depth knee is a theoretical unbounded-adversary bound,
+    not a real attacker.
+  - **Audit frequency is the free tightening lever** (`-bond-audit`): the parallel attacker's
+    recurring compute bill scales with it, with no construction change.
+  - **Composes with BondTTL:** on-chain objective weight lapses without live re-proof, so the live
+    latency gate bounds even the objective weight over time (the on-chain verify cannot time a
+    stored proof — that tightness is Option A).
+- **What would close it:** **Option A** — a stacked multi-layer expander (à la Filecoin Stacked-DRG,
+  L≈10) turning depth-robustness into a *global* depth guarantee, made on-chain-succinct by a
+  Groth16 SNARK over the ~100 MB witness. It re-imports a **trusted setup** and is far outside an M0
+  hotfix ⇒ **H-track**.
+- **Open question for research:** a tight (parallel-secure, small-`ε*`) proof-of-space-time
+  affordable on-chain in **pure Go without a trusted setup** — i.e. Option A minus the SNARK/setup
+  cost. Until then, `ε*=0.20` disclosed + the latency gate + audit-frequency lever is the M0 hold.
+  Cross-ref: [`m0-sybil-rebind.md`](m0-sybil-rebind.md) §8.1 (the `ε→k` derivation, confirmed H-track).
+
 ---
 
 ## B. Time and demand (T + B axes)
