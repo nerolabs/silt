@@ -230,6 +230,21 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   transiently and has since re-announced is still dialed, preserving cross-NAT reprovide, #69). Stamped
   centrally (so `NetGet` benefits too) but consulted only in the fetch path, leaving consensus/DHT
   re-probes untouched; the map is bounded (`maxDeadHolders`). Regressions in `fetch_deadcache_test.go`.
+- **The dead-holder negative cache now also covers the repair PROBE path and the DHT walk** (2026-08-09) —
+  Follow-on to the fetch-path fix above, which stamped `deadUntil` centrally but consulted it only in the
+  fetch dial path, leaving the two other places a repair sweep dials stale records exposed: (1) the
+  dispersion audit's `probeShard` `MsgHasChunk` loop and (2) the provider-discovery **DHT walk**
+  (`walk.step`, `MsgGetProviders`), which a caretaker runs for *every* key it cares about. Under churn a
+  caretaker with many stale routing/provider records to `docker kill`ed holders spent a full
+  `RequestTimeout` per dead record, so a single sweep never completed — the caretaker never registered the
+  loss and never repaired (surfaced by `integration/churn/`, which stalls on small swarms; the true
+  degradation happens at GCP scale where k=10 actually strands stripes). Both paths now skip a holder still
+  in cooldown — the walk fails it in the Kademlia lookup without a dial, the probe skips it — each **only
+  when a live alternative exists** (`anyLive`), so a sole transiently-timed-out holder that has since
+  recovered is still dialed (#69 preserved). Regressions in `repair_deadcache_test.go` (walk-skips,
+  walk-without-cooldown control, probe-skips). This is an efficiency/observability fix; it is **not** on
+  its own sufficient to green the small-swarm `integration/churn` reproducer, whose stall is a
+  swarm-vs-`k` placement-skew artifact addressed separately in the harness.
 - **Acceptance-pass documentation gaps** (2026-08-08) — From the fresh-operator acceptance pass (all
   nine flows worked; these were doc/test issues, not broken capabilities):
   - `docs/user-seam.md` Role 4 "become a validator" walkthrough errored as written — the default

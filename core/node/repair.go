@@ -294,6 +294,26 @@ func (n *Node) probeShard(id ports.ChunkID, key ports.Hash, includeLocal bool, d
 		}
 	}
 	n.resolveProviders(key, func(provs []ports.NodeID) {
+		// Skip holders we recently failed to reach. A stale record to a dead
+		// node otherwise costs a full RequestTimeout here, every column, every
+		// sweep — the same dial-storm the fetch path fixed (#226). Unfixed on
+		// the probe path it stalls a repair sweep so badly it never completes,
+		// so the caretaker never registers the loss and never repairs (the churn
+		// field-test stall). Guarded by anyLive so we never skip the only
+		// candidate: a lone holder that restarted and is re-announcing must
+		// still be probed, not written off as gone (#69).
+		now := n.clock.Now()
+		anyLive := false
+		for _, p := range provs {
+			if p == n.id {
+				continue
+			}
+			if until, dead := n.deadUntil[p]; dead && now < until {
+				continue
+			}
+			anyLive = true
+			break
+		}
 		var try func(i int)
 		try = func(i int) {
 			if i >= len(provs) {
@@ -303,6 +323,14 @@ func (n *Node) probeShard(id ports.ChunkID, key ports.Hash, includeLocal bool, d
 			if provs[i] == n.id {
 				try(i + 1)
 				return
+			}
+			// A cooldown skip reports this holder as absent for this sweep; a
+			// later sweep past its cooldown re-probes in case it recovered.
+			if anyLive {
+				if until, dead := n.deadUntil[provs[i]]; dead && now < until {
+					try(i + 1)
+					return
+				}
 			}
 			pr := provs[i]
 			n.request(pr, ports.Message{Kind: ports.MsgHasChunk, ChunkID: id},
