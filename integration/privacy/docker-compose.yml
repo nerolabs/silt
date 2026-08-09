@@ -1,0 +1,82 @@
+# Publisher-privacy adversary, on one host, in containers.
+#
+#   flat network 10.60.0.0/24
+#     valA (10.60.0.11)  chain-backed registry + validator
+#     valB (10.60.0.12)  attester (qualifies valA's commits; quorum=1)
+#
+# Two real `silt daemon -validator` processes form a committing chain. run.sh
+# derives each NodeID from its -id-seed up front (via `silt id`), so -anchors /
+# -attesters are fillable before launch and both replicas start from an identical
+# genesis.
+#
+# The property under test: publisher UNLINKABILITY. A silt registry entry may
+# carry a durable `Publisher` NodeID (a permanent file→publisher link on the
+# append-only chain — the #14/F1 privacy corner). The default chain REFUSES such
+# entries (chain: ErrPublisherEntry); an unlinkable entry (no Publisher, or a
+# blind-signed -token-quorum credential) commits fine. `-allow-publisher=${ALLOW_PUB}`
+# lets run.sh flip the chain policy between phases from ONE compose file:
+#   ALLOW_PUB=true  → a trusted deployment that ACCEPTS Publisher entries (the
+#                     positive control: proves a Publisher entry CAN commit, so a
+#                     refusal on the default chain is a policy gate, not a bug).
+#   ALLOW_PUB=false → the M0 default: refuse-to-surveil.
+
+networks:
+  swarm:
+    driver: bridge
+    ipam:
+      config: [{ subnet: 10.60.0.0/24 }]
+
+services:
+  valA:
+    image: silt-privacy
+    command:
+      - silt
+      - daemon
+      - -id-seed=6001
+      - -listen=0.0.0.0:4001
+      - -advertise=10.60.0.11:4001
+      - -serve-registry=0.0.0.0:4003
+      - -store=/data
+      - -validator
+      - -min-bond=1M
+      - -mature-validators=99          # never shed the anchors: a stable objective launch set
+      - -anchors=${ANCHORS:-unset}
+      - -attesters=${ID_B:-unset}
+      - -quorum=1
+      - -min-bond-floor=0
+      - -bond=8M
+      - -bond-audit=1s
+      - -allow-publisher=${ALLOW_PUB:-false}
+      - -capacity=1G
+      - -mdns=false
+      - -log=info
+    networks:
+      swarm:
+        ipv4_address: 10.60.0.11
+
+  valB:
+    image: silt-privacy
+    command:
+      - silt
+      - daemon
+      - -id-seed=6002
+      - -listen=0.0.0.0:4001
+      - -advertise=10.60.0.12:4001
+      - -store=/data
+      - -validator
+      - -min-bond=1M
+      - -mature-validators=99
+      - -anchors=${ANCHORS:-unset}
+      - -attesters=${ID_A:-unset}
+      - -bootstrap=${ID_A:-unset}@10.60.0.11:4001
+      - -quorum=1
+      - -min-bond-floor=0
+      - -bond=8M
+      - -bond-audit=1s
+      - -allow-publisher=${ALLOW_PUB:-false}
+      - -capacity=1G
+      - -mdns=false
+      - -log=info
+    networks:
+      swarm:
+        ipv4_address: 10.60.0.12
