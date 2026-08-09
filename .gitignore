@@ -52,3 +52,4 @@ integration/fieldtest/terraform/.terraform.lock.hcl
 integration/fieldtest/terraform/*.tfstate
 integration/fieldtest/terraform/*.tfstate.*
 integration/retrieval/silt
+integration/durability/silt
