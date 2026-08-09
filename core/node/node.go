@@ -107,6 +107,24 @@ type Config struct {
 	// deployment for a stronger elapsed-time floor; the modest default keeps
 	// the deterministic sim fast. 0 disables the time binding (space-only).
 	BondVDFDelay uint64
+	// BondMaxAnswerLatency is the reply-deadline on a LIVE bond challenge — the
+	// enforcing leg of the C1 partial-storage-recompute residual (BREAK 1, red-team
+	// 2026-08-08; owned-residuals A5). A prover that deleted ε of its plot recomputes
+	// the dropped blocks on demand; recomputed bytes are content-identical to stored
+	// ones, so no CONTENT check (verifyLabels) can catch it — enforcement is
+	// necessarily the TIME leg. Past the ~0.25 work knee of the DRSample graph the
+	// recompute is a large, sequential-depth-bearing cost (measured: ~free at ε≤0.10,
+	// ~100ms at ε≈0.25, seconds beyond), so a reply arriving after this deadline
+	// implies a materially-short prover and earns no standing. SOFT by nature
+	// (wall-clock ⇒ fastest-evaluator-sensitive + network jitter), so it is
+	// calibrated with a GENEROUS margin: it deters the rational SERIAL disk-saver
+	// past the knee, not a well-resourced parallel farm (that residual is
+	// compute-repriced and owned — A5; the tight close is Option A / H-track). Only
+	// meaningful on a real wall clock: 0 (default) = OFF, which the deterministic sim
+	// and tests need (their tick clock has no wall meaning); the daemon sets a real
+	// duration. Composes with BondTTL: on-chain weight lapses without live re-proof,
+	// so this gate bounds even the objective weight over time.
+	BondMaxAnswerLatency ports.Duration
 	// MinBondBytes is the anti-release floor (M0 Sybil, red-team F1/F2): a bond
 	// smaller than this earns NO standing, self or peer. The read-bound plot makes
 	// a released prover recompute (memory-hard) before it can answer, but that

@@ -93,6 +93,30 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   to preserve is already regression-locked — `sim/demand_costtowash_test.go` + `sim/demand_bonded_test.go`
   assert standing is byte-identical under wash/self-dealt demand, and `core/credit/invariant_a_test.go`'s
   reflection guard fails the build on any unclassified standing press.)
+- **BREAK 1: C1 restated to `(1−ε*)` with an enforcing bond-answer-latency gate** (2026-08-09) — A blind
+  red-team pass found a **partial-storage recompute** discount on C1: on silt's single-layer DRSample
+  bond graph a prover can delete a fraction ε of its plot (keeping the 32-byte leaves) and **recompute**
+  any challenged block on demand, passing the exact `bond.VerifySpaceTime` the live wire runs while
+  holding only `(1−ε)` of the disk. Recomputed bytes are **content-identical** to stored ones, so no
+  content check can catch it (verified in code) — enforcement is necessarily the **time** leg. Measured
+  on the shipped graph: recompute is ~free at ε≤0.10 and its work explodes past the **~0.25 knee**. Per a
+  research consult (web-verified against the proofs-of-space literature), the tight small-`ε*` close is
+  **H-track** (stacked tight-PoS + a Groth16 SNARK over a ~100 MB witness → a trusted setup), so M0 ships
+  the honest **Option B**:
+  - **C1 restated** from `(1 − o(1))·q·C_honest` to **`(1 − ε*)·q·C_honest`, `ε*=0.20` disclosed**
+    (`m0.md`, `owned-residuals.md` A5, `m0-sybil-rebind §8.1`).
+  - **Enforcement:** a reply-latency gate on the live bond challenge — `node.Config.BondMaxAnswerLatency`
+    / daemon `-bond-answer-latency` (default 1.5 s) — earns no standing for a reply slower than the
+    (generously-margined) deadline; past the ~0.25 knee the recompute blows it. **Soft** (wall-clock ⇒
+    fastest-evaluator-sensitive), off in the sim (tick clock), on in the daemon.
+  - **Honest residual (A5):** it deters the rational **serial** disk-saver; a **parallel** adversary can
+    hold less disk but **re-pays the recompute every audit, per identity** (compute-for-storage
+    re-pricing, not a free discount), with the parallelism required growing **super-exponentially** in ε
+    (Brent: ~10² cores at ε≈0.25, ~10⁵ at 0.30, ~10¹³ near 0.5) — so realistic parallel exposure ≈ ε0.30,
+    and **audit frequency** (`-bond-audit`) is a free tightening lever. Composes with BondTTL so the gate
+    bounds even on-chain objective weight over time. The tight close is Option A (H-track).
+  - Regressions: `TestBreak1_LateBondAnswerEarnsNoStanding` (a late answer earns no standing; the gate is
+    off at deadline 0). No deterministic content check exists — do not add one.
 - **F-3: the whole-registry `GET /all` dump is off the public mux** (2026-08-08) — Completes the
   red-team F-3 fix. `/all` serialized the entire registry O(N) with no pagination — an unbounded
   per-request cost. An interim change priced it by work, but that only bounds cost *per source*; a
