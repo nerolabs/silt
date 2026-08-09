@@ -125,6 +125,7 @@ KEEP=1 ./integration/<name>/run.sh     # leave the topology up to poke at
 | `takedown/run.sh` | per-operator, existence-checked, reversible takedown |
 | `soak/run.sh` | sustained load + gentle churn: bit-perfect throughout, bounded memory/disk |
 | `upgrade/run.sh` | rolling binary upgrade on persisted stores: reload + fetch bit-perfect |
+| `retrieval/run.sh` | retrieval/discoverability at scale + ephemeral-identity churn: cold-fetch success-rate floor (#43) |
 
 Each harness uses a distinct Docker network subnet, image tag, and compose
 project, so they don't collide; run them one at a time (each assumes exclusive
