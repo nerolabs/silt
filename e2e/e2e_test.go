@@ -138,6 +138,7 @@ var (
 	reCommitted = regexp.MustCompile(`chain: committed block (\d+)`)
 	reLink      = regexp.MustCompile(`^silt:v1:\S+`)
 	reFreeload  = regexp.MustCompile(`freeload: ON`)
+	reRefuse    = regexp.MustCompile(`refusing to start`)
 )
 
 // TestFreeloadRoleSeparation (#47): a daemon started with -freeload announces the
@@ -181,12 +182,19 @@ func runClientAllowErr(t *testing.T, args ...string) (string, error) {
 	return out.String(), err
 }
 
-// TestDefaultsRefuseRubberStampCommit is the OUTCOME test for the safe
-// consensus defaults. Use case: an operator runs a validator with DEFAULT
-// flags (no -quorum / -min-rep). Outcome required: a lone, unearned node must
-// NOT be able to rubber-stamp the registry — the publish's commit is refused.
-// (TestPublishCommitFetchOverTCP is the positive control: with the explicit
-// -quorum 0 trusted-deployment setting, the same publish DOES commit.)
+// TestDefaultsRefuseRubberStampCommit is the OUTCOME test for the safe consensus
+// defaults. Use case: an operator runs a LONE validator with DEFAULT flags (no
+// -quorum / -min-rep override, so the untrusted objective path) and no cold-start
+// scaffolding. Outcome required (seam-2, red-team 2026-08-08): the daemon must
+// REFUSE TO START — a lone untrusted objective validator with no anchor launch set
+// and no weak-subjectivity checkpoint would latch everMature at genesis and run
+// with no anchor co-sign, so a young/Sybil quorum could self-certify and capture.
+// Refuse-to-start is strictly stronger than the old "starts but refuses to
+// rubber-stamp": a node that will not run cannot rubber-stamp anything.
+// (TestPublishCommitFetchOverTCP is the positive control — with the explicit
+// -quorum 0 trusted-deployment setting the same publish commits;
+// TestBondEarnedStandingCommitsOverTCP shows the earned-standing objective path
+// with an anchor launch set.)
 func TestDefaultsRefuseRubberStampCommit(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e spawns processes; skipped under -short")
@@ -194,26 +202,14 @@ func TestDefaultsRefuseRubberStampCommit(t *testing.T) {
 	a := startDaemon(t, "A",
 		"-listen", "127.0.0.1:0", "-store", t.TempDir(),
 		"-serve-registry", "127.0.0.1:0", "-validator",
-		// Local test swarm: opt OUT of the anti-release floor an untrusted
-		// validator now gets by default, so the box plots a small bond instead of
-		// the 1 GiB a real open deployment needs (G4-residual). The consensus
-		// defaults under test here (-quorum/-min-rep) are untouched.
+		// Opt OUT of the anti-release floor an untrusted validator gets by default
+		// (a local test box plots a small bond, not the 1 GiB a real deployment
+		// needs). The CONSENSUS defaults under test here (untrusted objective path,
+		// no anchors) are untouched — that is what must refuse to start.
 		"-min-bond-floor", "0",
 		"-capacity", "1G", "-mdns=false", "-id-seed", "2001")
-	peer := a.waitFor(t, rePeer, 20*time.Second)
-	idA, addrA := peer[1], peer[2]
-	regRef := a.waitFor(t, reRegistry, 20*time.Second)[1]
-	bootstrapA := idA + "@" + addrA
-
-	src := filepath.Join(t.TempDir(), "payload.bin")
-	if err := os.WriteFile(src, make([]byte, 64<<10), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	out, err := runClientAllowErr(t, "swarm", "add", src,
-		"-peers", bootstrapA, "-registry", regRef, "-chunk-size", "65536")
-	if err == nil {
-		t.Fatalf("safe defaults must REFUSE a lone/unearned commit, but the publish succeeded:\n%s", out)
-	}
+	// The daemon must print the cold-start refusal and exit, not come up as a peer.
+	a.waitFor(t, reRefuse, 20*time.Second)
 }
 
 // TestBondEarnedStandingCommitsOverTCP is the e2e tier for the trust pivot
