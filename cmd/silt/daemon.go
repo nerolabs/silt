@@ -1113,7 +1113,7 @@ type ephemeral struct {
 	tr   *tcpnet.Transport
 }
 
-func joinSwarm(peers string) (*ephemeral, func(fn func(done func())) error, error) {
+func joinSwarm(peers string, replication int) (*ephemeral, func(fn func(done func())) error, error) {
 	ident, err := identity.Generate(rand.Reader)
 	if err != nil {
 		return nil, nil, err
@@ -1132,6 +1132,9 @@ func joinSwarm(peers string) (*ephemeral, func(fn func(done func())) error, erro
 	cfg.RequireSignedProviders = true // reject forged/unsigned provider records on fetch (H5)
 	cfg.ProviderRecordTTL = ports.Duration(30 * time.Minute)
 	cfg.DHTDomainCap = 2 // resolve providers from a domain-spread set — eclipse resistance (H5-B)
+	if replication > 0 {
+		cfg.Replication = replication // a publisher may pick a lower redundancy (parity backstops copies)
+	}
 	nd := node.New(ident.NodeID(), cfg, walltime.New(loop), tr, memstore.New())
 	nd.SetSigner(ident.Signer()) // sign self-certifying provider records (H5)
 	nd.SetEphemeral(true)        // a publish/fetch client that keeps nothing — peers must not route to it (#43)
