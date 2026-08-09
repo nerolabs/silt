@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # fieldtest.sh — one-command GCP field test for silt (roadmap #52).
 #
+#   ./fieldtest.sh setup      interactive: ask for project + walk through gcloud auth → write config.env
 #   ./fieldtest.sh            build → topology → apply → run flows → report → DESTROY
 #   ./fieldtest.sh up         bring the network up and leave it (implies KEEP_UP)
 #   ./fieldtest.sh run        run the scenarios against an already-up network
@@ -16,7 +17,41 @@ FT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$FT_DIR/../.." && pwd)"
 cd "$FT_DIR"
 
-[ -f config.env ] || { echo "no config.env — copy config.env.example and fill it in"; exit 1; }
+# `setup` runs BEFORE the config.env requirement — it is what CREATES config.env.
+# Interactive: asks for the project, walks the user through gcloud auth (both the
+# user login AND the application-default credentials Terraform needs), enables the
+# required APIs, and writes config.env from the example.
+if [ "${1:-}" = setup ]; then
+  echo "silt GCP field test — interactive setup"
+  command -v gcloud >/dev/null 2>&1 || { echo "  ✗ gcloud not installed — https://cloud.google.com/sdk/docs/install"; exit 1; }
+  cur="$(gcloud config get-value project 2>/dev/null || true)"
+  printf '  GCP project id [%s]: ' "${cur:-none}"; read -r proj
+  proj="${proj:-$cur}"
+  [ -n "$proj" ] && [ "$proj" != none ] || { echo "  ✗ a project id is required (billing MUST be enabled on it)"; exit 1; }
+  if ! gcloud auth list --filter=status:ACTIVE --format='value(account)' 2>/dev/null | grep -q .; then
+    echo "  → no active gcloud login; opening the browser…"; gcloud auth login || exit 1
+  fi
+  if ! gcloud auth application-default print-access-token >/dev/null 2>&1; then
+    echo "  → Terraform needs application-default credentials; opening the browser…"
+    gcloud auth application-default login || exit 1
+  fi
+  gcloud config set project "$proj" >/dev/null 2>&1 || true
+  echo "  → enabling required APIs (compute, iap, storage) — idempotent…"
+  gcloud services enable compute.googleapis.com iap.googleapis.com storage.googleapis.com --project "$proj" 2>/dev/null \
+    || echo "  ! could not enable APIs automatically — enable compute/iap/storage manually if apply fails"
+  if [ -f config.env ]; then
+    echo "  config.env already exists — leaving it (edit it directly to change knobs)"
+  else
+    sed "s#^export PROJECT_ID=.*#export PROJECT_ID=\"$proj\"#" config.env.example > config.env
+    echo "  ✓ wrote config.env (PROJECT_ID=$proj) — edit it to tune region/size/cost guards"
+  fi
+  echo "  ✓ setup complete. Next:"
+  echo "      SMOKE=1 ./fieldtest.sh     # cheap ~4-node first shakeout (pennies)"
+  echo "      ./fieldtest.sh             # full 13-node run → report → DESTROY"
+  exit 0
+fi
+
+[ -f config.env ] || { echo "no config.env — run './fieldtest.sh setup' (interactive), or copy config.env.example and fill it in"; exit 1; }
 # shellcheck disable=SC1091
 . ./config.env
 : "${PROJECT_ID:?set PROJECT_ID in config.env}"
@@ -121,5 +156,5 @@ case "${1:-all}" in
   report) report; ;;
   down)   KEEP_UP=0 teardown; ;;
   nuke)   nuke; ;;
-  *) echo "usage: ./fieldtest.sh [all|up|run|report|down|nuke]"; exit 1; ;;
+  *) echo "usage: ./fieldtest.sh [setup|all|up|run|report|down|nuke]"; exit 1; ;;
 esac

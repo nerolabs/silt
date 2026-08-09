@@ -10,7 +10,7 @@ test you pick one:
 
 | | **Local (Docker)** | **GCP (real machines)** |
 |---|---|---|
-| Where | `integration/<name>/` (this dir) | `integration/fieldtest/` *(lands via PR #209)* |
+| Where | `integration/<name>/` (this dir) | `integration/fieldtest/` |
 | Shape | **per-test** harnesses, one topology each | **one combined** multi-machine acceptance run |
 | Substrate | containers on **one host**, one Docker bridge | **real VMs across 3 regions**, real VPC/Cloud NAT |
 | Speed / cost | seconds–minutes, free | minutes, a few cents (SPOT), auto-torn-down |
@@ -20,6 +20,58 @@ test you pick one:
 Neither replaces the other. Local owns fast, cheap, deterministic per-test
 coverage; GCP owns the things a single host physically cannot model. **Deciding
 which to run is part of scoping a field test** — see "Choosing a substrate" below.
+
+---
+
+## Quick start
+
+**Local (free, ~15 min for the fast set):** you need Docker running + a Go toolchain.
+```sh
+./integration/run-all.sh            # the fast gate set → consolidated report + per-suite logs
+FULL=1 ./integration/run-all.sh     # + the slow suites (soak, upgrade)
+./integration/audit/run.sh          # or run any single suite on its own
+```
+`run-all.sh` prints a live pass/finding/fail summary, writes `integration/.run-all/report.md`,
+and saves each suite's full output to `integration/.run-all/<suite>.log`. Exit 0 iff every
+suite that ran is PASS or a deliberately-reproduced FINDING.
+
+**GCP (real VMs, a few cents, auto-torn-down):** you need `gcloud`, `terraform`, Go, a
+billing-enabled project.
+```sh
+cd integration/fieldtest
+./fieldtest.sh setup     # interactive: asks for your project + walks you through auth
+./fieldtest.sh           # build → provision → run flows → report → DESTROY
+./fieldtest.sh nuke      # last-resort teardown by label, if anything is ever left
+```
+Teardown is guaranteed (destroy-on-exit + a TTL self-destruct on every VM); always confirm
+`gcloud compute instances list --filter labels.fieldtest:*` is empty afterward.
+
+---
+
+## For an LLM/agent operator — filing the reports
+
+The **scripts don't emit dated reports; you do.** When you (an agent) run a field test on
+someone's behalf, run the harness, then **read the raw output and write the reports** so the
+result is a durable, shareable artifact. Use today's date (`YYYY-MM-DD`).
+
+**Local** — after `./integration/run-all.sh` (use `FULL=1` for full coverage), file:
+- **`silt_local_fieldtest_<date>.md`** — the consolidated roll-up: one row per suite (PASS /
+  FINDING / FAIL), the M0 claim it gates, runtime, and a one-line verdict; then a short
+  "notable findings" section for anything that isn't a clean PASS. Base it on
+  `integration/.run-all/report.md` plus your reading of the logs.
+- **`silt_local_fieldtest_<suite>_<date>.md`** — one per suite: what it proves, the real
+  evidence you saw (the asserted `debug.log` lines / SHA / chain-status, quoted from
+  `integration/.run-all/<suite>.log`), the verdict, and — for a FINDING/FAIL — the failing
+  assertion and the reproducer.
+
+**GCP** — after `./integration/fieldtest/fieldtest.sh`, file the same shape from
+`integration/fieldtest/report.md` + `results.jsonl`:
+- **`silt_cloud_fieldtest_<date>.md`** (roll-up across the flows + the #184 drills), and
+- **`silt_cloud_fieldtest_<flow>_<date>.md`** per flow (with the real over-the-wire evidence).
+
+Report **honestly**: a FINDING (a deliberately-reproduced open defect, e.g. `upgrade` = #237)
+is not a failure; a real FAIL is. Quote real evidence, never invent a passing string. If a
+capability has no live seam yet, say so — a surfaced gap is a valid result.
 
 ---
 
