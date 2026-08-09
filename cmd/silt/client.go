@@ -29,6 +29,24 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
+// clientNodeConfig is the node config the shipped desktop client runs with. The
+// H5-B eclipse-resistance defenses are ON here, NOT left at node.DefaultConfig()'s
+// legacy-off: a shipped consumer must resolve/announce provider records over a
+// domain-spread, signed set, or an adversary owning the NodeIDs closest to a root's
+// keys but sitting in one failure domain (a ~$4 /24 key-surround) can make that root
+// undiscoverable — censoring it at the routing layer for a user who opted into no
+// takedown (red-team BREAK 2, 2026-08-08; the daemon and the swarm fetcher already
+// default these on, only the client path shipped them off). Invariant B: the safe
+// config is the DEFAULT for the untrusted client posture — asserted in
+// invariant_b_test.go so this can't silently regress.
+func clientNodeConfig() node.Config {
+	cfg := node.DefaultConfig()
+	cfg.RequireSignedProviders = true                        // reject forged/unsigned provider records on fetch (H5)
+	cfg.ProviderRecordTTL = ports.Duration(30 * time.Minute) // re-served records prove freshness (no ancient replay)
+	cfg.DHTDomainCap = 2                                     // resolve/announce over a domain-spread set — eclipse resistance (H5-B)
+	return cfg
+}
+
 func cmdClient(args []string) error {
 	fs := flag.NewFlagSet("client", flag.ExitOnError)
 	home, _ := os.UserHomeDir()
@@ -84,7 +102,13 @@ func cmdClient(args []string) error {
 		fmt.Println("consume-only: not contributing storage (consider dropping -capacity 0)")
 	}
 
-	nd := node.New(id, node.DefaultConfig(), walltime.New(loop), tr, store)
+	nd := node.New(id, clientNodeConfig(), walltime.New(loop), tr, store)
+	// Sign self-certifying provider records: clientNodeConfig turns on
+	// RequireSignedProviders (H5-B), which needs this node's key to produce its
+	// OWN signed records — without a signer a contributing client would announce
+	// unsigned records that strict peers reject, leaving its held content
+	// undiscoverable. Same key whose hash is the NodeID.
+	nd.SetSigner(ident.Signer())
 
 	level, logOn, err := resolveLogLevel(*logLevel, *debug, false) // a client is never a validator
 	if err != nil {
