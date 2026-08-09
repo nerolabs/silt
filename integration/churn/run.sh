@@ -37,7 +37,7 @@ FILE_BYTES=${FILE_BYTES:-20000000}
 #   The FAITHFUL, shipped default is 3x-replication (a stripe only needs repair
 #   once ALL copies of >RepairSlack columns die). Reproducing THAT needs a large
 #   swarm where placement is spread — set REPLICATION=3 HOLDERS>=50 and run it on
-#   the GCP field-test harness (integration/fieldtest), not a laptop, where 16
+#   the GCP field-test harness (integration/cloudtest), not a laptop, where 16
 #   holders leave every stripe a live replica after any few kills (coverage stays
 #   correctly fine and no repair is forced — the small-swarm coverage cliff).
 REPLICATION=${REPLICATION:-1}

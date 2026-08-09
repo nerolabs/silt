@@ -3,7 +3,7 @@
 # the acceptance brief (docs/reviews/m0-acceptance-brief.md flows 1–9) plus the
 # #184 adversarial consensus drills. Each records a pass/gap/fail via slo_assert.
 #
-# Sourced by fieldtest.sh AFTER lib.sh and AFTER the network is up. All node
+# Sourced by cloudtest.sh AFTER lib.sh and AFTER the network is up. All node
 # interaction is over `ssh_node` (IAP). Field networks are noisy, so every check
 # asserts a THRESHOLD/behaviour, never an exact count or timing.
 set -uo pipefail

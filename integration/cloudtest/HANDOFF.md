@@ -4,7 +4,7 @@
 GCP field test through its **first real run, together with the operator (Andrew)**,
 until it produces a clean report — or honest, well-understood gaps — and then leave
 the cloud with **nothing running**. Work from this directory:
-`integration/fieldtest/`. Read `README.md` first for what the harness is; this file
+`integration/cloudtest/`. Read `README.md` first for what the harness is; this file
 is the *how to drive it the first time* guide.
 
 This run **spends real money** on the operator's GCP project and **must not leave
@@ -14,15 +14,15 @@ resources running**. Treat every `apply` as a spend gate.
 
 ## Ground rules (do not skip)
 
-1. **Confirm before every `apply`.** Never run `./fieldtest.sh up` / `all` without
+1. **Confirm before every `apply`.** Never run `./cloudtest.sh up` / `all` without
    the operator saying go. Each brings up real VMs.
 2. **Always tear down.** The default lifecycle destroys on exit, but you verify it:
-   after any run, `gcloud compute instances list --filter labels.fieldtest:* ` must
-   be empty. If not, `./fieldtest.sh nuke`.
+   after any run, `gcloud compute instances list --filter labels.cloudtest:* ` must
+   be empty. If not, `./cloudtest.sh nuke`.
 3. **Go cheap-first.** Validate with **no spend**, then a **4-node SMOKE** run
    (pennies), then the **full 13-node** run only once SMOKE is green.
 4. **Iterate without re-paying.** Bring the network up once with `KEEP_UP=1`, then
-   re-run scenarios for free with `./fieldtest.sh run` while you fix log-regexes /
+   re-run scenarios for free with `./cloudtest.sh run` while you fix log-regexes /
    quorum. Tear down when done.
 5. **Nothing fails silently.** Every unmet SLO lands in `results.jsonl` / the report
    as `gap` or `fail`. A `gap` means "couldn't confirm", not "broken" — investigate,
@@ -55,10 +55,10 @@ it themselves with the `! <command>` prefix so its output lands in the session.
 Run these; they create nothing in the cloud:
 
 ```bash
-cd integration/fieldtest
+cd integration/cloudtest
 
 # a) the deterministic topology generator (builds a throwaway local silt binary)
-( cd ../.. && go build -o integration/fieldtest/.silt-local ./cmd/silt )
+( cd ../.. && go build -o integration/cloudtest/.silt-local ./cmd/silt )
 SILT_BIN="$PWD/.silt-local" SMOKE=1 python3 topology.py    # should print "4 nodes, 2 validators"
 python3 -c "import json,sys; t=json.load(open('topology.json')); print(t['nodes']['val-a']['argv'])"
 
@@ -87,7 +87,7 @@ scenarios **skip cleanly** (they aren't in the smoke topology).
 **Get the operator's go**, then bring it up and leave it up so you can iterate:
 
 ```bash
-SMOKE=1 KEEP_UP=1 ./fieldtest.sh up
+SMOKE=1 KEEP_UP=1 ./cloudtest.sh up
 ```
 
 Watch for: `all nodes ready`. If a node never goes active, jump to **Debugging**.
@@ -95,20 +95,20 @@ Watch for: `all nodes ready`. If a node never goes active, jump to **Debugging**
 Then run the scenarios (repeatable, no new spend):
 
 ```bash
-./fieldtest.sh run          # runs scenarios + writes report.md / report.html
+./cloudtest.sh run          # runs scenarios + writes report.md / report.html
 ```
 
 Iterate: read the console + `report.md`. For every `gap`/`fail`, use the Debugging
 playbook, fix `scenarios.sh` (usually a log-regex) or `topology.py` (quorum), then
-just `./fieldtest.sh run` again. **You do not need to re-apply to change scenarios.**
-(If you change `topology.py`, you *do* need to re-apply: `./fieldtest.sh down` then
-`SMOKE=1 KEEP_UP=1 ./fieldtest.sh up`.)
+just `./cloudtest.sh run` again. **You do not need to re-apply to change scenarios.**
+(If you change `topology.py`, you *do* need to re-apply: `./cloudtest.sh down` then
+`SMOKE=1 KEEP_UP=1 ./cloudtest.sh up`.)
 
 When SMOKE is green (or only expected skips remain), **tear down**:
 
 ```bash
-./fieldtest.sh down
-gcloud compute instances list --project "$PROJECT_ID" --filter "labels.fieldtest:*"   # must be EMPTY
+./cloudtest.sh down
+gcloud compute instances list --project "$PROJECT_ID" --filter "labels.cloudtest:*"   # must be EMPTY
 ```
 
 ---
@@ -118,13 +118,13 @@ gcloud compute instances list --project "$PROJECT_ID" --filter "labels.fieldtest
 Only after SMOKE is green. **Get the operator's go** (this is the real spend):
 
 ```bash
-./fieldtest.sh            # full lifecycle: build → apply → run → report → DESTROY
+./cloudtest.sh            # full lifecycle: build → apply → run → report → DESTROY
 ```
 
 Or, to iterate the full topology like SMOKE:
 
 ```bash
-KEEP_UP=1 ./fieldtest.sh up && ./fieldtest.sh run    # then ./fieldtest.sh down
+KEEP_UP=1 ./cloudtest.sh up && ./cloudtest.sh run    # then ./cloudtest.sh down
 ```
 
 The full run exercises everything: multi-validator convergence, f=1 fault
@@ -146,7 +146,7 @@ tolerance, restart survival, per-hash takedown, cross-NAT via the relay, and the
 2. **Log-match regexes (`waitfor` in `scenarios.sh`).** Each check greps the
    daemon's `-log info` output for a phrase. If the live build phrases something
    differently, the check `gap`s. Fix: SSH to the node, read the real log line (see
-   Debugging), update the regex, `./fieldtest.sh run` again. The patterns to expect
+   Debugging), update the regex, `./cloudtest.sh run` again. The patterns to expect
    are drawn from the e2e tests (`e2e/*.go`) — e.g. `chain: committed block N`,
    `slashed equivocator`, `reorged onto a heavier fork`.
 
