@@ -1,0 +1,153 @@
+# Silt integration & field tests
+
+Silt's behavior is proven at three tiers: fast **unit tests** (`go test ./...`),
+a deterministic **in-process sim** (`silt sim run …`), and — here — **integration
+field tests** that exercise the real daemon over real processes, disk, sockets,
+and (on GCP) real machines and real inter-region links.
+
+There are **two substrates for the same properties**, and when you run a field
+test you pick one:
+
+| | **Local (Docker)** | **GCP (real machines)** |
+|---|---|---|
+| Where | `integration/<name>/` (this dir) | `integration/fieldtest/` *(lands via PR #209)* |
+| Shape | **per-test** harnesses, one topology each | **one combined** multi-machine acceptance run |
+| Substrate | containers on **one host**, one Docker bridge | **real VMs across 3 regions**, real VPC/Cloud NAT |
+| Speed / cost | seconds–minutes, free | minutes, a few cents (SPOT), auto-torn-down |
+| Best for | fast iteration, CI gates, the NAT matrix, protocol-logic tests | real crashes/clocks, real WAN latency, real NAT, scale, the **RC gate** |
+| Fidelity it adds | real processes/disk/sockets/TLS | **+** independent machines, inter-region internet, real hardware NAT |
+
+Neither replaces the other. Local owns fast, cheap, deterministic per-test
+coverage; GCP owns the things a single host physically cannot model. **Deciding
+which to run is part of scoping a field test** — see "Choosing a substrate" below.
+
+---
+
+## Choosing a substrate
+
+Run it **local** when you're testing **protocol logic or a specific mechanism**,
+iterating quickly, or gating a PR:
+- consensus fork-choice, red-team accountability, bond cost, takedown, economy,
+  audit, the NAT matrix (cone/symmetric/hole-punch), rolling-upgrade — all reach
+  their verdict fine on one host, in minutes, for free.
+
+Run it on **GCP** when the **answer depends on real machines or the real
+network**, or you're cutting a release:
+- real inter-region latency and independent clocks (consensus convergence under
+  a *real* partition, not an app flag);
+- real Cloud NAT (cone vs symmetric decided by an actual NAT gateway);
+- **scale** — e.g. the repair-under-churn "coverage cliff" only resolves at
+  50+ storage nodes, which a laptop can't host;
+- long-haul **soak** on real hardware;
+- the **RC gate**: a green multi-machine acceptance pass is required to advance a
+  release candidate.
+
+Rule of thumb: **prototype and gate locally; certify on GCP.**
+
+---
+
+## Local — per-test Docker harnesses
+
+**Prereqs:** Docker + a Go toolchain. Each harness builds the `silt` binary on
+the host (CGO off), bakes a slim image, stands up its topology, drives it,
+asserts on real `<store>/debug.log` lines + SHA-256, and tears down (`trap …
+docker compose down -v`).
+
+**Run one:**
+```sh
+./integration/<name>/run.sh            # build → run → assert → tear down; exit 0 = PASS
+KEEP=1 ./integration/<name>/run.sh     # leave the topology up to poke at
+```
+
+| harness | what it proves |
+|---------|----------------|
+| `nat/run.sh` | cross-NAT publish→fetch bit-perfect via the relay (`RESTART=1` adds #69 reprovide) |
+| `nat/holepunch.sh` | cone NAT upgrades relay→direct (#27); `NAT_MODE=symmetric` falls back to the relay |
+| `nat/loadtest.sh` | fetch-under-load: many concurrent fetches through a bandwidth-capped relay (#65) |
+| `churn/run.sh` | repair-under-churn: kill holders, caretaker reconstructs + re-scatters, stays bit-perfect |
+| `consensus/run.sh` | objective on-chain-bond fork-choice: partition → heal to the heavier chain |
+| `redteam/run.sh` | #184 accountability: equivocator slashed, forged block rejected, low-bond proposer refused |
+| `audit/run.sh` | a "liar" deletes data but keeps proofs → the loss is caught and repaired |
+| `bond/run.sh` | proof-of-space-time bond cost (C1): real plots, reputation ∝ bond, shortcuts rejected |
+| `economy/run.sh` | per-byte earning + blind-signed, publisher-unlinkable credits |
+| `takedown/run.sh` | per-operator, existence-checked, reversible takedown |
+| `soak/run.sh` | sustained load + gentle churn: bit-perfect throughout, bounded memory/disk |
+| `upgrade/run.sh` | rolling binary upgrade on persisted stores: reload + fetch bit-perfect |
+
+Each harness uses a distinct Docker network subnet, image tag, and compose
+project, so they don't collide; run them one at a time (each assumes exclusive
+use of its topology). Common env: `KEEP=1` to keep the topology up; per-harness
+knobs (scale, file size, duration) are documented in each `run.sh` header.
+
+**Run the whole suite** (serially, with per-test logs): see
+`integration/run-all.sh` if present, or drive them in a loop.
+
+---
+
+## GCP — real multi-machine acceptance *(via PR #209, `integration/fieldtest/`)*
+
+> This half lands with PR #209 (`fieldtest-gcp-52`). Until it's merged onto a
+> `main` that also carries the per-test harnesses above, the two live on separate
+> branches — rebase #209 onto current `main` to get both in one tree.
+
+A **~13-node silt network across 3 regions** on real GCP VMs: 4 validators, 2
+storage nodes, a registry, a relay, a fetcher, a NAT gateway + NATed nodes, and
+an adversary — provisioned by Terraform (VPC, public + NAT subnets, firewall,
+**SPOT** instances), each node booting its full `silt` argv from
+`topology.py`-computed static IPs/NodeIDs. It runs the 9 acceptance flows + the
+#184 drills over the real wire, writes `report.md` + `report.html`, and tears
+everything down.
+
+**Prereqs (once):**
+- A **billing-enabled GCP project**; `gcloud auth login` done.
+- APIs: `gcloud services enable compute.googleapis.com iap.googleapis.com storage.googleapis.com`.
+- IAM on the project: `roles/compute.admin`, `roles/iap.tunnelResourceAccessor`,
+  `roles/storage.admin` (**Owner** covers all three).
+- Local tools: `terraform`, `gcloud`, `go`, `python3`, `curl`.
+
+**Run it:**
+```sh
+cd integration/fieldtest
+cp config.env.example config.env       # set PROJECT_ID (+ optional knobs)
+./fieldtest.sh                          # build → terraform apply → run → report → DESTROY
+```
+
+**Cost & safety — cheap-first, and it will not leak resources:**
+- SPOT instances; a hard **TTL self-destruct** (`shutdown -h +TTL_MINUTES`) so even
+  a crashed orchestrator can't leave VMs running; **nuke-by-label**
+  (`./fieldtest.sh nuke`); optional billing-budget alarm.
+- Validate with **no spend** first (topology + `terraform validate`), then a
+  **4-node SMOKE** run (pennies), then the full 13-node run.
+- Iterate for free: bring it up once with `KEEP_UP=1`, re-run scenarios with
+  `./fieldtest.sh run`, tear down when done.
+- **Always** verify teardown: `gcloud compute instances list --filter labels.fieldtest:*`
+  must be empty afterward.
+
+See `integration/fieldtest/README.md` for the full topology, knobs, and the
+`HANDOFF.md` first-run guide.
+
+---
+
+## Running a field test (the workflow)
+
+1. **Scope** — what property are you testing, and does the answer depend on real
+   machines/network/scale? Pick **local** (fast, per-test) or **GCP** (real,
+   combined) accordingly.
+2. **Run** — the chosen harness(es). Local is one command per test; GCP is one
+   command for the whole acceptance pass.
+3. **Collect** — local prints a `RESULT: PASS/FAIL` per test (capture the logs);
+   GCP hands back `report.md` + `report.html`.
+4. **On GCP, confirm teardown** — no VMs left running.
+
+---
+
+## Roadmap: per-substrate parity
+
+Today the mapping is asymmetric — local is ten focused per-test harnesses; GCP is
+one combined acceptance run. The direction is **parity**: factor a shared
+node-abstraction (`exec-on-node` + `assert-on-log`, already the shape of both
+`docker exec` locally and IAP-SSH on GCP) so the *same* scenario can target
+either substrate, and add the GCP scenarios that only real hardware can answer —
+**scale-out** repair-under-churn (50+ nodes), a **real firewall partition** for
+consensus, **`tc` link shaping** for fetch-under-load, and long-haul **soak**.
+Track this alongside `integration/FIELD-TEST-ROADMAP.md`.
