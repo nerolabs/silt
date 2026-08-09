@@ -9,6 +9,19 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Security
+- **BREAK 2: the shipped desktop client now defaults its eclipse defenses ON** (2026-08-09) — A second
+  blind red-team pass found that `silt client` built its node from raw `node.DefaultConfig()`, where the
+  H5-B eclipse-resistance defenses ship OFF (`DHTDomainCap = 0`, `RequireSignedProviders = false`) —
+  even though the daemon and the `swarm add`/`get` fetcher both default them on. So a routing-layer
+  censor owning the NodeIDs closest to a root's keys but sitting in one failure domain (a ~$4 /24
+  key-surround) could make that root **undiscoverable** for a client user who consented to *no* takedown
+  — a discovery-layer route to the "make a specific root unfetchable" outcome immutable #5 forbids at the
+  denial layer. Fixed: the client now builds from `clientNodeConfig()` (domain-diversity cap on, signed
+  provider records required, freshness TTL) and signs its own records. The safe config is now the DEFAULT
+  for the untrusted client posture — locked by a new **Invariant-B S5 row** (`invariant_b_test.go`) so it
+  can't silently regress. The eclipse mechanism itself was already proven in `redteam_h5b_test.go`; this
+  closes the shipped-default gap. (The *multi-domain* surround residual — a censor spread across enough
+  failure domains — remains the owned survivor-Nakamoto/#180 residual, tracked separately.)
 - **F-3: the whole-registry `GET /all` dump is off the public mux** (2026-08-08) — Completes the
   red-team F-3 fix. `/all` serialized the entire registry O(N) with no pagination — an unbounded
   per-request cost. An interim change priced it by work, but that only bounds cost *per source*; a
