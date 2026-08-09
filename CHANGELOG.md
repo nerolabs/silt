@@ -277,6 +277,13 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
     takedown of a shared root.
 
 ### Added
+- **Blind-session ease: an "LLM instructions" README section + interactive GCP setup** (2026-08-09) —
+  The field-test scripts stay simple and emit clean per-test output; the dated `silt_local_fieldtest_<date>.md`
+  / `silt_cloud_fieldtest_<date>.md` roll-ups + per-test detail reports are written by the operating agent,
+  guided by a new **"For an LLM/agent operator"** section in `integration/README.md` (plus a Quick-start).
+  `./integration/fieldtest/fieldtest.sh setup` is now an **interactive** step — it asks for the GCP project,
+  walks the user through `gcloud auth` (login + the application-default creds Terraform needs), enables the
+  required APIs, and writes `config.env` — so spinning up the cloud test needs no hand-editing.
 - **`integration/run-all.sh` + shared `integration/lib.sh` — the clone-and-run field-test experience**
   (2026-08-09) — One driver runs the local Docker suites in sequence (each owns its topology, so they run
   one at a time), captures each suite's real `RESULT:` line + duration, and writes a shareable consolidated
