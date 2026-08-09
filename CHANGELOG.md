@@ -9,6 +9,23 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Security
+- **seam-5: A-axis truth-in-labelling + a count/entropy signal for the equal-bond split** (2026-08-09) —
+  Two red-team hardening findings on the operator-clustering heuristic. **(F3, truth-in-labelling)** two
+  `core/chain` comments claimed the declared failure-domain is "transport-cross-checked at H5-B / refuses
+  to route to a validator whose declared domain does not match its observed /24" — but `handle()` learns
+  `peerDomains` from gossip **verbatim, with no /24 cross-check**. The comments are corrected to say the
+  domain is **self-asserted, not transport-verified**; the composition never relied on the cross-check
+  (the shed gates on `min(NakamotoOperators, NakamotoDomains)`, so free domains can only *lower* the min,
+  never trip the wheels off early), so this is a labelling fix, not a mechanism change. **(F1, new signal)**
+  an equal-bond **split** — one operator posting N identical min-bonds across N keys — drives HHI→1/n,
+  Gini→0, TopShare→1/n, so it reads *maximally decentralized* on every weight-concentration signal and the
+  ⅓ whale alarm never fires. Added **`C2.WeightUniformity`** (effective participants `1/HHI` over actual,
+  →1 for perfectly uniform) — the count/entropy companion that exposes the "many atoms, implausibly
+  uniform" fingerprint the weight signals miss, surfaced in the daemon C2 status with an *atomization
+  note* when a many-bond set reads implausibly uniform with no whale. Necessary-not-sufficient (a
+  size-varying splitter evades it, and healthy decentralization is also uniform), so it does not close the
+  honest-whale / M_est residue (#182) — it makes the naive split *legible* for out-of-band verification.
+  Regression: `TestC2Metric_WeightUniformityCatchesEqualBondSplit`.
 - **F-3: the whole-registry `GET /all` dump is off the public mux** (2026-08-08) — Completes the
   red-team F-3 fix. `/all` serialized the entire registry O(N) with no pagination — an unbounded
   per-request cost. An interim change priced it by work, but that only bounds cost *per source*; a

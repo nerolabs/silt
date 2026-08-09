@@ -243,12 +243,16 @@ type BondReg struct {
 	// H5-B), now COMMITTED in the bond so the concentration metric can count
 	// address-diverse participants deterministically (C2Metric NakamotoDomains).
 	// Signed (see signingBytes) so it binds to the validator. 0 = unset (treated as
-	// independent — behavior identical to pre-A-axis chains). HONESTLY WEAK: a
-	// declared domain is free to claim; it only costs a distinct real network
-	// position insofar as the transport layer (H5-B) refuses to route to a validator
-	// whose declared domain does not match its observed /24. It PRICES concentration
-	// (a splitter must declare — and be routable from — distinct domains), it does
-	// not CLOSE it (Kwon; the honest whale remains — m0.md §10).
+	// independent — behavior identical to pre-A-axis chains). HONESTLY WEAK, and
+	// self-asserted: a declared domain is gossiped and trusted VERBATIM (core/node
+	// learns peerDomains straight off the wire with NO /24 cross-check) — it is NOT
+	// transport-verified against the peer's observed address. So it PRICES a single-
+	// /24 split (equal-domain bonds aggregate into one group) but a splitter that
+	// simply DECLARES distinct domains gets distinct groups for free; it does not
+	// CLOSE the honest-whale residue (Kwon — m0.md §10, #182). The composition does
+	// not rely on any cross-check: the shed gates on min(NakamotoOperators,
+	// NakamotoDomains), so free domains can only LOWER the min, never trip the wheels
+	// off early (verified — see the colluding-validator red-team, seam-5).
 	Domain uint64 `cbor:"6,keyasint,omitempty"`
 }
 
@@ -870,8 +874,10 @@ type C2 struct {
 	// split across many keys in one domain does not inflate it — only distinct domains
 	// do. With no domains set it equals NakamotoBonds (unchanged). The maturity shed
 	// gates on min(NakamotoOperators, NakamotoDomains), so a splitter must clear BOTH
-	// k·M distinct bonds AND k distinct domains. Weak signal (a domain is declared,
-	// H5-B-cross-checked at the transport layer, not proven) — pricing, not proof.
+	// k·M distinct bonds AND k distinct domains. Weak signal: a domain is
+	// SELF-ASSERTED (declared and gossiped, trusted verbatim — NOT transport-verified
+	// against the observed /24), so it prices an equal-/24 split but a splitter that
+	// declares distinct domains evades it — pricing, not proof (#182).
 	NakamotoDomains int
 	// DistinctDomains is the number of address-diversity groups counted (distinct
 	// non-zero declared domains + each unset-domain bond as its own group).
@@ -889,6 +895,21 @@ type C2 struct {
 	// The most interpretable capture signal: a bond approaching ⅓ is one step from
 	// the Byzantine capture fraction (⌊total/3⌋) — the honest-whale alarm threshold.
 	TopShare float64
+	// WeightUniformity is the evenness of the bonded-weight distribution: the
+	// effective participant count (1/HHI, the order-2 Hill number) over the actual
+	// count ∈ (0,1]. →1 = every bond identical (perfectly uniform); →1/n = one bond
+	// dominates. It is the COUNT/ENTROPY companion the weight-concentration signals
+	// (HHI, Gini, TopShare) are BLIND to: an equal-bond SPLIT — one operator posting
+	// N identical min-bonds across N keys — drives HHI→1/n, Gini→0, TopShare→1/n
+	// (all reading "maximally decentralized") while WeightUniformity→1 with a LARGE
+	// Participants count. That "many atoms, implausibly uniform" fingerprint is the
+	// naive splitter's tell, invisible to the weight signals (colluding-validator
+	// red-team, seam-5). NECESSARY-NOT-SUFFICIENT: healthy decentralization is also
+	// uniform, and a splitter that VARIES its bond sizes evades it, so it does NOT
+	// close the honest-whale/M_est residue (#182) — it is surfaced so an operator
+	// correlating with OUT-OF-BAND address/timing diversity can tell an implausibly
+	// perfect split from real decentralization. Observability, never enforcement.
+	WeightUniformity float64
 }
 
 // C2Metric computes the concentration measurement over the participating,
@@ -972,6 +993,13 @@ func (c *Chain) C2Metric() C2 {
 	}
 	m.HHI = hhi
 	m.Gini = giniNum / (float64(n) * ftotal)
+	// WeightUniformity = effective participants (1/HHI, order-2 Hill number) / actual
+	// participants. Equal bonds → HHI=1/n → 1/HHI=n → uniformity=1 (the equal-split
+	// fingerprint the weight signals read as "decentralized"); concentration pulls it
+	// toward 1/n. Companion count/entropy signal (seam-5), observability only.
+	if hhi > 0 {
+		m.WeightUniformity = (1.0 / hhi) / float64(n)
+	}
 	return m
 }
 

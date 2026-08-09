@@ -542,10 +542,10 @@ func cmdDaemon(args []string) error {
 						wheels = "shed permanently (matured; live decentralization has since dropped — real-bond super-quorum in force, anchors NOT re-armed)"
 					}
 				}
-				fmt.Printf("  C2: nakamoto %d bonds → %d operators (margin ×%d) | cost-to-corrupt %d MiB of %d MiB bonded across %d | concentration HHI %.2f Gini %.2f top %.0f%% | wheels %s\n",
+				fmt.Printf("  C2: nakamoto %d bonds → %d operators (margin ×%d) | cost-to-corrupt %d MiB of %d MiB bonded across %d | concentration HHI %.2f Gini %.2f top %.0f%% uniformity %.0f%% | wheels %s\n",
 					m.NakamotoBonds, m.NakamotoOperators, m.Margin,
 					m.CostToCorruptBytes>>20, m.TotalBondedBytes>>20, m.Participants,
-					m.HHI, m.Gini, m.TopShare*100, wheels)
+					m.HHI, m.Gini, m.TopShare*100, m.WeightUniformity*100, wheels)
 				// Concentration alarm (D-C2 / F-1 follow-up): the honest whale C2 cannot
 				// close on-chain, made LOUD out-of-band. A single bond at/above the ⅓
 				// Byzantine capture fraction is one step from being able to stall or
@@ -553,6 +553,16 @@ func cmdDaemon(args []string) error {
 				// on-chain enforcement (impossible per Kwon).
 				if m.TopShare >= 1.0/3 {
 					fmt.Printf("  ⚠ CONCENTRATION ALARM: one bond holds %.0f%% of bonded weight (≥ the ⅓ capture fraction) — real standing is concentrating; this is the honest-whale residual C2 measures but cannot close on-chain. Act out-of-band.\n", m.TopShare*100)
+				}
+				// Atomization note (seam-5): the whale alarm above reads TopShare, which an
+				// equal-bond SPLIT (one operator, many identical min-bonds) drives to its
+				// most-decentralized value — invisible to it. When the weight signals look
+				// clean (no whale) but the distribution is many bonds at implausibly uniform
+				// weight, surface the "many atoms" fingerprint so the operator verifies real
+				// independence out-of-band. Necessary-not-sufficient (#182): a size-varying
+				// splitter evades it, and healthy decentralization is also uniform.
+				if m.TopShare < 1.0/3 && m.Participants >= 8 && m.WeightUniformity >= 0.9 {
+					fmt.Printf("  ⓘ atomization note: %d bonds at near-identical weight (uniformity %.0f%%) read as maximally decentralized on HHI/Gini/top-share, but an equal-bond SPLIT (one operator across many keys) produces exactly this fingerprint. The weight signals can't tell it from real decentralization (#182) — verify independent operators via out-of-band address/timing diversity.\n", m.Participants, m.WeightUniformity*100)
 				}
 				// Export the committed head as a copy-pasteable weak-subjectivity
 				// checkpoint (F-1): a fresh/long-offline node pins one via -ws-checkpoint

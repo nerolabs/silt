@@ -160,3 +160,52 @@ func TestC2Metric_ConcentrationSignals(t *testing.T) {
 		t.Fatal("the whale set must read more concentrated than the even set on HHI, Gini, and top share")
 	}
 }
+
+// TestC2Metric_WeightUniformityCatchesEqualBondSplit pins the seam-5 count/entropy
+// companion signal. An equal-bond SPLIT — one operator posting N identical min-bonds
+// across N keys — is the strategy the WEIGHT signals (HHI, Gini, TopShare) are blind
+// to: it drives them all to their most-decentralized values, so the ⅓ whale alarm
+// never fires. WeightUniformity exposes the "many atoms, implausibly uniform"
+// fingerprint (→1 for identical bonds) that the weight signals miss, while a whale
+// reads LOW uniformity. It is necessary-not-sufficient (a size-varying splitter
+// evades it, healthy decentralization is also uniform — #182), but it is strictly
+// more signal than the weight-only alarms had.
+func TestC2Metric_WeightUniformityCatchesEqualBondSplit(t *testing.T) {
+	const minBond = int64(1) << 20
+	approx := func(got, want, eps float64) bool { d := got - want; return d < eps && d > -eps }
+
+	// Equal-bond split: 12 identical min-bonds (one operator across 12 keys). The
+	// weight signals read maximally decentralized — HHI=1/12, Gini=0, top=1/12, well
+	// under the ⅓ alarm — so a monitor watching only those sees "nothing wrong".
+	var split []c2Bond
+	for i := int64(0); i < 12; i++ {
+		split = append(split, c2Bond{key(40 + i), minBond})
+	}
+	sm := buildC2(t, 2, 1, split)
+	m := sm.C2Metric()
+	if m.Participants != 12 {
+		t.Fatalf("split: Participants=%d, want 12", m.Participants)
+	}
+	if m.TopShare >= 1.0/3 || !approx(m.HHI, 1.0/12, 0.001) || !approx(m.Gini, 0, 0.001) {
+		t.Fatalf("split must read decentralized on the WEIGHT signals: HHI=%.4f Gini=%.4f top=%.4f (want ~%.4f/0/<⅓)", m.HHI, m.Gini, m.TopShare, 1.0/12)
+	}
+	// The new signal: perfectly uniform → WeightUniformity ≈ 1.0.
+	if !approx(m.WeightUniformity, 1.0, 0.001) {
+		t.Fatalf("equal-bond split must read WeightUniformity ≈ 1.0 (the atomization fingerprint), got %.4f", m.WeightUniformity)
+	}
+	// The daemon's atomization note fires exactly here (whale-clean + atomized + uniform).
+	if !(m.TopShare < 1.0/3 && m.Participants >= 8 && m.WeightUniformity >= 0.9) {
+		t.Fatal("the equal-bond split must satisfy the atomization-note condition the whale alarm misses")
+	}
+
+	// A whale-dominated set reads LOW uniformity — the signal is orthogonal to the
+	// weight ones and points the other way (concentration, not atomization).
+	w := buildC2(t, 2, 1, []c2Bond{{key(60), 10 << 20}, {key(61), minBond}, {key(62), minBond}, {key(63), minBond}})
+	wm := w.C2Metric()
+	if wm.WeightUniformity >= m.WeightUniformity {
+		t.Fatalf("a whale set must read lower WeightUniformity than an equal split: whale=%.4f split=%.4f", wm.WeightUniformity, m.WeightUniformity)
+	}
+	if wm.WeightUniformity >= 0.9 {
+		t.Fatalf("a whale set must not read as uniform: WeightUniformity=%.4f", wm.WeightUniformity)
+	}
+}
