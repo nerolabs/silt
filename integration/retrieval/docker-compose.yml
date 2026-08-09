@@ -1,0 +1,68 @@
+# Retrieval / discoverability at SCALE, on one flat Docker network.
+#
+#   seed ── registry + bootstrap (holds no content: -capacity 1)
+#     ├─ holder×N ── real disk stores; the content lives here (scaled by run.sh)
+#     └─ client ── idle box run.sh execs ephemeral `silt swarm add/get` on
+#
+# The thing under test is not traversal or durability but DISCOVERY: as the
+# swarm grows and short-lived publisher/fetcher identities churn the DHT (#43),
+# can a FRESH client still find and fetch published content? run.sh publishes a
+# set of files, optionally pollutes routing with throwaway ephemeral publishes,
+# then measures the bit-perfect fetch SUCCESS RATE from fresh ephemeral clients.
+#
+# Every `silt swarm add`/`swarm get` joins with its own EPHEMERAL identity
+# (SetEphemeral — peers must not route to it, #43), so each measured fetch is a
+# genuinely fresh fetcher doing a cold provider lookup, exactly like a new user.
+#
+# The seed's NodeID/IP aren't known until it boots, so run.sh starts the seed
+# first, derives SEED_PEER/SEED_REG, then scales up the holders. Each daemon
+# self-advertises its container IP via role.sh (a wildcard bind isn't dialable).
+
+networks:
+  swarm:
+    driver: bridge
+    ipam:
+      config: [{ subnet: 10.60.0.0/24 }]
+
+services:
+  # Public rendezvous: registry + bootstrap peer. -capacity 1 => stores no
+  # content, so every chunk lives on a holder and discovery actually has to walk.
+  seed:
+    image: silt-retrieval
+    entrypoint: ["role.sh"]
+    command:
+      - silt
+      - daemon
+      - -listen=0.0.0.0:4001
+      - -serve-registry=0.0.0.0:4003
+      - -store=/data
+      - -capacity=1
+      - -mdns=false
+      - -log=info
+    networks: [swarm]
+
+  # The storage pool. Scaled to N by run.sh (docker compose up --scale holder=N).
+  holder:
+    image: silt-retrieval
+    entrypoint: ["role.sh"]
+    command:
+      - silt
+      - daemon
+      - -listen=0.0.0.0:4001
+      - -store=/data
+      - -capacity=5G
+      - -mdns=false
+      - -log=info
+      - -bootstrap=${SEED_PEER:-unset}
+      - -registry=${SEED_REG:-unset}
+    networks: [swarm]
+
+  # Idle box the harness execs ephemeral publish/fetch commands on. It is NOT a
+  # daemon and does NOT self-advertise (no role.sh) — every `silt swarm add/get`
+  # it runs spins its own ephemeral client that bootstraps from -peers. sleep
+  # keeps the container up so run.sh can exec into it.
+  client:
+    image: silt-retrieval
+    entrypoint: []
+    command: ["sleep", "infinity"]
+    networks: [swarm]

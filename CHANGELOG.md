@@ -277,6 +277,15 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
     takedown of a shared root.
 
 ### Added
+- **New field test: retrieval / discoverability at scale (`integration/retrieval`)** (2026-08-09) —
+  Measures the most basic user promise — *can I get my content back?* — on a real multi-holder swarm as
+  short-lived publisher/fetcher identities churn the DHT (#43/#60). It publishes files, optionally pollutes
+  routing with throwaway ephemeral publishes, then measures the **bit-perfect cold-fetch success rate** from
+  fresh ephemeral clients and gates it on a floor. Validated locally, it cleanly isolates the cause: raw
+  scale (24 holders, no churn) fetches **100%**, but adding 40 churning ephemeral identities drops cold
+  discovery to **85%** — a real, honest reproduction of the #43 ephemeral-identity routing degradation
+  (`POLLUTERS=0` vs `POLLUTERS=40`). A sub-floor rate is a **FINDING** (exits 0 like `upgrade` reproducing
+  #237; `EXPECT=pass` flips it to a hard fail), never a faked green. Wired into `run-all.sh` (slow tier).
 - **Blind-session ease: an "LLM instructions" README section + interactive GCP setup** (2026-08-09) —
   The field-test scripts stay simple and emit clean per-test output; the dated `silt_local_fieldtest_<date>.md`
   / `silt_cloud_fieldtest_<date>.md` roll-ups + per-test detail reports are written by the operating agent,
