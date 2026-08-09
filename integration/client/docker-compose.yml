@@ -1,0 +1,50 @@
+# The client / web-UI path, on one flat network.
+#
+#   ui  (10.80.0.2) ── the operator's node: storage + its own chain-backed
+#                      registry + the web UI (-ui 0.0.0.0:8081). This is what a
+#                      real user runs and clicks. run.sh drives its HTTP API
+#                      exactly as a browser would (curl from INSIDE this
+#                      container, so the guard sees a local Host).
+#   holder×N (…)    ── plain storage nodes bootstrapped to ui, so a UI publish
+#                      really scatters across the swarm and a UI fetch really
+#                      pulls it back over the wire (not a local-store shortcut).
+#
+# role.sh self-advertises each container's routable IP (a wildcard bind isn't
+# dialable on a flat Docker network).
+
+networks:
+  swarm:
+    driver: bridge
+    ipam:
+      config: [{ subnet: 10.80.0.0/24 }]
+
+services:
+  ui:
+    image: silt-client
+    entrypoint: ["role.sh"]
+    command:
+      - silt
+      - daemon
+      - -listen=0.0.0.0:4001
+      - -serve-registry=0.0.0.0:4003
+      - -ui=0.0.0.0:8081
+      - -store=/data
+      - -capacity=5G
+      - -mdns=false
+      - -log=info
+    networks: [swarm]
+
+  holder:
+    image: silt-client
+    entrypoint: ["role.sh"]
+    command:
+      - silt
+      - daemon
+      - -listen=0.0.0.0:4001
+      - -store=/data
+      - -capacity=5G
+      - -mdns=false
+      - -log=info
+      - -bootstrap=${UI_PEER:-unset}
+      - -registry=${UI_REG:-unset}
+    networks: [swarm]

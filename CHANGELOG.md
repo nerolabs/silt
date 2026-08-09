@@ -286,6 +286,20 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
     takedown of a shared root.
 
 ### Added
+- **New field test: the client / web-UI path under an adversary (`integration/client`)** (2026-08-10) —
+  Tests the path a real **user** takes — run a daemon, open its web UI, drop a file in, get a link, someone
+  fetches it back — over the daemon's **HTTP API**, not the `silt swarm` CLI; and the path a real **attacker**
+  takes against that same local API. A `ui` node (storage + its own registry + `-ui`) plus `N` holders; the
+  test drives the UI with `curl` from inside the operator's container (the realistic browser-on-the-same-box
+  model, and the only way the guard's local-`Host` rule is met). **U1–U3**: `POST /api/publish` (multipart +
+  the bearer token grabbed from the daemon's own `ui: …?token=` line) scatters the file, `/api/roots`
+  reflects it, and `GET /api/fetch?link=…` returns the bytes **bit-perfect** — the real end-to-end round-trip
+  over HTTP. **U4–U8** attack the guard (#89): a no-token and a wrong-token `POST` are refused **401**, a
+  DNS-rebinding request (non-local `Host`) and a cross-origin drive-by (evil `Origin`) are refused **403**,
+  and a token-free localhost read still returns **200** (ergonomics preserved). Every assertion is a real
+  HTTP status code / real SHA-256, never an echoed string; any failure is a hard FAIL (the user path and the
+  local-security guard are both load-bearing). Validated locally (PASS, all eight). Wired into `run-all.sh`
+  (gate tier).
 - **New field test: publisher unlinkability under an adversary (`integration/privacy`)** (2026-08-10) —
   Tests immutable #4 (refuse-to-surveil) cynically, as an OUTCOME: *can an adversary get the network to
   record who published a given file?* A silt registry entry may carry a durable `Publisher` NodeID — a
