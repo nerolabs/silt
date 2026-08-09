@@ -32,6 +32,7 @@ SUITES_CATALOG=(
   "redteam|gate|300|#184 accountability: equivocator slashed, forged block rejected, low-bond proposer refused"
   "takedown|gate|180|Per-operator, existence-checked, reversible takedown"
   "privacy|gate|360|Publisher unlinkability: the default chain refuses a durable file→publisher link (refuse-to-surveil), the private path works, token-quorum authorizes without identity"
+  "client|gate|300|Web-UI path: publish→list→fetch bit-perfect over the daemon's HTTP API, and the local-security guard holds (no-token/wrong-token→401, DNS-rebinding/cross-origin→403)"
   "nat|gate|180|Cross-NAT publish→fetch bit-perfect via the relay"
   "audit|gate|240|A liar deletes shards but keeps proofs → the loss is caught over the wire and repaired"
   "economy|gate|180|Per-byte earning + blind-signed, publisher-unlinkable credits"
