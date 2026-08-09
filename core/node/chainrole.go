@@ -293,12 +293,14 @@ func (n *Node) broadcastCommit(b *chain.Block, validators []ports.NodeID, i int,
 }
 
 // slashEquivocators finds validators who signed a different block at the same
-// height across two competing histories (the abandoned fork and the adopted
-// one) and slashes each in the local ledger — a proven double-sign costs
-// standing (D2). The evidence is self-verifying (chain.VerifyEquivocation,
-// inside FindEquivocations), so this cannot be triggered by an honest validator
-// signing sequential heights. On-chain inclusion so every replica slashes in
-// lockstep is the recorded follow-up; here each validator acts on what it sees.
+// height across two competing histories and slashes each in the local ledger —
+// a proven double-sign costs standing (D2). Called on DETECTION (every fetched
+// peer chain vs the local one, seam-7), not only on adoption, so a double-sign
+// onto a losing fork is caught too. The evidence is self-verifying
+// (chain.VerifyEquivocation, inside FindEquivocations), so this cannot be
+// triggered by an honest validator signing sequential heights. On-chain
+// inclusion so every replica evicts in lockstep is the recorded follow-up (the
+// pendingSlashes queue); here each validator acts on what it sees.
 func (n *Node) slashEquivocators(a, b []chain.Block) {
 	if n.ledger == nil {
 		return
@@ -350,12 +352,24 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 					if full, derr := chain.DecodeBlocks(resp.Data); derr == nil && len(full) > 0 {
 						before := n.chain.Len()
 						old := n.chain.Blocks(0) // snapshot to catch cross-fork double-signs
+						// Slash on DETECTION, not on adoption (seam-7). Scan the fetched
+						// peer chain against our LOCAL one for cross-fork double-signs
+						// BEFORE the heavier test and regardless of whether we adopt: a
+						// validator that signed a block at a height we hold AND a
+						// conflicting block at that height on this peer's fork is provably
+						// guilty even if its fork is LIGHTER and never reconciled onto.
+						// Previously this ran only on the adopted branch, so a double-sign
+						// onto a doomed/losing fork (to confuse late joiners, split gossip,
+						// or bait a partition) cost the actor nothing. The evidence is
+						// self-verifying (chain.VerifyEquivocation), so an honest
+						// sequential signer is never caught. This subsumes the old
+						// adopted-branch (old,now) scan, since the adopted fork is `full`.
+						n.slashEquivocators(old, full)
 						if ok, rerr := n.chain.Reconcile(full); ok {
 							now := n.chain.Blocks(0)
 							if d := n.chain.Len() - before; d > 0 {
 								added += d
 							}
-							n.slashEquivocators(old, now)
 							if dropped := reorgDropped(old, now); dropped > 0 && n.onReorg != nil {
 								n.onReorg(dropped, uint64(len(now)-1))
 							}

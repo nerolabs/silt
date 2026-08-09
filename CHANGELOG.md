@@ -53,6 +53,19 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   can't silently regress. The eclipse mechanism itself was already proven in `redteam_h5b_test.go`; this
   closes the shipped-default gap. (The *multi-domain* surround residual — a censor spread across enough
   failure domains — remains the owned survivor-Nakamoto/#180 residual, tracked separately.)
+- **seam-7: equivocation is slashed on DETECTION, not only on adoption** (2026-08-09) — The red team
+  found a validator could double-sign onto a *losing* fork — attesting the canonical head AND signing a
+  conflicting block on a doomed/lighter fork (to confuse late joiners, split gossip, or bait a partition)
+  — at **zero standing cost**, because `slashEquivocators` ran only when a node RECONCILED ONTO a heavier
+  competing fork. A fork nobody adopts was never scanned. Fixed in `SyncChain`: every fetched peer chain is
+  now scanned against the local one for cross-fork double-signs **before** the heavier test and regardless
+  of whether we adopt it — a provably-guilty signer is slashed even if its fork loses. The evidence is
+  self-verifying (`chain.VerifyEquivocation`), so an honest sequential signer is never caught; the change
+  subsumes the old adopted-branch scan. Regression: `TestSeam7_LosingForkEquivocatorIsSlashedOnDetection`
+  (A holds a heavier chain, B serves a lighter fork carrying the culprit's conflicting signature; A does
+  not adopt but slashes). *(The companion F2 — applying the eviction to the local objective set on a
+  gossiped proof before a slash block commits — touches objective fork-weight uniformity between replicas
+  and is deferred as a separate, carefully-scoped change.)*
 - **F-3: the whole-registry `GET /all` dump is off the public mux** (2026-08-08) — Completes the
   red-team F-3 fix. `/all` serialized the entire registry O(N) with no pagination — an unbounded
   per-request cost. An interim change priced it by work, but that only bounds cost *per source*; a
