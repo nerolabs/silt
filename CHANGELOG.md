@@ -117,6 +117,22 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
     bounds even on-chain objective weight over time. The tight close is Option A (H-track).
   - Regressions: `TestBreak1_LateBondAnswerEarnsNoStanding` (a late answer earns no standing; the gate is
     off at deadline 0). No deterministic content check exists — do not add one.
+- **R-3: publish-token signers are chosen by a network-canonical ledger ordering** (2026-08-09) — The
+  red team found `swarm add -token-quorum` signed a publish token from an **arbitrary** subset of the
+  caller's `-peers`, and since the committed `PublishToken.Sigs` records each signer's NodeID, a
+  distinctive subset could collapse a publisher's anonymity set toward a singleton (full deanonymization,
+  no broken crypto). Per research consult R-3, the fix is a **canonical, ledger-derived** signer set —
+  the SAME for every publisher. Added `MsgGetCanonicalIssuers`: a chain-holding validator serves its
+  deterministic canonical issuer ordering (validators ranked by committed bond, `chain.CanonicalIssuers`,
+  which existed but was unwired). `swarm add` now fetches it and ranks its reachable validators by it
+  (`rankByCanonical`), so the signer subset is no longer a per-publisher choice; falls back to `-peers`
+  with an honest warning if no peer serves a chain. Locked by **Invariant-B S7**
+  (`TestInvariantB_S7_PublishSignerSetIsCanonical` — the selection is order-independent and follows the
+  canonical ranking). **Owned caveats (owned-residuals B4):** holds *subset-anonymity only* (the fetcher
+  IP/timing channel is the separate D-PRIV residual); a canonical quorum is a mild publish-liveness
+  surface (mitigated by rotation-by-bond); and a chainless publisher ranks its *reachable* peers, so the
+  hold is fully global only when publishers connect to the canonical set. The full crypto close (the
+  issuer signs without learning which root) is the **B2 blind publish token**, H8/#179.
 - **F-3: the whole-registry `GET /all` dump is off the public mux** (2026-08-08) — Completes the
   red-team F-3 fix. `/all` serialized the entire registry O(N) with no pagination — an unbounded
   per-request cost. An interim change priced it by work, but that only bounds cost *per source*; a

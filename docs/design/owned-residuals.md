@@ -213,6 +213,26 @@ discount, C2 no quiet capture, the demand→standing firewall) — those are hel
 - **Bounded today by:** the firewall — demand has no consensus consumer, so both are inert.
 - **What would close it:** needed only *if* B is ever fused into standing (γ→1/N territory, A4).
 
+### B4. Publisher signer-subset (seam-4 — canonical-set holds subset-anonymity)
+- **Class:** scope (M0 hold shipped for the reported leak; the stronger crypto close is H8).
+- **What it is:** the committed `PublishToken.Sigs` records each signing validator's NodeID, so a
+  root's signer subset is a public quasi-identifier. A red-team pass (2026-08-08) showed the shipped
+  `swarm add` chose an *arbitrary* subset of the caller's `-peers`, so a distinctive subset could
+  collapse a publisher's anonymity set toward a singleton.
+- **Bounded today by (R-3, shipped):** `swarm add -token-quorum` now selects signers by a
+  **network-canonical ledger ordering** (validators ranked by committed bond, fetched from a
+  chain-holding peer via `MsgGetCanonicalIssuers`), the SAME for every publisher — so the subset
+  stops being a per-publisher identifier (advantage → 0 for the reported leak at stated parameters).
+- **Caveats to own:** (1) it holds **subset-anonymity only** — the fetcher IP/timing channel is the
+  separate D-PRIV residual (C1), unchanged; (2) a canonical top-k quorum is a mild **publish-liveness /
+  censorship surface** (those validators must be online and willing to sign) — acceptable because the
+  set rotates by committed bond, not a fixed cabal, but named honestly; (3) **reachability** — a
+  chainless publisher ranks its *reachable* peers by the canonical ordering, so the hold is fully
+  global only when publishers connect to the canonical validator set.
+- **What would close it (fully):** the **B2 blind-signed publish token** (issuer signs without learning
+  which root it authorized), which severs the on-chain signer-subset quasi-identifier at the crypto
+  layer so even a non-canonical subset leaks nothing — the H8 privacy-track target (#179).
+
 ---
 
 ## C. Privacy (D-PRIV)

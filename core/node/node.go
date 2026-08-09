@@ -824,6 +824,8 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 		n.reply(from, msg, n.answerTokenRequest(from, msg))
 	case ports.MsgGetIssuerKey:
 		n.reply(from, msg, n.answerIssuerKey())
+	case ports.MsgGetCanonicalIssuers:
+		n.reply(from, msg, n.answerCanonicalIssuers())
 	case ports.MsgCheckReachability:
 		// A peer wants to know if it is publicly reachable. Answering means
 		// dialing it back at its advertised address: if the reply lands, the
