@@ -156,11 +156,19 @@ func (n *Node) bondAuditOnce(now uint64) {
 		n.rid++
 		nonce := n.rid
 		id, info := t.id, t.info
+		sent := n.clock.Now() // for the reply-latency gate (BREAK 1 / A5)
 		n.request(id, ports.Message{Kind: ports.MsgBondChallenge, Nonce: nonce},
 			func(resp ports.Message, err error) {
 				if err != nil {
 					return // unreachable this round; DecayStale handles sustained absence
 				}
+				// Reply-latency gate (BREAK 1 / owned-residuals A5): a partial-storage
+				// prover that recomputes the ε it deleted produces CORRECT bytes, so no
+				// content check can catch it — but past the ~0.25 work knee that
+				// recompute is a large sequential cost. A reply slower than the
+				// (generously-margined) deadline implies a materially-short prover and
+				// earns no standing. OFF when the deadline is 0 (the sim's tick clock).
+				late := n.cfg.BondMaxAnswerLatency > 0 && ports.Duration(n.clock.Now()-sent) > n.cfg.BondMaxAnswerLatency
 				ans, derr := bond.DecodeAnswer(resp.Data)
 				// A bond below the anti-release floor earns no standing however
 				// well it answers: it is small enough to release and re-plot inside
@@ -170,7 +178,7 @@ func (n *Node) bondAuditOnce(now uint64) {
 				// AND it must hash to the identity we challenged — otherwise a plot
 				// sealed for another identity or size would pass. sha256(PK)==id is
 				// what binds the free-variable root back to this peer's identity.
-				ok := info.size >= n.cfg.MinBondBytes && derr == nil &&
+				ok := info.size >= n.cfg.MinBondBytes && derr == nil && !late &&
 					sha256.Sum256(ans.PK) == id &&
 					bond.VerifySpaceTime(ans.PK, info.root, info.size, nonce, ans, vdf.Default(), n.cfg.BondVDFDelay, n.cfg.BondLabelSamples)
 				// Replied-but-can't-prove is a FAIL (a liar advertising a bond
@@ -182,7 +190,7 @@ func (n *Node) bondAuditOnce(now uint64) {
 				// Narrate the verdict: a peer proving (or failing to prove) its
 				// bond is exactly the "is the trust plane working?" moment an
 				// operator needs to see, not infer from a diffed chain (F7).
-				n.logf(ports.LogInfo, "bond challenge", "peer", id, "passed", ok, "standing", n.ledger.Reputation(id))
+				n.logf(ports.LogInfo, "bond challenge", "peer", id, "passed", ok, "late", late, "standing", n.ledger.Reputation(id))
 			})
 	}
 }

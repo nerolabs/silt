@@ -37,6 +37,54 @@ func (n *Node) CanonicalIssuers(max int) []ports.NodeID {
 	return n.chain.CanonicalIssuers(max)
 }
 
+// canonicalIssuerCap bounds the canonical issuer set a validator serves to a
+// chainless publisher — enough to rank a publisher's reachable peers, small enough
+// to keep the reply cheap.
+const canonicalIssuerCap = 32
+
+// answerCanonicalIssuers replies with this node's deterministic canonical issuer
+// ORDERING (validators ranked by committed bond, top first) so a chainless
+// publisher can select its publish-token signers by a ledger-derived ranking that
+// is the SAME for every publisher — the signer subset then stops being a
+// per-publisher quasi-identifier (R-3 / seam-4). Encoded as concatenated 32-byte
+// NodeIDs. OK=false if this node holds no chain.
+func (n *Node) answerCanonicalIssuers() ports.Message {
+	if n.chain == nil {
+		return ports.Message{Kind: ports.MsgCanonicalIssuersReply, OK: false}
+	}
+	ids := n.chain.CanonicalIssuers(canonicalIssuerCap)
+	data := make([]byte, 0, len(ids)*len(ports.Hash{}))
+	for _, id := range ids {
+		data = append(data, id[:]...)
+	}
+	return ports.Message{Kind: ports.MsgCanonicalIssuersReply, OK: true, Data: data}
+}
+
+// FetchCanonicalIssuers asks a chain-holding validator v for the deterministic
+// canonical issuer ordering (ranked by committed bond). A chainless publisher uses
+// it to pick its publish-token signers by a network-canonical ranking instead of an
+// arbitrary subset of its own peer list, closing the signer-subset deanonymization
+// channel (R-3, seam-4). done fires with the ids (heaviest bond first) or an error.
+func (n *Node) FetchCanonicalIssuers(v ports.NodeID, done func([]ports.NodeID, error)) {
+	n.request(v, ports.Message{Kind: ports.MsgGetCanonicalIssuers}, func(resp ports.Message, err error) {
+		const idLen = len(ports.Hash{})
+		switch {
+		case err != nil:
+			done(nil, err)
+		case !resp.OK || len(resp.Data) == 0 || len(resp.Data)%idLen != 0:
+			done(nil, errNoCanonicalIssuers)
+		default:
+			ids := make([]ports.NodeID, 0, len(resp.Data)/idLen)
+			for i := 0; i+idLen <= len(resp.Data); i += idLen {
+				var id ports.NodeID
+				copy(id[:], resp.Data[i:i+idLen])
+				ids = append(ids, id)
+			}
+			done(ids, nil)
+		}
+	})
+}
+
 // handleChain processes validator messages; returns false if the kind
 // isn't chain-related.
 func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
@@ -293,12 +341,14 @@ func (n *Node) broadcastCommit(b *chain.Block, validators []ports.NodeID, i int,
 }
 
 // slashEquivocators finds validators who signed a different block at the same
-// height across two competing histories (the abandoned fork and the adopted
-// one) and slashes each in the local ledger — a proven double-sign costs
-// standing (D2). The evidence is self-verifying (chain.VerifyEquivocation,
-// inside FindEquivocations), so this cannot be triggered by an honest validator
-// signing sequential heights. On-chain inclusion so every replica slashes in
-// lockstep is the recorded follow-up; here each validator acts on what it sees.
+// height across two competing histories and slashes each in the local ledger —
+// a proven double-sign costs standing (D2). Called on DETECTION (every fetched
+// peer chain vs the local one, seam-7), not only on adoption, so a double-sign
+// onto a losing fork is caught too. The evidence is self-verifying
+// (chain.VerifyEquivocation, inside FindEquivocations), so this cannot be
+// triggered by an honest validator signing sequential heights. On-chain
+// inclusion so every replica evicts in lockstep is the recorded follow-up (the
+// pendingSlashes queue); here each validator acts on what it sees.
 func (n *Node) slashEquivocators(a, b []chain.Block) {
 	if n.ledger == nil {
 		return
@@ -350,12 +400,24 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 					if full, derr := chain.DecodeBlocks(resp.Data); derr == nil && len(full) > 0 {
 						before := n.chain.Len()
 						old := n.chain.Blocks(0) // snapshot to catch cross-fork double-signs
+						// Slash on DETECTION, not on adoption (seam-7). Scan the fetched
+						// peer chain against our LOCAL one for cross-fork double-signs
+						// BEFORE the heavier test and regardless of whether we adopt: a
+						// validator that signed a block at a height we hold AND a
+						// conflicting block at that height on this peer's fork is provably
+						// guilty even if its fork is LIGHTER and never reconciled onto.
+						// Previously this ran only on the adopted branch, so a double-sign
+						// onto a doomed/losing fork (to confuse late joiners, split gossip,
+						// or bait a partition) cost the actor nothing. The evidence is
+						// self-verifying (chain.VerifyEquivocation), so an honest
+						// sequential signer is never caught. This subsumes the old
+						// adopted-branch (old,now) scan, since the adopted fork is `full`.
+						n.slashEquivocators(old, full)
 						if ok, rerr := n.chain.Reconcile(full); ok {
 							now := n.chain.Blocks(0)
 							if d := n.chain.Len() - before; d > 0 {
 								added += d
 							}
-							n.slashEquivocators(old, now)
 							if dropped := reorgDropped(old, now); dropped > 0 && n.onReorg != nil {
 								n.onReorg(dropped, uint64(len(now)-1))
 							}

@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/nerolabs/silt/ports"
+)
 
 // M0 hardening H3 — the Invariant-B structural guardrail.
 //
@@ -40,6 +44,12 @@ import "testing"
 //                            mature and capture. No sound synthesizable anchor set exists
 //                            (weak-subjectivity irreducibility), so the safe default is to refuse
 //                            to start (like -min-bond<=0), not warn.
+//   S7 publish signer-set → CANONICAL-BY-DEFAULT (seam-4/R-3), asserted here (via rankByCanonical):
+//                            `swarm add -token-quorum` picks its publish-token signers by a
+//                            network-canonical ledger ordering (heaviest bond first), the SAME for
+//                            every publisher, not an arbitrary subset of -peers — so the signer
+//                            subset can't collapse the publisher anonymity set. Deterministic:
+//                            input peer order does not change the selection.
 
 // TestInvariantB_S1_AntiReleaseFloorOnByDefault asserts the untrusted-validator
 // DEFAULT (no -min-bond-floor passed, objective path) imposes the anti-release
@@ -180,5 +190,42 @@ func TestInvariantB_S6_ColdStartScaffoldRefusedByDefault(t *testing.T) {
 	// Off the untrusted objective path (trusted/legacy) there is nothing to gate.
 	if !coldStartScaffoldOK(false, 0, 0, "") {
 		t.Fatal("a trusted/non-objective node must not be gated on cold-start scaffolding")
+	}
+}
+
+// TestInvariantB_S7_PublishSignerSetIsCanonical asserts the publish-token signer
+// selection is CANONICAL-by-default (seam-4 / R-3): `swarm add -token-quorum` ranks
+// its signers by the network-canonical ledger ordering (heaviest bond first), the
+// SAME for every publisher, so the signer subset stops being a per-publisher
+// quasi-identifier. The key property is determinism: the same reachable set +
+// canonical ordering yields the same selection regardless of the publisher's own
+// -peers order — so two publishers can't be told apart by their subset choice.
+func TestInvariantB_S7_PublishSignerSetIsCanonical(t *testing.T) {
+	id := func(b byte) ports.NodeID { var h ports.NodeID; h[0] = b; return h }
+	a, bb, c, d := id(1), id(2), id(3), id(4)
+	canon := []ports.NodeID{c, a, d, bb} // ledger ordering (heaviest bond first)
+
+	// Two publishers hold the same reachable validators in DIFFERENT orders.
+	pub1 := rankByCanonical([]ports.NodeID{a, bb, c, d}, canon)
+	pub2 := rankByCanonical([]ports.NodeID{d, c, bb, a}, canon)
+	if len(pub1) != len(pub2) {
+		t.Fatalf("length mismatch: %d vs %d", len(pub1), len(pub2))
+	}
+	for i := range pub1 {
+		if pub1[i] != pub2[i] {
+			t.Fatalf("Invariant B (S7) violated: signer selection must be canonical (order-independent); pub1=%v pub2=%v", pub1, pub2)
+		}
+	}
+	// And it MUST be the canonical order, not the caller's -peers order.
+	for i := range canon {
+		if pub1[i] != canon[i] {
+			t.Fatalf("Invariant B (S7): the signer set must follow the canonical ledger ordering, got %v want %v", pub1, canon)
+		}
+	}
+	// A validator not reachable by the publisher is dropped (can't sign for a peer
+	// you can't dial), the rest stay in canonical order.
+	got := rankByCanonical([]ports.NodeID{a, c}, canon) // only a, c reachable
+	if len(got) != 2 || got[0] != c || got[1] != a {
+		t.Fatalf("unreachable canonical entries must be skipped, keeping canonical order: got %v", got)
 	}
 }

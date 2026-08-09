@@ -313,6 +313,21 @@ func (n *Node) resolveProviders(id ports.ChunkID, done func([]ports.NodeID)) {
 	add(n.acceptedProviderIDs(id, n.provs.Get(id)))
 	finish := func() {
 		dht.SortByDistance(id, acc)
+		// Non-globality signal (R-2 / #180): if a key's whole discoverable provider
+		// set has collapsed into ONE failure domain, it is one key-surround from being
+		// censorable at the routing layer for a fetcher who consented to no takedown
+		// (red-team BREAK 2 residual). Surface it — silent routing censorship becomes a
+		// measurable event. Only bites when domains are actually declared (a domainless
+		// swarm reads every provider as its own group, so this never false-fires).
+		// Warn only on a genuine COLLAPSE: several providers all sharing one declared
+		// failure domain (sn==1 with >1 provider). A single provider, or a domainless
+		// swarm (every provider its own group), is not a collapse and stays quiet.
+		if len(acc) > 1 {
+			if sn := n.survivorNakamoto(acc); sn <= 1 {
+				n.logf(ports.LogWarn, "provider set collapsed to one failure domain — near-censorable (non-globality #180)",
+					"key", id, "providers", len(acc), "survivor-nakamoto", sn)
+			}
+		}
 		done(acc)
 	}
 	w := n.newWalk(ports.MsgGetProviders, id,
@@ -334,6 +349,39 @@ func (n *Node) resolveProviders(id ports.ChunkID, done func([]ports.NodeID)) {
 				finish)
 		})
 	w.step()
+}
+
+// survivorNakamoto counts the distinct failure domains represented in a resolved
+// provider set — the raw non-globality metric (immutable #5 / D-TAKEDOWN, #180). It
+// is the survivor Nakamoto-coefficient over failure domains: a censor must eclipse
+// THIS MANY independent domains to make the content undiscoverable, so a set spread
+// across many domains is censorship-resistant and one collapsed to a single domain
+// is one key-surround from dark. Mirrors the C2 convention — each distinct declared
+// domain is one group, and a provider whose domain this node has not learned counts
+// as its own (an unknown position, conservatively treated as independent). The RAW
+// scalar ships in M0 (the data — signed provider records + gossiped domains — already
+// exists); the ZK/PIR wrapper that certifies it as a lower bound ≥ t WITHOUT
+// revealing which domains is post-M0 (H9). Observability, never enforcement.
+func (n *Node) survivorNakamoto(ids []ports.NodeID) int {
+	domains := map[uint64]bool{}
+	unknown := 0
+	for _, id := range ids {
+		if d := n.domainOf(id); d != 0 {
+			domains[d] = true
+		} else {
+			unknown++
+		}
+	}
+	return len(domains) + unknown
+}
+
+// SurvivorNakamoto reports the failure-domain diversity of the providers this node
+// currently knows for key — the raw survivor Nakamoto-coefficient over failure
+// domains (non-globality metric, immutable #5 / #180). 1 = one key-surround from
+// dark. Computed over the LOCALLY-known, accepted (signed, verified) providers; a
+// live query (resolveProviders) widens the set first for a fetch-time reading.
+func (n *Node) SurvivorNakamoto(key ports.ChunkID) int {
+	return n.survivorNakamoto(n.acceptedProviderIDs(key, n.provs.Get(key)))
 }
 
 // fetchFrom pulls one chunk from a known provider set into the local

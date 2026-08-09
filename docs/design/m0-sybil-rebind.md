@@ -254,6 +254,16 @@ a regression (build-immutable).
    parameters and parent-correlation needs the DFKP'15 / Fisch'19 pebbling reduction
    instantiated for silt's exact graph. **External derivation required (B8) before
    fixing production `k`.**
+   > **UPDATE (2026-08-08, red-team + research).** A blind red-team pass turned this
+   > open risk into a live consequence: the labeling check catches *wrong* bytes, but a
+   > **partial-storage prover that RECOMPUTES** the ε it deleted produces *correct* bytes,
+   > so `k` opens catch nothing against it — the discount is a **constant fraction**, not
+   > `o(1)`, and the anti-release floor (§4) prices only a *full* re-plot, not partial
+   > recompute. Research **confirmed** the tight, small-`ε*` close is **H-track** (stacked
+   > tight-PoS + SNARK, trusted setup — not an M0 fix). M0 ships the honest restatement
+   > `C1 ≥ (1−ε*)·q·C_honest`, `ε*=0.20` disclosed, enforced against a serial disk-saver by
+   > a reply-latency gate on the live challenge and priced (super-exponentially, per Brent)
+   > against a parallel one. Full accounting: [`owned-residuals.md` A5](owned-residuals.md).
 2. **On-chain proof size — and a dependency (RESOLVED, H2).** The asymmetric-`k`
    mitigation leans on on-chain standing also decaying via `BondTTLBlocks` plus continuous
    live re-audit. This was blocked because bond renewal happened only when a validator

@@ -9,6 +9,23 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Security
+- **seam-5: A-axis truth-in-labelling + a count/entropy signal for the equal-bond split** (2026-08-09) —
+  Two red-team hardening findings on the operator-clustering heuristic. **(F3, truth-in-labelling)** two
+  `core/chain` comments claimed the declared failure-domain is "transport-cross-checked at H5-B / refuses
+  to route to a validator whose declared domain does not match its observed /24" — but `handle()` learns
+  `peerDomains` from gossip **verbatim, with no /24 cross-check**. The comments are corrected to say the
+  domain is **self-asserted, not transport-verified**; the composition never relied on the cross-check
+  (the shed gates on `min(NakamotoOperators, NakamotoDomains)`, so free domains can only *lower* the min,
+  never trip the wheels off early), so this is a labelling fix, not a mechanism change. **(F1, new signal)**
+  an equal-bond **split** — one operator posting N identical min-bonds across N keys — drives HHI→1/n,
+  Gini→0, TopShare→1/n, so it reads *maximally decentralized* on every weight-concentration signal and the
+  ⅓ whale alarm never fires. Added **`C2.WeightUniformity`** (effective participants `1/HHI` over actual,
+  →1 for perfectly uniform) — the count/entropy companion that exposes the "many atoms, implausibly
+  uniform" fingerprint the weight signals miss, surfaced in the daemon C2 status with an *atomization
+  note* when a many-bond set reads implausibly uniform with no whale. Necessary-not-sufficient (a
+  size-varying splitter evades it, and healthy decentralization is also uniform), so it does not close the
+  honest-whale / M_est residue (#182) — it makes the naive split *legible* for out-of-band verification.
+  Regression: `TestC2Metric_WeightUniformityCatchesEqualBondSplit`.
 - **seam-2: an untrusted objective validator refuses to start without cold-start scaffolding** (2026-08-09)
   — The same blind red-team pass found that a stock untrusted objective validator (the default M0 path)
   shipped with `-anchors`/`-mature-validators` unset, so `Mature()` returns true at genesis
@@ -36,6 +53,86 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   can't silently regress. The eclipse mechanism itself was already proven in `redteam_h5b_test.go`; this
   closes the shipped-default gap. (The *multi-domain* surround residual — a censor spread across enough
   failure domains — remains the owned survivor-Nakamoto/#180 residual, tracked separately.)
+- **seam-7: equivocation is slashed on DETECTION, not only on adoption** (2026-08-09) — The red team
+  found a validator could double-sign onto a *losing* fork — attesting the canonical head AND signing a
+  conflicting block on a doomed/lighter fork (to confuse late joiners, split gossip, or bait a partition)
+  — at **zero standing cost**, because `slashEquivocators` ran only when a node RECONCILED ONTO a heavier
+  competing fork. A fork nobody adopts was never scanned. Fixed in `SyncChain`: every fetched peer chain is
+  now scanned against the local one for cross-fork double-signs **before** the heavier test and regardless
+  of whether we adopt it — a provably-guilty signer is slashed even if its fork loses. The evidence is
+  self-verifying (`chain.VerifyEquivocation`), so an honest sequential signer is never caught; the change
+  subsumes the old adopted-branch scan. Regression: `TestSeam7_LosingForkEquivocatorIsSlashedOnDetection`
+  (A holds a heavier chain, B serves a lighter fork carrying the culprit's conflicting signature; A does
+  not adopt but slashes). *(The companion F2 — applying the eviction to the local objective set on a
+  gossiped proof before a slash block commits — touches objective fork-weight uniformity between replicas
+  and is deferred as a separate, carefully-scoped change.)*
+- **R-2: the SurvivorNakamoto non-globality scalar ships (raw), doc corrected** (2026-08-09) — The
+  red team found `docs/safety-denylist.md` read as if the non-globality metric were shipped ("a
+  *checkable quantity*"), but no such computation existed in `core/` — only the raw CT log. Per a
+  research consult (R-2), the **raw scalar** is a build target (the data — signed provider records +
+  gossiped failure-domain labels — already exists); only the ZK/PIR privacy wrapper is post-M0. Built
+  **`Node.SurvivorNakamoto(key)`**: the survivor Nakamoto-coefficient over a key's live, accepted
+  provider set = the number of DISTINCT failure domains those providers sit in — how many independent
+  domains a censor must eclipse to make the content undiscoverable. A set spread across N domains reads
+  N; the same providers collapsed into ONE read 1 (one key-surround from dark) — the censor fingerprint
+  the raw provider *count* hides. The provider-resolution path now **logs a collapse** (several providers
+  all in one declared domain) so silent routing censorship (the BREAK 2 residual) becomes a measurable
+  event. Corrected `safety-denylist.md` to state exactly what ships (raw scalar in M0) vs. what is post-M0
+  (the certified, domain-hiding ZK-threshold + PIR-probe wrapper, H9/#180). Necessary-not-sufficient
+  observability, never enforcement. Regression: `TestSurvivorNakamoto_CountsDistinctFailureDomains`.
+- **seam-6: the on-chain bond-renewal nonce is documented as predictable (bounded elsewhere)** (2026-08-09)
+  — The red team noted (a *note*, not a break) that `BondRegNonce = H(prev_block_hash)` is predictable:
+  once `prev` commits a validator knows its next on-chain renewal challenge, so the on-chain path alone
+  doesn't bound release-and-recompute-just-in-time. It **cannot** be made unpredictable without a
+  randomness beacon (M0 has none) and **must** stay a pure function of committed history so every replica
+  re-derives it identically for objective verification — so this is truth-in-labelling, not a mechanism
+  change. The `BondRegNonce` comment now names the weakness and where it is bounded: the parallel **live
+  peer-audit** issues an *unpredictable* nonce at random, and that audit now carries the
+  **`BondMaxAnswerLatency` reply-deadline** (BREAK 1 / owned-residuals A5), so a released prover that must
+  recompute past the ~0.25 knee fails it. (The demand→standing **firewall tripwire** the same pass asked
+  to preserve is already regression-locked — `sim/demand_costtowash_test.go` + `sim/demand_bonded_test.go`
+  assert standing is byte-identical under wash/self-dealt demand, and `core/credit/invariant_a_test.go`'s
+  reflection guard fails the build on any unclassified standing press.)
+- **BREAK 1: C1 restated to `(1−ε*)` with an enforcing bond-answer-latency gate** (2026-08-09) — A blind
+  red-team pass found a **partial-storage recompute** discount on C1: on silt's single-layer DRSample
+  bond graph a prover can delete a fraction ε of its plot (keeping the 32-byte leaves) and **recompute**
+  any challenged block on demand, passing the exact `bond.VerifySpaceTime` the live wire runs while
+  holding only `(1−ε)` of the disk. Recomputed bytes are **content-identical** to stored ones, so no
+  content check can catch it (verified in code) — enforcement is necessarily the **time** leg. Measured
+  on the shipped graph: recompute is ~free at ε≤0.10 and its work explodes past the **~0.25 knee**. Per a
+  research consult (web-verified against the proofs-of-space literature), the tight small-`ε*` close is
+  **H-track** (stacked tight-PoS + a Groth16 SNARK over a ~100 MB witness → a trusted setup), so M0 ships
+  the honest **Option B**:
+  - **C1 restated** from `(1 − o(1))·q·C_honest` to **`(1 − ε*)·q·C_honest`, `ε*=0.20` disclosed**
+    (`m0.md`, `owned-residuals.md` A5, `m0-sybil-rebind §8.1`).
+  - **Enforcement:** a reply-latency gate on the live bond challenge — `node.Config.BondMaxAnswerLatency`
+    / daemon `-bond-answer-latency` (default 1.5 s) — earns no standing for a reply slower than the
+    (generously-margined) deadline; past the ~0.25 knee the recompute blows it. **Soft** (wall-clock ⇒
+    fastest-evaluator-sensitive), off in the sim (tick clock), on in the daemon.
+  - **Honest residual (A5):** it deters the rational **serial** disk-saver; a **parallel** adversary can
+    hold less disk but **re-pays the recompute every audit, per identity** (compute-for-storage
+    re-pricing, not a free discount), with the parallelism required growing **super-exponentially** in ε
+    (Brent: ~10² cores at ε≈0.25, ~10⁵ at 0.30, ~10¹³ near 0.5) — so realistic parallel exposure ≈ ε0.30,
+    and **audit frequency** (`-bond-audit`) is a free tightening lever. Composes with BondTTL so the gate
+    bounds even on-chain objective weight over time. The tight close is Option A (H-track).
+  - Regressions: `TestBreak1_LateBondAnswerEarnsNoStanding` (a late answer earns no standing; the gate is
+    off at deadline 0). No deterministic content check exists — do not add one.
+- **R-3: publish-token signers are chosen by a network-canonical ledger ordering** (2026-08-09) — The
+  red team found `swarm add -token-quorum` signed a publish token from an **arbitrary** subset of the
+  caller's `-peers`, and since the committed `PublishToken.Sigs` records each signer's NodeID, a
+  distinctive subset could collapse a publisher's anonymity set toward a singleton (full deanonymization,
+  no broken crypto). Per research consult R-3, the fix is a **canonical, ledger-derived** signer set —
+  the SAME for every publisher. Added `MsgGetCanonicalIssuers`: a chain-holding validator serves its
+  deterministic canonical issuer ordering (validators ranked by committed bond, `chain.CanonicalIssuers`,
+  which existed but was unwired). `swarm add` now fetches it and ranks its reachable validators by it
+  (`rankByCanonical`), so the signer subset is no longer a per-publisher choice; falls back to `-peers`
+  with an honest warning if no peer serves a chain. Locked by **Invariant-B S7**
+  (`TestInvariantB_S7_PublishSignerSetIsCanonical` — the selection is order-independent and follows the
+  canonical ranking). **Owned caveats (owned-residuals B4):** holds *subset-anonymity only* (the fetcher
+  IP/timing channel is the separate D-PRIV residual); a canonical quorum is a mild publish-liveness
+  surface (mitigated by rotation-by-bond); and a chainless publisher ranks its *reachable* peers, so the
+  hold is fully global only when publishers connect to the canonical set. The full crypto close (the
+  issuer signs without learning which root) is the **B2 blind publish token**, H8/#179.
 - **F-3: the whole-registry `GET /all` dump is off the public mux** (2026-08-08) — Completes the
   red-team F-3 fix. `/all` serialized the entire registry O(N) with no pagination — an unbounded
   per-request cost. An interim change priced it by work, but that only bounds cost *per source*; a

@@ -78,6 +78,7 @@ func cmdDaemon(args []string) error {
 	minBondFloor := fs.String("min-bond-floor", "0", "anti-release floor (M0 F1/F2): a bond smaller than this earns NO standing, because it could be released and re-plotted inside the challenge window. Set it ABOVE (challenge-window × plot-throughput): at ~270 MB/s and this daemon's ~2s window that is ~540 MiB, so a real open deployment sets e.g. 1G. 0 = off (safe only for a trusted/demo swarm)")
 	bondAudit := fs.Duration("bond-audit", 60*time.Second, "how often a validator challenges its peers' bonds and refreshes its own standing")
 	bondLabelK := fs.Int("bond-label-k", 64, "labeling-consistency opens per bond challenge (M0 Sybil G2): each recomputes one block's label from its DRSample parents, so a prover holding arbitrary/reused/wrong-size bytes (not a real plot for its identity+size) fails. Soundness error ≤ (1-ε)^k against an ε-short prover. A per-network knob — prover and verifier must MATCH (like -bond-vdf), so set it uniformly across the swarm. Lower it only to shrink on-chain proof size, at a soundness cost. 0 = default (64)")
+	bondAnswerLatency := fs.Duration("bond-answer-latency", 1500*time.Millisecond, "reply-deadline on a live bond challenge (M0 C1 / BREAK 1): a validator that deleted part of its plot must RECOMPUTE the missing blocks on demand, and past the DRSample graph's ~0.25 knee that recompute is a large sequential cost, so a reply slower than this earns no standing. A SOFT deterrent (wall-clock ⇒ fastest-evaluator-sensitive), set generously above the honest answer time (~VDF + network) so slow honest hardware is not failed — it deters the rational serial disk-saver, not a parallel farm (owned residual A5). Must stay below -request equivalents; 0 = off (only for a trusted/demo swarm)")
 	signedProviders := fs.Bool("signed-providers", true, "self-certifying DHT provider records (M0 H5): a node signs its 'I hold this' announcements with its identity key and re-verifies records served back on lookup, so a node holding the k-closest slots to a key cannot fabricate provider records for identities that never announced. Default ON; =false drops to the legacy unsigned path (trusted/demo swarm only)")
 	signedProviderTTL := fs.Duration("signed-provider-ttl", 30*time.Minute, "freshness window stamped on signed provider records (M0 H5): a re-served record older than this is treated as expired, so an eclipsing node can't replay an ancient claim forever")
 	dhtDomainCap := fs.Int("dht-domain-cap", 2, "failure-domain diversity cap for DHT eclipse resistance (M0 H5-B): at most this many peers sharing one -domain are kept per routing bucket, and provider records are announced to / resolved from a domain-spread set — so an adversary owning the NodeIDs closest to a key but sitting in one domain (a ~$4 /24 key-surround) can't suppress discovery. Only bites when peers set distinct -domain labels. 0 = off (no diversity constraint)")
@@ -191,6 +192,7 @@ func cmdDaemon(args []string) error {
 	cfg.RequestTimeout = ports.Duration(2 * time.Second) // patient vs the 500ms default (real WAN)
 	cfg.BondAuditInterval = ports.Duration(*bondAudit)
 	cfg.BondLabelSamples = *bondLabelK
+	cfg.BondMaxAnswerLatency = ports.Duration(*bondAnswerLatency) // C1 recompute deterrent (BREAK 1 / A5); soft, generous
 	// Self-certifying provider records (M0 H5): ON by default so a node can't
 	// fabricate DHT provider records for identities that never announced — records
 	// are signed by the provider and re-verified on lookup. Records carry an expiry
@@ -554,10 +556,10 @@ func cmdDaemon(args []string) error {
 						wheels = "shed permanently (matured; live decentralization has since dropped — real-bond super-quorum in force, anchors NOT re-armed)"
 					}
 				}
-				fmt.Printf("  C2: nakamoto %d bonds → %d operators (margin ×%d) | cost-to-corrupt %d MiB of %d MiB bonded across %d | concentration HHI %.2f Gini %.2f top %.0f%% | wheels %s\n",
+				fmt.Printf("  C2: nakamoto %d bonds → %d operators (margin ×%d) | cost-to-corrupt %d MiB of %d MiB bonded across %d | concentration HHI %.2f Gini %.2f top %.0f%% uniformity %.0f%% | wheels %s\n",
 					m.NakamotoBonds, m.NakamotoOperators, m.Margin,
 					m.CostToCorruptBytes>>20, m.TotalBondedBytes>>20, m.Participants,
-					m.HHI, m.Gini, m.TopShare*100, wheels)
+					m.HHI, m.Gini, m.TopShare*100, m.WeightUniformity*100, wheels)
 				// Concentration alarm (D-C2 / F-1 follow-up): the honest whale C2 cannot
 				// close on-chain, made LOUD out-of-band. A single bond at/above the ⅓
 				// Byzantine capture fraction is one step from being able to stall or
@@ -565,6 +567,16 @@ func cmdDaemon(args []string) error {
 				// on-chain enforcement (impossible per Kwon).
 				if m.TopShare >= 1.0/3 {
 					fmt.Printf("  ⚠ CONCENTRATION ALARM: one bond holds %.0f%% of bonded weight (≥ the ⅓ capture fraction) — real standing is concentrating; this is the honest-whale residual C2 measures but cannot close on-chain. Act out-of-band.\n", m.TopShare*100)
+				}
+				// Atomization note (seam-5): the whale alarm above reads TopShare, which an
+				// equal-bond SPLIT (one operator, many identical min-bonds) drives to its
+				// most-decentralized value — invisible to it. When the weight signals look
+				// clean (no whale) but the distribution is many bonds at implausibly uniform
+				// weight, surface the "many atoms" fingerprint so the operator verifies real
+				// independence out-of-band. Necessary-not-sufficient (#182): a size-varying
+				// splitter evades it, and healthy decentralization is also uniform.
+				if m.TopShare < 1.0/3 && m.Participants >= 8 && m.WeightUniformity >= 0.9 {
+					fmt.Printf("  ⓘ atomization note: %d bonds at near-identical weight (uniformity %.0f%%) read as maximally decentralized on HHI/Gini/top-share, but an equal-bond SPLIT (one operator across many keys) produces exactly this fingerprint. The weight signals can't tell it from real decentralization (#182) — verify independent operators via out-of-band address/timing diversity.\n", m.Participants, m.WeightUniformity*100)
 				}
 				// Export the committed head as a copy-pasteable weak-subjectivity
 				// checkpoint (F-1): a fresh/long-offline node pins one via -ws-checkpoint

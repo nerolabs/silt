@@ -23,6 +23,35 @@ import (
 // records no per-publish fee debit tying it to the requester. The whole flow runs
 // from the swarm client's ephemeral identity. Runs on the node's loop; cont fires
 // once with the token or an error.
+// rankByCanonical reorders the publisher's reachable validators by a
+// network-canonical ordering (ledger-derived, heaviest bond first): canonical
+// entries the publisher can reach come first in canonical order, then any remaining
+// reachable peers (stable). So two publishers with overlapping reachable sets pick
+// the SAME signer subset up to reachability — the subset is no longer an arbitrary
+// per-publisher choice that leaks who published (R-3 / seam-4). Deterministic: same
+// (reachable, canon) → same order, independent of the input peer order.
+func rankByCanonical(reachable, canon []ports.NodeID) []ports.NodeID {
+	reach := make(map[ports.NodeID]bool, len(reachable))
+	for _, id := range reachable {
+		reach[id] = true
+	}
+	out := make([]ports.NodeID, 0, len(reachable))
+	seen := make(map[ports.NodeID]bool, len(reachable))
+	for _, id := range canon { // canonical order first, but only what we can dial
+		if reach[id] && !seen[id] {
+			out = append(out, id)
+			seen[id] = true
+		}
+	}
+	for _, id := range reachable { // then any reachable non-canonical peers, stable
+		if !seen[id] {
+			out = append(out, id)
+			seen[id] = true
+		}
+	}
+	return out
+}
+
 func acquirePublishToken(nd *node.Node, validators []ports.NodeID, k int, cont func(*ports.PublishToken, error)) {
 	var fetchNext func(i int)
 	fetchNext = func(i int) {
@@ -80,7 +109,7 @@ func swarmAdd(args []string) error {
 	regURL := fs.String("registry", "", "registry URL (required)")
 	mode := fs.String("mode", "private", "encryption mode: private (default — random per-file key, unprobeable) or convergent (dedups identical content but is vulnerable to the guessed-plaintext confirmation attack; M0 H6, non-secret data only)")
 	chunkSize := fs.Int("chunk-size", pipeline.DefaultChunkSize, "chunk size in bytes")
-	tokenQuorum := fs.Int("token-quorum", 0, "publisher privacy: acquire a publish token from this many of the -peers (validators) so the publish carries no Publisher identity (0 = off)")
+	tokenQuorum := fs.Int("token-quorum", 0, "publisher privacy: acquire a publish token from this many validators so the publish carries no Publisher identity. The signers are chosen by a NETWORK-CANONICAL ordering (ranked by committed bond, fetched from a chain-holding peer), the SAME for every publisher, so the signer subset can't narrow the publisher's anonymity set (R-3); falls back to -peers order if no peer serves a chain. 0 = off")
 	allowPublisher := fs.Bool("allow-publisher", false, "record this node's durable Publisher identity on the entry (permanent linkage; off by default for privacy — prefer -token-quorum or an ungated publish)")
 	pos := parseFlexible(fs, args)
 	if len(pos) != 1 || *peers == "" || *regURL == "" {
@@ -157,14 +186,36 @@ func swarmAdd(args []string) error {
 			})
 		}
 		if *tokenQuorum > 0 {
-			acquirePublishToken(e.nd, validators, *tokenQuorum, func(tok *ports.PublishToken, aerr error) {
-				if aerr != nil {
-					err = aerr
-					done()
-					return
-				}
-				publish(tok)
-			})
+			acquire := func(signers []ports.NodeID) {
+				acquirePublishToken(e.nd, signers, *tokenQuorum, func(tok *ports.PublishToken, aerr error) {
+					if aerr != nil {
+						err = aerr
+						done()
+						return
+					}
+					publish(tok)
+				})
+			}
+			// R-3 / seam-4: pick the token signers by a NETWORK-CANONICAL ordering
+			// (validators ranked by committed bond, fetched from a chain-holding peer)
+			// rather than an arbitrary subset of -peers, so the signer subset stops
+			// being a per-publisher quasi-identifier that can collapse the publisher
+			// anonymity set. Fall back to -peers if no peer serves a chain (with an
+			// honest warning). Reachability caveat: a chainless publisher can only sign
+			// with validators it can dial, so the ranking is applied to the reachable
+			// -peers; connecting to the canonical validator set makes it fully global.
+			if len(validators) > 0 {
+				e.nd.FetchCanonicalIssuers(validators[0], func(canon []ports.NodeID, ferr error) {
+					if ferr != nil || len(canon) == 0 {
+						fmt.Fprintln(os.Stderr, "note: no canonical issuer set from peers; signing from -peers in given order — the signer subset may narrow the publisher anonymity set (connect to canonical validators for full privacy)")
+						acquire(validators)
+						return
+					}
+					acquire(rankByCanonical(validators, canon))
+				})
+			} else {
+				acquire(validators)
+			}
 		} else {
 			publish(nil)
 		}
