@@ -80,6 +80,19 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   event. Corrected `safety-denylist.md` to state exactly what ships (raw scalar in M0) vs. what is post-M0
   (the certified, domain-hiding ZK-threshold + PIR-probe wrapper, H9/#180). Necessary-not-sufficient
   observability, never enforcement. Regression: `TestSurvivorNakamoto_CountsDistinctFailureDomains`.
+- **seam-6: the on-chain bond-renewal nonce is documented as predictable (bounded elsewhere)** (2026-08-09)
+  — The red team noted (a *note*, not a break) that `BondRegNonce = H(prev_block_hash)` is predictable:
+  once `prev` commits a validator knows its next on-chain renewal challenge, so the on-chain path alone
+  doesn't bound release-and-recompute-just-in-time. It **cannot** be made unpredictable without a
+  randomness beacon (M0 has none) and **must** stay a pure function of committed history so every replica
+  re-derives it identically for objective verification — so this is truth-in-labelling, not a mechanism
+  change. The `BondRegNonce` comment now names the weakness and where it is bounded: the parallel **live
+  peer-audit** issues an *unpredictable* nonce at random, and that audit now carries the
+  **`BondMaxAnswerLatency` reply-deadline** (BREAK 1 / owned-residuals A5), so a released prover that must
+  recompute past the ~0.25 knee fails it. (The demand→standing **firewall tripwire** the same pass asked
+  to preserve is already regression-locked — `sim/demand_costtowash_test.go` + `sim/demand_bonded_test.go`
+  assert standing is byte-identical under wash/self-dealt demand, and `core/credit/invariant_a_test.go`'s
+  reflection guard fails the build on any unclassified standing press.)
 - **F-3: the whole-registry `GET /all` dump is off the public mux** (2026-08-08) — Completes the
   red-team F-3 fix. `/all` serialized the entire registry O(N) with no pagination — an unbounded
   per-request cost. An interim change priced it by work, but that only bounds cost *per source*; a
