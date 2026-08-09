@@ -9,6 +9,20 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Security
+- **R-2: the SurvivorNakamoto non-globality scalar ships (raw), doc corrected** (2026-08-09) — The
+  red team found `docs/safety-denylist.md` read as if the non-globality metric were shipped ("a
+  *checkable quantity*"), but no such computation existed in `core/` — only the raw CT log. Per a
+  research consult (R-2), the **raw scalar** is a build target (the data — signed provider records +
+  gossiped failure-domain labels — already exists); only the ZK/PIR privacy wrapper is post-M0. Built
+  **`Node.SurvivorNakamoto(key)`**: the survivor Nakamoto-coefficient over a key's live, accepted
+  provider set = the number of DISTINCT failure domains those providers sit in — how many independent
+  domains a censor must eclipse to make the content undiscoverable. A set spread across N domains reads
+  N; the same providers collapsed into ONE read 1 (one key-surround from dark) — the censor fingerprint
+  the raw provider *count* hides. The provider-resolution path now **logs a collapse** (several providers
+  all in one declared domain) so silent routing censorship (the BREAK 2 residual) becomes a measurable
+  event. Corrected `safety-denylist.md` to state exactly what ships (raw scalar in M0) vs. what is post-M0
+  (the certified, domain-hiding ZK-threshold + PIR-probe wrapper, H9/#180). Necessary-not-sufficient
+  observability, never enforcement. Regression: `TestSurvivorNakamoto_CountsDistinctFailureDomains`.
 - **F-3: the whole-registry `GET /all` dump is off the public mux** (2026-08-08) — Completes the
   red-team F-3 fix. `/all` serialized the entire registry O(N) with no pagination — an unbounded
   per-request cost. An interim change priced it by work, but that only bounds cost *per source*; a

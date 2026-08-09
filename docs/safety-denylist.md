@@ -62,10 +62,17 @@ private and governable.
   RBLs, and PhotoDNA: effectiveness scales with adoption. The transparency
   direction makes this bound **measurable**: per decision **D-TAKEDOWN**,
   the non-globality of any takedown is a *constructed* metric — a survivor
-  Nakamoto-coefficient over failure domains, published as a certified
-  lower bound ≥ t through a ZK threshold predicate that reveals only the
-  scalar t — so "no takedown is global" is a checkable quantity, not just
-  a claim.
+  Nakamoto-coefficient over failure domains. **What ships in M0** is the
+  **raw scalar**: `Node.SurvivorNakamoto(key)` counts the distinct failure
+  domains among a key's live, signed provider set — how many independent
+  domains a censor must eclipse to make the content undiscoverable, so a
+  collapse to one domain is surfaced as a routing-censorship signal (the
+  provider-resolution path logs it). **What is post-M0 (H9, #180)** is the
+  privacy wrapper: publishing it as a certified lower bound ≥ t through a
+  ZK threshold predicate + PIR-routed probes that reveal only the scalar t
+  and not *which* domains survive. So "no takedown is global" is a
+  **checkable quantity today** (raw, over your own provider view); the
+  *certified, domain-hiding* form is the takedown-privacy layer still to build.
 - **Post-hoc, mostly.** Novel illegal content is not on any list when
   first published, so it will land before it can be denied. Takedown is
   therefore primarily reactive; a pre-publish check catches only
