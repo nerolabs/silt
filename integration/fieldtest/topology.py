@@ -32,6 +32,7 @@ REGISTRY_PORT = int(os.environ.get("REGISTRY_PORT", "8443"))
 BOND_MODE = os.environ.get("BOND_MODE", "fast")
 PUBLIC_CIDR = os.environ.get("PUBLIC_CIDR", "10.20.0.0/24")
 NAT_CIDR = os.environ.get("NAT_CIDR", "10.30.0.0/24")
+DEFAULT_REGION = os.environ.get("REGION", "us-central1")
 STORE = "/var/lib/silt"
 
 # ── The node table ─────────────────────────────────────────────────────────────
@@ -77,6 +78,44 @@ def node_id(seed):
 def main():
     nodes = {name: {"role": role, "seed": seed, "ip": ip, "zone": zone}
              for (name, role, seed, ip, zone) in NODES}
+    # PIN_ZONE forces every node into one zone (single-region mode). Use it to
+    # validate the cloud path without the multi-region subnet requirement — the
+    # single default-region subnet then covers every node. Default (unset) keeps
+    # the real multi-region spread. (SMOKE=1 PIN_ZONE=us-central1-a → cheap,
+    # single-region shakeout.)
+    pin = os.environ.get("PIN_ZONE")
+    if pin:
+        for n in nodes.values():
+            n["zone"] = pin
+
+    # ── Per-region subnets ──────────────────────────────────────────────────────
+    # GCP subnets are REGIONAL, so a node in us-east1 cannot attach to a
+    # us-central1 subnet. Give each region its own /24 and remap every non-NAT
+    # node's static IP into its region's network — the host octet (which encodes
+    # role: .11-.14 validators, .21 storage, …) is preserved, so addressing stays
+    # legible and deterministic. Cross-region internal IPs remain reachable over
+    # the (global) VPC. The single NAT subnet stays in the default region.
+    #   default region → 10.20.0.0/24 ; others → 10.21/.22/… (.30 is the NAT subnet)
+    def region_of(zone):
+        return zone.rsplit("-", 1)[0]
+    pub_regions = sorted({region_of(n["zone"]) for n in nodes.values() if n["role"] != "natted"})
+    octet, nxt = {DEFAULT_REGION: 20}, 21
+    for r in pub_regions:
+        if r == DEFAULT_REGION:
+            continue
+        if nxt == 30:            # reserved for the NAT subnet
+            nxt += 1
+        octet[r], nxt = nxt, nxt + 1
+    region_cidrs = {r: f"10.{octet[r]}.0.0/24" for r in pub_regions}
+    for n in nodes.values():
+        if n["role"] == "natted":
+            n["region"] = DEFAULT_REGION           # single NAT subnet, default region
+            continue
+        r = region_of(n["zone"])
+        host = n["ip"].split(".")[-1]
+        n["ip"] = f"10.{octet[r]}.0.{host}"        # e.g. natgw 10.30.0.2 → 10.20.0.2 (public)
+        n["region"] = r
+
     for name, n in nodes.items():
         n["nodeid"] = "" if n["role"] == "natgw" else node_id(n["seed"])
 
@@ -153,8 +192,10 @@ def main():
 
     os.makedirs(os.path.join(here, "terraform"), exist_ok=True)
     tfvars = {
-        "nodes": {name: {"role": n["role"], "ip": n["ip"], "zone": n["zone"], "argv": n["argv"]}
+        "nodes": {name: {"role": n["role"], "ip": n["ip"], "zone": n["zone"],
+                         "region": n["region"], "argv": n["argv"]}
                   for name, n in nodes.items()},
+        "region_cidrs": region_cidrs,
         "public_cidr": PUBLIC_CIDR, "nat_cidr": NAT_CIDR,
         "swarm_port": SWARM_PORT, "relay_port": RELAY_PORT, "registry_port": REGISTRY_PORT,
     }

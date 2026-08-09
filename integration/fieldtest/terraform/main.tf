@@ -16,10 +16,13 @@ resource "google_compute_network" "silt" {
   auto_create_subnetworks = false
 }
 
+# One public subnet PER region the topology uses — GCP subnets are regional, so a
+# node in us-east1 must attach to a us-east1 subnet. topology.py emits region_cidrs.
 resource "google_compute_subnetwork" "public" {
-  name          = "silt-ft-public-${var.run_id}"
-  ip_cidr_range = var.public_cidr
-  region        = var.default_region
+  for_each      = var.region_cidrs
+  name          = "silt-ft-public-${each.key}-${var.run_id}"
+  ip_cidr_range = each.value
+  region        = each.key
   network       = google_compute_network.silt.id
 }
 
@@ -49,7 +52,7 @@ resource "google_compute_route" "nat_egress" {
 resource "google_compute_firewall" "internal" {
   name          = "silt-ft-internal-${var.run_id}"
   network       = google_compute_network.silt.id
-  source_ranges = [var.public_cidr, var.nat_cidr]
+  source_ranges = concat(values(var.region_cidrs), [var.nat_cidr])
   allow { protocol = "tcp" }
   allow { protocol = "udp" }
   allow { protocol = "icmp" }
@@ -126,7 +129,7 @@ resource "google_compute_instance" "natgw" {
     }
   }
   network_interface {
-    subnetwork = google_compute_subnetwork.public.id
+    subnetwork = google_compute_subnetwork.public[each.value.region].id
     network_ip = each.value.ip
     access_config {} # external IP so it can masquerade the NAT subnet out to the internet
   }
@@ -159,7 +162,7 @@ resource "google_compute_instance" "public" {
     }
   }
   network_interface {
-    subnetwork = google_compute_subnetwork.public.id
+    subnetwork = google_compute_subnetwork.public[each.value.region].id
     network_ip = each.value.ip
     access_config {} # external IP; the swarm still advertises the internal IP
   }
