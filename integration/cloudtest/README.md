@@ -49,7 +49,7 @@ provision/     startup scripts: pull the binary from GCS, run the argv under sys
 lib.sh         SSH-over-IAP, log-wait, SLO assertions, result recording
 scenarios.sh   the 9 flows + 3 #184 drills
 gen_report.sh  results.jsonl → report.md + report.html
-fieldtest.sh   the orchestrator: build → apply → run → report → destroy
+cloudtest.sh   the orchestrator: build → apply → run → report → destroy
 ```
 
 ## Prerequisites
@@ -62,9 +62,9 @@ fieldtest.sh   the orchestrator: build → apply → run → report → destroy
 ## Run it
 
 ```bash
-cd integration/fieldtest
+cd integration/cloudtest
 cp config.env.example config.env      # set PROJECT_ID (+ optional knobs)
-./fieldtest.sh                        # build → apply → run → report → DESTROY
+./cloudtest.sh                        # build → apply → run → report → DESTROY
 ```
 
 At the end you get `report.md` and `report.html`. That HTML file is the artifact
@@ -73,11 +73,11 @@ to share / attach to an RC checklist or a GitHub issue.
 Other lifecycles:
 
 ```bash
-SMOKE=1 ./fieldtest.sh   # cheapest 4-node run — validate the plumbing for pennies first
-./fieldtest.sh up        # bring the network up and leave it (debugging / iterate on scenarios)
-./fieldtest.sh run       # re-run the scenarios against an up network (no new spend)
-./fieldtest.sh down      # terraform destroy
-./fieldtest.sh nuke      # last resort: delete everything labelled fieldtest=<run>
+SMOKE=1 ./cloudtest.sh   # cheapest 4-node run — validate the plumbing for pennies first
+./cloudtest.sh up        # bring the network up and leave it (debugging / iterate on scenarios)
+./cloudtest.sh run       # re-run the scenarios against an up network (no new spend)
+./cloudtest.sh down      # terraform destroy
+./cloudtest.sh nuke      # last resort: delete everything labelled cloudtest=<run>
 ```
 
 **First time? Follow `HANDOFF.md`** — a step-by-step shakedown runbook (no-spend
@@ -97,8 +97,8 @@ On top of that:
 3. **Optional budget alarm** — set `BUDGET_AMOUNT_USD` + `BILLING_ACCOUNT` for a
    GCP billing-budget backstop.
 
-If Terraform state is ever lost, `./fieldtest.sh nuke` deletes every resource by
-its `fieldtest=<run_id>` label. A full run on `e2-small` nodes for ~30 minutes is
+If Terraform state is ever lost, `./cloudtest.sh nuke` deletes every resource by
+its `cloudtest=<run_id>` label. A full run on `e2-small` nodes for ~30 minutes is
 a few dollars; `faithful` bond mode (bigger disks, longer plot time) costs more.
 
 ## FAST vs FAITHFUL bonds (read this before trusting a green)

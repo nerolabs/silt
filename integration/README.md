@@ -10,7 +10,7 @@ test you pick one:
 
 | | **Local (Docker)** | **GCP (real machines)** |
 |---|---|---|
-| Where | `integration/<name>/` (this dir) | `integration/fieldtest/` |
+| Where | `integration/<name>/` (this dir) | `integration/cloudtest/` |
 | Shape | **per-test** harnesses, one topology each | **one combined** multi-machine acceptance run |
 | Substrate | containers on **one host**, one Docker bridge | **real VMs across 3 regions**, real VPC/Cloud NAT |
 | Speed / cost | seconds–minutes, free | minutes, a few cents (SPOT), auto-torn-down |
@@ -73,13 +73,13 @@ suite that ran is PASS or a deliberately-reproduced FINDING.
 **GCP (real VMs, a few cents, auto-torn-down):** you need `gcloud`, `terraform`, Go, a
 billing-enabled project.
 ```sh
-cd integration/fieldtest
-./fieldtest.sh setup     # interactive: asks for your project + walks you through auth
-./fieldtest.sh           # build → provision → run flows → report → DESTROY
-./fieldtest.sh nuke      # last-resort teardown by label, if anything is ever left
+cd integration/cloudtest
+./cloudtest.sh setup     # interactive: asks for your project + walks you through auth
+./cloudtest.sh           # build → provision → run flows → report → DESTROY
+./cloudtest.sh nuke      # last-resort teardown by label, if anything is ever left
 ```
 Teardown is guaranteed (destroy-on-exit + a TTL self-destruct on every VM); always confirm
-`gcloud compute instances list --filter labels.fieldtest:*` is empty afterward.
+`gcloud compute instances list --filter labels.cloudtest:*` is empty afterward.
 
 ---
 
@@ -99,8 +99,8 @@ result is a durable, shareable artifact. Use today's date (`YYYY-MM-DD`).
   `integration/.run-all/<suite>.log`), the verdict, and — for a FINDING/FAIL — the failing
   assertion and the reproducer.
 
-**GCP** — after `./integration/fieldtest/fieldtest.sh`, file the same shape from
-`integration/fieldtest/report.md` + `results.jsonl`:
+**GCP** — after `./integration/cloudtest/cloudtest.sh`, file the same shape from
+`integration/cloudtest/report.md` + `results.jsonl`:
 - **`silt_cloud_fieldtest_<date>.md`** (roll-up across the flows + the #184 drills), and
 - **`silt_cloud_fieldtest_<flow>_<date>.md`** per flow (with the real over-the-wire evidence).
 
@@ -172,11 +172,11 @@ knobs (scale, file size, duration) are documented in each `run.sh` header.
 
 ---
 
-## GCP — real multi-machine acceptance *(via PR #209, `integration/fieldtest/`)*
+## GCP — real multi-machine acceptance *(`integration/cloudtest/`)*
 
-> This half lands with PR #209 (`fieldtest-gcp-52`). Until it's merged onto a
-> `main` that also carries the per-test harnesses above, the two live on separate
-> branches — rebase #209 onto current `main` to get both in one tree.
+The cloud substrate — where GCP is the judge (field-test immutable #5). Local
+Docker is the free, fast net above; this runs the same claims over real VMs, real
+cloud networks, and real multi-region latency.
 
 A **~13-node silt network across 3 regions** on real GCP VMs: 4 validators, 2
 storage nodes, a registry, a relay, a fetcher, a NAT gateway + NATed nodes, and
@@ -195,23 +195,23 @@ everything down.
 
 **Run it:**
 ```sh
-cd integration/fieldtest
+cd integration/cloudtest
 cp config.env.example config.env       # set PROJECT_ID (+ optional knobs)
-./fieldtest.sh                          # build → terraform apply → run → report → DESTROY
+./cloudtest.sh                          # build → terraform apply → run → report → DESTROY
 ```
 
 **Cost & safety — cheap-first, and it will not leak resources:**
 - SPOT instances; a hard **TTL self-destruct** (`shutdown -h +TTL_MINUTES`) so even
   a crashed orchestrator can't leave VMs running; **nuke-by-label**
-  (`./fieldtest.sh nuke`); optional billing-budget alarm.
+  (`./cloudtest.sh nuke`); optional billing-budget alarm.
 - Validate with **no spend** first (topology + `terraform validate`), then a
   **4-node SMOKE** run (pennies), then the full 13-node run.
 - Iterate for free: bring it up once with `KEEP_UP=1`, re-run scenarios with
-  `./fieldtest.sh run`, tear down when done.
-- **Always** verify teardown: `gcloud compute instances list --filter labels.fieldtest:*`
+  `./cloudtest.sh run`, tear down when done.
+- **Always** verify teardown: `gcloud compute instances list --filter labels.cloudtest:*`
   must be empty afterward.
 
-See `integration/fieldtest/README.md` for the full topology, knobs, and the
+See `integration/cloudtest/README.md` for the full topology, knobs, and the
 `HANDOFF.md` first-run guide.
 
 ---

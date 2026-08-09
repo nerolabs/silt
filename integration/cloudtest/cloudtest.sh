@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# fieldtest.sh — one-command GCP field test for silt (roadmap #52).
+# cloudtest.sh — one-command GCP field test for silt (roadmap #52).
 #
-#   ./fieldtest.sh setup      interactive: ask for project + walk through gcloud auth → write config.env
-#   ./fieldtest.sh            build → topology → apply → run flows → report → DESTROY
-#   ./fieldtest.sh up         bring the network up and leave it (implies KEEP_UP)
-#   ./fieldtest.sh run        run the scenarios against an already-up network
-#   ./fieldtest.sh report     regenerate the report from results.jsonl
-#   ./fieldtest.sh down       terraform destroy
-#   ./fieldtest.sh nuke       last-resort: delete every resource labelled fieldtest=<run>
+#   ./cloudtest.sh setup      interactive: ask for project + walk through gcloud auth → write config.env
+#   ./cloudtest.sh            build → topology → apply → run flows → report → DESTROY
+#   ./cloudtest.sh up         bring the network up and leave it (implies KEEP_UP)
+#   ./cloudtest.sh run        run the scenarios against an already-up network
+#   ./cloudtest.sh report     regenerate the report from results.jsonl
+#   ./cloudtest.sh down       terraform destroy
+#   ./cloudtest.sh nuke       last-resort: delete every resource labelled cloudtest=<run>
 #
 # Teardown is guaranteed: the default lifecycle destroys on EXIT (even on error),
 # every VM self-destructs after TTL_MINUTES, and `nuke` cleans up by label if
@@ -46,12 +46,12 @@ if [ "${1:-}" = setup ]; then
     echo "  ✓ wrote config.env (PROJECT_ID=$proj) — edit it to tune region/size/cost guards"
   fi
   echo "  ✓ setup complete. Next:"
-  echo "      SMOKE=1 ./fieldtest.sh     # cheap ~4-node first shakeout (pennies)"
-  echo "      ./fieldtest.sh             # full 13-node run → report → DESTROY"
+  echo "      SMOKE=1 ./cloudtest.sh     # cheap ~4-node first shakeout (pennies)"
+  echo "      ./cloudtest.sh             # full 13-node run → report → DESTROY"
   exit 0
 fi
 
-[ -f config.env ] || { echo "no config.env — run './fieldtest.sh setup' (interactive), or copy config.env.example and fill it in"; exit 1; }
+[ -f config.env ] || { echo "no config.env — run './cloudtest.sh setup' (interactive), or copy config.env.example and fill it in"; exit 1; }
 # shellcheck disable=SC1091
 . ./config.env
 : "${PROJECT_ID:?set PROJECT_ID in config.env}"
@@ -128,7 +128,7 @@ run_scenarios() {
 report() { echo "==> report"; RUN_ID="$RUN_ID" ./gen_report.sh; }
 
 teardown() {
-  [ "${KEEP_UP:-0}" = 1 ] && { echo "==> KEEP_UP=1 — leaving the network up. './fieldtest.sh down' when done."; return; }
+  [ "${KEEP_UP:-0}" = 1 ] && { echo "==> KEEP_UP=1 — leaving the network up. './cloudtest.sh down' when done."; return; }
   echo "==> DESTROY (run=$RUN_ID)"
   tf destroy -input=false -auto-approve \
     -var "project_id=$PROJECT_ID" -var "default_region=$REGION" -var "run_id=$RUN_ID" \
@@ -137,9 +137,9 @@ teardown() {
 }
 
 nuke() {
-  echo "==> nuke: deleting every resource labelled fieldtest=$RUN_ID in $PROJECT_ID"
+  echo "==> nuke: deleting every resource labelled cloudtest=$RUN_ID in $PROJECT_ID"
   gcloud compute instances list --project "$PROJECT_ID" \
-    --filter "labels.fieldtest=$RUN_ID" --format 'value(name,zone)' | while read -r name zone; do
+    --filter "labels.cloudtest=$RUN_ID" --format 'value(name,zone)' | while read -r name zone; do
     [ -n "$name" ] && gcloud compute instances delete "$name" --zone "$zone" --project "$PROJECT_ID" --quiet || true
   done
   echo "    (subnets/network/bucket: 'terraform destroy' is preferred; check the console if state was lost)"
@@ -156,5 +156,5 @@ case "${1:-all}" in
   report) report; ;;
   down)   KEEP_UP=0 teardown; ;;
   nuke)   nuke; ;;
-  *) echo "usage: ./fieldtest.sh [setup|all|up|run|report|down|nuke]"; exit 1; ;;
+  *) echo "usage: ./cloudtest.sh [setup|all|up|run|report|down|nuke]"; exit 1; ;;
 esac

@@ -186,6 +186,15 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   do; unset domains unchanged), `TestBondRegDomainSignatureBackwardCompatible`, `TestC2Metric_ConcentrationSignals`.
 
 ### Changed
+- **`integration/fieldtest/` → `integration/cloudtest/` — honest naming for the cloud substrate** (2026-08-09)
+  — The GCP harness is *the cloud variant* of the field test, so the directory now says so: renamed to
+  `integration/cloudtest/`, its orchestrator `fieldtest.sh` → `cloudtest.sh`, and the per-run GCP resource
+  label `fieldtest=<run_id>` → `cloudtest=<run_id>` (nuke-by-label filters updated in lockstep, so teardown
+  safety is unchanged). "Field test" remains the umbrella concept — local Docker is the free fast net,
+  `cloudtest/` is where GCP is the judge (field-test immutable #5). Docs, `.gitignore`, and cross-references
+  updated; the stale "lands with PR #209 on a separate branch" note is dropped now that the harness is on
+  `main`. No behaviour change — a rename + reference sweep. The `silt_{local,cloud}_fieldtest_<date>.md`
+  operator-report names (both substrates are field tests) are intentionally unchanged.
 - **Truth-in-labelling sweep + split-defense safe-default — remediating the M0 blind
   red-team + acceptance passes** (2026-08-08) — The reviews found the composition sound (no C1
   discount, no C2 capture, demand→standing firewall holds both directions) but flagged a cluster of
@@ -290,7 +299,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   The field-test scripts stay simple and emit clean per-test output; the dated `silt_local_fieldtest_<date>.md`
   / `silt_cloud_fieldtest_<date>.md` roll-ups + per-test detail reports are written by the operating agent,
   guided by a new **"For an LLM/agent operator"** section in `integration/README.md` (plus a Quick-start).
-  `./integration/fieldtest/fieldtest.sh setup` is now an **interactive** step — it asks for the GCP project,
+  `./integration/cloudtest/cloudtest.sh setup` is now an **interactive** step — it asks for the GCP project,
   walks the user through `gcloud auth` (login + the application-default creds Terraform needs), enables the
   required APIs, and writes `config.env` — so spinning up the cloud test needs no hand-editing.
 - **`integration/run-all.sh` + shared `integration/lib.sh` — the clone-and-run field-test experience**
@@ -302,7 +311,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   each suite otherwise re-implements; the suites still stand alone. Suite → M0-claim mapping lives in the
   driver's catalog.
 - **GCP field test — an automated multi-machine RC gate** (2026-08-08,
-  [#52](https://github.com/nerolabs/silt/issues/52)) — `integration/fieldtest/` spins up a real
+  [#52](https://github.com/nerolabs/silt/issues/52)) — `integration/cloudtest/` spins up a real
   ~13-node silt network across three GCP regions (validators, storage, a `-registry-only` node, a
   relay, a fetcher, a NAT gateway + natted peers, and an adversary), runs the acceptance flows
   (publish → commit → fetch bit-perfect, earned-standing validator onboarding, multi-validator

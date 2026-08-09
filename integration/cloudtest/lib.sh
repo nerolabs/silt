@@ -3,7 +3,7 @@
 # Sourced, not executed. Targets bash 3.2+ (macOS default) — no associative arrays.
 
 FT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-: "${NODES_JSON:=$FT_DIR/nodes.json}"        # terraform output -json nodes, written by fieldtest.sh
+: "${NODES_JSON:=$FT_DIR/nodes.json}"        # terraform output -json nodes, written by cloudtest.sh
 : "${RESULTS_JSONL:=$FT_DIR/results.jsonl}"  # one line per SLO check
 : "${PROJECT_ID:?PROJECT_ID must be set (config.env)}"
 

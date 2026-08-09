@@ -13,7 +13,7 @@ variable "default_region" {
 
 variable "run_id" {
   type        = string
-  description = "Unique label for this run; every resource is tagged fieldtest=<run_id> so a `gcloud`-nuke-by-label can clean up even if Terraform state is lost."
+  description = "Unique label for this run; every resource is tagged cloudtest=<run_id> so a `gcloud`-nuke-by-label can clean up even if Terraform state is lost."
 }
 
 variable "machine_type" {

@@ -44,4 +44,4 @@ KEEP=1 ./run.sh                     # leave the swarm up to poke at
 
 Isolate the variable: `POLLUTERS=0` measures raw scale; a high `POLLUTERS` with a
 low `HOLDERS` measures churn pressure. On GCP this maps to a large multi-region
-swarm where the coverage/discovery cliff is realistic — see `integration/fieldtest`.
+swarm where the coverage/discovery cliff is realistic — see `integration/cloudtest`.

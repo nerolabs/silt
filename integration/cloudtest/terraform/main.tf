@@ -7,7 +7,7 @@ locals {
   public_nodes = { for k, v in var.nodes : k => v if v.role != "natted" && v.role != "natgw" }
   nat_nodes    = { for k, v in var.nodes : k => v if v.role == "natted" }
   natgw_nodes  = { for k, v in var.nodes : k => v if v.role == "natgw" }
-  labels       = { fieldtest = var.run_id }
+  labels       = { cloudtest = var.run_id }
 }
 
 # ── Network ────────────────────────────────────────────────────────────────────
@@ -230,7 +230,7 @@ resource "google_compute_instance" "natted" {
 resource "google_billing_budget" "cap" {
   count           = var.budget_amount_usd > 0 && var.billing_account != "" ? 1 : 0
   billing_account = var.billing_account
-  display_name    = "silt-fieldtest-${var.run_id}"
+  display_name    = "silt-cloudtest-${var.run_id}"
   budget_filter {
     projects = ["projects/${var.project_id}"]
   }
