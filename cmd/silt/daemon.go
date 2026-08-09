@@ -416,8 +416,20 @@ func cmdDaemon(args []string) error {
 				return fmt.Errorf("objective consensus needs a positive -min-bond: %q", *minBond)
 			}
 			minBondBytes = mb
-			if len(anchorSet) == 0 || *matureValidators <= 0 {
-				fmt.Println("consensus: WARNING — objective fork-choice (the default M0 path) needs -anchors (the launch validator set) and -mature-validators>0 to bootstrap a MULTI-validator quorum; without them such a swarm will not commit. Pass them, or -min-rep 0 for a trusted swarm, or -objective=false for the legacy (non-M0) path.")
+			// Cold-start safe-default (red-team seam-2, 2026-08-08). A stock untrusted
+			// objective validator with no scaffolding treats itself as MATURE from
+			// genesis — Mature() returns true when MatureValidators<=0, so everMature
+			// latches on the first block and the anchor co-sign the young regime needs
+			// never engages: a young or Sybil quorum can self-certify mature and
+			// capture. There is no sound *synthesizable* anchor set (weak-subjectivity
+			// irreducibility — you cannot bootstrap trust in the validator set from the
+			// validator set), so the safe default is to REFUSE, not warn (mirroring the
+			// -min-bond hard failure above). Two legitimate paths satisfy it: LAUNCH a
+			// fresh network with the anchor training-wheels set, or JOIN an already-
+			// mature one with a weak-subjectivity checkpoint. Asserted safe-by-default
+			// in invariant_b_test.go (S6).
+			if !coldStartScaffoldOK(useObjective, len(anchorSet), *matureValidators, *wsCheckpoint) {
+				return fmt.Errorf("consensus: refusing to start — an untrusted objective validator with no cold-start scaffolding would treat itself as mature from genesis (no anchor co-sign), letting a young or Sybil quorum self-certify and capture. Launch a fresh network with -anchors ID,... and -mature-validators N (the training-wheels launch set), OR join an already-mature network with -ws-checkpoint HEIGHT:HASH; alternatively -min-rep 0 for a trusted swarm, or -objective=false for the legacy (non-M0) path")
 			}
 		}
 		// The objective anti-release floor and re-challenge cadence (retest G4)
@@ -1149,6 +1161,24 @@ func (e *ephemeral) close() {
 // measured ~270 MB/s plot throughput (bond.BenchmarkSeal) and this daemon's ~2s
 // window that threshold is ~540 MiB, so this default carries ~2x margin.
 const DerivedBondFloor = int64(1) << 30 // 1 GiB
+
+// coldStartScaffoldOK reports whether an untrusted objective validator has the
+// cold-start scaffolding it needs to be safe from genesis (red-team seam-2 /
+// Invariant B S6). Either satisfies it: the anchor LAUNCH set (anchors +
+// mature-validators>0), which imposes the anchor co-sign until the network
+// measurably decentralizes; or a weak-subjectivity CHECKPOINT, which is how a
+// node safely JOINS an already-mature network without re-supplying the launch
+// set. With neither, a stock validator latches everMature at genesis and runs
+// with no cold-start gate — the seam-2 hole. Off the untrusted objective path
+// (trusted/legacy) there is nothing to gate.
+func coldStartScaffoldOK(useObjective bool, anchorCount, matureValidators int, wsCheckpoint string) bool {
+	if !useObjective {
+		return true
+	}
+	hasLaunchSet := anchorCount > 0 && matureValidators > 0
+	hasCheckpoint := wsCheckpoint != ""
+	return hasLaunchSet || hasCheckpoint
+}
 
 // effectiveBondFloor decides the anti-release floor (M0 retest G4-residual).
 // Shipping the floor mechanism but defaulting it OFF left a doc-following open

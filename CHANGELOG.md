@@ -9,6 +9,20 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Security
+- **seam-2: an untrusted objective validator refuses to start without cold-start scaffolding** (2026-08-09)
+  — The same blind red-team pass found that a stock untrusted objective validator (the default M0 path)
+  shipped with `-anchors`/`-mature-validators` unset, so `Mature()` returns true at genesis
+  (`MatureValidators<=0`), the node **latches `everMature` at the first block**, and the anchor co-sign
+  the young regime relies on **never engages** — a young or Sybil quorum could self-certify mature and
+  capture. Only a *liveness* WARNING guarded it. This is the "fixed but off by default" meta-pattern
+  Invariant B exists to catch (the enumeration had **no cold-start row**). Fixed: the daemon now
+  **refuses to start** (like the existing `-min-bond<=0` hard failure) unless the operator supplies
+  either the anchor **launch set** (`-anchors …` + `-mature-validators N`, to bootstrap a fresh network)
+  or a **weak-subjectivity checkpoint** (`-ws-checkpoint HEIGHT:HASH`, to safely *join* an already-mature
+  one). Refuse-to-start is *forced*, not merely prudent: there is no sound synthesizable anchor set
+  (weak-subjectivity irreducibility — you cannot bootstrap trust in the validator set from the validator
+  set). Locked by a new **Invariant-B S6 row** (`coldStartScaffoldOK`). Off the untrusted objective path
+  (trusted `-min-rep 0` / legacy `-objective=false`) nothing changes.
 - **BREAK 2: the shipped desktop client now defaults its eclipse defenses ON** (2026-08-09) — A second
   blind red-team pass found that `silt client` built its node from raw `node.DefaultConfig()`, where the
   H5-B eclipse-resistance defenses ship OFF (`DHTDomainCap = 0`, `RequireSignedProviders = false`) —

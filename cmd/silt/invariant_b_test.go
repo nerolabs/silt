@@ -33,6 +33,13 @@ import "testing"
 //                            key-surround can't censor a root at the routing layer for a user
 //                            who opted into no takedown. The daemon and swarm fetcher already
 //                            defaulted these on; the client path had shipped them off.
+//   S6 cold-start scaffold → REFUSE-BY-DEFAULT (seam-2), asserted here (via coldStartScaffoldOK):
+//                            an untrusted objective validator with no anchor launch set and no
+//                            weak-subjectivity checkpoint would latch everMature at genesis and
+//                            run with no anchor co-sign — a young/Sybil quorum could self-certify
+//                            mature and capture. No sound synthesizable anchor set exists
+//                            (weak-subjectivity irreducibility), so the safe default is to refuse
+//                            to start (like -min-bond<=0), not warn.
 
 // TestInvariantB_S1_AntiReleaseFloorOnByDefault asserts the untrusted-validator
 // DEFAULT (no -min-bond-floor passed, objective path) imposes the anti-release
@@ -141,5 +148,37 @@ func TestInvariantB_S5_ClientEclipseDefenseOnByDefault(t *testing.T) {
 	}
 	if !cfg.RequireSignedProviders {
 		t.Fatal("Invariant B (S5/BREAK 2) violated: the shipped client must reject forged/unsigned provider records by default")
+	}
+}
+
+// TestInvariantB_S6_ColdStartScaffoldRefusedByDefault asserts that an untrusted
+// objective validator (the M0 default path) with NO cold-start scaffolding is
+// REFUSED, not run — closing the red-team seam-2 (2026-08-08) hole where a stock
+// validator latches everMature at genesis and imposes no anchor co-sign, letting a
+// young or Sybil quorum self-certify mature and capture. Either the anchor launch
+// set (anchors + mature-validators>0) or a weak-subjectivity checkpoint satisfies
+// it; off the untrusted objective path there is nothing to gate. Refuse-to-start is
+// FORCED by weak-subjectivity irreducibility — there is no sound synthesizable
+// anchor set — so it is the correct safe default, not merely prudent.
+func TestInvariantB_S6_ColdStartScaffoldRefusedByDefault(t *testing.T) {
+	// Stock untrusted objective defaults: no anchors, mature-validators=0, no checkpoint → REFUSE.
+	if coldStartScaffoldOK(true /*useObjective*/, 0 /*anchors*/, 0 /*matureValidators*/, "" /*wsCheckpoint*/) {
+		t.Fatal("Invariant B (S6/seam-2) violated: an untrusted objective validator with no cold-start scaffolding must be refused (it would latch everMature at genesis with no anchor gate)")
+	}
+	// Anchor launch set (anchors + mature-validators>0) satisfies it.
+	if !coldStartScaffoldOK(true, 2, 2, "") {
+		t.Fatal("an anchor launch set (anchors + mature-validators>0) must satisfy cold-start scaffolding")
+	}
+	// Partial launch set (anchors but mature-validators=0) is NOT enough — the gate never engages.
+	if coldStartScaffoldOK(true, 2, 0, "") {
+		t.Fatal("anchors without mature-validators>0 must NOT satisfy cold-start (the anchor gate never engages)")
+	}
+	// A weak-subjectivity checkpoint (the join path) satisfies it.
+	if !coldStartScaffoldOK(true, 0, 0, "100:deadbeef") {
+		t.Fatal("a weak-subjectivity checkpoint must satisfy cold-start (safely joining a matured network)")
+	}
+	// Off the untrusted objective path (trusted/legacy) there is nothing to gate.
+	if !coldStartScaffoldOK(false, 0, 0, "") {
+		t.Fatal("a trusted/non-objective node must not be gated on cold-start scaffolding")
 	}
 }
