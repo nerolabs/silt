@@ -115,32 +115,32 @@ const (
 	MsgAddProviderAck
 	MsgStoreChunk // ChunkID + Data: push a chunk to a peer
 	MsgStoreChunkAck
-	MsgFetchChunk         // ChunkID
-	MsgFetchChunkReply    // Found + Data
-	MsgHasChunk           // ChunkID: cheap availability probe (repair loop)
-	MsgHasChunkReply      // Found
-	MsgChallenge          // ChunkID + PorSeed/PorCount: prove you hold this shard of Proof.Root
-	MsgChallengeReply     // Found + Proof + PoR proof (PorMu/PorSigma/PorBlocks)
-	MsgProposeBlock       // Data: CBOR block awaiting attestation
-	MsgAttestReply        // OK + Data: CBOR attestation (or OK=false refusal)
-	MsgCommitBlock        // Data: CBOR block with quorum attached
-	MsgCommitAck          // OK
-	MsgGetChain           // Height: send me blocks from here up
-	MsgChainReply         // Data: CBOR []Block
-	MsgCheckReachability  // Nonce: "dial me back at my advertised address"
-	MsgReachabilityReply  // Nonce: the dial-back landed (its arrival is the proof)
-	MsgBondChallenge      // Nonce: prove you still hold the storage bond you advertised
-	MsgBondReply          // Data: CBOR bond.Answer (empty if the bond isn't held)
-	MsgTokenRequest       // Data: a blinded publish-token serial to blind-sign (fee charged to sender)
-	MsgTokenReply         // Data: the blind signature; OK=false if refused
-	MsgGetIssuerKey       // ask a validator for its publish-token issuer public key
-	MsgIssuerKeyReply     // Data: the issuer public key (blindtoken.MarshalPub); OK=false if none
-	MsgSubmitBondReg      // Data: a fresh CBOR BondReg a validator submits for a proposer to include (H2 non-proposer renewal)
-	MsgSubmitBondRegAck   // OK: the renewal was received (queued if valid for the current head)
-	MsgRepairClaim        // Data: a CBOR repairproof.RepairClaim — "I placed a correct rebuilt shard on Holder; verify and pay the bounty" (H7)
-	MsgRepairVote         // OK: the caretaker independently verified correctness+retrievability and settled the verdict on its own ledger (H7)
-	MsgDeliveryReceipt    // Data: a CBOR demand.SubmittedReceipt — a fetcher's PoR-bound, token-spending ack that a server delivered an object (D-DEMAND #181)
-	MsgDeliveryReceiptAck // OK: the server banked the receipt (witnessed-demand credited)
+	MsgFetchChunk            // ChunkID
+	MsgFetchChunkReply       // Found + Data
+	MsgHasChunk              // ChunkID: cheap availability probe (repair loop)
+	MsgHasChunkReply         // Found
+	MsgChallenge             // ChunkID + PorSeed/PorCount: prove you hold this shard of Proof.Root
+	MsgChallengeReply        // Found + Proof + PoR proof (PorMu/PorSigma/PorBlocks)
+	MsgProposeBlock          // Data: CBOR block awaiting attestation
+	MsgAttestReply           // OK + Data: CBOR attestation (or OK=false refusal)
+	MsgCommitBlock           // Data: CBOR block with quorum attached
+	MsgCommitAck             // OK
+	MsgGetChain              // Height: send me blocks from here up
+	MsgChainReply            // Data: CBOR []Block
+	MsgCheckReachability     // Nonce: "dial me back at my advertised address"
+	MsgReachabilityReply     // Nonce: the dial-back landed (its arrival is the proof)
+	MsgBondChallenge         // Nonce: prove you still hold the storage bond you advertised
+	MsgBondReply             // Data: CBOR bond.Answer (empty if the bond isn't held)
+	MsgTokenRequest          // Data: a blinded publish-token serial to blind-sign (fee charged to sender)
+	MsgTokenReply            // Data: the blind signature; OK=false if refused
+	MsgGetIssuerKey          // ask a validator for its publish-token issuer public key
+	MsgIssuerKeyReply        // Data: the issuer public key (blindtoken.MarshalPub); OK=false if none
+	MsgSubmitBondReg         // Data: a fresh CBOR BondReg a validator submits for a proposer to include (H2 non-proposer renewal)
+	MsgSubmitBondRegAck      // OK: the renewal was received (queued if valid for the current head)
+	MsgRepairClaim           // Data: a CBOR repairproof.RepairClaim — "I placed a correct rebuilt shard on Holder; verify and pay the bounty" (H7)
+	MsgRepairVote            // OK: the caretaker independently verified correctness+retrievability and settled the verdict on its own ledger (H7)
+	MsgDeliveryReceipt       // Data: a CBOR demand.SubmittedReceipt — a fetcher's PoR-bound, token-spending ack that a server delivered an object (D-DEMAND #181)
+	MsgDeliveryReceiptAck    // OK: the server banked the receipt (witnessed-demand credited)
 	MsgGetCanonicalIssuers   // ask a chain-holder for the deterministic canonical issuer set (top-k by committed bond) — publisher privacy (R-3)
 	MsgCanonicalIssuersReply // Data: concatenated 32-byte NodeIDs, heaviest-bond first; OK=false if no chain
 )
