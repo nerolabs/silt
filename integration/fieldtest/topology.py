@@ -147,7 +147,7 @@ def main():
         role, ip = n["role"], n["ip"]
         if role == "validator":
             attesters = ",".join(nodes[v]["nodeid"] for v in validators if v != name)
-            a = (f"daemon {common} -advertise {ip}:{SWARM_PORT} -validator -objective "
+            a = (f"daemon -id-seed {n['seed']} {common} -advertise {ip}:{SWARM_PORT} -validator -objective "
                  f"-min-bond {min_bond} -min-bond-floor {min_floor} -mature-validators {n_val} "
                  f"-anchors {anchors} -attesters {attesters} -quorum {quorum} "
                  f"-bond {bond} -bond-audit 30s -capacity 5G")
@@ -157,20 +157,20 @@ def main():
                 a += f" -bootstrap {bootstrap}"
             return a
         if role == "storage":
-            return f"daemon {common} -advertise {ip}:{SWARM_PORT} -bootstrap {bootstrap} -capacity 5G"
+            return f"daemon -id-seed {n['seed']} {common} -advertise {ip}:{SWARM_PORT} -bootstrap {bootstrap} -capacity 5G"
         if role == "registry":
-            return f"daemon -store {STORE} -log info -registry-only -serve-registry 0.0.0.0:{REGISTRY_PORT}"
+            return f"daemon -id-seed {n['seed']} -store {STORE} -log info -registry-only -serve-registry 0.0.0.0:{REGISTRY_PORT}"
         if role == "relay":
-            return (f"daemon {common} -advertise {ip}:{SWARM_PORT} -bootstrap {bootstrap} "
+            return (f"daemon -id-seed {n['seed']} {common} -advertise {ip}:{SWARM_PORT} -bootstrap {bootstrap} "
                     f"-relay 0.0.0.0:{RELAY_PORT} -capacity 5G")
         if role == "fetcher":
-            return f"daemon {common} -advertise {ip}:{SWARM_PORT} -bootstrap {bootstrap} -capacity 2G"
+            return f"daemon -id-seed {n['seed']} {common} -advertise {ip}:{SWARM_PORT} -bootstrap {bootstrap} -capacity 2G"
         if role == "natted":
             # un-dialable (no -advertise): must reach the swarm THROUGH the relay
-            return f"daemon {common} -bootstrap {bootstrap} -relay-via {relay_ref} -capacity 2G"
+            return f"daemon -id-seed {n['seed']} {common} -bootstrap {bootstrap} -relay-via {relay_ref} -capacity 2G"
         if role == "adversary":
             # honest by default; #184 scenarios relaunch it with -equivocate/-forge-block/etc.
-            return (f"daemon {common} -advertise {ip}:{SWARM_PORT} -bootstrap {bootstrap} "
+            return (f"daemon -id-seed {n['seed']} {common} -advertise {ip}:{SWARM_PORT} -bootstrap {bootstrap} "
                     f"-validator -objective -min-bond {min_bond} -min-bond-floor {min_floor} "
                     f"-anchors {anchors} -quorum {quorum} -bond {bond} -bond-audit 30s -capacity 2G")
         if role == "natgw":
