@@ -622,6 +622,19 @@ func (c *Chain) RequiredQuorum() int {
 // proves possession AT this position and cannot be replayed to another height
 // or fork. A registrant (see NewBondReg) computes its space-time answer for this
 // nonce; the chain re-derives it identically at validation.
+//
+// HONESTLY WEAK, by necessity (seam-6, red-team 2026-08-08): this nonce is
+// deterministic and therefore PREDICTABLE — once `prev` commits, a validator knows
+// the exact challenge for its next on-chain renewal, so the on-chain path alone does
+// not bound release-and-recompute-just-in-time. It cannot be made unpredictable
+// without a randomness beacon (M0 has none) and MUST stay a pure function of
+// committed history so every replica re-derives it identically for objective
+// verification. The coast it would otherwise permit is bounded ELSEWHERE: (1) the
+// parallel LIVE peer-audit (core/node/bondaudit.go) issues an UNPREDICTABLE nonce
+// (n.rid, peer-initiated) at random, and (2) that live audit now carries the
+// BondMaxAnswerLatency reply-deadline (BREAK 1 / owned-residuals A5), so a prover
+// that released and must recompute past the ~0.25 knee fails it. So the predictable
+// on-chain nonce is a documented weakness held by the live-audit path, not a hole.
 func BondRegNonce(prev ports.Hash) uint64 {
 	h := sha256.Sum256(append([]byte("silt/chain/bondreg/nonce/v1"), prev[:]...))
 	return binary.BigEndian.Uint64(h[:8])
