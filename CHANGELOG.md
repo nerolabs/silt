@@ -277,6 +277,14 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
     takedown of a shared root.
 
 ### Added
+- **`integration/run-all.sh` + shared `integration/lib.sh` — the clone-and-run field-test experience**
+  (2026-08-09) — One driver runs the local Docker suites in sequence (each owns its topology, so they run
+  one at a time), captures each suite's real `RESULT:` line + duration, and writes a shareable consolidated
+  `report.md` plus a terminal summary; exit 0 iff every suite that ran is PASS or a deliberately-reproduced
+  FINDING. Runs the fast gate set by default (`FULL=1` adds the slow `soak`/`upgrade` suites; `SUITES="…"`
+  picks a subset). `lib.sh` factors the shared shell — RESULT classification, timing, prereq checks — that
+  each suite otherwise re-implements; the suites still stand alone. Suite → M0-claim mapping lives in the
+  driver's catalog.
 - **`-registry-only` — the leanest public-registry role** (2026-08-08,
   [#47](https://github.com/nerolabs/silt/issues/47)) — A daemon started with `-registry-only` serves a
   file-backed registry over HTTPS and constructs **no storage node at all** — no DHT, chunk store,
