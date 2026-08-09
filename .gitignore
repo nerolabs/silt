@@ -34,3 +34,4 @@ _examples_*/
 integration/audit/silt
 integration/economy/silt
 integration/soak/silt
+integration/.run-all/
