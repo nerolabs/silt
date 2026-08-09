@@ -27,18 +27,61 @@ ft_regref() { # scrape the pinned registry ref the boot validator prints
 PEERS=""; REGREF=""
 ft_init_refs() { PEERS="$(ft_peers)"; REGREF="$(ft_regref)"; }
 
+# TOKEN_QUORUM: publish-token signatures gathered per publish (privacy: unlinkable
+# above 0). Default 2. A -token-quorum publish needs the PUBLISHER to reach that
+# many validators for signatures — distinct from validator<->validator reachability.
+# At genesis there are no committed bonds to rank canonical signers, so it falls back
+# to -peers order (a nominal-privacy note). Set TOKEN_QUORUM=1 (or 0) for a first
+# bootstrap run if publisher->validator egress is the thing under test.
+: "${TOKEN_QUORUM:=2}"
+
+# ft_reachable_peers NODE — from NODE, how many of the -peers validators are TCP-
+# reachable on the swarm port? Prints "OK/TOTAL"; lists unreachable refs on stderr.
+# This attributes a token-gather shortfall to the publisher->validator path, which
+# is the usual cause of "could not gather enough publish-token signatures" and a
+# chain stuck at height 0 (the block only commits once a publish proposes it).
+ft_reachable_peers() { # ft_reachable_peers NODE
+  local node="$1" ref hostport host port ok=0 total=0 bad=""
+  for ref in ${PEERS//,/ }; do
+    [ -n "$ref" ] || continue
+    total=$((total + 1))
+    hostport="${ref#*@}"; host="${hostport%:*}"; port="${hostport##*:}"
+    if ssh_node "$node" "timeout 3 bash -c ': </dev/tcp/$host/$port' 2>/dev/null"; then
+      ok=$((ok + 1))
+    else
+      bad="$bad ${host}:${port}"
+    fi
+  done
+  [ -n "$bad" ] && echo "  unreachable from $node:$bad" >&2
+  printf '%s/%s' "$ok" "$total"
+}
+
 # publish a fresh random file on a node; echoes "LINK SHA" on success, empty on fail
 ft_publish() { # ft_publish NODE SIZE_BYTES
-  local node="$1" size="${2:-1048576}" out link
+  local node="$1" size="${2:-1048576}" out link lasterr=""
   ssh_node "$node" "head -c $size </dev/urandom >/tmp/ft_src.bin; sha256sum /tmp/ft_src.bin | cut -d' ' -f1" >/tmp/ft_src_sha 2>/dev/null
   local sha; sha="$(cat /tmp/ft_src_sha 2>/dev/null)"
   local deadline=$(( $(date +%s) + PUBLISH_RETRY_S ))
   while [ "$(date +%s)" -lt "$deadline" ]; do
-    out="$(ssh_node "$node" "/usr/local/bin/silt swarm add /tmp/ft_src.bin -peers '$PEERS' -registry '$REGREF' -token-quorum 2 -chunk-size 65536" 2>&1 || true)"
+    out="$(ssh_node "$node" "/usr/local/bin/silt swarm add /tmp/ft_src.bin -peers '$PEERS' -registry '$REGREF' -token-quorum $TOKEN_QUORUM -chunk-size 65536" 2>&1 || true)"
     link="$(printf '%s' "$out" | grep -oE 'silt:v1:\S+' | head -1)"
     [ -n "$link" ] && { printf '%s %s\n' "$link" "$sha"; return 0; }
+    lasterr="$(printf '%s' "$out" | grep -iE 'could not gather|not enough|no canonical|token|refus|unreachable|timed? ?out' | head -2 | tr '\n' ';')"
     sleep 4
   done
+  # Diagnose so a failed publish is actionable, not a bare "no link produced". The
+  # single most common cause is the publisher reaching < TOKEN_QUORUM validators.
+  local reach; reach="$(ft_reachable_peers "$node")"
+  {
+    echo "ft_publish FAILED after ${PUBLISH_RETRY_S}s on $node (token-quorum=$TOKEN_QUORUM)"
+    echo "  publisher->validator reachability: $reach of the -peers set reachable"
+    echo "  last silt error: ${lasterr:-<none captured>}"
+    echo "  note: token-quorum needs the publisher to reach >= $TOKEN_QUORUM validators to"
+    echo "        gather signatures. A shortfall here — not validator<->validator — is the"
+    echo "        usual cause of 'could not gather enough publish-token signatures' and a"
+    echo "        chain stuck at height 0. Retry a bootstrap run with TOKEN_QUORUM=1, or"
+    echo "        fix publisher egress to the validators."
+  } >&2
   return 1
 }
 
