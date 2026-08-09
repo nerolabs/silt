@@ -906,30 +906,54 @@ func (w *walk) step() {
 	if w.finished {
 		return
 	}
-	if w.l.Done() {
-		w.finished = true
-		w.done(w.l.Result())
-		return
-	}
-	for _, peer := range w.l.NextQueries() {
-		peer := peer
-		w.n.request(peer, ports.Message{Kind: w.kind, Target: w.target}, func(resp ports.Message, err error) {
-			if w.finished {
-				return
-			}
-			if err != nil {
+	now := w.n.clock.Now()
+	for {
+		if w.l.Done() {
+			w.finished = true
+			w.done(w.l.Result())
+			return
+		}
+		queries := w.l.NextQueries()
+		if len(queries) == 0 {
+			return // at alpha in-flight; the outstanding callbacks will re-step
+		}
+		dispatched := 0
+		for _, peer := range queries {
+			peer := peer
+			// Skip a peer we recently failed to reach. Dialing a dead routing
+			// entry costs a full RequestTimeout, and a repair sweep walking many
+			// keys drowns in these stale dials before it can probe a single shard
+			// — the churn dial-storm: the caretaker never finishes a sweep, never
+			// sees the loss, never repairs. Fail it in the lookup without the dial
+			// (mirrors the fetch/probe negative cache, #226); a later walk past
+			// its cooldown re-queries it in case it recovered.
+			if until, dead := w.n.deadUntil[peer]; dead && now < until {
 				w.l.OnFailure(peer)
-			} else {
-				w.l.OnReply(peer, resp.Nodes)
-				for _, id := range resp.Nodes {
-					w.n.table.Observe(id)
-				}
-				if w.onProviders != nil && len(resp.ProviderRecs) > 0 && w.onProviders(resp.ProviderRecs) {
-					w.finished = true // caller has what it needs
+				continue
+			}
+			dispatched++
+			w.n.request(peer, ports.Message{Kind: w.kind, Target: w.target}, func(resp ports.Message, err error) {
+				if w.finished {
 					return
 				}
-			}
-			w.step()
-		})
+				if err != nil {
+					w.l.OnFailure(peer)
+				} else {
+					w.l.OnReply(peer, resp.Nodes)
+					for _, id := range resp.Nodes {
+						w.n.table.Observe(id)
+					}
+					if w.onProviders != nil && len(resp.ProviderRecs) > 0 && w.onProviders(resp.ProviderRecs) {
+						w.finished = true // caller has what it needs
+						return
+					}
+				}
+				w.step()
+			})
+		}
+		if dispatched > 0 {
+			return // real requests in flight; their callbacks drive the walk
+		}
+		// every candidate this round was cooled down — loop to advance the lookup
 	}
 }

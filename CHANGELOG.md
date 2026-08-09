@@ -230,6 +230,40 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   transiently and has since re-announced is still dialed, preserving cross-NAT reprovide, #69). Stamped
   centrally (so `NetGet` benefits too) but consulted only in the fetch path, leaving consensus/DHT
   re-probes untouched; the map is bounded (`maxDeadHolders`). Regressions in `fetch_deadcache_test.go`.
+- **The dead-holder negative cache now also covers the repair PROBE path and the DHT walk** (2026-08-09) —
+  Follow-on to the fetch-path fix above, which stamped `deadUntil` centrally but consulted it only in the
+  fetch dial path, leaving the two other places a repair sweep dials stale records exposed: (1) the
+  dispersion audit's `probeShard` `MsgHasChunk` loop and (2) the provider-discovery **DHT walk**
+  (`walk.step`, `MsgGetProviders`), which a caretaker runs for *every* key it cares about. Under churn a
+  caretaker with many stale routing/provider records to `docker kill`ed holders spent a full
+  `RequestTimeout` per dead record, so a single sweep never completed — the caretaker never registered the
+  loss and never repaired (surfaced by `integration/churn/`, which stalls on small swarms; the true
+  degradation happens at GCP scale where k=10 actually strands stripes). Both paths now skip a holder still
+  in cooldown — the walk fails it in the Kademlia lookup without a dial, the probe skips it — each **only
+  when a live alternative exists** (`anyLive`), so a sole transiently-timed-out holder that has since
+  recovered is still dialed (#69 preserved). Regressions in `repair_deadcache_test.go` (walk-skips,
+  walk-without-cooldown control, probe-skips). A dial-storm reduction — necessary but, as the next entry
+  found, not the whole churn story.
+- **Repair-under-churn now actually completes: parallel shard probing + a visible sweep (#235)** (2026-08-09) —
+  The `integration/churn` field test stalled: a caretaker killed holders never repaired. Root cause, found
+  by instrumenting the sweep: `repairRootWithLayout` probed every shard **strictly serially**
+  (`probeNext(i+1)` inside each probe's callback), so once holders die each dead-holder dial costs a full
+  `RequestTimeout` **in series** — a large file's sweep can't finish within a `RepairInterval`, the
+  caretaker never reaches `repairStripes`, and nothing is ever repaired. The healthy first sweep completed
+  only because every dial returned in ~ms. Two fixes: **(1)** the probe phase now fans out with bounded
+  concurrency (`repairProbeConcurrency`), so dead-holder timeouts overlap and a sweep completes in seconds
+  under churn (safe on the single-threaded event loop — probe callbacks mutate sweep state on the loop, the
+  same model as the DHT walk's in-flight fan-out); **(2)** the sweep is no longer **silent** — it logs
+  `repair sweep complete` with the reachable-shard count, and its previously-invisible no-op early-returns
+  (`registry lookup failed`, `manifest not yet reassembled`, `layout not loadable`) now log why, so a
+  caretaker that can't sweep is diagnosable instead of looking identical to a healthy one (**#235**). With
+  this, the caretaker reconstructs stranded stripes from parity and re-scatters, and `integration/churn`
+  passes honestly (reachable drops after a kill → `stripe repaired` → bit-perfect re-fetch).
+- **`silt swarm add -replication N`** (2026-08-09) — Expose the placement replication factor (previously a
+  compiled-in 3) as a publisher flag; parity across holders backstops copies, so even 1 is viable. Lets a
+  small-swarm test strand a column with a single kill, which makes caretaker repair **deterministically**
+  reproducible on a laptop: `integration/churn` now runs at `REPLICATION=1` as a fast, deterministic gate
+  and documents `REPLICATION=3 HOLDERS>=50` on the GCP harness as the faithful, shipped-default variant.
 - **Acceptance-pass documentation gaps** (2026-08-08) — From the fresh-operator acceptance pass (all
   nine flows worked; these were doc/test issues, not broken capabilities):
   - `docs/user-seam.md` Role 4 "become a validator" walkthrough errored as written — the default

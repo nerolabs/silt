@@ -19,6 +19,16 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
+// repairProbeConcurrency bounds how many shard-availability probes a single
+// repair sweep keeps in flight. A serial sweep pays a full RequestTimeout for
+// each dead holder in series, so a large file under churn can't finish a sweep
+// within a repair interval — the caretaker never reaches repairStripes and never
+// repairs. Fanning the probes out lets dead-holder timeouts overlap, so a sweep
+// completes in seconds. Safe on the single-threaded event loop: probe callbacks
+// mutate sweep state on the loop, never concurrently (same model as the DHT
+// walk's in-flight fan-out).
+const repairProbeConcurrency = 32
+
 // Care makes this node a caretaker of root: the repair loop starts
 // unconditionally (a sweep that finds nothing fetchable just retries
 // next interval — an earlier version gated the loop on the first
@@ -166,6 +176,9 @@ func (n *Node) repairRoot(ch link.CareHandle, done func()) {
 	}
 	entry, ok, err := n.reg.Lookup(bg(), ch.Root)
 	if err != nil || !ok {
+		// Observability (#235): a silent skip here hid a caretaker that could
+		// not even resolve the entry — indistinguishable from a healthy sweep.
+		n.logf(ports.LogInfo, "repair sweep skipped: registry lookup failed", "root", ch.Root, "err", err)
 		done()
 		return
 	}
@@ -174,6 +187,12 @@ func (n *Node) repairRoot(ch link.CareHandle, done func()) {
 	// than sitting out the crisis.
 	n.fetchAll(entry.ManifestChunks, func(missing []ports.ChunkID) {
 		if len(missing) > 0 {
+			// Observability (#235): this silent return is the churn stall — a
+			// caretaker that never reassembles the manifest never reaches the
+			// probe/repair stage, and before this log it did so invisibly (the
+			// sweep produced no output, indistinguishable from all-healthy).
+			n.logf(ports.LogInfo, "repair sweep waiting: manifest not yet reassembled",
+				"root", ch.Root, "manifest-missing", len(missing), "of", len(entry.ManifestChunks))
 			done() // swarm can't supply it right now; retry next sweep
 			return
 		}
@@ -189,6 +208,7 @@ func (n *Node) repairRoot(ch link.CareHandle, done func()) {
 func (n *Node) repairRootWithLayout(entry ports.Entry, ch link.CareHandle, done func()) {
 	m, err := pipeline.LoadLayout(bg(), n.store, entry, ch)
 	if err != nil || m.K == 0 || len(m.Chunks) == 0 {
+		n.logf(ports.LogInfo, "repair sweep skipped: layout not loadable", "root", entry.Root, "err", err)
 		done()
 		return
 	}
@@ -206,21 +226,49 @@ func (n *Node) repairRootWithLayout(entry ports.Entry, ch link.CareHandle, done 
 		// into too few domains (the dispersion audit) even when the raw
 		// count is fine.
 		shardDoms := make(map[ports.ChunkID]map[uint64]bool, len(refs))
-		var probeNext func(i int)
-		probeNext = func(i int) {
-			if i == len(refs) {
-				n.repairStripes(m, p, refs, reachable, shardDoms, 0, DerivePorKey(ch.LayoutKey), done)
+		next, inFlight, completed, finished := 0, 0, 0, false
+		finishSweep := func() {
+			if finished {
 				return
 			}
-			n.probeShard(refs[i].id, colKey(m.Root(), refs[i].pos), true, func(ok bool, domains map[uint64]bool) {
-				reachable[refs[i].id] = ok
-				if ok {
-					shardDoms[refs[i].id] = domains
+			finished = true
+			reach := 0
+			for _, r := range refs {
+				if reachable[r.id] {
+					reach++
 				}
-				probeNext(i + 1)
-			})
+			}
+			// Observability (#235): a completed sweep now says what it saw, so a
+			// healthy sweep is distinguishable from one that silently did nothing.
+			n.logf(ports.LogInfo, "repair sweep complete", "root", m.Root(), "shards", len(refs), "reachable", reach)
+			n.repairStripes(m, p, refs, reachable, shardDoms, 0, DerivePorKey(ch.LayoutKey), done)
 		}
-		probeNext(0)
+		var pump func()
+		pump = func() {
+			for !finished && inFlight < repairProbeConcurrency && next < len(refs) {
+				r := refs[next]
+				next++
+				inFlight++
+				n.probeShard(r.id, colKey(m.Root(), r.pos), true, func(ok bool, domains map[uint64]bool) {
+					reachable[r.id] = ok
+					if ok {
+						shardDoms[r.id] = domains
+					}
+					inFlight--
+					completed++
+					if completed == len(refs) {
+						finishSweep()
+						return
+					}
+					pump() // fill the freed slot
+				})
+			}
+		}
+		if len(refs) == 0 {
+			finishSweep()
+		} else {
+			pump()
+		}
 	})
 }
 
@@ -294,6 +342,26 @@ func (n *Node) probeShard(id ports.ChunkID, key ports.Hash, includeLocal bool, d
 		}
 	}
 	n.resolveProviders(key, func(provs []ports.NodeID) {
+		// Skip holders we recently failed to reach. A stale record to a dead
+		// node otherwise costs a full RequestTimeout here, every column, every
+		// sweep — the same dial-storm the fetch path fixed (#226). Unfixed on
+		// the probe path it stalls a repair sweep so badly it never completes,
+		// so the caretaker never registers the loss and never repairs (the churn
+		// field-test stall). Guarded by anyLive so we never skip the only
+		// candidate: a lone holder that restarted and is re-announcing must
+		// still be probed, not written off as gone (#69).
+		now := n.clock.Now()
+		anyLive := false
+		for _, p := range provs {
+			if p == n.id {
+				continue
+			}
+			if until, dead := n.deadUntil[p]; dead && now < until {
+				continue
+			}
+			anyLive = true
+			break
+		}
 		var try func(i int)
 		try = func(i int) {
 			if i >= len(provs) {
@@ -303,6 +371,14 @@ func (n *Node) probeShard(id ports.ChunkID, key ports.Hash, includeLocal bool, d
 			if provs[i] == n.id {
 				try(i + 1)
 				return
+			}
+			// A cooldown skip reports this holder as absent for this sweep; a
+			// later sweep past its cooldown re-probes in case it recovered.
+			if anyLive {
+				if until, dead := n.deadUntil[provs[i]]; dead && now < until {
+					try(i + 1)
+					return
+				}
 			}
 			pr := provs[i]
 			n.request(pr, ports.Message{Kind: ports.MsgHasChunk, ChunkID: id},

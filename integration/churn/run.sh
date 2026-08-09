@@ -28,6 +28,19 @@ HOLDERS=${HOLDERS:-16}            # size of the storage pool (more = finer kill 
 PROTECTED=${PROTECTED:-3}         # holders never killed (a permanent survivor set)
 WAVES=${WAVES:-2}                 # how many kill→repair→refetch cycles to run
 FILE_BYTES=${FILE_BYTES:-20000000}
+# REPLICATION is how many holders hold each column's shard. The default of 1
+# makes this a DETERMINISTIC LAPTOP gate: with one copy per column, killing a
+# holder immediately strands its columns, so a few heaviest-first kills push a
+# stripe past RepairSlack and FORCE a reconstruct — repair is exercised in
+# seconds on a small swarm, isolating the erasure-repair mechanic (reconstruct
+# from k=10 parity + re-scatter) from replication redundancy.
+#   The FAITHFUL, shipped default is 3x-replication (a stripe only needs repair
+#   once ALL copies of >RepairSlack columns die). Reproducing THAT needs a large
+#   swarm where placement is spread — set REPLICATION=3 HOLDERS>=50 and run it on
+#   the GCP field-test harness (integration/fieldtest), not a laptop, where 16
+#   holders leave every stripe a live replica after any few kills (coverage stays
+#   correctly fine and no repair is forced — the small-swarm coverage cliff).
+REPLICATION=${REPLICATION:-1}
 STEP_WAIT=${STEP_WAIT:-120}       # per-kill wait for a repair sweep (2 * 60s cadence + margin)
 STEADY_WAIT=${STEADY_WAIT:-75}    # let the caretaker's first sweep pass before baseline
 SETTLE=${SETTLE:-25}              # after 'stripe repaired', let the re-seed land
@@ -81,7 +94,7 @@ done
 echo "  all ${#HOLDER_IDS[@]} holders bootstrapped"
 
 echo "== publish a ${FILE_BYTES}-byte file from an ephemeral client (keeps nothing) =="
-dc exec -T seed sh -c "head -c $FILE_BYTES /dev/urandom > /tmp/f.bin; sha256sum /tmp/f.bin | cut -d' ' -f1 > /tmp/f.sha; silt swarm add /tmp/f.bin -peers '$SEED_PEER' -registry '$SEED_REG'" >/tmp/churn_add.txt 2>&1
+dc exec -T seed sh -c "head -c $FILE_BYTES /dev/urandom > /tmp/f.bin; sha256sum /tmp/f.bin | cut -d' ' -f1 > /tmp/f.sha; silt swarm add /tmp/f.bin -peers '$SEED_PEER' -registry '$SEED_REG' -replication $REPLICATION" >/tmp/churn_add.txt 2>&1
 LINK=$(grep -oE 'silt:v1:[A-Za-z0-9_:-]+' /tmp/churn_add.txt | head -1)
 CARE=$(grep -oE 'siltcare:[A-Za-z0-9_:-]+' /tmp/churn_add.txt | head -1)
 WANT=$(dc exec -T seed cat /tmp/f.sha | tr -d '\r\n ')

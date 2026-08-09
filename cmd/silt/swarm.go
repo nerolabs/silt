@@ -111,6 +111,7 @@ func swarmAdd(args []string) error {
 	chunkSize := fs.Int("chunk-size", pipeline.DefaultChunkSize, "chunk size in bytes")
 	tokenQuorum := fs.Int("token-quorum", 0, "publisher privacy: acquire a publish token from this many validators so the publish carries no Publisher identity. The signers are chosen by a NETWORK-CANONICAL ordering (ranked by committed bond, fetched from a chain-holding peer), the SAME for every publisher, so the signer subset can't narrow the publisher's anonymity set (R-3); falls back to -peers order if no peer serves a chain. 0 = off")
 	allowPublisher := fs.Bool("allow-publisher", false, "record this node's durable Publisher identity on the entry (permanent linkage; off by default for privacy — prefer -token-quorum or an ungated publish)")
+	replication := fs.Int("replication", 0, "how many closest holders receive each chunk (0 = default). Parity across holders backstops copies, so even 1 is viable; a lower factor makes shard loss (and thus caretaker repair) reproducible on a small swarm")
 	pos := parseFlexible(fs, args)
 	if len(pos) != 1 || *peers == "" || *regURL == "" {
 		return fmt.Errorf("usage: silt swarm add <file> -peers ID@ADDR -registry URL [flags]")
@@ -128,7 +129,7 @@ func swarmAdd(args []string) error {
 	}
 	defer f.Close()
 
-	e, run, err := joinSwarm(*peers)
+	e, run, err := joinSwarm(*peers, *replication)
 	if err != nil {
 		return err
 	}
@@ -247,7 +248,7 @@ func swarmGet(args []string) error {
 	if err != nil {
 		return err
 	}
-	e, run, err := joinSwarm(*peers)
+	e, run, err := joinSwarm(*peers, 0)
 	if err != nil {
 		return err
 	}

@@ -403,7 +403,7 @@ func (s *uiServer) apiPublish(w http.ResponseWriter, r *http.Request) {
 		mode = crypto.Convergent
 	}
 
-	e, run, err := joinSwarm(s.selfPeer)
+	e, run, err := joinSwarm(s.selfPeer, 0)
 	if err != nil {
 		httpError(w, 502, err)
 		return
@@ -482,7 +482,7 @@ func (s *uiServer) apiFetch(w http.ResponseWriter, r *http.Request) {
 		httpError(w, 400, err)
 		return
 	}
-	e, run, err := joinSwarm(s.selfPeer)
+	e, run, err := joinSwarm(s.selfPeer, 0)
 	if err != nil {
 		httpError(w, 502, err)
 		return
