@@ -1,0 +1,81 @@
+# Long-horizon DURABILITY under PERMANENT holder loss, on one flat network.
+#
+#   seed ── registry + bootstrap (holds no content: -capacity 1)
+#     ├─ holder×N ── real disk stores; killed PERMANENTLY over time, NOT replaced
+#     │              (the swarm SHRINKS — no `--scale` re-create, so Docker never
+#     │              recycles a freed IP to a fresh identity; see run.sh header)
+#     ├─ caretaker ── holds the care link, reconstructs lost columns from parity
+#     │              and RE-SCATTERS them onto the survivors
+#     └─ client ── one persistent box; run.sh execs ephemeral `silt swarm add|get`
+#                  inside it (fresh ephemeral identity per invocation)
+#
+# The outcome under test is the core durability promise: does content OUTLIVE the
+# nodes that held it? As holders leave for good and are NEVER replaced, the pool
+# concentrates onto fewer survivors — does the caretaker keep every stripe
+# reconstructable (re-scatter faster than loss) so a fetch stays bit-perfect?
+# run.sh reads the caretaker's "repair sweep complete reachable=N" (#235) to watch
+# redundancy heal after each departure, not merely hope it did.
+#
+# role.sh self-advertises each container's IP (a wildcard bind isn't dialable).
+
+networks:
+  swarm:
+    driver: bridge
+    ipam:
+      config: [{ subnet: 10.70.0.0/24 }]
+
+services:
+  seed:
+    image: silt-durability
+    entrypoint: ["role.sh"]
+    command:
+      - silt
+      - daemon
+      - -listen=0.0.0.0:4001
+      - -serve-registry=0.0.0.0:4003
+      - -store=/data
+      - -capacity=1
+      - -mdns=false
+      - -log=info
+    networks: [swarm]
+
+  holder:
+    image: silt-durability
+    entrypoint: ["role.sh"]
+    command:
+      - silt
+      - daemon
+      - -listen=0.0.0.0:4001
+      - -store=/data
+      - -capacity=5G
+      - -mdns=false
+      - -log=info
+      - -bootstrap=${SEED_PEER:-unset}
+      - -registry=${SEED_REG:-unset}
+    networks: [swarm]
+
+  caretaker:
+    image: silt-durability
+    entrypoint: ["role.sh"]
+    command:
+      - silt
+      - daemon
+      - -listen=0.0.0.0:4001
+      - -store=/data
+      - -capacity=5G
+      - -mdns=false
+      - -log=info
+      - -bootstrap=${SEED_PEER:-unset}
+      - -registry=${SEED_REG:-unset}
+      - -care=${CARE_LINK:-none}
+    networks: [swarm]
+
+  # Persistent publish/fetch box. run.sh drives it with `docker exec client sh -c
+  # "silt swarm add|get …"`, spawning a fresh ephemeral CLIENT identity per call
+  # (a real fetcher is a stranger to the swarm) while the container itself stays
+  # up — so a fetch is a cold discover-from-scratch, not a warm cached path.
+  client:
+    image: silt-durability
+    entrypoint: []
+    command: ["sleep", "infinity"]
+    networks: [swarm]
