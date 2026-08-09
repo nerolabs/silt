@@ -23,6 +23,41 @@ which to run is part of scoping a field test** — see "Choosing a substrate" be
 
 ---
 
+## Field-test immutables
+
+Unit, integration, and e2e tests check that **mechanisms work**. Field tests are a
+harsher instrument — the **ultimate judge of whether the whole thing actually
+delivers**, with the GCP runs (real machines, real networks, real scale) as the
+**gold standard**. These five are non-negotiable for every field test in this tree,
+on the same footing as the project's design immutables. A test that violates one is
+broken, however green it looks.
+
+1. **Be cynical.** Assume it's broken and *try to make it fail*. Attack the
+   property and measure what survives — never assert that a function ran or a log
+   line merely appeared. (Retrieval doesn't check "the DHT walk returned"; it
+   *pollutes* routing with identity churn and measures what fraction of a new
+   user's cold fetches actually come back — and found 85%.)
+2. **Test the outcome, not the mechanism.** Frame each test around what a real
+   **user or adversary** experiences — *can I get my data back? does it stay alive?
+   is it private? can consensus be captured?* — and gate it on a hard, honest
+   threshold.
+3. **Real evidence only.** Assert on real daemon/disk/socket/wire output — real
+   `<store>/debug.log` lines, real SHA-256, real on-chain or observed state. Never
+   a string the harness itself echoes, and never a pass by construction.
+4. **Never fake green.** A property that falls short is a **FINDING** (reported with
+   the real number + a reproducer; exit 0 like a known-defect reproducer); a
+   regression is a **FAIL**; a capability with no live seam is *stated as a gap*,
+   not faked. The failure **is** the deliverable.
+5. **Two substrates, one standard.** Every property ships a **local** Docker suite
+   (cheap, fast — catches most things before we spend) **and** a **GCP** flow (the
+   real verdict — real crashes, clocks, WAN latency, NAT, scale). Where a laptop can
+   only approximate (true scale, a real partition), say so and let the GCP flow be
+   the one that decides.
+
+Prototype and iterate locally; **certify on GCP.**
+
+---
+
 ## Quick start
 
 **Local (free, ~15 min for the fast set):** you need Docker running + a Go toolchain.
