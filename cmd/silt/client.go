@@ -43,7 +43,7 @@ func clientNodeConfig() node.Config {
 	cfg := node.DefaultConfig()
 	cfg.RequireSignedProviders = true                        // reject forged/unsigned provider records on fetch (H5)
 	cfg.ProviderRecordTTL = ports.Duration(30 * time.Minute) // re-served records prove freshness (no ancient replay)
-	cfg.DHTDomainCap = 2                                      // resolve/announce over a domain-spread set — eclipse resistance (H5-B)
+	cfg.DHTDomainCap = 2                                     // resolve/announce over a domain-spread set — eclipse resistance (H5-B)
 	return cfg
 }
 
