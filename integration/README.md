@@ -159,6 +159,7 @@ KEEP=1 ./integration/<name>/run.sh     # leave the topology up to poke at
 | `bond/run.sh` | proof-of-space-time bond cost (C1): real plots, reputation ∝ bond, shortcuts rejected |
 | `economy/run.sh` | per-byte earning + blind-signed, publisher-unlinkable credits |
 | `takedown/run.sh` | per-operator, existence-checked, reversible takedown |
+| `privacy/run.sh` | publisher unlinkability: the default chain refuses a durable file→publisher link (refuse-to-surveil), the private path works, `-token-quorum` authorizes without identity |
 | `soak/run.sh` | sustained load + gentle churn: bit-perfect throughout, bounded memory/disk |
 | `upgrade/run.sh` | rolling binary upgrade on persisted stores: reload + fetch bit-perfect |
 | `retrieval/run.sh` | retrieval/discoverability at scale + ephemeral-identity churn: cold-fetch success-rate floor (#43) |

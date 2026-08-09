@@ -286,6 +286,21 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
     takedown of a shared root.
 
 ### Added
+- **New field test: publisher unlinkability under an adversary (`integration/privacy`)** (2026-08-10) —
+  Tests immutable #4 (refuse-to-surveil) cynically, as an OUTCOME: *can an adversary get the network to
+  record who published a given file?* A silt registry entry may carry a durable `Publisher` NodeID — a
+  permanent file→publisher link on the append-only chain (the #14/F1 privacy corner) — and the M0 default
+  refuses it. Two real `silt -validator` daemons form a committing chain; the test asserts on real
+  `chain-status` commit counts and the validator's rejection line, never an echoed string. **P0** (positive
+  control) shows a chain run with `-allow-publisher=true` *commits* a Publisher entry — so the refusal below
+  is real policy, not a broken publish. **P1** shows the default chain commits a normal unlinkable publish
+  and fetches it back bit-perfect (privacy isn't a broken product). **P2** (the crux) shows the same default
+  chain *refuses* an `-allow-publisher` publish — the real error surfaces over the wire (`chain: entry
+  carries a durable Publisher (records permanent linkage; publish unlinkably…)`) and no new block commits.
+  **P3** shows a `-token-quorum` publish commits with a *blind* validator credential and no Publisher —
+  authorized yet unlinkable (the F1 fix). A privacy regression (the default chain committing a Publisher
+  entry, or the private path failing) is a hard FAIL; the metadata-correlation layer is a stated M0 tradeoff,
+  not covered. Validated locally (PASS, all four). Wired into `run-all.sh` (gate tier).
 - **New field test: durability under permanent holder loss (`integration/durability`)** (2026-08-10) —
   Tests the core promise cynically — *does content outlive the nodes that held it?* A `seed + 16 holders +
   caretaker` swarm publishes a file at `replication=1` (every column single-copy, the honest stress), then
