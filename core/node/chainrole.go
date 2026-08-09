@@ -37,6 +37,54 @@ func (n *Node) CanonicalIssuers(max int) []ports.NodeID {
 	return n.chain.CanonicalIssuers(max)
 }
 
+// canonicalIssuerCap bounds the canonical issuer set a validator serves to a
+// chainless publisher — enough to rank a publisher's reachable peers, small enough
+// to keep the reply cheap.
+const canonicalIssuerCap = 32
+
+// answerCanonicalIssuers replies with this node's deterministic canonical issuer
+// ORDERING (validators ranked by committed bond, top first) so a chainless
+// publisher can select its publish-token signers by a ledger-derived ranking that
+// is the SAME for every publisher — the signer subset then stops being a
+// per-publisher quasi-identifier (R-3 / seam-4). Encoded as concatenated 32-byte
+// NodeIDs. OK=false if this node holds no chain.
+func (n *Node) answerCanonicalIssuers() ports.Message {
+	if n.chain == nil {
+		return ports.Message{Kind: ports.MsgCanonicalIssuersReply, OK: false}
+	}
+	ids := n.chain.CanonicalIssuers(canonicalIssuerCap)
+	data := make([]byte, 0, len(ids)*len(ports.Hash{}))
+	for _, id := range ids {
+		data = append(data, id[:]...)
+	}
+	return ports.Message{Kind: ports.MsgCanonicalIssuersReply, OK: true, Data: data}
+}
+
+// FetchCanonicalIssuers asks a chain-holding validator v for the deterministic
+// canonical issuer ordering (ranked by committed bond). A chainless publisher uses
+// it to pick its publish-token signers by a network-canonical ranking instead of an
+// arbitrary subset of its own peer list, closing the signer-subset deanonymization
+// channel (R-3, seam-4). done fires with the ids (heaviest bond first) or an error.
+func (n *Node) FetchCanonicalIssuers(v ports.NodeID, done func([]ports.NodeID, error)) {
+	n.request(v, ports.Message{Kind: ports.MsgGetCanonicalIssuers}, func(resp ports.Message, err error) {
+		const idLen = len(ports.Hash{})
+		switch {
+		case err != nil:
+			done(nil, err)
+		case !resp.OK || len(resp.Data) == 0 || len(resp.Data)%idLen != 0:
+			done(nil, errNoCanonicalIssuers)
+		default:
+			ids := make([]ports.NodeID, 0, len(resp.Data)/idLen)
+			for i := 0; i+idLen <= len(resp.Data); i += idLen {
+				var id ports.NodeID
+				copy(id[:], resp.Data[i:i+idLen])
+				ids = append(ids, id)
+			}
+			done(ids, nil)
+		}
+	})
+}
+
 // handleChain processes validator messages; returns false if the kind
 // isn't chain-related.
 func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {

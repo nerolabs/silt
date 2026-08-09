@@ -21,6 +21,8 @@ var (
 	// offline or out of the requester's credit).
 	ErrTokenAcquire = errors.New("node: could not gather enough publish-token signatures")
 	errNoIssuerKey  = errors.New("node: peer has no issuer key")
+
+	errNoCanonicalIssuers = errors.New("node: peer served no canonical issuer set (no chain)")
 )
 
 // EnableTokenIssuer makes this validator blind-sign publish-token requests
