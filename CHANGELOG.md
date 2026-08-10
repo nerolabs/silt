@@ -235,6 +235,15 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
     before any demand→standing fusion — now stated as such.
 
 ### Fixed
+- **Holder-fetch dials fail fast again — no retry/backoff regression on the dial-storm** (2026-08-10) —
+  Follow-up to the adverse-network hardening above. That change applied the new 5 s timeout + retries to
+  *every* RPC, including speculative holder-fetch dials (`MsgFetchChunk`/`MsgHasChunk`), so a fetch from a
+  dead holder cost up to `(retries+1)·5 s ≈ 20 s` (was ~½ s) — deepening the dead-holder dial-storm (#277)
+  exactly where content lives on churning holders. Fixed: holder-fetch RPCs are **not retried** (the fetch
+  loop already retries at a higher level via `FetchAttempts` and skips known-dead holders via `deadUntil`)
+  and use a **tighter `-holder-dial-timeout`** (default 2 s) so a dead holder fails fast, while mesh/
+  consensus RPCs keep the generous timeout + retries needed to ride out jitter. Restores the pre-hardening
+  fetch responsiveness without giving up the jitter durability.
 - **Consensus now bootstraps under a jittery network (adverse-network durability)** (2026-08-10) —
   New `integration/flakynet` harness (4 objective validators behind `tc netem`) reproduced a real
   durability collapse the clean local tests never showed: under a mild, realistic 80 ms ± 20 ms **jitter**

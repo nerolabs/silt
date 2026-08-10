@@ -41,6 +41,11 @@ type Config struct {
 	// retries. Total wait to declare a peer dead ≈ (retries+1)·RequestTimeout + Σbackoff.
 	RequestRetries int
 	RequestBackoff ports.Duration // base backoff between RPC retries (doubles each attempt)
+	// HolderDialTimeout is a TIGHTER per-attempt deadline for speculative holder-fetch
+	// dials (MsgFetchChunk/MsgHasChunk), which are NOT retried (see requestAttempt). It
+	// keeps a fetch from a dead holder cheap under churn even when the general
+	// RequestTimeout is generous for jittery consensus. 0 = fall back to RequestTimeout.
+	HolderDialTimeout ports.Duration
 	// Replication is how many closest nodes receive each chunk at
 	// distribute/repair time. With erasure coding doing the heavy
 	// lifting, even 1 is viable — parity across nodes replaces copies.
@@ -202,17 +207,18 @@ type Config struct {
 func DefaultConfig() Config {
 	return Config{
 		K: 8, Alpha: 3,
-		RequestTimeout:  500 * ports.Millisecond,
-		RequestRetries:  0, // sim/tests: no RPC retry (evict on first miss); the daemon enables it
-		RequestBackoff:  250 * ports.Millisecond,
-		Replication:     3,
-		RepairInterval:  60 * ports.Second,
-		RepairSlack:     2,
-		RepairQuorumTau: 1, // per-node-local ledgers: each caretaker-judge confirms retrievability itself
-		HotThreshold:    8,
-		DemandInterval:  60 * ports.Second,
-		LeaseTTL:        180 * ports.Second,
-		FanoutReplicas:  2,
+		RequestTimeout:    500 * ports.Millisecond,
+		RequestRetries:    0, // sim/tests: no RPC retry (evict on first miss); the daemon enables it
+		RequestBackoff:    250 * ports.Millisecond,
+		HolderDialTimeout: 0, // sim/tests: holder fetches use RequestTimeout; the daemon sets a tighter one
+		Replication:       3,
+		RepairInterval:    60 * ports.Second,
+		RepairSlack:       2,
+		RepairQuorumTau:   1, // per-node-local ledgers: each caretaker-judge confirms retrievability itself
+		HotThreshold:      8,
+		DemandInterval:    60 * ports.Second,
+		LeaseTTL:          180 * ports.Second,
+		FanoutReplicas:    2,
 
 		ReachabilityTimeout: 3 * ports.Second,
 		FetchAttempts:       3,
@@ -668,11 +674,23 @@ func (n *Node) requestAttempt(to ports.NodeID, msg ports.Message, attempt int, c
 	n.rid++
 	rid := n.rid
 	msg.RID = rid
+	// A HOLDER-FETCH dial (MsgFetchChunk/MsgHasChunk) is speculative — stored content
+	// lives on arbitrary holders that are OFTEN gone under churn — so it fails FAST on a
+	// tighter deadline and does NOT retry the same holder (the fetch loop already retries
+	// at a higher level via FetchAttempts and skips known-dead holders via deadUntil).
+	// A too-generous timeout + retry here just deepens the dead-holder dial-storm (#277).
+	// MESH/CONSENSUS RPCs get the full RequestTimeout + retries, to ride out jitter
+	// without tearing a live peer out of the mesh.
+	holderFetch := msg.Kind == ports.MsgFetchChunk || msg.Kind == ports.MsgHasChunk
+	timeout := n.cfg.RequestTimeout
+	if holderFetch && n.cfg.HolderDialTimeout > 0 && n.cfg.HolderDialTimeout < timeout {
+		timeout = n.cfg.HolderDialTimeout
+	}
 	p := &pending{cb: cb, to: to}
-	p.cancel = n.clock.AfterFunc(n.cfg.RequestTimeout, func() {
+	p.cancel = n.clock.AfterFunc(timeout, func() {
 		delete(n.pending, rid)
 		n.Stats.Timeouts++
-		if attempt < n.cfg.RequestRetries {
+		if !holderFetch && attempt < n.cfg.RequestRetries {
 			// Transient miss — retry the SAME peer after a decaying backoff instead
 			// of tearing it out of the table. Backoff doubles each attempt.
 			backoff := n.cfg.RequestBackoff << attempt
