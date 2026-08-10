@@ -44,9 +44,9 @@ binary is `.gitignore`d and never committed.
 |------|------|
 | `docker-compose.yml` | one bridge network; `honest` + `peer` real validators, `adversary` (profile) the under-bonded negative control |
 | `Dockerfile` | slim runtime image (silt binary + coreutils for `du`/`stat`/`date`); one image, all roles |
-| `run.sh` | the driver: build → PHASE 0 sub-floor refusal → PHASE 1 seal+measure+verify → PHASE 2 under-bonded refusal → assert → tear down |
+| `run.sh` | the driver: build → PHASE 0 sub-floor refusal → PHASE 1 seal+measure+verify → PHASE 2 under-bonded refusal → PHASE 3 no-discount dedup → assert → tear down |
 
-## The three phases (real observed behavior)
+## The phases (real observed behavior)
 
 Every assertion keys off a **real** CLI flag, stdout line, or `<store>/debug.log`
 line — confirmed against `core/bond/`, `core/node/bondaudit.go`, and
@@ -61,17 +61,35 @@ line — confirmed against `core/bond/`, `core/node/bondaudit.go`, and
 - **PHASE 1 — POSITIVE + MEASUREMENT.** `honest` seals a real `${BOND_SIZE}`
   plot (`bond: sealed a … storage bond for consensus standing`). The driver
   measures **plot wall-clock time** (up→sealed), **on-disk plot bytes** (the
-  single `<store>/plot/<nodeid>.plot` file), and reads the live verify verdicts:
+  single `<store>/plot/<nodeid>.plot` file), and **polls** (not a flat sleep — a
+  loaded host can take >8s for the first round) for the live verify verdicts:
   `peer` challenges `honest` over the wire and logs
   `bond challenge peer=<honest> passed=true standing=<N>`, while `honest`
   self-narrates rising `standing self=<honest> reputation=<N>`. Verification is
   O((Samples+5k)·log n) — cheap even for a big plot.
+  **Scope:** this live topology runs `-min-bond-floor=0`, so PHASE 1 proves only
+  *seal-expensive / verify-cheap*, NOT release-resistance. The anti-release floor
+  is exercised by PHASE 0 (and `core/node/bondfloor_test.go`); the stronger
+  "a released plot cannot recompute inside the challenge window" leg is timing-
+  bound and does not reproduce on a laptop (recompute is fast) — it is
+  cloud/unit-scoped, like the C2-Sybil atomization leg, and is **not** claimed here.
 
 - **PHASE 2 — NEGATIVE (under-bonded → refused).** The 4K-"bonded" `adversary`
   proposes a well-formed block to `honest` (`-lowbond-propose`, a documented
   red-team seam). An honest validator refuses to attest a proposer without a
   qualifying bond:
   `adversary: lowbond-propose proposal correctly REJECTED by <honest>`.
+
+- **PHASE 3 — the ACTUAL "no discount" mechanism (root-owner dedup).** C1's
+  headline is that an operator cannot amortise ONE plot across N Sybil
+  identities. That property is the credit-ledger root-owner dedup
+  (`core/credit/credit.go`: a second identity re-advertising the SAME root earns
+  `bondedBytes=0` — "one plot, one standing"), a deterministic ledger rule. #234
+  keeps it **unit-scoped** (the issue's "state it's unit-covered" option): the
+  phase runs `TestInvariantA_TheOnlyMintingPressIsBondGated` as ground truth.
+  Driving it over the wire would need a red-team seam for a node to claim a root
+  it does not own — which earns nothing precisely because it cannot answer
+  challenges without the plot; a worthwhile future seam, not built here.
 
 `run.sh` `trap`s `docker compose down -v` on exit (unless `KEEP=1`), so it
 leaves nothing running.

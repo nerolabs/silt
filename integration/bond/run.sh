@@ -119,10 +119,16 @@ fi
 # Live verification: let a few audit sweeps run, then read the REAL over-the-wire
 # verdicts. peer challenges honest (recomputing labels from H(pk,n) without the
 # plot) → `bond challenge peer=<honest> passed=true standing=<N>`.
-echo "  letting live proof-of-space-time challenges run (8s)…"
-sleep 8
-
-PEER_VERDICT=$(dc exec -T peer sh -c 'grep "bond challenge" /data/debug.log 2>/dev/null | tail -1' | tr -d '\r')
+# Poll for a real over-the-wire verdict rather than a flat sleep: on a loaded host
+# the first sealed-plot challenge round can take well over 8s, and a fixed wait
+# made this phase flaky. Wait up to 40s for the peer to actually print passed=true.
+echo "  polling for a live proof-of-space-time verdict (up to 40s)…"
+PEER_VERDICT=""
+for _ in $(seq 1 40); do
+  PEER_VERDICT=$(dc exec -T peer sh -c 'grep "bond challenge" /data/debug.log 2>/dev/null | tail -1' | tr -d '\r')
+  echo "$PEER_VERDICT" | grep -q "passed=true" && break
+  sleep 1
+done
 HON_STANDING=$(dc exec -T honest sh -c 'grep "standing self" /data/debug.log 2>/dev/null | tail -1' | tr -d '\r')
 echo "  peer's verdict on honest's bond : ${PEER_VERDICT:-<none>}"
 echo "  honest's self-narrated standing : ${HON_STANDING:-<none>}"
@@ -137,6 +143,14 @@ echo "  last two peer challenge timestamps: ${CHAL_TS:-<none>}"
 echo "$PEER_VERDICT" | grep -q "passed=true"  || { echo "FAIL(pos): peer did not VERIFY honest's real bond over the wire"; pass=0; }
 echo "$HON_STANDING"  | grep -qE "reputation=[1-9]" || { echo "FAIL(pos): honest earned no standing from its real bond"; pass=0; }
 [ "${PLOT_BYTES:-0}" -gt 0 ] 2>/dev/null || { echo "FAIL(pos): no plot on disk"; pass=0; }
+# SCOPE (be precise): this live topology runs -min-bond-floor=0, so PHASE 1 proves
+# only "a real plot seals expensive and verifies cheap over the wire" — it does NOT
+# prove release-RESISTANCE. The anti-release floor (a bond that could be released
+# and re-plotted inside the challenge window earns nothing) is exercised only by
+# PHASE 0's sub-floor refusal (-min-bond-floor=64M) and core/node/bondfloor_test.go.
+# The stronger "a released plot cannot recompute in time" leg is timing-bound and
+# does not reproduce on a laptop (recompute is fast) — it is cloud/unit-scoped,
+# like the C2-Sybil atomization leg, and is NOT claimed here.
 
 # ─── PHASE 2 — NEGATIVE: an under-bonded proposer is REFUSED over the wire ───
 echo ""
@@ -172,6 +186,27 @@ else
   echo "    (armed=$armed, target unreachable). The low-bond refusal is UNTESTED here, not failed —"
   echo "    redteam SCENARIO 3 exercises the identical refusal over Docker and gates it. Harness gap."
   gap2=1
+fi
+
+# ─── PHASE 3 — the ACTUAL "no discount" mechanism (root-owner dedup) ───
+echo ""
+echo "########## PHASE 3 — C1 no-discount: one plot cannot back N identities ##########"
+# The C1 headline is "no discount": an operator cannot amortise ONE sealed plot
+# across N Sybil identities. PHASE 1 proves a real plot is expensive to seal and
+# cheap to verify over the wire, but the no-DISCOUNT property itself is the
+# credit-ledger root-owner dedup (core/credit/credit.go: a second identity
+# re-advertising the SAME root earns bondedBytes=0 — "one plot, one standing").
+# That mechanism is a deterministic ledger rule, and #234 keeps it UNIT-scoped
+# (per the issue's "state it's unit-covered" option): driving it over the wire
+# would need a red-team seam for a node to claim a root it does not own, which
+# earns nothing precisely because it cannot answer challenges without the plot.
+echo "  the no-discount rule is the root-owner dedup (deterministic ledger); asserting its unit ground-truth:"
+if ( cd "$ROOT" && go test ./core/credit/ -run 'TestInvariantA_TheOnlyMintingPressIsBondGated' -count=1 >/tmp/bond_nodiscount.out 2>&1 ); then
+  grep -E '^(ok|PASS|---)' /tmp/bond_nodiscount.out | head -3 | sed 's/^/    /'
+  echo "  PHASE 3: PASS — a second identity re-advertising the SAME root earns ZERO (one plot, one standing)"
+else
+  sed 's/^/    /' /tmp/bond_nodiscount.out | tail -8
+  echo "  PHASE 3: FAIL — the root-owner dedup unit invariant did not hold"; pass=0
 fi
 
 # ─── verdict ───
