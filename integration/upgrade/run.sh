@@ -222,7 +222,21 @@ echo "== post-upgrade: chain-status on V2 (does it reload the V1 chain?) =="
 CS=$(dcs exec -T seed silt-v2 chain-status -store /data 2>&1)
 echo "$CS" | grep -iE 'head (height|hash)|block|version|restored' | head -4 | sed 's/^/  /'
 CHAIN_OK=0
-echo "$CS" | grep -qiE 'unsupported block version|decode block' || CHAIN_OK=1
+# POSITIVE assertion (immutable #3: real evidence, not absence-of-error). A prior
+# version passed CHAIN_OK on the mere absence of an error string — a blank status
+# or a silent "no chain yet" would sail through. Instead: if V1 persisted a chain
+# on disk (CHAIN_PRE>0), V2 must POSITIVELY report a reloaded head + block count
+# (`head height:` / `blocks: N`) and must NOT say "no chain yet". If nothing was
+# committed on V1 (chain.cbor empty) there is nothing to reload — not a failure.
+if echo "$CS" | grep -qiE 'unsupported block version|decode block'; then
+  :  # explicit block-version rejection → CHAIN_OK stays 0
+elif [ "${CHAIN_PRE:-0}" -gt 0 ] 2>/dev/null; then
+  if echo "$CS" | grep -qiE 'head height:|blocks: +[1-9]' && ! echo "$CS" | grep -qi 'no chain yet'; then
+    CHAIN_OK=1
+  fi
+else
+  CHAIN_OK=1  # V1 committed no chain — nothing to reload
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 # VERDICT

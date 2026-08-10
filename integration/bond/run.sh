@@ -102,6 +102,20 @@ PLOT_HUMAN=$(dc exec -T honest sh -c 'du -h /data/plot/*.plot 2>/dev/null | cut 
 echo "  on-disk plot: ${PLOT_BYTES:-?} bytes (${PLOT_HUMAN:-?}) for a $BOND_SIZE bond"
 echo "  plot wall-clock (up→sealed, incl. container/daemon start): ${PLOT_WALL}s"
 
+# C1 "expensive to make" is a NUMBER, not a checkbox: a real plot must be RESIDENT
+# on disk at ~the bond size. Without this threshold a build that sealed a near-empty
+# / instant plot (the exact C1 shortcut under test) would still PASS on PLOT_BYTES>0.
+# Parse the -bond size to bytes and require the plot to be >= 90% of it.
+bond_bytes() { local s="$1" n u; n="${s%[A-Za-z]*}"; u="${s##*[0-9]}"
+  case "$u" in G|g) echo $(( n * 1073741824 ));; M|m) echo $(( n * 1048576 ));; K|k) echo $(( n * 1024 ));; *) echo "$n";; esac; }
+EXPECT_BYTES=$(bond_bytes "$BOND_SIZE"); MIN_PLOT=$(( EXPECT_BYTES * 9 / 10 ))
+if [ "${PLOT_BYTES:-0}" -ge "$MIN_PLOT" ] 2>/dev/null; then
+  echo "  C1 plot-size gate: PASS (${PLOT_BYTES} B ≥ 90% of the $BOND_SIZE bond = ${MIN_PLOT} B — the plot is genuinely resident)"
+else
+  echo "FAIL(pos): C1 plot too small — ${PLOT_BYTES:-0} B < 90% of the $BOND_SIZE bond (${MIN_PLOT} B). A real proof-of-space plot must be resident on disk; a near-empty/instant plot is the C1 shortcut this test exists to reject."
+  pass=0
+fi
+
 # Live verification: let a few audit sweeps run, then read the REAL over-the-wire
 # verdicts. peer challenges honest (recomputing labels from H(pk,n) without the
 # plot) → `bond challenge peer=<honest> passed=true standing=<N>`.
