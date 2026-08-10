@@ -113,7 +113,21 @@ if [ "$warm" = 1 ]; then
     exit 0
   fi
 else
-  echo "RESULT: FINDING ⚠  4 objective validators did NOT commit a block within ${WARM_TIMEOUT}s under [$NETEM]$([ "$CHURN" = 1 ] && echo " + boot-node churn") — a consensus-bootstrap durability gap. Clean-network runs commit in seconds; this is the reproducer for the flaky-network failure (cf. #286)."
+  # ATTRIBUTE the failure honestly (introspective): a no-commit under impairment
+  # has TWO very different causes a blind reviewer must NOT conflate — the mesh
+  # never formed (a DISCOVERY / bootstrap-under-adversity limit, upstream of
+  # consensus), or the mesh formed but consensus could not commit (a consensus /
+  # standing-under-adversity limit). Read each validator's largest logged routing-
+  # table size ("… (N table entries)") to tell them apart.
+  max_table() { dc logs "$1" 2>&1 | grep -oE '\(([0-9]+) table entries\)' | grep -oE '[0-9]+' | sort -n | tail -1; }
+  tA=$(max_table valA); tB=$(max_table valB); tC=$(max_table valC); tD=$(max_table valD)
+  meshmax=$(printf '%s\n' "${tA:-0}" "${tB:-0}" "${tC:-0}" "${tD:-0}" | sort -n | tail -1)
+  echo "  mesh: peak routing-table entries A=${tA:-0} B=${tB:-0} C=${tC:-0} D=${tD:-0} (max=${meshmax:-0} of 3 peers)"
+  if [ "${meshmax:-0}" -le 1 ]; then
+    echo "RESULT: FINDING ⚠  the MESH never converged under [$NETEM]$([ "$CHURN" = 1 ] && echo " + boot-node churn") — validators stayed at ≤1 routing-table entry, so the DHT join/refresh could not complete over this impairment. This is a DISCOVERY / bootstrap-under-adversity limit UPSTREAM of consensus — do NOT read it as a consensus or C1-latency-gate failure (those never got a chance to run). cf. #281/#286."
+  else
+    echo "RESULT: FINDING ⚠  the mesh FORMED (≥2 entries) but 4 objective validators did NOT commit within ${WARM_TIMEOUT}s under [$NETEM]$([ "$CHURN" = 1 ] && echo " + boot-node churn") — a genuine consensus/standing-under-adversity gap (not a discovery failure). cf. #286."
+  fi
   echo "  --- valA tail ---"; dc logs valA 2>&1 | tail -12
   exit 0
 fi
