@@ -379,6 +379,13 @@ type Node struct {
 	// cost real held storage. See bondaudit.go.
 	bond      *bond.Commitment
 	peerBonds map[ports.NodeID]bondInfo
+	// peerBondRTT tracks each peer's recent bond-challenge reply latencies so the
+	// C1 partial-storage timing signal is the windowed-MINIMUM (low quantile) of
+	// the distribution, not a single wall-clock sample — build-immutable #3: a
+	// slow reply is never a hard security trip, only its sustained floor is a soft,
+	// disclosed deterrent. Persists across bond re-advertisement (peerBonds is
+	// replaced wholesale). See bondaudit.go latWindow.
+	peerBondRTT map[ports.NodeID]*latWindow
 	// plotStore persists the bond plot so a restart reloads it instead of
 	// re-plotting (#93); nil = memory-only (re-plots each start).
 	plotStore ports.PlotStore
@@ -603,6 +610,7 @@ func New(id ports.NodeID, cfg Config, clock ports.Clock, tr ports.Transport, sto
 		proofs:          make(map[ports.ChunkID]ports.StorageProof),
 		peerDomains:     make(map[ports.NodeID]uint64),
 		peerBonds:       make(map[ports.NodeID]bondInfo),
+		peerBondRTT:      make(map[ports.NodeID]*latWindow),
 		attested:        make(map[uint64]ports.Hash),
 		pendingBondRegs: make(map[ports.NodeID]chain.BondReg),
 		peerIssuerKeys:  make(map[ports.NodeID]*rsa.PublicKey),
