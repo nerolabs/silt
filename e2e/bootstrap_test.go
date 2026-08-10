@@ -40,10 +40,14 @@ func TestBootstrapRetryRecoversColdStartRace(t *testing.T) {
 	addrA := reservePort(t)
 	bootstrapA := idA + "@" + addrA
 
-	// B joins through A — but A is not up yet. Fast retry so the test is quick.
+	// B joins through A — but A is not up yet. Fast retry so the test is quick, and
+	// fast RPC failure (-request-timeout small, -request-retries 0) so B notices the
+	// dead bootstrap target quickly rather than riding out the adverse-network
+	// retry-backoff (this test is about the re-bootstrap self-heal, not RPC retry).
 	b := startDaemon(t, "B",
 		"-listen", "127.0.0.1:0", "-store", t.TempDir(),
 		"-bootstrap", bootstrapA, "-bootstrap-retry", "1s",
+		"-request-timeout", "500ms", "-request-retries", "0",
 		"-capacity", "1G", "-mdns=false", "-id-seed", "2811")
 	if m := b.waitFor(t, reBootstrap, 20*time.Second); m[1] != "0" {
 		t.Fatalf("precondition: B should come up isolated (0 table entries), got %s", m[1])

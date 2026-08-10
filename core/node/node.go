@@ -30,7 +30,17 @@ import (
 type Config struct {
 	K              int            // Kademlia bucket size
 	Alpha          int            // lookup parallelism
-	RequestTimeout ports.Duration // per-request; a timeout marks the peer failed
+	RequestTimeout ports.Duration // per-attempt deadline; exceeded => this attempt failed
+	// RequestRetries is how many times a timed-out RPC is RE-SENT (with exponential
+	// backoff from RequestBackoff) before the peer is finally given up on — evicted
+	// from the routing table and negative-cached. On a jittery/lossy link a single
+	// slow or dropped packet must NOT tear a good peer out of everyone's table (that
+	// keeps the mesh sparse and consensus from ever forming); a valuable connection
+	// is worth retrying for over an unknown-duration impairment. 0 = no retry (evict
+	// on the first miss) — the deterministic sim/tests keep that; the daemon enables
+	// retries. Total wait to declare a peer dead ≈ (retries+1)·RequestTimeout + Σbackoff.
+	RequestRetries int
+	RequestBackoff ports.Duration // base backoff between RPC retries (doubles each attempt)
 	// Replication is how many closest nodes receive each chunk at
 	// distribute/repair time. With erasure coding doing the heavy
 	// lifting, even 1 is viable — parity across nodes replaces copies.
@@ -193,6 +203,8 @@ func DefaultConfig() Config {
 	return Config{
 		K: 8, Alpha: 3,
 		RequestTimeout:  500 * ports.Millisecond,
+		RequestRetries:  0, // sim/tests: no RPC retry (evict on first miss); the daemon enables it
+		RequestBackoff:  250 * ports.Millisecond,
 		Replication:     3,
 		RepairInterval:  60 * ports.Second,
 		RepairSlack:     2,
@@ -645,6 +657,14 @@ func bg() context.Context { return context.Background() }
 // ErrTimeout if none arrives in time. Timeouts also evict the peer from
 // the routing table — a Kademlia table must only hold live peers.
 func (n *Node) request(to ports.NodeID, msg ports.Message, cb func(ports.Message, error)) {
+	n.requestAttempt(to, msg, 0, cb)
+}
+
+// requestAttempt sends one try of an RPC. On timeout it RE-SENDS with exponential
+// backoff up to RequestRetries times — a jittery/lossy link must not evict a good
+// peer on the first slow or dropped packet — and only gives the peer up (evict +
+// negative-cache) once the retries are exhausted.
+func (n *Node) requestAttempt(to ports.NodeID, msg ports.Message, attempt int, cb func(ports.Message, error)) {
 	n.rid++
 	rid := n.rid
 	msg.RID = rid
@@ -652,28 +672,49 @@ func (n *Node) request(to ports.NodeID, msg ports.Message, cb func(ports.Message
 	p.cancel = n.clock.AfterFunc(n.cfg.RequestTimeout, func() {
 		delete(n.pending, rid)
 		n.Stats.Timeouts++
-		n.table.Remove(to)
-		delete(n.reachable, to) // no longer proven reachable (#43)
-		// Negative-cache the corpse so the fetch/repair loop skips it for a
-		// cooldown instead of re-eating a full RequestTimeout on the same dead
-		// holder every sweep (#226). A reply later (n.reachable set in handle)
-		// doesn't clear this, but cooldown expiry re-admits a recovered holder.
-		if n.cfg.HolderCooldown > 0 {
-			now := n.clock.Now()
-			// Keep the map from growing without bound under ephemeral-identity
-			// churn: once it's large, drop entries whose cooldown already
-			// lapsed (they'd be re-admitted on next dial anyway). Cheap because
-			// it only sweeps past a threshold, not on every timeout.
-			if len(n.deadUntil) >= maxDeadHolders {
-				for id, until := range n.deadUntil {
-					if now >= until {
-						delete(n.deadUntil, id)
+		if attempt < n.cfg.RequestRetries {
+			// Transient miss — retry the SAME peer after a decaying backoff instead
+			// of tearing it out of the table. Backoff doubles each attempt.
+			backoff := n.cfg.RequestBackoff << attempt
+			n.logf(ports.LogDebug, "request retry", "to", to, "kind", msg.Kind, "attempt", attempt+1)
+			n.clock.AfterFunc(backoff, func() { n.requestAttempt(to, msg, attempt+1, cb) })
+			return
+		}
+		// Retries exhausted. A timeout on a BOND AUDIT (MsgBondChallenge) means the
+		// peer was slow to PROVE its bond, NOT that it is unreachable: the prover
+		// does real space-time work and returns a large proof that packet loss hits
+		// hardest, so under an adverse network these time out in droves. Evicting
+		// such a peer from the routing table (and negative-caching it) conflates
+		// "slow to prove standing" with "gone", tears the mesh apart, and starves
+		// consensus of the very standing it was trying to establish — the durability
+		// collapse reproduced by integration/flakynet. So on a bond-challenge
+		// timeout, leave routing untouched: the bond audit simply grants no standing
+		// this round and retries next interval. Genuine reachability failures (DHT
+		// lookups, fetches) still evict + negative-cache as before.
+		if msg.Kind != ports.MsgBondChallenge {
+			n.table.Remove(to)
+			delete(n.reachable, to) // no longer proven reachable (#43)
+			// Negative-cache the corpse so the fetch/repair loop skips it for a
+			// cooldown instead of re-eating a full RequestTimeout on the same dead
+			// holder every sweep (#226). A reply later (n.reachable set in handle)
+			// doesn't clear this, but cooldown expiry re-admits a recovered holder.
+			if n.cfg.HolderCooldown > 0 {
+				now := n.clock.Now()
+				// Keep the map from growing without bound under ephemeral-identity
+				// churn: once it's large, drop entries whose cooldown already
+				// lapsed (they'd be re-admitted on next dial anyway). Cheap because
+				// it only sweeps past a threshold, not on every timeout.
+				if len(n.deadUntil) >= maxDeadHolders {
+					for id, until := range n.deadUntil {
+						if now >= until {
+							delete(n.deadUntil, id)
+						}
 					}
 				}
+				n.deadUntil[to] = now.Add(n.cfg.HolderCooldown)
 			}
-			n.deadUntil[to] = now.Add(n.cfg.HolderCooldown)
 		}
-		n.logf(ports.LogDebug, "request timeout", "to", to, "kind", msg.Kind)
+		n.logf(ports.LogDebug, "request timeout", "to", to, "kind", msg.Kind, "attempts", attempt+1)
 		cb(ports.Message{}, fmt.Errorf("%w (to %s)", ErrTimeout, to))
 	})
 	n.pending[rid] = p
