@@ -96,6 +96,12 @@ services:
       swarm:
         ipv4_address: 10.60.0.23
 
+  # holder4 is a PoR LIAR (#232): it keeps its storage-proof tags and advertises
+  # as a provider, but silently drops the shard bytes. It still ANSWERS a
+  # MsgChallenge — with a proof over data it no longer holds — so the caretaker's
+  # -audit sweep catches it by VERIFYING the proof (no ground-truth fetch) and
+  # slashes it. Holding no bytes, it is also equivalent to a third down holder for
+  # the repair proof below (holder2+holder3 wiped + holder4 empty == 3 down).
   holder4:
     image: silt-audit
     entrypoint: ["entry.sh", "4001"]
@@ -107,11 +113,34 @@ services:
       - -mdns=false
       - -min-rep=0
       - -log=info
+      - -liar
       - -bootstrap=${SEED_ID:-unset}@10.60.0.10:4001
       - -registry=${SEED_ID:-unset}@https://10.60.0.10:4003
     networks:
       swarm:
         ipv4_address: 10.60.0.24
+
+  # holder5 is honest — it restores a FOURTH honest placement target so the
+  # repair proof below still degrades (with holder4 a byte-less liar, only three
+  # honest holders would hold shards, and holder1 alone would suffice — no
+  # degradation to repair). Wiping holder2+holder3+holder5 leaves holder1 short,
+  # exactly the "3 of 4 honest holders down" loss the original test reconstructs.
+  holder5:
+    image: silt-audit
+    entrypoint: ["entry.sh", "4001"]
+    command:
+      - -id-seed=25
+      - -listen=0.0.0.0:4001
+      - -store=/data
+      - -capacity=2G
+      - -mdns=false
+      - -min-rep=0
+      - -log=info
+      - -bootstrap=${SEED_ID:-unset}@10.60.0.10:4001
+      - -registry=${SEED_ID:-unset}@https://10.60.0.10:4003
+    networks:
+      swarm:
+        ipv4_address: 10.60.0.25
 
   # The caretaker: repairs the published file via its care link. -log info makes
   # its repair sweep narrate placements / "stripe repaired" / "stripe degraded"
@@ -130,6 +159,7 @@ services:
       - -bootstrap=${SEED_ID:-unset}@10.60.0.10:4001
       - -registry=${SEED_ID:-unset}@https://10.60.0.10:4003
       - -care=${CARE_LINK:-unset}
+      - -audit=15s
     networks:
       swarm:
         ipv4_address: 10.60.0.30

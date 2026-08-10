@@ -83,6 +83,7 @@ func cmdDaemon(args []string) error {
 	requestRetries := fs.Int("request-retries", 3, "how many times a timed-out RPC is re-sent (exponential backoff from -request-backoff) before the peer is evicted from the routing table and negative-cached. On a jittery/lossy internet path a single slow or dropped packet must NOT tear a good peer out of the mesh — that keeps the routing table sparse and consensus from ever committing (durability under adverse networks). 0 = evict on the first miss (fast/trusted LAN only)")
 	requestBackoff := fs.Duration("request-backoff", 250*time.Millisecond, "base delay between RPC retries; doubles each attempt (250ms → 500ms → 1s …). A decaying retry rides out an unknown-duration impairment instead of guessing one big timeout")
 	holderDialTimeout := fs.Duration("holder-dial-timeout", 2*time.Second, "tighter per-attempt deadline for speculative holder-fetch dials (chunk fetch / has-chunk), which are NOT retried: stored content lives on arbitrary holders that are often gone under churn, so a fetch from a dead holder must fail fast (the fetch loop retries at a higher level and skips known-dead holders). Kept below -request-timeout so a generous consensus timeout doesn't deepen the dead-holder dial-storm (#277)")
+	auditInterval := fs.Duration("audit", 0, "run the verify-without-fetch PoR AUDIT sweep this often over every -care'd root: challenge each shard's holders and grade their proofs against the key derived from the care link — NO ground-truth fetch — settling rent for the honest and SLASHING a liar that kept its proof tags but dropped the bytes (#232). Requires -care (supplies the root + layout key) and a -registry. 0 = off (repair-only caretaker)")
 	bondLabelK := fs.Int("bond-label-k", 64, "labeling-consistency opens per bond challenge (M0 Sybil G2): each recomputes one block's label from its DRSample parents, so a prover holding arbitrary/reused/wrong-size bytes (not a real plot for its identity+size) fails. Soundness error ≤ (1-ε)^k against an ε-short prover. A per-network knob — prover and verifier must MATCH (like -bond-vdf), so set it uniformly across the swarm. Lower it only to shrink on-chain proof size, at a soundness cost. 0 = default (64)")
 	bondAnswerLatency := fs.Duration("bond-answer-latency", 1500*time.Millisecond, "reply-deadline on a live bond challenge (M0 C1 / BREAK 1): a validator that deleted part of its plot must RECOMPUTE the missing blocks on demand, and past the DRSample graph's ~0.25 knee that recompute is a large sequential cost, so a reply slower than this earns no standing. A SOFT deterrent (wall-clock ⇒ fastest-evaluator-sensitive), set generously above the honest answer time (~VDF + network) so slow honest hardware is not failed — it deters the rational serial disk-saver, not a parallel farm (owned residual A5). Must stay below -request equivalents; 0 = off (only for a trusted/demo swarm)")
 	signedProviders := fs.Bool("signed-providers", true, "self-certifying DHT provider records (M0 H5): a node signs its 'I hold this' announcements with its identity key and re-verifies records served back on lookup, so a node holding the k-closest slots to a key cannot fabricate provider records for identities that never announced. Default ON; =false drops to the legacy unsigned path (trusted/demo swarm only)")
@@ -96,6 +97,7 @@ func cmdDaemon(args []string) error {
 	forgeBlock := fs.String("forge-block", "", "RED-TEAM / TEST-HARNESS ONLY: propose a block with a FORGED (corrupted) proposer signature to this peer ID, to prove an honest validator rejects it before attesting (#184 forged-block→reject). Never honest")
 	lowbondPropose := fs.String("lowbond-propose", "", "RED-TEAM / TEST-HARNESS ONLY: as an under-bonded validator, propose a well-formed block to this peer ID, to prove an honest validator refuses a proposer without a qualifying bond (#184 low-bond→reject). Never honest")
 	equivocate := fs.String("equivocate", "", "RED-TEAM / TEST-HARNESS ONLY: run this validator as a Byzantine EQUIVOCATOR. Given two peer validator IDs \"idX,idYZ\", it double-signs at height 1 — placing block X on idX and a heavier conflicting fork (Y,Z) on idYZ — so honest replicas that reconcile the fork catch the double-sign and slash this node (#184, proving the accountability property over the real wire). NEVER use on a real network; a correct node refuses to equivocate")
+	liar := fs.Bool("liar", false, "RED-TEAM / TEST-HARNESS ONLY: run this storage node as a PoR LIAR — it keeps its storage-proof tags but silently drops the shard bytes (\"keep the receipt, ditch the goods\"). It still answers a MsgChallenge, but with a proof that fails the auditor's verify-without-fetch check, so an -audit auditor CATCHES it and slashes its standing (#232). Never honest")
 	wsCheckpoint := fs.String("ws-checkpoint", "", "weak-subjectivity checkpoint HEIGHT:HASH (M0 F-1): a recent trusted committed block this node REFUSES to reorg at or before, regardless of fork weight — the long-range-attack defense that makes the objective maturity latch safe for a fresh/long-offline node. Obtain it out-of-band (the daemon prints `checkpoint: HEIGHT:HASH` for its committed head; cross-check several independent nodes). It must be recent — within ~the bond-TTL window. Empty = genesis-trusting (safe only at launch, on a trusted swarm, or before the network matures)")
 	debug := fs.Bool("debug", false, "shorthand for -log debug (the full firehose)")
 	logLevel := fs.String("log", "", "write events at or above this level to <store>/debug.log (error|warn|info|debug); info narrates the normal path (placements, commits, repairs) to validate behavior in the field without the debug firehose")
@@ -825,6 +827,10 @@ func cmdDaemon(args []string) error {
 		})
 	}
 	nd.SetLedger(nd0ledger)
+	if *liar {
+		nd.SetLiar(true) // RED-TEAM (#232): keep the proof tags, drop the bytes
+		fmt.Println("RED-TEAM: running as a PoR LIAR (keeps proof tags, drops shard bytes) — never honest")
+	}
 	loop.Post(func() {
 		// Self-heal if the join races a not-yet-listening bootstrap target: while
 		// the table stays empty, re-run the Kademlia join against the seeds so the
@@ -1017,6 +1023,19 @@ func cmdDaemon(args []string) error {
 						}
 						nd.Care(reg, ch)
 						fmt.Printf("caretaking %s\n", ch.Root)
+						if *auditInterval > 0 {
+							ch := ch // capture per-root
+							var sweep func()
+							sweep = func() {
+								nd.Audit(reg, ch, func(rep node.AuditReport) {
+									fmt.Printf("audit %s: %d challenged, %d passed, %d FAILED (slashed liars), %d no-truth\n",
+										ch.Root, rep.Challenges, rep.Passed, rep.Failed, rep.NoTruth)
+								})
+								clk.AfterFunc(ports.Duration(*auditInterval), sweep)
+							}
+							clk.AfterFunc(ports.Duration(*auditInterval), sweep)
+							fmt.Printf("auditing %s every %s (verify-without-fetch PoR)\n", ch.Root, *auditInterval)
+						}
 					}
 				}
 			})
