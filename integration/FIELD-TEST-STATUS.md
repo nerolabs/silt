@@ -43,38 +43,59 @@ of it (a near-empty/instant plot fails C1), replacing the hand-recorded check.
   gap**, tracked in **issue #264** (wire demand into the daemon fetch path + add a
   demand sim scenario → then add `integration/demand`).
 
-## Cloud (`integration/cloudtest`) — DRY-VALIDATED ONLY, never run
+## Cloud (`integration/cloudtest`) — FIRST REAL GCP RUNS DONE (2026-08-10)
 
-**Nothing here has touched real GCP. Zero spend so far.** The cloud harness
-(Terraform + a deterministic 13-node, 3-region topology + acceptance flows 1–9 +
-the #184 drills) plus **four new cloud variants** of the local series were added and
-**dry-validated at the shell/topology level only** (`bash -n`, no `apply`):
+**The harness has now touched real GCP** (three runs, all torn down to zero
+residual). It is no longer dry-validated-only.
 
 | cloud flow | mirrors | status |
 |---|---|---|
-| `flow_publisher_unlinkability` | privacy #3 | authored, dry-validated, **not run** |
-| `flow_durability_turnover` | durability #2 | authored, dry-validated, **not run** |
-| `flow_chaos_crash` | chaos #7 (SIGKILL + #69, via `Restart=on-failure`) | authored, dry-validated, **not run** |
-| `flow_web_ui_guard` | client #4 (guard over a real VM) | authored, dry-validated, **not run** |
-| `flow_c2_no_capture` | sybil #5 (**opt-in** `SYBILS=8`: non-anchor Sybil cohort) | authored, dry-validated (topology + `terraform validate`), **not run** |
+| `flow_publisher_unlinkability` | privacy #3 | **RAN — PASS on SMOKE** (real chain refused the durable publisher link; verified the #270 harness fix live) |
+| `flow_durability_turnover` | durability #2 | authored; skipped on SMOKE (needs store-2); not yet exercised on a warm full run |
+| `flow_chaos_crash` | chaos #7 | authored; skipped on SMOKE (needs store-2); not yet exercised on a warm full run |
+| `flow_web_ui_guard` | client #4 (guard over a real VM) | **RAN — PASS on SMOKE** (401/403/200 on a real VM) |
+| `flow_c2_no_capture` | sybil #5 (**opt-in** `SYBILS=8`) | authored + `terraform validate`; records an honest `skip` without the cohort; not yet run with `SYBILS=8` |
 
-- **These flows have never executed against a live network** — expect first-run
-  bugs (log-regex drift, timing/SLO tuning, publisher→validator egress for
-  token-quorum). Treat the first GCP run as a shakedown. `cloudtest.sh` is
-  cost-bounded (SPOT + per-VM TTL self-destruct + destroy-on-exit + nuke-by-label);
-  `SMOKE=1` trims to ~4 nodes for a pennies-scale plumbing check first.
-- **C2-Sybil (#5) now HAS a cloud flow** (`flow_c2_no_capture`), **opt-in** via
-  `SYBILS=8` (adds a non-anchor Sybil validator cohort to `topology.py`). Off by
-  default (the standard run stays 13 nodes); the flow records a `skip` when the
-  cohort is absent. Dry-validated only — a real GCP run is where the pure anchor
-  gate is certified. See item 2 below.
+### What the real runs showed
+
+- **SMOKE (4 nodes): 8 pass / 1 gap / 0 fail.** The one gap is `8-takedown` (needs
+  store-2, absent in SMOKE). Network warmed in ~11s. Clean teardown, zero residual.
+- **Full 13-node run: FOUND A REAL PRODUCT BUG (#281).** silt does a **one-shot
+  bootstrap**; the three joining validators started before the boot validator's
+  listener was up, came up with **empty routing tables**, and **never re-bootstrapped**
+  — so the 4-validator cross-region net never meshed, the chain stayed at height 0,
+  and every publish timed out. Diagnosed live (val-b could TCP-reach val-a:4001 but
+  never retried). This is exactly what the two-substrate immutable is for: the
+  2-node SMOKE's lucky timing masked it.
+- **Fix verified (#282).** A joining node now waits for its `-bootstrap` host:port
+  to accept TCP before starting silt (models a real deployment; product gap #281
+  still stands). Re-run: the mesh formed (val-b/c/d = 5/8/3 table entries, was 0/0/0)
+  and the network **warmed in 18s** where it was dead before. Also gated
+  `flow_convergence` on a real committed block (height-0 no longer falsely
+  "converges"), and added a GCP-native `max_run_duration`+`DELETE` auto-delete guard
+  after a SIGKILLed orchestrator once leaked on-demand VMs (the `shutdown -h +TTL`
+  guard only halts the guest).
+
+### Operational caveats for the next full run
+- **Zone capacity:** an on-demand (`core_on_demand=true`) run hit a **transient
+  `us-central1-a` e2-small shortage** for the 3 on-demand cores that land there
+  (val-a, val-d, registry). Retry, or spread the on-demand core across zones.
+- **All-SPOT tradeoff:** `CORE_ON_DEMAND=false` dodges the capacity issue but a core
+  node (the registry) was **SPOT-preempted** mid-run — which on-demand core exists to
+  avoid. A clean full-suite green needs an on-demand run when the zone has capacity.
+- **C2-Sybil (#5)** cloud flow is built (`flow_c2_no_capture`, opt-in `SYBILS=8`);
+  the pure anchor gate is certified by running it on GCP — not yet done. See item 2.
 
 ## Highest-value extension opportunities (ranked)
 
-1. **Run the cloud harness for real** — the billable GCP pass is the *actual*
-   remaining gate. The 4 new flows + the existing 9 + #184 drills need a first
-   shakedown (SMOKE=1 → full). This is where the durability *retrieval floor*, the
-   pure Sybil *anchor gate*, and real multi-region timing get their true verdict.
+1. **A clean full-suite green on an ON-DEMAND full run** — the SMOKE passed 8/1/0
+   and the bootstrap fix (#282) is verified (net warms in 18s), but a *warm* full
+   13-node run has not yet graded all flows end-to-end: the on-demand attempt hit a
+   transient `us-central1-a` capacity shortage, and the all-SPOT fallback lost the
+   registry to preemption. Retry `core_on_demand=true` when the zone has capacity
+   (or spread the on-demand core across zones) to certify the durability *retrieval
+   floor*, cross-NAT, the #184 drills, and real multi-region timing on a live warm
+   network.
 2. **#5 C2-Sybil cloud flow — BUILT (opt-in), needs a real run.** A `sybil` role
    (`-validator -objective`, equal `-bond`, one shared `-domain sybilnet`,
    referencing the real anchor set it does NOT control) is now in `topology.py`,
