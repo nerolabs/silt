@@ -169,9 +169,17 @@ fi
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo "== CLAIM (b) double-spend: FINDING — no CLI seam; asserting the unit-level guard =="
-if ( cd "$ROOT" && go test ./core/blindtoken/ ./core/chain/ -run 'DoubleSpend|Spent|Token' -count=1 >/tmp/econ_ds.out 2>&1 ); then
-  grep -E '^(ok|PASS|---)' /tmp/econ_ds.out | head -6 | sed 's/^/  /'
-  echo "  double-spend: guard PRESENT at unit level (ErrTokenSpent / issuer spent-set) — see FINDING 1"
+if ( cd "$ROOT" && go test -v ./core/blindtoken/ ./core/chain/ -run 'DoubleSpend|Spent|Token' -count=1 >/tmp/econ_ds.out 2>&1 ); then
+  # -run matching NOTHING also exits 0 — a test rename would silently no-op this
+  # whole assertion. Require that named tests ACTUALLY ran (immutable #3: real
+  # evidence), not just a zero exit.
+  ran=$(grep -cE '^--- PASS: Test' /tmp/econ_ds.out)
+  if [ "${ran:-0}" -eq 0 ] 2>/dev/null; then
+    fail "double-spend guard: -run 'DoubleSpend|Spent|Token' matched NO tests (a rename silently no-op'd the assertion) — see /tmp/econ_ds.out"
+  else
+    grep -E '^--- PASS: Test' /tmp/econ_ds.out | head -6 | sed 's/^/  ran: /'
+    echo "  double-spend: guard PRESENT at unit level ($ran matching tests passed; ErrTokenSpent / issuer spent-set) — see FINDING 1"
+  fi
 else
   echo "  (double-spend unit tests: see /tmp/econ_ds.out)"; sed 's/^/  /' /tmp/econ_ds.out | tail -8
   fail "double-spend guard unit tests did not pass"

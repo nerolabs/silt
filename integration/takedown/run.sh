@@ -64,7 +64,11 @@ docker build -q -t silt-takedown . >/dev/null || { echo "FAIL: docker build"; ex
 
 echo "== phase 0: bring up validator + two independent operators =="
 dc up -d val opA opB
-await_log val '^registry:|serving' || { echo "FAIL: val registry never came up"; dc logs val | tail -20; exit 1; }
+# val is the chain-backed validator-registry the takedown flows depend on: match
+# its CHAIN-BACKED banner specifically, not any 'registry:'/'serving' line, so
+# readiness means the registry is actually up and quorum-serving (not an early log
+# that lets a later step race a not-yet-ready registry).
+await_log val 'registry: chain-backed' || { echo "FAIL: val registry never came up"; dc logs val | tail -20; exit 1; }
 await_log opA '^registry:|serving' || { echo "FAIL: opA registry never came up"; dc logs opA | tail -20; exit 1; }
 await_log opB '^registry:|serving' || { echo "FAIL: opB registry never came up"; dc logs opB | tail -20; exit 1; }
 

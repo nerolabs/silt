@@ -65,8 +65,9 @@ Go-build memory spike inside Docker.
 1. **Baseline** — both operators serve the identical convergent target root; a
    distinct control file serves too (so a real PASS is distinguishable from a
    global wipe).
-2. **Takedown on opA only** — opA logs `denylist: 1 root(s) denied; purged 13
-   held chunk(s)`, its object count drops, it **REFUSES** the target
+2. **Takedown on opA only** — opA logs `denylist: 1 root(s) denied; purged N
+   held chunk(s)` (the harness asserts `purged [1-9]`, not a fixed count), its
+   object count drops, it **REFUSES** the target
    (`MsgFetchChunk`/`MsgHasChunk`/`MsgChallenge` all no-op for a denied root),
    while opB's object count is unchanged and it **still SERVES** the identical
    root, and the control file **survives** on opA. Per-operator, per-hash.
