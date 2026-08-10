@@ -99,7 +99,21 @@ apply() {
     -var "budget_amount_usd=${BUDGET_AMOUNT_USD:-0}" \
     -var "billing_account=${BILLING_ACCOUNT:-}"
   tf output -json nodes > "$FT_DIR/nodes.json"
-  echo "    nodes.json written ($(python3 -c "import json;print(len(json.load(open('$FT_DIR/nodes.json'))))") instances)"
+  # Terraform's node output carries instance_name/zone/ips/role but NOT the silt
+  # NodeID — yet scenarios.sh reads node_field <n> nodeid (the #184 drills derive
+  # peer IDs from it). topology.json HAS the deterministic nodeid per node, so merge
+  # it in here. Without this every 184-* flow crashed with KeyError: 'nodeid' and
+  # the adversarial consensus drills never ran on GCP (blind cloud finding #1).
+  python3 - "$FT_DIR/nodes.json" "$FT_DIR/topology.json" <<'PY'
+import json, sys
+nodes = json.load(open(sys.argv[1]))
+topo  = json.load(open(sys.argv[2]))["nodes"]
+for name, n in nodes.items():
+    if name in topo and topo[name].get("nodeid"):
+        n["nodeid"] = topo[name]["nodeid"]
+json.dump(nodes, open(sys.argv[1], "w"), indent=2)
+PY
+  echo "    nodes.json written ($(python3 -c "import json;print(len(json.load(open('$FT_DIR/nodes.json'))))") instances, nodeid merged from topology.json)"
 }
 
 wait_ready() {
