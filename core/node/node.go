@@ -161,13 +161,20 @@ type Config struct {
 	// MinBondBytes is the anti-release floor (M0 Sybil, red-team F1/F2): a bond
 	// smaller than this earns NO standing, self or peer. The read-bound plot makes
 	// a released prover recompute (memory-hard) before it can answer, but that
-	// only bites if re-plotting the pledged size takes LONGER than the challenge
-	// window (RequestTimeout). At the measured plot throughput (~270 MB/s, see
-	// bond.BenchmarkSeal) a 500 ms window re-plots ~135 MiB, so a bond at or below
-	// that can be released and recomputed just-in-time. Setting this floor above
-	// that threshold (with margin) makes storing the plot the only viable
-	// strategy. 0 = no floor (the deterministic sim uses small bonds); a real
-	// deployment sets it — the daemon defaults it safely.
+	// only bites if re-sealing the pledged size takes LONGER than the anti-release
+	// COMPUTE window — a re-seal budget that is DELIBERATELY DECOUPLED from the
+	// transport RequestTimeout (build-immutable #3/#4, docs/TENETS.md). At the
+	// measured plot throughput (bond.PlotSealThroughput, ~270 MB/s) a ~2 s compute
+	// window re-seals ~540 MiB, so a bond at or below that could be released and
+	// recomputed just-in-time. Setting this floor above that threshold (with
+	// margin) makes storing the plot the only viable strategy — and because the
+	// window is compute, raising RequestTimeout for durability (#288) never moves
+	// this floor, so hardening the network does not price out small validators.
+	// Enforcement is the floor plus the bond-audit statistics over history, NOT a
+	// single hard reply deadline (a full re-seal is a multi-second cost, orders of
+	// magnitude above network jitter — immutable #3). 0 = no floor (the
+	// deterministic sim uses small bonds); a real deployment sets it — the daemon
+	// defaults it safely.
 	MinBondBytes int64
 	// BondLabelSamples is k, the number of labeling-consistency opens a bond
 	// challenge carries and a verifier checks (M0 Sybil G2,

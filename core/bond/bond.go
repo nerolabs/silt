@@ -91,6 +91,14 @@ const (
 	// BlockSize is the granularity of a bond: the unit a challenge probes
 	// and a prover must have on disk to answer.
 	BlockSize = 4 << 10
+	// PlotSealThroughput is the measured plot-sealing rate (see BenchmarkSeal),
+	// in bytes/second. It exists so the anti-release floor can be sized from a
+	// real, named constant instead of a magic number: a bond must be too large to
+	// re-seal inside the anti-release COMPUTE window (MinBondBytes >
+	// window × PlotSealThroughput). Build-immutable #3/#4: this window is a
+	// COMPUTE budget, deliberately decoupled from any transport/routing timeout —
+	// raising a network timeout for durability must never move this floor.
+	PlotSealThroughput = 270 * 1000 * 1000 // ~270 MB/s
 	// Samples is how many independent blocks one challenge probes for POSSESSION.
 	// A prover missing a fraction f of its bond slips through with probability
 	// (1-f)^Samples, so 20 samples makes even a 10%-short bond fail ~88% of

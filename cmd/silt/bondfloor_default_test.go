@@ -1,6 +1,29 @@
 package main
 
-import "testing"
+import (
+	"testing"
+	"time"
+
+	"github.com/nerolabs/silt/core/bond"
+)
+
+// Build-immutable #3/#4 (docs/TENETS.md): the anti-release floor is sized against
+// a COMPUTE window (re-seal time × plot throughput), DECOUPLED from any transport
+// timeout — so raising -request-timeout for durability (#288) never moves it and
+// never prices out small validators. Lock the derivation in: the floor must equal
+// the compute-window arithmetic exactly, proving it is not sourced from a network
+// deadline. If someone re-couples it to RequestTimeout, this fails.
+func TestAntiReleaseFloorIsComputeSourcedNotTransport(t *testing.T) {
+	wantSecs := int64(AntiReleaseComputeWindow / time.Second)
+	want := int64(2) * (wantSecs * bond.PlotSealThroughput) // 2× margin over window×throughput
+	if DerivedBondFloor != want {
+		t.Fatalf("anti-release floor must be derived from the compute window (2 × %ds × %d B/s = %d), got %d — is it (wrongly) coupled to a transport timeout?",
+			wantSecs, int64(bond.PlotSealThroughput), want, DerivedBondFloor)
+	}
+	if AntiReleaseComputeWindow <= 0 {
+		t.Fatal("the anti-release compute window must be a positive, explicit budget")
+	}
+}
 
 // Retest G4-RESIDUAL INVERTED as a regression: the anti-release floor must be ON
 // BY DEFAULT for an untrusted (objective) validator. #163 shipped the mechanism

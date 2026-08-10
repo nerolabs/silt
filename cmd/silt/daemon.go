@@ -30,6 +30,7 @@ import (
 	"github.com/nerolabs/silt/adapters/relay"
 	"github.com/nerolabs/silt/adapters/tcpnet"
 	"github.com/nerolabs/silt/adapters/walltime"
+	"github.com/nerolabs/silt/core/bond"
 	"github.com/nerolabs/silt/core/chain"
 	"github.com/nerolabs/silt/core/credit"
 	"github.com/nerolabs/silt/core/denylist"
@@ -75,7 +76,7 @@ func cmdDaemon(args []string) error {
 	minBond := fs.String("min-bond", "1M", "objective mode: the minimum bonded size a validator must prove on-chain to qualify (its -bond must clear this)")
 	minRep := fs.Int64("min-rep", 100, "reputation a proposer/attester must have EARNED (bonds+audits) to write — safe default; 0 = trusted deployment (self-commit, unsafe on an open network)")
 	bondSize := fs.String("bond", "64M", "storage bond a validator seals to earn consensus standing, proven to peers over time (persisted to disk; a restart reloads it) — a bigger bond earns more standing")
-	minBondFloor := fs.String("min-bond-floor", "0", "anti-release floor (M0 F1/F2): a bond smaller than this earns NO standing, because it could be released and re-plotted inside the challenge window. Set it ABOVE (challenge-window × plot-throughput): at ~270 MB/s and this daemon's ~2s window that is ~540 MiB, so a real open deployment sets e.g. 1G. 0 = off (safe only for a trusted/demo swarm)")
+	minBondFloor := fs.String("min-bond-floor", "0", "anti-release floor (M0 F1/F2): a bond smaller than this earns NO standing, because it could be released and re-sealed just-in-time. Size it against the anti-release COMPUTE window (re-seal time × plot throughput) — NOT the transport -request-timeout: at ~270 MB/s and a ~2s compute window that is ~540 MiB, so a real open deployment sets e.g. 1G. Build-immutable #3/#4: raising -request-timeout for durability must NOT move this floor. 0 = off (safe only for a trusted/demo swarm)")
 	bondAudit := fs.Duration("bond-audit", 60*time.Second, "how often a validator challenges its peers' bonds and refreshes its own standing")
 	bootstrapRetry := fs.Duration("bootstrap-retry", 15*time.Second, "how often an ISOLATED node (empty routing table) re-runs the Kademlia join against its -bootstrap seeds. silt's join is otherwise one-shot, so a node that started before its bootstrap target was listening would stay stranded forever (#281). 0 disables (single-shot join only)")
 	requestTimeout := fs.Duration("request-timeout", 5*time.Second, "per-ATTEMPT deadline for a DHT/consensus RPC. Exceeding it fails THAT attempt; -request-retries then re-sends with backoff before the peer is given up. Keep it comfortably above the real one-way+reply time on your worst expected path")
@@ -220,11 +221,11 @@ func cmdDaemon(args []string) error {
 	// > 0), and an operator can still opt out EXPLICITLY with -min-bond-floor 0
 	// (a trusted/demo swarm, where objective mode is off anyway).
 	//
-	// The derived value follows the flag's own arithmetic: a plot must be too big
-	// to re-plot inside one challenge window, else it can be released and
-	// recomputed just-in-time. At the measured ~270 MB/s plot throughput
-	// (bond.BenchmarkSeal) and this daemon's ~2s window that is ~540 MiB, so the
-	// default carries ~2x margin.
+	// The derived value follows DerivedBondFloor: a plot must be too big to
+	// re-seal inside the anti-release COMPUTE window (AntiReleaseComputeWindow,
+	// NOT the transport -request-timeout — build-immutable #3/#4), else it can be
+	// released and recomputed just-in-time. At bond.PlotSealThroughput (~270 MB/s)
+	// and the ~2s compute window that is ~540 MiB, so the default carries ~2x margin.
 	floorSet, ttlSet, byzSet, marginSet := false, false, false, false
 	fs.Visit(func(f *flag.Flag) {
 		switch f.Name {
@@ -249,7 +250,7 @@ func cmdDaemon(args []string) error {
 	objectivePath := *validator && *objective && *minRep > 0
 	effFloor, defaulted := effectiveBondFloor(floorSet, explicitFloor, objectivePath)
 	if defaulted {
-		fmt.Printf("bond: anti-release floor defaulted to %d MiB for this untrusted (objective) swarm — a smaller plot could be released and re-plotted inside the challenge window. Override with -min-bond-floor (0 disables; safe only for a trusted/demo swarm).\n", effFloor>>20)
+		fmt.Printf("bond: anti-release floor defaulted to %d MiB for this untrusted (objective) swarm — a smaller plot could be released and re-sealed within the anti-release compute window (%s × plot throughput; independent of -request-timeout). Override with -min-bond-floor (0 disables; safe only for a trusted/demo swarm).\n", effFloor>>20, AntiReleaseComputeWindow)
 	}
 	// The bond TTL gets the same safe-by-default treatment as the floor (H2 / RT-2):
 	// left OFF it admitted release-and-coast — a validator registers a bond once,
@@ -1197,12 +1198,25 @@ func (e *ephemeral) close() {
 	e.loop.Stop()
 }
 
+// AntiReleaseComputeWindow is the COMPUTE budget the anti-release floor is sized
+// against: the time a released prover would need to re-seal its plot just-in-time
+// to answer a challenge. Build-immutable #3/#4 (docs/TENETS.md): this is a
+// *compute* window, deliberately DECOUPLED from the transport -request-timeout
+// and the -bond-answer-latency reply gate. It is NOT the network reply deadline —
+// so raising -request-timeout for durability (adverse-network hardening, #288)
+// does not widen it, and the anti-release floor never balloons with a network
+// timeout (that would price out small validators — immutable #4). Enforcement of
+// the window is a floor large enough that a re-seal is a multi-second sequential
+// cost, caught by the bond-audit statistics over history — not a single hard
+// wall-clock reply deadline (immutable #3; #289).
+const AntiReleaseComputeWindow = 2 * time.Second
+
 // DerivedBondFloor is the anti-release floor an untrusted (objective) validator
-// gets when the operator sets none. A plot must be too big to re-plot inside one
-// challenge window, else it can be released and recomputed just-in-time: at the
-// measured ~270 MB/s plot throughput (bond.BenchmarkSeal) and this daemon's ~2s
-// window that threshold is ~540 MiB, so this default carries ~2x margin.
-const DerivedBondFloor = int64(1) << 30 // 1 GiB
+// gets when the operator sets none — the smallest bond too big to re-seal inside
+// AntiReleaseComputeWindow, with a 2× margin, so releasing and recomputing
+// just-in-time is not a viable strategy. Derived (not a magic number) from the
+// measured seal rate bond.PlotSealThroughput: 2s × ~270 MB/s ≈ 540 MiB × 2 ≈ 1 GiB.
+const DerivedBondFloor = int64(2) * (int64(AntiReleaseComputeWindow/time.Second) * bond.PlotSealThroughput)
 
 // coldStartScaffoldOK reports whether an untrusted objective validator has the
 // cold-start scaffolding it needs to be safe from genesis (red-team seam-2 /
