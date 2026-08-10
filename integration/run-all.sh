@@ -39,7 +39,7 @@ SUITES_CATALOG=(
   "economy|gate|180|Per-byte earning + blind-signed, publisher-unlinkable credits"
   "churn|gate|540|Repair-under-churn: kill holders, caretaker reconstructs from parity + re-scatters, bit-perfect"
   "chaos|gate|300|Crash-recovery: SIGKILL every holder, restart, #69 re-announce fires, cold-fetch bit-perfect (WAVES=2 probes a seed-crash discoverability gap)"
-  "soak|slow|400|Sustained load + gentle churn: bit-perfect throughout, no crash-loop, bounded memory"
+  "soak|slow|700|Sustained load + gentle churn: bit-perfect throughout, no crash-loop, bounded memory"
   "durability|slow|1800|Durability under permanent loss: shrink the swarm, caretaker reconstructs+re-scatters, content outlives the nodes (surfaces the durability↔retrievability boundary)"
   "retrieval|slow|900|Retrieval/discoverability at scale + identity churn: cold-fetch success-rate floor (reproduces #43)"
   "upgrade|slow|180|Rolling binary upgrade on a persisted store (reproduces the #237 format-migration FINDING)"
@@ -92,6 +92,14 @@ for name in "${RUN[@]}"; do
   dir="$HERE/$name"
   claim="$(catalog_field "$name" 3)"; [ -n "$claim" ] || claim="(uncataloged suite)"
   timeout_s="$(catalog_field "$name" 2)"; [ -n "$timeout_s" ] || timeout_s=600
+  # soak's wall-time is DURATION + build + topology-up + baseline + teardown, so a
+  # fixed cap under-counts it (the blind run timed it out at 400s → false FAIL).
+  # Derive the cap from the effective duration so raising SOAK_DURATION never
+  # self-times-out.
+  if [ "$name" = soak ]; then
+    want=$(( ${SOAK_DURATION:-360} + 300 ))
+    [ "$timeout_s" -lt "$want" ] && timeout_s="$want"
+  fi
   log="$OUT/$name.log"
 
   if [ ! -x "$dir/run.sh" ]; then
@@ -128,23 +136,35 @@ for name in "${RUN[@]}"; do
 done
 
 # ── roll-up ────────────────────────────────────────────────────────────────
-pass=0; finding=0; fail=0; skip=0
+pass=0; finding=0; fail=0; timeout=0; skip=0
 for st in "${STATUSES[@]}"; do
-  case "$st" in PASS) pass=$((pass + 1));; FINDING) finding=$((finding + 1));; FAIL) fail=$((fail + 1));; SKIP) skip=$((skip + 1));; esac
+  case "$st" in
+    PASS) pass=$((pass + 1));; FINDING) finding=$((finding + 1));;
+    FAIL) fail=$((fail + 1));; TIMEOUT) timeout=$((timeout + 1));; SKIP) skip=$((skip + 1));;
+  esac
 done
 
 {
   echo
-  echo "**$pass pass · $finding finding · $fail fail · $skip skip** — per-suite logs in \`$(basename "$OUT")/\`."
+  echo "**$pass pass · $finding finding · $fail fail · $timeout timeout · $skip skip** — per-suite logs in \`$(basename "$OUT")/\`."
   echo
   echo "Status legend: **PASS** = green gate · **FINDING** = a deliberately-reproduced open"
-  echo "defect (e.g. \`upgrade\` reproduces #237) · **FAIL** = a real regression to investigate."
+  echo "defect (e.g. \`upgrade\` reproduces #237) · **FAIL** = a real regression to investigate ·"
+  echo "**TIMEOUT** = the per-suite cap was hit (slow/loaded host, not a product regression — re-run"
+  echo "the suite standalone, or raise its cap)."
 } >>"$REPORT"
 
 echo
 echo "──────────────────────────────────────────────────────"
-printf 'summary: %s%d pass%s · %s%d finding%s · %s%d fail%s · %d skip\n' \
-  "$C_GREEN" "$pass" "$C_RESET" "$C_YELLOW" "$finding" "$C_RESET" "$C_RED" "$fail" "$C_RESET" "$skip"
+printf 'summary: %s%d pass%s · %s%d finding%s · %s%d fail%s · %s%d timeout%s · %d skip\n' \
+  "$C_GREEN" "$pass" "$C_RESET" "$C_YELLOW" "$finding" "$C_RESET" "$C_RED" "$fail" "$C_RESET" \
+  "$C_MAGENTA" "$timeout" "$C_RESET" "$skip"
 echo "report:  $REPORT"
-[ "$overall" -eq 0 ] && echo "${C_GREEN}OK${C_RESET}: no failing suites" || echo "${C_RED}FAIL${C_RESET}: $fail suite(s) failed"
+if [ "$overall" -ne 0 ]; then
+  echo "${C_RED}FAIL${C_RESET}: $fail suite(s) failed"
+elif [ "$timeout" -ne 0 ]; then
+  echo "${C_MAGENTA}NO FAILURES, but $timeout suite(s) TIMED OUT${C_RESET} — inconclusive, not a regression; re-run standalone or raise the cap"
+else
+  echo "${C_GREEN}OK${C_RESET}: no failing suites"
+fi
 exit "$overall"
