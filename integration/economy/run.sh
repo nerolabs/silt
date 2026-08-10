@@ -180,6 +180,10 @@ fi
 echo ""
 if [ "$pass" = 1 ]; then
   echo "RESULT: PASS ✅  economy observatory + blind-credit publisher-unlinkability validated"
+  echo "  tiers (immutable #3): CLAIM (a) per-byte earning / freeloaders-broke is SIM-TIER"
+  echo "    (in-process 'silt sim run economy' against the real core/credit ledger — no"
+  echo "    daemon-wire seam exposes per-byte credit accounting; see README FINDING 2)."
+  echo "    CLAIM (b) publisher-unlinkability is WIRE-TIER (real daemon publish/refuse)."
   echo "  (double-spend rejection is real in core but has NO CLI/wire seam — see README FINDING 1)"
 else
   echo "RESULT: FAIL ❌"
