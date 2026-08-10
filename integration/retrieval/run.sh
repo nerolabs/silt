@@ -77,7 +77,12 @@ for id in "${HIDS[@]}"; do
   for _ in $(seq 1 60); do docker logs "$id" 2>&1 | grep -q 'bootstrapped' && { bootok=$((bootok+1)); break; }; sleep 1; done
 done
 echo "  $bootok/$HOLDERS holders bootstrapped"
-[ "$bootok" -eq "$HOLDERS" ] || echo "  ⚠ note: $((HOLDERS-bootok)) holder(s) did not report bootstrap in time"
+# HARD scale gate: this suite measures cold-fetch success at SCALE (#43). If the
+# swarm never reached scale, a high success rate against a shrunken swarm is
+# meaningless (and would mask the very degradation under test) — so a bring-up
+# shortfall is a FAIL, not a note. Require ≥90% of holders in the swarm.
+MIN_BOOT=$(( HOLDERS * 90 / 100 )); [ "$MIN_BOOT" -lt 1 ] && MIN_BOOT=1
+[ "$bootok" -ge "$MIN_BOOT" ] || fail "only $bootok/$HOLDERS holders bootstrapped (need ≥$MIN_BOOT) — the swarm never reached scale; a cold-fetch rate measured here is not meaningful"
 CLIENT=$(dc ps -q client)
 
 # publish one file from a fresh ephemeral client; echoes "LINK SHA" or empty

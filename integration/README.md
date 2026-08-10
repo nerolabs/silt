@@ -167,7 +167,7 @@ KEEP=1 ./integration/<name>/run.sh     # leave the topology up to poke at
 | `sybil/run.sh` | C2 no quiet capture: a young objective network commits with the honest anchors and refuses to advance for a bonded Sybil set without them |
 | `audit/run.sh` | a "liar" deletes data but keeps proofs → the loss is caught and repaired |
 | `bond/run.sh` | proof-of-space-time bond cost (C1): real plots, reputation ∝ bond, shortcuts rejected |
-| `economy/run.sh` | per-byte earning + blind-signed, publisher-unlinkable credits |
+| `economy/run.sh` | blind-signed, publisher-unlinkable credits **over the wire**; per-byte earning / freeloader-broke via the in-process economy sim (no daemon credit seam yet — see the suite's FINDING 2) |
 | `takedown/run.sh` | per-operator, existence-checked, reversible takedown |
 | `privacy/run.sh` | publisher unlinkability: the default chain refuses a durable file→publisher link (refuse-to-surveil), the private path works, `-token-quorum` authorizes without identity |
 | `client/run.sh` | web-UI path: publish→list→fetch bit-perfect over the daemon's HTTP API, and the local-security guard holds (no-token/wrong-token→401, DNS-rebinding/cross-origin→403) |

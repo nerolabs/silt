@@ -159,16 +159,19 @@ c2_after=$(commit_count dc valA); e2_after=$(entries_count dc valA); e2_after=${
 # The rejection reason may surface to the publisher (OUT2) OR in valA's log —
 # look in both for the durable-Publisher refusal.
 REJECT=$( { echo "$OUT2"; dc logs valA 2>&1; } | grep -iE 'ErrPublisherEntry|carries a durable Publisher|permanent linkage|publish unlinkably' | tail -1)
-if [ "${c2_after:-0}" -eq "${c2_before:-0}" ] && [ "${e2_after:-0}" -eq "${e2_before:-0}" ]; then
-  if [ -n "$REJECT" ]; then
-    echo "  P2 PASS: the -allow-publisher entry was REFUSED — no new commit (commits stayed $c2_before, entries stayed $e2_before) and the validator logged the reason:"
-    echo "    $REJECT"
-  else
-    echo "  P2 PASS: no new commit for the -allow-publisher entry (commits stayed $c2_before, entries stayed $e2_before) — the durable-Publisher link was not recorded"
-    echo "  NOTE: no explicit ErrPublisherEntry line captured; the no-commit outcome is the ground truth (rejection may be logged at a lower level)."
-  fi
-else
+# refuse-to-surveil requires BOTH signals: the chain recorded no new commit/entry
+# AND the daemon explicitly REFUSED the durable-Publisher link. No-commit alone is
+# not enough — a publish that silently failed to reach the chain (scatter error,
+# no quorum, a dial failure) would also produce no commit, and passing on that
+# would fake green (immutable #3: assert the refusal, not the absence of a side
+# effect). The refusal reason reliably reaches the publisher (HTTP 500) or valA's log.
+if [ "${c2_after:-0}" -eq "${c2_before:-0}" ] && [ "${e2_after:-0}" -eq "${e2_before:-0}" ] && [ -n "$REJECT" ]; then
+  echo "  P2 PASS: the -allow-publisher entry was REFUSED — no new commit (commits stayed $c2_before, entries stayed $e2_before) and the daemon logged the reason:"
+  echo "    $REJECT"
+elif [ "${c2_after:-0}" -ne "${c2_before:-0}" ] || [ "${e2_after:-0}" -ne "${e2_before:-0}" ]; then
   fail "P2 the default chain COMMITTED an -allow-publisher (durable-Publisher) entry — refuse-to-surveil BREACHED (commits ${c2_before}→$c2_after, entries ${e2_before}→$e2_after)"
+else
+  fail "P2 no durable-Publisher refusal observed: commits/entries did not change, but no ErrPublisherEntry rejection surfaced either — cannot distinguish 'chain refused the link' from 'the publish never reached the chain' (reject='<none>')"
 fi
 
 # P3 — authorized yet unlinkable: a -token-quorum publish commits with a blind
