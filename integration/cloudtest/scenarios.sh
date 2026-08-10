@@ -30,6 +30,16 @@ ft_regref() { # the deterministic pinned registry ref (boot validator NodeID@htt
 PEERS=""; REGREF=""
 ft_init_refs() { PEERS="$(ft_peers)"; REGREF="$(ft_regref)"; }
 
+# silt:v1: links carry the root in BASE64URL, not hex. The takedown denylist keys
+# on the HEX root, so decode it (mirrors the local takedown/run.sh helper). Without
+# this, `grep -oE '[0-9a-f]{64}'` on the link matched nothing and cloud takedown
+# gap'd on every run — it never actually tested takedown (blind cloud finding).
+b64url_to_hex() {
+  local s="$1"
+  while [ $(( ${#s} % 4 )) -ne 0 ]; do s="${s}="; done
+  printf '%s' "$s" | tr '_-' '/+' | base64 -d 2>/dev/null | od -An -v -tx1 | tr -d ' \r\n'
+}
+
 # TOKEN_QUORUM: publish-token signatures gathered per publish (privacy: unlinkable
 # above 0). Default 2. A -token-quorum publish needs the PUBLISHER to reach that
 # many validators for signatures — distinct from validator<->validator reachability.
@@ -210,9 +220,9 @@ flow_restart_survival() {
 # ── Flow 8: per-hash takedown on ONE operator only ──────────────────────────────
 flow_takedown() {
   if [ -z "${FT_LAST_LINK:-}" ]; then record "8-takedown" gap minor "no prior published link to deny"; return; fi
-  # extract the root hash from the silt link and deny it on store-1 only
-  local root; root="$(printf '%s' "$FT_LAST_LINK" | grep -oE '[0-9a-f]{64}' | head -1)"
-  if [ -z "$root" ]; then record "8-takedown" gap minor "could not parse a root hash from $FT_LAST_LINK"; return; fi
+  # extract the HEX root from the silt:v1:<b64url-root>:<...> link and deny it on store-1
+  local root; root="$(b64url_to_hex "$(printf '%s' "$FT_LAST_LINK" | cut -d: -f3)")"
+  if [ ${#root} -ne 64 ]; then record "8-takedown" gap minor "could not decode a 64-hex root from $FT_LAST_LINK (got '${root:0:16}…')"; return; fi
   ssh_node store-1 "echo '$root' | sudo tee /var/lib/silt/deny.txt >/dev/null" >/dev/null 2>&1
   relaunch_with store-1 "-denylist /var/lib/silt/deny.txt"; sleep 8
   # store-1 should now refuse; another operator (store-2) should still serve it
@@ -245,10 +255,13 @@ adv_equivocation() {
   require_nodes "184-equivocation" blocker adversary val-b val-c || return
   local idb idc
   idb="$(node_field val-b nodeid)"; idc="$(node_field val-c nodeid)"
+  if [ ${#idb} -ne 64 ] || [ ${#idc} -ne 64 ]; then
+    record "184-equivocation" gap blocker "could not resolve val-b/val-c NodeID from nodes.json (idb='${idb:0:12}…' idc='${idc:0:12}…') — attack not delivered, not a property failure"; return
+  fi
   relaunch_with adversary "-equivocate ${idb},${idc}"
   local ok=0
   waitfor val-a 'slashed equivocator|validator slashed for equivocation' 120 >/dev/null && ok=1
-  slo_assert "184-equivocation" blocker "honest validator slashed the equivocator over the real wire" "$ok"
+  slo_assert "184-equivocation" blocker "equivocator slashed over the real wire$([ "$ok" = 1 ] || echo ' — NO slash line on val-a within 120s')" "$ok"
   restore_argv adversary
 }
 
@@ -256,25 +269,31 @@ adv_equivocation() {
 adv_partition() {
   require_nodes "184-partition" major val-b val-c || return
   local idb; idb="$(node_field val-b nodeid)"
+  if [ ${#idb} -ne 64 ]; then
+    record "184-partition" gap major "could not resolve val-b NodeID from nodes.json (idb='${idb:0:12}…') — partition not applied, not a property failure"; return
+  fi
   # partition val-c off from val-b (one-sided so it can heal on reconnect)
   relaunch_with val-c "-block-peers ${idb}"; sleep 20
   restore_argv val-c    # drop the block → reconnect → reconcile
   local ok=0
   waitfor val-c 'reorged onto a heavier fork|chain: reorged' 120 >/dev/null && ok=1
-  slo_assert "184-partition" major "partitioned validator healed onto the heavier fork after reconnect" "$ok"
+  slo_assert "184-partition" major "partitioned validator healed onto the heavier fork after reconnect$([ "$ok" = 1 ] || echo ' — NO reorg/reconcile line on val-c within 120s')" "$ok"
 }
 
 # ── #184 adversarial: forged-block + low-bond proposals rejected ────────────────
 adv_proposal_reject() {
   require_nodes "184-forged-block" major adversary || return
   local ida; ida="$(node_field val-a nodeid)"
+  if [ ${#ida} -ne 64 ]; then
+    record "184-forged-block" gap major "could not resolve val-a NodeID from nodes.json (ida='${ida:0:12}…') — proposals not delivered, not a property failure"; return
+  fi
   relaunch_with adversary "-forge-block ${ida}"
   local ok1=0; waitfor val-a 'bad signature|ErrBadSignature|reject.*(signature|proposal)' 90 >/dev/null && ok1=1
-  slo_assert "184-forged-block" major "honest validator rejected a forged-signature proposal" "$ok1"
+  slo_assert "184-forged-block" major "forged-signature proposal rejected$([ "$ok1" = 1 ] || echo ' — NO rejection line on val-a within 90s')" "$ok1"
   restore_argv adversary
   relaunch_with adversary "-lowbond-propose ${ida}"
   local ok2=0; waitfor val-a 'low reputation|ErrLowReputation|under.?bonded|reject.*bond' 90 >/dev/null && ok2=1
-  slo_assert "184-low-bond" major "honest validator rejected an under-bonded proposer" "$ok2"
+  slo_assert "184-low-bond" major "under-bonded proposer rejected$([ "$ok2" = 1 ] || echo ' — NO rejection line on val-a within 90s')" "$ok2"
   restore_argv adversary
 }
 
