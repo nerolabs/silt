@@ -286,6 +286,18 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
     takedown of a shared root.
 
 ### Added
+- **Cloud variants of the field-test series in `integration/cloudtest`** (2026-08-10) — Four new GCP
+  scenarios carry the local suites' properties onto real VMs / real regions, mapped onto the existing 13-node
+  topology with **no topology change**: `flow_publisher_unlinkability` (privacy #3 — a durable-`Publisher`
+  publish is refused by the default chain over the real wire), `flow_durability_turnover` (durability #2 —
+  content survives a **permanent** storage-node departure, fetched bit-perfect from a survivor),
+  `flow_chaos_crash` (chaos #7 — a **SIGKILL**ed storage node re-announces its chunks (#69) via
+  `Restart=on-failure` and content stays fetchable), and `flow_web_ui_guard` (client/UI #4 — the #89 web-UI
+  guard holds on a real VM: no-token→401, DNS-rebinding→403, read→200). Wired into `run_all_scenarios`;
+  shell/topology dry-validated (no billable run). **C2-Sybil (#5) has no cloud flow yet** — it needs
+  non-anchor Sybil validator VMs (a `topology.py` addition) so the Sybils' bonds bank over a longer cloud run
+  and the pure `ErrAnchorRequired` gate + ≥8-bond atomization note become assertable; recorded as a `skip`
+  until then.
 - **New field test: chaos / crash-recovery (`integration/chaos`)** (2026-08-10) — Tests whether the system
   survives **hard crashes**: a `SIGKILL` (abrupt process death, no graceful shutdown), then a restart of the
   *same* node — same identity, same IP, same on-disk store (`docker start` on an un-removed container, unlike

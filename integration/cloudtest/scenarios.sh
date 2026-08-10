@@ -263,10 +263,88 @@ adv_proposal_reject() {
   restore_argv adversary
 }
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# Cloud variants of the local field-test series (integration/{privacy,durability,
+# chaos,client,sybil}) — the same properties, over real VMs / real regions. Each
+# maps onto the existing 13-node topology with NO topology change (a flag flip via
+# relaunch_with, a hard kill, a permanent stop). #5 C2-Sybil is intentionally NOT
+# here: it needs NON-anchor Sybil validator VMs (a topology.py addition) — see the
+# note in run_all_scenarios + the README. Until then it stays a local-only suite.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── privacy (#3): publisher unlinkability — refuse-to-surveil over the real wire ─
+flow_publisher_unlinkability() {
+  # flow_publish_fetch already proved the DEFAULT (token-quorum) publish commits
+  # unlinkably. Here the adversary ASKS to record a durable Publisher identity; the
+  # default chain must REFUSE it (chain: ErrPublisherEntry / "carries a durable
+  # Publisher"). That refusal, over real VMs, is immutable #4 (refuse-to-surveil).
+  local out ok=0
+  ssh_node fetch-1 "head -c 32768 </dev/urandom >/tmp/ft_priv.bin" >/dev/null 2>&1
+  out="$(ssh_node fetch-1 "/usr/local/bin/silt swarm add /tmp/ft_priv.bin -peers '$PEERS' -registry '$REGREF' -allow-publisher -chunk-size 65536" 2>&1 || true)"
+  printf '%s' "$out" | grep -iqE 'durable Publisher|ErrPublisherEntry|permanent linkage|publish unlinkably' && ok=1
+  slo_assert "priv-unlinkability" major "default chain REFUSED a durable file→publisher link (refuse-to-surveil)$([ "$ok" = 1 ] || echo " — no refusal seen: $(printf '%s' "$out" | tail -1)")" "$ok"
+}
+
+# ── durability (#2): content OUTLIVES a permanent storage-node loss ─────────────
+flow_durability_turnover() {
+  require_nodes "durability-turnover" major store-1 store-2 fetch-1 || return
+  # Publish replicated, then PERMANENTLY remove a storage node (stop + leave down —
+  # a real departure, not a restart) and prove a fresh fetch still returns the bytes
+  # from the survivors. The full membership-ROTATION form (a terminated VM replaced
+  # by a fresh-IP VM) is the honest cloud version of the local kill-without-replace.
+  local res link sha
+  res="$(ft_publish fetch-1 1048576 || true)"
+  if [ -z "$res" ]; then slo_assert "durability-turnover" major "publish never produced a link" 0; return; fi
+  link="${res%% *}"; sha="${res##* }"
+  svc store-1 stop || true    # permanent departure (left down for the fetch)
+  sleep 12
+  local got ok=0
+  got="$(ssh_node store-2 "/usr/local/bin/silt swarm get '$link' -o /tmp/ft_dur.bin -peers '$PEERS' -registry '$REGREF' >/dev/null 2>&1; sha256sum /tmp/ft_dur.bin | cut -d' ' -f1" 2>/dev/null || true)"
+  [ "$got" = "$sha" ] && ok=1
+  slo_assert "durability-turnover" major "content survived a PERMANENT storage-node departure — fetched bit-perfect from a survivor" "$ok"
+  svc store-1 start || true   # restore for later flows
+}
+
+# ── chaos (#7): hard crash (SIGKILL) recovery + #69 reprovide over real VMs ──────
+flow_chaos_crash() {
+  require_nodes "chaos-crash" major store-1 store-2 || return
+  local link="${FT_LAST_LINK:-}"
+  if [ -z "$link" ]; then local res; res="$(ft_publish fetch-1 262144 || true)"; link="${res%% *}"; fi
+  if [ -z "$link" ]; then slo_assert "chaos-crash" major "no link to verify crash-recovery against" 0; return; fi
+  # SIGKILL the silt process (abrupt death, not a graceful stop). systemd
+  # (Restart=on-failure) brings it back, reloading the persisted store.
+  ssh_node store-2 "sudo pkill -9 -f '/usr/local/bin/silt' || true" >/dev/null 2>&1
+  ssh_node store-2 "sudo systemctl start silt.service" >/dev/null 2>&1 || true   # idempotent nudge
+  local reann=0
+  waitfor store-2 're-announced [0-9]+ held chunks' 90 >/dev/null && reann=1
+  slo_assert "chaos-reprovide" major "SIGKILLed storage node re-announced its held chunks (#69) after a hard crash" "$reann"
+  local got ok=0
+  got="$(ssh_node store-1 "/usr/local/bin/silt swarm get '$link' -o /tmp/ft_ch.bin -peers '$PEERS' -registry '$REGREF' >/dev/null 2>&1 && echo OK" 2>/dev/null || true)"
+  [ "$got" = OK ] && ok=1
+  slo_assert "chaos-fetch" major "content fetchable after a hard-crash (SIGKILL) + restart of a storage node" "$ok"
+}
+
+# ── client/UI (#4): the web-UI local-security guard (#89) over a real VM ─────────
+flow_web_ui_guard() {
+  require_nodes "web-ui" minor fetch-1 || return
+  # Turn on the web UI on fetch-1 (a flag flip, restored after), then attack its
+  # guard from the node's OWN localhost — the realistic operator-on-the-box model.
+  relaunch_with fetch-1 "-ui=127.0.0.1:8081"
+  sleep 10
+  local c401 c403 c200 ok=0
+  c401="$(ssh_node fetch-1 "curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8081/api/publish" 2>/dev/null || true)"
+  c403="$(ssh_node fetch-1 "curl -s -o /dev/null -w '%{http_code}' -H 'Host: evil.example.com' http://127.0.0.1:8081/api/status" 2>/dev/null || true)"
+  c200="$(ssh_node fetch-1 "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8081/api/status" 2>/dev/null || true)"
+  { [ "$c401" = 401 ] && [ "$c403" = 403 ] && [ "$c200" = 200 ]; } && ok=1
+  slo_assert "web-ui-guard" major "web-UI guard held on a real VM: no-token POST=$c401 (want 401), DNS-rebinding Host=$c403 (want 403), token-free read=$c200 (want 200)" "$ok"
+  restore_argv fetch-1
+}
+
 run_all_scenarios() {
   ft_init_refs
   echo "  peers=$PEERS"
   echo "  registry=$REGREF"
+  # acceptance flows 1–9 + #184 adversarial drills
   flow_first_run
   flow_become_validator
   flow_publish_fetch
@@ -279,4 +357,14 @@ run_all_scenarios() {
   adv_equivocation
   adv_partition
   adv_proposal_reject
+  # cloud variants of the local field-test series
+  flow_publisher_unlinkability   # privacy #3
+  flow_durability_turnover       # durability #2
+  flow_chaos_crash               # chaos #7
+  flow_web_ui_guard              # client/UI #4
+  # NOTE: C2-Sybil (#5) has no cloud flow yet — it needs NON-anchor Sybil validator
+  # VMs (a topology.py addition), so on cloud the Sybils' bonds actually bank and the
+  # pure ErrAnchorRequired gate + the ≥8-bond atomization note become assertable.
+  # Tracked as the remaining cloud-variant work; stays a local-only suite until then.
+  record "sybil-c2-cloud" skip major "C2-Sybil cloud flow pending a non-anchor Sybil validator topology (topology.py) — local suite integration/sybil covers it today"
 }
