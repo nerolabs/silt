@@ -58,18 +58,24 @@ Default run (`16 → 6` holders, `replication=1`, one file ~4 MB = 104 shards):
   re-scatters onto survivors, so `reachable` recovers (→ 99) — **13 stripe
   reconstructions** over the shrink. The content provably still exists, whole, on
   nodes that outlived the ones it was published to.
-- **RETRIEVAL degraded at the small-swarm boundary.** A fresh client's fetch stayed
-  bit-perfect down to **~11 survivors**, then began failing — *even handed every
-  survivor as a direct peer*. The shards are reachable to the long-lived caretaker,
-  but a fresh client cannot **discover** enough of the re-scattered shards to
-  assemble the file as the swarm shrinks. This is the **#43 retrieval surface under
-  permanent loss**: *durable is not the same as retrievable.*
+- **REPAIR + RETRIEVAL degraded at the small-swarm boundary — a dial-storm (issue
+  #277).** Below **~11–12 survivors** the caretaker's repair sweep AND a fresh
+  client's fetch begin to fail. Root-caused live: as holders depart permanently,
+  their **stale provider records** make the DHT provider walk re-dial the dead
+  holders — each dial a ~2s i/o timeout — so a single repair sweep can no longer
+  finish in the window (the caretaker "wedges"), and the same dial-storm drowns a
+  fetch (a warm get returned 0 bytes). The `deadUntil` negative cache gates the
+  fetch/repair *decision* but **not the walk's dials**. The **bytes physically
+  survive** on the ≥k survivors (no stripe below k); *durable is not the same as
+  retrievable.* Same class as the #43 retrieval surface and #251.
 
-So the default exits as a **FINDING** — durability held, but the end-to-end user
-outcome degraded past the retrieval floor. The finding *is* the deliverable (real
-evidence of the durability↔retrievability boundary, not a tuned-to-green pass). The
-retrieval field test owns #43 head-on; the **cloud** test's larger, real-network
-swarms are where the *healthy-retrieval* durability envelope is certified.
+So the default exits as a **FINDING** with the dial-storm diagnostic — durability
+held (the bytes survive), but repair + retrieval degrade under this heavy loss. A
+*genuine* below-k content loss is a hard **FAIL**; `EXPECT=pass` hard-fails a wedge.
+The finding *is* the deliverable. It is **heavily amplified by the small swarm** (a
+few dead holders are a large fraction of every shard's provider set); at real scale
+they are a tiny fraction, so the **cloud** test judges the true finite-but-renewable
+envelope.
 
 `EXPECT=pass` flips any finding to a hard failure (for CI gating on a config you
 expect to pass, e.g. a retrieval-healthy `MIN_SURVIVORS`).
