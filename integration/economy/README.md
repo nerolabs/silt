@@ -49,15 +49,14 @@ host, so run.sh also builds a throwaway host-native binary for it.
 | (b) control: token-less publish refused | `chain: entry has no publish token (required)` (registry 500) |
 | (b) control: durable-Publisher refused | `chain: entry carries a durable Publisher (records permanent linkage…)` |
 | (b) positive: tokened publish commits | val1 stdout `chain: committed block N`; chain head advances |
-| (b) positive: **unlinkable** on the wire | committed entry in `chain.cbor` carries a `Token`+`Serial` and a **zero-NodeID** Publisher (32 zero bytes) |
-| (b) double-spend rejected | unit guard present (`ErrTokenSpent` / issuer spent-set) — **see FINDING 1** |
+| (b) positive: **unlinkable** on the wire | committed entry in `chain.cbor` carries a `Token`+`Serial` whose **own** Publisher field (the one that follows it in the same CBOR entry) is the **zero NodeID** — tied together, not just "both appear somewhere" |
+| (b) **double-spend rejected over the wire** | re-presenting a `-save-token` token with `-use-token` is refused with `ErrTokenSpent` ("publish token serial already spent (double-spend)") and never commits, while a fresh token still commits — **FINDING 1 RESOLVED (#233)** |
 
 ## FINDINGS
 
-### FINDING 1 — the double-spend rejection has NO CLI/wire seam (confidence: high)
+### FINDING 1 — the double-spend rejection is now driven over the wire (RESOLVED, #233)
 
-The claim "double-spends are rejected" is **real in core** but is **not reachable
-from the product's CLI**. Two independent guards exist:
+The claim "double-spends are rejected" is backed by two independent guards:
 
 - `core/chain/chain.go`: `ErrTokenSpent = "publish token serial already spent
   (double-spend)"` — a committed serial is added to `c.spent`; a later entry with
@@ -65,24 +64,22 @@ from the product's CLI**. Two independent guards exist:
 - `core/node/tokenrole.go`: the online issuer keeps a `creditSpent` set and
   refuses a reused credit serial.
 
-But `silt swarm add -token-quorum N` mints a **fresh random serial**
-(`blindtoken.NewSerial`) on *every* invocation, and there is **no flag** to
-present a saved/replayed token or serial. So two `swarm add` calls never collide,
-and no CLI path drives a token or credit into either spent-set a second time.
+This test *used* to record an open gap: `silt swarm add -token-quorum N` minted a
+**fresh random serial** every invocation, so two `add` calls never collided and no
+CLI path drove a token into either spent-set a second time — the rejection was
+real in core but only unit-testable.
 
-**Repro of the gap:** publish twice with `-token-quorum` — both commit (distinct
-serials); there is no way to reproduce a double-spend over the wire. The harness
-therefore asserts the guard at the **unit** level:
-`go test ./core/blindtoken/ ./core/chain/ -run 'DoubleSpend|Spent|Token'`
-(covers `TestPublishTokensGateAndPreventDoubleSpend`,
-`TestForgedTokenCannotSpend`) and reports the wire gap here.
+**#233 added the replay seam.** `silt swarm add` now takes `-save-token <file>`
+(write the acquired token, CBOR) and `-use-token <file>` (publish carrying that
+saved token instead of minting a fresh one). The harness publishes once with
+`-save-token`, then re-presents the same token for a *different* file with
+`-use-token`: the registry's local pre-check refuses it with the exact
+`ErrTokenSpent` reason and it never commits, while a control publish with a fresh
+token still commits (so the rejection is a real defence, not a dead swarm). The
+anti-double-spend property is now demonstrable — and red-team-able — over the real
+wire.
 
-*Suggested fix for the builder:* let `swarm add` accept a caller-supplied
-token/serial (or emit the acquired token to a file that a second `add` can
-replay), so the anti-double-spend property is demonstrable — and red-team-able —
-over the real wire, not only in unit tests.
-
-### FINDING 2 — per-byte credit accounting is sim-only, not on the daemon (confidence: high)
+### FINDING 2 — per-byte credit accounting is sim-only, not on the daemon (OPEN, #233 part B)
 
 Claim (a)'s economics — per-byte earning, balances, `CanPublish`, the
 `ErrInsufficientCredit` gate, Gini — live entirely in `sim/economy.go` over an
