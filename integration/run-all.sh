@@ -38,6 +38,7 @@ SUITES_CATALOG=(
   "audit|gate|240|A liar deletes shards but keeps proofs → the loss is caught over the wire and repaired"
   "economy|gate|180|Per-byte earning + blind-signed, publisher-unlinkable credits"
   "churn|gate|540|Repair-under-churn: kill holders, caretaker reconstructs from parity + re-scatters, bit-perfect"
+  "chaos|gate|300|Crash-recovery: SIGKILL every holder, restart, #69 re-announce fires, cold-fetch bit-perfect (WAVES=2 probes a seed-crash discoverability gap)"
   "soak|slow|400|Sustained load + gentle churn: bit-perfect throughout, no crash-loop, bounded memory"
   "durability|slow|1800|Durability under permanent loss: shrink the swarm, caretaker reconstructs+re-scatters, content outlives the nodes (surfaces the durability↔retrievability boundary)"
   "retrieval|slow|900|Retrieval/discoverability at scale + identity churn: cold-fetch success-rate floor (reproduces #43)"

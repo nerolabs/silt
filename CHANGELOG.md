@@ -286,6 +286,18 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
     takedown of a shared root.
 
 ### Added
+- **New field test: chaos / crash-recovery (`integration/chaos`)** (2026-08-10) — Tests whether the system
+  survives **hard crashes**: a `SIGKILL` (abrupt process death, no graceful shutdown), then a restart of the
+  *same* node — same identity, same IP, same on-disk store (`docker start` on an un-removed container, unlike
+  `durability`'s `docker rm`). **WAVE 1 (default, the gate):** `SIGKILL` **every** holder, restart, and assert
+  each re-bootstraps AND logs `re-announced N held chunks` (#69) so content stays discoverable, then a fresh
+  client cold-fetches it back **bit-perfect** — with no crash-loop. Validated locally (PASS: 6/6 holders
+  re-announced, bit-perfect after a full holder crash). **WAVE 2 (opt-in, `WAVES=2`):** also `SIGKILL`s the
+  **sole** seed/registry/bootstrap; this surfaces a discoverability gap — the content stays on disk but a
+  fresh client can't rediscover the providers in the window, and a single holder re-announce doesn't restore
+  it — recorded **honestly as an observation to root-cause** (entangled with the single-bootstrap SPOF a real
+  deployment avoids; retest with a redundant-bootstrap topology + on the cloud test), **not** a verified
+  product defect, which is why it is off by default. Wired into `run-all.sh` (gate tier).
 - **New field test: C2 "no quiet capture" under a Sybil validator set (`integration/sybil`)** (2026-08-10) —
   Tests the M0 systemic C2 claim cynically, as an OUTCOME: can a bonded **Sybil validator set** — many
   identities, real bonds, its own quorum — **quietly capture** a young objective network? Two honest anchors
