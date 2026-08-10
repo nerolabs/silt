@@ -610,7 +610,7 @@ func New(id ports.NodeID, cfg Config, clock ports.Clock, tr ports.Transport, sto
 		proofs:          make(map[ports.ChunkID]ports.StorageProof),
 		peerDomains:     make(map[ports.NodeID]uint64),
 		peerBonds:       make(map[ports.NodeID]bondInfo),
-		peerBondRTT:      make(map[ports.NodeID]*latWindow),
+		peerBondRTT:     make(map[ports.NodeID]*latWindow),
 		attested:        make(map[uint64]ports.Hash),
 		pendingBondRegs: make(map[ports.NodeID]chain.BondReg),
 		peerIssuerKeys:  make(map[ports.NodeID]*rsa.PublicKey),
