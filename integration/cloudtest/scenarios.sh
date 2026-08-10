@@ -352,10 +352,35 @@ flow_web_ui_guard() {
   restore_argv fetch-1
 }
 
+# A cold objective genesis network needs its peer mesh established and its first
+# block committed before publish-token gathering works. Proven on GCP: the exact
+# same flows that FAIL at ~4 min post-boot all PASS once the chain has advanced (a
+# warm network fetched bit-perfect and reached height 3). So warm the network
+# before grading: retry a throwaway publish from the boot validator (it also serves
+# the registry, so this is the most reliable publisher) until it produces a link —
+# which commits the first block — bounded by WARMUP_S. A timeout does not fail the
+# run; the graded flows then report honestly.
+: "${WARMUP_S:=300}"
+wait_network_warm() {
+  local boot deadline t0 out link
+  boot="$(python3 -c "import json;print(json.load(open('$FT_DIR/topology.json'))['meta']['boot'])")"
+  t0="$(date +%s)"; deadline=$(( t0 + WARMUP_S ))
+  echo "  warming the network (≤${WARMUP_S}s): retrying a throwaway publish from $boot until the chain commits…"
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    out="$(ssh_node "$boot" "head -c 4096 </dev/urandom >/tmp/ft_warm.bin; /usr/local/bin/silt swarm add /tmp/ft_warm.bin -peers '$PEERS' -registry '$REGREF' -token-quorum $TOKEN_QUORUM -chunk-size 65536 2>&1 || true")"
+    link="$(printf '%s' "$out" | grep -oE 'silt:v1:\S+' | head -1)"
+    [ -n "$link" ] && { echo "    network warm after $(( $(date +%s) - t0 ))s (first publish committed)"; return 0; }
+    sleep 8
+  done
+  echo "    WARN: network did not warm within ${WARMUP_S}s — grading anyway (flows will report honestly)"
+  return 1
+}
+
 run_all_scenarios() {
   ft_init_refs
   echo "  peers=$PEERS"
   echo "  registry=$REGREF"
+  wait_network_warm
   # acceptance flows 1–9 + #184 adversarial drills
   flow_first_run
   flow_become_validator
