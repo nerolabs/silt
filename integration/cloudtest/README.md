@@ -35,6 +35,23 @@ Scenarios map 1:1 onto the acceptance brief (`docs/reviews/m0-acceptance-brief.m
 flows 1–9) plus the `#184` adversarial consensus-safety cases. Each records a
 `pass` / `gap` / `fail` verdict with a severity and elapsed time.
 
+**Cloud variants of the local field-test series** (`integration/{privacy,durability,
+chaos,client,sybil}`) run the same properties over real VMs / real regions, mapped
+onto the existing 13-node topology with **no topology change**:
+
+| cloud flow | mirrors | asserts |
+|---|---|---|
+| `flow_publisher_unlinkability` | `privacy` (#3) | a durable-`Publisher` publish is REFUSED by the default chain (refuse-to-surveil) |
+| `flow_durability_turnover` | `durability` (#2) | content survives a **permanent** storage-node departure — fetched bit-perfect from a survivor |
+| `flow_chaos_crash` | `chaos` (#7) | a **SIGKILL**ed storage node re-announces its chunks (#69) and content stays fetchable |
+| `flow_web_ui_guard` | `client` (#4) | the web-UI guard holds on a real VM (no-token→401, DNS-rebinding→403, read→200) |
+
+**Not yet a cloud flow: C2-Sybil (#5).** It needs **non-anchor Sybil validator VMs**
+(a `topology.py` addition) so the Sybils' bonds actually *bank* over a longer cloud
+run and the pure `ErrAnchorRequired` gate + the ≥8-bond atomization note become
+assertable. Until that topology exists it is recorded as a `skip` and stays a
+local-only suite (`integration/sybil`).
+
 ## How it works (deterministic, self-configuring)
 
 `silt id -id-seed N` is deterministic and the internal IPs are static, so
@@ -47,7 +64,7 @@ topology.py    seeds → NodeIDs → static IPs → the full `silt` argv per nod
 terraform/     VPC, public + NAT subnets, firewall, SPOT instances, budget alarm
 provision/     startup scripts: pull the binary from GCS, run the argv under systemd
 lib.sh         SSH-over-IAP, log-wait, SLO assertions, result recording
-scenarios.sh   the 9 flows + 3 #184 drills
+scenarios.sh   the 9 flows + 3 #184 drills + 4 field-test-series cloud variants
 gen_report.sh  results.jsonl → report.md + report.html
 cloudtest.sh   the orchestrator: build → apply → run → report → destroy
 ```
