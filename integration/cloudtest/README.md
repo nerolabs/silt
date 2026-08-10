@@ -45,12 +45,24 @@ onto the existing 13-node topology with **no topology change**:
 | `flow_durability_turnover` | `durability` (#2) | content survives a **permanent** storage-node departure — fetched bit-perfect from a survivor |
 | `flow_chaos_crash` | `chaos` (#7) | a **SIGKILL**ed storage node re-announces its chunks (#69) and content stays fetchable |
 | `flow_web_ui_guard` | `client` (#4) | the web-UI guard holds on a real VM (no-token→401, DNS-rebinding→403, read→200) |
+| `flow_c2_no_capture` | `sybil` (#5) | **opt-in** (`SYBILS=8`): a bonded non-anchor Sybil cohort cannot advance the chain with the anchors down, and it resumes when they return |
 
-**Not yet a cloud flow: C2-Sybil (#5).** It needs **non-anchor Sybil validator VMs**
-(a `topology.py` addition) so the Sybils' bonds actually *bank* over a longer cloud
-run and the pure `ErrAnchorRequired` gate + the ≥8-bond atomization note become
-assertable. Until that topology exists it is recorded as a `skip` and stays a
-local-only suite (`integration/sybil`).
+**C2-Sybil (#5) — opt-in, `SYBILS=8 ./cloudtest.sh`.** The local `integration/sybil`
+suite can only reach the **standing gate** (a laptop's fresh Sybils can't *bank*
+bonds — a young network's bond-registration needs anchor-proposed blocks). The
+cloud opt-in adds a cohort of **non-anchor Sybil validator VMs** (a `sybil`
+`topology.py` role: `-validator -objective`, equal `-bond`, one shared
+`-domain sybilnet`, referencing the real anchor set they do **not** control). Over
+the warm period the anchors' blocks *bank* the Sybil `BondReg`s, so the flow
+certifies the **pure `ErrAnchorRequired` gate**: stop every anchor → a
+self-majority of bonded Sybils **cannot** advance the chain (the C2 concentration
+metric discounts a single-domain split, so they never reach the bond-distinct
+maturity that sheds the anchors); restore the anchors → the chain **resumes**
+(proving it was the anchors that were required, not that the Sybils were dead).
+≥8 equal single-domain bonds also trip the **atomization note**. The Sybils run on
+**SPOT** (cheap); absent the cohort (`SYBILS` unset) the flow records an honest
+`skip`. `SYBILS=8 ./cloudtest.sh` adds the 8-VM cohort (21 nodes total) — **off by
+default** so the standard run stays 13 nodes.
 
 ## How it works (deterministic, self-configuring)
 

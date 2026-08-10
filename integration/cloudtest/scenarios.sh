@@ -324,11 +324,12 @@ adv_proposal_reject() {
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Cloud variants of the local field-test series (integration/{privacy,durability,
-# chaos,client,sybil}) — the same properties, over real VMs / real regions. Each
-# maps onto the existing 13-node topology with NO topology change (a flag flip via
-# relaunch_with, a hard kill, a permanent stop). #5 C2-Sybil is intentionally NOT
-# here: it needs NON-anchor Sybil validator VMs (a topology.py addition) — see the
-# note in run_all_scenarios + the README. Until then it stays a local-only suite.
+# chaos,client,sybil}) — the same properties, over real VMs / real regions. Most
+# map onto the existing 13-node topology with NO topology change (a flag flip via
+# relaunch_with, a hard kill, a permanent stop). #5 C2-Sybil additionally needs the
+# opt-in NON-anchor Sybil cohort (SYBILS=8, a topology.py role) so the Sybils' bonds
+# actually bank and the PURE ErrAnchorRequired gate + the ≥8-bond atomization note
+# become assertable; absent the cohort the flow records an honest skip.
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # ── privacy (#3): publisher unlinkability — refuse-to-surveil over the real wire ─
@@ -402,6 +403,87 @@ flow_web_ui_guard() {
   restore_argv fetch-1
 }
 
+# ── C2 Sybil no-capture (#5): a bonded NON-anchor cohort cannot take the chain ──
+# The LOCAL integration/sybil suite can only reach the STANDING gate — on a laptop a
+# fresh Sybil set can't bank bonds (a young network's bond-registration needs
+# anchor-proposed blocks; chicken-and-egg). On CLOUD, over the warm period the
+# ANCHORS' committed blocks bank the Sybils' BondRegs, so this certifies the PURE
+# gate: with the anchors gone, a self-majority of bonded Sybils all sharing ONE
+# -domain still cannot advance the chain (ErrAnchorRequired) — because the C2
+# concentration metric refuses to count a single-domain split as the address-diverse
+# decentralization that sheds the launch anchors. The clincher: restore the anchors
+# and the chain RESUMES — proving it was the missing anchors, not dead Sybils.
+# Opt-in (needs the cohort): SYBILS=8 ./cloudtest.sh.
+flow_c2_no_capture() {
+  if ! node_exists sybil-1; then
+    record "5-sybil-no-capture" skip major "no Sybil cohort in this topology — opt in with SYBILS=8 ./cloudtest.sh to certify the PURE anchor gate on cloud (the local integration/sybil suite reaches only the standing gate)"
+    return
+  fi
+  local n_syb sybils anchors_nodes
+  n_syb="$(python3 -c "import json;print(json.load(open('$FT_DIR/topology.json'))['meta']['n_syb'])")"
+  sybils="$(python3 -c "import json;print(' '.join(json.load(open('$FT_DIR/topology.json'))['meta']['sybils']))")"
+  anchors_nodes="$(python3 -c "import json;print(' '.join(n for n,v in json.load(open('$NODES_JSON')).items() if v['role']=='validator'))")"
+
+  # chain head height from a node's OWN store (real chain-status, not a harness echo)
+  syb_height() { ssh_node "$1" "/usr/local/bin/silt chain-status -store /var/lib/silt 2>&1" \
+    | grep -oE 'head height:[[:space:]]*[0-9]+' | grep -oE '[0-9]+' | tail -1; }
+
+  # 0) precondition: the Sybils must have SYNCED the anchor-committed chain (their
+  #    bonds banked). head height 0 ⇒ never synced ⇒ capture premise not set up →
+  #    honest GAP (property UNTESTED), never a fake pass.
+  local h0; h0="$(syb_height sybil-1)"; h0="${h0:-0}"
+  if [ "$h0" -lt 1 ] 2>/dev/null; then
+    record "5-sybil-no-capture" gap major "sybil-1 never synced a committed chain (head height 0) — the anchors had not yet banked the Sybil bonds; capture precondition unmet, property UNTESTED"; return
+  fi
+
+  # 1) anchors UP: an anchor logs the C2 metric with the wheels ENGAGED, and (≥8
+  #    equal single-domain bonds) the atomization note — real evidence the metric
+  #    SEES the cohort and refuses to count it as decentralization. Observational.
+  local wheels atom
+  wheels="$(waitfor val-a 'wheels engaged|C2: nakamoto' 60 || true)"
+  [ -n "$wheels" ] && echo "    C2 metric (anchors up): ${wheels##*silt}"
+  atom="$(jlog val-a 800 | grep -E 'atomization note' | tail -1 || true)"
+  [ -n "$atom" ] && echo "    atomization note tripped: ${atom##*silt}"
+
+  # 2) THE CAPTURE ATTEMPT — stop every anchor; only the bonded Sybil self-majority
+  #    remains. Give it time to try to advance on its own.
+  echo "    stopping all anchors ($anchors_nodes) — the Sybil cohort attempts to advance…"
+  local a; for a in $anchors_nodes; do svc "$a" stop >/dev/null 2>&1 || true; done
+  sleep 90
+
+  # 3) OUTCOME (immutable #2 — outcome first, log corroborates): the chain must NOT
+  #    advance past h0 (a +1 tolerance for a block already in flight when the
+  #    anchors dropped), and a Sybil should log the anchor-required refusal.
+  local h1; h1="$(syb_height sybil-1)"; h1="${h1:-$h0}"
+  local no_advance=0; [ "$h1" -le "$((h0 + 1))" ] 2>/dev/null && no_advance=1
+  local gate=0 s
+  for s in $sybils; do
+    if jlog "$s" 800 | grep -qE 'immature network requires anchor|requires anchor attestations|ErrAnchorRequired|training wheels'; then gate=1; break; fi
+  done
+
+  # 4) THE CLINCHER — restore the anchors; the chain must RESUME advancing, proving
+  #    the halt was the missing anchors and not merely dead Sybils.
+  echo "    restoring anchors — chain must resume…"
+  for a in $anchors_nodes; do svc "$a" start >/dev/null 2>&1 || true; done
+  local resumed=0 h2 t0; t0="$(date +%s)"
+  while [ $(( $(date +%s) - t0 )) -lt 180 ]; do
+    h2="$(syb_height sybil-1)"; h2="${h2:-$h1}"
+    [ "$h2" -gt "$h1" ] 2>/dev/null && { resumed=1; break; }
+    sleep 6
+  done
+  h2="${h2:-$h1}"
+
+  # Verdict: "no quiet capture" = the Sybils could NOT advance without the anchors
+  # AND the chain came back WITH them. The gate log is corroborating real evidence.
+  if [ "$no_advance" = 1 ] && [ "$resumed" = 1 ]; then
+    record "5-sybil-no-capture" pass major "no quiet capture: $n_syb bonded single-domain Sybils could NOT advance the chain with all anchors down (head ${h0}→$h1), and it resumed to $h2 once the anchors returned$([ "$gate" = 1 ] && echo '; a Sybil logged the anchor-required refusal' || echo ' (no explicit anchor-required log captured; outcome still holds)')"
+  elif [ "$no_advance" != 1 ]; then
+    record "5-sybil-no-capture" fail major "CAPTURE: the Sybil cohort advanced the chain from $h0 to $h1 with ALL anchors down — the training wheels did not hold"
+  else
+    record "5-sybil-no-capture" gap major "no-capture outcome held (head froze ${h0}→$h1 with anchors down) but the chain did NOT resume within 180s after restoring anchors (h2=$h2) — liveness inconclusive (SPOT preemption?); re-run to confirm the clincher"
+  fi
+}
+
 # A cold objective genesis network needs its peer mesh established and its first
 # block committed before publish-token gathering works. Proven on GCP: the exact
 # same flows that FAIL at ~4 min post-boot all PASS once the chain has advanced (a
@@ -449,9 +531,5 @@ run_all_scenarios() {
   flow_durability_turnover       # durability #2
   flow_chaos_crash               # chaos #7
   flow_web_ui_guard              # client/UI #4
-  # NOTE: C2-Sybil (#5) has no cloud flow yet — it needs NON-anchor Sybil validator
-  # VMs (a topology.py addition), so on cloud the Sybils' bonds actually bank and the
-  # pure ErrAnchorRequired gate + the ≥8-bond atomization note become assertable.
-  # Tracked as the remaining cloud-variant work; stays a local-only suite until then.
-  record "sybil-c2-cloud" skip major "C2-Sybil cloud flow pending a non-anchor Sybil validator topology (topology.py) — local suite integration/sybil covers it today"
+  flow_c2_no_capture             # C2 Sybil #5 — opt-in (SYBILS=8): certifies the PURE anchor gate on cloud
 }
