@@ -29,7 +29,17 @@ except FileNotFoundError:
 order = ["pass", "gap", "fail", "skip"]
 counts = {k: sum(1 for r in rows if r["verdict"] == k) for k in order}
 graded = [r for r in rows if r["verdict"] != "skip"]
-overall = "PASS" if counts["fail"] == 0 and graded else ("FAIL" if counts["fail"] else "NO RESULTS")
+# A `gap` is a shortfall (couldn't confirm the property), not a pass — per field-test
+# immutable #4 it must NOT roll up to a green PASS. Only an all-pass graded run is PASS;
+# any gap downgrades to REVIEW (amber); any fail is FAIL.
+if not graded:
+    overall = "NO RESULTS"
+elif counts["fail"]:
+    overall = "FAIL"
+elif counts["gap"]:
+    overall = "REVIEW"
+else:
+    overall = "PASS"
 sev_rank = {"blocker": 0, "major": 1, "minor": 2, "cosmetic": 3}
 
 # ── Markdown ────────────────────────────────────────────────────────────────
@@ -66,7 +76,7 @@ for r in sorted(rows, key=lambda r: r["flow"]):
     trows.append(f"<tr><td><code>{h(r['flow'])}</code></td>"
                  f"<td style='color:{color.get(r['verdict'],'#333')};font-weight:600'>{h(r['verdict']).upper()}</td>"
                  f"<td>{h(r.get('severity',''))}</td><td>{h(el)}</td><td>{h(r['detail'])}</td></tr>")
-ocolor = {"PASS":"#1a7f37","FAIL":"#cf222e","NO RESULTS":"#57606a"}[overall]
+ocolor = {"PASS":"#1a7f37","REVIEW":"#9a6700","FAIL":"#cf222e","NO RESULTS":"#57606a"}[overall]
 doc = f"""<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>silt field-test report — {h(run_id)}</title>

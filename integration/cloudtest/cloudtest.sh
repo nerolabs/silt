@@ -83,6 +83,10 @@ tf() { terraform -chdir="$FT_DIR/terraform" "$@"; }
 
 apply() {
   echo "==> terraform apply (run=$RUN_ID)"
+  # Persist the run id so `nuke`/`down` from a FRESH shell target the right label.
+  # RUN_ID embeds $$ (pid) by default, so a later `./cloudtest.sh nuke` in a new
+  # shell would compute a different id and match nothing — read this file instead.
+  printf '%s\n' "$RUN_ID" > "$FT_DIR/.last_run_id"
   tf init -input=false >/dev/null
   tf apply -input=false -auto-approve \
     -var "project_id=$PROJECT_ID" \
@@ -137,12 +141,21 @@ teardown() {
 }
 
 nuke() {
-  echo "==> nuke: deleting every resource labelled cloudtest=$RUN_ID in $PROJECT_ID"
+  # Prefer the persisted run id (RUN_ID default embeds $$ and differs in a fresh shell).
+  local target="$RUN_ID"
+  if [ -z "${RUN_ID_EXPLICIT:-}" ] && [ -f "$FT_DIR/.last_run_id" ]; then
+    target="$(cat "$FT_DIR/.last_run_id")"
+  fi
+  echo "==> nuke: deleting every resource labelled cloudtest=$target in $PROJECT_ID"
   gcloud compute instances list --project "$PROJECT_ID" \
-    --filter "labels.cloudtest=$RUN_ID" --format 'value(name,zone)' | while read -r name zone; do
+    --filter "labels.cloudtest=$target" --format 'value(name,zone)' | while read -r name zone; do
     [ -n "$name" ] && gcloud compute instances delete "$name" --zone "$zone" --project "$PROJECT_ID" --quiet || true
   done
-  echo "    (subnets/network/bucket: 'terraform destroy' is preferred; check the console if state was lost)"
+  # The artifacts bucket is labelled too but is not an instance — delete it by name
+  # so a lost-state nuke does not leave it billing (network/subnets/routes are free).
+  gcloud storage rm -r "gs://silt-ft-${target}-${PROJECT_ID}" --quiet 2>/dev/null \
+    || echo "    (bucket gs://silt-ft-${target}-${PROJECT_ID} not found or already gone)"
+  echo "    (network/subnets/firewall/routes: 'terraform destroy' is preferred; they are free if left)"
 }
 
 case "${1:-all}" in
