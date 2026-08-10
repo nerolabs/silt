@@ -226,6 +226,20 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
     before any demand→standing fusion — now stated as such.
 
 ### Fixed
+- **A node that joins before its bootstrap peer is listening now recovers on its own** (2026-08-10) —
+  Field-test finding #281, found on the first real 13-node cross-region GCP run. silt's Kademlia join
+  (`Node.Bootstrap`) was **one-shot**: on a multi-node cold start with no ordering guarantee, three
+  validators started their `FIND_NODE` before the boot validator's listener was up, landed with an
+  **empty routing table**, and — with no re-bootstrap — never tried again, even though the target became
+  reachable seconds later. The network never meshed, the chain stayed at height 0, and every publish
+  timed out (reachability was fine; consensus never formed). Added a **periodic self-heal**
+  (`core/node/bootstrap.go`, `StartBootstrapRetry`): while `Table().Size() == 0`, re-run the join against
+  the original `-bootstrap` seeds every `BootstrapRetryInterval` (new `-bootstrap-retry` flag, default
+  15s; 0 disables). The retry first clears the seeds from the `deadUntil` negative cache (their failed
+  initial dial had marked them dead for `HolderCooldown`), so it re-dials immediately instead of waiting
+  out the cooldown; it is a no-op once any peer is in the table. Recovery logs
+  `re-bootstrapped: recovered from an empty routing table (N table entries)`. Covered by unit tests
+  (`simnet` Kill/Restart race) and a real-process e2e (`TestBootstrapRetryRecoversColdStartRace`).
 - **Repair no longer starves on stale records to dead holders** (2026-08-09) — Field-test finding F2
   (`integration/churn/`): the repair fetch loop (`fetchStripeByColumn` → `fetchFrom`) dials providers
   serially, each dead holder costing a full `RequestTimeout`, and a single timeout re-sweeps the whole

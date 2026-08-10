@@ -77,6 +77,7 @@ func cmdDaemon(args []string) error {
 	bondSize := fs.String("bond", "64M", "storage bond a validator seals to earn consensus standing, proven to peers over time (persisted to disk; a restart reloads it) — a bigger bond earns more standing")
 	minBondFloor := fs.String("min-bond-floor", "0", "anti-release floor (M0 F1/F2): a bond smaller than this earns NO standing, because it could be released and re-plotted inside the challenge window. Set it ABOVE (challenge-window × plot-throughput): at ~270 MB/s and this daemon's ~2s window that is ~540 MiB, so a real open deployment sets e.g. 1G. 0 = off (safe only for a trusted/demo swarm)")
 	bondAudit := fs.Duration("bond-audit", 60*time.Second, "how often a validator challenges its peers' bonds and refreshes its own standing")
+	bootstrapRetry := fs.Duration("bootstrap-retry", 15*time.Second, "how often an ISOLATED node (empty routing table) re-runs the Kademlia join against its -bootstrap seeds. silt's join is otherwise one-shot, so a node that started before its bootstrap target was listening would stay stranded forever (#281). 0 disables (single-shot join only)")
 	bondLabelK := fs.Int("bond-label-k", 64, "labeling-consistency opens per bond challenge (M0 Sybil G2): each recomputes one block's label from its DRSample parents, so a prover holding arbitrary/reused/wrong-size bytes (not a real plot for its identity+size) fails. Soundness error ≤ (1-ε)^k against an ε-short prover. A per-network knob — prover and verifier must MATCH (like -bond-vdf), so set it uniformly across the swarm. Lower it only to shrink on-chain proof size, at a soundness cost. 0 = default (64)")
 	bondAnswerLatency := fs.Duration("bond-answer-latency", 1500*time.Millisecond, "reply-deadline on a live bond challenge (M0 C1 / BREAK 1): a validator that deleted part of its plot must RECOMPUTE the missing blocks on demand, and past the DRSample graph's ~0.25 knee that recompute is a large sequential cost, so a reply slower than this earns no standing. A SOFT deterrent (wall-clock ⇒ fastest-evaluator-sensitive), set generously above the honest answer time (~VDF + network) so slow honest hardware is not failed — it deters the rational serial disk-saver, not a parallel farm (owned residual A5). Must stay below -request equivalents; 0 = off (only for a trusted/demo swarm)")
 	signedProviders := fs.Bool("signed-providers", true, "self-certifying DHT provider records (M0 H5): a node signs its 'I hold this' announcements with its identity key and re-verifies records served back on lookup, so a node holding the k-closest slots to a key cannot fabricate provider records for identities that never announced. Default ON; =false drops to the legacy unsigned path (trusted/demo swarm only)")
@@ -191,6 +192,7 @@ func cmdDaemon(args []string) error {
 	cfg := node.DefaultConfig()
 	cfg.RequestTimeout = ports.Duration(2 * time.Second) // patient vs the 500ms default (real WAN)
 	cfg.BondAuditInterval = ports.Duration(*bondAudit)
+	cfg.BootstrapRetryInterval = ports.Duration(*bootstrapRetry)
 	cfg.BondLabelSamples = *bondLabelK
 	cfg.BondMaxAnswerLatency = ports.Duration(*bondAnswerLatency) // C1 recompute deterrent (BREAK 1 / A5); soft, generous
 	// Self-certifying provider records (M0 H5): ON by default so a node can't
@@ -815,6 +817,13 @@ func cmdDaemon(args []string) error {
 	}
 	nd.SetLedger(nd0ledger)
 	loop.Post(func() {
+		// Self-heal if the join races a not-yet-listening bootstrap target: while
+		// the table stays empty, re-run the Kademlia join against the seeds so the
+		// node recovers on its own instead of staying isolated (#281).
+		nd.StartBootstrapRetry(func(size int) {
+			fmt.Printf("re-bootstrapped: recovered from an empty routing table (%d table entries)\n", size)
+			dlog("re-bootstrapped from empty table", "table", size)
+		})
 		nd.Bootstrap(seeds, func() {
 			fmt.Printf("bootstrapped (%d table entries)\n", nd.Table().Size())
 			dlog("bootstrapped", "table", nd.Table().Size())
