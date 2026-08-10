@@ -188,7 +188,8 @@ if [ "${FINDING:-0}" = 1 ]; then
   echo "  (WAVE 1 crash-recovery PASSED; the WAVE 2 registry-crash finding above is the deliverable.)"
   [ "${EXPECT:-}" = pass ] && exit 1 || exit 0
 fi
-echo "RESULT: PASS ✅  crash-recovery holds — the swarm survived a SIGKILL of every holder: each reloaded"
-echo "  its persisted store, re-announced its held chunks (#69), and a fresh client fetched the content"
-echo "  back bit-perfect after the crash, with no crash-loop. (Run WAVES=2 for the opt-in seed-crash probe.)"
+echo "RESULT: PASS ✅  crash-recovery holds — the swarm survived a SIGKILL of every holder:"
+echo "  $reprovided/$HOLDERS holder(s) reloaded their persisted store and re-announced held chunks (#69),"
+echo "  and a fresh client fetched the content back bit-perfect after the crash, with no crash-loop."
+echo "  (The gate is ≥1 reprovide + a bit-perfect cold fetch; run WAVES=2 for the opt-in seed-crash probe.)"
 exit 0

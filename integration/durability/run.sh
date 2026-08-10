@@ -195,8 +195,13 @@ for c in $(seq 1 "$TO_KILL"); do
   killed_total=$((killed_total+1))
   survivors=$(running_holders)
   # Block until the caretaker completes a NEW sweep — repair has had its turn, so
-  # reachable/below-k reflect the POST-kill state, not a stale pre-kill line.
-  sweeps=$(wait_fresh_sweep "$sweeps")
+  # reachable/below-k reflect the POST-kill state, not a stale pre-kill line. If no
+  # fresh sweep lands (caretaker crashed/wedged — the dial-storm failure churn hit),
+  # the below-k oracle can't increase and a real durability breach would be
+  # misclassified as a benign retrieval FINDING. Trust nothing then — fail loudly.
+  if ! sweeps=$(wait_fresh_sweep "$sweeps"); then
+    fail "caretaker logged no fresh repair sweep within the window (repair loop wedged) — the below-k durability oracle is untrustworthy; cannot certify durability this cycle"
+  fi
   reach=$(care_reachable); repairs=$(care_repairs)
   rn=${reach%%/*}
   [ -n "$rn" ] && [ "$rn" != "?" ] && [ "$rn" -lt "$worst_reachable" ] 2>/dev/null && worst_reachable=$rn
