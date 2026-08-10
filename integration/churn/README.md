@@ -97,8 +97,8 @@ repair-then-fetch observations, by contrast, look scale-independent.
 
 | env | default | meaning |
 |-----|---------|---------|
-| `HOLDERS` | 15 | size of the storage pool |
-| `PROTECTED` | 4 | holders never killed (a permanent survivor set) |
+| `HOLDERS` | 16 | size of the storage pool |
+| `PROTECTED` | 3 | holders never killed (a permanent survivor set) |
 | `WAVES` | 2 | how many kill→repair→refetch cycles to run |
 | `FILE_BYTES` | 20000000 | published file size (≈32 stripes at the default geometry) |
 | `STEP_WAIT` | 150 | seconds to wait for a repair sweep after each kill (>2 sweeps) |
