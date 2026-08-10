@@ -137,6 +137,12 @@ resource "google_compute_instance" "natgw" {
     provisioning_model = "SPOT"
     preemptible        = true
     automatic_restart  = false
+    # Orchestrator-independent hard cost backstop — GCP DELETEs the VM after the
+    # TTL even if the destroy trap never runs (see the public-node scheduling note).
+    instance_termination_action = "DELETE"
+    max_run_duration {
+      seconds = var.ttl_minutes * 60
+    }
   }
   metadata = merge(local.ssh_keys_meta, {
     "startup-script" = templatefile("${path.module}/../provision/natgw-startup.sh", {
@@ -175,7 +181,15 @@ resource "google_compute_instance" "public" {
   scheduling {
     provisioning_model = (var.core_on_demand && contains(["validator", "registry"], each.value.role)) ? "STANDARD" : "SPOT"
     preemptible        = !(var.core_on_demand && contains(["validator", "registry"], each.value.role))
-    automatic_restart  = (var.core_on_demand && contains(["validator", "registry"], each.value.role))
+    automatic_restart  = false
+    # Hard cost backstop that does NOT depend on the orchestrator: GCP itself
+    # DELETES the VM after ttl_minutes, even if the destroy-on-EXIT trap never runs
+    # (e.g. the orchestrator is SIGKILLed mid-run — which once leaked 6 on-demand
+    # VMs). Stronger than the in-guest `shutdown -h +TTL`, which only halts the OS.
+    instance_termination_action = "DELETE"
+    max_run_duration {
+      seconds = var.ttl_minutes * 60
+    }
   }
   service_account {
     email  = data.google_compute_default_service_account.default.email
@@ -221,7 +235,15 @@ resource "google_compute_instance" "natted" {
   scheduling {
     provisioning_model = (var.core_on_demand && contains(["validator", "registry"], each.value.role)) ? "STANDARD" : "SPOT"
     preemptible        = !(var.core_on_demand && contains(["validator", "registry"], each.value.role))
-    automatic_restart  = (var.core_on_demand && contains(["validator", "registry"], each.value.role))
+    automatic_restart  = false
+    # Hard cost backstop that does NOT depend on the orchestrator: GCP itself
+    # DELETES the VM after ttl_minutes, even if the destroy-on-EXIT trap never runs
+    # (e.g. the orchestrator is SIGKILLed mid-run — which once leaked 6 on-demand
+    # VMs). Stronger than the in-guest `shutdown -h +TTL`, which only halts the OS.
+    instance_termination_action = "DELETE"
+    max_run_duration {
+      seconds = var.ttl_minutes * 60
+    }
   }
   service_account {
     email  = data.google_compute_default_service_account.default.email
