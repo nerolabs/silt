@@ -13,9 +13,9 @@
 
 # ---- pretty output ---------------------------------------------------------
 if [ -t 1 ]; then
-  C_GREEN=$'\033[32m'; C_RED=$'\033[31m'; C_YELLOW=$'\033[33m'; C_DIM=$'\033[2m'; C_RESET=$'\033[0m'
+  C_GREEN=$'\033[32m'; C_RED=$'\033[31m'; C_YELLOW=$'\033[33m'; C_MAGENTA=$'\033[35m'; C_DIM=$'\033[2m'; C_RESET=$'\033[0m'
 else
-  C_GREEN=""; C_RED=""; C_YELLOW=""; C_DIM=""; C_RESET=""
+  C_GREEN=""; C_RED=""; C_YELLOW=""; C_MAGENTA=""; C_DIM=""; C_RESET=""
 fi
 
 ft_human_time() { # ft_human_time <seconds>
@@ -29,15 +29,17 @@ ft_result_line() {
   grep -oiE "RESULT: (PASS|FAIL|FINDING)[^\"]*" "$1" 2>/dev/null | tail -1
 }
 
-# ft_classify <exit_code> <result_line> — PASS | FINDING | FAIL.
-# A non-zero exit is always FAIL. On exit 0 the RESULT word decides. A suite that
-# exits 0 with NO RESULT line — or an unrecognized one — is a FAIL, not a PASS:
-# the suites run `set -uo pipefail` (not `-e`), so one that dies silently after
-# its setup can still exit 0 without ever printing a verdict. Every real suite
-# prints a RESULT line on its happy path, so a missing verdict means a broken run,
-# and defaulting it to PASS would fake green (field-test immutable #4).
+# ft_classify <exit_code> <result_line> — PASS | FINDING | FAIL | TIMEOUT.
+# rc==124 is `timeout` killing a suite that ran long — a distinct TIMEOUT, NOT a
+# product FAIL (a slow/loaded host or a too-tight per-suite cap, not a regression;
+# the blind field test hit this on `soak`). Any OTHER non-zero exit is FAIL. On
+# exit 0 the RESULT word decides; a suite that exits 0 with NO RESULT line — or an
+# unrecognized one — is a FAIL, not a PASS: the suites run `set -uo pipefail` (not
+# `-e`), so one that dies silently after its setup can still exit 0 without ever
+# printing a verdict, and defaulting that to PASS would fake green (immutable #4).
 ft_classify() {
   local rc="$1" line="$2"
+  if [ "$rc" -eq 124 ]; then echo TIMEOUT; return; fi
   if [ "$rc" -ne 0 ]; then echo FAIL; return; fi
   case "$line" in
     *[Rr]"ESULT: PASS"*)    echo PASS ;;
@@ -48,11 +50,12 @@ ft_classify() {
   esac
 }
 
-# ft_status_color <PASS|FINDING|FAIL> — echoes the matching color escape.
+# ft_status_color <PASS|FINDING|FAIL|TIMEOUT> — echoes the matching color escape.
 ft_status_color() {
   case "$1" in
     PASS)    printf '%s' "$C_GREEN" ;;
     FINDING) printf '%s' "$C_YELLOW" ;;
+    TIMEOUT) printf '%s' "$C_MAGENTA" ;;
     *)       printf '%s' "$C_RED" ;;
   esac
 }
