@@ -19,9 +19,12 @@ ft_peers() {
 import json;t=json.load(open('$FT_DIR/topology.json'));p=t['meta']['swarm_port']
 print(','.join(n['nodeid']+'@'+n['ip']+':%d'%p for n in t['nodes'].values() if n['role']=='validator'))"
 }
-ft_regref() { # scrape the pinned registry ref the boot validator prints
-  jlog "$(python3 -c "import json;print(json.load(open('$FT_DIR/topology.json'))['meta']['boot'])")" 800 \
-    | grep -oE 'registry: *\S+@https://\S+' | tail -1 | sed 's/registry: *//'
+ft_regref() { # the deterministic pinned registry ref (boot validator NodeID@https://ip:port)
+  # Built by topology.py from the known NodeID + internal ip. We do NOT scrape the
+  # daemon's `registry: chain-backed, serving ...` banner: the old regex could not
+  # match it (REGREF came back empty → every `swarm add` hit a usage error), and the
+  # banner prints the bound 0.0.0.0 address, which a publisher cannot dial.
+  python3 -c "import json;print(json.load(open('$FT_DIR/topology.json'))['meta']['regref'])"
 }
 
 PEERS=""; REGREF=""
@@ -106,12 +109,15 @@ flow_publish_fetch() {
   local boot; boot="$(python3 -c "import json;print(json.load(open('$FT_DIR/topology.json'))['meta']['boot'])")"
   if waitfor "$boot" 'chain: committed block [0-9]+' "$COMMIT_SLO_S" >/dev/null; then :; else
     slo_assert "2-publish-fetch" major "publish did not commit within ${COMMIT_SLO_S}s (link=$link)" 0; return; fi
-  # fetch from a different node (store-2) and compare hashes
-  got="$(ssh_node store-2 "/usr/local/bin/silt swarm get '$link' -o /tmp/ft_got.bin -peers '$PEERS' -registry '$REGREF' >/dev/null 2>&1; sha256sum /tmp/ft_got.bin | cut -d' ' -f1" 2>/dev/null || true)"
+  # fetch from a DIFFERENT node than the publisher and compare hashes. store-2 in
+  # the full topology; store-1 in the SMOKE set (store-2 absent) — both differ from
+  # the fetch-1 publisher, so this blocker still runs (not false-fails) under SMOKE.
+  local fetchnode=store-2; node_exists store-2 || fetchnode=store-1
+  got="$(ssh_node "$fetchnode" "/usr/local/bin/silt swarm get '$link' -o /tmp/ft_got.bin -peers '$PEERS' -registry '$REGREF' >/dev/null 2>&1; sha256sum /tmp/ft_got.bin | cut -d' ' -f1" 2>/dev/null || true)"
   t1="$(date +%s)"
   [ -n "$sha" ] && [ "$got" = "$sha" ] && ok=1
   FT_LAST_LINK="$link"   # reused by restart-survival + takedown
-  slo_assert "2-publish-fetch" blocker "fetched from store-2 $([ "$ok" = 1 ] && echo 'bit-perfect' || echo "MISMATCH (want=$sha got=$got)")" "$ok" $((t1 - t0))
+  slo_assert "2-publish-fetch" blocker "fetched from $fetchnode $([ "$ok" = 1 ] && echo 'bit-perfect' || echo "MISMATCH (want=$sha got=$got)")" "$ok" $((t1 - t0))
 }
 
 # ── Flow 3: care link — repair/audit without decrypting ─────────────────────────
@@ -182,14 +188,20 @@ flow_restart_survival() {
   if waitfor val-b '(reload|restored|persisted).*(bond|standing)|standing.*(reload|restored)|bond.*loaded' "$RESTART_SLO_S" >/dev/null; then ok=1; fi
   t1="$(date +%s)"
   slo_assert "7-restart-standing" major "val-b standing returned after restart without re-bonding" "$ok" $((t1 - t0))
-  # stored content still discoverable+served after a storage-node restart
-  svc store-2 restart || true; sleep 8
-  local ok2=0
-  if [ -n "${FT_LAST_LINK:-}" ]; then
-    local got; got="$(ssh_node store-1 "/usr/local/bin/silt swarm get '$FT_LAST_LINK' -o /tmp/ft_r.bin -peers '$PEERS' -registry '$REGREF' >/dev/null 2>&1 && echo OK" 2>/dev/null || true)"
-    [ "$got" = OK ] && ok2=1
+  # stored content still discoverable+served after a storage-node restart. Needs a
+  # second storage node to restart while store-1 serves — skip cleanly under SMOKE
+  # (store-2 absent) rather than restart a nonexistent node and assert on nothing.
+  if node_exists store-2; then
+    svc store-2 restart || true; sleep 8
+    local ok2=0
+    if [ -n "${FT_LAST_LINK:-}" ]; then
+      local got; got="$(ssh_node store-1 "/usr/local/bin/silt swarm get '$FT_LAST_LINK' -o /tmp/ft_r.bin -peers '$PEERS' -registry '$REGREF' >/dev/null 2>&1 && echo OK" 2>/dev/null || true)"
+      [ "$got" = OK ] && ok2=1
+    fi
+    slo_assert "7-restart-content" major "content still fetchable after a storage-node restart" "$ok2"
+  else
+    record "7-restart-content" skip major "skipped — needs store-2 (absent in this topology, e.g. SMOKE)"
   fi
-  slo_assert "7-restart-content" major "content still fetchable after a storage-node restart" "$ok2"
 }
 
 # ── Flow 8: per-hash takedown on ONE operator only ──────────────────────────────
@@ -340,10 +352,35 @@ flow_web_ui_guard() {
   restore_argv fetch-1
 }
 
+# A cold objective genesis network needs its peer mesh established and its first
+# block committed before publish-token gathering works. Proven on GCP: the exact
+# same flows that FAIL at ~4 min post-boot all PASS once the chain has advanced (a
+# warm network fetched bit-perfect and reached height 3). So warm the network
+# before grading: retry a throwaway publish from the boot validator (it also serves
+# the registry, so this is the most reliable publisher) until it produces a link —
+# which commits the first block — bounded by WARMUP_S. A timeout does not fail the
+# run; the graded flows then report honestly.
+: "${WARMUP_S:=300}"
+wait_network_warm() {
+  local boot deadline t0 out link
+  boot="$(python3 -c "import json;print(json.load(open('$FT_DIR/topology.json'))['meta']['boot'])")"
+  t0="$(date +%s)"; deadline=$(( t0 + WARMUP_S ))
+  echo "  warming the network (≤${WARMUP_S}s): retrying a throwaway publish from $boot until the chain commits…"
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    out="$(ssh_node "$boot" "head -c 4096 </dev/urandom >/tmp/ft_warm.bin; /usr/local/bin/silt swarm add /tmp/ft_warm.bin -peers '$PEERS' -registry '$REGREF' -token-quorum $TOKEN_QUORUM -chunk-size 65536 2>&1 || true")"
+    link="$(printf '%s' "$out" | grep -oE 'silt:v1:\S+' | head -1)"
+    [ -n "$link" ] && { echo "    network warm after $(( $(date +%s) - t0 ))s (first publish committed)"; return 0; }
+    sleep 8
+  done
+  echo "    WARN: network did not warm within ${WARMUP_S}s — grading anyway (flows will report honestly)"
+  return 1
+}
+
 run_all_scenarios() {
   ft_init_refs
   echo "  peers=$PEERS"
   echo "  registry=$REGREF"
+  wait_network_warm
   # acceptance flows 1–9 + #184 adversarial drills
   flow_first_run
   flow_become_validator

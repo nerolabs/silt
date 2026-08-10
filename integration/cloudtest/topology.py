@@ -133,6 +133,13 @@ def main():
     bootstrap = f'{nodes[boot]["nodeid"]}@{nodes[boot]["ip"]}:{SWARM_PORT}'
     relay = next((name for name, n in nodes.items() if n["role"] == "relay"), None)
     relay_ref = f'{nodes[relay]["nodeid"]}@{nodes[relay]["ip"]}:{RELAY_PORT}' if relay else ""
+    # Deterministic, dialable pinned registry ref. The boot validator serves the
+    # registry on 0.0.0.0:REGISTRY_PORT; a publisher must dial its INTERNAL ip
+    # (not 0.0.0.0, which the daemon prints as its bound address). We construct it
+    # here from the known NodeID + ip rather than scraping the daemon's log line,
+    # so REGREF is never empty (the old log-scrape regex could not match the real
+    # `registry: chain-backed, serving <id>@https://...` banner) and never 0.0.0.0.
+    regref = f'{nodes[boot]["nodeid"]}@https://{nodes[boot]["ip"]}:{REGISTRY_PORT}'
 
     # Bond economics: FAST proves the mechanism cheaply; FAITHFUL is economically real.
     if BOND_MODE == "faithful":
@@ -170,9 +177,14 @@ def main():
             return f"daemon -id-seed {n['seed']} {common} -bootstrap {bootstrap} -relay-via {relay_ref} -capacity 2G"
         if role == "adversary":
             # honest by default; #184 scenarios relaunch it with -equivocate/-forge-block/etc.
+            # Same maturity/attester baseline as the honest validators so its only
+            # difference is the injected red-team flag — otherwise the mismatched
+            # config can perturb objective quorum math on a fresh network.
+            adv_attesters = ",".join(nodes[v]["nodeid"] for v in validators)
             return (f"daemon -id-seed {n['seed']} {common} -advertise {ip}:{SWARM_PORT} -bootstrap {bootstrap} "
                     f"-validator -objective -min-bond {min_bond} -min-bond-floor {min_floor} "
-                    f"-anchors {anchors} -quorum {quorum} -bond {bond} -bond-audit 30s -capacity 2G")
+                    f"-mature-validators {n_val} -anchors {anchors} -attesters {adv_attesters} "
+                    f"-quorum {quorum} -bond {bond} -bond-audit 30s -capacity 2G")
         if role == "natgw":
             return "NATGW"   # not a silt node — runs integration/nat/natgw.sh instead
         sys.exit(f"topology: unknown role {role} for {name}")
@@ -183,7 +195,7 @@ def main():
     meta = {
         "swarm_port": SWARM_PORT, "relay_port": RELAY_PORT, "registry_port": REGISTRY_PORT,
         "bond_mode": BOND_MODE, "n_val": n_val, "quorum": quorum, "bootstrap": bootstrap,
-        "relay_ref": relay_ref, "anchors": anchors, "boot": boot,
+        "relay_ref": relay_ref, "regref": regref, "anchors": anchors, "boot": boot,
         "public_cidr": PUBLIC_CIDR, "nat_cidr": NAT_CIDR,
     }
     here = os.path.dirname(os.path.abspath(__file__))
