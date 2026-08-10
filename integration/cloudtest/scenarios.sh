@@ -66,7 +66,10 @@ ft_publish() { # ft_publish NODE SIZE_BYTES
   local sha; sha="$(cat /tmp/ft_src_sha 2>/dev/null)"
   local deadline=$(( $(date +%s) + PUBLISH_RETRY_S ))
   while [ "$(date +%s)" -lt "$deadline" ]; do
-    out="$(ssh_node "$node" "/usr/local/bin/silt swarm add /tmp/ft_src.bin -peers '$PEERS' -registry '$REGREF' -token-quorum $TOKEN_QUORUM -chunk-size 65536" 2>&1 || true)"
+    # 2>&1 INSIDE the remote command: ssh_node suppresses gcloud stderr (2>/dev/null),
+    # so a publish error (on silt's stderr) is only captured for the diagnostic below
+    # if the redirect happens remotely.
+    out="$(ssh_node "$node" "/usr/local/bin/silt swarm add /tmp/ft_src.bin -peers '$PEERS' -registry '$REGREF' -token-quorum $TOKEN_QUORUM -chunk-size 65536 2>&1" || true)"
     link="$(printf '%s' "$out" | grep -oE 'silt:v1:\S+' | head -1)"
     [ -n "$link" ] && { printf '%s %s\n' "$link" "$sha"; return 0; }
     lasterr="$(printf '%s' "$out" | grep -iE 'could not gather|not enough|no canonical|token|refus|unreachable|timed? ?out' | head -2 | tr '\n' ';')"
@@ -292,7 +295,10 @@ flow_publisher_unlinkability() {
   # Publisher"). That refusal, over real VMs, is immutable #4 (refuse-to-surveil).
   local out ok=0
   ssh_node fetch-1 "head -c 32768 </dev/urandom >/tmp/ft_priv.bin" >/dev/null 2>&1
-  out="$(ssh_node fetch-1 "/usr/local/bin/silt swarm add /tmp/ft_priv.bin -peers '$PEERS' -registry '$REGREF' -allow-publisher -chunk-size 65536" 2>&1 || true)"
+  # The refusal is written to silt's STDERR; ssh_node suppresses gcloud stderr
+  # (2>/dev/null), so the `2>&1` MUST be INSIDE the remote command or the refusal is
+  # lost and this false-FAILs (a warm chain does refuse — verified live on GCP).
+  out="$(ssh_node fetch-1 "/usr/local/bin/silt swarm add /tmp/ft_priv.bin -peers '$PEERS' -registry '$REGREF' -allow-publisher -chunk-size 65536 2>&1" || true)"
   printf '%s' "$out" | grep -iqE 'durable Publisher|ErrPublisherEntry|permanent linkage|publish unlinkably' && ok=1
   slo_assert "priv-unlinkability" major "default chain REFUSED a durable file→publisher link (refuse-to-surveil)$([ "$ok" = 1 ] || echo " — no refusal seen: $(printf '%s' "$out" | tail -1)")" "$ok"
 }
