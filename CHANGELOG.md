@@ -344,6 +344,17 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
     `-mode convergent` so both operators hold the **same** root, actually demonstrating per-operator
     takedown of a shared root.
 
+### Changed
+- **Anti-release bond floor decoupled from the transport timeout (build-immutables #3/#4)** (2026-08-10) —
+  Following the network-durability-vs-space-time research opinion, the anti-release floor `MinBondBytes` is now
+  sized explicitly against a named **compute** window (`AntiReleaseComputeWindow`, ~2s) times the measured seal
+  rate (`bond.PlotSealThroughput`, ~270 MB/s), *not* the transport `-request-timeout`. `DerivedBondFloor` is a
+  derivation (2× margin over window×throughput ≈ 1 GiB) rather than a magic constant, and a regression test
+  (`TestAntiReleaseFloorIsComputeSourcedNotTransport`) locks it to the compute arithmetic. This means raising
+  `-request-timeout` for durability under adverse networks (#288) can never balloon the floor toward multi-GiB
+  and price out small validators (immutable #4), and the anti-release argument no longer rests on a network
+  reply deadline (immutable #3; enforcement is the floor + bond-audit statistics-over-history, since a full
+  re-seal is a multi-second cost). No change to the default floor value; flag help and comments corrected.
 ### Added
 - **Cloud variants of the field-test series in `integration/cloudtest`** (2026-08-10) — Four new GCP
   scenarios carry the local suites' properties onto real VMs / real regions, mapped onto the existing 13-node
