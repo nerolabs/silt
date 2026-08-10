@@ -186,6 +186,15 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   do; unset domains unchanged), `TestBondRegDomainSignatureBackwardCompatible`, `TestC2Metric_ConcentrationSignals`.
 
 ### Changed
+- **`-revoke` now tells the operator it is waiting, instead of looking silently inert** (2026-08-10) —
+  Field-test finding #235. `-revoke <root>` does not act immediately: it polls until the named root is
+  committed on-chain and this validator has earned standing to gather a takedown quorum. With no output, a
+  bogus or not-yet-committed root left the daemon looking hung. It now prints, at start, `revoke: target
+  <root> — waiting until it is committed on-chain and this validator has standing to gather a takedown
+  quorum`, and a one-time `revoke: <root> is committed — gathering a takedown quorum` on the transition
+  (then the existing `takedown: proposed …` on success). (#235's repair-sweep item was already covered by
+  the `repair sweep complete` line added with the field tests; the pre-format-store item is folded into the
+  migration-policy work, #237.)
 - **`integration/fieldtest/` → `integration/cloudtest/` — honest naming for the cloud substrate** (2026-08-09)
   — The GCP harness is *the cloud variant* of the field test, so the directory now says so: renamed to
   `integration/cloudtest/`, its orchestrator `fieldtest.sh` → `cloudtest.sh`, and the per-run GCP resource

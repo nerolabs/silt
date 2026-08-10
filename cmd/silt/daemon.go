@@ -970,11 +970,21 @@ func cmdDaemon(args []string) error {
 					if rerr != nil {
 						fmt.Fprintln(os.Stderr, "-revoke:", rerr)
 					} else {
+						// Tell the operator what -revoke is doing: it does NOT act
+						// immediately — it polls until the root is committed on-chain and
+						// this validator has standing to gather a quorum. Without this a
+						// bogus/uncommitted root leaves the daemon silently inert (#235).
+						fmt.Printf("revoke: target %s — waiting until it is committed on-chain and this validator has standing to gather a takedown quorum\n", root)
+						sawCommitted := false
 						var tryRevoke func()
 						tryRevoke = func() {
 							if _, ok := nd.Chain().LookupRoot(root); !ok {
 								clk.AfterFunc(2*ports.Second, tryRevoke) // root not committed yet
 								return
+							}
+							if !sawCommitted {
+								sawCommitted = true
+								fmt.Printf("revoke: %s is committed — gathering a takedown quorum\n", root)
 							}
 							nd.ProposeRevocation([]ports.Hash{root}, attesterIDs, attesterIDs, *quorum, func(err error) {
 								if err != nil {
