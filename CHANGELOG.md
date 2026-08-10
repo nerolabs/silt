@@ -356,6 +356,18 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   reply deadline (immutable #3; enforcement is the floor + bond-audit statistics-over-history, since a full
   re-seal is a multi-second cost). No change to the default floor value; flag help and comments corrected.
 ### Added
+- **PoR audit seam on `silt daemon` — `-liar` + `-audit` make the verify-without-fetch catch+slash wire-driveable** (2026-08-10) —
+  The `silt sim run audit` headline (a verify-WITHOUT-fetch PoR challenge catches a storage node that kept
+  its proof tags but dropped the bytes, and **slashes its standing**) existed only in-process: `Node.SetLiar`
+  and `Node.Audit` were unit/sim-tested, but nothing in `cmd/silt` toggled the liar or invoked the sweep, so
+  over the wire a liar was caught only *indirectly* (it answers `MsgHasChunk=false` once its bytes are gone).
+  Two new flags (siblings to the consensus red-team flags `-equivocate`/`-forge-block`/`-lowbond-propose`):
+  **`-liar`** (keep the tags, advertise as a provider, drop the bytes, prove over data it no longer holds)
+  and **`-audit <interval>`** (a `-care`-ing caretaker runs `Node.Audit` on every cared root — challenge each
+  shard's providers, grade the proofs against the care-link key with no ground-truth fetch, and slash the
+  liar). `integration/audit` now gates the literal claim over the wire (honest holders pass, the liar is
+  caught and slashed) and demonstrates *why* it is needed — the liar's `MsgHasChunk` lie fools the
+  availability probe but not the audit. (#232)
 - **Cloud variants of the field-test series in `integration/cloudtest`** (2026-08-10) — Four new GCP
   scenarios carry the local suites' properties onto real VMs / real regions, mapped onto the existing 13-node
   topology with **no topology change**: `flow_publisher_unlinkability` (privacy #3 — a durable-`Publisher`

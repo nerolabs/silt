@@ -1,21 +1,27 @@
 # Proof-of-retrieval (PoR) audit field test — the real "liar" node (Docker)
 
 An automated, over-the-wire test of the storage-honesty story from
-`silt sim run audit`. It stands up a **real multi-daemon swarm in containers**
-— a registry/bootstrap seed, four honest holders, and a caretaker running the
-real repair loop — publishes an erasure-coded file, then makes holders behave
-like the sim's **liars**: they keep their persisted storage proofs but their
-shard bytes are `rm`'d off disk while the daemons keep running. The harness
-asserts, against real `<store>/debug.log` lines, that the caretaker **detects
-the loss over the wire, reconstructs from parity, and re-scatters** the rebuilt
-shards — and that the file stays bit-perfect.
+`silt sim run audit`. It stands up a **real multi-daemon swarm in containers** —
+a registry/bootstrap seed, four honest holders, one **PoR liar** (`-liar`:
+keeps its proof tags and advertises as a provider, but drops the bytes), and a
+caretaker that runs both the repair loop and a **verify-without-fetch PoR audit
+sweep** (`-audit`). It publishes an erasure-coded file (`-replication 2`) and
+asserts, against real container logs, that:
+
+- the caretaker's **audit** catches the liar *without fetching its bytes*
+  (`FAILED≥1`, slashed) while the honest holders pass (`passed≥1`) — the literal
+  sim claim, now wire-driven (#232); and
+- after an honest holder's bytes are `rm`'d on top of the liar, the file still
+  **survives bit-perfect** (the gated durability outcome), with the caretaker's
+  detect/repair activity printed as observability.
 
 ```
-            seed  (registry + bootstrap, 10.60.0.10, -capacity 1 = holds nothing)
-              |
-   holder1 .21   holder2 .22   holder3 .23   holder4 .24     (honest holders)
-                          \        |        /
-                            caretaker .30   (-care <careLink>, -log info)
+       seed (registry + bootstrap, 10.60.0.10, -capacity 1 = holds nothing)
+         |
+  holder1 .21  holder2 .22  holder3 .23  holder5 .25   (honest holders)
+       holder4 .24  (-liar: keeps proofs, drops bytes)
+                    \        |        /
+                     caretaker .30  (-care <careLink> -audit 15s, -log info)
 ```
 
 Every daemon binds `0.0.0.0` but **self-advertises its own container IP** via
@@ -41,73 +47,79 @@ is 60 s and is not a daemon flag).
 
 | file | role |
 |------|------|
-| `docker-compose.yml` | the topology: one `swarm` network, seed, 4 holders, caretaker |
+| `docker-compose.yml` | the topology: one `swarm` network, seed, 4 honest holders, 1 `-liar`, caretaker |
 | `Dockerfile` | slim runtime image (silt binary), one image for every role |
 | `entry.sh` | daemon entrypoint: discovers the container IP, stamps `-advertise` |
-| `run.sh` | the driver: build → publish → damage → assert detect+repair → tear down |
+| `run.sh` | the driver: build → publish → audit-catch → damage → assert durability → tear down |
 
 ## What it asserts (all keyed to real observed behavior)
 
-1. **Placement** — publish scatters shards across the four holders; the seed
-   (`-capacity 1`) holds none, so the damage is unambiguous.
+1. **Placement** — publish (`-replication 2`) scatters shards across the four
+   honest holders; the liar advertises but drops its bytes; the seed
+   (`-capacity 1`) holds none.
 2. **Positive control** — before any damage the caretaker has logged **no**
    `stripe repaired`, and the file is retrievable bit-perfect from the intact
    swarm.
-3. **The attack** — `rm -rf /data/objects/*` on **3 of 4 holders** while those
-   daemons keep running. They still hold their persisted storage proofs
-   (`n.proofs`) — "keep the receipt, ditch the goods" — but the bytes are gone.
-4. **Detection over the wire** — the caretaker's availability probe
-   (`MsgHasChunk`, which an honest holder now answers `false`) sees the shards
-   vanish and logs `stripe degraded … within repair slack — watching` and/or
-   `stripe repaired`.
-5. **Repair + re-scatter** — at least one `stripe repaired root=… missing=…`
-   line, and the emptied holders' stores go from `0` back to `>0` objects — the
-   rebuilt shards, reconstructed from parity and re-seeded to fresh nodes.
-6. **Durability** — the file is still bit-perfect after the loss+repair.
+3. **PoR audit catch (GATED, #232)** — the caretaker's `-audit` sweep challenges
+   every shard's providers and grades the proofs against the care-link key with
+   **no ground-truth fetch**: honest holders `passed≥1`, the liar `FAILED≥1` and
+   is slashed. The liar's `MsgHasChunk` lie fools the availability probe but not
+   the audit.
+4. **The attack** — `rm -rf /data/objects/*` on one honest holder (holder2) on
+   top of the liar, while it keeps running (it still holds its persisted proofs —
+   "keep the receipt, ditch the goods" — but the bytes are gone).
+5. **Durability (GATED, the outcome)** — the file is still bit-perfect after the
+   liar + honest loss. The caretaker's `stripe degraded / stripe repaired /
+   repair below k` counts and the re-replication onto holder2 are printed as
+   **observability** (placement decides which shards truly go missing, so exact
+   counts vary; a wedged repair loop is still visible), not a flaky gate.
+6. **Regression gate** — `-liar` and `-audit` still exist on `silt daemon`, so
+   the #232 assertions above can't be silently skipped by a future build.
 
-Why 3 of 4 holders? With the default `Replication=3` and `RepairSlack=2`,
-deleting one or two holders leaves every stripe within slack (the caretaker
-*correctly* stays quiet — that is the mechanism, not a stall). Deleting **all**
-holders drops below `k` reachable shards and the caretaker logs
-`repair below k` (it cannot reconstruct). Three of four is the regime that
-strands stripes past the slack while ≥`k` survive — the one that forces a
-visible reconstruction.
+Why `-replication 2` + one honest wipe? With two copies of every shard, the
+byte-dropping liar never *solely* holds a shard, so it cannot threaten
+durability — it is purely an accountability target for the audit. Wiping one
+honest holder on top of it then exercises real honest-loss recovery while three
+honest survivors keep every stripe far above `k` (no flaky below-`k` stripes).
+Active reconstruction is placement-dependent, so the harness gates the durability
+**outcome** and merely observes the repair mechanism.
 
 ## Findings
 
-### F1 — the literal PoR-audit / standing-slash claim is NOT reachable over the real daemon (confidence: high)
+### F1 — the literal PoR-audit / standing-slash claim IS now reachable over the real daemon (RESOLVED, #232)
 
 The sim's headline is a **verify-without-fetch** PoR challenge: an auditor
 holding the care-link key catches a liar that kept the proof but dropped the
 bytes, *without fetching ground truth*, and **slashes its standing** into debt
-(`sim/audit.go`, `core/node/por.go` `Node.Audit`, `core/por`). Over the real
-daemon, that path is **not drivable**:
+(`sim/audit.go`, `core/node/por.go` `Node.Audit`, `core/por`).
 
-- **No liar seam on the wire.** `Node.SetLiar` exists and is exercised by the
-  sim, but no `silt daemon` flag toggles it. (Contrast the consensus red-team
-  flags that *are* exposed: `-equivocate`, `-forge-block`, `-lowbond-propose`.)
-- **No audit trigger.** `Node.Audit` — the PoR sweep that challenges every
-  provider and settles passes/slashes into the credit ledger — is invoked
-  **only** from the in-process sim (`sim.Audit`). Nothing in `cmd/silt`
-  (daemon, caretaker `-care`, or any subcommand) ever calls it. The repair loop
-  (`repairTick` → `repairRoot`) probes availability with `MsgHasChunk`; it never
-  issues a PoR `MsgChallenge` as an audit. (The PoR *prover* side —
-  `answerChallenge` — IS wired over TCP, and the caretaker DOES issue one
-  identity-bound PoR challenge when *verifying a repair-bounty claim*
-  (`challengeHolderRetrievability`), but there is no standalone audit sweep and
-  no slash-on-fail-audit over the wire.)
+This test *used* to record F1 as an open gap: over the real daemon that path was
+not drivable — `Node.SetLiar` and `Node.Audit` existed and were unit/sim-tested,
+but nothing in `cmd/silt` toggled the liar or invoked the sweep, so a liar was
+caught only **indirectly** (once its bytes were gone it answered
+`MsgHasChunk=false`, the caretaker's availability probe saw the shard vanish, and
+repair re-scattered).
 
-**Repro:** `silt daemon -h` lists no `-liar` and no audit-trigger flag;
-`grep -rn '\.Audit(' cmd/ core/ | grep -v _test` shows the only non-test/non-sim
-call site is `sim/audit.go`. `run.sh` step 6 asserts this gap so the test fails
-loudly (prompting a harness extension) if a future build wires the audit path.
+**#232 closed the gap.** `cmd/silt daemon` now exposes two seams (siblings to the
+consensus red-team flags `-equivocate` / `-forge-block` / `-lowbond-propose`):
 
-**Consequence:** on the real network a "liar" is caught only **indirectly** —
-once its bytes are gone it answers `MsgHasChunk=false`, the caretaker's probe
-sees the shard disappear, and repair re-scatters. That indirect path is exactly
-what this harness proves end-to-end. The *stronger* sim property — catching a
-liar that is still lying about holding the bytes, *before* retrieval fails, via
-a nonce PoR challenge, and docking its standing — has no daemon/CLI seam yet.
+- **`-liar`** toggles `Node.SetLiar` — the storage node keeps its proof tags and
+  advertises as a provider but drops the bytes, and answers `MsgChallenge` with a
+  proof over data it no longer holds.
+- **`-audit <interval>`** makes a `-care`-ing caretaker run `Node.Audit` on every
+  cared root every interval: challenge each shard's providers and grade their
+  proofs against the key derived from the care link — no ground-truth fetch —
+  settling rent for the honest and **slashing** the liar (`RecordAudit`).
+
+So the harness now GATES the literal claim: an intact-swarm audit sweep reports
+`passed≥1` (honest holders) **and** `FAILED≥1` (the liar caught *without fetch*
+and slashed). This also demonstrates *why* the audit is needed — the liar's
+`MsgHasChunk` lie ("of course I have it") FOOLS the availability probe, but the
+verify-without-fetch audit is un-foolable.
+
+**Repro:** `silt daemon -h` now lists `-liar` and `-audit`; `run.sh` step 4
+asserts the catch + slash directly, and step 6 guards that the flags still exist
+(so the assertions can't be silently skipped).
 
 ### F2 — a healthy repair sweep emits no narration, even at `-log debug` (confidence: medium)
 
