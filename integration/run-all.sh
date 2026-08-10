@@ -106,7 +106,10 @@ for name in "${RUN[@]}"; do
 
   printf '  %-11s running…' "$name"
   t0=$(date +%s)
-  ( cd "$dir" && timeout "$timeout_s" env ${extra[@]+"${extra[@]}"} ./run.sh ) >"$log" 2>&1
+  # SIGTERM (not SIGKILL) on timeout so the suite's `trap … docker compose down -v`
+  # can tear its topology down; --kill-after is the hard backstop. A leaked topology
+  # would poison the next suite (they share one host).
+  ( cd "$dir" && timeout --signal=TERM --kill-after=20s "$timeout_s" env ${extra[@]+"${extra[@]}"} ./run.sh ) >"$log" 2>&1
   rc=$?
   t1=$(date +%s); dur=$((t1 - t0))
 
@@ -116,7 +119,10 @@ for name in "${RUN[@]}"; do
   col="$(ft_status_color "$status")"
   printf '\r  %-11s %s%-7s%s %s\n' "$name" "$col" "$status" "$C_RESET" "$C_DIM$(ft_human_time "$dur")$C_RESET"
 
-  echo "| $name | $status | $(ft_human_time "$dur") | $claim |" >>"$REPORT"
+  # Surface the raw exit code on any non-zero run so a "0-exit-no-verdict" or a
+  # timeout (rc=124) is visible in the report, not hidden behind the status word.
+  status_cell="$status"; [ "$rc" -ne 0 ] && status_cell="$status (rc=$rc)"
+  echo "| $name | $status_cell | $(ft_human_time "$dur") | $claim |" >>"$REPORT"
   NAMES+=("$name"); STATUSES+=("$status")
   [ "$status" = FAIL ] && overall=1
 done
