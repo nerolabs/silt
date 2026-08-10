@@ -286,6 +286,21 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
     takedown of a shared root.
 
 ### Added
+- **New field test: C2 "no quiet capture" under a Sybil validator set (`integration/sybil`)** (2026-08-10) —
+  Tests the M0 systemic C2 claim cynically, as an OUTCOME: can a bonded **Sybil validator set** — many
+  identities, real bonds, its own quorum — **quietly capture** a young objective network? Two honest anchors
+  (`a1` proposer, `a2` co-signer, since one anchor can't co-sign its own block under `-anchor-quorum 1`) plus
+  a Sybil set. **C2-a**: with the anchors present the chain commits a real block and the daemon prints
+  `wheels engaged (young network — anchor quorum still required)` — the chain is live and the training wheels
+  are on. **C2-b**: stop **both** anchors and the Sybil set (s1 proposes, s2 attests) **cannot advance the
+  chain — no new block**; the test reports which training-wheels layer refused it (locally the standing gate —
+  a young Sybil set can't even earn committed bonded standing without an anchor-proposed block; behind it the
+  anchor co-sign gate, `ErrAnchorRequired`). A chain advancing for the Sybils would be a hard FAIL. **C2-c
+  (bonus)**: with ≥8 committed equal bonds the C2 metric's atomization note fires (an equal-bond split reads
+  as a fingerprint, not real decentralization). Honest scope (immutable #5): on one host the Sybils' bonds
+  don't reliably bank on-chain, so the standing gate usually fires first (itself a faithful no-capture
+  outcome); the pure anchor-co-sign gate with pre-banked bonds and the ≥8-bond atomization signal are
+  exercised at scale on the cloud test. Validated locally (PASS). Wired into `run-all.sh` (gate tier).
 - **New field test: the client / web-UI path under an adversary (`integration/client`)** (2026-08-10) —
   Tests the path a real **user** takes — run a daemon, open its web UI, drop a file in, get a link, someone
   fetches it back — over the daemon's **HTTP API**, not the `silt swarm` CLI; and the path a real **attacker**
