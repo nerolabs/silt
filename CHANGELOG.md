@@ -226,6 +226,23 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
     before any demand→standing fusion — now stated as such.
 
 ### Fixed
+- **Consensus now bootstraps under a jittery network (adverse-network durability)** (2026-08-10) —
+  New `integration/flakynet` harness (4 objective validators behind `tc netem`) reproduced a real
+  durability collapse the clean local tests never showed: under a mild, realistic 80 ms ± 20 ms **jitter**
+  the network committed in 6 s on a clean link but **never** committed jittered (the root of the flaky-GCP
+  `#286` symptom). Three causes, fixed: **(1)** `RequestTimeout` was **500 ms** — LAN-tight for a global
+  P2P RPC (TCP connect + query routinely exceeds it on a jittery path); the daemon default is now **5 s**
+  (`-request-timeout`). **(2)** A *single* timed-out RPC evicted the peer from the routing table
+  (`table.Remove`), so one slow/dropped packet tore a good peer out of everyone's mesh; timed-out RPCs are
+  now **retried with exponential backoff** (`-request-retries`, default 3; `-request-backoff` 250 ms) and
+  the peer is only given up after retries are exhausted. **(3)** A `BondChallenge` reply carries a large,
+  slow space-time proof; under adversity these time out in droves and (2) then evicted the peer — starving
+  consensus of the very standing it was establishing. A bond-challenge timeout now **never evicts** from
+  routing (it is a *standing* signal, not a *reachability* one — standing lapses and re-audits on its own).
+  `DefaultConfig` keeps `RequestRetries=0` so the deterministic sim/tests are unchanged; the daemon opts in.
+  KNOWN HARDER GAP (filed): jitter **+ packet loss** still does not reliably bootstrap — loss on the large
+  proof/chunk replies plus the C1 reply-latency gate (`-bond-answer-latency`) reading network latency as a
+  short-storage cheat; the latter is a security tradeoff needing a deliberate call.
 - **A node that joins before its bootstrap peer is listening now recovers on its own** (2026-08-10) —
   Field-test finding #281, found on the first real 13-node cross-region GCP run. silt's Kademlia join
   (`Node.Bootstrap`) was **one-shot**: on a multi-node cold start with no ordering guarantee, three

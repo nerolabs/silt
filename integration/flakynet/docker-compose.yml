@@ -1,0 +1,149 @@
+# Flaky-network durability harness: 4 objective validators on ONE flat network,
+# every link degraded by `tc netem` (latency + jitter + loss), matching the GCP
+# CONSENSUS params that fail there but pass on a clean localhost:
+#   -objective, -quorum 2, Byzantine-quorum default ON, -mature-validators 4,
+#   all-attest (each validator attests the other three), -anchors = all four.
+# The question under test: does silt bootstrap consensus and commit under adverse
+# network conditions? Clean local runs always do; GCP (flaky) mostly does not — so
+# this reproduces the adversity locally and deterministically.
+#
+# NET_ADMIN lets netem-entry.sh apply the impairment. $NETEM is set by run.sh.
+
+networks:
+  swarm:
+    driver: bridge
+    ipam:
+      config: [{ subnet: 10.60.0.0/24 }]
+
+volumes:
+  dataA:
+  dataB:
+  dataC:
+  dataD:
+
+x-val: &val
+  image: silt-flakynet
+  cap_add: [NET_ADMIN]
+  environment:
+    NETEM: ${NETEM:-}
+
+services:
+  valA:
+    <<: *val
+    command:
+      - silt
+      - daemon
+      - -id-seed=8001
+      - -listen=0.0.0.0:4001
+      - -advertise=10.60.0.11:4001
+      - -serve-registry=0.0.0.0:4003
+      - -store=/data
+      - -validator
+      - -objective
+      - -min-bond=1M
+      - -min-bond-floor=0
+      - -bond=8M
+      - -mature-validators=4
+      - -anchors=${ANCHORS:-unset}
+      - -attesters=${ID_B:-unset},${ID_C:-unset},${ID_D:-unset}
+      - -quorum=2
+
+      - -request-timeout=${REQ_TIMEOUT:-5s}
+      - -bond-audit=2s
+
+      - -bond-answer-latency=${BOND_LAT:-1500ms}
+      - -capacity=1G
+      - -mdns=false
+      - -log=${LOGLVL:-info}
+    volumes: [dataA:/data]
+    networks: { swarm: { ipv4_address: 10.60.0.11 } }
+
+  valB:
+    <<: *val
+    command:
+      - silt
+      - daemon
+      - -id-seed=8002
+      - -listen=0.0.0.0:4001
+      - -advertise=10.60.0.12:4001
+      - -store=/data
+      - -validator
+      - -objective
+      - -min-bond=1M
+      - -min-bond-floor=0
+      - -bond=8M
+      - -mature-validators=4
+      - -anchors=${ANCHORS:-unset}
+      - -attesters=${ID_A:-unset},${ID_C:-unset},${ID_D:-unset}
+      - -bootstrap=${ID_A:-unset}@10.60.0.11:4001
+      - -quorum=2
+
+      - -request-timeout=${REQ_TIMEOUT:-5s}
+      - -bond-audit=2s
+
+      - -bond-answer-latency=${BOND_LAT:-1500ms}
+      - -capacity=1G
+      - -mdns=false
+      - -log=${LOGLVL:-info}
+    volumes: [dataB:/data]
+    networks: { swarm: { ipv4_address: 10.60.0.12 } }
+
+  valC:
+    <<: *val
+    command:
+      - silt
+      - daemon
+      - -id-seed=8003
+      - -listen=0.0.0.0:4001
+      - -advertise=10.60.0.13:4001
+      - -store=/data
+      - -validator
+      - -objective
+      - -min-bond=1M
+      - -min-bond-floor=0
+      - -bond=8M
+      - -mature-validators=4
+      - -anchors=${ANCHORS:-unset}
+      - -attesters=${ID_A:-unset},${ID_B:-unset},${ID_D:-unset}
+      - -bootstrap=${ID_A:-unset}@10.60.0.11:4001
+      - -quorum=2
+
+      - -request-timeout=${REQ_TIMEOUT:-5s}
+      - -bond-audit=2s
+
+      - -bond-answer-latency=${BOND_LAT:-1500ms}
+      - -capacity=1G
+      - -mdns=false
+      - -log=${LOGLVL:-info}
+    volumes: [dataC:/data]
+    networks: { swarm: { ipv4_address: 10.60.0.13 } }
+
+  valD:
+    <<: *val
+    command:
+      - silt
+      - daemon
+      - -id-seed=8004
+      - -listen=0.0.0.0:4001
+      - -advertise=10.60.0.14:4001
+      - -store=/data
+      - -validator
+      - -objective
+      - -min-bond=1M
+      - -min-bond-floor=0
+      - -bond=8M
+      - -mature-validators=4
+      - -anchors=${ANCHORS:-unset}
+      - -attesters=${ID_A:-unset},${ID_B:-unset},${ID_C:-unset}
+      - -bootstrap=${ID_A:-unset}@10.60.0.11:4001
+      - -quorum=2
+
+      - -request-timeout=${REQ_TIMEOUT:-5s}
+      - -bond-audit=2s
+
+      - -bond-answer-latency=${BOND_LAT:-1500ms}
+      - -capacity=1G
+      - -mdns=false
+      - -log=${LOGLVL:-info}
+    volumes: [dataD:/data]
+    networks: { swarm: { ipv4_address: 10.60.0.14 } }
