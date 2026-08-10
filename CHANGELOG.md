@@ -240,6 +240,16 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   out the cooldown; it is a no-op once any peer is in the table. Recovery logs
   `re-bootstrapped: recovered from an empty routing table (N table entries)`. Covered by unit tests
   (`simnet` Kill/Restart race) and a real-process e2e (`TestBootstrapRetryRecoversColdStartRace`).
+- **A sparse cold-start mesh now converges (periodic bucket refresh)** (2026-08-10) — follow-up to #281.
+  Recovering an EMPTY routing table is necessary but not sufficient: a node can re-bootstrap to just one
+  or two peers and stall there, and the seedless boot validator (no `-bootstrap`) never re-looks-up at
+  all — so it stays stuck at the single entry an incoming dial gave it and can't discover the rest of the
+  validator set. The bootstrap-retry loop now also does a Kademlia self-lookup while the table is below
+  `BootstrapWellConnected` (default 8), which discovers more peers and converges the mesh. This reaches
+  the boot node too — it queries the peers that dialed IN. Covered by a `simnet` convergence unit test
+  (a boot-like node with one entry converges via refresh). NOTE: this fixes the DHT-mesh convergence; a
+  *separate* consensus-bootstrap gap remains where a fully-simultaneous cold start of an objective
+  validator set does not establish anchor standing even once connectivity is fine (filed separately).
 - **Repair no longer starves on stale records to dead holders** (2026-08-09) — Field-test finding F2
   (`integration/churn/`): the repair fetch loop (`fetchStripeByColumn` → `fetchFrom`) dials providers
   serially, each dead holder costing a full `RequestTimeout`, and a single timeout re-sweeps the whole
