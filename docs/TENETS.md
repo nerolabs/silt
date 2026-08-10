@@ -619,6 +619,26 @@ standing — amended only by the same deliberate, reviewed consensus:
      defect ships with a failing-first regression test at its tier(s),
      runnable on a contributor's own machine, so CI is the backstop and never
      the first line of defense.
+  3. **One signal, one job — never fuse transport with security.** A single
+     measurement must not serve two masters. Reply-latency is *transport* (RTT +
+     jitter) **and** *compute* (the security quantity) — gating on the sum is
+     unsound; routing reachability is not consensus standing; liveness is not
+     correctness. Security rests on **structure** (in the proof object) or
+     **statistics** (over many independent measurements), never on a single
+     network number the adversary's own path can move — *latency proves
+     proximity, never diligence.* A timing signal may ship as a **soft,
+     disclosed** deterrent, but a **hard** security gate must be structural, and
+     an unbuilt structure is an **owned, named residual** (`design/owned-residuals.md`),
+     not a wall-clock stopgap. This law caught two real silt defects from one
+     rule: the C1 reply-latency gate (transport fused with compute) and the #288
+     evict-on-one-miss (routing reachability fused with consensus standing).
+  4. **Cheap honest participation is a security constraint, not a marketing
+     feature.** No defense may raise the floor of honest participation. A
+     mechanism that prices out the small operator — scaling a min-bond off a
+     transport knob, demanding GiB where MiB suffices — is a **regression against
+     silt's reason to exist** (Part 0), even if it closes a real attack. Security
+     parameters must be **decoupled from performance/transport tuning** so
+     hardening one axis never taxes the other.
 
 **Tenets — canon, amendable with reviewed consensus and evidence.** Everything
 else in Parts I–VIII, including the strong disciplines we hold nearly as firmly
@@ -752,3 +772,17 @@ the network grows — **not closed.**
   adversarially verified — see the tenet text above; the blind-commitment leg deferred as a
   fast-follow.)* Comprehension was faithful; this was a
   propagation fix, not a re-think.
+- **2026-08-10** — Added **build-immutables #3 (one signal, one job — never fuse
+  transport with security)** and **#4 (cheap honest participation is a security
+  constraint)**, distilled from the external network-durability-vs-space-time
+  research opinion (`silt-reviews/research/…network-durability-vs-spacetime…`,
+  2026-08-10) that field-testing under adverse networks (`integration/flakynet`,
+  #288/#289) provoked. #3 generalizes the two defects that motivated the consult —
+  the C1 reply-latency gate (transport fused with the compute security signal) and
+  the #288 evict-on-one-miss (routing reachability fused with consensus standing) —
+  into one bright line: security lives in the proof or in statistics-over-many,
+  never in a single network measurement; a timing signal is a soft disclosed
+  deterrent, never a hard gate (the hard version is structural / owned-residual).
+  #4 promotes silt's "cheap to run" mission (Part 0) into a veto over security
+  designs: no fix may raise the floor of honest participation. Both enforced in
+  code by the same-week decouple-anti-release-from-transport + soft-C1-gate work.
