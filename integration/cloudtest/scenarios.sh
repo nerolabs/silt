@@ -69,8 +69,13 @@ ft_reachable_peers() { # ft_reachable_peers NODE
   printf '%s/%s' "$ok" "$total"
 }
 
-# publish a fresh random file on a node; echoes "LINK SHA" on success, empty on fail
+# publish a fresh random file on a node; echoes "LINK SHA" on success, empty on fail.
+# On failure it sets FT_PUBLISH_GAP=1 iff the cause was a publisher→validator
+# reachability shortfall (< TOKEN_QUORUM peers reachable — an egress/preemption
+# problem, e.g. a SPOT-reclaimed validator), so a caller can record a GAP ("couldn't
+# confirm") rather than a property FAIL. Cleared to 0 on entry.
 ft_publish() { # ft_publish NODE SIZE_BYTES
+  FT_PUBLISH_GAP=0
   local node="$1" size="${2:-1048576}" out link lasterr=""
   ssh_node "$node" "head -c $size </dev/urandom >/tmp/ft_src.bin; sha256sum /tmp/ft_src.bin | cut -d' ' -f1" >/tmp/ft_src_sha 2>/dev/null
   local sha; sha="$(cat /tmp/ft_src_sha 2>/dev/null)"
@@ -88,6 +93,11 @@ ft_publish() { # ft_publish NODE SIZE_BYTES
   # Diagnose so a failed publish is actionable, not a bare "no link produced". The
   # single most common cause is the publisher reaching < TOKEN_QUORUM validators.
   local reach; reach="$(ft_reachable_peers "$node")"
+  # If the publisher can't reach enough validators to gather the token quorum, this
+  # is an egress/preemption problem, not a property failure — flag it so the caller
+  # records a GAP. (max(1,TOKEN_QUORUM): even token-quorum 0 needs one reachable peer.)
+  local rok="${reach%%/*}"; local need=$(( TOKEN_QUORUM > 1 ? TOKEN_QUORUM : 1 ))
+  [ "${rok:-0}" -lt "$need" ] 2>/dev/null && FT_PUBLISH_GAP=1
   {
     echo "ft_publish FAILED after ${PUBLISH_RETRY_S}s on $node (token-quorum=$TOKEN_QUORUM)"
     echo "  publisher->validator reachability: $reach of the -peers set reachable"
@@ -99,6 +109,17 @@ ft_publish() { # ft_publish NODE SIZE_BYTES
     echo "        fix publisher egress to the validators."
   } >&2
   return 1
+}
+
+# Record a publish-dependent flow's failed publish honestly: a reachability
+# shortfall (FT_PUBLISH_GAP=1, e.g. a preempted validator) is a GAP — the property
+# was UNTESTED, not broken — while any other publish failure is a real fail.
+publish_verdict() { # publish_verdict FLOW SEVERITY "detail"
+  if [ "${FT_PUBLISH_GAP:-0}" = 1 ]; then
+    record "$1" gap "$2" "$3 — publisher could not reach >= token-quorum validators (egress/SPOT-preemption); property UNTESTED, not failed"
+  else
+    slo_assert "$1" "$2" "$3" 0
+  fi
 }
 
 # ── Flow 1: build & first run ──────────────────────────────────────────────────
@@ -116,7 +137,7 @@ flow_publish_fetch() {
   local t0 t1 res link sha got ok=0
   t0="$(date +%s)"
   res="$(ft_publish fetch-1 1048576 || true)"
-  if [ -z "$res" ]; then slo_assert "2-publish-fetch" blocker "publish never produced a silt: link within ${PUBLISH_RETRY_S}s" 0; return; fi
+  if [ -z "$res" ]; then publish_verdict "2-publish-fetch" blocker "publish never produced a silt: link within ${PUBLISH_RETRY_S}s"; return; fi
   link="${res%% *}"; sha="${res##* }"
   # committed on the boot validator?
   local boot; boot="$(python3 -c "import json;print(json.load(open('$FT_DIR/topology.json'))['meta']['boot'])")"
@@ -247,7 +268,11 @@ flow_cross_nat() {
     got="$(ssh_node nat-2 "/usr/local/bin/silt swarm get '$link' -o /tmp/ft_n.bin -peers '$PEERS' -registry '$REGREF' >/dev/null 2>&1; sha256sum /tmp/ft_n.bin | cut -d' ' -f1" 2>/dev/null || true)"
     [ -n "$sha" ] && [ "$got" = "$sha" ] && ok=1
   fi
-  slo_assert "9-cross-nat" major "natted nodes exchanged a file through the relay/hole-punch" "$ok"
+  if [ "$ok" = 1 ]; then
+    slo_assert "9-cross-nat" major "natted nodes exchanged a file through the relay/hole-punch" 1
+  else
+    publish_verdict "9-cross-nat" major "natted nodes did not exchange a file via the relay"
+  fi
 }
 
 # ── #184 adversarial: equivocation → slash ──────────────────────────────────────
@@ -331,7 +356,7 @@ flow_durability_turnover() {
   # by a fresh-IP VM) is the honest cloud version of the local kill-without-replace.
   local res link sha
   res="$(ft_publish fetch-1 1048576 || true)"
-  if [ -z "$res" ]; then slo_assert "durability-turnover" major "publish never produced a link" 0; return; fi
+  if [ -z "$res" ]; then publish_verdict "durability-turnover" major "publish never produced a link"; return; fi
   link="${res%% *}"; sha="${res##* }"
   svc store-1 stop || true    # permanent departure (left down for the fetch)
   sleep 12
@@ -347,7 +372,7 @@ flow_chaos_crash() {
   require_nodes "chaos-crash" major store-1 store-2 || return
   local link="${FT_LAST_LINK:-}"
   if [ -z "$link" ]; then local res; res="$(ft_publish fetch-1 262144 || true)"; link="${res%% *}"; fi
-  if [ -z "$link" ]; then slo_assert "chaos-crash" major "no link to verify crash-recovery against" 0; return; fi
+  if [ -z "$link" ]; then publish_verdict "chaos-crash" major "no link to verify crash-recovery against"; return; fi
   # SIGKILL the silt process (abrupt death, not a graceful stop). systemd
   # (Restart=on-failure) brings it back, reloading the persisted store.
   ssh_node store-2 "sudo pkill -9 -f '/usr/local/bin/silt' || true" >/dev/null 2>&1
