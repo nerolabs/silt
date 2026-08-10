@@ -143,13 +143,22 @@ discount, C2 no quiet capture, the demand→standing firewall) — those are hel
   `(1 − o(1))` bound.
 - **How it's bounded today (the residual is a gradient + a re-pricing, not a flat give-away):**
   - **Disclosed** `ε*=0.20` — the rational/serial attack point and the floor the graph concedes.
-  - **Enforced** against a **work-bound (serial/rational) disk-saver** past the ~0.25 work knee by
-    the **reply-latency gate** on the live bond challenge (`node.Config.BondMaxAnswerLatency`,
-    daemon `-bond-answer-latency`, default 1.5 s): past the knee the recompute is a large sequential
-    cost, so a reply slower than the (generously-margined) deadline earns no standing. **Soft**
-    (wall-clock ⇒ fastest-evaluator-sensitive), so the reliable boundary sits at the ~0.25 knee,
-    conservatively — and the disclosed `ε*=0.20 ≤` that boundary, so the 0.20–0.25 band is
-    conceded-and-disclosed on the safe side.
+  - **Signalled (not gated)** against a **work-bound (serial/rational) disk-saver** past the ~0.25
+    work knee by the **reply-latency signal** on the live bond challenge
+    (`node.Config.BondMaxAnswerLatency`, daemon `-bond-answer-latency`, default 1.5 s): past the knee
+    the recompute is a large sequential cost that shows up as reply latency. **This is a SOFT,
+    disclosed deterrent — it does NOT deny standing** (build-immutable #3; the 2026-08-10
+    network-durability research + #289). Gating on a single wall-clock reply is unsound on the open
+    internet: reply-latency is transport (RTT + jitter + loss) **plus** compute, network delay is
+    one-sided (it can only *add* latency), and gating on the sum read jitter/loss as a cheat and
+    starved durability. So the node reads the **windowed-MINIMUM** (low quantile) of each peer's
+    reply latencies — which filters the one-sided noise — and raises a **non-gating** suspicion only
+    when that floor is *sustained* above the deadline (a partial-storage prover recomputes on every
+    challenge → floor stays elevated; an honest bad-path node is only randomly slow). Standing itself
+    rests on the sound signals (anti-release floor + identity binding + the space/labeling proof),
+    and the anti-release floor is a **compute** window decoupled from the transport timeout (PR1), so
+    the serial disk-saver is priced by the floor + audit frequency + the disclosed suspicion, not by
+    a hard network deadline. The disclosed `ε*=0.20 ≤` the ~0.25 knee is conceded on the safe side.
   - **Priced (not free) against a parallel adversary.** A parallel prover is bounded by recompute
     **depth** rather than **work**, and can hold *less* disk — but it **re-pays the recompute on
     every audit, per identity, forever** (a compute-for-storage re-pricing, silt's "re-priced, not
@@ -160,16 +169,20 @@ discount, C2 no quiet capture, the demand→standing firewall) — those are hel
     not a real attacker.
   - **Audit frequency is the free tightening lever** (`-bond-audit`): the parallel attacker's
     recurring compute bill scales with it, with no construction change.
-  - **Composes with BondTTL:** on-chain objective weight lapses without live re-proof, so the live
-    latency gate bounds even the objective weight over time (the on-chain verify cannot time a
-    stored proof — that tightness is Option A).
+  - **Composes with BondTTL:** on-chain objective weight lapses without live re-proof, so standing
+    over time is bounded by BondTTL + the sound live re-verify (space/labeling proof + anti-release
+    floor), not by the (now soft) latency signal (the on-chain verify cannot time a stored proof —
+    that tightness is Option A).
 - **What would close it:** **Option A** — a stacked multi-layer expander (à la Filecoin Stacked-DRG,
   L≈10) turning depth-robustness into a *global* depth guarantee, made on-chain-succinct by a
   Groth16 SNARK over the ~100 MB witness. It re-imports a **trusted setup** and is far outside an M0
   hotfix ⇒ **H-track**.
 - **Open question for research:** a tight (parallel-secure, small-`ε*`) proof-of-space-time
   affordable on-chain in **pure Go without a trusted setup** — i.e. Option A minus the SNARK/setup
-  cost. Until then, `ε*=0.20` disclosed + the latency gate + audit-frequency lever is the M0 hold.
+  cost. Until then, `ε*=0.20` disclosed + the compute-window anti-release floor + the **soft**
+  (non-gating) sustained-latency signal + the audit-frequency lever is the M0 hold. A separate
+  finding from the same work: the bond proof reply is ~1.5 MB, a loss-sensitivity (#289) and N²
+  bandwidth residual whose structural close (succinct proof) is also H-track — [#299].
   Cross-ref: [`m0-sybil-rebind.md`](m0-sybil-rebind.md) §8.1 (the `ε→k` derivation, confirmed H-track).
 
 ---

@@ -350,6 +350,27 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
 
 ---
 
+## D-C1-TIMING — the partial-storage timing deterrent is soft, never a hard standing gate
+
+- **Status:** ✔ DECIDED + BUILDING — 2026-08-10 (build-immutables #3/#4 ratified; PRs #297 decouple, #298 soft gate).
+- **Basis:** An external network-durability-vs-space-time research opinion (provoked by adverse-network
+  field-testing, `integration/flakynet`, #289) established that a wall-clock reply-latency **hard gate**
+  is a category error on the open internet — reply-latency is transport (RTT + jitter + loss) **plus**
+  compute, network delay is one-sided (it can only *add* latency, so "slow ⇒ cheat" is unsound), and
+  **no mature PoST network** (Filecoin/Storj/Chia/Arweave/Sia/Spacemesh) reply-latency-gates. It read
+  jitter/loss as a partial-storage cheat and starved durability.
+- **Direction (derived, now canon as build-immutable #3):** Standing rests on the **sound** signals —
+  the anti-release floor (a **compute** window decoupled from the transport timeout, #297), identity
+  binding, and the space/labeling proof. The partial-storage timing signal is a **soft, disclosed**
+  deterrent: the windowed-**minimum** (low quantile) of each peer's reply latencies, which filters the
+  one-sided noise, flagged only when *sustained* above the deadline — never a standing gate (#298). The
+  anti-release floor stays **small** — never scaled off a transport timeout (build-immutable #4).
+- **What would close it (H-track, not M0):** a stacked tight-PoS + SNARK (owned-residual A5, Option A) —
+  the same structural close named there. A companion residual: the ~1.5 MB bond proof reply (loss +
+  N² bandwidth, [#299]) whose close is also succinct-proof / H-track.
+
+---
+
 ## What is NOT on this ledger
 
 The following are **build items or tuning knobs**, not owner-level decisions, and live in
