@@ -30,8 +30,12 @@ ft_result_line() {
 }
 
 # ft_classify <exit_code> <result_line> — PASS | FINDING | FAIL.
-# A non-zero exit is always FAIL. On exit 0 the RESULT word decides; a suite
-# that exits 0 with no RESULT line is treated as PASS (nothing to report).
+# A non-zero exit is always FAIL. On exit 0 the RESULT word decides. A suite that
+# exits 0 with NO RESULT line — or an unrecognized one — is a FAIL, not a PASS:
+# the suites run `set -uo pipefail` (not `-e`), so one that dies silently after
+# its setup can still exit 0 without ever printing a verdict. Every real suite
+# prints a RESULT line on its happy path, so a missing verdict means a broken run,
+# and defaulting it to PASS would fake green (field-test immutable #4).
 ft_classify() {
   local rc="$1" line="$2"
   if [ "$rc" -ne 0 ]; then echo FAIL; return; fi
@@ -39,7 +43,8 @@ ft_classify() {
     *[Rr]"ESULT: PASS"*)    echo PASS ;;
     *[Rr]"ESULT: FINDING"*) echo FINDING ;;
     *[Rr]"ESULT: FAIL"*)    echo FAIL ;;
-    *)                      echo PASS ;;
+    "")                     echo FAIL ;;   # exit 0 but no verdict = broken run
+    *)                      echo FAIL ;;   # exit 0 with an unrecognized line = broken run
   esac
 }
 
