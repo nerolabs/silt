@@ -99,6 +99,13 @@ type Config struct {
 	// not fire once at boot, because peer reputation is re-earned live by bond
 	// audits and isn't ready the instant the daemon starts.
 	ChainSyncInterval ports.Duration
+	// BootstrapRetryInterval is how often an ISOLATED node (empty routing table)
+	// re-runs the Kademlia join against its original -bootstrap seeds. silt's join
+	// is otherwise one-shot, so a node that started before its bootstrap target was
+	// listening — or that later lost every peer to churn — would stay isolated
+	// forever (empty table ⇒ no consensus, no discovery) until a manual restart
+	// (#281, found on the 13-node cross-region cloud cold start). 0 disables.
+	BootstrapRetryInterval ports.Duration
 	// BondVDFDelay is the number of sequential squarings a bond proof must
 	// bind (core/vdf) — the "time" in proof-of-space-time: a prover cannot
 	// answer until it has done this much non-parallelisable work over the
@@ -189,11 +196,12 @@ func DefaultConfig() Config {
 		FetchBackoff:        200 * ports.Millisecond,
 		HolderCooldown:      30 * ports.Second, // skip a timed-out holder for ~½ a repair interval before re-probing (#226)
 
-		BondAuditInterval: 60 * ports.Second,
-		BondMaxAge:        300 * ports.Second, // ~5 audit intervals unproven → standing lapses
-		ChainSyncInterval: 30 * ports.Second,  // catch-up retries so a restart rejoins once bond audits re-establish peer standing
-		BondVDFDelay:      1000,               // modest; a real deployment raises it for a stronger time floor
-		BondLabelSamples:  64,                 // bond.DefaultLabelSamples: labeling-consistency opens per challenge (G2)
+		BondAuditInterval:      60 * ports.Second,
+		BondMaxAge:             300 * ports.Second, // ~5 audit intervals unproven → standing lapses
+		ChainSyncInterval:      30 * ports.Second,  // catch-up retries so a restart rejoins once bond audits re-establish peer standing
+		BootstrapRetryInterval: 15 * ports.Second,  // isolated-node self-heal: re-join while the table is empty (#281)
+		BondVDFDelay:           1000,               // modest; a real deployment raises it for a stronger time floor
+		BondLabelSamples:       64,                 // bond.DefaultLabelSamples: labeling-consistency opens per challenge (G2)
 	}
 }
 
@@ -240,6 +248,15 @@ type Node struct {
 	store ports.ChunkStore
 	table *dht.Table
 	provs *dht.Providers
+
+	// bootstrapSeeds are the original -bootstrap seed IDs, kept so an isolated
+	// node (empty table) can re-run the Kademlia join instead of staying stranded
+	// (#281). bootstrapRetryRunning guards the self-rescheduling retry tick;
+	// bootstrapRejoin, if set, fires when a retry recovers an empty table (so the
+	// daemon can surface the self-heal to operators).
+	bootstrapSeeds        []ports.NodeID
+	bootstrapRetryRunning bool
+	bootstrapRejoin       func(tableSize int)
 
 	rid     uint64
 	pending map[uint64]*pending
@@ -865,6 +882,9 @@ func (n *Node) closestExcluding(target ports.Hash, exclude ports.NodeID) []ports
 // looks up its own ID — the standard Kademlia join, which populates the
 // buckets closest to self (the ones that matter most).
 func (n *Node) Bootstrap(seeds []ports.NodeID, done func()) {
+	if len(seeds) > 0 {
+		n.bootstrapSeeds = seeds // remember for empty-table re-bootstrap (#281)
+	}
 	for _, s := range seeds {
 		n.table.Observe(s)
 	}
