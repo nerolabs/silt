@@ -22,7 +22,7 @@ cd "$(dirname "$0")"
 ROOT=$(cd ../.. && pwd)
 
 dc() { docker compose "$@"; }
-cleanup() { [ "${KEEP:-0}" = 1 ] || dc --profile equiv --profile propose down -v >/dev/null 2>&1 || true; }
+cleanup() { [ "${KEEP:-0}" = 1 ] || { dc --profile equiv --profile propose down -v >/dev/null 2>&1 || true; rm -f "$(dirname "$0")/silt"; }; }
 trap cleanup EXIT
 
 # Wait until a container's stdout (docker compose logs) contains a pattern.
