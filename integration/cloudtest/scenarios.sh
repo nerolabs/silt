@@ -191,6 +191,13 @@ flow_convergence() {
     h="$(jlog "$n" 800 | grep -oE 'committed block [0-9]+' | grep -oE '[0-9]+' | sort -n | tail -1)"; h="${h:-0}"
     [ $((maxh - h)) -gt 2 ] && conv=0
   done
+  # A chain that never advanced past genesis is NOT "converged" — all-at-0 means
+  # consensus never formed (real evidence #3: assert an actual committed block, not
+  # agreement-on-nothing). Require the tip to have advanced.
+  if [ "$maxh" -lt 1 ]; then
+    slo_assert "5-convergence" major "NO block ever committed — the chain is stuck at genesis (heights:$heights); consensus did not form" 0
+    return
+  fi
   slo_assert "5-convergence" major "all validators within 2 blocks of tip=$maxh (heights:$heights)" "$conv"
 }
 
