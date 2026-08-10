@@ -116,7 +116,7 @@ fi
 echo ""
 echo "== CLAIM (b) positive: a tokened publish (quorum 2) COMMITS with no Publisher =="
 H_BEFORE=$(dc exec -T val1 sh -c 'silt chain-status -store /data' 2>/dev/null | awk '/head height/{print $3}' | tr -d '\r')
-dc exec -T holder sh -c "silt swarm add /tmp/f0.bin -token-quorum 2 -peers '$PEERS' -registry '$REG'" >/tmp/econ_add1.out 2>&1 || true
+dc exec -T holder sh -c "silt swarm add /tmp/f0.bin -token-quorum 2 -save-token /tmp/tok -peers '$PEERS' -registry '$REG'" >/tmp/econ_add1.out 2>&1 || true
 LINK=$(grep -oE 'silt:v1:[A-Za-z0-9_:-]+' /tmp/econ_add1.out | head -1)
 echo "  link: ${LINK:-<none>}"
 sleep 4
@@ -138,13 +138,26 @@ if [ -s /tmp/econ_chain.cbor ]; then
   UNLINK=$(python3 - /tmp/econ_chain.cbor <<'PY'
 import sys
 d=open(sys.argv[1],'rb').read()
-has_token  = d.find(b'Token')>=0 and d.find(b'Serial')>=0
-# A user (tokened) entry stamps a zero NodeID: the CBOR marker "PublisherX "
-# (X=0x58 byte-string, 0x20=32 len) followed by 32 zero bytes.
-zero_pub = b'PublisherX '+b'\x00'*32
-has_zero_pub = d.find(zero_pub)>=0
-print("token=%s zero_publisher=%s"%(has_token, has_zero_pub))
-sys.exit(0 if (has_token and has_zero_pub) else 1)
+# Each entry stamps a Publisher field: the CBOR marker "PublisherX " (X=0x58
+# byte-string, 0x20=32 len) immediately followed by the 32-byte NodeID. A tokened
+# (unlinkable) entry stamps 32 ZERO bytes; a durable-identity entry stamps a real
+# key; and the genesis/bond entries carry the validators' real (non-zero) NodeIDs,
+# so "all Publishers are zero" is NOT true. The old check only asked "does a zero
+# Publisher appear SOMEWHERE and a Token appear SOMEWHERE", which would pass even
+# if the TOKENED entry itself carried a durable Publisher. Tighten it by tying the
+# two: CBOR sorts an entry's map keys by length, so a tokened entry's Publisher
+# field falls a few dozen bytes AFTER its Token/Serial. For each Serial marker,
+# require the next Publisher within the same entry to be the ZERO NodeID.
+mk=b'PublisherX '
+has_token = d.find(b'Token')>=0
+ok=False; i=d.find(b'Serial')
+while i>=0:
+    p=d.find(mk,i,i+250)  # the tokened entry's Publisher follows its Serial
+    if p>=0 and d[p+len(mk):p+len(mk)+32]==b'\x00'*32:
+        ok=True; break
+    i=d.find(b'Serial',i+1)
+print("token=%s tokened_entry_zero_publisher=%s"%(has_token,ok))
+sys.exit(0 if (has_token and ok) else 1)
 PY
 ) && ZOK=1 || ZOK=0
   echo "  chain.cbor: $UNLINK"
@@ -158,41 +171,55 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-# CLAIM (b) DOUBLE-SPEND — FINDING. The chain rejects a reused token serial
-# (core/chain: ErrTokenSpent "publish token serial already spent (double-spend)")
-# and the online issuer rejects a reused credit serial (core/node/tokenrole.go).
-# BUT there is NO CLI/wire seam to REPLAY a serial: `silt swarm add -token-quorum`
-# mints a FRESH random serial every invocation (blindtoken.NewSerial), and no flag
-# lets you present a saved token/serial. So the double-spend rejection is real in
-# code but UNREACHABLE from the product's CLI. We assert the guard exists at the
-# unit level (ground truth) and report the wire gap loudly.
+# CLAIM (b) DOUBLE-SPEND — now GATED over the wire (#233). The positive publish
+# above saved its token with -save-token; here we RE-PRESENT that same token for a
+# DIFFERENT file with -use-token. Its serial is already committed, so the chain
+# rejects the second publish (core/chain ErrTokenSpent, "publish token serial
+# already spent (double-spend)") — the entry never commits and the head does not
+# advance for it. A control publish with a FRESH token still commits, so the
+# rejection is a real double-spend defence, not a dead swarm.
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
-echo "== CLAIM (b) double-spend: FINDING — no CLI seam; asserting the unit-level guard =="
-if ( cd "$ROOT" && go test -v ./core/blindtoken/ ./core/chain/ -run 'DoubleSpend|Spent|Token' -count=1 >/tmp/econ_ds.out 2>&1 ); then
-  # -run matching NOTHING also exits 0 — a test rename would silently no-op this
-  # whole assertion. Require that named tests ACTUALLY ran (immutable #3: real
-  # evidence), not just a zero exit.
-  ran=$(grep -cE '^--- PASS: Test' /tmp/econ_ds.out)
-  if [ "${ran:-0}" -eq 0 ] 2>/dev/null; then
-    fail "double-spend guard: -run 'DoubleSpend|Spent|Token' matched NO tests (a rename silently no-op'd the assertion) — see /tmp/econ_ds.out"
-  else
-    grep -E '^--- PASS: Test' /tmp/econ_ds.out | head -6 | sed 's/^/  ran: /'
-    echo "  double-spend: guard PRESENT at unit level ($ran matching tests passed; ErrTokenSpent / issuer spent-set) — see FINDING 1"
-  fi
+echo "== CLAIM (b) double-spend: RE-PRESENT the saved token for a different file (must be REJECTED) =="
+H_DS_BEFORE=$(dc exec -T val1 sh -c 'silt chain-status -store /data' 2>/dev/null | awk '/head height/{print $3}' | tr -d '\r')
+dc exec -T holder sh -c "head -c 40000 /dev/urandom > /tmp/f_ds.bin; silt swarm add /tmp/f_ds.bin -use-token /tmp/tok -peers '$PEERS' -registry '$REG'" >/tmp/econ_ds.out 2>&1 || true
+sleep 4
+H_DS_AFTER=$(dc exec -T val1 sh -c 'silt chain-status -store /data' 2>/dev/null | awk '/head height/{print $3}' | tr -d '\r')
+echo "  chain head height around the replay: ${H_DS_BEFORE:-?} -> ${H_DS_AFTER:-?}"
+# The registry's local pre-check rejects the replayed serial and returns the exact
+# ErrTokenSpent reason to the client (as it does for the token-less control above).
+if grep -qiE 'already spent|double-spend|serial.*spent' /tmp/econ_ds.out || \
+   dc logs val1 2>&1 | grep -qiE 'already spent|double-spend|token.*spent'; then
+  echo "  double-spend: PASS — the re-presented serial was refused with ErrTokenSpent"
+  grep -iE 'already spent|double-spend|serial.*spent' /tmp/econ_ds.out | tail -1 | sed 's/^/    client: /'
+  # Belt-and-braces: the replayed publish must also NOT have committed.
+  [ "${H_DS_AFTER:-0}" -le "${H_DS_BEFORE:-0}" ] || fail "spent-serial was logged yet the head still advanced — a replay slipped through"
 else
-  echo "  (double-spend unit tests: see /tmp/econ_ds.out)"; sed 's/^/  /' /tmp/econ_ds.out | tail -8
-  fail "double-spend guard unit tests did not pass"
+  fail "the re-presented token was NOT rejected with a spent-serial error over the wire"
+  cat /tmp/econ_ds.out
+fi
+
+# Control: a FRESH token still commits, so the rejection above is a real defence.
+echo "== double-spend control: a FRESH-token publish still COMMITS =="
+H_C_BEFORE=$(dc exec -T val1 sh -c 'silt chain-status -store /data' 2>/dev/null | awk '/head height/{print $3}' | tr -d '\r')
+dc exec -T holder sh -c "head -c 40000 /dev/urandom > /tmp/f_c.bin; silt swarm add /tmp/f_c.bin -token-quorum 2 -peers '$PEERS' -registry '$REG'" >/tmp/econ_c.out 2>&1 || true
+sleep 4
+H_C_AFTER=$(dc exec -T val1 sh -c 'silt chain-status -store /data' 2>/dev/null | awk '/head height/{print $3}' | tr -d '\r')
+echo "  chain head height around the control: ${H_C_BEFORE:-?} -> ${H_C_AFTER:-?}"
+if [ "${H_C_AFTER:-0}" -gt "${H_C_BEFORE:-0}" ]; then
+  echo "  control: PASS — a fresh token still commits (the swarm is live; the rejection was real)"
+else
+  fail "fresh-token control did not commit — cannot distinguish the rejection from a dead swarm"; cat /tmp/econ_c.out
 fi
 
 echo ""
 if [ "$pass" = 1 ]; then
-  echo "RESULT: PASS ✅  economy observatory + blind-credit publisher-unlinkability validated"
-  echo "  tiers (immutable #3): CLAIM (a) per-byte earning / freeloaders-broke is SIM-TIER"
-  echo "    (in-process 'silt sim run economy' against the real core/credit ledger — no"
-  echo "    daemon-wire seam exposes per-byte credit accounting; see README FINDING 2)."
-  echo "    CLAIM (b) publisher-unlinkability is WIRE-TIER (real daemon publish/refuse)."
-  echo "  (double-spend rejection is real in core but has NO CLI/wire seam — see README FINDING 1)"
+  echo "RESULT: PASS ✅  economy observatory + blind-credit publisher-unlinkability validated,"
+  echo "  and the token DOUBLE-SPEND rejection is now driven over the real wire (#233):"
+  echo "  a re-presented serial is refused (ErrTokenSpent) while a fresh token still commits."
+  echo "  tier note (immutable #3): CLAIM (a) per-byte earning / freeloaders-broke stays SIM-TIER"
+  echo "    (in-process 'silt sim run economy' — the daemon still does not wire the credit-gated"
+  echo "    registry, so per-byte balance is not yet wire-exposed; see README FINDING 2 / #233(B))."
 else
   echo "RESULT: FAIL ❌"
 fi

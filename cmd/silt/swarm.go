@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/nerolabs/silt/adapters/discovery"
 	"github.com/nerolabs/silt/core/blindtoken"
 	"github.com/nerolabs/silt/core/crypto"
@@ -112,6 +113,8 @@ func swarmAdd(args []string) error {
 	tokenQuorum := fs.Int("token-quorum", 0, "publisher privacy: acquire a publish token from this many validators so the publish carries no Publisher identity. The signers are chosen by a NETWORK-CANONICAL ordering (ranked by committed bond, fetched from a chain-holding peer), the SAME for every publisher, so the signer subset can't narrow the publisher's anonymity set (R-3); falls back to -peers order if no peer serves a chain. 0 = off")
 	allowPublisher := fs.Bool("allow-publisher", false, "record this node's durable Publisher identity on the entry (permanent linkage; off by default for privacy — prefer -token-quorum or an ungated publish)")
 	replication := fs.Int("replication", 0, "how many closest holders receive each chunk (0 = default). Parity across holders backstops copies, so even 1 is viable; a lower factor makes shard loss (and thus caretaker repair) reproducible on a small swarm")
+	saveToken := fs.String("save-token", "", "after acquiring a -token-quorum publish token, write it (CBOR) to this file so it can be RE-PRESENTED later with -use-token. A publish-token serial is single-use, so this is the seam that lets a harness drive the DOUBLE-SPEND rejection over the wire (#233)")
+	useToken := fs.String("use-token", "", "RED-TEAM / TEST-HARNESS: publish carrying a token previously saved by -save-token, instead of minting a fresh one. Presenting the same token a second time re-uses its already-committed serial, which the chain rejects (ErrTokenSpent, double-spend). Never mint-once/publish-twice on a real network")
 	pos := parseFlexible(fs, args)
 	if len(pos) != 1 || *peers == "" || *regURL == "" {
 		return fmt.Errorf("usage: silt swarm add <file> -peers ID@ADDR -registry URL [flags]")
@@ -186,13 +189,37 @@ func swarmAdd(args []string) error {
 				done()
 			})
 		}
-		if *tokenQuorum > 0 {
+		if *useToken != "" {
+			// Re-present a token saved by an earlier -save-token publish. Its serial
+			// is already committed, so this SECOND publish is a double-spend the chain
+			// must reject (ErrTokenSpent) — the wire seam for #233.
+			raw, rerr := os.ReadFile(*useToken)
+			if rerr != nil {
+				err = rerr
+				done()
+				return
+			}
+			var tok ports.PublishToken
+			if uerr := cbor.Unmarshal(raw, &tok); uerr != nil {
+				err = fmt.Errorf("decode -use-token %q: %w", *useToken, uerr)
+				done()
+				return
+			}
+			publish(&tok)
+		} else if *tokenQuorum > 0 {
 			acquire := func(signers []ports.NodeID) {
 				acquirePublishToken(e.nd, signers, *tokenQuorum, func(tok *ports.PublishToken, aerr error) {
 					if aerr != nil {
 						err = aerr
 						done()
 						return
+					}
+					if *saveToken != "" && tok != nil {
+						if raw, merr := cbor.Marshal(tok); merr != nil {
+							fmt.Fprintln(os.Stderr, "warning: could not encode token for -save-token:", merr)
+						} else if werr := os.WriteFile(*saveToken, raw, 0o600); werr != nil {
+							fmt.Fprintln(os.Stderr, "warning: could not write -save-token file:", werr)
+						}
 					}
 					publish(tok)
 				})
