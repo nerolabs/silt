@@ -50,6 +50,45 @@ func TestBootstrapRetryRecoversIsolatedNode(t *testing.T) {
 	}
 }
 
+// A SPARSE cold-start mesh must converge, not just become non-empty. The seedless
+// boot validator is the worst case: it gets ONE incoming dial and never re-looks-up,
+// so it can't discover the rest of the validator set and consensus quorum never
+// forms (the deeper gap behind a stalled simultaneous cold start; #281 follow-up).
+// The sparse-refresh keeps doing a self-lookup while the table is under-populated.
+func TestBootstrapRetryConvergesSparseTable(t *testing.T) {
+	sched := simclock.New()
+	net := simnet.New(sched, 1, simnet.DefaultConfig())
+	cfg := DefaultConfig()
+
+	// A hub that several peers join, so it learns them (a node Observes the senders
+	// of incoming requests).
+	hub := identity.FromSeed(2820).NodeID()
+	h := New(hub, cfg, sched, net.Endpoint(hub), memstore.New())
+	_ = h
+	for i := 0; i < 5; i++ {
+		id := identity.FromSeed(int64(2821 + i)).NodeID()
+		p := New(id, cfg, sched, net.Endpoint(id), memstore.New())
+		p.Bootstrap([]ports.NodeID{hub}, func() {})
+	}
+	sched.RunUntil(sched.Now().Add(cfg.BootstrapRetryInterval))
+
+	// A boot-like node: exactly ONE table entry (the hub), NO seeds — the seedless
+	// boot validator that got one incoming dial and would otherwise stall there.
+	bootID := identity.FromSeed(2830).NodeID()
+	b := New(bootID, cfg, sched, net.Endpoint(bootID), memstore.New())
+	b.table.Observe(hub)
+	b.StartBootstrapRetry(nil)
+	if b.Table().Size() != 1 {
+		t.Fatalf("precondition: boot-like node should have exactly 1 entry, got %d", b.Table().Size())
+	}
+
+	// The sparse-refresh should query the hub, learn its peers, and converge.
+	sched.RunUntil(sched.Now().Add(cfg.BootstrapRetryInterval * 4))
+	if b.Table().Size() < 3 {
+		t.Fatalf("sparse boot node did not converge via bucket refresh: table=%d (want >= 3)", b.Table().Size())
+	}
+}
+
 // The retry is a no-op once the node is healthy: a node that joined successfully
 // must not have its table disturbed by the retry tick (it only acts on Size()==0).
 func TestBootstrapRetryNoopWhenHealthy(t *testing.T) {

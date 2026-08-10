@@ -106,6 +106,17 @@ type Config struct {
 	// forever (empty table ⇒ no consensus, no discovery) until a manual restart
 	// (#281, found on the 13-node cross-region cloud cold start). 0 disables.
 	BootstrapRetryInterval ports.Duration
+	// BootstrapWellConnected is the routing-table size at/above which a node is
+	// considered converged. Below it, the bootstrap-retry loop keeps doing a
+	// Kademlia self-lookup (bucket refresh) each interval, so a SPARSE mesh left by
+	// a simultaneous cold start converges enough for consensus quorum to form.
+	// Recovering from an EMPTY table (#281) is necessary but not sufficient: a node
+	// can re-bootstrap to just one or two peers and stall there. The seedless boot
+	// validator is the worst case — it never re-bootstraps, so without this refresh
+	// it stays stuck at the single entry an incoming dial gave it and can never
+	// discover the rest of the validator set. 0 disables the sparse refresh
+	// (empty-table recovery still runs).
+	BootstrapWellConnected int
 	// BondVDFDelay is the number of sequential squarings a bond proof must
 	// bind (core/vdf) — the "time" in proof-of-space-time: a prover cannot
 	// answer until it has done this much non-parallelisable work over the
@@ -200,6 +211,7 @@ func DefaultConfig() Config {
 		BondMaxAge:             300 * ports.Second, // ~5 audit intervals unproven → standing lapses
 		ChainSyncInterval:      30 * ports.Second,  // catch-up retries so a restart rejoins once bond audits re-establish peer standing
 		BootstrapRetryInterval: 15 * ports.Second,  // isolated-node self-heal: re-join while the table is empty (#281)
+		BootstrapWellConnected: 8,                  // keep bucket-refreshing until a node knows ~this many peers (sparse cold-start convergence)
 		BondVDFDelay:           1000,               // modest; a real deployment raises it for a stronger time floor
 		BondLabelSamples:       64,                 // bond.DefaultLabelSamples: labeling-consistency opens per challenge (G2)
 	}

@@ -30,21 +30,29 @@ func (n *Node) StartBootstrapRetry(onRejoin func(tableSize int)) {
 }
 
 func (n *Node) bootstrapRetryTick() {
-	// Only act when fully isolated. A non-empty table means the join succeeded
-	// (or peers arrived on their own) — leave it alone.
-	if n.table.Size() == 0 && len(n.bootstrapSeeds) > 0 {
-		// The failed initial dial stamped each seed into the deadUntil negative
-		// cache (HolderCooldown). Clear the seeds first so the retry actually
-		// re-dials them now, instead of skipping them until the cooldown lapses.
+	sz := n.table.Size()
+	switch {
+	case sz == 0 && len(n.bootstrapSeeds) > 0:
+		// Fully isolated WITH seeds (#281): re-seed and re-join. The failed initial
+		// dial stamped each seed into the deadUntil negative cache (HolderCooldown);
+		// clear the seeds first so the retry re-dials them now instead of skipping
+		// them until the cooldown lapses.
 		for _, s := range n.bootstrapSeeds {
 			delete(n.deadUntil, s)
 			n.table.Observe(s)
 		}
 		n.IterativeFindNode(n.id, func([]ports.NodeID) {
-			if sz := n.table.Size(); sz > 0 && n.bootstrapRejoin != nil {
-				n.bootstrapRejoin(sz) // empty → recovered: surface the self-heal
+			if s2 := n.table.Size(); s2 > 0 && n.bootstrapRejoin != nil {
+				n.bootstrapRejoin(s2) // empty → recovered: surface the self-heal
 			}
 		})
+	case sz > 0 && n.cfg.BootstrapWellConnected > 0 && sz < n.cfg.BootstrapWellConnected:
+		// SPARSE mesh — a self-lookup discovers more peers (bucket refresh), so a
+		// simultaneous cold start converges enough for consensus quorum to form.
+		// Recovering an empty table (#281) is not enough: a node can re-bootstrap to
+		// one peer and stall. This also reaches the seedless boot validator — it
+		// queries the peers that dialed IN and thereby learns the rest of the set.
+		n.IterativeFindNode(n.id, func([]ports.NodeID) {})
 	}
 	n.clock.AfterFunc(n.cfg.BootstrapRetryInterval, n.bootstrapRetryTick)
 }
