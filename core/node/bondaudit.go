@@ -31,6 +31,60 @@ type bondInfo struct {
 	size int64
 }
 
+// latWindow is a small ring of a peer's recent bond-challenge reply latencies.
+// Its MINIMUM is the low-quantile floor estimate the C1 timing signal reads
+// (build-immutable #3): network delay is one-sided (jitter and retransmits can
+// only ADD latency), so the windowed minimum filters them out and estimates the
+// peer's true transport+compute floor. An honest node on a bad path is RANDOMLY
+// slow, so its minimum collapses to fast; a partial-storage prover that must
+// recompute on EVERY challenge is CONSISTENTLY slow, so its minimum stays
+// elevated. (Because the minimum ignores the high samples, a retried/jittered
+// reply never poisons the estimate — the min subsumes Karn's-algorithm filtering
+// for this signal.) full() gates on a warm window so one or two early samples
+// can't raise a false suspicion.
+const latWindowSize = 8
+
+type latWindow struct {
+	samples [latWindowSize]ports.Duration
+	n       int // total observed (caps display; ring index is n%size)
+}
+
+func (w *latWindow) observe(d ports.Duration) {
+	w.samples[w.n%latWindowSize] = d
+	w.n++
+}
+
+func (w *latWindow) full() bool { return w.n >= latWindowSize }
+
+// BondLatencyFloor reports a peer's windowed-minimum bond-challenge reply latency
+// (the low-quantile floor) and whether that floor is SUSTAINED above the deadline
+// — the soft C1 partial-storage suspicion (build-immutable #3). ok is false until
+// the window is warm. It is read-only and never gates standing; it exists for
+// disclosure/observability and tests.
+func (n *Node) BondLatencyFloor(id ports.NodeID) (floor ports.Duration, sustainedSlow, ok bool) {
+	w := n.peerBondRTT[id]
+	if w == nil || !w.full() {
+		return 0, false, false
+	}
+	m := w.min()
+	return m, n.cfg.BondMaxAnswerLatency > 0 && m > n.cfg.BondMaxAnswerLatency, true
+}
+
+// min returns the smallest latency in the window (the floor estimate).
+func (w *latWindow) min() ports.Duration {
+	m := w.samples[0]
+	lim := latWindowSize
+	if w.n < lim {
+		lim = w.n
+	}
+	for i := 1; i < lim; i++ {
+		if w.samples[i] < m {
+			m = w.samples[i]
+		}
+	}
+	return m
+}
+
 // EnableBond makes this node hold an identity-bound storage bond of size bytes
 // and starts advertising its root on outgoing messages, so peers can challenge
 // it. Holding the plot is the cost; a validator must EnableBond to build
@@ -162,34 +216,49 @@ func (n *Node) bondAuditOnce(now uint64) {
 				if err != nil {
 					return // unreachable this round; DecayStale handles sustained absence
 				}
-				// Reply-latency gate (BREAK 1 / owned-residuals A5): a partial-storage
-				// prover that recomputes the ε it deleted produces CORRECT bytes, so no
-				// content check can catch it — but past the ~0.25 work knee that
-				// recompute is a large sequential cost. A reply slower than the
-				// (generously-margined) deadline implies a materially-short prover and
-				// earns no standing. OFF when the deadline is 0 (the sim's tick clock).
-				late := n.cfg.BondMaxAnswerLatency > 0 && ports.Duration(n.clock.Now()-sent) > n.cfg.BondMaxAnswerLatency
 				ans, derr := bond.DecodeAnswer(resp.Data)
-				// A bond below the anti-release floor earns no standing however
-				// well it answers: it is small enough to release and re-plot inside
-				// the challenge window (F1/F2), so a valid answer proves nothing
-				// about sustained possession. The labeling check (G2) recomputes
-				// labels from H(pk, n), so the answer must carry the prover's key
-				// AND it must hash to the identity we challenged — otherwise a plot
-				// sealed for another identity or size would pass. sha256(PK)==id is
-				// what binds the free-variable root back to this peer's identity.
-				ok := info.size >= n.cfg.MinBondBytes && derr == nil && !late &&
+				// Standing rests on the SOUND signals only: the anti-release floor
+				// (info.size ≥ MinBondBytes — a compute-window bond, PR1), a decodable
+				// answer, identity binding (sha256(PK)==id, so a plot sealed for another
+				// identity/size cannot pass), and the space+labeling proof (VerifySpaceTime,
+				// G2). A single slow reply is NOT in this conjunction — build-immutable #3:
+				// reply-latency is transport+compute, and gating security on the sum is
+				// unsound on the open internet (it read network jitter/loss as a cheat, #289).
+				ok := info.size >= n.cfg.MinBondBytes && derr == nil &&
 					sha256.Sum256(ans.PK) == id &&
 					bond.VerifySpaceTime(ans.PK, info.root, info.size, nonce, ans, vdf.Default(), n.cfg.BondVDFDelay, n.cfg.BondLabelSamples)
-				// Replied-but-can't-prove is a FAIL (a liar advertising a bond
-				// it doesn't hold) → standing zeroed; a valid answer earns it.
-				// The root binds standing to the plot: a shared root credits
-				// only its first owner (credit dedup), so co-located Sybils
-				// pointing at one plot earn one bond's standing, not many.
+				// Replied-but-can't-prove is a FAIL (a liar advertising a bond it doesn't
+				// hold) → standing zeroed; a valid answer earns it. The root binds standing
+				// to the plot: a shared root credits only its first owner (credit dedup),
+				// so co-located Sybils pointing at one plot earn one bond's standing.
 				n.ledger.RecordBondChallenge(id, info.root, info.size, ok, now)
-				// Narrate the verdict: a peer proving (or failing to prove) its
-				// bond is exactly the "is the trust plane working?" moment an
-				// operator needs to see, not infer from a diffed chain (F7).
+				// C1 partial-storage timing signal — now a SOFT, disclosed deterrent
+				// (owned-residual A5; build-immutable #3), never a standing gate. A
+				// partial-storage prover recomputes the ε it deleted on EVERY challenge,
+				// so past the DRSample work knee its reply floor is CONSISTENTLY elevated;
+				// an honest node on a jittery/lossy path is only RANDOMLY slow. We read the
+				// windowed MINIMUM of the peer's reply latencies (the low quantile), which
+				// filters the one-sided network noise, and flag only a SUSTAINED floor over
+				// the deadline. No hard action in M0 (the sound structural close is
+				// tight-PoS / H-track): the flag is disclosed for out-of-band review and a
+				// harder re-challenge, so a bad network path can never cost standing.
+				if n.cfg.BondMaxAnswerLatency > 0 {
+					w := n.peerBondRTT[id]
+					if w == nil {
+						w = &latWindow{}
+						n.peerBondRTT[id] = w
+					}
+					if ok {
+						w.observe(ports.Duration(n.clock.Now() - sent)) // only real proofs estimate the floor
+					}
+					if sustainedSlow := ok && w.full() && w.min() > n.cfg.BondMaxAnswerLatency; sustainedSlow {
+						n.logf(ports.LogWarn, "bond challenge: sustained-latency suspicion (soft, non-gating)",
+							"peer", id, "floor", ports.Duration(w.min()), "deadline", n.cfg.BondMaxAnswerLatency)
+					}
+				}
+				// Narrate the verdict: a peer proving (or failing to prove) its bond is
+				// exactly the "is the trust plane working?" moment an operator needs (F7).
+				late := n.cfg.BondMaxAnswerLatency > 0 && ports.Duration(n.clock.Now()-sent) > n.cfg.BondMaxAnswerLatency
 				n.logf(ports.LogInfo, "bond challenge", "peer", id, "passed", ok, "late", late, "standing", n.ledger.Reputation(id))
 			})
 	}
