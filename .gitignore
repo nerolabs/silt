@@ -62,3 +62,5 @@ integration/client/silt
 integration/sybil/silt
 # host-built binary for the chaos integration harness (rebuilt by run.sh)
 integration/chaos/silt
+integration/cloudtest/.last_run_id
+integration/cloudtest/__pycache__/
