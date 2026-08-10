@@ -79,3 +79,9 @@ variable "region_cidrs" {
 variable "swarm_port" { type = number }
 variable "relay_port" { type = number }
 variable "registry_port" { type = number }
+
+variable "core_on_demand" {
+  type        = bool
+  default     = true
+  description = "Run the CONSENSUS/REGISTRY core (validator + registry roles) as STANDARD (non-preemptible) instances so an RC-gate run isn't disrupted by SPOT preemption; all other roles stay SPOT for cost. Set false for the cheapest all-SPOT shakedown."
+}

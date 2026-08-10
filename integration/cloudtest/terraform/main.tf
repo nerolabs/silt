@@ -38,13 +38,13 @@ resource "google_compute_subnetwork" "nat" {
 
 # Route the NAT subnet's egress through the natgw instance (real NAT/conntrack).
 resource "google_compute_route" "nat_egress" {
-  count            = length(local.natgw_nodes) > 0 ? 1 : 0
-  name             = "silt-ft-natroute-${var.run_id}"
-  network          = google_compute_network.silt.id
-  dest_range       = "0.0.0.0/0"
+  count             = length(local.natgw_nodes) > 0 ? 1 : 0
+  name              = "silt-ft-natroute-${var.run_id}"
+  network           = google_compute_network.silt.id
+  dest_range        = "0.0.0.0/0"
   next_hop_instance = google_compute_instance.natgw[one(keys(local.natgw_nodes))].self_link
-  priority         = 900
-  tags             = ["natted"]
+  priority          = 900
+  tags              = ["natted"]
 }
 
 # ── Firewall ───────────────────────────────────────────────────────────────────
@@ -166,10 +166,16 @@ resource "google_compute_instance" "public" {
     network_ip = each.value.ip
     access_config {} # external IP; the swarm still advertises the internal IP
   }
+  # SPOT resilience (blind cloud finding): mid-run preemption of the consensus/
+  # registry CORE cascaded 6 publish-dependent flows to "fail". With
+  # var.core_on_demand set, the validator + registry nodes run STANDARD
+  # (non-preemptible, auto-restart) so an RC-gate run isn't flaky; every other
+  # role (storage/fetcher/relay/adversary/nat) stays SPOT for cost. All-SPOT
+  # (cheap shakedowns) is core_on_demand=false.
   scheduling {
-    provisioning_model = "SPOT"
-    preemptible        = true
-    automatic_restart  = false
+    provisioning_model = (var.core_on_demand && contains(["validator", "registry"], each.value.role)) ? "STANDARD" : "SPOT"
+    preemptible        = !(var.core_on_demand && contains(["validator", "registry"], each.value.role))
+    automatic_restart  = (var.core_on_demand && contains(["validator", "registry"], each.value.role))
   }
   service_account {
     email  = data.google_compute_default_service_account.default.email
@@ -206,10 +212,16 @@ resource "google_compute_instance" "natted" {
     network_ip = each.value.ip
     # NO access_config: no external IP → egress via the natgw, un-dialable inbound.
   }
+  # SPOT resilience (blind cloud finding): mid-run preemption of the consensus/
+  # registry CORE cascaded 6 publish-dependent flows to "fail". With
+  # var.core_on_demand set, the validator + registry nodes run STANDARD
+  # (non-preemptible, auto-restart) so an RC-gate run isn't flaky; every other
+  # role (storage/fetcher/relay/adversary/nat) stays SPOT for cost. All-SPOT
+  # (cheap shakedowns) is core_on_demand=false.
   scheduling {
-    provisioning_model = "SPOT"
-    preemptible        = true
-    automatic_restart  = false
+    provisioning_model = (var.core_on_demand && contains(["validator", "registry"], each.value.role)) ? "STANDARD" : "SPOT"
+    preemptible        = !(var.core_on_demand && contains(["validator", "registry"], each.value.role))
+    automatic_restart  = (var.core_on_demand && contains(["validator", "registry"], each.value.role))
   }
   service_account {
     email  = data.google_compute_default_service_account.default.email
