@@ -58,3 +58,5 @@ integration/cloudtest/terraform/*.tfstate.*
 integration/retrieval/silt
 # host-built binary for the client/UI integration harness (rebuilt by run.sh)
 integration/client/silt
+# host-built binary for the C2 Sybil integration harness (rebuilt by run.sh)
+integration/sybil/silt

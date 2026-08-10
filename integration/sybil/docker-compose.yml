@@ -1,0 +1,174 @@
+# C2 — "no quiet capture": a bonded Sybil validator set tries to take over a
+# YOUNG objective network, on one flat Docker net.
+#
+#   a1 (10.90.0.2)  honest anchor + registry + the normal proposer. Has genesis
+#                   standing (a launch anchor), so it bootstraps the chain and its
+#                   blocks COMMIT the Sybils' bond registrations (giving them real
+#                   on-chain standing — so the capture attempt below is blocked by
+#                   the ANCHOR gate, not merely by "no reputation yet").
+#   a2 (10.90.0.3)  the second honest anchor. It attests a1's blocks, satisfying
+#                   -anchor-quorum 1 (a single anchor can't co-sign its own block —
+#                   the proposer is excluded from the anchor count).
+#   s1 (10.90.0.4)  a Sybil validator that ALSO serves a registry — the capture
+#                   target. Once bootstrapped it has real bonded standing, then
+#                   tries to commit WITHOUT an anchor.
+#   s2 (10.90.0.5)  a second Sybil (s1's non-anchor quorum peer).
+#   sybil×N         extra equal-bond Sybil identities (same domain) — the split
+#                   the C2 metric must read as a fingerprint, not decentralization.
+#
+# The Sybils are NOT anchors. So even bonded and quorum-complete they cannot commit
+# while the network is young without an anchor — chain: ErrAnchorRequired. That is
+# C2. role.sh self-advertises each container's routable IP.
+
+networks:
+  swarm:
+    driver: bridge
+    ipam:
+      config: [{ subnet: 10.90.0.0/24 }]
+
+x-valdefaults: &valdefaults
+  image: silt-sybil
+  entrypoint: ["role.sh"]
+
+services:
+  a1:
+    <<: *valdefaults
+    command:
+      - silt
+      - daemon
+      - -id-seed=5001
+      - -listen=0.0.0.0:4001
+      - -serve-registry=0.0.0.0:4003
+      - -store=/data
+      - -validator
+      - -anchors=${A1_ID:-x},${A2_ID:-x}
+      - -anchor-quorum=1
+      - -mature-validators=99            # young forever here: the anchor gate is the property under test
+      - -min-rep=100
+      - -quorum=1
+      - -min-bond=1M
+      - -min-bond-floor=0
+      - -byzantine-quorum=false
+      - -attesters=${A2_ID:-x}
+      - -bond=8M
+      - -bond-audit=1s
+      - -domain=honest
+      - -capacity=1G
+      - -mdns=false
+      - -log=info
+    networks:
+      swarm: { ipv4_address: 10.90.0.2 }
+
+  a2:
+    <<: *valdefaults
+    command:
+      - silt
+      - daemon
+      - -id-seed=5002
+      - -listen=0.0.0.0:4001
+      - -store=/data
+      - -validator
+      - -anchors=${A1_ID:-x},${A2_ID:-x}
+      - -anchor-quorum=1
+      - -mature-validators=99
+      - -min-rep=100
+      - -quorum=1
+      - -min-bond=1M
+      - -min-bond-floor=0
+      - -byzantine-quorum=false
+      - -attesters=${A1_ID:-x}
+      - -bootstrap=${A1_ID:-x}@10.90.0.2:4001
+      - -bond=8M
+      - -bond-audit=1s
+      - -domain=honest2
+      - -capacity=1G
+      - -mdns=false
+      - -log=info
+    networks:
+      swarm: { ipv4_address: 10.90.0.3 }
+
+  s1:
+    <<: *valdefaults
+    command:
+      - silt
+      - daemon
+      - -id-seed=5003
+      - -listen=0.0.0.0:4001
+      - -serve-registry=0.0.0.0:4003
+      - -store=/data
+      - -validator
+      - -anchors=${A1_ID:-x},${A2_ID:-x}
+      - -anchor-quorum=1
+      - -mature-validators=99
+      - -min-rep=100
+      - -quorum=1
+      - -min-bond=1M
+      - -min-bond-floor=0
+      - -byzantine-quorum=false
+      - -attesters=${A1_ID:-x},${A2_ID:-x},${S2_ID:-x}
+      - -bootstrap=${A1_ID:-x}@10.90.0.2:4001
+      - -bond=8M
+      - -bond-audit=1s
+      - -domain=sybilfarm
+      - -capacity=1G
+      - -mdns=false
+      - -log=info
+    networks:
+      swarm: { ipv4_address: 10.90.0.4 }
+
+  s2:
+    <<: *valdefaults
+    command:
+      - silt
+      - daemon
+      - -id-seed=5004
+      - -listen=0.0.0.0:4001
+      - -store=/data
+      - -validator
+      - -anchors=${A1_ID:-x},${A2_ID:-x}
+      - -anchor-quorum=1
+      - -mature-validators=99
+      - -min-rep=100
+      - -quorum=1
+      - -min-bond=1M
+      - -min-bond-floor=0
+      - -byzantine-quorum=false
+      - -attesters=${A1_ID:-x},${A2_ID:-x},${S1_ID:-x}
+      - -bootstrap=${A1_ID:-x}@10.90.0.2:4001
+      - -bond=8M
+      - -bond-audit=1s
+      - -domain=sybilfarm
+      - -capacity=1G
+      - -mdns=false
+      - -log=info
+    networks:
+      swarm: { ipv4_address: 10.90.0.5 }
+
+  # Extra bonded Sybil identities (random IDs — a real Sybil farm is many keys),
+  # same domain + equal bond, to push the committed bond ledger past the ≥8-bond
+  # atomization-note threshold. They attest s1 so their bonds are submitted.
+  sybil:
+    <<: *valdefaults
+    command:
+      - silt
+      - daemon
+      - -listen=0.0.0.0:4001
+      - -store=/data
+      - -validator
+      - -anchors=${A1_ID:-x},${A2_ID:-x}
+      - -anchor-quorum=1
+      - -mature-validators=99
+      - -min-rep=100
+      - -quorum=1
+      - -min-bond=1M
+      - -min-bond-floor=0
+      - -byzantine-quorum=false
+      - -attesters=${A1_ID:-x},${A2_ID:-x},${S1_ID:-x}
+      - -bootstrap=${A1_ID:-x}@10.90.0.2:4001
+      - -bond=8M
+      - -bond-audit=1s
+      - -domain=sybilfarm
+      - -capacity=1G
+      - -mdns=false
+      - -log=info
+    networks: [swarm]

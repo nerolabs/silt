@@ -155,6 +155,7 @@ KEEP=1 ./integration/<name>/run.sh     # leave the topology up to poke at
 | `durability/run.sh` | durability under permanent loss: shrink the swarm (no replacement), caretaker re-scatters, content outlives the nodes |
 | `consensus/run.sh` | objective on-chain-bond fork-choice: partition → heal to the heavier chain |
 | `redteam/run.sh` | #184 accountability: equivocator slashed, forged block rejected, low-bond proposer refused |
+| `sybil/run.sh` | C2 no quiet capture: a young objective network commits with the honest anchors and refuses to advance for a bonded Sybil set without them |
 | `audit/run.sh` | a "liar" deletes data but keeps proofs → the loss is caught and repaired |
 | `bond/run.sh` | proof-of-space-time bond cost (C1): real plots, reputation ∝ bond, shortcuts rejected |
 | `economy/run.sh` | per-byte earning + blind-signed, publisher-unlinkable credits |
