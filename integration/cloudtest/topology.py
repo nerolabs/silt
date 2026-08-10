@@ -36,7 +36,7 @@ DEFAULT_REGION = os.environ.get("REGION", "us-central1")
 STORE = "/var/lib/silt"
 
 # ── The node table ─────────────────────────────────────────────────────────────
-# role: validator | storage | registry | relay | fetcher | natgw | natted | adversary
+# role: validator | storage | registry | relay | fetcher | natgw | natted | adversary | sybil
 # IPs are STATIC and must sit in the subnet the role belongs to (public vs nat).
 # Zones are spread across regions on purpose, to exercise REAL inter-node latency.
 NODES = [
@@ -64,6 +64,20 @@ NODES = [
 if os.environ.get("SMOKE") == "1":
     _keep = {"val-a", "val-b", "store-1", "fetch-1"}
     NODES = [n for n in NODES if n[0] in _keep]
+
+# C2 Sybil-capture cohort (opt-in; adds cost, runs on SPOT). A set of bonded but
+# NON-ANCHOR validators, all committing ONE shared -domain (modeling one operator's
+# satellite keys), that attempt to advance the chain WITHOUT the launch anchors.
+# The C2 concentration metric discounts a single-domain cohort, so they cannot
+# reach the bond-DISTINCT maturity threshold to shed the anchors — the capture is
+# refused (ErrAnchorRequired), and ≥8 equal single-domain bonds trip the bond-
+# atomization note. This is the property the LOCAL sybil suite can only scope down
+# to the standing gate; the cloud is where the PURE anchor gate is certified.
+# Off by default (0 extra VMs). `SYBILS=8 ./cloudtest.sh` opts in. Never in SMOKE.
+SYBILS = 0 if os.environ.get("SMOKE") == "1" else int(os.environ.get("SYBILS", "0"))
+_syb_zones = ["us-central1-a", "us-east1-b", "europe-west1-b"]
+for _i in range(SYBILS):
+    NODES.append((f"sybil-{_i+1}", "sybil", 6601 + _i, f"10.20.0.{61+_i}", _syb_zones[_i % len(_syb_zones)]))
 
 
 def node_id(seed):
@@ -122,6 +136,12 @@ def main():
     validators = [name for name, n in nodes.items() if n["role"] == "validator"]
     n_val = len(validators)
     anchors = ",".join(nodes[v]["nodeid"] for v in validators)
+    # The C2 Sybil cohort is a SEPARATE set — deliberately NOT in `validators`, so
+    # it never pollutes the honest quorum/anchor/maturity math. It references the
+    # honest anchor set (which it does not control) and co-signs only itself.
+    sybils = [name for name, n in nodes.items() if n["role"] == "sybil"]
+    n_syb = len(sybils)
+    syb_quorum = (n_syb // 2 + 1) if n_syb else 0   # a self-majority — would "capture" if the anchor gate were off
     # Size quorum for f=1 crash tolerance: after one validator is down, the
     # proposer + `quorum` attesters must still be reachable. quorum = n_val - 2
     # (min 1) means losing any one validator still leaves proposer + quorum.
@@ -185,6 +205,20 @@ def main():
                     f"-validator -objective -min-bond {min_bond} -min-bond-floor {min_floor} "
                     f"-mature-validators {n_val} -anchors {anchors} -attesters {adv_attesters} "
                     f"-quorum {quorum} -bond {bond} -bond-audit 30s -capacity 2G")
+        if role == "sybil":
+            # C2 quiet-capture attempt: bonded, NON-anchor, all sharing ONE -domain
+            # (one operator's satellite keys). References the REAL anchor set it does
+            # NOT control and co-signs only other sybils. The C2 concentration metric
+            # discounts a single-domain cohort, so it cannot reach the bond-distinct
+            # maturity threshold to shed the launch anchors: without anchor
+            # attestations the chain refuses to advance (ErrAnchorRequired). ≥8 equal
+            # single-domain bonds also trip the atomization note.
+            syb_attesters = ",".join(nodes[s]["nodeid"] for s in sybils if s != name)
+            att = f" -attesters {syb_attesters}" if syb_attesters else ""
+            return (f"daemon -id-seed {n['seed']} {common} -advertise {ip}:{SWARM_PORT} -bootstrap {bootstrap} "
+                    f"-validator -objective -min-bond {min_bond} -min-bond-floor {min_floor} "
+                    f"-mature-validators {n_val} -anchors {anchors}{att} "
+                    f"-quorum {syb_quorum} -bond {bond} -bond-audit 30s -capacity 2G -domain sybilnet")
         if role == "natgw":
             return "NATGW"   # not a silt node — runs integration/nat/natgw.sh instead
         sys.exit(f"topology: unknown role {role} for {name}")
@@ -195,6 +229,7 @@ def main():
     meta = {
         "swarm_port": SWARM_PORT, "relay_port": RELAY_PORT, "registry_port": REGISTRY_PORT,
         "bond_mode": BOND_MODE, "n_val": n_val, "quorum": quorum, "bootstrap": bootstrap,
+        "sybils": sybils, "n_syb": n_syb, "syb_quorum": syb_quorum, "syb_domain": "sybilnet",
         "relay_ref": relay_ref, "regref": regref, "anchors": anchors, "boot": boot,
         "public_cidr": PUBLIC_CIDR, "nat_cidr": NAT_CIDR,
     }

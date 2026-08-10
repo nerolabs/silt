@@ -29,8 +29,9 @@ log line / SHA / chain-status field), never a string the harness echoes.
 `bond`, `economy`, `audit`, `takedown`, `nat` (+ hole-punch), `soak`, `upgrade`
 (#237 reproducer). `economy` already covers the wire-testable demand outcome
 ("hosts earn per byte, freeloaders go broke"). Known soft spot from the prior
-acceptance pass: `bond`'s "reputation ∝ bond" (C1) is **hand-recorded, not
-automated** — an automation opportunity.
+acceptance pass: `bond`'s "reputation ∝ bond" (C1) is now **automated** — a
+plot-SIZE gate parses `-bond` to bytes and requires the on-disk plot to be ≥ 90%
+of it (a near-empty/instant plot fails C1), replacing the hand-recorded check.
 
 ## Not built — stated gap
 
@@ -55,13 +56,18 @@ the #184 drills) plus **four new cloud variants** of the local series were added
 | `flow_durability_turnover` | durability #2 | authored, dry-validated, **not run** |
 | `flow_chaos_crash` | chaos #7 (SIGKILL + #69, via `Restart=on-failure`) | authored, dry-validated, **not run** |
 | `flow_web_ui_guard` | client #4 (guard over a real VM) | authored, dry-validated, **not run** |
+| `flow_c2_no_capture` | sybil #5 (**opt-in** `SYBILS=8`: non-anchor Sybil cohort) | authored, dry-validated (topology + `terraform validate`), **not run** |
 
 - **These flows have never executed against a live network** — expect first-run
   bugs (log-regex drift, timing/SLO tuning, publisher→validator egress for
   token-quorum). Treat the first GCP run as a shakedown. `cloudtest.sh` is
   cost-bounded (SPOT + per-VM TTL self-destruct + destroy-on-exit + nuke-by-label);
   `SMOKE=1` trims to ~4 nodes for a pennies-scale plumbing check first.
-- **C2-Sybil (#5) has NO cloud flow** (recorded as a `skip`). See below.
+- **C2-Sybil (#5) now HAS a cloud flow** (`flow_c2_no_capture`), **opt-in** via
+  `SYBILS=8` (adds a non-anchor Sybil validator cohort to `topology.py`). Off by
+  default (the standard run stays 13 nodes); the flow records a `skip` when the
+  cohort is absent. Dry-validated only — a real GCP run is where the pure anchor
+  gate is certified. See item 2 below.
 
 ## Highest-value extension opportunities (ranked)
 
@@ -69,22 +75,24 @@ the #184 drills) plus **four new cloud variants** of the local series were added
    remaining gate. The 4 new flows + the existing 9 + #184 drills need a first
    shakedown (SMOKE=1 → full). This is where the durability *retrieval floor*, the
    pure Sybil *anchor gate*, and real multi-region timing get their true verdict.
-2. **#5 C2-Sybil cloud flow — needs a topology change.** Add **non-anchor Sybil
-   validator VMs** to `topology.py` (a `sybil` role: `-validator` + `-anchors <the
-   real anchor set>`, NOT in the anchor set, equal `-bond`, one `-domain`). Over a
-   longer cloud run the anchors' blocks *bank* the Sybils' `BondReg`s, so the
-   capture attempt then hits the **pure `ErrAnchorRequired`** gate (not the laptop's
-   standing gate), and ≥8 equal Sybil bonds trip the **atomization note**. Then add
-   a `flow_c2_no_capture` (stop the anchors → Sybil quorum refused). This is the
-   one property whose local form is honestly *scoped down*; the cloud is where it
-   is fully certified.
+2. **#5 C2-Sybil cloud flow — BUILT (opt-in), needs a real run.** A `sybil` role
+   (`-validator -objective`, equal `-bond`, one shared `-domain sybilnet`,
+   referencing the real anchor set it does NOT control) is now in `topology.py`,
+   opt-in via `SYBILS=8` (off by default; adds the cohort on SPOT). `flow_c2_no_capture`
+   banks the Sybil bonds during warmup, stops every anchor (Sybil self-majority
+   cannot advance the chain — `ErrAnchorRequired`), then restores the anchors (chain
+   resumes — the clincher). ≥8 equal single-domain bonds trip the **atomization
+   note**. Dry-validated (topology gen + `terraform validate`); the **real GCP run**
+   is what certifies the pure anchor gate the laptop can only scope down to the
+   standing gate.
 3. **Root-cause the chaos WAVE 2 observation** — does a *redundant* bootstrap (≥2
    registry/seed nodes) survive one crashing? Is it provider-record persistence, or
    the restarted sole-bootstrap failing to re-mesh with live holders? Pin it, then
    either fix + assert, or downgrade to a documented topology limitation.
 4. **Wire demand (#264)** so #6 becomes a real field test (P2 fair-exchange abort
    ⇒ token reusable; P3 wash ⇒ one bonded identity + a real fee per unit of demand).
-5. **Automate `bond`'s C1 "reputation ∝ bond"** (currently hand-recorded).
+5. ~~Automate `bond`'s C1 "reputation ∝ bond"~~ — **DONE** (plot-size gate; see
+   the suite table's `bond` caveat).
 
 ## What to trust
 
