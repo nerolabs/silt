@@ -115,3 +115,86 @@ func TestObjectiveColdStartCommitsGenesis(t *testing.T) {
 		t.Fatalf("objective 4-validator simultaneous cold start (quorum 2, mature 4, Byzantine on, bond-audit %s) did NOT commit a block within %ds — the anchor training-wheels bootstrap has regressed (cf. #286)", bondAudit, windowS)
 	}
 }
+
+// #286, hypothesis 2: the full cloudtest topology has an EXTRA objective validator
+// beyond the 4 anchors — the `adversary` node (honest by default): `-validator
+// -objective`, referencing the SAME `-anchors` set and attesting all 4 core
+// validators, but NOT itself an anchor and NOT in the 4 core validators' attester
+// lists. SMOKE (no adversary) warmed; the full topology (with it) mostly did not.
+// Does a 5th bonded non-anchor validator joining the cold start prevent the 4
+// anchors from committing genesis? This reproduces that shape locally.
+func TestObjectiveColdStartWithSatelliteValidator(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e spawns processes; skipped under -short")
+	}
+	const CORE = 4
+	ids := make([]string, CORE+1) // +1 satellite (the adversary-style node)
+	port := make([]string, CORE+1)
+	for i := range ids {
+		ids[i] = identity.FromSeed(int64(7200 + i)).NodeID().String()
+		port[i] = reservePort(t)
+	}
+	anchors := strings.Join(ids[:CORE], ",") // ONLY the 4 core validators are anchors
+	regPort := reservePort(t)
+
+	launch := func(i int, extra ...string) *daemon {
+		att := make([]string, 0, CORE)
+		for j := 0; j < CORE; j++ { // core validators attest the OTHER core validators
+			if j != i {
+				att = append(att, ids[j])
+			}
+		}
+		if i >= CORE { // the satellite attests all 4 core validators (none is "self")
+			att = append(att[:0], ids[:CORE]...)
+		}
+		args := []string{
+			"-id-seed", fmt.Sprintf("%d", 7200+i),
+			"-listen", port[i], "-advertise", port[i], "-store", t.TempDir(),
+			"-validator", "-objective",
+			"-min-bond", "1M", "-min-bond-floor", "0", "-bond", "8M",
+			"-mature-validators", fmt.Sprintf("%d", CORE),
+			"-anchors", anchors, "-attesters", strings.Join(att, ","),
+			"-quorum", "2", "-bond-audit", "2s", "-capacity", "1G", "-mdns=false",
+		}
+		args = append(args, extra...)
+		return startDaemon(t, fmt.Sprintf("v%d", i), args...)
+	}
+
+	all := make([]*daemon, CORE+1)
+	all[0] = launch(0, "-serve-registry", regPort)
+	for i := 1; i <= CORE; i++ { // core joiners + the satellite (i==CORE) all bootstrap to v0
+		all[i] = launch(i, "-bootstrap", ids[0]+"@"+port[0])
+	}
+
+	regRef := all[0].waitFor(t, reRegistry, 30*time.Second)[1]
+	peers := ""
+	for i := 0; i < CORE; i++ {
+		if i > 0 {
+			peers += ","
+		}
+		peers += ids[i] + "@" + port[i]
+	}
+	src := filepath.Join(t.TempDir(), "p.bin")
+	if err := os.WriteFile(src, make([]byte, 4096), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	committed := false
+	deadline := time.Now().Add(90 * time.Second)
+	for time.Now().Before(deadline) {
+		out, _ := runClientAllowErr(t, "swarm", "add", src,
+			"-peers", peers, "-registry", regRef, "-token-quorum", "2",
+			"-chunk-size", "65536", "-mode", "convergent")
+		if strings.Contains(out, "silt:v1:") && all[0].out.find(reCommitted) != nil {
+			committed = true
+			break
+		}
+		time.Sleep(3 * time.Second)
+	}
+	if !committed {
+		for _, d := range all {
+			t.Logf("--- %s tail ---\n%s", d.name, d.out.dump())
+		}
+		t.Fatal("#286 REPRODUCED: a 5th bonded non-anchor (adversary-style) validator prevented the 4 anchors from committing genesis")
+	}
+}
