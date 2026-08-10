@@ -1,0 +1,58 @@
+# Chaos / crash-recovery, on one flat network.
+#
+#   seed ── registry + bootstrap
+#   holder×N ── real disk stores
+#   client ── one persistent box run.sh execs ephemeral swarm add/get on
+#
+# The outcome under test: does the system SURVIVE HARD CRASHES? Unlike durability
+# (permanent loss: containers removed for good) this KILLS daemons with SIGKILL —
+# an abrupt crash, no graceful shutdown — then RESTARTS THE SAME containers, so
+# each reloads its PERSISTED state (chunk store, chain, bond, the #69 proof store).
+# A restarted holder must re-announce its held chunks (#69) so content stays
+# DISCOVERABLE, and a fetch must come back bit-perfect. No named volumes are used:
+# `docker start` on the un-removed container restores its own filesystem, which is
+# exactly the crash-restart being modelled (same identity, same IP, same store).
+#
+# role.sh self-advertises each container's routable IP.
+
+networks:
+  swarm:
+    driver: bridge
+    ipam:
+      config: [{ subnet: 10.75.0.0/24 }]
+
+services:
+  seed:
+    image: silt-chaos
+    entrypoint: ["role.sh"]
+    command:
+      - silt
+      - daemon
+      - -listen=0.0.0.0:4001
+      - -serve-registry=0.0.0.0:4003
+      - -store=/data
+      - -capacity=5G
+      - -mdns=false
+      - -log=info
+    networks: [swarm]
+
+  holder:
+    image: silt-chaos
+    entrypoint: ["role.sh"]
+    command:
+      - silt
+      - daemon
+      - -listen=0.0.0.0:4001
+      - -store=/data
+      - -capacity=5G
+      - -mdns=false
+      - -log=info
+      - -bootstrap=${SEED_PEER:-unset}
+      - -registry=${SEED_REG:-unset}
+    networks: [swarm]
+
+  client:
+    image: silt-chaos
+    entrypoint: []
+    command: ["sleep", "infinity"]
+    networks: [swarm]
