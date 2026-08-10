@@ -56,6 +56,14 @@ broken, however green it looks.
 
 Prototype and iterate locally; **certify on GCP.**
 
+> **Extending or auditing these tests?** Read
+> [`FIELD-TEST-STATUS.md`](FIELD-TEST-STATUS.md) first — the honest current state of
+> every suite: genuine PASS vs reported FINDING vs stated gap, the scoping caveats
+> (e.g. `sybil` #5 falls back to the standing gate on a laptop; `chaos` WAVE 2 is an
+> unpinned observation; `demand` #6 has no seam yet), and what has actually been
+> *run* vs only *dry-validated* (all of `cloudtest/` is dry-validated only — zero
+> GCP spend so far).
+
 ---
 
 ## Quick start
