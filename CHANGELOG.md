@@ -345,6 +345,19 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
     takedown of a shared root.
 
 ### Changed
+- **The C1 bond reply-latency gate is now SOFT, not a standing gate (build-immutable #3; #289)** (2026-08-10) —
+  A live bond challenge no longer denies standing for a slow reply. Reply-latency is transport (RTT + jitter +
+  loss) **plus** compute, and gating security on the sum is unsound on the open internet — it read network
+  jitter/loss as a partial-storage cheat and starved durability under adverse networks. Standing now rests on
+  the sound signals only (anti-release floor + identity binding + the space/labeling proof `VerifySpaceTime`);
+  a valid answer earns standing however slowly it arrives. The partial-storage timing deterrent becomes a
+  **soft, disclosed** signal: the node tracks the windowed-MINIMUM (low quantile) of each peer's bond-challenge
+  reply latencies — which filters the one-sided network noise — and raises a non-gating suspicion only when
+  that floor is SUSTAINED above `-bond-answer-latency` (a partial-storage prover recomputes on every challenge
+  so its floor stays elevated; an honest node on a bad path is only randomly slow). New read-only accessor
+  `Node.BondLatencyFloor`. The old hard-gate regression test is inverted to assert the sound behavior
+  (`TestC1TimingIsSoftNotAHardGate`). The hard structural close remains tight-PoS (H-track), owned as residual
+  A5. Following the 2026-08-10 network-durability research opinion.
 - **Anti-release bond floor decoupled from the transport timeout (build-immutables #3/#4)** (2026-08-10) —
   Following the network-durability-vs-space-time research opinion, the anti-release floor `MinBondBytes` is now
   sized explicitly against a named **compute** window (`AntiReleaseComputeWindow`, ~2s) times the measured seal
