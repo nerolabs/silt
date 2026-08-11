@@ -98,7 +98,8 @@ apply() {
     -var "silt_binary_path=$FT_DIR/silt-linux-amd64" \
     -var "budget_amount_usd=${BUDGET_AMOUNT_USD:-0}" \
     -var "billing_account=${BILLING_ACCOUNT:-}" \
-    -var "core_on_demand=${CORE_ON_DEMAND:-$([ "${SMOKE:-0}" = 1 ] && echo false || echo true)}"
+    -var "core_on_demand=${CORE_ON_DEMAND:-$([ "${SMOKE:-0}" = 1 ] && echo false || echo true)}" \
+    -var "all_on_demand=${ALL_ON_DEMAND:-false}"
   tf output -json nodes > "$FT_DIR/nodes.json"
   # Terraform's node output carries instance_name/zone/ips/role but NOT the silt
   # NodeID — yet scenarios.sh reads node_field <n> nodeid (the #184 drills derive

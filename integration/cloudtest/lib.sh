@@ -25,6 +25,15 @@ ssh_node() { # ssh_node NAME "remote command"
 
 jlog() { ssh_node "$1" "sudo journalctl -u silt --no-pager -n ${2:-400}"; }
 
+# The daemon splits its output: fmt.Printf banners (chain: committed block,
+# registry: …, reorged, slashed) go to stdout → journald (read via jlog), but
+# every STRUCTURED n.logf(...) line — the per-node signals like `standing self=…
+# reputation=N` and `bond challenge peer=… passed=…` — goes to an on-disk file
+# (cmd/silt/daemon.go openLog → $STORE/debug.log), NEVER to journald. Assert on
+# those via dlog, not jlog. (A #310 assertion greped journald for the standing
+# line and could never match — SMOKE caught it.)
+dlog() { ssh_node "$1" "sudo tail -n ${2:-1200} /var/lib/silt/debug.log 2>/dev/null"; }
+
 # Poll a node's silt journal until PATTERN appears (or TIMEOUT s). Echoes the
 # matching line on success. Field networks are noisy → we assert over logs, and
 # never require an exact count.
@@ -33,6 +42,19 @@ waitfor() { # waitfor NAME 'EXTENDED_REGEX' TIMEOUT_S
   start="$(date +%s)"
   while :; do
     line="$(jlog "$name" 800 | grep -E "$pat" | tail -1 || true)"
+    [ -n "$line" ] && { printf '%s\n' "$line"; return 0; }
+    now="$(date +%s)"; [ $((now - start)) -ge "$timeout" ] && return 1
+    sleep 4
+  done
+}
+
+# Same poll, but against the on-disk structured debug.log (see dlog). Use for the
+# per-node earned-standing / bond-challenge signals journald never carries.
+waitfor_dlog() { # waitfor_dlog NAME 'EXTENDED_REGEX' TIMEOUT_S
+  local name="$1" pat="$2" timeout="${3:-120}" start now line
+  start="$(date +%s)"
+  while :; do
+    line="$(dlog "$name" 2000 | grep -E "$pat" | tail -1 || true)"
     [ -n "$line" ] && { printf '%s\n' "$line"; return 0; }
     now="$(date +%s)"; [ $((now - start)) -ge "$timeout" ] && return 1
     sleep 4

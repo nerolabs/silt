@@ -196,9 +196,12 @@ flow_become_validator() {
     # is satisfiable by any OBSERVER, so it proved nothing about THIS node. The
     # daemon self-narrates 'standing self=<own id> reputation=N' every bond-audit
     # sweep once its bond qualifies (core/node/bondaudit.go), a genuinely per-node
-    # signal that it earned standing on the objective path.
+    # signal that it earned standing on the objective path. That line is a
+    # STRUCTURED n.logf → it lands in the on-disk debug.log, NOT journald, so it
+    # must be read with waitfor_dlog (the #310 version used waitfor/journald and
+    # could never match — SMOKE flagged it).
     local nid; nid="$(node_field "$n" nodeid)"
-    if [ "${#nid}" -eq 64 ] && waitfor "$n" "standing self=$nid reputation=[1-9]" 90 >/dev/null; then :; else ok=0; bad="$bad $n"; fi
+    if [ "${#nid}" -eq 64 ] && waitfor_dlog "$n" "standing self=$nid reputation=[1-9]" 90 >/dev/null; then :; else ok=0; bad="$bad $n"; fi
   done
   slo_assert "4-become-validator" major "non-anchor validators earn their OWN standing on the objective path${bad:+ (no per-node earned-standing signal:$bad)}" "$ok"
 }
@@ -533,7 +536,14 @@ flow_c2_no_capture() {
 # the registry, so this is the most reliable publisher) until it produces a link —
 # which commits the first block — bounded by WARMUP_S. A timeout does not fail the
 # run; the graded flows then report honestly.
-: "${WARMUP_S:=300}"
+#
+# 600s default, not 300: on a 3-REGION fleet (e.g. europe-west1 val-c) the FIRST
+# objective commit is a cold cross-region bootstrap — mesh + bond seal + bond-reg
+# commit + cross-region attestation quorum — and was measured at ~9 min. A 300s
+# window expired JUST as the chain committed block 1, so every flow then graded
+# against a genesis chain and false-FAILed. Overridable (a single-region run can
+# set WARMUP_S=180).
+: "${WARMUP_S:=600}"
 wait_network_warm() {
   local boot deadline t0 out link
   boot="$(python3 -c "import json;print(json.load(open('$FT_DIR/topology.json'))['meta']['boot'])")"

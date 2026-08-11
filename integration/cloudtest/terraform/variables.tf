@@ -85,3 +85,9 @@ variable "core_on_demand" {
   default     = true
   description = "Run the CONSENSUS/REGISTRY core (validator + registry roles) as STANDARD (non-preemptible) instances so an RC-gate run isn't disrupted by SPOT preemption; all other roles stay SPOT for cost. Set false for the cheapest all-SPOT shakedown."
 }
+
+variable "all_on_demand" {
+  type        = bool
+  default     = false
+  description = "Run EVERY node as STANDARD (non-preemptible). For a CERTIFICATION run: core_on_demand only protects validator+registry, but a cert also needs storage (holds published content), relay (NAT), and adversary (#184) to survive — a mid-run SPOT preemption of store-1 fails publish and cascades into a false FAIL of nearly every flow. e2-small on-demand is ~cents/hr for the whole fleet; overrides core_on_demand when set."
+}
