@@ -50,10 +50,19 @@ echo ""
 echo "== CLAIM (a): silt sim run economy (per-byte earning; freeloaders broke) =="
 "$SIM_BIN" sim run economy >/tmp/econ_sim.out 2>&1 || fail "sim run economy errored"
 sed 's/^/  sim: /' /tmp/econ_sim.out
-# The top earner served bytes and CAN publish again; a freeloader served 0 and CANNOT.
-grep -qE 'top earner .* served +[1-9][0-9]* B.*can publish: true'   /tmp/econ_sim.out || fail "no top earner that served bytes and can re-publish"
-grep -qE 'freeloader .* served +0 B.*can publish: false'            /tmp/econ_sim.out || fail "no freeloader that served 0 B and is broke"
-grep -qE 'all 6 freeloaders among the rejected: true'              /tmp/econ_sim.out || fail "not all freeloaders were gate-rejected"
+# Gate on the sim's MACHINE-READABLE summary line (not the human prose), so a wording
+# drift can't silently stop catching a broken ledger (blind field test #2 §E). Each
+# assertion reads one space-free key=value field off the same `economy-summary:` line.
+SUM=$(grep -E '^economy-summary:' /tmp/econ_sim.out | tail -1)
+[ -n "$SUM" ] || fail "sim emitted no machine-readable 'economy-summary:' line (economy observatory did not run)"
+# The top earner served >0 bytes and CAN publish again.
+echo "$SUM" | grep -qE 'top_served=[1-9][0-9]*'   || fail "top earner served 0 bytes (no per-byte earning)"
+echo "$SUM" | grep -qE 'top_can_publish=true'      || fail "top earner served bytes yet CANNOT re-publish (earning did not credit)"
+# A freeloader served 0 bytes and CANNOT publish (broke).
+echo "$SUM" | grep -qE 'freeloader_served=0'       || fail "the tracked freeloader served >0 bytes (not a real freeloader)"
+echo "$SUM" | grep -qE 'freeloader_can_publish=false' || fail "a freeloader that served 0 bytes CAN still publish (freeloader not broke)"
+# Every freeloader was gate-rejected on the second publish.
+echo "$SUM" | grep -qE 'all_freeloaders_rejected=true' || fail "not all freeloaders were gate-rejected"
 [ "$pass" = 1 ] && echo "  CLAIM (a): PASS — hosts earn per byte served; freeloaders cannot re-publish"
 
 # ─────────────────────────────────────────────────────────────────────────────

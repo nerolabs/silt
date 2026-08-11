@@ -230,6 +230,16 @@ func Economy(seed int64, o EconomyOpts) (EconomyResult, error) {
 			bottomFree.nd.ID().String()[:8], ledger.ServedBytes(bottomFree.nd.ID()),
 			ledger.FetchedBytes(bottomFree.nd.ID()), bottomFree.bal, ledger.CanPublish(bottomFree.nd.ID())))
 	}
+	// Machine-readable summary — the economy field test gates on THIS stable line, not
+	// the human prose above, so a wording change can't silently stop catching a broken
+	// ledger (blind field test #2 §E). One space-free key=value per assertion.
+	fServed, fCanPublish := int64(-1), true
+	if bottomFree.nd != nil {
+		fServed, fCanPublish = ledger.ServedBytes(bottomFree.nd.ID()), ledger.CanPublish(bottomFree.nd.ID())
+	}
+	say(fmt.Sprintf("economy-summary: top_served=%d top_can_publish=%v freeloader_served=%d freeloader_can_publish=%v second_ok=%d second_rejected=%d all_freeloaders_rejected=%v",
+		ledger.ServedBytes(top.nd.ID()), ledger.CanPublish(top.nd.ID()),
+		fServed, fCanPublish, res.SecondOK, res.SecondRejected, res.FreeloadersRejected == o.Freeloaders))
 	res.Net = cl.Net.Stats
 	return res, nil
 }

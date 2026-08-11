@@ -114,7 +114,12 @@ for id in $HIDS; do
   done
 done
 echo "  holders that logged '#69 re-announced held chunks' after crash: $reprovided/$HOLDERS"
-[ "$reprovided" -ge 1 ] || fail "no holder re-announced its held chunks after the crash (#69 reprovide did not fire)"
+# Gate on ≥ N-1 (not ≥1): after a full-swarm SIGKILL+restart, #69 reprovide must fire on
+# essentially EVERY holder, not just one — a single reprovide can mask a systemic gap where
+# most holders never re-announce (blind field test #2 §E). One straggler is tolerated
+# (restart-timing jitter); a silent majority failing to reprovide is a real defect.
+NEED_REPROVIDE=$((HOLDERS > 1 ? HOLDERS - 1 : 1))
+[ "$reprovided" -ge "$NEED_REPROVIDE" ] || fail "only $reprovided/$HOLDERS holders re-announced their held chunks after the crash (need ≥ $NEED_REPROVIDE) — #69 reprovide did not fire swarm-wide"
 if fetch_ok; then
   echo "  ✓ WAVE 1: content survived a full holder crash — cold-fetch bit-perfect"
 else
@@ -197,5 +202,5 @@ fi
 echo "RESULT: PASS ✅  crash-recovery holds — the swarm survived a SIGKILL of every holder:"
 echo "  $reprovided/$HOLDERS holder(s) reloaded their persisted store and re-announced held chunks (#69),"
 echo "  and a fresh client fetched the content back bit-perfect after the crash, with no crash-loop."
-echo "  (The gate is ≥1 reprovide + a bit-perfect cold fetch; run WAVES=2 for the opt-in seed-crash probe.)"
+echo "  (The gate is ≥ N-1 reprovide + a bit-perfect cold fetch; run WAVES=2 for the opt-in seed-crash probe.)"
 exit 0
