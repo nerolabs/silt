@@ -377,12 +377,53 @@ func mustRead(r io.Reader) []byte {
 	return b
 }
 
+const (
+	// getRetries / getRetryBackoff: a bounded, exponential-backoff retry for the client's
+	// idempotent GET reads. This is the one client path NOT behind the consensus layer's
+	// retry, so a single dropped packet used to fail a swarm-get / root resolution outright
+	// — the durable-WAN discipline is to ride out transient loss, not decide on one sample
+	// (immutable #5; docs/network-durability.md §1 "modest initial + retry", §2). GET only:
+	// the request has no body, so it is safely reissued. POST /publish is NOT retried here
+	// (it has side effects; its commit durability comes from the async 202 + poll instead).
+	getRetries      = 2 // 3 attempts total
+	getRetryBackoff = 200 * time.Millisecond
+)
+
+// doGetRetry issues an idempotent GET with bounded exponential backoff on TRANSIENT
+// failures (a network error or a 5xx). A definitive response (2xx/3xx/4xx) returns at
+// once — a 404 or other 4xx is an answer, not a blip. Respects the request context.
+func (c *Client) doGetRetry(req *http.Request) (*http.Response, error) {
+	backoff := getRetryBackoff
+	var lastErr error
+	for attempt := 0; ; attempt++ {
+		resp, err := c.hc.Do(req)
+		if err == nil && resp.StatusCode < 500 {
+			return resp, nil
+		}
+		if err != nil {
+			lastErr = err
+		} else {
+			resp.Body.Close()
+			lastErr = fmt.Errorf("%s", resp.Status)
+		}
+		if attempt >= getRetries {
+			return nil, lastErr
+		}
+		select {
+		case <-req.Context().Done():
+			return nil, req.Context().Err()
+		case <-time.After(backoff):
+		}
+		backoff *= 2
+	}
+}
+
 func (c *Client) Lookup(ctx context.Context, root ports.Hash) (ports.Entry, bool, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", c.base+"/lookup?root="+root.String(), nil)
 	if err != nil {
 		return ports.Entry{}, false, err
 	}
-	resp, err := c.hc.Do(req)
+	resp, err := c.doGetRetry(req)
 	if err != nil {
 		return ports.Entry{}, false, fmt.Errorf("httpregistry lookup: %w", err)
 	}
@@ -411,7 +452,7 @@ func (c *Client) publishStatus(ctx context.Context, root ports.Hash) (committed 
 	if err != nil {
 		return false, "", err
 	}
-	resp, err := c.hc.Do(req)
+	resp, err := c.doGetRetry(req)
 	if err != nil {
 		return false, "", fmt.Errorf("httpregistry publish-status: %w", err)
 	}
@@ -440,7 +481,7 @@ func (c *Client) All(ctx context.Context) ([]ports.Entry, error) {
 	if err != nil {
 		return nil, err
 	}
-	resp, err := c.hc.Do(req)
+	resp, err := c.doGetRetry(req)
 	if err != nil {
 		return nil, fmt.Errorf("httpregistry all: %w", err)
 	}

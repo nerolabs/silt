@@ -8,6 +8,18 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Fixed
+- **Registry client rides out transient loss on its reads (#329, durable-WAN audit)** (2026-08-12) —
+  The HTTP registry client's idempotent GET reads (`Lookup`, `/publish-status`, `All`) were single-shot:
+  a single dropped packet or a transient 5xx failed a `swarm get` / root resolution outright. This was the
+  one client path NOT behind the consensus layer's retry — the lone true violation of build-immutable #5
+  found in the durable-WAN audit (#329). Fixed with a **bounded exponential-backoff retry** (3 attempts,
+  200 ms base) on those GETs — ride out transient loss instead of deciding on a single sample
+  (`docs/network-durability.md` §1 "modest initial + retry", §2). A definitive `4xx` (e.g. a `404`
+  not-found) is returned at once, never retried; `POST /publish` is deliberately NOT retried here (its
+  commit durability comes from the async 202 + poll). Guarded by `TestClientGetRetry_RecoversTransient`
+  / `_BoundedGivesUp` / `_NoRetryOn404`.
+
 ### Added
 - **Handshake attribution instrumentation (#286 Layer 2 Q3)** (2026-08-12) — To attribute the
   cross-region inbound `err=EOF` before tuning any deadline (the research team's "instrument first"
