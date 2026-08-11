@@ -21,6 +21,27 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   change (all consensus tests unchanged).
 
 ### Fixed
+- **Publish no longer dies on a flat wall-clock deadline — async accept + poll (#286 Layer 1)** (2026-08-11)
+  — The binding failure in the quorum-2 genesis stall was on the HTTP **publish** path, not the
+  validator↔validator RPC path #318 tuned: `silt swarm add` held the HTTP connection open for the whole
+  consensus gather under **three stacked flat deadlines** (10 s `http.Client.Timeout`, 30 s server
+  `WriteTimeout`, 30 s `chainhost` loop timeout), any of which guillotined the one-time ~1.5 MB genesis
+  gather over a real WAN before quorum could form — a flat transport deadline is a category error
+  (build-immutable #5; `docs/network-durability.md`). Fixed by making publish **asynchronous**:
+  `chainhost.PublishAsync` runs the LOCAL validation synchronously — so every refusal (no publish token
+  when required, a durable Publisher identity the refuse-to-surveil chain rejects, a double-spent token, a
+  duplicate root) still surfaces at once — then kicks off the commit gather in the background and replies
+  **202 Accepted**; the client polls a new `GET /publish-status` until the entry commits or the gather
+  reaches a terminal no-quorum. No connection is held open for the gather (no flat guillotine on the
+  commit, no slowloris — #48), yet `Publish` still BLOCKS the caller until commit so sequencing
+  (double-spend replay, dup) is preserved exactly as the sync path. `/publish-status` exposes the gather's
+  terminal outcome, so a not-yet-committable publish (no quorum before mutual standing is earned)
+  **fast-fails** instead of polling out the budget — preserving the publish-retry-until-standing semantics
+  the bond earned-standing and on-chain revocation e2e flows depend on. Guarded by
+  `TestAsyncPublish_AcceptThenPollCommits` / `_RefusalIsSynchronous` / `_TerminalFailureFastFails` and the
+  full e2e suite over real TCP. This removes the Layer-1 transport guillotines; the deeper WAN-only genesis
+  gather (Layer 2) is still open pending a `-log debug` cloud run (#327) and the structural ~1.5 MB → succinct
+  bond proof (#299).
 - **Objective chain wedged after the first bond, cross-region (#313)** (2026-08-11) — Found on the GCP
   cert field test: a 3-region objective validator set committed block 1, then every publish hung and the
   chain stalled at height 1. Root cause: **F6 "proposing IS registering" re-embedded the proposer's full

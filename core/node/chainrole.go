@@ -227,6 +227,26 @@ func (n *Node) ProposeEntry(e ports.Entry, attesters, broadcast []ports.NodeID, 
 		attesters, broadcast, quorum, done)
 }
 
+// ValidateEntryProposal runs the LOCAL pre-check for publishing e — the same checks a
+// proposeBlock does before it gathers: proposer eligibility + the entry-level refusals a
+// client must learn SYNCHRONOUSLY (no publish token when required, a durable Publisher
+// identity the refuse-to-surveil chain rejects, a double-spent token) — WITHOUT gathering
+// or committing. The async publish path (chainhost.Host.PublishAsync) calls this to return
+// those refusals to the HTTP client immediately, then runs the slow commit gather in the
+// background (so the ~1.5MB genesis gather no longer blocks the handler under a flat 10s
+// deadline — #286 Layer 1). A lean single-entry candidate block suffices: the entry-level
+// refusals and proposer eligibility do not depend on the bond-registration the real
+// proposeBlock also attaches (a bad bond-reg surfaces async, as the proposer's own concern).
+func (n *Node) ValidateEntryProposal(e ports.Entry) error {
+	if n.chain == nil {
+		return ErrNoChain
+	}
+	prev, height := n.chain.Head()
+	b := &chain.Block{Version: chain.BlockVersion, Height: height, Prev: prev, Entries: []ports.Entry{e}}
+	chain.Sign(b, n.signer)
+	return n.chain.ValidateProposal(b)
+}
+
 // ProposeRevocation runs consensus on a TAKEDOWN: an append-only block
 // that marks roots denied. It needs the same reputation quorum as a
 // publication, so removing content is exactly as governed as adding it —
