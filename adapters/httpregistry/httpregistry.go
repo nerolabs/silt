@@ -127,6 +127,36 @@ func ServeTLS(addr string, ident *identity.Identity, reg ports.Registry) (boundA
 	})
 }
 
+// asyncPublisher is an optional Registry capability (chainhost.Host implements it; a plain
+// fileregistry does not). PublishAsync validates SYNCHRONOUSLY — so refusals (token /
+// durable-Publisher / double-spend / dup) surface at once — but commits ASYNC: the handler
+// replies 202 and the client polls PublishStatus until the entry commits OR the gather
+// reaches a terminal failure. This removes the flat 10s-client / 30s-server deadlines that
+// guillotined a ~1.5 MB genesis gather (#286 Layer 1) WITHOUT holding a connection open for
+// the whole gather (no slowloris, #48). PublishStatus is what lets the client fast-fail on a
+// no-quorum round — so a publish-retry-until-standing caller retries promptly — instead of
+// polling out the full budget. A registry that commits instantly (fileregistry) implements
+// neither, so the sync Publish is used.
+type asyncPublisher interface {
+	PublishAsync(context.Context, ports.Entry) error
+	// PublishStatus reports (committed, failErr): committed=true when the entry is on the
+	// chain; failErr!=nil when the gather terminally failed this round; (false, nil) = pending.
+	PublishStatus(context.Context, ports.Hash) (bool, error)
+}
+
+// publishStatusJSON is the wire form of an async publish's terminal state.
+type publishStatusJSON struct {
+	State string `json:"state"` // "committed" | "failed" | "pending"
+	Error string `json:"error,omitempty"`
+}
+
+const (
+	publishPollInterval = 1 * time.Second
+	// Generous accept→commit budget: a first quorum-2 genesis block carries the proposer's
+	// ~1.5 MB bond registration whose gather over a 3-region WAN can take tens of seconds.
+	publishPollTimeout = 180 * time.Second
+)
+
 func serve(addr string, reg ports.Registry, tlsCfg *tls.Config) (boundAddr string, shutdown func(), err error) {
 	// Read-cost bounding (#48): a per-IP rate limit + server timeouts keep a public
 	// registry cheap to run and hard to exhaust (slowloris, lookup floods).
@@ -142,6 +172,24 @@ func serve(addr string, reg ports.Registry, tlsCfg *tls.Config) (boundAddr strin
 		e, err := fromJSON(ej)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		// Async path (chainhost): validate synchronously (refusals below map to their
+		// status codes), then 202 Accepted — the commit gather runs in the background and
+		// the client polls Lookup. A sync registry (fileregistry) falls through to Publish.
+		if ap, ok := reg.(asyncPublisher); ok {
+			switch err := ap.PublishAsync(r.Context(), e); {
+			case err == nil:
+				w.WriteHeader(http.StatusAccepted) // 202 — accepted; poll /lookup for commit
+			case errors.Is(err, ports.ErrDupPublish):
+				http.Error(w, err.Error(), http.StatusConflict)
+			case errors.Is(err, ports.ErrInsufficientCredit):
+				http.Error(w, err.Error(), http.StatusPaymentRequired)
+			case errors.Is(err, ports.ErrPublisherRequired):
+				http.Error(w, err.Error(), http.StatusBadRequest)
+			default:
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
 			return
 		}
 		switch err := reg.Publish(r.Context(), e); {
@@ -174,6 +222,34 @@ func serve(addr string, reg ports.Registry, tlsCfg *tls.Config) (boundAddr strin
 			return
 		}
 		json.NewEncoder(w).Encode(toJSON(e))
+	})
+
+	// GET /publish-status?root= reports the terminal state of an async publish (202) so the
+	// client stops polling the instant the gather resolves either way — committed or a
+	// terminal no-quorum failure — instead of waiting out the accept→commit budget. A sync
+	// registry (fileregistry) commits inline and serves no status: 404, and its clients never
+	// hit the 202 path anyway.
+	mux.HandleFunc("GET /publish-status", func(w http.ResponseWriter, r *http.Request) {
+		ap, ok := reg.(asyncPublisher)
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		root, err := ports.ParseHash(r.URL.Query().Get("root"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		committed, failErr := ap.PublishStatus(r.Context(), root)
+		st := publishStatusJSON{State: "pending"}
+		switch {
+		case committed:
+			st.State = "committed"
+		case failErr != nil:
+			st.State = "failed"
+			st.Error = failErr.Error()
+		}
+		json.NewEncoder(w).Encode(st)
 	})
 
 	// GET /all is DELIBERATELY NOT SERVED on the public mux (red-team blind-2026-08-08
@@ -249,6 +325,38 @@ func (c *Client) Publish(ctx context.Context, e ports.Entry) error {
 	switch resp.StatusCode {
 	case http.StatusOK:
 		return nil
+	case http.StatusAccepted:
+		// Async accept (#286 Layer 1): the commit gather runs on the server; poll
+		// /publish-status until it resolves — committed, or a terminal no-quorum failure —
+		// or the budget elapses. Each poll is a fast, fresh request (no held connection → no
+		// flat 10s guillotine on the commit, no slowloris). Publish still BLOCKS the caller
+		// until committed, so sequencing (e.g. a double-spend replay seeing the first token
+		// spent) is preserved exactly as the sync path. Surfacing the terminal failure is
+		// what lets a publish-retry-until-standing caller retry promptly rather than poll out
+		// the whole budget on a round that will never commit.
+		deadline := time.Now().Add(publishPollTimeout)
+		if dl, ok := ctx.Deadline(); ok && dl.Before(deadline) {
+			deadline = dl
+		}
+		for {
+			committed, failMsg, serr := c.publishStatus(ctx, e.Root)
+			if serr == nil {
+				if committed {
+					return nil
+				}
+				if failMsg != "" {
+					return fmt.Errorf("httpregistry publish: %s", failMsg)
+				}
+			}
+			if time.Now().After(deadline) {
+				return fmt.Errorf("httpregistry publish: accepted but not committed within %s (root %s) — the consensus gather did not finish; see the validators' -log debug", publishPollTimeout, e.Root)
+			}
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(publishPollInterval):
+			}
+		}
 	case http.StatusConflict:
 		return ports.ErrDupPublish
 	case http.StatusPaymentRequired:
@@ -291,6 +399,34 @@ func (c *Client) Lookup(ctx context.Context, root ports.Hash) (ports.Entry, bool
 	}
 	e, err := fromJSON(ej)
 	return e, err == nil, err
+}
+
+// publishStatus polls an async publish's terminal state (see the /publish-status handler).
+// Returns (committed, failMsg, err): committed=true once the entry is on the chain; a
+// non-empty failMsg is a terminal gather failure to surface now; both zero = still pending.
+// A registry without the async status endpoint answers 404 → treated as pending so the
+// caller keeps polling (it will hit its budget only if the commit truly never lands).
+func (c *Client) publishStatus(ctx context.Context, root ports.Hash) (committed bool, failMsg string, err error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", c.base+"/publish-status?root="+root.String(), nil)
+	if err != nil {
+		return false, "", err
+	}
+	resp, err := c.hc.Do(req)
+	if err != nil {
+		return false, "", fmt.Errorf("httpregistry publish-status: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return false, "", nil // no async status endpoint — treat as pending
+	}
+	if resp.StatusCode != http.StatusOK {
+		return false, "", fmt.Errorf("httpregistry publish-status: %s", resp.Status)
+	}
+	var st publishStatusJSON
+	if err := json.NewDecoder(resp.Body).Decode(&st); err != nil {
+		return false, "", err
+	}
+	return st.State == "committed", st.Error, nil
 }
 
 // ErrAllNotServed is returned by a remote client's All(): a registry no longer
