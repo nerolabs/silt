@@ -242,7 +242,13 @@ func (n *Node) proposeBlock(b *chain.Block, attesters, broadcast []ports.NodeID,
 	// network records its real bond in its first block, and every validator
 	// renews as it proposes. No-op in legacy mode (BondRegs are ignored) and when
 	// the node holds no bond.
-	if n.chain.Objective() && n.bond != nil {
+	//
+	// ONLY when a (re)registration is actually due (BondRenewalDue): not yet in the
+	// objective set, or past the TTL renewal point. Re-embedding the full space-time
+	// proof in EVERY proposal bought nothing (the latest registration already stands)
+	// and on a real cross-region network bloated every block past what attestation
+	// could carry in time — WEDGING the chain right after the first bond (#313).
+	if n.chain.Objective() && n.bond != nil && n.chain.BondRenewalDue(n.id) {
 		if reg, ok := n.RegisterBondReg(b.Prev); ok {
 			b.BondRegs = append(b.BondRegs, reg)
 		}

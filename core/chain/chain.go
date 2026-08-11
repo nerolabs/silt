@@ -743,6 +743,33 @@ func (c *Chain) IsBonded(id ports.NodeID) bool {
 	return c.cfg.MinBond > 0 && !c.slashed[id] && c.bonded[id] >= c.cfg.MinBond
 }
 
+// BondRenewalDue reports whether validator id should (re)register its bond in the
+// NEXT proposed block. True if it holds no committed bond yet (first registration),
+// or — when a TTL is set — its latest registration has passed the renewal point
+// (halfway to expiry, leaving margin so a single dropped renewal cannot lapse
+// standing). False once bonded and comfortably within the TTL.
+//
+// This gates F6 "proposing IS registering" (and the H2 non-proposer renewal): a
+// bonded validator re-registering on EVERY proposal re-embeds its full space-time
+// proof in every block for no gain — the LATEST registration already stands — which
+// on a real cross-region network bloated every block past what attestation could
+// carry in time and WEDGED the chain after the first bond (#313). It also raised the
+// participation floor (build-immutable #4) and the per-block bandwidth (#299). Only
+// the not-yet-bonded and the genuinely-due-for-renewal cases justify the proof.
+func (c *Chain) BondRenewalDue(id ports.NodeID) bool {
+	if !c.objective() {
+		return false
+	}
+	if c.bonded[id] < c.cfg.MinBond {
+		return true // not yet in the objective set (or lapsed) — register
+	}
+	if c.cfg.BondTTLBlocks == 0 {
+		return false // no expiry configured — one registration stands
+	}
+	_, next := c.Head() // height of the block being proposed next
+	return next >= c.bondRegHeight[id]+c.cfg.BondTTLBlocks/2
+}
+
 // IsSlashed reports whether id has been evicted for a proven equivocation (F2).
 func (c *Chain) IsSlashed(id ports.NodeID) bool { return c.slashed[id] }
 
