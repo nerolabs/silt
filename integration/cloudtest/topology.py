@@ -167,7 +167,13 @@ def main():
     else:
         bond, min_bond, min_floor = "64M", "1M", "0"
 
-    common = f"-listen 0.0.0.0:{SWARM_PORT} -store {STORE} -mdns=false -log info"
+    # -request-timeout 8s: a belt for the multi-region cert run (#286). The product now
+    # extends a request's transport deadline in proportion to the OUTBOUND payload (a
+    # validator's one-time ~1.5 MB bond-registration/genesis block gets WAN headroom
+    # automatically), but a generous base leaves margin on a truly bad transcontinental
+    # path. Uniform across all roles so a config mismatch can't perturb objective quorum
+    # math on a fresh network. holder-fetch keeps its own tighter deadline (#277).
+    common = f"-listen 0.0.0.0:{SWARM_PORT} -store {STORE} -mdns=false -log info -request-timeout 8s"
 
     def argv(name):
         n = nodes[name]

@@ -24,6 +24,27 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   the exact cert parameters (4 objective validators, quorum 2, Byzantine-ON, no genesis bonds):
   `TestWedge313_ObjectiveByzantineMultiBlock` (exactly one registration block, not every block) and
   `TestWedge313_RenewalStillHappensUnderTTL` (renewals still fire on the TTL cadence).
+- **Objective chain wedged at genesis, quorum-2 cross-region (#286)** (2026-08-11) — Found on the first
+  full 13-node multi-region GCP run: a fresh 4-validator, **quorum-2**, 3-region objective chain never
+  committed a genesis block (no validator ever proposed; `chain-status` read 0 blocks on all four), while
+  the identical block committed in 5 s on a single-zone **quorum-1** SMOKE — the two-substrate immutable
+  earning its keep (neither the laptop nor the single-zone SMOKE could show it). Root cause (sibling of
+  #313): the genesis block carries the proposer's one-time ~1.5 MB space-time bond registration (#299),
+  and the flat RTT-scale `-request-timeout` cannot cover transferring + re-verifying 1.5 MB across a real
+  WAN before an attester can reply — so the quorum-2 attestation gather times out and genesis never
+  commits. A tight wall-clock TRANSPORT deadline is a category error: transport deadlines must be
+  generous, the security lives in the proof not the clock (research on network durability, see
+  `docs/network-durability.md`). Fixed by making the per-attempt transport deadline **size-aware**
+  (`Config.RequestSizeFloorBytesPerSec`, default 256 KB/s): a request gains `len(payload)/floor` of
+  transfer headroom (capped at 30 s), so the one-time large registration/genesis block gets multi-second
+  WAN margin while lean steady-state blocks are unaffected and holder-fetch dials keep their tighter,
+  non-extended deadline (#277). The cloudtest topology also sets a generous `-request-timeout 8s` belt
+  for the cert run. In-process guards at the exact cert parameters: `TestRequestTimeoutFor_SizeAware286`
+  (the large block gains headroom; lean blocks and holder-fetch do not; the extension is capped) and
+  `TestRequestTimeoutFor_ExtensionOptOut286`. The consensus **logic** was confirmed correct in-process
+  (`TestWedge313_*` commit quorum-2 genesis with no latency), so this is a transport-deadline fix, not a
+  consensus change. The structural close is a succinct proof (#299); final multi-region certification is
+  pending a GCP re-run.
 
 ### Security
 - **seam-5: A-axis truth-in-labelling + a count/entropy signal for the equal-bond split** (2026-08-09) —

@@ -46,6 +46,19 @@ type Config struct {
 	// keeps a fetch from a dead holder cheap under churn even when the general
 	// RequestTimeout is generous for jittery consensus. 0 = fall back to RequestTimeout.
 	HolderDialTimeout ports.Duration
+	// RequestSizeFloorBytesPerSec extends a request's per-attempt deadline for a LARGE
+	// outbound payload (#286). A block carrying a validator's one-time ~1.5 MB space-time
+	// bond registration must cross a real WAN and be re-verified before the attester can
+	// reply — which a flat RTT-scale RequestTimeout cannot cover, so a fresh quorum-2
+	// genesis WEDGED cross-region while the identical block committed on a single-zone
+	// quorum-1 SMOKE (the two-substrate immutable earning its keep). A tight wall-clock
+	// TRANSPORT deadline is a category error: transport deadlines must be generous, the
+	// security lives in the proof not the clock (docs/network-durability.md, research
+	// #289). The deadline gains len(payload)/floor of transfer time at this assumed
+	// worst-case WAN throughput (bounded so a pathological block can't hang forever).
+	// 0 = off (flat RequestTimeout). Few-KB steady-state blocks gain ~nothing; the
+	// structural close is a succinct proof (#299). Holder-fetch dials never extend.
+	RequestSizeFloorBytesPerSec int64
 	// Replication is how many closest nodes receive each chunk at
 	// distribute/repair time. With erasure coding doing the heavy
 	// lifting, even 1 is viable — parity across nodes replaces copies.
@@ -218,14 +231,17 @@ func DefaultConfig() Config {
 		RequestRetries:    0, // sim/tests: no RPC retry (evict on first miss); the daemon enables it
 		RequestBackoff:    250 * ports.Millisecond,
 		HolderDialTimeout: 0, // sim/tests: holder fetches use RequestTimeout; the daemon sets a tighter one
-		Replication:       3,
-		RepairInterval:    60 * ports.Second,
-		RepairSlack:       2,
-		RepairQuorumTau:   1, // per-node-local ledgers: each caretaker-judge confirms retrievability itself
-		HotThreshold:      8,
-		DemandInterval:    60 * ports.Second,
-		LeaseTTL:          180 * ports.Second,
-		FanoutReplicas:    2,
+		// 256 KB/s — a pessimistic transcontinental lossy path. A ~1.5 MB bond-registration
+		// block then gains ~6 s of transport headroom over the base RequestTimeout (#286).
+		RequestSizeFloorBytesPerSec: 262144,
+		Replication:                 3,
+		RepairInterval:              60 * ports.Second,
+		RepairSlack:                 2,
+		RepairQuorumTau:             1, // per-node-local ledgers: each caretaker-judge confirms retrievability itself
+		HotThreshold:                8,
+		DemandInterval:              60 * ports.Second,
+		LeaseTTL:                    180 * ports.Second,
+		FanoutReplicas:              2,
 
 		ReachabilityTimeout: 3 * ports.Second,
 		FetchAttempts:       3,
@@ -685,6 +701,37 @@ func (n *Node) request(to ports.NodeID, msg ports.Message, cb func(ports.Message
 // backoff up to RequestRetries times — a jittery/lossy link must not evict a good
 // peer on the first slow or dropped packet — and only gives the peer up (evict +
 // negative-cache) once the retries are exhausted.
+// requestTimeoutFor picks the per-attempt TRANSPORT deadline for msg:
+//   - a speculative holder-fetch dial (MsgFetchChunk/MsgHasChunk) gets the TIGHTER
+//     HolderDialTimeout (fail fast on a dead holder under churn, no size extension);
+//   - a lean consensus/mesh RPC gets the base RequestTimeout;
+//   - a LARGE outbound payload (a block carrying a validator's one-time ~1.5 MB
+//     space-time bond registration) gets a size-extended deadline (#286): it must
+//     cross a real WAN and be re-verified before the attester can reply, which a flat
+//     RTT-scale deadline cannot cover — a tight fixed transport deadline is the
+//     category error that wedged quorum-2 genesis cross-region while the identical
+//     block committed on a single-zone quorum-1 SMOKE. The extension is
+//     len(payload)/RequestSizeFloorBytesPerSec of transfer time, capped at 30 s so a
+//     pathological block can't hang the round. Few-KB steady-state blocks gain ~nothing.
+//     See docs/network-durability.md; the structural close is a succinct proof (#299).
+func (n *Node) requestTimeoutFor(msg ports.Message) ports.Duration {
+	if msg.Kind == ports.MsgFetchChunk || msg.Kind == ports.MsgHasChunk {
+		if n.cfg.HolderDialTimeout > 0 && n.cfg.HolderDialTimeout < n.cfg.RequestTimeout {
+			return n.cfg.HolderDialTimeout
+		}
+		return n.cfg.RequestTimeout
+	}
+	timeout := n.cfg.RequestTimeout
+	if n.cfg.RequestSizeFloorBytesPerSec > 0 {
+		extra := ports.Duration(int64(len(msg.Data)) * int64(ports.Second) / n.cfg.RequestSizeFloorBytesPerSec)
+		if extra > 30*ports.Second {
+			extra = 30 * ports.Second
+		}
+		timeout += extra
+	}
+	return timeout
+}
+
 func (n *Node) requestAttempt(to ports.NodeID, msg ports.Message, attempt int, cb func(ports.Message, error)) {
 	n.rid++
 	rid := n.rid
@@ -697,10 +744,7 @@ func (n *Node) requestAttempt(to ports.NodeID, msg ports.Message, attempt int, c
 	// MESH/CONSENSUS RPCs get the full RequestTimeout + retries, to ride out jitter
 	// without tearing a live peer out of the mesh.
 	holderFetch := msg.Kind == ports.MsgFetchChunk || msg.Kind == ports.MsgHasChunk
-	timeout := n.cfg.RequestTimeout
-	if holderFetch && n.cfg.HolderDialTimeout > 0 && n.cfg.HolderDialTimeout < timeout {
-		timeout = n.cfg.HolderDialTimeout
-	}
+	timeout := n.requestTimeoutFor(msg)
 	p := &pending{cb: cb, to: to}
 	p.cancel = n.clock.AfterFunc(timeout, func() {
 		delete(n.pending, rid)
