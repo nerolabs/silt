@@ -15,10 +15,18 @@
 # guard (#89) holds.
 #
 #   U1 publish:      POST /api/publish (multipart + bearer token) scatters the
-#                    file across the swarm and returns a link.
-#   U2 roots:        GET /api/roots then lists the new root.
-#   U3 fetch:        GET /api/fetch?link=… returns the bytes BIT-PERFECT — the
-#                    real end-to-end user round-trip over HTTP.
+#                    file across the swarm and returns a link. POSITIVE CONTROL:
+#                    we then read each holder's own GET /api/status held-chunk
+#                    count and require >=2 DISTINCT holders actually hold shards
+#                    — otherwise every shard could have landed on the ui daemon
+#                    alone (a valid remote node) with zero holders participating,
+#                    and a single-node loopback would masquerade as a swarm
+#                    scatter. That would be a false PASS on a broken product.
+#   U2 roots:        GET /api/roots then lists the new root — AND the U1 holder
+#                    floor still holds, so the "reflected" publish is a real one.
+#   U3 fetch:        GET /api/fetch?link=… returns the bytes BIT-PERFECT — a real
+#                    end-to-end user round-trip over HTTP that had to traverse the
+#                    swarm (holders held the shards), not a ui-node-only replay.
 #   U4 no token:     POST /api/publish with NO token → 401 (a drive-by can't publish).
 #   U5 wrong token:  POST /api/publish with a bad token → 401.
 #   U6 DNS-rebinding: any request with a non-local Host → 403.
@@ -46,6 +54,28 @@ ucurl() { dc exec -T ui curl -s "$@"; }
 # just the HTTP status code of a request.
 code()  { dc exec -T ui curl -s -o /dev/null -w '%{http_code}' "$@"; }
 
+# held_chunks IP — a holder's own held-chunk count, read from its GET /api/status
+# from INSIDE the ui container. The guard requires a LOCAL Host, so we spoof
+# Host: 127.0.0.1 while dialing the holder's real swarm IP (a read needs no
+# token). This is the positive control: it proves a UI publish actually landed
+# data on live holders, not just on the ui daemon alone (a single-node loopback
+# would satisfy "over the wire" without any holder holding a byte).
+held_chunks() {
+  dc exec -T ui curl -s -H 'Host: 127.0.0.1:8081' "http://$1:8081/api/status" \
+    | sed -En 's/.*"chunks":[[:space:]]*([0-9]+).*/\1/p'
+}
+# holders_with_data — how many DISTINCT holders report >0 held chunks right now.
+holders_with_data() {
+  local n=0 ip c
+  for hid in $(dc ps -q holder); do
+    ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$hid")
+    [ -n "$ip" ] || continue
+    c=$(held_chunks "$ip"); c=${c:-0}
+    [ "$c" -gt 0 ] 2>/dev/null && n=$((n+1))
+  done
+  echo "$n"
+}
+
 echo "== build silt (linux/$(go env GOARCH)) + image =="
 ( cd "$ROOT" && CGO_ENABLED=0 GOOS=linux GOARCH="$(go env GOARCH)" go build -trimpath -o integration/client/silt ./cmd/silt ) \
   || { echo "FAIL: host build"; exit 1; }
@@ -72,6 +102,11 @@ for id in $(dc ps -q holder); do
   for _ in $(seq 1 60); do docker logs "$id" 2>&1 | grep -q bootstrapped && { bootok=$((bootok+1)); break; }; sleep 1; done
 done
 echo "  $bootok/$HOLDERS holders bootstrapped"
+# A UI publish can only "really scatter" if live holders actually joined the
+# swarm. If none bootstrapped, the holder-participation controls below can
+# never pass on a HEALTHY product either, so this is a setup failure, not a
+# product finding — surface it now instead of letting U1 mislabel it.
+[ "${bootok:-0}" -ge 2 ] 2>/dev/null || fail "phase 2 only $bootok/$HOLDERS holders bootstrapped — no swarm to scatter onto (need >=2)"
 # let objective standing accrue so registry writes are accepted
 sleep 8
 
@@ -91,10 +126,21 @@ done
 echo "  response: $(echo "$PUB" | head -c 240)"
 LINK=$(echo "$PUB" | grep -oE 'silt:v1:[A-Za-z0-9_:-]+' | head -1)
 PLACED=$(echo "$PUB" | sed -En 's/.*"placed":[[:space:]]*([0-9]+).*/\1/p')
-if [ -n "$LINK" ] && [ "${PLACED:-0}" -gt 0 ] 2>/dev/null; then
-  echo "  U1 PASS: the UI published a link ($LINK), scattered to $PLACED holders"
+# Positive control: a report of "placed" is not enough — ALL shards could have
+# landed on the ui daemon itself (a valid remote node) with zero holders
+# participating, and this test would still go green on a broken swarm. So gate
+# on data actually reaching DISTINCT live holders. Poll: holders accept shards
+# and re-advertise asynchronously, so give it a few seconds to settle.
+HWD=0
+for _ in $(seq 1 20); do
+  HWD=$(holders_with_data); HWD=${HWD:-0}
+  [ "$HWD" -ge 2 ] 2>/dev/null && break; sleep 3
+done
+echo "  distinct holders now holding shards: $HWD/$HOLDERS"
+if [ -n "$LINK" ] && [ "${PLACED:-0}" -ge 2 ] 2>/dev/null && [ "${HWD:-0}" -ge 2 ] 2>/dev/null; then
+  echo "  U1 PASS: the UI published a link ($LINK), scattered $PLACED shards onto $HWD distinct holders — a real swarm scatter, not a single-node loopback"
 else
-  fail "U1 the UI publish did not return a link + placement (link=$LINK placed=$PLACED)"
+  fail "U1 the UI publish did not really scatter onto the swarm (link=$LINK placed=$PLACED holders_with_data=$HWD, need placed>=2 AND >=2 distinct holders holding shards)"
 fi
 
 # ── U2: the new root shows up in the roots listing ───────────────────────────
@@ -103,10 +149,13 @@ echo "== U2 GET /api/roots reflects the new publish =="
 # /api/roots reports the root in hex; the link carries it base64url — same bytes,
 # different encoding — so assert the COUNT grew rather than string-matching.
 ROOTS_AFTER=$(roots_total); ROOTS_AFTER=${ROOTS_AFTER:-0}
-if [ "${ROOTS_AFTER:-0}" -gt "${ROOTS_BEFORE:-0}" ] 2>/dev/null; then
-  echo "  U2 PASS: /api/roots grew ${ROOTS_BEFORE}→$ROOTS_AFTER after the UI publish"
+# The roots count alone lives on the SAME ui daemon that could hold the whole
+# file alone, so pair it with the holder-participation floor from U1: the
+# publish is only "reflected" if it also genuinely reached the swarm.
+if [ "${ROOTS_AFTER:-0}" -gt "${ROOTS_BEFORE:-0}" ] 2>/dev/null && [ "${HWD:-0}" -ge 2 ] 2>/dev/null; then
+  echo "  U2 PASS: /api/roots grew ${ROOTS_BEFORE}→$ROOTS_AFTER after the UI publish (with $HWD distinct holders holding shards)"
 else
-  fail "U2 /api/roots did not reflect the publish (total ${ROOTS_BEFORE}→$ROOTS_AFTER)"
+  fail "U2 /api/roots did not reflect a real swarm publish (total ${ROOTS_BEFORE}→$ROOTS_AFTER, holders_with_data=$HWD)"
 fi
 
 # ── U3: fetch it back through the UI, bit-perfect ────────────────────────────
@@ -118,10 +167,10 @@ for _ in $(seq 1 15); do
   GOT=$(dc exec -T ui sh -c "sha256sum /tmp/down.bin 2>/dev/null | cut -d' ' -f1")
   [ "$GOT" = "$WANT" ] && break; sleep 3
 done
-if [ -n "$GOT" ] && [ "$GOT" = "$WANT" ]; then
-  echo "  U3 PASS: the UI fetched the file back bit-perfect (sha ${WANT:0:16}…) — real end-to-end user round-trip"
+if [ -n "$GOT" ] && [ "$GOT" = "$WANT" ] && [ "${HWD:-0}" -ge 2 ] 2>/dev/null; then
+  echo "  U3 PASS: the UI fetched the file back bit-perfect (sha ${WANT:0:16}…) — a real end-to-end round-trip that had to traverse the swarm ($HWD distinct holders held shards)"
 else
-  fail "U3 the UI fetch did not return the file bit-perfect (got=${GOT:-<none>} want=$WANT)"
+  fail "U3 the UI fetch was not a genuine over-the-wire round-trip (got=${GOT:-<none>} want=$WANT holders_with_data=$HWD — a bit-perfect fetch served by the ui node alone is not end-to-end)"
 fi
 
 # ── U4–U8: the guard (#89) — attack the local API surface ────────────────────
@@ -152,7 +201,7 @@ C=$(code http://127.0.0.1:8081/api/status)
 
 echo ""
 if [ "$pass" = 1 ]; then
-  echo "RESULT: PASS ✅  the web-UI path delivers for the user (publish → list → fetch bit-perfect over HTTP) AND holds against a hostile page/neighbour (no-token & wrong-token POST → 401, DNS-rebinding & cross-origin → 403, token-free reads still 200)"
+  echo "RESULT: PASS ✅  the web-UI path delivers for the user (publish scattered onto >=2 distinct live holders → list → fetch bit-perfect over HTTP, a genuine swarm round-trip) AND holds against a hostile page/neighbour (no-token & wrong-token POST → 401, DNS-rebinding & cross-origin → 403, token-free reads still 200)"
 else
   echo "RESULT: FAIL ❌  (see the failing assertion(s) above)"
 fi

@@ -23,9 +23,9 @@ local-`Host` rule is satisfied. The attacks then spoof `Host` / `Origin` / token
 
 | | check | expected |
 |---|---|---|
-| **U1** | `POST /api/publish` (multipart + bearer token) | a link, scattered to holders |
-| **U2** | `GET /api/roots` | the roots count grew |
-| **U3** | `GET /api/fetch?link=…` | the bytes back **bit-perfect** (the real round-trip) |
+| **U1** | `POST /api/publish` (multipart + bearer token) | a link, `placed>=2`, **and >=2 distinct holders each report >0 held chunks** via their own `GET /api/status` |
+| **U2** | `GET /api/roots` | the roots count grew **and** the U1 holder floor held |
+| **U3** | `GET /api/fetch?link=…` | the bytes back **bit-perfect** (a real over-the-wire round-trip; the U1 holder floor held) |
 | **U4** | `POST /api/publish` with **no** token | **401** |
 | **U5** | `POST /api/publish` with a **wrong** token | **401** |
 | **U6** | any request with a non-local `Host` | **403** (DNS-rebinding defense) |
@@ -35,6 +35,16 @@ local-`Host` rule is satisfied. The attacks then spoof `Host` / `Origin` / token
 The token is grabbed from the daemon's own `ui: http://…?token=…` line — the test
 never fabricates it. A failure on any check is a **FAIL**: the user path and the
 guard are both load-bearing.
+
+**Positive control (why U1–U3 can't false-pass).** A UI publish goes through an
+ephemeral swarm client that could land every shard on the `ui` daemon itself — a
+valid remote node — with **zero holders participating**, and a bit-perfect fetch
+served entirely by that one node would still satisfy a naive "over the wire" claim.
+So the holders are started with `-ui` too, and U1 reads each holder's **own**
+`GET /api/status` held-chunk count (dialing the holder's swarm IP with a spoofed
+local `Host`, since reads need no token) and requires **>=2 distinct holders**
+actually holding shards. U2 and U3 also carry that floor, so neither a single-node
+loopback nor a lost swarm can masquerade as a green end-to-end round-trip.
 
 ## Run
 
