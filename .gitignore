@@ -55,6 +55,22 @@ integration/cloudtest/terraform/.terraform/
 integration/cloudtest/terraform/.terraform.lock.hcl
 integration/cloudtest/terraform/*.tfstate
 integration/cloudtest/terraform/*.tfstate.*
+
+# AWS field test (integration/awstest): same regenerated-per-run artifacts.
+integration/awstest/config.env
+integration/awstest/silt-linux-amd64
+integration/awstest/.silt-local
+integration/awstest/.last_run_id
+integration/awstest/topology.json
+integration/awstest/nodes.json
+integration/awstest/results.jsonl
+integration/awstest/report.md
+integration/awstest/report.html
+integration/awstest/terraform/topology.auto.tfvars.json
+integration/awstest/terraform/.terraform/
+integration/awstest/terraform/.terraform.lock.hcl
+integration/awstest/terraform/*.tfstate
+integration/awstest/terraform/*.tfstate.*
 integration/retrieval/silt
 # host-built binary for the client/UI integration harness (rebuilt by run.sh)
 integration/client/silt
