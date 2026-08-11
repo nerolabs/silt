@@ -81,3 +81,8 @@ docker compose down -v                     # tear down when done
 - **Next:** hole-punching (#27) — set the gateways to full-cone vs symmetric
   conntrack and assert a *direct* A↔B connection forms (bytes bypass the
   relay) for the punchable cases, and falls back to the relay for symmetric.
+  The symmetric PASS is not credited on mere *absence* of a punch: it requires
+  the relay to have coordinated at least one punch attempt (`relay punch
+  coordinated`, `coord>=1`) so the "stayed on the relay" outcome reflects a
+  punch that was genuinely *tried and failed* — a product that never probes or
+  never requests a punch FAILS instead of green-passing on silence.

@@ -57,13 +57,28 @@ echo "== results =="
 a=$(dc exec -T nodeA sh -c 'grep "hole-punch: direct connection established" /data/debug.log 2>/dev/null | tail -1' | tr -d '\r')
 b=$(dc exec -T nodeB sh -c 'grep "hole-punch: direct connection established" /data/debug.log 2>/dev/null | tail -1' | tr -d '\r')
 coord=$(dc exec -T relay sh -c 'grep -c "relay punch coordinated" /data/debug.log 2>/dev/null || true' | tr -d '\r\n ')
+case "$coord" in ''|*[!0-9]*) coord=0 ;; esac  # normalize to a clean integer
 echo "  relay punch-coordinations: ${coord:-0}"
 echo "  nodeA: ${a:-<no direct connection>}"
 echo "  nodeB: ${b:-<no direct connection>}"
 
 if [ "$MODE" = symmetric ]; then
-  if [ "$punched" = 0 ] && [ -z "$a" ]; then
-    echo "RESULT: PASS ✅ symmetric NAT — daemons correctly stayed on the relay (no punch)"; exit 0
+  # A symmetric-NAT PASS must PROVE the fallback path actually ran — not just
+  # that nothing happened. Absence of a punch is only meaningful if the daemons
+  # genuinely ATTEMPTED to upgrade: the caretaker reached nodeA through the
+  # relay, the transport asked for a punch, and the relay coordinated it
+  # ("relay punch coordinated", relay server.go). A broken product that never
+  # probes / never requests a punch would otherwise green-pass here on pure
+  # absence, indistinguishable from a correct symmetric-NAT fallback. Require
+  # coord>=1 so the no-punch outcome reflects a punch that was TRIED and
+  # correctly failed on symmetric NAT — the relay path standing IS the fallback.
+  if [ "$punched" = 0 ] && [ -z "$a" ] && [ "$coord" -ge 1 ]; then
+    echo "RESULT: PASS ✅ symmetric NAT — relay coordinated $coord punch attempt(s), none landed; daemons correctly stayed on the relay"; exit 0
+  fi
+  if [ "$coord" -lt 1 ]; then
+    echo "RESULT: FAIL ❌ symmetric NAT — relay never coordinated a punch (coord=$coord); the hole-punch fallback path was never exercised, so 'no punch' proves nothing"
+    echo "--- nodeB repair/punch log ---"; dc exec -T nodeB sh -c 'grep -iE "repair|care|punch|relay dial|fetch" /data/debug.log 2>/dev/null | tail -15'
+    exit 1
   fi
   echo "RESULT: FAIL ❌ symmetric NAT unexpectedly punched"; exit 1
 else

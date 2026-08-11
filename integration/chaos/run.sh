@@ -128,8 +128,14 @@ if [ "$WAVES" -ge 2 ]; then
   SID=$(dc ps -q seed)
   docker kill --signal=KILL "$SID" >/dev/null 2>&1 || true
   sleep 3
+  # Capture a marker BEFORE restart so the "registry serving" grep can only be
+  # satisfied by a POST-restart log line — a stale pre-crash "registry: … serving"
+  # in the cumulative log must not falsely prove the restarted registry came back.
+  START_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   docker start "$SID" >/dev/null 2>&1 || true
-  for _ in $(seq 1 40); do docker logs "$SID" 2>&1 | grep -qE 'registry: .*serving' && break; sleep 1; done
+  regback=0
+  for _ in $(seq 1 40); do docker logs --since "$START_TS" "$SID" 2>&1 | grep -qE 'registry: .*serving' && { regback=1; break; }; sleep 1; done
+  [ "$regback" = 1 ] || fail "seed/registry did not log 'registry: … serving' AFTER its restart (registry did not come back)"
   echo "  seed restarted; registry serving again. Probing cold-fetch recovery (generous window)…"
   # First confirm the persisted REGISTRY/CHAIN reloaded: the manifest is fetchable
   # from the seed. Then the real question — DISCOVERABILITY: can a fresh client find
