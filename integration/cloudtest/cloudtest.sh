@@ -52,11 +52,18 @@ if [ "${1:-}" = setup ]; then
 fi
 
 [ -f config.env ] || { echo "no config.env — run './cloudtest.sh setup' (interactive), or copy config.env.example and fill it in"; exit 1; }
+# The caller's env must WIN over config.env (§F footgun): `. ./config.env` runs AFTER the
+# environment is inherited, so a config.env `export REGION=…` silently CLOBBERS a
+# command-line `REGION=us-west1 ./cloudtest.sh` — a confusing dead end that cost a wasted
+# apply+teardown to diagnose. Snapshot the caller's REGION before sourcing and restore it.
+_CALLER_REGION="${REGION:-}"
 # shellcheck disable=SC1091
 . ./config.env
+[ -n "$_CALLER_REGION" ] && REGION="$_CALLER_REGION"
 : "${PROJECT_ID:?set PROJECT_ID in config.env}"
 : "${REGION:=us-central1}"
 export PROJECT_ID REGION
+echo "==> region: $REGION (primary cluster zone follows REGION via topology.py PRIMARY_ZONE)"
 
 # A stable run id for this invocation (no Date.now flakiness — derived from git + pid).
 : "${RUN_ID:=$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo dev)-$$}"
@@ -81,7 +88,58 @@ gen_topology() {
 
 tf() { terraform -chdir="$FT_DIR/terraform" "$@"; }
 
+# Pre-flight the external-IP quota per region BEFORE apply (§F): the 13-node topology
+# needs ~11 external IPs, but the default IN_USE_ADDRESSES quota is 8/region — a shortfall
+# only surfaces ~30s/instance into a doomed apply. Count the public (non-natted/natgw,
+# they egress via Cloud NAT) nodes per region from topology.json and compare to each
+# region's live IN_USE_ADDRESSES headroom. PREFLIGHT=0 skips. Zone E2 capacity is not
+# queryable via the API, so this covers the IP quota only (the other half of §F).
+preflight_quota() {
+  [ "${PREFLIGHT:-1}" = 0 ] && { echo "==> preflight: skipped (PREFLIGHT=0)"; return 0; }
+  [ -f "$FT_DIR/topology.json" ] || return 0
+  echo "==> preflight: external-IP (IN_USE_ADDRESSES) quota per region"
+  python3 - "$FT_DIR/topology.json" > /tmp/ft_ipneeds.txt <<'PY'
+import json, sys
+from collections import Counter
+nodes = json.load(open(sys.argv[1]))["nodes"]
+c = Counter()
+for n in nodes.values():
+    if n.get("role") in ("natted", "natgw"):  # egress via Cloud NAT — no external IP
+        continue
+    c[n.get("region", "?")] += 1
+for r, k in c.items():
+    print(r, k)
+PY
+  local ok=1 region need q head limit
+  while read -r region need; do
+    [ -n "$region" ] && [ "$region" != "?" ] || continue
+    q="$(gcloud compute regions describe "$region" --project "$PROJECT_ID" --format="json(quotas)" 2>/dev/null \
+      | python3 -c "
+import json,sys
+try: qs=json.load(sys.stdin).get('quotas',[])
+except Exception: qs=[]
+for q in qs:
+    if q.get('metric')=='IN_USE_ADDRESSES':
+        print(int(q['limit']-q['usage']), int(q['limit'])); break
+else: print('-1 -1')" 2>/dev/null)"
+    head="${q%% *}"; limit="${q##* }"
+    if [ "${head:-'-1'}" = "-1" ]; then
+      echo "  ? $region: could not read IN_USE_ADDRESSES quota (gcloud/auth?) — proceeding, but $need IPs are needed"
+    elif [ "${head:-0}" -lt "$need" ] 2>/dev/null; then
+      echo "  ✗ $region: needs $need external IP(s), only ${head} free (IN_USE_ADDRESSES limit $limit)"; ok=0
+    else
+      echo "  ✓ $region: needs $need external IP(s), ${head} free (limit $limit)"
+    fi
+  done < /tmp/ft_ipneeds.txt
+  if [ "$ok" != 1 ]; then
+    echo "  preflight FAILED — free addresses, request an IN_USE_ADDRESSES bump, or relocate the primary"
+    echo "  cluster to a region with headroom (REGION=<region> ./cloudtest.sh). PREFLIGHT=0 to override."
+    exit 1
+  fi
+}
+
 apply() {
+  preflight_quota
   echo "==> terraform apply (run=$RUN_ID)"
   # Persist the run id so `nuke`/`down` from a FRESH shell target the right label.
   # RUN_ID embeds $$ (pid) by default, so a later `./cloudtest.sh nuke` in a new
