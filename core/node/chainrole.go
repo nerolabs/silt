@@ -99,8 +99,20 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 	switch msg.Kind {
 	case ports.MsgProposeBlock:
 		// Attest only what we would accept: same rules, our reputation view.
+		// #286 Layer-2 root-cause aid: the gather path otherwise logs ONLY on success
+		// (the "block committed" line below), so a stalled quorum-2 genesis gather is
+		// invisible — a silent ValidateProposal reject of the ~1.5 MB first block over the
+		// WAN looks identical to "never received". These debug lines make an attester's
+		// receive → validate → reply visible under -log debug so the failing round can be
+		// traced. Debug-level only (no info-level noise on the hot path).
 		b, err := chain.Decode(msg.Data)
-		if err != nil || n.chain.ValidateProposal(b) != nil {
+		if err != nil {
+			n.logf(ports.LogDebug, "gather/attest: DECODE failed", "from", from, "bytes", len(msg.Data), "err", err)
+			n.reply(from, msg, ports.Message{Kind: ports.MsgAttestReply, OK: false})
+			return true
+		}
+		if verr := n.chain.ValidateProposal(b); verr != nil {
+			n.logf(ports.LogDebug, "gather/attest: REJECTED (ValidateProposal)", "from", from, "height", b.Height, "bytes", len(msg.Data), "regs", len(b.BondRegs), "reason", verr)
 			n.reply(from, msg, ports.Message{Kind: ports.MsgAttestReply, OK: false})
 			return true
 		}
@@ -110,12 +122,14 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 		// final; this is what makes a double-sign proof (chain.Equivocation)
 		// evidence of malice, not an accident.
 		if prev, ok := n.attested[b.Height]; ok && prev != b.Hash() {
+			n.logf(ports.LogDebug, "gather/attest: REFUSED (already attested a different block at height)", "from", from, "height", b.Height)
 			n.reply(from, msg, ports.Message{Kind: ports.MsgAttestReply, OK: false})
 			return true
 		}
 		att := chain.Attest(b, n.signer)
 		n.attested[b.Height] = b.Hash()
 		raw, _ := attEncode(att)
+		n.logf(ports.LogDebug, "gather/attest: ATTESTED", "from", from, "height", b.Height, "bytes", len(msg.Data), "regs", len(b.BondRegs))
 		n.reply(from, msg, ports.Message{Kind: ports.MsgAttestReply, OK: true, Data: raw})
 	case ports.MsgCommitBlock:
 		b, err := chain.Decode(msg.Data)
@@ -292,6 +306,14 @@ func (n *Node) proposeBlock(b *chain.Block, attesters, broadcast []ports.NodeID,
 		return
 	}
 	raw := chain.Encode(b)
+	// #286 Layer-2 root-cause aid: at -log info the gather logs ONLY on the final commit
+	// ("block committed" below), so a quorum-2 genesis gather that starts and never
+	// completes over the WAN is invisible. These debug lines trace the round — the block
+	// SIZE (the ~1.5 MB first block is the suspect), each attester request, and each
+	// reply/failure — so the next multi-region run with -log debug shows exactly where it
+	// stalls (proposer doesn't send? attester rejects the big block? attester never
+	// replies?). Debug-level only.
+	n.logf(ports.LogDebug, "gather: starting", "height", b.Height, "bytes", len(raw), "regs", len(b.BondRegs), "quorum", quorum, "attesters", len(attesters))
 
 	var atts []chain.Attestation
 	var ask func(i int)
@@ -311,6 +333,7 @@ func (n *Node) proposeBlock(b *chain.Block, attesters, broadcast []ports.NodeID,
 			return
 		}
 		if i >= len(attesters) {
+			n.logf(ports.LogDebug, "gather: NO QUORUM", "height", b.Height, "bytes", len(raw), "gathered", len(atts), "needed", quorum)
 			done(fmt.Errorf("propose height %d: %w: %d of %d gathered",
 				b.Height, chain.ErrNoQuorum, len(atts), quorum))
 			return
@@ -320,11 +343,20 @@ func (n *Node) proposeBlock(b *chain.Block, attesters, broadcast []ports.NodeID,
 			ask(i + 1)
 			return
 		}
+		n.logf(ports.LogDebug, "gather: requesting attestation", "to", v, "height", b.Height, "bytes", len(raw), "have", len(atts), "need", quorum)
 		n.request(v, ports.Message{Kind: ports.MsgProposeBlock, Data: raw},
 			func(resp ports.Message, err error) {
-				if err == nil && resp.OK {
+				switch {
+				case err != nil:
+					n.logf(ports.LogDebug, "gather: attester request FAILED", "to", v, "height", b.Height, "err", err)
+				case !resp.OK:
+					n.logf(ports.LogDebug, "gather: attester REFUSED", "to", v, "height", b.Height)
+				default:
 					if att, aerr := attDecode(resp.Data); aerr == nil {
 						atts = append(atts, att)
+						n.logf(ports.LogDebug, "gather: attestation collected", "from", v, "height", b.Height, "have", len(atts), "need", quorum)
+					} else {
+						n.logf(ports.LogDebug, "gather: attestation DECODE failed", "from", v, "height", b.Height, "err", aerr)
 					}
 				}
 				ask(i + 1)

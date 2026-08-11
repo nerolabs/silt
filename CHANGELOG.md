@@ -8,6 +8,18 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Added
+- **Gather-path debug logging for the #286 Layer-2 root-cause** (2026-08-11) — The consensus
+  propose→gather→attest path previously logged ONLY on a successful commit ("block committed"), so a
+  quorum-2 genesis gather that starts and never completes over the WAN (the #286 Layer-2 blocker) was
+  invisible — a silent `ValidateProposal` reject of the ~1.5 MB first block looked identical to "never
+  received". Added `-log debug` lines on both sides (`core/node/chainrole.go`): the PROPOSER logs
+  `gather: starting` (with block SIZE), each `gather: requesting attestation`, each collected/refused/
+  failed reply, and `gather: NO QUORUM`; the ATTESTER logs receive → `REJECTED (ValidateProposal)` **with
+  the reason** / `REFUSED (already attested)` / `ATTESTED`. So the next multi-region GCP run with
+  `-log debug` shows exactly where the round stalls. Debug-level only — no info-level noise, no behaviour
+  change (all consensus tests unchanged).
+
 ### Fixed
 - **Objective chain wedged after the first bond, cross-region (#313)** (2026-08-11) — Found on the GCP
   cert field test: a 3-region objective validator set committed block 1, then every publish hung and the
