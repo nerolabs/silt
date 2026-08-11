@@ -42,10 +42,10 @@ func TestWedge313_ObjectiveByzantineMultiBlock(t *testing.T) {
 	chain.Sign(g, ids[0].Signer())
 
 	cfg := chain.Config{
-		Quorum:          2,    // cloudtest quorum = max(1, n_val-2) = 2
-		ByzantineQuorum: true, // objective default ON
-		MinBond:         1 << 20,
-		Anchors:         anchors,
+		Quorum:           2,    // cloudtest quorum = max(1, n_val-2) = 2
+		ByzantineQuorum:  true, // objective default ON
+		MinBond:          1 << 20,
+		Anchors:          anchors,
 		MatureValidators: 4, // cloudtest -mature-validators n_val
 	}
 
