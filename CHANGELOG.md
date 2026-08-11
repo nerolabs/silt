@@ -8,6 +8,23 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Fixed
+- **Objective chain wedged after the first bond, cross-region (#313)** (2026-08-11) — Found on the GCP
+  cert field test: a 3-region objective validator set committed block 1, then every publish hung and the
+  chain stalled at height 1. Root cause: **F6 "proposing IS registering" re-embedded the proposer's full
+  space-time bond proof in EVERY block** (and the H2 non-proposer path re-submitted it every sweep). Once
+  a validator's bond sealed, each subsequent block carried the ~1.5 MB proof (#299); over real
+  cross-region links attestation could not carry the bloated block in time, so the proposer's quorum
+  gather stalled and the chain wedged. Re-registering an already-committed bond bought nothing — the
+  latest registration already stands. Fixed with **`Chain.BondRenewalDue(id)`**: the proposer attaches
+  (and a peer submits) a bond registration ONLY when not-yet-bonded or past the TTL renewal point (half
+  the TTL, leaving margin), so ordinary blocks stay lean while the release-and-coast defense (RT-2/G4:
+  a released plot still decays out on the TTL cadence) is preserved. Also lowers the per-block bandwidth
+  residual (#299) and the participation floor (build-immutable #4). Reproduced and guarded in-process at
+  the exact cert parameters (4 objective validators, quorum 2, Byzantine-ON, no genesis bonds):
+  `TestWedge313_ObjectiveByzantineMultiBlock` (exactly one registration block, not every block) and
+  `TestWedge313_RenewalStillHappensUnderTTL` (renewals still fire on the TTL cadence).
+
 ### Security
 - **seam-5: A-axis truth-in-labelling + a count/entropy signal for the equal-bond split** (2026-08-09) —
   Two red-team hardening findings on the operator-clustering heuristic. **(F3, truth-in-labelling)** two

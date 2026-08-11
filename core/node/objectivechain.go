@@ -69,6 +69,12 @@ func (n *Node) SubmitBondRenewal(peers []ports.NodeID) {
 	if n.chain == nil || !n.chain.Objective() || n.bond == nil || n.signer == nil {
 		return
 	}
+	// Only submit when a (re)registration is actually due — not on every sweep. An
+	// already-bonded validator broadcasting its full space-time proof each sweep just
+	// hands proposers more block bloat to carry (the peer half of the #313 wedge).
+	if !n.chain.BondRenewalDue(n.id) {
+		return
+	}
 	head, _ := n.chain.Head()
 	reg, ok := n.RegisterBondReg(head)
 	if !ok {
