@@ -52,16 +52,25 @@ UNIT
 systemctl daemon-reload
 
 # ── Cold-start ordering (found on the 13-node cross-region full run) ────────────
-# silt does a ONE-SHOT bootstrap at startup. If a joining node's -bootstrap target
-# is not yet listening, its FIND_NODE fails, the node comes up with an EMPTY
-# routing table, and it NEVER re-bootstraps even once the target is reachable —
-# so it can never mesh or reach consensus (product gap, issue #281).
-# A real deployment avoids this by joining an ALREADY-RUNNING bootstrap node; model
-# that here. The boot validator has no -bootstrap in its argv, so it starts
-# immediately; every joining node waits (bounded) for its bootstrap host:port to
-# accept TCP first. Mirrors the seed-first ordering the nat/consensus/upgrade
-# harnesses already use.
+# This was the symptom of #281: silt originally did a ONE-SHOT bootstrap, so a
+# joining node whose -bootstrap target was not yet listening came up with an EMPTY
+# routing table and NEVER re-bootstrapped. #281 is now FIXED IN-PRODUCT —
+# Node.StartBootstrapRetry (-bootstrap-retry=15s, default on) periodically re-runs
+# the join while the table is empty and logs "re-bootstrapped: recovered from an
+# empty routing table". This TCP-wait is therefore no longer required for
+# correctness; it is kept because it models the seed-first ordering a real
+# deployment uses (and mirrors the nat/consensus/upgrade harnesses).
+# NOTE (ROADMAP #14): with this belt fastened, no flow exercises an empty-table
+# join over the wire, so the in-product fix is not yet wire-certified. To certify
+# it, set SKIP_BOOTSTRAP_WAIT=1 on a single joining validator and assert the
+# "re-bootstrapped: recovered from an empty routing table" line appears.
 BOOTSTRAP_REF="$(printf '%s\n' "$${ARGV}" | grep -oE -- '-bootstrap [^ ]+' | head -1 | awk '{print $2}' || true)"
+if [ "$${SKIP_BOOTSTRAP_WAIT:-0}" = 1 ]; then
+  # #281 wire-cert: skip the TCP-wait belt so this node joins into an empty routing
+  # table and must self-heal via the in-product -bootstrap-retry loop.
+  echo "silt-startup: $${NODE} SKIP_BOOTSTRAP_WAIT=1 — no TCP-wait; relying on in-product -bootstrap-retry self-heal (#281 wire-cert)"
+  BOOTSTRAP_REF=""
+fi
 if [ -n "$${BOOTSTRAP_REF}" ]; then
   BHOSTPORT="$${BOOTSTRAP_REF#*@}"; BHOST="$${BHOSTPORT%:*}"; BPORT="$${BHOSTPORT##*:}"
   echo "silt-startup: $${NODE} waiting (≤240s) for bootstrap $${BHOST}:$${BPORT} to listen…"

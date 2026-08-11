@@ -56,17 +56,26 @@ local↔cloud convergence work above.
    soak emit `RESULT: FINDING` (exit 0) for a leak/restart shortfall instead of
    mislabeling it `FAIL`.
 
-6. **[truthfulness] `churn` exit code + status row.** churn self-describes as
-   "expected to fail" but exits non-zero (scored FAIL), when a characterized
-   shortfall should be a `RESULT: FINDING` (exit 0, `EXPECT=pass` flips it). Split
-   the exit like `chaos`/`durability`, and keep its row in `FIELD-TEST-STATUS.md`
-   current.
+6. **[truthfulness] `churn` exit code + status row — EXIT SPLIT DONE; seeded
+   placement OPEN.** The exit split is done (`churn/run.sh:257-262`): characterized
+   shortfall → `RESULT: FINDING` (exit 0), repaired-but-unfetchable → `RESULT: FAIL`
+   (exit 1), `EXPECT=pass` flips the FINDING; the roll-up scores it FINDING. The
+   `FIELD-TEST-STATUS.md` row is updated. **Still open:** churn's outcome is sensitive
+   to random shard placement — a single run may hit the "coverage held within the
+   erasure margin" branch and reconstruct nothing (a weaker demonstration). Seed the
+   placement (or force a below-coverage stripe deterministically) so every run
+   guarantees a forced repair-and-refetch, keeping the coverage-held case as a
+   separate, explicitly weaker signal.
 
-7. **[truthfulness] Automate `bond` C1 "reputation ∝ bond."** Currently
-   hand-recorded: the run asserts only reputation ≠ 0 at a single bond size. Seal
-   two bonds (e.g. 16M and 64M), read each earned `reputation=` off the real
-   `standing self` line, and assert the ratio is roughly linear (≥ ~3.5×) so a
-   flat-reputation daemon (breaking no-discount) fails.
+7. **[truthfulness] Automate `bond` C1 "reputation ∝ bond." (source of truth — OPEN.)**
+   The suite already gates plot-**residency cost** (plot-size ≥ 90% of `-bond`) and
+   PHASE-3 root-owner dedup — the real "no discount" mechanism — but it does **not**
+   yet assert reputation **proportionality**: PHASE 1 checks only `reputation=[1-9]` at
+   a *single* bond size (`bond/run.sh:144`). Seal two bonds (e.g. 16M and 64M), read
+   each earned `reputation=` off the real `standing self` line, and assert the ratio is
+   roughly linear (≥ ~3.5×) so a flat-reputation daemon (breaking no-discount) fails.
+   `FIELD-TEST-STATUS.md` previously marked this DONE while this item said open — the
+   contradiction is resolved in STATUS's favour-of-this-item: it is **not DONE**.
 
 8. **[truthfulness] `nat` hole-punch: assert the direct-path outcome.** The direct
    connection is asserted from a log line the daemon emits *before* the TLS/identity
@@ -75,9 +84,11 @@ local↔cloud convergence work above.
    control (the relay path was genuinely exercised) so "nothing happened" can't
    score as "correctly fell back to relay."
 
-9. **[truthfulness] `upgrade` chain reload.** `CHAIN_OK` is true-by-absence-of an
-   error substring; assert a positive head/height/restored-block count instead, and
-   treat empty/failed `chain-status` as a harness error.
+9. **[truthfulness] `upgrade` chain reload — DONE.** `CHAIN_OK` now asserts a
+   *positive* head/height (`upgrade/run.sh:239`: `head height:` / `blocks: [1-9]` and
+   must NOT say `no chain yet`), not the mere absence of an error substring; the "V1
+   committed no chain" case is handled explicitly. The blind field test confirmed the
+   FINDING it isolates (#237) is real.
 
 10. **[truthfulness] `redteam` honest-target cross-check.** The reject signal comes
     from the adversary's own container; also assert the honest target H3's chain
@@ -94,3 +105,33 @@ local↔cloud convergence work above.
 13. **[parity] Shared node abstraction + GCP-only scenarios** — the convergence
     work described above (scale-out churn, real firewall partition, `tc` shaping,
     long-haul soak).
+
+14. **[truthfulness] Wire-certify #281 (empty-routing-table self-heal).** #281 is
+    fixed in-product (`Node.StartBootstrapRetry`, `-bootstrap-retry=15s`, unit-tested)
+    and the cloud startup script *also* fastens a TCP-wait belt
+    (`provision/silt-startup.sh`) — so no flow exercises an empty-routing-table join
+    over the wire, certifying neither the defect nor the fix. Add one cloud flow that
+    **disables the startup TCP-wait on a single joining validator** and asserts the
+    real `re-bootstrapped: recovered from an empty routing table` line, turning the
+    narrated story into a measured property.
+
+15. **[coverage] GCP substrate operability — the RC-gate is not reachable today.**
+    The full 13-node run is blocked by two *environmental* constraints (not product
+    bugs): a `us-central1-a` E2 capacity shortage (8 of 13 nodes land there; confirmed
+    across e2-small and e2-medium) and the default `IN_USE_ADDRESSES` = 8/region quota
+    (the topology needs ~11 external IPs, so a single-zone `PIN_ZONE` run blows it, and
+    the multi-region spread that fits the quota then depends on us-central1-a). Add a
+    **pre-flight** that checks `IN_USE_ADDRESSES` headroom + zone capacity before
+    `apply`, and **shrink the public-IP footprint** (IAP-only / bastion) so a
+    single-zone full run fits the default quota and can target whichever zone has
+    capacity. Also: the `nuke` fallback leaks the (free) VPC/subnets/firewall/routes on
+    a partial-apply teardown — make `nuke` sweep those by label too, and stop
+    swallowing `terraform destroy` stderr.
+
+16. **[parity] AWS variant + two-cloud field test.** Build an AWS variant of
+    `cloudtest` as a fallback substrate when GCP capacity/quota blocks the RC gate
+    (mirror the Terraform topology + flows + teardown/cost-safety traps; SSM/bastion in
+    place of IAP-SSH). Once both clouds pass independently, add a **two-cloud** field
+    test that splits the topology across GCP and AWS to exercise real inter-provider
+    WAN latency and distinct network stacks — the closest thing to real-world
+    conditions.
