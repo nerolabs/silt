@@ -95,6 +95,73 @@ for id in "${HOLDER_IDS[@]}"; do
 done
 echo "  all ${#HOLDER_IDS[@]} holders bootstrapped"
 
+# ── phase 3b: DETERMINISTIC forced-repair proof (runs EVERY run) ────────────────
+# The wave-kill below characterizes the small-swarm coverage cliff, but whether it
+# FORCES a reconstruction is random-placement-sensitive (blind field test #2 §C /
+# ROADMAP #6): some runs reach the survivor floor with coverage held and reconstruct
+# NOTHING. So before it, prove the repair MECHANISM deterministically: publish a
+# SINGLE-STRIPE file (< K·chunk = 640 KiB ⇒ one 16-shard stripe) at -replication 1,
+# then remove EXACTLY RepairSlack+1 (=3) of its shards — 3 > slack(2) forces a
+# reconstruct, 3 ≤ n-k(6) keeps it recoverable — and assert the caretaker
+# RECONSTRUCTS (stripe repaired ≥ 1) and a fresh client refetches bit-perfect.
+# Holders stay RUNNING (rm precise files, no docker kill) so there is no dial-storm
+# and the loss is exact. This runs BEFORE the main publish, so the only objects on
+# the holders are this stripe's shards — the 3 we remove are provably its shards.
+FSTRIPE_BYTES=${FSTRIPE_BYTES:-600000}   # < 640 KiB ⇒ exactly one erasure stripe (K=10 × 64 KiB)
+echo "== phase 3b: deterministic forced-repair proof (single stripe, rm 3 of 16 shards) =="
+dc exec -T seed sh -c "head -c $FSTRIPE_BYTES /dev/urandom > /tmp/fs.bin; sha256sum /tmp/fs.bin | cut -d' ' -f1 > /tmp/fs.sha; silt swarm add /tmp/fs.bin -peers '$SEED_PEER' -registry '$SEED_REG' -replication 1" >/tmp/churn_fadd.txt 2>&1
+FLINK=$(grep -oE 'silt:v1:[A-Za-z0-9_:-]+' /tmp/churn_fadd.txt | head -1)
+FCARE=$(grep -oE 'siltcare:[A-Za-z0-9_:-]+' /tmp/churn_fadd.txt | head -1)
+FWANT=$(dc exec -T seed cat /tmp/fs.sha | tr -d '\r\n ')
+[ -n "$FLINK" ] && [ -n "$FCARE" ] && [ -n "$FWANT" ] || { echo "FAIL: forced-repair publish did not yield link+care+hash"; cat /tmp/churn_fadd.txt; exit 1; }
+export FCARE_LINK="$FCARE"
+dc up -d fcaretaker >/dev/null 2>&1
+FCARE_CID=$(dc ps -q fcaretaker)
+fcare_count() { docker exec "$FCARE_CID" sh -c "grep -c \"$1\" /data/debug.log 2>/dev/null || true" | tr -d ' \r\n'; }
+ok=0; for _ in $(seq 1 40); do docker logs "$FCARE_CID" 2>&1 | grep -q 'caretaking' && { ok=1; break; }; sleep 1; done
+[ "$ok" = 1 ] || { echo "FAIL: fcaretaker never logged 'caretaking'"; docker logs "$FCARE_CID" | tail -20; exit 1; }
+echo "  letting fcaretaker warm-start + complete one intact sweep (${STEADY_WAIT}s)…"
+sleep "$STEADY_WAIT"
+fpre=$(fcare_count 'stripe repaired')
+echo "  positive control — fcaretaker 'stripe repaired' on the INTACT stripe: ${fpre:-0} (want 0)"
+[ "${fpre:-0}" = 0 ] || { echo "FAIL: fcaretaker reconstructed an INTACT single stripe (false positive)"; pass=0; }
+# Remove EXACTLY 3 distinct DATA/PARITY shard files (replication 1 ⇒ 3 distinct
+# shards of the one stripe). Filter to shard-sized objects (> 32 KiB): a full shard
+# is ~64 KiB, but the file's small MANIFEST object is only a KB or two — remove it by
+# accident and the caretaker logs "manifest not yet reassembled" and can never repair
+# (it needs the manifest to know the stripe). So target only the big shard objects.
+removed=0
+for id in "${HOLDER_IDS[@]}"; do
+  [ "$removed" -ge 3 ] && break
+  while IFS= read -r f; do
+    [ "$removed" -ge 3 ] && break
+    [ -z "$f" ] && continue
+    docker exec "$id" sh -c "rm -f '$f'" && removed=$((removed + 1))
+  done < <(docker exec "$id" sh -c 'find /data/objects -type f -size +32k 2>/dev/null')
+done
+echo "  removed $removed shard file(s) from the single stripe (want 3; > RepairSlack=2, ≤ n-k=6)"
+[ "$removed" -eq 3 ] || { echo "FAIL: could not remove exactly 3 shards (removed=$removed) — forced-repair precondition unmet"; pass=0; }
+echo "  waiting up to ${STEP_WAIT}s for the FORCED reconstruction…"
+frepaired=0; fwaited=0
+while [ "$fwaited" -lt "$STEP_WAIT" ]; do
+  frepaired=$(fcare_count 'stripe repaired')
+  [ "${frepaired:-0}" -ge 1 ] && break
+  sleep 5; fwaited=$((fwaited + 5))
+done
+if [ "${frepaired:-0}" -ge 1 ]; then
+  echo "  ✅ FORCED reconstruction observed: fcaretaker 'stripe repaired' = $frepaired (the repair mechanism is live)"
+else
+  echo "FAIL: caretaker did NOT reconstruct after 3 shards (> RepairSlack) were removed — the reconstructor is wedged"
+  docker exec "$FCARE_CID" sh -c 'grep -vE "dial failed" /data/debug.log 2>/dev/null | tail -8' | sed 's/^/    /'
+  pass=0
+fi
+FGOT=$(dc exec -T seed sh -c "timeout ${FETCH_TIMEOUT:-120} silt swarm get '$FLINK' -o /tmp/fsout.bin -peers '$SEED_PEER' -registry '$SEED_REG' && sha256sum /tmp/fsout.bin | cut -d' ' -f1" 2>/dev/null | grep -oE '^[a-f0-9]{64}' | tail -1)
+if [ "$FGOT" = "$FWANT" ]; then
+  echo "  ✅ post-repair refetch bit-perfect — deterministic forced-repair leg PASSED"
+else
+  echo "FAIL: single-stripe file NOT bit-perfect after forced repair (got ${FGOT:-<none>} want $FWANT)"; pass=0
+fi
+
 echo "== publish a ${FILE_BYTES}-byte file from an ephemeral client (keeps nothing) =="
 dc exec -T seed sh -c "head -c $FILE_BYTES /dev/urandom > /tmp/f.bin; sha256sum /tmp/f.bin | cut -d' ' -f1 > /tmp/f.sha; silt swarm add /tmp/f.bin -peers '$SEED_PEER' -registry '$SEED_REG' -replication $REPLICATION" >/tmp/churn_add.txt 2>&1
 LINK=$(grep -oE 'silt:v1:[A-Za-z0-9_:-]+' /tmp/churn_add.txt | head -1)
@@ -171,7 +238,11 @@ heaviest_alive() { local best="" bestc=-1 id c; for id in "${ALIVE[@]}"; do c=$(
 echo "  objects across the live swarm at baseline: $(alive_total)  (holders alive: ${#ALIVE[@]})"
 
 # ---- the churn: kill heaviest-first until repair is forced, prove it heals ----
-for w in $(seq 1 "$WAVES"); do
+# awk generator (not `seq 1 $WAVES`) so WAVES=0 cleanly runs ZERO waves — the
+# deterministic forced-repair leg (phase 3b) above then stands alone (BSD `seq 1 0`
+# would wrongly emit "1 0"). WAVES=0 = "prove the repair mechanism, skip the
+# random-placement coverage-cliff characterization".
+for w in $(awk -v n="$WAVES" 'BEGIN{for(i=1;i<=n;i++)print i}'); do
   echo ""
   echo "== wave $w: kill holders (heaviest coverage first) until repair is FORCED =="
   before=$(care_count 'stripe repaired')
@@ -255,7 +326,9 @@ done
 echo ""
 TOTAL_REPAIRED=$(care_count 'stripe repaired')
 if [ "$pass" = 0 ]; then
-  echo "RESULT: FAIL ❌  the caretaker repaired but a fresh client still could not re-fetch bit-perfect — a real repair-under-churn regression"
+  echo "RESULT: FAIL ❌  a real repair regression (see the failing assertion above): either the deterministic"
+  echo "  forced-repair leg did not reconstruct/refetch, or the wave-kill caretaker repaired but a fresh client"
+  echo "  still could not re-fetch bit-perfect."
   exit 1
 elif [ "$finding" = 1 ]; then
   echo "RESULT: FINDING ⚠  hit the characterized small-swarm coverage cliff before a clean repair-and-refetch (see the FIELD-TEST FINDING dump above). Not a regression; raise HOLDERS / lower REPLICATION or run at scale (GCP) to cross it cleanly. EXPECT=pass to hard-fail."
