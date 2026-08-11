@@ -121,7 +121,30 @@ dc --profile propose up -d h3
 wait_log h3 'peer: [0-9a-f]{64}' 20 || fail "h3 never came up"
 echo "  letting H3 accrue standing (12s)…"
 sleep 12
-dc --profile propose up -d forger lowbond goodprop
+# H3's own committed head height — the GROUND-TRUTH cross-check that no forged/low-bond
+# block slipped in (replaces the old print-only chain-status). Sequenced deliberately:
+# launch the POSITIVE CONTROL (goodprop) FIRST and snapshot H3 once its one legit block
+# has settled; only THEN launch the two adversaries. Any height growth across that
+# pure-adversarial window is provably a bad block that committed → a real DEFECT.
+# h3's committed head height as a number. An empty chain (goodpropose is ATTESTED but a
+# single-attester block need not reach commit quorum) prints "no chain yet (0 blocks)" →
+# normalized to 0. A genuine read failure (container gone) returns empty so the caller can
+# tell "chain-status says 0 committed" apart from "couldn't read h3 at all".
+h3_height() {
+  local out; out=$(dc exec -T h3 sh -c 'silt chain-status -store /data' 2>/dev/null)
+  if printf '%s' "$out" | grep -qE 'head height: +[0-9]+'; then
+    printf '%s' "$out" | grep -oE 'head height: +[0-9]+' | grep -oE '[0-9]+' | head -1
+  elif printf '%s' "$out" | grep -q 'no chain yet'; then
+    printf '0'
+  fi
+}
+# Read h3's head height only once it has STOPPED moving (two equal reads 3s apart, cap
+# ~18s) so a legit commit that lags its attestation is fully accounted before we snapshot
+# — otherwise the positive-control block could land AFTER the baseline and be misread as
+# an adversarial commit. Returns the settled height.
+h3_stable_height() { local a b i; a=$(h3_height); for i in $(seq 1 6); do sleep 3; b=$(h3_height); [ -n "$a" ] && [ "$a" = "$b" ] && { printf '%s' "$a"; return; }; a="$b"; done; printf '%s' "$a"; }
+H3_PRE=$(h3_height); echo "  H3 pre-proposal committed head height: ${H3_PRE:-<none>}"
+dc --profile propose up -d goodprop
 
 # POSITIVE CONTROL (audit #303): before crediting H3's REJECTIONS below, prove H3
 # ACCEPTS a well-formed, properly-bonded proposal — otherwise a target that refuses
@@ -137,6 +160,12 @@ elif dc logs goodprop 2>&1 | grep -qE 'goodpropose proposal UNEXPECTEDLY REJECTE
 else
   fail "positive control did not resolve: H3 never accepted a valid bonded proposal within the window (cannot attribute the reject scenarios to the real defence)"
 fi
+
+# Baseline AFTER the one legit block has fully settled — everything above is legit; from
+# here only the two adversaries act, so H3's head must not move again.
+H3_BASE=$(h3_stable_height); echo "  H3 committed head height after the legit positive-control block (settled): ${H3_BASE:-<none>}"
+# NOW launch the adversaries (forger + low-bond), so the window below is purely adversarial.
+dc --profile propose up -d forger lowbond
 
 echo "  -- SCENARIO 2: FORGED BLOCK (corrupted proposer signature) --"
 if wait_log forger "forge-block proposal correctly REJECTED by $ID_H3" 60; then
@@ -160,11 +189,25 @@ else
   dc logs lowbond 2>&1 | tail -12 | sed 's/^/    lowbond: /'
 fi
 
-# H3's chain must NOT have committed any bad block from either adversary: the
-# only committed entries (if any) are the honest ones. A forged/low-bond block
-# that slipped through would show as extra committed blocks on H3.
-echo "  -- H3 committed no adversarial block --"
+# H3's chain must NOT have committed any bad block from either adversary. This is a
+# GROUND-TRUTH cross-check on H3's own committed head height (not the adversary's
+# self-report): the baseline H3_BASE was taken after the single legit positive-control
+# block settled and BEFORE the adversaries launched, so an unchanged head proves the
+# forged/low-bond proposals committed nothing. Retry-poll briefly to outlast any async
+# commit of a bad block (a defect would still surface as a height increase).
+echo "  -- H3 committed no adversarial block (head-height cross-check) --"
+# Both adversary scenarios above already waited out their 60s windows, so any bad block
+# that (wrongly) committed has had ample time to land; take a settled final read.
+H3_FINAL=$(h3_stable_height)
 dc exec -T h3 sh -c 'silt chain-status -store /data' 2>/dev/null | sed 's/^/    /' || echo "    (chain-status unavailable)"
+echo "  H3 head height: baseline(after legit block)=${H3_BASE:-<none>}  final(after adversaries)=${H3_FINAL:-<none>}"
+if [ -z "$H3_BASE" ] || [ -z "$H3_FINAL" ]; then
+  fail "could not read H3's committed head height for the no-adversarial-block cross-check (chain-status unavailable)"
+elif [ "$H3_FINAL" != "$H3_BASE" ]; then
+  fail "H3's committed head height GREW ${H3_BASE}→${H3_FINAL} across the purely-adversarial window — a forged/low-bond block committed (DEFECT), the adversary's own REJECTED verdict notwithstanding"
+else
+  echo "  H3 CROSS-CHECK: PASS — head height unchanged (${H3_BASE}); neither adversary committed a block on the honest target"
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""

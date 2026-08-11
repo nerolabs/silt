@@ -194,11 +194,26 @@ echo "  takedown block:   ${REAL_BLOCK:-<none>}"
 BOGUS=$(printf 'ab%.0s' {1..32})   # 64 hex chars, deterministic, never on-chain
 REVOKE_ROOT="$BOGUS" dc -f docker-compose.yml -f docker-compose.revoke.yml up -d --force-recreate val >/dev/null 2>&1
 await_log val 'chain: restored' || true
-sleep 8   # give the -revoke spin loop ample time to (not) act
+# Positively wait for the daemon to ENGAGE the -revoke path (not just sleep on an
+# absence): it prints "revoke: target <root> — waiting until it is committed
+# on-chain …" as soon as the loop starts, then polls LookupRoot. Only once the root
+# is actually committed does it print "… is committed — gathering a takedown quorum"
+# and then "takedown: proposed on-chain revocation". For a never-published root the
+# existence gate never opens, so the "gathering" + "proposed" lines must never appear.
+await_log val 'revoke: target .* waiting until it is committed on-chain' || true
+sleep 8   # let the spin loop poll several times (2s cadence) — it must NOT progress
+BOGUS_WAIT=$(dc logs val 2>&1 | grep -E "revoke: target .* waiting until it is committed on-chain" | tail -1)
+BOGUS_GATHER=$(dc logs val 2>&1 | grep -E "gathering a takedown quorum" | tail -1)
 BOGUSREV=$(dc logs val 2>&1 | grep -E "takedown: proposed on-chain revocation" | tail -1)
 BOGUS_BLOCK=$(dc logs val 2>&1 | grep -E 'chain: committed block' | tail -1)
-echo "  bogus-root revoke proposed: ${BOGUSREV:-<none — correctly refused>}"
-echo "  bogus-root takedown block:  ${BOGUS_BLOCK:-<none — correctly none>}"
+echo "  bogus-root revoke engaged (waiting-on-commit): ${BOGUS_WAIT:+yes} ${BOGUS_WAIT:-<none — revoke path never engaged>}"
+echo "  bogus-root passed existence gate (gathering):  ${BOGUS_GATHER:-<none — correctly gated>}"
+echo "  bogus-root revoke proposed:                    ${BOGUSREV:-<none — correctly refused>}"
+echo "  bogus-root takedown block:                     ${BOGUS_BLOCK:-<none — correctly none>}"
+# POSITIVE control: the revoke path DID engage and is provably blocked on the
+# existence check — so "nothing committed" is a real refusal reason, not a slow loop.
+[ -n "$BOGUS_WAIT" ] || fail "the -revoke path never engaged the existence gate (no 'waiting until it is committed' line) — cannot attribute the no-commit to the existence check vs a stalled loop"
+[ -z "$BOGUS_GATHER" ] || fail "validator's -revoke passed the existence gate for a NEVER-PUBLISHED root (printed 'gathering a takedown quorum') — existence check bypassed"
 [ -z "$BOGUSREV" ]   || fail "validator proposed a revocation of a NEVER-PUBLISHED root (existence check bypassed)"
 [ -z "$BOGUS_BLOCK" ] || fail "a takedown block committed for a bogus root (existence check bypassed)"
 
