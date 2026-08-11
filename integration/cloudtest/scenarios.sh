@@ -122,6 +122,24 @@ publish_verdict() { # publish_verdict FLOW SEVERITY "detail"
   fi
 }
 
+# ── committed-height helpers (audit #303) ──────────────────────────────────────
+# A stale 'chain: committed block N' already in the journal must NOT satisfy a
+# "the publish committed" gate — capture the height BEFORE the action and require
+# a STRICTLY HIGHER one after, so only a genuinely NEW commit counts.
+ft_commit_height() { # ft_commit_height NODE — max committed-block height in the journal (0 if none)
+  local h; h="$(jlog "$1" 800 | grep -oE 'chain: committed block [0-9]+' | grep -oE '[0-9]+$' | sort -n | tail -1)"
+  printf '%s' "${h:-0}"
+}
+ft_wait_new_block() { # ft_wait_new_block NODE H0 TIMEOUT_S -> 0 if a block > H0 committed
+  local node="$1" h0="${2:-0}" timeout="${3:-90}" deadline
+  deadline=$(( $(date +%s) + timeout ))
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    [ "$(ft_commit_height "$node")" -gt "$h0" ] 2>/dev/null && return 0
+    sleep 4
+  done
+  return 1
+}
+
 # ── Flow 1: build & first run ──────────────────────────────────────────────────
 flow_first_run() {
   local n ok=1 bad=""
@@ -136,13 +154,15 @@ flow_first_run() {
 flow_publish_fetch() {
   local t0 t1 res link sha got ok=0
   t0="$(date +%s)"
+  local boot; boot="$(python3 -c "import json;print(json.load(open('$FT_DIR/topology.json'))['meta']['boot'])")"
+  local h0; h0="$(ft_commit_height "$boot")"   # audit #303: baseline BEFORE the publish
   res="$(ft_publish fetch-1 1048576 || true)"
   if [ -z "$res" ]; then publish_verdict "2-publish-fetch" blocker "publish never produced a silt: link within ${PUBLISH_RETRY_S}s"; return; fi
   link="${res%% *}"; sha="${res##* }"
-  # committed on the boot validator?
-  local boot; boot="$(python3 -c "import json;print(json.load(open('$FT_DIR/topology.json'))['meta']['boot'])")"
-  if waitfor "$boot" 'chain: committed block [0-9]+' "$COMMIT_SLO_S" >/dev/null; then :; else
-    slo_assert "2-publish-fetch" major "publish did not commit within ${COMMIT_SLO_S}s (link=$link)" 0; return; fi
+  # committed on the boot validator? Require a NEW block (> h0), so a stale
+  # pre-publish 'committed block' line can't satisfy the gate (audit #303).
+  if ft_wait_new_block "$boot" "$h0" "$COMMIT_SLO_S"; then :; else
+    slo_assert "2-publish-fetch" major "publish did not commit a NEW block (head stayed at $h0) within ${COMMIT_SLO_S}s (link=$link)" 0; return; fi
   # fetch from a DIFFERENT node than the publisher and compare hashes. store-2 in
   # the full topology; store-1 in the SMOKE set (store-2 absent) — both differ from
   # the fetch-1 publisher, so this blocker still runs (not false-fails) under SMOKE.
@@ -172,9 +192,15 @@ flow_become_validator() {
   local n ok=1 bad=""
   for n in val-b val-c val-d; do
     node_exists "$n" || continue
-    if waitfor "$n" '(standing|bond).*(earned|qualified|registered)|chain: committed block' 90 >/dev/null; then :; else ok=0; bad="$bad $n"; fi
+    # audit #303: assert the node's OWN earned standing — 'chain: committed block'
+    # is satisfiable by any OBSERVER, so it proved nothing about THIS node. The
+    # daemon self-narrates 'standing self=<own id> reputation=N' every bond-audit
+    # sweep once its bond qualifies (core/node/bondaudit.go), a genuinely per-node
+    # signal that it earned standing on the objective path.
+    local nid; nid="$(node_field "$n" nodeid)"
+    if [ "${#nid}" -eq 64 ] && waitfor "$n" "standing self=$nid reputation=[1-9]" 90 >/dev/null; then :; else ok=0; bad="$bad $n"; fi
   done
-  slo_assert "4-become-validator" major "non-anchor validators earn standing on the objective path${bad:+ (no evidence:$bad)}" "$ok"
+  slo_assert "4-become-validator" major "non-anchor validators earn their OWN standing on the objective path${bad:+ (no per-node earned-standing signal:$bad)}" "$ok"
 }
 
 # ── Flow 5: multi-validator convergence ─────────────────────────────────────────
@@ -204,13 +230,15 @@ flow_convergence() {
 # ── Flow 6: fault tolerance — kill one validator, quorum still commits ──────────
 flow_fault_tolerance() {
   require_nodes "6-fault-tolerance" major val-d || return
+  local boot; boot="$(python3 -c "import json;print(json.load(open('$FT_DIR/topology.json'))['meta']['boot'])")"
+  local h0; h0="$(ft_commit_height "$boot")"   # audit #303: baseline BEFORE stopping val-d + publishing
   svc val-d stop || true
   sleep 5
   local res ok=0
   res="$(ft_publish fetch-1 262144 || true)"
   if [ -n "$res" ]; then
-    local boot; boot="$(python3 -c "import json;print(json.load(open('$FT_DIR/topology.json'))['meta']['boot'])")"
-    waitfor "$boot" 'chain: committed block [0-9]+' "$COMMIT_SLO_S" >/dev/null && ok=1
+    # Require a NEW block with val-d down, not a stale pre-kill 'committed block' line.
+    ft_wait_new_block "$boot" "$h0" "$COMMIT_SLO_S" && ok=1
   fi
   if [ "$ok" = 1 ]; then
     slo_assert "6-fault-tolerance" major "publish still committed with one validator (val-d) down" 1
