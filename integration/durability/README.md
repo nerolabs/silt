@@ -94,7 +94,7 @@ KEEP=1 ./run.sh                          # leave the swarm up to poke at
 |---|---|---|
 | `HOLDERS` | 16 | starting storage-pool size |
 | `MIN_SURVIVORS` | 6 | shrink down to this many, then a final confirmation fetch |
-| `CYCLE_WAIT` | 70 | seconds/cycle; a floor — the run also blocks on a *fresh* sweep (RepairInterval=60s) |
+| `SWEEP_WAIT_TICKS` | 30 | the real per-cycle repair window: ticks of 5s to wait for a *fresh* caretaker sweep (30 ⇒ ~150s) before a wedge is declared (RepairInterval=60s) |
 | `REPLICATION` | 1 | copies/column at publish; 1 ⇒ every departure strands columns (honest stress) |
 | `FILE_BYTES` | 4000000 | published file size (multiple stripes) |
 | `FETCH_RETRIES` | 3 | fetch attempts before a cycle is counted a transient miss |

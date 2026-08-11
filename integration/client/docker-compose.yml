@@ -41,6 +41,10 @@ services:
       - silt
       - daemon
       - -listen=0.0.0.0:4001
+      # -ui exposes GET /api/status so the harness can read each holder's
+      # own held-chunk count — the positive control that a UI publish really
+      # scattered onto the SWARM and not just onto the ui daemon alone.
+      - -ui=0.0.0.0:8081
       - -store=/data
       - -capacity=5G
       - -mdns=false

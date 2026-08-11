@@ -47,7 +47,7 @@
 #   ./run.sh                              # 16 holders → shrink to 6 (10 permanent deaths)
 #   MIN_SURVIVORS=11 ./run.sh             # stay above the small-swarm retrieval floor → clean PASS
 #   REPLICATION=3 ./run.sh                # shipped-default margin (survives more before repair is forced)
-#   HOLDERS=24 MIN_SURVIVORS=12 CYCLE_WAIT=90 ./run.sh
+#   HOLDERS=24 MIN_SURVIVORS=12 SWEEP_WAIT_TICKS=40 ./run.sh   # ~200s/cycle repair window
 #   KEEP=1 ./run.sh
 # exit 0 = PASS (content outlived + still retrievable) / a reproduced FINDING; non-zero = FAIL
 # ─────────────────────────────────────────────────────────────────────────────
@@ -57,7 +57,7 @@ ROOT=$(cd ../.. && pwd)
 
 HOLDERS=${HOLDERS:-16}                 # starting storage pool size
 MIN_SURVIVORS=${MIN_SURVIVORS:-6}      # shrink down to this many, then stop (PASS)
-CYCLE_WAIT=${CYCLE_WAIT:-70}           # seconds/cycle for a repair sweep to land (RepairInterval=60s)
+CYCLE_WAIT=${CYCLE_WAIT:-70}           # LEGACY/no-op: the per-cycle wait is now driven by SWEEP_WAIT_TICKS (block on a FRESH sweep), not this fixed sleep. Kept only so old invocations don't error.
 REPLICATION=${REPLICATION:-1}          # copies/column; 1 ⇒ every departure strands columns (honest stress)
 FILE_BYTES=${FILE_BYTES:-4000000}      # ~4 MB (multiple stripes)
 FETCH_TIMEOUT=${FETCH_TIMEOUT:-40}
@@ -233,7 +233,7 @@ for c in $(seq 1 "$TO_KILL"); do
     echo "  after departure #$killed_total (down to $survivors survivors). The caretaker logged \"repair"
     echo "  below k\": as the pool concentrated, one kill stranded more columns of a stripe than the"
     echo "  survivors held ≥k of — reconstruct-and-re-scatter could not outrun loss at this cadence."
-    echo "  Loosen with CYCLE_WAIT (more repair time) or REPLICATION=3 (more margin). This IS the finding."
+    echo "  Loosen with SWEEP_WAIT_TICKS (more repair time; default 30 = ~150s/cycle) or REPLICATION=3 (more margin). This IS the finding."
     docker logs "$CARE_CID" 2>&1 | grep -iE 'repair sweep|stripe repaired|below k' | tail -8 | sed 's/^/    /'
     [ "${EXPECT:-}" = pass ] && exit 1 || exit 0
   fi
@@ -248,9 +248,10 @@ for c in $(seq 1 "$TO_KILL"); do
 done
 
 repairs_end=$(care_repairs); repairs_end=${repairs_end:-0}
+rep=$(( repairs_end - repairs_start ))   # stripe reconstructions DURING the shrink; 0 ⇒ redundancy alone carried the loss
 echo "──────────────────────────────────────────────────────"
 echo "  permanent departures: $killed_total   survivors remaining: $(running_holders)   worst redundancy dip: $worst_reachable shards reachable"
-echo "  reconstructions during the shrink: $(( repairs_end - repairs_start )) (total stripe repairs: $repairs_end)   transient fetch retries needed: $fetch_warns cycle(s)"
+echo "  reconstructions during the shrink: $rep (total stripe repairs: $repairs_end)   transient fetch retries needed: $fetch_warns cycle(s)"
 # Final authoritative proof — the OUTCOME a user cares about — that the bytes are
 # still retrievable AFTER all the loss. Durability (below-k) held to get here; this
 # gates on the actual end-to-end get, not just the caretaker's word.
@@ -259,15 +260,25 @@ FETCH_RETRIES=$((FETCH_RETRIES+2))
 final_survivors=$(running_holders)
 if fetch_ok; then
   echo "RESULT: PASS ✅  content OUTLIVED the nodes — survived $killed_total permanent departures"
-  echo "  ($HOLDERS → $final_survivors holders, no replacement): the caretaker reconstructed from parity and"
-  echo "  re-scattered onto survivors ($(( repairs_end - repairs_start )) stripe repairs), no stripe ever fell"
-  echo "  below k, and a fresh client's fetch after all the loss is bit-perfect (D-S7 finite-but-renewable holds)."
+  echo "  ($HOLDERS → $final_survivors holders, no replacement):"
+  if [ "$rep" -gt 0 ] 2>/dev/null; then
+    echo "  the caretaker reconstructed from parity and re-scattered onto survivors ($rep stripe repairs),"
+  else
+    echo "  no stripe ever needed repair (0 stripe repairs) — redundancy alone carried the loss,"
+  fi
+  echo "  no stripe ever fell below k, and a fresh client's fetch after all the loss is bit-perfect"
+  echo "  (D-S7 finite-but-renewable holds)."
   exit 0
 fi
 echo "RESULT: FINDING ⚠  DURABILITY held but RETRIEVAL degraded — the durability↔retrievability gap."
 echo "  • DURABILITY (bytes survive): across all $killed_total permanent departures ($HOLDERS → $final_survivors holders)"
-echo "    NO stripe ever fell below k — the caretaker kept reconstructing from parity ($(( repairs_end - repairs_start ))"
-echo "    stripe repairs) so the content provably still exists, whole, on the survivors."
+if [ "$rep" -gt 0 ] 2>/dev/null; then
+  echo "    NO stripe ever fell below k — the caretaker kept reconstructing from parity ($rep stripe"
+  echo "    repairs) so the content provably still exists, whole, on the survivors."
+else
+  echo "    NO stripe ever fell below k, and no stripe ever needed repair (0 stripe repairs) — redundancy"
+  echo "    alone carried the loss, so the content provably still exists, whole, on the survivors."
+fi
 echo "  • RETRIEVAL (a user gets it): a fresh client's fetch stayed bit-perfect down to $retrieval_floor survivors,"
 echo "    then failed at smaller sizes — even handed every survivor as a direct peer. The shards are reachable"
 echo "    to the long-lived caretaker, yet a fresh client cannot DISCOVER enough of the re-scattered shards to"
