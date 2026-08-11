@@ -49,6 +49,7 @@ func cmdDaemon(args []string) error {
 	listen := fs.String("listen", "127.0.0.1:0", "TCP listen address for swarm traffic")
 	storeDir := fs.String("store", ".silt-daemon", "chunk store directory")
 	bootstrap := fs.String("bootstrap", "", "comma-separated peer list: ID@HOST:PORT")
+	persistentPeers := fs.String("persistent-peers", "", "comma-separated ID@HOST:PORT of a STATIC consensus/anchor peer set — address-configured up front and NEVER evicted by churn (Tendermint persistent_peers). At genesis there is no chain, so a proposer cannot DISCOVER its attesters' addresses (silt's routing table holds bare NodeIDs; addresses live in the transport layer, learned only from inbound frames/gossip) — configure the validator set here so proposer-initiated quorum can form on a fresh multi-region net (#286 Layer 2; docs/network-durability.md §8). These are AddPeer'd at boot AND exempt from reachability eviction (§2)")
 	registryURL := fs.String("registry", "", "registry ref: ID@https://host:port (key-pinned — copy the daemon's 'registry:' line verbatim; a bare http:// or unkeyed https:// is refused)")
 	serveRegistry := fs.String("serve-registry", "", "host the registry at this address (persisted in the store dir)")
 	idSeed := fs.Int64("id-seed", 0, "derive the identity from a seed (default: persistent keyfile) — for scripted demos")
@@ -728,6 +729,29 @@ func cmdDaemon(args []string) error {
 			return err
 		}
 		addSeeds(ps, "-bootstrap")
+	}
+	// The static consensus/anchor tier (#286 Layer 2): configure the validator set's
+	// addresses up front so a proposer can INITIATE the gather at genesis, and mark
+	// each never-evicted so a transient WAN miss doesn't tear it out of the mesh
+	// (docs/network-durability.md §8/§2). addSeeds already AddPeer's the address +
+	// seeds the Kademlia join; AddStaticPeer adds the eviction exemption.
+	if *persistentPeers != "" {
+		ps, err := discovery.ParseList(*persistentPeers)
+		if err != nil {
+			return fmt.Errorf("-persistent-peers: %w", err)
+		}
+		addSeeds(ps, "-persistent-peers")
+		nStatic := 0
+		for _, p := range ps {
+			if p.ID == id {
+				continue
+			}
+			nd.AddStaticPeer(p.ID)
+			nStatic++
+		}
+		if nStatic > 0 {
+			fmt.Printf("persistent-peers: %d configured (static, never-evicted consensus tier)\n", nStatic)
+		}
 	}
 	if *dnsSeed != "" {
 		if ps, err := discovery.FromDNS(*dnsSeed); err == nil {

@@ -331,6 +331,15 @@ type Node struct {
 	// are unaffected. Cooldown expiry lets a recovered holder back in.
 	deadUntil map[ports.NodeID]ports.Time
 
+	// staticPeers is the configured consensus/anchor tier (-persistent-peers): peers
+	// whose address is CONFIGURED, not discovered, so they are NEVER evicted from the
+	// routing table on a reachability timeout — a transient WAN miss is a retry
+	// situation, not an eviction. This is what lets a fresh multi-region validator set
+	// form proposer-initiated quorum at genesis (no chain yet ⇒ no discoverable address
+	// registry): #286 Layer 2, docs/network-durability.md §2/§8, Tendermint
+	// persistent_peers. Written once at startup, read on the loop in requestAttempt.
+	staticPeers map[ports.NodeID]bool
+
 	// reachability probes (our AutoNAT): a check sends helpers a nonce and
 	// waits for one to dial us back. reachProbes maps an outstanding nonce
 	// to its callback; reachSeq mints nonces; reach is the last verdict.
@@ -567,6 +576,21 @@ func (n *Node) SetShrinkLiar(v bool) { n.shrinkLiar = v }
 // peer as the endpoint to aim a hole-punch at.
 func (n *Node) SetObservedAddr(a string) { n.observedAddr = a }
 
+// AddStaticPeer marks id as a configured consensus/anchor peer (see -persistent-peers):
+// it is NEVER evicted from the routing table on a reachability timeout — its address is
+// configured, not discovered, so a transient WAN miss is a retry situation, not an
+// eviction (#286 Layer 2 Q4; docs/network-durability.md §2/§8, Tendermint persistent_peers).
+// Call at startup, before consensus runs.
+func (n *Node) AddStaticPeer(id ports.NodeID) {
+	if n.staticPeers == nil {
+		n.staticPeers = make(map[ports.NodeID]bool)
+	}
+	n.staticPeers[id] = true
+}
+
+// IsStaticPeer reports whether id is a configured never-evicted consensus peer.
+func (n *Node) IsStaticPeer(id ports.NodeID) bool { return n.staticPeers[id] }
+
 // ObservedAddr is this node's relay-observed public endpoint ("" if unknown).
 func (n *Node) ObservedAddr() string { return n.observedAddr }
 
@@ -622,6 +646,7 @@ func New(id ports.NodeID, cfg Config, clock ports.Clock, tr ports.Transport, sto
 		pending:         make(map[uint64]*pending),
 		reachable:       make(map[ports.NodeID]ports.Time),
 		deadUntil:       make(map[ports.NodeID]ports.Time),
+		staticPeers:     make(map[ports.NodeID]bool),
 		reachProbes:     make(map[uint64]*reachProbe),
 		proofs:          make(map[ports.ChunkID]ports.StorageProof),
 		peerDomains:     make(map[ports.NodeID]uint64),
@@ -768,7 +793,13 @@ func (n *Node) requestAttempt(to ports.NodeID, msg ports.Message, attempt int, c
 		// timeout, leave routing untouched: the bond audit simply grants no standing
 		// this round and retries next interval. Genuine reachability failures (DHT
 		// lookups, fetches) still evict + negative-cache as before.
-		if msg.Kind != ports.MsgBondChallenge {
+		//
+		// A CONFIGURED static peer (-persistent-peers: the validator/anchor consensus
+		// tier) is likewise never evicted: its address is configured, not discovered,
+		// so a transient WAN unreachability is a retry situation, not an eviction —
+		// evicting it would let a proposer lose an attester mid-formation and stall
+		// quorum (#286 Layer 2 Q4; docs/network-durability.md §2/§8).
+		if msg.Kind != ports.MsgBondChallenge && !n.staticPeers[to] {
 			n.table.Remove(to)
 			delete(n.reachable, to) // no longer proven reachable (#43)
 			// Negative-cache the corpse so the fetch/repair loop skips it for a

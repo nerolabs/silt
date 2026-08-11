@@ -9,6 +9,22 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **`-persistent-peers`: a static, never-evicted consensus-peer tier (#286 Layer 2, dominant fix)**
+  (2026-08-12) — The blind field tester root-caused the cross-region genesis stall (with the #327
+  `-log debug`): it is a **mesh address-convergence** bug, not a timeout. A proposer had `send with no
+  known address` for the other validators, so it could not initiate the attestation gather → no quorum →
+  no genesis. Cause: at genesis there is no chain (no discoverable validator registry), all validators
+  bootstrapped to ONE seed, and silt's routing table holds bare NodeIDs (addresses live in the transport
+  layer, learned only from inbound frames/gossip) — so hub-and-spoke never converges addresses across a
+  fresh WAN, and the proposer cannot dial out. Fix (research-directed, `docs/network-durability.md` §8;
+  the settled BFT/PoS practice — Tendermint `persistent_peers`, Ethereum static peers, libp2p peerstore):
+  **configure the validator/anchor set** as `-persistent-peers ID@HOST:PORT,…` in every validator. Those
+  peers are `AddPeer`'d at boot (their address is known up front, no dependence on inbound learning) and
+  marked a **never-evicted** tier — a transient WAN miss is a retry, never an eviction, so a proposer can't
+  lose an attester mid-formation and stall quorum (Q4). The cloudtest/awstest topologies now pass the whole
+  validator set as persistent-peers. Guarded by `TestStaticPeerSurvivesReachabilityEviction286` (a static
+  peer survives retry-exhaustion eviction; a normal discovered peer does not). WAN-certified on the next
+  GCP run.
 - **Gather-path debug logging for the #286 Layer-2 root-cause** (2026-08-11) — The consensus
   propose→gather→attest path previously logged ONLY on a successful commit ("block committed"), so a
   quorum-2 genesis gather that starts and never completes over the WAN (the #286 Layer-2 blocker) was
