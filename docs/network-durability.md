@@ -15,7 +15,10 @@ fuse transport with security") and **#4** ("cheap honest participation is a
 security constraint"), all in [`TENETS.md`](TENETS.md) Part IX. Source of record:
 the research team's opinion at
 `silt-reviews/research/research-outcome/network-durability-vs-spacetime-RESEARCH-OPINION.md`
-(2026-08-10, all citations web-verified).
+(2026-08-10, all citations web-verified), extended by the genesis
+address-convergence follow-up at
+`silt-reviews/research/research-outcome/286-layer2-address-convergence-RESEARCH-RESPONSE.md`
+(2026-08-12) — the source for §1's first-contact rule, §2's never-evict tier, and §8.
 
 ---
 
@@ -45,6 +48,21 @@ A per-attempt request deadline bounds **transport**, nothing else. Size it for t
 - **Adaptive per-peer RTO** — Jacobson/Karels `RTO = SRTT + 4·RTTVAR` (RFC 6298),
   per-peer EWMA. Cheap, local, N-independent, jitter-robust. This is the correct
   general form; a fixed constant is the anti-pattern.
+- **First contact has no RTT history** — a fresh dial/TLS-handshake to a never-seen
+  peer can't be adaptive yet, so fall back to a **modest initial value + retry**,
+  exactly RFC 6298's model (initial RTO ≈ 1 s before any sample, exponential backoff
+  on retransmit) — **not** a large fixed constant. A big first-contact deadline is
+  doubly wrong: still non-adaptive, *and* it pins a dialer to a genuinely-dead peer
+  for that whole budget before retry, slowing convergence under the very loss you're
+  surviving. **Seed the per-peer estimator from the first successful handshake**, then
+  adapt. (This is the correct reading of the anti-pattern rule above: it forbids a
+  large *steady-state* constant, not a modest *initial* one. The instinct to "just
+  raise 2 s to 10 s" is the trap — #286 Layer 2.)
+- **Nest deadlines: inner strictly < outer.** A dial/TLS-handshake deadline must sit
+  **below** the request-timeout that wraps it — the same rule as `HolderDialTimeout <
+  RequestTimeout` — so a dead dial is abandoned *within* the request window and the
+  layer above retries, instead of the whole request expiring on a peer that was merely
+  slow to handshake.
 - **Scale the deadline with the outbound payload.** A one-time large message (in
   silt, a block carrying a validator's ~1.5 MB space-time bond registration) needs
   time to *transfer and be re-verified* before the peer can reply — a flat
@@ -80,6 +98,14 @@ footgun.
   loop doesn't re-eat a full timeout on the same corpse every sweep (#226/#277) —
   reachability failures (DHT lookups, fetches) evict; *slow-to-prove* (bond audit)
   does not.
+- **The configured consensus set is a static, never-evicted tier.** A validator/anchor
+  peer named in config (see §8) is re-dialed with backoff **forever** and is **never**
+  dropped by churn/eviction — exactly Tendermint's `persistent_peers`. You never
+  "forget" its address (it lives in config), so a transient WAN unreachability is a
+  retry situation, not an eviction. Keep the "evict after N retries" policy for
+  *discovered* peers only; place the consensus set **below** it. This alone stops a
+  proposer from losing an attester's address mid-formation and stalling quorum (#286
+  Layer 2, Q4).
 
 ## 3. Minimum-filter a noisy signal — never trust one sample
 
@@ -166,13 +192,50 @@ can *add* delay but can never reply faster than light, so latency can't be spoof
 slow, therefore you cheated"), which the same one-sidedness makes **unsound**.
 Latency can prove *near*, never *diligent*.
 
+## 8. Mesh formation: a peer you can't dial isn't "discovered" — configure the consensus set
+
+Timeouts and retries keep a *formed* mesh alive; they do not *form* one. Address
+convergence — every node learning every consensus peer's **dialable address** — is a
+separate, prior problem, and it has a settled answer. It is **not** a timeout problem,
+and no deadline tuning fixes it.
+
+- **At genesis there is no chain, so no on-chain validator registry — the validator
+  set's addresses must live in *config*, not discovery.** This is the chicken-and-egg
+  every BFT/PoS network resolves the same way: you cannot bootstrap *proposer-initiated*
+  quorum from an address book that only fills from inbound frames through a single hub.
+  Configure the validator/anchor set as `ID@addr` in **every** validator — a static,
+  persistently-dialed consensus tier. Precedent: **Tendermint/CometBFT
+  `persistent_peers`**, **Ethereum static/trusted peers + `enode://…@ip:port` / ENR**,
+  **libp2p bootstrap list + peerstore**. `seeds`/PEX are a *separate, weaker* role —
+  never hang consensus off them.
+- **Discovery converges addresses only if a lookup response carries the address.**
+  Classic Kademlia's contact is `(NodeID, IP, port)`, so `FIND_NODE` returns *dialable*
+  peers and even hub-and-spoke eventually converges. **If you split NodeID from address**
+  (routing table holds bare IDs; addresses live only in the transport layer — silt does
+  this), iterative lookup returns peers you *still can't dial*, and hub-and-spoke **never**
+  converges addresses. Given that split, either (i) **restore the coupling** — carry the
+  dialable address in lookup/`Contacts` responses — for the general mesh, or (ii)
+  **configure** the consensus-critical set out-of-band. Do (ii) for genesis regardless.
+- **Consensus must never *depend* on gossip/discovery for the addresses it needs to
+  gather quorum.** Gossip / PEX / Kademlia-with-addresses is the right discipline for the
+  *general* mesh; the *consensus* set is configured and never-evicted (§2). This is
+  Tendermint's split exactly: PEX converges the general peer set; `persistent_peers`
+  carries the set you must not lose.
+- **This was #286 Layer 2.** A fresh 3-region quorum-2 chain never committed genesis: all
+  spokes bootstrapped to one hub, the hub bootstrapped to nobody, so the hub could only
+  learn spokes from *inbound* frames — and under the WAN inbound stampede those handshakes
+  EOF'd — so the proposer had `send with no known address` for every attester and could
+  not initiate the gather. It reproduced only over real WAN (the no-latency sim has no
+  inbound overlap). The symptom *looked* like a timeout; the cause was configure-vs-discover.
+
 ---
 
 ## silt's applied ledger (worked examples of this page)
 
 | Issue | Symptom | This page's lens | Fix shipped |
 |---|---|---|---|
-| **#286** | quorum-2 genesis wedged cross-region; the 1.5 MB registration block couldn't be attested in time | §1 flat deadline not payload-scaled | size-aware transport deadline (`RequestSizeFloorBytesPerSec`); succinct-proof #299 is the structural close (§6) |
+| **#286 L1** | quorum-2 genesis wedged cross-region; the 1.5 MB registration block couldn't be attested in time | §1 flat deadline not payload-scaled | size-aware transport deadline (`RequestSizeFloorBytesPerSec`); async publish (202+poll); succinct-proof #299 is the structural close (§6) |
+| **#286 L2** | genesis still never committed; proposer had no *address* for attesters (`send with no known address`); hub's inbound handshakes EOF'd; WAN-only | §8 configure-not-discover + §2 never-evict + §1 first-contact deadline | configure the validator set as `ID@addr` (static, never-evicted tier); first-contact deadline modest + nested `<` request-timeout; instrument the EOF before tuning it — *direction set by research 2026-08-12, build in progress* |
 | **#288** | consensus starved under loss; live peers evicted on one miss; a flat deadline | §1 + §2 | adaptive/patient timeout + retry-don't-evict + bond-audit-never-evicts |
 | **#289** | should reply-latency be a hard C1 storage-diligence gate? | §3 + §4 + §5 | **no** hard gate — soft statistical deterrent (A5); structure is H-track |
 | **#277** | dead-holder dial-storm ate a full timeout per corpse every sweep | §1 decouple + §2 negative-cache | tighter `HolderDialTimeout`, no retry, `HolderCooldown` negative cache |
@@ -182,6 +245,11 @@ transport measurement being asked to also prove security or correctness?* If yes
 stop — split it (a generous, adaptive transport deadline **and** a separate
 structural/statistical instrument). *Is it a single sample about to trip a hard
 decision?* If yes, stop — minimum-filter over many, or retry instead of deciding.
+*Does a symptom (a slow reply, an EOF, a stall) merely look like a timeout?* Before
+you tune the number, **attribute it** — instrument the actual failure (which handshake
+phase, how long, how many concurrent) and rule out an architecture cause (unconverged
+addresses, a peer never learned, an eager eviction). "Looks like a timeout" is how
+#286 Layer 2 masqueraded as a deadline when it was configure-vs-discover (§8).
 
 ---
 
@@ -197,6 +265,13 @@ decision?* If yes, stop — minimum-filter over many, or retry instead of decidi
 - **Kademlia churn discipline:** Maymounkov & Mazières, IPTPS 2002 —
   https://pdos.csail.mit.edu/~petar/papers/maymounkov-kademlia-lncs.pdf ; libp2p
   eviction footgun — https://github.com/libp2p/go-libp2p-kad-dht/issues/283
+- **Configured persistent validator peers (address convergence, §8 / §2 never-evict):**
+  Tendermint/CometBFT `persistent_peers` / seeds / PEX —
+  https://docs.cometbft.com/v0.38/core/configuration ; Ethereum static/trusted peers
+  + enode / ENR (EIP-778) — https://geth.ethereum.org/docs/fundamentals/peer-to-peer ,
+  https://eips.ethereum.org/EIPS/eip-778 ; libp2p bootstrap + peerstore —
+  https://docs.libp2p.io/concepts/fundamentals/peers/ (Kademlia contact = (ID, IP,
+  port) is the Maymounkov–Mazières citation above)
 - **PoST-network practice (nobody reply-latency-gates):** Filecoin PoSt spec —
   https://spec.filecoin.io/algorithms/pos/post/ ; Storj audit service —
   https://github.com/storj/storj/wiki/audit-service ; Chia consensus (PoT/timelords)
