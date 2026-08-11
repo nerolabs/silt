@@ -179,8 +179,8 @@ resource "google_compute_instance" "public" {
   # role (storage/fetcher/relay/adversary/nat) stays SPOT for cost. All-SPOT
   # (cheap shakedowns) is core_on_demand=false.
   scheduling {
-    provisioning_model = (var.core_on_demand && contains(["validator", "registry"], each.value.role)) ? "STANDARD" : "SPOT"
-    preemptible        = !(var.core_on_demand && contains(["validator", "registry"], each.value.role))
+    provisioning_model = (var.all_on_demand || (var.core_on_demand && contains(["validator", "registry"], each.value.role))) ? "STANDARD" : "SPOT"
+    preemptible        = !(var.all_on_demand || (var.core_on_demand && contains(["validator", "registry"], each.value.role)))
     automatic_restart  = false
     # Hard cost backstop that does NOT depend on the orchestrator: GCP itself
     # DELETES the VM after ttl_minutes, even if the destroy-on-EXIT trap never runs
@@ -233,8 +233,8 @@ resource "google_compute_instance" "natted" {
   # role (storage/fetcher/relay/adversary/nat) stays SPOT for cost. All-SPOT
   # (cheap shakedowns) is core_on_demand=false.
   scheduling {
-    provisioning_model = (var.core_on_demand && contains(["validator", "registry"], each.value.role)) ? "STANDARD" : "SPOT"
-    preemptible        = !(var.core_on_demand && contains(["validator", "registry"], each.value.role))
+    provisioning_model = (var.all_on_demand || (var.core_on_demand && contains(["validator", "registry"], each.value.role))) ? "STANDARD" : "SPOT"
+    preemptible        = !(var.all_on_demand || (var.core_on_demand && contains(["validator", "registry"], each.value.role)))
     automatic_restart  = false
     # Hard cost backstop that does NOT depend on the orchestrator: GCP itself
     # DELETES the VM after ttl_minutes, even if the destroy-on-EXIT trap never runs
