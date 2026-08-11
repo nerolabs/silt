@@ -43,6 +43,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
@@ -84,6 +85,14 @@ type Transport struct {
 	listenAddr string
 	ln         net.Listener
 	handler    func(from ports.NodeID, msg ports.Message)
+
+	// inHandshakes counts inbound TLS handshakes currently in flight — the
+	// hub-stampede gauge for #286 Layer 2 (Q3): when many spokes dial a hub at
+	// once over a WAN, overlapping handshakes contend and a dialer's deadline can
+	// fire mid-handshake (the hub then logs an EOF). Logged alongside each inbound
+	// handshake failure so the next -log debug run can attribute the EOF (high
+	// concurrency + elapsed ≈ the dialer's budget ⇒ the stampede/deadline variant).
+	inHandshakes atomic.Int64
 
 	mu sync.Mutex
 	// peers is the address book: up to two addresses per peer, one per
@@ -512,9 +521,16 @@ func (t *Transport) dialPeer(to ports.NodeID, addr string) (*tls.Conn, error) {
 		conn.SetDeadline(time.Time{})
 		return conn, nil
 	}
-	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: 2 * time.Second}, "tcp", addr, cfg)
+	// Instrument the dial (#286 Layer 2 Q3): log the budget + how long we actually
+	// spent, so a failure whose elapsed ≈ deadline is attributable to the deadline
+	// firing (vs a fast pin-rejection/teardown). Budget bounds TCP connect + the TLS
+	// handshake together here (net.Dialer.Timeout covers both).
+	const dialBudget = 2 * time.Second
+	dialStart := time.Now()
+	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: dialBudget}, "tcp", addr, cfg)
 	if err != nil {
-		t.logf(ports.LogWarn, "dial failed", "to", to, "addr", addr, "err", err)
+		t.logf(ports.LogWarn, "dial failed", "to", to, "addr", addr, "err", err,
+			"budget", dialBudget, "elapsed", time.Since(dialStart))
 		return nil, err
 	}
 	return conn, nil
@@ -587,8 +603,17 @@ func (t *Transport) readLoop(conn *tls.Conn, viaRelay bool) {
 		t.logf(ports.LogWarn, "recovered panic in read loop", "remote", conn.RemoteAddr(), "panic", r)
 		conn.Close()
 	})
+	// Instrument the inbound handshake (#286 Layer 2 Q3): a mid-handshake EOF over a
+	// WAN is most consistent with the DIALER's deadline firing under a hub stampede.
+	// Log the concurrent in-flight count + how long this handshake ran before failing,
+	// so the next run can attribute the EOF (high concurrency + elapsed ≈ the dialer
+	// budget ⇒ stampede/deadline; instant ⇒ a pin/teardown; see docs/network-durability.md §8).
+	inflight := t.inHandshakes.Add(1)
+	defer t.inHandshakes.Add(-1)
+	hsStart := time.Now()
 	if err := conn.Handshake(); err != nil {
-		t.logf(ports.LogDebug, "inbound handshake failed", "remote", conn.RemoteAddr(), "err", err)
+		t.logf(ports.LogDebug, "inbound handshake failed", "remote", conn.RemoteAddr(), "err", err,
+			"elapsed", time.Since(hsStart), "concurrent", inflight)
 		conn.Close()
 		return
 	}
