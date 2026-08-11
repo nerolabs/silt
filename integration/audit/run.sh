@@ -109,13 +109,21 @@ for _ in $(seq 1 40); do
   sleep 1
 done
 [ "$ok" = 1 ] || { echo "FAIL: caretaker never started caretaking"; dc logs caretaker | tail -20; exit 1; }
-sleep 8   # let the warm-start manifest fetch land in the caretaker's store
+# Wait a FULL repair sweep (~1.5×60s RepairInterval), not just long enough for the
+# warm-start manifest fetch to land. The positive control below asserts the
+# caretaker did NOT repair an intact file — but the first repairTick only fires at
+# RepairInterval (60s) after Care() starts (core/node/repair.go:46). An 8s wait
+# asserts "no repair" before ANY sweep has run, so a broken product that wrongly
+# "repairs" an intact stripe would still show 0 and the control would false-pass.
+# Waiting a full sweep means the 0 is a real observation of at least one completed
+# repair sweep declining to touch the intact file.
+sleep "$SWEEP_WAIT"
 
 pass=1
 
-echo "== POSITIVE CONTROL: intact swarm — no repair, file retrievable =="
+echo "== POSITIVE CONTROL: intact swarm — no repair after a FULL sweep, file retrievable =="
 pre_repaired=$(carelog "stripe repaired")
-echo "  caretaker 'stripe repaired' lines so far: ${pre_repaired:-0} (want 0)"
+echo "  caretaker 'stripe repaired' lines after ${SWEEP_WAIT}s (≥1 full sweep): ${pre_repaired:-0} (want 0)"
 [ "${pre_repaired:-0}" = 0 ] || { echo "FAIL: caretaker repaired an intact file (false positive)"; pass=0; }
 dc exec -T holder1 sh -c "silt swarm get '$LINK' -o /tmp/pre.bin -peers '$PEERS' -registry '$REG' && sha256sum /tmp/pre.bin | cut -d' ' -f1" >/tmp/audit_pre.txt 2>&1
 PRE=$(grep -oE '^[a-f0-9]{64}' /tmp/audit_pre.txt | tail -1)

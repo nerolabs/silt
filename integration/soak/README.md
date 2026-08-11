@@ -58,12 +58,21 @@ the image stays tiny and there's no ~1 GB Go-build memory spike in Docker.
   links and every one must equal its recorded SHA-256. Any mismatch fails.
 - **No crash-loop.** Container `RestartCount` is sampled at start and end; any
   restart is a finding.
-- **Bounded memory.** `docker stats` total RSS is sampled at start / mid / end.
-  Monotonic growth that is also >3x start is flagged as a potential leak;
-  bounded monotonic growth is noted, not failed.
+- **Bounded memory.** `docker stats` RSS is sampled at start / mid / end and
+  reduced to a **mean per live daemon** — not the raw sum. Churn stops one
+  holder at a time, so the running-container count dips 14→13 mid-run; a raw sum
+  would swing with that count independently of any leak (false FINDING on the
+  dip, or a real per-daemon leak hidden behind the shrunk count). The mean is
+  invariant to the churn swing. Monotonic growth start<mid<end that is also >2x
+  start **or** >+50 MiB/daemon is flagged a potential leak; bounded monotonic
+  growth is noted, not failed.
+- **Bounded object store.** Total on-store object count is sampled at start /
+  mid / end. Once the published files replicate, it should reach a steady state;
+  a monotonic start<mid<end climb that also >2x the start count is flagged as a
+  potential disk/object leak (FINDING, not FAIL).
 
-It also **reports** the deltas — memory (MiB), summed store object counts, and
-restarts — so a clean run's growth numbers are the deliverable.
+It also **reports** the deltas — mean memory per daemon (MiB), summed store
+object counts, and restarts — so a clean run's growth numbers are the deliverable.
 
 ## Gentle, within-margin churn
 

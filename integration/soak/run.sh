@@ -77,11 +77,22 @@ store_objects() {
   done
   echo "$total"
 }
-# total RSS (MiB) across all daemon containers, from docker stats
+# MEAN RSS (MiB) per LIVE daemon container, from docker stats.
+#
+# We report the per-daemon MEAN, not the raw sum, on purpose: churn stops ONE
+# holder at a time, so `dc ps -q` returns 13 running containers mid-run and 14
+# at start/end. A raw SUM would swing with that live count independently of any
+# real leak — a leak gate on the sum could false-FINDING on the churn dip, or
+# (worse) a genuine per-daemon leak could hide behind a churn-shrunk container
+# count and false-PASS. Dividing the total by the live count (n) makes the
+# metric invariant to the 14↔13 churn swing, so start<mid<end reflects actual
+# per-daemon growth, not topology size.
 stats_mem_mib() {
-  local ids raw total=0 v unit num
+  local ids total=0 v unit num n=0
   ids=$(dc ps -q 2>/dev/null)
   [ -n "$ids" ] || { echo 0; return; }
+  n=$(echo "$ids" | wc -w | tr -d ' ')
+  [ "$n" -gt 0 ] || { echo 0; return; }
   # MemUsage column looks like "12.3MiB / 7.6GiB"
   while read -r v; do
     num=$(echo "$v" | sed -E 's/([0-9.]+).*/\1/')
@@ -93,7 +104,8 @@ stats_mem_mib() {
     esac
     total=$(awk "BEGIN{printf \"%.1f\", $total + $num}")
   done < <(docker stats --no-stream --format '{{.MemUsage}}' $ids 2>/dev/null | awk '{print $1}')
-  echo "$total"
+  # per-live-daemon MEAN — invariant to the churn container-count swing
+  awk "BEGIN{printf \"%.1f\", $total / $n}"
 }
 # how many daemons have restarted (crash-loop detector)
 restart_count() {
@@ -274,7 +286,7 @@ printf "fetches               : %d total, %d bit-perfect\n" "$FETCH_TOTAL" "$FET
 printf "churn events          : %d (gentle, within replica margin)\n" "$churn_events"
 echo   "-------------------- growth over run --------------------"
 MEM_DELTA=$(awk -v a="${MEM_START:-0}" -v b="${MEM_END:-0}" 'BEGIN{printf "%+.1f", b-a}')
-printf "memory (MiB)  start=%s  mid=%s  end=%s   delta=%s\n" \
+printf "mem/daemon (MiB) start=%s  mid=%s  end=%s   delta=%s   (MEAN per live daemon — churn-invariant)\n" \
   "$MEM_START" "${MEM_MID:-n/a}" "$MEM_END" "$MEM_DELTA"
 printf "store objects start=%s  mid=%s  end=%s   delta=%s\n" \
   "$OBJ_START" "${OBJ_MID:-n/a}" "$OBJ_END" "$((OBJ_END - OBJ_START))"
@@ -301,16 +313,35 @@ if [ "$((RST_END - RST_START))" -gt 0 ]; then
   echo "FINDING: $((RST_END - RST_START)) daemon container restart(s) during the soak — possible crash-loop; content kept serving, inspect logs"
   finding=1
 fi
-# leak heuristic: monotonic growth at BOTH mid and end, tightened from 3x to 2x OR
-# an absolute +150 MiB (a short run's small start RSS makes 3x too easy to stay under).
+# leak heuristic (per-daemon MEAN RSS, churn-invariant): monotonic growth at
+# BOTH mid and end, AND >2x OR an absolute +50 MiB/daemon. The 2x is scale-free;
+# the absolute is now per-daemon (the metric is a mean, not the ~14-daemon sum),
+# so +50 MiB of unreleased RSS per daemon over a short soak is the leak floor.
 if [ -n "${MEM_MID:-}" ] && [ "$mid_sampled" = 1 ]; then
   grew=$(awk "BEGIN{print (${MEM_END:-0} > ${MEM_MID:-0} && ${MEM_MID:-0} > ${MEM_START:-0}) ? 1 : 0}")
-  leak=$(awk "BEGIN{print (${MEM_END:-0} > 2*${MEM_START:-1} || (${MEM_END:-0} - ${MEM_START:-0}) > 150) ? 1 : 0}")
+  leak=$(awk "BEGIN{print (${MEM_END:-0} > 2*${MEM_START:-1} || (${MEM_END:-0} - ${MEM_START:-0}) > 50) ? 1 : 0}")
   if [ "$grew" = 1 ] && [ "$leak" = 1 ]; then
-    echo "FINDING: memory grew monotonically start<mid<end AND >2x-or-+150MiB (${MEM_START}→${MEM_END} MiB) — potential leak, inspect"
+    echo "FINDING: per-daemon mem grew monotonically start<mid<end AND >2x-or-+50MiB/daemon (${MEM_START}→${MEM_END} MiB) — potential leak, inspect"
     finding=1
   elif [ "$grew" = 1 ]; then
-    echo "NOTE: memory grew monotonically (${MEM_START}→${MEM_MID}→${MEM_END} MiB) but stayed bounded — watch, not fatal"
+    echo "NOTE: per-daemon mem grew monotonically (${MEM_START}→${MEM_MID}→${MEM_END} MiB) but stayed bounded — watch, not fatal"
+  fi
+fi
+
+# object/disk leak heuristic, paralleling the memory one: total on-store objects
+# should reach a steady state once the M files are published + replicated. A
+# monotonic start<mid<end climb that MORE THAN DOUBLES the starting object count
+# signals an unbounded disk/object leak (e.g. proof scratch or chunk copies never
+# reaped). FINDING only (exit 0) — a genuine growth anomaly to inspect, not a
+# hard regression. The store-object counts were sampled but never asserted before.
+if [ -n "${OBJ_MID:-}" ] && [ "${OBJ_START:-0}" -gt 0 ]; then
+  obj_grew=$(awk "BEGIN{print (${OBJ_END:-0} > ${OBJ_MID:-0} && ${OBJ_MID:-0} > ${OBJ_START:-0}) ? 1 : 0}")
+  obj_leak=$(awk "BEGIN{print (${OBJ_END:-0} > 2*${OBJ_START:-1}) ? 1 : 0}")
+  if [ "$obj_grew" = 1 ] && [ "$obj_leak" = 1 ]; then
+    echo "FINDING: store objects grew monotonically start<mid<end AND >2x (${OBJ_START}→${OBJ_MID}→${OBJ_END}) — potential disk/object leak, inspect"
+    finding=1
+  elif [ "$obj_grew" = 1 ]; then
+    echo "NOTE: store objects grew monotonically (${OBJ_START}→${OBJ_MID}→${OBJ_END}) but stayed bounded — watch, not fatal"
   fi
 fi
 
