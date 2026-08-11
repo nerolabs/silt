@@ -74,7 +74,10 @@ bootok=0
 HIDS=()
 while IFS= read -r _id; do [ -n "$_id" ] && HIDS+=("$_id"); done < <(dc ps -q holder)
 for id in "${HIDS[@]}"; do
-  for _ in $(seq 1 60); do docker logs "$id" 2>&1 | grep -q 'bootstrapped' && { bootok=$((bootok+1)); break; }; sleep 1; done
+  # audit #303: require a NON-EMPTY routing table, not the bare word "bootstrapped"
+  # — a node logs `bootstrapped (0 table entries)` when it lands isolated, which is
+  # NOT "at scale" and must not count toward the ≥90% scale gate below.
+  for _ in $(seq 1 60); do docker logs "$id" 2>&1 | grep -qE 'bootstrapped \([1-9][0-9]* table entries\)' && { bootok=$((bootok+1)); break; }; sleep 1; done
 done
 echo "  $bootok/$HOLDERS holders bootstrapped"
 # HARD scale gate: this suite measures cold-fetch success at SCALE (#43). If the

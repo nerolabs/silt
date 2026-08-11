@@ -89,19 +89,31 @@ echo "== P0 negative control: a lone unqualified validator must REFUSE to commit
 # run below. A lone objective validator has no qualified bonded attester, so a
 # publish against its registry must NOT commit.
 NEG_OUT=$(docker run --rm silt-consensus \
-  sh -c 'silt daemon -id-seed 9001 -listen 127.0.0.1:4001 -serve-registry 127.0.0.1:4003 -store /data \
+  sh -c 'mkdir -p /data
+    silt daemon -id-seed 9001 -listen 127.0.0.1:4001 -serve-registry 127.0.0.1:4003 -store /data \
       -validator -objective=false -min-rep 100 -quorum 1 -attesters '"$ID_A"' -bond 8M -bond-audit 1s \
       -capacity 1G -log info >/data/neg.log 2>&1 &
     for i in $(seq 1 30); do grep -q "^registry:" /data/neg.log && break; sleep 1; done
+    grep -q "^registry:" /data/neg.log && echo "---reg-bound---yes" || echo "---reg-bound---no"
     head -c 65536 /dev/urandom > /tmp/n.bin
     silt swarm add /tmp/n.bin -peers "$(awk "/^peer:/{print \$2}" /data/neg.log)" \
       -registry "$(sed -En "s/.*serving ([^ ]+).*/\1/p" /data/neg.log | head -1)" >/tmp/neg_add.out 2>&1 || true
     echo "---neg-add---"; cat /tmp/neg_add.out
     echo "---neg-commits---"; grep -c "committed block" /data/neg.log || true' 2>&1)
-if echo "$NEG_OUT" | sed -n '/---neg-commits---/,$p' | grep -qE '^[1-9]'; then
+# POSITIVE CONTROL (audit #303): "0 committed blocks" is only a REFUSAL if the
+# write path actually ran. If the registry never bound, or the publish never
+# reached the registry (a dead/broken swarm), that ALSO shows 0 commits and would
+# false-pass as "correctly refused". Require both: the registry bound, AND the
+# publish reached it (the entry was accepted/registered — a lone validator
+# registers the entry but never COMMITS it for lack of a qualified quorum).
+if ! echo "$NEG_OUT" | grep -q -- "---reg-bound---yes"; then
+  fail "P0-BROKEN: the lone validator's registry never bound — a 'no commit' result is meaningless (write path not exercised)"
+elif echo "$NEG_OUT" | sed -n '/---neg-add---/,/---neg-commits---/p' | grep -qiE 'connection refused|no route to host|dial|no such host|registry.*unreachable'; then
+  fail "P0-BROKEN: the publish never reached the registry (dial/connection error) — a 'no commit' result is meaningless, not a real refusal"
+elif echo "$NEG_OUT" | sed -n '/---neg-commits---/,$p' | grep -qE '^[1-9]'; then
   fail "P0 unbonded publish COMMITTED — rubber-stamp (negative control failed)"
 else
-  echo "  P0 PASS: unbonded/unqualified publish refused, no committed block"
+  echo "  P0 PASS: registry bound + publish reached it, yet the unqualified validator refused to commit (no committed block)"
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────

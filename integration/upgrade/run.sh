@@ -162,6 +162,11 @@ CHUNKS_A_PRE=$(dcs exec -T holderA sh -c 'find /data/objects -type f 2>/dev/null
 PROOFS_A_PRE=$(dcs exec -T holderA sh -c 'ls /data/proofs 2>/dev/null | wc -l || echo 0' | tr -d ' \r\n')
 CHAIN_PRE=$(dcs exec -T seed sh -c 'test -f /data/chain.cbor && wc -c </data/chain.cbor || echo 0' | tr -d ' \r\n')
 echo "  V1 on-disk: holderA objects=$CHUNKS_A_PRE proofs=$PROOFS_A_PRE ; seed chain.cbor bytes=$CHAIN_PRE"
+# POSITIVE CONTROL (audit #303): V1 runs -validator -quorum=0 specifically to commit
+# a persisted chain to reload. If chain.cbor is empty, V1's commit path is broken
+# and the chain-RELOAD property is never exercised — treating that as "nothing to
+# reload → chain-OK" would false-pass a real regression. Require a real V1 chain.
+[ "${CHAIN_PRE:-0}" -gt 0 ] 2>/dev/null || fail "V1 seed never persisted a chain block (chain.cbor empty) — the chain-reload property was never exercised, so a later 'chain OK' is meaningless"
 
 wait_ready() { # service
   local s=$1
