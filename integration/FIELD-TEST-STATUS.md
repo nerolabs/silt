@@ -23,15 +23,23 @@ log line / SHA / chain-status field), never a string the harness echoes.
 | `client` (#4) | **PASS** | the web-UI HTTP path (publish→roots→fetch bit-perfect) + the #89 guard (no-token/wrong-token→401, DNS-rebinding/cross-origin→403, read→200) | Driven from *inside* the daemon container (the local-`Host` guard requires it). Real HTTP status codes + SHA. |
 | `sybil` (#5) | **PASS (scoped)** | C2 no-quiet-capture: a young objective net commits with the anchors (`wheels engaged`) and refuses to advance for a bonded Sybil set without them | **BIGGEST CAVEAT.** On a laptop the Sybils' bonds **don't bank on-chain** (a young network's bond-registration needs anchor-proposed blocks — chicken-and-egg for fresh Sybils), so the **standing gate** fires, not the pure **`ErrAnchorRequired`** gate. Both refuse the capture (the outcome is real), but the *pure anchor-co-sign gate* and the **≥8-bond atomization note** are deferred to the cloud (see #5 extension below). |
 | `chaos` (#7) | **PASS** (WAVE 1); **opt-in FINDING** (WAVE 2) | crash-recovery: `SIGKILL` every holder, restart, #69 re-announce fires, cold-fetch bit-perfect | WAVE 1 is the robust gate (default). **WAVE 2 (`WAVES=2`) is an OBSERVATION, not a verified defect:** crashing the *sole* seed/registry/bootstrap breaks discovery, and a holder re-announce did **not** restore it — so the initial "stale provider index" hypothesis was **disproven**, the root cause is **unpinned**, and it's entangled with the single-bootstrap SPOF a real deployment avoids. Off by default. Needs root-causing + a redundant-bootstrap retest. WAVE 1's PASS text now reports the measured reprovide fraction (the gate is ≥1 reprovide + a bit-perfect cold fetch), not "every holder." |
-| `churn` | **FINDING** by design (README: "expected to fail against current silt") | repair-under-churn: kill holders, caretaker reconstructs from parity + re-scatters, stays bit-perfect | **Exit-code caveat:** a characterized shortfall (small-swarm coverage cliff / dial-storm) should surface as `RESULT: FINDING` (exit 0), but the harness currently exits non-zero → the roll-up scores it **FAIL**, indistinguishable from a real regression. Split the exit like `chaos`/`durability` (see FIELD-TEST-ROADMAP #6). The repair core itself is genuine (real hash-verified `stripe repaired` + ephemeral-client bit-perfect refetch). |
+| `churn` | **FINDING** by design (README: "expected to fail against current silt") | repair-under-churn: kill holders, caretaker reconstructs from parity + re-scatters, stays bit-perfect | **Exit split DONE** (`churn/run.sh:257-262`): a characterized shortfall (small-swarm coverage cliff / dial-storm) surfaces as `RESULT: FINDING` (exit 0); a repaired-but-unfetchable regression is `RESULT: FAIL` (exit 1); `EXPECT=pass` flips the FINDING to a hard fail. The roll-up scores it FINDING, not FAIL (ROADMAP #6 closed). The repair core itself is genuine (real hash-verified `stripe repaired` + ephemeral-client bit-perfect refetch). **Test-quality note (open):** the outcome is sensitive to random shard placement — a single run may hit the "coverage held within the erasure margin" branch and exercise no reconstruction. Seeded placement to guarantee a forced repair-and-refetch every run is tracked in ROADMAP #6. |
 
 **Also on main (prior sessions):** `consensus`, `redteam` (#184 accountability),
 `bond`, `economy`, `audit`, `takedown`, `nat` (+ hole-punch), `soak`, `upgrade`
 (#237 reproducer). `economy` already covers the wire-testable demand outcome
 ("hosts earn per byte, freeloaders go broke"). Known soft spot from the prior
-acceptance pass: `bond`'s "reputation ∝ bond" (C1) is now **automated** — a
-plot-SIZE gate parses `-bond` to bytes and requires the on-disk plot to be ≥ 90%
-of it (a near-empty/instant plot fails C1), replacing the hand-recorded check.
+acceptance pass: `bond`'s C1 "no discount". **Precise claim (do not overstate):**
+the suite automates a **plot-residency cost gate** — a plot-SIZE check parses
+`-bond` to bytes and requires the on-disk plot to be ≥ 90% of it (a
+near-empty/instant plot fails), plus PHASE 3's **root-owner dedup** (one sealed
+plot cannot back N Sybil identities). Together these are the real "no discount"
+mechanism. What the suite does **not** yet assert is reputation **proportionality**
+(`reputation ∝ bond`): PHASE 1 only checks `reputation=[1-9]` at a *single* bond
+size (`bond/run.sh:144`), not a ratio across two bond sizes. So "reputation ∝ bond"
+is **not** DONE as a proportionality claim — the two-bond ratio assert is tracked in
+ROADMAP #7. (STATUS and ROADMAP previously contradicted each other on this; ROADMAP
+#7 is the source of truth — still open.)
 
 ## Not built — stated gap
 
@@ -60,21 +68,34 @@ residual). It is no longer dry-validated-only.
 
 - **SMOKE (4 nodes): 8 pass / 1 gap / 0 fail.** The one gap is `8-takedown` (needs
   store-2, absent in SMOKE). Network warmed in ~11s. Clean teardown, zero residual.
-- **Full 13-node run: FOUND A REAL PRODUCT BUG (#281).** silt does a **one-shot
-  bootstrap**; the three joining validators started before the boot validator's
-  listener was up, came up with **empty routing tables**, and **never re-bootstrapped**
-  — so the 4-validator cross-region net never meshed, the chain stayed at height 0,
-  and every publish timed out. Diagnosed live (val-b could TCP-reach val-a:4001 but
-  never retried). This is exactly what the two-substrate immutable is for: the
-  2-node SMOKE's lucky timing masked it.
-- **Fix verified (#282).** A joining node now waits for its `-bootstrap` host:port
-  to accept TCP before starting silt (models a real deployment; product gap #281
-  still stands). Re-run: the mesh formed (val-b/c/d = 5/8/3 table entries, was 0/0/0)
-  and the network **warmed in 18s** where it was dead before. Also gated
-  `flow_convergence` on a real committed block (height-0 no longer falsely
-  "converges"), and added a GCP-native `max_run_duration`+`DELETE` auto-delete guard
-  after a SIGKILLed orchestrator once leaked on-demand VMs (the `shutdown -h +TTL`
-  guard only halts the guest).
+- **Full 13-node run: FOUND A REAL PRODUCT BUG (#281) — NOW FIXED IN-PRODUCT.** silt
+  originally did a **one-shot bootstrap**; the three joining validators started before
+  the boot validator's listener was up, came up with **empty routing tables**, and
+  **never re-bootstrapped** — so the 4-validator cross-region net never meshed, the
+  chain stayed at height 0, and every publish timed out. Diagnosed live (val-b could
+  TCP-reach val-a:4001 but never retried). This is exactly what the two-substrate
+  immutable is for: the 2-node SMOKE's lucky timing masked it.
+- **#281 is fixed IN-PRODUCT (issue closed).** silt now self-heals an empty routing
+  table: `Node.StartBootstrapRetry` (`core/node/bootstrap.go`) periodically re-runs
+  the Kademlia join against the `-bootstrap` seeds while the routing table is empty,
+  default `-bootstrap-retry=15s` (`cmd/silt/daemon.go:81`, wired at `:839`; disable
+  with `0`). On recovery it logs `re-bootstrapped: recovered from an empty routing
+  table (N table entries)`. Unit-tested by `core/node/bootstrap_test.go`
+  (`TestBootstrapRetryRecoversIsolatedNode` + 3 more). So a node that started before
+  its bootstrap target was listening now recovers on its own.
+- **Harness belt (still present) + the wire-cert gap.** The cloud startup script
+  *also* waits for the `-bootstrap` host:port to accept TCP before starting silt
+  (`provision/silt-startup.sh`) — this models real seed-first deployment ordering, but
+  with both belts fastened **no flow exercises an empty-routing-table join over the
+  wire**, so neither the original defect nor its in-product fix is *certified* on
+  either substrate. Closing that = one cloud flow that disables the TCP-wait on a
+  single joining validator and asserts the real `re-bootstrapped: recovered from an
+  empty routing table` line (tracked in ROADMAP; see §B of the blind field-test
+  critique). The 18s warm-up the fix produced was verified live (val-b/c/d = 5/8/3
+  table entries, was 0/0/0). Also gated `flow_convergence` on a real committed block
+  (height-0 no longer falsely "converges"), and added a GCP-native
+  `max_run_duration`+`DELETE` auto-delete guard after a SIGKILLed orchestrator once
+  leaked on-demand VMs (the `shutdown -h +TTL` guard only halts the guest).
 
 ### Operational caveats for the next full run
 - **Zone capacity:** an on-demand (`core_on_demand=true`) run hit a **transient

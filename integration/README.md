@@ -166,7 +166,7 @@ KEEP=1 ./integration/<name>/run.sh     # leave the topology up to poke at
 | `redteam/run.sh` | #184 accountability: equivocator slashed, forged block rejected, low-bond proposer refused |
 | `sybil/run.sh` | C2 no quiet capture: a young objective network commits with the honest anchors and refuses to advance for a bonded Sybil set without them |
 | `audit/run.sh` | a "liar" deletes data but keeps proofs → the loss is caught and repaired |
-| `bond/run.sh` | proof-of-space-time bond cost (C1): real plots, reputation ∝ bond, shortcuts rejected |
+| `bond/run.sh` | proof-of-space-time bond cost (C1 no-discount): real plots seal expensive + verify cheap (plot-residency cost gate), one plot cannot back N identities (root-owner dedup), under-bonded proposals rejected. (Reputation *proportionality* — `reputation ∝ bond` — is not yet asserted; ROADMAP #7.) |
 | `economy/run.sh` | blind-signed, publisher-unlinkable credits **over the wire**; per-byte earning / freeloader-broke via the in-process economy sim (no daemon credit seam yet — see the suite's FINDING 2) |
 | `takedown/run.sh` | per-operator, existence-checked, reversible takedown |
 | `privacy/run.sh` | publisher unlinkability: the default chain refuses a durable file→publisher link (refuse-to-surveil), the private path works, `-token-quorum` authorizes without identity |
