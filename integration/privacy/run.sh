@@ -183,13 +183,26 @@ OUT3=$(publish dc -token-quorum 2); echo "$OUT3" | sed 's/^/    /'
 LINK3=$(echo "$OUT3" | grep -oE 'silt:v1:[A-Za-z0-9_:-]+' | head -1)
 sleep 4
 c3_after=$(commit_count dc valA)
-if [ -n "$LINK3" ] && [ "${c3_after:-0}" -gt "${c3_before:-0}" ]; then
-  echo "  P3 PASS: -token-quorum publish committed (commits ${c3_before}→$c3_after) carrying a blind credential, no Publisher identity — authorized yet unlinkable"
+# GATE (not a soft NOTE): the blind-token MACHINERY must work here even though the
+# final quorum-COMMIT is cloud-scoped. A -token-quorum publish that produces a real
+# blind credential (a silt:v1 link with NO Publisher identity) has exercised the
+# blind-signing path; only gathering the canonical signer quorum is deferred to the
+# cloud. So we split the two failure modes a soft NOTE used to merge:
+#   • NO blind credential minted  → the blind-token path itself is broken → hard FAIL
+#     (this is the regression the previous NOTE would have hidden behind a PASS).
+#   • credential minted, no commit → cloud-scoped quorum, reported as a real measured
+#     number (not a fake green, not a fatal — P1/P2 already prove unlinkability).
+if [ -z "$LINK3" ]; then
+  fail "P3: -token-quorum publish produced NO blind credential (link empty) — the blind-signed publish path is broken, not merely cloud-scoped"
+elif echo "$LINK3" | grep -qiE 'publisher|pub:'; then
+  fail "P3: -token-quorum link carries a Publisher identity ($LINK3) — authorization leaked identity, unlinkability broken"
+elif [ "${c3_after:-0}" -gt "${c3_before:-0}" ]; then
+  echo "  P3 PASS: -token-quorum publish committed (commits ${c3_before}→$c3_after) carrying a blind credential ($LINK3), no Publisher identity — authorized yet unlinkable"
 else
-  echo "  P3 NOTE: -token-quorum publish did not commit here (link=$LINK3 commits ${c3_before}→$c3_after)."
-  echo "    Not gated as a hard fail — token-quorum needs the publisher to reach the canonical signer"
-  echo "    set; the unlinkability guarantee (P1/P2) stands on its own. Cloud test exercises the full"
-  echo "    quorum path at scale (integration/cloudtest)."
+  echo "  P3 FINDING (cloud-scoped, exit 0): blind credential minted ($LINK3) but the block did not commit here (commits ${c3_before}→${c3_after:-0})."
+  echo "    The blind-signing path WORKED (a real unlinkable credential was produced); only gathering the"
+  echo "    canonical signer quorum is deferred to scale. Not a regression — P1/P2 prove unlinkability;"
+  echo "    the cloud test exercises the full quorum-commit path (integration/cloudtest)."
 fi
 
 echo ""

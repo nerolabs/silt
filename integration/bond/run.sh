@@ -168,9 +168,17 @@ dc --profile adversary up -d adversary >/dev/null 2>&1
 # test hit exactly this false FAIL; redteam SCENARIO 3 covers the same refusal.)
 armed=0
 for _ in $(seq 1 40); do dc logs adversary 2>&1 | grep -q "ADVERSARY: -lowbond-propose set" && { armed=1; break; }; sleep 1; done
+# Delivery semantics (core/node/adversary.go:95): ProposeBadBlock emits a verdict
+# (REJECTED/ACCEPTED) IFF honest RESPONDS; on an unreachable target the RPC errors and
+# the daemon retries silently. So "no verdict" ⟺ the proposal was never delivered —
+# there is no "delivered but silent" state to catch. honest is already up + bonded from
+# PHASE 1 and the adversary retries every 1s, so on a healthy host delivery is reliable
+# (the window is generous below). The remaining question is only how we CLASSIFY a
+# genuine non-delivery, and the fix (blind field test #2 §C) is: an undeliverable leg
+# must NOT print a green PASS — it is a visible FINDING (untested here), not fake-green.
 ADV_VERDICT=""
 if [ "$armed" = 1 ]; then
-  for _ in $(seq 1 120); do   # generous: outlast a slow adversary→honest connect
+  for _ in $(seq 1 150); do   # generous: outlast a slow adversary→honest connect + honest readiness
     ADV_VERDICT=$(dc logs adversary 2>&1 | grep -E "adversary: lowbond-propose proposal (correctly REJECTED|UNEXPECTEDLY ACCEPTED)" | tail -1)
     [ -n "$ADV_VERDICT" ] && break
     sleep 1
@@ -182,9 +190,10 @@ if echo "$ADV_VERDICT" | grep -q "correctly REJECTED"; then
 elif echo "$ADV_VERDICT" | grep -q "UNEXPECTEDLY ACCEPTED"; then
   echo "  NEGATIVE-2: FAIL (under-bonded proposal ACCEPTED over the wire — real C1 breach)"; dc logs adversary | tail -15; pass=0
 else
-  echo "  NEGATIVE-2: GAP — the adversary could not DELIVER a proposal to honest within the window"
-  echo "    (armed=$armed, target unreachable). The low-bond refusal is UNTESTED here, not failed —"
-  echo "    redteam SCENARIO 3 exercises the identical refusal over Docker and gates it. Harness gap."
+  echo "  NEGATIVE-2: GAP — the adversary could not DELIVER a proposal to honest within 150s"
+  echo "    (armed=$armed, undeliverable ⟺ no verdict). The low-bond refusal is UNTESTED here, not failed,"
+  echo "    and per immutable #4 is surfaced as a FINDING (not a green PASS). redteam SCENARIO 3 hard-gates"
+  echo "    the identical refusal over Docker."
   gap2=1
 fi
 
@@ -218,9 +227,13 @@ echo "  on-disk plot         : ${PLOT_BYTES:-?} bytes (${PLOT_HUMAN:-?})"
 echo "  peer verify verdict  : ${PEER_VERDICT:-<none>}"
 echo "  honest standing      : ${HON_STANDING:-<none>}"
 if [ "$pass" = 1 ] && [ "$gap2" = 1 ]; then
-  echo "  RESULT: PASS ✅  real plot is expensive to make, cheap to verify (C1) — NOTE: the PHASE 2"
-  echo "  low-bond negative control was undeliverable this run (adversary couldn't reach honest);"
-  echo "  that refusal is covered by the redteam suite. C1 positive controls held."
+  # Undeliverable low-bond leg: honest (immutable #4) — surface it as a FINDING, not a
+  # green PASS, so a reject test that never delivered can't masquerade as fully green.
+  # exit 0 (a harness-coverage gap, not a regression); redteam SCENARIO 3 hard-gates it.
+  echo "  RESULT: FINDING ⚠  C1 positive controls held (real plot expensive to make, cheap to verify),"
+  echo "  but the PHASE 2 low-bond negative control was UNDELIVERABLE this run (the adversary could not"
+  echo "  reach honest, so its refusal was not exercised HERE). Not a regression and not a green pass —"
+  echo "  the identical refusal is hard-gated by the redteam suite (SCENARIO 3)."
 elif [ "$pass" = 1 ]; then
   echo "  RESULT: PASS ✅  real plot is expensive to make, cheap to verify, and a shortcut is rejected (C1)"
 else

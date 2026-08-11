@@ -215,8 +215,8 @@ echo ""
 echo "== P3 heal → converge to the heavier-bonded chain =="
 # Record the lighter side's OWN pre-heal head so we can prove it actually moved
 # OFF its fork (not that it was already on group 1's).
-H_C_pre=$(head_hash valC)
-echo "  valC pre-heal head: height=$(head_height valC) hash=${H_C_pre:0:16}… (its own [g,c1] fork)"
+H_C_pre=$(head_hash valC); hC_pre=$(head_height valC)
+echo "  valC pre-heal head: height=${hC_pre} hash=${H_C_pre:0:16}… (its own [g,c1] fork)"
 echo "  restart valC WITHOUT -block-peers, bootstrapped to valA (persisted chain reloads and reconciles)…"
 dc_heal up -d valC >/dev/null 2>&1 || fail "heal restart of valC failed"
 # The healed valC reloads its persisted [g,c1] and reconciles against group 1's
@@ -247,8 +247,21 @@ if [ -n "$HAf" ] && [ "$HAf" = "$HC" ] && [ "${hC:-0}" = "${hAf:-0}" ]; then
   else
     echo "  P3 PASS: valC head matches group 1 (${HAf:0:16}…) — converged to the heavier-bonded chain"
   fi
-  # Bonus assertion: if the persisted store survived, we should have seen a reload line.
-  [ -n "$RESTORE_LINE" ] || echo "  NOTE: no 'restored from disk' line — the heal reload of the persisted fork is worth confirming (see README findings)"
+  # HARD assertion (blind field test #2 §C): prove valC actually RELOADED its own
+  # persisted fork before reconciling — otherwise a from-scratch peer catch-up (disk
+  # reload silently failed) reaches the SAME head and false-passes the "left its own
+  # fork" story (HC != H_C_pre holds either way). The daemon logs
+  # `chain: restored N block(s) from disk` at startup; N must be ≥ the pre-heal fork
+  # height valC committed on its side, so the reorg we assert is a reorg of a
+  # genuinely-reloaded fork, not an empty replay.
+  RESTORE_N=$(printf '%s' "$RESTORE_LINE" | grep -oE '[0-9]+' | head -1)
+  if [ -z "$RESTORE_LINE" ]; then
+    fail "P3 valC converged but emitted NO 'chain: restored … from disk' line — the persisted-fork reload is unproven; convergence may be a from-scratch peer catch-up, not a reorg of valC's own reloaded fork"
+  elif [ "${RESTORE_N:-0}" -lt 1 ] 2>/dev/null; then
+    fail "P3 valC restored 0 blocks from disk — its persisted [g,c1] fork was not reloaded (expected ≥ ${hC_pre:-1})"
+  else
+    echo "  P3 reload PROVEN: valC restored ${RESTORE_N} block(s) from disk (pre-heal fork height ${hC_pre}) before reconciling — the convergence is a real reorg of a reloaded fork"
+  fi
 else
   fail "P3 valC did NOT converge to the heavier head (A=$HAf@$hAf  C=$HC@$hC)"
 fi
