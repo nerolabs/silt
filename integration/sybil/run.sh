@@ -111,7 +111,10 @@ echo ""
 echo "== C2-b no quiet capture: with BOTH anchors gone, the Sybil set CANNOT advance the chain =="
 dc stop a1 a2 >/dev/null 2>&1 || fail "could not stop the anchors"
 echo "  both anchors stopped; the Sybil set (s1 proposes, s2 attests) now tries to commit alone…"
-h_pre=$(head_height s1); h_pre=${h_pre:-0}; cc_pre=$(commit_count s1)
+# The anchored CEILING: the height the honest anchors legitimately reached in C2-a.
+# A capture means the Sybils push the chain BEYOND this without any anchor.
+h_ceiling=$h1
+cc_pre=$(commit_count s1); cc_pre_s2=$(commit_count s2)
 CAP=""
 for _ in $(seq 1 12); do
   CAP=$(publish s1 "$REG_S1" 2>&1)
@@ -119,33 +122,46 @@ for _ in $(seq 1 12); do
   sleep 2
 done
 sleep 3
-h_post=$(head_height s1); h_post=${h_post:-0}; cc_post=$(commit_count s1)
+h_post=$(head_height s1); h_post=${h_post:-0}
+cc_post=$(commit_count s1); cc_post_s2=$(commit_count s2)
 REASON=$(echo "$CAP" | grep -oiE '(immature network requires anchor[^:"]*|chain: [a-z ]*anchor[^:"]*|reputation below threshold|[a-z ]*quorum[^:"]*)' | head -1)
 # The OUTCOME under test: did the Sybil set capture the chain? PASS iff it did NOT
-# advance without the anchors. Report WHICH training-wheels layer stopped it — a
-# young Sybil set is blocked at BOTH: it cannot even earn on-chain standing without
-# an anchor-committed block, and even with standing a young commit needs anchor
-# co-sign. Both are the same C2 property: the network will not run for Sybils alone.
-if [ "${h_post:-0}" -ne "${h_pre:-0}" ] || [ "${cc_post:-0}" -ne "${cc_pre:-0}" ]; then
-  fail "C2-b the Sybil quorum ADVANCED the chain without any anchor (height ${h_pre}→$h_post, commits ${cc_pre}→$cc_post) — QUIET CAPTURE"
+# advance beyond the anchors without them. The two capture signals are both SYNC-
+# IMMUNE — critical, because under load s1 can SYNC the anchors' already-committed
+# C2-a block DURING this window (chainrole.go SyncChain, a plain catch-up) and its
+# head rises 0→h1 with NO local commit and NO 'committed block' log. That is NOT a
+# capture: block h1 was committed BY THE ANCHORS in C2-a. Earlier this harness read
+# a freshly-captured (still-lagging) h_pre and counted that benign catch-up as an
+# advance — a false FAIL. The honest signals:
+#   • a Sybil node logs a FRESH 'committed block' — fires only on a LOCAL commit or
+#     a Sybil-proposer broadcast (chainrole.go MsgCommitBlock); a catch-up SyncChain
+#     does NOT fire OnCommit, so a benign anchor-block sync never trips it; or
+#   • the head passes the anchored CEILING h1 — a late sync can only reach ≤ h1, so
+#     any height > h1 required a NEW block, which without anchors is a capture.
+# Report WHICH training-wheels layer stopped it — a young Sybil set is blocked at
+# BOTH: it cannot even earn on-chain standing without an anchor-committed block, and
+# even with standing a young commit needs anchor co-sign. Same C2 property either way.
+if [ "${h_post:-0}" -gt "${h_ceiling:-0}" ] || [ "${cc_post:-0}" -gt "${cc_pre:-0}" ] || [ "${cc_post_s2:-0}" -gt "${cc_pre_s2:-0}" ]; then
+  fail "C2-b the Sybil quorum ADVANCED the chain past the anchored ceiling h${h_ceiling} without any anchor (head→$h_post, s1 commits ${cc_pre}→$cc_post, s2 commits ${cc_pre_s2}→$cc_post_s2) — QUIET CAPTURE"
 elif echo "$REASON" | grep -qiE 'anchor|immature'; then
-  echo "  C2-b PASS: NO new block — the bonded Sybil quorum could not capture the young network"
-  echo "    (chain head stayed $h_pre, committed blocks stayed $cc_pre with both anchors absent)"
+  echo "  C2-b PASS: NO block beyond the anchored ceiling h${h_ceiling} — the bonded Sybil quorum could not capture the young network"
+  echo "    (head $h_post ≤ ceiling h${h_ceiling}; no fresh Sybil commit: s1 ${cc_pre}→$cc_post, s2 ${cc_pre_s2}→$cc_post_s2 — both anchors absent)"
   echo "    gate: the ANCHOR co-sign requirement (ErrAnchorRequired) — the strongest form: even with"
   echo "    standing a young commit needs an anchor. reason: $REASON"
 elif echo "$REASON" | grep -qiE 'reputation'; then
-  echo "  C2-b PASS: NO new block — the bonded Sybil quorum could not capture the young network"
-  echo "    (chain head stayed $h_pre, committed blocks stayed $cc_pre with both anchors absent)"
+  echo "  C2-b PASS: NO block beyond the anchored ceiling h${h_ceiling} — the bonded Sybil quorum could not capture the young network"
+  echo "    (head $h_post ≤ ceiling h${h_ceiling}; no fresh Sybil commit: s1 ${cc_pre}→$cc_post, s2 ${cc_pre_s2}→$cc_post_s2 — both anchors absent)"
   echo "    gate: the standing requirement — the Sybils cannot even EARN committed bonded standing"
   echo "    without an anchor-proposed block to register their bonds. reason: $REASON"
   echo "    (The anchor co-sign gate sits behind this; both refuse the capture. The pure-anchor-gate"
   echo "    form, with pre-banked Sybil bonds, is exercised at scale on the cloud test.)"
 else
-  # audit #303: NO new block is only "no capture" if a TRAINING-WHEELS gate actually
-  # refused it. With no anchor/immature/reputation reason surfaced, a stalled chain is
-  # indistinguishable from a DEAD swarm (e.g. the anchored C2-a control above never
-  # committed either) — crediting that as C2-b PASS would fake-green the whole property.
-  fail "C2-b: NO new block, but NO training-wheels gate reason surfaced (REASON='${REASON}') — cannot distinguish the anchor/reputation gate refusing the Sybils from a chain that simply never runs (a dead swarm). The anchored C2-a positive control must commit AND a gate reason must appear."
+  # audit #303: NO block beyond the ceiling is only "no capture" if a TRAINING-WHEELS
+  # gate actually refused it. With no anchor/immature/reputation reason surfaced, a
+  # stalled chain is indistinguishable from a DEAD swarm (e.g. the anchored C2-a control
+  # above never committed either) — crediting that as C2-b PASS would fake-green the
+  # whole property.
+  fail "C2-b: NO block beyond the anchored ceiling h${h_ceiling}, but NO training-wheels gate reason surfaced (REASON='${REASON}') — cannot distinguish the anchor/reputation gate refusing the Sybils from a chain that simply never runs (a dead swarm). The anchored C2-a positive control must commit AND a gate reason must appear."
 fi
 
 # ── C2-c: the equal-bond split is legible (bonus) ────────────────────────────
