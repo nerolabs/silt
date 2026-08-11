@@ -9,6 +9,15 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **Handshake attribution instrumentation (#286 Layer 2 Q3)** (2026-08-12) — To attribute the
+  cross-region inbound `err=EOF` before tuning any deadline (the research team's "instrument first"
+  discipline), tcpnet now logs, on every failing handshake, the numbers that separate the candidate
+  causes: the **inbound** side logs the **concurrent in-flight handshake count** (the hub-stampede gauge)
+  and the **elapsed** time before failure; the **dialer** side logs the dial **budget** and the **elapsed**
+  spent. On the next run, a clustered EOF with high concurrency and elapsed ≈ the dialer budget attributes
+  it to the hub-stampede / dialer-deadline variant (which the `-persistent-peers` fix independently
+  relieves by spreading load and letting the proposer dial out); an instant failure points instead at a
+  pin-rejection / teardown. Logging-only; `docs/network-durability.md` §8.
 - **`-persistent-peers`: a static, never-evicted consensus-peer tier (#286 Layer 2, dominant fix)**
   (2026-08-12) — The blind field tester root-caused the cross-region genesis stall (with the #327
   `-log debug`): it is a **mesh address-convergence** bug, not a timeout. A proposer had `send with no
