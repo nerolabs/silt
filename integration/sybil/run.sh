@@ -126,22 +126,26 @@ REASON=$(echo "$CAP" | grep -oiE '(immature network requires anchor[^:"]*|chain:
 # young Sybil set is blocked at BOTH: it cannot even earn on-chain standing without
 # an anchor-committed block, and even with standing a young commit needs anchor
 # co-sign. Both are the same C2 property: the network will not run for Sybils alone.
-if [ "${h_post:-0}" -eq "${h_pre:-0}" ] && [ "${cc_post:-0}" -eq "${cc_pre:-0}" ]; then
+if [ "${h_post:-0}" -ne "${h_pre:-0}" ] || [ "${cc_post:-0}" -ne "${cc_pre:-0}" ]; then
+  fail "C2-b the Sybil quorum ADVANCED the chain without any anchor (height ${h_pre}→$h_post, commits ${cc_pre}→$cc_post) — QUIET CAPTURE"
+elif echo "$REASON" | grep -qiE 'anchor|immature'; then
   echo "  C2-b PASS: NO new block — the bonded Sybil quorum could not capture the young network"
   echo "    (chain head stayed $h_pre, committed blocks stayed $cc_pre with both anchors absent)"
-  if echo "$REASON" | grep -qiE 'anchor|immature'; then
-    echo "    gate: the ANCHOR co-sign requirement (ErrAnchorRequired) — the strongest form: even with"
-    echo "    standing a young commit needs an anchor. reason: $REASON"
-  elif echo "$REASON" | grep -qiE 'reputation'; then
-    echo "    gate: the standing requirement — the Sybils cannot even EARN committed bonded standing"
-    echo "    without an anchor-proposed block to register their bonds. reason: $REASON"
-    echo "    (The anchor co-sign gate sits behind this; both refuse the capture. The pure-anchor-gate"
-    echo "    form, with pre-banked Sybil bonds, is exercised at scale on the cloud test.)"
-  else
-    echo "    reason: ${REASON:-<the proposer produced no committed block>}"
-  fi
+  echo "    gate: the ANCHOR co-sign requirement (ErrAnchorRequired) — the strongest form: even with"
+  echo "    standing a young commit needs an anchor. reason: $REASON"
+elif echo "$REASON" | grep -qiE 'reputation'; then
+  echo "  C2-b PASS: NO new block — the bonded Sybil quorum could not capture the young network"
+  echo "    (chain head stayed $h_pre, committed blocks stayed $cc_pre with both anchors absent)"
+  echo "    gate: the standing requirement — the Sybils cannot even EARN committed bonded standing"
+  echo "    without an anchor-proposed block to register their bonds. reason: $REASON"
+  echo "    (The anchor co-sign gate sits behind this; both refuse the capture. The pure-anchor-gate"
+  echo "    form, with pre-banked Sybil bonds, is exercised at scale on the cloud test.)"
 else
-  fail "C2-b the Sybil quorum ADVANCED the chain without any anchor (height ${h_pre}→$h_post, commits ${cc_pre}→$cc_post) — QUIET CAPTURE"
+  # audit #303: NO new block is only "no capture" if a TRAINING-WHEELS gate actually
+  # refused it. With no anchor/immature/reputation reason surfaced, a stalled chain is
+  # indistinguishable from a DEAD swarm (e.g. the anchored C2-a control above never
+  # committed either) — crediting that as C2-b PASS would fake-green the whole property.
+  fail "C2-b: NO new block, but NO training-wheels gate reason surfaced (REASON='${REASON}') — cannot distinguish the anchor/reputation gate refusing the Sybils from a chain that simply never runs (a dead swarm). The anchored C2-a positive control must commit AND a gate reason must appear."
 fi
 
 # ── C2-c: the equal-bond split is legible (bonus) ────────────────────────────
