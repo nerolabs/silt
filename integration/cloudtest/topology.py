@@ -33,6 +33,12 @@ BOND_MODE = os.environ.get("BOND_MODE", "fast")
 PUBLIC_CIDR = os.environ.get("PUBLIC_CIDR", "10.20.0.0/24")
 NAT_CIDR = os.environ.get("NAT_CIDR", "10.30.0.0/24")
 DEFAULT_REGION = os.environ.get("REGION", "us-central1")
+# PoC (blind field-test #2): let the PRIMARY cluster's zone follow REGION so a
+# capacity-short zone (e.g. us-central1-a) can be dodged without hand-editing every
+# row. Defaults to us-central1-a when REGION is unset (identical to prior behavior).
+# The secondary spread (us-east1-b / europe-west1-b) is intentionally left as-is so
+# the run stays multi-region and within the 8-IP/region IN_USE_ADDRESSES quota.
+PRIMARY_ZONE = os.environ.get("PRIMARY_ZONE", f"{DEFAULT_REGION}-a")
 STORE = "/var/lib/silt"
 
 # ── The node table ─────────────────────────────────────────────────────────────
@@ -41,19 +47,19 @@ STORE = "/var/lib/silt"
 # Zones are spread across regions on purpose, to exercise REAL inter-node latency.
 NODES = [
     # name        role         seed  ip            zone
-    ("val-a",     "validator", 6001, "10.20.0.11", "us-central1-a"),
+    ("val-a",     "validator", 6001, "10.20.0.11", PRIMARY_ZONE),
     ("val-b",     "validator", 6002, "10.20.0.12", "us-east1-b"),
     ("val-c",     "validator", 6003, "10.20.0.13", "europe-west1-b"),
-    ("val-d",     "validator", 6004, "10.20.0.14", "us-central1-a"),
-    ("store-1",   "storage",   6101, "10.20.0.21", "us-central1-a"),
+    ("val-d",     "validator", 6004, "10.20.0.14", PRIMARY_ZONE),
+    ("store-1",   "storage",   6101, "10.20.0.21", PRIMARY_ZONE),
     ("store-2",   "storage",   6102, "10.20.0.22", "us-east1-b"),
-    ("registry",  "registry",  6201, "10.20.0.31", "us-central1-a"),
-    ("relay",     "relay",     6301, "10.20.0.41", "us-central1-a"),
-    ("fetch-1",   "fetcher",   6401, "10.20.0.51", "us-central1-a"),
-    ("adversary", "adversary", 6901, "10.20.0.91", "us-central1-a"),
-    ("natgw",     "natgw",        0, "10.30.0.2",  "us-central1-a"),
-    ("nat-1",     "natted",    6501, "10.30.0.11", "us-central1-a"),
-    ("nat-2",     "natted",    6502, "10.30.0.12", "us-central1-a"),
+    ("registry",  "registry",  6201, "10.20.0.31", PRIMARY_ZONE),
+    ("relay",     "relay",     6301, "10.20.0.41", PRIMARY_ZONE),
+    ("fetch-1",   "fetcher",   6401, "10.20.0.51", PRIMARY_ZONE),
+    ("adversary", "adversary", 6901, "10.20.0.91", PRIMARY_ZONE),
+    ("natgw",     "natgw",        0, "10.30.0.2",  PRIMARY_ZONE),
+    ("nat-1",     "natted",    6501, "10.30.0.11", PRIMARY_ZONE),
+    ("nat-2",     "natted",    6502, "10.30.0.12", PRIMARY_ZONE),
 ]
 
 # SMOKE=1 trims the topology to the cheapest set that still exercises the whole
@@ -75,7 +81,7 @@ if os.environ.get("SMOKE") == "1":
 # to the standing gate; the cloud is where the PURE anchor gate is certified.
 # Off by default (0 extra VMs). `SYBILS=8 ./cloudtest.sh` opts in. Never in SMOKE.
 SYBILS = 0 if os.environ.get("SMOKE") == "1" else int(os.environ.get("SYBILS", "0"))
-_syb_zones = ["us-central1-a", "us-east1-b", "europe-west1-b"]
+_syb_zones = [PRIMARY_ZONE, "us-east1-b", "europe-west1-b"]
 for _i in range(SYBILS):
     NODES.append((f"sybil-{_i+1}", "sybil", 6601 + _i, f"10.20.0.{61+_i}", _syb_zones[_i % len(_syb_zones)]))
 
