@@ -319,13 +319,19 @@ adv_proposal_reject() {
   if [ ${#ida} -ne 64 ]; then
     record "184-forged-block" gap major "could not resolve val-a NodeID from nodes.json (ida='${ida:0:12}…') — proposals not delivered, not a property failure"; return
   fi
+  # audit #303: grep the line the PRODUCT actually emits — the adversary daemon prints
+  # 'adversary: <label> proposal correctly REJECTED by <targetID>' when the honest target
+  # refuses it (cmd/silt/daemon.go badPropose), same as the local integration/redteam
+  # harness. The old assertions greped val-a for 'ErrBadSignature'/'ErrLowReputation',
+  # strings the daemon never emits there, so they could only ever time out (false FINDING)
+  # or, worse, match unrelated noise.
   relaunch_with adversary "-forge-block ${ida}"
-  local ok1=0; waitfor val-a 'bad signature|ErrBadSignature|reject.*(signature|proposal)' 90 >/dev/null && ok1=1
-  slo_assert "184-forged-block" major "forged-signature proposal rejected$([ "$ok1" = 1 ] || echo ' — NO rejection line on val-a within 90s')" "$ok1"
+  local ok1=0; waitfor adversary "forge-block proposal correctly REJECTED by ${ida}" 90 >/dev/null && ok1=1
+  slo_assert "184-forged-block" major "forged-signature proposal rejected (adversary logged 'correctly REJECTED by val-a')$([ "$ok1" = 1 ] || echo ' — adversary never logged the reject within 90s (or val-a wrongly ACCEPTED it)')" "$ok1"
   restore_argv adversary
   relaunch_with adversary "-lowbond-propose ${ida}"
-  local ok2=0; waitfor val-a 'low reputation|ErrLowReputation|under.?bonded|reject.*bond' 90 >/dev/null && ok2=1
-  slo_assert "184-low-bond" major "under-bonded proposer rejected$([ "$ok2" = 1 ] || echo ' — NO rejection line on val-a within 90s')" "$ok2"
+  local ok2=0; waitfor adversary "lowbond-propose proposal correctly REJECTED by ${ida}" 90 >/dev/null && ok2=1
+  slo_assert "184-low-bond" major "under-bonded proposer rejected (adversary logged 'correctly REJECTED by val-a')$([ "$ok2" = 1 ] || echo ' — adversary never logged the reject within 90s (or val-a wrongly ACCEPTED it)')" "$ok2"
   restore_argv adversary
 }
 
