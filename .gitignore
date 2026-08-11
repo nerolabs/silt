@@ -80,3 +80,16 @@ integration/sybil/silt
 integration/chaos/silt
 integration/cloudtest/.last_run_id
 integration/cloudtest/__pycache__/
+
+# Two-cloud field test (integration/twocloud): generated split topology + run outputs.
+integration/twocloud/config.env
+integration/twocloud/silt-linux-amd64
+integration/twocloud/.silt-local
+integration/twocloud/topology.json
+integration/twocloud/gcp.nodes.json
+integration/twocloud/aws.nodes.json
+integration/twocloud/nodes.json
+integration/twocloud/reservations.json
+integration/twocloud/results.jsonl
+integration/twocloud/report.md
+integration/twocloud/report.html
