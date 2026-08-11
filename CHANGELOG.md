@@ -369,7 +369,6 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   reply deadline (immutable #3; enforcement is the floor + bond-audit statistics-over-history, since a full
   re-seal is a multi-second cost). No change to the default floor value; flag help and comments corrected.
 ### Added
-<<<<<<< HEAD
 - **PoR audit seam on `silt daemon` — `-liar` + `-audit` make the verify-without-fetch catch+slash wire-driveable** (2026-08-10) —
   The `silt sim run audit` headline (a verify-WITHOUT-fetch PoR challenge catches a storage node that kept
   its proof tags but dropped the bytes, and **slashes its standing**) existed only in-process: `Node.SetLiar`
@@ -382,7 +381,6 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   liar). `integration/audit` now gates the literal claim over the wire (honest holders pass, the liar is
   caught and slashed) and demonstrates *why* it is needed — the liar's `MsgHasChunk` lie fools the
   availability probe but not the audit. (#232)
-=======
 - **`swarm add` token-replay seam (`-save-token` / `-use-token`) drives the double-spend rejection over the wire** (2026-08-10) —
   The publish-token double-spend guard (`core/chain` `ErrTokenSpent` + the online issuer's spent-set) was
   real and unit-tested but had no CLI/wire seam: every `swarm add -token-quorum N` minted a fresh random
@@ -392,7 +390,6 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   pre-check refuses with the exact `ErrTokenSpent` reason and never commits. `integration/economy` now gates
   the double-spend over the wire (a fresh-token control still commits) and ties its unlinkability assertion to
   the tokened entry's *own* zero-NodeID Publisher. (#233)
->>>>>>> 7974a9e (docs(changelog): record the #233 token-replay double-spend seam (-save-token/-use-token))
 - **Cloud variants of the field-test series in `integration/cloudtest`** (2026-08-10) — Four new GCP
   scenarios carry the local suites' properties onto real VMs / real regions, mapped onto the existing 13-node
   topology with **no topology change**: `flow_publisher_unlinkability` (privacy #3 — a durable-`Publisher`
