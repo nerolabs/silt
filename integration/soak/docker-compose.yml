@@ -92,11 +92,24 @@ services:
     <<: *holder
     networks: { soaknet: { ipv4_address: 10.120.0.32 } }
 
-  # Caretaker: repairs content published through it as holders churn, so the
-  # soak measures steady-state health rather than slow bleed. Same daemon,
-  # just another holder in the pool from the network's point of view.
+  # Caretaker: a real holder daemon that ALSO runs the repair loop for one published
+  # file (-care), so the soak exercises the repair path — reconstruct-from-parity +
+  # re-scatter — under sustained load and its memory/crash gates, not just replication.
+  # run.sh recreates this with SOAK_CARE_LINK set to file #1's care link after publish
+  # (the link isn't known until then); -care=none is the no-op sentinel until then.
   caretaker:
     <<: *holder
+    command:
+      - silt
+      - daemon
+      - -listen=0.0.0.0:4001
+      - -store=/data
+      - -capacity=${CAPACITY:-4G}
+      - -mdns=false
+      - -log=info
+      - -bootstrap=${SEED_PEER:-unset}
+      - -registry=${SEED_REG:-unset}
+      - -care=${SOAK_CARE_LINK:-none}
     networks: { soaknet: { ipv4_address: 10.120.0.40 } }
 
   # Ephemeral fetch client: `docker compose run --rm --no-deps client …` spins

@@ -166,14 +166,13 @@ for i in $(seq 1 "$FILES"); do
   f="$WORK/f$i.bin"
   head -c "$FILE_BYTES" /dev/urandom > "$f"
   want=$(shasum -a 256 "$f" | awk '{print $1}')
-  # Publish from the caretaker container (an ordinary holder here — NB: no
-  # -care link is wired, so no active repair loop runs; survival under churn
-  # rests on 3x replication + the erasure margin + a killed holder returning
-  # on its persisted store, not on caretaker repair). Wiring real repair is a
-  # follow-up (see the harness README / build-to-defects).
+  # Publish from the caretaker container. File #1's CARE link is captured below and
+  # wired into a real -care repair loop after this loop, so the soak exercises repair
+  # (reconstruct + re-scatter) under sustained load — not just replication.
   dc cp "$f" caretaker:/tmp/pub.bin >/dev/null 2>&1
   out=$(dc exec -T caretaker sh -c "silt swarm add /tmp/pub.bin -peers '$PEERS' -registry '$SEED_REG'" 2>&1)
   link=$(echo "$out" | grep -oE 'silt:v1:[A-Za-z0-9_:-]+' | head -1)
+  [ "$i" = 1 ] && CARE1=$(echo "$out" | grep -oE 'siltcare:[A-Za-z0-9_:-]+' | head -1)
   dc exec -T caretaker sh -c 'rm -f /tmp/pub.bin' >/dev/null 2>&1
   if [ -z "$link" ]; then
     echo "FAIL: publish #$i returned no link"; echo "$out" | tail -5; exit 1
@@ -182,6 +181,31 @@ for i in $(seq 1 "$FILES"); do
   printf "  [%2d/%d] %s  sha=%s\n" "$i" "$FILES" "${link:0:34}…" "${want:0:12}…"
 done
 N=${#LINKS[@]}
+
+# ── wire the caretaker's REAL repair loop on file #1 (§E) ───────────────────────
+# Recreate the caretaker with -care=<file #1's care link> so its repair loop runs for
+# the rest of the soak — reconstruct-from-parity + re-scatter under the sustained load
+# and the memory/crash gates below (a repair-loop leak or crash is now caught; before,
+# no repair loop ran at all). The care link is only known post-publish, hence the
+# recreate. -care=none until now (no-op sentinel). The caretaker rejoins fresh and
+# repairs by fetching k survivors — it need not hold file #1 itself.
+if [ -n "${CARE1:-}" ]; then
+  echo "== wire caretaker repair loop: -care=${CARE1:0:38}… =="
+  SOAK_CARE_LINK="$CARE1" dc up -d --force-recreate caretaker >/dev/null 2>&1
+  ok=0
+  for _ in $(seq 1 60); do
+    dc logs caretaker 2>&1 | grep -q 'caretaking' && { ok=1; break; }
+    sleep 1
+  done
+  if [ "$ok" = 1 ]; then
+    echo "  caretaker repair loop ACTIVE: $(dc logs caretaker 2>&1 | grep 'caretaking' | tail -1)"
+  else
+    echo "FAIL: caretaker never logged 'caretaking' after -care was wired — the repair loop did not start"
+    dc logs caretaker 2>&1 | tail -15; FAIL=1
+  fi
+else
+  echo "  note: file #1 yielded no care link — repair loop not wired this run (survival still rests on replication)"
+fi
 
 # one ephemeral fetch, asserted bit-perfect. Retries once: under DELIBERATE churn a
 # fetch can race a holder mid-stop and miss transiently, then succeed from a surviving
