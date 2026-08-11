@@ -186,9 +186,18 @@ def main():
         role, ip = n["role"], n["ip"]
         if role == "validator":
             attesters = ",".join(nodes[v]["nodeid"] for v in validators if v != name)
+            # #286 Layer 2 (docs/network-durability.md §8): at genesis there is no chain,
+            # so a proposer cannot DISCOVER its attesters' addresses — and hub-and-spoke
+            # bootstrap (one seed) never converges a full mesh because silt's routing table
+            # holds bare NodeIDs. Configure every validator with the WHOLE validator set as
+            # a static, never-evicted persistent-peer tier (Tendermint persistent_peers), so
+            # proposer-initiated quorum can form on a fresh multi-region net.
+            persistent = ",".join(f'{nodes[v]["nodeid"]}@{nodes[v]["ip"]}:{SWARM_PORT}'
+                                  for v in validators if v != name)
             a = (f"daemon -id-seed {n['seed']} {common} -advertise {ip}:{SWARM_PORT} -validator -objective "
                  f"-min-bond {min_bond} -min-bond-floor {min_floor} -mature-validators {n_val} "
                  f"-anchors {anchors} -attesters {attesters} -quorum {quorum} "
+                 f"-persistent-peers {persistent} "
                  f"-bond {bond} -bond-audit 30s -capacity 5G")
             if name == boot:
                 a += f" -serve-registry 0.0.0.0:{REGISTRY_PORT}"   # boot validator issues tokens
