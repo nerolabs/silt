@@ -121,7 +121,22 @@ dc --profile propose up -d h3
 wait_log h3 'peer: [0-9a-f]{64}' 20 || fail "h3 never came up"
 echo "  letting H3 accrue standing (12s)…"
 sleep 12
-dc --profile propose up -d forger lowbond
+dc --profile propose up -d forger lowbond goodprop
+
+# POSITIVE CONTROL (audit #303): before crediting H3's REJECTIONS below, prove H3
+# ACCEPTS a well-formed, properly-bonded proposal — otherwise a target that refuses
+# EVERY proposal (chain role wedged, head mismatch, …) would make both reject tests
+# false-pass ('reject the good one too' looks identical to 'reject the bad one').
+# goodprop is 8M-bonded like forger; it retries until its bond earns standing.
+echo "  -- POSITIVE CONTROL: H3 must ACCEPT a well-formed, bonded proposal --"
+if wait_log goodprop "goodpropose proposal ACCEPTED by $ID_H3" 90; then
+  echo "  POSITIVE CONTROL: PASS — H3 attested a valid bonded proposal, so it is a LIVE attester"
+  dc logs goodprop 2>&1 | grep -E "goodpropose proposal ACCEPTED by" | tail -1 | sed 's/^/    goodprop: /'
+elif dc logs goodprop 2>&1 | grep -qE 'goodpropose proposal UNEXPECTEDLY REJECTED'; then
+  fail "H3 REFUSED even a well-formed, properly-bonded proposal — it rejects EVERYTHING, so the SCENARIO 2 & 3 rejections below prove nothing (a broken H3, not a working defence)"
+else
+  fail "positive control did not resolve: H3 never accepted a valid bonded proposal within the window (cannot attribute the reject scenarios to the real defence)"
+fi
 
 echo "  -- SCENARIO 2: FORGED BLOCK (corrupted proposer signature) --"
 if wait_log forger "forge-block proposal correctly REJECTED by $ID_H3" 60; then

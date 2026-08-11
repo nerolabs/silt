@@ -96,6 +96,31 @@ func (n *Node) ProposeBadBlock(target ports.NodeID, forge bool, done func(refuse
 	})
 }
 
+// ProposeGoodBlock is the POSITIVE CONTROL for the ProposeBadBlock rejections: a
+// WELL-FORMED, correctly-signed block from THIS (properly-bonded) proposer, sent
+// to target. An honest, working target ATTESTS it (OK:true). Without this control,
+// a target that refuses EVERY proposal (chain role wedged, head mismatch, etc.)
+// is indistinguishable from one correctly rejecting a forged/under-bonded block —
+// so the forged-block / low-bond reject tests could pass on a broken target
+// (audit #303). Callers gate those reject checks on this good proposal being
+// ACCEPTED first, so a rejection is attributed to the real defence, not a dead node.
+func (n *Node) ProposeGoodBlock(target ports.NodeID, done func(accepted bool, err error)) {
+	if n.chain == nil || n.signer == nil {
+		done(false, ErrNoChain)
+		return
+	}
+	prev, height := n.chain.Head()
+	b := &chain.Block{Version: chain.BlockVersion, Height: height, Prev: prev, Entries: []ports.Entry{advEntry("goodproposal")}}
+	chain.Sign(b, n.signer)
+	n.request(target, ports.Message{Kind: ports.MsgProposeBlock, Data: chain.Encode(b)}, func(resp ports.Message, err error) {
+		if err != nil {
+			done(false, err)
+			return
+		}
+		done(resp.OK, nil) // OK:true = attested = the target accepts a well-formed, bonded proposal
+	})
+}
+
 // Equivocate makes this node DOUBLE-SIGN at height 1 — the Byzantine act honest nodes
 // refuse. It builds two DIFFERENT blocks at height 1 on the shared genesis, both
 // signed by this node as proposer, and places them on two different honest peers:
