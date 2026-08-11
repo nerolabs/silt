@@ -78,3 +78,24 @@ services:
       - -registry=${SEED_REG:-unset}
       - -care=${CARE_LINK:-none}
     networks: [swarm]
+
+  # A SECOND caretaker dedicated to the DETERMINISTIC forced-repair leg (run.sh's
+  # "phase 3b"). It cares for a small SINGLE-STRIPE file whose shards run.sh removes
+  # precisely (RepairSlack+1) at a time, so the repair MECHANISM is proven every run
+  # regardless of how the random wave-kill below lands. Separate care link + store so
+  # it never entangles with the main-file characterization.
+  fcaretaker:
+    image: silt-churn
+    entrypoint: ["role.sh"]
+    command:
+      - silt
+      - daemon
+      - -listen=0.0.0.0:4001
+      - -store=/data
+      - -capacity=5G
+      - -mdns=false
+      - -log=info
+      - -bootstrap=${SEED_PEER:-unset}
+      - -registry=${SEED_REG:-unset}
+      - -care=${FCARE_LINK:-none}
+    networks: [swarm]
