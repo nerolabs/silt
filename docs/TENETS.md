@@ -639,6 +639,25 @@ standing — amended only by the same deliberate, reviewed consensus:
      silt's reason to exist** (Part 0), even if it closes a real attack. Security
      parameters must be **decoupled from performance/transport tuning** so
      hardening one axis never taxes the other.
+  5. **Build for the adverse internet — durability is the default, not a
+     hardening pass.** silt is network-heavy software whose every path runs on the
+     open internet, where **jitter, latency, packet loss, and reordering are the
+     everyday case**, not the exception. A network function is not "done" until it
+     survives them: **generous, adaptive transport deadlines** (per-peer
+     Jacobson/Karels RTO — RFC 6298 — sized to the worst real path, and *scaled to
+     payload size*, never a magic constant), **retry — don't evict** a live peer on
+     a single slow/dropped packet (Kademlia's least-recently-seen contract),
+     **minimum-filter** a noisy latency signal to its floor (NTP clock filter,
+     BBR `min_rtt`) rather than trusting one sample, and keep **large payloads off
+     the critical path** (succinct proofs > FEC > QUIC). This is the *liveness*
+     dual of #3: #3 forbids gating **security** on an optimistic network; this
+     forbids gating **liveness** on one. The research on how mature networks
+     already solve this is *written down* — **consult `docs/network-durability.md`
+     BEFORE inventing any timeout / retry / eviction / large-payload scheme.** silt
+     has repeatedly lost days re-deriving what RFC 6298, Kademlia, and the mature
+     PoST cohort settled decades ago; both **#286** (a flat transport deadline
+     wedged quorum-2 genesis cross-region) and **#288** (a flat deadline +
+     evict-on-one-miss starved consensus under loss) were this law unlearned.
 
 **Tenets — canon, amendable with reviewed consensus and evidence.** Everything
 else in Parts I–VIII, including the strong disciplines we hold nearly as firmly
@@ -786,3 +805,17 @@ the network grows — **not closed.**
   #4 promotes silt's "cheap to run" mission (Part 0) into a veto over security
   designs: no fix may raise the floor of honest participation. Both enforced in
   code by the same-week decouple-anti-release-from-transport + soft-C1-gate work.
+- **2026-08-11** — Added **build-immutable #5 (build for the adverse internet —
+  durability is the default)** and its companion reference **`docs/network-durability.md`**,
+  distilled from the same network-durability research opinion. Where #3/#4 are the
+  *security* duals (never gate security on the network; never tax participation),
+  #5 is the *liveness* discipline: every networking path must survive jitter,
+  latency, loss, and reordering by default, using the settled best practices
+  (adaptive per-peer RTO / size-scaled deadlines, retry-not-evict, minimum-filter,
+  succinct-payload > FEC > QUIC) rather than a re-invented magic constant.
+  Provoked by **#286** — the first full multi-region GCP field test found a fresh
+  quorum-2 objective chain wedged at genesis because a flat transport deadline
+  couldn't carry the one-time ~1.5 MB bond-registration block across the WAN; the
+  fix (a size-aware transport deadline) is exactly the "generous, payload-scaled
+  transport deadline" the research prescribes. The doc exists so future builders
+  read the settled answer instead of losing days re-deriving it (as #286/#288 did).
