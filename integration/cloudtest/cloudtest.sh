@@ -150,10 +150,13 @@ report() { echo "==> report"; RUN_ID="$RUN_ID" ./gen_report.sh; }
 teardown() {
   [ "${KEEP_UP:-0}" = 1 ] && { echo "==> KEEP_UP=1 — leaving the network up. './cloudtest.sh down' when done."; return; }
   echo "==> DESTROY (run=$RUN_ID)"
+  # Do NOT swallow destroy stderr (§D): a partial-apply state makes `terraform destroy`
+  # fail, and hiding its error makes the destroy-failed→nuke handoff (and the VPC leak it
+  # can cause) invisible. Let terraform's error print so the fallback is diagnosable.
   tf destroy -input=false -auto-approve \
     -var "project_id=$PROJECT_ID" -var "default_region=$REGION" -var "run_id=$RUN_ID" \
-    -var "silt_binary_path=$FT_DIR/silt-linux-amd64" 2>/dev/null \
-    || { echo "    terraform destroy failed — falling back to nuke-by-label"; nuke; }
+    -var "silt_binary_path=$FT_DIR/silt-linux-amd64" \
+    || { echo "    terraform destroy failed (see stderr above) — falling back to nuke-by-name"; nuke; }
 }
 
 nuke() {
@@ -168,10 +171,39 @@ nuke() {
     [ -n "$name" ] && gcloud compute instances delete "$name" --zone "$zone" --project "$PROJECT_ID" --quiet || true
   done
   # The artifacts bucket is labelled too but is not an instance — delete it by name
-  # so a lost-state nuke does not leave it billing (network/subnets/routes are free).
+  # so a lost-state nuke does not leave it billing.
   gcloud storage rm -r "gs://silt-ft-${target}-${PROJECT_ID}" --quiet 2>/dev/null \
     || echo "    (bucket gs://silt-ft-${target}-${PROJECT_ID} not found or already gone)"
-  echo "    (network/subnets/firewall/routes: 'terraform destroy' is preferred; they are free if left)"
+  # Network resources (VPC/subnets/firewalls/routes): GCP networks & firewalls carry NO
+  # labels, so terraform-destroy is preferred — but on a partial-apply state that fails,
+  # and the old nuke left them orphaned. Free, but they ACCUMULATE across failed runs
+  # toward network/subnet/firewall quotas (§D VPC-leak finding). All are named
+  # `silt-ft-…-<run_id>`, so sweep them by name in dependency order (firewalls+routes →
+  # subnets → the VPC itself). `|| true` on each: a resource already gone is fine.
+  local re="silt-ft.*${target}\$"
+  gcloud compute firewall-rules list --project "$PROJECT_ID" --filter "name~${re}" --format 'value(name)' \
+    | while read -r fw; do [ -n "$fw" ] && gcloud compute firewall-rules delete "$fw" --project "$PROJECT_ID" --quiet || true; done
+  gcloud compute routes list --project "$PROJECT_ID" --filter "name~${re}" --format 'value(name)' \
+    | while read -r rt; do [ -n "$rt" ] && gcloud compute routes delete "$rt" --project "$PROJECT_ID" --quiet || true; done
+  gcloud compute networks subnets list --project "$PROJECT_ID" --filter "name~${re}" --format 'value(name,region)' \
+    | while read -r sn rg; do [ -n "$sn" ] && gcloud compute networks subnets delete "$sn" --region "$rg" --project "$PROJECT_ID" --quiet || true; done
+  gcloud compute networks delete "silt-ft-${target}" --project "$PROJECT_ID" --quiet 2>/dev/null \
+    || echo "    (network silt-ft-${target} not found or already gone)"
+  # Full-sweep assert: nothing named for this run may remain (instances/addresses/
+  # networks/subnets/firewalls/routes). A non-empty list is a real residual to chase.
+  local left
+  left="$( { gcloud compute instances list      --project "$PROJECT_ID" --filter "name~${re}" --format 'value(name)';
+             gcloud compute addresses list       --project "$PROJECT_ID" --filter "name~${re}" --format 'value(name)';
+             gcloud compute networks list         --project "$PROJECT_ID" --filter "name~${re}" --format 'value(name)';
+             gcloud compute networks subnets list --project "$PROJECT_ID" --filter "name~${re}" --format 'value(name)';
+             gcloud compute firewall-rules list   --project "$PROJECT_ID" --filter "name~${re}" --format 'value(name)';
+             gcloud compute routes list           --project "$PROJECT_ID" --filter "name~${re}" --format 'value(name)'; } 2>/dev/null | grep -c . || true)"
+  if [ "${left:-0}" -gt 0 ] 2>/dev/null; then
+    echo "    ⚠ nuke: ${left} resource(s) still labelled/named for run $target remain — investigate:"
+    gcloud compute instances list --project "$PROJECT_ID" --filter "name~${re}" --format 'value(name,zone)' 2>/dev/null | sed 's/^/      /'
+  else
+    echo "    nuke: full sweep clean — zero residual for run $target (instances/addresses/networks/subnets/firewalls/routes)"
+  fi
 }
 
 case "${1:-all}" in

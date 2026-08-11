@@ -170,7 +170,7 @@ flow_publish_fetch() {
   got="$(ssh_node "$fetchnode" "/usr/local/bin/silt swarm get '$link' -o /tmp/ft_got.bin -peers '$PEERS' -registry '$REGREF' >/dev/null 2>&1; sha256sum /tmp/ft_got.bin | cut -d' ' -f1" 2>/dev/null || true)"
   t1="$(date +%s)"
   [ -n "$sha" ] && [ "$got" = "$sha" ] && ok=1
-  FT_LAST_LINK="$link"   # reused by restart-survival + takedown
+  FT_LAST_LINK="$link"; FT_LAST_SHA="$sha"   # reused (+ SHA-compared) by restart-survival, takedown, chaos
   slo_assert "2-publish-fetch" blocker "fetched from $fetchnode $([ "$ok" = 1 ] && echo 'bit-perfect' || echo "MISMATCH (want=$sha got=$got)")" "$ok" $((t1 - t0))
 }
 
@@ -208,26 +208,44 @@ flow_become_validator() {
 
 # ── Flow 5: multi-validator convergence ─────────────────────────────────────────
 flow_convergence() {
-  local n heights="" h maxh=0 conv=1 vals=""
+  local n vals="" maxh=0
   for n in val-a val-b val-c val-d; do node_exists "$n" && vals="$vals $n"; done
+  # Read each validator's AUTHORITATIVE committed head — HEIGHT *and* HASH — from its
+  # OWN chain-status store, not a journald 'committed block N' line. A height-only
+  # signal can't tell same-fork convergence from same-height/DIFFERENT-fork; the head
+  # HASH can (blind field test #2 §D; real evidence #3). Same pattern the C2/sybil flow
+  # already uses.
+  chain_head() { ssh_node "$1" "/usr/local/bin/silt chain-status -store /var/lib/silt 2>&1" \
+    | awk '/head height:/{h=$3} /head hash:/{hh=$3} END{print (h==""?0:h), hh}'; }
+  local heights="" info h hh nv
   for n in $vals; do
-    h="$(jlog "$n" 800 | grep -oE 'committed block [0-9]+' | grep -oE '[0-9]+' | sort -n | tail -1)"
-    h="${h:-0}"; heights="$heights $n=$h"
-    [ "$h" -gt "$maxh" ] && maxh="$h"
-  done
-  # every validator must be within 2 blocks of the tip (real-latency tolerance)
-  for n in $vals; do
-    h="$(jlog "$n" 800 | grep -oE 'committed block [0-9]+' | grep -oE '[0-9]+' | sort -n | tail -1)"; h="${h:-0}"
-    [ $((maxh - h)) -gt 2 ] && conv=0
+    info="$(chain_head "$n")"; h="${info%% *}"; hh="${info#* }"; h="${h:-0}"
+    nv="${n//-/_}"; eval "H_$nv=\$h; HH_$nv=\$hh"
+    heights="$heights $n=$h:${hh:0:12}"
+    [ "$h" -gt "$maxh" ] 2>/dev/null && maxh="$h"
   done
   # A chain that never advanced past genesis is NOT "converged" — all-at-0 means
-  # consensus never formed (real evidence #3: assert an actual committed block, not
-  # agreement-on-nothing). Require the tip to have advanced.
-  if [ "$maxh" -lt 1 ]; then
+  # consensus never formed (assert an actual committed block, not agreement-on-nothing).
+  if [ "$maxh" -lt 1 ] 2>/dev/null; then
     slo_assert "5-convergence" major "NO block ever committed — the chain is stuck at genesis (heights:$heights); consensus did not form" 0
     return
   fi
-  slo_assert "5-convergence" major "all validators within 2 blocks of tip=$maxh (heights:$heights)" "$conv"
+  # Convergence = (a) every validator within 2 blocks of the tip (real-latency
+  # tolerance) AND (b) every validator AT the tip height agrees on the head HASH. A
+  # same-height/DIFFERENT-hash pair is a live FORK that a height-only check would score
+  # as "converged" — this is exactly the gap §D flags.
+  local conv=1 tiphash="" fork="" nh nhh
+  for n in $vals; do
+    nv="${n//-/_}"; eval "nh=\$H_$nv; nhh=\$HH_$nv"
+    [ $((maxh - nh)) -gt 2 ] && conv=0
+    if [ "$nh" = "$maxh" ]; then
+      if [ -z "$tiphash" ]; then tiphash="$nhh"
+      elif [ "$nhh" != "$tiphash" ]; then conv=0; fork="$fork $n"; fi
+    fi
+  done
+  local detail="all validators within 2 of tip=$maxh AND every tip-height validator shares head hash ${tiphash:0:12}… (heights:$heights)"
+  [ -n "$fork" ] && detail="FORK at tip height $maxh — divergent head hashes on:$fork (heights:$heights)"
+  slo_assert "5-convergence" major "$detail" "$conv"
 }
 
 # ── Flow 6: fault tolerance — kill one validator, quorum still commits ──────────
@@ -265,12 +283,15 @@ flow_restart_survival() {
   # (store-2 absent) rather than restart a nonexistent node and assert on nothing.
   if node_exists store-2; then
     svc store-2 restart || true; sleep 8
-    local ok2=0
+    local ok2=0 got=""
     if [ -n "${FT_LAST_LINK:-}" ]; then
-      local got; got="$(ssh_node store-1 "/usr/local/bin/silt swarm get '$FT_LAST_LINK' -o /tmp/ft_r.bin -peers '$PEERS' -registry '$REGREF' >/dev/null 2>&1 && echo OK" 2>/dev/null || true)"
-      [ "$got" = OK ] && ok2=1
+      # SHA-compare, not echo-OK (§D): a `swarm get` that exits 0 but writes truncated
+      # or wrong bytes must NOT pass as "fetchable" — assert the fetched file's SHA
+      # matches what was published.
+      got="$(ssh_node store-1 "/usr/local/bin/silt swarm get '$FT_LAST_LINK' -o /tmp/ft_r.bin -peers '$PEERS' -registry '$REGREF' >/dev/null 2>&1; sha256sum /tmp/ft_r.bin | cut -d' ' -f1" 2>/dev/null || true)"
+      [ -n "${FT_LAST_SHA:-}" ] && [ "$got" = "$FT_LAST_SHA" ] && ok2=1
     fi
-    slo_assert "7-restart-content" major "content still fetchable after a storage-node restart" "$ok2"
+    slo_assert "7-restart-content" major "content still fetchable BIT-PERFECT after a storage-node restart$([ "$ok2" = 1 ] || echo " (want=${FT_LAST_SHA:-?} got=${got:-<none>})")" "$ok2"
   else
     record "7-restart-content" skip major "skipped — needs store-2 (absent in this topology, e.g. SMOKE)"
   fi
@@ -287,9 +308,12 @@ flow_takedown() {
   # store-1 should now refuse; another operator (store-2) should still serve it
   local denied served=0
   denied="$(ssh_node store-1 "/usr/local/bin/silt swarm get '$FT_LAST_LINK' -o /tmp/ft_d.bin -peers '$PEERS' -registry '$REGREF' 2>&1 | grep -iqE 'deny|refus|not.?found' && echo DENIED" 2>/dev/null || true)"
-  ssh_node store-2 "/usr/local/bin/silt swarm get '$FT_LAST_LINK' -o /tmp/ft_s.bin -peers '$PEERS' -registry '$REGREF' >/dev/null 2>&1 && echo OK" 2>/dev/null | grep -q OK && served=1
+  # SHA-compare the SERVE side (§D): "still served elsewhere" must mean store-2 returned
+  # the REAL bytes bit-perfect, not merely that `swarm get` exited 0.
+  local sgot; sgot="$(ssh_node store-2 "/usr/local/bin/silt swarm get '$FT_LAST_LINK' -o /tmp/ft_s.bin -peers '$PEERS' -registry '$REGREF' >/dev/null 2>&1; sha256sum /tmp/ft_s.bin | cut -d' ' -f1" 2>/dev/null || true)"
+  [ -n "${FT_LAST_SHA:-}" ] && [ "$sgot" = "$FT_LAST_SHA" ] && served=1
   if [ "$denied" = DENIED ] && [ "$served" = 1 ]; then
-    slo_assert "8-takedown" major "root denied on store-1 while still served elsewhere (no global switch)" 1
+    slo_assert "8-takedown" major "root denied on store-1 while store-2 still serves it BIT-PERFECT (no global switch)" 1
   else
     record "8-takedown" gap major "takedown scoping not confirmed (denied=$denied served=$served) — verify -denylist semantics on the live build"
   fi
@@ -415,8 +439,8 @@ flow_durability_turnover() {
 # ── chaos (#7): hard crash (SIGKILL) recovery + #69 reprovide over real VMs ──────
 flow_chaos_crash() {
   require_nodes "chaos-crash" major store-1 store-2 || return
-  local link="${FT_LAST_LINK:-}"
-  if [ -z "$link" ]; then local res; res="$(ft_publish fetch-1 262144 || true)"; link="${res%% *}"; fi
+  local link="${FT_LAST_LINK:-}" wantsha="${FT_LAST_SHA:-}"
+  if [ -z "$link" ]; then local res; res="$(ft_publish fetch-1 262144 || true)"; link="${res%% *}"; wantsha="${res##* }"; fi
   if [ -z "$link" ]; then publish_verdict "chaos-crash" major "no link to verify crash-recovery against"; return; fi
   # SIGKILL the silt process (abrupt death, not a graceful stop). systemd
   # (Restart=on-failure) brings it back, reloading the persisted store.
@@ -426,9 +450,11 @@ flow_chaos_crash() {
   waitfor store-2 're-announced [0-9]+ held chunks' 90 >/dev/null && reann=1
   slo_assert "chaos-reprovide" major "SIGKILLed storage node re-announced its held chunks (#69) after a hard crash" "$reann"
   local got ok=0
-  got="$(ssh_node store-1 "/usr/local/bin/silt swarm get '$link' -o /tmp/ft_ch.bin -peers '$PEERS' -registry '$REGREF' >/dev/null 2>&1 && echo OK" 2>/dev/null || true)"
-  [ "$got" = OK ] && ok=1
-  slo_assert "chaos-fetch" major "content fetchable after a hard-crash (SIGKILL) + restart of a storage node" "$ok"
+  # SHA-compare, not echo-OK (§D): crash-recovery must return the REAL bytes, not just
+  # a zero exit on a possibly-truncated fetch.
+  got="$(ssh_node store-1 "/usr/local/bin/silt swarm get '$link' -o /tmp/ft_ch.bin -peers '$PEERS' -registry '$REGREF' >/dev/null 2>&1; sha256sum /tmp/ft_ch.bin | cut -d' ' -f1" 2>/dev/null || true)"
+  [ -n "$wantsha" ] && [ "$got" = "$wantsha" ] && ok=1
+  slo_assert "chaos-fetch" major "content fetchable BIT-PERFECT after a hard-crash (SIGKILL) + restart of a storage node$([ "$ok" = 1 ] || echo " (want=${wantsha:-?} got=${got:-<none>})")" "$ok"
 }
 
 # ── client/UI (#4): the web-UI local-security guard (#89) over a real VM ─────────
