@@ -369,6 +369,16 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   reply deadline (immutable #3; enforcement is the floor + bond-audit statistics-over-history, since a full
   re-seal is a multi-second cost). No change to the default floor value; flag help and comments corrected.
 ### Added
+- **`silt daemon -goodpropose <peerID>` — a POSITIVE CONTROL for the `-forge-block`/`-lowbond-propose` rejections** (2026-08-11) —
+  The `integration/redteam` forged-block and low-bond scenarios asserted only that H3 replied `OK:false`, but a
+  validator replies `OK:false` for many unrelated reasons (chain role disabled, `ErrWrongParent`,
+  already-attested), so a target that refuses **every** proposal would false-pass both — "reject the good one
+  too" is indistinguishable from "reject the bad one" (audit #303). New test-harness flag `-goodpropose <peerID>`
+  (sibling to `-forge-block`/`-lowbond-propose`), backed by `core/node.ProposeGoodBlock`, sends a **well-formed,
+  properly-bonded** proposal and asserts the target **ACCEPTS** it — logging `goodpropose proposal ACCEPTED by
+  <id>` on attest, `goodpropose proposal UNEXPECTEDLY REJECTED by <id>` otherwise (it retries until its bond
+  earns standing). The redteam harness now gates SCENARIO 2 & 3 on this positive control, so a rejection is
+  attributed to the real defence, not a dead/wedged target. (#303)
 - **PoR audit seam on `silt daemon` — `-liar` + `-audit` make the verify-without-fetch catch+slash wire-driveable** (2026-08-10) —
   The `silt sim run audit` headline (a verify-WITHOUT-fetch PoR challenge catches a storage node that kept
   its proof tags but dropped the bytes, and **slashes its standing**) existed only in-process: `Node.SetLiar`

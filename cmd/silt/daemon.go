@@ -98,6 +98,7 @@ func cmdDaemon(args []string) error {
 	lowbondPropose := fs.String("lowbond-propose", "", "RED-TEAM / TEST-HARNESS ONLY: as an under-bonded validator, propose a well-formed block to this peer ID, to prove an honest validator refuses a proposer without a qualifying bond (#184 low-bond→reject). Never honest")
 	equivocate := fs.String("equivocate", "", "RED-TEAM / TEST-HARNESS ONLY: run this validator as a Byzantine EQUIVOCATOR. Given two peer validator IDs \"idX,idYZ\", it double-signs at height 1 — placing block X on idX and a heavier conflicting fork (Y,Z) on idYZ — so honest replicas that reconcile the fork catch the double-sign and slash this node (#184, proving the accountability property over the real wire). NEVER use on a real network; a correct node refuses to equivocate")
 	liar := fs.Bool("liar", false, "RED-TEAM / TEST-HARNESS ONLY: run this storage node as a PoR LIAR — it keeps its storage-proof tags but silently drops the shard bytes (\"keep the receipt, ditch the goods\"). It still answers a MsgChallenge, but with a proof that fails the auditor's verify-without-fetch check, so an -audit auditor CATCHES it and slashes its standing (#232). Never honest")
+	goodPropose := fs.String("goodpropose", "", "TEST-HARNESS ONLY: POSITIVE CONTROL for -forge-block/-lowbond-propose. As a properly-bonded proposer, send a WELL-FORMED block to this peer ID and prove the honest target ACCEPTS it — so a target that refuses EVERY proposal (a broken/wedged node) cannot make the forged/low-bond REJECT tests false-pass ('reject the good one too' would otherwise look identical to 'reject the bad one', audit #303). Retries until its bond earns standing. Logs 'goodpropose proposal ACCEPTED by <id>' on accept, 'goodpropose proposal UNEXPECTEDLY REJECTED by <id>' after giving up")
 	wsCheckpoint := fs.String("ws-checkpoint", "", "weak-subjectivity checkpoint HEIGHT:HASH (M0 F-1): a recent trusted committed block this node REFUSES to reorg at or before, regardless of fork weight — the long-range-attack defense that makes the objective maturity latch safe for a fresh/long-offline node. Obtain it out-of-band (the daemon prints `checkpoint: HEIGHT:HASH` for its committed head; cross-check several independent nodes). It must be recent — within ~the bond-TTL window. Empty = genesis-trusting (safe only at launch, on a trusted swarm, or before the network matures)")
 	debug := fs.Bool("debug", false, "shorthand for -log debug (the full firehose)")
 	logLevel := fs.String("log", "", "write events at or above this level to <store>/debug.log (error|warn|info|debug); info narrates the normal path (placements, commits, repairs) to validate behavior in the field without the debug firehose")
@@ -940,6 +941,36 @@ func cmdDaemon(args []string) error {
 				}
 				badPropose(*forgeBlock, true, "forge-block")
 				badPropose(*lowbondPropose, false, "lowbond-propose")
+				// -goodpropose: TEST HARNESS — the POSITIVE CONTROL for the two rejections.
+				// A well-formed, properly-bonded proposal the honest target must ACCEPT, so a
+				// reject-everything target can't false-pass the forged/low-bond REJECT tests
+				// (#303). Unlike badPropose, RETRY ON REJECTION too: this proposer earns
+				// standing over the first few bond audits, so early rejections are expected
+				// until its bond qualifies — accept the first OK:true; give up after ~40 tries.
+				if *goodPropose != "" {
+					if gid, gerr := ports.ParseHash(strings.TrimSpace(*goodPropose)); gerr != nil {
+						fmt.Fprintf(os.Stderr, "-goodpropose: %v\n", gerr)
+					} else {
+						fmt.Println("goodpropose set — sending a well-formed, bonded proposal to prove the honest target ACCEPTS it (positive control)")
+						var tries int
+						var gtry func()
+						gtry = func() {
+							tries++
+							nd.ProposeGoodBlock(gid, func(accepted bool, err error) {
+								if accepted {
+									fmt.Printf("goodpropose proposal ACCEPTED by %s\n", gid)
+									return
+								}
+								if tries >= 40 {
+									fmt.Printf("goodpropose proposal UNEXPECTEDLY REJECTED by %s\n", gid)
+									return
+								}
+								clk.AfterFunc(2*ports.Second, gtry) // not reachable / standing not yet earned — retry
+							})
+						}
+						clk.AfterFunc(2*ports.Second, gtry)
+					}
+				}
 				// -equivocate: RED-TEAM / TEST HARNESS — drive a deliberate double-sign so
 				// honest replicas catch and slash it over the real wire (#184). Retry on the
 				// loop-safe clock until this node has earned standing with both peers (early

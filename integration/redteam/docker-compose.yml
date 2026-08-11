@@ -258,3 +258,33 @@ services:
     networks:
       rt:
         ipv4_address: 10.110.0.33
+
+  # goodprop is the POSITIVE CONTROL (audit #303): a properly 8M-bonded proposer —
+  # identical to `forger` but with a WELL-FORMED proposal — whose block H3 MUST
+  # accept once its bond earns standing. Gating SCENARIO 2 & 3 on this proves H3
+  # attests a valid bonded block, so its REJECTION of the forged/under-bonded ones
+  # is the real defence firing, not a target that refuses everything.
+  goodprop:
+    <<: *honest
+    profiles: [propose]
+    command:
+      - silt
+      - daemon
+      - -id-seed=8006
+      - -listen=0.0.0.0:4001
+      - -advertise=10.110.0.34:4001
+      - -store=/data
+      - -validator
+      - -objective=false
+      - -min-rep=100
+      - -quorum=1
+      - -goodpropose=${ID_H3:-unset}
+      - -bootstrap=${ID_H3:-unset}@10.110.0.31:4001
+      - -bond=8M
+      - -bond-audit=1s
+      - -capacity=1G
+      - -mdns=false
+      - -debug
+    networks:
+      rt:
+        ipv4_address: 10.110.0.34
