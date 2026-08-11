@@ -24,27 +24,33 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   the exact cert parameters (4 objective validators, quorum 2, Byzantine-ON, no genesis bonds):
   `TestWedge313_ObjectiveByzantineMultiBlock` (exactly one registration block, not every block) and
   `TestWedge313_RenewalStillHappensUnderTTL` (renewals still fire on the TTL cadence).
-- **Objective chain wedged at genesis, quorum-2 cross-region (#286)** (2026-08-11) — Found on the first
-  full 13-node multi-region GCP run: a fresh 4-validator, **quorum-2**, 3-region objective chain never
-  committed a genesis block (no validator ever proposed; `chain-status` read 0 blocks on all four), while
-  the identical block committed in 5 s on a single-zone **quorum-1** SMOKE — the two-substrate immutable
-  earning its keep (neither the laptop nor the single-zone SMOKE could show it). Root cause (sibling of
-  #313): the genesis block carries the proposer's one-time ~1.5 MB space-time bond registration (#299),
-  and the flat RTT-scale `-request-timeout` cannot cover transferring + re-verifying 1.5 MB across a real
-  WAN before an attester can reply — so the quorum-2 attestation gather times out and genesis never
-  commits. A tight wall-clock TRANSPORT deadline is a category error: transport deadlines must be
-  generous, the security lives in the proof not the clock (research on network durability, see
-  `docs/network-durability.md`). Fixed by making the per-attempt transport deadline **size-aware**
-  (`Config.RequestSizeFloorBytesPerSec`, default 256 KB/s): a request gains `len(payload)/floor` of
-  transfer headroom (capped at 30 s), so the one-time large registration/genesis block gets multi-second
-  WAN margin while lean steady-state blocks are unaffected and holder-fetch dials keep their tighter,
-  non-extended deadline (#277). The cloudtest topology also sets a generous `-request-timeout 8s` belt
-  for the cert run. In-process guards at the exact cert parameters: `TestRequestTimeoutFor_SizeAware286`
-  (the large block gains headroom; lean blocks and holder-fetch do not; the extension is capped) and
-  `TestRequestTimeoutFor_ExtensionOptOut286`. The consensus **logic** was confirmed correct in-process
-  (`TestWedge313_*` commit quorum-2 genesis with no latency), so this is a transport-deadline fix, not a
-  consensus change. The structural close is a succinct proof (#299); final multi-region certification is
-  pending a GCP re-run.
+- **Size-aware consensus transport deadline (network durability)** (2026-08-11) — The per-attempt DHT/
+  consensus RPC deadline (`Config.RequestSizeFloorBytesPerSec`, default 256 KB/s) now scales with the
+  OUTBOUND payload: a request gains `len(payload)/floor` of transfer headroom (capped 30 s), so a large
+  one-time block (a validator's ~1.5 MB bond registration) gets WAN margin while lean blocks are
+  unaffected and holder-fetch dials keep their tighter, non-extended deadline (#277). A textbook-correct
+  application of the #289 tenet (transport deadlines must be generous; security lives in the proof, not
+  the clock — `docs/network-durability.md`). Guards: `TestRequestTimeoutFor_SizeAware286` +
+  `TestRequestTimeoutFor_ExtensionOptOut286`. **This is a genuine durability improvement — but it does
+  NOT fix #286 (see Known issues); the GCP re-run proved it tuned a non-binding path.**
+
+### Known issues
+- **#286 — quorum-2 objective chain never commits genesis, cross-region (STILL OPEN; RC-gate blocker).**
+  The first full 13-node multi-region GCP run and a re-run both FAIL: a fresh 4-validator, **quorum-2**,
+  3-region objective chain never commits a genesis block (0 blocks on all four; publishes time out), while
+  a single-zone **quorum-1** SMOKE commits in 5 s. The GCP re-run of the size-aware-deadline change above
+  showed it does **not** fix this — it tuned the validator↔validator RPC path, not the binding one. Real
+  two-layer cause, diagnosed live on GCP: **Layer 1 — the HTTP publish path guillotines the gather** with
+  three stacked FLAT deadlines (10 s `http.Client.Timeout` in `adapters/httpregistry`, 30 s server
+  `WriteTimeout`, 30 s `chainhost.Host.Timeout`); the 10 s client fires first → `context deadline
+  exceeded` → chain never commits. **Layer 2 — a deeper WAN-only genesis-gather defect**: with ALL
+  deadlines set to 300 s and full attester reachability, the ~1.5 MB first block STILL doesn't gather its
+  2 attestations even given minutes (attesters show zero receive activity at `-log info`). Layer 2 does
+  not reproduce in the no-latency sim (`TestWedge313_*` commit these exact params), so it is genuinely
+  WAN/scale-specific and needs `-log debug` from boot on a real multi-region run to root-cause. The
+  structural close is a **succinct bond proof (#299)** — shrink the 1.5 MB genesis block so the whole
+  class dissolves. Fix-in-progress: async publish (remove the Layer-1 guillotines) + gather-path debug
+  logging (enable the Layer-2 root-cause). Credit: blind field test #2 supplemental2 re-validation.
 
 ### Security
 - **seam-5: A-axis truth-in-labelling + a count/entropy signal for the equal-bond split** (2026-08-09) —
