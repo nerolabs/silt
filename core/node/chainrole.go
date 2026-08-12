@@ -305,7 +305,34 @@ func (n *Node) proposeBlock(b *chain.Block, attesters, broadcast []ports.NodeID,
 			a, b := fresh[i].ValidatorID(), fresh[j].ValidatorID()
 			return bytes.Compare(a[:], b[:]) < 0
 		})
-		b.BondRegs = append(b.BondRegs, fresh...)
+		// #286 Layer 2b: cap the total BYTES of bond registrations embedded per block. A
+		// fresh multi-validator genesis where every founding validator submits its ~1.5 MB
+		// space-time proof otherwise piles into one ~8 MB block the quorum gather can't move
+		// + re-verify over a WAN (the cert stalled at regs=5 / 7.9 MB). The founding set are
+		// anchors, so genesis commits SMALL on the anchor bootstrap while the deferred
+		// registrations drain over the next blocks. A BYTE budget (not a count) is the right
+		// lever: at genesis a full ~1.5 MB proof means ~1 reg/block, but small steady-state
+		// renewals pack many per block so an attest-only validator is never starved under a
+		// tight TTL (sim/bond_renewal). Embed lowest-id peers first (fresh is sorted) so the
+		// drain is deterministic; account for the proposer's own reg (F6) already appended.
+		// Un-embedded peers are dropped here and RESUBMIT next block bound to the new head (a
+		// reg is signed over BondRegNonce(prev), so it goes stale as the head moves — the same
+		// resubmit that keeps the queue live and drains it over blocks).
+		budget := n.cfg.MaxBondRegBytesPerBlock
+		used := int64(0)
+		for _, r := range b.BondRegs { // the proposer's own reg (F6), if any, spends budget first
+			used += int64(len(bondRegEncode(r)))
+		}
+		for _, reg := range fresh {
+			sz := int64(len(bondRegEncode(reg)))
+			// Always embed at least one reg (never stall the queue on a single oversized
+			// proof); otherwise stop once this reg would blow the budget.
+			if budget > 0 && len(b.BondRegs) > 0 && used+sz > budget {
+				break
+			}
+			b.BondRegs = append(b.BondRegs, reg)
+			used += sz
+		}
 		n.pendingBondRegs = make(map[ports.NodeID]chain.BondReg)
 	}
 	// Record any equivocations we detected on-chain, so every replica evicts the

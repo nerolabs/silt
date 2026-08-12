@@ -9,6 +9,27 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Fixed
+- **Genesis commits small — bond registrations spread across blocks (#286 Layer 2b)** (2026-08-12) —
+  A real 3-region GCP cert run (with the #331 persistent-peers fix + #327/#332 `-log debug`) proved
+  address convergence was fixed but genesis *still* didn't commit, and pinned the true final blocker:
+  `gather: starting height=1 bytes=7866154 regs=5` — the proposer piled **every** founding validator's
+  ~1.5 MB space-time bond registration into the single genesis block (~8 MB), which the quorum gather
+  can't move + re-verify over a WAN before the round churns, and because it never commits the validators
+  re-submit forever (308×), pinning the block huge. Root cause and fix confirmed by research against the
+  code: the founding set are **anchors** (`chain.launchAnchor`), so genesis quorum bootstraps from anchor
+  eligibility at *zero committed bond* (`qualifiedCount=0` keeps `RequiredQuorum=Quorum`) — the block does
+  not need the bonds in it. Fixed with a **byte budget, `Config.MaxBondRegBytesPerBlock`** (flag
+  `-max-bondreg-bytes-per-block`, default ~2 MiB): the proposer embeds bond registrations per block up to
+  that byte budget (`chainrole.go`), so genesis commits small on the anchor bootstrap and the deferred
+  registrations **drain over the next blocks** — each validator still gains real bonded weight and the set
+  reaches `MatureValidators`. A **byte** budget, not a count, is the right lever because the blocker is
+  *size*, not number: at genesis one full ~1.5 MB proof fits per block, but small steady-state renewals
+  pack many per block — so an attest-only validator's renewals are never starved under a tight TTL (a
+  count cap lapsed them; `sim/bond_renewal` proved it). Anchors grant eligibility, never fork-choice
+  weight, so nothing is fabricated. Reproduced deterministically in-process (no WAN needed) and guarded by
+  `TestGenesisBondRegsSpreadAcrossBlocks286L2b` (4 anchor validators, quorum-2: genesis commits with one
+  ~1.5 MB reg and all four bonds drain by block 4). The structural close remains #299 (succinct +
+  aggregated bond proof).
 - **Registry client rides out transient loss on its reads (#329, durable-WAN audit)** (2026-08-12) —
   The HTTP registry client's idempotent GET reads (`Lookup`, `/publish-status`, `All`) were single-shot:
   a single dropped packet or a transient 5xx failed a `swarm get` / root resolution outright. This was the
