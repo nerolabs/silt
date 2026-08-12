@@ -80,4 +80,23 @@ func TestFetchCanonicalIssuers_ReturnsLedgerRankedSet(t *testing.T) {
 	if !done || fb == nil {
 		t.Fatalf("a chainless peer must not serve a canonical set (expected an error), done=%v err=%v", done, fb)
 	}
+
+	// #351: FetchCanonicalIssuersFromAny must SKIP a validator that serves no chain
+	// (un-synced / just restarted) and get the deterministic set from the next one —
+	// so a single down validator can't drop the publisher into the anonymity-narrowing
+	// -peers fallback. Ask the chainless client FIRST, then the chain-holding v: the
+	// single-target FetchCanonicalIssuers on the bad one errors, but FromAny falls
+	// through to v and returns the same ledger-ranked set.
+	var any []ports.NodeID
+	var anyErr error
+	done = false
+	client.FetchCanonicalIssuersFromAny([]ports.NodeID{cID.NodeID(), vID.NodeID()},
+		func(ids []ports.NodeID, e error) { any, anyErr, done = ids, e, true })
+	sched.Run()
+	if !done || anyErr != nil {
+		t.Fatalf("#351: FromAny must fall through the un-synced validator to a chain-holder: done=%v err=%v", done, anyErr)
+	}
+	if len(any) != 3 || any[0] != heavy.NodeID() {
+		t.Fatalf("#351: FromAny must return the chain-holder's ledger-ranked set (heaviest first): got %d, want 3", len(any))
+	}
 }
