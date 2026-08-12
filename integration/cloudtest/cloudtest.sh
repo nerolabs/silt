@@ -264,13 +264,57 @@ nuke() {
   fi
 }
 
+# ── build-immutable #6 pre-flight gate ───────────────────────────────────────
+# An expensive multi-region run CONFIRMS an already-understood, locally-reproduced
+# fix, or certifies liveness/timing at scale — the one thing a real WAN uniquely
+# proves. It NEVER discovers a cause or tests a guess: that is what the laptop
+# harnesses are for (integration/adversarial netem · integration/flakynet ·
+# go test ./e2e). The #286 rabbit-hole was five billable runs spent DISCOVERING
+# causes that were reproducible for free (docs/reviews/286-wan-rabbithole-POSTMORTEM.md).
+# So a billable `up`/`all` is refused unless the operator has WRITTEN DOWN, per
+# build-immutable #6 (docs/build-process.md):
+#   RUN_MECHANISM — the one-paragraph mechanism ("X because Y; fixed by Z"), OR the
+#                   sanctioned purpose ("liveness/timing at scale — R1 gate #360"),
+#                   OR a path/issue reference to it.
+#   RUN_REPRO     — the local reproduction that already reproduces/confirms it
+#                   (e.g. "go test ./e2e -run Equivocator", "integration/adversarial/run.sh",
+#                   or "n/a — liveness-only; attacks certified off-cloud, #360").
+# There is deliberately NO silent bypass — stating intent before spending money is
+# the whole point of the gate.
+preflight_gate() {
+  if [ -z "${RUN_MECHANISM:-}" ] || [ -z "${RUN_REPRO:-}" ]; then
+    cat >&2 <<'EOF'
+✗ pre-flight gate (build-immutable #6): a billable cloud run needs a written justification.
+
+  An expensive multi-region run CONFIRMS an understood, locally-reproduced fix — or
+  certifies liveness/timing at scale. It never DISCOVERS a cause or tests a guess.
+  If you are here to find out WHY something fails, stop: reproduce it on a laptop first
+  (integration/adversarial netem · integration/flakynet · go test ./e2e). See
+  docs/build-process.md and docs/reviews/286-wan-rabbithole-POSTMORTEM.md.
+
+  Re-run with BOTH set, e.g.:
+    RUN_MECHANISM="liveness/timing at scale — R1 gate #360; #357 fork-choice fix confirmed locally" \
+    RUN_REPRO="integration/adversarial/run.sh green; attacks certified off-cloud" \
+    ./cloudtest.sh up
+EOF
+    exit 2
+  fi
+  { echo "run=${RUN_ID:-unknown}  ts=$(date -u +%FT%TZ 2>/dev/null || echo unknown)"
+    echo "RUN_MECHANISM: $RUN_MECHANISM"
+    echo "RUN_REPRO:     $RUN_REPRO"
+    echo "---"
+  } >> run-justification.log
+  echo "✓ pre-flight gate: justification recorded (build-immutable #6) — proceeding to a BILLABLE run."
+}
+
 case "${1:-all}" in
   all)
+    preflight_gate
     check_prereqs; build_binary; gen_topology
     trap teardown EXIT
     apply; wait_ready; run_scenarios; report
     ;;
-  up)     check_prereqs; build_binary; gen_topology; KEEP_UP=1 apply; wait_ready; echo "network up (run=$RUN_ID)"; ;;
+  up)     preflight_gate; check_prereqs; build_binary; gen_topology; KEEP_UP=1 apply; wait_ready; echo "network up (run=$RUN_ID)"; ;;
   run)    run_scenarios; report; ;;
   report) report; ;;
   down)   KEEP_UP=0 teardown; ;;
