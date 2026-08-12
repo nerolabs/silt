@@ -100,6 +100,16 @@ for name in "${RUN[@]}"; do
     want=$(( ${SOAK_DURATION:-360} + 300 ))
     [ "$timeout_s" -lt "$want" ] && timeout_s="$want"
   fi
+  # churn (H1, blind field test 2026-08-12): its wall-time is dominated by the waits it
+  # is DESIGNED to do — STEADY_WAIT baseline sweep + phase-3b forced-repair + WAVES ×
+  # several kills each waiting up to STEP_WAIT for a repair sweep — plus build + up. The
+  # fixed cap under-counted it (the blind run TIMED OUT at 9m09s mid-wave-1, masking
+  # churn's real verdict). Derive it from churn's own knobs so cranked runs scale their
+  # cap too. This is a CEILING to catch a true hang, not the expected runtime.
+  if [ "$name" = churn ]; then
+    want=$(( ${STEADY_WAIT:-75} + ${STEP_WAIT:-120} + ${WAVES:-2} * 4 * ${STEP_WAIT:-120} + 360 ))
+    [ "$timeout_s" -lt "$want" ] && timeout_s="$want"
+  fi
   log="$OUT/$name.log"
 
   if [ ! -x "$dir/run.sh" ]; then
@@ -111,6 +121,11 @@ for name in "${RUN[@]}"; do
   # Slow suites take an env knob; pass it through if the caller set one.
   extra=()
   [ "$name" = soak ] && [ -n "${SOAK_DURATION:-}" ] && extra+=("DURATION=$SOAK_DURATION")
+  if [ "$name" = churn ]; then
+    [ -n "${WAVES:-}" ]     && extra+=("WAVES=$WAVES")
+    [ -n "${STEP_WAIT:-}" ] && extra+=("STEP_WAIT=$STEP_WAIT")
+    [ -n "${HOLDERS:-}" ]   && extra+=("HOLDERS=$HOLDERS")
+  fi
 
   printf '  %-11s running…' "$name"
   t0=$(date +%s)
