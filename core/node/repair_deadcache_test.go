@@ -99,6 +99,31 @@ func TestProviderDiversitySweepSkipsCooledPeer(t *testing.T) {
 	}
 }
 
+// TestInboundMessageClearsDeadCache guards the recovery half of the #277 sweep gate:
+// once every resolve leg skips a negative-cached peer, a peer that RECOVERS (restart +
+// reprovide, #69; or a NATed peer now reachable via the relay) must be un-gated the
+// moment we hear from it — otherwise the sweep/walk keep skipping a peer that is
+// demonstrably back, which is exactly what broke cross-NAT restart survival when the
+// gate was added. A message from a non-ephemeral peer is proof of life; an ephemeral
+// client (publish/fetch that keeps nothing, #43) stays gated because it vanishes.
+func TestInboundMessageClearsDeadCache(t *testing.T) {
+	searcher, deadID, _, _ := walkDeadRig(t, DefaultConfig())
+
+	searcher.deadUntil[deadID] = searcher.clock.Now().Add(searcher.cfg.HolderCooldown)
+	searcher.handle(deadID, ports.Message{Kind: ports.MsgHasChunk, ChunkID: ports.ChunkID{0x1}})
+	if _, still := searcher.deadUntil[deadID]; still {
+		t.Fatal("a recovered peer we heard from must be removed from deadUntil (#69/#277)")
+	}
+
+	// Control: an ephemeral sender does NOT clear the cache (it is not routed to and
+	// will vanish, #43), so a short-lived client can't wipe a real dead-holder entry.
+	searcher.deadUntil[deadID] = searcher.clock.Now().Add(searcher.cfg.HolderCooldown)
+	searcher.handle(deadID, ports.Message{Kind: ports.MsgHasChunk, ChunkID: ports.ChunkID{0x1}, Ephemeral: true})
+	if _, still := searcher.deadUntil[deadID]; !still {
+		t.Fatal("an ephemeral sender must not clear deadUntil (it vanishes, #43)")
+	}
+}
+
 // TestProviderWalkWithoutCooldownDialsDeadPeer is the inverted control: with the
 // negative cache disabled the SAME dead peer IS dialed by the walk — proving the
 // cache, not some other effect, is what suppresses the re-dial.
