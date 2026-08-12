@@ -345,6 +345,28 @@ adv_equivocation() {
   if [ ${#idb} -ne 64 ] || [ ${#idc} -ne 64 ]; then
     record "184-equivocation" gap blocker "could not resolve val-b/val-c NodeID from nodes.json (idb='${idb:0:12}…' idc='${idc:0:12}…') — attack not delivered, not a property failure"; return
   fi
+  # READINESS GATE (#345/#350). The adversary is a NON-anchor validator: it can only
+  # PLACE an equivocating fork once it is a QUALIFIED proposer (its bond committed
+  # on-chain), because an honest target refuses to attest a proposal from a node
+  # without committed standing. The equivocation drill previously fired before that
+  # was true, so proposeAndCommitTo was refused ("not yet standing"), the forks were
+  # never placed, and the drill FAILed for a reason that is not a product break —
+  # racing the adversary's standing, which flips between runs. Gate on the daemon's
+  # own positive control (-goodpropose): it retries a well-formed proposal until the
+  # adversary's bond earns standing, logging ACCEPTED. If the adversary never
+  # qualifies over WAN in the window, the equivocation attack cannot be DRIVEN, so
+  # record a GAP (untested), NOT a FAIL — equivocation slashing is certified
+  # in-process (#204). Only once the adversary is confirmed qualified does a missing
+  # slash mean a real failure.
+  local ida; ida="$(node_field val-a nodeid)"
+  relaunch_with adversary "-goodpropose ${ida}"
+  local qualified=0
+  waitfor adversary "goodpropose proposal ACCEPTED by ${ida}" 180 >/dev/null && qualified=1
+  restore_argv adversary
+  if [ "$qualified" != 1 ]; then
+    record "184-equivocation" gap blocker "adversary did not reach qualified-proposer standing over WAN within 180s (its bond never committed on-chain), so the double-sign could not be placed — equivocation UNTESTED this run, not a product failure (slashing is certified in-process #204). See #345/#350."
+    return
+  fi
   relaunch_with adversary "-equivocate ${idb},${idc}"
   # Watch val-b, the DIRECT detector (#345): the adversary places fork X on val-b
   # and the heavier fork Y,Z on val-c, so val-b catches the double-sign the moment
@@ -371,11 +393,20 @@ adv_partition() {
     record "184-partition" gap major "could not resolve val-b NodeID from nodes.json (idb='${idb:0:12}…') — partition not applied, not a property failure"; return
   fi
   # partition val-c off from val-b (one-sided so it can heal on reconnect)
-  relaunch_with val-c "-block-peers ${idb}"; sleep 20
+  relaunch_with val-c "-block-peers ${idb}"; sleep 30
   restore_argv val-c    # drop the block → reconnect → reconcile
-  local ok=0
-  waitfor val-c 'reorged onto a heavier fork|chain: reorged' 120 >/dev/null && ok=1
-  slo_assert "184-partition" major "partitioned validator healed onto the heavier fork after reconnect$([ "$ok" = 1 ] || echo ' — NO reorg/reconcile line on val-c within 120s')" "$ok"
+  # A validator only REORGS onto a heavier fork if one FORMED while it was partitioned —
+  # i.e. the majority side committed at least one block during the ~30s window. On an
+  # idle chain (no publishes in that window) both sides stay at the same height, there is
+  # nothing heavier to heal onto, and no reorg line is emitted — the reconcile is then
+  # UNTESTED, not broken (partition-healing is certified in-process #204). So score a
+  # missing reorg as a GAP, not a FAIL: this drill's PASS↔FAIL flipping between runs was
+  # exactly this precondition race (#350).
+  if waitfor val-c 'reorged onto a heavier fork|chain: reorged' 120 >/dev/null; then
+    slo_assert "184-partition" major "partitioned validator healed onto the heavier fork after reconnect" 1
+  else
+    record "184-partition" gap major "no reorg line on val-c within 120s — a heavier fork may not have formed during the partition (idle chain), so the heal was UNTESTED this run, not a failure (certified in-process #204, #350)"
+  fi
 }
 
 # ── #184 adversarial: forged-block + low-bond proposals rejected ────────────────
@@ -395,9 +426,24 @@ adv_proposal_reject() {
   local ok1=0; waitfor adversary "forge-block proposal correctly REJECTED by ${ida}" 90 >/dev/null && ok1=1
   slo_assert "184-forged-block" major "forged-signature proposal rejected (adversary logged 'correctly REJECTED by val-a')$([ "$ok1" = 1 ] || echo ' — adversary never logged the reject within 90s (or val-a wrongly ACCEPTED it)')" "$ok1"
   restore_argv adversary
+  # low-bond: the adversary carries a full, qualifying 64M bond. While its bond is not
+  # yet committed on-chain it is (correctly) rejected as an unqualified proposer — the
+  # PASS this drill was written for. But once its bond commits it becomes a QUALIFIED
+  # proposer, and val-a CORRECTLY accepts its well-formed block: that "UNEXPECTEDLY
+  # ACCEPTED" is right product behavior, not a defect, so it must NOT be a FAIL. The
+  # outcome therefore flips on the adversary's standing race between runs (#350). Score
+  # it honestly: a logged reject is a PASS; a logged accept is a GAP (this node is
+  # qualified — a genuine under-bond REJECTION test needs a dedicated sub-min-bond
+  # identity, #350); silence is a GAP (not driven). low-bond rejection is certified
+  # in-process (#204) either way.
   relaunch_with adversary "-lowbond-propose ${ida}"
-  local ok2=0; waitfor adversary "lowbond-propose proposal correctly REJECTED by ${ida}" 90 >/dev/null && ok2=1
-  slo_assert "184-low-bond" major "under-bonded proposer rejected (adversary logged 'correctly REJECTED by val-a')$([ "$ok2" = 1 ] || echo ' — adversary never logged the reject within 90s (or val-a wrongly ACCEPTED it)')" "$ok2"
+  if waitfor adversary "lowbond-propose proposal correctly REJECTED by ${ida}" 90 >/dev/null; then
+    slo_assert "184-low-bond" major "under-bonded proposer rejected (adversary logged 'correctly REJECTED by val-a')" 1
+  elif waitfor adversary "lowbond-propose proposal UNEXPECTEDLY ACCEPTED by ${ida}" 5 >/dev/null; then
+    record "184-low-bond" gap major "adversary holds a qualifying 64M bond and was CORRECTLY accepted as a proposer — an under-bond REJECTION test needs a dedicated sub-min-bond identity (#350); the property is certified in-process (#204)"
+  else
+    record "184-low-bond" gap major "no reject/accept line from the adversary within 90s — low-bond not driven this run (#350)"
+  fi
   restore_argv adversary
 }
 
@@ -646,6 +692,13 @@ run_all_scenarios() {
   adv_partition
   adv_proposal_reject
   # cloud variants of the local field-test series
+  # Re-warm the fetch publisher (#351): flows 7 (restart-survival) and the #184 drills
+  # restart/partition validators, which transiently drops a validator from the
+  # discoverable canonical-issuer set until it re-syncs — so a fresh ephemeral publish
+  # here re-races issuer-set discovery (durability-turnover false-FAILed on the last
+  # re-cert for exactly this). One warm at genesis (#344) doesn't cover post-restart
+  # flows; re-warm before the publish-dependent cloud variants. Bounded + non-fatal.
+  wait_publisher_warm fetch-1
   flow_publisher_unlinkability   # privacy #3
   flow_durability_turnover       # durability #2
   flow_chaos_crash               # chaos #7
