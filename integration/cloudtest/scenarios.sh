@@ -585,11 +585,42 @@ wait_network_warm() {
   return 1
 }
 
+# wait_publisher_warm warms a NON-VALIDATOR publisher's token path (#344). The
+# chain warm above publishes from the boot VALIDATOR, which already holds the
+# issuer keys and is itself on the canonical issuer set — so it commits genesis
+# without proving a fetcher can publish. A fresh non-validator (the fetch nodes the
+# graded flows publish from) must first DISCOVER the canonical issuer set
+# (MsgGetCanonicalIssuers) and the validators' issuer keys before it can gather a
+# publish-token signature, and that discovery LAGS genesis on a seconds-old chain:
+# on the #286 re-cert, flow_publish_fetch false-FAILed ("no canonical issuer set
+# from peers") while the identical publish from the same node succeeded minutes
+# later. So after the chain warms, warm the first fetch publisher too — a throwaway
+# publish retried until it lands — so the graded publish flows start from a
+# fully-propagated state. Bounded and NON-FATAL: a genuine publish break still
+# times out here (WARN) and the graded flow runs and reports honestly, so this
+# removes the transient-timing false-FAIL without masking a real one.
+: "${PUBLISHER_WARMUP_S:=180}"
+wait_publisher_warm() { # wait_publisher_warm NODE
+  local node="$1" t0 deadline out link
+  node_exists "$node" || return 0
+  t0="$(date +%s)"; deadline=$(( t0 + PUBLISHER_WARMUP_S ))
+  echo "  warming publisher $node (≤${PUBLISHER_WARMUP_S}s): a fresh non-validator must discover the canonical issuer set + issuer keys before it can gather a publish token (#344)…"
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    out="$(ssh_node "$node" "head -c 4096 </dev/urandom >/tmp/ft_pwarm.bin; /usr/local/bin/silt swarm add /tmp/ft_pwarm.bin -peers '$PEERS' -registry '$REGREF' -token-quorum $TOKEN_QUORUM -chunk-size 65536 2>&1 || true")"
+    link="$(printf '%s' "$out" | grep -oE 'silt:v1:\S+' | head -1)"
+    [ -n "$link" ] && { echo "    publisher $node warm after $(( $(date +%s) - t0 ))s"; return 0; }
+    sleep 6
+  done
+  echo "    WARN: publisher $node did not warm within ${PUBLISHER_WARMUP_S}s — grading anyway (flows will report honestly)"
+  return 1
+}
+
 run_all_scenarios() {
   ft_init_refs
   echo "  peers=$PEERS"
   echo "  registry=$REGREF"
   wait_network_warm
+  wait_publisher_warm fetch-1   # #344: non-validator issuer-set/issuer-key discovery lags genesis
   # acceptance flows 1–9 + #184 adversarial drills
   flow_first_run
   flow_become_validator
