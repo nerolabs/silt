@@ -23,6 +23,12 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `DHTDomainCap = 0`, isolating away the exact leg the daemon always runs — so a new failing-first regression
   (`TestProviderDiversitySweepSkipsCooledPeer`) engages `DHTDomainCap = 2` (FAILs "got 1 dials, want 0"
   before, passes after). Closes one named, verified leak on the resolve side; not the whole #277 envelope.
+  Follow-up: gating the sweep would have blacklisted a *recovered* holder still inside the 30 s cooldown
+  (breaking `#69` cross-NAT restart survival — the `deadUntil` cache was only cleared on a successful
+  bootstrap dial). So a **message is now proof of life**: receiving any message from a non-ephemeral peer
+  clears its `deadUntil` entry, cleanly separating a departed holder (sends nothing → stays gated, dial-storm
+  fix intact) from a recovered one (restart + reprovide, or a NATed peer now reachable via the relay →
+  un-gated at once). Guarded by `TestInboundMessageClearsDeadCache` and a green `RESTART=1 integration/nat`.
 - **Equivocation red-team drill double-signs at the live tip, not a stale height 1 (#345)** (2026-08-12) —
   The `184-equivocation` field-test drill FAILed on the #286 GCP re-cert ("no slash line within 120s"),
   while the same property passes in-process (#204). Root cause: `Node.Equivocate` (the `-equivocate`

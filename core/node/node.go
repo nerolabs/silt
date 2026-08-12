@@ -871,6 +871,15 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 	// table with ghosts; process its message, but don't add it (#43).
 	if !msg.Ephemeral {
 		n.table.Observe(from)
+		// Proof of life also clears the dead-peer negative cache: if this peer was
+		// negative-cached as unreachable (a prior dial timed out → deadUntil), hearing
+		// from it means it RECOVERED — a restart+reprovide (#69), or a NATed peer now
+		// reachable via the relay. A truly departed holder sends nothing and stays
+		// gated (so the #277 dial-storm gate on the diversity sweep still holds), but a
+		// recovered one must be re-dialable at once or the sweep/walk keep skipping a
+		// peer that is demonstrably back (this is what broke cross-NAT restart survival
+		// when the sweep gate was added).
+		delete(n.deadUntil, from)
 	}
 	if msg.CapTotal > 0 {
 		n.peerCaps[from] = capInfo{used: msg.CapUsed, total: msg.CapTotal}
