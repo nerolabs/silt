@@ -94,3 +94,4 @@ integration/twocloud/reservations.json
 integration/twocloud/results.jsonl
 integration/twocloud/report.md
 integration/twocloud/report.html
+integration/**/silt

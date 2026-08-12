@@ -22,10 +22,13 @@ survive a node death.
 
 silt has two planes. The **storage plane** — content-addressed,
 erasure-coded, peer-served chunks with NAT traversal — is
-**field-proven at scale**: bit-perfect retrieval under churn, the
-silent-loss failure shapes fixed (#46/#60/#64), and cross-network
-publish/fetch proven through cone NAT via TCP hole-punching (CI Docker
-harness). The **trust plane** — consensus-secured registry, reputation,
+**sim-proven at scale, field-proven cross-network at small scale**:
+bit-perfect retrieval under churn and the silent-loss failure shapes
+fixed (#46/#60/#64) — proven at scale in the deterministic in-process
+simulation; and cross-network publish/fetch proven through cone NAT via
+TCP hole-punching on a real Docker multi-container harness in CI. A warm
+multi-region cloud run has not yet graded a full suite end-to-end. The
+**trust plane** — consensus-secured registry, reputation,
 and revocation — is where M0 lives. M0's Sybil-resistance is a **systemic
 composition held in tension**, not a single Sybil-proof primitive (no such
 primitive can exist under free identity + no permanent center — that's Douceur).

@@ -171,10 +171,6 @@ func plotSeedN(pk []byte, n int) []byte {
 	return h.Sum(nil)
 }
 
-// PlotSeed is plotSeedN keyed by the public size, for callers that hold size
-// rather than the block count.
-func PlotSeed(pk []byte, size int64) []byte { return plotSeedN(pk, NumBlocks(size)) }
-
 // Seal plots the identity-bound bond of ~size bytes for validator key pk from
 // the PUBLIC seed H(pk, n) (see the package doc: the seed binds the plot to its
 // owner AND its size, and makes each identity's plot distinct and verifiable).

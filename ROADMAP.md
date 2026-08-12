@@ -38,12 +38,15 @@ lives — proven by spec + an **external** red-team, never self-graded.
 
 ## Where we are now (the honest status)
 
-- **Storage plane — field-proven at scale.** Cross-network publish/fetch,
+- **Storage plane — sim-proven at scale, field-proven cross-network at small scale.** Cross-network publish/fetch,
   erasure-coded durability with failure-domain-aware placement + dispersion audit,
   capacity pledging/spill, mutual-TLS pinned identity, encrypted manifests +
   care-links, a quorum chain, web UI/observatory, desktop client. The silent-loss
-  floors and the reprovide/config-drift gaps are fixed and field-proven;
-  cross-network hole-punching is proven through cone NAT in an automated harness.
+  floors and the reprovide/config-drift gaps are fixed; scale (bit-perfect retrieval
+  under churn) is proven in the deterministic in-process simulation, and
+  cross-network hole-punching is proven through cone NAT in an automated Docker
+  harness in CI. A warm multi-region cloud run has not yet graded a full suite
+  end-to-end.
 - **Trust plane — the M0 mechanism is BUILT and internally hardened.** The genuine
   composition shipped (PRs #117–#127): a verify-without-fetch proof-of-retrieval, a
   proof-of-**space-time** bond (an identity-bound sealed plot × a Wesolowski VDF,
