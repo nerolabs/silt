@@ -9,6 +9,22 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Fixed
+- **Canonical issuer-set discovery falls through an un-synced validator (#351, P0-2 residual)** (2026-08-13) —
+  A chainless publisher (`silt swarm add`) picks its publish-token signers by a *canonical*,
+  ledger-ranked ordering it fetches from a validator, so the signer subset isn't a
+  per-publisher quasi-identifier (R-3 / seam-4). It asked only `validators[0]`, so a single
+  un-synced or transiently-unreachable validator — e.g. one that just **restarted mid-run**
+  (#351) — dropped the publisher into the `-peers` fallback, which *narrows the publisher
+  anonymity set*. Added `Node.FetchCanonicalIssuersFromAny`, which tries each validator in
+  order until one serves the set (`cmd/silt/swarm.go` now uses it). The canonical ranking is
+  **deterministic** — every chain-holder computes the same bond-ranked order — so asking a
+  different validator returns the same answer: pure liveness/anonymity robustness, **no change
+  to selection, consensus, or the privacy claim**. Regression: `core/node`
+  `TestFetchCanonicalIssuers_ReturnsLedgerRankedSet` now also asserts FromAny skips a chainless
+  validator and returns the chain-holder's ranked set. **Scope (V4):** this closes the
+  canonical-set half of #351 only; the token-*acquisition*-after-restart path (reaching enough
+  signers for the token-quorum when one is down) is a privacy-sensitive residual that needs a
+  deterministic repro to pin the failing stage — tracked, not addressed here.
 - **Provider-record lifecycle — age out departed holders so the repair/fetch loop stops re-dialing corpses (#277, P0-1)** (2026-08-12) —
   The principal-engineer substrate plan (P0-1) targets the dominant durability/retrieval
   wound: the #277 dial-storm. Attribution first (build-immutable #6), which *corrected* the

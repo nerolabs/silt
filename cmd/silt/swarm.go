@@ -233,7 +233,11 @@ func swarmAdd(args []string) error {
 			// with validators it can dial, so the ranking is applied to the reachable
 			// -peers; connecting to the canonical validator set makes it fully global.
 			if len(validators) > 0 {
-				e.nd.FetchCanonicalIssuers(validators[0], func(canon []ports.NodeID, ferr error) {
+				// Try EVERY validator for the canonical set, not just validators[0]: a
+				// single un-synced/unreachable validator (e.g. one that just restarted,
+				// #351) otherwise drops us into the anonymity-narrowing fallback. The
+				// ranking is deterministic, so any chain-holder answers the same.
+				e.nd.FetchCanonicalIssuersFromAny(validators, func(canon []ports.NodeID, ferr error) {
 					if ferr != nil || len(canon) == 0 {
 						fmt.Fprintln(os.Stderr, "note: no canonical issuer set from peers; signing from -peers in given order — the signer subset may narrow the publisher anonymity set (connect to canonical validators for full privacy)")
 						acquire(validators)
