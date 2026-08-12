@@ -8,6 +8,27 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Changed
+- **Corrected two materially-false public claims flagged by the principal-engineer rescue audit** (2026-08-12) —
+  A read-only fresh-eyes audit found the public site overclaiming two M0 corners beyond what the
+  canon and code support. (1) `marketing/anchor-launch.html` claimed a published root is unlinkable
+  to its authorizing identity *"at any layer an observer can watch"* — the exact transport/metadata
+  layer the code does **not** cover (and it contradicted `website/index.html`, which already admits a
+  transport IP+timing link remains until issuance-mixing ships, Pre-V1). Softened to the
+  refuse-to-surveil / access-held-in-tension wording already ratified in TENETS immutable #4. (2)
+  `README.md`, `ROADMAP.md` (→ generated `website/roadmap.html`), and `website/index.html` claimed the
+  storage plane is *"field-proven at scale"* — but "at scale" is the deterministic in-process
+  simulation; no warm multi-region cloud run has graded a full suite end-to-end. Changed to
+  "sim-proven at scale, field-proven cross-network at small scale," keeping every true claim (the CI
+  Docker NAT/hole-punch evidence is genuine). Docs-and-copy only; no behavior change.
+
+### Removed
+- **Deleted a stale 13 MB prebuilt binary committed to git and a dead export** (2026-08-12) —
+  `integration/flakynet/silt` (a committed aarch64 binary) is removed and gitignored — the flakynet
+  harness already `go build`s the daemon from source at run time, so the checked-in binary was a
+  supply-chain smell and a risk of "field-proven" silently certifying a stale build. Also dropped the
+  fully-dead `core/bond/bond.go` `PlotSeed` export (zero callers). No behavior change.
+
 ### Fixed
 - **Provider diversity sweep honors the dead-peer negative cache — closes the last ungated resolve leg (#277)** (2026-08-12) —
   The `deadUntil` negative cache that stops silt re-dialing a just-timed-out peer was consulted on the DHT
