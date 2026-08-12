@@ -455,6 +455,7 @@ func (n *Node) fetchFrom(id ports.ChunkID, provs []ports.NodeID, done func(bool)
 			// anyLive so we never skip our only remaining candidate (#69).
 			if anyLive {
 				if until, dead := n.deadUntil[provs[i]]; dead && now < until {
+					n.Stats.HolderDialsSkipped++
 					try(i + 1)
 					return
 				}

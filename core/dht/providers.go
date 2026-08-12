@@ -50,6 +50,77 @@ func (p *Providers) Get(key ports.Hash) []ports.ProviderRecord {
 	return out
 }
 
+// Live returns key's records whose freshness lease has NOT lapsed as of now,
+// closest-provider-first — the accessor a dial or re-serve path must use so a
+// departed holder's stale record is neither dialed nor propagated. Records with
+// Expiry 0 (unsigned/legacy or TTL-off) never expire and are kept. Get stays the
+// raw, unfiltered accessor (tests, metrics that want the whole set).
+func (p *Providers) Live(key ports.Hash, now int64) []ports.ProviderRecord {
+	src := p.m[key]
+	out := make([]ports.ProviderRecord, 0, len(src))
+	for _, r := range src {
+		if r.Expired(now) {
+			continue
+		}
+		out = append(out, r)
+	}
+	SortRecordsByDistance(key, out)
+	return out
+}
+
+// Evict drops every record whose lease lapsed as of now, across all keys, and
+// returns how many it removed — the memory-reclaim + age-out sweep so a departed
+// holder's record leaves the store entirely rather than lingering to be re-served.
+// A key left with no records is deleted so the store doesn't accumulate empty keys.
+func (p *Providers) Evict(now int64) int {
+	removed := 0
+	for key, list := range p.m {
+		kept := list[:0]
+		for _, r := range list {
+			if r.Expired(now) {
+				removed++
+				continue
+			}
+			kept = append(kept, r)
+		}
+		if len(kept) == 0 {
+			delete(p.m, key)
+		} else {
+			p.m[key] = kept
+		}
+	}
+	return removed
+}
+
+// RemoveIfNotSole drops `provider` from every key where it is NOT the only
+// provider, and returns how many records it removed. This is the confirmed-dead
+// prune: when a holder is proven unreachable (retries exhausted → evicted from the
+// routing table + negative-cached), it should leave the dial-candidate set for keys
+// that have a live alternative — turning "re-dial the corpse once per cooldown,
+// forever" into "gone" for replicated content. Where the dead holder is the SOLE
+// provider of a key, its record is KEPT: orphaning that key would make its content
+// undiscoverable (a transiently-unreachable sole holder must stay re-probeable
+// until it recovers and re-announces, #69/#226); the deadUntil cooldown still
+// rate-limits the re-dial in that degenerate case.
+func (p *Providers) RemoveIfNotSole(provider ports.NodeID) int {
+	removed := 0
+	for key, list := range p.m {
+		if len(list) <= 1 {
+			continue // sole (or empty) — keep it so the content stays discoverable
+		}
+		kept := list[:0]
+		for _, r := range list {
+			if r.ID == provider {
+				removed++
+				continue
+			}
+			kept = append(kept, r)
+		}
+		p.m[key] = kept
+	}
+	return removed
+}
+
 // IDs returns just the provider NodeIDs for key, closest-first — the legacy
 // accessor for internal callers that don't need the signatures.
 func (p *Providers) IDs(key ports.Hash) []ports.NodeID {

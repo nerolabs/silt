@@ -8,6 +8,31 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Fixed
+- **Provider-record lifecycle — age out departed holders so the repair/fetch loop stops re-dialing corpses (#277, P0-1)** (2026-08-12) —
+  The principal-engineer substrate plan (P0-1) targets the dominant durability/retrieval
+  wound: the #277 dial-storm. Attribution first (build-immutable #6), which *corrected* the
+  audit's hypothesis: the DHT walk is **already** `deadUntil`-gated (PR #355) and signed
+  provider records are **already** expiry-filtered on read (`acceptedProviderIDs`→`Verify`).
+  The genuine residuals were three: **(1)** a confirmed-dead holder's provider record is never
+  removed, so `deadUntil` only *rate-limits* the re-dial to one full `RequestTimeout` per
+  `HolderCooldown` (30s) **forever** — the persistent dial-storm floor; **(2)** the re-serve
+  path (`MsgGetProviders`) handed out stale records with a raw `Get`, propagating the corpse to
+  whoever asked; **(3)** the announce/re-announce path was the last provider-record consumer not
+  gated on `deadUntil`. *The loop drowns in dials to departed holders **because** their records
+  outlive them in every consumer; **fixed by** giving the store a lifecycle and gating the last
+  consumer.* Adds `dht.Providers.Live` (filter expired on read — used by the re-serve path),
+  `Evict` (per-`RepairInterval` age-out sweep in `repairTick`), and `RemoveIfNotSole` (prune a
+  confirmed-dead holder from every key with a live alternative, called when retries exhaust and
+  the peer is negative-cached) — the last **keeps a SOLE holder's record** so its content stays
+  discoverable and re-probeable (#69/#226) rather than orphaned. Also gates the announce path on
+  `deadUntil`. **M1 baseline instrumented now** (the efficiency gate starts in P0): two gauges,
+  `Stats.HolderDialsSkipped` (dials avoided by the negative cache — the dials-per-fetch/repair
+  bound) and `Stats.DeadProviderRecordsPruned` (records aged out). Failing-first regressions:
+  `core/dht` unit tests for `Live`/`Evict`/`RemoveIfNotSole` (incl. the sole-holder-kept case),
+  and `core/node` `TestConfirmedDeadHolderPrunedFromReplicatedKeptForSole` (verified fail-before /
+  pass-after). Full `go test ./...` + `-race` on `core/node`/`core/dht` green.
+
 ### Changed
 - **Corrected two materially-false public claims flagged by the principal-engineer rescue audit** (2026-08-12) —
   A read-only fresh-eyes audit found the public site overclaiming two M0 corners beyond what the
