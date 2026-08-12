@@ -9,6 +9,20 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Fixed
+- **Provider diversity sweep honors the dead-peer negative cache — closes the last ungated resolve leg (#277)** (2026-08-12) —
+  The `deadUntil` negative cache that stops silt re-dialing a just-timed-out peer was consulted on the DHT
+  distance walk (`node.go`), the fetch path (`file.go`), and the repair probe (`repair.go`) — but **not** on
+  the domain-diversity sweep (`sweepProviders`, `dht_diversity.go`), the second leg `resolveProviders` runs
+  whenever `DHTDomainCap > 0`. Since the daemon and client both set `DHTDomainCap = 2`, the sweep runs on
+  **every** provider resolution, so under churn a departed holder still in the routing table was re-dialed at
+  a full `RequestTimeout` on every resolve — a contributor to the #277 repair/retrieval dial-storm (a
+  caretaker sweeping a churny swarm "drowns" and never finishes a sweep). Fixed by gating `deadUntil` in
+  `sweepProviders` exactly as the other three paths do (a sweep is breadth discovery, so a cooled peer is
+  simply skipped — no sole-holder concern like the fetch path's `#69` `anyLive` guard). Surfaced by the
+  2026-08-12 blind field test, which also exposed a unit-test blind spot: the existing dead-cache tests set
+  `DHTDomainCap = 0`, isolating away the exact leg the daemon always runs — so a new failing-first regression
+  (`TestProviderDiversitySweepSkipsCooledPeer`) engages `DHTDomainCap = 2` (FAILs "got 1 dials, want 0"
+  before, passes after). Closes one named, verified leak on the resolve side; not the whole #277 envelope.
 - **Equivocation red-team drill double-signs at the live tip, not a stale height 1 (#345)** (2026-08-12) —
   The `184-equivocation` field-test drill FAILed on the #286 GCP re-cert ("no slash line within 120s"),
   while the same property passes in-process (#204). Root cause: `Node.Equivocate` (the `-equivocate`
