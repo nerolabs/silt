@@ -37,15 +37,37 @@ ROOT=$(cd ../.. && pwd)
 # Note: `=` not `:=` — an explicit NETEM="" must STAY empty (the clean-network
 # control), while an UNSET NETEM gets the default impairment.
 : "${NETEM=delay 80ms 20ms distribution normal}"
-: "${TESTS:=TestEquivocatorSlashedOverTCP|TestPartitionHealsToHeavierForkOverTCP|TestForgedBlockRejectedOverTCP|TestLowBondProposerRejectedOverTCP}"
 : "${TIMEOUT:=900s}"
+
+# SUITE presets (override with an explicit TESTS='<regex>' for one property):
+#   adversarial (default) — the M0 consensus DENIAL drills (equivocation-slash,
+#                           partition-heal, forged/low-bond reject).
+#   substrate             — the P0 LIVENESS/durability substrate over the wire:
+#                           objective quorum commit, bond-earned-standing commit,
+#                           and publish→fetch bit-perfect — the "does the network
+#                           stay live and serve" half the adversarial drills ride on.
+#   all                   — both, the full P0 netem gate in one run.
+# NOTE: the cold-start re-mesh test (TestBootstrapRetryRecoversColdStartRace) is
+# deliberately EXCLUDED from the netem suite — it runs with -request-timeout 500ms
+# -request-retries 0 (a clean-localhost timing test of the self-heal LOGIC, "not
+# about RPC retry" per its own comment), so a dropped packet under netem flakes it.
+# The bootstrap-retry FIX is certified in the clean e2e suite (bootstrap_test.go);
+# netem-hardening that specific race is tracked, not faked green here.
+ADVERSARIAL='TestEquivocatorSlashedOverTCP|TestPartitionHealsToHeavierForkOverTCP|TestForgedBlockRejectedOverTCP|TestLowBondProposerRejectedOverTCP'
+SUBSTRATE='TestObjectiveConsensusCommitsOverTCP|TestBondEarnedStandingCommitsOverTCP|TestPublishCommitFetchOverTCP'
+case "${SUITE:-adversarial}" in
+  adversarial) : "${TESTS:=$ADVERSARIAL}"; kind="adversarial-consensus drills"; verb="DENIED its attack" ;;
+  substrate)   : "${TESTS:=$SUBSTRATE}";   kind="P0 substrate liveness";        verb="held" ;;
+  all)         : "${TESTS:=$ADVERSARIAL|$SUBSTRATE}"; kind="full P0 netem gate (substrate + adversarial)"; verb="held/denied under impairment" ;;
+  *) echo "unknown SUITE='$SUITE' (use adversarial | substrate | all, or set TESTS=<regex>)"; exit 1 ;;
+esac
 MODCACHE="$(go env GOMODCACHE 2>/dev/null || true)"
 
 echo "== build image (golang + iproute2) =="
 docker build -q -t silt-adversarial . >/dev/null || { echo "FAIL: image build"; exit 1; }
 
-echo "== certify adversarial-consensus drills under netem [${NETEM:-CLEAN}] =="
-echo "   drills: ${TESTS}"
+echo "== certify ${kind} under netem [${NETEM:-CLEAN}] =="
+echo "   tests: ${TESTS}"
 mc_mount=()
 [ -n "$MODCACHE" ] && [ -d "$MODCACHE" ] && mc_mount=(-v "$MODCACHE":/go/pkg/mod:ro)
 
@@ -61,10 +83,10 @@ set -e
 
 echo ""
 if [ "$code" = 0 ]; then
-  echo "RESULT: PASS ✅  every adversarial-consensus drill DENIED its attack under [${NETEM:-CLEAN}] — certified deterministically, off-cloud."
+  echo "RESULT: PASS ✅  every ${kind%% *} property ${verb} under [${NETEM:-CLEAN}] — certified deterministically, off-cloud."
 else
-  echo "RESULT: FAIL ❌  a drill did NOT deny its attack under [${NETEM:-CLEAN}] (go test exit $code)."
-  echo "  Per the rescue guardrail, an attack you cannot drive+deny is a RED, never a passing GAP —"
+  echo "RESULT: FAIL ❌  a ${kind%% *} property did NOT hold under [${NETEM:-CLEAN}] (go test exit $code)."
+  echo "  Per the rescue guardrail, a property you cannot drive+verify is a RED, never a passing GAP —"
   echo "  this is a REAL finding. Reproduce and fix it here; do NOT route around it on the cloud."
 fi
 exit $code
