@@ -121,9 +121,11 @@ func (n *Node) ProposeGoodBlock(target ports.NodeID, done func(accepted bool, er
 	})
 }
 
-// Equivocate makes this node DOUBLE-SIGN at height 1 — the Byzantine act honest nodes
-// refuse. It builds two DIFFERENT blocks at height 1 on the shared genesis, both
-// signed by this node as proposer, and places them on two different honest peers:
+// Equivocate makes this node DOUBLE-SIGN at the current uncommitted tip height — the
+// Byzantine act honest nodes refuse. It builds two DIFFERENT blocks at that height on
+// the current head, both signed by this node as proposer, and places them on two
+// different honest peers (the tip, not a hardcoded height 1, so the double-sign stays
+// live on a chain that has already advanced — #345):
 //
 //   - block X lands on honestX (honestX = [g, X], weight 1);
 //   - a conflicting block Y lands on honestYZ, then an extension Z@2 on top, so
@@ -142,18 +144,26 @@ func (n *Node) Equivocate(honestX, honestYZ ports.NodeID, done func(error)) {
 		done(ErrNoChain)
 		return
 	}
-	genesis := n.chain.Blocks(0)
-	if len(genesis) == 0 {
+	// Double-sign at the current uncommitted TIP, not a hardcoded height 1. Head()
+	// returns (head hash, head height + 1), so the two conflicting blocks land at
+	// the LIVE next height wherever the chain is. On a fresh chain the tip is
+	// genesis, so this is height 1 off genesis exactly as before (the in-process
+	// slash test is unchanged); but on a chain that has already committed past
+	// height 1 — e.g. a warmed cloud field-test network at height 4-5 — a height-1
+	// double-sign is STALE: an honest target refuses to attest a proposal that is
+	// not at head+1 (ValidateProposal), so the forks are never placed, never enter
+	// fork reconciliation, and are never detected. Targeting the tip keeps the
+	// double-sign LIVE regardless of when the drill fires (#345).
+	prev, height := n.chain.Head()
+	if height == 0 {
 		done(fmt.Errorf("equivocate: no genesis"))
 		return
 	}
-	gh := genesis[0].Hash()
-
-	x := &chain.Block{Version: chain.BlockVersion, Height: 1, Prev: gh, Entries: []ports.Entry{advEntry("X")}}
+	x := &chain.Block{Version: chain.BlockVersion, Height: height, Prev: prev, Entries: []ports.Entry{advEntry("X")}}
 	chain.Sign(x, n.signer)
-	y := &chain.Block{Version: chain.BlockVersion, Height: 1, Prev: gh, Entries: []ports.Entry{advEntry("Y")}}
+	y := &chain.Block{Version: chain.BlockVersion, Height: height, Prev: prev, Entries: []ports.Entry{advEntry("Y")}}
 	chain.Sign(y, n.signer)
-	z := &chain.Block{Version: chain.BlockVersion, Height: 2, Prev: y.Hash(), Entries: []ports.Entry{advEntry("Z")}}
+	z := &chain.Block{Version: chain.BlockVersion, Height: height + 1, Prev: y.Hash(), Entries: []ports.Entry{advEntry("Z")}}
 	chain.Sign(z, n.signer)
 
 	// X → honestX; then Y and its extension Z → honestYZ (the heavier fork).
