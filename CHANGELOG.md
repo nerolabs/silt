@@ -9,6 +9,21 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Fixed
+- **Bond proof answers are O(log n) again — cached Merkle tree (#286 compute layer, #340)** (2026-08-12) —
+  The confirming 3-region GCP run reopened #286: after the network layers (L1/L2a/L2b) genesis *still*
+  wedged at height 0 because bond proof-of-space-time compute saturated the single consensus loop (B2) —
+  decisive proof: bond 64M→2M dropped CPU ~90%→~3% and genesis committed instantly. A pprof isolation
+  pass (build-immutable #6, root-cause before you patch) found that the per-challenge answer *also* scaled
+  with plot size, contradicting the assumed size-independence — and pinned why: `manifest.Prove` was
+  **O(n), not O(log n)**, because `auditPath` recomputes `merkleTreeHash` over half the leaves on **every**
+  call, and `AnswerSpaceTime` draws O(k) proofs, so each answer cost O(k·n) and grew with the bond. On a
+  64 MiB plot one answer took ~743 ms (and RegisterBondReg rebuilt proofs on every propose retry). Fixed
+  with a precomputed **`manifest.Tree`** cached on the bond `Commitment` (built once in `Seal`/`Reconstruct`),
+  so each inclusion proof reads cached subtree hashes in O(log n): the same construction, **byte-identical
+  root and proofs** (guarded by `TestTreeMatchesStandaloneProve` across every leaf count) — no proof-param
+  change, C1-neutral. Measured effect: a 64 MiB answer drops **743 ms → ~8 ms (~95×)** and is now flat
+  across plot sizes. This removes the recurring per-audit-epoch scaling; the remaining Ω(size) on-loop cost
+  is the one-time `Seal()` at onboarding, moved off-loop next (research Option A, #340).
 - **Genesis commits small — bond registrations spread across blocks (#286 Layer 2b)** (2026-08-12) —
   A real 3-region GCP cert run (with the #331 persistent-peers fix + #327/#332 `-log debug`) proved
   address convergence was fixed but genesis *still* didn't commit, and pinned the true final blocker:
