@@ -104,6 +104,36 @@ require_nodes() {
   return 0
 }
 
+# require_live FLOW SEVERITY NODE...  — record GAP + return 1 if any required node's
+# silt.service is not active. A node the substrate killed (SPOT preemption) is not a
+# property failure: the flow is UNTESTED, so it must GAP, never FAIL (the 2026-08-12
+# blind SMOKE false-FAILed web-ui-guard/publisher-unlinkability with empty output
+# because their node was preempted). Mirrors the is-active probe flow_first_run uses.
+require_live() {
+  local flow="$1" sev="$2"; shift 2
+  local n down=""
+  for n in "$@"; do
+    if ! ssh_node "$n" "systemctl is-active --quiet silt.service"; then down="$down $n"; fi
+  done
+  if [ -n "$down" ]; then
+    record "$flow" gap "$sev" "prerequisite node(s) not active (down:$down) — substrate/preemption, property UNTESTED not failed"
+    return 1
+  fi
+  return 0
+}
+
+# require_link FLOW SEVERITY  — record GAP + return 1 if no prior publish landed a
+# link this run (FT_LAST_LINK empty). A flow whose SETUP publish never produced a link
+# tested nothing; it must GAP (as 8-takedown already does), not FAIL with
+# `want=? got=<none>` (the 2026-08-12 7-restart-content cascade false-FAIL).
+require_link() {
+  if [ -z "${FT_LAST_LINK:-}" ]; then
+    record "$1" gap "$2" "no prior published link (upstream publish did not land) — property UNTESTED not failed"
+    return 1
+  fi
+  return 0
+}
+
 # slo_assert FLOW SEVERITY DETAIL  — call after setting `ok` (0/1) and `elapsed`.
 slo_assert() { # slo_assert FLOW SEVERITY "detail" OK ELAPSED
   local flow="$1" sev="$2" detail="$3" ok="$4" elapsed="${5:-}"

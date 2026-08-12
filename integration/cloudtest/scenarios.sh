@@ -46,7 +46,12 @@ b64url_to_hex() {
 # At genesis there are no committed bonds to rank canonical signers, so it falls back
 # to -peers order (a nominal-privacy note). Set TOKEN_QUORUM=1 (or 0) for a first
 # bootstrap run if publisher->validator egress is the thing under test.
-: "${TOKEN_QUORUM:=2}"
+#
+# H6 (blind field test 2026-08-12): a fresh network has no committed bonds, so a
+# token-quorum≥2 publish can't rank canonical signers and the headline publish→fetch
+# GAPs out of the box. The SMOKE path is precisely that first-bootstrap case, so
+# default it to 1 there (an explicit TOKEN_QUORUM= still wins); the full run keeps 2.
+if [ "${SMOKE:-0}" = 1 ]; then : "${TOKEN_QUORUM:=1}"; else : "${TOKEN_QUORUM:=2}"; fi
 
 # ft_reachable_peers NODE — from NODE, how many of the -peers validators are TCP-
 # reachable on the swarm port? Prints "OK/TOTAL"; lists unreachable refs on stderr.
@@ -269,6 +274,25 @@ flow_convergence() {
   done
   local detail="all validators within 2 of tip=$maxh AND every tip-height validator shares head hash ${tiphash:0:12}… (heights:$heights)"
   [ -n "$fork" ] && detail="FORK at tip height $maxh — divergent head hashes on:$fork (heights:$heights)"
+  # H5 — DURABLE convergence, not a point-in-time sample. A single instant can read
+  # PASS on a chain that immediately reorgs its committed blocks away (the 2026-08-12
+  # fork-choice oscillation: committed height 2 → reorg to height 0). Re-sample the
+  # boot validator's head after a settle window and require it did NOT regress; a head
+  # that fell below its first sample is an oscillating chain, scored a FAIL directly
+  # (previously only caught downstream at publish). If it never converged in the first
+  # place, keep that verdict.
+  if [ "$conv" = 1 ]; then
+    local boot bnv h1 hh1 info2 h2
+    boot="$(python3 -c "import json;print(json.load(open('$FT_DIR/topology.json'))['meta']['boot'])")"
+    bnv="${boot//-/_}"; eval "h1=\${H_$bnv:-0}; hh1=\${HH_$bnv}"
+    sleep 20
+    info2="$(chain_head "$boot")"; h2="${info2%% *}"; h2="${h2:-0}"
+    if [ "$h2" -lt "$h1" ] 2>/dev/null; then
+      slo_assert "5-convergence" major "chain REGRESSED after a 20s settle — $boot head fell from height $h1 to $h2 (fork-choice oscillation: a committed chain reorged onto a lighter/height-0 fork; see the fork-choice finding)" 0
+      return
+    fi
+    detail="$detail; DURABLE ($boot head $h1→$h2 over 20s, no regression)"
+  fi
   slo_assert "5-convergence" major "$detail" "$conv"
 }
 
@@ -306,15 +330,16 @@ flow_restart_survival() {
   # second storage node to restart while store-1 serves — skip cleanly under SMOKE
   # (store-2 absent) rather than restart a nonexistent node and assert on nothing.
   if node_exists store-2; then
+    # No upstream link ⇒ nothing to fetch: GAP (untested), not a want=?/got=<none> FAIL —
+    # the same missing-link precondition 8-takedown already GAPs on (H3). A failed
+    # publish is scored where it happens (2-publish-fetch), not cascaded here.
+    require_link "7-restart-content" major || return
     svc store-2 restart || true; sleep 8
     local ok2=0 got=""
-    if [ -n "${FT_LAST_LINK:-}" ]; then
-      # SHA-compare, not echo-OK (§D): a `swarm get` that exits 0 but writes truncated
-      # or wrong bytes must NOT pass as "fetchable" — assert the fetched file's SHA
-      # matches what was published.
-      got="$(ssh_node store-1 "/usr/local/bin/silt swarm get '$FT_LAST_LINK' -o /tmp/ft_r.bin -peers '$PEERS' -registry '$REGREF' >/dev/null 2>&1; sha256sum /tmp/ft_r.bin | cut -d' ' -f1" 2>/dev/null || true)"
-      [ -n "${FT_LAST_SHA:-}" ] && [ "$got" = "$FT_LAST_SHA" ] && ok2=1
-    fi
+    # SHA-compare, not echo-OK (§D): a `swarm get` that exits 0 but writes truncated or
+    # wrong bytes must NOT pass as "fetchable" — assert the fetched file's SHA matches.
+    got="$(ssh_node store-1 "/usr/local/bin/silt swarm get '$FT_LAST_LINK' -o /tmp/ft_r.bin -peers '$PEERS' -registry '$REGREF' >/dev/null 2>&1; sha256sum /tmp/ft_r.bin | cut -d' ' -f1" 2>/dev/null || true)"
+    [ -n "${FT_LAST_SHA:-}" ] && [ "$got" = "$FT_LAST_SHA" ] && ok2=1
     slo_assert "7-restart-content" major "content still fetchable BIT-PERFECT after a storage-node restart$([ "$ok2" = 1 ] || echo " (want=${FT_LAST_SHA:-?} got=${got:-<none>})")" "$ok2"
   else
     record "7-restart-content" skip major "skipped — needs store-2 (absent in this topology, e.g. SMOKE)"
@@ -496,6 +521,7 @@ adv_proposal_reject() {
 
 # ── privacy (#3): publisher unlinkability — refuse-to-surveil over the real wire ─
 flow_publisher_unlinkability() {
+  require_live "priv-unlinkability" major fetch-1 || return   # preempted node ⇒ GAP, not "no refusal seen" FAIL (H2)
   # flow_publish_fetch already proved the DEFAULT (token-quorum) publish commits
   # unlinkably. Here the adversary ASKS to record a durable Publisher identity; the
   # default chain must REFUSE it (chain: ErrPublisherEntry / "carries a durable
@@ -560,6 +586,7 @@ flow_chaos_crash() {
 # ── client/UI (#4): the web-UI local-security guard (#89) over a real VM ─────────
 flow_web_ui_guard() {
   require_nodes "web-ui" minor fetch-1 || return
+  require_live  "web-ui" minor fetch-1 || return   # preempted node ⇒ GAP, not empty-code FAIL (H2)
   # Turn on the web UI on fetch-1 (a flag flip, restored after), then attack its
   # guard from the node's OWN localhost — the realistic operator-on-the-box model.
   relaunch_with fetch-1 "-ui=127.0.0.1:8081"

@@ -69,6 +69,36 @@ func TestProviderWalkSkipsCooledPeer(t *testing.T) {
 	}
 }
 
+// TestProviderDiversitySweepSkipsCooledPeer is the #277 regression the 2026-08-12
+// blind field test surfaced: TestProviderWalkSkipsCooledPeer above sets
+// DHTDomainCap = 0, which isolates AWAY the diversity-sweep second leg of
+// resolveProviders — the exact leg the daemon and client always run
+// (DHTDomainCap = 2, cmd/silt/daemon.go + client.go). So the green walk test gave
+// false confidence: it proved the base walk is gated and never exercised the
+// sweep. Here we turn the sweep ON and prove the negative cache is honored there
+// too — a cooled corpse must not eat a full RequestTimeout dial on every resolve
+// (the churn dial-storm, #277).
+func TestProviderDiversitySweepSkipsCooledPeer(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.DHTDomainCap = 2 // ENGAGE the diversity sweep — exactly what daemon.go/client.go do
+	searcher, deadID, deadDials, sched := walkDeadRig(t, cfg)
+
+	// The corpse is already negative-cached: a prior resolve timed out on it.
+	searcher.deadUntil[deadID] = searcher.clock.Now().Add(searcher.cfg.HolderCooldown)
+
+	var done bool
+	searcher.resolveProviders(ports.Hash{0xAB}, func([]ports.NodeID) { done = true })
+	sched.Run()
+
+	if !done {
+		t.Fatal("resolveProviders never completed")
+	}
+	if *deadDials != 0 {
+		t.Fatalf("#277: a cooled peer must be skipped by the diversity sweep too, "+
+			"but sweepProviders re-dialed the corpse: got %d dials, want 0", *deadDials)
+	}
+}
+
 // TestProviderWalkWithoutCooldownDialsDeadPeer is the inverted control: with the
 // negative cache disabled the SAME dead peer IS dialed by the walk — proving the
 // cache, not some other effect, is what suppresses the re-dial.

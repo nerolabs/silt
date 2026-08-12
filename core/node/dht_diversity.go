@@ -56,6 +56,18 @@ func (n *Node) sweepProviders(key ports.Hash, targets []ports.NodeID, onRecs fun
 			next(i + 1)
 			return
 		}
+		// #277: gate the negative cache here too. The distance walk (node.go:1132)
+		// and the fetch/probe paths (file.go, repair.go) already skip a peer that
+		// recently timed out; the diversity sweep was the one resolveProviders leg
+		// that did not — so under churn a cooled corpse ate a full RequestTimeout on
+		// every resolve (the daemon runs this sweep on every resolution, DHTDomainCap
+		// > 0). A sweep is breadth discovery across many near peers, so skipping a
+		// cooled one is safe — no sole-holder concern like the fetch path's anyLive
+		// guard (#69). Found by the 2026-08-12 blind field test (durability/churn).
+		if until, dead := n.deadUntil[t]; dead && n.clock.Now() < until {
+			next(i + 1)
+			return
+		}
 		n.request(t, ports.Message{Kind: ports.MsgGetProviders, Target: key},
 			func(resp ports.Message, err error) {
 				if err == nil && len(resp.ProviderRecs) > 0 {
