@@ -95,3 +95,6 @@ integration/twocloud/results.jsonl
 integration/twocloud/report.md
 integration/twocloud/report.html
 integration/**/silt
+
+# private scratch notes — never commit
+pico.save
