@@ -53,7 +53,13 @@ func (n *Node) DistributeFrom(src ports.ChunkStore, entry ports.Entry, m *manife
 
 func (n *Node) distributeFrom(src ports.ChunkStore, entry ports.Entry, m *manifest.Manifest, keepLocal bool, porKey *por.Key, done func(placed int, err error)) {
 	leaves := m.Leaves()
-	root := m.Root()
+	// One cached Merkle tree for the whole distribution: a proof is built per
+	// shard below, and the standalone manifest.Prove is O(n) per call (it rehashes
+	// subtrees), so proving S shards over an n-leaf manifest was O(S·n) ≈ O(n²) on
+	// the loop — seconds for a large file. The tree makes each proof O(log n), and
+	// tree.Root() reuses the same build instead of recomputing the root O(n) (#340).
+	tree := manifest.BuildTree(leaves)
+	root := tree.Root()
 	manifestN := len(entry.ManifestChunks)
 	ids := append(append([]ports.ChunkID{}, entry.ManifestChunks...), leaves...)
 	placed := 0
@@ -187,7 +193,7 @@ func (n *Node) distributeFrom(src ports.ChunkStore, entry ports.Entry, m *manife
 				// chunks aren't tree leaves, go bare, and aren't audited.
 				var proof *ports.StorageProof
 				if li := grp.members[k] - manifestN; li >= 0 {
-					if p, perr := manifest.Prove(leaves, li); perr == nil {
+					if p, perr := tree.Prove(li); perr == nil {
 						proof = &ports.StorageProof{Root: root, Index: p.Index,
 							Total: p.Total, Path: p.Path, Column: columnOfLeaf(m, li)}
 						if porKey != nil {

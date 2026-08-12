@@ -475,8 +475,12 @@ func (n *Node) repairStripes(m *manifest.Layout, p erasure.Params, refs []shardR
 // paramedic, not a hoarder. A failed attempt (below k fetchable) is
 // counted and simply retried on the next sweep.
 func (n *Node) repairStripe(m *manifest.Layout, p erasure.Params, stripeRefs []shardRef, disperseShards map[ports.ChunkID]bool, avoidDomain uint64, porKey *por.Key, done func()) {
-	leaves := m.Leaves()
-	root := m.Root()
+	// One cached Merkle tree for the whole stripe repair: place/spread below build
+	// a proof per shard, and the standalone manifest.Prove is O(n) per call, so this
+	// was O(shards·n) on the loop. The tree makes each proof O(log n) and gives the
+	// root without a second O(n) MerkleRoot recompute (#340).
+	tree := manifest.BuildTree(m.Leaves())
+	root := tree.Root()
 	realData := 0
 	for _, r := range stripeRefs {
 		if r.pos < p.K {
@@ -568,7 +572,7 @@ func (n *Node) repairStripe(m *manifest.Layout, p erasure.Params, stripeRefs []s
 			}
 			r := toSpread[i]
 			var proof *ports.StorageProof
-			if pr, perr := manifest.Prove(leaves, r.leafIdx); perr == nil {
+			if pr, perr := tree.Prove(r.leafIdx); perr == nil {
 				proof = &ports.StorageProof{Root: root, Index: pr.Index, Total: pr.Total, Path: pr.Path, Column: r.pos}
 				if porKey != nil {
 					proof.PorTags = porKey.Tags(r.id[:], shards[r.pos])
@@ -592,7 +596,7 @@ func (n *Node) repairStripe(m *manifest.Layout, p erasure.Params, stripeRefs []s
 			r := toPlace[i]
 			var proof *ports.StorageProof
 			hasTags := false
-			if pr, perr := manifest.Prove(leaves, r.leafIdx); perr == nil {
+			if pr, perr := tree.Prove(r.leafIdx); perr == nil {
 				proof = &ports.StorageProof{Root: root, Index: pr.Index, Total: pr.Total, Path: pr.Path, Column: r.pos}
 				if porKey != nil {
 					proof.PorTags = porKey.Tags(r.id[:], shards[r.pos])
