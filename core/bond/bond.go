@@ -149,6 +149,11 @@ type Commitment struct {
 	seed   []byte
 	blocks [][]byte
 	leaves []ports.Hash
+	// tree is the leaves' Merkle tree, precomputed once so each inclusion proof
+	// an answer builds is O(log n) instead of O(n): a challenge draws O(k) proofs
+	// and a large plot has up to ~16k leaves, so recomputing subtree hashes per
+	// proof (the standalone manifest.Prove) dominated the consensus loop (#340).
+	tree *manifest.Tree
 }
 
 // plotSeedN is the PUBLIC, identity- and size-bound plot seed for validator key
@@ -187,7 +192,8 @@ func Seal(pk []byte, size int64) *Commitment {
 		blocks[i] = b
 		leaves[i] = ports.HashBytes(b)
 	}
-	return &Commitment{Size: size, Root: manifest.MerkleRoot(leaves), pk: append([]byte(nil), pk...), seed: seed, blocks: blocks, leaves: leaves}
+	tree := manifest.BuildTree(leaves)
+	return &Commitment{Size: size, Root: tree.Root(), pk: append([]byte(nil), pk...), seed: seed, blocks: blocks, leaves: leaves, tree: tree}
 }
 
 // Blocks exposes the plot blocks so the owner can persist them (ports.
@@ -225,7 +231,8 @@ func Reconstruct(pk []byte, size int64, blocks [][]byte) (*Commitment, error) {
 		}
 		leaves[i] = ports.HashBytes(b)
 	}
-	return &Commitment{Size: size, Root: manifest.MerkleRoot(leaves), pk: append([]byte(nil), pk...), seed: plotSeedN(pk, n), blocks: blocks, leaves: leaves}, nil
+	tree := manifest.BuildTree(leaves)
+	return &Commitment{Size: size, Root: tree.Root(), pk: append([]byte(nil), pk...), seed: plotSeedN(pk, n), blocks: blocks, leaves: leaves, tree: tree}, nil
 }
 
 // LabelOpen is one labeling-consistency open (design §6): the challenged node's
@@ -287,6 +294,18 @@ func (c *Commitment) Answer(nonce uint64, k int) (Answer, bool) {
 	return c.answer(nonce, k)
 }
 
+// proveLeaf builds the O(log n) inclusion proof for leaf i from the cached tree.
+// Seal and Reconstruct always precompute the tree; this lazily builds it only for
+// a Commitment assembled as a struct literal (adversarial-shape tests), so no
+// proof path can nil-deref. The tree is a pure function of the (fixed) leaves, so
+// building it here changes no proof bytes and preserves determinism.
+func (c *Commitment) proveLeaf(i int) (manifest.Proof, error) {
+	if c.tree == nil {
+		c.tree = manifest.BuildTree(c.leaves)
+	}
+	return c.tree.Prove(i)
+}
+
 // answer builds a response over the effective challenge nonce: the possession
 // samples, the k labeling opens, and the prover's key. Both the space-only path
 // (effNonce == the plain nonce) and the space-time path (effNonce ==
@@ -299,7 +318,7 @@ func (c *Commitment) answer(effNonce uint64, k int) (Answer, bool) {
 		if i >= len(c.blocks) || c.blocks[i] == nil {
 			return Answer{}, false
 		}
-		p, err := manifest.Prove(c.leaves, i)
+		p, err := c.proveLeaf(i)
 		if err != nil {
 			return Answer{}, false
 		}
@@ -328,7 +347,7 @@ func (c *Commitment) labelOpens(effNonce uint64, k int) ([]int, []LabelOpen, boo
 		if v >= len(c.blocks) || c.blocks[v] == nil {
 			return nil, nil, false
 		}
-		np, err := manifest.Prove(c.leaves, v)
+		np, err := c.proveLeaf(v)
 		if err != nil {
 			return nil, nil, false
 		}
@@ -337,7 +356,7 @@ func (c *Commitment) labelOpens(effNonce uint64, k int) ([]int, []LabelOpen, boo
 			if c.blocks[v-1] == nil {
 				return nil, nil, false
 			}
-			pp, err := manifest.Prove(c.leaves, v-1)
+			pp, err := c.proveLeaf(v - 1)
 			if err != nil {
 				return nil, nil, false
 			}
@@ -347,7 +366,7 @@ func (c *Commitment) labelOpens(effNonce uint64, k int) ([]int, []LabelOpen, boo
 			if p >= len(c.blocks) || c.blocks[p] == nil {
 				return nil, nil, false
 			}
-			pp, err := manifest.Prove(c.leaves, p)
+			pp, err := c.proveLeaf(p)
 			if err != nil {
 				return nil, nil, false
 			}
@@ -376,7 +395,7 @@ func (c *Commitment) AnswerSpaceTime(nonce uint64, p vdf.Params, delay uint64, k
 	if si >= len(c.blocks) || c.blocks[si] == nil {
 		return Answer{}, false
 	}
-	seedProof, err := manifest.Prove(c.leaves, si)
+	seedProof, err := c.proveLeaf(si)
 	if err != nil {
 		return Answer{}, false
 	}
