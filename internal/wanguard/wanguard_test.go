@@ -28,14 +28,19 @@
 // fix a live violation (there are none as of the audit), but it stops the
 // *next* #286.
 //
-// SCOPE NOTE (what this does NOT yet guard): the retry/backoff/eviction knobs of
-// the durable-WAN policy itself (attempt counts, LRS eviction thresholds) are
-// semantic, not a single AST construct, so they are not lint-guarded here — the
-// discipline for those is ROUTING: new WAN code must go through core/node's
-// requestAttempt (size-aware deadline + retry + evict-on-exhaustion + negative
-// cache) rather than re-deriving its own constants. A magic *deadline* in any of
-// the covered forms is a red build; a magic *retry count* is caught in review by
-// the routing rule and the build-immutable #6 mechanism paragraph.
+// SCOPE NOTE (what this does NOT lint-guard, and how it IS guarded): the
+// retry/backoff/eviction knobs of the durable-WAN policy (attempt counts, LRS
+// eviction thresholds) are semantic, not a single AST construct, so an AST ledger
+// over them would be false-positive-prone. They are guarded two other ways instead:
+//   - ROUTING: new WAN code goes through core/node's requestAttempt (size-aware
+//     deadline + retry + evict-on-exhaustion + negative cache), not its own constants.
+//   - BEHAVIOR: the #288 evict-on-one-miss anti-pattern (evicting a live peer on a
+//     single slow/dropped packet, which starves consensus under loss) is a red build
+//     via core/node's TestLivePeerIsRetriedNotEvictedOnOneMiss (a dead peer must be
+//     dialed retries+1 times before eviction) and TestStaticPeerSurvivesReachabilityEviction286.
+//
+// A magic *deadline* in any covered construct is a red build here; a magic *retry
+// count* / early evict is a red build there (plus the #6 mechanism-paragraph review).
 //
 // Deadline-CLEARING calls (conn.SetDeadline(time.Time{})) are not deadlines and
 // are ignored; non-deadline context calls (Background/TODO/WithCancel/WithValue)
