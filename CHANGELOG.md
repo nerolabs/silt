@@ -8,6 +8,16 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Added
+- **Regression guard for the #288 evict-on-one-miss anti-pattern (P0-4)** (2026-08-13) —
+  `core/node` `TestLivePeerIsRetriedNotEvictedOnOneMiss` locks the build-immutable #5 rule that a
+  live peer must be *retried*, not evicted, on a single slow/dropped packet: a dead peer given
+  `RequestRetries=2` must be dialed 3 times (initial + 2 retries) before eviction, so re-introducing
+  evict-on-the-first-miss (the shape that starved consensus under loss) turns this test red.
+  Counting dials over a run-to-completion is timing-independent, so it can't flake. The
+  `internal/wanguard` scope note now records that retry/evict are guarded by routing + this behavior
+  test (they are semantic policy, not an AST-lintable construct). No product behavior change.
+
 ### Fixed
 - **Canonical issuer-set discovery falls through an un-synced validator (#351, P0-2 residual)** (2026-08-13) —
   A chainless publisher (`silt swarm add`) picks its publish-token signers by a *canonical*,
