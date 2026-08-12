@@ -61,6 +61,16 @@ type Config struct {
 	// validator. See RequiredQuorum. No effect in legacy (reputation) mode, where the
 	// qualified set size is a local, divergent view.
 	ByzantineQuorum bool
+	// AnchorWeight is the fixed fork-choice weight a zero-bond launch anchor carries
+	// during the young window (#357 §1a). It gives the anchor→bonded ramp an
+	// always-present, monotone weight signal so heavier() never has to decide a
+	// zero-weight tie on the height-blind head-hash (which dropped committed blocks to
+	// height 0 in the field). 0 = default to MinBond (see Chain.anchorWeight): an
+	// anchor then weighs like a minimally-bonded validator, a real bond of any size
+	// still outweighs it, and the weight vanishes at maturity (launchAnchor ⇒ false).
+	// Mature-regime fork-choice weight (summed committed bond, the C2 quantity) is
+	// unchanged, so this is C1/C2-neutral.
+	AnchorWeight int64
 	// Launch-window "training wheels" (risk 15): while the network is immature —
 	// its NAKAMOTO COEFFICIENT over non-anchor bonded weight is below
 	// MatureValidators — a commit ALSO needs AnchorQuorum attestations from Anchors
@@ -533,8 +543,14 @@ func (c *Chain) Objective() bool { return c.objective() }
 // trust. It sheds MECHANICALLY at maturity (Mature()), after which only real
 // on-chain bonds qualify. Anchors are expected to register their OWN real bonds
 // early (live self-registration), so this is a launch crutch, not a standing
-// exemption: it grants ELIGIBILITY, never fork-choice WEIGHT (weight is always
-// summed real bond), so a declared anchor cannot outweigh a real bond.
+// exemption. It grants ELIGIBILITY plus a FIXED bootstrap fork-choice weight during
+// the young window (#357 §1a: Config.AnchorWeight, defaulting to MinBond) — the
+// sanctioned training-wheels trust that gives the anchor→bonded ramp a present,
+// monotone weight signal (without it every fresh fork weighed ≈0 and a height-blind
+// tiebreak dropped committed blocks to height 0). A real bond of any size still
+// outweighs a min-weight anchor, and the anchor weight VANISHES at maturity (this
+// returns false once everMature), so it is not a standing exemption and the
+// mature-regime fork-choice quantity (summed committed bond) is unchanged.
 func (c *Chain) launchAnchor(id ports.NodeID) bool {
 	// Gated on the one-way latch, not the live Mature(): once the network has ever
 	// matured, anchors lose bond-free eligibility FOREVER (F-1). An anchor that
@@ -614,11 +630,29 @@ func bftThreshold(n int) int {
 func (c *Chain) RequiredQuorum() int {
 	q := c.cfg.Quorum
 	if c.cfg.ByzantineQuorum && c.objective() {
-		if bq := bftThreshold(c.qualifiedCount()); bq > q {
+		if bq := bftThreshold(c.validatorSetSize()); bq > q {
 			q = bq
 		}
 	}
 	return q
+}
+
+// validatorSetSize is N, the set the Byzantine quorum is sized against (#357 §2).
+// It must be STABLE across a ramp: sizing against the live `qualifiedCount` made
+// RequiredQuorum shift block-to-block as ~1.5 MB bond registrations drained in, so
+// no fork ever held a quorum of a consistent set (quorum-intersection safety needs a
+// FIXED n) — the "0 of 2 gathered" stall. During the young window the set is the
+// fixed anchor set (seeded at genesis — the sanctioned trust, immutable #3); once the
+// network matures (the one-way `everMature` latch) it becomes the committed bonded
+// set, the boundary at which registrations are finalized. This is the minimal
+// per-boundary snapshot the research prescribes (Tendermint/Casper both fix the set
+// to buy finality); a bootstrap 4-anchor network gets bftThreshold(4)=2, matching the
+// "2 attestations" the field logs show.
+func (c *Chain) validatorSetSize() int {
+	if c.objective() && !c.everMature && len(c.cfg.Anchors) > 0 {
+		return len(c.cfg.Anchors)
+	}
+	return c.qualifiedCount()
 }
 
 // BondRegNonce is the fresh challenge a non-genesis bond registration must
@@ -1587,12 +1621,42 @@ func (c *Chain) blockWeight(b *Block) int64 {
 		}
 		seen[id] = true
 		if c.objective() {
-			n += c.bonded[id] // objective weight = summed on-chain bond
+			// #357 §1a — the ramp needs an always-present, monotone weight signal.
+			// A really-bonded attester weighs its committed bond (the mature-regime
+			// C2 quantity, unchanged). A qualified attester BELOW MinBond can only be
+			// a launch anchor (attesterQualified gated it) — during the young window
+			// it carries a fixed bootstrap weight (the sanctioned immutable-#3 training
+			// wheels), not 0. Without this, a fresh anchor-attested chain has Weight()≈0
+			// and heavier() falls through to a height-blind tiebreak that drops committed
+			// blocks to height 0. The weight vanishes at maturity (launchAnchor ⇒ false
+			// once everMature), so the mature-regime fork-choice quantity is untouched.
+			switch {
+			case c.bonded[id] >= c.cfg.MinBond:
+				n += c.bonded[id]
+			case c.launchAnchor(id):
+				n += c.anchorWeight()
+			}
 		} else {
 			n++ // legacy weight = count of qualified attesters
 		}
 	}
 	return n
+}
+
+// anchorWeight is the fixed fork-choice weight a zero-bond launch anchor carries
+// during the young window (#357 §1a). Config.AnchorWeight overrides it; unset it
+// defaults to MinBond, so an anchor weighs like a minimally-bonded validator — a
+// real bond of any size still outweighs an anchor, and once the network matures
+// anchors carry no weight at all (launchAnchor ⇒ false). A nonzero floor guarantees
+// the ramp always has a weight signal even if MinBond is 0 (sim/legacy configs).
+func (c *Chain) anchorWeight() int64 {
+	if c.cfg.AnchorWeight > 0 {
+		return c.cfg.AnchorWeight
+	}
+	if c.cfg.MinBond > 0 {
+		return c.cfg.MinBond
+	}
+	return 1 << 20
 }
 
 // Reconcile heals a fork (D2): given a peer's full chain from genesis, it
@@ -1653,6 +1717,18 @@ func heavier(a, b *Chain) bool {
 	if wa != wb {
 		return wa > wb
 	}
+	// §1b (#357): on equal weight, prefer the TALLER chain. A heaviest-chain protocol
+	// must never let a SHORTER fork win a weight tie — the old height-blind head-hash
+	// tiebreak is exactly what let a genesis fork (height 0) displace committed blocks.
+	// Weight is still decided first, so a genuinely heavier shorter chain still wins;
+	// height only breaks a weight tie (monotonicity: never drop committed height for
+	// an equal-weight fork).
+	ah, bh := a.blocks[len(a.blocks)-1].Height, b.blocks[len(b.blocks)-1].Height
+	if ah != bh {
+		return ah > bh
+	}
+	// Same weight AND height ⇒ a deterministic head-hash tiebreak, so honest replicas
+	// still converge on one of two genuinely-equivalent forks.
 	ha, hb := a.blocks[len(a.blocks)-1].Hash(), b.blocks[len(b.blocks)-1].Hash()
 	return bytesLess(ha[:], hb[:])
 }
