@@ -658,6 +658,27 @@ standing — amended only by the same deliberate, reviewed consensus:
      PoST cohort settled decades ago; both **#286** (a flat transport deadline
      wedged quorum-2 genesis cross-region) and **#288** (a flat deadline +
      evict-on-one-miss starved consensus under loss) were this law unlearned.
+  6. **Root-cause before you patch — attribute before you ship.** No knob moves
+     before a log, trace, or test **names the mechanism** of the failure. Before
+     writing a fix, write the one-paragraph mechanism: *the failure is X **because**
+     Y; this change addresses Y **by** Z.* If you cannot write it with evidence, you
+     are guessing — **stop, instrument, and reduce to a cheap deterministic repro**
+     (the `netem` / `flakynet` / sim harness, on a laptop in minutes); and if the
+     mechanism is still unknown, **or the change touches a security parameter, a
+     consensus rule, or a published claim, consult research BEFORE building or
+     spending a billable run.** **Grep for the mechanism before building new
+     machinery** — a surprising amount is *unused-correct* code, not missing code
+     (`launchAnchor` already solved the genesis-bootstrap chicken-and-egg, comment
+     and all). An expensive/billable run **confirms** an already-understood,
+     locally-reproduced fix; it never **discovers** a cause or **tests** a guess.
+     This is the *sequencing* dual of #3 and #5: those say *what* is sound; this
+     says *root-cause first*, because the recurring cost is patching a symptom one
+     layer above its cause. The discipline is written down — **consult
+     `docs/build-process.md` BEFORE reaching for a knob.** Drawn from repeated real
+     losses: the #286 handshake EOF "fixed" with a fixed-constant timeout (the cause
+     was *no outbound addresses*), a billable run spent to *discover* the ~8 MB
+     genesis block (deterministic, reproducible in-process), and #288's
+     evict-on-one-miss — each a patch one layer above a structural cause.
 
 **Tenets — canon, amendable with reviewed consensus and evidence.** Everything
 else in Parts I–VIII, including the strong disciplines we hold nearly as firmly
@@ -819,3 +840,19 @@ the network grows — **not closed.**
   fix (a size-aware transport deadline) is exactly the "generous, payload-scaled
   transport deadline" the research prescribes. The doc exists so future builders
   read the settled answer instead of losing days re-deriving it (as #286/#288 did).
+- **2026-08-12** — Added **build-immutable #6 (root-cause before you patch —
+  attribute before you ship)** and its companion reference **`docs/build-process.md`**,
+  distilled from the research team's `build-process-root-cause-first-ADVICE.md`
+  (2026-08-12). Where #3/#4/#5 govern *what* is sound, #6 governs the *sequencing*
+  of a fix: instrument and name the failure mechanism (a one-paragraph *X because Y;
+  fix Y by Z*) before touching a knob; reduce to a cheap local repro before an
+  expensive run; grep for existing machinery before building new; and consult
+  research when the mechanism is unknown or the change touches security / consensus /
+  a claim — not after two guesses. Provoked by the repeated **#286** WAN loop: a
+  handshake-EOF "fixed" with a fixed-constant timeout (real cause: no outbound
+  addresses), and a billable multi-region run spent to *discover* the ~8 MB genesis
+  block that was deterministic and reproducible in-process. The correct genesis fix
+  (spread bond regs; commit small via the already-existing `launchAnchor` anchor
+  bootstrap) was *unused-correct code* — the rule-6 poster child. Same corrective as
+  the comprehension/owned-residuals audits (docs ahead of code there, fixes ahead of
+  root-cause here): **verify/attribute before you ship.**
