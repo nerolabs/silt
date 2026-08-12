@@ -291,7 +291,7 @@ flow_convergence() {
       slo_assert "5-convergence" major "chain REGRESSED after a 20s settle — $boot head fell from height $h1 to $h2 (fork-choice oscillation: a committed chain reorged onto a lighter/height-0 fork; see the fork-choice finding)" 0
       return
     fi
-    detail="$detail; DURABLE ($boot head $h1→$h2 over 20s, no regression)"
+    detail="$detail; DURABLE ($boot head ${h1}->${h2} over 20s, no regression)"
   fi
   slo_assert "5-convergence" major "$detail" "$conv"
 }
