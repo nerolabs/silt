@@ -85,7 +85,12 @@ def render_body(md: str) -> str:
 def load_entries():
     """Return (date, title, body_html) per dated entry, newest first."""
     entries = []
-    for path in SRC.glob("*.md"):
+    # Sort by FILENAME, not raw glob order: glob() yields entries in
+    # filesystem order (APFS vs ext4 differ), so two same-date entries would
+    # render in a different order locally vs in CI and fail the staleness gate.
+    # Keying on the filename (which begins with the date) makes the output
+    # deterministic across machines, with the filename as the same-date tiebreak.
+    for path in sorted(SRC.glob("*.md"), key=lambda p: p.name):
         m = ENTRY_RE.match(path.name)
         if not m:
             continue  # README.md and anything undated is not an entry
@@ -93,9 +98,10 @@ def load_entries():
         text = path.read_text()
         title, _, rest = text.partition("\n")
         title = title.lstrip("# ").strip() or path.stem
-        entries.append((date, title, render_body(rest)))
-    entries.sort(key=lambda e: e[0], reverse=True)
-    return entries
+        entries.append((date, path.name, title, render_body(rest)))
+    # Stable sort by date descending; same-date entries keep filename order.
+    entries.sort(key=lambda e: (e[0], e[1]), reverse=True)
+    return [(date, title, body) for date, _name, title, body in entries]
 
 
 def render(entries) -> str:
