@@ -694,8 +694,12 @@ parameters (erasure k/n, replication factor, cache policy, DHT constants), the
 Sybil-cost parameters that keep C1 + C2 true at the network's current size:** the
 non-substitutable-resource weights in `C_honest` (disk × address-diversity ×
 time × served demand), the concentration threshold *k*, the demand-attestation
-ratio, and the audit/decay windows. These are *held in tension* and re-tuned as
-the network grows — **not closed.**
+ratio, the audit/decay windows, and — under build-immutable #4 — the
+**honest-validator hardware floor** (target ~1 vCPU / 1 GiB), the onboarding
+boot-seal budget, and the derived **max production bond** it implies (only the
+one-time `Seal()` scales with bond size; steady-state proof cost is
+size-independent after #341 — `design/m0.md` §6). These are *held in tension* and
+re-tuned as the network grows — **not closed.**
 
 > **The principle-not-mechanism rule, and its one exception.** A tenet gates V1
 > as a *principle*, never as a *mechanism* — "reward tracks value" is canon, but
