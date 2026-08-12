@@ -59,6 +59,26 @@ type Config struct {
 	// 0 = off (flat RequestTimeout). Few-KB steady-state blocks gain ~nothing; the
 	// structural close is a succinct proof (#299). Holder-fetch dials never extend.
 	RequestSizeFloorBytesPerSec int64
+	// MaxBondRegBytesPerBlock caps the total BYTES of bond registrations a proposer
+	// embeds in ONE block (#286 Layer 2b). At a fresh multi-validator objective genesis,
+	// every founding validator submits its ~1.5 MB space-time bond proof; embedding all
+	// of them piles into one ~8 MB block the quorum gather cannot move + re-verify over a
+	// real 3-region WAN before the round churns — the cert stalled here with regs=5 /
+	// 7.9 MB. The founding set are ANCHORS (chain.launchAnchor), so genesis commits SMALL
+	// on anchor attestations at zero committed bond while the deferred registrations drain
+	// over the next blocks (each validator still gains real bonded weight and reaches
+	// MatureValidators). A BYTE budget (not a count) is the right lever because the
+	// blocker is SIZE, not number: at genesis a full ~1.5 MB proof means ~1 reg/block,
+	// but small steady-state renewals (fewer label samples / smaller plots) pack many per
+	// block — so an attest-only validator's renewals are NOT starved under a tight TTL
+	// (a count cap would lapse them; sim/bond_renewal proves it). Default ~2 MiB keeps a
+	// block within the size #313 proved gathers while fitting one full proof or many small
+	// renewals. The proposer always embeds at least ONE reg even if it alone exceeds the
+	// budget (never stall the queue on an oversized proof). 0 = unbounded (legacy). This
+	// is the near-term unblock; the structural close is a succinct + aggregated proof
+	// (#299, docs/network-durability.md §6). Proposer-side policy only — validity is
+	// unchanged (a block with N regs is valid), so mixed caps across proposers are safe.
+	MaxBondRegBytesPerBlock int64
 	// Replication is how many closest nodes receive each chunk at
 	// distribute/repair time. With erasure coding doing the heavy
 	// lifting, even 1 is viable — parity across nodes replaces copies.
@@ -234,6 +254,7 @@ func DefaultConfig() Config {
 		// 256 KB/s — a pessimistic transcontinental lossy path. A ~1.5 MB bond-registration
 		// block then gains ~6 s of transport headroom over the base RequestTimeout (#286).
 		RequestSizeFloorBytesPerSec: 262144,
+		MaxBondRegBytesPerBlock:     2 << 20, // #286 L2b: ~2 MiB/block stays gatherable; one full ~1.5 MB genesis proof or many small renewals
 		Replication:                 3,
 		RepairInterval:              60 * ports.Second,
 		RepairSlack:                 2,
