@@ -73,10 +73,10 @@ BOOT_A1="$A1_ID@10.90.0.2:4001"; BOOT_A2="$A2_ID@10.90.0.3:4001"
 BOOT_S1="$S1_ID@10.90.0.4:4001"; BOOT_S2="$S2_ID@10.90.0.5:4001"
 ALL="$BOOT_A1,$BOOT_A2,$BOOT_S1,$BOOT_S2"
 
-publish() { # publish to <registry-ref>, run inside <svc>; echoes add stdout+stderr
-  local svc=$1 reg=$2
+publish() { # publish to <registry-ref> [via <peers>], run inside <svc>; echoes add stdout+stderr
+  local svc=$1 reg=$2 peers=${3:-$ALL}
   dc exec -T "$svc" sh -c "head -c 32768 /dev/urandom > /tmp/p.bin; \
-    silt swarm add /tmp/p.bin -peers '$ALL' -registry '$reg' -replication 1 2>&1"
+    silt swarm add /tmp/p.bin -peers '$peers' -registry '$reg' -replication 1 2>&1"
 }
 
 # ── C2-a: the honest anchors bootstrap + commit (also commits Sybil bondregs) ──
@@ -115,16 +115,30 @@ echo "  both anchors stopped; the Sybil set (s1 proposes, s2 attests) now tries 
 # A capture means the Sybils push the chain BEYOND this without any anchor.
 h_ceiling=$h1
 cc_pre=$(commit_count s1); cc_pre_s2=$(commit_count s2)
+# audit #303 / #338: publish through the LIVE Sybils only. $ALL still lists the
+# just-stopped anchors, and a content scatter that cannot reach them errors the
+# `swarm add` out BEFORE it ever hits s1's registry — so the deterministic
+# proposer-standing refusal (chain.ValidateProposal → ErrLowReputation, a SYNC 500
+# on a bonded-0 proposer) is never captured and the reason comes back empty (the
+# original flake: a dead-peer scatter failure masqueraded as "no gate reason").
+# Peering only s1,s2 makes s1's synchronous refusal reliably observable — and that
+# specific string proves s1 is ALIVE and the standing gate fired (a dead swarm
+# yields a dial error, a capture yields a committed block; neither yields this).
+LIVE_SYBILS="$BOOT_S1,$BOOT_S2"
 CAP=""
 for _ in $(seq 1 12); do
-  CAP=$(publish s1 "$REG_S1" 2>&1)
-  echo "$CAP" | grep -qiE 'anchor|immature|reputation|quorum' && break
+  CAP=$(publish s1 "$REG_S1" "$LIVE_SYBILS" 2>&1)
+  echo "$CAP" | grep -qiE 'reputation below threshold|immature network requires anchor' && break
   sleep 2
 done
 sleep 3
 h_post=$(head_height s1); h_post=${h_post:-0}
 cc_post=$(commit_count s1); cc_post_s2=$(commit_count s2)
-REASON=$(echo "$CAP" | grep -oiE '(immature network requires anchor[^:"]*|chain: [a-z ]*anchor[^:"]*|reputation below threshold|[a-z ]*quorum[^:"]*)' | head -1)
+# Attribute to the DETERMINISTIC product strings only (chain.go ErrLowReputation /
+# ErrAnchorRequired). The old alternation grepped `quorum`, but ErrNoQuorum's text
+# is "insufficient valid attestations" (no such word) — and the sync standing check
+# short-circuits BEFORE any gather, so the no-quorum path isn't even reached here.
+REASON=$(echo "$CAP" | grep -oiE '(immature network requires anchor[^:"]*|reputation below threshold[^:"]*)' | head -1)
 # The OUTCOME under test: did the Sybil set capture the chain? PASS iff it did NOT
 # advance beyond the anchors without them. The two capture signals are both SYNC-
 # IMMUNE — critical, because under load s1 can SYNC the anchors' already-committed
@@ -155,13 +169,18 @@ elif echo "$REASON" | grep -qiE 'reputation'; then
   echo "    without an anchor-proposed block to register their bonds. reason: $REASON"
   echo "    (The anchor co-sign gate sits behind this; both refuse the capture. The pure-anchor-gate"
   echo "    form, with pre-banked Sybil bonds, is exercised at scale on the cloud test.)"
+  echo "    NOTE(#338): on this young local chain NO validator earns committed bonded standing —"
+  echo "    the anchor-bootstrap genesis commits at 0 bonds and the #336-deferred bond regs do not"
+  echo "    drain, so 'bonded 0' is the EXPECTED local state. This leg therefore proves the STANDING"
+  echo "    gate; the anchor co-sign gate on a genuinely-bonded Sybil set stays cloud-scoped."
 else
   # audit #303: NO block beyond the ceiling is only "no capture" if a TRAINING-WHEELS
   # gate actually refused it. With no anchor/immature/reputation reason surfaced, a
   # stalled chain is indistinguishable from a DEAD swarm (e.g. the anchored C2-a control
   # above never committed either) — crediting that as C2-b PASS would fake-green the
   # whole property.
-  fail "C2-b: NO block beyond the anchored ceiling h${h_ceiling}, but NO training-wheels gate reason surfaced (REASON='${REASON}') — cannot distinguish the anchor/reputation gate refusing the Sybils from a chain that simply never runs (a dead swarm). The anchored C2-a positive control must commit AND a gate reason must appear."
+  echo "  CAP was: ${CAP:-<empty>}"
+  fail "C2-b: NO block beyond the anchored ceiling h${h_ceiling}, but NO training-wheels gate reason surfaced (REASON='${REASON}') — cannot distinguish the standing/anchor gate refusing the Sybils from a chain that simply never runs (a dead swarm) or a publish that never reached s1's registry. Expected s1 to synchronously refuse with 'reputation below threshold: proposer … bonded 0' (see #338) or 'immature network requires anchor'. The anchored C2-a positive control must commit AND that specific refusal must appear."
 fi
 
 # ── C2-c: the equal-bond split is legible (bonus) ────────────────────────────
