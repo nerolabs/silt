@@ -116,6 +116,16 @@ func (n *Node) announceAll(ids []ports.ChunkID, done func()) {
 					send(j + 1)
 					return
 				}
+				// Don't re-announce to a cooled-dead target: planting a record on a
+				// holder we just failed to reach only eats another full RequestTimeout
+				// (the #277 announce leak — the last ungated provider-record consumer;
+				// resolve/repair/walk are already gated). A dead announce target can't
+				// store the record anyway, so skipping loses nothing.
+				if until, dead := n.deadUntil[targets[j]]; dead && n.clock.Now() < until {
+					n.Stats.HolderDialsSkipped++
+					send(j + 1)
+					return
+				}
 				rec := n.providerRecord(id) // self-certifying announcement (H5)
 				n.request(targets[j], ports.Message{Kind: ports.MsgAddProvider, Target: id, Provider: &rec},
 					func(ports.Message, error) { send(j + 1) })
@@ -147,6 +157,10 @@ func (n *Node) announceTargets(key ports.Hash, closest []ports.NodeID) []ports.N
 // itself. Rescheduling only after the sweep finishes means sweeps never
 // overlap, however long probing takes.
 func (n *Node) repairTick() {
+	// Age out lapsed provider records once per sweep so a departed holder's stale
+	// record is reclaimed (not just filtered on read) even for keys never fetched
+	// again — the memory half of the #277 lifecycle. Cheap: O(records) per interval.
+	n.provs.Evict(int64(n.clock.Now()))
 	handles := append([]link.CareHandle(nil), n.care...)
 	var nextRoot func(i int)
 	nextRoot = func(i int) {
@@ -376,6 +390,7 @@ func (n *Node) probeShard(id ports.ChunkID, key ports.Hash, includeLocal bool, d
 			// later sweep past its cooldown re-probes in case it recovered.
 			if anyLive {
 				if until, dead := n.deadUntil[provs[i]]; dead && now < until {
+					n.Stats.HolderDialsSkipped++
 					try(i + 1)
 					return
 				}

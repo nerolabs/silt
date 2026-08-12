@@ -50,6 +50,13 @@ func ProviderSigningBytes(key Hash, id NodeID, expiry int64) []byte {
 // Signed reports whether the record carries a signature at all.
 func (r ProviderRecord) Signed() bool { return len(r.Sig) > 0 }
 
+// Expired reports whether the record's freshness lease has lapsed as of now. An
+// Expiry of 0 means "never expires" (an unsigned legacy record, or one minted with
+// ProviderRecordTTL off) and is never expired. A provider refreshes its lease by
+// re-announcing (reprovide); a departed holder that stops re-announcing lapses, so
+// this is the signal that ages its record out of the dial-candidate set.
+func (r ProviderRecord) Expired(now int64) bool { return r.Expiry != 0 && now > r.Expiry }
+
 // Verify reports whether a signed record is authentic and unexpired at time now:
 // the pubkey hashes to the claimed ID (so the signature is bound to that identity),
 // the expiry (if set) has not passed, and the signature checks out. An UNSIGNED
@@ -62,7 +69,7 @@ func (r ProviderRecord) Verify(now int64) bool {
 	if HashBytes(r.PubKey) != r.ID {
 		return false // the signature must bind to the identity it claims to be
 	}
-	if r.Expiry != 0 && now > r.Expiry {
+	if r.Expired(now) {
 		return false
 	}
 	return ed25519.Verify(ed25519.PublicKey(r.PubKey), ProviderSigningBytes(r.Key, r.ID, r.Expiry), r.Sig)

@@ -306,6 +306,14 @@ type Stats struct {
 	RepairClaims       int
 	BountiesReleased   int
 	FalseRepairSlashes int
+	// #277 dead-peer-envelope gauges (M1 baseline — the dial-storm is where trust
+	// either stays cheap or floods the network). HolderDialsSkipped: full-timeout
+	// holder dials AVOIDED because the target was in the deadUntil negative cache
+	// (the "dials-per-fetch/repair stays bounded" gauge — an unbounded climb means a
+	// leak reopened). DeadProviderRecordsPruned: stale provider records removed when
+	// a holder was confirmed dead (the lifecycle gauge — records age out, not linger).
+	HolderDialsSkipped        int
+	DeadProviderRecordsPruned int
 }
 
 type pending struct {
@@ -842,6 +850,18 @@ func (n *Node) requestAttempt(to ports.NodeID, msg ports.Message, attempt int, c
 				}
 				n.deadUntil[to] = now.Add(n.cfg.HolderCooldown)
 			}
+			// The corpse is confirmed unreachable (retries exhausted) and just left
+			// the routing table — so prune it from the provider-record candidate set
+			// too, for every key where a LIVE alternative exists. This is the #277
+			// dial-storm floor fix: without it, deadUntil only RATE-LIMITS the re-dial
+			// (one full RequestTimeout per HolderCooldown, forever), because the stale
+			// record is never removed. A SOLE holder's record is KEPT (RemoveIfNotSole)
+			// so its content stays discoverable and re-probeable (#69/#226); a recovered
+			// holder re-announces (reprovide) to rejoin the set, and its inbound message
+			// clears deadUntil (proof of life, above).
+			if pruned := n.provs.RemoveIfNotSole(to); pruned > 0 {
+				n.Stats.DeadProviderRecordsPruned += pruned
+			}
 		}
 		n.logf(ports.LogDebug, "request timeout", "to", to, "kind", msg.Kind, "attempts", attempt+1)
 		cb(ports.Message{}, fmt.Errorf("%w (to %s)", ErrTimeout, to))
@@ -916,7 +936,9 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 		// eclipser (H5-B test seam) suppresses the records while still routing.
 		var recs []ports.ProviderRecord
 		if !n.eclipser {
-			recs = n.provs.Get(msg.Target)
+			// Serve only LIVE records: a lapsed record is a departed holder, and
+			// re-serving it propagates the #277 dial-storm to whoever asked us.
+			recs = n.provs.Live(msg.Target, int64(n.clock.Now()))
 		}
 		n.reply(from, msg, ports.Message{
 			Kind:         ports.MsgGetProvidersReply,
@@ -1139,6 +1161,7 @@ func (w *walk) step() {
 			// (mirrors the fetch/probe negative cache, #226); a later walk past
 			// its cooldown re-queries it in case it recovered.
 			if until, dead := w.n.deadUntil[peer]; dead && now < until {
+				w.n.Stats.HolderDialsSkipped++
 				w.l.OnFailure(peer)
 				continue
 			}
