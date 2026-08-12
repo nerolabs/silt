@@ -9,6 +9,22 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Fixed
+- **Equivocation red-team drill double-signs at the live tip, not a stale height 1 (#345)** (2026-08-12) —
+  The `184-equivocation` field-test drill FAILed on the #286 GCP re-cert ("no slash line within 120s"),
+  while the same property passes in-process (#204). Root cause: `Node.Equivocate` (the `-equivocate`
+  red-team harness) hardcoded the double-sign at **height 1**. On a fresh chain that is the live tip and
+  slashing fires; but the cloud drill runs *after* the warm-up has committed several blocks, so a height-1
+  double-sign is **stale** — an honest target refuses to attest a proposal that is not at `head+1`
+  (`ValidateProposal`), so `proposeAndCommitTo` fails, the conflicting forks are never placed, they never
+  enter fork reconciliation, and nothing is slashed (the adversary never even logged "equivocation
+  complete"). Fixed to double-sign at the **current uncommitted tip** via `chain.Head()` — backward-
+  compatible on a fresh chain (tip = genesis ⇒ height 1, so the in-process slash test is unchanged) and
+  live on an advanced chain. Also pointed the cloud drill at the **direct detector** (val-b, which holds
+  fork X and catches the double-sign the instant it syncs val-c's heavier fork) instead of val-a, which
+  only sees the slash after on-chain propagation. Guard: `TestEquivocateAtLiveTipSlashesOnAdvancedChain345`
+  advances past height 1, runs the real `Equivocate` path, and asserts the culprit is detected + evicted —
+  it FAILS on the old height-1 code ("target refused the proposal at height 1"). This is a red-team
+  *harness* fix; the product's equivocation detection + on-chain eviction was already correct.
 - **Distribute/repair proofs are O(log n) too — same cached Merkle tree (#340)** (2026-08-12) —
   The sibling of the bond fix, on the storage plane: `distributeFrom` (`file.go`) and `repairStripe`
   (`repair.go`) build a Merkle inclusion proof **per shard** so hosts can answer storage challenges — each

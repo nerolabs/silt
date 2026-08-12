@@ -346,9 +346,20 @@ adv_equivocation() {
     record "184-equivocation" gap blocker "could not resolve val-b/val-c NodeID from nodes.json (idb='${idb:0:12}…' idc='${idc:0:12}…') — attack not delivered, not a property failure"; return
   fi
   relaunch_with adversary "-equivocate ${idb},${idc}"
+  # Watch val-b, the DIRECT detector (#345): the adversary places fork X on val-b
+  # and the heavier fork Y,Z on val-c, so val-b catches the double-sign the moment
+  # it syncs val-c's heavier fork (slashEquivocators runs in the sync path) — before
+  # the slash is recorded on-chain and propagates to the other replicas. (val-a, the
+  # node the drill previously watched, only sees it after that on-chain propagation,
+  # which is why it read as "no slash within 120s" on the #286 re-cert; the deeper
+  # cause was the adversary double-signing at a stale hardcoded height 1 — now fixed
+  # to the live tip in Node.Equivocate.) Fall back to val-c / val-a for the
+  # on-chain-propagated slash so any honest observer counts.
   local ok=0
-  waitfor val-a 'slashed equivocator|validator slashed for equivocation' 120 >/dev/null && ok=1
-  slo_assert "184-equivocation" blocker "equivocator slashed over the real wire$([ "$ok" = 1 ] || echo ' — NO slash line on val-a within 120s')" "$ok"
+  { waitfor val-b 'slashed equivocator|validator slashed for equivocation' 120 >/dev/null \
+    || waitfor val-c 'slashed equivocator|validator slashed for equivocation' 20 >/dev/null \
+    || waitfor val-a 'slashed equivocator|validator slashed for equivocation' 20 >/dev/null; } && ok=1
+  slo_assert "184-equivocation" blocker "equivocator slashed over the real wire$([ "$ok" = 1 ] || echo ' — NO slash line on val-b/val-c/val-a within the window')" "$ok"
   restore_argv adversary
 }
 
