@@ -11,17 +11,34 @@
 //
 // This guard does NOT try to auto-classify "payload-bearing" (impossible
 // statically). Instead it keeps a LEDGER: every low-level transport-deadline
-// construct (net.Dialer{Timeout}, http.Client{Timeout}, http.Server timeouts,
-// conn.Set*Deadline) in adapters/, core/, and cmd/ must be a registered site
-// with a declared shape and a one-line rationale. A NEW deadline that isn't in
-// the ledger fails the build — forcing the author to either route it through
-// the durable-WAN policy or consciously declare its intent (payload-scaled /
-// fail-fast / keepalive-idle / server-DoS-bound / first-contact-modest). A
-// STALE ledger entry (registered but no longer present) also fails, so the
-// ledger can't rot. This is the #329 regression guard: it can't fix a live
-// violation (there are none as of the audit), but it stops the *next* #286.
+// construct in adapters/, core/, and cmd/ must be a registered site with a
+// declared shape and a one-line rationale. The covered constructs are both the
+// STRUCT-LITERAL forms (net.Dialer{Timeout}, http.Client{Timeout}, http.Server
+// timeouts) and the CALL forms that create a deadline without a literal —
+// conn.Set*Deadline, net.DialTimeout(d, …), and context.WithTimeout /
+// context.WithDeadline. The call forms are the ways the *next* flat constant
+// sneaks past a struct-only scan: a bare net.DialTimeout(2*time.Second, …) is
+// the #286 shape in function clothing, and a context deadline silently bounds
+// whatever network op rides that context. A NEW deadline that isn't in the
+// ledger fails the build — forcing the author to either route it through the
+// durable-WAN policy or consciously declare its intent (payload-scaled /
+// fail-fast / keepalive-idle / server-DoS-bound / first-contact-modest /
+// non-transport). A STALE ledger entry (registered but no longer present) also
+// fails, so the ledger can't rot. This is the #329 regression guard: it can't
+// fix a live violation (there are none as of the audit), but it stops the
+// *next* #286.
+//
+// SCOPE NOTE (what this does NOT yet guard): the retry/backoff/eviction knobs of
+// the durable-WAN policy itself (attempt counts, LRS eviction thresholds) are
+// semantic, not a single AST construct, so they are not lint-guarded here — the
+// discipline for those is ROUTING: new WAN code must go through core/node's
+// requestAttempt (size-aware deadline + retry + evict-on-exhaustion + negative
+// cache) rather than re-deriving its own constants. A magic *deadline* in any of
+// the covered forms is a red build; a magic *retry count* is caught in review by
+// the routing rule and the build-immutable #6 mechanism paragraph.
 //
 // Deadline-CLEARING calls (conn.SetDeadline(time.Time{})) are not deadlines and
+// are ignored; non-deadline context calls (Background/TODO/WithCancel/WithValue)
 // are ignored. Test files are exempt.
 package wanguard
 
@@ -179,6 +196,26 @@ func TestFinderHasTeeth(t *testing.T) {
 			want: nil,
 		},
 		{
+			name: "net.DialTimeout is caught",
+			src:  `package p; import ("net";"time"); func f(){ _, _ = net.DialTimeout("tcp", "x:1", 2*time.Second) }`,
+			want: []string{"f|net.DialTimeout"},
+		},
+		{
+			name: "context.WithTimeout is caught",
+			src:  `package p; import ("context";"time"); func f(ctx context.Context){ _, _ = context.WithTimeout(ctx, time.Second) }`,
+			want: []string{"f|context.WithTimeout"},
+		},
+		{
+			name: "context.WithDeadline is caught",
+			src:  `package p; import ("context";"time"); func f(ctx context.Context, t time.Time){ _, _ = context.WithDeadline(ctx, t) }`,
+			want: []string{"f|context.WithDeadline"},
+		},
+		{
+			name: "non-deadline context calls are ignored",
+			src:  `package p; import "context"; func f(){ _ = context.Background(); _, cancel := context.WithCancel(context.TODO()); _ = cancel }`,
+			want: nil,
+		},
+		{
 			name: "a non-transport composite/call is ignored",
 			src:  `package p; import "time"; type T struct{Timeout time.Duration}; func f(){ _ = T{Timeout: time.Second} }`,
 			want: nil,
@@ -235,6 +272,9 @@ func findSites(f *ast.File) []site {
 				}
 			case *ast.CallExpr:
 				if kind := setDeadlineKind(x); kind != "" {
+					add(fn, kind, x.Pos())
+				}
+				if kind := funcDeadlineKind(x); kind != "" {
 					add(fn, kind, x.Pos())
 				}
 			}
@@ -300,6 +340,31 @@ func setDeadlineKind(x *ast.CallExpr) string {
 		return "" // clearing a deadline, not setting one
 	}
 	return "conn." + sel.Sel.Name
+}
+
+// funcDeadlineKind returns "net.DialTimeout" / "context.WithTimeout" /
+// "context.WithDeadline" for the stdlib CALL forms that create a transport or
+// operation deadline the composite-literal finder can't see, or "" otherwise.
+// These are the other ways a flat WAN deadline enters: a bare
+// net.DialTimeout(2*time.Second, …) is the #286 shape as a function call, and a
+// context deadline bounds whatever network op rides the context. Non-deadline
+// context constructors (Background/TODO/WithCancel/WithValue) return "". Like the
+// composite finder this keys on the local package identifier (net/context), which
+// an unusual import alias could evade — consistent with the existing scan.
+func funcDeadlineKind(x *ast.CallExpr) string {
+	sel, ok := x.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return ""
+	}
+	pkg, ok := sel.X.(*ast.Ident)
+	if !ok {
+		return ""
+	}
+	switch pkg.Name + "." + sel.Sel.Name {
+	case "net.DialTimeout", "context.WithTimeout", "context.WithDeadline":
+		return pkg.Name + "." + sel.Sel.Name
+	}
+	return ""
 }
 
 // isZeroTime reports whether e is the composite literal time.Time{}.
