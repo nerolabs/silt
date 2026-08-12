@@ -83,15 +83,19 @@ residual). It is no longer dry-validated-only.
   table (N table entries)`. Unit-tested by `core/node/bootstrap_test.go`
   (`TestBootstrapRetryRecoversIsolatedNode` + 3 more). So a node that started before
   its bootstrap target was listening now recovers on its own.
-- **Harness belt (still present) + the wire-cert gap.** The cloud startup script
-  *also* waits for the `-bootstrap` host:port to accept TCP before starting silt
-  (`provision/silt-startup.sh`) — this models real seed-first deployment ordering, but
-  with both belts fastened **no flow exercises an empty-routing-table join over the
-  wire**, so neither the original defect nor its in-product fix is *certified* on
-  either substrate. Closing that = one cloud flow that disables the TCP-wait on a
-  single joining validator and asserts the real `re-bootstrapped: recovered from an
-  empty routing table` line (tracked in ROADMAP; see §B of the blind field-test
-  critique). The 18s warm-up the fix produced was verified live (val-b/c/d = 5/8/3
+- **The empty-routing-table recovery IS now certified over real TCP (e2e); the residual
+  is the CLOUD/WAN flow only.** `e2e/bootstrap_test.go` `TestBootstrapRetryRecoversColdStartRace`
+  exercises exactly the defect end-to-end without any belt: B joins through A while A is
+  DOWN → B comes up with **0 table entries** (precondition asserted) → A's listener starts →
+  B self-heals with **no restart**, asserting the real `re-bootstrapped: recovered from an
+  empty routing table (N table entries)` line. So the fix is certified at the real-daemon/
+  real-socket tier — the earlier "uncertified on either substrate" note was stale. The cloud
+  startup script *also* waits for the `-bootstrap` host:port before starting silt
+  (`provision/silt-startup.sh`, modelling seed-first ordering), so the one remaining gap is a
+  **cloud** flow that disables that TCP-wait on a single joining validator and asserts the
+  same line over a real WAN (tracked in ROADMAP; §B of the blind field-test critique). A
+  netem-hardened variant of the race is also tracked (the e2e test's tight 500ms/0-retry
+  config is a clean-localhost timing test, deliberately not adverse-network-hardened). The 18s warm-up the fix produced was verified live (val-b/c/d = 5/8/3
   table entries, was 0/0/0). Also gated `flow_convergence` on a real committed block
   (height-0 no longer falsely "converges"), and added a GCP-native
   `max_run_duration`+`DELETE` auto-delete guard after a SIGKILLed orchestrator once

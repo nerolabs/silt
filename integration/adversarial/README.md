@@ -45,11 +45,19 @@ clean cert (build-immutable #4 — never fake green).
 ## Usage
 
 ```sh
-./run.sh                                              # default ~cross-region impairment
+./run.sh                                              # default: adversarial drills, ~cross-region impairment
+SUITE=substrate ./run.sh                              # P0 substrate liveness under netem (objective commit, bond-standing, publish→fetch)
+SUITE=all ./run.sh                                    # the full P0 netem gate (substrate + adversarial) in one run
 NETEM="delay 120ms 40ms distribution normal loss 2%" ./run.sh   # crank it up
 NETEM="" ./run.sh                                    # clean-network control (must PASS)
-TESTS='TestEquivocatorSlashedOverTCP' ./run.sh       # one drill
+TESTS='TestEquivocatorSlashedOverTCP' ./run.sh       # one property by name
 ```
+
+**Suites.** `adversarial` (default) = the M0 consensus *denial* drills. `substrate` = the P0
+*liveness* half the drills ride on — objective quorum commit, bond-earned-standing commit, and
+publish→fetch bit-perfect, all over real TCP under impairment. `all` runs both as the single P0
+netem gate. (The cold-start re-mesh test is intentionally not in the netem suite — its tight
+500ms/0-retry config is a clean-localhost timing test; the fix is certified in the clean e2e suite.)
 
 Requirements: Docker with `--cap-add NET_ADMIN` (works under colima). The silt
 source is bind-mounted read-only and the host module cache is reused, so there is
