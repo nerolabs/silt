@@ -9,6 +9,17 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Fixed
+- **Distribute/repair proofs are O(log n) too — same cached Merkle tree (#340)** (2026-08-12) —
+  The sibling of the bond fix, on the storage plane: `distributeFrom` (`file.go`) and `repairStripe`
+  (`repair.go`) build a Merkle inclusion proof **per shard** so hosts can answer storage challenges — each
+  via the standalone `manifest.Prove`, which is O(n) (it rehashes subtrees). Proving S shards over an
+  n-leaf manifest was therefore **O(S·n) ≈ O(n²)** on the node loop — for a large file (thousands of
+  leaves) that is seconds of on-loop proof work during distribution or a repair sweep, exactly the kind of
+  loop stall the bond compute layer exposed (#286). Fixed by building one **`manifest.Tree`** per
+  distribution/repair and drawing every per-shard proof from it (O(log n) each); it also replaces the
+  redundant `m.Root()` (a second full O(n) `MerkleRoot`) with `tree.Root()`. Proofs are **byte-identical**
+  (`TestTreeMatchesStandaloneProve`), so the storage-proof and PoR-tag paths are unchanged — verified by
+  the full node suite (distribute + proof-verify + repair) staying green under `-race`.
 - **Bond proof answers are O(log n) again — cached Merkle tree (#286 compute layer, #340)** (2026-08-12) —
   The confirming 3-region GCP run reopened #286: after the network layers (L1/L2a/L2b) genesis *still*
   wedged at height 0 because bond proof-of-space-time compute saturated the single consensus loop (B2) —
