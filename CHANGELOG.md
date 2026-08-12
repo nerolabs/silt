@@ -8,6 +8,33 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Fixed
+- **Fork-choice oscillation during the anchor→bonded ramp — §1 convergent weight + §2 stable quorum (#357)** (2026-08-13) —
+  The blind multi-region field run committed blocks then reorged them back to height 0; the
+  local `consensus` sim passed (it only ever tested the *mature* regime). Research root-caused it
+  (`silt-reviews/research/.../357-...-RESEARCH-RESPONSE.md`) and the owner **ratified the
+  bond-weighted BFT model (B)**. Two of the three ranked defects are fixed here (the third, the
+  finality floor, is a staged follow-up):
+  **§1** — during bootstrap anchors are `attesterQualified` but contribute `bonded[id]=0`, so every
+  fork's `Weight()` was ≈0 and `heavier()` fell through to its **height-blind head-hash tiebreak** —
+  a genesis fork whose hash sorted lower thus displaced a committed chain. Fixed by (1a) crediting a
+  qualified launch anchor a fixed bootstrap weight (`Config.AnchorWeight`, default `MinBond`) so an
+  anchor-attested chain carries real, height-growing weight from block 1, and (1b) making the
+  tiebreak **height-aware** (equal weight ⇒ the taller chain wins; head-hash only breaks a
+  weight+height tie). Both are **C1/C2-neutral**: the weight is the sanctioned immutable-#3
+  training-wheels trust, vanishes at maturity (`launchAnchor ⇒ false` once `everMature`), and the
+  mature-regime quantity (summed committed bond) is unchanged.
+  **§2** — `RequiredQuorum` was sized against the **live-moving** `qualifiedCount`, so it shifted
+  block-to-block as registrations drained in and no fork held a quorum of a consistent set.
+  Fixed by sizing against a **stable validator set** (`validatorSetSize`): the fixed anchor set
+  during the young window (seeded at genesis — `bftThreshold(4)=2`), transitioning to the committed
+  bonded set at maturity. Deterministic bootstrap-ramp repro
+  (`core/chain` `TestForkChoiceRampCommittedChainOutweighsGenesis357`, research Ask 4) that FAILS
+  before §1 (`Weight()==0`) and passes after; full `go test ./...` + `-race` on chain/node green.
+  **Staged follow-up (owner review):** §3, the rolling BFT finality floor (refuse to reorg below a
+  quorum-committed block), completes model B but rewrites objective fork-choice semantics
+  (Nakamoto-heal → BFT-final) and the red-team tests that encode the old model — held for review.
+
 ### Added
 - **Regression guard for the #288 evict-on-one-miss anti-pattern (P0-4)** (2026-08-13) —
   `core/node` `TestLivePeerIsRetriedNotEvictedOnOneMiss` locks the build-immutable #5 rule that a

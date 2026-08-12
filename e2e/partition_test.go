@@ -34,6 +34,17 @@ func TestPartitionHealsToHeavierForkOverTCP(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e spawns processes; skipped under -short")
 	}
+	// PAUSED under the ratified bond-weighted BFT model (#357 §2). This test splits 4
+	// anchors into two 2-node groups and expects EACH to commit its own fork, then heal
+	// to the heavier. But §2 sizes the Byzantine quorum against the fixed anchor set
+	// (bftThreshold(4)=2 ⇒ a 3-of-4 support supermajority), so a 2-of-4 minority correctly
+	// CANNOT commit — that is quorum-intersection safety, and it is why the cloud's
+	// 184-partition now GAPs ("no heavier fork formed"). The old "each side commits a
+	// conflicting fork" scenario is IMPOSSIBLE under B (it required a minority to finalize),
+	// so this is a stale test, not a regression. A BFT partition-heal test — a supermajority
+	// commits, a stalled minority catches up on heal — replaces it once the §3 finality
+	// model is settled (research consult in flight: docs/reviews/357-bft-finality-model-CONSULT.md).
+	t.Skip("obsolete under BFT model B (#357 §2): a 2-of-4 minority cannot commit a conflicting fork; pending the BFT partition-heal rewrite after the §3 finality consult")
 	idA := identity.FromSeed(7001).NodeID().String()
 	idB := identity.FromSeed(7002).NodeID().String()
 	idC := identity.FromSeed(7003).NodeID().String()
