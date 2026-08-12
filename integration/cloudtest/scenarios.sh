@@ -126,11 +126,21 @@ ft_publish() { # ft_publish NODE SIZE_BYTES
 }
 
 # Record a publish-dependent flow's failed publish honestly: a reachability
-# shortfall (FT_PUBLISH_GAP=1, e.g. a preempted validator) is a GAP — the property
-# was UNTESTED, not broken — while any other publish failure is a real fail.
+# shortfall OR a degraded publish subsystem is a GAP — the property was UNTESTED,
+# not broken — while any other publish failure is a real fail.
+#
+# NOTE the scope bug this works around: ft_publish is called as `res="$(ft_publish …)"`,
+# i.e. in a command-substitution SUBSHELL, so any FT_PUBLISH_GAP it sets is lost and
+# never reaches this parent scope — publish_verdict would ALWAYS fall through to a FAIL.
+# FETCH_PUBLISH_DEGRADED is the reliable signal: wait_publisher_warm sets it in the
+# PARENT (it is not called in a subshell), so gate on it here. It is 1 whenever the
+# publisher re-warm could not land a throwaway publish this run — i.e. the ephemeral-CLI
+# issuer-set discovery is not working over the (churned) WAN — so a dependent flow's
+# publish failure is a discovery/setup problem (#351), not a break of the property that
+# publish is a precondition for.
 publish_verdict() { # publish_verdict FLOW SEVERITY "detail"
-  if [ "${FT_PUBLISH_GAP:-0}" = 1 ]; then
-    record "$1" gap "$2" "$3 — publisher could not reach >= token-quorum validators (egress/SPOT-preemption); property UNTESTED, not failed"
+  if [ "${FT_PUBLISH_GAP:-0}" = 1 ] || [ "${FETCH_PUBLISH_DEGRADED:-0}" = 1 ]; then
+    record "$1" gap "$2" "$3 — the publish could not be gathered (egress/preemption, or issuer-set discovery not landing over WAN, #351); property UNTESTED, not failed"
   else
     slo_assert "$1" "$2" "$3" 0
   fi
@@ -509,7 +519,11 @@ flow_durability_turnover() {
   # by a fresh-IP VM) is the honest cloud version of the local kill-without-replace.
   local res link sha
   res="$(ft_publish fetch-1 1048576 || true)"
-  if [ -z "$res" ]; then publish_verdict "durability-turnover" major "publish never produced a link"; return; fi
+  # A failed SETUP publish means durability is UNTESTED (we have no content to lose),
+  # not that durability broke — this flow tests survival of a permanent node loss, not
+  # the publish path (2-publish-fetch is the publish canary). So GAP unconditionally on
+  # a missing link, independent of the FT_PUBLISH_GAP/degraded signals (#351).
+  if [ -z "$res" ]; then record "durability-turnover" gap major "setup publish did not land a link — durability UNTESTED this run (ephemeral-CLI issuer-set discovery over WAN, #351), not a durability failure"; return; fi
   link="${res%% *}"; sha="${res##* }"
   svc store-1 stop || true    # permanent departure (left down for the fetch)
   sleep 12
@@ -525,7 +539,9 @@ flow_chaos_crash() {
   require_nodes "chaos-crash" major store-1 store-2 || return
   local link="${FT_LAST_LINK:-}" wantsha="${FT_LAST_SHA:-}"
   if [ -z "$link" ]; then local res; res="$(ft_publish fetch-1 262144 || true)"; link="${res%% *}"; wantsha="${res##* }"; fi
-  if [ -z "$link" ]; then publish_verdict "chaos-crash" major "no link to verify crash-recovery against"; return; fi
+  # As with durability-turnover: a failed SETUP publish means crash-recovery is UNTESTED
+  # (no content to crash-and-recover), not broken — GAP unconditionally (#351).
+  if [ -z "$link" ]; then record "chaos-crash" gap major "setup publish did not land a link — crash-recovery UNTESTED this run (issuer-set discovery over WAN, #351), not a failure"; return; fi
   # SIGKILL the silt process (abrupt death, not a graceful stop). systemd
   # (Restart=on-failure) brings it back, reloading the persisted store.
   ssh_node store-2 "sudo pkill -9 -f '/usr/local/bin/silt' || true" >/dev/null 2>&1
