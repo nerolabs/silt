@@ -93,6 +93,7 @@ func cmdDaemon(args []string) error {
 	dhtDomainCap := fs.Int("dht-domain-cap", 2, "failure-domain diversity cap for DHT eclipse resistance (M0 H5-B): at most this many peers sharing one -domain are kept per routing bucket, and provider records are announced to / resolved from a domain-spread set — so an adversary owning the NodeIDs closest to a key but sitting in one domain (a ~$4 /24 key-surround) can't suppress discovery. Only bites when peers set distinct -domain labels. 0 = off (no diversity constraint)")
 	domain := fs.String("domain", "", "this node's failure-domain label (AS / rack / geo — e.g. \"as64500\" or \"us-east-1b\"). Two uses: DHT eclipse-resistance (H5-B, with -dht-domain-cap) AND, for a validator, it is COMMITTED in the bond so the C2 concentration metric counts ADDRESS-DIVERSE participants (A axis / D-C2) — a stake split across many keys in ONE domain cannot fake decentralization; shedding the launch anchors requires distinct domains, not just distinct keys. A WEAK signal (declared, transport-cross-checked, not proven); it prices concentration higher, it does not close the honest-whale residual. Empty = unset (independent).")
 	bondTTL := fs.Uint64("bond-ttl", 0, "objective re-challenge cadence (M0 retest G4 / RT-2): objective standing LAPSES this many committed blocks after a validator's latest on-chain bond registration unless it renews with a fresh space-time proof — so a validator that registers once then releases its plot cannot keep voting. LEFT UNSET it defaults ON for an untrusted objective validator (derived cadence); an explicit 0 disables it (standing never expires; safe only for a trusted/demo swarm)")
+	epochBlocks := fs.Uint64("epoch-blocks", 0, "mature-phase validator-set epoch (#357 research certification, Conditions A+B): after the young→mature handoff, the finality quorum, validator qualification, and fork-choice weight are read from a SNAPSHOT of the committed bonded set frozen at the last epoch boundary (a finalized block), rotated every this-many blocks — never recomputed live from the churning bond ledger, which would let two conflicting commits finalize against two different sets. The handoff itself waits for the first boundary after the maturity latch, so the anchor→bond weight transition is rooted at a finalized base. CONSENSUS-CRITICAL: set it identically across the swarm (like -min-bond). LEFT UNSET it defaults ON for an untrusted objective validator (derived cadence, well under the bond TTL); an explicit 0 disables epochs (live recompute; safe only for a trusted/demo swarm)")
 	requireTokens := fs.Int("require-tokens", 0, "publisher privacy: require every published entry to carry a publish token blind-signed by this many validators, instead of a Publisher identity (0 = off; validators issue tokens)")
 	allowPublisher := fs.Bool("allow-publisher", false, "permit entries that carry a durable Publisher identity (records a PERMANENT Publisher→root link on the append-only chain; off by default for privacy/M0 — only for explicitly trusted deployments)")
 	blockPeers := fs.String("block-peers", "", "TEST-HARNESS / FIELD-DRILL: comma-separated peer IDs to PARTITION away from — this node drops all messages to/from them, simulating a severed link (#184 partition→heal). HEAL by restarting without the flag (the persisted chain reloads and reconciles). Empty = no partition; a real deployment never sets it")
@@ -232,7 +233,7 @@ func cmdDaemon(args []string) error {
 	// NOT the transport -request-timeout — build-immutable #3/#4), else it can be
 	// released and recomputed just-in-time. At bond.PlotSealThroughput (~270 MB/s)
 	// and the ~2s compute window that is ~540 MiB, so the default carries ~2x margin.
-	floorSet, ttlSet, byzSet, marginSet := false, false, false, false
+	floorSet, ttlSet, byzSet, marginSet, epochSet := false, false, false, false, false
 	fs.Visit(func(f *flag.Flag) {
 		switch f.Name {
 		case "min-bond-floor":
@@ -243,6 +244,8 @@ func cmdDaemon(args []string) error {
 			byzSet = true
 		case "operator-margin":
 			marginSet = true
+		case "epoch-blocks":
+			epochSet = true
 		}
 	})
 	explicitFloor, ferr := parseSize(*minBondFloor)
@@ -288,6 +291,16 @@ func cmdDaemon(args []string) error {
 	effMargin, marginDefaulted := effectiveOperatorMargin(marginSet, *operatorMargin, objectivePath)
 	if marginDefaulted {
 		fmt.Printf("consensus: operator-margin defaulted to %d for this untrusted (objective) swarm — the C2 maturity shed discounts the bond-distinct Nakamoto coefficient by M, so one operator splitting real stake across ~M NodeIDs cannot fake the decentralization that sheds the launch anchors. Override with -operator-margin (1 = no split margin; safe only for a trusted/single-operator swarm).\n", effMargin)
+	}
+	// The mature-phase epoch gets the same safe-by-default treatment (#357
+	// Conditions A+B): without it the post-handoff finality quorum is recomputed
+	// live from the churning bond ledger, which forfeits the quorum-intersection
+	// safety that makes a §3 super-quorum final. Consensus-critical — every
+	// validator in the swarm must run the same value, which the shared default
+	// provides; an explicit 0 opts a trusted/demo swarm out.
+	effEpoch, epochDefaulted := effectiveEpochBlocks(epochSet, *epochBlocks, objectivePath)
+	if epochDefaulted {
+		fmt.Printf("consensus: epoch-blocks defaulted to %d for this untrusted (objective) swarm — after the young→mature handoff the finality quorum and validator set are frozen per epoch (rotated at finalized boundary blocks), so churning bonds cannot let two conflicting commits finalize against two different sets. Override with -epoch-blocks, identically across the swarm (0 disables; safe only for a trusted/demo swarm).\n", effEpoch)
 	}
 	if effFloor > 0 {
 		cfg.MinBondBytes = effFloor
@@ -479,6 +492,7 @@ func cmdDaemon(args []string) error {
 			OperatorMargin: effMargin,
 			AllowPublisher: *allowPublisher, MinBond: minBondBytes,
 			MinBondBytes: cfg.MinBondBytes, BondTTLBlocks: effTTL,
+			EpochBlocks:  effEpoch,
 			WSCheckpoint: wsCP,
 		}, ledger.Reputation)
 		if *allowPublisher {
@@ -1358,6 +1372,33 @@ func effectiveBondTTL(ttlSet bool, explicit uint64, objectivePath bool) (ttl uin
 	}
 	if objectivePath {
 		return DerivedBondTTL, true
+	}
+	return explicit, false
+}
+
+// DerivedEpochBlocks is the mature-phase validator-set epoch an untrusted
+// (objective) validator gets when the operator sets none (#357 research
+// certification, Condition A). The cadence trades two bounded windows: a bond
+// that joins/renews/TTL-lapses mid-epoch integrates only at the next rotation
+// (so a lapsed bond's vote can outlive its TTL by at most one epoch), against
+// how often the finality set moves at all. 8 keeps that slop ≤ ¼ of
+// DerivedBondTTL (32) — comfortably inside the TTL's own renewal margin — while
+// still freezing the set across the multi-block window a WAN commit gathers in.
+// Rotation itself is free (a map snapshot at an already-final boundary block).
+// A tuning knob (Evolving), not a fixed law — but CONSENSUS-CRITICAL: it must
+// match across the swarm, which the shared default provides.
+const DerivedEpochBlocks = uint64(8)
+
+// effectiveEpochBlocks decides the mature-phase epoch cadence, mirroring the
+// floor/TTL derivations: an explicit -epoch-blocks always wins (including 0, the
+// trusted/demo opt-out), otherwise the untrusted objective path gets
+// DerivedEpochBlocks and every other posture stays at the explicit (0) value.
+func effectiveEpochBlocks(epochSet bool, explicit uint64, objectivePath bool) (blocks uint64, defaulted bool) {
+	if epochSet {
+		return explicit, false
+	}
+	if objectivePath {
+		return DerivedEpochBlocks, true
 	}
 	return explicit, false
 }

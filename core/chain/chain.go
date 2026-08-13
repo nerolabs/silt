@@ -143,6 +143,29 @@ type Config struct {
 	// single one-time proof. Decay is a deterministic function of block height, so
 	// every replica expires standing in lockstep. Zero (default) = no expiry.
 	BondTTLBlocks uint64
+	// EpochBlocks freezes the MATURE-phase validator set per epoch (#357 research
+	// certification, Condition A): when > 0 in objective mode, the post-handoff
+	// finality quorum (validatorSetSize / RequiredQuorum), attester/proposer
+	// qualification, and attester fork-choice weight are read from a SNAPSHOT of the
+	// committed bonded set taken at the last epoch-boundary block (height % EpochBlocks
+	// == 0), never recomputed live from the churning bonded map. Finality is
+	// quorum-INTERSECTION safety — two super-quorums are only guaranteed to share an
+	// honest validator when both are taken over the SAME set — so bonds that join,
+	// renew, or TTL-expire integrate only at the next rotation; the sole live mid-epoch
+	// disqualification is a proven slash (shrink-only: N stays frozen, so it can only
+	// raise the effective bar). The boundary block is itself super-quorum-final under
+	// the §3 gate, so every rotation happens at a finalized checkpoint — and the
+	// young→mature handoff (Condition B) is simply the FIRST mature rotation: the
+	// anchors keep governing after the everMature latch trips mid-epoch, shedding at
+	// the next boundary, so the change in what fork-choice weight MEANS is rooted at an
+	// immutable base and can never reach back across it. Consensus-critical: every
+	// validator in a swarm must run the same value (like MinBond/Anchors — genesis
+	// config discipline). Keep it well below BondTTLBlocks: a frozen epoch extends a
+	// mid-epoch-lapsed bond's vote by at most EpochBlocks. 0 (default) = no epochs:
+	// the mature phase recomputes live (pre-Condition-A behavior; safe only for
+	// trusted/sim deployments — the daemon defaults it ON for untrusted objective
+	// validators).
+	EpochBlocks uint64
 	// WSCheckpoint is a WEAK-SUBJECTIVITY checkpoint (F-1): a recent trusted block
 	// (height + hash) this replica refuses to reorg AT OR BEFORE, regardless of fork
 	// weight. silt is weakly subjective — a node syncing from genesis (or long
@@ -492,6 +515,31 @@ type Chain struct {
 	// slashed id is disqualified and cannot re-earn bonded standing, so a proven
 	// double-sign costs standing in the OBJECTIVE set, not only the rep ledger.
 	slashed map[ports.NodeID]bool
+	// epochSet is the FROZEN mature-phase validator set (#357 Condition A):
+	// NodeID → bonded size, snapshotted from the committed bonded ledger at the
+	// last epoch-boundary block (rotateEpoch). While a mature epoch is in force
+	// (matureEpoch, EpochBlocks > 0), qualification, the finality quorum size N,
+	// and attester fork-choice weight all read THIS set — never the live-churning
+	// `bonded` map — because quorum-intersection safety (what makes a §3
+	// super-quorum FINAL) only holds when every quorum is taken over the same set.
+	// nil during the launch phase (the fixed anchor set governs) and when epochs
+	// are disabled. Like every other derived field it is a pure function of the
+	// committed blocks: re-derived by apply on Reload/replay, carried by adopt.
+	epochSet map[ports.NodeID]int64
+	// epochStart is the height of the boundary block that began the current epoch
+	// (observability; rotation cadence is Config.EpochBlocks).
+	epochStart uint64
+	// matureEpoch is the ONE-WAY handoff flag (#357 Condition B): set at the first
+	// epoch rotation at-or-after the everMature latch trips, never cleared. The
+	// latch (everMature) records the consensus FACT of maturity the moment it
+	// holds; the HANDOFF — anchors shed, weight meaning flips to committed bond,
+	// quorum re-sizes onto the bonded snapshot — waits for the next epoch
+	// boundary, a block that is itself super-quorum-final under the §3 gate. That
+	// roots the change in what fork-choice weight MEANS at an immutable base, so
+	// bond-weighted fork-choice can never reach back across the boundary (the
+	// residual non-monotonicity Condition B exists to close). With epochs disabled
+	// the handoff degenerates to the raw latch (pre-Condition-B behavior).
+	matureEpoch bool
 }
 
 // New starts an empty replica. rep is the local reputation view —
@@ -530,6 +578,26 @@ func (c *Chain) SetBondVerifier(f func(pk []byte, root ports.Hash, size int64, n
 // fall back to the legacy rep path rather than trust an unproven bond.
 func (c *Chain) objective() bool { return c.cfg.MinBond > 0 && c.verifyBond != nil }
 
+// epochsEnabled reports whether the mature phase runs on per-epoch validator-set
+// snapshots (#357 Condition A). Objective-mode only: the legacy reputation path
+// has no committed bonded set to snapshot.
+func (c *Chain) epochsEnabled() bool { return c.cfg.EpochBlocks > 0 && c.objective() }
+
+// handedOff reports whether the young→mature handoff has occurred — the moment
+// the anchors shed and consensus (eligibility, quorum sizing, fork-choice weight)
+// moves onto the committed bonded set. With epochs enabled this is the FIRST
+// mature epoch rotation (#357 Condition B: a finalized boundary block), which may
+// trail the everMature latch by up to EpochBlocks; with epochs disabled it is the
+// raw latch (the pre-Condition-B behavior, safe only for trusted/sim configs).
+// One-way either way (F-1): matureEpoch is never cleared and everMature never
+// resets, so the anchors can never re-arm.
+func (c *Chain) handedOff() bool {
+	if c.epochsEnabled() {
+		return c.matureEpoch
+	}
+	return c.everMature
+}
+
 // Objective reports whether this replica runs objective (on-chain bond)
 // fork-choice (F6) rather than the local reputation view — so a proposer knows
 // to attach its live bond registration.
@@ -553,34 +621,56 @@ func (c *Chain) Objective() bool { return c.objective() }
 // returns false once everMature), so it is not a standing exemption and the
 // mature-regime fork-choice quantity (summed committed bond) is unchanged.
 func (c *Chain) launchAnchor(id ports.NodeID) bool {
-	// Gated on the one-way latch, not the live Mature(): once the network has ever
-	// matured, anchors lose bond-free eligibility FOREVER (F-1). An anchor that
+	// Gated on the one-way handoff, not the live Mature(): once the network has
+	// handed off, anchors lose bond-free eligibility FOREVER (F-1). An anchor that
 	// registered its own real bond stays a normal validator on that real weight.
-	return len(c.cfg.Anchors) > 0 && c.cfg.Anchors[id] && !c.everMature
+	// With epochs enabled the handoff is the first mature epoch ROTATION (#357
+	// Condition B), so after the everMature latch trips mid-epoch the anchors keep
+	// governing — deterministically, for at most EpochBlocks more blocks — until
+	// the finalized boundary sheds them; without epochs it is the raw latch.
+	return len(c.cfg.Anchors) > 0 && c.cfg.Anchors[id] && !c.handedOff()
 }
 
 // attesterQualified reports whether id may have its attestation counted toward
-// quorum (and, if it has a real bond, weight). Objective mode: its committed
-// bonded size clears MinBond, OR it is a launch anchor bootstrapping an immature
-// network. Legacy mode: the local reputation view.
+// quorum (and, if it has a real bond, weight). Objective mode: membership in the
+// FROZEN epoch set during a mature epoch (#357 Condition A), otherwise its
+// committed bonded size clears MinBond OR it is a launch anchor bootstrapping an
+// immature network. Legacy mode: the local reputation view.
 func (c *Chain) attesterQualified(id ports.NodeID) bool {
 	if c.slashed[id] {
-		return false // evicted for a proven equivocation (F2)
+		return false // evicted for a proven equivocation (F2) — the ONE live mid-epoch disqualification
 	}
 	if c.objective() {
+		if c.epochsEnabled() && c.matureEpoch {
+			// Condition A: qualification is FROZEN for the epoch. A bond that
+			// joins, renews, or TTL-expires mid-epoch integrates at the next
+			// rotation — a live recompute here is exactly the churning-set
+			// finalization unsoundness the snapshot exists to close. (A lapsed
+			// member therefore keeps its vote for ≤ EpochBlocks: bounded,
+			// deliberate — a protocol-forced mid-epoch disqualification would
+			// shrink the attester supply below the frozen N and could stall the
+			// chain before it ever reaches the boundary that rotates it out.)
+			_, ok := c.epochSet[id]
+			return ok
+		}
 		return c.bonded[id] >= c.cfg.MinBond || c.launchAnchor(id)
 	}
 	return c.rep(id) >= c.cfg.MinAttesterRep
 }
 
-// proposerQualified reports whether id may propose. Objective mode: a bonded
-// validator, or a launch anchor while the network is immature. Legacy mode uses
+// proposerQualified reports whether id may propose. Objective mode: epoch-set
+// membership during a mature epoch (Condition A), otherwise a bonded validator
+// or a launch anchor while the network is immature. Legacy mode uses
 // MinProposerRep.
 func (c *Chain) proposerQualified(id ports.NodeID) bool {
 	if c.slashed[id] {
 		return false // evicted for a proven equivocation (F2)
 	}
 	if c.objective() {
+		if c.epochsEnabled() && c.matureEpoch {
+			_, ok := c.epochSet[id] // frozen for the epoch, same rule as attesters
+			return ok
+		}
 		return c.bonded[id] >= c.cfg.MinBond || c.launchAnchor(id)
 	}
 	return c.rep(id) >= c.cfg.MinProposerRep
@@ -643,15 +733,24 @@ func (c *Chain) RequiredQuorum() int {
 // RequiredQuorum shift block-to-block as ~1.5 MB bond registrations drained in, so
 // no fork ever held a quorum of a consistent set (quorum-intersection safety needs a
 // FIXED n) — the "0 of 2 gathered" stall. During the young window the set is the
-// fixed anchor set (seeded at genesis — the sanctioned trust, immutable #3); once the
-// network matures (the one-way `everMature` latch) it becomes the committed bonded
-// set, the boundary at which registrations are finalized. This is the minimal
-// per-boundary snapshot the research prescribes (Tendermint/Casper both fix the set
-// to buy finality); a bootstrap 4-anchor network gets bftThreshold(4)=2, matching the
-// "2 attestations" the field logs show.
+// fixed anchor set (seeded at genesis — the sanctioned trust, immutable #3); after
+// the handoff it is the per-epoch FROZEN bonded snapshot (#357 Condition A —
+// Tendermint/Casper both fix the set to buy finality), falling back to the live
+// qualifiedCount only when epochs are explicitly disabled (trusted/demo). A
+// bootstrap 4-anchor network gets bftThreshold(4)=2, matching the "2 attestations"
+// the field logs show.
 func (c *Chain) validatorSetSize() int {
-	if c.objective() && !c.everMature && len(c.cfg.Anchors) > 0 {
+	if c.objective() && !c.handedOff() && len(c.cfg.Anchors) > 0 {
 		return len(c.cfg.Anchors)
+	}
+	if c.epochsEnabled() && c.matureEpoch {
+		// #357 Condition A: post-handoff, N is the FROZEN epoch snapshot — never
+		// the live qualifiedCount, whose churn (joins, renewals, TTL expiry) would
+		// let two conflicting commits each gather a "super-quorum" of two different
+		// sets with no guaranteed honest intersection. N holds even as members are
+		// slashed mid-epoch (shrink-only: a smaller live set against a frozen N can
+		// only RAISE the effective bar, never weaken intersection).
+		return len(c.epochSet)
 	}
 	return c.qualifiedCount()
 }
@@ -771,9 +870,11 @@ func (c *Chain) BondedSize(id ports.NodeID) int64 { return c.bonded[id] }
 
 // IsBonded reports whether id is a qualified bond-distinct identity in the COMMITTED
 // on-chain bond ledger: its bonded size clears MinBond and it has not been slashed.
-// This is the admission bar attesterQualified uses in objective mode, exposed so the
-// demand bank's P3b bonded-fetcher credential prices fake demand onto exactly the
-// Sybil-priced identity supply C2 measures. Always false in legacy mode (MinBond 0).
+// This is the LIVE admission bar (what attesterQualified reads outside a mature
+// epoch; within one, qualification is the epoch snapshot — #357 Condition A),
+// exposed so the demand bank's P3b bonded-fetcher credential prices fake demand onto
+// exactly the Sybil-priced identity supply C2 measures. Always false in legacy mode
+// (MinBond 0).
 func (c *Chain) IsBonded(id ports.NodeID) bool {
 	return c.cfg.MinBond > 0 && !c.slashed[id] && c.bonded[id] >= c.cfg.MinBond
 }
@@ -1279,13 +1380,18 @@ func (c *Chain) ValidateCommit(b *Block) error {
 	if req := c.RequiredQuorum(); valid < req {
 		return fmt.Errorf("%w: %d qualified, need %d", ErrNoQuorum, valid, req)
 	}
-	// Training wheels: while the network has NEVER YET matured, the quorum must
-	// ALSO carry anchor sign-off, so a Sybil quorum can't capture a young network
-	// before it has decentralized. Gated on the one-way latch (everMature), NOT the
-	// live Mature() — so a later drop in decentralization (e.g. an honest whale
-	// concentrating real bond) can never re-arm the anchors (F-1). Once matured,
-	// de-maturation liveness is the real-bond super-quorum (RequiredQuorum), not this.
-	if len(c.cfg.Anchors) > 0 && c.cfg.AnchorQuorum > 0 && !c.everMature {
+	// Training wheels: until the network has HANDED OFF, the quorum must ALSO
+	// carry anchor sign-off, so a Sybil quorum can't capture a young network
+	// before it has decentralized. Gated on the one-way handoff (handedOff —
+	// with epochs, the first mature rotation per #357 Condition B; without, the
+	// everMature latch), NOT the live Mature() — so a later drop in
+	// decentralization (e.g. an honest whale concentrating real bond) can never
+	// re-arm the anchors (F-1). The anchors therefore keep their sign-off duty
+	// through the (≤ EpochBlocks) tail between the latch and the boundary —
+	// coherent with launchAnchor keeping them eligible over the same window.
+	// Once handed off, de-maturation liveness is the real-bond super-quorum
+	// (requireDeMatureSuperQuorum), not this.
+	if len(c.cfg.Anchors) > 0 && c.cfg.AnchorQuorum > 0 && !c.handedOff() {
 		anchors := 0
 		for id := range seen { // seen = the distinct qualified attesters
 			if c.cfg.Anchors[id] {
@@ -1577,6 +1683,39 @@ func (c *Chain) apply(b Block) {
 	if !c.everMature && c.Mature() {
 		c.everMature = true
 	}
+	// Epoch rotation (#357 Conditions A+B), LAST — after this block's bonds, TTL
+	// expiries, slashes, and the maturity latch — so a boundary block that also
+	// trips maturity hands off in the same commit. The boundary block itself was
+	// validated under the OUTGOING epoch's set/quorum; the new snapshot governs
+	// from the next block. Under the §3 finality gate a committed boundary block
+	// is super-quorum-final, so every rotation — including the young→mature
+	// handoff, which is simply the first mature rotation — happens at a finalized
+	// checkpoint. Deterministic (a function of height and committed state), so
+	// every replica rotates in lockstep.
+	if c.epochsEnabled() && b.Height%c.cfg.EpochBlocks == 0 {
+		c.rotateEpoch(b.Height)
+	}
+}
+
+// rotateEpoch begins a new epoch at boundary height h. During the launch phase
+// (pre-latch) there is nothing to snapshot — the fixed anchor set governs and
+// bonds accrue live toward maturity. The first rotation at-or-after the
+// everMature latch is the HANDOFF (#357 Condition B): matureEpoch sets one-way,
+// and from then on every rotation freezes the qualified committed bonded set —
+// membership and size — as the epoch's consensus set (#357 Condition A).
+func (c *Chain) rotateEpoch(h uint64) {
+	c.epochStart = h
+	if !c.everMature {
+		return
+	}
+	c.matureEpoch = true
+	set := make(map[ports.NodeID]int64, len(c.bonded))
+	for id, sz := range c.bonded {
+		if sz >= c.cfg.MinBond && !c.slashed[id] {
+			set[id] = sz
+		}
+	}
+	c.epochSet = set
 }
 
 // Weight is the chain's fork-choice weight: the cumulative count, over every
@@ -1632,6 +1771,13 @@ func (c *Chain) blockWeight(b *Block) int64 {
 			// blocks to height 0. The weight vanishes at maturity (launchAnchor ⇒ false
 			// once everMature), so the mature-regime fork-choice quantity is untouched.
 			switch {
+			case c.epochsEnabled() && c.matureEpoch:
+				// #357 Condition A: during a mature epoch an attester weighs its
+				// SNAPSHOT bond (membership was already gated by attesterQualified
+				// above), so fork-choice weight is stable within the epoch — the
+				// same frozen quantity the finality quorum is sized over. Live
+				// renewals/growth integrate at the next rotation.
+				n += c.epochSet[id]
 			case c.bonded[id] >= c.cfg.MinBond:
 				n += c.bonded[id]
 			case c.launchAnchor(id):
@@ -1705,9 +1851,12 @@ func (c *Chain) Reconcile(fork []Block) (bool, error) {
 	// are contiguous from genesis (index == height) and each hash chains its ancestry, so
 	// matching our head hash at its index proves the fork extends our exact finalized history.
 	// Legacy (subjective) mode keeps pure heaviest-chain reorg — it has no BFT finality.
-	// (Launch-phase: finalized == committed head. The mature phase makes this sound via an
-	// epoch snapshot — Condition A — and a finalized handoff — Condition B — landing next; until
-	// then a mature-phase conflict stalls both sides, which is D-1-safe.)
+	// (Launch-phase: finalized == committed head over the pinned anchor set. The mature
+	// phase is sound with epochs enabled: Condition A freezes the finality set per epoch
+	// — every quorum is taken over the same snapshot, so super-quorums genuinely
+	// intersect — and Condition B roots the handoff at a finalized boundary. With epochs
+	// explicitly disabled (trusted/demo), a mature-phase conflict stalls both sides,
+	// which is D-1-safe.)
 	//
 	// GATED ON A REAL SUPER-QUORUM. Finality is quorum-INTERSECTION safety, which only holds
 	// when a commit takes ≥ bftThreshold of the validator set — so the gate applies only when
@@ -1795,6 +1944,11 @@ func (c *Chain) adopt(t *Chain) {
 	c.bondDomain = t.bondDomain
 	c.slashed = t.slashed
 	c.everMature = t.everMature // the maturity latch is a function of the adopted history (F-1)
+	// The epoch machinery is derived state like everything above: the replayed
+	// fork re-ran every rotation, so its snapshot/handoff ARE the adopted truth.
+	c.epochSet = t.epochSet
+	c.epochStart = t.epochStart
+	c.matureEpoch = t.matureEpoch
 }
 
 func (c *Chain) LookupRoot(root ports.Hash) (ports.Entry, bool) {
