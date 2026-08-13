@@ -17,13 +17,13 @@ import (
 // N / RequiredQuorum, then checks whether a commit with one anchor "down"
 // (proposer + 2 anchor attesters) still passes. The answer picks the branch:
 //
-//   (a) validatorSetSize returns 12 (fall-through to qualifiedCount) → real
-//       quorum-sizing bug: sybil bonds ARE inflating the fault budget pre-handoff.
-//   (b) validatorSetSize returns 4, RequiredQuorum 2, and the 2-anchor-attested
-//       commit PASSES in-process → the quorum sizing is CORRECT; the cloud GAP is
-//       a gather-LATENCY effect under the 8-sybil load (same family as §1), NOT a
-//       consensus bug. The fix is then latency/liveness, not a quorum rule.
-//   (c) something else (config) — surfaced by the logged values.
+//	(a) validatorSetSize returns 12 (fall-through to qualifiedCount) → real
+//	    quorum-sizing bug: sybil bonds ARE inflating the fault budget pre-handoff.
+//	(b) validatorSetSize returns 4, RequiredQuorum 2, and the 2-anchor-attested
+//	    commit PASSES in-process → the quorum sizing is CORRECT; the cloud GAP is
+//	    a gather-LATENCY effect under the 8-sybil load (same family as §1), NOT a
+//	    consensus bug. The fix is then latency/liveness, not a quorum rule.
+//	(c) something else (config) — surfaced by the logged values.
 func TestFaultToleranceBranch_SybilBondsDoNotInflateLaunchQuorum(t *testing.T) {
 	const bond = int64(64) << 20
 	// 4 anchor-validators; anchor a1 proposes. All 4 in cfg.Anchors.
@@ -94,8 +94,8 @@ func TestFaultToleranceBranch_SybilBondsDoNotInflateLaunchQuorum(t *testing.T) {
 		t.Fatalf("BRANCH (b/other): a commit with proposer + 2 anchor attesters (one anchor down) was REJECTED: %v "+
 			"— quorum sizing rejects a live 3-of-4 anchor set. Investigate the attestation arithmetic (PE ruling b).", err)
 	}
-	t.Logf("RESULT → BRANCH (b): quorum sizing is CORRECT (validatorSetSize=4, RequiredQuorum=2, a 3-of-4 anchor "+
-		"commit with one down PASSES in-process). The cloud 6-fault-tolerance GAP is therefore a gather-LATENCY "+
-		"effect under the 8-sybil load, NOT a quorum-sizing bug — same family as §1. No consensus rule change; "+
+	t.Logf("RESULT → BRANCH (b): quorum sizing is CORRECT (validatorSetSize=4, RequiredQuorum=2, a 3-of-4 anchor " +
+		"commit with one down PASSES in-process). The cloud 6-fault-tolerance GAP is therefore a gather-LATENCY " +
+		"effect under the 8-sybil load, NOT a quorum-sizing bug — same family as §1. No consensus rule change; " +
 		"the fix is liveness/latency (and the §1 load reduction). Sybil bonds do NOT inflate the launch quorum.")
 }
