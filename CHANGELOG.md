@@ -9,6 +9,21 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Fixed
+- **C2 field flow reported a FALSE capture — a lagging Sybil catching up read as an "advance"; the property itself HELD** (2026-08-13) —
+  The SYBILS=8 run FAILed `5-sybil-no-capture` ("the Sybil cohort advanced the chain 26→37 with all anchors
+  down"). Root-caused: NOT a capture. The flow anchored its "ceiling" to **sybil-1's own head** (h0), and
+  under the run's load (see the participating-Sybil slowness, #382) sybil-1 lagged ~11 blocks behind the true
+  committed tip; when the anchors stopped, sybil-1 **caught up via normal SyncChain** to the anchors'
+  already-committed blocks (26→37) and the flow misread that as a Sybil advance — the same catch-up
+  false-positive class the *local* harness already fixed, never ported to the cloud flow. Chain-level proof
+  the property holds in this exact topology: `core/chain/TestC2SingleDomainSybilsDoNotMature` — 8 equal
+  single-domain bonds cap NakamotoBonds at 3 (< MatureValidators 4) **regardless of domain or margin**, so
+  the network cannot mature, the launch-anchor gate cannot shed, and a no-anchor Sybil quorum is refused
+  with `ErrAnchorRequired` (verified). Fix: the flow now (a) anchors the ceiling to the **true committed
+  tip** read from the anchors *before* stopping them (a catch-up caps at that tip, so it can't be misread as
+  an advance), and (b) requires a **fresh Sybil `committed block` log** for a CAPTURE verdict (a catch-up
+  logs `chain reconciled`, never `committed block`) — a height rise past the ceiling with no fresh Sybil
+  commit is now correctly classed as catch-up (GAP: property held, drivability masked by lag), not a FAIL.
 - **#338 cloud follow-up — the Sybil cohort ran a divergent quorum FLOOR that stranded it at genesis, so the C2 capture drill still could not be driven** (2026-08-13) —
   The SYBILS=8 field run confirmed the drain + static-tier sync fix works (base validators reached tip 8,
   up from 3; every product corner green), but `5-sybil-no-capture` still GAPed with the same signature
