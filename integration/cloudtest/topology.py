@@ -86,6 +86,27 @@ if os.environ.get("SMOKE") == "1":
 # to the standing gate; the cloud is where the PURE anchor gate is certified.
 # Off by default (0 extra VMs). `SYBILS=8 ./cloudtest.sh` opts in. Never in SMOKE.
 SYBILS = 0 if os.environ.get("SMOKE") == "1" else int(os.environ.get("SYBILS", "0"))
+
+# MATURING topology (§4, PE ruling + research certification 2026-08-13): the base
+# topology NEVER matures BY DESIGN — 4 equal validator bonds give a Nakamoto
+# coefficient of 2 < -mature-validators 4 (and the default operator margin raises
+# the bar further), so every prior field run exercised only the YOUNG, anchor-
+# gated regime. `MATURING=1 SYBILS=8 ./cloudtest.sh` opts into the topology that
+# HANDS OFF on the wire: the maturity bar is set to the coefficient the 4
+# distinct-operator validators actually reach (2, at an explicit margin of 1 —
+# a deliberate, disclosed drill parameterization, uniform across every consensus
+# role), so the everMature latch trips during warm-up, the anchors shed at the
+# next epoch boundary, and the post-shed regime — the external red team's
+# sharpest target (seam #8) — is field-exercised: post-shed commits, the B2
+# stall drill (cheap cohort declines to attest; honest weight must still
+# commit), the B2 capture drill (cheap-member cohort alone must be refused for
+# lack of frozen-weight super-majority), and the weak-subjectivity cold-sync.
+# The Sybil cohort bonds the MINIMUM (not the validator bond) so the drills
+# price the attack the way the certification does: ~9 MiB of cheap heads
+# against ~256 MiB of honest weight — per-head cheapness is exactly what the
+# weight-counted quorum must refuse. Mutually exclusive with flow 5 (the
+# anchor-gate capture premise assumes a network that never sheds).
+MATURING = 0 if os.environ.get("SMOKE") == "1" else int(os.environ.get("MATURING", "0"))
 # Place the Sybil cohort in the SECONDARY regions' IP HEADROOM, never the primary.
 # The base 13-node topology already fills the primary region to its 8-IP
 # IN_USE_ADDRESSES quota, so any Sybil there overflows it (needs a manual quota bump).
@@ -202,6 +223,16 @@ def main():
     else:
         bond, min_bond, min_floor = "64M", "1M", "0"
 
+    # Maturity parameterization (uniform across EVERY consensus role — a mismatch
+    # would perturb objective quorum math). Base: bar = n_val (never reached by 4
+    # equal bonds — the young-regime topology). MATURING: bar = 2 at margin 1 (the
+    # coefficient 4 distinct-operator equal bonds actually reach), so the latch
+    # trips on the wire; the cohort bonds the MINIMUM so B2's drills price
+    # per-head cheapness honestly.
+    mature_bar = 2 if MATURING else n_val
+    margin_flag = " -operator-margin 1" if MATURING else ""
+    syb_bond = min_bond if MATURING else bond
+
     # -request-timeout 8s: a belt for the multi-region cert run (#286). The product now
     # extends a request's transport deadline in proportion to the OUTBOUND payload (a
     # validator's one-time ~1.5 MB bond-registration/genesis block gets WAN headroom
@@ -224,7 +255,7 @@ def main():
             persistent = ",".join(f'{nodes[v]["nodeid"]}@{nodes[v]["ip"]}:{SWARM_PORT}'
                                   for v in validators if v != name)
             a = (f"daemon -id-seed {n['seed']} {common} -advertise {ip}:{SWARM_PORT} -validator -objective "
-                 f"-min-bond {min_bond} -min-bond-floor {min_floor} -mature-validators {n_val} "
+                 f"-min-bond {min_bond} -min-bond-floor {min_floor} -mature-validators {mature_bar}{margin_flag} "
                  f"-anchors {anchors} -attesters {attesters} -quorum {quorum} "
                  f"-persistent-peers {persistent} "
                  f"-bond {bond} -bond-audit 30s -capacity 5G")
@@ -253,7 +284,7 @@ def main():
             adv_attesters = ",".join(nodes[v]["nodeid"] for v in validators)
             return (f"daemon -id-seed {n['seed']} {common} -advertise {ip}:{SWARM_PORT} -bootstrap {bootstrap} "
                     f"-validator -objective -min-bond {min_bond} -min-bond-floor {min_floor} "
-                    f"-mature-validators {n_val} -anchors {anchors} -attesters {adv_attesters} "
+                    f"-mature-validators {mature_bar}{margin_flag} -anchors {anchors} -attesters {adv_attesters} "
                     f"-quorum {quorum} -bond {bond} -bond-audit 30s -capacity 2G")
         if role == "sybil":
             # C2 quiet-capture attempt: bonded, NON-anchor, all sharing ONE -domain
@@ -281,9 +312,9 @@ def main():
                                       for v in validators)
             return (f"daemon -id-seed {n['seed']} {common} -advertise {ip}:{SWARM_PORT} -bootstrap {bootstrap} "
                     f"-validator -objective -min-bond {min_bond} -min-bond-floor {min_floor} "
-                    f"-mature-validators {n_val} -anchors {anchors}{att} "
+                    f"-mature-validators {mature_bar}{margin_flag} -anchors {anchors}{att} "
                     f"-persistent-peers {syb_persistent} "
-                    f"-quorum {quorum} -bond {bond} -bond-audit 30s -capacity 2G -domain sybilnet")
+                    f"-quorum {quorum} -bond {syb_bond} -bond-audit 30s -capacity 2G -domain sybilnet")
         if role == "natgw":
             return "NATGW"   # not a silt node — runs integration/nat/natgw.sh instead
         sys.exit(f"topology: unknown role {role} for {name}")
@@ -295,6 +326,7 @@ def main():
         "swarm_port": SWARM_PORT, "relay_port": RELAY_PORT, "registry_port": REGISTRY_PORT,
         "bond_mode": BOND_MODE, "n_val": n_val, "quorum": quorum, "bootstrap": bootstrap,
         "sybils": sybils, "n_syb": n_syb, "syb_quorum": syb_quorum, "syb_domain": "sybilnet",
+        "maturing": MATURING, "mature_bar": mature_bar,
         "relay_ref": relay_ref, "regref": regref, "anchors": anchors, "boot": boot,
         "public_cidr": PUBLIC_CIDR, "nat_cidr": NAT_CIDR,
     }

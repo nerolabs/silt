@@ -8,6 +8,33 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Added
+- **MATURING cloud topology + field flow 10: the handoff/post-shed regime is now field-exercisable
+  (§4 of the PE ruling; gates the external red team)** (2026-08-14) —
+  The base cloud topology never matures BY DESIGN (4 equal validator bonds → Nakamoto coefficient
+  2 < `-mature-validators 4`), so every prior field run exercised only the YOUNG anchor-gated
+  regime — while the red team's sharpest target (brief seam #8) is the handoff and what follows.
+  `MATURING=1 SYBILS=8 ./cloudtest.sh` now runs the topology that hands off on the wire: the
+  maturity bar is set to the coefficient the 4 distinct-operator validators actually reach (2, at
+  an explicit `-operator-margin 1` — deliberate and disclosed, uniform across every consensus
+  role) and the Sybil cohort bonds the MINIMUM (1M vs the validators' 64M) so the B2 drills price
+  per-head cheapness the way the research certification does. The new `flow_maturing_handoff`
+  (flow 10) grades, outcome-first: **(10)** the `everMature` latch trips on the wire (`wheels shed
+  permanently`), commits cross the epoch boundary into the governed mature snapshot, and no
+  anchor-required refusal appears post-shed; **(10a) the B2 stall drill** — the cheap cohort
+  declines to attest (stopped) and the honest >⅔-weight coalition must still commit (head-counted
+  quorum left this exact network born-unable-to-commit); **(10b) the B2 capture drill** — the
+  cohort alone must not advance past the honest ceiling (ceiling read from the honest validators
+  before stopping them, the #383 catch-up lesson; a real capture also requires a fresh cohort
+  commit log; the `frozen-weight super-majority` refusal corroborates), with the clincher that the
+  chain resumes when honest weight returns; **(10c) WS cold-sync under the latch** — a validator
+  restarts pinned to a peer-published `checkpoint: H:HASH`, catches up, and comes back with the
+  wheels STILL shed (a restart must never re-arm the anchors, F-1). Preconditions grade as honest
+  GAPs (latch never tripped, cohort never banked), never fake passes; flow 5 (anchor-gate
+  no-capture) self-skips under MATURING=1 since its premise — a network that never sheds — is
+  deliberately absent. Runs LAST (it stops validators). Both topology modes dry-run-validated;
+  the base topology is unchanged byte-for-byte with MATURING unset.
+
 ### Fixed
 - **Mature-phase quorum is now WEIGHT-counted — closing a cheap-member stall/capture seam at the
   handoff (B2, research-certified consensus change)** (2026-08-13) —
