@@ -401,6 +401,7 @@ func DecodeBlocks(raw []byte) ([]Block, error) {
 var (
 	ErrLowReputation      = errors.New("chain: reputation below threshold")
 	ErrNoQuorum           = errors.New("chain: insufficient valid attestations")
+	ErrNoQuorumWeight     = errors.New("chain: mature-epoch commit lacks the frozen-weight super-majority (>⅔ of epoch bonded weight — B2, research certification 2026-08-13)")
 	ErrBadSignature       = errors.New("chain: bad signature")
 	ErrWrongParent        = errors.New("chain: block does not extend the local head")
 	ErrDupRoot            = errors.New("chain: root already registered")
@@ -718,9 +719,23 @@ func bftThreshold(n int) int {
 // max(Quorum, bftThreshold(N)) — so quorum-intersection safety is preserved as the
 // validator set grows. Exposed so a proposer gathers enough attestations to match
 // what ValidateCommit will demand.
+//
+// MATURE EPOCH: the Byzantine escalation is WEIGHT-counted, not head-counted
+// (requireEpochWeightQuorum; research certification 2026-08-13 B2). Counting
+// members here let every MinBond identity in the epoch snapshot raise the bar
+// one head — so a cohort of cheap bonds could push bftThreshold(len(epochSet))
+// beyond what the honest validators could ever attest (stall at 8×MinBond), and
+// one head past that, commit ALONE with zero honest attestation (capture) — a
+// C1-discount + C2-quiet-capture break, since control priced per-head at MinBond
+// never has to pay real weight. In a mature epoch this returns only the
+// Config.Quorum count floor; the super-majority that makes a commit final is
+// the >⅔ FROZEN-WEIGHT rule (Tendermint/Casper count stake, never heads — B8).
 func (c *Chain) RequiredQuorum() int {
 	q := c.cfg.Quorum
 	if c.cfg.ByzantineQuorum && c.objective() {
+		if c.epochsEnabled() && c.matureEpoch {
+			return q // weight rule carries the Byzantine bar (ValidateCommit)
+		}
 		if bq := bftThreshold(c.validatorSetSize()); bq > q {
 			q = bq
 		}
@@ -753,6 +768,22 @@ func (c *Chain) validatorSetSize() int {
 		return len(c.epochSet)
 	}
 	return c.qualifiedCount()
+}
+
+// finalityQuorumActive reports whether the quorum rule currently in force gives
+// genuine quorum-intersection — the precondition for the §3 finality gate. Two
+// legs: the count rule at bftThreshold over the pinned set (launch window /
+// epochs-off), or the mature-epoch >⅔ frozen-weight rule (B2), which intersects
+// in weight instead of heads. A trusted weak config (low Quorum, no
+// ByzantineQuorum) has neither, and keeps heaviest-chain reorg.
+func (c *Chain) finalityQuorumActive() bool {
+	if !c.objective() {
+		return false
+	}
+	if c.cfg.ByzantineQuorum && c.epochsEnabled() && c.matureEpoch {
+		return true // weight-counted super-majority (requireEpochWeightQuorum)
+	}
+	return c.RequiredQuorum() >= bftThreshold(c.validatorSetSize())
 }
 
 // BondRegNonce is the fresh challenge a non-genesis bond registration must
@@ -1449,6 +1480,22 @@ func (c *Chain) ValidateCommit(b *Block) error {
 			return fmt.Errorf("%w: %d of required %d", ErrAnchorRequired, anchors, c.cfg.AnchorQuorum)
 		}
 	}
+	// Mature-epoch WEIGHT quorum (research certification 2026-08-13, B2): once
+	// the network has handed off, the Byzantine super-majority is counted in
+	// FROZEN EPOCH BONDED WEIGHT, never in heads. Membership admission is
+	// unfiltered (every qualified bond becomes an epoch member at rotation), so
+	// a head-counted threshold handed a MinBond-per-head cohort both a stall
+	// lever (ride the snapshot, decline to attest — nothing slashable) and,
+	// one head past bftThreshold, outright capture (a cheap-member majority
+	// committing with zero honest attestation). Weight-counting prices both at
+	// what C1 says they must cost: >⅓ (stall) / >⅔ (capture) of the epoch's
+	// REAL bonded weight. This also makes the quorum consistent with fork-choice
+	// (blockWeight already sums the same frozen snapshot weights).
+	if c.cfg.ByzantineQuorum && c.objective() && c.epochsEnabled() && c.matureEpoch {
+		if err := c.requireEpochWeightQuorum(b.ProposerID(), seen); err != nil {
+			return err
+		}
+	}
 	// De-maturation super-quorum (F-1, ships WITH the latch): once matured, the
 	// anchors never re-arm — but if live decentralization has since dropped below the
 	// bar (everMature && !matureNow, e.g. an honest whale concentrated real bond or
@@ -1464,6 +1511,59 @@ func (c *Chain) ValidateCommit(b *Block) error {
 		}
 	}
 	return nil
+}
+
+// requireEpochWeightQuorum is the mature-phase Byzantine super-majority, counted
+// in weight (B2): the support coalition — proposer + the distinct qualified
+// attesters `seen` — must carry STRICTLY MORE THAN ⅔ of the frozen epoch's total
+// bonded weight (Σ epochSet). Any two such coalitions overlap in > ⅓ of the
+// weight, so with < ⅓ of the WEIGHT Byzantine the overlap contains honest bond —
+// the weighted analogue of bftThreshold's count intersection, and the settled
+// pattern (Tendermint voting power, Casper FFG ⅔-of-stake; B8: adopt, don't
+// invent). Non-members contribute zero (attesterQualified already gated
+// membership), so a cheap-member cohort weighs exactly what it paid. A pure
+// function of the frozen snapshot — every replica agrees within the epoch.
+func (c *Chain) requireEpochWeightQuorum(proposer ports.NodeID, seen map[ports.NodeID]bool) error {
+	var total int64
+	for _, w := range c.epochSet {
+		total += w
+	}
+	if total <= 0 {
+		return nil // no frozen weight to measure against (degenerate/trusted)
+	}
+	support := c.epochSet[proposer]
+	for id := range seen {
+		support += c.epochSet[id]
+	}
+	if 3*support <= 2*total {
+		return fmt.Errorf("%w: coalition holds %d of %d bonded weight (need >%d)",
+			ErrNoQuorumWeight, support, total, 2*total/3)
+	}
+	return nil
+}
+
+// SupportMeetsQuorum reports whether a commit proposed by `proposer` and
+// attested by `attesters` would clear ValidateCommit's quorum: the distinct
+// qualified non-proposer count floor (RequiredQuorum) plus, in a mature epoch,
+// the frozen-weight super-majority (requireEpochWeightQuorum). Exposed so a
+// proposer's gather loop can stop asking exactly when the coalition it holds
+// would commit — under weight counting, "how many attestations" is no longer
+// the question; "whose" is.
+func (c *Chain) SupportMeetsQuorum(proposer ports.NodeID, attesters []ports.NodeID) bool {
+	seen := make(map[ports.NodeID]bool, len(attesters))
+	for _, id := range attesters {
+		if id == proposer || seen[id] || !c.attesterQualified(id) {
+			continue
+		}
+		seen[id] = true
+	}
+	if len(seen) < c.RequiredQuorum() {
+		return false
+	}
+	if c.cfg.ByzantineQuorum && c.objective() && c.epochsEnabled() && c.matureEpoch {
+		return c.requireEpochWeightQuorum(proposer, seen) == nil
+	}
+	return true
 }
 
 // requireDeMatureSuperQuorum enforces the F-1 de-maturation rule: the committing
@@ -1913,8 +2013,12 @@ func (c *Chain) Reconcile(fork []Block) (bool, error) {
 	// Applying a finality gate there would freeze that split; instead such a config keeps
 	// heaviest-chain reorg (and its equivocation slash heals by adopting the heavier fork).
 	// With ByzantineQuorum on (the untrusted/production default) RequiredQuorum is already
-	// bftThreshold, so the gate always engages there.
-	if c.objective() && c.RequiredQuorum() >= bftThreshold(c.validatorSetSize()) {
+	// bftThreshold, so the gate always engages there. In a MATURE EPOCH the Byzantine bar
+	// is the >⅔ frozen-WEIGHT rule (requireEpochWeightQuorum, B2) rather than a head
+	// count — two >⅔-weight coalitions overlap in >⅓ weight, hence honest bond, so
+	// weight-committed blocks are exactly as final and the gate engages there too
+	// (finalityQuorumActive).
+	if c.finalityQuorumActive() {
 		if headIdx := len(c.blocks) - 1; headIdx > 0 { // genesis divergence is already ErrForeignGenesis
 			if len(fork) <= headIdx || fork[headIdx].Hash() != c.blocks[headIdx].Hash() {
 				return false, ErrPreFinalityReorg

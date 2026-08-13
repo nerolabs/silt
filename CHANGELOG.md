@@ -8,6 +8,36 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Fixed
+- **Mature-phase quorum is now WEIGHT-counted — closing a cheap-member stall/capture seam at the
+  handoff (B2, research-certified consensus change)** (2026-08-13) —
+  The research certification of the token-gather consult (Item B2) refused to confirm the drafted
+  mature-phase residual and instead **found a real break**: post-handoff, commit quorum was sized by
+  **member count** (`bftThreshold(len(epochSet))`, `ValidateCommit` counting distinct attesters)
+  while epoch admission is deliberately unfiltered (#357 Condition A seats every qualified bond).
+  Every MinBond identity riding an honest handoff therefore weighed one head: **8 cheap members
+  among 4 honest validators made the mature phase born unable to commit** (stall at 8×MinBond,
+  nothing slashable — the cohort just declines to attest), and **9 made a cohort-only commit valid
+  with zero honest attestation** (capture at 9×MinBond, persisting into full maturity) — a
+  C1-discount + C2-quiet-capture break, caught by the PE addendum + research escalation rather than
+  the external red team. The fix adopts the settled pattern (B8 — Tendermint voting power, Casper
+  FFG ⅔-of-stake): a mature-epoch commit's coalition (proposer + distinct qualified attesters) must
+  now carry **strictly >⅔ of the frozen epoch's bonded weight** (`requireEpochWeightQuorum`; new
+  `ErrNoQuorumWeight`), replacing the head-count escalation (`RequiredQuorum` keeps only the
+  `Config.Quorum` count floor there). Quorum weight and fork-choice weight are now the **same
+  frozen quantity** (`epochSet`). The §3 finality gate stays engaged under the weight rule
+  (`finalityQuorumActive`: two >⅔-weight coalitions intersect in >⅓ weight, hence honest bond),
+  and the proposer's gather asks the chain "is this support enough" (`SupportMeetsQuorum`) instead
+  of counting heads. Launch phase is UNTOUCHED (fixed anchor set; the §2 repro stays green).
+  Failing-first drills verified red against the head-counted code (capture committed, honest 97%
+  weight coalition refused "3 qualified, need 8"): `core/chain/quorum_weight_test.go` — cohort-only
+  capture refused `ErrNoQuorumWeight`; honest weight commits through a declining cohort; strict-⅔
+  boundary; plus the epoch Condition-A suites re-expressed in weight (frozen denominator across
+  mid-epoch join and slash). The E4 owned-residual (bonded-minority stall) is now priced truthfully
+  — its ⅓/⅔ claims were only true under weight counting, which research held it on. The §4
+  maturing-topology field flow gains the stall + capture drills as its sharpest red-team target
+  (seam #8).
+
 ### Added
 - **Parallel publish-token gather — transport concurrent, signer selection unchanged (research-stamped)** (2026-08-13) —
   The flagship privacy flow (a fresh ephemeral client acquiring a `-token-quorum k` blind-signed
