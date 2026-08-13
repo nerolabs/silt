@@ -9,6 +9,20 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Fixed
+- **Field-test harness: the 8-takedown probe tested the wrong surface; the equivocation drill's refusals were silent** (2026-08-13) —
+  Two test-harness observability fixes from the M0-candidate field run's GAPs. (1) `flow_takedown`
+  GAP'd on every run (`denied= served=1`) because its denial leg ran `swarm get` ON store-1 and
+  grepped for a refusal — but `swarm get` is a short-lived CLIENT node that never consults the
+  daemon's denylist and fetches from any other holder, so the grep could never match (audit-#303
+  class). The denial leg now asserts the surface `-denylist` actually gates: the daemon's own
+  enforcement narration ("denylist: N root(s) denied…"), with the no-global-switch leg (store-2
+  serves bit-perfect) unchanged. (2) The `-equivocate` drill's retry loop swallowed every refusal,
+  hiding a real wedge (#345 family, caught while certifying under netem): after a PARTIAL placement
+  (X committed on the first target while the second hadn't yet qualified the adversary), every
+  later attempt rebuilds the same adversarial entry root, which the first target refuses forever
+  (root already registered) — the drill starves permanently and bimodally under WAN-ish delay.
+  Each refused attempt is now narrated so a wedge is distinguishable from warm-up; the drill-design
+  fix (atomic or resumable placement) is tracked separately.
 - **#357 §3 — the quorum-finality gate: a super-quorum-committed objective block is irreversible (research-certified, owner D-1)** (2026-08-13) —
   Completes the ratified bond-weighted BFT model (research certification 2026-08-13). §1+§2 stopped the
   oscillation; §3 adds the *safety* guarantee: `Reconcile` refuses any fork that would revert our
