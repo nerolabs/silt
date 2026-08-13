@@ -8,6 +8,33 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Added
+- **#357 Conditions A+B — the mature phase epoch-snapshots its validator set, and the young→mature handoff lands at a finalized boundary (research-certified)** (2026-08-13) —
+  Completes the #357 arc: the research certification conditioned its C1/C2 soundness ruling on two
+  pieces of mature-phase machinery, both now built. **Condition A** — finality is quorum-INTERSECTION
+  safety, which only holds when every super-quorum is taken over the SAME set; recomputing
+  `validatorSetSize`/qualification live from the churning bond ledger (joins, renewals, TTL expiry)
+  could let two conflicting commits each "finalize" against two different sets. Post-handoff consensus
+  (quorum size N, attester/proposer qualification, attester fork-choice weight) now reads a per-epoch
+  FROZEN snapshot of the committed bonded set (`Config.EpochBlocks`), rotated only at epoch-boundary
+  blocks — each itself super-quorum-final under the §3 gate. Churn integrates at the next rotation
+  (bounded by one epoch); the one live mid-epoch disqualification is a proven slash, which is
+  shrink-only against a frozen N (can only raise the effective bar). **Condition B** — the anchor→bond
+  weight-meaning transition is now the FIRST mature rotation: after the `everMature` latch trips
+  mid-epoch, the anchors keep governing (eligibility, weight, anchor sign-off) for at most one more
+  epoch until the finalized boundary sheds them, so bond-weighted fork-choice is rooted at an
+  immutable base and can never reach back across the boundary. One-way both ways (F-1: neither the
+  latch nor the handoff ever re-arms). Daemon: `-epoch-blocks` (consensus-critical, set identically
+  across the swarm), **safe-by-default** for an untrusted objective validator (`DerivedEpochBlocks` 8
+  — ≤ ¼ of the derived bond TTL, so a mid-epoch-lapsed bond's vote outlives its TTL by at most an
+  epoch); explicit 0 opts a trusted/demo swarm out (pre-epoch live recompute, unchanged). Failing-first
+  regressions at the chain tier: mid-epoch join/TTL-expiry cannot move N, RequiredQuorum, or
+  qualification; the handoff waits for the boundary (anchor sign-off still required between latch and
+  boundary); a mid-epoch slash disqualifies immediately with N frozen; plus the certification's
+  repro-ladder step-2 drain-window ordering test (a lagging replica converges by catch-up; a
+  conflicting, heavier drain ordering is refused without dropping committed height; weight strictly
+  monotone across the drain). Full `go test ./...` + `-race` (chain/node/sim) green.
+
 ### Fixed
 - **#357 §3 — the quorum-finality gate: a super-quorum-committed objective block is irreversible (research-certified, owner D-1)** (2026-08-13) —
   Completes the ratified bond-weighted BFT model (research certification 2026-08-13). §1+§2 stopped the
