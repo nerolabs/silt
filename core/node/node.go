@@ -412,6 +412,12 @@ type Node struct {
 	// kept that), but it cannot compute the nonce tag, which is the
 	// whole point of the tag. Exists so audits have someone to catch.
 	liar bool
+	// equivPlan holds the RESUMABLE double-sign state for the -equivocate
+	// red-team drill (adversary.go). It pins the fork base ONCE and latches
+	// each leg's placement, so a retry after a partial placement resumes the
+	// un-placed legs instead of rebuilding at the (since-advanced) live head —
+	// the #378 wedge. Test-harness only; nil on an honest node.
+	equivPlan *equivPlan
 	// eclipser models a malicious node holding the NodeIDs closest to a key (a
 	// key-surround): it DROPS provider announcements and returns NO provider
 	// records, so a lookup that reaches only the surrounding NodeIDs finds nothing.
