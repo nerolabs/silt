@@ -9,6 +9,33 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **Parallel publish-token gather — transport concurrent, signer selection unchanged (research-stamped)** (2026-08-13) —
+  The flagship privacy flow (a fresh ephemeral client acquiring a `-token-quorum k` blind-signed
+  publish token) was failing over real WAN under load: every leg was **sequential** — issuer-key
+  fetches, per-issuer credit mints, canonical-set discovery, and the k blind-sign round-trips —
+  ~`2·V+k` WAN round-trips end to end (`ft_publish FAILED after 120s` in both SYBILS=8 runs).
+  All four legs now **overlap**, collapsing the gather to ~3 round-trip times. **The privacy
+  boundary is unchanged and research-certified** (`token-gather-privacy-and-fault-tolerance-`
+  `RESEARCH-CERTIFICATION-2026-08-13.md`, Item A1): requests fire concurrently at the **fixed
+  network-canonical top-k signers** and wait for that exact set — acceptance is a function of
+  canonical rank + liveness, with per-issuer failures **falling forward in canonical order**,
+  never first-k-of-N-to-reply (the forbidden variant that would stamp the publisher's network
+  position into the token's revealed signer set, re-opening R-3); token `Sigs` are assembled in
+  canonical order so the token cannot leak the arrival permutation structurally. Canonical-set
+  discovery (`FetchCanonicalIssuersFromAny`) races all validators for a **deterministic** answer
+  (privacy-neutral: who answers first changes nothing about what is answered). **Issuance is now
+  idempotent under transport retries** (certification Item A2): a retry re-presents the SAME
+  blinded serial (deterministic RSA-FDH ⇒ identical signature) and the issuer **dedups both the
+  signature and the charge/credit-spend** keyed on the blinded-serial hash within the transport
+  retry window — before this, a lost *reply* double-charged the legacy fee and was **refused as a
+  credit double-spend** on the prepaid-credit path, failing the whole gather. Instrumented per-leg
+  (`token gather leg` debug logs with per-issuer elapsed). Failing-first regressions at unit
+  (issuer dedup: single charge, identical sig, credit-retry accepted, TTL-bounded) and sim tier
+  (canonical set accepted under heavy reply-order jitter across seeds; canonical fall-forward past
+  a dead signer; round-trips proven to overlap on the virtual clock; 25% loss ridden out at
+  exactly k fees). The named prediction for the next field run: `ft_publish` and the ~6 cascading
+  flows flip to PASS, and `6-fault-tolerance` recovers (research Item B1's conditional close —
+  if it does not, the latency attribution reopens).
 - **Attribution repro for the SYBILS=8 `6-fault-tolerance` GAP: quorum sizing is correct; the GAP is gather-latency under load, not a consensus bug** (2026-08-13) —
   `core/chain/TestFaultToleranceBranch_SybilBondsDoNotInflateLaunchQuorum` reproduces the exact
   committed state (4 anchors + 8 banked single-domain sybil bonds, pre-maturity, objective, epochs

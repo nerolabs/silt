@@ -469,6 +469,15 @@ type Node struct {
 	// charged token request blinded in the credit domain). creditSpent is this
 	// issuer's online double-spend set.
 	creditSpent map[string]bool
+	// tokenIssued makes token ISSUANCE idempotent under transport retries
+	// (research certification 2026-08-13, A2): a lost REPLY makes the requester
+	// re-present the SAME blinded serial (requestAttempt re-sends msg.Data
+	// verbatim), and without dedup the issuer would charge the fee twice — or,
+	// on the credit path, refuse the retry outright as a credit double-spend.
+	// Keyed on the blinded-serial hash (issuer-local, high-entropy, reveals
+	// nothing beyond what the issuer already saw); entries expire after the
+	// transport retry window (tokenDedupTTL) and the map is swept past a cap.
+	tokenIssued map[string]tokenIssuedEntry
 
 	// D-DEMAND (#181): the witnessed-demand ledger (demandBank) a server banks
 	// delivery receipts into, and the issuer public key it trusts to have signed the
@@ -701,6 +710,7 @@ func New(id ports.NodeID, cfg Config, clock ports.Clock, tr ports.Transport, sto
 		pendingBondRegs: make(map[ports.NodeID]chain.BondReg),
 		peerIssuerKeys:  make(map[ports.NodeID]*rsa.PublicKey),
 		creditSpent:     make(map[string]bool),
+		tokenIssued:     make(map[string]tokenIssuedEntry),
 		serveLoad:       make(map[ports.ChunkID]int),
 		leases:          make(map[ports.ChunkID]ports.Time),
 	}
