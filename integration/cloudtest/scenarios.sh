@@ -322,8 +322,12 @@ flow_restart_survival() {
   local t0 t1 ok=0
   t0="$(date +%s)"
   svc val-b restart || true
-  # standing must come back WITHOUT redoing the bond (fast reload), and quickly
-  if waitfor val-b '(reload|restored|persisted).*(bond|standing)|standing.*(reload|restored)|bond.*loaded' "$RESTART_SLO_S" >/dev/null; then ok=1; fi
+  # standing must come back WITHOUT redoing the bond (fast reload), and quickly.
+  # SCOPED to post-restart logs (t0 captured above): the 'bond: reloaded …' line
+  # is emitted on EVERY boot, so an unscoped waitfor could match a prior boot's
+  # line even if THIS restart hung/failed to reload standing (audit #303
+  # restart-standing stale-gap). --since @t0 admits only the post-restart boot.
+  if waitfor_since val-b '(reload|restored|persisted).*(bond|standing)|standing.*(reload|restored)|bond.*loaded' "$t0" "$RESTART_SLO_S" >/dev/null; then ok=1; fi
   t1="$(date +%s)"
   slo_assert "7-restart-standing" major "val-b standing returned after restart without re-bonding" "$ok" $((t1 - t0))
   # stored content still discoverable+served after a storage-node restart. Needs a
@@ -581,10 +585,16 @@ flow_chaos_crash() {
   if [ -z "$link" ]; then record "chaos-crash" gap major "setup publish did not land a link — crash-recovery UNTESTED this run (issuer-set discovery over WAN, #351), not a failure"; return; fi
   # SIGKILL the silt process (abrupt death, not a graceful stop). systemd
   # (Restart=on-failure) brings it back, reloading the persisted store.
+  # Capture t0 BEFORE the kill: flow_restart_survival already restarted store-2
+  # earlier and emitted 're-announced N held chunks' on that prior boot — an
+  # unscoped waitfor could match that stale line and false-pass a broken reprovide
+  # (audit #303 chaos-reprovide stale-gap). --since @t0 admits only the post-crash
+  # boot's re-announce.
+  local t0; t0="$(date +%s)"
   ssh_node store-2 "sudo pkill -9 -f '/usr/local/bin/silt' || true" >/dev/null 2>&1
   ssh_node store-2 "sudo systemctl start silt.service" >/dev/null 2>&1 || true   # idempotent nudge
   local reann=0
-  waitfor store-2 're-announced [0-9]+ held chunks' 90 >/dev/null && reann=1
+  waitfor_since store-2 're-announced [0-9]+ held chunks' "$t0" 90 >/dev/null && reann=1
   slo_assert "chaos-reprovide" major "SIGKILLed storage node re-announced its held chunks (#69) after a hard crash" "$reann"
   local got ok=0
   # SHA-compare, not echo-OK (§D): crash-recovery must return the REAL bytes, not just

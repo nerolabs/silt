@@ -222,6 +222,22 @@ echo "  holderA on-disk after upgrade: objects=$CHUNKS_A_POST proofs=$PROOFS_A_P
 CONTENT_OK=0
 [ -n "$GOTV2" ] && [ "$WANT" = "$GOTV2" ] && CONTENT_OK=1
 
+# ── observe the REAL reload evidence so the FINDING attribution can be gated on
+#    it, not asserted (audit #303 upgrade [high] confound + [med] mechanism). The
+#    default EXPECT=finding path used to print "root cause: V1 predates #69"
+#    whenever CONTENT_OK!=1, with nothing verifying the strand is actually the
+#    #69/#98 format boundary. So a HEAD reload regression, a post-upgrade
+#    mesh-bootstrap confound, or a silent chain-commit failure ALL went green
+#    misattributed to ancient V1. Two facts distinguish the real #69 finding
+#    from a confound: (a) V1 wrote NO persisted proofs (PROOFS_A_PRE==0), and
+#    (b) V2 emitted NO "reloaded storage proofs" line (nothing to reload). If V2
+#    DID reload proofs (RELOADED_A>0) but content still fails, that is a
+#    mesh/decode confound — NOT the format boundary — and must not be dressed up
+#    as the #69 finding.
+RELOADED_A=$(dcs exec -T holderA sh -c 'grep -c "reloaded storage proofs" /data/debug.log 2>/dev/null || echo 0' | tr -d ' \r\n')
+[ -z "$RELOADED_A" ] && RELOADED_A=0
+echo "  holderA V2 'reloaded storage proofs' lines: $RELOADED_A (V1 proofs on disk pre-upgrade: $PROOFS_A_PRE)"
+
 # ── the chain assertion: does V2 reload the V1-written chain? ─────────────────
 echo "== post-upgrade: chain-status on V2 (does it reload the V1 chain?) =="
 CS=$(dcs exec -T seed silt-v2 chain-status -store /data 2>&1)
@@ -271,10 +287,23 @@ if [ "$CONTENT_OK" = 1 ] && [ "$CHAIN_OK" = 1 ]; then
   echo "RESULT: PASS ✅  clean cross-version upgrade V1($V1_COMMIT)→V2($V2_COMMIT): store+chain reload, content bit-perfect${ROLLING:+ (rolling)}"
   exit 0
 fi
+# If the content strand is NOT the #69 format boundary — i.e. V1 DID write
+# persisted proofs (PROOFS_A_PRE>0) or V2 DID reload them (RELOADED_A>0) yet the
+# self-fetch still failed — then it is a HEAD reload regression or a
+# mesh/decode confound, NOT the ancient-V1 format break. Do NOT misattribute it
+# to #69; surface it as a harness-inconclusive FAIL so a blind reviewer is not
+# pointed at the wrong layer (audit #303 upgrade [high] confound + [med] mechanism).
+if [ "$CONTENT_OK" != 1 ] && { [ "${PROOFS_A_PRE:-0}" -gt 0 ] 2>/dev/null || [ "${RELOADED_A:-0}" -gt 0 ] 2>/dev/null; }; then
+  echo "RESULT: FAIL ❌  content stranded but NOT the #69 format boundary — this is a reload/mesh confound, not a faithful finding:"
+  echo "  • V1 persisted proofs=$PROOFS_A_PRE ; V2 'reloaded storage proofs' lines=$RELOADED_A ; self-fetch still failed"
+  echo "  • so proofs were present/reloaded yet content did not serve → a HEAD reload regression or a post-upgrade mesh/decode break,"
+  echo "    which must be root-caused and NOT dressed up as 'V1 predates #69'. Re-run with -log info and inspect the V2 mesh/reload path."
+  exit 1
+fi
 # Reproduced a real cross-version incompatibility.
 echo "RESULT: FINDING ⚠  cross-version upgrade V1($V1_COMMIT)→V2($V2_COMMIT) is NOT state-preserving:"
 [ "$CONTENT_OK" != 1 ] && echo "  • CONTENT STRANDED: shards persist on disk but V2 can't reload/serve them"
-[ "$CONTENT_OK" != 1 ] && echo "    (root cause: V1 predates persisted storage proofs #69 — /data/proofs empty ⇒ no 'reloaded storage proofs' ⇒ shards un-keyed)"
+[ "$CONTENT_OK" != 1 ] && echo "    (root cause: V1 predates persisted storage proofs #69 — /data/proofs empty (pre=$PROOFS_A_PRE) ⇒ no 'reloaded storage proofs' line (count=$RELOADED_A) ⇒ shards un-keyed)"
 [ "$CHAIN_OK" != 1 ]   && echo "  • CHAIN REJECTED: V2's block-version guard refuses the V1 chain ('unsupported block version')"
 echo "  This is the deliverable finding, empirically reproduced (see evidence above)."
 echo "  Control: 'EXPECT=clean V1_REF=<a post-#70/#98 release> ./run.sh' passes GREEN —"

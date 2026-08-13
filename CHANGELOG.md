@@ -27,6 +27,20 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   follow-up; this closes the dominant no-op-sweep cost.
 
 ### Fixed
+- **#303 — test-honesty audit: closed the 7 still-live positive-control gaps / confounds before the blind field test** (2026-08-13) —
+  Most of the 27 audited items were already fixed (PRs #304–312, #339); this closes the 7 that were still
+  live, all in the integration harnesses (shell/compose only — no product code, `go test ./...` unaffected).
+  Each fix makes the test FAIL if the property it claims to check is actually broken: the `upgrade` #69
+  finding is now gated on real reload evidence (`reloaded storage proofs` count + V1-had-no-persisted-proofs)
+  so a HEAD-reload regression or mesh/decode confound can no longer masquerade as the ancient-V1 format
+  boundary; `consensus` P2 replaces a vacuous "no reorg" grep (which passes trivially when the local fork is
+  already heavier) with a real positive control (valA's own committed head byte-unchanged) plus an honest
+  SCOPE note that inbound-fork *receipt* is not CLI-observable; `cloudtest` chaos-reprovide and
+  restart-standing are scoped to the post-crash/post-restart boot via a new `waitfor_since` (`--since @t0`)
+  so a stale pre-crash log line can't satisfy them; `bond` PHASE 2 gates the low-bond reject on an honest
+  node first ACCEPTING a well-bonded proposal (`-goodpropose`), so a reject-everything node can't false-pass;
+  `retrieval` adds a baseline cold-fetch positive control so a seed/registry saturation isn't misattributed
+  to the #43 routing finding. Every newly-asserted string was grep-verified as real product output.
 - **C2 field flow reported a FALSE capture — a lagging Sybil catching up read as an "advance"; the property itself HELD** (2026-08-13) —
   The SYBILS=8 run FAILed `5-sybil-no-capture` ("the Sybil cohort advanced the chain 26→37 with all anchors
   down"). Root-caused: NOT a capture. The flow anchored its "ceiling" to **sybil-1's own head** (h0), and

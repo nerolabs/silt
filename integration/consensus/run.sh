@@ -205,10 +205,25 @@ if [ -n "$H1" ] && [ -n "$H2" ] && [ "$H1" != "$H2" ] && [ "${h1:-0}" -gt "${h2:
 else
   fail "P2 groups did not fork as expected (H1=$H1 h1=$h1 | H2=$H2 h2=$h2)"
 fi
+# NB (audit #303 consensus [low] not-cynical): valA's fork [g,a1,a2] is HEAVIER
+# (height 2) than group 2's [g,c1] (height 1), so even if valA fully received and
+# validated group 2's gossip it would CORRECTLY never reorg onto the lighter side.
+# A bare "did not reorg" grep therefore passes vacuously — it does NOT prove valA
+# never learned group 2, only that it never adopted a lighter chain. The CLI
+# exposes only the committed canonical chain (chain.cbor head/height/blocks), so
+# true inbound-fork isolation is not observable here (would need a product
+# "received a competing fork" counter). So we assert what IS observable and gate on
+# it honestly: (1) valA never reorged, AND (2) valA's OWN committed head is
+# UNCHANGED from its pre-gossip [g,a1,a2] — no silent merge/rewrite of its history.
+H_A_pre="$H1"; hA_pre="$h1"
+H_A_now=$(head_hash valA); hA_now=$(head_height valA)
 if dc logs valA 2>&1 | grep -q 'reorged onto a heavier fork'; then
-  fail "P2 group 1 reorged while still partitioned — it should never have learned group 2"
+  fail "P2 valA reorged while still partitioned — it must never adopt group 2's fork"
+elif [ "$H_A_now" != "$H_A_pre" ] || [ "${hA_now:-0}" != "${hA_pre:-0}" ]; then
+  fail "P2 valA's committed head changed under partition (was h=$hA_pre ${H_A_pre:0:16}…, now h=$hA_now ${H_A_now:0:16}…) — silent cross-partition merge/rewrite"
 else
-  echo "  P2 PASS: group 1 (unblocked) never learned group 2 — no spurious cross-partition reorg"
+  echo "  P2 PASS: valA held its OWN heavier chain byte-for-byte (h=$hA_now ${H_A_now:0:16}…) and never reorged onto the lighter fork"
+  echo "    (SCOPE: this proves valA did not ADOPT group 2, not that it never received the gossip — inbound-fork receipt is not CLI-observable; a bare 'no reorg' on a heavier side would be vacuous)"
 fi
 
 echo ""

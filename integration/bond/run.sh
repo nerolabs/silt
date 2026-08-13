@@ -155,6 +155,35 @@ echo "$HON_STANDING"  | grep -qE "reputation=[1-9]" || { echo "FAIL(pos): honest
 # ─── PHASE 2 — NEGATIVE: an under-bonded proposer is REFUSED over the wire ───
 echo ""
 echo "########## PHASE 2 — NEGATIVE: under-bonded proposal REFUSED by honest ##########"
+# POSITIVE CONTROL FIRST (audit #303 bond PHASE 2 confound): the low-bond verdict
+# below fires 'correctly REJECTED' for ANY OK:false — wrong-parent, decode, or an
+# honest that rejects EVERY proposal (chain role wedged, head mismatch). So a
+# reject-all honest would make the negative control pass on a product where the
+# low-bond gate is DEAD ('reject the good one too' == 'reject the bad one'). peer
+# is a real 64M-bonded validator running -goodpropose=$HONEST_ID; its WELL-FORMED
+# block MUST be ATTESTED by honest. Gate PHASE 2 on that ACCEPT so the subsequent
+# low-bond refusal is attributable to the BOND gate, not a dead attest path.
+echo "  positive control: peer (64M-bonded) proposes a WELL-FORMED block to honest — must be ATTESTED"
+GOODVERDICT=""
+for _ in $(seq 1 90); do
+  GOODVERDICT=$(dc logs peer 2>&1 | grep -E "goodpropose proposal (ACCEPTED|UNEXPECTEDLY REJECTED) by ${HONEST_ID}" | tail -1 | tr -d '\r')
+  [ -n "$GOODVERDICT" ] && break
+  sleep 1
+done
+echo "  peer goodpropose verdict: ${GOODVERDICT:-<none delivered>}"
+if echo "$GOODVERDICT" | grep -q "goodpropose proposal ACCEPTED"; then
+  echo "  POSITIVE-2: PASS (honest ATTESTS a well-formed, qualified-bond proposal — the attest path is alive)"
+elif echo "$GOODVERDICT" | grep -q "UNEXPECTEDLY REJECTED"; then
+  echo "  POSITIVE-2: FAIL — honest REFUSED a well-formed, 64M-bonded proposal; its attest path rejects EVERYTHING,"
+  echo "    so the low-bond 'REJECTED' below would be a reject-all confound, NOT proof of the bond gate."; dc logs honest 2>&1 | tail -15; pass=0
+else
+  # No verdict = the good proposal could not be delivered (same connect race the
+  # low-bond leg guards). Immutable #4: an undeliverable positive control is a GAP,
+  # not a green PASS — mark it so PHASE 2's negative result is not credited as fully
+  # attributed. (gap2 already downgrades the verdict to a FINDING.)
+  echo "  POSITIVE-2: GAP — peer could not DELIVER a well-formed proposal to honest (connect race); the low-bond"
+  echo "    refusal below is therefore UNATTRIBUTED this run (cannot rule out a reject-all honest)."; gap2=1
+fi
 # honest + peer are still up (real qualified validators). Bring up the adversary:
 # a 4K-"bonded" validator that proposes a well-formed block to honest anyway. An
 # honest validator refuses to attest a proposer without a qualifying bond.

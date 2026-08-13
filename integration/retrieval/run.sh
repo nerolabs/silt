@@ -123,6 +123,26 @@ if [ "$POLLUTERS" -gt 0 ]; then
   echo "  $POLLUTERS ephemeral identities churned through the DHT"
 fi
 
+# ── phase 4.5: BASELINE positive control (audit #303 retrieval [low] confound) ──
+# Before measuring the churn-degraded rate, prove the ephemeral-client→seed→registry
+# fetch path itself still works. Without this, ANY phase-5 shortfall is hard-attributed
+# to '#43 ephemeral-identity routing pollution' — but a seed/registry that got
+# overloaded/flaky under the phase-4 polluter fan-out would drive the SAME failures for
+# a rendezvous-layer reason, pointing a blind reviewer at the wrong cause. One clean cold
+# fetch of a known-good link disambiguates: if the baseline itself fails, the rendezvous
+# layer is saturated → FAIL with that attribution, NOT a #43 discoverability FINDING.
+echo "== phase 4.5: baseline cold fetch (post-pollution positive control) =="
+BASE_LINK="${LINKS[0]}"; BASE_WANT="${SHAS[0]}"
+BASE_GOT=$(docker exec "$CLIENT" sh -c \
+  "timeout $FETCH_TIMEOUT silt swarm get '$BASE_LINK' -o /tmp/base.bin -peers '$SEED_PEER' -registry '$SEED_REG' >/dev/null 2>&1; \
+   sha256sum /tmp/base.bin 2>/dev/null | cut -d' ' -f1; rm -f /tmp/base.bin" 2>/dev/null | tr -d ' \r\n')
+if [ "$BASE_GOT" = "$BASE_WANT" ]; then
+  echo "  ✓ baseline cold fetch bit-perfect — the seed/registry fetch path is healthy, so a phase-5 shortfall is attributable to routing pollution (#43), not rendezvous saturation"
+else
+  echo "  ✗ baseline cold fetch FAILED (got '${BASE_GOT:0:16}…' want '${BASE_WANT:0:16}…')"
+  fail "rendezvous/seed saturation — even a single known-good cold fetch fails through seed/registry AFTER the polluter fan-out, so a low phase-5 rate is a seed/registry-layer confound, NOT the #43 routing-pollution finding. Re-run with fewer POLLUTERS or a beefier seed."
+fi
+
 echo "== phase 5: measure — $FETCHES cold fetches from fresh ephemeral clients =="
 OK=0
 for i in $(seq 1 "$FETCHES"); do
