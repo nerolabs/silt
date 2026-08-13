@@ -44,12 +44,15 @@ func TestEpochQuorumFrozenAcrossMidEpochJoin(t *testing.T) {
 		t.Fatalf("append genesis: %v", err)
 	}
 
-	// The genesis boundary (height 0) snapshots the founding set of 4.
+	// The genesis boundary (height 0) snapshots the founding set of 4. The
+	// Byzantine bar in a mature epoch is the >⅔ frozen-WEIGHT super-majority
+	// (B2, research certification 2026-08-13) — RequiredQuorum returns only the
+	// Config.Quorum count floor, and the weight rule carries the escalation.
 	if n := c.validatorSetSize(); n != 4 {
 		t.Fatalf("epoch snapshot at genesis: validatorSetSize = %d, want 4", n)
 	}
-	if rq := c.RequiredQuorum(); rq != 2 {
-		t.Fatalf("RequiredQuorum over the founding epoch set: got %d, want bftThreshold(4)=2", rq)
+	if rq := c.RequiredQuorum(); rq != 1 {
+		t.Fatalf("RequiredQuorum in a mature epoch is the count floor: got %d, want Quorum=1 (the Byzantine bar is weight-counted)", rq)
 	}
 
 	// Block 1 (mid-epoch): a NEW validator registers a bond. Condition A: the join
@@ -66,8 +69,16 @@ func TestEpochQuorumFrozenAcrossMidEpochJoin(t *testing.T) {
 	if n := c.validatorSetSize(); n != 4 {
 		t.Fatalf("Condition A: mid-epoch join must not resize the finality set: validatorSetSize = %d, want 4 (frozen)", n)
 	}
-	if rq := c.RequiredQuorum(); rq != 2 {
-		t.Fatalf("Condition A: mid-epoch join must not move RequiredQuorum: got %d, want 2 (frozen)", rq)
+	// Condition A in WEIGHT terms: the join must not move the quorum DENOMINATOR
+	// mid-epoch. Over the frozen 4×2 MiB set, proposer + 1 attester is 4/8 = ½
+	// — refused; the committed b1 above (proposer + 2 = ¾) is what clears >⅔.
+	// (Under the joiner's live weight the ½ coalition would be 4/10 — the
+	// refusal must come from the FROZEN denominator, asserted after rotation.)
+	under := &Block{Version: BlockVersion, Height: 2, Prev: b1.Hash(), Entries: []ports.Entry{entry(90)}}
+	Sign(under, prop)
+	under.Atts = []Attestation{Attest(under, v1)}
+	if err := c.Append(*under); !errors.Is(err, ErrNoQuorumWeight) {
+		t.Fatalf("Condition A: a ½-of-frozen-weight coalition must be refused mid-epoch, got: %v", err)
 	}
 	if c.attesterQualified(idOf(joiner)) {
 		t.Fatal("Condition A: a mid-epoch joiner must not be attester-qualified until the next rotation")
@@ -88,16 +99,28 @@ func TestEpochQuorumFrozenAcrossMidEpochJoin(t *testing.T) {
 		}
 	}
 
-	// The height-4 boundary rotates the epoch: the join integrates, N and the
-	// quorum move exactly once, at a finalized block.
+	// The height-4 boundary rotates the epoch: the join integrates, and the
+	// weight DENOMINATOR moves exactly once, at a finalized block. Over the new
+	// 5×2 MiB set, proposer + 2 attesters is 6/10 = 60% — refused where the same
+	// coalition cleared ¾ of the old epoch; adding the joiner (8/10) commits.
 	if n := c.validatorSetSize(); n != 5 {
 		t.Fatalf("epoch rotation at height 4 must integrate the join: validatorSetSize = %d, want 5", n)
 	}
-	if rq := c.RequiredQuorum(); rq != 3 {
-		t.Fatalf("RequiredQuorum after rotation: got %d, want bftThreshold(5)=3", rq)
-	}
 	if !c.attesterQualified(idOf(joiner)) {
 		t.Fatal("a joiner must be attester-qualified after the boundary rotation")
+	}
+	prev, _ = c.Head()
+	short := &Block{Version: BlockVersion, Height: 5, Prev: prev, Entries: []ports.Entry{entry(91)}}
+	Sign(short, prop)
+	short.Atts = []Attestation{Attest(short, v1), Attest(short, v2)}
+	if err := c.Append(*short); !errors.Is(err, ErrNoQuorumWeight) {
+		t.Fatalf("post-rotation, the integrated join must raise the weight denominator (60%% refused), got: %v", err)
+	}
+	full := &Block{Version: BlockVersion, Height: 5, Prev: prev, Entries: []ports.Entry{entry(92)}}
+	Sign(full, prop)
+	full.Atts = []Attestation{Attest(full, v1), Attest(full, v2), Attest(full, joiner)}
+	if err := c.Append(*full); err != nil {
+		t.Fatalf("a >⅔ coalition over the rotated set must commit: %v", err)
 	}
 }
 
@@ -270,8 +293,8 @@ func TestSlashDisqualifiesMidEpochWithFrozenN(t *testing.T) {
 	if err := c.AppendGenesis(*g); err != nil {
 		t.Fatalf("append genesis: %v", err)
 	}
-	if n, rq := c.validatorSetSize(), c.RequiredQuorum(); n != 5 || rq != 3 {
-		t.Fatalf("setup: founding epoch set N=%d (want 5), RequiredQuorum=%d (want 3)", n, rq)
+	if n, rq := c.validatorSetSize(), c.RequiredQuorum(); n != 5 || rq != 1 {
+		t.Fatalf("setup: founding epoch set N=%d (want 5), RequiredQuorum=%d (want the Quorum=1 count floor; the Byzantine bar is weight-counted, B2)", n, rq)
 	}
 
 	// v4 provably double-signs (two different blocks at the same height); block 1
@@ -298,8 +321,24 @@ func TestSlashDisqualifiesMidEpochWithFrozenN(t *testing.T) {
 	if n := c.validatorSetSize(); n != 5 {
 		t.Fatalf("frozen N: a mid-epoch slash must not shrink the finality set size: got %d, want 5", n)
 	}
-	if rq := c.RequiredQuorum(); rq != 3 {
-		t.Fatalf("frozen N: RequiredQuorum must hold at 3 after a mid-epoch slash, got %d", rq)
+	// Frozen-denominator discipline in WEIGHT terms (B2): the slash removes v4's
+	// vote but must NOT shrink the ⅔ base — the denominator stays the frozen
+	// 5×2 MiB, so the bar can only get EFFECTIVELY harder, never weaker, exactly
+	// the shrink-only rule head-counting had. Proposer + v1 + v2 = 6/10 = 60% is
+	// refused (were the denominator live-shrunk to 8 MiB it would be 75% and
+	// commit); proposer + v1 + v2 + v3 = 8/10 = 80% commits.
+	prev, _ = c.Head()
+	under := &Block{Version: BlockVersion, Height: 2, Prev: prev, Entries: []ports.Entry{entry(2)}}
+	Sign(under, prop)
+	under.Atts = []Attestation{Attest(under, v1), Attest(under, v2)}
+	if err := c.Append(*under); !errors.Is(err, ErrNoQuorumWeight) {
+		t.Fatalf("the slashed member's weight must stay in the frozen denominator (60%% refused), got: %v", err)
+	}
+	full := &Block{Version: BlockVersion, Height: 2, Prev: prev, Entries: []ports.Entry{entry(3)}}
+	Sign(full, prop)
+	full.Atts = []Attestation{Attest(full, v1), Attest(full, v2), Attest(full, v3)}
+	if err := c.Append(*full); err != nil {
+		t.Fatalf("a >⅔-of-frozen-weight coalition must commit after the slash: %v", err)
 	}
 }
 

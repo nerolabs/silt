@@ -353,11 +353,25 @@ discount, C2 no quiet capture, the demand→standing firewall) — those are hel
 
 ### E4. Bonded-minority liveness-denial in the mature phase (the liveness dual of A1)
 - **Class:** **held in tension** — the BFT liveness bound every weakly-subjective system lives
-  with, *priced and bounded*, not a silt defect. (PE ruling 2026-08-13, §2.)
+  with, *priced and bounded*, not a silt defect. (PE ruling 2026-08-13, §2; research
+  certification 2026-08-13 B2, which **held this entry until the pricing below became true in
+  code** — see the enforcement leg.)
 - **What it is:** in the **mature** phase (bond-weighted BFT, anchors shed), a cohort that
   *honestly* banks ≥⅓ of committed bonded weight **can stall finality** — not capture it. Any
   BFT quorum needs a >⅔ super-majority to commit, so a ≥⅓ bonded minority that refuses to attest
   denies liveness (no new block finalizes) while it holds.
+- **How the ⅓/⅔ is enforced — weight, never heads (the B2 catch).** This pricing is only true
+  because the mature-phase quorum is counted in **frozen epoch bonded WEIGHT**
+  (`chain.requireEpochWeightQuorum`: a commit's coalition must carry >⅔ of Σ `epochSet`).
+  Until 2026-08-13 it was **head-counted** (`bftThreshold(len(epochSet))`), and since epoch
+  admission is deliberately unfiltered (Condition A), every MinBond identity seated at rotation
+  weighed one head: 8 cheap members among 4 honest made the mature phase *born unable to commit*
+  (stall at 8×MinBond), and 9 made a cohort-only commit valid with **zero honest attestation**
+  (capture at 9×MinBond, persisting into full maturity) — a C1-discount + C2-quiet-capture break
+  found by the PE addendum and escalated by research, **not** by the external red team. Both are
+  now refused-by-construction and pinned by failing-first drills
+  (`core/chain/quorum_weight_test.go`: capture refused `ErrNoQuorumWeight`, honest weight commits
+  through a declining cohort, strict->⅔ boundary).
 - **Why it is not a break, on three legs:**
   1. **Priced (C1).** The ⅓ is ⅓ of *real, sealed, address-diverse* disk — and it **decays**:
      bonds lapse without continuous re-proof (retention TTL), so the griefing cost is not one-time
@@ -375,8 +389,12 @@ discount, C2 no quiet capture, the demand→standing firewall) — those are hel
   votes nor counts in the fault budget** — it banks standing while onboarding, nothing more
   (verified: `core/chain/TestFaultToleranceBranch_SybilBondsDoNotInflateLaunchQuorum`, which also
   showed the SYBILS=8 `6-fault-tolerance` GAP is gather-*latency* under load, not a quorum-sizing
-  bug). There is no regime between young and handed-off where an un-matured bond acquires stall
-  power.
+  bug). The consult's original "no regime between young and handed-off where an un-matured bond
+  acquires stall power" was **half right**: true up to the handoff, **false at the handoff
+  instant under head counting** — an un-matured cohort needed only to *ride along* into the first
+  epoch snapshot to acquire per-head quorum power (the B2 catch above). With the weight-counted
+  quorum the claim holds end-to-end: before handoff a cheap bond neither votes nor counts; after,
+  it votes exactly its weight.
 - **What the red team should attack:** the *price*, not the possibility (brief seam #8,
   stall-griefing) — can a cohort acquire ≥⅓ bonded weight for materially less than ⅓ of honest,
   sustained, address-diverse provision, or evade the C2 concentration alarm while doing so?

@@ -420,9 +420,20 @@ func (n *Node) proposeBlock(b *chain.Block, attesters, broadcast []ports.NodeID,
 	n.logf(ports.LogDebug, "gather: starting", "height", b.Height, "bytes", len(raw), "regs", len(b.BondRegs), "quorum", quorum, "attesters", len(attesters))
 
 	var atts []chain.Attestation
+	// supportMet: would the coalition gathered so far commit? The count floor is
+	// the caller's `quorum`; in a MATURE EPOCH the chain additionally demands the
+	// >⅔ frozen-WEIGHT super-majority (B2) — "how many" stops being sufficient,
+	// so the chain answers "is this support enough" directly.
+	supportMet := func() bool {
+		ids := make([]ports.NodeID, 0, len(atts))
+		for _, a := range atts {
+			ids = append(ids, a.AttesterID())
+		}
+		return n.chain.SupportMeetsQuorum(n.id, ids)
+	}
 	var ask func(i int)
 	ask = func(i int) {
-		if len(atts) >= quorum {
+		if len(atts) >= quorum && supportMet() {
 			b.Atts = atts
 			if err := n.chain.Append(*b); err != nil {
 				done(fmt.Errorf("propose: commit rejected by own replica: %w", err))
