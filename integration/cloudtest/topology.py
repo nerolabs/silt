@@ -86,9 +86,22 @@ if os.environ.get("SMOKE") == "1":
 # to the standing gate; the cloud is where the PURE anchor gate is certified.
 # Off by default (0 extra VMs). `SYBILS=8 ./cloudtest.sh` opts in. Never in SMOKE.
 SYBILS = 0 if os.environ.get("SMOKE") == "1" else int(os.environ.get("SYBILS", "0"))
-_syb_zones = [PRIMARY_ZONE, "us-east1-b", "europe-west1-b"]
+# Place the Sybil cohort in the SECONDARY regions' IP HEADROOM, never the primary.
+# The base 13-node topology already fills the primary region to its 8-IP
+# IN_USE_ADDRESSES quota, so any Sybil there overflows it (needs a manual quota bump).
+# The other regions have room — europe-west1 (~5 free) then us-east1 (~3 free) — which
+# exactly absorbs SYBILS=8 within every region's default 8-IP quota, so the full C2
+# anchor-gate run works without a quota increase. Region placement does not affect the
+# C2 property (bond-distinctness + the anchor gate), only where the VMs live. Override
+# with SYB_ZONES="zoneA,zoneB,…" if your quotas differ.
+_syb_zones = os.environ.get("SYB_ZONES")
+if _syb_zones:
+    _syb_slots = [z.strip() for z in _syb_zones.split(",") if z.strip()]
+else:
+    _syb_slots = ["europe-west1-b"] * 5 + ["us-east1-b"] * 3  # fill europe's headroom first, then us-east1
 for _i in range(SYBILS):
-    NODES.append((f"sybil-{_i+1}", "sybil", 6601 + _i, f"10.20.0.{61+_i}", _syb_zones[_i % len(_syb_zones)]))
+    _z = _syb_slots[_i] if _i < len(_syb_slots) else _syb_slots[_i % len(_syb_slots)]
+    NODES.append((f"sybil-{_i+1}", "sybil", 6601 + _i, f"10.20.0.{61+_i}", _z))
 
 
 def node_id(seed):
