@@ -165,7 +165,18 @@ def main():
     # honest anchor set (which it does not control) and co-signs only itself.
     sybils = [name for name, n in nodes.items() if n["role"] == "sybil"]
     n_syb = len(sybils)
-    syb_quorum = (n_syb // 2 + 1) if n_syb else 0   # a self-majority — would "capture" if the anchor gate were off
+    # syb_quorum retained for the meta/report only. NOTE (#338 cloud GAP root cause):
+    # the Sybil role must run the SAME -quorum FLOOR as the rest of the swarm, NOT a
+    # self-majority. -quorum is a hard floor on ValidateCommit (max(Quorum,
+    # bftThreshold)); a Sybil set to n_syb//2+1 (=5 at SYBILS=8) then re-validates the
+    # anchors' honestly-committed blocks (2 attestations) under ITS floor of 5, rejects
+    # the whole chain in Reconcile, and stays stranded at genesis — exactly the field
+    # GAP "sybil-1 never synced a committed chain (head 0)". In OBJECTIVE mode the
+    # "self-majority capture" is sized by bftThreshold over the Sybils' committed bond,
+    # not a config knob, so a uniform floor both lets the Sybils SYNC and makes their
+    # capture attempt reach the real ANCHOR gate (ErrAnchorRequired) rather than dying
+    # on a quorum count. See #380 (the objective-mode quorum-floor footgun).
+    syb_quorum = (n_syb // 2 + 1) if n_syb else 0   # reporting only; the Sybil daemon uses the uniform `quorum`
     # Size quorum for f=1 crash tolerance: after one validator is down, the
     # proposer + `quorum` attesters must still be reachable. quorum = n_val - 2
     # (min 1) means losing any one validator still leaves proposer + quorum.
@@ -272,7 +283,7 @@ def main():
                     f"-validator -objective -min-bond {min_bond} -min-bond-floor {min_floor} "
                     f"-mature-validators {n_val} -anchors {anchors}{att} "
                     f"-persistent-peers {syb_persistent} "
-                    f"-quorum {syb_quorum} -bond {bond} -bond-audit 30s -capacity 2G -domain sybilnet")
+                    f"-quorum {quorum} -bond {bond} -bond-audit 30s -capacity 2G -domain sybilnet")
         if role == "natgw":
             return "NATGW"   # not a silt node — runs integration/nat/natgw.sh instead
         sys.exit(f"topology: unknown role {role} for {name}")
