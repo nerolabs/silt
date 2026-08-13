@@ -1033,6 +1033,11 @@ func cmdDaemon(args []string) error {
 						tryEquiv = func() {
 							nd.Equivocate(idX, idYZ, func(err error) {
 								if err != nil {
+									// Narrate every refused attempt: a silent retry loop that can
+									// wedge (e.g. a PARTIAL placement — X committed on idX, then the
+									// fork synced back so later attempts build on a head idYZ refuses)
+									// is undiagnosable from the outside (#345 family).
+									fmt.Println("adversary: equivocation attempt refused:", err)
 									clk.AfterFunc(1*ports.Second, tryEquiv) // not qualified with peers yet; retry
 									return
 								}
