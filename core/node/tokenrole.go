@@ -9,8 +9,10 @@ package node
 
 import (
 	"crypto/rsa"
+	"crypto/sha256"
 	"errors"
 	"io"
+	"sort"
 
 	"github.com/nerolabs/silt/core/blindtoken"
 	"github.com/nerolabs/silt/ports"
@@ -67,10 +69,50 @@ func (n *Node) IssuerKeyOf(v ports.NodeID) *rsa.PublicKey {
 	return n.peerIssuerKeys[v]
 }
 
+// tokenIssuedEntry is one cached issuance for the retry-dedup window.
+type tokenIssuedEntry struct {
+	sig    []byte
+	expiry ports.Time
+}
+
+// maxTokenIssued bounds the issuance-dedup cache; past this, expired entries
+// are swept before inserting (same idiom as maxDeadHolders).
+const maxTokenIssued = 4096
+
+// tokenDedupTTL is how long an issuance stays replay-safe: the requester's
+// transport-level retry window (attempts × per-attempt timeout, plus the
+// decaying backoffs between them), doubled for headroom. Derived from the
+// transport config — never a fixed constant (docs/network-durability.md §1).
+func (n *Node) tokenDedupTTL() ports.Duration {
+	window := n.cfg.RequestTimeout * ports.Duration(n.cfg.RequestRetries+1)
+	for a := 0; a < n.cfg.RequestRetries; a++ {
+		window += n.cfg.RequestBackoff << a
+	}
+	return 2 * window
+}
+
+// answerTokenRequest blind-signs a token request, IDEMPOTENTLY (research
+// certification 2026-08-13, A2): signing is deterministic RSA-FDH, so
+// re-presenting the same blinded serial must yield the same signature with
+// the fee charged ONCE. The transport layer re-sends msg.Data verbatim on a
+// retry (a lost reply is indistinguishable from a lost request), so without
+// this dedup a retry double-charged the legacy fee — and on the prepaid-credit
+// path was REFUSED as a credit double-spend, failing the whole gather. The
+// dedup key is the blinded-serial hash: issuer-local, high-entropy (fresh
+// blinding factor per issuer), and it reveals nothing the issuer did not
+// already see.
 func (n *Node) answerTokenRequest(from ports.NodeID, msg ports.Message) ports.Message {
 	reply := ports.Message{Kind: ports.MsgTokenReply}
 	if n.tokenIssuer == nil || len(msg.Data) == 0 {
 		return reply // not an issuer / nothing to sign → OK=false
+	}
+	sum := sha256.Sum256(msg.Data)
+	key := string(sum[:])
+	now := n.clock.Now()
+	if e, ok := n.tokenIssued[key]; ok && now < e.expiry {
+		reply.Data = e.sig
+		reply.OK = true
+		return reply // a retry of an issuance already settled: same sig, no new charge
 	}
 	charge := n.tokenChargeFor(from, msg.Credit)
 	if charge == nil {
@@ -80,6 +122,14 @@ func (n *Node) answerTokenRequest(from ports.NodeID, msg ports.Message) ports.Me
 	if err != nil {
 		return reply // e.g. insufficient credit → OK=false, no token
 	}
+	if len(n.tokenIssued) >= maxTokenIssued {
+		for k, e := range n.tokenIssued {
+			if now >= e.expiry {
+				delete(n.tokenIssued, k)
+			}
+		}
+	}
+	n.tokenIssued[key] = tokenIssuedEntry{sig: blindSig, expiry: now.Add(n.tokenDedupTTL())}
 	reply.Data = blindSig
 	reply.OK = true
 	return reply
@@ -191,48 +241,104 @@ func (n *Node) AcquireTokenWithCredits(rng io.Reader, serial []byte, validators 
 // credit to attach for each issuer; a nil credit lookup (or a nil result) means
 // the legacy fee-at-request path. When a credit lookup is given, an issuer with
 // no credit is skipped rather than charged.
+//
+// TRANSPORT IS PARALLEL; SELECTION STAYS CANONICAL (research stamp 2026-08-13,
+// A1). The k round-trips fire CONCURRENTLY at the first k eligible validators
+// in the caller's order — which swarm.go has already ranked network-canonically
+// (R-3) — and the accepted signer set is always the canonical prefix of the
+// validators that turn out to be live: on a definitive per-issuer failure
+// (transport retries exhausted, or a refusal) the collector FALLS FORWARD to
+// the next validator in canonical order, exactly as the sequential gather did.
+// The forbidden shape is first-k-of-N-to-reply, which would make the token's
+// revealed signer set a function of the publisher's network position — a
+// positional fingerprint re-opening the R-3 leak. Two consequences here:
+//   - completion waits for every in-flight canonical target to RESOLVE
+//     (a slow issuer is waited out, never raced past), and
+//   - Sigs are assembled in canonical order, not arrival order, so the token's
+//     structure cannot leak the arrival permutation either.
 func (n *Node) acquireToken(rng io.Reader, serial []byte, validators []ports.NodeID,
 	issuerPub func(ports.NodeID) *rsa.PublicKey, credit func(ports.NodeID) *ports.PublishCredit, k int,
 	done func(*ports.PublishToken, error)) {
 
-	tok := &ports.PublishToken{Serial: serial}
-	var next func(i int)
-	next = func(i int) {
-		if len(tok.Sigs) >= k {
+	if k <= 0 {
+		done(&ports.PublishToken{Serial: serial}, nil)
+		return
+	}
+	start := n.clock.Now()
+	sigs := make(map[int][]byte) // canonical index → unblinded signature
+	inflight := 0
+	nextIdx := 0 // next canonical candidate not yet fired at
+	finished := false
+
+	settle := func() {
+		if finished {
+			return
+		}
+		if len(sigs) >= k {
+			finished = true
+			idxs := make([]int, 0, len(sigs))
+			for i := range sigs {
+				idxs = append(idxs, i)
+			}
+			sort.Ints(idxs)
+			tok := &ports.PublishToken{Serial: serial}
+			for _, i := range idxs {
+				tok.Sigs = append(tok.Sigs, ports.TokenSig{Validator: validators[i], Sig: sigs[i]})
+			}
+			n.logf(ports.LogDebug, "token gather complete", "k", k,
+				"fired", nextIdx, "elapsed_ms", int64(n.clock.Now()-start)/int64(ports.Millisecond))
 			done(tok, nil)
 			return
 		}
-		if i >= len(validators) {
+		if inflight == 0 && nextIdx >= len(validators) {
+			finished = true
 			done(nil, ErrTokenAcquire)
-			return
 		}
-		v := validators[i]
-		pub := issuerPub(v)
-		if pub == nil || v == n.id {
-			next(i + 1)
-			return
-		}
-		var attached *ports.PublishCredit
-		if credit != nil {
-			if attached = credit(v); attached == nil {
-				next(i + 1) // credit-backed acquisition, but none held for v
-				return
-			}
-		}
-		blinded, secret, err := blindtoken.Blind(rng, pub, serial)
-		if err != nil {
-			next(i + 1)
-			return
-		}
-		n.request(v, ports.Message{Kind: ports.MsgTokenRequest, Data: blinded, Credit: attached},
-			func(resp ports.Message, err error) {
-				if err == nil && resp.OK && len(resp.Data) > 0 {
-					if sig := blindtoken.Unblind(pub, resp.Data, secret); sig != nil {
-						tok.Sigs = append(tok.Sigs, ports.TokenSig{Validator: v, Sig: sig})
-					}
-				}
-				next(i + 1)
-			})
 	}
-	next(0)
+
+	var fire func()
+	fire = func() {
+		// Keep (accepted + in-flight) topped up to k from the canonical tail.
+		for !finished && len(sigs)+inflight < k && nextIdx < len(validators) {
+			i := nextIdx
+			nextIdx++
+			v := validators[i]
+			pub := issuerPub(v)
+			if pub == nil || v == n.id {
+				continue
+			}
+			var attached *ports.PublishCredit
+			if credit != nil {
+				if attached = credit(v); attached == nil {
+					continue // credit-backed acquisition, but none held for v
+				}
+			}
+			blinded, secret, err := blindtoken.Blind(rng, pub, serial)
+			if err != nil {
+				continue
+			}
+			inflight++
+			sent := n.clock.Now()
+			n.request(v, ports.Message{Kind: ports.MsgTokenRequest, Data: blinded, Credit: attached},
+				func(resp ports.Message, rerr error) {
+					inflight--
+					if rerr == nil && resp.OK && len(resp.Data) > 0 {
+						if sig := blindtoken.Unblind(pub, resp.Data, secret); sig != nil {
+							sigs[i] = sig
+						}
+					}
+					elapsed := int64(n.clock.Now()-sent) / int64(ports.Millisecond)
+					if _, ok := sigs[i]; ok {
+						n.logf(ports.LogDebug, "token gather leg", "issuer", v, "rank", i, "elapsed_ms", elapsed)
+					} else {
+						n.logf(ports.LogDebug, "token gather leg FAILED", "issuer", v, "rank", i,
+							"elapsed_ms", elapsed, "err", rerr)
+					}
+					fire() // a failure frees a slot → fall forward in canonical order
+					settle()
+				})
+		}
+		settle() // covers "no eligible candidates at all" and the k<=len cases
+	}
+	fire()
 }

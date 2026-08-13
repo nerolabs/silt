@@ -85,34 +85,48 @@ func (n *Node) FetchCanonicalIssuers(v ports.NodeID, done func([]ports.NodeID, e
 	})
 }
 
-// FetchCanonicalIssuersFromAny tries each validator in order until one serves a
-// canonical issuer set, returning the first success (or the last error if all fail).
-// This closes the #351 canonical-set half: a chainless publisher used to ask only
-// vs[0], so a SINGLE un-synced or transiently-unreachable validator — e.g. one that
-// just restarted mid-run — dropped the publisher into the -peers fallback, which
-// NARROWS the publisher anonymity set (swarm.go's honest privacy note). The canonical
-// ranking is DETERMINISTIC — every chain-holder computes the same bond-ranked order —
-// so asking a different validator returns the SAME answer: this is pure liveness/
-// anonymity robustness, not a change to selection, consensus, or the privacy claim.
-// (The token-ACQUISITION-after-restart path — reaching enough signers for the
-// token-quorum when one is down — is a separate, privacy-sensitive residual, tracked
-// under #351, not addressed here.)
+// FetchCanonicalIssuersFromAny asks EVERY validator concurrently and returns the
+// first success (or the last error once all have failed). This closes the #351
+// canonical-set half: a chainless publisher used to ask only vs[0], so a SINGLE
+// un-synced or transiently-unreachable validator — e.g. one that just restarted
+// mid-run — dropped the publisher into the -peers fallback, which NARROWS the
+// publisher anonymity set (swarm.go's honest privacy note). The canonical ranking
+// is DETERMINISTIC — every chain-holder computes the same bond-ranked order — so
+// racing the fetch is privacy-neutral (research stamp 2026-08-13): who answers
+// first changes nothing about WHAT is answered, so no publisher-position
+// fingerprint can enter the signer selection through this leg; it is the
+// sequential try-each-in-order collapsed to one round-trip time. (The
+// token-ACQUISITION-after-restart path — reaching enough signers for the
+// token-quorum when one is down — is a separate, privacy-sensitive residual,
+// tracked under #351, not addressed here.)
 func (n *Node) FetchCanonicalIssuersFromAny(vs []ports.NodeID, done func([]ports.NodeID, error)) {
-	var try func(i int, lastErr error)
-	try = func(i int, lastErr error) {
-		if i >= len(vs) {
-			done(nil, lastErr)
-			return
-		}
-		n.FetchCanonicalIssuers(vs[i], func(ids []ports.NodeID, err error) {
+	if len(vs) == 0 {
+		done(nil, errNoCanonicalIssuers)
+		return
+	}
+	pending := len(vs)
+	finished := false
+	lastErr := errNoCanonicalIssuers
+	for _, v := range vs {
+		n.FetchCanonicalIssuers(v, func(ids []ports.NodeID, err error) {
+			pending--
+			if finished {
+				return
+			}
 			if err == nil && len(ids) > 0 {
+				finished = true
 				done(ids, nil)
 				return
 			}
-			try(i+1, err) // this validator has no chain / is unreachable — try the next
+			if err != nil {
+				lastErr = err
+			}
+			if pending == 0 {
+				finished = true
+				done(nil, lastErr)
+			}
 		})
 	}
-	try(0, errNoCanonicalIssuers)
 }
 
 // handleChain processes validator messages; returns false if the kind

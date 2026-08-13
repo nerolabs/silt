@@ -53,38 +53,69 @@ func rankByCanonical(reachable, canon []ports.NodeID) []ports.NodeID {
 	return out
 }
 
+// Each stage OVERLAPS its round-trips (research stamp 2026-08-13, A1): the key
+// fetches fire concurrently (skipping already-cached keys), then the per-issuer
+// credit mints fire concurrently, then the k blind-sign requests gather in
+// parallel inside AcquireTokenWithCredits. Selection is untouched — every stage
+// still addresses the same canonically-ranked validator list, and each stage
+// waits for ALL its round-trips to resolve before the next, so nothing about
+// timing picks the signers. This collapses the gather's wall-clock from
+// ~(2·len(validators)+k) sequential WAN round-trips to ~3.
 func acquirePublishToken(nd *node.Node, validators []ports.NodeID, k int, cont func(*ports.PublishToken, error)) {
-	var fetchNext func(i int)
-	fetchNext = func(i int) {
-		if i < len(validators) {
-			nd.FetchIssuerKey(validators[i], func(error) { fetchNext(i + 1) }) // best-effort
-			return
-		}
-		// Keys in hand: mint one credit per validator (charged at mint), then
-		// spend them for the token (no charge at the spend).
-		credits := map[ports.NodeID]ports.PublishCredit{}
-		var mintNext func(j int)
-		mintNext = func(j int) {
-			if j < len(validators) {
-				v := validators[j]
-				nd.AcquireCredits(rand.Reader, v, 1, nd.IssuerKeyOf, func(cs []ports.PublishCredit, _ error) {
-					if len(cs) == 1 {
-						credits[v] = cs[0] // best-effort per issuer; spend handles a shortfall
-					}
-					mintNext(j + 1)
-				})
-				return
+	// Stage 1: issuer keys, concurrent, best-effort; skip keys already cached.
+	fetchKeys := func(next func()) {
+		pending := 0
+		fired := false
+		settle := func() {
+			if fired && pending == 0 {
+				next()
 			}
+		}
+		for _, v := range validators {
+			if nd.IssuerKeyOf(v) != nil {
+				continue
+			}
+			pending++
+			nd.FetchIssuerKey(v, func(error) { pending--; settle() }) // best-effort
+		}
+		fired = true
+		settle()
+	}
+	// Stage 2: mint one credit per validator (charged at mint), concurrent.
+	mintCredits := func(next func(map[ports.NodeID]ports.PublishCredit)) {
+		credits := map[ports.NodeID]ports.PublishCredit{}
+		pending := 0
+		fired := false
+		settle := func() {
+			if fired && pending == 0 {
+				next(credits)
+			}
+		}
+		for _, v := range validators {
+			v := v
+			pending++
+			nd.AcquireCredits(rand.Reader, v, 1, nd.IssuerKeyOf, func(cs []ports.PublishCredit, _ error) {
+				if len(cs) == 1 {
+					credits[v] = cs[0] // best-effort per issuer; spend handles a shortfall
+				}
+				pending--
+				settle()
+			})
+		}
+		fired = true
+		settle()
+	}
+	// Stage 3: spend the credits for the k blind signatures (no charge at spend).
+	fetchKeys(func() {
+		mintCredits(func(credits map[ports.NodeID]ports.PublishCredit) {
 			serial, err := blindtoken.NewSerial(rand.Reader)
 			if err != nil {
 				cont(nil, err)
 				return
 			}
 			nd.AcquireTokenWithCredits(rand.Reader, serial, validators, nd.IssuerKeyOf, credits, k, cont)
-		}
-		mintNext(0)
-	}
-	fetchNext(0)
+		})
+	})
 }
 
 // cmdSwarm publishes to / retrieves from a running daemon swarm using a
