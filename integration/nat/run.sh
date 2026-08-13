@@ -103,13 +103,26 @@ if [ "${RESTART:-0}" = 1 ] && [ "$pass" = 1 ]; then
     dc logs --since 2m nodeA 2>&1 | grep -q "relay-via: registered" && break
     sleep 1
   done
-  sleep 6   # let AnnounceHeld (after re-bootstrap) re-plant provider records
+  # After re-bootstrap the holder re-announces its held shards (AnnounceHeld reads the
+  # RELOADED proofs). That re-announce + DHT propagation is NOT instantaneous — and a
+  # fixed sleep is the wrong tool (build-immutable #5: wait for the condition, never a
+  # magic constant). A single `sleep 6` + one-shot re-fetch FALSE-FAILed bimodally under
+  # a loaded CI runner where 6s was sometimes too short for the record to propagate
+  # before nodeB looked it up (#390). So confirm the reload happened, then WAIT FOR THE
+  # ACTUAL CONDITION: retry the re-fetch on a bounded deadline. A genuine reprovide gap
+  # still fails after it (this never masks a real #69 break — it only rides out a slow
+  # re-announce), exactly the "retry, don't guess a timeout" discipline the product uses.
   reloaded=$(dc exec -T nodeA sh -c 'grep -oE "reloaded storage proofs.*" /data/debug.log 2>/dev/null | tail -1' | tr -d '\r')
   echo "  nodeA on restart: ${reloaded:-<no reload line>}"
-  dc exec -T nodeB sh -c "silt swarm get '$LINK' -o /tmp/out2.bin -peers '$PEERS' -registry '$REG' && sha256sum /tmp/out2.bin | cut -d' ' -f1" >/tmp/nat_get2.txt 2>&1
-  GOT2=$(grep -oE '^[a-f0-9]{64}' /tmp/nat_get2.txt | tail -1)
+  GOT2=""
+  for _ in $(seq 1 30); do   # ~60s deadline (30 × [re-fetch + 2s]) — >>6s, still bounded
+    dc exec -T nodeB sh -c "silt swarm get '$LINK' -o /tmp/out2.bin -peers '$PEERS' -registry '$REG' && sha256sum /tmp/out2.bin | cut -d' ' -f1" >/tmp/nat_get2.txt 2>&1
+    GOT2=$(grep -oE '^[a-f0-9]{64}' /tmp/nat_get2.txt | tail -1)
+    [ "$WANT" = "$GOT2" ] && break
+    sleep 2
+  done
   echo "  re-fetch after restart got: ${GOT2:-<none>}"
-  [ "$WANT" = "$GOT2" ] || { echo "FAIL: content undiscoverable after restart — reprovide broken (#69)"; cat /tmp/nat_get2.txt; pass=0; }
+  [ "$WANT" = "$GOT2" ] || { echo "FAIL: content undiscoverable after restart within the reprovide deadline — reprovide broken (#69)"; cat /tmp/nat_get2.txt; pass=0; }
 fi
 
 if [ "$pass" = 1 ]; then
