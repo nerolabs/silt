@@ -314,6 +314,16 @@ type Stats struct {
 	// a holder was confirmed dead (the lifecycle gauge — records age out, not linger).
 	HolderDialsSkipped        int
 	DeadProviderRecordsPruned int
+	// #382 chain-sync cost gauges (M1 baseline). ChainSyncHeadMatches: sweeps where a
+	// peer's head hash matched ours and the full-chain fetch + re-validate was ELIDED
+	// (the steady-state win — this should dominate once the network converges).
+	// ChainSyncFullFetches: sweeps that DID fetch a peer's whole chain (a real
+	// difference: catch-up, reorg, or an old peer that can't answer the head probe).
+	// The ratio full/(full+match) is the "chain bytes per sweep" cost signal: near 0
+	// in agreement, spiking only on genuine divergence. An unbounded climb in
+	// FullFetches while heads agree means the elision regressed.
+	ChainSyncHeadMatches int
+	ChainSyncFullFetches int
 }
 
 type pending struct {

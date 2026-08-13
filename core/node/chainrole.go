@@ -175,6 +175,17 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 	case ports.MsgGetChain:
 		blocks := n.chain.Blocks(msg.Height)
 		n.reply(from, msg, ports.Message{Kind: ports.MsgChainReply, OK: true, Data: chain.EncodeBlocks(blocks)})
+	case ports.MsgGetChainHead:
+		// Cheap head probe (#382): answer "what is your head?" with (height, hash) so
+		// a peer whose head matches ours can SKIP the full-chain fetch + re-validate.
+		// A block hash commits its entire ancestry, so an identical head hash proves
+		// an identical committed history — nothing to catch up, reorg, or slash.
+		hh, next := n.chain.Head()
+		var h uint64
+		if n.chain.Len() > 0 {
+			h = next - 1
+		}
+		n.reply(from, msg, ports.Message{Kind: ports.MsgChainHeadReply, OK: true, Height: h, Data: hh[:]})
 	case ports.MsgSubmitBondReg:
 		// A peer submitted a fresh bond renewal for us to include when we next
 		// propose (H2 non-proposer renewal). Queue it only if it verifies for our
@@ -203,6 +214,8 @@ func replyKind(k ports.MsgKind) ports.MsgKind {
 		return ports.MsgAttestReply
 	case ports.MsgCommitBlock:
 		return ports.MsgCommitAck
+	case ports.MsgGetChainHead:
+		return ports.MsgChainHeadReply
 	default:
 		return ports.MsgChainReply
 	}
@@ -484,15 +497,26 @@ func (n *Node) slashEquivocators(a, b []chain.Block) {
 
 // SyncChain reconciles the local replica against peers — how a latecomer or a
 // restarted daemon catches up AND how a partitioned validator heals a fork
-// (D2). It fetches each peer's full chain and asks the replica to Reconcile:
-// a peer that merely extends us is adopted as a catch-up, a peer on a heavier
-// competing fork triggers a reorg, and a peer on an equal-or-lighter history
-// is ignored — one uniform path (an equal-length fork, invisible to "give me
-// blocks above my head", is exactly why we compare whole chains, not suffixes).
-// Every block is fully re-validated inside Reconcile, so a lying peer wastes
-// our time but cannot feed us an invalid or foreign chain. (Fetching the whole
-// chain each sweep is the simple-correct v1; a genesis-to-head diff is the
-// recorded scaling follow-up.)
+// (D2). For each peer it first sends a CHEAP HEAD PROBE (#382): if the peer's
+// head hash equals ours we are provably on the identical committed history (a
+// block hash commits its whole ancestry), so there is nothing to catch up,
+// reorg, or slash — we skip the peer entirely. Only on a head DIFFERENCE (peer
+// ahead, or a divergent fork) — or when a peer is too old to answer the probe —
+// do we fall back to fetching the peer's FULL chain and asking the replica to
+// Reconcile: a peer that merely extends us is adopted as a catch-up, a peer on a
+// heavier competing fork triggers a reorg, and an equal-or-lighter history is
+// ignored — one uniform path (an equal-length fork, invisible to "give me blocks
+// above my head", is exactly why we compare whole chains, not suffixes). Every
+// block is fully re-validated inside Reconcile, so a lying peer wastes our time
+// but cannot feed us an invalid or foreign chain.
+//
+// The head probe is what makes steady-state sync cheap: without it every sweep
+// re-fetched and re-validated every peer's ENTIRE chain — O(chain × peers) bytes
+// and CPU per sweep even when the whole network already agreed (#382 M1 cost). It
+// is trust-NEUTRAL: the full fetch + Reconcile + equivocation scan is unchanged
+// and runs on every real difference; the probe only elides work when the peer's
+// head is byte-identical to ours. (A genuine genesis-to-head block DIFF within
+// Reconcile is a further follow-up; this closes the dominant no-op-sweep cost.)
 func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) {
 	if n.chain == nil {
 		done(0, ErrNoChain)
@@ -500,16 +524,12 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 	}
 	added := 0
 	var ask func(i int)
-	ask = func(i int) {
-		if i >= len(peers) {
-			done(added, nil)
-			return
-		}
-		if peers[i] == n.id {
-			ask(i + 1)
-			return
-		}
-		n.request(peers[i], ports.Message{Kind: ports.MsgGetChain, Height: 0},
+	// fetchFull runs the unchanged full-chain fetch + slash + Reconcile against
+	// peer p, then advances to the next peer. Used whenever the head probe shows a
+	// difference or cannot be answered.
+	fetchFull := func(p ports.NodeID, next func()) {
+		n.Stats.ChainSyncFullFetches++
+		n.request(p, ports.Message{Kind: ports.MsgGetChain, Height: 0},
 			func(resp ports.Message, err error) {
 				if err == nil && resp.OK {
 					if full, derr := chain.DecodeBlocks(resp.Data); derr == nil && len(full) > 0 {
@@ -536,13 +556,44 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 							if dropped := reorgDropped(old, now); dropped > 0 && n.onReorg != nil {
 								n.onReorg(dropped, uint64(len(now)-1))
 							}
-							n.logf(ports.LogInfo, "chain reconciled from peer", "peer", peers[i], "len", n.chain.Len())
+							n.logf(ports.LogInfo, "chain reconciled from peer", "peer", p, "len", n.chain.Len())
 						} else if rerr != nil {
-							n.logf(ports.LogDebug, "peer chain not adopted", "peer", peers[i], "err", rerr)
+							n.logf(ports.LogDebug, "peer chain not adopted", "peer", p, "err", rerr)
 						}
 					}
 				}
-				ask(i + 1)
+				next()
+			})
+	}
+	ask = func(i int) {
+		if i >= len(peers) {
+			done(added, nil)
+			return
+		}
+		if peers[i] == n.id {
+			ask(i + 1)
+			return
+		}
+		p := peers[i]
+		// Head probe first. Compare against our CURRENT head each peer (it may have
+		// moved if we adopted from an earlier peer this sweep).
+		n.request(p, ports.Message{Kind: ports.MsgGetChainHead},
+			func(resp ports.Message, err error) {
+				ourHead, _ := n.chain.Head()
+				if err == nil && resp.Kind == ports.MsgChainHeadReply && resp.OK && len(resp.Data) == len(ourHead) {
+					var peerHead ports.Hash
+					copy(peerHead[:], resp.Data)
+					if peerHead == ourHead {
+						// Identical head ⇒ identical committed history: nothing to do.
+						n.Stats.ChainSyncHeadMatches++
+						ask(i + 1)
+						return
+					}
+				}
+				// Head differs, or the peer is too old to answer the probe (or it
+				// timed out) — fall back to the full fetch, which preserves every
+				// catch-up / reorg / equivocation-detection guarantee.
+				fetchFull(p, func() { ask(i + 1) })
 			})
 	}
 	ask(0)

@@ -150,6 +150,8 @@ const (
 	MsgDeliveryReceiptAck    // OK: the server banked the receipt (witnessed-demand credited)
 	MsgGetCanonicalIssuers   // ask a chain-holder for the deterministic canonical issuer set (top-k by committed bond) — publisher privacy (R-3)
 	MsgCanonicalIssuersReply // Data: concatenated 32-byte NodeIDs, heaviest-bond first; OK=false if no chain
+	MsgGetChainHead          // cheap chain-sync head probe (#382): "what is your head?" — no payload
+	MsgChainHeadReply        // Height: head height; Data: 32-byte head hash (so a matching head skips the full-chain fetch)
 )
 
 // StorageProof is a Merkle inclusion proof shipped alongside a chunk:
@@ -263,6 +265,7 @@ func (k MsgKind) String() string {
 		MsgProposeBlock: "ProposeBlock", MsgAttestReply: "AttestReply",
 		MsgCommitBlock: "CommitBlock", MsgCommitAck: "CommitAck",
 		MsgGetChain: "GetChain", MsgChainReply: "ChainReply",
+		MsgGetChainHead: "GetChainHead", MsgChainHeadReply: "ChainHeadReply",
 		MsgCheckReachability: "CheckReachability", MsgReachabilityReply: "ReachabilityReply",
 		MsgSubmitBondReg: "SubmitBondReg", MsgSubmitBondRegAck: "SubmitBondRegAck",
 		MsgRepairClaim: "RepairClaim", MsgRepairVote: "RepairVote",
@@ -281,7 +284,7 @@ func (k MsgKind) String() string {
 // IsReply reports whether this kind terminates a pending request.
 func (m Message) IsReply() bool {
 	switch m.Kind {
-	case MsgFindNodeReply, MsgGetProvidersReply, MsgAddProviderAck, MsgStoreChunkAck, MsgFetchChunkReply, MsgHasChunkReply, MsgChallengeReply, MsgAttestReply, MsgCommitAck, MsgChainReply, MsgBondReply, MsgTokenReply, MsgIssuerKeyReply, MsgSubmitBondRegAck, MsgRepairVote, MsgDeliveryReceiptAck, MsgCanonicalIssuersReply:
+	case MsgFindNodeReply, MsgGetProvidersReply, MsgAddProviderAck, MsgStoreChunkAck, MsgFetchChunkReply, MsgHasChunkReply, MsgChallengeReply, MsgAttestReply, MsgCommitAck, MsgChainReply, MsgChainHeadReply, MsgBondReply, MsgTokenReply, MsgIssuerKeyReply, MsgSubmitBondRegAck, MsgRepairVote, MsgDeliveryReceiptAck, MsgCanonicalIssuersReply:
 		return true
 	}
 	return false
