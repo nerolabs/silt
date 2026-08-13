@@ -576,6 +576,9 @@ func (n *Node) chainSyncTick() {
 			if added > 0 && n.chainSyncOnCatchUp != nil {
 				n.chainSyncOnCatchUp(added)
 			}
+			// Drain pending bond registrations AFTER the reconcile settles, so the
+			// proposal builds on the freshest head this sweep can know (#338).
+			n.maybeProposeBondDrain()
 		})
 		// Renew objective standing without proposing (H2 / RT-2): submit a fresh
 		// bond proof to the same validator set we reconcile against, so an
@@ -586,14 +589,110 @@ func (n *Node) chainSyncTick() {
 	n.clock.AfterFunc(n.cfg.ChainSyncInterval, n.chainSyncTick)
 }
 
+// maybeProposeBondDrain is the #338 REACTIVE drain: a proposer-eligible
+// validator holding peer-submitted bond registrations (or whose own
+// registration is due) proposes a BondRegs-only block, so a young objective
+// network drains its deferred founding bonds WITHOUT depending on unrelated
+// publish traffic. Before this, pending registrations were only ever folded
+// into publish/revocation proposals — on an idle young network nothing
+// proposed, the #336-deferred regs sat forever, no validator (anchors
+// included) earned committed standing, and maturity was unreachable (the
+// `nakamoto 0 bonds` local state; the "anchors hadn't banked the Sybil bonds"
+// field GAP). Reactive, not eager (B6): it fires only when pending state
+// exists and quiesces when the queue is empty and every bond is current; the
+// per-block registration byte budget (#286 L2b) applies inside proposeBlock as
+// on any other proposal. Racing drains from two eligible proposers converge
+// like racing publishes (fork-choice; under §3 finality a quorum commit is
+// final), and the loser's peers simply resubmit.
+func (n *Node) maybeProposeBondDrain() {
+	if n.chain == nil || !n.chain.Objective() || n.signer == nil || n.bondDrainInFlight {
+		return
+	}
+	ownDue := n.bond != nil && n.chain.BondRenewalDue(n.id)
+	if len(n.pendingBondRegs) == 0 && !ownDue {
+		n.drainWaitSweeps = 0
+		return // nothing pending — stay quiet (B6)
+	}
+	if !n.chain.ProposerEligible(n.id) {
+		return // not our block to make (a young non-anchor waits for an anchor to drain it)
+	}
+	prevHead, height := n.chain.Head()
+	// NEVER sign twice at one height (Tendermint locking): if we already
+	// attested a block at this height, a drain proposal here would be a second
+	// signature on a different block — which a peer's cross-fork scan reads as
+	// equivocation. The failing-first repro showed exactly that: two anchors
+	// drain-raced a height, cross-attested, and SLASHED EACH OTHER into a
+	// wedged chain. The height clears when a commit moves the head.
+	if _, signed := n.attested[height]; signed {
+		return
+	}
+	// One designated drain proposer per height, derived from COMMITTED state so
+	// every honest replica agrees (chain.EligibleProposers is sorted): this
+	// makes an honest drain race structurally impossible, rather than merely
+	// unlikely. Liveness fallback: if the designated proposer is absent (the
+	// height hasn't moved after a few sweeps with work still pending), any
+	// eligible proposer may pick it up — the race window returns only in that
+	// degraded case, and the never-sign-twice guard above still bounds it.
+	if props := n.chain.EligibleProposers(); len(props) > 0 {
+		designated := props[int(height)%len(props)]
+		if designated != n.id {
+			if n.drainWaitSweeps < 3 {
+				n.drainWaitSweeps++
+				return
+			}
+			// designated proposer hasn't drained in 3 sweeps — take over
+		}
+	}
+	n.drainWaitSweeps = 0
+	// Attesters: only peers whose attestation will actually COUNT (the gather
+	// collects any verifying signature, but ValidateCommit skips unqualified
+	// ones — soliciting them would fail our own commit). Broadcast: everyone we
+	// sync with, so non-attester replicas hear the commit too.
+	peers := n.syncTargets()
+	attesters := make([]ports.NodeID, 0, len(peers))
+	for _, p := range peers {
+		if n.chain.AttesterEligible(p) {
+			attesters = append(attesters, p)
+		}
+	}
+	if len(attesters) == 0 {
+		return // no qualified co-signer reachable; retry next sweep
+	}
+	b := &chain.Block{Version: chain.BlockVersion, Height: height, Prev: prevHead}
+	n.bondDrainInFlight = true
+	n.proposeBlock(b, attesters, peers, 0, func(err error) {
+		n.bondDrainInFlight = false
+		if err != nil {
+			// A lost race or a not-yet-warm quorum — peers resubmit and the next
+			// sweep retries; debug-level because this is the normal retry path.
+			n.logf(ports.LogDebug, "bond-reg drain proposal not committed", "height", height, "err", err)
+			return
+		}
+		n.logf(ports.LogInfo, "bond-reg drain: pending registrations committed", "height", height)
+	})
+}
+
 // syncTargets is the set of validators to reconcile against this sweep: the
-// explicit seed plus every peer we've learned a storage bond from (a bond is
-// what a validator advertises), minus ourselves. Learned lazily from gossip, so
-// the set fills in as the swarm comes into view — a node restarted with only a
-// -bootstrap peer still discovers the rest and catches up.
+// explicit seed, the CONFIGURED static consensus tier (-persistent-peers), plus
+// every peer we've learned a storage bond from (a bond is what a validator
+// advertises), minus ourselves. The static tier is included because it IS the
+// consensus set by definition (#338 finding 2 / network-durability §8,
+// configure-not-discover): a validator whose attester seed holds no
+// chain-carrying peer (the cloud sybil cohort — its -attesters are only other
+// sybils) and whose bond gossip hasn't warmed yet otherwise has NO path to the
+// committed chain — it can neither catch up nor submit its bond registration,
+// which is exactly the "sybil never synced a committed chain (head 0)" field
+// GAP. The rest is learned lazily from gossip, so the set fills in as the
+// swarm comes into view — a node restarted with only a -bootstrap peer still
+// discovers the rest and catches up.
 func (n *Node) syncTargets() []ports.NodeID {
-	set := make(map[ports.NodeID]bool, len(n.chainSyncSeed)+len(n.peerBonds))
+	set := make(map[ports.NodeID]bool, len(n.chainSyncSeed)+len(n.staticPeers)+len(n.peerBonds))
 	for _, id := range n.chainSyncSeed {
+		if id != n.id {
+			set[id] = true
+		}
+	}
+	for id := range n.staticPeers {
 		if id != n.id {
 			set[id] = true
 		}

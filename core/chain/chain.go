@@ -868,6 +868,53 @@ func (c *Chain) validateSlashes(b *Block) error {
 // id's attestations in objective mode.
 func (c *Chain) BondedSize(id ports.NodeID) int64 { return c.bonded[id] }
 
+// ProposerEligible reports whether id currently qualifies to propose — the same
+// rule ValidateProposal applies. Read-only probe for the node layer, so a
+// validator can decide whether a proposal is worth attempting (the #338
+// bond-registration drain) without paying a doomed gather.
+func (c *Chain) ProposerEligible(id ports.NodeID) bool { return c.proposerQualified(id) }
+
+// EligibleProposers is the sorted set of validators currently qualified to
+// propose, derived ONLY from committed chain state (the anchor set during the
+// launch window, the bonded/epoch set after) — so every honest replica computes
+// the SAME list. The #338 drain uses it to designate a single proposer per
+// height (ids[height % len]): without a deterministic designation two eligible
+// proposers drain-race the same height, cross-attest each other's conflicting
+// blocks on a small young network, and read each other's signatures as
+// equivocation — two honest anchors slashing each other into a wedged chain
+// (observed in the failing-first #338 repro).
+func (c *Chain) EligibleProposers() []ports.NodeID {
+	seen := make(map[ports.NodeID]bool)
+	var out []ports.NodeID
+	add := func(id ports.NodeID) {
+		if !seen[id] && c.proposerQualified(id) {
+			seen[id] = true
+			out = append(out, id)
+		}
+	}
+	for id := range c.cfg.Anchors {
+		add(id)
+	}
+	if c.epochsEnabled() && c.matureEpoch {
+		for id := range c.epochSet {
+			add(id)
+		}
+	} else {
+		for id := range c.bonded {
+			add(id)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return bytesLess(out[i][:], out[j][:]) })
+	return out
+}
+
+// AttesterEligible reports whether id's attestation would currently count
+// toward quorum — the same rule ValidateCommit applies. Read-only probe for the
+// node layer: a gather that solicits attestations from unqualified peers
+// collects signatures that then don't count, failing its own commit — so the
+// #338 drain filters its attester set through this.
+func (c *Chain) AttesterEligible(id ports.NodeID) bool { return c.attesterQualified(id) }
+
 // IsBonded reports whether id is a qualified bond-distinct identity in the COMMITTED
 // on-chain bond ledger: its bonded size clears MinBond and it has not been slashed.
 // This is the LIVE admission bar (what attesterQualified reads outside a mature

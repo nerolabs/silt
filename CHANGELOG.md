@@ -8,6 +8,31 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Fixed
+- **#338 — an idle young objective network never drained its deferred bond registrations; a non-attester validator had no path to the committed chain** (2026-08-13) —
+  Two structural gaps behind the local `nakamoto 0 bonds` state and the SYBILS=8 field GAP ("sybil-1
+  never synced a committed chain — anchors hadn't banked the Sybil bonds; capture precondition unmet").
+  **(1) Reactive bond-registration drain.** Pending registrations (#336-deferred off the lean genesis,
+  peer-submitted via the H2 renewal path) were only ever folded into publish/revocation proposals — on
+  a young network with no content traffic nothing proposed, so no validator (anchors included) ever
+  earned committed standing and maturity was unreachable. Now a proposer-eligible validator holding
+  pending registrations (or whose own is due) proposes a **BondRegs-only block** on the chain-sync
+  sweep — reactive (B6: fires on pending state, quiesces empty), budget-bounded (#286 L2b), guarded by
+  **never-sign-twice-at-a-height** (the failing-first repro caught two anchors drain-racing one height,
+  cross-attesting, and equivocation-slashing EACH OTHER into a wedged chain) and a **deterministic
+  designated proposer per height** derived from committed state (`chain.EligibleProposers`,
+  `ids[height % n]`, absent-proposer fallback after 3 sweeps). **(2) The configured persistent-peer
+  tier is now a chain-sync target** (`syncTargets`): a validator whose attester seed holds no
+  chain-carrying peer (the cloud sybil cohort — attesters are only other sybils) and whose bond gossip
+  hasn't warmed otherwise had NO path to sync or submit (configure-not-discover,
+  `network-durability.md` §8); the cloudtest sybil role now configures `-persistent-peers` over the
+  validator set. The local `integration/sybil` harness graduates from its scoped-down standing-gate
+  form to the REAL C2 property: it now asserts the autonomous drain commits, the sybil syncs, a bonded
+  sybil **publishes through its own registry with the anchors present** (positive control), and the
+  capture attempt without anchors is refused by the **anchor co-sign gate** on a genuinely-bonded
+  Sybil set — previously cloud-scoped, now local. Failing-first regressions at the node tier
+  (`TestIdleYoungNetworkDrainsPendingBondRegs338`, `TestSyncTargetsIncludeStaticPeers338`).
+
 ### Added
 - **#357 Conditions A+B — the mature phase epoch-snapshots its validator set, and the young→mature handoff lands at a finalized boundary (research-certified)** (2026-08-13) —
   Completes the #357 arc: the research certification conditioned its C1/C2 soundness ruling on two

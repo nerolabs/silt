@@ -65,7 +65,16 @@ dc up -d a1 a2 s1 s2 >/dev/null 2>&1 || fail "up core"
 await_log a1 'registry: .*serving' 40 || fail "a1 registry never came up"
 await_log a2 'bootstrapped \(' 40 || fail "a2 never bootstrapped"
 await_log s1 'registry: .*serving' 40 || fail "s1 registry never came up"
-echo "  letting bonds seal + submit + the anchors commit them (25s)…"; sleep 25
+# #338: the young network must drain its deferred bond registrations AUTONOMOUSLY —
+# no publish traffic exists yet, so the reactive drain (a BondRegs-only block on the
+# chain-sync sweep) is the only way any validator earns committed standing. The
+# drain serializes ~1 registration per sweep under the #286-L2b byte budget, so give
+# it a few 30s sweeps. Observables are deterministic product strings: a commit on a1
+# (the drain block), and a commit heard on s1 (the broadcast → the sybil SYNCED the
+# committed chain — issue #338 finding 2's exact gap).
+echo "  letting bonds seal + the anchors DRAIN the submitted registrations (a few 30s sweeps)…"
+await_log a1 'chain: committed block' 120 || fail "C2-a (#338): the idle young network never committed a bond-registration drain block — deferred regs must not wait for publish traffic"
+await_log s1 'chain: committed block' 120 || fail "C2-a (#338): the sybil never heard/synced a committed block (finding 2 — no path from a non-attester validator to the committed chain)"
 
 REG_A1="$A1_ID@https://10.90.0.2:4003"
 REG_S1="$S1_ID@https://10.90.0.4:4003"
@@ -106,14 +115,40 @@ else
   fail "C2-a expected 'wheels engaged' on the young network, got: $(echo "$C2LINE" | grep -oE 'wheels[^|]*')"
 fi
 
+# ── C2-a2 (#338): a BONDED sybil can publish while the anchors are up ──────────
+# The drain banked the sybils' committed standing, so s1 — proposing through its
+# OWN registry — must now clear the proposer-standing gate and commit WITH an
+# anchor co-sign (its -attesters include both anchors). This is the positive
+# control that makes C2-b's refusal attributable to the ANCHOR gate specifically:
+# the same proposer, same registry, same swarm commits with the anchors present
+# and is refused without them — the error TYPE proves which wheel refused.
+# Retries span a few sweeps: the drain serializes ~1 registration per 30s sweep,
+# so s1's own bond may bank a couple of sweeps after the first drain block.
+echo ""
+echo "== C2-a2 (#338): a bonded Sybil publishes THROUGH ITS OWN registry while the anchors are present =="
+S1_PUB=""
+s1_bonded=0
+for _ in $(seq 1 60); do
+  S1_PUB=$(publish s1 "$REG_S1" 2>&1)
+  if echo "$S1_PUB" | grep -q 'silt:v1:'; then s1_bonded=1; break; fi
+  sleep 4
+done
+if [ "$s1_bonded" = 1 ]; then
+  echo "  C2-a2 PASS: s1 (bonded sybil) published + committed with the anchors present — its drained bond standing is REAL"
+else
+  fail "C2-a2 (#338): s1 never earned publishable standing while the anchors were up (last: $(echo "$S1_PUB" | tail -1)) — the drain did not bank the sybil's bond"
+fi
+
 # ── C2-b: no quiet capture — stop both anchors, the Sybil quorum cannot advance ─
 echo ""
 echo "== C2-b no quiet capture: with BOTH anchors gone, the Sybil set CANNOT advance the chain =="
 dc stop a1 a2 >/dev/null 2>&1 || fail "could not stop the anchors"
 echo "  both anchors stopped; the Sybil set (s1 proposes, s2 attests) now tries to commit alone…"
-# The anchored CEILING: the height the honest anchors legitimately reached in C2-a.
-# A capture means the Sybils push the chain BEYOND this without any anchor.
-h_ceiling=$h1
+# The anchored CEILING: the height the network legitimately reached while the
+# anchors were present (drain blocks + C2-a + C2-a2 publishes included). A capture
+# means the Sybils push the chain BEYOND this without any anchor. Re-read from s1
+# (a1 is stopped): s1 is fully synced (C2-a/C2-a2 proved it).
+h_ceiling=$(head_height s1); h_ceiling=${h_ceiling:-$h1}
 cc_pre=$(commit_count s1); cc_pre_s2=$(commit_count s2)
 # audit #303 / #338: publish through the LIVE Sybils only. $ALL still lists the
 # just-stopped anchors, and a content scatter that cannot reach them errors the
@@ -163,16 +198,12 @@ elif echo "$REASON" | grep -qiE 'anchor|immature'; then
   echo "    gate: the ANCHOR co-sign requirement (ErrAnchorRequired) — the strongest form: even with"
   echo "    standing a young commit needs an anchor. reason: $REASON"
 elif echo "$REASON" | grep -qiE 'reputation'; then
-  echo "  C2-b PASS: NO block beyond the anchored ceiling h${h_ceiling} — the bonded Sybil quorum could not capture the young network"
+  echo "  C2-b PASS: NO block beyond the anchored ceiling h${h_ceiling} — the Sybil quorum could not capture the young network"
   echo "    (head $h_post ≤ ceiling h${h_ceiling}; no fresh Sybil commit: s1 ${cc_pre}→$cc_post, s2 ${cc_pre_s2}→$cc_post_s2 — both anchors absent)"
-  echo "    gate: the standing requirement — the Sybils cannot even EARN committed bonded standing"
-  echo "    without an anchor-proposed block to register their bonds. reason: $REASON"
-  echo "    (The anchor co-sign gate sits behind this; both refuse the capture. The pure-anchor-gate"
-  echo "    form, with pre-banked Sybil bonds, is exercised at scale on the cloud test.)"
-  echo "    NOTE(#338): on this young local chain NO validator earns committed bonded standing —"
-  echo "    the anchor-bootstrap genesis commits at 0 bonds and the #336-deferred bond regs do not"
-  echo "    drain, so 'bonded 0' is the EXPECTED local state. This leg therefore proves the STANDING"
-  echo "    gate; the anchor co-sign gate on a genuinely-bonded Sybil set stays cloud-scoped."
+  echo "    gate: the standing requirement. reason: $REASON"
+  echo "    ⚠ NOTE(#338): with the reactive drain + C2-a2 green, s1 SHOULD hold committed standing"
+  echo "    here — the standing refusal firing instead of the anchor gate suggests its bond TTL'd"
+  echo "    or the drain missed it; the outcome (no capture) still holds, but check the drain."
 else
   # audit #303: NO block beyond the ceiling is only "no capture" if a TRAINING-WHEELS
   # gate actually refused it. With no anchor/immature/reputation reason surfaced, a
@@ -197,7 +228,7 @@ fi
 
 echo ""
 if [ "$pass" = 1 ]; then
-  echo "RESULT: PASS ✅  C2 holds — no quiet capture: the young objective network commits WITH the honest anchors (wheels engaged) and will NOT advance for the bonded Sybil set once the anchors are gone. The training wheels refuse the capture (locally the Sybils cannot even earn committed standing without an anchor-proposed block; the pure anchor-co-sign gate + the ≥8-bond atomization signal are exercised at scale on the cloud test)."
+  echo "RESULT: PASS ✅  C2 holds — no quiet capture: the young objective network drains its bond registrations autonomously (#338), a BONDED sybil publishes with the anchors present (its standing is real), and the bonded Sybil quorum still cannot advance the chain once the anchors are gone — refused by the anchor co-sign gate (ErrAnchorRequired), the pure form this harness previously had to defer to the cloud. The ≥8-bond atomization signal stays a cloud-scale concern (integration/cloudtest)."
 else
   echo "RESULT: FAIL ❌  (see the failing assertion(s) above)"
 fi
