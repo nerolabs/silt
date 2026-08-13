@@ -637,6 +637,14 @@ flow_c2_no_capture() {
     record "5-sybil-no-capture" skip major "no Sybil cohort in this topology — opt in with SYBILS=8 ./cloudtest.sh to certify the PURE anchor gate on cloud (the local integration/sybil suite reaches only the standing gate)"
     return
   fi
+  # Mutually exclusive with the MATURING topology: this flow certifies the
+  # ANCHOR gate on a network that never sheds; under MATURING=1 the anchors shed
+  # by design, so the premise (ErrAnchorRequired without anchors) does not exist
+  # — the post-shed capture property is flow 10's B2 capture drill instead.
+  if [ "$(python3 -c "import json;print(json.load(open('$FT_DIR/topology.json'))['meta'].get('maturing',0))")" = "1" ]; then
+    record "5-sybil-no-capture" skip major "MATURING=1 topology sheds the anchors by design — the anchor-gate premise doesn't exist here; the post-shed capture property is certified by 10-maturing-handoff's B2 drills (run without MATURING for flow 5)"
+    return
+  fi
   local n_syb sybils anchors_nodes
   n_syb="$(python3 -c "import json;print(json.load(open('$FT_DIR/topology.json'))['meta']['n_syb'])")"
   sybils="$(python3 -c "import json;print(' '.join(json.load(open('$FT_DIR/topology.json'))['meta']['sybils']))")"
@@ -737,6 +745,180 @@ flow_c2_no_capture() {
   else
     record "5-sybil-no-capture" gap major "no-capture outcome held (head ≤ ceiling h${ceiling} with anchors down) but the chain did NOT resume within 180s after restoring anchors (h2=$h2) — liveness inconclusive (SPOT preemption?); re-run to confirm the clincher"
   fi
+}
+
+# ── Flow 10: MATURING topology (§4 / B2) — handoff, post-shed regime, weight-quorum
+# drills, and WS cold-sync, over real WAN ────────────────────────────────────────
+# The base topology never matures by design (4 equal bonds → Nakamoto 2 < bar 4), so
+# every prior field run exercised only the YOUNG anchor-gated regime — while the
+# external red team's sharpest target is the handoff/post-shed regime (seam #8).
+# `MATURING=1 SYBILS=8 ./cloudtest.sh` runs the topology that hands off on the wire
+# (bar 2 at margin 1 — deliberate, disclosed; the cohort bonds the MINIMUM so B2's
+# drills price per-head cheapness honestly): warm → everMature latches ('wheels shed
+# permanently', the F-1 one-way latch) → the first epoch boundary (height % 8) hands
+# off → post-shed commits continue with NO anchor requirement → the B2 STALL drill
+# (cohort declines to attest; honest weight must still commit — head-counting made
+# this network born-unable-to-commit) → the B2 CAPTURE drill (cheap-member cohort
+# alone must be refused: no advance past the honest ceiling, no fresh cohort commit;
+# corroborated by the frozen-weight refusal in a cohort log) → the clincher (honest
+# validators return, chain resumes) → WS COLD-SYNC (restart a validator pinned to a
+# 'checkpoint: H:HASH' obtained from a peer; it must catch up AND the latch must
+# hold — anchors never re-arm). Outcome-first throughout (immutable #2): heights and
+# commits grade; log lines corroborate.
+: "${LATCH_S:=420}"
+: "${HANDOFF_BLOCKS_S:=600}"
+flow_maturing_handoff() {
+  local maturing
+  maturing="$(python3 -c "import json;print(json.load(open('$FT_DIR/topology.json'))['meta'].get('maturing',0))")"
+  if [ "$maturing" != "1" ]; then
+    record "10-maturing-handoff" skip major "not a MATURING topology — opt in with MATURING=1 SYBILS=8 ./cloudtest.sh to field-exercise the handoff/post-shed regime (the external red team's sharpest seam-#8 target; until then it is proven only in-process: core/chain/quorum_weight_test.go + sim/maturequorum_test.go)"
+    return
+  fi
+  require_nodes "10-maturing-handoff" major val-a val-b || return
+  require_live  "10-maturing-handoff" major val-a || return
+  local anchors_nodes n_syb sybils
+  anchors_nodes="$(python3 -c "import json;print(' '.join(n for n,v in json.load(open('$NODES_JSON')).items() if v['role']=='validator'))")"
+  n_syb="$(python3 -c "import json;print(json.load(open('$FT_DIR/topology.json'))['meta']['n_syb'])")"
+  sybils="$(python3 -c "import json;print(' '.join(json.load(open('$FT_DIR/topology.json'))['meta']['sybils']))")"
+
+  mh_height() { ssh_node "$1" "/usr/local/bin/silt chain-status -store /var/lib/silt 2>&1" \
+    | grep -oE 'head height:[[:space:]]*[0-9]+' | grep -oE '[0-9]+' | tail -1; }
+  mh_ceiling() { # max head over the honest validators
+    local c=0 a hh
+    for a in $anchors_nodes; do hh="$(mh_height "$a")"; hh="${hh:-0}"; [ "$hh" -gt "$c" ] 2>/dev/null && c="$hh"; done
+    printf '%s' "$c"
+  }
+  # drive one committed block via a publish (boot validator = most reliable
+  # publisher); returns 0 if the honest ceiling strictly rises within 90s.
+  mh_drive_block() {
+    local before after t0; before="$(mh_ceiling)"
+    ssh_node val-a "head -c 4096 </dev/urandom >/tmp/ft_mh.bin; /usr/local/bin/silt swarm add /tmp/ft_mh.bin -peers '$PEERS' -registry '$REGREF' -token-quorum $TOKEN_QUORUM -chunk-size 65536 >/dev/null 2>&1 || true"
+    t0="$(date +%s)"
+    while [ $(( $(date +%s) - t0 )) -lt 90 ]; do
+      after="$(mh_ceiling)"
+      [ "$after" -gt "$before" ] 2>/dev/null && return 0
+      sleep 5
+    done
+    return 1
+  }
+
+  # 1) THE LATCH: the daemon's own C2 status line must flip to the one-way F-1
+  #    latch wording. Never tripping is an honest GAP — the maturity precondition
+  #    was unmet and everything downstream is UNTESTED.
+  local wheels
+  wheels="$(waitfor val-a 'wheels shed permanently' "$LATCH_S" || true)"
+  if [ -z "$wheels" ]; then
+    record "10-maturing-handoff" gap major "the everMature latch never tripped within ${LATCH_S}s ('wheels shed permanently' absent on val-a) — bar-2 maturity precondition unmet (bonds not committed? C2 metric short?); handoff/post-shed regime UNTESTED"
+    return
+  fi
+  echo "    latch tripped: ${wheels##*silt}"
+
+  # 2) THE HANDOFF: the shed applies at the first epoch boundary (height % 8 == 0)
+  #    at-or-after the latch. Drive commits across the next boundary + 1 so the
+  #    frozen mature snapshot demonstrably GOVERNS, then assert the post-shed
+  #    commit: chain advances with NO anchor-required refusal after the latch.
+  local h_latch target t0 ok=0
+  h_latch="$(mh_ceiling)"
+  target=$(( ( h_latch / 8 + 1 ) * 8 + 1 ))
+  echo "    driving commits across the epoch boundary: h${h_latch} → h${target}…"
+  t0="$(date +%s)"
+  while [ $(( $(date +%s) - t0 )) -lt "$HANDOFF_BLOCKS_S" ]; do
+    [ "$(mh_ceiling)" -ge "$target" ] 2>/dev/null && { ok=1; break; }
+    mh_drive_block || true
+  done
+  local anchor_refusal=0
+  jlog val-a 400 | grep -qE 'immature network requires anchor|requires anchor attestations' && anchor_refusal=1
+  slo_assert "10-maturing-handoff" major "young→mature HANDOFF field-exercised: latch tripped on the wire, commits crossed the epoch boundary into the governed mature snapshot (h${h_latch}→$(mh_ceiling), target h${target}), and no anchor-required refusal after the shed$([ "$anchor_refusal" = 1 ] && echo ' (ANCHOR REFUSAL SEEN POST-SHED — the wheels did not shed)')" \
+    "$([ "$ok" = 1 ] && [ "$anchor_refusal" = 0 ] && echo 1 || echo 0)"
+  [ "$ok" = 1 ] || return  # no governed mature epoch ⇒ the drills below are untestable
+
+  # Cohort-seated precondition for the B2 drills: the epoch snapshot admits every
+  # qualified bond, so the cohort must have BANKED bonds before the boundary. The
+  # C2 status line's participant count is the on-chain evidence.
+  local seated=0 parts
+  if [ -n "$sybils" ]; then
+    parts="$(jlog val-a 400 | grep -oE 'bonded across [0-9]+' | grep -oE '[0-9]+' | tail -1)"
+    [ "${parts:-0}" -ge $(( 4 + n_syb )) ] 2>/dev/null && seated=1
+  fi
+
+  # 3) 10a — THE STALL DRILL: the cohort DECLINES to attest (stopped = the
+  #    strongest decline; nothing slashable either way). Under head counting this
+  #    epoch needs bftThreshold(4+n_syb) attestations and the mature phase is
+  #    born unable to commit; under the weight rule the honest coalition carries
+  #    ~all the weight and MUST keep committing.
+  if [ -z "$sybils" ]; then
+    record "10a-stall-drill" skip major "no cohort in this topology (SYBILS=0) — the B2 stall drill needs the cheap members seated in the epoch; run MATURING=1 SYBILS=8"
+  elif [ "$seated" != 1 ]; then
+    record "10a-stall-drill" gap major "the cohort never banked its bonds on-chain before the boundary (participants=${parts:-?} < $((4 + n_syb))) — the epoch snapshot has no cheap members to decline, drill premise unmet, property UNTESTED"
+  else
+    echo "    stall drill: stopping the $n_syb-member cohort (declining to attest)…"
+    local s; for s in $sybils; do svc "$s" stop >/dev/null 2>&1 || true; done
+    local stall_ok=0
+    mh_drive_block && stall_ok=1
+    slo_assert "10a-stall-drill" major "B2 stall drill: with the $n_syb cheap epoch members DECLINING to attest, the honest >⅔-weight coalition still commits on the wire (head-counted quorum left this exact network born-unable-to-commit at ${n_syb}×MinBond)" "$stall_ok"
+    for s in $sybils; do svc "$s" start >/dev/null 2>&1 || true; done
+    sleep 20
+  fi
+
+  # 4) 10b — THE CAPTURE DRILL: only the cheap cohort remains. It must NOT advance
+  #    the chain (its ~n_syb MiB is nowhere near >⅔ of the frozen weight). Ceiling
+  #    read from the HONEST validators BEFORE stopping them (#383 lesson: a lagging
+  #    cohort's catch-up must never read as an advance), and a real capture also
+  #    needs a FRESH cohort 'committed block' log.
+  if [ -z "$sybils" ] || [ "$seated" != 1 ]; then
+    record "10b-capture-drill" skip major "no seated cohort (see 10a) — the B2 capture drill premise is the cheap members alone attempting a commit"
+  else
+    local ceiling h1 fresh=0 weightlog=0 resumed=0 h2
+    ceiling="$(mh_ceiling)"
+    echo "    capture drill: stopping the honest validators ($anchors_nodes) — the cohort alone attempts to advance (ceiling h${ceiling})…"
+    local a; for a in $anchors_nodes; do svc "$a" stop >/dev/null 2>&1 || true; done
+    sleep 90
+    h1=0; for s in $sybils; do local hs; hs="$(mh_height "$s")"; hs="${hs:-0}"; [ "$hs" -gt "$h1" ] 2>/dev/null && h1="$hs"; done
+    local no_advance=0; [ "$h1" -le "$((ceiling + 1))" ] 2>/dev/null && no_advance=1
+    for s in $sybils; do jlog "$s" 200 | grep -qE 'chain: committed block [0-9]' && { fresh=1; break; }; done
+    for s in $sybils; do jlog "$s" 600 | grep -qE 'frozen-weight super-majority' && { weightlog=1; break; }; done
+    echo "    restoring the honest validators — chain must resume…"
+    for a in $anchors_nodes; do svc "$a" start >/dev/null 2>&1 || true; done
+    local t1; t1="$(date +%s)"
+    while [ $(( $(date +%s) - t1 )) -lt 240 ]; do
+      h2="$(mh_ceiling)"
+      [ "${h2:-0}" -gt "$ceiling" ] 2>/dev/null && { resumed=1; break; }
+      mh_drive_block || true
+    done
+    if [ "$no_advance" = 1 ] && [ "$resumed" = 1 ]; then
+      record "10b-capture-drill" pass major "B2 capture drill: the $n_syb MinBond epoch members alone could NOT advance the mature chain past the honest ceiling h${ceiling} (cohort head →$h1, fresh cohort commit: $fresh$([ "$weightlog" = 1 ] && echo '; a cohort node logged the frozen-weight super-majority refusal' || echo '')), and it resumed past h${ceiling} once honest weight returned — post-shed capture is weight-priced, not head-priced"
+    elif [ "$no_advance" != 1 ] && [ "$fresh" = 1 ]; then
+      record "10b-capture-drill" fail major "CAPTURE ON THE WIRE (B2 regression): a cheap epoch member COMMITTED a new block past the honest ceiling h${ceiling} (cohort head →$h1) with every honest validator down — the mature quorum accepted a cohort-only coalition"
+    elif [ "$no_advance" != 1 ]; then
+      record "10b-capture-drill" gap major "cohort head rose to $h1 (ceiling h${ceiling}) with honest validators down but NO fresh cohort 'committed block' — a lagging cohort catching up, not a capture; re-run on a healthier network for the clean outcome"
+    else
+      record "10b-capture-drill" gap major "no-capture outcome held (head ≤ h$((ceiling+1)) with honest validators down) but the chain did not resume within 240s of their return (h2=${h2:-?}) — clincher inconclusive (SPOT preemption?); re-run to confirm"
+    fi
+  fi
+
+  # 5) 10c — WS COLD-SYNC: restart val-b pinned to a checkpoint published by a
+  #    peer (the daemon's own 'checkpoint: H:HASH' line — the F-1 out-of-band
+  #    pin). It must catch back up to the honest ceiling AND come back with the
+  #    latch still shed — a restart must never re-arm the anchors.
+  local cp
+  cp="$(jlog val-a 600 | grep -oE 'checkpoint: [0-9]+:[0-9a-f]+' | tail -1 | sed 's/checkpoint: //')"
+  if [ -z "$cp" ]; then
+    record "10c-ws-cold-sync" gap major "no 'checkpoint: H:HASH' line found on val-a — cannot pin the cold-sync; property UNTESTED"
+    return
+  fi
+  echo "    ws cold-sync: restarting val-b pinned to -ws-checkpoint $cp…"
+  local base_h; base_h="$(mh_ceiling)"
+  relaunch_with val-b "-ws-checkpoint $cp"
+  local sync_ok=0 latch_held=0 t2; t2="$(date +%s)"
+  while [ $(( $(date +%s) - t2 )) -lt 240 ]; do
+    local hb; hb="$(mh_height val-b)"; hb="${hb:-0}"
+    [ "$hb" -ge "$base_h" ] 2>/dev/null && { sync_ok=1; break; }
+    sleep 10
+  done
+  jlog val-b 200 | grep -qE 'wheels shed permanently' && latch_held=1
+  slo_assert "10c-ws-cold-sync" major "WS cold-sync under the latch: val-b restarted pinned to checkpoint $cp, caught up to h${base_h} (sync=$sync_ok) and came back with the wheels STILL shed (latch_held=$latch_held — a restart must never re-arm the anchors, F-1)" \
+    "$([ "$sync_ok" = 1 ] && [ "$latch_held" = 1 ] && echo 1 || echo 0)"
+  restore_argv val-b
 }
 
 # A cold objective genesis network needs its peer mesh established and its first
@@ -841,4 +1023,5 @@ run_all_scenarios() {
   flow_chaos_crash               # chaos #7
   flow_web_ui_guard              # client/UI #4
   flow_c2_no_capture             # C2 Sybil #5 — opt-in (SYBILS=8): certifies the PURE anchor gate on cloud
+  flow_maturing_handoff          # §4/B2 #10 — opt-in (MATURING=1 SYBILS=8): handoff + post-shed + weight-quorum drills + WS cold-sync. LAST: it stops validators.
 }
