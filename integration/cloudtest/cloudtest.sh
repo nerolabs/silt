@@ -176,11 +176,30 @@ PY
   echo "    nodes.json written ($(python3 -c "import json;print(len(json.load(open('$FT_DIR/nodes.json'))))") instances, nodeid merged from topology.json)"
 }
 
+# capture_failed_nodes NODES... — grab each node's silt journal + service state to a
+# per-run file BEFORE teardown, so a came-up failure is DIAGNOSABLE instead of lost with
+# the VMs. This is the fix for the "harness discarded the evidence" trap: without it, a
+# node that crash-loops during startup takes its crash log to the grave on destroy, and
+# the operator is left guessing why. Cheap, bounded (200 lines/node), never fatal.
+capture_failed_nodes() {
+  local out="$FT_DIR/failed-nodes-$RUN_ID.log" n
+  echo "==> capturing journals for un-ready nodes → $out"
+  { echo "# failed/un-ready nodes for run=$RUN_ID @ $(date -u +%FT%TZ 2>/dev/null || echo unknown)"; } > "$out"
+  for n in "$@"; do
+    {
+      echo ""; echo "======== $n (role=$(node_field "$n" role)) ========"
+      echo "-- systemctl status --"; ssh_node "$n" "systemctl status silt.service --no-pager -l 2>&1 | head -20" 2>/dev/null || echo "(status unavailable — node unreachable)"
+      echo "-- journalctl -u silt (last 200) --"; ssh_node "$n" "sudo journalctl -u silt --no-pager -n 200 2>&1" 2>/dev/null || echo "(journal unavailable — node unreachable)"
+    } >> "$out"
+  done
+  echo "    captured $# node journal(s); read $out to attribute the failure"
+}
+
 wait_ready() {
   echo "==> waiting for silt.service on every node (startup pulls the binary + boots)"
   # shellcheck disable=SC1091
   . ./lib.sh
-  local n deadline=$(( $(date +%s) + 600 )) pending
+  local n deadline=$(( $(date +%s) + 600 )) pending core_pending syb_pending
   while :; do
     pending=""
     for n in $(node_names); do
@@ -188,7 +207,25 @@ wait_ready() {
       ssh_node "$n" "systemctl is-active --quiet silt.service" 2>/dev/null || pending="$pending $n"
     done
     [ -z "$pending" ] && { echo "    all nodes ready"; return 0; }
-    [ "$(date +%s)" -ge "$deadline" ] && { echo "    timed out waiting for:$pending"; return 1; }
+    if [ "$(date +%s)" -ge "$deadline" ]; then
+      # Split pending into CORE vs the OPT-IN sybil cohort. The sybils exist only for the
+      # C2 corner; if they fail to boot but every core node is up, the base corners
+      # (convergence, publish, fault-tolerance, takedown, …) are still fully gradeable —
+      # so DON'T abort the whole billable run on the opt-in cohort. Only a core node not
+      # coming up is a real infra failure that invalidates the run.
+      core_pending=""; syb_pending=""
+      for n in $pending; do
+        if [ "$(node_field "$n" role)" = sybil ]; then syb_pending="$syb_pending $n"; else core_pending="$core_pending $n"; fi
+      done
+      # shellcheck disable=SC2086
+      capture_failed_nodes $pending
+      if [ -n "$core_pending" ]; then
+        echo "    timed out — CORE nodes not ready:$core_pending (sybils:$syb_pending) — aborting (a core-node startup failure invalidates the run)"
+        return 1
+      fi
+      echo "    timed out — only the OPT-IN sybil cohort is not ready:$syb_pending — PROCEEDING; the C2/maturing corners will GAP honestly (their journals captured above), the base corners still grade"
+      return 0
+    fi
     echo "    still starting:$pending"; sleep 15
   done
 }
@@ -311,6 +348,13 @@ case "${1:-all}" in
   all)
     preflight_gate
     check_prereqs; build_binary; gen_topology
+    # Clear last run's results + report BEFORE spending money, stamped with THIS run_id.
+    # An aborted run (e.g. wait_ready fails) otherwise leaves the PREVIOUS run's
+    # report.md/results.jsonl in place, so a came-up failure reads as if it had verdicts —
+    # exactly the stale-data trap that nearly got a prior run's numbers reported as this
+    # run's. Truncate now so a stale report can never be mistaken for a fresh one.
+    : > "$FT_DIR/results.jsonl"
+    printf '# run=%s — no scenarios have completed yet (network came up? see failed-nodes-%s.log)\n' "$RUN_ID" "$RUN_ID" > "$FT_DIR/report.md"
     trap teardown EXIT
     apply; wait_ready; run_scenarios; report
     ;;
