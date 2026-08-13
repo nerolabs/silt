@@ -354,17 +354,28 @@ flow_takedown() {
   if [ ${#root} -ne 64 ]; then record "8-takedown" gap minor "could not decode a 64-hex root from $FT_LAST_LINK (got '${root:0:16}…')"; return; fi
   ssh_node store-1 "echo '$root' | sudo tee /var/lib/silt/deny.txt >/dev/null" >/dev/null 2>&1
   relaunch_with store-1 "-denylist /var/lib/silt/deny.txt"; sleep 8
-  # store-1 should now refuse; another operator (store-2) should still serve it
-  local denied served=0
-  denied="$(ssh_node store-1 "/usr/local/bin/silt swarm get '$FT_LAST_LINK' -o /tmp/ft_d.bin -peers '$PEERS' -registry '$REGREF' 2>&1 | grep -iqE 'deny|refus|not.?found' && echo DENIED" 2>/dev/null || true)"
+  # DENIAL leg (fixed — audit-#303 class, wrong-surface probe): the old probe ran
+  # `swarm get` ON store-1 and grepped its output for a refusal. But `swarm get` is a
+  # SHORT-LIVED CLIENT node ("join, do the thing, leave" — cmd/silt/swarm.go): it
+  # never consults the store-1 daemon's denylist, walks the DHT, and happily fetches
+  # from any other holder — so the refusal grep could NEVER match and this flow GAP'd
+  # on every run (`denied= served=1`). The denylist gates the DAEMON (refuse to
+  # store/serve/prove/announce/repair + purge held chunks — core/node/denylist.go),
+  # so assert THAT surface: the daemon's own enforcement line in its journal
+  # ("denylist: N root(s) denied; purged M held chunk(s)" or "denylist: honoring N
+  # denied root(s)" when it held none of them — both prove the operator's takedown
+  # is loaded and enforced on this node only).
+  local denyline denied=0 served=0
+  denyline="$(waitfor store-1 'denylist: .*denied' 60 || true)"
+  [ -n "$denyline" ] && denied=1
   # SHA-compare the SERVE side (§D): "still served elsewhere" must mean store-2 returned
   # the REAL bytes bit-perfect, not merely that `swarm get` exited 0.
   local sgot; sgot="$(ssh_node store-2 "/usr/local/bin/silt swarm get '$FT_LAST_LINK' -o /tmp/ft_s.bin -peers '$PEERS' -registry '$REGREF' >/dev/null 2>&1; sha256sum /tmp/ft_s.bin | cut -d' ' -f1" 2>/dev/null || true)"
   [ -n "${FT_LAST_SHA:-}" ] && [ "$sgot" = "$FT_LAST_SHA" ] && served=1
-  if [ "$denied" = DENIED ] && [ "$served" = 1 ]; then
-    slo_assert "8-takedown" major "root denied on store-1 while store-2 still serves it BIT-PERFECT (no global switch)" 1
+  if [ "$denied" = 1 ] && [ "$served" = 1 ]; then
+    slo_assert "8-takedown" major "store-1 enforces the operator denylist (${denyline##*silt}) while store-2 still serves BIT-PERFECT (no global switch)" 1
   else
-    record "8-takedown" gap major "takedown scoping not confirmed (denied=$denied served=$served) — verify -denylist semantics on the live build"
+    record "8-takedown" gap major "takedown scoping not confirmed (denied=$denied served=$served) — daemon never narrated denylist enforcement, or store-2 failed to serve"
   fi
   restore_argv store-1
 }
