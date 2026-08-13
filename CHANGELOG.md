@@ -9,6 +9,18 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Fixed
+- **#390 — the cross-NAT restart re-fetch (`integration/nat`, #69 phase) no longer flakes on a loaded
+  CI runner** (2026-08-14) — The `RESTART=1` cross-NAT job REDed bimodally (~1-in-4, on docs-only
+  commits too) at "content undiscoverable after restart". Attributed: reprovide-after-restart is a
+  real, working product path (proofs persist to the proof store, reload on restart —
+  `reloaded storage proofs count=N` — and `AnnounceHeld` re-plants provider records after
+  re-bootstrap), but the harness waited for it with a fixed `sleep 6` and then re-fetched ONCE. That
+  is the magic-constant anti-pattern (build-immutable #5: wait for the condition, never a constant):
+  under a loaded runner the re-announce + DHT propagation sometimes took longer than 6s, so the
+  single re-fetch found no provider and false-FAILed. Fixed harness-side by confirming the reload
+  then RETRYING the re-fetch on a ~60s bounded deadline — a genuine reprovide gap still fails after it
+  (never masks a real #69 break; it only rides out a slow re-announce), the same "retry, don't guess a
+  timeout" discipline the product uses. No product change. Green 5/5 locally (was ~1-in-4).
 - **#378 — the `-equivocate` red-team drill is now deterministically drivable under WAN delay
   (the local adversarial gate's entry criterion for the external red team)** (2026-08-14) —
   The netem adversarial gate (`integration/adversarial`, `delay 80ms 20ms`) REDed BIMODALLY on
