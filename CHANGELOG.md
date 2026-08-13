@@ -8,6 +8,17 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Added
+- **Attribution repro for the SYBILS=8 `6-fault-tolerance` GAP: quorum sizing is correct; the GAP is gather-latency under load, not a consensus bug** (2026-08-13) —
+  `core/chain/TestFaultToleranceBranch_SybilBondsDoNotInflateLaunchQuorum` reproduces the exact
+  committed state (4 anchors + 8 banked single-domain sybil bonds, pre-maturity, objective, epochs
+  on) and names the branch behind the field GAP: `validatorSetSize=4` (the launch anchor branch
+  fires — NOT the `qualifiedCount=12` fall-through), `RequiredQuorum=2`, and a 3-of-4 anchor commit
+  with one validator down **passes in-process**. So banked sybil bonds do **not** inflate the launch
+  quorum, and the cloud GAP is a gather-**latency** effect under the 8-sybil load — not a
+  quorum-sizing bug, no consensus rule change. Test-only; routed to research for concurrence
+  (`docs/reviews/token-gather-privacy-and-fault-tolerance-RESEARCH-CONSULT-2026-08-13.md`).
+
 ### Changed
 - **#382 (M1) — chain-sync elides the whole-chain re-fetch when peers already agree (cheap head probe)** (2026-08-13) —
   The first M1 efficiency change under the standing rule "trust stays green while cost drops." `SyncChain`
