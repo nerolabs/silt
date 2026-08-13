@@ -8,6 +8,35 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Fixed
+- **#378 — the `-equivocate` red-team drill is now deterministically drivable under WAN delay
+  (the local adversarial gate's entry criterion for the external red team)** (2026-08-14) —
+  The netem adversarial gate (`integration/adversarial`, `delay 80ms 20ms`) REDed BIMODALLY on
+  `TestEquivocatorSlashedOverTCP` — the drill that proves a double-sign is caught and slashed over
+  real TCP (#184 accountability). The property itself always held (the slash fired); the *drill
+  driver* wedged, so a required gate flapped ~1-in-4 — corrosive (it trains "re-run until green").
+  Root-caused to THREE distinct placement wedges under warm-up jitter, each closed and each guarded
+  failing-first: **(1) ErrDupRoot re-placement** — the old driver rebuilt the conflicting blocks at
+  the LIVE head every retry, so once a leg committed and the culprit synced it back (head advanced),
+  later attempts re-proposed the same deterministic root at a new height and were refused forever;
+  fixed by PINNING the fork base + blocks on the first attempt and LATCHING each placed leg (the
+  #345 live-tip win is preserved — the base is the tip AT PIN TIME). **(2) Attested-but-not-
+  committed** — a target attests on the proposer's standing but commits on its OWN attestation's
+  qualification, which warms up later, so a leg could attest yet ack the commit not-OK; latching on
+  the round-trip alone then stranded the next block chasing an uncommitted parent. Fixed by latching
+  a leg only on a CONFIRMED commit (`proposeAndCommitTo` now reports `committed`) and retrying an
+  attested-but-uncommitted one. **(3) Detection disqualifies the proposer mid-drill** (found via
+  wire diagnostics) — the moment an honest node holds BOTH forks it slashes the culprit, removing it
+  from that node's qualified-proposer set, so any REMAINING placement there is refused "not yet
+  standing" forever (the property firing wedged the drill). Fixed by placing the COMPLETE heavier
+  fork [Y,Z] FIRST and the conflicting X LAST, so no honest node can see both forks until every leg
+  is down; the slash then propagates asynchronously (the detector reconciles the heavier fork), which
+  is the property under test. Harness-only (`core/node/adversary.go`); no honest consensus path
+  changes. Regressions: two failing-first unit repros (`equivocation_resumable_test.go` for the pin,
+  `equivocation_uncommitted_test.go` for the commit-confirmed latch — both red-verified against the
+  old code) plus the netem gate itself, now **10/10 consecutive PASS** under the exact bimodal-RED
+  condition (was ~1-in-4 FAIL). This clears the external red team's entry criterion.
+
 ### Added
 - **MATURING cloud topology + field flow 10: the handoff/post-shed regime is now field-exercisable
   (§4 of the PE ruling; gates the external red team)** (2026-08-14) —

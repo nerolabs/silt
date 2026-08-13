@@ -1041,7 +1041,7 @@ func cmdDaemon(args []string) error {
 									clk.AfterFunc(1*ports.Second, tryEquiv) // not qualified with peers yet; retry
 									return
 								}
-								fmt.Println("adversary: equivocation complete (double-signed height 1)")
+								fmt.Printf("adversary: equivocation complete (double-signed height %d)\n", nd.EquivocateHeight())
 							})
 						}
 						clk.AfterFunc(2*ports.Second, tryEquiv)
