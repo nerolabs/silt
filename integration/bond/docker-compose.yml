@@ -85,6 +85,15 @@ services:
       - -bond-label-k=64
       - -capacity=2G
       - -mdns=false
+      # POSITIVE CONTROL for PHASE 2 (audit #303 bond): peer is a real 64M-bonded
+      # validator, so its WELL-FORMED block to honest MUST be ATTESTED. Without
+      # this, PHASE 2's low-bond "correctly REJECTED" (which fires for ANY OK:false —
+      # wrong-parent, decode, a reject-all wedged honest) could not be attributed to
+      # the low-bond gate: a honest that rejects EVERY proposal looks identical to
+      # one correctly refusing the under-bonded one. peer's goodpropose ACCEPTED
+      # proves honest's attest path ACCEPTS a qualified proposer, so the low-bond
+      # refusal is the bond gate, not a dead node.
+      - -goodpropose=${HONEST_ID:-unset}
       - -log=info
     networks:
       bond:

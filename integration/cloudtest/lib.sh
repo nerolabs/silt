@@ -48,6 +48,25 @@ waitfor() { # waitfor NAME 'EXTENDED_REGEX' TIMEOUT_S
   done
 }
 
+# Same poll, but SCOPED to journald lines emitted at/after a captured epoch (SINCE).
+# Use for restart/crash-recovery assertions where the SAME line ('re-announced N
+# held chunks', 'bond: reloaded …') is also emitted on a PRIOR boot and can still
+# sit in the last-800-line window — an unscoped waitfor would match the stale
+# earlier-boot line and false-pass a restart that actually hung/failed to reload
+# (audit #303 cloudtest restart-standing + chaos-reprovide stale-gaps). Capture
+# `t0="$(date +%s)"` immediately BEFORE the restart/pkill, pass it as SINCE, and
+# only a line emitted by the post-restart boot can satisfy the match.
+waitfor_since() { # waitfor_since NAME 'EXTENDED_REGEX' SINCE_EPOCH TIMEOUT_S
+  local name="$1" pat="$2" since="$3" timeout="${4:-120}" start now line
+  start="$(date +%s)"
+  while :; do
+    line="$(ssh_node "$name" "sudo journalctl -u silt --no-pager --since \"@${since}\" -n 800" | grep -E "$pat" | tail -1 || true)"
+    [ -n "$line" ] && { printf '%s\n' "$line"; return 0; }
+    now="$(date +%s)"; [ $((now - start)) -ge "$timeout" ] && return 1
+    sleep 4
+  done
+}
+
 # Same poll, but against the on-disk structured debug.log (see dlog). Use for the
 # per-node earned-standing / bond-challenge signals journald never carries.
 waitfor_dlog() { # waitfor_dlog NAME 'EXTENDED_REGEX' TIMEOUT_S
