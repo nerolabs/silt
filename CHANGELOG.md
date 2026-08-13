@@ -8,6 +8,24 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Changed
+- **#382 (M1) — chain-sync elides the whole-chain re-fetch when peers already agree (cheap head probe)** (2026-08-13) —
+  The first M1 efficiency change under the standing rule "trust stays green while cost drops." `SyncChain`
+  used to fetch and re-validate every peer's ENTIRE chain every 30s sweep — O(chain × peers) bytes and CPU
+  even when the whole network agreed (the dominant cost behind the participating-Sybil slowness, #382).
+  Now each peer is first sent a cheap **head probe** (`MsgGetChainHead` → height + head hash); an identical
+  head hash proves an identical committed history (a block hash commits its whole ancestry), so the full
+  fetch is **elided**. It runs only on a real head difference — catch-up, reorg, or an old peer that can't
+  answer the probe — where the unchanged full fetch + `Reconcile` + equivocation scan still fire. **Trust-
+  neutral by construction:** every validity, reorg-detection, and slashing guarantee is unchanged; the probe
+  only skips provably-redundant work. Backward-compatible (a peer too old to answer the probe falls back to
+  the full fetch). M1 cost gauges added (`Stats.ChainSyncHeadMatches` / `ChainSyncFullFetches` — the
+  chain-bytes-per-sweep signal, near-0 in agreement). Failing-first regressions: 5 sweeps against an
+  agreeing peer do zero full fetches; a head difference still triggers exactly one full fetch and catches
+  up; heads re-agree → elision resumes. Full node/chain/sim/e2e consensus+equivocation suites + `-race`
+  green (trust-neutrality verified). A genesis-to-head block *diff* inside `Reconcile` is a further
+  follow-up; this closes the dominant no-op-sweep cost.
+
 ### Fixed
 - **C2 field flow reported a FALSE capture — a lagging Sybil catching up read as an "advance"; the property itself HELD** (2026-08-13) —
   The SYBILS=8 run FAILed `5-sybil-no-capture` ("the Sybil cohort advanced the chain 26→37 with all anchors
