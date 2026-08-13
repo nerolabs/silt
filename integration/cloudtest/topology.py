@@ -252,11 +252,26 @@ def main():
             # maturity threshold to shed the launch anchors: without anchor
             # attestations the chain refuses to advance (ErrAnchorRequired). ≥8 equal
             # single-domain bonds also trip the atomization note.
+            #
+            # -persistent-peers over the REAL validator set (#338): a sybil's
+            # -attesters are only other sybils — none of whom hold the committed
+            # chain — so without a configured, dialable path to the validators the
+            # cohort can neither sync the chain nor submit its bond registrations,
+            # and the capture drill's precondition (banked committed Sybil standing)
+            # is never met (the SYBILS=8 field GAP: "sybil-1 never synced a
+            # committed chain (head 0)"). The static tier is a chain-sync target
+            # (configure-not-discover, network-durability §8), so the sybils bank
+            # standing through the anchors' drain blocks and the drill becomes
+            # DRIVABLE. A real Sybil operator would configure exactly this — the
+            # validator addresses are public; nothing here helps the attack.
             syb_attesters = ",".join(nodes[s]["nodeid"] for s in sybils if s != name)
             att = f" -attesters {syb_attesters}" if syb_attesters else ""
+            syb_persistent = ",".join(f'{nodes[v]["nodeid"]}@{nodes[v]["ip"]}:{SWARM_PORT}'
+                                      for v in validators)
             return (f"daemon -id-seed {n['seed']} {common} -advertise {ip}:{SWARM_PORT} -bootstrap {bootstrap} "
                     f"-validator -objective -min-bond {min_bond} -min-bond-floor {min_floor} "
                     f"-mature-validators {n_val} -anchors {anchors}{att} "
+                    f"-persistent-peers {syb_persistent} "
                     f"-quorum {syb_quorum} -bond {bond} -bond-audit 30s -capacity 2G -domain sybilnet")
         if role == "natgw":
             return "NATGW"   # not a silt node — runs integration/nat/natgw.sh instead

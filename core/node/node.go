@@ -516,6 +516,12 @@ type Node struct {
 	chainSyncSeed      []ports.NodeID
 	chainSyncOnCatchUp func(added int)
 	chainSyncRunning   bool
+	// bondDrainInFlight guards the #338 reactive bond-registration drain — at
+	// most one drain proposal in flight per sweep cadence; drainWaitSweeps
+	// counts sweeps spent deferring to the designated drain proposer before the
+	// liveness fallback lets this node take over (see maybeProposeBondDrain).
+	bondDrainInFlight bool
+	drainWaitSweeps   int
 	// denylist is the operator's local takedown list (nil = none). The
 	// effective set also includes on-chain revocations, but ONLY if the
 	// operator subscribed via SetHonorChainRevocations; see isDenied.
