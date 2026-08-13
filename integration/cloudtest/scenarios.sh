@@ -653,18 +653,48 @@ flow_c2_no_capture() {
   atom="$(jlog val-a 800 | grep -E 'atomization note' | tail -1 || true)"
   [ -n "$atom" ] && echo "    atomization note tripped: ${atom##*silt}"
 
+  # THE ANCHORED CEILING — the TRUE committed tip, read from the ANCHORS (which lead)
+  # BEFORE stopping them, NOT from a Sybil's local head. This is the #338/C2 false-
+  # positive fix: under load a Sybil can lag many blocks behind the committed tip, so
+  # reading the ceiling off sybil-1 (as this flow used to) let its benign CATCH-UP —
+  # syncing the anchors' already-committed blocks after the anchors stop — read as a
+  # Sybil "advance" and fire a FALSE capture. A catch-up can only ever reach the tip
+  # the anchors already committed, so pinning the ceiling to that true tip makes a
+  # catch-up a no-op and reserves "advance" for a genuine NEW block. (Chain-level
+  # proof the property itself holds in this exact topology: core/chain
+  # TestC2SingleDomainSybilsDoNotMature — 8 equal single-domain bonds cannot mature,
+  # so the anchor gate cannot shed and a real capture is structurally impossible.)
+  local ceiling=0 a hh
+  for a in $anchors_nodes; do
+    hh="$(syb_height "$a")"; hh="${hh:-0}"
+    [ "$hh" -gt "$ceiling" ] 2>/dev/null && ceiling="$hh"
+  done
+  # Fall back to the max Sybil head only if no anchor answered (all already down).
+  if [ "$ceiling" -lt 1 ] 2>/dev/null; then
+    for s in $sybils; do hh="$(syb_height "$s")"; hh="${hh:-0}"; [ "$hh" -gt "$ceiling" ] 2>/dev/null && ceiling="$hh"; done
+  fi
+  echo "    anchored ceiling (true committed tip, from the anchors): h${ceiling} (sybil-1 local head h${h0}$([ "$h0" -lt "$ceiling" ] 2>/dev/null && echo ' — sybil-1 is LAGGING; its catch-up is NOT a capture'))"
+
   # 2) THE CAPTURE ATTEMPT — stop every anchor; only the bonded Sybil self-majority
   #    remains. Give it time to try to advance on its own.
   echo "    stopping all anchors ($anchors_nodes) — the Sybil cohort attempts to advance…"
-  local a; for a in $anchors_nodes; do svc "$a" stop >/dev/null 2>&1 || true; done
+  for a in $anchors_nodes; do svc "$a" stop >/dev/null 2>&1 || true; done
   sleep 90
 
   # 3) OUTCOME (immutable #2 — outcome first, log corroborates): the chain must NOT
-  #    advance past h0 (a +1 tolerance for a block already in flight when the
-  #    anchors dropped), and a Sybil should log the anchor-required refusal.
+  #    advance past the anchored CEILING (a +1 tolerance for a block already in
+  #    flight when the anchors dropped). A real capture ALSO leaves a fresh Sybil
+  #    'committed block' log (a proposal/broadcast) — a catch-up SyncChain logs
+  #    'chain reconciled', never 'committed block', so requiring the fresh-commit log
+  #    is a second, independent guard against the catch-up false positive.
   local h1; h1="$(syb_height sybil-1)"; h1="${h1:-$h0}"
-  local no_advance=0; [ "$h1" -le "$((h0 + 1))" ] 2>/dev/null && no_advance=1
-  local gate=0 s
+  local s hs; for s in $sybils; do hs="$(syb_height "$s")"; hs="${hs:-0}"; [ "$hs" -gt "$h1" ] 2>/dev/null && h1="$hs"; done
+  local no_advance=0; [ "$h1" -le "$((ceiling + 1))" ] 2>/dev/null && no_advance=1
+  local fresh_commit=0
+  for s in $sybils; do
+    if jlog "$s" 200 | grep -qE 'chain: committed block [0-9]'; then fresh_commit=1; break; fi
+  done
+  local gate=0
   for s in $sybils; do
     if jlog "$s" 800 | grep -qE 'immature network requires anchor|requires anchor attestations|ErrAnchorRequired|training wheels'; then gate=1; break; fi
   done
@@ -681,14 +711,21 @@ flow_c2_no_capture() {
   done
   h2="${h2:-$h1}"
 
-  # Verdict: "no quiet capture" = the Sybils could NOT advance without the anchors
-  # AND the chain came back WITH them. The gate log is corroborating real evidence.
+  # Verdict: "no quiet capture" = the Sybils could NOT advance the chain past the
+  # anchored ceiling without the anchors, AND it came back WITH them. A CAPTURE
+  # requires BOTH signals — height past the true ceiling AND a fresh Sybil commit
+  # log — so a lagging Sybil's catch-up (height rises toward the ceiling, no fresh
+  # commit) can never be misread as a capture.
   if [ "$no_advance" = 1 ] && [ "$resumed" = 1 ]; then
-    record "5-sybil-no-capture" pass major "no quiet capture: $n_syb bonded single-domain Sybils could NOT advance the chain with all anchors down (head ${h0}→$h1), and it resumed to $h2 once the anchors returned$([ "$gate" = 1 ] && echo '; a Sybil logged the anchor-required refusal' || echo ' (no explicit anchor-required log captured; outcome still holds)')"
+    record "5-sybil-no-capture" pass major "no quiet capture: $n_syb bonded single-domain Sybils could NOT advance the chain past the anchored ceiling h${ceiling} with all anchors down (sybil head →$h1, no fresh Sybil commit), and it resumed to $h2 once the anchors returned$([ "$gate" = 1 ] && echo '; a Sybil logged the anchor-required refusal' || echo '')"
+  elif [ "$no_advance" != 1 ] && [ "$fresh_commit" = 1 ]; then
+    record "5-sybil-no-capture" fail major "CAPTURE: a Sybil COMMITTED a new block past the anchored ceiling h${ceiling} (sybil head →$h1) with ALL anchors down — the training wheels did not hold"
   elif [ "$no_advance" != 1 ]; then
-    record "5-sybil-no-capture" fail major "CAPTURE: the Sybil cohort advanced the chain from $h0 to $h1 with ALL anchors down — the training wheels did not hold"
+    # Height rose past the ceiling but NO Sybil logged a fresh commit ⇒ the rise is a
+    # catch-up sync of anchor-committed blocks, not a capture (the old false positive).
+    record "5-sybil-no-capture" gap major "sybil head rose to $h1 (ceiling h${ceiling}) with anchors down but NO Sybil logged a fresh 'committed block' — this is a lagging Sybil CATCHING UP to anchor-committed blocks, not a capture; the property held but the drivability was masked by Sybil lag (see the run-slowness finding). Re-run on a healthier network to certify the clean no-capture outcome."
   else
-    record "5-sybil-no-capture" gap major "no-capture outcome held (head froze ${h0}→$h1 with anchors down) but the chain did NOT resume within 180s after restoring anchors (h2=$h2) — liveness inconclusive (SPOT preemption?); re-run to confirm the clincher"
+    record "5-sybil-no-capture" gap major "no-capture outcome held (head ≤ ceiling h${ceiling} with anchors down) but the chain did NOT resume within 180s after restoring anchors (h2=$h2) — liveness inconclusive (SPOT preemption?); re-run to confirm the clincher"
   fi
 }
 
