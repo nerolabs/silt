@@ -2,6 +2,7 @@ package chain
 
 import (
 	"crypto/ed25519"
+	"errors"
 	"testing"
 
 	"github.com/nerolabs/silt/ports"
@@ -105,16 +106,25 @@ func TestF7_ObjectiveForkChoiceNeutralizesDoubleBacker(t *testing.T) {
 	if err := c.Append(*forkA); err != nil {
 		t.Fatalf("append fork A: %v", err)
 	}
-	// The replica hears the heavier fork B and reorgs onto it — fork A (with the
-	// double-backer's attestation) does not stand.
+	// Under the ratified BFT model (#357 §3, owner D-1 "prefer stall to reorg"): forkA is
+	// committed and therefore super-quorum-FINAL, so a heavier CONFLICTING forkB — which
+	// exists only because V double-backed across heights — CANNOT displace it. The finality
+	// gate refuses the reorg (ErrPreFinalityReorg); fork-choice weight never even gets to
+	// prefer the heavier fork. So the F7 property holds under B, by a stronger mechanism than
+	// the old heaviest-chain heal: a double-backer cannot make a second, conflicting history
+	// stand by piling weight on it — the FIRST finalized history stands, and V's cross-height
+	// double-signing is a slashable equivocation, not a route to reorg finalized state.
 	adopted, err := c.Reconcile([]Block{*g, b1, b2})
-	if err != nil || !adopted {
-		t.Fatalf("the heavier fork B must be adopted (adopted=%v err=%v)", adopted, err)
+	if adopted {
+		t.Fatal("F7/BFT: a conflicting fork must NOT displace a FINALIZED block, even if heavier — the double-backer is neutralized by finality")
 	}
-	if _, ok := c.LookupRoot(entry(1).Root); ok {
-		t.Fatal("F7: the double-backer's fork A must be abandoned — it cannot make both histories stand")
+	if err != nil && !errors.Is(err, ErrPreFinalityReorg) {
+		t.Fatalf("F7/BFT: expected the finality gate to refuse the conflicting fork, got %v", err)
 	}
-	if _, ok := c.LookupRoot(entry(3).Root); !ok {
-		t.Fatal("the heavier fork B must stand")
+	if _, ok := c.LookupRoot(entry(1).Root); !ok {
+		t.Fatal("F7/BFT: the finalized forkA must STAND (finality is irreversible)")
+	}
+	if _, ok := c.LookupRoot(entry(3).Root); ok {
+		t.Fatal("F7/BFT: the conflicting heavier forkB must NOT stand — the finality gate refused it")
 	}
 }

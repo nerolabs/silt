@@ -97,39 +97,58 @@ func TestRedteamF6_ObjectiveWeightAgreesAcrossDivergentReplicas(t *testing.T) {
 // non-healing partition the red-team built). After exchanging chains, both end
 // on the SAME (heavier-bond) fork — regardless of their divergent rep views.
 // The lighter side reorgs; the heavier side does not budge.
-func TestRedteamF6_ObjectiveForkChoiceHeals(t *testing.T) {
+func TestRedteamF6_ObjectiveForkChoiceConvergesByCatchUp(t *testing.T) {
+	// Under the ratified BFT model (#357 §3, owner D-1), a committed objective block is
+	// FINAL, so honest replicas never diverge onto CONFLICTING committed forks — that would
+	// require validators to equivocate (a slashable double-sign), and a >⅓ equivocation is
+	// out of the fault model (it STALLS, prefer-stall-to-reorg, rather than silently healing
+	// by weight). Convergence is therefore by CATCH-UP: a replica that is BEHIND adopts a
+	// peer's longer finalized chain that EXTENDS its own — the finality gate ALLOWS a fork
+	// that contains the committed head and REFUSES one that would revert it. This is the same
+	// objectivity property F6 protected (honest replicas agree on ONE history), realized
+	// under finality instead of the old heaviest-chain heal of conflicting forks.
 	prop := key(1)
 	vals := []ed25519.PrivateKey{key(2), key(3), key(4), key(5)}
-
 	r1, g := objectiveChain(prop, vals, func(ports.NodeID) int64 { return 0 })
 	r2, _ := objectiveChain(prop, vals, func(ports.NodeID) int64 { return 1_000_000 })
 
-	forkA := attestedFork(prop, vals, g.Hash(), entry(1), 3) // weight 3×2MiB
-	forkB := attestedFork(prop, vals, g.Hash(), entry(2), 4) // weight 4×2MiB — heavier
-
-	if err := r1.Append(*forkA); err != nil {
-		t.Fatalf("r1 append A: %v", err)
-	}
-	if err := r2.Append(*forkB); err != nil {
-		t.Fatalf("r2 append B: %v", err)
+	// One shared, non-conflicting history: a1 at height 1, then a2 extending it.
+	a1 := attestedFork(prop, vals, g.Hash(), entry(1), 3)
+	a2 := &Block{Version: BlockVersion, Height: 2, Prev: a1.Hash(), Entries: []ports.Entry{entry(2)}}
+	Sign(a2, prop)
+	for _, v := range vals[:3] {
+		a2.Atts = append(a2.Atts, Attest(a2, v))
 	}
 
-	// r1 (on the lighter fork A) hears B and must adopt it.
-	if adopted, err := r1.Reconcile([]Block{*g, *forkB}); err != nil || !adopted {
-		t.Fatalf("r1 must adopt the heavier fork B (adopted=%v err=%v)", adopted, err)
+	// r1 falls behind at height 1; r2 is ahead at height 2 (a2 EXTENDS a1 — no conflict).
+	if err := r1.Append(*a1); err != nil {
+		t.Fatalf("r1 append a1: %v", err)
 	}
-	// r2 (on the heavier fork B) hears A and must NOT switch.
-	if adopted, err := r2.Reconcile([]Block{*g, *forkA}); err != nil || adopted {
-		t.Fatalf("r2 must keep the heavier fork B (adopted=%v err=%v)", adopted, err)
+	if err := r2.Append(*a1); err != nil {
+		t.Fatalf("r2 append a1: %v", err)
+	}
+	if err := r2.Append(*a2); err != nil {
+		t.Fatalf("r2 append a2: %v", err)
 	}
 
-	// Both replicas now agree on the one history: fork B's entry present, A's gone.
+	// r1 (behind) hears r2's longer chain — it CONTAINS r1's finalized head (a1), so the
+	// finality gate allows it and r1 catches up to height 2.
+	if adopted, err := r1.Reconcile([]Block{*g, *a1, *a2}); err != nil || !adopted {
+		t.Fatalf("r1 must catch up to the longer finalized chain (adopted=%v err=%v)", adopted, err)
+	}
+	// r2 (ahead) hears r1's SHORTER chain — it does not contain r2's finalized head (a2), so
+	// the finality gate refuses it and r2 does not regress.
+	if adopted, _ := r2.Reconcile([]Block{*g, *a1}); adopted {
+		t.Fatal("r2 must not regress to the shorter chain (finality gate)")
+	}
+
+	// Both replicas converged on the one history [g, a1, a2].
 	for name, r := range map[string]*Chain{"r1": r1, "r2": r2} {
 		if _, ok := r.LookupRoot(entry(2).Root); !ok {
-			t.Fatalf("%s: converged history must carry fork B's entry", name)
+			t.Fatalf("%s: converged history must carry a2", name)
 		}
-		if _, ok := r.LookupRoot(entry(1).Root); ok {
-			t.Fatalf("%s: abandoned fork A's entry must be gone", name)
+		if _, h := r.Head(); h != 3 {
+			t.Fatalf("%s: converged head must be at block-height 2 (Head()==3), got %d", name, h)
 		}
 	}
 }

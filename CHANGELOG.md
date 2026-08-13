@@ -9,6 +9,28 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Fixed
+- **#357 §3 — the quorum-finality gate: a super-quorum-committed objective block is irreversible (research-certified, owner D-1)** (2026-08-13) —
+  Completes the ratified bond-weighted BFT model (research certification 2026-08-13). §1+§2 stopped the
+  oscillation; §3 adds the *safety* guarantee: `Reconcile` refuses any fork that would revert our
+  committed head (`ErrPreFinalityReorg`), so heaviest-weight fork-choice only ever adjudicates among
+  DESCENDANTS of the finalized head — "reorg to height 0" is structurally impossible, and under a >⅓
+  partition a node STALLS rather than reorg committed history (owner decision **D-1**; the storage plane
+  keeps serving throughout, **D-2**, so durability is unaffected). **Finality is quorum-INTERSECTION,
+  never bare depth** (a depth cap lets two partitions finalize conflicting blocks — worse than a reorg),
+  so the gate is **gated on a real super-quorum**: it engages only when `RequiredQuorum ≥ bftThreshold`
+  (always true with ByzantineQuorum, the untrusted default). A trusted weak config (Quorum=1) has no
+  quorum intersection — a lone equivocator can split the honest set onto two committed forks — so it
+  keeps heaviest-chain reorg and its equivocation slash heals by adopting the heavier fork (this is why
+  the Quorum=1 live-tip equivocation-slash path is unaffected). Realized on the existing WS-checkpoint
+  machinery (a rolling finalized floor). The red-team fork-choice tests that encoded the *old* Nakamoto
+  healing are rewritten to the BFT model: **F6** now proves convergence by CATCH-UP (a behind replica
+  adopts a longer chain that EXTENDS its finalized prefix; a conflicting heal required equivocation,
+  which B slashes); **F7** proves a cross-height double-backer is neutralized by FINALITY (the finalized
+  fork stands, the conflicting heavier fork is refused). Ramp repro extended to assert the gate. Full
+  `go test ./...` + `-race` (chain/node) green. **Staged next (mature-phase machinery, research
+  Conditions A+B):** epoch-snapshot the mature validator set + a finalized young→mature handoff; the
+  drain-window sim (repro-ladder step 2) and a BFT e2e partition-heal rewrite (supermajority commits /
+  minority catches up).
 - **Fork-choice oscillation during the anchor→bonded ramp — §1 convergent weight + §2 stable quorum (#357)** (2026-08-13) —
   The blind multi-region field run committed blocks then reorged them back to height 0; the
   local `consensus` sim passed (it only ever tested the *mature* regime). Research root-caused it

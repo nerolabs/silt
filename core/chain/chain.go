@@ -385,6 +385,7 @@ var (
 	ErrAnchorRequired     = errors.New("chain: immature network requires anchor attestations (training wheels)")
 	ErrDeMatureQuorum     = errors.New("chain: de-matured network requires a real-bond super-quorum (≥⅔ of live bonded weight)")
 	ErrPreCheckpointReorg = errors.New("chain: fork rewrites history at or before the weak-subjectivity checkpoint (long-range reorg refused)")
+	ErrPreFinalityReorg   = errors.New("chain: fork would revert a finalized (super-quorum-committed) objective block (BFT finality gate — reorg refused; prefer stall to reorg, D-1, #357 §3)")
 	ErrTokenRequired      = errors.New("chain: entry has no publish token (required)")
 	ErrTokenSpent         = errors.New("chain: publish token serial already spent (double-spend)")
 	ErrBlockVersion       = errors.New("chain: unsupported block version")
@@ -1688,6 +1689,40 @@ func (c *Chain) Reconcile(fork []Block) (bool, error) {
 	if cp := c.cfg.WSCheckpoint; cp.Height > 0 {
 		if uint64(len(fork)) <= cp.Height || fork[cp.Height].Hash() != cp.Hash {
 			return false, ErrPreCheckpointReorg
+		}
+	}
+	// §3 quorum-finality gate (#357; research certification 2026-08-13; owner decision D-1
+	// "prefer stall to reorg"). In OBJECTIVE mode every committed block is super-quorum-final:
+	// it met RequiredQuorum, which §2 sizes over the PINNED validator set (the anchor set in
+	// the launch window). Quorum-intersection therefore makes it irreversible — so refuse any
+	// fork that does not CONTAIN our committed head, i.e. that would revert a finalized block.
+	// Fork-choice's heaviest-weight rule (heavier) then only ever adjudicates among DESCENDANTS
+	// of the finalized head (the Tendermint/Gasper rule) — "reorg to height 0" is structurally
+	// impossible. Finality is quorum-based, NEVER bare depth (a depth cap lets two partitions
+	// finalize conflicting blocks — worse than a reorg). Under a >⅓ partition a node simply
+	// STALLS (can't gather the super-quorum) rather than reorg committed history (D-1); the
+	// storage plane keeps serving throughout (D-2), so durability is unaffected. Fork blocks
+	// are contiguous from genesis (index == height) and each hash chains its ancestry, so
+	// matching our head hash at its index proves the fork extends our exact finalized history.
+	// Legacy (subjective) mode keeps pure heaviest-chain reorg — it has no BFT finality.
+	// (Launch-phase: finalized == committed head. The mature phase makes this sound via an
+	// epoch snapshot — Condition A — and a finalized handoff — Condition B — landing next; until
+	// then a mature-phase conflict stalls both sides, which is D-1-safe.)
+	//
+	// GATED ON A REAL SUPER-QUORUM. Finality is quorum-INTERSECTION safety, which only holds
+	// when a commit takes ≥ bftThreshold of the validator set — so the gate applies only when
+	// RequiredQuorum is a genuine super-quorum. A TRUSTED weak config (e.g. Quorum=1, no
+	// ByzantineQuorum) has no quorum intersection: a single attester "commits," so a block is
+	// NOT final and a lone equivocator can even split the honest set onto two committed forks.
+	// Applying a finality gate there would freeze that split; instead such a config keeps
+	// heaviest-chain reorg (and its equivocation slash heals by adopting the heavier fork).
+	// With ByzantineQuorum on (the untrusted/production default) RequiredQuorum is already
+	// bftThreshold, so the gate always engages there.
+	if c.objective() && c.RequiredQuorum() >= bftThreshold(c.validatorSetSize()) {
+		if headIdx := len(c.blocks) - 1; headIdx > 0 { // genesis divergence is already ErrForeignGenesis
+			if len(fork) <= headIdx || fork[headIdx].Hash() != c.blocks[headIdx].Hash() {
+				return false, ErrPreFinalityReorg
+			}
 		}
 	}
 	// Re-validate the candidate history end to end in a fresh replica.
