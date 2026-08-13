@@ -1,6 +1,7 @@
 package chain
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/nerolabs/silt/ports"
@@ -82,11 +83,15 @@ func TestForkChoiceRampCommittedChainOutweighsGenesis357(t *testing.T) {
 	// NEVER displace 2 committed blocks. Before the fix, if g.Hash() sorts below the
 	// committed head hash, the zero-weight head-hash tiebreak adopts genesis (head → 0).
 	adopted, err := c.Reconcile([]Block{*g})
-	if err != nil {
-		t.Fatalf("reconcile genesis-only fork: %v", err)
+	if adopted {
+		t.Fatal("#357: a genesis-only fork must NOT displace committed blocks (adopted=true)")
 	}
-	if _, h := c.Head(); adopted || h != 3 {
-		t.Fatalf("#357: a genesis-only fork must not displace 2 committed blocks "+
-			"(adopted=%v, head height=%d) — the reorg-to-height-0 defect", adopted, h)
+	// The §3 finality gate refuses it outright (ErrPreFinalityReorg); §1's weight would
+	// also reject it as lighter. Either refusal is correct — the head must be preserved.
+	if err != nil && !errors.Is(err, ErrPreFinalityReorg) {
+		t.Fatalf("reconcile genesis-only fork: unexpected error %v (want nil or ErrPreFinalityReorg)", err)
+	}
+	if _, h := c.Head(); h != 3 {
+		t.Fatalf("#357: committed head must be preserved at block-height 2 (Head()==3), got %d — the reorg-to-0 defect", h)
 	}
 }
