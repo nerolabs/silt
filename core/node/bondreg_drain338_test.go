@@ -139,3 +139,142 @@ func TestSyncTargetsIncludeStaticPeers338(t *testing.T) {
 			"a validator with no attester seed and no bond gossip otherwise has no path to the committed chain")
 	}
 }
+
+// TestNonAttesterSyncsViaStaticPeerOnly338 mirrors the CLOUD sybil topology
+// exactly, which the drain test above did NOT: there the non-anchor was handed
+// the anchors as its StartChainSync SEED, so it would have synced even without
+// the static-tier fix (the same masking the local integration/sybil harness has,
+// where the sybils list the anchors in -attesters). Here the non-anchor's sync
+// seed is EMPTY and it holds NO bond gossip — its ONLY path to the committed
+// chain is the configured static (-persistent-peers) tier. This is the exact
+// SYBILS=8 field GAP ("sybil-1 never synced a committed chain, head height 0"):
+// if static peers are not actually reconciled against, the node stays stranded
+// at genesis forever. Failing-first without the syncTargets static-tier fix.
+func TestNonAttesterSyncsViaStaticPeerOnly338(t *testing.T) {
+	const bondSize = int64(2) << 20
+	sched := simclock.New()
+	net := simnet.New(sched, 4, simnet.DefaultConfig())
+
+	a1id, a2id, sid := identity.FromSeed(8120), identity.FromSeed(8121), identity.FromSeed(8122)
+	anchors := map[ports.NodeID]bool{a1id.NodeID(): true, a2id.NodeID(): true}
+	g := &chain.Block{Version: chain.BlockVersion, Height: 0, Entries: []ports.Entry{mkEntry("genesis-338b")}}
+	chain.Sign(g, a1id.Signer())
+	cfg := chain.Config{Quorum: 1, MinBond: 1 << 20, Anchors: anchors, AnchorQuorum: 1, MatureValidators: 99}
+
+	mk := func(id *identity.Identity) *Node {
+		nd := New(id.NodeID(), DefaultConfig(), sched, net.Endpoint(id.NodeID()), memstore.New())
+		nd.SetLedger(credit.New(50_000, 0))
+		nd.EnableBond(id.Signer(), bondSize)
+		ch := chain.New(cfg, func(ports.NodeID) int64 { return 0 })
+		if err := ch.AppendGenesis(*g); err != nil {
+			t.Fatal(err)
+		}
+		nd.EnableChain(ch, id.Signer())
+		nd.EnableObjectiveChain()
+		return nd
+	}
+	a1, a2, s := mk(a1id), mk(a2id), mk(sid)
+
+	a2.Bootstrap([]ports.NodeID{a1id.NodeID()}, func() {})
+	s.Bootstrap([]ports.NodeID{a1id.NodeID()}, func() {})
+	sched.Run()
+
+	// The anchors drain their bonds and commit real blocks (the network the sybil
+	// must catch up TO). They seed each other normally.
+	a1.StartChainSync([]ports.NodeID{a2id.NodeID()}, nil)
+	a2.StartChainSync([]ports.NodeID{a1id.NodeID()}, nil)
+
+	// THE SYBIL, cloud-faithful: empty attester seed, NO peer-bond gossip primed —
+	// its ONLY configured path to the validators is the static tier.
+	s.AddStaticPeer(a1id.NodeID())
+	s.AddStaticPeer(a2id.NodeID())
+	s.StartChainSync(nil, nil)
+
+	sched.RunUntil(sched.Now().Add(a1.cfg.ChainSyncInterval * 8))
+
+	_, ah := a1.Chain().Head()
+	_, sh := s.Chain().Head()
+	if ah < 1 {
+		t.Fatalf("setup: the anchors never committed a drain block (a1 head %d) — nothing to sync to", ah)
+	}
+	if sh != ah {
+		t.Fatalf("#338 field GAP: a non-anchor validator with an empty attester seed reached head %d, "+
+			"anchors at %d — it must sync the committed chain via the static (-persistent-peers) tier alone "+
+			"(this is 'sybil-1 never synced a committed chain, head height 0')", sh, ah)
+	}
+}
+
+// TestDivergentQuorumFloorStrandsSyncingNode338 pins the CLOUD root cause of the
+// SYBILS=8 C2 GAP: the sybil ran -quorum 5 (a "self-majority") while the anchors
+// committed at quorum 2. Config.Quorum is a hard FLOOR on ValidateCommit
+// (max(Quorum, bftThreshold)), so when the sybil re-validates the anchors'
+// honestly-committed 2-attestation blocks inside Reconcile under its own floor of
+// 5, every block fails ErrNoQuorum, the whole fork is rejected, and it is stranded
+// at genesis (head 0) forever — even though its transport, static peers, and sync
+// targets are all correct. The fix is CONFIGURATION (a uniform quorum floor across
+// the objective swarm, topology.py), because in objective mode the quorum is
+// bftThreshold over committed bond, not a per-node knob. This test documents the
+// mechanism so it is understood, not re-lost: a node whose floor exceeds the
+// committed attestation count cannot sync. (The product question — should objective
+// mode ignore the local floor when validating committed blocks, since a divergent
+// floor breaks the replica-agreement objective mode promises? — is a consensus-rule
+// call filed separately, not decided here.)
+func TestDivergentQuorumFloorStrandsSyncingNode338(t *testing.T) {
+	const bondSize = int64(2) << 20
+	sched := simclock.New()
+	net := simnet.New(sched, 4, simnet.DefaultConfig())
+
+	a1id, a2id := identity.FromSeed(8130), identity.FromSeed(8131)
+	anchors := map[ports.NodeID]bool{a1id.NodeID(): true, a2id.NodeID(): true}
+	g := &chain.Block{Version: chain.BlockVersion, Height: 0, Entries: []ports.Entry{mkEntry("genesis-338c")}}
+	chain.Sign(g, a1id.Signer())
+
+	// The anchors commit at a quorum-2 floor (bftThreshold(2 anchors)=... but with a
+	// small set the floor governs); the syncing node runs a HIGHER floor of 3.
+	anchorCfg := chain.Config{Quorum: 1, MinBond: 1 << 20, Anchors: anchors, AnchorQuorum: 1, MatureValidators: 99}
+	highFloorCfg := anchorCfg
+	highFloorCfg.Quorum = 3 // the divergent floor — higher than the anchors' committed attestation count
+
+	mk := func(id *identity.Identity, cfg chain.Config) *Node {
+		nd := New(id.NodeID(), DefaultConfig(), sched, net.Endpoint(id.NodeID()), memstore.New())
+		nd.SetLedger(credit.New(50_000, 0))
+		nd.EnableBond(id.Signer(), bondSize)
+		ch := chain.New(cfg, func(ports.NodeID) int64 { return 0 })
+		if err := ch.AppendGenesis(*g); err != nil {
+			t.Fatal(err)
+		}
+		nd.EnableChain(ch, id.Signer())
+		nd.EnableObjectiveChain()
+		return nd
+	}
+	a1, a2 := mk(a1id, anchorCfg), mk(a2id, anchorCfg)
+	sidHigh := identity.FromSeed(8132)
+	sHigh := mk(sidHigh, highFloorCfg)
+
+	a2.Bootstrap([]ports.NodeID{a1id.NodeID()}, func() {})
+	sHigh.Bootstrap([]ports.NodeID{a1id.NodeID()}, func() {})
+	sched.Run()
+
+	a1.StartChainSync([]ports.NodeID{a2id.NodeID()}, nil)
+	a2.StartChainSync([]ports.NodeID{a1id.NodeID()}, nil)
+	sHigh.AddStaticPeer(a1id.NodeID())
+	sHigh.AddStaticPeer(a2id.NodeID())
+	sHigh.StartChainSync(nil, nil)
+
+	sched.RunUntil(sched.Now().Add(a1.cfg.ChainSyncInterval * 8))
+
+	_, ah := a1.Chain().Head()
+	if ah < 1 {
+		t.Fatalf("setup: anchors never committed (head %d)", ah)
+	}
+	_, sh := sHigh.Chain().Head()
+	// The mechanism: the high-floor node CANNOT sync — its floor rejects the
+	// anchors' lower-attestation blocks in Reconcile. This is the documented,
+	// reproduced cause of the field GAP; a uniform floor (the fix) is covered by
+	// TestNonAttesterSyncsViaStaticPeerOnly338 above.
+	if sh == ah {
+		t.Fatalf("expected the divergent-floor node to be STRANDED (the #338 cloud mechanism), "+
+			"but it synced to head %d — has the objective quorum-floor semantics changed? "+
+			"if so, update topology.py and this test's premise", sh)
+	}
+}

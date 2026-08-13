@@ -9,6 +9,22 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Fixed
+- **#338 cloud follow-up — the Sybil cohort ran a divergent quorum FLOOR that stranded it at genesis, so the C2 capture drill still could not be driven** (2026-08-13) —
+  The SYBILS=8 field run confirmed the drain + static-tier sync fix works (base validators reached tip 8,
+  up from 3; every product corner green), but `5-sybil-no-capture` still GAPed with the same signature
+  ("sybil-1 never synced a committed chain, head 0"). Root cause, reproduced deterministically in-process
+  (`TestDivergentQuorumFloorStrandsSyncingNode338`): the harness gave the Sybils `-quorum 5` (a "self-majority"),
+  while the anchors commit blocks at quorum 2. `Config.Quorum` is a hard FLOOR on `ValidateCommit`
+  (`max(Quorum, bftThreshold)`), so when a Sybil re-validates the anchors' honestly-committed 2-attestation
+  blocks inside `Reconcile` under its own floor of 5, every block fails `ErrNoQuorum`, the whole fork is
+  rejected, and the Sybil is stranded at genesis — regardless of correct transport, static peers, and sync
+  targets. In OBJECTIVE mode the "self-majority capture" is sized by `bftThreshold` over committed bond, not
+  a config knob, so the fix is a **uniform quorum floor** across the objective swarm (`topology.py`: the
+  Sybil role now runs the network `-quorum`, not `n_syb//2+1`). This both lets the Sybils sync (capture
+  precondition met) and makes their capture attempt reach the real **anchor gate** (`ErrAnchorRequired`)
+  rather than dying on a quorum count. The objective-mode quorum-floor footgun (a per-node floor above the
+  network's `bftThreshold` silently breaks replica sync — arguably objective mode should ignore the local
+  floor when validating committed blocks) is filed separately as a consensus-rule question, not changed here.
 - **#338 — an idle young objective network never drained its deferred bond registrations; a non-attester validator had no path to the committed chain** (2026-08-13) —
   Two structural gaps behind the local `nakamoto 0 bonds` state and the SYBILS=8 field GAP ("sybil-1
   never synced a committed chain — anchors hadn't banked the Sybil bonds; capture precondition unmet").
