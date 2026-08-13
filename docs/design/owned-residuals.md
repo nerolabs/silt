@@ -351,6 +351,36 @@ discount, C2 no quiet capture, the demand→standing firewall) — those are hel
   the young, anchor-scaffolded regime is captured. No proof — a safe-parameterization (plural
   threshold anchors + the one-way latch), with levels that must track live telemetry.
 
+### E4. Bonded-minority liveness-denial in the mature phase (the liveness dual of A1)
+- **Class:** **held in tension** — the BFT liveness bound every weakly-subjective system lives
+  with, *priced and bounded*, not a silt defect. (PE ruling 2026-08-13, §2.)
+- **What it is:** in the **mature** phase (bond-weighted BFT, anchors shed), a cohort that
+  *honestly* banks ≥⅓ of committed bonded weight **can stall finality** — not capture it. Any
+  BFT quorum needs a >⅔ super-majority to commit, so a ≥⅓ bonded minority that refuses to attest
+  denies liveness (no new block finalizes) while it holds.
+- **Why it is not a break, on three legs:**
+  1. **Priced (C1).** The ⅓ is ⅓ of *real, sealed, address-diverse* disk — and it **decays**:
+     bonds lapse without continuous re-proof (retention TTL), so the griefing cost is not one-time
+     but *recurring*, and the griefer earns nothing while stalling. This is the honest-whale cost
+     (A1) applied to liveness rather than capture.
+  2. **Bounded + surfaced (C2).** The concentration metric (`C2Metric`: Nakamoto over
+     bond-distinct operators/domains, HHI/Gini) makes a ≥⅓ concentration **loud** out-of-band —
+     the same alarm that watches for capture watches for stall-capable concentration.
+  3. **Safety preserved (D-1).** Under the stall the trust plane **halts rather than reorgs**
+     (prefer-stall-to-reorg); no conflicting finalization, and the storage plane keeps serving
+     (D-2). A stall heals when the minority re-attests or its bond decays out; a reorg would not.
+- **Scope — the load-bearing distinction:** this residual is **mature-phase ONLY**. The **launch
+  phase provably has neither capture nor stall from un-matured bonds**: `validatorSetSize()`
+  returns the *fixed anchor set* until the finalized handoff, so an un-matured bond **neither
+  votes nor counts in the fault budget** — it banks standing while onboarding, nothing more
+  (verified: `core/chain/TestFaultToleranceBranch_SybilBondsDoNotInflateLaunchQuorum`, which also
+  showed the SYBILS=8 `6-fault-tolerance` GAP is gather-*latency* under load, not a quorum-sizing
+  bug). There is no regime between young and handed-off where an un-matured bond acquires stall
+  power.
+- **What the red team should attack:** the *price*, not the possibility (brief seam #8,
+  stall-griefing) — can a cohort acquire ≥⅓ bonded weight for materially less than ⅓ of honest,
+  sustained, address-diverse provision, or evade the C2 concentration alarm while doing so?
+
 ---
 
 ## F. Primitive-availability gaps (the "would adopt if it existed" set)
