@@ -213,7 +213,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   with one validator down **passes in-process**. So banked sybil bonds do **not** inflate the launch
   quorum, and the cloud GAP is a gather-**latency** effect under the 8-sybil load — not a
   quorum-sizing bug, no consensus rule change. Test-only; routed to research for concurrence
-  (`docs/reviews/token-gather-privacy-and-fault-tolerance-RESEARCH-CONSULT-2026-08-13.md`).
+  (`archive/reviews/token-gather-privacy-and-fault-tolerance-RESEARCH-CONSULT-2026-08-13.md`).
 
 ### Changed
 - **#382 (M1) — chain-sync elides the whole-chain re-fetch when peers already agree (cheap head probe)** (2026-08-13) —
@@ -1594,7 +1594,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 - **Research commission answers folded into the decision ledger; the two routed-to-research
   constructions now EXIST** (2026-08-06) — The follow-up research commission
   (`silt-reviews/research/research-outcome/commission/`, eight footnoted memos) answered the
-  questions `docs/reviews/research-brief.md` had routed out. Recorded across
+  questions `archive/reviews/research-brief.md` had routed out. Recorded across
   `docs/decisions.md`, `docs/design/m0.md`, and `docs/TENETS.md`; no code behavior changed.
   - **D-S7 — construction DELIVERED + durability restated finite-but-renewable.** Center-less
     **proof-of-correct-repair now exists** as a composition of proven parts (a transparent
@@ -1645,7 +1645,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
     the 7 composition seams = the red-team/build target + open decisions + open problems).
   - **New `docs/decisions.md`** — the decision ledger, each entry splitting derived direction
     from deferred construction.
-  - **New `docs/reviews/research-brief.md`** — open questions for the research team (the two
+  - **New `archive/reviews/research-brief.md`** — open questions for the research team (the two
     constructions the memos self-flagged non-existent — center-less proof-of-repair and the
     non-globality metric — plus the seam stress-tests).
   - **`/archive/`** — the finding-by-finding history moved out of the live tree (5 M0 design
