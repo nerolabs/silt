@@ -30,42 +30,49 @@ func TestSeam7_LosingForkEquivocatorIsSlashedOnDetection(t *testing.T) {
 	net := simnet.New(sched, 7, simnet.DefaultConfig())
 
 	idA := identity.FromSeed(701)
-	culprit := identity.FromSeed(703) // genesis-bonded validator that double-signs
-	h1 := identity.FromSeed(704)      // honest helper, attests only the winning fork
-	h2 := identity.FromSeed(705)      // honest helper, attests only the losing fork
+	culprit := identity.FromSeed(703) // genesis-bonded anchor that double-signs
+	h2 := identity.FromSeed(705)      // honest anchor, signs only the losing fork
 	pub := func(id *identity.Identity) []byte {
 		return append([]byte(nil), id.Signer().Public().(ed25519.PublicKey)...)
 	}
 
-	// A, culprit, and both helpers are the genesis-bonded launch anchors. (A block's
-	// proposer can't be its own sole attester, so every fork block below is attested
-	// by a NON-proposer validator; the culprit is the only key that signs on BOTH
-	// forks.)
-	anchors := map[ports.NodeID]bool{idA.NodeID(): true, culprit.NodeID(): true, h1.NodeID(): true, h2.NodeID(): true}
+	// THREE launch anchors (idA, culprit, h2). #402 makes launch finality a STRICT
+	// ANCHOR MAJORITY ⌊A/2⌋+1: for A=3 that is 2, and two 2-of-3 anchor sets can share
+	// EXACTLY ONE anchor — so a single Byzantine anchor (the culprit) can still form a
+	// valid competing minority fork by co-signing both sides, with the honest anchors
+	// cleanly split (idA on the winner, h2 on the loser). That lone cross-fork
+	// double-signer is the seam-7 target. (An EVEN anchor set would force the two
+	// majorities to overlap in ≥2, so a valid competing fork would need ≥2 colluding
+	// double-signers — a different, stronger-collusion scenario. A=3 keeps this test's
+	// lone-culprit property under the #402 rule; detection itself runs pre-Reconcile,
+	// independent of fork validity — see slashEquivocators.)
+	anchors := map[ports.NodeID]bool{idA.NodeID(): true, culprit.NodeID(): true, h2.NodeID(): true}
 	g := &chain.Block{Version: chain.BlockVersion, Height: 0, Entries: []ports.Entry{mkEntry("g")},
 		BondRegs: []chain.BondReg{
 			{Validator: pub(idA), Root: ports.HashBytes(pub(idA)), Size: bondSize},
 			{Validator: pub(culprit), Root: ports.HashBytes(pub(culprit)), Size: bondSize},
-			{Validator: pub(h1), Root: ports.HashBytes(pub(h1)), Size: bondSize},
 			{Validator: pub(h2), Root: ports.HashBytes(pub(h2)), Size: bondSize},
 		}}
 	chain.Sign(g, idA.Signer())
 	cfg := chain.Config{Quorum: 1, MinBond: 1 << 20, Anchors: anchors, MatureValidators: 99}
 
-	// A's WINNING chain: [g, W@1 (A proposes; culprit + h1 attest), X@2 (A proposes;
-	// h1 attests)]. Heavier (h=2).
+	// A's WINNING chain: [g, W@1 (idA proposes; culprit attests → 2 of 3 anchors),
+	// X@2 (idA proposes; culprit attests)]. Heavier (h=2). The culprit rides the
+	// winning chain — and ALSO co-signs the losing fork below.
 	W := chain.Block{Version: chain.BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("win")}}
 	chain.Sign(&W, idA.Signer())
-	W.Atts = []chain.Attestation{chain.Attest(&W, culprit.Signer()), chain.Attest(&W, h1.Signer())}
+	W.Atts = []chain.Attestation{chain.Attest(&W, culprit.Signer())}
 	X := chain.Block{Version: chain.BlockVersion, Height: 2, Prev: W.Hash(), Entries: []ports.Entry{mkEntry("win2")}}
 	chain.Sign(&X, idA.Signer())
-	X.Atts = []chain.Attestation{chain.Attest(&X, h1.Signer())}
+	X.Atts = []chain.Attestation{chain.Attest(&X, culprit.Signer())}
 
-	// B's LOSING fork: [g, L@1 (h2 proposes; culprit + h2 attest)]. Lighter (h=1),
-	// and it conflicts with W@1 — the culprit ATTESTED both W@1 and L@1 at height 1.
+	// B's LOSING fork: [g, L@1 (h2 proposes; culprit attests → 2 of 3 anchors)].
+	// Lighter (h=1), and it conflicts with W@1 — the culprit ATTESTED both W@1 and L@1
+	// at height 1. idA (winner) and h2 (loser) are cleanly split; only the culprit
+	// signs both.
 	L := chain.Block{Version: chain.BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("lose")}}
 	chain.Sign(&L, h2.Signer())
-	L.Atts = []chain.Attestation{chain.Attest(&L, culprit.Signer()), chain.Attest(&L, h2.Signer())}
+	L.Atts = []chain.Attestation{chain.Attest(&L, culprit.Signer())}
 
 	mk := func(id *identity.Identity, blocks []chain.Block) *Node {
 		nd := New(id.NodeID(), DefaultConfig(), sched, net.Endpoint(id.NodeID()), memstore.New())

@@ -69,7 +69,7 @@ func cmdDaemon(args []string) error {
 	uiAddr := fs.String("ui", "", "serve the web UI at this address (e.g. 127.0.0.1:8081)")
 	attesters := fs.String("attesters", "", "comma-separated validator IDs to gather attestations from")
 	anchorList := fs.String("anchors", "", "launch-window training wheels: comma-separated anchor validator IDs whose sign-off an immature-network commit also requires (empty = no training wheels)")
-	anchorQuorum := fs.Int("anchor-quorum", 0, "anchor attestations an immature-network commit needs (0 = off)")
+	anchorQuorum := fs.Int("anchor-quorum", 0, "LEGACY (non-objective) only: anchor attestations an immature-network commit needs (0 = off). In OBJECTIVE mode this is IGNORED — the launch gate is a DERIVED strict anchor majority ⌊A/2⌋+1 (#402), so config cannot disable quorum intersection")
 	matureValidators := fs.Int("mature-validators", 0, "required NAKAMOTO COEFFICIENT (M0 H4): the anchor requirement sheds only once this many bond-DISTINCT operators are needed to reach ⅓ of the bonded weight — cost-to-corrupt, not a head-count, so one operator with many keys can't trip the wheels off (0 = never require anchors)")
 	operatorMargin := fs.Int("operator-margin", 1, "operator margin M (M0 C2 / D-C2): the maturity shed discounts the bond-distinct Nakamoto coefficient by M (⌊k̂/M⌋) — since on-chain data carries no operator label, one operator may split a stake across ~M keys, so a splitter must clear mature-validators×M distinct bonds to shed the wheels. LEFT UNSET it defaults to a conservative M>1 for an untrusted objective swarm (safe-by-default, like -min-bond-floor); an explicit 1 = no split margin (single-operator/trusted). M stays a heuristic — unverifiable on-chain (#182)")
 	quorum := fs.Int("quorum", 3, "MINIMUM attestations (excluding the proposer) to commit a block — a floor; with -byzantine-quorum the effective requirement rises to the Byzantine threshold over the qualified set. Lower only for a trusted/one-box swarm")
@@ -433,9 +433,13 @@ func cmdDaemon(args []string) error {
 			}
 			anchorSet[aid] = true
 		}
-		if len(anchorSet) > 0 && *anchorQuorum > 0 {
-			fmt.Printf("training wheels: %d anchor(s), %d required, shed at %d independent validators\n",
-				len(anchorSet), *anchorQuorum, *matureValidators)
+		if len(anchorSet) > 0 {
+			// In OBJECTIVE mode the launch requirement is DERIVED — a strict anchor
+			// majority ⌊A/2⌋+1 (#402), NOT the -anchor-quorum knob, so config can't
+			// disable intersection. -anchor-quorum still applies in legacy (non-objective)
+			// mode. Report the derived majority so the operator sees the real rule.
+			fmt.Printf("training wheels: %d anchor(s), strict majority %d required (objective; derived #402), shed at %d independent validators\n",
+				len(anchorSet), len(anchorSet)/2+1, *matureValidators)
 		}
 		// Objective fork-choice is the DEFAULT for an untrusted validator (the M0
 		// consensus path). A trusted deployment (-min-rep 0, self-commit) does not
@@ -589,7 +593,10 @@ func cmdDaemon(args []string) error {
 			// margin M; the training wheels are shed only once it clears the maturity bar.
 			if ch.Objective() {
 				m := ch.C2Metric()
-				wheels := "engaged (young network — anchor quorum still required)"
+				// In objective mode the launch gate is DERIVED (strict anchor majority
+				// ⌊A/2⌋+1, #402) and cannot be disabled by config — so this line is true
+				// whenever the network is objective and young, not contingent on a flag.
+				wheels := "engaged (young network — strict anchor majority still required)"
 				if ch.EverMature() {
 					// One-way latch (F-1): once shed, the anchors never re-arm.
 					wheels = "shed permanently (network matured — F-1 one-way latch)"

@@ -672,6 +672,18 @@ func (c *Chain) proposerQualified(id ports.NodeID) bool {
 			_, ok := c.epochSet[id] // frozen for the epoch, same rule as attesters
 			return ok
 		}
+		// LAUNCH WINDOW — ANCHOR-ONLY PROPOSING (#402 encoding B; research
+		// certification 2026-08-14). While the network is young, ONLY anchors
+		// propose; a bonded sybil drains its standing via MsgSubmitBondReg
+		// (submit-don't-propose, #397), never by proposing. This removes the
+		// sybil-proposed launch fork at its source — the both-sybil-proposed 2-2
+		// anchor split the intersecting-quorum invariant (I1) must otherwise refuse
+		// — and composes with the derived strict-anchor-majority gate in
+		// ValidateCommit. Post-handoff (launchAnchor ⇒ false, F-1) this falls through
+		// to the bonded rule, so a matured validator proposes on its real weight.
+		if len(c.cfg.Anchors) > 0 && !c.handedOff() {
+			return c.launchAnchor(id)
+		}
 		return c.bonded[id] >= c.cfg.MinBond || c.launchAnchor(id)
 	}
 	return c.rep(id) >= c.cfg.MinProposerRep
@@ -784,6 +796,56 @@ func (c *Chain) finalityQuorumActive() bool {
 		return true // weight-counted super-majority (requireEpochWeightQuorum)
 	}
 	return c.RequiredQuorum() >= bftThreshold(c.validatorSetSize())
+}
+
+// requiredLaunchAnchors is the number of anchor signatures a commit needs during
+// the launch window — the launch face of quorum-intersection (I1, #402). In
+// OBJECTIVE mode it is DERIVED: a STRICT ANCHOR MAJORITY ⌊A/2⌋+1 over the configured
+// anchor set, independent of the AnchorQuorum knob. Deriving it is load-bearing: the
+// field run left `-anchor-quorum` unset (default 0) so the gate went inert and a
+// two-sybil-signature quorum forked the launch chain (#402); config can no longer
+// disable intersection. Two ⌊A/2⌋+1 anchor sets over A anchors share ≥1 anchor, which
+// never signs twice at a height (#397) → at most one block per height finalizes. In
+// LEGACY (non-objective) mode there is no finality gate, so this is the configured
+// AnchorQuorum capture-prevention floor (unchanged pre-#402 behavior). 0 = no gate
+// (handed off, no anchors, or legacy with AnchorQuorum unset).
+//
+// Quorum-intersection checklist (consensus-invariants.md): (1) finalizes? yes — a
+// passing commit is reorg-refused by the finality gate. (2) N/membership? N =
+// len(Anchors); countAnchorSupport draws ONLY from Anchors — size-set == membership-
+// set, the #402 trap closed. (3) intersects? 2·(⌊A/2⌋+1) > A ∀A≥1 (⌈A/2⌉ is the even-A
+// off-by-one that admitted the 2-2 split). (4) non-members excluded? sybils never
+// count. (5) basis? anchors are the pinned, Sybil-resistant-equal launch set, so
+// head-count is sound (weight is the mature phase's job). (6) phase boundary? gated on
+// !handedOff(); post-handoff the >⅔ frozen-weight rule takes over.
+func (c *Chain) requiredLaunchAnchors() int {
+	if len(c.cfg.Anchors) == 0 || c.handedOff() {
+		return 0
+	}
+	if c.objective() {
+		return len(c.cfg.Anchors)/2 + 1
+	}
+	return c.cfg.AnchorQuorum
+}
+
+// countAnchorSupport counts the anchors in a commit's support coalition: the distinct
+// anchor attesters in `seen`, plus the proposer if it is an anchor (objective mode —
+// the certified #402 rule counts the proposer-if-anchor toward the intersecting set;
+// legacy counts non-proposer anchors only, as it always has). Shared by ValidateCommit
+// (validation) and SupportMeetsQuorum (the proposer's gather target) so the two cannot
+// drift — a gather that stopped short of what validation demands is exactly the
+// under-gather → self-Append-failure bug this centralization prevents.
+func (c *Chain) countAnchorSupport(proposer ports.NodeID, seen map[ports.NodeID]bool) int {
+	n := 0
+	for id := range seen {
+		if c.cfg.Anchors[id] {
+			n++
+		}
+	}
+	if c.objective() && c.cfg.Anchors[proposer] {
+		n++
+	}
+	return n
 }
 
 // BondRegNonce is the fresh challenge a non-genesis bond registration must
@@ -1469,15 +1531,13 @@ func (c *Chain) ValidateCommit(b *Block) error {
 	// coherent with launchAnchor keeping them eligible over the same window.
 	// Once handed off, de-maturation liveness is the real-bond super-quorum
 	// (requireDeMatureSuperQuorum), not this.
-	if len(c.cfg.Anchors) > 0 && c.cfg.AnchorQuorum > 0 && !c.handedOff() {
-		anchors := 0
-		for id := range seen { // seen = the distinct qualified attesters
-			if c.cfg.Anchors[id] {
-				anchors++
-			}
-		}
-		if anchors < c.cfg.AnchorQuorum {
-			return fmt.Errorf("%w: %d of required %d", ErrAnchorRequired, anchors, c.cfg.AnchorQuorum)
+	// Launch anchor gate (#402): a strict anchor majority, derived in objective mode
+	// so config can never disable intersection. requiredLaunchAnchors + countAnchorSupport
+	// are shared with SupportMeetsQuorum, so the proposer's gather stops on EXACTLY what
+	// this validation demands (no under-gather → self-Append failure drift).
+	if need := c.requiredLaunchAnchors(); need > 0 {
+		if got := c.countAnchorSupport(b.ProposerID(), seen); got < need {
+			return fmt.Errorf("%w: %d of required %d", ErrAnchorRequired, got, need)
 		}
 	}
 	// Mature-epoch WEIGHT quorum (research certification 2026-08-13, B2): once
@@ -1558,6 +1618,13 @@ func (c *Chain) SupportMeetsQuorum(proposer ports.NodeID, attesters []ports.Node
 		seen[id] = true
 	}
 	if len(seen) < c.RequiredQuorum() {
+		return false
+	}
+	// The launch anchor gate (#402): the coalition must carry the strict anchor
+	// majority ValidateCommit will demand, so the gather stops on enough ANCHORS, not
+	// merely enough heads — otherwise the proposer commits-attempts a count-quorum that
+	// its own Append then rejects (ErrAnchorRequired).
+	if need := c.requiredLaunchAnchors(); need > 0 && c.countAnchorSupport(proposer, seen) < need {
 		return false
 	}
 	if c.cfg.ByzantineQuorum && c.objective() && c.epochsEnabled() && c.matureEpoch {
