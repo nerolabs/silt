@@ -66,17 +66,21 @@ func TestTrainingWheelsShedThroughTheNodeLoop(t *testing.T) {
 	prop := nodes[0]
 	all := ids
 
-	// OUTCOME 1: young network — a full quorum of independents but NO anchor
-	// is refused. The launch window can't be captured by a Sybil quorum. Uses
-	// throwaway independents ids[4]/ids[5] as attesters AND a throwaway
-	// PROPOSER (nodes[3]): a signature at a height is final for proposer and
-	// attester alike (#397 — the proposer's own signature now enters the
-	// never-sign-twice ledger), so this failed attempt at height 1 spends its
-	// signers' height-1 signatures. nodes[0] must stay unspent to propose the
-	// real height-1 commit below; ids[3] only ever attests at height 2, so its
-	// height-1 signature is expendable here.
-	if err := propose(nodes[3], "young-no-anchor", []ports.NodeID{ids[4], ids[5]}, all, cfg.Quorum, sched); !errors.Is(err, chain.ErrAnchorRequired) {
-		t.Fatalf("immature commit without an anchor must be refused; got %v", err)
+	// OUTCOME 1: young network — an anchorless coalition is refused. Post-#402 the
+	// proposer's GATHER enforces the launch anchor requirement (SupportMeetsQuorum
+	// shares requiredLaunchAnchors/countAnchorSupport with ValidateCommit), so a
+	// no-anchor attester set can't even ASSEMBLE a committable coalition — it fails at
+	// the gather (ErrNoQuorum) rather than gathering to count-quorum and then
+	// self-rejecting at Append (ErrAnchorRequired, the pre-#402 path). Either way the
+	// launch window can't be captured by a Sybil quorum, and refusing at the gather is
+	// the tighter behavior (no doomed block is ever built). Uses throwaway independents
+	// ids[4]/ids[5] as attesters AND a throwaway PROPOSER (nodes[3]): a signature at a
+	// height is final for proposer and attester alike (#397), so this failed attempt at
+	// height 1 spends its signers' height-1 signatures. nodes[0] must stay unspent to
+	// propose the real height-1 commit below; ids[3] only ever attests at height 2, so
+	// its height-1 signature is expendable here.
+	if err := propose(nodes[3], "young-no-anchor", []ports.NodeID{ids[4], ids[5]}, all, cfg.Quorum, sched); !errors.Is(err, chain.ErrNoQuorum) {
+		t.Fatalf("immature commit without an anchor must be refused at the gather (ErrNoQuorum); got %v", err)
 	}
 
 	// OUTCOME 2: young network, quorum WITH the anchor — commits. Accumulate
