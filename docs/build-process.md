@@ -160,3 +160,35 @@ cause was unknowable and every next move was a guess. The fix was not a smarter 
 it was to make the harness **capture the evidence first, then look**
 (`integration/cloudtest` failed-node journal capture). Instrument, then observe, then
 act — in that order, every time.
+
+---
+
+## The consensus-correctness discipline (canon, 2026-08-14)
+
+Ratified after the PE process review (`docs/reviews/builder-process-notes-PE-2026-08-14.md`)
+and the research team's independent convergence on the same diagnosis: **#357, B2, #397,
+and #402 were one defect in four costumes** — a finality quorum that did not intersect
+over its phase's real validator set. The class is finite and closed, and it is asserted
+deterministically, not discovered one field run at a time.
+
+1. **The map is canon.** `docs/design/consensus-invariants.md` (I1–I5) names the closed
+   invariant set. Every consensus-touching PR states which invariants it touches and how
+   it preserves each; every quorum site answers the research checklist in its code comment.
+2. **The tier order is `unit → consensus model-check → integration/sim → e2e/netem →
+   field`.** The model-check (`docs/design/consensus-model-check.md`) is the *first*
+   consensus gate, and each graded field run is gated on the model-check tier covering its
+   regime. A field run **confirms**; it never discovers a consensus invariant. (Four
+   consecutive runs each discovering a new consensus bug is the base rate this corrects.)
+3. **Consensus is boring, by policy (B8).** The novelty budget is spent on M0 only. Every
+   consensus mechanism cites its literature analogue (watermark ↔ Tendermint
+   `priv_validator_state`; weight quorum ↔ >⅔ voting power; anchor majority ↔ intersecting-
+   quorum arithmetic). No consensus-engine rewrite — literature-faithful hardening of the
+   existing chain.
+4. **Every security property has a deterministic RED/GREEN home** (model-check or netem)
+   where the attack can be *scheduled*. A field flow may honestly report GAP when its
+   premise is unmet (S5) — but a GAP is acceptable **only because** the deterministic tier
+   is the load-bearing grade. An undrivable security drill with no deterministic home is a
+   RED to fix, never a GAP to accept.
+5. **The third-time rule.** When a lesson is about to be documented a second or third
+   time, encode it as a **test or a gate** instead of more prose. The canon grows by
+   mechanism, not by amendment-log therapy.

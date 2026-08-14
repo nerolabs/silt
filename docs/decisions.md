@@ -371,6 +371,50 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
 
 ---
 
+## D-CONSENSUS — consensus is boring and invariant-gated; the novelty budget is spent on M0
+
+- **Status:** ✅ DECIDED — 2026-08-14 (owner ratification, dialogue session).
+- **Basis:** the PE process review (`docs/reviews/builder-process-notes-PE-2026-08-14.md`)
+  and the research team's **independent same-day convergence** on the same diagnosis
+  (`silt-reviews/research/research-outcome/INTERSECTING-QUORUM-INVARIANT-note.md`, plus the
+  #402 certification `fork-anchor-gate-402-RESEARCH-CERTIFICATION-2026-08-14.md`): the four
+  RC-blocking consensus bugs (#357, B2-handoff, #397, #402) were **one defect — a finality
+  quorum that did not intersect over its phase's real validator set** — discovered one
+  billable field run at a time because the invariant set was never written down.
+- **Direction (decided):**
+  1. **`docs/design/consensus-invariants.md` (I1–I5) is ADOPTED canon**; every
+     consensus-touching PR states which invariants it touches; every quorum site answers the
+     research six-question checklist in its comment.
+  2. **The #402 fix is the certified strict anchor majority** — launch finality needs
+     `⌊A/2⌋+1` anchors (=3 of 4) counting the proposer-if-anchor, **sybils excluded from the
+     launch finality count**; the consult's `⌈A/2⌉` is rejected (off by one for even A —
+     admits a both-sybil-proposed 2-2 anchor split that the finality gate then cements into a
+     permanent partition). **Encoding (B)** chosen: anchor-only launch proposing, sybils
+     drain via `MsgSubmitBondReg` (composes with #397 submit-don't-propose; removes the
+     sybil-proposed fork at the source). Fault tolerance unchanged (3-of-4 up).
+  3. **The consensus model-check is the first consensus gate**
+     (`docs/design/consensus-model-check.md`, ADOPTED): tier order `unit → model-check →
+     sim → netem → field`; each graded field run is gated on the tier covering its regime
+     (launch tier → P1; handoff tier + #399 → MATURING; full budget → red team #183). v1
+     ships seeded replay; auto-shrink is a follow-up.
+  4. **I4 (commit ≠ final) is a permission, not a build mandate** — research twice ruled no
+     decoupling is needed once the finality quorum intersects; a decoupling is built only on
+     model-check evidence of an I4 violation (#7).
+  5. **No consensus-engine rewrite.** "Boring" means literature-faithful hardening of the
+     existing chain with cited analogues, not a CometBFT swap — the chain is load-bearing
+     for the bond/standing composition.
+- **Also decided (owner, same session) — the documentation-reconciliation pass:** the doc
+  surface accreted one viewpoint per bug arc and no longer reads as one current plan. Before
+  the next graded field run: (a) the closed consult arcs move to `/archive/` (16 files now,
+  5 on short conditions — list in the session record); (b) **every live doc gets a revise
+  pass** against tonight's decisions (`test-topologies.md` and `v1-test.md` explicitly
+  flagged — the tier order changed); (c) **ROADMAP, backlog, and GitHub issues are
+  reconciled** to reflect the actual sequence (fix #402 → model-check tiers → P1 → MATURING
+  + #399 → red team #183). The live tree carries exactly one current viewpoint; history
+  lives in `/archive/`.
+
+---
+
 ## What is NOT on this ledger
 
 The following are **build items or tuning knobs**, not owner-level decisions, and live in
