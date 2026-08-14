@@ -19,6 +19,7 @@ import (
 	"github.com/nerolabs/silt/adapters/diskissuer"
 	"github.com/nerolabs/silt/adapters/diskplot"
 	"github.com/nerolabs/silt/adapters/diskproofs"
+	"github.com/nerolabs/silt/adapters/markstore"
 	"github.com/nerolabs/silt/adapters/diskstore"
 	"github.com/nerolabs/silt/adapters/eventloop"
 	"github.com/nerolabs/silt/adapters/fileregistry"
@@ -519,6 +520,15 @@ func cmdDaemon(args []string) error {
 			}
 		}
 		nd.EnableChain(ch, ident.Signer())
+		// Durable never-sign-twice watermark (#397 Q1b): the mark is fsync'd
+		// BEFORE any consensus signature is released, so a crash/restart cannot
+		// make this validator contradict a signature it already shipped — which
+		// would be a permanent honest self-slash (F2). A load failure is
+		// refuse-to-start: running without the mark re-opens that window.
+		if err := nd.SetSignMarkStore(markstore.New(filepath.Join(*storeDir, "signmark.json"))); err != nil {
+			fmt.Fprintln(os.Stderr, "sign-mark:", err)
+			os.Exit(1)
+		}
 		if *honorRevocations {
 			nd.SetHonorChainRevocations(true) // per-operator opt-in (F5); default OFF
 			fmt.Println("takedowns: honoring on-chain revocations (per-operator subscription, F5)")

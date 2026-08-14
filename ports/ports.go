@@ -250,3 +250,26 @@ type DurabilitySnapshot struct {
 	Paid    int64 // lifetime bounties paid out of the reserve
 	Repairs int64 // count of bounty payments (shard-repairs the reserve funded)
 }
+
+// SignMark is a validator's monotonic last-signed watermark: the height and
+// block hash of the most recent consensus signature this identity released —
+// proposal or attestation alike, committed or not. A signature at a height is
+// FINAL for that identity: signing a different block at a height at or below
+// the mark is the double-sign the slash rule treats as proven malice, so an
+// honest node consults the mark before every consensus signature (#397; the
+// same rule Tendermint enforces via its persisted priv_validator_state).
+type SignMark struct {
+	Height uint64
+	Hash   Hash
+}
+
+// SignMarkStore persists the watermark durably. Save MUST make the mark
+// durable (fsync) before returning: the mark is written BEFORE a signature is
+// released to the wire, so a crash between the two leaves an unused mark
+// (safe — the node refuses to re-sign that height with different content),
+// never a wire signature without a mark (which a restart would let the node
+// contradict, manufacturing an honest double-sign — the #397 crash variant).
+type SignMarkStore interface {
+	Load() (SignMark, bool, error) // ok=false: no mark persisted yet
+	Save(SignMark) error
+}

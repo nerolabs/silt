@@ -529,11 +529,29 @@ type Node struct {
 	// attest-only validator would never renew and would lapse, dropping the
 	// quorum's weight. Keyed by validator id; the latest submission wins.
 	pendingBondRegs map[ports.NodeID]chain.BondReg
-	// attested records the block hash this validator has signed at each height,
-	// so it NEVER signs a second, different block at a height it already
-	// attested — an honest validator does not equivocate, even if two competing
-	// proposals reach it before either commits (D2). See chainrole.go.
-	attested map[uint64]ports.Hash
+	// signMark is this validator's monotonic last-signed watermark: the height
+	// and hash of the newest consensus signature it has released — PROPOSAL or
+	// attestation alike, committed or not — so it NEVER signs a second,
+	// different block at a signed height. An honest validator does not
+	// equivocate, even if two competing proposals reach it before either
+	// commits, and even if IT proposed one of them (#397: the proposer's own
+	// signature counting is exactly what was missing when two renewal-aligned
+	// anchors cross-attested each other's block-6 and were both slashed). When
+	// signMarkStore is set (the daemon: adapters/markstore), the mark is made
+	// DURABLE before each signature is released, so a crash/restart cannot wipe
+	// it and let the node contradict a signature it already shipped (research
+	// #397 Q1b — permanent slashing is sound only with this). Nil store (sim /
+	// unit tests) keeps the mark in-memory. See chainrole.go signAllowedAt /
+	// recordSign.
+	signMark      ports.SignMark
+	signMarkSet   bool
+	signMarkStore ports.SignMarkStore
+	// slashedLocal latches the local-ledger slash per culprit (#397 Q4-i): a
+	// live fork is re-observed by EVERY reconcile sweep until it heals, and
+	// re-detecting the same double-sign must not re-apply the ledger penalty or
+	// re-log/re-fire the callback every ~2s (the field hot-loop). The on-chain
+	// record keeps its own lifecycle (pendingSlashes requeues until committed).
+	slashedLocal map[ports.NodeID]bool
 	// chain-sync loop (F1): chainSyncSeed is the explicit attester set to
 	// reconcile against (may be empty — every learned validator bond is also a
 	// target), chainSyncOnCatchUp fires after a catch-up so the daemon persists,
@@ -712,7 +730,7 @@ func New(id ports.NodeID, cfg Config, clock ports.Clock, tr ports.Transport, sto
 		peerDomains:     make(map[ports.NodeID]uint64),
 		peerBonds:       make(map[ports.NodeID]bondInfo),
 		peerBondRTT:     make(map[ports.NodeID]*latWindow),
-		attested:        make(map[uint64]ports.Hash),
+		slashedLocal:    make(map[ports.NodeID]bool),
 		pendingBondRegs: make(map[ports.NodeID]chain.BondReg),
 		peerIssuerKeys:  make(map[ports.NodeID]*rsa.PublicKey),
 		creditSpent:     make(map[string]bool),
