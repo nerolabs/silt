@@ -322,6 +322,11 @@ flow_convergence() {
 flow_fault_tolerance() {
   require_nodes "6-fault-tolerance" major val-d || return
   local boot; boot="$(python3 -c "import json;print(json.load(open('$FT_DIR/topology.json'))['meta']['boot'])")"
+  # A fault-tolerance failure lives in the PUBLISHER (fetch-1) and the SURVIVING
+  # validators, not val-d (deliberately down) — require_nodes stashed only val-d.
+  # Override so the capture attributes a real gap (run 4faaee8-22913's flow-6 gap
+  # had only the down node's journal). shellcheck disable=SC2086
+  flow_evidence_nodes fetch-1 $(python3 -c "import json;print(' '.join(n for n,v in json.load(open('$NODES_JSON')).items() if v['role']=='validator' and n!='val-d'))")
   local h0; h0="$(ft_commit_height "$boot")"   # audit #303: baseline BEFORE stopping val-d + publishing
   svc val-d stop || true
   sleep 5
@@ -621,18 +626,24 @@ flow_chaos_crash() {
   local t0; t0="$(date +%s)"
   ssh_node store-2 "sudo pkill -9 -f '/usr/local/bin/silt' || true" >/dev/null 2>&1
   ssh_node store-2 "sudo systemctl start silt.service" >/dev/null 2>&1 || true   # idempotent nudge
-  local reann=0
-  waitfor_since store-2 're-announced [0-9]+ held chunks' "$t0" 90 >/dev/null && reann=1
+  # Wait for the CONDITION on a generous, evidence-sized deadline — never a magic
+  # constant (build-immutable #5). Run 4faaee8-22913 attributed the old 90s FAIL:
+  # re-announce completes but its latency is ~LINEAR in held-chunk count (that run,
+  # store-2's own journal: 24 chunks → 19s early, 132 chunks → 102s late; ≈1.3
+  # announces/s over WAN), so a fixed 90s under-provisions a store that has
+  # accumulated chunks by late in a session. 300s rides out a loaded store while a
+  # genuine reprovide gap still FAILs after it. Record the observed latency so every
+  # run keeps measuring the trend (an M1 signal — the announce sweep looks serialized).
+  local reann=0 reann_line reann_s
+  reann_line="$(waitfor_since store-2 're-announced [0-9]+ held chunks' "$t0" 300 || true)"
+  if [ -n "$reann_line" ]; then reann=1; reann_s=$(( $(date +%s) - t0 )); fi
   if [ "$reann" = 1 ]; then
-    slo_assert "chaos-reprovide" major "SIGKILLed storage node re-announced its held chunks (#69) after a hard crash" 1
+    slo_assert "chaos-reprovide" major "SIGKILLed storage node re-announced its held chunks (#69) after a hard crash (${reann_s}s to re-announce; latency scales with held-chunk count, #402/M1)" 1
   else
-    # The path itself survives an abrupt kill locally (integration/nat RESTART=1,
-    # green post-#393: proofs reload + re-fetch bit-perfect) — so a miss here is
-    # either a re-announce LATER than the 90s window (WAN re-bootstrap + announce
-    # round-trips) or one that never fired on this VM; store-2's captured journal
-    # (flow-evidence log) distinguishes late-vs-never. Don't widen the window
-    # without that evidence (build-immutable #7).
-    slo_assert "chaos-reprovide" major "no post-crash 're-announced N held chunks' on store-2 within 90s of the SIGKILL — late or never; attribute from store-2's captured journal before touching the window (#69)" 0
+    # 300s with no re-announce is now a REAL gap (well past the measured linear
+    # envelope) — the path survives an abrupt kill locally (integration/nat
+    # RESTART=1, green post-#393). store-2's captured journal attributes it.
+    slo_assert "chaos-reprovide" major "no post-crash 're-announced N held chunks' on store-2 within 300s of the SIGKILL — past the measured re-announce envelope; attribute from store-2's captured journal (#69)" 0
   fi
   local got ok=0
   # SHA-compare, not echo-OK (§D): crash-recovery must return the REAL bytes, not just
@@ -736,8 +747,29 @@ flow_c2_no_capture() {
   fi
   echo "    anchored ceiling (true committed tip, from the anchors): h${ceiling} (sybil-1 local head h${h0}$([ "$h0" -lt "$ceiling" ] 2>/dev/null && echo ' — sybil-1 is LAGGING; its catch-up is NOT a capture'))"
 
+  # 1b) PRE-EXISTING DIVERGENCE guard (#402): if a Sybil's head is ABOVE the
+  #     anchored ceiling BEFORE we stop any anchor, the Sybil is NOT synced to the
+  #     anchor chain — it is on a DIFFERENT fork (the 4faaee8-22913 event: a
+  #     sybil-side 11'→13' fork carrying one free anchor's sign-off, while the
+  #     anchors held honest-11). That is a distinct finding (see #402 / the
+  #     anchor-gate consult), NOT this drill's subject, and it breaks the capture
+  #     PREMISE (a Sybil synced to the anchor chain, then anchors leave). Grading a
+  #     capture here would be the exact false-positive #402 caught: sybil head 13 >
+  #     ceiling 11 read as an "advance". Record the divergence and GAP — the
+  #     no-capture property is UNTESTED on a network already forked.
+  local maxsyb=0 sh
+  for s in $sybils; do sh="$(syb_height "$s")"; sh="${sh:-0}"; [ "$sh" -gt "$maxsyb" ] 2>/dev/null && maxsyb="$sh"; done
+  if [ "$maxsyb" -gt "$ceiling" ] 2>/dev/null; then
+    record "5-sybil-no-capture" gap major "PRE-EXISTING FORK (#402): a Sybil head (h${maxsyb}) is ABOVE the anchored ceiling (h${ceiling}) BEFORE any anchor was stopped — the Sybils are on a divergent fork (a launch anchor-gate fork, one free anchor co-signing; see #402), not synced to the anchor chain. The no-capture PREMISE is unmet, so this run cannot grade capture; the fork itself is the finding. Journals captured at this verdict."
+    return
+  fi
+
   # 2) THE CAPTURE ATTEMPT — stop every anchor; only the bonded Sybil self-majority
-  #    remains. Give it time to try to advance on its own.
+  #    remains. Give it time to try to advance on its own. Capture t0 BEFORE the
+  #    stop so the fresh-commit outcome check (step 3) can be SCOPED to post-stop
+  #    journald lines only — an unscoped grep matched stale pre-stop 'committed
+  #    block' lines and mis-fired CAPTURE (#402 detector false-positive, #303 class).
+  local stop_t0; stop_t0="$(date +%s)"
   echo "    stopping all anchors ($anchors_nodes) — the Sybil cohort attempts to advance…"
   for a in $anchors_nodes; do svc "$a" stop >/dev/null 2>&1 || true; done
   sleep 90
@@ -751,9 +783,12 @@ flow_c2_no_capture() {
   local h1; h1="$(syb_height sybil-1)"; h1="${h1:-$h0}"
   local s hs; for s in $sybils; do hs="$(syb_height "$s")"; hs="${hs:-0}"; [ "$hs" -gt "$h1" ] 2>/dev/null && h1="$hs"; done
   local no_advance=0; [ "$h1" -le "$((ceiling + 1))" ] 2>/dev/null && no_advance=1
+  # Fresh-commit guard SCOPED to post-stop (#402/#303): a 'committed block' line
+  # from BEFORE the anchors were stopped is not a capture — only a block a Sybil
+  # committed AFTER the anchors left is. --since @stop_t0 admits only those.
   local fresh_commit=0
   for s in $sybils; do
-    if jlog "$s" 200 | grep -qE 'chain: committed block [0-9]'; then fresh_commit=1; break; fi
+    if ssh_node "$s" "sudo journalctl -u silt --no-pager --since \"@${stop_t0}\" -n 400" | grep -qE 'chain: committed block [0-9]'; then fresh_commit=1; break; fi
   done
   local gate=0
   for s in $sybils; do

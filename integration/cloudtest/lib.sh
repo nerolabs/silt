@@ -123,10 +123,15 @@ capture_flow_evidence() { # capture_flow_evidence FLOW VERDICT — snapshot FT_F
       node_exists "$n" || continue
       printf '======== %s ========\n-- systemctl status --\n' "$n"
       ssh_node "$n" "sudo systemctl status silt.service --no-pager -l 2>&1 | head -12" || echo "(status unavailable — node unreachable)"
-      echo "-- journalctl -u silt (last 300) --"
-      ssh_node "$n" "sudo journalctl -u silt --no-pager -n 300 2>&1" || echo "(journal unavailable — node unreachable)"
-      echo "-- debug.log (last 200) --"
-      ssh_node "$n" "sudo tail -n 200 /var/lib/silt/debug.log 2>&1" || echo "(no debug.log)"
+      # Depth (#402): a verdict fires MINUTES after the event that explains it (the
+      # fork-committed blocks were ~30 min old when flow 5 graded), so a shallow tail
+      # rotates past the cause. Prefer the WHOLE run's journal (--since the boot that
+      # started this run's service ≈ run start) with a high-N safety cap; deepen the
+      # debug.log tail likewise. FT_CAPTURE_JOURNAL_N / FT_CAPTURE_DLOG_N override.
+      echo "-- journalctl -u silt (this boot, ≤${FT_CAPTURE_JOURNAL_N:-4000} lines) --"
+      ssh_node "$n" "sudo journalctl -u silt --no-pager -b -n ${FT_CAPTURE_JOURNAL_N:-4000} 2>&1" || echo "(journal unavailable — node unreachable)"
+      echo "-- debug.log (last ${FT_CAPTURE_DLOG_N:-2000}) --"
+      ssh_node "$n" "sudo tail -n ${FT_CAPTURE_DLOG_N:-2000} /var/lib/silt/debug.log 2>&1" || echo "(no debug.log)"
     done
   } >> "$out" 2>&1
   printf '    (evidence captured → %s)\n' "${out##*/}"
