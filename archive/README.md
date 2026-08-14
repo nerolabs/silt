@@ -54,6 +54,31 @@ dated result.
 ### `process/` — stranded handoff docs
 `genesis-handoff.md` (the original inception brief; several code comments still
 cite "the HANDOFF"; its own banner flags the fragments that now contradict canon).
+Plus, from the consult-chain era (below): `286-wan-rabbithole-POSTMORTEM.md`
+(its lessons became build-immutables #5/#6 + `docs/build-process.md`) and
+`P0-2-publish-durable-or-loud-ATTRIBUTION.md` (a closed "no-defect" attribution;
+its lesson is banked in build-immutable #7).
+
+### `reviews/` addendum — the consult-chain era (archived 2026-08-14)
+
+Between 2026-08-08 and 2026-08-14 the build ran a **consult → ruling → build**
+loop per bug: each RC-blocking finding got a research/PE consult in
+`docs/reviews/`, an external certification, and a shipped fix. All of those arcs
+are now **closed and superseded** — and two of the consults contain hypotheses
+the certifications later *disproved* (the `⌈A/2⌉` anchor-quorum rule; "#397 is
+launch-only") — so the whole chain moved here. **What replaced it:**
+`docs/design/consensus-invariants.md` (I1–I5 — the closed invariant set, each
+scar annotated), `docs/design/consensus-model-check.md` (the deterministic gate),
+and `docs/decisions.md` D-CONSENSUS. The certifications themselves live in the
+read-only `silt-reviews/` evidence archive. Archived files: the 286-compute-layer
+pair, the 357 trio, the token-gather pair (2026-08-13), the
+honest-proposer-cross-attest pair (#397), the m0-candidate PE consult+ruling
+(2026-08-13; its still-governing directives were folded into
+`docs/design/owned-residuals.md` E4, ROADMAP's M1 order, and the release
+checklist), the 2026-08-08 red-team remediation consults, the answered
+`research-brief.md`, the superseded status docs `m0-remaining-backlog.md` /
+`m0-build-complete.md`, and the older duplicate `m0-redteam-brief.md` (the
+living brief is `docs/reviews/m0-redteam-brief-2026-08.md`).
 
 ## The one live source outside the repo (read-only)
 
