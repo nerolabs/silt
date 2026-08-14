@@ -117,3 +117,46 @@ the fix on the first pass instead of the third.
 failure and why your change addresses it, you're guessing — stop, instrument, reduce
 to a cheap repro, and if it's still unknown (or it touches security / consensus / a
 published claim), consult research *before* you build or spend a cloud run.
+
+---
+
+## Build-immutable #7 — evidence or nothing (the meta-rule over all forward motion)
+
+#6 above governs a **fix**: attribute one failure before one patch. **#7 governs
+*every* forward step** — a fix, a cloud run, a claim, a "next step", a "let me try" —
+and it is the discipline this project has paid the most to learn. Ratified 2026-08-14
+by the owner after the **guess → act → fail → guess** loop ("chasing our tails") burned
+hours and billable runs across sessions. `TENETS.md` Part IX has the canonical text;
+this is the working checklist.
+
+**The gate — before ANY action that costs time, money, or commits a claim:**
+
+1. **Say the evidence out loud.** Name the *specific* artifact that justifies this
+   step: a log line, a trace, a failing test, a reduced reproduction, a measured
+   number. Not a category ("the network is flaky") — the actual line.
+2. **Catch the guess tell.** If your justification is *"I think / probably / likely /
+   it usually / let me just try and see / it's worth a shot"* — **STOP. You are
+   guessing.** That feeling is the signal, not a nuisance.
+3. **When you have no evidence, your task changes.** The valid next action is to
+   **gather** evidence — instrument, reproduce, capture — *not* to do the thing you
+   were about to do. Go get the artifact; then decide.
+4. **Iterate — one evidence-verified step at a time.** Smallest change a piece of
+   evidence justifies → confirm *that* change with evidence → next step. A batch of
+   hopeful edits is a batch of guesses. A run launched to "see what happens" is a
+   guess with a bill.
+5. **A non-locally-reproducible failure is INSTRUMENTED, not re-tried.** Add the
+   logging / journal-capture / probe that will record *why*, let **one** instrumented
+   observation gather it, then act on what it shows. "Re-run — probably transient" is
+   allowed **only** when that re-run is itself the instrumented observation capturing
+   the evidence you lack — otherwise it is a guess in a lab coat.
+
+**The one line for #7:** *Say the evidence out loud. If you can't, you've just found
+your real next task — go get the evidence — and it is not the thing you were about to
+do.*
+
+**The canonical loss it exists to stop:** a billable P1 cloud run whose sybil cohort
+crash-looped, torn down by the harness *without capturing the crash journals* — so the
+cause was unknowable and every next move was a guess. The fix was not a smarter guess;
+it was to make the harness **capture the evidence first, then look**
+(`integration/cloudtest` failed-node journal capture). Instrument, then observe, then
+act — in that order, every time.
