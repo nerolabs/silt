@@ -8,7 +8,21 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
-### Fixed
+### Added
+- **cloudtest: a scenario-level FAIL/GAP now captures its evidence before teardown
+  (build-immutable #7)** (2026-08-14) — Run `beb3628-95860` (the P1 all-corners run) ended with two
+  FAILs (`9-cross-nat`, `chaos-reprovide`) and a new sybil-resume GAP that were **unattributable**:
+  journals were only captured for nodes that never came ready, the scenario console died with the
+  terminal, `ft_publish`'s per-call gap signal was lost in its command-substitution subshell (so
+  `9-cross-nat` graded FAIL where the honest verdict may have been a #351 GAP, with no recorded
+  error), and the next run overwrites `results.jsonl`/`report.md`. Now: `record()` snapshots the
+  flow's involved nodes' service state + journal + `debug.log` into `flow-evidence-<run>.log` the
+  moment a non-green verdict lands (nodes stashed by `require_nodes`/`require_live` or explicit
+  `flow_evidence_nodes`); `ft_publish` hands its gap signal and last captured error across the
+  subshell boundary by file, so `publish_verdict` grades honestly and the report names the mechanism;
+  `9-cross-nat` attributes WHICH leg died (publish vs fetch); the scenario console is tee'd to
+  `console-<run>.log`; and each run's `results.jsonl` + `report.md` are archived under `archive/` so
+  a regression is distinguishable from a never-passed flow. Harness-only; no product change.
 - **#390 — the cross-NAT restart re-fetch (`integration/nat`, #69 phase) no longer flakes on a loaded
   CI runner** (2026-08-14) — The `RESTART=1` cross-NAT job REDed bimodally (~1-in-4, on docs-only
   commits too) at "content undiscoverable after restart". Attributed: reprovide-after-restart is a

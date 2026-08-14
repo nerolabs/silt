@@ -81,6 +81,13 @@ ft_reachable_peers() { # ft_reachable_peers NODE
 # confirm") rather than a property FAIL. Cleared to 0 on entry.
 ft_publish() { # ft_publish NODE SIZE_BYTES
   FT_PUBLISH_GAP=0
+  # Cross-subshell handoff (#7 evidence): ft_publish runs inside `res="$(…)"`, so
+  # variables set here NEVER reach the caller's scope. Files do. .ft_publish_gap
+  # carries the honest gap-vs-fail signal to publish_verdict; .ft_publish_lasterr
+  # carries the last captured silt error into the recorded verdict detail (it used
+  # to go to the console only, which is not persisted — run beb3628-95860's
+  # 9-cross-nat FAIL left no clue which leg died).
+  printf 0 > "$FT_DIR/.ft_publish_gap"; : > "$FT_DIR/.ft_publish_lasterr"
   local node="$1" size="${2:-1048576}" out link lasterr=""
   ssh_node "$node" "head -c $size </dev/urandom >/tmp/ft_src.bin; sha256sum /tmp/ft_src.bin | cut -d' ' -f1" >/tmp/ft_src_sha 2>/dev/null
   local sha; sha="$(cat /tmp/ft_src_sha 2>/dev/null)"
@@ -102,7 +109,7 @@ ft_publish() { # ft_publish NODE SIZE_BYTES
   # is an egress/preemption problem, not a property failure — flag it so the caller
   # records a GAP. (max(1,TOKEN_QUORUM): even token-quorum 0 needs one reachable peer.)
   local rok="${reach%%/*}"; local need=$(( TOKEN_QUORUM > 1 ? TOKEN_QUORUM : 1 ))
-  [ "${rok:-0}" -lt "$need" ] 2>/dev/null && FT_PUBLISH_GAP=1
+  [ "${rok:-0}" -lt "$need" ] 2>/dev/null && { FT_PUBLISH_GAP=1; printf 1 > "$FT_DIR/.ft_publish_gap"; }
   # A publish that fails because the ephemeral CLI publisher could not DISCOVER the
   # canonical issuer set / gather a token — even with validators reachable — is a
   # publish-token *discovery* problem over WAN (worse after mid-run node churn), not a
@@ -112,13 +119,16 @@ ft_publish() { # ft_publish NODE SIZE_BYTES
   # as UNTESTED, not FAILED; the publish-reliability issue itself stays visible in this
   # diagnostic and in #351. (A genuine no-quorum terminal outcome still fails fast via
   # /publish-status, so this does not mask a real refusal.)
-  printf '%s' "$lasterr" | grep -qiE 'no canonical issuer|could not gather|not enough|issuer set|token' && FT_PUBLISH_GAP=1
+  printf '%s' "$lasterr" | grep -qiE 'no canonical issuer|could not gather|not enough|issuer set|token' && { FT_PUBLISH_GAP=1; printf 1 > "$FT_DIR/.ft_publish_gap"; }
   # …or if the fetch publish subsystem was already found degraded this run (warm
   # failed): a subsequent publish failure — even one with no captured error text — is
   # then a discovery/setup problem, not a property break, so score it a GAP too.
-  [ "${FETCH_PUBLISH_DEGRADED:-0}" = 1 ] && FT_PUBLISH_GAP=1
+  [ "${FETCH_PUBLISH_DEGRADED:-0}" = 1 ] && { FT_PUBLISH_GAP=1; printf 1 > "$FT_DIR/.ft_publish_gap"; }
+  printf '%s' "$lasterr" > "$FT_DIR/.ft_publish_lasterr"
+  # Persist the diagnostic (#7): stderr reaches the console, but the console dies
+  # with the terminal — the tee'd copy survives teardown next to the run's report.
   {
-    echo "ft_publish FAILED after ${PUBLISH_RETRY_S}s on $node (token-quorum=$TOKEN_QUORUM)"
+    echo "[$(date -u +%FT%TZ)] ft_publish FAILED after ${PUBLISH_RETRY_S}s on $node (token-quorum=$TOKEN_QUORUM)"
     echo "  publisher->validator reachability: $reach of the -peers set reachable"
     echo "  last silt error: ${lasterr:-<none captured>}"
     echo "  note: token-quorum needs the publisher to reach >= $TOKEN_QUORUM validators to"
@@ -126,7 +136,7 @@ ft_publish() { # ft_publish NODE SIZE_BYTES
     echo "        usual cause of 'could not gather enough publish-token signatures' and a"
     echo "        chain stuck at height 0. Retry a bootstrap run with TOKEN_QUORUM=1, or"
     echo "        fix publisher egress to the validators."
-  } >&2
+  } | tee -a "$FT_DIR/publish-diag-${RUN_ID:-local}.log" >&2
   return 1
 }
 
@@ -134,20 +144,25 @@ ft_publish() { # ft_publish NODE SIZE_BYTES
 # shortfall OR a degraded publish subsystem is a GAP — the property was UNTESTED,
 # not broken — while any other publish failure is a real fail.
 #
-# NOTE the scope bug this works around: ft_publish is called as `res="$(ft_publish …)"`,
+# NOTE the scope bug this closes: ft_publish is called as `res="$(ft_publish …)"`,
 # i.e. in a command-substitution SUBSHELL, so any FT_PUBLISH_GAP it sets is lost and
-# never reaches this parent scope — publish_verdict would ALWAYS fall through to a FAIL.
-# FETCH_PUBLISH_DEGRADED is the reliable signal: wait_publisher_warm sets it in the
-# PARENT (it is not called in a subshell), so gate on it here. It is 1 whenever the
-# publisher re-warm could not land a throwaway publish this run — i.e. the ephemeral-CLI
-# issuer-set discovery is not working over the (churned) WAN — so a dependent flow's
-# publish failure is a discovery/setup problem (#351), not a break of the property that
-# publish is a precondition for.
+# never reaches this parent scope. ft_publish therefore ALSO writes the signal to
+# $FT_DIR/.ft_publish_gap (files cross the subshell boundary; run beb3628-95860's
+# 9-cross-nat graded FAIL with the per-call gap signal silently dropped). We still
+# honor FETCH_PUBLISH_DEGRADED (wait_publisher_warm sets it in the PARENT): it is 1
+# whenever the publisher re-warm could not land a throwaway publish this run — a
+# dependent flow's publish failure is then a discovery/setup problem (#351), not a
+# break of the property that publish is a precondition for. The last captured silt
+# error (.ft_publish_lasterr) is folded into the verdict so the report names the
+# mechanism, not just "no link".
 publish_verdict() { # publish_verdict FLOW SEVERITY "detail"
-  if [ "${FT_PUBLISH_GAP:-0}" = 1 ] || [ "${FETCH_PUBLISH_DEGRADED:-0}" = 1 ]; then
-    record "$1" gap "$2" "$3 — the publish could not be gathered (egress/preemption, or issuer-set discovery not landing over WAN, #351); property UNTESTED, not failed"
+  local gap lasterr
+  gap="$(cat "$FT_DIR/.ft_publish_gap" 2>/dev/null || echo 0)"
+  lasterr="$(cat "$FT_DIR/.ft_publish_lasterr" 2>/dev/null || true)"
+  if [ "$gap" = 1 ] || [ "${FT_PUBLISH_GAP:-0}" = 1 ] || [ "${FETCH_PUBLISH_DEGRADED:-0}" = 1 ]; then
+    record "$1" gap "$2" "$3 — the publish could not be gathered (egress/preemption, or issuer-set discovery not landing over WAN, #351)${lasterr:+; last publish error: ${lasterr}}; property UNTESTED, not failed"
   else
-    slo_assert "$1" "$2" "$3" 0
+    record "$1" fail "$2" "$3${lasterr:+ (last publish error: ${lasterr})}"
   fi
 }
 
@@ -176,6 +191,8 @@ flow_first_run() {
     [ "$(node_field "$n" role)" = natgw ] && continue
     if ! ssh_node "$n" "systemctl is-active --quiet silt.service"; then ok=0; bad="$bad $n"; fi
   done
+  # shellcheck disable=SC2086
+  flow_evidence_nodes $bad   # a fail captures exactly the non-active nodes' journals
   slo_assert "1-first-run" blocker "all silt nodes report service active${bad:+ (down:$bad)}" "$ok"
 }
 
@@ -184,6 +201,7 @@ flow_publish_fetch() {
   local t0 t1 res link sha got ok=0
   t0="$(date +%s)"
   local boot; boot="$(python3 -c "import json;print(json.load(open('$FT_DIR/topology.json'))['meta']['boot'])")"
+  flow_evidence_nodes fetch-1 "$boot" store-2 store-1   # publisher, boot validator, fetch side
   local h0; h0="$(ft_commit_height "$boot")"   # audit #303: baseline BEFORE the publish
   res="$(ft_publish fetch-1 1048576 || true)"
   if [ -z "$res" ]; then publish_verdict "2-publish-fetch" blocker "publish never produced a silt: link within ${PUBLISH_RETRY_S}s"; return; fi
@@ -205,6 +223,7 @@ flow_publish_fetch() {
 
 # ── Flow 3: care link — repair/audit without decrypting ─────────────────────────
 flow_care_link() {
+  flow_evidence_nodes fetch-1
   # The publish emits a siltcare: link; a -care node repairs it and cannot read it.
   local out care
   out="$(ssh_node fetch-1 "/usr/local/bin/silt info /tmp/ft_src.bin 2>&1" || true)"
@@ -218,6 +237,7 @@ flow_care_link() {
 
 # ── Flow 4: become a validator (earned standing, not rubber-stamp) ──────────────
 flow_become_validator() {
+  flow_evidence_nodes val-b val-c val-d
   local n ok=1 bad=""
   for n in val-b val-c val-d; do
     node_exists "$n" || continue
@@ -239,6 +259,8 @@ flow_become_validator() {
 flow_convergence() {
   local n vals="" maxh=0
   for n in val-a val-b val-c val-d; do node_exists "$n" && vals="$vals $n"; done
+  # shellcheck disable=SC2086
+  flow_evidence_nodes $vals
   # Read each validator's AUTHORITATIVE committed head — HEIGHT *and* HASH — from its
   # OWN chain-status store, not a journald 'committed block N' line. A height-only
   # signal can't tell same-fork convergence from same-height/DIFFERENT-fork; the head
@@ -319,6 +341,7 @@ flow_fault_tolerance() {
 
 # ── Flow 7: restart survival — standing + issued tokens + stored content ────────
 flow_restart_survival() {
+  flow_evidence_nodes val-b store-1 store-2
   local t0 t1 ok=0
   t0="$(date +%s)"
   svc val-b restart || true
@@ -352,6 +375,7 @@ flow_restart_survival() {
 
 # ── Flow 8: per-hash takedown on ONE operator only ──────────────────────────────
 flow_takedown() {
+  flow_evidence_nodes store-1 store-2
   if [ -z "${FT_LAST_LINK:-}" ]; then record "8-takedown" gap minor "no prior published link to deny"; return; fi
   # extract the HEX root from the silt:v1:<b64url-root>:<...> link and deny it on store-1
   local root; root="$(b64url_to_hex "$(printf '%s' "$FT_LAST_LINK" | cut -d: -f3)")"
@@ -387,17 +411,21 @@ flow_takedown() {
 # ── Flow 9: cross-NAT — a natted node moves a file via the relay ────────────────
 flow_cross_nat() {
   require_nodes "9-cross-nat" major nat-1 nat-2 || return
-  local res ok=0
+  flow_evidence_nodes nat-1 nat-2 relay   # a cross-NAT failure lives on either NAT node OR the relay
+  local res
   res="$(ft_publish nat-1 262144 || true)"    # nat-1 is un-dialable → must use the relay
-  if [ -n "$res" ]; then
-    local link="${res%% *}" sha="${res##* }" got
-    got="$(ssh_node nat-2 "/usr/local/bin/silt swarm get '$link' -o /tmp/ft_n.bin -peers '$PEERS' -registry '$REGREF' >/dev/null 2>&1; sha256sum /tmp/ft_n.bin | cut -d' ' -f1" 2>/dev/null || true)"
-    [ -n "$sha" ] && [ "$got" = "$sha" ] && ok=1
+  # Attribute the LEG (#7): run beb3628-95860 recorded a bare "did not exchange a
+  # file" FAIL that left publish-vs-fetch unknowable after teardown.
+  if [ -z "$res" ]; then
+    publish_verdict "9-cross-nat" major "natted nodes did not exchange a file via the relay — the PUBLISH leg (nat-1 → relay → validators) never landed a link"
+    return
   fi
-  if [ "$ok" = 1 ]; then
+  local link="${res%% *}" sha="${res##* }" got
+  got="$(ssh_node nat-2 "/usr/local/bin/silt swarm get '$link' -o /tmp/ft_n.bin -peers '$PEERS' -registry '$REGREF' >/dev/null 2>&1; sha256sum /tmp/ft_n.bin | cut -d' ' -f1" 2>/dev/null || true)"
+  if [ -n "$sha" ] && [ "$got" = "$sha" ]; then
     slo_assert "9-cross-nat" major "natted nodes exchanged a file through the relay/hole-punch" 1
   else
-    publish_verdict "9-cross-nat" major "natted nodes did not exchange a file via the relay"
+    slo_assert "9-cross-nat" major "natted nodes did not exchange a file via the relay — publish landed ($link) but the FETCH leg on nat-2 returned '${got:-<none>}' (want $sha)" 0
   fi
 }
 
@@ -595,7 +623,17 @@ flow_chaos_crash() {
   ssh_node store-2 "sudo systemctl start silt.service" >/dev/null 2>&1 || true   # idempotent nudge
   local reann=0
   waitfor_since store-2 're-announced [0-9]+ held chunks' "$t0" 90 >/dev/null && reann=1
-  slo_assert "chaos-reprovide" major "SIGKILLed storage node re-announced its held chunks (#69) after a hard crash" "$reann"
+  if [ "$reann" = 1 ]; then
+    slo_assert "chaos-reprovide" major "SIGKILLed storage node re-announced its held chunks (#69) after a hard crash" 1
+  else
+    # The path itself survives an abrupt kill locally (integration/nat RESTART=1,
+    # green post-#393: proofs reload + re-fetch bit-perfect) — so a miss here is
+    # either a re-announce LATER than the 90s window (WAN re-bootstrap + announce
+    # round-trips) or one that never fired on this VM; store-2's captured journal
+    # (flow-evidence log) distinguishes late-vs-never. Don't widen the window
+    # without that evidence (build-immutable #7).
+    slo_assert "chaos-reprovide" major "no post-crash 're-announced N held chunks' on store-2 within 90s of the SIGKILL — late or never; attribute from store-2's captured journal before touching the window (#69)" 0
+  fi
   local got ok=0
   # SHA-compare, not echo-OK (§D): crash-recovery must return the REAL bytes, not just
   # a zero exit on a possibly-truncated fetch.
@@ -649,6 +687,11 @@ flow_c2_no_capture() {
   n_syb="$(python3 -c "import json;print(json.load(open('$FT_DIR/topology.json'))['meta']['n_syb'])")"
   sybils="$(python3 -c "import json;print(' '.join(json.load(open('$FT_DIR/topology.json'))['meta']['sybils']))")"
   anchors_nodes="$(python3 -c "import json;print(' '.join(n for n,v in json.load(open('$NODES_JSON')).items() if v['role']=='validator'))")"
+  # This flow never calls require_nodes, so stash its evidence set explicitly: a
+  # non-green verdict here (e.g. the resume clincher not firing) needs the anchors'
+  # AND sybil-1's journals to attribute — run beb3628-95860's resume gap had none.
+  # shellcheck disable=SC2086
+  flow_evidence_nodes sybil-1 $anchors_nodes
 
   # chain head height from a node's OWN store (real chain-status, not a harness echo)
   syb_height() { ssh_node "$1" "/usr/local/bin/silt chain-status -store /var/lib/silt 2>&1" \
@@ -743,7 +786,7 @@ flow_c2_no_capture() {
     # catch-up sync of anchor-committed blocks, not a capture (the old false positive).
     record "5-sybil-no-capture" gap major "sybil head rose to $h1 (ceiling h${ceiling}) with anchors down but NO Sybil logged a fresh 'committed block' — this is a lagging Sybil CATCHING UP to anchor-committed blocks, not a capture; the property held but the drivability was masked by Sybil lag (see the run-slowness finding). Re-run on a healthier network to certify the clean no-capture outcome."
   else
-    record "5-sybil-no-capture" gap major "no-capture outcome held (head ≤ ceiling h${ceiling} with anchors down) but the chain did NOT resume within 180s after restoring anchors (h2=$h2) — liveness inconclusive (SPOT preemption?); re-run to confirm the clincher"
+    record "5-sybil-no-capture" gap major "no-capture outcome held (head ≤ ceiling h${ceiling} with anchors down) but the chain did NOT resume within 180s after restoring anchors (h2=$h2) — liveness inconclusive; the anchors' + sybil-1's journals are captured at this verdict (flow-evidence log) — attribute before re-running (#7)"
   fi
 }
 
@@ -780,6 +823,9 @@ flow_maturing_handoff() {
   anchors_nodes="$(python3 -c "import json;print(' '.join(n for n,v in json.load(open('$NODES_JSON')).items() if v['role']=='validator'))")"
   n_syb="$(python3 -c "import json;print(json.load(open('$FT_DIR/topology.json'))['meta']['n_syb'])")"
   sybils="$(python3 -c "import json;print(' '.join(json.load(open('$FT_DIR/topology.json'))['meta']['sybils']))")"
+  # A handoff/post-shed verdict needs the anchors AND the bonded cohort's journals.
+  # shellcheck disable=SC2086
+  flow_evidence_nodes $anchors_nodes $sybils
 
   mh_height() { ssh_node "$1" "/usr/local/bin/silt chain-status -store /var/lib/silt 2>&1" \
     | grep -oE 'head height:[[:space:]]*[0-9]+' | grep -oE '[0-9]+' | tail -1; }

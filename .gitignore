@@ -50,6 +50,14 @@ integration/cloudtest/nodes.json
 integration/cloudtest/results.jsonl
 integration/cloudtest/report.md
 integration/cloudtest/report.html
+# per-run evidence + archives (capture-on-fail, build-immutable #7)
+integration/cloudtest/failed-nodes-*.log
+integration/cloudtest/flow-evidence-*.log
+integration/cloudtest/console-*.log
+integration/cloudtest/publish-diag-*.log
+integration/cloudtest/archive/
+integration/cloudtest/.ft_publish_gap
+integration/cloudtest/.ft_publish_lasterr
 integration/cloudtest/terraform/topology.auto.tfvars.json
 integration/cloudtest/terraform/.terraform/
 integration/cloudtest/terraform/.terraform.lock.hcl

@@ -99,6 +99,39 @@ restore_argv() { # restore_argv NAME  — reset ExecStart to the baked metadata 
 # ── result recording (feeds gen_report.sh) ─────────────────────────────────────
 _json_str() { python3 -c 'import json,sys;print(json.dumps(sys.argv[1]))' "$1"; }
 
+# ── evidence capture on FAIL/GAP (build-immutable #7) ──────────────────────────
+# A scenario-level FAIL/GAP used to leave NO evidence: journals were captured only
+# for nodes that never came READY (wait_ready), the console isn't persisted, and
+# the network is destroyed right after the run — so run beb3628-95860's two fails
+# (9-cross-nat, chaos-reprovide) and its sybil-resume gap could not be attributed
+# afterwards, only guessed at. Now every flow's involved nodes are stashed (by
+# require_nodes, or explicitly via flow_evidence_nodes for flows that don't use
+# it), and record() snapshots their service state + journal + debug.log into
+# flow-evidence-$RUN_ID.log AT THE MOMENT a fail/gap verdict lands — while the
+# nodes still exist. FT_NO_CAPTURE=1 disables (e.g. when iterating on a KEEP_UP
+# network where the journals are still live).
+FT_FLOW_NODES=""
+flow_evidence_nodes() { FT_FLOW_NODES="$*"; }
+
+capture_flow_evidence() { # capture_flow_evidence FLOW VERDICT — snapshot FT_FLOW_NODES
+  [ "${FT_NO_CAPTURE:-0}" = 1 ] && return 0
+  [ -n "$FT_FLOW_NODES" ] || return 0
+  local out="$FT_DIR/flow-evidence-${RUN_ID:-local}.log" n
+  {
+    printf '\n######## %s — %s @ %s (nodes: %s)\n' "$1" "$2" "$(date -u +%FT%TZ)" "$FT_FLOW_NODES"
+    for n in $FT_FLOW_NODES; do
+      node_exists "$n" || continue
+      printf '======== %s ========\n-- systemctl status --\n' "$n"
+      ssh_node "$n" "sudo systemctl status silt.service --no-pager -l 2>&1 | head -12" || echo "(status unavailable — node unreachable)"
+      echo "-- journalctl -u silt (last 300) --"
+      ssh_node "$n" "sudo journalctl -u silt --no-pager -n 300 2>&1" || echo "(journal unavailable — node unreachable)"
+      echo "-- debug.log (last 200) --"
+      ssh_node "$n" "sudo tail -n 200 /var/lib/silt/debug.log 2>&1" || echo "(no debug.log)"
+    done
+  } >> "$out" 2>&1
+  printf '    (evidence captured → %s)\n' "${out##*/}"
+}
+
 record() { # record FLOW VERDICT SEVERITY DETAIL [ELAPSED_S]
   local flow="$1" verdict="$2" sev="$3" detail="$4" elapsed="${5:-}"
   printf '{"flow":%s,"verdict":%s,"severity":%s,"detail":%s,"elapsed_s":%s,"ts":%s}\n' \
@@ -110,13 +143,19 @@ record() { # record FLOW VERDICT SEVERITY DETAIL [ELAPSED_S]
     skip) printf '  \033[90m- SKIP\033[0m  %s — %s\n' "$flow" "$detail" ;;
     *)    printf '  \033[31m✗ FAIL\033[0m  %s — %s\n' "$flow" "$detail" ;;
   esac
+  # Evidence-or-nothing (#7): a non-green verdict grabs its flow's journals NOW,
+  # before teardown makes the cause unknowable.
+  case "$verdict" in fail|gap) capture_flow_evidence "$flow" "$verdict" ;; esac
 }
 
 # require_nodes FLOW SEVERITY NODE...  — record skip + return 1 if any node is absent
 # (so SMOKE=1 / trimmed topologies don't false-fail scenarios they can't run).
+# Also stashes the node list for capture_flow_evidence: the nodes a flow REQUIRES
+# are the nodes whose journals attribute its failure.
 require_nodes() {
   local flow="$1" sev="$2"; shift 2
   local n
+  FT_FLOW_NODES="$*"
   for n in "$@"; do
     if ! node_exists "$n"; then record "$flow" skip "$sev" "skipped — node '$n' not in this topology"; return 1; fi
   done
@@ -131,6 +170,7 @@ require_nodes() {
 require_live() {
   local flow="$1" sev="$2"; shift 2
   local n down=""
+  FT_FLOW_NODES="$*"
   for n in "$@"; do
     if ! ssh_node "$n" "systemctl is-active --quiet silt.service"; then down="$down $n"; fi
   done

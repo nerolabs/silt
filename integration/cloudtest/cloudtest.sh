@@ -237,10 +237,23 @@ run_scenarios() {
   . ./lib.sh
   # shellcheck disable=SC1091
   . ./scenarios.sh
-  run_all_scenarios || true    # a failing check is recorded, never aborts the run
+  # Persist the console (#7): ft_publish diagnostics and per-flow narration used to
+  # die with the terminal, leaving a FAIL verdict with no trail after teardown. The
+  # tee'd copy lands next to the run's report. (The pipeline subshell is fine: flows
+  # append to results.jsonl / evidence logs by path, and report() reads files.)
+  { run_all_scenarios || true; } 2>&1 | tee -a "$FT_DIR/console-$RUN_ID.log"
 }
 
-report() { echo "==> report"; RUN_ID="$RUN_ID" ./gen_report.sh; }
+report() {
+  echo "==> report"; RUN_ID="$RUN_ID" ./gen_report.sh
+  # Archive per run: results.jsonl/report.md are OVERWRITTEN by the next run, which
+  # erased the pass/fail history needed to tell a regression from a never-passed
+  # flow (this session had to reconstruct run c815091's verdicts from memory).
+  mkdir -p "$FT_DIR/archive"
+  cp -f "$FT_DIR/results.jsonl" "$FT_DIR/archive/results-$RUN_ID.jsonl" 2>/dev/null || true
+  cp -f "$FT_DIR/report.md"     "$FT_DIR/archive/report-$RUN_ID.md"     2>/dev/null || true
+  echo "    archived → archive/results-$RUN_ID.jsonl + archive/report-$RUN_ID.md (evidence: flow-evidence-$RUN_ID.log, console-$RUN_ID.log, publish-diag-$RUN_ID.log)"
+}
 
 teardown() {
   [ "${KEEP_UP:-0}" = 1 ] && { echo "==> KEEP_UP=1 — leaving the network up. './cloudtest.sh down' when done."; return; }
