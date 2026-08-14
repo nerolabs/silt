@@ -4,7 +4,7 @@
 > mission-immutable (M0), a three-tier structure (immutable / tenet / evolving),
 > and the build principle B8; amended 2026-08-05 to reframe M0's Sybil corner as
 > a systemic **composition** claim (C1 no-discount + C2 no-quiet-capture) rather
-> than a Sybil-proof primitive. Changing an **Immutable** (Part 0 + the six in
+> than a Sybil-proof primitive. Changing an **Immutable** (Part 0 + the seven in
 > Part IX) requires deliberate, reviewed consensus and is close to redefining
 > the project. **Tenets** are canon too, amendable with reviewed consensus and
 > evidence. **Evolving** parameters are expected to change as we learn.
@@ -679,6 +679,42 @@ standing — amended only by the same deliberate, reviewed consensus:
      was *no outbound addresses*), a billable run spent to *discover* the ~8 MB
      genesis block (deterministic, reproducible in-process), and #288's
      evict-on-one-miss — each a patch one layer above a structural cause.
+  7. **Evidence or nothing — no forward step on a hypothesis; when you lack the
+     evidence, your job is to GATHER it, not to guess.** Every action that spends
+     time, money, or commits a claim — a fix, a cloud run, a "let me try", a
+     reported conclusion, a "next step" — must be justified by a **specific piece of
+     evidence you can cite**: a log line, a trace, a failing test, a reduced
+     reproduction, a measured number. If the honest justification is *"I think /
+     probably / likely / it usually / let me just try and see"* — **you are
+     guessing. STOP.** When you do not have the evidence, the ONLY valid next action
+     is to **gather** it — instrument, reproduce, capture — never to guess-and-act.
+     This is the discipline the project has paid the most to learn: the **guess →
+     act → fail → guess** loop — *chasing our tails* — has burned hours, billable
+     runs, and trust, over and over, and it is the single most expensive failure
+     mode in this history. It is distinct from #6 (which attributes **one** failure
+     before **one** patch); #7 governs **all** forward motion and demands two things
+     of it:
+       - **Iterative — one evidence-verified step at a time.** Make the smallest
+         change a specific piece of evidence justifies, confirm *that* change with
+         evidence, and only then take the next step. A batch of hopeful edits is a
+         batch of guesses; a run launched to "see what happens" is a guess with a
+         bill.
+       - **When a failure is not locally reproducible, INSTRUMENT to capture the
+         cause — do not re-try on a theory.** Add the logging / journal-capture /
+         probe that will record *why*, let **one** instrumented observation gather
+         it, then act on what it shows. "Re-run — it was probably transient" is a
+         guess in a lab coat unless the re-run is actually *capturing* the evidence
+         you lack.
+     The self-check before every action: **say the evidence out loud.** Name the
+     artifact that justifies this step. If you cannot, you have just found your real
+     next task — go get the evidence — and it is *not* the thing you were about to
+     do. Drawn from repeated real losses, most expensively the many hours lost to
+     hypothesis-driven "fixes" and billable runs spent to *discover* causes that
+     cheap instrumentation would have named for free — the canonical case being a
+     cloud run that tore down its own crash-looping nodes *without capturing their
+     journals*, leaving only guesses: the fix was to make the harness **capture the
+     evidence first, then look** (`integration/cloudtest` failed-node journal
+     capture), never to re-run on a hunch.
 
 **Tenets — canon, amendable with reviewed consensus and evidence.** Everything
 else in Parts I–VIII, including the strong disciplines we hold nearly as firmly
@@ -860,3 +896,22 @@ re-tuned as the network grows — **not closed.**
   bootstrap) was *unused-correct code* — the rule-6 poster child. Same corrective as
   the comprehension/owned-residuals audits (docs ahead of code there, fixes ahead of
   root-cause here): **verify/attribute before you ship.**
+- **2026-08-14** — Added **build-immutable #7 (evidence or nothing — no forward step
+  on a hypothesis; when you lack the evidence, gather it)**, ratified by the owner
+  after watching the **guess → act → fail → guess** loop cost hours and billable cloud
+  runs across multiple sessions. Where #6 attributes **one** failure before **one**
+  patch, #7 governs **all** forward motion — a fix, a run, a claim, a "next step" —
+  and forbids taking any of it on a hunch: cite the specific log/trace/test/repro that
+  justifies the step, or your real next task is to go **gather** that evidence
+  (instrument, reproduce, capture), never to guess-and-try. Mandates an **iterative**
+  cadence (one evidence-verified step at a time; no batch of hopeful edits, no run to
+  "see what happens") and the rule that a **non-locally-reproducible failure is
+  instrumented to capture its cause, not re-tried on a theory** — "re-run, probably
+  transient" is a guess in a lab coat unless the re-run is itself the instrumented
+  observation that captures the missing evidence. Provoked by the canonical case: a
+  billable P1 cloud run whose sybil cohort **crash-looped**, and the harness tore the
+  VMs down *without capturing their journals* — leaving only guesses about the cause.
+  The corrective was to make the harness **capture the evidence first, then look**
+  (`integration/cloudtest` failed-node journal capture, PR #394), and to make the
+  self-check before every action explicit: **say the evidence out loud; if you can't,
+  you've found your real next task.**
