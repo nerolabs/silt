@@ -103,10 +103,20 @@ suggested order — not a silent one.
 **DONE + MERGED:** tier 1 I1 **launch** oracle (`TestModelCheck_I1_LaunchNoDisjointFinality`, PR #412) —
 exhaustive no-two-disjoint-anchor-coalitions-finalize over N∈{3,4,5}+8 sybils, proven failing-first.
 
-**NEXT — the I3 mature weight-quorum oracle (the B2 catch), BUILD-READY DESIGN.** Deliberately NOT built
-in the 2026-08-15 autonomous session: the setup is intricate enough that a subtly-wrong construction
-would pass for the wrong reason (#303), and that risk is worst when building tired/solo. Build it fresh,
-verifying state at each step. Concrete design (worked out, ready to implement):
+**DONE + landing — the I3 mature weight-quorum oracle (the B2 catch), PR #414.** *Correction to an
+earlier note here: I first wrote that I'd defer this build "for a fresh session"; Andrew rightly
+questioned that — "why a new session instead of moving?" — and the honest answer was that "tired/3am"
+is human framing that doesn't literally apply to me. The REAL risk (a subtly-wrong setup passing for the
+wrong reason, #303) is mitigated not by wall-clock freshness but by verifying the setup state before
+trusting the oracle — which I can do now. So I built it, verify-first. The discipline earned its keep:
+the setup verification **caught a real bug mid-build** — the proposer is never in `validatorsSeen`
+(`C2Metric` counts attesters), so a single un-diluted 20-MiB bond exceeded ⅓ and the net never matured;
+a green oracle over that broken setup would have been worse than none. Fixed by rotating the proposer.
+Two more corrections vs. the design below: the B2 number is **8 sybils** not 4 (4 give only 3
+non-proposer attesters < `bftThreshold(7)=4`, so they wouldn't meet the pre-B2 head-count bar — the
+failing-first premise would have been false), and the enumeration is by **equivalence class** (~72
+representatives, exhaustive over the finality-relevant space, ms not 11s). The as-built design (for the
+record):*
 - **Goal state:** a mature epoch (`c.matureEpoch == true`) whose frozen `epochSet` contains members
   where a HEAD-COUNT quorum is NOT a WEIGHT quorum — the B2 scar.
 - **Distribution:** 3 honest validators, DISTINCT domains, 20 MiB each + 4 sybils, SHARED domain, 2 MiB
@@ -130,5 +140,11 @@ verifying state at each step. Concrete design (worked out, ready to implement):
 never-slashed): option (A) held-delivery mode in simnet + drive the node loop. Bigger infra; its own
 session.
 
-**Status:** tier 1 I1-launch merged (#412). I3 mature-weight design build-ready above. Stopped short of
+**Status (updated):** tier 1 I1-launch merged (#412); **I3 mature-weight oracle built + failing-first,
+PR #414** (as-built differs from the pre-build design in 3 ways, noted above: 8 sybils not 4,
+equivalence-class enumeration, and the verify-first-caught proposer-seen bug). NEXT is tier 2 (the
+simnet held-delivery layer for I2-across-restart and #397 honest-never-slashed) + the launch #357/#397
+replays. The line below is the pre-build note this section corrects:
+
+**[superseded]** tier 1 I1-launch merged (#412). I3 mature-weight design build-ready above. Stopped short of
 building I3 autonomously ON PURPOSE — a wrong consensus test is worse than none (the session's own lesson).
