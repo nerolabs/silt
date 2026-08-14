@@ -98,6 +98,37 @@ all four scars violated. Lead with the cheapest tier that catches the class (the
 principle as the testing-tiers assessment). Recorded as a deliberate, reasoned deviation from the spec's
 suggested order — not a silent one.
 
-**Status:** approach decided; awaiting #402 merge to build on clean main. First code step (revised):
-the in-package `core/chain/modelcheck_test.go` I1/I3/I5 exhaustive oracle for the N=4 launch regime,
-with #357/#402 as failing-first replays; then the simnet held-delivery layer for I2-restart / I5-gather.
+## Progress + next-oracle designs (2026-08-15, updated)
+
+**DONE + MERGED:** tier 1 I1 **launch** oracle (`TestModelCheck_I1_LaunchNoDisjointFinality`, PR #412) —
+exhaustive no-two-disjoint-anchor-coalitions-finalize over N∈{3,4,5}+8 sybils, proven failing-first.
+
+**NEXT — the I3 mature weight-quorum oracle (the B2 catch), BUILD-READY DESIGN.** Deliberately NOT built
+in the 2026-08-15 autonomous session: the setup is intricate enough that a subtly-wrong construction
+would pass for the wrong reason (#303), and that risk is worst when building tired/solo. Build it fresh,
+verifying state at each step. Concrete design (worked out, ready to implement):
+- **Goal state:** a mature epoch (`c.matureEpoch == true`) whose frozen `epochSet` contains members
+  where a HEAD-COUNT quorum is NOT a WEIGHT quorum — the B2 scar.
+- **Distribution:** 3 honest validators, DISTINCT domains, 20 MiB each + 4 sybils, SHARED domain, 2 MiB
+  each. No anchors (keeps `requiredLaunchAnchors`=0, avoids the launch-anchor bootstrap). `MatureValidators`
+  tuned so the honest decentralization matures it (Nakamoto over operators ≥ target: 3×20 balanced so
+  ≥2 operators needed to exceed ⅓; the 4 same-domain sybils count as ~1 operator, so they DON'T inflate
+  Nakamoto — C2 working — but DO enter `epochSet` as 4 members). `EpochBlocks=4`.
+- **Bootstrap:** genesis carries all 7 bonds (like `TestEpochTTLExpiry`); commit count-quorum blocks
+  (pre-handoff `validatorSetSize`=qualifiedCount=7, `bftThreshold(7)=4`, so ≥4 attesters) across the
+  EpochBlocks boundary → `matureEpoch` trips, `epochSet` freezes with the 7 weighted members.
+- **VERIFY THE SETUP FIRST (assert before writing the oracle):** `c.matureEpoch==true`,
+  `len(c.epochSet)==7`, honest weights 20 / sybil weights 2, total 68. Only then enumerate.
+- **The oracle:** enumerate coalitions over the frozen set; assert **finalizes ⟺ coalition weight > ⅔
+  total (45.3 MiB), NOT head-count**. The 4-sybil coalition is a head-count quorum (`bftThreshold(7)=4`)
+  but weight 8 << 45.3 → must be REFUSED; the 3-honest coalition (60 > 45.3) → finalizes.
+- **Failing-first:** at the pre-B2 commit (head-count `bftThreshold(memberCount)` in the mature epoch),
+  the 4-sybil coalition finalizes → RED; post-#389 weight rule → GREEN. (Same controlled-revert proof
+  style as I1: temporarily point the mature quorum at head-count.)
+
+**THEN — tier 2 simnet held-delivery layer** (I2-across-restart, I5-through-real-gather, #397 honest-
+never-slashed): option (A) held-delivery mode in simnet + drive the node loop. Bigger infra; its own
+session.
+
+**Status:** tier 1 I1-launch merged (#412). I3 mature-weight design build-ready above. Stopped short of
+building I3 autonomously ON PURPOSE — a wrong consensus test is worse than none (the session's own lesson).
