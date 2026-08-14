@@ -9,6 +9,18 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **#406 — consensus model-check, tier 1: the I3 mature weight-quorum oracle (the B2 catch)** (2026-08-15)
+  — `core/chain/modelcheck_i3_test.go` drives the REAL `Chain` to a **mature epoch** whose frozen
+  `epochSet` holds the B2 imbalance — 3 real validators (distinct domains, 20 MiB) + **8 sybils** (one
+  shared domain, 2 MiB) — and asserts **I3**: a coalition finalizes IFF it carries a **>⅔ WEIGHT**
+  super-majority, never a head-count one. The 8-sybil cohort is a head-count quorum (7 non-proposer
+  attesters = `bftThreshold(11)`) but a weight minority (16 ≪ ⅔·76), so it is refused. Exhaustive over
+  the finality-relevant space by equivalence class (finality is a pure function of proposer-type +
+  #honest/#sybil attesters, so ~72 representatives cover all 2^10·11 cases). The **setup is verified
+  first** (`TestModelCheck_I3_SetupReachesMatureWeightedEpoch` asserts the mature-epoch state + exact
+  frozen weights before any oracle trusts it — the anti-#303 discipline; it caught a real
+  proposer-never-seen setup bug during the build). Proven **failing-first** by a controlled revert of
+  `requireEpochWeightQuorum` to head-counting → RED. Test-only; no production change.
 - **#406 — consensus model-check, tier 1: the exhaustive I1 launch oracle** (2026-08-15) — The first
   rung of the deterministic adversarial consensus harness (`docs/design/consensus-model-check.md`):
   `core/chain/modelcheck_test.go` drives the REAL `Chain` finality predicate over an **exhaustive**
