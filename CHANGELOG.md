@@ -8,6 +8,20 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Added
+- **#402 — chain-tier repro attributing the launch anchor-gate fork (the field "CAPTURE" was a fork,
+  not a Sybil capture)** (2026-08-14) — Field run `4faaee8-22913` graded a flow-5 "CAPTURE"; the
+  captured evidence + `core/chain/fork_anchor_gate_402_test.go` show it was a **fork**. The
+  wheels-engaged commit gate requires only `AnchorQuorum=1` distinct anchor attester, and the honest
+  side commits at the bare count quorum (proposer + 2), leaving one **free** anchor; a Sybil-proposed
+  competitor attested by that one free anchor passes the gate — while a **zero-anchor** Sybil quorum is
+  still refused (`ErrAnchorRequired`), so **C2 holds** (no quiet capture). The residual is a
+  launch-phase fork-creation / liveness vector. A second test shows `AnchorQuorum=2` closes the same
+  fork (the honest commit then holds 2 non-proposer anchors, leaving `<2` free), naming the fix
+  direction `AnchorQuorum ≥ ⌈#anchors/2⌉` and its cost (launch commits need 3-of-4 anchors up). The fix
+  is a consensus-rule change, routed to research (`docs/reviews/fork-anchor-gate-402-RESEARCH-CONSULT-2026-08-14.md`);
+  tests-only here, no product change.
+
 ### Fixed
 - **cloudtest flow 5: the C2 resume clincher now DRIVES a block after restoring the anchors instead
   of waiting for a spontaneous one** (2026-08-14) — Three runs GAPed "chain did NOT resume within

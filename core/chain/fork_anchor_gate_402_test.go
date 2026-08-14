@@ -118,7 +118,7 @@ func TestForkPassesAnchorGateWithOneFreeAnchor402(t *testing.T) {
 		t.Fatal("#402: a pure Sybil quorum with NO anchor attestation must still be refused (ErrAnchorRequired) — that is C2")
 	}
 
-	t.Logf("#402 Q-A CONFIRMED: AnchorQuorum=1 accepts a Sybil-extended fork blessed by one free anchor, "+
+	t.Logf("#402 Q-A CONFIRMED: AnchorQuorum=1 accepts a Sybil-extended fork blessed by one free anchor, " +
 		"while refusing a zero-anchor Sybil quorum. The field 'CAPTURE' was a fork (needs an anchor), not a capture (no anchor).")
 }
 
@@ -193,6 +193,6 @@ func TestIntersectingAnchorQuorumClosesTheFork402(t *testing.T) {
 	if err := c.ValidateCommit(fork); err == nil {
 		t.Fatal("#402 fix: at AnchorQuorum=2 a one-free-anchor fork must be REFUSED (the honest commit leaves <2 free anchors)")
 	}
-	t.Logf("#402 fix direction CONFIRMED: AnchorQuorum=2 closes the one-free-anchor fork while keeping "+
+	t.Logf("#402 fix direction CONFIRMED: AnchorQuorum=2 closes the one-free-anchor fork while keeping " +
 		"honest liveness at 3-of-4 anchors (1-fault-tolerant). Cost + the general ⌈(A+1)/2⌉ rule = the research question.")
 }
