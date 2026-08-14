@@ -760,12 +760,28 @@ flow_c2_no_capture() {
     if jlog "$s" 800 | grep -qE 'immature network requires anchor|requires anchor attestations|ErrAnchorRequired|training wheels'; then gate=1; break; fi
   done
 
-  # 4) THE CLINCHER — restore the anchors; the chain must RESUME advancing, proving
-  #    the halt was the missing anchors and not merely dead Sybils.
-  echo "    restoring anchors — chain must resume…"
+  # 4) THE CLINCHER — restore the anchors and DRIVE a block; the chain must
+  #    commit it and the Sybil must sync it, proving the halt was the missing
+  #    anchors and not merely dead Sybils. DRIVE, don't wait (B6): the chain is
+  #    reactive — every due renewal was drained into blocks before the stop,
+  #    and the frozen height mints no new ones (renewal-due is HEIGHT-based) —
+  #    so a restored network is legitimately QUIESCENT, and waiting for a
+  #    spontaneous block mis-grades healthy idleness as a liveness gap. Three
+  #    runs GAPed exactly this way; the captured journals (run 9b2198e-67673)
+  #    show the restored anchors fully healthy — bootstrapped, standing back,
+  #    bond challenges passing — with simply nothing to propose. (The pre-#397
+  #    drain over-proposed own renewals, an accidental heartbeat that masked
+  #    this.) Same drive-then-verify pattern as flow 10's B2 drills.
+  echo "    restoring anchors — driving a block; the chain must commit it and the Sybil must sync it…"
   for a in $anchors_nodes; do svc "$a" start >/dev/null 2>&1 || true; done
   local resumed=0 h2 t0; t0="$(date +%s)"
   while [ $(( $(date +%s) - t0 )) -lt 180 ]; do
+    # Re-drive every loop until the commit shows: a publish can shed on a
+    # just-restored issuer set, and the retry is what makes the clincher a
+    # DRIVEN verification instead of a coin-flip on background traffic.
+    if [ "$(syb_height val-a)" -ge 1 ] 2>/dev/null; then
+      ssh_node val-a "head -c 4096 </dev/urandom >/tmp/ft_c2r.bin; /usr/local/bin/silt swarm add /tmp/ft_c2r.bin -peers '$PEERS' -registry '$REGREF' -token-quorum $TOKEN_QUORUM -chunk-size 65536 >/dev/null 2>&1 || true"
+    fi
     h2="$(syb_height sybil-1)"; h2="${h2:-$h1}"
     [ "$h2" -gt "$h1" ] 2>/dev/null && { resumed=1; break; }
     sleep 6
@@ -778,7 +794,7 @@ flow_c2_no_capture() {
   # log — so a lagging Sybil's catch-up (height rises toward the ceiling, no fresh
   # commit) can never be misread as a capture.
   if [ "$no_advance" = 1 ] && [ "$resumed" = 1 ]; then
-    record "5-sybil-no-capture" pass major "no quiet capture: $n_syb bonded single-domain Sybils could NOT advance the chain past the anchored ceiling h${ceiling} with all anchors down (sybil head →$h1, no fresh Sybil commit), and it resumed to $h2 once the anchors returned$([ "$gate" = 1 ] && echo '; a Sybil logged the anchor-required refusal' || echo '')"
+    record "5-sybil-no-capture" pass major "no quiet capture: $n_syb bonded single-domain Sybils could NOT advance the chain past the anchored ceiling h${ceiling} with all anchors down (sybil head →$h1, no fresh Sybil commit), and a DRIVEN block committed + synced to the Sybil ($h1→$h2) once the anchors returned$([ "$gate" = 1 ] && echo '; a Sybil logged the anchor-required refusal' || echo '')"
   elif [ "$no_advance" != 1 ] && [ "$fresh_commit" = 1 ]; then
     record "5-sybil-no-capture" fail major "CAPTURE: a Sybil COMMITTED a new block past the anchored ceiling h${ceiling} (sybil head →$h1) with ALL anchors down — the training wheels did not hold"
   elif [ "$no_advance" != 1 ]; then
@@ -786,7 +802,7 @@ flow_c2_no_capture() {
     # catch-up sync of anchor-committed blocks, not a capture (the old false positive).
     record "5-sybil-no-capture" gap major "sybil head rose to $h1 (ceiling h${ceiling}) with anchors down but NO Sybil logged a fresh 'committed block' — this is a lagging Sybil CATCHING UP to anchor-committed blocks, not a capture; the property held but the drivability was masked by Sybil lag (see the run-slowness finding). Re-run on a healthier network to certify the clean no-capture outcome."
   else
-    record "5-sybil-no-capture" gap major "no-capture outcome held (head ≤ ceiling h${ceiling} with anchors down) but the chain did NOT resume within 180s after restoring anchors (h2=$h2) — liveness inconclusive; the anchors' + sybil-1's journals are captured at this verdict (flow-evidence log) — attribute before re-running (#7)"
+    record "5-sybil-no-capture" gap major "no-capture outcome held (head ≤ ceiling h${ceiling} with anchors down) but the DRIVEN post-restore block did not commit+sync to sybil-1 within 180s (h2=$h2) — the restored network could not commit a driven publish; the anchors' + sybil-1's journals are captured at this verdict (flow-evidence log) — attribute before re-running (#7)"
   fi
 }
 
