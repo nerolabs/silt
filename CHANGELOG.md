@@ -9,6 +9,17 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Fixed
+- **cloudtest flow 5: the C2 resume clincher now DRIVES a block after restoring the anchors instead
+  of waiting for a spontaneous one** (2026-08-14) — Three runs GAPed "chain did NOT resume within
+  180s" after the anchors returned. Attributed from the captured journals (run `9b2198e-67673`, the
+  #396 evidence harness): the restored anchors were fully healthy — bootstrapped in seconds, standing
+  back, bond challenges passing — but the chain is **reactive (B6)**: every due renewal was drained
+  into blocks before the stop, and renewal-due is HEIGHT-based so a frozen chain mints no new ones —
+  the restored network was legitimately QUIESCENT, and the clincher's wait mis-graded healthy idleness
+  as a liveness gap. (The pre-#397 drain over-proposed own renewals — an accidental heartbeat that
+  masked this.) The clincher now restores the anchors and then **drives a publish until it commits and
+  the Sybil syncs it** (the same drive-then-verify pattern as flow 10's B2 drills), turning the
+  verdict into a driven verification. Harness-only; no product change.
 - **#397 — an honest proposer can no longer be slashed for a protocol-manufactured double-sign
   (research-certified consensus signing fix + the certified race closures)** (2026-08-14) — The first
   evidence-instrumented field run (`b88245d-3496`) wedged at a 2-2 fork at height 6 with BOTH racing
