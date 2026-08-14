@@ -43,6 +43,14 @@
   the same staleness enforcement to `docs/` is a possible later tightening.
 - **e2e harness extensions.** A relay-in-the-middle variant and a kill-a-node
   erasure-resilience variant of the multi-process e2e suite.
+- **Capacity/scaling stress (deferred).** The 3 GB shape test — 30×100 MB vs
+  300×10 MB — to characterize manifest/DHT overhead vs chunk-count; deferred while
+  the dev box is RAM-bound. *(Transferred from session memory, 2026-08-14.)*
+- **Local chunk read-cache (deferred design).** A cachestore read-cache in front of
+  the disk store — the win is CPU/re-verify, not disk; instrument first to size it.
+  *(Transferred from session memory, 2026-08-14.)*
+- **Web UI: roots list pagination.** The roots list is unbounded; paginate + sort by
+  added-time + requests/window. *(Transferred from session memory, 2026-08-14.)*
 
 ## Narrative
 

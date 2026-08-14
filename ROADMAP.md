@@ -81,6 +81,29 @@ lives — proven by spec + an **external** red-team, never self-graded.
   genuinely-hard residue collapsed to **one** named open problem — the shared-content
   sealing boundary (see the research frontier below). Decisions:
   [`docs/decisions.md`](docs/decisions.md).
+- **The M0 build backlog is complete and externally re-attacked (2026-08-08→09).**
+  All decided directions shipped: D-DEMAND P0–P3 (blind receipt + fee-burn +
+  bonded-fetcher), H8 slices 1+2 (ephemeral-identity + relay-routed issuance), the
+  CT-style transparency log (#180), the C2 metric wired from the committed ledger
+  (#185), registry-only mode (#206), and the real-wire adversarial suite (#204). A
+  second blind red-team found 2 shipped-default P0 gaps (not broken crypto); the
+  certified remediation (F-1 `everMature` latch bundle, ε* discount close,
+  SurvivorNakamoto, canonical signer set, refuse-to-start) is merged.
+- **The consensus-correctness arc is closed as a class (2026-08-12→14, canon
+  [`D-CONSENSUS`](docs/decisions.md)).** Four multi-region field runs each found an
+  RC-blocking consensus bug — #357 (fork-choice oscillation), the B2 handoff
+  head-count quorum, #397 (honest-proposer cross-attest), #402 (one-free-anchor
+  fork). PE + research converged independently: **all four were one defect** — a
+  finality quorum that did not intersect over its phase's real validator set. The
+  closed invariant set is now canon
+  ([`consensus-invariants.md`](docs/design/consensus-invariants.md), I1–I5), the
+  deterministic **consensus model-check** (#406,
+  [`consensus-model-check.md`](docs/design/consensus-model-check.md)) becomes the
+  *first* consensus gate, and **every graded field run is gated on the model-check
+  tier covering its regime** — a field run confirms; it never discovers an
+  invariant. Fixes #357/B2/#397 are merged + field-confirmed; the certified #402
+  fix (strict anchor majority `⌊A/2⌋+1`, anchor-only launch proposing) is the next
+  build item.
 
 ## The forward tracks (what replaces the gate spine)
 
@@ -101,26 +124,46 @@ handful of items that need a new result, not a decision.
   committed, with inclusion/consistency proofs) + a narrow opt-in denylist + the
   **non-globality metric** (survivor Nakamoto-coefficient published as a certified
   lower bound `≥ t` via a ZK threshold predicate). Low urgency.
-- **D-DEMAND — the blind demand receipt.** Standing tracks *witnessed* demand
-  priced on **cost-to-wash, never receipt count**. Prototype-first (issue →
-  PoR-bound delivery-ack → bank → redeem) with fee-burn + bonded-fetcher credential,
-  then a self-dealing red-team. Demand *authenticity* is a Douceur limit (re-priced,
-  not proven away); unlinkability depends on H8's D3.
-- **C2 metric wiring.** Compute the concentration metric — Nakamoto-coefficient /
-  cost-to-corrupt over **bond-distinct operators** — from the **committed on-chain
-  bond ledger, not gossip** (kills the skew half). One measurement feeds three seams
-  (consensus shed, private-lookup committee certification, C2).
-- **Registry economics (Gate-5 lineage).** Registry-only mode (#47) and keeping
-  public registries cheap to run (#48) — a costless public good, decoupled from
-  full storage/serving.
+- **D-DEMAND — the blind demand receipt. ✅ P0–P3 BUILT** (#181): issue → PoR-bound
+  delivery-ack → bank → redeem, blind withdrawal, fee-burn + bonded-fetcher
+  cost-to-wash levers, self-dealing red-team at both tiers. Demand stays a **neutral
+  observable** (never standing). Remaining: the P2 dispute-*resolution* half (gated
+  on a verifiable-escrow primitive with no adoptable pure-Go impl) and
+  fetcher-unlinkability's timing leg (H8 epoch-batching).
+- **C2 metric wiring. ✅ BUILT** (#185): `chain.C2Metric()` over the committed bond
+  ledger (never gossip), consumed by the shed; `OperatorMargin` discounts for the
+  clustering unknowns. Still future: the H8 committee-certification consumer +
+  Byzantine-robust sampling.
+- **Registry economics (Gate-5 lineage). ✅ core shipped** — registry-only mode +
+  read-cost bounding (#206). Post-launch: liveness-pruning + federation (#207).
+- **M1 — efficiency (opens only after the M0 gate, in this order per the PE
+  ruling):** (1) #299 succinct bond proof (research-gated; collapses the size-aware
+  deadline + byte budget + O(N) drain in one move); (2) residual token-gather cost;
+  (3) CPU-per-audit + dials-per-fetch gauges — measurement, allowed early, captured
+  during P1 as the M1 baseline; (4) drain batching (determinism guards intact);
+  (5) genesis-to-head diff sync (#382 follow-up). The trust harness never softens
+  for M1 — cost budgets overlay the same runs.
 
 ### Verify tracks — the gate to "M0 held"
 
 M0 is *held* only when an **external** party attacks the built composition and it
 survives at declared parameters. Self-graded does not count.
 
+**The certified sequence to the gate (D-CONSENSUS, 2026-08-14):** build the
+certified #402 fix → **consensus model-check launch tier green** (#406, with the
+#357/#397/#402 failing-first replays) → the P1 all-corners field run → model-check
+handoff tier + the #399 WS-recovery drill → the MATURING=1 run (field-cert of the
+#389 weight-quorum handoff) → model-check full budget + the red-team entry
+criteria ([`release-checklist.md`](docs/release-checklist.md)) → **external red
+team (#183)**.
+
+- **Consensus model-check (#406).** The deterministic I1–I5 property harness — the
+  first consensus gate, and the gate on every graded field run (tier order:
+  unit → model-check → sim → netem → field).
 - **Multi-machine field test (R1, #52).** Bonds, tokens, and consensus across real
   machines and real NAT — the trust plane earning the rigor the storage plane has.
+  Confirms on real WAN what the model-check proved; grades liveness, which only
+  the field can.
 - **External red-team vs C1/C2.** A fresh, no-memory adversary attacks the
   *systemic* claim and the seven composition **seams** ([`m0.md`](docs/design/m0.md)
   §7), not isolated primitives — a primitive failing a standalone "Sybil-proof" test
