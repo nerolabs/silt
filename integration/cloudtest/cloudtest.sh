@@ -140,6 +140,13 @@ else: print('-1 -1')" 2>/dev/null)"
 
 apply() {
   preflight_quota
+  # Provisioning model, stated LOUDLY (never silent): a graded/cert run defaults every
+  # role to on-demand STANDARD, because a mid-run SPOT preemption of storage/relay/
+  # adversary/sybil cascades into false FAILs of nearly every flow (variables.tf) — two
+  # runs (841fa1b, 6218ba1) were lost to exactly this: 7 SPOT VMs preempted, wait_ready
+  # timed out, ZERO scenarios graded. e2-small on-demand is ~cents/hr for the fleet.
+  # SMOKE stays all-SPOT (cheap shakedown); explicit ALL_ON_DEMAND=false opts back in.
+  echo "==> provisioning model: $([ "${ALL_ON_DEMAND:-$([ "${SMOKE:-0}" = 1 ] && echo false || echo true)}" = true ] && echo 'ALL on-demand (STANDARD) — preemption-safe cert run' || echo 'SPOT for non-core (cheap; may be preempted — NOT for a graded cert)')"
   echo "==> terraform apply (run=$RUN_ID)"
   # Persist the run id so `nuke`/`down` from a FRESH shell target the right label.
   # RUN_ID embeds $$ (pid) by default, so a later `./cloudtest.sh nuke` in a new
@@ -157,7 +164,7 @@ apply() {
     -var "budget_amount_usd=${BUDGET_AMOUNT_USD:-0}" \
     -var "billing_account=${BILLING_ACCOUNT:-}" \
     -var "core_on_demand=${CORE_ON_DEMAND:-$([ "${SMOKE:-0}" = 1 ] && echo false || echo true)}" \
-    -var "all_on_demand=${ALL_ON_DEMAND:-false}"
+    -var "all_on_demand=${ALL_ON_DEMAND:-$([ "${SMOKE:-0}" = 1 ] && echo false || echo true)}"
   tf output -json nodes > "$FT_DIR/nodes.json"
   # Terraform's node output carries instance_name/zone/ips/role but NOT the silt
   # NodeID — yet scenarios.sh reads node_field <n> nodeid (the #184 drills derive
@@ -237,10 +244,23 @@ run_scenarios() {
   . ./lib.sh
   # shellcheck disable=SC1091
   . ./scenarios.sh
-  run_all_scenarios || true    # a failing check is recorded, never aborts the run
+  # Persist the console (#7): ft_publish diagnostics and per-flow narration used to
+  # die with the terminal, leaving a FAIL verdict with no trail after teardown. The
+  # tee'd copy lands next to the run's report. (The pipeline subshell is fine: flows
+  # append to results.jsonl / evidence logs by path, and report() reads files.)
+  { run_all_scenarios || true; } 2>&1 | tee -a "$FT_DIR/console-$RUN_ID.log"
 }
 
-report() { echo "==> report"; RUN_ID="$RUN_ID" ./gen_report.sh; }
+report() {
+  echo "==> report"; RUN_ID="$RUN_ID" ./gen_report.sh
+  # Archive per run: results.jsonl/report.md are OVERWRITTEN by the next run, which
+  # erased the pass/fail history needed to tell a regression from a never-passed
+  # flow (this session had to reconstruct run c815091's verdicts from memory).
+  mkdir -p "$FT_DIR/archive"
+  cp -f "$FT_DIR/results.jsonl" "$FT_DIR/archive/results-$RUN_ID.jsonl" 2>/dev/null || true
+  cp -f "$FT_DIR/report.md"     "$FT_DIR/archive/report-$RUN_ID.md"     2>/dev/null || true
+  echo "    archived → archive/results-$RUN_ID.jsonl + archive/report-$RUN_ID.md (evidence: flow-evidence-$RUN_ID.log, console-$RUN_ID.log, publish-diag-$RUN_ID.log)"
+}
 
 teardown() {
   [ "${KEEP_UP:-0}" = 1 ] && { echo "==> KEEP_UP=1 — leaving the network up. './cloudtest.sh down' when done."; return; }
