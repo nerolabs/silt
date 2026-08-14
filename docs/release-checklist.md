@@ -14,12 +14,24 @@
    [launch-plan.md](launch-plan.md): credible from day one, not an experimental
    drop the community is asked to finish hardening.
 
-**Hard M0 gates (both must pass before `1.0.0`):**
+**Hard M0 gates (all must pass before `1.0.0`):**
+- [ ] **Consensus model-check green on the full schedule budget (#406)** — the
+  deterministic I1–I5 harness (`docs/design/consensus-model-check.md`), with the
+  four scar replays (#357/B2/#397/#402) proven failing-first. Per D-CONSENSUS,
+  each graded field run is itself gated on the model-check tier covering its
+  regime — a field run *confirms*, it never discovers a consensus invariant.
 - [ ] **Multi-machine field test — the R1 gate (#52)**, including the adversarial-consensus
   SAFETY sub-suite over the real wire (equivocation-slash, partition→heavier-fork heal,
   low-bond reject, forged-block reject), not just liveness.
 - [ ] **External red-team verdict against the C1 + C2 composition (#183)** — self-graded
-  does not count (B8). M0 is *held* only when both of these pass at declared parameters.
+  does not count (B8). M0 is *held* only when these pass at declared parameters.
+
+**Red-team entry criteria (#183 does not start until all hold):**
+- [ ] Model-check green on the full schedule budget (above).
+- [ ] **The #399 WS-checkpoint recovery drill** built and green (flow 10).
+- [ ] **The local netem adversarial suite deterministic-green 10 consecutive runs**
+  (`integration/adversarial SUITE=all` under `delay 80ms 20ms`) — a bimodally-red
+  gate is a backstop you can't trust (PE ruling §5, 2026-08-13).
 
 Everything below is the mechanics of cutting a tag on the RC line (`0.9.0`)
 and, when the field-proof gate is met, V1 (`1.0.0`). The last step — pushing a

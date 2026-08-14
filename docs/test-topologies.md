@@ -23,6 +23,17 @@ cheaply reach — see `sim/` (e.g. `TestPartitionHealsToHeavierFork`,
 `TestBondAuditEarnsStandingOverTheNetwork`, the equivocation tests). Run them
 with `go test ./sim/ -run <name> -v`.
 
+**For consensus specifically, this tier gained a first-class gate (canon,
+2026-08-14): the consensus model-check** — a deterministic *adversarial property*
+harness that drives the real chain core through hostile schedules (delay,
+partition, crash-restart, equivocation) and asserts the I1–I5 invariants
+([`design/consensus-invariants.md`](design/consensus-invariants.md)) after every
+step. The existing sims ask "does this scenario converge?"; the model-check asks
+"does *any* schedule violate an invariant?" — the complement. The consensus tier
+order is `unit → model-check → sim → netem → field`, and each graded field run is
+gated on the model-check tier covering its regime. Spec:
+[`design/consensus-model-check.md`](design/consensus-model-check.md); build: #406.
+
 ## 1 — Localhost swarm (real sockets, one box)
 
 Several `silt daemon` processes on `127.0.0.1`, real TLS, real disk stores.
