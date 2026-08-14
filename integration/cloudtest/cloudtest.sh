@@ -140,6 +140,13 @@ else: print('-1 -1')" 2>/dev/null)"
 
 apply() {
   preflight_quota
+  # Provisioning model, stated LOUDLY (never silent): a graded/cert run defaults every
+  # role to on-demand STANDARD, because a mid-run SPOT preemption of storage/relay/
+  # adversary/sybil cascades into false FAILs of nearly every flow (variables.tf) — two
+  # runs (841fa1b, 6218ba1) were lost to exactly this: 7 SPOT VMs preempted, wait_ready
+  # timed out, ZERO scenarios graded. e2-small on-demand is ~cents/hr for the fleet.
+  # SMOKE stays all-SPOT (cheap shakedown); explicit ALL_ON_DEMAND=false opts back in.
+  echo "==> provisioning model: $([ "${ALL_ON_DEMAND:-$([ "${SMOKE:-0}" = 1 ] && echo false || echo true)}" = true ] && echo 'ALL on-demand (STANDARD) — preemption-safe cert run' || echo 'SPOT for non-core (cheap; may be preempted — NOT for a graded cert)')"
   echo "==> terraform apply (run=$RUN_ID)"
   # Persist the run id so `nuke`/`down` from a FRESH shell target the right label.
   # RUN_ID embeds $$ (pid) by default, so a later `./cloudtest.sh nuke` in a new
@@ -157,7 +164,7 @@ apply() {
     -var "budget_amount_usd=${BUDGET_AMOUNT_USD:-0}" \
     -var "billing_account=${BILLING_ACCOUNT:-}" \
     -var "core_on_demand=${CORE_ON_DEMAND:-$([ "${SMOKE:-0}" = 1 ] && echo false || echo true)}" \
-    -var "all_on_demand=${ALL_ON_DEMAND:-false}"
+    -var "all_on_demand=${ALL_ON_DEMAND:-$([ "${SMOKE:-0}" = 1 ] && echo false || echo true)}"
   tf output -json nodes > "$FT_DIR/nodes.json"
   # Terraform's node output carries instance_name/zone/ips/role but NOT the silt
   # NodeID — yet scenarios.sh reads node_field <n> nodeid (the #184 drills derive
