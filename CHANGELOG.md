@@ -23,6 +23,26 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   tests-only here, no product change.
 
 ### Fixed
+- **#402 — the launch anchor gate is now a DERIVED strict anchor majority `⌊A/2⌋+1`, structural in
+  objective mode (research-certified consensus fix; encoding B)** (2026-08-14) — Closes the
+  launch face of the intersecting-quorum invariant (I1). Two parts: (1) **anchor-only launch
+  proposing** — during the young window only anchors propose; a bonded sybil drains via
+  `MsgSubmitBondReg` (submit-don't-propose, #397), removing the sybil-proposed fork at its source.
+  (2) The commit gate now requires a **strict anchor majority `⌊A/2⌋+1`** (=3 of 4) counting the
+  proposer-if-anchor, **derived from `len(Anchors)` in objective mode independent of the
+  `-anchor-quorum` knob** — so a missing/low config can never disable quorum intersection. Attribution
+  correction that drove the structural choice: the field run (`4faaee8-22913`) left `-anchor-quorum`
+  unset (flag default 0 → gate inert), so the fork needed no free anchor — a two-sybil-signature
+  quorum committed it. The consult's proposed `AnchorQuorum=⌈A/2⌉` (=2) was insufficient: a
+  both-sybil-proposed 2-2 anchor split satisfies it and the finality gate then *cements* a permanent
+  conflicting-finalization partition. Legacy (non-objective) mode is unchanged (configured `AnchorQuorum`
+  capture-prevention floor, no finality gate). Fault tolerance is the same 3-of-4 (1-fault-tolerant),
+  now uniform and intersecting. Failing-first repros in `core/chain/fork_anchor_gate_402_test.go`
+  (the 2-2 split; sybil-can't-propose; derived-ignores-config; 3-of-4 liveness); seam-7 equivocation
+  test re-expressed at A=3 to keep its lone-culprit property under the majority rule. Certification:
+  `silt-reviews/.../fork-anchor-gate-402-RESEARCH-CERTIFICATION-2026-08-14.md`; deliberation:
+  `docs/thinking/2026-08-14-402-anchor-gate-encoding-and-derived-threshold.md`. Invariants: I1 (launch
+  intersection), I3 (set = membership).
 - **cloudtest flow 5: the C2 resume clincher now DRIVES a block after restoring the anchors instead
   of waiting for a spontaneous one** (2026-08-14) — Three runs GAPed "chain did NOT resume within
   180s" after the anchors returned. Attributed from the captured journals (run `9b2198e-67673`, the

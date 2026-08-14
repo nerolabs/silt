@@ -58,7 +58,12 @@ func TestMaturityLatchDoesNotRearmAnchorsOnDemature(t *testing.T) {
 		proposer ed25519.PrivateKey
 		group    []ed25519.PrivateKey
 	}{
-		{w1, []ed25519.PrivateKey{s1, s2, s3}},
+		// Anchor a1 proposes the LAUNCH block (anchor-only proposing, #402 encoding
+		// B); the real validators enroll by ATTESTING. That first block trips
+		// maturity (4 bonded operators ≥ MatureValidators), so the SECOND block is
+		// post-handoff and a bonded validator (s1) proposes it — the anchor has shed.
+		// (Pre-#402 both were bonded-proposed, which the launch rule now refuses.)
+		{a1, []ed25519.PrivateKey{w1, s1, s2, s3}},
 		{s1, []ed25519.PrivateKey{w1}},
 	}
 	for i, r := range rounds {
@@ -162,7 +167,9 @@ func TestDeMatureSuperQuorumReplacesTheAnchorNet(t *testing.T) {
 	rounds := []struct {
 		p ed25519.PrivateKey
 		g []ed25519.PrivateKey
-	}{{w1, []ed25519.PrivateKey{s1, s2, s3}}, {s1, []ed25519.PrivateKey{w1}}}
+		// Anchor a1 proposes the launch block (anchor-only, #402 encoding B); the
+		// bonded s1 proposes the post-handoff block (the anchor has shed at maturity).
+	}{{a1, []ed25519.PrivateKey{w1, s1, s2, s3}}, {s1, []ed25519.PrivateKey{w1}}}
 	for i, r := range rounds {
 		nb := &Block{Version: BlockVersion, Height: b.Height + 1, Prev: b.Hash(), Entries: []ports.Entry{entry(byte(i + 1))}}
 		Sign(nb, r.p)
@@ -313,7 +320,9 @@ func TestMaturityLatchSurvivesReloadAndReconcile(t *testing.T) {
 	rounds := []struct {
 		p ed25519.PrivateKey
 		g []ed25519.PrivateKey
-	}{{w1, []ed25519.PrivateKey{s1, s2, s3}}, {s1, []ed25519.PrivateKey{w1}}}
+		// Anchor a1 proposes the launch block (anchor-only, #402 encoding B); the
+		// bonded s1 proposes the post-handoff block (the anchor has shed at maturity).
+	}{{a1, []ed25519.PrivateKey{w1, s1, s2, s3}}, {s1, []ed25519.PrivateKey{w1}}}
 	for i, r := range rounds {
 		nb := &Block{Version: BlockVersion, Height: b.Height + 1, Prev: b.Hash(), Entries: []ports.Entry{entry(byte(i + 1))}}
 		Sign(nb, r.p)

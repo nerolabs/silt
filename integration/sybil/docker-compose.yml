@@ -6,9 +6,13 @@
 #                   blocks COMMIT the Sybils' bond registrations (giving them real
 #                   on-chain standing — so the capture attempt below is blocked by
 #                   the ANCHOR gate, not merely by "no reputation yet").
-#   a2 (10.90.0.3)  the second honest anchor. It attests a1's blocks, satisfying
-#                   -anchor-quorum 1 (a single anchor can't co-sign its own block —
-#                   the proposer is excluded from the anchor count).
+#   a2 (10.90.0.3)  the second honest anchor. It attests a1's blocks, so each commit
+#                   carries BOTH anchors (a1 proposer + a2 attester = 2). Under #402 the
+#                   launch gate is a DERIVED strict anchor majority ⌊A/2⌋+1 in objective
+#                   mode (=2 for these 2 anchors), so -anchor-quorum is IGNORED here — the
+#                   two-anchor commit satisfies the derived rule, and a Sybil now cannot
+#                   even PROPOSE during launch (anchor-only proposing, encoding B), a
+#                   stronger form of the same C2 barrier.
 #   s1 (10.90.0.4)  a Sybil validator that ALSO serves a registry — the capture
 #                   target. Once bootstrapped it has real bonded standing, then
 #                   tries to commit WITHOUT an anchor.

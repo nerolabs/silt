@@ -166,7 +166,7 @@ tolerance, and restart), see [`examples/`](../examples/README.md).
 | Quorum | `-quorum K` | attestations (excluding proposer) to commit | fewer than K → no commit |
 | Attesters | `-attesters ID[,…]` | who a proposer gathers attestations from | — |
 | **Unlinkable issuance** | `-require-tokens K` | this validator blind-signs publish tokens; the chain accepts only tokened, Publisher-less entries | a committed entry carries a token, no Publisher |
-| Training wheels | `-anchors ID[,…] -anchor-quorum A -mature-validators M` | a young network's commit also needs anchor sign-off, until M distinct independents have attested — then it sheds automatically | before maturity an anchorless quorum is refused; after, it commits |
+| Training wheels | `-anchors ID[,…] -mature-validators M` | a young network's commit needs a **strict anchor majority** (⌊A/2⌋+1, derived in objective mode — #402; only anchors propose during launch), until M distinct independents have attested — then it sheds automatically. `-anchor-quorum` is legacy-only (objective derives it, so config can't disable intersection) | before maturity a sub-majority (or anchorless) quorum is refused; after, it commits |
 | Trusted mode (opt out of privacy) | `-allow-publisher` | permits a durable Publisher→root record | off by default; only for explicitly trusted deployments |
 | **Restart survival** | stop, rerun with the same `-store DIR` | bond plot + issuer key + chain reload | it is a validator again immediately — **no re-plot**, standing intact |
 | Inspect the chain | `silt chain-status -store DIR` | read-only: head height, head hash, block/entry counts | run it on each replica — same head height **and** hash = they agree |

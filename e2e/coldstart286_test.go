@@ -53,9 +53,11 @@ func TestObjectiveColdStartCommitsGenesis(t *testing.T) {
 	daemons := make([]*daemon, N)
 	for i := 0; i < N; i++ {
 		att := make([]string, 0, N-1)
+		persistent := make([]string, 0, N-1)
 		for j := 0; j < N; j++ {
 			if j != i {
 				att = append(att, ids[j])
+				persistent = append(persistent, ids[j]+"@"+port[j])
 			}
 		}
 		args := []string{
@@ -67,6 +69,13 @@ func TestObjectiveColdStartCommitsGenesis(t *testing.T) {
 			"-mature-validators", fmt.Sprintf("%d", N),
 			"-anchors", anchors,
 			"-attesters", strings.Join(att, ","),
+			// Configure the validator set as a static, never-evicted persistent-peer tier
+			// (network-durability §8): consensus must not depend on discovery for the
+			// addresses it needs to gather quorum. Required now that #402 raised the launch
+			// bar to a strict anchor majority (3 of 4) — a half-converged discovery mesh
+			// reaches 2 but not 3 under load, so a pure-`-bootstrap` cold start flakes. This
+			// is the shipped #286-Layer-2 fix, so the regression guard should exercise it.
+			"-persistent-peers", strings.Join(persistent, ","),
 			"-quorum", "2",
 			"-bond-audit", bondAudit,
 			"-capacity", "1G", "-mdns=false",
@@ -147,6 +156,21 @@ func TestObjectiveColdStartWithSatelliteValidator(t *testing.T) {
 		if i >= CORE { // the satellite attests all 4 core validators (none is "self")
 			att = append(att[:0], ids[:CORE]...)
 		}
+		// Configure the WHOLE validator set as a static, never-evicted persistent-peer
+		// tier (network-durability §8 / the cloudtest precedent, #286 Layer 2): consensus
+		// must NOT depend on discovery for the addresses it needs to gather the anchor
+		// quorum. Without it the mesh converges only partially under CPU load, and the
+		// #402 strict anchor majority (3 of 4) then can't be reached — a CONFOUND (mesh
+		// convergence) masquerading as the variable this test isolates (does the SATELLITE
+		// block commit?). Pre-#402 the lower 2-quorum was reachable on a half-formed mesh,
+		// so the confound stayed hidden; the higher bar surfaced it. Configuring the set is
+		// the settled answer, and it makes the test assert its actual question.
+		persistent := make([]string, 0, CORE)
+		for j := range ids {
+			if j != i {
+				persistent = append(persistent, ids[j]+"@"+port[j])
+			}
+		}
 		args := []string{
 			"-id-seed", fmt.Sprintf("%d", 7200+i),
 			"-listen", port[i], "-advertise", port[i], "-store", t.TempDir(),
@@ -154,6 +178,7 @@ func TestObjectiveColdStartWithSatelliteValidator(t *testing.T) {
 			"-min-bond", "1M", "-min-bond-floor", "0", "-bond", "8M",
 			"-mature-validators", fmt.Sprintf("%d", CORE),
 			"-anchors", anchors, "-attesters", strings.Join(att, ","),
+			"-persistent-peers", strings.Join(persistent, ","),
 			"-quorum", "2", "-bond-audit", "2s", "-capacity", "1G", "-mdns=false",
 		}
 		args = append(args, extra...)
