@@ -9,6 +9,18 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **#406 — consensus model-check, tier 1: the exhaustive I1 launch oracle** (2026-08-15) — The first
+  rung of the deterministic adversarial consensus harness (`docs/design/consensus-model-check.md`):
+  `core/chain/modelcheck_test.go` drives the REAL `Chain` finality predicate over an **exhaustive**
+  enumeration of adversarial anchor coalitions (N∈{3,4,5} launch regime, +8 sybils) and asserts **I1** —
+  no two *disjoint* anchor coalitions may both finalize a block at one height (the invariant all four
+  scars #357/B2/#397/#402 violated at their core). Proven **failing-first**: reverting the launch rule to
+  the pre-#402 `AnchorQuorum=1` makes it go RED ("disjoint coalitions [0] and [1] both finalize" — the
+  exact #402 defect) in milliseconds on a laptop, GREEN under the derived `⌊A/2⌋+1`. This is the
+  cheapest-tier catch the testing-tiers assessment calls for; it begins the gate that ends "discover a
+  consensus invariant by billable field run" (D-CONSENSUS). WIP — the mature/I3/I5 oracles and the
+  simnet tier-2 (I2-restart) layer are the documented next steps; scope is stated honestly in the file
+  header (S5). Test-only; no production change.
 - **#402 — chain-tier repro attributing the launch anchor-gate fork (the field "CAPTURE" was a fork,
   not a Sybil capture)** (2026-08-14) — Field run `4faaee8-22913` graded a flow-5 "CAPTURE"; the
   captured evidence + `core/chain/fork_anchor_gate_402_test.go` show it was a **fork**. The
