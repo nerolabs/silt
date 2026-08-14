@@ -8,6 +8,38 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Fixed
+- **#397 — an honest proposer can no longer be slashed for a protocol-manufactured double-sign
+  (research-certified consensus signing fix + the certified race closures)** (2026-08-14) — The first
+  evidence-instrumented field run (`b88245d-3496`) wedged at a 2-2 fork at height 6 with BOTH racing
+  anchors permanently slashed as equivocators: `proposeBlock` signed a proposal **without recording it
+  in the never-sign-twice ledger** (only attestations were recorded), so when two renewal-clock-aligned
+  anchors proposed the same height, each found an empty ledger and honestly **attested the competitor's
+  block** — signing two different blocks at one height; the cross-fork scan then correctly slashed both
+  honest anchors on both branches and the anchor-quorum chain died (publishes failed with validators
+  4/4 reachable; restarting the anchors could not undo the committed slash). Research certification
+  (`silt-reviews/…/honest-proposer-cross-attest-RESEARCH-CERTIFICATION-2026-08-14.md`) established the
+  launch finality quorum was **already intersecting** (support-3-of-4; the double-commit was the
+  bug-manufactured >f break, not a quorum-design flaw) and certified this fix set, all shipped here:
+  **(Q1)** a proposal now enters the same never-sign-twice ledger as an attestation at sign time —
+  **(Q1b)** replaced by a **persisted monotonic `{height, hash}` watermark fsync'd BEFORE any consensus
+  signature is released** (`adapters/markstore`, the Tendermint `priv_validator_state` pattern; wired
+  refuse-to-start in the daemon), so a crash/restart can no longer wipe the mark and let a validator
+  contradict a signature it already shipped — permanent slashing (Q3, unchanged) is sound only with
+  this; **(Q2b)** the two certified liveness race-closures: the drain takeover fallback now readmits
+  **one proposer per sweep by rank** (was: every eligible proposer at once after 3 idle sweeps), and a
+  non-designated proposer whose only pending work is its **own due renewal submits it**
+  (`SubmitBondRenewal`, already broadcast every sweep) **instead of proposing** — removing the
+  genesis-aligned renewal-clock collision that drove the field race; **(Q4)** two detection bugs: the
+  local ledger slash is now **idempotent-once per culprit** (it re-applied and re-logged every ~2s
+  reconcile sweep for as long as the fork stayed live) and a pending **on-chain slash record now
+  requeues until a commit confirms it** (the requeue list was built but never appended to, so a slash
+  whose carrier proposal failed to gather quorum was silently dropped). Failing-first regressions at
+  unit + sim tiers: proposer-refuses-competitor, restarted-validator-refuses (crash variant),
+  slash-idempotency, slash-requeue, submit-don't-propose, staggered takeover; the sim training-wheels
+  test's doomed no-anchor attempt now uses an expendable proposer, mirroring its throwaway-attester
+  convention (its old shape had the proposer double-signing height 1 — the exact #397 hazard).
+
 ### Added
 - **cloudtest: a scenario-level FAIL/GAP now captures its evidence before teardown
   (build-immutable #7)** (2026-08-14) — Run `beb3628-95860` (the P1 all-corners run) ended with two

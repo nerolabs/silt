@@ -26,6 +26,62 @@ func (n *Node) EnableChain(ch *chain.Chain, priv ed25519.PrivateKey) {
 // Chain exposes the local replica (dashboards, tests).
 func (n *Node) Chain() *chain.Chain { return n.chain }
 
+// SetSignMarkStore wires the durable never-sign-twice watermark (#397 Q1b) and
+// loads any persisted mark, so a restarted validator refuses to contradict a
+// signature it released on a previous boot (the crash variant of the honest
+// double-sign — without this, a crash between signing and committing wipes the
+// in-memory mark and the restarted node can be permanently slashed for
+// equivocating against itself). A Load error is the caller's refuse-to-start
+// condition: running without the mark re-opens exactly that window.
+func (n *Node) SetSignMarkStore(s ports.SignMarkStore) error {
+	n.signMarkStore = s
+	m, ok, err := s.Load()
+	if err != nil {
+		return err
+	}
+	if ok {
+		n.signMark, n.signMarkSet = m, true
+	}
+	return nil
+}
+
+// signAllowedAt reports whether releasing a consensus signature over block
+// (height, hash) is consistent with the never-sign-twice watermark: anything
+// strictly above the mark is fine, re-signing the SAME block is idempotent,
+// and any other signature at or below the mark is the double-sign an honest
+// validator must refuse — even against its own unfinished proposal (#397).
+// (Heights at or below the mark stay refused even across a fork-choice
+// reorg: a signature, once released, is final for this identity — D-1
+// prefer-stall-to-reorg, Tendermint locking.)
+func (n *Node) signAllowedAt(height uint64, h ports.Hash) bool {
+	if !n.signMarkSet || height > n.signMark.Height {
+		return true
+	}
+	return height == n.signMark.Height && h == n.signMark.Hash
+}
+
+// recordSign advances the watermark to (height, hash) and, when a store is
+// wired, makes it DURABLE before returning — the signature may be released to
+// the wire only after this succeeds (mark-then-sign; a crash in between leaves
+// an unused mark, which is safe). Returns false if the mark could not be
+// persisted: the caller must then NOT release the signature (fail-safe: a
+// missed signing turn costs one gather round; a signature without a durable
+// mark risks a permanent honest self-slash).
+func (n *Node) recordSign(height uint64, h ports.Hash) bool {
+	if n.signMarkSet && height == n.signMark.Height && h == n.signMark.Hash {
+		return true // idempotent re-sign of the same block; already durable
+	}
+	mark := ports.SignMark{Height: height, Hash: h}
+	if n.signMarkStore != nil {
+		if err := n.signMarkStore.Save(mark); err != nil {
+			n.logf(ports.LogWarn, "sign-mark persist FAILED — refusing to sign", "height", height, "err", err)
+			return false
+		}
+	}
+	n.signMark, n.signMarkSet = mark, true
+	return true
+}
+
 // CanonicalIssuers is the deterministic, on-chain-bonded issuer set a publisher
 // should acquire tokens/credits from for privacy (M0 D3 / F4 §2c): every
 // publisher asks the SAME validators, so the subset chosen leaks nothing. Empty
@@ -161,17 +217,22 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 			return true
 		}
 		// Never equivocate: refuse to sign a DIFFERENT block at a height we
-		// already attested, even if two competing proposals arrive before
-		// either commits. An honest validator's signature at a height is
-		// final; this is what makes a double-sign proof (chain.Equivocation)
-		// evidence of malice, not an accident.
-		if prev, ok := n.attested[b.Height]; ok && prev != b.Hash() {
-			n.logf(ports.LogDebug, "gather/attest: REFUSED (already attested a different block at height)", "from", from, "height", b.Height)
+		// already signed — attested OR proposed (#397: the proposer's own
+		// signature counts; two racing proposers cross-attesting each other's
+		// block is how the field slashed two honest anchors). An honest
+		// validator's signature at a height is final; this is what makes a
+		// double-sign proof (chain.Equivocation) evidence of malice, not an
+		// accident. The mark is made durable BEFORE the attestation leaves.
+		if !n.signAllowedAt(b.Height, b.Hash()) {
+			n.logf(ports.LogDebug, "gather/attest: REFUSED (already signed a different block at height)", "from", from, "height", b.Height)
+			n.reply(from, msg, ports.Message{Kind: ports.MsgAttestReply, OK: false})
+			return true
+		}
+		if !n.recordSign(b.Height, b.Hash()) {
 			n.reply(from, msg, ports.Message{Kind: ports.MsgAttestReply, OK: false})
 			return true
 		}
 		att := chain.Attest(b, n.signer)
-		n.attested[b.Height] = b.Hash()
 		raw, _ := attEncode(att)
 		n.logf(ports.LogDebug, "gather/attest: ATTESTED", "from", from, "height", b.Height, "bytes", len(msg.Data), "regs", len(b.BondRegs))
 		n.reply(from, msg, ports.Message{Kind: ports.MsgAttestReply, OK: true, Data: raw})
@@ -300,6 +361,10 @@ func (n *Node) ValidateEntryProposal(e ports.Entry) error {
 	}
 	prev, height := n.chain.Head()
 	b := &chain.Block{Version: chain.BlockVersion, Height: height, Prev: prev, Entries: []ports.Entry{e}}
+	// Watermark-exempt (#397): this signed candidate exists only for the local
+	// pre-check and is NEVER released to the wire — a signature no peer can
+	// hold is not equivocation evidence. Only released signatures (proposeBlock
+	// gather, attest replies) consult and advance the sign mark.
 	chain.Sign(b, n.signer)
 	return n.chain.ValidateProposal(b)
 }
@@ -393,7 +458,12 @@ func (n *Node) proposeBlock(b *chain.Block, attesters, broadcast []ports.NodeID,
 		n.pendingBondRegs = make(map[ports.NodeID]chain.BondReg)
 	}
 	// Record any equivocations we detected on-chain, so every replica evicts the
-	// culprit from the objective set in lockstep (F2). Drop any already recorded.
+	// culprit from the objective set in lockstep (F2). Drop only records the
+	// chain already confirms (IsSlashed); everything else RIDES THIS BLOCK AND
+	// STAYS QUEUED until a commit confirms it (#397 Q4-ii — the queue was
+	// previously zeroed after one attempt, so a slash whose carrier proposal
+	// failed to gather quorum was silently dropped and the culprit's on-chain
+	// eviction could be lost).
 	if len(n.pendingSlashes) > 0 {
 		var still []chain.Equivocation
 		for _, e := range n.pendingSlashes {
@@ -401,12 +471,27 @@ func (n *Node) proposeBlock(b *chain.Block, attesters, broadcast []ports.NodeID,
 				continue
 			}
 			b.Slashes = append(b.Slashes, e)
+			still = append(still, e)
 		}
 		n.pendingSlashes = still
 	}
 	chain.Sign(b, n.signer)
 	if err := n.chain.ValidateProposal(b); err != nil {
 		done(fmt.Errorf("propose: local pre-check: %w", err))
+		return
+	}
+	// Never sign twice at one height (#397 Q1): the proposer's signature enters
+	// the SAME never-sign-twice ledger as an attestation, and the mark is made
+	// durable BEFORE the proposal is released — whether or not it ever commits.
+	// Without this, two proposers racing one height each saw an empty ledger,
+	// attested each other's block, and were both slashed as equivocators (the
+	// b88245d-3496 wedge). Same-hash re-proposal stays idempotent.
+	if !n.signAllowedAt(b.Height, b.Hash()) {
+		done(fmt.Errorf("propose height %d: already signed a different block at this height (never-sign-twice, #397)", b.Height))
+		return
+	}
+	if !n.recordSign(b.Height, b.Hash()) {
+		done(fmt.Errorf("propose height %d: sign-mark could not be persisted — refusing to sign (#397 Q1b)", b.Height))
 		return
 	}
 	raw := chain.Encode(b)
@@ -507,15 +592,26 @@ func (n *Node) slashEquivocators(a, b []chain.Block) {
 		return
 	}
 	for _, e := range chain.FindEquivocations(a, b) {
-		n.ledger.SlashEquivocation(e.CulpritID()) // legacy/rep path
+		cid := e.CulpritID()
+		// Idempotent-once (#397 Q4-i): a live fork is re-observed by EVERY
+		// reconcile sweep until it heals, so the same double-sign is re-detected
+		// over and over — the field wedge re-slashed and re-logged both culprits
+		// every ~2s indefinitely. The local penalty, warn line, and callback
+		// fire once per culprit; the ON-CHAIN record has its own lifecycle
+		// (pendingSlashes requeues until a commit confirms it).
+		if n.slashedLocal[cid] {
+			continue
+		}
+		n.slashedLocal[cid] = true
+		n.ledger.SlashEquivocation(cid) // legacy/rep path
 		// Queue the proof for on-chain recording so the OBJECTIVE set evicts the
 		// culprit in lockstep on every replica (F2), not just this local ledger.
-		if n.chain != nil && !n.chain.IsSlashed(e.CulpritID()) {
+		if n.chain != nil && !n.chain.IsSlashed(cid) {
 			n.pendingSlashes = append(n.pendingSlashes, e)
 		}
-		n.logf(ports.LogWarn, "validator slashed for equivocation", "culprit", e.CulpritID(), "height", e.A.Height)
+		n.logf(ports.LogWarn, "validator slashed for equivocation", "culprit", cid, "height", e.A.Height)
 		if n.onSlash != nil {
-			n.onSlash(e.CulpritID(), e.A.Height)
+			n.onSlash(cid, e.A.Height)
 		}
 	}
 }
@@ -693,31 +789,62 @@ func (n *Node) maybeProposeBondDrain() {
 		return // not our block to make (a young non-anchor waits for an anchor to drain it)
 	}
 	prevHead, height := n.chain.Head()
-	// NEVER sign twice at one height (Tendermint locking): if we already
-	// attested a block at this height, a drain proposal here would be a second
-	// signature on a different block — which a peer's cross-fork scan reads as
-	// equivocation. The failing-first repro showed exactly that: two anchors
-	// drain-raced a height, cross-attested, and SLASHED EACH OTHER into a
-	// wedged chain. The height clears when a commit moves the head.
-	if _, signed := n.attested[height]; signed {
+	// NEVER sign twice at one height (Tendermint locking): if we already signed
+	// a block at this height — attested OR proposed — a drain proposal here
+	// would be a second signature on a different block, which a peer's
+	// cross-fork scan reads as equivocation. The height clears when a commit
+	// moves the head. (#397: the watermark now also covers our own proposals.)
+	if n.signMarkSet && height <= n.signMark.Height {
 		return
 	}
 	// One designated drain proposer per height, derived from COMMITTED state so
 	// every honest replica agrees (chain.EligibleProposers is sorted): this
 	// makes an honest drain race structurally impossible, rather than merely
-	// unlikely. Liveness fallback: if the designated proposer is absent (the
-	// height hasn't moved after a few sweeps with work still pending), any
-	// eligible proposer may pick it up — the race window returns only in that
-	// degraded case, and the never-sign-twice guard above still bounds it.
+	// unlikely.
+	//
+	// Two #397 (research-certified) race-closures on top of the designated rule:
+	//
+	//  · SUBMIT-DON'T-PROPOSE (Q2b-2): our OWN renewal being due is never by
+	//    itself a reason for a NON-designated proposer to propose —
+	//    SubmitBondRenewal already broadcast the fresh reg on this same sweep
+	//    (chainSyncTick), so it sits in every eligible proposer's pending queue
+	//    and the DESIGNATED one drains it. This removes the field wedge's
+	//    driver: genesis-aligned renewal clocks made two anchors both propose
+	//    the same height (b88245d-3496).
+	//
+	//  · STAGGERED TAKEOVER (Q2b-1): if the designated proposer hasn't drained
+	//    after 3 idle sweeps, eligible proposers take over ONE PER SWEEP in
+	//    rank order (rank distance from the designated), instead of all rushing
+	//    at once — a dual-proposer race can then only arise if a takeover
+	//    proposer is itself silent for a full sweep, and the never-sign-twice
+	//    watermark still bounds that residue.
+	dist := 0
 	if props := n.chain.EligibleProposers(); len(props) > 0 {
-		designated := props[int(height)%len(props)]
-		if designated != n.id {
-			if n.drainWaitSweeps < 3 {
-				n.drainWaitSweeps++
-				return
+		self := -1
+		for i, p := range props {
+			if p == n.id {
+				self = i
+				break
 			}
-			// designated proposer hasn't drained in 3 sweeps — take over
 		}
+		if self >= 0 {
+			d := int(height) % len(props)
+			dist = (self - d + len(props)) % len(props)
+		}
+	}
+	if dist > 0 {
+		if len(n.pendingBondRegs) == 0 {
+			// Own renewal only, and we are not the designated proposer: submit,
+			// never propose (Q2b-2). The reg reaches the chain via the
+			// designated proposer's queue; nothing to take over for.
+			n.drainWaitSweeps = 0
+			return
+		}
+		if n.drainWaitSweeps < 3+dist {
+			n.drainWaitSweeps++
+			return
+		}
+		// designated (and every closer rank) idle past its window — our turn
 	}
 	n.drainWaitSweeps = 0
 	// Attesters: only peers whose attestation will actually COUNT (the gather
