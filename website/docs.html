@@ -127,17 +127,28 @@ siltcare:v1:<span class="o">&lt;root&gt;</span>:<span class="g">&lt;layout-key&g
   latecomers re-check the whole chain as they sync.</p>
   <p>The default untrusted posture makes fork-choice <b>objective</b>: a validator's
   weight is its <b>on-chain proof-of-space-time bond</b> — challenged storage that
-  costs real, identity-bound disk — recomputed identically by every replica, with
-  quorums sized to a Byzantine supermajority (n&minus;f), so divergent replicas agree
-  and forks heal. Standing is not free reputation: it is priced across the
-  non-substitutable axes of <span class="mono">C_honest = disk &times; address-diversity
-  &times; time &times; served-demand</span>, so forging a fraction <em>q</em> of it
-  costs roughly <em>q</em> of honest provision (<b>C1, no discount</b>), and a
-  concentration metric over bond-distinct operators keeps a quiet cartel from capturing
-  the quorum (<b>C2, no quiet capture</b>). This is Silt's mission — held as a
-  composition in tension, not a single primitive — detailed in
+  costs real, identity-bound disk — recomputed identically by every replica, so
+  divergent replicas agree and forks heal. Quorums must <b>intersect</b> over the
+  phase's real validator set: in the mature phase a block's supporters must carry
+  <b>more than &frac23; of the frozen epoch's committed bonded weight</b> (weight,
+  never head-count — free identities can't vote their way in), and during the
+  launch window commits additionally require sign-off from the named anchor
+  validators — explicit, time-boxed training wheels that shed on measured
+  decentralization. Standing is not free reputation: the target pricing is the
+  non-substitutable composition <span class="mono">C_honest = disk &times;
+  address-diversity &times; time &times; served-demand</span>, so forging a
+  fraction <em>q</em> of it costs roughly <em>q</em> of honest provision
+  (<b>C1, no discount</b>), and a concentration metric over bond-distinct
+  operators keeps a quiet cartel from capturing the quorum (<b>C2, no quiet
+  capture</b>). Honest status: <b>today the shipped subset gates standing on the
+  disk (bond) axis alone</b> — the served-demand and address-diversity axes are
+  designed but not yet wired into the standing number. This is Silt's mission —
+  held as a composition in tension, not a single primitive — with the full honest
+  accounting in
   <a href="https://github.com/nerolabs/silt/blob/main/docs/design/m0.md">docs/design/m0.md</a>.</p>
-  <p>This is deliberately not proof-of-work. It's cheap and final immediately. The
+  <p>This is deliberately not proof-of-work. It's cheap, and a block is final once
+  an intersecting quorum stands behind it — from then on the chain prefers a
+  visible stall to a silent rewrite (finalized history is never reorged). The
   founding <b>genesis</b> block is the one exception — it needs no quorum, because it
   is declared identically on every node rather than agreed, exactly as Bitcoin
   hardcodes its first block.</p>
