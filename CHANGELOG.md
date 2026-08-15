@@ -9,6 +9,22 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **#406 — consensus model-check, tier 2: the simnet held-delivery substrate (adversarial delivery over
+  the REAL node loop)** (2026-08-15) — `adapters/simnet` gains a test-only **held-delivery mode**
+  (`EnableHeldDelivery` + `Pending`/`Deliver`/`DropPending`): `Send` parks each message so a driver
+  fires them in an order IT chooses — the "adversarial delivery scheduler" the design specifies —
+  off by default so every existing sim/e2e path is untouched, conformance-tested
+  (`adapters/simnet/helddelivery_test.go`). `core/node/modelcheck_tier2_test.go` proves the substrate
+  drives the real loop: a real proposer gathers a real quorum and commits + broadcasts to every replica
+  **entirely over driver-controlled delivery** (no clock advance; request timeouts sit on the clock,
+  which the driver never advances, so a gather completes purely by delivered replies). The adversarial
+  invariant oracles that build on it (I2-across-restart; the genuine I5/#397 catch) are the documented
+  next increment — the first I5 draft was **withheld because it could not be shown failing-first**:
+  #402's I1 structurally prevents the both-commit fork the #397 slash needs, so the #397 fix is shielded
+  by a different fix in the current codebase, and a genuine I5 catch needs a pre-#402 baseline
+  (`docs/thinking/2026-08-15-406-tier2-substrate-and-the-i5-honesty-catch.md`). The only production code
+  is the `adapters/simnet` held-delivery mode, which is inert unless `EnableHeldDelivery()` is called
+  (no existing path calls it), so all shipping behavior is unchanged.
 - **#406 — consensus model-check, tier 1: the I3 mature weight-quorum oracle (the B2 catch)** (2026-08-15)
   — `core/chain/modelcheck_i3_test.go` drives the REAL `Chain` to a **mature epoch** whose frozen
   `epochSet` holds the B2 imbalance — 3 real validators (distinct domains, 20 MiB) + **8 sybils** (one
