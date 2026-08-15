@@ -215,14 +215,19 @@ wait_ready() {
     done
     [ -z "$pending" ] && { echo "    all nodes ready"; return 0; }
     if [ "$(date +%s)" -ge "$deadline" ]; then
-      # Split pending into CORE vs the OPT-IN sybil cohort. The sybils exist only for the
-      # C2 corner; if they fail to boot but every core node is up, the base corners
-      # (convergence, publish, fault-tolerance, takedown, …) are still fully gradeable —
-      # so DON'T abort the whole billable run on the opt-in cohort. Only a core node not
-      # coming up is a real infra failure that invalidates the run.
+      # Split pending into CORE vs the OPT-IN cohort (sybils + maturers). The cohort
+      # exists only for the C2/maturing corners; if it fails to boot but every core
+      # node is up, the base corners (convergence, publish, fault-tolerance,
+      # takedown, …) are still fully gradeable — so DON'T abort the whole billable
+      # run on the opt-in cohort (flow 10 guards its own maturer-live premise and
+      # GAPs honestly, never a false FAIL). Only a core node not coming up is a real
+      # infra failure that invalidates the run.
       core_pending=""; syb_pending=""
       for n in $pending; do
-        if [ "$(node_field "$n" role)" = sybil ]; then syb_pending="$syb_pending $n"; else core_pending="$core_pending $n"; fi
+        case "$(node_field "$n" role)" in
+          sybil|maturer) syb_pending="$syb_pending $n" ;;
+          *) core_pending="$core_pending $n" ;;
+        esac
       done
       # shellcheck disable=SC2086
       capture_failed_nodes $pending
@@ -230,7 +235,7 @@ wait_ready() {
         echo "    timed out — CORE nodes not ready:$core_pending (sybils:$syb_pending) — aborting (a core-node startup failure invalidates the run)"
         return 1
       fi
-      echo "    timed out — only the OPT-IN sybil cohort is not ready:$syb_pending — PROCEEDING; the C2/maturing corners will GAP honestly (their journals captured above), the base corners still grade"
+      echo "    timed out — only the OPT-IN cohort (sybils/maturers) is not ready:$syb_pending — PROCEEDING; the C2/maturing corners will GAP honestly (their journals captured above), the base corners still grade"
       return 0
     fi
     echo "    still starting:$pending"; sleep 15

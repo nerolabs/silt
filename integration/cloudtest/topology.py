@@ -53,7 +53,7 @@ PRIMARY_ZONE = os.environ.get("PRIMARY_ZONE", f"{DEFAULT_REGION}-a")
 STORE = "/var/lib/silt"
 
 # ── The node table ─────────────────────────────────────────────────────────────
-# role: validator | storage | registry | relay | fetcher | natgw | natted | adversary | sybil
+# role: validator | storage | registry | relay | fetcher | natgw | natted | adversary | sybil | maturer
 # IPs are STATIC and must sit in the subnet the role belongs to (public vs nat).
 # Zones are spread across regions on purpose, to exercise REAL inter-node latency.
 NODES = [
@@ -93,25 +93,42 @@ if os.environ.get("SMOKE") == "1":
 # Off by default (0 extra VMs). `SYBILS=8 ./cloudtest.sh` opts in. Never in SMOKE.
 SYBILS = 0 if os.environ.get("SMOKE") == "1" else int(os.environ.get("SYBILS", "0"))
 
-# MATURING topology (§4, PE ruling + research certification 2026-08-13): the base
-# topology NEVER matures BY DESIGN — 4 equal validator bonds give a Nakamoto
-# coefficient of 2 < -mature-validators 4 (and the default operator margin raises
-# the bar further), so every prior field run exercised only the YOUNG, anchor-
-# gated regime. `MATURING=1 SYBILS=8 ./cloudtest.sh` opts into the topology that
-# HANDS OFF on the wire: the maturity bar is set to the coefficient the 4
-# distinct-operator validators actually reach (2, at an explicit margin of 1 —
-# a deliberate, disclosed drill parameterization, uniform across every consensus
-# role), so the everMature latch trips during warm-up, the anchors shed at the
-# next epoch boundary, and the post-shed regime — the external red team's
-# sharpest target (seam #8) — is field-exercised: post-shed commits, the B2
-# stall drill (cheap cohort declines to attest; honest weight must still
-# commit), the B2 capture drill (cheap-member cohort alone must be refused for
-# lack of frozen-weight super-majority), and the weak-subjectivity cold-sync.
-# The Sybil cohort bonds the MINIMUM (not the validator bond) so the drills
-# price the attack the way the certification does: ~9 MiB of cheap heads
-# against ~256 MiB of honest weight — per-head cheapness is exactly what the
-# weight-counted quorum must refuse. Mutually exclusive with flow 5 (the
-# anchor-gate capture premise assumes a network that never sheds).
+# MATURING topology (re-split 2026-08-15 per the PE concurrence,
+# silt-reviews/principle-engineer/maturing-topology-resplit-concurrence-PE-2026-08-15.md):
+# the base topology NEVER matures BY DESIGN, and neither did the original
+# MATURING=1 parameterization — the latch was UNREACHABLE BY CONSTRUCTION:
+# C2Metric EXCLUDES anchors (chain.go — counting the scaffolding's own bonds to
+# shed the scaffolding would be circular, immutable #3), all 4 validators here
+# ARE the anchors, and the only non-anchor cohort (8 single-domain Sybils)
+# aggregates to NakamotoDomains=1 < bar 2 — the certified C2 discount doing its
+# job. Pinned by core/chain/maturing_topology_premise_test.go; deliberation in
+# docs/thinking/2026-08-15-maturing-latch-premise-unreachable.md.
+#
+# `MATURING=1 SYBILS=8 ./cloudtest.sh` therefore re-splits the 8 cohort slots:
+# 4 HONEST MATURERS (non-anchor validators, full 64M bond, NO -domain — unset
+# domains count as independent address-diversity groups) + 4 single-domain
+# MinBond Sybils. The maturers are what the maturity metric is designed to see
+# (the I3 oracle's certified shape, modelcheck_i3_test.go matureWeightedEpoch,
+# now on the wire): at full drain the non-anchor set is 4×64M distinct +
+# 4×1M one-domain → NakamotoOperators=2, NakamotoDomains=2 → min=2 ≥ bar 2
+# (margin 1, uniform across every consensus role) → the everMature latch trips,
+# the anchors shed at the next epoch boundary, and the post-shed regime — the
+# external red team's sharpest target (seam #8) — is field-exercised: post-shed
+# commits, the B2 stall drill (cheap cohort declines to attest; honest weight
+# must still commit), the B2 capture drill (the cheap cohort ALONE — honest
+# maturers stopped too — must be refused for lack of frozen-weight
+# super-majority), and the weak-subjectivity cold-sync.
+#
+# WHAT THIS FIELD-PROVES, AND WHAT IT DOES NOT (PE note 1 — disclose, don't
+# inflate): it field-confirms the handoff MECHANISM — the real shed on the
+# wire, post-shed commits via the bonded set, the weight-quorum SHAPE, WS
+# cold-sync. It does NOT field-test the ⅓-weight STALL BOUNDARY: the 4×1M
+# Sybils are ~1.5% of bonded weight, trivially outweighed, so the stall/capture
+# drills confirm shape, not boundary. The boundary stays the deterministic
+# tier's job (the I3 oracle) + the red team. MATURING=0 topologies (the P1
+# launch gate, 5-sybil-no-capture at 8 sybils) are UNTOUCHED by this re-split
+# (PE note 3). Mutually exclusive with flow 5 (the anchor-gate capture premise
+# assumes a network that never sheds).
 MATURING = 0 if os.environ.get("SMOKE") == "1" else int(os.environ.get("MATURING", "0"))
 # Place the Sybil cohort in the SECONDARY regions' IP HEADROOM, never the primary.
 # The base 13-node topology already fills the primary region to its 8-IP
@@ -126,9 +143,17 @@ if _syb_zones:
     _syb_slots = [z.strip() for z in _syb_zones.split(",") if z.strip()]
 else:
     _syb_slots = ["europe-west1-b"] * 5 + ["us-east1-b"] * 3  # fill europe's headroom first, then us-east1
+# MATURING re-split: the first 4 cohort slots become HONEST MATURERS (the
+# non-anchor distinct-operator cohort the maturity metric gates on — see the
+# MATURING comment above); the rest stay single-domain Sybils. MATURING=0 keeps
+# all slots as Sybils, byte-identical to the P1 launch topology (PE note 3).
+_N_MATURERS = 4 if MATURING else 0
 for _i in range(SYBILS):
     _z = _syb_slots[_i] if _i < len(_syb_slots) else _syb_slots[_i % len(_syb_slots)]
-    NODES.append((f"sybil-{_i+1}", "sybil", 6601 + _i, f"10.20.0.{61+_i}", _z))
+    if _i < _N_MATURERS:
+        NODES.append((f"maturer-{_i+1}", "maturer", 6601 + _i, f"10.20.0.{61+_i}", _z))
+    else:
+        NODES.append((f"sybil-{_i+1-_N_MATURERS}", "sybil", 6601 + _i, f"10.20.0.{61+_i}", _z))
 
 
 def node_id(seed):
@@ -192,6 +217,8 @@ def main():
     # honest anchor set (which it does not control) and co-signs only itself.
     sybils = [name for name, n in nodes.items() if n["role"] == "sybil"]
     n_syb = len(sybils)
+    maturers = [name for name, n in nodes.items() if n["role"] == "maturer"]
+    n_mat = len(maturers)
     # syb_quorum retained for the meta/report only. NOTE (#338 cloud GAP root cause):
     # the Sybil role must run the SAME -quorum FLOOR as the rest of the swarm, NOT a
     # self-majority. -quorum is a hard floor on ValidateCommit (max(Quorum,
@@ -292,6 +319,27 @@ def main():
                     f"-validator -objective -min-bond {min_bond} -min-bond-floor {min_floor} "
                     f"-mature-validators {mature_bar}{margin_flag} -anchors {anchors} -attesters {adv_attesters} "
                     f"-quorum {quorum} -bond {bond} -bond-audit 30s -capacity 2G")
+        if role == "maturer":
+            # HONEST MATURER (the 2026-08-15 re-split): a non-anchor validator with
+            # a FULL bond and NO -domain (unset = an independent address-diversity
+            # group, chain.go "unset → independent"). This is the cohort the maturity
+            # metric is designed to see — C2Metric excludes anchors, so only these
+            # bonds can trip the bar-2 latch (min(NakamotoOperators, NakamotoDomains)
+            # ≥ 2 needs two 64M distinct-domain non-anchor bonds committed). No core
+            # change is needed for their attestations to count: drain proposers
+            # gather from syncTargets() ∩ AttesterEligible (chainrole.go), so once a
+            # maturer's bond commits, the anchors solicit it and it lands in
+            # validatorsSeen. -attesters/-persistent-peers over the REAL validator
+            # set: the static tier is the chain-sync + reg-submit path
+            # (configure-not-discover, network-durability §8), same as the sybils.
+            mat_attesters = ",".join(nodes[v]["nodeid"] for v in validators)
+            mat_persistent = ",".join(f'{nodes[v]["nodeid"]}@{nodes[v]["ip"]}:{SWARM_PORT}'
+                                      for v in validators)
+            return (f"daemon -id-seed {n['seed']} {common} -advertise {ip}:{SWARM_PORT} -bootstrap {bootstrap} "
+                    f"-validator -objective -min-bond {min_bond} -min-bond-floor {min_floor} "
+                    f"-mature-validators {mature_bar}{margin_flag} -anchors {anchors} -attesters {mat_attesters} "
+                    f"-persistent-peers {mat_persistent} "
+                    f"-quorum {quorum} -bond {bond} -bond-audit 30s -capacity 2G")
         if role == "sybil":
             # C2 quiet-capture attempt: bonded, NON-anchor, all sharing ONE -domain
             # (one operator's satellite keys). References the REAL anchor set it does
@@ -332,6 +380,7 @@ def main():
         "swarm_port": SWARM_PORT, "relay_port": RELAY_PORT, "registry_port": REGISTRY_PORT,
         "bond_mode": BOND_MODE, "n_val": n_val, "quorum": quorum, "bootstrap": bootstrap,
         "sybils": sybils, "n_syb": n_syb, "syb_quorum": syb_quorum, "syb_domain": "sybilnet",
+        "maturers": maturers, "n_mat": n_mat,
         "maturing": MATURING, "mature_bar": mature_bar,
         "relay_ref": relay_ref, "regref": regref, "anchors": anchors, "boot": boot,
         "public_cidr": PUBLIC_CIDR, "nat_cidr": NAT_CIDR,
