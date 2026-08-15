@@ -1138,7 +1138,12 @@ wait_network_warm() {
 # text (the lasterr grep alone misses that case). The publish-reliability issue stays
 # visible via the WARN line and #351.
 : "${FETCH_PUBLISH_DEGRADED:=0}"
-: "${PUBLISHER_WARMUP_S:=180}"
+# Computed, not arbitrary (PE §4): the fresh-publisher warm IS the ~5-leg path the
+# publish bound describes (join → issuer-set discovery → parallel token gather →
+# scatter → register/commit), so its window is the same computed ≈240s — the old
+# 180s sat BELOW the bound and declared the subsystem degraded before the path's
+# own retry budget had run out (run 8ae8326-34086's warm WARN at 180s).
+: "${PUBLISHER_WARMUP_S:=240}"
 wait_publisher_warm() { # wait_publisher_warm NODE
   local node="$1" t0 deadline out link
   node_exists "$node" || return 0
