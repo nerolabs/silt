@@ -9,6 +9,20 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **MATURING-drill premise repro: the 10-maturing-handoff latch is unreachable in the field topology
+  as parameterized** (2026-08-15) — `TestMaturingFieldTopologyLatchUnreachable` (core/chain) constructs
+  the exact MATURING=1 SYBILS=8 parameterization at FULL drain — every bond banked, every participant
+  generously granted attester status — and measures `min(NakamotoOperators=3, NakamotoDomains=1) = 1 < 2`,
+  so `Mature()` is false no matter how many regs commit: `C2Metric` excludes anchors **by design**
+  (counting the scaffolding's own bonds to shed the scaffolding would be circular, immutable #3) and the
+  topology's 4 validators are all anchors, while the only non-anchor cohort — the 8 single-`-domain`
+  Sybils — aggregates to ONE address-diversity group, which is the certified C2 discount doing its job.
+  The two field GAPs ("latch never tripped in 420s") therefore had two stacked causes: the bond-reg drain
+  staleness race (fixed) **and** this premise defect — the drill asked the maturity metric to be tripped
+  by exactly the cohort it exists to refuse. Core behavior is correct and now pinned; the fix is a
+  harness topology re-split (honest non-anchor distinct-domain maturers, the I3 oracle's certified
+  shape), routed through a PE concurrence note before the re-run. Found on a laptop while deriving the
+  principled maturity bound — before the billable run, not after.
 - **`-loop-budget` — emit the event-loop goroutine-budget decomposition at INFO for a diagnostic run**
   (2026-08-15) — The per-window per-handler breakdown (from the eventloop instrumentation) is debug-gated
   by default so it's silent at steady state; `-loop-budget` raises just that summary to INFO so a
