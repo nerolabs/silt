@@ -27,6 +27,15 @@
   does not count (B8). M0 is *held* only when these pass at declared parameters.
 
 **Red-team entry criteria (#183 does not start until all hold):**
+- [ ] **#432 rounds+locking landed and model-check-green across round boundaries** (the
+  I4-liveness wedge: a connected all-honest network could permanently stall — a
+  catastrophic liveness finding a red team hits immediately, and it is not even
+  adversarial. Blocks #183 for BOTH regimes; the P1 launch-liveness claim carries this
+  asterisk until it lands. PE ruling 2026-08-15,
+  `silt-reviews/principle-engineer/i4-liveness-wedge-rounds-ruling-PE-2026-08-15.md`.)
+- [ ] **Launch-regime interleaved publish/drain liveness drill green** (P1 confirmed
+  safety and observed-run commit-capability, not liveness under the crossed-proposer
+  race — the drill closes what P1 didn't cover).
 - [ ] Model-check green on the full schedule budget (above).
 - [ ] **The #399 WS-checkpoint recovery drill** built and green (flow 10).
 - [ ] **The local netem adversarial suite deterministic-green 10 consecutive runs**

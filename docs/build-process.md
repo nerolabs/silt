@@ -192,3 +192,21 @@ deterministically, not discovered one field run at a time.
 5. **The third-time rule.** When a lesson is about to be documented a second or third
    time, encode it as a **test or a gate** instead of more prose. The canon grows by
    mechanism, not by amendment-log therapy.
+6. **"Cite the analogue" means adopt the SCHEMA and know why each field exists — never
+   just the purpose.** (PE ruling, #432, 2026-08-15.) The #397 watermark copied Tendermint
+   `priv_validator_state`'s *purpose* (persist the last signature) and dropped its
+   `(height, ROUND, step)` schema — and the dropped field *was* the liveness: the
+   height-only mark permanently wedged a 2-2 proposer race (the two MATURING field
+   starves). The rule cuts recursively: the FIX must adopt rounds *with the locking
+   mechanism that makes them safe* (Tendermint lock/POL-change, HotStuff lock-on-QC), not
+   "a round counter" — free higher-round re-signing re-opens I1 via a delayed lower-round
+   quorum. When importing a literature mechanism, diff your struct against theirs
+   field-by-field; every field you drop is a claim you can prove you don't need it.
+7. **An oracle that observes an anomaly it cannot explain within its scope FLAGS or
+   FAILS — it never assumes-benign.** (PE ruling, #432.) The tier-2 I5 oracle *saw* the
+   wedge ("neither commits") and its comment rationalized it as "a benign launch stall the
+   designated-proposer rule resolves in production" — an unverified assumption embedded as
+   authoritative, and false (the rule serializes drain-vs-drain only; the stall was the
+   permanent I4-liveness wedge). Same class as a harness hard-coding "#351 egress" into a
+   verdict. If your test's setup or teardown shows behavior you can't prove benign, that
+   observation is a finding to route, not a comment to write.
