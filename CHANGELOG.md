@@ -9,6 +9,18 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **Never refuse silently: the two consensus refusal sites that hid the #432 wedge now log
+  their reason** (2026-08-15) — A peer-submitted bond registration that fails validation was
+  dropped on arrival with no line (`MsgSubmitBondReg` receipt), and a drain proposal blocked at
+  the proposer's own #397 sign watermark returned silently — so the #432 wedged-height liveness
+  defect (chain stalled, cohort regs arriving-verifying-vanishing) was mis-attributed across
+  three field runs (discovery/#351, CPU, staleness). The receipt path now logs
+  `bond-reg submit REFUSED` with the exact `ValidateBondRegErr` reason (decode failures too),
+  and the drain logs `bond-reg drain BLOCKED at own sign watermark` — at most once per 30s
+  sweep, only while pending work is actually blocked, which is precisely the #432 wedge
+  signature. One field observation now names this class (B5; build-immutable #7's
+  instrument-first). The wedge itself is #432 (rounds+locking, research certification in
+  progress) — this ships the observability ahead of the rule change because it is not one.
 - **MATURING topology re-split: 4 honest maturers + 4 Sybils, with COMPUTED harness windows**
   (2026-08-15, per the PE concurrence on the latch-premise finding) — The `MATURING=1 SYBILS=8` field
   topology re-splits its 8 cohort slots into **4 honest maturers** (non-anchor validators, full 64M
