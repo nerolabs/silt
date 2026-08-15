@@ -382,6 +382,32 @@ func cmdDaemon(args []string) error {
 		ports.LogIf(obs, ports.LogError, "recovered panic on node thread", "panic", r)
 	}
 
+	// Single-goroutine latency instrumentation (Andrew's timing-for-evidence
+	// idea, 2026-08-15). The event loop is the one serialization point, so
+	// timing each task names the handler that eats the node's thread — or, via
+	// the watchdog, one that HANGS it, with a stack dump of where it is stuck.
+	// This is the observability that a starved MATURING field run lacked (the
+	// per-issuer gather legs were debug-gated), and the per-kind window summary
+	// IS the goroutine-budget decomposition (which message kind dominates).
+	// Thresholds are deliberately conservative; a single task on this thread
+	// blocking others for >250ms is already notable, and >15s means downstream
+	// requests (8s transport deadline) are already timing out behind it.
+	loop.SlowThreshold = 250 * time.Millisecond
+	loop.OnSlow = func(label string, d time.Duration) {
+		ports.LogIf(obs, ports.LogWarn, "eventloop task slow (node thread blocked)", "kind", label, "ms", d.Milliseconds())
+	}
+	loop.HangThreshold = 15 * time.Second
+	loop.OnHang = func(label string, d time.Duration, stack []byte) {
+		ports.LogIf(obs, ports.LogError, "eventloop task HANG — node thread stuck", "kind", label, "seconds", int64(d/time.Second), "stack", string(stack))
+	}
+	loop.SummaryEvery = 30 * time.Second
+	loop.OnSummary = func(window time.Duration, stats map[string]eventloop.LabelSummary) {
+		for kind, s := range stats {
+			ports.LogIf(obs, ports.LogInfo, "eventloop budget", "window_s", int64(window/time.Second),
+				"kind", kind, "count", s.Count, "total_ms", s.Total.Milliseconds(), "max_ms", s.Max.Milliseconds())
+		}
+	}
+
 	// -relay: this daemon offers to forward ciphertext between NATed
 	// peers. A capability, not infrastructure: any reachable node can do
 	// this, none is special, and no relay is baked into the binary.
@@ -804,7 +830,7 @@ func cmdDaemon(args []string) error {
 			fmt.Fprintln(os.Stderr, "mdns: local discovery off —", err)
 		} else {
 			beacon := lan.New(tcpnet.Peer{ID: id, Addr: adv}, func(p tcpnet.Peer) {
-				loop.Post(func() {
+				loop.Post("mdns", func() {
 					tr.AddPeer(p.ID, p.Addr)
 					nd.Bootstrap([]ports.NodeID{p.ID}, func() {})
 					fmt.Printf("mdns: discovered %s@%s\n", p.ID, p.Addr)
@@ -828,7 +854,7 @@ func cmdDaemon(args []string) error {
 	go func() {
 		for range time.Tick(30 * time.Second) {
 			done := make(chan []tcpnet.Peer, 1)
-			loop.Post(func() {
+			loop.Post("peer-persist", func() {
 				reachable := nd.ReachablePeers()
 				all := tr.Peers()
 				live := all[:0]
@@ -867,7 +893,7 @@ func cmdDaemon(args []string) error {
 				fmt.Fprintln(os.Stderr, "relay-via: registration failed:", err)
 				return
 			}
-			loop.Post(func() {
+			loop.Post("relay-via", func() {
 				tr.SetAdvertise(rc.Addr())
 				fmt.Printf("relay-via: registered — peers reach us at %s\n", rc.Addr())
 				dlog("relay-via registered", "addr", rc.Addr())
@@ -889,7 +915,7 @@ func cmdDaemon(args []string) error {
 		nd.SetLiar(true) // RED-TEAM (#232): keep the proof tags, drop the bytes
 		fmt.Println("RED-TEAM: running as a PoR LIAR (keeps proof tags, drops shard bytes) — never honest")
 	}
-	loop.Post(func() {
+	loop.Post("bootstrap", func() {
 		// Self-heal if the join races a not-yet-listening bootstrap target: while
 		// the table stays empty, re-run the Kademlia join against the seeds so the
 		// node recovers on its own instead of staying isolated (#281).
@@ -1290,7 +1316,7 @@ func joinSwarm(peers string, replication int) (*ephemeral, func(fn func(done fun
 	}
 	run := func(fn func(done func())) error {
 		ch := make(chan struct{})
-		loop.Post(func() { fn(func() { close(ch) }) })
+		loop.Post("api", func() { fn(func() { close(ch) }) })
 		select {
 		case <-ch:
 			return nil

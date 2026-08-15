@@ -199,7 +199,7 @@ func cmdClient(args []string) error {
 	url := "http://" + bound + "/library.html?token=" + token
 	fmt.Printf("library:  %s\n", url)
 
-	loop.Post(func() {
+	loop.Post("bootstrap", func() {
 		nd.Bootstrap(seeds, func() {
 			fmt.Printf("connected (%d peers known)\n", nd.Table().Size())
 			nd.AnnounceHeld(func(count int) {

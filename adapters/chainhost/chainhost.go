@@ -39,7 +39,7 @@ var _ ports.Registry = (*Host)(nil)
 
 func (h *Host) onLoop(fn func(done func())) error {
 	ch := make(chan struct{})
-	h.Loop.Post(func() { fn(func() { close(ch) }) })
+	h.Loop.Post("commit", func() { fn(func() { close(ch) }) })
 	timeout := h.Timeout
 	if timeout == 0 {
 		timeout = 30 * time.Second
