@@ -216,9 +216,29 @@ func DefaultConfig() Config {
 // tokens; #98, prerequisite for #90/#91/#92). Additive field changes stay
 // version-compatible via the keyasint tags (the Token addition proved
 // this); a version bump is reserved for a change that would otherwise be a
-// silent flag-day. There is deliberately no v2 yet: this lands the guard
-// while the chain is still throwaway.
+// silent flag-day.
+//
+// v2 = BlockVersionRounds (#432, the rounds era): consensus signatures become
+// two-phase and (height, round, phase)-scoped — Atts hold the PRECOMMIT quorum
+// at CommitRound, PrepareQC holds the prepare quorum that justified it, and
+// both sign the domain-separated v2 payload instead of the bare hash. A v1
+// block keeps validating under v1 rules (era-gated in ValidateCommit /
+// VerifyEquivocation), so committed history is never re-interpreted.
+// BlockVersion (what the node MINTS) flips to BlockVersionRounds in the same
+// change that teaches the propose path to gather two-phase — never before.
 const BlockVersion = 1
+
+// BlockVersionRounds is the #432 two-phase-rounds rule era.
+const BlockVersionRounds = 2
+
+// Consensus signature phases (#432 two-phase gather, research-certified).
+// PhaseLegacy (0) is the era-1 bare-hash signature — what a pre-rounds
+// Attestation decodes as; never minted in era 2.
+const (
+	PhaseLegacy    uint8 = 0
+	PhasePrepare   uint8 = 1
+	PhasePrecommit uint8 = 2
+)
 
 // Block is one link of the registry chain.
 type Block struct {
@@ -261,13 +281,37 @@ type Block struct {
 	// mode, not only in the reputation ledger the objective set never reads.
 	// Committed by Hash (attesters sign over them); omitempty keeps it additive.
 	Slashes []Equivocation `cbor:"11,keyasint,omitempty"`
+	// CommitRound is the round this block committed at (#432 rounds era). The
+	// round is NOT part of the value's identity — the SAME block re-proposed at
+	// a higher round after a view-change must hash identically (Tendermint
+	// separates the vote's (h, r, block-id) from the block for exactly this) —
+	// so CommitRound and the certificates below are set on the COMMITTED copy,
+	// after Hash-identity has done its work, and are excluded from Hash (see
+	// Hash). 0 for era-1 blocks and for round-0 commits.
+	CommitRound uint64 `cbor:"12,keyasint,omitempty"`
+	// PrepareQC is the prepare-phase quorum certificate that justified the
+	// precommit phase (#432): the quorum of PhasePrepare attestations at
+	// (Height, CommitRound). ValidateCommit (era 2) requires it at the SAME
+	// thresholds as the commit itself — ⌊A/2⌋+1 anchors in launch, >⅔ frozen
+	// epoch weight in mature — because the POL threshold IS the commit
+	// threshold (certification §4). Excluded from Hash like Atts.
+	PrepareQC []Attestation `cbor:"13,keyasint,omitempty"`
 }
 
-// Attestation is a validator's signature over the block hash. The
-// public key rides along because a NodeID (its hash) can't be inverted.
+// Attestation is a validator's consensus signature over a block. The public
+// key rides along because a NodeID (its hash) can't be inverted.
+//
+// Era 1 (Round=0, Phase=PhaseLegacy): Sig is over the bare block hash.
+// Era 2 (#432 rounds): Sig is over the domain-separated payload
+// consensusSigBytes(phase, round, hash) — so a prepare can never be replayed
+// as a precommit, and a signature at one round can never complete a quorum at
+// another (the delayed-quorum schedule S1). Round/Phase are cbor-additive:
+// a legacy attestation decodes as (0, PhaseLegacy) and hashes identically.
 type Attestation struct {
 	PubKey []byte `cbor:"1,keyasint"`
 	Sig    []byte `cbor:"2,keyasint"`
+	Round  uint64 `cbor:"3,keyasint,omitempty"`
+	Phase  uint8  `cbor:"4,keyasint,omitempty"`
 }
 
 // BondReg registers (or renews) a validator's on-chain PoST bond for objective
@@ -363,12 +407,62 @@ func Sign(b *Block, priv ed25519.PrivateKey) {
 	b.ProposerSig = ed25519.Sign(priv, h[:])
 }
 
-// Attest produces a validator's attestation for b.
+// Attest produces a validator's era-1 (legacy, bare-hash) attestation for b.
+// Era-2 consensus uses AttestAt with an explicit round and phase.
 func Attest(b *Block, priv ed25519.PrivateKey) Attestation {
 	h := b.Hash()
 	return Attestation{
 		PubKey: append([]byte(nil), priv.Public().(ed25519.PublicKey)...),
 		Sig:    ed25519.Sign(priv, h[:]),
+	}
+}
+
+// consensusSigBytes is the era-2 signed payload: domain tag ‖ phase ‖ round ‖
+// block hash. The phase byte means a prepare can never be replayed as a
+// precommit; the round means a signature at one round can never complete a
+// quorum at another (schedule S1); the height rides inside the hash. The
+// domain tag keeps these signatures disjoint from every other signature an
+// identity key ever makes.
+func consensusSigBytes(phase uint8, round uint64, h ports.Hash) []byte {
+	buf := make([]byte, 0, len(consensusSigDomain)+1+8+len(h))
+	buf = append(buf, consensusSigDomain...)
+	buf = append(buf, phase)
+	var r [8]byte
+	binary.LittleEndian.PutUint64(r[:], round)
+	buf = append(buf, r[:]...)
+	buf = append(buf, h[:]...)
+	return buf
+}
+
+const consensusSigDomain = "silt/consensus/v2\x00"
+
+// AttestAt produces a validator's era-2 phase/round-scoped consensus signature
+// for b (#432 two-phase gather).
+func AttestAt(b *Block, priv ed25519.PrivateKey, round uint64, phase uint8) Attestation {
+	return Attestation{
+		PubKey: append([]byte(nil), priv.Public().(ed25519.PublicKey)...),
+		Sig:    ed25519.Sign(priv, consensusSigBytes(phase, round, b.Hash())),
+		Round:  round,
+		Phase:  phase,
+	}
+}
+
+// verifyAtt verifies one attestation against h under its own declared era:
+// PhaseLegacy verifies the bare hash; PhasePrepare/PhasePrecommit verify the
+// era-2 payload at the attestation's declared (round, phase). The caller
+// enforces WHICH phase/round it will accept — this only answers "is the
+// signature genuine for what it claims to be".
+func verifyAtt(a Attestation, h ports.Hash) bool {
+	if len(a.PubKey) != ed25519.PublicKeySize {
+		return false
+	}
+	switch a.Phase {
+	case PhaseLegacy:
+		return a.Round == 0 && ed25519.Verify(ed25519.PublicKey(a.PubKey), h[:], a.Sig)
+	case PhasePrepare, PhasePrecommit:
+		return ed25519.Verify(ed25519.PublicKey(a.PubKey), consensusSigBytes(a.Phase, a.Round, h), a.Sig)
+	default:
+		return false
 	}
 }
 
@@ -380,13 +474,18 @@ func Encode(b *Block) []byte {
 	return raw
 }
 
+// versionSupported: v1 (legacy single-phase) and v2 (#432 rounds) both decode;
+// each validates under ITS OWN era's rules (era-gated in ValidateCommit /
+// VerifyEquivocation) — committed history is never re-interpreted.
+func versionSupported(v uint64) bool { return v == 1 || v == BlockVersionRounds }
+
 func Decode(raw []byte) (*Block, error) {
 	var b Block
 	if err := cbor.Unmarshal(raw, &b); err != nil {
 		return nil, fmt.Errorf("chain: decode block: %w", err)
 	}
-	if b.Version != BlockVersion {
-		return nil, fmt.Errorf("%w: got %d, want %d", ErrBlockVersion, b.Version, BlockVersion)
+	if !versionSupported(b.Version) {
+		return nil, fmt.Errorf("%w: got %d, want 1..%d", ErrBlockVersion, b.Version, BlockVersionRounds)
 	}
 	return &b, nil
 }
@@ -405,8 +504,8 @@ func DecodeBlocks(raw []byte) ([]Block, error) {
 		return nil, fmt.Errorf("chain: decode blocks: %w", err)
 	}
 	for i := range bs {
-		if bs[i].Version != BlockVersion {
-			return nil, fmt.Errorf("%w: block %d got %d, want %d", ErrBlockVersion, i, bs[i].Version, BlockVersion)
+		if !versionSupported(bs[i].Version) {
+			return nil, fmt.Errorf("%w: block %d got %d, want 1..%d", ErrBlockVersion, i, bs[i].Version, BlockVersionRounds)
 		}
 	}
 	return bs, nil
@@ -1570,16 +1669,56 @@ func (c *Chain) validateTakedowns(b *Block) error {
 	return nil
 }
 
-// ValidateCommit checks a full block: the proposal rules plus a quorum
-// of distinct, qualified, non-proposer attestations.
+// ValidateCommit checks a full block under ITS OWN rule era.
+//
+// Era 1 (legacy): a quorum of distinct, qualified, non-proposer bare-hash
+// attestations, then the phase-independent quorum stack.
+//
+// Era 2 (#432 rounds): TWO quorums at the SAME (Height, CommitRound) — the
+// PrepareQC (PhasePrepare) that justified precommitting, and Atts
+// (PhasePrecommit), the commit certificate — EACH held to the full quorum
+// stack (RequiredQuorum + anchor gate + epoch weight + de-mature), because the
+// POL threshold IS the commit threshold (certification §4): at most one value
+// can gather a prepare-QC per round (two would share an honest signer), so a
+// committed value was uniquely prepared, and any view-change quorum intersects
+// its prepare quorum in ≥1 honest carrier. A signature at the wrong phase or
+// round is REFUSED (never coerced) — that refusal is what excludes the S1
+// delayed-quorum and S2 equivocate-then-misreport schedules.
 func (c *Chain) ValidateCommit(b *Block) error {
 	if err := c.ValidateProposal(b); err != nil {
 		return err
 	}
+	if b.Version >= BlockVersionRounds {
+		seenPrep, err := c.collectQuorumSigs(b, b.PrepareQC, PhasePrepare, b.CommitRound)
+		if err != nil {
+			return fmt.Errorf("prepare-QC: %w", err)
+		}
+		if err := c.requireQuorumStack(b, seenPrep); err != nil {
+			return fmt.Errorf("prepare-QC: %w", err)
+		}
+		seen, err := c.collectQuorumSigs(b, b.Atts, PhasePrecommit, b.CommitRound)
+		if err != nil {
+			return err
+		}
+		return c.requireQuorumStack(b, seen)
+	}
+	// Era 1 (legacy): bare-hash attestations at implicit (r0, PhaseLegacy).
+	seen, err := c.collectQuorumSigs(b, b.Atts, PhaseLegacy, 0)
+	if err != nil {
+		return err
+	}
+	return c.requireQuorumStack(b, seen)
+}
+
+// collectQuorumSigs verifies one phase's signature set for b: every signature
+// must be genuine, at EXACTLY the demanded (phase, round), from a distinct
+// non-proposer identity; unqualified identities are ignored (not fatal), a bad
+// or wrong-scope signature is fatal (a block carrying one is malformed —
+// refusing it is what keeps cross-round/cross-phase replay out of quorums).
+func (c *Chain) collectQuorumSigs(b *Block, sigs []Attestation, phase uint8, round uint64) (map[ports.NodeID]bool, error) {
 	h := b.Hash()
 	seen := make(map[ports.NodeID]bool)
-	valid := 0
-	for _, a := range b.Atts {
+	for _, a := range sigs {
 		if len(a.PubKey) != ed25519.PublicKeySize {
 			continue
 		}
@@ -1587,17 +1726,29 @@ func (c *Chain) ValidateCommit(b *Block) error {
 		if seen[id] || id == b.ProposerID() {
 			continue // duplicates and self-attestation don't count
 		}
-		if !ed25519.Verify(ed25519.PublicKey(a.PubKey), h[:], a.Sig) {
-			return fmt.Errorf("%w: attester %s", ErrBadSignature, id)
+		if a.Phase != phase || a.Round != round {
+			return nil, fmt.Errorf("%w: attester %s signed (phase %d, round %d), this quorum demands (phase %d, round %d)",
+				ErrBadSignature, id, a.Phase, a.Round, phase, round)
+		}
+		if !verifyAtt(a, h) {
+			return nil, fmt.Errorf("%w: attester %s", ErrBadSignature, id)
 		}
 		if !c.attesterQualified(id) {
 			continue // unqualified signatures are ignored, not fatal
 		}
 		seen[id] = true
-		valid++
 	}
-	if req := c.RequiredQuorum(); valid < req {
-		return fmt.Errorf("%w: %d qualified, need %d", ErrNoQuorum, valid, req)
+	return seen, nil
+}
+
+// requireQuorumStack applies the phase-independent quorum requirements to one
+// verified signer set: the count quorum, then the regime gates below (anchor
+// majority / epoch weight / de-mature super-quorum). Shared by the era-1
+// commit, the era-2 prepare-QC, and the era-2 precommit certificate, so the
+// three can never drift (the #402 share-the-arithmetic lesson).
+func (c *Chain) requireQuorumStack(b *Block, seen map[ports.NodeID]bool) error {
+	if req := c.RequiredQuorum(); len(seen) < req {
+		return fmt.Errorf("%w: %d qualified, need %d", ErrNoQuorum, len(seen), req)
 	}
 	// Training wheels: until the network has HANDED OFF, the quorum must ALSO
 	// carry anchor sign-off, so a Sybil quorum can't capture a young network

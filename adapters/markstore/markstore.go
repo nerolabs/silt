@@ -23,8 +23,13 @@ type Disk struct{ path string }
 
 func New(path string) *Disk { return &Disk{path: path} }
 
+// Round/Phase are additive (#432 rounds): a mark persisted before rounds loads
+// as {round:0, phase:0} — the legacy era-1 mark — exactly the schema-migration
+// rule the certification pins.
 type diskMark struct {
 	Height uint64 `json:"height"`
+	Round  uint64 `json:"round,omitempty"`
+	Phase  uint8  `json:"phase,omitempty"`
 	Hash   string `json:"hash"`
 }
 
@@ -49,11 +54,11 @@ func (d *Disk) Load() (ports.SignMark, bool, error) {
 	}
 	var h ports.Hash
 	copy(h[:], hb)
-	return ports.SignMark{Height: m.Height, Hash: h}, true, nil
+	return ports.SignMark{Height: m.Height, Round: m.Round, Phase: m.Phase, Hash: h}, true, nil
 }
 
 func (d *Disk) Save(m ports.SignMark) error {
-	raw, err := json.Marshal(diskMark{Height: m.Height, Hash: hex.EncodeToString(m.Hash[:])})
+	raw, err := json.Marshal(diskMark{Height: m.Height, Round: m.Round, Phase: m.Phase, Hash: hex.EncodeToString(m.Hash[:])})
 	if err != nil {
 		return err
 	}

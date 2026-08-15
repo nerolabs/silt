@@ -251,15 +251,19 @@ type DurabilitySnapshot struct {
 	Repairs int64 // count of bounty payments (shard-repairs the reserve funded)
 }
 
-// SignMark is a validator's monotonic last-signed watermark: the height and
-// block hash of the most recent consensus signature this identity released —
-// proposal or attestation alike, committed or not. A signature at a height is
-// FINAL for that identity: signing a different block at a height at or below
-// the mark is the double-sign the slash rule treats as proven malice, so an
-// honest node consults the mark before every consensus signature (#397; the
-// same rule Tendermint enforces via its persisted priv_validator_state).
+// SignMark is a validator's monotonic last-signed watermark: the height,
+// round, phase and block hash of the most recent consensus signature this
+// identity released — committed or not. A signature is FINAL for that identity
+// *within its (height, round, phase)*: signing a different block there is the
+// double-sign the slash rule treats as proven malice (#397, round-scoped per
+// the #432 certification — Tendermint's persisted priv_validator_state, whose
+// schema is (height, round, step); the height-only form wedged a contested
+// height permanently, #432). Round 0 / Phase 0 is the legacy era-1 mark (a
+// bare-hash signature); marks persisted before rounds load as that.
 type SignMark struct {
 	Height uint64
+	Round  uint64
+	Phase  uint8 // chain.PhaseLegacy / PhasePrepare / PhasePrecommit
 	Hash   Hash
 }
 

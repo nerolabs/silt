@@ -244,9 +244,10 @@ func TestDecodeRefusesForeignBlockVersion(t *testing.T) {
 	w.attestAll(b)
 
 	// A block from a future era (same bytes otherwise) round-trips through
-	// Encode but must be rejected by Decode.
+	// Encode but must be rejected by Decode. (BlockVersionRounds is a KNOWN
+	// era, #432 — foreign means beyond every known era.)
 	future := *b
-	future.Version = BlockVersion + 1
+	future.Version = BlockVersionRounds + 1
 	if _, err := Decode(Encode(&future)); !errors.Is(err, ErrBlockVersion) {
 		t.Fatalf("Decode accepted a foreign version, want ErrBlockVersion, got %v", err)
 	}
