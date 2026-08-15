@@ -455,7 +455,24 @@ func (n *Node) proposeBlock(b *chain.Block, attesters, broadcast []ports.NodeID,
 			b.BondRegs = append(b.BondRegs, reg)
 			used += sz
 		}
-		n.pendingBondRegs = make(map[ports.NodeID]chain.BondReg)
+		// (B) Durable pending queue: KEEP the valid regs that didn't fit this block's
+		// byte cap so the drain proceeds at the cap rate on the next block, instead of
+		// discarding the whole queue and relying on a re-broadcast to refill it (a race
+		// that — with the pre-fix single-head staleness — starved the drain). Drop the
+		// embedded (now committed) regs and any that were no longer valid this sweep
+		// (not in `fresh`: stale beyond the head window or otherwise invalid). Composes
+		// with fix A (the wider validity window) — together the drain runs at ~1/block.
+		embedded := make(map[ports.NodeID]bool, len(b.BondRegs))
+		for _, r := range b.BondRegs {
+			embedded[r.ValidatorID()] = true
+		}
+		kept := make(map[ports.NodeID]chain.BondReg)
+		for _, reg := range fresh {
+			if !embedded[reg.ValidatorID()] {
+				kept[reg.ValidatorID()] = reg
+			}
+		}
+		n.pendingBondRegs = kept
 	}
 	// Record any equivocations we detected on-chain, so every replica evicts the
 	// culprit from the objective set in lockstep (F2). Drop only records the
