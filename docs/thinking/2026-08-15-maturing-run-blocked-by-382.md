@@ -1,3 +1,13 @@
+> **⚠️ ATTRIBUTION SUPERSEDED (2026-08-15).** The `#382` attribution below is WRONG — a
+> symptom-match to a cause that already shipped fixed (#384), the exact #6 trap. A code
+> investigation (prompted by the PE ruling) overturned it AND the PE's follow-on
+> issuer-withholding hypothesis: the publisher's `-peers` is the 4 anchors only (sybils never
+> asked), and val-a's *no-egress* self-warm failed in 600s — an **anchor-side throughput wall**,
+> not #382 and not issuer-withholding. See
+> `2026-08-15-maturing-attribution-corrected-anchor-throughput.md`. The run *outcome* (9/10/0/1,
+> handoff untested, 0 FAIL, safety held) and the A/B/C scope framing below remain accurate; only
+> the root-cause attribution changed. Kept unedited as the learning trail.
+
 # MATURING field run — blocked by #382 (participating-sybil load), not a safety defect
 
 **Date:** 2026-08-15
