@@ -1005,11 +1005,20 @@ func (c *Chain) validateBondReg(r BondReg, nonce uint64) error {
 // so one stale or forged submission can't poison the whole block; a receiver uses
 // it to drop junk on arrival. False off the objective path (legacy ignores regs).
 func (c *Chain) ValidateBondReg(r BondReg) bool {
+	return c.ValidateBondRegErr(r) == nil
+}
+
+// ValidateBondRegErr is ValidateBondReg with the refusal REASON. A refused
+// peer-submitted reg must be attributable from one field observation — the
+// #432 wedge hid for three billable runs partly because the receipt path
+// dropped refusals silently (chainrole.go MsgSubmitBondReg), so the drop
+// looked like discovery/egress from the outside. Never refuse silently (B5).
+func (c *Chain) ValidateBondRegErr(r BondReg) error {
 	if !c.objective() {
-		return false
+		return fmt.Errorf("bond reg refused: chain is not objective")
 	}
 	head, _ := c.Head()
-	return c.validateBondRegWindow(r, c.recentBondRegNonces(head)) == nil
+	return c.validateBondRegWindow(r, c.recentBondRegNonces(head))
 }
 
 // validateSlashes verifies a block's on-chain equivocation records (F2): each

@@ -269,7 +269,15 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 		// self-verifying (bound to the submitter's own key), so accepting a peer's
 		// reg grants standing to the PEER, never to us.
 		if n.chain != nil && n.chain.Objective() {
-			if reg, err := bondRegDecode(msg.Data); err == nil && n.chain.ValidateBondReg(reg) {
+			// NEVER refuse silently (B5 / #432): a dropped submit is indistinguishable
+			// from a discovery failure to the submitter AND to a field investigator —
+			// the wedge's cohort-regs-never-drain symptom was mis-attributed across
+			// three runs partly because this branch ate every refusal without a line.
+			if reg, err := bondRegDecode(msg.Data); err != nil {
+				n.logf(ports.LogInfo, "bond-reg submit REFUSED (decode)", "from", from, "bytes", len(msg.Data), "err", err)
+			} else if verr := n.chain.ValidateBondRegErr(reg); verr != nil {
+				n.logf(ports.LogInfo, "bond-reg submit REFUSED", "from", from, "validator", reg.ValidatorID(), "size", reg.Size, "err", verr)
+			} else {
 				if n.pendingBondRegs == nil {
 					n.pendingBondRegs = make(map[ports.NodeID]chain.BondReg)
 				}
@@ -812,6 +820,15 @@ func (n *Node) maybeProposeBondDrain() {
 	// cross-fork scan reads as equivocation. The height clears when a commit
 	// moves the head. (#397: the watermark now also covers our own proposals.)
 	if n.signMarkSet && height <= n.signMark.Height {
+		// NEVER refuse silently when work is being blocked (B5 / #432): pending
+		// regs + a marked proposal height, sweep after sweep, is the exact
+		// signature of the wedged-height liveness defect — the one line that
+		// would have named the field stall on the first run instead of the
+		// third. One line per sweep (30s) at most, only while actually blocked.
+		if len(n.pendingBondRegs) > 0 {
+			n.logf(ports.LogInfo, "bond-reg drain BLOCKED at own sign watermark (#432 wedge signature if persistent)",
+				"height", height, "mark_height", n.signMark.Height, "pending", len(n.pendingBondRegs))
+		}
 		return
 	}
 	// One designated drain proposer per height, derived from COMMITTED state so
