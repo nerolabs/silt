@@ -99,3 +99,78 @@ func TestMaturingFieldTopologyLatchUnreachable(t *testing.T) {
 	t.Logf("Mature()=false at FULL drain — the 10-maturing-handoff latch premise is unreachable in this topology; " +
 		"the drill needs an honest non-anchor distinct-domain attesting cohort (the I3 oracle shape)")
 }
+
+// The re-split's reachability half (PE concurrence 2026-08-15): with the 8 cohort
+// slots split into 4 honest maturers (full 64M bond, UNSET domain — each an
+// independent address-diversity group) + 4 single-domain MinBond Sybils, the
+// bar-2 latch IS reachable at full drain — min(NakamotoOperators,
+// NakamotoDomains) = 2 — while the Sybil cohort alone still cannot mature it
+// (their 4 MiB single group is nowhere near the ⅓ threshold). This is the
+// deterministic RED/GREEN home for the 10-maturing-handoff drill premise: the
+// field run confirms on the wire what this asserts on a laptop.
+func TestMaturingResplitTopologyLatchReachable(t *testing.T) {
+	const maturerBond = int64(64) << 20 // -bond 64M, no -domain
+	const sybilBond = int64(1) << 20    // MinBond, all -domain sybilnet
+	anchors := map[ports.NodeID]bool{}
+	var anchorIDs []ports.NodeID
+	for i := 0; i < 4; i++ {
+		id := idOf(key(int64(9700 + i)))
+		anchors[id] = true
+		anchorIDs = append(anchorIDs, id)
+	}
+	cfg := Config{
+		Quorum: 2, MinBond: 1 << 20, ByzantineQuorum: true,
+		Anchors: anchors, AnchorQuorum: 1,
+		MatureValidators: 2, OperatorMargin: 1,
+	}
+	c := New(cfg, func(ports.NodeID) int64 { return 0 })
+	c.SetBondVerifier(objectiveVerify)
+
+	const sybilDomain = uint64(0x5b17ce7)
+	for _, aid := range anchorIDs {
+		c.bonded[aid] = maturerBond
+		c.validatorsSeen[aid] = true
+	}
+	for i := 0; i < 4; i++ { // maturers: full bond, domain UNSET (independent)
+		mid := idOf(key(int64(9800 + i)))
+		c.bonded[mid] = maturerBond
+		c.validatorsSeen[mid] = true
+	}
+	for i := 0; i < 4; i++ { // sybils: MinBond, one shared domain
+		sid := idOf(key(int64(9900 + i)))
+		c.bonded[sid] = sybilBond
+		c.bondDomain[sid] = sybilDomain
+		c.validatorsSeen[sid] = true
+	}
+
+	m := c.C2Metric()
+	t.Logf("C2 at full drain (re-split): NakamotoBonds=%d NakamotoOperators=%d NakamotoDomains=%d DistinctDomains=%d Participants=%d",
+		m.NakamotoBonds, m.NakamotoOperators, m.NakamotoDomains, m.DistinctDomains, m.Participants)
+
+	if m.NakamotoOperators < cfg.MatureValidators || m.NakamotoDomains < cfg.MatureValidators {
+		t.Fatalf("re-split premise: min(operators=%d, domains=%d) must reach the bar %d at full drain",
+			m.NakamotoOperators, m.NakamotoDomains, cfg.MatureValidators)
+	}
+	if !c.Mature() {
+		t.Fatalf("re-split premise: Mature() must be true at full drain (the field drill's latch depends on it); C2: %+v", m)
+	}
+
+	// The Sybil half of the drill still holds: the cheap single-domain cohort
+	// ALONE (maturers not yet drained) must NOT mature the network.
+	c2 := New(cfg, func(ports.NodeID) int64 { return 0 })
+	c2.SetBondVerifier(objectiveVerify)
+	for _, aid := range anchorIDs {
+		c2.bonded[aid] = maturerBond
+		c2.validatorsSeen[aid] = true
+	}
+	for i := 0; i < 4; i++ {
+		sid := idOf(key(int64(9900 + i)))
+		c2.bonded[sid] = sybilBond
+		c2.bondDomain[sid] = sybilDomain
+		c2.validatorsSeen[sid] = true
+	}
+	if c2.Mature() {
+		t.Fatalf("re-split premise: the 4-Sybil single-domain cohort alone must NOT mature the network; C2: %+v", c2.C2Metric())
+	}
+	t.Logf("Mature()=true with the maturer cohort drained; false with the Sybil cohort alone — the drill premise is reachable AND still refuses the cheap cohort")
+}

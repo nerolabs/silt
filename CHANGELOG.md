@@ -9,6 +9,25 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **MATURING topology re-split: 4 honest maturers + 4 Sybils, with COMPUTED harness windows**
+  (2026-08-15, per the PE concurrence on the latch-premise finding) — The `MATURING=1 SYBILS=8` field
+  topology re-splits its 8 cohort slots into **4 honest maturers** (non-anchor validators, full 64M
+  bond, UNSET `-domain` — each an independent address-diversity group) + 4 single-domain MinBond
+  Sybils, making the drill the on-the-wire confirmation of the I3 oracle's certified shape: the
+  bar-2 latch is now REACHABLE (`min(NakamotoOperators, NakamotoDomains) = 2` at full drain) while
+  the cheap cohort alone still cannot mature the network — both pinned deterministically by
+  `TestMaturingResplitTopologyLatchReachable`. `MATURING=0` topologies (the P1 launch gate) are
+  byte-identical. The harness windows are now **computed bounds, not arbitrary wall-clocks** (PE
+  cadence ruling §4): the latch window derives from worst-case drain order (ID-sorted packing ⇒
+  9 reg-blocks × 64s worst-case block time + a submission leg ≈ 630s), the publish window from the
+  per-leg retry budget (8s × 4 attempts + backoff ≈ 34s/leg × the fresh-publisher leg census ≈
+  240s) — and a latch miss inside the computed bound with the maturer cohort live now records
+  **FAIL (a finding), never a re-graded GAP** (maturers down ⇒ honest GAP, preemption-shaped). The
+  flow also records the drain curve (val-a's per-commit C2 lines: 64MiB jumps = maturer bonds) so
+  the bound is checked against the real drain order, and the B2 capture drill now stops the
+  maturers with the anchors (leaving honest weight up would fake a capture). Also fixes a second
+  latent premise bug the finding exposed: the cohort-seated gate required `participants ≥ 4+n_syb`
+  (=12) but the C2 participant count is NON-anchor bonds only (max 8 here) — now `n_mat + n_syb`.
 - **MATURING-drill premise repro: the 10-maturing-handoff latch is unreachable in the field topology
   as parameterized** (2026-08-15) — `TestMaturingFieldTopologyLatchUnreachable` (core/chain) constructs
   the exact MATURING=1 SYBILS=8 parameterization at FULL drain — every bond banked, every participant

@@ -8,10 +8,20 @@
 # asserts a THRESHOLD/behaviour, never an exact count or timing.
 set -uo pipefail
 
+# ── PRINCIPLED windows (PE cadence ruling 2026-08-15 §4: replace arbitrary
+# wall-clocks with bounds COMPUTED from the path — and a miss INSIDE a computed
+# window is a FINDING, never a re-grade). The per-leg worst case is derived from
+# the deployed flags: -request-timeout 8s × (1 + 3 -request-retries) + backoff
+# (250ms doubling: 0.25+0.5+1) ≈ 34s/leg. The fresh-publisher path is ~5
+# sequential legs (join/bootstrap → canonical-issuer ranking fetch → parallel
+# token gather (#388) → scatter+confirm → register, whose commit wait adds ≤ one
+# 30s ChainSyncInterval drain sweep + a gather leg ≈ 64s): 4×34 + 64 ≈ 200s;
+# +1 leg-equivalent for the relay hop on the cross-NAT flow ≈ 234s → 240.
+# Fetch is ~3 legs (discovery → manifest → parallel chunk fetches) ≈ 102s → 120.
 : "${COMMIT_SLO_S:=90}"
 : "${FETCH_SLO_S:=120}"
 : "${RESTART_SLO_S:=60}"
-: "${PUBLISH_RETRY_S:=120}"
+: "${PUBLISH_RETRY_S:=240}"
 
 # ── swarm references (validators as peers; val-a serves the registry) ───────────
 ft_peers() {
@@ -859,7 +869,21 @@ flow_c2_no_capture() {
 # 'checkpoint: H:HASH' obtained from a peer; it must catch up AND the latch must
 # hold — anchors never re-arm). Outcome-first throughout (immutable #2): heights and
 # commits grade; log lines corroborate.
-: "${LATCH_S:=420}"
+# LATCH_S is COMPUTED (PE §4), not arbitrary: the latch trips once TWO maturer
+# bonds commit (bar 2 = min(NakamotoOperators, NakamotoDomains) over the
+# non-anchor set; C2Metric excludes anchors). Worst case the maturers drain
+# LAST — reg packing is validator-ID-sorted (chainrole.go), so ordering is
+# seed-luck — which makes the bound the FULL-drain bound: 8 large regs
+# (4 anchors + 4 maturers, ~1.5MB each ⇒ ~1/block under the 2MiB
+# MaxBondRegBytesPerBlock cap) + 1 block for the 4 small sybil regs ≈ 9
+# reg-blocks × worst-case block time (30s ChainSyncInterval drain sweep + a
+# 34s gather leg ≈ 64s) + one 34s submission leg ≈ 610s → 630. Measured
+# typical cadence is ~32s/block, so the expected trip is ~minutes — the
+# headroom is the worst-case stack, and the drain begins at network start, well
+# before this flow runs (waitfor matches the C2 line, which repeats on every
+# commit). Per the PE rule: with the premise fixed (maturer cohort deployed), a
+# latch that misses even THIS window is a FAIL — a finding — never a re-grade.
+: "${LATCH_S:=630}"
 : "${HANDOFF_BLOCKS_S:=600}"
 flow_maturing_handoff() {
   local maturing
@@ -870,13 +894,24 @@ flow_maturing_handoff() {
   fi
   require_nodes "10-maturing-handoff" major val-a val-b || return
   require_live  "10-maturing-handoff" major val-a || return
-  local anchors_nodes n_syb sybils
+  local anchors_nodes n_syb sybils n_mat maturers
   anchors_nodes="$(python3 -c "import json;print(' '.join(n for n,v in json.load(open('$NODES_JSON')).items() if v['role']=='validator'))")"
   n_syb="$(python3 -c "import json;print(json.load(open('$FT_DIR/topology.json'))['meta']['n_syb'])")"
   sybils="$(python3 -c "import json;print(' '.join(json.load(open('$FT_DIR/topology.json'))['meta']['sybils']))")"
-  # A handoff/post-shed verdict needs the anchors AND the bonded cohort's journals.
+  n_mat="$(python3 -c "import json;print(json.load(open('$FT_DIR/topology.json'))['meta'].get('n_mat',0))")"
+  maturers="$(python3 -c "import json;print(' '.join(json.load(open('$FT_DIR/topology.json'))['meta'].get('maturers',[])))")"
+  # The latch premise needs the maturer cohort (2026-08-15 re-split): without it
+  # the bar-2 latch is unreachable by construction (C2Metric excludes anchors;
+  # the single-domain sybils aggregate to one group —
+  # core/chain/maturing_topology_premise_test.go). An old-style topology is a
+  # premise GAP, not a network failure.
+  if [ "${n_mat:-0}" -lt 2 ]; then
+    record "10-maturing-handoff" gap major "MATURING topology has no maturer cohort (n_mat=${n_mat:-0} < 2) — the bar-2 latch is unreachable by construction (premise test: TestMaturingFieldTopologyLatchUnreachable); regenerate the topology with the 2026-08-15 re-split"
+    return
+  fi
+  # A handoff/post-shed verdict needs the anchors AND both cohorts' journals.
   # shellcheck disable=SC2086
-  flow_evidence_nodes $anchors_nodes $sybils
+  flow_evidence_nodes $anchors_nodes $maturers $sybils
 
   mh_height() { ssh_node "$1" "/usr/local/bin/silt chain-status -store /var/lib/silt 2>&1" \
     | grep -oE 'head height:[[:space:]]*[0-9]+' | grep -oE '[0-9]+' | tail -1; }
@@ -900,15 +935,40 @@ flow_maturing_handoff() {
   }
 
   # 1) THE LATCH: the daemon's own C2 status line must flip to the one-way F-1
-  #    latch wording. Never tripping is an honest GAP — the maturity precondition
-  #    was unmet and everything downstream is UNTESTED.
+  #    latch wording. With the maturer cohort deployed the premise is REACHABLE,
+  #    so missing the COMPUTED window is a FAIL — a finding (PE §4: a miss inside
+  #    a principled bound is never re-graded), not the old premise GAP.
   local wheels
   wheels="$(waitfor val-a 'wheels shed permanently' "$LATCH_S" || true)"
   if [ -z "$wheels" ]; then
-    record "10-maturing-handoff" gap major "the everMature latch never tripped within ${LATCH_S}s ('wheels shed permanently' absent on val-a) — bar-2 maturity precondition unmet (bonds not committed? C2 metric short?); handoff/post-shed regime UNTESTED"
+    # FAIL vs GAP hinges on whether the maturer premise actually HELD: a latch
+    # miss with every maturer alive is a real drain/maturity FINDING (PE §4 —
+    # never re-grade a miss inside a computed bound); a miss with maturers down
+    # is preemption/substrate-shaped, so the property is UNTESTED (the same
+    # rule require_live encodes).
+    local mdown="" mn
+    for mn in $maturers; do
+      ssh_node "$mn" "systemctl is-active --quiet silt.service" || mdown="$mdown $mn"
+    done
+    if [ -n "$mdown" ]; then
+      record "10-maturing-handoff" gap major "the everMature latch did not trip within the computed ${LATCH_S}s bound AND maturer node(s) were down (down:$mdown) — premise degraded by substrate/preemption, property UNTESTED not failed"
+    else
+      record "10-maturing-handoff" fail major "the everMature latch did not trip within the COMPUTED ${LATCH_S}s bound with the full maturer cohort live ($n_mat maturers; bound = 9 reg-blocks × 64s worst-case + submit leg) — a real drain/maturity FINDING (PE cadence ruling §4), not a window artifact; read the drain curve in the evidence journals"
+    fi
     return
   fi
-  echo "    latch tripped: ${wheels##*silt}"
+  # PE note 2 (the bound is '2 MATURER regs', not '2 of any 12'): record the
+  # DRAIN CURVE so the computed bound is checked against the real drain order
+  # (ID-sorted packing makes order seed-luck). val-a's per-commit C2 line
+  # carries it: 'of N MiB bonded across P' — a 64 MiB jump is a maturer
+  # banking, a 1 MiB jump is a sybil; the trip height is the commit line
+  # adjacent to the first shed wording.
+  local latch_h
+  latch_h="$(jlog val-a 800 | grep -B2 'wheels shed permanently' | grep -oE 'committed block [0-9]+' | grep -oE '[0-9]+' | head -1)"
+  echo "    latch tripped at commit height ${latch_h:-?}: ${wheels##*silt}"
+  echo "    drain curve (val-a C2 lines — 64MiB jumps = maturer bonds, 1MiB = sybil):"
+  jlog val-a 800 | grep -oE 'committed block [0-9]+|nakamoto [0-9]+ bonds → [0-9]+ operators[^|]*\| cost-to-corrupt [0-9]+ MiB of [0-9]+ MiB bonded across [0-9]+' \
+    | sed 's/^/      /' | tail -24
 
   # 2) THE HANDOFF: the shed applies at the first epoch boundary (height % 8 == 0)
   #    at-or-after the latch. Drive commits across the next boundary + 1 so the
@@ -931,11 +991,14 @@ flow_maturing_handoff() {
 
   # Cohort-seated precondition for the B2 drills: the epoch snapshot admits every
   # qualified bond, so the cohort must have BANKED bonds before the boundary. The
-  # C2 status line's participant count is the on-chain evidence.
+  # C2 status line's participant count is the on-chain evidence. NOTE: that count
+  # is NON-ANCHOR bonds only (C2Metric excludes anchors — the same fact behind
+  # the premise fix), so the full-drain target is n_mat + n_syb, NOT 4 + n_syb
+  # (the old target of 12 was unreachable: max Participants here is 8).
   local seated=0 parts
   if [ -n "$sybils" ]; then
     parts="$(jlog val-a 400 | grep -oE 'bonded across [0-9]+' | grep -oE '[0-9]+' | tail -1)"
-    [ "${parts:-0}" -ge $(( 4 + n_syb )) ] 2>/dev/null && seated=1
+    [ "${parts:-0}" -ge $(( n_mat + n_syb )) ] 2>/dev/null && seated=1
   fi
 
   # 3) 10a — THE STALL DRILL: the cohort DECLINES to attest (stopped = the
@@ -967,15 +1030,19 @@ flow_maturing_handoff() {
   else
     local ceiling h1 fresh=0 weightlog=0 resumed=0 h2
     ceiling="$(mh_ceiling)"
-    echo "    capture drill: stopping the honest validators ($anchors_nodes) — the cohort alone attempts to advance (ceiling h${ceiling})…"
-    local a; for a in $anchors_nodes; do svc "$a" stop >/dev/null 2>&1 || true; done
+    # The honest side is the anchors AND the maturers (the re-split's honest
+    # weight): leaving the maturers up would let the chain legitimately advance
+    # on their >⅔ weight and fake a "capture". The drill premise is the CHEAP
+    # cohort alone.
+    echo "    capture drill: stopping the honest validators ($anchors_nodes $maturers) — the cheap cohort alone attempts to advance (ceiling h${ceiling})…"
+    local a; for a in $anchors_nodes $maturers; do svc "$a" stop >/dev/null 2>&1 || true; done
     sleep 90
     h1=0; for s in $sybils; do local hs; hs="$(mh_height "$s")"; hs="${hs:-0}"; [ "$hs" -gt "$h1" ] 2>/dev/null && h1="$hs"; done
     local no_advance=0; [ "$h1" -le "$((ceiling + 1))" ] 2>/dev/null && no_advance=1
     for s in $sybils; do jlog "$s" 200 | grep -qE 'chain: committed block [0-9]' && { fresh=1; break; }; done
     for s in $sybils; do jlog "$s" 600 | grep -qE 'frozen-weight super-majority' && { weightlog=1; break; }; done
     echo "    restoring the honest validators — chain must resume…"
-    for a in $anchors_nodes; do svc "$a" start >/dev/null 2>&1 || true; done
+    for a in $anchors_nodes $maturers; do svc "$a" start >/dev/null 2>&1 || true; done
     local t1; t1="$(date +%s)"
     while [ $(( $(date +%s) - t1 )) -lt 240 ]; do
       h2="$(mh_ceiling)"
