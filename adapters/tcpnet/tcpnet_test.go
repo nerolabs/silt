@@ -31,7 +31,7 @@ type realNode struct {
 func (r *realNode) call(t *testing.T, timeout time.Duration, fn func(done func())) {
 	t.Helper()
 	ch := make(chan struct{})
-	r.loop.Post(func() { fn(func() { close(ch) }) })
+	r.loop.Post("test", func() { fn(func() { close(ch) }) })
 	select {
 	case <-ch:
 	case <-time.After(timeout):

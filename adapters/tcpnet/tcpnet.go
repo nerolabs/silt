@@ -671,7 +671,7 @@ func (t *Transport) readLoop(conn *tls.Conn, viaRelay bool) {
 			}
 		}
 		msg := fromWire(env.Msg)
-		t.loop.Post(func() {
+		t.loop.Post(msg.Kind.String(), func() {
 			if t.handler != nil {
 				t.handler(from, msg)
 			}

@@ -65,7 +65,7 @@ type uiServer struct {
 
 func (s *uiServer) onLoop(fn func()) {
 	ch := make(chan struct{})
-	s.loop.Post(func() { fn(); close(ch) })
+	s.loop.Post("ui", func() { fn(); close(ch) })
 	select {
 	case <-ch:
 	case <-time.After(30 * time.Second):
