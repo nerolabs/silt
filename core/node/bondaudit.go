@@ -268,10 +268,65 @@ func (n *Node) bondAuditOnce(now uint64) {
 // advertised by answering the challenge from our sealed blob. No bond, or a
 // block we no longer hold, yields an empty reply — which the challenger scores
 // as a failure.
-func (n *Node) answerBondChallenge(msg ports.Message) ports.Message {
+// challengerRate tracks one challenger's bond-challenge eval budget in the
+// current window (#424).
+type challengerRate struct {
+	windowStart ports.Time
+	count       int
+}
+
+const (
+	// bondChallengeBurst caps the bond-challenge VDF-evals this node will serve
+	// to ONE challenger per BondAuditInterval window. Answering forces a fresh
+	// sequential VDF-eval — the unpredictable nonce is exactly what cannot be
+	// precomputed — all on the node's single goroutine, so an unbounded
+	// challenger is a remote CPU-DoS (#424, red-team seam #7). Honest cadence is
+	// one challenge per peer per BondAuditInterval, plus a few transport retries
+	// of the same nonce; this cap clears that with wide headroom and denies the
+	// flood. Per-challenger (not global) so a flooder cannot starve honest
+	// challengers of their own audit budget.
+	bondChallengeBurst = 8
+	// maxBondChallengers bounds the per-challenger table; past it, stale windows
+	// are swept before a new challenger is admitted (same idiom as maxTokenIssued).
+	maxBondChallengers = 4096
+)
+
+// allowBondChallenge reports whether a bond challenge from `from` may be
+// answered now, charging one unit against its per-window budget (#424). It is
+// the cheap gate in front of the expensive AnswerSpaceTime eval — a refusal
+// costs nothing, so a flooder gains no amplification.
+func (n *Node) allowBondChallenge(from ports.NodeID) bool {
+	now := n.clock.Now()
+	window := n.cfg.BondAuditInterval
+	if window <= 0 {
+		window = 60 * ports.Second
+	}
+	r := n.bondChallengeRate[from]
+	if r == nil || ports.Duration(now-r.windowStart) >= window {
+		if r == nil && len(n.bondChallengeRate) >= maxBondChallengers {
+			for id, e := range n.bondChallengeRate {
+				if ports.Duration(now-e.windowStart) >= window {
+					delete(n.bondChallengeRate, id)
+				}
+			}
+		}
+		n.bondChallengeRate[from] = &challengerRate{windowStart: now, count: 1}
+		return true
+	}
+	if r.count >= bondChallengeBurst {
+		return false // budget spent this window — refuse before the costly eval
+	}
+	r.count++
+	return true
+}
+
+func (n *Node) answerBondChallenge(from ports.NodeID, msg ports.Message) ports.Message {
 	reply := ports.Message{Kind: ports.MsgBondReply}
 	if n.bond == nil {
 		return reply
+	}
+	if !n.allowBondChallenge(from) {
+		return reply // #424: per-challenger rate-limited — refuse WITHOUT the VDF-eval
 	}
 	ans, ok := n.bond.AnswerSpaceTime(msg.Nonce, vdf.Default(), n.cfg.BondVDFDelay, n.cfg.BondLabelSamples)
 	if !ok {

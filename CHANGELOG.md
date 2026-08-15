@@ -8,6 +8,20 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Fixed
+- **#424 — bond-audit answer path was a remote-triggered CPU-DoS; add a per-challenger rate-limit**
+  (2026-08-15) — Answering a bond challenge forces a fresh sequential VDF-eval (an unpredictable nonce, so
+  it can't be precomputed) on the node's single event-loop goroutine, and `answerBondChallenge` served one
+  on **every** incoming `MsgBondChallenge` with no per-challenger limit — so one peer flooding challenges
+  could pin a validator's thread and starve its token-issue/commit/sync handlers (red-team seam #7).
+  `allowBondChallenge` now caps evals served to a single challenger per `BondAuditInterval` window
+  (`bondChallengeBurst`=8), refusing the excess **before** the costly eval so a flood gains no
+  amplification. The cap is **per-challenger** (not global) so a flooder cannot starve honest challengers
+  of their own budget; honest cadence is one challenge per peer per window, well under the cap. This also
+  caps the O(n) audit fan-out that is a suspect for the MATURING single-goroutine saturation wall (PR #423
+  instrumentation will name the dominant term). The exact cap borders the audit path — flagged in #424 for
+  a research/PE confirm.
+
 ### Added
 - **#406 — consensus model-check, tier 2: the I5/#397 honest-never-slashed oracle** (2026-08-15) — Over
   the real node loop + held-delivery: two proposers cross-attest-race one height in a WEAK config where

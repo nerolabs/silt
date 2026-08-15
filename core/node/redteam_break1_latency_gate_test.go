@@ -58,6 +58,14 @@ func TestC1TimingIsSoftNotAHardGate(t *testing.T) {
 		for i := 0; i < rounds; i++ {
 			chal.AuditBondsOnce()
 			sched.Run()
+			// Real bond audits are one per BondAuditInterval; advance a full window
+			// between rounds so each is its own audit window. Without this the tight
+			// loop compresses latWindowSize+2 audits into a single window, where the
+			// prover's per-challenger rate-limit (#424) refuses the excess — an
+			// artifact of the test's time compression, not the behavior under the
+			// real once-per-interval cadence this test means to model.
+			sched.AfterFunc(ccfg.BondAuditInterval, func() {})
+			sched.Run()
 		}
 		floor, sustained, _ := chal.BondLatencyFloor(proverID.NodeID())
 		_ = floor
