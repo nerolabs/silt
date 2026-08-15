@@ -28,6 +28,8 @@ jobs:
           fi
       - name: go vet
         run: go vet ./...
+      - name: cloudtest shell lint (no unbraced $var before a multibyte char — bash-3.2 set -u crash, P1 b525b0b)
+        run: ./integration/cloudtest/check_shell_multibyte.sh
       - name: go test + coverage floor
         run: |
           # -coverpkg=./... credits cross-package coverage, so the pure
