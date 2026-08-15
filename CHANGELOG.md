@@ -9,6 +9,14 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **#406 — consensus model-check, tier 2: the I2-across-restart oracle** (2026-08-15) — On the
+  held-delivery substrate: a validator signs a block at height h through a REAL gather, then
+  "crashes and restarts" (a fresh `Node`+chain on the same endpoint), and must **refuse a competitor
+  at h** — the never-sign-twice watermark must survive restart (#397 Q1b; Tendermint
+  `priv_validator_state`). Failing-first **by construction**: the identical scenario run with a
+  NON-persisted mark (the pre-#397 crash-wipe) *attests* the competitor, so the in-test control proves
+  the persistence is load-bearing and the assertion is not vacuous. `core/node/modelcheck_tier2_test.go`.
+  Test-only.
 - **#406 — consensus model-check, tier 2: the simnet held-delivery substrate (adversarial delivery over
   the REAL node loop)** (2026-08-15) — `adapters/simnet` gains a test-only **held-delivery mode**
   (`EnableHeldDelivery` + `Pending`/`Deliver`/`DropPending`): `Send` parks each message so a driver
