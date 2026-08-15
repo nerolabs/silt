@@ -143,6 +143,20 @@ type Config struct {
 	// single one-time proof. Decay is a deterministic function of block height, so
 	// every replica expires standing in lockstep. Zero (default) = no expiry.
 	BondTTLBlocks uint64
+	// BondRegHeadWindow is how many recent committed heads a bond registration
+	// stays valid over (factor ii of the MATURING drain wall): a reg is signed over
+	// BondRegNonce(prev), and a strict single-head rule makes it go STALE the instant
+	// the head advances — so over a real WAN, where a proposer proposes on head-advance
+	// before the resubmission arrives, the drain starves (blocks commit empty below the
+	// #286 byte cap; maturity never reaches bar-2 in-window). Accepting a reg over the
+	// last K committed head nonces removes the staleness while keeping freshness bounded.
+	// K is a C1 security parameter — a reg's space-time proof must still evidence RECENT
+	// possession — and is safe because (1) it must be ≪ BondTTLBlocks (which already
+	// time-boxes standing to a fresh proof) and (2) continuous bond-audit re-challenges
+	// possession with a fresh nonce, catching a release-and-replay within one audit.
+	// 0 = the DefaultBondRegHeadWindow. Set 1 to restore the strict single-head rule.
+	// The exact bound vs the anti-release/reseal window is research-gated.
+	BondRegHeadWindow int
 	// EpochBlocks freezes the MATURE-phase validator set per epoch (#357 research
 	// certification, Condition A): when > 0 in objective mode, the post-handoff
 	// finality quorum (validatorSetSize / RequiredQuorum), attester/proposer
@@ -892,13 +906,69 @@ func NewBondReg(signer ed25519.PrivateKey, root ports.Hash, size int64, answer [
 // carry a validator signature over its (root, size, nonce) and a space-time
 // proof the injected verifier accepts for the fresh per-position nonce. Only
 // enforced in objective mode; a legacy chain ignores BondRegs entirely.
+// DefaultBondRegHeadWindow is the K used when Config.BondRegHeadWindow is 0: a bond
+// reg stays valid over the last 8 committed heads. Covers WAN propagation + one
+// proposer rotation (the factor-ii staleness window) while remaining ≪ any real
+// BondTTLBlocks and re-challenged continuously by bond-audit. See Config.BondRegHeadWindow.
+const DefaultBondRegHeadWindow = 8
+
+// recentBondRegNonces returns BondRegNonce for `prev` and up to K-1 committed heads
+// before it (K = BondRegHeadWindow) — the window over which a bond reg is accepted
+// (fix for factor ii). Deterministic: every replica walks the same committed block
+// links, so the accepted-nonce set is identical everywhere.
+func (c *Chain) recentBondRegNonces(prev ports.Hash) []uint64 {
+	k := c.cfg.BondRegHeadWindow
+	if k <= 0 {
+		k = DefaultBondRegHeadWindow
+	}
+	nonces := make([]uint64, 0, k)
+	cur := prev
+	for len(nonces) < k {
+		nonces = append(nonces, BondRegNonce(cur))
+		blk, ok := c.blockByHash(cur)
+		if !ok || blk.Height == 0 {
+			break // genesis or not-yet-committed parent: the window ends here
+		}
+		cur = blk.Prev
+	}
+	return nonces
+}
+
+// blockByHash finds a committed block by its hash, scanning from the tip (recent
+// blocks — the drain window — are found in the first few steps).
+func (c *Chain) blockByHash(h ports.Hash) (Block, bool) {
+	for i := len(c.blocks) - 1; i >= 0; i-- {
+		if c.blocks[i].Hash() == h {
+			return c.blocks[i], true
+		}
+	}
+	return Block{}, false
+}
+
+// validateBondRegWindow accepts a reg if it validates against ANY nonce in the
+// recent-head window; on failure it returns the CURRENT-head error (the most
+// informative for a genuinely-bad reg, not merely a stale one).
+func (c *Chain) validateBondRegWindow(r BondReg, nonces []uint64) error {
+	var firstErr error
+	for i, n := range nonces {
+		err := c.validateBondReg(r, n)
+		if err == nil {
+			return nil
+		}
+		if i == 0 {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
 func (c *Chain) validateBondRegs(b *Block) error {
 	if !c.objective() {
 		return nil
 	}
-	nonce := BondRegNonce(b.Prev)
+	nonces := c.recentBondRegNonces(b.Prev)
 	for _, r := range b.BondRegs {
-		if err := c.validateBondReg(r, nonce); err != nil {
+		if err := c.validateBondRegWindow(r, nonces); err != nil {
 			return err
 		}
 	}
@@ -939,7 +1009,7 @@ func (c *Chain) ValidateBondReg(r BondReg) bool {
 		return false
 	}
 	head, _ := c.Head()
-	return c.validateBondReg(r, BondRegNonce(head)) == nil
+	return c.validateBondRegWindow(r, c.recentBondRegNonces(head)) == nil
 }
 
 // validateSlashes verifies a block's on-chain equivocation records (F2): each

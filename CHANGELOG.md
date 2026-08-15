@@ -17,6 +17,19 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   queue-wait, and hang lines are always-on regardless. The cloudtest harness threads it via `LOOP_BUDGET=1`.
 
 ### Fixed
+- **Bond-reg drain staleness (factor ii of the MATURING cadence wall): accept a reg over the last K
+  committed heads** (2026-08-15) — A bond registration is signed over `BondRegNonce(prev)` and was validated
+  only against the **current** head, so the instant the head advanced a reg in flight went stale and was
+  refused. Over a real WAN (a proposer proposes on head-advance before the resubmission arrives) this starved
+  the drain — blocks committed empty below the #286 byte cap and maturity never reached bar-2 in-window (the
+  instrumented run measured the goroutine ≤7% busy, so it was never CPU; this staleness race was the cause).
+  `validateBondRegs`/`ValidateBondReg` now accept a reg whose proof validates against any of the last
+  `BondRegHeadWindow` committed heads (default 8, deterministic walk), removing the one-head brittleness while
+  keeping freshness **bounded** (K ≪ `BondTTLBlocks`, and continuous bond-audit re-challenges possession — so
+  a released-and-replayed old reg still decays out; pinned by a beyond-window-rejected test). Paired with a
+  **durable pending queue** — the proposer now keeps valid regs that didn't fit the byte cap instead of wiping
+  the whole pending set and relying on a re-broadcast. Failing-first + the #406 model-check tier (I1–I5) green.
+  The K-vs-anti-release bound is a C1 parameter flagged for a research security-check.
 - **#424 — bond-audit answer path was a remote-triggered CPU-DoS; add a per-challenger rate-limit**
   (2026-08-15) — Answering a bond challenge forces a fresh sequential VDF-eval (an unpredictable nonce, so
   it can't be precomputed) on the node's single event-loop goroutine, and `answerBondChallenge` served one
