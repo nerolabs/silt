@@ -35,6 +35,12 @@ BOND_MODE = os.environ.get("BOND_MODE", "fast")
 # path (#327) and the handshake attribution (#332: concurrent count + elapsed) — the signal
 # that root-causes a #286 stall if one recurs (docs/network-durability.md §8).
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "info")
+# LOOP_BUDGET=1 adds -loop-budget so every node emits its per-window event-loop
+# goroutine-budget decomposition at INFO — names the handler that eats the single
+# thread (or, via the always-on queue-wait/slow/hang lines, one that starves/hangs
+# it) WITHOUT the -log debug firehose that would skew the measurement. For a
+# throughput/latency diagnostic run (e.g. the MATURING single-goroutine analysis).
+LOOP_BUDGET = " -loop-budget" if os.environ.get("LOOP_BUDGET", "") not in ("", "0") else ""
 PUBLIC_CIDR = os.environ.get("PUBLIC_CIDR", "10.20.0.0/24")
 NAT_CIDR = os.environ.get("NAT_CIDR", "10.30.0.0/24")
 DEFAULT_REGION = os.environ.get("REGION", "us-central1")
@@ -239,7 +245,7 @@ def main():
     # automatically), but a generous base leaves margin on a truly bad transcontinental
     # path. Uniform across all roles so a config mismatch can't perturb objective quorum
     # math on a fresh network. holder-fetch keeps its own tighter deadline (#277).
-    common = f"-listen 0.0.0.0:{SWARM_PORT} -store {STORE} -mdns=false -log {LOG_LEVEL} -request-timeout 8s"
+    common = f"-listen 0.0.0.0:{SWARM_PORT} -store {STORE} -mdns=false -log {LOG_LEVEL} -request-timeout 8s{LOOP_BUDGET}"
 
     def argv(name):
         n = nodes[name]
