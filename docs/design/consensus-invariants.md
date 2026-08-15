@@ -84,12 +84,27 @@ The set is closed and small. Everything hit so far is a corollary of I1 + I3 + I
 
 **Scars:**
 - **#397** — launch treated `committed == finalized` at a non-intersecting 2-of-4 (`chain.go:2001` "Launch-phase: finalized == committed head"), so a clean 2-2 fork became **two finalized blocks that can never reorg → permanent wedge.** Decoupling commit (2, live) from final (intersecting, safe) lets fork-choice resolve the fork instead of wedging.
+- **#432 (the LIVENESS half — 2026-08-15).** The height-only #397 watermark permanently
+  wedges a height whose gather fails: a crossed publish-vs-drain proposer race splitting the
+  anchor signatures 2-2 leaves every anchor able to sign only its own block at that height,
+  no block can reach the strict anchor majority, fresh proposals die at their proposers' own
+  watermarks, and the mark clears only on a commit the marks forbid — a **permanent stall of
+  a connected, all-honest, 0-fault network**, violating this invariant's assert-note
+  verbatim (both MATURING field starves at tip ~6; deterministic repro
+  `core/node/modelcheck_i4_liveness_test.go`, RED). Fork-choice cannot resolve what never
+  committed — the safety rulings above covered I4's *safety* face and missed this one.
+  **Required mechanism (PE-ruled, research certification pending): rounds WITH locking** —
+  Tendermint `(height, round)` + lock/Proof-of-Lock-Change (or HotStuff lock-on-QC), never a
+  bare round counter (free higher-round re-signing re-opens I1 via a delayed lower-round
+  quorum); round-advance deterministic (sweep-count, never wall-clock — B2/#3); equivocation
+  becomes same-`(height, round)` (I5). Consult:
+  `silt-reviews/research/432-rounds-locking-liveness-CONSULT.md`.
 
 **Ruling — I4 is a *permission*, not a build mandate (owner, 2026-08-14).** The invariant is satisfied whenever nothing non-intersecting can finalize; it does **not** require silt to build a commit/final decoupling. Research has twice ruled the minimal path instead: the #397 certification found launch finality already intersecting once the ledger write landed, and the #402 certification's M0 set is the strict-anchor-majority rule alone ("no fork-choice change, no D-1 change") — with an intersecting launch finality quorum, `commit == final` satisfies I4 trivially. The supporting research rule to remember: **the finality gate enforces, it does not create** — `ErrPreFinalityReorg` stops a node reverting its *own* head, never two groups finalizing conflicting blocks; leaning on the gate to fix a non-intersecting quorum *cements* the fork. A decoupling is built only if the model-check produces a schedule that violates I4 as stated — that evidence, not this scar note, reopens the question (build-immutable #7).
 
 **Governs (code):** `core/chain/chain.go` — finality gate (~:2001), `ErrPreFinalityReorg` (:412), `heavier`/`Reconcile` (:1651 / ~:2001).
 
-**Assert (test):** a 2-2 non-intersecting fork is **resolved by fork-choice** (loser reorgs — allowed, it was never final), never wedges; a connected network never suffers a *permanent* non-final stall; a publish link is issued only after finality.
+**Assert (test):** a 2-2 non-intersecting fork is **resolved by fork-choice** (loser reorgs — allowed, it was never final), never wedges; a connected network never suffers a *permanent* non-final stall (**the liveness half — now asserted by `TestModelCheck_I4_WedgedHeightMustRecover`, RED until the #432 rounds+locking fix lands**); a publish link is issued only after finality.
 
 **Literature (B8):** Gasper — LMD-GHOST advances the head optimistically, Casper FFG finalizes at ⅔ behind it. The commit/final separation is the norm, not a silt invention.
 
@@ -123,6 +138,7 @@ Every consensus defect silt has hit is a corollary of the above:
 | B2 handoff cheap-member quorum | I3 (count not weight) → I1 |
 | #397 honest-proposer cross-attest | I2 (unpersisted, unwritten ledger) + I4 (commit==final) + I1 (non-intersecting launch finality) + I5 (honest slashed) |
 | #402 one-free-anchor fork | I1 (non-intersecting anchor gate) |
+| #432 wedged-height permanent stall | I4 (liveness half: height-only watermark, no rounds) — the safety rulings covered I4's safety face only |
 
 If a fifth consensus surprise appears that is **not** a corollary of I1–I5, that is real signal the set is incomplete — add it here, with its scar and code site. Absent that, **the set is closed**, and the way to stop the tail-chasing is to assert all five under adversarial scheduling (`consensus-model-check.md`) *before* spending a field run — not to keep discovering them one region at a time.
 
