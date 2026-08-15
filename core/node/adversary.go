@@ -49,9 +49,14 @@ func advEntry(label string) ports.Entry {
 func (n *Node) proposeAndCommitTo(b *chain.Block, target ports.NodeID, done func(committed bool, err error)) {
 	// #432 two-phase: the target speaks prepare→precommit now, so the drive-in
 	// runs both phases at round 0 — prepare, staple the target's prepare into a
-	// one-signer prepare-QC, collect its precommit, then commit. (The adversary
-	// keeps no sign-marks and no locks — bypassing the honesty machinery is the
-	// point of this primitive.)
+	// prepare-QC, collect its precommit, then commit. (The adversary keeps no
+	// sign-marks and no locks — bypassing the honesty machinery is the point
+	// of this primitive.) What it CANNOT bypass: the target's ValidateCommit
+	// requires the AUTHOR's round-scoped prepare in the certificate
+	// (chain.requireProposerPrepare), so the equivocator must sign its own
+	// (h, r, prepare) over each fork — leaving exactly the same-slot
+	// different-hash signature pair the era-2 slash rule catches. That forced
+	// self-incrimination is the #345/#378 accountability working as designed.
 	raw := chain.Encode(b)
 	envRaw, merr := cbor.Marshal(proposeEnv{Raw: raw, Round: 0})
 	if merr != nil {
@@ -72,7 +77,7 @@ func (n *Node) proposeAndCommitTo(b *chain.Block, target ports.NodeID, done func
 			done(false, fmt.Errorf("decode prepare: %w", aerr))
 			return
 		}
-		qc := []chain.Attestation{prep}
+		qc := []chain.Attestation{chain.AttestAt(b, n.signer, 0, chain.PhasePrepare), prep}
 		qcRaw, qerr := cbor.Marshal(prepareQCEnv{Raw: raw, Round: 0, QC: qc})
 		if qerr != nil {
 			done(false, qerr)
@@ -94,7 +99,7 @@ func (n *Node) proposeAndCommitTo(b *chain.Block, target ports.NodeID, done func
 			}
 			b.CommitRound = 0
 			b.PrepareQC = qc
-			b.Atts = []chain.Attestation{pc}
+			b.Atts = []chain.Attestation{chain.AttestAt(b, n.signer, 0, chain.PhasePrecommit), pc}
 			n.request(target, ports.Message{Kind: ports.MsgCommitBlock, Data: chain.Encode(b)}, func(ack ports.Message, err3 error) {
 				if err3 != nil {
 					done(false, err3)

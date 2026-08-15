@@ -667,17 +667,24 @@ func (n *Node) proposeBlock(b *chain.Block, attesters, broadcast []ports.NodeID,
 			}
 		}
 	}
-	n.gatherTwoPhase(b, attesters, broadcast, quorum, round, newView, done)
+	n.gatherTwoPhase(b, attesters, broadcast, quorum, round, newView, nil, done)
 }
 
 // gatherTwoPhase runs the #432 two-phase gather for b at (b.Height, round):
 // prepare quorum → prepare-QC → lock (durable) → precommit quorum → commit +
 // broadcast. b may be this node's own freshly-signed proposal OR a FORCED
 // re-proposal from a new-view certificate — a re-proposed block keeps its
-// ORIGINAL author (re-signing would change the hash and orphan the lock), and
-// the gatherer contributes its own prepare/precommit signatures whenever it is
-// not the block's author (they count like any attester's).
-func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeID, quorum int, round uint64, newView [][]byte, done func(error)) {
+// ORIGINAL author (re-signing would change the hash and orphan the lock).
+// The gatherer always contributes its own prepare/precommit: as an attester
+// they count like any other's; as the AUTHOR they count toward nothing
+// (validation counts the proposer by authorship) but are REQUIRED evidence —
+// the round-scoped self-prepare is what makes a double-proposal at one (h, r)
+// slashable (chain.requireProposerPrepare). `carried` is the forced lock's
+// prepare-QC on a re-proposal (nil otherwise): the absent original author's
+// self-prepare is lifted from it into the fresh certificate, still valid at
+// its lower round (the hash excludes the round; the author is exempt from the
+// round-exactness rule).
+func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeID, quorum int, round uint64, newView [][]byte, carried []chain.Attestation, done func(error)) {
 	// Never sign twice in a slot (#397, round-scoped per #432): our PREPARE
 	// enters the same never-sign-twice ledger as any attestation, durable
 	// BEFORE anything is released — whether or not it ever commits. A
@@ -712,6 +719,20 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 		// new-view re-proposal) — mirrors ValidateCommit exactly.
 		return n.chain.SupportMeetsQuorum(b.ProposerID(), ids)
 	}
+	// counted: the caller's `quorum` floor is a NON-AUTHOR attestation count
+	// (the proposer is counted by authorship, never by signature — the #402
+	// arithmetic), so the author's own required self-signatures in the
+	// certificate must not satisfy it. Mirrors collectQuorumSigs's
+	// proposer-skip exactly.
+	counted := func(atts []chain.Attestation) int {
+		nc := 0
+		for _, a := range atts {
+			if a.AttesterID() != b.ProposerID() {
+				nc++
+			}
+		}
+		return nc
+	}
 
 	// PHASE 2 (precommit): runs once the prepare-QC is assembled and locked.
 	gatherPrecommits := func(qc []chain.Attestation) {
@@ -720,13 +741,13 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 			done(fmt.Errorf("propose: encode prepare-QC: %w", err))
 			return
 		}
-		var pcs []chain.Attestation
-		if n.id != b.ProposerID() {
-			pcs = append(pcs, chain.AttestAt(b, n.signer, round, chain.PhasePrecommit))
-		}
+		// Our own precommit ALWAYS — as attester it counts; as author it is
+		// count-neutral extra evidence (mark already durable: adoptLock /
+		// recordSign ran before gatherPrecommits was entered).
+		pcs := []chain.Attestation{chain.AttestAt(b, n.signer, round, chain.PhasePrecommit)}
 		var askPC func(i int)
 		askPC = func(i int) {
-			if len(pcs) >= quorum && supportMet(pcs) {
+			if counted(pcs) >= quorum && supportMet(pcs) {
 				b.CommitRound = round
 				b.PrepareQC = qc
 				b.Atts = pcs
@@ -743,9 +764,9 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 				return
 			}
 			if i >= len(attesters) {
-				n.logf(ports.LogDebug, "gather: NO PRECOMMIT QUORUM", "height", b.Height, "round", round, "gathered", len(pcs), "needed", quorum)
+				n.logf(ports.LogDebug, "gather: NO PRECOMMIT QUORUM", "height", b.Height, "round", round, "gathered", counted(pcs), "needed", quorum)
 				done(fmt.Errorf("propose height %d round %d: %w: %d precommits of %d gathered",
-					b.Height, round, chain.ErrNoQuorum, len(pcs), quorum))
+					b.Height, round, chain.ErrNoQuorum, counted(pcs), quorum))
 				return
 			}
 			v := attesters[i]
@@ -773,15 +794,23 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 
 	// PHASE 1 (prepare): gather prepare signatures to the quorum, assemble the
 	// prepare-QC, LOCK on it (durable — the lock is what a round-change
-	// carries), then run the precommit phase. A gatherer that is not the
-	// block's author contributes its own prepare (recorded above).
-	var atts []chain.Attestation
+	// carries), then run the precommit phase. The gatherer's own prepare goes
+	// in first (recorded above); on a forced re-proposal the ORIGINAL author's
+	// self-prepare is lifted from the carried lock QC so the fresh certificate
+	// keeps satisfying requireProposerPrepare (the author may be down — the
+	// reason the view changed).
+	atts := []chain.Attestation{chain.AttestAt(b, n.signer, round, chain.PhasePrepare)}
 	if n.id != b.ProposerID() {
-		atts = append(atts, chain.AttestAt(b, n.signer, round, chain.PhasePrepare))
+		for _, a := range carried {
+			if a.Phase == chain.PhasePrepare && a.AttesterID() == b.ProposerID() {
+				atts = append(atts, a)
+				break
+			}
+		}
 	}
 	var ask func(i int)
 	ask = func(i int) {
-		if len(atts) >= quorum && supportMet(atts) {
+		if counted(atts) >= quorum && supportMet(atts) {
 			qc := atts
 			if b.Height == n.roundsFor().Height {
 				if !n.adoptLock(n.roundsFor(), b, round, qc, raw) {
@@ -797,9 +826,9 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 			return
 		}
 		if i >= len(attesters) {
-			n.logf(ports.LogDebug, "gather: NO PREPARE QUORUM", "height", b.Height, "round", round, "bytes", len(raw), "gathered", len(atts), "needed", quorum)
+			n.logf(ports.LogDebug, "gather: NO PREPARE QUORUM", "height", b.Height, "round", round, "bytes", len(raw), "gathered", counted(atts), "needed", quorum)
 			done(fmt.Errorf("propose height %d round %d: %w: %d prepares of %d gathered",
-				b.Height, round, chain.ErrNoQuorum, len(atts), quorum))
+				b.Height, round, chain.ErrNoQuorum, counted(atts), quorum))
 			return
 		}
 		v := attesters[i]
@@ -807,7 +836,7 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 			ask(i + 1)
 			return
 		}
-		n.logf(ports.LogDebug, "gather: requesting prepare", "to", v, "height", b.Height, "round", round, "bytes", len(raw), "have", len(atts), "need", quorum)
+		n.logf(ports.LogDebug, "gather: requesting prepare", "to", v, "height", b.Height, "round", round, "bytes", len(raw), "have", counted(atts), "need", quorum)
 		n.request(v, ports.Message{Kind: ports.MsgProposeBlock, Data: envRaw},
 			func(resp ports.Message, err error) {
 				switch {
@@ -818,7 +847,7 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 				default:
 					if att, aerr := attDecode(resp.Data); aerr == nil {
 						atts = append(atts, att)
-						n.logf(ports.LogDebug, "gather: prepare collected", "from", v, "height", b.Height, "have", len(atts), "need", quorum)
+						n.logf(ports.LogDebug, "gather: prepare collected", "from", v, "height", b.Height, "have", counted(atts), "need", quorum)
 					} else {
 						n.logf(ports.LogDebug, "gather: prepare DECODE failed", "from", v, "height", b.Height, "err", aerr)
 					}
@@ -864,7 +893,7 @@ func (n *Node) proposeAtNewView(rs *heightRounds, round uint64, newView [][]byte
 			fin(err)
 			return
 		}
-		n.gatherTwoPhase(lb, attesters, peers, 0, round, newView, fin)
+		n.gatherTwoPhase(lb, attesters, peers, 0, round, newView, forced.QC, fin)
 		return
 	}
 	prevHead, height := n.chain.Head()

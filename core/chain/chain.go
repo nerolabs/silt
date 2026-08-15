@@ -26,6 +26,7 @@
 package chain
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"crypto/rsa"
 	"crypto/sha256"
@@ -526,6 +527,7 @@ var (
 	ErrTokenRequired      = errors.New("chain: entry has no publish token (required)")
 	ErrTokenSpent         = errors.New("chain: publish token serial already spent (double-spend)")
 	ErrBlockVersion       = errors.New("chain: unsupported block version")
+	ErrProposerPrepare    = errors.New("chain: era-2 commit lacks the proposer's round-scoped prepare (the authorship vote that makes a double-proposal attributable — #432/I5)")
 	ErrPublisherEntry     = errors.New("chain: entry carries a durable Publisher (records permanent linkage; publish unlinkably or run an explicitly trusted deployment)")
 	ErrEmptyFork          = errors.New("chain: cannot reconcile an empty fork")
 	ErrNoGenesis          = errors.New("chain: local replica has no genesis to anchor a reconcile")
@@ -1689,6 +1691,9 @@ func (c *Chain) ValidateCommit(b *Block) error {
 		return err
 	}
 	if b.Version >= BlockVersionRounds {
+		if err := c.requireProposerPrepare(b); err != nil {
+			return err
+		}
 		seenPrep, err := c.collectQuorumSigs(b, b.PrepareQC, PhasePrepare, b.CommitRound)
 		if err != nil {
 			return fmt.Errorf("prepare-QC: %w", err)
@@ -1723,11 +1728,46 @@ func (c *Chain) VerifyPrepareQC(b *Block, qc []Attestation, round uint64) error 
 	return c.requireQuorumStack(b, seen)
 }
 
+// requireProposerPrepare demands the era-2 analogue of the structural
+// ProposerSig: a verifying prepare by the block's AUTHOR, at a round ≤ the
+// commit round, inside PrepareQC. The bare-hash ProposerSig can never be
+// round-attributed (the round is deliberately not in the hash, so re-proposal
+// keeps identity — TestRoundNotInBlockIdentity), which is why era 2 excludes
+// it from equivocation evidence; without THIS rule a double-proposer that
+// withholds its own signatures forks the launch chain with zero slashable
+// evidence (it counts toward both anchor quorums by authorship alone) — an
+// accountability regression vs era 1 and a hole in I5's "every safety
+// violation is attributable". Requiring the round-scoped self-prepare makes
+// two proposals at one (h, r) two prepares at (h, r, prepare) over different
+// hashes = the existing slash rule.
+//
+// Round ≤ CommitRound, not ==, is the liveness half: a locked value
+// re-proposed at a higher round keeps its ORIGINAL author (possibly down —
+// the reason the view changed); its original-round prepare still endorses the
+// block (the hash excludes the round) and rides forward in the carried lock
+// QC. Count-neutral by construction: collectQuorumSigs skips the author
+// before its round-exactness check, so this signature is exempt from the
+// per-phase round rule and adds nothing to any quorum count.
+func (c *Chain) requireProposerPrepare(b *Block) error {
+	h := b.Hash()
+	for _, a := range b.PrepareQC {
+		if a.Phase == PhasePrepare && a.Round <= b.CommitRound &&
+			bytes.Equal(a.PubKey, b.Proposer) && verifyAtt(a, h) {
+			return nil
+		}
+	}
+	return ErrProposerPrepare
+}
+
 // collectQuorumSigs verifies one phase's signature set for b: every signature
 // must be genuine, at EXACTLY the demanded (phase, round), from a distinct
 // non-proposer identity; unqualified identities are ignored (not fatal), a bad
 // or wrong-scope signature is fatal (a block carrying one is malformed —
 // refusing it is what keeps cross-round/cross-phase replay out of quorums).
+// The AUTHOR's own signature is skipped BEFORE the scope check — it counts
+// toward no quorum (the proposer is counted by authorship: countAnchorSupport
+// / requireEpochWeightQuorum) and may legitimately sit at a LOWER round than
+// the certificate (a carried self-prepare — see requireProposerPrepare).
 func (c *Chain) collectQuorumSigs(b *Block, sigs []Attestation, phase uint8, round uint64) (map[ports.NodeID]bool, error) {
 	h := b.Hash()
 	seen := make(map[ports.NodeID]bool)
