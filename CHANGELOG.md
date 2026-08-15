@@ -8,6 +8,14 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Added
+- **`-loop-budget` — emit the event-loop goroutine-budget decomposition at INFO for a diagnostic run**
+  (2026-08-15) — The per-window per-handler breakdown (from the eventloop instrumentation) is debug-gated
+  by default so it's silent at steady state; `-loop-budget` raises just that summary to INFO so a
+  load/diagnostic run captures the full per-handler CPU breakdown **without** the `-log debug` firehose —
+  which, logged synchronously on the loop goroutine, would itself skew the very measurement. Slow-task,
+  queue-wait, and hang lines are always-on regardless. The cloudtest harness threads it via `LOOP_BUDGET=1`.
+
 ### Fixed
 - **#424 — bond-audit answer path was a remote-triggered CPU-DoS; add a per-challenger rate-limit**
   (2026-08-15) — Answering a bond challenge forces a fresh sequential VDF-eval (an unpredictable nonce, so

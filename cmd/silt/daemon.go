@@ -80,6 +80,7 @@ func cmdDaemon(args []string) error {
 	bondSize := fs.String("bond", "64M", "storage bond a validator seals to earn consensus standing, proven to peers over time (persisted to disk; a restart reloads it) — a bigger bond earns more standing")
 	minBondFloor := fs.String("min-bond-floor", "0", "anti-release floor (M0 F1/F2): a bond smaller than this earns NO standing, because it could be released and re-sealed just-in-time. Size it against the anti-release COMPUTE window (re-seal time × plot throughput) — NOT the transport -request-timeout: at ~270 MB/s and a ~2s compute window that is ~540 MiB, so a real open deployment sets e.g. 1G. Build-immutable #3/#4: raising -request-timeout for durability must NOT move this floor. 0 = off (safe only for a trusted/demo swarm)")
 	bondAudit := fs.Duration("bond-audit", 60*time.Second, "how often a validator challenges its peers' bonds and refreshes its own standing")
+	loopBudget := fs.Bool("loop-budget", false, "emit the per-window event-loop goroutine-budget decomposition at INFO instead of DEBUG — for a load/diagnostic run that needs the per-handler CPU breakdown without the full -log debug firehose (which, logged synchronously on the loop, would itself skew the measurement). Slow-task, queue-wait, and hang lines are always-on regardless.")
 	bootstrapRetry := fs.Duration("bootstrap-retry", 15*time.Second, "how often an ISOLATED node (empty routing table) re-runs the Kademlia join against its -bootstrap seeds. silt's join is otherwise one-shot, so a node that started before its bootstrap target was listening would stay stranded forever (#281). 0 disables (single-shot join only)")
 	requestTimeout := fs.Duration("request-timeout", 5*time.Second, "per-ATTEMPT deadline for a DHT/consensus RPC. Exceeding it fails THAT attempt; -request-retries then re-sends with backoff before the peer is given up. Keep it comfortably above the real one-way+reply time on your worst expected path")
 	requestRetries := fs.Int("request-retries", 3, "how many times a timed-out RPC is re-sent (exponential backoff from -request-backoff) before the peer is evicted from the routing table and negative-cached. On a jittery/lossy internet path a single slow or dropped packet must NOT tear a good peer out of the mesh — that keeps the routing table sparse and consensus from ever committing (durability under adverse networks). 0 = evict on the first miss (fast/trusted LAN only)")
@@ -409,12 +410,18 @@ func cmdDaemon(args []string) error {
 		ports.LogIf(obs, ports.LogWarn, "eventloop task waited (thread saturated)", "kind", label, "wait_ms", wait.Milliseconds())
 	}
 	// The per-window budget decomposition is diagnostic detail (a line per active
-	// kind every 30s) — debug-level, so it's off at steady state and on under -log
-	// debug for a load run. Carries execution time (cause) AND queue-wait (effect).
+	// kind every 30s) — debug-level by default (off at steady state), raised to
+	// INFO by -loop-budget so a load run captures the full per-handler breakdown
+	// WITHOUT the -log debug firehose (whose synchronous on-loop writes would skew
+	// the very measurement). Carries execution time (cause) AND queue-wait (effect).
+	budgetLevel := ports.LogDebug
+	if *loopBudget {
+		budgetLevel = ports.LogInfo
+	}
 	loop.SummaryEvery = 30 * time.Second
 	loop.OnSummary = func(window time.Duration, stats map[string]eventloop.LabelSummary) {
 		for kind, s := range stats {
-			ports.LogIf(obs, ports.LogDebug, "eventloop budget", "window_s", int64(window/time.Second),
+			ports.LogIf(obs, budgetLevel, "eventloop budget", "window_s", int64(window/time.Second),
 				"kind", kind, "count", s.Count, "total_ms", s.Total.Milliseconds(), "max_ms", s.Max.Milliseconds(),
 				"wait_total_ms", s.TotalWait.Milliseconds(), "wait_max_ms", s.MaxWait.Milliseconds())
 		}
