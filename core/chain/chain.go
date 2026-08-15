@@ -1710,6 +1710,19 @@ func (c *Chain) ValidateCommit(b *Block) error {
 	return c.requireQuorumStack(b, seen)
 }
 
+// VerifyPrepareQC reports whether qc is a valid prepare-phase quorum
+// certificate for b at round r — the POL the #432 precommit and view-change
+// rules lean on. Held to the same thresholds as a commit (certification §4:
+// the POL threshold IS the commit threshold, so POL-intersects-commit is the
+// same theorem as commit-intersects-commit).
+func (c *Chain) VerifyPrepareQC(b *Block, qc []Attestation, round uint64) error {
+	seen, err := c.collectQuorumSigs(b, qc, PhasePrepare, round)
+	if err != nil {
+		return err
+	}
+	return c.requireQuorumStack(b, seen)
+}
+
 // collectQuorumSigs verifies one phase's signature set for b: every signature
 // must be genuine, at EXACTLY the demanded (phase, round), from a distinct
 // non-proposer identity; unqualified identities are ignored (not fatal), a bad

@@ -265,6 +265,11 @@ type SignMark struct {
 	Round  uint64
 	Phase  uint8 // chain.PhaseLegacy / PhasePrepare / PhasePrecommit
 	Hash   Hash
+	// LockQC is the CBOR-encoded prepare-QC justifying a precommit-phase mark
+	// (#432: the validator's LOCK, persisted with the mark so a restarted
+	// validator can re-present it in a round-change — certification §5.3).
+	// Empty for prepare/legacy marks.
+	LockQC []byte
 }
 
 // SignMarkStore persists the watermark durably. Save MUST make the mark

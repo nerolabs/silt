@@ -152,6 +152,10 @@ const (
 	MsgCanonicalIssuersReply // Data: concatenated 32-byte NodeIDs, heaviest-bond first; OK=false if no chain
 	MsgGetChainHead          // cheap chain-sync head probe (#382): "what is your head?" — no payload
 	MsgChainHeadReply        // Height: head height; Data: 32-byte head hash (so a matching head skips the full-chain fetch)
+	MsgPrepareQC             // Data: CBOR prepareQCEnv (#432 two-phase): "here is the prepare-QC for (h, r) — precommit"
+	MsgPrecommitReply        // OK + Data: CBOR precommit attestation (or OK=false refusal)
+	MsgRoundChange           // Data: CBOR roundChangeEnv (#432 view-change): signed "advance (h, r→r')" carrying the sender's lock
+	MsgRoundChangeAck        // OK: the round-change was received and recorded
 )
 
 // StorageProof is a Merkle inclusion proof shipped alongside a chunk:
@@ -263,6 +267,8 @@ func (k MsgKind) String() string {
 		MsgHasChunk: "HasChunk", MsgHasChunkReply: "HasChunkReply",
 		MsgChallenge: "Challenge", MsgChallengeReply: "ChallengeReply",
 		MsgProposeBlock: "ProposeBlock", MsgAttestReply: "AttestReply",
+		MsgPrepareQC: "PrepareQC", MsgPrecommitReply: "PrecommitReply",
+		MsgRoundChange: "RoundChange", MsgRoundChangeAck: "RoundChangeAck",
 		MsgCommitBlock: "CommitBlock", MsgCommitAck: "CommitAck",
 		MsgGetChain: "GetChain", MsgChainReply: "ChainReply",
 		MsgGetChainHead: "GetChainHead", MsgChainHeadReply: "ChainHeadReply",
@@ -284,7 +290,7 @@ func (k MsgKind) String() string {
 // IsReply reports whether this kind terminates a pending request.
 func (m Message) IsReply() bool {
 	switch m.Kind {
-	case MsgFindNodeReply, MsgGetProvidersReply, MsgAddProviderAck, MsgStoreChunkAck, MsgFetchChunkReply, MsgHasChunkReply, MsgChallengeReply, MsgAttestReply, MsgCommitAck, MsgChainReply, MsgChainHeadReply, MsgBondReply, MsgTokenReply, MsgIssuerKeyReply, MsgSubmitBondRegAck, MsgRepairVote, MsgDeliveryReceiptAck, MsgCanonicalIssuersReply:
+	case MsgFindNodeReply, MsgGetProvidersReply, MsgAddProviderAck, MsgStoreChunkAck, MsgFetchChunkReply, MsgHasChunkReply, MsgChallengeReply, MsgAttestReply, MsgCommitAck, MsgChainReply, MsgChainHeadReply, MsgBondReply, MsgTokenReply, MsgIssuerKeyReply, MsgSubmitBondRegAck, MsgRepairVote, MsgDeliveryReceiptAck, MsgCanonicalIssuersReply, MsgPrecommitReply, MsgRoundChangeAck:
 		return true
 	}
 	return false
