@@ -20,6 +20,16 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   both-commit fork in the normal objective tree, so the weak config is what makes it reachable.
   `core/node/modelcheck_tier2_test.go`. Test-only. **With this + the #357 launch replay, the launch tier
   now has all four scars (#357/B2/#397/#402) failing-first — the P1-run gate criterion.**
+- **#406 — consensus model-check, tier 1: the #357 launch replay (no reorg of a finalized block +
+  fork-choice determinism)** (2026-08-15) — `core/chain/modelcheck_i5_357_test.go` asserts the invariant
+  that closes #357: over adversarial competing forks (bare-genesis, shorter, equal-height, and even
+  **taller** conflicting), a super-quorum-finalized launch block is **never reorged** (D-1), and
+  fork-choice is **order-independent** (reconciling the same fork set in any order yields the same head
+  — a pure function, never the height-blind hash tiebreak that dropped committed blocks to height 0).
+  Proven **failing-first** by a controlled revert: forcing `finalityQuorumActive` false (the pre-#357
+  no-gate state) lets a taller fork reorg the finalized chain — RED; with the shipped gate — GREEN. Also
+  asserts the #357 weight face (a committed anchor-attested chain carries nonzero fork-choice weight).
+  Test-only.
 - **#406 — consensus model-check, tier 2: the I2-across-restart oracle** (2026-08-15) — On the
   held-delivery substrate: a validator signs a block at height h through a REAL gather, then
   "crashes and restarts" (a fresh `Node`+chain on the same endpoint), and must **refuse a competitor
