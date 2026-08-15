@@ -92,6 +92,18 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   tests-only here, no product change.
 
 ### Fixed
+- **cloudtest: the C2 no-capture flow's PASS verdict crashed on an unbound variable (P1 run
+  b525b0b-87478), dropping an otherwise-green result** (2026-08-15) — `scenarios.sh:832` wrote the
+  no-quiet-capture PASS with `($h1→$h2)` — an UNBRACED `$h1` immediately before the multibyte `→`.
+  macOS `/bin/bash` 3.2.57 under `set -u` absorbs a byte of the multibyte char into the identifier
+  (parsing `h1<0xe2>`), which is unbound → the `record()` crashed BEFORE writing, so the C2 drill —
+  which **behaviorally passed** (sybils couldn't advance with anchors down; a driven block committed +
+  synced when they returned) — recorded no verdict and dropped out of `results.jsonl`. Root-caused by
+  reproducing the exact `bash: h1�: unbound variable` on bash 3.2. Fix: brace the vars (`${h1}→${h2}`);
+  swept + fixed the one other instance (`${cp}…` at the WS cold-sync line). Regression guard
+  `integration/cloudtest/check_shell_multibyte.sh` (a STATIC lint — the bug is bash-3.2-specific, so a
+  Linux/bash-5 runtime test can't catch it) is wired into CI. Harness-only; no product change (the C2
+  property held on WAN).
 - **#402 — the launch anchor gate is now a DERIVED strict anchor majority `⌊A/2⌋+1`, structural in
   objective mode (research-certified consensus fix; encoding B)** (2026-08-14) — Closes the
   launch face of the intersecting-quorum invariant (I1). Two parts: (1) **anchor-only launch

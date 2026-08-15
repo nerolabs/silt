@@ -829,7 +829,7 @@ flow_c2_no_capture() {
   # log — so a lagging Sybil's catch-up (height rises toward the ceiling, no fresh
   # commit) can never be misread as a capture.
   if [ "$no_advance" = 1 ] && [ "$resumed" = 1 ]; then
-    record "5-sybil-no-capture" pass major "no quiet capture: $n_syb bonded single-domain Sybils could NOT advance the chain past the anchored ceiling h${ceiling} with all anchors down (sybil head →$h1, no fresh Sybil commit), and a DRIVEN block committed + synced to the Sybil ($h1→$h2) once the anchors returned$([ "$gate" = 1 ] && echo '; a Sybil logged the anchor-required refusal' || echo '')"
+    record "5-sybil-no-capture" pass major "no quiet capture: $n_syb bonded single-domain Sybils could NOT advance the chain past the anchored ceiling h${ceiling} with all anchors down (sybil head →${h1}, no fresh Sybil commit), and a DRIVEN block committed + synced to the Sybil (${h1}→${h2}) once the anchors returned$([ "$gate" = 1 ] && echo '; a Sybil logged the anchor-required refusal' || echo '')"
   elif [ "$no_advance" != 1 ] && [ "$fresh_commit" = 1 ]; then
     record "5-sybil-no-capture" fail major "CAPTURE: a Sybil COMMITTED a new block past the anchored ceiling h${ceiling} (sybil head →$h1) with ALL anchors down — the training wheels did not hold"
   elif [ "$no_advance" != 1 ]; then
@@ -1003,7 +1003,7 @@ flow_maturing_handoff() {
     record "10c-ws-cold-sync" gap major "no 'checkpoint: H:HASH' line found on val-a — cannot pin the cold-sync; property UNTESTED"
     return
   fi
-  echo "    ws cold-sync: restarting val-b pinned to -ws-checkpoint $cp…"
+  echo "    ws cold-sync: restarting val-b pinned to -ws-checkpoint ${cp}…"
   local base_h; base_h="$(mh_ceiling)"
   relaunch_with val-b "-ws-checkpoint $cp"
   local sync_ok=0 latch_held=0 t2; t2="$(date +%s)"
