@@ -23,6 +23,21 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   a research/PE confirm.
 
 ### Added
+- **Event-loop latency instrumentation — name the slow (or hung) handler from real load** (2026-08-15,
+  Andrew's timing-for-evidence idea) — The single event-loop goroutine (`adapters/eventloop`) is the one
+  serialization point, so it is the one place to see where the node's thread actually goes. Each task now
+  carries a label (inbound deliveries by `msg.Kind`; timers/commit/api by a constant) and the loop
+  optionally reports: **slow tasks** (`SlowThreshold`/`OnSlow` — a single task blocking the thread), a
+  **hang watchdog** (`HangThreshold`/`OnHang` — a task still in-flight past a deadline, reported once with
+  an all-goroutine stack dump of exactly where it is stuck), **queue-wait** (`QueueWaitThreshold`/
+  `OnQueueWait` — the causal signal: a task that executes fast can still blow a downstream deadline by
+  *waiting* behind a saturated thread, so this ties saturation to the 8s request-timeout that
+  execution-time alone would miss), and a **per-window budget summary** (`SummaryEvery`/`OnSummary` —
+  count/total/max execution AND queue-wait per label = the goroutine-budget decomposition, cause and
+  effect in one window, so the dominant handler is named from real execution, not a reconstruction; the
+  summary is debug-gated, slow/hang/queue-wait are always-on). Adapter-only, zero-value = off
+  (the sim's own scheduler is untouched); wired in the daemon via the existing logger. This is the
+  observability the starved MATURING field run lacked (its per-issuer gather legs were debug-gated).
 - **#406 — consensus model-check, tier 2: the I5/#397 honest-never-slashed oracle** (2026-08-15) — Over
   the real node loop + held-delivery: two proposers cross-attest-race one height in a WEAK config where
   both forks can commit (objective, no anchors, `ByzantineQuorum` off, `Quorum 1`, N=4 → no finality

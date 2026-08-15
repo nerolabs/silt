@@ -94,7 +94,7 @@ func TestReachabilityNotFooledByConnReuse(t *testing.T) {
 		reachable bool
 	}
 	got := make(chan result, 1)
-	loopA.Post(func() {
+	loopA.Post("test", func() {
 		ndA.Bootstrap([]ports.NodeID{identB.NodeID()}, func() {
 			table := ndA.Table().Size()
 			ndA.CheckReachability([]ports.NodeID{identB.NodeID()}, func(ok bool) {

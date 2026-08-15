@@ -28,7 +28,7 @@ func (c *Clock) Now() ports.Time { return ports.Time(time.Now().UnixNano()) }
 func (c *Clock) AfterFunc(d ports.Duration, fn func()) (cancel func()) {
 	var canceled atomic.Bool
 	t := time.AfterFunc(time.Duration(d), func() {
-		c.loop.Post(func() {
+		c.loop.Post("timer", func() {
 			if !canceled.Load() {
 				fn()
 			}

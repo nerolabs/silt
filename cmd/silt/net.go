@@ -67,7 +67,7 @@ func cmdNet(args []string) error {
 
 	wait := func(p *peer, timeout time.Duration, fn func(done func())) error {
 		ch := make(chan struct{})
-		p.loop.Post(func() { fn(func() { close(ch) }) })
+		p.loop.Post("api", func() { fn(func() { close(ch) }) })
 		select {
 		case <-ch:
 			return nil

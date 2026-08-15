@@ -72,7 +72,7 @@ func WithdrawDemandTokenPrivately(rng io.Reader, issuerID ports.NodeID, issuerAd
 	}
 	ch := make(chan result, 1)
 	// Node methods run on the single-threaded event loop; post the withdrawal there.
-	loop.Post(func() {
+	loop.Post("api", func() {
 		nd.AcquireDemandTokenWithCredit(rng, issuerID, issuerPub, credit, func(tok demand.Token, err error) {
 			ch <- result{tok, err}
 		})
