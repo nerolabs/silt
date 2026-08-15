@@ -39,3 +39,15 @@ Attribution is at **handler-kind** granularity, not atom-within-handler. If `Bon
 `silt-reviews/principle-engineer/builder-consult-eventloop-instrumentation-2026-08-15.md`.
 
 Discipline note: this is a **measurement tool, not a conclusion.** It does not name the atom until it runs under load. After correcting the attribution twice, the rule holds — no naming the residual until the evidence is on the table.
+
+## PE shape sign-off (2026-08-15) — approved to run, with additions
+
+`eventloop-instrumentation-shape-signoff-PE-2026-08-15.md`: shape approved. Additions folded in:
+
+- **Queue-wait added** (PE §b — the required causation metric). Execution-time alone can show *every task green* while the loop is pinned and tokens time out — because the token blind-sign is fast and blows 8s by **waiting behind** the VDF-eval/drain/sync backlog. `QueueWaitThreshold`/`OnQueueWait` + per-label wait in the summary makes cause (VDF-eval total dominates the 30s window) and effect (TokenRequest wait spikes past the timeout) visible in one window.
+- **Production gating** (PE §b): summary → debug (diagnostic noise at steady state); slow-log + hang-watchdog + queue-wait → always-on (they only fire on pathology — honest observability, S5).
+- **Label separation confirmed** (PE §a): the slow **answer** (`AnswerSpaceTime`) runs under `BondChallenge`; the cheap **verify** (`VerifySpaceTime`) under `BondReply` — already distinct, so they can't conflate. The remaining split (VDF-eval vs label-opens, both inside `AnswerSpaceTime` under `BondChallenge`) is a mandatory finer span *if* `BondChallenge` dominates.
+
+Two items the sign-off routes as **separate** work (not in this PR):
+- **Grief seam — FIX before the red team, not just disclose** (PE §c, escalated): the unbounded 1000-squaring VDF-eval on every remote `MsgBondChallenge` with no per-challenger limit is a remote-triggered CPU-DoS. Cheap, security-clean fix (per-challenger challenge-rate-limit) that likely *also* caps the audit fan-out. File + fix independent of the decomposition outcome.
+- **The load run** (PE §d): local first, but **constrain the containers to e2-small single-core** (the wall is single-core-bound, not core-count-bound — a fast dev core won't saturate and would falsely read "no wall"). Treat the **decomposition ratio** (share per label) as the portable output; measure absolute per-VDF-eval cost on the target core; project `cost × count vs 30s window`. Field run only if the projection is borderline — keeps the billable run out of the discovery loop (#6).

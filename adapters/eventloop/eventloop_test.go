@@ -173,7 +173,46 @@ func TestSummaryDecomposition(t *testing.T) {
 		if stats["BondChallenge"].Total < 15*time.Millisecond {
 			t.Fatalf("BondChallenge total = %v, want >= 15ms", stats["BondChallenge"].Total)
 		}
+		// The two TokenRequests queued behind the 15ms BondChallenge, so their
+		// wait — not their execution — is what the decomposition surfaces.
+		if stats["TokenRequest"].MaxWait < 10*time.Millisecond {
+			t.Fatalf("TokenRequest maxWait = %v, want >= 10ms (queued behind the slow task)", stats["TokenRequest"].MaxWait)
+		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("OnSummary never fired")
+	}
+}
+
+// Queue-wait is reported for a task that sat behind a saturated thread — the
+// causal signal (a fast task blows a deadline by WAITING, not executing). This
+// is the token-times-out-behind-VDF-evals mechanism in miniature.
+func TestQueueWaitReported(t *testing.T) {
+	l := New()
+	l.QueueWaitThreshold = 20 * time.Millisecond
+	type hit struct {
+		label string
+		wait  time.Duration
+	}
+	got := make(chan hit, 4)
+	l.OnQueueWait = func(label string, wait time.Duration) { got <- hit{label, wait} }
+
+	go l.Run()
+	defer l.Stop()
+
+	// A slow task pins the thread; a fast TokenRequest posted right behind it
+	// executes instantly but only after waiting out the slow one.
+	l.Post("BondChallenge", func() { time.Sleep(80 * time.Millisecond) })
+	l.Post("TokenRequest", func() {})
+
+	select {
+	case h := <-got:
+		if h.label != "TokenRequest" {
+			t.Fatalf("queue-wait label = %q, want TokenRequest (the task that waited)", h.label)
+		}
+		if h.wait < 20*time.Millisecond {
+			t.Fatalf("queue-wait = %v, want >= 20ms", h.wait)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("OnQueueWait never fired for a task queued behind an 80ms task")
 	}
 }

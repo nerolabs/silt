@@ -26,14 +26,17 @@ import (
 )
 
 type task struct {
-	label string
-	fn    func()
+	label  string
+	fn     func()
+	posted time.Time // enqueue time, for queue-wait; zero when instrumentation off
 }
 
 type labelStat struct {
-	count int64
-	total time.Duration
-	max   time.Duration
+	count     int64
+	total     time.Duration // execution time (where the thread went)
+	max       time.Duration
+	totalWait time.Duration // queue-wait: Post → execution start (what waited behind a backlog)
+	maxWait   time.Duration
 }
 
 type Loop struct {
@@ -65,9 +68,19 @@ type Loop struct {
 	// case. Needs Run to have been called (the watchdog rides its lifetime).
 	HangThreshold time.Duration
 	OnHang        func(label string, d time.Duration, stack []byte)
-	// SummaryEvery, if > 0, emits a per-label {count,total,max} snapshot via
-	// OnSummary every interval and resets — the goroutine-budget decomposition
-	// over each window (name the dominant atom from real load).
+	// QueueWaitThreshold, if > 0, logs via OnQueueWait any task that WAITED at
+	// least this long between Post and execution — the causal signal that the
+	// single thread is saturated. A task can execute fast yet blow a downstream
+	// deadline purely by waiting behind a backlog (the token blind-sign is fast;
+	// it times out at 8s because VDF-evals/drain/sync ran ahead of it). Execution
+	// time alone can show every task green while the loop is pinned; queue-wait is
+	// what ties saturation to the timeout (PE 2026-08-15).
+	QueueWaitThreshold time.Duration
+	OnQueueWait        func(label string, wait time.Duration)
+	// SummaryEvery, if > 0, emits a per-label snapshot via OnSummary every
+	// interval and resets — the goroutine-budget decomposition over each window
+	// (name the dominant atom from real load). Carries both execution time (where
+	// the thread went — cause) and queue-wait (what starved behind it — effect).
 	SummaryEvery time.Duration
 	OnSummary    func(window time.Duration, stats map[string]LabelSummary)
 
@@ -82,11 +95,20 @@ type Loop struct {
 	watchdog chan struct{} // closed on Stop to end the background goroutine
 }
 
-// LabelSummary is one line of the per-window decomposition.
+// LabelSummary is one line of the per-window decomposition: execution time
+// (Total/Max — where the thread went, the cause) and queue-wait (TotalWait/
+// MaxWait — what starved behind the backlog, the effect).
 type LabelSummary struct {
-	Count int64
-	Total time.Duration
-	Max   time.Duration
+	Count     int64
+	Total     time.Duration
+	Max       time.Duration
+	TotalWait time.Duration
+	MaxWait   time.Duration
+}
+
+// instrumented reports whether any latency hook is armed (set-once before Run).
+func (l *Loop) instrumented() bool {
+	return l.SlowThreshold > 0 || l.HangThreshold > 0 || l.SummaryEvery > 0 || l.QueueWaitThreshold > 0
 }
 
 func New() *Loop {
@@ -106,9 +128,13 @@ func (l *Loop) now() time.Time {
 // instrumentation (use the message kind for inbound deliveries; a short
 // constant like "timer"/"commit"/"api" otherwise). Never blocks.
 func (l *Loop) Post(label string, fn func()) {
+	var posted time.Time
+	if l.instrumented() {
+		posted = l.now() // stamp enqueue time for queue-wait
+	}
 	l.mu.Lock()
 	if !l.stopped {
-		l.queue = append(l.queue, task{label: label, fn: fn})
+		l.queue = append(l.queue, task{label: label, fn: fn, posted: posted})
 		l.cond.Signal()
 	}
 	l.mu.Unlock()
@@ -138,10 +164,17 @@ func (l *Loop) Run() {
 // unwind through Run and stop the node's thread, timing it for the
 // instrumentation hooks.
 func (l *Loop) run(t task) {
-	instr := l.SlowThreshold > 0 || l.HangThreshold > 0 || l.SummaryEvery > 0
+	instr := l.instrumented()
 	var start time.Time
+	var wait time.Duration
 	if instr {
 		start = l.now()
+		if !t.posted.IsZero() {
+			wait = start.Sub(t.posted)
+		}
+		if l.QueueWaitThreshold > 0 && wait >= l.QueueWaitThreshold && l.OnQueueWait != nil {
+			l.OnQueueWait(t.label, wait)
+		}
 		l.curLabel.Store(&t.label)
 		l.curStart.Store(start.UnixNano())
 		l.curSeq.Add(1)
@@ -160,6 +193,10 @@ func (l *Loop) run(t task) {
 				s.total += d
 				if d > s.max {
 					s.max = d
+				}
+				s.totalWait += wait
+				if wait > s.maxWait {
+					s.maxWait = wait
 				}
 				l.stats[t.label] = s
 				l.mu.Unlock()
@@ -244,7 +281,7 @@ func (l *Loop) emitSummary(window time.Duration) {
 	}
 	out := make(map[string]LabelSummary, len(l.stats))
 	for k, s := range l.stats {
-		out[k] = LabelSummary{Count: s.count, Total: s.total, Max: s.max}
+		out[k] = LabelSummary{Count: s.count, Total: s.total, Max: s.max, TotalWait: s.totalWait, MaxWait: s.maxWait}
 	}
 	l.stats = make(map[string]labelStat)
 	l.mu.Unlock()

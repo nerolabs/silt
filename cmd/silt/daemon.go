@@ -400,11 +400,23 @@ func cmdDaemon(args []string) error {
 	loop.OnHang = func(label string, d time.Duration, stack []byte) {
 		ports.LogIf(obs, ports.LogError, "eventloop task HANG — node thread stuck", "kind", label, "seconds", int64(d/time.Second), "stack", string(stack))
 	}
+	// Queue-wait is the causal signal (PE 2026-08-15): a task can execute fast yet
+	// blow a downstream deadline purely by WAITING behind a saturated thread. 2s is
+	// well under the 8s request-timeout, so a token blind-sign that waited this long
+	// is on its way to timing out — logged always-on (it only fires on pathology).
+	loop.QueueWaitThreshold = 2 * time.Second
+	loop.OnQueueWait = func(label string, wait time.Duration) {
+		ports.LogIf(obs, ports.LogWarn, "eventloop task waited (thread saturated)", "kind", label, "wait_ms", wait.Milliseconds())
+	}
+	// The per-window budget decomposition is diagnostic detail (a line per active
+	// kind every 30s) — debug-level, so it's off at steady state and on under -log
+	// debug for a load run. Carries execution time (cause) AND queue-wait (effect).
 	loop.SummaryEvery = 30 * time.Second
 	loop.OnSummary = func(window time.Duration, stats map[string]eventloop.LabelSummary) {
 		for kind, s := range stats {
-			ports.LogIf(obs, ports.LogInfo, "eventloop budget", "window_s", int64(window/time.Second),
-				"kind", kind, "count", s.Count, "total_ms", s.Total.Milliseconds(), "max_ms", s.Max.Milliseconds())
+			ports.LogIf(obs, ports.LogDebug, "eventloop budget", "window_s", int64(window/time.Second),
+				"kind", kind, "count", s.Count, "total_ms", s.Total.Milliseconds(), "max_ms", s.Max.Milliseconds(),
+				"wait_total_ms", s.TotalWait.Milliseconds(), "wait_max_ms", s.MaxWait.Milliseconds())
 		}
 	}
 
