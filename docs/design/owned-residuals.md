@@ -46,8 +46,11 @@ discount, C2 no quiet capture, the demand→standing firewall) — those are hel
 - **Bounded today by:** (1) the real dollar cost of disk × distinct AS positions per key;
   (2) the operator margin **M** (auto-armed > 1 for the untrusted posture); (3) the **A-axis**
   address-diversity gate — the shed counts distinct declared domains, so same-domain key
-  splitting doesn't inflate the count; (4) the **HHI / Gini / top-share concentration alarm**
-  (out-of-band veto, measurement not enforcement). A dedicated survey found **nothing
+  splitting doesn't inflate the count — **but the declaration is trusted verbatim (no
+  transport /24 cross-check anywhere), so this binds only truthful declarations: a rational
+  splitter declaring distinct domains evades it for free, and the binding bound is (1)+(2)
+  alone** (2026-08-15 re-price; red-team seam #5); (4) the **HHI / Gini / top-share
+  concentration alarm** (out-of-band veto, measurement not enforcement). A dedicated survey found **nothing
   anchor-free beats "/24 diversity + economic bond"** (TEE attestation, proof-of-location,
   social-graph, super-linear bonding, proof-of-personhood all need a trust anchor / a social
   graph silt lacks / are just a price the whale pays) — so the *pessimism is correct*, only the
@@ -66,8 +69,9 @@ discount, C2 no quiet capture, the demand→standing firewall) — those are hel
   not proven impossible) *(reclassed from `theorem (Kwon)`)*.
 - **What it is:** the operator-margin `M` (keys-per-operator inflation) that discounts the
   Nakamoto coefficient to `⌊k̂/M⌋` is a *declared constant*, not a measured quantity.
-- **Bounded today by:** conservative default (> 1, auto-armed); the A-axis makes part of it
-  *earned* (distinct declared domains) rather than assumed.
+- **Bounded today by:** conservative default (> 1, auto-armed). (The A-axis does **not**
+  make any of it *earned*: a declared domain is free and unverified — see A1's 2026-08-15
+  re-price — so `M` stays a declared floor, not a measured one.)
 - **Open question:** can telemetry (address/AS distribution, timing) give a *defensible
   lower bound* on `M` without an authority — or is a declared floor the honest ceiling?
 
