@@ -62,6 +62,34 @@ type Network struct {
 	relay    ports.NodeID
 	hasRelay bool
 	Stats    Stats
+
+	// Held-delivery (model-check) mode. When held is true, Send parks each
+	// message's delivery closure in heldQ instead of scheduling it on the clock,
+	// and the driver fires them in an order IT chooses via Pending()/Deliver().
+	// This is what lets the consensus model-check enumerate adversarial delivery
+	// interleavings deterministically over the REAL node loop. Off by default, so
+	// every existing sim/e2e path (random latency + sched.Run) is untouched.
+	held    bool
+	heldSeq int
+	heldQ   []heldMsg
+}
+
+// heldMsg is one parked delivery: the closure Send would otherwise have scheduled,
+// plus routing metadata so the driver can choose interleavings by (from, to, kind).
+type heldMsg struct {
+	id      int
+	from    ports.NodeID
+	to      ports.NodeID
+	kind    ports.MsgKind
+	deliver func()
+}
+
+// HeldMsg is the driver-visible view of a parked message (no closure).
+type HeldMsg struct {
+	ID   int
+	From ports.NodeID
+	To   ports.NodeID
+	Kind ports.MsgKind
 }
 
 func New(sched Scheduler, seed int64, cfg Config) *Network {
@@ -137,7 +165,7 @@ func (e *Endpoint) Send(to ports.NodeID, msg ports.Message) error {
 		latency += n.drawLatency() // a second hop, in through the relay
 		n.Stats.Relayed++
 	}
-	n.sched.AfterFunc(latency, func() {
+	deliver := func() {
 		// Re-check at delivery time: the world may have changed in flight.
 		if dst.dead || n.partitioned(e.id, to) || dst.handler == nil {
 			n.Stats.Dropped++
@@ -152,8 +180,64 @@ func (e *Endpoint) Send(to ports.NodeID, msg ports.Message) error {
 		}
 		n.Stats.Delivered++
 		dst.handler(e.id, msg)
-	})
+	}
+	if n.held {
+		// Model-check mode: park the delivery; the driver decides when (and in what
+		// order relative to other parked messages) it fires. The latency draw above
+		// still happened, so the RNG stream is identical to timed mode.
+		n.heldSeq++
+		n.heldQ = append(n.heldQ, heldMsg{id: n.heldSeq, from: e.id, to: to, kind: msg.Kind, deliver: deliver})
+		return nil
+	}
+	n.sched.AfterFunc(latency, deliver)
 	return nil
+}
+
+// EnableHeldDelivery switches the network into model-check mode: Send parks each
+// message instead of scheduling it on the clock, and the driver fires parked
+// messages in a chosen order via Pending()/Deliver(). Test/model-check only — it
+// must be set before any Send, and it composes with Kill/Partition/Restart (a
+// parked message re-checks dead/partition at Deliver time, exactly as timed
+// delivery does).
+func (n *Network) EnableHeldDelivery() { n.held = true }
+
+// Pending returns a FIFO snapshot of the parked messages so the driver can pick
+// which to deliver next. Empty when the network is quiescent (no message in flight).
+func (n *Network) Pending() []HeldMsg {
+	out := make([]HeldMsg, len(n.heldQ))
+	for i, m := range n.heldQ {
+		out[i] = HeldMsg{ID: m.id, From: m.from, To: m.to, Kind: m.kind}
+	}
+	return out
+}
+
+// Deliver fires the parked message with the given id — running its delivery closure
+// (which re-checks dead/partition at delivery time) — and removes it from the queue.
+// Delivering may enqueue NEW parked messages (the handler's replies), so a driver
+// loops Pending/Deliver until quiescence or a step bound. Returns false if no such
+// id is pending. Only meaningful in held-delivery mode.
+func (n *Network) Deliver(id int) bool {
+	for i, m := range n.heldQ {
+		if m.id == id {
+			n.heldQ = append(n.heldQ[:i], n.heldQ[i+1:]...)
+			m.deliver()
+			return true
+		}
+	}
+	return false
+}
+
+// DropPending removes the parked message with the given id WITHOUT delivering it —
+// the model-check's message-loss control. Returns false if no such id is pending.
+func (n *Network) DropPending(id int) bool {
+	for i, m := range n.heldQ {
+		if m.id == id {
+			n.heldQ = append(n.heldQ[:i], n.heldQ[i+1:]...)
+			n.Stats.Dropped++
+			return true
+		}
+	}
+	return false
 }
 
 func (n *Network) drawLatency() ports.Duration {
