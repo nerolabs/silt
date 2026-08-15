@@ -58,6 +58,24 @@ To make an honest I5/#397 tier-2 catch, one of:
 
 ## Status
 
-Held-delivery mode + conformance + the round-commits substrate: DONE, green, ready to ship. I5/#397
-tier-2 oracle: deferred with the design above (its failing-first story needs a pre-#402 baseline).
-I2-restart tier-2 oracle: the recommended next build.
+Held-delivery mode + conformance + the round-commits substrate: DONE (PR #416). I2-restart oracle:
+DONE (PR #417). I5/#397 honest-never-slashed oracle: **DONE** — the deferral is resolved.
+
+## Resolution of the I5/#397 deferral (2026-08-15, later same day)
+
+Built it, using exactly the "pre-#402 baseline" this note prescribed. The baseline is a **WEAK config**:
+objective, **no anchors**, `ByzantineQuorum` off, `Quorum 1`, N=4 — so `RequiredQuorum(1) < bftThreshold(4)=2`
+leaves `finalityQuorumActive` FALSE (no finality gate) and there is no anchor gate. Two proposers, each
+the other's ONLY attester, cross-attest-race one height; both forks commit; the #397 propose-watermark
+is the sole protection. Verify-first caught TWO real bugs in my own oracle before it was trustworthy:
+1. **The attest-side watermark also shields the fork** — with v2/v3 as shared attesters, each signs once,
+   so only one fork gets attesters. Fix: make the two proposers each other's *only* attester (the clean
+   cross-attest wedge), N=4 only to keep the gate off.
+2. **I was checking the wrong slash signal** — `Chain().IsSlashed` reflects only a COMMITTED slash block
+   (which this scenario never proposes), so it read GREEN even under the #397 revert. A DIAG print
+   revealed both forks *did* commit and both proposers *did* double-sign — the detection was blind. Fix:
+   use the `OnSlash` callback (slashEquivocators fires it on detection), as the seam-7 test does.
+Both would have shipped a false-green oracle; the failing-first check (revert → must go RED) is what
+forced finding them. After both fixes: GREEN with the watermark, RED (honest slashed) without —
+genuinely failing-first. Recorded because it is the third time this session the failing-first discipline
+caught a green-for-a-weak-reason consensus oracle in my own work (I3 setup bug, tier-2 I5 v1, this).

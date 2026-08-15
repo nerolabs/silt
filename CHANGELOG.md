@@ -9,6 +9,17 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **#406 — consensus model-check, tier 2: the I5/#397 honest-never-slashed oracle** (2026-08-15) — Over
+  the real node loop + held-delivery: two proposers cross-attest-race one height in a WEAK config where
+  both forks can commit (objective, no anchors, `ByzantineQuorum` off, `Quorum 1`, N=4 → no finality
+  gate, no anchor gate — the pre-#402 baseline), and **no honest validator is slashed**: the #397
+  propose-time never-sign-twice watermark makes each proposer refuse the rival, so no honest node
+  double-signs. Proven **failing-first** by controlled revert (removing the propose-time `recordSign`
+  lets each proposer cross-attest → both forks commit → sync slashes both honest proposers via `OnSlash`
+  — RED; with the watermark — GREEN). Resolves the deferral from the substrate PR: #402's I1 shields the
+  both-commit fork in the normal objective tree, so the weak config is what makes it reachable.
+  `core/node/modelcheck_tier2_test.go`. Test-only. **With this + the #357 launch replay, the launch tier
+  now has all four scars (#357/B2/#397/#402) failing-first — the P1-run gate criterion.**
 - **#406 — consensus model-check, tier 2: the I2-across-restart oracle** (2026-08-15) — On the
   held-delivery substrate: a validator signs a block at height h through a REAL gather, then
   "crashes and restarts" (a fresh `Node`+chain on the same endpoint), and must **refuse a competitor

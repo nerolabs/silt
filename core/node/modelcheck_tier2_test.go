@@ -1,6 +1,7 @@
 package node
 
 import (
+	"crypto/ed25519"
 	"testing"
 
 	"github.com/nerolabs/silt/adapters/identity"
@@ -26,10 +27,12 @@ import (
 // over driver-controlled held-delivery; (2) the I2-across-restart oracle — a validator
 // that signed at a height, after a crash+restart, refuses a competitor there (the #397
 // watermark survives restart), failing-first BY CONSTRUCTION via a non-persisted-mark
-// control. The genuine I5/#397 (honest-never-slashed) catch is still deferred: it needs
-// a pre-#402 baseline so the both-commit fork is reachable — #402's I1 shields the #397
-// fork in the current codebase (docs/thinking/2026-08-15-406-tier2-substrate-and-the-
-// i5-honesty-catch.md).
+// control; (3) the I5/#397 honest-never-slashed oracle — two proposers cross-attest-race a
+// height in a WEAK config where both forks can commit (the pre-#402 baseline: objective,
+// no anchors, ByzantineQuorum off, Quorum 1, N=4 → no finality gate, no anchor gate), and
+// no honest validator is slashed. #402's I1 shields this fork in the normal objective
+// tree, so the weak config is what makes it reachable — the resolution of the deferral
+// noted in docs/thinking/2026-08-15-406-tier2-substrate-and-the-i5-honesty-catch.md.
 
 // mcStubVerify makes objective() true without real space-time proofs — anchors qualify
 // via launchAnchor (zero-bond, pre-handoff), so the model-check needs no VDF work.
@@ -227,5 +230,109 @@ func TestModelCheckTier2_I2_RestartRefusesContradiction(t *testing.T) {
 	// load-bearing, not vacuous.
 	if refused := runI2Restart(t, false); refused {
 		t.Fatal("control broken: with a NON-persisted mark the restart should have attested the competitor (the mark is lost) — if it refused, the test is not actually exercising persistence")
+	}
+}
+
+// runI5HonestSlash drives the #397 honest-slash race over the real loop + held-delivery
+// in a WEAK config where two forks CAN both commit — objective but NO anchors,
+// ByzantineQuorum off, Quorum 1, N=4 — so RequiredQuorum(1) < bftThreshold(4)=2 leaves
+// finalityQuorumActive FALSE (no finality gate) and there is no anchor gate. This is the
+// environment the #402/#357 fixes deliberately removed; recreating it here isolates the
+// #397 propose-time watermark as the SOLE protection against an honest double-sign.
+// The two proposers are each other's ONLY attester, so the #397 cross-attest wedge is
+// the clean two-block one: A = P0(prop)+P1(attest), B = P1(prop)+P0(attest). With the
+// shipped propose-watermark each proposer refuses the rival, so NEITHER commits (no fork,
+// no double-sign — a benign launch stall the designated-proposer rule resolves in
+// production, not this oracle's concern). Under the revert each cross-attests → both
+// commit → both double-sign → sync slashes both. v2/v3 exist only so N=4 keeps the
+// finality gate off (bftThreshold(4)=2 > Quorum 1). Returns whether an honest node was
+// slashed. (Non-vacuity is established by the controlled-revert RED, verified in the
+// commit message — the #397 watermark is not test-toggleable, so this mirrors the
+// controlled-revert failing-first proof used by the I1/I3/#357 oracles.)
+func runI5HonestSlash(t *testing.T) (honestSlashed bool) {
+	t.Helper()
+	sched := simclock.New()
+	net := simnet.New(sched, 1, simnet.DefaultConfig())
+	net.EnableHeldDelivery()
+
+	ids := make([]*identity.Identity, 4)
+	for i := range ids {
+		ids[i] = identity.FromSeed(int64(8700 + i))
+	}
+	id := func(i int) ports.NodeID { return ids[i].NodeID() }
+	all := []ports.NodeID{id(0), id(1), id(2), id(3)}
+	pub := func(i int) []byte {
+		return append([]byte(nil), ids[i].Signer().Public().(ed25519.PublicKey)...)
+	}
+	g := &chain.Block{Version: chain.BlockVersion, Height: 0, Entries: []ports.Entry{mkEntry("g")}}
+	for i := range ids {
+		g.BondRegs = append(g.BondRegs, chain.BondReg{Validator: pub(i), Root: ports.HashBytes(pub(i)), Size: 8 << 20})
+	}
+	chain.Sign(g, ids[0].Signer())
+	// Weak config: no Anchors, no ByzantineQuorum, Quorum 1 → no finality gate, no anchor
+	// gate (see the finalityQuorumActive arithmetic above).
+	cfg := chain.Config{Quorum: 1, MinBond: 1 << 20, MatureValidators: 0}
+
+	nodes := make([]*Node, 4)
+	for i := range nodes {
+		nd := New(id(i), DefaultConfig(), sched, net.Endpoint(id(i)), memstore.New())
+		nd.SetLedger(credit.New(50_000, 0))
+		ch := chain.New(cfg, func(ports.NodeID) int64 { return 0 })
+		ch.SetBondVerifier(mcStubVerify)
+		if err := ch.AppendGenesis(*g); err != nil {
+			t.Fatalf("genesis: %v", err)
+		}
+		nd.EnableChain(ch, ids[i].Signer())
+		if err := nd.SetSignMarkStore(markstore.NewMem()); err != nil {
+			t.Fatalf("mark store: %v", err)
+		}
+		nodes[i] = nd
+	}
+	// Cross-attest-first delivery: deliver a proposal sent to the OTHER proposer first.
+	crossFirst := func(p []simnet.HeldMsg) int {
+		for i, m := range p {
+			if m.Kind == ports.MsgProposeBlock && (m.To == id(0) || m.To == id(1)) {
+				return i
+			}
+		}
+		return 0
+	}
+	blkA := &chain.Block{Version: chain.BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("A")}}
+	blkB := &chain.Block{Version: chain.BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("B")}}
+	// P0 and P1 are each other's ONLY attester (the clean cross-attest wedge).
+	nodes[0].proposeBlock(blkA, []ports.NodeID{id(1)}, all, 1, func(error) {})
+	nodes[1].proposeBlock(blkB, []ports.NodeID{id(0)}, all, 1, func(error) {})
+	drainHeld(t, net, crossFirst)
+
+	// Detect slashes via the OnSlash callback — slashEquivocators fires it on DETECTION
+	// (fetched chain vs local), before any on-chain slash record. (Checking
+	// Chain().IsSlashed would be wrong: that reflects only a COMMITTED slash block, which
+	// this scenario never proposes — so the honest slash would go undetected. All four
+	// validators are honest, so ANY slash here is an honest one.)
+	honest := map[ports.NodeID]bool{id(0): true, id(1): true, id(2): true, id(3): true}
+	for _, nd := range nodes {
+		nd.OnSlash(func(culprit ports.NodeID, _ uint64) {
+			if honest[culprit] {
+				honestSlashed = true
+			}
+		})
+	}
+	for _, nd := range nodes {
+		nd.SyncChain(all, func(int, error) {})
+	}
+	drainHeld(t, net, crossFirst)
+	return honestSlashed
+}
+
+// TestModelCheckTier2_I5_HonestNeverSlashed397 is the #397 honest-slash oracle: under a
+// two-proposer cross-attest race, in a config where BOTH forks can commit, no honest
+// validator is ever slashed — the #397 propose-time never-sign-twice watermark makes each
+// proposer refuse to attest the rival's block, so no honest node double-signs.
+// FAILING-FIRST (controlled revert): removing the propose-time recordSign in proposeBlock
+// lets each proposer cross-attest → both forks commit → sync slashes both honest proposers
+// (RED). With the shipped watermark — GREEN.
+func TestModelCheckTier2_I5_HonestNeverSlashed397(t *testing.T) {
+	if runI5HonestSlash(t) {
+		t.Fatal("I5/#397 VIOLATION — an honest validator was slashed under the two-proposer cross-attest race; the propose-time never-sign-twice watermark must stop any honest double-sign")
 	}
 }
