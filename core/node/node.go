@@ -456,6 +456,10 @@ type Node struct {
 	// disclosed deterrent. Persists across bond re-advertisement (peerBonds is
 	// replaced wholesale). See bondaudit.go latWindow.
 	peerBondRTT map[ports.NodeID]*latWindow
+	// bondChallengeRate caps VDF-evals served per challenger per audit window —
+	// the cheap gate in front of the costly AnswerSpaceTime so an unbounded
+	// challenger can't pin the single goroutine (#424). See bondaudit.go.
+	bondChallengeRate map[ports.NodeID]*challengerRate
 	// plotStore persists the bond plot so a restart reloads it instead of
 	// re-plotting (#93); nil = memory-only (re-plots each start).
 	plotStore ports.PlotStore
@@ -714,29 +718,30 @@ func (n *Node) dropHosted(id ports.ChunkID) {
 
 func New(id ports.NodeID, cfg Config, clock ports.Clock, tr ports.Transport, store ports.ChunkStore) *Node {
 	n := &Node{
-		cfg:             cfg,
-		id:              id,
-		clock:           clock,
-		tr:              tr,
-		store:           store,
-		table:           dht.NewTable(id, cfg.K),
-		provs:           dht.NewProviders(),
-		pending:         make(map[uint64]*pending),
-		reachable:       make(map[ports.NodeID]ports.Time),
-		deadUntil:       make(map[ports.NodeID]ports.Time),
-		staticPeers:     make(map[ports.NodeID]bool),
-		reachProbes:     make(map[uint64]*reachProbe),
-		proofs:          make(map[ports.ChunkID]ports.StorageProof),
-		peerDomains:     make(map[ports.NodeID]uint64),
-		peerBonds:       make(map[ports.NodeID]bondInfo),
-		peerBondRTT:     make(map[ports.NodeID]*latWindow),
-		slashedLocal:    make(map[ports.NodeID]bool),
-		pendingBondRegs: make(map[ports.NodeID]chain.BondReg),
-		peerIssuerKeys:  make(map[ports.NodeID]*rsa.PublicKey),
-		creditSpent:     make(map[string]bool),
-		tokenIssued:     make(map[string]tokenIssuedEntry),
-		serveLoad:       make(map[ports.ChunkID]int),
-		leases:          make(map[ports.ChunkID]ports.Time),
+		cfg:               cfg,
+		id:                id,
+		clock:             clock,
+		tr:                tr,
+		store:             store,
+		table:             dht.NewTable(id, cfg.K),
+		provs:             dht.NewProviders(),
+		pending:           make(map[uint64]*pending),
+		reachable:         make(map[ports.NodeID]ports.Time),
+		deadUntil:         make(map[ports.NodeID]ports.Time),
+		staticPeers:       make(map[ports.NodeID]bool),
+		reachProbes:       make(map[uint64]*reachProbe),
+		proofs:            make(map[ports.ChunkID]ports.StorageProof),
+		peerDomains:       make(map[ports.NodeID]uint64),
+		peerBonds:         make(map[ports.NodeID]bondInfo),
+		peerBondRTT:       make(map[ports.NodeID]*latWindow),
+		bondChallengeRate: make(map[ports.NodeID]*challengerRate),
+		slashedLocal:      make(map[ports.NodeID]bool),
+		pendingBondRegs:   make(map[ports.NodeID]chain.BondReg),
+		peerIssuerKeys:    make(map[ports.NodeID]*rsa.PublicKey),
+		creditSpent:       make(map[string]bool),
+		tokenIssued:       make(map[string]tokenIssuedEntry),
+		serveLoad:         make(map[ports.ChunkID]int),
+		leases:            make(map[ports.ChunkID]ports.Time),
 	}
 	if cfg.Domain != "" {
 		n.domainID = domainHash(cfg.Domain)
@@ -1099,7 +1104,7 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 	case ports.MsgDeliveryReceipt:
 		n.handleDeliveryReceipt(from, msg) // D-DEMAND: verify + bank a delivery receipt
 	case ports.MsgBondChallenge:
-		n.reply(from, msg, n.answerBondChallenge(msg))
+		n.reply(from, msg, n.answerBondChallenge(from, msg))
 	case ports.MsgTokenRequest:
 		n.reply(from, msg, n.answerTokenRequest(from, msg))
 	case ports.MsgGetIssuerKey:
