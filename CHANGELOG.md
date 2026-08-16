@@ -9,6 +9,33 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **#441 publish starvation FIXED: entries are mempool content the designee's block
+  carries — the certified operation-liveness mechanism** (2026-08-16) — The first
+  mature-regime field run committed ZERO publish entries post-latch across 33+ heights
+  while the chain stayed live on drain blocks, and the first launch soak stalled a
+  publish-contended height 361s past the computed escape bound: one root, the #432
+  round machinery's new-view seat AND its escape arming belonged exclusively to the
+  bond-reg drain path, so an entry proposal could win no round of any height. Per the
+  research certification (441-publish-starvation, 2026-08-16, direction A): a publish
+  now SUBMITS its entry (`MsgSubmitEntry`, the `MsgSubmitBondReg` mirror —
+  validate-on-arrival with synchronous refusal reasons, FIFO mempool dedup'd by root)
+  and polls for finality; the single (h, r) designee's block folds pending entries
+  under a byte budget SEPARATE from the reg budget (`-max-entry-bytes-per-block` —
+  neither stream can starve the other), and pending entries arm the round escape
+  alongside regs. Entries are content, never a competing value: locks/POL, the
+  proposer-prepare rule, and the #402 arithmetic are untouched, and a forced
+  (lock-carrying) re-proposal never folds. The born-RED starvation oracle plus five
+  certification siblings (launch-face entry-only arming, adversarial-designee drop
+  within the O(f+1) fairness bound — an owned residual, no *permanent minority*
+  censorship — FIFO no-internal-starvation, entry-flood-vs-renewal budget isolation,
+  and S1-with-entries lock-never-displaced) are all RED under the recorded fold+arming
+  revert and GREEN with the fix. Bonus, pinned by the certification §7 discriminator:
+  drain-alone commits at r0, so the field's every-height r1 escape (~95–155s/height)
+  was entry contention — the fix recovers the r0 happy path. Legacy (-objective=false)
+  deployments keep the direct propose path (no rounds machinery exists there to drive
+  a mempool, and no drain contention either). I4's full statement is now
+  operation-liveness — no legitimately submitted operation is permanently starved —
+  recorded in the invariant map.
 - **`BlockVersion` (the mint era) flips to 2 — the era-2 follow-through promised by the
   #432 change** (2026-08-16) — The rounds era shipped with the propose path explicitly
   stamping `BlockVersionRounds`, deferring the const flip as behavior-neutral test churn.

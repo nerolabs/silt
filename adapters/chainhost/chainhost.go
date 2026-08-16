@@ -52,28 +52,32 @@ func (h *Host) onLoop(fn func(done func())) error {
 	}
 }
 
-func (h *Host) Publish(_ context.Context, e ports.Entry) error {
-	var result error
-	err := h.onLoop(func(done func()) {
-		// Idempotent republish of an identical entry is a free no-op.
-		if existing, ok := h.Node.Chain().LookupRoot(e.Root); ok {
-			if existing.Root == e.Root && existing.FileSize == e.FileSize {
-				done()
-				return
-			}
-			result = ports.ErrDupPublish
-			done()
-			return
-		}
-		h.Node.ProposeEntry(e, h.Attesters, h.Broadcast, h.Quorum, func(err error) {
-			result = err
-			done()
-		})
-	})
-	if err != nil {
+func (h *Host) Publish(ctx context.Context, e ports.Entry) error {
+	// #441 (certified 2026-08-16): publish is SUBMIT-then-poll-for-finality, never
+	// propose-then-gather. The old ProposeEntry client raced the drain designee for
+	// the same (h, r0) prepare slots and could win no round of any height (zero
+	// entry-blocks post-latch on run a56ac10-42834); as mempool content the entry
+	// rides whichever designee block commits. B7/S3 hold exactly as before: this
+	// returns nil only once the entry is READ BACK from the committed chain.
+	if err := h.PublishAsync(ctx, e); err != nil {
 		return err
 	}
-	return result
+	timeout := h.Timeout
+	if timeout == 0 {
+		timeout = 30 * time.Second
+	}
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		committed, ferr := h.PublishStatus(ctx, e.Root)
+		if committed {
+			return nil
+		}
+		if ferr != nil {
+			return ferr
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	return fmt.Errorf("chainhost: entry %s not committed within %s (submitted to the mempool; still pending)", e.Root, timeout)
 }
 
 // PublishAsync is the async publish path (#286 Layer 1). It runs the SYNCHRONOUS local
@@ -100,13 +104,26 @@ func (h *Host) PublishAsync(_ context.Context, e ports.Entry) error {
 			done() // a synchronous refusal — the client gets the reason
 			return
 		}
-		// Accepted: run the commit gather in the BACKGROUND (does not block the handler).
-		// Clear any prior terminal failure for this root (a convergent retry re-proposes the
-		// same root) and record the gather's terminal failure when it resolves, so a client
-		// polling PublishStatus fast-fails on no-quorum instead of waiting out the budget.
-		// Success is read from the chain by Lookup/PublishStatus; the gather path also logs
-		// the outcome (chainrole.go: "block committed" / "gather: NO QUORUM").
 		h.outcomes.Delete(e.Root)
+		if h.Node.Chain().Objective() {
+			// Accepted: SUBMIT to the entry mempool (#441 — the certified fix).
+			// The entry enters this validator's own pending queue and is
+			// broadcast to the other eligible proposers; whichever designee
+			// commits the next block folds it in (FIFO, separate entry byte
+			// budget), and the escape rounds carry it too. No per-attempt
+			// terminal failure exists in the submit world — inclusion is read
+			// from the chain by Lookup/PublishStatus, and a client re-submission
+			// (a fresh PublishAsync) is a mempool-dedup no-op that re-broadcasts
+			// to any proposer that lost it.
+			h.Node.SubmitEntry(e, h.Broadcast)
+			done()
+			return
+		}
+		// LEGACY (subjective, -objective=false) keeps the direct propose path:
+		// there is no designee sweep and no round machinery to drive the
+		// mempool there — and no drain contention either, so the #441
+		// starvation cannot arise. The certified submit path is
+		// objective-mode-scoped by its own premise.
 		h.Node.ProposeEntry(e, h.Attesters, h.Broadcast, h.Quorum, func(err error) {
 			if err != nil {
 				h.outcomes.Store(e.Root, err)

@@ -85,10 +85,13 @@ func TestModelCheck_441_PublishStarvedAcrossRounds(t *testing.T) {
 		desig.maybeProposeBondDrain()
 		drainHeldExcept(t, net, holdDesigPrecommits)
 
-		// The client's entry proposal (from a bonded, proposer-ELIGIBLE maturer
-		// that is not the designee — eligibility is not the problem, the
-		// consumed slots are). It must fail: every attester already signed the
-		// drain's (h, r0, prepare).
+		// The client's action — the CERTIFIED submit path (#441 fix: submit,
+		// never propose; the entry is mempool content whichever designee's
+		// block carries). Pre-fix this was pub.ProposeEntry racing the
+		// designee for the same (h, r0) slots — recorded RED at commit
+		// 8f55cf0: the entry could win no round of any height. The oracle
+		// property is unchanged: the continuously-resubmitted entry commits
+		// within the height budget.
 		var pub *Node
 		for _, m := range maturers {
 			if m.id != desig.id {
@@ -96,13 +99,10 @@ func TestModelCheck_441_PublishStarvedAcrossRounds(t *testing.T) {
 				break
 			}
 		}
-		var pubErr error
-		pubDone := false
-		pub.ProposeEntry(entry, attListExcept(all[4:], pub.id), all, 0, func(err error) { pubDone, pubErr = true, err })
+		pub.SubmitEntry(entry, all)
 		drainHeldExcept(t, net, holdDesigPrecommits)
-		if pubDone && pubErr == nil {
-			// The entry landed — the oracle property holds at this height.
-			break
+		if entryCommitted() {
+			break // the entry landed — the oracle property holds at this height
 		}
 
 		// The escape: sweeps → round-change → the (h, r1) new-view — which

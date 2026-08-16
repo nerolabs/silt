@@ -1620,34 +1620,57 @@ func (c *Chain) ValidateProposal(b *Block) error {
 	seen := make(map[ports.Hash]bool)
 	seenSerial := make(map[string]bool)
 	for _, e := range b.Entries {
-		if _, exists := c.byRoot[e.Root]; exists || seen[e.Root] {
+		if seen[e.Root] {
 			return fmt.Errorf("%w: %s", ErrDupRoot, e.Root)
 		}
-		if len(e.ManifestChunks) == 0 {
-			return fmt.Errorf("chain: entry %s has no manifest pointers", e.Root)
+		if e.Token != nil && seenSerial[string(e.Token.Serial)] {
+			return fmt.Errorf("%w: %x", ErrTokenSpent, e.Token.Serial)
 		}
-		// M0 privacy (#97): a Publisher→root record is permanent on this
-		// append-only chain, so the default refuses it. Publish carries no
-		// durable identity — a blind-signed token, or nothing — unless the
-		// deployment is explicitly trusted (AllowPublisher).
-		if !c.cfg.AllowPublisher && e.Publisher != (ports.NodeID{}) {
-			return fmt.Errorf("%w: entry %s", ErrPublisherEntry, e.Root)
+		if err := c.ValidateEntry(e); err != nil {
+			return err
 		}
-		if c.tokenQuorum > 0 {
-			if e.Token == nil {
-				return fmt.Errorf("%w: entry %s", ErrTokenRequired, e.Root)
-			}
-			qualified := func(v ports.NodeID) bool { return c.attesterQualified(v) }
-			if err := publishtoken.Verify(*e.Token, c.tokenQuorum, c.issuerKey, qualified); err != nil {
-				return fmt.Errorf("chain: entry %s: %w", e.Root, err)
-			}
-			s := string(e.Token.Serial)
-			if c.spent[s] || seenSerial[s] {
-				return fmt.Errorf("%w: %x", ErrTokenSpent, e.Token.Serial)
-			}
-			seenSerial[s] = true
+		if e.Token != nil {
+			seenSerial[string(e.Token.Serial)] = true
 		}
 		seen[e.Root] = true
+	}
+	return nil
+}
+
+// ValidateEntry runs the per-entry checks against the CURRENT chain state —
+// dup-root, manifest pointers, the refuse-to-surveil publisher rule, and the
+// publish-token verify + chain-wide spent-serial check. Factored out of
+// ValidateProposal's loop (byte-identical rules) so the #441 entry mempool can
+// validate one peer-submitted entry on arrival and re-validate at fold time —
+// a single stale or forged submission never poisons a whole block, exactly the
+// reg path's ValidateBondReg discipline. Intra-block dedup (two entries in ONE
+// block sharing a root or a serial) stays in ValidateProposal, where the block
+// exists.
+func (c *Chain) ValidateEntry(e ports.Entry) error {
+	if _, exists := c.byRoot[e.Root]; exists {
+		return fmt.Errorf("%w: %s", ErrDupRoot, e.Root)
+	}
+	if len(e.ManifestChunks) == 0 {
+		return fmt.Errorf("chain: entry %s has no manifest pointers", e.Root)
+	}
+	// M0 privacy (#97): a Publisher→root record is permanent on this
+	// append-only chain, so the default refuses it. Publish carries no
+	// durable identity — a blind-signed token, or nothing — unless the
+	// deployment is explicitly trusted (AllowPublisher).
+	if !c.cfg.AllowPublisher && e.Publisher != (ports.NodeID{}) {
+		return fmt.Errorf("%w: entry %s", ErrPublisherEntry, e.Root)
+	}
+	if c.tokenQuorum > 0 {
+		if e.Token == nil {
+			return fmt.Errorf("%w: entry %s", ErrTokenRequired, e.Root)
+		}
+		qualified := func(v ports.NodeID) bool { return c.attesterQualified(v) }
+		if err := publishtoken.Verify(*e.Token, c.tokenQuorum, c.issuerKey, qualified); err != nil {
+			return fmt.Errorf("chain: entry %s: %w", e.Root, err)
+		}
+		if c.spent[string(e.Token.Serial)] {
+			return fmt.Errorf("%w: %x", ErrTokenSpent, e.Token.Serial)
+		}
 	}
 	return nil
 }
