@@ -995,10 +995,35 @@ flow_maturing_handoff() {
   # is NON-ANCHOR bonds only (C2Metric excludes anchors — the same fact behind
   # the premise fix), so the full-drain target is n_mat + n_syb, NOT 4 + n_syb
   # (the old target of 12 was unreachable: max Participants here is 8).
+  #
+  # SEATED_S is a COMPUTED bound (PE §4, the LATCH_S arithmetic): the un-seated
+  # tail is at worst the whole (n_mat+n_syb)-member cohort, one first-time
+  # reg-block each at the 64s worst-case cadence. Bounded wait, never "eventual
+  # completion" — run 09fbe60-84613 had 6 of 8 seated ~18 min in, so the tail is
+  # real and a one-shot read here converts a live drain into a premise GAP.
   local seated=0 parts
   if [ -n "$sybils" ]; then
-    parts="$(jlog val-a 400 | grep -oE 'bonded across [0-9]+' | grep -oE '[0-9]+' | tail -1)"
-    [ "${parts:-0}" -ge $(( n_mat + n_syb )) ] 2>/dev/null && seated=1
+    : "${SEATED_S:=$(( (n_mat + n_syb) * 64 ))}"
+    local t_seat; t_seat="$(date +%s)"
+    while :; do
+      parts="$(jlog val-a 400 | grep -oE 'bonded across [0-9]+' | grep -oE '[0-9]+' | tail -1)"
+      [ "${parts:-0}" -ge $(( n_mat + n_syb )) ] 2>/dev/null && { seated=1; break; }
+      [ $(( $(date +%s) - t_seat )) -ge "$SEATED_S" ] && break
+      mh_drive_block || true
+      sleep 10
+    done
+    if [ "$seated" = 1 ] && [ $(( $(date +%s) - t_seat )) -gt 15 ]; then
+      # A LATE seat only enters the snapshot at the NEXT finalized boundary (I3:
+      # set changes apply at epoch boundaries) — drive across one more so the
+      # frozen snapshot the drills exercise really contains the whole cohort.
+      local h_seat target2 t_seat2
+      h_seat="$(mh_ceiling)"; target2=$(( ( h_seat / 8 + 1 ) * 8 + 1 )); t_seat2="$(date +%s)"
+      echo "    late cohort seat (participants=${parts}): driving h${h_seat}→h${target2} across the next epoch boundary so the governed snapshot admits the full cohort…"
+      while [ $(( $(date +%s) - t_seat2 )) -lt "$HANDOFF_BLOCKS_S" ]; do
+        [ "$(mh_ceiling)" -ge "$target2" ] 2>/dev/null && break
+        mh_drive_block || true
+      done
+    fi
   fi
 
   # 3) 10a — THE STALL DRILL: the cohort DECLINES to attest (stopped = the
@@ -1009,7 +1034,7 @@ flow_maturing_handoff() {
   if [ -z "$sybils" ]; then
     record "10a-stall-drill" skip major "no cohort in this topology (SYBILS=0) — the B2 stall drill needs the cheap members seated in the epoch; run MATURING=1 SYBILS=8"
   elif [ "$seated" != 1 ]; then
-    record "10a-stall-drill" gap major "the cohort never banked its bonds on-chain before the boundary (participants=${parts:-?} < $((4 + n_syb))) — the epoch snapshot has no cheap members to decline, drill premise unmet, property UNTESTED"
+    record "10a-stall-drill" gap major "the cohort did not fully seat within the computed SEATED_S=${SEATED_S}s bound (participants=${parts:-?} < $(( n_mat + n_syb ))) — the epoch snapshot lacks part of the cheap cohort, drill premise unmet, property UNTESTED"
   else
     echo "    stall drill: stopping the $n_syb-member cohort (declining to attest)…"
     local s; for s in $sybils; do svc "$s" stop >/dev/null 2>&1 || true; done
