@@ -86,3 +86,21 @@ Where coverage is bounded (mature-phase randomization is not exhaustive), **log 
 5. Wire it as the pre-field consensus gate and the red-team entry criterion.
 
 *Build the oracle once, drive the real core under an adversary, and let a laptop enumerate the perimeter the field has been discovering one region at a time.*
+
+
+## Amendment (2026-08-16, #451): per-node round-advance SKEW is a first-class adversarial dimension
+
+The #451 view-synchronization certification's method fix, after the FOURTH recurrence of
+one blind spot (#357 per-validator drain timing; the I5 oracle calling the #432 wedge
+benign; #441 chain-liveness passing while entry-liveness went unasserted; #451's lockstep
+freeze-frame staying GREEN while independent 30s timers smeared the field across 14
+rounds): **each node advances rounds on an adversarially-chosen sweep phase.** A
+round-based liveness property is meaningless under lockstep sweeps — the schedule must
+drive per-node skew, selective/late delivery, and driver-fired request timeouts
+(`simclock.Scheduler.Step()` — the model-check's timeout dial). The reference schedule is
+`TestModelCheck_451_StaggeredSweepsMustStillConverge` (pre-GST chaos: skewed sweeps +
+per-target prepare delivery + timer-by-timer timeout firing scattering the sign marks;
+post-GST: the certified convergence bound) — RED against locking-without-a-synchronizer,
+GREEN with the #451 synchronizer. The invariant-map line it enforces: **round-based
+liveness = locking (safety) + a synchronizer (convergence); both must be specified, and
+both must be model-checked under per-node timing skew.**

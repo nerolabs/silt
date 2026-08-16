@@ -275,6 +275,14 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 				n.reply(from, msg, ports.Message{Kind: ports.MsgAttestReply, OK: false})
 				return true
 			}
+			// #451 synchronizer ingredient (b), second face: a VALID new-view
+			// certificate for a round above ours is quorum-grade proof the
+			// network is there — jump before attesting, so our round state
+			// (and our subsequent round-changes) track the frontier instead
+			// of climbing to it one timeout at a time.
+			if env.Round > rs.Round {
+				n.advanceToRound(rs, env.Round, "new-view")
+			}
 			if forced != nil && forced.Hash != b.Hash() {
 				n.logf(ports.LogInfo, "gather/prepare: REFUSED — proposal ignores the new-view's carried lock (#432 safety)", "from", from, "height", b.Height, "round", env.Round)
 				n.reply(from, msg, ports.Message{Kind: ports.MsgAttestReply, OK: false})
@@ -369,6 +377,11 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 		}
 		n.logf(ports.LogInfo, "round-change: recorded (#432 view-change)", "from", rc.senderID(), "height", rc.Height, "round", rc.NewRound, "carries_lock", len(rc.LockQC) > 0)
 		n.recordRoundChange(rs, rc.NewRound, rc.senderID(), msg.Data)
+		// #451 synchronizer ingredient (b): if the recorded round-changes above
+		// our round now prove an honest member ahead (f+1 / >⅓ weight), jump —
+		// responsive catch-up at message speed (PBFT), never waiting out the
+		// full local timeout while the frontier moves on.
+		n.maybeCatchUpRound(rs)
 		n.reply(from, msg, ports.Message{Kind: ports.MsgRoundChangeAck, OK: true})
 	case ports.MsgCommitBlock:
 		b, err := chain.Decode(msg.Data)

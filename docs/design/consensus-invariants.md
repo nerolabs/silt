@@ -131,6 +131,24 @@ The set is closed and small. Everything hit so far is a corollary of I1 + I3 + I
   count-neutrality untouched. Certification:
   `silt-reviews/research/research-outcome/441-publish-starvation-RESEARCH-CERTIFICATION-2026-08-16.md`.
 
+- **#451 (the VIEW-SYNCHRONIZATION face — 2026-08-16; mechanism SHIPPED same day).**
+  Round-based liveness = **locking (safety) + a synchronizer (convergence)** — #432
+  certified the first and under-specified the second (owned in the #451 certification).
+  With a fixed round duration and no message-driven catch-up, independent skewed sweep
+  timers SMEAR the members across rounds so no round holds a quorum of round-changes
+  simultaneously: the clean re-run's 10a drill re-proposed a carried lock `forced=true`
+  across rounds 4–15 for 370 s (recovering only by timer luck — a liveness-BOUND
+  violation, not a wedge; safety held throughout). **Shipped (certified, Tendermint/PBFT
+  adopted whole — B8): (a) increasing round duration** `dur(r)=dur(r−1)+r·k` in
+  deterministic sweep counts (the after-GST guarantee: rounds eventually outlast any
+  skew or adversarial smearing — red-team seam #7 closed as a bounded residual) **+ (b)
+  responsive catch-up** (jump to the smallest round proven by f+1 anchors / >⅓ frozen
+  weight of round-changes, or by a valid higher-round new-view certificate). Both change
+  only WHEN a node is in a round, never which value it may sign — locking, the
+  proposer-prepare rule, and #402 count-neutrality untouched. Method fix recorded in
+  `consensus-model-check.md`: per-node round-advance skew is a first-class adversarial
+  schedule dimension (the 4th recurrence of the lockstep blind spot).
+
 **Assert (test):** a 2-2 non-intersecting fork is **resolved by fork-choice** (loser reorgs — allowed, it was never final), never wedges; a connected network never suffers a *permanent* non-final stall (**the chain-liveness half — asserted by `TestModelCheck_I4_WedgedHeightMustRecover`, GREEN with the #432 rounds+locking mechanism**); **no legitimately submitted operation is permanently starved** (**the operation-liveness half — asserted by `TestModelCheck_441_PublishStarvedAcrossRounds` + the §6 siblings in `core/node/modelcheck_441_siblings_test.go`, all RED under the recorded fold+arming revert, GREEN with the entry mempool**); a publish link is issued only after finality.
 
 **Literature (B8):** Gasper — LMD-GHOST advances the head optimistically, Casper FFG finalizes at ⅔ behind it. The commit/final separation is the norm, not a silt invention. The entry mempool is the leader-carries-the-mempool shape of every BFT SMR — a leader's one block carries the transaction pool; there is no separate per-transaction proposal that can lose a race.
