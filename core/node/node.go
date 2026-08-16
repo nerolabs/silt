@@ -79,6 +79,17 @@ type Config struct {
 	// (#299, docs/network-durability.md §6). Proposer-side policy only — validity is
 	// unchanged (a block with N regs is valid), so mixed caps across proposers are safe.
 	MaxBondRegBytesPerBlock int64
+	// MaxEntryBytesPerBlock caps the total BYTES of mempool ENTRIES a proposer folds
+	// into one block — SEPARATE from the reg budget by design (#441 certification
+	// Addition 1): a single ~1.5 MB bond reg fills the whole reg cap, so a shared
+	// budget would leave the tens-of-bytes entry no room and the publish starvation
+	// would reappear one layer down; and the dual — an entry flood must never crowd
+	// out consensus-critical renewals. Independent budgets guarantee each stream its
+	// slice; their SUM must stay WAN-gatherable (#286 L2b). At least one entry is
+	// always folded (never stall the queue). 0 = unbounded. Proposer-side policy
+	// only — validity is unchanged. The value is an M1 tuning knob, not a consensus
+	// rule (certification caveat 3).
+	MaxEntryBytesPerBlock int64
 	// Replication is how many closest nodes receive each chunk at
 	// distribute/repair time. With erasure coding doing the heavy
 	// lifting, even 1 is viable — parity across nodes replaces copies.
@@ -254,7 +265,8 @@ func DefaultConfig() Config {
 		// 256 KB/s — a pessimistic transcontinental lossy path. A ~1.5 MB bond-registration
 		// block then gains ~6 s of transport headroom over the base RequestTimeout (#286).
 		RequestSizeFloorBytesPerSec: 262144,
-		MaxBondRegBytesPerBlock:     2 << 20, // #286 L2b: ~2 MiB/block stays gatherable; one full ~1.5 MB genesis proof or many small renewals
+		MaxBondRegBytesPerBlock:     2 << 20,  // #286 L2b: ~2 MiB/block stays gatherable; one full ~1.5 MB genesis proof or many small renewals
+		MaxEntryBytesPerBlock:       64 << 10, // #441: entries are tens of bytes — 64 KiB admits hundreds/block; reg+entry sum stays WAN-gatherable
 		Replication:                 3,
 		RepairInterval:              60 * ports.Second,
 		RepairSlack:                 2,
@@ -533,6 +545,16 @@ type Node struct {
 	// attest-only validator would never renew and would lapse, dropping the
 	// quorum's weight. Keyed by validator id; the latest submission wins.
 	pendingBondRegs map[ports.NodeID]chain.BondReg
+	// pendingEntries is the ENTRY MEMPOOL (#441, certified 2026-08-16): publish
+	// entries PEERS submitted (MsgSubmitEntry) that the next block this node
+	// proposes will fold in — entries are block CONTENT the single (h,r)
+	// designee carries, never a second proposal stream that can lose the r0
+	// race (the mature-regime starvation) or sit escape-less (the launch-face
+	// wedge; pendingEntries also ARMS maybeAdvanceRound). Ordered FIFO by
+	// arrival and dedup'd by root — a resubmission of a queued root is a no-op
+	// that keeps the original position, so resubmitting cannot queue-jump
+	// (certification Addition 2: FIFO ⇒ no valid entry is starved by another).
+	pendingEntries []pendingEntry
 	// signMark is this validator's monotonic last-signed watermark: the height
 	// and hash of the newest consensus signature it has released — PROPOSAL or
 	// attestation alike, committed or not — so it NEVER signs a second,

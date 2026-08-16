@@ -254,7 +254,14 @@ func (n *Node) maybeAdvanceRound() {
 	if n.chain == nil || !n.chain.Objective() || n.signer == nil {
 		return
 	}
-	if len(n.pendingBondRegs) == 0 && !n.bondDrainInFlight {
+	// #441 (the launch-face fix, certification §2.4): pending ENTRIES arm the
+	// escape exactly like pending regs. Before this, the escape's arming was
+	// drain-only — a height whose r0 prepare slots were consumed by a crossed
+	// publish race, on a network with momentarily-empty renewal queues, had NO
+	// escape driver and stalled until the next renewal arrived (soak run
+	// 9453325-7258: 361s > the 160s computed bound). B6 quiescence is preserved
+	// when truly idle (no regs, no entries, nothing in flight).
+	if len(n.pendingBondRegs) == 0 && len(n.pendingEntries) == 0 && !n.bondDrainInFlight {
 		rs := n.roundsFor()
 		rs.Sweeps = 0
 		return // nothing stuck — quiesce (B6)
@@ -277,7 +284,7 @@ func (n *Node) maybeAdvanceRound() {
 		return
 	}
 	n.logf(ports.LogInfo, "round-change: advancing (#432 view-change)",
-		"height", rs.Height, "round", next, "locked", rs.Lock != nil, "pending", len(n.pendingBondRegs))
+		"height", rs.Height, "round", next, "locked", rs.Lock != nil, "pending", len(n.pendingBondRegs), "pending_entries", len(n.pendingEntries))
 	// Record our own round-change (we are part of our own quorum), then
 	// broadcast to every sync target.
 	n.recordRoundChange(rs, next, n.id, raw)

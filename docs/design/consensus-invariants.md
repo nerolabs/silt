@@ -110,9 +110,30 @@ The set is closed and small. Everything hit so far is a corollary of I1 + I3 + I
 
 **Governs (code):** `core/chain/chain.go` — finality gate (~:2001), `ErrPreFinalityReorg` (:412), `heavier`/`Reconcile` (:1651 / ~:2001).
 
-**Assert (test):** a 2-2 non-intersecting fork is **resolved by fork-choice** (loser reorgs — allowed, it was never final), never wedges; a connected network never suffers a *permanent* non-final stall (**the liveness half — asserted by `TestModelCheck_I4_WedgedHeightMustRecover`, GREEN with the #432 rounds+locking mechanism**); a publish link is issued only after finality.
+- **#441 (the OPERATION-liveness face — 2026-08-16; mechanism SHIPPED same day).** Chain
+  liveness is not the property the product promise needs: after the #432 escape restored
+  "the chain always commits *something*", the first mature-regime field run
+  (a56ac10-42834) committed **zero publish entries post-latch across 33+ heights** while
+  drain blocks committed every height — and the launch soak (9453325-7258) stalled a
+  publish-contended height 361 s past the computed escape bound. One root: the round
+  machinery's new-view seat AND its escape arming belonged exclusively to the drain
+  path, so an entry proposal could win no round of any height. **I4's full statement is
+  therefore *operation-liveness*: no legitimately submitted operation is permanently
+  starved** — a property asserted at the *product* layer, not only the chain layer (the
+  same recurring lesson as the intersecting-quorum note: chain-liveness passed while
+  entry-liveness went unasserted). **Shipped mechanism (research-certified, direction
+  A): entries are MEMPOOL CONTENT** — submitted via `MsgSubmitEntry` (the
+  `MsgSubmitBondReg` mirror, validate-on-arrival, FIFO, dedup-by-root), folded into the
+  single `(h, r)` designee's block under a byte budget SEPARATE from the reg budget
+  (neither stream can starve the other), arming the escape alongside regs; the client
+  publishes by submit-then-poll-for-finality (B7/S3 unchanged). Entries are content,
+  never a competing value: locks/POL, `requireProposerPrepare`, and #402
+  count-neutrality untouched. Certification:
+  `silt-reviews/research/research-outcome/441-publish-starvation-RESEARCH-CERTIFICATION-2026-08-16.md`.
 
-**Literature (B8):** Gasper — LMD-GHOST advances the head optimistically, Casper FFG finalizes at ⅔ behind it. The commit/final separation is the norm, not a silt invention.
+**Assert (test):** a 2-2 non-intersecting fork is **resolved by fork-choice** (loser reorgs — allowed, it was never final), never wedges; a connected network never suffers a *permanent* non-final stall (**the chain-liveness half — asserted by `TestModelCheck_I4_WedgedHeightMustRecover`, GREEN with the #432 rounds+locking mechanism**); **no legitimately submitted operation is permanently starved** (**the operation-liveness half — asserted by `TestModelCheck_441_PublishStarvedAcrossRounds` + the §6 siblings in `core/node/modelcheck_441_siblings_test.go`, all RED under the recorded fold+arming revert, GREEN with the entry mempool**); a publish link is issued only after finality.
+
+**Literature (B8):** Gasper — LMD-GHOST advances the head optimistically, Casper FFG finalizes at ⅔ behind it. The commit/final separation is the norm, not a silt invention. The entry mempool is the leader-carries-the-mempool shape of every BFT SMR — a leader's one block carries the transaction pool; there is no separate per-transaction proposal that can lose a race.
 
 ---
 

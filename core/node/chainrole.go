@@ -429,6 +429,28 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 			}
 		}
 		n.reply(from, msg, ports.Message{Kind: ports.MsgSubmitBondRegAck, OK: true})
+	case ports.MsgSubmitEntry:
+		// #441: a publisher submitted an entry for this node's next block to
+		// carry — entries are MEMPOOL CONTENT, never a second proposal stream.
+		// Validate on arrival against the current head and refuse invalid ones
+		// SYNCHRONOUSLY with the reason (certification §2.2: the client learns
+		// immediately, an invalid-entry flood never reaches the designee's
+		// fold, and nothing is dropped silently — B5).
+		if n.chain == nil {
+			n.reply(from, msg, ports.Message{Kind: ports.MsgSubmitEntryAck, OK: false, Data: []byte("no chain")})
+			return true
+		}
+		if e, err := entryDecode(msg.Data); err != nil {
+			n.logf(ports.LogInfo, "entry submit REFUSED (decode)", "from", from, "bytes", len(msg.Data), "err", err)
+			n.reply(from, msg, ports.Message{Kind: ports.MsgSubmitEntryAck, OK: false, Data: []byte(err.Error())})
+		} else if verr := n.chain.ValidateEntry(e); verr != nil {
+			_, next := n.chain.Head()
+			n.logf(ports.LogInfo, "entry submit REFUSED", "from", from, "root", e.Root, "next_height", next, "err", verr)
+			n.reply(from, msg, ports.Message{Kind: ports.MsgSubmitEntryAck, OK: false, Data: []byte(verr.Error())})
+		} else {
+			n.queuePendingEntry(e)
+			n.reply(from, msg, ports.Message{Kind: ports.MsgSubmitEntryAck, OK: true})
+		}
 	default:
 		return false
 	}
@@ -443,6 +465,8 @@ func replyKind(k ports.MsgKind) ports.MsgKind {
 		return ports.MsgCommitAck
 	case ports.MsgGetChainHead:
 		return ports.MsgChainHeadReply
+	case ports.MsgSubmitEntry:
+		return ports.MsgSubmitEntryAck
 	default:
 		return ports.MsgChainReply
 	}
@@ -626,6 +650,13 @@ func (n *Node) proposeBlock(b *chain.Block, attesters, broadcast []ports.NodeID,
 		}
 		n.pendingBondRegs = kept
 	}
+	// #441: fold mempool ENTRIES into this block too — the certified fix's core.
+	// Entries are content the single (h, r) designee carries (FIFO, re-validated,
+	// under the SEPARATE entry byte budget), so a publish never has to win a
+	// proposal race it structurally lost: whichever proposal commits this height
+	// — drain sweep, new-view re-proposal, or a direct ProposeEntry — carries the
+	// queued entries with it.
+	n.foldPendingEntries(b)
 	// Record any equivocations we detected on-chain, so every replica evicts the
 	// culprit from the objective set in lockstep (F2). Drop only records the
 	// chain already confirms (IsSlashed); everything else RIDES THIS BLOCK AND
@@ -1132,7 +1163,12 @@ func (n *Node) maybeProposeBondDrain() {
 		return
 	}
 	ownDue := n.bond != nil && n.chain.BondRenewalDue(n.id)
-	if len(n.pendingBondRegs) == 0 && !ownDue {
+	// #441: pending mempool ENTRIES are designee work exactly like pending regs —
+	// the designee's block carries them (foldPendingEntries), so an entry-only
+	// queue must fire this sweep too, or a publish on an idle chain would wait
+	// for unrelated renewal traffic to move it. B6 quiescence holds when truly
+	// idle: no regs, no entries, no own renewal due.
+	if len(n.pendingBondRegs) == 0 && len(n.pendingEntries) == 0 && !ownDue {
 		n.drainWaitSweeps = 0
 		return // nothing pending — stay quiet (B6)
 	}
@@ -1153,9 +1189,9 @@ func (n *Node) maybeProposeBondDrain() {
 		// regs + a blocked slot, sweep after sweep, is the wedge signature —
 		// the one line that would have named the field stall on the first run.
 		// maybeAdvanceRound (same sweep cadence) is what unblocks it.
-		if len(n.pendingBondRegs) > 0 {
+		if len(n.pendingBondRegs) > 0 || len(n.pendingEntries) > 0 {
 			n.logf(ports.LogInfo, "bond-reg drain blocked at own sign slot — awaiting round advance (#432)",
-				"height", height, "round", rs.Round, "mark_height", n.signMark.Height, "mark_round", n.signMark.Round, "pending", len(n.pendingBondRegs))
+				"height", height, "round", rs.Round, "mark_height", n.signMark.Height, "mark_round", n.signMark.Round, "pending", len(n.pendingBondRegs), "pending_entries", len(n.pendingEntries))
 		}
 		return
 	}
@@ -1195,10 +1231,12 @@ func (n *Node) maybeProposeBondDrain() {
 		}
 	}
 	if dist > 0 {
-		if len(n.pendingBondRegs) == 0 {
+		if len(n.pendingBondRegs) == 0 && len(n.pendingEntries) == 0 {
 			// Own renewal only, and we are not the designated proposer: submit,
 			// never propose (Q2b-2). The reg reaches the chain via the
-			// designated proposer's queue; nothing to take over for.
+			// designated proposer's queue; nothing to take over for. Pending
+			// ENTRIES count as takeover-worthy work (#441): a silent designee
+			// must not strand the mempool.
 			n.drainWaitSweeps = 0
 			return
 		}
