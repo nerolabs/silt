@@ -206,10 +206,10 @@ func TestModelCheck_I2_RestartRepresentsLock(t *testing.T) {
 		reg5 := identity.FromSeed(9198)
 		regPub := append([]byte(nil), reg5.Signer().Public().(ed25519.PublicKey)...)
 		reg := chain.NewBondReg(reg5.Signer(), ports.HashBytes(regPub), 2<<20, []byte("stub"), g.Hash(), 0)
-		nodes[1].pendingBondRegs = map[ports.NodeID]chain.BondReg{reg.ValidatorID(): reg}
+		nodes[1].pendingBondRegs = []pendingBondReg{{R: reg}}
 		nodes[1].maybeAdvanceRound()
 		drainHeldExcept(t, net, holdReplies)
-		nodes[1].pendingBondRegs = map[ports.NodeID]chain.BondReg{reg.ValidatorID(): reg}
+		nodes[1].pendingBondRegs = []pendingBondReg{{R: reg}}
 		nodes[1].maybeAdvanceRound()
 		drainHeldExcept(t, net, holdReplies)
 

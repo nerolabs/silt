@@ -132,3 +132,29 @@ func (n *Node) foldPendingEntries(b *chain.Block) {
 	}
 	n.pendingEntries = append([]pendingEntry(nil), kept...)
 }
+
+// pendingBondReg is one reg-queue slot. The queue is FIFO BY ARRIVAL — the
+// same no-priority rule the #441 certification pinned for entries (Addition
+// 2): with the byte budget admitting ~one plot-sized reg per block, any
+// priority order (the old validator-ID sort) starves whoever sorts last for
+// as long as higher-priority traffic flows (confirm run 54003f7-91159: a
+// first-time maturer reg queued 22 minutes behind lower-ID renewals).
+type pendingBondReg struct {
+	R chain.BondReg
+}
+
+// queuePendingBondReg records a peer-submitted (or refill-modeled) bond
+// registration for the next proposal to fold — one slot per validator. A
+// resubmission from an already-queued validator REPLACES its bytes IN PLACE
+// (the fresh nonce wins) but keeps its original FIFO position: renewing
+// cannot queue-jump, and waiting cannot lose seniority.
+func (n *Node) queuePendingBondReg(reg chain.BondReg) {
+	vid := reg.ValidatorID()
+	for i := range n.pendingBondRegs {
+		if n.pendingBondRegs[i].R.ValidatorID() == vid {
+			n.pendingBondRegs[i].R = reg
+			return
+		}
+	}
+	n.pendingBondRegs = append(n.pendingBondRegs, pendingBondReg{R: reg})
+}

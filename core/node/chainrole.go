@@ -5,11 +5,9 @@
 package node
 
 import (
-	"bytes"
 	"crypto/ed25519"
 	"errors"
 	"fmt"
-	"sort"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/nerolabs/silt/core/chain"
@@ -422,10 +420,7 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 				_, next := n.chain.Head()
 				n.logf(ports.LogInfo, "bond-reg submit REFUSED", "from", from, "validator", reg.ValidatorID(), "size", reg.Size, "next_height", next, "err", verr)
 			} else {
-				if n.pendingBondRegs == nil {
-					n.pendingBondRegs = make(map[ports.NodeID]chain.BondReg)
-				}
-				n.pendingBondRegs[reg.ValidatorID()] = reg
+				n.queuePendingBondReg(reg)
 			}
 		}
 		n.reply(from, msg, ports.Message{Kind: ports.MsgSubmitBondRegAck, OK: true})
@@ -589,20 +584,22 @@ func (n *Node) proposeBlock(b *chain.Block, attesters, broadcast []ports.NodeID,
 	// propose, so it SUBMITS its fresh BondReg (MsgSubmitBondReg) and whoever
 	// proposes next records it — renewing that validator's TTL clock without it
 	// ever proposing. Include only regs still valid for THIS head (ValidateBondReg),
-	// so one stale or forged submission can't poison the block; sort by validator
-	// id so the block bytes are deterministic. Clear the queue either way — a peer
-	// resubmits on its next renewal sweep, so a dropped stale reg is self-healing.
+	// so one stale or forged submission can't poison the block. FIFO BY ARRIVAL —
+	// never sorted by validator ID: with the byte budget admitting ~one plot-sized
+	// reg per block, ID order is a strict PRIORITY that starves the highest-ID
+	// submitter for as long as lower-ID traffic flows (confirm run 54003f7-91159:
+	// the 3rd maturer's first-time reg sat queued for 22 minutes while lower-ID
+	// renewals won every slot — the same starvation class the #441 certification
+	// closed for entries with FIFO, Addition 2). Arrival order is deterministic
+	// for THIS proposer's block, which is all block-byte determinism requires —
+	// the single (h, r) designee builds it.
 	if n.chain.Objective() && len(n.pendingBondRegs) > 0 {
-		fresh := make([]chain.BondReg, 0, len(n.pendingBondRegs))
-		for vid, reg := range n.pendingBondRegs {
-			if vid != n.id && n.chain.ValidateBondReg(reg) {
-				fresh = append(fresh, reg)
+		fresh := n.pendingBondRegs[:0:0]
+		for _, pr := range n.pendingBondRegs {
+			if vid := pr.R.ValidatorID(); vid != n.id && n.chain.ValidateBondReg(pr.R) {
+				fresh = append(fresh, pr)
 			}
 		}
-		sort.Slice(fresh, func(i, j int) bool {
-			a, b := fresh[i].ValidatorID(), fresh[j].ValidatorID()
-			return bytes.Compare(a[:], b[:]) < 0
-		})
 		// #286 Layer 2b: cap the total BYTES of bond registrations embedded per block. A
 		// fresh multi-validator genesis where every founding validator submits its ~1.5 MB
 		// space-time proof otherwise piles into one ~8 MB block the quorum gather can't move
@@ -611,41 +608,36 @@ func (n *Node) proposeBlock(b *chain.Block, attesters, broadcast []ports.NodeID,
 		// registrations drain over the next blocks. A BYTE budget (not a count) is the right
 		// lever: at genesis a full ~1.5 MB proof means ~1 reg/block, but small steady-state
 		// renewals pack many per block so an attest-only validator is never starved under a
-		// tight TTL (sim/bond_renewal). Embed lowest-id peers first (fresh is sorted) so the
-		// drain is deterministic; account for the proposer's own reg (F6) already appended.
-		// Un-embedded peers are dropped here and RESUBMIT next block bound to the new head (a
-		// reg is signed over BondRegNonce(prev), so it goes stale as the head moves — the same
-		// resubmit that keeps the queue live and drains it over blocks).
+		// tight TTL (sim/bond_renewal). Embed in ARRIVAL order; account for the proposer's
+		// own reg (F6) already appended.
 		budget := n.cfg.MaxBondRegBytesPerBlock
 		used := int64(0)
 		for _, r := range b.BondRegs { // the proposer's own reg (F6), if any, spends budget first
 			used += int64(len(bondRegEncode(r)))
 		}
-		for _, reg := range fresh {
-			sz := int64(len(bondRegEncode(reg)))
+		embedded := make(map[ports.NodeID]bool, len(fresh))
+		for _, pr := range fresh {
+			sz := int64(len(bondRegEncode(pr.R)))
 			// Always embed at least one reg (never stall the queue on a single oversized
-			// proof); otherwise stop once this reg would blow the budget.
+			// proof); otherwise skip regs that would blow the budget — LATER, SMALLER
+			// regs may still fit, and a skipped reg keeps its FIFO seniority for the
+			// next block (fix B's durable queue).
 			if budget > 0 && len(b.BondRegs) > 0 && used+sz > budget {
-				break
+				continue
 			}
-			b.BondRegs = append(b.BondRegs, reg)
+			b.BondRegs = append(b.BondRegs, pr.R)
+			embedded[pr.R.ValidatorID()] = true
 			used += sz
 		}
 		// (B) Durable pending queue: KEEP the valid regs that didn't fit this block's
-		// byte cap so the drain proceeds at the cap rate on the next block, instead of
-		// discarding the whole queue and relying on a re-broadcast to refill it (a race
-		// that — with the pre-fix single-head staleness — starved the drain). Drop the
-		// embedded (now committed) regs and any that were no longer valid this sweep
-		// (not in `fresh`: stale beyond the head window or otherwise invalid). Composes
-		// with fix A (the wider validity window) — together the drain runs at ~1/block.
-		embedded := make(map[ports.NodeID]bool, len(b.BondRegs))
-		for _, r := range b.BondRegs {
-			embedded[r.ValidatorID()] = true
-		}
-		kept := make(map[ports.NodeID]chain.BondReg)
-		for _, reg := range fresh {
-			if !embedded[reg.ValidatorID()] {
-				kept[reg.ValidatorID()] = reg
+		// byte cap — IN ARRIVAL ORDER, so seniority is preserved and the drain
+		// proceeds at the cap rate with no starvation. Drop the embedded (now
+		// committed) regs and any no longer valid this sweep (stale beyond the head
+		// window or otherwise invalid — the submitter's next sweep resubmits).
+		kept := fresh[:0:0]
+		for _, pr := range fresh {
+			if !embedded[pr.R.ValidatorID()] {
+				kept = append(kept, pr)
 			}
 		}
 		n.pendingBondRegs = kept

@@ -83,7 +83,7 @@ func TestGenesisBondRegsSpreadAcrossBlocks286L2b(t *testing.T) {
 		for i := 1; i < len(nodes); i++ {
 			if a.Chain().BondedSize(ids[i].NodeID()) < cfg.MinBond {
 				if reg, ok := nodes[i].RegisterBondReg(prev); ok {
-					a.pendingBondRegs[reg.ValidatorID()] = reg
+					a.queuePendingBondReg(reg)
 				}
 			}
 		}

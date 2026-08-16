@@ -9,6 +9,24 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **Bond-reg queue goes FIFO-by-arrival — the ID-sort starvation behind the confirm
+  run's 22-minute maturity stall** (2026-08-16) — Run 54003f7-91159's latch missed its
+  computed bound because the 3rd maturer's first-time registration sat in the designees'
+  queues for 22 minutes: the reg fold sorted pending regs by validator ID, and with the
+  byte budget admitting ~one plot-sized reg per block, ID order is a strict priority —
+  the highest-ID submitter loses to ANY lower-ID renewal, every block, for as long as
+  renewal traffic flows (the census: 49 ahead-skew refusals were the visible symptom;
+  the queue acceptance was fine, the fold order was the starvation). This is the exact
+  class the #441 certification closed for entries with FIFO (Addition 2: no fees ⇒ no
+  priority order that can defer indefinitely), still live on the reg side — #429 had
+  named it ("ID-sorted packing makes order seed-luck"). The queue is now FIFO by
+  arrival with replace-in-place renewal updates (a resubmission refreshes bytes but
+  keeps its position: renewing cannot queue-jump, waiting cannot lose seniority), and
+  an over-budget reg keeps its seniority for the next block instead of being dropped.
+  Proposer-side inclusion policy only — no validity or quorum rule changes (block-byte
+  determinism needs only the single designee's own order). Failing-first:
+  `TestBondRegFIFONoIDSortStarvation` (RED under the ID-sort — the high-ID first-timer
+  never banks across four one-reg blocks — GREEN under FIFO).
 - **#441 publish starvation FIXED: entries are mempool content the designee's block
   carries — the certified operation-liveness mechanism** (2026-08-16) — The first
   mature-regime field run committed ZERO publish entries post-latch across 33+ heights

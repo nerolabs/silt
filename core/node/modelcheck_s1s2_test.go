@@ -64,7 +64,7 @@ func s1s2World(t *testing.T) ([]*Node, []*identity.Identity, *simnet.Network, *c
 	reg := chain.NewBondReg(reg5.Signer(), ports.HashBytes(regPub), 2<<20, []byte("stub"), g.Hash(), 0)
 	refill := func() {
 		for _, nd := range nodes {
-			nd.pendingBondRegs = map[ports.NodeID]chain.BondReg{reg.ValidatorID(): reg}
+			nd.pendingBondRegs = []pendingBondReg{{R: reg}}
 		}
 	}
 	for _, nd := range nodes {

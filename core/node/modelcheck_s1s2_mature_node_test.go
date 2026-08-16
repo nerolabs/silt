@@ -108,9 +108,9 @@ func matureWorld(t *testing.T) (nodes []*Node, ids []*identity.Identity, net *si
 	// h1: anchor-0 drains all four maturer regs in one block (stub answers are
 	// bytes-cheap, far under the per-block reg budget). The latch premise —
 	// min(nakamoto-operators, nakamoto-domains) ≥ 2 — holds from this commit.
-	nodes[0].pendingBondRegs = map[ports.NodeID]chain.BondReg{}
+	nodes[0].pendingBondRegs = nil
 	for _, r := range regs {
-		nodes[0].pendingBondRegs[r.ValidatorID()] = r
+		nodes[0].queuePendingBondReg(r)
 	}
 	drive := func(proposer int, h uint64, tag string, att []ports.NodeID) {
 		prev, next := nodes[proposer].chain.Head()
@@ -150,7 +150,7 @@ func matureWorld(t *testing.T) (nodes []*Node, ids []*identity.Identity, net *si
 	pend := chain.NewBondReg(reg9.Signer(), ports.HashBytes(reg9Pub), 2<<20, []byte("stub"), head9, 0)
 	refill = func() {
 		for _, nd := range nodes {
-			nd.pendingBondRegs = map[ports.NodeID]chain.BondReg{pend.ValidatorID(): pend}
+			nd.pendingBondRegs = []pendingBondReg{{R: pend}}
 		}
 	}
 	refill()
