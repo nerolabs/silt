@@ -37,7 +37,7 @@ func buildC2(t *testing.T, k, m int, bonds []c2Bond) *Chain {
 	for _, b := range bonds {
 		regs = append(regs, bondReg(b.priv, b.size, ports.Hash{}))
 	}
-	g := &Block{Version: BlockVersion, Height: 0, Entries: []ports.Entry{entry(0)}, BondRegs: regs}
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}, BondRegs: regs}
 	Sign(g, a1)
 	if err := c.AppendGenesis(*g); err != nil {
 		t.Fatalf("genesis: %v", err)

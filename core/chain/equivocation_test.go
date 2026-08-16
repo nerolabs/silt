@@ -12,12 +12,12 @@ func pubOf(p ed25519.PrivateKey) []byte { return []byte(p.Public().(ed25519.Publ
 // conflicting builds two DIFFERENT blocks at height 1 (different entries) on
 // the same genesis, each with the given attesters.
 func (w *world) conflicting(g *Block, proposerA, proposerB ed25519.PrivateKey, attA, attB []ed25519.PrivateKey) (a, b *Block) {
-	a = &Block{Version: BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(1)}}
+	a = &Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(1)}}
 	Sign(a, proposerA)
 	for _, v := range attA {
 		a.Atts = append(a.Atts, Attest(a, v))
 	}
-	b = &Block{Version: BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(2)}}
+	b = &Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(2)}}
 	Sign(b, proposerB)
 	for _, v := range attB {
 		b.Atts = append(b.Atts, Attest(b, v))
@@ -39,7 +39,7 @@ func TestEquivocationProof(t *testing.T) {
 	}
 
 	// Sequential heights are honest, not equivocation.
-	c := &Block{Version: BlockVersion, Height: 2, Prev: a.Hash(), Entries: []ports.Entry{entry(3)}}
+	c := &Block{Version: 1, Height: 2, Prev: a.Hash(), Entries: []ports.Entry{entry(3)}}
 	Sign(c, w.prop)
 	c.Atts = []Attestation{Attest(c, w.vals[0])}
 	if VerifyEquivocation(&Equivocation{Culprit: pubOf(w.vals[0]), A: *a, B: *c}) {

@@ -41,7 +41,7 @@ func TestGenesisBondSquatDisplacedThroughObjectiveVerifier(t *testing.T) {
 	}
 	anchors := map[ports.NodeID]bool{pID.NodeID(): true, aID.NodeID(): true}
 	cfg := chain.Config{Quorum: 1, MinBond: 1 << 20, Anchors: anchors, MatureValidators: 99}
-	g := &chain.Block{Version: chain.BlockVersion, Height: 0, Entries: []ports.Entry{mkEntry("g")},
+	g := &chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{mkEntry("g")},
 		BondRegs: []chain.BondReg{{Validator: pub(attacker), Root: realRoot, Size: 1 << 20}}}
 	chain.Sign(g, pID.Signer())
 
@@ -62,7 +62,7 @@ func TestGenesisBondSquatDisplacedThroughObjectiveVerifier(t *testing.T) {
 	if !ok {
 		t.Fatal("V should mint a live registration")
 	}
-	blk := &chain.Block{Version: chain.BlockVersion, Height: 1, Prev: g.Hash(),
+	blk := &chain.Block{Version: 1, Height: 1, Prev: g.Hash(),
 		Entries: []ports.Entry{mkEntry("e1")}, BondRegs: []chain.BondReg{reg}}
 	chain.Sign(blk, pID.Signer())
 	blk.Atts = []chain.Attestation{chain.Attest(blk, aID.Signer())}

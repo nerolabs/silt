@@ -54,7 +54,7 @@ func matureWeightedEpoch(t *testing.T) (*Chain, []ed25519.PrivateKey, []ed25519.
 	c.SetBondVerifier(objectiveVerify)
 
 	// Genesis banks all 7 bonds directly (no anchors; honest[0] proposes/self-signs).
-	g := &Block{Version: BlockVersion, Height: 0, Entries: []ports.Entry{entry(0)}}
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
 	for i, k := range honest {
 		g.BondRegs = append(g.BondRegs, bondRegDom(k, i3Honest, ports.Hash{}, uint64(i+1)))
 	}
@@ -84,7 +84,7 @@ func matureWeightedEpoch(t *testing.T) (*Chain, []ed25519.PrivateKey, []ed25519.
 	for h := uint64(1); h <= 4; h++ {
 		prev, _ := c.Head()
 		proposer := honest[int(h)%i3NHonest]
-		b := &Block{Version: BlockVersion, Height: h, Prev: prev, Entries: []ports.Entry{entry(byte(h))}}
+		b := &Block{Version: 1, Height: h, Prev: prev, Entries: []ports.Entry{entry(byte(h))}}
 		Sign(b, proposer)
 		attAll(b, proposer)
 		if err := c.Append(*b); err != nil {
@@ -159,7 +159,7 @@ func TestModelCheck_I3_MatureWeightQuorum(t *testing.T) {
 	// therefore exhaustive over everything that can change the outcome, in ~72 cases
 	// instead of 2^10·11 (which is the same coverage but re-verifies interchangeable sigs).
 	build := func(proposer ed25519.PrivateKey, honAtt, sybAtt []ed25519.PrivateKey) (*Block, int64, int) {
-		b := &Block{Version: BlockVersion, Height: 5, Prev: prev, Entries: []ports.Entry{entry(5)}}
+		b := &Block{Version: 1, Height: 5, Prev: prev, Entries: []ports.Entry{entry(5)}}
 		Sign(b, proposer)
 		weight := c.epochSet[idOf(proposer)]
 		for _, k := range append(append([]ed25519.PrivateKey{}, honAtt...), sybAtt...) {
@@ -197,7 +197,7 @@ func TestModelCheck_I3_MatureWeightQuorum(t *testing.T) {
 	}
 
 	// B2 spotlight: the sybil cohort alone is a HEAD-COUNT quorum but must NOT finalize.
-	syb := &Block{Version: BlockVersion, Height: 5, Prev: prev, Entries: []ports.Entry{entry(6)}}
+	syb := &Block{Version: 1, Height: 5, Prev: prev, Entries: []ports.Entry{entry(6)}}
 	Sign(syb, sybil[0])
 	for _, k := range sybil[1:] {
 		syb.Atts = append(syb.Atts, Attest(syb, k))
@@ -207,7 +207,7 @@ func TestModelCheck_I3_MatureWeightQuorum(t *testing.T) {
 			i3NSybil, i3NHonest+i3NSybil, bftThreshold(i3NHonest+i3NSybil))
 	}
 	// Positive control: the 3 honest carry >⅔ weight and DO finalize.
-	hon := &Block{Version: BlockVersion, Height: 5, Prev: prev, Entries: []ports.Entry{entry(7)}}
+	hon := &Block{Version: 1, Height: 5, Prev: prev, Entries: []ports.Entry{entry(7)}}
 	Sign(hon, honest[0])
 	hon.Atts = []Attestation{Attest(hon, honest[1]), Attest(hon, honest[2])}
 	if err := c.ValidateCommit(hon); err != nil {

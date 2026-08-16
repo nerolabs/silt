@@ -32,9 +32,9 @@ func TestGenesisBogusSlashCannotCorruptObjectiveSet(t *testing.T) {
 
 	// Two conflicting height-1 blocks signed only by `other` — a FORGED accusation
 	// against the victim, who signed neither.
-	a := &chain.Block{Version: chain.BlockVersion, Height: 1, Entries: []ports.Entry{mkEntry("a")}}
+	a := &chain.Block{Version: 1, Height: 1, Entries: []ports.Entry{mkEntry("a")}}
 	chain.Sign(a, other.Signer())
-	b := &chain.Block{Version: chain.BlockVersion, Height: 1, Entries: []ports.Entry{mkEntry("b")}}
+	b := &chain.Block{Version: 1, Height: 1, Entries: []ports.Entry{mkEntry("b")}}
 	chain.Sign(b, other.Signer())
 	bogus := chain.Equivocation{Culprit: pub(victim), A: *a, B: *b}
 
@@ -54,7 +54,7 @@ func TestGenesisBogusSlashCannotCorruptObjectiveSet(t *testing.T) {
 
 	// Malicious genesis: real bonds + a bogus slash of the victim. It must NOT
 	// establish, so the node never runs on a chain that evicted an honest holder.
-	bad := &chain.Block{Version: chain.BlockVersion, Height: 0, Entries: []ports.Entry{mkEntry("g")},
+	bad := &chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{mkEntry("g")},
 		BondRegs: bonds, Slashes: []chain.Equivocation{bogus}}
 	chain.Sign(bad, other.Signer())
 	if _, err := mkChain(bad); err == nil {
@@ -63,7 +63,7 @@ func TestGenesisBogusSlashCannotCorruptObjectiveSet(t *testing.T) {
 
 	// Clean genesis (same bonds, no slash): accepted, and the victim is bonded and
 	// qualified in the objective set.
-	good := &chain.Block{Version: chain.BlockVersion, Height: 0, Entries: []ports.Entry{mkEntry("g")},
+	good := &chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{mkEntry("g")},
 		BondRegs: bonds}
 	chain.Sign(good, other.Signer())
 	ch, err := mkChain(good)

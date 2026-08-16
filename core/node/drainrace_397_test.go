@@ -23,7 +23,7 @@ func mkDrainPair(t *testing.T) (sched *simclock.Scheduler, designated, other *No
 
 	i1, i2 := identity.FromSeed(9101), identity.FromSeed(9102)
 	anchors := map[ports.NodeID]bool{i1.NodeID(): true, i2.NodeID(): true}
-	g := &chain.Block{Version: chain.BlockVersion, Height: 0, Entries: []ports.Entry{mkEntry("genesis-397")}}
+	g := &chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{mkEntry("genesis-397")}}
 	chain.Sign(g, i1.Signer())
 	cfg := chain.Config{Quorum: 1, MinBond: 1 << 20, Anchors: anchors, AnchorQuorum: 1, MatureValidators: 99}
 

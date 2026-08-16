@@ -33,7 +33,7 @@ func TestEpochQuorumFrozenAcrossMidEpochJoin(t *testing.T) {
 	c := New(cfg, func(ports.NodeID) int64 { return 0 })
 	c.SetBondVerifier(objectiveVerify)
 
-	g := &Block{Version: BlockVersion, Height: 0, Entries: []ports.Entry{entry(0)}}
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
 	g.BondRegs = append(g.BondRegs,
 		bondReg(prop, twoMiB, ports.Hash{}),
 		bondReg(v1, twoMiB, ports.Hash{}),
@@ -59,7 +59,7 @@ func TestEpochQuorumFrozenAcrossMidEpochJoin(t *testing.T) {
 	// must NOT move N, the quorum, or qualification until the next epoch boundary —
 	// a live recompute here is exactly the churning-set finalization unsoundness.
 	prev := g.Hash()
-	b1 := &Block{Version: BlockVersion, Height: 1, Prev: prev, Entries: []ports.Entry{entry(1)},
+	b1 := &Block{Version: 1, Height: 1, Prev: prev, Entries: []ports.Entry{entry(1)},
 		BondRegs: []BondReg{bondReg(joiner, twoMiB, prev)}}
 	Sign(b1, prop)
 	b1.Atts = []Attestation{Attest(b1, v1), Attest(b1, v2)}
@@ -74,7 +74,7 @@ func TestEpochQuorumFrozenAcrossMidEpochJoin(t *testing.T) {
 	// — refused; the committed b1 above (proposer + 2 = ¾) is what clears >⅔.
 	// (Under the joiner's live weight the ½ coalition would be 4/10 — the
 	// refusal must come from the FROZEN denominator, asserted after rotation.)
-	under := &Block{Version: BlockVersion, Height: 2, Prev: b1.Hash(), Entries: []ports.Entry{entry(90)}}
+	under := &Block{Version: 1, Height: 2, Prev: b1.Hash(), Entries: []ports.Entry{entry(90)}}
 	Sign(under, prop)
 	under.Atts = []Attestation{Attest(under, v1)}
 	if err := c.Append(*under); !errors.Is(err, ErrNoQuorumWeight) {
@@ -91,7 +91,7 @@ func TestEpochQuorumFrozenAcrossMidEpochJoin(t *testing.T) {
 	// still validates under the OLD epoch's quorum; rotation applies on commit.
 	for h := uint64(2); h <= 4; h++ {
 		prev, _ = c.Head()
-		b := &Block{Version: BlockVersion, Height: h, Prev: prev, Entries: []ports.Entry{entry(byte(h))}}
+		b := &Block{Version: 1, Height: h, Prev: prev, Entries: []ports.Entry{entry(byte(h))}}
 		Sign(b, prop)
 		b.Atts = []Attestation{Attest(b, v1), Attest(b, v2)}
 		if err := c.Append(*b); err != nil {
@@ -110,13 +110,13 @@ func TestEpochQuorumFrozenAcrossMidEpochJoin(t *testing.T) {
 		t.Fatal("a joiner must be attester-qualified after the boundary rotation")
 	}
 	prev, _ = c.Head()
-	short := &Block{Version: BlockVersion, Height: 5, Prev: prev, Entries: []ports.Entry{entry(91)}}
+	short := &Block{Version: 1, Height: 5, Prev: prev, Entries: []ports.Entry{entry(91)}}
 	Sign(short, prop)
 	short.Atts = []Attestation{Attest(short, v1), Attest(short, v2)}
 	if err := c.Append(*short); !errors.Is(err, ErrNoQuorumWeight) {
 		t.Fatalf("post-rotation, the integrated join must raise the weight denominator (60%% refused), got: %v", err)
 	}
-	full := &Block{Version: BlockVersion, Height: 5, Prev: prev, Entries: []ports.Entry{entry(92)}}
+	full := &Block{Version: 1, Height: 5, Prev: prev, Entries: []ports.Entry{entry(92)}}
 	Sign(full, prop)
 	full.Atts = []Attestation{Attest(full, v1), Attest(full, v2), Attest(full, joiner)}
 	if err := c.Append(*full); err != nil {
@@ -133,7 +133,7 @@ func TestHandoffOnlyAtEpochBoundary(t *testing.T) {
 	c := New(cfg, func(ports.NodeID) int64 { return 0 })
 	c.SetBondVerifier(objectiveVerify)
 
-	g := &Block{Version: BlockVersion, Height: 0, Entries: []ports.Entry{entry(0)}}
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
 	Sign(g, a1)
 	if err := c.AppendGenesis(*g); err != nil {
 		t.Fatalf("append genesis: %v", err)
@@ -144,7 +144,7 @@ func TestHandoffOnlyAtEpochBoundary(t *testing.T) {
 	// 2 MiB bonds give NakamotoBonds 2 ≥ MatureValidators 2 and the maturity
 	// latch trips at height 2 — mid-epoch (the boundary is height 4).
 	prev := g.Hash()
-	b1 := &Block{Version: BlockVersion, Height: 1, Prev: prev, Entries: []ports.Entry{entry(1)},
+	b1 := &Block{Version: 1, Height: 1, Prev: prev, Entries: []ports.Entry{entry(1)},
 		BondRegs: []BondReg{bondReg(v1, twoMiB, prev), bondReg(v2, twoMiB, prev), bondReg(v3, twoMiB, prev)}}
 	Sign(b1, a1)
 	b1.Atts = []Attestation{Attest(b1, a2), Attest(b1, a3)}
@@ -152,7 +152,7 @@ func TestHandoffOnlyAtEpochBoundary(t *testing.T) {
 		t.Fatalf("commit block 1 (bond drain): %v", err)
 	}
 	prev, _ = c.Head()
-	b2 := &Block{Version: BlockVersion, Height: 2, Prev: prev, Entries: []ports.Entry{entry(2)}}
+	b2 := &Block{Version: 1, Height: 2, Prev: prev, Entries: []ports.Entry{entry(2)}}
 	Sign(b2, a1)
 	b2.Atts = []Attestation{Attest(b2, a2), Attest(b2, a3), Attest(b2, v1), Attest(b2, v2), Attest(b2, v3)}
 	if err := c.Append(*b2); err != nil {
@@ -174,7 +174,7 @@ func TestHandoffOnlyAtEpochBoundary(t *testing.T) {
 	// The anchor training-wheels sign-off must also still be required: a commit
 	// attested only by bonded validators (no anchors) is refused pre-handoff.
 	prev, _ = c.Head()
-	nb := &Block{Version: BlockVersion, Height: 3, Prev: prev, Entries: []ports.Entry{entry(3)}}
+	nb := &Block{Version: 1, Height: 3, Prev: prev, Entries: []ports.Entry{entry(3)}}
 	Sign(nb, a1)
 	nb.Atts = []Attestation{Attest(nb, v1), Attest(nb, v2)}
 	if err := c.Append(*nb); !errors.Is(err, ErrAnchorRequired) {
@@ -184,7 +184,7 @@ func TestHandoffOnlyAtEpochBoundary(t *testing.T) {
 	// Commit through the boundary (anchor-attested).
 	for h := uint64(3); h <= 4; h++ {
 		prev, _ = c.Head()
-		b := &Block{Version: BlockVersion, Height: h, Prev: prev, Entries: []ports.Entry{entry(byte(h))}}
+		b := &Block{Version: 1, Height: h, Prev: prev, Entries: []ports.Entry{entry(byte(h))}}
 		Sign(b, a1)
 		b.Atts = []Attestation{Attest(b, a2), Attest(b, a3)}
 		if err := c.Append(*b); err != nil {
@@ -206,7 +206,7 @@ func TestHandoffOnlyAtEpochBoundary(t *testing.T) {
 	}
 	// Post-handoff, a bonded-validator commit with NO anchor sign-off succeeds.
 	prev, _ = c.Head()
-	b5 := &Block{Version: BlockVersion, Height: 5, Prev: prev, Entries: []ports.Entry{entry(5)}}
+	b5 := &Block{Version: 1, Height: 5, Prev: prev, Entries: []ports.Entry{entry(5)}}
 	Sign(b5, v1)
 	b5.Atts = []Attestation{Attest(b5, v2), Attest(b5, v3)}
 	if err := c.Append(*b5); err != nil {
@@ -220,7 +220,7 @@ func TestEpochTTLExpiryIntegratesAtRotation(t *testing.T) {
 	c := New(cfg, func(ports.NodeID) int64 { return 0 })
 	c.SetBondVerifier(objectiveVerify)
 
-	g := &Block{Version: BlockVersion, Height: 0, Entries: []ports.Entry{entry(0)}}
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
 	g.BondRegs = append(g.BondRegs,
 		bondReg(prop, twoMiB, ports.Hash{}),
 		bondReg(v1, twoMiB, ports.Hash{}),
@@ -235,7 +235,7 @@ func TestEpochTTLExpiryIntegratesAtRotation(t *testing.T) {
 	// lapses at height 3 — mid-epoch.
 	for h := uint64(1); h <= 3; h++ {
 		prev, _ := c.Head()
-		b := &Block{Version: BlockVersion, Height: h, Prev: prev, Entries: []ports.Entry{entry(byte(h))},
+		b := &Block{Version: 1, Height: h, Prev: prev, Entries: []ports.Entry{entry(byte(h))},
 			BondRegs: []BondReg{bondReg(prop, twoMiB, prev), bondReg(v1, twoMiB, prev), bondReg(v2, twoMiB, prev)}}
 		Sign(b, prop)
 		b.Atts = []Attestation{Attest(b, v1), Attest(b, v2)}
@@ -261,7 +261,7 @@ func TestEpochTTLExpiryIntegratesAtRotation(t *testing.T) {
 
 	// The height-4 boundary integrates the expiry.
 	prev, _ := c.Head()
-	b4 := &Block{Version: BlockVersion, Height: 4, Prev: prev, Entries: []ports.Entry{entry(4)},
+	b4 := &Block{Version: 1, Height: 4, Prev: prev, Entries: []ports.Entry{entry(4)},
 		BondRegs: []BondReg{bondReg(prop, twoMiB, prev), bondReg(v1, twoMiB, prev), bondReg(v2, twoMiB, prev)}}
 	Sign(b4, prop)
 	b4.Atts = []Attestation{Attest(b4, v1), Attest(b4, v2)}
@@ -282,7 +282,7 @@ func TestSlashDisqualifiesMidEpochWithFrozenN(t *testing.T) {
 	c := New(cfg, func(ports.NodeID) int64 { return 0 })
 	c.SetBondVerifier(objectiveVerify)
 
-	g := &Block{Version: BlockVersion, Height: 0, Entries: []ports.Entry{entry(0)}}
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
 	g.BondRegs = append(g.BondRegs,
 		bondReg(prop, twoMiB, ports.Hash{}),
 		bondReg(v1, twoMiB, ports.Hash{}),
@@ -302,12 +302,12 @@ func TestSlashDisqualifiesMidEpochWithFrozenN(t *testing.T) {
 	// proven misbehavior is removed immediately (safety), but N stays FROZEN — a
 	// shrinking N would lower bftThreshold mid-epoch and weaken quorum
 	// intersection in the exact window the freeze exists to protect.
-	xa := &Block{Version: BlockVersion, Height: 9, Prev: g.Hash(), Entries: []ports.Entry{entry(101)}}
+	xa := &Block{Version: 1, Height: 9, Prev: g.Hash(), Entries: []ports.Entry{entry(101)}}
 	Sign(xa, v4)
-	xb := &Block{Version: BlockVersion, Height: 9, Prev: g.Hash(), Entries: []ports.Entry{entry(102)}}
+	xb := &Block{Version: 1, Height: 9, Prev: g.Hash(), Entries: []ports.Entry{entry(102)}}
 	Sign(xb, v4)
 	prev := g.Hash()
-	b1 := &Block{Version: BlockVersion, Height: 1, Prev: prev, Entries: []ports.Entry{entry(1)},
+	b1 := &Block{Version: 1, Height: 1, Prev: prev, Entries: []ports.Entry{entry(1)},
 		Slashes: []Equivocation{{Culprit: append([]byte(nil), v4.Public().(ed25519.PublicKey)...), A: *xa, B: *xb}}}
 	Sign(b1, prop)
 	b1.Atts = []Attestation{Attest(b1, v1), Attest(b1, v2), Attest(b1, v3)}
@@ -328,13 +328,13 @@ func TestSlashDisqualifiesMidEpochWithFrozenN(t *testing.T) {
 	// refused (were the denominator live-shrunk to 8 MiB it would be 75% and
 	// commit); proposer + v1 + v2 + v3 = 8/10 = 80% commits.
 	prev, _ = c.Head()
-	under := &Block{Version: BlockVersion, Height: 2, Prev: prev, Entries: []ports.Entry{entry(2)}}
+	under := &Block{Version: 1, Height: 2, Prev: prev, Entries: []ports.Entry{entry(2)}}
 	Sign(under, prop)
 	under.Atts = []Attestation{Attest(under, v1), Attest(under, v2)}
 	if err := c.Append(*under); !errors.Is(err, ErrNoQuorumWeight) {
 		t.Fatalf("the slashed member's weight must stay in the frozen denominator (60%% refused), got: %v", err)
 	}
-	full := &Block{Version: BlockVersion, Height: 2, Prev: prev, Entries: []ports.Entry{entry(3)}}
+	full := &Block{Version: 1, Height: 2, Prev: prev, Entries: []ports.Entry{entry(3)}}
 	Sign(full, prop)
 	full.Atts = []Attestation{Attest(full, v1), Attest(full, v2), Attest(full, v3)}
 	if err := c.Append(*full); err != nil {
@@ -358,7 +358,7 @@ func TestDrainWindowOrderingConvergence(t *testing.T) {
 	mk := func() (*Chain, *Block) {
 		c := New(cfg, func(ports.NodeID) int64 { return 0 })
 		c.SetBondVerifier(objectiveVerify)
-		g := &Block{Version: BlockVersion, Height: 0, Entries: []ports.Entry{entry(0)}}
+		g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
 		Sign(g, a1)
 		if err := c.AppendGenesis(*g); err != nil {
 			t.Fatalf("append genesis: %v", err)
@@ -366,7 +366,7 @@ func TestDrainWindowOrderingConvergence(t *testing.T) {
 		return c, g
 	}
 	drainBlock := func(h uint64, prev ports.Hash, e byte, reg BondReg) *Block {
-		b := &Block{Version: BlockVersion, Height: h, Prev: prev, Entries: []ports.Entry{entry(e)},
+		b := &Block{Version: 1, Height: h, Prev: prev, Entries: []ports.Entry{entry(e)},
 			BondRegs: []BondReg{reg}}
 		Sign(b, a1)
 		b.Atts = []Attestation{Attest(b, a2), Attest(b, a3)}
@@ -433,7 +433,7 @@ func TestDrainWindowOrderingConvergence(t *testing.T) {
 		prevY = b.Hash()
 	}
 	// One extra committed block makes Y strictly longer and heavier than X.
-	b4 := &Block{Version: BlockVersion, Height: 4, Prev: prevY, Entries: []ports.Entry{entry(0x90)}}
+	b4 := &Block{Version: 1, Height: 4, Prev: prevY, Entries: []ports.Entry{entry(0x90)}}
 	Sign(b4, a1)
 	b4.Atts = []Attestation{Attest(b4, a2), Attest(b4, a3)}
 	chainY = append(chainY, *b4)

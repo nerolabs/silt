@@ -19,7 +19,7 @@ func objectiveThree() (*Chain, ed25519.PrivateKey, ed25519.PrivateKey, ed25519.P
 	equiv, att, prop := key(101), key(102), key(103)
 	c := New(Config{Quorum: 1, MinBond: 1 << 20}, func(ports.NodeID) int64 { return 0 })
 	c.SetBondVerifier(objectiveVerify)
-	g := &Block{Version: BlockVersion, Height: 0, Entries: []ports.Entry{entry(0)},
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)},
 		BondRegs: []BondReg{bondReg(equiv, twoMiB, ports.Hash{}), bondReg(att, twoMiB, ports.Hash{}), bondReg(prop, twoMiB, ports.Hash{})}}
 	Sign(g, prop)
 	if err := c.AppendGenesis(*g); err != nil {
@@ -39,7 +39,7 @@ func TestObjectiveEquivocationSlashEvicts(t *testing.T) {
 
 	// Evidence: the equivocator PROPOSES two different blocks at the same height.
 	mkFork := func(tag byte) Block {
-		b := Block{Version: BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(tag)}}
+		b := Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(tag)}}
 		Sign(&b, equiv)
 		return b
 	}
@@ -52,7 +52,7 @@ func TestObjectiveEquivocationSlashEvicts(t *testing.T) {
 	}
 
 	// Commit a slash block (prop proposes, att attests) carrying the proof.
-	sb := &Block{Version: BlockVersion, Height: 1, Prev: g.Hash(), Slashes: []Equivocation{proof}}
+	sb := &Block{Version: 1, Height: 1, Prev: g.Hash(), Slashes: []Equivocation{proof}}
 	Sign(sb, prop)
 	sb.Atts = []Attestation{Attest(sb, att)}
 	if err := c.Append(*sb); err != nil {
@@ -69,7 +69,7 @@ func TestObjectiveEquivocationSlashEvicts(t *testing.T) {
 
 	// And it cannot re-earn standing by re-registering its bond.
 	reg := bondReg(equiv, twoMiB, sb.Hash())
-	nb := &Block{Version: BlockVersion, Height: 2, Prev: sb.Hash(), BondRegs: []BondReg{reg}}
+	nb := &Block{Version: 1, Height: 2, Prev: sb.Hash(), BondRegs: []BondReg{reg}}
 	Sign(nb, prop)
 	nb.Atts = []Attestation{Attest(nb, att)}
 	if err := c.Append(*nb); err != nil {
@@ -88,9 +88,9 @@ func TestForgedSlashRejected(t *testing.T) {
 
 	// A block equiv did NOT sign (proposed by att), paired with one it did — the
 	// culprit named is equiv but it did not sign both, so the proof is invalid.
-	notSigned := Block{Version: BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(20)}}
+	notSigned := Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(20)}}
 	Sign(&notSigned, att)
-	signed := Block{Version: BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(21)}}
+	signed := Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(21)}}
 	Sign(&signed, equiv)
 	forged := Equivocation{
 		Culprit: append([]byte(nil), equiv.Public().(ed25519.PublicKey)...),
@@ -100,7 +100,7 @@ func TestForgedSlashRejected(t *testing.T) {
 		t.Fatal("setup: a forged proof must not verify")
 	}
 
-	sb := &Block{Version: BlockVersion, Height: 1, Prev: g.Hash(), Slashes: []Equivocation{forged}}
+	sb := &Block{Version: 1, Height: 1, Prev: g.Hash(), Slashes: []Equivocation{forged}}
 	Sign(sb, prop)
 	sb.Atts = []Attestation{Attest(sb, att)}
 	if err := c.Append(*sb); err == nil {

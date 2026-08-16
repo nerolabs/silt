@@ -61,7 +61,7 @@ func launch402(t *testing.T, nAnchors, nSybils, aq int) (*Chain, []ed25519.Priva
 	c := New(cfg, func(ports.NodeID) int64 { return 0 })
 	c.SetBondVerifier(objectiveVerify)
 
-	g := &Block{Version: BlockVersion, Height: 0, Entries: []ports.Entry{entry(0)}}
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
 	for i, k := range ak {
 		g.BondRegs = append(g.BondRegs, bondRegDom(k, bond, ports.Hash{}, uint64(i+1)))
 	}
@@ -90,7 +90,7 @@ func TestBothSybilProposed22SplitCannotBothFinalize402(t *testing.T) {
 
 	// The honest block: anchor a0 proposes, a1 + a2 attest → 3 anchors (proposer +
 	// 2). Commits under the derived ⌊4/2⌋+1=3 rule; 1 anchor (a3) may be down.
-	honest := &Block{Version: BlockVersion, Height: 1, Prev: prev, Entries: []ports.Entry{entry(1)}}
+	honest := &Block{Version: 1, Height: 1, Prev: prev, Entries: []ports.Entry{entry(1)}}
 	Sign(honest, ak[0])
 	honest.Atts = []Attestation{Attest(honest, ak[1]), Attest(honest, ak[2])}
 	if err := c.ValidateCommit(honest); err != nil {
@@ -100,11 +100,11 @@ func TestBothSybilProposed22SplitCannotBothFinalize402(t *testing.T) {
 	// The 2-2 split: two SYBIL-proposed competing blocks, anchors split as
 	// attesters {a0,a1}→forkA, {a2,a3}→forkB. Under AnchorQuorum=2 both satisfy the
 	// old gate (2 anchor attesters each). The fix must let AT MOST ONE pass.
-	forkA := &Block{Version: BlockVersion, Height: 1, Prev: prev, Entries: []ports.Entry{entry(2)}}
+	forkA := &Block{Version: 1, Height: 1, Prev: prev, Entries: []ports.Entry{entry(2)}}
 	Sign(forkA, sk[0])
 	forkA.Atts = []Attestation{Attest(forkA, ak[0]), Attest(forkA, ak[1]), Attest(forkA, sk[1]), Attest(forkA, sk[2])}
 
-	forkB := &Block{Version: BlockVersion, Height: 1, Prev: prev, Entries: []ports.Entry{entry(3)}}
+	forkB := &Block{Version: 1, Height: 1, Prev: prev, Entries: []ports.Entry{entry(3)}}
 	Sign(forkB, sk[3])
 	forkB.Atts = []Attestation{Attest(forkB, ak[2]), Attest(forkB, ak[3]), Attest(forkB, sk[4]), Attest(forkB, sk[5])}
 
@@ -124,7 +124,7 @@ func TestSybilCannotProposeAtLaunch402(t *testing.T) {
 	c, ak, sk := launch402(t, 4, 8, 2)
 	prev, _ := c.Head()
 
-	b := &Block{Version: BlockVersion, Height: 1, Prev: prev, Entries: []ports.Entry{entry(1)}}
+	b := &Block{Version: 1, Height: 1, Prev: prev, Entries: []ports.Entry{entry(1)}}
 	Sign(b, sk[0]) // a sybil proposes
 	// Even a full anchor majority attesting can't launder a sybil-proposed block.
 	b.Atts = []Attestation{Attest(b, ak[0]), Attest(b, ak[1]), Attest(b, ak[2])}
@@ -148,7 +148,7 @@ func TestDerivedAnchorMajorityIgnoresConfig402(t *testing.T) {
 	// A fork with only ONE anchor (a3) + sybils — below the derived ⌊4/2⌋+1=3
 	// majority. Anchor-proposed so encoding-B doesn't short-circuit it: the point
 	// here is the DERIVED count, independent of the knob.
-	fork := &Block{Version: BlockVersion, Height: 1, Prev: prev, Entries: []ports.Entry{entry(2)}}
+	fork := &Block{Version: 1, Height: 1, Prev: prev, Entries: []ports.Entry{entry(2)}}
 	Sign(fork, ak[3]) // anchor a3 proposes (1 anchor)
 	for _, k := range sk[:4] {
 		fork.Atts = append(fork.Atts, Attest(fork, k))
@@ -167,7 +167,7 @@ func TestHonestThreeOfFourCommitsAndOneDownTolerated402(t *testing.T) {
 	prev, _ := c.Head()
 
 	// 3 anchors (a0 proposes, a1+a2 attest) → commits.
-	up := &Block{Version: BlockVersion, Height: 1, Prev: prev, Entries: []ports.Entry{entry(1)}}
+	up := &Block{Version: 1, Height: 1, Prev: prev, Entries: []ports.Entry{entry(1)}}
 	Sign(up, ak[0])
 	up.Atts = []Attestation{Attest(up, ak[1]), Attest(up, ak[2]), Attest(up, sk[0])}
 	if err := c.ValidateCommit(up); err != nil {
@@ -175,7 +175,7 @@ func TestHonestThreeOfFourCommitsAndOneDownTolerated402(t *testing.T) {
 	}
 
 	// 2 anchors (a0 proposes, a1 attests; a2,a3 down) → refused (below majority 3).
-	down := &Block{Version: BlockVersion, Height: 1, Prev: prev, Entries: []ports.Entry{entry(2)}}
+	down := &Block{Version: 1, Height: 1, Prev: prev, Entries: []ports.Entry{entry(2)}}
 	Sign(down, ak[0])
 	down.Atts = []Attestation{Attest(down, ak[1]), Attest(down, sk[0]), Attest(down, sk[1])}
 	if err := c.ValidateCommit(down); !errors.Is(err, ErrAnchorRequired) {

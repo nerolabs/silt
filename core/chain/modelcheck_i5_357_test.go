@@ -42,14 +42,14 @@ func ramp357(t *testing.T) (*Chain, []ed25519.PrivateKey, *Block) {
 	c := New(cfg, func(ports.NodeID) int64 { return 0 })
 	c.SetBondVerifier(objectiveVerify)
 
-	g := &Block{Version: BlockVersion, Height: 0, Entries: []ports.Entry{entry(0)}}
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
 	Sign(g, ak[0])
 	if err := c.AppendGenesis(*g); err != nil {
 		t.Fatalf("genesis: %v", err)
 	}
 	prev := g.Hash()
 	for h := byte(1); h <= 2; h++ {
-		b := &Block{Version: BlockVersion, Height: uint64(h), Prev: prev, Entries: []ports.Entry{entry(h)}}
+		b := &Block{Version: 1, Height: uint64(h), Prev: prev, Entries: []ports.Entry{entry(h)}}
 		Sign(b, ak[0])
 		b.Atts = []Attestation{Attest(b, ak[1]), Attest(b, ak[2])}
 		if err := c.Append(*b); err != nil {
@@ -68,7 +68,7 @@ func anchorFork(g *Block, ak []ed25519.PrivateKey, height int, tag byte) []Block
 	out := []Block{*g}
 	prev := g.Hash()
 	for h := 1; h <= height; h++ {
-		b := Block{Version: BlockVersion, Height: uint64(h), Prev: prev, Entries: []ports.Entry{entry(tag + byte(h))}}
+		b := Block{Version: 1, Height: uint64(h), Prev: prev, Entries: []ports.Entry{entry(tag + byte(h))}}
 		Sign(&b, ak[0])
 		b.Atts = []Attestation{Attest(&b, ak[1]), Attest(&b, ak[2])}
 		out = append(out, b)

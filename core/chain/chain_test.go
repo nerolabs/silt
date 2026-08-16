@@ -51,7 +51,7 @@ func newWorld(cfg Config) *world {
 
 func (w *world) block(entries ...ports.Entry) *Block {
 	prev, height := w.c.Head()
-	b := &Block{Version: BlockVersion, Height: height, Prev: prev, Entries: entries}
+	b := &Block{Version: 1, Height: height, Prev: prev, Entries: entries}
 	Sign(b, w.prop)
 	return b
 }
@@ -172,7 +172,7 @@ func TestDupRootAndWrongParent(t *testing.T) {
 	if err := w.c.ValidateProposal(dup); !errors.Is(err, ErrDupRoot) {
 		t.Fatalf("want ErrDupRoot, got %v", err)
 	}
-	stale := &Block{Version: BlockVersion, Height: 0, Prev: ports.Hash{}, Entries: []ports.Entry{entry(2)}}
+	stale := &Block{Version: 1, Height: 0, Prev: ports.Hash{}, Entries: []ports.Entry{entry(2)}}
 	Sign(stale, w.prop)
 	if err := w.c.ValidateProposal(stale); !errors.Is(err, ErrWrongParent) {
 		t.Fatalf("want ErrWrongParent, got %v", err)
@@ -288,7 +288,7 @@ func TestRevocationByQuorum(t *testing.T) {
 
 	// A revocation-only block at the next height takes down entry(1).
 	prev, height := w.c.Head()
-	rev := &Block{Version: BlockVersion, Height: height, Prev: prev, Revocations: []ports.Hash{entry(1).Root}}
+	rev := &Block{Version: 1, Height: height, Prev: prev, Revocations: []ports.Hash{entry(1).Root}}
 	Sign(rev, w.prop)
 
 	// Too few attestations: a lone actor cannot take content down.
@@ -329,7 +329,7 @@ func TestRevocationByQuorum(t *testing.T) {
 	// Reversibility (F5): a quorum-committed un-revocation clears the takedown,
 	// so it is not a permanent, one-way asymmetry.
 	prev2, height2 := w.c.Head()
-	unrev := &Block{Version: BlockVersion, Height: height2, Prev: prev2, Unrevocations: []ports.Hash{entry(1).Root}}
+	unrev := &Block{Version: 1, Height: height2, Prev: prev2, Unrevocations: []ports.Hash{entry(1).Root}}
 	Sign(unrev, w.prop)
 	w.attestAll(unrev)
 	if err := w.c.Append(*unrev); err != nil {

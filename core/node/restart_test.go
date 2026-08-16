@@ -28,7 +28,7 @@ func TestRestartedValidatorCatchesUpOnceStandingReturns(t *testing.T) {
 
 	// A genesis both replicas share by construction (Reconcile refuses a fork
 	// that doesn't share our genesis).
-	g := &chain.Block{Version: chain.BlockVersion, Height: 0, Entries: []ports.Entry{mkEntry("genesis")}}
+	g := &chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{mkEntry("genesis")}}
 	chain.Sign(g, identity.FromSeed(9).Signer())
 
 	p := identity.FromSeed(2) // proposer of block 1
@@ -41,7 +41,7 @@ func TestRestartedValidatorCatchesUpOnceStandingReturns(t *testing.T) {
 	if err := aCh.AppendGenesis(*g); err != nil {
 		t.Fatalf("A genesis: %v", err)
 	}
-	b1 := &chain.Block{Version: chain.BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("block1")}}
+	b1 := &chain.Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("block1")}}
 	chain.Sign(b1, p.Signer())
 	b1.Atts = append(b1.Atts, chain.Attest(b1, v.Signer()))
 	if err := aCh.Append(*b1); err != nil {

@@ -54,7 +54,7 @@ func TestMatureEpochWeightQuorumOverWire(t *testing.T) {
 	// One genesis block, shared by every replica: all 13 bonds registered, so
 	// the genesis boundary (MatureValidators=0) is the handoff and the first
 	// epoch snapshot seats honest whales and MinBond cohort alike.
-	g := &chain.Block{Version: chain.BlockVersion, Height: 0,
+	g := &chain.Block{Version: 1, Height: 0,
 		Entries: []ports.Entry{{Root: ports.HashBytes([]byte("genesis")), ManifestChunks: []ports.ChunkID{ports.HashBytes([]byte("gm"))}}}}
 	for i := 0; i < honestN; i++ {
 		g.BondRegs = append(g.BondRegs, chain.NewBondReg(idents[i].Signer(),

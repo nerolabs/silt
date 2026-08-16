@@ -27,10 +27,10 @@ func TestSlashEquivocatorsIsIdempotentAcrossSweeps397(t *testing.T) {
 
 	prop := identity.FromSeed(2).Signer()
 	v := identity.FromSeed(3)
-	g := &chain.Block{Version: chain.BlockVersion, Height: 0, Entries: []ports.Entry{mkEntry("g")}}
+	g := &chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{mkEntry("g")}}
 	chain.Sign(g, prop)
 	fork := func(name string) *chain.Block {
-		b := &chain.Block{Version: chain.BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry(name)}}
+		b := &chain.Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry(name)}}
 		chain.Sign(b, prop)
 		b.Atts = append(b.Atts, chain.Attest(b, v.Signer()))
 		return b
@@ -68,7 +68,7 @@ func TestPendingSlashRequeuedUntilCommitted397(t *testing.T) {
 	tn.SetLedger(ledger)
 
 	ch := chain.New(chain.DefaultConfig(), repFn)
-	g := &chain.Block{Version: chain.BlockVersion, Height: 0, Entries: []ports.Entry{mkEntry("g")}}
+	g := &chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{mkEntry("g")}}
 	prop := identity.FromSeed(2)
 	chain.Sign(g, prop.Signer())
 	if err := ch.AppendGenesis(*g); err != nil {
@@ -80,7 +80,7 @@ func TestPendingSlashRequeuedUntilCommitted397(t *testing.T) {
 	// A self-verifying equivocation proof by a third validator.
 	v := identity.FromSeed(3)
 	fork := func(name string) *chain.Block {
-		b := &chain.Block{Version: chain.BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry(name)}}
+		b := &chain.Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry(name)}}
 		chain.Sign(b, prop.Signer())
 		b.Atts = append(b.Atts, chain.Attest(b, v.Signer()))
 		return b
@@ -95,7 +95,7 @@ func TestPendingSlashRequeuedUntilCommitted397(t *testing.T) {
 	// the block does not commit, and the slash record must remain queued.
 	deadID := identity.FromSeed(9).NodeID()
 	_ = net.Endpoint(deadID)
-	blk := &chain.Block{Version: chain.BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("carrier")}}
+	blk := &chain.Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("carrier")}}
 	var perr error
 	tn.proposeBlock(blk, []ports.NodeID{deadID}, nil, 1, func(err error) { perr = err })
 	sched.Run()

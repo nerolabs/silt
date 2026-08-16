@@ -31,19 +31,19 @@ func commitRampChain(t *testing.T) (*Chain, *Block, []any) {
 
 	// Genesis, anchor-proposed, NO real bonds — the ramp regime (anchors are the
 	// only trust; qualifiedCount()==0).
-	g := &Block{Version: BlockVersion, Height: 0, Entries: []ports.Entry{entry(0)}}
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
 	Sign(g, a1)
 	if err := c.AppendGenesis(*g); err != nil {
 		t.Fatalf("append genesis: %v", err)
 	}
 	// Two anchor-attested committed blocks (quorum 2, anchors zero-bond).
-	b1 := &Block{Version: BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(1)}}
+	b1 := &Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(1)}}
 	Sign(b1, a1)
 	b1.Atts = []Attestation{Attest(b1, a2), Attest(b1, a3)}
 	if err := c.Append(*b1); err != nil {
 		t.Fatalf("commit block 1 (anchor-attested): %v", err)
 	}
-	b2 := &Block{Version: BlockVersion, Height: 2, Prev: b1.Hash(), Entries: []ports.Entry{entry(2)}}
+	b2 := &Block{Version: 1, Height: 2, Prev: b1.Hash(), Entries: []ports.Entry{entry(2)}}
 	Sign(b2, a1)
 	b2.Atts = []Attestation{Attest(b2, a2), Attest(b2, a3)}
 	if err := c.Append(*b2); err != nil {

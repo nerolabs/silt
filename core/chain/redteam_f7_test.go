@@ -32,7 +32,7 @@ import (
 
 // f7Block builds a block at height on prev, proposed by prop and attested by atts.
 func f7Block(prop ed25519.PrivateKey, height uint64, prev ports.Hash, e ports.Entry, atts ...ed25519.PrivateKey) Block {
-	b := Block{Version: BlockVersion, Height: height, Prev: prev, Entries: []ports.Entry{e}}
+	b := Block{Version: 1, Height: height, Prev: prev, Entries: []ports.Entry{e}}
 	Sign(&b, prop)
 	for _, a := range atts {
 		b.Atts = append(b.Atts, Attest(&b, a))

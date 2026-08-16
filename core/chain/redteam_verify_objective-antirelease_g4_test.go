@@ -29,7 +29,7 @@ func TestObjectiveSubFloorBondEarnsNoStanding(t *testing.T) {
 
 	// A genesis DECLARING a tiny bond: it must earn zero standing.
 	sybil := key(500)
-	g := &Block{Version: BlockVersion, Height: 0, Entries: []ports.Entry{entry(0)},
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)},
 		BondRegs: []BondReg{bondRegAt(sybil, ports.HashBytes([]byte("tiny")), tiny, ports.Hash{})}}
 	Sign(g, sybil)
 	if err := c.AppendGenesis(*g); err != nil {
@@ -48,12 +48,12 @@ func TestObjectiveSubFloorBondEarnsNoStanding(t *testing.T) {
 		Anchors: map[ports.NodeID]bool{idOf(anchorP): true, idOf(anchorA): true}, MatureValidators: 100},
 		func(ports.NodeID) int64 { return 0 })
 	c2.SetBondVerifier(objectiveVerify)
-	g2 := &Block{Version: BlockVersion, Height: 0, Entries: []ports.Entry{entry(0)}}
+	g2 := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
 	Sign(g2, anchorP)
 	if err := c2.AppendGenesis(*g2); err != nil {
 		t.Fatalf("genesis2: %v", err)
 	}
-	b := &Block{Version: BlockVersion, Height: 1, Prev: g2.Hash(),
+	b := &Block{Version: 1, Height: 1, Prev: g2.Hash(),
 		BondRegs: []BondReg{bondRegAt(sybil, ports.HashBytes([]byte("tiny2")), tiny, g2.Hash())}}
 	Sign(b, anchorP)
 	b.Atts = []Attestation{Attest(b, anchorA)}
@@ -76,7 +76,7 @@ func TestObjectiveBondStandingDecaysWithoutRenewal(t *testing.T) {
 	newChain := func() (*Chain, *Block) {
 		c := New(cfg, func(ports.NodeID) int64 { return 0 })
 		c.SetBondVerifier(objectiveVerify)
-		g := &Block{Version: BlockVersion, Height: 0, Entries: []ports.Entry{entry(0)}}
+		g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
 		Sign(g, anchorP)
 		if err := c.AppendGenesis(*g); err != nil {
 			t.Fatalf("genesis: %v", err)
@@ -86,7 +86,7 @@ func TestObjectiveBondStandingDecaysWithoutRenewal(t *testing.T) {
 
 	// Anchors advance the chain by one empty block; optionally V renews its bond.
 	advance := func(c *Chain, prev *Block, regs []BondReg) *Block {
-		nb := &Block{Version: BlockVersion, Height: prev.Height + 1, Prev: prev.Hash(),
+		nb := &Block{Version: 1, Height: prev.Height + 1, Prev: prev.Hash(),
 			Entries: []ports.Entry{entry(byte(prev.Height + 1))}, BondRegs: regs}
 		Sign(nb, anchorP)
 		nb.Atts = []Attestation{Attest(nb, anchorA)}

@@ -39,7 +39,7 @@ func TestF5_RevokeUnknownRoot_Denied(t *testing.T) {
 
 	// A block mixing the victim's real root with a never-published one: the
 	// whole block must be refused because ONE named root was never committed.
-	rev := &Block{Version: BlockVersion, Height: height, Prev: prev,
+	rev := &Block{Version: 1, Height: height, Prev: prev,
 		Revocations: []ports.Hash{entry(42).Root, neverPublished}}
 	Sign(rev, w.prop)
 	w.attestAll(rev)
@@ -56,7 +56,7 @@ func TestF5_RevokeUnknownRoot_Denied(t *testing.T) {
 
 	// The legitimate case still works: revoking a genuinely-published root.
 	prev, height = w.c.Head()
-	ok := &Block{Version: BlockVersion, Height: height, Prev: prev, Revocations: []ports.Hash{entry(42).Root}}
+	ok := &Block{Version: 1, Height: height, Prev: prev, Revocations: []ports.Hash{entry(42).Root}}
 	Sign(ok, w.prop)
 	w.attestAll(ok)
 	if err := w.c.Append(*ok); err != nil {
@@ -78,7 +78,7 @@ func TestF5_RevocationIsPerOperator_Denied(t *testing.T) {
 		t.Fatal(err)
 	}
 	prev, height := w.c.Head()
-	rev := &Block{Version: BlockVersion, Height: height, Prev: prev, Revocations: []ports.Hash{entry(7).Root}}
+	rev := &Block{Version: 1, Height: height, Prev: prev, Revocations: []ports.Hash{entry(7).Root}}
 	Sign(rev, w.prop)
 	w.attestAll(rev)
 	if err := w.c.Append(*rev); err != nil {

@@ -83,7 +83,7 @@ func TestC2SingleDomainSybilsDoNotMature(t *testing.T) {
 	// they cannot commit. This is what makes a real capture impossible here; the
 	// field FAIL must therefore be a harness artifact (a lagging Sybil catching up
 	// to anchor-committed blocks read as an "advance"), not a genuine capture.
-	g := &Block{Version: BlockVersion, Height: 0, Entries: []ports.Entry{entry(0)}}
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
 	Sign(g, key(9000))
 	c2 := New(cfg, func(ports.NodeID) int64 { return 0 })
 	c2.SetBondVerifier(objectiveVerify)
@@ -96,7 +96,7 @@ func TestC2SingleDomainSybilsDoNotMature(t *testing.T) {
 	// Bank THREE Sybil bonds (all same domain) so the Sybils can more than meet
 	// RequiredQuorum(2) among themselves — exactly the cloud case (8 Sybils).
 	s1, s2, s3 := key(9100), key(9101), key(9102)
-	b1 := &Block{Version: BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(1)},
+	b1 := &Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(1)},
 		BondRegs: []BondReg{
 			bondRegDom(s1, bond, g.Hash(), sybilDomain),
 			bondRegDom(s2, bond, g.Hash(), sybilDomain),
@@ -111,7 +111,7 @@ func TestC2SingleDomainSybilsDoNotMature(t *testing.T) {
 	// to satisfy RequiredQuorum(2), so the ONLY thing that can refuse it is the
 	// anchor training-wheels gate. With the anchors down there is no anchor
 	// sign-off, so it must be refused with ErrAnchorRequired.
-	b2 := &Block{Version: BlockVersion, Height: 2, Prev: b1.Hash(), Entries: []ports.Entry{entry(2)}}
+	b2 := &Block{Version: 1, Height: 2, Prev: b1.Hash(), Entries: []ports.Entry{entry(2)}}
 	Sign(b2, s1)
 	b2.Atts = []Attestation{Attest(b2, s2), Attest(b2, s3)}
 	err := c2.Append(*b2)

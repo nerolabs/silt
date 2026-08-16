@@ -41,7 +41,7 @@ func TestEquivocateRetriesUncommittedLeg378(t *testing.T) {
 		nd := New(id.NodeID(), DefaultConfig(), sched, net.Endpoint(id.NodeID()), memstore.New())
 		nd.SetLedger(ledger)
 		ch := chain.New(cfg, repFn)
-		g := &chain.Block{Version: chain.BlockVersion, Height: 0, Entries: []ports.Entry{mkEntry("g")}}
+		g := &chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{mkEntry("g")}}
 		chain.Sign(g, idC.Signer()) // C is the proposer of the whole synthetic history
 		if err := ch.AppendGenesis(*g); err != nil {
 			t.Fatal(err)

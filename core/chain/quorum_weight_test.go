@@ -56,7 +56,7 @@ func TestMatureQuorumCheapMemberCaptureRefused(t *testing.T) {
 	// de-maturation gate stays dormant and cannot mask the weight rule). The
 	// epoch snapshot seats all 13 — honest whales and MinBond cohort alike
 	// (Condition A admission is unfiltered; that is the drill's honest premise).
-	g := &Block{Version: BlockVersion, Height: 0, Entries: []ports.Entry{entry(0)}}
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
 	for i, k := range hk {
 		g.BondRegs = append(g.BondRegs, bondRegDom(k, honestBond, ports.Hash{}, uint64(i+1)))
 	}
@@ -83,7 +83,7 @@ func TestMatureQuorumCheapMemberCaptureRefused(t *testing.T) {
 	// break). Under weight counting the coalition holds 9 MiB of 265 MiB and
 	// must be refused for lack of the frozen-weight super-majority.
 	prev, _ := c.Head()
-	capture := &Block{Version: BlockVersion, Height: 1, Prev: prev, Entries: []ports.Entry{entry(1)}}
+	capture := &Block{Version: 1, Height: 1, Prev: prev, Entries: []ports.Entry{entry(1)}}
 	Sign(capture, sk[0])
 	for _, k := range sk[1:] {
 		capture.Atts = append(capture.Atts, Attest(capture, k))
@@ -101,7 +101,7 @@ func TestMatureQuorumCheapMemberCaptureRefused(t *testing.T) {
 
 	// Liveness control: honest weight commits — h0 proposes, h1+h2 attest
 	// (192 MiB of 265 MiB ≈ 72% > ⅔), count floor 2 met.
-	ok := &Block{Version: BlockVersion, Height: 1, Prev: prev, Entries: []ports.Entry{entry(2)}}
+	ok := &Block{Version: 1, Height: 1, Prev: prev, Entries: []ports.Entry{entry(2)}}
 	Sign(ok, hk[0])
 	ok.Atts = []Attestation{Attest(ok, hk[1]), Attest(ok, hk[2])}
 	if err := c.Append(*ok); err != nil {
@@ -131,7 +131,7 @@ func TestMatureQuorumHonestWeightCommitsDespiteCheapHeadcount(t *testing.T) {
 	c := New(cfg, func(ports.NodeID) int64 { return 0 })
 	c.SetBondVerifier(objectiveVerify)
 
-	g := &Block{Version: BlockVersion, Height: 0, Entries: []ports.Entry{entry(0)}}
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
 	for i, k := range hk {
 		g.BondRegs = append(g.BondRegs, bondRegDom(k, honestBond, ports.Hash{}, uint64(i+1)))
 	}
@@ -152,7 +152,7 @@ func TestMatureQuorumHonestWeightCommitsDespiteCheapHeadcount(t *testing.T) {
 	// to commit, a liveness denial priced at 8×MinBond. Under weight counting
 	// the honest coalition carries 256 MiB of 264 MiB (~97%) and commits.
 	prev, _ := c.Head()
-	b := &Block{Version: BlockVersion, Height: 1, Prev: prev, Entries: []ports.Entry{entry(1)}}
+	b := &Block{Version: 1, Height: 1, Prev: prev, Entries: []ports.Entry{entry(1)}}
 	Sign(b, hk[0])
 	b.Atts = []Attestation{Attest(b, hk[1]), Attest(b, hk[2]), Attest(b, hk[3])}
 	if err := c.Append(*b); err != nil {
@@ -173,7 +173,7 @@ func TestMatureQuorumWeightBoundaryStrict(t *testing.T) {
 	c := New(cfg, func(ports.NodeID) int64 { return 0 })
 	c.SetBondVerifier(objectiveVerify)
 
-	g := &Block{Version: BlockVersion, Height: 0, Entries: []ports.Entry{entry(0)}}
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
 	g.BondRegs = append(g.BondRegs,
 		bondRegDom(k1, bond, ports.Hash{}, 1),
 		bondRegDom(k2, bond, ports.Hash{}, 2),
@@ -184,13 +184,13 @@ func TestMatureQuorumWeightBoundaryStrict(t *testing.T) {
 	}
 
 	prev, _ := c.Head()
-	at := &Block{Version: BlockVersion, Height: 1, Prev: prev, Entries: []ports.Entry{entry(1)}}
+	at := &Block{Version: 1, Height: 1, Prev: prev, Entries: []ports.Entry{entry(1)}}
 	Sign(at, k1)
 	at.Atts = []Attestation{Attest(at, k2)} // exactly ⅔ of the weight
 	if err := c.Append(*at); !errors.Is(err, ErrNoQuorumWeight) {
 		t.Fatalf("exactly ⅔ of the frozen weight must NOT commit (strict super-majority), got: %v", err)
 	}
-	over := &Block{Version: BlockVersion, Height: 1, Prev: prev, Entries: []ports.Entry{entry(2)}}
+	over := &Block{Version: 1, Height: 1, Prev: prev, Entries: []ports.Entry{entry(2)}}
 	Sign(over, k1)
 	over.Atts = []Attestation{Attest(over, k2), Attest(over, k3)}
 	if err := c.Append(*over); err != nil {

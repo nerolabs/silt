@@ -54,7 +54,7 @@ func tier2AnchorNet(t *testing.T, nAnchors int) ([]*Node, []*identity.Identity, 
 		ids[i] = identity.FromSeed(int64(8500 + i))
 		anchors[ids[i].NodeID()] = true
 	}
-	g := &chain.Block{Version: chain.BlockVersion, Height: 0, Entries: []ports.Entry{mkEntry("g")}}
+	g := &chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{mkEntry("g")}}
 	chain.Sign(g, ids[0].Signer())
 	cfg := chain.Config{Quorum: 1, MinBond: 1 << 20, ByzantineQuorum: true, Anchors: anchors, MatureValidators: 99}
 
@@ -108,7 +108,7 @@ func TestModelCheckTier2_RoundCommitsOverHeldDelivery(t *testing.T) {
 	attesters := []ports.NodeID{ids[1].NodeID(), ids[2].NodeID(), ids[3].NodeID()}
 	all := []ports.NodeID{ids[0].NodeID(), ids[1].NodeID(), ids[2].NodeID(), ids[3].NodeID()}
 
-	b := &chain.Block{Version: chain.BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("blk1")}}
+	b := &chain.Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("blk1")}}
 	var done bool
 	var commitErr error
 	nodes[0].proposeBlock(b, attesters, all, 1, func(err error) { done, commitErr = true, err })
@@ -150,7 +150,7 @@ func runI2Restart(t *testing.T, persist bool) bool {
 		anchors[ids[i].NodeID()] = true
 	}
 	id := func(i int) ports.NodeID { return ids[i].NodeID() }
-	g := &chain.Block{Version: chain.BlockVersion, Height: 0, Entries: []ports.Entry{mkEntry("g")}}
+	g := &chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{mkEntry("g")}}
 	chain.Sign(g, ids[0].Signer())
 	cfg := chain.Config{Quorum: 1, MinBond: 1 << 20, ByzantineQuorum: true, Anchors: anchors, MatureValidators: 99}
 
@@ -178,7 +178,7 @@ func runI2Restart(t *testing.T, persist bool) bool {
 	// Real gather: anchor[0] proposes A at h1, attested by 1 and 2 (proposer+2 = the
 	// strict anchor majority). anchor[1] thereby signs A at height 1 (mark persisted);
 	// anchor[3] stays free (never signs h1) so it can later propose the competitor.
-	blkA := &chain.Block{Version: chain.BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("A")}}
+	blkA := &chain.Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("A")}}
 	nodes[0].proposeBlock(blkA, []ports.NodeID{id(1), id(2)}, []ports.NodeID{id(1), id(2), id(3)}, 1, func(error) {})
 	drainHeld(t, net, fifo)
 	if _, h := nodes[1].Chain().Head(); h != 2 {
@@ -195,7 +195,7 @@ func runI2Restart(t *testing.T, persist bool) bool {
 
 	// Competitor B at h1, proposed by anchor[3] (which never signed h1, so it may
 	// propose). Present it to the restarted anchor[1] for attestation and read the reply.
-	blkB := &chain.Block{Version: chain.BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("B")}}
+	blkB := &chain.Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("B")}}
 	chain.Sign(blkB, ids[3].Signer())
 	probeID := identity.FromSeed(8699).NodeID()
 	probe := net.Endpoint(probeID)
@@ -264,7 +264,7 @@ func runI5HonestSlash(t *testing.T) (honestSlashed bool) {
 	pub := func(i int) []byte {
 		return append([]byte(nil), ids[i].Signer().Public().(ed25519.PublicKey)...)
 	}
-	g := &chain.Block{Version: chain.BlockVersion, Height: 0, Entries: []ports.Entry{mkEntry("g")}}
+	g := &chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{mkEntry("g")}}
 	for i := range ids {
 		g.BondRegs = append(g.BondRegs, chain.BondReg{Validator: pub(i), Root: ports.HashBytes(pub(i)), Size: 8 << 20})
 	}
@@ -297,8 +297,8 @@ func runI5HonestSlash(t *testing.T) (honestSlashed bool) {
 		}
 		return 0
 	}
-	blkA := &chain.Block{Version: chain.BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("A")}}
-	blkB := &chain.Block{Version: chain.BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("B")}}
+	blkA := &chain.Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("A")}}
+	blkB := &chain.Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("B")}}
 	// P0 and P1 are each other's ONLY attester (the clean cross-attest wedge).
 	nodes[0].proposeBlock(blkA, []ports.NodeID{id(1)}, all, 1, func(error) {})
 	nodes[1].proposeBlock(blkB, []ports.NodeID{id(0)}, all, 1, func(error) {})

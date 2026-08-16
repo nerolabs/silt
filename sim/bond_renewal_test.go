@@ -57,7 +57,7 @@ func TestObjectiveBondRenewalSustainsAttestOnlyValidator(t *testing.T) {
 		pub := id.Signer().Public().(ed25519.PublicKey)
 		regs = append(regs, chain.BondReg{Validator: append([]byte(nil), pub...), Root: ports.HashBytes(pub), Size: bondSize})
 	}
-	g := &chain.Block{Version: chain.BlockVersion, Height: 0, Entries: []ports.Entry{simEntry("genesis")}, BondRegs: regs}
+	g := &chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{simEntry("genesis")}, BondRegs: regs}
 	chain.Sign(g, identity.FromSeed(1).Signer())
 
 	var nodes []*node.Node

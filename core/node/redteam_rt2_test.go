@@ -47,7 +47,7 @@ func TestRedteamRT2_ReleaseAndCoast(t *testing.T) {
 		p := New(pID.NodeID(), DefaultConfig(), sched, net.Endpoint(pID.NodeID()), memstore.New())
 		p.EnableChain(ch, pID.Signer())
 		p.EnableObjectiveChain()
-		g := &chain.Block{Version: chain.BlockVersion, Height: 0, Entries: []ports.Entry{mkEntry("g")}}
+		g := &chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{mkEntry("g")}}
 		chain.Sign(g, pID.Signer())
 		if err := ch.AppendGenesis(*g); err != nil {
 			t.Fatal(err)
@@ -62,7 +62,7 @@ func TestRedteamRT2_ReleaseAndCoast(t *testing.T) {
 				}
 				regs = []chain.BondReg{reg}
 			}
-			nb := &chain.Block{Version: chain.BlockVersion, Height: prev.Height + 1, Prev: prev.Hash(),
+			nb := &chain.Block{Version: 1, Height: prev.Height + 1, Prev: prev.Hash(),
 				Entries: []ports.Entry{mkEntry("e" + strconv.FormatUint(prev.Height+1, 10))}, BondRegs: regs}
 			chain.Sign(nb, pID.Signer())
 			nb.Atts = []chain.Attestation{chain.Attest(nb, aID.Signer())}

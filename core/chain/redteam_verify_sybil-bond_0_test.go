@@ -29,7 +29,7 @@ func TestSharedRootDeniedNStandings(t *testing.T) {
 	c := New(Config{Quorum: 3, MinBond: minBond}, func(ports.NodeID) int64 { return 0 })
 	c.SetBondVerifier(objectiveVerify)
 
-	g := &Block{Version: BlockVersion, Height: 0, Entries: []ports.Entry{entry(0)}}
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
 	for _, s := range sybils {
 		pub := s.Public().(ed25519.PublicKey)
 		r := BondReg{Validator: append([]byte(nil), pub...), Root: sharedRoot, Size: minBond, Answer: []byte("valid")}
@@ -59,7 +59,7 @@ func TestSharedRootDeniedNStandings(t *testing.T) {
 
 	// DENIED: a follow-up block attested only by the shared-root Sybils cannot
 	// reach quorum (all but the first carry zero weight).
-	b := &Block{Version: BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(1)}}
+	b := &Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(1)}}
 	Sign(b, sybils[0])
 	for _, a := range sybils[1:] {
 		b.Atts = append(b.Atts, Attest(b, a))
@@ -83,7 +83,7 @@ func TestSharedRootDeniedViaValidatedBlock(t *testing.T) {
 	c := New(cfg, func(ports.NodeID) int64 { return 0 })
 	c.SetBondVerifier(objectiveVerify)
 
-	g := &Block{Version: BlockVersion, Height: 0, Entries: []ports.Entry{entry(0)}}
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
 	Sign(g, a1)
 	if err := c.AppendGenesis(*g); err != nil {
 		t.Fatalf("genesis: %v", err)
@@ -94,7 +94,7 @@ func TestSharedRootDeniedViaValidatedBlock(t *testing.T) {
 		sybils[i] = key(int64(300 + i))
 	}
 	nonce := BondRegNonce(g.Hash())
-	b := &Block{Version: BlockVersion, Height: 1, Prev: g.Hash()}
+	b := &Block{Version: 1, Height: 1, Prev: g.Hash()}
 	for _, s := range sybils {
 		pub := s.Public().(ed25519.PublicKey)
 		r := BondReg{Validator: append([]byte(nil), pub...), Root: sharedRoot, Size: minBond, Answer: []byte("valid")}

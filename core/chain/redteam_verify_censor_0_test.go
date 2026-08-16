@@ -17,7 +17,7 @@ func TestGenesisPreemptiveRevocationDenied(t *testing.T) {
 	neverPublished := ports.HashBytes([]byte("competitor-future-root"))
 
 	// DENIED: a genesis carrying a revocation is rejected outright.
-	g := &Block{Version: BlockVersion, Height: 0, Prev: ports.Hash{},
+	g := &Block{Version: 1, Height: 0, Prev: ports.Hash{},
 		Entries: []ports.Entry{entry(1)}, Revocations: []ports.Hash{neverPublished}}
 	Sign(g, key(1))
 	c := New(DefaultConfig(), func(ports.NodeID) int64 { return 1000 })
@@ -29,7 +29,7 @@ func TestGenesisPreemptiveRevocationDenied(t *testing.T) {
 	}
 
 	// An un-revocation in genesis is likewise rejected.
-	g2 := &Block{Version: BlockVersion, Height: 0, Prev: ports.Hash{},
+	g2 := &Block{Version: 1, Height: 0, Prev: ports.Hash{},
 		Entries: []ports.Entry{entry(1)}, Unrevocations: []ports.Hash{neverPublished}}
 	Sign(g2, key(1))
 	if err := New(DefaultConfig(), func(ports.NodeID) int64 { return 0 }).AppendGenesis(*g2); !errors.Is(err, ErrGenesisTakedown) {
@@ -37,7 +37,7 @@ func TestGenesisPreemptiveRevocationDenied(t *testing.T) {
 	}
 
 	// A clean genesis (entries only) still works.
-	clean := &Block{Version: BlockVersion, Height: 0, Prev: ports.Hash{}, Entries: []ports.Entry{entry(2)}}
+	clean := &Block{Version: 1, Height: 0, Prev: ports.Hash{}, Entries: []ports.Entry{entry(2)}}
 	Sign(clean, key(1))
 	if err := New(DefaultConfig(), func(ports.NodeID) int64 { return 0 }).AppendGenesis(*clean); err != nil {
 		t.Fatalf("a clean genesis must still be accepted: %v", err)
@@ -45,13 +45,13 @@ func TestGenesisPreemptiveRevocationDenied(t *testing.T) {
 
 	// CONTRAST: the existence guard still fires on the normal (non-genesis) path.
 	w := newWorld(DefaultConfig())
-	gc := &Block{Version: BlockVersion, Height: 0, Prev: ports.Hash{}, Entries: []ports.Entry{entry(3)}}
+	gc := &Block{Version: 1, Height: 0, Prev: ports.Hash{}, Entries: []ports.Entry{entry(3)}}
 	Sign(gc, w.prop)
 	if err := w.c.AppendGenesis(*gc); err != nil {
 		t.Fatalf("setup: clean genesis rejected: %v", err)
 	}
 	prev, h := w.c.Head()
-	nb := &Block{Version: BlockVersion, Height: h, Prev: prev, Revocations: []ports.Hash{neverPublished}}
+	nb := &Block{Version: 1, Height: h, Prev: prev, Revocations: []ports.Hash{neverPublished}}
 	Sign(nb, w.prop)
 	if err := w.c.ValidateProposal(nb); !errors.Is(err, ErrRevokeUnknownRoot) {
 		t.Fatalf("normal-path revocation of an unknown root must be ErrRevokeUnknownRoot, got: %v", err)

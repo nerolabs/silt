@@ -45,7 +45,7 @@ const twoMiB = int64(2) << 20
 func objectiveChain(prop ed25519.PrivateKey, vals []ed25519.PrivateKey, rep func(ports.NodeID) int64) (*Chain, *Block) {
 	c := New(Config{Quorum: 3, MinBond: 1 << 20}, rep)
 	c.SetBondVerifier(objectiveVerify)
-	g := &Block{Version: BlockVersion, Height: 0, Entries: []ports.Entry{entry(0)}}
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
 	g.BondRegs = append(g.BondRegs, bondReg(prop, twoMiB, ports.Hash{}))
 	for _, v := range vals {
 		g.BondRegs = append(g.BondRegs, bondReg(v, twoMiB, ports.Hash{}))
@@ -58,7 +58,7 @@ func objectiveChain(prop ed25519.PrivateKey, vals []ed25519.PrivateKey, rep func
 }
 
 func attestedFork(prop ed25519.PrivateKey, vals []ed25519.PrivateKey, prev ports.Hash, e ports.Entry, nAtt int) *Block {
-	b := &Block{Version: BlockVersion, Height: 1, Prev: prev, Entries: []ports.Entry{e}}
+	b := &Block{Version: 1, Height: 1, Prev: prev, Entries: []ports.Entry{e}}
 	Sign(b, prop)
 	for _, v := range vals[:nAtt] {
 		b.Atts = append(b.Atts, Attest(b, v))
@@ -114,7 +114,7 @@ func TestRedteamF6_ObjectiveForkChoiceConvergesByCatchUp(t *testing.T) {
 
 	// One shared, non-conflicting history: a1 at height 1, then a2 extending it.
 	a1 := attestedFork(prop, vals, g.Hash(), entry(1), 3)
-	a2 := &Block{Version: BlockVersion, Height: 2, Prev: a1.Hash(), Entries: []ports.Entry{entry(2)}}
+	a2 := &Block{Version: 1, Height: 2, Prev: a1.Hash(), Entries: []ports.Entry{entry(2)}}
 	Sign(a2, prop)
 	for _, v := range vals[:3] {
 		a2.Atts = append(a2.Atts, Attest(a2, v))
@@ -182,7 +182,7 @@ func TestRedteamF6_LegacyWeightDivergesAcrossReplicas(t *testing.T) {
 		return base(n)
 	})
 
-	g := &Block{Version: BlockVersion, Height: 0, Entries: []ports.Entry{entry(0)}}
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
 	Sign(g, prop)
 	if err := r1.AppendGenesis(*g); err != nil {
 		t.Fatal(err)
@@ -212,7 +212,7 @@ func TestCanonicalIssuersDeterministicAndObjective(t *testing.T) {
 	build := func(rep func(ports.NodeID) int64) *Chain {
 		c := New(Config{Quorum: 3, MinBond: 1 << 20}, rep)
 		c.SetBondVerifier(objectiveVerify)
-		g := &Block{Version: BlockVersion, Height: 0, Entries: []ports.Entry{entry(0)}}
+		g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
 		g.BondRegs = []BondReg{
 			bondReg(prop, 5<<20, ports.Hash{}),
 			bondReg(vals[0], 4<<20, ports.Hash{}),
@@ -269,7 +269,7 @@ func TestRedteamF6_ForgedBondRegDenied(t *testing.T) {
 	badProof.Answer = []byte("forged")
 	// re-sign so only the PROOF is bad, isolating the space-time check
 	badProof.Sig = ed25519.Sign(newcomer, badProof.signingBytes(BondRegNonce(g.Hash())))
-	blkA := &Block{Version: BlockVersion, Height: 1, Prev: g.Hash(), BondRegs: []BondReg{badProof}}
+	blkA := &Block{Version: 1, Height: 1, Prev: g.Hash(), BondRegs: []BondReg{badProof}}
 	Sign(blkA, prop)
 	for _, v := range vals[:3] {
 		blkA.Atts = append(blkA.Atts, Attest(blkA, v))
@@ -282,7 +282,7 @@ func TestRedteamF6_ForgedBondRegDenied(t *testing.T) {
 	// someone who does not hold the key) is rejected.
 	badSig := bondReg(newcomer, twoMiB, g.Hash())
 	badSig.Sig[0] ^= 0xff
-	blkB := &Block{Version: BlockVersion, Height: 1, Prev: g.Hash(), BondRegs: []BondReg{badSig}}
+	blkB := &Block{Version: 1, Height: 1, Prev: g.Hash(), BondRegs: []BondReg{badSig}}
 	Sign(blkB, prop)
 	for _, v := range vals[:3] {
 		blkB.Atts = append(blkB.Atts, Attest(blkB, v))
@@ -294,7 +294,7 @@ func TestRedteamF6_ForgedBondRegDenied(t *testing.T) {
 	// Sanity: a well-formed registration IS accepted, so the newcomer joins the
 	// objective validator set.
 	good := bondReg(newcomer, twoMiB, g.Hash())
-	blkC := &Block{Version: BlockVersion, Height: 1, Prev: g.Hash(), BondRegs: []BondReg{good}}
+	blkC := &Block{Version: 1, Height: 1, Prev: g.Hash(), BondRegs: []BondReg{good}}
 	Sign(blkC, prop)
 	for _, v := range vals[:3] {
 		blkC.Atts = append(blkC.Atts, Attest(blkC, v))

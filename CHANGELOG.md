@@ -9,6 +9,16 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **`BlockVersion` (the mint era) flips to 2 — the era-2 follow-through promised by the
+  #432 change** (2026-08-16) — The rounds era shipped with the propose path explicitly
+  stamping `BlockVersionRounds`, deferring the const flip as behavior-neutral test churn.
+  Landed: production minting is byte-identical (the propose path already stamped v2;
+  no non-test site builds genesis from the const), the att/bond-reg wire wrappers now
+  carry version 2 (accepted by every era-2-capable binary — a pre-#432 binary cannot
+  participate in an era-2 network regardless), and the 63 test files that hand-build
+  era-1 blocks now declare `Version: 1` explicitly — the honest form, since they
+  exercise the still-supported era-1 validation rules rather than tracking the mint
+  const. Full suite + race green.
 - **Node-level mature-epoch model-check fixture + the dynamic mature S1/S2 oracles**
   (2026-08-16) — Closes the #432 certification's named residual (1): the S1/S2
   merge-gate oracles ran the round machinery over the real node loop only in the launch

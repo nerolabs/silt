@@ -47,7 +47,7 @@ func TestSeam7_LosingForkEquivocatorIsSlashedOnDetection(t *testing.T) {
 	// lone-culprit property under the #402 rule; detection itself runs pre-Reconcile,
 	// independent of fork validity — see slashEquivocators.)
 	anchors := map[ports.NodeID]bool{idA.NodeID(): true, culprit.NodeID(): true, h2.NodeID(): true}
-	g := &chain.Block{Version: chain.BlockVersion, Height: 0, Entries: []ports.Entry{mkEntry("g")},
+	g := &chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{mkEntry("g")},
 		BondRegs: []chain.BondReg{
 			{Validator: pub(idA), Root: ports.HashBytes(pub(idA)), Size: bondSize},
 			{Validator: pub(culprit), Root: ports.HashBytes(pub(culprit)), Size: bondSize},
@@ -59,10 +59,10 @@ func TestSeam7_LosingForkEquivocatorIsSlashedOnDetection(t *testing.T) {
 	// A's WINNING chain: [g, W@1 (idA proposes; culprit attests → 2 of 3 anchors),
 	// X@2 (idA proposes; culprit attests)]. Heavier (h=2). The culprit rides the
 	// winning chain — and ALSO co-signs the losing fork below.
-	W := chain.Block{Version: chain.BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("win")}}
+	W := chain.Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("win")}}
 	chain.Sign(&W, idA.Signer())
 	W.Atts = []chain.Attestation{chain.Attest(&W, culprit.Signer())}
-	X := chain.Block{Version: chain.BlockVersion, Height: 2, Prev: W.Hash(), Entries: []ports.Entry{mkEntry("win2")}}
+	X := chain.Block{Version: 1, Height: 2, Prev: W.Hash(), Entries: []ports.Entry{mkEntry("win2")}}
 	chain.Sign(&X, idA.Signer())
 	X.Atts = []chain.Attestation{chain.Attest(&X, culprit.Signer())}
 
@@ -70,7 +70,7 @@ func TestSeam7_LosingForkEquivocatorIsSlashedOnDetection(t *testing.T) {
 	// Lighter (h=1), and it conflicts with W@1 — the culprit ATTESTED both W@1 and L@1
 	// at height 1. idA (winner) and h2 (loser) are cleanly split; only the culprit
 	// signs both.
-	L := chain.Block{Version: chain.BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("lose")}}
+	L := chain.Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("lose")}}
 	chain.Sign(&L, h2.Signer())
 	L.Atts = []chain.Attestation{chain.Attest(&L, culprit.Signer())}
 

@@ -225,9 +225,12 @@ func DefaultConfig() Config {
 // both sign the domain-separated v2 payload instead of the bare hash. A v1
 // block keeps validating under v1 rules (era-gated in ValidateCommit /
 // VerifyEquivocation), so committed history is never re-interpreted.
-// BlockVersion (what the node MINTS) flips to BlockVersionRounds in the same
-// change that teaches the propose path to gather two-phase — never before.
-const BlockVersion = 1
+// BlockVersion (what the node MINTS) flipped to BlockVersionRounds once the
+// propose path gathered two-phase (#432, merged b56f611) — the flip promised
+// by the era-2 change, landed as its own behavior-neutral follow-up: the
+// propose path already stamped BlockVersionRounds explicitly, so production
+// minting is unchanged; only hand-built test blocks tracked this const.
+const BlockVersion = BlockVersionRounds
 
 // BlockVersionRounds is the #432 two-phase-rounds rule era.
 const BlockVersionRounds = 2

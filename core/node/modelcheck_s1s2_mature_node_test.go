@@ -58,7 +58,7 @@ func matureWorld(t *testing.T) (nodes []*Node, ids []*identity.Identity, net *si
 			anchors[ids[i].NodeID()] = true
 		}
 	}
-	g := &chain.Block{Version: chain.BlockVersion, Height: 0, Entries: []ports.Entry{mkEntry("g")}}
+	g := &chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{mkEntry("g")}}
 	chain.Sign(g, ids[0].Signer())
 	// MatureValidators=2 with margin 1: four equal 64 MiB distinct-domain bonds
 	// give nakamoto-operators 2 and nakamoto-domains 2 — the bar trips exactly as
@@ -117,7 +117,7 @@ func matureWorld(t *testing.T) (nodes []*Node, ids []*identity.Identity, net *si
 		if next != h {
 			t.Fatalf("drive %s: proposer head next=%d want %d", tag, next, h)
 		}
-		b := &chain.Block{Version: chain.BlockVersion, Height: h, Prev: prev, Entries: []ports.Entry{mkEntry(tag)}}
+		b := &chain.Block{Version: 1, Height: h, Prev: prev, Entries: []ports.Entry{mkEntry(tag)}}
 		var done bool
 		var perr error
 		nodes[proposer].proposeBlock(b, att, all, 0, func(err error) { done, perr = true, err })
@@ -194,7 +194,7 @@ func TestMatureWorldPremise(t *testing.T) {
 	//    governed epoch must FAIL — the anchors hold no weight in the frozen
 	//    snapshot, so their coalition can never reach the >⅔-weight quorum.
 	prev, h := nodes[0].chain.Head()
-	bad := &chain.Block{Version: chain.BlockVersion, Height: h, Prev: prev, Entries: []ports.Entry{mkEntry("anchors-alone")}}
+	bad := &chain.Block{Version: 1, Height: h, Prev: prev, Entries: []ports.Entry{mkEntry("anchors-alone")}}
 	var badDone bool
 	var badErr error
 	nodes[0].proposeBlock(bad, []ports.NodeID{all[1], all[2], all[3]}, all, 0, func(err error) { badDone, badErr = true, err })
@@ -206,7 +206,7 @@ func TestMatureWorldPremise(t *testing.T) {
 	// 4) POSITIVE: a maturer proposal gathering two maturer peers (3 of 4 equal
 	//    weights = 192 of 256 MiB > ⅔) commits at the weight quorum.
 	prev, h = nodes[4].chain.Head()
-	good := &chain.Block{Version: chain.BlockVersion, Height: h, Prev: prev, Entries: []ports.Entry{mkEntry("mature-commit")}}
+	good := &chain.Block{Version: 1, Height: h, Prev: prev, Entries: []ports.Entry{mkEntry("mature-commit")}}
 	var goodDone bool
 	var goodErr error
 	nodes[4].proposeBlock(good, []ports.NodeID{all[5], all[6]}, all, 0, func(err error) { goodDone, goodErr = true, err })
@@ -251,7 +251,7 @@ func TestModelCheck_S1_Mature_DelayedWeightQuorumIsCarriedForward(t *testing.T) 
 		return m.Kind == ports.MsgPrecommitReply && m.From == id(6) && m.To == id(4)
 	}
 	prev, ch := nodes[4].chain.Head()
-	blkX := &chain.Block{Version: chain.BlockVersion, Height: ch, Prev: prev, Entries: []ports.Entry{mkEntry("X-mature")}}
+	blkX := &chain.Block{Version: 1, Height: ch, Prev: prev, Entries: []ports.Entry{mkEntry("X-mature")}}
 	var xDone bool
 	var xErr error
 	nodes[4].proposeBlock(blkX, []ports.NodeID{id(5), id(6)}, all, 0, func(err error) { xDone, xErr = true, err })
@@ -356,7 +356,7 @@ func TestModelCheck_S2_Mature_ForgedLockMisreportCannotForkTheHeight(t *testing.
 		return m.Kind == ports.MsgPrecommitReply && m.From == id(byz) && m.To == id(4)
 	}
 	prev, _ := nodes[4].chain.Head()
-	blkX := &chain.Block{Version: chain.BlockVersion, Height: ch, Prev: prev, Entries: []ports.Entry{mkEntry("X2-mature")}}
+	blkX := &chain.Block{Version: 1, Height: ch, Prev: prev, Entries: []ports.Entry{mkEntry("X2-mature")}}
 	nodes[4].proposeBlock(blkX, []ports.NodeID{id(hAtt), id(byz)}, all, 0, func(error) {})
 	drainHeldExcept(t, net, holdByzReply)
 

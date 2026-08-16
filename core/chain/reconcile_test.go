@@ -9,7 +9,7 @@ import (
 // genesisBlock builds and appends a declared genesis, returning it so forks
 // can branch from it.
 func (w *world) genesis() *Block {
-	g := &Block{Version: BlockVersion, Height: 0, Entries: []ports.Entry{entry(0)}}
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
 	Sign(g, w.prop)
 	if err := w.c.AppendGenesis(*g); err != nil {
 		panic(err)
@@ -20,7 +20,7 @@ func (w *world) genesis() *Block {
 // forkBlock builds a height-1 block on top of prev with the given entry,
 // attested by the first `nAtt` validators — so its fork-choice weight is nAtt.
 func (w *world) forkBlock(prev ports.Hash, e ports.Entry, nAtt int) *Block {
-	b := &Block{Version: BlockVersion, Height: 1, Prev: prev, Entries: []ports.Entry{e}}
+	b := &Block{Version: 1, Height: 1, Prev: prev, Entries: []ports.Entry{e}}
 	Sign(b, w.prop)
 	for _, v := range w.vals[:nAtt] {
 		b.Atts = append(b.Atts, Attest(b, v))
@@ -138,7 +138,7 @@ func TestReconcileRefusesForeignGenesis(t *testing.T) {
 
 	// A different genesis (different entry) + a heavy block on it.
 	other := newWorld(DefaultConfig())
-	og := &Block{Version: BlockVersion, Height: 0, Entries: []ports.Entry{entry(9)}}
+	og := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(9)}}
 	Sign(og, other.prop)
 	oheavy := other.forkBlock(og.Hash(), entry(8), 4)
 
