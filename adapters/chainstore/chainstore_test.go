@@ -43,7 +43,7 @@ func committedChain(t *testing.T, rep func(ports.NodeID) int64) *chain.Chain {
 	prop := testKey(1)
 	prev, height := c.Head()
 	b := &chain.Block{
-		Version: chain.BlockVersion, Height: height, Prev: prev,
+		Version: 1, Height: height, Prev: prev,
 		Entries: []ports.Entry{{
 			Root:           ports.HashBytes([]byte{7}),
 			ManifestChunks: []ports.ChunkID{ports.HashBytes([]byte{7, 7})},

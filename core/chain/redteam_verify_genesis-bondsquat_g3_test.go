@@ -34,7 +34,7 @@ func TestGenesisBondSquatDisplacedByProof(t *testing.T) {
 	c.SetBondVerifier(objectiveVerify) // accepts answer == "valid"
 
 	// Genesis: attacker squats R with its own key and NO valid proof.
-	g := &Block{Version: BlockVersion, Height: 0, Entries: []ports.Entry{entry(0)}}
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
 	squat := BondReg{Validator: pubOf(attacker), Root: R, Size: minBond, Answer: nil}
 	squat.Sig = ed25519.Sign(attacker, squat.signingBytes(BondRegNonce(ports.Hash{})))
 	g.BondRegs = append(g.BondRegs, squat)
@@ -52,7 +52,7 @@ func TestGenesisBondSquatDisplacedByProof(t *testing.T) {
 	nonce := BondRegNonce(g.Hash())
 	realReg := BondReg{Validator: pubOf(honestV), Root: R, Size: minBond, Answer: []byte("valid")}
 	realReg.Sig = ed25519.Sign(honestV, realReg.signingBytes(nonce))
-	b := &Block{Version: BlockVersion, Height: 1, Prev: g.Hash(), BondRegs: []BondReg{realReg}}
+	b := &Block{Version: 1, Height: 1, Prev: g.Hash(), BondRegs: []BondReg{realReg}}
 	Sign(b, anchorP)
 	b.Atts = append(b.Atts, Attest(b, anchorA))
 	if err := c.Append(*b); err != nil {
@@ -73,7 +73,7 @@ func TestGenesisBondSquatDisplacedByProof(t *testing.T) {
 	sybil := key(3)
 	sReg := BondReg{Validator: pubOf(sybil), Root: R, Size: minBond, Answer: []byte("valid")}
 	sReg.Sig = ed25519.Sign(sybil, sReg.signingBytes(BondRegNonce(c.mustHead(t))))
-	b2 := &Block{Version: BlockVersion, Height: 2, Prev: c.mustHead(t), BondRegs: []BondReg{sReg}}
+	b2 := &Block{Version: 1, Height: 2, Prev: c.mustHead(t), BondRegs: []BondReg{sReg}}
 	Sign(b2, anchorP)
 	b2.Atts = append(b2.Atts, Attest(b2, anchorA))
 	if err := c.Append(*b2); err != nil {

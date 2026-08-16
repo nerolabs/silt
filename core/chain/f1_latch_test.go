@@ -45,7 +45,7 @@ func TestMaturityLatchDoesNotRearmAnchorsOnDemature(t *testing.T) {
 		bondReg(s2, minBond, ports.Hash{}),
 		bondReg(s3, minBond, ports.Hash{}),
 	}
-	g := &Block{Version: BlockVersion, Height: 0, Entries: []ports.Entry{entry(0)}, BondRegs: regs}
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}, BondRegs: regs}
 	Sign(g, a1)
 	if err := c.AppendGenesis(*g); err != nil {
 		t.Fatalf("genesis: %v", err)
@@ -67,7 +67,7 @@ func TestMaturityLatchDoesNotRearmAnchorsOnDemature(t *testing.T) {
 		{s1, []ed25519.PrivateKey{w1}},
 	}
 	for i, r := range rounds {
-		nb := &Block{Version: BlockVersion, Height: b.Height + 1, Prev: b.Hash(),
+		nb := &Block{Version: 1, Height: b.Height + 1, Prev: b.Hash(),
 			Entries: []ports.Entry{entry(byte(i + 1))}}
 		Sign(nb, r.proposer)
 		nb.Atts = append(nb.Atts, Attest(nb, a1))
@@ -86,7 +86,7 @@ func TestMaturityLatchDoesNotRearmAnchorsOnDemature(t *testing.T) {
 	// ---- DE-MATURE by CONCENTRATION (the honest-whale C2 residue, no attack). ----
 	const whale = 10 * minBond
 	for c.Mature() {
-		nb := &Block{Version: BlockVersion, Height: b.Height + 1, Prev: b.Hash(),
+		nb := &Block{Version: 1, Height: b.Height + 1, Prev: b.Hash(),
 			Entries:  []ports.Entry{entry(byte(b.Height + 1))},
 			BondRegs: []BondReg{bondReg(w1, whale, b.Hash()), bondReg(s1, minBond, b.Hash())}}
 		Sign(nb, w1)
@@ -110,7 +110,7 @@ func TestMaturityLatchDoesNotRearmAnchorsOnDemature(t *testing.T) {
 	t.Log("de-matured LIVE, latch HELD: Mature()=false but EverMature()=true")
 
 	// ---- HORN 1 (HALT) KILLED: a purely-real quorum with NO anchor still commits. ----
-	realOnly := &Block{Version: BlockVersion, Height: b.Height + 1, Prev: b.Hash(),
+	realOnly := &Block{Version: 1, Height: b.Height + 1, Prev: b.Hash(),
 		Entries:  []ports.Entry{entry(byte(b.Height + 1))},
 		BondRegs: []BondReg{bondReg(w1, whale, b.Hash()), bondReg(s1, minBond, b.Hash())}}
 	Sign(realOnly, w1)                                  // real proposer
@@ -158,7 +158,7 @@ func TestDeMatureSuperQuorumReplacesTheAnchorNet(t *testing.T) {
 
 	regs := []BondReg{bondReg(w1, minBond, ports.Hash{}), bondReg(s1, minBond, ports.Hash{}),
 		bondReg(s2, minBond, ports.Hash{}), bondReg(s3, minBond, ports.Hash{})}
-	g := &Block{Version: BlockVersion, Height: 0, Entries: []ports.Entry{entry(0)}, BondRegs: regs}
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}, BondRegs: regs}
 	Sign(g, a1)
 	if err := c.AppendGenesis(*g); err != nil {
 		t.Fatalf("genesis: %v", err)
@@ -171,7 +171,7 @@ func TestDeMatureSuperQuorumReplacesTheAnchorNet(t *testing.T) {
 		// bonded s1 proposes the post-handoff block (the anchor has shed at maturity).
 	}{{a1, []ed25519.PrivateKey{w1, s1, s2, s3}}, {s1, []ed25519.PrivateKey{w1}}}
 	for i, r := range rounds {
-		nb := &Block{Version: BlockVersion, Height: b.Height + 1, Prev: b.Hash(), Entries: []ports.Entry{entry(byte(i + 1))}}
+		nb := &Block{Version: 1, Height: b.Height + 1, Prev: b.Hash(), Entries: []ports.Entry{entry(byte(i + 1))}}
 		Sign(nb, r.p)
 		nb.Atts = append(nb.Atts, Attest(nb, a1))
 		for _, k := range r.g {
@@ -190,7 +190,7 @@ func TestDeMatureSuperQuorumReplacesTheAnchorNet(t *testing.T) {
 	// mature, so this block commits under normal rules; after apply it is de-matured
 	// while s1,s2,s3 stay bonded (TTL 0).
 	const whale = 10 * minBond
-	dm := &Block{Version: BlockVersion, Height: b.Height + 1, Prev: b.Hash(),
+	dm := &Block{Version: 1, Height: b.Height + 1, Prev: b.Hash(),
 		Entries: []ports.Entry{entry(9)}, BondRegs: []BondReg{bondReg(w1, whale, b.Hash())}}
 	Sign(dm, w1)
 	dm.Atts = []Attestation{Attest(dm, s1)}
@@ -207,7 +207,7 @@ func TestDeMatureSuperQuorumReplacesTheAnchorNet(t *testing.T) {
 
 	// A SMALL coalition (s1 proposer + s2 attester = 2 MiB of 13 MiB) meets the
 	// head-count quorum (1) but is BELOW ⅔ of the bonded weight → rejected.
-	small := &Block{Version: BlockVersion, Height: b.Height + 1, Prev: b.Hash(), Entries: []ports.Entry{entry(20)}}
+	small := &Block{Version: 1, Height: b.Height + 1, Prev: b.Hash(), Entries: []ports.Entry{entry(20)}}
 	Sign(small, s1)
 	small.Atts = []Attestation{Attest(small, s2)}
 	if err := c.Append(*small); !errors.Is(err, ErrDeMatureQuorum) {
@@ -217,7 +217,7 @@ func TestDeMatureSuperQuorumReplacesTheAnchorNet(t *testing.T) {
 
 	// A coalition INCLUDING the whale (w1 proposer + s1 attester = 11 MiB of 13 MiB)
 	// clears ⅔ → commits, with NO anchor. HALT horn stays dead, center-lessly.
-	big := &Block{Version: BlockVersion, Height: b.Height + 1, Prev: b.Hash(),
+	big := &Block{Version: 1, Height: b.Height + 1, Prev: b.Hash(),
 		Entries: []ports.Entry{entry(21)}, BondRegs: []BondReg{bondReg(w1, whale, b.Hash())}}
 	Sign(big, w1)
 	big.Atts = []Attestation{Attest(big, s1)}
@@ -234,7 +234,7 @@ func TestDeMatureSuperQuorumReplacesTheAnchorNet(t *testing.T) {
 // keeps the checkpoint and only reorgs AFTER it is still adopted normally.
 func TestWeakSubjectivityCheckpointRefusesLongRangeReorg(t *testing.T) {
 	mkBlock := func(w *world, prev ports.Hash, h uint64, e ports.Entry, nAtt int) *Block {
-		b := &Block{Version: BlockVersion, Height: h, Prev: prev, Entries: []ports.Entry{e}}
+		b := &Block{Version: 1, Height: h, Prev: prev, Entries: []ports.Entry{e}}
 		Sign(b, w.prop)
 		for _, v := range w.vals[:nAtt] {
 			b.Atts = append(b.Atts, Attest(b, v))
@@ -311,7 +311,7 @@ func TestMaturityLatchSurvivesReloadAndReconcile(t *testing.T) {
 	c := mk()
 	regs := []BondReg{bondReg(w1, minBond, ports.Hash{}), bondReg(s1, minBond, ports.Hash{}),
 		bondReg(s2, minBond, ports.Hash{}), bondReg(s3, minBond, ports.Hash{})}
-	g := &Block{Version: BlockVersion, Height: 0, Entries: []ports.Entry{entry(0)}, BondRegs: regs}
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}, BondRegs: regs}
 	Sign(g, a1)
 	if err := c.AppendGenesis(*g); err != nil {
 		t.Fatalf("genesis: %v", err)
@@ -324,7 +324,7 @@ func TestMaturityLatchSurvivesReloadAndReconcile(t *testing.T) {
 		// bonded s1 proposes the post-handoff block (the anchor has shed at maturity).
 	}{{a1, []ed25519.PrivateKey{w1, s1, s2, s3}}, {s1, []ed25519.PrivateKey{w1}}}
 	for i, r := range rounds {
-		nb := &Block{Version: BlockVersion, Height: b.Height + 1, Prev: b.Hash(), Entries: []ports.Entry{entry(byte(i + 1))}}
+		nb := &Block{Version: 1, Height: b.Height + 1, Prev: b.Hash(), Entries: []ports.Entry{entry(byte(i + 1))}}
 		Sign(nb, r.p)
 		nb.Atts = append(nb.Atts, Attest(nb, a1))
 		for _, k := range r.g {

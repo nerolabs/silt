@@ -40,7 +40,7 @@ func TestObjectiveColdStartBootstrapsFromAnchors(t *testing.T) {
 		anchors[id.NodeID()] = true
 	}
 	gsigner := identity.FromSeed(1).Signer()
-	g := &chain.Block{Version: chain.BlockVersion, Height: 0, Entries: []ports.Entry{simEntry("cold-genesis")}}
+	g := &chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{simEntry("cold-genesis")}}
 	chain.Sign(g, gsigner)
 
 	// MatureValidators high so the launch window stays open for the test; anchors

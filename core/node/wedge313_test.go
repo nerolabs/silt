@@ -38,7 +38,7 @@ func TestWedge313_ObjectiveByzantineMultiBlock(t *testing.T) {
 	// Genesis carries NO bond regs (genesis.Build does the same on the real daemon):
 	// the objective chain starts at qualifiedCount=0, anchors bootstrap via the
 	// allowlist, validators self-register their bond via F6 ("proposing IS registering").
-	g := &chain.Block{Version: chain.BlockVersion, Height: 0, Entries: []ports.Entry{mkEntry("genesis")}}
+	g := &chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{mkEntry("genesis")}}
 	chain.Sign(g, ids[0].Signer())
 
 	cfg := chain.Config{
@@ -138,7 +138,7 @@ func TestWedge313_RenewalStillHappensUnderTTL(t *testing.T) {
 	for _, id := range ids {
 		anchors[id.NodeID()] = true
 	}
-	g := &chain.Block{Version: chain.BlockVersion, Height: 0, Entries: []ports.Entry{mkEntry("genesis")}}
+	g := &chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{mkEntry("genesis")}}
 	chain.Sign(g, ids[0].Signer())
 	cfg := chain.Config{Quorum: 2, ByzantineQuorum: true, MinBond: 1 << 20, Anchors: anchors, MatureValidators: 4, BondTTLBlocks: ttl}
 

@@ -171,7 +171,7 @@ func TestModelCheck_S1_DelayedLowerRoundQuorumIsCarriedForward(t *testing.T) {
 	holdA2Reply := func(m simnet.HeldMsg) bool {
 		return m.Kind == ports.MsgPrecommitReply && m.From == id(2) && m.To == id(0)
 	}
-	blkX := &chain.Block{Version: chain.BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("X")}}
+	blkX := &chain.Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("X")}}
 	var xErr error
 	xDone := false
 	nodes[0].proposeBlock(blkX, []ports.NodeID{id(1), id(2)}, all, 0, func(err error) { xDone, xErr = true, err })
@@ -255,7 +255,7 @@ func TestModelCheck_S2_ForgedLockMisreportCannotForkTheHeight(t *testing.T) {
 	holdByzReply := func(m simnet.HeldMsg) bool {
 		return m.Kind == ports.MsgPrecommitReply && m.From == id(byz) && m.To == id(0)
 	}
-	blkX := &chain.Block{Version: chain.BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("X")}}
+	blkX := &chain.Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("X")}}
 	nodes[0].proposeBlock(blkX, []ports.NodeID{id(hAtt), id(byz)}, all, 0, func(error) {})
 	drainHeldExcept(t, net, holdByzReply)
 

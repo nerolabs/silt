@@ -55,7 +55,7 @@ func TestSybilCannotFormQuorumWithoutHeldStorage(t *testing.T) {
 	// The ring attests an honest proposal. Its signatures are valid but its
 	// reputation is 0, so none count toward quorum.
 	prev, height := ch.Head()
-	b := &Block{Version: BlockVersion, Height: height, Prev: prev, Entries: []ports.Entry{entry(7)}}
+	b := &Block{Version: 1, Height: height, Prev: prev, Entries: []ports.Entry{entry(7)}}
 	Sign(b, prop)
 	for _, s := range sybils {
 		b.Atts = append(b.Atts, Attest(b, s))
@@ -71,7 +71,7 @@ func TestSybilCannotFormQuorumWithoutHeldStorage(t *testing.T) {
 		sid := idOf(sybils[i])
 		led.RecordBondChallenge(sid, ports.HashBytes(sid[:]), 8<<20, true, 2)
 	}
-	b2 := &Block{Version: BlockVersion, Height: height, Prev: prev, Entries: []ports.Entry{entry(7)}}
+	b2 := &Block{Version: 1, Height: height, Prev: prev, Entries: []ports.Entry{entry(7)}}
 	Sign(b2, prop)
 	for _, s := range sybils {
 		b2.Atts = append(b2.Atts, Attest(b2, s))

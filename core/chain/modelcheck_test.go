@@ -81,7 +81,7 @@ func finalAnchorCoalitions(t *testing.T, c *Chain, ak, sk []ed25519.PrivateKey, 
 			}
 		}
 		for _, attMask := range anchorSubsets(len(others)) {
-			b := &Block{Version: BlockVersion, Height: 1, Prev: prev, Entries: []ports.Entry{entry(contentSeed)}}
+			b := &Block{Version: 1, Height: 1, Prev: prev, Entries: []ports.Entry{entry(contentSeed)}}
 			Sign(b, ak[p])
 			signers := []int{p}
 			for _, oi := range attMask {

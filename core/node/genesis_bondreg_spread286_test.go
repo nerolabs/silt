@@ -34,7 +34,7 @@ func TestGenesisBondRegsSpreadAcrossBlocks286L2b(t *testing.T) {
 	for _, id := range ids {
 		anchors[id.NodeID()] = true
 	}
-	g := &chain.Block{Version: chain.BlockVersion, Height: 0, Entries: []ports.Entry{mkEntry("genesis")}}
+	g := &chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{mkEntry("genesis")}}
 	chain.Sign(g, ids[0].Signer())
 	cfg := chain.Config{Quorum: 2, ByzantineQuorum: true, MinBond: 1 << 20, Anchors: anchors, MatureValidators: 4}
 

@@ -25,7 +25,7 @@ func TestObjectiveLaunchAnchorBootstrapsThenSheds(t *testing.T) {
 	c.SetBondVerifier(objectiveVerify)
 
 	// Genesis seeds only V's real bond — the ANCHOR is NOT bonded on chain.
-	g := &Block{Version: BlockVersion, Height: 0, Entries: []ports.Entry{entry(0)},
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)},
 		BondRegs: []BondReg{bondReg(v, 2<<20, ports.Hash{})}}
 	Sign(g, anchor)
 	if err := c.AppendGenesis(*g); err != nil {
@@ -48,7 +48,7 @@ func TestObjectiveLaunchAnchorBootstrapsThenSheds(t *testing.T) {
 
 	// The anchor bootstraps the first block (it proposes though unbonded); V, a
 	// real non-anchor validator, attests — which matures the network.
-	b := &Block{Version: BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(1)}}
+	b := &Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(1)}}
 	Sign(b, anchor)
 	b.Atts = []Attestation{Attest(b, v)}
 	if err := c.Append(*b); err != nil {

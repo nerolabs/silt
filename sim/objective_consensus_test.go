@@ -46,7 +46,7 @@ func TestObjectiveForkChoiceHealsWithSeparateLedgers(t *testing.T) {
 		regs = append(regs, chain.BondReg{Validator: append([]byte(nil), pub...), Root: ports.HashBytes(pub), Size: bondSize})
 	}
 	gsigner := identity.FromSeed(1).Signer() // a distinct genesis signer
-	g := &chain.Block{Version: chain.BlockVersion, Height: 0,
+	g := &chain.Block{Version: 1, Height: 0,
 		Entries: []ports.Entry{simEntry("genesis")}, BondRegs: regs}
 	chain.Sign(g, gsigner)
 

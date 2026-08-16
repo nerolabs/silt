@@ -45,7 +45,7 @@ func TestEquivocateResumesAfterPartialPlacement378(t *testing.T) {
 	}
 
 	anchors := map[ports.NodeID]bool{idA.NodeID(): true, idB.NodeID(): true, idC.NodeID(): true}
-	g := &chain.Block{Version: chain.BlockVersion, Height: 0, Entries: []ports.Entry{mkEntry("g")},
+	g := &chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{mkEntry("g")},
 		BondRegs: []chain.BondReg{
 			{Validator: pub(idA), Root: ports.HashBytes(pub(idA)), Size: bondSize},
 			{Validator: pub(idB), Root: ports.HashBytes(pub(idB)), Size: bondSize},

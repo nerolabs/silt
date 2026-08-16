@@ -12,7 +12,7 @@ import (
 func (w *world) commitRevBlock(t *testing.T, revs, unrevs []ports.Hash) uint64 {
 	t.Helper()
 	prev, height := w.c.Head()
-	b := &Block{Version: BlockVersion, Height: height, Prev: prev, Revocations: revs, Unrevocations: unrevs}
+	b := &Block{Version: 1, Height: height, Prev: prev, Revocations: revs, Unrevocations: unrevs}
 	Sign(b, w.prop)
 	w.attestAll(b)
 	if err := w.c.Append(*b); err != nil {

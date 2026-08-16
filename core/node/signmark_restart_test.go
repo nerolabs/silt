@@ -30,7 +30,7 @@ func TestRestartedValidatorRefusesToContradictPreCrashSignature397(t *testing.T)
 	tid := ti.NodeID()
 	rival := identity.FromSeed(2)
 
-	g := &chain.Block{Version: chain.BlockVersion, Height: 0, Entries: []ports.Entry{mkEntry("g")}}
+	g := &chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{mkEntry("g")}}
 	chain.Sign(g, rival.Signer())
 
 	boot := func(sched *simclock.Scheduler, net *simnet.Network) *Node {
@@ -56,7 +56,7 @@ func TestRestartedValidatorRefusesToContradictPreCrashSignature397(t *testing.T)
 	ledger.RecordBondChallenge(rival.NodeID(), ports.HashBytes([]byte{2}), 64<<20, true, 1)
 	deadID := identity.FromSeed(9).NodeID()
 	_ = net1.Endpoint(deadID)
-	own := &chain.Block{Version: chain.BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("own")}}
+	own := &chain.Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("own")}}
 	nd1.proposeBlock(own, []ports.NodeID{deadID}, nil, 1, func(error) {})
 	sched1.Run()
 
@@ -67,7 +67,7 @@ func TestRestartedValidatorRefusesToContradictPreCrashSignature397(t *testing.T)
 	nd2 := boot(sched2, net2)
 	_ = nd2
 
-	comp := &chain.Block{Version: chain.BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("competitor")}}
+	comp := &chain.Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("competitor")}}
 	chain.Sign(comp, rival.Signer())
 
 	prid := identity.FromSeed(3).NodeID()

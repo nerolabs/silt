@@ -34,7 +34,7 @@ func TestBondRegStaleAfterOneHead_factorII(t *testing.T) {
 	c := New(cfg, func(ports.NodeID) int64 { return 0 })
 	c.SetBondVerifier(objectiveVerify)
 
-	g := &Block{Version: BlockVersion, Height: 0, Entries: []ports.Entry{entry(0)}}
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
 	Sign(g, a1)
 	if err := c.AppendGenesis(*g); err != nil {
 		t.Fatal(err)
@@ -51,7 +51,7 @@ func TestBondRegStaleAfterOneHead_factorII(t *testing.T) {
 
 	// The head advances by ONE — an empty anchor heartbeat block, exactly the WAN
 	// reality where a block commits before the reg reaches a proposer.
-	b1 := &Block{Version: BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(1)}}
+	b1 := &Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(1)}}
 	Sign(b1, a1)
 	b1.Atts = []Attestation{Attest(b1, a2)}
 	if err := c.Append(*b1); err != nil {
@@ -66,7 +66,7 @@ func TestBondRegStaleAfterOneHead_factorII(t *testing.T) {
 	}
 
 	// And it must COMMIT one head later (the drain actually proceeds).
-	b2 := &Block{Version: BlockVersion, Height: 2, Prev: b1.Hash(), Entries: []ports.Entry{entry(2)},
+	b2 := &Block{Version: 1, Height: 2, Prev: b1.Hash(), Entries: []ports.Entry{entry(2)},
 		BondRegs: []BondReg{reg}}
 	Sign(b2, a1)
 	b2.Atts = []Attestation{Attest(b2, a2)}
@@ -89,7 +89,7 @@ func TestBondRegRejectedBeyondHeadWindow_factorII(t *testing.T) {
 	c := New(cfg, func(ports.NodeID) int64 { return 0 })
 	c.SetBondVerifier(objectiveVerify)
 
-	g := &Block{Version: BlockVersion, Height: 0, Entries: []ports.Entry{entry(0)}}
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
 	Sign(g, a1)
 	if err := c.AppendGenesis(*g); err != nil {
 		t.Fatal(err)
@@ -102,7 +102,7 @@ func TestBondRegRejectedBeyondHeadWindow_factorII(t *testing.T) {
 	// i.e. at the edge of a window of 3 (nonces: h3, h2, h1 → genesis excluded).
 	prev := g.Hash()
 	for h := uint64(1); h <= 3; h++ {
-		blk := &Block{Version: BlockVersion, Height: h, Prev: prev, Entries: []ports.Entry{entry(byte(h))}}
+		blk := &Block{Version: 1, Height: h, Prev: prev, Entries: []ports.Entry{entry(byte(h))}}
 		Sign(blk, a1)
 		blk.Atts = []Attestation{Attest(blk, a2)}
 		if err := c.Append(*blk); err != nil {
@@ -136,7 +136,7 @@ func TestBondRegAheadOfReceiverWindow_refusedThenHeals(t *testing.T) {
 	c := New(cfg, func(ports.NodeID) int64 { return 0 })
 	c.SetBondVerifier(objectiveVerify)
 
-	g := &Block{Version: BlockVersion, Height: 0, Entries: []ports.Entry{entry(0)}}
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
 	Sign(g, a1)
 	if err := c.AppendGenesis(*g); err != nil {
 		t.Fatal(err)
@@ -144,7 +144,7 @@ func TestBondRegAheadOfReceiverWindow_refusedThenHeals(t *testing.T) {
 
 	// h1 commits ON THE SUBMITTER'S SIDE (broadcast in flight) — the receiver
 	// has not appended it yet.
-	b1 := &Block{Version: BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(1)}}
+	b1 := &Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(1)}}
 	Sign(b1, a1)
 	b1.Atts = []Attestation{Attest(b1, a2)}
 

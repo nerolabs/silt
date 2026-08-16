@@ -44,7 +44,7 @@ func TestIdleYoungNetworkDrainsPendingBondRegs338(t *testing.T) {
 
 	a1id, a2id, sid := identity.FromSeed(8101), identity.FromSeed(8102), identity.FromSeed(8103)
 	anchors := map[ports.NodeID]bool{a1id.NodeID(): true, a2id.NodeID(): true}
-	g := &chain.Block{Version: chain.BlockVersion, Height: 0, Entries: []ports.Entry{mkEntry("genesis-338")}}
+	g := &chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{mkEntry("genesis-338")}}
 	chain.Sign(g, a1id.Signer())
 	// The local sybil harness shape: young forever (the anchor gate is the
 	// property under test there), anchor co-sign required, quorum 1.
@@ -157,7 +157,7 @@ func TestNonAttesterSyncsViaStaticPeerOnly338(t *testing.T) {
 
 	a1id, a2id, sid := identity.FromSeed(8120), identity.FromSeed(8121), identity.FromSeed(8122)
 	anchors := map[ports.NodeID]bool{a1id.NodeID(): true, a2id.NodeID(): true}
-	g := &chain.Block{Version: chain.BlockVersion, Height: 0, Entries: []ports.Entry{mkEntry("genesis-338b")}}
+	g := &chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{mkEntry("genesis-338b")}}
 	chain.Sign(g, a1id.Signer())
 	cfg := chain.Config{Quorum: 1, MinBond: 1 << 20, Anchors: anchors, AnchorQuorum: 1, MatureValidators: 99}
 
@@ -226,7 +226,7 @@ func TestDivergentQuorumFloorStrandsSyncingNode338(t *testing.T) {
 
 	a1id, a2id := identity.FromSeed(8130), identity.FromSeed(8131)
 	anchors := map[ports.NodeID]bool{a1id.NodeID(): true, a2id.NodeID(): true}
-	g := &chain.Block{Version: chain.BlockVersion, Height: 0, Entries: []ports.Entry{mkEntry("genesis-338c")}}
+	g := &chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{mkEntry("genesis-338c")}}
 	chain.Sign(g, a1id.Signer())
 
 	// The anchors commit at a quorum-2 floor (bftThreshold(2 anchors)=... but with a

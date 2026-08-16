@@ -20,9 +20,9 @@ func TestGenesisBogusSlashDenied(t *testing.T) {
 
 	// A FORGED accusation: the victim signed neither block, so the self-verifying
 	// proof must reject it — yet even a VALID proof must not ride in via genesis.
-	a := &Block{Version: BlockVersion, Height: 1, Entries: []ports.Entry{entry(1)}}
+	a := &Block{Version: 1, Height: 1, Entries: []ports.Entry{entry(1)}}
 	Sign(a, w.prop)
-	b := &Block{Version: BlockVersion, Height: 1, Entries: []ports.Entry{entry(2)}}
+	b := &Block{Version: 1, Height: 1, Entries: []ports.Entry{entry(2)}}
 	Sign(b, w.prop)
 	bogus := Equivocation{Culprit: pubOf(w.vals[0]), A: *a, B: *b}
 	if VerifyEquivocation(&bogus) {
@@ -30,7 +30,7 @@ func TestGenesisBogusSlashDenied(t *testing.T) {
 	}
 
 	// DENIED: a genesis carrying the slash is rejected outright.
-	g := &Block{Version: BlockVersion, Height: 0, Entries: []ports.Entry{entry(0)},
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)},
 		Slashes: []Equivocation{bogus}}
 	Sign(g, w.prop)
 	if err := w.c.AppendGenesis(*g); !errors.Is(err, ErrGenesisTakedown) {
@@ -41,7 +41,7 @@ func TestGenesisBogusSlashDenied(t *testing.T) {
 	}
 
 	// A clean genesis (no slashes) still works, and the victim keeps full standing.
-	clean := &Block{Version: BlockVersion, Height: 0, Entries: []ports.Entry{entry(0)}}
+	clean := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
 	Sign(clean, w.prop)
 	if err := w.c.AppendGenesis(*clean); err != nil {
 		t.Fatalf("a clean genesis must still be accepted: %v", err)
@@ -53,7 +53,7 @@ func TestGenesisBogusSlashDenied(t *testing.T) {
 	// CONTRAST: the normal (non-genesis) path still slashes on a REAL proof —
 	// the guard closes the genesis door without disarming legitimate slashing.
 	real := newWorld(DefaultConfig())
-	gc := &Block{Version: BlockVersion, Height: 0, Prev: ports.Hash{}, Entries: []ports.Entry{entry(0)}}
+	gc := &Block{Version: 1, Height: 0, Prev: ports.Hash{}, Entries: []ports.Entry{entry(0)}}
 	Sign(gc, real.prop)
 	if err := real.c.AppendGenesis(*gc); err != nil {
 		t.Fatalf("setup: clean genesis rejected: %v", err)

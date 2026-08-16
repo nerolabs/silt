@@ -42,7 +42,7 @@ func TestProposerRefusesToAttestCompetingBlock(t *testing.T) {
 	tn.SetLedger(ledger)
 
 	ch := chain.New(chain.DefaultConfig(), repFn)
-	g := &chain.Block{Version: chain.BlockVersion, Height: 0, Entries: []ports.Entry{mkEntry("g")}}
+	g := &chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{mkEntry("g")}}
 	rival := identity.FromSeed(2)
 	chain.Sign(g, rival.Signer())
 	if err := ch.AppendGenesis(*g); err != nil {
@@ -62,12 +62,12 @@ func TestProposerRefusesToAttestCompetingBlock(t *testing.T) {
 	//    evidence of malice rather than accident).
 	deadID := identity.FromSeed(9).NodeID()
 	_ = net.Endpoint(deadID) // exists on the net, never replies
-	own := &chain.Block{Version: chain.BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("own")}}
+	own := &chain.Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("own")}}
 	tn.proposeBlock(own, []ports.NodeID{deadID}, nil, 1, func(error) {})
 	sched.Run()
 
 	// 2) A rival's competing block at the same height arrives for attestation.
-	comp := &chain.Block{Version: chain.BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("competitor")}}
+	comp := &chain.Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("competitor")}}
 	chain.Sign(comp, rival.Signer())
 
 	prid := identity.FromSeed(3).NodeID()

@@ -48,7 +48,7 @@ func objectiveSet(t *testing.T, n, quorumFloor int, byz bool) (*Chain, []ed25519
 	}
 	c := New(Config{Quorum: quorumFloor, MinBond: 1 << 20, ByzantineQuorum: byz}, func(ports.NodeID) int64 { return 0 })
 	c.SetBondVerifier(objectiveVerify)
-	g := &Block{Version: BlockVersion, Height: 0, Entries: []ports.Entry{entry(0)}, BondRegs: regs}
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}, BondRegs: regs}
 	Sign(g, vals[0])
 	if err := c.AppendGenesis(*g); err != nil {
 		t.Fatalf("genesis: %v", err)
@@ -69,7 +69,7 @@ func TestByzantineQuorumScalesWithValidatorSet(t *testing.T) {
 	}
 
 	commit := func(nAtt int) *Block {
-		b := &Block{Version: BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(1)}}
+		b := &Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(1)}}
 		Sign(b, vals[0]) // vals[0] proposes
 		for i := 1; i <= nAtt; i++ {
 			b.Atts = append(b.Atts, Attest(b, vals[i]))
@@ -94,7 +94,7 @@ func TestFixedQuorumUnsafeWithoutByzantineSizing(t *testing.T) {
 	if got := c.RequiredQuorum(); got != 3 {
 		t.Fatalf("without the flag the requirement is the fixed floor 3, got %d", got)
 	}
-	b := &Block{Version: BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(1)}}
+	b := &Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(1)}}
 	Sign(b, vals[0])
 	for i := 1; i <= 3; i++ {
 		b.Atts = append(b.Atts, Attest(b, vals[i]))
@@ -113,7 +113,7 @@ func TestFixedQuorumUnsafeWithoutByzantineSizing(t *testing.T) {
 // keys, satisfying the training wheels (an anchor among the attesters while immature).
 func appendCommit(t *testing.T, c *Chain, prop ed25519.PrivateKey, prev *Block, attesters ...ed25519.PrivateKey) *Block {
 	t.Helper()
-	b := &Block{Version: BlockVersion, Height: prev.Height + 1, Prev: prev.Hash(), Entries: []ports.Entry{entry(byte(prev.Height + 1))}}
+	b := &Block{Version: 1, Height: prev.Height + 1, Prev: prev.Hash(), Entries: []ports.Entry{entry(byte(prev.Height + 1))}}
 	Sign(b, prop)
 	for _, a := range attesters {
 		b.Atts = append(b.Atts, Attest(b, a))
@@ -153,7 +153,7 @@ func TestMaturityNakamotoResistsOneOperator(t *testing.T) {
 		for _, b := range bonds {
 			regs = append(regs, bondReg(b.priv, b.size, ports.Hash{}))
 		}
-		g := &Block{Version: BlockVersion, Height: 0, Entries: []ports.Entry{entry(0)}, BondRegs: regs}
+		g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}, BondRegs: regs}
 		Sign(g, a1)
 		if err := c.AppendGenesis(*g); err != nil {
 			t.Fatalf("genesis: %v", err)

@@ -52,8 +52,8 @@ func TestModelCheck_I4_WedgedHeightMustRecover(t *testing.T) {
 	// n2; n1 proposes B gathering only n3. Neither side can reach the #402
 	// strict anchor majority (3 of 4); every anchor's (1, r0, prepare) slot is
 	// now marked.
-	blkA := &chain.Block{Version: chain.BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("publish-A")}}
-	blkB := &chain.Block{Version: chain.BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("drain-B")}}
+	blkA := &chain.Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("publish-A")}}
+	blkB := &chain.Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("drain-B")}}
 	var errA, errB error
 	nodes[0].proposeBlock(blkA, []ports.NodeID{id(2)}, all, 0, func(err error) { errA = err })
 	drainHeld(t, net, fifo)
@@ -82,7 +82,7 @@ func TestModelCheck_I4_WedgedHeightMustRecover(t *testing.T) {
 	// (b) fresh proposals at (h1, r0) die at each proposer's own watermark.
 	freshRefused := 0
 	for i := range nodes {
-		c := &chain.Block{Version: chain.BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("fresh-" + string(rune('0'+i)))}}
+		c := &chain.Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("fresh-" + string(rune('0'+i)))}}
 		var ferr error
 		nodes[i].proposeBlock(c, all[:0:0], all, 0, func(err error) { ferr = err })
 		drainHeld(t, net, fifo)

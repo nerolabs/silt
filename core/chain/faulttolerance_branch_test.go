@@ -39,7 +39,7 @@ func TestFaultToleranceBranch_SybilBondsDoNotInflateLaunchQuorum(t *testing.T) {
 	c := New(cfg, func(ports.NodeID) int64 { return 0 })
 	c.SetBondVerifier(objectiveVerify)
 
-	g := &Block{Version: BlockVersion, Height: 0, Entries: []ports.Entry{entry(0)}}
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
 	Sign(g, a1)
 	if err := c.AppendGenesis(*g); err != nil {
 		t.Fatalf("genesis: %v", err)
@@ -86,7 +86,7 @@ func TestFaultToleranceBranch_SybilBondsDoNotInflateLaunchQuorum(t *testing.T) {
 	// required quorum. If this PASSES, the quorum sizing is CORRECT and the cloud
 	// GAP is a gather-latency effect under load (branch b), not a consensus bug.
 	prev, _ := c.Head()
-	b1 := &Block{Version: BlockVersion, Height: 1, Prev: prev, Entries: []ports.Entry{entry(1)}}
+	b1 := &Block{Version: 1, Height: 1, Prev: prev, Entries: []ports.Entry{entry(1)}}
 	Sign(b1, a1)
 	b1.Atts = []Attestation{Attest(b1, a2), Attest(b1, a3)} // a4 "down"
 	err := c.Append(*b1)

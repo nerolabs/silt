@@ -47,7 +47,7 @@ func i2RoundsWorld(t *testing.T) ([]*Node, []*identity.Identity, []ports.SignMar
 		ids[i] = identity.FromSeed(int64(9100 + i))
 		anchors[ids[i].NodeID()] = true
 	}
-	g := &chain.Block{Version: chain.BlockVersion, Height: 0, Entries: []ports.Entry{mkEntry("g")}}
+	g := &chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{mkEntry("g")}}
 	chain.Sign(g, ids[0].Signer())
 	cfg := chain.Config{Quorum: 1, MinBond: 1 << 20, ByzantineQuorum: true, Anchors: anchors, MatureValidators: 99}
 
@@ -110,7 +110,7 @@ func TestModelCheck_I2_RoundScopedRestart(t *testing.T) {
 
 		// a0 proposes A gathering ONLY a1 — the gather fails short of the anchor
 		// majority, but a1 has SIGNED (h1, r0, prepare, A), mark persisted.
-		blkA := &chain.Block{Version: chain.BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("A")}}
+		blkA := &chain.Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("A")}}
 		nodes[0].proposeBlock(blkA, []ports.NodeID{id(1)}, []ports.NodeID{id(1)}, 0, func(error) {})
 		drainHeld(t, net, fifo)
 
@@ -184,7 +184,7 @@ func TestModelCheck_I2_RestartRepresentsLock(t *testing.T) {
 		// a1 LOCKS (adoptLock persists the lock with its precommit mark). Hold
 		// every precommit reply so nothing commits — the height stays open.
 		holdReplies := func(m simnet.HeldMsg) bool { return m.Kind == ports.MsgPrecommitReply }
-		blkX := &chain.Block{Version: chain.BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("X")}}
+		blkX := &chain.Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("X")}}
 		nodes[0].proposeBlock(blkX, []ports.NodeID{id(1), id(2)}, []ports.NodeID{id(1), id(2), id(3)}, 0, func(error) {})
 		drainHeldExcept(t, net, holdReplies)
 		if rs := nodes[1].roundsFor(); rs.Lock == nil || rs.Lock.Hash != blkX.Hash() {

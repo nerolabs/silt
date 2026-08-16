@@ -28,7 +28,7 @@ func TestFetchCanonicalIssuers_ReturnsLedgerRankedSet(t *testing.T) {
 	heavy := identity.FromSeed(862)
 	light := identity.FromSeed(863)
 	anchors := map[ports.NodeID]bool{vID.NodeID(): true}
-	g := &chain.Block{Version: chain.BlockVersion, Height: 0, Entries: []ports.Entry{mkEntry("g")},
+	g := &chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{mkEntry("g")},
 		BondRegs: []chain.BondReg{
 			{Validator: pub(vID), Root: ports.HashBytes(pub(vID)), Size: 5 << 20},
 			{Validator: pub(heavy), Root: ports.HashBytes(pub(heavy)), Size: 9 << 20}, // heaviest

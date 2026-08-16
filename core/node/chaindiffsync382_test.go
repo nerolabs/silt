@@ -27,7 +27,7 @@ func twoAgreeingValidators(t *testing.T) (*Node, *Node, *identity.Identity, *ide
 	net := simnet.New(sched, 4, simnet.DefaultConfig())
 	a1, a2 := identity.FromSeed(8201), identity.FromSeed(8202)
 	anchors := map[ports.NodeID]bool{a1.NodeID(): true, a2.NodeID(): true}
-	g := &chain.Block{Version: chain.BlockVersion, Height: 0, Entries: []ports.Entry{mkEntry("genesis-382")}}
+	g := &chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{mkEntry("genesis-382")}}
 	chain.Sign(g, a1.Signer())
 	cfg := chain.Config{Quorum: 1, MinBond: 1 << 20, ByzantineQuorum: true, Anchors: anchors, AnchorQuorum: 1, MatureValidators: 99}
 	mk := func(id *identity.Identity) *Node {
@@ -78,7 +78,7 @@ func TestChainSyncHeadProbeStillCatchesUp382(t *testing.T) {
 	// n1 commits a block that n2 has not seen — their heads now DIFFER, so n2's
 	// head probe must fall through to a full fetch and catch up.
 	prev, _ := n1.Chain().Head()
-	b1 := &chain.Block{Version: chain.BlockVersion, Height: 1, Prev: prev, Entries: []ports.Entry{mkEntry("b1")}}
+	b1 := &chain.Block{Version: 1, Height: 1, Prev: prev, Entries: []ports.Entry{mkEntry("b1")}}
 	chain.Sign(b1, a1.Signer())
 	b1.Atts = []chain.Attestation{chain.Attest(b1, a2.Signer())}
 	if err := n1.Chain().Append(*b1); err != nil {

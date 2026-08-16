@@ -33,7 +33,7 @@ func TestObjectiveEquivocationSlashEvictsOverTheLoop(t *testing.T) {
 	// Objective genesis bonds A, B (the honest quorum) and the culprit, each on a
 	// distinct root; A and B are the launch anchors that bootstrap the set.
 	anchors := map[ports.NodeID]bool{idA.NodeID(): true, idB.NodeID(): true}
-	g := &chain.Block{Version: chain.BlockVersion, Height: 0, Entries: []ports.Entry{mkEntry("g")},
+	g := &chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{mkEntry("g")},
 		BondRegs: []chain.BondReg{
 			{Validator: pub(idA), Root: ports.HashBytes(pub(idA)), Size: bondSize},
 			{Validator: pub(idB), Root: ports.HashBytes(pub(idB)), Size: bondSize},
@@ -66,7 +66,7 @@ func TestObjectiveEquivocationSlashEvictsOverTheLoop(t *testing.T) {
 	// forks (each proposed by a throwaway key). This is the evidence A reconciles.
 	pA, pB := identity.FromSeed(901).Signer(), identity.FromSeed(902).Signer()
 	fork := func(prop ed25519.PrivateKey, tag string) chain.Block {
-		blk := chain.Block{Version: chain.BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry(tag)}}
+		blk := chain.Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry(tag)}}
 		chain.Sign(&blk, prop)
 		blk.Atts = []chain.Attestation{chain.Attest(&blk, culprit.Signer())}
 		return blk

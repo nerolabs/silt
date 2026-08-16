@@ -27,7 +27,7 @@ func TestNodeCanonicalIssuersMirrorsChain(t *testing.T) {
 	net := simnet.New(sched, 1, simnet.DefaultConfig())
 
 	v0, v1, v2 := identity.FromSeed(30), identity.FromSeed(31), identity.FromSeed(32)
-	g := &chain.Block{Version: chain.BlockVersion, Height: 0, Entries: []ports.Entry{mkEntry("g")},
+	g := &chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{mkEntry("g")},
 		BondRegs: []chain.BondReg{
 			{Validator: pubOf(v0), Root: ports.HashBytes(pubOf(v0)), Size: 5 << 20},
 			{Validator: pubOf(v1), Root: ports.HashBytes(pubOf(v1)), Size: 3 << 20},
@@ -86,7 +86,7 @@ func TestRegisterBondRegRoundTripsThroughObjectiveVerifier(t *testing.T) {
 	// Quorum 1 keeps the block minimal.
 	pID, vID := identity.FromSeed(21), identity.FromSeed(22)
 	cfg := chain.Config{Quorum: 1, MinBond: 1 << 20}
-	g := &chain.Block{Version: chain.BlockVersion, Height: 0, Entries: []ports.Entry{mkEntry("g")},
+	g := &chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{mkEntry("g")},
 		BondRegs: []chain.BondReg{
 			{Validator: pubOf(pID), Root: ports.HashBytes(pubOf(pID)), Size: 64 << 20},
 			{Validator: pubOf(vID), Root: ports.HashBytes(pubOf(vID)), Size: 64 << 20},
@@ -111,7 +111,7 @@ func TestRegisterBondRegRoundTripsThroughObjectiveVerifier(t *testing.T) {
 	bad := reg
 	bad.Answer = append([]byte(nil), reg.Answer...)
 	bad.Answer[len(bad.Answer)-1] ^= 0xff
-	badBlk := &chain.Block{Version: chain.BlockVersion, Height: 1, Prev: g.Hash(),
+	badBlk := &chain.Block{Version: 1, Height: 1, Prev: g.Hash(),
 		Entries: []ports.Entry{mkEntry("bad")}, BondRegs: []chain.BondReg{bad}}
 	chain.Sign(badBlk, pID.Signer())
 	badBlk.Atts = []chain.Attestation{chain.Attest(badBlk, vID.Signer())}
@@ -120,7 +120,7 @@ func TestRegisterBondRegRoundTripsThroughObjectiveVerifier(t *testing.T) {
 	}
 
 	// The genuine registration is accepted, and B joins the objective set.
-	blk := &chain.Block{Version: chain.BlockVersion, Height: 1, Prev: g.Hash(),
+	blk := &chain.Block{Version: 1, Height: 1, Prev: g.Hash(),
 		Entries: []ports.Entry{mkEntry("e1")}, BondRegs: []chain.BondReg{reg}}
 	chain.Sign(blk, pID.Signer())
 	blk.Atts = []chain.Attestation{chain.Attest(blk, vID.Signer())}

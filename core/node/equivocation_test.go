@@ -36,10 +36,10 @@ func TestReconcileSlashesEquivocator(t *testing.T) {
 	v := identity.FromSeed(3)     // the double-signer we assert on
 	other := identity.FromSeed(4) // also equivocates in this synthetic setup
 
-	g := &chain.Block{Version: chain.BlockVersion, Height: 0, Entries: []ports.Entry{mkEntry("g")}}
+	g := &chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{mkEntry("g")}}
 	chain.Sign(g, prop)
 	fork := func(name string, atts ...ed25519.PrivateKey) *chain.Block {
-		b := &chain.Block{Version: chain.BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry(name)}}
+		b := &chain.Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry(name)}}
 		chain.Sign(b, prop)
 		for _, a := range atts {
 			b.Atts = append(b.Atts, chain.Attest(b, a))
@@ -78,7 +78,7 @@ func TestValidatorRefusesToEquivocate(t *testing.T) {
 	tn.SetLedger(ledger)
 
 	ch := chain.New(chain.DefaultConfig(), repFn)
-	g := &chain.Block{Version: chain.BlockVersion, Height: 0, Entries: []ports.Entry{mkEntry("g")}}
+	g := &chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{mkEntry("g")}}
 	prop := identity.FromSeed(2)
 	chain.Sign(g, prop.Signer())
 	if err := ch.AppendGenesis(*g); err != nil {
@@ -93,7 +93,7 @@ func TestValidatorRefusesToEquivocate(t *testing.T) {
 	ledger.RecordBondChallenge(prop.NodeID(), ports.HashBytes([]byte{2}), 64<<20, true, 1)
 
 	mkProposal := func(name string) *chain.Block {
-		b := &chain.Block{Version: chain.BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry(name)}}
+		b := &chain.Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry(name)}}
 		chain.Sign(b, prop.Signer())
 		return b
 	}

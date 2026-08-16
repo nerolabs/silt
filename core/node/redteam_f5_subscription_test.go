@@ -38,7 +38,7 @@ func TestF5_ChainRevocationHonoringIsOptIn(t *testing.T) {
 	prop := identity.FromSeed(2)
 	ch := chain.New(chain.DefaultConfig(), repFn)
 	root := ports.HashBytes([]byte("target-root"))
-	g := &chain.Block{Version: chain.BlockVersion, Height: 0, Entries: []ports.Entry{{
+	g := &chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{{
 		Root: root, ManifestChunks: []ports.ChunkID{ports.HashBytes([]byte("m"))},
 	}}}
 	chain.Sign(g, prop.Signer())
@@ -91,7 +91,7 @@ func commitRevocation(t *testing.T, ch *chain.Chain, prop ed25519.PrivateKey, re
 		ledger.RecordBondChallenge(at.NodeID(), ports.HashBytes([]byte{byte(20 + i)}), 64<<20, true, 1)
 	}
 	prev, height := ch.Head()
-	rev := &chain.Block{Version: chain.BlockVersion, Height: height, Prev: prev, Revocations: []ports.Hash{root}}
+	rev := &chain.Block{Version: 1, Height: height, Prev: prev, Revocations: []ports.Hash{root}}
 	chain.Sign(rev, prop)
 	for _, at := range atts {
 		rev.Atts = append(rev.Atts, chain.Attest(rev, at.Signer()))
