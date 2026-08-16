@@ -33,11 +33,11 @@ import (
 // high rounds, round-change quorum composition with a third of the epoch
 // silent) — NO unilateral fix; parked on its branch per the wedge-oracle
 // pattern.
-func matureWorld12(t *testing.T) (nodes []*Node, ids []*identity.Identity, net *simnet.Network, refill func()) {
+func matureWorld12(t *testing.T) (nodes []*Node, ids []*identity.Identity, net *simnet.Network, sched *simclock.Scheduler, refill func()) {
 	t.Helper()
 	const nAnchors, nMaturers, nSybils = 4, 4, 4
 	total := nAnchors + nMaturers + nSybils
-	sched := simclock.New()
+	sched = simclock.New()
 	net = simnet.New(sched, 1, simnet.DefaultConfig())
 	net.EnableHeldDelivery()
 
@@ -146,11 +146,11 @@ func matureWorld12(t *testing.T) (nodes []*Node, ids []*identity.Identity, net *
 		}
 	}
 	refill()
-	return nodes, ids, net, refill
+	return nodes, ids, net, sched, refill
 }
 
 func TestModelCheck_451_SilentAuthorLockedValueMustStillCommit(t *testing.T) {
-	nodes, ids, net, refill := matureWorld12(t)
+	nodes, ids, net, _, refill := matureWorld12(t)
 	all := make([]ports.NodeID, len(ids))
 	for i := range ids {
 		all[i] = ids[i].NodeID()
@@ -267,4 +267,167 @@ func TestModelCheck_451_SilentAuthorLockedValueMustStillCommit(t *testing.T) {
 	// this shape — itself decisive for the consult (the trigger is elsewhere).
 	blk := nodes[0].Chain().Blocks(contested)
 	t.Logf("escape completed: h%d committed at round %d (lock carried: %v)", contested, blk[0].CommitRound, blk[0].Hash() == lockHash)
+}
+
+// TestModelCheck_451_StaggeredSweepsMustStillConverge is THE #451 oracle — the
+// certification's merge gate and the model-check method fix made concrete:
+// per-node round-advance SKEW as a first-class adversarial schedule dimension.
+// The lockstep freeze-frame above is GREEN because everyone sweeps together;
+// the field's 14-round/370s stall came from independent 30s timers with
+// arbitrary phase smearing the live members across rounds so that no round
+// ever held a quorum of round-changes SIMULTANEOUSLY. This schedule drives
+// exactly that smear: after the author cohort goes silent, the live members
+// sweep one at a time in rotation — each advancing its own round on its own
+// "timer" while the others stand still — the deterministic worst case of
+// timer skew.
+//
+// FAILING-FIRST: RED against locking-without-a-synchronizer (fixed
+// roundAdvanceSweeps, no catch-up — the members smear and never converge);
+// GREEN with the certified synchronizer (increasing round duration makes
+// rounds eventually outlast the smear; f+1/weight catch-up collapses it at
+// message speed).
+func TestModelCheck_451_StaggeredSweepsMustStillConverge(t *testing.T) {
+	nodes, ids, net, sched, refill := matureWorld12(t)
+	all := make([]ports.NodeID, len(ids))
+	for i := range ids {
+		all[i] = ids[i].NodeID()
+	}
+	byID := map[ports.NodeID]*Node{}
+	for _, nd := range nodes {
+		byID[nd.id] = nd
+	}
+	sybilSet := map[ports.NodeID]bool{}
+	for _, id := range all[8:] {
+		sybilSet[id] = true
+	}
+	var honestSlashed bool
+	for i, nd := range nodes {
+		if i < 8 {
+			nd.OnSlash(func(culprit ports.NodeID, _ uint64) {
+				if !sybilSet[culprit] {
+					honestSlashed = true
+				}
+			})
+		}
+	}
+
+	// Same freeze-frame as the lockstep test: a sybil-authored value locked at
+	// (h, r0), then the whole author cohort partitioned.
+	live := nodes[:8]
+	var sybAuthor *Node
+	for hops := 0; hops < 13; hops++ {
+		_, h := nodes[0].chain.Head()
+		d := byID[nodes[0].designatedProposer(h, 0)]
+		if sybilSet[d.id] {
+			sybAuthor = d
+			break
+		}
+		refill()
+		d.maybeProposeBondDrain()
+		drainHeld(t, net, fifo)
+		for _, nd := range nodes {
+			nd.SyncChain(all, func(int, error) {})
+		}
+		drainHeld(t, net, fifo)
+	}
+	if sybAuthor == nil {
+		t.Fatal("setup: no sybil designee height reached")
+	}
+	_, contested := nodes[0].chain.Head()
+	refill()
+	holdAuthorPrecommits := func(m simnet.HeldMsg) bool {
+		return m.Kind == ports.MsgPrecommitReply && m.To == sybAuthor.id
+	}
+	sybAuthor.maybeProposeBondDrain()
+	drainHeldExcept(t, net, holdAuthorPrecommits)
+	for _, nd := range live {
+		nd.SetBlockedPeers(all[8:])
+	}
+	liveIDs := all[:8]
+
+	// THE SCHEDULE (the field's asynchrony, deterministic). Phase 1 — pre-GST
+	// chaos: skewed sweeps with every new-view prepare HELD and delivered
+	// LATE (stale-by-arrival, the WAN reality): each delivery still resolves
+	// its gather (refusals/partial accepts — no driver-artifact hangs) while
+	// scattering the (h, r, prepare) sign marks across rounds, and the skewed
+	// timers smear the members' round clocks apart. Phase 2 — GST: delivery
+	// stabilizes (lockstep sweeps, everything delivered promptly). THE ORACLE
+	// asserts the CERTIFIED BOUND: after GST, the locked value commits within
+	// gstBudget rotations. RED without a synchronizer — the smeared members
+	// must climb the round ladder one fixed-duration timeout at a time until
+	// some round clears every scattered mark (the field's 14-round/370s
+	// stall); GREEN with it — catch-up collapses the smear at message speed
+	// and the increasing duration holds rounds open for assembly.
+	const chaosSteps = 8
+	const gstBudget = 2
+	for step := 0; step < chaosSteps; step++ {
+		target := live[step%len(live)]
+		holdNonTarget := func(m simnet.HeldMsg) bool {
+			return m.Kind == ports.MsgProposeBlock && m.To != target.id
+		}
+		for _, nd := range live {
+			refill()
+			nd.maybeProposeBondDrain()
+			drainHeldExcept(t, net, holdNonTarget)
+			nd.maybeAdvanceRound()
+			drainHeldExcept(t, net, holdNonTarget)
+		}
+		// The non-target prepares are LOST ON THE WIRE (pre-GST loss) and the
+		// requesters' per-attempt timeout timers fire (the driver advances the
+		// sim clock timer-by-timer) — each stranded ask errors through its
+		// retries and the gather resolves weight-short (only the step's target
+		// could sign), scattering the marks one target at a time. This is the
+		// field's loss+timeout dynamics, deterministic — no hung designees.
+		for i := 0; i < 400; i++ {
+			for _, m := range net.Pending() {
+				if m.Kind == ports.MsgProposeBlock && m.To != target.id {
+					net.DropPending(m.ID)
+				}
+			}
+			drainHeldExcept(t, net, holdNonTarget)
+			if !sched.Step() {
+				break
+			}
+		}
+		drainHeldExcept(t, net, holdNonTarget)
+		for _, m := range net.Pending() {
+			if m.Kind == ports.MsgProposeBlock && m.To != target.id {
+				net.DropPending(m.ID)
+			}
+		}
+		drainHeld(t, net, fifo)
+	}
+	preGSTCommitted := false
+	if _, h := nodes[0].chain.Head(); h > contested {
+		preGSTCommitted = true // the synchronized system may converge even mid-chaos
+	}
+
+	// GST: the network stabilizes. A synchronized escape converges within the
+	// certified bound; a synchronizer-less one pays the whole smear climb.
+	committed := preGSTCommitted
+	for rotation := 0; rotation < gstBudget && !committed; rotation++ {
+		refill()
+		sweepRounds(t, net, func(m simnet.HeldMsg) bool { return false }, live)
+		for _, nd := range live {
+			nd.SyncChain(liveIDs, func(int, error) {})
+		}
+		drainHeld(t, net, fifo)
+		if _, h := nodes[0].chain.Head(); h > contested {
+			committed = true
+			t.Logf("converged within the post-GST budget (rotation %d)", rotation)
+		}
+	}
+
+	if honestSlashed {
+		t.Fatal("I5 VIOLATION: an honest validator was slashed under the staggered-sweep schedule")
+	}
+	if !committed {
+		maxRound := uint64(0)
+		for _, nd := range live {
+			if rs := nd.roundsFor(); rs.Round > maxRound {
+				maxRound = rs.Round
+			}
+		}
+		t.Fatalf("#451 REPRODUCED: after GST the contested height %d did not commit within %d rotations — the pre-GST smear left the members at rounds/marks up to %d and a synchronizer-less escape must climb the whole ladder one fixed timeout at a time (certification 451-view-synchronization: locking without a SYNCHRONIZER)", contested, gstBudget, maxRound)
+	}
 }

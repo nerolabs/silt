@@ -1911,6 +1911,46 @@ func (c *Chain) requireEpochWeightQuorum(proposer ports.NodeID, seen map[ports.N
 	return nil
 }
 
+// RoundCatchupMet is the #451 view-synchronizer's catch-up threshold
+// (certification §2b, adopted from PBFT's responsive f+1 view-change): the
+// smallest set of round-change senders that PROVES at least one honest member
+// is ahead, so a straggler may safely jump to their round. Mature epoch:
+// >⅓ of the frozen weight (one Byzantine third cannot fake it). Launch:
+// f+1 of the anchor set (f = ⌊(A−1)/3⌋). Adversary-robust both ways: a lone
+// Byzantine can neither DRAG honest nodes to a fabricated round (the
+// threshold needs an honest member) nor stall progress (ingredient (a), the
+// increasing round duration, guarantees advance regardless).
+func (c *Chain) RoundCatchupMet(senders map[ports.NodeID]bool) bool {
+	if !c.objective() {
+		return false
+	}
+	if c.epochsEnabled() && c.matureEpoch {
+		var total, support int64
+		for _, w := range c.epochSet {
+			total += w
+		}
+		if total <= 0 {
+			return false
+		}
+		for id := range senders {
+			support += c.epochSet[id]
+		}
+		return 3*support > total
+	}
+	a := len(c.cfg.Anchors)
+	if a == 0 {
+		return false
+	}
+	f := (a - 1) / 3
+	n := 0
+	for id := range senders {
+		if c.cfg.Anchors[id] || c.bonded[id] >= c.cfg.MinBond {
+			n++
+		}
+	}
+	return n >= f+1
+}
+
 // SupportMeetsQuorum reports whether a commit proposed by `proposer` and
 // attested by `attesters` would clear ValidateCommit's quorum: the distinct
 // qualified non-proposer count floor (RequiredQuorum) plus, in a mature epoch,

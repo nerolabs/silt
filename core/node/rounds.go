@@ -17,14 +17,31 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// roundAdvanceSweeps is the deterministic non-commit rule (certification §5.1):
-// after this many chain-sync sweeps at one height with pending work and no
-// commit, a validator broadcasts a round-change. A pure function of local
-// deliveries (sweeps are message-driven under the sim clock — B2), never
-// wall-clock. Two sweeps ≈ 60s of real non-progress at the 30s
-// ChainSyncInterval — generous against WAN jitter (a slow gather is not a
-// wedge), tight enough to unwedge within ~minutes.
+// roundAdvanceSweeps is the BASE round duration (certification §5.1 + the
+// #451 view-synchronization certification): after sweepsForRound(r) chain-sync
+// sweeps at one height with pending work and no commit, a validator broadcasts
+// a round-change. A pure function of local deliveries (sweeps are
+// message-driven under the sim clock — B2), never wall-clock. Two sweeps ≈
+// 60s of real non-progress at the 30s ChainSyncInterval.
 const roundAdvanceSweeps = 2
+
+// sweepsForRound is the #451 synchronizer's load-bearing ingredient (a):
+// INCREASING round duration — Tendermint's field-proven linear-increment form
+// dur(r) = dur(r−1) + r·k (k=1), i.e. dur(r) = base + r(r+1)/2, expressed in
+// deterministic sweep counts (never wall-clock — B2/#3, a principled backoff
+// per build-immutable #5, not a magic constant). Why it is the GUARANTEE:
+// under independent skewed sweep timers a FIXED duration lets the members
+// smear across rounds forever (every member advances at the same rate, so
+// nothing ever widens a round enough for their round-changes to assemble
+// co-round — the field's 14-round/370s stall, run ce15a80-89365, and the
+// mark-scatter oracle's deterministic repro); as rounds climb, the duration
+// eventually OUTRUNS any timer skew + message delay, so after GST the honest
+// members overlap in one round long enough to assemble the quorum — bounded
+// convergence, not luck. Ingredient (b), message-driven catch-up
+// (maybeCatchUpRound), is the responsive accelerator on top.
+func sweepsForRound(r uint64) int {
+	return roundAdvanceSweeps + int(r*(r+1)/2)
+}
 
 // nodeLock is the validator's #432 lock: the highest-round prepare-QC it has
 // witnessed for the height it is working on. Monotone in Round; carried in
@@ -268,11 +285,21 @@ func (n *Node) maybeAdvanceRound() {
 	}
 	rs := n.roundsFor()
 	rs.Sweeps++
-	if rs.Sweeps < roundAdvanceSweeps {
+	if rs.Sweeps < sweepsForRound(rs.Round) {
 		return
 	}
 	rs.Sweeps = 0
-	next := rs.Round + 1
+	n.advanceToRound(rs, rs.Round+1, "timeout")
+}
+
+// advanceToRound signs + records + broadcasts this node's round-change for
+// `next` and enters it — shared by the sweep-count timeout path
+// (maybeAdvanceRound) and the #451 catch-up paths (maybeCatchUpRound and the
+// valid-higher-round new-view jump). via names the driver for the field read.
+func (n *Node) advanceToRound(rs *heightRounds, next uint64, via string) {
+	if next <= rs.Round {
+		return
+	}
 	rc := roundChangeEnv{Height: rs.Height, NewRound: next,
 		Sender: append([]byte(nil), n.signer.Public().(ed25519.PublicKey)...)}
 	if rs.Lock != nil {
@@ -284,11 +311,12 @@ func (n *Node) maybeAdvanceRound() {
 		return
 	}
 	n.logf(ports.LogInfo, "round-change: advancing (#432 view-change)",
-		"height", rs.Height, "round", next, "locked", rs.Lock != nil, "pending", len(n.pendingBondRegs), "pending_entries", len(n.pendingEntries))
+		"height", rs.Height, "round", next, "via", via, "locked", rs.Lock != nil, "pending", len(n.pendingBondRegs), "pending_entries", len(n.pendingEntries))
 	// Record our own round-change (we are part of our own quorum), then
 	// broadcast to every sync target.
 	n.recordRoundChange(rs, next, n.id, raw)
 	rs.Round = next
+	rs.Sweeps = 0
 	for _, p := range n.syncTargets() {
 		if p == n.id {
 			continue
@@ -323,4 +351,36 @@ func (n *Node) recordRoundChange(rs *heightRounds, newRound uint64, from ports.N
 		rs.Round = newRound
 	}
 	n.proposeAtNewView(rs, newRound, raws, forced)
+}
+
+// maybeCatchUpRound is the #451 synchronizer's responsive ingredient (b),
+// adopted from PBFT's f+1 view-change rule (B8): when the recorded
+// round-changes for rounds ABOVE ours reach the catch-up threshold
+// (chain.RoundCatchupMet — f+1 anchors at launch, >⅓ frozen weight mature),
+// at least one HONEST member is provably ahead, so jump to the SMALLEST such
+// round (PBFT: "the smallest view in the set") and broadcast our own
+// round-change for it — pulling stragglers forward at message speed instead
+// of timer speed. Changes only WHEN this node is in a round, never which
+// value it may sign: the #432 locking is untouched.
+func (n *Node) maybeCatchUpRound(rs *heightRounds) {
+	if n.signer == nil || n.chain == nil {
+		return
+	}
+	var target uint64
+	senders := map[ports.NodeID]bool{}
+	for r, m := range rs.Changes {
+		if r <= rs.Round {
+			continue
+		}
+		for id := range m {
+			senders[id] = true
+		}
+		if target == 0 || r < target {
+			target = r
+		}
+	}
+	if target == 0 || !n.chain.RoundCatchupMet(senders) {
+		return
+	}
+	n.advanceToRound(rs, target, "catch-up")
 }

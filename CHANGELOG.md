@@ -9,6 +9,28 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **#451 view synchronizer: increasing round duration + responsive catch-up — round-based
+  liveness gets its missing second half** (2026-08-16) — The clean re-run's B2 stall
+  drill re-proposed a carried lock across rounds 4–15 for 370 s with 8 of 12 members
+  live holding >99% of the weight: silt had #432's locking (safety under round
+  disagreement) but no SYNCHRONIZER (convergence into a shared round) — a fixed
+  `roundAdvanceSweeps` let independently-skewed sweep timers smear the members across
+  rounds forever, and a round-change recorded at a receiver never pulled it forward.
+  Per the research certification (451-view-synchronization, adopting Tendermint/PBFT
+  whole): **(a)** round duration now grows `dur(r)=dur(r−1)+r·k` in deterministic sweep
+  counts — after GST the round eventually outlasts any timer skew or adversarial
+  round-change smearing (red-team seam #7, closed as a bounded residual), the
+  load-bearing guarantee; **(b)** a straggler JUMPS to the smallest round proven ahead
+  by f+1 anchors (launch) / >⅓ frozen weight (mature) of recorded round-changes, or by
+  a valid higher-round new-view certificate — catch-up at message speed. Neither
+  ingredient changes which value a node may sign: locking, the proposer-prepare rule,
+  and the #402 arithmetic are untouched (the I1/S1/S2 oracle set stays green).
+  Failing-first per the certification's merge gate: the staggered-sweep oracle
+  (pre-GST chaos — skewed sweeps, per-target prepare delivery, driver-fired request
+  timeouts scattering the sign marks; post-GST — the certified convergence bound) is
+  RED against locking-without-a-synchronizer and GREEN with both ingredients. Method
+  fix recorded in the model-check canon: per-node round-advance skew is a first-class
+  adversarial schedule dimension.
 - **Bond-reg queue goes FIFO-by-arrival — the ID-sort starvation behind the confirm
   run's 22-minute maturity stall** (2026-08-16) — Run 54003f7-91159's latch missed its
   computed bound because the 3rd maturer's first-time registration sat in the designees'
