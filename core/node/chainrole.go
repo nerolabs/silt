@@ -5,9 +5,11 @@
 package node
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"errors"
 	"fmt"
+	"sort"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/nerolabs/silt/core/chain"
@@ -1314,6 +1316,15 @@ func (n *Node) syncTargets() []ports.NodeID {
 	for id := range set {
 		out = append(out, id)
 	}
+	// Deterministic order (B2): this list drives gather ask-order, round-change
+	// broadcast order, and — in the model-check — the entire schedule. Returning
+	// raw map-iteration order made every gather's QC composition a per-call
+	// dice-roll (caught by the #451 fixture flaking 2-in-10 under -count=10:
+	// the sybil author's prepare-QC landed on order-lucky subsets). ID-sort is
+	// safe here: ask ORDER is not an inclusion-fairness surface (any assembled
+	// quorum is valid) — unlike the reg/entry queues, which are FIFO by #448/
+	// #441 Addition 2. EligibleProposers sorts for the same reason.
+	sort.Slice(out, func(i, j int) bool { return bytes.Compare(out[i][:], out[j][:]) < 0 })
 	return out
 }
 

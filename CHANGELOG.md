@@ -9,6 +9,16 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **`syncTargets` returns a deterministic (ID-sorted) list — a B2-determinism leak
+  caught by the #451 fixture flaking under `-count=10`** (2026-08-16) — The list that
+  drives gather ask-order, round-change broadcast order, and (in the model-check) the
+  entire schedule was returned in raw map-iteration order: every gather's QC
+  composition was a per-call dice-roll, flaking the #451 freeze-frame fixture 2-in-10
+  (the sybil author's prepare-QC landed on order-lucky subsets) and adding silent
+  run-to-run variance to every field gather. ID-sort is safe here — ask order is not
+  an inclusion-fairness surface (any assembled quorum is valid), unlike the reg/entry
+  queues which stay FIFO per #448/#441; `EligibleProposers` already sorts for the
+  same reason. The #451 oracles now pass 10× under the race detector.
 - **#451 view synchronizer: increasing round duration + responsive catch-up — round-based
   liveness gets its missing second half** (2026-08-16) — The clean re-run's B2 stall
   drill re-proposed a carried lock across rounds 4–15 for 370 s with 8 of 12 members
