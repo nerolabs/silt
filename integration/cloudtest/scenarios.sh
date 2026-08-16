@@ -110,6 +110,13 @@ ft_publish() { # ft_publish NODE SIZE_BYTES
     link="$(printf '%s' "$out" | grep -oE 'silt:v1:\S+' | head -1)"
     [ -n "$link" ] && { printf '%s %s\n' "$link" "$sha"; return 0; }
     lasterr="$(printf '%s' "$out" | grep -iE 'could not gather|not enough|no canonical|token|refus|unreachable|timed? ?out' | head -2 | tr '\n' ';')"
+    # The allow-list above was built for the KNOWN failure modes and silently
+    # dropped a new class (run a56ac10-42834: '#441 insufficient valid
+    # attestations: 2 prepares of 2 gathered' matched nothing → the diagnostic
+    # printed '<none captured>' and the decisive error had to be re-captured
+    # live before teardown). Fall back to the raw tail: an UNRECOGNIZED error
+    # is the one most worth recording.
+    [ -z "$lasterr" ] && lasterr="$(printf '%s' "$out" | grep -vE '^[[:space:]]*$' | tail -2 | tr '\n' ';')"
     sleep 4
   done
   # Diagnose so a failed publish is actionable, not a bare "no link produced". The
@@ -607,7 +614,7 @@ flow_durability_turnover() {
   # not that durability broke — this flow tests survival of a permanent node loss, not
   # the publish path (2-publish-fetch is the publish canary). So GAP unconditionally on
   # a missing link, independent of the FT_PUBLISH_GAP/degraded signals (#351).
-  if [ -z "$res" ]; then record "durability-turnover" gap major "setup publish did not land a link — durability UNTESTED this run (ephemeral-CLI issuer-set discovery over WAN, #351), not a durability failure"; return; fi
+  if [ -z "$res" ]; then record "durability-turnover" gap major "setup publish did not land a link — durability UNTESTED this run, not a durability failure (publish subsystem degraded: see the captured client error in publish-diag / .ft_publish_lasterr — discovery #351 or mature-regime quorum starvation #441; never presume which)"; return; fi
   link="${res%% *}"; sha="${res##* }"
   svc store-1 stop || true    # permanent departure (left down for the fetch)
   sleep 12
@@ -625,7 +632,7 @@ flow_chaos_crash() {
   if [ -z "$link" ]; then local res; res="$(ft_publish fetch-1 262144 || true)"; link="${res%% *}"; wantsha="${res##* }"; fi
   # As with durability-turnover: a failed SETUP publish means crash-recovery is UNTESTED
   # (no content to crash-and-recover), not broken — GAP unconditionally (#351).
-  if [ -z "$link" ]; then record "chaos-crash" gap major "setup publish did not land a link — crash-recovery UNTESTED this run (issuer-set discovery over WAN, #351), not a failure"; return; fi
+  if [ -z "$link" ]; then record "chaos-crash" gap major "setup publish did not land a link — crash-recovery UNTESTED this run, not a failure (publish subsystem degraded: see the captured client error in publish-diag / .ft_publish_lasterr — #351 or #441; never presume which)"; return; fi
   # SIGKILL the silt process (abrupt death, not a graceful stop). systemd
   # (Restart=on-failure) brings it back, reloading the persisted store.
   # Capture t0 BEFORE the kill: flow_restart_survival already restarted store-2
@@ -655,12 +662,15 @@ flow_chaos_crash() {
     # RESTART=1, green post-#393). store-2's captured journal attributes it.
     slo_assert "chaos-reprovide" major "no post-crash 're-announced N held chunks' on store-2 within 300s of the SIGKILL — past the measured re-announce envelope; attribute from store-2's captured journal (#69)" 0
   fi
-  local got ok=0
+  local got ok=0 geterr=""
   # SHA-compare, not echo-OK (§D): crash-recovery must return the REAL bytes, not just
-  # a zero exit on a possibly-truncated fetch.
-  got="$(ssh_node store-1 "/usr/local/bin/silt swarm get '$link' -o /tmp/ft_ch.bin -peers '$PEERS' -registry '$REGREF' >/dev/null 2>&1; sha256sum /tmp/ft_ch.bin | cut -d' ' -f1" 2>/dev/null || true)"
+  # a zero exit on a possibly-truncated fetch. Keep the client's stderr — run
+  # a56ac10-42834's chaos-fetch FAIL was UNATTRIBUTABLE because this line sent it
+  # to /dev/null (got=<none> with the deciding error discarded).
+  geterr="$(ssh_node store-1 "rm -f /tmp/ft_ch.bin; /usr/local/bin/silt swarm get '$link' -o /tmp/ft_ch.bin -peers '$PEERS' -registry '$REGREF' 2>&1 >/dev/null | tail -3" 2>/dev/null || true)"
+  got="$(ssh_node store-1 "sha256sum /tmp/ft_ch.bin 2>/dev/null | cut -d' ' -f1" 2>/dev/null || true)"
   [ -n "$wantsha" ] && [ "$got" = "$wantsha" ] && ok=1
-  slo_assert "chaos-fetch" major "content fetchable BIT-PERFECT after a hard-crash (SIGKILL) + restart of a storage node$([ "$ok" = 1 ] || echo " (want=${wantsha:-?} got=${got:-<none>})")" "$ok"
+  slo_assert "chaos-fetch" major "content fetchable BIT-PERFECT after a hard-crash (SIGKILL) + restart of a storage node$([ "$ok" = 1 ] || echo " (want=${wantsha:-?} got=${got:-<none>}; client: $(printf '%s' "$geterr" | tr '\n' ';' | head -c 300))")" "$ok"
 }
 
 # ── client/UI (#4): the web-UI local-security guard (#89) over a real VM ─────────
@@ -1038,9 +1048,21 @@ flow_maturing_handoff() {
   else
     echo "    stall drill: stopping the $n_syb-member cohort (declining to attest)…"
     local s; for s in $sybils; do svc "$s" stop >/dev/null 2>&1 || true; done
-    local stall_ok=0
-    mh_drive_block && stall_ok=1
-    slo_assert "10a-stall-drill" major "B2 stall drill: with the $n_syb cheap epoch members DECLINING to attest, the honest >⅔-weight coalition still commits on the wire (head-counted quorum left this exact network born-unable-to-commit at ${n_syb}×MinBond)" "$stall_ok"
+    # STALL_S is COMPUTED (PE §4) — run a56ac10-42834 graded this drill on ONE
+    # 90s drive and FAILed a network that provably commits: (a) 90s is below the
+    # per-height round-escape bound (roundAdvanceSweeps 2 × 30s sweeps + a ~34s
+    # gather leg + the observed r1 new-view cycle ≈ 95–155s), and (b) with the
+    # cohort DOWN, a height whose drain designee is a downed sybil first pays the
+    # staggered-takeover ladder ((3+dist) sweeps × 30s). Worst case here:
+    # (3+n_syb)×30 + 160. Any honest ceiling advance (a drain commit counts —
+    # the property is "the honest coalition still commits", not "a publish lands
+    # in 90s"; the publish half is #441's finding, graded separately).
+    : "${STALL_S:=$(( (3 + n_syb) * 30 + 160 ))}"
+    local stall_ok=0 t_stall; t_stall="$(date +%s)"
+    while [ $(( $(date +%s) - t_stall )) -lt "$STALL_S" ]; do
+      mh_drive_block && { stall_ok=1; break; }
+    done
+    slo_assert "10a-stall-drill" major "B2 stall drill: with the $n_syb cheap epoch members DECLINING to attest, the honest >⅔-weight coalition still commits on the wire within the computed ${STALL_S}s bound (head-counted quorum left this exact network born-unable-to-commit at ${n_syb}×MinBond)" "$stall_ok"
     for s in $sybils; do svc "$s" start >/dev/null 2>&1 || true; done
     sleep 20
   fi
@@ -1181,8 +1203,102 @@ wait_publisher_warm() { # wait_publisher_warm NODE
     sleep 6
   done
   FETCH_PUBLISH_DEGRADED=1
-  echo "    WARN: publisher $node did not warm within ${PUBLISHER_WARMUP_S}s — publish subsystem degraded; dependent publishes this run report GAP (untested), not FAIL (#351)"
+  # NEVER discard the failing attempt's client output (run a56ac10-42834: forty
+  # failed warms left ZERO recorded errors; the decisive '#441 insufficient valid
+  # attestations' line had to be re-captured live before teardown). The last
+  # attempt's tail IS the attribution — print it and persist it past teardown.
+  {
+    echo "    WARN: publisher $node did not warm within ${PUBLISHER_WARMUP_S}s — publish subsystem degraded; dependent publishes this run report GAP (untested), not FAIL (#351/#441)"
+    printf '%s\n' "$out" | grep -vE '^[[:space:]]*$' | tail -3 | sed 's/^/      last attempt: /'
+  } | tee -a "$FT_DIR/publish-diag-${RUN_ID:-local}.log"
   return 1
+}
+
+# ── SOAK (PE #432 gate): launch-regime interleaved publish/drain liveness ────────
+# The wedge needed only one crossed publish-vs-drain proposer race; #338 serializes
+# drain-vs-drain only, so the two streams are UNCOORDINATED in production and the PE
+# ruled P1's clean pass incomplete without holding them open against each other
+# (i4-liveness-wedge-rounds-ruling §Gate). SOAK shape, not a scheduled race: both
+# streams run for a computed window and the schedule lands where it lands, many
+# times. LAUNCH-topology only (MATURING=0 keeps the launch regime permanent; in a
+# MATURING topology the latch ends the regime mid-soak and the mature steady state
+# is #441's separately-graded question). Design: docs/thinking/2026-08-16-launch-
+# soak-drill-design.md. Opt-in: SOAK=1.
+#
+# The per-height escape bound H_ESCAPE_S is COMPUTED (PE §4): the #432 escape needs
+# roundAdvanceSweeps(2) sweeps × ChainSyncInterval(30s) to fire a round-change,
+# plus one ~34s computed gather leg, with a 2-round allowance (the observed steady
+# state commits at r1): 2×(2×30)+34 ≈ 154 → 160. A height older than that with the
+# network live is the WEDGE SIGNATURE and a FAIL (PE §4 — a miss inside a
+# principled bound is a finding), never a window artifact.
+flow_soak_publish_drain() {
+  [ "${SOAK:-0}" = 1 ] || return 0
+  local n_mat_soak
+  n_mat_soak="$(python3 -c "import json;print(json.load(open('$FT_DIR/topology.json'))['meta'].get('n_mat',0))" 2>/dev/null || echo 0)"
+  if [ "${n_mat_soak:-0}" -gt 0 ]; then
+    record "soak-publish-drain" skip major "SOAK requires a LAUNCH topology (MATURING=0) — the latch would end the launch regime mid-soak; run SOAK=1 without MATURING"
+    return
+  fi
+  require_nodes "soak-publish-drain" major val-a val-b val-c val-d || return
+  : "${H_ESCAPE_S:=160}"
+  : "${SOAK_HEIGHTS:=20}"
+  local wall=$(( SOAK_HEIGHTS * 64 ))   # 64s worst-case block time — the LATCH_S arithmetic
+  # Launch ceiling over the validators (mirrors mh_ceiling, which is flow-10-local).
+  soak_height() { ssh_node "$1" "/usr/local/bin/silt chain-status -store /var/lib/silt 2>&1" \
+    | grep -oE 'head height:[[:space:]]*[0-9]+' | grep -oE '[0-9]+' | tail -1; }
+  soak_ceiling() {
+    local c=0 v hh
+    for v in val-a val-b val-c val-d; do hh="$(soak_height "$v")"; hh="${hh:-0}"; [ "$hh" -gt "$c" ] 2>/dev/null && c="$hh"; done
+    printf '%s' "$c"
+  }
+  local h0 t0 last_h last_t now h pubs=0 pub_ok=0 maxgap=0 gap wedged=0 lastout=""
+  h0="$(soak_ceiling)"; h0="${h0:-0}"; t0="$(date +%s)"; last_h="$h0"; last_t="$t0"
+  echo "  soak: interleaving publishes with the natural renewal drain from h${h0} for ${SOAK_HEIGHTS} heights (wall ${wall}s; per-height escape bound ${H_ESCAPE_S}s)…"
+  while :; do
+    now="$(date +%s)"
+    [ $(( now - t0 )) -ge "$wall" ] && break
+    # The publish stream: one attempt per iteration, alternating publishers so the
+    # proposal comes from different seats (val-a registry path + the fresh
+    # publisher when present). Errors are KEPT (the run-3 lesson).
+    if [ $(( pubs % 3 )) -eq 2 ] && node_exists fetch-1; then
+      lastout="$(ssh_node fetch-1 "head -c 8192 </dev/urandom >/tmp/ft_soak.bin; /usr/local/bin/silt swarm add /tmp/ft_soak.bin -peers '$PEERS' -registry '$REGREF' -token-quorum $TOKEN_QUORUM -chunk-size 65536 2>&1 || true")"
+    else
+      lastout="$(ssh_node val-a "head -c 8192 </dev/urandom >/tmp/ft_soak.bin; /usr/local/bin/silt swarm add /tmp/ft_soak.bin -peers '$PEERS' -registry '$REGREF' -token-quorum $TOKEN_QUORUM -chunk-size 65536 2>&1 || true")"
+    fi
+    pubs=$(( pubs + 1 ))
+    printf '%s' "$lastout" | grep -qE 'silt:v1:' && pub_ok=$(( pub_ok + 1 ))
+    # The drain stream runs at its natural TTL cadence — nothing to schedule.
+    h="$(soak_ceiling)"; h="${h:-$last_h}"
+    now="$(date +%s)"
+    if [ "$h" -gt "$last_h" ] 2>/dev/null; then
+      gap=$(( now - last_t )); [ "$gap" -gt "$maxgap" ] && maxgap="$gap"
+      last_h="$h"; last_t="$now"
+      [ $(( h - h0 )) -ge "$SOAK_HEIGHTS" ] && break
+    elif [ $(( now - last_t )) -gt $(( H_ESCAPE_S * 2 )) ]; then
+      # Twice the escape bound with no commit and the wall still running: stop
+      # early — this IS the wedge signature; soaking longer adds nothing.
+      wedged=1; break
+    fi
+    sleep 8
+  done
+  local final_gap=$(( $(date +%s) - last_t ))
+  [ "$final_gap" -gt "$maxgap" ] && [ "$wedged" = 1 ] && maxgap="$final_gap"
+  local heights=$(( last_h - h0 ))
+  # Honest-slash census over the soak window (I5): no honest validator slashed.
+  local slashes=0 v
+  for v in val-a val-b val-c val-d; do
+    jlog "$v" 400 | grep -qE 'validator slashed for equivocation' && slashes=$(( slashes + 1 ))
+  done
+  if [ "$wedged" = 1 ] || [ "$maxgap" -gt "$H_ESCAPE_S" ]; then
+    record "soak-publish-drain" fail major "WEDGE SIGNATURE under the publish/drain soak: a height went ${maxgap}s (> the computed ${H_ESCAPE_S}s escape bound) without a commit with the network live (h${h0}→h${last_h}, ${pub_ok}/${pubs} publishes landed) — the #432 escape did not clear the interleaved race; last client output: $(printf '%s' "$lastout" | tail -1 | head -c 200)"
+  elif [ "$heights" -lt "$SOAK_HEIGHTS" ] && [ "$heights" -lt $(( SOAK_HEIGHTS / 2 )) ]; then
+    record "soak-publish-drain" gap major "soak under-ran: only ${heights} of ${SOAK_HEIGHTS} heights committed within the ${wall}s wall (max inter-commit gap ${maxgap}s ≤ bound) — cadence, not a wedge; property PARTIALLY tested"
+  elif [ "$pub_ok" -eq 0 ]; then
+    record "soak-publish-drain" fail major "the chain advanced ${heights} heights under the soak but ZERO of ${pubs} publishes landed — launch-regime publish starvation (the #441 shape in the launch regime); last client output: $(printf '%s' "$lastout" | tail -1 | head -c 200)"
+  else
+    slo_assert "soak-publish-drain" major "launch-regime publish/drain SOAK: ${heights} heights committed under continuously interleaved publish (${pub_ok}/${pubs} landed) + natural renewal drain, max inter-commit gap ${maxgap}s ≤ the computed ${H_ESCAPE_S}s escape bound, ${slashes} honest-slash lines (want 0) — the #432 escape clears the production-reachable race the PE gate names" \
+      "$([ "$slashes" -eq 0 ] && echo 1 || echo 0)"
+  fi
 }
 
 run_all_scenarios() {
@@ -1217,5 +1333,6 @@ run_all_scenarios() {
   flow_chaos_crash               # chaos #7
   flow_web_ui_guard              # client/UI #4
   flow_c2_no_capture             # C2 Sybil #5 — opt-in (SYBILS=8): certifies the PURE anchor gate on cloud
+  flow_soak_publish_drain        # PE #432 gate — opt-in (SOAK=1, MATURING=0): launch publish/drain interleave soak
   flow_maturing_handoff          # §4/B2 #10 — opt-in (MATURING=1 SYBILS=8): handoff + post-shed + weight-quorum drills + WS cold-sync. LAST: it stops validators.
 }
