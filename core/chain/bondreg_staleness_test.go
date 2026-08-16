@@ -116,3 +116,55 @@ func TestBondRegRejectedBeyondHeadWindow_factorII(t *testing.T) {
 		t.Fatal("a reg stale BEYOND BondRegHeadWindow must be rejected — the freshness bound (C1) must hold")
 	}
 }
+
+// The AHEAD-skew face of the K-head window (run 09fbe60-84613: 54 submit
+// refusals, every one "signature", spread over ≥7 validators — 37× 64 MiB
+// maturer regs, 17× 1 MiB sybil regs): a renewal is signed over the
+// SUBMITTER's head, but a receiver accepts only nonces of its OWN last-K
+// COMMITTED heads (recentBondRegNonces walks committed ancestry — it cannot
+// contain a head the receiver has not committed). Under WAN commit-broadcast
+// skew the submitter is routinely one head AHEAD of a receiver, so the reg
+// fails every window nonce and surfaces as a bare "signature" refusal —
+// indistinguishable in the log from forgery, but TEMPORAL: it heals the
+// moment the receiver commits that head. This pins the mechanism so the
+// field refusal census reads as skew, not attack.
+func TestBondRegAheadOfReceiverWindow_refusedThenHeals(t *testing.T) {
+	const bond = int64(64) << 20
+	a1, a2 := key(9000), key(9001)
+	anchors := map[ports.NodeID]bool{idOf(a1): true, idOf(a2): true}
+	cfg := Config{Quorum: 1, MinBond: 1 << 20, Anchors: anchors, AnchorQuorum: 1, MatureValidators: 99}
+	c := New(cfg, func(ports.NodeID) int64 { return 0 })
+	c.SetBondVerifier(objectiveVerify)
+
+	g := &Block{Version: BlockVersion, Height: 0, Entries: []ports.Entry{entry(0)}}
+	Sign(g, a1)
+	if err := c.AppendGenesis(*g); err != nil {
+		t.Fatal(err)
+	}
+
+	// h1 commits ON THE SUBMITTER'S SIDE (broadcast in flight) — the receiver
+	// has not appended it yet.
+	b1 := &Block{Version: BlockVersion, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(1)}}
+	Sign(b1, a1)
+	b1.Atts = []Attestation{Attest(b1, a2)}
+
+	// The submitter signs its renewal over its OWN fresh head h1.
+	v := key(9200)
+	reg := bondRegDom(v, bond, b1.Hash(), 0)
+
+	// The receiver (still at genesis) REFUSES it — and the reason reads
+	// "signature", because no committed-window nonce matches a future head.
+	if err := c.ValidateBondRegErr(reg); err == nil {
+		t.Fatal("a reg signed over a head the receiver has not committed must be refused (the window walks committed ancestry only)")
+	}
+
+	// The refusal is TEMPORAL: once the receiver commits h1, the same bytes
+	// validate — no resigning needed, the submitter's resubmit sweep is just
+	// re-delivering into a converged window.
+	if err := c.Append(*b1); err != nil {
+		t.Fatalf("setup: the in-flight block must commit at the receiver: %v", err)
+	}
+	if !c.ValidateBondReg(reg) {
+		t.Fatal("the SAME reg must validate once the receiver commits the head it was signed over — the refusal is skew, not forgery")
+	}
+}

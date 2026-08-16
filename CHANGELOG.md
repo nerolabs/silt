@@ -9,6 +9,23 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **Drain-curve observability: commit lines carry the bond-reg count, and a refused
+  renewal submit is attributable to WAN head-skew instead of reading as forgery**
+  (2026-08-16) — The committed-block lines (daemon banner and the node's structured
+  `block committed`) printed entries and attestations but NOT how many bond registrations
+  the block banked, so a field journal could not answer the drain curve's decisive
+  question — which blocks carried which regs (the interrupted confirm run 09fbe60-84613
+  was misread as "blocks committing empty" while regs were in fact landing). All three
+  commit lines now print the reg count. And the census of that run's 54
+  `bond-reg submit REFUSED` lines — every one a bare "signature" error across ≥7 honest
+  validators — is the AHEAD-skew face of the #427 K-head window: a renewal is signed over
+  the submitter's head, a receiver accepts only nonces of its own last-K COMMITTED heads,
+  so a reg arriving ahead of the receiver's commit fails every window nonce and heals on
+  the next resubmit sweep. The refusal line now logs the receiver's next height, the
+  submit side logs the height it signed over (`bond renewal submitted`), and
+  `TestBondRegAheadOfReceiverWindow_refusedThenHeals` pins the mechanism — refused while
+  the receiver trails, the same bytes validate once it commits the head — so the field
+  signature-refusal census reads as commit-propagation skew, not attack.
 - **#432 rounds + locking: the two-phase (prepare→precommit) gather with a lock-carrying
   view-change — the I4 liveness escape, research-certified, era-gated as block version 2**
   (2026-08-16) — The #397 height-only never-sign-twice watermark made a crossed 2-2 proposer

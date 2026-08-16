@@ -377,7 +377,7 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 		ok := err == nil && n.chain.Append(*b) == nil
 		if ok {
 			n.Stats.BlocksCommitted++
-			n.logf(ports.LogInfo, "block committed", "height", b.Height, "entries", len(b.Entries), "attestations", len(b.Atts), "via", "broadcast")
+			n.logf(ports.LogInfo, "block committed", "height", b.Height, "entries", len(b.Entries), "regs", len(b.BondRegs), "attestations", len(b.Atts), "via", "broadcast")
 			if n.onCommit != nil {
 				n.onCommit(*b)
 			}
@@ -412,7 +412,15 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 			if reg, err := bondRegDecode(msg.Data); err != nil {
 				n.logf(ports.LogInfo, "bond-reg submit REFUSED (decode)", "from", from, "bytes", len(msg.Data), "err", err)
 			} else if verr := n.chain.ValidateBondRegErr(reg); verr != nil {
-				n.logf(ports.LogInfo, "bond-reg submit REFUSED", "from", from, "validator", reg.ValidatorID(), "size", reg.Size, "err", verr)
+				// A "signature" refusal here is usually TEMPORAL, not forgery: the reg
+				// is signed over the submitter's head, and this replica accepts only
+				// nonces of its own last-K COMMITTED heads — a reg signed over a head
+				// we haven't committed yet (WAN skew: submitter ahead) fails every
+				// window nonce and heals on the submitter's next-sweep resubmit (run
+				// 09fbe60-84613: 54 refusals, all "signature", all self-healed). Log
+				// our next height so a field read can correlate refusal with skew.
+				_, next := n.chain.Head()
+				n.logf(ports.LogInfo, "bond-reg submit REFUSED", "from", from, "validator", reg.ValidatorID(), "size", reg.Size, "next_height", next, "err", verr)
 			} else {
 				if n.pendingBondRegs == nil {
 					n.pendingBondRegs = make(map[ports.NodeID]chain.BondReg)
@@ -756,7 +764,7 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 					return
 				}
 				n.Stats.BlocksCommitted++
-				n.logf(ports.LogInfo, "block committed", "height", b.Height, "round", round, "entries", len(b.Entries), "attestations", len(pcs), "via", "proposal")
+				n.logf(ports.LogInfo, "block committed", "height", b.Height, "round", round, "entries", len(b.Entries), "regs", len(b.BondRegs), "attestations", len(pcs), "via", "proposal")
 				if n.onCommit != nil {
 					n.onCommit(*b)
 				}
