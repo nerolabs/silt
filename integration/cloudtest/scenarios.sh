@@ -347,16 +347,25 @@ flow_fault_tolerance() {
   local h0; h0="$(ft_commit_height "$boot")"   # audit #303: baseline BEFORE stopping val-d + publishing
   svc val-d stop || true
   sleep 5
+  # FT_DOWN_COMMIT_S is COMPUTED (PE §4), not the generic COMMIT_SLO_S: under the
+  # #441 certified design every publish rides the designee rotation, and a height
+  # whose (h, r0) designee is the DOWN validator pays the round escape before a
+  # live designee carries the entry — H_ESCAPE_S (2 sweeps × 30s + a ~34s gather
+  # leg ≈ 160s, the soak drill's bound) + one gather-leg margin. The old 90s
+  # window under-provisioned exactly this path (confirm run 54003f7-91159 flow-6
+  # GAP), and its gap text presumed "quorum sizing" — the harness must never
+  # presume the mechanism (consensus-discipline rule 7).
+  : "${FT_DOWN_COMMIT_S:=200}"
   local res ok=0
   res="$(ft_publish fetch-1 262144 || true)"
   if [ -n "$res" ]; then
     # Require a NEW block with val-d down, not a stale pre-kill 'committed block' line.
-    ft_wait_new_block "$boot" "$h0" "$COMMIT_SLO_S" && ok=1
+    ft_wait_new_block "$boot" "$h0" "$FT_DOWN_COMMIT_S" && ok=1
   fi
   if [ "$ok" = 1 ]; then
-    slo_assert "6-fault-tolerance" major "publish still committed with one validator (val-d) down" 1
+    slo_assert "6-fault-tolerance" major "publish still committed with one validator (val-d) down (within the computed ${FT_DOWN_COMMIT_S}s down-designee escape bound)" 1
   else
-    record "6-fault-tolerance" gap major "surviving validators did not commit with val-d down — likely quorum/byzantine-quorum sizing; pin -quorum for the validator count (see README shakedown notes)"
+    record "6-fault-tolerance" gap major "no new commit within the computed ${FT_DOWN_COMMIT_S}s down-designee bound with val-d down — read the captured client error (publish-diag / .ft_publish_lasterr) before attributing; candidates: the O(f+1) designee ladder under load, quorum sizing, or a real FT break"
   fi
   svc val-d start || true
 }
