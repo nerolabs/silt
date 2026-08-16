@@ -631,8 +631,11 @@ func cmdDaemon(args []string) error {
 			fmt.Printf("chain: reorged onto a heavier fork (dropped %d block(s), new head height %d)\n", dropped, newHeight)
 		})
 		nd.OnCommit(func(b chain.Block) {
-			fmt.Printf("chain: committed block %d (%d entries, %d attestations)\n",
-				b.Height, len(b.Entries), len(b.Atts))
+			// bond-regs is the DRAIN CURVE's per-block resolution: without it a
+			// journal cannot say which committed blocks banked which registrations
+			// (run 09fbe60-84613 read entries=0 as "empty" while regs were landing).
+			fmt.Printf("chain: committed block %d (%d entries, %d bond-regs, %d attestations)\n",
+				b.Height, len(b.Entries), len(b.BondRegs), len(b.Atts))
 			// C2 — no-quiet-capture concentration, from the COMMITTED bond ledger
 			// (not gossip). Operators is the coefficient discounted by the operator
 			// margin M; the training wheels are shed only once it clears the maturity bar.

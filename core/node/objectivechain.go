@@ -75,11 +75,16 @@ func (n *Node) SubmitBondRenewal(peers []ports.NodeID) {
 	if !n.chain.BondRenewalDue(n.id) {
 		return
 	}
-	head, _ := n.chain.Head()
+	head, next := n.chain.Head()
 	reg, ok := n.RegisterBondReg(head)
 	if !ok {
 		return
 	}
+	// The signed-over head is the other half of the refusal correlation: a
+	// receiver whose committed window does not yet include this head refuses
+	// the reg with a bare "signature" error (chainrole MsgSubmitBondReg), so
+	// without this line a field read cannot tell WAN head-skew from forgery.
+	n.logf(ports.LogInfo, "bond renewal submitted", "signed_next_height", next, "size", reg.Size, "peers", len(peers))
 	raw := bondRegEncode(reg)
 	for _, p := range peers {
 		if p == n.id {
