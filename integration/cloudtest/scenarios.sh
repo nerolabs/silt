@@ -14,14 +14,19 @@ set -uo pipefail
 # the deployed flags: -request-timeout 8s × (1 + 3 -request-retries) + backoff
 # (250ms doubling: 0.25+0.5+1) ≈ 34s/leg. The fresh-publisher path is ~5
 # sequential legs (join/bootstrap → canonical-issuer ranking fetch → parallel
-# token gather (#388) → scatter+confirm → register, whose commit wait adds ≤ one
-# 30s ChainSyncInterval drain sweep + a gather leg ≈ 64s): 4×34 + 64 ≈ 200s;
-# +1 leg-equivalent for the relay hop on the cross-NAT flow ≈ 234s → 240.
+# token gather (#388) → scatter+confirm → register): 4×34 ≈ 136s; the COMMIT
+# WAIT leg is escape-aware under the #451 synchronizer durations (submit-then-
+# poll rides the designee rotation, and a contested height may pay the 2-round
+# escape: H_ESCAPE_S ≈ 220s — see its derivation at the soak defaults) ≈
+# 136 + 220 ≈ 356 → 360; +1 leg-equivalent for the relay hop on the cross-NAT
+# flow is absorbed by the same allowance. (240 was the pre-#453 figure — its
+# commit-wait leg assumed one flat 64s drain cycle; run 82bcd2b-39478's only
+# non-#345/#350 GAP was a publish missing exactly this stale window.)
 # Fetch is ~3 legs (discovery → manifest → parallel chunk fetches) ≈ 102s → 120.
 : "${COMMIT_SLO_S:=90}"
 : "${FETCH_SLO_S:=120}"
 : "${RESTART_SLO_S:=60}"
-: "${PUBLISH_RETRY_S:=240}"
+: "${PUBLISH_RETRY_S:=360}"
 
 # ── swarm references (validators as peers; val-a serves the registry) ───────────
 ft_peers() {
