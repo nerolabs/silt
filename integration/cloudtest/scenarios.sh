@@ -350,12 +350,9 @@ flow_fault_tolerance() {
   # FT_DOWN_COMMIT_S is COMPUTED (PE §4), not the generic COMMIT_SLO_S: under the
   # #441 certified design every publish rides the designee rotation, and a height
   # whose (h, r0) designee is the DOWN validator pays the round escape before a
-  # live designee carries the entry — H_ESCAPE_S (2 sweeps × 30s + a ~34s gather
-  # leg ≈ 160s, the soak drill's bound) + one gather-leg margin. The old 90s
-  # window under-provisioned exactly this path (confirm run 54003f7-91159 flow-6
-  # GAP), and its gap text presumed "quorum sizing" — the harness must never
-  # presume the mechanism (consensus-discipline rule 7).
-  : "${FT_DOWN_COMMIT_S:=200}"
+  # live designee carries the entry — the 220s 2-round escape bound under the
+  # #451 increasing durations (see H_ESCAPE_S) + one gather-leg margin ≈ 260.
+  : "${FT_DOWN_COMMIT_S:=260}"
   local res ok=0
   res="$(ft_publish fetch-1 262144 || true)"
   if [ -n "$res" ]; then
@@ -890,20 +887,23 @@ flow_c2_no_capture() {
 # commits grade; log lines corroborate.
 # LATCH_S is COMPUTED (PE §4), not arbitrary: the latch trips once TWO maturer
 # bonds commit (bar 2 = min(NakamotoOperators, NakamotoDomains) over the
-# non-anchor set; C2Metric excludes anchors). Worst case the maturers drain
-# LAST — reg packing is validator-ID-sorted (chainrole.go), so ordering is
-# seed-luck — which makes the bound the FULL-drain bound: 8 large regs
-# (4 anchors + 4 maturers, ~1.5MB each ⇒ ~1/block under the 2MiB
-# MaxBondRegBytesPerBlock cap) + 1 block for the 4 small sybil regs ≈ 9
-# reg-blocks × worst-case block time (30s ChainSyncInterval drain sweep + a
-# 34s gather leg ≈ 64s) + one 34s submission leg ≈ 610s → 630. Measured
-# typical cadence is ~32s/block, so the expected trip is ~minutes — the
-# headroom is the worst-case stack, and the drain begins at network start, well
-# before this flow runs (waitfor matches the C2 line, which repeats on every
-# commit). Per the PE rule: with the premise fixed (maturer cohort deployed), a
-# latch that misses even THIS window is a FAIL — a finding — never a re-grade.
-: "${LATCH_S:=630}"
-: "${HANDOFF_BLOCKS_S:=600}"
+# non-anchor set; C2Metric excludes anchors). The reg queue is FIFO-by-arrival
+# since #448 (the ID-sort seed-luck is gone), so the bound is ~2 maturer
+# reg-blocks + interleaved renewal/first-timer traffic — a 5-reg-block
+# allowance × the worst-case per-height bound under the #451 synchronizer
+# durations (H_ESCAPE_S = 220s: dur(0)+dur(1) sweeps + a gather leg) ≈ 1100.
+# The drain begins at network start, well before this flow runs (waitfor
+# matches the C2 line, which repeats on every commit); runs ce15a80/e2fab4b
+# latched at h15/h16 in well under half this. Per the PE rule: with the
+# premise fixed, a latch that misses even THIS window is a FAIL — a finding —
+# never a re-grade.
+: "${LATCH_S:=1100}"
+# HANDOFF_BLOCKS_S: the drive must cross the next epoch boundary + 1 from
+# wherever the latch left the head — ≤ 9 blocks × the 220s worst-height bound
+# ≈ 1980. Run e2fab4b-9589 FAILed the old 600s window while genuinely crossing
+# (h40→51 at the measured 80–170s/height steady cadence): 600 assumed the
+# pre-#451 64s worst-case block. A miss inside THIS bound is a real stall.
+: "${HANDOFF_BLOCKS_S:=1980}"
 flow_maturing_handoff() {
   local maturing
   maturing="$(python3 -c "import json;print(json.load(open('$FT_DIR/topology.json'))['meta'].get('maturing',0))")"
@@ -1004,7 +1004,12 @@ flow_maturing_handoff() {
   done
   local anchor_refusal=0
   jlog val-a 400 | grep -qE 'immature network requires anchor|requires anchor attestations' && anchor_refusal=1
-  slo_assert "10-maturing-handoff" major "young→mature HANDOFF field-exercised: latch tripped on the wire, commits crossed the epoch boundary into the governed mature snapshot (h${h_latch}→$(mh_ceiling), target h${target}), and no anchor-required refusal after the shed$([ "$anchor_refusal" = 1 ] && echo ' (ANCHOR REFUSAL SEEN POST-SHED — the wheels did not shed)')" \
+  # Capture the ceiling ONCE for both the verdict and its message: run
+  # e2fab4b-9589 printed a success-shaped FAIL because the message re-read
+  # mh_ceiling at print time (h51, past target) while the drive loop had
+  # timed out below it — a verdict and its evidence must read the same state.
+  local h_end; h_end="$(mh_ceiling)"
+  slo_assert "10-maturing-handoff" major "young→mature HANDOFF: latch tripped on the wire; drive reached h${h_end} (target h${target}) within ${HANDOFF_BLOCKS_S}s$([ "$ok" = 1 ] || echo ' — TARGET NOT REACHED IN BOUND')$([ "$anchor_refusal" = 1 ] && echo ' (ANCHOR REFUSAL SEEN POST-SHED — the wheels did not shed)')" \
     "$([ "$ok" = 1 ] && [ "$anchor_refusal" = 0 ] && echo 1 || echo 0)"
   [ "$ok" = 1 ] || return  # no governed mature epoch ⇒ the drills below are untestable
 
@@ -1057,16 +1062,11 @@ flow_maturing_handoff() {
   else
     echo "    stall drill: stopping the $n_syb-member cohort (declining to attest)…"
     local s; for s in $sybils; do svc "$s" stop >/dev/null 2>&1 || true; done
-    # STALL_S is COMPUTED (PE §4) — run a56ac10-42834 graded this drill on ONE
-    # 90s drive and FAILed a network that provably commits: (a) 90s is below the
-    # per-height round-escape bound (roundAdvanceSweeps 2 × 30s sweeps + a ~34s
-    # gather leg + the observed r1 new-view cycle ≈ 95–155s), and (b) with the
-    # cohort DOWN, a height whose drain designee is a downed sybil first pays the
-    # staggered-takeover ladder ((3+dist) sweeps × 30s). Worst case here:
-    # (3+n_syb)×30 + 160. Any honest ceiling advance (a drain commit counts —
-    # the property is "the honest coalition still commits", not "a publish lands
-    # in 90s"; the publish half is #441's finding, graded separately).
-    : "${STALL_S:=$(( (3 + n_syb) * 30 + 160 ))}"
+    # STALL_S is COMPUTED (PE §4) under the #451 synchronizer durations: the
+    # staggered-takeover ladder ((3+n_syb)×30s) for downed designees + the
+    # 2-round escape bound (220s — see H_ESCAPE_S derivation). Any honest
+    # ceiling advance (a drain commit counts) refutes the stall.
+    : "${STALL_S:=$(( (3 + n_syb) * 30 + 220 ))}"
     local stall_ok=0 t_stall; t_stall="$(date +%s)"
     while [ $(( $(date +%s) - t_stall )) -lt "$STALL_S" ]; do
       mh_drive_block && { stall_ok=1; break; }
@@ -1234,12 +1234,15 @@ wait_publisher_warm() { # wait_publisher_warm NODE
 # is #441's separately-graded question). Design: docs/thinking/2026-08-16-launch-
 # soak-drill-design.md. Opt-in: SOAK=1.
 #
-# The per-height escape bound H_ESCAPE_S is COMPUTED (PE §4): the #432 escape needs
-# roundAdvanceSweeps(2) sweeps × ChainSyncInterval(30s) to fire a round-change,
-# plus one ~34s computed gather leg, with a 2-round allowance (the observed steady
-# state commits at r1): 2×(2×30)+34 ≈ 154 → 160. A height older than that with the
-# network live is the WEDGE SIGNATURE and a FAIL (PE §4 — a miss inside a
-# principled bound is a finding), never a window artifact.
+# The per-height escape bound H_ESCAPE_S is COMPUTED (PE §4) under the #451
+# synchronizer's INCREASING round durations (core/node/rounds.go sweepsForRound:
+# dur(r) = 2 + r(r+1)/2 sweeps × the 30s ChainSyncInterval): a 2-round allowance
+# costs dur(0)+dur(1) = 2+3 = 5 sweeps = 150s, plus one ~34s computed gather leg
+# ≈ 184 → 220 (run e2fab4b-9589 measured 80–170s/height at steady state). A
+# height older than that with the network live is the WEDGE SIGNATURE and a FAIL
+# (PE §4 — a miss inside a principled bound is a finding), never a window
+# artifact. Escape FREQUENCY at steady state (~half of heights reach r1) is an
+# M1 cadence question, tracked separately — the bound covers the mechanism.
 flow_soak_publish_drain() {
   [ "${SOAK:-0}" = 1 ] || return 0
   local n_mat_soak
@@ -1249,7 +1252,7 @@ flow_soak_publish_drain() {
     return
   fi
   require_nodes "soak-publish-drain" major val-a val-b val-c val-d || return
-  : "${H_ESCAPE_S:=160}"
+  : "${H_ESCAPE_S:=220}"
   : "${SOAK_HEIGHTS:=20}"
   local wall=$(( SOAK_HEIGHTS * 64 ))   # 64s worst-case block time — the LATCH_S arithmetic
   # Launch ceiling over the validators (mirrors mh_ceiling, which is flow-10-local).
