@@ -75,3 +75,19 @@ two-quorum v2 commit with no author prepare must be REFUSED — red before the
 rule, green after), and the #345/#378 drills flip green only once
 `proposeAndCommitTo` is forced to staple the adversary's own round-scoped
 signatures — the accountability doing its job.
+
+## Post-certification correction (research, 2026-08-16 — rule CERTIFIED as-is)
+
+Certification:
+`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/432-proposer-prepare-required-RESEARCH-CERTIFICATION-2026-08-16.md`.
+**One arithmetic correction to this doc's framing (its §2):** my "zero slashable
+evidence" claim at the A=4 drill shape was imprecise — two strict-majority anchor
+sets at EVEN A must share a non-proposer attester (`2·⌊A/2⌋ > A−1`), who
+equivocates and is itself slashable. The FULLY-unattributable two-fork commit
+(proposer the sole culprit, zero evidence) exists at **odd A ≥ 5** and in the
+**mature regime with a ≥⅓-weight proposer** (two >⅔-weight sets disjoint except
+the proposer). At A=4 the real gap is that the PROPOSER escapes attribution and
+accountability depends on catching a colluder. Research's read: this makes the
+rule's necessity cleaner, not weaker. Follow-ups filed (non-blocking, do not
+gate the merge): drill minimal-A fidelity (§5.1) and wire authentication for
+the in-transit certificate-strip residual (§5.2, transport-layer).
