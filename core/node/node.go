@@ -544,7 +544,7 @@ type Node struct {
 	// objective standing only when IT proposes, so with a bond TTL on (RT-2), an
 	// attest-only validator would never renew and would lapse, dropping the
 	// quorum's weight. Keyed by validator id; the latest submission wins.
-	pendingBondRegs map[ports.NodeID]chain.BondReg
+	pendingBondRegs []pendingBondReg
 	// pendingEntries is the ENTRY MEMPOOL (#441, certified 2026-08-16): publish
 	// entries PEERS submitted (MsgSubmitEntry) that the next block this node
 	// proposes will fold in — entries are block CONTENT the single (h,r)
@@ -763,7 +763,6 @@ func New(id ports.NodeID, cfg Config, clock ports.Clock, tr ports.Transport, sto
 		peerBondRTT:       make(map[ports.NodeID]*latWindow),
 		bondChallengeRate: make(map[ports.NodeID]*challengerRate),
 		slashedLocal:      make(map[ports.NodeID]bool),
-		pendingBondRegs:   make(map[ports.NodeID]chain.BondReg),
 		peerIssuerKeys:    make(map[ports.NodeID]*rsa.PublicKey),
 		creditSpent:       make(map[string]bool),
 		tokenIssued:       make(map[string]tokenIssuedEntry),

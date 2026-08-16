@@ -101,7 +101,7 @@ func TestTakeoverIsStaggeredByProposerRank397(t *testing.T) {
 	// Give the non-designated node pending PEER work (the takeover premise).
 	// A zero-value reg suffices to arm the trigger; validity is enforced later
 	// at embed time, not at the takeover decision.
-	other.pendingBondRegs[identity.FromSeed(9109).NodeID()] = chain.BondReg{}
+	other.pendingBondRegs = []pendingBondReg{{R: chain.BondReg{}}}
 
 	dist := 1 // two proposers: the non-designated one is rank distance 1
 	for sweep := 0; sweep < 3+dist; sweep++ {
