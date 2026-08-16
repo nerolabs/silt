@@ -569,6 +569,11 @@ type Node struct {
 	// liveness fallback lets this node take over (see maybeProposeBondDrain).
 	bondDrainInFlight bool
 	drainWaitSweeps   int
+	// rounds is the #432 per-height round/lock/view-change state (see
+	// core/node/rounds.go). Lazily (re)created for the current working height
+	// by roundsFor; carries the lock (highest witnessed prepare-QC) and the
+	// collected round-change messages.
+	rounds *heightRounds
 	// denylist is the operator's local takedown list (nil = none). The
 	// effective set also includes on-chain revocations, but ONLY if the
 	// operator subscribed via SetHonorChainRevocations; see isDenied.

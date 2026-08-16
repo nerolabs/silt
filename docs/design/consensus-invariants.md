@@ -84,27 +84,33 @@ The set is closed and small. Everything hit so far is a corollary of I1 + I3 + I
 
 **Scars:**
 - **#397** — launch treated `committed == finalized` at a non-intersecting 2-of-4 (`chain.go:2001` "Launch-phase: finalized == committed head"), so a clean 2-2 fork became **two finalized blocks that can never reorg → permanent wedge.** Decoupling commit (2, live) from final (intersecting, safe) lets fork-choice resolve the fork instead of wedging.
-- **#432 (the LIVENESS half — 2026-08-15).** The height-only #397 watermark permanently
-  wedges a height whose gather fails: a crossed publish-vs-drain proposer race splitting the
-  anchor signatures 2-2 leaves every anchor able to sign only its own block at that height,
-  no block can reach the strict anchor majority, fresh proposals die at their proposers' own
-  watermarks, and the mark clears only on a commit the marks forbid — a **permanent stall of
-  a connected, all-honest, 0-fault network**, violating this invariant's assert-note
-  verbatim (both MATURING field starves at tip ~6; deterministic repro
-  `core/node/modelcheck_i4_liveness_test.go`, RED). Fork-choice cannot resolve what never
-  committed — the safety rulings above covered I4's *safety* face and missed this one.
-  **Required mechanism (PE-ruled, research certification pending): rounds WITH locking** —
-  Tendermint `(height, round)` + lock/Proof-of-Lock-Change (or HotStuff lock-on-QC), never a
-  bare round counter (free higher-round re-signing re-opens I1 via a delayed lower-round
-  quorum); round-advance deterministic (sweep-count, never wall-clock — B2/#3); equivocation
-  becomes same-`(height, round)` (I5). Consult:
-  `silt-reviews/research/432-rounds-locking-liveness-CONSULT.md`.
+- **#432 (the LIVENESS half — 2026-08-15; mechanism SHIPPED 2026-08-16).** The height-only
+  #397 watermark permanently wedged a height whose gather fails: a crossed publish-vs-drain
+  proposer race splitting the anchor signatures 2-2 left every anchor able to sign only its
+  own block at that height, no block could reach the strict anchor majority, fresh proposals
+  died at their proposers' own watermarks, and the mark cleared only on a commit the marks
+  forbade — a **permanent stall of a connected, all-honest, 0-fault network**, violating this
+  invariant's assert-note verbatim (both MATURING field starves at tip ~6; deterministic
+  repro `core/node/modelcheck_i4_liveness_test.go`, born RED). Fork-choice cannot resolve
+  what never committed — the safety rulings above covered I4's *safety* face and missed this
+  one. **Shipped mechanism (research-certified, plain T1): the era-2 two-phase gather** —
+  `(height, round, phase)`-scoped signatures, a two-certificate commit (prepare-QC +
+  precommit, each at the full commit threshold in both regimes — the POL threshold IS the
+  commit threshold), lock-on-prepare-QC (durable, restart-rehydrated), deterministic
+  sweep-count round advance (never wall-clock — B2/#3), a view-change that carries the
+  highest lock forward, round-scoped equivocation (I5), and the author's required
+  round-scoped self-prepare (the structural ProposerSig's era-2 analogue — keeps a
+  double-proposal attributable, count-neutral in every quorum). Merge gate held: the S1/S2
+  oracles (`core/node/modelcheck_s1s2_test.go`, mature faces in
+  `core/chain/modelcheck_s1s2_mature_test.go`) are RED against a recorded lock-free revert,
+  GREEN with the prepare phase. Certification:
+  `silt-reviews/research/research-outcome/432-rounds-locking-liveness-RESEARCH-CERTIFICATION-2026-08-15.md`.
 
 **Ruling — I4 is a *permission*, not a build mandate (owner, 2026-08-14).** The invariant is satisfied whenever nothing non-intersecting can finalize; it does **not** require silt to build a commit/final decoupling. Research has twice ruled the minimal path instead: the #397 certification found launch finality already intersecting once the ledger write landed, and the #402 certification's M0 set is the strict-anchor-majority rule alone ("no fork-choice change, no D-1 change") — with an intersecting launch finality quorum, `commit == final` satisfies I4 trivially. The supporting research rule to remember: **the finality gate enforces, it does not create** — `ErrPreFinalityReorg` stops a node reverting its *own* head, never two groups finalizing conflicting blocks; leaning on the gate to fix a non-intersecting quorum *cements* the fork. A decoupling is built only if the model-check produces a schedule that violates I4 as stated — that evidence, not this scar note, reopens the question (build-immutable #7).
 
 **Governs (code):** `core/chain/chain.go` — finality gate (~:2001), `ErrPreFinalityReorg` (:412), `heavier`/`Reconcile` (:1651 / ~:2001).
 
-**Assert (test):** a 2-2 non-intersecting fork is **resolved by fork-choice** (loser reorgs — allowed, it was never final), never wedges; a connected network never suffers a *permanent* non-final stall (**the liveness half — now asserted by `TestModelCheck_I4_WedgedHeightMustRecover`, RED until the #432 rounds+locking fix lands**); a publish link is issued only after finality.
+**Assert (test):** a 2-2 non-intersecting fork is **resolved by fork-choice** (loser reorgs — allowed, it was never final), never wedges; a connected network never suffers a *permanent* non-final stall (**the liveness half — asserted by `TestModelCheck_I4_WedgedHeightMustRecover`, GREEN with the #432 rounds+locking mechanism**); a publish link is issued only after finality.
 
 **Literature (B8):** Gasper — LMD-GHOST advances the head optimistically, Casper FFG finalizes at ⅔ behind it. The commit/final separation is the norm, not a silt invention.
 

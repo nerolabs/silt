@@ -1,0 +1,370 @@
+=== captured live 2026-08-15T23:34:30Z from interrupted run 09fbe60-84613 (branch @09fbe60) ===
+===== val-a: drain/round/new-view/commit tail =====
+2026-08-15T23:30:49.399Z info round-change: recorded (#432 view-change) from=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 height=42 round=1 carries_lock=false
+2026-08-15T23:30:49.817Z info round-change: recorded (#432 view-change) from=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda height=42 round=1 carries_lock=false
+2026-08-15T23:30:53.211Z info round-change: recorded (#432 view-change) from=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 height=42 round=1 carries_lock=false
+2026-08-15T23:30:58.212Z info round-change: recorded (#432 view-change) from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 height=42 round=1 carries_lock=false
+2026-08-15T23:30:58.826Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=42 round=0 mark_height=42 mark_round=1 pending=9
+2026-08-15T23:30:58.832Z info round-change: advancing (#432 view-change) height=42 round=1 locked=false pending=9
+2026-08-15T23:31:00.871Z info round-change: recorded (#432 view-change) from=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a height=42 round=1 carries_lock=false
+2026-08-15T23:31:14.014Z info block committed height=42 entries=0 attestations=8 via=broadcast
+2026-08-15T23:31:48.055Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=43 round=0 mark_height=43 mark_round=0 pending=9
+2026-08-15T23:31:49.187Z info round-change: recorded (#432 view-change) from=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb height=43 round=1 carries_lock=false
+2026-08-15T23:31:50.682Z info round-change: recorded (#432 view-change) from=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b height=43 round=1 carries_lock=false
+2026-08-15T23:31:51.075Z info round-change: recorded (#432 view-change) from=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 height=43 round=1 carries_lock=false
+2026-08-15T23:31:53.462Z info round-change: recorded (#432 view-change) from=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 height=43 round=1 carries_lock=false
+2026-08-15T23:31:53.941Z info round-change: recorded (#432 view-change) from=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 height=43 round=1 carries_lock=false
+2026-08-15T23:31:54.043Z info round-change: recorded (#432 view-change) from=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda height=43 round=1 carries_lock=false
+2026-08-15T23:31:55.263Z info round-change: recorded (#432 view-change) from=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 height=43 round=1 carries_lock=false
+2026-08-15T23:31:58.623Z info round-change: recorded (#432 view-change) from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 height=43 round=1 carries_lock=false
+2026-08-15T23:31:59.454Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=43 round=0 mark_height=43 mark_round=0 pending=9
+2026-08-15T23:31:59.461Z info round-change: advancing (#432 view-change) height=43 round=1 locked=false pending=9
+2026-08-15T23:32:01.001Z info round-change: recorded (#432 view-change) from=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a height=43 round=1 carries_lock=false
+2026-08-15T23:32:21.894Z info bond-reg submit REFUSED from=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 validator=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 size=67108864 err="chain: invalid on-chain bond registration: validator 62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 signature"
+2026-08-15T23:32:29.857Z info block committed height=43 entries=0 attestations=5 via=broadcast
+2026-08-15T23:32:58.424Z info round-change: recorded (#432 view-change) from=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 height=44 round=1 carries_lock=false
+2026-08-15T23:32:58.446Z info round-change: recorded (#432 view-change) from=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 height=44 round=1 carries_lock=false
+2026-08-15T23:32:58.642Z info round-change: recorded (#432 view-change) from=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 height=44 round=1 carries_lock=false
+2026-08-15T23:32:58.715Z info round-change: recorded (#432 view-change) from=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb height=44 round=1 carries_lock=false
+2026-08-15T23:32:59.747Z info round-change: recorded (#432 view-change) from=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 height=44 round=1 carries_lock=false
+2026-08-15T23:33:00.629Z info round-change: advancing (#432 view-change) height=44 round=1 locked=false pending=9
+2026-08-15T23:33:01.531Z info round-change: recorded (#432 view-change) from=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda height=44 round=1 carries_lock=false
+2026-08-15T23:33:02.460Z info round-change: recorded (#432 view-change) from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 height=44 round=1 carries_lock=false
+2026-08-15T23:33:03.487Z info round-change: recorded (#432 view-change) from=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b height=44 round=1 carries_lock=false
+2026-08-15T23:33:03.982Z info round-change: recorded (#432 view-change) from=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a height=44 round=1 carries_lock=false
+2026-08-15T23:33:22.699Z info block committed height=44 entries=0 attestations=6 via=broadcast
+2026-08-15T23:33:46.827Z info round-change: recorded (#432 view-change) from=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 height=45 round=1 carries_lock=false
+2026-08-15T23:33:49.205Z info round-change: recorded (#432 view-change) from=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 height=45 round=1 carries_lock=true
+2026-08-15T23:33:49.408Z info round-change: recorded (#432 view-change) from=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda height=45 round=1 carries_lock=true
+2026-08-15T23:33:49.415Z info round-change: recorded (#432 view-change) from=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 height=45 round=1 carries_lock=false
+2026-08-15T23:34:10.024Z info block committed height=45 entries=0 attestations=7 via=broadcast
+2026-08-15T23:34:29.484Z info round-change: recorded (#432 view-change) from=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 height=46 round=1 carries_lock=false
+2026-08-15T23:34:33.911Z info round-change: recorded (#432 view-change) from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 height=46 round=1 carries_lock=false
+===== val-b: drain/round/new-view/commit tail =====
+2026-08-15T23:30:49.840Z info round-change: recorded (#432 view-change) from=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda height=42 round=1 carries_lock=false
+2026-08-15T23:30:53.137Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=42 round=0 mark_height=42 mark_round=0 pending=10
+2026-08-15T23:30:53.144Z info round-change: advancing (#432 view-change) height=42 round=1 locked=false pending=10
+2026-08-15T23:30:58.169Z info round-change: recorded (#432 view-change) from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 height=42 round=1 carries_lock=false
+2026-08-15T23:30:58.854Z info round-change: recorded (#432 view-change) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 height=42 round=1 carries_lock=false
+2026-08-15T23:31:00.829Z info round-change: recorded (#432 view-change) from=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a height=42 round=1 carries_lock=false
+2026-08-15T23:31:19.891Z info bond-reg submit REFUSED from=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 validator=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 size=67108864 err="chain: invalid on-chain bond registration: validator cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 signature"
+2026-08-15T23:31:22.292Z info bond-reg submit REFUSED from=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 validator=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 size=1048576 err="chain: invalid on-chain bond registration: validator b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 signature"
+2026-08-15T23:31:50.137Z info round-change: recorded (#432 view-change) from=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb height=43 round=1 carries_lock=false
+2026-08-15T23:31:51.005Z info round-change: recorded (#432 view-change) from=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b height=43 round=1 carries_lock=false
+2026-08-15T23:31:51.078Z info round-change: recorded (#432 view-change) from=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 height=43 round=1 carries_lock=false
+2026-08-15T23:31:53.395Z info round-change: recorded (#432 view-change) from=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 height=43 round=1 carries_lock=false
+2026-08-15T23:31:53.874Z info round-change: recorded (#432 view-change) from=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 height=43 round=1 carries_lock=false
+2026-08-15T23:31:54.053Z info round-change: recorded (#432 view-change) from=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda height=43 round=1 carries_lock=false
+2026-08-15T23:31:55.195Z info round-change: advancing (#432 view-change) height=43 round=1 locked=false pending=9
+2026-08-15T23:31:58.576Z info round-change: recorded (#432 view-change) from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 height=43 round=1 carries_lock=false
+2026-08-15T23:31:59.480Z info round-change: recorded (#432 view-change) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 height=43 round=1 carries_lock=false
+2026-08-15T23:32:00.965Z info round-change: recorded (#432 view-change) from=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a height=43 round=1 carries_lock=false
+2026-08-15T23:32:07.236Z info block committed height=43 entries=0 attestations=5 via=broadcast
+2026-08-15T23:32:58.384Z info round-change: recorded (#432 view-change) from=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 height=44 round=1 carries_lock=false
+2026-08-15T23:32:58.396Z info round-change: recorded (#432 view-change) from=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 height=44 round=1 carries_lock=false
+2026-08-15T23:32:58.572Z info round-change: advancing (#432 view-change) height=44 round=1 locked=false pending=9
+2026-08-15T23:32:58.667Z info round-change: recorded (#432 view-change) from=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb height=44 round=1 carries_lock=false
+2026-08-15T23:32:59.678Z info round-change: recorded (#432 view-change) from=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 height=44 round=1 carries_lock=false
+2026-08-15T23:33:00.894Z info round-change: recorded (#432 view-change) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 height=44 round=1 carries_lock=false
+2026-08-15T23:33:01.539Z info round-change: recorded (#432 view-change) from=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda height=44 round=1 carries_lock=false
+2026-08-15T23:33:01.539Z info new-view proposal (#432 view-change) height=44 round=1 forced=false
+2026-08-15T23:33:04.274Z info round-change: recorded (#432 view-change) from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 height=44 round=1 carries_lock=false
+2026-08-15T23:33:04.282Z info round-change: recorded (#432 view-change) from=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b height=44 round=1 carries_lock=false
+2026-08-15T23:33:04.290Z info round-change: recorded (#432 view-change) from=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a height=44 round=1 carries_lock=false
+2026-08-15T23:33:13.095Z info block committed height=44 round=1 entries=0 attestations=6 via=proposal
+2026-08-15T23:33:46.781Z info round-change: recorded (#432 view-change) from=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 height=45 round=1 carries_lock=false
+2026-08-15T23:33:48.662Z info round-change: recorded (#432 view-change) from=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 height=45 round=1 carries_lock=true
+2026-08-15T23:33:49.464Z info block committed height=45 round=0 entries=0 attestations=7 via=proposal
+2026-08-15T23:34:27.814Z info bond-reg drain: pending registrations committed height=45
+2026-08-15T23:34:29.411Z info round-change: advancing (#432 view-change) height=46 round=1 locked=false pending=8
+2026-08-15T23:34:33.860Z info round-change: recorded (#432 view-change) from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 height=46 round=1 carries_lock=false
+2026-08-15T23:34:36.570Z info round-change: recorded (#432 view-change) from=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a height=46 round=1 carries_lock=false
+2026-08-15T23:34:36.613Z info round-change: recorded (#432 view-change) from=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b height=46 round=1 carries_lock=false
+2026-08-15T23:34:36.645Z info round-change: recorded (#432 view-change) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 height=46 round=1 carries_lock=false
+===== val-c: drain/round/new-view/commit tail =====
+2026-08-15T23:30:53.170Z info round-change: recorded (#432 view-change) from=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 height=42 round=1 carries_lock=false
+2026-08-15T23:30:58.085Z info round-change: recorded (#432 view-change) from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 height=42 round=1 carries_lock=false
+2026-08-15T23:30:58.849Z info round-change: recorded (#432 view-change) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 height=42 round=1 carries_lock=false
+2026-08-15T23:31:00.745Z info round-change: recorded (#432 view-change) from=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a height=42 round=1 carries_lock=false
+2026-08-15T23:31:49.050Z info round-change: advancing (#432 view-change) height=43 round=1 locked=false pending=10
+2026-08-15T23:31:50.363Z info round-change: recorded (#432 view-change) from=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b height=43 round=1 carries_lock=false
+2026-08-15T23:31:50.946Z info round-change: recorded (#432 view-change) from=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 height=43 round=1 carries_lock=false
+2026-08-15T23:31:53.402Z info round-change: recorded (#432 view-change) from=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 height=43 round=1 carries_lock=false
+2026-08-15T23:31:53.880Z info round-change: recorded (#432 view-change) from=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 height=43 round=1 carries_lock=false
+2026-08-15T23:31:54.047Z info round-change: recorded (#432 view-change) from=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda height=43 round=1 carries_lock=false
+2026-08-15T23:31:55.380Z info round-change: recorded (#432 view-change) from=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 height=43 round=1 carries_lock=false
+2026-08-15T23:31:58.491Z info round-change: recorded (#432 view-change) from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 height=43 round=1 carries_lock=false
+2026-08-15T23:31:59.555Z info round-change: recorded (#432 view-change) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 height=43 round=1 carries_lock=false
+2026-08-15T23:32:00.871Z info round-change: recorded (#432 view-change) from=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a height=43 round=1 carries_lock=false
+2026-08-15T23:32:08.549Z info block committed height=43 entries=0 attestations=5 via=broadcast
+2026-08-15T23:32:58.292Z info round-change: recorded (#432 view-change) from=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 height=44 round=1 carries_lock=false
+2026-08-15T23:32:58.381Z info round-change: recorded (#432 view-change) from=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 height=44 round=1 carries_lock=false
+2026-08-15T23:32:58.562Z info round-change: advancing (#432 view-change) height=44 round=1 locked=false pending=10
+2026-08-15T23:32:58.585Z info round-change: recorded (#432 view-change) from=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 height=44 round=1 carries_lock=false
+2026-08-15T23:32:59.681Z info round-change: recorded (#432 view-change) from=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 height=44 round=1 carries_lock=false
+2026-08-15T23:33:00.638Z info round-change: recorded (#432 view-change) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 height=44 round=1 carries_lock=false
+2026-08-15T23:33:01.530Z info round-change: recorded (#432 view-change) from=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda height=44 round=1 carries_lock=false
+2026-08-15T23:33:02.323Z info round-change: recorded (#432 view-change) from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 height=44 round=1 carries_lock=false
+2026-08-15T23:33:03.351Z info round-change: recorded (#432 view-change) from=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b height=44 round=1 carries_lock=false
+2026-08-15T23:33:03.848Z info round-change: recorded (#432 view-change) from=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a height=44 round=1 carries_lock=false
+2026-08-15T23:33:13.003Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=44 round=1 mark_height=44 mark_round=1 pending=10
+2026-08-15T23:33:15.026Z info block committed height=44 entries=0 attestations=6 via=broadcast
+2026-08-15T23:33:43.059Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=45 round=0 mark_height=45 mark_round=0 pending=10
+2026-08-15T23:33:46.690Z info round-change: recorded (#432 view-change) from=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 height=45 round=1 carries_lock=false
+2026-08-15T23:33:49.183Z info round-change: recorded (#432 view-change) from=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 height=45 round=1 carries_lock=true
+2026-08-15T23:33:49.338Z info round-change: recorded (#432 view-change) from=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 height=45 round=1 carries_lock=false
+2026-08-15T23:33:50.255Z info round-change: recorded (#432 view-change) from=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda height=45 round=1 carries_lock=true
+2026-08-15T23:33:51.278Z info block committed height=45 entries=0 attestations=7 via=broadcast
+2026-08-15T23:34:29.419Z info round-change: recorded (#432 view-change) from=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 height=46 round=1 carries_lock=false
+2026-08-15T23:34:33.767Z info round-change: recorded (#432 view-change) from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 height=46 round=1 carries_lock=false
+2026-08-15T23:34:36.737Z info round-change: recorded (#432 view-change) from=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a height=46 round=1 carries_lock=false
+2026-08-15T23:34:36.743Z info round-change: recorded (#432 view-change) from=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b height=46 round=1 carries_lock=false
+2026-08-15T23:34:36.750Z info round-change: recorded (#432 view-change) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 height=46 round=1 carries_lock=false
+2026-08-15T23:34:43.080Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=46 round=0 mark_height=46 mark_round=0 pending=8
+2026-08-15T23:34:43.087Z info round-change: advancing (#432 view-change) height=46 round=1 locked=false pending=8
+===== val-d: drain/round/new-view/commit tail =====
+2026-08-15T23:31:26.745Z info bond-reg submit REFUSED from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 validator=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 size=67108864 err="chain: invalid on-chain bond registration: validator d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 signature"
+2026-08-15T23:31:49.604Z info round-change: recorded (#432 view-change) from=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb height=43 round=1 carries_lock=false
+2026-08-15T23:31:50.456Z info round-change: recorded (#432 view-change) from=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b height=43 round=1 carries_lock=false
+2026-08-15T23:31:51.042Z info round-change: recorded (#432 view-change) from=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 height=43 round=1 carries_lock=false
+2026-08-15T23:31:53.425Z info round-change: recorded (#432 view-change) from=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 height=43 round=1 carries_lock=false
+2026-08-15T23:31:53.904Z info round-change: recorded (#432 view-change) from=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 height=43 round=1 carries_lock=false
+2026-08-15T23:31:53.991Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=43 round=0 mark_height=43 mark_round=0 pending=8
+2026-08-15T23:31:53.997Z info round-change: advancing (#432 view-change) height=43 round=1 locked=false pending=8
+2026-08-15T23:31:55.228Z info round-change: recorded (#432 view-change) from=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 height=43 round=1 carries_lock=false
+2026-08-15T23:31:58.584Z info round-change: recorded (#432 view-change) from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 height=43 round=1 carries_lock=false
+2026-08-15T23:31:59.433Z info round-change: recorded (#432 view-change) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 height=43 round=1 carries_lock=false
+2026-08-15T23:32:00.967Z info round-change: recorded (#432 view-change) from=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a height=43 round=1 carries_lock=false
+2026-08-15T23:32:10.746Z info block committed height=43 entries=0 attestations=5 via=broadcast
+2026-08-15T23:32:58.389Z info round-change: recorded (#432 view-change) from=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 height=44 round=1 carries_lock=false
+2026-08-15T23:32:58.407Z info round-change: recorded (#432 view-change) from=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 height=44 round=1 carries_lock=false
+2026-08-15T23:32:58.603Z info round-change: recorded (#432 view-change) from=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 height=44 round=1 carries_lock=false
+2026-08-15T23:32:58.666Z info round-change: recorded (#432 view-change) from=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb height=44 round=1 carries_lock=false
+2026-08-15T23:32:59.708Z info round-change: recorded (#432 view-change) from=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 height=44 round=1 carries_lock=false
+2026-08-15T23:33:00.599Z info round-change: recorded (#432 view-change) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 height=44 round=1 carries_lock=false
+2026-08-15T23:33:01.482Z info round-change: advancing (#432 view-change) height=44 round=1 locked=false pending=8
+2026-08-15T23:33:02.417Z info round-change: recorded (#432 view-change) from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 height=44 round=1 carries_lock=false
+2026-08-15T23:33:03.448Z info round-change: recorded (#432 view-change) from=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b height=44 round=1 carries_lock=false
+2026-08-15T23:33:03.945Z info round-change: recorded (#432 view-change) from=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a height=44 round=1 carries_lock=false
+2026-08-15T23:33:46.789Z info round-change: recorded (#432 view-change) from=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 height=45 round=1 carries_lock=false
+2026-08-15T23:33:48.954Z info round-change: recorded (#432 view-change) from=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 height=45 round=1 carries_lock=true
+2026-08-15T23:33:49.324Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=45 round=0 mark_height=45 mark_round=0 pending=8
+2026-08-15T23:33:49.337Z info round-change: advancing (#432 view-change) height=45 round=1 locked=true pending=8
+2026-08-15T23:33:49.379Z info round-change: recorded (#432 view-change) from=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 height=45 round=1 carries_lock=false
+2026-08-15T23:34:02.261Z info block committed height=45 entries=0 attestations=7 via=broadcast
+2026-08-15T23:34:29.465Z info round-change: recorded (#432 view-change) from=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 height=46 round=1 carries_lock=false
+2026-08-15T23:34:33.864Z info round-change: recorded (#432 view-change) from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 height=46 round=1 carries_lock=false
+2026-08-15T23:34:36.569Z info round-change: recorded (#432 view-change) from=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a height=46 round=1 carries_lock=false
+2026-08-15T23:34:36.596Z info round-change: recorded (#432 view-change) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 height=46 round=1 carries_lock=false
+2026-08-15T23:34:36.620Z info round-change: recorded (#432 view-change) from=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b height=46 round=1 carries_lock=false
+2026-08-15T23:34:43.193Z info round-change: recorded (#432 view-change) from=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb height=46 round=1 carries_lock=false
+2026-08-15T23:34:47.077Z info round-change: recorded (#432 view-change) from=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 height=46 round=1 carries_lock=false
+2026-08-15T23:34:50.121Z info round-change: recorded (#432 view-change) from=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 height=46 round=1 carries_lock=false
+2026-08-15T23:34:50.803Z info round-change: recorded (#432 view-change) from=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 height=46 round=1 carries_lock=false
+2026-08-15T23:34:51.842Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=46 round=0 mark_height=46 mark_round=0 pending=8
+2026-08-15T23:34:51.849Z info round-change: advancing (#432 view-change) height=46 round=1 locked=false pending=8
+===== val-a: pending trace (all drain-blocked lines) =====
+2026-08-15T23:05:51.522Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=4 round=0 mark_height=4 mark_round=0 pending=12
+2026-08-15T23:06:23.183Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=5 round=0 mark_height=5 mark_round=0 pending=12
+2026-08-15T23:08:53.909Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=11 round=0 mark_height=11 mark_round=0 pending=8
+2026-08-15T23:09:23.778Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=12 round=0 mark_height=12 mark_round=0 pending=8
+2026-08-15T23:13:55.445Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=20 round=1 mark_height=20 mark_round=1 pending=8
+2026-08-15T23:15:36.276Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=22 round=0 mark_height=22 mark_round=0 pending=7
+2026-08-15T23:16:39.047Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=25 round=0 mark_height=25 mark_round=0 pending=6
+2026-08-15T23:18:37.670Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=29 round=0 mark_height=29 mark_round=0 pending=7
+2026-08-15T23:20:55.160Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=32 round=1 mark_height=32 mark_round=1 pending=6
+2026-08-15T23:21:26.676Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=32 round=1 mark_height=32 mark_round=1 pending=6
+2026-08-15T23:24:56.870Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=36 round=0 mark_height=36 mark_round=0 pending=7
+2026-08-15T23:25:47.998Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=37 round=0 mark_height=37 mark_round=0 pending=7
+2026-08-15T23:26:27.004Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=38 round=0 mark_height=38 mark_round=0 pending=9
+2026-08-15T23:26:38.429Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=38 round=0 mark_height=38 mark_round=0 pending=9
+2026-08-15T23:27:49.609Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=39 round=0 mark_height=39 mark_round=0 pending=9
+2026-08-15T23:27:58.459Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=39 round=0 mark_height=39 mark_round=0 pending=10
+2026-08-15T23:28:48.142Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=40 round=0 mark_height=40 mark_round=0 pending=10
+2026-08-15T23:28:59.004Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=40 round=0 mark_height=40 mark_round=0 pending=10
+2026-08-15T23:29:58.590Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=41 round=0 mark_height=41 mark_round=0 pending=9
+2026-08-15T23:30:39.251Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=42 round=0 mark_height=42 mark_round=0 pending=8
+2026-08-15T23:30:58.826Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=42 round=0 mark_height=42 mark_round=1 pending=9
+2026-08-15T23:31:48.055Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=43 round=0 mark_height=43 mark_round=0 pending=9
+2026-08-15T23:31:59.454Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=43 round=0 mark_height=43 mark_round=0 pending=9
+===== maturer-1: submit/renewal tail =====
+2026-08-15T23:33:58.466Z info bond challenge peer=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 passed=true late=false standing=1024
+2026-08-15T23:33:58.534Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+2026-08-15T23:34:09.217Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=true standing=1024
+2026-08-15T23:34:12.337Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=true standing=16
+2026-08-15T23:34:29.221Z info standing self=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b reputation=1024
+2026-08-15T23:34:29.648Z info bond challenge peer=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb passed=true late=false standing=1024
+2026-08-15T23:34:29.666Z info bond challenge peer=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 passed=true late=false standing=16
+2026-08-15T23:34:29.686Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-08-15T23:34:29.715Z info bond challenge peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 passed=true late=false standing=1024
+2026-08-15T23:34:29.734Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-08-15T23:34:29.912Z info bond challenge peer=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 passed=true late=false standing=1024
+2026-08-15T23:34:29.940Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=false standing=16
+2026-08-15T23:34:29.972Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=false standing=16
+2026-08-15T23:34:30.040Z info bond challenge peer=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 passed=true late=false standing=16
+2026-08-15T23:34:30.214Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-08-15T23:34:30.243Z info bond challenge peer=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 passed=true late=false standing=1024
+2026-08-15T23:34:30.452Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+2026-08-15T23:34:36.530Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=46 round=0 mark_height=46 mark_round=0 pending=7
+2026-08-15T23:34:59.223Z info standing self=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b reputation=1024
+2026-08-15T23:34:59.267Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-08-15T23:34:59.285Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-08-15T23:34:59.311Z info bond challenge peer=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb passed=true late=false standing=1024
+2026-08-15T23:34:59.681Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-08-15T23:34:59.924Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=false standing=16
+2026-08-15T23:34:59.985Z info bond challenge peer=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 passed=true late=false standing=1024
+2026-08-15T23:35:00.003Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=false standing=16
+2026-08-15T23:35:00.020Z info bond challenge peer=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 passed=true late=false standing=16
+2026-08-15T23:35:00.110Z info bond challenge peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 passed=true late=false standing=1024
+2026-08-15T23:35:00.245Z info bond challenge peer=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 passed=true late=false standing=1024
+2026-08-15T23:35:00.311Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+===== fetch-1: warm/discovery failure tail =====
+2026-08-15T23:25:42.986Z info eventloop budget window_s=30 kind=AddProvider count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:25:42.986Z info eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:25:42.986Z info eventloop budget window_s=30 kind=timer count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:25:42.986Z info eventloop budget window_s=30 kind=StoreChunk count=1 total_ms=1 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:26:16.735Z info eventloop budget window_s=33 kind=StoreChunk count=1 total_ms=1 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:26:16.735Z info eventloop budget window_s=33 kind=FindNode count=5 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:26:16.735Z info eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:26:16.735Z info eventloop budget window_s=33 kind=timer count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:26:46.736Z info eventloop budget window_s=30 kind=timer count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:26:46.736Z info eventloop budget window_s=30 kind=FindNode count=4 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:26:46.736Z info eventloop budget window_s=30 kind=AddProvider count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:26:46.736Z info eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:27:20.485Z info eventloop budget window_s=33 kind=StoreChunk count=4 total_ms=6 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:27:20.485Z info eventloop budget window_s=33 kind=FindNode count=8 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:27:20.485Z info eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:27:20.486Z info eventloop budget window_s=33 kind=timer count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:27:20.486Z info eventloop budget window_s=33 kind=AddProvider count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:27:54.235Z info eventloop budget window_s=33 kind=peer-persist count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:27:54.235Z info eventloop budget window_s=33 kind=timer count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:27:54.235Z info eventloop budget window_s=33 kind=FindNode count=9 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:28:24.235Z info eventloop budget window_s=30 kind=FindNode count=4 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:28:24.235Z info eventloop budget window_s=30 kind=timer count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:28:24.235Z info eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:28:54.238Z info eventloop budget window_s=30 kind=timer count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:28:54.239Z info eventloop budget window_s=30 kind=FindNode count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:28:54.239Z info eventloop budget window_s=30 kind=StoreChunk count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:28:54.239Z info eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:29:27.988Z info eventloop budget window_s=33 kind=timer count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:29:27.988Z info eventloop budget window_s=33 kind=FindNode count=4 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:29:27.988Z info eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:30:01.735Z info eventloop budget window_s=33 kind=StoreChunk count=3 total_ms=4 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:30:01.735Z info eventloop budget window_s=33 kind=timer count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:30:01.735Z info eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:30:01.735Z info eventloop budget window_s=33 kind=FindNode count=7 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:30:31.739Z info eventloop budget window_s=30 kind=StoreChunk count=2 total_ms=4 max_ms=2 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:30:31.739Z info eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:30:31.739Z info eventloop budget window_s=30 kind=timer count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:30:31.739Z info eventloop budget window_s=30 kind=FindNode count=4 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:31:05.485Z info eventloop budget window_s=33 kind=timer count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:31:05.486Z info eventloop budget window_s=33 kind=FindNode count=9 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:31:05.486Z info eventloop budget window_s=33 kind=StoreChunk count=7 total_ms=11 max_ms=2 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:31:05.486Z info eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:31:35.486Z info eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:31:35.487Z info eventloop budget window_s=30 kind=StoreChunk count=6 total_ms=9 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:31:35.487Z info eventloop budget window_s=30 kind=timer count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:31:35.487Z info eventloop budget window_s=30 kind=FindNode count=5 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:32:05.488Z info eventloop budget window_s=30 kind=timer count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:32:05.488Z info eventloop budget window_s=30 kind=FindNode count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:32:05.488Z info eventloop budget window_s=30 kind=StoreChunk count=1 total_ms=1 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:32:05.488Z info eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:32:35.488Z info eventloop budget window_s=30 kind=timer count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:32:35.488Z info eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:33:09.235Z info eventloop budget window_s=33 kind=timer count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:33:09.235Z info eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:33:42.985Z info eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:33:42.985Z info eventloop budget window_s=33 kind=timer count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:34:12.988Z info eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:34:12.988Z info eventloop budget window_s=30 kind=timer count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:34:42.988Z info eventloop budget window_s=30 kind=timer count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:34:42.988Z info eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+===== val-a: per-proposal regs= trace (gather starts) =====
+===== val-a: drain proposals that DID fire =====
+2026-08-15T23:05:02.714Z info bond-reg drain: pending registrations committed height=2
+2026-08-15T23:10:49.553Z info bond-reg drain: pending registrations committed height=14
+2026-08-15T23:14:19.895Z info new-view proposal (#432 view-change) height=20 round=2 forced=true
+2026-08-15T23:17:36.632Z info bond-reg drain: pending registrations committed height=26
+2026-08-15T23:19:46.244Z info bond-reg drain: pending registrations committed height=30
+2026-08-15T23:35:47.268Z info new-view proposal (#432 view-change) height=47 round=1 forced=false
+===== fetch-1: last 80 lines =====
+2026-08-15T23:23:35.488Z info eventloop budget window_s=30 kind=timer count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:23:35.488Z info eventloop budget window_s=30 kind=AddProvider count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:24:09.235Z info eventloop budget window_s=33 kind=AddProvider count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:24:09.235Z info eventloop budget window_s=33 kind=timer count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:24:09.235Z info eventloop budget window_s=33 kind=FindNode count=5 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:24:09.235Z info eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:24:39.239Z info eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:24:39.239Z info eventloop budget window_s=30 kind=timer count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:24:39.239Z info eventloop budget window_s=30 kind=FindNode count=4 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:24:39.239Z info eventloop budget window_s=30 kind=StoreChunk count=1 total_ms=1 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:25:12.985Z info eventloop budget window_s=33 kind=timer count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:25:12.985Z info eventloop budget window_s=33 kind=AddProvider count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:25:12.985Z info eventloop budget window_s=33 kind=StoreChunk count=2 total_ms=3 max_ms=2 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:25:12.985Z info eventloop budget window_s=33 kind=FindNode count=11 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:25:12.985Z info eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:25:42.986Z info eventloop budget window_s=30 kind=FindNode count=8 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:25:42.986Z info eventloop budget window_s=30 kind=AddProvider count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:25:42.986Z info eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:25:42.986Z info eventloop budget window_s=30 kind=timer count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:25:42.986Z info eventloop budget window_s=30 kind=StoreChunk count=1 total_ms=1 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:26:16.735Z info eventloop budget window_s=33 kind=StoreChunk count=1 total_ms=1 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:26:16.735Z info eventloop budget window_s=33 kind=FindNode count=5 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:26:16.735Z info eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:26:16.735Z info eventloop budget window_s=33 kind=timer count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:26:46.736Z info eventloop budget window_s=30 kind=timer count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:26:46.736Z info eventloop budget window_s=30 kind=FindNode count=4 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:26:46.736Z info eventloop budget window_s=30 kind=AddProvider count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:26:46.736Z info eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:27:20.485Z info eventloop budget window_s=33 kind=StoreChunk count=4 total_ms=6 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:27:20.485Z info eventloop budget window_s=33 kind=FindNode count=8 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:27:20.485Z info eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:27:20.486Z info eventloop budget window_s=33 kind=timer count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:27:20.486Z info eventloop budget window_s=33 kind=AddProvider count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:27:54.235Z info eventloop budget window_s=33 kind=peer-persist count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:27:54.235Z info eventloop budget window_s=33 kind=timer count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:27:54.235Z info eventloop budget window_s=33 kind=FindNode count=9 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:28:24.235Z info eventloop budget window_s=30 kind=FindNode count=4 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:28:24.235Z info eventloop budget window_s=30 kind=timer count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:28:24.235Z info eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:28:54.238Z info eventloop budget window_s=30 kind=timer count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:28:54.239Z info eventloop budget window_s=30 kind=FindNode count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:28:54.239Z info eventloop budget window_s=30 kind=StoreChunk count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:28:54.239Z info eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:29:27.988Z info eventloop budget window_s=33 kind=timer count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:29:27.988Z info eventloop budget window_s=33 kind=FindNode count=4 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:29:27.988Z info eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:30:01.735Z info eventloop budget window_s=33 kind=StoreChunk count=3 total_ms=4 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:30:01.735Z info eventloop budget window_s=33 kind=timer count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:30:01.735Z info eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:30:01.735Z info eventloop budget window_s=33 kind=FindNode count=7 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:30:31.739Z info eventloop budget window_s=30 kind=StoreChunk count=2 total_ms=4 max_ms=2 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:30:31.739Z info eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:30:31.739Z info eventloop budget window_s=30 kind=timer count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:30:31.739Z info eventloop budget window_s=30 kind=FindNode count=4 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:31:05.485Z info eventloop budget window_s=33 kind=timer count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:31:05.486Z info eventloop budget window_s=33 kind=FindNode count=9 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:31:05.486Z info eventloop budget window_s=33 kind=StoreChunk count=7 total_ms=11 max_ms=2 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:31:05.486Z info eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:31:35.486Z info eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:31:35.487Z info eventloop budget window_s=30 kind=StoreChunk count=6 total_ms=9 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:31:35.487Z info eventloop budget window_s=30 kind=timer count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:31:35.487Z info eventloop budget window_s=30 kind=FindNode count=5 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:32:05.488Z info eventloop budget window_s=30 kind=timer count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:32:05.488Z info eventloop budget window_s=30 kind=FindNode count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:32:05.488Z info eventloop budget window_s=30 kind=StoreChunk count=1 total_ms=1 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:32:05.488Z info eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:32:35.488Z info eventloop budget window_s=30 kind=timer count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:32:35.488Z info eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:33:09.235Z info eventloop budget window_s=33 kind=timer count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:33:09.235Z info eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:33:42.985Z info eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:33:42.985Z info eventloop budget window_s=33 kind=timer count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:34:12.988Z info eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:34:12.988Z info eventloop budget window_s=30 kind=timer count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:34:42.988Z info eventloop budget window_s=30 kind=timer count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:34:42.988Z info eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:35:16.738Z info eventloop budget window_s=33 kind=timer count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:35:16.738Z info eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:35:46.738Z info eventloop budget window_s=30 kind=timer count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-15T23:35:46.738Z info eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0

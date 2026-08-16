@@ -9,6 +9,28 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **#432 rounds + locking: the two-phase (prepare→precommit) gather with a lock-carrying
+  view-change — the I4 liveness escape, research-certified, era-gated as block version 2**
+  (2026-08-16) — The #397 height-only never-sign-twice watermark made a crossed 2-2 proposer
+  race a PERMANENT stall of a connected, all-honest launch network (the field wedge in runs
+  9c3777d/8ae8326; `TestModelCheck_I4_WedgedHeightMustRecover`, born RED). Per the research
+  certification (432-rounds-locking-liveness, 2026-08-15): consensus signatures are now
+  (height, ROUND, phase)-scoped; a commit carries TWO quorum certificates at one round (the
+  prepare-QC that justified precommitting, and the precommit certificate), each held to the
+  full commit threshold in both regimes (launch strict anchor majority / mature >⅔ frozen
+  weight — the POL threshold IS the commit threshold); validators LOCK on the highest-round
+  prepare-QC (durable, mark-before-sign, restart-rehydrated); round advance is a deterministic
+  sweep count (never wall-clock), and the view-change quorum carries the highest lock forward,
+  forcing the next proposer to re-propose any potentially-committed value. Equivocation is
+  round-scoped (same-(h, r, phase) double-sign slashes; a POL-justified cross-round re-sign is
+  honest), and a committed era-2 block REQUIRES its author's round-scoped prepare — the
+  structural ProposerSig's era-2 analogue, which is what keeps a double-proposal attributable
+  (I5) while staying count-neutral in every quorum (#402 arithmetic untouched, tested
+  byte-identical). Merge-gate oracles per the certification: S1 (delayed lower-round quorum)
+  and S2 (equivocate-then-misreport, forged-lock injection) both RED against a recorded
+  lock-free revert and GREEN with the prepare phase, plus per-(h, r, phase) restart I2 and
+  §5.3 lock re-presentation. Era 1 blocks keep validating under era-1 rules — committed
+  history is never re-interpreted.
 - **Never refuse silently: the two consensus refusal sites that hid the #432 wedge now log
   their reason** (2026-08-15) — A peer-submitted bond registration that fails validation was
   dropped on arrival with no line (`MsgSubmitBondReg` receipt), and a drain proposal blocked at

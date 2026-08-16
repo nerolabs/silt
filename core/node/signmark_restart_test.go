@@ -92,7 +92,7 @@ func TestRestartedValidatorRefusesToContradictPreCrashSignature397(t *testing.T)
 	// building on nothing-signed territory would be attestable — the guard is
 	// monotonic, not a lockout. (Height 2 needs a valid Prev; assert via
 	// signAllowedAt directly to keep the check pure.)
-	if !nd2.signAllowedAt(2, ports.HashBytes([]byte("any"))) {
+	if !nd2.signAllowedAt(2, 0, chain.PhasePrepare, ports.HashBytes([]byte("any"))) {
 		t.Fatal("the watermark must allow signing at heights above the mark")
 	}
 }

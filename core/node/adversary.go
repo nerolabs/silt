@@ -11,6 +11,7 @@ package node
 import (
 	"fmt"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/nerolabs/silt/core/chain"
 	"github.com/nerolabs/silt/ports"
 )
@@ -46,8 +47,23 @@ func advEntry(label string) ports.Entry {
 // second #378 wedge. A transport error is fatal; a not-OK commit ack is a RETRY, not a
 // success.
 func (n *Node) proposeAndCommitTo(b *chain.Block, target ports.NodeID, done func(committed bool, err error)) {
+	// #432 two-phase: the target speaks prepare→precommit now, so the drive-in
+	// runs both phases at round 0 — prepare, staple the target's prepare into a
+	// prepare-QC, collect its precommit, then commit. (The adversary keeps no
+	// sign-marks and no locks — bypassing the honesty machinery is the point
+	// of this primitive.) What it CANNOT bypass: the target's ValidateCommit
+	// requires the AUTHOR's round-scoped prepare in the certificate
+	// (chain.requireProposerPrepare), so the equivocator must sign its own
+	// (h, r, prepare) over each fork — leaving exactly the same-slot
+	// different-hash signature pair the era-2 slash rule catches. That forced
+	// self-incrimination is the #345/#378 accountability working as designed.
 	raw := chain.Encode(b)
-	n.request(target, ports.Message{Kind: ports.MsgProposeBlock, Data: raw}, func(resp ports.Message, err error) {
+	envRaw, merr := cbor.Marshal(proposeEnv{Raw: raw, Round: 0})
+	if merr != nil {
+		done(false, merr)
+		return
+	}
+	n.request(target, ports.Message{Kind: ports.MsgProposeBlock, Data: envRaw}, func(resp ports.Message, err error) {
 		if err != nil {
 			done(false, err)
 			return
@@ -56,18 +72,41 @@ func (n *Node) proposeAndCommitTo(b *chain.Block, target ports.NodeID, done func
 			done(false, fmt.Errorf("target %s refused the proposal at height %d (not yet standing?)", target, b.Height))
 			return
 		}
-		att, aerr := attDecode(resp.Data)
+		prep, aerr := attDecode(resp.Data)
 		if aerr != nil {
-			done(false, fmt.Errorf("decode attestation: %w", aerr))
+			done(false, fmt.Errorf("decode prepare: %w", aerr))
 			return
 		}
-		b.Atts = []chain.Attestation{att}
-		n.request(target, ports.Message{Kind: ports.MsgCommitBlock, Data: chain.Encode(b)}, func(ack ports.Message, err2 error) {
+		qc := []chain.Attestation{chain.AttestAt(b, n.signer, 0, chain.PhasePrepare), prep}
+		qcRaw, qerr := cbor.Marshal(prepareQCEnv{Raw: raw, Round: 0, QC: qc})
+		if qerr != nil {
+			done(false, qerr)
+			return
+		}
+		n.request(target, ports.Message{Kind: ports.MsgPrepareQC, Data: qcRaw}, func(resp2 ports.Message, err2 error) {
 			if err2 != nil {
 				done(false, err2)
 				return
 			}
-			done(ack.OK, nil) // OK=false ⇒ target attested but hasn't committed yet ⇒ caller retries
+			if !resp2.OK {
+				done(false, fmt.Errorf("target %s refused to precommit at height %d", target, b.Height))
+				return
+			}
+			pc, perr := attDecode(resp2.Data)
+			if perr != nil {
+				done(false, fmt.Errorf("decode precommit: %w", perr))
+				return
+			}
+			b.CommitRound = 0
+			b.PrepareQC = qc
+			b.Atts = []chain.Attestation{chain.AttestAt(b, n.signer, 0, chain.PhasePrecommit), pc}
+			n.request(target, ports.Message{Kind: ports.MsgCommitBlock, Data: chain.Encode(b)}, func(ack ports.Message, err3 error) {
+				if err3 != nil {
+					done(false, err3)
+					return
+				}
+				done(ack.OK, nil) // OK=false ⇒ target attested but hasn't committed yet ⇒ caller retries
+			})
 		})
 	})
 }
@@ -93,7 +132,7 @@ func (n *Node) ProposeBadBlock(target ports.NodeID, forge bool, done func(refuse
 		return
 	}
 	prev, height := n.chain.Head()
-	b := &chain.Block{Version: chain.BlockVersion, Height: height, Prev: prev, Entries: []ports.Entry{advEntry("badproposal")}}
+	b := &chain.Block{Version: chain.BlockVersionRounds, Height: height, Prev: prev, Entries: []ports.Entry{advEntry("badproposal")}}
 	chain.Sign(b, n.signer)
 	if forge && len(b.ProposerSig) > 0 {
 		b.ProposerSig[0] ^= 0xFF // corrupt the signature so ValidateProposal's verify fails
@@ -121,7 +160,7 @@ func (n *Node) ProposeGoodBlock(target ports.NodeID, done func(accepted bool, er
 		return
 	}
 	prev, height := n.chain.Head()
-	b := &chain.Block{Version: chain.BlockVersion, Height: height, Prev: prev, Entries: []ports.Entry{advEntry("goodproposal")}}
+	b := &chain.Block{Version: chain.BlockVersionRounds, Height: height, Prev: prev, Entries: []ports.Entry{advEntry("goodproposal")}}
 	chain.Sign(b, n.signer)
 	n.request(target, ports.Message{Kind: ports.MsgProposeBlock, Data: chain.Encode(b)}, func(resp ports.Message, err error) {
 		if err != nil {
@@ -196,11 +235,11 @@ func (n *Node) Equivocate(honestX, honestYZ ports.NodeID, done func(error)) {
 			done(fmt.Errorf("equivocate: no genesis"))
 			return
 		}
-		x := &chain.Block{Version: chain.BlockVersion, Height: height, Prev: prev, Entries: []ports.Entry{advEntry("X")}}
+		x := &chain.Block{Version: chain.BlockVersionRounds, Height: height, Prev: prev, Entries: []ports.Entry{advEntry("X")}}
 		chain.Sign(x, n.signer)
-		y := &chain.Block{Version: chain.BlockVersion, Height: height, Prev: prev, Entries: []ports.Entry{advEntry("Y")}}
+		y := &chain.Block{Version: chain.BlockVersionRounds, Height: height, Prev: prev, Entries: []ports.Entry{advEntry("Y")}}
 		chain.Sign(y, n.signer)
-		z := &chain.Block{Version: chain.BlockVersion, Height: height + 1, Prev: y.Hash(), Entries: []ports.Entry{advEntry("Z")}}
+		z := &chain.Block{Version: chain.BlockVersionRounds, Height: height + 1, Prev: y.Hash(), Entries: []ports.Entry{advEntry("Z")}}
 		chain.Sign(z, n.signer)
 		n.equivPlan = &equivPlan{x: x, y: y, z: z, height: height}
 	}

@@ -31,7 +31,18 @@ type Equivocation struct {
 func (e *Equivocation) CulpritID() ports.NodeID { return sha256.Sum256(e.Culprit) }
 
 // VerifyEquivocation reports whether e is valid, self-verifying proof of a
-// double-sign — no external state needed.
+// double-sign — no external state needed. Era-gated (#432 rounds):
+//
+//   - Both blocks era 1: the legacy rule — the culprit signed two different
+//     blocks at one HEIGHT (proposer or attester signature alike).
+//   - Both blocks era 2: the culprit released two consensus signatures at the
+//     same (HEIGHT, ROUND, PHASE) over different hashes. A cross-round
+//     different-hash signature is HONEST (a lock-change under a POL — the
+//     certification's I5 requirement), and a bare-hash ProposerSig is
+//     authorship, not a consensus vote (re-proposing fresh at a higher round
+//     after a lock-free view-change is honest), so neither is evidence.
+//   - Mixed eras: not evidence (conservative — the upgrade boundary must never
+//     manufacture an honest slash; refusing is the fail-safe direction).
 func VerifyEquivocation(e *Equivocation) bool {
 	if len(e.Culprit) != ed25519.PublicKeySize {
 		return false
@@ -43,11 +54,52 @@ func VerifyEquivocation(e *Equivocation) bool {
 	if ha == hb {
 		return false // the same block signed twice is not a conflict
 	}
+	av2, bv2 := e.A.Version >= BlockVersionRounds, e.B.Version >= BlockVersionRounds
+	if av2 != bv2 {
+		return false // mixed eras: never slashable (fail-safe)
+	}
+	if av2 {
+		// Era 2: the two signatures must share (round, phase).
+		for _, sa := range consensusSigScopes(e.Culprit, &e.A, ha) {
+			for _, sb := range consensusSigScopes(e.Culprit, &e.B, hb) {
+				if sa == sb {
+					return true
+				}
+			}
+		}
+		return false
+	}
 	return signedBlock(e.Culprit, &e.A, ha) && signedBlock(e.Culprit, &e.B, hb)
 }
 
-// signedBlock reports whether pub's signature over h appears in b — as its
-// proposer or as one of its attesters — and verifies.
+// sigScope identifies one consensus signature's slot: the (round, phase) it
+// was released at. Height is shared by construction (checked above).
+type sigScope struct {
+	Round uint64
+	Phase uint8
+}
+
+// consensusSigScopes collects the verified (round, phase) slots at which pub
+// released an era-2 consensus signature in b — across BOTH certificate sets
+// (PrepareQC and Atts). The bare-hash ProposerSig is authorship, not a vote,
+// and is deliberately excluded (see VerifyEquivocation).
+func consensusSigScopes(pub []byte, b *Block, h ports.Hash) []sigScope {
+	var out []sigScope
+	for _, set := range [][]Attestation{b.PrepareQC, b.Atts} {
+		for _, a := range set {
+			if a.Phase == PhaseLegacy {
+				continue // a legacy-shaped sig inside an era-2 block is not a vote slot
+			}
+			if bytes.Equal(a.PubKey, pub) && verifyAtt(a, h) {
+				out = append(out, sigScope{Round: a.Round, Phase: a.Phase})
+			}
+		}
+	}
+	return out
+}
+
+// signedBlock reports whether pub's ERA-1 signature over h appears in b — as
+// its proposer or as one of its attesters — and verifies.
 func signedBlock(pub []byte, b *Block, h ports.Hash) bool {
 	if bytes.Equal(b.Proposer, pub) && ed25519.Verify(ed25519.PublicKey(pub), h[:], b.ProposerSig) {
 		return true

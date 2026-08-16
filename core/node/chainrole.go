@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/nerolabs/silt/core/chain"
 	"github.com/nerolabs/silt/ports"
 )
@@ -46,35 +47,81 @@ func (n *Node) SetSignMarkStore(s ports.SignMarkStore) error {
 }
 
 // signAllowedAt reports whether releasing a consensus signature over block
-// (height, hash) is consistent with the never-sign-twice watermark: anything
-// strictly above the mark is fine, re-signing the SAME block is idempotent,
-// and any other signature at or below the mark is the double-sign an honest
-// validator must refuse — even against its own unfinished proposal (#397).
-// (Heights at or below the mark stay refused even across a fork-choice
-// reorg: a signature, once released, is final for this identity — D-1
-// prefer-stall-to-reorg, Tendermint locking.)
-func (n *Node) signAllowedAt(height uint64, h ports.Hash) bool {
-	if !n.signMarkSet || height > n.signMark.Height {
+// (height, hash) at (round, phase) is consistent with the never-sign-twice
+// watermark. #432 rounds: the slot is (height, round, phase), ordered
+// lexicographically — anything strictly above the mark's slot is fine,
+// re-signing the SAME block in the same slot is idempotent, and any OTHER
+// signature at or below the mark is the double-sign an honest validator must
+// refuse (#397, round-scoped per the certification: a different-hash signature
+// at a HIGHER round is honest — that is the liveness escape — while at the
+// same (h, r, phase) it is equivocation). The lexicographic order matches an
+// honest validator's real signing order: prepare < precommit within a round,
+// rounds ascend within a height, heights ascend.
+func (n *Node) signAllowedAt(height, round uint64, phase uint8, h ports.Hash) bool {
+	if !n.signMarkSet {
 		return true
 	}
-	return height == n.signMark.Height && h == n.signMark.Hash
+	switch c := slotCompare(height, round, phase, n.signMark); {
+	case c > 0:
+		return true
+	case c == 0:
+		return h == n.signMark.Hash
+	default:
+		return false
+	}
 }
 
-// recordSign advances the watermark to (height, hash) and, when a store is
-// wired, makes it DURABLE before returning — the signature may be released to
-// the wire only after this succeeds (mark-then-sign; a crash in between leaves
-// an unused mark, which is safe). Returns false if the mark could not be
-// persisted: the caller must then NOT release the signature (fail-safe: a
-// missed signing turn costs one gather round; a signature without a durable
-// mark risks a permanent honest self-slash).
-func (n *Node) recordSign(height uint64, h ports.Hash) bool {
-	if n.signMarkSet && height == n.signMark.Height && h == n.signMark.Hash {
-		return true // idempotent re-sign of the same block; already durable
+// slotCompare orders (height, round, phase) against the mark's slot.
+func slotCompare(height, round uint64, phase uint8, m ports.SignMark) int {
+	switch {
+	case height != m.Height:
+		if height > m.Height {
+			return 1
+		}
+		return -1
+	case round != m.Round:
+		if round > m.Round {
+			return 1
+		}
+		return -1
+	case phase != m.Phase:
+		if phase > m.Phase {
+			return 1
+		}
+		return -1
+	default:
+		return 0
 	}
-	mark := ports.SignMark{Height: height, Hash: h}
+}
+
+// recordSign advances the watermark to slot (height, round, phase, hash) and,
+// when a store is wired, makes it DURABLE before returning — the signature may
+// be released to the wire only after this succeeds (mark-then-sign; a crash in
+// between leaves an unused mark, which is safe). Returns false if the mark
+// could not be persisted: the caller must then NOT release the signature
+// (fail-safe: a missed signing turn costs one gather round; a signature
+// without a durable mark risks a permanent honest self-slash).
+func (n *Node) recordSign(height, round uint64, phase uint8, h ports.Hash) bool {
+	return n.recordSignLock(height, round, phase, h, nil)
+}
+
+// recordSignLock is recordSign carrying the #432 lock: for a precommit-phase
+// mark, lockQC is the CBOR prepare-QC envelope justifying it, persisted WITH
+// the mark so a restarted validator re-presents its lock in a round-change
+// (certification §5.3). Preserves any existing LockQC when advancing within
+// the same height without a new lock (a prepare mark after a precommit cannot
+// occur within a height by slot order; a NEW height naturally clears it).
+func (n *Node) recordSignLock(height, round uint64, phase uint8, h ports.Hash, lockQC []byte) bool {
+	if n.signMarkSet && slotCompare(height, round, phase, n.signMark) == 0 && h == n.signMark.Hash {
+		return true // idempotent re-sign of the same block in the same slot
+	}
+	mark := ports.SignMark{Height: height, Round: round, Phase: phase, Hash: h, LockQC: lockQC}
+	if lockQC == nil && n.signMarkSet && n.signMark.Height == height {
+		mark.LockQC = n.signMark.LockQC // carry the height's lock forward
+	}
 	if n.signMarkStore != nil {
 		if err := n.signMarkStore.Save(mark); err != nil {
-			n.logf(ports.LogWarn, "sign-mark persist FAILED — refusing to sign", "height", height, "err", err)
+			n.logf(ports.LogWarn, "sign-mark persist FAILED — refusing to sign", "height", height, "round", round, "err", err)
 			return false
 		}
 	}
@@ -198,44 +245,133 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 	}
 	switch msg.Kind {
 	case ports.MsgProposeBlock:
-		// Attest only what we would accept: same rules, our reputation view.
-		// #286 Layer-2 root-cause aid: the gather path otherwise logs ONLY on success
-		// (the "block committed" line below), so a stalled quorum-2 genesis gather is
-		// invisible — a silent ValidateProposal reject of the ~1.5 MB first block over the
-		// WAN looks identical to "never received". These debug lines make an attester's
-		// receive → validate → reply visible under -log debug so the failing round can be
-		// traced. Debug-level only (no info-level noise on the hot path).
-		b, err := chain.Decode(msg.Data)
+		// PREPARE phase (#432 two-phase gather). Attest only what we would
+		// accept: same rules, our reputation view. The envelope carries the
+		// round and (for round > 0) the new-view certificate; a bare legacy
+		// block payload is treated as (round 0, no certificate).
+		var env proposeEnv
+		if cbor.Unmarshal(msg.Data, &env) != nil || len(env.Raw) == 0 {
+			env = proposeEnv{Raw: msg.Data} // legacy bare-block payload, round 0
+		}
+		b, err := chain.Decode(env.Raw)
 		if err != nil {
-			n.logf(ports.LogDebug, "gather/attest: DECODE failed", "from", from, "bytes", len(msg.Data), "err", err)
+			n.logf(ports.LogDebug, "gather/prepare: DECODE failed", "from", from, "bytes", len(msg.Data), "err", err)
 			n.reply(from, msg, ports.Message{Kind: ports.MsgAttestReply, OK: false})
 			return true
 		}
 		if verr := n.chain.ValidateProposal(b); verr != nil {
-			n.logf(ports.LogDebug, "gather/attest: REJECTED (ValidateProposal)", "from", from, "height", b.Height, "bytes", len(msg.Data), "regs", len(b.BondRegs), "reason", verr)
+			n.logf(ports.LogDebug, "gather/prepare: REJECTED (ValidateProposal)", "from", from, "height", b.Height, "bytes", len(msg.Data), "regs", len(b.BondRegs), "reason", verr)
 			n.reply(from, msg, ports.Message{Kind: ports.MsgAttestReply, OK: false})
 			return true
 		}
-		// Never equivocate: refuse to sign a DIFFERENT block at a height we
-		// already signed — attested OR proposed (#397: the proposer's own
-		// signature counts; two racing proposers cross-attesting each other's
-		// block is how the field slashed two honest anchors). An honest
-		// validator's signature at a height is final; this is what makes a
-		// double-sign proof (chain.Equivocation) evidence of malice, not an
-		// accident. The mark is made durable BEFORE the attestation leaves.
-		if !n.signAllowedAt(b.Height, b.Hash()) {
-			n.logf(ports.LogDebug, "gather/attest: REFUSED (already signed a different block at height)", "from", from, "height", b.Height)
+		rs := n.roundsFor()
+		if b.Height == rs.Height {
+			// A round > 0 needs its new-view certificate, and the certificate
+			// FORCES the proposer's value: re-propose the highest carried lock
+			// or (only if none was carried) fresh. A proposer that ignores the
+			// forced value is refused — that refusal is what carries a
+			// potentially-committed value forward (certification §4).
+			forced, nerr := n.newViewFor(b.Height, env.Round, env.NewView)
+			if nerr != nil {
+				n.logf(ports.LogDebug, "gather/prepare: REFUSED (new-view certificate)", "from", from, "height", b.Height, "round", env.Round, "reason", nerr)
+				n.reply(from, msg, ports.Message{Kind: ports.MsgAttestReply, OK: false})
+				return true
+			}
+			if forced != nil && forced.Hash != b.Hash() {
+				n.logf(ports.LogInfo, "gather/prepare: REFUSED — proposal ignores the new-view's carried lock (#432 safety)", "from", from, "height", b.Height, "round", env.Round)
+				n.reply(from, msg, ports.Message{Kind: ports.MsgAttestReply, OK: false})
+				return true
+			}
+			// Defensive lock rule (Tendermint's belt over PBFT's braces): if WE
+			// hold a lock on a different value and this proposal's certificate
+			// does not carry a lock at least as high, refuse — our own lock is
+			// evidence of a possibly-committed value the certificate missed.
+			if rs.Lock != nil && rs.Lock.Hash != b.Hash() && (forced == nil || forced.Round < rs.Lock.Round) {
+				n.logf(ports.LogInfo, "gather/prepare: REFUSED — locked on a different value the new-view does not supersede (#432)", "from", from, "height", b.Height, "round", env.Round, "lock_round", rs.Lock.Round)
+				n.reply(from, msg, ports.Message{Kind: ports.MsgAttestReply, OK: false})
+				return true
+			}
+		}
+		// Never equivocate within a slot: the mark is (height, round, phase)-
+		// scoped (#397 round-scoped per #432) and made durable BEFORE the
+		// prepare leaves. A different block at a HIGHER round is honest — the
+		// liveness escape; at the SAME (h, r, prepare) it is refused.
+		if !n.signAllowedAt(b.Height, env.Round, chain.PhasePrepare, b.Hash()) {
+			n.logf(ports.LogDebug, "gather/prepare: REFUSED (already signed this slot)", "from", from, "height", b.Height, "round", env.Round)
 			n.reply(from, msg, ports.Message{Kind: ports.MsgAttestReply, OK: false})
 			return true
 		}
-		if !n.recordSign(b.Height, b.Hash()) {
+		if !n.recordSign(b.Height, env.Round, chain.PhasePrepare, b.Hash()) {
 			n.reply(from, msg, ports.Message{Kind: ports.MsgAttestReply, OK: false})
 			return true
 		}
-		att := chain.Attest(b, n.signer)
+		att := chain.AttestAt(b, n.signer, env.Round, chain.PhasePrepare)
 		raw, _ := attEncode(att)
-		n.logf(ports.LogDebug, "gather/attest: ATTESTED", "from", from, "height", b.Height, "bytes", len(msg.Data), "regs", len(b.BondRegs))
+		n.logf(ports.LogDebug, "gather/prepare: PREPARED", "from", from, "height", b.Height, "round", env.Round, "bytes", len(msg.Data), "regs", len(b.BondRegs))
 		n.reply(from, msg, ports.Message{Kind: ports.MsgAttestReply, OK: true, Data: raw})
+	case ports.MsgPrepareQC:
+		// PRECOMMIT phase (#432): a verified prepare-QC for (h, r) IS the POL —
+		// lock on its value (monotone by round, persisted with the mark) and
+		// precommit it. The lock is what a round-change carries forward.
+		var env prepareQCEnv
+		if cbor.Unmarshal(msg.Data, &env) != nil {
+			n.reply(from, msg, ports.Message{Kind: ports.MsgPrecommitReply, OK: false})
+			return true
+		}
+		b, err := chain.Decode(env.Raw)
+		if err != nil {
+			n.reply(from, msg, ports.Message{Kind: ports.MsgPrecommitReply, OK: false})
+			return true
+		}
+		if verr := n.chain.VerifyPrepareQC(b, env.QC, env.Round); verr != nil {
+			n.logf(ports.LogDebug, "gather/precommit: REFUSED (prepare-QC invalid)", "from", from, "height", b.Height, "round", env.Round, "reason", verr)
+			n.reply(from, msg, ports.Message{Kind: ports.MsgPrecommitReply, OK: false})
+			return true
+		}
+		if !n.signAllowedAt(b.Height, env.Round, chain.PhasePrecommit, b.Hash()) {
+			n.logf(ports.LogDebug, "gather/precommit: REFUSED (already signed this slot)", "from", from, "height", b.Height, "round", env.Round)
+			n.reply(from, msg, ports.Message{Kind: ports.MsgPrecommitReply, OK: false})
+			return true
+		}
+		rs := n.roundsFor()
+		if b.Height == rs.Height {
+			if !n.adoptLock(rs, b, env.Round, env.QC, env.Raw) {
+				n.reply(from, msg, ports.Message{Kind: ports.MsgPrecommitReply, OK: false})
+				return true
+			}
+		} else if !n.recordSign(b.Height, env.Round, chain.PhasePrecommit, b.Hash()) {
+			n.reply(from, msg, ports.Message{Kind: ports.MsgPrecommitReply, OK: false})
+			return true
+		}
+		att := chain.AttestAt(b, n.signer, env.Round, chain.PhasePrecommit)
+		raw, _ := attEncode(att)
+		n.logf(ports.LogDebug, "gather/precommit: PRECOMMITTED", "from", from, "height", b.Height, "round", env.Round)
+		n.reply(from, msg, ports.Message{Kind: ports.MsgPrecommitReply, OK: true, Data: raw})
+	case ports.MsgRoundChange:
+		// View-change vote (#432): verify, record, ack; recordRoundChange fires
+		// the new-view proposal if we are the designated proposer for the new
+		// round and the quorum is now met.
+		var rc roundChangeEnv
+		if cbor.Unmarshal(msg.Data, &rc) != nil {
+			n.reply(from, msg, ports.Message{Kind: ports.MsgRoundChangeAck, OK: false})
+			return true
+		}
+		rs := n.roundsFor()
+		if rc.Height != rs.Height {
+			// Stale (their head is behind) or ahead (ours is) — either way the
+			// chain-sync sweep reconciles heads; a round-change is only
+			// meaningful at the height we are both stuck on.
+			n.reply(from, msg, ports.Message{Kind: ports.MsgRoundChangeAck, OK: false})
+			return true
+		}
+		if err := n.verifyRoundChange(&rc, rs.Height); err != nil {
+			n.logf(ports.LogDebug, "round-change: REFUSED", "from", from, "height", rc.Height, "round", rc.NewRound, "reason", err)
+			n.reply(from, msg, ports.Message{Kind: ports.MsgRoundChangeAck, OK: false})
+			return true
+		}
+		n.logf(ports.LogInfo, "round-change: recorded (#432 view-change)", "from", rc.senderID(), "height", rc.Height, "round", rc.NewRound, "carries_lock", len(rc.LockQC) > 0)
+		n.recordRoundChange(rs, rc.NewRound, rc.senderID(), msg.Data)
+		n.reply(from, msg, ports.Message{Kind: ports.MsgRoundChangeAck, OK: true})
 	case ports.MsgCommitBlock:
 		b, err := chain.Decode(msg.Data)
 		ok := err == nil && n.chain.Append(*b) == nil
@@ -500,67 +636,199 @@ func (n *Node) proposeBlock(b *chain.Block, attesters, broadcast []ports.NodeID,
 		}
 		n.pendingSlashes = still
 	}
+	b.Version = chain.BlockVersionRounds // era 2: minted blocks carry two-phase certificates (#432)
 	chain.Sign(b, n.signer)
 	if err := n.chain.ValidateProposal(b); err != nil {
 		done(fmt.Errorf("propose: local pre-check: %w", err))
 		return
 	}
-	// Never sign twice at one height (#397 Q1): the proposer's signature enters
-	// the SAME never-sign-twice ledger as an attestation, and the mark is made
-	// durable BEFORE the proposal is released — whether or not it ever commits.
-	// Without this, two proposers racing one height each saw an empty ledger,
-	// attested each other's block, and were both slashed as equivocators (the
-	// b88245d-3496 wedge). Same-hash re-proposal stays idempotent.
-	if !n.signAllowedAt(b.Height, b.Hash()) {
-		done(fmt.Errorf("propose height %d: already signed a different block at this height (never-sign-twice, #397)", b.Height))
+	// The round this proposal runs at, with its new-view certificate for any
+	// round > 0 (assembled by recordRoundChange; a proposer cannot invent a
+	// round — attesters verify the certificate).
+	rs := n.roundsFor()
+	round := uint64(0)
+	var newView [][]byte
+	if b.Height == rs.Height {
+		round = rs.Round
+		if round > 0 {
+			for _, r := range rs.Changes[round] {
+				newView = append(newView, r)
+			}
+			// The forced-value rule binds US too: if the certificate carries a
+			// lock for a different value, this fresh proposal must yield (the
+			// caller's work stays pending; the locked value is re-proposed by
+			// proposeAtNewView).
+			if forced, err := n.newViewFor(b.Height, round, newView); err != nil {
+				done(fmt.Errorf("propose height %d round %d: new-view certificate not ready: %w", b.Height, round, err))
+				return
+			} else if forced != nil && forced.Hash != b.Hash() {
+				done(fmt.Errorf("propose height %d round %d: the new-view carries a lock for a different value — re-propose that (#432)", b.Height, round))
+				return
+			}
+		}
+	}
+	n.gatherTwoPhase(b, attesters, broadcast, quorum, round, newView, nil, done)
+}
+
+// gatherTwoPhase runs the #432 two-phase gather for b at (b.Height, round):
+// prepare quorum → prepare-QC → lock (durable) → precommit quorum → commit +
+// broadcast. b may be this node's own freshly-signed proposal OR a FORCED
+// re-proposal from a new-view certificate — a re-proposed block keeps its
+// ORIGINAL author (re-signing would change the hash and orphan the lock).
+// The gatherer always contributes its own prepare/precommit: as an attester
+// they count like any other's; as the AUTHOR they count toward nothing
+// (validation counts the proposer by authorship) but are REQUIRED evidence —
+// the round-scoped self-prepare is what makes a double-proposal at one (h, r)
+// slashable (chain.requireProposerPrepare). `carried` is the forced lock's
+// prepare-QC on a re-proposal (nil otherwise): the absent original author's
+// self-prepare is lifted from it into the fresh certificate, still valid at
+// its lower round (the hash excludes the round; the author is exempt from the
+// round-exactness rule).
+func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeID, quorum int, round uint64, newView [][]byte, carried []chain.Attestation, done func(error)) {
+	// Never sign twice in a slot (#397, round-scoped per #432): our PREPARE
+	// enters the same never-sign-twice ledger as any attestation, durable
+	// BEFORE anything is released — whether or not it ever commits. A
+	// different block at a HIGHER round stays signable: that is the #432
+	// liveness escape the height-only mark lacked.
+	if !n.signAllowedAt(b.Height, round, chain.PhasePrepare, b.Hash()) {
+		done(fmt.Errorf("propose height %d round %d: already signed a different block in this slot (never-sign-twice, #397/#432)", b.Height, round))
 		return
 	}
-	if !n.recordSign(b.Height, b.Hash()) {
+	if !n.recordSign(b.Height, round, chain.PhasePrepare, b.Hash()) {
 		done(fmt.Errorf("propose height %d: sign-mark could not be persisted — refusing to sign (#397 Q1b)", b.Height))
 		return
 	}
 	raw := chain.Encode(b)
-	// #286 Layer-2 root-cause aid: at -log info the gather logs ONLY on the final commit
-	// ("block committed" below), so a quorum-2 genesis gather that starts and never
-	// completes over the WAN is invisible. These debug lines trace the round — the block
-	// SIZE (the ~1.5 MB first block is the suspect), each attester request, and each
-	// reply/failure — so the next multi-region run with -log debug shows exactly where it
-	// stalls (proposer doesn't send? attester rejects the big block? attester never
-	// replies?). Debug-level only.
-	n.logf(ports.LogDebug, "gather: starting", "height", b.Height, "bytes", len(raw), "regs", len(b.BondRegs), "quorum", quorum, "attesters", len(attesters))
+	envRaw, err := cbor.Marshal(proposeEnv{Raw: raw, Round: round, NewView: newView})
+	if err != nil {
+		done(fmt.Errorf("propose: encode envelope: %w", err))
+		return
+	}
+	n.logf(ports.LogDebug, "gather: starting (two-phase)", "height", b.Height, "round", round, "bytes", len(raw), "regs", len(b.BondRegs), "quorum", quorum, "attesters", len(attesters))
 
-	var atts []chain.Attestation
-	// supportMet: would the coalition gathered so far commit? The count floor is
-	// the caller's `quorum`; in a MATURE EPOCH the chain additionally demands the
-	// >⅔ frozen-WEIGHT super-majority (B2) — "how many" stops being sufficient,
-	// so the chain answers "is this support enough" directly.
-	supportMet := func() bool {
+	// supportMet: would this coalition commit? The count floor is the caller's
+	// `quorum`; the chain adds the regime gates (anchor majority / mature >⅔
+	// weight) directly — identical for BOTH phases (POL threshold = commit
+	// threshold, certification §4).
+	supportMet := func(atts []chain.Attestation) bool {
 		ids := make([]ports.NodeID, 0, len(atts))
 		for _, a := range atts {
 			ids = append(ids, a.AttesterID())
 		}
-		return n.chain.SupportMeetsQuorum(n.id, ids)
+		// Counted around the block's AUTHOR (which may not be this node on a
+		// new-view re-proposal) — mirrors ValidateCommit exactly.
+		return n.chain.SupportMeetsQuorum(b.ProposerID(), ids)
+	}
+	// counted: the caller's `quorum` floor is a NON-AUTHOR attestation count
+	// (the proposer is counted by authorship, never by signature — the #402
+	// arithmetic), so the author's own required self-signatures in the
+	// certificate must not satisfy it. Mirrors collectQuorumSigs's
+	// proposer-skip exactly.
+	counted := func(atts []chain.Attestation) int {
+		nc := 0
+		for _, a := range atts {
+			if a.AttesterID() != b.ProposerID() {
+				nc++
+			}
+		}
+		return nc
+	}
+
+	// PHASE 2 (precommit): runs once the prepare-QC is assembled and locked.
+	gatherPrecommits := func(qc []chain.Attestation) {
+		qcRaw, err := cbor.Marshal(prepareQCEnv{Raw: raw, Round: round, QC: qc})
+		if err != nil {
+			done(fmt.Errorf("propose: encode prepare-QC: %w", err))
+			return
+		}
+		// Our own precommit ALWAYS — as attester it counts; as author it is
+		// count-neutral extra evidence (mark already durable: adoptLock /
+		// recordSign ran before gatherPrecommits was entered).
+		pcs := []chain.Attestation{chain.AttestAt(b, n.signer, round, chain.PhasePrecommit)}
+		var askPC func(i int)
+		askPC = func(i int) {
+			if counted(pcs) >= quorum && supportMet(pcs) {
+				b.CommitRound = round
+				b.PrepareQC = qc
+				b.Atts = pcs
+				if err := n.chain.Append(*b); err != nil {
+					done(fmt.Errorf("propose: commit rejected by own replica: %w", err))
+					return
+				}
+				n.Stats.BlocksCommitted++
+				n.logf(ports.LogInfo, "block committed", "height", b.Height, "round", round, "entries", len(b.Entries), "attestations", len(pcs), "via", "proposal")
+				if n.onCommit != nil {
+					n.onCommit(*b)
+				}
+				n.broadcastCommit(b, broadcast, 0, func() { done(nil) })
+				return
+			}
+			if i >= len(attesters) {
+				n.logf(ports.LogDebug, "gather: NO PRECOMMIT QUORUM", "height", b.Height, "round", round, "gathered", counted(pcs), "needed", quorum)
+				done(fmt.Errorf("propose height %d round %d: %w: %d precommits of %d gathered",
+					b.Height, round, chain.ErrNoQuorum, counted(pcs), quorum))
+				return
+			}
+			v := attesters[i]
+			if v == n.id {
+				askPC(i + 1)
+				return
+			}
+			n.request(v, ports.Message{Kind: ports.MsgPrepareQC, Data: qcRaw},
+				func(resp ports.Message, err error) {
+					switch {
+					case err != nil:
+						n.logf(ports.LogDebug, "gather: precommit request FAILED", "to", v, "height", b.Height, "err", err)
+					case !resp.OK:
+						n.logf(ports.LogDebug, "gather: precommit REFUSED", "to", v, "height", b.Height)
+					default:
+						if att, aerr := attDecode(resp.Data); aerr == nil {
+							pcs = append(pcs, att)
+						}
+					}
+					askPC(i + 1)
+				})
+		}
+		askPC(0)
+	}
+
+	// PHASE 1 (prepare): gather prepare signatures to the quorum, assemble the
+	// prepare-QC, LOCK on it (durable — the lock is what a round-change
+	// carries), then run the precommit phase. The gatherer's own prepare goes
+	// in first (recorded above); on a forced re-proposal the ORIGINAL author's
+	// self-prepare is lifted from the carried lock QC so the fresh certificate
+	// keeps satisfying requireProposerPrepare (the author may be down — the
+	// reason the view changed).
+	atts := []chain.Attestation{chain.AttestAt(b, n.signer, round, chain.PhasePrepare)}
+	if n.id != b.ProposerID() {
+		for _, a := range carried {
+			if a.Phase == chain.PhasePrepare && a.AttesterID() == b.ProposerID() {
+				atts = append(atts, a)
+				break
+			}
+		}
 	}
 	var ask func(i int)
 	ask = func(i int) {
-		if len(atts) >= quorum && supportMet() {
-			b.Atts = atts
-			if err := n.chain.Append(*b); err != nil {
-				done(fmt.Errorf("propose: commit rejected by own replica: %w", err))
+		if counted(atts) >= quorum && supportMet(atts) {
+			qc := atts
+			if b.Height == n.roundsFor().Height {
+				if !n.adoptLock(n.roundsFor(), b, round, qc, raw) {
+					done(fmt.Errorf("propose height %d: lock could not be persisted — refusing to precommit (#432)", b.Height))
+					return
+				}
+			} else if !n.recordSign(b.Height, round, chain.PhasePrecommit, b.Hash()) {
+				done(fmt.Errorf("propose height %d: sign-mark could not be persisted (#397 Q1b)", b.Height))
 				return
 			}
-			n.Stats.BlocksCommitted++
-			n.logf(ports.LogInfo, "block committed", "height", b.Height, "entries", len(b.Entries), "attestations", len(atts), "via", "proposal")
-			if n.onCommit != nil {
-				n.onCommit(*b)
-			}
-			n.broadcastCommit(b, broadcast, 0, func() { done(nil) })
+			n.logf(ports.LogDebug, "gather: prepare-QC assembled — LOCKED", "height", b.Height, "round", round, "prepares", len(qc))
+			gatherPrecommits(qc)
 			return
 		}
 		if i >= len(attesters) {
-			n.logf(ports.LogDebug, "gather: NO QUORUM", "height", b.Height, "bytes", len(raw), "gathered", len(atts), "needed", quorum)
-			done(fmt.Errorf("propose height %d: %w: %d of %d gathered",
-				b.Height, chain.ErrNoQuorum, len(atts), quorum))
+			n.logf(ports.LogDebug, "gather: NO PREPARE QUORUM", "height", b.Height, "round", round, "bytes", len(raw), "gathered", counted(atts), "needed", quorum)
+			done(fmt.Errorf("propose height %d round %d: %w: %d prepares of %d gathered",
+				b.Height, round, chain.ErrNoQuorum, counted(atts), quorum))
 			return
 		}
 		v := attesters[i]
@@ -568,26 +836,72 @@ func (n *Node) proposeBlock(b *chain.Block, attesters, broadcast []ports.NodeID,
 			ask(i + 1)
 			return
 		}
-		n.logf(ports.LogDebug, "gather: requesting attestation", "to", v, "height", b.Height, "bytes", len(raw), "have", len(atts), "need", quorum)
-		n.request(v, ports.Message{Kind: ports.MsgProposeBlock, Data: raw},
+		n.logf(ports.LogDebug, "gather: requesting prepare", "to", v, "height", b.Height, "round", round, "bytes", len(raw), "have", counted(atts), "need", quorum)
+		n.request(v, ports.Message{Kind: ports.MsgProposeBlock, Data: envRaw},
 			func(resp ports.Message, err error) {
 				switch {
 				case err != nil:
-					n.logf(ports.LogDebug, "gather: attester request FAILED", "to", v, "height", b.Height, "err", err)
+					n.logf(ports.LogDebug, "gather: prepare request FAILED", "to", v, "height", b.Height, "err", err)
 				case !resp.OK:
-					n.logf(ports.LogDebug, "gather: attester REFUSED", "to", v, "height", b.Height)
+					n.logf(ports.LogDebug, "gather: prepare REFUSED", "to", v, "height", b.Height)
 				default:
 					if att, aerr := attDecode(resp.Data); aerr == nil {
 						atts = append(atts, att)
-						n.logf(ports.LogDebug, "gather: attestation collected", "from", v, "height", b.Height, "have", len(atts), "need", quorum)
+						n.logf(ports.LogDebug, "gather: prepare collected", "from", v, "height", b.Height, "have", counted(atts), "need", quorum)
 					} else {
-						n.logf(ports.LogDebug, "gather: attestation DECODE failed", "from", v, "height", b.Height, "err", aerr)
+						n.logf(ports.LogDebug, "gather: prepare DECODE failed", "from", v, "height", b.Height, "err", aerr)
 					}
 				}
 				ask(i + 1)
 			})
 	}
 	ask(0)
+}
+
+// proposeAtNewView is the view-change proposal path (#432): fired by
+// recordRoundChange when this node is the designated proposer for (height,
+// round) and the round-change quorum is assembled. Re-proposes the FORCED
+// value (the certificate's highest carried lock — keeping its ORIGINAL author,
+// straight into the two-phase gather) if any; otherwise a fresh drain proposal
+// for the pending queue via proposeBlock. Attesters re-verify the same
+// certificate, so an equivocating designated proposer gains nothing.
+func (n *Node) proposeAtNewView(rs *heightRounds, round uint64, newView [][]byte, forced *nodeLock) {
+	if n.bondDrainInFlight {
+		return // one proposal in flight at a time; the next sweep retries
+	}
+	peers := n.syncTargets()
+	attesters := make([]ports.NodeID, 0, len(peers))
+	for _, p := range peers {
+		if n.chain.AttesterEligible(p) {
+			attesters = append(attesters, p)
+		}
+	}
+	if len(attesters) == 0 {
+		return
+	}
+	n.bondDrainInFlight = true
+	fin := func(err error) {
+		n.bondDrainInFlight = false
+		if err != nil {
+			n.logf(ports.LogDebug, "new-view proposal not committed", "height", rs.Height, "round", round, "err", err)
+		}
+	}
+	n.logf(ports.LogInfo, "new-view proposal (#432 view-change)", "height", rs.Height, "round", round, "forced", forced != nil)
+	if forced != nil {
+		lb, err := chain.Decode(forced.Block)
+		if err != nil {
+			fin(err)
+			return
+		}
+		n.gatherTwoPhase(lb, attesters, peers, 0, round, newView, forced.QC, fin)
+		return
+	}
+	prevHead, height := n.chain.Head()
+	if height != rs.Height {
+		fin(nil)
+		return
+	}
+	n.proposeBlock(&chain.Block{Version: chain.BlockVersionRounds, Height: height, Prev: prevHead}, attesters, peers, 0, fin)
 }
 
 func (n *Node) broadcastCommit(b *chain.Block, validators []ports.NodeID, i int, done func()) {
@@ -776,6 +1090,10 @@ func (n *Node) chainSyncTick() {
 			// Drain pending bond registrations AFTER the reconcile settles, so the
 			// proposal builds on the freshest head this sweep can know (#338).
 			n.maybeProposeBondDrain()
+			// #432: count non-progress sweeps and fire a round-change when the
+			// working height is stuck with pending work (the deterministic,
+			// quorum-observable view-change trigger).
+			n.maybeAdvanceRound()
 		})
 		// Renew objective standing without proposing (H2 / RT-2): submit a fresh
 		// bond proof to the same validator set we reconcile against, so an
@@ -817,17 +1135,19 @@ func (n *Node) maybeProposeBondDrain() {
 	// NEVER sign twice at one height (Tendermint locking): if we already signed
 	// a block at this height — attested OR proposed — a drain proposal here
 	// would be a second signature on a different block, which a peer's
-	// cross-fork scan reads as equivocation. The height clears when a commit
-	// moves the head. (#397: the watermark now also covers our own proposals.)
-	if n.signMarkSet && height <= n.signMark.Height {
+	// cross-fork scan reads as equivocation. #432: the check is SLOT-scoped —
+	// a fresh proposal needs the (height, current round, prepare) slot to sit
+	// strictly above the mark; a marked slot at this height no longer blocks
+	// the height forever, because maybeAdvanceRound moves the round and the
+	// next round's slot is signable (the liveness escape).
+	if rs := n.roundsFor(); n.signMarkSet && slotCompare(height, rs.Round, chain.PhasePrepare, n.signMark) <= 0 {
 		// NEVER refuse silently when work is being blocked (B5 / #432): pending
-		// regs + a marked proposal height, sweep after sweep, is the exact
-		// signature of the wedged-height liveness defect — the one line that
-		// would have named the field stall on the first run instead of the
-		// third. One line per sweep (30s) at most, only while actually blocked.
+		// regs + a blocked slot, sweep after sweep, is the wedge signature —
+		// the one line that would have named the field stall on the first run.
+		// maybeAdvanceRound (same sweep cadence) is what unblocks it.
 		if len(n.pendingBondRegs) > 0 {
-			n.logf(ports.LogInfo, "bond-reg drain BLOCKED at own sign watermark (#432 wedge signature if persistent)",
-				"height", height, "mark_height", n.signMark.Height, "pending", len(n.pendingBondRegs))
+			n.logf(ports.LogInfo, "bond-reg drain blocked at own sign slot — awaiting round advance (#432)",
+				"height", height, "round", rs.Round, "mark_height", n.signMark.Height, "mark_round", n.signMark.Round, "pending", len(n.pendingBondRegs))
 		}
 		return
 	}
