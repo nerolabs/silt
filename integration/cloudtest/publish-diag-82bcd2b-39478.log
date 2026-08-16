@@ -1,0 +1,8 @@
+[2026-08-16T21:10:23Z] ft_publish FAILED after 240s on fetch-1 (token-quorum=2)
+  publisher->validator reachability: 4/4 of the -peers set reachable
+  last silt error: silt: httpregistry publish: accepted but not committed within 3m0s (root 4cc7de002e663e7357b733ec5f4e33a866eab9afd564cfcac808e38eeb4ee471) — the consensus gather did not finish; see the validators' -log debug;
+  note: token-quorum needs the publisher to reach >= 2 validators to
+        gather signatures. A shortfall here — not validator<->validator — is the
+        usual cause of 'could not gather enough publish-token signatures' and a
+        chain stuck at height 0. Retry a bootstrap run with TOKEN_QUORUM=1, or
+        fix publisher egress to the validators.
