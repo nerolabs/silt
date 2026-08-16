@@ -104,3 +104,22 @@ post-GST: the certified convergence bound) — RED against locking-without-a-syn
 GREEN with the #451 synchronizer. The invariant-map line it enforces: **round-based
 liveness = locking (safety) + a synchronizer (convergence); both must be specified, and
 both must be model-checked under per-node timing skew.**
+
+
+## Amendment (2026-08-16, #456): the model-check goes from UNTIMED to COARSELY-TIMED
+
+The #456 certification's generalization, after the FIFTH recurrence of one blind spot
+(#357 drain timing; the I5 benign-call; #441 entry-liveness; #451 round-advance skew;
+#456 dead peers costing zero in gathers): **the untimed sim models message ORDER and
+Byzantine behavior — so it catches safety and eventual liveness — but has no cost model,
+so it is structurally blind to BOUNDED liveness.** Safety oracles need order (present);
+bounded-liveness oracles need COST (now present): the sim CLOCK is the cost model —
+unreachable peers resolve only via their `RequestTimeout` timers, fired by the driver
+(`simclock.Scheduler.Step()`), so elapsed simulated time accumulates real critical-path
+cost and the oracle asserts it against the computed bound. Reference oracle:
+`TestModelCheck_456_DeadPeersMustNotTaxTheGather` — dead-first ask order, RED under the
+sequential gather (elapsed = the SUM of dead-peer timeouts per phase, twice: 4.02s at
+the 500ms sim timeout), GREEN under the certified concurrent gather (0 simulated —
+collection completes on the quorum predicate at the speed of the slowest NEEDED
+replier). This is where build-immutable #5 (build for the adverse internet) lands
+INSIDE the verifier.

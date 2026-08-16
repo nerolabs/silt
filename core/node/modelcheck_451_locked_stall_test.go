@@ -431,3 +431,130 @@ func TestModelCheck_451_StaggeredSweepsMustStillConverge(t *testing.T) {
 		t.Fatalf("#451 REPRODUCED: after GST the contested height %d did not commit within %d rotations — the pre-GST smear left the members at rounds/marks up to %d and a synchronizer-less escape must climb the whole ladder one fixed timeout at a time (certification 451-view-synchronization: locking without a SYNCHRONIZER)", contested, gstBudget, maxRound)
 	}
 }
+
+// TestModelCheck_456_DeadPeersMustNotTaxTheGather is the #456 merge gate — the
+// model-check's first COARSELY-TIMED oracle (certification §5: the untimed sim
+// models order and Byzantine behavior but charges NOTHING for an unreachable
+// peer, so it was structurally blind to bounded liveness — the 5th recurrence
+// of the blind spot). Here the sim CLOCK is the cost model: the sybil cohort
+// is made UNRESPONSIVE (receiver-side drop — a request is delivered nowhere
+// and only the requester's RequestTimeout timer, fired by the driver via
+// simclock.Step, resolves it), so every ask to a dead member costs real
+// simulated time. The oracle drives the 10a shape (a live designee proposing
+// with a third of the epoch silent) and asserts the commit lands within a
+// bounded SIMULATED elapsed time.
+//
+// FAILING-FIRST: RED under the sequential ask-chain — each dead peer's full
+// timeout sits ON THE CRITICAL PATH before the next attester is even asked
+// (elapsed ≈ the SUM of dead-peer timeouts per phase, twice); GREEN under the
+// certified concurrent gather — all asks in flight at once, collection
+// completes on the quorum predicate at the speed of the slowest NEEDED (live)
+// replier, and the dead peers' timers fire harmlessly off the critical path.
+func TestModelCheck_456_DeadPeersMustNotTaxTheGather(t *testing.T) {
+	nodes, ids, net, sched, refill := matureWorld12(t)
+	all := make([]ports.NodeID, len(ids))
+	for i := range ids {
+		all[i] = ids[i].NodeID()
+	}
+	byID := map[ports.NodeID]*Node{}
+	for _, nd := range nodes {
+		byID[nd.id] = nd
+	}
+	sybilSet := map[ports.NodeID]bool{}
+	for _, id := range all[8:] {
+		sybilSet[id] = true
+	}
+	live := nodes[:8]
+	liveIDs := all[:8]
+
+	// THE DEAD COHORT: the sybils drop all inbound (receiver-side), so a
+	// request to them is swallowed and only the requester's timeout resolves
+	// it — the field's stopped-process shape, with the sim clock charging the
+	// cost the untimed driver never did.
+	for _, nd := range nodes[8:] {
+		nd.SetBlockedPeers(liveIDs)
+	}
+
+	// Find a height whose (h, r0) designee is LIVE (the drill's honest-side
+	// proposal — the tax is paid soliciting the dead, not being dead). Heights
+	// whose designee is dead are driven past by a DIRECT live proposal (valid:
+	// the designee rule is drain-path etiquette, not a validity rule), keeping
+	// the contested height's marks clean — the oracle measures the GATHER's
+	// cost, not setup residue.
+	var designee *Node
+	liveAtt := append([]ports.NodeID{}, liveIDs[1:]...)
+	for hops := 0; hops < 13 && designee == nil; hops++ {
+		prev, h := nodes[0].chain.Head()
+		d := byID[nodes[0].designatedProposer(h, 0)]
+		if !sybilSet[d.id] {
+			designee = d
+			break
+		}
+		blk := &chain.Block{Version: chain.BlockVersion, Height: h, Prev: prev, Entries: []ports.Entry{mkEntry("hop-" + string(rune('a'+hops)))}}
+		var hopDone bool
+		nodes[0].proposeBlock(blk, liveAtt, all, 0, func(err error) { hopDone = err == nil })
+		drainHeld(t, net, fifo)
+		if !hopDone {
+			t.Fatalf("setup hop h%d: live direct proposal failed", h)
+		}
+	}
+	if designee == nil {
+		t.Fatal("setup: no live designee height reached")
+	}
+	_, contested := nodes[0].chain.Head()
+	t0 := sched.Now()
+
+	// Drive the live designee's proposal to commit, firing timers as the only
+	// clock: elapsed simulated time IS the gather's critical-path cost.
+	refill()
+	prevC, hC := designee.chain.Head()
+	bC := &chain.Block{Version: chain.BlockVersion, Height: hC, Prev: prevC, Entries: []ports.Entry{mkEntry("contested-456")}}
+	// The ask ORDER is the oracle's adversarial dimension: the DEAD members
+	// first — the order the deterministic ID-sort can and does produce in the
+	// field (whose IDs sort where is seed luck). A sequential gather pays every
+	// dead timeout before reaching a live attester; a concurrent gather is
+	// order-indifferent.
+	attC := make([]ports.NodeID, 0, 11)
+	attC = append(attC, all[8:]...) // the 4 dead sybils, first
+	for _, id := range liveIDs {
+		if id != designee.id {
+			attC = append(attC, id)
+		}
+	}
+	designee.proposeBlock(bC, attC, all, 0, func(err error) { t.Logf("contested proposal done: err=%v", err) })
+	committed := false
+	for i := 0; i < 2000 && !committed; i++ {
+		drainHeld(t, net, fifo)
+		if _, h := nodes[0].chain.Head(); h > contested {
+			committed = true
+			break
+		}
+		if !sched.Step() {
+			for _, nd := range live {
+				nd.maybeProposeBondDrain()
+				nd.maybeAdvanceRound()
+			}
+			drainHeld(t, net, fifo)
+			if _, h := nodes[0].chain.Head(); h > contested {
+				committed = true
+			}
+			if !committed && sched.Pending() == 0 {
+				t.Fatal("setup: the world quiesced without committing — no timers, no messages, no progress")
+			}
+		}
+	}
+	if !committed {
+		t.Fatal("setup: the contested height never committed at all")
+	}
+	elapsed := ports.Duration(sched.Now() - t0)
+	// The bound: ONE per-ask timeout unit of tolerance (the concurrent gather
+	// pays at most ~one timeout where dead timers overlap the live collection)
+	// plus scheduling slack. The sequential chain pays ≈ 4 dead × timeout per
+	// PHASE, twice — several times this bound.
+	timeout := nodes[0].cfg.RequestTimeout
+	bound := 3 * timeout
+	if elapsed > bound {
+		t.Fatalf("#456 REPRODUCED (coarsely-timed): the live designee's commit took %v of simulated time with 4 dead members — the SEQUENTIAL gather put every dead peer's timeout on the critical path (bound: %v = 3× the per-ask timeout; the concurrent gather pays ~one)", elapsed, bound)
+	}
+	t.Logf("gather completed in %v simulated (bound %v)", elapsed, bound)
+}

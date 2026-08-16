@@ -781,6 +781,16 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 	}
 
 	// PHASE 2 (precommit): runs once the prepare-QC is assembled and locked.
+	// #456 (research-certified): the collection is CONCURRENT — the prepare-QC
+	// is broadcast to every attester at once and replies are collected until
+	// the quorum predicate holds. Gather latency = the slowest NEEDED (live)
+	// replier; an unreachable member's transport timeout fires off the
+	// critical path (the sequential ask-chain paid every dead peer's full
+	// retry budget before asking the next — ~34s each in the field, the 10a
+	// stall's mechanism). Safe because no certified property is
+	// order-sensitive: there is ONE gatherer per proposal, the QC is carried
+	// in the block (never re-derived), and the stop predicate below is the
+	// SAME arithmetic ValidateCommit demands.
 	gatherPrecommits := func(qc []chain.Attestation) {
 		qcRaw, err := cbor.Marshal(prepareQCEnv{Raw: raw, Round: round, QC: qc})
 		if err != nil {
@@ -791,37 +801,52 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 		// count-neutral extra evidence (mark already durable: adoptLock /
 		// recordSign ran before gatherPrecommits was entered).
 		pcs := []chain.Attestation{chain.AttestAt(b, n.signer, round, chain.PhasePrecommit)}
-		var askPC func(i int)
-		askPC = func(i int) {
+		finishedPC := false
+		outstanding := 0
+		sending := true
+		finishPC := func() {
+			if finishedPC {
+				return
+			}
 			if counted(pcs) >= quorum && supportMet(pcs) {
+				finishedPC = true
 				b.CommitRound = round
 				b.PrepareQC = qc
-				b.Atts = pcs
+				// COPY at capture: replies landing after completion must never
+				// mutate a committed certificate's backing array.
+				b.Atts = append([]chain.Attestation(nil), pcs...)
 				if err := n.chain.Append(*b); err != nil {
 					done(fmt.Errorf("propose: commit rejected by own replica: %w", err))
 					return
 				}
 				n.Stats.BlocksCommitted++
-				n.logf(ports.LogInfo, "block committed", "height", b.Height, "round", round, "entries", len(b.Entries), "regs", len(b.BondRegs), "attestations", len(pcs), "via", "proposal")
+				n.logf(ports.LogInfo, "block committed", "height", b.Height, "round", round, "entries", len(b.Entries), "regs", len(b.BondRegs), "attestations", len(b.Atts), "via", "proposal")
 				if n.onCommit != nil {
 					n.onCommit(*b)
 				}
 				n.broadcastCommit(b, broadcast, 0, func() { done(nil) })
 				return
 			}
-			if i >= len(attesters) {
+			if outstanding == 0 && !sending {
+				finishedPC = true
 				n.logf(ports.LogDebug, "gather: NO PRECOMMIT QUORUM", "height", b.Height, "round", round, "gathered", counted(pcs), "needed", quorum)
 				done(fmt.Errorf("propose height %d round %d: %w: %d precommits of %d gathered",
 					b.Height, round, chain.ErrNoQuorum, counted(pcs), quorum))
 				return
 			}
-			v := attesters[i]
+		}
+		for _, v := range attesters {
 			if v == n.id {
-				askPC(i + 1)
-				return
+				continue
 			}
+			v := v
+			outstanding++
 			n.request(v, ports.Message{Kind: ports.MsgPrepareQC, Data: qcRaw},
 				func(resp ports.Message, err error) {
+					outstanding--
+					if finishedPC {
+						return
+					}
 					switch {
 					case err != nil:
 						n.logf(ports.LogDebug, "gather: precommit request FAILED", "to", v, "height", b.Height, "err", err)
@@ -832,10 +857,11 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 							pcs = append(pcs, att)
 						}
 					}
-					askPC(i + 1)
+					finishPC()
 				})
 		}
-		askPC(0)
+		sending = false
+		finishPC()
 	}
 
 	// PHASE 1 (prepare): gather prepare signatures to the quorum, assemble the
@@ -854,10 +880,17 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 			}
 		}
 	}
-	var ask func(i int)
-	ask = func(i int) {
+	finishedPrep := false
+	outstandingPrep := 0
+	sendingPrep := true
+	finishPrep := func() {
+		if finishedPrep {
+			return
+		}
 		if counted(atts) >= quorum && supportMet(atts) {
-			qc := atts
+			finishedPrep = true
+			// COPY at capture (#456): late replies must never mutate the QC.
+			qc := append([]chain.Attestation(nil), atts...)
 			if b.Height == n.roundsFor().Height {
 				if !n.adoptLock(n.roundsFor(), b, round, qc, raw) {
 					done(fmt.Errorf("propose height %d: lock could not be persisted — refusing to precommit (#432)", b.Height))
@@ -871,20 +904,27 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 			gatherPrecommits(qc)
 			return
 		}
-		if i >= len(attesters) {
+		if outstandingPrep == 0 && !sendingPrep {
+			finishedPrep = true
 			n.logf(ports.LogDebug, "gather: NO PREPARE QUORUM", "height", b.Height, "round", round, "bytes", len(raw), "gathered", counted(atts), "needed", quorum)
 			done(fmt.Errorf("propose height %d round %d: %w: %d prepares of %d gathered",
 				b.Height, round, chain.ErrNoQuorum, counted(atts), quorum))
 			return
 		}
-		v := attesters[i]
+	}
+	for _, v := range attesters {
 		if v == n.id {
-			ask(i + 1)
-			return
+			continue
 		}
+		v := v
+		outstandingPrep++
 		n.logf(ports.LogDebug, "gather: requesting prepare", "to", v, "height", b.Height, "round", round, "bytes", len(raw), "have", counted(atts), "need", quorum)
 		n.request(v, ports.Message{Kind: ports.MsgProposeBlock, Data: envRaw},
 			func(resp ports.Message, err error) {
+				outstandingPrep--
+				if finishedPrep {
+					return
+				}
 				switch {
 				case err != nil:
 					n.logf(ports.LogDebug, "gather: prepare request FAILED", "to", v, "height", b.Height, "err", err)
@@ -898,10 +938,11 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 						n.logf(ports.LogDebug, "gather: prepare DECODE failed", "from", v, "height", b.Height, "err", aerr)
 					}
 				}
-				ask(i + 1)
+				finishPrep()
 			})
 	}
-	ask(0)
+	sendingPrep = false
+	finishPrep()
 }
 
 // proposeAtNewView is the view-change proposal path (#432): fired by

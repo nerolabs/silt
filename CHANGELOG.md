@@ -9,6 +9,28 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **#456 concurrent gather: prepares and precommits are broadcast-and-collected — a
+  dead epoch member no longer taxes every proposal its full retry timeout**
+  (2026-08-16) — The two-phase gather asked attesters strictly sequentially, so each
+  unreachable member's full transport retry budget (~34s at field config) sat on the
+  critical path before the next attester was even asked: with a third of the epoch
+  silent, every proposal paid ~270s (the B2 drill's twice-field-reproduced stall —
+  runs ce15a80/1eded27 — after the #453 synchronizer was confirmed working via the
+  catch-up telemetry). Per the research certification (456-gather-serialization):
+  BFT tolerates f faults BY CONSTRUCTION — a correct protocol never waits for the
+  faulty — and broadcast-and-collect-until-quorum is the universal shape; the
+  sequential chain inverted it into f×timeout on every proposal. Both phases now
+  send to every attester at once and complete on the SAME quorum predicate
+  ValidateCommit demands (SupportMeetsQuorum: count + anchor majority + frozen
+  weight); assembled certificates are copied at capture so a late reply can never
+  mutate them. No certified property is order-sensitive (one gatherer per proposal;
+  the QC is carried in the block, never re-derived) — #432/#402/#397/#389 untouched,
+  the full oracle set green. Per-peer patient retry (network-durability §2) is kept;
+  only its SERIALIZATION across peers — the flat-aggregate anti-pattern one level up
+  — is removed: patient AND concurrent. Failing-first via the model-check's first
+  COARSELY-TIMED oracle (the sim clock as the cost model, the certification's method
+  fix): dead-first ask order, RED sequential (4.02s simulated = 4 dead × timeout × 2
+  phases), GREEN concurrent (0 simulated).
 - **`syncTargets` returns a deterministic (ID-sorted) list — a B2-determinism leak
   caught by the #451 fixture flaking under `-count=10`** (2026-08-16) — The list that
   drives gather ask-order, round-change broadcast order, and (in the model-check) the
