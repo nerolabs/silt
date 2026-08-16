@@ -9,6 +9,21 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **Node-level mature-epoch model-check fixture + the dynamic mature S1/S2 oracles**
+  (2026-08-16) — Closes the #432 certification's named residual (1): the S1/S2
+  merge-gate oracles ran the round machinery over the real node loop only in the launch
+  regime. `matureWorld` (core/node) now drives a real 8-node network — 4 launch anchors
+  + 4 bonded 64 MiB distinct-domain maturers, the field re-split shape — to a governed
+  mature epoch entirely over held delivery (drain banks the maturers, they qualify by
+  attesting, the everMature latch trips, the epoch boundary freezes the maturer
+  snapshot), verifies the premise first (latch on every replica, anchors shed from
+  eligibility, an anchors-only proposal REFUSED in the governed epoch, a 3-of-4
+  weight-quorum commit tracked everywhere), and then runs the certification schedules
+  dynamically: S1 (a delayed >⅔-weight round-0 quorum must be carried forward by the
+  lock rule) and S2 (a Byzantine maturer's weight-short forged lock must die at
+  round-change verification) — both anti-vacuity-pinned (CommitRound == 1) and both
+  RED under the recorded lock-free revert. This world is also the deterministic home
+  for the open mature-regime r0-contention observation from run 09fbe60-84613.
 - **Drain-curve observability: commit lines carry the bond-reg count, and a refused
   renewal submit is attributable to WAN head-skew instead of reading as forgery**
   (2026-08-16) — The committed-block lines (daemon banner and the node's structured
