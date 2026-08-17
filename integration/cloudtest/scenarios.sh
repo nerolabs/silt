@@ -679,6 +679,12 @@ flow_durability_turnover() {
 # ── chaos (#7): hard crash (SIGKILL) recovery + #69 reprovide over real VMs ──────
 flow_chaos_crash() {
   require_nodes "chaos-crash" major store-1 store-2 || return
+  # Capture the REGISTRY (val-a) + validator journals alongside store-1/store-2 on any
+  # chaos FAIL: run 1ebd487-7457 FAILed chaos-fetch with "root not in registry" but the
+  # capture held only the store journals, so the REGISTRY's own view of the root was
+  # unattributable after teardown (#7 capture-first). ft_add_validator_evidence appends
+  # val-a..d (val-a serves the registry) to this flow's evidence set.
+  ft_add_validator_evidence
   local link="${FT_LAST_LINK:-}" wantsha="${FT_LAST_SHA:-}"
   if [ -z "$link" ]; then local res; res="$(ft_publish fetch-1 262144 || true)"; link="${res%% *}"; wantsha="${res##* }"; fi
   # As with durability-turnover: a failed SETUP publish means crash-recovery is UNTESTED
