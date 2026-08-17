@@ -778,21 +778,33 @@ flow_c2_no_capture() {
   fi
   echo "    anchored ceiling (true committed tip, from the anchors): h${ceiling} (sybil-1 local head h${h0}$([ "$h0" -lt "$ceiling" ] 2>/dev/null && echo ' — sybil-1 is LAGGING; its catch-up is NOT a capture'))"
 
-  # 1b) PRE-EXISTING DIVERGENCE guard (#402): if a Sybil's head is ABOVE the
-  #     anchored ceiling BEFORE we stop any anchor, the Sybil is NOT synced to the
-  #     anchor chain — it is on a DIFFERENT fork (the 4faaee8-22913 event: a
-  #     sybil-side 11'→13' fork carrying one free anchor's sign-off, while the
-  #     anchors held honest-11). That is a distinct finding (see #402 / the
-  #     anchor-gate consult), NOT this drill's subject, and it breaks the capture
-  #     PREMISE (a Sybil synced to the anchor chain, then anchors leave). Grading a
-  #     capture here would be the exact false-positive #402 caught: sybil head 13 >
-  #     ceiling 11 read as an "advance". Record the divergence and GAP — the
-  #     no-capture property is UNTESTED on a network already forked.
-  local maxsyb=0 sh
-  for s in $sybils; do sh="$(syb_height "$s")"; sh="${sh:-0}"; [ "$sh" -gt "$maxsyb" ] 2>/dev/null && maxsyb="$sh"; done
+  # 1b) PRE-EXISTING DIVERGENCE guard: if a Sybil's head is ABOVE the anchored
+  #     ceiling BEFORE we stop any anchor, EITHER the Sybil is on a different
+  #     fork (the 4faaee8-22913 event — a real #402-class finding) OR it merely
+  #     SYNCED a fresh commit the ceiling-read anchors hadn't landed at read
+  #     time (benign broadcast skew on ONE chain — run 6fbcf2e-18553, where the
+  #     "fork" was hash-identical: sybil h43 624c3c… == val-b/d h43). Heights
+  #     cannot tell the two apart; HASHES can (consensus-discipline rule 7:
+  #     never presume the mechanism). Compare the sybil's hash AT THE SHARED
+  #     HEIGHT with an anchor's: same ⇒ skew (re-read the ceiling and proceed);
+  #     different ⇒ a real divergent fork (GAP + the finding).
+  local maxsyb=0 sh msyb=""
+  for s in $sybils; do sh="$(syb_height "$s")"; sh="${sh:-0}"; if [ "$sh" -gt "$maxsyb" ] 2>/dev/null; then maxsyb="$sh"; msyb="$s"; fi; done
   if [ "$maxsyb" -gt "$ceiling" ] 2>/dev/null; then
-    record "5-sybil-no-capture" gap major "PRE-EXISTING FORK (#402): a Sybil head (h${maxsyb}) is ABOVE the anchored ceiling (h${ceiling}) BEFORE any anchor was stopped — the Sybils are on a divergent fork (a launch anchor-gate fork, one free anchor co-signing; see #402), not synced to the anchor chain. The no-capture PREMISE is unmet, so this run cannot grade capture; the fork itself is the finding. Journals captured at this verdict."
-    return
+    local syb_at anchor_at
+    syb_at="$(jlog "$msyb" 400 | grep -oE "checkpoint: ${ceiling}:[0-9a-f]+" | tail -1 | cut -d: -f3)"
+    anchor_at="$(jlog "$boot" 400 | grep -oE "checkpoint: ${ceiling}:[0-9a-f]+" | tail -1 | cut -d: -f3)"
+    if [ -n "$syb_at" ] && [ "$syb_at" = "$anchor_at" ]; then
+      echo "    sybil head h${maxsyb} > ceiling h${ceiling} but HASH-IDENTICAL at h${ceiling} (${syb_at}) — broadcast skew on one chain, not a fork; re-reading the ceiling"
+      ceiling=0
+      for a in $anchors_nodes; do
+        hh="$(syb_height "$a")"; hh="${hh:-0}"
+        [ "$hh" -gt "$ceiling" ] 2>/dev/null && ceiling="$hh"
+      done
+    else
+      record "5-sybil-no-capture" gap major "PRE-EXISTING DIVERGENT FORK: sybil ${msyb} at h${maxsyb} does NOT share the anchor chain's hash at h${ceiling} (sybil=${syb_at:-unreadable} anchor=${anchor_at:-unreadable}) — a real fork finding (#402 class), not skew; capture premise unmet, journals captured"
+      return
+    fi
   fi
 
   # 2) THE CAPTURE ATTEMPT — stop every anchor; only the bonded Sybil self-majority
