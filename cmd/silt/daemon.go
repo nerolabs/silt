@@ -28,6 +28,7 @@ import (
 	"github.com/nerolabs/silt/adapters/logfile"
 	"github.com/nerolabs/silt/adapters/markstore"
 	"github.com/nerolabs/silt/adapters/memstore"
+	"github.com/nerolabs/silt/adapters/proofcache"
 	"github.com/nerolabs/silt/adapters/relay"
 	"github.com/nerolabs/silt/adapters/tcpnet"
 	"github.com/nerolabs/silt/adapters/walltime"
@@ -112,6 +113,7 @@ func cmdDaemon(args []string) error {
 	relayVia := fs.String("relay-via", "", "RELAYID@HOST:PORT of a relay to lean on if this node turns out to be NATed — peers then reach us through it")
 	advertise := fs.String("advertise", "", "publicly dialable HOST:PORT to stamp on outgoing messages — set this on a public box that listens on a wildcard address (a wildcard bind is never advertised on its own)")
 	cacheSize := fs.String("cache", "", "in-RAM read cache for hot chunks, e.g. 512M (default off) — a cache hit skips the disk read and the per-read hash re-verify")
+	proofCacheSize := fs.String("proof-cache", "64M", "resident RAM budget for HOT storage proofs; the rest live on disk and page in only to serve/audit, so proof RAM is O(hot) not O(held) (0 = unbounded, legacy)")
 	carePublished := fs.Bool("care-published", true, "the daemon repairs content published through its own UI, so your own content stays alive as nodes churn (its manifest counts toward this node's pledge); =false to opt out")
 	fs.Parse(args)
 
@@ -361,7 +363,19 @@ func cmdDaemon(args []string) error {
 	if pf, perr := diskproofs.Open(filepath.Join(*storeDir, "proofs")); perr != nil {
 		return perr
 	} else {
-		nd.SetProofStore(pf)
+		// Bound resident proof RAM to O(hot): the node keeps tiny metadata for
+		// every held chunk, but the full proofs (Merkle path + PoR tags, ~5 KB
+		// each) live on disk and page into this bounded cache only to serve or
+		// audit. Without it a disk full of chunks pins one full proof each in RAM
+		// and OOM-crash-loops the daemon (the field-corroborated fix).
+		var ps ports.ProofStore = pf
+		if budget, berr := parseSize(*proofCacheSize); berr != nil {
+			return berr
+		} else if budget > 0 {
+			ps = proofcache.Open(pf, budget)
+			fmt.Printf("proof-cache: %s hot-proof RAM budget (rest page from disk to serve/audit)\n", *proofCacheSize)
+		}
+		nd.SetProofStore(ps)
 		nd.LoadProofs()
 	}
 	// #93: persist the bond plot so a restart reloads (and re-verifies) it

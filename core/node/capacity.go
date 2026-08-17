@@ -57,9 +57,9 @@ func (n *Node) EstimateNetwork() NetEstimate {
 // more it CAN know).
 func (n *Node) HeldRoots() map[ports.Hash]int {
 	out := make(map[ports.Hash]int)
-	for id, p := range n.proofs {
+	for id, m := range n.proofMeta {
 		if ok, _ := n.store.Has(bg(), id); ok {
-			out[p.Root]++
+			out[m.Root]++
 		}
 	}
 	return out

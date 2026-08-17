@@ -99,7 +99,16 @@ type CapacityReporter interface {
 // no persistence (memory-only, fine for sims and ephemeral clients).
 type ProofStore interface {
 	Put(id ChunkID, p StorageProof) error
-	// Load returns every persisted proof, for repopulating on startup.
+	// Get returns one proof by id; ok is false if none is stored. This is the
+	// per-id read the bounded proof cache pages on a miss, so a daemon holds
+	// only its HOT proofs resident instead of the whole store (the OOM fix).
+	Get(id ChunkID) (StorageProof, bool, error)
+	// Keys returns every stored chunk id, for repopulating resident proof
+	// METADATA on startup one proof at a time (bounded RAM) instead of loading
+	// the whole store into a map. Order is unspecified.
+	Keys() ([]ChunkID, error)
+	// Load returns every persisted proof at once. Retained for compatibility and
+	// tests; the node reloads via Keys+Get to bound startup RAM.
 	Load() (map[ChunkID]StorageProof, error)
 	Delete(id ChunkID) error
 }

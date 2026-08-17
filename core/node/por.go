@@ -130,7 +130,13 @@ func porChallenge(seed [32]byte, blocks, count int) por.Challenge {
 // to expose that.
 func (n *Node) answerChallenge(msg ports.Message) ports.Message {
 	reply := ports.Message{Kind: ports.MsgChallengeReply}
-	stored, hasProof := n.proofs[msg.ChunkID]
+	// The full proof (Path + PoR tags) lives in the backing; page it in. Same
+	// tradeoff as serving a cold chunk — the audited proof is by definition on
+	// the serve/audit path, not a hot-loop iterate.
+	stored, hasProof, err := n.proofs.Get(msg.ChunkID)
+	if err != nil {
+		n.logf(ports.LogWarn, "proof read failed for audit", "chunk", msg.ChunkID, "err", err)
+	}
 	if !hasProof {
 		return reply // Found=false: nothing to prove
 	}

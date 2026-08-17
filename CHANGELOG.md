@@ -279,6 +279,24 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   queue-wait, and hang lines are always-on regardless. The cloudtest harness threads it via `LOOP_BUDGET=1`.
 
 ### Fixed
+- **Daemon OOM: bound resident PoR-proof RAM to O(hot), not O(total held chunks)**
+  (2026-08-17) — A node kept the full `StorageProof` (Merkle `Path` + per-block PoR
+  `PorTags`, ~5.4 KB each) resident for EVERY hosted chunk, never evicted — so a disk
+  full of content pinned proof RAM at O(total held) and crash-looped the whole
+  MATURING cohort (field-corroborated). The full proof now lives in the durable proof
+  store; the node keeps only ~80–100 B of resident METADATA per chunk (`Root, Index,
+  Total, Column` — everything the existence checks, iterate-all sweeps, re-announce
+  and denylist sites read without paging), and a new bounded LRU (`adapters/proofcache`,
+  mirroring `cachestore`: byte-budget, write-through-no-warm scan resistance) pages the
+  big fields in only to SERVE or AUDIT a proof. Resident proof RAM is now O(hot). A
+  daemon wires `proofcache` over `diskproofs` (new `-proof-cache` budget, default 64M);
+  sims keep an in-core in-memory backing (hexagonal core takes no adapter dependency,
+  B1). The audit answer is byte-identical whether the proof was resident or cold-paged
+  — a where-it-LIVES change, not a where-it-VERIFIES change (PoR verification, I1–I5
+  untouched). `ports.ProofStore` gains `Get`/`Keys` (per-id paging + one-proof-at-a-time
+  startup reload, so `LoadProofs` is O(N) I/O but O(hot) RAM). Design + the two build
+  refinements: `docs/thinking/2026-08-17-proof-map-oom-fix-plan.md`,
+  `docs/thinking/2026-08-17-proof-map-oom-build-refinements.md`.
 - **Bond-reg drain staleness (factor ii of the MATURING cadence wall): accept a reg over the last K
   committed heads** (2026-08-15) — A bond registration is signed over `BondRegNonce(prev)` and was validated
   only against the **current** head, so the instant the head advanced a reg in flight went stale and was

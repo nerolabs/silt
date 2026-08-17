@@ -79,8 +79,8 @@ func (n *Node) AnnounceHeld(done func(int)) {
 			continue // don't advertise taken-down content
 		}
 		key := ports.Hash(id)
-		if p, ok := n.proofs[id]; ok {
-			key = placementKey(p.Root, id, p.Column)
+		if m, ok := n.proofMeta[id]; ok { // resident: Root+Column, no paging in this all-held sweep
+			key = placementKey(m.Root, id, m.Column)
 		}
 		n.provs.Add(n.providerRecord(key))
 		held++

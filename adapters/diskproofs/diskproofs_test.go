@@ -4,8 +4,19 @@ import (
 	"bytes"
 	"testing"
 
+	"github.com/nerolabs/silt/adapters/prooftest"
 	"github.com/nerolabs/silt/ports"
 )
+
+func TestConformance(t *testing.T) {
+	prooftest.Run(t, func(t *testing.T) ports.ProofStore {
+		s, err := Open(t.TempDir())
+		if err != nil {
+			t.Fatalf("open: %v", err)
+		}
+		return s
+	})
+}
 
 func TestRoundTripLoadDelete(t *testing.T) {
 	dir := t.TempDir()
