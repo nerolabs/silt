@@ -15,11 +15,19 @@ node_names() { python3 -c "import json;print(' '.join(json.load(open('$NODES_JSO
 node_exists() { python3 -c "import json,sys;sys.exit(0 if '$1' in json.load(open('$NODES_JSON')) else 1)" 2>/dev/null; }
 
 # ── remote exec over IAP (reaches natted nodes too; no key management) ──────────
+# HARD TIMEOUT (SSH_NODE_TIMEOUT, default 90s): a `gcloud compute ssh` over an IAP
+# tunnel has no internal deadline, so a single stalled tunnel blocks the caller
+# FOREVER — with no timeout, one stuck stop-in-the-capture-drill wedged a whole
+# MATURING run for an hour (run 1ebd487-7457, no verdict, VMs left burning until a
+# manual kill). `timeout` bounds every remote call so a stalled node degrades that
+# ONE call (the caller's `|| true` / retry then proceeds), never the whole run.
+# 124 = timeout's own exit; the caller sees a non-zero exit exactly as a real ssh
+# failure, which every ssh_node site already tolerates.
 ssh_node() { # ssh_node NAME "remote command"
   local name="$1"; shift
   local inst zone
   inst="$(node_field "$name" instance_name)"; zone="$(node_field "$name" zone)"
-  gcloud compute ssh "$inst" --zone "$zone" --project "$PROJECT_ID" \
+  timeout "${SSH_NODE_TIMEOUT:-90}" gcloud compute ssh "$inst" --zone "$zone" --project "$PROJECT_ID" \
     --tunnel-through-iap --quiet --command "$*" 2>/dev/null
 }
 
@@ -151,6 +159,31 @@ record() { # record FLOW VERDICT SEVERITY DETAIL [ELAPSED_S]
   # Evidence-or-nothing (#7): a non-green verdict grabs its flow's journals NOW,
   # before teardown makes the cause unknowable.
   case "$verdict" in fail|gap) capture_flow_evidence "$flow" "$verdict" ;; esac
+}
+
+# scan_node_liveness — the PE's NODE-LIVENESS PRECONDITION (proof-OOM field
+# corroboration 2026-08-17). A run whose cohort OOM-crash-loops CANNOT grade its
+# flows: a node dying and restarting is indistinguishable from a slow/dead peer, so
+# every flow verdict on a crash-looping network is noise. This exact kill signature
+# sat UNINSPECTED in the journals for the whole 2026-08-16/17 marathon (the harness
+# had NO crash detection), masquerading as "SPOT preemption?" / M1-latency GAPs.
+# Scan every node's journal for the kernel OOM-kill / crash signature and surface it
+# as a FIRST-CLASS blocker finding, so it can never again hide. Called at run end,
+# before teardown (nodes still reachable). Root cause of the kills: the resident PoR
+# proof map (O(total held) — the proof-oom triage); the FIX is the cachestore mirror.
+scan_node_liveness() {
+  local n oomnodes="" total=0 c
+  for n in $(node_names); do
+    node_exists "$n" || continue
+    c="$(ssh_node "$n" "sudo journalctl -u silt --no-pager -b 2>/dev/null | grep -cE 'oom-kill|killed by the OOM killer|Main process exited, code=killed, status=9'" 2>/dev/null | tr -dc '0-9')"
+    c="${c:-0}"
+    [ "$c" -gt 0 ] 2>/dev/null && { oomnodes="$oomnodes ${n}×${c}"; total=$((total + c)); }
+  done
+  if [ -n "$oomnodes" ]; then
+    record "infra-node-liveness" fail blocker "NODE CRASH-LOOP — ${total} kernel kill(s) (OOM/signal) across:${oomnodes}. A run whose cohort DIES cannot grade its flows (a crashing node is indistinguishable from a slow/dead peer), so EVERY verdict on this sheet is PROVISIONAL until a clean no-OOM re-run — including the computed bounds (which may be OOM-inflated). This is INFRASTRUCTURE FAILURE, not independent flow results. Root: the resident PoR proof map (O(total held), proof-oom triage); fix = cachestore mirror for proofs."
+  else
+    record "infra-node-liveness" pass blocker "node-liveness precondition HELD — no OOM-kill or crash-loop across the cohort, so the sheet was graded on a HEALTHY network"
+  fi
 }
 
 # require_nodes FLOW SEVERITY NODE...  — record skip + return 1 if any node is absent

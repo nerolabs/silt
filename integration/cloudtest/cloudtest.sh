@@ -253,7 +253,10 @@ run_scenarios() {
   # die with the terminal, leaving a FAIL verdict with no trail after teardown. The
   # tee'd copy lands next to the run's report. (The pipeline subshell is fine: flows
   # append to results.jsonl / evidence logs by path, and report() reads files.)
-  { run_all_scenarios || true; } 2>&1 | tee -a "$FT_DIR/console-$RUN_ID.log"
+  # The node-liveness precondition runs LAST, before teardown: scan the whole cohort
+  # for OOM-kills / crash-loops and surface it as a first-class finding (a run whose
+  # nodes died cannot grade its flows — proof-oom field corroboration 2026-08-17).
+  { run_all_scenarios || true; scan_node_liveness || true; } 2>&1 | tee -a "$FT_DIR/console-$RUN_ID.log"
 }
 
 report() {

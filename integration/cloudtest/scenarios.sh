@@ -502,17 +502,30 @@ adv_partition() {
     | awk '/head height:/{h=$3} /head hash:/{hh=$3} END{print (h==""?0:h), hh}'; }
   local ci ch0; ci="$(chain_head val-c)"; ch0="${ci%% *}"; ch0="${ch0:-0}"
 
-  # SEVER val-c into a genuine < ⅓-weight MINORITY: cut it from ALL of the > ⅔-weight
-  # majority {val-a, val-b, val-d}, BOTH directions (-block-peers drops traffic to AND
-  # from those peers). A 1-of-4 island cannot reach the strict anchor majority (3), so
-  # it CANNOT commit — the correct BFT-intersection behaviour (a 2-of-4 minority
-  # committing a conflicting fork is the I1 violation model B forbids). This is why on
-  # heal val-c CATCHES UP (a forward sync, dropped=0), it does NOT "reorg": a
-  # dropped-block reorg would require val-c to have committed a conflicting fork, which
-  # it correctly cannot — the ABSENCE of a reorg line IS the safety property (PE ruling
-  # 2026-08-17). The old one-sided val-c↔val-b cut left val-c current via val-a/val-d
-  # (quorum intact) → it never fell behind → the drill GAPped every run.
-  relaunch_with val-c "-block-peers ${ida},${idb},${idd}"
+  # SEVER val-c into a genuine < ⅓-weight MINORITY. It must be cut from EVERY node that
+  # HOLDS the committed chain — not only the anchors: any reachable chain-holder lets
+  # val-c SYNC the majority's blocks (adopt-via-Reconcile, which logs "reconciled", not
+  # "committed block N") and stay current, so the "minority" never falls behind. Runs
+  # 1ebd487-73707 (base: val-c synced h14→h16 THROUGH the bonded `adversary` node) and
+  # 1ebd487-7457 (MATURING: h25→h37 through adversary + 4 maturers + 4 sybils) proved
+  # this: an anchors-only sever misses the other validator-role chain-holders. So block
+  # val-c from ALL validator-role peers (validator / adversary / maturer / sybil),
+  # BOTH directions (-block-peers drops traffic to AND from them). A single isolated
+  # node cannot reach the commit quorum, so it CANNOT commit — the correct
+  # BFT-intersection behaviour (a minority committing a conflicting fork is the I1
+  # violation model B forbids). This is why on heal val-c CATCHES UP (a forward sync,
+  # dropped=0), it does NOT "reorg": a dropped-block reorg would require val-c to have
+  # committed a conflicting fork, which it correctly cannot — the ABSENCE of a reorg
+  # line IS the safety property (PE ruling 2026-08-17).
+  local blockids; blockids="$(python3 -c "
+import json
+t=json.load(open('$FT_DIR/topology.json'))
+print(','.join(n['nodeid'] for name,n in t['nodes'].items()
+  if n['role'] in ('validator','adversary','maturer','sybil') and name!='val-c'))" 2>/dev/null)"
+  if [ -z "$blockids" ]; then
+    record "184-partition" gap major "could not build the validator-role block set from topology.json — partition not applied, not a property failure"; return
+  fi
+  relaunch_with val-c "-block-peers ${blockids}"
 
   # DRIVE the > ⅔ majority to commit a heavier chain during the window — publish to
   # the majority ONLY (val-c can't hear it), so a genuine height gap forms for val-c
@@ -545,9 +558,14 @@ adv_partition() {
   # Assert val-c CATCHES UP: it advances past its stall AND reaches the majority's
   # LIVE head with a matching hash (both advance, so compare val-c to val-a live —
   # they align at the tip once val-c catches up).
+  # Heal window sized to the CATCH-UP, not a magic constant (#5): the sever fix works
+  # (run 76f654d-33422: val-c genuinely STALLED at h31 while the majority reached h38),
+  # but a 7-block cross-region catch-up sync ran past 120s and GAPped ("did not
+  # reconverge in 120s"). 300s matches the drill's other resume windows (10b's clincher)
+  # and rides out a multi-block WAN catch-up while a real reconverge break still GAPs.
   local ok=0 t0; t0="$(date +%s)"
   local ci2 ch2 chh2 ai ah ahh
-  while [ $(( $(date +%s) - t0 )) -lt 120 ]; do
+  while [ $(( $(date +%s) - t0 )) -lt 300 ]; do
     ci2="$(chain_head val-c)"; ch2="${ci2%% *}"; chh2="${ci2#* }"
     ai="$(chain_head val-a)"; ah="${ai%% *}"; ahh="${ai#* }"
     if [ "${ch2:-0}" -gt "$ch0" ] 2>/dev/null && [ "$ch2" = "$ah" ] && [ -n "$chh2" ] && [ "$chh2" = "$ahh" ]; then ok=1; break; fi
@@ -666,6 +684,12 @@ flow_durability_turnover() {
 # ── chaos (#7): hard crash (SIGKILL) recovery + #69 reprovide over real VMs ──────
 flow_chaos_crash() {
   require_nodes "chaos-crash" major store-1 store-2 || return
+  # Capture the REGISTRY (val-a) + validator journals alongside store-1/store-2 on any
+  # chaos FAIL: run 1ebd487-7457 FAILed chaos-fetch with "root not in registry" but the
+  # capture held only the store journals, so the REGISTRY's own view of the root was
+  # unattributable after teardown (#7 capture-first). ft_add_validator_evidence appends
+  # val-a..d (val-a serves the registry) to this flow's evidence set.
+  ft_add_validator_evidence
   local link="${FT_LAST_LINK:-}" wantsha="${FT_LAST_SHA:-}"
   if [ -z "$link" ]; then local res; res="$(ft_publish fetch-1 262144 || true)"; link="${res%% *}"; wantsha="${res##* }"; fi
   # As with durability-turnover: a failed SETUP publish means crash-recovery is UNTESTED
