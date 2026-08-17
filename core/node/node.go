@@ -450,11 +450,19 @@ type Node struct {
 	// prover's self-report. Exists so the F4 regression exercises the real
 	// answerChallenge → gradeAnswers path end to end.
 	shrinkLiar bool
-	// proofs holds the storage proof for each chunk this node hosts. It is
-	// mirrored to proofStore (when set) so a restart can re-announce coded
-	// shards under the right column key and still answer audits (#69).
-	proofs     map[ports.ChunkID]ports.StorageProof
-	proofStore ports.ProofStore // nil = memory-only (sims, ephemeral clients)
+	// proofMeta holds the ALWAYS-RESIDENT small fields of each hosted chunk's
+	// storage proof (Root, Column, ...) — enough for existence checks, the
+	// iterate-all sweeps, and re-announcing coded shards under the right column
+	// key, without paging. The full proof (Merkle Path + PoR tags, ~5.4 KB) lives
+	// in proofs, the durable backing, and is paged in only to serve or audit — so
+	// resident proof RAM is O(hot), not O(total held) (the daemon OOM fix). See
+	// proofbacking.go.
+	proofMeta map[ports.ChunkID]proofMeta
+	// proofs is the durable, full-proof backing (#69: a restart re-announces coded
+	// shards under the right key and still answers audits). Defaults to an in-core
+	// in-memory store (sims/clients); a daemon injects a bounded, disk-backed store
+	// (adapters/proofcache over adapters/diskproofs) via SetProofStore.
+	proofs ports.ProofStore
 
 	// capacity gossip: capRep is the store's reporter (nil if the store
 	// is unbounded); peerCaps accumulates what peers report about
@@ -710,44 +718,54 @@ func (n *Node) IsStaticPeer(id ports.NodeID) bool { return n.staticPeers[id] }
 // ObservedAddr is this node's relay-observed public endpoint ("" if unknown).
 func (n *Node) ObservedAddr() string { return n.observedAddr }
 
-// SetProofStore attaches durable proof persistence (#69); call before
-// LoadProofs and bootstrap. nil keeps proofs memory-only (sims, clients).
-func (n *Node) SetProofStore(ps ports.ProofStore) { n.proofStore = ps }
+// SetProofStore swaps in a durable proof backing (#69); call before LoadProofs
+// and bootstrap. A daemon passes a bounded, disk-backed store (proofcache over
+// diskproofs) so resident proof RAM stays O(hot). Passing nil is a no-op — the
+// node keeps its default in-memory backing (sims, ephemeral clients).
+func (n *Node) SetProofStore(ps ports.ProofStore) {
+	if ps != nil {
+		n.proofs = ps
+	}
+}
 
 // SetPlotStore attaches durable bond-plot persistence (#93); call before
 // EnableBond so a restart reloads the plot instead of re-plotting. nil keeps
 // the plot memory-only (re-plotted each start; fine for sims/tests).
 func (n *Node) SetPlotStore(ps ports.PlotStore) { n.plotStore = ps }
 
-// LoadProofs repopulates the in-memory proof map from the proof store, so a
-// restarted node re-announces its held coded shards under the correct column
-// key (AnnounceHeld reads n.proofs) instead of their bare ids — the
-// difference between a disk full of content being discoverable or invisible
-// (#69). No-op without a proof store. Call after New, before AnnounceHeld.
+// LoadProofs repopulates the resident proof METADATA from the backing store, so
+// a restarted node re-announces its held coded shards under the correct column
+// key (AnnounceHeld reads proofMeta) instead of their bare ids — the difference
+// between a disk full of content being discoverable or invisible (#69). It reads
+// one proof at a time (Keys+Get) to extract its metadata, so startup RAM stays
+// O(hot), not O(total held) — the full proofs stay in the backing, paged later
+// only to serve or audit. Call after New (and SetProofStore), before AnnounceHeld.
 func (n *Node) LoadProofs() {
-	if n.proofStore == nil {
-		return
-	}
-	m, err := n.proofStore.Load()
+	keys, err := n.proofs.Keys()
 	if err != nil {
 		n.logf(ports.LogWarn, "proof reload failed", "err", err)
+		return
 	}
-	for id, p := range m {
-		n.proofs[id] = p
+	loaded := 0
+	for _, id := range keys {
+		p, ok, gerr := n.proofs.Get(id)
+		if gerr != nil || !ok {
+			continue // an unreadable/absent proof just re-announces under its bare id
+		}
+		n.proofMeta[id] = metaOf(p)
+		loaded++
 	}
-	if len(m) > 0 {
-		n.logf(ports.LogInfo, "reloaded storage proofs", "count", len(m))
+	if loaded > 0 {
+		n.logf(ports.LogInfo, "reloaded storage proofs", "count", loaded)
 	}
 }
 
-// dropHosted removes a chunk this node hosts, keeping the proof map and store
-// in sync so a delete never leaves an orphan proof behind.
+// dropHosted removes a chunk this node hosts, keeping the resident metadata and
+// the backing proof store in sync so a delete never leaves an orphan proof behind.
 func (n *Node) dropHosted(id ports.ChunkID) {
 	n.store.Delete(bg(), id)
-	delete(n.proofs, id)
-	if n.proofStore != nil {
-		n.proofStore.Delete(id)
-	}
+	delete(n.proofMeta, id)
+	n.proofs.Delete(id)
 }
 
 func New(id ports.NodeID, cfg Config, clock ports.Clock, tr ports.Transport, store ports.ChunkStore) *Node {
@@ -764,7 +782,8 @@ func New(id ports.NodeID, cfg Config, clock ports.Clock, tr ports.Transport, sto
 		deadUntil:         make(map[ports.NodeID]ports.Time),
 		staticPeers:       make(map[ports.NodeID]bool),
 		reachProbes:       make(map[uint64]*reachProbe),
-		proofs:            make(map[ports.ChunkID]ports.StorageProof),
+		proofMeta:         make(map[ports.ChunkID]proofMeta),
+		proofs:            newMemProofs(), // default in-mem backing; daemon injects the bounded disk-backed store
 		peerDomains:       make(map[ports.NodeID]uint64),
 		peerBonds:         make(map[ports.NodeID]bondInfo),
 		peerBondRTT:       make(map[ports.NodeID]*latWindow),
@@ -1060,9 +1079,11 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 			ok = false // refuse chunks with proofs we couldn't defend under audit
 		}
 		if ok && n.liar {
-			// Keep the receipt, ditch the goods.
+			// Keep the receipt, ditch the goods: the liar keeps the proof so it
+			// can later form a (doomed) audit answer, but never stores the bytes.
 			if msg.Proof != nil {
-				n.proofs[msg.ChunkID] = copyProof(*msg.Proof)
+				n.proofMeta[msg.ChunkID] = metaOf(*msg.Proof)
+				n.proofs.Put(msg.ChunkID, *msg.Proof)
 			}
 			n.provs.Add(n.providerRecord(key))
 			n.reply(from, msg, ports.Message{Kind: ports.MsgStoreChunkAck, OK: true})
@@ -1076,11 +1097,13 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 				n.Stats.ChunksReceived++
 				n.provs.Add(n.providerRecord(key)) // we are now a provider
 				if msg.Proof != nil {
-					n.proofs[msg.ChunkID] = copyProof(*msg.Proof)
-					if n.proofStore != nil { // persist so a restart re-announces under the right key (#69)
-						if err := n.proofStore.Put(msg.ChunkID, *msg.Proof); err != nil {
-							n.logf(ports.LogWarn, "proof persist failed", "chunk", msg.ChunkID, "err", err)
-						}
+					// Resident metadata for the hot-path sites; the full proof
+					// write-throughs to the backing (persisted so a restart
+					// re-announces under the right key and can still audit, #69),
+					// paged back into the cache only when served or audited.
+					n.proofMeta[msg.ChunkID] = metaOf(*msg.Proof)
+					if err := n.proofs.Put(msg.ChunkID, *msg.Proof); err != nil {
+						n.logf(ports.LogWarn, "proof persist failed", "chunk", msg.ChunkID, "err", err)
 					}
 				}
 				if msg.Lease {
@@ -1109,8 +1132,8 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 			// repair). Chunks with no proof-anchored root (manifest chunks, uncoded
 			// files) keep the plain serve; the server's net credit is the same either
 			// way, only a slice is diverted to durability.
-			if p, ok := n.proofs[msg.ChunkID]; ok && p.Root != (ports.Hash{}) {
-				n.ledger.RecordServeToObject(n.id, from, p.Root, msg.ChunkID, bytes)
+			if m, ok := n.proofMeta[msg.ChunkID]; ok && m.Root != (ports.Hash{}) {
+				n.ledger.RecordServeToObject(n.id, from, m.Root, msg.ChunkID, bytes)
 			} else {
 				n.ledger.RecordServe(n.id, from, msg.ChunkID, bytes)
 			}
@@ -1120,7 +1143,7 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 	case ports.MsgHasChunk:
 		ok, _ := n.store.Has(bg(), msg.ChunkID)
 		if n.liar {
-			_, ok = n.proofs[msg.ChunkID] // "of course I have it"
+			_, ok = n.proofMeta[msg.ChunkID] // "of course I have it"
 		}
 		if n.chunkDenied(msg.ChunkID) {
 			ok = false // taken down: no longer available here

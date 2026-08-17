@@ -95,6 +95,80 @@ func (s *Store) Delete(id ports.ChunkID) error {
 	return err
 }
 
+// decode turns a sidecar's CBOR bytes into a StorageProof. ok is false for an
+// unreadable/corrupt/short encoding — the caller skips it (a chunk with an
+// undecodable proof just re-announces under its bare id, better than refusing).
+func decode(b []byte) (ports.StorageProof, bool) {
+	var dp diskProof
+	if cbor.Unmarshal(b, &dp) != nil || len(dp.Root) != 32 {
+		return ports.StorageProof{}, false
+	}
+	p := ports.StorageProof{Index: dp.Index, Total: dp.Total, Column: dp.Column}
+	copy(p.Root[:], dp.Root)
+	for _, hb := range dp.Path {
+		if len(hb) != 32 {
+			continue
+		}
+		var h ports.Hash
+		copy(h[:], hb)
+		p.Path = append(p.Path, h)
+	}
+	for _, tag := range dp.PorTags {
+		p.PorTags = append(p.PorTags, append([]byte(nil), tag...))
+	}
+	return p, true
+}
+
+// idFromName recovers a ChunkID from a sidecar filename, rejecting stray temp
+// files / non-proof entries (the 64-hex-char naming is the filter).
+func idFromName(name string) (ports.ChunkID, bool) {
+	if len(name) != 64 {
+		return ports.ChunkID{}, false
+	}
+	raw, herr := hex.DecodeString(name)
+	if herr != nil || len(raw) != 32 {
+		return ports.ChunkID{}, false
+	}
+	var id ports.ChunkID
+	copy(id[:], raw)
+	return id, true
+}
+
+// Get reads one proof sidecar. ok is false if the id has no proof stored (or its
+// sidecar is unreadable/corrupt — treated as absent, same as Load skips it). One
+// file read: this is the per-id page the bounded proof cache does on a miss.
+func (s *Store) Get(id ports.ChunkID) (ports.StorageProof, bool, error) {
+	b, err := os.ReadFile(s.path(id))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return ports.StorageProof{}, false, nil
+		}
+		return ports.StorageProof{}, false, err
+	}
+	p, ok := decode(b)
+	return p, ok, nil
+}
+
+// Keys walks the two-level tree and returns every stored chunk id, so a restart
+// can repopulate resident proof metadata one Get at a time (bounded RAM) instead
+// of loading the whole store into a map.
+func (s *Store) Keys() ([]ports.ChunkID, error) {
+	var out []ports.ChunkID
+	err := filepath.WalkDir(s.root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		if id, ok := idFromName(d.Name()); ok {
+			out = append(out, id)
+		}
+		return nil
+	})
+	if err != nil {
+		return out, fmt.Errorf("diskproofs keys: %w", err)
+	}
+	return out, nil
+}
+
 // Load reads every sidecar back into a map. A single unreadable/corrupt proof
 // is skipped, not fatal — the chunk just re-announces under its bare id until
 // re-hosted, which is strictly better than refusing to start.
@@ -104,38 +178,17 @@ func (s *Store) Load() (map[ports.ChunkID]ports.StorageProof, error) {
 		if err != nil || d.IsDir() {
 			return err
 		}
-		name := d.Name()
-		if len(name) != 64 { // skip stray temp files / non-proof entries
+		id, ok := idFromName(d.Name())
+		if !ok {
 			return nil
 		}
-		raw, herr := hex.DecodeString(name)
-		if herr != nil || len(raw) != 32 {
-			return nil
-		}
-		var id ports.ChunkID
-		copy(id[:], raw)
 		b, rerr := os.ReadFile(path)
 		if rerr != nil {
 			return nil
 		}
-		var dp diskProof
-		if cbor.Unmarshal(b, &dp) != nil || len(dp.Root) != 32 {
-			return nil
+		if p, ok := decode(b); ok {
+			out[id] = p
 		}
-		p := ports.StorageProof{Index: dp.Index, Total: dp.Total, Column: dp.Column}
-		copy(p.Root[:], dp.Root)
-		for _, hb := range dp.Path {
-			if len(hb) != 32 {
-				continue
-			}
-			var h ports.Hash
-			copy(h[:], hb)
-			p.Path = append(p.Path, h)
-		}
-		for _, tag := range dp.PorTags {
-			p.PorTags = append(p.PorTags, append([]byte(nil), tag...))
-		}
-		out[id] = p
 		return nil
 	})
 	if err != nil {

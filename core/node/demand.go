@@ -66,10 +66,9 @@ func (n *Node) demandTick() {
 	}
 	for id, exp := range n.leases {
 		if now > exp {
-			n.dropHosted(id)
+			n.dropHosted(id) // drops bytes + resident meta + backing proof
 			delete(n.leases, id)
 			delete(n.serveLoad, id)
-			delete(n.proofs, id)
 		}
 	}
 	if len(n.serveLoad) > 0 || len(n.leases) > 0 {
@@ -90,7 +89,9 @@ func (n *Node) fanOut(id ports.ChunkID) {
 	}
 	var proof *ports.StorageProof
 	key := ports.Hash(id)
-	if p, ok := n.proofs[id]; ok {
+	// fanOut ships the proof to the new host, so it needs the FULL proof — page
+	// it from the backing (the chunk is hot, so its proof is likely cached).
+	if p, ok, _ := n.proofs.Get(id); ok {
 		pc := copyProof(p)
 		proof = &pc
 		key = placementKey(p.Root, id, p.Column)

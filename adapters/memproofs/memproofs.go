@@ -31,6 +31,32 @@ func (s *Store) Put(id ports.ChunkID, p ports.StorageProof) error {
 	return nil
 }
 
+func (s *Store) Get(id ports.ChunkID) (ports.StorageProof, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.m[id]
+	if !ok {
+		return ports.StorageProof{}, false, nil
+	}
+	// Copy the Path slice so a caller mutating the returned proof can't alias
+	// what we hold (same guard as Put).
+	cp := p
+	if p.Path != nil {
+		cp.Path = append([]ports.Hash(nil), p.Path...)
+	}
+	return cp, true, nil
+}
+
+func (s *Store) Keys() ([]ports.ChunkID, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]ports.ChunkID, 0, len(s.m))
+	for id := range s.m {
+		out = append(out, id)
+	}
+	return out, nil
+}
+
 func (s *Store) Load() (map[ports.ChunkID]ports.StorageProof, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

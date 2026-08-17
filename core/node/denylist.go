@@ -50,8 +50,8 @@ func (n *Node) WouldDeny(root ports.Hash) bool { return n.isDenied(root) }
 // chunkDenied reports whether a held chunk belongs to a denied root
 // (known via the storage proof the chunk arrived with).
 func (n *Node) chunkDenied(id ports.ChunkID) bool {
-	p, ok := n.proofs[id]
-	return ok && n.isDenied(p.Root)
+	m, ok := n.proofMeta[id]
+	return ok && n.isDenied(m.Root)
 }
 
 // EnforceDenylist sweeps everything the node holds and physically drops
@@ -61,8 +61,8 @@ func (n *Node) chunkDenied(id ports.ChunkID) bool {
 // were purged.
 func (n *Node) EnforceDenylist() int {
 	purged := 0
-	for id, p := range n.proofs {
-		if n.isDenied(p.Root) {
+	for id, m := range n.proofMeta {
+		if n.isDenied(m.Root) {
 			n.dropHosted(id) // bytes + proof gone; serving already no-ops
 			purged++
 		}
