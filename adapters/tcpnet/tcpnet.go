@@ -659,12 +659,12 @@ func (t *Transport) readLoop(conn *tls.Conn, viaRelay bool) {
 		// TCP flow-control pushes back on the sender. The budget is released when the
 		// LOOP finishes handling the message (or immediately on any pre-dispatch drop),
 		// so it tracks decoded-but-unprocessed bytes. cap 0 = unbounded (sims/tests).
-		t.inbound.acquire(int64(n))
+		t.inbound.acquire(from, int64(n))
 		admitted := true
 		release := func() {
 			if admitted {
 				admitted = false
-				t.inbound.release(int64(n))
+				t.inbound.release(from, int64(n))
 			}
 		}
 		frame := make([]byte, n)

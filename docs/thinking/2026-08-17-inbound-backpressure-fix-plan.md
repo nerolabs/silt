@@ -93,12 +93,22 @@ began, well under 2 GB). Configurable via a daemon flag; 0 = unbounded (legacy).
 ## Fairness / priority (staging)
 
 A single global cap prevents OOM but a flooding peer could fill it and starve
-consensus messages behind it. Staging:
-- **v1:** global inbound-bytes cap — kills the OOM (the M0 blocker). Ship first.
-- **v2 (hardening):** per-peer share of the cap (no single peer monopolizes) +
-  optionally a small reserved lane for consensus-critical kinds (vote/QC/round-change)
-  so a gossip/publish flood can't starve the round. This is the full DoS-resistance
-  story; open question to PE on whether v1 suffices for the M0 gate or v2 is required.
+consensus messages behind it. Staging (PE ruling: both required before #183):
+- **v1 (SHIPPED):** global inbound-bytes cap — kills the OOM (the M0 blocker).
+- **v2a (SHIPPED):** per-peer share of the cap (`perPeerFrac = 1/4`; no single peer
+  holds > 1/4 of the budget). A single flooder/sybil fills its own share, blocks, and
+  TCP pushes back on IT while other peers proceed. Test:
+  `TestInboundGatePerPeerFairness`. Confines a SINGLE flooder.
+- **v2b (PENDING — the remaining pre-#183 piece):** a consensus-kind RESERVE for the
+  SYBIL-COHORT case (many peers each within their share can still collectively fill the
+  general budget and starve honest consensus). Mechanism: since the gate acquires
+  BEFORE decode (can't see the kind), reserve `R` bytes of the budget that only
+  consensus-critical kinds (`MsgProposeBlock/AttestReply/PrepareQC/PrecommitReply/
+  RoundChange/RoundChangeAck/CommitBlock/CommitAck`) may draw. Route by
+  decode-then-classify with a BOUNDED speculative-decode slot for SMALL frames only
+  (consensus msgs are ≤ ~2 MB; frames > that are definitely non-consensus → straight
+  to the general per-peer pool as v1). Bounds speculative decode to peers × 2 MB.
+  Delicate hot-path change — worth PE sign-off on the approach before building.
 
 ## Tests (failing-first)
 

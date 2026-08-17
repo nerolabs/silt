@@ -11,44 +11,75 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// The gate must bound outstanding bytes to the cap, block a would-be over-cap
-// acquire, and unblock it once a release makes room. This is the OOM-prevention
-// property in miniature: outstanding inbound bytes never grow past the budget.
-func TestInboundGateBoundsAndUnblocks(t *testing.T) {
-	g := newInboundGate(100)
-	g.acquire(60)
-	g.acquire(30) // used = 90, still under cap
-	if g.usedBytes() != 90 {
-		t.Fatalf("used=%d want 90", g.usedBytes())
-	}
+func peerID(b byte) ports.NodeID { var id ports.NodeID; id[0] = b; return id }
 
-	// A 20-byte acquire would push used to 110 > 100 → must block.
+// The GLOBAL cap must bound total outstanding bytes across peers, block a
+// would-be over-cap acquire, and unblock it once a release makes room. Distinct
+// peers (each under its per-peer share) so the global cap is the binding limit.
+func TestInboundGateGlobalCapBoundsAndUnblocks(t *testing.T) {
+	g := newInboundGate(100) // perPeer = 25
+	g.acquire(peerID(1), 20)
+	g.acquire(peerID(2), 20)
+	g.acquire(peerID(3), 20)
+	g.acquire(peerID(4), 20) // used = 80, each peer 20 < 25
+	if g.usedBytes() != 80 {
+		t.Fatalf("used=%d want 80", g.usedBytes())
+	}
+	// A 5th peer's 30 would push total to 110 > 100 → must block on the global cap.
 	unblocked := make(chan struct{})
-	go func() { g.acquire(20); close(unblocked) }()
+	go func() { g.acquire(peerID(5), 30); close(unblocked) }()
 	select {
 	case <-unblocked:
-		t.Fatal("acquire over the cap must block, not admit")
+		t.Fatal("acquire over the global cap must block, not admit")
 	case <-time.After(50 * time.Millisecond):
 	}
-
-	// Free 60: used drops to 30, so the pending 20 now fits → it must proceed.
-	g.release(60)
+	g.release(peerID(1), 20) // used 60 → 60+30 = 90 ≤ 100 → unblocks
 	select {
 	case <-unblocked:
 	case <-time.After(time.Second):
 		t.Fatal("acquire did not unblock after a release made room")
 	}
-	if g.usedBytes() != 50 { // 90 - 60 + 20
-		t.Fatalf("used=%d want 50", g.usedBytes())
+}
+
+// PER-PEER FAIRNESS (v2a): one peer cannot exceed its share (cap/4) even when the
+// global budget has room — and a DIFFERENT peer proceeds meanwhile. This is what
+// keeps a single flooder from monopolizing the budget and starving everyone else.
+func TestInboundGatePerPeerFairness(t *testing.T) {
+	g := newInboundGate(100) // perPeer = 25
+	flooder := peerID(1)
+	g.acquire(flooder, 25) // flooder at its share; global used = 25 (plenty of room)
+
+	// The flooder asking for more must BLOCK on its per-peer share (not the global cap).
+	blocked := make(chan struct{})
+	go func() { g.acquire(flooder, 10); close(blocked) }()
+	select {
+	case <-blocked:
+		t.Fatal("a peer over its per-peer share must block even with global room")
+	case <-time.After(50 * time.Millisecond):
+	}
+	// A DIFFERENT peer proceeds immediately — the flooder didn't starve it.
+	other := make(chan struct{})
+	go func() { g.acquire(peerID(2), 40); close(other) }()
+	select {
+	case <-other:
+	case <-time.After(time.Second):
+		t.Fatal("a well-behaved peer must proceed while a flooder is throttled")
+	}
+	// The flooder unblocks once it releases back under its share.
+	g.release(flooder, 25)
+	select {
+	case <-blocked:
+	case <-time.After(time.Second):
+		t.Fatal("flooder did not unblock after releasing under its share")
 	}
 }
 
-// A single frame larger than the whole cap must be admitted when the gate is
-// empty (progress over deadlock) — a legal-but-oversized chunk still moves.
+// A single frame larger than a limit must be admitted when that pool is empty
+// (progress over deadlock) — a legal-but-oversized chunk still moves.
 func TestInboundGateAdmitsSingleOversize(t *testing.T) {
-	g := newInboundGate(100)
+	g := newInboundGate(100) // both cap and perPeer are smaller than 500
 	done := make(chan struct{})
-	go func() { g.acquire(500); close(done) }() // 500 > cap 100, but gate is empty
+	go func() { g.acquire(peerID(1), 500); close(done) }()
 	select {
 	case <-done:
 	case <-time.After(time.Second):
@@ -62,7 +93,7 @@ func TestInboundGateUnboundedNeverBlocks(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		for i := 0; i < 1000; i++ {
-			g.acquire(1 << 20)
+			g.acquire(peerID(byte(i)), 1<<20)
 		}
 		close(done)
 	}()
