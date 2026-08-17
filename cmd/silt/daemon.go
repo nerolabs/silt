@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	rtdebug "runtime/debug"
 	"runtime/pprof"
 	"strconv"
 	"strings"
@@ -121,8 +122,26 @@ func cmdDaemon(args []string) error {
 	advertise := fs.String("advertise", "", "publicly dialable HOST:PORT to stamp on outgoing messages — set this on a public box that listens on a wildcard address (a wildcard bind is never advertised on its own)")
 	cacheSize := fs.String("cache", "", "in-RAM read cache for hot chunks, e.g. 512M (default off) — a cache hit skips the disk read and the per-read hash re-verify")
 	proofCacheSize := fs.String("proof-cache", "64M", "resident RAM budget for HOT storage proofs; the rest live on disk and page in only to serve/audit, so proof RAM is O(hot) not O(held) (0 = unbounded, legacy)")
+	memLimit := fs.String("mem-limit", "", "soft heap ceiling (e.g. 1500M, 85% of box RAM) — the Go GC reclaims aggressively as the heap approaches it, so a large-but-bounded working set can't grow into a kernel OOM-kill on a small box. Sets runtime/debug.SetMemoryLimit; equivalent to the GOMEMLIMIT env var (this flag wins if both are set). Empty = no soft limit (default). Not a hard cap: if the LIVE set genuinely exceeds it the GC thrashes rather than crashes — raise the limit or the box.")
 	carePublished := fs.Bool("care-published", true, "the daemon repairs content published through its own UI, so your own content stays alive as nodes churn (its manifest counts toward this node's pledge); =false to opt out")
 	fs.Parse(args)
+
+	// Soft heap ceiling (flixz OOM mitigation): the field cohort OOM-crash-loops
+	// on a 2 GB box from a large-but-bounded working set colliding with Go's
+	// default 2×-heap GC target (not a hard leak — small-scale is stable). A
+	// GOMEMLIMIT makes the GC reclaim before the kernel does, trading CPU for
+	// staying alive. Diagnostic + attribution of the true footprint is separate
+	// (-debug-addr); this keeps a node UP meanwhile.
+	if *memLimit != "" {
+		bytes, err := parseSize(*memLimit)
+		if err != nil {
+			return err
+		}
+		if bytes > 0 {
+			rtdebug.SetMemoryLimit(bytes)
+			fmt.Printf("mem-limit: soft heap ceiling %s (GC reclaims before this — prevents OOM crash-loops on a small box)\n", *memLimit)
+		}
+	}
 
 	// Heap-profiling seam (diagnostic-only; off unless -debug-addr is set). This
 	// is how we attribute the MATURING consensus-node memory footprint that OOMs

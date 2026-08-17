@@ -41,6 +41,19 @@ LOG_LEVEL = os.environ.get("LOG_LEVEL", "info")
 # it) WITHOUT the -log debug firehose that would skew the measurement. For a
 # throughput/latency diagnostic run (e.g. the MATURING single-goroutine analysis).
 LOOP_BUDGET = " -loop-budget" if os.environ.get("LOOP_BUDGET", "") not in ("", "0") else ""
+# DEBUG_PROFILE=1 adds -debug-addr 127.0.0.1:<DEBUG_PORT> to every node so the
+# harness can pull a heap/goroutine profile (curl localhost / kill -USR1) to
+# ATTRIBUTE the MATURING consensus-node OOM — the proof-map fix (#464) was NOT it
+# (the crash-looping nodes hold ~no chunks: silt-oom-NOT-the-proof-map-FINDING-2026-08-17).
+# Off by default (adds no surface to a normal cert run). Capture: ./cloudtest.sh heap <node>.
+DEBUG_PORT = int(os.environ.get("DEBUG_PORT", "6060"))
+DEBUG_ADDR = f" -debug-addr 127.0.0.1:{DEBUG_PORT}" if os.environ.get("DEBUG_PROFILE", "") not in ("", "0") else ""
+# MEM_LIMIT=1500M sets -mem-limit on every node — the GOMEMLIMIT OOM mitigation
+# (GC reclaims before the kernel OOM-kills). A run with it set tests the
+# large-but-bounded-working-set hypothesis: survives ⇒ GC-pacing (fixed); still
+# OOMs ⇒ the live set genuinely exceeds the box. Off by default.
+MEM_LIMIT = f" -mem-limit {os.environ['MEM_LIMIT']}" if os.environ.get("MEM_LIMIT", "") not in ("", "0") else ""
+DIAG = f"{DEBUG_ADDR}{MEM_LIMIT}"
 PUBLIC_CIDR = os.environ.get("PUBLIC_CIDR", "10.20.0.0/24")
 NAT_CIDR = os.environ.get("NAT_CIDR", "10.30.0.0/24")
 DEFAULT_REGION = os.environ.get("REGION", "us-central1")
@@ -272,7 +285,7 @@ def main():
     # automatically), but a generous base leaves margin on a truly bad transcontinental
     # path. Uniform across all roles so a config mismatch can't perturb objective quorum
     # math on a fresh network. holder-fetch keeps its own tighter deadline (#277).
-    common = f"-listen 0.0.0.0:{SWARM_PORT} -store {STORE} -mdns=false -log {LOG_LEVEL} -request-timeout 8s{LOOP_BUDGET}"
+    common = f"-listen 0.0.0.0:{SWARM_PORT} -store {STORE} -mdns=false -log {LOG_LEVEL} -request-timeout 8s{LOOP_BUDGET}{DIAG}"
 
     def argv(name):
         n = nodes[name]
@@ -300,7 +313,7 @@ def main():
         if role == "storage":
             return f"daemon -id-seed {n['seed']} {common} -advertise {ip}:{SWARM_PORT} -bootstrap {bootstrap} -capacity 5G"
         if role == "registry":
-            return f"daemon -id-seed {n['seed']} -store {STORE} -log {LOG_LEVEL} -registry-only -serve-registry 0.0.0.0:{REGISTRY_PORT}"
+            return f"daemon -id-seed {n['seed']} -store {STORE} -log {LOG_LEVEL} -registry-only -serve-registry 0.0.0.0:{REGISTRY_PORT}{DIAG}"
         if role == "relay":
             return (f"daemon -id-seed {n['seed']} {common} -advertise {ip}:{SWARM_PORT} -bootstrap {bootstrap} "
                     f"-relay 0.0.0.0:{RELAY_PORT} -capacity 5G")
