@@ -502,17 +502,30 @@ adv_partition() {
     | awk '/head height:/{h=$3} /head hash:/{hh=$3} END{print (h==""?0:h), hh}'; }
   local ci ch0; ci="$(chain_head val-c)"; ch0="${ci%% *}"; ch0="${ch0:-0}"
 
-  # SEVER val-c into a genuine < ⅓-weight MINORITY: cut it from ALL of the > ⅔-weight
-  # majority {val-a, val-b, val-d}, BOTH directions (-block-peers drops traffic to AND
-  # from those peers). A 1-of-4 island cannot reach the strict anchor majority (3), so
-  # it CANNOT commit — the correct BFT-intersection behaviour (a 2-of-4 minority
-  # committing a conflicting fork is the I1 violation model B forbids). This is why on
-  # heal val-c CATCHES UP (a forward sync, dropped=0), it does NOT "reorg": a
-  # dropped-block reorg would require val-c to have committed a conflicting fork, which
-  # it correctly cannot — the ABSENCE of a reorg line IS the safety property (PE ruling
-  # 2026-08-17). The old one-sided val-c↔val-b cut left val-c current via val-a/val-d
-  # (quorum intact) → it never fell behind → the drill GAPped every run.
-  relaunch_with val-c "-block-peers ${ida},${idb},${idd}"
+  # SEVER val-c into a genuine < ⅓-weight MINORITY. It must be cut from EVERY node that
+  # HOLDS the committed chain — not only the anchors: any reachable chain-holder lets
+  # val-c SYNC the majority's blocks (adopt-via-Reconcile, which logs "reconciled", not
+  # "committed block N") and stay current, so the "minority" never falls behind. Runs
+  # 1ebd487-73707 (base: val-c synced h14→h16 THROUGH the bonded `adversary` node) and
+  # 1ebd487-7457 (MATURING: h25→h37 through adversary + 4 maturers + 4 sybils) proved
+  # this: an anchors-only sever misses the other validator-role chain-holders. So block
+  # val-c from ALL validator-role peers (validator / adversary / maturer / sybil),
+  # BOTH directions (-block-peers drops traffic to AND from them). A single isolated
+  # node cannot reach the commit quorum, so it CANNOT commit — the correct
+  # BFT-intersection behaviour (a minority committing a conflicting fork is the I1
+  # violation model B forbids). This is why on heal val-c CATCHES UP (a forward sync,
+  # dropped=0), it does NOT "reorg": a dropped-block reorg would require val-c to have
+  # committed a conflicting fork, which it correctly cannot — the ABSENCE of a reorg
+  # line IS the safety property (PE ruling 2026-08-17).
+  local blockids; blockids="$(python3 -c "
+import json
+t=json.load(open('$FT_DIR/topology.json'))
+print(','.join(n['nodeid'] for name,n in t['nodes'].items()
+  if n['role'] in ('validator','adversary','maturer','sybil') and name!='val-c'))" 2>/dev/null)"
+  if [ -z "$blockids" ]; then
+    record "184-partition" gap major "could not build the validator-role block set from topology.json — partition not applied, not a property failure"; return
+  fi
+  relaunch_with val-c "-block-peers ${blockids}"
 
   # DRIVE the > ⅔ majority to commit a heavier chain during the window — publish to
   # the majority ONLY (val-c can't hear it), so a genuine height gap forms for val-c

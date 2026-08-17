@@ -261,3 +261,39 @@ now DRIVE and their defenses demonstrably fire — no longer GAP-because-undriva
 Optional follow-ups noted, not built: (C) the MATURING liveness-after-eviction
 drill; a dedicated CLOUD equivocation net (the e2e/netem dedicated net satisfies
 the readiness gate per the ruling).
+
+## WIRE VALIDATION (HEAD 1ebd487, PE next-steps step 1) — 2026-08-17
+
+Two clean-HEAD cloud runs (base `1ebd487-73707`, MATURING `1ebd487-7457`):
+
+- **Base: 16 pass / 2 gap / 0 FAIL.** durability-turnover **PASS** (#461 confirmed
+  on WAN), 184-equivocation **SKIP→dedicated net** (renders right), 6-fault-tolerance
+  GAP (down-designee 260s ladder, M1-adjacent — PASSED in MATURING, so a load flake
+  not a break), 184-partition GAP (below).
+- **MATURING (salvaged; hung in 10b — see below): 16 pass / 1 gap / 2 skip / 2 FAIL.**
+  durability-turnover **PASS under mature contention** (the regime the residual was
+  born in), 10-maturing-handoff **PASS** (latch on the wire, h66 in the 1980s bound),
+  10a-stall-drill **PASS** (B2 weight-quorum), 184-equivocation SKIP, latch tripped
+  h21. Two chaos crash-recovery FAILs (chaos-reprovide, chaos-fetch) — MATURING-only,
+  passed in base; storage/registry under heavier load; attribution PENDING (not the
+  fixes under test — those passed).
+
+**Headline: both red-team-gate fixes CONFIRMED on the wire.** #461 publish
+reliability and #462 equivocation-drill isolation both hold on real multi-region WAN.
+
+**184-partition — root-caused from the wire evidence + FIXED (harness).** The drill
+GAPped honestly ("val-c ADVANCED … sever did not isolate it"): the anchors-only
+sever missed the OTHER validator-role chain-holders — val-c synced the majority's
+committed chain THROUGH the bonded `adversary` node (base: h14→h16) and the maturers
++ sybils (MATURING: h25→h37), logging "reconciled" not "committed block". Fix
+(`scenarios.sh adv_partition`): sever val-c from EVERY validator-role peer
+(validator/adversary/maturer/sybil), built from topology.json. Needs a re-run to
+confirm the wire drive.
+
+**The MATURING run HUNG — harness robustness bug FIXED.** `ssh_node` wrapped
+`gcloud compute ssh` over IAP with NO timeout; a stalled tunnel to maturer-2 during
+10b's stop-loop wedged the whole run ~1h (no verdict, VMs burning until a manual
+kill + teardown). Fix (`lib.sh`): a hard `timeout ${SSH_NODE_TIMEOUT:-90}` on every
+remote call, so a stalled node degrades that one call (callers already tolerate a
+non-zero ssh exit), never the whole run. Both runs torn down verified-clean (0
+instances/networks/firewalls).

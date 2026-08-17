@@ -15,11 +15,19 @@ node_names() { python3 -c "import json;print(' '.join(json.load(open('$NODES_JSO
 node_exists() { python3 -c "import json,sys;sys.exit(0 if '$1' in json.load(open('$NODES_JSON')) else 1)" 2>/dev/null; }
 
 # ── remote exec over IAP (reaches natted nodes too; no key management) ──────────
+# HARD TIMEOUT (SSH_NODE_TIMEOUT, default 90s): a `gcloud compute ssh` over an IAP
+# tunnel has no internal deadline, so a single stalled tunnel blocks the caller
+# FOREVER — with no timeout, one stuck stop-in-the-capture-drill wedged a whole
+# MATURING run for an hour (run 1ebd487-7457, no verdict, VMs left burning until a
+# manual kill). `timeout` bounds every remote call so a stalled node degrades that
+# ONE call (the caller's `|| true` / retry then proceeds), never the whole run.
+# 124 = timeout's own exit; the caller sees a non-zero exit exactly as a real ssh
+# failure, which every ssh_node site already tolerates.
 ssh_node() { # ssh_node NAME "remote command"
   local name="$1"; shift
   local inst zone
   inst="$(node_field "$name" instance_name)"; zone="$(node_field "$name" zone)"
-  gcloud compute ssh "$inst" --zone "$zone" --project "$PROJECT_ID" \
+  timeout "${SSH_NODE_TIMEOUT:-90}" gcloud compute ssh "$inst" --zone "$zone" --project "$PROJECT_ID" \
     --tunnel-through-iap --quiet --command "$*" 2>/dev/null
 }
 
