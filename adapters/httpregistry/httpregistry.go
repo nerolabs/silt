@@ -150,11 +150,31 @@ type publishStatusJSON struct {
 	Error string `json:"error,omitempty"`
 }
 
-const (
+// Poll knobs are vars (not consts) only so the regression tests can shrink them;
+// production never mutates them.
+var (
 	publishPollInterval = 1 * time.Second
-	// Generous accept→commit budget: a first quorum-2 genesis block carries the proposer's
-	// ~1.5 MB bond registration whose gather over a 3-region WAN can take tens of seconds.
-	publishPollTimeout = 180 * time.Second
+	// Accept→commit budget, re-derived 2026-08-17 for the #451 synchronizer round
+	// durations (the prior 180 s was genesis-era and sat BELOW the in-spec
+	// per-height worst case): one escape-round height is bounded by H_ESCAPE =
+	// 220 s (integration/cloudtest/scenarios.sh derivation), plus one re-submit
+	// cadence of drop-recovery headroom — 360 s, converging with the harness's
+	// PUBLISH_RETRY_S bound (same derivation, one number). A client window below
+	// the chain's own in-spec height cost manufactures failure verdicts for
+	// healthy commits (run 82bcd2b-39478's durability-turnover GAP; the
+	// discrimination oracles in core/node/modelcheck_441_publish_bound_test.go).
+	// M1 note: this bound shrinks by shrinking the round durations (batching,
+	// #299) — never by the client under-reporting them.
+	publishPollTimeout = 360 * time.Second
+	// How often the poll loop RE-SUBMITS the same entry while pending. The #441
+	// certified design puts drop-recovery on the client's retry loop — but the
+	// submit broadcast is fire-and-forget (core/node/entrypool.go), so a lost
+	// burst strands the entry in the accepting validator's mempool until the
+	// designee rotation reaches it (~|eligible| heights ≈ tens of minutes in the
+	// field — measured by the rotation-wait oracle). Re-submitting is a
+	// mempool-dedup no-op on the happy path and the recovery lever on the lossy
+	// one, so it must fire INSIDE the poll window, not once per outer attempt.
+	publishResubmitEvery = 30 * time.Second
 )
 
 func serve(addr string, reg ports.Registry, tlsCfg *tls.Config) (boundAddr string, shutdown func(), err error) {
@@ -338,6 +358,7 @@ func (c *Client) Publish(ctx context.Context, e ports.Entry) error {
 		if dl, ok := ctx.Deadline(); ok && dl.Before(deadline) {
 			deadline = dl
 		}
+		nextResubmit := time.Now().Add(publishResubmitEvery)
 		for {
 			committed, failMsg, serr := c.publishStatus(ctx, e.Root)
 			if serr == nil {
@@ -350,6 +371,24 @@ func (c *Client) Publish(ctx context.Context, e ports.Entry) error {
 			}
 			if time.Now().After(deadline) {
 				return fmt.Errorf("httpregistry publish: accepted but not committed within %s (root %s) — the consensus gather did not finish; see the validators' -log debug", publishPollTimeout, e.Root)
+			}
+			if time.Now().After(nextResubmit) {
+				// Same body, same entry, same token serial: a dedup no-op for any
+				// mempool that already holds it, a fresh broadcast for any proposer
+				// that lost the original fire-and-forget burst. Only a 200 (the sync
+				// path confirming the commit) short-circuits; every other outcome —
+				// including a 409 for a root that committed between polls — is left
+				// to the status poll to decide.
+				if req, rerr := http.NewRequestWithContext(ctx, "POST", c.base+"/publish", bytes.NewReader(body)); rerr == nil {
+					req.Header.Set("Content-Type", "application/json")
+					if resp, derr := c.hc.Do(req); derr == nil {
+						resp.Body.Close()
+						if resp.StatusCode == http.StatusOK {
+							return nil
+						}
+					}
+				}
+				nextResubmit = time.Now().Add(publishResubmitEvery)
 			}
 			select {
 			case <-ctx.Done():
