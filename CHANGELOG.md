@@ -9,6 +9,32 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **Publish client: the accept→commit poll re-derived for the #451 round durations
+  (180s→360s) and made self-healing — the poll loop now RE-SUBMITS the entry every
+  30s** (2026-08-17) — Run 82bcd2b-39478's durability-turnover GAP ("accepted but not
+  committed within 3m0s") was honestly unpinned between discovery (#351) and a #441
+  mature-quorum residual. The pin, per the PE work order, came from two new
+  deterministic model-check oracles over the 12-member mature fixture
+  (`core/node/modelcheck_441_publish_bound_test.go`): (A) under steady renewal
+  contention with delivery intact, an accepted entry rides the VERY NEXT committed
+  block — three consecutive publishes — refuting the fold-starvation residual at the
+  model tier; (B) with the fire-and-forget submit burst dropped, the entry strands in
+  the accepting validator's mempool for a MEASURED designee-rotation wait (8 chain
+  heights in the oracle schedule ≈ tens of minutes at the field's 220s/height escape
+  bound) — unreachable by any single-shot poll. So the failure class is CLIENT-side
+  liveness, not a consensus defect: `publishPollTimeout` was still the genesis-era
+  180s, BELOW the in-spec per-height worst case the #451 synchronizer durations imply
+  (H_ESCAPE 220s; the harness's own re-derived PUBLISH_RETRY_S is 360s — same
+  derivation, now one number), and the certified #441 design's drop-recovery lever
+  ("the client's retry loop re-sends") never fired inside the window because the
+  client submitted once and only polled. The re-submit is a mempool-dedup no-op on
+  the happy path and the recovery lever on the lossy one (failing-first regression:
+  a stranded entry that only a re-submission lands). Harness: a failed `ft_publish`
+  now captures the VALIDATOR journals with the GAP verdict (82bcd2b's capture had
+  only client-side nodes — the accept→commit window was unattributable, #7's
+  capture-first rule), and the verdict text decomposes by the captured error instead
+  of the #351-or-#441 disjunction. M1 note: the 360s bound shrinks by shrinking
+  round durations (batching, #299), never by the client under-reporting them.
 - **#456 concurrent gather: prepares and precommits are broadcast-and-collected — a
   dead epoch member no longer taxes every proposal its full retry timeout**
   (2026-08-16) — The two-phase gather asked attesters strictly sequentially, so each

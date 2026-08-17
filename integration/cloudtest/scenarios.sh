@@ -612,6 +612,19 @@ flow_publisher_unlinkability() {
   slo_assert "priv-unlinkability" major "default chain REFUSED a durable file→publisher link (refuse-to-surveil)$([ "$ok" = 1 ] || echo " — no refusal seen: $(printf '%s' "$out" | tail -1)")" "$ok"
 }
 
+# A failed publish's decisive evidence lives on the VALIDATORS — the accept→commit
+# window (was the chain committing? did the entry sit in a mempool? which height
+# carried it late?) — not only on the client side. Run 82bcd2b-39478's
+# durability-turnover GAP captured only store/fetch journals, so the root was
+# unpinnable after teardown (#7: capture the evidence first, then look). Callers
+# recording a verdict after a failed ft_publish extend the capture set with the
+# validator cohort before record().
+ft_add_validator_evidence() {
+  local n vals=""
+  for n in val-a val-b val-c val-d; do node_exists "$n" && vals="$vals $n"; done
+  FT_FLOW_NODES="$FT_FLOW_NODES$vals"
+}
+
 # ── durability (#2): content OUTLIVES a permanent storage-node loss ─────────────
 flow_durability_turnover() {
   require_nodes "durability-turnover" major store-1 store-2 fetch-1 || return
@@ -625,7 +638,7 @@ flow_durability_turnover() {
   # not that durability broke — this flow tests survival of a permanent node loss, not
   # the publish path (2-publish-fetch is the publish canary). So GAP unconditionally on
   # a missing link, independent of the FT_PUBLISH_GAP/degraded signals (#351).
-  if [ -z "$res" ]; then record "durability-turnover" gap major "setup publish did not land a link — durability UNTESTED this run, not a durability failure (publish subsystem degraded: see the captured client error in publish-diag / .ft_publish_lasterr — discovery #351 or mature-regime quorum starvation #441; never presume which)"; return; fi
+  if [ -z "$res" ]; then ft_add_validator_evidence; record "durability-turnover" gap major "setup publish did not land a link — durability UNTESTED this run, not a durability failure (read .ft_publish_lasterr to decompose: 'accepted but not committed' = the accept→commit path — commit latency vs the client poll window, #441-family; token/issuer-set errors = discovery #351. The validator journals for the publish window are captured with this verdict)"; return; fi
   link="${res%% *}"; sha="${res##* }"
   svc store-1 stop || true    # permanent departure (left down for the fetch)
   sleep 12
@@ -643,7 +656,7 @@ flow_chaos_crash() {
   if [ -z "$link" ]; then local res; res="$(ft_publish fetch-1 262144 || true)"; link="${res%% *}"; wantsha="${res##* }"; fi
   # As with durability-turnover: a failed SETUP publish means crash-recovery is UNTESTED
   # (no content to crash-and-recover), not broken — GAP unconditionally (#351).
-  if [ -z "$link" ]; then record "chaos-crash" gap major "setup publish did not land a link — crash-recovery UNTESTED this run, not a failure (publish subsystem degraded: see the captured client error in publish-diag / .ft_publish_lasterr — #351 or #441; never presume which)"; return; fi
+  if [ -z "$link" ]; then ft_add_validator_evidence; record "chaos-crash" gap major "setup publish did not land a link — crash-recovery UNTESTED this run, not a failure (read .ft_publish_lasterr to decompose: 'accepted but not committed' = accept→commit #441-family; token/issuer errors = discovery #351. Validator journals captured with this verdict)"; return; fi
   # SIGKILL the silt process (abrupt death, not a graceful stop). systemd
   # (Restart=on-failure) brings it back, reloading the persisted store.
   # Capture t0 BEFORE the kill: flow_restart_survival already restarted store-2

@@ -118,6 +118,72 @@ func TestAsyncPublish_RefusalIsSynchronous(t *testing.T) {
 	}
 }
 
+// lossyReg models the field's dropped fire-and-forget submit burst (run
+// 82bcd2b-39478 / the rotation-wait oracle in core/node): the FIRST submission
+// is accepted but never commits — the entry is stranded — and only a
+// RE-submission of the same root lands it. The pre-fix client submitted once
+// and then only polled, so it polled out its whole budget on a stranded entry;
+// the fixed client re-submits inside the poll window and recovers. This test is
+// the failing-first regression for that re-submit (V5).
+type lossyReg struct {
+	mu        sync.Mutex
+	submits   map[ports.Hash]int
+	committed map[ports.Hash]ports.Entry
+}
+
+func (r *lossyReg) PublishAsync(_ context.Context, e ports.Entry) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.submits[e.Root]++
+	if r.submits[e.Root] >= 2 { // only a re-submission lands: the first burst was "lost"
+		r.committed[e.Root] = e
+	}
+	return nil
+}
+
+func (r *lossyReg) PublishStatus(_ context.Context, root ports.Hash) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	_, ok := r.committed[root]
+	return ok, nil
+}
+
+func (r *lossyReg) Publish(context.Context, ports.Entry) error {
+	return errors.New("sync Publish should not be called on an async registry")
+}
+
+func (r *lossyReg) Lookup(_ context.Context, root ports.Hash) (ports.Entry, bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	e, ok := r.committed[root]
+	return e, ok, nil
+}
+
+func (r *lossyReg) All(context.Context) ([]ports.Entry, error) { return nil, nil }
+
+func TestAsyncPublish_ResubmitInsidePollWindowRecoversLostBurst(t *testing.T) {
+	restore := httpregistry.SetPublishPollKnobsForTest(10*time.Millisecond, 2*time.Second, 100*time.Millisecond)
+	defer restore()
+	reg := &lossyReg{submits: map[ports.Hash]int{}, committed: map[ports.Hash]ports.Entry{}}
+	addr, shutdown, err := httpregistry.Serve("127.0.0.1:0", reg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer shutdown()
+	c := httpregistry.NewClient("http://" + addr)
+	e := ports.Entry{Root: ports.HashBytes([]byte("lost-burst")), FileSize: 1}
+
+	if err := c.Publish(context.Background(), e); err != nil {
+		t.Fatalf("a stranded entry must be recovered by the poll loop's re-submit, not polled out to the budget: %v", err)
+	}
+	reg.mu.Lock()
+	n := reg.submits[e.Root]
+	reg.mu.Unlock()
+	if n < 2 {
+		t.Fatalf("commit landed with %d submission(s) — the re-submit never fired and the test proved nothing (anti-vacuity)", n)
+	}
+}
+
 // A gather that reaches a TERMINAL failure this round (e.g. no quorum, before mutual standing
 // is earned) must surface FAST — not poll out the whole accept→commit budget. This is what
 // keeps a publish-retry-until-standing caller (bond earned-standing, on-chain revocation)
