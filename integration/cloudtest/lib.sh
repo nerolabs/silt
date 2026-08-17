@@ -169,8 +169,11 @@ record() { # record FLOW VERDICT SEVERITY DETAIL [ELAPSED_S]
 # had NO crash detection), masquerading as "SPOT preemption?" / M1-latency GAPs.
 # Scan every node's journal for the kernel OOM-kill / crash signature and surface it
 # as a FIRST-CLASS blocker finding, so it can never again hide. Called at run end,
-# before teardown (nodes still reachable). Root cause of the kills: the resident PoR
-# proof map (O(total held) — the proof-oom triage); the FIX is the cachestore mirror.
+# before teardown (nodes still reachable). The harness REPORTS the crash-loop; it
+# must NOT assert a root cause (the first "resident PoR proof map" attribution was
+# doubly falsified — #464 shipped and the OOM persisted, and it was a consensus
+# node, not a storage one). Attribution belongs to a heap profile (DEBUG_PROFILE=1
+# → ./cloudtest.sh heap <node>), not a hard-coded verdict string.
 scan_node_liveness() {
   local n oomnodes="" total=0 c
   for n in $(node_names); do
@@ -180,7 +183,7 @@ scan_node_liveness() {
     [ "$c" -gt 0 ] 2>/dev/null && { oomnodes="$oomnodes ${n}×${c}"; total=$((total + c)); }
   done
   if [ -n "$oomnodes" ]; then
-    record "infra-node-liveness" fail blocker "NODE CRASH-LOOP — ${total} kernel kill(s) (OOM/signal) across:${oomnodes}. A run whose cohort DIES cannot grade its flows (a crashing node is indistinguishable from a slow/dead peer), so EVERY verdict on this sheet is PROVISIONAL until a clean no-OOM re-run — including the computed bounds (which may be OOM-inflated). This is INFRASTRUCTURE FAILURE, not independent flow results. Root: the resident PoR proof map (O(total held), proof-oom triage); fix = cachestore mirror for proofs."
+    record "infra-node-liveness" fail blocker "NODE CRASH-LOOP — ${total} kernel kill(s) (OOM/signal) across:${oomnodes}. A run whose cohort DIES cannot grade its flows (a crashing node is indistinguishable from a slow/dead peer), so EVERY verdict on this sheet is PROVISIONAL until a clean no-OOM re-run — including the computed bounds (which may be OOM-inflated). This is INFRASTRUCTURE FAILURE, not independent flow results. Attribute from a heap profile (re-run with DEBUG_PROFILE=1, then ./cloudtest.sh heap <node>) — do NOT presume a cause."
   else
     record "infra-node-liveness" pass blocker "node-liveness precondition HELD — no OOM-kill or crash-loop across the cohort, so the sheet was graded on a HEALTHY network"
   fi
