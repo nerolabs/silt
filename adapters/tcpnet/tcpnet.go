@@ -85,6 +85,11 @@ type Transport struct {
 	listenAddr string
 	ln         net.Listener
 	handler    func(from ports.NodeID, msg ports.Message)
+	// inbound bounds the in-flight decoded-message working set so a fast or
+	// adversarial sender can't outrun the single loop and OOM the node (see
+	// inbound.go). nil-safe via a cap of 0 = unbounded; the daemon sets a real
+	// cap from -inbound-cap.
+	inbound *inboundGate
 
 	// inHandshakes counts inbound TLS handshakes currently in flight — the
 	// hub-stampede gauge for #286 Layer 2 (Q3): when many spokes dial a hub at
@@ -207,6 +212,7 @@ func New(loop *eventloop.Loop, ident *identity.Identity, listenAddr string) (*Tr
 		self:       ident.NodeID(),
 		listenAddr: ln.Addr().String(),
 		ln:         ln,
+		inbound:    newInboundGate(0), // unbounded until the daemon sets a cap
 		peers:      make(map[ports.NodeID]addrPair),
 		relays:     make(map[ports.NodeID]string),
 		conns:      make(map[ports.NodeID]*peerConn),
@@ -377,6 +383,12 @@ func (t *Transport) KnownRelays() []Peer {
 func (t *Transport) SetHandler(h func(from ports.NodeID, msg ports.Message)) {
 	t.handler = h
 }
+
+// SetInboundCap bounds the in-flight inbound working set to capBytes so a fast or
+// adversarial sender can't outrun the single loop and OOM the node (inbound.go).
+// capBytes <= 0 = unbounded (the sim/test default). The daemon wires it from
+// -inbound-cap. Call before serving.
+func (t *Transport) SetInboundCap(capBytes int64) { t.inbound.setCap(capBytes) }
 
 // SetLogger wires the observability port; nil disables it.
 func (t *Transport) SetLogger(lg ports.Logger) { t.lg = lg }
@@ -640,12 +652,29 @@ func (t *Transport) readLoop(conn *tls.Conn, viaRelay bool) {
 		if n == 0 || n > maxFrame {
 			return
 		}
+		// Admission control: reserve this frame's bytes against the inbound budget
+		// BEFORE allocating/decoding it, so a fast or adversarial sender can't pile
+		// decoded messages onto the unbounded loop queue faster than the loop drains
+		// them (the OOM). Blocks THIS per-connection reader when the budget is full →
+		// TCP flow-control pushes back on the sender. The budget is released when the
+		// LOOP finishes handling the message (or immediately on any pre-dispatch drop),
+		// so it tracks decoded-but-unprocessed bytes. cap 0 = unbounded (sims/tests).
+		t.inbound.acquire(int64(n))
+		admitted := true
+		release := func() {
+			if admitted {
+				admitted = false
+				t.inbound.release(int64(n))
+			}
+		}
 		frame := make([]byte, n)
 		if _, err := io.ReadFull(conn, frame); err != nil {
+			release()
 			return
 		}
 		var env envelope
 		if err := cbor.Unmarshal(frame, &env); err != nil {
+			release()
 			return
 		}
 		// A frame claiming to be from someone other than the
@@ -654,6 +683,7 @@ func (t *Transport) readLoop(conn *tls.Conn, viaRelay bool) {
 		copy(claimed[:], env.From)
 		if claimed != from {
 			t.logf(ports.LogWarn, "forged frame dropped", "authenticated", from, "claimed", claimed)
+			release()
 			return
 		}
 		t.learn(from, env.Addr, true)
@@ -672,6 +702,7 @@ func (t *Transport) readLoop(conn *tls.Conn, viaRelay bool) {
 		}
 		msg := fromWire(env.Msg)
 		t.loop.Post(msg.Kind.String(), func() {
+			defer release() // free the budget once the loop has processed this message
 			if t.handler != nil {
 				t.handler(from, msg)
 			}

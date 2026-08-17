@@ -8,6 +8,28 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Fixed
+- **The MATURING daemon OOM — an unbounded inbound message queue (a resource-exhaustion
+  DoS), fixed with read backpressure (`-inbound-cap`)** (2026-08-18) — Heap-profiled on
+  the wire (`e03f80d-heapprof`): consensus nodes at ~1 GB RSS held ~500 MB of *live*
+  decoded CBOR on the path `tcpnet.readLoop → eventloop.Post → node.handle` (252 MB in
+  `cbor.fillByteString` alone; only 35 goroutines — no goroutine leak). Mechanism:
+  `readLoop` decodes every inbound frame and `Post`s a closure **capturing the payload**
+  onto the event loop's **unbounded** queue (`Post` "never blocks"); under load (big
+  bond-reg blocks, gather storms, 20 peers) inbound decode outruns the single serialized
+  loop, the queue backs up, decoded messages pin RAM → OOM-crash-loop. This is
+  availability-under-adversary (a flood OOMs an honest node — the memory twin of the #424
+  CPU-flood), a **security floor**, not efficiency: *bounded-then-fast*. Fix: a bounded
+  inbound-bytes admission gate (`adapters/tcpnet/inbound.go`) — the per-connection reader
+  acquires a frame's bytes **before** decoding and releases when the loop finishes the
+  message; over the cap the reader stops draining the socket → TCP flow-control pushes
+  back on the sender. A fatal OOM becomes a survivable throughput limit (alive > crashed);
+  the loop only releases, never acquires, so no deadlock; a lone oversized-but-legal frame
+  is still admitted. `-inbound-cap` (default 256M; 0 = unbounded/legacy). **v1 is a global
+  budget that stops the OOM; per-peer fairness + a consensus-priority lane are the pending
+  hardening before the red team (a flood could otherwise stall consensus behind the cap) —
+  PE ruling.** Plan + ruling: [docs/thinking/2026-08-17-inbound-backpressure-fix-plan.md](docs/thinking/2026-08-17-inbound-backpressure-fix-plan.md).
+
 ### Added
 - **Daemon memory controls: `-mem-limit` (soft heap ceiling) + `-debug-addr` (pprof)**
   (2026-08-17) — The MATURING field cohort OOM-crash-loops on 2 GB nodes, and it is

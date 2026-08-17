@@ -123,6 +123,7 @@ func cmdDaemon(args []string) error {
 	cacheSize := fs.String("cache", "", "in-RAM read cache for hot chunks, e.g. 512M (default off) — a cache hit skips the disk read and the per-read hash re-verify")
 	proofCacheSize := fs.String("proof-cache", "64M", "resident RAM budget for HOT storage proofs; the rest live on disk and page in only to serve/audit, so proof RAM is O(hot) not O(held) (0 = unbounded, legacy)")
 	memLimit := fs.String("mem-limit", "", "soft heap ceiling (e.g. 1500M, 85% of box RAM) — the Go GC reclaims aggressively as the heap approaches it, so a large-but-bounded working set can't grow into a kernel OOM-kill on a small box. Sets runtime/debug.SetMemoryLimit; equivalent to the GOMEMLIMIT env var (this flag wins if both are set). Empty = no soft limit (default). Not a hard cap: if the LIVE set genuinely exceeds it the GC thrashes rather than crashes — raise the limit or the box.")
+	inboundCap := fs.String("inbound-cap", "256M", "bound the in-flight INBOUND message working set: bytes read off the wire but not yet processed on the single loop. A fast/adversarial sender that outruns the loop otherwise piles decoded messages onto an unbounded queue and OOMs the node (a resource-exhaustion DoS). At the cap the reader stops draining that socket → TCP flow-control pushes back on the sender (alive > crashed). A single legal-but-oversized frame is still admitted alone. 0 = unbounded (legacy). NOTE: v1 is a global budget — a flood can still stall consensus behind it; per-peer fairness + a consensus-priority lane are the pending hardening.")
 	carePublished := fs.Bool("care-published", true, "the daemon repairs content published through its own UI, so your own content stays alive as nodes churn (its manifest counts toward this node's pledge); =false to opt out")
 	fs.Parse(args)
 
@@ -225,6 +226,14 @@ func cmdDaemon(args []string) error {
 	tr, err := tcpnet.New(loop, ident, *listen)
 	if err != nil {
 		return err
+	}
+	// Bound the inbound working set so a fast/adversarial sender can't OOM the
+	// single loop (the MATURING crash-loop root cause). 0 = unbounded.
+	if cap, err := parseSize(*inboundCap); err != nil {
+		return err
+	} else if cap > 0 {
+		tr.SetInboundCap(cap)
+		fmt.Printf("inbound-cap: %s in-flight message budget (backpressure over cap; a flood stalls, doesn't OOM)\n", *inboundCap)
 	}
 	if *advertise != "" {
 		tr.SetAdvertise(*advertise)
