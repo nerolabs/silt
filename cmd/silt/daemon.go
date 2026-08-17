@@ -102,7 +102,7 @@ func cmdDaemon(args []string) error {
 	blockPeers := fs.String("block-peers", "", "TEST-HARNESS / FIELD-DRILL: comma-separated peer IDs to PARTITION away from — this node drops all messages to/from them, simulating a severed link (#184 partition→heal). HEAL by restarting without the flag (the persisted chain reloads and reconciles). Empty = no partition; a real deployment never sets it")
 	forgeBlock := fs.String("forge-block", "", "RED-TEAM / TEST-HARNESS ONLY: propose a block with a FORGED (corrupted) proposer signature to this peer ID, to prove an honest validator rejects it before attesting (#184 forged-block→reject). Never honest")
 	lowbondPropose := fs.String("lowbond-propose", "", "RED-TEAM / TEST-HARNESS ONLY: as an under-bonded validator, propose a well-formed block to this peer ID, to prove an honest validator refuses a proposer without a qualifying bond (#184 low-bond→reject). Never honest")
-	equivocate := fs.String("equivocate", "", "RED-TEAM / TEST-HARNESS ONLY: run this validator as a Byzantine EQUIVOCATOR. Given two peer validator IDs \"idX,idYZ\", it double-signs at height 1 — placing block X on idX and a heavier conflicting fork (Y,Z) on idYZ — so honest replicas that reconcile the fork catch the double-sign and slash this node (#184, proving the accountability property over the real wire). NEVER use on a real network; a correct node refuses to equivocate")
+	equivocate := fs.String("equivocate", "", "RED-TEAM / TEST-HARNESS ONLY: run this validator as a Byzantine EQUIVOCATOR (#184, proving accountability over the real wire). OBJECTIVE mode (3-of-4): the value is a trigger; this validator participates honestly then SERVES a conflicting signed block at a height it prepared, so an honest peer slashes the double-sign on sync (slash-on-detection — a fork can't be committed under a BFT quorum). LEGACY mode: given \"idX,idYZ\" it commit-places block X on idX and a heavier fork (Y,Z) on idYZ. NEVER use on a real network; a correct node refuses to equivocate")
 	liar := fs.Bool("liar", false, "RED-TEAM / TEST-HARNESS ONLY: run this storage node as a PoR LIAR — it keeps its storage-proof tags but silently drops the shard bytes (\"keep the receipt, ditch the goods\"). It still answers a MsgChallenge, but with a proof that fails the auditor's verify-without-fetch check, so an -audit auditor CATCHES it and slashes its standing (#232). Never honest")
 	goodPropose := fs.String("goodpropose", "", "TEST-HARNESS ONLY: POSITIVE CONTROL for -forge-block/-lowbond-propose. As a properly-bonded proposer, send a WELL-FORMED block to this peer ID and prove the honest target ACCEPTS it — so a target that refuses EVERY proposal (a broken/wedged node) cannot make the forged/low-bond REJECT tests false-pass ('reject the good one too' would otherwise look identical to 'reject the bad one', audit #303). Retries until its bond earns standing. Logs 'goodpropose proposal ACCEPTED by <id>' on accept, 'goodpropose proposal UNEXPECTEDLY REJECTED by <id>' after giving up")
 	wsCheckpoint := fs.String("ws-checkpoint", "", "weak-subjectivity checkpoint HEIGHT:HASH (M0 F-1): a recent trusted committed block this node REFUSES to reorg at or before, regardless of fork weight — the long-range-attack defense that makes the objective maturity latch safe for a fresh/long-offline node. Obtain it out-of-band (the daemon prints `checkpoint: HEIGHT:HASH` for its committed head; cross-check several independent nodes). It must be recent — within ~the bond-TTL window. Empty = genesis-trusting (safe only at launch, on a trusted swarm, or before the network matures)")
@@ -1082,7 +1082,28 @@ func cmdDaemon(args []string) error {
 				// honest replicas catch and slash it over the real wire (#184). Retry on the
 				// loop-safe clock until this node has earned standing with both peers (early
 				// attempts are refused). NEVER honest; a correct node refuses to equivocate.
-				if *equivocate != "" {
+				if *equivocate != "" && nd.Chain() != nil && nd.Chain().Objective() {
+					// OBJECTIVE mode (3-of-4): a fork can NEVER be committed onto a
+					// target (quorum-short; a minority fork is an I1 violation), so the
+					// legacy commit-based placement cannot drive here. The faithful route
+					// is slash-on-DETECTION (PE ruling 2026-08-17): this validator
+					// participates honestly (its prepare lands on-chain), then SERVES a
+					// conflicting signed block at that height; an honest peer fetches it on
+					// sync and slashes the double-sign unaided. Peer IDs are irrelevant
+					// (the fork is served on GetChain to whoever syncs). Retry until this
+					// node has a committed prepare to fork.
+					fmt.Println("⚠ ADVERSARY: -equivocate set (objective mode) — this validator will DELIBERATELY double-sign via a served conflicting fork (red-team harness, never honest)")
+					var tryPlace func()
+					tryPlace = func() {
+						h, err := nd.PlaceConflictingSigned()
+						if err != nil {
+							clk.AfterFunc(1*ports.Second, tryPlace) // no committed prepare yet; retry
+							return
+						}
+						fmt.Printf("adversary: equivocation complete (double-signed height %d)\n", h)
+					}
+					clk.AfterFunc(2*ports.Second, tryPlace)
+				} else if *equivocate != "" {
 					parts := strings.Split(*equivocate, ",")
 					idX, e1 := ports.ParseHash(strings.TrimSpace(parts[0]))
 					var idYZ ports.NodeID

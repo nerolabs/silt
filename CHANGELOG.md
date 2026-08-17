@@ -9,6 +9,34 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **#184 adversarial drills made DRIVABLE on the wire under the objective BFT model
+  — equivocation (slash-on-detection) and partition-heal (stall-then-catch-up)**
+  (2026-08-17) — Both marquee attacks GAPped on every field sheet because the drills
+  imported legacy-mode (`-objective=false`, quorum 1) assumptions that objective
+  3-of-4 correctly forbids. Fixed per three PE rulings, mechanism proven at the code
+  level first (`core/node/modelcheck_184_equivocation_objective_test.go`, failing-first).
+  **Equivocation:** a fork can never be COMMITTED onto a target under a BFT quorum
+  (2-attestation single-target commit is quorum-short; a minority fork is an I1
+  violation), so the crime is *signing* two conflicting blocks at one height, not
+  *committing* two forks. New `PlaceConflictingSigned` adversary primitive: a
+  consensus-set validator participates honestly (its era-2 `(round, prepare)`
+  signature lands on-chain), then SERVES a conflicting signed block at that slot
+  (crafted `GetChain`/head-probe response); an honest peer fetches it on sync and
+  `FindEquivocations` slashes the same-slot cross-fork prepare pair unaided,
+  pre-Reconcile, never adopting the quorum-short loser. It runs on its OWN dedicated
+  ephemeral net (`e2e/equivocation_test.go`, objective 4-anchor, over real TCP;
+  netem via `integration/adversarial`) — the one destructive drill (a proven
+  double-sign is a permanent F2 eviction) is isolated from the shared sheet, whose
+  mid-sheet eviction would pin the commit requirement at 3-of-4 against 3 live
+  anchors (zero fault tolerance). **Partition-heal:** a severed sub-quorum minority
+  cannot commit, so on heal it CATCHES UP (a forward sync, `dropped=0`), it does not
+  reorg — a droppable reorg would require a minority to commit a conflicting fork
+  (the I1 violation model B forbids; the absence of a reorg line IS the safety
+  property). The drill (`integration/cloudtest` + `e2e/partition_test.go`) severs the
+  minority from the whole > ⅔ majority, drives the majority to commit a heavier
+  chain, asserts the minority STALLED (anti-vacuity), then reconverges to the
+  majority head (height + hash) on heal. Deliberation +
+  the three rulings: `docs/thinking/2026-08-17-drill-drivability.md`.
 - **Publish client: the accept→commit poll re-derived for the #451 round durations
   (180s→360s) and made self-healing — the poll loop now RE-SUBMITS the entry every
   30s** (2026-08-17) — Run 82bcd2b-39478's durability-turnover GAP ("accepted but not
