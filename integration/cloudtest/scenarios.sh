@@ -558,9 +558,14 @@ print(','.join(n['nodeid'] for name,n in t['nodes'].items()
   # Assert val-c CATCHES UP: it advances past its stall AND reaches the majority's
   # LIVE head with a matching hash (both advance, so compare val-c to val-a live —
   # they align at the tip once val-c catches up).
+  # Heal window sized to the CATCH-UP, not a magic constant (#5): the sever fix works
+  # (run 76f654d-33422: val-c genuinely STALLED at h31 while the majority reached h38),
+  # but a 7-block cross-region catch-up sync ran past 120s and GAPped ("did not
+  # reconverge in 120s"). 300s matches the drill's other resume windows (10b's clincher)
+  # and rides out a multi-block WAN catch-up while a real reconverge break still GAPs.
   local ok=0 t0; t0="$(date +%s)"
   local ci2 ch2 chh2 ai ah ahh
-  while [ $(( $(date +%s) - t0 )) -lt 120 ]; do
+  while [ $(( $(date +%s) - t0 )) -lt 300 ]; do
     ci2="$(chain_head val-c)"; ch2="${ci2%% *}"; chh2="${ci2#* }"
     ai="$(chain_head val-a)"; ah="${ai%% *}"; ahh="${ai#* }"
     if [ "${ch2:-0}" -gt "$ch0" ] 2>/dev/null && [ "$ch2" = "$ah" ] && [ -n "$chh2" ] && [ "$chh2" = "$ahh" ]; then ok=1; break; fi
