@@ -298,6 +298,34 @@ var ErrTimeout = errors.New("node: request timed out")
 // ephemeral-identity churn can't grow the map without limit.
 const maxDeadHolders = 4096
 
+// maxPeerInfo bounds each peer-keyed GOSSIP cache — peerCaps (capacity estimate),
+// peerBonds (bond-audit targets), peerDomains (H5-B diversity). They are written
+// keyed by the sender of any non-ephemeral message, so a flood of distinct (sybil)
+// NodeIDs would otherwise grow them without bound (a resident-memory DoS; the
+// boundedness audit's flagged path). These are SOFT caches, not authority: an
+// evicted peer's info is simply re-learned on its next gossip. Same sweep-past-
+// threshold idiom as maxDeadHolders. Far above any real active-peer count, so it
+// only ever engages under a sybil-ID flood.
+const maxPeerInfo = 4096
+
+// evictPeerInfoIfFull drops one arbitrary OTHER-peer entry from a peer-keyed
+// gossip cache when it is full and `keep` would be a NEW key, so the map stays
+// bounded (≤ maxPeerInfo) under a flood of distinct sybil NodeIDs. Skips `keep`
+// so the peer we just heard from is never the one evicted. Soft-cache semantics:
+// the dropped peer's info is re-learned on its next gossip. Generic over the
+// value type (peerCaps/peerBonds/peerDomains carry different values).
+func evictPeerInfoIfFull[V any](m map[ports.NodeID]V, keep ports.NodeID) {
+	if _, ok := m[keep]; ok || len(m) < maxPeerInfo {
+		return
+	}
+	for k := range m {
+		if k != keep {
+			delete(m, k)
+			return
+		}
+	}
+}
+
 // Stats are per-node counters the sim reports on.
 type Stats struct {
 	QueriesSent     int // DHT + fetch requests issued
@@ -991,6 +1019,7 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 	// table's per-domain diversity cap (H5-B) sees the domain on first contact
 	// and a single-domain Sybil cluster can't crowd out honest peers.
 	if msg.Domain != 0 {
+		evictPeerInfoIfFull(n.peerDomains, from)
 		n.peerDomains[from] = msg.Domain
 	}
 	// Any message is proof of life — but a short-lived client (publish/fetch
@@ -1009,9 +1038,11 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 		delete(n.deadUntil, from)
 	}
 	if msg.CapTotal > 0 {
+		evictPeerInfoIfFull(n.peerCaps, from)
 		n.peerCaps[from] = capInfo{used: msg.CapUsed, total: msg.CapTotal}
 	}
 	if msg.BondRoot != (ports.Hash{}) && !msg.Ephemeral {
+		evictPeerInfoIfFull(n.peerBonds, from)
 		n.peerBonds[from] = bondInfo{root: msg.BondRoot, size: msg.BondSize}
 	}
 
