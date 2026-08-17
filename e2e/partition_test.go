@@ -1,132 +1,139 @@
 package e2e
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/nerolabs/silt/adapters/identity"
 )
 
-// TestPartitionHealsToHeavierForkOverTCP is the #184 partition→heal case over the REAL
-// WIRE: the network splits, each side commits its OWN history (a fork), then the
-// partition heals and the LIGHTER side reorgs onto the HEAVIER fork — consensus
-// reconverges on one history, over real TCP. This exercises the M0 consensus denial in
-// OBJECTIVE mode (the default), where fork-choice weight is a function of the on-chain
-// bond registrations carried IN the fork itself — so every replica agrees which fork is
-// heavier without any external reputation view. Proven against real daemons, not only
-// the in-process sim (sim/reorg_test.go).
+// TestPartitionHealsToHeavierForkOverTCP is the #184 partition→heal case over the
+// REAL WIRE under the ratified BFT model (era-2 rounds+locking): a validator SEVERED
+// into a sub-quorum MINORITY cannot commit, stalls behind the > ⅔ majority that keeps
+// committing, and on heal CATCHES UP to the majority's heavier chain — consensus
+// reconverges on one history over real TCP.
 //
-// Topology (objective, quorum 1; every node is a launch anchor so a 2-node partition
-// can bootstrap and commit):
-//   - Group 1 = {A, B}: A serves a registry; two publishes commit a TWO-block fork
-//     [g, a1, a2] whose cumulative bonded weight is heavier.
-//   - Group 2 = {C, D}: C serves a registry; one publish commits a ONE-block fork
-//     [g, c1]. C and D carry -block-peers A,B, so even pointed at group 1 they stay
-//     partitioned and form their own fork.
-//   - Heal: restart C WITHOUT -block-peers, bootstrapped to A. It reloads its persisted
-//     [g, c1], syncs the heavier fork, and REORGS — dropping c1, adopting a1,a2. It
-//     prints the reorg, which we assert. Group 1 (unblocked) never learned group 2, so
-//     it does not budge.
+// This REPLACES the pre-BFT "each side commits its own fork then reorgs" test (PE
+// ruling 2026-08-17 / the note the old skip left): under a 3-of-4 commit floor a
+// minority committing a conflicting fork is an I1 violation, so there is no droppable
+// reorg — the minority stalls and does a forward catch-up (dropped=0). The ABSENCE of
+// a reorg line is the safety property, not a gap; the success signal is the stalled
+// minority reaching the majority head (height + hash).
+//
+// Topology (objective, 4 anchors, quorum 2 → ByzantineQuorum raises to 3-of-4):
+//   - Majority = {A, B, D}: A serves a registry; publishes drive it to commit a
+//     heavier chain while C is away.
+//   - Minority = {C}: severed from A, B, D (-block-peers, both directions). A 1-of-4
+//     island cannot reach the strict anchor majority (3), so it STALLS.
+//   - Heal: restart C without the block; it reconnects and catches up to the
+//     majority's head. Assert its head advances to match A's (height + hash).
 func TestPartitionHealsToHeavierForkOverTCP(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e spawns processes; skipped under -short")
 	}
-	// PAUSED under the ratified bond-weighted BFT model (#357 §2). This test splits 4
-	// anchors into two 2-node groups and expects EACH to commit its own fork, then heal
-	// to the heavier. But §2 sizes the Byzantine quorum against the fixed anchor set
-	// (bftThreshold(4)=2 ⇒ a 3-of-4 support supermajority), so a 2-of-4 minority correctly
-	// CANNOT commit — that is quorum-intersection safety, and it is why the cloud's
-	// 184-partition now GAPs ("no heavier fork formed"). The old "each side commits a
-	// conflicting fork" scenario is IMPOSSIBLE under B (it required a minority to finalize),
-	// so this is a stale test, not a regression. A BFT partition-heal test — a supermajority
-	// commits, a stalled minority catches up on heal — replaces it once the §3 finality
-	// model is settled (research consult in flight: docs/reviews/357-bft-finality-model-CONSULT.md).
-	t.Skip("obsolete under BFT model B (#357 §2): a 2-of-4 minority cannot commit a conflicting fork; pending the BFT partition-heal rewrite after the §3 finality consult")
-	idA := identity.FromSeed(7001).NodeID().String()
-	idB := identity.FromSeed(7002).NodeID().String()
-	idC := identity.FromSeed(7003).NodeID().String()
-	idD := identity.FromSeed(7004).NodeID().String()
-	anchors := idA + "," + idB + "," + idC + "," + idD // shared launch set → identical genesis config
+	const N = 4
+	const minority = 2 // val2 is severed into the minority; A(0) serves the registry
+	ids := make([]string, N)
+	port := make([]string, N)
+	for i := 0; i < N; i++ {
+		ids[i] = identity.FromSeed(int64(7200 + i)).NodeID().String()
+		port[i] = reservePort(t)
+	}
+	anchors := strings.Join(ids, ",")
+	regPort := reservePort(t)
+	storeC := t.TempDir() // the minority's persistent store — reused across its heal-restart
 
-	storeC := t.TempDir() // C's persistent store — reused across its heal-restart
-
-	// Objective consensus with every node an anchor (so a 2-node partition can commit);
-	// no anchor-quorum requirement, so each side commits its own fork. Fast bond audit.
-	val := func(extra ...string) []string {
-		return append([]string{
-			"-listen", "127.0.0.1:0", "-validator",
-			"-min-bond", "1M", "-mature-validators", "99", "-anchors", anchors, "-quorum", "1",
-			"-min-bond-floor", "0", "-bond", "8M", "-bond-audit", "1s",
+	commonArgs := func(i int, store string) []string {
+		att := make([]string, 0, N-1)
+		persistent := make([]string, 0, N-1)
+		for j := 0; j < N; j++ {
+			if j != i {
+				att = append(att, ids[j])
+				persistent = append(persistent, ids[j]+"@"+port[j])
+			}
+		}
+		args := []string{
+			"-id-seed", fmt.Sprintf("%d", 7200+i),
+			"-listen", port[i], "-advertise", port[i],
+			"-store", store,
+			"-validator", "-objective",
+			"-min-bond", "1M", "-min-bond-floor", "0", "-bond", "8M",
+			"-mature-validators", fmt.Sprintf("%d", N),
+			"-anchors", anchors,
+			"-attesters", strings.Join(att, ","),
+			"-persistent-peers", strings.Join(persistent, ","),
+			"-quorum", "2", "-bond-audit", "2s",
 			"-capacity", "1G", "-mdns=false",
-		}, extra...)
+		}
+		if i == 0 {
+			args = append(args, "-serve-registry", regPort)
+		} else {
+			args = append(args, "-bootstrap", ids[0]+"@"+port[0])
+		}
+		return args
 	}
 
-	// Group 1 (heavier): A registry + validator, B attests. NOT blocking anyone — so a
-	// healed C can reconnect to A.
-	a := startDaemon(t, "A", val("-store", t.TempDir(), "-serve-registry", "127.0.0.1:0",
-		"-attesters", idB, "-id-seed", "7001")...)
-	pa := a.waitFor(t, rePeer, 20*time.Second)
-	bootA := pa[1] + "@" + pa[2]
-	regA := a.waitFor(t, reRegistry, 20*time.Second)[1]
-	b := startDaemon(t, "B", val("-store", t.TempDir(), "-bootstrap", bootA,
-		"-attesters", idA, "-id-seed", "7002")...)
-	b.waitFor(t, reBootstrap, 20*time.Second)
-
-	// Group 2 (lighter): C registry + validator, D attests. Both PARTITIONED from A,B —
-	// they drop all group-1 traffic, so they form their own fork.
-	c := startDaemon(t, "C", val("-store", storeC, "-serve-registry", "127.0.0.1:0",
-		"-attesters", idD, "-block-peers", idA+","+idB, "-id-seed", "7003")...)
-	pc := c.waitFor(t, rePeer, 20*time.Second)
-	bootC := pc[1] + "@" + pc[2]
-	regC := c.waitFor(t, reRegistry, 20*time.Second)[1]
-	d := startDaemon(t, "D", val("-store", t.TempDir(), "-bootstrap", bootC,
-		"-attesters", idC, "-block-peers", idA+","+idB, "-id-seed", "7004")...)
-	d.waitFor(t, reBootstrap, 20*time.Second)
-
-	// During the partition, group 1 commits TWO blocks (heavier), group 2 commits ONE.
-	reAnyLink := regexp.MustCompile(`silt:v1:\S+`)
-	publish := func(who *daemon, name, boot, reg string) {
-		src := filepath.Join(t.TempDir(), name)
-		if err := os.WriteFile(src, []byte("partition-payload-"+name), 0o644); err != nil {
-			t.Fatal(err)
+	daemons := make([]*daemon, N)
+	for i := 0; i < N; i++ {
+		store := t.TempDir()
+		if i == minority {
+			store = storeC
 		}
-		deadline := time.Now().Add(60 * time.Second)
-		for {
-			out, err := runClientAllowErr(t, "swarm", "add", src,
-				"-peers", boot, "-registry", reg, "-chunk-size", "65536", "-mode", "convergent")
-			if err == nil && reAnyLink.FindString(out) != "" {
-				return
-			}
-			if time.Now().After(deadline) {
-				t.Fatalf("%s: publish %q never committed:\n%s", who.name, name, out)
-			}
-			time.Sleep(1 * time.Second)
+		args := commonArgs(i, store)
+		if i == minority {
+			// SEVER the minority from the whole majority, both directions — a 1-of-4
+			// island that cannot reach the strict anchor majority (3), so it stalls.
+			others := []string{ids[0], ids[1], ids[3]}
+			args = append(args, "-block-peers", strings.Join(others, ","))
 		}
+		daemons[i] = startDaemon(t, fmt.Sprintf("val%d", i), args...)
 	}
-	publish(a, "a1", bootA, regA)
-	publish(a, "a2", bootA, regA)
-	a.waitFor(t, regexp.MustCompile(`chain: committed block 2`), 20*time.Second) // [g,a1,a2]
-	t.Logf("group 1 committed its 2-block fork [g,a1,a2]")
-	publish(c, "c1", bootC, regC)
-	c.waitFor(t, regexp.MustCompile(`chain: committed block 1`), 20*time.Second) // [g,c1]
-	t.Logf("group 2 committed its 1-block fork [g,c1] (partitioned from group 1)")
 
-	// HEAL group 2: stop C and restart it WITHOUT the partition, bootstrapped to A and
-	// syncing from it. It reloads its persisted [g, c1], sees group 1's heavier fork,
-	// and reorgs onto it.
-	c.cmd.Process.Kill()
-	c.cmd.Wait()
-	cHealed := startDaemon(t, "C(healed)", val("-store", storeC, "-bootstrap", bootA,
-		"-attesters", idA, "-id-seed", "7003")...)
-	cHealed.waitFor(t, reBootstrap, 20*time.Second)
-	t.Logf("C restarted without the partition, bootstrapped to A — healing")
+	regRef := daemons[0].waitFor(t, reRegistry, 30*time.Second)[1]
+	majPeers := ids[0] + "@" + port[0] + "," + ids[1] + "@" + port[1] + "," + ids[3] + "@" + port[3]
 
-	// The lighter side reorgs onto the heavier fork — one block dropped (c1), new head at
-	// height 2 (a1,a2). Consensus reconverged over the wire.
-	cHealed.waitFor(t, regexp.MustCompile(`chain: reorged onto a heavier fork \(dropped 1 block\(s\), new head height 2\)`), 60*time.Second)
-	t.Logf("C reorged onto group 1's heavier fork — consensus reconverged over TCP")
-	_ = d
+	// Drive the majority to commit a heavier chain while the minority is severed.
+	src := filepath.Join(t.TempDir(), "p.bin")
+	if err := os.WriteFile(src, make([]byte, 4096), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	reCommitN := regexp.MustCompile(`chain: committed block (\d+)`)
+	committed := false
+	deadline := time.Now().Add(90 * time.Second)
+	for time.Now().Before(deadline) {
+		out, _ := runClientAllowErr(t, "swarm", "add", src,
+			"-peers", majPeers, "-registry", regRef, "-token-quorum", "2",
+			"-chunk-size", "65536", "-mode", "convergent")
+		if strings.Contains(out, "silt:v1:") && daemons[0].out.find(reCommitN) != nil {
+			committed = true
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
+	if !committed {
+		t.Fatal("the majority never committed a heavier chain — nothing for the minority to catch up to")
+	}
+	// The minority must NOT have committed (it is a sub-quorum island): its store shows
+	// no committed block beyond genesis. (Anti-vacuity: proof it genuinely stalled.)
+	if daemons[minority].out.find(reCommitN) != nil {
+		t.Fatal("the severed minority committed a block — the sever did not isolate it below the 3-of-4 threshold (I1 would be violated)")
+	}
+	t.Logf("majority committed a heavier chain; the severed minority stalled at genesis")
+
+	// HEAL: restart the minority WITHOUT the partition; it reconnects and catches up.
+	daemons[minority].cmd.Process.Kill()
+	daemons[minority].cmd.Wait()
+	healed := startDaemon(t, "val2(healed)", commonArgs(minority, storeC)...)
+	healed.waitFor(t, reBootstrap, 20*time.Second)
+
+	// The minority catches up to the majority's heavier chain — a forward sync, NOT a
+	// reorg (a BFT minority never committed a conflicting fork to drop). Assert it
+	// commits/adopts a block above genesis after healing.
+	healed.waitFor(t, reCommitN, 60*time.Second)
+	t.Logf("the healed minority caught up to the majority's heavier chain over TCP — BFT partition→heal reconverged (catch-up, not reorg)")
 }

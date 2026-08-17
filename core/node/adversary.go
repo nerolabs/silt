@@ -9,6 +9,8 @@ package node
 // loudly-announced `-equivocate` flag; no honest path calls it.
 
 import (
+	"bytes"
+	"crypto/ed25519"
 	"fmt"
 
 	"github.com/fxamacker/cbor/v2"
@@ -304,4 +306,74 @@ func (n *Node) EquivocateHeight() uint64 {
 		return 0
 	}
 	return n.equivPlan.height
+}
+
+// PlaceConflictingSigned is the OBJECTIVE-mode (3-of-4) equivocation primitive
+// (PE ruling 2026-08-17). Under a BFT commit floor a fork can NEVER be committed
+// onto a target (a 2-attestation single-target commit is quorum-short, and a
+// minority committing a conflicting fork is an I1 violation), so the legacy
+// commit-based Equivocate cannot place a double-sign here. The faithful route is
+// slash-on-DETECTION: the crime is SIGNING two conflicting blocks at one height,
+// not committing two forks.
+//
+// This node must already be a consensus-set signer whose PREPARE for the honest
+// block at its head is on-chain — i.e. it just proposed (or attested) the
+// committed head block W@H, so W.PrepareQC carries this node's round-scoped
+// self-prepare (requireProposerPrepare guarantees it for the proposer). We then:
+//
+//  1. build a CONFLICTING block L at the same height H (a different entry → a
+//     different hash);
+//  2. sign a PREPARE over L at the SAME (H, CommitRound, prepare) slot this node
+//     used for W — the un-bypassable self-incrimination the era-2 slash rule
+//     catches (VerifyEquivocation: a shared (round, phase) consensus signature on
+//     two different blocks at one height);
+//  3. SERVE the losing fork [g … W.parent, L] on GetChain (equivServedFork), so
+//     any honest peer that syncs this node fetches L, scans it against its own
+//     held W, and slashes this node on detection — pre-Reconcile, never adopting
+//     the invalid (quorum-short) fork.
+//
+// The Byzantine BROADCAST (serving a different signed block than the one it
+// committed) IS the equivocating act; honest FindEquivocations does the detection
+// and slash unaided. RED-TEAM / TEST-HARNESS ONLY. Returns the double-sign height
+// and an error if this node has no committed head to fork.
+func (n *Node) PlaceConflictingSigned() (uint64, error) {
+	if n.chain == nil || n.signer == nil {
+		return 0, ErrNoChain
+	}
+	blocks := n.chain.Blocks(0)
+	if len(blocks) < 2 {
+		return 0, fmt.Errorf("place-conflicting-signed: no committed block above genesis to fork")
+	}
+	selfPub := n.signer.Public().(ed25519.PublicKey)
+
+	// Find the most recent committed block whose PrepareQC carries THIS node's
+	// prepare (as proposer or attester) — the signature the detection matches
+	// against. A node that has proposed or attested any committed block qualifies,
+	// so the daemon can drive this without pinning the node to a specific height.
+	for i := len(blocks) - 1; i >= 1; i-- {
+		w := blocks[i]
+		var slot *chain.Attestation
+		for j := range w.PrepareQC {
+			att := w.PrepareQC[j]
+			if att.Phase == chain.PhasePrepare && bytes.Equal(att.PubKey, selfPub) {
+				slot = &w.PrepareQC[j]
+				break
+			}
+		}
+		if slot == nil {
+			continue
+		}
+		// The conflicting fork block L@H — different entry, same height/base as W,
+		// so the hashes differ and the double-sign is provable — signed at the SAME
+		// (H, round, prepare) slot this node used for W.
+		l := &chain.Block{Version: chain.BlockVersionRounds, Height: w.Height, Prev: w.Prev, Entries: []ports.Entry{advEntry("conflict")}}
+		l.PrepareQC = []chain.Attestation{chain.AttestAt(l, n.signer, slot.Round, chain.PhasePrepare)}
+		if l.Hash() == w.Hash() {
+			return 0, fmt.Errorf("place-conflicting-signed: L did not diverge from W at h%d", w.Height)
+		}
+		fork := append([]chain.Block{}, blocks[:i]...)
+		n.equivServedFork = append(fork, *l)
+		return w.Height, nil
+	}
+	return 0, fmt.Errorf("place-conflicting-signed: this node has no prepare in any committed block yet (not a gathered signer) — attest or propose first")
 }

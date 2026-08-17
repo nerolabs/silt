@@ -430,6 +430,13 @@ type Node struct {
 	// un-placed legs instead of rebuilding at the (since-advanced) live head —
 	// the #378 wedge. Test-harness only; nil on an honest node.
 	equivPlan *equivPlan
+	// equivServedFork is the OBJECTIVE-mode equivocation primitive's crafted
+	// GetChain response (adversary.go PlaceConflictingSigned): a losing fork the
+	// Byzantine node SERVES so honest peers fetch it on sync and slash the
+	// double-sign on detection (chainrole.go slashEquivocators), without ever
+	// committing a fork (impossible under 3-of-4). nil on an honest node and on
+	// the legacy commit-based -equivocate path. Test-harness only.
+	equivServedFork []chain.Block
 	// eclipser models a malicious node holding the NodeIDs closest to a key (a
 	// key-surround): it DROPS provider announcements and returns NO provider
 	// records, so a lookup that reaches only the surrounding NodeIDs finds nothing.

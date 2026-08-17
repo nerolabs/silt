@@ -398,6 +398,15 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 		n.reply(from, msg, ports.Message{Kind: ports.MsgCommitAck, OK: ok})
 	case ports.MsgGetChain:
 		blocks := n.chain.Blocks(msg.Height)
+		// RED-TEAM / TEST-HARNESS: an objective-mode equivocator serves its crafted
+		// LOSING fork instead of its real chain (adversary.go PlaceConflictingSigned),
+		// so a peer fetches the conflicting signed block and slashes the double-sign
+		// on detection. The fork is invalid (a lone prepare, quorum-short) so no
+		// honest node ever ADOPTS it — it is slashable evidence only. nil on any
+		// honest node.
+		if n.equivServedFork != nil {
+			blocks = n.equivServedFork
+		}
 		n.reply(from, msg, ports.Message{Kind: ports.MsgChainReply, OK: true, Data: chain.EncodeBlocks(blocks)})
 	case ports.MsgGetChainHead:
 		// Cheap head probe (#382): answer "what is your head?" with (height, hash) so
@@ -408,6 +417,17 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 		var h uint64
 		if n.chain.Len() > 0 {
 			h = next - 1
+		}
+		// RED-TEAM / TEST-HARNESS: an objective-mode equivocator advertises its
+		// crafted fork's head so a peer whose head matches the honest chain does
+		// NOT skip the fetch on the #382 head probe — it fetches, sees the
+		// conflicting signed block, and slashes. Without this the probe short-
+		// circuits the double-sign (the fork's L@H hashes differently than W@H).
+		if fork := n.equivServedFork; fork != nil {
+			last := fork[len(fork)-1]
+			fh := last.Hash()
+			n.reply(from, msg, ports.Message{Kind: ports.MsgChainHeadReply, OK: true, Height: last.Height, Data: fh[:]})
+			return true
 		}
 		n.reply(from, msg, ports.Message{Kind: ports.MsgChainHeadReply, OK: true, Height: h, Data: hh[:]})
 	case ports.MsgSubmitBondReg:

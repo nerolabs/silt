@@ -1,71 +1,128 @@
 package e2e
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/nerolabs/silt/adapters/identity"
 )
 
-// TestEquivocatorSlashedOverTCP is the #184 accountability gate over the REAL WIRE: a
-// validator that DELIBERATELY double-signs (the `-equivocate` red-team harness) is
-// caught and slashed by an honest replica that reconciles the fork — proving "a proven
-// double-sign costs standing" (D2) holds against real daemons over real TCP, not only
-// in the in-process sim.
+// TestEquivocatorSlashedOverTCP is the #184 accountability gate over the REAL WIRE,
+// OBJECTIVE mode (the deployed regime) — a DEDICATED, minimal, ephemeral 4-anchor
+// network whose only job is this one drill (PE ruling 2026-08-17: the equivocation
+// drill is the one irreversible drill — a proven double-sign is a permanent
+// eviction, F2 — so it runs on its own throwaway net, never mid-sheet where the
+// eviction would leave a zero-fault-tolerance tail).
 //
-// Topology (deterministic, no timing race — fork-choice is summed attester weight):
-//   - A is the adversary. Once it has earned standing with both peers it double-signs
-//     at height 1: it places block X on honest B (B = [g,X], weight 1) and a heavier
-//     CONFLICTING fork Y,Z on honest C (C = [g,Y,Z], weight 2).
-//   - B syncs the chain from C (its -attesters set), reconciles to the heavier history,
-//     and chain.FindEquivocations catches A signing two different blocks at height 1 —
-//     so B slashes A and prints it.
-//   - C runs with NO -attesters, so it never syncs B's X-fork and stays a clean
-//     recipient of the conflicting fork.
+// Under a BFT commit floor (3-of-4) a fork can NEVER be committed onto a target, so
+// the legacy commit-based placement can't drive here. The faithful route is
+// slash-on-DETECTION: the crime is SIGNING two conflicting blocks at one height,
+// not committing two forks. The Byzantine anchor participates honestly (its prepare
+// lands on-chain), then SERVES a conflicting signed block at that height
+// (-equivocate's objective path → PlaceConflictingSigned); an honest anchor that
+// syncs it fetches the fork, and chain.FindEquivocations catches the same-slot
+// cross-fork prepare pair and slashes — unaided, on the product's own reconcile
+// path, without ever adopting the invalid (quorum-short) loser.
+//
+// Division of labour (the drill narrates it, per the PE's transparency condition):
+// the ADVERSARY earns standing and authors both conflicting prepares (the
+// un-bypassable self-incrimination); the PRODUCT detects and slashes. The harness
+// only builds the range. The in-process merge gate is
+// core/node/modelcheck_184_equivocation_objective_test.go.
 func TestEquivocatorSlashedOverTCP(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e spawns processes; skipped under -short")
 	}
-	idA := identity.FromSeed(6001).NodeID().String()
-	idB := identity.FromSeed(6002).NodeID().String()
-	idC := identity.FromSeed(6003).NodeID().String()
+	const N = 4 // 4 anchors: a real 3-of-4 objective consensus set, one of them Byzantine
+	ids := make([]string, N)
+	port := make([]string, N)
+	for i := 0; i < N; i++ {
+		ids[i] = identity.FromSeed(int64(7300 + i)).NodeID().String()
+		port[i] = reservePort(t)
+	}
+	anchors := strings.Join(ids, ",")
+	regPort := reservePort(t)
+	const byz = N - 1 // val3 is the Byzantine equivocator; val0 serves the registry + detects
 
-	// Legacy (subjective) consensus with earned bonded standing — the recipe
-	// TestBondEarnedStandingCommitsOverTCP proves works over TCP. Fast bond audit so
-	// standing warms up in a few seconds.
-	common := func() []string {
-		return []string{
-			"-listen", "127.0.0.1:0", "-store", t.TempDir(), "-validator",
-			"-objective=false", "-min-rep", "100", "-quorum", "1",
-			"-bond", "8M", "-bond-audit", "1s",
+	daemons := make([]*daemon, N)
+	for i := 0; i < N; i++ {
+		att := make([]string, 0, N-1)
+		persistent := make([]string, 0, N-1)
+		for j := 0; j < N; j++ {
+			if j != i {
+				att = append(att, ids[j])
+				persistent = append(persistent, ids[j]+"@"+port[j])
+			}
+		}
+		args := []string{
+			"-id-seed", fmt.Sprintf("%d", 7300+i),
+			"-listen", port[i], "-advertise", port[i],
+			"-store", t.TempDir(),
+			"-validator", "-objective",
+			"-min-bond", "1M", "-min-bond-floor", "0", "-bond", "8M",
+			"-mature-validators", fmt.Sprintf("%d", N),
+			"-anchors", anchors,
+			"-attesters", strings.Join(att, ","),
+			"-persistent-peers", strings.Join(persistent, ","),
+			"-quorum", "2", "-bond-audit", "2s",
 			"-capacity", "1G", "-mdns=false",
 		}
+		if i == 0 {
+			args = append(args, "-serve-registry", regPort)
+		} else {
+			args = append(args, "-bootstrap", ids[0]+"@"+port[0])
+		}
+		if i == byz {
+			// The objective -equivocate path: the value is just the trigger (the fork
+			// is served on GetChain to whoever syncs, so peer IDs are irrelevant here).
+			args = append(args, "-equivocate", "objective")
+		}
+		daemons[i] = startDaemon(t, fmt.Sprintf("val%d", i), args...)
 	}
 
-	// A: the adversary. It will double-sign, placing X on B and the heavier (Y,Z) on C.
-	a := startDaemon(t, "A(adversary)", append(common(),
-		"-attesters", idB+","+idC, "-equivocate", idB+","+idC, "-id-seed", "6001")...)
-	pa := a.waitFor(t, rePeer, 20*time.Second)
-	bootA := pa[1] + "@" + pa[2]
+	regRef := daemons[0].waitFor(t, reRegistry, 30*time.Second)[1]
+	peers := ""
+	for i := 0; i < N; i++ {
+		if i > 0 {
+			peers += ","
+		}
+		peers += ids[i] + "@" + port[i]
+	}
 
-	// B: the honest DETECTOR — holds A's block X, syncs from C, catches the double-sign.
-	b := startDaemon(t, "B(honest-detector)", append(common(),
-		"-bootstrap", bootA, "-attesters", idC, "-id-seed", "6002")...)
-	b.waitFor(t, reBootstrap, 20*time.Second)
+	// Drive commits so the Byzantine anchor's prepare lands on-chain (it attests the
+	// honest blocks): retry a tokened publish until a block commits. The Byzantine
+	// node then serves its conflicting fork at a height it prepared.
+	src := filepath.Join(t.TempDir(), "p.bin")
+	if err := os.WriteFile(src, make([]byte, 4096), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	committed := false
+	deadline := time.Now().Add(90 * time.Second)
+	for time.Now().Before(deadline) {
+		out, _ := runClientAllowErr(t, "swarm", "add", src,
+			"-peers", peers, "-registry", regRef, "-token-quorum", "2",
+			"-chunk-size", "65536", "-mode", "convergent")
+		if strings.Contains(out, "silt:v1:") && daemons[0].out.find(reCommitted) != nil {
+			committed = true
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
+	if !committed {
+		t.Fatal("no block committed — the objective net never warmed, so the equivocator has no on-chain prepare to fork")
+	}
 
-	// C: honest recipient of the heavier conflicting fork; no -attesters so it does not
-	// sync the X-fork and stays clean to receive Y,Z.
-	c := startDaemon(t, "C(honest)", append(common(),
-		"-bootstrap", bootA, "-id-seed", "6003")...)
-	c.waitFor(t, reBootstrap, 20*time.Second)
+	// The adversary's OWN malicious act: it announces the double-sign once it has a
+	// committed prepare to fork (PlaceConflictingSigned served the conflicting block).
+	daemons[byz].waitFor(t, regexp.MustCompile(`adversary: equivocation complete \(double-signed height \d+\)`), 90*time.Second)
 
-	// The adversary announces once it has completed the double-sign (it retries until it
-	// has earned standing with both peers).
-	a.waitFor(t, regexp.MustCompile(`adversary: equivocation complete`), 90*time.Second)
-
-	// The honest detector slashes A for the equivocation — the accountability property,
-	// proven over real TCP.
-	b.waitFor(t, regexp.MustCompile(`chain: slashed equivocator `+idA), 90*time.Second)
-	_ = c
+	// The PRODUCT's defence, unaided: an honest anchor that syncs the Byzantine node
+	// catches the cross-fork double-sign and slashes it — the real reconcile-path log
+	// line (#7: the daemon's own output, never a harness-echoed string).
+	daemons[0].waitFor(t, regexp.MustCompile(`chain: slashed equivocator `+ids[byz]), 90*time.Second)
 }
