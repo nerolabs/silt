@@ -18,9 +18,10 @@ security floor (M0), efficiency is M1. Efficiency presumes boundedness.
 | **inbound message queue** (`eventloop.queue` via `tcpnet.readLoop`) | inbound decode rate | **YES** (any sender) | **FIXED v1** — `-inbound-cap` backpressure | done (v2: per-peer + priority) |
 | **PoR proof map** (`proofMeta`+`proofCache`) | held chunks | via stored content | **FIXED #464** — O(hot) cache; meta O(N)×~120 B | done |
 | `tokenIssued` | issued publish tokens | yes (token requests) | **YES** — `maxTokenIssued` cap + evict | ok |
-| **`pendingEntries`** (mempool, `MsgSubmitEntry`) | distinct submitted roots | **YES** — but publish-token-gated (rate-limited) | dedup-by-root, **NO hard pool cap** | **MED** — cap pool bytes/count; drop-oldest on overflow |
-| **`pendingBondRegs`** (mempool, `MsgSubmitBondReg`) | distinct bond regs | yes — bond-gated | drains per block under `MaxBondRegBytesPerBlock`, **no pool cap** | **MED** — cap pool bytes |
-| **peer-keyed maps** — `peerBonds`, `peerCaps`, `peerIssuerKeys`, `peerDomains` | distinct NodeIDs gossiped | **YES** (sybil-ID flood) | evict-on-routing-drop **NOT found** for these (unlike `reachable`/`deadUntil`/`bondChallengeRate`, which do evict) | **MED-HIGH** — a sybil-ID flood inflates them (~100 B each × millions); prune with routing eviction / cap by table size |
+| **`pendingEntries`** (mempool, `MsgSubmitEntry`) | distinct submitted roots | **YES** — but publish-token-gated (rate-limited) | **FIXED (A2)** — `maxMempool` cap, reject-when-full (preserves FIFO seniority) | done |
+| **`pendingBondRegs`** (mempool, `MsgSubmitBondReg`) | distinct bond regs | yes — bond-gated | **FIXED (A2)** — same `maxMempool` cap (defense-in-depth; already validator-bounded) | done |
+| **peer-keyed maps** — `peerBonds`, `peerCaps`, `peerDomains` | distinct NodeIDs gossiped | **YES** (sybil-ID flood) | **FIXED (A1)** — `maxPeerInfo` cap via `evictPeerInfoIfFull` (sweep-past-threshold idiom) | done |
+| `peerIssuerKeys` | canonical issuers | via issuer-set | issuer-set-bounded (chain-committed validators) | ok |
 | `pendingSlashes` | detected equivocations | via equivocation | bounded by real detections (each is signed proof) | low |
 | **chain block history** (`chain.blocks`) | committed height | consensus-gated (block rate) | **retains ALL blocks** (~23 KiB/height in-sim; the field multiplier is bond-reg-laden blocks) | **MED** — needs pruning/snapshot eventually (unbounded over runtime) |
 | bond plot (`diskplot.Load`) | own bond | no (self) | fixed per-validator (~63 MiB resident) | low — pageable |
