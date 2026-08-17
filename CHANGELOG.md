@@ -9,6 +9,20 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **Daemon memory controls: `-mem-limit` (soft heap ceiling) + `-debug-addr` (pprof)**
+  (2026-08-17) — The MATURING field cohort OOM-crash-loops on 2 GB nodes, and it is
+  NOT the PoR proof map (#464 shipped without moving it; the crash-looping nodes hold
+  ~no chunks). Local + in-process probes show no leak — the signature is a
+  large-but-bounded working set colliding with Go's default 2×-heap GC target on a
+  small box. `-mem-limit <size>` (e.g. `1500M`) sets `runtime/debug.SetMemoryLimit`
+  so the GC reclaims before the kernel OOM-kills (equivalent to `GOMEMLIMIT`; the flag
+  wins) — a memory-bounded head, not a hard cap. `-debug-addr <addr>` serves Go pprof
+  (heap/goroutine) + dumps a heap profile to `<store>/heap-<pid>.pprof` on `SIGUSR1`,
+  so the true consensus-node footprint can finally be ATTRIBUTED (the daemon had no
+  heap profiling, which is why the wrong structure was first blamed). Both off by
+  default. `integration/cloudtest` gains `DEBUG_PROFILE=1`/`MEM_LIMIT=` knobs and a
+  `./cloudtest.sh heap <node>` capture. Deliberation:
+  [docs/thinking/2026-08-17-oom-not-the-proof-map-attribution.md](docs/thinking/2026-08-17-oom-not-the-proof-map-attribution.md).
 - **#184 adversarial drills made DRIVABLE on the wire under the objective BFT model
   — equivocation (slash-on-detection) and partition-heal (stall-then-catch-up)**
   (2026-08-17) — Both marquee attacks GAPped on every field sheet because the drills
