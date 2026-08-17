@@ -5,10 +5,16 @@ import (
 	"flag"
 	"fmt"
 	"net"
+	"net/http"
+	_ "net/http/pprof" // registers /debug/pprof/* on http.DefaultServeMux (gated by -debug-addr)
 	"os"
+	"os/signal"
 	"path/filepath"
+	"runtime"
+	"runtime/pprof"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/nerolabs/silt/adapters/cachestore"
@@ -68,6 +74,7 @@ func cmdDaemon(args []string) error {
 	revokeRoot := fs.String("revoke", "", "as a validator, propose an on-chain takedown of this root hash once standing is earned and the root is committed (M0 F5: quorum-gated, existence-checked; honored only by nodes that -honor-chain-revocations)")
 	validator := fs.Bool("validator", false, "keep a chain replica and take part in consensus")
 	uiAddr := fs.String("ui", "", "serve the web UI at this address (e.g. 127.0.0.1:8081)")
+	debugAddr := fs.String("debug-addr", "", "serve Go pprof (heap/goroutine/profile) at this address (e.g. 127.0.0.1:6060) — diagnostic only, off by default. Used to attribute the MATURING consensus-node memory footprint (`go tool pprof http://addr/debug/pprof/heap`). Also dumps a heap profile to <store>/heap-<pid>.pprof on SIGUSR1 for cloud nodes without a reachable port.")
 	attesters := fs.String("attesters", "", "comma-separated validator IDs to gather attestations from")
 	anchorList := fs.String("anchors", "", "launch-window training wheels: comma-separated anchor validator IDs whose sign-off an immature-network commit also requires (empty = no training wheels)")
 	anchorQuorum := fs.Int("anchor-quorum", 0, "LEGACY (non-objective) only: anchor attestations an immature-network commit needs (0 = off). In OBJECTIVE mode this is IGNORED — the launch gate is a DERIVED strict anchor majority ⌊A/2⌋+1 (#402), so config cannot disable quorum intersection")
@@ -116,6 +123,41 @@ func cmdDaemon(args []string) error {
 	proofCacheSize := fs.String("proof-cache", "64M", "resident RAM budget for HOT storage proofs; the rest live on disk and page in only to serve/audit, so proof RAM is O(hot) not O(held) (0 = unbounded, legacy)")
 	carePublished := fs.Bool("care-published", true, "the daemon repairs content published through its own UI, so your own content stays alive as nodes churn (its manifest counts toward this node's pledge); =false to opt out")
 	fs.Parse(args)
+
+	// Heap-profiling seam (diagnostic-only; off unless -debug-addr is set). This
+	// is how we attribute the MATURING consensus-node memory footprint that OOMs
+	// the field cohort — the daemon had no heap profile, which is why the wrong
+	// structure got blamed (silt-oom-NOT-the-proof-map-FINDING-2026-08-17). Edge
+	// concern, cmd-only: net/http/pprof registers on http.DefaultServeMux.
+	if *debugAddr != "" {
+		go func() {
+			// nil handler => DefaultServeMux, which net/http/pprof populates.
+			if err := http.ListenAndServe(*debugAddr, nil); err != nil {
+				fmt.Fprintf(os.Stderr, "debug pprof server: %v\n", err)
+			}
+		}()
+		fmt.Printf("debug: pprof at http://%s/debug/pprof/ (heap attribution)\n", *debugAddr)
+		// SIGUSR1 => write a heap profile to the store dir, for cloud nodes with
+		// no reachable debug port (SSH in, `kill -USR1`, scp the file out).
+		sig := make(chan os.Signal, 1)
+		signal.Notify(sig, syscall.SIGUSR1)
+		go func() {
+			for range sig {
+				path := filepath.Join(*storeDir, fmt.Sprintf("heap-%d.pprof", os.Getpid()))
+				f, err := os.Create(path)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "heap dump: %v\n", err)
+					continue
+				}
+				runtime.GC() // get up-to-date statistics
+				if err := pprof.WriteHeapProfile(f); err != nil {
+					fmt.Fprintf(os.Stderr, "heap dump: %v\n", err)
+				}
+				f.Close()
+				fmt.Printf("debug: heap profile written to %s\n", path)
+			}
+		}()
+	}
 
 	// Identity is a keypair: NodeID = SHA-256(public key), persisted so
 	// a daemon's reputation survives restarts.
