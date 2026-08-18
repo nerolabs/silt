@@ -61,6 +61,7 @@ type uiServer struct {
 	links         *linkbook.Book // client mode only (nil on a plain daemon)
 	carePublished bool           // daemon repairs content published through its own UI (#44)
 	token         string         // per-daemon bearer token gating state-changing calls (#89)
+	webOrigins    []string       // extra web origins allowed to draw content (e.g. https://app.example.com); off by default. Lets a hosted resolver surface render from this local node.
 }
 
 func (s *uiServer) onLoop(fn func()) {
@@ -111,10 +112,13 @@ func (s *uiServer) guard(h http.Handler) http.Handler {
 		}
 		// 2. Origin allow-list, replacing CORS `*`. A same-origin GET sends
 		// no Origin (skip). A cross-origin page (drive-by or observatory)
-		// sends one: reflect localhost origins so the observatory keeps
-		// working, refuse everything else.
+		// sends one: reflect localhost origins (so the observatory keeps
+		// working) plus any operator-allow-listed web origin (-allow-web-origin,
+		// e.g. https://app.example.com so a hosted resolver can render from this node);
+		// refuse everything else.
 		if origin := r.Header.Get("Origin"); origin != "" {
-			if !isLocalOrigin(origin) {
+			local := isLocalOrigin(origin)
+			if !local && !s.webOriginAllowed(origin) {
 				httpError(w, http.StatusForbidden, fmt.Errorf("cross-origin request from %q refused", origin))
 				return
 			}
@@ -122,6 +126,12 @@ func (s *uiServer) guard(h http.Handler) http.Handler {
 			w.Header().Set("Vary", "Origin")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+			// Private Network Access: a hosted HTTPS page reaching this localhost
+			// node needs this on the preflight (Chrome). Only for the explicitly
+			// allow-listed web origins — never for the default local surface.
+			if !local {
+				w.Header().Set("Access-Control-Allow-Private-Network", "true")
+			}
 		}
 		// 3. CORS preflight: answer after the checks, before the token gate.
 		if r.Method == http.MethodOptions {
@@ -195,6 +205,31 @@ func isLocalOrigin(origin string) bool {
 		return false
 	}
 	return isLocalHost(rest)
+}
+
+// webOriginAllowed reports whether origin is in the operator's explicit
+// -allow-web-origin list — opt-in, exact-match, never a wildcard. This is
+// what lets a hosted resolver surface (e.g. https://app.example.com) draw content
+// from this local node, while keeping the default surface localhost-only.
+func (s *uiServer) webOriginAllowed(origin string) bool {
+	for _, o := range s.webOrigins {
+		if o == origin {
+			return true
+		}
+	}
+	return false
+}
+
+// parseWebOrigins splits a comma-separated -allow-web-origin value, trimming
+// blanks. Empty input yields no allowed web origins (the secure default).
+func parseWebOrigins(csv string) []string {
+	var out []string
+	for _, o := range strings.Split(csv, ",") {
+		if o = strings.TrimSpace(o); o != "" {
+			out = append(out, o)
+		}
+	}
+	return out
 }
 
 // loadOrCreateUIToken returns the daemon's persistent UI bearer token,

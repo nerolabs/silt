@@ -60,6 +60,7 @@ func cmdClient(args []string) error {
 	dnsSeed := fs.String("dns-seed", "", "domain whose TXT records list bootstrap peers")
 	registryURL := fs.String("registry", "", "registry ref for browsing/publishing (ID@https://host:port)")
 	uiAddr := fs.String("ui", "127.0.0.1:8090", "local web UI address")
+	allowWebOrigin := fs.String("allow-web-origin", "", "comma-separated web origins (e.g. https://app.example.com) allowed to draw content from this node's local API — off by default; lets a hosted resolver surface render from your local Silt node")
 	open := fs.Bool("open", true, "open the library in your browser on start")
 	debug := fs.Bool("debug", false, "shorthand for -log debug (the full firehose)")
 	logLevel := fs.String("log", "", "write events at or above this level to <store>/debug.log (error|warn|info|debug); info narrates the normal path without the debug firehose")
@@ -186,9 +187,10 @@ func cmdClient(args []string) error {
 		loop: loop, nd: nd, reg: reg, capRep: capRep,
 		selfPeer:  fmt.Sprintf("%s@%s", id, tr.Addr()),
 		validator: false, started: time.Now(),
-		peerCount: func() int { return tr.PeerCount() },
-		links:     links,
-		token:     token,
+		peerCount:  func() int { return tr.PeerCount() },
+		links:      links,
+		token:      token,
+		webOrigins: parseWebOrigins(*allowWebOrigin),
 	}
 	bound, err := ui.serve(*uiAddr)
 	if err != nil {
