@@ -123,7 +123,7 @@ func TestSuffixSync_DeepColdSignalsNeedCheckpoint(t *testing.T) {
 
 	// A fresh node with only the genesis, on n1's network — deep-cold relative to pruned n1.
 	cfg := chain.Config{Quorum: 1, MinBond: 1 << 20, ByzantineQuorum: true,
-		Anchors: map[ports.NodeID]bool{a1.NodeID(): true, a2.NodeID(): true},
+		Anchors:      map[ports.NodeID]bool{a1.NodeID(): true, a2.NodeID(): true},
 		AnchorQuorum: 1, MatureValidators: 99, BondTTLBlocks: 2, BondRegHeadWindow: 2}
 	cold := newPrunableNode(t, identity.FromSeed(9600), cfg, g, sched, net)
 
