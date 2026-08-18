@@ -4,8 +4,8 @@
 > mission-immutable (M0), a three-tier structure (immutable / tenet / evolving),
 > and the build principle B8; amended 2026-08-05 to reframe M0's Sybil corner as
 > a systemic **composition** claim (C1 no-discount + C2 no-quiet-capture) rather
-> than a Sybil-proof primitive. Changing an **Immutable** (Part 0 + the seven in
-> Part IX) requires deliberate, reviewed consensus and is close to redefining
+> than a Sybil-proof primitive. Changing an **Immutable** (Part 0 + the eight
+> build-immutables in Part IX) requires deliberate, reviewed consensus and is close to redefining
 > the project. **Tenets** are canon too, amendable with reviewed consensus and
 > evidence. **Evolving** parameters are expected to change as we learn.
 >
@@ -715,6 +715,27 @@ standing — amended only by the same deliberate, reviewed consensus:
      journals*, leaving only guesses: the fix was to make the harness **capture the
      evidence first, then look** (`integration/cloudtest` failed-node journal
      capture), never to re-run on a hunch.
+  8. **Fits the hobbyist box — ~1 vCPU / 2 GB is a hard design gate, measured
+     before you commit.** silt must *run*, and stay network-performant, on a small
+     operator's box (~1 vCPU / 2 GB RAM): bounded memory (**never OOM**) under
+     adversarial input first, then fast — *bounded-then-fast*. This is not an
+     aspiration checked at the end; it is a **design-time gate**. Before committing
+     to any mechanism, measure its **full** resource cost on the floor box — the
+     cost to **produce** an artifact, not only to verify, store, or transmit it. A
+     mechanism whose output is tiny but whose *production* blows the floor is
+     **disqualified**, however elegant. The exact spec is a named parameter (the
+     target may tighten toward ~1 GiB — see *Evolving*); the **fit-and-measure
+     discipline is immutable.** This is the resource dual of #4: #4 forbids
+     *raising* the honest floor; #8 makes the floor **concrete and testable** and
+     moves the check **before** the build. Drawn from the most expensive near-miss —
+     **#299** succinct bond proofs looked ideal at ~192 bytes on the wire until the
+     *prover* was found to be one-Filecoin-PoRep-class (**128–192 GB RAM + GPU**),
+     two orders over the floor: citing the *artifact size* without the *production
+     cost* nearly bought a week and a datacenter dependency. Equally, the MATURING
+     OOM arc (unbounded inbound queue → proof map → chain retention) was this law
+     unlearned on the *memory* axis — *an unbounded system on a 2 GB box is not
+     inefficient, it is unsafe.* **Measure produce + verify + resident + serve on
+     the floor box, before you build.**
 
 **Tenets — canon, amendable with reviewed consensus and evidence.** Everything
 else in Parts I–VIII, including the strong disciplines we hold nearly as firmly
@@ -730,8 +751,10 @@ parameters (erasure k/n, replication factor, cache policy, DHT constants), the
 Sybil-cost parameters that keep C1 + C2 true at the network's current size:** the
 non-substitutable-resource weights in `C_honest` (disk × address-diversity ×
 time × served demand), the concentration threshold *k*, the demand-attestation
-ratio, the audit/decay windows, and — under build-immutable #4 — the
-**honest-validator hardware floor** (target ~1 vCPU / 1 GiB), the onboarding
+ratio, the audit/decay windows, and — under build-immutables #4 and #8 — the
+**honest-validator hardware floor** (target ~1 vCPU / 1 GiB; the **hard** floor
+is ~1 vCPU / 2 GB and the measure-before-you-commit gate is build-immutable #8),
+the onboarding
 boot-seal budget, and the derived **max production bond** it implies (only the
 one-time `Seal()` scales with bond size; steady-state proof cost is
 size-independent after #341 — `design/m0.md` §6). These are *held in tension* and
@@ -915,3 +938,18 @@ re-tuned as the network grows — **not closed.**
   (`integration/cloudtest` failed-node journal capture, PR #394), and to make the
   self-check before every action explicit: **say the evidence out loud; if you can't,
   you've found your real next task.**
+- **2026-08-18** — Added **build-immutable #8 (fits the hobbyist box — ~1 vCPU / 2 GB
+  is a hard, measured-before-you-commit design gate; measure the cost to PRODUCE, not
+  just the artifact size)**, ratified by the owner. The resource dual of #4: where #4
+  forbids *raising* the honest floor, #8 makes the floor a **concrete, testable number**
+  and moves the check **before** the build — every mechanism's full cost (produce +
+  verify + resident + serve) measured on the floor box first, *bounded-then-fast*.
+  Provoked by the most expensive near-miss: **#299** succinct bond proofs, which read
+  as ideal at ~192 bytes on the wire until research quantified the *prover* at
+  one-Filecoin-PoRep-class (**128–192 GB RAM + GPU**) — two orders over the floor;
+  citing the artifact size without the production cost nearly bought a week and a
+  datacenter dependency. Reinforced by the MATURING OOM arc (unbounded inbound queue →
+  proof map → chain retention), the same law unlearned on the *memory* axis — an
+  unbounded system on a 2 GB box is not inefficient, it is unsafe. The specific box
+  spec stays an *Evolving* parameter (target may tighten toward ~1 GiB); the
+  fit-and-measure discipline is immutable.
