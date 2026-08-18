@@ -1677,6 +1677,22 @@ func (c *Chain) Head() (ports.Hash, uint64) {
 
 func (c *Chain) Len() int { return len(c.blocks) }
 
+// FinalizedHeight is the height this node treats as irreversibly final — the anchor a
+// behind peer suffix-syncs FROM (slice 5) and the prune floor derives from. In OBJECTIVE
+// mode every committed block is super-quorum-final (the same property the Reconcile
+// finality gate rests on — launch: the pinned anchor majority IS the finality quorum;
+// mature: the >⅔-frozen-weight commit quorum IS the finality quorum), so the finalized
+// head is the committed tip: len(c.blocks)-1. WITHOUT BFT finality (a trusted/demo config)
+// there is no immutable anchor, so it returns 0 — sync then falls back to full-genesis
+// (ok, ForFinalizedHeight callers request {Height:0}) and nothing prunes (pruneFloor is
+// also 0). ok is false when there is no finalized anchor.
+func (c *Chain) FinalizedHeight() (height uint64, ok bool) {
+	if !c.finalityQuorumActive() || len(c.blocks) == 0 {
+		return 0, false
+	}
+	return uint64(len(c.blocks) - 1), true
+}
+
 // Blocks returns the suffix of the chain starting at height from.
 func (c *Chain) Blocks(from uint64) []Block {
 	if from >= uint64(len(c.blocks)) {

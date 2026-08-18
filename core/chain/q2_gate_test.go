@@ -242,6 +242,33 @@ func TestQ2_ReconcileHonorsPositiveReceiverFloor(t *testing.T) {
 	}
 }
 
+// TestQ2_ReconcileFloorIsReceiversNotForks is the PE's merge-gate invariant (slice5
+// ruling): the pruned-tolerance floor Reconcile uses is ALWAYS the receiver's OWN
+// trustFloor, NEVER derived from the (peer-supplied) fork. A TALLER peer fork — whose own
+// replayed history would imply a HIGHER floor — must not get a pruned block above the
+// RECEIVER's floor accepted. Here receiver floor = 5, a height-12 peer fork's own floor
+// would be 11; a pruned block at height 8 (5 ≤ 8 < 11) must be REJECTED (receiver's 5
+// governs), not accepted (fork's 11). If the override were ever fork-derived this is the
+// Q1 C1 break — a peer inflates the floor and slips pruned forgeries under it.
+func TestQ2_ReconcileFloorIsReceiversNotForks(t *testing.T) {
+	receiver, _ := anchorObjectiveChain(t, 6)
+	if got := receiver.trustFloor(); got != 5 {
+		t.Fatalf("precondition: receiver trustFloor = %d, want 5", got)
+	}
+	peer, peerBlocks := anchorObjectiveChain(t, 12) // deterministic ⇒ shares receiver's genesis+prefix
+	if got := peer.trustFloor(); got <= 8 {
+		t.Fatalf("precondition: taller peer's own floor = %d, want > 8 (so it would accept h8 pruned)", got)
+	}
+
+	fork := append([]Block(nil), peerBlocks...)
+	fork[8] = peerBlocks[8].Prune() // pruned block ABOVE the receiver's floor, BELOW the peer's
+
+	if _, err := receiver.Reconcile(fork); !errors.Is(err, ErrPrunedAboveHorizon) {
+		t.Fatalf("a taller fork's pruned block above the RECEIVER's floor must be rejected "+
+			"(the floor is the receiver's own, never the fork's), got %v", err)
+	}
+}
+
 // TestReloadPrunedBlockRoundTrips guards the one-site finding (plan §load-bearing): the
 // Reload/own-disk path (validateStructural) NEVER re-verifies bonds — it checks the
 // proposer/attester sigs against Hash() (which returns the stored pre-prune hash for a

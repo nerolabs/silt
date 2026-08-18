@@ -31,8 +31,8 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   PE ruling.** Plan + ruling: [docs/thinking/2026-08-17-inbound-backpressure-fix-plan.md](docs/thinking/2026-08-17-inbound-backpressure-fix-plan.md).
 
 ### Added
-- **Rolling retention-horizon substrate + the Q2 pruned-tolerance gate (H2 slices 1–4 —
-  the MATURING OOM return-to-2GB, dormant until the sync-redirect enablement)** (2026-08-18) — A
+- **The MATURING OOM return-to-2GB: rolling retention horizon, payload-selective pruning, and
+  suffix-sync (H2 slices 1–5 — now ENABLED)** (2026-08-18) — A
   validator's chain grows O(all history) in the ~1.5 MB space-time bond proof
   (`BondReg.Answer`) carried by every registration, OOMing a 2 GB box (build-immutable #8,
   the hobbyist floor). The fix bounds the RESIDENT heavy payload to a recent finalized
@@ -56,11 +56,22 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   one in-place shed bounds resident, on-disk, AND served heavy payload. **Still DORMANT — no
   production path calls it:** enabling it changes how nodes sync (mesh catch-up is a full-genesis
   `Reconcile`, which the Q2 gate rejects against a pruned peer), so the PE gated enablement on the
-  safe sync redirect (suffix-sync from the node's OWN finalized head + a WS-checkpoint/archive path
-  for cold nodes; peer-served-head trust rejected as a C1/long-range break). Interim OOM air stays
-  e2-medium + GOMEMLIMIT + `-inbound-cap`. Plans + rulings:
-  [docs/thinking/2026-08-18-slice3-q2-gate-plan.md](docs/thinking/2026-08-18-slice3-q2-gate-plan.md),
-  [docs/thinking/2026-08-18-slice4-prune-blocked-on-sync-redirect.md](docs/thinking/2026-08-18-slice4-prune-blocked-on-sync-redirect.md).
+  safe sync redirect. Slice 5 (this change) is that redirect, which **enables the prune**: mesh
+  catch-up now suffix-syncs from a node's OWN finalized head (`{Height: FinalizedHeight()}` instead of
+  `{Height:0}`), prepending its own verified prefix so the existing genesis-rooted `Reconcile` (with its
+  slice-3 `trustFloorOverride` pinned to the node's own anchor) accepts its own pruned history but never
+  trusts a peer-served head — the C1/long-range guard the PE ruled (peer-served-head trust rejected as a
+  Sybil break). A node behind by less than the weak-subjectivity window catches up around the pruned gap;
+  a deep-cold node beyond it gets `ErrNeedCheckpoint` (obtain a recent `-ws-checkpoint` out-of-band or use
+  an archive node) — surfaced, never silent (I4/S5). `pruneBelowHorizon()` is wired into the commit path,
+  so a validator sheds heavy proofs below its floor as finality advances — the line that returns the
+  MATURING box to 2 GB. Consensus-invariants: I4 (catch-up-or-signal, both asserted), I3 (trusted set from
+  the node's own finalized snapshot), I1/I5 preserved (no quorum re-sizing; equivocation still caught in
+  the suffix, at/above the finalized head where forks can exist). Ablation-verified load-bearing; full
+  core suite green. Plans + rulings:
+  [slice3](docs/thinking/2026-08-18-slice3-q2-gate-plan.md),
+  [slice4](docs/thinking/2026-08-18-slice4-prune-blocked-on-sync-redirect.md),
+  [slice5](docs/thinking/2026-08-18-slice5-sync-redirect-plan.md).
 - **Daemon memory controls: `-mem-limit` (soft heap ceiling) + `-debug-addr` (pprof)**
   (2026-08-17) — The MATURING field cohort OOM-crash-loops on 2 GB nodes, and it is
   NOT the PoR proof map (#464 shipped without moving it; the crash-looping nodes hold

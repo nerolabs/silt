@@ -394,6 +394,7 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 			if n.onCommit != nil {
 				n.onCommit(*b)
 			}
+			n.pruneOnCommit() // shed heavy proofs below the horizon (slice 5b)
 		}
 		n.reply(from, msg, ports.Message{Kind: ports.MsgCommitAck, OK: ok})
 	case ports.MsgGetChain:
@@ -533,7 +534,56 @@ func reorgDropped(old, now []chain.Block) int {
 	return dropped
 }
 
+// pruneOnCommit sheds the heavy bond proofs below this node's retention horizon after a
+// commit (slice 5b — the enablement that closes the MATURING OOM). It is a no-op until BFT
+// finality gives an immutable anchor (pruneFloor returns 0 otherwise) and with a degenerate
+// BondTTL. A behind peer safely catches up AROUND the pruned window via suffix-sync from its
+// own finalized head; a deep-cold node is told to use a checkpoint/archive (ErrNeedCheckpoint).
+func (n *Node) pruneOnCommit() {
+	if n.chain == nil {
+		return
+	}
+	if pruned := n.chain.PruneBelowHorizon(); pruned > 0 {
+		n.logf(ports.LogDebug, "pruned heavy bond proofs below the retention horizon", "blocks", pruned)
+	}
+}
+
+// reconstructFork prepends this node's OWN verified prefix below the served start height
+// to a peer-served run of blocks, so the reused genesis-rooted Reconcile sees a full chain
+// (slice 5, M1). It keys off what the peer ACTUALLY served (served[0].Height), not what we
+// requested: a peer honoring our suffix request serves [Fh, peerHead] (start Fh ⇒ we
+// prepend [0, Fh)), a peer that serves the whole chain — an old peer, or an adversary
+// serving a genesis-rooted fork — serves start 0 (we use it as-is). Either way our own
+// prefix is authoritative (the peer supplies nothing below the served start we anchor on),
+// and our own pruned prefix (below our trustFloor) is accepted by the slice-3 Q2 gate
+// during replay, while Reconcile's pinned override (tmp.trustFloorOverride = c.trustFloor())
+// keeps that floor OUR own, never the fork's. A peer that diverges below the anchor is
+// caught by Reconcile (ErrWrongParent / the finality gate).
+func (n *Node) reconstructFork(served []chain.Block) ([]chain.Block, error) {
+	start := served[0].Height
+	if start == 0 {
+		return served, nil // genesis-rooted (full chain / no finality / adversary fork) — as-is
+	}
+	prefix := n.chain.Blocks(0)
+	if uint64(len(prefix)) < start {
+		return nil, fmt.Errorf("local chain len %d < served start height %d", len(prefix), start)
+	}
+	full := make([]chain.Block, 0, int(start)+len(served))
+	full = append(full, prefix[:start]...)
+	full = append(full, served...)
+	return full, nil
+}
+
 var ErrNoChain = errors.New("node: validator role not enabled")
+
+// ErrNeedCheckpoint signals that this node is behind by more than the weak-subjectivity
+// window (safetyDepth ≈ 2·BondTTL): the peer has pruned the heavy bond proofs across the
+// gap, so this node cannot re-verify the intervening history and MUST NOT trust it from a
+// peer (the C1/long-range guard — slice 5, PE ruling). Cold sync in a weakly-subjective
+// system needs an out-of-band anchor: obtain a recent -ws-checkpoint (socially), or sync
+// from an archive node that retains full history. Surfaced (not silently swallowed) so an
+// operator sees the remedy rather than an unexplained failure-to-catch-up (S5/I4).
+var ErrNeedCheckpoint = errors.New("node: behind the weak-subjectivity window and the peer has pruned the gap — obtain a recent -ws-checkpoint out-of-band or sync from an archive node")
 
 // ProposeEntry runs one round of consensus: build a block at the local
 // head, sign it, gather attestations from attesters until quorum,
@@ -844,6 +894,7 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 				if n.onCommit != nil {
 					n.onCommit(*b)
 				}
+				n.pruneOnCommit() // shed heavy proofs below the horizon (slice 5b)
 				n.broadcastCommit(b, broadcast, 0, func() { done(nil) })
 				return
 			}
@@ -1096,24 +1147,35 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 	// difference or cannot be answered.
 	fetchFull := func(p ports.NodeID, next func()) {
 		n.Stats.ChainSyncFullFetches++
-		n.request(p, ports.Message{Kind: ports.MsgGetChain, Height: 0},
+		// Suffix-sync (slice 5, M1): request from our OWN finalized head, not genesis, so a
+		// peer that has pruned its old heavy bond proofs still serves us un-pruned blocks
+		// across the gap. reqHeight is 0 without BFT finality (no immutable anchor) ⇒ a
+		// full-genesis fetch, unchanged. The peer serves [reqHeight, peerHead]; we anchor it
+		// on our OWN verified prefix (never a peer-served head — the C1/long-range guard).
+		reqHeight, _ := n.chain.FinalizedHeight()
+		n.request(p, ports.Message{Kind: ports.MsgGetChain, Height: reqHeight},
 			func(resp ports.Message, err error) {
 				if err == nil && resp.OK {
-					if full, derr := chain.DecodeBlocks(resp.Data); derr == nil && len(full) > 0 {
+					if served, derr := chain.DecodeBlocks(resp.Data); derr == nil && len(served) > 0 {
+						full, ferr := n.reconstructFork(served)
+						if ferr != nil {
+							n.logf(ports.LogDebug, "could not reconstruct fork from peer suffix", "peer", p, "err", ferr)
+							next()
+							return
+						}
 						before := n.chain.Len()
 						old := n.chain.Blocks(0) // snapshot to catch cross-fork double-signs
-						// Slash on DETECTION, not on adoption (seam-7). Scan the fetched
-						// peer chain against our LOCAL one for cross-fork double-signs
-						// BEFORE the heavier test and regardless of whether we adopt: a
-						// validator that signed a block at a height we hold AND a
-						// conflicting block at that height on this peer's fork is provably
-						// guilty even if its fork is LIGHTER and never reconciled onto.
-						// Previously this ran only on the adopted branch, so a double-sign
-						// onto a doomed/losing fork (to confuse late joiners, split gossip,
-						// or bait a partition) cost the actor nothing. The evidence is
-						// self-verifying (chain.VerifyEquivocation), so an honest
-						// sequential signer is never caught. This subsumes the old
-						// adopted-branch (old,now) scan, since the adopted fork is `full`.
+						// Slash on DETECTION, not on adoption (seam-7). Scan the reconstructed
+						// fork against our LOCAL one for cross-fork double-signs BEFORE the
+						// heavier test and regardless of whether we adopt: a validator that
+						// signed a block at a height we hold AND a conflicting block at that
+						// height is provably guilty even if its fork is LIGHTER and never
+						// reconciled onto. The evidence is self-verifying
+						// (chain.VerifyEquivocation), so an honest sequential signer is never
+						// caught. Detection now covers heights ≥ reqHeight (our finalized head)
+						// — where forks can exist; below it, finality forbids a fork, so a
+						// sub-finalized double-sign is either already-slashed at commit or a
+						// >f attack out of the safety model.
 						n.slashEquivocators(old, full)
 						if ok, rerr := n.chain.Reconcile(full); ok {
 							now := n.chain.Blocks(0)
@@ -1124,6 +1186,12 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 								n.onReorg(dropped, uint64(len(now)-1))
 							}
 							n.logf(ports.LogInfo, "chain reconciled from peer", "peer", p, "len", n.chain.Len())
+						} else if errors.Is(rerr, chain.ErrPrunedAboveHorizon) {
+							// Deep-cold (behind > safetyDepth): the peer pruned the gap and we
+							// cannot re-verify it — refuse to trust it from a peer (C1 guard).
+							// SIGNAL the remedy, never silently fail to adopt (I4/S5).
+							n.Stats.ChainSyncNeedCheckpoint++
+							n.logf(ports.LogWarn, "cannot catch up from peer: behind the weak-subjectivity window and the peer pruned the gap — obtain a recent -ws-checkpoint out-of-band or sync from an archive node", "peer", p, "err", ErrNeedCheckpoint)
 						} else if rerr != nil {
 							n.logf(ports.LogDebug, "peer chain not adopted", "peer", p, "err", rerr)
 						}

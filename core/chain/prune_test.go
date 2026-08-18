@@ -84,7 +84,7 @@ func TestPruneBelowHorizon_ShedsBelowRetainsAbove(t *testing.T) {
 		t.Fatalf("precondition: prune floor = %d, want >= 4 (heights 1..3 below it)", floor)
 	}
 
-	n := c.pruneBelowHorizon()
+	n := c.PruneBelowHorizon()
 	if n == 0 {
 		t.Fatal("pruneBelowHorizon sheds nothing — the heavy regs below the floor were not pruned")
 	}
@@ -136,7 +136,7 @@ func TestPruneBelowHorizon_DegenerateBondTTL(t *testing.T) {
 	if got := c.pruneFloor(); got != 0 {
 		t.Fatalf("degenerate BondTTL=0 must give prune floor 0, got %d", got)
 	}
-	if n := c.pruneBelowHorizon(); n != 0 {
+	if n := c.PruneBelowHorizon(); n != 0 {
 		t.Fatalf("degenerate BondTTL=0 must prune nothing, pruned %d", n)
 	}
 }
@@ -146,7 +146,7 @@ func TestPruneBelowHorizon_DegenerateBondTTL(t *testing.T) {
 // against the stored hash and never re-verifies bonds — slice 3 one-site finding).
 func TestPruneBelowHorizon_PreservesLinkageAndReloads(t *testing.T) {
 	c, _ := anchorChainWithRegs(t, 9, map[uint64]bool{1: true, 2: true, 3: true})
-	if n := c.pruneBelowHorizon(); n == 0 {
+	if n := c.PruneBelowHorizon(); n == 0 {
 		t.Fatal("precondition: expected the prune to shed at least one block")
 	}
 	pruned := c.Blocks(0)
@@ -170,11 +170,11 @@ func TestPruneBelowHorizon_PreservesLinkageAndReloads(t *testing.T) {
 // blocks are skipped).
 func TestPruneBelowHorizon_Idempotent(t *testing.T) {
 	c, _ := anchorChainWithRegs(t, 9, map[uint64]bool{1: true, 2: true, 3: true})
-	first := c.pruneBelowHorizon()
+	first := c.PruneBelowHorizon()
 	if first == 0 {
 		t.Fatal("precondition: first prune must shed something")
 	}
-	if second := c.pruneBelowHorizon(); second != 0 {
+	if second := c.PruneBelowHorizon(); second != 0 {
 		t.Fatalf("second prune must be a no-op, shed %d", second)
 	}
 }
