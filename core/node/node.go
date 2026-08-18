@@ -779,8 +779,21 @@ func (n *Node) LoadProofs() {
 		n.logf(ports.LogWarn, "proof reload failed", "err", err)
 		return
 	}
+	// The scan is O(store) — a page-from-disk read per held proof — so on a large node
+	// it runs for minutes. Log progress at the start and each quarter so a long scan
+	// reads as "maturing N%", not a hung daemon (the operator otherwise can't tell the
+	// difference from the outside). Only for a store big enough to notice.
+	total := len(keys)
+	progressEvery := 0
+	if total >= 20000 {
+		n.logf(ports.LogInfo, "reloading storage proofs (maturing)", "total", total)
+		progressEvery = total / 4
+	}
 	loaded := 0
-	for _, id := range keys {
+	for i, id := range keys {
+		if progressEvery > 0 && i > 0 && i%progressEvery == 0 {
+			n.logf(ports.LogInfo, "reloading storage proofs", "done", i, "total", total)
+		}
 		p, ok, gerr := n.proofs.Get(id)
 		if gerr != nil || !ok {
 			continue // an unreadable/absent proof just re-announces under its bare id
