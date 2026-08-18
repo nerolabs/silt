@@ -92,6 +92,36 @@ func (n *Node) AnnounceHeld(done func(int)) {
 	n.announceAll(keys, func() { done(held) })
 }
 
+// StartReprovide begins a self-rescheduling re-announce of all held content so a
+// holder's provider records never lapse. Records carry a ProviderRecordTTL freshness
+// lease and GetProviders serves ONLY Live() records; AnnounceHeld runs once, at
+// startup, and nothing else refreshes a general holder's records (repair re-plants
+// only for -care'd roots). So without this a node holding content past the TTL goes
+// silently undiscoverable ~TTL after boot — every GetProviders returns empty and its
+// held content fails to fetch ("manifest chunks unreachable") while the daemon looks
+// healthy (the #69 residual; confirmed dark ~30 min after every restart under a real
+// streaming load test). Re-announce at ProviderRecordTTL/2 (floored 60 s): a full
+// AnnounceHeld re-stamps this node's OWN records AND re-plants them on near-nodes, so
+// multi-holder discovery survives too — safe over a large held set now that the walk
+// terminal is trampolined (no synchronous-continuation stack overflow). No-op when
+// ProviderRecordTTL is 0 (records never expire). Call once after the initial
+// AnnounceHeld; the next cycle is scheduled only after the previous completes, so a
+// slow announce never overlaps itself.
+func (n *Node) StartReprovide() {
+	if n.cfg.ProviderRecordTTL <= 0 {
+		return
+	}
+	every := n.cfg.ProviderRecordTTL / 2
+	if every < 60*ports.Second {
+		every = 60 * ports.Second
+	}
+	var tick func()
+	tick = func() {
+		n.AnnounceHeld(func(int) { n.clock.AfterFunc(every, tick) })
+	}
+	n.clock.AfterFunc(every, tick)
+}
+
 // announceAll plants "I have this" records on the nodes near each placement key.
 // With domain diversity on (H5-B) the target set is the K NodeID-closest PLUS a
 // domain-SPREAD near set, so the record also lands on honest nodes in domains an

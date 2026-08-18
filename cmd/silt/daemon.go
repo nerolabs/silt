@@ -1287,6 +1287,11 @@ func cmdDaemon(args []string) error {
 					}
 				}
 			})
+			// Provider records lease out after ProviderRecordTTL; a holder that never
+			// re-announces goes invisible the moment its startup records lapse (#69).
+			// Reprovide on a timer set well inside the TTL — a full re-announce, safe over
+			// a large held set now that the DHT walk terminal is trampolined.
+			nd.StartReprovide()
 		})
 	})
 

@@ -207,6 +207,10 @@ func cmdClient(args []string) error {
 					fmt.Printf("re-announced %d held chunks\n", count)
 				}
 			})
+			// Provider records lease out after ProviderRecordTTL; without a periodic
+			// reprovide a contributing node's held content goes undiscoverable once the
+			// startup records lapse (#69). Re-announce on a timer set well inside the TTL.
+			nd.StartReprovide()
 		})
 	})
 
