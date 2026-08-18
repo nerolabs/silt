@@ -61,6 +61,7 @@ type uiServer struct {
 	links         *linkbook.Book // client mode only (nil on a plain daemon)
 	carePublished bool           // daemon repairs content published through its own UI (#44)
 	token         string         // per-daemon bearer token gating state-changing calls (#89)
+	webOrigins    []string       // extra web origins allowed to draw content (e.g. https://app.example.com); off by default. Lets a hosted resolver surface render from this local node.
 }
 
 func (s *uiServer) onLoop(fn func()) {
@@ -111,10 +112,13 @@ func (s *uiServer) guard(h http.Handler) http.Handler {
 		}
 		// 2. Origin allow-list, replacing CORS `*`. A same-origin GET sends
 		// no Origin (skip). A cross-origin page (drive-by or observatory)
-		// sends one: reflect localhost origins so the observatory keeps
-		// working, refuse everything else.
+		// sends one: reflect localhost origins (so the observatory keeps
+		// working) plus any operator-allow-listed web origin (-allow-web-origin,
+		// e.g. https://app.example.com so a hosted resolver can render from this node);
+		// refuse everything else.
 		if origin := r.Header.Get("Origin"); origin != "" {
-			if !isLocalOrigin(origin) {
+			local := isLocalOrigin(origin)
+			if !local && !s.webOriginAllowed(origin) {
 				httpError(w, http.StatusForbidden, fmt.Errorf("cross-origin request from %q refused", origin))
 				return
 			}
@@ -122,6 +126,12 @@ func (s *uiServer) guard(h http.Handler) http.Handler {
 			w.Header().Set("Vary", "Origin")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+			// Private Network Access: a hosted HTTPS page reaching this localhost
+			// node needs this on the preflight (Chrome). Only for the explicitly
+			// allow-listed web origins — never for the default local surface.
+			if !local {
+				w.Header().Set("Access-Control-Allow-Private-Network", "true")
+			}
 		}
 		// 3. CORS preflight: answer after the checks, before the token gate.
 		if r.Method == http.MethodOptions {
@@ -195,6 +205,31 @@ func isLocalOrigin(origin string) bool {
 		return false
 	}
 	return isLocalHost(rest)
+}
+
+// webOriginAllowed reports whether origin is in the operator's explicit
+// -allow-web-origin list — opt-in, exact-match, never a wildcard. This is
+// what lets a hosted resolver surface (e.g. https://app.example.com) draw content
+// from this local node, while keeping the default surface localhost-only.
+func (s *uiServer) webOriginAllowed(origin string) bool {
+	for _, o := range s.webOrigins {
+		if o == origin {
+			return true
+		}
+	}
+	return false
+}
+
+// parseWebOrigins splits a comma-separated -allow-web-origin value, trimming
+// blanks. Empty input yields no allowed web origins (the secure default).
+func parseWebOrigins(csv string) []string {
+	var out []string
+	for _, o := range strings.Split(csv, ",") {
+		if o = strings.TrimSpace(o); o != "" {
+			out = append(out, o)
+		}
+	}
+	return out
 }
 
 // loadOrCreateUIToken returns the daemon's persistent UI bearer token,
@@ -482,20 +517,49 @@ func (s *uiServer) apiFetch(w http.ResponseWriter, r *http.Request) {
 		httpError(w, 400, err)
 		return
 	}
-	e, run, err := joinSwarm(s.selfPeer, 0)
-	if err != nil {
-		httpError(w, 502, err)
-		return
-	}
-	defer e.close()
 
+	// Local-store fast path: if this node already holds the content,
+	// reconstruct it straight from the local store — no ephemeral swarm node,
+	// no network round-trip. A node should never cross the swarm to read bytes
+	// it already has, and it *can't* if provider resolution is degraded
+	// (dead-peer pollution, lookup timeouts) — which is exactly when a node that
+	// holds the data must still be able to serve it. This lets a daemon serve
+	// its own published content, and lets a client re-serve films it has already
+	// pulled (the consumer==provider path). pipeline.Get reads and verifies
+	// against the root; on a complete store it never writes, and diskstore.Get is
+	// a plain os.ReadFile, so this is safe to run off the event loop. If any
+	// chunk is missing locally, pipeline.Get errors and we fall through to the
+	// swarm fetch below unchanged.
+	{
+		var local bytes.Buffer
+		if err := pipeline.Get(context.Background(), s.nd.Store(), s.reg, h, &local); err == nil {
+			w.Header().Set("Content-Type", "application/octet-stream")
+			w.Header().Set("Content-Disposition",
+				fmt.Sprintf("attachment; filename=%q", h.Root.String()[:16]+".bin"))
+			io.Copy(w, &local)
+			return
+		}
+	}
+
+	// Swarm fetch on the MAIN node — not a throwaway ephemeral node. This is
+	// the consumer==provider path: NetGet pulls the missing shards into THIS
+	// node's own store (bounded by its -capacity pledge), so content you draw is
+	// content you now HOLD and can serve back. The old code fetched through a
+	// per-request ephemeral node (memstore, SetEphemeral) that kept nothing —
+	// making the client a pure leech (chunks-held stays 0, nothing to share
+	// back) and leaking a 127.0.0.1 address-book entry on every fetch. Fetching
+	// on s.nd instead means the next read of the same link hits the local-store
+	// fast path above, and the node becomes a real provider of what it consumed.
 	var buf bytes.Buffer
 	var opErr error
-	rerr := run(func(done func()) {
-		e.nd.NetGet(s.reg, h, &buf, func(err error) { opErr = err; done() })
+	fetchDone := make(chan struct{})
+	s.loop.Post("api-fetch", func() {
+		s.nd.NetGet(s.reg, h, &buf, func(err error) { opErr = err; close(fetchDone) })
 	})
-	if rerr != nil {
-		httpError(w, 504, rerr)
+	select {
+	case <-fetchDone:
+	case <-time.After(5 * time.Minute):
+		httpError(w, 504, fmt.Errorf("swarm fetch timed out"))
 		return
 	}
 	if opErr != nil {

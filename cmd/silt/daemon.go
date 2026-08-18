@@ -446,7 +446,12 @@ func cmdDaemon(args []string) error {
 			fmt.Printf("proof-cache: %s hot-proof RAM budget (rest page from disk to serve/audit)\n", *proofCacheSize)
 		}
 		nd.SetProofStore(ps)
-		nd.LoadProofs()
+		// NB: the O(store) proof-maturation scan (LoadProofs) is DEFERRED to after the
+		// relay + registry listeners bind (below) — those resolver-facing services need
+		// no proofs, so they answer immediately instead of being dark for the minutes the
+		// scan takes on a large store (a public node's registry/relay were connection-
+		// refused for ~9 min after every restart on a 14 GB store). It still runs before
+		// bootstrap/announce, which read the reloaded proofs for the #69 column keys.
 	}
 	// #93: persist the bond plot so a restart reloads (and re-verifies) it
 	// instead of re-plotting the deliberately-expensive dataset. Attach before
@@ -818,6 +823,12 @@ func cmdDaemon(args []string) error {
 		}
 		fmt.Printf("registry: %s\n", *registryURL)
 	}
+
+	// The proof-maturation scan (deferred from the proof-store setup above): now that the
+	// relay + registry are serving, reload the on-disk storage proofs so bootstrap/announce
+	// below can advertise coded shards under their #69 column keys. O(store) on a large
+	// node; logs progress so a long scan reads as "maturing", not "hung".
+	nd.LoadProofs()
 
 	if *denylistPath != "" {
 		f, err := os.Open(*denylistPath)
@@ -1287,6 +1298,11 @@ func cmdDaemon(args []string) error {
 					}
 				}
 			})
+			// Provider records lease out after ProviderRecordTTL; a holder that never
+			// re-announces goes invisible the moment its startup records lapse (#69).
+			// Reprovide on a timer set well inside the TTL — a full re-announce, safe over
+			// a large held set now that the DHT walk terminal is trampolined.
+			nd.StartReprovide()
 		})
 	})
 

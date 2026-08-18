@@ -779,8 +779,21 @@ func (n *Node) LoadProofs() {
 		n.logf(ports.LogWarn, "proof reload failed", "err", err)
 		return
 	}
+	// The scan is O(store) — a page-from-disk read per held proof — so on a large node
+	// it runs for minutes. Log progress at the start and each quarter so a long scan
+	// reads as "maturing N%", not a hung daemon (the operator otherwise can't tell the
+	// difference from the outside). Only for a store big enough to notice.
+	total := len(keys)
+	progressEvery := 0
+	if total >= 20000 {
+		n.logf(ports.LogInfo, "reloading storage proofs (maturing)", "total", total)
+		progressEvery = total / 4
+	}
 	loaded := 0
-	for _, id := range keys {
+	for i, id := range keys {
+		if progressEvery > 0 && i > 0 && i%progressEvery == 0 {
+			n.logf(ports.LogInfo, "reloading storage proofs", "done", i, "total", total)
+		}
 		p, ok, gerr := n.proofs.Get(id)
 		if gerr != nil || !ok {
 			continue // an unreadable/absent proof just re-announces under its bare id
@@ -1290,7 +1303,19 @@ func (w *walk) step() {
 	for {
 		if w.l.Done() {
 			w.finished = true
-			w.done(w.l.Result())
+			result := w.l.Result()
+			// Trampoline the terminal callback through the event loop instead of firing
+			// it inline. A walk that converges SYNCHRONOUSLY — every candidate dead/cooled,
+			// or the node alone — otherwise runs done() on the same stack that entered
+			// step(); when done() re-enters another walk (announceAll's per-key
+			// IterativeFindNode; the resolveProviders⇄probeShard⇄sweepProviders repair
+			// cycle) the frames pile up O(keys) deep and overflow the goroutine stack over
+			// a large held set (flixz load test: 193K keys → fatal error: stack overflow →
+			// watchdog kill, blocking publish of the two largest films). Deferring done()
+			// bounds stack depth to O(1) across keys regardless of sync-vs-async completion.
+			// AfterFunc(0) posts to the loop (walltime marshals onto it, sim enqueues) —
+			// B2-safe, one extra tick per walk (negligible for background repair/announce).
+			w.n.clock.AfterFunc(0, func() { w.done(result) })
 			return
 		}
 		queries := w.l.NextQueries()

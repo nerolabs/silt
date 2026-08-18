@@ -178,24 +178,26 @@ scan_node_liveness() {
   local n oomnodes="" total=0 c
   for n in $(node_names); do
     node_exists "$n" || continue
-    # Count REAL OOMs by their AUTHORITATIVE signatures over the whole boot journal:
+    # Count REAL crashes by their AUTHORITATIVE signatures over the whole boot journal:
     # the kernel oom-killer ("Out of memory: Killed process", "invoked oom-killer",
-    # "oom-kill:constraint=" — RSS blew past the VM) OR the Go runtime ("fatal error:
-    # runtime: out of memory" — the allocator failed). Neither can be produced by a
+    # "oom-kill:constraint=" — RSS blew past the VM) OR any Go runtime fatal error
+    # ("fatal error:" — an unrecoverable crash: stack overflow, out of memory, concurrent
+    # map write, all-goroutines-asleep deadlock). None of these can be produced by a
     # userspace kill -9. The old scan read the SERVICE journal for `Main process exited,
     # code=killed, status=9` — but status=9 is SIGKILL, which the chaos drill sends
     # DELIBERATELY to store-2 (flow_chaos_crash), so a scripted test kill was miscounted
     # as an OOM and FALSE-FAILED clean runs (run cd1a719-98020: chaos-reprovide PASSED,
     # yet infra-node-liveness counted store-2×1, with no kernel oom-killer line anywhere;
-    # cd1a719-26323 same). Matching the real OOM signatures instead catches every genuine
-    # OOM and never the deliberate chaos SIGKILL. (A real oom-kill DOES also emit status=9
-    # in -u silt, so nothing is lost.)
-    c="$(ssh_node "$n" "sudo journalctl -b --no-pager 2>/dev/null | grep -cE 'Out of memory: Killed process|invoked oom-killer|oom-kill:constraint|fatal error: runtime: out of memory'" 2>/dev/null | tr -dc '0-9')"
+    # cd1a719-26323 same). Matching the real crash signatures instead catches every genuine
+    # OOM AND every Go fatal (a load test found a `fatal error: stack overflow` from a
+    # provider-resolution recursion the old OOM-only signature would have missed) and never
+    # the deliberate chaos SIGKILL. (A real oom-kill DOES also emit status=9, so nothing is lost.)
+    c="$(ssh_node "$n" "sudo journalctl -b --no-pager 2>/dev/null | grep -cE 'Out of memory: Killed process|invoked oom-killer|oom-kill:constraint|fatal error:'" 2>/dev/null | tr -dc '0-9')"
     c="${c:-0}"
     [ "$c" -gt 0 ] 2>/dev/null && { oomnodes="$oomnodes ${n}×${c}"; total=$((total + c)); }
   done
   if [ -n "$oomnodes" ]; then
-    record "infra-node-liveness" fail blocker "NODE CRASH-LOOP — ${total} kernel kill(s) (OOM/signal) across:${oomnodes}. A run whose cohort DIES cannot grade its flows (a crashing node is indistinguishable from a slow/dead peer), so EVERY verdict on this sheet is PROVISIONAL until a clean no-OOM re-run — including the computed bounds (which may be OOM-inflated). This is INFRASTRUCTURE FAILURE, not independent flow results. Attribute from a heap profile (re-run with DEBUG_PROFILE=1, then ./cloudtest.sh heap <node>) — do NOT presume a cause."
+    record "infra-node-liveness" fail blocker "NODE CRASH-LOOP — ${total} node crash(es) (kernel OOM-kill or Go fatal error) across:${oomnodes}. A run whose cohort DIES cannot grade its flows (a crashing node is indistinguishable from a slow/dead peer), so EVERY verdict on this sheet is PROVISIONAL until a clean no-crash re-run — including the computed bounds (which may be inflated). This is INFRASTRUCTURE FAILURE, not independent flow results. Attribute from a heap profile (re-run with DEBUG_PROFILE=1, then ./cloudtest.sh heap <node>) or the node's journal (fatal-error stack trace) — do NOT presume a cause."
   else
     record "infra-node-liveness" pass blocker "node-liveness precondition HELD — no OOM-kill or crash-loop across the cohort, so the sheet was graded on a HEALTHY network"
   fi

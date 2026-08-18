@@ -282,6 +282,46 @@ func isWildcard(hostport string) bool {
 	return ip != nil && ip.IsUnspecified()
 }
 
+// isLoopbackOrUnspecified reports whether hostport names a loopback (127/8,
+// ::1) or unspecified (0.0.0.0, ::) IP — an address no other host can dial.
+// Non-IP forms (hostnames, relay forms) are not judged here (returns false).
+func isLoopbackOrUnspecified(hostport string) bool {
+	host, _, err := net.SplitHostPort(hostport)
+	if err != nil {
+		return false
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	return ip.IsLoopback() || ip.IsUnspecified()
+}
+
+// selfPublic reports whether this node presents a routable (non-loopback)
+// address to the network — i.e. it set -advertise or a concrete public
+// -listen. A wildcard/empty or loopback self-address (a NATed client or an
+// on-host test swarm) is not "public".
+func (t *Transport) selfPublic() bool {
+	a := t.advertised()
+	return a != "" && !isLoopbackOrUnspecified(a)
+}
+
+// learnGossip records a peer address discovered via envelope gossip — the
+// sender's own stamp and its third-party Contacts. A PUBLIC node drops
+// loopback/unspecified addresses here: a remote peer that stamps 127.0.0.1 is
+// unreachable from anywhere else, so learning it only inflates the book and,
+// worse, gets walked (and times out) during provider resolution — the failure
+// mode where a public bootstrap node accumulates hundreds of dead localhost
+// "peers" and can no longer resolve who holds a chunk. On-host/NATed nodes
+// (selfPublic() == false) keep the old behavior so a loopback test swarm still
+// discovers itself. Explicit -bootstrap (AddPeer) never routes through here.
+func (t *Transport) learnGossip(id ports.NodeID, addr string, overwrite bool) {
+	if t.selfPublic() && isLoopbackOrUnspecified(addr) {
+		return
+	}
+	t.learn(id, addr, overwrite)
+}
+
 // AddPeer seeds the address book (bootstrap wiring). The address lands
 // in the slot matching its form; the other slot survives.
 func (t *Transport) AddPeer(id ports.NodeID, addr string) {
@@ -686,7 +726,7 @@ func (t *Transport) readLoop(conn *tls.Conn, viaRelay bool) {
 			release()
 			return
 		}
-		t.learn(from, env.Addr, true)
+		t.learnGossip(from, env.Addr, true)
 		if env.Relay != "" {
 			// First-hand relay-capability gossip: from itself offers
 			// relay service there. Recorded for the moment this node
@@ -697,7 +737,7 @@ func (t *Transport) readLoop(conn *tls.Conn, viaRelay bool) {
 		}
 		for idHex, addr := range env.Contacts {
 			if id, err := ports.ParseHash(idHex); err == nil {
-				t.learn(id, addr, false)
+				t.learnGossip(id, addr, false)
 			}
 		}
 		msg := fromWire(env.Msg)
