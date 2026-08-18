@@ -560,6 +560,36 @@ func EncodeBlocks(bs []Block) []byte {
 	return raw
 }
 
+// EncodeBlocksUpTo encodes the longest PREFIX of bs whose CBOR encoding fits within
+// maxBytes, always at least ONE block (a lone oversized block still moves — never
+// stall). It sizes blocks one at a time and stops early, so it never marshals more
+// than the returned window — the point is to bound the chain-SERVE buffer (a node
+// serving its whole chain into one buffer was the 144 MB `EncodeBlocks` OOM driver,
+// docs/thinking/2026-08-18-oom-is-multi-driver-chain-serve.md), NOT to marshal the
+// full chain. A syncing peer requests successive windows (Height:0, then last+1, …)
+// until it reaches the server's head; Reconcile validates the reassembled linkage,
+// so a windowed fetch cannot corrupt the chain. maxBytes <= 0 means unbounded (the
+// legacy whole-chain encode, for callers/tests that want it).
+func EncodeBlocksUpTo(bs []Block, maxBytes int) []byte {
+	if maxBytes <= 0 || len(bs) == 0 {
+		return EncodeBlocks(bs)
+	}
+	total := 3 // approx CBOR array-header framing
+	k := 0
+	for k < len(bs) {
+		one, err := encMode.Marshal(bs[k])
+		if err != nil {
+			panic(err)
+		}
+		if k > 0 && total+len(one) > maxBytes {
+			break // adding this block would exceed the window; send [0,k)
+		}
+		total += len(one)
+		k++
+	}
+	return EncodeBlocks(bs[:k])
+}
+
 func DecodeBlocks(raw []byte) ([]Block, error) {
 	var bs []Block
 	if err := cbor.Unmarshal(raw, &bs); err != nil {
