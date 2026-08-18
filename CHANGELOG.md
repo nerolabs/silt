@@ -9,6 +9,25 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Fixed
+- **P2P robustness under real streaming load — DHT recursion crash, reprovide (#69),
+  fetch/discovery, cold-start** (2026-08-19) — Surfaced running silt under a real
+  HTTP-streaming workload (a 14 GB / 381 K-file store on a 2 GB box; the #464/#465 OOM fix
+  independently confirmed to hold there). **DHT walk recursion → stack overflow:** the
+  provider-resolution/repair continuation chain (`announceAll`,
+  `resolveProviders⇄probeShard⇄sweepProviders`) fired its terminal callback INLINE when a
+  walk converged synchronously (no live peers), piling up O(keys) frames over a large held
+  set → `fatal error: stack overflow` (watchdog kill, blocked large-file publish); the walk
+  terminal is now trampolined through the loop → O(1) depth. **Periodic full reprovide
+  (#69):** provider records lease out at `ProviderRecordTTL` and `AnnounceHeld` ran once at
+  startup, so a holder went undiscoverable ~TTL after boot; `StartReprovide` re-announces on
+  a TTL/2 timer (a full re-announce, stack-safe atop the trampoline). **Fetch/discovery:**
+  `apiFetch` serves locally-held content before the swarm and pulls drawn content onto the
+  main node (consumer==provider, no ephemeral-node loopback leak); a public node drops
+  loopback peer addresses learned via gossip (`selfPublic()`-gated) so its book/resolution
+  don't rot. **Cold-start:** the relay + registry listeners bind before the O(store) proof
+  maturation scan (they need no proofs), so a public node's resolver-facing services answer
+  immediately instead of being connection-refused for the minutes the scan takes; the scan
+  logs progress.
 - **The MATURING daemon OOM — an unbounded inbound message queue (a resource-exhaustion
   DoS), fixed with read backpressure (`-inbound-cap`)** (2026-08-18) — Heap-profiled on
   the wire (`e03f80d-heapprof`): consensus nodes at ~1 GB RSS held ~500 MB of *live*
@@ -31,6 +50,11 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   PE ruling.** Plan + ruling: [docs/thinking/2026-08-17-inbound-backpressure-fix-plan.md](docs/thinking/2026-08-17-inbound-backpressure-fix-plan.md).
 
 ### Added
+- **`-allow-web-origin`: opt-in browser transport onto the network** (2026-08-19) — An
+  off-by-default, exact-match CORS + Private Network Access allowance so a hosted resolver
+  page can draw content from a viewer's LOCAL silt node (a cross-origin HTTPS→localhost
+  request the browser otherwise blocks). Secure by default (empty list ⇒ localhost-only);
+  the operator opts a specific origin in. One browser-facing transport; more are expected.
 - **The MATURING OOM return-to-2GB: rolling retention horizon, payload-selective pruning, and
   suffix-sync (H2 slices 1–5 — now ENABLED)** (2026-08-18) — A
   validator's chain grows O(all history) in the ~1.5 MB space-time bond proof
