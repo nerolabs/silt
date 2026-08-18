@@ -178,7 +178,19 @@ scan_node_liveness() {
   local n oomnodes="" total=0 c
   for n in $(node_names); do
     node_exists "$n" || continue
-    c="$(ssh_node "$n" "sudo journalctl -u silt --no-pager -b 2>/dev/null | grep -cE 'oom-kill|killed by the OOM killer|Main process exited, code=killed, status=9'" 2>/dev/null | tr -dc '0-9')"
+    # Count REAL OOMs by their AUTHORITATIVE signatures over the whole boot journal:
+    # the kernel oom-killer ("Out of memory: Killed process", "invoked oom-killer",
+    # "oom-kill:constraint=" — RSS blew past the VM) OR the Go runtime ("fatal error:
+    # runtime: out of memory" — the allocator failed). Neither can be produced by a
+    # userspace kill -9. The old scan read the SERVICE journal for `Main process exited,
+    # code=killed, status=9` — but status=9 is SIGKILL, which the chaos drill sends
+    # DELIBERATELY to store-2 (flow_chaos_crash), so a scripted test kill was miscounted
+    # as an OOM and FALSE-FAILED clean runs (run cd1a719-98020: chaos-reprovide PASSED,
+    # yet infra-node-liveness counted store-2×1, with no kernel oom-killer line anywhere;
+    # cd1a719-26323 same). Matching the real OOM signatures instead catches every genuine
+    # OOM and never the deliberate chaos SIGKILL. (A real oom-kill DOES also emit status=9
+    # in -u silt, so nothing is lost.)
+    c="$(ssh_node "$n" "sudo journalctl -b --no-pager 2>/dev/null | grep -cE 'Out of memory: Killed process|invoked oom-killer|oom-kill:constraint|fatal error: runtime: out of memory'" 2>/dev/null | tr -dc '0-9')"
     c="${c:-0}"
     [ "$c" -gt 0 ] 2>/dev/null && { oomnodes="$oomnodes ${n}×${c}"; total=$((total + c)); }
   done
