@@ -35,6 +35,85 @@ func (c *Chain) RetentionHorizon() uint64 {
 	return retentionHorizonAt(finalizedHeight, 2*c.cfg.BondTTLBlocks, c.cfg.EpochBlocks)
 }
 
+// pruneGuardMargin is the headroom, above the bond-reg re-verify window, that the prune
+// floor always retains even when 2·BondTTL is smaller than that window (a degenerate/legacy
+// config). It covers finality-lag + slash-processing depth. In production 2·BondTTL (=64 at
+// BondTTL 32) dwarfs BondRegHeadWindow(8)+margin, so this guard is inert there and only
+// bites the small-BondTTL configs — where it stops the horizon collapsing onto the tip and
+// stranding the re-verify window (PE ack, slice4-sync-redirect-ruling-2026-08-18 Q4).
+const pruneGuardMargin = 4
+
+// pruneFloorAt is the pure prune-floor arithmetic: the height strictly below which a
+// finalized block's heavy BondReg.Answer is prune-eligible. It retains AT LEAST
+// max(2·bondTTL, headWindow+margin) full-proof blocks below the finalized head, then
+// epoch-aligns (validator-set snapshot, #357 Cond A). Returns 0 when bondTTL is degenerate
+// (0 ⇒ retention-decay disabled, safetyDepth would be 0 — never prune) or there isn't yet
+// a full retain window of history. The retain window is >= 2·bondTTL, so the prune floor is
+// always <= RetentionHorizon() <= trustFloor() — a pruned block is therefore always below
+// the Q2 gate's trust floor (we prune more conservatively than we trust). Err toward
+// retaining: the floor only ever LOWERS on epoch-align.
+func pruneFloorAt(finalized, bondTTL, headWindow, epoch uint64) uint64 {
+	if bondTTL == 0 {
+		return 0 // degenerate retention config: never prune
+	}
+	retain := 2 * bondTTL
+	if guard := headWindow + pruneGuardMargin; guard > retain {
+		retain = guard
+	}
+	if finalized <= retain {
+		return 0
+	}
+	raw := finalized - retain
+	if epoch > 0 {
+		raw = (raw / epoch) * epoch
+	}
+	return raw
+}
+
+// pruneFloor is the live prune floor: 0 without BFT finality (no finalized anchor to prune
+// below), else pruneFloorAt over the node's finalized head, BondTTL, bond-reg head window,
+// and epoch. Distinct from (and always <= ) RetentionHorizon()/trustFloor(): the prune is
+// the more conservative of the two so it never sheds a block the Q2 gate would then reject.
+func (c *Chain) pruneFloor() uint64 {
+	if !c.finalityQuorumActive() {
+		return 0
+	}
+	_, finalized := c.Head()
+	k := c.cfg.BondRegHeadWindow
+	if k <= 0 {
+		k = DefaultBondRegHeadWindow
+	}
+	return pruneFloorAt(finalized, c.cfg.BondTTLBlocks, uint64(k), c.cfg.EpochBlocks)
+}
+
+// pruneBelowHorizon payload-selectively prunes every stored block strictly below the prune
+// floor that still carries a heavy BondReg.Answer — dropping the ~1.5 MB proof while keeping
+// the header + consensus sigs (Block.Prune, slice 2). Because the durable store and the
+// serve path both read c.blocks (chainstore.Save(Blocks(0)); chainrole serve Blocks(from)),
+// this one in-place shed bounds resident, on-disk, AND served heavy payload to a recent
+// finalized window. Returns the number of blocks newly pruned. Idempotent (skips
+// already-pruned and entry-only blocks). DORMANT: no production path calls this yet — the
+// enablement waits on the safe sync redirect (suffix-sync from the node's OWN finalized head
+// + a WS-checkpoint/archive path for cold nodes), PE ruling slice4-sync-redirect-2026-08-18.
+func (c *Chain) pruneBelowHorizon() int {
+	floor := c.pruneFloor()
+	if floor == 0 {
+		return 0
+	}
+	n := 0
+	for i := range c.blocks {
+		if c.blocks[i].Height >= floor {
+			break // height-ordered; nothing at/above the floor is prune-eligible
+		}
+		if c.blocks[i].IsPruned() || !c.blocks[i].hasHeavyBondProof() {
+			continue // already pruned, or nothing heavy to shed (entry-only block)
+		}
+		c.blocks[i] = c.blocks[i].Prune()
+		n++
+	}
+	return n
+}
+
 // trustFloor is the height at/above which this node re-verifies bond space-time
 // proofs in full, and strictly below which it TRUSTS a payload-pruned (Answer-less)
 // block. It is the node's OWN anchor: the higher of its out-of-band weak-subjectivity

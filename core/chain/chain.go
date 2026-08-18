@@ -445,6 +445,18 @@ func (b Block) Prune() Block {
 	return out
 }
 
+// hasHeavyBondProof reports whether any of the block's bond registrations still carries
+// its heavy space-time Answer (the ~1.5 MB payload the retention prune sheds) — so an
+// entry-only or already-pruned block is skipped rather than needlessly marked pruned.
+func (b *Block) hasHeavyBondProof() bool {
+	for i := range b.BondRegs {
+		if b.BondRegs[i].Answer != nil {
+			return true
+		}
+	}
+	return false
+}
+
 // ProposerID is the proposer's NodeID: the hash of its key (M10).
 func (b *Block) ProposerID() ports.NodeID { return sha256.Sum256(b.Proposer) }
 
