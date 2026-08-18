@@ -9,6 +9,7 @@ import (
 	"github.com/nerolabs/silt/adapters/memstore"
 	"github.com/nerolabs/silt/adapters/proofcache"
 	"github.com/nerolabs/silt/adapters/simclock"
+	"github.com/nerolabs/silt/core/por"
 	"github.com/nerolabs/silt/ports"
 )
 
@@ -104,6 +105,68 @@ func TestColdProofAnswersAuditIdentically(t *testing.T) {
 		if !bytes.Equal(hot.PorMu[i], cold.PorMu[i]) {
 			t.Fatalf("mu[%d] differs between resident and cold-paged proof", i)
 		}
+	}
+}
+
+// TestColdLiarProofStillCaught is the liar twin of the honest cold-page test
+// (PE review of #464). The OOM fix moves the liar's proof out of a resident map
+// and into the bounded cache over the backing — so a liar's proof CAN be evicted.
+// The write-through (Decision 2) keeps it durable in the backing precisely so
+// that a cold-paged liar proof still produces the intended **caught-as-liar**
+// signal: `Found=true` with a bad μ that FAILS verification — NOT the degenerate
+// `Found=false` ("I don't have it") a lost proof would give, which would silently
+// test the wrong path. This is the regression wall for the durable-liar-proof
+// behavior the review flagged as the specifically-new thing.
+func TestColdLiarProofStillCaught(t *testing.T) {
+	// The liar keeps the receipt + real tags but never the data (empty store).
+	data := make([]byte, 6000)
+	if _, err := rand.Read(data); err != nil {
+		t.Fatalf("rand: %v", err)
+	}
+	chunk := ports.NewChunk(data)
+	key := DerivePorKey(linkLayoutKey(t))
+	tags := key.Tags(chunk.ID[:], data)
+	var root ports.Hash
+	root[0] = 0xB2
+	proof := ports.StorageProof{Root: root, Index: 0, Total: 1, Column: -1, PorTags: tags}
+
+	// Proof durable in the backing; the cache is 1-proof and under eviction
+	// pressure, so our target is COLD (paged from the backing on the audit).
+	backingMem := memproofs.New()
+	backingMem.Put(chunk.ID, proof)
+	pc := proofcache.Open(backingMem, proofcache.SizeOf(proof)+1)
+	for i := 0; i < 64; i++ {
+		var id ports.ChunkID
+		id[0], id[1] = byte(i), byte(i>>8)
+		filler := ports.StorageProof{Total: 1, Column: -1,
+			PorTags: [][]byte{make([]byte, 32), make([]byte, 32)}}
+		backingMem.Put(id, filler)
+		pc.Get(id) // warm+evict, pushing our target out of the hot cache
+	}
+
+	// Empty store: the liar has no bytes. answerChallenge's liar branch returns
+	// before it ever reads the store, so this is the pure "keep the tags, ditch
+	// the goods" prover.
+	n := mkNode(t, memstore.New(), pc)
+	n.SetLiar(true)
+
+	var seed [32]byte
+	seed[0] = 0x7
+	blocks := len(tags)
+	msg := ports.Message{Kind: ports.MsgChallenge, ChunkID: chunk.ID, PorSeed: seed[:], PorCount: blocks}
+	reply := n.answerChallenge(msg)
+
+	// 1. The cold-paged liar proof still ANSWERS (Found=true) — not the degenerate
+	//    Found=false a lost/evicted proof would give. This is what the durable
+	//    write-through buys: the bad-μ catch path keeps running.
+	if !reply.Found {
+		t.Fatal("cold-paged liar proof returned Found=false — the write-through failed and the drill would silently test the wrong path")
+	}
+	// 2. And that answer FAILS verification: the liar is CAUGHT (bad μ over the
+	//    data it no longer has), byte-for-byte the same outcome as when resident.
+	c := porChallenge(seed, blocks, msg.PorCount)
+	if key.Verify(chunk.ID[:], c, por.Proof{Mu: reply.PorMu, Sigma: reply.PorSigma}) {
+		t.Fatal("liar's cold-paged proof VERIFIED — it must fail (caught as a liar)")
 	}
 }
 

@@ -391,5 +391,28 @@ case "${1:-all}" in
   report) report; ;;
   down)   KEEP_UP=0 teardown; ;;
   nuke)   nuke; ;;
-  *) echo "usage: ./cloudtest.sh [setup|all|up|run|report|down|nuke]"; exit 1; ;;
+  heap)
+    # ./cloudtest.sh heap <node> [heap|goroutine|allocs] — pull a live pprof profile
+    # from a node to attribute the MATURING consensus-node OOM. Needs the run to have
+    # been launched with DEBUG_PROFILE=1 (adds -debug-addr to every node). Streams the
+    # binary profile out base64-wrapped (ssh stdout is not binary-safe) and decodes via
+    # python3 (portable across mac/linux base64 flag differences).
+    . ./lib.sh
+    node="${2:?usage: ./cloudtest.sh heap <node> [heap|goroutine|allocs]}"
+    prof="${3:-heap}"
+    node_exists "$node" || { echo "unknown node '$node' — have: $(node_names)"; exit 1; }
+    out="$FT_DIR/${prof}-${node}-${RUN_ID}.pprof"
+    echo "==> pulling '$prof' profile from $node (local debug port ${DEBUG_PORT:-6060})…"
+    ssh_node "$node" "curl -s http://127.0.0.1:${DEBUG_PORT:-6060}/debug/pprof/${prof} | base64" \
+      | python3 -c 'import sys,base64; sys.stdout.buffer.write(base64.b64decode(sys.stdin.read()))' > "$out" 2>/dev/null || true
+    if [ -s "$out" ]; then
+      echo "wrote $out ($(wc -c < "$out") bytes)"
+      echo "  inspect: go tool pprof -inuse_space -top $out   (or -inuse_objects / a -base <earlier>.pprof diff)"
+    else
+      rm -f "$out"
+      echo "no profile captured — was the run launched with DEBUG_PROFILE=1? (that adds -debug-addr; the node's 127.0.0.1:${DEBUG_PORT:-6060} must be listening)"
+      exit 1
+    fi
+    ;;
+  *) echo "usage: ./cloudtest.sh [setup|all|up|run|report|down|nuke|heap]"; exit 1; ;;
 esac

@@ -43,6 +43,20 @@ func entryDecode(raw []byte) (ports.Entry, error) {
 	return b.Entries[0], nil
 }
 
+// maxMempool bounds each proposer mempool (pendingEntries by distinct root,
+// pendingBondRegs by validator). The entry pool dedups by ROOT, so a remote party
+// with valid publish tokens could submit distinct roots faster than the designee
+// drains them and grow it without bound — a resident-memory DoS (boundedness audit
+// A2). Past the cap a new arrival is REJECTED rather than admitted, which preserves
+// the FIFO seniority the #441 certification pinned ("waiting cannot lose seniority")
+// — dropping the oldest would let a flood evict entries that were first in line. Safe
+// to reject: the #441 client path is fire-and-forget + poll-for-finality, so a
+// rejected submission is re-sent by the client's retry loop (and the pool has usually
+// drained by then). Far above any honest in-flight publish count. The bond pool is
+// already validator-bounded (one slot per validator, replace-in-place); the cap is
+// defense-in-depth against a forged-ID path.
+const maxMempool = 8192
+
 // queuePendingEntry adds a validated entry to the FIFO mempool. Dedup by root:
 // a root already queued keeps its original position (resubmission cannot
 // queue-jump — Addition 2's fairness depends on it). Returns whether the
@@ -52,6 +66,11 @@ func (n *Node) queuePendingEntry(e ports.Entry) bool {
 		if n.pendingEntries[i].E.Root == e.Root {
 			return false
 		}
+	}
+	if len(n.pendingEntries) >= maxMempool {
+		// Full: reject the new arrival (preserve FIFO seniority; client re-sends).
+		n.logf(ports.LogDebug, "entry mempool full: rejecting submission", "root", e.Root, "cap", maxMempool)
+		return false
 	}
 	_, height := n.chain.Head()
 	n.pendingEntries = append(n.pendingEntries, pendingEntry{E: e, At: height})
@@ -155,6 +174,12 @@ func (n *Node) queuePendingBondReg(reg chain.BondReg) {
 			n.pendingBondRegs[i].R = reg
 			return
 		}
+	}
+	if len(n.pendingBondRegs) >= maxMempool {
+		// Defense-in-depth: the pool is validator-bounded (one slot each), but a
+		// forged/unbonded-ID path must not grow it without bound. Reject when full.
+		n.logf(ports.LogDebug, "bond-reg mempool full: rejecting submission", "validator", vid, "cap", maxMempool)
+		return
 	}
 	n.pendingBondRegs = append(n.pendingBondRegs, pendingBondReg{R: reg})
 }
