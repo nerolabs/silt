@@ -300,6 +300,16 @@ type Block struct {
 	// epoch weight in mature — because the POL threshold IS the commit
 	// threshold (certification §4). Excluded from Hash like Atts.
 	PrepareQC []Attestation `cbor:"13,keyasint,omitempty"`
+	// Pruned, when set, is the block's pre-prune Hash. A payload-selectively pruned
+	// block (heavy BondReg.Answer proofs dropped below the retention horizon — the H2
+	// OOM fix) can no longer recompute its own hash because Hash commits BondRegs, so
+	// it carries the hash it had when full. EXCLUDED from Hash (like the QCs): a full
+	// block never sets it and hashes exactly as before (no BlockVersion bump, additive).
+	// Hash() returns it for a pruned block. The value is trusted ONLY when authenticated
+	// by chain Prev-linkage to the node's own trusted anchor, and a pruned block is
+	// accepted ONLY strictly below that finalized anchor (the Q2 gate in Reconcile) —
+	// never on this field alone. See retention.go + docs/thinking/2026-08-18-serve-retain-from-checkpoint-oom-fix.md.
+	Pruned ports.Hash `cbor:"14,keyasint,omitempty"`
 }
 
 // Attestation is a validator's consensus signature over a block. The public
@@ -391,12 +401,48 @@ func init() {
 // proposer, and both takedown and undo records. Signing the hash therefore
 // signs the block's entire content and its place in history.
 func (b *Block) Hash() ports.Hash {
+	// A pruned block's heavy body (BondReg.Answer) is gone, so its hash cannot be
+	// recomputed — it carries the pre-prune value. Authenticity is established by
+	// chain Prev-linkage to the trusted anchor + the Q2 gate (Reconcile), never by
+	// this field alone; a forged Pruned fails the proposer/attester signature check
+	// (sigs are over the real hash) and the decode invariant (Pruned ⟹ no Answer).
+	if b.IsPruned() {
+		return b.Pruned
+	}
 	unsigned := Block{Version: b.Version, Height: b.Height, Prev: b.Prev, Entries: b.Entries, Proposer: b.Proposer, Revocations: b.Revocations, Unrevocations: b.Unrevocations, BondRegs: b.BondRegs, Slashes: b.Slashes}
 	raw, err := encMode.Marshal(&unsigned)
 	if err != nil {
 		panic(err) // canonical encoding of our own struct cannot fail
 	}
 	return sha256.Sum256(raw)
+}
+
+// IsPruned reports whether this block has been payload-selectively pruned — its heavy
+// BondReg.Answer proofs dropped and its pre-prune Hash stored in Pruned.
+func (b *Block) IsPruned() bool { return b.Pruned != (ports.Hash{}) }
+
+// Prune returns a payload-selective pruned copy of a FULL block: the heavy space-time
+// proofs (BondReg.Answer, ~1.5 MB each) are dropped and the pre-prune hash is stored,
+// so the block still hash-links and still carries its consensus signatures (unbounded
+// late-reveal slashing evidence) while shedding what OOMs a small box (build-immutable
+// #8). The header, signatures, and the light BondReg fields the STATE/slashing paths
+// read (Validator/Root/Size/Sig/Domain) are kept. Call ONLY on a finalized block
+// strictly below the retention horizon — the caller enforces that gate. Idempotent.
+func (b Block) Prune() Block {
+	if b.IsPruned() {
+		return b
+	}
+	h := b.Hash() // over the FULL body, before dropping anything
+	out := b
+	if len(b.BondRegs) > 0 {
+		out.BondRegs = make([]BondReg, len(b.BondRegs))
+		for i, r := range b.BondRegs {
+			r.Answer = nil // drop the heavy proof; keep the light fields
+			out.BondRegs[i] = r
+		}
+	}
+	out.Pruned = h
+	return out
 }
 
 // ProposerID is the proposer's NodeID: the hash of its key (M10).
