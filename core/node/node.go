@@ -806,6 +806,62 @@ func (n *Node) LoadProofs() {
 	}
 }
 
+// proofReloadBatch bounds the proofs read per loop task in the lazy reload, so the
+// scan never monopolizes the single event loop (B2: bounded work per task). Small
+// enough to keep each batch well under the loop's slow-task threshold; the reschedule
+// between batches lets inbound serving interleave.
+const proofReloadBatch = 128
+
+// StartProofReload rebuilds the resident proofMeta index from the backing store
+// WITHOUT blocking startup — the async counterpart to LoadProofs, for the daemon
+// path. LoadProofs reads the WHOLE store before returning; on a large catalog that
+// stalled the daemon for minutes BEFORE it bound its relay/registry listeners (flixz
+// F3: ~8m45s of registry/relay downtime on a 14 GB store, growing with store size).
+// StartProofReload instead schedules the scan onto the event loop in bounded batches
+// (clock.AfterFunc), so the daemon binds its listeners and begins serving immediately
+// while proofMeta matures lazily in the background. Every proofMeta write stays on
+// the loop, preserving its single-threaded invariant, and the full proofs page on
+// demand (#464) so serving never waits for the scan. Call after New + SetProofStore,
+// in place of LoadProofs, on a daemon path. A metadata sidecar (O(delta) cold start)
+// is the tracked fast-follow that makes the background scan itself cheap.
+func (n *Node) StartProofReload() {
+	// Defer even Keys() (a full store listing) off the startup path onto the loop.
+	n.clock.AfterFunc(0, func() {
+		keys, err := n.proofs.Keys()
+		if err != nil {
+			n.logf(ports.LogWarn, "proof reload failed", "err", err)
+			return
+		}
+		n.reloadProofBatch(keys, 0, 0)
+	})
+}
+
+// reloadProofBatch loads one bounded window of proofs into proofMeta on the loop,
+// then reschedules itself for the next window until the store is drained. Runs only
+// on the loop goroutine (scheduled via clock.AfterFunc), so the proofMeta writes need
+// no synchronisation.
+func (n *Node) reloadProofBatch(keys []ports.ChunkID, from, loaded int) {
+	end := from + proofReloadBatch
+	if end > len(keys) {
+		end = len(keys)
+	}
+	for _, id := range keys[from:end] {
+		p, ok, gerr := n.proofs.Get(id)
+		if gerr != nil || !ok {
+			continue // an unreadable/absent proof just re-announces under its bare id
+		}
+		n.proofMeta[id] = metaOf(p)
+		loaded++
+	}
+	if end < len(keys) {
+		n.clock.AfterFunc(0, func() { n.reloadProofBatch(keys, end, loaded) })
+		return
+	}
+	if loaded > 0 {
+		n.logf(ports.LogInfo, "reloaded storage proofs (lazy)", "count", loaded)
+	}
+}
+
 // dropHosted removes a chunk this node hosts, keeping the resident metadata and
 // the backing proof store in sync so a delete never leaves an orphan proof behind.
 func (n *Node) dropHosted(id ports.ChunkID) {
