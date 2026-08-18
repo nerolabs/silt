@@ -31,6 +31,26 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   PE ruling.** Plan + ruling: [docs/thinking/2026-08-17-inbound-backpressure-fix-plan.md](docs/thinking/2026-08-17-inbound-backpressure-fix-plan.md).
 
 ### Added
+- **Rolling retention-horizon substrate + the Q2 pruned-tolerance gate (H2 slices 1–3 —
+  the MATURING OOM return-to-2GB, dormant until the prune slice)** (2026-08-18) — A
+  validator's chain grows O(all history) in the ~1.5 MB space-time bond proof
+  (`BondReg.Answer`) carried by every registration, OOMing a 2 GB box (build-immutable #8,
+  the hobbyist floor). The fix bounds the RESIDENT heavy payload to a recent finalized
+  window. Slice 1: `RetentionHorizon() = finalizedHead − 2·BondTTL`, epoch-floored
+  (research-certified safetyDepth). Slice 2: Opt-1 pruned-block representation (`Block.Prune()`
+  drops the heavy `Answer`, keeps header + consensus sigs, stores the pre-prune hash so a
+  pruned block still hash-links and stays valid late-reveal slashing evidence). Slice 3
+  (this change): the **Q2 gate** — a pruned (Answer-less) block is trusted, and its
+  space-time re-verify skipped, ONLY strictly below the node's OWN finalized/checkpoint
+  anchor (`trustFloor`); at/above it is rejected (`ErrPrunedAboveHorizon`), and a pruned
+  block still carrying an `Answer` is rejected (`ErrMalformedPruned`). During a `Reconcile`
+  replay the floor is pinned to the RECEIVER's anchor (threaded into the throwaway replica),
+  never the peer's fork — so a peer cannot skip verification to forge standing (a C1/M0
+  no-discount break). The Reload/own-disk path needs no gate change (it never re-verifies
+  bonds; the stored hash covers the sig). Consensus-invariants: preserves I5 (a pruned block
+  is still slashable), reads I3/I4's finalized anchor; no quorum-sizing/signing/fork-choice
+  change. Still dormant — nothing prunes or emits a pruned block yet (slice 4). Plan +
+  rulings: [docs/thinking/2026-08-18-slice3-q2-gate-plan.md](docs/thinking/2026-08-18-slice3-q2-gate-plan.md).
 - **Daemon memory controls: `-mem-limit` (soft heap ceiling) + `-debug-addr` (pprof)**
   (2026-08-17) — The MATURING field cohort OOM-crash-loops on 2 GB nodes, and it is
   NOT the PoR proof map (#464 shipped without moving it; the crash-looping nodes hold

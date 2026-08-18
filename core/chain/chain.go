@@ -594,6 +594,21 @@ var (
 	// signature or space-time proof does not verify (objective fork-choice, F6):
 	// a forged registration cannot buy objective weight.
 	ErrBadBondReg = errors.New("chain: invalid on-chain bond registration")
+
+	// ErrPrunedAboveHorizon rejects a payload-pruned (Answer-less) block presented
+	// at or above the node's OWN trust floor (max WS-checkpoint / rolling retention
+	// horizon). A pruned block cannot have its space-time proof re-verified, so
+	// trusting one at/above the finalized anchor would let a peer strip Answer to
+	// skip verification and forge standing — a C1 (no-discount) break. Trusted only
+	// strictly below the floor, where finality already makes the reg irreversible
+	// (Q2 gate, slice 3; PE ruling pruned-block-representation-2026-08-18).
+	ErrPrunedAboveHorizon = errors.New("chain: pruned block at/above the node's trust floor (would skip space-time verification — refused)")
+
+	// ErrMalformedPruned rejects a block marked pruned (Pruned set) that still
+	// carries a BondReg.Answer — a full block cannot smuggle a forged stored-hash
+	// past the Q2 skip. The two are mutually exclusive by construction (Prune()
+	// drops every Answer); a hybrid is hand-crafted and refused (decode-invariant belt).
+	ErrMalformedPruned = errors.New("chain: block is marked pruned but carries a BondReg.Answer (malformed)")
 	// ErrBadSlash rejects an on-chain equivocation record that is not a valid,
 	// self-verifying double-sign proof — so a forged slash cannot evict an honest
 	// validator (F2; forged-slash griefing stays denied).
@@ -705,6 +720,15 @@ type Chain struct {
 	// residual non-monotonicity Condition B exists to close). With epochs disabled
 	// the handoff degenerates to the raw latch (pre-Condition-B behavior).
 	matureEpoch bool
+	// trustFloorOverride, when non-nil, pins the pruned-tolerance floor to the
+	// RECEIVING node's own anchor during a Reconcile replay, so the throwaway `tmp`
+	// replica trusts a payload-pruned block only strictly below the RECEIVER's
+	// finalized/checkpoint anchor — never a height derived from the (attacker-
+	// supplied) fork under replay. nil on a live chain, where trustFloor() computes
+	// from the node's own state. This is the C1 gate's load-bearing edge: without
+	// it a peer could inflate the acceptance floor by presenting a fork with a high
+	// finalized head. (Q2 gate, slice 3.)
+	trustFloorOverride *uint64
 }
 
 // New starts an empty replica. rep is the local reputation view —
@@ -1114,6 +1138,30 @@ func (c *Chain) validateBondRegWindow(r BondReg, nonces []uint64) error {
 
 func (c *Chain) validateBondRegs(b *Block) error {
 	if !c.objective() {
+		return nil
+	}
+	// Q2 pruned-tolerance gate (slice 3; C1/M0 merge gate). A payload-pruned block has
+	// its heavy BondReg.Answer dropped, so its space-time proof cannot be re-verified.
+	// Trust it ONLY strictly below this node's OWN finalized/checkpoint anchor
+	// (trustFloor) — where finality already makes the reg irreversible and re-verification
+	// is neither possible nor needed. At/above the floor, trusting an Answer-less block
+	// would let a peer skip the proof and forge standing (a no-discount break), so REJECT.
+	// During a Reconcile replay trustFloor() reflects the RECEIVER's anchor (threaded via
+	// trustFloorOverride), never the attacker-supplied fork's. A full block (Answer
+	// present) falls through to full verification at any height, unchanged.
+	if b.IsPruned() {
+		if b.Height >= c.trustFloor() {
+			return fmt.Errorf("%w: pruned block at height %d, floor %d", ErrPrunedAboveHorizon, b.Height, c.trustFloor())
+		}
+		// Below the anchor: skip the space-time re-verify. Belt (decode-invariant): a
+		// pruned block must not also carry an Answer — a full block cannot smuggle a
+		// forged stored-hash past the skip. Structural + proposer/attester-sig checks
+		// still run elsewhere, against the stored Hash() (slice 2).
+		for _, r := range b.BondRegs {
+			if r.Answer != nil {
+				return fmt.Errorf("%w: validator %s", ErrMalformedPruned, r.ValidatorID())
+			}
+		}
 		return nil
 	}
 	nonces := c.recentBondRegNonces(b.Prev)
@@ -2491,6 +2539,12 @@ func (c *Chain) Reconcile(fork []Block) (bool, error) {
 	tmp := New(c.cfg, c.rep)
 	tmp.tokenQuorum, tmp.issuerKey = c.tokenQuorum, c.issuerKey
 	tmp.verifyBond = c.verifyBond // so the fork's bond registrations re-verify (F6)
+	// Pin the pruned-tolerance floor to THIS node's own anchor (Q2 gate, slice 3): a
+	// pruned block in the fork is trusted only strictly below the RECEIVER's finalized/
+	// checkpoint anchor, never a height the fork's own (attacker-supplied) replayed state
+	// could inflate. Snapshot so the floor cannot move mid-replay.
+	floor := c.trustFloor()
+	tmp.trustFloorOverride = &floor
 	if err := tmp.AppendGenesis(fork[0]); err != nil {
 		return false, err
 	}

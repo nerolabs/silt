@@ -35,6 +35,25 @@ func (c *Chain) RetentionHorizon() uint64 {
 	return retentionHorizonAt(finalizedHeight, 2*c.cfg.BondTTLBlocks, c.cfg.EpochBlocks)
 }
 
+// trustFloor is the height at/above which this node re-verifies bond space-time
+// proofs in full, and strictly below which it TRUSTS a payload-pruned (Answer-less)
+// block. It is the node's OWN anchor: the higher of its out-of-band weak-subjectivity
+// checkpoint and its rolling retention horizon (both already trusted-finalized). During
+// a Reconcile replay the receiver pins tmp's floor to its own via trustFloorOverride,
+// so a peer's fork can never raise the height at which pruned blocks are trusted — the
+// C1 gate. Returns 0 (trust no pruned block) on a fresh node with neither anchor, which
+// is the safe default: nothing is trusted-pruned until finality or a checkpoint exists.
+func (c *Chain) trustFloor() uint64 {
+	if c.trustFloorOverride != nil {
+		return *c.trustFloorOverride
+	}
+	h := c.RetentionHorizon()
+	if cp := c.cfg.WSCheckpoint.Height; cp > h {
+		return cp
+	}
+	return h
+}
+
 // retentionHorizonAt is the pure horizon arithmetic (exhaustively unit-tested):
 // finalizedHeight − safetyDepth, floored to an epoch boundary so the horizon lands on
 // a validator-set snapshot (#357 Condition A) and retains AT LEAST safetyDepth (the
