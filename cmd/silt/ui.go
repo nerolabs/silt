@@ -482,20 +482,49 @@ func (s *uiServer) apiFetch(w http.ResponseWriter, r *http.Request) {
 		httpError(w, 400, err)
 		return
 	}
-	e, run, err := joinSwarm(s.selfPeer, 0)
-	if err != nil {
-		httpError(w, 502, err)
-		return
-	}
-	defer e.close()
 
+	// Local-store fast path: if this node already holds the content,
+	// reconstruct it straight from the local store — no ephemeral swarm node,
+	// no network round-trip. A node should never cross the swarm to read bytes
+	// it already has, and it *can't* if provider resolution is degraded
+	// (dead-peer pollution, lookup timeouts) — which is exactly when a node that
+	// holds the data must still be able to serve it. This lets a daemon serve
+	// its own published content, and lets a client re-serve films it has already
+	// pulled (the consumer==provider path). pipeline.Get reads and verifies
+	// against the root; on a complete store it never writes, and diskstore.Get is
+	// a plain os.ReadFile, so this is safe to run off the event loop. If any
+	// chunk is missing locally, pipeline.Get errors and we fall through to the
+	// swarm fetch below unchanged.
+	{
+		var local bytes.Buffer
+		if err := pipeline.Get(context.Background(), s.nd.Store(), s.reg, h, &local); err == nil {
+			w.Header().Set("Content-Type", "application/octet-stream")
+			w.Header().Set("Content-Disposition",
+				fmt.Sprintf("attachment; filename=%q", h.Root.String()[:16]+".bin"))
+			io.Copy(w, &local)
+			return
+		}
+	}
+
+	// Swarm fetch on the MAIN node — not a throwaway ephemeral node. This is
+	// the consumer==provider path: NetGet pulls the missing shards into THIS
+	// node's own store (bounded by its -capacity pledge), so content you draw is
+	// content you now HOLD and can serve back. The old code fetched through a
+	// per-request ephemeral node (memstore, SetEphemeral) that kept nothing —
+	// making the client a pure leech (chunks-held stays 0, nothing to share
+	// back) and leaking a 127.0.0.1 address-book entry on every fetch. Fetching
+	// on s.nd instead means the next read of the same link hits the local-store
+	// fast path above, and the node becomes a real provider of what it consumed.
 	var buf bytes.Buffer
 	var opErr error
-	rerr := run(func(done func()) {
-		e.nd.NetGet(s.reg, h, &buf, func(err error) { opErr = err; done() })
+	fetchDone := make(chan struct{})
+	s.loop.Post("api-fetch", func() {
+		s.nd.NetGet(s.reg, h, &buf, func(err error) { opErr = err; close(fetchDone) })
 	})
-	if rerr != nil {
-		httpError(w, 504, rerr)
+	select {
+	case <-fetchDone:
+	case <-time.After(5 * time.Minute):
+		httpError(w, 504, fmt.Errorf("swarm fetch timed out"))
 		return
 	}
 	if opErr != nil {
