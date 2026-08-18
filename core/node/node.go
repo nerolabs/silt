@@ -364,6 +364,11 @@ type Stats struct {
 	// FullFetches while heads agree means the elision regressed.
 	ChainSyncHeadMatches int
 	ChainSyncFullFetches int
+	// ChainSyncNeedCheckpoint: sweeps where a peer could not be synced from because this
+	// node is behind the weak-subjectivity window and the peer pruned the gap (slice 5).
+	// A nonzero value means an operator must obtain a recent -ws-checkpoint out-of-band or
+	// point at an archive node — surfaced, never silent (I4/S5).
+	ChainSyncNeedCheckpoint int
 }
 
 type pending struct {

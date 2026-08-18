@@ -31,6 +31,47 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   PE ruling.** Plan + ruling: [docs/thinking/2026-08-17-inbound-backpressure-fix-plan.md](docs/thinking/2026-08-17-inbound-backpressure-fix-plan.md).
 
 ### Added
+- **The MATURING OOM return-to-2GB: rolling retention horizon, payload-selective pruning, and
+  suffix-sync (H2 slices 1–5 — now ENABLED)** (2026-08-18) — A
+  validator's chain grows O(all history) in the ~1.5 MB space-time bond proof
+  (`BondReg.Answer`) carried by every registration, OOMing a 2 GB box (build-immutable #8,
+  the hobbyist floor). The fix bounds the RESIDENT heavy payload to a recent finalized
+  window. Slice 1: `RetentionHorizon() = finalizedHead − 2·BondTTL`, epoch-floored
+  (research-certified safetyDepth). Slice 2: Opt-1 pruned-block representation (`Block.Prune()`
+  drops the heavy `Answer`, keeps header + consensus sigs, stores the pre-prune hash so a
+  pruned block still hash-links and stays valid late-reveal slashing evidence). Slice 3
+  (this change): the **Q2 gate** — a pruned (Answer-less) block is trusted, and its
+  space-time re-verify skipped, ONLY strictly below the node's OWN finalized/checkpoint
+  anchor (`trustFloor`); at/above it is rejected (`ErrPrunedAboveHorizon`), and a pruned
+  block still carrying an `Answer` is rejected (`ErrMalformedPruned`). During a `Reconcile`
+  replay the floor is pinned to the RECEIVER's anchor (threaded into the throwaway replica),
+  never the peer's fork — so a peer cannot skip verification to forge standing (a C1/M0
+  no-discount break). The Reload/own-disk path needs no gate change (it never re-verifies
+  bonds; the stored hash covers the sig). Consensus-invariants: preserves I5 (a pruned block
+  is still slashable), reads I3/I4's finalized anchor; no quorum-sizing/signing/fork-choice
+  change. Slice 4: `pruneBelowHorizon()` — the actual in-place shed of `BondReg.Answer` from
+  finalized blocks strictly below the prune floor (`max(2·BondTTL, BondRegHeadWindow+margin)`
+  below the finalized head, epoch-aligned; 0 without finality or with a degenerate `BondTTL`,
+  the PE-acked over-prune guard). Because the durable store and serve path both read `c.blocks`,
+  one in-place shed bounds resident, on-disk, AND served heavy payload. **Still DORMANT — no
+  production path calls it:** enabling it changes how nodes sync (mesh catch-up is a full-genesis
+  `Reconcile`, which the Q2 gate rejects against a pruned peer), so the PE gated enablement on the
+  safe sync redirect. Slice 5 (this change) is that redirect, which **enables the prune**: mesh
+  catch-up now suffix-syncs from a node's OWN finalized head (`{Height: FinalizedHeight()}` instead of
+  `{Height:0}`), prepending its own verified prefix so the existing genesis-rooted `Reconcile` (with its
+  slice-3 `trustFloorOverride` pinned to the node's own anchor) accepts its own pruned history but never
+  trusts a peer-served head — the C1/long-range guard the PE ruled (peer-served-head trust rejected as a
+  Sybil break). A node behind by less than the weak-subjectivity window catches up around the pruned gap;
+  a deep-cold node beyond it gets `ErrNeedCheckpoint` (obtain a recent `-ws-checkpoint` out-of-band or use
+  an archive node) — surfaced, never silent (I4/S5). `pruneBelowHorizon()` is wired into the commit path,
+  so a validator sheds heavy proofs below its floor as finality advances — the line that returns the
+  MATURING box to 2 GB. Consensus-invariants: I4 (catch-up-or-signal, both asserted), I3 (trusted set from
+  the node's own finalized snapshot), I1/I5 preserved (no quorum re-sizing; equivocation still caught in
+  the suffix, at/above the finalized head where forks can exist). Ablation-verified load-bearing; full
+  core suite green. Plans + rulings:
+  [slice3](docs/thinking/2026-08-18-slice3-q2-gate-plan.md),
+  [slice4](docs/thinking/2026-08-18-slice4-prune-blocked-on-sync-redirect.md),
+  [slice5](docs/thinking/2026-08-18-slice5-sync-redirect-plan.md).
 - **Daemon memory controls: `-mem-limit` (soft heap ceiling) + `-debug-addr` (pprof)**
   (2026-08-17) — The MATURING field cohort OOM-crash-loops on 2 GB nodes, and it is
   NOT the PoR proof map (#464 shipped without moving it; the crash-looping nodes hold

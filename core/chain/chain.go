@@ -300,6 +300,16 @@ type Block struct {
 	// epoch weight in mature — because the POL threshold IS the commit
 	// threshold (certification §4). Excluded from Hash like Atts.
 	PrepareQC []Attestation `cbor:"13,keyasint,omitempty"`
+	// Pruned, when set, is the block's pre-prune Hash. A payload-selectively pruned
+	// block (heavy BondReg.Answer proofs dropped below the retention horizon — the H2
+	// OOM fix) can no longer recompute its own hash because Hash commits BondRegs, so
+	// it carries the hash it had when full. EXCLUDED from Hash (like the QCs): a full
+	// block never sets it and hashes exactly as before (no BlockVersion bump, additive).
+	// Hash() returns it for a pruned block. The value is trusted ONLY when authenticated
+	// by chain Prev-linkage to the node's own trusted anchor, and a pruned block is
+	// accepted ONLY strictly below that finalized anchor (the Q2 gate in Reconcile) —
+	// never on this field alone. See retention.go + docs/thinking/2026-08-18-serve-retain-from-checkpoint-oom-fix.md.
+	Pruned ports.Hash `cbor:"14,keyasint,omitempty"`
 }
 
 // Attestation is a validator's consensus signature over a block. The public
@@ -391,12 +401,60 @@ func init() {
 // proposer, and both takedown and undo records. Signing the hash therefore
 // signs the block's entire content and its place in history.
 func (b *Block) Hash() ports.Hash {
+	// A pruned block's heavy body (BondReg.Answer) is gone, so its hash cannot be
+	// recomputed — it carries the pre-prune value. Authenticity is established by
+	// chain Prev-linkage to the trusted anchor + the Q2 gate (Reconcile), never by
+	// this field alone; a forged Pruned fails the proposer/attester signature check
+	// (sigs are over the real hash) and the decode invariant (Pruned ⟹ no Answer).
+	if b.IsPruned() {
+		return b.Pruned
+	}
 	unsigned := Block{Version: b.Version, Height: b.Height, Prev: b.Prev, Entries: b.Entries, Proposer: b.Proposer, Revocations: b.Revocations, Unrevocations: b.Unrevocations, BondRegs: b.BondRegs, Slashes: b.Slashes}
 	raw, err := encMode.Marshal(&unsigned)
 	if err != nil {
 		panic(err) // canonical encoding of our own struct cannot fail
 	}
 	return sha256.Sum256(raw)
+}
+
+// IsPruned reports whether this block has been payload-selectively pruned — its heavy
+// BondReg.Answer proofs dropped and its pre-prune Hash stored in Pruned.
+func (b *Block) IsPruned() bool { return b.Pruned != (ports.Hash{}) }
+
+// Prune returns a payload-selective pruned copy of a FULL block: the heavy space-time
+// proofs (BondReg.Answer, ~1.5 MB each) are dropped and the pre-prune hash is stored,
+// so the block still hash-links and still carries its consensus signatures (unbounded
+// late-reveal slashing evidence) while shedding what OOMs a small box (build-immutable
+// #8). The header, signatures, and the light BondReg fields the STATE/slashing paths
+// read (Validator/Root/Size/Sig/Domain) are kept. Call ONLY on a finalized block
+// strictly below the retention horizon — the caller enforces that gate. Idempotent.
+func (b Block) Prune() Block {
+	if b.IsPruned() {
+		return b
+	}
+	h := b.Hash() // over the FULL body, before dropping anything
+	out := b
+	if len(b.BondRegs) > 0 {
+		out.BondRegs = make([]BondReg, len(b.BondRegs))
+		for i, r := range b.BondRegs {
+			r.Answer = nil // drop the heavy proof; keep the light fields
+			out.BondRegs[i] = r
+		}
+	}
+	out.Pruned = h
+	return out
+}
+
+// hasHeavyBondProof reports whether any of the block's bond registrations still carries
+// its heavy space-time Answer (the ~1.5 MB payload the retention prune sheds) — so an
+// entry-only or already-pruned block is skipped rather than needlessly marked pruned.
+func (b *Block) hasHeavyBondProof() bool {
+	for i := range b.BondRegs {
+		if b.BondRegs[i].Answer != nil {
+			return true
+		}
+	}
+	return false
 }
 
 // ProposerID is the proposer's NodeID: the hash of its key (M10).
@@ -548,6 +606,21 @@ var (
 	// signature or space-time proof does not verify (objective fork-choice, F6):
 	// a forged registration cannot buy objective weight.
 	ErrBadBondReg = errors.New("chain: invalid on-chain bond registration")
+
+	// ErrPrunedAboveHorizon rejects a payload-pruned (Answer-less) block presented
+	// at or above the node's OWN trust floor (max WS-checkpoint / rolling retention
+	// horizon). A pruned block cannot have its space-time proof re-verified, so
+	// trusting one at/above the finalized anchor would let a peer strip Answer to
+	// skip verification and forge standing — a C1 (no-discount) break. Trusted only
+	// strictly below the floor, where finality already makes the reg irreversible
+	// (Q2 gate, slice 3; PE ruling pruned-block-representation-2026-08-18).
+	ErrPrunedAboveHorizon = errors.New("chain: pruned block at/above the node's trust floor (would skip space-time verification — refused)")
+
+	// ErrMalformedPruned rejects a block marked pruned (Pruned set) that still
+	// carries a BondReg.Answer — a full block cannot smuggle a forged stored-hash
+	// past the Q2 skip. The two are mutually exclusive by construction (Prune()
+	// drops every Answer); a hybrid is hand-crafted and refused (decode-invariant belt).
+	ErrMalformedPruned = errors.New("chain: block is marked pruned but carries a BondReg.Answer (malformed)")
 	// ErrBadSlash rejects an on-chain equivocation record that is not a valid,
 	// self-verifying double-sign proof — so a forged slash cannot evict an honest
 	// validator (F2; forged-slash griefing stays denied).
@@ -659,6 +732,15 @@ type Chain struct {
 	// residual non-monotonicity Condition B exists to close). With epochs disabled
 	// the handoff degenerates to the raw latch (pre-Condition-B behavior).
 	matureEpoch bool
+	// trustFloorOverride, when non-nil, pins the pruned-tolerance floor to the
+	// RECEIVING node's own anchor during a Reconcile replay, so the throwaway `tmp`
+	// replica trusts a payload-pruned block only strictly below the RECEIVER's
+	// finalized/checkpoint anchor — never a height derived from the (attacker-
+	// supplied) fork under replay. nil on a live chain, where trustFloor() computes
+	// from the node's own state. This is the C1 gate's load-bearing edge: without
+	// it a peer could inflate the acceptance floor by presenting a fork with a high
+	// finalized head. (Q2 gate, slice 3.)
+	trustFloorOverride *uint64
 }
 
 // New starts an empty replica. rep is the local reputation view —
@@ -1068,6 +1150,30 @@ func (c *Chain) validateBondRegWindow(r BondReg, nonces []uint64) error {
 
 func (c *Chain) validateBondRegs(b *Block) error {
 	if !c.objective() {
+		return nil
+	}
+	// Q2 pruned-tolerance gate (slice 3; C1/M0 merge gate). A payload-pruned block has
+	// its heavy BondReg.Answer dropped, so its space-time proof cannot be re-verified.
+	// Trust it ONLY strictly below this node's OWN finalized/checkpoint anchor
+	// (trustFloor) — where finality already makes the reg irreversible and re-verification
+	// is neither possible nor needed. At/above the floor, trusting an Answer-less block
+	// would let a peer skip the proof and forge standing (a no-discount break), so REJECT.
+	// During a Reconcile replay trustFloor() reflects the RECEIVER's anchor (threaded via
+	// trustFloorOverride), never the attacker-supplied fork's. A full block (Answer
+	// present) falls through to full verification at any height, unchanged.
+	if b.IsPruned() {
+		if b.Height >= c.trustFloor() {
+			return fmt.Errorf("%w: pruned block at height %d, floor %d", ErrPrunedAboveHorizon, b.Height, c.trustFloor())
+		}
+		// Below the anchor: skip the space-time re-verify. Belt (decode-invariant): a
+		// pruned block must not also carry an Answer — a full block cannot smuggle a
+		// forged stored-hash past the skip. Structural + proposer/attester-sig checks
+		// still run elsewhere, against the stored Hash() (slice 2).
+		for _, r := range b.BondRegs {
+			if r.Answer != nil {
+				return fmt.Errorf("%w: validator %s", ErrMalformedPruned, r.ValidatorID())
+			}
+		}
 		return nil
 	}
 	nonces := c.recentBondRegNonces(b.Prev)
@@ -1570,6 +1676,22 @@ func (c *Chain) Head() (ports.Hash, uint64) {
 }
 
 func (c *Chain) Len() int { return len(c.blocks) }
+
+// FinalizedHeight is the height this node treats as irreversibly final — the anchor a
+// behind peer suffix-syncs FROM (slice 5) and the prune floor derives from. In OBJECTIVE
+// mode every committed block is super-quorum-final (the same property the Reconcile
+// finality gate rests on — launch: the pinned anchor majority IS the finality quorum;
+// mature: the >⅔-frozen-weight commit quorum IS the finality quorum), so the finalized
+// head is the committed tip: len(c.blocks)-1. WITHOUT BFT finality (a trusted/demo config)
+// there is no immutable anchor, so it returns 0 — sync then falls back to full-genesis
+// (ok, ForFinalizedHeight callers request {Height:0}) and nothing prunes (pruneFloor is
+// also 0). ok is false when there is no finalized anchor.
+func (c *Chain) FinalizedHeight() (height uint64, ok bool) {
+	if !c.finalityQuorumActive() || len(c.blocks) == 0 {
+		return 0, false
+	}
+	return uint64(len(c.blocks) - 1), true
+}
 
 // Blocks returns the suffix of the chain starting at height from.
 func (c *Chain) Blocks(from uint64) []Block {
@@ -2445,6 +2567,12 @@ func (c *Chain) Reconcile(fork []Block) (bool, error) {
 	tmp := New(c.cfg, c.rep)
 	tmp.tokenQuorum, tmp.issuerKey = c.tokenQuorum, c.issuerKey
 	tmp.verifyBond = c.verifyBond // so the fork's bond registrations re-verify (F6)
+	// Pin the pruned-tolerance floor to THIS node's own anchor (Q2 gate, slice 3): a
+	// pruned block in the fork is trusted only strictly below the RECEIVER's finalized/
+	// checkpoint anchor, never a height the fork's own (attacker-supplied) replayed state
+	// could inflate. Snapshot so the floor cannot move mid-replay.
+	floor := c.trustFloor()
+	tmp.trustFloorOverride = &floor
 	if err := tmp.AppendGenesis(fork[0]); err != nil {
 		return false, err
 	}
