@@ -430,22 +430,41 @@ discount, C2 no quiet capture, the demand→standing firewall) — those are hel
   v2a confines any single peer to 1/4 of the budget; the `-inbound-cap` sizing note (flag help)
   makes the OOM-headroom vs `cap/drain`-latency trade legible so an operator can size for the
   expected-worst drain; and consensus timeouts/rounds retry — delay, not permanent starvation.
-- **What would close it (the reach-recipe + go/no-go, in order):**
-  1. Phase 1.2 (`MsgSubmitBondReg` CPU gate) lands — raises the flood-drain floor.
-  2. Rider on 1.2 validation: **measure the real saturation drain rate at 256M** under the
-     existing flood/soak (a laptop measurement, not a billable run — build-immutable #6), and
-     **re-run the committed drill re-parameterized to it**. That re-run is the go/no-go.
-  3. Only if still RED: build the **one two-class mechanism** (identity/kind → class →
-     **priority drain**; the admission reserve and the drain priority are two faces of the same
-     class label — supersedes the admission-only structure). Merge oracle = this drill GREEN
-     **plus** a second, non-negotiable oracle: bulk/repair does NOT starve indefinitely under
-     sustained consensus load (BOUNDED priority — absolute priority would break I4's
-     no-permanent-starvation for the storage plane). Not research-gated (drain order changes
-     latency, not consensus outcome — build-immutable #3 untouched), but the full
-     sim/model-check must stay green.
+- **STATUS 2026-08-19 — SHELVED on dev-hardware evidence; one measurement owed.** The go/no-go
+  ran:
+  1. Phase 1.2 (`MsgSubmitBondReg` CPU gate) landed (PR #476) — the bond-reg flood is now
+     rate-gated, and the measured *verify* cost (`core/bond/verifycost_bench_test.go`) is ms-scale
+     (~2–3 ms), not the ~100 ms the drill's slow-drain premise assumed (that figure was the
+     *prover*, not the verifier — folklore corrected).
+  2. Rider measured (`core/node/draindrate_measure_test.go`): the **real** single-loop drain for
+     the cheapest bulk a flood rides (MsgStoreChunk, real hash-verify + store handler over a real
+     TLS transport) is **~1227 MB/s on an M4 core** — ~600× the drill's hypothetical 2 MiB/s. At
+     the shipped 256M cap that is **`cap/drain ≈ 0.21 s`, well under the 2 s bound**: re-running
+     the drill re-parameterized to the measured drain goes GREEN (the latency ≈ cap/drain relation
+     held to 1% in the original run, so the analytic re-parameterization is decisive). The
+     slow-drain regime the RED drill needed is *removed* by the CPU gate + the cost correction —
+     it required a bond-reg/VDF flood that no longer drains slowly.
+  3. **Verdict: SHELVE** — the two-class priority drain is NOT built. It earns its slot only if a
+     future measurement puts real drain below ~128 MB/s at the shipped cap.
+- **The one measurement still owed (the shelve's honest caveat):** the drain was measured on an
+  M4; the hobbyist floor box (~1 vCPU, build-immutable #8) is several× slower. SHA-256
+  (`Chunk.Verify`'s dominant cost) is hardware-accelerated on essentially all modern CPUs incl.
+  cheap ARM, so the floor box is expected to stay well above 128 MB/s — but that is *expectation,
+  not measurement*. A floor-box drain measurement (or #183 reaching the slow regime for real)
+  reopens this; until then the shelve rests on dev-hardware evidence + a hardware-acceleration
+  argument, stated honestly.
+- **If ever reopened — the mechanism (unchanged from the drain ruling):** the **one two-class
+  mechanism** (identity/kind → class → **priority drain**; admission reserve and drain priority are
+  two faces of one class label). Merge oracle = the parked drill (`drill/v2b-gate-starvation`)
+  GREEN **plus** a second, non-negotiable oracle: bulk/repair does NOT starve indefinitely under
+  sustained consensus load (BOUNDED priority — absolute priority would break I4's
+  no-permanent-starvation for the storage plane). Not research-gated (drain order changes latency,
+  not consensus outcome — build-immutable #3 untouched), but the full sim/model-check must stay
+  green.
 - **What the red team should attack (#183):** the reach — can a real cohort pin a production
-  node's drain into the slow regime at the shipped cap *after* the Phase 1.2 CPU gate? The
-  trigger recipe is above; this residual is pre-designed and can never be a surprise.
+  node's drain below ~128 MB/s at the shipped cap *after* the Phase 1.2 CPU gate (e.g. by riding a
+  more-expensive-per-byte admitted handler than MsgStoreChunk)? The trigger recipe is above; this
+  residual is pre-designed and can never be a surprise.
 
 ---
 

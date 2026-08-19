@@ -77,3 +77,18 @@ submit flood (post-gate) on a laptop: a harness that floods submits at the gate'
 refusal rate + admitted-budget verifies, and measures loop drain MB/s. Re-run the
 parked v2b drill (`drill/v2b-gate-starvation`) re-parameterized to that number —
 the go/no-go the drain ruling requires.
+
+## The E5 rider — DONE (2026-08-19)
+
+Measured (`core/node/draindrate_measure_test.go`): the real single-loop drain for
+the cheapest bulk a flood rides — MsgStoreChunk, real hash-verify + store handler
+over a real TLS transport — is **~1227 MB/s on an M4 core** (24.5k × 256 KiB
+chunks acked in 5 s). At the shipped 256M cap that is `cap/drain ≈ 0.21 s`, well
+under the 2 s saturation bound: the parked v2b drill re-parameterized to this
+drain goes GREEN (the latency ≈ cap/drain relation held to 1% in the original
+run, so the analytic re-parameterization is decisive). **Verdict: SHELVE v2b**
+(owned-residual E5), with a floor-box drain measurement as the one owed caveat —
+SHA-256 is hardware-accelerated on cheap ARM too, so the floor box is *expected*
+above the ~128 MB/s go-line, but that is expectation, not measurement. Verdict
+reported to the PE: `silt-reviews/principle-engineer/`
+`v2b-drain-measurement-VERDICT-shelve-2026-08-19.md`.
