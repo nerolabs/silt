@@ -360,29 +360,48 @@ nuke() {
 # There is deliberately NO silent bypass — stating intent before spending money is
 # the whole point of the gate.
 preflight_gate() {
-  if [ -z "${RUN_MECHANISM:-}" ] || [ -z "${RUN_REPRO:-}" ]; then
+  if [ -z "${RUN_MECHANISM:-}" ] || [ -z "${RUN_REPRO:-}" ] || [ -z "${RUN_LOCAL_PROOF:-}" ]; then
     cat >&2 <<'EOF'
-✗ pre-flight gate (build-immutable #6): a billable cloud run needs a written justification.
+✗ pre-flight gate (build-immutables #6/#7): a billable cloud run needs a written justification
+  AND a LOCAL PROOF THAT PASSES. A cloud run CONFIRMS what a local test already proved green; it
+  never DISCOVERS whether an integration works.
 
-  An expensive multi-region run CONFIRMS an understood, locally-reproduced fix — or
-  certifies liveness/timing at scale. It never DISCOVERS a cause or tests a guess.
-  If you are here to find out WHY something fails, stop: reproduce it on a laptop first
-  (integration/adversarial netem · integration/flakynet · go test ./e2e). See
-  docs/build-process.md and docs/reviews/286-wan-rabbithole-POSTMORTEM.md.
+  WHY THIS GATE EXISTS (2026-08-19): a run was spent to "test" the economy integration
+  (flow_economy_repair) that had NEVER passed locally end-to-end. It GAPped on a foreseeable
+  publish-latency issue — a billable run burned to discover what a laptop would have shown for free.
+  This gate makes that structurally impossible.
 
-  Re-run with BOTH set, e.g.:
-    RUN_MECHANISM="liveness/timing at scale — R1 gate #360; #357 fork-choice fix confirmed locally" \
-    RUN_REPRO="integration/adversarial/run.sh green; attacks certified off-cloud" \
-    ./cloudtest.sh up
+  RUN_LOCAL_PROOF must be a command this gate RUNS; the run proceeds ONLY if it EXITS 0.
+  For a genuine liveness/scale run with no local analogue, set it EXPLICITLY to "n/a: <reason>".
+
+  Re-run with all THREE set, e.g.:
+    RUN_MECHANISM="economy on the wire — flow_economy_repair (Phase 2 exit gate)" \
+    RUN_REPRO="the full reconstruct→bounty loop proven locally, green" \
+    RUN_LOCAL_PROOF="go test ./e2e -run TestEconomyReconstructBounty -count=1" \
+    ECONOMY=1 ./cloudtest.sh
 EOF
     exit 2
   fi
+  case "$RUN_LOCAL_PROOF" in
+    n/a:*|N/A:*)
+      echo "⚠ pre-flight: RUN_LOCAL_PROOF is an EXPLICIT n/a — '$RUN_LOCAL_PROOF'. Proceeding on the operator's stated word that no local proof applies (a liveness/scale run). This is the ONLY bypass, and it is logged."
+      ;;
+    *)
+      echo "==> pre-flight: running the LOCAL PROOF before spending a cent — '$RUN_LOCAL_PROOF'"
+      if ! ( cd "$REPO_ROOT" && eval "$RUN_LOCAL_PROOF" ); then
+        echo "✗ pre-flight gate: the local proof FAILED — the integration this run would confirm is NOT green locally. NO billable run launched. Reproduce and fix it on a laptop first (build-immutable #7)." >&2
+        exit 2
+      fi
+      echo "✓ pre-flight: local proof PASSED — the cloud run now CONFIRMS a green local integration, not a guess."
+      ;;
+  esac
   { echo "run=${RUN_ID:-unknown}  ts=$(date -u +%FT%TZ 2>/dev/null || echo unknown)"
-    echo "RUN_MECHANISM: $RUN_MECHANISM"
-    echo "RUN_REPRO:     $RUN_REPRO"
+    echo "RUN_MECHANISM:   $RUN_MECHANISM"
+    echo "RUN_REPRO:       $RUN_REPRO"
+    echo "RUN_LOCAL_PROOF: $RUN_LOCAL_PROOF"
     echo "---"
   } >> run-justification.log
-  echo "✓ pre-flight gate: justification recorded (build-immutable #6) — proceeding to a BILLABLE run."
+  echo "✓ pre-flight gate: justification + local proof recorded (build-immutables #6/#7) — proceeding to a BILLABLE run."
 }
 
 case "${1:-all}" in
