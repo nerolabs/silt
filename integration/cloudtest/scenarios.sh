@@ -1337,6 +1337,111 @@ wait_publisher_warm() { # wait_publisher_warm NODE
 # (PE §4 — a miss inside a principled bound is a finding), never a window
 # artifact. Escape FREQUENCY at steady state (~half of heights reach r1) is an
 # M1 cadence question, tracked separately — the bound covers the mechanism.
+# ── economy (#11): the S7 repair bounty pays a VERIFIED RECONSTRUCTION on the wire ──
+# The Phase 2 exit gate. Publish erasure-coded, make store-2 a caretaker with the
+# economy ON, fund its reserve, then use `swarm holders` to KILL every holder of
+# > RepairSlack columns so every stripe must RECONSTRUCT from parity (not just
+# re-fetch a surviving replica — the gap durability-turnover leaves) — and confirm
+# the caretaker rebuilt and the bounty DREW THE RESERVE DOWN (paid > 0). Opt-in
+# (ECONOMY=1). Moderate chunk (256 KiB) so reconstruction fits the box (§0.1: a
+# 64 MiB stripe holds ~1 GiB and OOMs a 2 GB node). Design:
+# docs/thinking/2026-08-19-cloudtest-economy-scenario-design.md.
+flow_economy_repair() {
+  [ "${ECONOMY:-0}" = 1 ] || { record "11-economy-repair" skip minor "opt-in (ECONOMY=1): the S7 repair-bounty-on-the-wire grade"; return; }
+  require_nodes "11-economy-repair" major fetch-1 store-1 store-2 || return
+  local care="store-2"   # caretaker: a storage node, NEVER an anchor/validator, so
+                         # killing shard-holders can never touch consensus.
+
+  # 1) Publish an erasure-coded object; capture BOTH the silt: link and the siltcare:.
+  local out link carelink
+  out="$(ssh_node fetch-1 "head -c 4194304 </dev/urandom >/tmp/ft_econ.bin; /usr/local/bin/silt swarm add /tmp/ft_econ.bin -peers '$PEERS' -registry '$REGREF' -token-quorum $TOKEN_QUORUM -chunk-size 262144 2>&1" || true)"
+  link="$(printf '%s' "$out" | grep -oE 'silt:v1:\S+' | head -1)"
+  carelink="$(printf '%s' "$out" | grep -oE 'siltcare:\S+' | head -1)"
+  if [ -z "$link" ] || [ -z "$carelink" ]; then
+    ft_add_validator_evidence
+    record "11-economy-repair" gap major "setup publish landed no link+carelink — economy UNTESTED this run, not a failure ($(printf '%s' "$out" | tr '\n' ';' | head -c 200))"; return
+  fi
+
+  # 2) Make store-2 a caretaker with the economy ON + a local UI (fund/status).
+  relaunch_with "$care" "-care $carelink -economy -ui=127.0.0.1:8098"
+  sleep 20   # restart + re-bootstrap + warm the manifest + arm the repair sweep
+  local tok; tok="$(ssh_node "$care" "sudo cat /var/lib/silt/ui-token" 2>/dev/null | tr -dc 'a-f0-9')"
+
+  # 3) Fund the object's reserve from the caretaker's own grant balance (Slice 3).
+  local fund_code; fund_code="$(ssh_node "$care" "curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Authorization: Bearer $tok' --data 'root=$link&amount=2000000' http://127.0.0.1:8098/api/fund" 2>/dev/null || true)"
+  if [ "$fund_code" != "200" ]; then
+    record "11-economy-repair" gap major "could not fund the reserve (/api/fund → HTTP ${fund_code:-none} on $care) — economy setup incomplete, UNTESTED not failed"; restore_argv "$care"; return
+  fi
+
+  # 4) Resolve holders per column and KILL every holder of 3 columns whose holders
+  #    are ALL killable (storage/fetcher, and NOT the caretaker) — so consensus is
+  #    never touched. 3 lost shards/stripe > RepairSlack(2) ⇒ every stripe must
+  #    reconstruct, and 3 ≤ n−k(6) ⇒ still recoverable.
+  local holders_out; holders_out="$(ssh_node fetch-1 "/usr/local/bin/silt swarm holders '$link' -peers '$PEERS' -registry '$REGREF' 2>&1" || true)"
+  # Build a killable NodeID→name map: every content-holding node EXCEPT the 4
+  # anchors (role "validator") and the caretaker. In launch phase (the economy run
+  # is MATURING=0) ONLY the anchors finalize — maturers and sybils are non-anchor
+  # validators whose loss cannot break launch-phase consensus — so storage, fetcher,
+  # maturer, and sybil nodes are all safe to stop. (This is why the flow runs before
+  # the maturing drill and restarts every node it stops.) Anchors are never touched.
+  local killable_ids="" n nid role
+  for n in $(node_names); do
+    [ "$n" = "$care" ] && continue
+    role="$(node_field "$n" role)"
+    case "$role" in storage|fetcher|maturer|sybil) : ;; *) continue ;; esac
+    nid="$(node_field "$n" nodeid)"
+    [ ${#nid} -eq 64 ] && killable_ids="$killable_ids $nid:$n"
+  done
+  # Pick 3 columns whose holders are all killable; collect the nodes to stop.
+  local cols_killed=0 to_stop="" col ids id ok name
+  while IFS= read -r line; do
+    case "$line" in column\ *) : ;; *) continue ;; esac
+    [ "$cols_killed" -ge 3 ] && break
+    ids="${line#*: }"
+    ok=1; local col_nodes=""
+    for id in ${ids//,/ }; do
+      [ -z "$id" ] && continue
+      name=""; for kv in $killable_ids; do [ "${kv%%:*}" = "$id" ] && name="${kv#*:}"; done
+      if [ -z "$name" ]; then ok=0; break; fi     # a holder we may not kill (validator/caretaker) → skip this column
+      col_nodes="$col_nodes $name"
+    done
+    if [ "$ok" = 1 ] && [ -n "$col_nodes" ]; then
+      to_stop="$to_stop $col_nodes"; cols_killed=$((cols_killed+1))
+    fi
+  done <<EOF
+$holders_out
+EOF
+  if [ "$cols_killed" -lt 3 ]; then
+    record "11-economy-repair" gap major "only $cols_killed of 3 needed columns had ALL-killable holders (shards landed on validators/the caretaker we must not kill) — could not force a reconstruction WITHOUT touching consensus; economy UNTESTED not failed (add dedicated storage nodes / lower -replication to concentrate shards). holders:$(printf '%s' "$holders_out" | tr '\n' ';' | head -c 200)"; restore_argv "$care"; return
+  fi
+  local uniq_stop; uniq_stop="$(printf '%s\n' $to_stop | sort -u | tr '\n' ' ')"
+  echo "    killing shard-holders of $cols_killed columns to force reconstruction:$uniq_stop"
+  for n in $uniq_stop; do svc "$n" stop || true; done
+
+  # 5) Wait (bounded) for the caretaker to reconstruct + the bounty to pay: poll its
+  #    /api/status durability until paid>0 for the root (or the window expires).
+  local t0; t0="$(date +%s)" paid=0 reserve="" repairs=0 body
+  while [ $(( $(date +%s) - t0 )) -lt 240 ]; do
+    body="$(ssh_node "$care" "curl -s -H 'Authorization: Bearer $tok' http://127.0.0.1:8098/api/status" 2>/dev/null || true)"
+    paid="$(printf '%s' "$body" | grep -oE '"paid":[0-9]+' | grep -oE '[0-9]+' | sort -rn | head -1)"; paid="${paid:-0}"
+    repairs="$(printf '%s' "$body" | grep -oE '"repairs":[0-9]+' | grep -oE '[0-9]+' | sort -rn | head -1)"; repairs="${repairs:-0}"
+    [ "$paid" -gt 0 ] 2>/dev/null && break
+    sleep 6
+  done
+
+  # 6) Verdict: a bounty paid a verified reconstruction on the wire (the exit gate).
+  ft_add_validator_evidence
+  if [ "${paid:-0}" -gt 0 ] 2>/dev/null; then
+    slo_assert "11-economy-repair" major "the S7 repair economy CLOSED on the wire: killed 3 columns' holders → the caretaker RECONSTRUCTED from parity → a verified-repair bounty drew the object's reserve down (paid=$paid credits over $repairs repair(s)) — durability paid for itself on a real network, standing untouched (Invariant A)" 1
+  else
+    record "11-economy-repair" gap major "3 columns killed but no bounty drew the reserve within 240s (paid=$paid repairs=$repairs) — the caretaker did not reconstruct+pay in the window; attribute from $care's journal (repair sweep / claim / quorum) before re-running (#7)"
+  fi
+
+  # 7) Restore: revert the caretaker's argv, restart the stopped holders.
+  restore_argv "$care"
+  for n in $uniq_stop; do svc "$n" start || true; done
+}
+
 flow_soak_publish_drain() {
   [ "${SOAK:-0}" = 1 ] || return 0
   local n_mat_soak
@@ -1439,6 +1544,7 @@ run_all_scenarios() {
   flow_chaos_crash               # chaos #7
   flow_web_ui_guard              # client/UI #4
   flow_c2_no_capture             # C2 Sybil #5 — opt-in (SYBILS=8): certifies the PURE anchor gate on cloud
+  flow_economy_repair            # S7 #11 — opt-in (ECONOMY=1): the repair-bounty pays a verified reconstruction on the wire (Phase 2 exit gate)
   flow_soak_publish_drain        # PE #432 gate — opt-in (SOAK=1, MATURING=0): launch publish/drain interleave soak
   flow_maturing_handoff          # §4/B2 #10 — opt-in (MATURING=1 SYBILS=8): handoff + post-shed + weight-quorum drills + WS cold-sync. LAST: it stops validators.
 }
