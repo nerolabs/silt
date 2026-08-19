@@ -377,7 +377,7 @@ preflight_gate() {
   Re-run with all THREE set, e.g.:
     RUN_MECHANISM="economy on the wire — flow_economy_repair (Phase 2 exit gate)" \
     RUN_REPRO="the full reconstruct→bounty loop proven locally, green" \
-    RUN_LOCAL_PROOF="go test ./e2e -run TestEconomyReconstructBounty -count=1" \
+    RUN_LOCAL_PROOF="go test ./e2e -run TestRepairBountyPaysOnTheWire -count=1" \
     ECONOMY=1 ./cloudtest.sh
 EOF
     exit 2

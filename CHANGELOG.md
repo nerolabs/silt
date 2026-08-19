@@ -9,6 +9,32 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **The LOCAL proof of the full S7 economy loop (`e2e/economy_repair_test.go`) + `-repair-interval`**
+  (2026-08-20) — `TestRepairBountyPaysOnTheWire` runs the whole Phase 2 Slice 4 integration on real
+  daemons over real TCP: publish erasure-coded (one k=10/n=16 stripe at the cloud's 256 KiB chunk) →
+  `swarm holders` → kill the holders of 3 columns (> `RepairSlack`) → a caretaker reconstructs from
+  parity → a peer caretaker-judge verifies both legs and the bounty draws the object's escrow
+  (`paid > 0`) → the file still fetches bit-perfect. This is the enforced `RUN_LOCAL_PROOF` for the
+  confirming `ECONOMY=1` cloud run (the integration run 2323b09-20931 GAPed on was never proven
+  locally — build-immutable #7). Building it found **three latent cloud-scenario defects** that would
+  have GAPed the re-run even with the publish fix (#489): the scenario armed ONE caretaker, but the
+  paramedic never judges its own claim and credit is per-node-local, so `paid` lands on the OTHER
+  caretaker's ledger; it funded 2,000,000 against the 500,000 starter grant (`FundEscrow` refuses);
+  and its relaunched caretaker had no `-registry`, which silently disabled the care loop entirely.
+  `flow_economy_repair` now arms two caretakers (the judge is the relay — outside the killable role
+  set), funds both within grant, and polls both. New daemon flag **`-repair-interval`** (default 60 s,
+  unchanged) mirrors `-bond-audit` so a local swarm's repair sweep — and this proof — fires in
+  seconds. Design + the run-1 attribution honesty note + the one-shot-claim residual:
+  [docs/thinking/2026-08-20-economy-local-loop-design.md](docs/thinking/2026-08-20-economy-local-loop-design.md).
+
+### Fixed
+- **`-care` with no registry now refuses to start instead of silently never caretaking**
+  (2026-08-20) — The care loop requires a registry to resolve the cared entry; without `-registry` or
+  `-serve-registry` the daemon came up looking healthy while `-care` did nothing (the #235
+  silent-skip shape, one layer up — and exactly the no-op caretaker the cloud economy scenario
+  armed in run 2323b09-20931). Regression pinned by `e2e/TestCareWithoutRegistryRefusesToStart`.
+
+### Added
 - **`silt swarm holders <link>`: object shard placement made observable** (2026-08-19) — Prints, per
   erasure column, the NodeIDs that claim to hold that column's shards (their DHT provider records
   under `colKey`). An operator uses it to see *where* an object lives; a test harness uses it to force

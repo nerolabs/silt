@@ -1348,9 +1348,9 @@ wait_publisher_warm() { # wait_publisher_warm NODE
 # docs/thinking/2026-08-19-cloudtest-economy-scenario-design.md.
 flow_economy_repair() {
   [ "${ECONOMY:-0}" = 1 ] || { record "11-economy-repair" skip minor "opt-in (ECONOMY=1): the S7 repair-bounty-on-the-wire grade"; return; }
-  require_nodes "11-economy-repair" major fetch-1 store-1 store-2 || return
-  local care="store-2"   # caretaker: a storage node, NEVER an anchor/validator, so
-                         # killing shard-holders can never touch consensus.
+  require_nodes "11-economy-repair" major fetch-1 store-1 store-2 relay || return
+  local care="store-2"   # paramedic candidate: a storage node, NEVER an anchor/validator,
+                         # so killing shard-holders can never touch consensus.
 
   # 1) Publish an erasure-coded object; capture BOTH the silt: link and the siltcare:.
   # RETRY the publish (run 2323b09-20931 GAPped here): a chain-backed registry publish
@@ -1376,16 +1376,32 @@ flow_economy_repair() {
     record "11-economy-repair" gap major "setup publish landed no link+carelink after ${ECONOMY_PUBLISH_RETRY_S:-360}s of retries — economy UNTESTED this run, not a failure (registry publish-commit latency #441-family; $(printf '%s' "$out" | tr '\n' ';' | head -c 160))"; return
   fi
 
-  # 2) Make store-2 a caretaker with the economy ON + a local UI (fund/status).
-  relaunch_with "$care" "-care $carelink -economy -ui=127.0.0.1:8098"
-  sleep 20   # restart + re-bootstrap + warm the manifest + arm the repair sweep
-  local tok; tok="$(ssh_node "$care" "sudo cat /var/lib/silt/ui-token" 2>/dev/null | tr -dc 'a-f0-9')"
+  # 2) Make TWO caretakers with the economy ON + a local UI (fund/status). Two is
+  #    structural, not redundancy (proven by the local wire proof,
+  #    e2e/economy_repair_test.go): the paramedic never judges its own claim
+  #    (repairclaim.go emitRepairClaim skips itself and the holder), credit is
+  #    per-node-local, so `paid` materializes on the OTHER caretaker's ledger —
+  #    the judge's. The judge is the relay node: a full daemon that is NOT in the
+  #    killable role set, so arming it costs zero killable shard-holders.
+  #    -registry is REQUIRED: -care without one now refuses to start (it used to
+  #    silently never caretake — the shape this scenario shipped in run 2323b09).
+  local judge="relay"
+  relaunch_with "$care"  "-care $carelink -economy -registry $REGREF -ui=127.0.0.1:8098"
+  relaunch_with "$judge" "-care $carelink -economy -registry $REGREF -ui=127.0.0.1:8098"
+  sleep 20   # restart + re-bootstrap + warm the manifest + arm the repair sweeps
 
-  # 3) Fund the object's reserve from the caretaker's own grant balance (Slice 3).
-  local fund_code; fund_code="$(ssh_node "$care" "curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Authorization: Bearer $tok' --data 'root=$link&amount=2000000' http://127.0.0.1:8098/api/fund" 2>/dev/null || true)"
-  if [ "$fund_code" != "200" ]; then
-    record "11-economy-repair" gap major "could not fund the reserve (/api/fund → HTTP ${fund_code:-none} on $care) — economy setup incomplete, UNTESTED not failed"; restore_argv "$care"; return
-  fi
+  # 3) Fund the object's reserve on BOTH caretakers, each from its own grant
+  #    balance (Slice 3): which one ends up the judge is timing, and PayBounty
+  #    draws from the payer's OWN escrow. The amount must fit the 500k starter
+  #    grant — FundEscrow refuses more (the prior 2000000 could never fund).
+  local cnode tok fund_code
+  for cnode in "$care" "$judge"; do
+    tok="$(ssh_node "$cnode" "sudo cat /var/lib/silt/ui-token" 2>/dev/null | tr -dc 'a-f0-9')"
+    fund_code="$(ssh_node "$cnode" "curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Authorization: Bearer $tok' --data 'root=$link&amount=400000' http://127.0.0.1:8098/api/fund" 2>/dev/null || true)"
+    if [ "$fund_code" != "200" ]; then
+      record "11-economy-repair" gap major "could not fund the reserve (/api/fund → HTTP ${fund_code:-none} on $cnode) — economy setup incomplete, UNTESTED not failed"; restore_argv "$care"; restore_argv "$judge"; return
+    fi
+  done
 
   # 4) Resolve holders per column and KILL every holder of 3 columns whose holders
   #    are ALL killable (storage/fetcher, and NOT the caretaker) — so consensus is
@@ -1401,6 +1417,7 @@ flow_economy_repair() {
   local killable_ids="" n nid role
   for n in $(node_names); do
     [ "$n" = "$care" ] && continue
+    [ "$n" = "$judge" ] && continue
     role="$(node_field "$n" role)"
     case "$role" in storage|fetcher|maturer|sybil) : ;; *) continue ;; esac
     nid="$(node_field "$n" nodeid)"
@@ -1426,19 +1443,24 @@ flow_economy_repair() {
 $holders_out
 EOF
   if [ "$cols_killed" -lt 3 ]; then
-    record "11-economy-repair" gap major "only $cols_killed of 3 needed columns had ALL-killable holders (shards landed on validators/the caretaker we must not kill) — could not force a reconstruction WITHOUT touching consensus; economy UNTESTED not failed (add dedicated storage nodes / lower -replication to concentrate shards). holders:$(printf '%s' "$holders_out" | tr '\n' ';' | head -c 200)"; restore_argv "$care"; return
+    record "11-economy-repair" gap major "only $cols_killed of 3 needed columns had ALL-killable holders (shards landed on validators/the caretakers we must not kill) — could not force a reconstruction WITHOUT touching consensus; economy UNTESTED not failed (add dedicated storage nodes / lower -replication to concentrate shards). holders:$(printf '%s' "$holders_out" | tr '\n' ';' | head -c 200)"; restore_argv "$care"; restore_argv "$judge"; return
   fi
   local uniq_stop; uniq_stop="$(printf '%s\n' $to_stop | sort -u | tr '\n' ' ')"
   echo "    killing shard-holders of $cols_killed columns to force reconstruction:$uniq_stop"
   for n in $uniq_stop; do svc "$n" stop || true; done
 
-  # 5) Wait (bounded) for the caretaker to reconstruct + the bounty to pay: poll its
-  #    /api/status durability until paid>0 for the root (or the window expires).
-  local t0; t0="$(date +%s)" paid=0 reserve="" repairs=0 body
+  # 5) Wait (bounded) for a reconstruction + payout: poll BOTH caretakers'
+  #    /api/status — the paramedic emits the claim, the OTHER one judges and
+  #    pays on its own ledger, and which is which is timing.
+  local t0; t0="$(date +%s)" paid=0 repairs=0 body ptok pv rv
   while [ $(( $(date +%s) - t0 )) -lt 240 ]; do
-    body="$(ssh_node "$care" "curl -s -H 'Authorization: Bearer $tok' http://127.0.0.1:8098/api/status" 2>/dev/null || true)"
-    paid="$(printf '%s' "$body" | grep -oE '"paid":[0-9]+' | grep -oE '[0-9]+' | sort -rn | head -1)"; paid="${paid:-0}"
-    repairs="$(printf '%s' "$body" | grep -oE '"repairs":[0-9]+' | grep -oE '[0-9]+' | sort -rn | head -1)"; repairs="${repairs:-0}"
+    for cnode in "$care" "$judge"; do
+      ptok="$(ssh_node "$cnode" "sudo cat /var/lib/silt/ui-token" 2>/dev/null | tr -dc 'a-f0-9')"
+      body="$(ssh_node "$cnode" "curl -s -H 'Authorization: Bearer $ptok' http://127.0.0.1:8098/api/status" 2>/dev/null || true)"
+      pv="$(printf '%s' "$body" | grep -oE '"paid":[0-9]+' | grep -oE '[0-9]+' | sort -rn | head -1)"; pv="${pv:-0}"
+      rv="$(printf '%s' "$body" | grep -oE '"repairs":[0-9]+' | grep -oE '[0-9]+' | sort -rn | head -1)"; rv="${rv:-0}"
+      if [ "$pv" -gt "$paid" ] 2>/dev/null; then paid="$pv" repairs="$rv"; fi
+    done
     [ "$paid" -gt 0 ] 2>/dev/null && break
     sleep 6
   done
@@ -1448,11 +1470,12 @@ EOF
   if [ "${paid:-0}" -gt 0 ] 2>/dev/null; then
     slo_assert "11-economy-repair" major "the S7 repair economy CLOSED on the wire: killed 3 columns' holders → the caretaker RECONSTRUCTED from parity → a verified-repair bounty drew the object's reserve down (paid=$paid credits over $repairs repair(s)) — durability paid for itself on a real network, standing untouched (Invariant A)" 1
   else
-    record "11-economy-repair" gap major "3 columns killed but no bounty drew the reserve within 240s (paid=$paid repairs=$repairs) — the caretaker did not reconstruct+pay in the window; attribute from $care's journal (repair sweep / claim / quorum) before re-running (#7)"
+    record "11-economy-repair" gap major "3 columns killed but no bounty drew the reserve within 240s (paid=$paid repairs=$repairs) — the loop did not reconstruct+judge+pay in the window; attribute from $care's AND $judge's journals (repair sweep / claim / judge legs) before re-running (#7)"
   fi
 
-  # 7) Restore: revert the caretaker's argv, restart the stopped holders.
+  # 7) Restore: revert both caretakers' argv, restart the stopped holders.
   restore_argv "$care"
+  restore_argv "$judge"
   for n in $uniq_stop; do svc "$n" start || true; done
 }
 

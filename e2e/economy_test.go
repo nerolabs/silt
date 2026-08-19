@@ -32,6 +32,8 @@ type statusDurability struct {
 			Root    string `json:"root"`
 			Reserve int64  `json:"reserve"`
 			Funded  int64  `json:"funded"`
+			Paid    int64  `json:"paid"`
+			Repairs int64  `json:"repairs"`
 		} `json:"objects"`
 	} `json:"durability"`
 }
