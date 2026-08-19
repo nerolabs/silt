@@ -203,6 +203,93 @@ scan_node_liveness() {
   fi
 }
 
+# ── RSS/memory telemetry (Phase 1.3 — build-immutable #7 on our OWN headlines) ──
+# scan_node_liveness answers "did it crash?" (a binary journal signal). It does NOT
+# answer "what was the memory ENVELOPE?" — the shape the MATURING OOM headline claims
+# (RSS climbs, peaks, returns to a bounded ~2GB plateau, never OOM-kills). That is a
+# time-series question, and until now NO committed artifact backed it: return-to-2GB
+# rested on the ABSENCE of a crash, not a MEASURED ceiling. These helpers sample each
+# node's cgroup memory across the run into a committed rss-<RUN_ID>.jsonl and summarise
+# it to peak/final per node, so the claim becomes a citable file + a number.
+# Design + options: docs/thinking/2026-08-19-cloudtest-rss-telemetry.md.
+
+MEM_SERIES="${MEM_SERIES:-$FT_DIR/rss-${RUN_ID:-local}.jsonl}"
+: "${MEM_SAMPLE_INTERVAL:=30}"   # seconds between sweeps (coarse — an envelope, not a profiler)
+
+# node_mem_bytes NODE — the cgroup's live accounted memory (systemd MemoryCurrent), the
+# exact quantity GOMEMLIMIT and the OOM-killer act against. Empty on any failure (never
+# fatal). MemoryCurrent is "[not set]"/"" before the service is up; callers skip blanks.
+node_mem_bytes() {
+  ssh_node "$1" "systemctl show silt.service -p MemoryCurrent --value 2>/dev/null" \
+    2>/dev/null | tr -dc '0-9'
+}
+
+# mem_sampler_start — background loop: one JSONL row per node per sweep. Writes its PID
+# to $MEM_SAMPLER_PIDFILE so mem_sampler_stop can end it. Strictly additive and
+# failure-tolerant: a missed read is simply skipped, and the sampler never touches a
+# verdict or the run's exit status.
+MEM_SAMPLER_PIDFILE="$FT_DIR/.mem-sampler.pid"
+mem_sampler_start() {
+  [ "${MEM_SAMPLE:-1}" = 1 ] || { echo "mem-sampler: disabled (MEM_SAMPLE=0)"; return 0; }
+  : > "$MEM_SERIES"
+  ( while :; do
+      for n in $(node_names); do
+        b="$(node_mem_bytes "$n")"
+        [ -n "$b" ] && printf '{"node":%s,"rss_bytes":%s,"ts":%s}\n' \
+          "$(_json_str "$n")" "$b" "$(date +%s)" >> "$MEM_SERIES"
+      done
+      sleep "$MEM_SAMPLE_INTERVAL"
+    done ) &
+  echo $! > "$MEM_SAMPLER_PIDFILE"
+  echo "mem-sampler: started (pid $(cat "$MEM_SAMPLER_PIDFILE"), every ${MEM_SAMPLE_INTERVAL}s → $(basename "$MEM_SERIES"))"
+}
+mem_sampler_stop() {
+  [ -f "$MEM_SAMPLER_PIDFILE" ] || return 0
+  kill "$(cat "$MEM_SAMPLER_PIDFILE")" 2>/dev/null || true
+  rm -f "$MEM_SAMPLER_PIDFILE"
+}
+
+# scan_node_memory — summarise rss-<RUN_ID>.jsonl into a per-node peak/final envelope
+# and record it as a first-class finding, so the memory headline is citable. Purely
+# observational (S5): it reports the measured ceiling; it does NOT assert pass/fail on a
+# memory number (the OOM-killer / scan_node_liveness owns the crash verdict). Called at
+# run end, before teardown, after mem_sampler_stop.
+scan_node_memory() {
+  if [ ! -s "$MEM_SERIES" ]; then
+    record "infra-node-memory" skip info "no RSS samples captured (MEM_SAMPLE=0, or the network never came up) — memory envelope UNMEASURED this run"
+    return 0
+  fi
+  local summary
+  summary="$(python3 - "$MEM_SERIES" <<'PY'
+import json, sys
+peak, final, count = {}, {}, {}
+for line in open(sys.argv[1]):
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        r = json.loads(line)
+    except Exception:
+        continue
+    n, b = r["node"], int(r["rss_bytes"])
+    peak[n] = max(peak.get(n, 0), b)
+    final[n] = b            # last row wins (file is append-order = time-order)
+    count[n] = count.get(n, 0) + 1
+gib = 1 << 30
+worst = max(peak.values()) if peak else 0
+parts = []
+for n in sorted(peak):
+    parts.append("%s peak=%.2fGiB final=%.2fGiB n=%d" % (n, peak[n]/gib, final[n]/gib, count[n]))
+print("%.2f" % (worst/gib))              # line 1: worst peak GiB (for the caller)
+print("; ".join(parts))                  # line 2: per-node detail
+PY
+)" || { record "infra-node-memory" skip info "RSS series present but summary failed to parse"; return 0; }
+  local worst detail
+  worst="$(printf '%s\n' "$summary" | sed -n '1p')"
+  detail="$(printf '%s\n' "$summary" | sed -n '2p')"
+  record "infra-node-memory" pass info "RSS envelope measured (cgroup MemoryCurrent, every ${MEM_SAMPLE_INTERVAL}s → $(basename "$MEM_SERIES")): worst peak ${worst}GiB across the cohort. ${detail}"
+}
+
 # require_nodes FLOW SEVERITY NODE...  — record skip + return 1 if any node is absent
 # (so SMOKE=1 / trimmed topologies don't false-fail scenarios they can't run).
 # Also stashes the node list for capture_flow_evidence: the nodes a flow REQUIRES
