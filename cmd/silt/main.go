@@ -40,8 +40,9 @@ Usage:
   silt daemon [-listen ADDR] [-store DIR] [-capacity 2G] [-bootstrap ID@ADDR,...]
                 [-dns-seed DOMAIN] [-serve-registry ADDR | -registry REF] [-care CARELINK,...]
                 [-validator -min-rep N -quorum Q -attesters ID[,...] -bond 8M]
-  silt swarm add <file>  -peers ID@ADDR[,...] -registry REF
-  silt swarm get <link>  -o <out> -peers ID@ADDR[,...] -registry REF
+  silt swarm add <file>     -peers ID@ADDR[,...] -registry REF
+  silt swarm get <link>     -o <out> -peers ID@ADDR[,...] -registry REF
+  silt swarm holders <link> -peers ID@ADDR[,...] -registry REF   (per-column shard holders)
 
   silt client [-store DIR] [-capacity 5G] [-bootstrap ID@ADDR,...]
                 [-registry REF] [-ui ADDR]   (desktop app: serves + consumes, opens a browser UI)
