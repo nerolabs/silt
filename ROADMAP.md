@@ -52,7 +52,13 @@ to follow it top-down. The prior rule "M1 opens only after the M0 gate" is super
 enumerated, and both the deep field confirmation and a valid #183 depend on M1 being
 real.
 
-1. **Phase 1 — Close the M0 tail (small, enumerated).**
+1. **Phase 1 — Close the M0 tail (small, enumerated). ✅ COMPLETE (2026-08-19).**
+   *(1.1 inbound-cap: resolved — v2b shelved to owned-residual E5 on the drain measurement
+   (cap/drain ≈ 0.21s at 1227 MB/s real drain, well under the 2s bound); the publish-flood 502 was a
+   separate Care/NetGet loop self-deadlock, fixed (#474). 1.2 CPU gate: shipped (#476). 1.3 evidence
+   hygiene: RSS/heap telemetry shipped + field-validated over two runs (#478). 1.4 deep >h64 run:
+   deferred to Phase 3's exit gate by owner ruling — heights too expensive to accrue is Phase 3's
+   justification.)*
    1. Inbound-cap hardening — **resolved-for-now 2026-08-19, sequenced behind 1.2 (two
       PE rulings).** Per-peer fairness: shipped (v2a). The consensus-priority lane: a
       timed drill proved the starvation lives in the loop's FIFO **drain**, not gate
@@ -76,14 +82,26 @@ real.
    4. Attempt the deep confirming run (longer soak; retention prune engaged past h64 at
       production parameters). If heights starve the run's budget, that measurement is
       Phase 3's justification — record it, don't force it.
-2. **Phase 2 — Economy-ON (the S7 keystone; enablement, not construction).** The repair
-   economy exists and is adversarially tested; it has no production enable path. Ship
-   the daemon/config path for repair bounties (`RepairBountyBase`) + escrow funding
-   (`FundDurability`), wire `credit.G`/`Horizon` into live telemetry, and grade an
-   **economy-ON churn drill** in cloudtest: fund → serve-skim → kill holders → verify
-   bounties pay verified repairs → **`g` measured on the wire for the first time**.
-   Exit gate: the prepay→skim→bounty loop closes on a real network; standing stays
-   coin-free (Invariant A untouched).
+2. **Phase 2 — Economy-ON (the S7 keystone; enablement, not construction). ⚠ Slices 1–3
+   DONE + merged; Slice 4 (the exit gate) OPEN — not yet closed on the wire (2026-08-19).**
+   - **Slice 1 (enable) DONE:** `-economy` flag (opt-in, default OFF); the bounty base is a protocol
+     price `credit.RepairBountyBase = c·(k·shardBytes)`, **`c=1` research-certified**; payee =
+     **(a-domain-fresh)** — the paramedic keeps the shard it rebuilt iff its own failure domain is
+     unused by the stripe (funds the reconstructor without reducing S2 dispersal); Invariant A held
+     (bounty pays balance, never standing), failing-first guards green.
+   - **Slice 2 (telemetry) DONE:** `/api/status` durability block (balance, bountyOn, per-object
+     reserve/funded/paid/repairs/horizon). **Slice 3 (endowment) DONE:** `POST /api/fund`.
+   - **§0.1 (repair RAM) MEASURED locally** (`core/erasure/reconstruct_mem_test.go`): a prod 64 MiB
+     stripe reconstructs **1.0 GiB resident** → OOMs a 2 GB box, so the economy grade uses 256 KiB
+     chunks (repair ≈ 2.5 MiB). *A prod-chunk field-confirm on a bigger box is a later option.*
+   - **Slice 4 (economy on the wire) = THE EXIT GATE, OPEN.** Built `flow_economy_repair` (opt-in
+     `ECONOMY=1`): publish erasure-coded → `swarm holders` (new CLI, shard placement) → kill 3
+     all-killable columns → caretaker RECONSTRUCTS → bounty draws the reserve down (paid>0). **First
+     field run (2323b09-20931) GAPed** — the setup publish timed out on cross-region commit latency
+     (#441-family; the scenario's guard correctly reported UNTESTED). Publish-retry fix shipped (#489).
+     **BLOCKER (now enforced): the full loop must pass LOCALLY end-to-end before the confirming run**
+     — see "Immediate next work" below. Exit gate unchanged: prepay→(skim)→bounty closes on a real
+     network; standing coin-free.
 3. **Phase 3 — Cheap heights (the M1 lever with the M0 dividend).** The near-term #299
    tiers (Merkle multiproof compression, batch verification — *not* the parked sealing
    re-architecture) + registration/entry batching, to shrink the per-height cost
@@ -108,6 +126,34 @@ real.
 6. **Phase 6 — External red team (#183) → V1 RC.** The engagement runs against the
    **economy-ON** configuration — the network people will actually run. Then R1: a
    fully green multi-region grade on the RC config, and V1.
+
+### Immediate next work (2026-08-19, newly-found — prioritized & sequenced)
+
+The 2026-08-19 sessions closed Phase 1 and Phase 2 Slices 1–3, but two cloud runs surfaced work that
+gates the Phase 2 exit gate. In order:
+
+1. **★ THE ONE NEXT GOAL — a LOCAL multi-daemon e2e of the full economy loop** (publish → `swarm
+   holders` → kill 3 columns → caretaker reconstructs from parity → bounty pays, `paid>0`). The pieces
+   pass individually (`e2e/economy_test.go`, `e2e/holders_test.go`, `sim/repair_bounty_test.go`); the
+   **integration** is unproven, which is why Slice 4's field run GAPed. **This is now a hard gate:**
+   `cloudtest.sh` preflight runs `RUN_LOCAL_PROOF` and refuses a billable run without a passing local
+   proof. Build this test → green → *then* the `ECONOMY=1` re-run closes the exit gate.
+2. **Harness hardening (from the run audits — `docs/thinking/2026-08-19-cloudtest-harness-improvement-plan.md`).**
+   *Done this session:* §0.1 measured; the sybil-fork false-positive fixed (#485, field-confirmed);
+   the partition moving-target GAP fixed; per-`RUN_ID` report (fixes stale-report audit finding); the
+   local-proof preflight gate; `swarm holders`. *Remaining, prioritized:* (a) **chaos-crash should GAP
+   (not FAIL) on a non-landed publish** — the two Run-B FAILs were this, less-robust than
+   durability-turnover; (b) **the registry is co-located with an anchor** (val-a = registry + anchor +
+   load → publish timeouts) — a dedicated non-anchor registry node (RSS showed an idle `registry` node
+   already exists — repoint REGREF); (c) **persistent VPC across runs** (cut ~7 min provision+teardown);
+   (d) parallelize the independent read-only scenarios (the serial chain is the biggest wall-clock lever
+   after the ~51 min maturing drill).
+3. **Fork (c) split-pay (evidence-gated fast-follow).** (a-domain-fresh) leaves reconstruction unfunded
+   in the non-fresh-domain fraction; the split-pay (reconstruction bounty to the paramedic + custody
+   rent to the holder) is the complete answer, gated on evidence it's needed (owned in the payee-fork
+   ruling). Not built until the local loop + a clean field grade show the gap bites.
+
+Then resume the ordered path at Phase 3 (cheap heights — which also unblocks the deferred deep >h64 run).
 
 **Standing parallel lane (starts now, blocks nothing):** the #183 procurement search
 (longest lead time, zero code dependency, currently ownerless); ongoing evidence
