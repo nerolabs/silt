@@ -415,6 +415,42 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
 
 ---
 
+## D-M1-PIVOT — the ordered roadmap; M1 (economy + operability) interleaves with the M0 tail
+
+- **Status:** ✅ DECIDED — 2026-08-19 (owner ratification, fresh-eyes-audit session).
+- **Basis:** the fresh-eyes audit
+  (`docs/thinking/2026-08-19-fresh-eyes-audit-and-the-m1-pivot.md`), which verified every
+  "shipped" claim against code and tests: the trust plane verifies end-to-end and the M0
+  tail is **small and enumerated** (two DoS gates, a confirming deep run, the #183
+  engagement itself), while M1 has **structural holes with zero recent effort** — the
+  S7 economy is built + test-proven but **default-off with no enable path** (`RepairBountyBase`
+  never set outside tests; `FundDurability`/`EnableDemandBank` have no non-test callers;
+  `credit.G` never computed on live data), bandwidth is unpriced, and the operational floor
+  (packaging, cold-start, reprovide cost) prices out the honest operator in practice.
+- **Direction (decided):**
+  1. **ROADMAP.md carries an explicit ORDERED path with phase gates** ("The ordered path").
+     "Tenets are the roadmap" was too loose — it let effort pool on one axis with no
+     rebalancing force. Tenets remain the destination; the ordered path is the track.
+  2. **The prior sequencing rule "M1 opens only after the M0 gate" is SUPERSEDED.** The
+     economy-enablement and height-cost work interleave with the M0 tail, because (a) field
+     runs stall short of depth (h64) partly on M1 costs — heavy per-reg proofs, round
+     durations, the 360 s publish bound — so cheaper heights are the path TO the M0 field
+     confirmation; and (b) **#183 must red-team the economy-ON config** — certifying the
+     economy-off HEAD would certify a network nobody will run.
+  3. **Storage economy first, Proof-of-Delivery second.** Economy-ON is enablement of
+     existing tested code (days). PoD has a crypto prerequisite — the demand receipt is
+     forgeable with zero object bytes (owned-residuals B3), inert today only because demand
+     has no consumer — so PoD gets a spec + research consult before code, never a switch-flip.
+  4. **The standing-firewall is unchanged by the pivot:** delivery/durability credits never
+     confer consensus standing (D-S7 coin-free standing; the γ→1/N fence, #182).
+  5. **The trust harness never softens** (unchanged from the prior M1 ruling): cost budgets
+     overlay the same runs; no security gate is relaxed for M1.
+- **Construction (open, named):** the PoD receipt hardening (bind receipts to served
+  bytes); wash-pricing parameters (D-DEMAND); relay compensation; the per-platform
+  service/installer + R4-compliant self-update.
+
+---
+
 ## What is NOT on this ledger
 
 The following are **build items or tuning knobs**, not owner-level decisions, and live in
