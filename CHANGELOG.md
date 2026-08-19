@@ -9,6 +9,22 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **Durability telemetry: the S7 repair economy made observable on `/api/status`
+  (Phase 2, Slice 2)** (2026-08-19) — The economy runs *half-open* on a live daemon
+  today: the serve auto-skim (1/8) already fills each object's durability escrow
+  (`node.go` records `RecordServeToObject`), but the funded reserve, lifetime skim/pay,
+  the funded horizon, and whether bounties actually **disburse** were invisible
+  (`credit.G`/`Horizon` were computed only for a local repair decision, never surfaced).
+  `/api/status` now carries a `durability` block: the node's credit **balance** (what
+  serving earned), a `bountyOn` flag (whether `RepairBountyBase > 0` so verified repairs
+  actually pay — false by default, the half-open state named honestly), and per cared
+  object its reserve / lifetime funded / paid / repair-count / projected funded-horizon
+  seconds. New node accessors `CreditBalance`, `CaredDurability`, `RepairBountyEnabled`
+  (loop-owned, read-only). Standing is never in this block — Invariant A holds (credits
+  fund durability, never consensus weight). This is the prerequisite for *watching* `g`
+  once the economy is switched on (Slice 1). Tests: `core/node/durability_telemetry_test.go`.
+  Deliberation + the full Phase 2 slicing (and the one open decision — is `RepairBountyBase`
+  a protocol constant or an operator flag?): [docs/thinking/2026-08-19-phase2-economy-on-deliberation.md](docs/thinking/2026-08-19-phase2-economy-on-deliberation.md).
 - **RSS/memory-envelope telemetry in `integration/cloudtest` (Phase 1.3, evidence
   hygiene)** (2026-08-19) — The field harness detected memory only as a binary crash
   signal (`scan_node_liveness` greps journals for OOM-kill / Go-fatal) plus an on-demand

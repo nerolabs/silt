@@ -704,6 +704,53 @@ func (n *Node) DurabilitySnapshot(root ports.Hash) ports.DurabilitySnapshot {
 	return n.ledger.DurabilitySnapshot(root)
 }
 
+// RootDurability pairs a cared object's root with its durability snapshot — the
+// per-object row of the durability telemetry (Phase 2). Pure observability.
+type RootDurability struct {
+	Root     ports.Hash
+	Snapshot ports.DurabilitySnapshot
+}
+
+// RepairBountyEnabled reports whether repair bounties actually PAY on this node —
+// i.e. the S7 repair economy is switched on (RepairBountyBase > 0). When false the
+// serve auto-skim still fills object escrows, but a verified repair disburses
+// nothing (repairclaim.go), so the loop is half-open. Observability.
+func (n *Node) RepairBountyEnabled() bool { return n.cfg.RepairBountyBase > 0 }
+
+// CreditBalance reports THIS node's own credit balance — what serving has earned
+// (RecordServe) that it could spend to FundDurability. 0 with no ledger. Standing
+// is untouched by this number (Invariant A: credits never confer standing).
+// Observability; reading moves nothing.
+func (n *Node) CreditBalance() int64 {
+	if n.ledger == nil {
+		return 0
+	}
+	return n.ledger.Balance(n.id)
+}
+
+// CaredDurability snapshots the durability accounting of every object this node
+// caretakes (n.care) — the reserve that funds each one's repairs, what it has
+// earned via the serve auto-skim, and what it has paid out. This is the
+// built-but-previously-invisible S7 economy made observable (Phase 2, "wire
+// credit.G/Horizon into live telemetry"): the raw snapshots the caller turns into
+// funded-horizon / g. Empty with no ledger. Loop-owned (reads n.care); call it on
+// the event loop. Observability; reading moves nothing.
+func (n *Node) CaredDurability() []RootDurability {
+	if n.ledger == nil {
+		return nil
+	}
+	seen := make(map[ports.Hash]bool, len(n.care))
+	out := make([]RootDurability, 0, len(n.care))
+	for _, ch := range n.care {
+		if seen[ch.Root] {
+			continue
+		}
+		seen[ch.Root] = true
+		out = append(out, RootDurability{Root: ch.Root, Snapshot: n.ledger.DurabilitySnapshot(ch.Root)})
+	}
+	return out
+}
+
 // SetLogger wires the observability port; nil disables it.
 func (n *Node) SetLogger(lg ports.Logger) { n.lg = lg }
 
