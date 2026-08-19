@@ -435,7 +435,9 @@ func cmdDaemon(args []string) error {
 	// #69: persist each hosted chunk's storage proof so a restart re-announces
 	// coded shards under the right column key (AnnounceHeld, below, reads the
 	// reloaded proofs) — otherwise a disk full of content is invisible until
-	// re-hosted. Loading now, before bootstrap/announce.
+	// re-hosted. The reload is scheduled LAZILY onto the event loop (below), so a
+	// large store does not stall startup before the relay/registry listeners bind
+	// (flixz F3: ~9 min of downtime scanning a 14 GB store synchronously).
 	if pf, perr := diskproofs.Open(filepath.Join(*storeDir, "proofs")); perr != nil {
 		return perr
 	} else {
@@ -452,12 +454,13 @@ func cmdDaemon(args []string) error {
 			fmt.Printf("proof-cache: %s hot-proof RAM budget (rest page from disk to serve/audit)\n", *proofCacheSize)
 		}
 		nd.SetProofStore(ps)
-		// NB: the O(store) proof-maturation scan (LoadProofs) is DEFERRED to after the
-		// relay + registry listeners bind (below) — those resolver-facing services need
-		// no proofs, so they answer immediately instead of being dark for the minutes the
-		// scan takes on a large store (a public node's registry/relay were connection-
-		// refused for ~9 min after every restart on a 14 GB store). It still runs before
-		// bootstrap/announce, which read the reloaded proofs for the #69 column keys.
+		// The O(store) proof-maturation scan runs ASYNC in bounded batches on the
+		// event loop (StartProofReload) — it never blocks startup, so the relay +
+		// registry listeners below bind immediately (a public node's registry/relay
+		// were connection-refused for ~9 min after every restart on a 14 GB store)
+		// and proofMeta matures lazily while the daemon serves. An announce that
+		// races the scan self-corrects on the next reprovide sweep (#69).
+		nd.StartProofReload()
 	}
 	// #93: persist the bond plot so a restart reloads (and re-verifies) it
 	// instead of re-plotting the deliberately-expensive dataset. Attach before
@@ -829,12 +832,6 @@ func cmdDaemon(args []string) error {
 		}
 		fmt.Printf("registry: %s\n", *registryURL)
 	}
-
-	// The proof-maturation scan (deferred from the proof-store setup above): now that the
-	// relay + registry are serving, reload the on-disk storage proofs so bootstrap/announce
-	// below can advertise coded shards under their #69 column keys. O(store) on a large
-	// node; logs progress so a long scan reads as "maturing", not "hung".
-	nd.LoadProofs()
 
 	if *denylistPath != "" {
 		f, err := os.Open(*denylistPath)

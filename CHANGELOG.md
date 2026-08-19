@@ -199,6 +199,21 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   maturation scan (they need no proofs), so a public node's resolver-facing services answer
   immediately instead of being connection-refused for the minutes the scan takes; the scan
   logs progress.
+- **Storage-node cold start: the O(store) proof scan goes fully async — startup never
+  waits on it** (2026-08-18) — On a real 14 GB / 381K-file store the startup proof reload
+  (`LoadProofs`) scanned the WHOLE store (~8m45s) to rebuild its resident `proofMeta`
+  index, blocking the daemon's startup sequence — growing with store size (a TB-scale
+  durability node → tens of minutes). This is an availability regression introduced by
+  the O(hot) proof paging (#464/#465): paging traded resident RAM for a startup scan.
+  The listener-bind reordering above removed the scan from in front of the relay/registry;
+  this completes the fix: `Node.StartProofReload` schedules the scan onto the event loop
+  in bounded batches (`clock.AfterFunc`, 128 proofs/task) instead of running it inline, so
+  the WHOLE daemon starts and serves immediately while `proofMeta` matures lazily in the
+  background; the full proofs already page on demand (#464), so serving never waits for
+  the scan, and an announce that races the scan self-corrects on the next reprovide sweep
+  (#69). Every `proofMeta` write stays on the single event loop (no new locking).
+  Surfaced by flixz's public-node load test. A persisted `proofMeta` sidecar (cold start
+  O(delta), not O(store)) is the tracked fast-follow.
 - **The MATURING daemon OOM — an unbounded inbound message queue (a resource-exhaustion
   DoS), fixed with read backpressure (`-inbound-cap`)** (2026-08-18) — Heap-profiled on
   the wire (`e03f80d-heapprof`): consensus nodes at ~1 GB RSS held ~500 MB of *live*
