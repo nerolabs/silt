@@ -99,13 +99,15 @@ type Config struct {
 	// before repair kicks in (repair when missing > slack).
 	RepairInterval ports.Duration
 	RepairSlack    int
-	// RepairBountyBase is the base durability bounty (credits) a caretaker's
-	// repair-claim proposes for one rebuilt shard, before BountyFor's rarest-
-	// shard multiplier (credit.BountyFor). It funds the NEW HOLDER of the
-	// rebuilt shard out of the object's own escrow (H7 §8b). 0 disables the
-	// bounty economy (sims/e2e that don't fund escrow) — repair still runs, it
-	// just emits no claim.
-	RepairBountyBase int64
+	// RepairEconomy is the S7 repair-bounty PARTICIPATION switch (PE ruling
+	// 2026-08-19, Q1): opt-in, DEFAULT OFF. When on, a verified repair pays the
+	// new holder of the rebuilt shard out of the object's own escrow, priced by
+	// credit.RepairBountyBase(k, shardBytes) × BountyFor's rarest-shard multiplier
+	// — a protocol price, never an operator-set amount (an operator-set base is a
+	// lottery, not a price, and undefines S7's equilibrium). Off: repair still
+	// runs and escrows still fill via the serve auto-skim, but no bounty disburses
+	// (the half-open state). The daemon flips this from -economy.
+	RepairEconomy bool
 	// RepairQuorumTau is τ, the retrievability-confirmation threshold a single
 	// caretaker-judge requires before releasing the bounty from its own ledger
 	// (credit is per-node-local accounting: each judge settles independently, so
@@ -712,10 +714,10 @@ type RootDurability struct {
 }
 
 // RepairBountyEnabled reports whether repair bounties actually PAY on this node —
-// i.e. the S7 repair economy is switched on (RepairBountyBase > 0). When false the
-// serve auto-skim still fills object escrows, but a verified repair disburses
-// nothing (repairclaim.go), so the loop is half-open. Observability.
-func (n *Node) RepairBountyEnabled() bool { return n.cfg.RepairBountyBase > 0 }
+// i.e. the S7 repair economy is switched on (cfg.RepairEconomy, the -economy flag).
+// When false the serve auto-skim still fills object escrows, but a verified repair
+// disburses nothing (repairclaim.go), so the loop is half-open. Observability.
+func (n *Node) RepairBountyEnabled() bool { return n.cfg.RepairEconomy }
 
 // CreditBalance reports THIS node's own credit balance — what serving has earned
 // (RecordServe) that it could spend to FundDurability. 0 with no ledger. Standing

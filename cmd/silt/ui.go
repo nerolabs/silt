@@ -315,7 +315,7 @@ func (s *uiServer) apiStatus(w http.ResponseWriter, _ *http.Request) {
 // observable (Phase 2): the node's credit balance (what serving earned) and, per
 // object it caretakes, the funded reserve, lifetime skim/pay, and the projected
 // funded horizon. `bountyOn` reports whether repair bounties actually PAY on this
-// node (RepairBountyBase > 0) — an economy whose escrows fill but never disburse
+// node (the -economy switch) — an economy whose escrows fill but never disburse
 // reads very differently from one that is live. Standing is never in this block
 // (Invariant A: credits fund durability, never consensus weight).
 type durabilityInfo struct {

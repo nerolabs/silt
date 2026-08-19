@@ -25,7 +25,7 @@ func TestRepairBountyPaysHolderWithoutMovingStanding(t *testing.T) {
 	const seed = 20260807
 	cfg := node.DefaultConfig()
 	cfg.Replication = 1 // parity is the only redundancy → churn bites and repair fires
-	cfg.RepairBountyBase = 1000
+	cfg.RepairEconomy = true
 	cl := NewCluster(seed, 48, simnet.DefaultConfig(), cfg)
 
 	// One shared ledger, generously granted so a funder can prepay the reserve.

@@ -50,6 +50,35 @@ const (
 	SkimDen = 8
 )
 
+// RepairBountyCoeffNum/Den is the dimensionless coefficient `c` in the repair-bounty
+// price `base = c × (k × shardBytes)` (PE ruling 2026-08-19, Q3): the base is
+// RELATIVE to the erasure geometry, never an absolute constant, because k and
+// shardBytes are Evolving-tier — an absolute base would silently mis-price a repair
+// the moment those re-tune. `k × shardBytes` is the coherent FLOOR: it covers the
+// dominant repair cost (fetch k survivor shards to reconstruct one), while ongoing
+// custody is funded by the serve economy, not this one-time bounty.
+//
+// ⚠ THE VALUE IS A STRAW-MAN PLACEHOLDER (c = 1), PENDING RESEARCH CERTIFICATION.
+// Solvency is a (c, skim) PAIR — `base × m̄ × R ≤ V × skim` — so c must be pinned
+// JOINTLY against SkimNum/SkimDen, not independently. Slice 1 does not merge until
+// research certifies this rational (silt-reviews/research/
+// repair-bounty-coefficient-CONSULT-2026-08-19.md).
+const (
+	RepairBountyCoeffNum = 1
+	RepairBountyCoeffDen = 1
+)
+
+// RepairBountyBase derives the per-object base bounty from the erasure geometry:
+// c × (k × shardBytes). This replaces the old absolute Config.RepairBountyBase so
+// re-tuning k/shardBytes (Evolving-tier) re-prices repair automatically (PE Q3).
+// 0 for a degenerate shard/stripe, so the caller's base<=0 guard still means "off".
+func RepairBountyBase(k int, shardBytes int64) int64 {
+	if k <= 0 || shardBytes <= 0 {
+		return 0
+	}
+	return int64(k) * shardBytes * RepairBountyCoeffNum / RepairBountyCoeffDen
+}
+
 // escrowFor returns the object's reserve, creating an empty one on first touch.
 func (l *Ledger) escrowFor(root ports.Hash) *objectEscrow {
 	e, ok := l.escrow[root]

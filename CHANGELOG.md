@@ -9,6 +9,25 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **`-economy`: the S7 repair-bounty payout enable (Phase 2, Slice 1 — STRUCTURE, held
+  for the research coefficient cert)** (2026-08-19) — The keystone that turns the
+  half-open economy fully on: an opt-in `-economy` flag (**default OFF**) under which a
+  verified repair PAYS the new holder of a rebuilt shard from the object's own escrow.
+  Per the PE ruling, the base is a **protocol price, never an operator amount** (an
+  operator-set base is a lottery, not a price — it undefines S7's equilibrium and opens a
+  censorship-via-underfunding lever), and it is **relative to the erasure geometry**:
+  `base = c × (k × shardBytes)` (`credit.RepairBountyBase`), so re-tuning the Evolving-tier
+  erasure params re-prices repair automatically instead of silently mis-pricing an
+  absolute constant. Config `RepairBountyBase int64` (absolute, test-only) is replaced by
+  `RepairEconomy bool` (the participation switch); the settle path threads the repaired
+  shard's byte size and short-circuits to a true no-op when off. Invariant A holds —
+  the bounty moves *balance* only, never standing — asserted by the failing-first merge
+  gate (`core/node`: release-pays-holder-never-standing, **economy-OFF-is-a-true-no-op**,
+  **default-OFF**). **⚠ The coefficient `c` is a straw-man placeholder (`1/1`) pending
+  research certification** (`silt-reviews/research/repair-bounty-coefficient-CONSULT-2026-08-19.md`):
+  solvency is a `(c, skim)` pair, so `c` must be pinned jointly against the 1/8 serve-skim.
+  This entry lands with the value certified. Deliberation + rulings:
+  [docs/thinking/2026-08-19-phase2-economy-on-deliberation.md](docs/thinking/2026-08-19-phase2-economy-on-deliberation.md).
 - **`POST /api/fund`: the durability endowment path (Phase 2, Slice 3)** (2026-08-19) —
   A publisher/operator can now prepay an object's repair reserve from the daemon's own
   earned credit balance, so content outlives churn before it is popular enough to

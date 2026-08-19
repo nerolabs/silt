@@ -118,12 +118,21 @@ func (n *Node) judgeRepairClaim(from ports.NodeID, msg ports.Message, claim repa
 			return
 		}
 
+		// shardBytes for the relative bounty price (base = c·k·shardBytes): every
+		// shard in a stripe is equal-length, so any survivor's length is the shard
+		// size (PE Q3 — the base scales with the erasure geometry, not a constant).
+		shardBytes := int64(0)
+		for _, s := range survivors {
+			shardBytes = int64(len(s))
+			break
+		}
+
 		// RETRIEVABILITY leg — challenge the named holder under an identity-bound
 		// seed. `reachable` counts survivors alive PLUS the freshly-placed target,
 		// feeding the rarest-shard bounty multiplier.
 		n.challengeHolderRetrievability(m, ch, claim, func(retrOK bool) {
 			decision := repairproof.Decide(correctnessOK, []bool{retrOK}, n.cfg.RepairQuorumTau)
-			n.settleRepairVerdict(from, claim, p, reachable+1, decision)
+			n.settleRepairVerdict(from, claim, p, shardBytes, reachable+1, decision)
 			n.reply(from, msg, ports.Message{Kind: ports.MsgRepairVote, OK: decision.Release})
 		})
 	})
@@ -133,7 +142,7 @@ func (n *Node) judgeRepairClaim(from ports.NodeID, msg ports.Message, claim repa
 // pays the holder from the object's escrow (capped by the rarest-shard multiplier),
 // a correctness lie slashes the claimant. Both are balance/standing motions on the
 // local ledger only — never consensus state (design §8b).
-func (n *Node) settleRepairVerdict(claimant ports.NodeID, claim repairproof.RepairClaim, p erasure.Params, reachable int, d repairproof.Decision) {
+func (n *Node) settleRepairVerdict(claimant ports.NodeID, claim repairproof.RepairClaim, p erasure.Params, shardBytes int64, reachable int, d repairproof.Decision) {
 	if n.ledger == nil {
 		return
 	}
@@ -143,8 +152,16 @@ func (n *Node) settleRepairVerdict(claimant ports.NodeID, claim repairproof.Repa
 		n.logf(ports.LogWarn, "false repair claim slashed", "root", claim.Root, "claimant", claimant, "shard", claim.ShardID)
 		return
 	}
+	// The OFF path is a true no-op (PE merge gate): economy off ⇒ no bounty
+	// disburses, even though escrows still fill via the serve auto-skim.
+	if !n.cfg.RepairEconomy {
+		return
+	}
 	if d.Release {
-		bounty := credit.BountyFor(n.cfg.RepairBountyBase, p.K, p.N, reachable)
+		// Protocol price, relative to the erasure geometry (PE Q1/Q3): a repair is
+		// worth c·k·shardBytes, scaled up by BountyFor's rarest-shard multiplier.
+		base := credit.RepairBountyBase(p.K, shardBytes)
+		bounty := credit.BountyFor(base, p.K, p.N, reachable)
 		if paid := n.ledger.PayBounty(claim.Root, claim.Holder, bounty); paid > 0 {
 			n.Stats.BountiesReleased++
 			// Narrate the funded horizon and the realised cost-per-repair (the g
@@ -237,7 +254,7 @@ func careKey(root ports.Hash) ports.Hash {
 // no-op unless the bounty economy is on — non-bounty sims keep their exact prior
 // traffic. Called from Care.
 func (n *Node) announceRepairQuorum(root ports.Hash) {
-	if n.cfg.RepairBountyBase <= 0 {
+	if !n.cfg.RepairEconomy {
 		return
 	}
 	key := careKey(root)
@@ -253,11 +270,11 @@ func (n *Node) announceRepairQuorum(root ports.Hash) {
 // paramedic keeps nothing and does not settle its own ledger from the claim (the
 // holder is the payee).
 //
-// No-op unless the bounty economy is enabled (RepairBountyBase > 0) and the shard
+// No-op unless the bounty economy is enabled (cfg.RepairEconomy) and the shard
 // carries PoR tags (porKey != nil ⇒ the holder can answer the retrievability leg);
 // a claim the holder could never satisfy is never worth emitting.
 func (n *Node) emitRepairClaim(root ports.Hash, r shardRef, holder ports.NodeID, hasTags bool) {
-	if n.cfg.RepairBountyBase <= 0 || !hasTags || holder == (ports.NodeID{}) {
+	if !n.cfg.RepairEconomy || !hasTags || holder == (ports.NodeID{}) {
 		return
 	}
 	claim := repairproof.RepairClaim{
