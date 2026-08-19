@@ -9,6 +9,34 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **`-economy`: the S7 repair-bounty payout enable — the keystone (Phase 2, Slice 1)**
+  (2026-08-19) — Turns the half-open economy fully on: an opt-in `-economy` flag
+  (**default OFF**) under which a verified repair PAYS for a rebuilt shard from the
+  object's own escrow. Per the PE ruling + research certification:
+  - **Protocol price, never an operator amount** (an operator-set base is a lottery, not
+    a price — it undefines S7's equilibrium and opens a censorship-via-underfunding lever),
+    and **relative to the erasure geometry**: `base = c × (k × shardBytes)`
+    (`credit.RepairBountyBase`), so re-tuning Evolving-tier erasure params re-prices repair
+    automatically. **`c = 1` is research-certified** (decode <0.1% of the fetch cost so no
+    upward pressure; `g`-neutral; smallest floor-honest value; self-funds hot data, cold
+    stays prepay-dependent per D-S7). Config `RepairBountyBase int64` (absolute, test-only)
+    → `RepairEconomy bool`; the settle path threads the repaired shard's byte size and is a
+    true no-op when off.
+  - **Payee: (a-domain-fresh)** — the paramedic that reconstructs a shard KEEPS it
+    (becoming the paid holder) iff its own failure domain is unused by the stripe, funding
+    the node that bore the reconstruction cost + the ~640 MiB–1 GiB RAM peak WITHOUT
+    reducing failure-domain diversity (`node.selfHoldEligible`/`hostShardLocally`); else it
+    places remote exactly as before. Chosen over paying the cheap holder (mis-attributes
+    the price) and over unconstrained self-hold (trades away S2 dispersal).
+  - **Invariant A holds** — the bounty moves *balance* only, never standing — asserted by
+    the failing-first merge gate (`core/node`: release-pays-holder-never-standing,
+    **economy-OFF-is-a-true-no-op**, **default-OFF**), plus the S2-safety gate
+    (`selfHoldEligible`: self-hold only when the economy is on and the domain is fresh).
+  - **Owned residual:** the reconstruction step is unfunded in the non-fresh-domain fraction
+    (fork (c) split-pay is the evidence-gated fast-follow); and the repair-path RAM at
+    production chunk size must be measured before the economy-ON field grade (build-immutable
+    #8 — the 64 KiB sim hides the spike ~1000×). Rulings + cert:
+    [docs/thinking/2026-08-19-phase2-economy-on-deliberation.md](docs/thinking/2026-08-19-phase2-economy-on-deliberation.md).
 - **`POST /api/fund`: the durability endowment path (Phase 2, Slice 3)** (2026-08-19) —
   A publisher/operator can now prepay an object's repair reserve from the daemon's own
   earned credit balance, so content outlives churn before it is popular enough to

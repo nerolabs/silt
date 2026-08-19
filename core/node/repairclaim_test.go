@@ -21,7 +21,7 @@ func mkJudge(t *testing.T, idSeed int64) (*Node, *credit.Ledger) {
 	net := simnet.New(sched, 1, simnet.DefaultConfig())
 	ident := identity.FromSeed(idSeed)
 	cfg := DefaultConfig()
-	cfg.RepairBountyBase = 1000
+	cfg.RepairEconomy = true
 	nd := New(ident.NodeID(), cfg, sched, net.Endpoint(ident.NodeID()), memstore.New())
 	ledger := credit.New(50_000, 1_000_000) // grant funders enough to prepay a reserve
 	nd.SetLedger(ledger)
@@ -52,7 +52,9 @@ func TestSettleRepairVerdict_ReleasePaysHolderNeverStanding(t *testing.T) {
 	root[0] = 0xC0
 	funder := identity.FromSeed(12).NodeID()
 	l.Register(funder)
-	if err := l.FundEscrow(root, funder, 20_000); err != nil {
+	// Fund well above the relative bounty (base = 6×4096 = 24576, ×3 multiplier =
+	// 73728) so the full amount pays and the reserve isn't the binding cap here.
+	if err := l.FundEscrow(root, funder, 500_000); err != nil {
 		t.Fatalf("fund escrow: %v", err)
 	}
 
@@ -65,10 +67,11 @@ func TestSettleRepairVerdict_ReleasePaysHolderNeverStanding(t *testing.T) {
 
 	// A healthy stripe (8 of 10 reachable → lost 2 → 3× multiplier).
 	p := erasure.Params{K: 6, N: 10}
+	const shardBytes = 4096
 	claim := repairproof.RepairClaim{Root: root, Stripe: 0, ShardPos: 7, Holder: holder}
-	nd.settleRepairVerdict(claimant, claim, p, 8, repairproof.Decision{Release: true})
+	nd.settleRepairVerdict(claimant, claim, p, shardBytes, 8, repairproof.Decision{Release: true})
 
-	wantBounty := credit.BountyFor(nd.cfg.RepairBountyBase, p.K, p.N, 8)
+	wantBounty := credit.BountyFor(credit.RepairBountyBase(p.K, shardBytes), p.K, p.N, 8)
 	if wantBounty <= 0 {
 		t.Fatal("test setup: bounty should be positive")
 	}
@@ -113,7 +116,7 @@ func TestSettleRepairVerdict_SlashDocksClaimantOnly(t *testing.T) {
 
 	p := erasure.Params{K: 6, N: 10}
 	claim := repairproof.RepairClaim{Root: root, Stripe: 0, ShardPos: 7, Holder: holder}
-	nd.settleRepairVerdict(claimant, claim, p, 8, repairproof.Decision{Slash: true})
+	nd.settleRepairVerdict(claimant, claim, p, 4096, 8, repairproof.Decision{Slash: true})
 
 	if got := l.Reputation(claimant); got >= claimantStanding {
 		t.Fatalf("claimant standing did not drop: %d >= %d", got, claimantStanding)
@@ -149,7 +152,7 @@ func TestSettleRepairVerdict_DenyMovesNothing(t *testing.T) {
 
 	p := erasure.Params{K: 6, N: 10}
 	claim := repairproof.RepairClaim{Root: root, Stripe: 0, ShardPos: 7, Holder: holder}
-	nd.settleRepairVerdict(claimant, claim, p, 8, repairproof.Decision{}) // deny
+	nd.settleRepairVerdict(claimant, claim, p, 4096, 8, repairproof.Decision{}) // deny
 
 	if got := l.Reputation(claimant); got != claimantStanding {
 		t.Fatalf("deny moved the claimant's standing: %d != %d", got, claimantStanding)
@@ -177,7 +180,7 @@ func TestEmitRepairClaim_GuardsAreNoOps(t *testing.T) {
 	// No holder recorded.
 	nd.emitRepairClaim(root, r, ports.NodeID{}, true)
 	// Bounty economy disabled.
-	nd.cfg.RepairBountyBase = 0
+	nd.cfg.RepairEconomy = false
 	nd.emitRepairClaim(root, r, holder, true)
 
 	if nd.Stats.RepairClaims != 0 {

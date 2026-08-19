@@ -99,13 +99,15 @@ type Config struct {
 	// before repair kicks in (repair when missing > slack).
 	RepairInterval ports.Duration
 	RepairSlack    int
-	// RepairBountyBase is the base durability bounty (credits) a caretaker's
-	// repair-claim proposes for one rebuilt shard, before BountyFor's rarest-
-	// shard multiplier (credit.BountyFor). It funds the NEW HOLDER of the
-	// rebuilt shard out of the object's own escrow (H7 §8b). 0 disables the
-	// bounty economy (sims/e2e that don't fund escrow) — repair still runs, it
-	// just emits no claim.
-	RepairBountyBase int64
+	// RepairEconomy is the S7 repair-bounty PARTICIPATION switch (PE ruling
+	// 2026-08-19, Q1): opt-in, DEFAULT OFF. When on, a verified repair pays the
+	// new holder of the rebuilt shard out of the object's own escrow, priced by
+	// credit.RepairBountyBase(k, shardBytes) × BountyFor's rarest-shard multiplier
+	// — a protocol price, never an operator-set amount (an operator-set base is a
+	// lottery, not a price, and undefines S7's equilibrium). Off: repair still
+	// runs and escrows still fill via the serve auto-skim, but no bounty disburses
+	// (the half-open state). The daemon flips this from -economy.
+	RepairEconomy bool
 	// RepairQuorumTau is τ, the retrievability-confirmation threshold a single
 	// caretaker-judge requires before releasing the bounty from its own ledger
 	// (credit is per-node-local accounting: each judge settles independently, so
@@ -712,10 +714,10 @@ type RootDurability struct {
 }
 
 // RepairBountyEnabled reports whether repair bounties actually PAY on this node —
-// i.e. the S7 repair economy is switched on (RepairBountyBase > 0). When false the
-// serve auto-skim still fills object escrows, but a verified repair disburses
-// nothing (repairclaim.go), so the loop is half-open. Observability.
-func (n *Node) RepairBountyEnabled() bool { return n.cfg.RepairBountyBase > 0 }
+// i.e. the S7 repair economy is switched on (cfg.RepairEconomy, the -economy flag).
+// When false the serve auto-skim still fills object escrows, but a verified repair
+// disburses nothing (repairclaim.go), so the loop is half-open. Observability.
+func (n *Node) RepairBountyEnabled() bool { return n.cfg.RepairEconomy }
 
 // CreditBalance reports THIS node's own credit balance — what serving has earned
 // (RecordServe) that it could spend to FundDurability. 0 with no ledger. Standing
@@ -863,6 +865,40 @@ func (n *Node) dropHosted(id ports.ChunkID) {
 	n.store.Delete(bg(), id)
 	delete(n.proofMeta, id)
 	n.proofs.Delete(id)
+}
+
+// hostShardLocally stores a shard on THIS node and records the provider + proof —
+// making the node a real, audit-answerable holder — mirroring the MsgStoreChunk
+// success path. It exists for the (a-domain-fresh) repair self-hold (PE ruling
+// 2026-08-19): when the economy is on and the paramedic's own failure domain is
+// unused by the stripe, it keeps the shard it rebuilt (funding the reconstruction
+// cost/RAM it bore) instead of pushing it to a stranger, WITHOUT reducing diversity.
+// Returns false (hosting nothing) if the bytes don't hash to id or the proof won't
+// verify — never host what a later audit can't defend (B3/B7).
+func (n *Node) hostShardLocally(id ports.ChunkID, data []byte, proof *ports.StorageProof) bool {
+	c := ports.Chunk{ID: id, Data: data}
+	if !c.Verify() {
+		return false
+	}
+	if proof != nil && !verifyStorageProof(*proof, id) {
+		return false
+	}
+	if err := n.store.Put(bg(), c); err != nil {
+		n.logf(ports.LogWarn, "self-host put failed", "chunk", id, "err", err)
+		return false
+	}
+	key := ports.Hash(id)
+	if proof != nil {
+		key = placementKey(proof.Root, id, proof.Column)
+	}
+	n.provs.Add(n.providerRecord(key)) // we are now a provider under the column key
+	if proof != nil {
+		n.proofMeta[id] = metaOf(*proof)
+		if err := n.proofs.Put(id, *proof); err != nil {
+			n.logf(ports.LogWarn, "self-host proof persist failed", "chunk", id, "err", err)
+		}
+	}
+	return true
 }
 
 func New(id ports.NodeID, cfg Config, clock ports.Clock, tr ports.Transport, store ports.ChunkStore) *Node {

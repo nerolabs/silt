@@ -51,7 +51,7 @@ func newRepairAdv(t *testing.T, seed int64) *repairAdv {
 	ledger := credit.New(50_000, 10_000_000) // grant funders enough to prepay a reserve
 	cfg := DefaultConfig()
 	cfg.Replication = 3
-	cfg.RepairBountyBase = 1000
+	cfg.RepairEconomy = true
 
 	var nodes []*Node
 	for i := 0; i < N; i++ {

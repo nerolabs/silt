@@ -16,7 +16,9 @@ import (
 	"github.com/nerolabs/silt/adapters/simclock"
 	"github.com/nerolabs/silt/adapters/simnet"
 	"github.com/nerolabs/silt/core/credit"
+	"github.com/nerolabs/silt/core/erasure"
 	"github.com/nerolabs/silt/core/link"
+	"github.com/nerolabs/silt/core/repairproof"
 	"github.com/nerolabs/silt/ports"
 )
 
@@ -30,16 +32,16 @@ func telemetryNode(t *testing.T) *Node {
 	return nd
 }
 
-// TestDurabilityTelemetrySurfacesTheHalfOpenEconomy: with RepairBountyBase=0
-// (default) the economy is half-open — escrows accept funding but bounties do not
-// pay. The telemetry must report that honestly (bountyOn=false) AND surface the
+// TestDurabilityTelemetrySurfacesTheHalfOpenEconomy: with the economy OFF
+// (default) it is half-open — escrows accept funding but bounties do not pay.
+// The telemetry must report that honestly (bountyOn=false) AND surface the
 // reserve a funded/skimmed object holds, so an operator can see credits accruing
 // with nowhere to go. RED before the accessors existed (no way to observe it).
 func TestDurabilityTelemetrySurfacesTheHalfOpenEconomy(t *testing.T) {
 	nd := telemetryNode(t)
 
 	if nd.RepairBountyEnabled() {
-		t.Fatal("default node must report the repair economy OFF (RepairBountyBase=0)")
+		t.Fatal("default node must report the repair economy OFF (RepairEconomy=false)")
 	}
 	if b := nd.CreditBalance(); b <= 0 {
 		t.Fatalf("node should carry its starter grant balance, got %d", b)
@@ -70,11 +72,58 @@ func TestDurabilityTelemetrySurfacesTheHalfOpenEconomy(t *testing.T) {
 		t.Fatalf("nothing paid yet (bounties off): paid=%d repairs=%d", cared[0].Snapshot.Paid, cared[0].Snapshot.Repairs)
 	}
 
-	// Enabling the base flips the observable state to ON — the keystone Slice 1
+	// Enabling the economy flips the observable state to ON — the keystone Slice 1
 	// will set this from a flag; the telemetry must reflect it.
-	nd.cfg.RepairBountyBase = 1_000
+	nd.cfg.RepairEconomy = true
 	if !nd.RepairBountyEnabled() {
-		t.Fatal("RepairBountyBase>0 must report the economy ON")
+		t.Fatal("RepairEconomy=true must report the economy ON")
+	}
+}
+
+// TestRepairEconomyDefaultsOff is the PE merge-gate guard (2026-08-19): the
+// participation switch must default OFF, so enabling the economy is an operator's
+// deliberate opt-in (R2/R4 — never silently start an economy under existing nodes).
+func TestRepairEconomyDefaultsOff(t *testing.T) {
+	if DefaultConfig().RepairEconomy {
+		t.Fatal("RepairEconomy must default OFF — the S7 economy is opt-in")
+	}
+}
+
+// TestRepairEconomyOffIsATrueNoOp is the other half of the merge gate: with the
+// economy OFF, a verified-release verdict must pay ZERO — escrows still fill via
+// the serve skim, but nothing disburses. Regression-locks repairclaim.go's
+// !RepairEconomy short-circuit so a future edit can't quietly start paying.
+func TestRepairEconomyOffIsATrueNoOp(t *testing.T) {
+	nd, l := mkJudge(t, 5)
+	nd.cfg.RepairEconomy = false // the default; explicit for the guard
+
+	holder := identity.FromSeed(50).NodeID()
+	claimant := identity.FromSeed(51).NodeID()
+	var root ports.Hash
+	root[0] = 0xF0
+	funder := identity.FromSeed(52).NodeID()
+	l.Register(funder)
+	if err := l.FundEscrow(root, funder, 20_000); err != nil {
+		t.Fatalf("fund escrow: %v", err)
+	}
+	holderStanding := bondedStanding(l, holder)
+	holderBalance := l.Balance(holder)
+
+	p := erasure.Params{K: 6, N: 10}
+	claim := repairproof.RepairClaim{Root: root, Stripe: 0, ShardPos: 7, Holder: holder}
+	nd.settleRepairVerdict(claimant, claim, p, 4096, 8, repairproof.Decision{Release: true})
+
+	if got := l.Balance(holder); got != holderBalance {
+		t.Fatalf("economy OFF paid a bounty: holder balance %d != %d", got, holderBalance)
+	}
+	if got := l.EscrowPaid(root); got != 0 {
+		t.Fatalf("economy OFF drew the escrow: EscrowPaid %d", got)
+	}
+	if got := l.Reputation(holder); got != holderStanding {
+		t.Fatalf("economy OFF moved standing: %d != %d", got, holderStanding)
+	}
+	if nd.Stats.BountiesReleased != 0 {
+		t.Fatalf("economy OFF recorded a release: %d", nd.Stats.BountiesReleased)
 	}
 }
 

@@ -50,6 +50,38 @@ const (
 	SkimDen = 8
 )
 
+// RepairBountyCoeffNum/Den is the dimensionless coefficient `c` in the repair-bounty
+// price `base = c × (k × shardBytes)` (PE ruling 2026-08-19, Q3): the base is
+// RELATIVE to the erasure geometry, never an absolute constant, because k and
+// shardBytes are Evolving-tier — an absolute base would silently mis-price a repair
+// the moment those re-tune. `k × shardBytes` is the coherent FLOOR: it covers the
+// dominant repair cost (fetch k survivor shards to reconstruct one), while ongoing
+// custody is funded by the serve economy, not this one-time bounty.
+//
+// c = 1 is RESEARCH-CERTIFIED (2026-08-19): decode is <0.1% of the fetch cost so
+// nothing pushes it above 1; it is g-neutral (a constant scale factor cancels in
+// the cost-trend); and it is the smallest floor-honest value, so it least shortens
+// the funded horizon. Solvency is a (c, skim) PAIR — `base × m̄ × R ≤ V × skim` ⇒
+// self-funding above ~24 retrievals/repair at c=1, m̄≈3 — which holds for HOT data;
+// cold data stays prepay-dependent (D-S7 finite horizon), the mechanism's honest
+// scope. Evolving-tier: re-tune only on field g. Cert:
+// silt-reviews/research/research-outcome/repair-bounty-coefficient-c-RESEARCH-CERTIFICATION-2026-08-19.md.
+const (
+	RepairBountyCoeffNum = 1
+	RepairBountyCoeffDen = 1
+)
+
+// RepairBountyBase derives the per-object base bounty from the erasure geometry:
+// c × (k × shardBytes). This replaces the old absolute Config.RepairBountyBase so
+// re-tuning k/shardBytes (Evolving-tier) re-prices repair automatically (PE Q3).
+// 0 for a degenerate shard/stripe, so the caller's base<=0 guard still means "off".
+func RepairBountyBase(k int, shardBytes int64) int64 {
+	if k <= 0 || shardBytes <= 0 {
+		return 0
+	}
+	return int64(k) * shardBytes * RepairBountyCoeffNum / RepairBountyCoeffDen
+}
+
 // escrowFor returns the object's reserve, creating an empty one on first touch.
 func (l *Ledger) escrowFor(root ports.Hash) *objectEscrow {
 	e, ok := l.escrow[root]
