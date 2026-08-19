@@ -668,6 +668,67 @@ func (n *Node) NetGet(reg ports.Registry, h link.Handle, w io.Writer, done func(
 	})
 }
 
+// ColumnHolders is object root's shard placement made observable: for each erasure
+// column it resolves the nodes that currently claim to hold that column's shards
+// (their DHT provider records under colKey). This is the read an operator uses to
+// see WHERE an object lives, and the one a test harness uses to force a controlled
+// reconstruction — killing every holder of C > RepairSlack columns drops C shards
+// from every stripe, so the caretaker must rebuild (the deterministic trigger the
+// cloud economy grade needs). An uncoded object (K==0) maps column -1 to its
+// per-chunk holders. Loop-driven (resolveProviders walks the DHT); call via the
+// ephemeral run() harness. Read-only.
+func (n *Node) ColumnHolders(reg ports.Registry, h link.Handle, done func(map[int][]ports.NodeID, error)) {
+	entry, ok, err := n.lookupEntry(reg, h.Root)
+	if err != nil || !ok {
+		done(nil, fmt.Errorf("holders %s: %w", h.Root, ports.ErrNoSuchEntry))
+		return
+	}
+	n.fetchAll(entry.ManifestChunks, func(missing []ports.ChunkID) {
+		if len(missing) > 0 {
+			done(nil, fmt.Errorf("holders: %d of %d manifest chunks unreachable", len(missing), len(entry.ManifestChunks)))
+			return
+		}
+		m, err := pipeline.LoadFull(bg(), n.store, entry, h)
+		if err != nil {
+			done(nil, fmt.Errorf("holders: %w", err))
+			return
+		}
+		result := make(map[int][]ports.NodeID)
+		root := m.Root()
+		if m.K == 0 {
+			// Uncoded: providers live under each chunk's own id; report them under
+			// column -1 (there are no erasure columns to reconstruct from).
+			ids := append(append([]ports.ChunkID{}, entry.ManifestChunks...), m.ChunkIDs()...)
+			var next func(i int)
+			next = func(i int) {
+				if i == len(ids) {
+					done(result, nil)
+					return
+				}
+				n.resolveProviders(ids[i], func(provs []ports.NodeID) {
+					result[-1] = append(result[-1], provs...)
+					next(i + 1)
+				})
+			}
+			next(0)
+			return
+		}
+		// Erasure-coded: one provider walk per column (0..N-1).
+		var next func(col int)
+		next = func(col int) {
+			if col == m.N {
+				done(result, nil)
+				return
+			}
+			n.resolveProviders(colKey(root, col), func(provs []ports.NodeID) {
+				result[col] = provs
+				next(col + 1)
+			})
+		}
+		next(0)
+	})
+}
+
 // parityForMissing returns the parity shard IDs of every stripe that
 // lost data chunks — fetched only on demand, since a healthy stripe
 // never needs its parity.

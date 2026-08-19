@@ -9,6 +9,15 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **`silt swarm holders <link>`: object shard placement made observable** (2026-08-19) — Prints, per
+  erasure column, the NodeIDs that claim to hold that column's shards (their DHT provider records
+  under `colKey`). An operator uses it to see *where* an object lives; a test harness uses it to force
+  a *controlled* reconstruction — killing every holder of more than `RepairSlack` columns drops that
+  many shards from every stripe, so the caretaker must rebuild from parity (the deterministic trigger
+  the cloud economy grade needs, which the sim had via `KillColumns` but the cloud lacked). New
+  read-only node accessor `ColumnHolders` (resolves each column's providers via the same DHT walk
+  `NetGet` uses; plants and stores nothing); uncoded objects report their per-chunk holders under
+  `uncoded`. Tested over real TCP (`e2e/holders_test.go` — 16 columns, 48 holder entries resolved).
 - **§0.1 repair-path memory footprint measured locally (`core/erasure/reconstruct_mem_test.go`)**
   (2026-08-19) — The research cert's §0.1 gate ("measure repair RAM at production chunk size before
   the economy-ON grade") is a single-node property, so it is measured locally for $0 rather than with

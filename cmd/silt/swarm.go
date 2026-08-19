@@ -6,6 +6,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"sort"
+	"strings"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/nerolabs/silt/adapters/discovery"
@@ -130,9 +132,67 @@ func cmdSwarm(args []string) error {
 		return swarmAdd(args[1:])
 	case "get":
 		return swarmGet(args[1:])
+	case "holders":
+		return swarmHolders(args[1:])
 	default:
-		return fmt.Errorf("unknown swarm command %q (add, get)", args[0])
+		return fmt.Errorf("unknown swarm command %q (add, get, holders)", args[0])
 	}
+}
+
+// swarmHolders prints object root's shard placement: for each erasure column, the
+// NodeIDs that claim to hold it (their DHT provider records). An operator uses it
+// to see where an object lives; a harness uses it to force a controlled
+// reconstruction (kill every holder of > RepairSlack columns → every stripe must
+// rebuild). Read-only — it plants nothing and stores nothing.
+func swarmHolders(args []string) error {
+	fs := flag.NewFlagSet("swarm holders", flag.ExitOnError)
+	peers := fs.String("peers", "", "bootstrap peers: ID@HOST:PORT[,...] (required)")
+	regURL := fs.String("registry", "", "registry URL (required)")
+	pos := parseFlexible(fs, args)
+	if len(pos) != 1 || *peers == "" || *regURL == "" {
+		return fmt.Errorf("usage: silt swarm holders <link> -peers ID@ADDR -registry URL")
+	}
+	h, err := link.Parse(pos[0])
+	if err != nil {
+		return err
+	}
+	e, run, err := joinSwarm(*peers, 0)
+	if err != nil {
+		return err
+	}
+	defer e.close()
+	reg, err := openRegistry(*regURL)
+	if err != nil {
+		return err
+	}
+	var holders map[int][]ports.NodeID
+	var hErr error
+	if rerr := run(func(done func()) {
+		e.nd.ColumnHolders(reg, h, func(m map[int][]ports.NodeID, err error) { holders, hErr = m, err; done() })
+	}); rerr != nil {
+		return rerr
+	}
+	if hErr != nil {
+		return hErr
+	}
+	cols := make([]int, 0, len(holders))
+	for c := range holders {
+		cols = append(cols, c)
+	}
+	sort.Ints(cols)
+	for _, c := range cols {
+		label := fmt.Sprintf("column %d", c)
+		if c < 0 {
+			label = "uncoded"
+		}
+		ids := holders[c]
+		strs := make([]string, len(ids))
+		for i, id := range ids {
+			strs[i] = id.String()
+		}
+		fmt.Printf("%s: %s\n", label, strings.Join(strs, ","))
+	}
+	return nil
 }
 
 func swarmAdd(args []string) error {
