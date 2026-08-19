@@ -403,6 +403,50 @@ discount, C2 no quiet capture, the demand→standing firewall) — those are hel
   stall-griefing) — can a cohort acquire ≥⅓ bonded weight for materially less than ⅓ of honest,
   sustained, address-diverse provision, or evade the C2 concentration alarm while doing so?
 
+### E5. Consensus-frame FIFO starvation behind the inbound cap under a within-share bulk flood (v2b — sequenced, not shelved)
+- **Class:** scope (deliberately sequenced behind Phase 1.2 + a drain-rate measurement; PE-ruled
+  2026-08-19). Two rulings govern:
+  `silt-reviews/principle-engineer/RULING-v2b-consensus-reserve-approach-2026-08-19.md` and
+  `RULING-v2b-drill-RED-drain-not-gate-2026-08-19.md` (full paths under
+  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/`).
+- **What it is:** an authenticated sybil cohort — every member inside its v2a per-peer share —
+  fills the global `-inbound-cap` with bulk frames; because the gate releases only when the
+  single loop *finishes* a message, gate-full means ≈ cap bytes of bulk already sit in the FIFO
+  loop queue, and a validator's consensus frame — however admitted — processes behind
+  ≈ `cap/drain` of it. Demonstrated by the committed timed drill (branch
+  `drill/v2b-gate-starvation` @ 84b2788, `adapters/tcpnet/reserve_drill_test.go`, parked RED):
+  uniform ~4.1 s vs the 2 s saturation bound at a scale-model cap, measured latency matching the
+  analytic `cap/drain` within 1%. Design + cost model:
+  [`../thinking/2026-08-19-v2b-gate-starvation-drill-design.md`](../thinking/2026-08-19-v2b-gate-starvation-drill-design.md).
+- **Why not closed now (the drain ruling):** the drill proved an admission-side reserve is
+  **insufficient** (admission ordering cannot fix a processing-ordering problem), and the severe
+  regime — `cap/drain ≈ 128 s` at the shipped 256M — **requires drain pinned at ~2 MiB/s, which
+  is the bond-reg/VDF CPU-flood regime: Phase 1.2's domain.** The starvation and the CPU gate
+  are two faces of one resource (loop drain time); bounding per-message CPU raises the
+  denominator and most of the severe case is expected to evaporate with zero event-loop change.
+  Building a hottest-path (B2) two-class drain against that unmeasured, about-to-change
+  denominator would be measuring on sand.
+- **How it's bounded today:** the cap converts the flood to latency, never OOM (alive > crashed);
+  v2a confines any single peer to 1/4 of the budget; the `-inbound-cap` sizing note (flag help)
+  makes the OOM-headroom vs `cap/drain`-latency trade legible so an operator can size for the
+  expected-worst drain; and consensus timeouts/rounds retry — delay, not permanent starvation.
+- **What would close it (the reach-recipe + go/no-go, in order):**
+  1. Phase 1.2 (`MsgSubmitBondReg` CPU gate) lands — raises the flood-drain floor.
+  2. Rider on 1.2 validation: **measure the real saturation drain rate at 256M** under the
+     existing flood/soak (a laptop measurement, not a billable run — build-immutable #6), and
+     **re-run the committed drill re-parameterized to it**. That re-run is the go/no-go.
+  3. Only if still RED: build the **one two-class mechanism** (identity/kind → class →
+     **priority drain**; the admission reserve and the drain priority are two faces of the same
+     class label — supersedes the admission-only structure). Merge oracle = this drill GREEN
+     **plus** a second, non-negotiable oracle: bulk/repair does NOT starve indefinitely under
+     sustained consensus load (BOUNDED priority — absolute priority would break I4's
+     no-permanent-starvation for the storage plane). Not research-gated (drain order changes
+     latency, not consensus outcome — build-immutable #3 untouched), but the full
+     sim/model-check must stay green.
+- **What the red team should attack (#183):** the reach — can a real cohort pin a production
+  node's drain into the slow regime at the shipped cap *after* the Phase 1.2 CPU gate? The
+  trigger recipe is above; this residual is pre-designed and can never be a surprise.
+
 ---
 
 ## F. Primitive-availability gaps (the "would adopt if it existed" set)

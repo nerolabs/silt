@@ -8,6 +8,24 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Changed
+- **`-inbound-cap` sizing made two-axis legible; the v2b consensus-priority lane
+  sequenced behind the bond-reg CPU gate as owned residual E5** (2026-08-19) — A
+  PE-mandated timed drill (parked RED on `drill/v2b-gate-starvation`) showed that under
+  a within-share sybil-cohort bulk flood, consensus-frame starvation lives in the single
+  loop's FIFO **drain** (latency ≈ cap/drain, measured within 1% of the analytic
+  prediction), not in gate admission — so the planned admission-side reserve alone is
+  insufficient, and the severe regime is exactly the bond-reg/VDF slow-drain that the
+  Phase 1.2 CPU gate bounds. Per the PE drain ruling the lane is sequenced, not shelved:
+  1.2 first, then a measured-drain re-run of the drill as the go/no-go for a single
+  two-class priority-drain mechanism (with a bounded-priority second oracle so bulk/repair
+  never starves — I4's storage-plane face). Recorded as owned residual **E5**
+  (`docs/design/owned-residuals.md`) with the reach-recipe; the `-inbound-cap` flag help
+  now states the two-axis trade (OOM headroom vs worst-case ~cap/drain latency — a
+  saturated 256M draining at 2 MiB/s is ~128s) so operators size for their expected-worst
+  drain. Drill design + verdict:
+  [docs/thinking/2026-08-19-v2b-gate-starvation-drill-design.md](docs/thinking/2026-08-19-v2b-gate-starvation-drill-design.md).
+
 ### Fixed
 - **The concurrent-publish 502: a Care/NetGet event-loop self-deadlock — NOT the
   inbound cap** (2026-08-19) — Under concurrent UI ingest (the first production

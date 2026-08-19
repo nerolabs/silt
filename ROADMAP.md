@@ -53,14 +53,23 @@ enumerated, and both the deep field confirmation and a valid #183 depend on M1 b
 real.
 
 1. **Phase 1 — Close the M0 tail (small, enumerated).**
-   1. Inbound-cap hardening: per-peer fairness + a consensus-priority lane (the PE
-      ruling on the #465 v1 global budget). *(Correction 2026-08-19: the field
-      finding that a concurrent local publish flood 502s was attributed to a
-      Care/NetGet event-loop self-deadlock — cap-independent — and fixed separately;
-      see the CHANGELOG and
-      [docs/thinking/2026-08-19-publish-502-attribution-care-self-deadlock.md](docs/thinking/2026-08-19-publish-502-attribution-care-self-deadlock.md).
-      This lane item stands on the PE ruling's adversarial sybil-cohort case alone.)*
-   2. The `MsgSubmitBondReg` CPU gate (pre-#183 DoS floor).
+   1. Inbound-cap hardening — **resolved-for-now 2026-08-19, sequenced behind 1.2 (two
+      PE rulings).** Per-peer fairness: shipped (v2a). The consensus-priority lane: a
+      timed drill proved the starvation lives in the loop's FIFO **drain**, not gate
+      admission (an admission reserve alone is insufficient), and its severe regime is
+      the bond-reg/VDF slow-drain — Phase 1.2's domain. Filed as owned residual **E5**
+      with the reach-recipe and the go/no-go (measure the real drain rate as a rider on
+      1.2, re-run the parked drill `drill/v2b-gate-starvation`; only a still-RED re-run
+      builds the two-class drain). The `-inbound-cap` two-axis sizing note shipped in
+      the flag help. *(Also corrected: the field publish-flood 502 was a Care/NetGet
+      event-loop self-deadlock — cap-independent, fixed separately; see
+      [docs/thinking/2026-08-19-publish-502-attribution-care-self-deadlock.md](docs/thinking/2026-08-19-publish-502-attribution-care-self-deadlock.md)
+      and the drill record
+      [docs/thinking/2026-08-19-v2b-gate-starvation-drill-design.md](docs/thinking/2026-08-19-v2b-gate-starvation-drill-design.md).)*
+   2. The `MsgSubmitBondReg` CPU gate (pre-#183 DoS floor) — **now also carries the E5
+      rider:** measure the real saturation drain rate at the shipped 256M cap during
+      this item's validation, and re-run the parked v2b drill re-parameterized to it
+      (the go/no-go for the two-class drain).
    3. **Evidence hygiene:** commit the field-run artifacts; add RSS/heap telemetry to
       `integration/cloudtest` so memory claims carry a citable, in-repo artifact
       (build-immutable #7 applied to our own headlines).
