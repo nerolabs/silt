@@ -39,6 +39,7 @@ import (
 
 	"github.com/nerolabs/silt/adapters/eventloop"
 	"github.com/nerolabs/silt/adapters/linkbook"
+	"github.com/nerolabs/silt/core/credit"
 	"github.com/nerolabs/silt/core/crypto"
 	"github.com/nerolabs/silt/core/link"
 	"github.com/nerolabs/silt/core/node"
@@ -282,10 +283,12 @@ func (s *uiServer) apiStatus(w http.ResponseWriter, _ *http.Request) {
 		Validator    bool             `json:"validator"`
 		Reachability string           `json:"reachability"`
 		Chain        *chainInfo       `json:"chain,omitempty"`
+		Durability   *durabilityInfo  `json:"durability,omitempty"`
 	}
 	out.ID = s.nd.ID().String()
 	out.Peer = s.selfPeer
-	out.UptimeSec = int64(time.Since(s.started).Seconds())
+	uptime := time.Since(s.started)
+	out.UptimeSec = int64(uptime.Seconds())
 	out.Validator = s.validator
 	out.Peers = s.peerCount()
 	s.onLoop(func() {
@@ -301,8 +304,59 @@ func (s *uiServer) apiStatus(w http.ResponseWriter, _ *http.Request) {
 		if ch := s.nd.Chain(); ch != nil {
 			out.Chain = &chainInfo{Height: ch.Len(), Entries: len(ch.AllEntries())}
 		}
+		out.Durability = s.durabilitySnapshot(uptime)
 	})
 	writeJSON(w, out)
+}
+
+// durabilityInfo makes the built-but-previously-invisible S7 repair economy
+// observable (Phase 2): the node's credit balance (what serving earned) and, per
+// object it caretakes, the funded reserve, lifetime skim/pay, and the projected
+// funded horizon. `bountyOn` reports whether repair bounties actually PAY on this
+// node (RepairBountyBase > 0) — an economy whose escrows fill but never disburse
+// reads very differently from one that is live. Standing is never in this block
+// (Invariant A: credits fund durability, never consensus weight).
+type durabilityInfo struct {
+	BountyOn bool            `json:"bountyOn"`
+	Balance  int64           `json:"balance"`
+	Objects  []objDurability `json:"objects"`
+}
+
+type objDurability struct {
+	Root       string `json:"root"`
+	Reserve    int64  `json:"reserve"`
+	Funded     int64  `json:"funded"`
+	Paid       int64  `json:"paid"`
+	Repairs    int64  `json:"repairs"`
+	HorizonSec int64  `json:"horizonSec"` // -1 = not yet measurable (no burn observed); >=0 = projected
+}
+
+// durabilitySnapshot builds the durability block from the node's cared objects.
+// Loop-only (CaredDurability reads n.care); called inside apiStatus's onLoop.
+// The funded horizon is projected over `uptime` — the node's observation window
+// for the burn rate — matching credit.Horizon's semantics.
+func (s *uiServer) durabilitySnapshot(uptime time.Duration) *durabilityInfo {
+	cared := s.nd.CaredDurability()
+	di := &durabilityInfo{
+		BountyOn: s.nd.RepairBountyEnabled(),
+		Balance:  s.nd.CreditBalance(),
+		Objects:  make([]objDurability, 0, len(cared)),
+	}
+	for _, rd := range cared {
+		hs := int64(-1)
+		if h, finite := credit.Horizon(rd.Snapshot, ports.Duration(uptime)); finite {
+			hs = int64(h / ports.Duration(time.Second))
+		}
+		di.Objects = append(di.Objects, objDurability{
+			Root:       rd.Root.String(),
+			Reserve:    rd.Snapshot.Balance,
+			Funded:     rd.Snapshot.Funded,
+			Paid:       rd.Snapshot.Paid,
+			Repairs:    rd.Snapshot.Repairs,
+			HorizonSec: hs,
+		})
+	}
+	return di
 }
 
 const (
