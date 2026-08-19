@@ -63,6 +63,7 @@ func cmdDaemon(args []string) error {
 	serveRegistry := fs.String("serve-registry", "", "host the registry at this address (persisted in the store dir)")
 	idSeed := fs.Int64("id-seed", 0, "derive the identity from a seed (default: persistent keyfile) — for scripted demos")
 	care := fs.String("care", "", "comma-separated care links (siltcare:...) to repair — no decryption possible or needed")
+	repairInterval := fs.Duration("repair-interval", 60*time.Second, "how often a caretaker sweeps each -care'd root for lost shards (probe → reconstruct past the slack). A liveness cadence, not a security parameter — the repair-bounty legs stay structural at any setting. Lower it on a small/local swarm so repair (and the e2e proof) fires in seconds")
 	capacity := fs.String("capacity", "5G", "storage pledge, e.g. 2G, 500M (matches the client's default so the node contributes measurable, countable storage; \"\" = unlimited but doesn't count toward network storage)")
 	freeload := fs.Bool("freeload", false, "role separation (#47): serve the registry/relay/routing role but REFUSE to store or serve content — for public-infrastructure operators who run a rendezvous registry without being conscripted into hosting arbitrary content. The node still carries DHT routing; it just holds and serves no chunks")
 	registryOnly := fs.Bool("registry-only", false, "the LEANEST public-registry role (#47): serve a file-backed registry over HTTPS and construct NO storage node at all — no DHT, chunk store, chain, or caretaker. Unlike -freeload (a full routing node that refuses to host content), this builds nothing but the registry server, so a public-infrastructure operator runs a rendezvous registry at minimal cost. Needs -serve-registry <addr>")
@@ -283,6 +284,7 @@ func cmdDaemon(args []string) error {
 	cfg := node.DefaultConfig()
 	cfg.RequestTimeout = ports.Duration(2 * time.Second) // patient vs the 500ms default (real WAN)
 	cfg.BondAuditInterval = ports.Duration(*bondAudit)
+	cfg.RepairInterval = ports.Duration(*repairInterval)
 	cfg.BootstrapRetryInterval = ports.Duration(*bootstrapRetry)
 	cfg.RequestTimeout = ports.Duration(*requestTimeout)
 	cfg.RequestRetries = *requestRetries
@@ -803,6 +805,13 @@ func cmdDaemon(args []string) error {
 		fmt.Printf("⚠ trusted-deployment mode (quorum %d, min-rep %d): this validator self-commits the registry — safe only for a one-box or fully-trusted swarm, NOT an open network\n", *quorum, *minRep)
 	}
 
+	// -care with no registry would silently never caretake (the care loop below
+	// requires reg != nil to resolve the entry): a caretaker that looks healthy
+	// and repairs nothing is the #235 silent-skip shape, so refuse to start
+	// instead — the operator meant to caretake and the config can't.
+	if *care != "" && *serveRegistry == "" && *registryURL == "" {
+		return fmt.Errorf("-care needs a registry to resolve the cared entry: add -registry ID@https://host:port (or -serve-registry)")
+	}
 	var reg ports.Registry
 	switch {
 	case *serveRegistry != "" && *validator:
