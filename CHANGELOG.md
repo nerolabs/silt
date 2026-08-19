@@ -8,6 +8,34 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Added
+- **The `MsgSubmitBondReg` CPU gate — per-sender submit budget + sender binding
+  (Phase 1.2, the pre-#183 DoS floor)** (2026-08-19) — The bond-renewal submit path
+  had no rate limit: every well-formed, self-signed registration forces up to one
+  `VerifySpaceTime` on the node's single loop (measured ~2–3 ms valid / ~0.5 ms
+  garbage-until-reject at the field config on an M4 core — `core/bond/`
+  `verifycost_bench_test.go`, the new sizing benchmark), so one authenticated
+  identity holding a pipe could keep the loop at a permanent duty cycle for free —
+  the #424 bond-challenge CPU-DoS, one message kind over. Two cheap gates now run
+  first: **(a)** `allowBondSubmit` — submits examined per sender per
+  `ChainSyncInterval` window (burst 8; honest cadence is one submit per sweep while
+  `BondRenewalDue`, so the budget clears honest traffic with wide headroom), charged
+  BEFORE decode so a refusal costs a map lookup and a flooder gains no amplification;
+  **(b)** sender binding — a submit is always the sender's OWN renewal
+  (`SubmitBondRenewal` self-submits), so a reg whose `ValidatorID` differs from the
+  authenticated transport sender is refused before any signature/proof work, closing
+  the third-party replay hole (queue dedup sat AFTER the expensive verify, so
+  replaying one captured valid ~1.5 MB reg re-paid full verification per message).
+  Refusals are logged, never silent (B5); a refused honest submit heals by the
+  existing resubmit-next-sweep retry, the same recovery as a WAN-skew refusal.
+  Failing-first regressions: `core/node/bondsubmit_gate_test.go` (flood bounded to
+  the budget, second sender not starved, budget refills on window turnover,
+  third-party relay refused pre-crypto). Deliberation:
+  [docs/thinking/2026-08-19-bondreg-submit-cpu-gate.md](docs/thinking/2026-08-19-bondreg-submit-cpu-gate.md)
+  — which also records the verify-cost measurement correcting E5's drain folklore
+  (the ~100 ms figure was the *prover*; the *verify* is ms-scale by design), making
+  the E5 drain-rate measurement rider the next step.
+
 ### Changed
 - **`-inbound-cap` sizing made two-axis legible; the v2b consensus-priority lane
   sequenced behind the bond-reg CPU gate as owned residual E5** (2026-08-19) — A

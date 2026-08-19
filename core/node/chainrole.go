@@ -443,8 +443,23 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 			// from a discovery failure to the submitter AND to a field investigator —
 			// the wedge's cohort-regs-never-drain symptom was mis-attributed across
 			// three runs partly because this branch ate every refusal without a line.
-			if reg, err := bondRegDecode(msg.Data); err != nil {
+			//
+			// The CPU gate runs FIRST (Phase 1.2, the #424 shape): every well-formed
+			// self-signed reg forces up to one VerifySpaceTime (~ms on the single
+			// loop, core/bond/verifycost_bench_test.go), so submits are budgeted per
+			// sender per sweep window BEFORE decode — a refusal costs a map lookup,
+			// and a refused honest submit heals by the resubmit-next-sweep retry.
+			if !n.allowBondSubmit(from) {
+				n.logf(ports.LogInfo, "bond-reg submit REFUSED (rate)", "from", from, "budget", bondSubmitBurst)
+			} else if reg, err := bondRegDecode(msg.Data); err != nil {
 				n.logf(ports.LogInfo, "bond-reg submit REFUSED (decode)", "from", from, "bytes", len(msg.Data), "err", err)
+			} else if vid := reg.ValidatorID(); vid != from {
+				// A submit is always the sender's OWN renewal (SubmitBondRenewal
+				// self-submits; the reg is bound to the submitter's key). A relayed
+				// third-party reg is refused BEFORE signature/proof work — otherwise
+				// replaying one captured valid ~1.5 MB reg re-pays the full verify
+				// per message (queue dedup sits after the verify).
+				n.logf(ports.LogInfo, "bond-reg submit REFUSED (relay)", "from", from, "validator", vid)
 			} else if verr := n.chain.ValidateBondRegErr(reg); verr != nil {
 				// A "signature" refusal here is usually TEMPORAL, not forgery: the reg
 				// is signed over the submitter's head, and this replica accepts only

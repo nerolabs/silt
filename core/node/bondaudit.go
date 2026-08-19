@@ -269,10 +269,53 @@ func (n *Node) bondAuditOnce(now uint64) {
 // block we no longer hold, yields an empty reply — which the challenger scores
 // as a failure.
 // challengerRate tracks one challenger's bond-challenge eval budget in the
-// current window (#424).
+// current window (#424). The same shape budgets bond-reg SUBMITS per sender
+// (allowBondSubmit — the Phase 1.2 CPU gate).
 type challengerRate struct {
 	windowStart ports.Time
 	count       int
+}
+
+// bondSubmitBurst caps the MsgSubmitBondReg messages ONE sender may have
+// examined per ChainSyncInterval window. A well-formed self-signed reg forces
+// up to one VerifySpaceTime (~ms of single-loop CPU — measured in
+// core/bond/verifycost_bench_test.go), and nothing else bounds the rate, so an
+// authenticated flooder holds the loop at a permanent duty cycle for free (the
+// #424 CPU-DoS, one message kind over). Honest cadence is ONE submit per sweep
+// (SubmitBondRenewal fires only while BondRenewalDue, once per
+// ChainSyncInterval), plus transport retries; 8 clears that with wide headroom.
+// Per-sender (not global) so a flooder cannot starve honest submitters.
+const bondSubmitBurst = 8
+
+// allowBondSubmit reports whether a MsgSubmitBondReg from `from` may be
+// examined now, charging one unit against its per-window budget. It is the
+// cheap gate in FRONT of decode+signature+VerifySpaceTime — a refusal costs a
+// map lookup, so a flooder gains no amplification. Window = ChainSyncInterval
+// (the honest submit cadence clock); a refused honest submit heals by the
+// existing resubmit-next-sweep retry, exactly like a WAN-skew refusal.
+func (n *Node) allowBondSubmit(from ports.NodeID) bool {
+	now := n.clock.Now()
+	window := n.cfg.ChainSyncInterval
+	if window <= 0 {
+		window = 30 * ports.Second
+	}
+	r := n.bondSubmitRate[from]
+	if r == nil || ports.Duration(now-r.windowStart) >= window {
+		if r == nil && len(n.bondSubmitRate) >= maxBondChallengers {
+			for id, e := range n.bondSubmitRate {
+				if ports.Duration(now-e.windowStart) >= window {
+					delete(n.bondSubmitRate, id)
+				}
+			}
+		}
+		n.bondSubmitRate[from] = &challengerRate{windowStart: now, count: 1}
+		return true
+	}
+	if r.count >= bondSubmitBurst {
+		return false // budget spent this window — refuse before decode/verify
+	}
+	r.count++
+	return true
 }
 
 const (

@@ -520,6 +520,10 @@ type Node struct {
 	// the cheap gate in front of the costly AnswerSpaceTime so an unbounded
 	// challenger can't pin the single goroutine (#424). See bondaudit.go.
 	bondChallengeRate map[ports.NodeID]*challengerRate
+	// bondSubmitRate is the same gate for MsgSubmitBondReg: submits examined per
+	// sender per ChainSyncInterval window, charged BEFORE decode+verify (the
+	// Phase 1.2 CPU-DoS floor). See allowBondSubmit in bondaudit.go.
+	bondSubmitRate map[ports.NodeID]*challengerRate
 	// plotStore persists the bond plot so a restart reloads it instead of
 	// re-plotting (#93); nil = memory-only (re-plots each start).
 	plotStore ports.PlotStore
@@ -834,6 +838,7 @@ func New(id ports.NodeID, cfg Config, clock ports.Clock, tr ports.Transport, sto
 		peerBonds:         make(map[ports.NodeID]bondInfo),
 		peerBondRTT:       make(map[ports.NodeID]*latWindow),
 		bondChallengeRate: make(map[ports.NodeID]*challengerRate),
+		bondSubmitRate:    make(map[ports.NodeID]*challengerRate),
 		slashedLocal:      make(map[ports.NodeID]bool),
 		peerIssuerKeys:    make(map[ports.NodeID]*rsa.PublicKey),
 		creditSpent:       make(map[string]bool),
