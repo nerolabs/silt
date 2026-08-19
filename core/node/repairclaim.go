@@ -57,7 +57,7 @@ func (n *Node) handleRepairClaim(from ports.NodeID, msg ports.Message) {
 		deny() // not a caretaker of this object, or no registry: can't verify
 		return
 	}
-	entry, ok, err := n.reg.Lookup(bg(), claim.Root)
+	entry, ok, err := n.lookupEntry(n.reg, claim.Root)
 	if err != nil || !ok {
 		deny()
 		return

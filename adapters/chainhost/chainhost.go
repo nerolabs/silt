@@ -37,6 +37,13 @@ type Host struct {
 
 var _ ports.Registry = (*Host)(nil)
 
+// onLoop marshals fn onto the node's event loop and waits for it. It must NEVER
+// be called from the loop itself: the posted task can only run once the current
+// task finishes, so a loop-context caller blocks in the select until Timeout — a
+// reentrant self-deadlock that wedges the node's single thread (this exact shape
+// stalled the daemon 30s per UI publish via Care → Lookup; core now answers
+// loop-context registry reads from its own chain — see node.lookupEntry and
+// docs/thinking/2026-08-19-publish-502-attribution-care-self-deadlock.md).
 func (h *Host) onLoop(fn func(done func())) error {
 	ch := make(chan struct{})
 	h.Loop.Post("commit", func() { fn(func() { close(ch) }) })

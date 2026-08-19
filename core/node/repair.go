@@ -46,7 +46,7 @@ func (n *Node) Care(reg ports.Registry, ch link.CareHandle) {
 		n.clock.AfterFunc(n.cfg.RepairInterval, n.repairTick)
 	}
 	n.announceRepairQuorum(ch.Root) // become discoverable as a caretaker-judge (H7)
-	entry, ok, err := reg.Lookup(bg(), ch.Root)
+	entry, ok, err := n.lookupEntry(reg, ch.Root)
 	if err != nil || !ok {
 		return
 	}
@@ -218,7 +218,7 @@ func (n *Node) repairRoot(ch link.CareHandle, done func()) {
 		done() // taken down: stop keeping it alive
 		return
 	}
-	entry, ok, err := n.reg.Lookup(bg(), ch.Root)
+	entry, ok, err := n.lookupEntry(n.reg, ch.Root)
 	if err != nil || !ok {
 		// Observability (#235): a silent skip here hid a caretaker that could
 		// not even resolve the entry — indistinguishable from a healthy sweep.

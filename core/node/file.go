@@ -594,7 +594,7 @@ func (n *Node) fetchAll(ids []ports.ChunkID, done func(missing []ports.ChunkID))
 // stripe that has misses. Final verification/repair/decryption is
 // pipeline.Get against the local store.
 func (n *Node) NetGet(reg ports.Registry, h link.Handle, w io.Writer, done func(error)) {
-	entry, ok, err := reg.Lookup(bg(), h.Root)
+	entry, ok, err := n.lookupEntry(reg, h.Root)
 	if err != nil || !ok {
 		done(fmt.Errorf("netget %s: %w", h.Root, ports.ErrNoSuchEntry))
 		return

@@ -897,6 +897,25 @@ func (n *Node) ReachablePeers() map[ports.NodeID]bool {
 // cancellation semantics, so a background context is honest.
 func bg() context.Context { return context.Background() }
 
+// lookupEntry resolves a registry entry, answering from this node's own
+// committed chain replica when it has one. On a validator the chain IS the
+// registry — chainhost.Lookup performs exactly this read — and the core paths
+// that run on the event loop (Care, NetGet, the repair/audit sweeps, repair-claim
+// verification) must never reach a committed entry through a blocking adapter
+// that marshals back onto the same loop: that reentrant post-and-wait wedged the
+// daemon's single thread for the whole chainhost timeout after every UI publish
+// (the concurrent-publish 502; mechanism record:
+// docs/thinking/2026-08-19-publish-502-attribution-care-self-deadlock.md).
+// Chainless nodes (clients, plain daemons) fall through to the registry port
+// unchanged.
+func (n *Node) lookupEntry(reg ports.Registry, root ports.Hash) (ports.Entry, bool, error) {
+	if n.chain != nil {
+		e, ok := n.chain.LookupRoot(root)
+		return e, ok, nil
+	}
+	return reg.Lookup(bg(), root)
+}
+
 // request sends msg expecting a reply; cb fires exactly once, with
 // ErrTimeout if none arrives in time. Timeouts also evict the peer from
 // the routing table — a Kademlia table must only hold live peers.
