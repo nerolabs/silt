@@ -36,6 +36,71 @@ We do not reinvent primitives (crypto, transport, codec); we adopt the strongest
 proven ones and reserve novelty for the composition and incentives — where M0
 lives — proven by spec + an **external** red-team, never self-graded.
 
+## The ordered path (the V1 roadmap — ratified 2026-08-19, D-M1-PIVOT)
+
+**Why this section exists.** "Tenets are the roadmap" proved too loose: it let a month
+of effort pool on one axis (consensus correctness / memory survival — necessary, and
+now complete and verified) while the other axis (the S7 economy, bandwidth pricing, the
+operational floor) received none. The 2026-08-19 fresh-eyes audit
+([`docs/thinking/2026-08-19-fresh-eyes-audit-and-the-m1-pivot.md`](docs/thinking/2026-08-19-fresh-eyes-audit-and-the-m1-pivot.md))
+found the trust plane verifying end-to-end but the durability economy **built,
+test-proven, and switched off in every shipped node** — a network on track to earn a
+security certificate without a demonstrated reason to exist at equilibrium. So the
+tenets stay the *destination*; **this ordered path is the track**, and work is expected
+to follow it top-down. The prior rule "M1 opens only after the M0 gate" is superseded
+([`docs/decisions.md`](docs/decisions.md) D-M1-PIVOT): the M0 tail is small and
+enumerated, and both the deep field confirmation and a valid #183 depend on M1 being
+real.
+
+1. **Phase 1 — Close the M0 tail (small, enumerated).**
+   1. Inbound-cap hardening: per-peer fairness + a consensus-priority lane (the PE
+      ruling on the #465 v1 global budget) — which also fixes the field finding that a
+      concurrent local publish flood gets a hard failure from the cap instead of
+      graceful backpressure.
+   2. The `MsgSubmitBondReg` CPU gate (pre-#183 DoS floor).
+   3. **Evidence hygiene:** commit the field-run artifacts; add RSS/heap telemetry to
+      `integration/cloudtest` so memory claims carry a citable, in-repo artifact
+      (build-immutable #7 applied to our own headlines).
+   4. Attempt the deep confirming run (longer soak; retention prune engaged past h64 at
+      production parameters). If heights starve the run's budget, that measurement is
+      Phase 3's justification — record it, don't force it.
+2. **Phase 2 — Economy-ON (the S7 keystone; enablement, not construction).** The repair
+   economy exists and is adversarially tested; it has no production enable path. Ship
+   the daemon/config path for repair bounties (`RepairBountyBase`) + escrow funding
+   (`FundDurability`), wire `credit.G`/`Horizon` into live telemetry, and grade an
+   **economy-ON churn drill** in cloudtest: fund → serve-skim → kill holders → verify
+   bounties pay verified repairs → **`g` measured on the wire for the first time**.
+   Exit gate: the prepay→skim→bounty loop closes on a real network; standing stays
+   coin-free (Invariant A untouched).
+3. **Phase 3 — Cheap heights (the M1 lever with the M0 dividend).** The near-term #299
+   tiers (Merkle multiproof compression, batch verification — *not* the parked sealing
+   re-architecture) + registration/entry batching, to shrink the per-height cost
+   (~1.5 MB per reg today) and the 360 s publish bound. Exit gate: a deep green sheet
+   (h ≥ 128) with the prune field-exercised at production parameters, and the publish
+   bound re-derived *downward*.
+4. **Phase 4 — Proof-of-Delivery (price bandwidth).** Storage is priced; bandwidth is
+   not, so an open relay/gateway is a free-rider choke (the recentralization failure
+   mode). Spec + research consult **first**; the hard prerequisite is closing the
+   receipt-forgeability residual (a demand receipt is currently mintable with zero
+   object bytes — inert only while demand has no consumer). Wash re-priced per
+   D-DEMAND. **Firewall immutable:** delivery credits fund durability and relay
+   compensation, never consensus standing (γ→1/N, #182).
+5. **Phase 5 — The operational floor (a node a person can run).** Per-platform service
+   packaging (launchd / systemd / Windows service) + signed installers, and
+   operator-consented self-update per R4 (signed manifests, never silent — a working
+   downstream macOS signed+notarized+launchd reference exists and generalizes into
+   silt). Incremental O(delta) proof maturation (kill the O(store) restart scan);
+   reprovide dirty-tracking (kill the O(held) per-interval re-sign). Exit gate: a
+   non-developer installs a node that survives reboot and returns to serving in
+   seconds, and steady-state cost no longer scales with the whole held set (S6).
+6. **Phase 6 — External red team (#183) → V1 RC.** The engagement runs against the
+   **economy-ON** configuration — the network people will actually run. Then R1: a
+   fully green multi-region grade on the RC config, and V1.
+
+**Standing parallel lane (starts now, blocks nothing):** the #183 procurement search
+(longest lead time, zero code dependency, currently ownerless); ongoing evidence
+hygiene; stale-branch pruning.
+
 ## Where we are now (the honest status)
 
 - **Storage plane — sim-proven at scale, field-proven cross-network at small scale.** Cross-network publish/fetch,
@@ -105,6 +170,17 @@ lives — proven by spec + an **external** red-team, never self-graded.
   fix (strict anchor majority `⌊A/2⌋+1`, anchor-only launch proposing) is the next
   build item.
 
+- **The fresh-eyes audit (2026-08-19) verified the trust plane and found the economy
+  dark.** Every claimed M0 mechanism verifies against code and tests (model-check
+  genuine; all four adversarial wire drills pass over real TCP), and the M0 tail to
+  #183 is small and enumerated. But the S7 repair economy — built and adversarially
+  tested — is **default-off in every shipped node with no enable path**, `g` has never
+  been measured live, bandwidth is unpriced, and the operational floor (packaging,
+  O(store) cold-start, O(held) reprovide) prices out the honest operator in practice.
+  Verdict: **M1 is the binding constraint.** The ordered path above is the response
+  (D-M1-PIVOT); full findings in
+  [`docs/thinking/2026-08-19-fresh-eyes-audit-and-the-m1-pivot.md`](docs/thinking/2026-08-19-fresh-eyes-audit-and-the-m1-pivot.md).
+
 ## The forward tracks (what replaces the gate spine)
 
 Three kinds of work remain. **Build** makes the decided directions real; **verify**
@@ -136,13 +212,14 @@ handful of items that need a new result, not a decision.
   Byzantine-robust sampling.
 - **Registry economics (Gate-5 lineage). ✅ core shipped** — registry-only mode +
   read-cost bounding (#206). Post-launch: liveness-pruning + federation (#207).
-- **M1 — efficiency (opens only after the M0 gate, in this order per the PE
-  ruling):** (1) #299 succinct bond proof (research-gated; collapses the size-aware
-  deadline + byte budget + O(N) drain in one move); (2) residual token-gather cost;
-  (3) CPU-per-audit + dials-per-fetch gauges — measurement, allowed early, captured
-  during P1 as the M1 baseline; (4) drain batching (determinism guards intact);
-  (5) genesis-to-head diff sync (#382 follow-up). The trust harness never softens
-  for M1 — cost budgets overlay the same runs.
+- **M1 — efficiency + the economy. ⚠ Sequencing SUPERSEDED (2026-08-19, D-M1-PIVOT):**
+  the earlier rule "M1 opens only after the M0 gate" is retired — M1 now interleaves
+  with the M0 tail on the ordered path above (Phases 2–5), because the deep field
+  confirmation and a valid #183 both depend on it. The track's content stands:
+  #299's near tiers (Merkle multiproof, batch-verify) and reg/entry batching are
+  Phase 3; the full #299 sealing re-architecture stays parked (research-gated);
+  CPU/dial gauges remain allowed-early measurement. **The trust harness never softens
+  for M1 — cost budgets overlay the same runs** (unchanged).
 
 ### Verify tracks — the gate to "M0 held"
 
