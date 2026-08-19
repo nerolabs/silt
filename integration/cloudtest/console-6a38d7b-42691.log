@@ -1,0 +1,37 @@
+  peers=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480@10.20.0.11:4001,62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24@10.22.0.12:4001,e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb@10.21.0.13:4001,3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda@10.20.0.14:4001
+  registry=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480@https://10.20.0.11:8443
+  warming the network (≤600s): retrying a throwaway publish from val-a until the chain commits…
+    network warm after 26s (first publish committed)
+  warming publisher fetch-1 (≤240s): a fresh non-validator must discover the canonical issuer set + issuer keys before it can gather a publish token (#344)…
+    publisher fetch-1 warm after 31s
+  [32m✓ PASS[0m  1-first-run — all silt nodes report service active
+  [32m✓ PASS[0m  4-become-validator — non-anchor validators earn their OWN standing on the objective path
+  [32m✓ PASS[0m  2-publish-fetch — fetched from store-2 bit-perfect
+  [32m✓ PASS[0m  3-care-link — publish exposes a siltcare: link (repair/audit without the key)
+  [32m✓ PASS[0m  5-convergence — all validators within 2 of tip=17 AND every tip-height validator shares head hash 8fccd5bb84f1… (heights: val-a=15:17792fd32b79 val-b=17:8fccd5bb84f1 val-c=16:e03f720a2e6c val-d=17:8fccd5bb84f1); DURABLE (val-a head 15->18 over 20s, no regression)
+  [32m✓ PASS[0m  6-fault-tolerance — publish still committed with one validator (val-d) down (within the computed 260s down-designee escape bound)
+  [32m✓ PASS[0m  7-restart-standing — val-b standing returned after restart without re-bonding
+  [32m✓ PASS[0m  7-restart-content — content still fetchable BIT-PERFECT after a storage-node restart
+  [32m✓ PASS[0m  8-takedown — store-1 enforces the operator denylist ([1431]: denylist: 1 root(s) denied; purged 10 held chunk(s)) while store-2 still serves BIT-PERFECT (no global switch)
+  [32m✓ PASS[0m  9-cross-nat — natted nodes exchanged a file through the relay/hole-punch
+  [90m- SKIP[0m  184-equivocation — the one destructive drill (a proven double-sign is a PERMANENT eviction, F2) runs on its DEDICATED ephemeral net, not mid-sheet — certified by e2e TestEquivocatorSlashedOverTCP (objective slash-on-detection over real daemons) + integration/adversarial (netem), merge-gated by the in-process oracle. Mid-sheet eviction would pin the commit requirement at 3-of-4 against only 3 live anchors (zero fault tolerance). PE ruling 2026-08-17.
+  [33m~ GAP [0m  184-partition — val-c did not reconverge to the majority live head within 120s of heal (val-c=34:9c82d0d8df49… vs val-a=35:b24e205d6ffc…) — read the captured validator journals before attributing (slow catch-up sync vs a real reconverge break)
+    (evidence captured → flow-evidence-6a38d7b-42691.log)
+  [32m✓ PASS[0m  184-forged-block — forged-signature proposal rejected (adversary logged 'correctly REJECTED by val-a')
+  [32m✓ PASS[0m  184-low-bond — under-bonded proposer rejected (adversary logged 'correctly REJECTED by val-a')
+  warming publisher fetch-1 (≤240s): a fresh non-validator must discover the canonical issuer set + issuer keys before it can gather a publish token (#344)…
+    WARN: publisher fetch-1 did not warm within 240s — publish subsystem degraded; dependent publishes this run report GAP (untested), not FAIL (#351/#441)
+  [32m✓ PASS[0m  priv-unlinkability — default chain REFUSED a durable file→publisher link (refuse-to-surveil)
+  [32m✓ PASS[0m  durability-turnover — content survived a PERMANENT storage-node departure — fetched bit-perfect from a survivor
+  [32m✓ PASS[0m  chaos-reprovide — SIGKILLed storage node re-announced its held chunks (#69) after a hard crash (131s to re-announce; latency scales with held-chunk count, #402/M1)
+  [32m✓ PASS[0m  chaos-fetch — content fetchable BIT-PERFECT after a hard-crash (SIGKILL) + restart of a storage node
+  [32m✓ PASS[0m  web-ui-guard — web-UI guard held on a real VM: no-token POST=401 (want 401), DNS-rebinding Host=403 (want 403), token-free read=200 (want 200)
+    C2 metric (anchors up): [1019]:   C2: nakamoto 4 bonds → 2 operators (margin ×2) | cost-to-corrupt 192 MiB of 576 MiB bonded across 9 | concentration HHI 0.11 Gini 0.00 top 11% uniformity 100% | wheels engaged (young network — strict anchor majority still required)
+    atomization note tripped: [1019]:   ⓘ atomization note: 9 bonds at near-identical weight (uniformity 100%) read as maximally decentralized on HHI/Gini/top-share, but an equal-bond SPLIT (one operator across many keys) produces exactly this fingerprint. The weight signals can't tell it from real decentralization (#182) — verify independent operators via out-of-band address/timing diversity.
+    anchored ceiling (true committed tip, from the anchors): h47 (sybil-1 local head h45 — sybil-1 is LAGGING; its catch-up is NOT a capture)
+./scenarios.sh: line 847: boot: unbound variable
+  [33m~ GAP [0m  5-sybil-no-capture — PRE-EXISTING DIVERGENT FORK: sybil sybil-4 at h48 does NOT share the anchor chain's hash at h47 (sybil=fe46c2e07e8d139bdb364228cd0550affd4b2a40afcb92b92a3daf21b45953e6 anchor=unreadable) — a real fork finding (#402 class), not skew; capture premise unmet, journals captured
+    (evidence captured → flow-evidence-6a38d7b-42691.log)
+  [90m- SKIP[0m  10-maturing-handoff — not a MATURING topology — opt in with MATURING=1 SYBILS=8 ./cloudtest.sh to field-exercise the handoff/post-shed regime (the external red team's sharpest seam-#8 target; until then it is proven only in-process: core/chain/quorum_weight_test.go + sim/maturequorum_test.go)
+  [32m✓ PASS[0m  infra-node-memory — RSS envelope measured (cgroup MemoryCurrent, every 30s → rss-6a38d7b-42691.jsonl): worst peak 1.25GiB across the cohort. adversary peak=0.71GiB final=0.71GiB n=20; fetch-1 peak=0.01GiB final=0.01GiB n=20; nat-1 peak=0.02GiB final=0.02GiB n=20; nat-2 peak=0.02GiB final=0.02GiB n=20; registry peak=0.00GiB final=0.00GiB n=19; relay peak=0.02GiB final=0.02GiB n=19; store-1 peak=0.01GiB final=0.01GiB n=19; store-2 peak=0.01GiB final=0.01GiB n=19; sybil-1 peak=0.98GiB final=0.98GiB n=19; sybil-2 peak=0.83GiB final=0.83GiB n=19; sybil-3 peak=0.77GiB final=0.56GiB n=19; sybil-4 peak=0.91GiB final=0.91GiB n=19; sybil-5 peak=0.84GiB final=0.56GiB n=19; sybil-6 peak=0.94GiB final=0.53GiB n=19; sybil-7 peak=0.80GiB final=0.51GiB n=19; sybil-8 peak=0.93GiB final=0.79GiB n=19; val-a peak=0.97GiB final=0.97GiB n=19; val-b peak=0.81GiB final=0.70GiB n=19; val-c peak=1.25GiB final=1.07GiB n=19; val-d peak=0.80GiB final=0.71GiB n=17
+  [32m✓ PASS[0m  infra-node-liveness — node-liveness precondition HELD — no OOM-kill or crash-loop across the cohort, so the sheet was graded on a HEALTHY network
