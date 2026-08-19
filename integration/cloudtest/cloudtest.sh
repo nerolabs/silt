@@ -272,7 +272,15 @@ report() {
   mkdir -p "$FT_DIR/archive"
   cp -f "$FT_DIR/results.jsonl" "$FT_DIR/archive/results-$RUN_ID.jsonl" 2>/dev/null || true
   cp -f "$FT_DIR/report.md"     "$FT_DIR/archive/report-$RUN_ID.md"     2>/dev/null || true
-  echo "    archived → archive/results-$RUN_ID.jsonl + archive/report-$RUN_ID.md (evidence: flow-evidence-$RUN_ID.log, console-$RUN_ID.log, publish-diag-$RUN_ID.log)"
+  # Also emit a TOP-LEVEL per-RUN_ID report + results (same convention as
+  # console-$RUN_ID.log). archive/ is git-ignored, so committing a run's grade as
+  # EVIDENCE meant force-committing the MUTABLE report.md — which the next run
+  # overwrites, the exact cause of the fresh-eyes audit's "committed report.md is a
+  # stale pre-fix run". A per-RUN_ID top-level copy is the file to force-commit, and
+  # it can never be clobbered by a later run.
+  cp -f "$FT_DIR/report.md"     "$FT_DIR/report-$RUN_ID.md"     2>/dev/null || true
+  cp -f "$FT_DIR/results.jsonl" "$FT_DIR/results-$RUN_ID.jsonl" 2>/dev/null || true
+  echo "    archived → report-$RUN_ID.md + results-$RUN_ID.jsonl (top-level, force-commit these as the run's grade) + archive/ copies (evidence: flow-evidence-$RUN_ID.log, console-$RUN_ID.log)"
 }
 
 teardown() {
