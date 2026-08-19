@@ -53,6 +53,16 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   saturated 256M draining at 2 MiB/s is ~128s) so operators size for their expected-worst
   drain. Drill design + verdict:
   [docs/thinking/2026-08-19-v2b-gate-starvation-drill-design.md](docs/thinking/2026-08-19-v2b-gate-starvation-drill-design.md).
+  **Resolved 2026-08-19 (the E5 drain rider):** the measured real single-loop drain for
+  the cheapest bulk a flood rides (MsgStoreChunk, real hash-verify + store handler over a
+  real TLS transport — `core/node/draindrate_measure_test.go`) is **~1227 MB/s on an M4
+  core**, ~600× the drill's hypothetical 2 MiB/s, so `cap/drain ≈ 0.21s` at the shipped
+  256M — well under the 2s bound. Both legs of the RED drill's slow-drain premise are gone
+  (the bond-reg/VDF flood is now rate-gated by the Phase 1.2 CPU gate, and its cost was
+  ms-scale to begin with), so the two-class priority drain is **shelved** (owned residual
+  E5 updated; the drill stays parked as its merge oracle, #183 has the named target). One
+  caveat owed: measured on M4, not the ~1-vCPU floor box — SHA-256 is hardware-accelerated
+  on cheap ARM so the shelve is expected to hold, flagged as expectation-not-measurement.
 
 ### Fixed
 - **The concurrent-publish 502: a Care/NetGet event-loop self-deadlock — NOT the
