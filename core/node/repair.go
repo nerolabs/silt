@@ -519,6 +519,22 @@ func (n *Node) repairStripes(m *manifest.Layout, p erasure.Params, refs []shardR
 // fresh nodes. The caretaker keeps nothing afterward — it's a
 // paramedic, not a hoarder. A failed attempt (below k fetchable) is
 // counted and simply retried on the next sweep.
+// selfHoldEligible reports whether the paramedic may KEEP a shard it rebuilt
+// rather than push it to a remote holder — the (a-domain-fresh) gate (PE ruling
+// 2026-08-19). Two conditions, both required: the repair economy is ON (off ⇒ the
+// exact prior remote-placement behavior), AND this node's own failure domain is
+// not already holding a shard of the stripe (usedDomains, seeded from the
+// survivors). The second is the S2-safety invariant: self-hold ONLY when it cannot
+// reduce failure-domain diversity. Domain 0 (unset/unknown) is never eligible — an
+// unplaced node can't prove its domain is fresh, so it stays on the remote path.
+func (n *Node) selfHoldEligible(usedDomains map[uint64]int) bool {
+	if !n.cfg.RepairEconomy {
+		return false
+	}
+	sd := n.domainOf(n.id)
+	return sd != 0 && usedDomains[sd] == 0
+}
+
 func (n *Node) repairStripe(m *manifest.Layout, p erasure.Params, stripeRefs []shardRef, disperseShards map[ports.ChunkID]bool, avoidDomain uint64, porKey *por.Key, done func()) {
 	// One cached Merkle tree for the whole stripe repair: place/spread below build
 	// a proof per shard, and the standalone manifest.Prove is O(n) per call, so this
@@ -653,7 +669,35 @@ func (n *Node) repairStripe(m *manifest.Layout, p erasure.Params, stripeRefs []s
 			var holder ports.NodeID
 			n.IterativeFindNode(colKey(root, r.pos), func(closest []ports.NodeID) {
 				candidates := n.preferFreshDomain(closest, usedDomains)
-				n.placeAt(r.id, shards[r.pos], proof, candidates, n.cfg.Replication,
+				want := n.cfg.Replication
+				// (a-domain-fresh) — PE ruling 2026-08-19. With the economy on, the
+				// paramedic KEEPS the shard it rebuilt (becoming the payee) IFF its
+				// own failure domain is unused by this stripe: it funds the node that
+				// bore the reconstruction (bandwidth + the ~640MiB-1GiB RAM peak)
+				// WITHOUT reducing failure-domain diversity — self-hold only when it
+				// cannot. Economy off, or domain already used, falls straight through
+				// to the remote placement exactly as before.
+				if n.selfHoldEligible(usedDomains) &&
+					n.hostShardLocally(r.id, shards[r.pos], proof) {
+					holder = n.id
+					usedDomains[n.domainOf(n.id)]++
+					heldBefore[r.id] = true // now genuinely held — cleanup must not drop it
+					want--
+				}
+				finish := func(placed int) {
+					// A repair landed if we placed remotely OR self-held; either way
+					// name the holder and claim the bounty, verified by the quorum.
+					if placed > 0 || holder != (ports.NodeID{}) {
+						n.Stats.ShardsRebuilt++
+						n.emitRepairClaim(root, r, holder, hasTags)
+					}
+					place(i + 1)
+				}
+				if want <= 0 {
+					finish(0) // self-hold already satisfied the replication target
+					return
+				}
+				n.placeAt(r.id, shards[r.pos], proof, candidates, want,
 					func(target ports.NodeID) {
 						if holder == (ports.NodeID{}) {
 							holder = target
@@ -662,15 +706,7 @@ func (n *Node) repairStripe(m *manifest.Layout, p erasure.Params, stripeRefs []s
 							usedDomains[d]++
 						}
 					},
-					func(placed int) {
-						if placed > 0 {
-							n.Stats.ShardsRebuilt++
-							// A genuine repair happened: claim the durability bounty
-							// for the holder, to be independently verified by the quorum.
-							n.emitRepairClaim(root, r, holder, hasTags)
-						}
-						place(i + 1)
-					})
+					finish)
 			})
 		}
 		place(0)

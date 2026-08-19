@@ -58,11 +58,14 @@ const (
 // dominant repair cost (fetch k survivor shards to reconstruct one), while ongoing
 // custody is funded by the serve economy, not this one-time bounty.
 //
-// ⚠ THE VALUE IS A STRAW-MAN PLACEHOLDER (c = 1), PENDING RESEARCH CERTIFICATION.
-// Solvency is a (c, skim) PAIR — `base × m̄ × R ≤ V × skim` — so c must be pinned
-// JOINTLY against SkimNum/SkimDen, not independently. Slice 1 does not merge until
-// research certifies this rational (silt-reviews/research/
-// repair-bounty-coefficient-CONSULT-2026-08-19.md).
+// c = 1 is RESEARCH-CERTIFIED (2026-08-19): decode is <0.1% of the fetch cost so
+// nothing pushes it above 1; it is g-neutral (a constant scale factor cancels in
+// the cost-trend); and it is the smallest floor-honest value, so it least shortens
+// the funded horizon. Solvency is a (c, skim) PAIR — `base × m̄ × R ≤ V × skim` ⇒
+// self-funding above ~24 retrievals/repair at c=1, m̄≈3 — which holds for HOT data;
+// cold data stays prepay-dependent (D-S7 finite horizon), the mechanism's honest
+// scope. Evolving-tier: re-tune only on field g. Cert:
+// silt-reviews/research/research-outcome/repair-bounty-coefficient-c-RESEARCH-CERTIFICATION-2026-08-19.md.
 const (
 	RepairBountyCoeffNum = 1
 	RepairBountyCoeffDen = 1
