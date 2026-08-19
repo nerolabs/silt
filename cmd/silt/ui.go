@@ -25,6 +25,7 @@ import (
 	"embed"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -83,6 +84,7 @@ func (s *uiServer) serve(addr string) (string, error) {
 	mux.HandleFunc("GET /api/registry", s.apiRegistry)
 	mux.HandleFunc("GET /api/chain", s.apiChain)
 	mux.HandleFunc("POST /api/publish", s.apiPublish)
+	mux.HandleFunc("POST /api/fund", s.apiFund)
 	mux.HandleFunc("GET /api/fetch", s.apiFetch)
 	mux.HandleFunc("GET /api/library", s.apiLibrary)
 	mux.HandleFunc("POST /api/library/add", s.apiLibraryAdd)
@@ -558,6 +560,70 @@ func (s *uiServer) apiPublish(w http.ResponseWriter, r *http.Request) {
 		"placed":    placed,
 		"caretaker": cared,
 	})
+}
+
+// apiFund prepays an object's durability reserve from THIS node's own credit
+// balance (Phase 2, Slice 3 — the publisher/operator endowment path over
+// FundDurability). A publisher endows a repair budget so their content outlives
+// churn before it is popular enough to self-fund via the serve auto-skim; the
+// credits come from what this daemon EARNED by serving, and standing is untouched
+// (Invariant A). Token-gated (mutating). Body: root (a silt:/siltcare: link or a
+// bare root hash) + amount (credits, > 0).
+func (s *uiServer) apiFund(w http.ResponseWriter, r *http.Request) {
+	root, err := parseRootArg(r.FormValue("root"))
+	if err != nil {
+		httpError(w, 400, err)
+		return
+	}
+	amount, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("amount")), 10, 64)
+	if err != nil || amount <= 0 {
+		httpError(w, 400, fmt.Errorf("amount must be a positive integer (credits), got %q", r.FormValue("amount")))
+		return
+	}
+	var fundErr error
+	var reserve, balance int64
+	s.onLoop(func() {
+		fundErr = s.nd.FundDurability(root, amount)
+		if fundErr == nil {
+			reserve = s.nd.DurabilityReserve(root)
+			balance = s.nd.CreditBalance()
+		}
+	})
+	if fundErr != nil {
+		// Insufficient balance is a client-correctable condition, not a server
+		// fault — 402 (the daemon has nothing wrong; the caller lacks credit).
+		if errors.Is(fundErr, ports.ErrInsufficientCredit) {
+			httpError(w, 402, fundErr)
+			return
+		}
+		httpError(w, 400, fundErr)
+		return
+	}
+	writeJSON(w, map[string]any{
+		"root":    root.String(),
+		"funded":  amount,
+		"reserve": reserve, // the object's escrow after this endowment
+		"balance": balance, // this node's remaining credit balance
+	})
+}
+
+// parseRootArg accepts either a full silt:/siltcare: link (returning its root) or
+// a bare 32-byte root hash, so a publisher can fund straight from the link they hold.
+func parseRootArg(s string) (ports.Hash, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ports.Hash{}, fmt.Errorf("root required (a silt: link or a root hash)")
+	}
+	if h, err := link.Parse(s); err == nil {
+		return h.Root, nil
+	}
+	if c, err := link.ParseAnyCare(s); err == nil {
+		return c.Root, nil
+	}
+	if h, err := ports.ParseHash(s); err == nil {
+		return h, nil
+	}
+	return ports.Hash{}, fmt.Errorf("not a silt: link or a 32-byte root hash: %q", s)
 }
 
 // apiFetch: ?link=silt:v1:… → the decrypted file, verified end to end.
