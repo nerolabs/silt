@@ -9,6 +9,18 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **`POST /api/fund`: the durability endowment path (Phase 2, Slice 3)** (2026-08-19) —
+  A publisher/operator can now prepay an object's repair reserve from the daemon's own
+  earned credit balance, so content outlives churn before it is popular enough to
+  self-fund via the serve auto-skim. Wires the built-but-uncallable `FundDurability` to a
+  token-gated endpoint that accepts a `silt:`/`siltcare:` link **or** a bare root hash plus
+  an `amount` (credits), and returns the object's new reserve and the node's remaining
+  balance. Status contract: 200 endowed, **402** insufficient credit (a client-correctable
+  condition, not a server fault), 400 bad input, 401 without the bearer token. Standing is
+  untouched — the credits come from serving and fund durability only (Invariant A). Tests:
+  `cmd/silt/fund_test.go` (parse link/hash, endow-debits-balance, 402/400/401). Decision-
+  independent of the pending `RepairBountyBase` ruling that gates Slice 1 (the payout
+  enable). Deliberation: [docs/thinking/2026-08-19-phase2-economy-on-deliberation.md](docs/thinking/2026-08-19-phase2-economy-on-deliberation.md).
 - **Durability telemetry: the S7 repair economy made observable on `/api/status`
   (Phase 2, Slice 2)** (2026-08-19) — The economy runs *half-open* on a live daemon
   today: the serve auto-skim (1/8) already fills each object's durability escrow
