@@ -1378,12 +1378,17 @@ flow_economy_repair() {
   #    never touched. 3 lost shards/stripe > RepairSlack(2) ⇒ every stripe must
   #    reconstruct, and 3 ≤ n−k(6) ⇒ still recoverable.
   local holders_out; holders_out="$(ssh_node fetch-1 "/usr/local/bin/silt swarm holders '$link' -peers '$PEERS' -registry '$REGREF' 2>&1" || true)"
-  # Build a killable NodeID→name map (storage/fetcher roles, excluding the caretaker).
+  # Build a killable NodeID→name map: every content-holding node EXCEPT the 4
+  # anchors (role "validator") and the caretaker. In launch phase (the economy run
+  # is MATURING=0) ONLY the anchors finalize — maturers and sybils are non-anchor
+  # validators whose loss cannot break launch-phase consensus — so storage, fetcher,
+  # maturer, and sybil nodes are all safe to stop. (This is why the flow runs before
+  # the maturing drill and restarts every node it stops.) Anchors are never touched.
   local killable_ids="" n nid role
   for n in $(node_names); do
     [ "$n" = "$care" ] && continue
     role="$(node_field "$n" role)"
-    case "$role" in storage|fetcher) : ;; *) continue ;; esac
+    case "$role" in storage|fetcher|maturer|sybil) : ;; *) continue ;; esac
     nid="$(node_field "$n" nodeid)"
     [ ${#nid} -eq 64 ] && killable_ids="$killable_ids $nid:$n"
   done
