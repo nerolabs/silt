@@ -564,18 +564,32 @@ print(','.join(n['nodeid'] for name,n in t['nodes'].items()
   # reconverge in 120s"). 300s matches the drill's other resume windows (10b's clincher)
   # and rides out a multi-block WAN catch-up while a real reconverge break still GAPs.
   local ok=0 t0; t0="$(date +%s)"
-  local ci2 ch2 chh2 ai ah ahh
+  # Snapshot the majority's head AT HEAL START as a FIXED reconverge target. val-a
+  # keeps advancing while val-c catches up, so requiring val-c == val-a's LIVE head
+  # false-GAPs whenever both advance at similar rates — val-c sits perpetually one
+  # block behind a moving tip (run 6a38d7b-42691: val-c h34 vs live val-a h35, a
+  # healthy lag, not a break). Reaching the heal-time head PROVES reconvergence:
+  # a < ⅓ island committed nothing of its own during the partition (guarded above),
+  # so val-c can only advance by SYNCING the majority chain, and Reconcile validates
+  # full linkage — so equalling the target (hash-matched) or surpassing it (synced
+  # THROUGH it) both mean the same chain, never a fork.
+  local ai0 aht ahht; ai0="$(chain_head val-a)"; aht="${ai0%% *}"; ahht="${ai0#* }"
+  local ci2 ch2 chh2
   while [ $(( $(date +%s) - t0 )) -lt 300 ]; do
     ci2="$(chain_head val-c)"; ch2="${ci2%% *}"; chh2="${ci2#* }"
-    ai="$(chain_head val-a)"; ah="${ai%% *}"; ahh="${ai#* }"
-    if [ "${ch2:-0}" -gt "$ch0" ] 2>/dev/null && [ "$ch2" = "$ah" ] && [ -n "$chh2" ] && [ "$chh2" = "$ahh" ]; then ok=1; break; fi
+    if [ "${ch2:-0}" -gt "$ch0" ] 2>/dev/null; then
+      # Caught up ⇔ reached the heal-time majority head aht: exact height ⇒ hash must
+      # match (reconverged to that block); surpassed ⇒ synced past it on the majority
+      # chain (a fork could neither match the hash nor sync the majority's aht+1).
+      if { [ "$ch2" = "$aht" ] && [ -n "$chh2" ] && [ "$chh2" = "$ahht" ]; } || [ "${ch2:-0}" -gt "$aht" ] 2>/dev/null; then ok=1; break; fi
+    fi
     sleep 4
   done
   if [ "$ok" = 1 ]; then
-    slo_assert "184-partition" major "minority val-c STALLED at h$ch0 through the partition (a < ⅓ island cannot commit) then CAUGHT UP to the majority head h$ch2 (hash ${chh2:0:12}… matches val-a) on heal — BFT partition→heal reconverged over the real wire (the correct behaviour: a catch-up, NOT a reorg — a minority never committed a conflicting fork)" 1
+    slo_assert "184-partition" major "minority val-c STALLED at h$ch0 through the partition (a < ⅓ island cannot commit) then CAUGHT UP to the heal-time majority head h$aht (now at h$ch2) on heal — BFT partition→heal reconverged over the real wire (a catch-up, NOT a reorg — a minority never committed a conflicting fork)" 1
   else
     ft_add_validator_evidence
-    record "184-partition" gap major "val-c did not reconverge to the majority live head within 120s of heal (val-c=${ch2:-?}:${chh2:0:12}… vs val-a=${ah:-?}:${ahh:0:12}…) — read the captured validator journals before attributing (slow catch-up sync vs a real reconverge break)"
+    record "184-partition" gap major "val-c did not reconverge to the heal-time majority head h$aht within 300s of heal (val-c=${ch2:-?}:${chh2:0:12}… stalled-from h$ch0) — read the captured validator journals before attributing (slow catch-up sync vs a real reconverge break)"
   fi
 }
 
@@ -845,7 +859,17 @@ flow_c2_no_capture() {
     local syb_at anchor_at
     syb_at="$(jlog "$msyb" 400 | grep -oE "checkpoint: ${ceiling}:[0-9a-f]+" | tail -1 | cut -d: -f3)"
     anchor_at="$(jlog "$boot" 400 | grep -oE "checkpoint: ${ceiling}:[0-9a-f]+" | tail -1 | cut -d: -f3)"
-    if [ -n "$syb_at" ] && [ "$syb_at" = "$anchor_at" ]; then
+    if [ -z "$syb_at" ] || [ -z "$anchor_at" ]; then
+      # Premise UNREADABLE: no `checkpoint: h${ceiling}:` line to compare on the
+      # sybil and/or the anchor (checkpoints log only at some heights, so a sybil
+      # ahead of the last-readable anchor checkpoint leaves nothing to diff). A fork
+      # cannot be concluded from a hash we could not read — consensus-discipline
+      # rule 7: an oracle that can't read its premise FLAGS, it never presumes the
+      # mechanism. A sybil merely ahead of the readable ceiling is far more likely
+      # benign skew/lag than a divergent fork (run 6a38d7b-42691's false positive).
+      record "5-sybil-no-capture" gap major "PRE-EXISTING DIVERGENCE UNVERIFIABLE: sybil ${msyb} h${maxsyb} > readable anchor ceiling h${ceiling}, but the hash at h${ceiling} was unreadable ($([ -z "$syb_at" ] && printf 'sybil')$([ -z "$syb_at" ] && [ -z "$anchor_at" ] && printf '+')$([ -z "$anchor_at" ] && printf 'anchor'); sybil=${syb_at:-unreadable} anchor=${anchor_at:-unreadable}) — cannot diff, so fork-vs-skew is UNKNOWN, NOT asserted as a fork; journals captured for attribution (#7)"
+      return
+    elif [ "$syb_at" = "$anchor_at" ]; then
       echo "    sybil head h${maxsyb} > ceiling h${ceiling} but HASH-IDENTICAL at h${ceiling} (${syb_at}) — broadcast skew on one chain, not a fork; re-reading the ceiling"
       ceiling=0
       for a in $anchors_nodes; do
@@ -853,7 +877,9 @@ flow_c2_no_capture() {
         [ "$hh" -gt "$ceiling" ] 2>/dev/null && ceiling="$hh"
       done
     else
-      record "5-sybil-no-capture" gap major "PRE-EXISTING DIVERGENT FORK: sybil ${msyb} at h${maxsyb} does NOT share the anchor chain's hash at h${ceiling} (sybil=${syb_at:-unreadable} anchor=${anchor_at:-unreadable}) — a real fork finding (#402 class), not skew; capture premise unmet, journals captured"
+      # BOTH hashes readable AND DIFFERENT at the shared height ⇒ a genuine divergent
+      # fork (the #402 class). This is the only branch that may assert a fork.
+      record "5-sybil-no-capture" gap major "PRE-EXISTING DIVERGENT FORK: sybil ${msyb} at h${maxsyb} does NOT share the anchor chain's hash at h${ceiling} (sybil=${syb_at} anchor=${anchor_at}, both readable and DIFFERENT) — a real fork finding (#402 class), not skew; journals captured"
       return
     fi
   fi
