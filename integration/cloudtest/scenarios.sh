@@ -1353,13 +1353,27 @@ flow_economy_repair() {
                          # killing shard-holders can never touch consensus.
 
   # 1) Publish an erasure-coded object; capture BOTH the silt: link and the siltcare:.
-  local out link carelink
-  out="$(ssh_node fetch-1 "head -c 4194304 </dev/urandom >/tmp/ft_econ.bin; /usr/local/bin/silt swarm add /tmp/ft_econ.bin -peers '$PEERS' -registry '$REGREF' -token-quorum $TOKEN_QUORUM -chunk-size 262144 2>&1" || true)"
-  link="$(printf '%s' "$out" | grep -oE 'silt:v1:\S+' | head -1)"
-  carelink="$(printf '%s' "$out" | grep -oE 'siltcare:\S+' | head -1)"
+  # RETRY the publish (run 2323b09-20931 GAPped here): a chain-backed registry publish
+  # IS a consensus commit, and on quorum-2 across 3 regions a single attempt can time
+  # out (context deadline) when its entry's commit lands slower than the client window,
+  # especially late in the sheet under load (#441-family). Ride it out with retries —
+  # the same tolerance ft_publish has (PUBLISH_RETRY_S) — instead of GAPping on one
+  # slow-commit window; only GAP after the whole budget is spent.
+  local out link carelink attempt=0
+  local econ_deadline=$(( $(date +%s) + ${ECONOMY_PUBLISH_RETRY_S:-360} ))
+  while :; do
+    out="$(ssh_node fetch-1 "head -c 4194304 </dev/urandom >/tmp/ft_econ.bin; /usr/local/bin/silt swarm add /tmp/ft_econ.bin -peers '$PEERS' -registry '$REGREF' -token-quorum $TOKEN_QUORUM -chunk-size 262144 2>&1" || true)"
+    link="$(printf '%s' "$out" | grep -oE 'silt:v1:\S+' | head -1)"
+    carelink="$(printf '%s' "$out" | grep -oE 'siltcare:\S+' | head -1)"
+    { [ -n "$link" ] && [ -n "$carelink" ]; } && break
+    [ "$(date +%s)" -ge "$econ_deadline" ] && break
+    attempt=$((attempt+1))
+    echo "    economy publish attempt $attempt did not land (registry commit latency? $(printf '%s' "$out" | tr '\n' ' ' | head -c 120)); retrying in 30s…"
+    sleep 30
+  done
   if [ -z "$link" ] || [ -z "$carelink" ]; then
     ft_add_validator_evidence
-    record "11-economy-repair" gap major "setup publish landed no link+carelink — economy UNTESTED this run, not a failure ($(printf '%s' "$out" | tr '\n' ';' | head -c 200))"; return
+    record "11-economy-repair" gap major "setup publish landed no link+carelink after ${ECONOMY_PUBLISH_RETRY_S:-360}s of retries — economy UNTESTED this run, not a failure (registry publish-commit latency #441-family; $(printf '%s' "$out" | tr '\n' ';' | head -c 160))"; return
   fi
 
   # 2) Make store-2 a caretaker with the economy ON + a local UI (fund/status).
