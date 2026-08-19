@@ -99,6 +99,18 @@ cp config.env.example config.env      # set PROJECT_ID (+ optional knobs)
 At the end you get `report.md` and `report.html`. That HTML file is the artifact
 to share / attach to an RC checklist or a GitHub issue.
 
+**Memory envelope (Phase 1.3).** Every run samples each node's cgroup memory
+(`systemctl … MemoryCurrent`) every `MEM_SAMPLE_INTERVAL` seconds (default 30)
+into `rss-<RUN_ID>.jsonl`, and records an `infra-node-memory` finding with the
+per-node **peak / final** RSS — the measured envelope behind any "return-to-2GB"
+memory claim (build-immutable #7: a headline needs a citable number, not just the
+absence of a crash that `infra-node-liveness` already checks). The series is
+git-ignored by default (like the console/flow logs); **force-commit the specific
+`rss-<RUN_ID>.jsonl` for any run you cite as evidence** (`git add -f`), same
+convention as the tracked console logs. Disable with `MEM_SAMPLE=0`. This is a
+coarse envelope, not a profiler — for attribution pull an on-demand heap profile
+(`DEBUG_PROFILE=1` at launch, then `./cloudtest.sh heap <node>`).
+
 Other lifecycles:
 
 ```bash

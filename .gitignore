@@ -55,6 +55,8 @@ integration/cloudtest/failed-nodes-*.log
 integration/cloudtest/flow-evidence-*.log
 integration/cloudtest/console-*.log
 integration/cloudtest/publish-diag-*.log
+integration/cloudtest/rss-*.jsonl
+integration/cloudtest/.mem-sampler.pid
 integration/cloudtest/archive/
 integration/cloudtest/.ft_publish_gap
 integration/cloudtest/.ft_publish_lasterr

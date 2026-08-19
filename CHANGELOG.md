@@ -9,6 +9,21 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **RSS/memory-envelope telemetry in `integration/cloudtest` (Phase 1.3, evidence
+  hygiene)** (2026-08-19) — The field harness detected memory only as a binary crash
+  signal (`scan_node_liveness` greps journals for OOM-kill / Go-fatal) plus an on-demand
+  heap profile; there was **no continuous RSS series**, so the MATURING OOM
+  "return-to-2GB" headline rested on the *absence* of a crash, not a *measured* ceiling
+  (the fresh-eyes audit's finding — no committed RSS artifact backed the claim). Now every
+  run samples each node's cgroup memory (`systemctl … MemoryCurrent` — the exact quantity
+  `GOMEMLIMIT` and the OOM-killer act against) every `MEM_SAMPLE_INTERVAL` (default 30 s)
+  into a `rss-<RUN_ID>.jsonl`, and `scan_node_memory` records an `infra-node-memory`
+  finding with per-node **peak / final** RSS. Strictly additive and failure-tolerant (a
+  missed read never affects a verdict); purely observational (S5 — it reports the envelope,
+  the crash verdict stays with `infra-node-liveness`). The series is git-ignored by default
+  and force-committed for any run cited as evidence, matching the console-log convention.
+  Sampler + summary logic unit-verified locally; the artifact itself lands on the next real
+  run. Design: [docs/thinking/2026-08-19-cloudtest-rss-telemetry.md](docs/thinking/2026-08-19-cloudtest-rss-telemetry.md).
 - **The `MsgSubmitBondReg` CPU gate — per-sender submit budget + sender binding
   (Phase 1.2, the pre-#183 DoS floor)** (2026-08-19) — The bond-renewal submit path
   had no rate limit: every well-formed, self-signed registration forces up to one

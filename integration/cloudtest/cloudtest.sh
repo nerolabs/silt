@@ -253,10 +253,15 @@ run_scenarios() {
   # die with the terminal, leaving a FAIL verdict with no trail after teardown. The
   # tee'd copy lands next to the run's report. (The pipeline subshell is fine: flows
   # append to results.jsonl / evidence logs by path, and report() reads files.)
+  # RSS/memory telemetry (Phase 1.3): sample each node's cgroup memory across the run
+  # into a committed rss-<RUN_ID>.jsonl, so the MATURING OOM "return-to-2GB" headline
+  # carries a measured envelope, not just the absence of a crash (build-immutable #7).
+  # Strictly additive and failure-tolerant; stopped + summarised before teardown.
+  mem_sampler_start
   # The node-liveness precondition runs LAST, before teardown: scan the whole cohort
   # for OOM-kills / crash-loops and surface it as a first-class finding (a run whose
   # nodes died cannot grade its flows — proof-oom field corroboration 2026-08-17).
-  { run_all_scenarios || true; scan_node_liveness || true; } 2>&1 | tee -a "$FT_DIR/console-$RUN_ID.log"
+  { run_all_scenarios || true; mem_sampler_stop; scan_node_memory || true; scan_node_liveness || true; } 2>&1 | tee -a "$FT_DIR/console-$RUN_ID.log"
 }
 
 report() {
