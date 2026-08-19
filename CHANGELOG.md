@@ -9,6 +9,17 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **§0.1 repair-path memory footprint measured locally (`core/erasure/reconstruct_mem_test.go`)**
+  (2026-08-19) — The research cert's §0.1 gate ("measure repair RAM at production chunk size before
+  the economy-ON grade") is a single-node property, so it is measured locally for $0 rather than with
+  a billable cloud run (build-immutables #6/#7: reproduce locally first; the cloud harness publishes
+  at the 64 KiB sim size and would hide the spike ~1000× anyway). Result: reconstructing one
+  `DefaultParams` (k=10, n=16) stripe holds **1.0 MiB resident at 64 KiB vs 1.0 GiB at the 64 MiB
+  production minimum**. On a 2 GB floor box that leaves ~1 GB, and the daemon baseline is 0.5–1.25 GiB
+  (measured in field run 6a38d7b-42691) — so **production-scale repair + baseline can exceed 2 GB →
+  OOM**. Consequence: the economy-ON field grade (Slice 4) must run on a larger box or land a
+  streaming/column-wise decode mitigation first (build-immutable #8). Plan:
+  [docs/thinking/2026-08-19-cloudtest-harness-improvement-plan.md](docs/thinking/2026-08-19-cloudtest-harness-improvement-plan.md).
 - **`-economy`: the S7 repair-bounty payout enable — the keystone (Phase 2, Slice 1)**
   (2026-08-19) — Turns the half-open economy fully on: an opt-in `-economy` flag
   (**default OFF**) under which a verified repair PAYS for a rebuilt shard from the
