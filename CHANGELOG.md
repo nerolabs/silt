@@ -9,6 +9,30 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Fixed
+- **The concurrent-publish 502: a Care/NetGet event-loop self-deadlock — NOT the
+  inbound cap** (2026-08-19) — Under concurrent UI ingest (the first production
+  workload's 4-worker segment flood) a validator daemon hard-failed publishes with
+  502 while surviving. Local repro + a control run attributed it: the inbound cap was
+  innocent (unbounded cap fails identically; the always-on loop-saturation telemetry
+  stayed silent). The 15s hang watchdog caught the real mechanism: every successful
+  publish's `-care-published` auto-caretake ran `Node.Care` ON the daemon's event
+  loop, and Care's synchronous `Registry.Lookup` — chainhost on a validator —
+  marshals BACK onto the same loop and blocks awaiting a task the wedged loop can
+  never run: a reentrant post-and-wait self-deadlock, 30s per publish (the chainhost
+  timeout), starving every queued message behind it (placements blew their 4×2s
+  attempts → "placed on no node"; entries outlived the 30s commit poll). Five core
+  doorways shared the class (`Care`, `NetGet` via apiFetch, the repair sweep, the
+  audit sweep, repair-claim verification). Fix: `node.lookupEntry` — a node holding a
+  chain replica answers these lookups from its own committed chain (the very read
+  chainhost performs), so no loop-context registry read round-trips through the
+  adapter; chainless nodes fall through to the registry port unchanged. Failing-first
+  at two tiers: the loop-reentry integration pair (`adapters/chainhost/loopreentry_test.go`)
+  and the concurrent-UI-publish e2e (`e2e/publishflood_test.go`), which also covers
+  the drive-by fix that `-inbound-cap 0` (the documented "unbounded" sentinel) was
+  rejected by the size parser. Mechanism record:
+  [docs/thinking/2026-08-19-publish-502-attribution-care-self-deadlock.md](docs/thinking/2026-08-19-publish-502-attribution-care-self-deadlock.md).
+  The roadmap's Phase 1.1 note that the fairness/priority-lane work "also fixes" this
+  502 is corrected — that work stands on the PE ruling's adversarial case alone.
 - **P2P robustness under real streaming load — DHT recursion crash, reprovide (#69),
   fetch/discovery, cold-start** (2026-08-19) — Surfaced running silt under a real
   HTTP-streaming workload (a 14 GB / 381 K-file store on a 2 GB box; the #464/#465 OOM fix

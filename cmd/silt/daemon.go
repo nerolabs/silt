@@ -228,10 +228,14 @@ func cmdDaemon(args []string) error {
 		return err
 	}
 	// Bound the inbound working set so a fast/adversarial sender can't OOM the
-	// single loop (the MATURING crash-loop root cause). 0 = unbounded.
-	if cap, err := parseSize(*inboundCap); err != nil {
-		return err
-	} else if cap > 0 {
+	// single loop (the MATURING crash-loop root cause). The documented "0 =
+	// unbounded" sentinel is handled at the flag level (parseSize requires a
+	// positive size — the same pattern as -capacity in client.go).
+	if *inboundCap != "" && *inboundCap != "0" {
+		cap, err := parseSize(*inboundCap)
+		if err != nil {
+			return err
+		}
 		tr.SetInboundCap(cap)
 		fmt.Printf("inbound-cap: %s in-flight message budget (backpressure over cap; a flood stalls, doesn't OOM)\n", *inboundCap)
 	}

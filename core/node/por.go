@@ -215,7 +215,7 @@ type AuditReport struct {
 // fetches it first) and a ledger to settle into.
 func (n *Node) Audit(reg ports.Registry, ch link.CareHandle, done func(AuditReport)) {
 	var report AuditReport
-	entry, ok, err := reg.Lookup(bg(), ch.Root)
+	entry, ok, err := n.lookupEntry(reg, ch.Root)
 	if err != nil || !ok {
 		done(report)
 		return

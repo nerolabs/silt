@@ -54,9 +54,12 @@ real.
 
 1. **Phase 1 — Close the M0 tail (small, enumerated).**
    1. Inbound-cap hardening: per-peer fairness + a consensus-priority lane (the PE
-      ruling on the #465 v1 global budget) — which also fixes the field finding that a
-      concurrent local publish flood gets a hard failure from the cap instead of
-      graceful backpressure.
+      ruling on the #465 v1 global budget). *(Correction 2026-08-19: the field
+      finding that a concurrent local publish flood 502s was attributed to a
+      Care/NetGet event-loop self-deadlock — cap-independent — and fixed separately;
+      see the CHANGELOG and
+      [docs/thinking/2026-08-19-publish-502-attribution-care-self-deadlock.md](docs/thinking/2026-08-19-publish-502-attribution-care-self-deadlock.md).
+      This lane item stands on the PE ruling's adversarial sybil-cohort case alone.)*
    2. The `MsgSubmitBondReg` CPU gate (pre-#183 DoS floor).
    3. **Evidence hygiene:** commit the field-run artifacts; add RSS/heap telemetry to
       `integration/cloudtest` so memory claims carry a citable, in-repo artifact
