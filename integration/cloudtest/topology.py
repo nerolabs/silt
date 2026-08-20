@@ -168,6 +168,22 @@ for _i in range(SYBILS):
     else:
         NODES.append((f"sybil-{_i+1-_N_MATURERS}", "sybil", 6601 + _i, f"10.20.0.{61+_i}", _z))
 
+# ── The equivocation island (owner directive 2026-08-20; design:
+# docs/thinking/2026-08-20-equivocation-island-design.md). The ONE destructive
+# drill (a proven double-sign is a PERMANENT eviction, F2) runs on EVERY sheet,
+# but in a fully-contained SEPARATE consensus universe so its slash never taxes
+# the main sheet's fault tolerance (the PE 2026-08-17 zero-FT-tail objection).
+# Four objective validators anchored ONLY to each other (own genesis, own
+# -persistent-peers); no main-swarm node names them and they name no main-swarm
+# node — consensus containment. On GCP they get NO external IP (Cloud NAT egress),
+# so zero IN_USE_ADDRESSES quota; on LOCAL they are 4 more docker containers.
+# EQV_ISLAND=0 opts out (SMOKE trims it — a 4-node shakeout needn't carry it).
+EQV_ISLAND = 0 if os.environ.get("SMOKE") == "1" else int(os.environ.get("EQV_ISLAND", "1"))
+if EQV_ISLAND:
+    for _i in range(4):
+        NODES.append((f"island-{chr(ord('a')+_i)}", "island", 6701 + _i,
+                      f"10.20.0.{71+_i}", PRIMARY_ZONE))
+
 
 def node_id(seed):
     """Deterministic NodeID for an id-seed, via `silt id`."""
@@ -230,6 +246,12 @@ def main():
     # honest anchor set (which it does not control) and co-signs only itself.
     sybils = [name for name, n in nodes.items() if n["role"] == "sybil"]
     n_syb = len(sybils)
+    # The equivocation island: its own anchor set, naming ONLY each other. Nothing
+    # in the main-swarm quorum/anchor/maturity math references it, and it references
+    # nothing of the main swarm — a separate consensus universe (containment).
+    island = [name for name, n in nodes.items() if n["role"] == "island"]
+    island_anchors = ",".join(nodes[i]["nodeid"] for i in island)
+    island_boot = island[0] if island else None
     maturers = [name for name, n in nodes.items() if n["role"] == "maturer"]
     n_mat = len(maturers)
     # syb_quorum retained for the meta/report only. NOTE (#338 cloud GAP root cause):
@@ -382,6 +404,34 @@ def main():
                     f"-mature-validators {mature_bar}{margin_flag} -anchors {anchors}{att} "
                     f"-persistent-peers {syb_persistent} "
                     f"-quorum {quorum} -bond {syb_bond} -bond-audit 30s -capacity 2G -domain sybilnet")
+        if role == "island":
+            # A self-contained objective consensus set for the destructive
+            # equivocation drill — anchored ONLY to the other island nodes, its own
+            # genesis, quorum 1 (3-of-4 strict anchor majority via the shared floor).
+            # No -serve-registry: the drill needs a live chain + a slash, not
+            # publishes. One island node is the boot/persistent hub for the rest.
+            isl_others = [i for i in island if i != name]
+            isl_attesters = ",".join(nodes[i]["nodeid"] for i in isl_others)
+            isl_persistent = ",".join(f'{nodes[i]["nodeid"]}@{nodes[i]["ip"]}:{SWARM_PORT}'
+                                      for i in isl_others)
+            a = (f"daemon -id-seed {n['seed']} {common} -advertise {ip}:{SWARM_PORT} "
+                 f"-validator -objective -min-bond {min_bond} -min-bond-floor {min_floor} "
+                 f"-mature-validators 4 -anchors {island_anchors} -attesters {isl_attesters} "
+                 f"-persistent-peers {isl_persistent} -quorum 1 "
+                 f"-bond {bond} -bond-audit 30s -capacity 2G")
+            if name != island_boot:
+                a += f' -bootstrap {nodes[island_boot]["nodeid"]}@{nodes[island_boot]["ip"]}:{SWARM_PORT}'
+            # The second island anchor is the BYZANTINE equivocator, BAKED IN from
+            # genesis — exactly the green e2e shape (TestEquivocatorSlashedOverTCP):
+            # it participates honestly until it has PREPARED a height, then serves a
+            # conflicting signed block and an honest anchor slashes it. Baked-in (not
+            # relaunched mid-drill): a LOCAL run proved a relaunch leaves it re-warming
+            # past the assert window (re-bootstrap + re-bond + rejoin gather + prepare
+            # + serve > 120s), so the drill GAPed "did not drive". A dedicated drill
+            # island whose ONLY job is this can carry a permanent adversary.
+            if name == island[1]:
+                a += " -equivocate objective"
+            return a
         if role == "natgw":
             return "NATGW"   # not a silt node — runs integration/nat/natgw.sh instead
         sys.exit(f"topology: unknown role {role} for {name}")
@@ -394,28 +444,39 @@ def main():
         "bond_mode": BOND_MODE, "n_val": n_val, "quorum": quorum, "bootstrap": bootstrap,
         "sybils": sybils, "n_syb": n_syb, "syb_quorum": syb_quorum, "syb_domain": "sybilnet",
         "maturers": maturers, "n_mat": n_mat,
+        "island": island, "island_anchors": island_anchors, "island_boot": island_boot,
         "maturing": MATURING, "mature_bar": mature_bar,
         "relay_ref": relay_ref, "regref": regref, "anchors": anchors, "boot": boot,
         "public_cidr": PUBLIC_CIDR, "nat_cidr": NAT_CIDR,
     }
     here = os.path.dirname(os.path.abspath(__file__))
-    with open(os.path.join(here, "topology.json"), "w") as f:
+    # TOPO_OUT namespaces the state file per backend (cloud=topology.json,
+    # LOCAL=topology.local.json) so a LOCAL run can never clobber a live cloud
+    # run's map — the 2026-08-20 root cause. Set by cloudtest.sh from $FT_TOPO.
+    topo_out = os.environ.get("TOPO_OUT", os.path.join(here, "topology.json"))
+    with open(topo_out, "w") as f:
         json.dump({"meta": meta, "nodes": nodes}, f, indent=2)
 
-    os.makedirs(os.path.join(here, "terraform"), exist_ok=True)
-    tfvars = {
-        "nodes": {name: {"role": n["role"], "ip": n["ip"], "zone": n["zone"],
-                         "region": n["region"], "argv": n["argv"]}
-                  for name, n in nodes.items()},
-        "region_cidrs": region_cidrs,
-        "public_cidr": PUBLIC_CIDR, "nat_cidr": NAT_CIDR,
-        "swarm_port": SWARM_PORT, "relay_port": RELAY_PORT, "registry_port": REGISTRY_PORT,
-    }
-    with open(os.path.join(here, "terraform", "topology.auto.tfvars.json"), "w") as f:
-        json.dump(tfvars, f, indent=2)
+    # The tfvars feed terraform (cloud ONLY — LOCAL runs docker, no terraform), so
+    # a LOCAL generation must NOT overwrite the cloud tfvars a live run will destroy
+    # from. WRITE_TFVARS=0 (LOCAL) skips it entirely.
+    wrote_tfvars = ""
+    if os.environ.get("WRITE_TFVARS", "1") == "1":
+        os.makedirs(os.path.join(here, "terraform"), exist_ok=True)
+        tfvars = {
+            "nodes": {name: {"role": n["role"], "ip": n["ip"], "zone": n["zone"],
+                             "region": n["region"], "argv": n["argv"]}
+                      for name, n in nodes.items()},
+            "region_cidrs": region_cidrs,
+            "public_cidr": PUBLIC_CIDR, "nat_cidr": NAT_CIDR,
+            "swarm_port": SWARM_PORT, "relay_port": RELAY_PORT, "registry_port": REGISTRY_PORT,
+        }
+        with open(os.path.join(here, "terraform", "topology.auto.tfvars.json"), "w") as f:
+            json.dump(tfvars, f, indent=2)
+        wrote_tfvars = " + terraform/topology.auto.tfvars.json"
 
     sys.stderr.write(
-        f"topology: wrote topology.json + terraform/topology.auto.tfvars.json "
+        f"topology: wrote {os.path.basename(topo_out)}{wrote_tfvars} "
         f"({len(nodes)} nodes, {n_val} validators, quorum {quorum}, bond={BOND_MODE})\n")
 
 

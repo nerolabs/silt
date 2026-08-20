@@ -59,6 +59,11 @@ fi
 # are excluded — 9-cross-nat SKIPs; integration/nat owns that locally), scale.
 if [ "${LOCAL:-0}" = 1 ]; then
   export PROJECT_ID="${PROJECT_ID:-local}" REGION="${REGION:-local}" FT_BACKEND=local
+  # Namespace LOCAL state so a LOCAL run can NEVER clobber a live cloud run's map
+  # (2026-08-20 root cause). Set here — before gen_topology/provision_local, which
+  # run before lib.sh is sourced. lib.sh re-affirms the same values.
+  export NODES_JSON="${NODES_JSON:-$FT_DIR/nodes.local.json}"
+  export FT_TOPO="${FT_TOPO:-$FT_DIR/topology.local.json}"
 else
 [ -f config.env ] || { echo "no config.env — run './cloudtest.sh setup' (interactive), or copy config.env.example and fill it in"; exit 1; }
 # The caller's env must WIN over config.env (§F footgun): `. ./config.env` runs AFTER the
@@ -92,8 +97,15 @@ build_binary() {
 }
 
 gen_topology() {
-  echo "==> generating deterministic topology${SMOKE:+ (SMOKE — trimmed 4-node set)}"
-  SILT_BIN="$FT_DIR/.silt-local" BOND_MODE="${BOND_MODE:-fast}" SMOKE="${SMOKE:-0}" python3 topology.py
+  echo "==> generating deterministic topology${SMOKE:+ (SMOKE — trimmed 4-node set)}${LOCAL:+ (LOCAL → topology.local.json, no tfvars)}"
+  # Namespace the topology file per backend + skip tfvars for LOCAL (docker, no
+  # terraform), so a LOCAL generation can never clobber a live cloud run's map or
+  # its terraform tfvars (the 2026-08-20 root cause). TOPO_OUT/$FT_TOPO is set by
+  # the LOCAL branch; cloud uses the default topology.json + writes tfvars.
+  SILT_BIN="$FT_DIR/.silt-local" BOND_MODE="${BOND_MODE:-fast}" SMOKE="${SMOKE:-0}" \
+    TOPO_OUT="${FT_TOPO:-$FT_DIR/topology.json}" \
+    WRITE_TFVARS="$([ "${LOCAL:-0}" = 1 ] && echo 0 || echo 1)" \
+    python3 topology.py
 }
 
 tf() { terraform -chdir="$FT_DIR/terraform" "$@"; }
@@ -106,9 +118,9 @@ tf() { terraform -chdir="$FT_DIR/terraform" "$@"; }
 # queryable via the API, so this covers the IP quota only (the other half of §F).
 preflight_quota() {
   [ "${PREFLIGHT:-1}" = 0 ] && { echo "==> preflight: skipped (PREFLIGHT=0)"; return 0; }
-  [ -f "$FT_DIR/topology.json" ] || return 0
+  [ -f "${FT_TOPO:-$FT_DIR/topology.json}" ] || return 0
   echo "==> preflight: external-IP (IN_USE_ADDRESSES) quota per region"
-  python3 - "$FT_DIR/topology.json" > /tmp/ft_ipneeds.txt <<'PY'
+  python3 - "${FT_TOPO:-$FT_DIR/topology.json}" > /tmp/ft_ipneeds.txt <<'PY'
 import json, sys
 from collections import Counter
 nodes = json.load(open(sys.argv[1]))["nodes"]
@@ -175,13 +187,13 @@ apply() {
     -var "billing_account=${BILLING_ACCOUNT:-}" \
     -var "core_on_demand=${CORE_ON_DEMAND:-$([ "${SMOKE:-0}" = 1 ] && echo false || echo true)}" \
     -var "all_on_demand=${ALL_ON_DEMAND:-$([ "${SMOKE:-0}" = 1 ] && echo false || echo true)}"
-  tf output -json nodes > "$FT_DIR/nodes.json"
+  tf output -json nodes > "${NODES_JSON:-$FT_DIR/nodes.json}"
   # Terraform's node output carries instance_name/zone/ips/role but NOT the silt
   # NodeID — yet scenarios.sh reads node_field <n> nodeid (the #184 drills derive
   # peer IDs from it). topology.json HAS the deterministic nodeid per node, so merge
   # it in here. Without this every 184-* flow crashed with KeyError: 'nodeid' and
   # the adversarial consensus drills never ran on GCP (blind cloud finding #1).
-  python3 - "$FT_DIR/nodes.json" "$FT_DIR/topology.json" <<'PY'
+  python3 - "${NODES_JSON:-$FT_DIR/nodes.json}" "${FT_TOPO:-$FT_DIR/topology.json}" <<'PY'
 import json, sys
 nodes = json.load(open(sys.argv[1]))
 topo  = json.load(open(sys.argv[2]))["nodes"]
@@ -190,7 +202,7 @@ for name, n in nodes.items():
         n["nodeid"] = topo[name]["nodeid"]
 json.dump(nodes, open(sys.argv[1], "w"), indent=2)
 PY
-  echo "    nodes.json written ($(python3 -c "import json;print(len(json.load(open('$FT_DIR/nodes.json'))))") instances, nodeid merged from topology.json)"
+  echo "    nodes written ($(python3 -c "import json;print(len(json.load(open('${NODES_JSON:-$FT_DIR/nodes.json}'))))") instances, nodeid merged)"
 }
 
 # capture_failed_nodes NODES... — grab each node's silt journal + service state to a
@@ -385,7 +397,7 @@ provision_local() {
   echo "==> docker network $net (10.16.0.0/12 — covers the topology's per-region subnets 10.2x.0.0/16)"
   docker network inspect "$net" >/dev/null 2>&1 || docker network create --subnet 10.16.0.0/12 "$net" >/dev/null
   # nodes.json in the terraform-output shape (instance_name/zone/role/nodeid/ip).
-  python3 - "$FT_DIR/topology.json" "$FT_DIR/nodes.json" "$prefix" <<'PY'
+  python3 - "$FT_TOPO" "$NODES_JSON" "$prefix" <<'PY'
 import json, sys
 topo = json.load(open(sys.argv[1]))["nodes"]
 out = {}
@@ -398,10 +410,10 @@ json.dump(out, open(sys.argv[2], "w"), indent=2)
 print(f"    nodes.json written ({len(out)} containers; natgw/natted excluded)")
 PY
   local name inst ip argv
-  for name in $(python3 -c "import json;print(' '.join(json.load(open('$FT_DIR/nodes.json')).keys()))"); do
+  for name in $(python3 -c "import json;print(' '.join(json.load(open('$NODES_JSON')).keys()))"); do
     inst="${prefix}-${name}"
-    ip="$(python3 -c "import json;print(json.load(open('$FT_DIR/nodes.json'))['$name']['ip'])")"
-    argv="$(python3 -c "import json;print(json.load(open('$FT_DIR/topology.json'))['nodes']['$name']['argv'])")"
+    ip="$(python3 -c "import json;print(json.load(open('$NODES_JSON'))['$name']['ip'])")"
+    argv="$(python3 -c "import json;print(json.load(open('$FT_TOPO'))['nodes']['$name']['argv'])")"
     argv="${argv#daemon }"; argv="daemon $argv"
     docker rm -f "$inst" >/dev/null 2>&1 || true
     docker run -d --name "$inst" --network "$net" --ip "$ip" \

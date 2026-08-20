@@ -9,7 +9,40 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
-- **`LOCAL=1 ./cloudtest.sh` — the cloud harness runs against local docker nodes; per-flow
+- **Cloudtest harness: contained equivocation island (runs every sheet), seeded flow
+  randomization, LOCAL/cloud state separation, empty-response honesty, idempotent economy retry**
+  (2026-08-20) — A batch of harness-trust fixes, several provoked by a real self-inflicted incident
+  this session (a LOCAL verification clobbered a live cloud run's shared `nodes.json` — see below).
+  Design: [docs/thinking/2026-08-20-equivocation-island-design.md](docs/thinking/2026-08-20-equivocation-island-design.md)
+  + the local-first doc.
+  - **Equivocation island (`flow_equivocation_island`, `184-equivocation-island`):** the one
+    destructive drill (a proven double-sign is a permanent F2 eviction) now runs on EVERY sheet, in
+    a fully-contained separate consensus universe — 4 island anchors naming only each other, own
+    genesis, NO external IP (Cloud NAT egress → zero `IN_USE_ADDRESSES` quota). Its slash consumes
+    only the island's fault tolerance, never the main sheet's (the PE 2026-08-17 zero-FT-tail
+    objection made structurally impossible), so it closes the skip-is-a-blind-spot gap the ruling
+    left. LOCAL-verified green (real slash on the wire, height 1); terraform validated.
+  - **Seeded flow randomization (`RANDOMIZE=1` default, `SEED=` to replay):** the order-independent
+    flows run in a seeded-shuffled order so no flow can free-ride on state a fixed predecessor left
+    behind (the hidden coupling that shared `FT_LAST_LINK` hid). `takedown` and `restart-content`
+    now self-publish (like `chaos`/`durability` already did), so they're truly order-independent.
+    Fixed points pinned: warm-up first, destructive flows (soak/maturing) last. First fully-green
+    LOCAL sheet (20/0/0) ran on a random order that placed `takedown` and `restart-content` BEFORE
+    `publish-fetch` — the proof.
+  - **LOCAL/cloud state-file separation:** LOCAL writes `nodes.local.json`/`topology.local.json`
+    (never the cloud's `nodes.json`/`topology.json`), so a LOCAL run can NEVER corrupt a live cloud
+    run's node map. Verified: a LOCAL sheet leaves a planted cloud sentinel untouched. This is the
+    root-cause fix for the incident where LOCAL island verifications overwrote a running cloud
+    sheet's map, breaking its `ssh_node` on `zone=local` and masking the real verdicts.
+  - **Empty-response honesty:** an `ssh_node` that returns NOTHING (node unreachable / wrong map) is
+    now flagged LOUDLY as a PLUMBING failure and scored GAP, in both `ft_publish` and the economy
+    flow — instead of an empty parenthetical that read as benign latency (which masked the clobber
+    for a whole cloud run).
+  - **Idempotent economy retry:** the economy setup publish generates its payload ONCE before the
+    retry loop (mirroring `ft_publish`), so a retry re-publishes the SAME root and picks up an entry
+    that committed server-side after the client's fixed 10s registry timeout gave up (#441). The
+    fixed 10s `httpregistry` client timeout itself is an owned product finding (build-immutable #5),
+    proposed not shipped — see the thinking doc.
   LOCAL_PROOF parity is linted; the sever race and chaos premise-grading are fixed; re-drive
   loop (TEARDOWN=0 / FLOWS=) + dual commit stamp; nightly netem CI** (2026-08-20) — The
   local-first package (design + attributions:

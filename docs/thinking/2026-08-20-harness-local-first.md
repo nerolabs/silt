@@ -169,6 +169,63 @@ loss-injection makes it too jittery for a merge gate.
   coverage stands (sim latch + mature model-check fixtures); the LOCAL_PROOF
   annotation on flow_maturing_handoff records it.
 
+## The economy #441 publish latency (attributed 2026-08-20 on run 9b5d3f4-30907)
+
+**Mechanism (build-immutable #6):** the economy setup publish POST failed with
+`context deadline exceeded (Client.Timeout exceeded while awaiting headers)`
+**because** `adapters/httpregistry` `Client` hard-codes `http.Client{Timeout:
+10*time.Second}`, and a chain-backed publish holds the connection open until the
+consensus commit completes — which under SYBILS=8 launch load exceeds 10s. The
+caller passes `context.Background()` (no deadline), so the fixed 10s is the ONLY
+cap, and it **shadows the caller's context** — a build-immutable #5 magic-constant
+violation (a fixed transport deadline on a load-varying operation).
+
+Compounding it, a **harness bug**: the economy flow regenerated random content
+*inside* the retry loop, minting a new root every attempt, so a slow-but-eventual
+server-side commit could never be picked up by a retry.
+
+**Two fixes:**
+1. **Harness (SHIPPED):** generate the payload ONCE before the retry loop
+   (mirrors ft_publish), so a same-root retry picks up an entry that committed
+   server-side after the client's 10s gave up. **Honesty caveat:** LOCAL cannot
+   reproduce the 10s-under-load timeout (fast local commits), so this fix's effect
+   on the cloud latency is REASONED (same-root retry → server-side-committed entry),
+   not locally proven. The next cloud run is its test.
+2. **Product (PROPOSED, owner/research call — NOT shipped here):** the fixed 10s
+   client timeout on the publish path is the root. Options: (a) a generous,
+   caller-honored publish deadline separate from the 10s lookup timeout; (b) the
+   async-publish (202 + poll) path the network-durability doc already describes as
+   the #441 answer — which is the more architecturally faithful fix but a bigger
+   change. Deliberately not decided mid-session on consensus-adjacent code.
+
+## Randomization's first finding: val-b order-sensitive post-restart stall (2026-08-20)
+
+Seeded randomization immediately earned its keep. Two seeds, same 18 flows:
+- `SEED=coupling-test` → **20 pass / 0 fail** (and it placed `takedown`/`restart-content`
+  BEFORE `publish-fetch`, proving the self-containment fix).
+- `SEED=clean-integration` → val-b **falls behind and never recovers** (h5 vs h11):
+  `7-restart-standing` FAIL, `5-convergence` FAIL, `2-publish-fetch` FAIL.
+
+**Attribution (evidence, not guess):** it reproduces at 10 containers WITHOUT the
+island (so it is NOT the island's 4 extra nodes), and it is **order-sensitive** —
+the IDENTICAL val-b restart recovers under `coupling-test` and stalls under
+`clean-integration`. A deterministic product bug would fail in BOTH orders; an
+identical operation passing or failing by surrounding load is the signature of
+**resource/timing contention** — val-b's post-restart re-bond racing the 60s SLO,
+won or lost by how CPU-heavy the concurrently-graded flows happen to be. Best read:
+**LOCAL laptop starvation, not a product bug** — but NOT certified benign; real
+per-node CPU (cloud) is the instrument that disambiguates.
+
+**Consequences banked:**
+1. Randomization WORKS — it surfaced an order-sensitivity fixed order hid.
+2. A full randomized sheet is **not reliably green on a resource-constrained
+   laptop** — LOCAL's sweet spot is individual-flow + small-sheet verification
+   (where every fix this session DID verify green); a full 18-flow randomized sheet
+   wants real resources. LOCAL users can set `EQV_ISLAND=0` for a lighter sheet.
+3. The fresh-session CLOUD run is the disambiguator: if val-b recovers there across
+   seeds, it was laptop contention; if it stalls, it is a real post-restart
+   convergence finding to attribute (and randomization found it).
+
 ## Deferred, with reasons (owner can re-order)
 
 - **2b dedicated registry node:** repointing REGREF to the existing `registry` node

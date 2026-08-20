@@ -31,7 +31,7 @@ set -uo pipefail
 # ── swarm references (validators as peers; val-a serves the registry) ───────────
 ft_peers() {
   python3 -c "
-import json;t=json.load(open('$FT_DIR/topology.json'));p=t['meta']['swarm_port']
+import json;t=json.load(open('$FT_TOPO'));p=t['meta']['swarm_port']
 print(','.join(n['nodeid']+'@'+n['ip']+':%d'%p for n in t['nodes'].values() if n['role']=='validator'))"
 }
 ft_regref() { # the deterministic pinned registry ref (boot validator NodeID@https://ip:port)
@@ -39,7 +39,7 @@ ft_regref() { # the deterministic pinned registry ref (boot validator NodeID@htt
   # daemon's `registry: chain-backed, serving ...` banner: the old regex could not
   # match it (REGREF came back empty → every `swarm add` hit a usage error), and the
   # banner prints the bound 0.0.0.0 address, which a publisher cannot dial.
-  python3 -c "import json;print(json.load(open('$FT_DIR/topology.json'))['meta']['regref'])"
+  python3 -c "import json;print(json.load(open('$FT_TOPO'))['meta']['regref'])"
 }
 
 PEERS=""; REGREF=""
@@ -103,7 +103,7 @@ ft_publish() { # ft_publish NODE SIZE_BYTES
   # to go to the console only, which is not persisted — run beb3628-95860's
   # 9-cross-nat FAIL left no clue which leg died).
   printf 0 > "$FT_DIR/.ft_publish_gap"; : > "$FT_DIR/.ft_publish_lasterr"
-  local node="$1" size="${2:-1048576}" out link lasterr=""
+  local node="$1" size="${2:-1048576}" out link lasterr="" any_output=0
   ssh_node "$node" "head -c $size </dev/urandom >/tmp/ft_src.bin; sha256sum /tmp/ft_src.bin | cut -d' ' -f1" >/tmp/ft_src_sha 2>/dev/null
   local sha; sha="$(cat /tmp/ft_src_sha 2>/dev/null)"
   local deadline=$(( $(date +%s) + PUBLISH_RETRY_S ))
@@ -112,6 +112,7 @@ ft_publish() { # ft_publish NODE SIZE_BYTES
     # so a publish error (on silt's stderr) is only captured for the diagnostic below
     # if the redirect happens remotely.
     out="$(ssh_node "$node" "/usr/local/bin/silt swarm add /tmp/ft_src.bin -peers '$PEERS' -registry '$REGREF' -token-quorum $TOKEN_QUORUM -chunk-size 65536 2>&1" || true)"
+    [ -n "$(printf '%s' "$out" | tr -d '[:space:]')" ] && any_output=1
     link="$(printf '%s' "$out" | grep -oE 'silt:v1:\S+' | head -1)"
     [ -n "$link" ] && { printf '%s %s\n' "$link" "$sha"; return 0; }
     lasterr="$(printf '%s' "$out" | grep -iE 'could not gather|not enough|no canonical|token|refus|unreachable|timed? ?out' | head -2 | tr '\n' ';')"
@@ -146,6 +147,18 @@ ft_publish() { # ft_publish NODE SIZE_BYTES
   # failed): a subsequent publish failure — even one with no captured error text — is
   # then a discovery/setup problem, not a property break, so score it a GAP too.
   [ "${FETCH_PUBLISH_DEGRADED:-0}" = 1 ] && { FT_PUBLISH_GAP=1; printf 1 > "$FT_DIR/.ft_publish_gap"; }
+  # PLUMBING RED FLAG (2026-08-20, the clobber lesson): if EVERY publish attempt
+  # returned NOTHING, the swarm add command produced no output at all — that is not
+  # a publish that failed, it is ssh_node returning empty (the node is unreachable,
+  # the node MAP is wrong, or ssh/preemption broke the connection). This exact
+  # emptiness — rendered as a benign "did not land (…?)" — masked a corrupted
+  # nodes.json for a whole cloud run. Say it LOUDLY and score it a GAP (plumbing,
+  # not a property failure). A reachability shortfall makes it doubly clear.
+  if [ "$any_output" = 0 ]; then
+    lasterr="EMPTY RESPONSE from $node — ssh_node returned NOTHING across the whole window: the node is UNREACHABLE or the node MAP is wrong (check nodes.json zones/ips), NOT a publish failure. reachable-peers=${reach:-?}"
+    echo "    ⚠ PLUMBING: $lasterr"
+    FT_PUBLISH_GAP=1; printf 1 > "$FT_DIR/.ft_publish_gap"
+  fi
   printf '%s' "$lasterr" > "$FT_DIR/.ft_publish_lasterr"
   # Persist the diagnostic (#7): stderr reaches the console, but the console dies
   # with the terminal — the tee'd copy survives teardown next to the run's report.
@@ -224,7 +237,7 @@ flow_first_run() {
 flow_publish_fetch() {
   local t0 t1 res link sha got ok=0
   t0="$(date +%s)"
-  local boot; boot="$(python3 -c "import json;print(json.load(open('$FT_DIR/topology.json'))['meta']['boot'])")"
+  local boot; boot="$(python3 -c "import json;print(json.load(open('$FT_TOPO'))['meta']['boot'])")"
   flow_evidence_nodes fetch-1 "$boot" store-2 store-1   # publisher, boot validator, fetch side
   local h0; h0="$(ft_commit_height "$boot")"   # audit #303: baseline BEFORE the publish
   res="$(ft_publish fetch-1 1048576 || true)"
@@ -332,7 +345,7 @@ flow_convergence() {
   # place, keep that verdict.
   if [ "$conv" = 1 ]; then
     local boot bnv h1 hh1 info2 h2
-    boot="$(python3 -c "import json;print(json.load(open('$FT_DIR/topology.json'))['meta']['boot'])")"
+    boot="$(python3 -c "import json;print(json.load(open('$FT_TOPO'))['meta']['boot'])")"
     bnv="${boot//-/_}"; eval "h1=\${H_$bnv:-0}; hh1=\${HH_$bnv}"
     sleep 20
     info2="$(chain_head "$boot")"; h2="${info2%% *}"; h2="${h2:-0}"
@@ -349,7 +362,7 @@ flow_convergence() {
 # LOCAL_PROOF: SUITE=substrate ./integration/adversarial/run.sh  (commit with a validator down, under netem)
 flow_fault_tolerance() {
   require_nodes "6-fault-tolerance" major val-d || return
-  local boot; boot="$(python3 -c "import json;print(json.load(open('$FT_DIR/topology.json'))['meta']['boot'])")"
+  local boot; boot="$(python3 -c "import json;print(json.load(open('$FT_TOPO'))['meta']['boot'])")"
   # A fault-tolerance failure lives in the PUBLISHER (fetch-1) and the SURVIVING
   # validators, not val-d (deliberately down) — require_nodes stashed only val-d.
   # Override so the capture attributes a real gap (run 4faaee8-22913's flow-6 gap
@@ -400,14 +413,19 @@ flow_restart_survival() {
     # No upstream link ⇒ nothing to fetch: GAP (untested), not a want=?/got=<none> FAIL —
     # the same missing-link precondition 8-takedown already GAPs on (H3). A failed
     # publish is scored where it happens (2-publish-fetch), not cascaded here.
-    require_link "7-restart-content" major || return
+    # SELF-CONTAINED (2026-08-20 randomization): reuse a prior link or publish our
+    # own, so a randomized sheet that runs this before publish-fetch still tests the
+    # property instead of GAPping on a missing precondition.
+    local rlink="${FT_LAST_LINK:-}" rsha="${FT_LAST_SHA:-}"
+    if [ -z "$rlink" ]; then local rres; rres="$(ft_publish fetch-1 262144 || true)"; rlink="${rres%% *}"; rsha="${rres##* }"; fi
+    if [ -z "$rlink" ]; then publish_verdict "7-restart-content" major "no link (reuse+self-publish both failed) — restart-content UNTESTED"; return; fi
     svc store-2 restart || true; sleep 8
     local ok2=0 got=""
     # SHA-compare, not echo-OK (§D): a `swarm get` that exits 0 but writes truncated or
     # wrong bytes must NOT pass as "fetchable" — assert the fetched file's SHA matches.
-    got="$(ssh_node store-1 "/usr/local/bin/silt swarm get '$FT_LAST_LINK' -o /tmp/ft_r.bin -peers '$PEERS' -registry '$REGREF' >/dev/null 2>&1; sha256sum /tmp/ft_r.bin | cut -d' ' -f1" 2>/dev/null || true)"
-    [ -n "${FT_LAST_SHA:-}" ] && [ "$got" = "$FT_LAST_SHA" ] && ok2=1
-    slo_assert "7-restart-content" major "content still fetchable BIT-PERFECT after a storage-node restart$([ "$ok2" = 1 ] || echo " (want=${FT_LAST_SHA:-?} got=${got:-<none>})")" "$ok2"
+    got="$(ssh_node store-1 "/usr/local/bin/silt swarm get '$rlink' -o /tmp/ft_r.bin -peers '$PEERS' -registry '$REGREF' >/dev/null 2>&1; sha256sum /tmp/ft_r.bin | cut -d' ' -f1" 2>/dev/null || true)"
+    [ -n "$rsha" ] && [ "$got" = "$rsha" ] && ok2=1
+    slo_assert "7-restart-content" major "content still fetchable BIT-PERFECT after a storage-node restart$([ "$ok2" = 1 ] || echo " (want=${rsha:-?} got=${got:-<none>})")" "$ok2"
   else
     record "7-restart-content" skip major "skipped — needs store-2 (absent in this topology, e.g. SMOKE)"
   fi
@@ -417,10 +435,15 @@ flow_restart_survival() {
 # LOCAL_PROOF: ./integration/takedown/run.sh
 flow_takedown() {
   flow_evidence_nodes store-1 store-2
-  if [ -z "${FT_LAST_LINK:-}" ]; then record "8-takedown" gap minor "no prior published link to deny"; return; fi
+  # SELF-CONTAINED (2026-08-20 randomization): reuse a prior link if one exists,
+  # else publish our own — so this flow is ORDER-INDEPENDENT (it no longer GAPs
+  # just because it ran before publish-fetch in a randomized sheet).
+  local link="${FT_LAST_LINK:-}" wantsha="${FT_LAST_SHA:-}"
+  if [ -z "$link" ]; then local res; res="$(ft_publish fetch-1 262144 || true)"; link="${res%% *}"; wantsha="${res##* }"; fi
+  if [ -z "$link" ]; then publish_verdict "8-takedown" major "no link (reuse+self-publish both failed) — takedown UNTESTED"; return; fi
   # extract the HEX root from the silt:v1:<b64url-root>:<...> link and deny it on store-1
-  local root; root="$(b64url_to_hex "$(printf '%s' "$FT_LAST_LINK" | cut -d: -f3)")"
-  if [ ${#root} -ne 64 ]; then record "8-takedown" gap minor "could not decode a 64-hex root from $FT_LAST_LINK (got '${root:0:16}…')"; return; fi
+  local root; root="$(b64url_to_hex "$(printf '%s' "$link" | cut -d: -f3)")"
+  if [ ${#root} -ne 64 ]; then record "8-takedown" gap minor "could not decode a 64-hex root from $link (got '${root:0:16}…')"; return; fi
   ssh_node store-1 "echo '$root' | sudo tee /var/lib/silt/deny.txt >/dev/null" >/dev/null 2>&1
   relaunch_with store-1 "-denylist /var/lib/silt/deny.txt"; sleep 8
   # DENIAL leg (fixed — audit-#303 class, wrong-surface probe): the old probe ran
@@ -439,8 +462,8 @@ flow_takedown() {
   [ -n "$denyline" ] && denied=1
   # SHA-compare the SERVE side (§D): "still served elsewhere" must mean store-2 returned
   # the REAL bytes bit-perfect, not merely that `swarm get` exited 0.
-  local sgot; sgot="$(ssh_node store-2 "/usr/local/bin/silt swarm get '$FT_LAST_LINK' -o /tmp/ft_s.bin -peers '$PEERS' -registry '$REGREF' >/dev/null 2>&1; sha256sum /tmp/ft_s.bin | cut -d' ' -f1" 2>/dev/null || true)"
-  [ -n "${FT_LAST_SHA:-}" ] && [ "$sgot" = "$FT_LAST_SHA" ] && served=1
+  local sgot; sgot="$(ssh_node store-2 "/usr/local/bin/silt swarm get '$link' -o /tmp/ft_s.bin -peers '$PEERS' -registry '$REGREF' >/dev/null 2>&1; sha256sum /tmp/ft_s.bin | cut -d' ' -f1" 2>/dev/null || true)"
+  [ -n "$wantsha" ] && [ "$sgot" = "$wantsha" ] && served=1
   if [ "$denied" = 1 ] && [ "$served" = 1 ]; then
     slo_assert "8-takedown" major "store-1 enforces the operator denylist (${denyline##*silt}) while store-2 still serves BIT-PERFECT (no global switch)" 1
   else
@@ -489,10 +512,57 @@ adv_equivocation() {
   # conflicting blocks at one height) and an honest anchor slashes it unaided on the
   # reconcile path — run under adverse conditions by integration/adversarial (netem).
   # The in-process merge gate is core/node/modelcheck_184_equivocation_objective_test.go.
-  # (The old cloudtest flow GAPped every run: the outside non-anchor adversary is not
-  # a gathered signer, so its prepare never reaches an honest commit and the detection
-  # can never fire — the real root, one layer below "honest already attested".)
-  record "184-equivocation" skip blocker "the one destructive drill (a proven double-sign is a PERMANENT eviction, F2) runs on its DEDICATED ephemeral net, not mid-sheet — certified by e2e TestEquivocatorSlashedOverTCP (objective slash-on-detection over real daemons) + integration/adversarial (netem), merge-gated by the in-process oracle. Mid-sheet eviction would pin the commit requirement at 3-of-4 against only 3 live anchors (zero fault tolerance). PE ruling 2026-08-17."
+  #
+  # 2026-08-20 (owner directive): the drill now runs on EVERY sheet — but in the
+  # fully-contained equivocation ISLAND (flow_equivocation_island below), a separate
+  # consensus universe. That honors the PE ruling (its slash taxes only the island's
+  # fault tolerance, never the main sheet's) AND closes the skip-is-a-blind-spot gap.
+  # This row stays a SKIP so the island's PASS/FAIL is the one graded verdict, not
+  # two rows for one property.
+  record "184-equivocation" skip blocker "runs on the contained equivocation ISLAND every sheet (flow_equivocation_island — a separate consensus universe; its slash never taxes main-sheet fault tolerance, PE 2026-08-17). This row is the historical pointer; the island row is the graded verdict."
+}
+
+# ── #184 equivocation ISLAND: the destructive drill, contained, on EVERY sheet ───
+# A separate 4-anchor consensus universe (topology role "island"; own genesis, own
+# -anchors naming only each other; no external IP on GCP → zero quota, Cloud NAT
+# egress). One island anchor is relaunched as a Byzantine equivocator; an honest
+# island anchor slashes the double-sign on the reconcile path. Fully contained:
+# nothing in the main swarm names the island, so the permanent eviction (F2) consumes
+# only the ISLAND's fault tolerance — the exact zero-FT-tail the PE 2026-08-17 ruling
+# forbade on the shared sheet, here made structurally impossible. Design:
+# docs/thinking/2026-08-20-equivocation-island-design.md.
+# LOCAL_PROOF: LOCAL=1 ./cloudtest.sh (the island is 4 containers; the flow runs verbatim) + go test ./e2e -run TestEquivocatorSlashedOverTCP
+flow_equivocation_island() {
+  require_nodes "184-equivocation-island" blocker island-a island-b island-c island-d || return
+  # 1) The island must reach a baseline commit (its own chain is live + independent)
+  #    before the equivocator has any on-chain prepare to fork — else the drill is
+  #    UNTESTED (premise unmet), not a failed slash.
+  # island-b is the BAKED-IN objective equivocator (topology.py — the green e2e
+  # shape; a LOCAL run proved a mid-drill relaunch leaves it re-warming past the
+  # window). island-a is an honest anchor that detects + slashes. No relaunch,
+  # no restore — the island is torn down with the run.
+  local isl_boot="island-a" byz="island-b" honest="island-a"
+  local byzid; byzid="$(node_field "$byz" nodeid)"
+  flow_evidence_nodes island-a island-b island-c island-d
+  # 1) The island's independent chain must commit a baseline (the equivocator
+  #    participates honestly first, so a commit means it has prepared a height to
+  #    fork). Undriven ⇒ UNTESTED, not a failed slash.
+  if ! waitfor "$isl_boot" 'chain: committed block [1-9]' 180 >/dev/null; then
+    record "184-equivocation-island" gap blocker "the island never committed a baseline block within 180s — its independent consensus never warmed, so the equivocator has no on-chain prepare to fork (UNTESTED not failed; attribute from the island journals)"
+    return
+  fi
+  # 2) The baked-in equivocator serves its conflicting block; confirm it drove.
+  if ! waitfor "$byz" 'adversary: equivocation complete \(double-signed height [0-9]+\)' 180 >/dev/null; then
+    record "184-equivocation-island" gap blocker "the equivocator never served its conflicting block within 180s — drill did not drive (UNTESTED; attribute from $byz's journal)"; return
+  fi
+  # 3) An HONEST island anchor slashes the double-sign on the reconcile path — the
+  #    accountability property on the wire. Assert the product's own slash line (#7).
+  local slashline; slashline="$(waitfor "$honest" "chain: slashed equivocator ${byzid}" 120 || true)"
+  if [ -n "$slashline" ]; then
+    slo_assert "184-equivocation-island" blocker "accountability FIRED on the wire: a contained island anchor double-signed and an honest anchor SLASHED it (${slashline##*chain: }) — proven equivocation → permanent eviction (F2), zero blast radius to the main sheet (separate consensus universe)" 1
+  else
+    record "184-equivocation-island" fail blocker "the equivocator double-signed but NO honest island anchor slashed it within 120s — the accountability detection did not fire; attribute from the island journals (reconcile/FindEquivocations path) before re-running (#7)"
+  fi
 }
 
 # ── #184 adversarial: partition → heal (BFT: stall-then-catch-up) ────────────────
@@ -529,7 +599,7 @@ adv_partition() {
   # line IS the safety property (PE ruling 2026-08-17).
   local blockids; blockids="$(python3 -c "
 import json
-t=json.load(open('$FT_DIR/topology.json'))
+t=json.load(open('$FT_TOPO'))
 print(','.join(n['nodeid'] for name,n in t['nodes'].items()
   if n['role'] in ('validator','adversary','maturer','sybil') and name!='val-c'))" 2>/dev/null)"
   if [ -z "$blockids" ]; then
@@ -834,13 +904,13 @@ flow_c2_no_capture() {
   # ANCHOR gate on a network that never sheds; under MATURING=1 the anchors shed
   # by design, so the premise (ErrAnchorRequired without anchors) does not exist
   # — the post-shed capture property is flow 10's B2 capture drill instead.
-  if [ "$(python3 -c "import json;print(json.load(open('$FT_DIR/topology.json'))['meta'].get('maturing',0))")" = "1" ]; then
+  if [ "$(python3 -c "import json;print(json.load(open('$FT_TOPO'))['meta'].get('maturing',0))")" = "1" ]; then
     record "5-sybil-no-capture" skip major "MATURING=1 topology sheds the anchors by design — the anchor-gate premise doesn't exist here; the post-shed capture property is certified by 10-maturing-handoff's B2 drills (run without MATURING for flow 5)"
     return
   fi
   local n_syb sybils anchors_nodes
-  n_syb="$(python3 -c "import json;print(json.load(open('$FT_DIR/topology.json'))['meta']['n_syb'])")"
-  sybils="$(python3 -c "import json;print(' '.join(json.load(open('$FT_DIR/topology.json'))['meta']['sybils']))")"
+  n_syb="$(python3 -c "import json;print(json.load(open('$FT_TOPO'))['meta']['n_syb'])")"
+  sybils="$(python3 -c "import json;print(' '.join(json.load(open('$FT_TOPO'))['meta']['sybils']))")"
   anchors_nodes="$(python3 -c "import json;print(' '.join(n for n,v in json.load(open('$NODES_JSON')).items() if v['role']=='validator'))")"
   # This flow never calls require_nodes, so stash its evidence set explicitly: a
   # non-green verdict here (e.g. the resume clincher not firing) needs the anchors'
@@ -1049,7 +1119,7 @@ flow_c2_no_capture() {
 # LOCAL_PROOF: n/a — real-daemon latch/handoff is the named residual (in-process: sim TestTrainingWheelsShedThroughTheNodeLoop + the core/node modelcheck mature fixtures); e2e twin tracked in docs/thinking/2026-08-20-harness-local-first.md
 flow_maturing_handoff() {
   local maturing
-  maturing="$(python3 -c "import json;print(json.load(open('$FT_DIR/topology.json'))['meta'].get('maturing',0))")"
+  maturing="$(python3 -c "import json;print(json.load(open('$FT_TOPO'))['meta'].get('maturing',0))")"
   if [ "$maturing" != "1" ]; then
     record "10-maturing-handoff" skip major "not a MATURING topology — opt in with MATURING=1 SYBILS=8 ./cloudtest.sh to field-exercise the handoff/post-shed regime (the external red team's sharpest seam-#8 target; until then it is proven only in-process: core/chain/quorum_weight_test.go + sim/maturequorum_test.go)"
     return
@@ -1058,10 +1128,10 @@ flow_maturing_handoff() {
   require_live  "10-maturing-handoff" major val-a || return
   local anchors_nodes n_syb sybils n_mat maturers
   anchors_nodes="$(python3 -c "import json;print(' '.join(n for n,v in json.load(open('$NODES_JSON')).items() if v['role']=='validator'))")"
-  n_syb="$(python3 -c "import json;print(json.load(open('$FT_DIR/topology.json'))['meta']['n_syb'])")"
-  sybils="$(python3 -c "import json;print(' '.join(json.load(open('$FT_DIR/topology.json'))['meta']['sybils']))")"
-  n_mat="$(python3 -c "import json;print(json.load(open('$FT_DIR/topology.json'))['meta'].get('n_mat',0))")"
-  maturers="$(python3 -c "import json;print(' '.join(json.load(open('$FT_DIR/topology.json'))['meta'].get('maturers',[])))")"
+  n_syb="$(python3 -c "import json;print(json.load(open('$FT_TOPO'))['meta']['n_syb'])")"
+  sybils="$(python3 -c "import json;print(' '.join(json.load(open('$FT_TOPO'))['meta']['sybils']))")"
+  n_mat="$(python3 -c "import json;print(json.load(open('$FT_TOPO'))['meta'].get('n_mat',0))")"
+  maturers="$(python3 -c "import json;print(' '.join(json.load(open('$FT_TOPO'))['meta'].get('maturers',[])))")"
   # The latch premise needs the maturer cohort (2026-08-15 re-split): without it
   # the bar-2 latch is unreachable by construction (C2Metric excludes anchors;
   # the single-domain sybils aggregate to one group —
@@ -1302,7 +1372,7 @@ flow_maturing_handoff() {
 : "${WARMUP_S:=600}"
 wait_network_warm() {
   local boot deadline t0 out link
-  boot="$(python3 -c "import json;print(json.load(open('$FT_DIR/topology.json'))['meta']['boot'])")"
+  boot="$(python3 -c "import json;print(json.load(open('$FT_TOPO'))['meta']['boot'])")"
   t0="$(date +%s)"; deadline=$(( t0 + WARMUP_S ))
   echo "  warming the network (≤${WARMUP_S}s): retrying a throwaway publish from $boot until the chain commits…"
   while [ "$(date +%s)" -lt "$deadline" ]; do
@@ -1409,7 +1479,19 @@ flow_economy_repair() {
   # especially late in the sheet under load (#441-family). Ride it out with retries —
   # the same tolerance ft_publish has (PUBLISH_RETRY_S) — instead of GAPping on one
   # slow-commit window; only GAP after the whole budget is spent.
-  local out link carelink attempt=0
+  local out link carelink attempt=0 econ_any_output=0
+  # IDEMPOTENT RETRY (2026-08-20, attributed on run 9b5d3f4-30907): generate the
+  # payload ONCE, before the loop — NOT per attempt. A chain-backed publish that
+  # times out at the client's fixed 10s registry-POST deadline (#441 accept→commit
+  # latency under SYBILS=8 load) still COMMITS the entry server-side; a retry of the
+  # SAME root then finds it committed and returns fast. The old per-attempt
+  # `head -c … </dev/urandom` minted a NEW root every retry, so a slow-but-eventual
+  # commit could never be picked up — every attempt raced the 10s deadline from
+  # scratch and the whole 360s budget GAPed. This mirrors ft_publish, which has
+  # always generated its source once. (The 10s client deadline itself is a
+  # build-immutable #5 magic-constant limitation in adapters/httpregistry — a
+  # separate product fix; this makes the harness retry actually idempotent.)
+  ssh_node fetch-1 "head -c 4194304 </dev/urandom >/tmp/ft_econ.bin" >/dev/null 2>&1
   local econ_deadline=$(( $(date +%s) + ${ECONOMY_PUBLISH_RETRY_S:-360} ))
   while :; do
     # -replication 1: each column lands on ONE holder, so 3 all-killable columns
@@ -1419,17 +1501,30 @@ flow_economy_repair() {
     # killable; the first full LOCAL sheet measured the result — 0 of 16 columns
     # qualified, the flow GAPs at selection (the 4th latent defect this flow
     # shipped with, caught for $0 on docker).
-    out="$(ssh_node fetch-1 "head -c 4194304 </dev/urandom >/tmp/ft_econ.bin; /usr/local/bin/silt swarm add /tmp/ft_econ.bin -peers '$PEERS' -registry '$REGREF' -token-quorum $TOKEN_QUORUM -chunk-size 262144 -replication 1 2>&1" || true)"
+    out="$(ssh_node fetch-1 "/usr/local/bin/silt swarm add /tmp/ft_econ.bin -peers '$PEERS' -registry '$REGREF' -token-quorum $TOKEN_QUORUM -chunk-size 262144 -replication 1 2>&1" || true)"
+    [ -n "$(printf '%s' "$out" | tr -d '[:space:]')" ] && econ_any_output=1
     link="$(printf '%s' "$out" | grep -oE 'silt:v1:\S+' | head -1)"
     carelink="$(printf '%s' "$out" | grep -oE 'siltcare:\S+' | head -1)"
     { [ -n "$link" ] && [ -n "$carelink" ]; } && break
     [ "$(date +%s)" -ge "$econ_deadline" ] && break
     attempt=$((attempt+1))
-    echo "    economy publish attempt $attempt did not land (registry commit latency? $(printf '%s' "$out" | tr '\n' ' ' | head -c 120)); retrying in 30s…"
+    # Verbosity/honesty (2026-08-20 clobber lesson): distinguish an EMPTY response
+    # (ssh returned nothing → node unreachable / wrong map — a PLUMBING failure) from
+    # a real error string. The empty parenthetical here once masked a corrupted
+    # nodes.json for a whole run; now the empty case is called out explicitly.
+    local econ_snip; econ_snip="$(printf '%s' "$out" | tr '\n' ' ' | head -c 120)"
+    if [ -z "$(printf '%s' "$out" | tr -d '[:space:]')" ]; then
+      echo "    ⚠ economy publish attempt $attempt: EMPTY RESPONSE from fetch-1 — ssh returned NOTHING (node unreachable / node MAP wrong?), NOT a registry-latency signal; retrying in 30s…"
+    else
+      echo "    economy publish attempt $attempt did not land (registry commit latency? $econ_snip); retrying in 30s…"
+    fi
     sleep 30
   done
   if [ -z "$link" ] || [ -z "$carelink" ]; then
     ft_add_validator_evidence
+    if [ "$econ_any_output" = 0 ]; then
+      record "11-economy-repair" gap major "setup publish got EMPTY RESPONSES from fetch-1 for the whole ${ECONOMY_PUBLISH_RETRY_S:-360}s window — fetch-1 UNREACHABLE or the node MAP is wrong (check nodes.json), a PLUMBING failure NOT a product/latency issue; economy UNTESTED"; return
+    fi
     record "11-economy-repair" gap major "setup publish landed no link+carelink after ${ECONOMY_PUBLISH_RETRY_S:-360}s of retries — economy UNTESTED this run, not a failure (registry publish-commit latency #441-family; $(printf '%s' "$out" | tr '\n' ';' | head -c 160))"; return
   fi
 
@@ -1603,7 +1698,7 @@ EOF
 flow_soak_publish_drain() {
   [ "${SOAK:-0}" = 1 ] || return 0
   local n_mat_soak
-  n_mat_soak="$(python3 -c "import json;print(json.load(open('$FT_DIR/topology.json'))['meta'].get('n_mat',0))" 2>/dev/null || echo 0)"
+  n_mat_soak="$(python3 -c "import json;print(json.load(open('$FT_TOPO'))['meta'].get('n_mat',0))" 2>/dev/null || echo 0)"
   if [ "${n_mat_soak:-0}" -gt 0 ]; then
     record "soak-publish-drain" skip major "SOAK requires a LAUNCH topology (MATURING=0) — the latch would end the launch regime mid-soak; run SOAK=1 without MATURING"
     return
@@ -1670,39 +1765,64 @@ flow_soak_publish_drain() {
   fi
 }
 
+# shuffle_seeded SEED ITEM...  — deterministic Fisher-Yates over the args, keyed by
+# SEED (same seed ⇒ same order, always replayable — the determinism discipline: a
+# random test you cannot reproduce is worse than a fixed one). Python because bash
+# has no seeded shuffle; the seed is hashed to an int so any string works.
+shuffle_seeded() {
+  local seed="$1"; shift
+  python3 - "$seed" "$@" <<'PY'
+import sys, random, hashlib
+seed = sys.argv[1]; items = sys.argv[2:]
+random.seed(int(hashlib.sha256(seed.encode()).hexdigest(), 16))
+random.shuffle(items)
+print(" ".join(items))
+PY
+}
+
 run_all_scenarios() {
   ft_init_refs
   echo "  peers=$PEERS"
   echo "  registry=$REGREF"
   wait_network_warm
   wait_publisher_warm fetch-1   # #344: non-validator issuer-set/issuer-key discovery lags genesis
-  # acceptance flows 1–9 + #184 adversarial drills
-  run_flow flow_first_run
-  run_flow flow_become_validator
-  run_flow flow_publish_fetch
-  run_flow flow_care_link
-  run_flow flow_convergence
-  run_flow flow_fault_tolerance
-  run_flow flow_restart_survival
-  run_flow flow_takedown
-  run_flow flow_cross_nat
-  run_flow adv_equivocation
-  run_flow adv_partition
-  run_flow adv_proposal_reject
-  # cloud variants of the local field-test series
-  # Re-warm the fetch publisher (#351): flows 7 (restart-survival) and the #184 drills
-  # restart/partition validators, which transiently drops a validator from the
-  # discoverable canonical-issuer set until it re-syncs — so a fresh ephemeral publish
-  # here re-races issuer-set discovery (durability-turnover false-FAILed on the last
-  # re-cert for exactly this). One warm at genesis (#344) doesn't cover post-restart
-  # flows; re-warm before the publish-dependent cloud variants. Bounded + non-fatal.
+
+  # RANDOMIZED flow order (2026-08-20, owner directive: "random as possible") —
+  # runs the order-independent, RECOVERABLE flows in a seeded-shuffled order so no
+  # flow can silently free-ride on state a fixed predecessor left behind (the hidden
+  # coupling that shared FT_LAST_LINK / nodes.json hid). Every flow here is
+  # self-contained: it publishes its own content if none exists, resolves its own
+  # peers, restores what it perturbs. FIXED POINTS stay pinned: warm-up first;
+  # first-run is the liveness precondition; the DESTRUCTIVE / one-way flows
+  # (soak, maturing — they permanently stop validators) run LAST, never shuffled.
+  # RANDOMIZE=0 restores the legacy fixed order; SEED=<x> replays a specific order.
+  run_flow flow_first_run   # liveness precondition — always first among graded flows
+
+  local mid=(
+    flow_become_validator flow_publish_fetch flow_care_link flow_convergence
+    flow_fault_tolerance flow_restart_survival flow_takedown flow_cross_nat
+    adv_equivocation flow_equivocation_island adv_partition adv_proposal_reject
+    flow_publisher_unlinkability flow_durability_turnover flow_chaos_crash
+    flow_web_ui_guard flow_c2_no_capture flow_economy_repair
+  )
+  if [ "${RANDOMIZE:-1}" = 1 ]; then
+    local seed="${SEED:-$RUN_ID}"
+    # shellcheck disable=SC2207
+    mid=($(shuffle_seeded "$seed" "${mid[@]}"))
+    echo "  ⇒ RANDOMIZED flow order (seed='$seed'; set RANDOMIZE=0 for fixed order, SEED=$seed to replay):"
+    echo "     ${mid[*]}"
+  else
+    echo "  ⇒ FIXED flow order (RANDOMIZE=0)"
+  fi
+  # Re-warm the publisher before the batch (#351): restart/partition drills drop a
+  # validator from the discoverable issuer set until it re-syncs; a bounded re-warm
+  # keeps publish-dependent flows from racing that discovery. In random order any
+  # flow may need it, so warm once before the whole batch. Bounded + non-fatal.
   wait_publisher_warm fetch-1
-  run_flow flow_publisher_unlinkability   # privacy #3
-  run_flow flow_durability_turnover       # durability #2
-  run_flow flow_chaos_crash               # chaos #7
-  run_flow flow_web_ui_guard              # client/UI #4
-  run_flow flow_c2_no_capture             # C2 Sybil #5 — opt-in (SYBILS=8): certifies the PURE anchor gate on cloud
-  run_flow flow_economy_repair            # S7 #11 — opt-in (ECONOMY=1): the repair-bounty pays a verified reconstruction on the wire (Phase 2 exit gate)
-  run_flow flow_soak_publish_drain        # PE #432 gate — opt-in (SOAK=1, MATURING=0): launch publish/drain interleave soak
-  run_flow flow_maturing_handoff          # §4/B2 #10 — opt-in (MATURING=1 SYBILS=8): handoff + post-shed + weight-quorum drills + WS cold-sync. LAST: it stops validators.
+  local f; for f in "${mid[@]}"; do run_flow "$f"; done
+
+  # DESTRUCTIVE / one-way LAST — never randomized (they permanently stop validators;
+  # a shuffled position would strand the flows after them on a broken quorum).
+  run_flow flow_soak_publish_drain        # opt-in (SOAK=1, MATURING=0): launch publish/drain soak
+  run_flow flow_maturing_handoff          # opt-in (MATURING=1 SYBILS=8): handoff/shed drills. LAST: stops validators.
 }
