@@ -124,6 +124,34 @@ loss-injection makes it too jittery for a merge gate.
   so `-quorum 2` makes the BASELINE uncommittable; 3 anchors + 2 bonded
   non-anchors is the minimal shape. Baseline commits → all anchors killed → zero
   fresh commits on the bonded survivors → restart → resumes.
+- **Full base-topology LOCAL sheet (ECONOMY=1, no sybils): 19 pass / 1 gap /
+  0 fail.** `184-partition` PASSED with the baseline-after-sever fix — the flow
+  that GAPed 18 consecutive cloud runs. The 1 gap was the LOCAL mode earning its
+  keep: the economy flow's selection stage measured **0 of 16 columns
+  all-killable at the publish's default replication 3** — the 4th latent defect
+  in that flow, invisible to every cloud run (they all died earlier in the
+  chain). Fixed: the economy publish is `-replication 1` (parity is the
+  redundancy; same shape as the e2e proof).
+- **SYBILS=8 LOCALLY oversubscribes a laptop — a documented limit, not a
+  target.** The 19-container sheet degraded exactly as CPU contention predicts
+  (publisher warm missed 240 s → the dependent flows GAPed HONESTLY through the
+  new premise classifier, which is itself the fix working; chaos-reprovide
+  missed its 300 s envelope — journals captured, NOT assumed benign, rule 7),
+  and the sheet overran a 58-minute outer timeout mid-sybil-drill. The base
+  13-container topology is LOCAL's sweet spot; the sybil cohort's computed WAN
+  bounds don't fit a 5-way-oversubscribed docker VM. The 5-sybil drill's local
+  coverage is the deterministic e2e twin (TestAnchorStopHaltsBondedNonAnchors),
+  not a 19-container laptop sheet.
+- **Targeted `FLOWS="economy"` re-drive (base topology): the previously-fatal
+  stages are live-verified.** The filter ran exactly one flow; the economy drive
+  cleared publish → caretaker relaunch WITH `-registry` (defect 3) → 400k fund
+  on BOTH caretakers (defects 1–2) and reached selection, finding **2 of 3**
+  all-killable columns — up from 0/16 pre-fix, and exactly the pool math: the
+  base topology has 2 killable nodes, 16 columns × 2/11 ≈ 3. The cloud
+  confirming run's SYBILS=8 pool (10 killable) predicts ≈7.6 qualifying columns.
+  The full payout drive stays locally covered by `TestRepairBountyPaysOnTheWire`
+  (a 12-node killable pool by construction) — that division of labor is the
+  design, not a shortfall.
 - **Maturing-latch e2e: parked as the named residual** (per the timebox above).
   The honest reason: a post-shed weight-quorum drill needs the maturers to hold
   >⅔ of frozen epoch WEIGHT (bond-size asymmetry or a 7-maturer fleet), a regime
