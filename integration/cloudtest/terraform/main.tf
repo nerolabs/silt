@@ -4,9 +4,14 @@
 
 locals {
   # Split the node table by network role.
-  public_nodes = { for k, v in var.nodes : k => v if v.role != "natted" && v.role != "natgw" }
+  public_nodes = { for k, v in var.nodes : k => v if v.role != "natted" && v.role != "natgw" && v.role != "island" }
   nat_nodes    = { for k, v in var.nodes : k => v if v.role == "natted" }
   natgw_nodes  = { for k, v in var.nodes : k => v if v.role == "natgw" }
+  # The equivocation island: a contained consensus universe (own anchors, own
+  # genesis; nothing in the main swarm names it). NO external IP → zero
+  # IN_USE_ADDRESSES quota (the real constraint); egress for the GCS binary pull
+  # goes through Cloud NAT below. Design: docs/thinking/2026-08-20-equivocation-island-design.md.
+  island_nodes = { for k, v in var.nodes : k => v if v.role == "island" }
   labels       = { cloudtest = var.run_id }
 }
 
@@ -258,6 +263,77 @@ resource "google_compute_instance" "natted" {
     })
   })
   depends_on = [google_compute_instance.natgw, google_storage_bucket_iam_member.vm_read]
+}
+
+# ── The equivocation island: contained silt nodes with NO external IP ───────────
+# A separate consensus universe for the one destructive drill (permanent-eviction
+# equivocation). No access_config → no external IP → zero IN_USE_ADDRESSES quota.
+# Cloud NAT (below) gives them outbound-only egress for the GCS binary pull; they
+# stay un-dialable from the internet and, by their own anchor config, un-joined to
+# the main swarm — so the drill's slash consumes only the island's fault tolerance.
+resource "google_compute_instance" "island" {
+  for_each     = local.island_nodes
+  name         = "silt-ft-${each.key}-${var.run_id}"
+  machine_type = var.machine_type
+  zone         = each.value.zone
+  labels       = merge(local.labels, { role = each.value.role })
+  tags         = ["island"]
+
+  boot_disk {
+    initialize_params {
+      image = var.image
+      size  = var.boot_disk_gb
+    }
+  }
+  network_interface {
+    subnetwork = google_compute_subnetwork.public[each.value.region].id
+    network_ip = each.value.ip
+    # NO access_config: no external IP → zero quota. Egress via Cloud NAT.
+  }
+  scheduling {
+    # The island's whole job is the destructive drill; keep it cheap on SPOT. If
+    # preempted, the drill GAPs "did not drive" (UNTESTED), never a false FAIL.
+    provisioning_model          = var.all_on_demand ? "STANDARD" : "SPOT"
+    preemptible                 = !var.all_on_demand
+    automatic_restart           = false
+    instance_termination_action = "DELETE"
+    max_run_duration {
+      seconds = var.ttl_minutes * 60
+    }
+  }
+  service_account {
+    email  = data.google_compute_default_service_account.default.email
+    scopes = ["https://www.googleapis.com/auth/devstorage.read_only"]
+  }
+  metadata = merge(local.ssh_keys_meta, {
+    "silt-argv"       = each.value.argv
+    "silt-binary-url" = "gs://${google_storage_bucket.artifacts.name}/${google_storage_bucket_object.silt_binary.name}"
+    "node-name"       = each.key
+    "startup-script" = templatefile("${path.module}/../provision/silt-startup.sh", {
+      ttl_minutes = var.ttl_minutes
+    })
+  })
+  depends_on = [google_storage_bucket_iam_member.vm_read, google_compute_router_nat.island]
+}
+
+# Cloud NAT for the island's outbound egress (GCS binary pull), keyed to the
+# primary region. Only instances WITHOUT an external IP use it, so the public
+# nodes (which have external IPs) are unaffected — this NATs the island alone.
+# Managed, no instance, ~free; created only when an island exists.
+resource "google_compute_router" "island" {
+  count   = length(local.island_nodes) > 0 ? 1 : 0
+  name    = "silt-ft-island-router-${var.run_id}"
+  region  = var.default_region
+  network = google_compute_network.silt.id
+}
+
+resource "google_compute_router_nat" "island" {
+  count                              = length(local.island_nodes) > 0 ? 1 : 0
+  name                               = "silt-ft-island-nat-${var.run_id}"
+  router                             = google_compute_router.island[0].name
+  region                             = var.default_region
+  nat_ip_allocate_option             = "AUTO_ONLY"
+  source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
 }
 
 # ── Optional budget backstop ───────────────────────────────────────────────────

@@ -2,3 +2,5 @@ failed-nodes-*.log
 silt-linux-local
 .silt-local
 silt-linux-amd64
+nodes.local.json
+topology.local.json

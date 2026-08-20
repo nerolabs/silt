@@ -3,14 +3,27 @@
 # Sourced, not executed. Targets bash 3.2+ (macOS default) — no associative arrays.
 
 FT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-: "${NODES_JSON:=$FT_DIR/nodes.json}"        # terraform output -json nodes, written by cloudtest.sh
-: "${RESULTS_JSONL:=$FT_DIR/results.jsonl}"  # one line per SLO check
 # Backend: gcp (default — real VMs over IAP ssh) or local (LOCAL=1 — docker
 # containers on this machine; the SAME scenarios.sh executes, so the graded
 # drive logic is exercised before it ever runs against a billable VM).
 : "${FT_BACKEND:=$([ "${LOCAL:-0}" = 1 ] && echo local || echo gcp)}"
 if [ "$FT_BACKEND" = local ]; then : "${PROJECT_ID:=local}"; fi
 : "${PROJECT_ID:?PROJECT_ID must be set (config.env)}"
+# State-file NAMESPACE — separate per backend so a LOCAL run can NEVER clobber a
+# live cloud run's node map (the 2026-08-20 root cause: LOCAL island verifications
+# overwrote a running cloud sheet's nodes.json/topology.json, breaking its ssh_node
+# on zone=local and masking the real verdicts). The cloud uses the bare names
+# (terraform/report tooling expects them); LOCAL uses .local.json siblings. Every
+# reader routes through $NODES_JSON / $FT_TOPO, never a hardcoded path.
+if [ "$FT_BACKEND" = local ]; then
+  : "${NODES_JSON:=$FT_DIR/nodes.local.json}"
+  : "${FT_TOPO:=$FT_DIR/topology.local.json}"
+else
+  : "${NODES_JSON:=$FT_DIR/nodes.json}"
+  : "${FT_TOPO:=$FT_DIR/topology.json}"
+fi
+export NODES_JSON FT_TOPO FT_BACKEND
+: "${RESULTS_JSONL:=$FT_DIR/results.jsonl}"  # one line per SLO check
 
 # ── node metadata (from terraform output) ──────────────────────────────────────
 node_field() { # node_field NAME FIELD
