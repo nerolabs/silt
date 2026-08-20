@@ -152,6 +152,16 @@ loss-injection makes it too jittery for a merge gate.
   The full payout drive stays locally covered by `TestRepairBountyPaysOnTheWire`
   (a 12-node killable pool by construction) — that division of labor is the
   design, not a shortfall.
+- **The skim leg closed on the wire (owner push: "economic testing covers more
+  than 1 flow").** Andrew's challenge surfaced a real hole: the sheet's economy
+  grade covered prepay→bounty but S7's sentence is prepay→SKIM→bounty, and the
+  skim had no wire grade anywhere. Shipped `11b-economy-skim` (a zero-prepay
+  shard-holder caretaker; replication 1 makes fetches route through it;
+  `funded>0` = pure skim) — **first wire PASS: funded=98310 on store-1** — and
+  `11c-economy-horizon` (the per-run `g` sample, observational). Pool
+  interaction noted: the skim observer leaves the killable pool (base topology
+  dropped 2→1 qualifying columns; the SYBILS=8 cloud pool drops 10→9, ~7
+  expected qualifying columns — comfortable).
 - **Maturing-latch e2e: parked as the named residual** (per the timebox above).
   The honest reason: a post-shed weight-quorum drill needs the maturers to hold
   >⅔ of frozen epoch WEIGHT (bond-size asymmetry or a 7-maturer fleet), a regime

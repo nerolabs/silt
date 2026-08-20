@@ -39,6 +39,15 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   - **Nightly netem workflow** (`.github/workflows/nightly-netem.yml`): the adversarial + flakynet
     tiers get a standing gate — merge CI is clean-network and the GCP fabric is cleaner than the
     adverse internet these suites inject (build-immutable #5).
+  - **The economy wire grade now covers S7's FULL sentence — prepay → SKIM → bounty + the `g`
+    sample** (owner-directed, same day): flow `11b-economy-skim` arms one shard-holder as a
+    zero-prepay caretaker (the skim lands on the SERVING holder's per-node ledger, and the UI
+    surfaces only cared roots), drives fetches that must route through it (replication 1 → sole
+    holder of its column), and asserts `funded > 0` — pure skim, unmistakable. **First wire PASS:
+    funded=98310 with zero prepay** (previously the skim leg was sim-only). Flow
+    `11c-economy-horizon` records the payer's reserve/horizonSec/cost-per-repair as an
+    observational row per graded run — the S7 `g` instrumentation trail ("the one number to
+    instrument"), a series no single run can grade.
   - **`e2e/anchorstop_test.go` (TestAnchorStopHaltsBondedNonAnchors)** — the local twin of the cloud
     5-sybil-no-capture flow: 3 anchors + 2 bonded non-anchor validators; baseline commits; ALL
     anchors killed → the bonded survivors commit nothing (the launch anchor gate, #402); anchors
