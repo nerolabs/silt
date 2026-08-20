@@ -67,6 +67,10 @@ variable "nodes" {
     zone   = string
     region = string # the region of `zone`; selects the per-region public subnet
     argv   = string # the full `silt ...` command line, or "NATGW"
+    # Main-swarm node with NO external IP (egress via Cloud NAT, reached over
+    # IAP): zero IN_USE_ADDRESSES quota. Used by the ECONOMY killable stores —
+    # ECONOMY=1 SYBILS=8 saturates every region's default 8-IP quota.
+    internal_only = optional(bool, false)
   }))
 }
 

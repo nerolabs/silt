@@ -1469,6 +1469,15 @@ wait_publisher_warm() { # wait_publisher_warm NODE
 flow_economy_repair() {
   [ "${ECONOMY:-0}" = 1 ] || { record "11-economy-repair" skip minor "opt-in (ECONOMY=1): the S7 repair-bounty-on-the-wire grade"; return; }
   require_nodes "11-economy-repair" major fetch-1 store-1 store-2 relay || return
+  # The killable-pool premise: topology.py adds store-3/store-4 when the fleet is
+  # brought UP with ECONOMY=1. Grading with ECONOMY=1 on a fleet provisioned
+  # without it re-creates the proven-unsatisfiable premise (run 577f0f1-45838:
+  # every column on a reserved/consensus node, 0 killable — deterministic), so
+  # refuse loudly instead of GAPing 300s later on selection.
+  if ! node_exists store-3 || ! node_exists store-4; then
+    record "11-economy-repair" gap major "ECONOMY=1 but the fleet lacks the dedicated killable stores (store-3/store-4) — it was brought up WITHOUT ECONOMY=1. Re-provision with ECONOMY=1 so topology.py adds them (docs/thinking/2026-08-20-economy-premise-killable-pool.md); economy UNTESTED this run"
+    return
+  fi
   local care="store-2"   # paramedic candidate: a storage node, NEVER an anchor/validator,
                          # so killing shard-holders can never touch consensus.
 
@@ -1527,6 +1536,15 @@ flow_economy_repair() {
     fi
     record "11-economy-repair" gap major "setup publish landed no link+carelink after ${ECONOMY_PUBLISH_RETRY_S:-360}s of retries — economy UNTESTED this run, not a failure (registry publish-commit latency #441-family; $(printf '%s' "$out" | tr '\n' ';' | head -c 160))"; return
   fi
+  # Verbosity honesty (2026-08-20, run 577f0f1-11364): echo the link + the full
+  # publish-client output + the full holders map to the console. The old flow
+  # discarded all three — diagnosing placement then required PERTURBING re-adds
+  # (a dedup `swarm add` re-runs placement and pollutes the map it probes), and
+  # the results-jsonl detail truncated the holders at 200 chars. The console log
+  # is the run's verbatim record; this is exactly what it is for.
+  echo "    economy object link:     $link"
+  echo "    economy care link:       $carelink"
+  printf '%s\n' "$out" | sed 's/^/      publish| /'
 
   # 2) Make TWO caretakers with the economy ON + a local UI (fund/status). Two is
   #    structural, not redundancy (proven by the local wire proof,
@@ -1537,10 +1555,14 @@ flow_economy_repair() {
   #    killable role set, so arming it costs zero killable shard-holders.
   #    -registry is REQUIRED: -care without one now refuses to start (it used to
   #    silently never caretake — the shape this scenario shipped in run 2323b09).
-  local judge="relay" skimnode=""
-  econ_restore() { restore_argv "$care"; restore_argv "$judge"; [ -n "$skimnode" ] && restore_argv "$skimnode"; return 0; }
-  relaunch_with "$care"  "-care $carelink -economy -registry $REGREF -ui=127.0.0.1:8098"
-  relaunch_with "$judge" "-care $carelink -economy -registry $REGREF -ui=127.0.0.1:8098"
+  local judge="relay"
+  econ_restore() { restore_argv "$care"; restore_argv "$judge"; return 0; }
+  # -repair-interval 2s mirrors the GREEN local proof EXACTLY (e2e arms 2s and
+  # pays within 180s; run 577f0f1-31924 ran the 60s default and its caretakers
+  # never completed a sweep inside the window). Local-proof parity: the wire run
+  # confirms the proven configuration, it does not test a new cadence (#7).
+  relaunch_with "$care"  "-care $carelink -economy -registry $REGREF -repair-interval 2s -ui=127.0.0.1:8098"
+  relaunch_with "$judge" "-care $carelink -economy -registry $REGREF -repair-interval 2s -ui=127.0.0.1:8098"
   sleep 20   # restart + re-bootstrap + warm the manifest + arm the repair sweeps
 
   # 3) Fund the object's reserve on BOTH caretakers, each from its own grant
@@ -1557,57 +1579,96 @@ flow_economy_repair() {
   done
 
   local holders_out; holders_out="$(ssh_node fetch-1 "/usr/local/bin/silt swarm holders '$link' -peers '$PEERS' -registry '$REGREF' 2>&1" || true)"
+  printf '%s\n' "$holders_out" | sed 's/^/      holders| /'   # full map, verbatim (see the verbosity note above)
 
   # 3b) THE SKIM LEG on the wire (11b): S7's full sentence is prepay → SKIM →
   #     bounty, and until now the skim (serving revenue auto-funding the object's
   #     reserve) had no wire grade anywhere — sim-only. The skim lands on the
   #     SERVING holder's per-node ledger, and the UI surfaces escrows only for
-  #     CARED roots — so arm one shard-holder as a third caretaker with NO
-  #     prepay: any funded>0 on its status is pure skim, unmistakable. With
-  #     -replication 1 it is the ONLY holder of its column(s), so a full-object
-  #     fetch MUST route through it — deterministic, not placement luck.
-  local sk_id sk_name kv2
-  while IFS= read -r line; do
-    case "$line" in column\ *) : ;; *) continue ;; esac
-    for sk_id in $(printf '%s' "${line#*: }" | tr ',' ' '); do
-      [ -z "$sk_id" ] && continue
-      sk_name=""
-      for kv2 in $(node_names); do [ "$(node_field "$kv2" nodeid)" = "$sk_id" ] && sk_name="$kv2"; done
-      [ -z "$sk_name" ] && continue
-      [ "$sk_name" = "$care" ] || [ "$sk_name" = "$judge" ] && continue
-      case "$(node_field "$sk_name" role)" in storage|fetcher) skimnode="$sk_name"; break ;; esac
-    done
-    [ -n "$skimnode" ] && break
-  done <<EOF
-$holders_out
-EOF
-  if [ -z "$skimnode" ]; then
-    record "11b-economy-skim" gap major "no storage/fetcher-role shard-holder available to arm as the skim observer — skim leg UNTESTED this run (holders all validators/caretakers)"
-  else
-    relaunch_with "$skimnode" "-care $carelink -economy -registry $REGREF -ui=127.0.0.1:8098"
-    sleep 15   # restart + re-announce held shards + warm the care manifest
-    local i2 sk_tok sk_body sk_funded=0
-    for i2 in 1 2 3; do
-      ssh_node fetch-1 "/usr/local/bin/silt swarm get '$link' -o /tmp/ft_econ_skim.bin -peers '$PEERS' -registry '$REGREF' >/dev/null 2>&1" || true
-    done
-    sk_tok="$(ssh_node "$skimnode" "sudo cat /var/lib/silt/ui-token" 2>/dev/null | tr -dc 'a-f0-9')"
+  #     CARED roots — so observe it on the CARE node itself: it already holds
+  #     columns, already runs a UI, and is never killed. DELTA assert, not
+  #     from-zero: baseline = the 400000 prepay just confirmed above; `funded`
+  #     has exactly two writers (FundEscrow and the serve auto-skim) and nothing
+  #     else prepays mid-window, so any growth is pure skim. Redesigned
+  #     2026-08-20 after run 577f0f1-45838, where the old shape relaunched a
+  #     shard-holder as a THIRD caretaker and (a) raced the restart's
+  #     re-announce (37s measured, 15s slept) and lazy proofMeta reload — the
+  #     observer served 0 chunks, skim untestable; (b) armed an UNFUNDED judge
+  #     candidate PayBounty could draw ~0 from (a false negative waiting for
+  #     the cloud run); (c) consumed a scarce killable holder. No relaunch →
+  #     none of the three. A fetch needs k of the coded columns (10 of 16
+  #     here), so a multi-column holder is hit near-certainly (missing all 4 of
+  #     a 4-column holder ≈ 0.8%); the fetch re-drives every poll so a lazy
+  #     proofMeta reload self-heals inside the window. From-zero purity stays
+  #     the sim tier's job (TestServeAutoSkimFundsObjectEscrow); the wire grade
+  #     is the serve→object-escrow ROUTING on a real network.
+  # BOTH UI-armed nodes are observers (2026-08-20, run 577f0f1-25304): placement
+  # owes the care node nothing — that run store-2 held ZERO columns while relay
+  # (the judge, equally UI-armed, equally prepaid) held data column 6 and was
+  # certainly serving. Skim lands on whichever armed node actually serves, so
+  # poll both and pass on either's growth. A node that holds no columns simply
+  # never grows — the other one carries the grade.
+  local sk_tok_c sk_tok_j sk_body sk_base_c sk_base_j sk_seen_c=0 sk_seen_j=0
+  sk_tok_c="$(ssh_node "$care" "sudo cat /var/lib/silt/ui-token" 2>/dev/null | tr -dc 'a-f0-9')"
+  sk_tok_j="$(ssh_node "$judge" "sudo cat /var/lib/silt/ui-token" 2>/dev/null | tr -dc 'a-f0-9')"
+  sk_body="$(ssh_node "$care" "curl -s -H 'Authorization: Bearer $sk_tok_c' http://127.0.0.1:8098/api/status" 2>/dev/null || true)"
+  sk_base_c="$(printf '%s' "$sk_body" | grep -oE '"funded":[0-9]+' | grep -oE '[0-9]+' | sort -rn | head -1)"; sk_base_c="${sk_base_c:-0}"
+  sk_body="$(ssh_node "$judge" "curl -s -H 'Authorization: Bearer $sk_tok_j' http://127.0.0.1:8098/api/status" 2>/dev/null || true)"
+  sk_base_j="$(printf '%s' "$sk_body" | grep -oE '"funded":[0-9]+' | grep -oE '[0-9]+' | sort -rn | head -1)"; sk_base_j="${sk_base_j:-0}"
+  # A glitched (empty) baseline read must not turn the confirmed 400000 prepay
+  # into "skim growth": floor both baselines at the prepay just confirmed.
+  [ "$sk_base_c" -lt 400000 ] 2>/dev/null && sk_base_c=400000
+  [ "$sk_base_j" -lt 400000 ] 2>/dev/null && sk_base_j=400000
+  # sk_poll: read both observers once; sets sk_seen_c/sk_seen_j to the max seen.
+  sk_poll() {
+    local b v
+    b="$(ssh_node "$care" "curl -s -H 'Authorization: Bearer $sk_tok_c' http://127.0.0.1:8098/api/status" 2>/dev/null || true)"
+    v="$(printf '%s' "$b" | grep -oE '"funded":[0-9]+' | grep -oE '[0-9]+' | sort -rn | head -1)"; v="${v:-0}"
+    [ "$v" -gt "$sk_seen_c" ] 2>/dev/null && sk_seen_c="$v"
+    b="$(ssh_node "$judge" "curl -s -H 'Authorization: Bearer $sk_tok_j' http://127.0.0.1:8098/api/status" 2>/dev/null || true)"
+    v="$(printf '%s' "$b" | grep -oE '"funded":[0-9]+' | grep -oE '[0-9]+' | sort -rn | head -1)"; v="${v:-0}"
+    [ "$v" -gt "$sk_seen_j" ] 2>/dev/null && sk_seen_j="$v"
+    return 0
+  }
+  sk_grew() { [ "$sk_seen_c" -gt "$sk_base_c" ] 2>/dev/null || [ "$sk_seen_j" -gt "$sk_base_j" ] 2>/dev/null; }
+  sk_verdict_detail() {
+    if [ "$sk_seen_c" -gt "$sk_base_c" ] 2>/dev/null; then
+      echo "funded $sk_base_c → $sk_seen_c on $care: +$((sk_seen_c - sk_base_c))"
+    else
+      echo "funded $sk_base_j → $sk_seen_j on $judge: +$((sk_seen_j - sk_base_j))"
+    fi
+  }
+  # sk_window: drive fetches (≤90s) until an armed observer's reserve grows,
+  # then record the 11b verdict. Called AFTER the repair leg (order A), and on
+  # the repair-selection GAP path so 11b is never silently ungraded.
+  sk_window() {
     local sk_t0; sk_t0="$(date +%s)"
-    while [ $(( $(date +%s) - sk_t0 )) -lt 90 ]; do
-      sk_body="$(ssh_node "$skimnode" "curl -s -H 'Authorization: Bearer $sk_tok' http://127.0.0.1:8098/api/status" 2>/dev/null || true)"
-      sk_funded="$(printf '%s' "$sk_body" | grep -oE '"funded":[0-9]+' | grep -oE '[0-9]+' | sort -rn | head -1)"; sk_funded="${sk_funded:-0}"
-      [ "$sk_funded" -gt 0 ] 2>/dev/null && break
+    while ! sk_grew && [ $(( $(date +%s) - sk_t0 )) -lt 90 ]; do
+      ssh_node fetch-1 "/usr/local/bin/silt swarm get '$link' -o /tmp/ft_econ_skim.bin -peers '$PEERS' -registry '$REGREF' >/dev/null 2>&1" || true
+      sk_poll
+      sk_grew && break
       sleep 6
     done
-    if [ "${sk_funded:-0}" -gt 0 ] 2>/dev/null; then
-      slo_assert "11b-economy-skim" major "the SKIM leg closed on the wire: fetches of the cared object routed serve revenue into its durability reserve on the serving holder's ledger (funded=$sk_funded with ZERO prepay on $skimnode) — the object pays for its own repair (S7)" 1
+    if sk_grew; then
+      slo_assert "11b-economy-skim" major "the SKIM leg closed on the wire: serve traffic (reconstruction reads + driven fetches) routed revenue into the object's durability reserve on the serving holder's ledger ($(sk_verdict_detail) pure skim above the prepay baseline) — the object pays for its own repair (S7)" 1
     else
-      record "11b-economy-skim" gap major "no skim landed on $skimnode's reserve within 90s of 3 driven fetches (funded=$sk_funded, zero prepay) — skim leg not confirmed; attribute from $skimnode's journal (serve accounting) before re-running (#7)"
+      record "11b-economy-skim" gap major "no skim grew EITHER armed observer's reserve above its prepay baseline (repair-window reads + 90s driven fetches; $care ${sk_base_c}→${sk_seen_c}, $judge ${sk_base_j}→${sk_seen_j}) — attribute from their journals (serve accounting / proofMeta root routing) before re-running (#7)"
     fi
-  fi
+  }
+  # ORDER (owner call A, 2026-08-20): REPAIR FIRST on a NEVER-FETCHED object,
+  # skim second. Run 577f0f1-31924 proved the legs interfere the other way
+  # round: the skim window's driven fetches bumped demand and lease/fan-out
+  # replicated the hot chunks BEFORE the kill, so the repair sweep found 29/29
+  # shards reachable with three holders dead — the cache layer healed the
+  # object and erased the under-replication the repair premise needs (B6 doing
+  # its job, defeating the drill). So: baselines here, kill next on a cold
+  # object, repair pays, holders restart, THEN the fetch window closes the skim
+  # grade. `funded` is lifetime deposits (prepay + skim) — a payout draws the
+  # BALANCE, never `funded` — so these baselines stay valid across the repair.
 
   # 4) Resolve holders per column and KILL every holder of 3 columns whose holders
-  #    are ALL killable (storage/fetcher, and NOT the caretakers/skim observer) —
-  #    so consensus is never touched. 3 lost shards/stripe > RepairSlack(2) ⇒
+  #    are ALL killable (storage/fetcher, and NOT the caretakers) — so consensus
+  #    is never touched. 3 lost shards/stripe > RepairSlack(2) ⇒
   #    every stripe must reconstruct, and 3 ≤ n−k(6) ⇒ still recoverable.
   # Build a killable NodeID→name map: every content-holding node EXCEPT the 4
   # anchors (role "validator") and the caretaker. In launch phase (the economy run
@@ -1615,13 +1676,21 @@ EOF
   # validators whose loss cannot break launch-phase consensus — so storage, fetcher,
   # maturer, and sybil nodes are all safe to stop. (This is why the flow runs before
   # the maturing drill and restarts every node it stops.) Anchors are never touched.
+  # The killable-pool PREMISE (proven unsatisfiable without them on LOCAL run
+  # 577f0f1-45838): ECONOMY=1 adds the dedicated store-3/store-4 exactly so this
+  # set is non-empty after the care/judge reservations — with the skim observer
+  # redesigned away (3b), store-1 is killable again too. The ADVERSARY is
+  # killable as well (added after run 577f0f1-11364, where placement gave it
+  # 3-4 columns while the fresh stores got zero): it is a non-anchor full
+  # daemon whose loss cannot touch launch-phase consensus, its drills are
+  # stateless request/response, and step 7 restarts every stopped node — the
+  # role was omitted from this set by history, not by a constraint.
   local killable_ids="" n nid role
   for n in $(node_names); do
     [ "$n" = "$care" ] && continue
     [ "$n" = "$judge" ] && continue
-    [ "$n" = "$skimnode" ] && continue   # the skim observer is a caretaker now — never killed
     role="$(node_field "$n" role)"
-    case "$role" in storage|fetcher|maturer|sybil) : ;; *) continue ;; esac
+    case "$role" in storage|fetcher|maturer|sybil|adversary) : ;; *) continue ;; esac
     nid="$(node_field "$n" nodeid)"
     [ ${#nid} -eq 64 ] && killable_ids="$killable_ids $nid:$n"
   done
@@ -1645,7 +1714,9 @@ EOF
 $holders_out
 EOF
   if [ "$cols_killed" -lt 3 ]; then
-    record "11-economy-repair" gap major "only $cols_killed of 3 needed columns had ALL-killable holders (shards landed on validators/the caretakers we must not kill) — could not force a reconstruction WITHOUT touching consensus; economy UNTESTED not failed (add dedicated storage nodes / lower -replication to concentrate shards). holders:$(printf '%s' "$holders_out" | tr '\n' ';' | head -c 200)"; econ_restore; return
+    record "11-economy-repair" gap major "only $cols_killed of 3 needed columns had ALL-killable holders (shards landed on validators/the caretakers we must not kill) — could not force a reconstruction WITHOUT touching consensus; economy UNTESTED not failed (add dedicated storage nodes / lower -replication to concentrate shards). holders:$(printf '%s' "$holders_out" | tr '\n' ';' | head -c 200)"
+    sk_window   # nothing was killed — still grade the skim leg on the healthy fleet
+    econ_restore; return
   fi
   local uniq_stop; uniq_stop="$(printf '%s\n' $to_stop | sort -u | tr '\n' ' ')"
   echo "    killing shard-holders of $cols_killed columns to force reconstruction:$uniq_stop"
@@ -1654,7 +1725,16 @@ EOF
   # 5) Wait (bounded) for a reconstruction + payout: poll BOTH caretakers'
   #    /api/status — the paramedic emits the claim, the OTHER one judges and
   #    pays on its own ledger, and which is which is timing.
-  local t0; t0="$(date +%s)" paid=0 repairs=0 body ptok pv rv
+  # (2026-08-20, run 577f0f1-25304): this line used to be
+  #   `local t0; t0="$(date +%s)" paid=0 repairs=0 body ptok pv rv`
+  # — everything after the first assignment parses as an env-prefixed COMMAND
+  # named `body` (command not found), so paid/repairs were never set and set -u
+  # aborted the whole run at their first use, skipping econ_restore and the
+  # holder restarts. Latent since the flow shipped: no prior run ever reached
+  # this line (each GAPed before the kill phase); the first run to pass
+  # selection died here. The billable cloud run would have hit it identically.
+  local t0 paid=0 repairs=0 body ptok pv rv
+  t0="$(date +%s)"
   while [ $(( $(date +%s) - t0 )) -lt 240 ]; do
     for cnode in "$care" "$judge"; do
       ptok="$(ssh_node "$cnode" "sudo cat /var/lib/silt/ui-token" 2>/dev/null | tr -dc 'a-f0-9')"
@@ -1663,6 +1743,9 @@ EOF
       rv="$(printf '%s' "$body" | grep -oE '"repairs":[0-9]+' | grep -oE '[0-9]+' | sort -rn | head -1)"; rv="${rv:-0}"
       if [ "$pv" -gt "$paid" ] 2>/dev/null; then paid="$pv" repairs="$rv"; fi
     done
+    # Skim rides along: reconstruction reads k surviving columns per stripe, so
+    # an armed observer's shards may already be serving (and skimming) here.
+    sk_poll
     [ "$paid" -gt 0 ] 2>/dev/null && break
     sleep 6
   done
@@ -1689,9 +1772,21 @@ EOF
     record "11c-economy-horizon" skip info "no payout this run — horizon/g sample unmeasured"
   fi
 
-  # 7) Restore: revert all armed caretakers' argv, restart the stopped holders.
-  econ_restore
+  # 6c) Restart the stopped holders BEFORE the skim window: the repair grade is
+  #     recorded, so their return changes nothing there — and the fetch driver
+  #     (fetch-1) may itself be in the kill set (it was in run 577f0f1-31924).
   for n in $uniq_stop; do svc "$n" start || true; done
+  sleep 10   # let the restarted daemons come up before driving fetches through them
+
+  # 6d) THE SKIM WINDOW (11b), after the repair so its fetch traffic can no
+  #     longer heal the object out of the repair premise (the order-A rule
+  #     above). Reconstruction reads during the repair may have skimmed
+  #     already (sk_poll rode along); otherwise sk_window drives fetches until
+  #     an armed observer's reserve grows above its prepay baseline.
+  sk_window
+
+  # 7) Restore: revert all armed caretakers' argv (holders already restarted, 6c).
+  econ_restore
 }
 
 # LOCAL_PROOF: n/a — WAN-cadence liveness-BOUND soak; the deterministic escape-bound oracle is core/node/modelcheck_i4_liveness_test.go, the wall-clock at WAN scale is the cloud's job
