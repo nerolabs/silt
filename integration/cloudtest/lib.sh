@@ -5,6 +5,11 @@
 FT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 : "${NODES_JSON:=$FT_DIR/nodes.json}"        # terraform output -json nodes, written by cloudtest.sh
 : "${RESULTS_JSONL:=$FT_DIR/results.jsonl}"  # one line per SLO check
+# Backend: gcp (default — real VMs over IAP ssh) or local (LOCAL=1 — docker
+# containers on this machine; the SAME scenarios.sh executes, so the graded
+# drive logic is exercised before it ever runs against a billable VM).
+: "${FT_BACKEND:=$([ "${LOCAL:-0}" = 1 ] && echo local || echo gcp)}"
+if [ "$FT_BACKEND" = local ]; then : "${PROJECT_ID:=local}"; fi
 : "${PROJECT_ID:?PROJECT_ID must be set (config.env)}"
 
 # ── node metadata (from terraform output) ──────────────────────────────────────
@@ -26,7 +31,13 @@ node_exists() { python3 -c "import json,sys;sys.exit(0 if '$1' in json.load(open
 ssh_node() { # ssh_node NAME "remote command"
   local name="$1"; shift
   local inst zone
-  inst="$(node_field "$name" instance_name)"; zone="$(node_field "$name" zone)"
+  inst="$(node_field "$name" instance_name)"
+  if [ "$FT_BACKEND" = local ]; then
+    # Same funnel, same timeout discipline — docker exec instead of IAP ssh.
+    timeout "${SSH_NODE_TIMEOUT:-90}" docker exec "$inst" bash -c "$*" 2>/dev/null
+    return
+  fi
+  zone="$(node_field "$name" zone)"
   timeout "${SSH_NODE_TIMEOUT:-90}" gcloud compute ssh "$inst" --zone "$zone" --project "$PROJECT_ID" \
     --tunnel-through-iap --quiet --command "$*" 2>/dev/null
 }
@@ -98,9 +109,14 @@ relaunch_with() { # relaunch_with NAME "-extra flags"
   local name="$1" extra="$2"
   ssh_node "$name" "sudo sed -i 's#^ExecStart=/usr/local/bin/silt .*#&#; s#^ExecStart=/usr/local/bin/silt \\(.*\\)\$#ExecStart=/usr/local/bin/silt \\1 ${extra}#' /etc/systemd/system/silt.service && sudo systemctl daemon-reload && sudo systemctl restart silt.service"
 }
-restore_argv() { # restore_argv NAME  — reset ExecStart to the baked metadata argv
+restore_argv() { # restore_argv NAME  — reset ExecStart to the baked argv
   local name="$1" argv
-  argv="$(ssh_node "$name" 'curl -s -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/silt-argv')"
+  if [ "$FT_BACKEND" = local ]; then
+    # LOCAL provision bakes the argv to a file (no GCP metadata server here).
+    argv="$(ssh_node "$name" 'cat /var/lib/silt-argv.baked')"
+  else
+    argv="$(ssh_node "$name" 'curl -s -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/silt-argv')"
+  fi
   ssh_node "$name" "sudo sed -i 's#^ExecStart=.*#ExecStart=/usr/local/bin/silt ${argv}#' /etc/systemd/system/silt.service && sudo systemctl daemon-reload && sudo systemctl restart silt.service"
 }
 
@@ -288,6 +304,25 @@ PY
   worst="$(printf '%s\n' "$summary" | sed -n '1p')"
   detail="$(printf '%s\n' "$summary" | sed -n '2p')"
   record "infra-node-memory" pass info "RSS envelope measured (cgroup MemoryCurrent, every ${MEM_SAMPLE_INTERVAL}s → $(basename "$MEM_SERIES")): worst peak ${worst}GiB across the cohort. ${detail}"
+}
+
+# run_flow FN — dispatch one scenario function, honoring the FLOWS= re-drive filter:
+# FLOWS unset/empty runs everything (the graded sheet); FLOWS="11-economy-repair
+# chaos" (space/comma separated, matched as substring against the FUNCTION name or
+# its flow ids) re-runs only the named flows against a standing network — the
+# selective re-drive loop (TEARDOWN=0 / KEEP_UP=1 + ./cloudtest.sh run). A
+# re-driven subset is a CONVERGENCE aid, never a grade: the exit-gate/RC artifact
+# stays one clean uninterrupted sheet (docs/thinking/2026-08-20-harness-local-first.md).
+run_flow() {
+  local fn="$1" f
+  [ -z "${FLOWS:-}" ] && { "$fn"; return; }
+  for f in $(printf '%s' "$FLOWS" | tr ',' ' '); do
+    case "$fn" in *"$f"*) "$fn"; return ;; esac
+    # Also match against the flow ids the function records (e.g. 11-economy-repair
+    # → flow_economy_repair): normalize digits/dashes away and compare substrings.
+    case "$(printf '%s' "$fn" | tr '_' '-')" in *"$(printf '%s' "$f" | sed 's/^[0-9]*[a-z]*-//')"*) "$fn"; return ;; esac
+  done
+  echo "  · skipped by FLOWS filter: $fn"
 }
 
 # require_nodes FLOW SEVERITY NODE...  — record skip + return 1 if any node is absent

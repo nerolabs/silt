@@ -9,6 +9,52 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **`LOCAL=1 ./cloudtest.sh` — the cloud harness runs against local docker nodes; per-flow
+  LOCAL_PROOF parity is linted; the sever race and chaos premise-grading are fixed; re-drive
+  loop (TEARDOWN=0 / FLOWS=) + dual commit stamp; nightly netem CI** (2026-08-20) — The
+  local-first package (design + attributions:
+  [docs/thinking/2026-08-20-harness-local-first.md](docs/thinking/2026-08-20-harness-local-first.md)).
+  Motivation: 20 archived cloud runs, zero fully green, with the recurring red concentrated in
+  harness-quality rows — and the 1,600-line graded drive logic never executed anywhere but against
+  billable VMs.
+  - **`LOCAL=1` backend:** one container per topology node (shims provide the
+    systemctl/journalctl/sudo surface; binary + shims COPIED, never bind-mounted — a host edit of a
+    mounted shim tears the container's view, which LOCAL's own first run caught), same static IPs on
+    a docker bridge, `ssh_node → docker exec`. The SAME scenarios.sh executes: first full local
+    SMOKE sheet graded **10 pass / 1 gap / 0 fail in ~8 min for $0**, RSS telemetry included.
+  - **184-partition sever race attributed + fixed:** the sever was already correctly widened to all
+    validator-role peers; the surviving GAP class was the BASELINE being read before the sever
+    relaunch lands (seconds) on a chain committing drain blocks continuously — val-c "advanced
+    during the partition" by committing in the unsevered window (run 2323b09: h27→h29). The flow now
+    confirms the post-restart PARTITION banner, then baselines.
+  - **chaos-fetch / durability-turnover premise classifier (roadmap 2a):** a fetch failing with
+    `root not in registry` means the publish premise broke upstream (#441-family) — now GAP
+    (UNTESTED), never FAIL; real mismatches still FAIL. Run B's two chaos FAILs were this shape.
+  - **Per-flow `# LOCAL_PROOF:` annotations + `check_local_proofs.sh` in CI:** every graded flow
+    names the local test that proves the same property, or an explicit `n/a — <WAN-only reason>`;
+    the n/a set (2 flows) IS the owned cloud-only residue. Extends the #490 per-run gate per-flow.
+  - **Re-drive loop:** `TEARDOWN=0` keeps the fleet standing; `FLOWS="…" ./cloudtest.sh run`
+    re-runs a named subset; reports stamp product AND harness commits so a harness-only re-drive is
+    attributable. Convergence aid only — a grade stays one clean uninterrupted sheet.
+  - **Nightly netem workflow** (`.github/workflows/nightly-netem.yml`): the adversarial + flakynet
+    tiers get a standing gate — merge CI is clean-network and the GCP fabric is cleaner than the
+    adverse internet these suites inject (build-immutable #5).
+  - **The economy wire grade now covers S7's FULL sentence — prepay → SKIM → bounty + the `g`
+    sample** (owner-directed, same day): flow `11b-economy-skim` arms one shard-holder as a
+    zero-prepay caretaker (the skim lands on the SERVING holder's per-node ledger, and the UI
+    surfaces only cared roots), drives fetches that must route through it (replication 1 → sole
+    holder of its column), and asserts `funded > 0` — pure skim, unmistakable. **First wire PASS:
+    funded=98310 with zero prepay** (previously the skim leg was sim-only). Flow
+    `11c-economy-horizon` records the payer's reserve/horizonSec/cost-per-repair as an
+    observational row per graded run — the S7 `g` instrumentation trail ("the one number to
+    instrument"), a series no single run can grade.
+  - **`e2e/anchorstop_test.go` (TestAnchorStopHaltsBondedNonAnchors)** — the local twin of the cloud
+    5-sybil-no-capture flow: 3 anchors + 2 bonded non-anchor validators; baseline commits; ALL
+    anchors killed → the bonded survivors commit nothing (the launch anchor gate, #402); anchors
+    restart → the chain resumes. Green in ~60 s. (Its own failing first cut re-proved the #402
+    arithmetic: with A=2, `-quorum 2` leaves one counting non-proposer attester and the baseline
+    can never commit.) The maturing-latch e2e twin is the named residual (needs a >⅔-weight
+    maturer regime design — docs/thinking/2026-08-20-harness-local-first.md).
 - **The LOCAL proof of the full S7 economy loop (`e2e/economy_repair_test.go`) + `-repair-interval`**
   (2026-08-20) — `TestRepairBountyPaysOnTheWire` runs the whole Phase 2 Slice 4 integration on real
   daemons over real TCP: publish erasure-coded (one k=10/n=16 stripe at the cloud's 256 KiB chunk) →

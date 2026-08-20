@@ -9,13 +9,17 @@ OUT_MD="${1:-$FT_DIR/report.md}"
 OUT_HTML="${2:-$FT_DIR/report.html}"
 
 SILT_COMMIT="$(git -C "$FT_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+# Harness commit, stamped SEPARATELY: a harness-only re-drive against the same
+# binaries is honest exactly when it is attributable as that — the last commit
+# touching integration/cloudtest names which drive logic graded this sheet.
+HARNESS_COMMIT="$(git -C "$FT_DIR" log -1 --format=%h -- . 2>/dev/null || echo unknown)"
 RUN_ID="${RUN_ID:-unknown}"
 BOND_MODE="$(python3 -c "import json;print(json.load(open('$FT_DIR/topology.json'))['meta']['bond_mode'])" 2>/dev/null || echo unknown)"
 GEN_TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-python3 - "$RESULTS" "$OUT_MD" "$OUT_HTML" "$SILT_COMMIT" "$RUN_ID" "$BOND_MODE" "$GEN_TS" <<'PY'
+python3 - "$RESULTS" "$OUT_MD" "$OUT_HTML" "$SILT_COMMIT" "$RUN_ID" "$BOND_MODE" "$GEN_TS" "$HARNESS_COMMIT" <<'PY'
 import json, sys, html
-results_path, out_md, out_html, commit, run_id, bond_mode, gen_ts = sys.argv[1:8]
+results_path, out_md, out_html, commit, run_id, bond_mode, gen_ts, harness = sys.argv[1:9]
 
 rows = []
 try:
@@ -45,7 +49,7 @@ sev_rank = {"blocker": 0, "major": 1, "minor": 2, "cosmetic": 3}
 # ── Markdown ────────────────────────────────────────────────────────────────
 md = []
 md.append(f"# silt field-test report\n")
-md.append(f"- **run:** `{run_id}`  ·  **silt commit:** `{commit}`  ·  **bond mode:** `{bond_mode}`  ·  **generated:** {gen_ts}")
+md.append(f"- **run:** `{run_id}`  ·  **silt commit:** `{commit}`  ·  **harness commit:** `{harness}`  ·  **bond mode:** `{bond_mode}`  ·  **generated:** {gen_ts}")
 md.append(f"- **result:** **{overall}**  ·  {counts['pass']} pass / {counts['gap']} gap / {counts['fail']} fail / {counts['skip']} skip\n")
 md.append("## Per-flow verdict\n")
 md.append("| flow | verdict | severity | elapsed | detail |")
@@ -90,7 +94,7 @@ doc = f"""<!doctype html><html><head><meta charset="utf-8">
  .tally span{{margin-right:1rem;font-weight:600}}
 </style></head><body>
 <h1>silt field-test report</h1>
-<p class="meta">run <code>{h(run_id)}</code> · silt commit <code>{h(commit)}</code> · bond mode <code>{h(bond_mode)}</code> · {h(gen_ts)}</p>
+<p class="meta">run <code>{h(run_id)}</code> · silt commit <code>{h(commit)}</code> · harness <code>{h(harness)}</code> · bond mode <code>{h(bond_mode)}</code> · {h(gen_ts)}</p>
 <p><span class="result">{overall}</span></p>
 <p class="tally"><span style="color:#1a7f37">{counts['pass']} pass</span>
 <span style="color:#9a6700">{counts['gap']} gap</span>
