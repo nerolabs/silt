@@ -419,13 +419,30 @@ flow_restart_survival() {
     local rlink="${FT_LAST_LINK:-}" rsha="${FT_LAST_SHA:-}"
     if [ -z "$rlink" ]; then local rres; rres="$(ft_publish fetch-1 262144 || true)"; rlink="${rres%% *}"; rsha="${rres##* }"; fi
     if [ -z "$rlink" ]; then publish_verdict "7-restart-content" major "no link (reuse+self-publish both failed) — restart-content UNTESTED"; return; fi
-    svc store-2 restart || true; sleep 8
-    local ok2=0 got=""
+    # Wait for the post-restart re-announce CONDITION, not a magic sleep
+    # (2026-08-21, run 577f0f1-27476 false FAIL): the old `sleep 8` raced the
+    # restarted node's recovery — the same sheet MEASURED 228s to re-announce
+    # under load (vs 37s on a fresh fleet) — and the one-shot fetch discarded
+    # the client's stderr, leaving got=<none> unattributable. Mirror
+    # chaos-fetch: condition-wait on the measured 300s envelope, keep stderr,
+    # premise-classify. A missed re-announce is called out but the fetch is
+    # still tried (holders other than store-2 can and should serve k columns —
+    # that IS the property).
+    local rt0; rt0="$(date +%s)"
+    svc store-2 restart || true
+    waitfor_since store-2 're-announced [0-9]+ held chunks' "$rt0" 300 >/dev/null 2>&1 || \
+      echo "    ⚠ restart-content: store-2 never re-announced within 300s of restart — fetching anyway (survivors should serve)"
+    local ok2=0 got="" rgeterr=""
     # SHA-compare, not echo-OK (§D): a `swarm get` that exits 0 but writes truncated or
     # wrong bytes must NOT pass as "fetchable" — assert the fetched file's SHA matches.
-    got="$(ssh_node store-1 "/usr/local/bin/silt swarm get '$rlink' -o /tmp/ft_r.bin -peers '$PEERS' -registry '$REGREF' >/dev/null 2>&1; sha256sum /tmp/ft_r.bin | cut -d' ' -f1" 2>/dev/null || true)"
+    rgeterr="$(ssh_node store-1 "rm -f /tmp/ft_r.bin; /usr/local/bin/silt swarm get '$rlink' -o /tmp/ft_r.bin -peers '$PEERS' -registry '$REGREF' 2>&1 >/dev/null | tail -3" 2>/dev/null || true)"
+    got="$(ssh_node store-1 "sha256sum /tmp/ft_r.bin 2>/dev/null | cut -d' ' -f1" 2>/dev/null || true)"
     [ -n "$rsha" ] && [ "$got" = "$rsha" ] && ok2=1
-    slo_assert "7-restart-content" major "content still fetchable BIT-PERFECT after a storage-node restart$([ "$ok2" = 1 ] || echo " (want=${rsha:-?} got=${got:-<none>})")" "$ok2"
+    if [ "$ok2" != 1 ] && printf '%s' "$rgeterr" | grep -qiE 'root not in registry|no such entry'; then
+      record "7-restart-content" gap major "fetch found the root ABSENT from the registry — the publish premise broke upstream (#441-family), restart-content UNTESTED not failed (client: $(printf '%s' "$rgeterr" | tr '\n' ';' | head -c 200))"
+    else
+      slo_assert "7-restart-content" major "content still fetchable BIT-PERFECT after a storage-node restart$([ "$ok2" = 1 ] || echo " (want=${rsha:-?} got=${got:-<none>}; client: $(printf '%s' "$rgeterr" | tr '\n' ';' | head -c 300))")" "$ok2"
+    fi
   else
     record "7-restart-content" skip major "skipped — needs store-2 (absent in this topology, e.g. SMOKE)"
   fi
