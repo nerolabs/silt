@@ -1,0 +1,60 @@
+#!/bin/bash
+# systemctl shim for LOCAL=1 cloudtest containers (no systemd in the container).
+# Implements exactly the verbs the harness uses, against the REAL unit file at
+# /etc/systemd/system/silt.service — so relaunch_with's sed of ExecStart works
+# unchanged. The daemon is identified by process pattern, not a pidfile, so a
+# chaos `pkill -9 -f /usr/local/bin/silt` leaves no stale state to confuse us.
+set -u
+UNIT_FILE=/etc/systemd/system/silt.service
+PAT='^/usr/local/bin/silt daemon'
+
+daemon_pid() { pgrep -f "$PAT" | head -1; }
+
+verb="" ; want_value=0 ; prop="" ; quiet=0
+for a in "$@"; do
+  case "$a" in
+    start|stop|restart|is-active|status|daemon-reload|show) verb="$a" ;;
+    -p) : ;;
+    MemoryCurrent) prop=MemoryCurrent ;;
+    --value) want_value=1 ;;
+    --quiet) quiet=1 ;;
+    *) : ;;   # silt.service, --no-pager, -l — all ignorable here
+  esac
+done
+
+case "$verb" in
+  daemon-reload) exit 0 ;;
+  is-active)
+    if [ -n "$(daemon_pid)" ]; then [ "$quiet" = 1 ] || echo active; exit 0
+    else [ "$quiet" = 1 ] || echo inactive; exit 3; fi ;;
+  start)
+    [ -n "$(daemon_pid)" ] && exit 0
+    /usr/local/bin/silt-run
+    exit 0 ;;
+  stop)
+    pkill -f "$PAT" 2>/dev/null
+    for _ in $(seq 1 50); do [ -z "$(daemon_pid)" ] && break; sleep 0.2; done
+    exit 0 ;;
+  restart)
+    "$0" stop silt.service
+    "$0" start silt.service
+    exit 0 ;;
+  status)
+    if [ -n "$(daemon_pid)" ]; then echo "● silt.service - silt daemon (LOCAL shim)"; echo "   Active: active (running) pid $(daemon_pid)"
+    else echo "● silt.service - silt daemon (LOCAL shim)"; echo "   Active: inactive (dead)"; fi
+    echo "   ExecStart: $(sed -n 's#^ExecStart=##p' "$UNIT_FILE" | head -1)"
+    tail -n 8 /var/log/silt.log 2>/dev/null | cut -f2-
+    exit 0 ;;
+  show)
+    if [ "$prop" = MemoryCurrent ]; then
+      pid="$(daemon_pid)"
+      if [ -n "$pid" ]; then
+        kb="$(awk '/^VmRSS:/{print $2}' "/proc/$pid/status" 2>/dev/null)"
+        [ "$want_value" = 1 ] && echo "$(( ${kb:-0} * 1024 ))" || echo "MemoryCurrent=$(( ${kb:-0} * 1024 ))"
+      else
+        [ "$want_value" = 1 ] && echo "[not set]" || echo "MemoryCurrent=[not set]"
+      fi
+    fi
+    exit 0 ;;
+  *) echo "systemctl-shim: unsupported: $*" >&2; exit 1 ;;
+esac

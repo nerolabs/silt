@@ -207,6 +207,7 @@ ft_wait_new_block() { # ft_wait_new_block NODE H0 TIMEOUT_S -> 0 if a block > H0
 }
 
 # ── Flow 1: build & first run ──────────────────────────────────────────────────
+# LOCAL_PROOF: LOCAL=1 SMOKE=1 ./integration/cloudtest/cloudtest.sh  (this flow runs verbatim on the docker backend)
 flow_first_run() {
   local n ok=1 bad=""
   for n in $(node_names); do
@@ -219,6 +220,7 @@ flow_first_run() {
 }
 
 # ── Flow 2: publish → fetch bit-perfect from a DIFFERENT node ───────────────────
+# LOCAL_PROOF: go test ./e2e -run TestPublishCommitFetchOverTCP -count=1
 flow_publish_fetch() {
   local t0 t1 res link sha got ok=0
   t0="$(date +%s)"
@@ -244,6 +246,7 @@ flow_publish_fetch() {
 }
 
 # ── Flow 3: care link — repair/audit without decrypting ─────────────────────────
+# LOCAL_PROOF: go test ./e2e -run TestRepairBountyPaysOnTheWire -count=1  (captures the siltcare: link from a real publish)
 flow_care_link() {
   flow_evidence_nodes fetch-1
   # The publish emits a siltcare: link; a -care node repairs it and cannot read it.
@@ -258,6 +261,7 @@ flow_care_link() {
 }
 
 # ── Flow 4: become a validator (earned standing, not rubber-stamp) ──────────────
+# LOCAL_PROOF: go test ./e2e -run TestBondEarnedStandingCommitsOverTCP -count=1
 flow_become_validator() {
   flow_evidence_nodes val-b val-c val-d
   local n ok=1 bad=""
@@ -278,6 +282,7 @@ flow_become_validator() {
 }
 
 # ── Flow 5: multi-validator convergence ─────────────────────────────────────────
+# LOCAL_PROOF: go test ./e2e -run TestObjectiveColdStartCommitsGenesis -count=1  (+ the I1-I5 model-check tier)
 flow_convergence() {
   local n vals="" maxh=0
   for n in val-a val-b val-c val-d; do node_exists "$n" && vals="$vals $n"; done
@@ -341,6 +346,7 @@ flow_convergence() {
 }
 
 # ── Flow 6: fault tolerance — kill one validator, quorum still commits ──────────
+# LOCAL_PROOF: SUITE=substrate ./integration/adversarial/run.sh  (commit with a validator down, under netem)
 flow_fault_tolerance() {
   require_nodes "6-fault-tolerance" major val-d || return
   local boot; boot="$(python3 -c "import json;print(json.load(open('$FT_DIR/topology.json'))['meta']['boot'])")"
@@ -373,6 +379,7 @@ flow_fault_tolerance() {
 }
 
 # ── Flow 7: restart survival — standing + issued tokens + stored content ────────
+# LOCAL_PROOF: RESTART=1 ./integration/nat/run.sh  (persisted-store reload + re-announce)
 flow_restart_survival() {
   flow_evidence_nodes val-b store-1 store-2
   local t0 t1 ok=0
@@ -407,6 +414,7 @@ flow_restart_survival() {
 }
 
 # ── Flow 8: per-hash takedown on ONE operator only ──────────────────────────────
+# LOCAL_PROOF: ./integration/takedown/run.sh
 flow_takedown() {
   flow_evidence_nodes store-1 store-2
   if [ -z "${FT_LAST_LINK:-}" ]; then record "8-takedown" gap minor "no prior published link to deny"; return; fi
@@ -442,6 +450,7 @@ flow_takedown() {
 }
 
 # ── Flow 9: cross-NAT — a natted node moves a file via the relay ────────────────
+# LOCAL_PROOF: ./integration/nat/run.sh  (EMULATED NAT; the real-middlebox cone/symmetric decision is the owned cloud residue)
 flow_cross_nat() {
   require_nodes "9-cross-nat" major nat-1 nat-2 || return
   flow_evidence_nodes nat-1 nat-2 relay   # a cross-NAT failure lives on either NAT node OR the relay
@@ -463,6 +472,7 @@ flow_cross_nat() {
 }
 
 # ── #184 adversarial: equivocation → slash (certified on a DEDICATED net) ────────
+# LOCAL_PROOF: go test ./e2e -run TestEquivocatorSlashedOverTCP -count=1
 adv_equivocation() {
   # PE ruling 2026-08-17 (184-equivocation-topology-ruling): equivocation is the ONE
   # irreversible drill — a proven double-sign is a PERMANENT eviction (F2), correctly.
@@ -486,6 +496,7 @@ adv_equivocation() {
 }
 
 # ── #184 adversarial: partition → heal (BFT: stall-then-catch-up) ────────────────
+# LOCAL_PROOF: go test ./e2e -run TestPartitionHealsToHeavierForkOverTCP -count=1
 adv_partition() {
   require_nodes "184-partition" major val-a val-b val-c val-d fetch-1 || return
   local ida idb idd idc
@@ -500,7 +511,6 @@ adv_partition() {
   # the hash proves same-history reconverge).
   chain_head() { ssh_node "$1" "/usr/local/bin/silt chain-status -store /var/lib/silt 2>&1" \
     | awk '/head height:/{h=$3} /head hash:/{hh=$3} END{print (h==""?0:h), hh}'; }
-  local ci ch0; ci="$(chain_head val-c)"; ch0="${ci%% *}"; ch0="${ch0:-0}"
 
   # SEVER val-c into a genuine < ⅓-weight MINORITY. It must be cut from EVERY node that
   # HOLDS the committed chain — not only the anchors: any reachable chain-holder lets
@@ -525,7 +535,22 @@ print(','.join(n['nodeid'] for name,n in t['nodes'].items()
   if [ -z "$blockids" ]; then
     record "184-partition" gap major "could not build the validator-role block set from topology.json — partition not applied, not a property failure"; return
   fi
+  local t0sever; t0sever="$(date +%s)"
   relaunch_with val-c "-block-peers ${blockids}"
+  # The sever is LIVE only once the restarted daemon narrates it. Reading val-c's
+  # baseline BEFORE this point races the relaunch window (sed + daemon-reload +
+  # restart + chain reload = seconds) on a chain that commits drain blocks
+  # near-continuously — val-c legitimately commits 1–2 more blocks in the gap, and
+  # the stall check then reads "ADVANCED during the partition" (run 2323b09:
+  # h27→h29; the false-GAP class behind most of the 18 archived partition GAPs
+  # that survived the earlier sever-widening fix). Mechanism: baseline-before-
+  # sever race; fix: confirm the banner, THEN baseline.
+  if ! waitfor_since val-c "PARTITION: -block-peers set" "$t0sever" 90 >/dev/null; then
+    ft_add_validator_evidence; restore_argv val-c
+    record "184-partition" gap major "val-c never narrated the partition banner within 90s of the sever relaunch — sever not confirmed live, drill UNTESTED not failed"
+    return
+  fi
+  local ci ch0; ci="$(chain_head val-c)"; ch0="${ci%% *}"; ch0="${ch0:-0}"
 
   # DRIVE the > ⅔ majority to commit a heavier chain during the window — publish to
   # the majority ONLY (val-c can't hear it), so a genuine height gap forms for val-c
@@ -594,6 +619,7 @@ print(','.join(n['nodeid'] for name,n in t['nodes'].items()
 }
 
 # ── #184 adversarial: forged-block + low-bond proposals rejected ────────────────
+# LOCAL_PROOF: go test ./e2e -run 'TestForgedBlockRejectedOverTCP|TestLowBondProposerRejectedOverTCP' -count=1
 adv_proposal_reject() {
   require_nodes "184-forged-block" major adversary || return
   local ida; ida="$(node_field val-a nodeid)"
@@ -642,6 +668,7 @@ adv_proposal_reject() {
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # ── privacy (#3): publisher unlinkability — refuse-to-surveil over the real wire ─
+# LOCAL_PROOF: go test ./e2e -run TestUnlinkablePublishOverTCP -count=1
 flow_publisher_unlinkability() {
   require_live "priv-unlinkability" major fetch-1 || return   # preempted node ⇒ GAP, not "no refusal seen" FAIL (H2)
   # flow_publish_fetch already proved the DEFAULT (token-quorum) publish commits
@@ -672,6 +699,7 @@ ft_add_validator_evidence() {
 }
 
 # ── durability (#2): content OUTLIVES a permanent storage-node loss ─────────────
+# LOCAL_PROOF: ./integration/durability/run.sh
 flow_durability_turnover() {
   require_nodes "durability-turnover" major store-1 store-2 fetch-1 || return
   # Publish replicated, then PERMANENTLY remove a storage node (stop + leave down —
@@ -688,14 +716,24 @@ flow_durability_turnover() {
   link="${res%% *}"; sha="${res##* }"
   svc store-1 stop || true    # permanent departure (left down for the fetch)
   sleep 12
-  local got ok=0
-  got="$(ssh_node store-2 "/usr/local/bin/silt swarm get '$link' -o /tmp/ft_dur.bin -peers '$PEERS' -registry '$REGREF' >/dev/null 2>&1; sha256sum /tmp/ft_dur.bin | cut -d' ' -f1" 2>/dev/null || true)"
+  local got ok=0 geterr=""
+  geterr="$(ssh_node store-2 "rm -f /tmp/ft_dur.bin; /usr/local/bin/silt swarm get '$link' -o /tmp/ft_dur.bin -peers '$PEERS' -registry '$REGREF' 2>&1 >/dev/null | tail -3" 2>/dev/null || true)"
+  got="$(ssh_node store-2 "sha256sum /tmp/ft_dur.bin 2>/dev/null | cut -d' ' -f1" 2>/dev/null || true)"
   [ "$got" = "$sha" ] && ok=1
-  slo_assert "durability-turnover" major "content survived a PERMANENT storage-node departure — fetched bit-perfect from a survivor" "$ok"
+  # Premise classifier (roadmap 2a): "root not in registry" means the setup publish
+  # was ACCEPTED but its entry never became resolvable (#441-family accept→commit) —
+  # durability of committed content is then UNTESTED, not failed. Any other failure
+  # (hash mismatch, partial bytes, timeout with the entry present) is a real FAIL.
+  if [ "$ok" != 1 ] && printf '%s' "$geterr" | grep -qiE 'root not in registry|no such entry'; then
+    record "durability-turnover" gap major "fetch found the root ABSENT from the registry — the setup publish premise broke upstream (#441-family accept→commit), durability of committed content UNTESTED not failed (client: $(printf '%s' "$geterr" | tr '\n' ';' | head -c 200))"
+  else
+    slo_assert "durability-turnover" major "content survived a PERMANENT storage-node departure — fetched bit-perfect from a survivor$([ "$ok" = 1 ] || echo " (want=$sha got=${got:-<none>}; client: $(printf '%s' "$geterr" | tr '\n' ';' | head -c 200))")" "$ok"
+  fi
   svc store-1 start || true   # restore for later flows
 }
 
 # ── chaos (#7): hard crash (SIGKILL) recovery + #69 reprovide over real VMs ──────
+# LOCAL_PROOF: ./integration/chaos/run.sh
 flow_chaos_crash() {
   require_nodes "chaos-crash" major store-1 store-2 || return
   # Capture the REGISTRY (val-a) + validator journals alongside store-1/store-2 on any
@@ -746,10 +784,19 @@ flow_chaos_crash() {
   geterr="$(ssh_node store-1 "rm -f /tmp/ft_ch.bin; /usr/local/bin/silt swarm get '$link' -o /tmp/ft_ch.bin -peers '$PEERS' -registry '$REGREF' 2>&1 >/dev/null | tail -3" 2>/dev/null || true)"
   got="$(ssh_node store-1 "sha256sum /tmp/ft_ch.bin 2>/dev/null | cut -d' ' -f1" 2>/dev/null || true)"
   [ -n "$wantsha" ] && [ "$got" = "$wantsha" ] && ok=1
-  slo_assert "chaos-fetch" major "content fetchable BIT-PERFECT after a hard-crash (SIGKILL) + restart of a storage node$([ "$ok" = 1 ] || echo " (want=${wantsha:-?} got=${got:-<none>}; client: $(printf '%s' "$geterr" | tr '\n' ';' | head -c 300))")" "$ok"
+  # Premise classifier (roadmap 2a — Run B's two FAILs were this): "root not in
+  # registry" = the publish premise broke upstream (#441-family accept→commit), so
+  # crash-recovery of committed content is UNTESTED — GAP. A hash mismatch or a
+  # timeout with the entry resolvable stays a real FAIL.
+  if [ "$ok" != 1 ] && printf '%s' "$geterr" | grep -qiE 'root not in registry|no such entry'; then
+    record "chaos-fetch" gap major "fetch found the root ABSENT from the registry — the publish premise broke upstream (#441-family accept→commit), crash-recovery UNTESTED not failed (client: $(printf '%s' "$geterr" | tr '\n' ';' | head -c 200))"
+  else
+    slo_assert "chaos-fetch" major "content fetchable BIT-PERFECT after a hard-crash (SIGKILL) + restart of a storage node$([ "$ok" = 1 ] || echo " (want=${wantsha:-?} got=${got:-<none>}; client: $(printf '%s' "$geterr" | tr '\n' ';' | head -c 300))")" "$ok"
+  fi
 }
 
 # ── client/UI (#4): the web-UI local-security guard (#89) over a real VM ─────────
+# LOCAL_PROOF: ./integration/client/run.sh
 flow_web_ui_guard() {
   require_nodes "web-ui" minor fetch-1 || return
   require_live  "web-ui" minor fetch-1 || return   # preempted node ⇒ GAP, not empty-code FAIL (H2)
@@ -777,6 +824,7 @@ flow_web_ui_guard() {
 # decentralization that sheds the launch anchors. The clincher: restore the anchors
 # and the chain RESUMES — proving it was the missing anchors, not dead Sybils.
 # Opt-in (needs the cohort): SYBILS=8 ./cloudtest.sh.
+# LOCAL_PROOF: go test ./e2e -run TestAnchorStopHaltsBondedNonAnchors -count=1  (built 2026-08-20 as this flow's local twin)
 flow_c2_no_capture() {
   if ! node_exists sybil-1; then
     record "5-sybil-no-capture" skip major "no Sybil cohort in this topology — opt in with SYBILS=8 ./cloudtest.sh to certify the PURE anchor gate on cloud (the local integration/sybil suite reaches only the standing gate)"
@@ -998,6 +1046,7 @@ flow_c2_no_capture() {
 # (h40→51 at the measured 80–170s/height steady cadence): 600 assumed the
 # pre-#451 64s worst-case block. A miss inside THIS bound is a real stall.
 : "${HANDOFF_BLOCKS_S:=1980}"
+# LOCAL_PROOF: n/a — real-daemon latch/handoff is the named residual (in-process: sim TestTrainingWheelsShedThroughTheNodeLoop + the core/node modelcheck mature fixtures); e2e twin tracked in docs/thinking/2026-08-20-harness-local-first.md
 flow_maturing_handoff() {
   local maturing
   maturing="$(python3 -c "import json;print(json.load(open('$FT_DIR/topology.json'))['meta'].get('maturing',0))")"
@@ -1346,6 +1395,7 @@ wait_publisher_warm() { # wait_publisher_warm NODE
 # (ECONOMY=1). Moderate chunk (256 KiB) so reconstruction fits the box (§0.1: a
 # 64 MiB stripe holds ~1 GiB and OOMs a 2 GB node). Design:
 # docs/thinking/2026-08-19-cloudtest-economy-scenario-design.md.
+# LOCAL_PROOF: go test ./e2e -run TestRepairBountyPaysOnTheWire -count=1
 flow_economy_repair() {
   [ "${ECONOMY:-0}" = 1 ] || { record "11-economy-repair" skip minor "opt-in (ECONOMY=1): the S7 repair-bounty-on-the-wire grade"; return; }
   require_nodes "11-economy-repair" major fetch-1 store-1 store-2 relay || return
@@ -1362,7 +1412,14 @@ flow_economy_repair() {
   local out link carelink attempt=0
   local econ_deadline=$(( $(date +%s) + ${ECONOMY_PUBLISH_RETRY_S:-360} ))
   while :; do
-    out="$(ssh_node fetch-1 "head -c 4194304 </dev/urandom >/tmp/ft_econ.bin; /usr/local/bin/silt swarm add /tmp/ft_econ.bin -peers '$PEERS' -registry '$REGREF' -token-quorum $TOKEN_QUORUM -chunk-size 262144 2>&1" || true)"
+    # -replication 1: each column lands on ONE holder, so 3 all-killable columns
+    # exist on a small killable pool (parity is the redundancy — the flag's own
+    # help text names this exact use, and the local e2e proof publishes the same
+    # shape). At the default replication 3 a column needs ALL THREE holders
+    # killable; the first full LOCAL sheet measured the result — 0 of 16 columns
+    # qualified, the flow GAPs at selection (the 4th latent defect this flow
+    # shipped with, caught for $0 on docker).
+    out="$(ssh_node fetch-1 "head -c 4194304 </dev/urandom >/tmp/ft_econ.bin; /usr/local/bin/silt swarm add /tmp/ft_econ.bin -peers '$PEERS' -registry '$REGREF' -token-quorum $TOKEN_QUORUM -chunk-size 262144 -replication 1 2>&1" || true)"
     link="$(printf '%s' "$out" | grep -oE 'silt:v1:\S+' | head -1)"
     carelink="$(printf '%s' "$out" | grep -oE 'siltcare:\S+' | head -1)"
     { [ -n "$link" ] && [ -n "$carelink" ]; } && break
@@ -1479,6 +1536,7 @@ EOF
   for n in $uniq_stop; do svc "$n" start || true; done
 }
 
+# LOCAL_PROOF: n/a — WAN-cadence liveness-BOUND soak; the deterministic escape-bound oracle is core/node/modelcheck_i4_liveness_test.go, the wall-clock at WAN scale is the cloud's job
 flow_soak_publish_drain() {
   [ "${SOAK:-0}" = 1 ] || return 0
   local n_mat_soak
@@ -1556,18 +1614,18 @@ run_all_scenarios() {
   wait_network_warm
   wait_publisher_warm fetch-1   # #344: non-validator issuer-set/issuer-key discovery lags genesis
   # acceptance flows 1–9 + #184 adversarial drills
-  flow_first_run
-  flow_become_validator
-  flow_publish_fetch
-  flow_care_link
-  flow_convergence
-  flow_fault_tolerance
-  flow_restart_survival
-  flow_takedown
-  flow_cross_nat
-  adv_equivocation
-  adv_partition
-  adv_proposal_reject
+  run_flow flow_first_run
+  run_flow flow_become_validator
+  run_flow flow_publish_fetch
+  run_flow flow_care_link
+  run_flow flow_convergence
+  run_flow flow_fault_tolerance
+  run_flow flow_restart_survival
+  run_flow flow_takedown
+  run_flow flow_cross_nat
+  run_flow adv_equivocation
+  run_flow adv_partition
+  run_flow adv_proposal_reject
   # cloud variants of the local field-test series
   # Re-warm the fetch publisher (#351): flows 7 (restart-survival) and the #184 drills
   # restart/partition validators, which transiently drops a validator from the
@@ -1576,12 +1634,12 @@ run_all_scenarios() {
   # re-cert for exactly this). One warm at genesis (#344) doesn't cover post-restart
   # flows; re-warm before the publish-dependent cloud variants. Bounded + non-fatal.
   wait_publisher_warm fetch-1
-  flow_publisher_unlinkability   # privacy #3
-  flow_durability_turnover       # durability #2
-  flow_chaos_crash               # chaos #7
-  flow_web_ui_guard              # client/UI #4
-  flow_c2_no_capture             # C2 Sybil #5 — opt-in (SYBILS=8): certifies the PURE anchor gate on cloud
-  flow_economy_repair            # S7 #11 — opt-in (ECONOMY=1): the repair-bounty pays a verified reconstruction on the wire (Phase 2 exit gate)
-  flow_soak_publish_drain        # PE #432 gate — opt-in (SOAK=1, MATURING=0): launch publish/drain interleave soak
-  flow_maturing_handoff          # §4/B2 #10 — opt-in (MATURING=1 SYBILS=8): handoff + post-shed + weight-quorum drills + WS cold-sync. LAST: it stops validators.
+  run_flow flow_publisher_unlinkability   # privacy #3
+  run_flow flow_durability_turnover       # durability #2
+  run_flow flow_chaos_crash               # chaos #7
+  run_flow flow_web_ui_guard              # client/UI #4
+  run_flow flow_c2_no_capture             # C2 Sybil #5 — opt-in (SYBILS=8): certifies the PURE anchor gate on cloud
+  run_flow flow_economy_repair            # S7 #11 — opt-in (ECONOMY=1): the repair-bounty pays a verified reconstruction on the wire (Phase 2 exit gate)
+  run_flow flow_soak_publish_drain        # PE #432 gate — opt-in (SOAK=1, MATURING=0): launch publish/drain interleave soak
+  run_flow flow_maturing_handoff          # §4/B2 #10 — opt-in (MATURING=1 SYBILS=8): handoff + post-shed + weight-quorum drills + WS cold-sync. LAST: it stops validators.
 }

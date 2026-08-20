@@ -1,0 +1,16 @@
+#!/bin/bash
+# silt-run: launch the silt daemon exactly as the unit file says, detached from
+# the caller (docker exec session), with every output line epoch-stamped so the
+# journalctl shim can serve -n / --since / -b. One boot marker per start.
+set -u
+UNIT_FILE=/etc/systemd/system/silt.service
+args="$(sed -n 's#^ExecStart=/usr/local/bin/silt ##p' "$UNIT_FILE" | head -1)"
+[ -n "$args" ] || { echo "silt-run: no ExecStart in $UNIT_FILE" >&2; exit 1; }
+date +%s >> /var/log/silt.boots
+setsid bash -c '
+  /usr/local/bin/silt '"$args"' 2>&1 | while IFS= read -r l; do
+    printf "%s\t%s\n" "$(date +%s)" "$l"
+  done >> /var/log/silt.log
+' < /dev/null > /dev/null 2>&1 &
+disown
+exit 0

@@ -1,0 +1,3 @@
+#!/bin/bash
+# sudo shim: LOCAL=1 containers run as root already — passthrough.
+exec "$@"

@@ -1,0 +1,36 @@
+#!/bin/bash
+# journalctl shim for LOCAL=1 cloudtest containers. The daemon's stdout/stderr is
+# written by silt-run as "EPOCH<TAB>line" to /var/log/silt.log, with each service
+# start's epoch appended to /var/log/silt.boots. Supports exactly the invocations
+# the harness uses:
+#   journalctl -u silt[.service] --no-pager [-n N] [--since "@EPOCH"] [-b]
+#   journalctl -b --no-pager            (whole-"boot" scan, no -u — liveness scan)
+set -u
+LOG=/var/log/silt.log
+BOOTS=/var/log/silt.boots
+n=0 ; since="" ; thisboot=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -n) n="$2"; shift ;;
+    -n*) n="${1#-n}" ;;
+    --since) since="$2"; shift ;;
+    --since=*) since="${1#--since=}" ;;
+    -b) thisboot=1 ;;
+    *) : ;;   # -u silt, silt.service, --no-pager — ignorable
+  esac
+  shift
+done
+[ -f "$LOG" ] || exit 0
+since="${since#@}"; since="${since#\"@}"; since="${since%\"}"
+cutoff=0
+if [ -n "$since" ]; then cutoff="$since"; fi
+if [ "$thisboot" = 1 ] && [ -f "$BOOTS" ]; then
+  b="$(tail -1 "$BOOTS" 2>/dev/null | tr -dc '0-9')"
+  [ -n "$b" ] && [ "$b" -gt "${cutoff:-0}" ] && cutoff="$b"
+fi
+if [ "${cutoff:-0}" -gt 0 ] 2>/dev/null; then
+  out="$(awk -F'\t' -v c="$cutoff" '$1 >= c { $1=""; sub(/^\t?/,""); print }' OFS='\t' "$LOG")"
+else
+  out="$(cut -f2- "$LOG")"
+fi
+if [ "${n:-0}" -gt 0 ] 2>/dev/null; then printf '%s\n' "$out" | tail -n "$n"; else printf '%s\n' "$out"; fi

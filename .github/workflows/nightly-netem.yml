@@ -1,0 +1,40 @@
+# Nightly adverse-network gate (build-immutable #5): the netem tiers are the ONLY
+# standing exercise of jitter/loss/reordering — merge CI runs clean-network tests,
+# and the GCP fabric is cleaner than the adverse internet these suites inject. A
+# red night is a durability FINDING with an exact local reproducer, caught before
+# any field run meets it. Scheduled (not merge-gating): minutes-long, and loss
+# injection is too jittery for a merge gate.
+name: nightly-netem
+on:
+  schedule:
+    - cron: "17 9 * * *"   # 09:17 UTC daily
+  workflow_dispatch: {}
+
+jobs:
+  adversarial-netem:
+    name: Adversarial consensus drills under netem (docker)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Clean-network control (must PASS)
+        run: NETEM="" ./integration/adversarial/run.sh
+      - name: Full P0 gate under impairment (delay+jitter)
+        run: SUITE=all ./integration/adversarial/run.sh
+
+  flakynet:
+    name: Flaky-network consensus bootstrap (docker + netem)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Clean control (must PASS)
+        run: NETEM="" ./integration/flakynet/run.sh
+      - name: GCP-shaped impairment (jitter; findings are reproducers, exit 0)
+        run: ./integration/flakynet/run.sh

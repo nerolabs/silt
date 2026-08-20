@@ -51,6 +51,15 @@ if [ "${1:-}" = setup ]; then
   exit 0
 fi
 
+# LOCAL=1 — run the SAME harness against docker containers on this machine ($0,
+# no GCP, no config.env). The graded drive logic (severs, kill selection,
+# relaunch/restore, verdicts) executes here first, so harness defects die before
+# a billable run (docs/thinking/2026-08-20-harness-local-first.md). What LOCAL
+# cannot cover stays the cloud's job: real WAN latency, real NAT (natgw/nat-*
+# are excluded — 9-cross-nat SKIPs; integration/nat owns that locally), scale.
+if [ "${LOCAL:-0}" = 1 ]; then
+  export PROJECT_ID="${PROJECT_ID:-local}" REGION="${REGION:-local}" FT_BACKEND=local
+else
 [ -f config.env ] || { echo "no config.env — run './cloudtest.sh setup' (interactive), or copy config.env.example and fill it in"; exit 1; }
 # The caller's env must WIN over config.env (§F footgun): `. ./config.env` runs AFTER the
 # environment is inherited, so a config.env `export REGION=…` silently CLOBBERS a
@@ -64,6 +73,7 @@ _CALLER_REGION="${REGION:-}"
 : "${REGION:=us-central1}"
 export PROJECT_ID REGION
 echo "==> region: $REGION (primary cluster zone follows REGION via topology.py PRIMARY_ZONE)"
+fi   # end of the non-LOCAL config block
 
 # A stable run id for this invocation (no Date.now flakiness — derived from git + pid).
 : "${RUN_ID:=$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo dev)-$$}"
@@ -284,6 +294,11 @@ report() {
 }
 
 teardown() {
+  # TEARDOWN=0 is the re-drive alias of KEEP_UP: leave the fleet standing so a
+  # fix can redeploy + re-run a flow subset (FLOWS="…" ./cloudtest.sh run) in ~1
+  # minute instead of a ~10-minute provision cycle. Convergence aid only — the
+  # exit-gate/RC artifact stays one clean uninterrupted sheet.
+  [ "${TEARDOWN:-1}" = 0 ] && { echo "==> TEARDOWN=0 — fleet left standing for re-drive (FLOWS=… ./cloudtest.sh run | ./cloudtest.sh down)"; return; }
   [ "${KEEP_UP:-0}" = 1 ] && { echo "==> KEEP_UP=1 — leaving the network up. './cloudtest.sh down' when done."; return; }
   echo "==> DESTROY (run=$RUN_ID)"
   # Do NOT swallow destroy stderr (§D): a partial-apply state makes `terraform destroy`
@@ -340,6 +355,92 @@ nuke() {
   else
     echo "    nuke: full sweep clean — zero residual for run $target (instances/addresses/networks/subnets/firewalls/routes)"
   fi
+}
+
+# ── LOCAL=1 backend: docker provisioning (see docs/thinking/2026-08-20-harness-local-first.md) ──
+LOCAL_IMG="silt-cloudtest-local"
+local_prefix() { printf 'silt-ft-%s' "$RUN_ID"; }
+
+check_prereqs_local() { need docker; need go; need python3; }
+
+build_binary_local() {
+  local arch; arch="$(docker version --format '{{.Server.Arch}}' 2>/dev/null || echo amd64)"
+  echo "==> building silt (linux/$arch for the docker backend) @ $RUN_ID"
+  ( cd "$REPO_ROOT" && CGO_ENABLED=0 GOOS=linux GOARCH="$arch" \
+      go build -trimpath -ldflags '-s -w' -o "$FT_DIR/silt-linux-local" ./cmd/silt )
+  ( cd "$REPO_ROOT" && go build -o "$FT_DIR/.silt-local" ./cmd/silt )   # for topology id-gen
+}
+
+# provision_local — the terraform-apply analogue: one container per topology node
+# (natgw/natted excluded — real NAT is integration/nat's job locally), on a bridge
+# network reproducing the topology's static IPs, with the binary + shims mounted at
+# their REAL paths and the unit file + baked argv written exactly as GCP metadata
+# startup does. nodes.json gets the same shape terraform output produces, so every
+# lib.sh reader works unchanged.
+provision_local() {
+  local prefix net; prefix="$(local_prefix)"; net="${prefix}-net"
+  printf '%s\n' "$RUN_ID" > "$FT_DIR/.last_run_id"
+  echo "==> docker image ($LOCAL_IMG)"
+  docker build -q -t "$LOCAL_IMG" "$FT_DIR/local" >/dev/null
+  echo "==> docker network $net (10.16.0.0/12 — covers the topology's per-region subnets 10.2x.0.0/16)"
+  docker network inspect "$net" >/dev/null 2>&1 || docker network create --subnet 10.16.0.0/12 "$net" >/dev/null
+  # nodes.json in the terraform-output shape (instance_name/zone/role/nodeid/ip).
+  python3 - "$FT_DIR/topology.json" "$FT_DIR/nodes.json" "$prefix" <<'PY'
+import json, sys
+topo = json.load(open(sys.argv[1]))["nodes"]
+out = {}
+for name, n in topo.items():
+    if n.get("role") in ("natgw", "natted"):
+        continue  # LOCAL v1: real NAT stays integration/nat's job — 9-cross-nat SKIPs
+    out[name] = {"instance_name": f"{sys.argv[3]}-{name}", "zone": "local",
+                 "role": n["role"], "nodeid": n.get("nodeid", ""), "ip": n["ip"]}
+json.dump(out, open(sys.argv[2], "w"), indent=2)
+print(f"    nodes.json written ({len(out)} containers; natgw/natted excluded)")
+PY
+  local name inst ip argv
+  for name in $(python3 -c "import json;print(' '.join(json.load(open('$FT_DIR/nodes.json')).keys()))"); do
+    inst="${prefix}-${name}"
+    ip="$(python3 -c "import json;print(json.load(open('$FT_DIR/nodes.json'))['$name']['ip'])")"
+    argv="$(python3 -c "import json;print(json.load(open('$FT_DIR/topology.json'))['nodes']['$name']['argv'])")"
+    argv="${argv#daemon }"; argv="daemon $argv"
+    docker rm -f "$inst" >/dev/null 2>&1 || true
+    docker run -d --name "$inst" --network "$net" --ip "$ip" \
+      --label "cloudtest-local=$RUN_ID" \
+      "$LOCAL_IMG" >/dev/null
+    # COPY (never bind-mount) the binary + shims: a host-side edit of a bind-mounted
+    # file mid-run leaves the container reading a torn/stale inode — the shim
+    # "syntax error line 59" trap this mode's own first run hit.
+    docker cp "$FT_DIR/silt-linux-local"        "$inst:/usr/local/bin/silt"        >/dev/null
+    docker cp "$FT_DIR/local/shims/systemctl"   "$inst:/usr/bin/systemctl"         >/dev/null
+    docker cp "$FT_DIR/local/shims/journalctl"  "$inst:/usr/bin/journalctl"        >/dev/null
+    docker cp "$FT_DIR/local/shims/sudo"        "$inst:/usr/bin/sudo"              >/dev/null
+    docker cp "$FT_DIR/local/shims/silt-run"    "$inst:/usr/local/bin/silt-run"    >/dev/null
+    docker exec "$inst" bash -c "chmod +x /usr/local/bin/silt /usr/bin/systemctl /usr/bin/journalctl /usr/bin/sudo /usr/local/bin/silt-run"
+    docker exec "$inst" bash -c "
+      mkdir -p /var/lib/silt /etc/systemd/system
+      printf '%s\n' '$argv' > /var/lib/silt-argv.baked
+      printf '[Service]\nExecStart=/usr/local/bin/silt %s\n' '$argv' > /etc/systemd/system/silt.service
+      systemctl start silt.service"
+    echo "    up: $name ($ip)"
+  done
+}
+
+teardown_local() {
+  [ "${TEARDOWN:-1}" = 0 ] && { echo "==> TEARDOWN=0 — containers left standing for re-drive (FLOWS=… LOCAL=1 ./cloudtest.sh run | … down)"; return; }
+  [ "${KEEP_UP:-0}" = 1 ] && { echo "==> KEEP_UP=1 — containers left running. 'LOCAL=1 ./cloudtest.sh down' when done."; return; }
+  # A fresh shell's RUN_ID embeds a different pid — resolve the last run's id,
+  # same convention as nuke.
+  local target="$RUN_ID"
+  [ -f "$FT_DIR/.last_run_id" ] && target="$(cat "$FT_DIR/.last_run_id")"
+  echo "==> removing local containers + network (silt-ft-$target-*)"
+  docker ps -aq --filter "label=cloudtest-local=$target" | xargs -r docker rm -f >/dev/null 2>&1 || true
+  docker network rm "silt-ft-${target}-net" >/dev/null 2>&1 || true
+}
+
+nuke_local() { # remove EVERY local cloudtest container/network regardless of run id
+  docker ps -aq --filter "label=cloudtest-local" | xargs -r docker rm -f >/dev/null 2>&1 || true
+  docker network ls --format '{{.Name}}' | grep -E '^silt-ft-.*-net$' | xargs -r -n1 docker network rm >/dev/null 2>&1 || true
+  echo "==> local nuke: all cloudtest-local containers + silt-ft-*-net networks removed"
 }
 
 # ── build-immutable #6 pre-flight gate ───────────────────────────────────────
@@ -403,6 +504,26 @@ EOF
   } >> run-justification.log
   echo "✓ pre-flight gate: justification + local proof recorded (build-immutables #6/#7) — proceeding to a BILLABLE run."
 }
+
+if [ "${LOCAL:-0}" = 1 ]; then
+  case "${1:-all}" in
+    all)
+      echo "==> LOCAL=1: free run — the billable pre-flight gate does not apply (it guards money)"
+      check_prereqs_local; build_binary_local; gen_topology
+      : > "$FT_DIR/results.jsonl"
+      printf '# run=%s (LOCAL) — no scenarios have completed yet\n' "$RUN_ID" > "$FT_DIR/report.md"
+      trap teardown_local EXIT
+      provision_local; wait_ready; run_scenarios; report
+      ;;
+    up)   check_prereqs_local; build_binary_local; gen_topology; provision_local; wait_ready; echo "local network up (run=$RUN_ID) — 'LOCAL=1 ./cloudtest.sh run' to grade, '… down' to remove" ;;
+    run)  run_scenarios; report ;;
+    report) report ;;
+    down) KEEP_UP=0 teardown_local ;;
+    nuke) nuke_local ;;
+    *) echo "usage: LOCAL=1 ./cloudtest.sh [all|up|run|report|down|nuke]"; exit 1 ;;
+  esac
+  exit 0
+fi
 
 case "${1:-all}" in
   all)
