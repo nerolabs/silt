@@ -117,3 +117,40 @@ cloud sheet (sybils are late joiners).
 - Verbosity: the flow now echoes the link, the publish client's full output,
   and the full holders map to the console (the old flow discarded all three;
   diagnosing required perturbing dedup re-adds that pollute the map they probe).
+
+## Addendum 2 (2026-08-21, replay sheet 1642465-55153) — the premise's fifth layer is product-level
+
+The replay sheet (same seed as the failed one, fixed shim) went 20 pass /
+1 gap / 1 fail: all four harness fixes validated at their exact failure
+points (forged-block, partition, restart-content green; economy skim green
+again at +98310). The two residuals are product-level, both evidence-complete:
+
+**184-equivocation-island FAIL — a height-1 equivocation went undetected.**
+island-b armed and logged `equivocation complete (double-signed height 1)`;
+honest anchors reconciled repeatedly and never slashed. Every prior passing
+run double-signed at height 2 and was caught. Either the detection path has
+a floor at the first post-genesis height (a real accountability seam — an
+adversary would aim exactly there) or the conflicting height-1 fork never
+reaches an honest reconcile. Consensus-adjacent (I5 accountability face) →
+research-gated; the drill's boot-timing premise variance (which height the
+baked-in equivocator hits) is what exposed it.
+
+**11-economy-repair GAP — records-vs-bytes divergence defeats the
+under-replication premise.** With order A (cold object) and 2s sweeps
+running perfectly (28 `repair sweep complete` lines), the sweep found
+29/29 reachable with both killed holders PROVEN dead (boot-log gaps
+22:41→22:45). Mechanism, disk-verified: a `-replication 1` publish put ~87
+files (~3× the 29 shards) across the fleet in the publish second — the
+client printed "scattered 30 chunk replicas", so the extra copies come from
+beyond the client's own placement — while the provider-record view
+(`swarm holders`) shows ONE holder per column. The kill-selection trusts
+records, so it kills "sole" holders whose bytes exist elsewhere; and the
+sweeping caretaker itself held extra copies of the dead columns, which
+`probeShard(includeLocal=true)` legitimately counts. Drive 4 paid only
+because the extra copies happened not to land on its caretaker. Open
+product questions: (a) why does a replication-1 publish triple on disk, and
+why don't the extra copies announce (records-vs-bytes divergence — S5
+adjacent); (b) is a caretaker-held-but-unannounced copy "reachable" in the
+durability sense (fetchers can't find it)? The wire flow's premise cannot
+be made sound until (a) is answered — which also gates the ECONOMY=1 cloud
+run's premise.
