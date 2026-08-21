@@ -145,15 +145,30 @@ func FindEquivocations(a, b []Block) []Equivocation {
 	return out
 }
 
-// signers returns the public keys that signed b (proposer + attesters).
+// signers returns the public keys that signed b, across EVERY signing role the
+// equivocation verifier checks: proposer, PrepareQC (prepare), and Atts
+// (precommit). Candidate SELECTION must match VERIFICATION coverage — this set
+// feeds FindEquivocations, and a culprit omitted here is never even tested by
+// VerifyEquivocation. The #496 seam (research-certified 2026-08-21): this
+// function read proposer+Atts only, so an era-2 equivocator whose signature in
+// the canonical block sat ONLY in PrepareQC — the objective-mode island
+// adversary at the genesis child, where the culprit is reliably prepare-only —
+// was unslashable even though the verifier would have convicted it. Widening
+// the candidate set cannot manufacture a false slash: VerifyEquivocation
+// remains the gate, with its honest exemptions (sequential heights, cross-round
+// lock-change under a POL, bare-hash authorship) intact.
+// Certification: silt-reviews/research/research-outcome/
+// 496-height1-equivocation-undetected-RESEARCH-CERTIFICATION-2026-08-21.md.
 func signers(b *Block) [][]byte {
-	out := make([][]byte, 0, 1+len(b.Atts))
+	out := make([][]byte, 0, 1+len(b.PrepareQC)+len(b.Atts))
 	if len(b.Proposer) == ed25519.PublicKeySize {
 		out = append(out, b.Proposer)
 	}
-	for _, a := range b.Atts {
-		if len(a.PubKey) == ed25519.PublicKeySize {
-			out = append(out, a.PubKey)
+	for _, set := range [][]Attestation{b.PrepareQC, b.Atts} {
+		for _, a := range set {
+			if len(a.PubKey) == ed25519.PublicKeySize {
+				out = append(out, a.PubKey)
+			}
 		}
 	}
 	return out
