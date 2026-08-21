@@ -1308,6 +1308,9 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 			} else {
 				n.Stats.ChunksReceived++
 				n.provs.Add(n.providerRecord(key)) // we are now a provider
+				// Debug narration (#497): every byte-write into the store names its
+				// path, so a disk census is attributable to a call site.
+				n.logf(ports.LogDebug, "chunk stored", "chunk", msg.ChunkID, "from", from, "key", key, "lease", msg.Lease)
 				if msg.Proof != nil {
 					// Resident metadata for the hot-path sites; the full proof
 					// write-throughs to the backing (persisted so a restart

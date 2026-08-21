@@ -9,6 +9,18 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **Chunk write-path debug narration (`chunk stored` / `chunk pulled` / `place attempt`) — the
+  #497 records-vs-bytes attribution instrument** (2026-08-21) — Every path that writes chunk
+  bytes into a node's store now names itself at `-log debug`: the `MsgStoreChunk` receiver logs
+  `chunk stored` (chunk, sender, placement key, lease), a fetch-pull logs `chunk pulled` (chunk,
+  provider — these copies mint NO provider record, the exact records-vs-bytes signature), and the
+  placement client logs each `place attempt` outcome (a delivered-but-unacked store would be a
+  silent extra copy; `SILT_SWARM_DEBUG=1` narrates the `swarm add`/`get` ephemeral client to
+  stderr). With it a disk census is attributable line-for-line to its writers — the instrument
+  that attributed #497 in one LOCAL run: the publish is clean (30 files for 30 acks,
+  records==bytes) and the "extra copies" are the repair sweep's transient survivor fetches plus
+  retained NetGet pulls, none of which announce. Trail:
+  [docs/thinking/2026-08-21-497-records-vs-bytes-attribution.md](docs/thinking/2026-08-21-497-records-vs-bytes-attribution.md).
 - **Cloudtest harness: contained equivocation island (runs every sheet), seeded flow
   randomization, LOCAL/cloud state separation, empty-response honesty, idempotent economy retry**
   (2026-08-20) — A batch of harness-trust fixes, several provoked by a real self-inflicted incident

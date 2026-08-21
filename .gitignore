@@ -57,6 +57,7 @@ integration/cloudtest/console-*.log
 integration/cloudtest/report-*.md
 integration/cloudtest/results-*.jsonl
 integration/cloudtest/publish-diag-*.log
+integration/cloudtest/497-attribution-evidence-*/
 integration/cloudtest/rss-*.jsonl
 integration/cloudtest/.mem-sampler.pid
 integration/cloudtest/archive/

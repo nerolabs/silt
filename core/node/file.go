@@ -286,6 +286,11 @@ func (n *Node) placeAt(id ports.ChunkID, data []byte, proof *ports.StorageProof,
 		}
 		msg := ports.Message{Kind: ports.MsgStoreChunk, ChunkID: id, Data: data, Proof: proof}
 		n.request(target, msg, func(resp ports.Message, err error) {
+			// Debug narration (#497): an errored/refused attempt walks to the NEXT
+			// candidate, but the store may have completed on this one — a lost ack
+			// mints a silent extra copy. Name every attempt so the disk census can
+			// be correlated with the sender's view.
+			n.logf(ports.LogDebug, "place attempt", "chunk", id, "target", target, "ok", err == nil && resp.OK, "err", err)
 			if err == nil && resp.OK {
 				placed++
 				if accepted != nil {
@@ -465,6 +470,10 @@ func (n *Node) fetchFrom(id ports.ChunkID, provs []ports.NodeID, done func(bool)
 					if err == nil && resp.Found {
 						c := ports.Chunk{ID: id, Data: resp.Data}
 						if c.Verify() && n.store.Put(bg(), c) == nil { // a node that trusts is a bug
+							// Debug narration (#497): fetch-pulls write bytes with NO
+							// provider record — name them so a disk census can tell a
+							// pulled copy from a placed one.
+							n.logf(ports.LogDebug, "chunk pulled", "chunk", id, "from", provs[i])
 							done(true)
 							return
 						}
