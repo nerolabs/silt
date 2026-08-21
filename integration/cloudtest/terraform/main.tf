@@ -4,7 +4,7 @@
 
 locals {
   # Split the node table by network role.
-  public_nodes = { for k, v in var.nodes : k => v if v.role != "natted" && v.role != "natgw" && v.role != "island" }
+  public_nodes = { for k, v in var.nodes : k => v if v.role != "natted" && v.role != "natgw" && v.role != "island" && !v.internal_only }
   nat_nodes    = { for k, v in var.nodes : k => v if v.role == "natted" }
   natgw_nodes  = { for k, v in var.nodes : k => v if v.role == "natgw" }
   # The equivocation island: a contained consensus universe (own anchors, own
@@ -12,7 +12,13 @@ locals {
   # IN_USE_ADDRESSES quota (the real constraint); egress for the GCS binary pull
   # goes through Cloud NAT below. Design: docs/thinking/2026-08-20-equivocation-island-design.md.
   island_nodes = { for k, v in var.nodes : k => v if v.role == "island" }
-  labels       = { cloudtest = var.run_id }
+  # Main-swarm nodes with NO external IP (the ECONOMY killable stores): full
+  # swarm members on the public subnet — dialable on internal IPs like every
+  # node (the swarm advertises internal IPs) — but zero IN_USE_ADDRESSES quota.
+  # Egress (GCS binary pull) via the same Cloud NAT as the island; reached over
+  # IAP like everything else. docs/thinking/2026-08-20-economy-premise-killable-pool.md.
+  noip_nodes = { for k, v in var.nodes : k => v if v.role != "island" && v.internal_only }
+  labels     = { cloudtest = var.run_id }
 }
 
 # ── Network ────────────────────────────────────────────────────────────────────
@@ -265,6 +271,56 @@ resource "google_compute_instance" "natted" {
   depends_on = [google_compute_instance.natgw, google_storage_bucket_iam_member.vm_read]
 }
 
+# ── Main-swarm silt nodes with NO external IP (the ECONOMY killable stores) ─────
+# Identical to a public node — same subnet, same firewall tag, same startup, a
+# full swarm member dialable on its internal IP — minus access_config, so it
+# consumes zero IN_USE_ADDRESSES quota (ECONOMY=1 SYBILS=8 saturates every
+# region's default 8). Egress via the Cloud NAT below; reached over IAP.
+resource "google_compute_instance" "noip" {
+  for_each     = local.noip_nodes
+  name         = "silt-ft-${each.key}-${var.run_id}"
+  machine_type = var.machine_type
+  zone         = each.value.zone
+  labels       = merge(local.labels, { role = each.value.role })
+  tags         = ["public-node"]
+
+  boot_disk {
+    initialize_params {
+      image = var.image
+      size  = var.boot_disk_gb
+    }
+  }
+  network_interface {
+    subnetwork = google_compute_subnetwork.public[each.value.region].id
+    network_ip = each.value.ip
+    # NO access_config: no external IP → zero quota. Egress via Cloud NAT.
+  }
+  scheduling {
+    # Same policy as public nodes of this role (storage is SPOT unless
+    # all_on_demand — a cert run protects content-holders, see variables.tf).
+    provisioning_model          = var.all_on_demand ? "STANDARD" : "SPOT"
+    preemptible                 = !var.all_on_demand
+    automatic_restart           = false
+    instance_termination_action = "DELETE"
+    max_run_duration {
+      seconds = var.ttl_minutes * 60
+    }
+  }
+  service_account {
+    email  = data.google_compute_default_service_account.default.email
+    scopes = ["https://www.googleapis.com/auth/devstorage.read_only"]
+  }
+  metadata = merge(local.ssh_keys_meta, {
+    "silt-argv"       = each.value.argv
+    "silt-binary-url" = "gs://${google_storage_bucket.artifacts.name}/${google_storage_bucket_object.silt_binary.name}"
+    "node-name"       = each.key
+    "startup-script" = templatefile("${path.module}/../provision/silt-startup.sh", {
+      ttl_minutes = var.ttl_minutes
+    })
+  })
+  depends_on = [google_storage_bucket_iam_member.vm_read, google_compute_router_nat.island]
+}
+
 # ── The equivocation island: contained silt nodes with NO external IP ───────────
 # A separate consensus universe for the one destructive drill (permanent-eviction
 # equivocation). No access_config → no external IP → zero IN_USE_ADDRESSES quota.
@@ -316,19 +372,19 @@ resource "google_compute_instance" "island" {
   depends_on = [google_storage_bucket_iam_member.vm_read, google_compute_router_nat.island]
 }
 
-# Cloud NAT for the island's outbound egress (GCS binary pull), keyed to the
-# primary region. Only instances WITHOUT an external IP use it, so the public
-# nodes (which have external IPs) are unaffected — this NATs the island alone.
-# Managed, no instance, ~free; created only when an island exists.
+# Cloud NAT for outbound egress (GCS binary pull) of every no-external-IP node
+# in the primary region — the island AND the ECONOMY noip stores. Only instances
+# WITHOUT an external IP use it, so the public nodes are unaffected. Managed, no
+# instance, ~free; created only when a no-IP node exists.
 resource "google_compute_router" "island" {
-  count   = length(local.island_nodes) > 0 ? 1 : 0
+  count   = (length(local.island_nodes) + length(local.noip_nodes)) > 0 ? 1 : 0
   name    = "silt-ft-island-router-${var.run_id}"
   region  = var.default_region
   network = google_compute_network.silt.id
 }
 
 resource "google_compute_router_nat" "island" {
-  count                              = length(local.island_nodes) > 0 ? 1 : 0
+  count                              = (length(local.island_nodes) + length(local.noip_nodes)) > 0 ? 1 : 0
   name                               = "silt-ft-island-nat-${var.run_id}"
   router                             = google_compute_router.island[0].name
   region                             = var.default_region

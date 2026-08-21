@@ -4,10 +4,18 @@
 # does not depend on external IPs.
 
 locals {
+  # EVERY instance resource must appear in this merge — the orchestrator's
+  # nodes.json IS this output (cloudtest.sh: `tf output -json nodes`), and a
+  # resource missing here is a fleet member the orchestrator cannot reach.
+  # Found 2026-08-20: the island instances were absent, so on GCP the island
+  # VMs would provision (and bill) while flow_equivocation_island GAPed on an
+  # empty ssh_node — masked on LOCAL, whose docker backend lists every container.
   all_instances = merge(
     { for k, v in google_compute_instance.public : k => v },
     { for k, v in google_compute_instance.natted : k => v },
     { for k, v in google_compute_instance.natgw : k => v },
+    { for k, v in google_compute_instance.island : k => v },
+    { for k, v in google_compute_instance.noip : k => v },
   )
 }
 

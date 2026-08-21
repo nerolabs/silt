@@ -34,6 +34,16 @@ case "$verb" in
   stop)
     pkill -f "$PAT" 2>/dev/null
     for _ in $(seq 1 50); do [ -z "$(daemon_pid)" ] && break; sleep 0.2; done
+    # systemd parity: real systemd escalates to SIGKILL at TimeoutStopSec; this
+    # shim used to give up silently after 10s with the process STILL ALIVE, so
+    # a restart's new instance died on 'bind: address already in use' and
+    # nothing restarted it — the drill then graded a DEAD daemon (run
+    # 577f0f1-27476: 184-forged-block false FAIL + 184-partition false GAP,
+    # one mechanism, two flows).
+    if [ -n "$(daemon_pid)" ]; then
+      pkill -9 -f "$PAT" 2>/dev/null
+      for _ in $(seq 1 25); do [ -z "$(daemon_pid)" ] && break; sleep 0.2; done
+    fi
     exit 0 ;;
   restart)
     "$0" stop silt.service

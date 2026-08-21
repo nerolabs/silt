@@ -95,6 +95,24 @@ if os.environ.get("SMOKE") == "1":
     _keep = {"val-a", "val-b", "store-1", "fetch-1"}
     NODES = [n for n in NODES if n[0] in _keep]
 
+# ECONOMY killable pool (opt-in with the economy grade, 2026-08-20). The economy
+# flow reserves every base non-validator storage-capable node for its own
+# machinery (store-2 caretaker, relay judge, store-1 skim observer), validators
+# are never killable, and the publisher self-holds nothing — so at SYBILS=0 the
+# "3 columns with all-killable holders" premise is UNSATISFIABLE BY CONSTRUCTION
+# (proven on LOCAL run 577f0f1-45838: 16 columns, all on reserved/consensus
+# nodes, 0 killable — deterministic, every seed). ECONOMY=1 adds two dedicated
+# killable stores. TWO, not one: 16 columns over ~9 eligible holders ≈ 1.8 per
+# holder — one store expects ~2 killable columns against a need of 3. They get
+# NO external IP on GCP (internal_only → island pattern: Cloud NAT egress, IAP
+# reach) because ECONOMY=1 SYBILS=8 already saturates every region's default
+# 8-IP quota. Deliberation: docs/thinking/2026-08-20-economy-premise-killable-pool.md.
+ECONOMY = 0 if os.environ.get("SMOKE") == "1" else int(os.environ.get("ECONOMY", "0"))
+if ECONOMY:
+    NODES.append(("store-3", "storage", 6103, "10.20.0.23", PRIMARY_ZONE))
+    NODES.append(("store-4", "storage", 6104, "10.20.0.24", PRIMARY_ZONE))
+_INTERNAL_ONLY = {"store-3", "store-4"}  # no-external-IP main-swarm nodes (quota)
+
 # C2 Sybil-capture cohort (opt-in; adds cost, runs on SPOT). A set of bonded but
 # NON-ANCHOR validators, all committing ONE shared -domain (modeling one operator's
 # satellite keys), that attempt to advance the chain WITHOUT the launch anchors.
@@ -465,7 +483,8 @@ def main():
         os.makedirs(os.path.join(here, "terraform"), exist_ok=True)
         tfvars = {
             "nodes": {name: {"role": n["role"], "ip": n["ip"], "zone": n["zone"],
-                             "region": n["region"], "argv": n["argv"]}
+                             "region": n["region"], "argv": n["argv"],
+                             "internal_only": name in _INTERNAL_ONLY}
                       for name, n in nodes.items()},
             "region_cidrs": region_cidrs,
             "public_cidr": PUBLIC_CIDR, "nat_cidr": NAT_CIDR,

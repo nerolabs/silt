@@ -121,6 +121,7 @@ svc() { ssh_node "$1" "sudo systemctl $2 silt.service"; }   # svc NAME start|sto
 relaunch_with() { # relaunch_with NAME "-extra flags"
   local name="$1" extra="$2"
   ssh_node "$name" "sudo sed -i 's#^ExecStart=/usr/local/bin/silt .*#&#; s#^ExecStart=/usr/local/bin/silt \\(.*\\)\$#ExecStart=/usr/local/bin/silt \\1 ${extra}#' /etc/systemd/system/silt.service && sudo systemctl daemon-reload && sudo systemctl restart silt.service"
+  _ensure_silt_active "$name"
 }
 restore_argv() { # restore_argv NAME  — reset ExecStart to the baked argv
   local name="$1" argv
@@ -131,6 +132,26 @@ restore_argv() { # restore_argv NAME  — reset ExecStart to the baked argv
     argv="$(ssh_node "$name" 'curl -s -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/silt-argv')"
   fi
   ssh_node "$name" "sudo sed -i 's#^ExecStart=.*#ExecStart=/usr/local/bin/silt ${argv}#' /etc/systemd/system/silt.service && sudo systemctl daemon-reload && sudo systemctl restart silt.service"
+  _ensure_silt_active "$name"
+}
+# _ensure_silt_active NAME — verify a relaunch actually came up; retry the start
+# if not. A restart can race the OLD instance's port release (the LOCAL shim
+# lacked systemd's SIGKILL escalation, so a >10s graceful shutdown left the port
+# held): the new daemon died on 'bind: address already in use', nothing
+# restarted it, and the driving flow graded a DEAD daemon for its whole window —
+# run 577f0f1-27476: 184-forged-block false FAIL + 184-partition false GAP, one
+# mechanism, two flows. The shim now escalates (parity fix); this belt covers
+# both backends and any other transient boot death. Loud when it can't recover.
+_ensure_silt_active() {
+  local name="$1" i state
+  for i in 1 2 3; do
+    sleep 3
+    state="$(ssh_node "$name" "systemctl is-active silt.service" 2>/dev/null | tr -d '[:space:]')"
+    [ "$state" = active ] && return 0
+    ssh_node "$name" "sudo systemctl restart silt.service" >/dev/null 2>&1 || true
+  done
+  echo "  ⚠ $name: silt.service NOT active after relaunch + 3 retries — the driving flow will mis-grade; read its journal (bind race / bad flag?)"
+  return 0
 }
 
 # ── result recording (feeds gen_report.sh) ─────────────────────────────────────
