@@ -9,6 +9,24 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **Chunk write-path debug narration (`chunk stored` / `chunk pulled` / `place attempt`) — the
+  #497 records-vs-bytes attribution instrument** (2026-08-21) — Every path that writes chunk
+  bytes into a node's store now names itself at `-log debug`: the `MsgStoreChunk` receiver logs
+  `chunk stored` (chunk, sender, placement key, lease), a fetch-pull logs `chunk pulled` (chunk,
+  provider — these copies mint NO provider record, the exact records-vs-bytes signature), and the
+  placement client logs each `place attempt` outcome (a delivered-but-unacked store would be a
+  silent extra copy; `SILT_SWARM_DEBUG=1` narrates the `swarm add`/`get` ephemeral client to
+  stderr). With it a disk census is attributable line-for-line to its writers — the instrument
+  that attributed #497 in one LOCAL run: the publish is clean (30 files for 30 acks,
+  records==bytes) and the "extra copies" are the repair sweep's transient survivor fetches plus
+  retained NetGet pulls, none of which announce. The economy drill's premise is fixed on the
+  same evidence: the pay window now covers the MEASURED repair cycle (sweep duration under dead
+  holders is ~3-4 min — `-repair-interval 2s` bounds only the idle gap between sweeps), sized by
+  `ECONOMY_REPAIR_WINDOW_S` (default 600s) with one journal-driven grace extension
+  (`ECONOMY_REPAIR_GRACE_S`, default 300s) when the cycle is visibly in flight at expiry, and
+  every verdict carries the post-kill sweep/repair evidence — a premise defeat (dead shards
+  still "reachable") is now named as such instead of GAPing as a timing miss. Trail:
+  [docs/thinking/2026-08-21-497-records-vs-bytes-attribution.md](docs/thinking/2026-08-21-497-records-vs-bytes-attribution.md).
 - **Cloudtest harness: contained equivocation island (runs every sheet), seeded flow
   randomization, LOCAL/cloud state separation, empty-response honesty, idempotent economy retry**
   (2026-08-20) — A batch of harness-trust fixes, several provoked by a real self-inflicted incident

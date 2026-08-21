@@ -1461,6 +1461,13 @@ func joinSwarm(peers string, replication int) (*ephemeral, func(fn func(done fun
 	nd := node.New(ident.NodeID(), cfg, walltime.New(loop), tr, memstore.New())
 	nd.SetSigner(ident.Signer()) // sign self-certifying provider records (H5)
 	nd.SetEphemeral(true)        // a publish/fetch client that keeps nothing — peers must not route to it (#43)
+	if os.Getenv("SILT_SWARM_DEBUG") != "" {
+		// Per-attempt narration to stderr (#497): a swarm add/get client is
+		// otherwise silent about placement attempts, so a delivered-but-unacked
+		// store (a silent extra copy on the receiver) is invisible from the
+		// client side. Opt-in via env — the CLI's normal output stays one line.
+		nd.SetLogger(logfile.New(os.Stderr, ports.LogDebug))
+	}
 
 	ps, err := discovery.ParseList(peers)
 	if err != nil {

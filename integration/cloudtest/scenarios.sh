@@ -1737,11 +1737,29 @@ EOF
   fi
   local uniq_stop; uniq_stop="$(printf '%s\n' $to_stop | sort -u | tr '\n' ' ')"
   echo "    killing shard-holders of $cols_killed columns to force reconstruction:$uniq_stop"
+  # The kill instant, in the journals' own timestamp format (UTC ISO): every
+  # progress read below filters to post-kill lines only.
+  local econ_kill_iso; econ_kill_iso="$(date -u +%Y-%m-%dT%H:%M:%S)"
   for n in $uniq_stop; do svc "$n" stop || true; done
 
   # 5) Wait (bounded) for a reconstruction + payout: poll BOTH caretakers'
   #    /api/status — the paramedic emits the claim, the OTHER one judges and
   #    pays on its own ledger, and which is which is timing.
+  # WINDOW SIZING (#497 attribution, run f58d599-17479, docs/thinking/
+  # 2026-08-21-497-records-vs-bytes-attribution.md): `-repair-interval 2s` bounds
+  # only the idle gap BETWEEN sweeps; a sweep's DURATION under dead holders is
+  # probe/lookup-timeout dominated and measured at ~3-4 MINUTES (kill 08:00:50 →
+  # correct reachable=22/29 verdicts 08:03:34/08:04:08 → reconstruction done
+  # 08:04:59). The old 240s window ≈ one such sweep, so the loop's correct-but-
+  # late repair lost the race to the window every time — and the step-6c restart
+  # on expiry then healed the object under the in-flight repair (missing=0, no
+  # claim): a false GAP with the economy logic blameless. Window now covers the
+  # measured cycle (ECONOMY_REPAIR_WINDOW_S, default 600s) and extends ONCE
+  # (ECONOMY_REPAIR_GRACE_S, default 300s) when the journals show the cycle in
+  # flight at expiry — but NOT when both caretakers' latest post-kill sweeps
+  # report full reachability with zero repair activity (the loop believes
+  # nothing is missing; waiting longer cannot pay — the #497 includeLocal
+  # premise-defeat shape, GAP immediately with that evidence in the detail).
   # (2026-08-20, run 577f0f1-25304): this line used to be
   #   `local t0; t0="$(date +%s)" paid=0 repairs=0 body ptok pv rv`
   # — everything after the first assignment parses as an env-prefixed COMMAND
@@ -1751,8 +1769,46 @@ EOF
   # this line (each GAPed before the kill phase); the first run to pass
   # selection died here. The billable cloud run would have hit it identically.
   local t0 paid=0 repairs=0 body ptok pv rv
+  local econ_window econ_grace_used=0 prog_c prog_j
+  econ_window="${ECONOMY_REPAIR_WINDOW_S:-600}"
+  # econ_repair_progress NODE → one-line post-kill repair-cycle summary from the
+  # node's journal ("last-sweep=REACHABLE/SHARDS stripes-repaired=N"), or empty
+  # when no post-kill sweep has completed yet (itself the strongest sign the
+  # window is racing a sweep still in flight). Lines are info-level, present at
+  # the default LOG_LEVEL.
+  econ_repair_progress() {
+    local sweep repaired reach shards
+    sweep="$(ssh_node "$1" "sudo grep -h 'repair sweep complete' /var/lib/silt/debug.log 2>/dev/null" 2>/dev/null | awk -v k="$econ_kill_iso" '$1 >= k' | tail -1)"
+    repaired="$(ssh_node "$1" "sudo grep -h 'stripe repaired' /var/lib/silt/debug.log 2>/dev/null" 2>/dev/null | awk -v k="$econ_kill_iso" '$1 >= k' | wc -l | tr -d ' ')"
+    [ -z "$sweep" ] && [ "${repaired:-0}" = 0 ] && return 0
+    reach="$(printf '%s' "$sweep" | grep -oE 'reachable=[0-9]+' | grep -oE '[0-9]+')"
+    shards="$(printf '%s' "$sweep" | grep -oE 'shards=[0-9]+' | grep -oE '[0-9]+')"
+    printf 'last-sweep=%s/%s stripes-repaired=%s' "${reach:-?}" "${shards:-?}" "${repaired:-0}"
+  }
+  # econ_cycle_hopeless SUMMARY → true only when a completed post-kill sweep
+  # reports FULL reachability and zero repair activity: the premise is defeated,
+  # a longer wait cannot produce a payout.
+  econ_cycle_hopeless() {
+    local rs
+    case "$1" in last-sweep=*) : ;; *) return 1 ;; esac
+    rs="${1#last-sweep=}"; rs="${rs%% *}"
+    [ "${rs%%/*}" = "${rs##*/}" ] || return 1
+    case "$1" in *"stripes-repaired=0") return 0 ;; esac
+    return 1
+  }
   t0="$(date +%s)"
-  while [ $(( $(date +%s) - t0 )) -lt 240 ]; do
+  while :; do
+    if [ $(( $(date +%s) - t0 )) -ge "$econ_window" ]; then
+      [ "$econ_grace_used" = 1 ] && break
+      prog_c="$(econ_repair_progress "$care")"
+      prog_j="$(econ_repair_progress "$judge")"
+      if econ_cycle_hopeless "$prog_c" && econ_cycle_hopeless "$prog_j"; then
+        break  # both post-kill sweeps say fully-reachable + no repair → premise defeated, extending can't pay
+      fi
+      econ_grace_used=1
+      econ_window=$(( econ_window + ${ECONOMY_REPAIR_GRACE_S:-300} ))
+      echo "    economy: window expired with the repair cycle IN FLIGHT (care: ${prog_c:-no post-kill sweep completed yet}; judge: ${prog_j:-no post-kill sweep completed yet}) — extending once by ${ECONOMY_REPAIR_GRACE_S:-300}s (#497 timing-budget fix)"
+    fi
     for cnode in "$care" "$judge"; do
       ptok="$(ssh_node "$cnode" "sudo cat /var/lib/silt/ui-token" 2>/dev/null | tr -dc 'a-f0-9')"
       body="$(ssh_node "$cnode" "curl -s -H 'Authorization: Bearer $ptok' http://127.0.0.1:8098/api/status" 2>/dev/null || true)"
@@ -1768,11 +1824,18 @@ EOF
   done
 
   # 6) Verdict: a bounty paid a verified reconstruction on the wire (the exit gate).
+  #    Either way the detail carries the post-kill journal evidence, so a GAP
+  #    arrives pre-attributed (#7). The step-6c holder restart stays below: with
+  #    the grade recorded, restarting can no longer falsify an in-flight repair.
+  prog_c="$(econ_repair_progress "$care")"
+  prog_j="$(econ_repair_progress "$judge")"
   ft_add_validator_evidence
   if [ "${paid:-0}" -gt 0 ] 2>/dev/null; then
-    slo_assert "11-economy-repair" major "the S7 repair economy CLOSED on the wire: killed 3 columns' holders → the caretaker RECONSTRUCTED from parity → a verified-repair bounty drew the object's reserve down (paid=$paid credits over $repairs repair(s)) — durability paid for itself on a real network, standing untouched (Invariant A)" 1
+    slo_assert "11-economy-repair" major "the S7 repair economy CLOSED on the wire: killed 3 columns' holders → the caretaker RECONSTRUCTED from parity → a verified-repair bounty drew the object's reserve down (paid=$paid credits over $repairs repair(s)) — durability paid for itself on a real network, standing untouched (Invariant A). Post-kill cycle: $care ${prog_c:-none}; $judge ${prog_j:-none}" 1
+  elif econ_cycle_hopeless "$prog_c" && econ_cycle_hopeless "$prog_j"; then
+    record "11-economy-repair" gap major "PREMISE DEFEATED, not a timing miss: after the kill both caretakers' latest sweeps report FULL reachability with zero repair activity ($care $prog_c; $judge $prog_j) — the dead shards are still counted reachable (the #497 records-vs-bytes / includeLocal shape), so no repair can ever fire; attribute the reachability source before re-running (#7)"
   else
-    record "11-economy-repair" gap major "3 columns killed but no bounty drew the reserve within 240s (paid=$paid repairs=$repairs) — the loop did not reconstruct+judge+pay in the window; attribute from $care's AND $judge's journals (repair sweep / claim / judge legs) before re-running (#7)"
+    record "11-economy-repair" gap major "3 columns killed but no bounty drew the reserve within ${econ_window}s (paid=$paid repairs=$repairs; post-kill cycle: $care ${prog_c:-no completed sweep}; $judge ${prog_j:-no completed sweep}) — the loop did not finish reconstruct+judge+pay in the window; attribute from $care's AND $judge's journals (claim / judge legs) before re-running (#7)"
   fi
 
   # 6b) The g-instrumentation row (11c, observational — S5): S7 says the funded
