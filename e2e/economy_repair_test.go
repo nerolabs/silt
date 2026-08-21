@@ -268,8 +268,18 @@ func TestRepairBountyPaysOnTheWire(t *testing.T) {
 	// The exit-gate signal: a verified reconstruction PAID. Poll both
 	// caretakers — the paramedic emits the claim, the OTHER one judges and
 	// pays on its own ledger.
+	//
+	// The pay window must cover the MEASURED repair cycle, not an optimistic
+	// guess: the sweep under dead holders runs ~3-4 min (#501 — probe/lookup
+	// timeouts dominate; unbounded until that issue closes), which is why the
+	// cloudtest flow's window is ECONOMY_REPAIR_WINDOW_S=600 (the #497 premise
+	// fix, PR #499). The old 180s budget sat INSIDE the measured band and made
+	// this test flaky-by-construction in CI (5 identical ~181.8s failures on
+	// 2026-08-21 across three branches, recorded on #501). 600s matches the
+	// certified premise; when #501 bounds the sweep, tighten it back — a
+	// failure past 600s is then a real loop break, not calibration.
 	var paid, funded, repairs int64
-	deadline := time.Now().Add(180 * time.Second)
+	deadline := time.Now().Add(600 * time.Second)
 	for paid == 0 && time.Now().Before(deadline) {
 		for _, c := range caretakers {
 			s := getStatus(t, c.base)

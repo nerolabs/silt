@@ -75,7 +75,11 @@ jobs:
         # Builds the silt binary and drives real daemons over TCP:
         # publish → chain-commit → fetch, bit-perfect. This is the layer
         # the in-process sim skips — the class of bug #36 was.
-        run: go test ./e2e/ -count=1 -v
+        # -timeout 25m: the economy repair test's pay window is 600s (the
+        # measured sweep-under-dead-holders band, #501/#497) — go test's
+        # default 10m killed the binary mid-window (a sleeping-goroutine
+        # panic at the poll loop, not a test verdict).
+        run: go test ./e2e/ -count=1 -v -timeout 25m
 
   nat-integration:
     name: Integration — cross-NAT over a real relay (docker)
