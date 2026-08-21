@@ -151,6 +151,34 @@ fetched survivors on disk — `dropHosted` never runs — turning the transient 
 persistent on re-driven fleets (plausible source of the prior census's persistent
 extras; not directly observed).
 
+## The harness premise fix (decided same day, Andrew: harness first, then product issues)
+
+Options weighed for making the drill's premise sound against the measured timings
+(kill → correct verdict ≈ 3–4 min; + fetch/rebuild ≈ 20 s; + claim/judge/pay unmeasured
+but judge-side fetch-verify runs under the same dead-holder stalls):
+
+1. Just lengthen the window (240 → 600 s). Simple, but still blind: a GAP tells you
+   nothing about WHERE the cycle stood, and a cycle needing 601 s still false-GAPs.
+2. Journal-driven completion (restart holders only after an observed post-kill repair
+   cycle). Honest but unbounded — a wedged sweep would hang the sheet.
+3. **Chosen: bounded window + one progress-aware grace + honest verdict detail.**
+   Primary window `ECONOMY_REPAIR_WINDOW_S` (default 600 s). At expiry with paid=0,
+   read both caretakers' journals for post-kill `repair sweep complete` /
+   `stripe repaired` lines (info-level, present at the default LOG_LEVEL):
+   - If the latest post-kill sweep on BOTH caretakers reports full reachability and no
+     repair activity, the loop believes nothing is missing — extending cannot help.
+     GAP immediately, detail naming the premise defeat (the #497 includeLocal shape).
+   - Otherwise the cycle is in flight (or no sweep has even completed — the window was
+     too short by observation): extend ONCE by `ECONOMY_REPAIR_GRACE_S` (default
+     300 s) and keep polling.
+   The final GAP/PASS detail always carries the post-kill sweep/repair evidence, so a
+   future GAP arrives pre-attributed (#7). The step-6c restart stays after the verdict:
+   with the grade already recorded, the restart can no longer falsify it.
+
+Budget said out loud (TIME-IS-THE-COST): worst-case GAP path grows from 4 min to
+15 min, only on ECONOMY=1 sheets, only when the loop is actually failing — the price
+of never again burning a run on a premise artifact.
+
 **Follow-ups this decomposes into:**
 1. Harness (gates ECONOMY=1 cloud): the pay window must cover ≥ one full
    sweep-under-failure + fetch/rebuild/push/judge (measured ~4–5 min here), and the
