@@ -451,6 +451,14 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 			// and a refused honest submit heals by the resubmit-next-sweep retry.
 			if !n.allowBondSubmit(from) {
 				n.logf(ports.LogInfo, "bond-reg submit REFUSED (rate)", "from", from, "budget", bondSubmitBurst)
+			} else if n.chain.IsSlashed(from) {
+				// #503 Q1(a): an F2-evicted identity can never re-earn standing
+				// (apply skips it), yet its reg still validated, folded, and
+				// COMMITTED as a fresh ~1.5 MB block every sweep — the bond-renewal
+				// storm. Refuse at arrival, before decode: the sender-binding rule
+				// below guarantees a queued reg is always the sender's own, so
+				// IsSlashed(from) is exactly IsSlashed(validator), for a map lookup.
+				n.logf(ports.LogInfo, "bond-reg submit REFUSED (evicted)", "from", from)
 			} else if reg, err := bondRegDecode(msg.Data); err != nil {
 				n.logf(ports.LogInfo, "bond-reg submit REFUSED (decode)", "from", from, "bytes", len(msg.Data), "err", err)
 			} else if vid := reg.ValidatorID(); vid != from {
@@ -675,7 +683,10 @@ func (n *Node) proposeBlock(b *chain.Block, attesters, broadcast []ports.NodeID,
 	// proof in EVERY proposal bought nothing (the latest registration already stands)
 	// and on a real cross-region network bloated every block past what attestation
 	// could carry in time — WEDGING the chain right after the first bond (#313).
-	if n.chain.Objective() && n.bond != nil && n.chain.BondRenewalDue(n.id) {
+	if n.chain.Objective() && n.bond != nil && !n.chain.IsSlashed(n.id) && n.chain.BondRenewalDue(n.id) {
+		// The IsSlashed gate (#503 Q1(c) belt): an evicted id's BondRenewalDue is
+		// true forever (bonded[id] deleted), and self-embedding a reg the apply
+		// path will discard only bloats the block (~1.5 MB) for nothing.
 		if reg, ok := n.RegisterBondReg(b.Prev); ok {
 			b.BondRegs = append(b.BondRegs, reg)
 		}
@@ -696,7 +707,12 @@ func (n *Node) proposeBlock(b *chain.Block, attesters, broadcast []ports.NodeID,
 	if n.chain.Objective() && len(n.pendingBondRegs) > 0 {
 		fresh := n.pendingBondRegs[:0:0]
 		for _, pr := range n.pendingBondRegs {
-			if vid := pr.R.ValidatorID(); vid != n.id && n.chain.ValidateBondReg(pr.R) {
+			// The IsSlashed re-check (#503 Q1(a)) covers the race the arrival
+			// gate cannot: a reg queued while its owner's slash was still in
+			// flight. Dropping it here is proposer POLICY, not validity — an
+			// attester still accepts a block carrying such a reg, so a
+			// mixed-version swarm cannot fork on it.
+			if vid := pr.R.ValidatorID(); vid != n.id && !n.chain.IsSlashed(vid) && n.chain.ValidateBondReg(pr.R) {
 				fresh = append(fresh, pr)
 			}
 		}
@@ -1313,7 +1329,12 @@ func (n *Node) maybeProposeBondDrain() {
 	if n.chain == nil || !n.chain.Objective() || n.signer == nil || n.bondDrainInFlight {
 		return
 	}
-	ownDue := n.bond != nil && n.chain.BondRenewalDue(n.id)
+	// The IsSlashed gate (#503 Q1(c) belt): an evicted node's BondRenewalDue
+	// reads true forever, and without the gate own-due kept arming drain sweeps
+	// for a registration the chain will never honor. (In practice an evicted
+	// node also fails ProposerEligible below — this keeps the quiescence rule
+	// (B6) honest on its own terms.)
+	ownDue := n.bond != nil && !n.chain.IsSlashed(n.id) && n.chain.BondRenewalDue(n.id)
 	// #441: pending mempool ENTRIES are designee work exactly like pending regs —
 	// the designee's block carries them (foldPendingEntries), so an entry-only
 	// queue must fire this sweep too, or a publish on an idle chain would wait
