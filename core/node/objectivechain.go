@@ -69,6 +69,20 @@ func (n *Node) SubmitBondRenewal(peers []ports.NodeID) {
 	if n.chain == nil || !n.chain.Objective() || n.bond == nil || n.signer == nil {
 		return
 	}
+	// #503 Q1(c): an F2 eviction is permanent (the chain never clears slashed),
+	// but it also deletes bonded[id] — which makes BondRenewalDue read true
+	// FOREVER for this node. Without this gate an evicted daemon re-broadcast
+	// its full ~1.5 MB space-time proof every sweep, unbounded, and honest
+	// proposers committed each one as a fresh block: the island OOM's dominant
+	// driver (the bond-renewal storm). Back off permanently and say why, once —
+	// silence here would read as a discovery failure (B5).
+	if n.chain.IsSlashed(n.id) {
+		if !n.evictionLogged {
+			n.evictionLogged = true
+			n.logf(ports.LogWarn, "bond renewal suppressed: this identity is permanently evicted (F2 equivocation slash) — it can never re-earn standing; run a new identity to rejoin", "id", n.id)
+		}
+		return
+	}
 	// Only submit when a (re)registration is actually due — not on every sweep. An
 	// already-bonded validator broadcasting its full space-time proof each sweep just
 	// hands proposers more block bloat to carry (the peer half of the #313 wedge).

@@ -125,6 +125,26 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   [docs/thinking/2026-08-20-economy-local-loop-design.md](docs/thinking/2026-08-20-economy-local-loop-design.md).
 
 ### Fixed
+- **An F2-evicted identity no longer re-registers forever — the bond-renewal storm behind the
+  island OOM is suppressed at every honest layer (#503, Q1 of the research certification)**
+  (2026-08-21) — A slash deletes `bonded[id]`, which made `BondRenewalDue` read true FOREVER for
+  the evicted identity: its daemon re-broadcast the full ~1.5 MB space-time proof every ~30 s
+  sweep, no layer consulted `slashed`, and honest proposers committed the banned identity's
+  registration as a fresh block each time, unbounded — ~35 MB/min of chain growth on the cloud
+  sheet's equivocation island until the 2 GB box OOM'd (build-immutable #8; the fa501cc-56689
+  sheet's one FAIL). Certified fix, zero block-validity change (a mixed-version swarm cannot
+  fork on it): the client backs off permanently once it observes its own slash and logs
+  "permanently evicted" once instead of silently retrying (B5); a receiver refuses a slashed
+  identity's submitted reg at arrival, before decode, by a map lookup; and the proposer's fold
+  re-filters the queue so a reg that raced in before the slash landed is dropped as policy, not
+  validity. The honest renewal loop then decays to quiescence on its own (~0.19 renewals per
+  block-of-aging < 1, certified) — the TTL's height denomination and all four coupled security
+  parameters (WS period, safetyDepth = 2·TTL, EpochBlocks ≪ TTL, BondRegHeadWindow ≪ TTL) are
+  deliberately untouched (Q2 certified contraindicated). The structural close against an
+  adversarial re-registrant — a per-identity reg-inclusion VALIDITY rule — is #506
+  (version-gated). Certification:
+  `silt-reviews/research/research-outcome/503-bond-renewal-storm-RESEARCH-CERTIFICATION-2026-08-21.md`;
+  deliberation: [docs/thinking/2026-08-21-503-q1-fix-deliberation.md](docs/thinking/2026-08-21-503-q1-fix-deliberation.md).
 - **A prepare-only equivocator is now selected for slashing — equivocation candidate-selection
   enumerates every signing role the verifier checks (#496)** (2026-08-21) — `signers()`, which feeds
   `FindEquivocations` its candidate set, read proposer + `Atts` (precommit) but never `PrepareQC`

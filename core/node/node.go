@@ -511,6 +511,11 @@ type Node struct {
 	// cost real held storage. See bondaudit.go.
 	bond      *bond.Commitment
 	peerBonds map[ports.NodeID]bondInfo
+	// evictionLogged latches the one-time "permanently evicted" warning (#503
+	// Q1(c)): once this node observes its own F2 slash on the committed chain it
+	// stops submitting renewals forever, and the reason is logged once, not
+	// every 30 s sweep.
+	evictionLogged bool
 	// peerBondRTT tracks each peer's recent bond-challenge reply latencies so the
 	// C1 partial-storage timing signal is the windowed-MINIMUM (low quantile) of
 	// the distribution, not a single wall-clock sample — build-immutable #3: a
