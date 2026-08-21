@@ -82,8 +82,9 @@ real.
    4. Attempt the deep confirming run (longer soak; retention prune engaged past h64 at
       production parameters). If heights starve the run's budget, that measurement is
       Phase 3's justification — record it, don't force it.
-2. **Phase 2 — Economy-ON (the S7 keystone; enablement, not construction). ⚠ Slices 1–3
-   DONE + merged; Slice 4 (the exit gate) OPEN — not yet closed on the wire (2026-08-19).**
+2. **Phase 2 — Economy-ON (the S7 keystone; enablement, not construction). ✅ COMPLETE
+   (2026-08-21): Slices 1–4 DONE — the exit gate CLOSED on the wire by the clean sheet
+   `f35a0f9-18198` (24 pass / 0 gap / 0 fail; liveness precondition HELD).**
    - **Slice 1 (enable) DONE:** `-economy` flag (opt-in, default OFF); the bounty base is a protocol
      price `credit.RepairBountyBase = c·(k·shardBytes)`, **`c=1` research-certified**; payee =
      **(a-domain-fresh)** — the paramedic keeps the shard it rebuilt iff its own failure domain is
@@ -94,14 +95,15 @@ real.
    - **§0.1 (repair RAM) MEASURED locally** (`core/erasure/reconstruct_mem_test.go`): a prod 64 MiB
      stripe reconstructs **1.0 GiB resident** → OOMs a 2 GB box, so the economy grade uses 256 KiB
      chunks (repair ≈ 2.5 MiB). *A prod-chunk field-confirm on a bigger box is a later option.*
-   - **Slice 4 (economy on the wire) = THE EXIT GATE, OPEN.** Built `flow_economy_repair` (opt-in
-     `ECONOMY=1`): publish erasure-coded → `swarm holders` (new CLI, shard placement) → kill 3
-     all-killable columns → caretaker RECONSTRUCTS → bounty draws the reserve down (paid>0). **First
-     field run (2323b09-20931) GAPed** — the setup publish timed out on cross-region commit latency
-     (#441-family; the scenario's guard correctly reported UNTESTED). Publish-retry fix shipped (#489).
-     **BLOCKER (now enforced): the full loop must pass LOCALLY end-to-end before the confirming run**
-     — see "Immediate next work" below. Exit gate unchanged: prepay→(skim)→bounty closes on a real
-     network; standing coin-free.
+   - **Slice 4 (economy on the wire) = THE EXIT GATE, CLOSED (2026-08-21).** The gate row first
+     went green on `fa501cc-56689` (paid=432770; ledger identity prepay+skim=paid, reserve→0) but
+     that sheet was PROVISIONAL on its island OOM liveness FAIL (#503). The #503 bond-renewal storm
+     was research-certified and fixed same-day (PR #508), and the clean re-run **`f35a0f9-18198`
+     banked the sheet: 24 pass / 0 gap / 0 fail, liveness precondition HELD, islands flat at
+     0.34–0.38 GiB peak** (was 1.5–1.6 GiB + OOM×3). Economy on that run: paid=531080 over 1
+     repair, identity closed, post-payout skim already refilling the reserve. The g-series now has
+     three samples (432770 cloud / 629390 LOCAL / 531080 cloud). Exit gate met: prepay→(skim)→bounty
+     closes on a real network; standing coin-free.
 3. **Phase 3 — Cheap heights (the M1 lever with the M0 dividend).** The near-term #299
    tiers (Merkle multiproof compression, batch verification — *not* the parked sealing
    re-architecture) + registration/entry batching, to shrink the per-height cost
