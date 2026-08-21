@@ -129,37 +129,45 @@ real.
    **economy-ON** configuration — the network people will actually run. Then R1: a
    fully green multi-region grade on the RC config, and V1.
 
-### Immediate next work (2026-08-19, newly-found — prioritized & sequenced)
+### Immediate next work (updated 2026-08-22 — post-Phase-2 priority order)
 
-The 2026-08-19 sessions closed Phase 1 and Phase 2 Slices 1–3, but two cloud runs surfaced work that
-gates the Phase 2 exit gate. In order:
+The 2026-08-19 list is complete: the local economy e2e shipped and gated two clean graded
+sheets, the `ECONOMY=1` exit-gate run banked Phase 2 (`f35a0f9-18198`, 24/0/0), and the
+same arc closed #503 (the island bond-renewal storm — research-certified fix, PR #508,
+field-confirmed). The current order:
 
-1. **★ THE ONE NEXT GOAL — a LOCAL multi-daemon e2e of the full economy loop** (publish → `swarm
-   holders` → kill 3 columns → caretaker reconstructs from parity → bounty pays, `paid>0`). The pieces
-   pass individually (`e2e/economy_test.go`, `e2e/holders_test.go`, `sim/repair_bounty_test.go`); the
-   **integration** is unproven, which is why Slice 4's field run GAPed. **This is now a hard gate:**
-   `cloudtest.sh` preflight runs `RUN_LOCAL_PROOF` and refuses a billable run without a passing local
-   proof. Build this test → green → *then* the `ECONOMY=1` re-run closes the exit gate.
-2. **Harness hardening (from the run audits — `docs/thinking/2026-08-19-cloudtest-harness-improvement-plan.md`).**
-   *Done this session:* §0.1 measured; the sybil-fork false-positive fixed (#485, field-confirmed);
-   the partition moving-target GAP fixed; per-`RUN_ID` report (fixes stale-report audit finding); the
-   local-proof preflight gate; `swarm holders`. *Remaining, prioritized:* (a) **chaos-crash should GAP
-   (not FAIL) on a non-landed publish** — the two Run-B FAILs were this, less-robust than
-   durability-turnover; (b) **the registry is co-located with an anchor** (val-a = registry + anchor +
-   load → publish timeouts) — a dedicated non-anchor registry node (RSS showed an idle `registry` node
-   already exists — repoint REGREF); (c) **persistent VPC across runs** (cut ~7 min provision+teardown);
-   (d) parallelize the independent read-only scenarios (the serial chain is the biggest wall-clock lever
-   after the ~51 min maturing drill).
-3. **Fork (c) split-pay (evidence-gated fast-follow).** (a-domain-fresh) leaves reconstruction unfunded
-   in the non-fresh-domain fraction; the split-pay (reconstruction bounty to the paramedic + custody
-   rent to the holder) is the complete answer, gated on evidence it's needed (owned in the payee-fork
-   ruling). Not built until the local loop + a clean field grade show the gap bites.
+1. **Quota gate (external, check FIRST each session):** the us-west1 `IN_USE_ADDRESSES`
+   8→16 preference. When it lands, the **SYBILS=8 + MATURING=1 coverage run** becomes
+   possible — the two standing structural SKIPs on every sheet (`5-sybil-no-capture`,
+   `10-maturing-handoff`), and the handoff/post-shed regime is the external red team's
+   sharpest seam-#8 target. That run is the next new field coverage, not a re-run.
+2. **The repair-sweep family with three runs' field data — #501 (the sweep is unbounded
+   under dead holders; now also CI-measured via the e2e flake history), #500
+   (fetch-retained copies never announce), #502 (restart orphans the repair working
+   set).** #501 first: it is the mechanism behind the widened (measured) e2e window and
+   the #509 bound miss; bounding the sweep re-tightens both.
+3. **#466 chain-serve pagination — the PE approach review, now evidence-backed** (the
+   #503 retainer attribution: 98 MB of retained `EncodeBlocks` output on the
+   dead-peer-serving node; ~310 MB per full-chain encode at cloud heights). The serve
+   working set is the remaining island memory term.
+4. **#506 — the Q3 reg-inclusion rate bound (validity rule), version-gated.** Required
+   per the #503 certification (the structural close against an adversarial
+   re-registrant); needs the coordinated-upgrade/version-gate story first.
+5. **Harness hardening, remaining from the 2026-08-19 audit:** (a) chaos-crash GAPs (not
+   FAILs) on a non-landed publish; (b) dedicated non-anchor registry (repoint REGREF);
+   (c) persistent VPC across runs (~7 min/run); (d) parallelize read-only scenarios.
+   Plus the small filed items: #509 (compute the down-designee bound from the #451
+   round arithmetic), #507 (the `TestMeasure_StoreChunkDrainRate` test race).
+6. **Phase 3 proper — cheap heights** (#299 near tiers: Merkle multiproof compression,
+   batch verification, reg/entry batching). Exit gate: a deep green sheet (h ≥ 128)
+   with the prune field-exercised at production parameters — which also delivers the
+   deferred Phase 1.4 deep run.
+7. **Fork (c) split-pay stays evidence-gated** — two clean economy grades have not yet
+   shown the (a-domain-fresh) gap biting; it stays parked until one does.
 
-Then resume the ordered path at Phase 3 (cheap heights — which also unblocks the deferred deep >h64 run).
-
-**Standing parallel lane (starts now, blocks nothing):** the #183 procurement search
-(longest lead time, zero code dependency, currently ownerless); ongoing evidence
-hygiene; stale-branch pruning.
+**Standing parallel lane (blocks nothing):** the #183 procurement search (longest lead
+time, zero code dependency, still ownerless); evidence hygiene; stale-branch pruning
+(`drill/v2b-gate-starvation`, `evidence/soak-9453325-7258`, `oracle/451-locked-value-stall`).
 
 ## Where we are now (the honest status)
 
