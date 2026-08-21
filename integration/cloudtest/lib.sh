@@ -247,7 +247,27 @@ scan_node_liveness() {
     [ "$c" -gt 0 ] 2>/dev/null && { oomnodes="$oomnodes ${n}×${c}"; total=$((total + c)); }
   done
   if [ -n "$oomnodes" ]; then
-    record "infra-node-liveness" fail blocker "NODE CRASH-LOOP — ${total} node crash(es) (kernel OOM-kill or Go fatal error) across:${oomnodes}. A run whose cohort DIES cannot grade its flows (a crashing node is indistinguishable from a slow/dead peer), so EVERY verdict on this sheet is PROVISIONAL until a clean no-crash re-run — including the computed bounds (which may be inflated). This is INFRASTRUCTURE FAILURE, not independent flow results. Attribute from a heap profile (re-run with DEBUG_PROFILE=1, then ./cloudtest.sh heap <node>) or the node's journal (fatal-error stack trace) — do NOT presume a cause."
+    # CAPTURE BEFORE the verdict returns and teardown destroys the evidence
+    # (build-immutable #7 — its canonical loss recurred on run fa501cc-56689:
+    # this row named island-c×3, the teardown trap then deleted the VM, and the
+    # crash-type attribution (OOM vs Go fatal), the crash times, and the
+    # pre-crash log tail were unrecoverable; only the RSS series survived, #504).
+    # Pull each NAMED node's full journal (all boots — the crash is in a PRIOR
+    # boot by definition) + the kernel's oom/fatal lines into the same
+    # failed-nodes-<run>.log the flow-level capture uses.
+    local cap="$FT_DIR/failed-nodes-${RUN_ID}.log" cn
+    for cn in $oomnodes; do
+      cn="${cn%%×*}"
+      {
+        echo "======== $cn (liveness-FAIL capture, $(date -u +%Y-%m-%dT%H:%M:%SZ)) ========"
+        echo "-- crash signatures (all boots) --"
+        ssh_node "$cn" "sudo journalctl --no-pager 2>/dev/null | grep -E 'Out of memory: Killed process|invoked oom-killer|oom-kill:constraint|fatal error:' | tail -40" 2>/dev/null
+        echo "-- journalctl -u silt (all boots, last 2000 lines) --"
+        ssh_node "$cn" "sudo journalctl -u silt --no-pager 2>/dev/null | tail -2000" 2>/dev/null
+      } >> "$cap"
+    done
+    echo "    liveness-FAIL evidence captured → $(basename "$cap") (${oomnodes# })"
+    record "infra-node-liveness" fail blocker "NODE CRASH-LOOP — ${total} node crash(es) (kernel OOM-kill or Go fatal error) across:${oomnodes}. A run whose cohort DIES cannot grade its flows (a crashing node is indistinguishable from a slow/dead peer), so EVERY verdict on this sheet is PROVISIONAL until a clean no-crash re-run — including the computed bounds (which may be inflated). This is INFRASTRUCTURE FAILURE, not independent flow results. Journals captured to failed-nodes-${RUN_ID}.log (#504); attribute from those + a heap profile (re-run with DEBUG_PROFILE=1, then ./cloudtest.sh heap <node>) — do NOT presume a cause."
   else
     record "infra-node-liveness" pass blocker "node-liveness precondition HELD — no OOM-kill or crash-loop across the cohort, so the sheet was graded on a HEALTHY network"
   fi

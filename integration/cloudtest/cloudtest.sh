@@ -120,13 +120,24 @@ preflight_quota() {
   [ "${PREFLIGHT:-1}" = 0 ] && { echo "==> preflight: skipped (PREFLIGHT=0)"; return 0; }
   [ -f "${FT_TOPO:-$FT_DIR/topology.json}" ] || return 0
   echo "==> preflight: external-IP (IN_USE_ADDRESSES) quota per region"
-  python3 - "${FT_TOPO:-$FT_DIR/topology.json}" > /tmp/ft_ipneeds.txt <<'PY'
+  # Count the PUBLIC nodes exactly as terraform does (main.tf `public_nodes`):
+  # natted/natgw egress via Cloud NAT, the equivocation ISLAND is
+  # no-external-IP by design (#494), and internal_only nodes (the ECONOMY
+  # killable stores, #495) carry no address — all zero IN_USE_ADDRESSES.
+  # internal_only lives only in the tfvars gen_topology writes, so prefer it
+  # over topology.json. This counter once lagged terraform's predicate (it
+  # skipped only natted/natgw) and refused an ECONOMY run as "needs 13 of 8"
+  # when the real demand was 7 — the counter and main.tf must not drift.
+  local ipsrc="${FT_TOPO:-$FT_DIR/topology.json}"
+  [ -f "$FT_DIR/terraform/topology.auto.tfvars.json" ] && ipsrc="$FT_DIR/terraform/topology.auto.tfvars.json"
+  python3 - "$ipsrc" > /tmp/ft_ipneeds.txt <<'PY'
 import json, sys
 from collections import Counter
 nodes = json.load(open(sys.argv[1]))["nodes"]
 c = Counter()
 for n in nodes.values():
-    if n.get("role") in ("natted", "natgw"):  # egress via Cloud NAT — no external IP
+    # Mirror terraform main.tf public_nodes: only these get an external IP.
+    if n.get("role") in ("natted", "natgw", "island") or n.get("internal_only"):
         continue
     c[n.get("region", "?")] += 1
 for r, k in c.items():
