@@ -84,3 +84,65 @@ func TestFindEquivocationsAcrossForks(t *testing.T) {
 		}
 	}
 }
+
+// The #496 seam (research-certified 2026-08-21): candidate SELECTION must
+// enumerate every signing role the VERIFIER checks. An era-2 equivocator whose
+// signature in the canonical block sits ONLY in PrepareQC (it is neither the
+// proposer nor a precommit-attester) was invisible to FindEquivocations —
+// signers() read proposer+Atts only — while VerifyEquivocation, which scans
+// PrepareQC too, would happily have proven the double-sign. Field shape: the
+// objective-mode island equivocator at the genesis child (height 1), where the
+// culprit is reliably prepare-only, went unslashed for a whole drill window
+// (run 1642465-57233) while the identical act at height 2 was always caught.
+// Born RED before the signers() widening; GREEN after (V5).
+func TestFindEquivocations_PrepareOnlyCulprit(t *testing.T) {
+	w := newWorld(DefaultConfig())
+	g := w.genesis()
+
+	// Canonical W@1: proposed by w.prop; the culprit vals[0] appears ONLY in
+	// PrepareQC. The precommit certificate (Atts) is carried by other validators.
+	wblk := &Block{Version: BlockVersionRounds, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(1)}}
+	Sign(wblk, w.prop)
+	wblk.PrepareQC = []Attestation{
+		AttestAt(wblk, w.vals[0], 0, PhasePrepare),
+		AttestAt(wblk, w.vals[1], 0, PhasePrepare),
+	}
+	wblk.Atts = []Attestation{
+		AttestAt(wblk, w.vals[1], 0, PhasePrecommit),
+		AttestAt(wblk, w.vals[2], 0, PhasePrecommit),
+	}
+
+	// Conflicting L@1: the culprit's prepare at the SAME (height, round, prepare)
+	// slot over a different block — the self-incrimination the objective-mode
+	// adversary plants (PlaceConflictingSigned).
+	l := &Block{Version: BlockVersionRounds, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(2)}}
+	Sign(l, w.vals[3])
+	l.PrepareQC = []Attestation{AttestAt(l, w.vals[0], 0, PhasePrepare)}
+
+	// The verifier proves it — the double-sign is real and self-verifying.
+	if !VerifyEquivocation(&Equivocation{Culprit: pubOf(w.vals[0]), A: *wblk, B: *l}) {
+		t.Fatal("VerifyEquivocation must prove a same-slot prepare double-sign")
+	}
+
+	// And the SELECTOR must therefore find it: detection is only as complete as
+	// its candidate enumeration.
+	got := FindEquivocations([]Block{*g, *wblk}, []Block{*g, *l})
+	found := false
+	for i := range got {
+		if got[i].CulpritID() == idOf(w.vals[0]) {
+			found = true
+			if !VerifyEquivocation(&got[i]) {
+				t.Fatal("the returned prepare-only proof must self-verify")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("#496: a prepare-only equivocator must be selected by FindEquivocations — a culprit the verifier can convict must never be skipped by the candidate enumeration")
+	}
+	// And no honest participant is implicated by the widened selection.
+	for i := range got {
+		if got[i].CulpritID() != idOf(w.vals[0]) {
+			t.Fatalf("only the culprit may be implicated; got %s", got[i].CulpritID())
+		}
+	}
+}

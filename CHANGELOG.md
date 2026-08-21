@@ -107,6 +107,20 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   [docs/thinking/2026-08-20-economy-local-loop-design.md](docs/thinking/2026-08-20-economy-local-loop-design.md).
 
 ### Fixed
+- **A prepare-only equivocator is now selected for slashing — equivocation candidate-selection
+  enumerates every signing role the verifier checks (#496)** (2026-08-21) — `signers()`, which feeds
+  `FindEquivocations` its candidate set, read proposer + `Atts` (precommit) but never `PrepareQC`
+  (prepare), while `VerifyEquivocation` scans both. An era-2 double-signer whose signature in the
+  honest canonical block sat only in the prepare certificate — the objective-mode equivocator at the
+  genesis child, where the culprit is reliably prepare-only — was therefore never even tested by the
+  verifier that would have convicted it: a real I5-accountability hole an adversary could aim at any
+  height by choosing to be prepare-only. Found by the randomized field sheet (a height-1 double-sign
+  went unslashed for a whole drill window while height 2 was always caught, run 1642465-57233);
+  mechanism research-certified by execution before the fix (candidate-selection asymmetry — not a
+  height floor, not delivery, not fork-choice; widening selection cannot manufacture a false slash
+  because `VerifyEquivocation` remains the gate with its honest exemptions intact). Invariants: I5
+  strengthened, I1–I4 untouched (no commit/quorum rule changes — local detection only). Regression
+  pinned born-RED by `core/chain/TestFindEquivocations_PrepareOnlyCulprit`.
 - **`-care` with no registry now refuses to start instead of silently never caretaking**
   (2026-08-20) — The care loop requires a registry to resolve the cared entry; without `-registry` or
   `-serve-registry` the daemon came up looking healthy while `-care` did nothing (the #235
