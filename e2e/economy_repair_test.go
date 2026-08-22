@@ -138,17 +138,32 @@ func TestRepairBountyPaysOnTheWire(t *testing.T) {
 		caretakers = append(caretakers, caretaker{d: d, store: store, base: "http://" + ui[1], token: ui[2]})
 	}
 	// The repair/claim/judge narration lands in <store>/debug.log (-log info);
-	// surface its tail when the loop fails so the break names itself (#7).
+	// surface it when the loop fails so the break names itself (#7). The tail
+	// alone is NOT enough: at the 2s sweep cadence the last 80 lines are all
+	// sweep chatter, and the one-shot claim-chain events (pending confirmation,
+	// stripe repaired, no-eligible-judge, bounty released) scroll out — a CI
+	// failure of the #518 judge-starvation mode was unattributable from the
+	// tail. So dump the tail PLUS every claim-chain line from the whole file.
 	debugTail := func(c caretaker) string {
 		b, err := os.ReadFile(filepath.Join(c.store, "debug.log"))
 		if err != nil {
 			return "(no debug.log: " + err.Error() + ")"
 		}
 		lines := strings.Split(strings.TrimSpace(string(b)), "\n")
-		if len(lines) > 80 {
-			lines = lines[len(lines)-80:]
+		var chain []string
+		for _, ln := range lines {
+			if strings.Contains(ln, "pending confirmation") || strings.Contains(ln, "stripe repaired") ||
+				strings.Contains(ln, "repair below k") || strings.Contains(ln, "claim") ||
+				strings.Contains(ln, "bounty") || strings.Contains(ln, "reconciled") {
+				chain = append(chain, ln)
+			}
 		}
-		return strings.Join(lines, "\n")
+		tail := lines
+		if len(tail) > 40 {
+			tail = tail[len(tail)-40:]
+		}
+		return "-- claim-chain lines (whole file) --\n" + strings.Join(chain, "\n") +
+			"\n-- tail --\n" + strings.Join(tail, "\n")
 	}
 
 	// Fund BOTH caretakers' escrows from their own starter grants: credit is
