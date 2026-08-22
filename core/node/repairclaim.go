@@ -29,6 +29,8 @@
 package node
 
 import (
+	"fmt"
+
 	"github.com/nerolabs/silt/core/credit"
 	"github.com/nerolabs/silt/core/erasure"
 	"github.com/nerolabs/silt/core/link"
@@ -45,41 +47,60 @@ import (
 // isn't a caretaker of the claimed object (no matching CareHandle → no layout key)
 // cannot judge and replies OK=false without side effects.
 func (n *Node) handleRepairClaim(from ports.NodeID, msg ports.Message) {
-	deny := func() { n.reply(from, msg, ports.Message{Kind: ports.MsgRepairVote, OK: false}) }
+	// Every deny NAMES ITS REASON in the journal (#518 capture lesson: a claim
+	// chain that dies in a silent deny leaves paid=0 unattributable — the
+	// judge is an economy actor and its verdicts must be evidence-carrying).
+	var claim repairproof.RepairClaim
+	deny := func(reason string) {
+		n.logf(ports.LogInfo, "repair claim denied", "reason", reason,
+			"root", claim.Root, "shard", claim.ShardID, "claimant", from)
+		n.reply(from, msg, ports.Message{Kind: ports.MsgRepairVote, OK: false})
+	}
 
 	claim, err := repairproof.UnmarshalClaim(msg.Data)
 	if err != nil {
-		deny()
+		deny("malformed claim")
 		return
 	}
+	n.logf(ports.LogDebug, "repair claim received",
+		"root", claim.Root, "shard", claim.ShardID, "holder", claim.Holder, "claimant", from)
 	ch, ok := n.careHandleFor(claim.Root)
 	if !ok || n.reg == nil {
-		deny() // not a caretaker of this object, or no registry: can't verify
+		deny("not a caretaker of this root, or no registry")
 		return
 	}
 	entry, ok, err := n.lookupEntry(n.reg, claim.Root)
 	if err != nil || !ok {
-		deny()
+		deny("registry lookup failed")
 		return
 	}
 	// (Re)acquire the manifest — mostly a local cache hit for a caretaker — then
 	// judge on the LAYOUT alone (the content keys stay sealed, M11).
 	n.fetchAll(entry.ManifestChunks, func(missing []ports.ChunkID) {
 		if len(missing) > 0 {
-			deny() // swarm can't supply the manifest right now; a transient deny
+			deny("manifest unreachable (transient)")
 			return
 		}
-		n.judgeRepairClaim(from, msg, claim, ch, entry)
+		n.judgeRepairClaim(from, msg, claim, ch, entry, 0)
 	})
 }
 
+// judgeRetryAttempts bounds the deferred re-judgments of a transiently
+// unjudgeable claim (#518): three attempts spaced HolderCooldown apart span
+// the negative-cache window and its first decay doubling.
+const judgeRetryAttempts = 3
+
 // judgeRepairClaim runs the two legs once the manifest is in hand and settles.
-func (n *Node) judgeRepairClaim(from ports.NodeID, msg ports.Message, claim repairproof.RepairClaim, ch link.CareHandle, entry ports.Entry) {
-	deny := func() { n.reply(from, msg, ports.Message{Kind: ports.MsgRepairVote, OK: false}) }
+func (n *Node) judgeRepairClaim(from ports.NodeID, msg ports.Message, claim repairproof.RepairClaim, ch link.CareHandle, entry ports.Entry, attempt int) {
+	deny := func(reason string) {
+		n.logf(ports.LogInfo, "repair claim denied", "reason", reason,
+			"root", claim.Root, "shard", claim.ShardID, "claimant", from)
+		n.reply(from, msg, ports.Message{Kind: ports.MsgRepairVote, OK: false})
+	}
 
 	m, err := pipeline.LoadLayout(bg(), n.store, entry, ch)
 	if err != nil || m.K == 0 || len(m.Chunks) == 0 {
-		deny()
+		deny("layout not loadable")
 		return
 	}
 	p := erasure.Params{K: m.K, N: m.N}
@@ -102,7 +123,7 @@ func (n *Node) judgeRepairClaim(from ports.NodeID, msg ports.Message, claim repa
 		}
 	}
 	if len(stripeRefs) == 0 || realData == 0 {
-		deny() // no such stripe in this manifest: malformed claim
+		deny("no such stripe in this manifest")
 		return
 	}
 
@@ -111,10 +132,27 @@ func (n *Node) judgeRepairClaim(from ports.NodeID, msg ports.Message, claim repa
 	n.fetchSurvivors(m.Root(), survivorRefs, func(survivors map[int][]byte, reachable int) {
 		correctnessOK, cerr := repairproof.VerifyByRecompute(p, survivors, realData, claim.ShardPos, claim.ShardID)
 		if cerr != nil {
-			// Structurally un-judgeable (too few survivors, out-of-range target):
-			// a transient/malformed challenge, not an attributable lie. Deny, don't
-			// slash.
-			deny()
+			// Structurally un-judgeable — usually TOO FEW SURVIVORS, and usually
+			// TRANSIENT: a claim arrives moments after the repair-time fetch storm,
+			// when live-but-slow holders sit freshly stamped in the negative cache
+			// (a single 2s holder dial misses under load) and the judge's own
+			// working set was just dropped. Claim emission is one-shot, so a
+			// terminal deny here loses the bounty FOREVER for a 30s condition —
+			// the captured #518 sub-mode (survivors fetched=2..5 of k=10, 4ms
+			// after the judge's own rebuild). DEFER instead: re-judge after
+			// HolderCooldown (the duration of the very transient being waited
+			// out), bounded; deny with the reason only when retries exhaust.
+			// Never a slash — not an attributable lie either way.
+			if attempt < judgeRetryAttempts {
+				n.logf(ports.LogInfo, "repair claim deferred — survivors transiently short",
+					"root", claim.Root, "shard", claim.ShardID,
+					"fetched", len(survivors), "need", p.K, "attempt", attempt+1)
+				n.clock.AfterFunc(n.cfg.HolderCooldown, func() {
+					n.judgeRepairClaim(from, msg, claim, ch, entry, attempt+1)
+				})
+				return
+			}
+			deny(fmt.Sprintf("unjudgeable: %v (survivors fetched=%d of k=%d needed, %d attempts)", cerr, len(survivors), p.K, attempt+1))
 			return
 		}
 
@@ -131,6 +169,8 @@ func (n *Node) judgeRepairClaim(from ports.NodeID, msg ports.Message, claim repa
 		// seed. `reachable` counts survivors alive PLUS the freshly-placed target,
 		// feeding the rarest-shard bounty multiplier.
 		n.challengeHolderRetrievability(m, ch, claim, func(retrOK bool) {
+			n.logf(ports.LogDebug, "repair claim holder challenge",
+				"root", claim.Root, "holder", claim.Holder, "ok", retrOK)
 			decision := repairproof.Decide(correctnessOK, []bool{retrOK}, n.cfg.RepairQuorumTau)
 			n.settleRepairVerdict(from, claim, p, shardBytes, reachable+1, decision)
 			n.reply(from, msg, ports.Message{Kind: ports.MsgRepairVote, OK: decision.Release})
@@ -157,12 +197,27 @@ func (n *Node) settleRepairVerdict(claimant ports.NodeID, claim repairproof.Repa
 	if !n.cfg.RepairEconomy {
 		return
 	}
-	if d.Release {
+	if !d.Release {
+		// Verified but not released (retrievability shortfall past tau): name it —
+		// a silent non-release reads as a lost claim in the journal (#518).
+		n.logf(ports.LogInfo, "repair claim not released", "root", claim.Root,
+			"shard", claim.ShardID, "holder", claim.Holder)
+		return
+	}
+	{
 		// Protocol price, relative to the erasure geometry (PE Q1/Q3): a repair is
 		// worth c·k·shardBytes, scaled up by BountyFor's rarest-shard multiplier.
 		base := credit.RepairBountyBase(p.K, shardBytes)
 		bounty := credit.BountyFor(base, p.K, p.N, reachable)
-		if paid := n.ledger.PayBounty(claim.Root, claim.Holder, bounty); paid > 0 {
+		paid := n.ledger.PayBounty(claim.Root, claim.Holder, bounty)
+		if paid == 0 {
+			// A release that pays NOTHING is an empty escrow on THIS judge's
+			// ledger — narrate it, or paid=0 is unattributable (#518).
+			n.logf(ports.LogWarn, "repair bounty release paid nothing — escrow empty on this judge",
+				"root", claim.Root, "holder", claim.Holder, "bounty", bounty)
+			return
+		}
+		if paid > 0 {
 			n.Stats.BountiesReleased++
 			// Narrate the funded horizon and the realised cost-per-repair (the g
 			// input) so an operator watches the finite-but-renewable reserve draw

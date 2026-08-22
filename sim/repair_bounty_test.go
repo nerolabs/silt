@@ -64,8 +64,19 @@ func TestRepairBountyPaysHolderWithoutMovingStanding(t *testing.T) {
 		t.Fatal("distribution never completed")
 	}
 
-	// Prepay a durability reserve for the object.
-	const reserve = 5_000_000
+	// Prepay a durability reserve for the object. Sized to OUTLAST the churn
+	// storm: the #518 fix (rebuilt shards prefer non-judge holders) means every
+	// judge now receives and settles claims that previously starved, and the
+	// placement shift also moves who serves (the auto-skim source), so the
+	// measured storm draw is ~112 claims × 2 judges × ~80k ≈ 18M: on THIS
+	// rig's one-shared-ledger wiring both judges' releases draw the same
+	// escrow (production per-node ledgers each pay once, by design), and
+	// pre-#518 the starvation hid half that draw. A 5M prepay sat knife-edge
+	// at exhaustion and made the positive-runway assertion below flap on
+	// placement luck. Exhausted-at-zero is a legitimate, separately-honest
+	// state; THIS test asserts the funded-horizon instrument reads a positive
+	// finite runway, so the endowment must survive the storm.
+	const reserve = 25_000_000
 	if err := ledger.FundEscrow(root, publisher.ID(), reserve); err != nil {
 		t.Fatalf("fund escrow: %v", err)
 	}

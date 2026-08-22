@@ -125,6 +125,34 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   [docs/thinking/2026-08-20-economy-local-loop-design.md](docs/thinking/2026-08-20-economy-local-loop-design.md).
 
 ### Fixed
+- **A repair bounty can no longer starve for want of a judge — rebuilt shards prefer
+  holders outside the caretaker-judge quorum, and every verdict is evidence-carrying
+  (#518)** (2026-08-22) — A repair claim excludes both the paramedic and the named holder
+  from judging, so a two-caretaker deployment whose rebuilt shard landed ON the other
+  caretaker had ZERO eligible judges: the claim died silently and the bounty never paid
+  (captured with the #519 narration: all four of a repair's claims naming the other
+  caretaker as holder, `quorum=2` — the last e2e flake mode, made likelier by #517
+  synchronizing the two caretakers' confirming sweeps). Placement now stably prefers
+  civilian holders (`preferNonJudges` — preference, never veto: a shard on a judge still
+  beats a shard nowhere; the self-hold path is exempt since claimant==holder is excluded
+  once and the other judges still judge). A second captured sub-mode is fixed with it:
+  a claim arriving moments after the repair-time fetch storm found the judge's survivor
+  fetches transiently short (`survivors fetched=2..5 of k=10`, live-but-slow holders
+  freshly negative-cached) and was denied TERMINALLY — emission is one-shot, so a 30s
+  condition silently cost the bounty forever. The judge now DEFERS a transiently
+  unjudgeable claim and re-judges after `HolderCooldown` (the duration of the very
+  transient being waited out), bounded at 3 attempts, denying with the reason only when
+  they exhaust. The verdict path also narrates end to end: every `repair claim denied`
+  carries a `reason=`, deferrals name themselves, the holder retrievability challenge
+  logs its outcome, a release that pays nothing warns `escrow empty on this judge`, and
+  a verified-but-not-released verdict names itself. The sim bounty test's shared-ledger endowment is recalibrated:
+  with starvation fixed every judge settles claims that previously died, and on the rig's
+  one-shared-ledger wiring that double-draws the escrow the 5M prepay sat knife-edge at
+  storm exhaustion (production per-node ledgers each pay once, by design). Regressions:
+  `core/node/prefer_nonjudges_518_test.go` + `core/node/judge_defer_518_test.go` (a
+  staged transient — survivors down at claim time, revived mid-retry-schedule — must
+  end in a paid bounty; RED with the defer disabled); the capture arc rides
+  [docs/thinking/2026-08-22-517-repair-confirmation-gate.md](docs/thinking/2026-08-22-517-repair-confirmation-gate.md).
 - **The repair trigger is minimum-filtered — one noisy probe sample can no longer fire a
   false repair (#517; roots the #514 e2e flake)** (2026-08-22) — A caretaker's FIRST sweep
   after arming races record propagation: the captured #514 run read three never-lost shards
