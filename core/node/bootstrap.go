@@ -34,11 +34,11 @@ func (n *Node) bootstrapRetryTick() {
 	switch {
 	case sz == 0 && len(n.bootstrapSeeds) > 0:
 		// Fully isolated WITH seeds (#281): re-seed and re-join. The failed initial
-		// dial stamped each seed into the deadUntil negative cache (HolderCooldown);
+		// dial stamped each seed into the dead-peer negative cache (HolderCooldown);
 		// clear the seeds first so the retry re-dials them now instead of skipping
 		// them until the cooldown lapses.
 		for _, s := range n.bootstrapSeeds {
-			delete(n.deadUntil, s)
+			delete(n.dead, s)
 			n.table.Observe(s)
 		}
 		n.IterativeFindNode(n.id, func([]ports.NodeID) {

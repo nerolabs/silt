@@ -281,7 +281,7 @@ func DefaultConfig() Config {
 		ReachabilityTimeout: 3 * ports.Second,
 		FetchAttempts:       3,
 		FetchBackoff:        200 * ports.Millisecond,
-		HolderCooldown:      30 * ports.Second, // skip a timed-out holder for ~½ a repair interval before re-probing (#226)
+		HolderCooldown:      30 * ports.Second, // BASE negative-cache cooldown; doubles per consecutive exhaustion up to 16× (#226/#501, see corpse)
 
 		BondAuditInterval:      60 * ports.Second,
 		BondMaxAge:             300 * ports.Second, // ~5 audit intervals unproven → standing lapses
@@ -299,6 +299,40 @@ var ErrTimeout = errors.New("node: request timed out")
 // many entries a stamp sweeps out lapsed cooldowns before adding one, so
 // ephemeral-identity churn can't grow the map without limit.
 const maxDeadHolders = 4096
+
+// corpse is one negative-cache entry (#226/#277/#501).
+type corpse struct {
+	until ports.Time // cooldown deadline: skip speculative dials before this
+	// streak counts consecutive exhaustions and drives the decaying cooldown
+	// (#501): each re-exhaustion doubles the cooldown, HolderCooldown <<
+	// (streak-1), capped at corpseStreakCap shifts — 30s → 60 → 120 → 240 →
+	// 480s at the default. Without the decay the cache only RATE-LIMITS the
+	// re-dial: corpses re-enter lookups via other peers' FindNode replies
+	// forever, and every cooldown lapse re-paid a full retry ladder (measured:
+	// a 45s all-timeout sweep recurring every ~30s, indefinitely, on a fully
+	// healed object). The cap sits under the reprovide period
+	// (ProviderRecordTTL/2), and recovery is announced-in anyway — any inbound
+	// message deletes the entry (proof of life, #69), so a recovered holder is
+	// never re-admitted slower than today. Analogue: negative caching with
+	// backoff (RFC 2308; libp2p dial backoff).
+	streak uint8
+	// epoch is the repair tick (Node.sweepEpoch) of the last exhaustion; see
+	// corpseGated.
+	epoch uint64
+}
+
+// corpseStreakCap caps the cooldown doubling at 4 shifts (16× the base).
+const corpseStreakCap = 5
+
+// corpseGated reports whether a peer should be skipped by a speculative dial
+// right now: still inside its cooldown, or already proven dead by a full
+// ladder during the CURRENT repair tick (#501). Callers keep their own
+// sole-candidate guards (#69 anyLive) — the gate never decides "unreachable",
+// only "don't pay for this corpse again yet".
+func (n *Node) corpseGated(id ports.NodeID, now ports.Time) bool {
+	c, ok := n.dead[id]
+	return ok && (now < c.until || (n.sweepEpoch != 0 && c.epoch == n.sweepEpoch))
+}
 
 // maxPeerInfo bounds each peer-keyed GOSSIP cache — peerCaps (capacity estimate),
 // peerBonds (bond-audit targets), peerDomains (H5-B diversity). They are written
@@ -350,7 +384,7 @@ type Stats struct {
 	FalseRepairSlashes int
 	// #277 dead-peer-envelope gauges (M1 baseline — the dial-storm is where trust
 	// either stays cheap or floods the network). HolderDialsSkipped: full-timeout
-	// holder dials AVOIDED because the target was in the deadUntil negative cache
+	// holder dials AVOIDED because the target was in the dead-peer negative cache
 	// (the "dials-per-fetch/repair stays bounded" gauge — an unbounded climb means a
 	// leak reopened). DeadProviderRecordsPruned: stale provider records removed when
 	// a holder was confirmed dead (the lifecycle gauge — records age out, not linger).
@@ -408,14 +442,26 @@ type Node struct {
 	// ephemeral identity we ever heard from (#43).
 	reachable map[ports.NodeID]ports.Time
 
-	// deadUntil is a negative cache of holders a fetch just failed to reach:
-	// a dialer skips a holder still in cooldown instead of eating another full
-	// RequestTimeout on it. Stale provider records to dead holders otherwise
-	// let a churny swarm re-dial the same corpses every repair sweep, starving
-	// the serial fetch loop on timeouts (#226). Stamped on any request timeout;
-	// consulted only in the fetch/repair dial path so consensus/DHT re-probes
-	// are unaffected. Cooldown expiry lets a recovered holder back in.
-	deadUntil map[ports.NodeID]ports.Time
+	// dead is the negative cache of peers a dial just failed to reach: a
+	// dialer skips a peer still in cooldown instead of eating another full
+	// RequestTimeout (or a whole retry ladder) on it. Stale provider records to
+	// dead holders otherwise let a churny swarm re-dial the same corpses every
+	// repair sweep, starving the serial fetch loop on timeouts (#226). Stamped
+	// on any request timeout; consulted only in the fetch/repair/walk dial
+	// paths so consensus re-probes are unaffected. Cooldown expiry lets a
+	// recovered holder back in — and any inbound message clears the entry
+	// immediately (proof of life, #69). Each entry carries a streak-decayed
+	// cooldown and the repair-tick epoch of its last exhaustion (#501): see
+	// corpse and corpseGated.
+	dead map[ports.NodeID]corpse
+
+	// sweepEpoch counts repair ticks. A corpse whose ladder exhausted during
+	// the CURRENT tick is skipped for the tick's remainder regardless of its
+	// cooldown (#501): a sweep that runs longer than the cooldown must not
+	// re-pay full-ladder discovery for the same corpse mid-sweep — the measured
+	// cost was a 159s sweep (vs 2s healthy) spanning five cooldown lapses.
+	// 0 = no tick has run (non-caretakers): epoch gating stays off.
+	sweepEpoch uint64
 
 	// staticPeers is the configured consensus/anchor tier (-persistent-peers): peers
 	// whose address is CONFIGURED, not discovered, so they are NEVER evicted from the
@@ -973,7 +1019,7 @@ func New(id ports.NodeID, cfg Config, clock ports.Clock, tr ports.Transport, sto
 		provs:             dht.NewProviders(),
 		pending:           make(map[uint64]*pending),
 		reachable:         make(map[ports.NodeID]ports.Time),
-		deadUntil:         make(map[ports.NodeID]ports.Time),
+		dead:              make(map[ports.NodeID]corpse),
 		staticPeers:       make(map[ports.NodeID]bool),
 		reachProbes:       make(map[uint64]*reachProbe),
 		proofMeta:         make(map[ports.ChunkID]proofMeta),
@@ -1114,17 +1160,35 @@ func (n *Node) requestAttempt(to ports.NodeID, msg ports.Message, attempt int, c
 	// A HOLDER-FETCH dial (MsgFetchChunk/MsgHasChunk) is speculative — stored content
 	// lives on arbitrary holders that are OFTEN gone under churn — so it fails FAST on a
 	// tighter deadline and does NOT retry the same holder (the fetch loop already retries
-	// at a higher level via FetchAttempts and skips known-dead holders via deadUntil).
+	// at a higher level via FetchAttempts and skips known-dead holders via the
+	// negative cache).
 	// A too-generous timeout + retry here just deepens the dead-holder dial-storm (#277).
 	// MESH/CONSENSUS RPCs get the full RequestTimeout + retries, to ride out jitter
 	// without tearing a live peer out of the mesh.
 	holderFetch := msg.Kind == ports.MsgFetchChunk || msg.Kind == ports.MsgHasChunk
+	// The discovery plane: the RPC kinds the dead-peer negative cache serves.
+	// Only these may be failed fast mid-ladder by a corpse verdict from a
+	// PARALLEL ladder (#501) — every other kind keeps its full retry patience,
+	// so a discovery-plane "dead" can never shorten a bond audit's or a
+	// consensus RPC's wait (#3: one signal, one job; #288).
+	discovery := msg.Kind == ports.MsgFindNode || msg.Kind == ports.MsgGetProviders || msg.Kind == ports.MsgAddProvider
 	timeout := n.requestTimeoutFor(msg)
 	p := &pending{cb: cb, to: to}
 	p.cancel = n.clock.AfterFunc(timeout, func() {
 		delete(n.pending, rid)
 		n.Stats.Timeouts++
 		if !holderFetch && attempt < n.cfg.RequestRetries {
+			// A concurrent phase (the sweep's 32-wide probe fan-out) launches
+			// many walks before the first ladder to a corpse exhausts; without
+			// this check every in-flight ladder still rides its full retry
+			// schedule into the same corpse — the measured residual wall
+			// (#501). The peer is already stamped and evicted by whichever
+			// ladder finished first; this one just ends, without re-stamping.
+			if discovery && n.corpseGated(to, n.clock.Now()) {
+				n.logf(ports.LogDebug, "request abandoned: peer negative-cached mid-ladder", "to", to, "kind", msg.Kind)
+				cb(ports.Message{}, fmt.Errorf("%w (to %s)", ErrTimeout, to))
+				return
+			}
 			// Transient miss — retry the SAME peer after a decaying backoff instead
 			// of tearing it out of the table. Backoff doubles each attempt.
 			backoff := n.cfg.RequestBackoff << attempt
@@ -1161,25 +1225,46 @@ func (n *Node) requestAttempt(to ports.NodeID, msg ports.Message, attempt int, c
 				// Keep the map from growing without bound under ephemeral-identity
 				// churn: once it's large, drop entries whose cooldown already
 				// lapsed (they'd be re-admitted on next dial anyway). Cheap because
-				// it only sweeps past a threshold, not on every timeout.
-				if len(n.deadUntil) >= maxDeadHolders {
-					for id, until := range n.deadUntil {
-						if now >= until {
-							delete(n.deadUntil, id)
+				// it only sweeps past a threshold, not on every timeout. An entry
+				// exhausted this very tick is kept: its epoch gate is still live.
+				if len(n.dead) >= maxDeadHolders {
+					for id, c := range n.dead {
+						if now >= c.until && (n.sweepEpoch == 0 || c.epoch != n.sweepEpoch) {
+							delete(n.dead, id)
 						}
 					}
 				}
-				n.deadUntil[to] = now.Add(n.cfg.HolderCooldown)
+				// A ladder that exhausts on an ALREADY-gated corpse is a parallel
+				// discovery of the same death (a concurrent phase launches many
+				// walks before the first verdict lands), not a new round: keep
+				// the entry, refresh its epoch, and leave the streak alone —
+				// the streak counts distinct discovery rounds so the decaying
+				// cooldown (30s → 60 → … → capped) reflects how long the peer
+				// has STAYED dead, not how wide the fan-out was.
+				if prev, gated := n.dead[to]; gated && (now < prev.until || (n.sweepEpoch != 0 && prev.epoch == n.sweepEpoch)) {
+					prev.epoch = n.sweepEpoch
+					n.dead[to] = prev
+				} else {
+					streak := prev.streak
+					if streak < corpseStreakCap {
+						streak++
+					}
+					n.dead[to] = corpse{
+						until:  now.Add(n.cfg.HolderCooldown << (streak - 1)),
+						streak: streak,
+						epoch:  n.sweepEpoch,
+					}
+				}
 			}
 			// The corpse is confirmed unreachable (retries exhausted) and just left
 			// the routing table — so prune it from the provider-record candidate set
 			// too, for every key where a LIVE alternative exists. This is the #277
-			// dial-storm floor fix: without it, deadUntil only RATE-LIMITS the re-dial
+			// dial-storm floor fix: without it, the negative cache only RATE-LIMITS the re-dial
 			// (one full RequestTimeout per HolderCooldown, forever), because the stale
 			// record is never removed. A SOLE holder's record is KEPT (RemoveIfNotSole)
 			// so its content stays discoverable and re-probeable (#69/#226); a recovered
 			// holder re-announces (reprovide) to rejoin the set, and its inbound message
-			// clears deadUntil (proof of life, above).
+			// clears its corpse entry (proof of life, above).
 			if pruned := n.provs.RemoveIfNotSole(to); pruned > 0 {
 				n.Stats.DeadProviderRecordsPruned += pruned
 			}
@@ -1214,14 +1299,14 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 	if !msg.Ephemeral {
 		n.table.Observe(from)
 		// Proof of life also clears the dead-peer negative cache: if this peer was
-		// negative-cached as unreachable (a prior dial timed out → deadUntil), hearing
+		// negative-cached as unreachable (a prior dial timed out → a corpse entry), hearing
 		// from it means it RECOVERED — a restart+reprovide (#69), or a NATed peer now
 		// reachable via the relay. A truly departed holder sends nothing and stays
 		// gated (so the #277 dial-storm gate on the diversity sweep still holds), but a
 		// recovered one must be re-dialable at once or the sweep/walk keep skipping a
 		// peer that is demonstrably back (this is what broke cross-NAT restart survival
 		// when the sweep gate was added).
-		delete(n.deadUntil, from)
+		delete(n.dead, from)
 	}
 	if msg.CapTotal > 0 {
 		evictPeerInfoIfFull(n.peerCaps, from)
@@ -1503,7 +1588,7 @@ func (w *walk) step() {
 			// sees the loss, never repairs. Fail it in the lookup without the dial
 			// (mirrors the fetch/probe negative cache, #226); a later walk past
 			// its cooldown re-queries it in case it recovered.
-			if until, dead := w.n.deadUntil[peer]; dead && now < until {
+			if w.n.corpseGated(peer, now) {
 				w.n.Stats.HolderDialsSkipped++
 				w.l.OnFailure(peer)
 				continue

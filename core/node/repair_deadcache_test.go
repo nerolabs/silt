@@ -55,7 +55,7 @@ func TestProviderWalkSkipsCooledPeer(t *testing.T) {
 	searcher, deadID, deadDials, sched := walkDeadRig(t, cfg)
 
 	// The corpse is already negative-cached — a prior sweep timed out on it.
-	searcher.deadUntil[deadID] = searcher.clock.Now().Add(searcher.cfg.HolderCooldown)
+	searcher.dead[deadID] = corpse{until: searcher.clock.Now().Add(searcher.cfg.HolderCooldown)}
 
 	var done bool
 	searcher.resolveProviders(ports.Hash{0xAB}, func([]ports.NodeID) { done = true })
@@ -84,7 +84,7 @@ func TestProviderDiversitySweepSkipsCooledPeer(t *testing.T) {
 	searcher, deadID, deadDials, sched := walkDeadRig(t, cfg)
 
 	// The corpse is already negative-cached: a prior resolve timed out on it.
-	searcher.deadUntil[deadID] = searcher.clock.Now().Add(searcher.cfg.HolderCooldown)
+	searcher.dead[deadID] = corpse{until: searcher.clock.Now().Add(searcher.cfg.HolderCooldown)}
 
 	var done bool
 	searcher.resolveProviders(ports.Hash{0xAB}, func([]ports.NodeID) { done = true })
@@ -109,17 +109,17 @@ func TestProviderDiversitySweepSkipsCooledPeer(t *testing.T) {
 func TestInboundMessageClearsDeadCache(t *testing.T) {
 	searcher, deadID, _, _ := walkDeadRig(t, DefaultConfig())
 
-	searcher.deadUntil[deadID] = searcher.clock.Now().Add(searcher.cfg.HolderCooldown)
+	searcher.dead[deadID] = corpse{until: searcher.clock.Now().Add(searcher.cfg.HolderCooldown)}
 	searcher.handle(deadID, ports.Message{Kind: ports.MsgHasChunk, ChunkID: ports.ChunkID{0x1}})
-	if _, still := searcher.deadUntil[deadID]; still {
+	if _, still := searcher.dead[deadID]; still {
 		t.Fatal("a recovered peer we heard from must be removed from deadUntil (#69/#277)")
 	}
 
 	// Control: an ephemeral sender does NOT clear the cache (it is not routed to and
 	// will vanish, #43), so a short-lived client can't wipe a real dead-holder entry.
-	searcher.deadUntil[deadID] = searcher.clock.Now().Add(searcher.cfg.HolderCooldown)
+	searcher.dead[deadID] = corpse{until: searcher.clock.Now().Add(searcher.cfg.HolderCooldown)}
 	searcher.handle(deadID, ports.Message{Kind: ports.MsgHasChunk, ChunkID: ports.ChunkID{0x1}, Ephemeral: true})
-	if _, still := searcher.deadUntil[deadID]; !still {
+	if _, still := searcher.dead[deadID]; !still {
 		t.Fatal("an ephemeral sender must not clear deadUntil (it vanishes, #43)")
 	}
 }
@@ -186,7 +186,7 @@ func TestProbeShardSkipsCooledHolder(t *testing.T) {
 	me.provs.Add(live.providerRecord(key))
 	me.provs.Add(dead.providerRecord(key))
 	me.table.Observe(liveID)
-	me.deadUntil[deadID] = me.clock.Now().Add(me.cfg.HolderCooldown)
+	me.dead[deadID] = corpse{until: me.clock.Now().Add(me.cfg.HolderCooldown)}
 
 	var ok, done bool
 	me.probeShard(key, key, false, func(found bool, _ map[uint64]bool) { ok, done = found, true })

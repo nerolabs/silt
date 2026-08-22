@@ -85,7 +85,7 @@ func TestFetchDialsSoleCooledHolder(t *testing.T) {
 	fetcher, provID, sched := twoNode(t, DefaultConfig(), c, nil)
 	// The fetcher recently failed to reach provID, so it's in cooldown — but
 	// provID has since recovered and now serves the chunk.
-	fetcher.deadUntil[provID] = fetcher.clock.Now().Add(fetcher.cfg.HolderCooldown)
+	fetcher.dead[provID] = corpse{until: fetcher.clock.Now().Add(fetcher.cfg.HolderCooldown)}
 
 	var got, done bool
 	fetcher.fetchFrom(c.ID, []ports.NodeID{provID}, func(ok bool) { got, done = ok, true })

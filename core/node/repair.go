@@ -151,7 +151,7 @@ func (n *Node) announceAll(ids []ports.ChunkID, done func()) {
 				// (the #277 announce leak — the last ungated provider-record consumer;
 				// resolve/repair/walk are already gated). A dead announce target can't
 				// store the record anyway, so skipping loses nothing.
-				if until, dead := n.deadUntil[targets[j]]; dead && n.clock.Now() < until {
+				if n.corpseGated(targets[j], n.clock.Now()) {
 					n.Stats.HolderDialsSkipped++
 					send(j + 1)
 					return
@@ -187,6 +187,11 @@ func (n *Node) announceTargets(key ports.Hash, closest []ports.NodeID) []ports.N
 // itself. Rescheduling only after the sweep finishes means sweeps never
 // overlap, however long probing takes.
 func (n *Node) repairTick() {
+	// New tick, new corpse epoch (#501): a peer whose retry ladder exhausts
+	// anywhere in THIS tick is skipped by every gated leg for the tick's
+	// remainder, so one sweep pays at most one discovery ladder per corpse
+	// however long the sweep runs relative to the cooldown.
+	n.sweepEpoch++
 	// Age out lapsed provider records once per sweep so a departed holder's stale
 	// record is reclaimed (not just filtered on read) even for keys never fetched
 	// again — the memory half of the #277 lifecycle. Cheap: O(records) per interval.
@@ -201,6 +206,12 @@ func (n *Node) repairTick() {
 		n.repairRoot(handles[i], func() { nextRoot(i + 1) })
 	}
 	nextRoot(0)
+}
+
+// msBetween is a sweep-narration helper: the span from a to b in whole
+// milliseconds of sim/wall time (#501 phase attribution).
+func msBetween(a, b ports.Time) int64 {
+	return int64(b-a) / int64(ports.Millisecond)
 }
 
 // shardRef locates one stored shard of a file: which stripe, which
@@ -259,11 +270,18 @@ func (n *Node) repairRootWithLayout(entry ports.Entry, ch link.CareHandle, done 
 	p := erasure.Params{K: m.K, N: m.N}
 	refs := storedShards(m, p)
 
+	// Phase clocks (#501): sweep DURATION under dead holders is the unbounded
+	// quantity — `-repair-interval` bounds only the idle gap — so every completed
+	// sweep names where its time went (manifest-heal / probe / repair), making a
+	// minutes-long sweep self-attributing in any run's journal.
+	sweepStart := n.clock.Now()
+
 	// Manifest chunks first: they have no parity, so the caretaker's
 	// local copy is their only spare. Probe REMOTE availability (a
 	// local copy would mask the swarm having lost it) and re-seed any
 	// chunk the swarm no longer holds.
 	n.healManifest(entry.ManifestChunks, 0, func() {
+		manifestDone := n.clock.Now()
 		reachable := make(map[ports.ChunkID]bool, len(refs))
 		// shardDoms records the failure domains each shard's providers span,
 		// so repairStripes can spot a stripe whose shards have concentrated
@@ -284,8 +302,16 @@ func (n *Node) repairRootWithLayout(entry ports.Entry, ch link.CareHandle, done 
 			}
 			// Observability (#235): a completed sweep now says what it saw, so a
 			// healthy sweep is distinguishable from one that silently did nothing.
-			n.logf(ports.LogInfo, "repair sweep complete", "root", m.Root(), "shards", len(refs), "reachable", reach)
-			n.repairStripes(m, p, refs, reachable, shardDoms, 0, DerivePorKey(ch.LayoutKey), done)
+			// The "shards=… reachable=…" pair is parsed adjacently by the harness
+			// (integration/durability/run.sh care_reachable); new fields append after.
+			probeDone := n.clock.Now()
+			n.logf(ports.LogInfo, "repair sweep complete", "root", m.Root(), "shards", len(refs), "reachable", reach,
+				"manifest-heal-ms", msBetween(sweepStart, manifestDone), "probe-ms", msBetween(manifestDone, probeDone))
+			n.repairStripes(m, p, refs, reachable, shardDoms, 0, DerivePorKey(ch.LayoutKey), func() {
+				n.logf(ports.LogInfo, "repair pass complete", "root", m.Root(),
+					"repair-ms", msBetween(probeDone, n.clock.Now()), "total-ms", msBetween(sweepStart, n.clock.Now()))
+				done()
+			})
 		}
 		var pump func()
 		pump = func() {
@@ -400,7 +426,7 @@ func (n *Node) probeShard(id ports.ChunkID, key ports.Hash, includeLocal bool, d
 			if p == n.id {
 				continue
 			}
-			if until, dead := n.deadUntil[p]; dead && now < until {
+			if n.corpseGated(p, now) {
 				continue
 			}
 			anyLive = true
@@ -419,7 +445,7 @@ func (n *Node) probeShard(id ports.ChunkID, key ports.Hash, includeLocal bool, d
 			// A cooldown skip reports this holder as absent for this sweep; a
 			// later sweep past its cooldown re-probes in case it recovered.
 			if anyLive {
-				if until, dead := n.deadUntil[provs[i]]; dead && now < until {
+				if n.corpseGated(provs[i], now) {
 					n.Stats.HolderDialsSkipped++
 					try(i + 1)
 					return
