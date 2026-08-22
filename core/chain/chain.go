@@ -181,6 +181,17 @@ type Config struct {
 	// trusted/sim deployments — the daemon defaults it ON for untrusted objective
 	// validators).
 	EpochBlocks uint64
+	// RegGateActivationHeight is the PRE-LATCH activation override for the #506
+	// reg-inclusion rate bound (the R-rule): when > 0, the rule is enforced on
+	// every block of height > this, with no readiness signalling — the trusted
+	// launch-anchor set coordinates its upgrade and declares the boundary as
+	// genesis config, exactly like EpochBlocks/WSCheckpoint (research
+	// certification 2026-08-22, Q1.5). 0 (default) = post-latch behavior: the
+	// rule activates only when rule-aware bonded WEIGHT over a frozen epoch
+	// crosses the >⅔ finality super-quorum (see rotateEpoch), which never fires
+	// without epochs. Consensus-critical genesis config, same discipline as
+	// MinBond/Anchors.
+	RegGateActivationHeight uint64
 	// WSCheckpoint is a WEAK-SUBJECTIVITY checkpoint (F-1): a recent trusted block
 	// (height + hash) this replica refuses to reorg AT OR BEFORE, regardless of fork
 	// weight. silt is weakly subjective — a node syncing from genesis (or long
@@ -234,6 +245,21 @@ const BlockVersion = BlockVersionRounds
 
 // BlockVersionRounds is the #432 two-phase-rounds rule era.
 const BlockVersionRounds = 2
+
+// BlockVersionRegGate is the #506 reg-inclusion-rate-bound rule era. NOTE the
+// deliberate deviation from the certification's rule-packaging candidate:
+// blocks are NOT minted with this tag (BlockVersion stays BlockVersionRounds),
+// because versionSupported on every pre-gate binary is an EXACT set — a v3-tagged
+// block is rejected outright at decode, which is a hard fork, not the certified
+// soft fork. The R-rule needs no schema change to enforce (it only REJECTS
+// payloads), so enforcement keys on HEIGHT relative to the chain-derived
+// activation boundary (regGateActive — exactly the certification's Q2 form:
+// "apply the rule to every block of height > H_act"), and this constant's job
+// is the READINESS threshold: a bond reg signalling Version ≥ BlockVersionRegGate
+// counts its validator's frozen-epoch weight as rule-aware. This binary ACCEPTS
+// v3-tagged blocks (validated under the ≥-rounds rules), so a future era that
+// genuinely diverges the schema can flip minting without stranding it.
+const BlockVersionRegGate = 3
 
 // Consensus signature phases (#432 two-phase gather, research-certified).
 // PhaseLegacy (0) is the era-1 bare-hash signature — what a pre-rounds
@@ -359,6 +385,16 @@ type BondReg struct {
 	// NakamotoDomains), so free domains can only LOWER the min, never trip the wheels
 	// off early (verified — see the colluding-validator red-team, seam-5).
 	Domain uint64 `cbor:"6,keyasint,omitempty"`
+	// Version is the highest block-rule era this validator's software validates —
+	// the #506 readiness signal. It rides the bond reg (not the attestation)
+	// because a reg is hash-covered (Block.Hash commits BondRegs; Atts are NOT
+	// committed and are strippable by any re-serving peer), validator-signed
+	// (signingBytes, conditionally — the Domain idiom), renewed every ≤ TTL/2,
+	// and held by every frozen-epoch member by definition — so rule-aware WEIGHT
+	// is countable identically by every replica from committed history alone.
+	// 0 (absent — a pre-gate binary's reg) reads as NOT rule-aware, the safe
+	// default. Kept by Prune (a light field, like Domain).
+	Version uint8 `cbor:"7,keyasint,omitempty"`
 }
 
 // ValidatorID is the NodeID (hash of the public key) that a registration bonds.
@@ -383,6 +419,13 @@ func (r BondReg) signingBytes(nonce uint64) []byte {
 		binary.BigEndian.PutUint64(d[:], r.Domain)
 		b = append(b, []byte("silt/chain/bondreg/domain/v1")...)
 		b = append(b, d[:]...)
+	}
+	// Bind the #506 readiness signal the same conditional way: a version-less reg
+	// signs the exact pre-gate message (existing signatures verify unchanged), and
+	// a signalling reg's Version cannot be flipped without breaking Sig.
+	if r.Version != 0 {
+		b = append(b, []byte("silt/chain/bondreg/version/v1")...)
+		b = append(b, r.Version)
 	}
 	return b
 }
@@ -539,7 +582,7 @@ func Encode(b *Block) []byte {
 // versionSupported: v1 (legacy single-phase) and v2 (#432 rounds) both decode;
 // each validates under ITS OWN era's rules (era-gated in ValidateCommit /
 // VerifyEquivocation) — committed history is never re-interpreted.
-func versionSupported(v uint64) bool { return v == 1 || v == BlockVersionRounds }
+func versionSupported(v uint64) bool { return v >= 1 && v <= BlockVersionRegGate }
 
 func Decode(raw []byte) (*Block, error) {
 	var b Block
@@ -547,7 +590,7 @@ func Decode(raw []byte) (*Block, error) {
 		return nil, fmt.Errorf("chain: decode block: %w", err)
 	}
 	if !versionSupported(b.Version) {
-		return nil, fmt.Errorf("%w: got %d, want 1..%d", ErrBlockVersion, b.Version, BlockVersionRounds)
+		return nil, fmt.Errorf("%w: got %d, want 1..%d", ErrBlockVersion, b.Version, BlockVersionRegGate)
 	}
 	return &b, nil
 }
@@ -597,7 +640,7 @@ func DecodeBlocks(raw []byte) ([]Block, error) {
 	}
 	for i := range bs {
 		if !versionSupported(bs[i].Version) {
-			return nil, fmt.Errorf("%w: block %d got %d, want 1..%d", ErrBlockVersion, i, bs[i].Version, BlockVersionRounds)
+			return nil, fmt.Errorf("%w: block %d got %d, want 1..%d", ErrBlockVersion, i, bs[i].Version, BlockVersionRegGate)
 		}
 	}
 	return bs, nil
@@ -607,6 +650,7 @@ var (
 	ErrLowReputation      = errors.New("chain: reputation below threshold")
 	ErrNoQuorum           = errors.New("chain: insufficient valid attestations")
 	ErrNoQuorumWeight     = errors.New("chain: mature-epoch commit lacks the frozen-weight super-majority (>⅔ of epoch bonded weight — B2, research certification 2026-08-13)")
+	ErrRegGate            = errors.New("chain: bond registration violates the active reg-inclusion rate bound (#506 R-rule — slashed identity, or re-registered within R of its last committed reg)")
 	ErrBadSignature       = errors.New("chain: bad signature")
 	ErrWrongParent        = errors.New("chain: block does not extend the local head")
 	ErrDupRoot            = errors.New("chain: root already registered")
@@ -728,6 +772,22 @@ type Chain struct {
 	// within the TTL window is pruned from `bonded`. Deterministic (a function of
 	// block height), so every replica decays standing identically.
 	bondRegHeight map[ports.NodeID]uint64
+	// regVersion records the #506 readiness signal from each validator's LATEST
+	// bond registration (0 = a pre-gate binary, not rule-aware). Derived state,
+	// a pure function of the blocks like bondRegHeight; expires with it.
+	regVersion map[ports.NodeID]uint8
+	// gateLockedIn/gateHeight are the #506 activation state (post-latch path):
+	// at the first mature epoch boundary where rule-aware frozen weight clears
+	// the >⅔ super-quorum, the gate locks in ONE-WAY (monotonic — un-tightening
+	// would itself be a hard fork; a later ready-weight collapse stalls commits,
+	// it never forks, per the certification Q3) and enforcement begins at the
+	// NEXT boundary: gateHeight = H_act, the R-rule applies to every block of
+	// height > gateHeight. Derived deterministically from committed history in
+	// rotateEpoch, so every replica — live or replaying — computes the identical
+	// H_act; epoch boundaries are super-quorum-final (#357 Condition A), so
+	// H_act cannot be reorged out from under enforcement (certification Q2/I3).
+	gateLockedIn bool
+	gateHeight   uint64
 	// bondDomain records the committed A-axis failure-domain label from each
 	// validator's LATEST bond registration (0 = unset). A pure function of the
 	// committed blocks, so C2Metric can count address-diverse participants
@@ -788,6 +848,7 @@ func New(cfg Config, rep func(ports.NodeID) int64) *Chain {
 		bondRootOwner:  make(map[ports.Hash]ports.NodeID),
 		bondRootProven: make(map[ports.Hash]bool),
 		bondRegHeight:  make(map[ports.NodeID]uint64),
+		regVersion:     make(map[ports.NodeID]uint8),
 		bondDomain:     make(map[ports.NodeID]uint64),
 		slashed:        make(map[ports.NodeID]bool)}
 }
@@ -1113,6 +1174,10 @@ func NewBondReg(signer ed25519.PrivateKey, root ports.Hash, size int64, answer [
 		Size:      size,
 		Answer:    answer,
 		Domain:    domain, // committed A-axis label (0 = unset); signed via signingBytes
+		// The #506 readiness signal is a property of the BINARY, not a choice:
+		// software that mints regs through this constructor validates the gate
+		// era's rules, so every reg it produces says so (signed via signingBytes).
+		Version: BlockVersionRegGate,
 	}
 	r.Sig = ed25519.Sign(signer, r.signingBytes(BondRegNonce(prev)))
 	return r
@@ -1207,7 +1272,36 @@ func (c *Chain) validateBondRegs(b *Block) error {
 		return nil
 	}
 	nonces := c.recentBondRegNonces(b.Prev)
+	// #506 R-rule (VALIDITY, active only past the gate — regGateActive): a bond
+	// reg for identity X is a valid payload only if X is not slashed (R∞ — the
+	// #503 Defect-A commit path, closed structurally) and X's last committed reg
+	// is ≥ R blocks old (first registrations are exempt: bondRegHeight unset).
+	// This is what bounds reg-BLOCK volume — the ~1.5 MB Answer per committed
+	// reg was the #503 OOM driver; the proposer-side filter (#508) keeps honest
+	// proposers clean, this makes a storm block INVALID so it cannot commit.
+	// Validation runs against the PARENT state, so a block carrying two regs for
+	// the same identity needs its own in-block check (seenReg) or a one-block
+	// storm would slip the distance rule entirely.
+	gate := c.regGateActive(b.Height)
+	var seenReg map[ports.NodeID]bool
+	if gate {
+		seenReg = make(map[ports.NodeID]bool, len(b.BondRegs))
+	}
 	for _, r := range b.BondRegs {
+		if gate {
+			id := r.ValidatorID()
+			if c.slashed[id] {
+				return fmt.Errorf("%w: validator %s is slashed", ErrRegGate, id)
+			}
+			if seenReg[id] {
+				return fmt.Errorf("%w: validator %s registered twice in one block", ErrRegGate, id)
+			}
+			seenReg[id] = true
+			if regH, ok := c.bondRegHeight[id]; ok && b.Height-regH < c.regMinInterval() {
+				return fmt.Errorf("%w: validator %s re-registered %d blocks after its last reg (R=%d)",
+					ErrRegGate, id, b.Height-regH, c.regMinInterval())
+			}
+		}
 		if err := c.validateBondRegWindow(r, nonces); err != nil {
 			return err
 		}
@@ -1257,7 +1351,22 @@ func (c *Chain) ValidateBondRegErr(r BondReg) error {
 	if !c.objective() {
 		return fmt.Errorf("bond reg refused: chain is not objective")
 	}
-	head, _ := c.Head()
+	head, next := c.Head()
+	// #506 pre-filter: refuse a submission the R-rule would refuse in the block
+	// it would ride (height next). Without this an honest proposer includes it,
+	// mints a block its OWN validity check rejects, and burns its proposer turn —
+	// the gate must fail the reg at receipt, attributably, not the block at
+	// commit. (Same reason the #508 slashed filter lives proposer-side.)
+	if c.regGateActive(next) {
+		id := r.ValidatorID()
+		if c.slashed[id] {
+			return fmt.Errorf("%w: validator %s is slashed", ErrRegGate, id)
+		}
+		if regH, ok := c.bondRegHeight[id]; ok && next-regH < c.regMinInterval() {
+			return fmt.Errorf("%w: validator %s re-registering %d blocks after its last reg (R=%d)",
+				ErrRegGate, id, next-regH, c.regMinInterval())
+		}
+	}
 	return c.validateBondRegWindow(r, c.recentBondRegNonces(head))
 }
 
@@ -2360,6 +2469,7 @@ func (c *Chain) apply(b Block) {
 		}
 		c.bonded[id] = r.Size
 		c.bondRegHeight[id] = b.Height // reset the TTL clock on every (re)registration (G4)
+		c.regVersion[id] = r.Version   // #506 readiness signal; latest committed reg governs
 		c.bondDomain[id] = r.Domain    // committed A-axis label (0 = unset); latest wins
 	}
 	// OBJECTIVE RE-CHALLENGE (retest G4): standing lapses if not renewed with a
@@ -2372,6 +2482,7 @@ func (c *Chain) apply(b Block) {
 			if b.Height-regH > ttl {
 				delete(c.bonded, id)
 				delete(c.bondRegHeight, id)
+				delete(c.regVersion, id) // a lapsed bond's readiness signal lapses with it
 			}
 		}
 	}
@@ -2431,6 +2542,69 @@ func (c *Chain) rotateEpoch(h uint64) {
 		}
 	}
 	c.epochSet = set
+
+	// #506 lock-in detection (post-latch path; the pre-latch genesis override
+	// bypasses signalling entirely). At each boundary, tally the frozen set's
+	// rule-aware WEIGHT — weight, never heads, for the same C1/C2 reason the
+	// commit quorum is weight-counted (requireEpochWeightQuorum): a cheap-bond
+	// cohort must not be able to fake-signal an activation. Lock in the first
+	// time it clears the SAME >⅔ super-quorum the finality rule uses; enforce
+	// from the NEXT boundary (one finalized epoch of notice; rule changes, like
+	// set changes, integrate only at rotations — certification Q1.3/Q1.4).
+	// Byzantine signal-inflation is absorbed by the shared threshold: with ≤ f
+	// falsely signalling, honest-enforcing weight still exceeds what any storm
+	// coalition can gather (certification Q2). Monotonic by the guard.
+	if !c.gateLockedIn && c.cfg.RegGateActivationHeight == 0 && c.cfg.EpochBlocks > 0 {
+		var total, ready int64
+		for id, w := range set {
+			total += w
+			if c.regVersion[id] >= BlockVersionRegGate {
+				ready += w
+			}
+		}
+		if total > 0 && 3*ready > 2*total {
+			c.gateLockedIn = true
+			c.gateHeight = h + c.cfg.EpochBlocks
+		}
+	}
+}
+
+// regGateActive reports whether the #506 reg-inclusion rate bound governs a
+// block at height h: past the genesis-declared boundary (pre-latch), or past
+// the chain-derived H_act (post-latch lock-in). Strictly greater — the boundary
+// block itself is the last old-rules block (certification Q2: "apply the R-rule
+// to every block of height > H_act"). Enforcement is HEIGHT-keyed, not
+// version-tag-keyed, so an un-upgraded proposer's v2-tagged block cannot carry
+// a storm reg past the gate; its honest (reg-clean) blocks stay valid, which is
+// the bounded-liveness story (≤ ~1.5 rounds via the #451 escape).
+func (c *Chain) regGateActive(h uint64) bool {
+	if c.cfg.RegGateActivationHeight > 0 {
+		return h > c.cfg.RegGateActivationHeight
+	}
+	return c.gateLockedIn && h > c.gateHeight
+}
+
+// regMinInterval is R — the minimum block distance between one identity's
+// committed bond registrations once the gate is active. Derived, never a
+// literal: TTL/4 (an honest renewal is due at TTL/2 > R, so it is never
+// blocked; the "single dropped renewal cannot lapse standing" margin holds:
+// R < TTL/2 < TTL), floored at the head-freshness window K plus margin so
+// re-tuning TTL down never pushes R below the window the reg is fresh over
+// (certification Q3 caveat). If a pathological config leaves TTL/2 ≤ R,
+// honest-renewal liveness wins: cap at TTL/2 − 1.
+func (c *Chain) regMinInterval() uint64 {
+	k := uint64(c.cfg.BondRegHeadWindow)
+	if k == 0 {
+		k = DefaultBondRegHeadWindow
+	}
+	r := c.cfg.BondTTLBlocks / 4
+	if r < k+2 {
+		r = k + 2
+	}
+	if ttl := c.cfg.BondTTLBlocks; ttl > 0 && r >= ttl/2 {
+		r = ttl/2 - 1
+	}
+	return r
 }
 
 // Weight is the chain's fork-choice weight: the cumulative count, over every
@@ -2666,6 +2840,9 @@ func (c *Chain) adopt(t *Chain) {
 	c.bondRootOwner = t.bondRootOwner
 	c.bondRootProven = t.bondRootProven
 	c.bondRegHeight = t.bondRegHeight
+	c.regVersion = t.regVersion
+	c.gateLockedIn = t.gateLockedIn // #506 activation is derived state too: the
+	c.gateHeight = t.gateHeight     // replayed fork re-ran every rotation (Q2/I3)
 	c.bondDomain = t.bondDomain
 	c.slashed = t.slashed
 	c.everMature = t.everMature // the maturity latch is a function of the adopted history (F-1)
