@@ -135,6 +135,17 @@ func buildOrphanWorld(t *testing.T) (store *memstore.Store, proofs *memproofs.St
 			heldBefore[id] = true
 		}
 	}
+	// The #517 confirmation gate defers a repair until the SECOND consecutive
+	// over-slack sweep: run the first (observation) sweep to completion, then
+	// crash inside the second — the one that actually fetches survivors.
+	care.sweepEpoch++
+	obs := false
+	care.repairRoot(h.Care(), func() { obs = true })
+	sched.Run()
+	if !obs {
+		t.Fatal("rig: observation sweep never completed")
+	}
+	care.sweepEpoch++
 	finished := false
 	care.repairRoot(h.Care(), func() { finished = true })
 	for !finished {

@@ -455,6 +455,14 @@ type Node struct {
 	// corpse and corpseGated.
 	dead map[ports.NodeID]corpse
 
+	// repairConfirm counts consecutive sweeps a stripe's repair condition
+	// (missing > slack, or over-exposure) has held — the #517 confirmation
+	// gate: a repair fires only on the second consecutive observation, so a
+	// single unconverged probe sample (a just-armed caretaker racing record
+	// propagation) can't trigger false rebuilds. Cleared on a clean sweep.
+	// Bounded by cared roots × stripes.
+	repairConfirm map[stripeKey]int
+
 	// sweepEpoch counts repair ticks. A corpse whose ladder exhausted during
 	// the CURRENT tick is skipped for the tick's remainder regardless of its
 	// cooldown (#501): a sweep that runs longer than the cooldown must not
@@ -1020,6 +1028,7 @@ func New(id ports.NodeID, cfg Config, clock ports.Clock, tr ports.Transport, sto
 		pending:           make(map[uint64]*pending),
 		reachable:         make(map[ports.NodeID]ports.Time),
 		dead:              make(map[ports.NodeID]corpse),
+		repairConfirm:     make(map[stripeKey]int),
 		staticPeers:       make(map[ports.NodeID]bool),
 		reachProbes:       make(map[uint64]*reachProbe),
 		proofMeta:         make(map[ports.ChunkID]proofMeta),

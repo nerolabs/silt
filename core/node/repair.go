@@ -497,6 +497,12 @@ func (n *Node) probeShard(id ports.ChunkID, key ports.Hash, includeLocal bool, d
 						if d := n.domainOf(pr); d != 0 {
 							domains[d] = true
 						}
+						// Debug narration (#514): name WHO confirmed each shard, so a
+						// "reachable" verdict is attributable to a specific holder — a
+						// probe-vs-holders-view divergence (real bytes on a node one
+						// walk found and another didn't) is diagnosable from the
+						// journal instead of reading as flicker.
+						n.logf(ports.LogDebug, "shard confirmed", "chunk", id, "by", pr)
 					}
 					try(i + 1)
 				})
@@ -556,6 +562,27 @@ func (n *Node) repairStripes(m *manifest.Layout, p erasure.Params, refs []shardR
 
 	next := func() { n.repairStripes(m, p, refs, reachable, shardDoms, stripe+1, porKey, done) }
 	if missing > n.cfg.RepairSlack || len(disperseShards) > 0 {
+		// Confirmation gate (#517, network-durability §3: never trust one
+		// sample). A probe verdict is a walk over provider records — a noisy
+		// signal, and maximally noisy on a caretaker's FIRST sweep after
+		// arming, when the publish's records may not have converged to its
+		// fresh vantage: the captured #514 run's first sweep read 3 shards as
+		// missing that were never lost, "repaired" them, and placed the
+		// rebuilds at replication N — false copies nobody paid to place. So a
+		// repair (or dispersion re-spread) fires only when the over-slack
+		// observation PERSISTS across two consecutive sweeps; a clean sweep
+		// resets. Costs one repair interval of latency on a true loss. The
+		// counter stays ≥2 while the condition persists, so a repair that
+		// fails (below k) retries every sweep without re-confirming what the
+		// failed attempt just verified.
+		key := stripeKey{root: m.Root(), stripe: stripe}
+		n.repairConfirm[key]++
+		if n.repairConfirm[key] < 2 {
+			n.logf(ports.LogInfo, "stripe repair pending confirmation — one more sweep must agree",
+				"root", m.Root(), "stripe", stripe, "missing", missing, "overexposed", len(disperseShards))
+			next()
+			return
+		}
 		if len(disperseShards) > 0 && missing <= n.cfg.RepairSlack {
 			n.Stats.Dispersals++
 			n.logf(ports.LogInfo, "dispersion re-spread", "root", m.Root(), "overexposed", len(disperseShards))
@@ -563,6 +590,7 @@ func (n *Node) repairStripes(m *manifest.Layout, p erasure.Params, refs []shardR
 		n.repairStripe(m, p, stripeRefs, disperseShards, dominant, porKey, next)
 		return
 	}
+	delete(n.repairConfirm, stripeKey{root: m.Root(), stripe: stripe})
 	// Degraded but still within the repair slack: parity/replication still
 	// covers the loss, so reconstructing now would be premature — but narrate
 	// it, so an operator who just killed a holder sees the caretaker NOTICE the
@@ -775,4 +803,11 @@ func (n *Node) repairStripe(m *manifest.Layout, p erasure.Params, stripeRefs []s
 		}
 		place(0)
 	})
+}
+
+// stripeKey names one erasure stripe of one cared root — the unit the #517
+// repair-confirmation gate counts observations over.
+type stripeKey struct {
+	root   ports.Hash
+	stripe int
 }

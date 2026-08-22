@@ -264,6 +264,32 @@ func TestRepairBountyPaysOnTheWire(t *testing.T) {
 	}
 	t.Logf("killed %d holders; %d columns unreachable (slack 2 exceeded, %d ≤ n−k=%d)",
 		len(killSet), lost, lost, econParity)
+	killedAt := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
+
+	// Premise fast-fail (#514): the kill only proves the economy loop if the
+	// caretakers actually OBSERVE an over-slack loss. The captured #514 run
+	// showed the record-view selector can be defeated (a #517 false repair had
+	// silently re-replicated the "doomed" columns), leaving the caretakers
+	// correctly watching missing ≤ slack while this test burned its whole
+	// window. If no post-kill sweep reports the loss within 60s (30 sweeps at
+	// the 2s interval), fail LOUD and name the premise defeat instead.
+	premiseSeen := func() bool {
+		for _, c := range caretakers {
+			b, err := os.ReadFile(filepath.Join(c.store, "debug.log"))
+			if err != nil {
+				continue
+			}
+			for _, ln := range strings.Split(string(b), "\n") {
+				if len(ln) > 24 && ln[:24] >= killedAt &&
+					(strings.Contains(ln, "stripe repair pending confirmation") ||
+						strings.Contains(ln, "stripe repaired") ||
+						strings.Contains(ln, "repair below k")) {
+					return true
+				}
+			}
+		}
+		return false
+	}
 
 	// The exit-gate signal: a verified reconstruction PAID. Poll both
 	// caretakers — the paramedic emits the claim, the OTHER one judges and
@@ -280,7 +306,17 @@ func TestRepairBountyPaysOnTheWire(t *testing.T) {
 	// signal: a failure here means the sweep bound broke, not calibration.
 	var paid, funded, repairs int64
 	deadline := time.Now().Add(180 * time.Second)
+	premiseDeadline := time.Now().Add(60 * time.Second)
+	premiseOK := false
 	for paid == 0 && time.Now().Before(deadline) {
+		if !premiseOK {
+			premiseOK = premiseSeen()
+			if !premiseOK && time.Now().After(premiseDeadline) {
+				t.Fatalf("premise defeated (#514): no caretaker observed an over-slack loss within 60s of the kill — "+
+					"the killed columns still have live copies somewhere (holders-view vs bytes divergence). "+
+					"C1 tail:\n%s\nC2 tail:\n%s", debugTail(caretakers[0]), debugTail(caretakers[1]))
+			}
+		}
 		for _, c := range caretakers {
 			s := getStatus(t, c.base)
 			if s.Durability == nil {
