@@ -430,7 +430,7 @@ func (n *Node) fetchFrom(id ports.ChunkID, provs []ports.NodeID, done func(bool)
 			if p == n.id {
 				continue
 			}
-			if until, dead := n.deadUntil[p]; dead && now < until {
+			if n.corpseGated(p, now) {
 				continue
 			}
 			anyLive = true
@@ -459,7 +459,7 @@ func (n *Node) fetchFrom(id ports.ChunkID, provs []ports.NodeID, done func(bool)
 			// the holder's cooldown, re-probes in case it recovered. Guarded by
 			// anyLive so we never skip our only remaining candidate (#69).
 			if anyLive {
-				if until, dead := n.deadUntil[provs[i]]; dead && now < until {
+				if n.corpseGated(provs[i], now) {
 					n.Stats.HolderDialsSkipped++
 					try(i + 1)
 					return

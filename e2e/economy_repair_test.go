@@ -270,16 +270,16 @@ func TestRepairBountyPaysOnTheWire(t *testing.T) {
 	// pays on its own ledger.
 	//
 	// The pay window must cover the MEASURED repair cycle, not an optimistic
-	// guess: the sweep under dead holders runs ~3-4 min (#501 — probe/lookup
-	// timeouts dominate; unbounded until that issue closes), which is why the
-	// cloudtest flow's window is ECONOMY_REPAIR_WINDOW_S=600 (the #497 premise
-	// fix, PR #499). The old 180s budget sat INSIDE the measured band and made
-	// this test flaky-by-construction in CI (5 identical ~181.8s failures on
-	// 2026-08-21 across three branches, recorded on #501). 600s matches the
-	// certified premise; when #501 bounds the sweep, tighten it back — a
-	// failure past 600s is then a real loop break, not calibration.
+	// guess. History: the unbounded sweep under dead holders ran ~3-4 min
+	// (#501), the old 180s budget sat inside that band (5 identical ~181.8s CI
+	// failures on 2026-08-21), and PR #511 widened the window to the certified
+	// 600s premise pending the mechanism fix. #501 is now FIXED (sweep-scoped
+	// corpse gating + decaying cooldown bound the sweep to ≤1 discovery ladder
+	// per corpse per tick): the whole test measures 27.9s locally, so 180s is
+	// honest again with >6× margin — and this deadline is the #501 regression
+	// signal: a failure here means the sweep bound broke, not calibration.
 	var paid, funded, repairs int64
-	deadline := time.Now().Add(600 * time.Second)
+	deadline := time.Now().Add(180 * time.Second)
 	for paid == 0 && time.Now().Before(deadline) {
 		for _, c := range caretakers {
 			s := getStatus(t, c.base)

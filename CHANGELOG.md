@@ -125,6 +125,27 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   [docs/thinking/2026-08-20-economy-local-loop-design.md](docs/thinking/2026-08-20-economy-local-loop-design.md).
 
 ### Fixed
+- **The repair sweep is BOUNDED under dead holders (#501) — sweep-scoped corpse gating + a
+  decaying dead-peer cooldown; the measured 3–4 min sweep drops to ~72s worst-case first
+  discovery and the wire repair cycle to ~28s** (2026-08-22) — A sweep's discovery walks paid a
+  full retry ladder (RequestTimeout × 4 attempts ≈ 22s at daemon defaults) to every freshly dead
+  peer, per phase, re-paying it mid-sweep each time the flat 30s `HolderCooldown` lapsed — a
+  deterministic sim reproduction (daemon-faithful transport, field-faithful replication-1
+  placement) measured 159s for the first post-kill sweep and a 45s full-re-discovery sweep
+  recurring every ~30s FOREVER, even on a fully healed object (corpses re-enter lookups via other
+  peers' `FindNode` replies). Two cache-scope changes, no transport deadline / retry / eviction
+  semantics touched: (1) a peer whose ladder exhausts anywhere in the current repair tick is
+  skipped by every gated leg (walk, probe, fetch, announce) for the tick's remainder — one sweep
+  pays at most one discovery ladder per corpse; (2) each successive exhaustion doubles the
+  corpse's cooldown (30s → 60 → 120 → 240 → capped 480s, under the reprovide period), so the
+  recurring re-discovery tax decays geometrically — any inbound message still clears the entry
+  instantly (proof of life, #69), and the sole-candidate guards keep a lone holder probeable.
+  Sweeps now narrate their phase timings (`repair sweep complete … manifest-heal-ms probe-ms`,
+  `repair pass complete … repair-ms total-ms`), making any future slow sweep self-attributing in
+  a run journal. The e2e bounty window re-tightens 600s → 180s (the fixed cycle measures ~28s on
+  the wire; the deadline is the #501 regression signal again). Regression + measurement:
+  `core/node/repair_sweep_duration_501_test.go`; deliberation + measured tables:
+  [docs/thinking/2026-08-22-501-sweep-duration-bound.md](docs/thinking/2026-08-22-501-sweep-duration-bound.md).
 - **An F2-evicted identity no longer re-registers forever — the bond-renewal storm behind the
   island OOM is suppressed at every honest layer (#503, Q1 of the research certification)**
   (2026-08-21) — A slash deletes `bonded[id]`, which made `BondRenewalDue` read true FOREVER for
