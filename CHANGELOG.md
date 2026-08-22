@@ -155,6 +155,29 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   [docs/thinking/2026-08-20-economy-local-loop-design.md](docs/thinking/2026-08-20-economy-local-loop-design.md).
 
 ### Fixed
+- **Cloudtest harness: the #525 trio — a false-wedge fingerprint read, base-topology
+  bounds graded onto a 12-seat rotation, and the re-drive clobbering the sheet**
+  (2026-08-22, all three evidenced by coverage run 94ef1e8-36901) — (1) The #509 escape
+  fingerprint is now TIME-SCOPED (`jlog_since`, `journalctl --since @kill-t0`), never a
+  last-600-line window: economy sweep narration scrolled the survivors' round-change
+  lines out of the window, so both samples read rc=0 ("frozen") while the journals
+  showed the ladder advancing h38 r1→r3 — a manufactured WEDGE FAIL (the run's true
+  verdict was #509's out-of-model GAP). Same unscoped-read class audit #303 closed for
+  matches. (2) The 6-fault-tolerance tiers and the maturing-handoff drive bound are
+  TOPOLOGY-AWARE: the certified 260s/575s and 220s-per-height figures price the 4-seat
+  base rotation, but pre-epoch the (h+r) mod N designee rotation spans every bonded
+  seat. Policy: one extra #451-priced escape rung (dur(r) = 2 + r(r+1)/2 sweeps × 30s)
+  per 4 rotation seats beyond the base, added to the base constants — an N=4 sheet
+  computes exactly the certified figures; the 12-seat MATURING sheet computes 650s/1445s
+  and 610s/height (the run missed h57 by ONE block inside 9×220s while the latch itself
+  tripped). The handoff drive also exits early once the ceiling freezes for a full
+  per-height bound, so a real stall grades without burning the whole window. (3)
+  `./cloudtest.sh run` no longer truncates `results.jsonl`: `run` is the documented
+  re-drive entry, and the truncation destroyed every previously graded verdict (the
+  run's archived sheet held only the 3-row re-drive pass; the 14 first-pass verdicts
+  survived only in the console log). The sheet now clears where a NEW sheet begins
+  (`all` and `up`); a re-drive appends, and the report shows each pass's verdict.
+  Rider: the `PERSIST_NET` marker `.persist_net` is git-ignored.
 - **Chainless registry lookups no longer block the event loop (#473) — the async pass**
   (2026-08-22) — The remaining face of the concurrent-publish 502 class: on a chainless
   node (client mode, or a daemon on a remote registry) six loop-driven sweeps — `Care`,
