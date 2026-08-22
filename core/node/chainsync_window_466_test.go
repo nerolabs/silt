@@ -293,7 +293,7 @@ func TestSplicedWindowsFailClosed466(t *testing.T) {
 	// Prev chain does not link onto window 1's last block.
 	real := n1.Chain().Blocks(1)
 	w1 := real[:3]
-	prev := w1[len(w1)-1] // fork point: re-derive 4..6 on a divergent parent
+	prev := w1[len(w1)-1]                                                     // fork point: re-derive 4..6 on a divergent parent
 	alt := &chain.Block{Version: 1, Height: prev.Height + 1, Prev: prev.Prev, // wrong parent: skips w1's last
 		Entries: []ports.Entry{mkEntry("divergent-history-466")}}
 	chain.Sign(alt, a1.Signer())
