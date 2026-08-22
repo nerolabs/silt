@@ -125,6 +125,24 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   [docs/thinking/2026-08-20-economy-local-loop-design.md](docs/thinking/2026-08-20-economy-local-loop-design.md).
 
 ### Fixed
+- **The #467 recursion audit — five sibling continuation chains bounded, closing the PE's
+  audit extension** (2026-08-22) — The flixz stack-overflow crash itself was fixed by #471's
+  walk-terminal trampoline, but the ruled follow-up scan ("no unbounded recursion / no
+  re-entrant cycle between subsystems") had never run. Run now, it found five chains that
+  still advance INLINE when a fast path completes synchronously: the `repairStripes`
+  healthy-stripe walk (O(stripes) frames + an O(stripes × refs) rescan monopolizing the
+  loop each sweep), `FetchChunk`'s already-held fast path and `fetchFrom`'s no-provider
+  exit (fetch chains recurse O(ids) over fully-held or unsettled lists), `repairTick`'s
+  root walk over synchronously-skipped roots, `distribute`'s dedup member skip, and —
+  the class enabler — `request` running its callback inline on a synchronous send
+  failure, which re-armed every "safe because it crosses a request" chain against a dead
+  transport. All six sites now post their continuation through the loop (`AfterFunc(0)`,
+  the #471 contract: completion never runs on the stack that initiated it), and the
+  stripe walk groups refs by stripe once, taking a large file's sweep CPU from
+  O(stripes × refs) to O(refs). Failing-first regressions:
+  `core/node/recursion_audit_test.go` (all five RED before the fix). Audit record, with
+  the bounded-chain inventory so the next audit doesn't re-derive it:
+  [docs/thinking/2026-08-22-467-recursion-audit.md](docs/thinking/2026-08-22-467-recursion-audit.md).
 - **`TestMeasure_StoreChunkDrainRate` no longer races itself (#507) — local `-race ./core/node/`
   runs clean with no skip** (2026-08-22) — The measurement's ack counter was written by the
   tcpnet readLoop callback and read by the test body unsynchronized; every local race run

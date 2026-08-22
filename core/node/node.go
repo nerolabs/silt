@@ -1286,7 +1286,14 @@ func (n *Node) requestAttempt(to ports.NodeID, msg ports.Message, attempt int, c
 	if err := n.send(to, msg); err != nil {
 		p.cancel()
 		delete(n.pending, rid)
-		cb(ports.Message{}, err)
+		// Defer the failure through the loop (#467 audit): a synchronous send
+		// error otherwise runs cb on the caller's stack, and every per-item
+		// continuation chain that crosses request — probe try-chains, announce
+		// send-chains, walk steps — becomes O(items)-deep inline recursion the
+		// moment a transport rejects all sends. Same contract as the walk
+		// terminal trampoline: a request callback NEVER fires on the stack
+		// that issued it.
+		n.clock.AfterFunc(0, func() { cb(ports.Message{}, err) })
 	}
 }
 

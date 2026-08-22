@@ -241,7 +241,10 @@ func (n *Node) repairTick() {
 			n.clock.AfterFunc(n.cfg.RepairInterval, n.repairTick)
 			return
 		}
-		n.repairRoot(handles[i], func() { nextRoot(i + 1) })
+		// The root advance posts through the loop (#467 audit): a root that
+		// completes synchronously (denied, or a failed registry lookup) would
+		// otherwise chain the whole cared set inline in one loop task.
+		n.repairRoot(handles[i], func() { n.clock.AfterFunc(0, func() { nextRoot(i + 1) }) })
 	}
 	nextRoot(0)
 }
@@ -519,26 +522,36 @@ func (n *Node) probeShard(id ports.ChunkID, key ports.Hash, includeLocal bool, d
 func (n *Node) repairStripes(m *manifest.Layout, p erasure.Params, refs []shardRef,
 	reachable map[ports.ChunkID]bool, shardDoms map[ports.ChunkID]map[uint64]bool, stripe int, porKey *por.Key, done func()) {
 
+	// Group refs by stripe ONCE (#467 audit): the per-stripe walk below used to
+	// rescan the whole refs slice every stripe — O(stripes × refs) work per sweep,
+	// all of it monopolizing the loop on a large healthy file.
 	numStripes := p.Stripes(len(m.Chunks))
-	if stripe == numStripes {
+	byStripe := make([][]shardRef, numStripes)
+	for _, r := range refs {
+		byStripe[r.stripe] = append(byStripe[r.stripe], r)
+	}
+	n.repairStripesFrom(m, p, byStripe, reachable, shardDoms, stripe, porKey, done)
+}
+
+func (n *Node) repairStripesFrom(m *manifest.Layout, p erasure.Params, byStripe [][]shardRef,
+	reachable map[ports.ChunkID]bool, shardDoms map[ports.ChunkID]map[uint64]bool, stripe int, porKey *por.Key, done func()) {
+
+	if stripe == len(byStripe) {
 		done()
 		return
 	}
-	var stripeRefs []shardRef
+	stripeRefs := byStripe[stripe]
 	missing := 0
 	// exclusive[d] counts this stripe's columns whose only known domain is
 	// d — those a failure of domain d would take out. A column already
 	// spread across ≥2 domains survives any single one and isn't counted.
 	exclusive := map[uint64]int{}
-	for _, r := range refs {
-		if r.stripe == stripe {
-			stripeRefs = append(stripeRefs, r)
-			if !reachable[r.id] {
-				missing++
-			} else if doms := shardDoms[r.id]; len(doms) == 1 {
-				for d := range doms {
-					exclusive[d]++
-				}
+	for _, r := range stripeRefs {
+		if !reachable[r.id] {
+			missing++
+		} else if doms := shardDoms[r.id]; len(doms) == 1 {
+			for d := range doms {
+				exclusive[d]++
 			}
 		}
 	}
@@ -560,7 +573,13 @@ func (n *Node) repairStripes(m *manifest.Layout, p erasure.Params, refs []shardR
 		}
 	}
 
-	next := func() { n.repairStripes(m, p, refs, reachable, shardDoms, stripe+1, porKey, done) }
+	// Post the stripe advance through the loop (#467 audit): a HEALTHY stripe —
+	// the common case, every sweep — continues synchronously, so an inline next()
+	// walked every stripe of a large file O(stripes) deep on one stack, in one
+	// loop task. One tick per stripe bounds depth to O(1) and keeps the loop live.
+	next := func() {
+		n.clock.AfterFunc(0, func() { n.repairStripesFrom(m, p, byStripe, reachable, shardDoms, stripe+1, porKey, done) })
+	}
 	if missing > n.cfg.RepairSlack || len(disperseShards) > 0 {
 		// Confirmation gate (#517, network-durability §3: never trust one
 		// sample). A probe verdict is a walk over provider records — a noisy
