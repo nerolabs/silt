@@ -95,3 +95,9 @@ variable "all_on_demand" {
   default     = false
   description = "Run EVERY node as STANDARD (non-preemptible). For a CERTIFICATION run: core_on_demand only protects validator+registry, but a cert also needs storage (holds published content), relay (NAT), and adversary (#184) to survive — a mid-run SPOT preemption of store-1 fails publish and cascades into a false FAIL of nearly every flow. e2-small on-demand is ~cents/hr for the whole fleet; overrides core_on_demand when set."
 }
+
+variable "persistent_network" {
+  type        = bool
+  default     = false
+  description = "Use the long-lived network owned by terraform/network (PERSIST_NET=1; create it once with `cloudtest.sh net-up`) instead of creating a per-run VPC — saves the network create/destroy minutes every run. The persistent subnets follow topology.py's canonical region octets."
+}

@@ -22,36 +22,67 @@ locals {
 }
 
 # ── Network ────────────────────────────────────────────────────────────────────
+# Two modes (harness-hardening item c): the default creates an ephemeral per-run
+# network exactly as before; `persistent_network = true` (PERSIST_NET=1) instead
+# data-sources the long-lived network the terraform/network module owns —
+# subnets/firewalls/Cloud-NAT already exist, saving their create+destroy minutes
+# every run. The persistent subnets use topology.py's CANONICAL region octets,
+# so every topology subset lands on the same CIDRs.
 resource "google_compute_network" "silt" {
+  count                   = var.persistent_network ? 0 : 1
   name                    = "silt-ft-${var.run_id}"
   auto_create_subnetworks = false
+}
+
+data "google_compute_network" "persist" {
+  count = var.persistent_network ? 1 : 0
+  name  = "silt-persist"
 }
 
 # One public subnet PER region the topology uses — GCP subnets are regional, so a
 # node in us-east1 must attach to a us-east1 subnet. topology.py emits region_cidrs.
 resource "google_compute_subnetwork" "public" {
-  for_each      = var.region_cidrs
+  for_each      = var.persistent_network ? {} : var.region_cidrs
   name          = "silt-ft-public-${each.key}-${var.run_id}"
   ip_cidr_range = each.value
   region        = each.key
-  network       = google_compute_network.silt.id
+  network       = google_compute_network.silt[0].id
+}
+
+data "google_compute_subnetwork" "persist_public" {
+  for_each = var.persistent_network ? var.region_cidrs : {}
+  name     = "silt-persist-public-${each.key}"
+  region   = each.key
 }
 
 # The NAT subnet lives in the same region as the natgw. Its instances get NO
 # external IP; their default route is the natgw instance, so they are genuinely
 # un-dialable from the swarm and must reach it through the relay (or hole-punch).
 resource "google_compute_subnetwork" "nat" {
+  count         = var.persistent_network ? 0 : 1
   name          = "silt-ft-nat-${var.run_id}"
   ip_cidr_range = var.nat_cidr
   region        = var.default_region
-  network       = google_compute_network.silt.id
+  network       = google_compute_network.silt[0].id
+}
+
+data "google_compute_subnetwork" "persist_nat" {
+  count  = var.persistent_network ? 1 : 0
+  name   = "silt-persist-nat"
+  region = var.default_region
+}
+
+locals {
+  network_id    = var.persistent_network ? data.google_compute_network.persist[0].id : google_compute_network.silt[0].id
+  subnet_ids    = var.persistent_network ? { for r, s in data.google_compute_subnetwork.persist_public : r => s.id } : { for r, s in google_compute_subnetwork.public : r => s.id }
+  nat_subnet_id = var.persistent_network ? data.google_compute_subnetwork.persist_nat[0].id : google_compute_subnetwork.nat[0].id
 }
 
 # Route the NAT subnet's egress through the natgw instance (real NAT/conntrack).
 resource "google_compute_route" "nat_egress" {
   count             = length(local.natgw_nodes) > 0 ? 1 : 0
   name              = "silt-ft-natroute-${var.run_id}"
-  network           = google_compute_network.silt.id
+  network           = local.network_id
   dest_range        = "0.0.0.0/0"
   next_hop_instance = google_compute_instance.natgw[one(keys(local.natgw_nodes))].self_link
   priority          = 900
@@ -61,8 +92,9 @@ resource "google_compute_route" "nat_egress" {
 # ── Firewall ───────────────────────────────────────────────────────────────────
 # All traffic within the VPC is allowed (the swarm talks over internal IPs).
 resource "google_compute_firewall" "internal" {
+  count         = var.persistent_network ? 0 : 1
   name          = "silt-ft-internal-${var.run_id}"
-  network       = google_compute_network.silt.id
+  network       = local.network_id
   source_ranges = concat(values(var.region_cidrs), [var.nat_cidr])
   allow { protocol = "tcp" }
   allow { protocol = "udp" }
@@ -72,8 +104,9 @@ resource "google_compute_firewall" "internal" {
 # SSH from IAP only (35.235.240.0/20) — the orchestrator drives every node,
 # including natted ones, over `gcloud compute ssh --tunnel-through-iap`.
 resource "google_compute_firewall" "iap_ssh" {
+  count         = var.persistent_network ? 0 : 1
   name          = "silt-ft-iap-ssh-${var.run_id}"
-  network       = google_compute_network.silt.id
+  network       = local.network_id
   source_ranges = ["35.235.240.0/20"]
   allow {
     protocol = "tcp"
@@ -83,8 +116,9 @@ resource "google_compute_firewall" "iap_ssh" {
 
 # Public swarm/relay/registry reachability for the public-subnet nodes only.
 resource "google_compute_firewall" "public_swarm" {
+  count         = var.persistent_network ? 0 : 1
   name          = "silt-ft-swarm-${var.run_id}"
-  network       = google_compute_network.silt.id
+  network       = local.network_id
   source_ranges = ["0.0.0.0/0"]
   target_tags   = ["public-node"]
   allow {
@@ -140,7 +174,7 @@ resource "google_compute_instance" "natgw" {
     }
   }
   network_interface {
-    subnetwork = google_compute_subnetwork.public[each.value.region].id
+    subnetwork = local.subnet_ids[each.value.region]
     network_ip = each.value.ip
     access_config {} # external IP so it can masquerade the NAT subnet out to the internet
   }
@@ -179,7 +213,7 @@ resource "google_compute_instance" "public" {
     }
   }
   network_interface {
-    subnetwork = google_compute_subnetwork.public[each.value.region].id
+    subnetwork = local.subnet_ids[each.value.region]
     network_ip = each.value.ip
     access_config {} # external IP; the swarm still advertises the internal IP
   }
@@ -233,7 +267,7 @@ resource "google_compute_instance" "natted" {
     }
   }
   network_interface {
-    subnetwork = google_compute_subnetwork.nat.id
+    subnetwork = local.nat_subnet_id
     network_ip = each.value.ip
     # NO access_config: no external IP → egress via the natgw, un-dialable inbound.
   }
@@ -291,7 +325,7 @@ resource "google_compute_instance" "noip" {
     }
   }
   network_interface {
-    subnetwork = google_compute_subnetwork.public[each.value.region].id
+    subnetwork = local.subnet_ids[each.value.region]
     network_ip = each.value.ip
     # NO access_config: no external IP → zero quota. Egress via Cloud NAT.
   }
@@ -342,7 +376,7 @@ resource "google_compute_instance" "island" {
     }
   }
   network_interface {
-    subnetwork = google_compute_subnetwork.public[each.value.region].id
+    subnetwork = local.subnet_ids[each.value.region]
     network_ip = each.value.ip
     # NO access_config: no external IP → zero quota. Egress via Cloud NAT.
   }
@@ -377,14 +411,14 @@ resource "google_compute_instance" "island" {
 # WITHOUT an external IP use it, so the public nodes are unaffected. Managed, no
 # instance, ~free; created only when a no-IP node exists.
 resource "google_compute_router" "island" {
-  count   = (length(local.island_nodes) + length(local.noip_nodes)) > 0 ? 1 : 0
+  count   = (!var.persistent_network && (length(local.island_nodes) + length(local.noip_nodes)) > 0) ? 1 : 0
   name    = "silt-ft-island-router-${var.run_id}"
   region  = var.default_region
-  network = google_compute_network.silt.id
+  network = local.network_id
 }
 
 resource "google_compute_router_nat" "island" {
-  count                              = (length(local.island_nodes) + length(local.noip_nodes)) > 0 ? 1 : 0
+  count                              = (!var.persistent_network && (length(local.island_nodes) + length(local.noip_nodes)) > 0) ? 1 : 0
   name                               = "silt-ft-island-nat-${var.run_id}"
   router                             = google_compute_router.island[0].name
   region                             = var.default_region

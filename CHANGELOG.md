@@ -155,6 +155,38 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   [docs/thinking/2026-08-20-economy-local-loop-design.md](docs/thinking/2026-08-20-economy-local-loop-design.md).
 
 ### Fixed
+- **Chainless registry lookups no longer block the event loop (#473) — the async pass**
+  (2026-08-22) — The remaining face of the concurrent-publish 502 class: on a chainless
+  node (client mode, or a daemon on a remote registry) six loop-driven sweeps — `Care`,
+  `repairRoot`, `netGet`, `Audit`, repair-claim judging, `ColumnHolders` — called
+  `ports.Registry.Lookup` inline on the event loop, and against `httpregistry` that is a
+  blocking HTTP round-trip holding the node's single thread for up to the HTTP timeout,
+  per call, per sweep. New optional capability `ports.AsyncRegistry`: `httpregistry`
+  runs the round-trip on its own goroutine and the node marshals the continuation back
+  through the loop (`AfterFunc(0)` — walltime posts, sim enqueues); in-memory registries
+  keep their sync `Lookup` via a fallback that still defers completion (the #467
+  contract: a continuation never runs on the stack that initiated it, error paths
+  included). Regressions (`core/node/registry_async_473_test.go`, ablation-verified
+  RED): a chainless `Audit` against an async-capable registry makes zero blocking
+  lookups, the loop stays live while the round-trip is in flight (a timer fires
+  mid-lookup), and the sync fallback defers.
+- **Cloudtest harness: persistent VPC, canonical region octets, and the preflight
+  counts the natgw's address** (2026-08-22, harness-hardening items from the 2026-08-19
+  audit) — (1) `./cloudtest.sh net-up` creates a long-lived network
+  (`terraform/network`: VPC, canonical subnets, firewalls, Cloud NAT — own state, $0
+  idle) and `PERSIST_NET=1` runs attach to it instead of creating and destroying a
+  per-run VPC, saving those minutes every run; the run's `destroy` never touches it.
+  (2) topology.py's region→octet assignment is now CANONICAL — a function of the region
+  alone, never of which regions a topology subset uses (the old subset-relative
+  numbering gave us-east1 octet 21 in a SMOKE but 22 in a full sheet — fatal for
+  persistent subnets; the full-sheet assignment is byte-identical). (3) The IP-quota
+  preflight now counts the natgw — its interface holds the masquerade external IP but
+  the counter skipped it, undercounting its region by one; at the full
+  SYBILS+MATURING+ECONOMY sheet's exact 8/8 us-west1 fit, that hidden margin was the
+  whole margin. Verified with generated topologies against live quotas: the full
+  coverage sheet fits every region's default 8-IP quota as-is (us-west1 8, europe-west1
+  6, us-east1 5) — no quota increase needed.
+
 - **Chain serve is windowed — a validator no longer marshals its whole chain into one
   buffer to answer `MsgGetChain` (#466)** (2026-08-22) — The serve-side OOM driver
   measured on the 2 GB box (`chain.EncodeBlocks` marshaling the full bond-reg-laden

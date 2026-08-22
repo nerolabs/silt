@@ -1124,6 +1124,36 @@ func (n *Node) lookupEntry(reg ports.Registry, root ports.Hash) (ports.Entry, bo
 	return reg.Lookup(bg(), root)
 }
 
+// lookupEntryAsync is lookupEntry for the loop-driven sweeps (#473): the
+// remaining face of the concurrent-publish 502 class. On a validator the chain
+// answers locally; on a CHAINLESS node a network registry's Lookup is a
+// blocking HTTP round-trip, and the five core sweeps that called it inline
+// (Care, repairRoot, netGet, Audit, repair-claim judging, ColumnHolders) held
+// the node's single thread for up to the HTTP timeout per call — bounded, no
+// deadlock, but every RTT stalled the loop (B2). A registry that implements
+// ports.AsyncRegistry (httpregistry) runs the round-trip off-loop; the sync
+// fallback covers the in-memory registries, whose Lookup is nanoseconds.
+// done is ALWAYS posted through the loop, never run on the caller's stack —
+// including the error path — per the #467 contract.
+func (n *Node) lookupEntryAsync(reg ports.Registry, root ports.Hash, done func(ports.Entry, bool, error)) {
+	if n.chain != nil {
+		e, ok := n.chain.LookupRoot(root)
+		n.clock.AfterFunc(0, func() { done(e, ok, nil) })
+		return
+	}
+	if ar, isAsync := reg.(ports.AsyncRegistry); isAsync {
+		ar.LookupAsync(bg(), root, func(e ports.Entry, ok bool, err error) {
+			// Called from the adapter's goroutine: AfterFunc marshals onto the
+			// loop (walltime posts; sim enqueues), restoring the single-threaded
+			// worldview before done touches node state.
+			n.clock.AfterFunc(0, func() { done(e, ok, err) })
+		})
+		return
+	}
+	e, ok, err := reg.Lookup(bg(), root)
+	n.clock.AfterFunc(0, func() { done(e, ok, err) })
+}
+
 // request sends msg expecting a reply; cb fires exactly once, with
 // ErrTimeout if none arrives in time. Timeouts also evict the peer from
 // the routing table — a Kademlia table must only hold live peers.

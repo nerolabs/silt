@@ -236,10 +236,21 @@ def main():
     def region_of(zone):
         return zone.rsplit("-", 1)[0]
     pub_regions = sorted({region_of(n["zone"]) for n in nodes.values() if n["role"] != "natted"})
-    octet, nxt = {DEFAULT_REGION: 20}, 21
-    for r in pub_regions:
-        if r == DEFAULT_REGION:
-            continue
+    # CANONICAL region→octet assignment: the octet a region gets must be a
+    # function of the region ALONE, never of which other regions this
+    # particular topology happens to use. The old subset-relative numbering
+    # (sorted in-use regions take 21, 22, … after the default's 20) gave
+    # us-east1 octet 21 in a SMOKE (no europe) but 22 in a full sheet — fine
+    # while every run created its own subnets, fatal for a PERSISTENT VPC
+    # whose subnets must match every mode's expectations. Fixed order: the
+    # default region is 20, the standard secondaries follow in a fixed
+    # sequence, and any novel region (custom SYB_ZONES) continues after,
+    # sorted. The full-sheet assignment is unchanged (us-west1 default →
+    # europe-west1 21, us-east1 22); only trimmed subsets shift, and nothing
+    # persists their old numbers.
+    canonical = [DEFAULT_REGION] + [r for r in ("europe-west1", "us-east1") if r != DEFAULT_REGION]
+    octet, nxt = {}, 20
+    for r in canonical + [r for r in pub_regions if r not in canonical]:
         if nxt == 30:            # reserved for the NAT subnet
             nxt += 1
         octet[r], nxt = nxt, nxt + 1

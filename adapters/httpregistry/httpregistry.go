@@ -457,6 +457,17 @@ func (c *Client) doGetRetry(req *http.Request) (*http.Response, error) {
 	}
 }
 
+// LookupAsync is the ports.AsyncRegistry capability (#473): the blocking HTTP
+// round-trip runs on its own goroutine so a core event loop that needs a
+// registry read never holds its single thread for a network RTT. done is
+// called from that goroutine; the caller marshals back onto its loop.
+func (c *Client) LookupAsync(ctx context.Context, root ports.Hash, done func(ports.Entry, bool, error)) {
+	go func() {
+		e, ok, err := c.Lookup(ctx, root)
+		done(e, ok, err)
+	}()
+}
+
 func (c *Client) Lookup(ctx context.Context, root ports.Hash) (ports.Entry, bool, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", c.base+"/lookup?root="+root.String(), nil)
 	if err != nil {

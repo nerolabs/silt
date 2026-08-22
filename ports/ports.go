@@ -182,6 +182,16 @@ type Registry interface {
 	All(ctx context.Context) ([]Entry, error)
 }
 
+// AsyncRegistry is an OPTIONAL Registry capability (#473): a lookup that runs
+// off the caller's thread and calls done from an arbitrary goroutine. A
+// network-backed registry (httpregistry) implements it so a chainless node's
+// event loop never blocks an HTTP round-trip inside a core sweep; in-memory
+// registries need not bother (their sync Lookup is nanoseconds, and core's
+// fallback wraps it). The CALLER owns marshalling done back onto its loop.
+type AsyncRegistry interface {
+	LookupAsync(ctx context.Context, root Hash, done func(Entry, bool, error))
+}
+
 // CreditLedger is the future proof-of-retrieval seam: nodes earn credit
 // for serving chunks and spend it on registry publishes. v1 accounting
 // is naive and trusting; the interface is what a cryptographically

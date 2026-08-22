@@ -111,3 +111,7 @@ integration/**/silt
 
 # private scratch notes — never commit
 pico.save
+integration/cloudtest/terraform/network/.terraform/
+integration/cloudtest/terraform/network/.terraform.lock.hcl
+integration/cloudtest/terraform/network/*.tfstate
+integration/cloudtest/terraform/network/*.tfstate.*
