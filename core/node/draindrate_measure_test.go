@@ -17,6 +17,7 @@ package node
 // sensitive, and asserts only a sanity floor).
 
 import (
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -60,11 +61,13 @@ func TestMeasure_StoreChunkDrainRate(t *testing.T) {
 	}
 	defer sTr.Close()
 
-	var acks int64
-	done := make(chan struct{})
+	// acks is written by the transport's readLoop goroutine and read by the
+	// test body after the window — atomic, or the measurement itself races
+	// (#507: the one test that forced -race runs to skip it).
+	var acks atomic.Int64
 	sTr.SetHandler(func(_ ports.NodeID, m ports.Message) {
 		if m.Kind == ports.MsgStoreChunkAck {
-			acks++
+			acks.Add(1)
 		}
 	})
 	sTr.AddPeer(rID.NodeID(), rTr.Addr())
@@ -96,10 +99,9 @@ loop:
 			sendOne() // keep the pipe full
 		}
 	}
-	close(done)
 	elapsed := time.Since(start)
 
-	got := acks
+	got := acks.Load()
 	bytes := got * chunkSize
 	mbps := float64(bytes) / elapsed.Seconds() / (1 << 20)
 	const shippedCap = 256 << 20

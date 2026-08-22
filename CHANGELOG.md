@@ -125,6 +125,25 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   [docs/thinking/2026-08-20-economy-local-loop-design.md](docs/thinking/2026-08-20-economy-local-loop-design.md).
 
 ### Fixed
+- **`TestMeasure_StoreChunkDrainRate` no longer races itself (#507) — local `-race ./core/node/`
+  runs clean with no skip** (2026-08-22) — The measurement's ack counter was written by the
+  tcpnet readLoop callback and read by the test body unsynchronized; every local race run
+  needed `-skip TestMeasure_StoreChunkDrainRate`, masking real signal for consensus-touching
+  changes (build-immutable #2). Now `atomic.Int64`; the full `core/node` race suite passes
+  unskipped, and the E5 measurement still reads clean (268 MB/s, cap/drain 0.955s under the
+  2.0s bound — consistent with the shelve verdict).
+- **The cloudtest fault-tolerance bound models escapes that START under load (#509) — two
+  computed tiers with a progress-graded extension, and the wedge signature is now a FAIL**
+  (2026-08-22) — Seed `f35a0f9-76780` GAPped `6-fault-tolerance` when a healthy, advancing
+  round escape (already at r1 pre-kill, sweeps stretched by the economy triple) outran the
+  flat 260s bound, which models a 2-round escape from idle. The bound is now two-tier, both
+  from the #451 arithmetic: the 260s expected tier stays the first check; a miss extends —
+  while the survivors' escape fingerprint (round-change count + max height) demonstrably
+  advances — to the r≤3 hard cap (dur(0..3)=18 sweeps ≈ 575s). Grades sharpen both ways: a
+  commit inside the cap PASSES with the slow escape narrated; a FROZEN fingerprint across
+  the extension is the wedge signature and now FAILS (previously an unattributable GAP);
+  only advancing-but-uncommitted-at-cap remains a GAP, marked out-of-model. The knob was
+  not raised — the model was completed (build-process rule 7).
 - **A repair bounty can no longer starve for want of a judge — rebuilt shards prefer
   holders outside the caretaker-judge quorum, and every verdict is evidence-carrying
   (#518)** (2026-08-22) — A repair claim excludes both the paramedic and the named holder
