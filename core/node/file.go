@@ -183,7 +183,9 @@ func (n *Node) distributeFrom(src ports.ChunkStore, entry ports.Entry, m *manife
 				id := ids[grp.members[k]]
 				c, err := src.Get(bg(), id)
 				if err != nil { // convergent dedup can mean it already shipped
-					nextMember(k + 1)
+					// Defer (#467 audit): a column whose members all dedup away
+					// otherwise skips through them inline, O(members) deep.
+					n.clock.AfterFunc(0, func() { nextMember(k + 1) })
 					return
 				}
 				// Shards travel with their Merkle inclusion proof (so hosts
@@ -414,7 +416,10 @@ func (n *Node) fetchFrom(id ports.ChunkID, provs []ports.NodeID, done func(bool)
 	var sweep func()
 	sweep = func() {
 		if ok, _ := n.store.Has(bg(), id); ok {
-			done(true)
+			// Defer (#467 audit): the first sweep runs on the caller's stack, so an
+			// inline done here recurses a per-column chain O(ids) deep when the
+			// column is already held.
+			n.clock.AfterFunc(0, func() { done(true) })
 			return
 		}
 		transient := false
@@ -444,7 +449,10 @@ func (n *Node) fetchFrom(id ports.ChunkID, provs []ports.NodeID, done func(bool)
 					n.clock.AfterFunc(ports.Duration(attempt)*n.cfg.FetchBackoff, sweep)
 					return
 				}
-				done(false)
+				// Defer (#467 audit): with an empty (or all-skipped) provider set this
+				// exit is reached synchronously — the fresh-root condition — and an
+				// inline done recurses the calling chain on this stack.
+				n.clock.AfterFunc(0, func() { done(false) })
 				return
 			}
 			if provs[i] == n.id {
@@ -494,7 +502,10 @@ func (n *Node) fetchFrom(id ports.ChunkID, provs []ports.NodeID, done func(bool)
 // fetched via fetchColumn instead.
 func (n *Node) FetchChunk(id ports.ChunkID, done func(error)) {
 	if ok, _ := n.store.Has(bg(), id); ok {
-		done(nil)
+		// Defer the held fast path through the loop (#467 audit): fetchAll /
+		// fetchColumn advance their chains from this callback, so an inline
+		// return here recurses O(ids) deep over a fully-held list.
+		n.clock.AfterFunc(0, func() { done(nil) })
 		return
 	}
 	n.resolveProviders(id, func(provs []ports.NodeID) {
