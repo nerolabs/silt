@@ -125,6 +125,31 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   [docs/thinking/2026-08-20-economy-local-loop-design.md](docs/thinking/2026-08-20-economy-local-loop-design.md).
 
 ### Fixed
+- **Chain serve is windowed — a validator no longer marshals its whole chain into one
+  buffer to answer `MsgGetChain` (#466)** (2026-08-22) — The serve-side OOM driver
+  measured on the 2 GB box (`chain.EncodeBlocks` marshaling the full bond-reg-laden
+  suffix: 144 MB live / 98 MB retained / ~310 MB per encode at cloud heights) is closed:
+  the server now replies with the longest block prefix that fits `maxChainReplyBytes`
+  (`EncodeBlocksUpTo`, always ≥ 1 block so an oversized block still moves), and the
+  requester (`SyncChain`'s `fetchFull`) loops windows — advancing from each window's last
+  decoded height, releasing each raw reply buffer after decode, terminating on the head
+  probe's height (or the first empty window against a pre-window peer) — then reconciles
+  the reassembled suffix through the unchanged validation tail, so a spliced or truncated
+  window fails closed exactly as before. Two rulings from the PE approach review
+  (RULING-466, 2026-08-22) shaped the shipped form: the window is **derived, not a
+  literal** — `RequestSizeFloorBytesPerSec × requestSizeExtensionCap × ½` = 3.75 MiB at
+  daemon defaults — and the requester arms a **reply-sized deadline** for `MsgGetChain`
+  (the 30 s size extension keyed off the outbound payload, so a windowed reply was
+  otherwise bounded by the base 2 s `RequestTimeout`, which no window near the floor can
+  meet). Rollout is atomic with no capability negotiation: an old requester against a
+  windowed server converges sweep-by-sweep (head-match termination makes silent
+  under-sync structurally impossible; measured in the mixed-fleet drill), and a new
+  requester accepts an old server's whole-suffix reply. Regressions:
+  `core/node/chainsync_window_466_test.go` (deadline coupling, window derivation, serve
+  bound, multi-window convergence, both mixed-fleet directions, splice fail-closed —
+  ablation-verified RED). Requester-side chain retention is explicitly NOT closed by this
+  (the #299/pruning axis). Design + ruling trail:
+  [docs/thinking/2026-08-18-paginate-chain-sync-design.md](docs/thinking/2026-08-18-paginate-chain-sync-design.md).
 - **The #467 recursion audit — five sibling continuation chains bounded, closing the PE's
   audit extension** (2026-08-22) — The flixz stack-overflow crash itself was fixed by #471's
   walk-terminal trampoline, but the ruled follow-up scan ("no unbounded recursion / no
