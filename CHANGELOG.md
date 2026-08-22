@@ -125,6 +125,28 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   [docs/thinking/2026-08-20-economy-local-loop-design.md](docs/thinking/2026-08-20-economy-local-loop-design.md).
 
 ### Fixed
+- **NetGet's pulls are an explicit working set, and the UI consumer==provider promise is
+  wired (#500) — a fetch either drops what it pulled or retains it as REAL, discoverable,
+  audit-answerable hosting** (2026-08-22) — `fetchFrom` writes bytes with no provider record
+  (deliberate), and two callers retained what they pulled: `NetGet` kept the whole object
+  forever — undiscoverable bytes counting against the capacity pledge (the #497
+  records-vs-bytes divergence; 55 `chunk pulled` vs 30 `chunk stored` in one economy drive,
+  none discoverable) — and the UI `/api/fetch` consumer==provider path retained on purpose but
+  never announced, so no fetcher could ever find the "provider". Now: **`NetGet` drops its
+  working set** after assembly, success or failure (the repair-path paramedic discipline;
+  chunks the node already hosted are never touched), and **`NetGetRetain`** converts the pulls
+  into full hosting — each shard's StorageProof + PoR tags are minted from the manifest tree
+  and the link's layout key (the retainer can defend an audit exactly like a `MsgStoreChunk`
+  recipient — never host what a later audit can't defend), registered under its placement key
+  via the existing repair self-hold primitive, and ANNOUNCED to the nodes near the key.
+  Retained copies then ride the normal reprovide lifecycle. The UI fetch uses retain: a
+  daemon that consumes a link comes out the other side visible in `swarm holders` and able to
+  serve the object after every original holder dies (both asserted:
+  `core/node/netget_retention_500_test.go` sim tier incl. serve-after-holder-death,
+  `e2e/netget_retention_500_test.go` on real daemons over TCP). `swarm get` and the netcheck
+  self-test keep the drop default. `includeLocal` durability semantics are now honest: the
+  only record-less local copies left are in-flight working sets. Deliberation:
+  [docs/thinking/2026-08-22-500-netget-retention-semantics.md](docs/thinking/2026-08-22-500-netget-retention-semantics.md).
 - **The repair sweep is BOUNDED under dead holders (#501) — sweep-scoped corpse gating + a
   decaying dead-peer cooldown; the measured 3–4 min sweep drops to ~72s worst-case first
   discovery and the wire repair cycle to ~28s** (2026-08-22) — A sweep's discovery walks paid a
