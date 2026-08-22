@@ -662,19 +662,23 @@ func (s *uiServer) apiFetch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Swarm fetch on the MAIN node — not a throwaway ephemeral node. This is
-	// the consumer==provider path: NetGet pulls the missing shards into THIS
-	// node's own store (bounded by its -capacity pledge), so content you draw is
-	// content you now HOLD and can serve back. The old code fetched through a
-	// per-request ephemeral node (memstore, SetEphemeral) that kept nothing —
-	// making the client a pure leech (chunks-held stays 0, nothing to share
-	// back) and leaking a 127.0.0.1 address-book entry on every fetch. Fetching
-	// on s.nd instead means the next read of the same link hits the local-store
-	// fast path above, and the node becomes a real provider of what it consumed.
+	// the consumer==provider path: NetGetRetain pulls the missing shards into
+	// THIS node's own store (bounded by its -capacity pledge), so content you
+	// draw is content you now HOLD and can serve back. The old code fetched
+	// through a per-request ephemeral node (memstore, SetEphemeral) that kept
+	// nothing — making the client a pure leech (chunks-held stays 0, nothing to
+	// share back) and leaking a 127.0.0.1 address-book entry on every fetch.
+	// Fetching on s.nd means the next read of the same link hits the local-store
+	// fast path above — and RETAIN wires the rest of the promise (#500): the
+	// pulled shards get real storage proofs minted from the link's layout key,
+	// register under their placement keys, and ANNOUNCE, so the node is a
+	// discoverable, audit-answerable provider of what it consumed rather than a
+	// silent hoarder (plain NetGet now drops its working set after assembly).
 	var buf bytes.Buffer
 	var opErr error
 	fetchDone := make(chan struct{})
 	s.loop.Post("api-fetch", func() {
-		s.nd.NetGet(s.reg, h, &buf, func(err error) { opErr = err; close(fetchDone) })
+		s.nd.NetGetRetain(s.reg, h, &buf, func(err error) { opErr = err; close(fetchDone) })
 	})
 	select {
 	case <-fetchDone:

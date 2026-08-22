@@ -602,22 +602,88 @@ func (n *Node) fetchAll(ids []ports.ChunkID, done func(missing []ports.ChunkID))
 // v1), then data shards (misses tolerated), then parity shards for any
 // stripe that has misses. Final verification/repair/decryption is
 // pipeline.Get against the local store.
+//
+// The pulled chunks are a WORKING SET (#500): they are dropped once assembly
+// finishes, success or failure — the same paramedic discipline as both repair
+// paths. Before this, NetGet retained everything it pulled, forever, with no
+// provider record: bytes that counted against the capacity pledge while being
+// undiscoverable to every fetcher (the #497 records-vs-bytes divergence).
+// Chunks the node already hosted are never touched. A caller that WANTS to
+// keep serving what it consumed uses NetGetRetain.
 func (n *Node) NetGet(reg ports.Registry, h link.Handle, w io.Writer, done func(error)) {
+	n.netGet(reg, h, w, false, done)
+}
+
+// NetGetRetain is NetGet with the consumer==provider promise wired (#500): the
+// chunks this call pulled are kept as REAL hosting — each coded shard gets its
+// full StorageProof + PoR tags minted from the manifest tree and the link's
+// layout key (the caller holds LayoutKey, so the retainer can defend an audit
+// exactly like a MsgStoreChunk recipient — never host what a later audit can't
+// defend, B3/B7), registered under its placement key, and announced to the
+// nodes near that key so fetchers can actually discover this provider. Retained
+// copies then ride the normal AnnounceHeld/StartReprovide lifecycle. A FAILED
+// retrieval retains nothing (the working set drops, as in NetGet).
+func (n *Node) NetGetRetain(reg ports.Registry, h link.Handle, w io.Writer, done func(error)) {
+	n.netGet(reg, h, w, true, done)
+}
+
+func (n *Node) netGet(reg ports.Registry, h link.Handle, w io.Writer, retain bool, done func(error)) {
 	entry, ok, err := n.lookupEntry(reg, h.Root)
 	if err != nil || !ok {
 		done(fmt.Errorf("netget %s: %w", h.Root, ports.ErrNoSuchEntry))
 		return
 	}
+	// Held-before snapshot (the repairStripe discipline): only what THIS call
+	// pulls may be dropped or retained — a chunk the node already hosted stays
+	// exactly as it was, proofs and records included.
+	held := make(map[ports.ChunkID]bool)
+	snapshot := func(ids []ports.ChunkID) {
+		for _, id := range ids {
+			if ok, _ := n.store.Has(bg(), id); ok {
+				held[id] = true
+			}
+		}
+	}
+	snapshot(entry.ManifestChunks)
+	// settle disposes of the working set (drop, or host+announce on a retained
+	// success), then reports err. leaves is nil on the early error paths.
+	settle := func(m *manifest.Manifest, getErr error, after func(error)) {
+		var pulled []ports.ChunkID
+		candidates := append([]ports.ChunkID(nil), entry.ManifestChunks...)
+		if m != nil {
+			candidates = append(candidates, m.Leaves()...)
+		}
+		for _, id := range candidates {
+			if held[id] {
+				continue
+			}
+			if ok, _ := n.store.Has(bg(), id); ok {
+				pulled = append(pulled, id)
+			}
+		}
+		if retain && getErr == nil && m != nil {
+			n.retainPulled(m, h, pulled, func() { after(nil) })
+			return
+		}
+		for _, id := range pulled {
+			n.dropHosted(id)
+		}
+		if len(pulled) > 0 {
+			n.logf(ports.LogDebug, "netget working set dropped", "root", h.Root, "chunks", len(pulled))
+		}
+		after(getErr)
+	}
 	n.fetchAll(entry.ManifestChunks, func(missing []ports.ChunkID) {
 		if len(missing) > 0 {
-			done(fmt.Errorf("netget: %d of %d manifest chunks unreachable", len(missing), len(entry.ManifestChunks)))
+			settle(nil, fmt.Errorf("netget: %d of %d manifest chunks unreachable", len(missing), len(entry.ManifestChunks)), done)
 			return
 		}
 		m, err := pipeline.LoadFull(bg(), n.store, entry, h)
 		if err != nil {
-			done(fmt.Errorf("netget: %w", err))
+			settle(nil, fmt.Errorf("netget: %w", err), done)
 			return
 		}
+		snapshot(m.Leaves())
 		// Whatever ends up in the local store, the pipeline is the judge:
 		// it verifies every hash against the root and repairs from parity
 		// where it can.
@@ -626,7 +692,7 @@ func (n *Node) NetGet(reg ports.Registry, h link.Handle, w io.Writer, done func(
 			if err == nil {
 				n.logf(ports.LogInfo, "file retrieved", "root", h.Root)
 			}
-			done(err)
+			settle(m, err, done)
 		}
 
 		if m.K == 0 { // uncoded: per-chunk, data then parity-on-demand
@@ -675,6 +741,57 @@ func (n *Node) NetGet(reg ports.Registry, h link.Handle, w io.Writer, done func(
 			fetchCols(parityCols, finish)
 		})
 	})
+}
+
+// retainPulled converts a successful NetGetRetain's working set into real,
+// audit-answerable hosting (#500). Each pulled leaf gets its StorageProof
+// minted from the manifest tree (O(log n) per shard off one build, #340) with
+// PoR tags from the link's layout key — the identical artifacts a
+// MsgStoreChunk recipient receives — and is hosted via hostShardLocally (the
+// repair self-hold primitive: verify, store, record, persist proof). Manifest
+// chunks are not tree leaves and host bare under their own id, exactly like
+// the MsgStoreChunk path. One announceAll then plants the records on the nodes
+// near each placement key: without it the records exist only in this node's
+// own memory, and a provider walk toward the key would never find them (the
+// same reason Care's warm start announces).
+func (n *Node) retainPulled(m *manifest.Manifest, h link.Handle, pulled []ports.ChunkID, done func()) {
+	tree := manifest.BuildTree(m.Leaves())
+	root := tree.Root()
+	porKey := DerivePorKey(h.LayoutKey())
+	leafIdx := make(map[ports.ChunkID]int, len(m.Leaves()))
+	for li, id := range m.Leaves() {
+		leafIdx[id] = li
+	}
+	hosted := 0
+	seen := make(map[ports.Hash]bool)
+	var keys []ports.ChunkID
+	for _, id := range pulled {
+		c, err := n.store.Get(bg(), id)
+		if err != nil {
+			continue
+		}
+		var proof *ports.StorageProof
+		key := ports.Hash(id)
+		if li, ok := leafIdx[id]; ok {
+			if pr, perr := tree.Prove(li); perr == nil {
+				col := columnOfLeaf(m, li)
+				proof = &ports.StorageProof{Root: root, Index: pr.Index, Total: pr.Total, Path: pr.Path, Column: col}
+				if porKey != nil {
+					proof.PorTags = porKey.Tags(id[:], c.Data)
+				}
+				key = placementKey(root, id, col)
+			}
+		}
+		if n.hostShardLocally(id, c.Data, proof) {
+			hosted++
+			if !seen[key] {
+				seen[key] = true
+				keys = append(keys, ports.ChunkID(key))
+			}
+		}
+	}
+	n.logf(ports.LogInfo, "netget retained as provider", "root", root, "chunks", hosted, "keys", len(keys))
+	n.announceAll(keys, done)
 }
 
 // ColumnHolders is object root's shard placement made observable: for each erasure
