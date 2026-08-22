@@ -9,6 +9,36 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **The #506 version gate: the per-identity reg-inclusion rate bound ships as a validity
+  rule behind a BFT-native activation** (2026-08-22) — The #503-certified R-rule is now
+  enforceable: past the activation boundary, a bond registration is a valid block payload
+  only if its identity is unslashed (R∞ — the Defect-A commit path closed structurally,
+  beyond the #508 proposer filter) and its last committed reg is ≥ R blocks old
+  (R = max(TTL/4, K+2), derived; first registrations exempt; one identity cannot register
+  twice in one block; `ValidateBondRegErr` pre-filters submissions so an honest proposer
+  never mints a block its own rule rejects). Activation follows the research certification
+  (2026-08-22, BIP9 schema re-based on silt's primitives): each bond reg carries a signed
+  readiness byte (`BondReg.Version`, conditionally signed like `Domain`, hash-committed,
+  prune-surviving — deliberately NOT on the attestation, which `Block.Hash` does not
+  commit and any re-serving peer could strip); at each mature epoch boundary the frozen
+  set's rule-aware WEIGHT (never heads — a cheap-bond cohort cannot fake-signal an
+  activation) is tallied against the same >⅔ super-quorum finality uses; the first
+  boundary that clears it locks in one-way and enforcement begins at the NEXT boundary
+  (`H_act`, chain-derived, replay-identical on every replica, reorg-immune per #357
+  finality). Monotonic: a later ready-weight collapse stalls, never forks. The trusted
+  pre-latch fleet declares the boundary as genesis config instead
+  (`Config.RegGateActivationHeight`). Deliberate deviation from the certification's
+  packaging: no v3 block tag is minted — `versionSupported` on pre-gate binaries is an
+  exact set, so a v3-tagged block would hard-fork them at decode; enforcement is
+  height-keyed (the certification's own Q2 form) and `BlockVersionRegGate` serves as the
+  readiness threshold. Stated residual: if the fleet never crosses ⅔ ready weight the
+  rule never activates and the #503 interim remains the fallback — there is no safe
+  force-activation. Regressions (`core/chain/reggate_506_test.go`, ablation-verified RED
+  three ways): the three-clause R-rule at a pre-latch boundary, weight-not-heads lock-in,
+  boundary-exact enforcement (storm accepted at `H_act`, refused at `H_act`+1),
+  signature-binding of the signal, prune survival, replay-derived `H_act`, monotonicity.
+  Build record + deviations:
+  [docs/thinking/2026-08-22-506-reg-gate-build.md](docs/thinking/2026-08-22-506-reg-gate-build.md).
 - **Chunk write-path debug narration (`chunk stored` / `chunk pulled` / `place attempt`) — the
   #497 records-vs-bytes attribution instrument** (2026-08-21) — Every path that writes chunk
   bytes into a node's store now names itself at `-log debug`: the `MsgStoreChunk` receiver logs
