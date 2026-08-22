@@ -63,6 +63,7 @@ integration/cloudtest/.mem-sampler.pid
 integration/cloudtest/archive/
 integration/cloudtest/.ft_publish_gap
 integration/cloudtest/.ft_publish_lasterr
+integration/cloudtest/.persist_net
 integration/cloudtest/terraform/topology.auto.tfvars.json
 integration/cloudtest/terraform/.terraform/
 integration/cloudtest/terraform/.terraform.lock.hcl

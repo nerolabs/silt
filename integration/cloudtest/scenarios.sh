@@ -219,16 +219,25 @@ ft_wait_new_block() { # ft_wait_new_block NODE H0 TIMEOUT_S -> 0 if a block > H0
   return 1
 }
 
-# ft_escape_progress SURVIVOR... — a progress fingerprint of the down-designee
-# escape (#509): total round-change lines + the max committed height across the
-# surviving validators' recent journals. Two EQUAL fingerprints a stall window
-# apart are the wedge signature (PE §4: a miss inside a principled bound); an
-# advancing fingerprint is the #451 ladder alive — slow is not stuck.
+# ft_escape_progress SINCE_EPOCH SURVIVOR... — a progress fingerprint of the
+# down-designee escape (#509): total round-change lines + the max committed
+# height across the surviving validators' journals SINCE the kill. Two EQUAL
+# fingerprints a stall window apart are the wedge signature (PE §4: a miss
+# inside a principled bound); an advancing fingerprint is the #451 ladder alive
+# — slow is not stuck. TIME-SCOPED, never line-windowed (#525): the old
+# last-600-lines read was scrolled by the economy flows' sweep narration, so
+# run 94ef1e8-36901 read rc=0 on both samples while the survivor journals
+# showed the ladder advancing h38 r1→r3 — a manufactured false WEDGE FAIL.
+# Both counts are monotone within one flow run, so "equal" cleanly means "no
+# new round-changes AND no new commits across the extension".
 ft_escape_progress() {
-  local n rc=0 h=0 cur
+  local since="$1"; shift
+  local n rc=0 h=0 cur out
   for n in "$@"; do
-    cur="$(jlog "$n" 600 2>/dev/null | grep -c 'round-change' || true)"; rc=$(( rc + ${cur:-0} ))
-    cur="$(ft_commit_height "$n")"; [ "${cur:-0}" -gt "$h" ] && h="$cur"
+    out="$(jlog_since "$n" "$since" 2>/dev/null)"
+    cur="$(printf '%s' "$out" | grep -c 'round-change' || true)"; rc=$(( rc + ${cur:-0} ))
+    cur="$(printf '%s' "$out" | grep -oE 'chain: committed block [0-9]+' | grep -oE '[0-9]+$' | sort -n | tail -1)"
+    [ "${cur:-0}" -gt "$h" ] 2>/dev/null && h="$cur"
   done
   printf 'rc=%s h=%s' "$rc" "$h"
 }
@@ -385,6 +394,7 @@ flow_fault_tolerance() {
   # shellcheck disable=SC2086
   flow_evidence_nodes fetch-1 $survivors
   local h0; h0="$(ft_commit_height "$boot")"   # audit #303: baseline BEFORE stopping val-d + publishing
+  local killt0; killt0="$(date +%s)"   # scopes the escape-fingerprint reads to the escape under test (#525)
   svc val-d stop || true
   sleep 5
   # FT_DOWN_COMMIT_S is COMPUTED (PE §4), not the generic COMMIT_SLO_S: under the
@@ -392,7 +402,6 @@ flow_fault_tolerance() {
   # whose (h, r0) designee is the DOWN validator pays the round escape before a
   # live designee carries the entry — the 220s 2-round escape bound under the
   # #451 increasing durations (see H_ESCAPE_S) + one gather-leg margin ≈ 260.
-  : "${FT_DOWN_COMMIT_S:=260}"
   # #509: the 260s bound models a 2-round escape FROM IDLE; seed f35a0f9-76780
   # showed an escape that STARTED under load (heights already at r1 pre-kill,
   # sweeps stretched by the economy triple) advancing healthily PAST it — a
@@ -405,7 +414,29 @@ flow_fault_tolerance() {
   # fingerprint across the extension is the wedge signature and now a FAIL
   # (it was an unattributed GAP); only advancing-but-uncommitted-at-cap
   # remains a GAP (out of model — attribute before re-running, #7).
-  : "${FT_DOWN_HARD_S:=575}"
+  #
+  # #525: both tiers are TOPOLOGY-AWARE. The 260/575 figures price the 4-anchor
+  # base rotation; pre-epoch the (h+r) mod N rotation spans EVERY bonded seat
+  # (EligibleProposers = anchors + bonded), so a MATURING sheet rotates over 12
+  # seats — 8 of them loaded maturers/min-bond sybils — and run 94ef1e8-36901's
+  # h38-at-r3-uncommitted was plausibly in-mechanism for N=12 while out of the
+  # N=4 model. Policy: ONE extra escape rung per 4 rotation seats beyond the
+  # base, each rung priced by the same #451 arithmetic and ADDED to the base
+  # constants — so an N=4 sheet keeps the certified 260/575 exactly, and N=12
+  # computes 650/1445. Seat count = anchors + the opt-in bonded cohorts from
+  # the topology meta (the base sheet's fixed extras, e.g. the adversary seat,
+  # are absorbed in the base constants).
+  local ftseats ftextra ftrcap ftaddc=0 ftaddh=0 ftr
+  ftseats="$(python3 -c "
+import json;t=json.load(open('$FT_TOPO'));m=t['meta']
+anch=sum(1 for n in t['nodes'].values() if n['role']=='validator')
+print(anch + int(m.get('n_mat',0) or 0) + int(m.get('n_syb',0) or 0))" 2>/dev/null || echo 4)"
+  ftextra=$(( ftseats > 4 ? (ftseats - 4 + 3) / 4 : 0 )); ftrcap=$(( 3 + ftextra ))
+  for (( ftr=2; ftr<2+ftextra; ftr++ )); do ftaddc=$(( ftaddc + (2 + ftr*(ftr+1)/2) * 30 )); done
+  for (( ftr=4; ftr<4+ftextra; ftr++ )); do ftaddh=$(( ftaddh + (2 + ftr*(ftr+1)/2) * 30 )); done
+  : "${FT_DOWN_COMMIT_S:=$(( 260 + ftaddc ))}"
+  : "${FT_DOWN_HARD_S:=$(( 575 + ftaddh ))}"
+  [ "$ftextra" -gt 0 ] && echo "    6-fault-tolerance: rotation spans ${ftseats} bonded seats — tiers computed ${FT_DOWN_COMMIT_S}s/${FT_DOWN_HARD_S}s (+${ftextra} escape rung(s) over the 4-seat base, #525)"
   local res ok=0 fp0="" fp1=""
   res="$(ft_publish fetch-1 262144 || true)"
   if [ -n "$res" ]; then
@@ -413,24 +444,24 @@ flow_fault_tolerance() {
     ft_wait_new_block "$boot" "$h0" "$FT_DOWN_COMMIT_S" && ok=1
     if [ "$ok" != 1 ]; then
       # shellcheck disable=SC2086
-      fp0="$(ft_escape_progress $survivors)"
-      echo "    6-fault-tolerance: no commit in ${FT_DOWN_COMMIT_S}s (escape fingerprint: ${fp0}) — extending to the computed r≤3 cap ${FT_DOWN_HARD_S}s (#509)"
+      fp0="$(ft_escape_progress "$killt0" $survivors)"
+      echo "    6-fault-tolerance: no commit in ${FT_DOWN_COMMIT_S}s (escape fingerprint: ${fp0}) — extending to the computed r≤${ftrcap} cap ${FT_DOWN_HARD_S}s (#509)"
       if ft_wait_new_block "$boot" "$h0" "$(( FT_DOWN_HARD_S - FT_DOWN_COMMIT_S ))"; then
         ok=2
       else
         # shellcheck disable=SC2086
-        fp1="$(ft_escape_progress $survivors)"
+        fp1="$(ft_escape_progress "$killt0" $survivors)"
       fi
     fi
   fi
   if [ "$ok" = 1 ]; then
     slo_assert "6-fault-tolerance" major "publish still committed with one validator (val-d) down (within the computed ${FT_DOWN_COMMIT_S}s down-designee escape bound)" 1
   elif [ "$ok" = 2 ]; then
-    slo_assert "6-fault-tolerance" major "publish committed with val-d down BEYOND the expected ${FT_DOWN_COMMIT_S}s but inside the computed r≤3 hard cap (${FT_DOWN_HARD_S}s) — a slow escape that started under load, mechanism healthy (#509; escape fingerprint at first bound: ${fp0})" 1
+    slo_assert "6-fault-tolerance" major "publish committed with val-d down BEYOND the expected ${FT_DOWN_COMMIT_S}s but inside the computed r≤${ftrcap} hard cap (${FT_DOWN_HARD_S}s) — a slow escape that started under load, mechanism healthy (#509; escape fingerprint at first bound: ${fp0})" 1
   elif [ -n "$res" ] && [ -n "$fp1" ] && [ "$fp1" = "$fp0" ]; then
     record "6-fault-tolerance" fail major "WEDGE SIGNATURE: no commit AND a frozen escape fingerprint (${fp0}) across the ${FT_DOWN_COMMIT_S}s→${FT_DOWN_HARD_S}s extension with val-d down — the round ladder is NOT advancing; attribute from the captured survivor journals (#509 upgraded this from an unattributable GAP)"
   else
-    record "6-fault-tolerance" gap major "no new commit within the computed ${FT_DOWN_HARD_S}s r≤3 hard cap with val-d down (fingerprint ${fp0} → ${fp1:-n/a}: ladder advancing but uncommitted — OUT OF MODEL) — read the captured client error (publish-diag / .ft_publish_lasterr) and survivor journals before attributing (#509/#7)"
+    record "6-fault-tolerance" gap major "no new commit within the computed ${FT_DOWN_HARD_S}s r≤${ftrcap} hard cap with val-d down (fingerprint ${fp0} → ${fp1:-n/a}: ladder advancing but uncommitted — OUT OF MODEL) — read the captured client error (publish-diag / .ft_publish_lasterr) and survivor journals before attributing (#509/#7)"
   fi
   svc val-d start || true
 }
@@ -1172,11 +1203,15 @@ flow_c2_no_capture() {
 # never a re-grade.
 : "${LATCH_S:=1100}"
 # HANDOFF_BLOCKS_S: the drive must cross the next epoch boundary + 1 from
-# wherever the latch left the head — ≤ 9 blocks × the 220s worst-height bound
-# ≈ 1980. Run e2fab4b-9589 FAILed the old 600s window while genuinely crossing
-# (h40→51 at the measured 80–170s/height steady cadence): 600 assumed the
-# pre-#451 64s worst-case block. A miss inside THIS bound is a real stall.
-: "${HANDOFF_BLOCKS_S:=1980}"
+# wherever the latch left the head — ≤ 9 blocks × the per-height worst-case
+# escape bound. Run e2fab4b-9589 FAILed the old 600s window while genuinely
+# crossing (h40→51 at the measured 80–170s/height steady cadence): 600 assumed
+# the pre-#451 64s worst-case block. A miss inside THIS bound is a real stall.
+# COMPUTED INSIDE the flow since #525: the per-height bound is topology-aware
+# (220s at the 4-seat base → 9×220=1980; run 94ef1e8-36901 missed h57 by ONE
+# block at the N=4 figure on a 12-seat rotation while the latch itself tripped
+# — the drive was in-mechanism, the bound wasn't). An env HANDOFF_BLOCKS_S
+# still overrides.
 # LOCAL_PROOF: n/a — real-daemon latch/handoff is the named residual (in-process: sim TestTrainingWheelsShedThroughTheNodeLoop + the core/node modelcheck mature fixtures); e2e twin tracked in docs/thinking/2026-08-20-harness-local-first.md
 flow_maturing_handoff() {
   local maturing
@@ -1267,13 +1302,33 @@ flow_maturing_handoff() {
   #    at-or-after the latch. Drive commits across the next boundary + 1 so the
   #    frozen mature snapshot demonstrably GOVERNS, then assert the post-shed
   #    commit: chain advances with NO anchor-required refusal after the latch.
-  local h_latch target t0 ok=0
+  # Per-height worst case, TOPOLOGY-AWARE (#525, same policy as flow 6): the
+  # base 220s prices the 2-round escape on the 4-seat rotation; this sheet's
+  # rotation spans every bonded seat (anchors + maturers + sybils), so add one
+  # escape rung per 4 extra seats, each priced by the #451 arithmetic
+  # (dur(r) = 2 + r(r+1)/2 sweeps × 30s). N=4 → 220 (9×220 = the certified
+  # 1980); N=12 → 610. The drive exits EARLY if the ceiling freezes for one
+  # full per-height bound — a stalled height inside the computed window is the
+  # finding itself (PE §4), so a real wedge never burns the whole window.
+  local mh_seats mh_extra mh_height_s=220 mhr
+  mh_seats=$(( $(printf '%s\n' $anchors_nodes | grep -c .) + n_mat + n_syb ))
+  mh_extra=$(( mh_seats > 4 ? (mh_seats - 4 + 3) / 4 : 0 ))
+  for (( mhr=2; mhr<2+mh_extra; mhr++ )); do mh_height_s=$(( mh_height_s + (2 + mhr*(mhr+1)/2) * 30 )); done
+  : "${HANDOFF_BLOCKS_S:=$(( 9 * mh_height_s ))}"
+  local h_latch target t0 ok=0 mh_last_h mh_last_t mh_now_h
   h_latch="$(mh_ceiling)"
   target=$(( ( h_latch / 8 + 1 ) * 8 + 1 ))
-  echo "    driving commits across the epoch boundary: h${h_latch} → h${target}…"
+  echo "    driving commits across the epoch boundary: h${h_latch} → h${target} (bound ${HANDOFF_BLOCKS_S}s = 9 × ${mh_height_s}s/height over the ${mh_seats}-seat rotation)…"
   t0="$(date +%s)"
+  mh_last_h="${h_latch:-0}"; mh_last_t="$t0"
   while [ $(( $(date +%s) - t0 )) -lt "$HANDOFF_BLOCKS_S" ]; do
-    [ "$(mh_ceiling)" -ge "$target" ] 2>/dev/null && { ok=1; break; }
+    mh_now_h="$(mh_ceiling)"
+    [ "$mh_now_h" -ge "$target" ] 2>/dev/null && { ok=1; break; }
+    if [ "${mh_now_h:-0}" -gt "$mh_last_h" ] 2>/dev/null; then mh_last_h="$mh_now_h"; mh_last_t="$(date +%s)"; fi
+    if [ $(( $(date +%s) - mh_last_t )) -gt "$mh_height_s" ]; then
+      echo "    handoff drive: ceiling FROZEN at h${mh_last_h} for >${mh_height_s}s (one per-height worst-case bound) — exiting early; the stall grades, the window need not run out"
+      break
+    fi
     mh_drive_block || true
   done
   local anchor_refusal=0

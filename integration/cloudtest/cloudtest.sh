@@ -293,7 +293,14 @@ wait_ready() {
 
 run_scenarios() {
   echo "==> running scenarios"
-  : > "$FT_DIR/results.jsonl"
+  # NO truncation here (#525): `run` is the documented RE-DRIVE entry
+  # (FLOWS=… ./cloudtest.sh run), and truncating clobbered every previously
+  # graded verdict — run 94ef1e8-36901's re-drive reduced the sheet from 14
+  # rows to 3, and the archived results hold only the re-drive pass (the
+  # first-pass verdicts survive only in the console log). The sheet is cleared
+  # where a NEW sheet begins: the `all` paths (before spending money) and `up`
+  # (a fresh network). A re-drive APPENDS — gen_report keeps every row, so a
+  # re-driven flow shows each pass's verdict.
   # shellcheck disable=SC1091
   . ./lib.sh
   # shellcheck disable=SC1091
@@ -556,7 +563,12 @@ if [ "${LOCAL:-0}" = 1 ]; then
       trap teardown_local EXIT
       provision_local; wait_ready; run_scenarios; report
       ;;
-    up)   check_prereqs_local; build_binary_local; gen_topology; provision_local; wait_ready; echo "local network up (run=$RUN_ID) — 'LOCAL=1 ./cloudtest.sh run' to grade, '… down' to remove" ;;
+    up)   check_prereqs_local; build_binary_local; gen_topology
+          # A fresh network is a NEW sheet: clear it HERE, not in `run` (#525 —
+          # `run` is the re-drive entry and must append, never clobber).
+          : > "$FT_DIR/results.jsonl"
+          printf '# run=%s (LOCAL) — no scenarios have completed yet\n' "$RUN_ID" > "$FT_DIR/report.md"
+          provision_local; wait_ready; echo "local network up (run=$RUN_ID) — 'LOCAL=1 ./cloudtest.sh run' to grade, '… down' to remove" ;;
     run)  run_scenarios; report ;;
     report) report ;;
     down) KEEP_UP=0 teardown_local ;;
@@ -580,7 +592,12 @@ case "${1:-all}" in
     trap teardown EXIT
     apply; wait_ready; run_scenarios; report
     ;;
-  up)     preflight_gate; check_prereqs; build_binary; gen_topology; KEEP_UP=1 apply; wait_ready; echo "network up (run=$RUN_ID)"; ;;
+  up)     preflight_gate; check_prereqs; build_binary; gen_topology
+          # A fresh network is a NEW sheet: clear it HERE, not in `run` (#525 —
+          # `run` is the re-drive entry and must append, never clobber).
+          : > "$FT_DIR/results.jsonl"
+          printf '# run=%s — no scenarios have completed yet (network came up? see failed-nodes-%s.log)\n' "$RUN_ID" "$RUN_ID" > "$FT_DIR/report.md"
+          KEEP_UP=1 apply; wait_ready; echo "network up (run=$RUN_ID)"; ;;
   run)    run_scenarios; report; ;;
   report) report; ;;
   down)   KEEP_UP=0 teardown; ;;

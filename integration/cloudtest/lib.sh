@@ -57,6 +57,15 @@ ssh_node() { # ssh_node NAME "remote command"
 
 jlog() { ssh_node "$1" "sudo journalctl -u silt --no-pager -n ${2:-400}"; }
 
+# jlog_since NAME EPOCH — every journald line at/after EPOCH. Use for any read
+# that COUNTS lines (fingerprints, rates): a line-windowed `jlog N` read is
+# scrolled by unrelated later narration — run 94ef1e8-36901's economy sweep spam
+# pushed the round-change lines out of the last-600 window, so the #509 escape
+# fingerprint read rc=0 ("frozen") while the ladder was demonstrably advancing,
+# manufacturing a false WEDGE FAIL (#525). Same unscoped-read class waitfor_since
+# closes for MATCHES (audit #303), applied to counts.
+jlog_since() { ssh_node "$1" "sudo journalctl -u silt --no-pager --since \"@${2}\""; }
+
 # The daemon splits its output: fmt.Printf banners (chain: committed block,
 # registry: …, reorged, slashed) go to stdout → journald (read via jlog), but
 # every STRUCTURED n.logf(...) line — the per-node signals like `standing self=…
