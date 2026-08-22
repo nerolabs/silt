@@ -219,6 +219,20 @@ ft_wait_new_block() { # ft_wait_new_block NODE H0 TIMEOUT_S -> 0 if a block > H0
   return 1
 }
 
+# ft_escape_progress SURVIVOR... — a progress fingerprint of the down-designee
+# escape (#509): total round-change lines + the max committed height across the
+# surviving validators' recent journals. Two EQUAL fingerprints a stall window
+# apart are the wedge signature (PE §4: a miss inside a principled bound); an
+# advancing fingerprint is the #451 ladder alive — slow is not stuck.
+ft_escape_progress() {
+  local n rc=0 h=0 cur
+  for n in "$@"; do
+    cur="$(jlog "$n" 600 2>/dev/null | grep -c 'round-change' || true)"; rc=$(( rc + ${cur:-0} ))
+    cur="$(ft_commit_height "$n")"; [ "${cur:-0}" -gt "$h" ] && h="$cur"
+  done
+  printf 'rc=%s h=%s' "$rc" "$h"
+}
+
 # ── Flow 1: build & first run ──────────────────────────────────────────────────
 # LOCAL_PROOF: LOCAL=1 SMOKE=1 ./integration/cloudtest/cloudtest.sh  (this flow runs verbatim on the docker backend)
 flow_first_run() {
@@ -367,7 +381,9 @@ flow_fault_tolerance() {
   # validators, not val-d (deliberately down) — require_nodes stashed only val-d.
   # Override so the capture attributes a real gap (run 4faaee8-22913's flow-6 gap
   # had only the down node's journal). shellcheck disable=SC2086
-  flow_evidence_nodes fetch-1 $(python3 -c "import json;print(' '.join(n for n,v in json.load(open('$NODES_JSON')).items() if v['role']=='validator' and n!='val-d'))")
+  local survivors; survivors="$(python3 -c "import json;print(' '.join(n for n,v in json.load(open('$NODES_JSON')).items() if v['role']=='validator' and n!='val-d'))")"
+  # shellcheck disable=SC2086
+  flow_evidence_nodes fetch-1 $survivors
   local h0; h0="$(ft_commit_height "$boot")"   # audit #303: baseline BEFORE stopping val-d + publishing
   svc val-d stop || true
   sleep 5
@@ -377,16 +393,44 @@ flow_fault_tolerance() {
   # live designee carries the entry — the 220s 2-round escape bound under the
   # #451 increasing durations (see H_ESCAPE_S) + one gather-leg margin ≈ 260.
   : "${FT_DOWN_COMMIT_S:=260}"
-  local res ok=0
+  # #509: the 260s bound models a 2-round escape FROM IDLE; seed f35a0f9-76780
+  # showed an escape that STARTED under load (heights already at r1 pre-kill,
+  # sweeps stretched by the economy triple) advancing healthily PAST it — a
+  # load artifact graded as a GAP. The bound is now two-tier, both computed
+  # from the #451 arithmetic (dur(r) = 2 + r(r+1)/2 sweeps × 30s): the 260s
+  # expected tier stays the first check, and a miss EXTENDS — while the ladder
+  # demonstrably advances — to the r≤3 hard cap dur(0..3)=2+3+5+8=18 sweeps
+  # = 540s + ~34s gather ≈ 575. The grade sharpens both ways: a commit inside
+  # the cap is a PASS with the slow escape narrated; a FROZEN escape
+  # fingerprint across the extension is the wedge signature and now a FAIL
+  # (it was an unattributed GAP); only advancing-but-uncommitted-at-cap
+  # remains a GAP (out of model — attribute before re-running, #7).
+  : "${FT_DOWN_HARD_S:=575}"
+  local res ok=0 fp0="" fp1=""
   res="$(ft_publish fetch-1 262144 || true)"
   if [ -n "$res" ]; then
     # Require a NEW block with val-d down, not a stale pre-kill 'committed block' line.
     ft_wait_new_block "$boot" "$h0" "$FT_DOWN_COMMIT_S" && ok=1
+    if [ "$ok" != 1 ]; then
+      # shellcheck disable=SC2086
+      fp0="$(ft_escape_progress $survivors)"
+      echo "    6-fault-tolerance: no commit in ${FT_DOWN_COMMIT_S}s (escape fingerprint: ${fp0}) — extending to the computed r≤3 cap ${FT_DOWN_HARD_S}s (#509)"
+      if ft_wait_new_block "$boot" "$h0" "$(( FT_DOWN_HARD_S - FT_DOWN_COMMIT_S ))"; then
+        ok=2
+      else
+        # shellcheck disable=SC2086
+        fp1="$(ft_escape_progress $survivors)"
+      fi
+    fi
   fi
   if [ "$ok" = 1 ]; then
     slo_assert "6-fault-tolerance" major "publish still committed with one validator (val-d) down (within the computed ${FT_DOWN_COMMIT_S}s down-designee escape bound)" 1
+  elif [ "$ok" = 2 ]; then
+    slo_assert "6-fault-tolerance" major "publish committed with val-d down BEYOND the expected ${FT_DOWN_COMMIT_S}s but inside the computed r≤3 hard cap (${FT_DOWN_HARD_S}s) — a slow escape that started under load, mechanism healthy (#509; escape fingerprint at first bound: ${fp0})" 1
+  elif [ -n "$res" ] && [ -n "$fp1" ] && [ "$fp1" = "$fp0" ]; then
+    record "6-fault-tolerance" fail major "WEDGE SIGNATURE: no commit AND a frozen escape fingerprint (${fp0}) across the ${FT_DOWN_COMMIT_S}s→${FT_DOWN_HARD_S}s extension with val-d down — the round ladder is NOT advancing; attribute from the captured survivor journals (#509 upgraded this from an unattributable GAP)"
   else
-    record "6-fault-tolerance" gap major "no new commit within the computed ${FT_DOWN_COMMIT_S}s down-designee bound with val-d down — read the captured client error (publish-diag / .ft_publish_lasterr) before attributing; candidates: the O(f+1) designee ladder under load, quorum sizing, or a real FT break"
+    record "6-fault-tolerance" gap major "no new commit within the computed ${FT_DOWN_HARD_S}s r≤3 hard cap with val-d down (fingerprint ${fp0} → ${fp1:-n/a}: ladder advancing but uncommitted — OUT OF MODEL) — read the captured client error (publish-diag / .ft_publish_lasterr) and survivor journals before attributing (#509/#7)"
   fi
   svc val-d start || true
 }
