@@ -214,12 +214,19 @@ type AuditReport struct {
 // for the honest, slashes for the liars. The auditor needs the manifest (it
 // fetches it first) and a ledger to settle into.
 func (n *Node) Audit(reg ports.Registry, ch link.CareHandle, done func(AuditReport)) {
+	n.lookupEntryAsync(reg, ch.Root, func(entry ports.Entry, ok bool, err error) {
+		var report AuditReport
+		if err != nil || !ok {
+			done(report)
+			return
+		}
+		n.auditEntry(entry, ch, done)
+	})
+}
+
+// auditEntry is Audit past the (async, #473) registry resolution.
+func (n *Node) auditEntry(entry ports.Entry, ch link.CareHandle, done func(AuditReport)) {
 	var report AuditReport
-	entry, ok, err := n.lookupEntry(reg, ch.Root)
-	if err != nil || !ok {
-		done(report)
-		return
-	}
 	n.fetchAll(entry.ManifestChunks, func(missing []ports.ChunkID) {
 		if len(missing) > 0 {
 			done(report)

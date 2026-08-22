@@ -1,7 +1,7 @@
 # silt field-test report
 
-- **run:** `f35a0f9-18198`  ·  **silt commit:** `f35a0f9`  ·  **harness commit:** `064feca`  ·  **bond mode:** `fast`  ·  **generated:** 2026-08-21T22:31:23Z
-- **result:** **PASS**  ·  24 pass / 0 gap / 0 fail / 3 skip
+- **run:** `c843276-15755`  ·  **silt commit:** `c843276`  ·  **harness commit:** `c843276`  ·  **bond mode:** `fast`  ·  **generated:** 2026-08-22T16:31:42Z
+- **result:** **REVIEW**  ·  10 pass / 1 gap / 0 fail / 12 skip
 
 ## Per-flow verdict
 
@@ -9,29 +9,25 @@
 |------|---------|----------|---------|--------|
 | `1-first-run` | ✅ pass | blocker |  | all silt nodes report service active |
 | `10-maturing-handoff` | ➖ skip | major |  | not a MATURING topology — opt in with MATURING=1 SYBILS=8 ./cloudtest.sh to field-exercise the handoff/post-shed regime (the external red team's sharpest seam-#8 target; until then it is proven only in-process: core/chain/quorum_weight_test.go + sim/maturequorum_test.go) |
-| `11-economy-repair` | ✅ pass | major |  | the S7 repair economy CLOSED on the wire: killed 3 columns' holders → the caretaker RECONSTRUCTED from parity → a verified-repair bounty drew the object's reserve down (paid=531080 credits over 1 repair(s)) — durability paid for itself on a real network, standing untouched (Invariant A). Post-kill cycle: store-2 last-sweep=23/29 stripes-repaired=1; relay last-sweep=29/29 stripes-repaired=2 |
-| `11b-economy-skim` | ✅ pass | major |  | the SKIM leg closed on the wire: serve traffic (reconstruction reads + driven fetches) routed revenue into the object's durability reserve on the serving holder's ledger (funded 400000 → 563850 on store-2: +163850 pure skim above the prepay baseline) — the object pays for its own repair (S7) |
-| `11c-economy-horizon` | ✅ pass | info |  | g-instrumentation sample (S7 finite-but-renewable): paid=531080 over 1 repair(s), reserve-after=0, horizonSec=0 (−1 = no burn window yet). One row per graded run — the g trend needs the series, not this sample |
+| `11-economy-repair` | ➖ skip | minor |  | opt-in (ECONOMY=1): the S7 repair-bounty-on-the-wire grade |
 | `184-equivocation` | ➖ skip | blocker |  | runs on the contained equivocation ISLAND every sheet (flow_equivocation_island — a separate consensus universe; its slash never taxes main-sheet fault tolerance, PE 2026-08-17). This row is the historical pointer; the island row is the graded verdict. |
-| `184-equivocation-island` | ✅ pass | blocker |  | accountability FIRED on the wire: a contained island anchor double-signed and an honest anchor SLASHED it (slashed equivocator 6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 (double-signed at height 2)) — proven equivocation → permanent eviction (F2), zero blast radius to the main sheet (separate consensus universe) |
-| `184-forged-block` | ✅ pass | major |  | forged-signature proposal rejected (adversary logged 'correctly REJECTED by val-a') |
-| `184-low-bond` | ✅ pass | major |  | under-bonded proposer rejected (adversary logged 'correctly REJECTED by val-a') |
-| `184-partition` | ✅ pass | major |  | minority val-c STALLED at h25 through the partition (a < ⅓ island cannot commit) then CAUGHT UP to the heal-time majority head h29 (now at h29) on heal — BFT partition→heal reconverged over the real wire (a catch-up, NOT a reorg — a minority never committed a conflicting fork) |
-| `2-publish-fetch` | ✅ pass | blocker | 78s | fetched from store-2 bit-perfect |
+| `184-equivocation-island` | ➖ skip | blocker |  | skipped — node 'island-a' not in this topology |
+| `184-forged-block` | ➖ skip | major |  | skipped — node 'adversary' not in this topology |
+| `184-partition` | ➖ skip | major |  | skipped — node 'val-c' not in this topology |
+| `2-publish-fetch` | ✅ pass | blocker | 30s | fetched from store-1 bit-perfect |
 | `3-care-link` | ✅ pass | minor |  | publish exposes a siltcare: link (repair/audit without the key) |
 | `4-become-validator` | ✅ pass | major |  | non-anchor validators earn their OWN standing on the objective path |
-| `5-convergence` | ✅ pass | major |  | all validators within 2 of tip=15 AND every tip-height validator shares head hash 404b75dc5bd0… (heights: val-a=15:404b75dc5bd0 val-b=15:404b75dc5bd0 val-c=15:404b75dc5bd0 val-d=15:404b75dc5bd0); DURABLE (val-a head 15->15 over 20s, no regression) |
+| `5-convergence` | ✅ pass | major |  | all validators within 2 of tip=5 AND every tip-height validator shares head hash 06c4ffb051d8… (heights: val-a=5:06c4ffb051d8 val-b=5:06c4ffb051d8); DURABLE (val-a head 5->5 over 20s, no regression) |
 | `5-sybil-no-capture` | ➖ skip | major |  | no Sybil cohort in this topology — opt in with SYBILS=8 ./cloudtest.sh to certify the PURE anchor gate on cloud (the local integration/sybil suite reaches only the standing gate) |
-| `6-fault-tolerance` | ✅ pass | major |  | publish still committed with one validator (val-d) down (within the computed 260s down-designee escape bound) |
-| `7-restart-content` | ✅ pass | major |  | content still fetchable BIT-PERFECT after a storage-node restart |
-| `7-restart-standing` | ✅ pass | major | 14s | val-b standing returned after restart without re-bonding |
-| `8-takedown` | ✅ pass | major |  | store-1 enforces the operator denylist ([2160]: denylist: honoring 1 denied root(s)) while store-2 still serves BIT-PERFECT (no global switch) |
-| `9-cross-nat` | ✅ pass | major |  | natted nodes exchanged a file through the relay/hole-punch |
-| `chaos-fetch` | ✅ pass | major |  | content fetchable BIT-PERFECT after a hard-crash (SIGKILL) + restart of a storage node |
-| `chaos-reprovide` | ✅ pass | major |  | SIGKILLed storage node re-announced its held chunks (#69) after a hard crash (24s to re-announce; latency scales with held-chunk count, #402/M1) |
-| `durability-turnover` | ✅ pass | major |  | content survived a PERMANENT storage-node departure — fetched bit-perfect from a survivor |
+| `6-fault-tolerance` | ➖ skip | major |  | skipped — node 'val-d' not in this topology |
+| `7-restart-content` | ➖ skip | major |  | skipped — needs store-2 (absent in this topology, e.g. SMOKE) |
+| `7-restart-standing` | ✅ pass | major | 5s | val-b standing returned after restart without re-bonding |
+| `8-takedown` | ⚠️ gap | major |  | takedown scoping not confirmed (denied=1 served=0) — daemon never narrated denylist enforcement, or store-2 failed to serve |
+| `9-cross-nat` | ➖ skip | major |  | skipped — node 'nat-1' not in this topology |
+| `chaos-crash` | ➖ skip | major |  | skipped — node 'store-2' not in this topology |
+| `durability-turnover` | ➖ skip | major |  | skipped — node 'store-2' not in this topology |
 | `infra-node-liveness` | ✅ pass | blocker |  | node-liveness precondition HELD — no OOM-kill or crash-loop across the cohort, so the sheet was graded on a HEALTHY network |
-| `infra-node-memory` | ✅ pass | info |  | RSS envelope measured (cgroup MemoryCurrent, every 30s → rss-f35a0f9-18198.jsonl): worst peak 0.62GiB across the cohort. adversary peak=0.43GiB final=0.34GiB n=16; fetch-1 peak=0.02GiB final=0.01GiB n=16; island-a peak=0.34GiB final=0.28GiB n=16; island-b peak=0.37GiB final=0.30GiB n=16; island-c peak=0.37GiB final=0.29GiB n=16; island-d peak=0.38GiB final=0.30GiB n=16; nat-1 peak=0.02GiB final=0.02GiB n=16; nat-2 peak=0.02GiB final=0.02GiB n=16; registry peak=0.00GiB final=0.00GiB n=16; relay peak=0.02GiB final=0.01GiB n=16; store-1 peak=0.01GiB final=0.01GiB n=10; store-2 peak=0.02GiB final=0.01GiB n=16; store-3 peak=0.01GiB final=0.01GiB n=16; store-4 peak=0.01GiB final=0.01GiB n=10; val-a peak=0.62GiB final=0.62GiB n=16; val-b peak=0.57GiB final=0.57GiB n=16; val-c peak=0.45GiB final=0.43GiB n=16; val-d peak=0.47GiB final=0.44GiB n=16 |
+| `infra-node-memory` | ✅ pass | info |  | RSS envelope measured (cgroup MemoryCurrent, every 30s → rss-c843276-15755.jsonl): worst peak 0.20GiB across the cohort. fetch-1 peak=0.01GiB final=0.01GiB n=6; store-1 peak=0.01GiB final=0.01GiB n=6; val-a peak=0.20GiB final=0.18GiB n=6; val-b peak=0.20GiB final=0.20GiB n=6 |
 | `priv-unlinkability` | ✅ pass | major |  | default chain REFUSED a durable file→publisher link (refuse-to-surveil) |
 | `web-ui-guard` | ✅ pass | major |  | web-UI guard held on a real VM: no-token POST=401 (want 401), DNS-rebinding Host=403 (want 403), token-free read=200 (want 200) |
 
@@ -40,11 +36,41 @@
 ### 184-equivocation — ➖ skip (blocker)
 runs on the contained equivocation ISLAND every sheet (flow_equivocation_island — a separate consensus universe; its slash never taxes main-sheet fault tolerance, PE 2026-08-17). This row is the historical pointer; the island row is the graded verdict.
 
+### 184-equivocation-island — ➖ skip (blocker)
+skipped — node 'island-a' not in this topology
+
 ### 10-maturing-handoff — ➖ skip (major)
 not a MATURING topology — opt in with MATURING=1 SYBILS=8 ./cloudtest.sh to field-exercise the handoff/post-shed regime (the external red team's sharpest seam-#8 target; until then it is proven only in-process: core/chain/quorum_weight_test.go + sim/maturequorum_test.go)
 
+### 184-forged-block — ➖ skip (major)
+skipped — node 'adversary' not in this topology
+
+### 184-partition — ➖ skip (major)
+skipped — node 'val-c' not in this topology
+
 ### 5-sybil-no-capture — ➖ skip (major)
 no Sybil cohort in this topology — opt in with SYBILS=8 ./cloudtest.sh to certify the PURE anchor gate on cloud (the local integration/sybil suite reaches only the standing gate)
+
+### 6-fault-tolerance — ➖ skip (major)
+skipped — node 'val-d' not in this topology
+
+### 7-restart-content — ➖ skip (major)
+skipped — needs store-2 (absent in this topology, e.g. SMOKE)
+
+### 8-takedown — ⚠️ gap (major)
+takedown scoping not confirmed (denied=1 served=0) — daemon never narrated denylist enforcement, or store-2 failed to serve
+
+### 9-cross-nat — ➖ skip (major)
+skipped — node 'nat-1' not in this topology
+
+### chaos-crash — ➖ skip (major)
+skipped — node 'store-2' not in this topology
+
+### durability-turnover — ➖ skip (major)
+skipped — node 'store-2' not in this topology
+
+### 11-economy-repair — ➖ skip (minor)
+opt-in (ECONOMY=1): the S7 repair-bounty-on-the-wire grade
 
 ---
 

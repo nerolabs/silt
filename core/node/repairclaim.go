@@ -69,19 +69,20 @@ func (n *Node) handleRepairClaim(from ports.NodeID, msg ports.Message) {
 		deny("not a caretaker of this root, or no registry")
 		return
 	}
-	entry, ok, err := n.lookupEntry(n.reg, claim.Root)
-	if err != nil || !ok {
-		deny("registry lookup failed")
-		return
-	}
-	// (Re)acquire the manifest — mostly a local cache hit for a caretaker — then
-	// judge on the LAYOUT alone (the content keys stay sealed, M11).
-	n.fetchAll(entry.ManifestChunks, func(missing []ports.ChunkID) {
-		if len(missing) > 0 {
-			deny("manifest unreachable (transient)")
+	n.lookupEntryAsync(n.reg, claim.Root, func(entry ports.Entry, ok bool, err error) {
+		if err != nil || !ok {
+			deny("registry lookup failed")
 			return
 		}
-		n.judgeRepairClaim(from, msg, claim, ch, entry, 0)
+		// (Re)acquire the manifest — mostly a local cache hit for a caretaker — then
+		// judge on the LAYOUT alone (the content keys stay sealed, M11).
+		n.fetchAll(entry.ManifestChunks, func(missing []ports.ChunkID) {
+			if len(missing) > 0 {
+				deny("manifest unreachable (transient)")
+				return
+			}
+			n.judgeRepairClaim(from, msg, claim, ch, entry, 0)
+		})
 	})
 }
 

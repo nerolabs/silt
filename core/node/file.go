@@ -639,11 +639,18 @@ func (n *Node) NetGetRetain(reg ports.Registry, h link.Handle, w io.Writer, done
 }
 
 func (n *Node) netGet(reg ports.Registry, h link.Handle, w io.Writer, retain bool, done func(error)) {
-	entry, ok, err := n.lookupEntry(reg, h.Root)
-	if err != nil || !ok {
-		done(fmt.Errorf("netget %s: %w", h.Root, ports.ErrNoSuchEntry))
-		return
-	}
+	n.lookupEntryAsync(reg, h.Root, func(entry ports.Entry, ok bool, err error) {
+		if err != nil || !ok {
+			done(fmt.Errorf("netget %s: %w", h.Root, ports.ErrNoSuchEntry))
+			return
+		}
+		n.netGetEntry(reg, entry, h, w, retain, done)
+	})
+}
+
+// netGetEntry is netGet past the (async, #473) registry resolution. reg is
+// threaded for pipeline.Get's final verification read only.
+func (n *Node) netGetEntry(reg ports.Registry, entry ports.Entry, h link.Handle, w io.Writer, retain bool, done func(error)) {
 	// Held-before snapshot (the repairStripe discipline): only what THIS call
 	// pulls may be dropped or retained — a chunk the node already hosted stays
 	// exactly as it was, proofs and records included.
@@ -815,11 +822,17 @@ func (n *Node) retainPulled(m *manifest.Manifest, h link.Handle, pulled []ports.
 // per-chunk holders. Loop-driven (resolveProviders walks the DHT); call via the
 // ephemeral run() harness. Read-only.
 func (n *Node) ColumnHolders(reg ports.Registry, h link.Handle, done func(map[int][]ports.NodeID, error)) {
-	entry, ok, err := n.lookupEntry(reg, h.Root)
-	if err != nil || !ok {
-		done(nil, fmt.Errorf("holders %s: %w", h.Root, ports.ErrNoSuchEntry))
-		return
-	}
+	n.lookupEntryAsync(reg, h.Root, func(entry ports.Entry, ok bool, err error) {
+		if err != nil || !ok {
+			done(nil, fmt.Errorf("holders %s: %w", h.Root, ports.ErrNoSuchEntry))
+			return
+		}
+		n.columnHoldersEntry(entry, h, done)
+	})
+}
+
+// columnHoldersEntry is ColumnHolders past the (async, #473) registry resolution.
+func (n *Node) columnHoldersEntry(entry ports.Entry, h link.Handle, done func(map[int][]ports.NodeID, error)) {
 	n.fetchAll(entry.ManifestChunks, func(missing []ports.ChunkID) {
 		if len(missing) > 0 {
 			done(nil, fmt.Errorf("holders: %d of %d manifest chunks unreachable", len(missing), len(entry.ManifestChunks)))

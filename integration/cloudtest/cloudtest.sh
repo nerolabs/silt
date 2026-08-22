@@ -8,6 +8,8 @@
 #   ./cloudtest.sh report     regenerate the report from results.jsonl
 #   ./cloudtest.sh down       terraform destroy
 #   ./cloudtest.sh nuke       last-resort: delete every resource labelled cloudtest=<run>
+#   ./cloudtest.sh net-up     create the PERSISTENT network (then launch runs with PERSIST_NET=1)
+#   ./cloudtest.sh net-down   destroy the persistent network
 #
 # Teardown is guaranteed: the default lifecycle destroys on EXIT (even on error),
 # every VM self-destructs after TTL_MINUTES, and `nuke` cleans up by label if
@@ -110,12 +112,13 @@ gen_topology() {
 
 tf() { terraform -chdir="$FT_DIR/terraform" "$@"; }
 
-# Pre-flight the external-IP quota per region BEFORE apply (§F): the 13-node topology
-# needs ~11 external IPs, but the default IN_USE_ADDRESSES quota is 8/region — a shortfall
-# only surfaces ~30s/instance into a doomed apply. Count the public (non-natted/natgw,
-# they egress via Cloud NAT) nodes per region from topology.json and compare to each
-# region's live IN_USE_ADDRESSES headroom. PREFLIGHT=0 skips. Zone E2 capacity is not
-# queryable via the API, so this covers the IP quota only (the other half of §F).
+# Pre-flight the external-IP quota per region BEFORE apply (§F): a shortfall
+# only surfaces ~30s/instance into a doomed apply. Count every ADDRESS-consuming
+# node per region (public nodes AND the natgw — it holds the masquerade IP;
+# natted/island/internal_only are genuinely address-free) from topology.json and
+# compare to each region's live IN_USE_ADDRESSES headroom. PREFLIGHT=0 skips.
+# Zone E2 capacity is not queryable via the API, so this covers the IP quota
+# only (the other half of §F).
 preflight_quota() {
   [ "${PREFLIGHT:-1}" = 0 ] && { echo "==> preflight: skipped (PREFLIGHT=0)"; return 0; }
   [ -f "${FT_TOPO:-$FT_DIR/topology.json}" ] || return 0
@@ -136,8 +139,14 @@ from collections import Counter
 nodes = json.load(open(sys.argv[1]))["nodes"]
 c = Counter()
 for n in nodes.values():
-    # Mirror terraform main.tf public_nodes: only these get an external IP.
-    if n.get("role") in ("natted", "natgw", "island") or n.get("internal_only"):
+    # Mirror terraform main.tf's ADDRESS consumers, not just its public_nodes set:
+    # the natgw is excluded from public_nodes (its own resource block) but its
+    # network_interface carries access_config — it IS the masquerade box, so it
+    # holds an external IP and counts against IN_USE_ADDRESSES like any public
+    # node. Skipping it undercounted the natgw's region by 1 (at the 8/8 exact
+    # fit of the full SYBILS+MATURING+ECONOMY topology, the margin this hides is
+    # the whole margin). natted/island/internal_only remain genuinely address-free.
+    if n.get("role") in ("natted", "island") or n.get("internal_only"):
         continue
     c[n.get("region", "?")] += 1
 for r, k in c.items():
@@ -186,7 +195,14 @@ apply() {
   # shell would compute a different id and match nothing — read this file instead.
   printf '%s\n' "$RUN_ID" > "$FT_DIR/.last_run_id"
   tf init -input=false >/dev/null
+  # Persistent-network mode (harness-hardening c): PERSIST_NET=1 reuses the
+  # long-lived VPC owned by terraform/network (create once: ./cloudtest.sh net-up)
+  # instead of building/destroying a per-run one (~minutes/run). Record the mode
+  # so a fresh-shell destroy evaluates the same config it applied with.
+  printf '%s' "${PERSIST_NET:-0}" > "$FT_DIR/.persist_net"
+  [ "${PERSIST_NET:-0}" = 1 ] && echo "==> network: PERSISTENT (silt-persist — run 'net-up' once beforehand)" || echo "==> network: per-run (PERSIST_NET=1 + 'net-up' to reuse one across runs)"
   tf apply -input=false -auto-approve \
+    -var "persistent_network=$([ "${PERSIST_NET:-0}" = 1 ] && echo true || echo false)" \
     -var "project_id=$PROJECT_ID" \
     -var "default_region=$REGION" \
     -var "run_id=$RUN_ID" \
@@ -327,7 +343,9 @@ teardown() {
   # Do NOT swallow destroy stderr (§D): a partial-apply state makes `terraform destroy`
   # fail, and hiding its error makes the destroy-failed→nuke handoff (and the VPC leak it
   # can cause) invisible. Let terraform's error print so the fallback is diagnosable.
+  local pn; pn="${PERSIST_NET:-$(cat "$FT_DIR/.persist_net" 2>/dev/null || echo 0)}"
   tf destroy -input=false -auto-approve \
+    -var "persistent_network=$([ "$pn" = 1 ] && echo true || echo false)" \
     -var "project_id=$PROJECT_ID" -var "default_region=$REGION" -var "run_id=$RUN_ID" \
     -var "silt_binary_path=$FT_DIR/silt-linux-amd64" \
     || { echo "    terraform destroy failed (see stderr above) — falling back to nuke-by-name"; nuke; }
@@ -567,6 +585,19 @@ case "${1:-all}" in
   report) report; ;;
   down)   KEEP_UP=0 teardown; ;;
   nuke)   nuke; ;;
+  net-up)
+    # Create (or update) the PERSISTENT network the PERSIST_NET=1 runs attach to.
+    # Own state under terraform/network — a run's destroy never touches it. Idle
+    # cost is $0 (VPC/subnets/firewalls free; Cloud NAT bills only processed egress).
+    terraform -chdir="$FT_DIR/terraform/network" init -input=false >/dev/null
+    terraform -chdir="$FT_DIR/terraform/network" apply -input=false -auto-approve \
+      -var "project_id=$PROJECT_ID" -var "default_region=$REGION"
+    echo "persistent network up — launch runs with PERSIST_NET=1"
+    ;;
+  net-down)
+    terraform -chdir="$FT_DIR/terraform/network" destroy -input=false -auto-approve \
+      -var "project_id=$PROJECT_ID" -var "default_region=$REGION"
+    ;;
   heap)
     # ./cloudtest.sh heap <node> [heap|goroutine|allocs] — pull a live pprof profile
     # from a node to attribute the MATURING consensus-node OOM. Needs the run to have

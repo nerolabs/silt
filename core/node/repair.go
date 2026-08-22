@@ -46,15 +46,16 @@ func (n *Node) Care(reg ports.Registry, ch link.CareHandle) {
 		n.clock.AfterFunc(n.cfg.RepairInterval, n.repairTick)
 	}
 	n.announceRepairQuorum(ch.Root) // become discoverable as a caretaker-judge (H7)
-	entry, ok, err := n.lookupEntry(reg, ch.Root)
-	if err != nil || !ok {
-		return
-	}
-	n.fetchAll(entry.ManifestChunks, func(missing []ports.ChunkID) {
-		if len(missing) == 0 {
-			n.announceAll(entry.ManifestChunks, func() {})
-			n.reconcileWorkingSet(entry, ch)
+	n.lookupEntryAsync(reg, ch.Root, func(entry ports.Entry, ok bool, err error) {
+		if err != nil || !ok {
+			return
 		}
+		n.fetchAll(entry.ManifestChunks, func(missing []ports.ChunkID) {
+			if len(missing) == 0 {
+				n.announceAll(entry.ManifestChunks, func() {})
+				n.reconcileWorkingSet(entry, ch)
+			}
+		})
 	})
 }
 
@@ -270,14 +271,22 @@ func (n *Node) repairRoot(ch link.CareHandle, done func()) {
 		done() // taken down: stop keeping it alive
 		return
 	}
-	entry, ok, err := n.lookupEntry(n.reg, ch.Root)
-	if err != nil || !ok {
-		// Observability (#235): a silent skip here hid a caretaker that could
-		// not even resolve the entry — indistinguishable from a healthy sweep.
-		n.logf(ports.LogInfo, "repair sweep skipped: registry lookup failed", "root", ch.Root, "err", err)
-		done()
-		return
-	}
+	n.lookupEntryAsync(n.reg, ch.Root, func(entry ports.Entry, ok bool, err error) {
+		if err != nil || !ok {
+			// Observability (#235): a silent skip here hid a caretaker that could
+			// not even resolve the entry — indistinguishable from a healthy sweep.
+			n.logf(ports.LogInfo, "repair sweep skipped: registry lookup failed", "root", ch.Root, "err", err)
+			done()
+			return
+		}
+		n.repairRootEntry(entry, ch, done)
+	})
+}
+
+// repairRootEntry continues repairRoot once the registry entry is resolved
+// (asynchronously — #473: the lookup must not hold the loop on a chainless
+// caretaker pointed at a network registry).
+func (n *Node) repairRootEntry(entry ports.Entry, ch link.CareHandle, done func()) {
 	// (Re)acquire the manifest each sweep: mostly local cache hits, but
 	// a caretaker that missed its warm-start fetch keeps trying rather
 	// than sitting out the crisis.
