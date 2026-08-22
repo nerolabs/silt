@@ -53,8 +53,46 @@ func (n *Node) Care(reg ports.Registry, ch link.CareHandle) {
 	n.fetchAll(entry.ManifestChunks, func(missing []ports.ChunkID) {
 		if len(missing) == 0 {
 			n.announceAll(entry.ManifestChunks, func() {})
+			n.reconcileWorkingSet(entry, ch)
 		}
 	})
+}
+
+// reconcileWorkingSet drops a crashed repair's orphaned survivor fetches at
+// boot (#502). A repairing caretaker (or judging caretaker-judge) pulls up to
+// k×stripes survivor chunks and drops them only in the post-reconstruction
+// cleanup continuation — a restart in that window kills the chain, and the
+// pulls otherwise sit in the store forever: record-less bytes counting against
+// the pledge and read as local by the next sweep's includeLocal probe.
+//
+// The rule: a LEAF of this cared root, present in the store, with no proof in
+// the PERSISTED backing, is an orphan. Every legitimate leaf holding carries a
+// persisted proof (MsgStoreChunk refuses proof-less coded shards; the repair
+// self-hold and NetGetRetain mint one; plain NetGet drops its working set —
+// #500, which this rule depends on). Manifest chunks are exempt — caretakers
+// hold them bare by design (the warm start above). n.proofs (durable truth) is
+// consulted, never proofMeta, which is rebuilt lazily at boot and would race.
+// Runs from Care's warm-start continuation: at boot nothing is in flight, so
+// the rule has no false positives.
+func (n *Node) reconcileWorkingSet(entry ports.Entry, ch link.CareHandle) {
+	m, err := pipeline.LoadLayout(bg(), n.store, entry, ch)
+	if err != nil || m.K == 0 && len(m.Chunks) == 0 {
+		return // layout not loadable: nothing to reconcile against
+	}
+	dropped := 0
+	for _, id := range m.Leaves() {
+		if ok, _ := n.store.Has(bg(), id); !ok {
+			continue
+		}
+		if _, ok, _ := n.proofs.Get(id); ok {
+			continue // proof-backed: a legitimate holding, keep it
+		}
+		n.dropHosted(id)
+		dropped++
+	}
+	if dropped > 0 {
+		n.logf(ports.LogInfo, "repair working set reconciled", "root", ch.Root, "dropped", dropped)
+	}
 }
 
 // AnnounceHeld re-plants provider records for every chunk in the local

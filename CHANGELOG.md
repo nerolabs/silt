@@ -125,6 +125,25 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   [docs/thinking/2026-08-20-economy-local-loop-design.md](docs/thinking/2026-08-20-economy-local-loop-design.md).
 
 ### Fixed
+- **A restart mid-repair no longer orphans the survivor working set — Care reconciles it at
+  boot (#502)** (2026-08-22) — A repairing caretaker (or judging caretaker-judge) pulls up to
+  k×stripes survivor chunks and drops them only in the post-reconstruction cleanup
+  continuation; a restart in that window (operator, crash, or the harness's
+  `relaunch_with`/`econ_restore`) killed the chain and nothing at boot reconciled — the pulls
+  sat in the store forever: record-less bytes counting against the pledge and read as local by
+  the next sweep's `includeLocal` probe (the plausible source of the persistent ~3× disk
+  census on re-driven fleets that motivated #497). Care's warm-start continuation now runs
+  `reconcileWorkingSet`: a LEAF of the cared root, present in the store, with no proof in the
+  persisted backing is definitively an orphan (every legitimate leaf holding carries a
+  persisted proof — `MsgStoreChunk` refuses proof-less shards, the repair self-hold and
+  `NetGetRetain` mint one, and plain `NetGet` drops its working set — which is why #502 was
+  sequenced after #500) and is dropped, narrated as `repair working set reconciled`.
+  Warm-start manifest copies (held bare by design) are exempt; legacy proof-less NetGet
+  leftovers from pre-#500 fleets are cleaned by the same sweep at their next boot. Regression
+  with a REAL injected crash — an actual sweep stepped to mid-window between fetch and drop,
+  then a fresh Node incarnation booted on the same chunk+proof stores:
+  `core/node/repair_orphan_502_test.go`. Deliberation:
+  [docs/thinking/2026-08-22-502-working-set-boot-reconciliation.md](docs/thinking/2026-08-22-502-working-set-boot-reconciliation.md).
 - **NetGet's pulls are an explicit working set, and the UI consumer==provider promise is
   wired (#500) — a fetch either drops what it pulled or retains it as REAL, discoverable,
   audit-answerable hosting** (2026-08-22) — `fetchFrom` writes bytes with no provider record
