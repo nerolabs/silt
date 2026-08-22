@@ -79,3 +79,38 @@ new signal with its own noise, where §3 already names the sound shape.
   nodes), so a walk-gated sole holder is undiscoverable until cooldown lapse
   or its own re-announce — real daemons re-announce at boot (#69), sim nodes
   must advance past the cooldown.
+
+## The #518 arc (same day — the verification loop's find, closed)
+
+The #517 verification loop's one failure led to a second capture round:
+
+- **Capture d1 CONFIRMED judge starvation**: all four of a repair's claims hit
+  the (just-shipped) `no eligible judge` warn — `quorum=2`, every claim naming
+  the OTHER caretaker as holder. Self and holder both excluded → zero judges →
+  silent `paid=0`. #517's gate made this likelier by synchronizing both
+  caretakers' confirming sweeps (they now race the same repair; the loser's
+  rebuild finds `missing=0` and the winner's placements often land on the
+  loser).
+- **Capture b10 exposed a second sub-mode, and capture v2 (with the reasoned
+  narration) named it**: `unjudgeable: fewer than k survivors (fetched=2..5 of
+  k=10)`, arriving 4ms after the judge's OWN losing rebuild — the repair-time
+  fetch storm leaves live-but-slow holders freshly negative-cached (one 2s
+  holder dial, no retry, stamps on first miss), and the judge's working set
+  was just dropped by its own cleanup. The deny was transient by design but
+  claim emission is ONE-SHOT: a 30s condition cost the bounty forever. Fixed:
+  the judge DEFERS and re-judges after `HolderCooldown` (the duration of the
+  transient itself — not a new magic number), 3 attempts, reasoned deny only
+  on exhaustion. Regression stages the transient for real (survivors down at
+  claim time, revived mid-retry-schedule → must end PAID; RED with the defer
+  off). The verdict path narrates end to end either way.
+- **Fix (direction (a))**: `preferNonJudges` — rebuilt-shard placement stably
+  prefers holders outside the careKey quorum (resolved once per repaired
+  stripe). Preference, never veto; self-hold exempt (claimant==holder is one
+  exclusion, other judges still judge); residual starvation stays narrated.
+- **Economics ripple, owned**: the sim bounty test's ONE-shared-ledger rig
+  double-draws its escrow once both judges settle every claim (production
+  per-node ledgers each pay once by design); its 5M endowment sat knife-edge
+  at storm exhaustion and flapped on placement luck — re-endowed to outlast
+  the measured ~112 × 2 × ~80k draw, with the reasoning in the test comment.
+  Worth remembering: **fixing an under-payment defect raises measured spend —
+  economy tests calibrated against the defect will flap.**

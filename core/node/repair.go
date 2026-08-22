@@ -651,6 +651,25 @@ func (n *Node) repairStripe(m *manifest.Layout, p erasure.Params, stripeRefs []s
 			heldBefore[r.id] = true
 		}
 	}
+	// The caretaker-judge quorum for this root: rebuilt shards PREFER holders
+	// outside it (#518). A claim excludes both the paramedic and the named
+	// holder from judging, so with two caretakers a rebuilt shard placed on
+	// the OTHER one leaves zero eligible judges — the claim dies silently and
+	// the bounty starves (captured: all four of a repair's claims naming the
+	// other caretaker as holder, quorum=2). Preference, never veto: a shard on
+	// a judge still beats a shard nowhere, and the self-hold path is exempt
+	// (claimant==holder is excluded once, the other judges still judge).
+	// Resolved per repaired stripe — repairs are rare, the walk is cheap.
+	n.resolveProviders(ports.ChunkID(careKey(root)), func(quorum []ports.NodeID) {
+		judges := make(map[ports.NodeID]bool, len(quorum))
+		for _, j := range quorum {
+			judges[j] = true
+		}
+		n.repairStripeFetch(m, p, stripeRefs, disperseShards, avoidDomain, porKey, root, tree, realData, heldBefore, judges, done)
+	})
+}
+
+func (n *Node) repairStripeFetch(m *manifest.Layout, p erasure.Params, stripeRefs []shardRef, disperseShards map[ports.ChunkID]bool, avoidDomain uint64, porKey *por.Key, root ports.Hash, tree *manifest.Tree, realData int, heldBefore map[ports.ChunkID]bool, judges map[ports.NodeID]bool, done func()) {
 	// Fetch by column: a stripe's shards register under their column key,
 	// not their own id, so a plain fetchAll (which resolves by id) would
 	// find nothing and every repair would fail to reconstruct.
@@ -760,7 +779,7 @@ func (n *Node) repairStripe(m *manifest.Layout, p erasure.Params, stripeRefs []s
 			// the rebuilt shard as the claim's payee (design §8b).
 			var holder ports.NodeID
 			n.IterativeFindNode(colKey(root, r.pos), func(closest []ports.NodeID) {
-				candidates := n.preferFreshDomain(closest, usedDomains)
+				candidates := preferNonJudges(n.preferFreshDomain(closest, usedDomains), judges)
 				want := n.cfg.Replication
 				// (a-domain-fresh) — PE ruling 2026-08-19. With the economy on, the
 				// paramedic KEEPS the shard it rebuilt (becoming the payee) IFF its
@@ -803,6 +822,29 @@ func (n *Node) repairStripe(m *manifest.Layout, p erasure.Params, stripeRefs []s
 		}
 		place(0)
 	})
+}
+
+// preferNonJudges stably reorders placement candidates so nodes OUTSIDE the
+// caretaker-judge quorum come first (#518): a repair claim excludes both the
+// paramedic and the named holder from judging, so a rebuilt shard placed on
+// the only other judge leaves the claim with nobody to judge it. Stable, so
+// the domain-diversity preference order is preserved within each class; a
+// judge still accepts when no civilian will (preference, not veto — the
+// residual starvation stays narrated by emitRepairClaim).
+func preferNonJudges(candidates []ports.NodeID, judges map[ports.NodeID]bool) []ports.NodeID {
+	if len(judges) == 0 {
+		return candidates
+	}
+	out := make([]ports.NodeID, 0, len(candidates))
+	var deferred []ports.NodeID
+	for _, id := range candidates {
+		if judges[id] {
+			deferred = append(deferred, id)
+		} else {
+			out = append(out, id)
+		}
+	}
+	return append(out, deferred...)
 }
 
 // stripeKey names one erasure stripe of one cared root — the unit the #517
