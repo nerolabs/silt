@@ -125,6 +125,27 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   [docs/thinking/2026-08-20-economy-local-loop-design.md](docs/thinking/2026-08-20-economy-local-loop-design.md).
 
 ### Fixed
+- **The repair trigger is minimum-filtered — one noisy probe sample can no longer fire a
+  false repair (#517; roots the #514 e2e flake)** (2026-08-22) — A caretaker's FIRST sweep
+  after arming races record propagation: the captured #514 run read three never-lost shards
+  as missing (`reachable=18` while every shard had a live holder), "repaired" them from
+  parity, and placed the rebuilds at the daemon's replication 3 — persistent, record-backed
+  duplicates nobody paid to place (a third source of the #497 extra-copies census, after
+  #500/#502 closed the other two), which then defeated the e2e kill-selector's premise: the
+  "doomed" columns survived their holder's death, the caretakers correctly watched
+  `missing ≤ slack`, and no bounty could ever pay (#514, ~2/10 under load). Per
+  `network-durability.md` §3 (*minimum-filter a noisy signal — never trust one sample*) the
+  repair and dispersion-re-spread triggers now require the over-slack observation to persist
+  across TWO consecutive sweeps (a clean sweep resets; a firing that fails below-k retries
+  every sweep without re-confirming), narrated as `stripe repair pending confirmation`. Costs
+  one repair interval on a true loss. `probeShard` gains `shard confirmed by=` debug
+  narration so every reachable verdict names its confirmer, `emitRepairClaim` warns
+  `repair claim found no eligible judge` when a claim has nowhere to go (the newly-filed
+  #518 judge-starvation corner: a 2-caretaker quorum whose rebuilt shard landed on the other
+  caretaker), and the e2e gains a premise fast-fail (no over-slack observation within 60s of
+  the kill → loud premise-defeat failure, not a silent 180s timeout). Regressions:
+  `core/node/repair_confirm_517_test.go`.
+  Capture story + attribution: [docs/thinking/2026-08-22-517-repair-confirmation-gate.md](docs/thinking/2026-08-22-517-repair-confirmation-gate.md).
 - **A restart mid-repair no longer orphans the survivor working set — Care reconciles it at
   boot (#502)** (2026-08-22) — A repairing caretaker (or judging caretaker-judge) pulls up to
   k×stripes survivor chunks and drops them only in the post-reconstruction cleanup

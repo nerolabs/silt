@@ -306,9 +306,11 @@ func TestMeasure_501_SweepDurationUnderDeadHolders(t *testing.T) {
 
 	// #501 bound 1 — the first sweep after a kill is BOUNDED: ≤ one full
 	// discovery ladder per corpse (~22s each at these settings, phases meet the
-	// corpses disjointly) + the real repair work (~27s). Measured pre-fix:
-	// 159.2s (intra-sweep cooldown lapses re-paid ladders five times over);
-	// post-fix: 72.4s. The bound sits between, with headroom for seed drift.
+	// corpses disjointly). Measured pre-fix: 159.2s (intra-sweep cooldown
+	// lapses re-paid ladders five times over); post-fix with the #517
+	// confirmation gate: 45.3s (walls only — the repair itself fires on the
+	// SECOND consecutive observation, measured 72.8s with warm caches). The
+	// bound sits between, with headroom for seed drift.
 	if firstDeadMS > 100_000 {
 		t.Fatalf("#501: first sweep after kill took %d ms — the sweep-scoped corpse gate is not bounding it (pre-fix behavior was ~159s)", firstDeadMS)
 	}

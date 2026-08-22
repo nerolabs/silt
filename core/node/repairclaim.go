@@ -286,12 +286,23 @@ func (n *Node) emitRepairClaim(root ports.Hash, r shardRef, holder ports.NodeID,
 	}
 	n.Stats.RepairClaims++
 	n.resolveProviders(ports.ChunkID(careKey(root)), func(quorum []ports.NodeID) {
+		sent := 0
 		for _, t := range quorum {
 			if t == n.id || t == holder {
 				continue // the paramedic doesn't judge its own claim; the holder isn't a judge
 			}
 			n.request(t, ports.Message{Kind: ports.MsgRepairClaim, Data: data},
 				func(ports.Message, error) {}) // fire-and-forget: each judge settles its own ledger
+			sent++
+		}
+		// A claim with no eligible judge dies silently and no bounty can ever
+		// pay — reachable with a 2-caretaker quorum whenever the rebuilt shard
+		// landed ON the other caretaker (self and holder are both excluded).
+		// Narrate it: judge starvation must be a named event in the journal,
+		// not an unexplained paid=0.
+		if sent == 0 {
+			n.logf(ports.LogWarn, "repair claim found no eligible judge",
+				"root", root, "shard", r.id, "holder", holder, "quorum", len(quorum))
 		}
 	})
 }
