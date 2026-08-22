@@ -408,7 +408,12 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 		if n.equivServedFork != nil {
 			blocks = n.equivServedFork
 		}
-		n.reply(from, msg, ports.Message{Kind: ports.MsgChainReply, OK: true, Data: chain.EncodeBlocks(blocks)})
+		// Serve a byte-bounded WINDOW, not the whole suffix (#466): marshaling a
+		// bond-reg-laden chain into one buffer was the measured 144 MB serve-side
+		// OOM driver. The requester loops windows (fetchFull); Reconcile validates
+		// the reassembled linkage, so a windowed fetch cannot corrupt the chain.
+		n.reply(from, msg, ports.Message{Kind: ports.MsgChainReply, OK: true,
+			Data: chain.EncodeBlocksUpTo(blocks, n.maxChainReplyBytes())})
 	case ports.MsgGetChainHead:
 		// Cheap head probe (#382): answer "what is your head?" with (height, hash) so
 		// a peer whose head matches ours can SKIP the full-chain fetch + re-validate.
@@ -1173,10 +1178,18 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 	}
 	added := 0
 	var ask func(i int)
-	// fetchFull runs the unchanged full-chain fetch + slash + Reconcile against
-	// peer p, then advances to the next peer. Used whenever the head probe shows a
-	// difference or cannot be answered.
-	fetchFull := func(p ports.NodeID, next func()) {
+	// fetchFull runs the full-chain fetch + slash + Reconcile against peer p, then
+	// advances to the next peer. Used whenever the head probe shows a difference or
+	// cannot be answered. WINDOWED (#466): the peer serves byte-bounded windows
+	// (EncodeBlocksUpTo), and this loop re-requests from each window's last decoded
+	// height until it holds the peer's whole suffix — each raw reply buffer is
+	// decoded and released per iteration, so the only accumulation is the decoded
+	// []Block itself (the requester-retention axis, #299's, unchanged). peerHead
+	// (when known, from the head probe) ends the loop without a final empty-window
+	// round-trip; against a pre-window server that returns the whole suffix in one
+	// over-full reply the same loop accepts it and terminates on the next request
+	// (accept-and-cap — the transport's maxFrame bounds any single reply).
+	fetchFull := func(p ports.NodeID, peerHead uint64, peerHeadKnown bool, next func()) {
 		n.Stats.ChainSyncFullFetches++
 		// Suffix-sync (slice 5, M1): request from our OWN finalized head, not genesis, so a
 		// peer that has pruned its old heavy bond proofs still serves us un-pruned blocks
@@ -1184,52 +1197,94 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 		// full-genesis fetch, unchanged. The peer serves [reqHeight, peerHead]; we anchor it
 		// on our OWN verified prefix (never a peer-served head — the C1/long-range guard).
 		reqHeight, _ := n.chain.FinalizedHeight()
-		n.request(p, ports.Message{Kind: ports.MsgGetChain, Height: reqHeight},
-			func(resp ports.Message, err error) {
-				if err == nil && resp.OK {
-					if served, derr := chain.DecodeBlocks(resp.Data); derr == nil && len(served) > 0 {
-						full, ferr := n.reconstructFork(served)
-						if ferr != nil {
-							n.logf(ports.LogDebug, "could not reconstruct fork from peer suffix", "peer", p, "err", ferr)
-							next()
-							return
-						}
-						before := n.chain.Len()
-						old := n.chain.Blocks(0) // snapshot to catch cross-fork double-signs
-						// Slash on DETECTION, not on adoption (seam-7). Scan the reconstructed
-						// fork against our LOCAL one for cross-fork double-signs BEFORE the
-						// heavier test and regardless of whether we adopt: a validator that
-						// signed a block at a height we hold AND a conflicting block at that
-						// height is provably guilty even if its fork is LIGHTER and never
-						// reconciled onto. The evidence is self-verifying
-						// (chain.VerifyEquivocation), so an honest sequential signer is never
-						// caught. Detection now covers heights ≥ reqHeight (our finalized head)
-						// — where forks can exist; below it, finality forbids a fork, so a
-						// sub-finalized double-sign is either already-slashed at commit or a
-						// >f attack out of the safety model.
-						n.slashEquivocators(old, full)
-						if ok, rerr := n.chain.Reconcile(full); ok {
-							now := n.chain.Blocks(0)
-							if d := n.chain.Len() - before; d > 0 {
-								added += d
-							}
-							if dropped := reorgDropped(old, now); dropped > 0 && n.onReorg != nil {
-								n.onReorg(dropped, uint64(len(now)-1))
-							}
-							n.logf(ports.LogInfo, "chain reconciled from peer", "peer", p, "len", n.chain.Len())
-						} else if errors.Is(rerr, chain.ErrPrunedAboveHorizon) {
-							// Deep-cold (behind > safetyDepth): the peer pruned the gap and we
-							// cannot re-verify it — refuse to trust it from a peer (C1 guard).
-							// SIGNAL the remedy, never silently fail to adopt (I4/S5).
-							n.Stats.ChainSyncNeedCheckpoint++
-							n.logf(ports.LogWarn, "cannot catch up from peer: behind the weak-subjectivity window and the peer pruned the gap — obtain a recent -ws-checkpoint out-of-band or sync from an archive node", "peer", p, "err", ErrNeedCheckpoint)
-						} else if rerr != nil {
-							n.logf(ports.LogDebug, "peer chain not adopted", "peer", p, "err", rerr)
-						}
-					}
-				}
+		var served []chain.Block
+		finish := func() {
+			if len(served) == 0 {
 				next()
-			})
+				return
+			}
+			full, ferr := n.reconstructFork(served)
+			if ferr != nil {
+				n.logf(ports.LogDebug, "could not reconstruct fork from peer suffix", "peer", p, "err", ferr)
+				next()
+				return
+			}
+			before := n.chain.Len()
+			old := n.chain.Blocks(0) // snapshot to catch cross-fork double-signs
+			// Slash on DETECTION, not on adoption (seam-7). Scan the reconstructed
+			// fork against our LOCAL one for cross-fork double-signs BEFORE the
+			// heavier test and regardless of whether we adopt: a validator that
+			// signed a block at a height we hold AND a conflicting block at that
+			// height is provably guilty even if its fork is LIGHTER and never
+			// reconciled onto. The evidence is self-verifying
+			// (chain.VerifyEquivocation), so an honest sequential signer is never
+			// caught. Detection now covers heights ≥ reqHeight (our finalized head)
+			// — where forks can exist; below it, finality forbids a fork, so a
+			// sub-finalized double-sign is either already-slashed at commit or a
+			// >f attack out of the safety model.
+			n.slashEquivocators(old, full)
+			if ok, rerr := n.chain.Reconcile(full); ok {
+				now := n.chain.Blocks(0)
+				if d := n.chain.Len() - before; d > 0 {
+					added += d
+				}
+				if dropped := reorgDropped(old, now); dropped > 0 && n.onReorg != nil {
+					n.onReorg(dropped, uint64(len(now)-1))
+				}
+				n.logf(ports.LogInfo, "chain reconciled from peer", "peer", p, "len", n.chain.Len())
+			} else if errors.Is(rerr, chain.ErrPrunedAboveHorizon) {
+				// Deep-cold (behind > safetyDepth): the peer pruned the gap and we
+				// cannot re-verify it — refuse to trust it from a peer (C1 guard).
+				// SIGNAL the remedy, never silently fail to adopt (I4/S5).
+				n.Stats.ChainSyncNeedCheckpoint++
+				n.logf(ports.LogWarn, "cannot catch up from peer: behind the weak-subjectivity window and the peer pruned the gap — obtain a recent -ws-checkpoint out-of-band or sync from an archive node", "peer", p, "err", ErrNeedCheckpoint)
+			} else if rerr != nil {
+				n.logf(ports.LogDebug, "peer chain not adopted", "peer", p, "err", rerr)
+			}
+			next()
+		}
+		var fetchWindow func(h uint64)
+		fetchWindow = func(h uint64) {
+			n.request(p, ports.Message{Kind: ports.MsgGetChain, Height: h},
+				func(resp ports.Message, err error) {
+					if err != nil || !resp.OK {
+						// Mid-loop failure: the partial suffix is DISCARDED, never
+						// reconciled — sync fails closed for this peer this sweep and
+						// the next sweep retries (#466).
+						if len(served) > 0 {
+							n.logf(ports.LogDebug, "windowed chain fetch aborted mid-loop", "peer", p, "at-height", h, "err", err)
+						}
+						next()
+						return
+					}
+					window, derr := chain.DecodeBlocks(resp.Data)
+					if derr != nil {
+						n.logf(ports.LogDebug, "windowed chain fetch: undecodable reply", "peer", p, "err", derr)
+						next()
+						return
+					}
+					if len(window) == 0 {
+						finish() // nothing above h: the suffix is complete
+						return
+					}
+					n.Stats.ChainSyncWindows++
+					served = append(served, window...)
+					last := window[len(window)-1].Height
+					if last < h {
+						// A server whose windows do not advance is broken or lying;
+						// stop rather than loop — Reconcile fails closed on whatever
+						// this produced.
+						finish()
+						return
+					}
+					if peerHeadKnown && last >= peerHead {
+						finish()
+						return
+					}
+					fetchWindow(last + 1)
+				})
+		}
+		fetchWindow(reqHeight)
 	}
 	ask = func(i int) {
 		if i >= len(peers) {
@@ -1246,20 +1301,26 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 		n.request(p, ports.Message{Kind: ports.MsgGetChainHead},
 			func(resp ports.Message, err error) {
 				ourHead, _ := n.chain.Head()
-				if err == nil && resp.Kind == ports.MsgChainHeadReply && resp.OK && len(resp.Data) == len(ourHead) {
-					var peerHead ports.Hash
-					copy(peerHead[:], resp.Data)
-					if peerHead == ourHead {
-						// Identical head ⇒ identical committed history: nothing to do.
-						n.Stats.ChainSyncHeadMatches++
-						ask(i + 1)
-						return
+				peerHeadHeight, peerHeadKnown := uint64(0), false
+				if err == nil && resp.Kind == ports.MsgChainHeadReply && resp.OK {
+					// The probe's height also serves the windowed fetch (#466): it
+					// ends the window loop without a final empty-window round-trip.
+					peerHeadHeight, peerHeadKnown = resp.Height, true
+					if len(resp.Data) == len(ourHead) {
+						var peerHead ports.Hash
+						copy(peerHead[:], resp.Data)
+						if peerHead == ourHead {
+							// Identical head ⇒ identical committed history: nothing to do.
+							n.Stats.ChainSyncHeadMatches++
+							ask(i + 1)
+							return
+						}
 					}
 				}
 				// Head differs, or the peer is too old to answer the probe (or it
 				// timed out) — fall back to the full fetch, which preserves every
 				// catch-up / reorg / equivocation-detection guarantee.
-				fetchFull(p, func() { ask(i + 1) })
+				fetchFull(p, peerHeadHeight, peerHeadKnown, func() { ask(i + 1) })
 			})
 	}
 	ask(0)

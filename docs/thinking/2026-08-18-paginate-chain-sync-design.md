@@ -91,3 +91,41 @@ error/timeout mid-loop, abort THIS peer (partial `full` is discarded, not reconc
 3. Is bounding the SERVE spike (not the requester's reassembled chain) the right scope for
    this PR, with retention/#299 as the follow-on? (I believe yes — it's the observed 144 MB
    driver.)
+
+---
+
+## 2026-08-22 — the PE ruling landed; what shipped (differs from the plan above)
+
+Ruling: `silt-reviews/principle-engineer/RULING-466-chain-serve-pagination-approach-2026-08-22.md`.
+Three corrections to this design, all verified in code by the PE and confirmed here:
+
+1. **8 MiB was wrong twice; the shipped window is DERIVED.** The 30 s size extension
+   keys off the *outbound* payload (`requestTimeoutFor`), and `MsgGetChain{Height}`
+   has empty `Data` — so as designed above, the reply had to arrive within the BASE
+   `RequestTimeout` (2 s at daemon defaults): a ~512 KiB real ceiling, not 4–8 MiB.
+   Shipped: the requester arms a reply-sized deadline for `MsgGetChain`
+   (`base + min(maxChainReplyBytes/floor, cap)`), and the window derives from the
+   same two symbols — `maxChainReplyBytes = floor × requestSizeExtensionCap × ½` =
+   **3.75 MiB at daemon defaults**. The two cannot drift.
+2. **The mixed-fleet table row above was wrong the safe way.** An old requester
+   against a new (windowed) server does NOT stall: its termination is head-match
+   (`SyncChain`), which a truncated window cannot satisfy, so each sweep adopts one
+   more window and converges — measured in
+   `TestLegacyRequesterConvergesAgainstWindowedServer466` (24 blocks / 960 B window
+   → 24 sweeps, zero under-sync). Rollout is atomic, **no capability negotiation**;
+   a new requester ACCEPTS an old server's whole-suffix reply (cap-and-accept,
+   `maxFrame` bounds the frame).
+3. **Requester memory constraint (PE Q3 addition):** the loop decodes each reply and
+   releases the raw buffer per iteration — there is no Σ-windows buffer anywhere in
+   the loop by construction (the only accumulation is the decoded `[]Block`, the
+   #299 retention axis, explicitly out of scope). Asserted structurally: every reply
+   is window-bounded (`TestChainServeReplyIsWindowBounded466`) and the loop holds
+   one in-flight reply at a time (sequential request callbacks). A MemStats-based
+   peak-heap assertion was considered and skipped as nondeterministic across Go
+   versions — the structural argument plus the serve-side bound carries it (V4).
+
+The reorg-mid-fetch case (test plan #3 above) is pinned at the requester boundary:
+the loop's ONLY new state is window concatenation, so its one new failure surface
+is a spliced suffix — `TestSplicedWindowsFailClosed466` proves linkage validation
+rejects it and leaves the local chain untouched. Scope honesty (ruling Q3): this
+closes the SERVE-side OOM lever only; requester-side retention stays #299/pruning's.

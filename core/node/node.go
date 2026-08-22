@@ -405,6 +405,10 @@ type Stats struct {
 	// A nonzero value means an operator must obtain a recent -ws-checkpoint out-of-band or
 	// point at an archive node — surfaced, never silent (I4/S5).
 	ChainSyncNeedCheckpoint int
+	// ChainSyncWindows: non-empty MsgGetChain reply windows decoded during full
+	// fetches (#466). windows/full-fetch ≈ suffix bytes / maxChainReplyBytes; a
+	// value equal to FullFetches means every fetch fit one window.
+	ChainSyncWindows int
 }
 
 type pending struct {
@@ -1153,13 +1157,48 @@ func (n *Node) requestTimeoutFor(msg ports.Message) ports.Duration {
 	}
 	timeout := n.cfg.RequestTimeout
 	if n.cfg.RequestSizeFloorBytesPerSec > 0 {
-		extra := ports.Duration(int64(len(msg.Data)) * int64(ports.Second) / n.cfg.RequestSizeFloorBytesPerSec)
-		if extra > 30*ports.Second {
-			extra = 30 * ports.Second
+		// Size-extend for the larger direction of the exchange. Outbound payload:
+		// the #286 case (a ~1.5 MB bond-reg block must cross the wire before the
+		// attester can reply). ANTICIPATED REPLY: a windowed chain fetch (#466)
+		// sends a tiny MsgGetChain{Height} but asks for up to maxChainReplyBytes
+		// back — without this the reply is bounded by the base RequestTimeout
+		// (2 s at daemon defaults), which no window near the floor can meet, and
+		// the slow-but-honest WAN peers pagination exists for stall (PE ruling
+		// 2026-08-22). The window and this deadline derive from the same two
+		// symbols, so they cannot drift.
+		payload := int64(len(msg.Data))
+		if msg.Kind == ports.MsgGetChain {
+			if w := int64(n.maxChainReplyBytes()); w > payload {
+				payload = w
+			}
+		}
+		extra := ports.Duration(payload * int64(ports.Second) / n.cfg.RequestSizeFloorBytesPerSec)
+		if extra > requestSizeExtensionCap {
+			extra = requestSizeExtensionCap
 		}
 		timeout += extra
 	}
 	return timeout
+}
+
+// requestSizeExtensionCap bounds the payload-scaled deadline extension (#286): a
+// pathological payload cannot hang a round past this, and the #466 chain-serve
+// window is derived FROM it (maxChainReplyBytes), so the two cannot drift.
+const requestSizeExtensionCap = 30 * ports.Second
+
+// maxChainReplyBytes is the byte budget for one MsgGetChain reply window — the
+// #466 chain-serve bound (a node marshaling its whole bond-reg-laden chain into
+// one buffer was the measured 144 MB serve-side OOM driver). DERIVED, never a
+// literal (PE ruling 2026-08-22): the reply must cross the wire inside the
+// deadline the requester arms, so window = floor × extension-cap × ½ — the ½
+// margin leaves the base deadline for RTT and decode. 3.75 MiB at daemon
+// defaults (256 KiB/s × 30 s / 2). If either symbol changes, the window tracks.
+// 0 (no floor configured) = the unbounded legacy whole-suffix encode.
+func (n *Node) maxChainReplyBytes() int {
+	if n.cfg.RequestSizeFloorBytesPerSec <= 0 {
+		return 0
+	}
+	return int(n.cfg.RequestSizeFloorBytesPerSec) * int(requestSizeExtensionCap/ports.Second) / 2
 }
 
 func (n *Node) requestAttempt(to ports.NodeID, msg ports.Message, attempt int, cb func(ports.Message, error)) {
