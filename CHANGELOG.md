@@ -8,6 +8,21 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Added
+- **#535 fix (2) refuted by the proof-first model-check — the recovery stack is (4) + (3)**
+  (2026-08-24) — The certification adopted boundary-local quorum re-basing (`old∩next`)
+  *conditional* on a model-checked #402 handoff-intersection proof for a bled set.
+  `core/chain/modelcheck_535_fix2_rebasing_test.go` discharges that obligation and finds
+  the naive form **unsafe**: a boundary block finalizes a fork iff Byzantine weight exceeds
+  ⅓ of the *re-based* total, and excluding possibly-honest lapsed weight raises that fraction
+  — at the field numbers, 171 MiB Byzantine is safe against the full 516 MiB frozen set but
+  breaks I1 over the re-based 324 MiB. This is the same fault-tolerance wall that sank fix (1).
+  Automatic denominator re-basing is not safely realizable; the certification pre-ruled the
+  fallback (fix (3), the operator-signaled weak-subjectivity escape, is the guaranteed-safe
+  recovery). The model-check stands as the permanent evidence + regression (it asserts the
+  shipped no-re-basing behavior — a bled boundary STALLS rather than forks — is the safe one).
+  Detail: [docs/thinking/2026-08-24-535-fix2-refuted-stack-is-4-plus-3.md](docs/thinking/2026-08-24-535-fix2-refuted-stack-is-4-plus-3.md).
+
 ### Fixed
 - **#535 fix (4): the R-gate restore exemption — a returning frozen member can re-bond to
   heal a stalled boundary** (2026-08-23, research-certified) — The h64 epoch-boundary wedge's
