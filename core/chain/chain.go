@@ -1297,7 +1297,7 @@ func (c *Chain) validateBondRegs(b *Block) error {
 				return fmt.Errorf("%w: validator %s registered twice in one block", ErrRegGate, id)
 			}
 			seenReg[id] = true
-			if regH, ok := c.bondRegHeight[id]; ok && b.Height-regH < c.regMinInterval() {
+			if regH, ok := c.bondRegHeight[id]; ok && b.Height-regH < c.regMinInterval() && !c.restoresHeldStanding(id, r.Root) {
 				return fmt.Errorf("%w: validator %s re-registered %d blocks after its last reg (R=%d)",
 					ErrRegGate, id, b.Height-regH, c.regMinInterval())
 			}
@@ -2582,6 +2582,41 @@ func (c *Chain) regGateActive(h uint64) bool {
 		return h > c.cfg.RegGateActivationHeight
 	}
 	return c.gateLockedIn && h > c.gateHeight
+}
+
+// restoresHeldStanding reports whether a bond registration (id, root) merely
+// RESTORES standing the identity already held — a current frozen-epoch member
+// re-proving a Root it already owns — which is EXEMPT from the #506 R interval
+// (research certification 2026-08-23, #535 fix (4)). The R interval defends
+// against a reg-FLOOD of fresh identities/plots (each carrying a ~1.5 MB Answer,
+// the #503 OOM driver); a returning frozen-set member re-proving its OWN plot is
+// not that — it can only restore weight the honest set already trusted for this
+// epoch, never admit new weight, so it cannot cheapen capture (unlike shrinking
+// the quorum denominator — the certification's rejected fix (1)). This removes
+// the non-recovery the h64 field wedge showed: a returning member was R-refused
+// (`re-registering 1 block after its last reg, R=10`) and so could not re-bond
+// to heal the stalled boundary. Narrow + deterministic: same OWNED root
+// (bondRootOwner survives a lapse; F1's ownership record is never cleared) AND
+// current frozen-epoch membership (≤ EpochBlocks old — the cert's "within ~one
+// epoch of its lapse"; a lapsed member keeps its frozen epochSet vote for the
+// epoch, chain.go attesterQualified). Mature-epoch only, where the frozen set —
+// hence "already held standing" — exists; launch-window R is unchanged.
+func (c *Chain) restoresHeldStanding(id ports.NodeID, root ports.Hash) bool {
+	if !(c.epochsEnabled() && c.matureEpoch) {
+		return false
+	}
+	if c.bondRootOwner[root] != id {
+		return false // not re-proving a root this identity already owns
+	}
+	if c.bonded[id] >= c.cfg.MinBond {
+		// Still holds LIVE standing — a re-reg here is padding volume (the #506
+		// storm), not a restore. The exemption is only for a member whose
+		// standing has LAPSED (the cert's "within ~one epoch of its lapse"),
+		// so #506's storm/flood protection is untouched for bonded members.
+		return false
+	}
+	_, inEpoch := c.epochSet[id]
+	return inEpoch // a lapsed member still seated in the current frozen epoch
 }
 
 // regMinInterval is R — the minimum block distance between one identity's

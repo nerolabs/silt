@@ -9,6 +9,21 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Fixed
+- **#535 fix (4): the R-gate restore exemption — a returning frozen member can re-bond to
+  heal a stalled boundary** (2026-08-23, research-certified) — The h64 epoch-boundary wedge's
+  non-recovery was compounded by #506: a member whose standing lapsed was R-refused when it
+  tried to re-register (`re-registering 1 block after its last reg, R=10`), so it could not
+  restore its weight to help the boundary commit. Fix: a re-registration that RESTORES standing
+  the identity already held — a current frozen-epoch member (`epochSet`) re-proving a `Root` it
+  already owns (`bondRootOwner`, which survives a lapse) while its standing has lapsed
+  (`bonded < MinBond`) — is exempt from the R interval. Safe by construction: it can only
+  restore weight the honest set already trusted for the epoch, never admit new weight, so it
+  cannot cheapen capture (unlike shrinking the quorum denominator — the certification's rejected
+  fix (1), which cheapened cost-to-corrupt 344→216 MiB). Narrow: a still-bonded member re-proving
+  its root is the #506 storm and stays refused (flood protection intact). This is layer (4) of the
+  certified recovery stack; (2) boundary-local re-basing and (3) the weak-subjectivity liveness
+  escape are the remaining layers. Cert:
+  `silt-reviews/research/research-outcome/535-epoch-boundary-liveness-cliff-RESEARCH-CERTIFICATION-2026-08-23.md`.
 - **#536 cloudtest: the escape fingerprint read round-changes from the wrong channel →
   a manufactured WEDGE FAIL** (2026-08-23) — `ft_escape_progress` counted `round-change`
   from journald (`jlog_since`), but that structured `n.logf` line is written to
