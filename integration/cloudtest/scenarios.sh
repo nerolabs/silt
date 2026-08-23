@@ -1470,6 +1470,142 @@ flow_maturing_handoff() {
   restore_argv val-b
 }
 
+# The Phase 3 exit-gate flow (ROADMAP: "a deep green sheet (h ≥ 128) with the
+# prune field-exercised at production parameters" — also the deferred Phase 1.4
+# deep run). Opt-in DEEP=1, registered after the maturing drills so the drive
+# continues from the matured, full-rotation chain. Three rows:
+#   12-deep-heights  — the honest ceiling reaches DEEP_TARGET (default 128)
+#                      inside a wall bound, with the #525 freeze early-exit so
+#                      a wedge grades immediately and never burns the window.
+#   12b-deep-prune   — the retention prune ENGAGED on every validator, read
+#                      from real persisted state (`chain-status` pruned count;
+#                      at fast-TTL 32 the horizon is ≈ h−64 epoch-floored), with
+#                      on-disk chain.cbor bytes carried as evidence.
+#   12c-deep-converge — the flow-5 convergence probe on the PRUNED chain: the
+#                      slice-5 suffix-sync-around-the-gap property at depth, on
+#                      the #528 suffix-append path.
+# LOCAL_PROOF: go test ./core/node -run 'TestSuffixSync_|TestSuffixAppend_' -count=1 && go test ./cmd/silt -run TestChainStatusReportsPrunedBlocks -count=1 — the prune/suffix-sync/catch-up integrations the rows grade are locally green; the wall-clock-at-depth leg is the cloud's job (no local analogue — a laptop cannot accrue 128 wire heights)
+flow_deep_heights() {
+  if [ "${DEEP:-0}" != 1 ]; then
+    record "12-deep-heights" skip major "opt in with DEEP=1 (default DEEP_TARGET=128) — the Phase 3 exit gate: drive the chain deep with the retention prune field-exercised; run on the full MATURING=1 SYBILS=8 ECONOMY=1 sheet with TTL_MINUTES=300"
+    return
+  fi
+  require_nodes "12-deep-heights" major val-a val-b val-c val-d || return
+  flow_evidence_nodes val-a val-b val-c val-d
+  : "${DEEP_TARGET:=128}"
+  : "${DEEP_WALL_S:=7200}"
+
+  # Entry precondition: the maturing drills stop/restart validators; heal a
+  # stopped one once, else the premise is degraded and the drive is UNTESTED.
+  local v inactive=""
+  for v in val-a val-b val-c val-d; do
+    ssh_node "$v" "systemctl is-active --quiet silt.service" || svc "$v" start >/dev/null 2>&1 || true
+  done
+  sleep 10
+  for v in val-a val-b val-c val-d; do
+    ssh_node "$v" "systemctl is-active --quiet silt.service" || inactive="$inactive $v"
+  done
+  if [ -n "$inactive" ]; then
+    record "12-deep-heights" gap major "validator(s) inactive at entry and unhealable (${inactive# }) — premise degraded (substrate/preemption shape), the deep drive is UNTESTED"
+    return
+  fi
+
+  dh_status() { ssh_node "$1" "/usr/local/bin/silt chain-status -store /var/lib/silt 2>&1"; }
+  dh_height() { dh_status "$1" | grep -oE 'head height:[[:space:]]*[0-9]+' | grep -oE '[0-9]+' | tail -1; }
+  dh_ceiling() {
+    local c=0 a hh
+    for a in val-a val-b val-c val-d; do hh="$(dh_height "$a")"; hh="${hh:-0}"; [ "$hh" -gt "$c" ] 2>/dev/null && c="$hh"; done
+    printf '%s' "$c"
+  }
+  dh_drive_block() { # one publish; returns 0 iff the ceiling strictly rises within 90s
+    local before after t0; before="$(dh_ceiling)"
+    ssh_node val-a "head -c 4096 </dev/urandom >/tmp/ft_dh.bin; /usr/local/bin/silt swarm add /tmp/ft_dh.bin -peers '$PEERS' -registry '$REGREF' -token-quorum $TOKEN_QUORUM -chunk-size 65536 >/dev/null 2>&1 || true"
+    t0="$(date +%s)"
+    while [ $(( $(date +%s) - t0 )) -lt 90 ]; do
+      after="$(dh_ceiling)"
+      [ "$after" -gt "$before" ] 2>/dev/null && return 0
+      sleep 5
+    done
+    return 1
+  }
+
+  # Per-height worst case: the SAME topology-aware #451/#525 arithmetic flow 10
+  # derives (base 220s prices the 2-round escape on 4 seats; one escape rung per
+  # 4 extra seats, dur(r) = 2 + r(r+1)/2 sweeps × 30s → 610s at 12 seats). The
+  # freeze early-exit makes this the real grading bound; DEEP_WALL_S only caps
+  # a slow-but-live crawl, and a crawl that cannot produce the target inside the
+  # wall is itself the Phase 3 finding (heights too expensive), reported with
+  # the measured cadence.
+  local dh_n_mat dh_n_syb dh_seats dh_extra dh_height_s=220 dhr
+  dh_n_mat="$(python3 -c "import json;print(json.load(open('$FT_TOPO'))['meta'].get('n_mat',0))" 2>/dev/null || echo 0)"
+  dh_n_syb="$(python3 -c "import json;print(json.load(open('$FT_TOPO'))['meta'].get('n_syb',0))" 2>/dev/null || echo 0)"
+  dh_seats=$(( 4 + dh_n_mat + dh_n_syb ))
+  dh_extra=$(( dh_seats > 4 ? (dh_seats - 4 + 3) / 4 : 0 ))
+  for (( dhr=2; dhr<2+dh_extra; dhr++ )); do dh_height_s=$(( dh_height_s + (2 + dhr*(dhr+1)/2) * 30 )); done
+
+  local h0 t0 ok=0 last_h last_t now_h h_end
+  h0="$(dh_ceiling)"; h0="${h0:-0}"
+  if [ "$h0" -ge "$DEEP_TARGET" ] 2>/dev/null; then
+    ok=1; h_end="$h0"
+    echo "    deep drive: ceiling already h${h0} ≥ target h${DEEP_TARGET} — nothing to drive"
+  else
+    echo "    deep drive: h${h0} → h${DEEP_TARGET} (wall ${DEEP_WALL_S}s; per-height freeze bound ${dh_height_s}s over the ${dh_seats}-seat rotation; organic renewal treadmill + publish top-up)…"
+    t0="$(date +%s)"; last_h="$h0"; last_t="$t0"
+    while [ $(( $(date +%s) - t0 )) -lt "$DEEP_WALL_S" ]; do
+      now_h="$(dh_ceiling)"
+      [ "${now_h:-0}" -ge "$DEEP_TARGET" ] 2>/dev/null && { ok=1; break; }
+      if [ "${now_h:-0}" -gt "$last_h" ] 2>/dev/null; then last_h="$now_h"; last_t="$(date +%s)"; fi
+      if [ $(( $(date +%s) - last_t )) -gt "$dh_height_s" ]; then
+        echo "    deep drive: ceiling FROZEN at h${last_h} for >${dh_height_s}s (one per-height worst-case bound) — exiting early; the stall grades, the window need not run out"
+        break
+      fi
+      dh_drive_block || true
+    done
+    h_end="$(dh_ceiling)"
+  fi
+  local dh_elapsed dh_cadence=""
+  dh_elapsed=$(( $(date +%s) - ${t0:-$(date +%s)} ))
+  [ "${h_end:-0}" -gt "$h0" ] 2>/dev/null && dh_cadence=" (~$(( dh_elapsed / (h_end - h0) ))s/height measured)"
+  ft_add_validator_evidence
+  slo_assert "12-deep-heights" major "DEEP drive (Phase 3 exit gate): honest ceiling reached h${h_end:-?} (target h${DEEP_TARGET}, from h${h0}) within ${dh_elapsed}s of the ${DEEP_WALL_S}s wall${dh_cadence}$([ "$ok" = 1 ] || echo ' — TARGET NOT REACHED: a crawl/stall at depth is the Phase 3 finding itself; attribute from the validator journals')" "$ok"
+
+  # 12b — the prune, from persisted state on EVERY validator. At fast-TTL 32
+  # (the shipped default) safetyDepth=64, so past h≈72 the epoch-floored
+  # horizon is positive and payload-stripped blocks must exist below it.
+  local horizon=0
+  if [ "${h_end:-0}" -gt 64 ] 2>/dev/null; then horizon=$(( ((h_end - 64) / 8) * 8 )); fi
+  if [ "$horizon" -le 0 ]; then
+    record "12b-deep-prune" gap major "chain never reached a positive retention horizon (h_end=${h_end:-?}, horizon needs h>64 at TTL 32) — the prune premise never arose; see 12-deep-heights for why"
+  else
+    local pr_ok=1 pr_detail="" pv pb
+    for v in val-a val-b val-c val-d; do
+      pv="$(dh_status "$v" | grep -oE 'pruned:[[:space:]]*[0-9]+' | grep -oE '[0-9]+' | tail -1)"; pv="${pv:-0}"
+      pb="$(ssh_node "$v" "stat -c%s /var/lib/silt/chain.cbor 2>/dev/null" | tr -dc '0-9')"; pb="${pb:-0}"
+      pr_detail="$pr_detail $v=${pv}pruned/$(( pb / 1048576 ))MiB"
+      [ "$pv" -ge 1 ] 2>/dev/null || pr_ok=0
+    done
+    slo_assert "12b-deep-prune" major "retention prune ENGAGED on every validator at depth (horizon ≈ h${horizon} = epoch-floored h_end−2·TTL):${pr_detail} — payload-stripped counts read from persisted chain.cbor via chain-status, on-disk bytes carried as the weight evidence" "$pr_ok"
+  fi
+
+  # 12c — convergence at depth on the PRUNED chain (the flow-5 probe): all
+  # validators within 2 of tip sharing the tip head hash — steady-state sync
+  # (suffix-append around the pruned gap) still converges after the drive.
+  local tip=0 hh hv agree=1 tip_hash="" detail=""
+  for v in val-a val-b val-c val-d; do
+    hv="$(dh_height "$v")"; hv="${hv:-0}"; [ "$hv" -gt "$tip" ] 2>/dev/null && tip="$hv"
+  done
+  for v in val-a val-b val-c val-d; do
+    hv="$(dh_height "$v")"; hv="${hv:-0}"
+    hh="$(dh_status "$v" | grep -oE 'head hash:[[:space:]]*[0-9a-f]+' | grep -oE '[0-9a-f]{16,}' | tail -1)"
+    detail="$detail $v=h${hv}:${hh:0:12}"
+    [ $(( tip - hv )) -le 2 ] 2>/dev/null || agree=0
+    if [ "$hv" = "$tip" ]; then
+      if [ -z "$tip_hash" ]; then tip_hash="$hh"; elif [ "$hh" != "$tip_hash" ]; then agree=0; fi
+    fi
+  done
+  slo_assert "12c-deep-converge" major "convergence at depth on the pruned chain: all validators within 2 of tip=h${tip} and tip-height validators share head hash ${tip_hash:0:12}… (${detail# })" "$agree"
+}
+
 # A cold objective genesis network needs its peer mesh established and its first
 # block committed before publish-token gathering works. Proven on GCP: the exact
 # same flows that FAIL at ~4 min post-boot all PASS once the chain has advanced (a
@@ -2099,4 +2235,5 @@ run_all_scenarios() {
   # a shuffled position would strand the flows after them on a broken quorum).
   run_flow flow_soak_publish_drain        # opt-in (SOAK=1, MATURING=0): launch publish/drain soak
   run_flow flow_maturing_handoff          # opt-in (MATURING=1 SYBILS=8): handoff/shed drills. LAST: stops validators.
+  run_flow flow_deep_heights              # opt-in (DEEP=1): Phase 3 exit gate — drive to h≥DEEP_TARGET with the prune field-exercised. After the drills (continues the matured chain; self-heals stopped validators or GAPs).
 }
