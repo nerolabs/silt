@@ -8,6 +8,21 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Fixed
+- **#536 cloudtest: the escape fingerprint read round-changes from the wrong channel →
+  a manufactured WEDGE FAIL** (2026-08-23) — `ft_escape_progress` counted `round-change`
+  from journald (`jlog_since`), but that structured `n.logf` line is written to
+  `$STORE/debug.log` only, never journald (`cmd/silt/daemon.go` openLog) — so `rc` read 0
+  on every sample regardless of ladder activity, and a LIVE ladder (114 round-change lines
+  at h64 r1→r5 in run 45da13c-17686's captured debug.log) fingerprinted as FROZEN, grading
+  the down-designee flow a WEDGE FAIL instead of the honest "advancing-but-uncommitted"
+  out-of-model GAP. Fix: read round-changes from `debug.log` (`dlog`), time-scoped by the
+  ISO-timestamp column ≥ the kill instant (new portable `epoch_to_iso`); and — the #525
+  lesson extended to the empty-read case — an UNREADABLE source now yields `?`, never `0`,
+  and the WEDGE-FAIL branch requires a readable (no-`?`) frozen fingerprint. Shipped with an
+  offline RED/GREEN self-test (`integration/cloudtest/check_escape_fingerprint.sh`, wired
+  into CI) per the third-time rule.
+
 ### Added
 - **#535 deterministic repro: the epoch-boundary liveness cliff (consensus model-check)**
   (2026-08-23) — `core/chain/modelcheck_535_boundary_wedge_test.go` pins the mechanism the
