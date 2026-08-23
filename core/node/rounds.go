@@ -222,7 +222,7 @@ func (n *Node) newViewFor(height, round uint64, raws [][]byte) (forced *nodeLock
 		}
 	}
 	designated := n.designatedProposer(height, round)
-	if !n.chain.SupportMeetsQuorum(designated, ids) {
+	if !n.chain.SupportMeetsQuorum(designated, ids, height) {
 		return nil, fmt.Errorf("new-view certificate below quorum (%d round-changes)", len(ids))
 	}
 	return best, nil
@@ -312,6 +312,14 @@ func (n *Node) advanceToRound(rs *heightRounds, next uint64, via string) {
 	}
 	n.logf(ports.LogInfo, "round-change: advancing (#432 view-change)",
 		"height", rs.Height, "round", next, "via", via, "locked", rs.Lock != nil, "pending", len(n.pendingBondRegs), "pending_entries", len(n.pendingEntries))
+	// #535 operator visibility (S5): if this height is a mature-epoch boundary
+	// whose live-bonded frozen members can no longer reach the frozen >⅔ bar,
+	// no round of any ladder can commit it — say so, every escape, so the
+	// operator learns WHY the head is stuck and what the recovery path is.
+	if n.chain.BoundaryLivenessFloorLost(rs.Height) {
+		n.logf(ports.LogWarn, "stalled-at-boundary: live-qualified weight is at or below the frozen 2/3 bar — no live coalition can commit this epoch boundary (#535); if the weight loss is a CONFIRMED real outage (not a partition or attack), a coordinated -liveness-recovery-height at this height is the recovery",
+			"height", rs.Height, "round", next)
+	}
 	// Record our own round-change (we are part of our own quorum), then
 	// broadcast to every sync target.
 	n.recordRoundChange(rs, next, n.id, raw)

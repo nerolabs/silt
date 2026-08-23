@@ -134,7 +134,7 @@ func TestModelCheck_535_FrozenWeightBoundaryWedge(t *testing.T) {
 	if c.SupportMeetsQuorum(anchorID(0), []ports.NodeID{
 		anchorID(1), anchorID(2), anchorID(3), maturerID(0),
 		idOf(yk[0]), idOf(yk[1]), idOf(yk[2]), idOf(yk[3]),
-	}) {
+	}, 1) {
 		t.Fatal("#535: SupportMeetsQuorum says the 9-of-12 live coalition is sufficient, but ValidateCommit refused it — the two must agree")
 	}
 

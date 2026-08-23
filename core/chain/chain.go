@@ -207,6 +207,26 @@ type Config struct {
 	// analogue). Zero Height = no checkpoint (genesis-trusting; safe only at launch,
 	// on a trusted swarm, or before the network has matured). See docs/design/m0.md §10.
 	WSCheckpoint WSCheckpoint
+	// LivenessRecoveryHeight is the #535 fix (3) OPERATOR-DIRECTED liveness-floor
+	// escape: an epoch-boundary height at which mature-epoch validation re-bases
+	// proposer/attester qualification and the >⅔ weight quorum against the LIVE
+	// qualified bonded set instead of the frozen epochSet — ONE boundary, then
+	// the rotation the recovered block performs governs as normal. It exists for
+	// a genuine loss of > ⅓ of the frozen epoch's weight that does NOT return
+	// (members whose bonds TTL-lapsed and stayed gone): that state is outside
+	// the BFT liveness model, the boundary stalls by design (safety-first), and
+	// no automatic rule can make progress safe there — automatic re-basing was
+	// refuted (fix (2), modelcheck_535_fix2_rebasing_test.go: excluding
+	// possibly-honest lapsed weight raises the Byzantine fraction and reopens
+	// I1). So the trust moves to a HUMAN: the operator confirms out-of-band that
+	// the loss is a real outage, not a partition or an attack, and every honest
+	// operator sets the SAME height — the weak-subjectivity trust class,
+	// identical to agreeing on a WSCheckpoint, and the accepted residual (a
+	// wrongly-invoked recovery can fork, exactly the fix (2) counterexample).
+	// Consensus-critical coordination config, same discipline as WSCheckpoint /
+	// RegGateActivationHeight. 0 (default) = off: a bled boundary stalls, which
+	// is the certified-correct behavior. A non-boundary value never fires.
+	LivenessRecoveryHeight uint64
 }
 
 // WSCheckpoint is a recent trusted (height, hash) a replica will not reorg before.
@@ -924,11 +944,22 @@ func (c *Chain) launchAnchor(id ports.NodeID) bool {
 }
 
 // attesterQualified reports whether id may have its attestation counted toward
-// quorum (and, if it has a real bond, weight). Objective mode: membership in the
-// FROZEN epoch set during a mature epoch (#357 Condition A), otherwise its
-// committed bonded size clears MinBond OR it is a launch anchor bootstrapping an
-// immature network. Legacy mode: the local reputation view.
+// quorum (and, if it has a real bond, weight), OUTSIDE any specific block's
+// validation — the frozen-set rule, with no #535 recovery awareness. Height-
+// keyed validation paths use attesterQualifiedAt so the one directed recovery
+// boundary consults the re-based set; every height-less probe (solicitation,
+// token issuer quorum, the maturity metric) stays on the frozen rule.
 func (c *Chain) attesterQualified(id ports.NodeID) bool {
+	return c.attesterQualifiedAt(id, 0) // height 0 is genesis — never a recovery boundary
+}
+
+// attesterQualifiedAt is attesterQualified for the block at height h. Objective
+// mode: membership in the epoch set GOVERNING h during a mature epoch (#357
+// Condition A — the frozen snapshot everywhere except the operator-directed
+// #535 recovery boundary, effectiveEpochSet), otherwise its committed bonded
+// size clears MinBond OR it is a launch anchor bootstrapping an immature
+// network. Legacy mode: the local reputation view.
+func (c *Chain) attesterQualifiedAt(id ports.NodeID, h uint64) bool {
 	if c.slashed[id] {
 		return false // evicted for a proven equivocation (F2) — the ONE live mid-epoch disqualification
 	}
@@ -942,7 +973,11 @@ func (c *Chain) attesterQualified(id ports.NodeID) bool {
 			// deliberate — a protocol-forced mid-epoch disqualification would
 			// shrink the attester supply below the frozen N and could stall the
 			// chain before it ever reaches the boundary that rotates it out.)
-			_, ok := c.epochSet[id]
+			// The ONE exception is the #535 operator-directed recovery boundary,
+			// where the governing set is the live re-base — the attester filter
+			// must draw from the SAME set the weight quorum sums, or the quorum
+			// is sized over one set and filled from another (the #402 trap).
+			_, ok := c.effectiveEpochSet(h)[id]
 			return ok
 		}
 		return c.bonded[id] >= c.cfg.MinBond || c.launchAnchor(id)
@@ -950,17 +985,24 @@ func (c *Chain) attesterQualified(id ports.NodeID) bool {
 	return c.rep(id) >= c.cfg.MinAttesterRep
 }
 
-// proposerQualified reports whether id may propose. Objective mode: epoch-set
-// membership during a mature epoch (Condition A), otherwise a bonded validator
-// or a launch anchor while the network is immature. Legacy mode uses
-// MinProposerRep.
+// proposerQualified reports whether id may propose, outside any specific
+// block's validation — the frozen-set rule (see attesterQualified).
 func (c *Chain) proposerQualified(id ports.NodeID) bool {
+	return c.proposerQualifiedAt(id, 0)
+}
+
+// proposerQualifiedAt is proposerQualified for the block at height h. Objective
+// mode: membership in the epoch set governing h during a mature epoch
+// (Condition A; the #535 recovery boundary re-bases — same rule as attesters),
+// otherwise a bonded validator or a launch anchor while the network is
+// immature. Legacy mode uses MinProposerRep.
+func (c *Chain) proposerQualifiedAt(id ports.NodeID, h uint64) bool {
 	if c.slashed[id] {
 		return false // evicted for a proven equivocation (F2)
 	}
 	if c.objective() {
 		if c.epochsEnabled() && c.matureEpoch {
-			_, ok := c.epochSet[id] // frozen for the epoch, same rule as attesters
+			_, ok := c.effectiveEpochSet(h)[id] // governing set for h, same rule as attesters
 			return ok
 		}
 		// LAUNCH WINDOW — ANCHOR-ONLY PROPOSING (#402 encoding B; research
@@ -978,6 +1020,66 @@ func (c *Chain) proposerQualified(id ports.NodeID) bool {
 		return c.bonded[id] >= c.cfg.MinBond || c.launchAnchor(id)
 	}
 	return c.rep(id) >= c.cfg.MinProposerRep
+}
+
+// liveQualifiedSet is the CURRENT qualified committed bonded set — every
+// identity whose committed bond clears MinBond and is not slashed, with its
+// weight. It is the set a rotation freezes for the next epoch (rotateEpoch)
+// and the set the #535 recovery boundary re-bases against (effectiveEpochSet)
+// — ONE computation, shared, so the recovered boundary's governing set is
+// byte-identical to the snapshot its own commit then freezes. A pure function
+// of committed state: every replica computes it identically.
+func (c *Chain) liveQualifiedSet() map[ports.NodeID]int64 {
+	set := make(map[ports.NodeID]int64, len(c.bonded))
+	for id, sz := range c.bonded {
+		if sz >= c.cfg.MinBond && !c.slashed[id] {
+			set[id] = sz
+		}
+	}
+	return set
+}
+
+// BoundaryLivenessFloorLost reports whether the chain is in the #535 wedge
+// state at height h: a mature-epoch boundary whose frozen members still
+// holding live qualified bonds carry at most ⅔ of the frozen weight — so NO
+// coalition of live members can commit h, and the rotation that would shed the
+// lapsed weight is gated behind the very quorum the lapse denies (the
+// certified-correct, safety-first stall). Exposed for OPERATOR VISIBILITY
+// (S5 — never silently fail): the node logs this state and chain-status names
+// it, so the operator knows a coordinated -liveness-recovery-height (the #535
+// fix (3) escape) may be required. Diagnosis only — it changes no rule.
+func (c *Chain) BoundaryLivenessFloorLost(h uint64) bool {
+	if !c.objective() || !c.epochsEnabled() || !c.matureEpoch || h%c.cfg.EpochBlocks != 0 {
+		return false
+	}
+	var total, live int64
+	for id, w := range c.epochSet {
+		total += w
+		if !c.slashed[id] && c.bonded[id] >= c.cfg.MinBond {
+			live += w
+		}
+	}
+	return total > 0 && 3*live <= 2*total
+}
+
+// effectiveEpochSet is the validator set GOVERNING the block at height h in a
+// mature epoch: the frozen epochSet everywhere, except the one operator-
+// directed #535 liveness-recovery boundary (Config.LivenessRecoveryHeight),
+// where it is the live qualified bonded set. All three mature-epoch validation
+// predicates — attester qualification, proposer qualification, and the >⅔
+// weight quorum — consult THIS function, so the set a quorum is sized over and
+// the set it is filled from can never differ (I1; the #402 checklist: the
+// arithmetic intersects because both coalitions of the h block are >⅔ of the
+// SAME set). Boundary-only by construction: a non-boundary directive never
+// fires, so a mid-epoch set change (the I3 churning-set unsoundness) is
+// impossible. Off (0) by default — a bled boundary stalls, the certified
+// safety-first behavior; see Config.LivenessRecoveryHeight for the trust model.
+func (c *Chain) effectiveEpochSet(h uint64) map[ports.NodeID]int64 {
+	if c.cfg.LivenessRecoveryHeight != 0 && h == c.cfg.LivenessRecoveryHeight &&
+		c.epochsEnabled() && h%c.cfg.EpochBlocks == 0 {
+		return c.liveQualifiedSet()
+	}
+	return c.epochSet
 }
 
 // qualifiedCount is the number of distinct on-chain validators currently eligible
@@ -1436,6 +1538,17 @@ func (c *Chain) EligibleProposers() []ports.NodeID {
 // #338 drain filters its attester set through this.
 func (c *Chain) AttesterEligible(id ports.NodeID) bool { return c.attesterQualified(id) }
 
+// AttesterEligibleAt is AttesterEligible for the block at height h — identical
+// everywhere except the #535 operator-directed recovery boundary, where the
+// governing set is the live re-base (attesterQualifiedAt). The gather must
+// SOLICIT from the same set validation will count: a live-but-unfrozen
+// member's weight is in the recovery denominator, so a frozen-set solicitation
+// filter could leave the assembling coalition short of the very bar it is
+// measured against (the #402 size-set/membership-set law, at the wire).
+func (c *Chain) AttesterEligibleAt(id ports.NodeID, h uint64) bool {
+	return c.attesterQualifiedAt(id, h)
+}
+
 // IsBonded reports whether id is a qualified bond-distinct identity in the COMMITTED
 // on-chain bond ledger: its bonded size clears MinBond and it has not been slashed.
 // This is the LIVE admission bar (what attesterQualified reads outside a mature
@@ -1858,7 +1971,7 @@ func (c *Chain) ValidateProposal(b *Block) error {
 	if !ed25519.Verify(ed25519.PublicKey(b.Proposer), h[:], b.ProposerSig) {
 		return fmt.Errorf("%w: proposer", ErrBadSignature)
 	}
-	if !c.proposerQualified(b.ProposerID()) {
+	if !c.proposerQualifiedAt(b.ProposerID(), b.Height) {
 		if c.objective() {
 			return fmt.Errorf("%w: proposer %s bonded %d, needs %d",
 				ErrLowReputation, b.ProposerID(), c.bonded[b.ProposerID()], c.cfg.MinBond)
@@ -2073,7 +2186,7 @@ func (c *Chain) collectQuorumSigs(b *Block, sigs []Attestation, phase uint8, rou
 		if !verifyAtt(a, h) {
 			return nil, fmt.Errorf("%w: attester %s", ErrBadSignature, id)
 		}
-		if !c.attesterQualified(id) {
+		if !c.attesterQualifiedAt(id, b.Height) {
 			continue // unqualified signatures are ignored, not fatal
 		}
 		seen[id] = true
@@ -2122,7 +2235,7 @@ func (c *Chain) requireQuorumStack(b *Block, seen map[ports.NodeID]bool) error {
 	// REAL bonded weight. This also makes the quorum consistent with fork-choice
 	// (blockWeight already sums the same frozen snapshot weights).
 	if c.cfg.ByzantineQuorum && c.objective() && c.epochsEnabled() && c.matureEpoch {
-		if err := c.requireEpochWeightQuorum(b.ProposerID(), seen); err != nil {
+		if err := c.requireEpochWeightQuorum(b.ProposerID(), seen, b.Height); err != nil {
 			return err
 		}
 	}
@@ -2153,17 +2266,21 @@ func (c *Chain) requireQuorumStack(b *Block, seen map[ports.NodeID]bool) error {
 // invent). Non-members contribute zero (attesterQualified already gated
 // membership), so a cheap-member cohort weighs exactly what it paid. A pure
 // function of the frozen snapshot — every replica agrees within the epoch.
-func (c *Chain) requireEpochWeightQuorum(proposer ports.NodeID, seen map[ports.NodeID]bool) error {
+func (c *Chain) requireEpochWeightQuorum(proposer ports.NodeID, seen map[ports.NodeID]bool, h uint64) error {
+	// The governing set for h: the frozen snapshot everywhere but the #535
+	// recovery boundary (effectiveEpochSet) — the SAME set the attester filter
+	// admits from, so sizing-set == membership-set (the #402 law).
+	set := c.effectiveEpochSet(h)
 	var total int64
-	for _, w := range c.epochSet {
+	for _, w := range set {
 		total += w
 	}
 	if total <= 0 {
 		return nil // no frozen weight to measure against (degenerate/trusted)
 	}
-	support := c.epochSet[proposer]
+	support := set[proposer]
 	for id := range seen {
-		support += c.epochSet[id]
+		support += set[id]
 	}
 	if 3*support <= 2*total {
 		return fmt.Errorf("%w: coalition holds %d of %d bonded weight (need >%d)",
@@ -2212,17 +2329,20 @@ func (c *Chain) RoundCatchupMet(senders map[ports.NodeID]bool) bool {
 	return n >= f+1
 }
 
-// SupportMeetsQuorum reports whether a commit proposed by `proposer` and
-// attested by `attesters` would clear ValidateCommit's quorum: the distinct
-// qualified non-proposer count floor (RequiredQuorum) plus, in a mature epoch,
-// the frozen-weight super-majority (requireEpochWeightQuorum). Exposed so a
-// proposer's gather loop can stop asking exactly when the coalition it holds
-// would commit — under weight counting, "how many attestations" is no longer
-// the question; "whose" is.
-func (c *Chain) SupportMeetsQuorum(proposer ports.NodeID, attesters []ports.NodeID) bool {
+// SupportMeetsQuorum reports whether a commit at height h proposed by
+// `proposer` and attested by `attesters` would clear ValidateCommit's quorum:
+// the distinct qualified non-proposer count floor (RequiredQuorum) plus, in a
+// mature epoch, the weight super-majority over the set governing h
+// (requireEpochWeightQuorum — the frozen snapshot everywhere but the #535
+// recovery boundary). Exposed so a proposer's gather loop can stop asking
+// exactly when the coalition it holds would commit — under weight counting,
+// "how many attestations" is no longer the question; "whose" is. h is the
+// height of the block being gathered, so the gather and the validation judge
+// the SAME governing set.
+func (c *Chain) SupportMeetsQuorum(proposer ports.NodeID, attesters []ports.NodeID, h uint64) bool {
 	seen := make(map[ports.NodeID]bool, len(attesters))
 	for _, id := range attesters {
-		if id == proposer || seen[id] || !c.attesterQualified(id) {
+		if id == proposer || seen[id] || !c.attesterQualifiedAt(id, h) {
 			continue
 		}
 		seen[id] = true
@@ -2238,7 +2358,7 @@ func (c *Chain) SupportMeetsQuorum(proposer ports.NodeID, attesters []ports.Node
 		return false
 	}
 	if c.cfg.ByzantineQuorum && c.objective() && c.epochsEnabled() && c.matureEpoch {
-		return c.requireEpochWeightQuorum(proposer, seen) == nil
+		return c.requireEpochWeightQuorum(proposer, seen, h) == nil
 	}
 	return true
 }
@@ -2535,12 +2655,7 @@ func (c *Chain) rotateEpoch(h uint64) {
 		return
 	}
 	c.matureEpoch = true
-	set := make(map[ports.NodeID]int64, len(c.bonded))
-	for id, sz := range c.bonded {
-		if sz >= c.cfg.MinBond && !c.slashed[id] {
-			set[id] = sz
-		}
-	}
+	set := c.liveQualifiedSet()
 	c.epochSet = set
 
 	// #506 lock-in detection (post-latch path; the pre-latch genesis override

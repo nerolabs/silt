@@ -95,7 +95,7 @@ func TestMatureQuorumCheapMemberCaptureRefused(t *testing.T) {
 	if !errors.Is(err, ErrNoQuorumWeight) {
 		t.Fatalf("capture refusal should be the weight rule, got: %v", err)
 	}
-	if c.SupportMeetsQuorum(s[0], s[1:]) {
+	if c.SupportMeetsQuorum(s[0], s[1:], 1) {
 		t.Fatal("SupportMeetsQuorum must agree with ValidateCommit: the cohort coalition is insufficient")
 	}
 
@@ -107,7 +107,7 @@ func TestMatureQuorumCheapMemberCaptureRefused(t *testing.T) {
 	if err := c.Append(*ok); err != nil {
 		t.Fatalf("an honest >⅔-weight coalition must commit: %v", err)
 	}
-	if !c.SupportMeetsQuorum(h[0], []ports.NodeID{h[1], h[2]}) {
+	if !c.SupportMeetsQuorum(h[0], []ports.NodeID{h[1], h[2]}, 1) {
 		t.Fatal("SupportMeetsQuorum must agree with ValidateCommit for the honest coalition")
 	}
 }
