@@ -9,6 +9,18 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **#299 measured: the 1.5 MB bond answer is a parameter question, not an encoding one**
+  (2026-08-23) — Committed measurements (`core/bond/answer_size_measure_test.go`,
+  `verify_cpu_measure_test.go`) decompose the answer: label-open blocks are 1264 KiB of
+  the 1513 KiB total (64 opens x 5 x 4 KiB raw plot bytes); cross-open duplicate leaves
+  are 0.9% at 64 MiB (the issue's dedup interim is refuted at scale); the Merkle
+  multiproof union floor saves ~6% of the total; verify CPU is 1.8 ms/answer (batch
+  verification not a cost center). The 10x levers (`DefaultLabelSamples`, `BlockSize`)
+  are soundness parameters -> research consult filed
+  (`silt-reviews/research/299-label-samples-answer-size-CONSULT.md`); Phase 3's
+  multiproof/batch-verify tiers are deliberately NOT built on this evidence. Deliberation:
+  [docs/thinking/2026-08-23-299-answer-size-evidence.md](docs/thinking/2026-08-23-299-answer-size-evidence.md).
+
 - **The #506 version gate: the per-identity reg-inclusion rate bound ships as a validity
   rule behind a BFT-native activation** (2026-08-22) — The #503-certified R-rule is now
   enforceable: past the activation boundary, a bond registration is a valid block payload
