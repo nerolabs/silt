@@ -34,14 +34,23 @@ func cmdChainStatus(args []string) error {
 	}
 	head := blocks[len(blocks)-1]
 	headHash := head.Hash()
-	entries := 0
+	entries, pruned := 0, 0
 	for i := range blocks {
 		entries += len(blocks[i].Entries)
+		if blocks[i].IsPruned() {
+			pruned++
+		}
 	}
 	fmt.Printf("  head height:  %d\n", head.Height)
 	fmt.Printf("  head hash:    %s\n", headHash)
 	fmt.Printf("  blocks:       %d (incl. genesis)\n", len(blocks))
 	fmt.Printf("  entries:      %d committed\n", entries)
+	// The retention prune sheds the heavy bond proofs of blocks below the
+	// rolling horizon while keeping headers + consensus sigs, so on-disk and
+	// resident chain weight stays bounded to a recent finalized window. A
+	// nonzero count here is how an operator (or the field harness) confirms
+	// the prune is engaged from real persisted state, not a log line.
+	fmt.Printf("  pruned:       %d blocks payload-stripped below the retention horizon\n", pruned)
 	fmt.Println("  → identical values across replicas mean they agree on the committed history")
 	return nil
 }

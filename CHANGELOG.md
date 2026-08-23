@@ -9,6 +9,20 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **The DEEP=1 exit-gate flow + chain-status prune visibility (ROADMAP Phase 3)**
+  (2026-08-23) — `flow_deep_heights` (opt-in `DEEP=1`, `DEEP_TARGET=128` default) drives
+  the chain past the maturing drills to depth with three graded rows: the honest
+  ceiling reaches the target inside a wall bound with the #525 freeze early-exit
+  (a crawl/stall at depth is itself the Phase 3 finding, reported with measured
+  cadence); the retention prune is confirmed ENGAGED on every validator from real
+  persisted state; and the flow-5 convergence probe re-runs on the pruned chain (the
+  slice-5 suffix-sync-around-the-gap property at depth, on the #528 suffix-append
+  path). Supporting product change: `silt chain-status` now prints the
+  payload-stripped block count, so an operator (and the harness) confirms the prune
+  from `chain.cbor` rather than a debug log line. Per-height bounds reuse the
+  #451/#525 topology-aware arithmetic (610 s at 12 seats, verified against flow 10's
+  certified value). Design deliberation:
+  [docs/thinking/2026-08-23-deep-heights-exit-gate-design.md](docs/thinking/2026-08-23-deep-heights-exit-gate-design.md).
 - **#299 measured: the 1.5 MB bond answer is a parameter question, not an encoding one**
   (2026-08-23) — Committed measurements (`core/bond/answer_size_measure_test.go`,
   `verify_cpu_measure_test.go`) decompose the answer: label-open blocks are 1264 KiB of
