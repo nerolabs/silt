@@ -219,27 +219,57 @@ ft_wait_new_block() { # ft_wait_new_block NODE H0 TIMEOUT_S -> 0 if a block > H0
   return 1
 }
 
+# epoch_to_iso EPOCH → a UTC ISO-8601 prefix (YYYY-MM-DDTHH:MM:SS), portable
+# across GNU date (-d @N) and BSD/macOS date (-r N). Lexicographic string order
+# on this fixed-width UTC form matches chronological order, so it can filter the
+# debug.log timestamp column with a plain `>=`.
+epoch_to_iso() { date -u -d "@$1" +%Y-%m-%dT%H:%M:%S 2>/dev/null || date -u -r "$1" +%Y-%m-%dT%H:%M:%S 2>/dev/null; }
+
 # ft_escape_progress SINCE_EPOCH SURVIVOR... — a progress fingerprint of the
 # down-designee escape (#509): total round-change lines + the max committed
-# height across the surviving validators' journals SINCE the kill. Two EQUAL
-# fingerprints a stall window apart are the wedge signature (PE §4: a miss
-# inside a principled bound); an advancing fingerprint is the #451 ladder alive
-# — slow is not stuck. TIME-SCOPED, never line-windowed (#525): the old
-# last-600-lines read was scrolled by the economy flows' sweep narration, so
-# run 94ef1e8-36901 read rc=0 on both samples while the survivor journals
-# showed the ladder advancing h38 r1→r3 — a manufactured false WEDGE FAIL.
-# Both counts are monotone within one flow run, so "equal" cleanly means "no
-# new round-changes AND no new commits across the extension".
+# height across the surviving validators SINCE the kill. Two EQUAL fingerprints
+# a stall window apart are the wedge signature (PE §4: a miss inside a principled
+# bound); an advancing fingerprint is the #451 ladder alive — slow is not stuck.
+#
+# TWO SOURCES, TWO CHANNELS (#536, the run 45da13c-17686 mis-attribution):
+#   - `chain: committed block` is a fmt.Printf BANNER → stdout → journald, so the
+#     height reads from jlog_since (time-scoped, #525).
+#   - `round-change` is a structured n.logf line → $STORE/debug.log ONLY, NEVER
+#     journald (cmd/silt/daemon.go openLog). Counting it from jlog_since read
+#     rc=0 on EVERY sample regardless of ladder activity, so a live ladder (114
+#     round-change lines in the captured debug.log at h64 r1→r5) fingerprinted as
+#     FROZEN → a manufactured WEDGE FAIL. Read it from debug.log (dlog),
+#     time-scoped by the ISO timestamp column ≥ the kill instant.
+#
+# UNKNOWN, never zero (the #525 lesson, extended to the empty-read case): a
+# source that could NOT be read (ssh returned nothing) yields `?`, never 0 — two
+# unreadable samples must not compare EQUAL and manufacture a wedge. The caller's
+# WEDGE-FAIL branch requires a fingerprint with no `?`.
 ft_escape_progress() {
   local since="$1"; shift
-  local n rc=0 h=0 cur out
+  local iso; iso="$(epoch_to_iso "$since")"
+  local n rc=0 h=0 cur jout dout rc_read=0 h_read=0
   for n in "$@"; do
-    out="$(jlog_since "$n" "$since" 2>/dev/null)"
-    cur="$(printf '%s' "$out" | grep -c 'round-change' || true)"; rc=$(( rc + ${cur:-0} ))
-    cur="$(printf '%s' "$out" | grep -oE 'chain: committed block [0-9]+' | grep -oE '[0-9]+$' | sort -n | tail -1)"
-    [ "${cur:-0}" -gt "$h" ] 2>/dev/null && h="$cur"
+    # Height from journald banners (time-scoped).
+    jout="$(jlog_since "$n" "$since" 2>/dev/null)"
+    if [ -n "$(printf '%s' "$jout" | tr -d '[:space:]')" ]; then
+      h_read=1
+      cur="$(printf '%s' "$jout" | grep -oE 'chain: committed block [0-9]+' | grep -oE '[0-9]+$' | sort -n | tail -1)"
+      [ "${cur:-0}" -gt "$h" ] 2>/dev/null && h="$cur"
+    fi
+    # Round-changes from debug.log (dlog), filtered to timestamps ≥ the kill ISO.
+    dout="$(dlog "$n" 4000 2>/dev/null)"
+    if [ -n "$(printf '%s' "$dout" | tr -d '[:space:]')" ]; then
+      rc_read=1
+      cur="$(printf '%s' "$dout" | awk -v thr="$iso" '$1 >= thr && /round-change/' | grep -c 'round-change' || true)"
+      rc=$(( rc + ${cur:-0} ))
+    fi
   done
-  printf 'rc=%s h=%s' "$rc" "$h"
+  # A source no survivor could answer is UNKNOWN, not zero.
+  local rcs hs
+  rcs="rc=$rc"; [ "$rc_read" = 0 ] && rcs="rc=?"
+  hs="h=$h"; [ "$h_read" = 0 ] && hs="h=?"
+  printf '%s %s' "$rcs" "$hs"
 }
 
 # ── Flow 1: build & first run ──────────────────────────────────────────────────
@@ -458,10 +488,14 @@ print(anch + int(m.get('n_mat',0) or 0) + int(m.get('n_syb',0) or 0))" 2>/dev/nu
     slo_assert "6-fault-tolerance" major "publish still committed with one validator (val-d) down (within the computed ${FT_DOWN_COMMIT_S}s down-designee escape bound)" 1
   elif [ "$ok" = 2 ]; then
     slo_assert "6-fault-tolerance" major "publish committed with val-d down BEYOND the expected ${FT_DOWN_COMMIT_S}s but inside the computed r≤${ftrcap} hard cap (${FT_DOWN_HARD_S}s) — a slow escape that started under load, mechanism healthy (#509; escape fingerprint at first bound: ${fp0})" 1
-  elif [ -n "$res" ] && [ -n "$fp1" ] && [ "$fp1" = "$fp0" ]; then
-    record "6-fault-tolerance" fail major "WEDGE SIGNATURE: no commit AND a frozen escape fingerprint (${fp0}) across the ${FT_DOWN_COMMIT_S}s→${FT_DOWN_HARD_S}s extension with val-d down — the round ladder is NOT advancing; attribute from the captured survivor journals (#509 upgraded this from an unattributable GAP)"
+  elif [ -n "$res" ] && [ -n "$fp1" ] && [ "$fp1" = "$fp0" ] && [ "${fp0#*\?}" = "$fp0" ]; then
+    # WEDGE only on a READABLE, frozen fingerprint (#536): fp must contain no `?`
+    # (an UNKNOWN source is not evidence of a frozen ladder). A frozen READABLE
+    # fingerprint with round-changes present but stuck IS the wedge; rc advancing
+    # would have made fp1 != fp0 and routed to the OUT-OF-MODEL gap below.
+    record "6-fault-tolerance" fail major "WEDGE SIGNATURE: no commit AND a frozen, readable escape fingerprint (${fp0}) across the ${FT_DOWN_COMMIT_S}s→${FT_DOWN_HARD_S}s extension with val-d down — the round ladder is NOT advancing; attribute from the captured survivor journals (#509 upgraded this from an unattributable GAP)"
   else
-    record "6-fault-tolerance" gap major "no new commit within the computed ${FT_DOWN_HARD_S}s r≤${ftrcap} hard cap with val-d down (fingerprint ${fp0} → ${fp1:-n/a}: ladder advancing but uncommitted — OUT OF MODEL) — read the captured client error (publish-diag / .ft_publish_lasterr) and survivor journals before attributing (#509/#7)"
+    record "6-fault-tolerance" gap major "no new commit within the computed ${FT_DOWN_HARD_S}s r≤${ftrcap} hard cap with val-d down (fingerprint ${fp0} → ${fp1:-n/a}$(printf '%s' "${fp0}${fp1}" | grep -q '?' && echo '; a fingerprint source was UNREADABLE — cannot claim a frozen ladder (#536)' || echo ': ladder advancing but uncommitted — OUT OF MODEL')) — read the captured client error (publish-diag / .ft_publish_lasterr) and survivor journals before attributing (#509/#7)"
   fi
   svc val-d start || true
 }

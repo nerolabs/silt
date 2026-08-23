@@ -32,6 +32,8 @@ jobs:
         run: ./integration/cloudtest/check_shell_multibyte.sh
       - name: cloudtest local-proof parity lint (every graded flow declares its LOCAL_PROOF or an explicit n/a)
         run: ./integration/cloudtest/check_local_proofs.sh
+      - name: cloudtest escape-fingerprint self-test (#536 — rc from debug.log not journald; UNKNOWN never 0)
+        run: ./integration/cloudtest/check_escape_fingerprint.sh
       - name: go test + coverage floor
         run: |
           # -coverpkg=./... credits cross-package coverage, so the pure
