@@ -602,6 +602,51 @@ func (n *Node) reconstructFork(served []chain.Block) ([]chain.Block, error) {
 	return full, nil
 }
 
+// appendExtension adopts a served window iff it provably EXTENDS this node's
+// exact committed head, through the normal Append commit path (#528). The
+// proof is the hash chain: the served block at our next height carrying
+// Prev == our head hash commits, transitively, to our entire validated
+// history — so re-validating that history (the slow path's genesis replay)
+// proves nothing new, and only the suffix needs validation. Served blocks at
+// or below our head height are skipped unexamined: whatever the peer claims
+// there, the Prev linkage pins the adopted blocks to OUR prefix (the C1/
+// long-range posture is unchanged — we still anchor on our own chain, never
+// a peer's). Each adopted block runs the full Append validation (ancestry,
+// quorum/commit re-proof, bond re-verification), so a lying peer wastes only
+// the suffix's validation time and cannot feed us an invalid block.
+//
+// Returns ext=false when the window is not a provable extension (no block at
+// our next height, or its Prev differs — a divergent or equal-height fork, a
+// peer behind us, or a gap): the caller falls back to the slow reconcile
+// path, which keeps the reorg/equivocation/finality-gate guarantees for
+// those shapes. err != nil means the append stopped mid-suffix; blocks
+// already appended (counted in appended) are fully validated committed
+// state and are kept.
+//
+// MUST only be called when BFT finality is active on the local chain: that
+// is what makes "extension" the only adoptable shape (Reconcile's gate
+// refuses any fork not containing our committed head) and makes adoption
+// without a heavier() comparison sound (every appended block re-proves a
+// super-quorum commit, so the extension is strictly heavier by construction).
+func (n *Node) appendExtension(window []chain.Block) (appended int, ext bool, err error) {
+	head, next := n.chain.Head()
+	i := 0
+	for i < len(window) && window[i].Height < next {
+		i++
+	}
+	if i == len(window) || window[i].Height != next || window[i].Prev != head {
+		return 0, false, nil
+	}
+	for ; i < len(window); i++ {
+		if aerr := n.chain.Append(window[i]); aerr != nil {
+			return appended, true, aerr
+		}
+		appended++
+		n.Stats.ChainSyncSuffixAppends++
+	}
+	return appended, true, nil
+}
+
 var ErrNoChain = errors.New("node: validator role not enabled")
 
 // ErrNeedCheckpoint signals that this node is behind by more than the weak-subjectivity
@@ -1196,7 +1241,7 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 		// across the gap. reqHeight is 0 without BFT finality (no immutable anchor) ⇒ a
 		// full-genesis fetch, unchanged. The peer serves [reqHeight, peerHead]; we anchor it
 		// on our OWN verified prefix (never a peer-served head — the C1/long-range guard).
-		reqHeight, _ := n.chain.FinalizedHeight()
+		reqHeight, finActive := n.chain.FinalizedHeight()
 		var served []chain.Block
 		finish := func() {
 			if len(served) == 0 {
@@ -1223,6 +1268,7 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 			// sub-finalized double-sign is either already-slashed at commit or a
 			// >f attack out of the safety model.
 			n.slashEquivocators(old, full)
+			n.Stats.ChainSyncFullReconciles++
 			if ok, rerr := n.chain.Reconcile(full); ok {
 				now := n.chain.Blocks(0)
 				if d := n.chain.Len() - before; d > 0 {
@@ -1268,8 +1314,56 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 						return
 					}
 					n.Stats.ChainSyncWindows++
-					served = append(served, window...)
 					last := window[len(window)-1].Height
+					// #528 fast path — a window that provably EXTENDS our exact committed
+					// head is adopted through the normal Append commit path, validating
+					// ONLY the new blocks. The slow tail below re-validates the WHOLE
+					// reconstructed fork from genesis (~1s per 1.5 MB reg block, ON the
+					// event loop), which is O(height) per catch-up: at h≈56 under MATURING
+					// reg weight one reconcile outlasted the round durations, starved the
+					// sweeps, and wedged the chain (the field-measured knee). Gated on
+					// finality being ACTIVE: Reconcile's finality gate then refuses any
+					// fork that does not contain our committed head, so an extension is
+					// the only adoptable shape — and each appended block re-proves a
+					// super-quorum commit inside Append (strictly positive weight), so
+					// adoption here is exactly the outcome heavier() would force. Gated on
+					// len(served)==0 so a window run is judged in ONE mode, never spliced
+					// across fast and slow handling; loop occupancy per callback is
+					// bounded by the window byte budget, and control returns to the loop
+					// between windows.
+					if finActive && len(served) == 0 {
+						if k, ext, aerr := n.appendExtension(window); ext {
+							added += k
+							if k > 0 {
+								n.logf(ports.LogInfo, "chain caught up from peer (suffix append)", "peer", p, "appended", k, "len", n.chain.Len())
+							}
+							if aerr != nil {
+								// Mid-suffix stop: blocks appended so far are fully
+								// validated committed blocks (the same state as having
+								// synced one sweep earlier) — keep them; drop the peer
+								// for this sweep. A pruned gap keeps the slice-5 deep-cold
+								// signal: refuse-to-trust + name the remedy (I4/S5).
+								if errors.Is(aerr, chain.ErrPrunedAboveHorizon) {
+									n.Stats.ChainSyncNeedCheckpoint++
+									n.logf(ports.LogWarn, "cannot catch up from peer: behind the weak-subjectivity window and the peer pruned the gap — obtain a recent -ws-checkpoint out-of-band or sync from an archive node", "peer", p, "err", ErrNeedCheckpoint)
+								} else {
+									n.logf(ports.LogDebug, "suffix append stopped mid-window", "peer", p, "err", aerr)
+								}
+								next()
+								return
+							}
+							if peerHeadKnown && last >= peerHead {
+								next() // caught up to the probed head; nothing to reconcile
+								return
+							}
+							fetchWindow(last + 1)
+							return
+						}
+						// Not a provable extension (divergent fork, equal-height fork,
+						// peer behind, or a gap) — fall through to the slow path, which
+						// keeps every reorg / equivocation-scan / finality-gate guarantee.
+					}
+					served = append(served, window...)
 					if last < h {
 						// A server whose windows do not advance is broken or lying;
 						// stop rather than loop — Reconcile fails closed on whatever
