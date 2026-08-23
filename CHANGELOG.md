@@ -155,6 +155,28 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   [docs/thinking/2026-08-20-economy-local-loop-design.md](docs/thinking/2026-08-20-economy-local-loop-design.md).
 
 ### Fixed
+- **#528 — the h≈56 liveness knee: catch-up sync validates only the new suffix, never
+  the whole chain** (2026-08-23) — The RC run `0de4b96-64567` wedged at h57: every
+  catch-up reconcile re-validated the ENTIRE chain from genesis in a throwaway replica
+  (~1s per 1.5 MB reg block, on the event loop), so at accumulated MATURING reg weight
+  one reconcile outlasted the round durations, starved sweep and round-change
+  processing, and h57 never committed (198 `ChainReply` watchdog HANGs; deterministic
+  2/2 with run `94ef1e8-36901`). Fix: a served window that provably EXTENDS the local
+  committed head (finality active; the first new block's `Prev` chains from our head
+  hash, which transitively commits our entire already-validated history) is adopted
+  per window through the normal `Append` commit path — O(delta) validation, loop
+  occupancy bounded by the #466 window byte budget — instead of `reconstructFork` +
+  `Reconcile`'s O(height) genesis replay. Every other shape (divergent fork,
+  equal-height fork, legacy no-finality config, pruned gap) keeps the unchanged slow
+  path with all reorg / equivocation-scan / finality-gate / `ErrNeedCheckpoint`
+  guarantees. No consensus rule changes: adoption without a `heavier()` pass is sound
+  exactly because the finality gate makes an extension the only adoptable shape and
+  each appended block re-proves a super-quorum commit. Measured locally: near-head
+  catch-up on a 60-block heavy-reg chain fell from 280 ms (full replay) to 4.7 ms
+  (suffix append), 60×; at field bond-verify cost that is the 40–60 s loop pin
+  removed. New cost gauges `ChainSyncSuffixAppends` / `ChainSyncFullReconciles` split
+  the two routes; deliberation in
+  [docs/thinking/2026-08-23-528-suffix-append-catchup.md](docs/thinking/2026-08-23-528-suffix-append-catchup.md).
 - **Cloudtest harness: the #525 trio — a false-wedge fingerprint read, base-topology
   bounds graded onto a 12-seat rotation, and the re-drive clobbering the sheet**
   (2026-08-22, all three evidenced by coverage run 94ef1e8-36901) — (1) The #509 escape

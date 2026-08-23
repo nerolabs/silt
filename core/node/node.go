@@ -409,6 +409,15 @@ type Stats struct {
 	// fetches (#466). windows/full-fetch ≈ suffix bytes / maxChainReplyBytes; a
 	// value equal to FullFetches means every fetch fit one window.
 	ChainSyncWindows int
+	// #528 catch-up cost split. ChainSyncSuffixAppends: blocks adopted through the
+	// extension fast path (validated once, via the normal Append commit path — the
+	// O(delta) route). ChainSyncFullReconciles: slow-path Reconcile invocations,
+	// each a full genesis replay of the reconstructed fork (~1s per 1.5 MB reg
+	// block on the event loop — the h≈56 knee). Steady-state catch-up must live
+	// entirely in SuffixAppends; FullReconciles climbing during plain catch-up is
+	// the #528 regression signal.
+	ChainSyncSuffixAppends  int
+	ChainSyncFullReconciles int
 }
 
 type pending struct {
