@@ -5,20 +5,27 @@ Sybil-resistance claim. **Status of this document:** the engagement brief and
 rules of engagement. **Read `docs/design/m0.md` §7–§8 and `docs/TENETS.md`
 Part 0 first — this handoff points at them, it does not replace them.**
 
-> **⚠ GATE STATUS (read this before scheduling the engagement).** The formal
-> #183 entry criteria (`docs/release-checklist.md`) are **NOT all met yet.** One
-> open finding is a hard blocker: **#535, the h64 epoch-boundary liveness wedge**
-> — a connected, all-honest network permanently stalls at an epoch boundary when
-> > ⅓ of the *frozen* epoch weight is offline (deterministic repro:
-> `core/chain/modelcheck_535_boundary_wedge_test.go`). This is exactly the class
-> the checklist says a red team "hits immediately, and it is not even
-> adversarial." It is under a research ruling (consult:
-> `/Users/andrewedmond/Claude/claude/silt-reviews/research/535-epoch-boundary-liveness-cliff-CONSULT.md`).
-> **The engagement should begin once #535's fix has landed and the consensus
-> model-check is green across the full schedule budget** — otherwise the team
-> spends its first days re-finding a defect we already have on the board. This
-> handoff is written now so it is ready the moment that gate opens; the
-> **known-open list (§6)** keeps you from re-discovering what we already know.
+> **⚠ GATE STATUS (updated 2026-08-23; read before scheduling).** The formal
+> #183 entry criteria (`docs/release-checklist.md`) are **NOT all met yet**, but
+> most are now green:
+> - ✅ Consensus model-check green (#406) — `go test ./core/{node,chain} -run ModelCheck`.
+> - ✅ netem adversarial suite deterministic-green **10/10 consecutive** (`SUITE=all` under `delay 80ms 20ms`).
+> - ✅ #399 WS-checkpoint recovery drill — field-confirmed (runs 585c82a, 45da13c).
+> - ⏳ **#535, the h64 epoch-boundary liveness wedge — the one remaining blocker.**
+>   A connected, all-honest network permanently stalls at an epoch boundary when
+>   > ⅓ of the *frozen* epoch weight is offline (repro:
+>   `core/chain/modelcheck_535_boundary_wedge_test.go`; it is the class the
+>   checklist says a red team "hits immediately, not even adversarial").
+>   **Research has RULED** (certification:
+>   `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/535-epoch-boundary-liveness-cliff-RESEARCH-CERTIFICATION-2026-08-23.md`):
+>   the stall is *correct* safety-first BFT; the defect is non-recovery, fixed by
+>   a **three-layer recovery stack**. **Layer (4) — the R-gate restore exemption —
+>   has LANDED (PR #541).** Layers (2) boundary-local re-basing and (3) the
+>   weak-subjectivity liveness escape remain in build.
+>
+> **Begin the engagement once the #535 recovery stack is complete and the
+> extended #535 model-check (with the recovery schedules) is green.** The
+> known-open list (§6) keeps you from re-discovering what is already on the board.
 
 ---
 
