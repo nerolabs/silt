@@ -914,7 +914,7 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 		}
 		// Counted around the block's AUTHOR (which may not be this node on a
 		// new-view re-proposal) — mirrors ValidateCommit exactly.
-		return n.chain.SupportMeetsQuorum(b.ProposerID(), ids)
+		return n.chain.SupportMeetsQuorum(b.ProposerID(), ids, b.Height)
 	}
 	// counted: the caller's `quorum` floor is a NON-AUTHOR attestation count
 	// (the proposer is counted by authorship, never by signature — the #402
@@ -1111,7 +1111,7 @@ func (n *Node) proposeAtNewView(rs *heightRounds, round uint64, newView [][]byte
 	peers := n.syncTargets()
 	attesters := make([]ports.NodeID, 0, len(peers))
 	for _, p := range peers {
-		if n.chain.AttesterEligible(p) {
+		if n.chain.AttesterEligibleAt(p, rs.Height) {
 			attesters = append(attesters, p)
 		}
 	}
@@ -1581,7 +1581,7 @@ func (n *Node) maybeProposeBondDrain() {
 	peers := n.syncTargets()
 	attesters := make([]ports.NodeID, 0, len(peers))
 	for _, p := range peers {
-		if n.chain.AttesterEligible(p) {
+		if n.chain.AttesterEligibleAt(p, height) {
 			attesters = append(attesters, p)
 		}
 	}

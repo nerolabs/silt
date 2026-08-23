@@ -116,6 +116,7 @@ func cmdDaemon(args []string) error {
 	liar := fs.Bool("liar", false, "RED-TEAM / TEST-HARNESS ONLY: run this storage node as a PoR LIAR — it keeps its storage-proof tags but silently drops the shard bytes (\"keep the receipt, ditch the goods\"). It still answers a MsgChallenge, but with a proof that fails the auditor's verify-without-fetch check, so an -audit auditor CATCHES it and slashes its standing (#232). Never honest")
 	goodPropose := fs.String("goodpropose", "", "TEST-HARNESS ONLY: POSITIVE CONTROL for -forge-block/-lowbond-propose. As a properly-bonded proposer, send a WELL-FORMED block to this peer ID and prove the honest target ACCEPTS it — so a target that refuses EVERY proposal (a broken/wedged node) cannot make the forged/low-bond REJECT tests false-pass ('reject the good one too' would otherwise look identical to 'reject the bad one', audit #303). Retries until its bond earns standing. Logs 'goodpropose proposal ACCEPTED by <id>' on accept, 'goodpropose proposal UNEXPECTEDLY REJECTED by <id>' after giving up")
 	wsCheckpoint := fs.String("ws-checkpoint", "", "weak-subjectivity checkpoint HEIGHT:HASH (M0 F-1): a recent trusted committed block this node REFUSES to reorg at or before, regardless of fork weight — the long-range-attack defense that makes the objective maturity latch safe for a fresh/long-offline node. Obtain it out-of-band (the daemon prints `checkpoint: HEIGHT:HASH` for its committed head; cross-check several independent nodes). It must be recent — within ~the bond-TTL window. Empty = genesis-trusting (safe only at launch, on a trusted swarm, or before the network matures)")
+	livenessRecoveryHeight := fs.Uint64("liveness-recovery-height", 0, "#535 OPERATOR-DIRECTED liveness-floor recovery (weak-subjectivity trust class, like -ws-checkpoint): an epoch-boundary height at which mature-epoch validation re-bases the finality quorum and validator qualification against the LIVE qualified bonded set instead of the frozen epoch snapshot — for ONE boundary only, after which the normal rotation governs. Use it ONLY when members holding > 1/3 of the frozen epoch's weight have genuinely left (bonds lapsed, not returning) and the chain is stalled at an epoch boundary (chain-status names the state): that loss is outside the BFT liveness model, so the stall is deliberate safety and recovery REQUIRES a human judgment the protocol cannot make. CONFIRM OUT-OF-BAND that the loss is a real outage — not a partition or an attack (a wrongly-invoked recovery can fork; that risk is the accepted weak-subjectivity residual) — and COORDINATE: every honest operator must set the SAME height, or replicas diverge. Must be a multiple of the epoch cadence (-epoch-blocks). 0 = off (default): a bled boundary stalls, which is the certified-correct behavior")
 	debug := fs.Bool("debug", false, "shorthand for -log debug (the full firehose)")
 	logLevel := fs.String("log", "", "write events at or above this level to <store>/debug.log (error|warn|info|debug); info narrates the normal path (placements, commits, repairs) to validate behavior in the field without the debug firehose")
 	relayServe := fs.String("relay", "", "offer relay service at this address (e.g. 0.0.0.0:4002): content-blind ciphertext forwarding for NATed peers, capped; pointless unless this node is publicly reachable")
@@ -637,6 +638,16 @@ func cmdDaemon(args []string) error {
 			wsCP = chain.WSCheckpoint{Height: h, Hash: hash}
 			fmt.Printf("chain: weak-subjectivity checkpoint pinned at %d:%s — a reorg at or before it is refused (F-1)\n", h, hash)
 		}
+		// The #535 recovery directive is consensus-coordination config: refuse a
+		// value that can never fire (a non-boundary height) instead of silently
+		// arming nothing, and announce loudly when it IS armed — an operator
+		// must know this replica will re-base one boundary against the live set.
+		if *livenessRecoveryHeight > 0 {
+			if effEpoch == 0 || *livenessRecoveryHeight%effEpoch != 0 {
+				return fmt.Errorf("-liveness-recovery-height %d is not an epoch boundary (epoch cadence %d): the #535 recovery re-bases at a finalized boundary only", *livenessRecoveryHeight, effEpoch)
+			}
+			fmt.Printf("chain: #535 LIVENESS RECOVERY ARMED at boundary %d — this replica will validate that one boundary against the LIVE qualified bonded set (weak-subjectivity trust: every honest operator must set the SAME height, and the operator vouches the > 1/3 weight loss is a real outage, not an attack)\n", *livenessRecoveryHeight)
+		}
 		ch := chain.New(chain.Config{
 			MinProposerRep: *minRep, MinAttesterRep: *minRep, Quorum: *quorum,
 			ByzantineQuorum: effByz,
@@ -644,8 +655,9 @@ func cmdDaemon(args []string) error {
 			OperatorMargin: effMargin,
 			AllowPublisher: *allowPublisher, MinBond: minBondBytes,
 			MinBondBytes: cfg.MinBondBytes, BondTTLBlocks: effTTL,
-			EpochBlocks:  effEpoch,
-			WSCheckpoint: wsCP,
+			EpochBlocks:            effEpoch,
+			WSCheckpoint:           wsCP,
+			LivenessRecoveryHeight: *livenessRecoveryHeight,
 		}, ledger.Reputation)
 		if *allowPublisher {
 			fmt.Println("publisher: durable Publisher entries PERMITTED — publishes may record permanent linkage (trusted deployment)")

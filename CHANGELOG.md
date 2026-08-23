@@ -9,6 +9,30 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **#535 fix (3): the operator-directed weak-subjectivity liveness-floor escape**
+  (2026-08-24) — The remaining layer of the certified recovery stack, built per the
+  ratified design (PR #544). `Config.LivenessRecoveryHeight` (daemon
+  `-liveness-recovery-height`, 0 = off) names ONE epoch-boundary height at which
+  mature-epoch validation re-bases proposer/attester qualification and the >⅔ weight
+  quorum against the LIVE qualified bonded set instead of the frozen `epochSet` — a
+  single `effectiveEpochSet(h)` consulted by all three predicates (and the gather's
+  `SupportMeetsQuorum`/solicitation, now height-threaded), so the set a quorum is
+  sized over and the set it is filled from can never differ (the #402 law). After the
+  recovered boundary commits, the normal rotation freezes the same live set and the
+  chain resumes. NEVER automatic: a genuine >⅓-of-frozen-weight loss is outside the
+  BFT liveness model (automatic re-basing was refuted — fix (2)), so a bled boundary
+  stalls by default and the trust moves to a HUMAN who confirms the loss is a real
+  outage and coordinates the SAME height on every honest node — the WSCheckpoint
+  trust class, with the wrongly-invoked-recovery fork as the documented residual.
+  Operator visibility (S5): `Chain.BoundaryLivenessFloorLost` diagnoses the wedge
+  (live-bonded frozen weight ≤ ⅔ bar), the round-change path logs
+  `stalled-at-boundary` naming the recovery, and `chain-status` flags a
+  next-height-is-a-boundary head. Model-check
+  (`core/chain/modelcheck_535_fix3_recovery_test.go`, RED-proven against the pre-fix
+  rule): recovery-when-invoked commits the wedge topology and resumes; off/wrong/
+  non-boundary directives still stall (`ErrNoQuorumWeight`); replicas replaying the
+  same directive reach the identical head. Detail:
+  [docs/thinking/2026-08-24-535-fix3-built.md](docs/thinking/2026-08-24-535-fix3-built.md).
 - **#535 fix (2) refuted by the proof-first model-check — the recovery stack is (4) + (3)**
   (2026-08-24) — The certification adopted boundary-local quorum re-basing (`old∩next`)
   *conditional* on a model-checked #402 handoff-intersection proof for a bled set.

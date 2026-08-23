@@ -200,15 +200,15 @@ func TestSupportMeetsQuorumRequiresAnchorMajority402(t *testing.T) {
 	}
 
 	// Count quorum met (2 attesters) but sub-anchor-majority: a0 + 2 sybils = 1 anchor.
-	if c.SupportMeetsQuorum(aid[0], []ports.NodeID{sid[0], sid[1]}) {
+	if c.SupportMeetsQuorum(aid[0], []ports.NodeID{sid[0], sid[1]}, 1) {
 		t.Fatal("gather must NOT stop on a count-quorum with only 1 anchor (proposer) — Append would reject it")
 	}
 	// a0 + (a1, sybil) = 2 anchors < 3 → still short.
-	if c.SupportMeetsQuorum(aid[0], []ports.NodeID{aid[1], sid[0]}) {
+	if c.SupportMeetsQuorum(aid[0], []ports.NodeID{aid[1], sid[0]}, 1) {
 		t.Fatal("gather must NOT stop at 2 anchors (strict majority is 3)")
 	}
 	// a0 + (a1, a2) = 3 anchors ≥ 3 → this coalition would commit.
-	if !c.SupportMeetsQuorum(aid[0], []ports.NodeID{aid[1], aid[2]}) {
+	if !c.SupportMeetsQuorum(aid[0], []ports.NodeID{aid[1], aid[2]}, 1) {
 		t.Fatal("gather MUST stop once the coalition carries the strict anchor majority (3)")
 	}
 }
