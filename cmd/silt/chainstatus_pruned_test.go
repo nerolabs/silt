@@ -56,4 +56,3 @@ func captureStdout(t *testing.T, f func()) string {
 	n, _ := r.Read(buf)
 	return string(buf[:n])
 }
-
