@@ -1,0 +1,16 @@
+[2026-08-22T23:51:40Z] ft_publish FAILED after 360s on nat-1 (token-quorum=2)
+  publisher->validator reachability: 4/4 of the -peers set reachable
+  last silt error: silt: node: could not gather enough publish-token signatures;
+  note: token-quorum needs the publisher to reach >= 2 validators to
+        gather signatures. A shortfall here — not validator<->validator — is the
+        usual cause of 'could not gather enough publish-token signatures' and a
+        chain stuck at height 0. Retry a bootstrap run with TOKEN_QUORUM=1, or
+        fix publisher egress to the validators.
+[2026-08-22T23:59:46Z] ft_publish FAILED after 360s on fetch-1 (token-quorum=2)
+  publisher->validator reachability: 3/4 of the -peers set reachable
+  last silt error: <none captured>
+  note: token-quorum needs the publisher to reach >= 2 validators to
+        gather signatures. A shortfall here — not validator<->validator — is the
+        usual cause of 'could not gather enough publish-token signatures' and a
+        chain stuck at height 0. Retry a bootstrap run with TOKEN_QUORUM=1, or
+        fix publisher egress to the validators.
