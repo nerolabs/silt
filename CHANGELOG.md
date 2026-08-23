@@ -9,6 +9,19 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **#535 deterministic repro: the epoch-boundary liveness cliff (consensus model-check)**
+  (2026-08-23) — `core/chain/modelcheck_535_boundary_wedge_test.go` pins the mechanism the
+  first Phase 3 deep field run (45da13c-17686) wedged on: the mature-epoch finality quorum
+  needs signers holding > ⅔ of the FROZEN epoch weight, but a member that lapses or goes
+  offline mid-epoch keeps its frozen weight in the denominator for the whole epoch — so once
+  > ⅓ of frozen weight cannot sign, no block reaches the super-quorum, INCLUDING the boundary
+  block whose commit is the only event that rotates the snapshot to a lighter set (a permanent
+  stall that cannot self-heal; #506's R-gate compounds the non-recovery). The repro reproduces
+  the field arithmetic exactly (a 9-of-12 live coalition at 324 MiB refused; a 10-of-12 control
+  at 388 MiB commits). This is a consensus-rule question (whether the frozen denominator should
+  exclude provably-lapsed members) — research-gated, consult filed at
+  `silt-reviews/research/535-epoch-boundary-liveness-cliff-CONSULT.md`; **no unilateral fix**.
+  Attribution: [docs/thinking/2026-08-23-535-boundary-wedge-attribution.md](docs/thinking/2026-08-23-535-boundary-wedge-attribution.md).
 - **The DEEP=1 exit-gate flow + chain-status prune visibility (ROADMAP Phase 3)**
   (2026-08-23) — `flow_deep_heights` (opt-in `DEEP=1`, `DEEP_TARGET=128` default) drives
   the chain past the maturing drills to depth with three graded rows: the honest
