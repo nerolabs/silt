@@ -77,6 +77,19 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   Detail: [docs/thinking/2026-08-24-535-fix2-refuted-stack-is-4-plus-3.md](docs/thinking/2026-08-24-535-fix2-refuted-stack-is-4-plus-3.md).
 
 ### Fixed
+- **#549 Q3 companion: round-duration base derived + guarded (no numeric change)** (2026-08-24)
+  — Assessed the certification's Q3 (round-duration base tune). Measurement: the cross-region
+  sweep-timer skew is structurally bounded by `ChainSyncInterval` (each node sweeps once per
+  interval at an arbitrary phase, so two nodes' round-change timeouts differ by < 30s; WAN
+  delivery ~80ms is negligible). So `roundAdvanceSweeps = 2` (base = 60s = 2× the skew) is
+  already the **smallest** value that reliably outruns it — `1` (= 30s = the skew) has zero
+  overlap margin, `3+` is "larger than necessary" (slower recovery + churn on the 2 GB box,
+  against the cert's M1 guidance). No numeric change; instead the derivation is made explicit
+  (the constant is now derived-not-magic, build-immutable #5) and pinned by
+  `TestRoundBaseOutrunsSkew`, which fails if the base ever drops to the skew or drifts above
+  the certified minimum. Deliberation: `docs/thinking/2026-08-24-549-q3-round-duration.md`.
+  This closes the #549 certified companions; the finding now needs only a clean DEEP
+  field-confirm.
 - **#549 Q4 companion: cloudtest deep-heights stabilization barrier** (2026-08-24) — The
   Phase-3 deep-heights flow graded liveness immediately after the maturing drills
   (10a/10b/10c) mass-restart 8 of 12 seats, so it measured post-restart CHURN rather than
