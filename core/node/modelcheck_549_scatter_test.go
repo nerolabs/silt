@@ -212,16 +212,18 @@ func TestModelCheck_549_MixedWeightScatterMustConverge(t *testing.T) {
 	if blk[0].CommitRound == 0 {
 		t.Fatalf("the height committed at round 0 — the scatter did not actually exercise the synchronizer (r1heavy=%d r2heavy=%d); the oracle is not testing convergence", r1heavy, r2heavy)
 	}
-	// The load-bearing conclusion for GitHub #549 / the research consult: this
-	// GREEN means the field h68 stall is NOT a synchronizer-LOGIC defect — the
-	// weight-aware catch-up (RoundCatchupMet is weight-based, so sybil head-count
-	// cannot dilute it) converges the identical mixed-weight scatter in-process,
-	// even under 50% round-change loss. The field cause is therefore a real-WAN
-	// WALL-CLOCK TIMER-SKEW + SCALE dimension the untimed model cannot reproduce
-	// (independent 30s sweep timers with arbitrary phase across 12 seats / 3
-	// regions, post-mass-restart) — the after-GST-convergence residual, plus
-	// possibly the harness driving the deep flow with no post-restart
-	// stabilization window. A timed oracle (the #456 coarsely-timed pattern
-	// extended to per-node timer skew) is the next home, not this untimed one.
-	t.Logf("#549: mixed-weight scatter CONVERGED (h%d at round %d) even under sustained loss — synchronizer logic is sound; the field cause is a timing/scale dimension (see the issue)", contested, blk[0].CommitRound)
+	// NOTE (corrected by the research certification 2026-08-24): this untimed
+	// GREEN does NOT mean the synchronizer logic is sound — it means this oracle
+	// cannot ISOLATE the catch-up-target defect. Advances here are driven by
+	// timeouts (maybeAdvanceRound), which reach a committing round regardless of
+	// whether catch-up jumps to the smallest or the highest round; and the
+	// untimed sim cannot model the wall-clock timer skew that produced the field
+	// smear. The certification found a REAL synchronizer-logic defect (catch-up
+	// jumped to the smallest round of a cross-round union — a sub-threshold round
+	// that cannot form a QC — pinning the duration ladder low). That defect and
+	// its fix are proven deterministically by TestModelCheck_549_CatchUpJumps-
+	// ToHighestQualifyingRound. This test remains a useful convergence regression
+	// guard (weight-aware catch-up converges a mixed-weight scatter), but it is
+	// NOT evidence the logic was correct.
+	t.Logf("#549: mixed-weight scatter converged (h%d at round %d) — a convergence regression guard; the catch-up-target defect is isolated by TestModelCheck_549_CatchUpJumpsToHighestQualifyingRound", contested, blk[0].CommitRound)
 }
