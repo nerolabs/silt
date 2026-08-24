@@ -1577,6 +1577,56 @@ flow_deep_heights() {
   dh_extra=$(( dh_seats > 4 ? (dh_seats - 4 + 3) / 4 : 0 ))
   for (( dhr=2; dhr<2+dh_extra; dhr++ )); do dh_height_s=$(( dh_height_s + (2 + dhr*(dhr+1)/2) * 30 )); done
 
+  # dh_converged: true iff every validator is within 2 of the tip AND all
+  # tip-height validators share one head hash — the steady-state-sync signal
+  # (the same check 12c-deep-converge grades post-drive, applied here as the
+  # entry gate). Own loop var (sv) so it never clobbers the outer `v`.
+  dh_converged() {
+    local sv tip=0 hv hh th="" cok=1
+    for sv in val-a val-b val-c val-d; do hv="$(dh_height "$sv")"; hv="${hv:-0}"; [ "$hv" -gt "$tip" ] 2>/dev/null && tip="$hv"; done
+    for sv in val-a val-b val-c val-d; do
+      hv="$(dh_height "$sv")"; hv="${hv:-0}"
+      [ $(( tip - hv )) -le 2 ] 2>/dev/null || cok=0
+      if [ "$hv" = "$tip" ]; then
+        hh="$(dh_status "$sv" | grep -oE 'head hash:[[:space:]]*[0-9a-f]+' | grep -oE '[0-9a-f]{16,}' | tail -1)"
+        if [ -z "$th" ]; then th="$hh"; elif [ "$hh" != "$th" ]; then cok=0; fi
+      fi
+    done
+    [ "$cok" = 1 ]
+  }
+
+  # Q4 STABILIZATION BARRIER (#549 research certification, 2026-08-24): the
+  # maturing drills (10a/10b/10c) mass-restart 8 of 12 seats immediately before
+  # this flow, so grading the deep drive AT ONCE measures post-restart CHURN,
+  # not steady state — the field's h68 stall was the view-synchronizer
+  # re-converging after that mass restart, not a depth defect (the #549
+  # catch-up-target fix addresses the convergence; this barrier stops the
+  # harness from grading before GST). Require the network to reach steady state
+  # — all validators converged on ONE head AND one fresh commit under normal
+  # conditions — before the drive grades liveness. A network that cannot
+  # re-stabilize within the bound is a degraded PREMISE (GAP), never a deep
+  # FAIL. Bound = two per-height worst-cases (re-converge, then commit);
+  # override with STABILIZE_S.
+  : "${STABILIZE_S:=$(( 2 * dh_height_s ))}"
+  local sb_t0 sb_ok=0
+  sb_t0="$(date +%s)"
+  echo "    deep drive: #549 Q4 stabilization barrier — waiting for post-drill steady state (converged head + one clean commit) before grading, bound ${STABILIZE_S}s…"
+  while [ $(( $(date +%s) - sb_t0 )) -lt "$STABILIZE_S" ]; do
+    if dh_converged; then
+      # Converged on one head; require one CLEAN commit under normal conditions
+      # to prove steady-state PROGRESS (not just a frozen agreed head).
+      if dh_drive_block; then sb_ok=1; break; fi
+    else
+      dh_drive_block || true   # not yet converged — nudge progress and re-check
+    fi
+    sleep 5
+  done
+  if [ "$sb_ok" != 1 ]; then
+    record "12-deep-heights" gap major "post-drill steady state NOT reached within ${STABILIZE_S}s (#549 Q4 barrier): the network did not both converge on one head AND land a clean commit after the maturing drills mass-restarted 8/12 seats — the deep drive is UNTESTED (degraded premise / post-restart convergence), NOT a depth FAIL. If this recurs after the #549 catch-up fix, attribute from the validator journals (round-change smear) before re-running."
+    return
+  fi
+  echo "    deep drive: stabilized in $(( $(date +%s) - sb_t0 ))s (converged head + clean commit) — grading from a steady-state network"
+
   local h0 t0 ok=0 last_h last_t now_h h_end
   h0="$(dh_ceiling)"; h0="${h0:-0}"
   if [ "$h0" -ge "$DEEP_TARGET" ] 2>/dev/null; then

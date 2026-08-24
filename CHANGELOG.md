@@ -77,6 +77,16 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   Detail: [docs/thinking/2026-08-24-535-fix2-refuted-stack-is-4-plus-3.md](docs/thinking/2026-08-24-535-fix2-refuted-stack-is-4-plus-3.md).
 
 ### Fixed
+- **#549 Q4 companion: cloudtest deep-heights stabilization barrier** (2026-08-24) — The
+  Phase-3 deep-heights flow graded liveness immediately after the maturing drills
+  (10a/10b/10c) mass-restart 8 of 12 seats, so it measured post-restart CHURN rather than
+  steady state (the certification's Q4). The harness now requires the network to reach GST
+  before the drive grades — all validators converged on ONE head AND one fresh commit under
+  normal conditions — via a bounded barrier (`STABILIZE_S`, default two per-height
+  worst-cases). A network that cannot re-stabilize after the drills is reported as a degraded
+  PREMISE (GAP), never a deep FAIL. This is the harness half of the #549 fix: the
+  catch-up-target change makes convergence sound, and this barrier stops the harness from
+  grading before it completes.
 - **#549: the h68 view-synchronization stall — catch-up jumps to the highest qualifying
   round, not the smallest of the union** (2026-08-24, research-certified) — The DEEP-run
   Phase-3 exit gate stalled at h68 for ~26 minutes (r1-congestion, no prepare-QC) after the
