@@ -21,8 +21,25 @@ import (
 // #451 view-synchronization certification): after sweepsForRound(r) chain-sync
 // sweeps at one height with pending work and no commit, a validator broadcasts
 // a round-change. A pure function of local deliveries (sweeps are
-// message-driven under the sim clock — B2), never wall-clock. Two sweeps ≈
-// 60s of real non-progress at the 30s ChainSyncInterval.
+// message-driven under the sim clock — B2), never wall-clock.
+//
+// WHY 2, DERIVED (#549 cert Q3, 2026-08-24 — not a magic constant, build-
+// immutable #5): the base round duration must OUTRUN the cross-region skew in
+// when honest members enter a common round. That skew is STRUCTURALLY bounded
+// by ChainSyncInterval: each node's chainSyncTick fires once per interval at an
+// arbitrary phase (a mass restart re-randomizes it), so two nodes' timeout
+// triggers differ by < ChainSyncInterval; WAN delivery (~80ms netem) is
+// negligible on top. base = roundAdvanceSweeps × ChainSyncInterval, so
+// roundAdvanceSweeps = 1 (= 30s = exactly the skew) has ZERO overlap margin and
+// is unreliable; = 2 (= 60s = 2× the skew) is the SMALLEST integer base that
+// reliably outruns it (a worst-case-late member still overlaps 30s inside the
+// round); = 3+ is larger than necessary — slower recovery + more churn on the
+// 2 GB box, against the cert's "smallest base, not larger" M1 guidance. Even
+// round 0 (duration = base) outruns the skew, so the ladder outruns skew from
+// the first round. The derivation is guarded by TestRoundBaseOutrunsSkew; if
+// the round-change timer is ever decoupled from the chain-sync tick, or
+// ChainSyncInterval made per-node-variable, the < ChainSyncInterval skew bound
+// must be re-derived (docs/thinking/2026-08-24-549-q3-round-duration.md).
 const roundAdvanceSweeps = 2
 
 // sweepsForRound is the #451 synchronizer's load-bearing ingredient (a):
