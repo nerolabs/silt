@@ -77,6 +77,14 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   Detail: [docs/thinking/2026-08-24-535-fix2-refuted-stack-is-4-plus-3.md](docs/thinking/2026-08-24-535-fix2-refuted-stack-is-4-plus-3.md).
 
 ### Fixed
+- **cloudtest: 5-convergence grades with a bounded wait-for-convergence** (2026-08-24) — The
+  flow-5 convergence check took a single point-in-time sample immediately after the
+  6-fault-tolerance drill stops/restarts val-d, so it could read a spurious catch-up lag as a
+  FAIL (observed on run eb510a7-deep: val-a=33 but val-d=27 right after the restart). It now
+  polls until the validators converge (within 2 of tip + shared tip hash) or `CONVERGE_WAIT_S`
+  (default 120s) expires — the same grade-after-stabilization lesson as the #549 Q4 deep-heights
+  barrier, applied to flow 5. A genuine non-convergence or a persistent fork still FAILs; only a
+  transient post-drill lag (or a fork fork-choice is still resolving) is given time to settle.
 - **#549 Q3 companion: round-duration base derived + guarded (no numeric change)** (2026-08-24)
   — Assessed the certification's Q3 (round-duration base tune). Measurement: the cross-region
   sweep-timer skew is structurally bounded by `ChainSyncInterval` (each node sweeps once per

@@ -361,12 +361,39 @@ flow_convergence() {
   # already uses.
   chain_head() { ssh_node "$1" "/usr/local/bin/silt chain-status -store /var/lib/silt 2>&1" \
     | awk '/head height:/{h=$3} /head hash:/{hh=$3} END{print (h==""?0:h), hh}'; }
-  local heights="" info h hh nv
-  for n in $vals; do
-    info="$(chain_head "$n")"; h="${info%% *}"; hh="${info#* }"; h="${h:-0}"
-    nv="${n//-/_}"; eval "H_$nv=\$h; HH_$nv=\$hh"
-    heights="$heights $n=$h:${hh:0:12}"
-    [ "$h" -gt "$maxh" ] 2>/dev/null && maxh="$h"
+  # Grade convergence with a bounded WAIT (the #549 Q4 lesson, applied to flow 5):
+  # the immediately-preceding 6-fault-tolerance drill STOPS/restarts val-d, so a
+  # single point-in-time sample can catch the network mid-catch-up and read a
+  # SPURIOUS lag (the eb510a7-deep run: val-a=33 but val-d=27, 6 behind, right
+  # after the drill restarted it). Poll until the validators converge — (a) every
+  # validator within 2 of the tip AND (b) every tip-height validator shares the
+  # head HASH (a same-height/different-hash pair is a live FORK, exactly the gap
+  # §D flags) — or the bound expires. A genuine non-convergence or a PERSISTENT
+  # fork still FAILs: the loop only gives a transient post-drill catch-up lag, or
+  # a fork that fork-choice is still resolving, time to settle — never a blip.
+  : "${CONVERGE_WAIT_S:=120}"
+  local heights="" info h hh nv conv=0 tiphash="" fork="" nh nhh cv_t0
+  cv_t0="$(date +%s)"
+  while : ; do
+    heights=""; maxh=0
+    for n in $vals; do
+      info="$(chain_head "$n")"; h="${info%% *}"; hh="${info#* }"; h="${h:-0}"
+      nv="${n//-/_}"; eval "H_$nv=\$h; HH_$nv=\$hh"
+      heights="$heights $n=$h:${hh:0:12}"
+      [ "$h" -gt "$maxh" ] 2>/dev/null && maxh="$h"
+    done
+    conv=1; tiphash=""; fork=""
+    for n in $vals; do
+      nv="${n//-/_}"; eval "nh=\$H_$nv; nhh=\$HH_$nv"
+      [ $((maxh - nh)) -gt 2 ] && conv=0
+      if [ "$nh" = "$maxh" ]; then
+        if [ -z "$tiphash" ]; then tiphash="$nhh"
+        elif [ "$nhh" != "$tiphash" ]; then conv=0; fork="$fork $n"; fi
+      fi
+    done
+    { [ "$conv" = 1 ] && [ "$maxh" -ge 1 ]; } 2>/dev/null && break
+    [ $(( $(date +%s) - cv_t0 )) -ge "$CONVERGE_WAIT_S" ] && break
+    sleep 5
   done
   # A chain that never advanced past genesis is NOT "converged" — all-at-0 means
   # consensus never formed (assert an actual committed block, not agreement-on-nothing).
@@ -374,19 +401,6 @@ flow_convergence() {
     slo_assert "5-convergence" major "NO block ever committed — the chain is stuck at genesis (heights:$heights); consensus did not form" 0
     return
   fi
-  # Convergence = (a) every validator within 2 blocks of the tip (real-latency
-  # tolerance) AND (b) every validator AT the tip height agrees on the head HASH. A
-  # same-height/DIFFERENT-hash pair is a live FORK that a height-only check would score
-  # as "converged" — this is exactly the gap §D flags.
-  local conv=1 tiphash="" fork="" nh nhh
-  for n in $vals; do
-    nv="${n//-/_}"; eval "nh=\$H_$nv; nhh=\$HH_$nv"
-    [ $((maxh - nh)) -gt 2 ] && conv=0
-    if [ "$nh" = "$maxh" ]; then
-      if [ -z "$tiphash" ]; then tiphash="$nhh"
-      elif [ "$nhh" != "$tiphash" ]; then conv=0; fork="$fork $n"; fi
-    fi
-  done
   local detail="all validators within 2 of tip=$maxh AND every tip-height validator shares head hash ${tiphash:0:12}… (heights:$heights)"
   [ -n "$fork" ] && detail="FORK at tip height $maxh — divergent head hashes on:$fork (heights:$heights)"
   # H5 — DURABLE convergence, not a point-in-time sample. A single instant can read
