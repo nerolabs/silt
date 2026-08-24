@@ -9,6 +9,16 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **#549 in-process repro of the DEEP-run h68 stall — the field cause is not synchronizer
+  logic** (2026-08-24) — `core/node/modelcheck_549_scatter_test.go` models the field's
+  distinguishing dimension (sybils active in the frozen set inflating the low-round
+  round-change head-count while the heavy validator weight is mass-scattered across rounds).
+  It is GREEN even under 50% sustained round-change loss (commits at round 2): because
+  `RoundCatchupMet` is weight-based, sybil head-count cannot dilute convergence, so the h68
+  stall is not a synchronizer-logic defect but a real-WAN wall-clock timer-skew + scale
+  dimension the untimed model cannot reproduce. Feeds the research consult
+  (`silt-reviews/research/549-h68-view-synchronization-stall-CONSULT.md`); a RED here would
+  be the home for any logic fix.
 - **#183 red-team coverage caveats C-1 + C-2 closed — I5/I2 exhaustive oracles + disk-backed
   I2 durability** (2026-08-24) — The external red-team verdict (M0 HOLDS) noted two harness
   assurance gaps, not protocol defects; both are now closed. **C-1:** the I5 and I2 oracles,
