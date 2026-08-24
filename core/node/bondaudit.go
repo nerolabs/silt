@@ -287,6 +287,53 @@ type challengerRate struct {
 // Per-sender (not global) so a flooder cannot starve honest submitters.
 const bondSubmitBurst = 8
 
+// entrySubmitBurst caps the MsgSubmitEntry messages ONE sender may have
+// examined per ChainSyncInterval window (#183 red-team F-1). Under
+// -require-tokens, ValidateEntry runs an RSA verify per token signature, and
+// nothing else bounds the arrival rate — so an authenticated flooder rides
+// per-message crypto onto the single consensus loop for a few fabricated
+// bytes, exactly the sibling #424 CPU-DoS that hardened MsgSubmitBondReg. This
+// is the same cheap FRONT gate: a refusal costs a map lookup. Honest cadence is
+// a client submit-then-poll per published object; 32 clears a modest
+// batch-publish with headroom, and a refused honest submit heals by the client
+// resubmitting next window (the B5 NAK carries the reason). Per-sender (not
+// global) so a flooder cannot starve honest publishers. The reorder in
+// ValidateEntry (spent-check before Verify) removes the N×-per-message replay
+// amplifier; this gate bounds the residual per-message floor.
+const entrySubmitBurst = 32
+
+// allowEntrySubmit reports whether a MsgSubmitEntry from `from` may be examined
+// now, charging one unit against its per-window budget. The cheap gate in
+// FRONT of entryDecode + ValidateEntry (which, under -require-tokens, does the
+// RSA work) — a refusal costs a map lookup, so a flooder gains no
+// amplification. Window = ChainSyncInterval (the honest submit cadence clock);
+// a refused honest submit heals by the client's resubmit, exactly like
+// allowBondSubmit.
+func (n *Node) allowEntrySubmit(from ports.NodeID) bool {
+	now := n.clock.Now()
+	window := n.cfg.ChainSyncInterval
+	if window <= 0 {
+		window = 30 * ports.Second
+	}
+	r := n.entrySubmitRate[from]
+	if r == nil || ports.Duration(now-r.windowStart) >= window {
+		if r == nil && len(n.entrySubmitRate) >= maxBondChallengers {
+			for id, e := range n.entrySubmitRate {
+				if ports.Duration(now-e.windowStart) >= window {
+					delete(n.entrySubmitRate, id)
+				}
+			}
+		}
+		n.entrySubmitRate[from] = &challengerRate{windowStart: now, count: 1}
+		return true
+	}
+	if r.count >= entrySubmitBurst {
+		return false // budget spent this window — refuse before decode/verify
+	}
+	r.count++
+	return true
+}
+
 // allowBondSubmit reports whether a MsgSubmitBondReg from `from` may be
 // examined now, charging one unit against its per-window budget. It is the
 // cheap gate in FRONT of decode+signature+VerifySpaceTime — a refusal costs a
