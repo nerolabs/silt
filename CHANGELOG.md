@@ -77,6 +77,27 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   Detail: [docs/thinking/2026-08-24-535-fix2-refuted-stack-is-4-plus-3.md](docs/thinking/2026-08-24-535-fix2-refuted-stack-is-4-plus-3.md).
 
 ### Fixed
+- **#549: the h68 view-synchronization stall — catch-up jumps to the highest qualifying
+  round, not the smallest of the union** (2026-08-24, research-certified) — The DEEP-run
+  Phase-3 exit gate stalled at h68 for ~26 minutes (r1-congestion, no prepare-QC) after the
+  drill sequence mass-restarted 8 of 12 seats. Root cause (certification
+  `silt-reviews/research/research-outcome/549-h68-view-synchronization-stall-RESEARCH-CERTIFICATION-2026-08-24.md`):
+  `maybeCatchUpRound` unioned round-change senders across ALL rounds above the current one,
+  checked the weight threshold on that union, then jumped to the SMALLEST such round — a round
+  that may carry only a fraction of the union's weight (structurally unable to form a QC).
+  Because `duration(r)=base+r(r+1)/2` is keyed to the round number, targeting the smallest
+  pinned the effective round low, so the increasing-duration ladder never outran 3-region WAN
+  + 30s timer skew and the after-GST convergence guarantee never engaged. Fix: jump to the
+  HIGHEST round that INDIVIDUALLY meets the catch-up weight threshold — coalesce the weight at
+  the leading edge and let the ladder climb. Safety untouched (I1/locking): it changes only
+  WHEN a node changes round, never which value it may sign, and is still gated on >⅓ weight
+  (a Byzantine minority cannot drag the round forward), so the anti-overshoot property PBFT's
+  "smallest view" rule sought is preserved — evaluated per round rather than on the union.
+  Deterministic RED/GREEN home: `core/node/modelcheck_549_catchup_test.go` (drives the real
+  `maybeCatchUpRound` over a low-weight-trailing + quorum-weight-leading smear — RED jumps to
+  the sub-threshold trailing round, GREEN to the qualifying leading round). Companions (not in
+  this change): a harness post-mass-restart stabilization barrier and a round-duration base
+  tune sized to measured cross-region skew.
 - **#183 red-team F-1: the `MsgSubmitEntry` CPU-DoS gap — per-sender rate gate + cheap
   replay reject** (2026-08-24) — The first external red-team engagement (verdict: **M0
   HOLDS** at the shipped defaults) handed back one real, bounded liveness finding: under

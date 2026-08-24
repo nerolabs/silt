@@ -363,31 +363,51 @@ func (n *Node) recordRoundChange(rs *heightRounds, newRound uint64, from ports.N
 
 // maybeCatchUpRound is the #451 synchronizer's responsive ingredient (b),
 // adopted from PBFT's f+1 view-change rule (B8): when the recorded
-// round-changes for rounds ABOVE ours reach the catch-up threshold
-// (chain.RoundCatchupMet — f+1 anchors at launch, >⅓ frozen weight mature),
-// at least one HONEST member is provably ahead, so jump to the SMALLEST such
-// round (PBFT: "the smallest view in the set") and broadcast our own
-// round-change for it — pulling stragglers forward at message speed instead
-// of timer speed. Changes only WHEN this node is in a round, never which
-// value it may sign: the #432 locking is untouched.
+// round-changes for rounds ABOVE ours prove an HONEST member ahead (the
+// catch-up weight threshold, chain.RoundCatchupMet — f+1 anchors at launch,
+// >⅓ frozen weight mature), jump forward to join them at message speed instead
+// of timer speed. Changes only WHEN this node is in a round, never which value
+// it may sign: the #432 locking is untouched.
+//
+// JUMP TO THE HIGHEST INDIVIDUALLY-QUALIFYING ROUND (#549 research
+// certification 2026-08-24). The threshold is evaluated PER ROUND — the target
+// is the highest round whose OWN round-change senders meet RoundCatchupMet — not
+// the smallest round of the senders UNIONED across all above-rounds. The prior
+// union+smallest rule was a mis-application of PBFT's "smallest view ≥ v" (a
+// SUFFIX quorum, where smallest-in-suffix is backed): silt's cross-round union
+// is not a suffix, so its smallest member can carry only a fraction of the
+// union's weight — a round structurally incapable of forming a QC. Targeting it
+// pinned the effective round LOW, so the increasing round duration
+// (sweepsForRound) never grew past 3-region WAN + 30s timer skew, so the
+// after-GST convergence guarantee never engaged — the field's h68 26-minute
+// r1-congestion thrash (#549; deterministic RED home
+// modelcheck_549_timed_test.go). Jumping to the HIGHEST qualifying round
+// coalesces the weight at the LEADING edge and lets the duration ladder climb.
+// Still safe: a round carrying > ⅓ weight of round-changes has ≥ 1 HONEST
+// member genuinely there (Byzantine < ⅓ cannot fabricate it), so the jump never
+// overshoots past all honest — the same anti-overshoot PBFT's rule sought,
+// evaluated per round rather than on the union. I1/locking untouched.
 func (n *Node) maybeCatchUpRound(rs *heightRounds) {
 	if n.signer == nil || n.chain == nil {
 		return
 	}
 	var target uint64
-	senders := map[ports.NodeID]bool{}
 	for r, m := range rs.Changes {
 		if r <= rs.Round {
 			continue
 		}
+		senders := make(map[ports.NodeID]bool, len(m))
 		for id := range m {
 			senders[id] = true
 		}
-		if target == 0 || r < target {
+		// Per-round threshold: this round INDIVIDUALLY proves an honest member
+		// there. Keep the highest such round so the ladder climbs, not the
+		// smallest of a cross-round union that no single round can commit.
+		if n.chain.RoundCatchupMet(senders) && r > target {
 			target = r
 		}
 	}
-	if target == 0 || !n.chain.RoundCatchupMet(senders) {
+	if target == 0 {
 		return
 	}
 	n.advanceToRound(rs, target, "catch-up")
