@@ -49,8 +49,8 @@ func TestModelCheck_549_CatchUpJumpsToHighestQualifyingRound(t *testing.T) {
 	// THE SMEAR (the field's shape): a LOW trailing round (r2) carrying only
 	// sub-threshold sybil weight, and a HIGH leading round (r3) carrying a
 	// super-threshold heavy coalition — where the weight has actually gathered.
-	trailing := map[ports.NodeID]bool{all[8]: true, all[9]: true}                // 2 sybils = 2M  (< ⅓, cannot anchor a QC)
-	leading := map[ports.NodeID]bool{all[1]: true, all[2]: true, all[3]: true}   // 3 anchors = 192M (> ⅓, the leading edge)
+	trailing := map[ports.NodeID]bool{all[8]: true, all[9]: true}              // 2 sybils = 2M  (< ⅓, cannot anchor a QC)
+	leading := map[ports.NodeID]bool{all[1]: true, all[2]: true, all[3]: true} // 3 anchors = 192M (> ⅓, the leading edge)
 
 	// Sanity: the threshold sees exactly what the oracle intends — r2 does NOT
 	// individually qualify, r3 DOES; and the UNION qualifies (which is what let
