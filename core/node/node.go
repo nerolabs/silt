@@ -598,6 +598,13 @@ type Node struct {
 	// sender per ChainSyncInterval window, charged BEFORE decode+verify (the
 	// Phase 1.2 CPU-DoS floor). See allowBondSubmit in bondaudit.go.
 	bondSubmitRate map[ports.NodeID]*challengerRate
+	// entrySubmitRate is the SAME gate for MsgSubmitEntry (#183 red-team F-1):
+	// entry submits examined per sender per ChainSyncInterval window, charged
+	// BEFORE decode+ValidateEntry — which, under -require-tokens, runs an RSA
+	// verify per token signature. Without it a single peer floods entry submits
+	// and rides the per-message crypto onto the single consensus loop. See
+	// allowEntrySubmit in bondaudit.go.
+	entrySubmitRate map[ports.NodeID]*challengerRate
 	// plotStore persists the bond plot so a restart reloads it instead of
 	// re-plotting (#93); nil = memory-only (re-plots each start).
 	plotStore ports.PlotStore
@@ -1051,6 +1058,7 @@ func New(id ports.NodeID, cfg Config, clock ports.Clock, tr ports.Transport, sto
 		peerBondRTT:       make(map[ports.NodeID]*latWindow),
 		bondChallengeRate: make(map[ports.NodeID]*challengerRate),
 		bondSubmitRate:    make(map[ports.NodeID]*challengerRate),
+		entrySubmitRate:   make(map[ports.NodeID]*challengerRate),
 		slashedLocal:      make(map[ports.NodeID]bool),
 		peerIssuerKeys:    make(map[ports.NodeID]*rsa.PublicKey),
 		creditSpent:       make(map[string]bool),

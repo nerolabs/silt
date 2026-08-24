@@ -499,7 +499,15 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 			n.reply(from, msg, ports.Message{Kind: ports.MsgSubmitEntryAck, OK: false, Data: []byte("no chain")})
 			return true
 		}
-		if e, err := entryDecode(msg.Data); err != nil {
+		// CPU gate FIRST (#183 red-team F-1, the #424/allowBondSubmit shape):
+		// under -require-tokens, ValidateEntry runs an RSA verify per token
+		// signature, so an un-budgeted flood rides per-message crypto onto the
+		// single loop. Charge one unit before decode; a refusal is a map lookup,
+		// and a refused honest submit heals by the client's resubmit (B5 NAK).
+		if !n.allowEntrySubmit(from) {
+			n.logf(ports.LogInfo, "entry submit REFUSED (rate)", "from", from, "budget", entrySubmitBurst)
+			n.reply(from, msg, ports.Message{Kind: ports.MsgSubmitEntryAck, OK: false, Data: []byte("rate limited")})
+		} else if e, err := entryDecode(msg.Data); err != nil {
 			n.logf(ports.LogInfo, "entry submit REFUSED (decode)", "from", from, "bytes", len(msg.Data), "err", err)
 			n.reply(from, msg, ports.Message{Kind: ports.MsgSubmitEntryAck, OK: false, Data: []byte(err.Error())})
 		} else if verr := n.chain.ValidateEntry(e); verr != nil {

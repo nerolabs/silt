@@ -48,6 +48,25 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   Detail: [docs/thinking/2026-08-24-535-fix2-refuted-stack-is-4-plus-3.md](docs/thinking/2026-08-24-535-fix2-refuted-stack-is-4-plus-3.md).
 
 ### Fixed
+- **#183 red-team F-1: the `MsgSubmitEntry` CPU-DoS gap — per-sender rate gate + cheap
+  replay reject** (2026-08-24) — The first external red-team engagement (verdict: **M0
+  HOLDS** at the shipped defaults) handed back one real, bounded liveness finding: under
+  `-require-tokens` (publisher privacy, off by default), the entry-submit path had none of
+  the #424/Phase-1.2 CPU hardening its structurally-identical sibling `MsgSubmitBondReg`
+  has. A single peer could harvest a public committed token, pair it with a novel `Root`,
+  and flood `MsgSubmitEntry` — `ValidateEntry` ran `publishtoken.Verify` (an RSA modexp per
+  signature) to completion on the single consensus loop *before* a spent-serial check placed
+  after it caught the replay. Two fixes, both admission-order, no consensus rule touched
+  (build-immutable #3 intact): (1) `allowEntrySubmit(from)` — a per-sender window burst gate
+  charged BEFORE decode+validate, mirroring `allowBondSubmit`; (2) `ValidateEntry` now checks
+  `c.spent[serial]` BEFORE `publishtoken.Verify`, so a replayed (already-spent) token fails on
+  an O(1) map lookup instead of N modexps. Failing-first regressions, both RED-proven against
+  the pre-fix code: `core/chain/entry_replay_cpu_183_test.go` (a spent token with tampered
+  sigs must fail `ErrTokenSpent`, proving the verify was skipped) and
+  `core/node/entrysubmit_gate_183_test.go` (a 100-message single-sender flood queues at most
+  `entrySubmitBurst`; a second sender is not starved; the window refills). Bounded/conditional
+  — absent at the shipped default (tokens off), where the residual is the already-documented,
+  shelved byte-flood E5.
 - **#535 fix (4): the R-gate restore exemption — a returning frozen member can re-bond to
   heal a stalled boundary** (2026-08-23, research-certified) — The h64 epoch-boundary wedge's
   non-recovery was compounded by #506: a member whose standing lapsed was R-refused when it

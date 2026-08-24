@@ -2038,12 +2038,21 @@ func (c *Chain) ValidateEntry(e ports.Entry) error {
 		if e.Token == nil {
 			return fmt.Errorf("%w: entry %s", ErrTokenRequired, e.Root)
 		}
+		// Cheap replay reject BEFORE the RSA work (#183 red-team F-1): a
+		// committed token is public on the append-only chain, so an attacker can
+		// pair a harvested valid token with a novel Root and flood — every
+		// signature is genuine, so publishtoken.Verify would run all N modexps to
+		// completion before a spent-check placed after it caught the replay. The
+		// serial is an O(1) map lookup and the token is single-use, so a
+		// replayed (already-spent) token must fail here, cheaply, not after N
+		// verifies. A fresh (unspent) token still pays Verify — but a fresh
+		// blind-signed token is issuance-limited, not a free flood amplifier.
+		if c.spent[string(e.Token.Serial)] {
+			return fmt.Errorf("%w: %x", ErrTokenSpent, e.Token.Serial)
+		}
 		qualified := func(v ports.NodeID) bool { return c.attesterQualified(v) }
 		if err := publishtoken.Verify(*e.Token, c.tokenQuorum, c.issuerKey, qualified); err != nil {
 			return fmt.Errorf("chain: entry %s: %w", e.Root, err)
-		}
-		if c.spent[string(e.Token.Serial)] {
-			return fmt.Errorf("%w: %x", ErrTokenSpent, e.Token.Serial)
 		}
 	}
 	return nil
