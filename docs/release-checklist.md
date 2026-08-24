@@ -23,24 +23,34 @@
 - [ ] **Multi-machine field test — the R1 gate (#52)**, including the adversarial-consensus
   SAFETY sub-suite over the real wire (equivocation-slash, partition→heavier-fork heal,
   low-bond reject, forged-block reject), not just liveness.
-- [ ] **External red-team verdict against the C1 + C2 composition (#183)** — self-graded
+- [x] **External red-team verdict against the C1 + C2 composition (#183)** — self-graded
   does not count (B8). M0 is *held* only when these pass at declared parameters.
+  **DELIVERED 2026-08-24 — M0 HOLDS** at the shipped defaults, commit `5d1e303`:
+  no C1 (no-discount) break, no C2 (quiet-capture) break, no I1–I5 safety break.
+  Verdict: `/Users/andrewedmond/Claude/claude/silt-reviews/redteam-august-23/M0-REDTEAM-VERDICT-183.md`.
+  One real bounded liveness finding (F-1, `MsgSubmitEntry` CPU gap under the opt-in
+  `-require-tokens` mode) — **FIXED (PR #547)**; two harness coverage caveats (C-1
+  exhaustive-tier I5/I2 oracles, C-2 disk-backed I2 durability) — **CLOSED (this PR)**.
 
-**Red-team entry criteria (#183 does not start until all hold):**
-- [ ] **#432 rounds+locking landed and model-check-green across round boundaries** (the
+**Red-team entry criteria (#183 does not start until all hold) — ALL MET as of 2026-08-24:**
+- [x] **#432 rounds+locking landed and model-check-green across round boundaries** (the
   I4-liveness wedge: a connected all-honest network could permanently stall — a
   catastrophic liveness finding a red team hits immediately, and it is not even
   adversarial. Blocks #183 for BOTH regimes; the P1 launch-liveness claim carries this
   asterisk until it lands. PE ruling 2026-08-15,
   `silt-reviews/principle-engineer/i4-liveness-wedge-rounds-ruling-PE-2026-08-15.md`.)
-- [ ] **Launch-regime interleaved publish/drain liveness drill green** (P1 confirmed
+- [x] **Launch-regime interleaved publish/drain liveness drill green** (P1 confirmed
   safety and observed-run commit-capability, not liveness under the crossed-proposer
   race — the drill closes what P1 didn't cover).
-- [ ] Model-check green on the full schedule budget (above).
-- [ ] **The #399 WS-checkpoint recovery drill** built and green (flow 10).
-- [ ] **The local netem adversarial suite deterministic-green 10 consecutive runs**
+- [x] Model-check green on the full schedule budget (above).
+- [x] **The #399 WS-checkpoint recovery drill** built and green (flow 10).
+- [x] **The local netem adversarial suite deterministic-green 10 consecutive runs**
   (`integration/adversarial SUITE=all` under `delay 80ms 20ms`) — a bimodally-red
   gate is a backstop you can't trust (PE ruling §5, 2026-08-13).
+- [x] **#535 epoch-boundary liveness wedge recovery stack complete** (the blocker the
+  #183 handoff was written around): stall is certified-correct safety-first BFT; recovery
+  is (4) R-gate restore exemption (PR #541) + (3) operator-directed WS liveness escape
+  (PR #545), with (2) automatic re-basing refuted and pinned (PR #543).
 
 Everything below is the mechanics of cutting a tag on the RC line (`0.9.0`)
 and, when the field-proof gate is met, V1 (`1.0.0`). The last step — pushing a

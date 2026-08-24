@@ -9,6 +9,25 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **#183 red-team coverage caveats C-1 + C-2 closed — I5/I2 exhaustive oracles + disk-backed
+  I2 durability** (2026-08-24) — The external red-team verdict (M0 HOLDS) noted two harness
+  assurance gaps, not protocol defects; both are now closed. **C-1:** the I5 and I2 oracles,
+  previously covered by scenario tests, are promoted into the exhaustive-enumeration tier —
+  `core/chain/modelcheck_i5_accountable_test.go` drives the real `VerifyEquivocation` over
+  the full 2^4×2^4×2 space of same-height signature schedules (honest-never-slashed AND
+  completeness, both directions), sweeps fork-choice determinism over all 24 permutations of
+  a fork set (up from 3 hand-picked orders), and pins the bare-ProposerSig-is-not-a-vote
+  exemption; `core/node/modelcheck_i2_exhaustive_test.go` drives the real `signAllowedAt`
+  watermark against a mark reloaded across a restart over every (signed slot)×(competitor
+  slot) pair in the {height,round,phase,hash} space. **C-2:** the I2 fsync-before-the-wire
+  durability, previously verified only by inspection (all restart tests used
+  `markstore.NewMem`), now has a disk-backed home — `adapters/markstore/markstore_test.go`
+  (the first tests for that package: Save/Load survives a fresh-instance restart, atomic
+  overwrite leaves no torn file, missing-vs-corrupt is start-vs-refuse) and
+  `core/node/i2_disk_durability_183_test.go` (a real `Disk`-backed node refuses a same-slot
+  competitor across restart; `recordSign` withholds the signature when the store cannot
+  persist the mark — the fail-safe against an honest self-slash). All RED-proven against
+  reverted mechanisms.
 - **#535 fix (3): the operator-directed weak-subjectivity liveness-floor escape**
   (2026-08-24) — The remaining layer of the certified recovery stack, built per the
   ratified design (PR #544). `Config.LivenessRecoveryHeight` (daemon
