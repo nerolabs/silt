@@ -201,6 +201,18 @@ func (e *Endpoint) Send(to ports.NodeID, msg ports.Message) error {
 // delivery does).
 func (n *Network) EnableHeldDelivery() { n.held = true }
 
+// DisableHeldDelivery returns the network to timed delivery: the hand-off for a
+// model-check that BUILDS its world deterministically under held delivery and
+// then lets it RUN under the clock (the #560 timed oracle). Requires a
+// quiescent queue — a parked message would otherwise be stranded, delivered by
+// neither mode.
+func (n *Network) DisableHeldDelivery() {
+	if len(n.heldQ) > 0 {
+		panic(fmt.Sprintf("simnet: DisableHeldDelivery with %d parked message(s) — drain or drop them first", len(n.heldQ)))
+	}
+	n.held = false
+}
+
 // Pending returns a FIFO snapshot of the parked messages so the driver can pick
 // which to deliver next. Empty when the network is quiescent (no message in flight).
 func (n *Network) Pending() []HeldMsg {
