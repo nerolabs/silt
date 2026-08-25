@@ -1230,6 +1230,18 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 		return
 	}
 	added := 0
+	// Per-sweep diagnostic (#572): every failure branch of this walk logs at
+	// debug or not at all, which left the 027c354-deep val-c catch-up stall
+	// (100+ min of no-progress sweeps, info-level field capture) structurally
+	// unattributable. When a sweep ends with ZERO adopted blocks while a probe
+	// showed a peer ahead (or every probe failed), ONE warn line names what
+	// each branch did — so the next field occurrence carries its mechanism.
+	diag := struct {
+		probeFails, headMatches, windows, suffixAppends, reconciles int
+		maxPeerHead                                                 uint64
+		peerAhead                                                   bool
+		lastErr                                                     string
+	}{}
 	var ask func(i int)
 	// fetchFull runs the full-chain fetch + slash + Reconcile against peer p, then
 	// advances to the next peer. Used whenever the head probe shows a difference or
@@ -1258,6 +1270,7 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 			}
 			full, ferr := n.reconstructFork(served)
 			if ferr != nil {
+				diag.lastErr = fmt.Sprintf("reconstruct from %x: %v", p[:4], ferr)
 				n.logf(ports.LogDebug, "could not reconstruct fork from peer suffix", "peer", p, "err", ferr)
 				next()
 				return
@@ -1277,6 +1290,7 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 			// >f attack out of the safety model.
 			n.slashEquivocators(old, full)
 			n.Stats.ChainSyncFullReconciles++
+			diag.reconciles++
 			if ok, rerr := n.chain.Reconcile(full); ok {
 				now := n.chain.Blocks(0)
 				if d := n.chain.Len() - before; d > 0 {
@@ -1293,6 +1307,7 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 				n.Stats.ChainSyncNeedCheckpoint++
 				n.logf(ports.LogWarn, "cannot catch up from peer: behind the weak-subjectivity window and the peer pruned the gap — obtain a recent -ws-checkpoint out-of-band or sync from an archive node", "peer", p, "err", ErrNeedCheckpoint)
 			} else if rerr != nil {
+				diag.lastErr = fmt.Sprintf("not adopted from %x: %v", p[:4], rerr)
 				n.logf(ports.LogDebug, "peer chain not adopted", "peer", p, "err", rerr)
 			}
 			next()
@@ -1305,6 +1320,7 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 						// Mid-loop failure: the partial suffix is DISCARDED, never
 						// reconciled — sync fails closed for this peer this sweep and
 						// the next sweep retries (#466).
+						diag.lastErr = fmt.Sprintf("window@%d from %x: %v (ok=%v)", h, p[:4], err, resp.OK)
 						if len(served) > 0 {
 							n.logf(ports.LogDebug, "windowed chain fetch aborted mid-loop", "peer", p, "at-height", h, "err", err)
 						}
@@ -1313,6 +1329,7 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 					}
 					window, derr := chain.DecodeBlocks(resp.Data)
 					if derr != nil {
+						diag.lastErr = fmt.Sprintf("undecodable window@%d from %x: %v", h, p[:4], derr)
 						n.logf(ports.LogDebug, "windowed chain fetch: undecodable reply", "peer", p, "err", derr)
 						next()
 						return
@@ -1322,6 +1339,7 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 						return
 					}
 					n.Stats.ChainSyncWindows++
+					diag.windows++
 					last := window[len(window)-1].Height
 					// #528 fast path — a window that provably EXTENDS our exact committed
 					// head is adopted through the normal Append commit path, validating
@@ -1342,10 +1360,12 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 					if finActive && len(served) == 0 {
 						if k, ext, aerr := n.appendExtension(window); ext {
 							added += k
+							diag.suffixAppends += k
 							if k > 0 {
 								n.logf(ports.LogInfo, "chain caught up from peer (suffix append)", "peer", p, "appended", k, "len", n.chain.Len())
 							}
 							if aerr != nil {
+								diag.lastErr = fmt.Sprintf("suffix stop@%d from %x: %v", h, p[:4], aerr)
 								// Mid-suffix stop: blocks appended so far are fully
 								// validated committed blocks (the same state as having
 								// synced one sweep earlier) — keep them; drop the peer
@@ -1390,6 +1410,19 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 	}
 	ask = func(i int) {
 		if i >= len(peers) {
+			// #572: a no-progress sweep while demonstrably behind (a probe showed
+			// a peer ahead), or blind (every probe failed), is the exact state the
+			// 027c354-deep val-c stall sat in silently for 100+ minutes. Name the
+			// branch at WARN so the field capture carries the mechanism.
+			if added == 0 && (diag.peerAhead || (diag.probeFails > 0 && diag.headMatches == 0)) {
+				_, ourNext := n.chain.Head()
+				n.logf(ports.LogWarn, "chain sync sweep made NO progress while behind (#572)",
+					"our-next", ourNext, "max-peer-head", diag.maxPeerHead,
+					"peers", len(peers), "probe-fails", diag.probeFails,
+					"head-matches", diag.headMatches, "windows", diag.windows,
+					"suffix-appends", diag.suffixAppends, "reconciles", diag.reconciles,
+					"last-err", diag.lastErr)
+			}
 			done(added, nil)
 			return
 		}
@@ -1402,21 +1435,33 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 		// moved if we adopted from an earlier peer this sweep).
 		n.request(p, ports.Message{Kind: ports.MsgGetChainHead},
 			func(resp ports.Message, err error) {
-				ourHead, _ := n.chain.Head()
+				ourHead, ourNext := n.chain.Head()
 				peerHeadHeight, peerHeadKnown := uint64(0), false
 				if err == nil && resp.Kind == ports.MsgChainHeadReply && resp.OK {
 					// The probe's height also serves the windowed fetch (#466): it
 					// ends the window loop without a final empty-window round-trip.
 					peerHeadHeight, peerHeadKnown = resp.Height, true
+					if peerHeadHeight > diag.maxPeerHead {
+						diag.maxPeerHead = peerHeadHeight
+					}
+					if peerHeadHeight >= ourNext {
+						diag.peerAhead = true
+					}
 					if len(resp.Data) == len(ourHead) {
 						var peerHead ports.Hash
 						copy(peerHead[:], resp.Data)
 						if peerHead == ourHead {
 							// Identical head ⇒ identical committed history: nothing to do.
 							n.Stats.ChainSyncHeadMatches++
+							diag.headMatches++
 							ask(i + 1)
 							return
 						}
+					}
+				} else {
+					diag.probeFails++
+					if err != nil {
+						diag.lastErr = fmt.Sprintf("head probe %x: %v", p[:4], err)
 					}
 				}
 				// Head differs, or the peer is too old to answer the probe (or it
