@@ -8,6 +8,26 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Fixed
+- **#555 deep-drive crawl attributed and fixed — `Block.Hash` memoized; the crawl was
+  hash-work saturation, not gather latency** (2026-08-25) — The 95d39e8-deep field log
+  produced the measurement the #555 certification held for: the intrinsic two-phase gather
+  is ~10 s at 12-seat WAN (h74: new-view → commit in 9.6 s), well inside the 60 s round-0
+  base — the apparent 90–150 s "gather" was event-loop saturation. ChainReply processing
+  blocked the single node thread 16–86 s per reply (cost growing 2.4 s → 42 s with depth),
+  stretching the sweep timers (waited p50 18 s, p90 146 s) and starving the gather; the
+  watchdog stacks pin the work to `Reconcile → recentBondRegNonces → blockByHash →
+  Block.Hash → sha256` — the hash re-marshaled the full block body (~1.5 MB per reg proof)
+  on every call, recomputed per scan step, K=8 lookups per validated block: O(depth ×
+  window × scan) per full fetch, self-sustained by probe timeouts forcing more full
+  fetches. Fix: memoize `Block.Hash` (decode-fresh on the wire; `Sign` invalidates; pruned
+  branch keeps priority) — one hash per block per lifetime; no consensus rule, no wire
+  change, no timing constant (`roundAdvanceSweeps` stays 2 — the #549 Q3 skew derivation
+  remains the binding lower bound). RED-proven hash-work oracle
+  `core/chain/reconcile_hashwork_555_test.go`: 798 → 25 computations for a 24-block
+  cold-sync reconcile; `Head()` now does zero hash work. Attribution:
+  `docs/thinking/2026-08-25-555-crawl-attribution.md`.
+
 ### Added
 - **#549 in-process repro of the DEEP-run h68 stall — the field cause is not synchronizer
   logic** (2026-08-24) — `core/node/modelcheck_549_scatter_test.go` models the field's

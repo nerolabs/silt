@@ -34,6 +34,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"sync/atomic"
 
 	"github.com/fxamacker/cbor/v2"
 
@@ -356,6 +357,20 @@ type Block struct {
 	// accepted ONLY strictly below that finalized anchor (the Q2 gate in Reconcile) —
 	// never on this field alone. See retention.go + docs/thinking/2026-08-18-serve-retain-from-checkpoint-oom-fix.md.
 	Pruned ports.Hash `cbor:"14,keyasint,omitempty"`
+
+	// hashMemo caches Hash() (#555). A block's hashed content is immutable once
+	// minted (Sign computes the hash it signs) or decoded, but Hash() re-marshaled
+	// the whole body — BondRegs' ~1.5 MB proofs included — and re-hashed it on
+	// EVERY call. blockByHash recomputes per scan step and recentBondRegNonces does
+	// up to K=8 such lookups per validated block, so a deep-chain Reconcile paid
+	// O(depth × K × scan) full-body hashes on the node thread: the 16–86 s
+	// ChainReply stalls that saturated the event loop, stretched the sweep timers,
+	// and starved the two-phase gather in the 95d39e8-deep field run. Unexported:
+	// never on the wire (cbor skips it), zero on decode, travels with value copies.
+	// Sign invalidates it (the one place hashed content mutates after a possible
+	// Hash call); everything else constructs before hashing.
+	hashMemo    ports.Hash
+	hashMemoSet bool
 }
 
 // Attestation is a validator's consensus signature over a block. The public
@@ -472,13 +487,26 @@ func (b *Block) Hash() ports.Hash {
 	if b.IsPruned() {
 		return b.Pruned
 	}
+	if b.hashMemoSet {
+		return b.hashMemo
+	}
 	unsigned := Block{Version: b.Version, Height: b.Height, Prev: b.Prev, Entries: b.Entries, Proposer: b.Proposer, Revocations: b.Revocations, Unrevocations: b.Unrevocations, BondRegs: b.BondRegs, Slashes: b.Slashes}
 	raw, err := encMode.Marshal(&unsigned)
 	if err != nil {
 		panic(err) // canonical encoding of our own struct cannot fail
 	}
-	return sha256.Sum256(raw)
+	blockHashComputes.Add(1)
+	b.hashMemo = sha256.Sum256(raw)
+	b.hashMemoSet = true
+	return b.hashMemo
 }
+
+// blockHashComputes counts actual (non-memoized) Hash computations — the
+// deterministic oracle for the #555 hash-work bound (a wall-clock assertion
+// would be flaky; the WORK count is what the memo bounds). Atomic only so a
+// concurrent test cannot trip the race detector; the node loop is
+// single-threaded.
+var blockHashComputes atomic.Uint64
 
 // IsPruned reports whether this block has been payload-selectively pruned — its heavy
 // BondReg.Answer proofs dropped and its pre-prune Hash stored in Pruned.
@@ -525,9 +553,12 @@ func (b *Block) ProposerID() ports.NodeID { return sha256.Sum256(b.Proposer) }
 
 func (a Attestation) AttesterID() ports.NodeID { return sha256.Sum256(a.PubKey) }
 
-// Sign fills in the proposer key and signature.
+// Sign fills in the proposer key and signature. Setting Proposer mutates
+// hashed content, so the memo is invalidated first — Sign must never sign a
+// stale hash (#555).
 func Sign(b *Block, priv ed25519.PrivateKey) {
 	b.Proposer = append([]byte(nil), priv.Public().(ed25519.PublicKey)...)
+	b.hashMemoSet = false
 	h := b.Hash()
 	b.ProposerSig = ed25519.Sign(priv, h[:])
 }

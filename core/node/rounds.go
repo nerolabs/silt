@@ -40,6 +40,14 @@ import (
 // the round-change timer is ever decoupled from the chain-sync tick, or
 // ChainSyncInterval made per-node-variable, the < ChainSyncInterval skew bound
 // must be re-derived (docs/thinking/2026-08-24-549-q3-round-duration.md).
+//
+// #555 ADDENDUM (2026-08-25): the deep-drive crawl asked whether the two-phase
+// GATHER latency G, not skew, is the binding lower bound (the #555 cert held
+// this base pending a measured G). Measured: intrinsic G ≈ 10 s at 12-seat WAN
+// (95d39e8-deep h74) — the crawl's 90–150 s "gather" was event-loop saturation
+// from redundant Block.Hash work on the chain-sync path (fixed: hash memo,
+// chain.TestReconcileHashWorkIsLinear_555). Skew remains binding; base stays 2
+// (docs/thinking/2026-08-25-555-crawl-attribution.md).
 const roundAdvanceSweeps = 2
 
 // sweepsForRound is the #451 synchronizer's load-bearing ingredient (a):
