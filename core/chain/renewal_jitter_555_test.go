@@ -124,3 +124,66 @@ func TestBondRenewalDue_JitterSpreadsAndKeepsMargin(t *testing.T) {
 		t.Fatalf("renewals still clustered: %d validators due at one height (want the load spread so ~1 reg/block)", maxPerHeight)
 	}
 }
+
+// #562 — the jitter grid vs the #506 R-rule (a434494-deep field finding): the
+// nearest grid point can sit closer to the last committed reg than the
+// reg-inclusion rate bound allows (rounding reaches down to TTL/4 = 8; R =
+// K+2 = 10 at the field shape), so the renewal submitted there was REFUSED
+// every sweep — "re-registering 9 blocks after its last reg (R=10)" — until
+// the chain outran R. The due point must clear regMinInterval for EVERY
+// identity phase; steady-state (on-grid) periods stay exactly TTL/2 (the
+// #313/#556 property — the clamp must be inert there, engaging only on
+// colliding first cycles like the genesis-aligned fleet's).
+func TestRenewalDueClearsRegRateBound_562(t *testing.T) {
+	const ttl = uint64(32)
+	cfg := Config{Quorum: 2, MinBond: 1 << 20, ByzantineQuorum: true,
+		MatureValidators: 0, EpochBlocks: 8, BondTTLBlocks: ttl}
+	c := New(cfg, func(ports.NodeID) int64 { return 0 })
+	period := ttl / 2
+	minDist := c.regMinInterval() // K+2 = 10 > TTL/4 = 8: the collision exists
+	if minDist <= ttl/4 {
+		t.Fatalf("premise: R=%d does not exceed TTL/4=%d — the collision this guards cannot occur at this shape", minDist, ttl/4)
+	}
+
+	const regH = uint64(100)
+	collided := false
+	for seed := int64(0); seed < 512; seed++ {
+		id := idOf(key(90000 + seed))
+		c.bondRegHeight[id] = regH
+		phase := renewalPhaseOffset(id, period)
+		due := c.renewalDueHeight(id)
+		if dist := due - regH; dist < minDist {
+			t.Fatalf("#562 REPRODUCED: identity with phase %d has renewal due at +%d < R=%d — its renewal submit is refused every sweep until the chain outruns the rate bound", phase, dist, minDist)
+		}
+		// The un-clamped grid point for phases 12/13 lands at +8/+9 (< R):
+		// those are the identities the clamp must move, and the sample must
+		// actually contain them or this test is vacuous.
+		if phase == 12 || phase == 13 {
+			collided = true
+			if due-regH != minDist {
+				t.Fatalf("colliding phase %d clamped to +%d, want exactly R=%d (the minimal legal point)", phase, due-regH, minDist)
+			}
+		}
+		// Margin to expiry survives the clamp: due stays inside the certified
+		// jitter window (≤ 3·TTL/4, so ≥ TTL/4 margin) — the clamp never pushes
+		// past it (it only ever RAISES a too-low point to R < TTL/2).
+		if due > regH+3*ttl/4 {
+			t.Fatalf("phase %d due at +%d — outside the [TTL/4, 3·TTL/4] jitter window, margin eroded", phase, due-regH)
+		}
+	}
+	if !collided {
+		t.Fatal("vacuous: no identity in the sample carries a colliding phase (12/13)")
+	}
+
+	// Steady state: a reg ON its own grid point renews exactly one period later
+	// — the clamp is inert (R < TTL/2), the #556 period property intact.
+	for seed := int64(0); seed < 64; seed++ {
+		id := idOf(key(91000 + seed))
+		phase := renewalPhaseOffset(id, period)
+		onGrid := ((regH-phase)/period+1)*period + phase // smallest grid point ≥ regH... next aligned height
+		c.bondRegHeight[id] = onGrid
+		if due := c.renewalDueHeight(id); due != onGrid+period {
+			t.Fatalf("on-grid reg at %d (phase %d): next due %d, want exactly one period later %d (the #556 steady-state property)", onGrid, phase, due, onGrid+period)
+		}
+	}
+}
