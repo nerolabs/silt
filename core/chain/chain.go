@@ -2553,7 +2553,14 @@ func (c *Chain) validateStructural(b *Block) error {
 		if seen[id] || id == b.ProposerID() {
 			continue // duplicates and self-attestation don't count
 		}
-		if !ed25519.Verify(ed25519.PublicKey(a.PubKey), h[:], a.Sig) {
+		// Era-aware (#558): era-2 attestations sign the domain-separated
+		// consensusSigBytes(phase, round, hash), not the bare hash. This path
+		// verified the bare hash only, so replay of ANY era-2 chain failed at
+		// its first non-genesis block and the daemon silently fell to genesis —
+		// masked by peer full-fetch until the retention prune removed the mask
+		// (the a434494-deep val-d stranding). verifyAtt is the same arithmetic
+		// the live commit path uses.
+		if !verifyAtt(a, h) {
 			return fmt.Errorf("%w: attester %s", ErrBadSignature, id)
 		}
 		seen[id] = true

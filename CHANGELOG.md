@@ -9,6 +9,22 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Fixed
+- **#558 era-2 chain replay always failed — silent genesis fallback on every validator
+  restart, exposed as a stranding at depth** (2026-08-25) — `validateStructural` (the
+  `Reload` path a restarted daemon replays its own chain.cbor through) verified attester
+  signatures over the bare block hash — the era-1 form. Era-2 (#432) attestations sign the
+  domain-separated `consensusSigBytes(phase, round, hash)`, so replay of any era-2 chain
+  failed at its first non-genesis block with `bad signature`, and the daemon silently fell
+  back to genesis. Invisible until now: peer catch-up re-fetched the whole chain after
+  every restart (an expensive hidden full Reconcile — a #555-adjacent load source). In the
+  a434494-deep run the retention prune removed that mask: OOM-restarted val-d could not
+  re-sync below the prune horizon and was stranded at genesis with its intact h83 store on
+  disk (not a torn write — `chainstore.Save` is atomic). Fix: `validateStructural` uses the
+  shared era-aware `verifyAtt` (the live commit path's arithmetic); `Reload` keeps the
+  longest valid prefix; the daemon names a replay failure loudly (prefix kept, prune-horizon
+  consequence, #559 pointer) instead of a one-line stderr note. RED-proven:
+  `core/chain/reload_era2_558_test.go` reproduces the exact field failure (era-2 + pruned
+  block replay through the persisted representation) against the pre-fix code.
 - **#555 deep-drive crawl attributed and fixed — `Block.Hash` memoized; the crawl was
   hash-work saturation, not gather latency** (2026-08-25) — The 95d39e8-deep field log
   produced the measurement the #555 certification held for: the intrinsic two-phase gather
