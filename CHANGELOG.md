@@ -9,6 +9,19 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Fixed
+- **#563 cold-sync Reconcile OOM on the 2 GB box — the hypothesis was garbage, literally**
+  (2026-08-25) — the deep-run kernel-OOM (a434494-deep, val-d ×2) was attributed by a new
+  deterministic memory oracle (`core/chain/reconcile_mem_563_test.go`, born RED): there is
+  NO 2–3× resident fork copy (retained-after-GC is negative — adoption shares payload
+  backing); the spike is ~1× fork-bytes of transient CBOR garbage from each decoded
+  block's first `Block.Hash()` materializing its full multi-MB body, on top of a measured
+  2.35× decode inflation and GOGC=100's heap-doubling headroom. Two-leg fix: `Hash()` now
+  marshals into a pooled buffer (`UserBufferEncMode.MarshalToBuffer`, byte-identity with
+  the reference encoder asserted by `TestHashPooledBufferIdentity_563` — same bytes, same
+  hashes, no consensus surface), dropping the Reconcile peak extra 69→6 MiB; and the
+  cloudtest fleet now DEFAULTS `MEM_LIMIT=1500M` (the a9cfc06-proven GOMEMLIMIT guard the
+  OOM'd run had silently dropped — `console-a434494-deep.log` carries no `-mem-limit`).
+  Deliberation + outcome: `docs/thinking/2026-08-25-563-reconcile-memory-bench-deliberation.md`.
 - **#562 renewal jitter grid clamped to the #506 R-rule — no more refused-renewal sweeps**
   (2026-08-25) — the #555 phase-jitter's nearest-grid rounding reaches down to TTL/4 blocks
   after the last committed reg, but the reg-inclusion rate bound R = K+2 can exceed TTL/4
