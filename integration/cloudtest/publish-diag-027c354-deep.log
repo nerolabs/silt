@@ -1,0 +1,24 @@
+[2026-08-25T16:33:18Z] ft_publish FAILED after 360s on fetch-1 (token-quorum=2)
+  publisher->validator reachability: 3/4 of the -peers set reachable
+  last silt error: EMPTY RESPONSE from fetch-1 — ssh_node returned NOTHING across the whole window: the node is UNREACHABLE or the node MAP is wrong (check nodes.json zones/ips), NOT a publish failure. reachable-peers=3/4
+  note: token-quorum needs the publisher to reach >= 2 validators to
+        gather signatures. A shortfall here — not validator<->validator — is the
+        usual cause of 'could not gather enough publish-token signatures' and a
+        chain stuck at height 0. Retry a bootstrap run with TOKEN_QUORUM=1, or
+        fix publisher egress to the validators.
+[2026-08-25T17:18:15Z] ft_publish FAILED after 360s on nat-1 (token-quorum=2)
+  publisher->validator reachability: 4/4 of the -peers set reachable
+  last silt error: EMPTY RESPONSE from nat-1 — ssh_node returned NOTHING across the whole window: the node is UNREACHABLE or the node MAP is wrong (check nodes.json zones/ips), NOT a publish failure. reachable-peers=4/4
+  note: token-quorum needs the publisher to reach >= 2 validators to
+        gather signatures. A shortfall here — not validator<->validator — is the
+        usual cause of 'could not gather enough publish-token signatures' and a
+        chain stuck at height 0. Retry a bootstrap run with TOKEN_QUORUM=1, or
+        fix publisher egress to the validators.
+[2026-08-25T17:28:38Z] ft_publish FAILED after 360s on fetch-1 (token-quorum=2)
+  publisher->validator reachability: 4/4 of the -peers set reachable
+  last silt error: EMPTY RESPONSE from fetch-1 — ssh_node returned NOTHING across the whole window: the node is UNREACHABLE or the node MAP is wrong (check nodes.json zones/ips), NOT a publish failure. reachable-peers=4/4
+  note: token-quorum needs the publisher to reach >= 2 validators to
+        gather signatures. A shortfall here — not validator<->validator — is the
+        usual cause of 'could not gather enough publish-token signatures' and a
+        chain stuck at height 0. Retry a bootstrap run with TOKEN_QUORUM=1, or
+        fix publisher egress to the validators.
