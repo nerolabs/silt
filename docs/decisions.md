@@ -451,6 +451,52 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
 
 ---
 
+## D-TIERING — heterogeneous node roles, one client; the state commitment is the keystone
+
+- **Status:** ✅ DECIDED (direction) — 2026-08-25 (owner ratification). The consensus-rule
+  construction (the state root) is **research-gated** and NOT decided here.
+- **Basis:** the PE design direction
+  (`silt-reviews/principle-engineer/D-TIERING-design-direction-2026-08-25.md`), verified
+  against code at `7089d27`: no state-root field in `Block` (core/chain/chain.go:295), the
+  registry is unsharded (`AllEntries`), state is rebuilt by pure replay, and the WS
+  checkpoint is a trust anchor only — so cheap-but-correct participation is impossible
+  today without holding and replaying everything.
+- **Direction (decided):**
+  1. **One binary, composable capability flags** (`--serve-content`, `--validate`,
+     `--archive`, later `--registry-shard`) across a spectrum from transient hobbyist edge
+     box (1 vCPU / 2 GB) to archival trust server. Resources determine role; the mode is a
+     flag, not a fork.
+  2. **Three couplings are canon:** (a) transient boxes serve but never attest — the
+     attesting set is drawn from persistent bonded nodes (the #535 churn-stall class is the
+     failure prevented); (b) durability is guaranteed by the persistent tiers plus the D-S7
+     economy, never by the transient edge (the cold-content death spiral is the failure
+     prevented); (c) contribution scales publishing allowance freely but consensus weight
+     only through the bond under the C2 cap — the γ→1/N firewall (Invariant A) is
+     untouched and reasserted in a failing-first guard whenever a contribution-unlocks-
+     publishing mechanic lands.
+  3. **The single new load-bearing build item is a registry state root committed in each
+     block** — an additive block field plus a validity check, version-gated (era-3), NOT a
+     consensus-engine change (D-CONSENSUS §5 holds). It unlocks, in order: cheap correct
+     validation on pruned nodes, snapshot sync (O(live-state) bootstrap), and the sharded
+     registry.
+  4. **Sequencing:** the Phase-3 deep-heights gate finishes first; the state-root research
+     consult runs in parallel
+     (`silt-reviews/research/D-TIERING-state-root-keystone-CONSULT-2026-08-25.md`); mode
+     flags and neutral PoD are build-gated items that start after the deep gate is banked.
+     #563 is scoped minimally (RED bench + bounded mitigation) and #559 folds into the
+     snapshot-sync design, because snapshot sync is the structural fix for both.
+- **Construction (open, research-gated):** the authenticated structure (sparse vs
+  sorted-key Merkle) with inclusion AND exclusion proofs; the incremental-update algorithm
+  (O(changed × log n) per block, never a per-block recompute — the #555 lesson); the full
+  enumeration of validity-relevant committed state (16 fields at this HEAD, incl. the
+  regime latches and #506 gate state — see the consult); the era-3 upgrade boundary; the
+  sharded-registry can't-lie-by-omission model; the validator churn floor.
+- **Immutables preserved:** consensus engine untouched; M0 firewall reinforced; the
+  hobbyist box (#8) is the point of the whole direction; content-blind core untouched (the
+  root commits locators and status, never content meaning).
+
+---
+
 ## What is NOT on this ledger
 
 The following are **build items or tuning knobs**, not owner-level decisions, and live in
