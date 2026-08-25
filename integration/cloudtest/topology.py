@@ -48,11 +48,16 @@ LOOP_BUDGET = " -loop-budget" if os.environ.get("LOOP_BUDGET", "") not in ("", "
 # Off by default (adds no surface to a normal cert run). Capture: ./cloudtest.sh heap <node>.
 DEBUG_PORT = int(os.environ.get("DEBUG_PORT", "6060"))
 DEBUG_ADDR = f" -debug-addr 127.0.0.1:{DEBUG_PORT}" if os.environ.get("DEBUG_PROFILE", "") not in ("", "0") else ""
-# MEM_LIMIT=1500M sets -mem-limit on every node — the GOMEMLIMIT OOM mitigation
-# (GC reclaims before the kernel OOM-kills). A run with it set tests the
-# large-but-bounded-working-set hypothesis: survives ⇒ GC-pacing (fixed); still
-# OOMs ⇒ the live set genuinely exceeds the box. Off by default.
-MEM_LIMIT = f" -mem-limit {os.environ['MEM_LIMIT']}" if os.environ.get("MEM_LIMIT", "") not in ("", "0") else ""
+# MEM_LIMIT sets -mem-limit on every node — the GOMEMLIMIT OOM mitigation
+# (GC reclaims before the kernel OOM-kills). DEFAULT 1500M, sized to the e2-small
+# 2 GB fleet: the a9cfc06 heap profiles proved backpressure + GOMEMLIMIT are
+# COMPLEMENTARY (backpressure bounds the live set; the limit caps the ~2.2× GC
+# amplification over it), yet the deep runs since were launched without it
+# (console-a434494-deep.log has no -mem-limit) and a434494's val-d kernel-OOM'd
+# during cold-sync churn (#563). Defaulted so the proven mitigation cannot be
+# dropped again; override for bigger boxes (e.g. 3000M on e2-medium), MEM_LIMIT=0
+# to disable for an attribution run.
+MEM_LIMIT = f" -mem-limit {os.environ.get('MEM_LIMIT', '1500M')}" if os.environ.get("MEM_LIMIT", "1500M") not in ("", "0") else ""
 DIAG = f"{DEBUG_ADDR}{MEM_LIMIT}"
 PUBLIC_CIDR = os.environ.get("PUBLIC_CIDR", "10.20.0.0/24")
 NAT_CIDR = os.environ.get("NAT_CIDR", "10.30.0.0/24")

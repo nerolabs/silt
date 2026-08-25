@@ -34,6 +34,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"sync"
 	"sync/atomic"
 
 	"github.com/fxamacker/cbor/v2"
@@ -467,9 +468,23 @@ func (r BondReg) signingBytes(nonce uint64) []byte {
 
 var encMode cbor.EncMode
 
+// encModeBuf is encMode's buffer-reusing twin (identical CanonicalEncOptions,
+// so identical bytes — asserted by TestHashPooledBufferIdentity_563). Hash()
+// marshals a block's FULL body to hash it; on the cold-sync Reconcile path that
+// is one multi-MB transient per decoded block, and the resulting O(fork-bytes)
+// garbage burst is what crossed the 2 GB box's envelope in the field (#563).
+// MarshalToBuffer into a pooled buffer keeps the churn at ~one resident buffer.
+var encModeBuf cbor.UserBufferEncMode
+
+var hashBufPool = sync.Pool{New: func() any { return new(bytes.Buffer) }}
+
 func init() {
 	var err error
 	encMode, err = cbor.CanonicalEncOptions().EncMode()
+	if err != nil {
+		panic(err)
+	}
+	encModeBuf, err = cbor.CanonicalEncOptions().UserBufferEncMode()
 	if err != nil {
 		panic(err)
 	}
@@ -491,12 +506,14 @@ func (b *Block) Hash() ports.Hash {
 		return b.hashMemo
 	}
 	unsigned := Block{Version: b.Version, Height: b.Height, Prev: b.Prev, Entries: b.Entries, Proposer: b.Proposer, Revocations: b.Revocations, Unrevocations: b.Unrevocations, BondRegs: b.BondRegs, Slashes: b.Slashes}
-	raw, err := encMode.Marshal(&unsigned)
-	if err != nil {
+	buf := hashBufPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	if err := encModeBuf.MarshalToBuffer(&unsigned, buf); err != nil {
 		panic(err) // canonical encoding of our own struct cannot fail
 	}
 	blockHashComputes.Add(1)
-	b.hashMemo = sha256.Sum256(raw)
+	b.hashMemo = sha256.Sum256(buf.Bytes())
+	hashBufPool.Put(buf)
 	b.hashMemoSet = true
 	return b.hashMemo
 }
