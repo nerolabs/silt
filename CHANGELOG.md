@@ -9,6 +9,19 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **#572 sync-stall repro guards + per-sweep catch-up diagnostic** (2026-08-26) — the
+  027c354-deep val-c stall (100+ min of no-progress sweeps) was unattributable because
+  every failure branch of the SyncChain walk logs at debug or below. The deterministic
+  repro (`core/node/syncstall_572_test.go`, exact 12-seat topology, epoch rotation in
+  the gap) EXONERATED the leading suspects: a healed behind seat catches up in one
+  sweep, and the field's chain-behind-ahead-mark shape (chain h24 / mark h33 — the
+  markstore is atomic, chain.cbor save cadence lagged) neither blocks adoption nor
+  moves the I2 mark. Both stay as regression guards. Since the mechanism is still
+  unnamed, `SyncChain` now emits ONE warn when a sweep ends with zero adopted blocks
+  while demonstrably behind — our-next, max-peer-head, probe/window/append/reconcile
+  counters, last branch error — so the next occurrence carries its mechanism
+  (RED-proven oracle: `TestSyncStall_572_NoProgressSweepWarns`). No behavior change on
+  any sync path. Record: `docs/thinking/2026-08-26-572-sync-stall-attribution.md`.
 - **#570 archival-format golden-fixture suite — committed chains every future HEAD must
   replay** (2026-08-25) — four write-once serialized fixtures
   (`core/chain/testdata/archival/`: era-1, era-2, era-2-pruned, mixed era-1→era-2, the
