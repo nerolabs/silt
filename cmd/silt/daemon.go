@@ -664,7 +664,12 @@ func cmdDaemon(args []string) error {
 		}
 		chainPath = filepath.Join(*storeDir, "chain.cbor")
 		if n, err := chainstore.Replay(chainPath, ch); err != nil {
-			fmt.Fprintln(os.Stderr, "chain replay:", err)
+			// NEVER quiet (#558): a replay failure discards finalized history.
+			// Reload keeps the longest valid prefix; name the loss and the
+			// consequence loudly — behind the swarm's prune horizon a
+			// genesis-stranded validator cannot re-sync without an operator
+			// -ws-checkpoint (#559).
+			fmt.Fprintf(os.Stderr, "chain replay: FAILED at block %d: %v — continuing with the %d-block valid prefix; the suffix must re-sync from peers, which is IMPOSSIBLE below the swarm's prune horizon without a fresh -ws-checkpoint (#558/#559)\n", n, err, n)
 		} else if n > 0 {
 			fmt.Printf("chain: restored %d block(s) from disk\n", n)
 		}
