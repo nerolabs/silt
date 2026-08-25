@@ -9,6 +9,18 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Fixed
+- **#561 round-escape decoupled from the chain-sync peer walk — dead peers can no longer
+  stall the view-change** (2026-08-25) — `maybeAdvanceRound` (the #432 escape counter) ran
+  inside `SyncChain`'s completion callback, which fires only after the sequential ask-walk
+  over every peer completes; dead peers stretch that walk by their full retry budgets. In
+  the a434494-deep 10a stall-drill (4 of 12 peers stopped), the honest cohort's first
+  round-change came ~8 minutes after the stall against a 430 s bound built on 30 s sweeps —
+  while renewals (tick-driven) flowed on schedule the whole time. The escape now runs on
+  the TICK: it needs only local state (pending work + the sweep count), tick cadence is the
+  #549 Q3 skew-bound premise, and the new-view proposal path was already message-driven at
+  the designee. The drain keeps its freshest-head property (#338) by staying in the
+  callback. RED-proven: `core/node/roundescape_tick_561_test.go` (held delivery models the
+  never-completing walk; pre-fix the node never leaves round 0).
 - **#558 era-2 chain replay always failed — silent genesis fallback on every validator
   restart, exposed as a stranding at depth** (2026-08-25) — `validateStructural` (the
   `Reload` path a restarted daemon replays its own chain.cbor through) verified attester

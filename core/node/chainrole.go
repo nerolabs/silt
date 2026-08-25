@@ -1459,10 +1459,6 @@ func (n *Node) chainSyncTick() {
 			// Drain pending bond registrations AFTER the reconcile settles, so the
 			// proposal builds on the freshest head this sweep can know (#338).
 			n.maybeProposeBondDrain()
-			// #432: count non-progress sweeps and fire a round-change when the
-			// working height is stuck with pending work (the deterministic,
-			// quorum-observable view-change trigger).
-			n.maybeAdvanceRound()
 		})
 		// Renew objective standing without proposing (H2 / RT-2): submit a fresh
 		// bond proof to the same validator set we reconcile against, so an
@@ -1470,6 +1466,19 @@ func (n *Node) chainSyncTick() {
 		// objective path or with no bond.
 		n.SubmitBondRenewal(peers)
 	}
+	// #432: count non-progress sweeps and fire a round-change when the working
+	// height is stuck with pending work (the deterministic, quorum-observable
+	// view-change trigger). ON THE TICK, not in the SyncChain callback (#561):
+	// the escape needs only local state (pending work + the sweep count), and
+	// the callback fires only after the sequential peer walk completes — dead
+	// peers stretch that walk by their full retry budgets, which in the field
+	// held the first round-change to ~8min against a 430s bound (a434494-deep
+	// 10a). Tick cadence is also the #549 Q3 premise: the cross-node skew bound
+	// (< ChainSyncInterval) assumes the escape runs once per interval. The
+	// DRAIN stays in the callback — proposing wants the freshest head (#338),
+	// and once the escape fires, the new-view proposal path is message-driven
+	// at the designee (recordRoundChange), independent of any walk.
+	n.maybeAdvanceRound()
 	n.clock.AfterFunc(n.cfg.ChainSyncInterval, n.chainSyncTick)
 }
 
