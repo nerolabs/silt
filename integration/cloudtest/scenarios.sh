@@ -94,6 +94,24 @@ ft_reachable_peers() { # ft_reachable_peers NODE
 # reachability shortfall (< TOKEN_QUORUM peers reachable — an egress/preemption
 # problem, e.g. a SPOT-reclaimed validator), so a caller can record a GAP ("couldn't
 # confirm") rather than a property FAIL. Cleared to 0 on entry.
+# client_preflight FLOW SEVERITY NODE... — #574 (run 027c354-deep): a dead client
+# node burned each dependent flow's full 360s publish window before the plumbing
+# flag fired, and three sheet rows went red on ONE unreachable node. One cheap ssh
+# round-trip per client node first (bounded by SSH_NODE_TIMEOUT, default 90s);
+# silence ⇒ record a GAP naming the plumbing cause and return 1 so the flow exits
+# UNTESTED immediately.
+client_preflight() { # client_preflight FLOW SEVERITY NODE... -> 0 all reachable / 1 recorded gap
+  local flow="$1" sev="$2"; shift 2
+  local cn
+  for cn in "$@"; do
+    if [ -z "$(ssh_node "$cn" "echo ok" 2>/dev/null | tr -d '[:space:]')" ]; then
+      record "$flow" gap "$sev" "client node $cn UNREACHABLE at preflight (ssh round-trip returned nothing) — plumbing (#574), flow UNTESTED; check nodes.json / VM state before attributing anything downstream"
+      return 1
+    fi
+  done
+  return 0
+}
+
 ft_publish() { # ft_publish NODE SIZE_BYTES
   FT_PUBLISH_GAP=0
   # Cross-subshell handoff (#7 evidence): ft_publish runs inside `res="$(…)"`, so
@@ -156,7 +174,14 @@ ft_publish() { # ft_publish NODE SIZE_BYTES
   # not a property failure). A reachability shortfall makes it doubly clear.
   if [ "$any_output" = 0 ]; then
     lasterr="EMPTY RESPONSE from $node — ssh_node returned NOTHING across the whole window: the node is UNREACHABLE or the node MAP is wrong (check nodes.json zones/ips), NOT a publish failure. reachable-peers=${reach:-?}"
-    echo "    ⚠ PLUMBING: $lasterr"
+    # >&2 is LOAD-BEARING (#574, run 027c354-deep): ft_publish runs inside
+    # res="$(…)", so a stdout echo here CORRUPTS res — the caller's [ -z "$res" ]
+    # publish-leg gate sees non-empty text, link parses to "", and the flow
+    # proceeds to grade its fetch leg as a real FAIL on what is plumbing
+    # (9-cross-nat "publish landed ()" + durability-turnover "not a silt:v1:
+    # link" were exactly this). Diagnostics from this function go to stderr,
+    # only "link sha" ever goes to stdout.
+    echo "    ⚠ PLUMBING: $lasterr" >&2
     FT_PUBLISH_GAP=1; printf 1 > "$FT_DIR/.ft_publish_gap"
   fi
   printf '%s' "$lasterr" > "$FT_DIR/.ft_publish_lasterr"
@@ -616,6 +641,7 @@ flow_takedown() {
 # LOCAL_PROOF: ./integration/nat/run.sh  (EMULATED NAT; the real-middlebox cone/symmetric decision is the owned cloud residue)
 flow_cross_nat() {
   require_nodes "9-cross-nat" major nat-1 nat-2 || return
+  client_preflight "9-cross-nat" major nat-1 nat-2 || return
   flow_evidence_nodes nat-1 nat-2 relay   # a cross-NAT failure lives on either NAT node OR the relay
   local res
   res="$(ft_publish nat-1 262144 || true)"    # nat-1 is un-dialable → must use the relay
@@ -912,6 +938,7 @@ ft_add_validator_evidence() {
 # LOCAL_PROOF: ./integration/durability/run.sh
 flow_durability_turnover() {
   require_nodes "durability-turnover" major store-1 store-2 fetch-1 || return
+  client_preflight "durability-turnover" major fetch-1 store-2 || return
   # Publish replicated, then PERMANENTLY remove a storage node (stop + leave down —
   # a real departure, not a restart) and prove a fresh fetch still returns the bytes
   # from the survivors. The full membership-ROTATION form (a terminated VM replaced
@@ -1819,6 +1846,7 @@ wait_publisher_warm() { # wait_publisher_warm NODE
 flow_economy_repair() {
   [ "${ECONOMY:-0}" = 1 ] || { record "11-economy-repair" skip minor "opt-in (ECONOMY=1): the S7 repair-bounty-on-the-wire grade"; return; }
   require_nodes "11-economy-repair" major fetch-1 store-1 store-2 relay || return
+  client_preflight "11-economy-repair" major fetch-1 store-2 || return
   # The killable-pool premise: topology.py adds store-3/store-4 when the fleet is
   # brought UP with ECONOMY=1. Grading with ECONOMY=1 on a fleet provisioned
   # without it re-creates the proven-unsatisfiable premise (run 577f0f1-45838:
