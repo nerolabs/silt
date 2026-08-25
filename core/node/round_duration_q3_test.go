@@ -15,6 +15,16 @@ import (
 // WAN delivery is negligible on top). This test pins that derivation so the
 // parameter can never silently regress below the skew (build-immutables #5
 // derived-not-magic, #7 evidence).
+//
+// #555 checked the OTHER candidate lower bound — the two-phase gather latency
+// G (the #555 research certification held the base pending a measured G). The
+// field measurement resolved it: intrinsic G ≈ 10 s at 12-seat WAN (95d39e8-deep
+// h74: new-view → commit in 9.6 s), well inside the 60 s base; the apparent
+// 90–150 s "gather" was event-loop saturation from O(depth × window × scan)
+// Block.Hash re-computation on the chain-sync path, fixed by the hash memo
+// (chain.TestReconcileHashWorkIsLinear_555). Skew therefore REMAINS the binding
+// lower bound and the base stays the certified-minimal 2. See
+// docs/thinking/2026-08-25-555-crawl-attribution.md.
 func TestRoundBaseOutrunsSkew(t *testing.T) {
 	interval := DefaultConfig().ChainSyncInterval
 	if interval <= 0 {

@@ -104,6 +104,7 @@ func TestFullBlockHashIgnoresUnsetPrunedField(t *testing.T) {
 	stripped := full
 	stripped.BondRegs = []BondReg{full.BondRegs[0]}
 	stripped.BondRegs[0].Answer = nil
+	stripped.hashMemoSet = false // the copy keeps full's memo (#555); a stripped wire block decodes without one
 	if stripped.Hash() == h1 {
 		t.Fatal("Hash must commit BondReg.Answer — a bare strip should change it (else no stored hash would be needed)")
 	}

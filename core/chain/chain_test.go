@@ -145,9 +145,12 @@ func TestTamperAndForgery(t *testing.T) {
 	b := w.block(entry(1))
 	w.attestAll(b)
 
-	// Tampering with entries after signing breaks everything.
+	// Tampering with entries after signing breaks everything. The copy keeps
+	// the original's hash memo (#555); a real tampered block arrives via
+	// Decode with no memo, so model that by clearing it.
 	tampered := *b
 	tampered.Entries = []ports.Entry{entry(9)}
+	tampered.hashMemoSet = false
 	if err := w.c.Append(tampered); err == nil {
 		t.Fatal("tampered block must not commit")
 	}
@@ -248,6 +251,7 @@ func TestDecodeRefusesForeignBlockVersion(t *testing.T) {
 	// KNOWN era, #506 — foreign means beyond every known era.)
 	future := *b
 	future.Version = BlockVersionRegGate + 1
+	future.hashMemoSet = false // tampered copy keeps b's memo (#555); a wire block decodes without one
 	if _, err := Decode(Encode(&future)); !errors.Is(err, ErrBlockVersion) {
 		t.Fatalf("Decode accepted a foreign version, want ErrBlockVersion, got %v", err)
 	}
