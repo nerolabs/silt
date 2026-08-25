@@ -8,6 +8,19 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Added
+- **#570 archival-format golden-fixture suite — committed chains every future HEAD must
+  replay** (2026-08-25) — four write-once serialized fixtures
+  (`core/chain/testdata/archival/`: era-1, era-2, era-2-pruned, mixed era-1→era-2, the
+  exact bytes `chainstore.Save` persists) replayed at HEAD against pinned head-hash and
+  derived-state constants. Asserts the property no HEAD-minted test can: bytes written by
+  an older binary must replay today — the #558 class (era-2 replay silently falling to
+  genesis from #432 until last week) is now caught locally, RED-proven by reinstating the
+  #558 bare-hash verification (era-2/pruned/mixed fail at block 1; era-1 stays green).
+  Head-hash pins also catch silent hash-computation changes over committed bytes. Era-3
+  (the D-TIERING state root) must ADD a fixture here — this suite is its standing RED
+  home (consult Q5). Record: `docs/thinking/2026-08-25-570-archival-fixture-suite.md`.
+
 ### Fixed
 - **#563 cold-sync Reconcile OOM on the 2 GB box — the hypothesis was garbage, literally**
   (2026-08-25) — the deep-run kernel-OOM (a434494-deep, val-d ×2) was attributed by a new
