@@ -1584,7 +1584,48 @@ func (c *Chain) BondRenewalDue(id ports.NodeID) bool {
 		return false // no expiry configured — one registration stands
 	}
 	_, next := c.Head() // height of the block being proposed next
-	return next >= c.bondRegHeight[id]+c.cfg.BondTTLBlocks/2
+	// #555 renewal PHASE-JITTER (research certification 2026-08-25): validators
+	// that all registered near genesis hit TTL/2 together, so 5–7 heavy ~1.5 MB
+	// space-time proofs land in ONE block every few heights — and each attester
+	// verifies every proof on the gather's critical path before it will sign,
+	// inflating the two-phase gather latency on the 1 vCPU box (the deep-drive
+	// crawl; real networks spread naturally via organic join-times).
+	//
+	// Shift the renewal point onto a per-identity ABSOLUTE grid — period TTL/2,
+	// phase = offset(id) — rounded to the NEAREST grid point within ±TTL/4 of the
+	// plain TTL/2 due point. This spreads the genesis-aligned fleet's FIRST
+	// renewal across [TTL/4, 3·TTL/4) (so ~1 reg lands per block), while leaving
+	// the PERIOD exactly TTL/2 on every LATER cycle: after a renewal
+	// bondRegHeight lands on the grid, so the next due point is bondRegHeight +
+	// TTL/2 unchanged. That keeps re-registration frequency (the #313 bloat bound)
+	// AND the renewal margin (≥ TTL/4 to expiry) intact — only the phase differs
+	// per identity. CLIENT-SIDE PACING ONLY: BondRenewalDue gates the node's own
+	// drain/submit decision, never block validation, so this changes WHEN an
+	// identity re-proves, never a consensus rule; the TTL denomination and its
+	// #503 couplings are untouched. Small-TTL (< 4) falls back to the plain point.
+	period := c.cfg.BondTTLBlocks / 2
+	due := c.bondRegHeight[id] + period
+	if period >= 2 {
+		phase := renewalPhaseOffset(id, period)
+		r := (due + period - phase) % period // due's offset above the grid, in [0, period)
+		if r <= period/2 {
+			due -= r // round down to the nearest grid point
+		} else {
+			due += period - r // round up
+		}
+	}
+	return next >= due
+}
+
+// renewalPhaseOffset is a deterministic per-identity offset in [0, window) used
+// to spread bond renewals across the TTL window (#555). A pure function of the
+// identity, so the pacing is stable and every replica agrees on any node's
+// timing (it is not consensus-relevant, but determinism keeps it debuggable).
+func renewalPhaseOffset(id ports.NodeID, window uint64) uint64 {
+	if window == 0 {
+		return 0
+	}
+	return binary.BigEndian.Uint64(id[:8]) % window
 }
 
 // IsSlashed reports whether id has been evicted for a proven equivocation (F2).
