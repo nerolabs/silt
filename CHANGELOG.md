@@ -9,6 +9,18 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Fixed
+- **#562 renewal jitter grid clamped to the #506 R-rule — no more refused-renewal sweeps**
+  (2026-08-25) — the #555 phase-jitter's nearest-grid rounding reaches down to TTL/4 blocks
+  after the last committed reg, but the reg-inclusion rate bound R = K+2 can exceed TTL/4
+  (10 vs 8 at the field TTL=32), so a colliding identity's renewal was refused every sweep
+  ("re-registering 9 blocks after its last reg (R=10)", a434494-deep) until the chain
+  outran R. `renewalDueHeight` (factored out of `BondRenewalDue` for direct testability)
+  now clamps the grid point to the rate bound: at most one off-grid cycle (the next due
+  point re-aligns to the grid), steady-state periods stay exactly TTL/2 (the #313/#556
+  property), and unlike jumping to the next grid point it can never overshoot the TTL at
+  small TTLs. Client-side pacing only. RED-proven:
+  `TestRenewalDueClearsRegRateBound_562` (colliding phases 12/13 land at +8/+9 < R
+  pre-clamp; on-grid steady state asserted inert).
 - **#561 round-escape decoupled from the chain-sync peer walk — dead peers can no longer
   stall the view-change** (2026-08-25) — `maybeAdvanceRound` (the #432 escape counter) ran
   inside `SyncChain`'s completion callback, which fires only after the sequential ask-walk

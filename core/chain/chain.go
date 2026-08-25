@@ -1634,6 +1634,14 @@ func (c *Chain) BondRenewalDue(id ports.NodeID) bool {
 	// drain/submit decision, never block validation, so this changes WHEN an
 	// identity re-proves, never a consensus rule; the TTL denomination and its
 	// #503 couplings are untouched. Small-TTL (< 4) falls back to the plain point.
+	return next >= c.renewalDueHeight(id)
+}
+
+// renewalDueHeight computes the #555 phase-jittered renewal point for id: the
+// nearest per-identity grid point (period TTL/2, phase offset(id)) to the plain
+// TTL/2 due point, clamped to respect the #506 R-rule (#562). Factored out of
+// BondRenewalDue so the phase/clamp arithmetic is directly testable.
+func (c *Chain) renewalDueHeight(id ports.NodeID) uint64 {
 	period := c.cfg.BondTTLBlocks / 2
 	due := c.bondRegHeight[id] + period
 	if period >= 2 {
@@ -1644,8 +1652,23 @@ func (c *Chain) BondRenewalDue(id ports.NodeID) bool {
 		} else {
 			due += period - r // round up
 		}
+		// #562: the nearest grid point can sit CLOSER to the last committed reg
+		// than the #506 R-rule allows (rounding reaches down to TTL/4, and R =
+		// K+2 can exceed TTL/4 — 10 vs 8 at the field TTL=32), so the renewal
+		// submitted there is refused every sweep ("re-registering 9 blocks
+		// after its last reg") until the chain outruns R. Clamp to the rate
+		// bound instead: at most ONE off-grid cycle (the next due point
+		// re-rounds from the new reg height and re-aligns to the grid), never
+		// a shortened steady-state period (an on-grid reg's next due point is
+		// a full period away, which the R cap < TTL/2 always clears), and —
+		// unlike jumping to the NEXT grid point — never past the TTL at small
+		// TTLs (R < TTL/2 ≪ expiry). Client-side pacing only, like the jitter
+		// itself: no consensus rule changes.
+		if min := c.bondRegHeight[id] + c.regMinInterval(); due < min {
+			due = min
+		}
 	}
-	return next >= due
+	return due
 }
 
 // renewalPhaseOffset is a deterministic per-identity offset in [0, window) used
