@@ -77,6 +77,22 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   Detail: [docs/thinking/2026-08-24-535-fix2-refuted-stack-is-4-plus-3.md](docs/thinking/2026-08-24-535-fix2-refuted-stack-is-4-plus-3.md).
 
 ### Fixed
+- **#555 fix (b): bond-renewal phase-jitter — spread renewals so ~1 reg lands per block**
+  (2026-08-25, research-certified) — The deep-drive crawl (#555) was inflated by heavy blocks:
+  validators that all registered near genesis hit the TTL/2 renewal point together, so 5–7
+  ~1.5 MB space-time proofs landed in one block, and each attester verifies every proof on the
+  two-phase gather's critical path before signing (1 vCPU box) — inflating the gather latency
+  that drives the crawl. `BondRenewalDue` now places each identity's renewal on a per-identity
+  ABSOLUTE grid (period TTL/2, phase = a deterministic offset), rounded to the nearest grid
+  point within ±TTL/4, so the genesis-aligned fleet's first renewal spreads across
+  [TTL/4, 3·TTL/4) (≈1 reg/block) while the PERIOD stays exactly TTL/2 on every later cycle —
+  keeping the #313 re-registration-frequency bound and the ≥TTL/4 renewal margin intact. It is
+  client-side pacing (BondRenewalDue gates the node's own drain/submit, never block validation),
+  so it changes WHEN an identity re-proves, never a consensus rule; the TTL denomination and its
+  #503 couplings are untouched. This is the certified "lighter blocks first" half of #555;
+  fix (a), sizing the round base to the (now reduced) gather latency, follows. Tests:
+  `core/chain/renewal_jitter_555_test.go` (spread + ≥TTL/4 margin + determinism; RED-proven by
+  neutering the offset → clustering).
 - **cloudtest: 5-convergence grades with a bounded wait-for-convergence** (2026-08-24) — The
   flow-5 convergence check took a single point-in-time sample immediately after the
   6-fault-tolerance drill stops/restarts val-d, so it could read a spurious catch-up lag as a
