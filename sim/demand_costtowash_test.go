@@ -63,7 +63,7 @@ func TestDemandWashCostsRealFees(t *testing.T) {
 			tok = tk
 		})
 		cl.Sched.Run()
-		fetcher.SubmitDeliveryReceipt(server.ID(), tok, object, data, func(c bool, err error) {
+		fetcher.SubmitDeliveryReceipt(server.ID(), tok, object, func(c bool, err error) {
 			if err == nil && c {
 				washed++
 			}

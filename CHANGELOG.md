@@ -9,6 +9,22 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **PoD neutral lane BUILT — the witnessed delivery credit, conserved
+  (Phase 4 §7.1)** (2026-08-26, per the certified `docs/design/pod.md`) — a
+  banked delivery receipt now settles a conserved balance credit: the fetcher's
+  withdrawal fee, less the 1/8 durability skim routed to the object's escrow
+  (`Ledger.RedeemDeliveryCredit`, wired in `handleDeliveryReceipt`). The
+  certified supersede rule ships with it: every object-aware serve's self-credit
+  is tracked provisionally per (requester, root) and a witnessed receipt
+  REVERSES it before paying — a delivery is never paid twice (the banned
+  subsidy). The receipt itself sheds its PoR leg (certification Q2: a
+  public-seed proof deters no collusion and cost 128 SW samples/delivery on the
+  floor box) — the neutral receipt is token + fetcher signature + the
+  (serial‖object‖server) binding, domain-bumped to v2. Firewall pinned at both
+  tiers: the Invariant-A guard classifies the new press neutral, a dedicated
+  heavy-deliverer test asserts `Reputation()` unchanged, and the sim closes the
+  bilateral loop over the wire (pair net = exactly −skim; wash is a strict
+  loss). Skim routing defaults to escrow pending the owner-knobs PE consult.
 - **PHASE 3 BANKED — the deep-heights exit gate is MET** (2026-08-26, run
   `fe2376a-deep`: 30 pass / 1 gap / 0 fail) — `12-deep-heights` drove h78→h132
   (target 128) at ~48 s/height, the #549 Q4 barrier stabilized in 215 s, the

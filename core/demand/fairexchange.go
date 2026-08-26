@@ -25,10 +25,10 @@ import (
 //  2. SERVER-SIDE abort safety: a fetcher's pre-release ExchangeCommitment — a signed
 //     promise made BEFORE content release, carrying NO proof of possession — is NOT a
 //     redeemable receipt. It is domain-separated from the DeliveryReceipt signature
-//     and carries no PoR proof, so a server cannot convert "the fetcher engaged" into
-//     a fake completed delivery. The unforgeability bound (#receipts(C) ≤ #completed
-//     paid correct deliveries) survives the abort path: only Ack's PoR-bound receipt
-//     redeems.
+//     so a server cannot convert "the fetcher engaged" into a fake
+//     completed delivery. The unforgeability bound (#receipts(C) ≤ #completed
+//     paid deliveries) survives the abort path: only Ack's receipt-domain
+//     signature redeems.
 //
 // WHAT IS GATED (the dispute-RESOLUTION half, deliberately not built): converting a
 // server-held commitment into a TTP-affidavit receipt on a fetcher default requires
@@ -56,7 +56,7 @@ const commitDomain = "silt/demand/exchange-commit/v1"
 // exchange for (serial, object, server): the ASW artifact a server would present to
 // the quorum-TTP on a fetcher default. It deliberately carries NO possession proof, so
 // it is evidence of ENGAGEMENT, never of DELIVERY — the bank never credits demand from
-// it; only a PoR-bound DeliveryReceipt (Ack → Redeem) does.
+// it; only a receipt-domain-signed DeliveryReceipt (Ack → Redeem) does.
 type ExchangeCommitment struct {
 	Serial  []byte       // the token about to be spent
 	Object  ports.Hash   // C — the object to be delivered

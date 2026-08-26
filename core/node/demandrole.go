@@ -1,8 +1,9 @@
 // D-DEMAND wiring (#181): the delivery-receipt path that turns the pure
 // core/demand primitive into a live network capability. A fetcher that received an
 // object's bytes spends a blind-withdrawn retrieval token by submitting a
-// PoR-bound, signed receipt to the server; the server banks it into a NEUTRAL
-// witnessed-demand observable. Token issuance itself reuses the existing publish
+// signed receipt to the server; the server banks it into a NEUTRAL
+// witnessed-demand observable and settles the conserved delivery credit (the
+// PoD neutral lane, docs/design/pod.md — certified 2026-08-26). Token issuance itself reuses the existing publish
 // token-issuer path (MsgTokenRequest / blind-sign) — the fetcher just blinds in the
 // demand domain (blindtoken.BlindDemand) — so no new issuance wire is needed here.
 //
@@ -143,22 +144,17 @@ func (n *Node) WitnessedDemand(object ports.Hash) int64 {
 	return n.demandBank.Demand(object)
 }
 
-// SubmitDeliveryReceipt is the fetcher side: having received object's bytes (data)
-// from server, it spends token by producing a PoR-bound, signed delivery receipt and
-// submitting it. done reports whether the server banked it. The fetcher derives the
-// object's PoR tags from the bytes it received (ObjectKey is public), so nothing but
-// the token and the bytes is needed.
-func (n *Node) SubmitDeliveryReceipt(server ports.NodeID, token demand.Token, object ports.Hash, data []byte, done func(credited bool, err error)) {
+// SubmitDeliveryReceipt is the fetcher side: having received AND content-verified
+// object's bytes from server (the fetch path re-verifies every read — tenet B3),
+// it spends token by signing a delivery receipt and submitting it. done reports
+// whether the server banked it. The receipt carries no bytes and no PoR — the
+// certified neutral-lane shape (see the core/demand package comment).
+func (n *Node) SubmitDeliveryReceipt(server ports.NodeID, token demand.Token, object ports.Hash, done func(credited bool, err error)) {
 	if n.signer == nil {
 		done(false, ErrNoSigner)
 		return
 	}
-	tags := demand.ObjectKey(object).Tags(object[:], data)
-	receipt, err := demand.Ack(n.signer, token, object, server, data, tags)
-	if err != nil {
-		done(false, err)
-		return
-	}
+	receipt := demand.Ack(n.signer, token, object, server)
 	blob, err := demand.SubmittedReceipt{Token: token, Receipt: receipt}.Marshal()
 	if err != nil {
 		done(false, err)
@@ -193,8 +189,19 @@ func (n *Node) handleDeliveryReceipt(from ports.NodeID, msg ports.Message) {
 	}
 	credited, reason := n.demandBank.Redeem(n.demandIssuer, sub.Token, sub.Receipt)
 	if credited {
+		// The PoD neutral lane (docs/design/pod.md §3, certified): a banked
+		// receipt settles the conserved delivery credit — the fetcher's
+		// withdrawal fee less the durability skim — superseding this
+		// delivery's provisional serve self-credit. Balance only, never
+		// standing. The receipt's Fetcher key hashes to the requester NodeID
+		// (NodeID = sha256(pubkey)), which is how the credit finds the serve
+		// lane it supersedes.
+		var paid int64
+		if n.ledger != nil {
+			paid = n.ledger.RedeemDeliveryCredit(n.id, ports.HashBytes(sub.Receipt.Fetcher), sub.Receipt.Object)
+		}
 		n.logf(ports.LogInfo, "delivery receipt banked", "object", sub.Receipt.Object,
-			"demand", n.demandBank.Demand(sub.Receipt.Object))
+			"demand", n.demandBank.Demand(sub.Receipt.Object), "credit", paid)
 	} else {
 		n.logf(ports.LogDebug, "delivery receipt rejected", "reason", reason)
 	}

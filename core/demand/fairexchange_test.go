@@ -26,10 +26,7 @@ func TestAbortLeavesTokenReusable(t *testing.T) {
 
 	// The fetcher retries at serverB (s.server) and completes a genuine delivery. The
 	// same token redeems — proving the abort did not burn it.
-	r, err := Ack(s.fetcher, tok, s.object, s.server, s.data, s.tags)
-	if err != nil {
-		t.Fatalf("ack: %v", err)
-	}
+	r := Ack(s.fetcher, tok, s.object, s.server)
 	if ok, reason := NewBank().Redeem(s.issuerPub, tok, r); !ok {
 		t.Fatalf("an aborted exchange must leave the token reusable, but redeem failed: %s", reason)
 	}
@@ -37,10 +34,9 @@ func TestAbortLeavesTokenReusable(t *testing.T) {
 
 // TestPreReleaseCommitmentIsNotAReceipt is the server-side fair-exchange floor (P2): a
 // fetcher's pre-release commitment cannot be turned into demand credit. A malicious
-// server holding a valid ExchangeCommitment (the fetcher engaged) but WITHOUT a
-// PoR-bound delivery proof cannot bank it — the commitment is domain-separated from
-// the receipt signature and carries no possession proof, so lifting it onto a receipt
-// fails verification. Only a completed delivery redeems (#receipts ≤ completed
+// server holding a valid ExchangeCommitment (the fetcher engaged) cannot bank it —
+// the commitment is domain-separated from the receipt signature, so lifting it onto
+// a receipt fails verification. Only a completed delivery redeems (#receipts ≤ completed
 // deliveries survives the abort path).
 func TestPreReleaseCommitmentIsNotAReceipt(t *testing.T) {
 	s := newScene(t, "obj-C")
@@ -51,14 +47,13 @@ func TestPreReleaseCommitmentIsNotAReceipt(t *testing.T) {
 	}
 
 	// The server tries to pass the commitment off as a delivery receipt: it copies the
-	// commitment's fields and its signature into a DeliveryReceipt (it has no bytes of
-	// C, so it cannot produce a real PoR proof).
+	// commitment's fields and its signature into a DeliveryReceipt — but the sig sits
+	// in the commitment domain, not the receipt domain.
 	forged := DeliveryReceipt{
 		Serial:  append([]byte(nil), c.Serial...),
 		Object:  c.Object,
 		Server:  c.Server,
 		Fetcher: append([]byte(nil), c.Fetcher...),
-		Blocks:  0,
 		Sig:     append([]byte(nil), c.Sig...), // a commitment sig, over the wrong domain
 	}
 	if ok, reason := NewBank().Redeem(s.issuerPub, tok, forged); ok {
@@ -72,10 +67,7 @@ func TestPreReleaseCommitmentIsNotAReceipt(t *testing.T) {
 func TestCommitmentDomainSeparation(t *testing.T) {
 	s := newScene(t, "obj-C")
 	tok := s.token(t)
-	good, err := Ack(s.fetcher, tok, s.object, s.server, s.data, s.tags)
-	if err != nil {
-		t.Fatalf("ack: %v", err)
-	}
+	good := Ack(s.fetcher, tok, s.object, s.server)
 	// The real receipt's signature must NOT verify as a commitment over the same tuple.
 	asCommit := ExchangeCommitment{Serial: good.Serial, Object: good.Object, Server: good.Server, Fetcher: good.Fetcher, Sig: good.Sig}
 	if VerifyCommitment(asCommit) {
@@ -96,10 +88,7 @@ func TestOptimisticPathStillCredits(t *testing.T) {
 	s := newScene(t, "obj-C")
 	tok := s.token(t)
 	_ = Commit(s.fetcher, tok, s.object, s.server) // optimistic phase
-	r, err := Ack(s.fetcher, tok, s.object, s.server, s.data, s.tags)
-	if err != nil {
-		t.Fatalf("ack: %v", err)
-	}
+	r := Ack(s.fetcher, tok, s.object, s.server)
 	bank := NewBank()
 	if ok, reason := bank.Redeem(s.issuerPub, tok, r); !ok {
 		t.Fatalf("optimistic completion should credit: %s", reason)

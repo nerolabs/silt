@@ -85,6 +85,15 @@ var standingClassification = map[string]standingClass{
 	"EscrowPaid":          neutral, // observability
 	"EscrowRepairs":       neutral, // observability (cost-per-repair denominator)
 	"DurabilitySnapshot":  neutral, // observability (finite-but-renewable instrument input)
+
+	// PoD neutral lane (delivery.go, certified 2026-08-26). The witnessed
+	// delivery credit is a CONSERVED balance transfer (the fetcher's withdrawal
+	// fee, less skim) that supersedes the serve self-record — pure balance
+	// economy. It must never move standing: a receipt is mintable with zero
+	// object bytes by certified design, so the entire soundness story rests on
+	// this press staying neutral (delivery_test.go pins it against a heavy
+	// deliverer, the direct §7.1 firewall test).
+	"RedeemDeliveryCredit": neutral,
 }
 
 // TestInvariantA_EveryLedgerMethodClassified is the reflection guard: every
@@ -138,6 +147,7 @@ func TestInvariantA_NoNonMintPressRaisesStanding(t *testing.T) {
 		l.RecordServe(n, other, id(9), 1<<40)              // terabytes of self-reported serving
 		l.RecordAudit(n, id(9), true)                      // passed PoR audits fund balance only
 		l.RecordServeToObject(n, other, obj, id(9), 1<<40) // object-aware serve + auto-skim
+		l.RedeemDeliveryCredit(n, other, obj)              // witnessed delivery credit (PoD neutral lane)
 		_ = l.FundEscrow(obj, n, 1<<20)                    // prepay a durability reserve
 		l.PayBounty(obj, n, 1<<30)                         // drain the reserve to this identity
 		l.DecayStale(uint64(round+1), 1)

@@ -14,7 +14,7 @@ import (
 
 // TestDemandReceiptFlowBanksWitnessedDemand is the D-DEMAND wiring at the
 // integration tier: a fetcher blind-withdraws a retrieval token from an issuer over
-// the wire, "receives" an object's bytes, submits a PoR-bound delivery receipt to
+// the wire, "receives" an object's bytes, submits a signed delivery receipt to
 // the server, and the server banks it into its NEUTRAL witnessed-demand observable —
 // once per token, and only for a genuine, correctly-delivered, validly-issued
 // receipt. A forged token and a replay are both rejected over the wire.
@@ -59,7 +59,7 @@ func TestDemandReceiptFlowBanksWitnessedDemand(t *testing.T) {
 
 	// Submit a delivery receipt for the object to the server.
 	var credited, done bool
-	fetcher.SubmitDeliveryReceipt(server.ID(), tok, object, data, func(c bool, err error) {
+	fetcher.SubmitDeliveryReceipt(server.ID(), tok, object, func(c bool, err error) {
 		if err != nil {
 			t.Fatalf("submit receipt: %v", err)
 		}
@@ -74,7 +74,7 @@ func TestDemandReceiptFlowBanksWitnessedDemand(t *testing.T) {
 	}
 
 	// Replay: resubmitting the SAME token must not double-count (the double-spend set).
-	fetcher.SubmitDeliveryReceipt(server.ID(), tok, object, data, func(c bool, _ error) { credited = c })
+	fetcher.SubmitDeliveryReceipt(server.ID(), tok, object, func(c bool, _ error) { credited = c })
 	cl.Sched.Run()
 	if credited {
 		t.Fatal("a replayed receipt (same token serial) was banked twice")
@@ -89,7 +89,7 @@ func TestDemandReceiptFlowBanksWitnessedDemand(t *testing.T) {
 	rand.Read(serial)
 	blinded, secret, _ := demand.Withdraw(rand.Reader, &impostor.PublicKey, serial)
 	forged := demand.Unblind(&impostor.PublicKey, serial, demand.SignWithdrawal(impostor, blinded), secret)
-	fetcher.SubmitDeliveryReceipt(server.ID(), forged, object, data, func(c bool, _ error) { credited = c })
+	fetcher.SubmitDeliveryReceipt(server.ID(), forged, object, func(c bool, _ error) { credited = c })
 	cl.Sched.Run()
 	if credited {
 		t.Fatal("a token from an impostor issuer was banked")

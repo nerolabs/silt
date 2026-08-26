@@ -88,6 +88,14 @@ type Ledger struct {
 	// press `neutral`. See escrow.go.
 	escrow map[ports.Hash]*objectEscrow
 
+	// provisional tracks each object-aware serve's self-credit per
+	// (requester, root) so a later witnessed receipt can SUPERSEDE it
+	// instead of stacking on it (the PoD conservation rule — delivery.go).
+	// provOrder is the deterministic FIFO for the cap eviction (B2: no map
+	// iteration in core).
+	provisional map[provKey]*provisionalServe
+	provOrder   []provKey
+
 	// Audit economics: storage that survives a spot-check earns rent;
 	// storage that turns out to be a lie is slashed hard. Balances may
 	// go negative — debt is the scarlet letter. Exported so scenarios
@@ -108,6 +116,7 @@ func New(fee, grant int64) *Ledger {
 		accounts:    make(map[ports.NodeID]*account),
 		rootOwner:   make(map[ports.Hash]ports.NodeID),
 		escrow:      make(map[ports.Hash]*objectEscrow),
+		provisional: make(map[provKey]*provisionalServe),
 		AuditReward: 1_000,
 		AuditSlash:  25_000,
 	}
