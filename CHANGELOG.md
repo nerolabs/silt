@@ -9,6 +9,22 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **D-TIERING mode flags — `-archive` and `-serve-content`** (2026-08-26, the
+  near-term build-gated items of the tier model). **`-archive` is a genuinely new
+  capability:** an archival node retains every block's heavy space-time bond proof
+  to genesis instead of shedding it below the rolling retention horizon, so it can
+  serve the deep history a pruning swarm has already dropped — the answer a node
+  stranded past the prune horizon needs (`ErrNeedCheckpoint`, #559's true-loss
+  residual). It is **retention-only, never validity**: the trust floor and
+  retention horizon are untouched, pinned by a test asserting an archival and a
+  pruning chain agree on both, so the tiers cannot fork against each other. Costs
+  O(all history) resident payload — off by default, and build-immutable #8 forbids
+  it on the 1 vCPU / 2 GB box, which is the reason the tier model exists.
+  **`-serve-content`** is the positive spelling of the content axis (default ON),
+  so an edge profile composes as `-serve-content -archive=false -validator=false`
+  rather than as a double negative; the legacy `-freeload` is unchanged and
+  remains its inverse. A contradictory pair (`-freeload -serve-content=true`) is
+  **refused loudly** rather than silently resolved (S3).
 - **D-POD-KNOBS — the three Phase-4 economy/state knobs, DECIDED** (2026-08-26,
   owner ratification of the PE recommendations). (1) The delivery-credit **skim
   routes to the object's durability escrow**, not burn — the deciding reason is

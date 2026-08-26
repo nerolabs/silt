@@ -178,3 +178,53 @@ func TestPruneBelowHorizon_Idempotent(t *testing.T) {
 		t.Fatalf("second prune must be a no-op, shed %d", second)
 	}
 }
+
+// TestArchiveTierRetainsEverything is the D-TIERING archival tier (`-archive`,
+// Config.Archive): the same chain that a pruning node sheds below its floor is
+// retained to genesis by an archival one, so an archive can serve the deep
+// history a pruning swarm has already dropped (the ErrNeedCheckpoint / #559
+// true-loss case). Two nodes, identical inputs, one flag apart.
+func TestArchiveTierRetainsEverything(t *testing.T) {
+	regs := map[uint64]bool{1: true, 2: true, 3: true, 6: true}
+
+	// The control: a normal pruning node sheds below its floor.
+	pruning, _ := anchorChainWithRegs(t, 9, regs)
+	if shed := pruning.PruneBelowHorizon(); shed == 0 {
+		t.Fatal("precondition: the pruning node must shed something, or this test proves nothing")
+	}
+
+	// The archival node: same blocks, Archive on.
+	arch, _ := anchorChainWithRegs(t, 9, regs)
+	arch.cfg.Archive = true
+	if shed := arch.PruneBelowHorizon(); shed != 0 {
+		t.Fatalf("archival tier pruned %d block(s) — it must retain every heavy proof to genesis", shed)
+	}
+	for _, b := range arch.Blocks(0) {
+		if b.IsPruned() {
+			t.Fatalf("archival node has a pruned block at h%d", b.Height)
+		}
+	}
+
+	// Retention is the ONLY difference: the archival node's trust floor and
+	// retention horizon are identical to the pruning node's, so it validates by
+	// the same rules and cannot accept a block the pruning peer would reject.
+	if a, p := arch.trustFloor(), pruning.trustFloor(); a != p {
+		t.Fatalf("archive changed the trust floor (%d vs %d) — it must be a RETENTION choice only, never a validity one", a, p)
+	}
+	if a, p := arch.RetentionHorizon(), pruning.RetentionHorizon(); a != p {
+		t.Fatalf("archive changed the retention horizon (%d vs %d) — retention-only means the horizon math is untouched", a, p)
+	}
+}
+
+// TestArchiveTierIsIdempotentAcrossCommits: PruneBelowHorizon is called after
+// every commit, so the archival opt-out must hold on repeated calls, not just
+// the first.
+func TestArchiveTierIsIdempotentAcrossCommits(t *testing.T) {
+	arch, _ := anchorChainWithRegs(t, 9, map[uint64]bool{1: true, 2: true, 3: true, 6: true})
+	arch.cfg.Archive = true
+	for i := 0; i < 5; i++ {
+		if shed := arch.PruneBelowHorizon(); shed != 0 {
+			t.Fatalf("call %d pruned %d block(s) on an archival node", i, shed)
+		}
+	}
+}
