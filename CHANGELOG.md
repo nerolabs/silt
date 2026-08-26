@@ -9,6 +9,24 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **The keystone SMT spike — `pokt-network/smt` proven, not just read**
+  (2026-08-26). The state-root library recommendation rested on quoted source
+  rather than executed code, and was explicitly void if a spike disagreed.
+  `internal/smtspike/` is that spike, and it agrees. The assertion the gate
+  turned on — **an absence proof for a PRESENT key must FAIL** — holds against
+  all three adversary shapes, and the test fails if the library's
+  `"non-membership proof on related leaf"` guard never fires, so the branch the
+  soundness rests on is exercised rather than assumed. Measured cost is stable
+  across 1k–1M keys: **2.24 nodes and 218 stored bytes per key**, ~900-byte
+  proofs, and applying 100 changed keys costs under 3× more at 100× the state —
+  the certified `O(changed·log n)` shape, not the #555 `O(state)` scar. **The
+  finding: in-memory residency is 752 B/key, 3.4× the stored payload**, so at
+  registry scale the trie needs a disk-backed `MapStore` (a five-method
+  interface) regardless of the rebuild-vs-persist durability call. The
+  dependency adds **zero new indirect dependencies** and no product package
+  imports it. Floor-box wall-clock is still owed and is called out as such.
+  Reasoning and numbers:
+  `docs/thinking/2026-08-26-keystone-smt-spike-results.md`.
 - **PoD neutral lane runs in a real daemon — `-accept-delivery-receipts` +
   `silt swarm receipt`** (2026-08-26). This closes the e2e-tier gap #590 reported
   honestly: the lane was built and proven at unit and sim tiers, but no daemon
