@@ -2565,6 +2565,16 @@ func (c *Chain) Append(b Block) error {
 // different trust class and still goes through Reconcile, which re-validates
 // reputation in full — Reload is only ever fed our own disk.
 func (c *Chain) Reload(blocks []Block) (int, error) {
+	// #572 guard: an objective-config replica MUST NOT replay history before
+	// its bond verifier is wired. objective() is MinBond>0 AND verifyBond!=nil;
+	// replaying with a nil verifier silently demotes every qualification check
+	// to the LEGACY rep-gated path (empty at boot) — validatorsSeen rebuilds
+	// EMPTY, the everMature latch is lost, and the restored validator refuses
+	// every mature-regime commit forever (the 474718e-deep restore wedge,
+	// proven by the save/restore regime pairs). Refuse loudly instead.
+	if len(blocks) > 0 && c.cfg.MinBond > 0 && c.verifyBond == nil {
+		return 0, errors.New("chain: objective config (MinBond>0) replayed with NO bond verifier — wire SetBondVerifier before Reload, or the maturity latch is silently lost (#572)")
+	}
 	for i, b := range blocks {
 		var err error
 		if i == 0 && b.Height == 0 {

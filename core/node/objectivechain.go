@@ -14,18 +14,16 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// EnableObjectiveChain injects the space-time bond verifier into this node's
-// replica so on-chain BondRegs are re-checked against the real bond primitive
-// (bond.VerifySpaceTime, the same check the audit loop runs). Call after
-// EnableChain. It only changes behavior when the chain's Config.MinBond > 0 —
-// otherwise the replica stays on the legacy reputation path.
-func (n *Node) EnableObjectiveChain() {
-	if n.chain == nil {
-		return
-	}
-	delay := n.cfg.BondVDFDelay
-	k := n.cfg.BondLabelSamples
-	n.chain.SetBondVerifier(func(pk []byte, root ports.Hash, size int64, nonce uint64, answer []byte) bool {
+// SpaceTimeBondVerifier returns the bond.VerifySpaceTime-backed verifier
+// closure the objective chain runs over committed BondRegs. Exported so the
+// daemon can wire it onto a replica BEFORE chainstore.Replay: objective() is
+// MinBond>0 AND verifyBond!=nil, so a replay executed before the verifier is
+// wired silently falls to the LEGACY rep-gated qualification — with an empty
+// boot ledger, validatorsSeen rebuilds EMPTY and the everMature latch is lost
+// (#572: the 474718e-deep/8a52aba-deep restore under-latch — saved seen=12
+// everMature=true, restored seen=0 everMature=false over identical blocks).
+func SpaceTimeBondVerifier(delay uint64, k int) func(pk []byte, root ports.Hash, size int64, nonce uint64, answer []byte) bool {
+	return func(pk []byte, root ports.Hash, size int64, nonce uint64, answer []byte) bool {
 		ans, err := bond.DecodeAnswer(answer)
 		if err != nil {
 			return false
@@ -34,7 +32,22 @@ func (n *Node) EnableObjectiveChain() {
 		// verifies the ed25519 signature over it). Labels are recomputed from
 		// H(pk, n), so a plot sealed for another identity or size fails (G2).
 		return bond.VerifySpaceTime(pk, root, size, nonce, ans, vdf.Default(), delay, k)
-	})
+	}
+}
+
+// EnableObjectiveChain injects the space-time bond verifier into this node's
+// replica so on-chain BondRegs are re-checked against the real bond primitive
+// (bond.VerifySpaceTime, the same check the audit loop runs). Call after
+// EnableChain. It only changes behavior when the chain's Config.MinBond > 0 —
+// otherwise the replica stays on the legacy reputation path. NOTE (#572): a
+// replica that REPLAYS history (chainstore.Replay) must have the verifier
+// wired BEFORE the replay — the daemon does this directly via
+// SpaceTimeBondVerifier; Reload refuses an objective-config replay without it.
+func (n *Node) EnableObjectiveChain() {
+	if n.chain == nil {
+		return
+	}
+	n.chain.SetBondVerifier(SpaceTimeBondVerifier(n.cfg.BondVDFDelay, n.cfg.BondLabelSamples))
 }
 
 // RegisterBondReg builds this node's signed on-chain bond registration for the

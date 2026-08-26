@@ -67,6 +67,22 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   home (consult Q5). Record: `docs/thinking/2026-08-25-570-archival-fixture-suite.md`.
 
 ### Fixed
+- **#572 ROOT CAUSE — the restore under-latch: the daemon replayed history before
+  wiring the bond verifier** (2026-08-26) — `objective()` is `MinBond>0 AND
+  verifyBond!=nil`, and `EnableObjectiveChain` ran ~80 lines after
+  `chainstore.Replay`, so every restore replayed under the LEGACY rep-gated
+  qualification with an empty boot ledger: `validatorsSeen` rebuilt EMPTY, the
+  `everMature` latch was silently lost, and the restored validator demanded
+  launch-rule anchors for mature commits forever — the 474718e-deep/8a52aba-deep
+  drill-restart wedge, proven by the save/restore regime pairs (saved
+  `seen=12 everMature=true` → restored `seen=0 everMature=false` over identical
+  blocks). Fix: the daemon wires `node.SpaceTimeBondVerifier` (factored from
+  `EnableObjectiveChain`) BEFORE Replay, and `Reload` now REFUSES an
+  objective-config replay with no verifier — the ordering can never regress
+  silently. RED-proven (guard removed → the replay proceeds and, at the field's
+  `-min-rep`, under-latches); the field-shape oracle asserts both the refusal and
+  the with-verifier latch. `Reconcile`'s tmp replica already inherited the
+  verifier (chain.go:3089) — that doorway was never open.
 - **#563 cold-sync Reconcile OOM on the 2 GB box — the hypothesis was garbage, literally**
   (2026-08-25) — the deep-run kernel-OOM (a434494-deep, val-d ×2) was attributed by a new
   deterministic memory oracle (`core/chain/reconcile_mem_563_test.go`, born RED): there is

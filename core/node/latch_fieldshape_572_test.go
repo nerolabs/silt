@@ -168,4 +168,24 @@ func TestLatchReplayFieldShape_572(t *testing.T) {
 	if src.EverMature() != fresh.EverMature() {
 		t.Fatal("latch divergence")
 	}
+
+	// THE FIELD MECHANISM (named by the 8a52aba-deep save/restore regime pair:
+	// saved seen=12 everMature=true → restored seen=0 everMature=false over the
+	// same 40 blocks): the daemon replayed BEFORE EnableObjectiveChain wired the
+	// verifier, and objective() = MinBond>0 && verifyBond!=nil — so the replay
+	// ran the LEGACY rep-gated qualification with an empty boot ledger and
+	// validatorsSeen rebuilt empty. The Reload guard must REFUSE that replay
+	// loudly instead of silently under-latching. RED-provable by removing the
+	// guard: this exact call then "succeeds" with EverMature()==false.
+	// MinAttesterRep>0 is the field's -min-rep: with the verifier unwired the
+	// legacy branch gates on rep()>=MinAttesterRep and the boot ledger is 0 —
+	// nobody qualifies, seen rebuilds empty (a 0 threshold would mask this:
+	// 0>=0 passes everyone, which is why earlier oracles stayed green).
+	unwired := chain.New(chain.Config{Quorum: 1, MinBond: 1 << 20, ByzantineQuorum: true,
+		MinAttesterRep: 100, MinProposerRep: 100,
+		Anchors: anchors, MatureValidators: 2, OperatorMargin: 1, EpochBlocks: 8, BondTTLBlocks: 22},
+		func(ports.NodeID) int64 { return 0 })
+	if n, err := unwired.Reload(blocks); err == nil {
+		t.Fatalf("#572 REPRODUCED: an objective-config replica replayed %d blocks with NO bond verifier and did not refuse (EverMature=%v) — the daemon-boot ordering bug silently demotes qualification to the empty-ledger legacy path and loses the latch", n, unwired.EverMature())
+	}
 }

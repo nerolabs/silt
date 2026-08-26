@@ -666,6 +666,16 @@ func cmdDaemon(args []string) error {
 			fmt.Println("publisher: durable Publisher entries PERMITTED — publishes may record permanent linkage (trusted deployment)")
 		}
 		chainPath = filepath.Join(*storeDir, "chain.cbor")
+		// #572 ROOT CAUSE FIX — wire the bond verifier BEFORE the replay.
+		// objective() is MinBond>0 AND verifyBond!=nil; EnableObjectiveChain
+		// used to wire it ~80 lines below, so every restore replayed under the
+		// LEGACY rep-gated qualification (empty boot ledger ⇒ validatorsSeen
+		// rebuilt EMPTY ⇒ the everMature latch silently lost ⇒ the restored
+		// validator demanded launch-rule anchors for mature commits, forever —
+		// the 474718e-deep/8a52aba-deep wedge, proven by the save/restore
+		// regime pairs). Reload now also REFUSES an objective-config replay
+		// with no verifier, so this ordering can never regress silently.
+		ch.SetBondVerifier(node.SpaceTimeBondVerifier(cfg.BondVDFDelay, cfg.BondLabelSamples))
 		if n, err := chainstore.Replay(chainPath, ch); err != nil {
 			// NEVER quiet (#558): a replay failure discards finalized history.
 			// Reload keeps the longest valid prefix; name the loss and the
