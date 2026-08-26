@@ -9,6 +9,14 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **#572 round 2: latch-replay determinism oracle** (2026-08-26) — the 474718e-deep
+  diagnostic named the stall branch (val-d refused every mature commit with
+  `ErrAnchorRequired need=3` at h32 after a drill restart restored the 32 blocks that
+  had latched `everMature` live at ~h14): replay of a latch-producing history did not
+  reproduce the latch. `TestLatchSurvivesReplay_572` asserts latch-replay determinism
+  (wire-faithful roundtrip + fresh `Reload`); GREEN on matureWorld12's shape, which
+  bounds the remaining search to the field's latch dynamics (validatorsSeen/C2
+  accumulation under the renewal/TTL cadence). Full attribution on issue #572.
 - **#572 sync-stall repro guards + per-sweep catch-up diagnostic** (2026-08-26) — the
   027c354-deep val-c stall (100+ min of no-progress sweeps) was unattributable because
   every failure branch of the SyncChain walk logs at debug or below. The deterministic
