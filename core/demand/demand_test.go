@@ -7,20 +7,19 @@ import (
 	"testing"
 
 	"github.com/nerolabs/silt/core/blindtoken"
-	"github.com/nerolabs/silt/core/por"
 	"github.com/nerolabs/silt/ports"
 )
 
-// scene sets up a (blind-signing RSA) issuer, a fetcher, a server, and one object C
-// with the bytes + PoR tags the fetcher would have received from the server.
+// scene sets up a (blind-signing RSA) issuer, a fetcher, a server, and one
+// object C. The receipt carries no bytes and no PoR (the certified neutral-lane
+// shape), so the scene needs no object data — the fetch path's content-verify is
+// where bytes are checked, before any honest Ack.
 type scene struct {
 	issuerPub  *rsa.PublicKey
 	issuerPriv *rsa.PrivateKey
 	fetcher    ed25519.PrivateKey
 	server     ports.NodeID
 	object     ports.Hash
-	data       []byte
-	tags       [][]byte
 }
 
 func newScene(t *testing.T, objectLabel string) scene {
@@ -33,15 +32,9 @@ func newScene(t *testing.T, objectLabel string) scene {
 	if err != nil {
 		t.Fatalf("fetcher key: %v", err)
 	}
-	object := ports.HashBytes([]byte(objectLabel))
-	data := make([]byte, por.DefaultParams.SectorsPerBlock*por.SectorBytes*4) // ~4 blocks
-	for i := range data {
-		data[i] = byte(i*31 + 7)
-	}
-	tags := ObjectKey(object).Tags(object[:], data) // as the publisher would tag C
 	return scene{
 		issuerPub: &ipriv.PublicKey, issuerPriv: ipriv, fetcher: fpriv,
-		server: ports.HashBytes([]byte("server-A")), object: object, data: data, tags: tags,
+		server: ports.HashBytes([]byte("server-A")), object: ports.HashBytes([]byte(objectLabel)),
 	}
 }
 
@@ -61,16 +54,13 @@ func (s scene) token(t *testing.T) Token {
 	return Unblind(s.issuerPub, serial, blindSig, secret)
 }
 
-// TestHonestDeliveryCreditsDemand: a real issued token, spent on a PoR-bound
-// delivery-ack over the correct bytes, redeems once and credits the object's
+// TestHonestDeliveryCreditsDemand: a real issued token, spent on a fetcher-signed
+// delivery-ack, redeems once and credits the object's
 // witnessed-demand counter — and only the observable counter, never standing.
 func TestHonestDeliveryCreditsDemand(t *testing.T) {
 	s := newScene(t, "obj-C")
 	tok := s.token(t)
-	r, err := Ack(s.fetcher, tok, s.object, s.server, s.data, s.tags)
-	if err != nil {
-		t.Fatalf("ack: %v", err)
-	}
+	r := Ack(s.fetcher, tok, s.object, s.server)
 	bank := NewBank()
 	if ok, reason := bank.Redeem(s.issuerPub, tok, r); !ok {
 		t.Fatalf("honest receipt rejected: %s", reason)
@@ -85,7 +75,7 @@ func TestHonestDeliveryCreditsDemand(t *testing.T) {
 func TestDoubleSpendRejected(t *testing.T) {
 	s := newScene(t, "obj-C")
 	tok := s.token(t)
-	r, _ := Ack(s.fetcher, tok, s.object, s.server, s.data, s.tags)
+	r := Ack(s.fetcher, tok, s.object, s.server)
 	bank := NewBank()
 	if ok, _ := bank.Redeem(s.issuerPub, tok, r); !ok {
 		t.Fatal("first redeem should succeed")
@@ -99,7 +89,7 @@ func TestDoubleSpendRejected(t *testing.T) {
 }
 
 // TestForgedTokenRejected: a serial not signed by the issuer buys nothing, even
-// with an otherwise valid delivery proof.
+// with an otherwise valid signed ack.
 func TestForgedTokenRejected(t *testing.T) {
 	s := newScene(t, "obj-C")
 	// A token blind-signed by an IMPOSTOR issuer key.
@@ -110,7 +100,7 @@ func TestForgedTokenRejected(t *testing.T) {
 	serial, _ := blindtoken.NewSerial(rand.Reader)
 	blinded, secret, _ := Withdraw(rand.Reader, &impostor.PublicKey, serial)
 	forged := Unblind(&impostor.PublicKey, serial, SignWithdrawal(impostor, blinded), secret)
-	r, _ := Ack(s.fetcher, forged, s.object, s.server, s.data, s.tags)
+	r := Ack(s.fetcher, forged, s.object, s.server)
 	bank := NewBank()
 	if ok, _ := bank.Redeem(s.issuerPub, forged, r); ok {
 		t.Fatal("a token not signed by the REAL issuer must be rejected")
@@ -143,20 +133,20 @@ func TestBlindWithdrawalIsUnlinkable(t *testing.T) {
 		t.Fatal("the blinded value the issuer signed leaked the serial — withdrawal is not blind")
 	}
 	// End to end: the unlinkable token still spends on a correct delivery.
-	r, _ := Ack(s.fetcher, tok, s.object, s.server, s.data, s.tags)
+	r := Ack(s.fetcher, tok, s.object, s.server)
 	if ok, reason := NewBank().Redeem(s.issuerPub, tok, r); !ok {
 		t.Fatalf("blind-withdrawn token failed to redeem on a real delivery: %s", reason)
 	}
 }
 
-// TestTamperedReceiptRejected: the fetcher signature covers what was delivered, to
-// whom-for, and the possession proof — so mutating any of them (or lifting the
-// proof onto another receipt) is caught. A server cannot mint a receipt the fetcher
+// TestTamperedReceiptRejected: the fetcher signature covers what was delivered and
+// to whom-for (serial, object, server, fetcher key) — so mutating any of them is
+// caught. A server cannot mint a receipt the fetcher
 // did not sign.
 func TestTamperedReceiptRejected(t *testing.T) {
 	s := newScene(t, "obj-C")
 	tok := s.token(t)
-	good, _ := Ack(s.fetcher, tok, s.object, s.server, s.data, s.tags)
+	good := Ack(s.fetcher, tok, s.object, s.server)
 	bank := NewBank()
 
 	mutations := map[string]func(r *DeliveryReceipt){
@@ -179,26 +169,29 @@ func TestTamperedReceiptRejected(t *testing.T) {
 	}
 }
 
-// TestWrongObjectRejected pins the PoR binding (not just the signature): a fetcher
-// that genuinely holds object C cannot mint a validly-signed receipt claiming it
-// delivered a DIFFERENT object C'. The possession proof is built over C's bytes/tags
-// but must verify under C”s key and challenge, which it does not.
-func TestWrongObjectRejected(t *testing.T) {
+// TestReceiptCarriesNoPossessionClaim pins the CERTIFIED boundary of the neutral
+// lane (the 2026-08-26 PoD certification, Q2 / owned residual B3): a receipt is
+// mintable with zero object bytes BY DESIGN — the willing fetcher's signature is
+// the delivery attestation, and nothing in the receipt proves possession. This is
+// sound because the sound properties live elsewhere: the token level
+// (#receipts ≤ #tokens, fee paid at withdrawal) and conservation (a colluding
+// pair's redeem returns at most its own fee minus the skim — a strict loss). If a
+// future change makes this test's premise false (a possession proof returns to
+// the receipt), it must be the content-committed recompute floor arriving with
+// the strong form or relay — re-read the certification before touching this.
+func TestReceiptCarriesNoPossessionClaim(t *testing.T) {
 	s := newScene(t, "obj-C")
-	other := ports.HashBytes([]byte("obj-C-prime"))
 	tok := s.token(t)
-	// A self-consistent, fetcher-SIGNED receipt for `other`, but whose proof was
-	// produced from C's bytes and C's tags.
-	r, err := Ack(s.fetcher, tok, other, s.server, s.data, s.tags)
-	if err != nil {
-		t.Fatalf("ack: %v", err)
-	}
-	if r.Object != other {
-		t.Fatal("setup: receipt should claim the other object")
-	}
+	// The fetcher never saw a single byte of the object; the ack still signs.
+	r := Ack(s.fetcher, tok, s.object, s.server)
 	bank := NewBank()
-	if ok, _ := bank.Redeem(s.issuerPub, tok, r); ok {
-		t.Fatal("a receipt claiming C' while holding C's bytes must be rejected — the proof binds to the named object")
+	if ok, reason := bank.Redeem(s.issuerPub, tok, r); !ok {
+		t.Fatalf("the neutral-lane receipt must redeem without a possession proof (certified): %s", reason)
+	}
+	// What it bought: one unit of a NEUTRAL observable. Never standing (the
+	// firewall test for the conserved credit lives in core/credit).
+	if got := bank.Demand(s.object); got != 1 {
+		t.Fatalf("demand = %d, want 1", got)
 	}
 }
 
@@ -222,16 +215,13 @@ func bondedSet(keys ...ed25519.PublicKey) BondCheck {
 }
 
 // deliver runs one full honest cycle for scene s's fetcher: withdraw a fresh token,
-// ack a real PoR-bound delivery of the object, and redeem it at bank. Returns the
+// sign a delivery ack for the object, and redeem it at bank. Returns the
 // (credited, reason) the bank reported. Each call spends a DISTINCT token (serial),
 // so N calls model N genuine, individually-valid deliveries by the same fetcher.
 func (s scene) deliver(t *testing.T, bank *Bank) (bool, string) {
 	t.Helper()
 	tok := s.token(t)
-	r, err := Ack(s.fetcher, tok, s.object, s.server, s.data, s.tags)
-	if err != nil {
-		t.Fatalf("ack: %v", err)
-	}
+	r := Ack(s.fetcher, tok, s.object, s.server)
 	return bank.Redeem(s.issuerPub, tok, r)
 }
 
@@ -244,7 +234,7 @@ func TestBondedGateRejectsUnbonded(t *testing.T) {
 	bank.RequireBondedFetcher(bondedSet( /* nobody bonded */ ))
 
 	tok := s.token(t)
-	r, _ := Ack(s.fetcher, tok, s.object, s.server, s.data, s.tags)
+	r := Ack(s.fetcher, tok, s.object, s.server)
 	if ok, reason := bank.Redeem(s.issuerPub, tok, r); ok {
 		t.Fatal("an unbonded fetcher's receipt must not credit demand")
 	} else if reason == "" {
@@ -262,7 +252,7 @@ func TestBondedGateRejectsUnbonded(t *testing.T) {
 
 // TestSelfDealOneBondedIdentityCapsDemand is the P3b self-dealing red-team: a washer
 // runs ONE bonded fetcher identity and mints N genuine, individually-valid delivery
-// receipts (distinct tokens, real PoR proofs — indistinguishable from honest demand,
+// receipts (distinct tokens, valid signed acks — indistinguishable from honest demand,
 // because a self-fetch IS a real paid delivery; Douceur is unbeaten). With the
 // bonded-fetcher credential on, witnessed demand rises by exactly 1, not N: faking U
 // units of demand would take U distinct bonded identities, i.e. U real storage bonds.
@@ -328,23 +318,5 @@ func TestBondedGateOffKeepsRawCount(t *testing.T) {
 	}
 	if got := bank.Demand(s.object); got != int64(N) {
 		t.Fatalf("gate-off demand = %d, want %d (raw count)", got, N)
-	}
-}
-
-// TestDataLessRedeemerRejected: no correct delivery, no receipt. A fetcher (or a
-// self-dealing server) that did not hold the correct bytes cannot produce a proof
-// that verifies — modelled by proving over the right tags but the wrong bytes (the
-// H7 liar shape).
-func TestDataLessRedeemerRejected(t *testing.T) {
-	s := newScene(t, "obj-C")
-	tok := s.token(t)
-	wrong := make([]byte, len(s.data)) // all zeros: held nothing of C
-	r, err := Ack(s.fetcher, tok, s.object, s.server, wrong, s.tags)
-	if err != nil {
-		t.Fatalf("ack: %v", err)
-	}
-	bank := NewBank()
-	if ok, _ := bank.Redeem(s.issuerPub, tok, r); ok {
-		t.Fatal("a proof over bytes that are not the object's must be rejected — retrievability of the correct C is the binding")
 	}
 }

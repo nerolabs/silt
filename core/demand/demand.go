@@ -1,12 +1,25 @@
-// Package demand is P0 of the blind demand receipt (D-DEMAND, issue #181): the
+// Package demand is the blind demand receipt (D-DEMAND, issue #181): the
 // interlock between the Sybil corner (standing should track WITNESSED demand, not
-// self-declared popularity) and privacy (who-fetches-what stays unlinkable). This
-// covers phases P0–P1 — blind-withdraw → PoR-bound delivery-ack → bank → redeem,
-// for a SINGLE object — and it delivers exactly one provable property:
+// self-declared popularity) and privacy (who-fetches-what stays unlinkable). It
+// covers blind-withdraw → signed delivery-ack → bank → redeem, for a SINGLE
+// object, and it delivers exactly one provable property:
 //
 //	UNFORGEABILITY AT THE TOKEN LEVEL: a server cannot bank more receipts for an
-//	object C than there were issued tokens spent on a fetcher-signed proof of having
-//	held C's bytes. #receipts(C) ≤ #issued-tokens-spent-on-a-signed-C-delivery.
+//	object C than there were issued tokens spent on a fetcher-signed delivery ack
+//	of C. #receipts(C) ≤ #issued-tokens-spent-on-a-signed-C-delivery-ack.
+//
+// THE RECEIPT CARRIES NO PoR PROOF (certified 2026-08-26, the PoD neutral-lane
+// certification, Q2). The earlier P0 shape bound a Shacham–Waters proof over the
+// delivered bytes, but its per-object key seed was public, so the proof was
+// forgeable with zero object bytes (owned residual B3) — a forgeable binding
+// deters no collusion, and it cost a 128-sample prove+verify per delivery on the
+// hobbyist floor box (build-immutable #8). The certified neutral-lane receipt is
+// token + fetcher signature + the (serial‖object‖server) binding: an honest
+// fetcher signs only after the fetch path re-verified the bytes against the
+// content address (tenet B3), and a colluding pair gains nothing a proof would
+// deny (conservation makes forgery strictly loss-making — see the certification).
+// A possession binding re-enters only where loss-deterrence stops covering
+// (receipt→standing, relay), as a content-committed recompute floor — not here.
 //
 // What it deliberately does NOT prove (a Douceur limit, not an engineering gap, per
 // the decision's doc-truth rule): **demand AUTHENTICITY.** A server can run its own
@@ -44,18 +57,7 @@ import (
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/nerolabs/silt/core/blindtoken"
-	"github.com/nerolabs/silt/core/por"
 	"github.com/nerolabs/silt/ports"
-)
-
-// SampleCount is how many PoR blocks a delivery proof samples (Shacham–Waters
-// §4.1): more samples raise the odds of catching a prover missing any fixed
-// fraction of the object. Clamped to the object's block count. A tuning knob.
-const SampleCount = 128
-
-const (
-	ackDomain = "silt/demand/ack/v1" // the PoR challenge seed binds serial‖object‖server
-	porDomain = "silt/demand/por/v1" // per-object PoR key seed
 )
 
 // Token is an issuer-authorized retrieval credit, BLIND-WITHDRAWN (P1): a serial
@@ -101,106 +103,49 @@ func VerifyToken(issuerPub *rsa.PublicKey, t Token) bool {
 	return len(t.Serial) > 0 && blindtoken.VerifyDemand(issuerPub, t.Serial, t.Sig)
 }
 
-// ObjectKey derives object C's PoR verification key. In P0 the seed is PUBLIC
-// (bound to C's content address), so the publisher can tag at serve time and any
-// redeemer can verify — with the documented residual that a public key means tags
-// are forgeable, so the proof certifies "held bytes consistent with C's demand key,"
-// not "held the unique correct bytes of C" (the same tag-forgery gap H7 documents;
-// the secret-keyed / content-committed binding is a fast-follow). Sound enough for
-// P0 precisely because demand is NEUTRAL — a forged binding buys no standing.
-func ObjectKey(object ports.Hash) *por.Key {
-	seed := sha256.Sum256(append([]byte(porDomain), object[:]...))
-	k, err := por.DeriveKey(seed[:], por.DefaultParams)
-	if err != nil {
-		panic(err) // DefaultParams is valid; cannot fail
-	}
-	return k
-}
-
-// ackSeed binds a delivery proof to THIS exact (serial, object, server): a receipt
-// built for one cannot be replayed for another object or redeemed by another server,
-// and the challenge cannot be precomputed before the token is known.
-func ackSeed(serial []byte, object ports.Hash, server ports.NodeID) [32]byte {
-	h := sha256.New()
-	h.Write([]byte(ackDomain))
-	h.Write(serial)
-	h.Write(object[:])
-	h.Write(server[:])
-	var out [32]byte
-	copy(out[:], h.Sum(nil))
-	return out
-}
-
-// challengeFor rebuilds the PoR challenge both the fetcher (proving) and the
-// redeemer (verifying) derive from the receipt — nothing challenge-specific rides
-// on the wire beyond the block count.
-func challengeFor(serial []byte, object ports.Hash, server ports.NodeID, blocks int) por.Challenge {
-	count := SampleCount
-	if count > blocks {
-		count = blocks
-	}
-	return por.Challenge{Seed: ackSeed(serial, object, server), Blocks: blocks, Count: count}
-}
-
-// DeliveryReceipt is a fetcher's PoR-bound, signed acknowledgement that it received
-// the correct bytes of Object from Server, spending the token named by Serial. Its
-// binding is threefold: the PoR Proof (held the bytes), the fetcher signature
-// (only the token's spender can mint it), and the (serial‖object‖server)-bound
-// challenge (can't be replayed). The server banks it and redeems it later.
+// DeliveryReceipt is a fetcher's signed acknowledgement that it received the
+// correct bytes of Object from Server, spending the token named by Serial. Its
+// binding is twofold: the fetcher signature (only the token's spender can mint
+// it — and an honest fetcher signs only after the fetch path content-verified
+// the bytes, tenet B3) and the (serial‖object‖server) triple inside the signed
+// message (a receipt for one delivery cannot be replayed for another object or
+// redeemed by another server). No PoR proof rides the receipt — see the package
+// comment for the certified reasoning.
 type DeliveryReceipt struct {
 	Serial  []byte       // the spent token's serial
 	Object  ports.Hash   // C — the content-addressed object delivered
 	Server  ports.NodeID // the delivering server (the redeemer); binds the ack
 	Fetcher []byte       // the fetcher's ed25519 public key
-	Blocks  int          // C's PoR block count (bounds the sample space)
-	Proof   por.Proof    // PoR proof over the delivered bytes of C
 	Sig     []byte       // fetcher's signature over receiptMsg
 }
 
 // receiptMsg is the bytes the fetcher signs: every field that fixes what was
-// delivered, to whom-for, and the possession proof, so tampering any of them (or
-// lifting the proof onto another receipt) breaks the signature.
+// delivered and to whom-for, so tampering any of them breaks the signature.
+// The domain is v2: the v1 message shape carried PoR fields, and the bump makes
+// a v1 signature unusable on a v2 receipt (and vice versa) by construction.
 func (r DeliveryReceipt) receiptMsg() []byte {
 	h := sha256.New()
-	h.Write([]byte("silt/demand/receipt/v1"))
+	h.Write([]byte("silt/demand/receipt/v2"))
 	h.Write(r.Serial)
 	h.Write(r.Object[:])
 	h.Write(r.Server[:])
 	h.Write(r.Fetcher)
-	var nb [8]byte
-	for i := 0; i < 8; i++ {
-		nb[i] = byte(r.Blocks >> (8 * i))
-	}
-	h.Write(nb[:])
-	for _, m := range r.Proof.Mu {
-		h.Write(m)
-	}
-	h.Write(r.Proof.Sigma)
 	return h.Sum(nil)
 }
 
-// Ack is the fetcher side: having received Object's bytes (data) and its PoR tags
-// from Server (tags travel with served content), the fetcher spends token by
-// producing a PoR proof over the bytes under the (serial‖object‖server)-bound
-// challenge and signing the whole receipt. It returns an error only on malformed
-// PoR input; a well-formed-but-wrong delivery simply fails to verify at redeem.
-func Ack(fetcher ed25519.PrivateKey, token Token, object ports.Hash, server ports.NodeID, data []byte, tags [][]byte) (DeliveryReceipt, error) {
-	blocks := por.DefaultParams.Blocks(len(data))
-	c := challengeFor(token.Serial, object, server, blocks)
-	proof, err := por.Prove(por.DefaultParams, data, tags, c)
-	if err != nil {
-		return DeliveryReceipt{}, err
-	}
+// Ack is the fetcher side: having received and content-verified Object's bytes,
+// the fetcher spends token by signing a delivery receipt naming this exact
+// (serial, object, server). Cheap by design — one ed25519 sign, nothing else —
+// so it runs on the floor box at delivery rate.
+func Ack(fetcher ed25519.PrivateKey, token Token, object ports.Hash, server ports.NodeID) DeliveryReceipt {
 	r := DeliveryReceipt{
 		Serial:  append([]byte(nil), token.Serial...),
 		Object:  object,
 		Server:  server,
 		Fetcher: append([]byte(nil), fetcher.Public().(ed25519.PublicKey)...),
-		Blocks:  blocks,
-		Proof:   proof,
 	}
 	r.Sig = ed25519.Sign(fetcher, r.receiptMsg())
-	return r, nil
+	return r
 }
 
 // BondCheck is the P3b bonded-fetcher credential: given a fetcher's receipt-signing
@@ -259,9 +204,9 @@ func (b *Bank) RequireBondedFetcher(check BondCheck) { b.bonded = check }
 //
 // Rejections (each an unforgeability property): a token not signed by the issuer;
 // a serial already redeemed (double-spend); a receipt whose serial ≠ the token's;
-// a fetcher signature that doesn't verify; a PoR proof that doesn't verify against
-// the object's key under the identity-bound challenge (no delivery, wrong object,
-// wrong server, or data-less redeemer).
+// a fetcher signature that doesn't verify (which also covers a receipt tampered
+// toward another object, server, or fetcher — all three are inside the signed
+// message).
 func (b *Bank) Redeem(issuerPub *rsa.PublicKey, token Token, r DeliveryReceipt) (credited bool, reason string) {
 	if !VerifyToken(issuerPub, token) {
 		return false, "token not issued"
@@ -274,10 +219,6 @@ func (b *Bank) Redeem(issuerPub *rsa.PublicKey, token Token, r DeliveryReceipt) 
 	}
 	if len(r.Fetcher) != ed25519.PublicKeySize || !ed25519.Verify(r.Fetcher, r.receiptMsg(), r.Sig) {
 		return false, "fetcher signature invalid"
-	}
-	c := challengeFor(r.Serial, r.Object, r.Server, r.Blocks)
-	if !ObjectKey(r.Object).Verify(r.Object[:], c, r.Proof) {
-		return false, "delivery proof invalid (no correct delivery of this object to this server)"
 	}
 	// The token is now consumed — crypto, issuance, and delivery all verified — so
 	// mark the serial spent BEFORE the bonded-fetcher gate. A receipt rejected only

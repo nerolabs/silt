@@ -206,6 +206,12 @@ type CreditLedger interface {
 	// escrow, so popular data self-funds its own repair. Returns the credits
 	// skimmed. Standing is untouched — serving funds the balance economy only.
 	RecordServeToObject(server, requester NodeID, root Hash, id ChunkID, bytes int64) int64
+	// RedeemDeliveryCredit settles a WITNESSED delivery (a verified, banked
+	// delivery receipt — the PoD neutral lane): it supersedes the delivery's
+	// provisional serve self-credit and pays the server the conserved credit
+	// (the fetcher's withdrawal fee, less the durability skim). Returns the
+	// credits paid. Balance economy only — never standing.
+	RedeemDeliveryCredit(server, fetcher NodeID, root Hash) int64
 	// RecordAudit settles a storage challenge: a passed audit earns the
 	// prover a reward, a failed one costs a slash.
 	RecordAudit(prover NodeID, id ChunkID, passed bool)

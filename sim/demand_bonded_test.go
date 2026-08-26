@@ -114,7 +114,7 @@ func TestDemandBondedFetcherCapsWash(t *testing.T) {
 		})
 		cl.Sched.Run()
 		credited := false
-		f.SubmitDeliveryReceipt(server.ID(), tok, object, data, func(c bool, err error) {
+		f.SubmitDeliveryReceipt(server.ID(), tok, object, func(c bool, err error) {
 			credited = err == nil && c
 		})
 		cl.Sched.Run()
