@@ -67,6 +67,7 @@ func cmdDaemon(args []string) error {
 	capacity := fs.String("capacity", "5G", "storage pledge, e.g. 2G, 500M (matches the client's default so the node contributes measurable, countable storage; \"\" = unlimited but doesn't count toward network storage)")
 	freeload := fs.Bool("freeload", false, "role separation (#47): serve the registry/relay/routing role but REFUSE to store or serve content — for public-infrastructure operators who run a rendezvous registry without being conscripted into hosting arbitrary content. The node still carries DHT routing; it just holds and serves no chunks")
 	serveContent := fs.Bool("serve-content", true, "D-TIERING capability axis: hold and serve content shards (the edge tier's core contribution, bounded by -capacity). ON by default — this is what an ordinary node does. The explicit form exists so a tier profile composes positively (`-serve-content -archive=false -validator=false` is the transient edge box) rather than as a double negative. `-serve-content=false` is the same refusal as -freeload; passing both with opposite senses is refused rather than silently resolved")
+	acceptReceipts := fs.Bool("accept-delivery-receipts", false, "PoD neutral lane (docs/design/pod.md, certified 2026-08-26): BANK delivery receipts from fetchers this node served, and settle the conserved delivery credit — the fetcher's retrieval fee less the durability skim, which routes to the delivered object's repair escrow. Requires the token-issuer role (implied by -validator), because a receipt is verified against the issuer key that signed its retrieval token; the bilateral issuer==server shape is what the certification's per-node settlement answer covers. Delivery credit is BALANCE ONLY and can never become consensus standing (the γ→1/N firewall) — a receipt is mintable with zero object bytes by design, and conservation, not possession, is what makes forging it unprofitable. Off by default")
 	archive := fs.Bool("archive", false, "D-TIERING ARCHIVAL tier: retain every block's heavy space-time bond proof to genesis instead of shedding it below the rolling retention horizon, so this node can serve the deep history a pruning swarm has already dropped (what a node stranded past the prune horizon needs — #559's true-loss residual, ErrNeedCheckpoint). RETENTION ONLY, never validity: an archival node validates by exactly the same rules as a pruning one, so the tiers cannot fork against each other. Costs O(all history) resident payload — build-immutable #8 forbids it on the 1 vCPU / 2 GB box, which is the whole reason the tier model exists. Off by default")
 	registryOnly := fs.Bool("registry-only", false, "the LEANEST public-registry role (#47): serve a file-backed registry over HTTPS and construct NO storage node at all — no DHT, chunk store, chain, or caretaker. Unlike -freeload (a full routing node that refuses to host content), this builds nothing but the registry server, so a public-infrastructure operator runs a rendezvous registry at minimal cost. Needs -serve-registry <addr>")
 	// Empty default is deliberate: no built-in seed domain (neutral infra,
@@ -798,6 +799,15 @@ func cmdDaemon(args []string) error {
 			return fmt.Errorf("token issuer store: %w", ierr)
 		} else if issuerKey, kerr := is.LoadOrCreate(rand.Reader); kerr == nil {
 			nd.EnableTokenIssuer(issuerKey)
+			if *acceptReceipts {
+				// PoD neutral lane: bank receipts against the key that signed
+				// their tokens. issuer == server here — the bilateral shape the
+				// certification's Q5 settlement answer covers (per-node
+				// bookkeeping suffices; committed balances are only needed for a
+				// credit a THIRD operator must honor).
+				nd.EnableDemandBank(&issuerKey.PublicKey)
+				fmt.Println("delivery receipts: ACCEPTING — banking witnessed deliveries and settling the conserved delivery credit (balance only, never standing)")
+			}
 			if *requireTokens > 0 {
 				ch.RequireTokens(*requireTokens, nd.IssuerKeyOf)
 				fmt.Printf("publish tokens: required (%d validator signatures), issuing\n", *requireTokens)
