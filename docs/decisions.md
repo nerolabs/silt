@@ -497,6 +497,76 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
 
 ---
 
+## D-POD-KNOBS — the three Phase-4 economy/state knobs, decided
+
+- **Status:** ✅ DECIDED — 2026-08-26 (owner ratification: "PE answers are mine as well").
+  All three were held open by the two 2026-08-26 certifications as *owner scope*; the PE
+  attached an engineering recommendation to each, the owner adopted them.
+- **Basis:** the certifications
+  (`silt-reviews/research/research-outcome/PoD-neutral-lane-B3-close-RESEARCH-CERTIFICATION-2026-08-26.md`,
+  `…/D-TIERING-state-root-keystone-RESEARCH-CERTIFICATION-2026-08-26.md`), the consult
+  (`silt-reviews/principle-engineer/PoD-keystone-owner-knobs-CONSULT-2026-08-26.md`), and
+  the ruling
+  (`silt-reviews/principle-engineer/RULING-PoD-keystone-owner-knobs-2026-08-26.md`), whose
+  load-bearing premises were verified against code before the recommendations were made.
+
+**1. Delivery-credit skim routes to the object's durability ESCROW (not burn).**
+The skim (`SkimNum/SkimDen` = 1/8 of the withdrawal fee) funds the delivered object's
+repair reserve, exactly as the serve skim does. The decisive reason is a **cross-tier
+funding loop**: hot content served on the edge generates skim that funds *that content's*
+durability on the persistent tier — edge delivery financing persistent retention, which is
+what D-TIERING's tier split needs. Conservation carries soundness independently
+(`credit ≤ fee`), so the skim is a deterrent knob, not a soundness requirement — **do not
+raise it for anti-wash reasons** (that would tax honest delivery; build-immutable #4).
+*Safety rests on the recovery floor:* the supersede reversal is floored at the remaining
+reserve, so a bounty already paid for real repair work is never clawed back — escrow
+therefore cannot mint recoverable balance. That floor is regression-locked
+(`core/credit` `TestPaidBountyIsNotRecoverableBySupersede`); **if it ever regressed, burn
+would become the correct routing.** Burn's only advantage is audit optics ("zero recovery,
+ever" in one word) and remains the fallback if an external review ever needs that answer.
+
+**2. Relay compensation resolves disputes through a dispute-only quorum-TTP.**
+Fair exchange without any TTP is impossible (Pagnia–Gärtner), so refusing one would bake a
+permanent one-increment stiffing residual into the **relay operators** the durability
+backbone depends on. The added quorum power is **mechanical, not discretionary** — a
+verification of self-verifying evidence, the same shape as equivocation slashing, scoped
+to dispute-only and balance-lane-only. **The load-bearing scope condition:** a relay
+dispute adjudicates **the payment chain only, never transit**. No transit proof exists to
+buy (D-DEMAND / the PoD certification Q3: Tor's proof-of-bandwidth line failed exactly
+here), so "did you forward?" is not adjudicable at all; "the fetcher stopped paying after
+increment N" is, and a hash-chain preimage or signed increment token is self-verifying —
+cheap and pure-Go. Consequence: **this direction does NOT reactivate the verifiable-escrow
+(Camenisch–Shoup) unknown**, which stays confined to strong-form PoD. That reasoning is
+builder evidence (`docs/thinking/2026-08-26-owner-knobs-ruling-and-relay-gate.md`) and is
+the relay follow-on consult's **first question to certify** — if research finds the relay
+dispute needs verifiable-escrow-class crypto after all, this decision reopens.
+
+**3. A bond root's ownership record follows current possession (TTL-lapse), not lifetime.**
+When a bond lapses, its owner/proven records may be dropped from committed state; a new
+owner may re-bond that root with a fresh space-time proof. C2-sound because the F1 dedup
+invariant is "one plot ≤ one **active** standing," never one lifetime owner — a lapsed
+root backs zero standings. Verified safe: `rootOwner` feeds the F1 dedup and nothing else,
+both slash paths dock by identity regardless of root ownership, and the anti-griefing
+guarantee comes from per-identity plot sealing (an outsider cannot answer a plot it did not
+seal), not from retaining the map. Both properties are regression-locked
+(`TestRootOwnerFeedsOnlyTheDedup`; `core/bond` `TestRedteamG2_PlotBoundToClaimedIdentity`).
+**This is required, not merely available:** lifetime-owner would put a forever-growing term
+in every committed snapshot, defeating the bounded-state property the keystone exists to
+deliver. Lifetime provenance is not lost — it survives immutably in the **archival tier's**
+chain history; only the *live committed state* forgets, which is exactly D-TIERING's tier
+decomposition.
+
+- **Construction (what still has to be built):** (1) is shipped (`core/credit/delivery.go`).
+  (2) lands with relay compensation, after its follow-on consult certifies the scope
+  condition. (3) freezes into the keystone's committed field set and is implemented on that
+  track — the live in-memory ledger's map is unchanged for now, so no consensus-adjacent
+  behavior moves ahead of the keystone.
+- **Standing rule this sets:** whenever a Phase-4/keystone knob is otherwise balanced,
+  favor the option that keeps the **live committed state bounded** — that is the keystone's
+  reason to exist.
+
+---
+
 ## What is NOT on this ledger
 
 The following are **build items or tuning knobs**, not owner-level decisions, and live in

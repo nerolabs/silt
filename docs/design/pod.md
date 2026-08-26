@@ -86,8 +86,10 @@ consumer and its invariant.
    taxes honest delivery (build-immutable #4) and conservation already
    carries soundness. Escrow-routing the skim is certified safe (worst
    case break-even via a real self-repair, never a pump); pure burn is the
-   airtight-deterrent option — an owner knob, escrow leaned for
-   consistency with the existing serve skim.
+   airtight-deterrent option. **Decided: escrow** (D-POD-KNOBS, 2026-08-26);
+   its safety rests on the supersede reversal flooring at the remaining
+   reserve, regression-locked by
+   `TestPaidBountyIsNotRecoverableBySupersede`.
 
 5. **[CERT] The supersede rule (load-bearing, required before the firewall
    test means anything).** The serve path already self-mints 1 credit/byte
@@ -176,7 +178,9 @@ Consult `PoD-neutral-lane-B3-close-CONSULT-2026-08-26.md`; certification
    are deterrent floors. **Completed by the §3.5 supersede rule** — the
    `RecordServe` self-mint is the banned subsidy, so the reconciliation is
    load-bearing, not hygiene. Escrow-routed skim is safe (worst case
-   break-even, never a pump); burn is the airtight option.
+   break-even, never a pump). **Skim routing DECIDED 2026-08-26 (D-POD-KNOBS):
+   escrow, for the cross-tier funding loop; burn stays the fallback if an
+   external audit ever needs "zero recovery, ever" in one word.**
 2. **Q2 — the PoR leg: not load-bearing; DROP it in the neutral lane**
    (§4.2). Re-enters at strong form + relay as the content-committed
    recompute floor.

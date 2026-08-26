@@ -80,10 +80,12 @@ func (l *Ledger) trackProvisional(requester ports.NodeID, root ports.Hash, net, 
 // RedeemDeliveryCredit settles a WITNESSED delivery (a banked, verified
 // receipt): it supersedes the provisional self-record for (fetcher, root), then
 // pays the server the conserved credit — the withdrawal fee less the durability
-// skim, with the skim routed to the object's escrow (escrow-routing is the
-// certified-safe default; burn is the owner's airtight alternative — see the
-// owner-knobs consult). Returns the credits paid to the server. Self-delivery
-// pays nothing, same guard as RecordServe. It never touches standing.
+// skim, with the skim routed to the object's escrow (DECIDED 2026-08-26,
+// D-POD-KNOBS: escrow over burn, for the cross-tier funding loop — edge
+// delivery skim funds that content's durability on the persistent tier;
+// safety rests on the reversal floor below). Returns the credits paid to the
+// server. Self-delivery pays nothing, same guard as RecordServe. It never
+// touches standing.
 func (l *Ledger) RedeemDeliveryCredit(server, fetcher ports.NodeID, root ports.Hash) int64 {
 	if server == fetcher {
 		return 0 // self-delivery earns nothing (the cheapest gaming, blocked)

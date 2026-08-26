@@ -9,6 +9,22 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **D-POD-KNOBS — the three Phase-4 economy/state knobs, DECIDED** (2026-08-26,
+  owner ratification of the PE recommendations). (1) The delivery-credit **skim
+  routes to the object's durability escrow**, not burn — the deciding reason is
+  a cross-tier funding loop (edge delivery skim funds that content's durability
+  on the persistent tier); conservation carries soundness independently, so the
+  skim stays a deterrent knob and must not be raised for anti-wash reasons.
+  (2) Relay compensation resolves disputes through a **dispute-only quorum-TTP**,
+  under the load-bearing scope condition that a dispute adjudicates **the payment
+  chain only, never transit** — which is what keeps the resolution
+  signature-verifiable and keeps the verifiable-escrow unknown confined to
+  strong-form PoD. (3) A bond root's ownership record **follows current
+  possession (TTL-lapse)**, required so the keystone's committed state stays
+  bounded; lifetime provenance survives in the archival tier's chain history.
+  Recorded in `docs/decisions.md`; (1) is shipped, (2) lands with relay
+  compensation after its consult certifies the scope condition, (3) freezes into
+  the keystone field set (live ledger behavior unchanged for now).
 - **Owner-knob guards + the relay dispute gate answered** (2026-08-26, per
   `silt-reviews/principle-engineer/RULING-PoD-keystone-owner-knobs-2026-08-26.md`,
   which concurs on all three knobs) — two regression locks the PE prescribed.
