@@ -431,7 +431,12 @@ func cmdDaemon(args []string) error {
 	}
 	if refusesContent {
 		nd.SetFreeload(true)
-		fmt.Println("serve-content: OFF — this node refuses to store or serve content (registry/relay/routing only, #47)")
+		// Both spellings on one line, on purpose: `freeload: ON` is a STABLE
+		// marker the e2e harness (and any operator tooling) greps for, so the
+		// D-TIERING rename must not silently break it — an announced line is an
+		// observable contract (S5). The new positive-axis name leads because that
+		// is how the tier profile is now composed.
+		fmt.Println("serve-content: OFF (freeload: ON) — this node refuses to store or serve content (registry/relay/routing only, #47)")
 	}
 	if *archive {
 		fmt.Println("archive: ON — ARCHIVAL tier: every heavy bond proof retained to genesis, so this node can serve the deep history a pruning swarm has shed (O(all history) resident — not for the 2 GB box)")

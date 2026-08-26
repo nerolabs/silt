@@ -138,6 +138,7 @@ var (
 	reCommitted = regexp.MustCompile(`chain: committed block (\d+)`)
 	reLink      = regexp.MustCompile(`^silt:v1:\S+`)
 	reFreeload  = regexp.MustCompile(`freeload: ON`)
+	reArchive   = regexp.MustCompile(`archive: ON`)
 	reRefuse    = regexp.MustCompile(`refusing to start`)
 )
 
@@ -154,6 +155,50 @@ func TestFreeloadRoleSeparation(t *testing.T) {
 		"-freeload", "-mdns=false", "-id-seed", "4700")
 	d.waitFor(t, reFreeload, 20*time.Second) // the role is announced
 	d.waitFor(t, rePeer, 20*time.Second)     // and it still runs as a routing peer
+}
+
+// TestServeContentFlagIsTheFreeloadInverse (D-TIERING §4): the positive spelling
+// of the content axis reaches the same state as the legacy negative one. A tier
+// profile composes as `-serve-content=false` without the operator having to think
+// in double negatives, and the announced line keeps the legacy `freeload: ON`
+// marker so existing tooling and this harness keep working.
+func TestServeContentFlagIsTheFreeloadInverse(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e spawns processes; skipped under -short")
+	}
+	d := startDaemon(t, "no-serve-content",
+		"-listen", "127.0.0.1:0", "-store", t.TempDir(),
+		"-serve-content=false", "-mdns=false", "-id-seed", "4701")
+	d.waitFor(t, reFreeload, 20*time.Second) // same announced state as -freeload
+	d.waitFor(t, rePeer, 20*time.Second)     // still a routing peer
+}
+
+// TestContradictoryContentFlagsRefused (S3): -freeload with an EXPLICIT
+// -serve-content=true states two opposite intents. The daemon must refuse to
+// start rather than silently pick one and hand the operator a node doing the
+// opposite of half their command line.
+func TestContradictoryContentFlagsRefused(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e spawns processes; skipped under -short")
+	}
+	d := startDaemon(t, "contradictory-flags",
+		"-listen", "127.0.0.1:0", "-store", t.TempDir(),
+		"-freeload", "-serve-content=true", "-mdns=false", "-id-seed", "4702")
+	d.waitFor(t, regexp.MustCompile(`contradict each other`), 20*time.Second)
+}
+
+// TestArchiveTierAnnouncesRetention (D-TIERING §3): an archival node announces
+// the tier it is running, so an operator can see from the log that this box is
+// carrying O(all history) heavy payload deliberately — not by accident.
+func TestArchiveTierAnnouncesRetention(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e spawns processes; skipped under -short")
+	}
+	d := startDaemon(t, "archival",
+		"-listen", "127.0.0.1:0", "-store", t.TempDir(),
+		"-archive", "-mdns=false", "-id-seed", "4703")
+	d.waitFor(t, reArchive, 20*time.Second)
+	d.waitFor(t, rePeer, 20*time.Second) // and it is an ordinary peer otherwise
 }
 
 // runClient runs a one-shot `silt <args>` (swarm add/get) to completion,

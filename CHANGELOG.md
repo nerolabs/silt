@@ -24,7 +24,11 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   so an edge profile composes as `-serve-content -archive=false -validator=false`
   rather than as a double negative; the legacy `-freeload` is unchanged and
   remains its inverse. A contradictory pair (`-freeload -serve-content=true`) is
-  **refused loudly** rather than silently resolved (S3).
+  **refused loudly** rather than silently resolved (S3). The announced line
+  carries BOTH spellings (`serve-content: OFF (freeload: ON)`) because
+  `freeload: ON` is a stable marker the e2e harness and operator tooling grep —
+  an announced line is an observable contract (S5), and the first cut of this
+  change broke `TestFreeloadRoleSeparation` by renaming it.
 - **D-POD-KNOBS — the three Phase-4 economy/state knobs, DECIDED** (2026-08-26,
   owner ratification of the PE recommendations). (1) The delivery-credit **skim
   routes to the object's durability escrow**, not burn — the deciding reason is
