@@ -9,6 +9,25 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **The incremental-cost oracle — the keystone's RED home #2**
+  (2026-08-27). The certification's Q4 gate: *count actual hash computes per
+  block; RED = O(state), GREEN = O(changed·log n) with an explicit budget* —
+  guarding the #555 scar (`Hash()` re-marshaling the world on the hot path),
+  which would surface not as a correctness failure but as a node quietly falling
+  over on the floor box. `internal/smtspike/incremental_cost_test.go` counts
+  **digests, not wall-clock**: shared cloud hardware carries ~2× timing
+  variance, so a time budget would be either too loose to catch a regression or
+  flaky enough to get disabled, whereas a digest count is exact and identical on
+  a laptop and a 1 vCPU box. Measured: applying 64 changed keys costs
+  **544 / 780 / 978** digests at 1k / 10k / 100k state — **1.80× growth for 100×
+  the state**, and 6.78× for 8× the changed keys, so cost tracks `changed` and
+  not state size. `budgetK` is set from measurement (0.85–1.61 digests per
+  changed key per log₂n, so 3 gives ~1.9× headroom) rather than guessed, and the
+  budget constrains the **shape**, not just the constant. The RED case is
+  demonstrated rather than asserted: a full-tree recompute costs **44,733
+  digests, 18× over budget** — and that test fails if the budget is ever loosened
+  enough to admit it, so the constant cannot be quietly inflated to hide a
+  regression.
 - **Snapshot-boot equivalence — the keystone's RED home #1, both halves**
   (2026-08-27). Part 2 is the differential oracle
   (`core/chain/modelcheck_snapshot_equivalence_test.go`): a validator booted
