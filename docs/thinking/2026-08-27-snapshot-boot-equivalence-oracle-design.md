@@ -260,3 +260,58 @@ the differential half, still owed:
 
 Nothing in part 1 touches the consensus engine. **I1–I5 untouched** — the tests
 only read state and call the existing `adopt`.
+
+---
+
+## RED homes #2 and #3 — shipped, with the lesson that mattered most
+
+**#2, the incremental-cost oracle** (`internal/smtspike/incremental_cost_test.go`)
+counts **digests, not wall-clock**. The floor-box work measured ~2× timing
+variance on shared hardware, so a time budget would be either too loose to catch
+a regression or flaky enough to get disabled. `smt`'s `digestData` is
+Write→Sum→Reset, so a `hash.Hash` wrapper counting `Sum()` calls counts hash
+computations exactly, identically on a laptop and a 1 vCPU box.
+
+Applying 64 changed keys costs 544 / 780 / 978 digests at 1k / 10k / 100k —
+**1.80× growth for 100× the state**, and 6.78× for 8× the changed keys. The
+budget constant is derived from `TestIncrementalCostReport` (0.85–1.61 measured,
+so `budgetK = 3`), not guessed; the first draft used 12, which the report showed
+was ~7× too loose to mean anything. A full recompute costs 44,733 digests, 18×
+over budget — and **that test fails if the budget is ever loosened enough to
+admit it**, so the GREEN assertions cannot be made vacuous by inflating the
+constant.
+
+**#3, the era-boundary Reload oracle** (`core/chain/reload_era3_boundary_test.go`)
+pins two properties era-3 will need: a mixed-era history must replay through the
+single `verifyAtt` dispatcher, and a future-era block must be rejected **loudly**
+with an honest restored-prefix count — #558's lesson carried forward, since the
+damage there was the silent fallback, not the rejection.
+
+### The lesson: the first version was hollow, and only ablation revealed it
+
+The era-boundary test passed on first run. It was **meaningless**. Its "mixed
+era" history was an era-1 *genesis* plus an era-2 block — and genesis carries no
+attestations at all, so the `PhaseLegacy` branch of `verifyAtt` was never
+executed. Deleting that branch entirely left the test **green**.
+
+That is the whole failure mode this document opened with, reappearing in the
+test written to prevent it: an assertion that looks like coverage and is
+actually decoration. It was caught only by the standing rule that a passing test
+proves nothing until you have watched it fail — the fix was a real era-1
+*attested* block at height 1, after which the ablation turns it RED.
+
+Worth generalising, because it recurs across all three oracles in this session:
+
+- Part 2's leave-one-out first "passed" via a **nil-map panic** rather than by
+  demonstrating what the node wrongly accepts. A panic is divergence, so the
+  test was green — and useless. Modelling omission as an empty map turned
+  `panic` into `claim-succeeded`.
+- #2's budget was green at `budgetK = 12`, a value that would have admitted
+  regressions many times over.
+- #3's boundary test was green while covering nothing.
+
+**Every one of the three passed before it was correct.** The green came first
+and the meaning came second, each time surfaced by asking what defect should
+turn it red and then actually injecting that defect. Ablation is not a
+nice-to-have on an oracle; on this evidence it is the only thing separating an
+oracle from a comment that compiles.

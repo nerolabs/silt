@@ -9,6 +9,27 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **The era-boundary Reload oracle — the keystone's RED home #3, shipped ahead
+  of era-3** (2026-08-27). The certification requires this test to land
+  **before** the change it governs, and forbids the shape of the mistake:
+  *extend the shared era-aware verification path (`verifyAtt`) — never fork a
+  parallel era-3 path*, and a failed replay must be a **loud rebuild, never a
+  genesis fallback**. Era-3 blocks are not minted yet, so
+  `core/chain/reload_era3_boundary_test.go` pins the two properties era-3 will
+  need, in a form that extends by one block when it arrives: **(1)** a history
+  spanning an era boundary replays through the single `verifyAtt` dispatcher —
+  a forked path works fine on a single-era history and breaks exactly at a
+  boundary, which is what every real chain is at an activation height; **(2)** a
+  block from a **future** era — precisely what era-3 activation creates for
+  every un-upgraded node — is rejected **loudly** and reports the honest count
+  of what it restored, so no caller can mistake a truncated replay for a
+  complete one. That second property is #558 carried forward: the damage there
+  was never the rejection, it was the silent fallback that discarded finalized
+  history while reporting health. Both are proven RED by ablation (drop the
+  `PhaseLegacy` branch → (1) fails; make the `default` branch accept unknown
+  eras → (2) fails), and a positive control asserts the rejection names a
+  signature/attestation failure so it cannot pass because the forged block was
+  malformed for an unrelated reason.
 - **The incremental-cost oracle — the keystone's RED home #2**
   (2026-08-27). The certification's Q4 gate: *count actual hash computes per
   block; RED = O(state), GREEN = O(changed·log n) with an explicit budget* —
