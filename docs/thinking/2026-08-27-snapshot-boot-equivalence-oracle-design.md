@@ -195,20 +195,68 @@ Per the certification's own instruction — *treat any field discovered later by
 that oracle as a soundness bug, not an optimization* — this is filed rather than
 absorbed.
 
+## Part 2 — the differential half, shipped
+
+`core/chain/modelcheck_snapshot_equivalence_test.go` implements (C). The
+snapshot-booted replica is built **by reflection over the classification**, and
+one detail falls out for free: `blocks` is classified `input`, not `committed`,
+so "copy every committed field" yields a replica with **no history** — exactly a
+snapshot-booted node — without asserting it separately.
+
+**`TestSnapshotBootMatchesReplayBoot`**: with the full committed set restored, a
+never-replayed replica answers every probe identically to the replayed one.
+
+**`TestLeaveOneOutProvesEachFieldLoadBearing`**: omit one committed field, and a
+verdict must change. Passing output is *evidence*, logged per field:
+
+| Omitted | Probe | Replayed | Snapshot-booted |
+|---|---|---|---|
+| `byRoot` | dup-publish must be rejected | `reject` | **`accept`** |
+| `revoked` | un-revoke a revoked root | `accept` | **`reject`** |
+| `bondRootOwner` | second identity takes an owned bond root | `claim-blocked` | **`claim-succeeded`** |
+
+The third is the one that matters: without `bondRootOwner`, one plot backs two
+identities — a direct **C1 no-discount** break.
+
+### Two corrections the oracle forced on its own probes
+
+It first reported three fields as "not load-bearing." Attribution showed the
+**probes** were wrong, not the fields — which is the oracle working:
+
+- **`bondRootOwner`/`bondRootProven`**: F1 first-owner-wins lives in `apply()`,
+  **not** in a validate predicate, so a verdict-only probe is structurally blind
+  to it. Fixed by an apply-time probe.
+- **`bondRegHeight`**: the min-interval rule is gated behind `regGateActive`
+  (#506), inactive in this world, so it never fires. Moved to declared debt with
+  that reason.
+
+A third correction was about faithfulness: omitting a map initially left it
+`nil`, so `apply` panicked. A panic is divergence, but it **masks the finding** —
+the point is to see what a node wrongly *accepts*. Omission now yields an
+initialised-but-empty map, which is what a snapshot that failed to carry a field
+would actually produce, and that is what turned `panic` into `claim-succeeded`.
+
+### The declared debt
+
+`probeUncovered` names each committed field with no probe yet **and what a probe
+would have to construct** (a token replay for `spent`, a committed equivocation
+for `slashed`, a gate-active world for `bondRegHeight`, and so on). The test
+**fails if a committed field is neither probed nor declared**, so the debt
+cannot grow silently. It is a shrinking list, not a permanent excuse.
+
 ## Honest scope — what is NOT yet built
 
-This is **part 1 of RED home #1**. It proves the enumeration cannot silently
+Part 1 and part 2 are shipped. It proves the enumeration cannot silently
 drift. It does **not** yet prove the enumerated set is *sufficient* — that is
 the differential half, still owed:
 
-- **Replay-boot vs snapshot-boot equivalence**: build a rich history, boot one
-  replica by replay and one by restoring the captured state, drive both with an
-  identical adversarial schedule, assert identical verdicts and state.
-- **Leave-one-out ablation** (option (C) above): for each committed field,
-  snapshot everything *except* it and assert the snapshot-booted node
-  **diverges**. A field whose omission never diverges is a finding either way —
-  either it does not belong in the root, or the schedule is not adversarial
-  enough.
+- **Probe coverage is 3 of 18 committed fields.** The remaining 15 are declared
+  in `probeUncovered` with what each would need. The highest-value next ones are
+  `spent` (token replay — a double-spend), `slashed`, and `bonded`/`epochSet`
+  (quorum sizing), since those carry the most consensus weight.
+- **No adversarial *schedule*.** Probes are single validity questions, not a
+  partition/restart/reorder schedule of the kind the model-check tier drives.
+  Fields whose loss only shows up under a schedule are not yet reachable.
 
 Nothing in part 1 touches the consensus engine. **I1–I5 untouched** — the tests
 only read state and call the existing `adopt`.

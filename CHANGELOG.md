@@ -9,6 +9,28 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **Snapshot-boot equivalence — the keystone's RED home #1, both halves**
+  (2026-08-27). Part 2 is the differential oracle
+  (`core/chain/modelcheck_snapshot_equivalence_test.go`): a validator booted
+  from committed state alone — never having replayed the history — must reach
+  the same verdicts as one that replayed, which is the property the whole
+  keystone rests on. The snapshot-booted replica is built **by reflection over
+  the classification**, and one detail falls out for free: `blocks` is classified
+  `input` rather than `committed`, so "copy every committed field" yields a
+  replica with no history by construction. The **leave-one-out** half is the
+  sharp one — omitting a committed field must change a verdict, and the passing
+  output is evidence rather than an assertion: dropping `byRoot` turns
+  dup-publish from `reject` into **`accept`**; dropping `revoked` breaks
+  un-revocation; dropping `bondRootOwner` turns a second identity's claim on an
+  already-owned bond root from `claim-blocked` into **`claim-succeeded`** — one
+  plot backing two identities, a direct **C1 no-discount** break. The oracle also
+  corrected its own probes: it first flagged three fields as not load-bearing,
+  and attribution showed the probes were wrong — F1 dedup lives in `apply()`,
+  not in a validate predicate, and `bondRegHeight`'s min-interval is gated behind
+  `regGateActive` (#506). Probe coverage is **3 of 18** committed fields; the
+  rest are declared in `probeUncovered` with what each would need, and the test
+  **fails if a committed field is neither probed nor declared**, so the debt
+  cannot grow silently. Consensus engine untouched; I1–I5 untouched.
 - **State-field completeness ratchet — the keystone's RED home #1, part 1**
   (2026-08-27). The state-root certification makes one obligation load-bearing:
   the field enumeration must be proven complete **by an oracle, not by
