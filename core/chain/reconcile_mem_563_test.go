@@ -66,6 +66,9 @@ func TestReconcileMemoryBounded_563(t *testing.T) {
 	if testing.Short() {
 		t.Skip("multi-hundred-MB allocation bench; skipped under -short")
 	}
+	if raceEnabled {
+		t.Skip("live-heap budget is meaningless under -race: shadow memory + pool-reuse suppression inflate the peak ~10x (observed 60 MiB vs 6 MiB clean)")
+	}
 	prop := key(1)
 	vals := []ed25519.PrivateKey{key(2), key(3), key(4), key(5)}
 

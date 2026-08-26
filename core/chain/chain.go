@@ -1775,6 +1775,27 @@ func (c *Chain) Mature() bool {
 // never re-arm. A pure function of the committed blocks (see the everMature field).
 func (c *Chain) EverMature() bool { return c.everMature }
 
+// RegimeState is the derived consensus-regime snapshot a replica holds — the
+// state whose live-vs-replay divergence wedged 474718e-deep's val-d (#572: a
+// restored replica demanded launch-rule anchors for mature commits, forever).
+// Exposed so the daemon can PRINT it at every restore and the next divergence
+// names the map that failed to rebuild, instead of hiding behind a validation
+// error. Diagnostic only; changes no rule.
+type RegimeState struct {
+	EverMature, MatureEpoch bool
+	ValidatorsSeen, Bonded  int
+	EpochStart              uint64
+	EpochSetSize            int
+}
+
+func (c *Chain) Regime() RegimeState {
+	return RegimeState{
+		EverMature: c.everMature, MatureEpoch: c.matureEpoch,
+		ValidatorsSeen: len(c.validatorsSeen), Bonded: len(c.bonded),
+		EpochStart: c.epochStart, EpochSetSize: len(c.epochSet),
+	}
+}
+
 // matureNow is the LIVE maturity metric over the CURRENT bonded set. Mature()
 // wraps it; the latch (everMature) is what gates anchors. The two diverge exactly
 // in the de-maturation window (everMature && !matureNow): the network matured, then
@@ -2085,8 +2106,25 @@ func (c *Chain) ValidateProposal(b *Block) error {
 	}
 	if !c.proposerQualifiedAt(b.ProposerID(), b.Height) {
 		if c.objective() {
+			// Name the ACTUAL disqualifying branch (#572): the 474718e-deep
+			// stall printed "bonded 1048576, needs 1048576" — equal-but-failing
+			// — because the real refusal was frozen-set membership on a
+			// divergent-regime replica, and the bonded/MinBond rendering sent
+			// the attribution down a false trail. Mirror proposerQualifiedAt.
+			id := b.ProposerID()
+			if c.slashed[id] {
+				return fmt.Errorf("%w: proposer %s is slashed (F2 eviction)", ErrLowReputation, id)
+			}
+			if c.epochsEnabled() && c.matureEpoch {
+				return fmt.Errorf("%w: proposer %s not in the frozen epoch set governing height %d (mature epoch; bonded %d)",
+					ErrLowReputation, id, b.Height, c.bonded[id])
+			}
+			if len(c.cfg.Anchors) > 0 && !c.handedOff() {
+				return fmt.Errorf("%w: proposer %s is not a launch anchor (young network proposes anchor-only, #402; bonded %d)",
+					ErrLowReputation, id, c.bonded[id])
+			}
 			return fmt.Errorf("%w: proposer %s bonded %d, needs %d",
-				ErrLowReputation, b.ProposerID(), c.bonded[b.ProposerID()], c.cfg.MinBond)
+				ErrLowReputation, id, c.bonded[id], c.cfg.MinBond)
 		}
 		return fmt.Errorf("%w: proposer %s has %d, needs %d",
 			ErrLowReputation, b.ProposerID(), c.rep(b.ProposerID()), c.cfg.MinProposerRep)
