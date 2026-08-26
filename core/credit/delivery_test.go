@@ -158,6 +158,52 @@ func TestUnwitnessedServeKeepsSelfRecord(t *testing.T) {
 	}
 }
 
+// TestPaidBountyIsNotRecoverableBySupersede is the PE-prescribed guard on the
+// ESCROW skim-routing decision (RULING-PoD-keystone-owner-knobs-2026-08-26,
+// knob 1). Escrow-routing is safe *because* the supersede reversal is floored at
+// what the reserve still holds: credits already paid out as a repair bounty are
+// real durability work and can never be clawed back. If that floor ever
+// regressed, escrow would start minting recoverable balance — and burn would
+// become the correct routing instead. This test is why the floor cannot regress
+// silently (build-immutable #2).
+func TestPaidBountyIsNotRecoverableBySupersede(t *testing.T) {
+	const fee = 50_000
+	l := New(fee, 0)
+	server, fetcher, repairer := id(1), id(2), id(3)
+	obj, chunk := id(7), id(9)
+
+	// A serve routes its skim into the object's reserve…
+	const bytes = 1 << 20
+	l.RecordServeToObject(server, fetcher, obj, chunk, bytes)
+	serveSkim := int64(bytes) * SkimNum / SkimDen
+	if got := l.EscrowBalance(obj); got != serveSkim {
+		t.Fatalf("setup: escrow %d, want %d", got, serveSkim)
+	}
+
+	// …and a repair bounty spends it before any receipt arrives. That credit is
+	// now in the repairer's hands for real durability work.
+	paidOut := l.PayBounty(obj, repairer, serveSkim)
+	if paidOut != serveSkim || l.EscrowBalance(obj) != 0 {
+		t.Fatalf("setup: bounty paid %d, escrow left %d", paidOut, l.EscrowBalance(obj))
+	}
+	repairerBal := l.Balance(repairer)
+
+	// The witnessed receipt lands late. Supersede must NOT claw back the spent
+	// bounty: the escrow reversal floors at the (now empty) reserve.
+	l.RedeemDeliveryCredit(server, fetcher, obj)
+
+	if got := l.Balance(repairer); got != repairerBal {
+		t.Fatalf("supersede clawed back a paid bounty: repairer %d → %d — real repair work must be non-recoverable", repairerBal, got)
+	}
+	feeSkim := int64(fee) * SkimNum / SkimDen
+	if got := l.EscrowBalance(obj); got != feeSkim {
+		t.Fatalf("escrow = %d, want exactly the new fee-skim %d (no negative reserve, no clawback)", got, feeSkim)
+	}
+	if got := l.EscrowBalance(obj); got < 0 {
+		t.Fatalf("escrow went negative (%d) — the reversal floor is gone", got)
+	}
+}
+
 // TestProvisionalCapIsBoundedAndDeterministic drives the supersede tracker past
 // its cap (build-immutable #8: bounded before fast) and pins the documented
 // residual: an evicted lane's later redeem does NOT reverse the self-record

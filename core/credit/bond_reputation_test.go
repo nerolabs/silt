@@ -118,3 +118,55 @@ func TestStandingMustBeSustainedToKeepVoting(t *testing.T) {
 		t.Fatal("a validator still re-proving must keep its seat")
 	}
 }
+
+// TestRootOwnerFeedsOnlyTheDedup is the PE-prescribed guard on the bond-root
+// retention decision (RULING-PoD-keystone-owner-knobs-2026-08-26, knob 3): the
+// D-TIERING keystone may drop a LAPSED bond root's owner record from committed
+// state to keep the snapshot bounded, and that is safe only while `rootOwner`
+// feeds the F1 dedup and nothing else. In particular no SLASH path may consult
+// it — slashing is identity-based, and the anti-griefing guarantee comes from
+// per-identity plot sealing (pinned separately by
+// core/bond TestRedteamG2_PlotBoundToClaimedIdentity: a plot sealed for one
+// identity cannot be answered by another), never from keeping the map forever.
+//
+// If a future mechanism starts reading rootOwner for lifetime provenance, this
+// test is where that assumption must surface — lifetime provenance lives in the
+// archival tier's chain history, never in the live committed state.
+func TestRootOwnerFeedsOnlyTheDedup(t *testing.T) {
+	l := New(50_000, 0)
+	owner, outsider := id(1), id(2)
+	root := id(7)
+
+	// The dedup DOES read it: a root credits standing to at most one identity.
+	l.RecordBondChallenge(owner, root, 64<<20, true, 1)
+	if l.Reputation(owner) <= 0 {
+		t.Fatal("setup: the first prover of a root must earn standing")
+	}
+	l.RecordBondChallenge(outsider, root, 64<<20, true, 1)
+	if got := l.Reputation(outsider); got > 0 {
+		t.Fatalf("F1 dedup broken: a second identity earned %d standing on an already-owned root", got)
+	}
+
+	// No SLASH path reads it. Each slash must dock the identity it names,
+	// identically whether or not that identity owns any bond root.
+	rootless := id(3)
+	l.RecordBondChallenge(rootless, id(8), 64<<20, true, 1) // owns a DIFFERENT root
+	ownerBefore, rootlessBefore := l.Reputation(owner), l.Reputation(rootless)
+
+	l.SlashFalseRepair(owner)
+	l.SlashFalseRepair(rootless)
+	ownerDrop := ownerBefore - l.Reputation(owner)
+	rootlessDrop := rootlessBefore - l.Reputation(rootless)
+	if ownerDrop != rootlessDrop || ownerDrop <= 0 {
+		t.Fatalf("SlashFalseRepair is root-sensitive: owner dropped %d, rootless dropped %d — slashing must be identity-based",
+			ownerDrop, rootlessDrop)
+	}
+
+	// Equivocation buries standing for both, regardless of root ownership.
+	l.SlashEquivocation(owner)
+	l.SlashEquivocation(rootless)
+	if l.Reputation(owner) > 0 || l.Reputation(rootless) > 0 {
+		t.Fatalf("equivocation slash left standing (owner=%d rootless=%d) — it must not depend on root ownership",
+			l.Reputation(owner), l.Reputation(rootless))
+	}
+}

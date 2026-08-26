@@ -9,6 +9,24 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **Owner-knob guards + the relay dispute gate answered** (2026-08-26, per
+  `silt-reviews/principle-engineer/RULING-PoD-keystone-owner-knobs-2026-08-26.md`,
+  which concurs on all three knobs) — two regression locks the PE prescribed.
+  `TestPaidBountyIsNotRecoverableBySupersede`: escrow skim-routing is sound
+  *because* the supersede reversal floors at the remaining reserve, so a bounty
+  already paid for real repair work is never clawed back — if that floor
+  regressed, escrow would begin minting recoverable balance and burn-routing
+  would become the correct choice instead. `TestRootOwnerFeedsOnlyTheDedup`:
+  `rootOwner` feeds the F1 dedup and nothing else (both slash paths dock by
+  identity regardless of root ownership), which is the property that makes the
+  keystone's TTL-lapse option safe; the companion anti-griefing property is
+  already pinned by `core/bond TestRedteamG2_PlotBoundToClaimedIdentity`.
+  Recorded with them: the relay-dispute gate is **signature-verifiable** — the
+  certification forbids adjudicating transit (no transit proof exists), so the
+  only adjudicable quantity is the self-verifying payment chain, and the
+  quorum-TTP direction does not reactivate the verifiable-escrow unknown so long
+  as relay disputes stay scoped to payment. Builder evidence, routed to the
+  relay consult; the three knobs remain the owner's calls.
 - **PoD neutral lane BUILT — the witnessed delivery credit, conserved
   (Phase 4 §7.1)** (2026-08-26, per the certified `docs/design/pod.md`) — a
   banked delivery receipt now settles a conserved balance credit: the fetcher's
