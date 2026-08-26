@@ -104,12 +104,27 @@ real.
      repair, identity closed, post-payout skim already refilling the reserve. The g-series now has
      three samples (432770 cloud / 629390 LOCAL / 531080 cloud). Exit gate met: prepay→(skim)→bounty
      closes on a real network; standing coin-free.
-3. **Phase 3 — Cheap heights (the M1 lever with the M0 dividend).** The near-term #299
-   tiers (Merkle multiproof compression, batch verification — *not* the parked sealing
-   re-architecture) + registration/entry batching, to shrink the per-height cost
-   (~1.5 MB per reg today) and the 360 s publish bound. Exit gate: a deep green sheet
-   (h ≥ 128) with the prune field-exercised at production parameters, and the publish
-   bound re-derived *downward*.
+3. **Phase 3 — Cheap heights (the M1 lever with the M0 dividend). ✅ COMPLETE
+   (2026-08-26): the exit gate CLOSED on the wire by the deep sheet `fe2376a-deep`
+   (30 pass / 1 gap / 0 fail; the gap is a harness observer-arming question, #586).**
+   The gate row: `12-deep-heights` drove h78→**h132** (target 128) at **~48 s/height**
+   (was ~390 s at the arc's start), the #549 Q4 stabilization barrier cleared in 215 s,
+   **the retention prune ENGAGED on every validator at depth** (12b: 59 payload-stripped
+   blocks each, horizon h64) and the pruned chain **converged** (12c, h134+, shared
+   head). Worst RSS 0.65 GiB; zero OOM; every safety/adversarial row green; the economy
+   closed on the wire for the third consecutive sheet. The month of depth findings that
+   gated this — #528 knee, #535 boundary recovery, #549 view-sync, #555 hash-work,
+   #558 era-replay, #561 escape-walk, #563 memory, #572 restore under-latch — is
+   entirely fixed, each with a failing-first local RED home, and the last three runs
+   field-confirmed the stack (evidence PRs #564/#575/#579/#584/#585). *Deliberately
+   NOT built:* the #299 near-tier proof compression — the gate was met on prune +
+   the fixed depth costs alone, so proof-size work stays demand-driven (revisit if a
+   future regime pushes per-height cost back up; the parked sealing re-architecture
+   stays research-gated). *Gate clause owed:* the original gate also asked for the
+   360 s publish bound re-derived **downward** — not yet done (heights got cheap enough
+   without it; at ~48 s/height the computed windows in `scenarios.sh` now have real
+   slack). The re-derivation is a small, evidence-rich follow-up: derive from the
+   fe2376a-deep measured cadence, don't guess (#549-Q3 discipline).
 4. **Phase 4 — Proof-of-Delivery (price bandwidth).** Storage is priced; bandwidth is
    not, so an open relay/gateway is a free-rider choke (the recentralization failure
    mode). Spec + research consult **first**; the hard prerequisite is closing the
@@ -129,12 +144,30 @@ real.
    **economy-ON** configuration — the network people will actually run. Then R1: a
    fully green multi-region grade on the RC config, and V1.
 
-### Immediate next work (updated 2026-08-22 — post-Phase-2 priority order)
+### Immediate next work (updated 2026-08-26 — post-Phase-3 priority order)
 
-The 2026-08-19 list is complete: the local economy e2e shipped and gated two clean graded
-sheets, the `ECONOMY=1` exit-gate run banked Phase 2 (`f35a0f9-18198`, 24/0/0), and the
-same arc closed #503 (the island bond-renewal storm — research-certified fix, PR #508,
-field-confirmed). The current order:
+Phases 1–3 are banked. The depth war is over: `fe2376a-deep` met the Phase 3 gate
+(h132, prune engaged, 0 fail) and closed the whole stall lineage (#549/#560/#561/
+#572/#573). #183's close condition is MET and the issue carries the evidence — the
+close itself is the owner's call and is deliberately HELD. The current order:
+
+1. **Phase 4 opening move — the PoD spec + research consult** (D-M1-PIVOT: spec first,
+   never a switch-flip; the receipt-forgeability residual B3 is the prerequisite to
+   close on paper). D-TIERING's near-term build-gated items (mode flags
+   `--serve-content`/`--archive`, neutral-lane PoD via the inert `DeliveryReceipt`)
+   are now unblocked behind it. The state-root keystone consult
+   (`silt-reviews/research/D-TIERING-state-root-keystone-CONSULT-2026-08-25.md`)
+   remains AWAITING RESEARCH — it is the structural close for the #572 regime-state
+   class and the sharding/snapshot enabler.
+2. **The publish-bound re-derivation** (the owed Phase 3 gate clause — derive downward
+   from fe2376a-deep's measured ~48 s/height cadence).
+3. **#586** — the economy sheet's one open row (skim-observer arming under per-node
+   ledgers; harness-vs-product question filed on the issue).
+4. **Standing tail:** #559 (rides the snapshot-sync design), #583 (e2e flake watch,
+   3rd occurrence = journal attribution), #574 thread 2 (drill quarantine design),
+   #530 (Docker e2e pre-genesis stall), Phase 5 scoping.
+
+The pre-gate order below is retained for context:
 
 1. **Quota gate (external, check FIRST each session):** the us-west1 `IN_USE_ADDRESSES`
    8→16 preference. When it lands, the **SYBILS=8 + MATURING=1 coverage run** becomes
