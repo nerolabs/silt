@@ -9,6 +9,21 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **PoD neutral lane runs in a real daemon — `-accept-delivery-receipts` +
+  `silt swarm receipt`** (2026-08-26). This closes the e2e-tier gap #590 reported
+  honestly: the lane was built and proven at unit and sim tiers, but no daemon
+  ran it. Now both halves exist. **Server:** a validator started with
+  `-accept-delivery-receipts` banks receipts against its own token-issuer key
+  (the bilateral issuer==server shape the certification's settlement answer
+  covers) and settles the conserved delivery credit. **Fetcher:** `silt swarm
+  receipt <root> -peers ID@ADDR` blind-withdraws a retrieval token, signs the
+  delivery receipt, and submits it — the fetcher half of the lane, which the CLI
+  previously had no surface for. The e2e asserts the full path over real TCP and
+  goes past "banked" to assert the **settled credit is non-zero**, so a lane that
+  banked a neutral observable while paying nothing would fail rather than pass
+  quietly. The lane is off by default; a daemon without the flag refuses the
+  receipt and the client reports the refusal instead of a success it did not get.
+  Delivery credit remains balance-only and can never reach standing.
 - **D-TIERING mode flags — `-archive` and `-serve-content`** (2026-08-26, the
   near-term build-gated items of the tier model). **`-archive` is a genuinely new
   capability:** an archival node retains every block's heavy space-time bond proof

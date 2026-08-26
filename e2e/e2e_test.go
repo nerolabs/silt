@@ -187,6 +187,106 @@ func TestContradictoryContentFlagsRefused(t *testing.T) {
 	d.waitFor(t, regexp.MustCompile(`contradict each other`), 20*time.Second)
 }
 
+// waitForInLog polls a daemon's LOG FILE (node/chain narration goes there, not to
+// stdout) until re matches, returning the submatches. The daemon prints the path
+// as "log: info and above → <path>".
+func waitForInLog(t *testing.T, path string, re *regexp.Regexp, timeout time.Duration) []string {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		b, err := os.ReadFile(path)
+		if err == nil {
+			if m := re.FindStringSubmatch(string(b)); m != nil {
+				return m
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for /%s/ in daemon log %s", re, path)
+	return nil
+}
+
+// TestDeliveryReceiptBankedOverTCP is the e2e tier for the PoD neutral lane
+// (docs/design/pod.md §7.1, certified 2026-08-26) — the tier #590 honestly
+// reported as N/A because no daemon ran the lane yet. Now one does: a validator
+// started with -accept-delivery-receipts banks a real fetcher's signed receipt
+// arriving over a real socket, and settles the conserved delivery credit.
+//
+// The peer is both issuer and server — the bilateral shape the certification's
+// settlement answer covers. The client withdraws a token blindly, signs a
+// receipt, and submits it; the daemon verifies it against its own issuer key,
+// banks it, and pays itself the fee-minus-skim.
+func TestDeliveryReceiptBankedOverTCP(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e spawns processes; skipped under -short")
+	}
+	a := startDaemon(t, "receipt-banker",
+		"-listen", "127.0.0.1:0", "-store", t.TempDir(),
+		"-serve-registry", "127.0.0.1:0", "-validator",
+		"-accept-delivery-receipts",
+		"-objective=false", "-min-rep", "100", "-quorum", "1",
+		"-bond", "8M", "-min-bond-floor", "0",
+		"-capacity", "1G", "-mdns=false", "-id-seed", "4801")
+	a.waitFor(t, regexp.MustCompile(`delivery receipts: ACCEPTING`), 20*time.Second)
+	logPath := a.waitFor(t, regexp.MustCompile(`log: info and above → (\S+)`), 20*time.Second)[1]
+	peer := a.waitFor(t, rePeer, 20*time.Second)
+	bootstrapA := peer[1] + "@" + peer[2]
+
+	// A root the fetcher attests it received. The receipt carries no possession
+	// proof by certified design, so no bytes need to move for THIS assertion —
+	// what is under test is that a real daemon verifies, banks, and settles.
+	root := strings.Repeat("ab", 32)
+
+	out := runClient(t, "swarm", "receipt", root, "-peers", bootstrapA)
+	if !strings.Contains(out, "delivery receipt banked") {
+		t.Fatalf("receipt was not banked over TCP; client said: %s", out)
+	}
+
+	// Banking is only half of it — assert the daemon actually SETTLED the
+	// conserved credit. The node's own log carries the paid amount, and it must
+	// be positive: the fee the fetcher paid at withdrawal, less the durability
+	// skim. A zero would mean the lane banked a neutral observable and paid
+	// nothing — the silent no-op this assertion exists to catch.
+	m := waitForInLog(t, logPath, regexp.MustCompile(`delivery receipt banked .*credit=(\d+)`), 20*time.Second)
+	if m[1] == "0" {
+		t.Fatal("the receipt banked but settled credit=0 — the conserved delivery credit did not pay (is a ledger wired?)")
+	}
+
+	// The token is one-time: replaying the SAME flow mints a fresh token, so it
+	// must ALSO bank (a second genuine delivery), while the daemon's
+	// double-spend set is what stops a replayed serial. Assert the honest
+	// second delivery works — the replay defense is pinned at the unit tier.
+	out2 := runClient(t, "swarm", "receipt", root, "-peers", bootstrapA)
+	if !strings.Contains(out2, "delivery receipt banked") {
+		t.Fatalf("a second genuine delivery must also bank; client said: %s", out2)
+	}
+}
+
+// TestDeliveryReceiptRefusedWhenLaneOff: the lane is OFF by default, so a daemon
+// that never opted in refuses to bank — and the client says so plainly instead
+// of reporting a success it did not get.
+func TestDeliveryReceiptRefusedWhenLaneOff(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e spawns processes; skipped under -short")
+	}
+	a := startDaemon(t, "no-receipts",
+		"-listen", "127.0.0.1:0", "-store", t.TempDir(),
+		"-serve-registry", "127.0.0.1:0", "-validator",
+		"-objective=false", "-min-rep", "100", "-quorum", "1",
+		"-bond", "8M", "-min-bond-floor", "0",
+		"-capacity", "1G", "-mdns=false", "-id-seed", "4802")
+	peer := a.waitFor(t, rePeer, 20*time.Second)
+	bootstrapA := peer[1] + "@" + peer[2]
+
+	out, err := runClientAllowErr(t, "swarm", "receipt", strings.Repeat("cd", 32), "-peers", bootstrapA)
+	if err == nil {
+		t.Fatalf("a daemon without -accept-delivery-receipts must not bank a receipt; client succeeded with: %s", out)
+	}
+	if !strings.Contains(out, "NOT banked") {
+		t.Fatalf("the refusal must be legible to the caller, got: %s", out)
+	}
+}
+
 // TestArchiveTierAnnouncesRetention (D-TIERING §3): an archival node announces
 // the tier it is running, so an operator can see from the log that this box is
 // carrying O(all history) heavy payload deliberately — not by accident.

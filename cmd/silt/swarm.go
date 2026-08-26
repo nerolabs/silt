@@ -13,6 +13,7 @@ import (
 	"github.com/nerolabs/silt/adapters/discovery"
 	"github.com/nerolabs/silt/core/blindtoken"
 	"github.com/nerolabs/silt/core/crypto"
+	"github.com/nerolabs/silt/core/demand"
 	"github.com/nerolabs/silt/core/link"
 	"github.com/nerolabs/silt/core/node"
 	"github.com/nerolabs/silt/core/pipeline"
@@ -125,7 +126,7 @@ func acquirePublishToken(nd *node.Node, validators []ports.NodeID, k int, cont f
 // the data; the client keeps nothing.
 func cmdSwarm(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: silt swarm add|get ... -peers ID@ADDR[,...] -registry URL")
+		return fmt.Errorf("usage: silt swarm add|get|holders|receipt ... -peers ID@ADDR[,...] -registry URL")
 	}
 	switch args[0] {
 	case "add":
@@ -134,8 +135,10 @@ func cmdSwarm(args []string) error {
 		return swarmGet(args[1:])
 	case "holders":
 		return swarmHolders(args[1:])
+	case "receipt":
+		return swarmReceipt(args[1:])
 	default:
-		return fmt.Errorf("unknown swarm command %q (add, get, holders)", args[0])
+		return fmt.Errorf("unknown swarm command %q (add, get, holders, receipt)", args[0])
 	}
 }
 
@@ -398,4 +401,94 @@ func swarmGet(args []string) error {
 		return getErr
 	}
 	return f.Close()
+}
+
+// swarmReceipt is the fetcher half of the PoD neutral lane (docs/design/pod.md,
+// certified 2026-08-26): having received and content-verified an object's bytes
+// from a server, the fetcher spends a blind-withdrawn retrieval token by signing
+// a delivery receipt and submitting it. The server banks it and settles the
+// conserved delivery credit — the fee this fetcher already paid at withdrawal,
+// less the durability skim.
+//
+// The peer is BOTH issuer and server, which is the bilateral shape the
+// certification's settlement answer covers (per-node bookkeeping suffices for
+// tit-for-tat; a credit a third operator must honor is a later, committed-state
+// question).
+//
+// The receipt carries no possession proof, by certified design: an honest
+// fetcher signs only after the fetch path re-verified the bytes against their
+// content address, and forging one is unprofitable because the credit is
+// conserved, not because possession is proven. So this command attests a
+// delivery the caller performed; it does not fetch.
+func swarmReceipt(args []string) error {
+	fs := flag.NewFlagSet("swarm receipt", flag.ExitOnError)
+	peers := fs.String("peers", "", "the serving peer, which also issues its retrieval tokens: ID@HOST:PORT (required)")
+	pos := parseFlexible(fs, args)
+	if len(pos) != 1 || *peers == "" {
+		return fmt.Errorf("usage: silt swarm receipt <root-hash> -peers ID@ADDR")
+	}
+	root, err := ports.ParseHash(pos[0])
+	if err != nil {
+		return fmt.Errorf("root hash: %w", err)
+	}
+	ps, err := discovery.ParseList(*peers)
+	if err != nil {
+		return err
+	}
+	if len(ps) != 1 {
+		return fmt.Errorf("swarm receipt takes exactly one -peers entry (the server that delivered), got %d", len(ps))
+	}
+	server := ps[0].ID
+
+	e, run, err := joinSwarm(*peers, 0)
+	if err != nil {
+		return err
+	}
+	defer e.close()
+
+	// The issuer key must be known before a blind withdrawal can be unblinded.
+	var keyErr error
+	if rerr := run(func(done func()) {
+		e.nd.FetchIssuerKey(server, func(err error) { keyErr = err; done() })
+	}); rerr != nil {
+		return rerr
+	}
+	if keyErr != nil {
+		return fmt.Errorf("fetch issuer key from %s: %w", server, keyErr)
+	}
+
+	var tok demand.Token
+	var tokErr error
+	if rerr := run(func(done func()) {
+		e.nd.AcquireDemandToken(rand.Reader, server, func(t demand.Token, err error) {
+			tok, tokErr = t, err
+			done()
+		})
+	}); rerr != nil {
+		return rerr
+	}
+	if tokErr != nil {
+		return fmt.Errorf("acquire retrieval token: %w", tokErr)
+	}
+
+	var credited bool
+	var subErr error
+	if rerr := run(func(done func()) {
+		e.nd.SubmitDeliveryReceipt(server, tok, root, func(c bool, err error) {
+			credited, subErr = c, err
+			done()
+		})
+	}); rerr != nil {
+		return rerr
+	}
+	if subErr != nil {
+		return fmt.Errorf("submit delivery receipt: %w", subErr)
+	}
+	if !credited {
+		// Not an error the caller can fix by retrying: the token is spent either
+		// way (a consumed token is never replayable), so say so plainly.
+		return fmt.Errorf("delivery receipt was NOT banked by %s (the token is spent regardless; check that the server runs -accept-delivery-receipts)", server)
+	}
+	fmt.Printf("delivery receipt banked by %s for %s\n", server, root)
+	return nil
 }
