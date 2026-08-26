@@ -567,6 +567,9 @@ func cmdDaemon(args []string) error {
 	// load; reputation judged from this daemon's own ledger observations.
 	var attesterIDs []ports.NodeID
 	var chainPath string
+	// Assigned in the validator block once the chain exists; a no-op on a
+	// chain-less daemon so the chain-gated call sites below never nil-panic.
+	saveChain := func(string) {}
 	ledger := credit.New(50_000, 500_000) // starter grant so a fresh publisher can pay token fees
 	nd0ledger := ledger                   // wired onto the node below
 	if *validator {
@@ -696,6 +699,21 @@ func cmdDaemon(args []string) error {
 			}
 		}
 		nd.EnableChain(ch, ident.Signer())
+		// saveChain (assigned below, declared at daemon scope) persists the replica AND prints the regime snapshot + head it
+		// went down with (#572 premise-(a)/(c) discriminator): paired with the
+		// restore-time regime line, the next under-latch names its layer in one
+		// diff — last-save regime ≠ restore regime ⇒ store/replay; equal-but-
+		// wedged ⇒ downstream of restore; head hash pins the content itself.
+		saveChain = func(why string) {
+			if err := chainstore.Save(chainPath, ch.Blocks(0)); err != nil {
+				fmt.Fprintln(os.Stderr, "chain save:", err)
+				return
+			}
+			head, next := ch.Head()
+			r := ch.Regime()
+			fmt.Printf("chain: saved %d block(s) [%s] head=%d:%s (everMature=%v matureEpoch=%v seen=%d bonded=%d epochStart=%d epochSet=%d)\n",
+				next, why, next-1, head, r.EverMature, r.MatureEpoch, r.ValidatorsSeen, r.Bonded, r.EpochStart, r.EpochSetSize)
+		}
 		// Durable never-sign-twice watermark (#397 Q1b): the mark is fsync'd
 		// BEFORE any consensus signature is released, so a crash/restart cannot
 		// make this validator contradict a signature it already shipped — which
@@ -806,9 +824,7 @@ func cmdDaemon(args []string) error {
 				// to refuse a long-range reorg. Publish it / cross-check across nodes.
 				fmt.Printf("  checkpoint: %d:%s\n", b.Height, b.Hash())
 			}
-			if err := chainstore.Save(chainPath, ch.Blocks(0)); err != nil {
-				fmt.Fprintln(os.Stderr, "chain save:", err)
-			}
+			saveChain("commit")
 		})
 		for _, s := range strings.Split(*attesters, ",") {
 			if strings.TrimSpace(s) == "" {
@@ -1144,9 +1160,7 @@ func cmdDaemon(args []string) error {
 				// gossip and rejoins (F1). Persist each catch-up.
 				nd.StartChainSync(attesterIDs, func(added int) {
 					fmt.Printf("chain: caught up %d block(s) from peers\n", added)
-					if err := chainstore.Save(chainPath, nd.Chain().Blocks(0)); err != nil {
-						fmt.Fprintln(os.Stderr, "chain save:", err)
-					}
+					saveChain("catch-up")
 				})
 				// -forge-block / -lowbond-propose: RED-TEAM / TEST HARNESS — send ONE crafted
 				// proposal to a peer and report whether the honest validator refused it, proving
@@ -1297,9 +1311,7 @@ func cmdDaemon(args []string) error {
 									return
 								}
 								fmt.Printf("takedown: proposed on-chain revocation of %s\n", root)
-								if serr := chainstore.Save(chainPath, nd.Chain().Blocks(0)); serr != nil {
-									fmt.Fprintln(os.Stderr, "chain save:", serr)
-								}
+								saveChain("takedown")
 							})
 						}
 						clk.AfterFunc(2*ports.Second, tryRevoke)
