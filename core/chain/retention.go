@@ -97,7 +97,15 @@ func (c *Chain) pruneFloor() uint64 {
 // deep-cold node beyond the WS window is told to use a checkpoint/archive (PE ruling
 // slice4/5-sync-redirect-2026-08-18). Safe to call on every commit — pruneFloor is 0 (no-op)
 // without BFT finality or with a degenerate BondTTL.
+//
+// The ARCHIVAL tier (Config.Archive, `-archive`) opts out entirely and keeps every heavy
+// proof to genesis, so it can serve the deep history a pruning swarm has shed. That is a
+// retention choice only — trustFloor and the horizon are untouched, so an archival node
+// validates identically to a pruning one.
 func (c *Chain) PruneBelowHorizon() int {
+	if c.cfg.Archive {
+		return 0 // archival tier: retain every heavy proof to genesis (D-TIERING §3)
+	}
 	floor := c.pruneFloor()
 	if floor == 0 {
 		return 0

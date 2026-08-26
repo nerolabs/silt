@@ -160,6 +160,21 @@ type Config struct {
 	// 0 = the DefaultBondRegHeadWindow. Set 1 to restore the strict single-head rule.
 	// The exact bound vs the anti-release/reseal window is research-gated.
 	BondRegHeadWindow int
+	// Archive makes this node the ARCHIVAL tier (D-TIERING §3/§4, `-archive`):
+	// it RETAINS every block's heavy space-time bond proof to genesis instead of
+	// shedding it below the rolling retention horizon, so it can serve deep
+	// history to a node that fell behind the swarm's prune horizon (the
+	// ErrNeedCheckpoint / #559 true-loss case an archive is the answer to).
+	//
+	// It is a RETENTION choice ONLY — never a validity one. An archival node
+	// validates by exactly the same rules as a pruning node (trustFloor and the
+	// retention horizon are untouched), so it can never accept a block a pruning
+	// peer would reject, and the tiers cannot fork against each other.
+	//
+	// Costs O(all history) resident heavy payload, which is exactly what
+	// build-immutable #8 forbids on the 1 vCPU / 2 GB box — the tier model
+	// exists so the edge node does NOT carry this. Off by default.
+	Archive bool
 	// EpochBlocks freezes the MATURE-phase validator set per epoch (#357 research
 	// certification, Condition A): when > 0 in objective mode, the post-handoff
 	// finality quorum (validatorSetSize / RequiredQuorum), attester/proposer

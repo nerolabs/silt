@@ -66,6 +66,8 @@ func cmdDaemon(args []string) error {
 	repairInterval := fs.Duration("repair-interval", 60*time.Second, "how often a caretaker sweeps each -care'd root for lost shards (probe → reconstruct past the slack). A liveness cadence, not a security parameter — the repair-bounty legs stay structural at any setting. Lower it on a small/local swarm so repair (and the e2e proof) fires in seconds")
 	capacity := fs.String("capacity", "5G", "storage pledge, e.g. 2G, 500M (matches the client's default so the node contributes measurable, countable storage; \"\" = unlimited but doesn't count toward network storage)")
 	freeload := fs.Bool("freeload", false, "role separation (#47): serve the registry/relay/routing role but REFUSE to store or serve content — for public-infrastructure operators who run a rendezvous registry without being conscripted into hosting arbitrary content. The node still carries DHT routing; it just holds and serves no chunks")
+	serveContent := fs.Bool("serve-content", true, "D-TIERING capability axis: hold and serve content shards (the edge tier's core contribution, bounded by -capacity). ON by default — this is what an ordinary node does. The explicit form exists so a tier profile composes positively (`-serve-content -archive=false -validator=false` is the transient edge box) rather than as a double negative. `-serve-content=false` is the same refusal as -freeload; passing both with opposite senses is refused rather than silently resolved")
+	archive := fs.Bool("archive", false, "D-TIERING ARCHIVAL tier: retain every block's heavy space-time bond proof to genesis instead of shedding it below the rolling retention horizon, so this node can serve the deep history a pruning swarm has already dropped (what a node stranded past the prune horizon needs — #559's true-loss residual, ErrNeedCheckpoint). RETENTION ONLY, never validity: an archival node validates by exactly the same rules as a pruning one, so the tiers cannot fork against each other. Costs O(all history) resident payload — build-immutable #8 forbids it on the 1 vCPU / 2 GB box, which is the whole reason the tier model exists. Off by default")
 	registryOnly := fs.Bool("registry-only", false, "the LEANEST public-registry role (#47): serve a file-backed registry over HTTPS and construct NO storage node at all — no DHT, chunk store, chain, or caretaker. Unlike -freeload (a full routing node that refuses to host content), this builds nothing but the registry server, so a public-infrastructure operator runs a rendezvous registry at minimal cost. Needs -serve-registry <addr>")
 	// Empty default is deliberate: no built-in seed domain (neutral infra,
 	// community-run) — see the discovery package doc (#27 Part A).
@@ -412,9 +414,32 @@ func cmdDaemon(args []string) error {
 		nd.SetBlockedPeers(blocked)
 		fmt.Printf("⚠ PARTITION: -block-peers set — dropping all traffic to/from %d peer(s) (test-harness / field-drill, never a real deployment)\n", len(blocked))
 	}
-	if *freeload {
+	// The content-serving axis has two spellings: the positive -serve-content
+	// (D-TIERING's composable form) and the older negative -freeload. They must
+	// agree — an operator who passes both with opposite senses stated two
+	// different intents, so refuse loudly rather than pick one (S3: no silent
+	// resolution of a contradictory config).
+	serveContentSet := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "serve-content" {
+			serveContentSet = true
+		}
+	})
+	refusesContent, err := resolveContentServing(*serveContent, serveContentSet, *freeload)
+	if err != nil {
+		return err
+	}
+	if refusesContent {
 		nd.SetFreeload(true)
-		fmt.Println("freeload: ON — this node refuses to store or serve content (registry/relay/routing only, #47)")
+		// Both spellings on one line, on purpose: `freeload: ON` is a STABLE
+		// marker the e2e harness (and any operator tooling) greps for, so the
+		// D-TIERING rename must not silently break it — an announced line is an
+		// observable contract (S5). The new positive-axis name leads because that
+		// is how the tier profile is now composed.
+		fmt.Println("serve-content: OFF (freeload: ON) — this node refuses to store or serve content (registry/relay/routing only, #47)")
+	}
+	if *archive {
+		fmt.Println("archive: ON — ARCHIVAL tier: every heavy bond proof retained to genesis, so this node can serve the deep history a pruning swarm has shed (O(all history) resident — not for the 2 GB box)")
 	}
 
 	// -log/-debug: dlog adds the daemon's own milestones (discovery,
@@ -661,6 +686,7 @@ func cmdDaemon(args []string) error {
 			EpochBlocks:            effEpoch,
 			WSCheckpoint:           wsCP,
 			LivenessRecoveryHeight: *livenessRecoveryHeight,
+			Archive:                *archive,
 		}, ledger.Reputation)
 		if *allowPublisher {
 			fmt.Println("publisher: durable Publisher entries PERMITTED — publishes may record permanent linkage (trusted deployment)")
@@ -1376,6 +1402,24 @@ func cmdDaemon(args []string) error {
 // commits, catch-up, caretaker sweeps) is exactly what an operator must be
 // able to see, so it narrates the normal path by default rather than staying
 // silent until someone knows to ask (acceptance F7). A non-validator with
+// resolveContentServing settles the D-TIERING content-serving axis from its two
+// spellings: the positive -serve-content (the composable tier form) and the older
+// negative -freeload. It reports whether the node REFUSES to store or serve
+// content.
+//
+// The two must agree. An operator who passes -freeload together with an EXPLICIT
+// -serve-content=true stated two contradictory intents, and silently picking one
+// would give them a node doing the opposite of half their command line — so this
+// refuses loudly instead (S3: a config contradiction fails visibly, never
+// silently resolved). An unset -serve-content simply defaults true, so plain
+// -freeload keeps working exactly as before.
+func resolveContentServing(serveContent, serveContentSet, freeload bool) (refuses bool, err error) {
+	if freeload && serveContentSet && serveContent {
+		return false, fmt.Errorf("-freeload and -serve-content=true contradict each other: -freeload IS the refusal to serve content. Pass one (-serve-content=false has the same effect as -freeload)")
+	}
+	return freeload || !serveContent, nil
+}
+
 // neither flag keeps logging off (LogError is a harmless placeholder the
 // caller ignores when on is false).
 func resolveLogLevel(name string, debug, validatorDefault bool) (ports.LogLevel, bool, error) {
