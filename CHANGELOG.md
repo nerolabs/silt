@@ -9,6 +9,17 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **PHASE 3 BANKED — the deep-heights exit gate is MET** (2026-08-26, run
+  `fe2376a-deep`: 30 pass / 1 gap / 0 fail) — `12-deep-heights` drove h78→h132
+  (target 128) at ~48 s/height, the #549 Q4 barrier stabilized in 215 s, the
+  retention prune engaged on every validator at depth and the pruned chain
+  converged (12b/12c), worst RSS 0.65 GiB, zero OOM, and the S7 economy closed on
+  the wire for the third consecutive sheet. Field-confirms and closes the entire
+  depth-stall lineage (#549, #560, #561, #572, #573); #183's close condition is
+  met (issue held open by owner directive). ROADMAP updated: Phase 3 ✅, the
+  publish-bound re-derivation carried as the owed gate clause, Phase 4 (PoD
+  spec-first) is the next phase. Evidence: `integration/cloudtest/report-fe2376a-deep.md`
+  (artifacts PR #585).
 - **#572: save-side regime line — restore/save PAIRS make the next under-latch
   self-locating** (2026-08-26) — every chain persist (commit / catch-up / takedown)
   now prints the same regime snapshot as the restore line plus the head it went down
