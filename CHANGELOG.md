@@ -9,6 +9,29 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **State-field completeness ratchet — the keystone's RED home #1, part 1**
+  (2026-08-27). The state-root certification makes one obligation load-bearing:
+  the field enumeration must be proven complete **by an oracle, not by
+  inspection**, because inspection already missed fields. The tempting test —
+  capture the listed fields, restore, compare — is inspection wearing a test
+  costume: it can only test the list it was handed, so field #17 lands green and
+  silent (the #558 class). Instead
+  `core/chain/modelcheck_state_completeness_test.go` cross-binds **three**
+  enumerations by reflecting over the live `Chain` struct: the classification of
+  every field, the populate helper, and **`adopt` — product code on the reorg
+  path**. A new field fails classification; once classified it fails populate;
+  then it fails `adopt`. Proven failing-first by three ablations (add an
+  unclassified field / drop a field from `adopt` / drop one from populate), each
+  RED then reverted. **It found a live disagreement:** `Chain` has 25 fields,
+  the certification enumerates 16, and `adopt` already copies 19 — the extra
+  `revLog` and `epochStart` are written from block history but absent from the
+  certified set. `revLog` is the sharp one: it is a **history-dependent**
+  append-only transparency log backing the H9 non-globality proofs, so a
+  snapshot-booted node cannot rebuild it from set-valued state — which the
+  certification's history-independence argument for choosing the SMT does not
+  address. Consensus engine untouched; I1–I5 untouched (the tests only read
+  state). Reasoning, findings and the still-owed differential half:
+  `docs/thinking/2026-08-27-snapshot-boot-equivalence-oracle-design.md`.
 - **The keystone SMT spike — `pokt-network/smt` proven, not just read**
   (2026-08-26). The state-root library recommendation rested on quoted source
   rather than executed code, and was explicitly void if a spike disagreed.

@@ -122,3 +122,93 @@ field, no consensus surface. This is deliberate:
 - If (B) cannot classify a field without reading product semantics that are
   genuinely local (the sign-mark class), that exclusion is recorded with its
   reason in code, and it is a claim the next reviewer can challenge.
+
+---
+
+## What shipped (part 1) and what it found
+
+`core/chain/modelcheck_state_completeness_test.go` implements (B) — the
+completeness ratchet. It cross-binds **three** enumerations with reflection over
+the live `Chain` struct, so none can drift:
+
+1. `stateClass` — every field classified `committed` / `input` / `injected` /
+   `transient`, each non-committed one carrying **the claim being made**.
+2. `populateCommitted` — a distinctive value per committed field.
+3. **`adopt` (product code, `chain.go:3172`)** — the reorg-path state swap.
+
+The ratchet: a new `Chain` field fails (1) until classified; classified
+`committed`, it fails (2) until populated; then it fails (3) until `adopt`
+copies it.
+
+**Proven failing-first by ablation** (each reverted immediately after):
+
+| Ablation | Result |
+|---|---|
+| Add an unclassified field to `Chain` | **RED** — `Chain has 1 unclassified field(s): [ablationNewState]` |
+| Delete `c.bondDomain = t.bondDomain` from `adopt` | **RED** — `adopt() did not transfer 1 committed field(s): [bondDomain]` |
+| Drop `epochStart` from `populateCommitted` | **RED** — `populateCommitted left 1 committed field(s) at zero` |
+
+### Finding 1 — product code and the certification already disagree
+
+`Chain` has **25** fields. The certification enumerates **16** as committed
+state. `adopt` — which is the existing, load-bearing answer to "what is derived
+state?" — copies **19**: the 16, plus `blocks`, plus **`revLog`** and
+**`epochStart`**.
+
+So the disagreement predates this test, and it sits in the reorg path. Both
+extra fields are written by `apply`/`rotateEpoch` from block history, which is
+the certification's own definition of committed state. They are classified
+`committed` here, with the discrepancy recorded in the classification itself.
+
+`epochStart` is the milder case: its only reader is `Regime()`, the permanent
+save/restore health instrumentation, so losing it misreports restore health
+rather than diverging on validity. It still belongs in the snapshot.
+
+### Finding 2 — `revLog` is history-dependent, and that is a keystone problem
+
+This one is not bookkeeping. The certification's **Q1** selected the SMT over a
+sorted-key Merkle on one decisive argument:
+
+> the SMT root is "a deterministic root digest, regardless of the order in which
+> keys have been inserted or removed … history independence is *not* necessarily
+> provided by a sorted Merkle tree" … silt's soundness story *requires* the root
+> be identical however the state was reached — a snapshot-booted node never
+> replayed the history.
+
+But `revLog` is a **CT-style append-only transparency log** whose root is a
+function of **append order**, not of a key→value set (`apply` appends at
+`chain.go:2736`/`2743`). It backs `RevocationLogRoot` / `InclusionProof` /
+`ConsistencyProof` — the API that immutable #5's *provable non-globality* rests
+on. A snapshot-booted validator that never replayed **cannot reconstruct it from
+set-valued state.**
+
+So the keystone must choose, and the certification does not address it:
+
+- **(i) carry the whole log in the snapshot** — bounded by revocations, which
+  Q3 rates as slow-growing; snapshot-booted nodes keep serving proofs; or
+- **(ii) commit only the log root as a scalar leaf** — cheap, but a
+  snapshot-booted node can serve the root and *not* inclusion/consistency
+  proofs, which weakens the H9 guarantee for exactly the nodes that bootstrap
+  fastest.
+
+Per the certification's own instruction — *treat any field discovered later by
+that oracle as a soundness bug, not an optimization* — this is filed rather than
+absorbed.
+
+## Honest scope — what is NOT yet built
+
+This is **part 1 of RED home #1**. It proves the enumeration cannot silently
+drift. It does **not** yet prove the enumerated set is *sufficient* — that is
+the differential half, still owed:
+
+- **Replay-boot vs snapshot-boot equivalence**: build a rich history, boot one
+  replica by replay and one by restoring the captured state, drive both with an
+  identical adversarial schedule, assert identical verdicts and state.
+- **Leave-one-out ablation** (option (C) above): for each committed field,
+  snapshot everything *except* it and assert the snapshot-booted node
+  **diverges**. A field whose omission never diverges is a finding either way —
+  either it does not belong in the root, or the schedule is not adversarial
+  enough.
+
+Nothing in part 1 touches the consensus engine. **I1–I5 untouched** — the tests
+only read state and call the existing `adopt`.
