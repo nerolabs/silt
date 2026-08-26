@@ -151,21 +151,37 @@ Phases 1–3 are banked. The depth war is over: `fe2376a-deep` met the Phase 3 g
 #572/#573). #183's close condition is MET and the issue carries the evidence — the
 close itself is the owner's call and is deliberately HELD. The current order:
 
-1. **Phase 4 opening move — the PoD spec + research consult** (D-M1-PIVOT: spec first,
-   never a switch-flip; the receipt-forgeability residual B3 is the prerequisite to
-   close on paper). D-TIERING's near-term build-gated items (mode flags
-   `--serve-content`/`--archive`, neutral-lane PoD via the inert `DeliveryReceipt`)
-   are now unblocked behind it. The state-root keystone consult
-   (`silt-reviews/research/D-TIERING-state-root-keystone-CONSULT-2026-08-25.md`)
-   remains AWAITING RESEARCH — it is the structural close for the #572 regime-state
-   class and the sharding/snapshot enabler.
-2. **The publish-bound re-derivation** (the owed Phase 3 gate clause — derive downward
+1. **Phase 4 opening move — ✅ DONE (2026-08-26): the PoD spec shipped
+   ([design/pod.md](docs/design/pod.md)) and research CERTIFIED it same day**
+   (`silt-reviews/research/research-outcome/PoD-neutral-lane-B3-close-RESEARCH-CERTIFICATION-2026-08-26.md`):
+   the conservation close is sound (the only structural wash defense), with three
+   folded amendments — the supersede rule over the `RecordServe` self-mint is
+   load-bearing, the PoR leg is dropped in the neutral lane, and strong-form
+   Camenisch–Shoup is not adoptable (quorum-TTP/VSS is the route if ever). **The
+   state-root keystone consult is ALSO CERTIFIED**
+   (`silt-reviews/research/research-outcome/D-TIERING-state-root-keystone-RESEARCH-CERTIFICATION-2026-08-26.md`):
+   compact SMT, one root over all 16 fields, era-3 rides the #506 version-gate as
+   tenant #2, rebuild-at-boot, self-checkpoint closes #559's crash-reboot case —
+   with three load-bearing obligations (snapshot-boot-equivalence oracle proves
+   field completeness; incremental-cost oracle; era-2→3 Reload test ships ahead).
+2. **The PoD neutral-lane BUILD** (per the certified [design/pod.md](docs/design/pod.md)
+   §7): firewall failing-first test → supersede rule + no-PoR receipt →
+   `EnableDemandBank` + the conserved balance-lane consumer → the D-TIERING mode
+   flags (`--serve-content`/`--archive`). Owner knobs held: skim burn-vs-escrow
+   (escrow leaned), the relay dispute-TTP question (deferred with relay).
+3. **The state-root keystone BUILD track** (larger; sequence against 2): SMT
+   library call (`pokt-network/smt` closest-proof shape vs JMT port), the three
+   certified oracles as failing-first RED homes, era-3 gate as #506 tenant #2.
+   Owner/builder calls held: lifetime-owner vs TTL-lapse for `bondRootOwner`
+   (both C2-sound), rebuild-vs-persist (a build-immutable-#8 measurement).
+4. **The publish-bound re-derivation** (the owed Phase 3 gate clause — derive downward
    from fe2376a-deep's measured ~48 s/height cadence).
-3. **#586** — the economy sheet's one open row (skim-observer arming under per-node
+5. **#586** — the economy sheet's one open row (skim-observer arming under per-node
    ledgers; harness-vs-product question filed on the issue).
-4. **Standing tail:** #559 (rides the snapshot-sync design), #583 (e2e flake watch,
-   3rd occurrence = journal attribution), #574 thread 2 (drill quarantine design),
-   #530 (Docker e2e pre-genesis stall), Phase 5 scoping.
+6. **Standing tail:** #559 (common crash-reboot case now closed by the keystone
+   cert's Q7 self-checkpoint; true-loss residual stays operator-anchored), #583
+   (e2e flake watch, 3rd occurrence = journal attribution), #574 thread 2 (drill
+   quarantine design), #530 (Docker e2e pre-genesis stall), Phase 5 scoping.
 
 The pre-gate order below is retained for context:
 
