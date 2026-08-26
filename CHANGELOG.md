@@ -18,13 +18,20 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `"non-membership proof on related leaf"` guard never fires, so the branch the
   soundness rests on is exercised rather than assumed. Measured cost is stable
   across 1k–1M keys: **2.24 nodes and 218 stored bytes per key**, ~900-byte
-  proofs, and applying 100 changed keys costs under 3× more at 100× the state —
-  the certified `O(changed·log n)` shape, not the #555 `O(state)` scar. **The
-  finding: in-memory residency is 752 B/key, 3.4× the stored payload**, so at
-  registry scale the trie needs a disk-backed `MapStore` (a five-method
-  interface) regardless of the rebuild-vs-persist durability call. The
-  dependency adds **zero new indirect dependencies** and no product package
-  imports it. Floor-box wall-clock is still owed and is called out as such.
+  proofs, and applying 100 changed keys costs **2.37 → 3.01 → 3.80 ms** across
+  1k → 100k state — 1.27× per 10× of state against the 1.25–1.33× `log n`
+  predicts, so the certified `O(changed·log n)` shape holds and the #555
+  `O(state)` scar does not return. **Measured on a real 1 vCPU / 2 GB floor box**
+  (dedicated `e2-custom-1-2048`, no swap), which confirmed the laptop projection
+  to the digit: 751.6 MB heap at 1M vs 751.7 MB on the M4. **The finding: the
+  in-memory backend is disqualified.** Residency is 752 B/key — 3.4× the 218 B
+  stored payload — and the floor box **OOM-killed** the trie at 2M entries
+  (anon-rss 1.68 GiB); even 1M would not fit alongside the flixz daemon's
+  1060 MB. The library is adopted, the reference in-memory backend is rejected:
+  the trie needs a disk-backed `MapStore` (five methods), which is the only
+  configuration that survives build-immutable #8. Boot rebuild measured at ~22 s
+  per 1M, a **lower bound** pending the real disk store. The dependency adds
+  **zero new indirect dependencies** and no product package imports it.
   Reasoning and numbers:
   `docs/thinking/2026-08-26-keystone-smt-spike-results.md`.
 - **PoD neutral lane runs in a real daemon — `-accept-delivery-receipts` +

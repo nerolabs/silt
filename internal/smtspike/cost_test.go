@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -67,11 +69,28 @@ func TestFloorBoxProfile(t *testing.T) {
 		t.Skip("set SILT_SMT_PROFILE=1 to run the floor-box cost profile")
 	}
 
+	// SILT_SMT_SCALES overrides the sweep, e.g. "1000,10000". On the floor box
+	// the top scale may legitimately exhaust the machine, so each scale is run
+	// as its own process there: an OOM at 1M must not destroy the results
+	// already gathered at 1k-100k. An OOM IS a result — it is the residency
+	// finding arriving as a field number rather than a projection.
+	scales := costScales
+	if raw := os.Getenv("SILT_SMT_SCALES"); raw != "" {
+		scales = nil
+		for _, f := range strings.Split(raw, ",") {
+			n, err := strconv.Atoi(strings.TrimSpace(f))
+			if err != nil {
+				t.Fatalf("SILT_SMT_SCALES: %q: %v", f, err)
+			}
+			scales = append(scales, n)
+		}
+	}
+
 	t.Logf("host: GOARCH=%s GOOS=%s NumCPU=%d", runtime.GOARCH, runtime.GOOS, runtime.NumCPU())
 	t.Logf("%-10s %10s %9s %8s %8s %8s %9s %9s %7s",
 		"n", "build", "per-key", "heapMB", "nodes/k", "storeB/k", "prove", "verify", "proofB")
 
-	for _, n := range costScales {
+	for _, n := range scales {
 		func() {
 			var before runtime.MemStats
 			runtime.GC()
