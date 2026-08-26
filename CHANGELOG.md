@@ -9,6 +9,22 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **#572 round 3: chain replay proven pure; the divergence hunt moves to the daemon
+  layer, instrumented** (2026-08-26) — the write-site audit (every latch/regime map
+  writes only in `apply`/`adopt`) plus a full FIELD-SHAPE oracle
+  (`TestLatchReplayFieldShape_572`: organic 12-seat gather, renewal treadmill at the
+  R-rule-legal cadence, TTL lapse + re-entry, latch + handoff + three rotations,
+  wire-faithful Reload) are both GREEN — replaying identical blocks provably
+  reproduces the latch at chain level. So 474718e-deep's under-latch must arise
+  outside pure replay: the daemon now prints the full regime state at every restore
+  (`everMature/matureEpoch/seen/bonded/epochStart/epochSet` via `chain.Regime()`), so
+  the next occurrence names the map that failed to rebuild. Also: `ValidateProposal`'s
+  objective rejection now names the ACTUAL disqualifying branch (slashed / not in the
+  frozen epoch set / not a launch anchor / under-bonded) — the field's misleading
+  "bonded 1048576, needs 1048576" was a frozen-set refusal wearing a bond-size
+  costume. The #563 memory bench now skips under `-race` (shadow memory + pool
+  suppression inflate the live-heap peak ~10×; the budget is only meaningful
+  uninstrumented).
 - **#572 round 2: latch-replay determinism oracle** (2026-08-26) — the 474718e-deep
   diagnostic named the stall branch (val-d refused every mature commit with
   `ErrAnchorRequired need=3` at h32 after a drill restart restored the 32 blocks that

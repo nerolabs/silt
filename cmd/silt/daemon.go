@@ -671,7 +671,15 @@ func cmdDaemon(args []string) error {
 			// -ws-checkpoint (#559).
 			fmt.Fprintf(os.Stderr, "chain replay: FAILED at block %d: %v — continuing with the %d-block valid prefix; the suffix must re-sync from peers, which is IMPOSSIBLE below the swarm's prune horizon without a fresh -ws-checkpoint (#558/#559)\n", n, err, n)
 		} else if n > 0 {
-			fmt.Printf("chain: restored %d block(s) from disk\n", n)
+			// The regime line is LOAD-BEARING diagnostics (#572): 474718e-deep's
+			// val-d restored 32 blocks whose live application had latched
+			// everMature — and the restored replica demanded launch-rule anchors
+			// forever. Chain-level replay is proven pure (write-site audit + the
+			// field-shape oracle), so the next divergence must name which map
+			// failed to rebuild — this line does that at every restore.
+			r := ch.Regime()
+			fmt.Printf("chain: restored %d block(s) from disk (everMature=%v matureEpoch=%v seen=%d bonded=%d epochStart=%d epochSet=%d)\n",
+				n, r.EverMature, r.MatureEpoch, r.ValidatorsSeen, r.Bonded, r.EpochStart, r.EpochSetSize)
 		}
 		// Every fresh chain is born carrying the founding manifesto at
 		// height 0 (declared, not agreed), and the daemon seeds the
