@@ -9,6 +9,14 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **#572: save-side regime line — restore/save PAIRS make the next under-latch
+  self-locating** (2026-08-26) — every chain persist (commit / catch-up / takedown)
+  now prints the same regime snapshot as the restore line plus the head it went down
+  with (`chain: saved N block(s) [why] head=H:hash (everMature=… …)`). Paired with
+  the restore-time line, one diff decides the remaining #572 premises: last-save ≠
+  restore ⇒ store/replay layer; equal-but-wedged ⇒ downstream of restore; the head
+  hash pins content. The legacy `restored N block(s) from disk` prefix is preserved
+  (integration/consensus greps it).
 - **#572 round 3: chain replay proven pure; the divergence hunt moves to the daemon
   layer, instrumented** (2026-08-26) — the write-site audit (every latch/regime map
   writes only in `apply`/`adopt`) plus a full FIELD-SHAPE oracle
