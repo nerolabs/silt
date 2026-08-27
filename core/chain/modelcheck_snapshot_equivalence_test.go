@@ -2,6 +2,7 @@ package chain
 
 import (
 	"crypto/ed25519"
+	"errors"
 	"reflect"
 	"testing"
 	"unsafe"
@@ -337,6 +338,115 @@ func weightProbes(epochSetBlock, bondedBlock *Block) ([]probe, []probe) {
 		ask:    func(c *Chain) string { return quorumVerdict(c, bondedBlock) },
 	}
 	return []probe{epochSetProbe}, []probe{bondedProbe}
+}
+
+// weightBytesWorld is the era-3 freeze gate (#603): a mature epoch whose FROZEN
+// per-member weights are UNEQUAL, and a block whose support coalition clears the
+// COUNT floor but whose verdict is carried by the ⅔-WEIGHT predicate. It is the
+// discriminator the membership probes cannot reach.
+//
+// Four members freeze into epochSet at genesis; the bond size IS the frozen weight
+// (liveQualifiedSet → rotateEpoch). Weights are UNEQUAL by design: proposer keys[0]
+// and one attester keys[1] hold 5 MiB each; the two silent members keys[2]/keys[3]
+// hold 1 MiB each. total = 12 MiB, support = proposer+attester = 10 MiB, so
+// 3·10 > 2·12 — the ⅔-weight predicate PASSES on the true weights (ACCEPT). Quorum=1,
+// seen={keys[1]} clears the count floor honestly (RequiredQuorum returns Quorum in a
+// mature epoch, chain.go:1204 — the weight rule carries the Byzantine bar), so the
+// verdict is carried by requireEpochWeightQuorum, not the count floor.
+//
+// The ablation is NOT map-omission (that empties membership → the count-floor flip the
+// membership probes already own). It FLATTENS the weight bytes to a constant, membership
+// intact: support/total collapses to |coalition|/|members| = 2/4 = ½ for ANY constant, so
+// 3·support ≤ 2·total → ErrNoQuorumWeight. A validator that lost the true per-member
+// weights and knew only membership cannot reproduce the ⅔ verdict — the weight bytes
+// proven load-bearing. See docs/thinking/2026-08-27-keystone-weight-discriminator-probe.md.
+func weightBytesWorld(t *testing.T) (*Chain, *Block) {
+	t.Helper()
+	keys := make([]ed25519.PrivateKey, 4)
+	for i := range keys {
+		keys[i] = key(int64(33000 + i))
+	}
+	cfg := Config{Quorum: 1, MinBond: 1 << 20, ByzantineQuorum: true, EpochBlocks: 2}
+	c := New(cfg, func(ports.NodeID) int64 { return 0 })
+	c.SetBondVerifier(objectiveVerify)
+
+	// Unequal frozen weights: the coalition (proposer keys[0] + attester keys[1]) holds
+	// 5+5 MiB; the silent members keys[2]/keys[3] hold 1 MiB each. All ≥ MinBond so all
+	// freeze into epochSet. The bond amount becomes the frozen weight.
+	weights := []int64{5 << 20, 5 << 20, 1 << 20, 1 << 20}
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
+	for i, k := range keys {
+		g.BondRegs = append(g.BondRegs, bondReg(k, weights[i], ports.Hash{}))
+	}
+	Sign(g, keys[0])
+	if err := c.AppendGenesis(*g); err != nil {
+		t.Fatalf("weightBytesWorld genesis: %v", err)
+	}
+
+	// The probed block: proposer keys[0] (5 MiB), a single attester keys[1] (5 MiB).
+	// support = 10 MiB of 12 MiB total → 3·10=30 > 2·12=24 → weight predicate ACCEPTS.
+	// The silent whales keys[2]/keys[3] do NOT attest — the coalition carries ⅔ only
+	// because its TRUE weight is concentrated, not by head count.
+	b := &Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(33)}}
+	Sign(b, keys[0])
+	b.Atts = []Attestation{Attest(b, keys[1])}
+	return c, b
+}
+
+// flattenWeights returns a copy of epochSet with identical membership but every weight
+// set to the same constant — the "blinded weight bytes" ablation. This is the defect a
+// snapshot-booted node exhibits if it carried WHICH members are frozen but not HOW MUCH
+// each is bonded: it can reproduce membership but not the ⅔-weight verdict.
+func flattenWeights(src map[ports.NodeID]int64, k int64) map[ports.NodeID]int64 {
+	out := make(map[ports.NodeID]int64, len(src))
+	for id := range src {
+		out[id] = k
+	}
+	return out
+}
+
+// TestEpochWeightBytesAreLoadBearing is the era-3 freeze gate (#603): the committed
+// per-member WEIGHT bytes of epochSet — not merely its membership — must flip a finality
+// verdict. The membership probes (#604) prove omission empties frozen membership and
+// rejects via the COUNT floor (ErrNoQuorum); they would still pass if epochSet stored
+// membership with all weights set to a constant (blind PE ruling, "Coupling", L104). This
+// probe closes that: with membership held fixed and the weights flattened to a constant,
+// the verdict must flip via the WEIGHT predicate (ErrNoQuorumWeight). A validator that
+// committed the true weights accepts; one that lost them (flattened) rejects a block the
+// network finalized — the weight bytes are load-bearing in the committed root.
+func TestEpochWeightBytesAreLoadBearing(t *testing.T) {
+	c, b := weightBytesWorld(t)
+
+	// Full: the true unequal weights. The coalition holds >⅔ by real weight → ACCEPT.
+	full := snapshotBoot(c)
+	if got := quorumVerdict(full, b); got != "accept" {
+		t.Fatalf("full (true weights): want accept, got %s — the coalition should clear "+
+			"the ⅔-weight predicate on its real weight", got)
+	}
+
+	// Ablated: membership intact, weights flattened to a constant (MinBond). support/total
+	// collapses to 2/4 = ½ < ⅔ → the WEIGHT predicate rejects. The count floor is
+	// untouched (same membership → same seen), so this is unambiguously the weight rule.
+	ablated := snapshotBoot(c)
+	setField(ablated, "epochSet", flattenWeights(c.epochSet, c.cfg.MinBond))
+
+	// Assert the RED reason is the weight predicate specifically, not the count floor or a
+	// panic. quorumVerdict collapses errors to "reject"; call the predicate path directly
+	// so the discriminator is named.
+	seen, err := ablated.collectQuorumSigs(b, b.Atts, PhaseLegacy, 0)
+	if err != nil {
+		t.Fatalf("ablated collectQuorumSigs errored (%v) — membership must survive the "+
+			"weight-flatten ablation; only the weight bytes change", err)
+	}
+	stackErr := ablated.requireQuorumStack(b, seen)
+	if !errors.Is(stackErr, ErrNoQuorumWeight) {
+		t.Fatalf("ablated: want ErrNoQuorumWeight (the weight predicate is the discriminator), "+
+			"got %v (len(seen)=%d). If this is ErrNoQuorum the flip is membership/count, not "+
+			"the weight bytes — the gap this probe exists to close.", stackErr, len(seen))
+	}
+	t.Logf("[weight-bytes] epochSet weights: full=accept ablated=reject via %v "+
+		"(seen=%d clears the count floor; the ⅔-weight predicate is the discriminator)",
+		ErrNoQuorumWeight, len(seen))
 }
 
 // TestSnapshotBootMatchesReplayBoot is the equivalence assertion: with the FULL
