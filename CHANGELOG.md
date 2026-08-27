@@ -352,6 +352,27 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   home (consult Q5). Record: `docs/thinking/2026-08-25-570-archival-fixture-suite.md`.
 
 ### Fixed
+- **#514 ROOT CAUSE — the repair-bounty flake: `swarm holders` reported provider
+  RECORDS while the repair judgment byte-CONFIRMS** (2026-08-27) —
+  `TestRepairBountyPaysOnTheWire` failed ~20% of runs with a premise defeat: the
+  kill-selector killed a column's holders but a live byte copy survived elsewhere,
+  so the caretaker's byte-confirmed sweep saw `missing ≤ slack` and never armed
+  repair. Mechanism: the selector read `Node.ColumnHolders` (→ `resolveProviders`,
+  raw DHT provider records), while the caretaker's repair judgment (`probeShard`)
+  confirms every record with a `MsgHasChunk` round-trip — *"a bare provider record
+  isn't trusted."* The two views diverged when a #497 lost-ack extra copy or a
+  #517 stale/false-repair record left a record on a node that no longer backed the
+  bytes (or omitted one that did); the #501 fix (PR #513) made the byte-view
+  accurate, exposing the record-view selector's under-kill. Fix: `ColumnHolders`
+  now byte-confirms each column's provider records with `MsgHasChunk`
+  (`confirmColumnHolders`), so the holders read agrees with the view the caretaker
+  repairs on — the kill provably eliminates the columns' bytes. This also fixes a
+  real observability bug: `swarm holders` no longer reports phantom holders to an
+  operator. RED-proven (`core/node/column_holders_bytes_514_test.go`): a phantom
+  record-holder with no bytes is listed by the raw record view and dropped by the
+  byte-confirmed view; ablating the confirmation lists the phantom. The invariant
+  the e2e proves (a verified reconstruction PAYS) is untouched — only the premise
+  arming is fixed. 30/30 green e2e iterations where the reproducer was ~2/10 red.
 - **#572 ROOT CAUSE — the restore under-latch: the daemon replayed history before
   wiring the bond verifier** (2026-08-26) — `objective()` is `MinBond>0 AND
   verifyBond!=nil`, and `EnableObjectiveChain` ran ~80 lines after

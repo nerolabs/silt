@@ -197,6 +197,14 @@ func TestRepairBountyPaysOnTheWire(t *testing.T) {
 	// the union kill set must lose ≥3 columns (> RepairSlack 2, so repair MUST
 	// fire) and ≤ n−k (so reconstruction stays possible). Same selector as the
 	// cloud flow, in Go.
+	//
+	// swarm holders now BYTE-CONFIRMS each column's providers (MsgHasChunk, #514):
+	// the read agrees with the view the caretaker repairs on (probeShard), so a
+	// listed holder provably holds one of the column's shards and killing it
+	// eliminates those bytes. Before the fix this reported raw provider records; a
+	// #497 lost-ack / #517 stale record left a live byte copy on a node the
+	// record-view omitted, the kill under-killed, and the caretaker (correctly) saw
+	// missing ≤ slack and never armed — the ~20% premise-defeat flake.
 	holdersOut := runClient(t, "swarm", "holders", link, "-peers", bootstrapA, "-registry", regRef)
 	colHolders := map[int][]string{}
 	for _, ln := range strings.Split(holdersOut, "\n") {
@@ -282,12 +290,13 @@ func TestRepairBountyPaysOnTheWire(t *testing.T) {
 	killedAt := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
 
 	// Premise fast-fail (#514): the kill only proves the economy loop if the
-	// caretakers actually OBSERVE an over-slack loss. The captured #514 run
-	// showed the record-view selector can be defeated (a #517 false repair had
-	// silently re-replicated the "doomed" columns), leaving the caretakers
-	// correctly watching missing ≤ slack while this test burned its whole
-	// window. If no post-kill sweep reports the loss within 60s (30 sweeps at
-	// the 2s interval), fail LOUD and name the premise defeat instead.
+	// caretakers actually OBSERVE an over-slack loss. The root cause is FIXED —
+	// swarm holders byte-confirms, so the kill provably eliminates the columns'
+	// bytes and the caretaker's byte-confirmed sweep must see the loss. This guard
+	// stays as the REGRESSION SIGNAL: if it fires again, byte-confirmation broke
+	// (the selector is back to killing record-holders whose bytes survive
+	// elsewhere), not a timing miss. If no post-kill sweep reports the loss within
+	// 60s (30 sweeps at the 2s interval), fail LOUD and name the premise defeat.
 	premiseSeen := func() bool {
 		for _, c := range caretakers {
 			b, err := os.ReadFile(filepath.Join(c.store, "debug.log"))
@@ -327,8 +336,8 @@ func TestRepairBountyPaysOnTheWire(t *testing.T) {
 		if !premiseOK {
 			premiseOK = premiseSeen()
 			if !premiseOK && time.Now().After(premiseDeadline) {
-				t.Fatalf("premise defeated (#514): no caretaker observed an over-slack loss within 60s of the kill — "+
-					"the killed columns still have live copies somewhere (holders-view vs bytes divergence). "+
+				t.Fatalf("premise defeated (#514 REGRESSION): no caretaker observed an over-slack loss within 60s of the kill — "+
+					"the killed columns still have live copies somewhere (holders-view vs bytes divergence — byte-confirm broke). "+
 					"C1 tail:\n%s\nC2 tail:\n%s", debugTail(caretakers[0]), debugTail(caretakers[1]))
 			}
 		}
