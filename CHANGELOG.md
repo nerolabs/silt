@@ -9,6 +9,29 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **The disk-backed node-store spike — a batching bbolt `MapStore`, proven
+  correct locally before any billable run** (2026-08-27, PE-ordered). PR #596
+  disqualified the in-memory SMT backend by kernel OOM, so the keystone needs a
+  disk-backed store, and the certification's owed boot-rebuild measurement cannot
+  re-run until one exists. `internal/smtspike/` now carries `boltStore` — a
+  batching `kvstore.MapStore` over bbolt, test-only, importable by nothing. The
+  load-bearing design point is **write batching**: the SMT calls `Set()` once per
+  dirty node during `Commit()`, so a naive one-transaction-per-`Set` adapter would
+  fsync per node and make the measurement meaningless; instead `Set()` buffers and
+  `Flush()` commits a whole block in one transaction. **Correctness is proven
+  before cost** (the local-proof-before-billable rule): the disk-backed trie
+  produces byte-identical roots to the in-memory reference across every block,
+  survives close+reopen while still serving membership proofs, and handles the
+  delete/tombstone path. The measurement harness (`SILT_STORE_PROFILE=1`) reports
+  **RSS, not just Go heap** — bbolt is mmap'd, so its residency lives in the page
+  cache outside the Go heap, which is exactly the OOM-relevant number the earlier
+  heap-only draft would have missed. New evidence surfaced for the backend
+  decision: the LSM candidate (pebble) pulls in **127 modules** vs bbolt's ~1, so
+  the recommended sequence is bbolt-alone on the floor box first, adding the LSM
+  only if bbolt's write cost proves binding — evidence-driven rather than
+  prior-driven. The floor-box run itself is billable and awaits explicit
+  authorization. Reasoning:
+  `docs/thinking/2026-08-27-disk-backed-mapstore-options.md`.
 - **The hexagonal guard now walks TRANSITIVE imports — and it found the gap was
   already live** (2026-08-27, PE-ruled). `internal/depcheck` inspected **direct**
   imports only, which was honest while `core/` imported nothing third-party. The

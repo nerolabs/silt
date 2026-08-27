@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"os"
 	"runtime"
-	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -74,17 +72,7 @@ func TestFloorBoxProfile(t *testing.T) {
 	// as its own process there: an OOM at 1M must not destroy the results
 	// already gathered at 1k-100k. An OOM IS a result — it is the residency
 	// finding arriving as a field number rather than a projection.
-	scales := costScales
-	if raw := os.Getenv("SILT_SMT_SCALES"); raw != "" {
-		scales = nil
-		for _, f := range strings.Split(raw, ",") {
-			n, err := strconv.Atoi(strings.TrimSpace(f))
-			if err != nil {
-				t.Fatalf("SILT_SMT_SCALES: %q: %v", f, err)
-			}
-			scales = append(scales, n)
-		}
-	}
+	scales := parseScales(t)
 
 	t.Logf("host: GOARCH=%s GOOS=%s NumCPU=%d", runtime.GOARCH, runtime.GOOS, runtime.NumCPU())
 	t.Logf("%-10s %10s %9s %8s %8s %8s %9s %9s %7s",

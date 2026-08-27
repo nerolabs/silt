@@ -6,7 +6,8 @@ require (
 	github.com/fxamacker/cbor/v2 v2.9.2
 	github.com/klauspost/reedsolomon v1.14.1
 	github.com/pokt-network/smt v1.0.0
-	golang.org/x/sys v0.30.0
+	go.etcd.io/bbolt v1.5.0
+	golang.org/x/sys v0.45.0
 )
 
 require (

@@ -105,3 +105,77 @@ The narrow question: **do you want the spike to proceed on `bbolt`, or should th
 candidates be measured alongside it in the same run?** Measuring two costs little extra —
 the harness is the same and the floor box is pennies — and it would settle the
 random-key-insert question with numbers instead of my reading of it.
+
+---
+
+## PE ruling absorbed + the bbolt spike built (2026-08-27)
+
+The PE ruled (`RULING-keystone-node-store-dependency-2026-08-27.md`) and Andrew concurred:
+take the dependency behind **`ports.NodeStore`**; **measure `bbolt` + one tuned LSM in one
+floor-box run** rather than pick by reading; and — the load-bearing call — the **floor-box
+validator validates BY PROOF (witnesses), the tree is a tier above** (recorded in
+`docs/decisions.md`, opened as #600).
+
+### What is built (local proof — LOCAL PROOF BEFORE BILLABLE)
+
+`internal/smtspike/` now carries a disk-backed spike, test-only, importable by nothing:
+
+- **`boltStore`** — a batching `kvstore.MapStore` over bbolt. The load-bearing design point
+  is write batching: the SMT calls `Set()` once per dirty node during `Commit()`, so a naive
+  one-txn-per-`Set` adapter would fsync per node and make the measurement meaningless.
+  `Set()` buffers into a pending map; `Flush()` commits a whole block in one bbolt
+  transaction (one fsync). `Get()` reads the pending buffer first, so read-your-writes holds
+  within a block.
+- **Correctness proven before cost** (`boltstore_correctness_test.go`): the disk-backed trie
+  produces **byte-identical roots** to the in-memory reference across every block; a
+  committed root survives **close + reopen** and still serves membership proofs (the Q6
+  boot-rebuild property in miniature); a deleted key reads absent through the tombstone path.
+- **The measurement** (`store_profile_test.go`, `SILT_STORE_PROFILE=1`): build, per-key,
+  Go-heap, **RSS**, on-disk, hot-path apply, and reopen — per scale, isolated so an OOM at
+  the top scale cannot destroy lower results, fsync on/off via `SILT_STORE_NOSYNC`.
+
+### The measurement gap I nearly shipped
+
+The first harness reported **Go heap only** (`runtime.MemStats.HeapAlloc`). That is the wrong
+axis: bbolt is mmap'd, so its pages live in the OS page cache *outside* the Go heap —
+invisible to `HeapAlloc`, and precisely the residency the PE flagged as the reason to prefer
+bbolt (kernel-evictable) over an LSM's server-sized heap caches. Measuring heap alone would
+have compared the two backends on the axis where they look similar and hidden the axis where
+they differ. `residentMB()` (reads `/proc/self/statm` on the Linux floor box) is the fix —
+the number that actually answers the OOM question this whole exercise exists for.
+
+### New evidence that shifts the "measure both" call — pebble is 127 modules
+
+The PE said measure bbolt + one tuned LSM in one run because "the box is pennies and the
+harness is identical." True on compute. But the LSM candidate, **`cockroachdb/pebble`, pulls
+in 127 modules** — versus bbolt's ~1 net. The PE did not have that number.
+
+It changes the trade in two ways the ruling's reasoning would itself follow:
+
+1. **The bbolt-alone floor-box run already answers the question the LSM was for.** The PE
+   wanted the LSM measured to test whether bbolt's random-insert weakness (SMT keys are
+   hashes) is binding. But the bbolt profile on the floor box *shows that directly* — if its
+   build/apply cost with fsync is acceptable, there is nothing for a faster-writing LSM to
+   buy, because bbolt already wins on residency (Q1's decisive axis). The LSM only matters
+   **if bbolt's write cost proves unacceptable**, and the bbolt run is what reveals that.
+2. **127 test-only modules in `go.sum` is not free** — it is supply-chain surface and review
+   burden on a project that counts its lean profile (PR #596). Paying it speculatively, to
+   confirm a prior the residency argument already favors, inverts the #596 discipline.
+
+**So the recommended sequence, offered for Andrew's call:** run **bbolt alone** on the floor
+box first. If every axis is acceptable, the backend is decided and the 127-module tree is
+never added. **Only if bbolt's write cost is the binding constraint** do we add pebble and
+measure the trade — evidence-driven, not prior-driven. This does not contradict the PE; it
+applies the PE's own "measure, don't assume" to a cost the PE was not shown. If Andrew wants
+both in one run regardless, pebble goes in behind the same harness — it is a half-day of
+adapter, not a design problem.
+
+### Gate status
+
+- **Local proof: GREEN.** Correctness done; the floor-box run confirms *cost*, never
+  correctness (per the standing rule).
+- **The floor-box run is billable** and needs Andrew's explicit go — it is the same
+  `e2-custom-1-2048` recipe as #596 (dedicated 1 vCPU / 2 GB, no swap, per-scale processes,
+  delete + verify 0 instances/disks after).
+- The one open sub-decision inside it: **bbolt-alone-first (recommended) vs bbolt+pebble
+  together.**
