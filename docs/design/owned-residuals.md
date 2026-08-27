@@ -354,6 +354,15 @@ discount, C2 no quiet capture, the demand→standing firewall) — those are hel
 - **What it is:** M0's Sybil soundness is conditional on the mature regime being reached before
   the young, anchor-scaffolded regime is captured. No proof — a safe-parameterization (plural
   threshold anchors + the one-way latch), with levels that must track live telemetry.
+- **Certified 2026-08-27** (C-1, GATED — certified-as-a-safe-parameterization, refuted-as-a-theorem;
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/C1-maturity-before-capture-RESEARCH-CERTIFICATION-2026-08-27.md`).
+  The `everMature` latch is certified **one-way**: it bounds the *consequence* of a lost bet
+  (no re-arm, no permanent center), never the *reachability* of pre-maturity capture. The live
+  red-team seam is R1 (pre-maturity acquisition); R2 (handoff-instant head-count capture) and
+  R3-safety (de-maturation super-quorum) are CLOSED.
+- **Doc-register residual (C-1 R6) — CLOSED 2026-08-27.** VISION §108 stated the bet more
+  strongly than the canon proves; it now carries the "safe-parameterization, not a theorem"
+  qualifier and an m0.md §10 pointer, matching this entry.
 
 ### E4. Bonded-minority liveness-denial in the mature phase (the liveness dual of A1)
 - **Class:** **held in tension** — the BFT liveness bound every weakly-subjective system lives
@@ -465,6 +474,31 @@ discount, C2 no quiet capture, the demand→standing firewall) — those are hel
   node's drain below ~128 MB/s at the shipped cap *after* the Phase 1.2 CPU gate (e.g. by riding a
   more-expensive-per-byte admitted handler than MsgStoreChunk)? The trigger recipe is above; this
   residual is pre-designed and can never be a surprise.
+
+### E6. Witness-based floor-box validation — liveness + completeness dependencies (C-7)
+- **Class:** held in tension (both irreducible or inherited; neither a defect). Certified
+  2026-08-27 (C-7, CERTIFIED with an era-3 format gate;
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/C7-witness-based-floor-box-validation-RESEARCH-CERTIFICATION-2026-08-27.md`).
+  Witness-based validation itself is certified sound + complete; these are the named residuals
+  the certification carries, not gaps in the scheme.
+- **Liveness depends on ≥1 reachable honest witness provider (irreducible).** A semi-stateless
+  floor box holds only the committed root; it validates each transition against
+  proposer/tier-above-supplied witnesses. Safety needs **no** trust in the provider — a
+  malicious or withholding provider cannot force acceptance (the verifier stalls rather than
+  accepts on a missing witness). But *liveness* needs the availability assumption "≥1 reachable
+  honest tier-above node serves correct witnesses." This is the standard stateless-client
+  assumption (Ethereum stateless clients, CT auditors) and the same shape as the #597 H9
+  archive-tier residual. Priced correctly: safety is never traded for witness-delivery liveness
+  (prefer-stall-to-reorg, I4). If witness delivery fails network-wide, floor boxes stall (safe)
+  but cannot progress.
+- **Witness-completeness is downstream of field-enumeration completeness (inherited from the
+  keystone).** The witness scheme is complete for the *committed* field set. If the keystone's
+  snapshot-boot-equivalence oracle later surfaces a validity-relevant field the enumeration
+  missed, the witness for that field is missing too, and the scheme is incomplete until the
+  field is committed and witnessed. This is not an independent gap — it is the *same*
+  enumeration obligation the keystone already carries. Lift condition: the consensus-weight
+  probes (`bonded`/`epochSet`, then `spent`/`slashed`) reach the equivalence + order-varying
+  oracles green before the era-3 format freezes (issue #603).
 
 ---
 
