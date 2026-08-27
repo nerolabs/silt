@@ -9,6 +9,32 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **Both certifications landed — canon amended, and the order-varying oracle that
+  enforces the refinement** (2026-08-27). Research answered both open consults.
+  **#597 (revLog):** the conflict was a *category error*, not a contradiction —
+  the SMT choice stands, and `revLog` gets its **own append-only root** rather
+  than becoming an SMT leaf. Canon's "one root over all committed state" is
+  refined to **one history-independent SMT over set-valued validity state PLUS a
+  separate RFC-6962 root for any committed ordered log** (the Ethereum shape:
+  stateRoot + receiptsRoot + txRoot); the snapshot carries the **full** revLog
+  entry list, preserving H9 proofs for snapshot-booted nodes at the cost of the
+  smallest forever term. `epochStart` is reclassified as an **observable** —
+  reorg-swapped but under no committed root. **Relay (knob 2):** amended from
+  "dispute-only quorum-TTP" to **no TTP at all** — the relay leg is
+  *self-enforcing*, so there is no adjudicable dispute; a quorum-TTP could not
+  remedy the one-increment stiff anyway, because forwarding is unprovable by any
+  mechanism. PayWord chains, ~1–64 KiB increments pinned by a floor-box
+  measurement, relay credit = operator balance (no new keystone field), one
+  Invariant-A firewall regime. The feared privacy vector (a public dispute naming
+  a fetcher key) **dissolves** with the dispute itself. The classification now
+  carries a **three-way taxonomy** (`committedSet` / `committedLog` /
+  `observable`), and `core/chain/modelcheck_order_independence_test.go` enforces
+  the certification's Q4 mandate that the oracle **vary append order**:
+  classification alone cannot catch a purely order-derived value. Two histories
+  reaching the same final state agree on all **16** set-valued fields and produce
+  **different** log roots — the certified resolution, asserted. Proven by
+  ablation: reclassifying `revLog` as set-valued makes the oracle name it, i.e.
+  it reproduces #597 mechanically.
 - **The era-boundary Reload oracle — the keystone's RED home #3, shipped ahead
   of era-3** (2026-08-27). The certification requires this test to land
   **before** the change it governs, and forbids the shape of the mistake:

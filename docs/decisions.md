@@ -491,6 +491,25 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
   enumeration of validity-relevant committed state (16 fields at this HEAD, incl. the
   regime latches and #506 gate state — see the consult); the era-3 upgrade boundary; the
   sharded-registry can't-lie-by-omission model; the validator churn floor.
+- **REFINED 2026-08-27 — TWO roots, not one** (research certification
+  `.../research-outcome/597-revlog-history-dependence-RESEARCH-CERTIFICATION-2026-08-27.md`,
+  which owns this as a correction to its own round-9 phrasing). "One root over all
+  committed state" was right about *scope* and wrong about *structure*: it implied one
+  **structure**. The precise rule is **one history-independent SMT over all set-valued
+  validity state, PLUS a separate append-only (RFC-6962) root for any committed ordered
+  log.** The SMT choice is untouched — `revLog` was never set-valued state; it is a second
+  committed root of a second kind (the Ethereum shape: stateRoot + receiptsRoot + txRoot).
+  Folding an order-derived value into the state root is a **category error** that would
+  make the state root depend on history order and break the very history-independence
+  argument that selected the SMT. The era-3 snapshot therefore carries the **full revLog
+  entry list**, which preserves H9 inclusion/consistency proofs for snapshot-booted nodes
+  at the cost of the smallest forever term. `epochStart` is an **observable** — history-
+  derived and reorg-swapped, but read only by `Regime()`, so under no committed root.
+  **The general rule this sets:** an observable is committed *iff* you want it
+  consensus-anchored, and it is committed **under a root whose structure matches its
+  data**. Enforced mechanically by the order-varying oracle
+  (`core/chain/modelcheck_order_independence_test.go`), because classification alone
+  cannot catch a purely order-derived value.
 - **Immutables preserved:** consensus engine untouched; M0 firewall reinforced; the
   hobbyist box (#8) is the point of the whole direction; content-blind core untouched (the
   root commits locators and status, never content meaning).
@@ -525,21 +544,45 @@ therefore cannot mint recoverable balance. That floor is regression-locked
 would become the correct routing.** Burn's only advantage is audit optics ("zero recovery,
 ever" in one word) and remains the fallback if an external review ever needs that answer.
 
-**2. Relay compensation resolves disputes through a dispute-only quorum-TTP.**
-Fair exchange without any TTP is impossible (Pagnia–Gärtner), so refusing one would bake a
-permanent one-increment stiffing residual into the **relay operators** the durability
-backbone depends on. The added quorum power is **mechanical, not discretionary** — a
-verification of self-verifying evidence, the same shape as equivocation slashing, scoped
-to dispute-only and balance-lane-only. **The load-bearing scope condition:** a relay
-dispute adjudicates **the payment chain only, never transit**. No transit proof exists to
-buy (D-DEMAND / the PoD certification Q3: Tor's proof-of-bandwidth line failed exactly
-here), so "did you forward?" is not adjudicable at all; "the fetcher stopped paying after
-increment N" is, and a hash-chain preimage or signed increment token is self-verifying —
-cheap and pure-Go. Consequence: **this direction does NOT reactivate the verifiable-escrow
-(Camenisch–Shoup) unknown**, which stays confined to strong-form PoD. That reasoning is
-builder evidence (`docs/thinking/2026-08-26-owner-knobs-ruling-and-relay-gate.md`) and is
-the relay follow-on consult's **first question to certify** — if research finds the relay
-dispute needs verifiable-escrow-class crypto after all, this decision reopens.
+**2. Relay compensation needs NO TTP — the relay leg is self-enforcing.**
+**AMENDED 2026-08-27 by research certification** (`.../research-outcome/PoD-relay-compensation-followon-RESEARCH-CERTIFICATION-2026-08-27.md`),
+which answered the scope condition this knob was conditional on. The original decision was
+"dispute-only quorum-TTP, contingent on the relay dispute being signature-verifiable." The
+certification found something stronger and simpler: **there is no adjudicable relay dispute
+at all**, so the TTP is not needed rather than merely cheap.
+
+The relay leg is **self-enforcing at both ends**. A self-authorizing payment token (PayWord
+hash chain) lets the relay redeem only increments the fetcher actually authorized — it
+cannot forge a preimage, so the fetcher is fully protected with no dispute. In the other
+direction, for the relay to be *owed* increment N+1 it must prove it *forwarded* N+1, which
+**no transit proof can establish** (PoD cert Q3: Tor's proof-of-bandwidth line failed here;
+endpoint attestation dies under endpoint collusion). Neither side can prove the other
+cheated, so a quorum has nothing to adjudicate.
+
+This **refines the PE's Sharpening A with evidence**: the concern that "no TTP" bakes a
+one-increment stiff into the relay/backbone tier is valid, but a quorum-TTP **cannot remedy
+it** — it can verify the payment chain (which already self-verifies) and cannot verify
+forwarding (which nothing can). The stiff is **irreducible** (Pagnia–Gärtner, plus the
+unprovability), and its only remedy is to **bound the increment small**, not to adjudicate.
+
+**Certified consequences:** PayWord hash chains (cheapest verify, scales best as increments
+shrink); byte-sized ~1–64 KiB increments **pinned by a floor-box measurement**, never a
+round figure (#8); relay credit is the **operator balance** at epoch net-settlement — no new
+keystone field; **one** Invariant-A firewall regime covering delivery + relay credit (PE
+coupling 2); conservative under collusion, and the feared "fabricated dispute mints credit"
+vector **does not exist** because no dispute exists.
+
+**Privacy — two constraints that may not be traded** (M0 access-privacy): (i) bind the
+PayWord chain root to a **blind credit under a fresh ephemeral identity**, never a durable
+one (reuses D3 slice 1, already built); (ii) **fresh ephemeral identity + chain per
+session** — reuse would upgrade the relay from a per-session to a **longitudinal** observer,
+a real Don't-#3 regression. The consult's worst-case vector (a public dispute naming a
+fetcher key, adversarially triggerable) is **dissolved** by the same finding that closes the
+gate: no dispute, no public linkage.
+
+**Coupling 3 satisfied decisively:** relay compensation touches no dispute crypto, so it
+cannot reactivate the verifiable-escrow (Camenisch–Shoup) unknown, which stays wholly in
+strong-form/delivery PoD.
 
 **3. A bond root's ownership record follows current possession (TTL-lapse), not lifetime.**
 When a bond lapses, its owner/proven records may be dropped from committed state; a new
