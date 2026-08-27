@@ -863,7 +863,18 @@ func (n *Node) columnHoldersEntry(entry ports.Entry, h link.Handle, done func(ma
 			next(0)
 			return
 		}
-		// Erasure-coded: one provider walk per column (0..N-1).
+		// Erasure-coded: one provider walk per column (0..N-1), then BYTE-CONFIRM
+		// each record with a MsgHasChunk round-trip (#514). A bare provider record
+		// is not trusted: a lost-ack extra copy (#497) or a stale/false-repair
+		// record (#517) can leave a record on a node that no longer backs the
+		// bytes, or omit a node that does. The repair judgment (probeShard) already
+		// byte-confirms for exactly this reason, so a holders view that reported raw
+		// records diverged from the view the caretaker repairs on — the selector
+		// killed record-holders while a live byte copy survived elsewhere, and the
+		// caretaker (correctly) saw missing ≤ slack and never armed. Confirming here
+		// makes this read agree with the repair judgment: a listed holder provably
+		// holds one of the column's shards.
+		colShards := columnShardIDs(m)
 		var next func(col int)
 		next = func(col int) {
 			if col == m.N {
@@ -871,12 +882,108 @@ func (n *Node) columnHoldersEntry(entry ports.Entry, h link.Handle, done func(ma
 				return
 			}
 			n.resolveProviders(colKey(root, col), func(provs []ports.NodeID) {
-				result[col] = provs
-				next(col + 1)
+				n.confirmColumnHolders(provs, colShards[col], func(confirmed []ports.NodeID) {
+					result[col] = confirmed
+					next(col + 1)
+				})
 			})
 		}
 		next(0)
 	})
+}
+
+// columnShardIDs maps each erasure column (0..N-1) to the shard chunk IDs
+// that live at that column across every stripe (data leaf i at column i%k,
+// parity leaf p at column k + p%(n-k) — the columnOfLeaf convention). A
+// holder is a genuine byte-holder for a column if it holds ANY of these.
+func columnShardIDs(m *manifest.Manifest) map[int][]ports.ChunkID {
+	byCol := make(map[int][]ports.ChunkID, m.N)
+	leaves := append(append([]ports.ChunkID{}, m.ChunkIDs()...), m.ParityIDs()...)
+	for leaf, id := range leaves {
+		byCol[columnOfLeaf(m, leaf)] = append(byCol[columnOfLeaf(m, leaf)], id)
+	}
+	return byCol
+}
+
+// confirmColumnHolders filters a column's resolved provider records down to the
+// nodes that provably hold one of the column's shards (#514). Each candidate is
+// asked MsgHasChunk for the column's shards in order; the first found keeps the
+// holder, and a candidate that answers found for none is dropped as a stale
+// record. Self is kept without a round-trip when this node holds a shard on
+// disk. Mirrors probeShard's "a bare provider record isn't trusted."
+//
+// Corpse-gated exactly like probeShard (repair.go:479,498): a provider proven
+// dead this walk is skipped entirely, so a stale record to a departed holder
+// costs one HolderDialTimeout for the whole walk instead of one PER SHARD — the
+// #226/#277/#501 dead-holder dial-storm class that PR #607 re-introduced on the
+// holders read (a 100-stripe column has one shard per stripe, so an ungated dead
+// provider dialed every shard cost ~stripes × HolderDialTimeout serially). The
+// anyLive guard preserves the #69 sole-candidate rule: a lone holder that just
+// restarted and is re-announcing is still probed, never written off as gone.
+func (n *Node) confirmColumnHolders(provs []ports.NodeID, shards []ports.ChunkID, done func([]ports.NodeID)) {
+	now := n.clock.Now()
+	anyLive := false
+	for _, p := range provs {
+		if p == n.id || n.corpseGated(p, now) {
+			continue
+		}
+		anyLive = true
+		break
+	}
+	var confirmed []ports.NodeID
+	var nextProv func(i int)
+	nextProv = func(i int) {
+		if i >= len(provs) {
+			done(confirmed)
+			return
+		}
+		pr := provs[i]
+		if pr == n.id {
+			for _, id := range shards {
+				if ok, _ := n.store.Has(bg(), id); ok {
+					confirmed = append(confirmed, pr)
+					break
+				}
+			}
+			nextProv(i + 1)
+			return
+		}
+		// A cooled/proven-dead provider is skipped as absent for this walk — the
+		// same verdict probeShard reaches. Guarded by anyLive so the only
+		// candidate is never skipped (a re-announcing lone holder is re-probed).
+		if anyLive && n.corpseGated(pr, now) {
+			n.Stats.HolderDialsSkipped++
+			nextProv(i + 1)
+			return
+		}
+		var nextShard func(j int)
+		nextShard = func(j int) {
+			if j >= len(shards) {
+				nextProv(i + 1)
+				return
+			}
+			// Re-check the gate inside the shard walk: the first shard's dial may
+			// exhaust a ladder and mark pr dead, and there is no point paying the
+			// full HolderDialTimeout for every remaining shard of the column on a
+			// provider we just proved is gone.
+			if anyLive && n.corpseGated(pr, n.clock.Now()) {
+				n.Stats.HolderDialsSkipped++
+				nextProv(i + 1)
+				return
+			}
+			n.request(pr, ports.Message{Kind: ports.MsgHasChunk, ChunkID: shards[j]},
+				func(resp ports.Message, err error) {
+					if err == nil && resp.Found {
+						confirmed = append(confirmed, pr)
+						nextProv(i + 1)
+						return
+					}
+					nextShard(j + 1)
+				})
+		}
+		nextShard(0)
+	}
+	nextProv(0)
 }
 
 // parityForMissing returns the parity shard IDs of every stripe that

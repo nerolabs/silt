@@ -476,6 +476,43 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `silt-reviews/research/research-outcome/C1-maturity-before-capture-RESEARCH-CERTIFICATION-2026-08-27.md`.
 
 ### Fixed
+- **#514 ROOT CAUSE — the repair-bounty flake: the premise killed BEFORE DHT
+  convergence, so publish-time lost-ack extra copies re-converged and healed the
+  loss within slack** (2026-08-27) — `TestRepairBountyPaysOnTheWire` failed ~20% of
+  runs with a premise defeat: the kill-selector killed a column's holders but the
+  caretaker's byte-confirmed sweep saw `missing ≤ slack` and never armed repair.
+  Mechanism, pinned by the caretaker's own sweep trace: the object carries
+  publish-time lost-ack extra copies (#497 — `-replication 1` does NOT mean one
+  holder, a lost ack mints a silent extra copy) whose provider records converge a
+  sweep or two AFTER the kill. The caretaker's first post-kill sweep DID see the
+  loss over slack, but `reachable` then climbed as the hidden copies surfaced, the
+  loss healed within slack, and the #517 two-sweep confirmation gate reset. Neither
+  the record view nor a byte-confirmed selector view could see the hidden copies at
+  kill time. **Two parts.** (1) HARNESS — the premise is now deterministic:
+  STABILIZE (wait until the byte-confirmed `swarm holders` view stops changing, so
+  every real byte-holder including the lost-ack copies is listed), SELECT within
+  `(slack, n−k]` (killing a node removes every column it holds, so bound the loss so
+  a stripe stays ≥ k and the bounty can pay), KILL ALL byte-holders of the target
+  columns, then CONFIRM on the caretaker's OWN sweep (a stripe over slack),
+  re-killing any surfaced copy (the caretaker's own DHT vantage can resolve a copy
+  the selector could not) and re-publishing under a fresh root if placement
+  concentrates all columns onto 2-3 nodes (the cloud grade records that as "economy
+  UNTESTED, not failed" — the e2e re-rolls it instead). (2) PRODUCT — `ColumnHolders` (`swarm
+  holders`) byte-confirms each column's provider records with `MsgHasChunk`
+  (`confirmColumnHolders`), so the operator/selector view no longer reports phantom
+  holders, corpse-gated exactly like `probeShard` (`repair.go:479`) so a stale
+  record to a departed holder costs one `HolderDialTimeout` for the whole walk
+  instead of one per shard — closing the dead-holder dial-storm PR #607's ungated
+  all-shards walk re-introduced (the #226/#277/#501 class). RED-proven at the node
+  tier (`core/node/column_holders_bytes_514_test.go`): a phantom record-holder with
+  no bytes is dropped by the byte-confirmed view (ablate the confirm ⇒ lists the
+  phantom); a dead record-holder is dialed exactly once, not once per shard (ablate
+  the corpse-gate ⇒ 5 dials on a 5-shard column). The invariant the e2e proves (a
+  verified reconstruction PAYS) is untouched — only the premise arming is made
+  deterministic. Extends PR #607 (its byte-confirm direction was sound; its scoping
+  and its selector-only premise were not). Evidence: 50/50 green serial iterations
+  (`docs/thinking/2026-08-27-514-repair-bounty-50x-evidence.txt`), where the flake
+  reproduced ~20% pre-#607 and ~5% post-#607.
 - **#572 ROOT CAUSE — the restore under-latch: the daemon replayed history before
   wiring the bond verifier** (2026-08-26) — `objective()` is `MinBond>0 AND
   verifyBond!=nil`, and `EnableObjectiveChain` ran ~80 lines after
