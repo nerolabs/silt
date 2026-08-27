@@ -9,6 +9,35 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **Keystone leave-one-out — `bonded` and `epochSet` MEMBERSHIP proven
+  load-bearing** (2026-08-27, PE-gated on the era-3 format freeze). The
+  snapshot-boot-equivalence oracle's sharp half now probes two more committed
+  fields out of `probeUncovered` and into `probes()` (coverage 3/16 → 5/16):
+  omitting `bonded` from the snapshot rejects a commit its bonded quorum should
+  accept, and omitting `epochSet` rejects a mature-epoch commit its frozen
+  membership should accept. Both flips run the real qualification+quorum predicate
+  (`collectQuorumSigs` → `requireQuorumStack`), using the rules as written — no
+  rule was tuned. The flip in each case is carried by **membership**
+  (qualification), NOT the ⅔-weight predicate: omitting `bonded` disqualifies the
+  attesters in the objective regime, and omitting `epochSet` empties the frozen set
+  so its members fail membership. In both cases the verified RED is `ErrNoQuorum`
+  (the count floor); `requireEpochWeightQuorum` never fires (with `epochSet` empty
+  its `total <= 0` branch short-circuits). Because `bonded` gates a verdict only
+  where qualification reads the live bonded map (a non-epoch objective regime) and
+  `epochSet` only governs a mature epoch, the two are load-bearing in mutually
+  exclusive regimes, so the leave-one-out harness now ablates each field on the
+  world where it flips. Ablation-proven: the leave-one-out goes RED ("changed NO
+  verdict") when the probe is made field-blind, and each rejection is the
+  frozen-set/bonded qualification error, not an unrelated panic.
+  **Owed (issue #603, era-3 format-freeze gate):** these probes prove MEMBERSHIP is
+  load-bearing, not the committed per-member WEIGHT bytes — a leave-one-out that
+  flips via `requireEpochWeightQuorum` specifically (a coalition clearing the count
+  floor but below ⅔ of frozen weight → `ErrNoQuorumWeight`) is still owed before
+  the era-3 format freezes. Do not freeze era-3 on the weight claim until #603
+  lands. Blind-PE-reviewed
+  (`../silt-reviews/principle-engineer/RULING-keystone-probes-bonded-epochset-2026-08-27.md`),
+  Tester-confirmed injected RED. Deliberation:
+  `docs/thinking/2026-08-27-keystone-probes-bonded-epochset.md`.
 - **The disk-backed node-store spike — a batching bbolt `MapStore`, proven
   correct locally before any billable run** (2026-08-27, PE-ordered). PR #596
   disqualified the in-memory SMT backend by kernel OOM, so the keystone needs a
