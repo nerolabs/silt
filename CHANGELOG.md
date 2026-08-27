@@ -9,6 +9,25 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **The O(depth) CI gate — a standing pass/fail check for the depth-war failure
+  class** (2026-08-27). The lineage #528/#535/#549/#555/#556/#558/#560/#561/#562/
+  #563/#572 is one class: per-height cost that grows with chain depth. A unit test
+  at a fixed height is always green for such a bug (canonical #555: `AllEntries`
+  built an O(n) slice per block — green in every constant-height test, catastrophic
+  at real depth). `sim/TestPerHeightCostLinear` turns the standing memory-growth
+  diagnostic into an assertion: it drives the mature-epoch consensus network up a
+  height ladder (500→1000→2000 in full CI, 250→500→1000 under `-short`) and fails if
+  baseline-subtracted `HeapObjects` grows super-linearly. The bound is a two-stage
+  doubling test — `growth(2H)/growth(H) < 2.6` (measured linear baseline 1.998; a
+  super-linear O(n²) regression ≈ 4.0; 2.6 sits 30% above baseline and 35% below the
+  defect signal). HeapObjects is deterministic across runs (seeded sim + forced GC),
+  so the gate does not flake on legitimate linear growth or GC noise; HeapInuse is
+  logged but not asserted on (its arena-granular steps are too noisy). Proven
+  failing-first: a synthetic O(n)-per-block accumulator (`SILT_ODEPTH_INJECT=1`)
+  drives both doublings red (ratios 3.03/3.36). Runs in the default `go test` job,
+  ~6s to h=2000, no new CI job. Shares the drive-and-measure helper with the OOM
+  diagnostic so the measurement has one source of truth. Derivation and
+  false-positive analysis: `docs/thinking/2026-08-27-o-depth-ci-gate.md`.
 - **λ_H arrival-rate instrumentation — the one measurement the CT-1 conditional
   theorem is owed** (2026-08-27). The C-1 lift to CERTIFIED-CONDITIONAL
   (`silt-reviews/.../C1-maturity-before-capture-CONDITIONAL-THEOREM-LIFT-2026-08-27.md`)
