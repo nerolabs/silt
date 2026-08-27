@@ -434,7 +434,7 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
   2. **The prior sequencing rule "M1 opens only after the M0 gate" is SUPERSEDED.** The
      economy-enablement and height-cost work interleave with the M0 tail, because (a) field
      runs stall short of depth (h64) partly on M1 costs — heavy per-reg proofs, round
-     durations, the 360 s publish bound — so cheaper heights are the path TO the M0 field
+     durations, the 360 s publish bound (since re-derived to 300s — see #609) — so cheaper heights are the path TO the M0 field
      confirmation; and (b) **#183 must red-team the economy-ON config** — certifying the
      economy-off HEAD would certify a network nobody will run.
   3. **Storage economy first, Proof-of-Delivery second.** Economy-ON is enablement of

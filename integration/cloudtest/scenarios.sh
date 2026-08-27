@@ -110,7 +110,8 @@ ft_reachable_peers() { # ft_reachable_peers NODE
 # problem, e.g. a SPOT-reclaimed validator), so a caller can record a GAP ("couldn't
 # confirm") rather than a property FAIL. Cleared to 0 on entry.
 # client_preflight FLOW SEVERITY NODE... — #574 (run 027c354-deep): a dead client
-# node burned each dependent flow's full 360s publish window before the plumbing
+# node burned each dependent flow's full 360s publish window (since re-derived to 300s
+# — see #609) before the plumbing
 # flag fired, and three sheet rows went red on ONE unreachable node. One cheap ssh
 # round-trip per client node first (bounded by SSH_NODE_TIMEOUT, default 90s);
 # silence ⇒ record a GAP naming the plumbing cause and return 1 so the flow exits
@@ -1889,7 +1890,8 @@ flow_economy_repair() {
   # SAME root then finds it committed and returns fast. The old per-attempt
   # `head -c … </dev/urandom` minted a NEW root every retry, so a slow-but-eventual
   # commit could never be picked up — every attempt raced the 10s deadline from
-  # scratch and the whole 360s budget GAPed. This mirrors ft_publish, which has
+  # scratch and the whole 360s budget (since re-derived to 300s — see #609) GAPed. This
+  # mirrors ft_publish, which has
   # always generated its source once. (The 10s client deadline itself is a
   # build-immutable #5 magic-constant limitation in adapters/httpregistry — a
   # separate product fix; this makes the harness retry actually idempotent.)
