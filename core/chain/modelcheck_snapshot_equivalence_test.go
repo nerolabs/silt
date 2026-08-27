@@ -34,6 +34,18 @@ func setField(c *Chain, name string, v any) {
 	reflect.NewAt(f.Type(), unsafe.Pointer(f.UnsafeAddr())).Elem().Set(reflect.ValueOf(v))
 }
 
+// snapshotCarried is everything a state snapshot must carry: set-valued state,
+// the ordered log (the full entry list, per the #597 certification), and
+// observables. Note this is the same set adopt() owes — a snapshot and a reorg
+// swap face the identical completeness question.
+func snapshotCarried() []string {
+	var out []string
+	for _, k := range []stateKind{committedSet, committedLog, observable} {
+		out = append(out, fieldsOfKind(k)...)
+	}
+	return out
+}
+
 // fieldsOfKind returns the live struct's field names with the given class.
 func fieldsOfKind(k stateKind) []string {
 	ct := reflect.TypeOf(Chain{})
@@ -59,7 +71,7 @@ func snapshotBoot(src *Chain, omit ...string) *Chain {
 	for _, name := range fieldsOfKind(injected) {
 		setField(dst, name, fieldValue(src, name))
 	}
-	for _, name := range fieldsOfKind(committed) {
+	for _, name := range snapshotCarried() {
 		if skip[name] {
 			// Model the omission faithfully: a snapshot that failed to CARRY a
 			// field leaves the booted node with an initialised-but-empty one,
@@ -251,8 +263,6 @@ var probeUncovered = map[string]string{
 	"gateHeight":     "same as gateLockedIn",
 	"everMature":     "needs the maturity latch to trip, then a launchAnchor/handoff-dependent check",
 	"matureEpoch":    "needs the #357 Cond B handoff, then a regime-dependent quorum check",
-	"epochStart":     "only Regime() reads it — health instrumentation, not a validity predicate",
-	"revLog":         "read by the H9 transparency API, not by a block-validity predicate (see #597)",
 }
 
 // TestLeaveOneOutProvesEachFieldLoadBearing is the sharp half. For every
@@ -276,7 +286,7 @@ func TestLeaveOneOutProvesEachFieldLoadBearing(t *testing.T) {
 			covered[f] = true
 		}
 	}
-	for _, name := range fieldsOfKind(committed) {
+	for _, name := range fieldsOfKind(committedSet) {
 		if covered[name] {
 			if _, dup := probeUncovered[name]; dup {
 				t.Errorf("%q is both probed and listed in probeUncovered — remove the stale entry", name)
@@ -291,7 +301,7 @@ func TestLeaveOneOutProvesEachFieldLoadBearing(t *testing.T) {
 	}
 
 	// The ablation itself: drop one committed field, expect a changed verdict.
-	for _, name := range fieldsOfKind(committed) {
+	for _, name := range fieldsOfKind(committedSet) {
 		if !covered[name] {
 			continue
 		}

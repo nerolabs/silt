@@ -46,10 +46,19 @@ import (
 type stateKind int
 
 const (
-	// committed: accumulated by apply()/rotateEpoch() as a pure function of
-	// block history. MUST be swapped on reorg, carried by any state snapshot,
-	// and committed by the era-3 state root.
-	committed stateKind = iota
+	// committedSet: set-valued validity state, under the history-INDEPENDENT
+	// state SMT. Must be reconstructible from a set-valued snapshot, so its
+	// value may NEVER depend on the ORDER of history — asserted by
+	// TestCommittedSetFieldsAreOrderIndependent.
+	committedSet stateKind = iota
+	// committedLog: an ordered, append-only log. Gets its OWN append-only
+	// (RFC-6962) root, NEVER a leaf in the SMT — folding an order-derived
+	// value into the state root is the category error #597 identified.
+	committedLog
+	// observable: derived from block history and swapped on reorg, but read by
+	// NO block-validity predicate, so it sits under no committed root. Losing
+	// it misreports health, never validity.
+	observable
 	// input: the block history itself — the source the committed state is
 	// derived FROM, not derived state.
 	input
@@ -69,33 +78,37 @@ var stateClass = map[string]struct {
 	reason string
 }{
 	// ---- committed: the certification's enumerated 16 ----
-	"byRoot":         {committed, "cert field 1 — ValidateEntry dup-reject, validateTakedowns existence"},
-	"spent":          {committed, "cert field 2 — ValidateEntry replay-reject (#183 F-1 order)"},
-	"revoked":        {committed, "cert field 3 — validateTakedowns unrevocation target"},
-	"slashed":        {committed, "cert field 4 — qualification, quorum N, C2, de-mature super-quorum"},
-	"bonded":         {committed, "cert field 5 — qualification, blockWeight fork-choice, RoundCatchupMet"},
-	"epochSet":       {committed, "cert field 6 — frozen-set membership, validatorSetSize, weight quorum (#357 Cond A)"},
-	"bondRootOwner":  {committed, "cert field 7 — apply first-owner-wins dedup (F1)"},
-	"bondRootProven": {committed, "cert field 8 — apply displacement rule (G3)"},
-	"bondRegHeight":  {committed, "cert field 9 — bond TTL clock, #506 R-rule distance"},
-	"regVersion":     {committed, "cert field 10 — #506 rotateEpoch lock-in tally"},
-	"bondDomain":     {committed, "cert field 11 — C2Metric A-axis"},
-	"validatorsSeen": {committed, "cert field 12 — Mature/C2Metric (legacy mode)"},
-	"gateLockedIn":   {committed, "cert field 13a — #506 activation latch"},
-	"gateHeight":     {committed, "cert field 13b — #506 enforcement boundary H_act"},
-	"everMature":     {committed, "cert field 14 — one-way maturity latch (F-1)"},
-	"matureEpoch":    {committed, "cert field 15 — handoff flag (#357 Cond B)"},
+	"byRoot":         {committedSet, "cert field 1 — ValidateEntry dup-reject, validateTakedowns existence"},
+	"spent":          {committedSet, "cert field 2 — ValidateEntry replay-reject (#183 F-1 order)"},
+	"revoked":        {committedSet, "cert field 3 — validateTakedowns unrevocation target"},
+	"slashed":        {committedSet, "cert field 4 — qualification, quorum N, C2, de-mature super-quorum"},
+	"bonded":         {committedSet, "cert field 5 — qualification, blockWeight fork-choice, RoundCatchupMet"},
+	"epochSet":       {committedSet, "cert field 6 — frozen-set membership, validatorSetSize, weight quorum (#357 Cond A)"},
+	"bondRootOwner":  {committedSet, "cert field 7 — apply first-owner-wins dedup (F1)"},
+	"bondRootProven": {committedSet, "cert field 8 — apply displacement rule (G3)"},
+	"bondRegHeight":  {committedSet, "cert field 9 — bond TTL clock, #506 R-rule distance"},
+	"regVersion":     {committedSet, "cert field 10 — #506 rotateEpoch lock-in tally"},
+	"bondDomain":     {committedSet, "cert field 11 — C2Metric A-axis"},
+	"validatorsSeen": {committedSet, "cert field 12 — Mature/C2Metric (legacy mode)"},
+	"gateLockedIn":   {committedSet, "cert field 13a — #506 activation latch"},
+	"gateHeight":     {committedSet, "cert field 13b — #506 enforcement boundary H_act"},
+	"everMature":     {committedSet, "cert field 14 — one-way maturity latch (F-1)"},
+	"matureEpoch":    {committedSet, "cert field 15 — handoff flag (#357 Cond B)"},
 
 	// ---- committed: NOT in the certification's enumeration (findings) ----
-	"revLog": {committed, "FINDING: not in the cert's 16, but apply() appends to it " +
-		"(chain.go:2736/2743) and adopt() swaps it. It backs the H9 transparency API " +
-		"(RevocationLogRoot/InclusionProof/ConsistencyProof) that immutable #5's " +
-		"provable non-globality rests on. Also HISTORY-DEPENDENT — see the doc comment " +
-		"on TestStateFieldsAreClassified."},
-	"epochStart": {committed, "FINDING: not in the cert's 16, but rotateEpoch writes it " +
-		"(chain.go:2844) and adopt() swaps it. Read by Regime() — the permanent " +
-		"save/restore health instrumentation — so a snapshot-booted node that loses it " +
-		"misreports restore health rather than diverging on validity."},
+	"revLog": {committedLog, "CERTIFIED #597: an ordered CT-style transparency log, " +
+		"NOT set-valued state. Its root is the RFC-6962 MTH over an ORDERED slice " +
+		"(translog.go:54/:106), so it is history-DEPENDENT by design. It gets its own " +
+		"append-only root and must NEVER become a leaf in the history-independent SMT " +
+		"— that category error would make the state root order-dependent. The snapshot " +
+		"carries the full entry list so a snapshot-booted node can extend the log and " +
+		"still serve H9 inclusion/consistency proofs."},
+	// ---- observable: history-derived, under no committed root ----
+	"epochStart": {observable, "CERTIFIED #597 Q4.3: rotateEpoch writes it " +
+		"(chain.go:2844) and adopt() swaps it, but its ONLY reader is Regime() — the " +
+		"permanent save/restore health instrumentation, not a block-validity predicate. " +
+		"So it must survive a reorg, but goes under no committed root: losing it " +
+		"misreports restore health, never validity."},
 
 	// ---- not committed ----
 	"blocks": {input, "the committed history itself; committed state is derived FROM this"},
@@ -163,15 +176,18 @@ func TestStateFieldsAreClassified(t *testing.T) {
 	}
 }
 
-// committedFields returns the classified-committed field names, from the live
-// struct rather than from a literal, so it tracks the type.
-func committedFields(t *testing.T) []string {
+// historyDerived returns every field derived from block history — set-valued
+// state, the ordered log, AND observables. All three must survive a reorg, so
+// all three are what adopt() owes. Only the first two go under a committed
+// root, and they go under DIFFERENT roots (#597).
+func historyDerived(t *testing.T) []string {
 	t.Helper()
 	ct := reflect.TypeOf(Chain{})
 	var out []string
 	for i := 0; i < ct.NumField(); i++ {
 		name := ct.Field(i).Name
-		if c, ok := stateClass[name]; ok && c.kind == committed {
+		c, ok := stateClass[name]
+		if ok && (c.kind == committedSet || c.kind == committedLog || c.kind == observable) {
 			out = append(out, name)
 		}
 	}
@@ -243,9 +259,9 @@ func populateCommitted(c *Chain) {
 // Reflection makes the guard total: it asserts over whatever the struct says is
 // committed, not over a list written next to it.
 func TestAdoptCopiesEveryCommittedField(t *testing.T) {
-	fields := committedFields(t)
+	fields := historyDerived(t)
 	if len(fields) == 0 {
-		t.Fatal("no committed fields found — the classification or reflection is broken")
+		t.Fatal("no history-derived fields found — the classification or reflection is broken")
 	}
 
 	// The winning fork, fully populated.
