@@ -84,19 +84,36 @@ full text in `docs/design/m0.md` §7. Staged along the axes (`m0.md` §8):
 2. **Cold-start / scaffolding capture.** Can you capture the anchor-scaffolded
    young regime before it matures and sheds (the `everMature` one-way latch)?
    *Pass:* maturity is reached before any feasible capture; anchors are plural +
-   threshold so none is load-bearing. **Sharpened by C-1 (research certification
-   2026-08-27,
-   `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/C1-maturity-before-capture-RESEARCH-CERTIFICATION-2026-08-27.md`):**
-   the live seam is **R1 — pre-maturity acquisition** (accrue a controlling *real*
-   bonded fraction before the latch trips; your own weight then trips `Mature()`).
+   threshold so none is load-bearing. **Sharpened by C-1, now CERTIFIED-CONDITIONAL
+   (conditional-theorem lift, research certification 2026-08-27,
+   `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/C1-maturity-before-capture-CONDITIONAL-THEOREM-LIFT-2026-08-27.md`):**
+   "maturity precedes capture" is now Theorem CT-1 under an honest-arrival floor (H),
+   an adversary-budget cap (B), and the parameter constraint (P). The crossing reduces
+   to the falsifiable inequality **`W_A < 2·w_min·M_req`** (⅔-capture-safe; half that
+   for ⅓-stall). Attack it directly:
+   - **R1 — pre-maturity acquisition, now PRICED.** Accrue a controlling *real* bonded
+     fraction before the latch trips; your own weight then trips `Mature()`. Falsify
+     the inequality: can you reach ≥⅔ (or ≥⅓) of live bonded weight for materially
+     **less than `2·w_min·M_req`** (resp. `½·w_min·M_req`) of honest, sustained,
+     address-diverse provision, and before honest arrivals dilute you?
+   - **R5 — adaptive parameterization; the fragile region is now nameable.** Attack a
+     launch whose `M_req` was set against an under-estimated `W_A`, or whose measured
+     `λ_H` fell below the certified floor mid-window (the theorem's domain silently
+     exited). The capturable region is exactly **`W_A ≥ 2·w_min·M_req`**.
+   - **R6 (NEW — the sharpest open seam): the H⊥B independence break.** H and B are
+     assumed independent, but they are not: an adversary's staged bonds count in
+     **both** the honest-arrival floor `λ_H` (inflating apparent honest arrival) and
+     the capture weight `w_A`. Break the independence — stage honest-looking arrivals
+     that are your own — so the measured floor over-reads while you *are* the adversary.
+     This is why `λ_H` must be measured as **address-diverse** arrival, and why the
+     declaration-cheap A-axis degradation matters more here than anywhere (it makes the
+     staged bonds cheap to disguise as operator-distinct).
    Two adjacent seams are **CLOSED — do not re-litigate:** **R2**, handoff-instant
    head-count-quorum capture (8×/9×MinBond), shut by weight-counting
    (`requireEpochWeightQuorum`, `quorum_weight_test.go`); and **R3-safety**, the
-   de-maturation super-quorum (safety preserved by quorum intersection). Attack the
-   *price* of R1 (can you reach >⅔ live bonded weight for materially less than ⅔ of
-   honest, sustained, address-diverse provision, and before honest arrivals dilute
-   you?), not the *permanence* — the latch bounds R1's consequence, not its
-   reachability.
+   de-maturation super-quorum (safety preserved by quorum intersection). The latch
+   bounds R1's *consequence*, not its *reachability* — attack the price and the
+   independence, not the permanence.
 3. **Self-dealing vs. real demand.** The anti-wash rests on real demand
    outweighing fabricated. *Attack:* the ratio of wash to attested-real demand you
    can manufacture. (Note the firewall — §6 — currently gives demand **no**

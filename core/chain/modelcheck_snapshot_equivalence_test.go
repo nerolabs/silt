@@ -2,6 +2,7 @@ package chain
 
 import (
 	"crypto/ed25519"
+	"errors"
 	"reflect"
 	"testing"
 	"unsafe"
@@ -101,6 +102,21 @@ type probe struct {
 	// not mutate the replayed chain.
 	mutates bool
 	ask     func(c *Chain) string
+}
+
+// A worldGroup binds a set of probes to the replay-booted world they interrogate.
+// Most probes run against the launch-phase richHistory world. The consensus-weight
+// probes (bonded, epochSet) cannot: bonded is only read for a verdict where
+// qualification consults the live bonded map (a non-epoch objective regime), while
+// epochSet's frozen-set membership only governs a MATURE epoch — the two regimes are
+// mutually exclusive, so each gets its own world (see the deliberation
+// docs/thinking/2026-08-27-keystone-probes-bonded-epochset.md). Keeping the world
+// beside the probes lets one leave-one-out loop ablate each field on the world where
+// it is actually load-bearing.
+type worldGroup struct {
+	name   string
+	build  func(t *testing.T) *Chain
+	probes []probe
 }
 
 // askSafely runs a probe and converts a panic into a verdict. A replica missing
@@ -212,6 +228,227 @@ func probes(revokedRoot, ownedRoot ports.Hash, keys []ed25519.PrivateKey, prev p
 	}
 }
 
+// weightWorld is a MATURE-EPOCH world (no anchors, epochs on, MatureValidators
+// unset so Mature() holds and everMature latches at genesis → rotateEpoch freezes
+// epochSet immediately). Four equal 2 MiB bonds are frozen into epochSet. It returns
+// the replay-booted chain plus a block the FULL frozen set ACCEPTS (proposer keys[0]
+// + two attesters, well clear of any count or weight floor).
+//
+// The flip on omission is carried by FROZEN-SET MEMBERSHIP, not the ⅔-weight
+// predicate. Omitting epochSet restores an EMPTY frozen set, so the attesters fail
+// effectiveEpochSet membership in attesterQualifiedAt, seen collapses to 0, and the
+// COUNT floor rejects: ErrNoQuorum. The weight predicate requireEpochWeightQuorum
+// never fires — with epochSet empty its `total <= 0` branch short-circuits to nil
+// (chain.go:2452), so if membership were not the discriminator the block would not
+// flip at all. This probe proves epochSet MEMBERSHIP is load-bearing; the per-member
+// WEIGHT bytes are a separate claim, owed as its own probe (issue #603, the era-3
+// format-freeze gate).
+func weightWorld(t *testing.T) (*Chain, *Block) {
+	t.Helper()
+	keys := make([]ed25519.PrivateKey, 4)
+	for i := range keys {
+		keys[i] = key(int64(31000 + i))
+	}
+	cfg := Config{Quorum: 1, MinBond: 1 << 20, ByzantineQuorum: true, EpochBlocks: 2}
+	c := New(cfg, func(ports.NodeID) int64 { return 0 })
+	c.SetBondVerifier(objectiveVerify)
+
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
+	for _, k := range keys {
+		g.BondRegs = append(g.BondRegs, bondReg(k, twoMiB, ports.Hash{}))
+	}
+	Sign(g, keys[0])
+	if err := c.AppendGenesis(*g); err != nil {
+		t.Fatalf("weightWorld genesis: %v", err)
+	}
+
+	// A commit at height 1 the FULL frozen set accepts: proposer keys[0] + two
+	// attesters, well clear of both the count floor and the ⅔-weight predicate.
+	// Omitting epochSet empties frozen membership → attesters disqualified →
+	// ErrNoQuorum (count floor), not the weight predicate. See the doc comment.
+	b := &Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(30)}}
+	Sign(b, keys[0])
+	b.Atts = []Attestation{Attest(b, keys[1]), Attest(b, keys[2])}
+	return c, b
+}
+
+// bondedWorld is an ANCHORLESS objective world with epochs disabled. everMature
+// latches (MatureValidators unset), so there is no launch-anchor crutch and
+// qualification consults the bonded map DIRECTLY (attesterQualifiedAt /
+// proposerQualifiedAt fall through to `bonded[id] >= MinBond || launchAnchor(id)`,
+// and launchAnchor is false). It returns the replay-booted chain plus a block whose
+// quorum is carried by bonded non-proposers. Omitting bonded disqualifies the
+// proposer (and drops the attesters from seen), so the same block is REJECTED — the
+// bonded flip. This changes which identities are ADMITTED as qualified, not how any
+// weight/count is summed (the #402 seam is untouched).
+func bondedWorld(t *testing.T) (*Chain, *Block) {
+	t.Helper()
+	keys := make([]ed25519.PrivateKey, 4)
+	for i := range keys {
+		keys[i] = key(int64(32000 + i))
+	}
+	cfg := Config{Quorum: 2, MinBond: 1 << 20, ByzantineQuorum: true}
+	c := New(cfg, func(ports.NodeID) int64 { return 0 })
+	c.SetBondVerifier(objectiveVerify)
+
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
+	for _, k := range keys {
+		g.BondRegs = append(g.BondRegs, bondReg(k, twoMiB, ports.Hash{}))
+	}
+	Sign(g, keys[0])
+	if err := c.AppendGenesis(*g); err != nil {
+		t.Fatalf("bondedWorld genesis: %v", err)
+	}
+
+	b := &Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(9)}}
+	Sign(b, keys[0])
+	b.Atts = []Attestation{Attest(b, keys[1]), Attest(b, keys[2])}
+	return c, b
+}
+
+// quorumVerdict runs the real qualification + quorum path for a block WITHOUT the
+// head-extension check: collectQuorumSigs admits attesters via attesterQualifiedAt
+// (which reads bonded in the objective regime and epochSet in a mature epoch), then
+// requireQuorumStack applies the count floor and the mature-epoch weight rule. A
+// snapshot-booted node has no block history, so the full ValidateCommit path fails
+// its Prev==head check for any real block — the same reason the set-valued probes
+// call ValidateEntry/validateTakedowns directly rather than ValidateCommit. This
+// isolates exactly the predicate the ablated field feeds.
+func quorumVerdict(c *Chain, b *Block) string {
+	seen, err := c.collectQuorumSigs(b, b.Atts, PhaseLegacy, 0)
+	if err != nil {
+		return "reject"
+	}
+	return verdict(c.requireQuorumStack(b, seen))
+}
+
+// weightProbes are the two consensus-weight probes, each bound to the world where
+// its field flips a verdict. block is prebuilt by the world; the probe asks the
+// qualification+quorum verdict, so the field's omission (via snapshotBoot) is the
+// ONLY variable.
+func weightProbes(epochSetBlock, bondedBlock *Block) ([]probe, []probe) {
+	epochSetProbe := probe{
+		name:   "a mature-epoch commit by frozen members must be accepted; a snapshot that lost epochSet empties frozen membership and rejects it (ErrNoQuorum)",
+		detect: []string{"epochSet"},
+		ask:    func(c *Chain) string { return quorumVerdict(c, epochSetBlock) },
+	}
+	bondedProbe := probe{
+		name:   "an objective commit by bonded validators must be accepted; a snapshot that lost bonded rejects it",
+		detect: []string{"bonded"},
+		ask:    func(c *Chain) string { return quorumVerdict(c, bondedBlock) },
+	}
+	return []probe{epochSetProbe}, []probe{bondedProbe}
+}
+
+// weightBytesWorld is the era-3 freeze gate (#603): a mature epoch whose FROZEN
+// per-member weights are UNEQUAL, and a block whose support coalition clears the
+// COUNT floor but whose verdict is carried by the ⅔-WEIGHT predicate. It is the
+// discriminator the membership probes cannot reach.
+//
+// Four members freeze into epochSet at genesis; the bond size IS the frozen weight
+// (liveQualifiedSet → rotateEpoch). Weights are UNEQUAL by design: proposer keys[0]
+// and one attester keys[1] hold 5 MiB each; the two silent members keys[2]/keys[3]
+// hold 1 MiB each. total = 12 MiB, support = proposer+attester = 10 MiB, so
+// 3·10 > 2·12 — the ⅔-weight predicate PASSES on the true weights (ACCEPT). Quorum=1,
+// seen={keys[1]} clears the count floor honestly (RequiredQuorum returns Quorum in a
+// mature epoch, chain.go:1204 — the weight rule carries the Byzantine bar), so the
+// verdict is carried by requireEpochWeightQuorum, not the count floor.
+//
+// The ablation is NOT map-omission (that empties membership → the count-floor flip the
+// membership probes already own). It FLATTENS the weight bytes to a constant, membership
+// intact: support/total collapses to |coalition|/|members| = 2/4 = ½ for ANY constant, so
+// 3·support ≤ 2·total → ErrNoQuorumWeight. A validator that lost the true per-member
+// weights and knew only membership cannot reproduce the ⅔ verdict — the weight bytes
+// proven load-bearing. See docs/thinking/2026-08-27-keystone-weight-discriminator-probe.md.
+func weightBytesWorld(t *testing.T) (*Chain, *Block) {
+	t.Helper()
+	keys := make([]ed25519.PrivateKey, 4)
+	for i := range keys {
+		keys[i] = key(int64(33000 + i))
+	}
+	cfg := Config{Quorum: 1, MinBond: 1 << 20, ByzantineQuorum: true, EpochBlocks: 2}
+	c := New(cfg, func(ports.NodeID) int64 { return 0 })
+	c.SetBondVerifier(objectiveVerify)
+
+	// Unequal frozen weights: the coalition (proposer keys[0] + attester keys[1]) holds
+	// 5+5 MiB; the silent members keys[2]/keys[3] hold 1 MiB each. All ≥ MinBond so all
+	// freeze into epochSet. The bond amount becomes the frozen weight.
+	weights := []int64{5 << 20, 5 << 20, 1 << 20, 1 << 20}
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
+	for i, k := range keys {
+		g.BondRegs = append(g.BondRegs, bondReg(k, weights[i], ports.Hash{}))
+	}
+	Sign(g, keys[0])
+	if err := c.AppendGenesis(*g); err != nil {
+		t.Fatalf("weightBytesWorld genesis: %v", err)
+	}
+
+	// The probed block: proposer keys[0] (5 MiB), a single attester keys[1] (5 MiB).
+	// support = 10 MiB of 12 MiB total → 3·10=30 > 2·12=24 → weight predicate ACCEPTS.
+	// The silent whales keys[2]/keys[3] do NOT attest — the coalition carries ⅔ only
+	// because its TRUE weight is concentrated, not by head count.
+	b := &Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(33)}}
+	Sign(b, keys[0])
+	b.Atts = []Attestation{Attest(b, keys[1])}
+	return c, b
+}
+
+// flattenWeights returns a copy of epochSet with identical membership but every weight
+// set to the same constant — the "blinded weight bytes" ablation. This is the defect a
+// snapshot-booted node exhibits if it carried WHICH members are frozen but not HOW MUCH
+// each is bonded: it can reproduce membership but not the ⅔-weight verdict.
+func flattenWeights(src map[ports.NodeID]int64, k int64) map[ports.NodeID]int64 {
+	out := make(map[ports.NodeID]int64, len(src))
+	for id := range src {
+		out[id] = k
+	}
+	return out
+}
+
+// TestEpochWeightBytesAreLoadBearing is the era-3 freeze gate (#603): the committed
+// per-member WEIGHT bytes of epochSet — not merely its membership — must flip a finality
+// verdict. The membership probes (#604) prove omission empties frozen membership and
+// rejects via the COUNT floor (ErrNoQuorum); they would still pass if epochSet stored
+// membership with all weights set to a constant (blind PE ruling, "Coupling", L104). This
+// probe closes that: with membership held fixed and the weights flattened to a constant,
+// the verdict must flip via the WEIGHT predicate (ErrNoQuorumWeight). A validator that
+// committed the true weights accepts; one that lost them (flattened) rejects a block the
+// network finalized — the weight bytes are load-bearing in the committed root.
+func TestEpochWeightBytesAreLoadBearing(t *testing.T) {
+	c, b := weightBytesWorld(t)
+
+	// Full: the true unequal weights. The coalition holds >⅔ by real weight → ACCEPT.
+	full := snapshotBoot(c)
+	if got := quorumVerdict(full, b); got != "accept" {
+		t.Fatalf("full (true weights): want accept, got %s — the coalition should clear "+
+			"the ⅔-weight predicate on its real weight", got)
+	}
+
+	// Ablated: membership intact, weights flattened to a constant (MinBond). support/total
+	// collapses to 2/4 = ½ < ⅔ → the WEIGHT predicate rejects. The count floor is
+	// untouched (same membership → same seen), so this is unambiguously the weight rule.
+	ablated := snapshotBoot(c)
+	setField(ablated, "epochSet", flattenWeights(c.epochSet, c.cfg.MinBond))
+
+	// Assert the RED reason is the weight predicate specifically, not the count floor or a
+	// panic. quorumVerdict collapses errors to "reject"; call the predicate path directly
+	// so the discriminator is named.
+	seen, err := ablated.collectQuorumSigs(b, b.Atts, PhaseLegacy, 0)
+	if err != nil {
+		t.Fatalf("ablated collectQuorumSigs errored (%v) — membership must survive the "+
+			"weight-flatten ablation; only the weight bytes change", err)
+	}
+	stackErr := ablated.requireQuorumStack(b, seen)
+	if !errors.Is(stackErr, ErrNoQuorumWeight) {
+		t.Fatalf("ablated: want ErrNoQuorumWeight (the weight predicate is the discriminator), "+
+			"got %v (len(seen)=%d). If this is ErrNoQuorum the flip is membership/count, not "+
+			"the weight bytes — the gap this probe exists to close.", stackErr, len(seen))
+	}
+	t.Logf("[weight-bytes] epochSet weights: full=accept ablated=reject via %v "+
+		"(seen=%d clears the count floor; the ⅔-weight predicate is the discriminator)",
+		ErrNoQuorumWeight, len(seen))
+}
+
 // TestSnapshotBootMatchesReplayBoot is the equivalence assertion: with the FULL
 // committed set restored, a never-replayed replica must answer every probe
 // exactly as the replayed one does.
@@ -220,23 +457,34 @@ func TestSnapshotBootMatchesReplayBoot(t *testing.T) {
 	_, head := replayed.Head()
 	prev := replayed.Blocks(0)[head-1].Hash()
 
-	snap := snapshotBoot(replayed)
+	all := probes(revokedRoot, ownedRoot, keys, prev)
 
-	for _, p := range probes(revokedRoot, ownedRoot, keys, prev) {
-		if p.mutates {
-			// Would mutate the replayed chain; leave-one-out covers these
-			// against throwaway replicas instead.
-			continue
-		}
-		want := askSafely(p, replayed)
-		got := askSafely(p, snap)
-		if want != got {
-			t.Errorf("DIVERGENCE on %q: replay-booted says %q, snapshot-booted says %q\n"+
-				"A snapshot-booted validator reaches a different verdict than a "+
-				"replayed one — the committed set is INSUFFICIENT, which is the "+
-				"unsoundness the state root exists to prevent.", p.name, want, got)
+	// The consensus-weight probes each run against their own mature/objective world.
+	weightC, epochSetBlock := weightWorld(t)
+	bondedC, bondedBlock := bondedWorld(t)
+	epochSetPs, bondedPs := weightProbes(epochSetBlock, bondedBlock)
+
+	check := func(replayed *Chain, ps []probe) {
+		snap := snapshotBoot(replayed)
+		for _, p := range ps {
+			if p.mutates {
+				// Would mutate the replayed chain; leave-one-out covers these
+				// against throwaway replicas instead.
+				continue
+			}
+			want := askSafely(p, replayed)
+			got := askSafely(p, snap)
+			if want != got {
+				t.Errorf("DIVERGENCE on %q: replay-booted says %q, snapshot-booted says %q\n"+
+					"A snapshot-booted validator reaches a different verdict than a "+
+					"replayed one — the committed set is INSUFFICIENT, which is the "+
+					"unsoundness the state root exists to prevent.", p.name, want, got)
+			}
 		}
 	}
+	check(replayed, all)
+	check(weightC, epochSetPs)
+	check(bondedC, bondedPs)
 }
 
 // probeUncovered names committed fields for which no probe yet exists. It is a
@@ -254,8 +502,6 @@ var probeUncovered = map[string]string{
 		"world has no RegGateActivationHeight, so the rule never fires — needs a " +
 		"gate-active world",
 	"slashed":        "needs a committed equivocation proof, then a block proposed by the slashed node",
-	"bonded":         "needs a quorum-sizing probe: a block whose attester weight sits exactly at threshold",
-	"epochSet":       "same as bonded, at a frozen epoch boundary (#357 Cond A)",
 	"regVersion":     "needs a rotateEpoch lock-in tally across a boundary (#506)",
 	"bondDomain":     "read by C2Metric, which is a metric rather than a validity predicate",
 	"validatorsSeen": "read by Mature/C2Metric in legacy mode only",
@@ -276,14 +522,28 @@ func TestLeaveOneOutProvesEachFieldLoadBearing(t *testing.T) {
 	replayed, keys, revokedRoot, ownedRoot := richHistory(t)
 	_, head := replayed.Head()
 	prev := replayed.Blocks(0)[head-1].Hash()
-	ps := probes(revokedRoot, ownedRoot, keys, prev)
+
+	// Three worlds: the launch richHistory world for the set-valued probes, plus a
+	// mature-epoch world (epochSet) and an anchorless objective world (bonded) for
+	// the consensus-weight fields, which are load-bearing only in those regimes.
+	weightC, epochSetBlock := weightWorld(t)
+	bondedC, bondedBlock := bondedWorld(t)
+	epochSetPs, bondedPs := weightProbes(epochSetBlock, bondedBlock)
+	worlds := []worldGroup{
+		{"launch", func(*testing.T) *Chain { return replayed }, probes(revokedRoot, ownedRoot, keys, prev)},
+		{"mature-epoch", func(*testing.T) *Chain { return weightC }, epochSetPs},
+		{"objective-bonded", func(*testing.T) *Chain { return bondedC }, bondedPs},
+	}
 
 	// Guard the declared debt against the live struct first: a newly added
-	// committed field must be probed or explicitly recorded as unprobed.
+	// committed field must be probed (in SOME world) or explicitly recorded as
+	// unprobed.
 	covered := map[string]bool{}
-	for _, p := range ps {
-		for _, f := range p.detect {
-			covered[f] = true
+	for _, w := range worlds {
+		for _, p := range w.probes {
+			for _, f := range p.detect {
+				covered[f] = true
+			}
 		}
 	}
 	for _, name := range fieldsOfKind(committedSet) {
@@ -300,39 +560,52 @@ func TestLeaveOneOutProvesEachFieldLoadBearing(t *testing.T) {
 		}
 	}
 
-	// The ablation itself: drop one committed field, expect a changed verdict.
-	for _, name := range fieldsOfKind(committedSet) {
-		if !covered[name] {
-			continue
+	// The ablation itself: for each world, drop one committed field that world's
+	// probes cover and expect a changed verdict. A field is proven load-bearing
+	// once ANY world's probe flips on its omission.
+	flipped := map[string]bool{}
+	for _, w := range worlds {
+		wcov := map[string]bool{}
+		for _, p := range w.probes {
+			for _, f := range p.detect {
+				wcov[f] = true
+			}
 		}
-		ablated := snapshotBoot(replayed, name)
+		src := w.build(t)
+		for _, name := range fieldsOfKind(committedSet) {
+			if !wcov[name] {
+				continue
+			}
+			ablated := snapshotBoot(src, name)
 
-		// Baseline is a FULL snapshot replica, not the replayed chain: apply-time
-		// probes mutate, so both sides must be throwaways for a fair comparison.
-		full := snapshotBoot(replayed)
-		diverged := false
-		for _, p := range ps {
-			fv, av := askSafely(p, full), askSafely(p, ablated)
-			if fv != av {
-				// Logged so the pass is evidence, not an assertion: CI shows
-				// which probe caught which field, and a field that starts
-				// "diverging" only via an unrelated panic is visible here.
-				t.Logf("omitting %-16s → probe %q: full=%s ablated=%s", name, p.name, fv, av)
-				diverged = true
-				break
-			}
-			// Rebuild after a mutating probe so later probes see clean state.
-			if p.mutates {
-				full = snapshotBoot(replayed)
-				ablated = snapshotBoot(replayed, name)
+			// Baseline is a FULL snapshot replica, not the replayed chain: apply-time
+			// probes mutate, so both sides must be throwaways for a fair comparison.
+			full := snapshotBoot(src)
+			for _, p := range w.probes {
+				fv, av := askSafely(p, full), askSafely(p, ablated)
+				if fv != av {
+					// Logged so the pass is evidence, not an assertion: CI shows
+					// which world+probe caught which field, and a field that starts
+					// "diverging" only via an unrelated panic is visible here.
+					t.Logf("[%s] omitting %-16s → probe %q: full=%s ablated=%s", w.name, name, p.name, fv, av)
+					flipped[name] = true
+					break
+				}
+				// Rebuild after a mutating probe so later probes see clean state.
+				if p.mutates {
+					full = snapshotBoot(src)
+					ablated = snapshotBoot(src, name)
+				}
 			}
 		}
-		if !diverged {
-			t.Errorf("omitting committed field %q changed NO verdict across %d probes.\n"+
+	}
+	for name := range covered {
+		if !flipped[name] {
+			t.Errorf("omitting committed field %q changed NO verdict in any world.\n"+
 				"Either the field is not actually load-bearing (so committing it "+
 				"is bloat on the snapshot — revisit the Q2 enumeration and the Q3 "+
 				"growth analysis), or the probes are not adversarial enough. This "+
-				"is a finding to route, not a test to relax.", name, len(ps))
+				"is a finding to route, not a test to relax.", name)
 		}
 	}
 }

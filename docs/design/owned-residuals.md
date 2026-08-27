@@ -308,6 +308,30 @@ discount, C2 no quiet capture, the demand→standing firewall) — those are hel
 - **Open question:** the parameter region where the internal credit reserve stays solvent
   across realistic cost trajectories.
 
+### D6. Honest floor-box repair economics — unpaid reconstructor + unmeasured RAM (C-5)
+- **Class:** held in tension (G1 a ratified design fact, now truthfully documented) + measurement
+  owed (G2). Certified 2026-08-27 (C-5, GATED — composed honest-operator economics;
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/C5-honest-operator-economics-composition-RESEARCH-CERTIFICATION-2026-08-27.md`).
+  The firewall and conservation halves are CERTIFIED intact under the composition; these are the
+  gated halves.
+- **G1 — reconstruction is unpaid, by ratified design (held in tension, documented).** The repair
+  bounty pays the **new holder** of the rebuilt shard — a custody rent for a re-challengeable
+  replica — not the paramedic who fetches k survivors and reconstructs (`h7-proof-of-repair.md:414`,
+  `TENETS.md:301`, paid zero, keeps nothing). Correct as durability economics (pay the scarce
+  verifiable outcome, not CPU cycles); the risk it carries is that on a network where
+  publisher-aligned caretakers have left, the most expensive repair step has no funded actor. VISION
+  is corrected to what the mechanism pays (holder-side custody credit); not a defect to close, a
+  shape to own.
+- **G2 — floor-box reconstruction RAM is UNMEASURED at production chunk size (measurement owed).**
+  The reconstruct path spikes ~640 MiB–1 GiB peak RAM on a 2 GB box (`erasure.go`); the 64 KiB sim
+  hides it ~1000×. If it OOMs, reconstruction migrates to large nodes and the floor box can hold and
+  serve but not repair — a scale-asymmetry. **Owed BEFORE the economy-ON field run** (build-immutable
+  #8), bundled with the node-store coexistence test (adjacent but distinct — this one is the repair
+  path, not the store).
+- **G3 — repair self-funds HOT objects only.** `S/R ≥ 24` for an object's own skim to fund its own
+  repair; the cold one-hit majority rides D-S7's finite-but-renewable prepay horizon (D4), not a
+  self-sustaining earning.
+
 ### D5. Provable non-globality of takedown — ZK threshold predicate (D-TAKEDOWN)
 - **Class:** **research-frontier + trusted-setup design choice** — **NOT a missing library**
   *(reclassed from `crypto-gap` per the 2026-08-08 research audit; see
@@ -349,20 +373,37 @@ discount, C2 no quiet capture, the demand→standing firewall) — those are hel
 - **Open question:** the exact WS period derivation for silt's turnover/eviction dynamics, and
   checkpoint *distribution* tooling (explorer endpoints, client-bundled checkpoints) — post-M0.
 
-### E3. Reachability of maturity (held in tension)
-- **Class:** scope (a parameterized bet, not a theorem).
+### E3. Reachability of maturity (held in tension; a conditional theorem, CT-1)
+- **Class:** scope (a conditional theorem, not an unconditional one).
 - **What it is:** M0's Sybil soundness is conditional on the mature regime being reached before
-  the young, anchor-scaffolded regime is captured. No proof — a safe-parameterization (plural
-  threshold anchors + the one-way latch), with levels that must track live telemetry.
-- **Certified 2026-08-27** (C-1, GATED — certified-as-a-safe-parameterization, refuted-as-a-theorem;
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/C1-maturity-before-capture-RESEARCH-CERTIFICATION-2026-08-27.md`).
-  The `everMature` latch is certified **one-way**: it bounds the *consequence* of a lost bet
-  (no re-arm, no permanent center), never the *reachability* of pre-maturity capture. The live
-  red-team seam is R1 (pre-maturity acquisition); R2 (handoff-instant head-count capture) and
-  R3-safety (de-maturation super-quorum) are CLOSED.
-- **Doc-register residual (C-1 R6) — CLOSED 2026-08-27.** VISION §108 stated the bet more
-  strongly than the canon proves; it now carries the "safe-parameterization, not a theorem"
-  qualifier and an m0.md §10 pointer, matching this entry.
+  the young, anchor-scaffolded regime is captured. The order is now a theorem under stated
+  hypotheses (below), not a bare parameterization; what remains unprovable-from-genesis is the
+  hypotheses' inputs (`λ_H`, `W_A`) — the weak-subjectivity wall.
+- **Certified 2026-08-27 — CERTIFIED-CONDITIONAL** (C-1 conditional-theorem lift, SUPERSEDES the
+  prior GATED verdict;
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/C1-maturity-before-capture-CONDITIONAL-THEOREM-LIFT-2026-08-27.md`).
+  **Theorem CT-1:** maturity provably precedes capture under an honest-arrival floor **H**
+  (`λ_H > 0`, measured, address-diverse), an adversary-budget cap **B** (`W_A`, C1 no-discount
+  price), and the parameter constraint **P** (`M_req > W_A / (2·w_min)`). The arrival rate
+  cancels; the crossing is the falsifiable inequality **`W_A < 2·w_min·M_req`** (⅔-capture-safe;
+  half for ⅓-stall). The `everMature` latch is certified **one-way**: it bounds the *consequence*
+  of a lost bet (no re-arm, no permanent center), and CT-1 orders the *reachability* only over
+  the pre-maturity window the latch makes load-bearing.
+- **Owed input:** `λ_H` at launch — the live address-diverse honest-arrival floor rate — measured,
+  not assumed, and gating the shed (an arrival-rate-floor alarm alongside the C2 concentration
+  alarm). Instrumented as a separate lane. Parameterizes the certification, not the consensus code.
+- **R5 — adaptive parameterization (OPEN).** P2 (`M_req > W_A/(2·w_min)`) must track the measured
+  `λ_H` and the declared `W_A`, never genesis constants; the capturable region is exactly
+  `W_A ≥ 2·w_min·M_req`.
+- **R6 — the H⊥B independence break (NEW, OPEN, the sharpest seam).** H and B are not independent:
+  an adversary's staged bonds count in **both** the honest-arrival floor `λ_H` and the capture
+  weight `w_A`, so a B that stages honest-looking arrivals inflates the measured floor while being
+  the adversary. This is why `λ_H` must be measured as **address-diverse** arrival, and ties
+  directly to the A-axis declaration-cheap weakness (§10 / A-axis): the cheaper it is to look
+  operator-distinct, the cheaper the independence break.
+- **Doc-register residual — CLOSED 2026-08-27.** VISION §108 now carries the conditional-theorem
+  register (the `W_A < 2·w_min·M_req` inequality, still-not-unconditional), matching this entry
+  and m0.md §10 (CT-1).
 
 ### E4. Bonded-minority liveness-denial in the mature phase (the liveness dual of A1)
 - **Class:** **held in tension** — the BFT liveness bound every weakly-subjective system lives
