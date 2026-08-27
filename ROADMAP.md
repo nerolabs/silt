@@ -122,11 +122,15 @@ real.
    NOT built:* the #299 near-tier proof compression — the gate was met on prune +
    the fixed depth costs alone, so proof-size work stays demand-driven (revisit if a
    future regime pushes per-height cost back up; the parked sealing re-architecture
-   stays research-gated). *Gate clause owed:* the original gate also asked for the
-   360 s publish bound re-derived **downward** — not yet done (heights got cheap enough
-   without it; at ~48 s/height the computed windows in `scenarios.sh` now have real
-   slack). The re-derivation is a small, evidence-rich follow-up: derive from the
-   fe2376a-deep measured cadence, don't guess (#549-Q3 discipline).
+   stays research-gated). *Gate clause DISCHARGED (2026-08-27):* the publish bound is
+   re-derived **downward** 360 → 300 s from fe2376a-deep's measured ~48 s/height cadence
+   (results-fe2376a-deep.jsonl:29). The finding: only the gather-leg term is cadence-free
+   arithmetic; the commit-wait leg is the #451 synchronizer 2-round escape FLOOR (150 s,
+   counted in fixed 30 s sweeps — a consensus-liveness parameter, left untouched). The
+   60 s shed is historical escape-rounding + stale slow-height padding the cheap cadence
+   retires; 300 s keeps the full escape window inside the bound (6.25× the measured
+   cadence). Derivation: `docs/thinking/2026-08-27-publish-bound-rederivation.md`
+   (#549-Q3 discipline: derived, not guessed).
 4. **Phase 4 — Proof-of-Delivery (price bandwidth).** Storage is priced; bandwidth is
    not, so an open relay/gateway is a free-rider choke (the recentralization failure
    mode). Spec + research consult **first**; the hard prerequisite is closing the
@@ -177,8 +181,10 @@ close itself is the owner's call and is deliberately HELD. The current order:
    certified oracles as failing-first RED homes, era-3 gate as #506 tenant #2.
    Owner/builder calls held: lifetime-owner vs TTL-lapse for `bondRootOwner`
    (both C2-sound), rebuild-vs-persist (a build-immutable-#8 measurement).
-4. **The publish-bound re-derivation** (the owed Phase 3 gate clause — derive downward
-   from fe2376a-deep's measured ~48 s/height cadence).
+4. **The publish-bound re-derivation** — ✅ DONE (2026-08-27): 360 → 300 s, derived
+   downward from fe2376a-deep's measured ~48 s/height cadence; the #451 escape floor
+   (a consensus-liveness parameter) left untouched.
+   Derivation: `docs/thinking/2026-08-27-publish-bound-rederivation.md`.
 5. **#586** — the economy sheet's one open row (skim-observer arming under per-node
    ledgers; harness-vs-product question filed on the issue).
 6. **Standing tail:** #559 (common crash-reboot case now closed by the keystone

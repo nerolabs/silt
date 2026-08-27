@@ -17,16 +17,31 @@ set -uo pipefail
 # token gather (#388) → scatter+confirm → register): 4×34 ≈ 136s; the COMMIT
 # WAIT leg is escape-aware under the #451 synchronizer durations (submit-then-
 # poll rides the designee rotation, and a contested height may pay the 2-round
-# escape: H_ESCAPE_S ≈ 220s — see its derivation at the soak defaults) ≈
-# 136 + 220 ≈ 356 → 360; +1 leg-equivalent for the relay hop on the cross-NAT
-# flow is absorbed by the same allowance. (240 was the pre-#453 figure — its
-# commit-wait leg assumed one flat 64s drain cycle; run 82bcd2b-39478's only
-# non-#345/#350 GAP was a publish missing exactly this stale window.)
+# escape: the 2-round synchronizer escape FLOOR is dur(0)+dur(1) = 5 sweeps ×
+# 30s ChainSyncInterval = 150s + one ~34s gather leg = 184s — see the H_ESCAPE_S
+# derivation at the soak defaults) ≈ 136 + 184 = 320 → 300; +1 leg-equivalent
+# for the relay hop on the cross-NAT flow is absorbed by the same allowance.
+#
+# PUBLISH BOUND RE-DERIVED DOWNWARD (2026-08-27, owed Phase-3 gate clause):
+# 360 → 300s. Evidence: fe2376a-deep flow 12-deep-heights measured ~48s/height
+# steady cadence (results-fe2376a-deep.jsonl:29; (h132−h78)/2615s = 48.4s/height,
+# was ~390s at the depth-war start). The 220s commit-wait leg was a synchronizer
+# ROUND bound counted in fixed 30s sweeps, NOT a wall-clock cadence quantity, so
+# it does NOT tighten with the cheap cadence — the escape FLOOR (184s) stays; the
+# 60s shed is the historical escape-rounding cushion (220→184) plus stale
+# slow-height straddle padding the cheap cadence retires. 300s keeps the full
+# 150s escape window inside the bound and is 6.25× the measured 48s cadence /
+# 1.76× the 170s per-height worst case at e2fab4b — retry headroom for transient
+# WAN churn, above the escape floor. Derivation:
+# docs/thinking/2026-08-27-publish-bound-rederivation.md. (240 was the pre-#453
+# figure — its commit-wait leg assumed one flat 64s drain cycle; run 82bcd2b-39478's
+# only non-#345/#350 GAP was a publish missing exactly that stale window, so the
+# re-derivation stays comfortably above 240.)
 # Fetch is ~3 legs (discovery → manifest → parallel chunk fetches) ≈ 102s → 120.
 : "${COMMIT_SLO_S:=90}"
 : "${FETCH_SLO_S:=120}"
 : "${RESTART_SLO_S:=60}"
-: "${PUBLISH_RETRY_S:=360}"
+: "${PUBLISH_RETRY_S:=300}"
 
 # ── swarm references (validators as peers; val-a serves the registry) ───────────
 ft_peers() {
@@ -1879,7 +1894,7 @@ flow_economy_repair() {
   # build-immutable #5 magic-constant limitation in adapters/httpregistry — a
   # separate product fix; this makes the harness retry actually idempotent.)
   ssh_node fetch-1 "head -c 4194304 </dev/urandom >/tmp/ft_econ.bin" >/dev/null 2>&1
-  local econ_deadline=$(( $(date +%s) + ${ECONOMY_PUBLISH_RETRY_S:-360} ))
+  local econ_deadline=$(( $(date +%s) + ${ECONOMY_PUBLISH_RETRY_S:-300} ))
   while :; do
     # -replication 1: each column lands on ONE holder, so 3 all-killable columns
     # exist on a small killable pool (parity is the redundancy — the flag's own
@@ -1910,9 +1925,9 @@ flow_economy_repair() {
   if [ -z "$link" ] || [ -z "$carelink" ]; then
     ft_add_validator_evidence
     if [ "$econ_any_output" = 0 ]; then
-      record "11-economy-repair" gap major "setup publish got EMPTY RESPONSES from fetch-1 for the whole ${ECONOMY_PUBLISH_RETRY_S:-360}s window — fetch-1 UNREACHABLE or the node MAP is wrong (check nodes.json), a PLUMBING failure NOT a product/latency issue; economy UNTESTED"; return
+      record "11-economy-repair" gap major "setup publish got EMPTY RESPONSES from fetch-1 for the whole ${ECONOMY_PUBLISH_RETRY_S:-300}s window — fetch-1 UNREACHABLE or the node MAP is wrong (check nodes.json), a PLUMBING failure NOT a product/latency issue; economy UNTESTED"; return
     fi
-    record "11-economy-repair" gap major "setup publish landed no link+carelink after ${ECONOMY_PUBLISH_RETRY_S:-360}s of retries — economy UNTESTED this run, not a failure (registry publish-commit latency #441-family; $(printf '%s' "$out" | tr '\n' ';' | head -c 160))"; return
+    record "11-economy-repair" gap major "setup publish landed no link+carelink after ${ECONOMY_PUBLISH_RETRY_S:-300}s of retries — economy UNTESTED this run, not a failure (registry publish-commit latency #441-family; $(printf '%s' "$out" | tr '\n' ';' | head -c 160))"; return
   fi
   # Verbosity honesty (2026-08-20, run 577f0f1-11364): echo the link + the full
   # publish-client output + the full holders map to the console. The old flow
