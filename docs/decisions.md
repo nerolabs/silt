@@ -510,6 +510,37 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
   data**. Enforced mechanically by the order-varying oracle
   (`core/chain/modelcheck_order_independence_test.go`), because classification alone
   cannot catch a purely order-derived value.
+- **DECIDED 2026-08-27 — the floor-box validator validates BY PROOF, not by holding the
+  tree** (PE ruling `.../principle-engineer/RULING-keystone-node-store-dependency-2026-08-27.md`
+  Q5; Andrew concurred). This is a **decentralization posture**, deliberately NOT settled by
+  a storage default. The keystone's whole purpose is *cheap correct validation by proof*
+  (D-TIERING §7); if a 1 vCPU / 2 GB validator had to hold the full state tree, the keystone
+  would have failed its own promise — the `AllEntries` OOM simply relocated into the SMT
+  (~2.2 GB at 10M entries, growing with all-content-ever). **End state:** the floor-box
+  validator is **tree-free and semi-stateless** — it verifies a block's root transition from
+  proposer-supplied **witnesses** (inclusion/exclusion proofs) against the root it already
+  trusts (the Ethereum stateless-client shape); the disk-backed store is a **tier-above**
+  concern (proposer / full-registry / archival), which computes roots and generates
+  witnesses. **Near-term bridge, stated honestly:** witness-based validation is NOT built,
+  so until it is, a validating node holds the tree and the disk-backed KV store is what makes
+  the tree fit the box at all — but shipping that store must **never silently redefine #8
+  upward** to "validation requires 2.2 GB of state," which would price the floor box out of
+  validation as the registry grows. **Consequence for the era-3 format:** it must be frozen
+  knowing this direction, so the block/gossip can carry or reconstruct witnesses; a format
+  assuming stateful floor-box validation is the thing to avoid. Witness-based validation is
+  opened as the Phase-3+ keystone follow-on (witness soundness, a size bound so a malicious
+  proposer cannot DoS an attester with huge witnesses, and who generates witnesses).
+- **The node store is a 7th dependency behind `ports.NodeStore`** (PE ruling Q1/Q2; Andrew
+  concurred). Take an embedded pure-Go KV store — a hand-rolled engine is the textbook B8
+  violation (crash consistency and fsync ordering are settled; "consensus is boring" binds
+  hardest on what consensus state is stored in). It sits behind a silt-owned `ports.NodeStore`
+  (the five `MapStore` methods), never a third-party interface on the core's surface, so the
+  SMT/backend choice — each only one spike old — stays a localized swap and preserves the
+  option to drop to a simpler backend once sharding shrinks the per-node key count. The
+  backend is chosen by a **build-immutable-#8 floor-box measurement of `bbolt` + one tuned
+  LSM in one run** (prior: bbolt's mmap page cache is kernel-evictable where an LSM's
+  memtables/caches are server-sized heap — the wrong profile for the box — but #596 proved
+  reading loses to measurement on this exact workload, so confirm it).
 - **Immutables preserved:** consensus engine untouched; M0 firewall reinforced; the
   hobbyist box (#8) is the point of the whole direction; content-blind core untouched (the
   root commits locators and status, never content meaning).
