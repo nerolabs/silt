@@ -182,4 +182,29 @@ func TestMaturityNakamotoResistsOneOperator(t *testing.T) {
 	if !c2.Mature() {
 		t.Fatal("H4 shed metric: three independent equal-weight validators SHOULD mature the network (Nakamoto coefficient 2)")
 	}
+
+	// MatureCoefficient must return the SAME operator/domain-distinct distinctness the
+	// shed gates on — it is A(t), the honest-arrival COUNT the CT-1 conditional theorem
+	// measures its floor λ_H by (cert C1-maturity-before-capture-CONDITIONAL-THEOREM-LIFT
+	// -2026-08-27, §2.1). If the two definitions drifted, the λ_H floor would parameterize
+	// a different quantity than the theorem binds (T_mature ≤ M_req/λ_H). Guard the tie:
+	// the coefficient equals min(NakamotoOperators, NakamotoDomains), and Mature() is
+	// exactly coefficient ≥ MatureValidators.
+	assertCoeffTiesShed := func(name string, c *Chain) {
+		m := c.C2Metric()
+		want := m.NakamotoOperators
+		if m.NakamotoDomains < want {
+			want = m.NakamotoDomains
+		}
+		if got := c.MatureCoefficient(); got != want {
+			t.Fatalf("%s: MatureCoefficient()=%d, want min(NakamotoOperators=%d, NakamotoDomains=%d)=%d",
+				name, got, m.NakamotoOperators, m.NakamotoDomains, want)
+		}
+		if (c.MatureCoefficient() >= 2) != c.Mature() {
+			t.Fatalf("%s: MatureCoefficient()=%d vs MatureValidators=2 disagrees with Mature()=%v — the λ_H count and the shed have drifted",
+				name, c.MatureCoefficient(), c.Mature())
+		}
+	}
+	assertCoeffTiesShed("one-operator (coeff 1, immature)", c)
+	assertCoeffTiesShed("decentralized (coeff 2, mature)", c2)
 }

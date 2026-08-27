@@ -84,6 +84,8 @@ func cmdDaemon(args []string) error {
 	anchorList := fs.String("anchors", "", "launch-window training wheels: comma-separated anchor validator IDs whose sign-off an immature-network commit also requires (empty = no training wheels)")
 	anchorQuorum := fs.Int("anchor-quorum", 0, "LEGACY (non-objective) only: anchor attestations an immature-network commit needs (0 = off). In OBJECTIVE mode this is IGNORED — the launch gate is a DERIVED strict anchor majority ⌊A/2⌋+1 (#402), so config cannot disable quorum intersection")
 	matureValidators := fs.Int("mature-validators", 0, "required NAKAMOTO COEFFICIENT (M0 H4): the anchor requirement sheds only once this many bond-DISTINCT operators are needed to reach ⅓ of the bonded weight — cost-to-corrupt, not a head-count, so one operator with many keys can't trip the wheels off (0 = never require anchors)")
+	lambdaHFloor := fs.Float64("lambda-h-floor", 0, "honest-arrival floor λ_H (CT-1 conditional theorem, research cert C1-maturity-before-capture-CONDITIONAL-THEOREM-LIFT-2026-08-27): the minimum operator/domain-distinct bonded-arrival RATE (distinct arrivals per block-height, measured over -lambda-h-window) the launch was certified against. Below this floor — while the network is still YOUNG (pre-maturity latch) — the deployment has LEFT the theorem's hypothesis H (T_mature→∞, maturity-precedes-capture no longer proven) and a LOUD λ_H FLOOR-EXIT marker is surfaced to the log. OBSERVABILITY ONLY: it changes no validity predicate, no consensus rule, no security parameter — it reads the committed C2 metric and narrates. 0 = disabled (default; existing deployments and sims unaffected). Set it to the floor you certified your adversary budget W_A / shed threshold M_req against (P2: M_req > W_A/(2·w_min))")
+	lambdaHWindow := fs.Uint64("lambda-h-window", 20, "trailing window (block-heights) the honest-arrival rate λ_H is averaged over for the -lambda-h-floor alarm. λ_H = Δ(min-Nakamoto-coefficient)/Δheight over this many committed heights — the realized net operator/domain-distinct arrival rate. Widen it to smooth per-block churn (TTL lapses can transiently drop the coefficient), narrow it to react faster. Observability only")
 	operatorMargin := fs.Int("operator-margin", 1, "operator margin M (M0 C2 / D-C2): the maturity shed discounts the bond-distinct Nakamoto coefficient by M (⌊k̂/M⌋) — since on-chain data carries no operator label, one operator may split a stake across ~M keys, so a splitter must clear mature-validators×M distinct bonds to shed the wheels. LEFT UNSET it defaults to a conservative M>1 for an untrusted objective swarm (safe-by-default, like -min-bond-floor); an explicit 1 = no split margin (single-operator/trusted). M stays a heuristic — unverifiable on-chain (#182)")
 	quorum := fs.Int("quorum", 3, "MINIMUM attestations (excluding the proposer) to commit a block — a floor; with -byzantine-quorum the effective requirement rises to the Byzantine threshold over the qualified set. Lower only for a trusted/one-box swarm")
 	byzantineQuorum := fs.Bool("byzantine-quorum", false, "size the commit quorum at the Byzantine threshold (M0 H4): the support set becomes a supermajority n−f of the qualified bonded set, so two quorums always share an honest validator (safety as the set grows). LEFT UNSET it defaults ON for an untrusted objective validator; an explicit =false opts out (trusted swarm). Only ever RAISES the bar")
@@ -821,6 +823,10 @@ func cmdDaemon(args []string) error {
 		nd.OnReorg(func(dropped int, newHeight uint64) {
 			fmt.Printf("chain: reorged onto a heavier fork (dropped %d block(s), new head height %d)\n", dropped, newHeight)
 		})
+		// λ_H arrival-rate observer (CT-1 conditional theorem, §6): trails the committed
+		// distinctness coefficient A(t) to record the honest-arrival RATE and alarm on a
+		// floor exit. Ephemeral observer state — the chain stays a pure reader.
+		lambdaH := newLambdaHTracker(*lambdaHWindow)
 		nd.OnCommit(func(b chain.Block) {
 			// bond-regs is the DRAIN CURVE's per-block resolution: without it a
 			// journal cannot say which committed blocks banked which registrations
@@ -869,6 +875,31 @@ func cmdDaemon(args []string) error {
 				// checkpoint (F-1): a fresh/long-offline node pins one via -ws-checkpoint
 				// to refuse a long-range reorg. Publish it / cross-check across nodes.
 				fmt.Printf("  checkpoint: %d:%s\n", b.Height, b.Hash())
+				// λ_H — the honest-arrival RATE the CT-1 conditional theorem is owed
+				// (research cert C1-maturity-before-capture-CONDITIONAL-THEOREM-LIFT-2026-08-27,
+				// §6). A(t) is the SAME operator/domain-distinct distinctness the shed gates
+				// on (MatureCoefficient); λ_H = ΔA/Δheight over the trailing window is the
+				// realized net arrival rate. RECORD it; it parameterizes the certification,
+				// not the code (reads the committed metric, changes no rule).
+				a := ch.MatureCoefficient()
+				lambdaH.observe(b.Height, a)
+				if lambdaH.ready() {
+					fmt.Printf("  λ_H: %.3f distinct arrivals/height (A=%d over %d heights) | shed at %d\n",
+						lambdaH.rate(), a, lambdaH.span(), *matureValidators)
+				} else {
+					fmt.Printf("  λ_H: window filling (A=%d) — arrival rate reported once ≥2 heights are trailed\n", a)
+				}
+				// Floor-exit alarm (§6/§271): the launch was certified against an honest-
+				// arrival floor. If the measured λ_H falls below it WHILE THE NETWORK IS
+				// STILL YOUNG (pre-maturity latch), the deployment has left hypothesis H —
+				// T_mature→∞, maturity-precedes-capture no longer holds — and the operator
+				// must NOT treat CT-1 as holding. After the one-way latch (EverMature) the
+				// floor is moot (P4: post-maturity concentration cannot re-arm anchors), so
+				// the alarm is gated on !EverMature(); the λ_H LINE above always prints.
+				if !ch.EverMature() && lambdaH.belowFloor(*lambdaHFloor) {
+					fmt.Printf("  ⚠ λ_H FLOOR-EXIT: honest-arrival rate %.3f/height is BELOW the certified floor %.3f/height while the network is still young — the launch has LEFT the CT-1 hypothesis (T_mature→∞; maturity-precedes-capture is no longer proven). Do NOT treat the maturity race as certified. Investigate stalled/reversed honest bonded arrivals out-of-band.\n",
+						lambdaH.rate(), *lambdaHFloor)
+				}
 			}
 			saveChain("commit")
 		})
