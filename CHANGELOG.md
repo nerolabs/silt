@@ -9,6 +9,30 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **Keystone weight-discriminator probe — the committed per-member WEIGHT bytes
+  of `epochSet` proven load-bearing** (2026-08-27, closes issue #603, the era-3
+  format-freeze gate). The membership probes prove `epochSet` MEMBERSHIP is
+  load-bearing but would still pass if the field stored membership with all weights
+  set to a constant, because omission empties frozen membership and rejects via the
+  COUNT floor (`ErrNoQuorum`) — the ⅔-weight predicate never fires. `TestEpochWeight
+  BytesAreLoadBearing` closes that gap. It builds a mature-epoch world with UNEQUAL
+  frozen weights and a block whose support coalition (proposer + one attester,
+  concentrated real weight) clears the count floor (`Quorum: 1`, `seen=1`) but whose
+  verdict is carried by `requireEpochWeightQuorum`. Full case (true weights): the
+  coalition holds 10 of 12 MiB → `3·10 > 2·12` → ACCEPT. Ablated case: membership
+  held fixed, weights FLATTENED to a constant → support/total collapses to
+  `2/4 = ½ < ⅔` for any constant → REJECT with **`ErrNoQuorumWeight`**, the weight
+  predicate as the discriminator — not `ErrNoQuorum`. The rules are used as written
+  (`chain.go:2443-2464`); no summation, freeze timing, or boundary was moved.
+  Ablation-proven (the session scar): injecting no-blinding makes the ablated case
+  ACCEPT (RED), and injecting the membership ablation (empty `epochSet`) flips via
+  `ErrNoQuorum: 0 qualified` with `seen=0` (RED) — so the probe rejects a
+  membership-flip masquerading as a weight-flip. This is the load-bearing weight
+  claim the era-3 committed-root format may now freeze on. Certified by C-7
+  (`../silt-reviews/research/research-outcome/C7-witness-based-floor-box-validation-RESEARCH-CERTIFICATION-2026-08-27.md`,
+  the witness path needs per-field load-bearing state) and by the blind PE ruling's
+  fix 2 (`../silt-reviews/principle-engineer/RULING-keystone-probes-bonded-epochset-2026-08-27.md`).
+  Deliberation: `docs/thinking/2026-08-27-keystone-weight-discriminator-probe.md`.
 - **Keystone leave-one-out — `bonded` and `epochSet` MEMBERSHIP proven
   load-bearing** (2026-08-27, PE-gated on the era-3 format freeze). The
   snapshot-boot-equivalence oracle's sharp half now probes two more committed
