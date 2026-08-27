@@ -574,6 +574,57 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
   up to carry the qualifier. Sharpens the #183 red-team seam (see `owned-residuals.md` E3 /
   the red-team brief): the live seam is R1 pre-maturity acquisition; R2 (handoff-instant
   head-count capture) and R3-safety (de-maturation super-quorum) are CLOSED.
+- **SUPERSEDES the entry above — RATIFIED 2026-08-27 — "maturity before capture" lifts to a
+  CONDITIONAL THEOREM (C-1 = CERTIFIED-CONDITIONAL)** (research certification
+  `.../research-outcome/C1-maturity-before-capture-CONDITIONAL-THEOREM-LIFT-2026-08-27.md`;
+  full path
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/C1-maturity-before-capture-CONDITIONAL-THEOREM-LIFT-2026-08-27.md`).
+  **Verdict: CERTIFIED-CONDITIONAL — the lift succeeds, with a named boundary.** The prior
+  entry's GATED "safe-parameterization, not a theorem" is replaced. "Maturity precedes
+  capture" is now a **theorem (CT-1) under three hypotheses**: an honest-arrival floor **H**
+  (address-diverse, operator-distinct bonded provision at a measured floor rate `λ_H > 0`), an
+  adversary-budget cap **B** (spendable real-bond capital `W_A` acquired at the C1 no-discount
+  price), and a parameter constraint **P** (chiefly P2, `M_req > W_A / (2·w_min)`). The
+  derivation's decisive artifact: the honest arrival *rate* `λ_H` **cancels** out of the
+  capture-vs-maturity order, leaving a pure budget-vs-threshold inequality — **maturity
+  provably precedes ⅔-capture iff `W_A < 2·w_min·M_req`** (and precedes ⅓-stall iff below half
+  that). It is proven conservatively, without crediting the declaration-cheap A-axis margin
+  `M`. The shipped shed trigger (`min(NakamotoOperators, NakamotoDomains) ≥ MatureValidators`,
+  `chain.go:1819`) and the one-way `everMature` latch (`chain.go:2820`) bind the proof.
+  **Still NOT unconditional:** the honest-arrival floor `λ_H` and the budget cap `W_A` cannot
+  be verified from genesis on chain data alone — the weak-subjectivity wall every deployed PoS
+  system lives behind. So C-1 moves GATED → **CERTIFIED-CONDITIONAL**, pending the one owed
+  measurement — `λ_H` at launch (address-diverse arrival), now instrumented as a separate lane
+  (lambda-h-instrumentation) — which parameterizes the certification, not the consensus code.
+  VISION §108 and `docs/design/m0.md` §10 (CT-1) are trued up to the conditional-theorem
+  register; the #183 brief re-prices R1 to the inequality and opens R6 (the H⊥B independence
+  break — see the red-team brief / `owned-residuals.md` E3).
+- **RATIFIED 2026-08-27 — C-5 honest-operator composed economics: GATED** (research
+  certification
+  `.../research-outcome/C5-honest-operator-economics-composition-RESEARCH-CERTIFICATION-2026-08-27.md`;
+  full path
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/C5-honest-operator-economics-composition-RESEARCH-CERTIFICATION-2026-08-27.md`).
+  Certifies the COMPOSITION of the honest floor-box operator's economics (relay credit +
+  repair credit vs. real operating cost), not any leg in isolation. **Verdict: GATED**,
+  decomposed by residual class. **CLOSED (certified intact under the composition):** the
+  γ→1/N firewall holds — relay and repair credit are both balance-lane, never standing
+  (#182 not strained); conservation holds — no leg mints a network subsidy, so the banned
+  money-pump does not exist (relay is sender-funded strict-loss under collusion; repair is
+  paid only from an object's own prepaid/skimmed escrow); and **no DEFENSE prices out the
+  small operator** — the min-bond floor is walled from the transport/serve economy
+  (build-immutable #4). **GATED halves (true-up + measurement owed):**
+  **G1 — a FACTUAL correction to VISION.** The repair bounty pays the **new holder** of the
+  rebuilt shard, a custody rent for a re-challengeable replica — NOT the reconstructor, who
+  by ratified design (`h7-proof-of-repair.md:414`, `TENETS.md:301`) is paid **zero**;
+  reconstruction is an unpaid caretaker duty. VISION lines ~54 and ~160 are corrected to what
+  the mechanism actually pays (holder-side custody credit + a funded durability horizon for
+  cold data). **G3 — repair self-funds HOT objects only** (`S/R ≥ 24`); the cold one-hit
+  majority (~50–60% of objects) rides D-S7's finite-but-renewable prepay horizon, not a
+  self-sustaining earning; VISION carries the scope. **G2 — the floor-box reconstruction RAM
+  spike (~640 MiB–1 GiB on a 2 GB box) is UNMEASURED at production chunk size** (build-immutable
+  #8) — owed BEFORE the economy-ON field run, bundled with the node-store coexistence test
+  (`owned-residuals.md` G2). No immutable is traded; no certified leg or consensus surface is
+  reopened.
 - **The node store is a 7th dependency behind `ports.NodeStore`** (PE ruling Q1/Q2; Andrew
   concurred). Take an embedded pure-Go KV store — a hand-rolled engine is the textbook B8
   violation (crash consistency and fsync ordering are settled; "consensus is boring" binds

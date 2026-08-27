@@ -352,6 +352,28 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   home (consult Q5). Record: `docs/thinking/2026-08-25-570-archival-fixture-suite.md`.
 
 ### Docs
+- **VISION + canon honesty pass — C-1 lift to a conditional theorem, C-5 operator-economics
+  true-up, and C-2/C-3 register fixes** (2026-08-27). One coherent pass re-anchoring the north
+  star to ratified canon. **C-1 (maturity before capture)** lifts GATED → **CERTIFIED-CONDITIONAL**
+  (conditional-theorem lift): maturity provably precedes capture as **Theorem CT-1** under an
+  honest-arrival floor (H), a declared adversary budget (B), and a parameter constraint (P), with
+  the falsifiable crossing inequality **`W_A < 2·w_min·M_req`** — still not unconditional (the
+  weak-subjectivity wall). `docs/VISION.md`, `docs/decisions.md` (supersedes the prior GATED entry),
+  `docs/design/m0.md` §10 (CT-1), and `docs/design/owned-residuals.md` E3 trued up; the #183 brief
+  re-prices R1 to the inequality, names R5's attack region `W_A ≥ 2·w_min·M_req`, and opens **R6 —
+  the H⊥B independence break** (an adversary's staged bonds count in both the honest-arrival floor
+  and the capture weight, so `λ_H` must be measured as address-diverse arrival). **C-5 (honest
+  operator composed economics)** ratified **GATED**: the γ→1/N firewall and conservation hold under
+  the composition and no defense prices out the small operator; a FACTUAL VISION correction — the
+  repair bounty pays the **new holder** of a rebuilt shard (custody rent), not the reconstructor
+  (unpaid caretaker duty) — plus the hot/cold scope (repair self-funds hot objects; cold rides a
+  funded horizon). The floor-box reconstruction RAM (G2) is owed before the economy-ON field run
+  (`owned-residuals.md` D6). **C-2/C-3 register fix:** VISION's multiplicative-interlock paragraph
+  now carries m0.md's own `C_honest ≈ D`-today and declaration-cheap-A-axis qualifiers
+  (target-not-yet-live). Distinguishes factual errors (C-5 G1 — fixed) from register drift (C-1,
+  C-2/C-3 — qualified); VISION stays a north star, not a status report. Certifications:
+  `silt-reviews/research/research-outcome/C1-maturity-before-capture-CONDITIONAL-THEOREM-LIFT-2026-08-27.md`,
+  `silt-reviews/research/research-outcome/C5-honest-operator-economics-composition-RESEARCH-CERTIFICATION-2026-08-27.md`.
 - **Canon true-up recording two ratified research certifications** (2026-08-27). C-7
   (witness-based floor-box validation) is CERTIFIED sound + complete: soundness no longer
   blocks the #600 direction, and the era-3 format now carries a HARD freeze prerequisite —
