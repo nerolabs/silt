@@ -9,6 +9,30 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **λ_H arrival-rate instrumentation — the one measurement the CT-1 conditional
+  theorem is owed** (2026-08-27). The C-1 lift to CERTIFIED-CONDITIONAL
+  (`silt-reviews/.../C1-maturity-before-capture-CONDITIONAL-THEOREM-LIFT-2026-08-27.md`)
+  proves maturity precedes capture under an honest-arrival floor `λ_H > 0`
+  (measured), an adversary budget `W_A` (declared), and P2 (`M_req > W_A/(2·w_min)`).
+  §6 names exactly one input silt did not hold in code: the **live honest-arrival
+  rate at launch**, plus a **floor-exit alarm**. This ships both. λ_H is defined
+  as the **operator/domain-distinct bonded-arrival rate per block-height** — the
+  arrival COUNT `A(t)` is the SAME shed metric `min(NakamotoOperators,
+  NakamotoDomains)`, exposed as the pure getter `chain.MatureCoefficient()` so the
+  floor and the shed cannot count different quantities (the theorem binds
+  `T_mature ≤ M_req/λ_H`). The daemon's commit observer trails `A(t)` over a
+  configurable window (`-lambda-h-window`, default 20 heights) and narrates
+  `λ_H = ΔA/Δheight` to the log beside the C2 concentration line. `-lambda-h-floor`
+  (distinct arrivals/height; **default 0 = disabled**, so sims and existing
+  deployments are unaffected) sets the certified floor: when the measured rate
+  falls below it **while the network is still young** (pre-maturity latch — after
+  the one-way `EverMature` latch the floor is moot, P4), a LOUD `λ_H FLOOR-EXIT`
+  marker surfaces that the launch has left CT-1's hypothesis H and
+  maturity-precedes-capture is no longer proven. **OBSERVABILITY ONLY**: it reads
+  the committed C2 metric and narrates — it changes no validity predicate, no
+  consensus rule (I1–I5), no security parameter. It parameterizes the
+  certification, not the code (cert §6). Design:
+  `docs/thinking/2026-08-27-lambda-h-arrival-rate-instrumentation.md`.
 - **The disk-backed node-store spike — a batching bbolt `MapStore`, proven
   correct locally before any billable run** (2026-08-27, PE-ordered). PR #596
   disqualified the in-memory SMT backend by kernel OOM, so the keystone needs a

@@ -1832,12 +1832,26 @@ func (c *Chain) matureNow() bool {
 	// MatureValidators distinct declared domains. At M=1 with no domains set this is
 	// the plain bond-distinct coefficient (unchanged behavior). min() only ever RAISES
 	// the bar to shed, so it can never weaken an existing config.
+	return c.MatureCoefficient() >= c.cfg.MatureValidators
+}
+
+// MatureCoefficient is the operator-and-domain-distinct bonded-distinctness count over
+// the COMMITTED ledger — min(NakamotoOperators, NakamotoDomains) from C2Metric — the
+// exact quantity the maturity shed gates on (matureNow). It is the shipped H metric the
+// CT-1 conditional theorem measures its honest-arrival count A(t) by (research cert
+// C1-maturity-before-capture-CONDITIONAL-THEOREM-LIFT-2026-08-27, §2.1): the honest
+// operator/domain-distinct arrival count at height t. Exposed so an observer can RECORD
+// the arrival RATE λ_H = ΔA/Δheight for the floor-exit alarm the cert owes (§6) WITHOUT
+// a second, driftable definition of the distinctness metric — the shed and the λ_H floor
+// must count the same thing or the floor parameterizes a different quantity than the
+// theorem binds (T_mature ≤ M_req / λ_H). Pure read of committed state; changes no rule.
+func (c *Chain) MatureCoefficient() int {
 	m := c.C2Metric()
 	k := m.NakamotoOperators
 	if m.NakamotoDomains < k {
 		k = m.NakamotoDomains
 	}
-	return k >= c.cfg.MatureValidators
+	return k
 }
 
 // C2 is the concentration measurement behind the "no quiet capture" axis (D-C2):
