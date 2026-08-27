@@ -5095,6 +5095,23 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   new message plumbing beyond two wire kinds; the pure core stays
   NodeID-only — reachability is simply whether the transport can deliver.
 
+### Changed
+- **The field-test publish bound re-derived downward, 360 → 300 s** (2026-08-27,
+  owed Phase-3 gate clause). The `12-deep-heights` deep drive measured ~48 s/height
+  steady cadence (`integration/cloudtest/results-fe2376a-deep.jsonl:29`, was ~390 s
+  at the depth-war start), so the publish retry budget in
+  `integration/cloudtest/scenarios.sh` (`PUBLISH_RETRY_S`, and its sibling
+  `ECONOMY_PUBLISH_RETRY_S`) re-derives from the measured number, not a guess
+  (#549-Q3 discipline). The load-bearing finding: only the gather-leg term is
+  cadence-free request-timeout arithmetic; the commit-wait leg is the #451
+  synchronizer 2-round escape FLOOR (`dur(0)+dur(1)` = 150 s, counted in fixed 30 s
+  sweeps — a consensus-liveness parameter, **left untouched**). The 60 s shed is the
+  historical escape-rounding cushion (220 → 184) plus stale slow-height straddle
+  padding the cheap cadence retires. 300 s keeps the full 150 s escape window inside
+  the bound (6.25× the measured cadence, 1.76× the 170 s per-height worst case at
+  e2fab4b), above the too-tight 240 s scar. Config + docs only; no billable run.
+  Derivation: `docs/thinking/2026-08-27-publish-bound-rederivation.md`.
+
 ## [0.1.1] — 2026-07-26
 
 Still early, experimental, and unaudited (see the
