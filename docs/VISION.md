@@ -51,9 +51,12 @@ hold the whole registry to do its job: it validates by **proof**, checking each 
 state transition against witnesses supplied by the tier above, so the honest-validator
 floor stays a floor as the network grows to all-content-ever. The operator earns standing by
 providing real, sustained, address-diverse storage and serving real demand — and earns
-balance-lane credit for the bandwidth they relay and the repairs they perform. Cheap honest
-participation is a security property, not a courtesy: no defense is allowed to price the
-small operator out.
+balance-lane credit for the bandwidth they relay and for holding a rebuilt replica (the
+repair bounty is a custody rent to the new holder of a reconstructed shard; reconstruction
+itself is an unpaid caretaker duty). Hot objects self-fund their own repair out of served
+demand; cold data rides a funded durability horizon, re-endowed before it expires. Cheap
+honest participation is a security property, not a courtesy: no defense is allowed to price
+the small operator out.
 
 **The curator** removes genuinely harmful content by acting on a **hash**, never on an
 identity and never through a global switch. Every honored takedown is committed to an
@@ -98,6 +101,14 @@ what honest provision costs. Sybil-resistance is therefore *re-pricing plus
 concentration-bounding*, not prevention; the residual — an honest whale who genuinely
 provides that much — is *bounded* by the concentration metric, not eliminated.
 
+This multiplicative interlock is the **target**, not yet the operative guarantee. Today
+consensus standing is gated by the bond axis alone (`C_honest ≈ D`); served demand (B) is an
+unbuilt track, and address-diversity (A) is enforced at the DHT layer but does not yet enter
+the standing number — and where it does bind, the operator/domain split is *self-declared*,
+so a rational splitter evades it for the cost of a declaration, not a subnet
+([`design/m0.md`](design/m0.md) §3, §10). The other axes are designed and staged, not fully
+wired. Read this paragraph as the destination the composition is built toward.
+
 The finished system holds all three corners because the corners **co-mature**. Privacy is
 architectural from day one. Accountability is content-level and reactive from day one. And
 Sybil-resistance is the corner that bootstraps: weakest on a young network, strengthening as
@@ -105,10 +116,15 @@ real, sustained work accrues. During the launch window, explicit, time-boxed anc
 validators are the training wheels — and they **shed** on measured decentralization through a
 one-way latch that, once tripped, never re-arms, so a later dip in decentralization can never
 hand the launch anchors permanent power. The bet, stated plainly: **maturity is reached
-before the scaffolding can be captured** — a **safe-parameterization, not a theorem** (no
-proof of the temporal race; the mechanism, the one-way latch and the de-maturation
-super-quorum, is what is certified, and it bounds the downside of a lost bet to a
-socially-recoverable re-centralization, never a permanent center). See
+before the scaffolding can be captured** — and this is a **conditional theorem**, not a
+bare parameterization: under an honest-arrival floor (H), a declared adversary budget (B),
+and a parameter constraint (P), maturity provably precedes capture, and the crossing reduces
+to a single falsifiable inequality — the adversary's spendable bonded budget stays below
+twice the shed threshold's worth of minimum bonds (**`W_A < 2·w_min·M_req`**). It is **not**
+an unconditional theorem: the honest-arrival floor and the adversary budget cannot be
+verified from genesis on chain data alone (the weak-subjectivity wall every proof-of-stake
+system lives behind), and the one-way latch bounds the downside of a lost bet to a
+socially-recoverable re-centralization, never a permanent center. See
 [`design/m0.md`](design/m0.md) §10.
 
 ---
@@ -150,7 +166,11 @@ subsidy — a money pump. Relaying is paid by a self-enforcing incremental micro
 fetcher authorizes each increment, the relay forwards only while paid, and neither can prove
 the other cheated, so there is nothing to adjudicate and no trusted third party in the path —
 the irreducible one-increment exposure is bounded small by construction. Repair is
-incentivized by bounties that pay for real work and are never clawed back once earned.
+incentivized by bounties that pay the new holder of a reconstructed shard — a custody rent
+for a re-challengeable replica, never clawed back once earned — funded only from that
+object's own prepaid or skimmed escrow, never a network mint; reconstruction itself is an
+unpaid caretaker duty. That escrow self-funds repair for hot objects; cold data is durable
+on a funded, renewable horizon rather than a self-sustaining earning.
 Content curation and demand attestation reuse the same unlinkable blind-token primitive that
 keeps publishing private, so the economy never becomes a deanonymization surface.
 
