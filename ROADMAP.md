@@ -160,7 +160,8 @@ close itself is the owner's call and is deliberately HELD. The current order:
    Camenisch–Shoup is not adoptable (quorum-TTP/VSS is the route if ever). **The
    state-root keystone consult is ALSO CERTIFIED**
    (`silt-reviews/research/research-outcome/D-TIERING-state-root-keystone-RESEARCH-CERTIFICATION-2026-08-26.md`):
-   compact SMT, one root over all 16 fields, era-3 rides the #506 version-gate as
+   compact SMT over the set-valued state PLUS a separate append-only root for the
+   transparency log (refined 2026-08-27 by the #597 certification), era-3 rides the #506 version-gate as
    tenant #2, rebuild-at-boot, self-checkpoint closes #559's crash-reboot case —
    with three load-bearing obligations (snapshot-boot-equivalence oracle proves
    field completeness; incremental-cost oracle; era-2→3 Reload test ships ahead).

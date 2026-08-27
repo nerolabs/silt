@@ -9,6 +9,117 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **Both certifications landed — canon amended, and the order-varying oracle that
+  enforces the refinement** (2026-08-27). Research answered both open consults.
+  **#597 (revLog):** the conflict was a *category error*, not a contradiction —
+  the SMT choice stands, and `revLog` gets its **own append-only root** rather
+  than becoming an SMT leaf. Canon's "one root over all committed state" is
+  refined to **one history-independent SMT over set-valued validity state PLUS a
+  separate RFC-6962 root for any committed ordered log** (the Ethereum shape:
+  stateRoot + receiptsRoot + txRoot); the snapshot carries the **full** revLog
+  entry list, preserving H9 proofs for snapshot-booted nodes at the cost of the
+  smallest forever term. `epochStart` is reclassified as an **observable** —
+  reorg-swapped but under no committed root. **Relay (knob 2):** amended from
+  "dispute-only quorum-TTP" to **no TTP at all** — the relay leg is
+  *self-enforcing*, so there is no adjudicable dispute; a quorum-TTP could not
+  remedy the one-increment stiff anyway, because forwarding is unprovable by any
+  mechanism. PayWord chains, ~1–64 KiB increments pinned by a floor-box
+  measurement, relay credit = operator balance (no new keystone field), one
+  Invariant-A firewall regime. The feared privacy vector (a public dispute naming
+  a fetcher key) **dissolves** with the dispute itself. The classification now
+  carries a **three-way taxonomy** (`committedSet` / `committedLog` /
+  `observable`), and `core/chain/modelcheck_order_independence_test.go` enforces
+  the certification's Q4 mandate that the oracle **vary append order**:
+  classification alone cannot catch a purely order-derived value. Two histories
+  reaching the same final state agree on all **16** set-valued fields and produce
+  **different** log roots — the certified resolution, asserted. Proven by
+  ablation: reclassifying `revLog` as set-valued makes the oracle name it, i.e.
+  it reproduces #597 mechanically.
+- **The era-boundary Reload oracle — the keystone's RED home #3, shipped ahead
+  of era-3** (2026-08-27). The certification requires this test to land
+  **before** the change it governs, and forbids the shape of the mistake:
+  *extend the shared era-aware verification path (`verifyAtt`) — never fork a
+  parallel era-3 path*, and a failed replay must be a **loud rebuild, never a
+  genesis fallback**. Era-3 blocks are not minted yet, so
+  `core/chain/reload_era3_boundary_test.go` pins the two properties era-3 will
+  need, in a form that extends by one block when it arrives: **(1)** a history
+  spanning an era boundary replays through the single `verifyAtt` dispatcher —
+  a forked path works fine on a single-era history and breaks exactly at a
+  boundary, which is what every real chain is at an activation height; **(2)** a
+  block from a **future** era — precisely what era-3 activation creates for
+  every un-upgraded node — is rejected **loudly** and reports the honest count
+  of what it restored, so no caller can mistake a truncated replay for a
+  complete one. That second property is #558 carried forward: the damage there
+  was never the rejection, it was the silent fallback that discarded finalized
+  history while reporting health. Both are proven RED by ablation (drop the
+  `PhaseLegacy` branch → (1) fails; make the `default` branch accept unknown
+  eras → (2) fails), and a positive control asserts the rejection names a
+  signature/attestation failure so it cannot pass because the forged block was
+  malformed for an unrelated reason.
+- **The incremental-cost oracle — the keystone's RED home #2**
+  (2026-08-27). The certification's Q4 gate: *count actual hash computes per
+  block; RED = O(state), GREEN = O(changed·log n) with an explicit budget* —
+  guarding the #555 scar (`Hash()` re-marshaling the world on the hot path),
+  which would surface not as a correctness failure but as a node quietly falling
+  over on the floor box. `internal/smtspike/incremental_cost_test.go` counts
+  **digests, not wall-clock**: shared cloud hardware carries ~2× timing
+  variance, so a time budget would be either too loose to catch a regression or
+  flaky enough to get disabled, whereas a digest count is exact and identical on
+  a laptop and a 1 vCPU box. Measured: applying 64 changed keys costs
+  **544 / 780 / 978** digests at 1k / 10k / 100k state — **1.80× growth for 100×
+  the state**, and 6.78× for 8× the changed keys, so cost tracks `changed` and
+  not state size. `budgetK` is set from measurement (0.85–1.61 digests per
+  changed key per log₂n, so 3 gives ~1.9× headroom) rather than guessed, and the
+  budget constrains the **shape**, not just the constant. The RED case is
+  demonstrated rather than asserted: a full-tree recompute costs **44,733
+  digests, 18× over budget** — and that test fails if the budget is ever loosened
+  enough to admit it, so the constant cannot be quietly inflated to hide a
+  regression.
+- **Snapshot-boot equivalence — the keystone's RED home #1, both halves**
+  (2026-08-27). Part 2 is the differential oracle
+  (`core/chain/modelcheck_snapshot_equivalence_test.go`): a validator booted
+  from committed state alone — never having replayed the history — must reach
+  the same verdicts as one that replayed, which is the property the whole
+  keystone rests on. The snapshot-booted replica is built **by reflection over
+  the classification**, and one detail falls out for free: `blocks` is classified
+  `input` rather than `committed`, so "copy every committed field" yields a
+  replica with no history by construction. The **leave-one-out** half is the
+  sharp one — omitting a committed field must change a verdict, and the passing
+  output is evidence rather than an assertion: dropping `byRoot` turns
+  dup-publish from `reject` into **`accept`**; dropping `revoked` breaks
+  un-revocation; dropping `bondRootOwner` turns a second identity's claim on an
+  already-owned bond root from `claim-blocked` into **`claim-succeeded`** — one
+  plot backing two identities, a direct **C1 no-discount** break. The oracle also
+  corrected its own probes: it first flagged three fields as not load-bearing,
+  and attribution showed the probes were wrong — F1 dedup lives in `apply()`,
+  not in a validate predicate, and `bondRegHeight`'s min-interval is gated behind
+  `regGateActive` (#506). Probe coverage is **3 of 18** committed fields; the
+  rest are declared in `probeUncovered` with what each would need, and the test
+  **fails if a committed field is neither probed nor declared**, so the debt
+  cannot grow silently. Consensus engine untouched; I1–I5 untouched.
+- **State-field completeness ratchet — the keystone's RED home #1, part 1**
+  (2026-08-27). The state-root certification makes one obligation load-bearing:
+  the field enumeration must be proven complete **by an oracle, not by
+  inspection**, because inspection already missed fields. The tempting test —
+  capture the listed fields, restore, compare — is inspection wearing a test
+  costume: it can only test the list it was handed, so field #17 lands green and
+  silent (the #558 class). Instead
+  `core/chain/modelcheck_state_completeness_test.go` cross-binds **three**
+  enumerations by reflecting over the live `Chain` struct: the classification of
+  every field, the populate helper, and **`adopt` — product code on the reorg
+  path**. A new field fails classification; once classified it fails populate;
+  then it fails `adopt`. Proven failing-first by three ablations (add an
+  unclassified field / drop a field from `adopt` / drop one from populate), each
+  RED then reverted. **It found a live disagreement:** `Chain` has 25 fields,
+  the certification enumerates 16, and `adopt` already copies 19 — the extra
+  `revLog` and `epochStart` are written from block history but absent from the
+  certified set. `revLog` is the sharp one: it is a **history-dependent**
+  append-only transparency log backing the H9 non-globality proofs, so a
+  snapshot-booted node cannot rebuild it from set-valued state — which the
+  certification's history-independence argument for choosing the SMT does not
+  address. Consensus engine untouched; I1–I5 untouched (the tests only read
+  state). Reasoning, findings and the still-owed differential half:
+  `docs/thinking/2026-08-27-snapshot-boot-equivalence-oracle-design.md`.
 - **The keystone SMT spike — `pokt-network/smt` proven, not just read**
   (2026-08-26). The state-root library recommendation rested on quoted source
   rather than executed code, and was explicitly void if a spike disagreed.
