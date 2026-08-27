@@ -38,6 +38,14 @@ func (e *linkEnd) Send(to ports.NodeID, msg ports.Message) error {
 	if !ok {
 		return errors.New("no route to peer")
 	}
+	// A registered end with no handler is a BLACK HOLE: the send "succeeds" (the
+	// route exists) but no reply ever comes, so the request path times out and
+	// negative-caches the peer — the churned-away holder shape corpse-gating must
+	// handle. (A missing route fails the send synchronously, which does NOT mark a
+	// corpse, so it can't model the dead-holder dial-storm.)
+	if dst.h == nil {
+		return nil
+	}
 	e.net.sched.AfterFunc(ports.Millisecond, func() { dst.h(e.id, msg) })
 	return nil
 }
