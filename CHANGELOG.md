@@ -351,6 +351,23 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   (the D-TIERING state root) must ADD a fixture here — this suite is its standing RED
   home (consult Q5). Record: `docs/thinking/2026-08-25-570-archival-fixture-suite.md`.
 
+### Docs
+- **Canon true-up recording two ratified research certifications** (2026-08-27). C-7
+  (witness-based floor-box validation) is CERTIFIED sound + complete: soundness no longer
+  blocks the #600 direction, and the era-3 format now carries a HARD freeze prerequisite —
+  the `Block` must commit both the state SMT root and the append-only transparency-log root
+  over the completeness- and order-independence-proven field set, and the floor-box verifier
+  must hold the invariant "no witness → never accept (stall)" (the block commits neither root
+  today, `core/chain/chain.go:311-405`). C-1 ("maturity before capture") is ratified as a
+  safe-parameterization, not a theorem, confirming the canon: the `everMature` latch is
+  certified one-way — it bounds the consequence of a lost bet, not the reachability of
+  pre-maturity capture. `docs/VISION.md` §108 trued up to carry the qualifier; two
+  `docs/decisions.md` entries; C-7 residuals added to `docs/design/owned-residuals.md` (E6)
+  and the C-1 R6 doc-register residual closed (E3); the #183 red-team brief sharpened (R1 is
+  the live seam, R2 and R3-safety are CLOSED). Certifications:
+  `silt-reviews/research/research-outcome/C7-witness-based-floor-box-validation-RESEARCH-CERTIFICATION-2026-08-27.md`,
+  `silt-reviews/research/research-outcome/C1-maturity-before-capture-RESEARCH-CERTIFICATION-2026-08-27.md`.
+
 ### Fixed
 - **#572 ROOT CAUSE — the restore under-latch: the daemon replayed history before
   wiring the bond verifier** (2026-08-26) — `objective()` is `MinBond>0 AND

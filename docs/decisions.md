@@ -530,6 +530,50 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
   assuming stateful floor-box validation is the thing to avoid. Witness-based validation is
   opened as the Phase-3+ keystone follow-on (witness soundness, a size bound so a malicious
   proposer cannot DoS an attester with huge witnesses, and who generates witnesses).
+- **RATIFIED 2026-08-27 — witness-based floor-box validation is CERTIFIED sound + complete**
+  (research certification
+  `.../research-outcome/C7-witness-based-floor-box-validation-RESEARCH-CERTIFICATION-2026-08-27.md`;
+  full path
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/C7-witness-based-floor-box-validation-RESEARCH-CERTIFICATION-2026-08-27.md`).
+  **Verdict:** witness-based validation of silt's set-valued validity state against the
+  committed state root is sound and complete in the stateless-client sense (membership +
+  non-membership proofs against the committed, quorum-attested root; the SMT's exclusion
+  proof is the load-bearing piece, proven by execution in
+  `internal/smtspike/exclusion_test.go`). **Consequence:** soundness is no longer a reason to
+  hesitate on the #600 direction (the floor box validates by proof, not by holding the tree);
+  the direction remains Andrew's decentralization-posture call, which C-7 does not decide.
+  The one banned implementation move is named as an invariant below.
+- **HARD FREEZE PREREQUISITE 2026-08-27 (era-3 format) — from C-7 Q3, ratified.** The era-3
+  `Block` MUST commit BOTH roots before the format can freeze: (a) the state SMT root over
+  the set-valued validity state AND (b) the separate append-only (RFC-6962) transparency-log
+  root — the #597 two-root shape — as Hash-covered, attester-signed block fields. It MUST
+  commit the state root over the **completeness- and order-independence-proven field set**;
+  the freeze stays hard-gated on the consensus-weight fields (`bonded`/`epochSet`, then
+  `spent`/`slashed`) reaching the keystone oracles green (issue #603). AND the floor-box
+  verifier MUST carry the invariant **"no witness supplied for a key a predicate reads →
+  never accept (reject / stall)"** — accepting on a missing witness is the one move that
+  inverts the safe-degradation proof. **State of the block today (per the cert):** it commits
+  NEITHER root — no state-root or log-root field exists (`core/chain/chain.go:311-405`; the
+  `Root` at `:419` is the bond commitment, not a state root). A sound witness scheme cannot
+  exist until the root it verifies against is a committed, attested block field, so this is a
+  hard prerequisite for the witness path, not an optimization.
+- **RATIFIED 2026-08-27 — "maturity before capture" ships as a safe-parameterization, not a
+  theorem** (research certification
+  `.../research-outcome/C1-maturity-before-capture-RESEARCH-CERTIFICATION-2026-08-27.md`;
+  full path
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/C1-maturity-before-capture-RESEARCH-CERTIFICATION-2026-08-27.md`).
+  **Verdict: GATED — CERTIFIED-as-a-safe-parameterization, REFUTED-as-a-theorem**, confirming
+  the canon (`docs/design/m0.md` §10, `owned-residuals.md` E3). The mechanism — the one-way
+  `everMature` latch, plural threshold anchors, the de-maturation super-quorum — is certified
+  sound and shipped; the load-bearing *premise* (that maturity is reached before capture) is
+  a parameterized bet against live telemetry, not a bound. **Consequence:** the `everMature`
+  latch is certified **one-way** — it bounds the *consequence* of a lost bet (no re-arm, no
+  permanent center; a lost race becomes a bounded, socially-recoverable re-centralization of
+  *real* stake), it does **not** bound the *reachability* of pre-maturity capture. The gate is
+  against publishing the sentence as a theorem, not against the design; VISION §108 is trued
+  up to carry the qualifier. Sharpens the #183 red-team seam (see `owned-residuals.md` E3 /
+  the red-team brief): the live seam is R1 pre-maturity acquisition; R2 (handoff-instant
+  head-count capture) and R3-safety (de-maturation super-quorum) are CLOSED.
 - **The node store is a 7th dependency behind `ports.NodeStore`** (PE ruling Q1/Q2; Andrew
   concurred). Take an embedded pure-Go KV store — a hand-rolled engine is the textbook B8
   violation (crash consistency and fsync ordering are settled; "consensus is boring" binds

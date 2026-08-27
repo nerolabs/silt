@@ -105,7 +105,11 @@ real, sustained work accrues. During the launch window, explicit, time-boxed anc
 validators are the training wheels — and they **shed** on measured decentralization through a
 one-way latch that, once tripped, never re-arms, so a later dip in decentralization can never
 hand the launch anchors permanent power. The bet, stated plainly: **maturity is reached
-before the scaffolding can be captured.**
+before the scaffolding can be captured** — a **safe-parameterization, not a theorem** (no
+proof of the temporal race; the mechanism, the one-way latch and the de-maturation
+super-quorum, is what is certified, and it bounds the downside of a lost bet to a
+socially-recoverable re-centralization, never a permanent center). See
+[`design/m0.md`](design/m0.md) §10.
 
 ---
 
