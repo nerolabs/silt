@@ -179,3 +179,77 @@ adapter, not a design problem.
   delete + verify 0 instances/disks after).
 - The one open sub-decision inside it: **bbolt-alone-first (recommended) vs bbolt+pebble
   together.**
+
+---
+
+## Floor-box results (2026-08-27) — measured, both backends, and the prior did NOT hold
+
+Measured on a dedicated GCP `e2-custom-1-2048` (1 vCPU, 1976 MB, **no swap**), NoSync path,
+one process per cell. A first instance used **pd-standard** (20 GB, ~15 IOPS) and proved
+only that bbolt's random-key inserts at 1M **exceed 30 minutes** on a throttled disk — a
+real signal for cheap VPSs, but not representative. The numbers below are from a **pd-ssd**
+box (Andrew authorized the second instance), which is a fair hobbyist VPS.
+
+| backend | n | build | heap MB | **RSS MB** | disk MB | apply/block | reopen |
+|---|---|---|---|---|---|---|---|
+| bbolt | 100k | 39.9 s | 37 | 187 | 48 | 35 ms | **0.58 ms** |
+| pebble | 100k | 36.7 s | 46 | 165 | 32 | 32 ms | 49.6 ms |
+| bbolt | 1M | 18.5 min | **305** | 1328 | 418 | 98 ms | **7.4 ms** |
+| pebble | 1M | 22.5 min | **304** | 981 | 234 | 66 ms | 87 ms |
+
+**No OOM at 1M on the 2 GB box for either backend** (`OOM_LINES: 0`) — both fit without a
+competing daemon, unlike the in-memory backend which the kernel killed at 2M (#596).
+
+### The reading that matters: separate unevictable heap from evictable page cache
+
+- **Unevictable (Go heap): bbolt 305 MB, pebble 304 MB at 1M — a TIE.** This is the memory
+  that *cannot* be reclaimed under pressure, so it is the true floor. Both are bounded and
+  fine on a 2 GB box.
+- **RSS (heap + touched mmap pages): bbolt 1328 MB, pebble 981 MB.** The excess over heap is
+  **clean, file-backed, kernel-evictable** page cache — high because the measurement ran
+  with no memory pressure, so the kernel never reclaimed it. Under the pressure of a
+  coexisting daemon it sheds toward the heap floor. So pebble's ~350 MB RSS advantage is
+  **mostly in reclaimable cache, not in the must-hold floor** where they tie.
+
+This is exactly the axis the PE flagged, and it cuts the opposite way to a naive RSS read:
+the tuned-pebble RSS win is real but largely evictable, so it does not move the true memory
+floor. On the floor that matters, the two are even.
+
+### What each backend actually wins
+
+- **pebble:** smaller on disk (234 vs 418 MB), lower total RSS, faster hot-path apply
+  (66 vs 98 ms/block). More space-efficient at scale.
+- **bbolt:** **1 net dependency vs pebble's 127 modules** (permanent, disk-independent
+  supply-chain surface), and **reopen in 7 ms vs 87 ms** — which matters because Q6 now
+  resolves to *persist* (below).
+
+### Q6 resolves decisively: PERSIST, do not rebuild-at-boot
+
+The rebuild-with-per-block-flush build is **18–22 minutes at 1M** — a non-starter for
+rebuild-at-boot. But **reopen (the persist path) is milliseconds** (bbolt 7 ms, pebble
+87 ms). So the disk-backed store makes *persist* trivially the winner, resolving Q6 in its
+favour — the opposite of the pure-in-memory world where the tree had to be rebuilt because
+it could not be trusted from disk. (The tree is still a derived cache; a persisted tree is
+cross-checked against the committed root on load, per the certification's Q6 — a mismatch
+triggers a loud rebuild.)
+
+### The honest remaining gap
+
+RSS was measured with **no memory pressure**. The decisive real-world question — does the
+store shed its evictable page cache fast enough to coexist with a ~1 GB flixz daemon
+without OOM — was **not** tested (it needs a balloon process holding ~1 GB during the run).
+The heap-floor tie (~305 MB) says both *should* survive, since 1060 + 305 + working set
+fits under 1976 MB, but "should" is doing work there. That coexistence test is the one thing
+still owed before the backend is committed.
+
+### Recommendation (builder, for Andrew — the dependency is his call)
+
+**Lean bbolt.** The memory difference that looked decisive is mostly evictable page cache;
+on the unevictable floor the two tie at ~305 MB. Against that, pebble's **127-module
+supply-chain surface is a large, permanent, disk-independent cost** on a project that counts
+its lean profile, and bbolt's faster reopen serves the persist path Q6 now favours. pebble's
+real wins (disk size, apply latency) are genuine but do not outweigh the dependency weight
+once the memory picture is read correctly. This **confirms the PE's original instinct** —
+but only after measurement separated evictable from unevictable memory, which is why the run
+was worth doing rather than deciding by prior. If the coexistence test later shows bbolt's
+evictable footprint does not shed cleanly under daemon pressure, pebble returns.

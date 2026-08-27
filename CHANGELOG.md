@@ -30,7 +30,15 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   the recommended sequence is bbolt-alone on the floor box first, adding the LSM
   only if bbolt's write cost proves binding — evidence-driven rather than
   prior-driven. The floor-box run itself is billable and awaits explicit
-  authorization. Reasoning:
+  authorization. The floor-box run
+  is now DONE (both backends, 1M keys, fair SSD box, no OOM): the unevictable Go
+  heap ties at ~305 MB, so both fit the box; pebble is smaller on disk (234 vs
+  418 MB) and lower RSS, but that RSS gap is mostly kernel-evictable page cache,
+  not the must-hold floor. Builder recommendation is **bbolt** — pebble's
+  127-module supply-chain surface outweighs its evictable-memory edge once heap
+  and cache are separated — and **Q6 resolves to persist** (reopen is 7 ms vs an
+  18-min rebuild). The one owed follow-up is a memory-pressure coexistence test
+  against a ~1 GB daemon. Reasoning:
   `docs/thinking/2026-08-27-disk-backed-mapstore-options.md`.
 - **The hexagonal guard now walks TRANSITIVE imports — and it found the gap was
   already live** (2026-08-27, PE-ruled). `internal/depcheck` inspected **direct**
