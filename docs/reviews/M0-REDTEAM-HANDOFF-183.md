@@ -84,7 +84,19 @@ full text in `docs/design/m0.md` §7. Staged along the axes (`m0.md` §8):
 2. **Cold-start / scaffolding capture.** Can you capture the anchor-scaffolded
    young regime before it matures and sheds (the `everMature` one-way latch)?
    *Pass:* maturity is reached before any feasible capture; anchors are plural +
-   threshold so none is load-bearing.
+   threshold so none is load-bearing. **Sharpened by C-1 (research certification
+   2026-08-27,
+   `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/C1-maturity-before-capture-RESEARCH-CERTIFICATION-2026-08-27.md`):**
+   the live seam is **R1 — pre-maturity acquisition** (accrue a controlling *real*
+   bonded fraction before the latch trips; your own weight then trips `Mature()`).
+   Two adjacent seams are **CLOSED — do not re-litigate:** **R2**, handoff-instant
+   head-count-quorum capture (8×/9×MinBond), shut by weight-counting
+   (`requireEpochWeightQuorum`, `quorum_weight_test.go`); and **R3-safety**, the
+   de-maturation super-quorum (safety preserved by quorum intersection). Attack the
+   *price* of R1 (can you reach >⅔ live bonded weight for materially less than ⅔ of
+   honest, sustained, address-diverse provision, and before honest arrivals dilute
+   you?), not the *permanence* — the latch bounds R1's consequence, not its
+   reachability.
 3. **Self-dealing vs. real demand.** The anti-wash rests on real demand
    outweighing fabricated. *Attack:* the ratio of wash to attested-real demand you
    can manufacture. (Note the firewall — §6 — currently gives demand **no**
