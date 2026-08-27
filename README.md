@@ -2,9 +2,11 @@
 
 A content-addressed, erasure-coded, distributed file store — built as a
 real product from day one, simulated in-process until it needs real
-sockets. The design canon is [`docs/TENETS.md`](docs/TENETS.md) and the
-path to V1 is [`ROADMAP.md`](ROADMAP.md); `docs/math/` has friendly
-explanations of the math, and the current M0 security spec is
+sockets. The finished system we are building toward is
+[`docs/VISION.md`](docs/VISION.md); the design canon is
+[`docs/TENETS.md`](docs/TENETS.md) and the path to V1 is
+[`ROADMAP.md`](ROADMAP.md); `docs/math/` has friendly explanations of the
+math, and the current M0 security spec is
 [`docs/design/m0.md`](docs/design/m0.md). Superseded history lives under
 [`/archive/`](archive/).
 

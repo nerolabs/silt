@@ -13,6 +13,12 @@
 > their **desired outcomes** (what "good" looks like from their seat) and the
 > **promise** silt makes to them. Where two personas' outcomes collide, the
 > tenet is our **stance on the tradeoff**.
+>
+> **The finished picture these tenets define lives in [`VISION.md`](VISION.md)** —
+> silt as it *is* when done, told through the people it serves. The tenets are the
+> stance and the rules; the vision is the destination they point at. Read the
+> vision for *what we are building*; read on here for *the principles that keep it
+> honest*.
 
 ---
 

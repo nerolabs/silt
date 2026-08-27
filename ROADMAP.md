@@ -1,11 +1,13 @@
 # Silt Roadmap
 
-> **Source of truth.** *What M0 asserts and why* lives in
-> [`docs/design/m0.md`](docs/design/m0.md) (the composition spec). *What the owner
-> has decided* lives in [`docs/decisions.md`](docs/decisions.md). *The destination*
-> is [`docs/TENETS.md`](docs/TENETS.md). This file is the **narrative path**: where
-> we are, what the forward tracks are, and why they're ordered the way they are. It
-> is not a tracker — live state is the GitHub **`V1` milestone** and its issues.
+> **Source of truth.** *The finished system we are building toward* is
+> [`docs/VISION.md`](docs/VISION.md) (the north star). *What M0 asserts and why*
+> lives in [`docs/design/m0.md`](docs/design/m0.md) (the composition spec). *The
+> principles that keep it honest* are [`docs/TENETS.md`](docs/TENETS.md). *What the
+> owner has decided* lives in [`docs/decisions.md`](docs/decisions.md). This file is
+> the **narrative path**: where we are, what the forward tracks are, and why they're
+> ordered the way they are. It is not a tracker — live state is the GitHub **`V1`
+> milestone** and its issues.
 >
 > The earlier **Gate 0→6 spine** (with Gate 4 as "the M0 mechanism to build") is
 > **retired**: that mechanism is built and the mission was reframed (below). The
