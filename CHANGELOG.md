@@ -9,6 +9,28 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **The hexagonal guard now walks TRANSITIVE imports — and it found the gap was
+  already live** (2026-08-27, PE-ruled). `internal/depcheck` inspected **direct**
+  imports only, which was honest while `core/` imported nothing third-party. The
+  keystone node-store decision makes that untrue, so the PE ruled the gap closed
+  in the same change that opens it: a third-party package reaching the
+  filesystem, clock, network or ambient randomness could otherwise enter `core`
+  without tripping the guard, because the forbidden import sits **one hop away** —
+  green check, vanished property. The new guard walks the module-aware closure
+  (`go list -deps`) and checks **third-party purity**, deliberately skipping
+  stdlib (`fmt` imports `os` by design; flagging stdlib would make it
+  unrunnable). **It fired immediately on four pre-existing effects**, so this was
+  never hypothetical. Each is now a reviewed, falsifiable claim rather than a
+  blanket pass — most usefully: cbor's `math/rand` is **verified unreachable** in
+  silt's configuration (its only use is `SortFastShuffle` in `encodeStruct`, and
+  silt encodes with `CanonicalEncOptions`), so the entry doubles as a **tripwire**
+  — switching encode modes would make block encoding nondeterministic and break
+  consensus. The `cpuid`/`os` entry records the assumption it rests on out loud:
+  the SIMD and generic Reed-Solomon paths must produce identical bytes, or
+  erasure output would vary by host. Proven by ablation: an unlisted third-party
+  effect fails the build. This is a **ratchet, not a proof** — it establishes
+  that the next effect cannot arrive silently, which is the property that was
+  missing.
 - **Both certifications landed — canon amended, and the order-varying oracle that
   enforces the refinement** (2026-08-27). Research answered both open consults.
   **#597 (revLog):** the conflict was a *category error*, not a contradiction —
