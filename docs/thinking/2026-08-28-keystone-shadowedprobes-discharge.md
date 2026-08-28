@@ -57,10 +57,19 @@ Mechanism (`chain.go:2839-2849`, the displacement predicate; `proven := b.Height
   `!(true && !false)` = `!true` = `false` → does NOT continue → `delete(c.bonded, owner)` runs
   and `c.bonded[challenger]` is set. Verdict `displaced-the-proven-owner`.
 
-The flip is carried by `bondRootProven` alone. `bondRootOwner` is present on both sides, so it
-cannot shadow. This is `mutates` (it `apply()`s a block), so it runs against throwaway replicas
-and is skipped by the replay-vs-snapshot equivalence loop, same as the existing displacement
-probes.
+Dropping `bondRootProven` alone flips this world. `bondRootOwner` is present on both sides of THAT
+ablation. But this world does NOT achieve physical field-independence: dropping `bondRootOwner`
+alone ALSO flips it (the `owner != challenger` claimed-check reads `bondRootOwner`, and losing it
+re-admits the challenger). So `provenDisplaceWorld` isolates `bondRootProven` by PER-FIELD
+detect-tag credit under the meta-guard, not by physical uncoupling. That credit is sound because
+`bondRootProven` has no other catcher in ANY world (it is read at exactly one verdict-relevant
+site, `chain.go:2845`), so this world is its SOLE discriminator. The meta-guard credits by the
+field a probe detects, and `provenDisplaceProbe` detects only `bondRootProven`; neutering it drops
+`bondRootProven` from the flipped set and no other field. See the asymmetry note below — this world
+is the WEAKER of the two, isolated by tag; `restoreOwnerWorld` is physically uncoupled.
+
+This is `mutates` (it `apply()`s a block), so it runs against throwaway replicas and is skipped by
+the replay-vs-snapshot equivalence loop, same as the existing displacement probes.
 
 Why the existing "a proven bond-root owner cannot be displaced" probe was shadowed and this one
 is not: the existing probe runs in `richHistory`, where `bondRootProven` was set by the SAME
@@ -94,12 +103,43 @@ OWN root past the activation boundary.
   `restoresHeldStanding` returns false at chain.go:3054 → the R-rule fires → `ErrRegGate`
   (`re-registered N blocks after its last reg`) → verdict `reject`.
 
-`bondRootProven` is NEVER read on this path, so its ablation cannot flip this world. Dropping
-`bondRegHeight` would ALSO flip this world (the R-rule reads it too), but this probe DETECTS
-only `bondRootOwner`, so the leave-one-out loop ablates only `bondRootOwner` for it, and
+`bondRootProven` is NEVER read on this path, so its ablation cannot flip this world — this is a
+REAL PHYSICAL uncoupling, not tag-level isolation. Dropping `bondRootProven` alone leaves the
+verdict at `accept`; only dropping `bondRootOwner` flips it to `reject`. This makes
+`restoreOwnerWorld` the STRONGER of the two new worlds (see the asymmetry note below).
+
+Dropping `bondRegHeight` would ALSO flip this world (the R-rule reads it too), but this probe
+DETECTS only `bondRootOwner`, so the leave-one-out loop ablates only `bondRootOwner` for it, and
 `bondRegHeight` already has its own sole-discriminator world (`bondRegHeightWorld`). The neuter
 guard judges sole-catchness by the actual verdict flips of the FIELDS a probe detects, so
 declaring `["bondRootOwner"]` keeps this probe's unique credit to `bondRootOwner`.
+
+## The asymmetry between the two new worlds — they are NOT symmetric
+
+A reader who assumes `provenDisplaceWorld` and `restoreOwnerWorld` isolate their fields the same
+way would be wrong. The blind PE ruling
+(`RULING-shadowedprobes-discharge-bondroot-2026-08-28.md`, SHIP) flagged this explicitly. The two
+worlds isolate by DIFFERENT mechanisms, and only one is physically uncoupled:
+
+- `restoreOwnerWorld` (Probe B) achieves REAL PHYSICAL field-independence. `bondRootProven` is not
+  read on the restore path at all, so dropping it there provably does NOT flip the world
+  (`dropProven=accept`); only dropping `bondRootOwner` flips it (`dropOwner=reject`). The field
+  under test is the only variable that moves the verdict.
+- `provenDisplaceWorld` (Probe A) isolates `bondRootProven` by PER-FIELD GUARD-LEVEL DETECT-TAG
+  CREDIT under the meta-guard, NOT by physical independence. Dropping `bondRootOwner` in that world
+  ALSO flips it (`dropOwner=displaced-the-proven-owner`). The sole-discriminator credit is
+  nonetheless VALID: `bondRootProven` is read at exactly one verdict-relevant site
+  (`chain.go:2845`) and has NO other catcher in ANY world, so `provenDisplaceWorld` is its sole
+  discriminator, and the meta-guard credits by the field a probe detects.
+
+Both fields are proven load-bearing, and the completeness axis (does each field flip a verdict in
+some world) is honestly closed. The detect-tag mechanism carries Probe A's discharge; it does not
+weaken the axis.
+
+Optional future hardening (a REFINEMENT, not a gate): build a fully-uncoupled `bondRootProven`
+world where dropping `bondRootOwner` provably does NOT flip — matching `restoreOwnerWorld`'s
+physical rigor. This is not required to close the axis (both fields are load-bearing today); it
+would only bring Probe A's isolation up to Probe B's standard. Filed as a refinement.
 
 ## Probe C — `revoking an unknown root` retag/removal (the mis-tagged decoration)
 
