@@ -408,17 +408,27 @@ func TestCommittedLogFieldsAreGenuinelyOrderDependent(t *testing.T) {
 }
 
 // TestBondRegG3DisplacementIsOrderIndependent is the consensus-correctness
-// trip-wire for the bond-registration family. It is NOT enough that the
-// committedSet fields happen to match across the two orderings — the match must
-// be over a G3 displacement that ACTUALLY FIRED, else the coverage is vacuous.
+// trip-wire for the bond-registration family under the DISJOINT-ROOT case. It is
+// NOT enough that the committedSet fields happen to match across the two
+// orderings — the match must be over a G3 displacement that ACTUALLY FIRED, else
+// the coverage is vacuous.
 //
 // This asserts the end state directly: in BOTH orderings the genesis squatter is
 // removed from bonded and is no longer the owner of the shared root, honestH is
-// the PROVEN owner, and validatorX is bonded on its own root. If the two
+// the PROVEN owner, and validatorX is bonded on its own DISJOINT root. If the two
 // orderings had reached DIFFERENT bond-root states, that would be a real consensus
 // finding (an order-sensitive displacement validity rule under a history-
-// independent root) — STOP-and-escalate, no rule change. They do not: the G3 rule
-// is order-INDEPENDENT here.
+// independent root) — STOP-and-escalate, no rule change. They do not: G3/bond-root
+// ownership is order-INDEPENDENT for this disjoint-root construction.
+//
+// SCOPE (certified 2026-08-28, same-root-intrablock-bondreg-contention): this
+// covers ONE proven claimant per root (a squat displaced by a single proof, plus
+// an independent claim on a DISJOINT root). It does NOT cover two DISTINCT-ID
+// proven claims on the SAME root in one block — that case IS order-dependent in
+// apply() and is handled at the validity layer, which now REJECTS such a block
+// (ErrSharedRootInBlock). See redteam_verify_sameroot-intrablock_test.go. So
+// G3/bond-root ownership is order-independent for every ADMISSIBLE block because
+// the same-root distinct-ID collision is no longer admitted.
 func TestBondRegG3DisplacementIsOrderIndependent(t *testing.T) {
 	squatKey, honestH, validatorX := key(51), key(52), key(53)
 	rootShared := ports.HashBytes([]byte("g3-shared-plot-root"))

@@ -764,6 +764,19 @@ var (
 	// a forged registration cannot buy objective weight.
 	ErrBadBondReg = errors.New("chain: invalid on-chain bond registration")
 
+	// ErrSharedRootInBlock rejects a block that carries two bond registrations
+	// from DISTINCT validator IDs on the SAME root (CONSENSUS-RULE, certified
+	// 2026-08-28 same-root-intrablock-bondreg-contention, resolution (a)).
+	// apply()'s per-root dedup resolves such a collision by intra-block SLICE
+	// ORDER (chain.go:2780-2790), so two honest replicas applying the identical
+	// block in a different BondReg order commit a different bonded/bondRootOwner
+	// state — an order-dependent commit the era-3 SMT root cannot tolerate. The
+	// validity layer rejects the collision so it can never commit. Runs
+	// UNCONDITIONALLY (not behind regGateActive); a validator re-registering its
+	// OWN root (same ID) is NOT a collision (renew/resize is legal, F1). Dedup is
+	// on (root × distinct-ID), never on root alone.
+	ErrSharedRootInBlock = errors.New("chain: block carries two bond registrations from distinct identities on the same root (order-dependent commit — refused)")
+
 	// ErrPrunedAboveHorizon rejects a payload-pruned (Answer-less) block presented
 	// at or above the node's OWN trust floor (max WS-checkpoint / rolling retention
 	// horizon). A pruned block cannot have its space-time proof re-verified, so
@@ -1452,9 +1465,28 @@ func (c *Chain) validateBondRegs(b *Block) error {
 	if gate {
 		seenReg = make(map[ports.NodeID]bool, len(b.BondRegs))
 	}
+	// PER-ROOT DEDUP (CONSENSUS-RULE, certified 2026-08-28
+	// same-root-intrablock-bondreg-contention, resolution (a)): reject a block
+	// carrying two registrations from DISTINCT identities on the SAME root. apply()
+	// would resolve such a collision by intra-block slice order (chain.go:2780-2790),
+	// so two honest replicas applying the identical block in a different BondReg
+	// order commit a different bonded/bondRootOwner state — the order-dependent
+	// commit the era-3 SMT root cannot tolerate. Rejecting it at validity means the
+	// divergent input never commits, so nothing order-dependent is left to hash.
+	//
+	// UNCONDITIONAL, by certified caveat: seenRoot is NOT gate-gated (seenReg is).
+	// The freeze seam must be closed in EVERY regime, including pre-gate genesis-
+	// adjacent heights on this validated path. And it dedups on (root × DISTINCT-ID)
+	// only — a validator re-registering its OWN root (same ID: renew/resize) is
+	// legal (F1) and stays admitted.
+	seenRoot := make(map[ports.Hash]ports.NodeID, len(b.BondRegs))
 	for _, r := range b.BondRegs {
+		id := r.ValidatorID()
+		if prev, ok := seenRoot[r.Root]; ok && prev != id {
+			return fmt.Errorf("%w: root claimed by both %s and %s in one block", ErrSharedRootInBlock, prev, id)
+		}
+		seenRoot[r.Root] = id
 		if gate {
-			id := r.ValidatorID()
 			if c.slashed[id] {
 				return fmt.Errorf("%w: validator %s is slashed", ErrRegGate, id)
 			}

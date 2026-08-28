@@ -102,13 +102,73 @@ honest reason. The PR reports exactly which fields clear BOTH lists.
 
 ## What actually happened (results)
 
-- **G3 came back order-INDEPENDENT (safe).** The displacement fired in both orderings
-  (`TestBondRegG3DisplacementIsOrderIndependent`: squatter removed from `bonded`, honestH
-  the proven owner, validatorX bonded on its own root) and all six bond fields are
-  byte-identical across the two orderings. The consensus-correctness trip-wire did not
-  trip. Ablation evidence: forcing `apply()` to process only the first BondReg per block
-  made the oracle go RED naming all six fields
+- **G3/bond-root ownership is order-independent for ADMISSIBLE blocks — and admissibility
+  is now enforced by the certified validity fix.** The #618 disjoint-root fixture
+  (`TestBondRegG3DisplacementIsOrderIndependent`) showed the displacement fires identically
+  in both orderings for a genesis-squat + ONE proven claim, plus an independent claim on a
+  disjoint root: squatter removed from `bonded`, honestH the proven owner, validatorX bonded
+  on its own root; all six bond fields byte-identical. Ablation evidence: forcing `apply()`
+  to process only the first BondReg per block made the oracle go RED naming all six fields
   `[bonded bondRootOwner bondRootProven bondRegHeight regVersion bondDomain]`, then revert → green.
+
+  **Correction (certified 2026-08-28, `same-root-intrablock-bondreg-contention`).** The
+  disjoint-root fixture does NOT cover the one case that was genuinely order-DEPENDENT: two
+  DISTINCT-ID PROVEN claims on the SAME root in ONE block. `apply()` resolves that collision
+  by intra-block slice order (chain.go:2780-2790), so the committed `bonded`/`bondRootOwner`
+  diverge across the two orderings (measured RED: A-first → owner=A, bonded={A}; B-first →
+  owner=B, bonded={B}). The earlier "G3 is order-INDEPENDENT (safe)" reading was true only
+  for the disjoint-root case its fixture exercised. **The resolution is a validity-layer
+  fix, not an apply() tie-break:** `validateBondRegs` now REJECTS a block with two
+  distinct-ID regs on one root (`ErrSharedRootInBlock`, unconditional). With that rejection
+  in place, G3/bond-root ownership is order-independent for every ADMISSIBLE block —
+  BECAUSE the same-root distinct-ID collision can no longer be admitted. See the certified
+  rationale below.
+
+## The certified same-root distinct-ID fix (validity-layer per-root dedup)
+
+Research certification: `same-root-intrablock-bondreg-contention-RESEARCH-CERTIFICATION-2026-08-28`
+(full path:
+`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/same-root-intrablock-bondreg-contention-RESEARCH-CERTIFICATION-2026-08-28.md`);
+PE ruling that routed it:
+`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-618-bond-registration-order-independence-2026-08-28.md`.
+Human-ratified. Consensus validity-rule change; certified + ratified, not re-designed here.
+
+**The finding.** `validateBondRegs` (chain.go:~1411) deduped only per-ValidatorID (`seenReg`,
+gate-gated). Two proven registrations from distinct IDs on the same root, in one block, were
+ADMITTED. `apply()` then resolved the winner by intra-block slice order — an order-dependent
+commit over `bonded`/`bondRootOwner`, breaking the history-independence the era-3 SMT root needs.
+
+**Reachability (why the fix is required despite the crypto).** The real space-time verifier
+(`core/bond/bond.go:VerifySpaceTime`) key-binds a root to one identity via `plotSeedN(pk,n)`,
+so two honest holders cannot both hold a valid proven claim on the same root. But the freeze's
+own proof engine runs the STUB verifier (`objectiveVerify`), under which N distinct IDs pass
+proof on one root; and a Byzantine proposer can construct the block regardless of whether the
+proofs are real, because validity never deduped by root. The gate is discharged in a regime
+where the case is reachable, so the fix is required.
+
+**The resolution (certification §3, option (a) — recommended, ranked (a) ≫ (b) ≫ (c)).** A
+`seenRoot` dedup in `validateBondRegs`, a sibling of `seenReg`, that rejects a block with two
+distinct-ID registrations on one root. Two binding caveats, both honored:
+
+- **UNCONDITIONAL.** The guard is NOT behind `regGateActive` (the `seenReg` guard is). The
+  freeze seam must be closed in every regime, including pre-gate genesis-adjacent heights on
+  the validated path.
+- **Distinct-ID only.** A validator re-registering its OWN root (same ID: renew/resize) is
+  legal (F1) and stays admitted. Dedup is on (root × distinct-ID), never on root alone.
+
+I1–I5 preserved (a pure validity tightening — removes an admissible block class, never admits
+a new commit; no quorum/set/fork-choice/slashing change). History-independence trivially
+preserved (the divergent input can no longer commit). `apply()`'s tie-break, the weight sum,
+the epoch freeze, and the quorum threshold are untouched — the fix is validity-layer only.
+
+**The covering probe (closes certification residual R2).**
+`redteam_verify_sameroot-intrablock_test.go` constructs a block with two distinct-ID proven
+claims on one root and asserts (RED-then-GREEN, ablation-proven):
+- pre-fix: block ADMITTED, committed `bonded`/`bondRootOwner` DIVERGE across the two
+  intra-block orderings (captured RED with the guard ablated);
+- post-fix: block REJECTED with `ErrSharedRootInBlock` in both orderings; no reg commits;
+- negative control: same-ID renew/resize on one's OWN root is still ADMITTED (the dedup is
+  not over-broad).
 
 - **A latent test-infrastructure bug surfaced, and was fixed.** Adding a SECOND mutating
   leave-one-out probe (for `bondRootProven`) exposed that `snapshotBoot` carried committed
