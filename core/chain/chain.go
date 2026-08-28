@@ -298,6 +298,27 @@ const BlockVersionRounds = 2
 // genuinely diverges the schema can flip minting without stranding it.
 const BlockVersionRegGate = 3
 
+// BlockVersionStateRoot is the era-3 committed-state-root rule era (the keystone).
+// An era-3 block commits two attester-signed roots — StateRoot (an SMT over the 16
+// committedSet validity fields) and LogRoot (the RFC-6962 revocation-log MTH) — so
+// every validating node that accepts the block can check the state it commits to.
+//
+// era-3 is a HARD fork, NOT a soft fork (research cert Q5/Q7): it adds a schema and,
+// in step 2b, a validity predicate a pre-era-3 binary cannot evaluate. So era-3 MINTS
+// a NEW version (4, not 3) and versionSupported is extended to <= 4 in the SAME
+// release that adds the root fields — otherwise a pre-era-3 binary, which already
+// decode-accepts v3 (v <= BlockVersionRegGate), would accept an era-3 block and never
+// check its roots: a forged root would ride through unvalidated. Minting 3 is refuted
+// for exactly that silent-mis-validation reason (RESEARCH-CERTIFICATION-2026-08-28 Q7).
+//
+// Build order (certified, choice 5): step 2a (THIS) adds the fields, folds them into
+// Hash so attesters sign them, and widens versionSupported so a v4 block DECODES and is
+// accepted. It does NOT flip minting (BlockVersion stays BlockVersionRounds) and does
+// NOT add the root-matches-recomputed-state validity predicate — that is 2b. Minting v4
+// is 2c, height-gated on a regVersion >= 4 supermajority, sequenced AFTER 2b so no v4
+// block is ever minted before its predicate exists.
+const BlockVersionStateRoot = 4
+
 // Consensus signature phases (#432 two-phase gather, research-certified).
 // PhaseLegacy (0) is the era-1 bare-hash signature — what a pre-rounds
 // Attestation decodes as; never minted in era 2.
@@ -373,6 +394,31 @@ type Block struct {
 	// accepted ONLY strictly below that finalized anchor (the Q2 gate in Reconcile) —
 	// never on this field alone. See retention.go + docs/thinking/2026-08-18-serve-retain-from-checkpoint-oom-fix.md.
 	Pruned ports.Hash `cbor:"14,keyasint,omitempty"`
+
+	// StateRoot and LogRoot are the era-3 committed roots (the keystone, #603/#597).
+	// StateRoot is the SMT over the 16 committedSet validity fields (StateRoot());
+	// LogRoot is the RFC-6962 MTH over the revocation transparency log (LogRoot() =
+	// RevocationLogRoot()). BOTH are folded into Hash below — unlike the QCs and
+	// CommitRound, attesters SIGN them, so a forged root cannot ride a valid signature.
+	// This is the Ethereum stateRoot/receiptsRoot shape: two committed roots of two
+	// kinds (an order-invariant authenticated map + an append-only log, #597), one
+	// signature covering both.
+	//
+	// COMPAT (step 2a — the load-bearing decision, see
+	// docs/thinking/2026-08-29-era3-step2a-commit-roots-schema.md): these are POINTERS so
+	// omitempty keeps the change INVISIBLE to era-2. An era-2 block leaves both nil, and
+	// omitempty omits a nil pointer — the unsigned body is byte-identical to pre-2a and
+	// Hash() is unchanged (committed history is never re-interpreted, chain.go:260-268).
+	// A plain ports.Hash ([32]byte) would NOT work: omitempty never omits a fixed-size
+	// ARRAY (it is never "empty"), so a zero [32]byte would be emitted as 32 zero bytes
+	// and change every era-2 hash. The byte-identity oracle caught exactly that; the
+	// pointer is the fix that keeps the fixed-32-byte type AND omits cleanly. An era-3
+	// block sets both to the non-zero committed roots (empty-state SMT / sha256("") log —
+	// fixed non-zero constants), so they are emitted and signed. nil means unambiguously
+	// absent; a set pointer means present-with-this-value. 2a adds NO predicate that
+	// rejects a v4 block with a nil root — that belongs to 2b.
+	StateRoot *ports.Hash `cbor:"15,keyasint,omitempty"`
+	LogRoot   *ports.Hash `cbor:"16,keyasint,omitempty"`
 
 	// hashMemo caches Hash() (#555). A block's hashed content is immutable once
 	// minted (Sign computes the hash it signs) or decoded, but Hash() re-marshaled
@@ -520,7 +566,10 @@ func (b *Block) Hash() ports.Hash {
 	if b.hashMemoSet {
 		return b.hashMemo
 	}
-	unsigned := Block{Version: b.Version, Height: b.Height, Prev: b.Prev, Entries: b.Entries, Proposer: b.Proposer, Revocations: b.Revocations, Unrevocations: b.Unrevocations, BondRegs: b.BondRegs, Slashes: b.Slashes}
+	// StateRoot/LogRoot are folded in so attesters sign the era-3 committed roots. For
+	// an era-2 block both are zero and omitempty omits them, so the marshalled body — and
+	// thus the hash — is byte-identical to pre-2a (the compat property, see the field doc).
+	unsigned := Block{Version: b.Version, Height: b.Height, Prev: b.Prev, Entries: b.Entries, Proposer: b.Proposer, Revocations: b.Revocations, Unrevocations: b.Unrevocations, BondRegs: b.BondRegs, Slashes: b.Slashes, StateRoot: b.StateRoot, LogRoot: b.LogRoot}
 	buf := hashBufPool.Get().(*bytes.Buffer)
 	buf.Reset()
 	if err := encModeBuf.MarshalToBuffer(&unsigned, buf); err != nil {
@@ -662,10 +711,14 @@ func Encode(b *Block) []byte {
 	return raw
 }
 
-// versionSupported: v1 (legacy single-phase) and v2 (#432 rounds) both decode;
-// each validates under ITS OWN era's rules (era-gated in ValidateCommit /
-// VerifyEquivocation) — committed history is never re-interpreted.
-func versionSupported(v uint64) bool { return v >= 1 && v <= BlockVersionRegGate }
+// versionSupported: v1 (legacy single-phase), v2 (#432 rounds), v3 (#506 reg-gate
+// readiness tag), and v4 (era-3 committed state root) all decode; each validates under
+// ITS OWN era's rules (era-gated in ValidateCommit / VerifyEquivocation) — committed
+// history is never re-interpreted. The ceiling is BlockVersionStateRoot: a v4 block is
+// accepted at decode (step 2a), and its root-matches-recomputed-state predicate lands
+// in step 2b. A version BEYOND 4 is refused loudly with ErrBlockVersion — the hard-fork
+// guard: a block from a not-yet-known era is never silently mis-validated.
+func versionSupported(v uint64) bool { return v >= 1 && v <= BlockVersionStateRoot }
 
 func Decode(raw []byte) (*Block, error) {
 	var b Block
@@ -673,7 +726,7 @@ func Decode(raw []byte) (*Block, error) {
 		return nil, fmt.Errorf("chain: decode block: %w", err)
 	}
 	if !versionSupported(b.Version) {
-		return nil, fmt.Errorf("%w: got %d, want 1..%d", ErrBlockVersion, b.Version, BlockVersionRegGate)
+		return nil, fmt.Errorf("%w: got %d, want 1..%d", ErrBlockVersion, b.Version, BlockVersionStateRoot)
 	}
 	return &b, nil
 }
@@ -723,7 +776,7 @@ func DecodeBlocks(raw []byte) ([]Block, error) {
 	}
 	for i := range bs {
 		if !versionSupported(bs[i].Version) {
-			return nil, fmt.Errorf("%w: block %d got %d, want 1..%d", ErrBlockVersion, i, bs[i].Version, BlockVersionRegGate)
+			return nil, fmt.Errorf("%w: block %d got %d, want 1..%d", ErrBlockVersion, i, bs[i].Version, BlockVersionStateRoot)
 		}
 	}
 	return bs, nil

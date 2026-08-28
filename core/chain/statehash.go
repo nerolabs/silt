@@ -138,3 +138,29 @@ func (c *Chain) StateRoot() (ports.Hash, error) {
 // alongside StateRoot so the two-root shape reads from one place; RevocationLogRoot
 // remains the canonical accessor.
 func (c *Chain) LogRoot() ports.Hash { return c.RevocationLogRoot() }
+
+// newV4BlockWithRoots constructs an era-3 (v4) block that carries this chain's
+// committed StateRoot and LogRoot. It is the step-2a population WIRING: it proves a
+// well-formed v4 block CAN be built with the correct roots, without minting v4 by
+// default (production minting stays BlockVersionRounds until step 2c height-gates the
+// flip). It is unexported and used by the schema oracle; the propose path does not call
+// it in 2a. The roots are non-zero constants for any era-3 chain (empty-state SMT /
+// sha256("") log), so omitempty never drops them from Hash.
+func (c *Chain) newV4BlockWithRoots(height uint64, prev ports.Hash, entries []ports.Entry) Block {
+	sr, err := c.StateRoot()
+	if err != nil {
+		// StateRoot marshals our own committed fields under a fixed encoding; it cannot
+		// fail for a well-formed chain. A duplicate-key error here is a marshalling bug,
+		// surfaced loudly rather than committing a wrong root.
+		panic(err)
+	}
+	lr := c.LogRoot()
+	return Block{
+		Version:   BlockVersionStateRoot,
+		Height:    height,
+		Prev:      prev,
+		Entries:   entries,
+		StateRoot: &sr,
+		LogRoot:   &lr,
+	}
+}
