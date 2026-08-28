@@ -37,6 +37,28 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   strictly stronger, and order-free by construction.
 
 ### Added
+- **Named the genesis same-root premise (residual R-G) — no genesis validity change**
+  (2026-08-28). PR #618's `seenRoot` per-root distinct-ID dedup lives in
+  `validateBondRegs`, which `AppendGenesis` (chain.go) does NOT run — it goes straight
+  to `apply()`. Genesis `apply()` IS order-dependent for two distinct-ID **unproven**
+  same-root regs (confirmed by execution: slice `[A,B]`→owner=A, `[B,A]`→owner=B). It is
+  safe TODAY only by an EXTERNAL invariant, not by the guard: the production genesis is a
+  byte-identical shared constant carrying **NO BondRegs** (`genesis.Build`,
+  core/genesis/genesis.go), so there is no per-node slice order to diverge on. The era-3
+  SMT freeze's unconditional order-independence claim silently leans on this premise. This
+  change NAMES it as a pinned, executable fact so it cannot break silently: a named anchor
+  at `AppendGenesis` plus two guard tests — `TestGenesisSameRootApplyIsOrderDependent`
+  (core/chain, pins the un-guarded order-dependence; flips RED if genesis is made
+  order-independent) and `TestProductionGenesisCarriesNoBondRegs` (core/genesis, pins
+  byte-identity + zero BondRegs; flips RED if the production genesis ever carries BondRegs
+  or goes per-node). Both ablations verified. **No change to genesis validity rules** —
+  this is the record-it half of the PE's "close it OR record it," inside the already-
+  certified envelope. Making genesis order-independent by rejection would be a
+  consensus-rule change to genesis validity (research-gated); see
+  `docs/thinking/2026-08-28-genesis-sameroot-residual.md` option (b). PE ruling
+  `RULING-618-updated-sameroot-dedup-fix-2026-08-28`
+  (`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-618-updated-sameroot-dedup-fix-2026-08-28.md`),
+  residual R-G.
 - **Order-independence coverage for the bond-registration family — the #617 debt,
   first increment** (2026-08-28). PR #617 declared six committed bond-registration
   fields (`bonded`, `bondRootOwner`, `bondRootProven`, `bondRegHeight`, `regVersion`,

@@ -2765,6 +2765,19 @@ func (c *Chain) AppendGenesis(b Block) error {
 	if len(b.Slashes) > 0 {
 		return ErrGenesisTakedown
 	}
+	// NAMED PREMISE (residual R-G, era-3 freeze coupling): AppendGenesis does NOT
+	// run validateBondRegs, so the #618 seenRoot per-root distinct-ID dedup does
+	// NOT cover genesis. Genesis apply() IS order-dependent for two distinct-ID
+	// UNPROVEN same-root regs (apply() below, proven=false). This is safe ONLY
+	// because the production genesis is a byte-identical shared constant carrying
+	// NO BondRegs (genesis.Build → core/genesis/genesis.go:79, Entries only), so
+	// there is no per-node slice order to diverge on. The era-3 SMT freeze's
+	// unconditional order-independence claim leans on THIS premise, not on a guard.
+	// The premise is pinned by TestGenesisSameRootApplyIsOrderDependent (this
+	// package) + TestProductionGenesisCarriesNoBondRegs (core/genesis). Making
+	// genesis order-independent BY REJECTION would be a consensus-rule change to
+	// genesis validity (research-gated) — see
+	// docs/thinking/2026-08-28-genesis-sameroot-residual.md option (b).
 	c.apply(b)
 	return nil
 }
