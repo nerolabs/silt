@@ -97,10 +97,16 @@ keys[2]=1 MiB, keys[3]=1 MiB. total=12 MiB.
   assertion goes RED (`want ErrDeMatureQuorum ... got <nil>`). Proves the flatten is what
   causes the flip.
 - **Direction B (empty membership, a #604-style drop):** substitute an EMPTY `bonded`
-  map. Qualification then disqualifies every attester (`bonded[id]=0 < MinBond`), seen
-  empties, and the count floor rejects via `ErrNoQuorum` — NOT `ErrDeMatureQuorum`. The
-  `errors.Is(ErrDeMatureQuorum)` assertion correctly refuses it. Proves the probe refuses
-  a membership-omission dressed up as a weight-bytes proof.
+  map. This does NOT abort at `collectQuorumSigs` — that call returns `seen={}, err=nil`
+  on empty membership, because unqualified attesters (`bonded[id]=0 < MinBond`) are
+  silently SKIPPED, not rejected (`chain.go` ~2411, the `continue`). The probe's guard
+  fires LATER, at the `errors.Is(stackErr, ErrDeMatureQuorum)` assertion: with `seen`
+  empty, `requireQuorumStack` hits the count floor first and returns `ErrNoQuorum`
+  ("0 qualified, need 1"), and `ErrNoQuorum != ErrDeMatureQuorum`, so the assertion
+  correctly refuses it. (The de-mature branch itself would never fire here anyway — with
+  `bonded` empty, `requireDeMatureSuperQuorum` short-circuits at `total <= 0 → nil`,
+  `chain.go:2596`.) Proves the probe refuses a membership-omission dressed up as a
+  weight-bytes proof.
 
 ## STOP boundaries honored
 
@@ -112,6 +118,20 @@ The probe READS the weight predicate. It does NOT touch:
 Setting `ByzantineQuorum: false` is a per-world CONFIG choice on a throwaway test chain,
 not a change to any rule — it selects the count-floor regime so the weight rule is the
 isolated discriminator, exactly as the mature-epoch path does for the epoch probe.
+
+## Integrity coupling — do not sever `bondDomain` from `committedSet`
+
+The probe silently depends on `bondDomain` staying classified `committedSet`
+(`modelcheck_state_completeness_test.go:91`). The `!matureNow()` half of the regime is
+built by declaring a whale-dominated `bondDomain` (`bondedWeightBytesWorld`, line 1084),
+and `bondDomain` feeds `MatureCoefficient()` → `matureNow()` (`chain.go:1846`, via
+`C2Metric`'s A-axis). If a future refactor demotes `bondDomain` out of `committedSet`,
+`snapshotBoot` stops carrying it (`snapshotCarried()` iterates only `committedSet` +
+`committedLog` + `observable`), the ablated replica boots with an initialised-but-EMPTY
+`bondDomain` map, and its `matureNow()` can flip back to true — which drops the whole
+de-mature bar. The probe would then go GREEN for the WRONG reason: a path-entry gate,
+not the weight bytes it exists to prove load-bearing. A future editor must not sever
+that classification without re-anchoring this probe's `!matureNow` setup.
 
 ## Invariants touched (per consensus-invariants.md working rule 1)
 
