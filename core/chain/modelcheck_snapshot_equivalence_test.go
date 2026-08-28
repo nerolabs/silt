@@ -60,9 +60,46 @@ func fieldsOfKind(k stateKind) []string {
 	return out
 }
 
+// deepCopyValue returns an independent copy of a map or slice value, so a replica
+// that mutates its carried state (a mutating probe's apply()) cannot write through
+// a shared reference into src or into a sibling replica. Non-map/slice values (the
+// scalars everMature/matureEpoch/epochStart) are returned as-is — they are value
+// types, so a copy is automatic on assignment. Maps are copied one level deep,
+// which is sufficient here: every committed map's VALUE is a scalar or an array
+// (NodeID/Hash/Entry), none of which apply() mutates in place.
+func deepCopyValue(v any) any {
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+	case reflect.Map:
+		out := reflect.MakeMapWithSize(rv.Type(), rv.Len())
+		for _, k := range rv.MapKeys() {
+			out.SetMapIndex(k, rv.MapIndex(k))
+		}
+		return out.Interface()
+	case reflect.Slice:
+		if rv.IsNil() {
+			return v
+		}
+		out := reflect.MakeSlice(rv.Type(), rv.Len(), rv.Len())
+		reflect.Copy(out, rv)
+		return out.Interface()
+	default:
+		return v
+	}
+}
+
 // snapshotBoot builds the "never replayed" replica: injected configuration
 // carried over (identical on every replica by construction), every committed
 // field copied EXCEPT those named in omit, and no block history at all.
+//
+// Carried maps/slices are DEEP-COPIED (deepCopyValue): a snapshot replica is
+// handed to mutating probes that call apply(), which writes into these maps. If
+// the replica shared src's map header, that apply() would corrupt src and every
+// sibling replica built from it — the leave-one-out loop ablates one field at a
+// time off the SAME src, so a mutating probe on the k-th ablation would poison the
+// (k+1)-th. That aliasing silently masked bondRootProven's flip (the F1 probe on
+// the bondRootOwner ablation displaced src's shared bonded/owner maps before
+// bondRootProven was ever ablated). Deep-copying makes each replica own its state.
 func snapshotBoot(src *Chain, omit ...string) *Chain {
 	skip := map[string]bool{}
 	for _, o := range omit {
@@ -85,7 +122,7 @@ func snapshotBoot(src *Chain, omit ...string) *Chain {
 			}
 			continue
 		}
-		setField(dst, name, fieldValue(src, name))
+		setField(dst, name, deepCopyValue(fieldValue(src, name)))
 	}
 	return dst
 }
@@ -225,6 +262,29 @@ func probes(revokedRoot, ownedRoot ports.Hash, keys []ed25519.PrivateKey, prev p
 				return "claim-blocked"
 			},
 		},
+		{
+			// bondRootProven is the G3 discriminator (chain.go:2786): once a root's
+			// owner is PROVEN, a later proven claim by another identity must NOT
+			// displace it (F1 holds among proven claims). richHistory's owner
+			// (keys[1], height>0) IS proven, so a second PROVEN claim on ownedRoot is
+			// blocked. A snapshot that lost bondRootProven sees the owner as merely
+			// DECLARED, so `proven && !bondRootProven[root]` fires the displacement —
+			// the true owner is wrongly stripped and the challenger earns the root.
+			// That is a C1 no-discount break the field exists to prevent.
+			name:    "a proven bond-root owner cannot be displaced by a later proven claim",
+			detect:  []string{"bondRootProven"},
+			mutates: true,
+			ask: func(c *Chain) string {
+				challenger := idOf(keys[2])
+				b := Block{Version: BlockVersionRounds, Height: 3, Prev: prev}
+				b.BondRegs = append(b.BondRegs, bondRegAt(keys[2], ownedRoot, twoMiB, prev))
+				c.apply(b)
+				if _, ok := c.bonded[challenger]; ok {
+					return "displaced-the-proven-owner"
+				}
+				return "proven-owner-held"
+			},
+		},
 	}
 }
 
@@ -315,7 +375,7 @@ func bondedWorld(t *testing.T) (*Chain, *Block) {
 func spentWorld(t *testing.T) (*Chain, []byte, func([]byte) *ports.PublishToken) {
 	t.Helper()
 	oi := newOrderIssuers(t)
-	c, g := orderWorld(t, oi)
+	c, g := orderWorld(t, oi, ports.Hash{}, nil)
 
 	serial := []byte("leaveoneout-spent-serial")
 	b1 := &Block{Version: BlockVersionRounds, Height: 1, Prev: g.Hash(),
@@ -588,9 +648,6 @@ func TestSnapshotBootMatchesReplayBoot(t *testing.T) {
 // Each entry says what a probe would have to construct — these are honest gaps,
 // not fields believed irrelevant.
 var probeUncovered = map[string]string{
-	"bondRootProven": "the G3 displacement rule only fires when a DECLARED (genesis) owner " +
-		"is displaced by a PROVEN claim; this world's owner is already proven, so the " +
-		"branch is unreachable here — needs a genesis-declared bond root",
 	"bondRegHeight": "the min-interval rule is gated behind regGateActive (#506); this " +
 		"world has no RegGateActivationHeight, so the rule never fires — needs a " +
 		"gate-active world",

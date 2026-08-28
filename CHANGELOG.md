@@ -8,7 +8,73 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Changed
+- **CONSENSUS-RULE: reject a block carrying two bond registrations from distinct
+  identities on the same root** (2026-08-28; certified + human-ratified). This is a
+  validity-layer consensus-rule change. `validateBondRegs` (chain.go) deduped only
+  per-ValidatorID (`seenReg`, gate-gated) and never per-root, so a block with two
+  PROVEN registrations from DISTINCT identities on the SAME root was ADMITTED;
+  `apply()` (chain.go:2780-2790) then resolved the winner by intra-block SLICE ORDER.
+  Two honest replicas applying the identical block in a different `BondReg` order
+  committed a DIFFERENT `bonded`/`bondRootOwner` state — an order-dependent commit the
+  era-3 SMT state root cannot tolerate. The fix adds a `seenRoot` dedup, a sibling of
+  `seenReg`, that rejects such a block with `ErrSharedRootInBlock`. It runs
+  **UNCONDITIONALLY** (NOT behind the #506 `regGateActive` gate — the freeze seam must
+  close in every regime), and dedups on **(root × distinct-ID)** only: a validator
+  re-registering its OWN root (same ID: renew/resize) is legal (F1) and stays admitted.
+  A pure validity tightening — removes an admissible block class, never admits a new
+  commit; I1–I5 and history-independence preserved; `apply()`'s tie-break, the weight
+  sum, the epoch freeze, and the quorum threshold are untouched. Covered by a
+  RED-then-GREEN model-check probe (`redteam_verify_sameroot-intrablock_test.go`):
+  pre-fix the block is admitted and the committed state diverges across intra-block
+  orderings; post-fix it is rejected in both orderings; a negative control confirms
+  same-ID renew/resize is still admitted. Closes residual R2 of the certification.
+  Research certification: `same-root-intrablock-bondreg-contention-RESEARCH-CERTIFICATION-2026-08-28`
+  (`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/same-root-intrablock-bondreg-contention-RESEARCH-CERTIFICATION-2026-08-28.md`);
+  PE ruling `RULING-618-bond-registration-order-independence-2026-08-28`. The prior
+  #618 `TestSharedRootDeniedViaValidatedBlock` was updated: the validated path now
+  REJECTS the shared-root block rather than admitting it and deduping in `apply()` —
+  strictly stronger, and order-free by construction.
+
 ### Added
+- **Order-independence coverage for the bond-registration family — the #617 debt,
+  first increment** (2026-08-28). PR #617 declared six committed bond-registration
+  fields (`bonded`, `bondRootOwner`, `bondRootProven`, `bondRegHeight`, `regVersion`,
+  `bondDomain`) as `orderVacuous`: the order-independence model-check oracle compared
+  them over ∅ in every ordering, so their order-independence was unproven. The
+  `twoOrderings` fixture now commits a height-5 bond block whose BondReg slice order
+  flips between the two orderings — including a **G3 proof-beats-declaration
+  displacement** of a genesis squatter (chain.go:2780-2794), the one bond rule whose
+  intra-block order could genuinely matter. All six fields are non-empty in both
+  orderings and byte-identical across them for this DISJOINT-ROOT construction:
+  G3/bond-root ownership is order-independent for admissible blocks (the
+  consensus-correctness trip-wire did not trip). A dedicated
+  `TestBondRegG3DisplacementIsOrderIndependent` asserts the displacement actually
+  FIRED (coverage is not vacuous) and both orderings reached identical bond-root state.
+  **Scope correction (certified 2026-08-28, see the CONSENSUS-RULE entry under
+  Changed):** this disjoint-root fixture does NOT cover two distinct-ID proven claims
+  on the SAME root in one block — that case IS order-dependent in `apply()` and is
+  now rejected at the validity layer. The order-independence claim holds for every
+  ADMISSIBLE block precisely because that collision can no longer be admitted.
+  Six fields removed from `orderVacuous`. For the two-list union rule, a covering
+  leave-one-out probe was added for `bondRootProven` (a proven owner must not be
+  displaced by a later proven claim; a snapshot that lost the field wrongly allows it)
+  and it was removed from `probeUncovered`. **Fields now clearing BOTH oracle lists:**
+  `bonded`, `bondRootOwner`, `bondRootProven`. Fields clearing the order-independence
+  list only (their snapshot-equivalence coverage is #506-gated or metric-only, tracked
+  in `probeUncovered`): `bondRegHeight`, `regVersion`, `bondDomain`. The mature-epoch
+  and #506-gate `orderVacuous` families are left for later increments. Test/fixture
+  only; no consensus rule changed.
+- **Fixed a state-aliasing hazard in the snapshot-equivalence oracle's `snapshotBoot`**
+  (2026-08-28). `snapshotBoot` carried committed maps into a replica by REFERENCE, so a
+  mutating leave-one-out probe (one that calls `apply()`) wrote through the shared map
+  header into `src` and every sibling replica. The leave-one-out loop ablates one field
+  at a time off the same `src`, so a mutating probe on the k-th ablation silently
+  poisoned the (k+1)-th — this masked `bondRootProven`'s verdict flip entirely (the
+  `bondRootOwner` F1 probe displaced `src`'s shared `bonded`/owner maps before
+  `bondRootProven` was ever ablated, so its ablation saw already-corrupted state and
+  changed no verdict). `snapshotBoot` now deep-copies carried maps/slices so each
+  replica owns its state. Test-only.
 - **The O(depth) CI gate — a standing pass/fail check for the memory-accumulation
   subset of the depth-war class** (2026-08-27). The lineage #528/#535/#549/#555/#556/
   #558/#560/#561/#562/#563/#572 is one class: per-height cost that grows with chain

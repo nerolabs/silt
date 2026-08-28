@@ -2,6 +2,7 @@ package chain
 
 import (
 	"crypto/ed25519"
+	"errors"
 	"testing"
 
 	"github.com/nerolabs/silt/ports"
@@ -69,8 +70,16 @@ func TestSharedRootDeniedNStandings(t *testing.T) {
 	}
 }
 
-// The non-genesis validated path: only ONE of the N shared-root registrations
-// earns standing even though all pass validateBondRegs (sig + size + space-time).
+// The non-genesis validated path: a block carrying N shared-root registrations
+// from DISTINCT identities is now REJECTED at the validity layer (certified
+// 2026-08-28 same-root-intrablock-bondreg-contention, resolution (a);
+// ErrSharedRootInBlock). This SUPERSEDES the earlier behavior where the block
+// was ADMITTED and apply()'s per-root dedup credited exactly one identity: that
+// resolution was order-dependent (the winner was chosen by intra-block slice
+// order — see TestSameRootDistinctIDNoDivergentCommit), which the era-3 SMT root
+// cannot tolerate. Rejecting at validity is strictly stronger — the divergent
+// input never commits, so at most one identity is bonded off any root, and the
+// resolution is order-free by construction.
 func TestSharedRootDeniedViaValidatedBlock(t *testing.T) {
 	const n = 4
 	const minBond = int64(4) << 20
@@ -103,17 +112,19 @@ func TestSharedRootDeniedViaValidatedBlock(t *testing.T) {
 	}
 	Sign(b, a1)                            // proposer = anchor a1 (launch-eligible while immature)
 	b.Atts = append(b.Atts, Attest(b, a2)) // attester = anchor a2
-	if err := c.Append(*b); err != nil {
-		t.Fatalf("the block (anchor quorum) should still commit: %v", err)
-	}
 
-	bonded := 0
-	for _, s := range sybils {
-		if c.BondedSize(idOf(s)) == minBond {
-			bonded++
-		}
+	err := c.Append(*b)
+	if err == nil {
+		t.Fatalf("F1 regression: a block with %d distinct-ID regs on ONE root committed — "+
+			"the certified same-root dedup must reject it at validity", n)
 	}
-	if bonded != 1 {
-		t.Fatalf("F1 regression: %d/%d shared-root Sybils bonded, want exactly 1 (per-root dedup)", bonded, n)
+	if !errors.Is(err, ErrSharedRootInBlock) {
+		t.Fatalf("F1 regression: shared-root block rejected, but not with ErrSharedRootInBlock: %v", err)
+	}
+	// Nothing committed: NO shared-root Sybil is bonded (rejection, not tie-break).
+	for _, s := range sybils {
+		if c.BondedSize(idOf(s)) != 0 {
+			t.Fatalf("F1 regression: a Sybil is bonded (%d) after the block was rejected", c.BondedSize(idOf(s)))
+		}
 	}
 }
