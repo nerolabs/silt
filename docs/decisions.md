@@ -636,6 +636,54 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
   LSM in one run** (prior: bbolt's mmap page cache is kernel-evictable where an LSM's
   memtables/caches are server-sized heap — the wrong profile for the box — but #596 proved
   reading loses to measurement on this exact workload, so confirm it).
+- **RATIFIED 2026-08-28 — #600 DECIDED: the floor box is a semi-stateless witness-validating
+  full validator; hold-tree is a bigger-box opt-in, never the floor default** (Andrew ratified
+  the direction). Sources: PE ruling
+  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-600-floor-box-direction-2026-08-28.md`;
+  research note
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/600-floor-box-direction-post-coexistence-RESEARCH-NOTE-2026-08-28.md`;
+  C-7 certification
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/C7-witness-based-floor-box-validation-RESEARCH-CERTIFICATION-2026-08-27.md`;
+  coexistence evidence `integration/cloudtest/coexist-20260827T212244-citev/`. This resolves
+  the decentralization-posture question the earlier entries (2026-08-27) left as Andrew's call.
+  The consequences, stated for the record:
+  1. **Posture:** witness-validation is the floor box's **primary** validation mechanism. The
+     floor box is a **semi-stateless witness-validating full validator** — it verifies every
+     transition soundly against the committed root from tier-above-supplied witnesses, but does
+     not retain the full registry tree. Holding the tree survives ONLY as a **bigger-box opt-in
+     behind `ports.NodeStore`** (an archival / full-registry decentralization posture), never as
+     the 2 GB-floor default. **Same security, narrower self-sufficiency** — a witness floor box
+     cannot be fooled (C-7 soundness), but cannot make progress without a witness source.
+  2. **HARD REQUIREMENT (decentralization tenet `TENETS.md:557`):** witness-serving MUST stay
+     **open and multi-provider — un-permissioned, servable by any archival / pruning node**, and
+     the floor box MUST be able to source from any of them. Trustless verification does NOT
+     rescue a permissioned availability choke; a permissioned witness set would be the banned
+     **load-bearing centralized** dependency (`:557`: convenience may centralize, load-bearing
+     never). This is a hard constraint on the era-3 witness-delivery design, not a later nicety.
+  3. **C-7 residual promotion:** the ≥1-honest-provider **liveness** assumption goes from
+     optional → **load-bearing**. Before this call a floor box had a self-sufficient fallback
+     (hold the tree, depend on no one); that fallback is gone. **Safety is unaffected** — a
+     witness-less floor box **STALLS, never accepts** (C-7 Q2, unconditional on provider
+     honesty). Record as its own named seam in `docs/design/owned-residuals.md`,
+     **cross-referenced to the #183 cold-start seam as a sibling liveness-on-the-tier-above
+     dependency, not folded into it** (#183 is bootstrap/maturity liveness; this is the new
+     post-maturity seam "can a tree-less floor box keep validating if the witness tier
+     degrades").
+  4. **Backend NOT reopened — bbolt stays.** pebble's unevictable heap TIES bbolt's at 1M
+     (305 vs 304 MB, #601); the thrash spiral is inherent to holding-the-tree-build under
+     pressure on a page-cache store, not a bbolt property. The backend-lock ruling
+     (`RULING-keystone-node-store-backend-lock-2026-08-27.md`) is unchanged.
+  5. **HONEST EVIDENCE BASIS — do not over-claim.** The billable coexistence run did **NOT**
+     produce a shed-vs-OOM measurement. It was killed by `-timeout 60m` DURING the 1M
+     build-from-empty under a ~1 GB balloon; **zero rssMB rows** were captured (the quantitative
+     trace is on the box's inaccessible nohup log; serial carried zero test output). What the run
+     DID show: **severe memory pressure** (free -m available fell 48 → 8 MB, sshd could not fork,
+     ens4 network-dead at 22:05, zero OOM events in serial) and that the 1M build did not finish
+     in 2× the unpressured time. The decision therefore rests on **C-7 certified-sound + no owed
+     measurement to ship the witness path + hold-tree-on-floor unproven-to-fit + the
+     severe-pressure signal** — NOT on a conclusive coexistence OOM. The run refutes "the floor
+     box builds and holds a 1M-key tree beside a real daemon"; it is NOT cited as "bbolt is
+     unusable."
 - **Immutables preserved:** consensus engine untouched; M0 firewall reinforced; the
   hobbyist box (#8) is the point of the whole direction; content-blind core untouched (the
   root commits locators and status, never content meaning).

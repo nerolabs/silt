@@ -437,6 +437,24 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   not an accepted state — un-skip when #514 is proven closed by stress.
 
 ### Docs
+- **#600 ratified — the floor box is a semi-stateless witness-validating full validator**
+  (2026-08-28). Andrew ratified the direction: witness-validation is the floor box's primary
+  validation posture; holding the whole registry tree is a bigger-box opt-in behind
+  `ports.NodeStore`, never the 2 GB-floor default. Recorded in `docs/decisions.md` (D-TIERING,
+  dated entry) with five consequences: (1) same security, narrower self-sufficiency; (2) a HARD
+  REQUIREMENT that witness-serving stay open + multi-provider (`TENETS.md:557` — a permissioned
+  availability choke is the banned load-bearing-centralized dependency); (3) the ≥1-honest-provider
+  liveness assumption promoted optional → load-bearing (safety unaffected — a witness-less floor
+  box stalls, never accepts), a new #183-sibling seam; (4) bbolt NOT reopened (pebble ties its
+  heap); (5) an HONEST evidence basis — the billable coexistence run captured zero rssMB rows (killed
+  by `-timeout 60m` mid-build) and showed severe memory pressure, so the decision rests on C-7
+  soundness + no-owed-measurement + hold-tree-unproven-to-fit + the pressure signal, NOT a
+  conclusive OOM. `docs/VISION.md` marks the witness floor RATIFIED and adds the decentralized-liveness
+  posture; `ROADMAP.md` re-sequences the era-3 format freeze to critical-path (witness is vacuous
+  until the `Block` commits both roots). PE ruling
+  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-600-floor-box-direction-2026-08-28.md`;
+  research note
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/600-floor-box-direction-post-coexistence-RESEARCH-NOTE-2026-08-28.md`.
 - **VISION + canon honesty pass — C-1 lift to a conditional theorem, C-5 operator-economics
   true-up, and C-2/C-3 register fixes** (2026-08-27). One coherent pass re-anchoring the north
   star to ratified canon. **C-1 (maturity before capture)** lifts GATED → **CERTIFIED-CONDITIONAL**
