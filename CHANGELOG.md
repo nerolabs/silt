@@ -88,6 +88,23 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   chain.go:2839) — quarantined in a declared, shrink-only `shadowedProbes` debt list with
   routing notes (the bond-root split is research-gated), not suppressed. Deliberation:
   `docs/thinking/2026-08-28-keystone-bondregheight-sole-discriminator.md`.
+- **Keystone weight-bytes — the `bonded` sibling probe (#603 era-3 freeze gate)**
+  (2026-08-28, model-check/unit tier; no consensus rule touched — the probe READS the
+  weight predicate, moves no threshold). `TestBondedWeightBytesAreLoadBearing`
+  (`core/chain/modelcheck_snapshot_equivalence_test.go`) proves the committed per-member
+  live `bonded` WEIGHT bytes — not merely membership — flip a de-maturation verdict
+  through `requireDeMatureSuperQuorum` (chain.go:2591), the sibling of the `epochSet`
+  probe (`TestEpochWeightBytesAreLoadBearing`, #606) named owed by the blind PE ruling
+  `RULING-603-weight-bytes-discharge-2026-08-28`. `bondedWeightBytesWorld` latches
+  `everMature`, then realizes UNEQUAL live weights plus one SHARED declared domain so
+  `!matureNow()` holds INDEPENDENT of the weight flatten (via `NakamotoDomains=1`, so the
+  path-entry gate cannot masquerade as the weight rule). Membership held byte-identical,
+  weights flattened to a constant: full (true weights, coalition 10 MiB of 12, need ≥8) →
+  accept; ablated (flattened) → **`ErrDeMatureQuorum`** (2 MiB of 4, need ≥2), `seen=1`
+  clearing the `Quorum=1` count floor. Non-vacuous by both ablations: no-flatten →
+  accepts (`ErrDeMatureQuorum` assertion RED); empty membership → rejects via `ErrNoQuorum`
+  (the assertion correctly refuses the membership-omission). Deliberation:
+  `docs/thinking/2026-08-28-keystone-bonded-weight-bytes-probe.md`.
 - **Keystone leave-one-out — the latch/gate/domain tranche proven load-bearing**
   (2026-08-28, model-check/unit tier; no consensus rule touched — probes a threshold,
   moves none). `TestLeaveOneOutProvesEachFieldLoadBearing`
