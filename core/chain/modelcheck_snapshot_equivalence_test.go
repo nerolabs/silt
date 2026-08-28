@@ -488,6 +488,379 @@ func weightProbes(epochSetBlock, bondedBlock *Block) ([]probe, []probe) {
 	return []probe{epochSetProbe}, []probe{bondedProbe}
 }
 
+// ---------------------------------------------------------------------------
+// The latch / gate / domain tranche (2026-08-28). Six committed fields whose
+// leave-one-out flip lives outside the qualification+quorum count path the
+// bonded/epochSet probes drive. Each world bakes the exact regime state a
+// snapshot would carry (via setField on the built chain, so snapshotBoot
+// deep-copies it into the replica) and each probe drives the ONE predicate the
+// ablated field feeds. See docs/thinking/2026-08-28-keystone-leaveoneout-latch-
+// gate-domain.md for the per-field mechanism and the STOP-boundary analysis.
+// ---------------------------------------------------------------------------
+
+// regVerdict validates a bond-registration block against a snapshot-booted node
+// via validateBondRegs — the #506 R-rule path (chain.go:1497). A history-less
+// replica CAN drive it: recentBondRegNonces returns BondRegNonce(prev) as its
+// first window nonce regardless of block history (chain.go:1385-1386 appends
+// before the blockByHash break), so a reg signed against prev validates. This is
+// the ValidateCommit-free entry point the gate fields feed, mirroring how the
+// set-valued probes call ValidateEntry directly.
+func regVerdict(c *Chain, b *Block) string { return verdict(c.validateBondRegs(b)) }
+
+// deMatureWorld (everMature). Epochs DISABLED, no anchors, so handedOff == the raw
+// everMature latch and requireEpochWeightQuorum never fires (it needs
+// epochsEnabled) — the de-maturation super-quorum is the ONLY regime gate. The
+// ramp latches everMature while decentralized (6 equal bonds, MatureValidators=2);
+// the built chain's LIVE bonded is then set to a whale-dominated split so
+// matureNow() is false. The probed block is a minnow coalition that clears the
+// count floor (bftThreshold(6)=4 attesters) but holds far below ⅔ of live bonded
+// weight. Full snapshot → requireDeMatureSuperQuorum rejects (ErrDeMatureQuorum);
+// an everMature-dropped snapshot skips the bar (chain.go:2471) and accepts. The
+// flip changes whether the de-mature bar APPLIES, never how weight is summed.
+func deMatureWorld(t *testing.T) (*Chain, *Block) {
+	t.Helper()
+	whale := key(40000)
+	minnows := make([]ed25519.PrivateKey, 5)
+	for i := range minnows {
+		minnows[i] = key(int64(40001 + i))
+	}
+	cfg := Config{Quorum: 1, MinBond: 1 << 20, ByzantineQuorum: true, MatureValidators: 2}
+	c := New(cfg, func(ports.NodeID) int64 { return 0 })
+	c.SetBondVerifier(objectiveVerify)
+
+	all := append([]ed25519.PrivateKey{whale}, minnows...)
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
+	for _, k := range all {
+		g.BondRegs = append(g.BondRegs, bondReg(k, twoMiB, ports.Hash{}))
+	}
+	Sign(g, whale)
+	if err := c.AppendGenesis(*g); err != nil {
+		t.Fatalf("deMatureWorld genesis: %v", err)
+	}
+	// A rotating-proposer ramp so all six enter validatorsSeen (the coefficient
+	// reads validatorsSeen) → the maturity latch trips → everMature is committed.
+	prev := g.Hash()
+	n := len(all)
+	for h := uint64(1); h <= 3; h++ {
+		order := make([]ed25519.PrivateKey, n)
+		for i := 0; i < n; i++ {
+			order[i] = all[(int(h)+i)%n]
+		}
+		b := &Block{Version: 1, Height: h, Prev: prev, Entries: []ports.Entry{entry(byte(h))}}
+		Sign(b, order[0])
+		for _, a := range order[1:] {
+			b.Atts = append(b.Atts, Attest(b, a))
+		}
+		if err := c.Append(*b); err != nil {
+			t.Fatalf("deMatureWorld block %d: %v", h, err)
+		}
+		prev = b.Hash()
+	}
+	if !c.everMature {
+		t.Fatalf("deMatureWorld: everMature did not latch (coeff=%d)", c.MatureCoefficient())
+	}
+
+	// Realize the de-maturation regime: live decentralization has since dropped —
+	// the whale concentrated real bond and minnows shrank. matureNow() now false.
+	liveBonded := map[ports.NodeID]int64{idOf(whale): 100 << 20}
+	for _, m := range minnows {
+		liveBonded[idOf(m)] = 1 << 20
+	}
+	setField(c, "bonded", liveBonded)
+
+	// The probed block: a minnow coalition (proposer + 4 minnow attesters, clearing
+	// bftThreshold(6)=4) whose weight is a sliver of the whale-dominated total.
+	b := &Block{Version: 1, Height: 4, Prev: prev, Entries: []ports.Entry{entry(44)}}
+	Sign(b, minnows[0])
+	b.Atts = []Attestation{Attest(b, minnows[1]), Attest(b, minnows[2]),
+		Attest(b, minnows[3]), Attest(b, minnows[4])}
+	return c, b
+}
+
+func everMatureProbe(b *Block) probe {
+	return probe{
+		name: "a de-matured network must refuse a sub-⅔ real-bond coalition; a snapshot that " +
+			"lost everMature skips the de-mature bar (ErrDeMatureQuorum) and accepts it",
+		detect: []string{"everMature"},
+		ask:    func(c *Chain) string { return quorumVerdict(c, b) },
+	}
+}
+
+// matureEpochWorld (matureEpoch). Epochs ON; genesis freezes four members into
+// epochSet with UNEQUAL weight (two silent whales). The built chain's LIVE bonded
+// is then narrowed to just the two coalition members, so in a non-mature regime
+// the count floor is bftThreshold(2)=1 (satisfiable by the single attester), while
+// the frozen epochSet still weights the silent whales. The probed block is
+// proposer+one attester: below ⅔ of frozen epoch weight but clearing the count
+// floor. Full snapshot (matureEpoch true) → requireEpochWeightQuorum rejects
+// (ErrNoQuorumWeight, chain.go:2457). A matureEpoch-dropped snapshot skips the
+// weight quorum AND qualification leaves the frozen-set branch → the count floor
+// (now bftThreshold(2)=1) is cleared → accept. The flip changes whether the
+// mature-epoch weight rule APPLIES, never how the ⅔ is summed.
+func matureEpochWorld(t *testing.T) (*Chain, *Block) {
+	t.Helper()
+	keys := make([]ed25519.PrivateKey, 4)
+	for i := range keys {
+		keys[i] = key(int64(46000 + i))
+	}
+	cfg := Config{Quorum: 1, MinBond: 1 << 20, ByzantineQuorum: true, EpochBlocks: 2}
+	c := New(cfg, func(ports.NodeID) int64 { return 0 })
+	c.SetBondVerifier(objectiveVerify)
+	// Frozen weights: proposer keys[0]=1 MiB, attester keys[1]=1 MiB, silent whales
+	// keys[2]/keys[3]=10 MiB each. All ≥ MinBond so all four freeze at genesis.
+	weights := []int64{1 << 20, 1 << 20, 10 << 20, 10 << 20}
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
+	for i, k := range keys {
+		g.BondRegs = append(g.BondRegs, bondReg(k, weights[i], ports.Hash{}))
+	}
+	Sign(g, keys[0])
+	if err := c.AppendGenesis(*g); err != nil {
+		t.Fatalf("matureEpochWorld genesis: %v", err)
+	}
+	if !c.matureEpoch {
+		t.Fatalf("matureEpochWorld: matureEpoch did not set (epochSet=%d)", len(c.epochSet))
+	}
+	// Live bonded (governs the non-mature count floor + qualification once matureEpoch
+	// is dropped): only the two coalition members remain, so bftThreshold(2)=1.
+	setField(c, "bonded", map[ports.NodeID]int64{
+		idOf(keys[0]): 1 << 20, idOf(keys[1]): 1 << 20,
+	})
+
+	b := &Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(30)}}
+	Sign(b, keys[0])
+	b.Atts = []Attestation{Attest(b, keys[1])}
+	return c, b
+}
+
+func matureEpochProbe(b *Block) probe {
+	return probe{
+		name: "a mature-epoch commit below ⅔ frozen weight must be refused; a snapshot that lost " +
+			"matureEpoch skips the frozen-weight quorum (ErrNoQuorumWeight) and accepts on the count floor",
+		detect: []string{"matureEpoch"},
+		ask:    func(c *Chain) string { return quorumVerdict(c, b) },
+	}
+}
+
+// gateWorld (gateLockedIn, gateHeight). Latches maturity and LOCKS the #506 gate at
+// a boundary: three ready members (regVersion ≥ BlockVersionRegGate) freeze into
+// epochSet, the rotateEpoch tally clears the ⅔-ready super-quorum, so gateLockedIn
+// is set and gateHeight = boundary + EpochBlocks. Member x carries a recent
+// bondRegHeight (its height-1 re-reg). The two probes validate a within-R re-reg
+// for x on this world.
+func gateWorld(t *testing.T) *Chain {
+	t.Helper()
+	const w = int64(2) << 20
+	r1, r2, x := key(70001), key(70002), key(70003)
+	cfg := Config{Quorum: 1, MinBond: 1 << 20, ByzantineQuorum: true,
+		EpochBlocks: 2, MatureValidators: 2, BondTTLBlocks: 40}
+	c := New(cfg, func(ports.NodeID) int64 { return 0 })
+	c.SetBondVerifier(objectiveVerify)
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
+	g.BondRegs = []BondReg{
+		bondRegFull(r1, ports.HashBytes(pubOf(r1)), w, ports.Hash{}, BlockVersionRegGate, 0),
+		bondRegFull(r2, ports.HashBytes(pubOf(r2)), w, ports.Hash{}, BlockVersionRegGate, 0),
+		bondRegFull(x, ports.HashBytes(pubOf(x)), w, ports.Hash{}, BlockVersionRegGate, 0),
+	}
+	Sign(g, r1)
+	if err := c.AppendGenesis(*g); err != nil {
+		t.Fatalf("gateWorld genesis: %v", err)
+	}
+	// Height 1: x re-registers its OWN root (bondRegHeight[x]=1). Proposer r1.
+	rootX := ports.HashBytes(pubOf(x))
+	b1 := &Block{Version: BlockVersionRounds, Height: 1, Prev: g.Hash(),
+		Entries:  []ports.Entry{entry(1)},
+		BondRegs: []BondReg{bondRegFull(x, rootX, w, g.Hash(), BlockVersionRegGate, 0)}}
+	commitRounds(b1, []ed25519.PrivateKey{r1, r2, x}, 0)
+	if err := c.Append(*b1); err != nil {
+		t.Fatalf("gateWorld height 1: %v", err)
+	}
+	// Height 2: the epoch boundary. r2 proposes so r1 joins validatorsSeen → three
+	// distinct seen bonds → maturity latches, rotateEpoch freezes {r1,r2,x} and the
+	// #506 tally locks the gate (all ready). gateHeight = 2 + EpochBlocks = 4.
+	b2 := &Block{Version: BlockVersionRounds, Height: 2, Prev: b1.Hash(),
+		Entries: []ports.Entry{entry(2)}}
+	commitRounds(b2, []ed25519.PrivateKey{r2, r1, x}, 0)
+	if err := c.Append(*b2); err != nil {
+		t.Fatalf("gateWorld boundary: %v", err)
+	}
+	if !c.gateLockedIn {
+		t.Fatalf("gateWorld: gate did not lock (gateHeight=%d)", c.gateHeight)
+	}
+	return c
+}
+
+// gateProbes builds the within-R re-registration blocks for x at heights straddling
+// gateHeight, and the two probes that drive them. bondRegHeight[x]=1 and R≈10, so a
+// reg at any height within 10 of block 1 is "too soon" ONLY where the gate is active.
+func gateProbes(c *Chain) (probe, probe) {
+	x := key(70003)
+	rootX := ports.HashBytes(pubOf(x))
+	gh := c.gateHeight
+	regAt := func(h uint64) *Block {
+		return &Block{Version: BlockVersionRounds, Height: h, Prev: ports.Hash{},
+			BondRegs: []BondReg{bondRegFull(x, rootX, twoMiB, ports.Hash{}, BlockVersionRegGate, 0)}}
+	}
+	// gateLockedIn: a within-R re-reg PAST gateHeight. Full → ErrRegGate (gate active);
+	// gateLockedIn-dropped (→ false) → regGateActive false → the R-rule never fires → accept.
+	past := regAt(gh + 1)
+	lockedInProbe := probe{
+		name: "a within-R re-registration past H_act must be rejected; a snapshot that lost " +
+			"gateLockedIn treats the gate as never armed (ErrRegGate → accept)",
+		detect: []string{"gateLockedIn"},
+		ask:    func(c *Chain) string { return regVerdict(c, past) },
+	}
+	// gateHeight: a within-R re-reg BELOW gateHeight (pre-gate, so accepted). Full →
+	// accept; gateHeight-dropped (→ 0) makes regGateActive = gateLockedIn && h>0 fire
+	// for this height → the R-rule rejects. The flip runs the OPPOSITE way.
+	pre := regAt(gh - 1)
+	heightProbe := probe{
+		name: "a within-R re-registration BELOW H_act must be accepted; a snapshot that lost " +
+			"gateHeight collapses H_act to 0, activating the gate early (accept → ErrRegGate)",
+		detect: []string{"gateHeight"},
+		ask:    func(c *Chain) string { return regVerdict(c, pre) },
+	}
+	return lockedInProbe, heightProbe
+}
+
+// regVersionWorld (regVersion). regVersion is read at exactly ONE verdict-relevant
+// site: rotateEpoch's #506 lock-in tally (chain.go:3007). It feeds no Validate path,
+// so its leave-one-out flip must let rotateEpoch RUN on the snapshot replica. The
+// world stops ONE block short of the boundary: everMature not yet latched, gate not
+// yet locked, three ready members carrying regVersion. The probe applies the
+// boundary block (a mutating probe), which trips the latch and runs the tally.
+func regVersionWorld(t *testing.T) *Chain {
+	t.Helper()
+	const w = int64(2) << 20
+	r1, r2, x := key(71001), key(71002), key(71003)
+	cfg := Config{Quorum: 1, MinBond: 1 << 20, ByzantineQuorum: true,
+		EpochBlocks: 2, MatureValidators: 2, BondTTLBlocks: 40}
+	c := New(cfg, func(ports.NodeID) int64 { return 0 })
+	c.SetBondVerifier(objectiveVerify)
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
+	g.BondRegs = []BondReg{
+		bondRegFull(r1, ports.HashBytes(pubOf(r1)), w, ports.Hash{}, BlockVersionRegGate, 0),
+		bondRegFull(r2, ports.HashBytes(pubOf(r2)), w, ports.Hash{}, BlockVersionRegGate, 0),
+		bondRegFull(x, ports.HashBytes(pubOf(x)), w, ports.Hash{}, BlockVersionRegGate, 0),
+	}
+	Sign(g, r1)
+	if err := c.AppendGenesis(*g); err != nil {
+		t.Fatalf("regVersionWorld genesis: %v", err)
+	}
+	// Height 1 only (r1 proposes → seen={r2,x}); the boundary is deferred to the probe.
+	rootX := ports.HashBytes(pubOf(x))
+	b1 := &Block{Version: BlockVersionRounds, Height: 1, Prev: g.Hash(),
+		Entries:  []ports.Entry{entry(1)},
+		BondRegs: []BondReg{bondRegFull(x, rootX, w, g.Hash(), BlockVersionRegGate, 0)}}
+	commitRounds(b1, []ed25519.PrivateKey{r1, r2, x}, 0)
+	if err := c.Append(*b1); err != nil {
+		t.Fatalf("regVersionWorld height 1: %v", err)
+	}
+	if c.gateLockedIn || c.everMature {
+		t.Fatalf("regVersionWorld: expected pre-latch pre-lock snapshot, got everMature=%v gateLockedIn=%v",
+			c.everMature, c.gateLockedIn)
+	}
+	return c
+}
+
+func regVersionProbe() probe {
+	r1, r2, x := key(71001), key(71002), key(71003)
+	rootX := ports.HashBytes(pubOf(x))
+	// The boundary block at height 2: r2 proposes, r1+x attest, so apply() sees the
+	// third distinct attester (r1) → the maturity latch trips and rotateEpoch(2) runs
+	// the #506 tally over the frozen set's regVersion. gateHeight would be 2+2=4.
+	boundary := func() Block {
+		b := &Block{Version: BlockVersionRounds, Height: 2, Prev: ports.Hash{},
+			Entries: []ports.Entry{entry(2)}}
+		Sign(b, r2)
+		b.Atts = []Attestation{Attest(b, r1), Attest(b, x)}
+		return *b
+	}
+	// A within-R re-reg for x at height 5 (past the would-be gateHeight 4; 5-1=4 < R).
+	reg := &Block{Version: BlockVersionRounds, Height: 5, Prev: ports.Hash{},
+		BondRegs: []BondReg{bondRegFull(x, rootX, twoMiB, ports.Hash{}, BlockVersionRegGate, 0)}}
+	return probe{
+		name: "regVersion carries the #506 readiness super-quorum: applying the boundary must " +
+			"lock the gate so a within-R reg is rejected; a snapshot that lost regVersion tallies " +
+			"zero ready weight, never locks, and accepts the reg (ErrRegGate → accept)",
+		detect:  []string{"regVersion"},
+		mutates: true, // it apply()s the boundary block; runs against throwaway replicas
+		ask: func(c *Chain) string {
+			c.apply(boundary())
+			return regVerdict(c, reg)
+		},
+	}
+}
+
+// domainWorld (bondDomain). bondDomain is NOT metric-only: it feeds matureNow()
+// through the A-axis Nakamoto coefficient (C2Metric → MatureCoefficient), and
+// matureNow() gates the maturity LATCH (chain.go:2893) and thereby the launch-anchor
+// shed. The world latches nothing yet (everMature false), holds four anchors plus six
+// equal real bonds, and its built bondDomain merges every real bond into ONE declared
+// domain — so with domains carried, matureNow() is FALSE (one address-diverse group),
+// but with bondDomain DROPPED the bonds count as independent groups and matureNow()
+// rises TRUE. The probe applies a block (a mutating probe): full stays immature so the
+// anchors keep eligibility and an anchor-only commit is ACCEPTED; a bondDomain-dropped
+// replica matures, latches everMature, sheds the anchors, and REJECTS the same commit.
+func domainWorld(t *testing.T) (*Chain, *Block, Block) {
+	t.Helper()
+	anchorKeys := make([]ed25519.PrivateKey, 4)
+	anchors := map[ports.NodeID]bool{}
+	for i := range anchorKeys {
+		anchorKeys[i] = key(int64(44000 + i))
+		anchors[idOf(anchorKeys[i])] = true
+	}
+	realKeys := make([]ed25519.PrivateKey, 6)
+	for i := range realKeys {
+		realKeys[i] = key(int64(44100 + i))
+	}
+	cfg := Config{Quorum: 1, MinBond: 1 << 20, ByzantineQuorum: true,
+		Anchors: anchors, AnchorQuorum: 1, MatureValidators: 2}
+	c := New(cfg, func(ports.NodeID) int64 { return 0 })
+	c.SetBondVerifier(objectiveVerify)
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
+	Sign(g, anchorKeys[0])
+	if err := c.AppendGenesis(*g); err != nil {
+		t.Fatalf("domainWorld genesis: %v", err)
+	}
+	// Bake the regime a snapshot would carry: six equal real bonds, all SEEN, all in
+	// one shared declared domain, everMature not yet latched.
+	bonded := map[ports.NodeID]int64{}
+	domain := map[ports.NodeID]uint64{}
+	seen := map[ports.NodeID]bool{}
+	for _, k := range realKeys {
+		bonded[idOf(k)] = 2 << 20
+		domain[idOf(k)] = 0x99 // one shared domain → coefficient capped at one group
+		seen[idOf(k)] = true
+	}
+	setField(c, "bonded", bonded)
+	setField(c, "bondDomain", domain)
+	setField(c, "validatorsSeen", seen)
+
+	// The anchor-only probe block: proposer + two anchor attesters (clears the
+	// count floor while the anchors are eligible), zero real bond behind it.
+	pb := &Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(9)}}
+	Sign(pb, anchorKeys[0])
+	pb.Atts = []Attestation{Attest(pb, anchorKeys[1]), Attest(pb, anchorKeys[2])}
+
+	// The apply-block that re-evaluates Mature() (a trivial committed block).
+	trigger := Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(5)}}
+	return c, pb, trigger
+}
+
+func domainProbe(anchorBlock *Block, trigger Block) probe {
+	return probe{
+		name: "declared bondDomain is load-bearing via the maturity latch: with domains merged the " +
+			"network stays immature and an anchor-only commit is accepted; a snapshot that lost " +
+			"bondDomain counts the bonds as independent, matures, sheds the anchors, and rejects it",
+		detect:  []string{"bondDomain"},
+		mutates: true, // it apply()s the trigger block; runs against throwaway replicas
+		ask: func(c *Chain) string {
+			c.apply(trigger)
+			return quorumVerdict(c, anchorBlock)
+		},
+	}
+}
+
 // weightBytesWorld is the era-3 freeze gate (#603): a mature epoch whose FROZEN
 // per-member weights are UNEQUAL, and a block whose support coalition clears the
 // COUNT floor but whose verdict is carried by the ⅔-WEIGHT predicate. It is the
@@ -616,6 +989,14 @@ func TestSnapshotBootMatchesReplayBoot(t *testing.T) {
 	spentC, spentSerial, spentMint := spentWorld(t)
 	slashedC, slashedCulprit := slashedWorld(t)
 
+	// The latch/gate/domain tranche. The mutating probes (regVersion/bondDomain apply
+	// a block) are skipped by check() — leave-one-out covers them; the read-only
+	// everMature/matureEpoch/gate probes must answer identically on either boot.
+	deMatureC, deMatureBlock := deMatureWorld(t)
+	matureEpochC, matureEpochBlock := matureEpochWorld(t)
+	gateC := gateWorld(t)
+	lockedInProbe, heightProbe := gateProbes(gateC)
+
 	check := func(replayed *Chain, ps []probe) {
 		snap := snapshotBoot(replayed)
 		for _, p := range ps {
@@ -639,6 +1020,9 @@ func TestSnapshotBootMatchesReplayBoot(t *testing.T) {
 	check(bondedC, bondedPs)
 	check(spentC, []probe{spentProbe(spentSerial, spentMint)})
 	check(slashedC, []probe{slashedProbe(slashedCulprit)})
+	check(deMatureC, []probe{everMatureProbe(deMatureBlock)})
+	check(matureEpochC, []probe{matureEpochProbe(matureEpochBlock)})
+	check(gateC, []probe{lockedInProbe, heightProbe})
 }
 
 // probeUncovered names committed fields for which no probe yet exists. It is a
@@ -651,24 +1035,13 @@ var probeUncovered = map[string]string{
 	"bondRegHeight": "the min-interval rule is gated behind regGateActive (#506); this " +
 		"world has no RegGateActivationHeight, so the rule never fires — needs a " +
 		"gate-active world",
-	// regVersion/bondDomain/gateLockedIn/gateHeight are now covered on the OTHER list —
-	// the order-independence oracle (regVersion/bondDomain by the same-id covering probe
-	// TestRegVersionIntraBlockOrderIndependent; gateLockedIn/gateHeight by
-	// gateSwingOrderings, cert sameid-twoversion-intrablock-bondreg-contention
-	// 2026-08-28). They remain unprobed on THIS list (leave-one-out load-bearingness):
-	// each entry says what a leave-one-out probe would still have to construct.
-	"regVersion": "order-independence COVERED (same-id probe). A leave-one-out probe needs a " +
-		"rotateEpoch lock-in tally across a boundary where dropping regVersion flips whether the " +
-		"#506 gate locks — a verdict-flip world, not the tally read gateSwingOrderings already drives",
-	"bondDomain":     "read by C2Metric, which is a metric rather than a validity predicate (order-independence is COVERED by the same-id probe)",
 	"validatorsSeen": "read by Mature/C2Metric in legacy mode only",
-	"gateLockedIn": "order-independence COVERED (gateSwingOrderings). A leave-one-out probe needs a " +
-		"gate-locked replica plus an R-rule-violating or same-id-twice reg past H_act whose " +
-		"window check passes on the ablated (gate-off) path — a full nonce-valid block history, " +
-		"which a history-less snapshot replica cannot supply cleanly",
-	"gateHeight":  "same as gateLockedIn — order-independence COVERED, leave-one-out needs a nonce-valid post-H_act block",
-	"everMature":  "needs the maturity latch to trip, then a launchAnchor/handoff-dependent check",
-	"matureEpoch": "needs the #357 Cond B handoff, then a regime-dependent quorum check",
+	// everMature/matureEpoch/regVersion/gateLockedIn/gateHeight/bondDomain were moved
+	// to real leave-one-out probes on 2026-08-28 (the de-mature/mature-epoch-flag/
+	// gate-lock/gate-tally/domain-latch worlds). See docs/thinking/
+	// 2026-08-28-keystone-leaveoneout-latch-gate-domain.md. Notably bondDomain is NOT
+	// metric-only: it feeds matureNow() → the maturity latch → the launch-anchor shed,
+	// a real verdict (domainWorld/domainProbe), overturning the prior "metric" excuse.
 }
 
 // TestLeaveOneOutProvesEachFieldLoadBearing is the sharp half. For every
@@ -691,12 +1064,27 @@ func TestLeaveOneOutProvesEachFieldLoadBearing(t *testing.T) {
 	epochSetPs, bondedPs := weightProbes(epochSetBlock, bondedBlock)
 	spentC, spentSerial, spentMint := spentWorld(t)
 	slashedC, slashedCulprit := slashedWorld(t)
+
+	// The latch/gate/domain tranche (2026-08-28): each field's leave-one-out flip
+	// lives outside the count path, so each gets the world where it is load-bearing.
+	deMatureC, deMatureBlock := deMatureWorld(t)
+	matureEpochC, matureEpochBlock := matureEpochWorld(t)
+	gateC := gateWorld(t)
+	lockedInProbe, heightProbe := gateProbes(gateC)
+	regVersionC := regVersionWorld(t)
+	domainC, domainAnchorBlock, domainTrigger := domainWorld(t)
+
 	worlds := []worldGroup{
 		{"launch", func(*testing.T) *Chain { return replayed }, probes(revokedRoot, ownedRoot, keys, prev)},
 		{"mature-epoch", func(*testing.T) *Chain { return weightC }, epochSetPs},
 		{"objective-bonded", func(*testing.T) *Chain { return bondedC }, bondedPs},
 		{"token-spent", func(*testing.T) *Chain { return spentC }, []probe{spentProbe(spentSerial, spentMint)}},
 		{"slashed-anchor", func(*testing.T) *Chain { return slashedC }, []probe{slashedProbe(slashedCulprit)}},
+		{"de-mature", func(*testing.T) *Chain { return deMatureC }, []probe{everMatureProbe(deMatureBlock)}},
+		{"mature-epoch-flag", func(*testing.T) *Chain { return matureEpochC }, []probe{matureEpochProbe(matureEpochBlock)}},
+		{"gate-lock", func(*testing.T) *Chain { return gateC }, []probe{lockedInProbe, heightProbe}},
+		{"gate-tally", func(*testing.T) *Chain { return regVersionC }, []probe{regVersionProbe()}},
+		{"domain-latch", func(*testing.T) *Chain { return domainC }, []probe{domainProbe(domainAnchorBlock, domainTrigger)}},
 	}
 
 	// Guard the declared debt against the live struct first: a newly added
