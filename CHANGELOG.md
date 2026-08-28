@@ -8,6 +8,30 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Added
+- **CONSENSUS FINDING (routed, not fixed): `regVersion`/`bondDomain` are
+  order-dependent on intra-block BondReg slice order** (2026-08-28). Building the
+  last `orderVacuous` family (the #506 gate) under the order-independence model-check
+  oracle surfaced a #618-class fork. `apply()` writes `regVersion[id]=r.Version` and
+  `bondDomain[id]=r.Domain` in BondReg slice order ("latest wins"), and the same-id-
+  twice-in-one-block guard (`seenReg`) is **gate-gated** — allocated only when
+  `regGateActive` is true. So BEFORE the #506 gate locks, a block carrying two regs
+  for the SAME id on its OWN root (legal renew/resize under F1, so the #618 `seenRoot`
+  distinct-id guard does not catch it) is ADMISSIBLE, and two honest replicas applying
+  the identical block in a different BondReg order commit different `regVersion`/
+  `bondDomain` — a different history-independent SMT root. `regVersion` feeds the #506
+  gate lock-in tally (`rotateEpoch`), so `gateLockedIn`/`gateHeight` can inherit the
+  order-dependence when the two-version validator is the >2/3 swing. Repro:
+  `TestRegVersionIntraBlockOrderFinding` (`modelcheck_regversion_intrablock_finding_test.go`,
+  passes under `-race`; asserts the observed divergence, so the suite stays green and
+  the test flips when the certified fix lands). NO rule changed — this is a
+  consensus-rule / validity-layer decision above the Builder seat, routed to Research +
+  human. The likely resolution mirrors #618: make the same-id-twice guard
+  UNCONDITIONAL. Until then `gateLockedIn`/`gateHeight` stay in `orderVacuous` and
+  `regVersion`/`bondDomain`/`gateLockedIn`/`gateHeight` stay in `probeUncovered` —
+  they cannot be covered while their input is order-dependent. Deliberation:
+  `docs/thinking/2026-08-28-orderVacuous-506-gate.md`.
+
 ### Changed
 - **CONSENSUS-RULE: reject a block carrying two bond registrations from distinct
   identities on the same root** (2026-08-28; certified + human-ratified). This is a
