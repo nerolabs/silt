@@ -87,6 +87,25 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   REJECTS the shared-root block rather than admitting it and deduping in `apply()` —
   strictly stronger, and order-free by construction.
 
+### Fixed
+- **e2e flake (#583, third occurrence): derive the anchor-stop resume-observation
+  window from the non-anchor catch-up cadence** (2026-08-28, test-harness only; the
+  daemon and every consensus path untouched). `TestAnchorStopHaltsBondedNonAnchors`
+  failed on CI a third time (`val3 never observed a committed block after the anchors
+  resumed`, 76 s on CI vs 46 s local). Mechanism: after the driven publish commits on
+  the resumed anchors, a bonded non-anchor that missed the live commit round heals on
+  its next `chainSyncTick`, which reschedules every `ChainSyncInterval` (= 30 s) at an
+  ARBITRARY phase. The old fixed 30 s observation window equalled EXACTLY one interval,
+  so it caught ZERO catch-up sweeps in the worst phase — the same zero-overlap-margin
+  defect #549-Q3 fixed. Derived the window per the #549-Q3 discipline:
+  `resumeObserveSweeps × ChainSyncInterval` where 2 sweeps guarantee one fires
+  regardless of phase and the 3rd is the measured ~30 s CI/local load stretch → 90 s.
+  The window stays a POLL, so a genuine non-anchor halt still fails fast (proven RED by
+  injection). An `init()` guard fails the e2e package if the window is ever lowered
+  below the two-sweep phase floor, so a fourth silent reroll is impossible. Derivation:
+  `docs/thinking/2026-08-28-583-anchorstop-resume-window.md`. Measured 16/16 green
+  locally (+13/13 in a prior run cut short by the default go-test timeout).
+
 ### Added
 - **Keystone leave-one-out — fix a shared-block SHADOWING decoration probe + add a
   structural neuter meta-guard** (2026-08-28, model-check/unit tier; no consensus rule

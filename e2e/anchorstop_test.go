@@ -26,6 +26,36 @@ import (
 	"github.com/nerolabs/silt/adapters/identity"
 )
 
+// resumeObserveSweeps is the resume-observation window in ChainSyncInterval
+// units. Derived (#583, docs/thinking/2026-08-28-583-anchorstop-resume-window.md):
+// after the anchors return and the driven publish commits, a bonded NON-anchor
+// that missed the live commit round heals on its next chainSyncTick, which
+// reschedules every ChainSyncInterval (core/node/chainrole.go:1527) at an
+// ARBITRARY phase. A window equal to ONE interval catches ZERO sweeps in the
+// worst phase — the identical zero-overlap-margin defect #549-Q3 fixed. Two
+// sweeps guarantee one fires regardless of phase; the third is the measured
+// ~30 s CI/local load stretch (#583: CI 76 s − local 46 s ≈ one interval). So
+// 3 × 30 s = 90 s.
+const resumeObserveSweeps = 3
+
+// chainSyncInterval MIRRORS core/node/node.go ChainSyncInterval (30 s). The e2e
+// binary is a separate process, so this is a mirror, not a read: if the daemon's
+// ChainSyncInterval changes, re-sync this constant (the #549-Q3 residual).
+const chainSyncInterval = 30 * time.Second
+
+// resumeObserveWindow is the derived poll budget for the resume clincher.
+const resumeObserveWindow = resumeObserveSweeps * chainSyncInterval
+
+// The gate against a fourth silent #583 reroll: a window below two sweeps
+// re-opens the zero-phase-margin flake. Lowering resumeObserveSweeps < 2 fails
+// the whole e2e package at init, so the window can never silently regress.
+func init() {
+	if resumeObserveSweeps < 2 {
+		panic("resumeObserveSweeps < 2 re-opens #583: a resume-observation window " +
+			"≤ 1 ChainSyncInterval has zero phase margin for the non-anchor catch-up sweep")
+	}
+}
+
 // committedCount counts how many "chain: committed block N" lines a daemon has
 // printed — the quiet-advance detector (any fresh commit bumps it).
 func committedCount(d *daemon) int {
@@ -161,13 +191,21 @@ func TestAnchorStopHaltsBondedNonAnchors(t *testing.T) {
 		t.Fatalf("chain did not resume after the anchors returned:\n--- val0r ---\n%s\n--- val%d ---\n%s",
 			daemons[0].out.dump(), nAnchors, daemons[nAnchors].out.dump())
 	}
-	// A survivor observes the resumed chain (fresh commit lines appear).
-	deadline := time.Now().Add(30 * time.Second)
+	// A survivor observes the resumed chain (fresh commit lines appear). The
+	// window is DERIVED from the non-anchor catch-up cadence (#583), not a
+	// fixed guess: a non-anchor that missed the live round heals on its next
+	// chainSyncTick (every ChainSyncInterval, arbitrary phase), so the poll must
+	// span >= 2 sweeps to guarantee one fires under any phase, plus the measured
+	// CI load stretch. This POLL fails fast on a genuine halt (the liveness
+	// regression this test exists to catch) and does not expire on normal gossip
+	// latency under load.
+	deadline := time.Now().Add(resumeObserveWindow)
 	for time.Now().Before(deadline) {
 		if committedCount(daemons[nAnchors]) > naBefore[nAnchors] {
 			return
 		}
 		time.Sleep(2 * time.Second)
 	}
-	t.Fatalf("val%d never observed a committed block after the anchors resumed:\n%s", nAnchors, daemons[nAnchors].out.dump())
+	t.Fatalf("val%d never observed a committed block within %s after the anchors resumed (derived catch-up window, #583):\n%s",
+		nAnchors, resumeObserveWindow, daemons[nAnchors].out.dump())
 }
