@@ -97,7 +97,13 @@ func newOrderIssuers(t *testing.T) *orderIssuers {
 // publishtoken.Verify accepts a 2-of-4 blind-signed serial. The issuers are
 // injected (shared across both orderings) so a serial's token bytes are identical
 // in both chains.
-func orderWorld(t *testing.T, oi *orderIssuers) (*Chain, *Block) {
+//
+// squatRoot, when non-zero, is a bond root a genesis squatter (squatKey) DECLARES
+// (unproven) at genesis — the G3 precondition. A later PROVEN registration on the
+// same root displaces it (chain.go:2780-2794). Threading it through orderWorld
+// keeps the genesis identical across both orderings, so the squat is not itself an
+// order variable — only the height-1 registration slice order is.
+func orderWorld(t *testing.T, oi *orderIssuers, squatRoot ports.Hash, squatKey ed25519.PrivateKey) (*Chain, *Block) {
 	t.Helper()
 	anchors := map[ports.NodeID]bool{}
 	for _, k := range oi.keys {
@@ -109,6 +115,11 @@ func orderWorld(t *testing.T, oi *orderIssuers) (*Chain, *Block) {
 	c.SetBondVerifier(objectiveVerify)
 	c.RequireTokens(2, oi.issuer)
 	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
+	if squatRoot != (ports.Hash{}) {
+		// The squatter DECLARES squatRoot at genesis with no proof: bondRootOwner
+		// set, bondRootProven left false — exactly the state a proven claim displaces.
+		g.BondRegs = append(g.BondRegs, bondRegAt(squatKey, squatRoot, twoMiB, ports.Hash{}))
+	}
 	Sign(g, oi.keys[0])
 	if err := c.AppendGenesis(*g); err != nil {
 		t.Fatalf("genesis: %v", err)
@@ -137,18 +148,38 @@ func slashProof(culprit ed25519.PrivateKey, prev ports.Hash, tagA, tagB byte) Eq
 	return Equivocation{Culprit: append([]byte(nil), culprit.Public().(ed25519.PublicKey)...), A: *xa, B: *xb}
 }
 
+// bondRegFull mints a signed, verifier-accepted registration carrying a non-zero
+// Version and Domain, so a committed reg drives regVersion and bondDomain non-empty
+// too (both signed — see signingBytes chain.go:465-480). Otherwise identical to
+// bondRegAt.
+func bondRegFull(s ed25519.PrivateKey, root ports.Hash, size int64, prev ports.Hash, version uint8, domain uint64) BondReg {
+	r := BondReg{Validator: pubOf(s), Root: root, Size: size, Answer: []byte("valid"),
+		Version: version, Domain: domain}
+	r.Sig = ed25519.Sign(s, r.signingBytes(BondRegNonce(prev)))
+	return r
+}
+
 // twoOrderings commits the same set of events in two different orders and
 // returns both chains. Final set-valued state is identical by construction:
 // every ordering publishes the same two roots (and both end revoked), spends
-// the same two token serials, and slashes the same two culprits. Only the ORDER
-// of the events differs.
+// the same two token serials, slashes the same two culprits, and commits the
+// same three bond registrations (including a G3 displacement of a genesis
+// squatter). Only the ORDER of the events differs.
 //
 // The certification (#597) mandated VARYING order, not just classifying
-// presence. This fixture exercises FOUR grow-only set families under order
-// variation — byRoot/revoked (publish + revoke), spent (two token spends), and
-// slashed (two equivocation slashes) — so the order-independence oracle asserts
-// over NON-EMPTY sets for spent and slashed, closing the vacuous-∅ hole the PE
-// ruling flagged (RULING-keystone-spent-slashed-classification-2026-08-28.md).
+// presence. This fixture exercises the grow-only set families under order
+// variation:
+//
+//   - byRoot/revoked (publish + revoke), spent (two token spends), and slashed
+//     (two equivocation slashes) — swapped across HEIGHTS (these are keyed by
+//     root/serial/culprit, so height is not part of their value).
+//   - the bond-registration family — bonded, bondRootOwner, bondRootProven,
+//     bondRegHeight, regVersion, bondDomain — exercised by flipping the SLICE
+//     ORDER of BondRegs WITHIN a single height-5 block. bondRegHeight stores
+//     b.Height (chain.go:2796), so the regs must land at the SAME height in both
+//     orderings; only their intra-block processing order varies. That intra-block
+//     order is precisely where the G3 proof-beats-declaration displacement rule
+//     (chain.go:2780-2794) could be order-sensitive.
 func twoOrderings(t *testing.T) (*Chain, *Chain) {
 	t.Helper()
 
@@ -158,6 +189,14 @@ func twoOrderings(t *testing.T) (*Chain, *Chain) {
 	// from the 11000-range anchor keys so slashing them leaves the quorum intact.
 	culpritA, culpritB := key(41), key(42)
 	g0 := (&Block{Version: 1, Height: 0}).Hash() // stable prev for the proofs
+
+	// The bond-registration cast. squatKey DECLARES rootShared at genesis (unproven);
+	// honestH later PROVES rootShared, displacing the squat (G3). validatorX proves
+	// its own rootX. Both proven regs land in ONE height-5 block whose slice order is
+	// the variable. All three are non-anchor keys distinct from the 11000/41/42 ranges.
+	squatKey, honestH, validatorX := key(51), key(52), key(53)
+	rootShared := ports.HashBytes([]byte("g3-shared-plot-root"))
+	rootX := ports.HashBytes([]byte("independent-plot-root-x"))
 
 	// Mint each serial's token ONCE, up front, so the identical token bytes are
 	// committed in both orderings — byRoot[root] is then order-independent for a
@@ -175,10 +214,11 @@ func twoOrderings(t *testing.T) (*Chain, *Chain) {
 	p1 := pair{tokenEntry(32, tok32), slashProof(culpritB, g0, 103, 104)}
 
 	// build commits the two pairs in the dictated order (heights 1 and 2), then
-	// revokes both published roots (heights 3 and 4). Swap the pair order and the
-	// final sets are identical (union is commutative) — the property under test.
-	build := func(first, second pair) *Chain {
-		c, g := orderWorld(t, oi)
+	// revokes both published roots (heights 3 and 4), then commits the bond block
+	// at height 5 with BondRegs in bondOrder. Swap the pair order AND the bond slice
+	// order and the final sets are identical — the property under test.
+	build := func(first, second pair, hClaimFirst bool) *Chain {
+		c, g := orderWorld(t, oi, rootShared, squatKey)
 		keys := oi.keys
 
 		b1 := &Block{Version: BlockVersionRounds, Height: 1, Prev: g.Hash(),
@@ -207,10 +247,29 @@ func twoOrderings(t *testing.T) (*Chain, *Chain) {
 		if err := c.Append(*b4); err != nil {
 			t.Fatalf("revoke second root: %v", err)
 		}
+
+		// Height 5: the two PROVEN bond registrations, whose intra-block slice order
+		// is the variable. honestH proves rootShared (displacing the genesis squat —
+		// G3); validatorX proves its own rootX. Both signed over the parent nonce, both
+		// carry non-zero Version/Domain so regVersion/bondDomain populate. The regs land
+		// at height 5 in BOTH orderings, so bondRegHeight is order-free by construction.
+		nonce := b4.Hash()
+		hClaim := bondRegFull(honestH, rootShared, twoMiB, nonce, BlockVersionRegGate, 0xA1)
+		xReg := bondRegFull(validatorX, rootX, twoMiB, nonce, BlockVersionRegGate, 0xB2)
+		regs := []BondReg{hClaim, xReg}
+		if !hClaimFirst {
+			regs = []BondReg{xReg, hClaim}
+		}
+		b5 := &Block{Version: BlockVersionRounds, Height: 5, Prev: b4.Hash(), BondRegs: regs}
+		commitRounds(b5, keys, 0)
+		if err := c.Append(*b5); err != nil {
+			t.Fatalf("height 5 (bond regs, hClaimFirst=%v): %v", hClaimFirst, err)
+		}
 		return c
 	}
 
-	return build(p0, p1), build(p1, p0) // same events, opposite order
+	// Opposite orderings: swap the spend/slash pair order AND the bond slice order.
+	return build(p0, p1, true), build(p1, p0, false)
 }
 
 // orderVacuous names committedSet fields that twoOrderings genuinely cannot
@@ -223,16 +282,11 @@ func twoOrderings(t *testing.T) (*Chain, *Chain) {
 // hole can never silently reopen. `spent` and `slashed` were moved OUT of this
 // bucket by populating them with a real spend/slash order.
 var orderVacuous = map[string]string{
-	// Bond-registration state: this world commits no BondRegs. Populatable in
-	// principle (add registrations), but out of scope for the spent/slashed work;
-	// bondRootOwner in particular has an order-sensitive G3 displacement rule
-	// (proof-beats-declaration) that a future ordering probe should exercise.
-	"bonded":         "no BondRegs committed here — needs a bond-registration order",
-	"bondRootOwner":  "no BondRegs — the G3 proof-beats-declaration displacement is order-sensitive and owed its own ordering probe",
-	"bondRootProven": "no BondRegs committed here",
-	"bondRegHeight":  "no BondRegs committed here",
-	"regVersion":     "no BondRegs committed here",
-	"bondDomain":     "no BondRegs committed here",
+	// Bond-registration state (bonded, bondRootOwner, bondRootProven, bondRegHeight,
+	// regVersion, bondDomain) is now COVERED: twoOrderings commits a height-5 bond
+	// block whose BondReg slice order flips between the two orderings, including a G3
+	// proof-beats-declaration displacement of a genesis squatter. The fields are
+	// non-empty in both orderings, so the guard below enforces they stay covered.
 	// Mature-epoch state: this world sets MatureValidators=99 and never matures,
 	// so epochStart/rotateEpoch never freezes an epoch set.
 	"epochSet":    "needs a mature epoch (rotateEpoch freeze); this world never matures",
@@ -291,9 +345,12 @@ func TestCommittedSetFieldsAreOrderIndependent(t *testing.T) {
 			"construct. Do not let the count of 'identical' fields include ones this "+
 			"history never touched.", len(undeclaredVacuous), undeclaredVacuous)
 	}
-	// Proof the coverage is real: the two fields this work exists to cover must be
-	// non-empty in the fixture, not merely absent from orderVacuous.
-	for _, name := range []string{"spent", "slashed"} {
+	// Proof the coverage is real: the fields this work exists to cover must be
+	// non-empty in the fixture, not merely absent from orderVacuous. spent/slashed
+	// come from the spend+slash pairs; the bond-registration family comes from the
+	// height-5 bond block with its slice-order variation (incl. the G3 displacement).
+	for _, name := range []string{"spent", "slashed",
+		"bonded", "bondRootOwner", "bondRootProven", "bondRegHeight", "regVersion", "bondDomain"} {
 		if !populated[name] {
 			t.Fatalf("%q must be NON-EMPTY in twoOrderings — the whole point of this "+
 				"fixture is to exercise its order-independence over a real event order, "+
@@ -348,6 +405,66 @@ func TestCommittedLogFieldsAreGenuinelyOrderDependent(t *testing.T) {
 				"to exercise.", name)
 		}
 	}
+}
+
+// TestBondRegG3DisplacementIsOrderIndependent is the consensus-correctness
+// trip-wire for the bond-registration family. It is NOT enough that the
+// committedSet fields happen to match across the two orderings — the match must
+// be over a G3 displacement that ACTUALLY FIRED, else the coverage is vacuous.
+//
+// This asserts the end state directly: in BOTH orderings the genesis squatter is
+// removed from bonded and is no longer the owner of the shared root, honestH is
+// the PROVEN owner, and validatorX is bonded on its own root. If the two
+// orderings had reached DIFFERENT bond-root states, that would be a real consensus
+// finding (an order-sensitive displacement validity rule under a history-
+// independent root) — STOP-and-escalate, no rule change. They do not: the G3 rule
+// is order-INDEPENDENT here.
+func TestBondRegG3DisplacementIsOrderIndependent(t *testing.T) {
+	squatKey, honestH, validatorX := key(51), key(52), key(53)
+	rootShared := ports.HashBytes([]byte("g3-shared-plot-root"))
+	rootX := ports.HashBytes([]byte("independent-plot-root-x"))
+	sq, h, x := idOf(squatKey), idOf(honestH), idOf(validatorX)
+
+	a, b := twoOrderings(t)
+
+	for _, tc := range []struct {
+		name string
+		c    *Chain
+	}{{"hClaimFirst", a}, {"xRegFirst", b}} {
+		c := tc.c
+		// The displacement fired: the squatter has no standing and is not the owner.
+		if _, ok := c.bonded[sq]; ok {
+			t.Fatalf("[%s] G3 did NOT fire: squatter still bonded (%d) — the coverage is "+
+				"vacuous, the displacement branch was never taken", tc.name, c.bonded[sq])
+		}
+		if owner := c.bondRootOwner[rootShared]; owner != h {
+			t.Fatalf("[%s] shared-root owner is %x, want honestH %x — G3 displacement did not "+
+				"transfer ownership", tc.name, owner[:6], h[:6])
+		}
+		if !c.bondRootProven[rootShared] {
+			t.Fatalf("[%s] shared root not marked proven after the displacing claim", tc.name)
+		}
+		if c.bonded[h] == 0 {
+			t.Fatalf("[%s] honestH earned no standing after displacing the squat", tc.name)
+		}
+		if c.bonded[x] == 0 || c.bondRootOwner[rootX] != x {
+			t.Fatalf("[%s] validatorX not bonded on its own root (bonded=%d owner=%x)",
+				tc.name, c.bonded[x], c.bondRootOwner[rootX])
+		}
+	}
+
+	// The two orderings reach byte-identical bond-registration state.
+	for _, name := range []string{"bonded", "bondRootOwner", "bondRootProven",
+		"bondRegHeight", "regVersion", "bondDomain"} {
+		if !reflect.DeepEqual(fieldValue(a, name), fieldValue(b, name)) {
+			t.Fatalf("bond field %q DIFFERS across the two BondReg orderings — the G3 "+
+				"displacement is ORDER-DEPENDENT. This is a consensus finding to route, "+
+				"NOT a test to relax:\n  hClaimFirst: %v\n  xRegFirst:   %v",
+				name, fieldValue(a, name), fieldValue(b, name))
+		}
+	}
+	t.Logf("G3 displacement fired in both orderings and reached byte-identical bond state "+
+		"— proof-beats-declaration is order-INDEPENDENT (squatter %x displaced by %x)", sq[:6], h[:6])
 }
 
 // TestRevLogRootIsOrderDependent is the concrete #597 statement, asserted on

@@ -9,6 +9,38 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **Order-independence coverage for the bond-registration family — the #617 debt,
+  first increment** (2026-08-28). PR #617 declared six committed bond-registration
+  fields (`bonded`, `bondRootOwner`, `bondRootProven`, `bondRegHeight`, `regVersion`,
+  `bondDomain`) as `orderVacuous`: the order-independence model-check oracle compared
+  them over ∅ in every ordering, so their order-independence was unproven. The
+  `twoOrderings` fixture now commits a height-5 bond block whose BondReg slice order
+  flips between the two orderings — including a **G3 proof-beats-declaration
+  displacement** of a genesis squatter (chain.go:2780-2794), the one bond rule whose
+  intra-block order could genuinely matter. All six fields are non-empty in both
+  orderings and byte-identical across them: **G3 came back order-INDEPENDENT** (the
+  consensus-correctness trip-wire did not trip). A dedicated
+  `TestBondRegG3DisplacementIsOrderIndependent` asserts the displacement actually
+  FIRED (coverage is not vacuous) and both orderings reached identical bond-root state.
+  Six fields removed from `orderVacuous`. For the two-list union rule, a covering
+  leave-one-out probe was added for `bondRootProven` (a proven owner must not be
+  displaced by a later proven claim; a snapshot that lost the field wrongly allows it)
+  and it was removed from `probeUncovered`. **Fields now clearing BOTH oracle lists:**
+  `bonded`, `bondRootOwner`, `bondRootProven`. Fields clearing the order-independence
+  list only (their snapshot-equivalence coverage is #506-gated or metric-only, tracked
+  in `probeUncovered`): `bondRegHeight`, `regVersion`, `bondDomain`. The mature-epoch
+  and #506-gate `orderVacuous` families are left for later increments. Test/fixture
+  only; no consensus rule changed.
+- **Fixed a state-aliasing hazard in the snapshot-equivalence oracle's `snapshotBoot`**
+  (2026-08-28). `snapshotBoot` carried committed maps into a replica by REFERENCE, so a
+  mutating leave-one-out probe (one that calls `apply()`) wrote through the shared map
+  header into `src` and every sibling replica. The leave-one-out loop ablates one field
+  at a time off the same `src`, so a mutating probe on the k-th ablation silently
+  poisoned the (k+1)-th — this masked `bondRootProven`'s verdict flip entirely (the
+  `bondRootOwner` F1 probe displaced `src`'s shared `bonded`/owner maps before
+  `bondRootProven` was ever ablated, so its ablation saw already-corrupted state and
+  changed no verdict). `snapshotBoot` now deep-copies carried maps/slices so each
+  replica owns its state. Test-only.
 - **The O(depth) CI gate — a standing pass/fail check for the memory-accumulation
   subset of the depth-war class** (2026-08-27). The lineage #528/#535/#549/#555/#556/
   #558/#560/#561/#562/#563/#572 is one class: per-height cost that grows with chain
