@@ -1322,6 +1322,59 @@ func TestBondedWeightBytesAreLoadBearing(t *testing.T) {
 		ErrDeMatureQuorum, len(seen))
 }
 
+// TestSnapshotBootStateRootMatchesReplayBoot lifts snapshot-boot equivalence to the
+// ROOT: a validator that boots from committed state alone — never having replayed —
+// must compute the SAME StateRoot as the replayed one. snapshotBoot copies every
+// committed field, so the computed root over that set must be byte-identical. This
+// closes the gap between "the snapshot carries the right fields" (the probe-based
+// equivalence below) and "the snapshot commits to the right root": if a field were
+// carried but encoded differently on the snapshot path, this catches it as a root
+// mismatch. It runs across every world the equivalence oracle uses, so it covers the
+// launch, mature-epoch, objective-bonded, and latch/gate/domain regimes.
+func TestSnapshotBootStateRootMatchesReplayBoot(t *testing.T) {
+	stateRoot := func(c *Chain) ports.Hash {
+		r, err := c.StateRoot()
+		if err != nil {
+			t.Fatalf("StateRoot: %v", err)
+		}
+		return r
+	}
+
+	replayed, _, _, _ := richHistory(t)
+	weightC, _ := weightWorld(t)
+	bondedC, _ := bondedWorld(t)
+	spentC, _, _ := spentWorld(t)
+	slashedC, _ := slashedWorld(t)
+	deMatureC, _ := deMatureWorld(t)
+	matureEpochC, _ := matureEpochWorld(t)
+	gateC := gateWorld(t)
+	bondRegHeightC := bondRegHeightWorld(t)
+
+	for _, w := range []struct {
+		name string
+		c    *Chain
+	}{
+		{"launch", replayed},
+		{"mature-epoch", weightC},
+		{"objective-bonded", bondedC},
+		{"token-spent", spentC},
+		{"slashed-anchor", slashedC},
+		{"de-mature", deMatureC},
+		{"mature-epoch-flag", matureEpochC},
+		{"gate-lock", gateC},
+		{"bondreg-height", bondRegHeightC},
+	} {
+		snap := snapshotBoot(w.c)
+		if rr, rs := stateRoot(w.c), stateRoot(snap); rr != rs {
+			t.Errorf("[%s] StateRoot DIVERGES: replay-booted %x, snapshot-booted %x\n"+
+				"A snapshot-booted validator commits to a different state root than the "+
+				"replayed one over the SAME committed set — the encoding is not stable "+
+				"across the two boot paths, which is the unsoundness the root exists to "+
+				"prevent.", w.name, rr, rs)
+		}
+	}
+}
+
 // TestSnapshotBootMatchesReplayBoot is the equivalence assertion: with the FULL
 // committed set restored, a never-replayed replica must answer every probe
 // exactly as the replayed one does.

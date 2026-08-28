@@ -557,6 +557,44 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
   `Root` at `:419` is the bond commitment, not a state root). A sound witness scheme cannot
   exist until the root it verifies against is a committed, attested block field, so this is a
   hard prerequisite for the witness path, not an optimization.
+- **RATIFIED 2026-08-28 — the era-3 committed state-root block format** (research certification
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/era3-committed-state-root-format-RESEARCH-CERTIFICATION-2026-08-28.md`;
+  PE ruling
+  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-era3-committed-state-root-format-2026-08-28.md`;
+  design `docs/thinking/2026-08-28-era3-format-design-options.md`). The composed two-root
+  format is **CERTIFIED-WITH-CONDITIONS** and Andrew ratified it with the mint correction. The
+  ratified shape: two flat, required, attester-signed block fields — `StateRoot` (a
+  history-independent `pokt-network/smt` v1.0.0 SMT over the 16 `committedSet` fields, a
+  field-tagged single keyspace with a per-field-class canonical VALUE encoding) and `LogRoot`
+  (the existing RFC-6962 MTH over `revLog`) — both inside `Hash()`. **Mint `BlockVersion = 4`,
+  not 3** (the certification REFUTED minting 3: `versionSupported` already decode-accepts a v3
+  block and would validate an era-3 block under era-2 rules with no state-root predicate,
+  silently accepting a forged root; `BlockVersionRegGate = 3` stays the #506 reg-gate readiness
+  threshold, era-3 activation gates on a distinct `regVersion >= 4` supermajority). This is a
+  **HARD FORK** (an un-upgraded binary rejects a v4 block at decode, LOUDLY; a laggard stalls at
+  the boundary rather than accepting unvalidated roots — the safety-first behavior). **The
+  value encoding is a CONSENSUS PARAMETER, not formatting** (cert Q2/Q6, PE Q2 highest
+  severity): three super-quorum predicates SUM `bonded`/`epochSet` weights, so a
+  true-presence/wrong-value witness is a consensus-SAFETY attack; the per-field byte encoding
+  (8-byte big-endian for the int64/uint64 weights and heights, raw 32 bytes for `bondRootOwner`,
+  one byte for bools/`regVersion`) is pinned in
+  `docs/thinking/2026-08-28-era3-state-root-value-encoding.md` and any width/endianness change
+  is an era bump. **The five freeze conditions (all must hold before the format freezes):**
+  (1) mint v4 + extend `versionSupported` to `<= 4` in the same release;
+  (2) #603 green (the `bonded`/`epochSet`/`spent`/`slashed` oracle probes);
+  (3) the fixed canonical value encoding pinned + a byte-identical-leaf cross-node determinism
+  oracle proving it at the model-check tier BEFORE the root is a signed field (residual R2);
+  (4) empty-tree and empty-log roots are fixed constants, both root fields REQUIRED (not
+  omitempty); (5) record the two witness freeze constraints (root-is-an-attested-field;
+  witness-serving-stays-open-and-multi-provider) so the C-7 witness follow-on is not precluded.
+  **The freeze is HELD until the coverage gate (#603) is green** — the trigger is Andrew's to
+  pull. **Build order (certified, step 1 landed):** step 1 computes the two roots and proves the
+  encoding deterministic behind the keystone oracles (no `Block`/`Hash()`/`BlockVersion` change,
+  no validity predicate — `core/statehash` + `core/chain/statehash.go`, the determinism oracle,
+  and the order-independence/snapshot-equivalence oracles extended to assert ROOT equality); the
+  field addition, the validity predicate, and the height-gated activation are later steps that
+  re-trigger certification. This discharges the HARD FREEZE PREREQUISITE above's format half
+  once #603 lands.
 - **RATIFIED 2026-08-27 — "maturity before capture" ships as a safe-parameterization, not a
   theorem** (research certification
   `.../research-outcome/C1-maturity-before-capture-RESEARCH-CERTIFICATION-2026-08-27.md`;

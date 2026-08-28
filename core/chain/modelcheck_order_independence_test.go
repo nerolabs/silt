@@ -618,6 +618,62 @@ func TestCommittedSetFieldsAreOrderIndependent(t *testing.T) {
 		"(mature-epoch family on matureOrderings, the rest on twoOrderings)", len(fields))
 }
 
+// TestStateRootIsOrderIndependentAcrossHistories lifts the per-field
+// order-independence assertion to the ROOT — closing the gap between "the 16 fields
+// are equal" and "the computed StateRoot is equal." Two histories that reach the same
+// final committedSet must produce byte-identical StateRoots, because the root is a
+// pure function of that set. This is the era-3 root-equality half the format freeze
+// rests on: a value-encoding defect that made two orderings produce the same fields
+// but a different root would be caught HERE, not in the field.
+//
+// The two-root separation is asserted in the same breath: the twoOrderings pair
+// differs in revLog (order-dependent — TestRevLogRootIsOrderDependent), so its
+// LogRoots DIFFER while its StateRoots must MATCH. Equal state root, different log
+// root: two kinds of committed data, two roots (#597), proven on the computed roots.
+func TestStateRootIsOrderIndependentAcrossHistories(t *testing.T) {
+	stateRoot := func(c *Chain) ports.Hash {
+		r, err := c.StateRoot()
+		if err != nil {
+			t.Fatalf("StateRoot: %v", err)
+		}
+		return r
+	}
+
+	// Each fixture pair reaches the same final committedSet by opposite orderings.
+	// The StateRoot must be identical for every pair.
+	a, b := twoOrderings(t)
+	if ra, rb := stateRoot(a), stateRoot(b); ra != rb {
+		t.Fatalf("twoOrderings: StateRoot DIFFERS across opposite orderings (%x != %x) — "+
+			"the 16 fields are equal (TestCommittedSetFieldsAreOrderIndependent) but the "+
+			"computed root is not, so a value-encoding defect made the root order-dependent. "+
+			"This is a consensus finding to route, not a test to relax.", ra, rb)
+	}
+	// The two-root separation, on the computed roots: same StateRoot, DIFFERENT LogRoot.
+	if la, lb := a.LogRoot(), b.LogRoot(); la == lb {
+		t.Fatalf("twoOrderings: LogRoots are EQUAL across opposite orderings (%x) — the "+
+			"premise that revLog is order-dependent is broken, so the two-root split is "+
+			"untested here", la)
+	}
+
+	ma, mb := matureOrderings(t)
+	if ra, rb := stateRoot(ma), stateRoot(mb); ra != rb {
+		t.Fatalf("matureOrderings: StateRoot DIFFERS across opposite slash orderings "+
+			"(%x != %x) — the mature-epoch family (everMature/matureEpoch/epochSet) made "+
+			"the root order-dependent. Consensus finding to route.", ra, rb)
+	}
+
+	ga, gb := gateSwingOrderings(t)
+	if ra, rb := stateRoot(ga), stateRoot(gb); ra != rb {
+		t.Fatalf("gateSwingOrderings: StateRoot DIFFERS across opposite intra-block "+
+			"orderings (%x != %x) — the #506-gate family (gateLockedIn/gateHeight) or the "+
+			"same-id regVersion/bondDomain seam made the root order-dependent. This is the "+
+			"certified fork surfacing at the root level. Route, do not relax.", ra, rb)
+	}
+
+	t.Logf("StateRoot byte-identical across opposite orderings on all three fixture " +
+		"worlds; LogRoot differs on twoOrderings (two roots, two kinds of data)")
+}
+
 // TestCommittedLogFieldsAreGenuinelyOrderDependent is the other direction, and
 // it is a real assertion rather than a formality: a "log" that turns out to be
 // order-INDEPENDENT does not need its own append-only root, and carrying one

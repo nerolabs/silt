@@ -8,6 +8,32 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Added
+- **era-3 committed state-root computation (build step 1 of the certified sequence)**
+  (2026-08-28; format ratified, this step is model-check-tier only). Computes the two
+  era-3 roots and proves the per-field value encoding deterministic BEFORE the root
+  becomes a signed block field. New `core/statehash` package: the `pokt-network/smt`
+  v1.0.0 keystone promoted from `internal/smtspike` into product code, with the pinned
+  canonical value encoders (8-byte big-endian for the int64/uint64 weights and heights,
+  raw 32 bytes for identity values, one byte for bools/`regVersion`) — widths and
+  endianness are CONSENSUS PARAMETERS (research cert Q6). New `core/chain/statehash.go`
+  marshals the 16 `committedSet` fields into field-tagged, canonically-encoded leaves and
+  computes `StateRoot()`; `LogRoot()` reuses the existing RFC-6962 `RevocationLogRoot()`.
+  New determinism oracle (`modelcheck_stateroot_determinism_test.go`, research cert
+  residual R2): same logical committedSet ⇒ byte-identical leaves ⇒ identical root,
+  order- and node-independent, with a wrong-value ablation (perturb a value-carrying
+  field → root changes) and two coverage guards: a tag-list guard binding the committed
+  tags to the live keystone classification, and an EMIT guard that populates every
+  `committedSet` field and asserts `stateRootLeaves` actually emits a leaf for each — so
+  dropping a leaf loop of ANY class (including a Class-A loop like `spent`) turns the
+  suite RED instead of silently dropping the field from the root (PE coverage-gap
+  finding, proven by ablation). The order-independence and snapshot-equivalence oracles now
+  assert ROOT equality, closing the gap between "the 16 fields are equal" and "the
+  computed StateRoot is equal." **STOP boundary honored:** no `Block` field, no `Hash()`
+  change, no validity predicate, no `BlockVersion`/`versionSupported` change — those are
+  later certified steps. Decision + freeze conditions recorded in `docs/decisions.md`;
+  encoding deliberation in `docs/thinking/2026-08-28-era3-state-root-value-encoding.md`.
+
 ### Changed
 - **CONSENSUS-RULE: canonicalize same-id intra-block bond registrations in `apply()`**
   (2026-08-28; certified + human-ratified). This is a state-transition consensus-rule
