@@ -1148,6 +1148,180 @@ func TestEpochWeightBytesAreLoadBearing(t *testing.T) {
 		ErrNoQuorumWeight, len(seen))
 }
 
+// bondedWeightBytesWorld is the era-3 freeze gate's SIBLING for `bonded` (blind PE
+// ruling RULING-603-weight-bytes-discharge-2026-08-28): a DE-MATURED objective world
+// whose LIVE per-member `bonded` weights are UNEQUAL, and a block whose support
+// coalition clears the COUNT floor but whose verdict is carried by the ⅔-of-live-bonded
+// WEIGHT predicate (requireDeMatureSuperQuorum, chain.go:2591). It is the discriminator
+// the everMature path-entry probe (deMatureWorld) cannot reach — that probe flips on the
+// everMature BOOL (whether the bar APPLIES), never on how the ⅔ is summed.
+//
+// The regime: everMature LATCHES (ramp of four equal bonds, MatureValidators=2), then
+// live `bonded` is reset to UNEQUAL weights and one SHARED declared domain is realized so
+// MatureCoefficient() (=NakamotoDomains=1) drops below MatureValidators → !matureNow(), so
+// the de-mature super-quorum is the gate. Epochs DISABLED and NO anchors, so
+// requireEpochWeightQuorum never fires and launchAnchor is false — qualification reads
+// bonded[id] >= MinBond directly (attesterQualifiedAt, chain.go:1059).
+//
+// WHY THE DOMAIN AXIS, not weight concentration, holds !matureNow(): matureNow() itself
+// reads bonded weights, so flattening the weights would re-inflate the coefficient and flip
+// the path-entry gate — coupling the weight-bytes ablation with the gate. A shared domain
+// collapses NakamotoDomains to 1 for ANY weight distribution (flat or unequal), so the gate
+// is invariant under the flatten and the ONLY discriminator left is the ⅔-weight rule.
+//
+// THE ONE SEAM THAT DIFFERS FROM weightBytesWorld — the count floor. In a mature EPOCH
+// RequiredQuorum() returns just Quorum (chain.go:1218), so a small heavy coalition can be
+// a weight-majority but a HEAD-minority — which is what lets the flatten flip. In the
+// de-mature NON-epoch objective regime with ByzantineQuorum, RequiredQuorum() escalates to
+// bftThreshold(qualifiedCount) (chain.go:1220), forcing the coalition to ~⅔ of HEADS — and
+// a head-⅔ coalition ALSO clears a FLATTENED weight-⅔, so the count floor would mask the
+// weight rule. Fix (the analogue of the mature-epoch bypass): ByzantineQuorum=false, so
+// RequiredQuorum()=Quorum=1. The de-mature branch (chain.go:2471) fires regardless of
+// ByzantineQuorum — it depends only on everMature && objective() && !matureNow() — so the
+// weight rule under test is untouched. A proposer + one attester (5+5 MiB of 12 MiB) is a
+// weight-majority, head-minority coalition.
+//
+// Weights: proposer keys[0]=5 MiB, attester keys[1]=5 MiB, silent keys[2]/keys[3]=1 MiB.
+// total=12 MiB, coalition=10 MiB, need=⌈2·12/3⌉=8 MiB → 10≥8 → ACCEPT on true weights.
+// Flatten to a constant k: total=4k, coalition=2k, need=⌈8k/3⌉ → 2k<3k → ErrDeMatureQuorum.
+// The ablation is NOT map-omission (that empties membership → the count-floor ErrNoQuorum
+// the everMature/membership probes own). It FLATTENS the weight bytes, membership intact.
+// See docs/thinking/2026-08-28-keystone-bonded-weight-bytes-probe.md.
+func bondedWeightBytesWorld(t *testing.T) (*Chain, *Block) {
+	t.Helper()
+	keys := make([]ed25519.PrivateKey, 4)
+	for i := range keys {
+		keys[i] = key(int64(35000 + i))
+	}
+	// ByzantineQuorum:false → the count floor is Quorum=1, so a head-minority heavy
+	// coalition is the discriminator; the de-mature weight rule fires regardless.
+	cfg := Config{Quorum: 1, MinBond: 1 << 20, MatureValidators: 2}
+	c := New(cfg, func(ports.NodeID) int64 { return 0 })
+	c.SetBondVerifier(objectiveVerify)
+
+	// Four equal genesis bonds so everMature latches on the ramp below.
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
+	for _, k := range keys {
+		g.BondRegs = append(g.BondRegs, bondReg(k, twoMiB, ports.Hash{}))
+	}
+	Sign(g, keys[0])
+	if err := c.AppendGenesis(*g); err != nil {
+		t.Fatalf("bondedWeightBytesWorld genesis: %v", err)
+	}
+	// Rotating-proposer ramp so all four enter validatorsSeen → the maturity latch
+	// trips → everMature is committed.
+	prev := g.Hash()
+	n := len(keys)
+	for h := uint64(1); h <= 3; h++ {
+		order := make([]ed25519.PrivateKey, n)
+		for i := 0; i < n; i++ {
+			order[i] = keys[(int(h)+i)%n]
+		}
+		b := &Block{Version: 1, Height: h, Prev: prev, Entries: []ports.Entry{entry(byte(h))}}
+		Sign(b, order[0])
+		for _, a := range order[1:] {
+			b.Atts = append(b.Atts, Attest(b, a))
+		}
+		if err := c.Append(*b); err != nil {
+			t.Fatalf("bondedWeightBytesWorld block %d: %v", h, err)
+		}
+		prev = b.Hash()
+	}
+	if !c.everMature {
+		t.Fatalf("bondedWeightBytesWorld: everMature did not latch (coeff=%d)", c.MatureCoefficient())
+	}
+
+	// Realize the de-maturation regime with UNEQUAL live weights: the coalition
+	// (proposer keys[0] + attester keys[1]) holds 5+5 MiB; the silent keys[2]/keys[3]
+	// hold 1 MiB each. total=12 MiB, coalition=10 MiB ≥ ⌈2·12/3⌉=8 MiB → the de-mature
+	// super-quorum ACCEPTS on the true weights.
+	liveBonded := map[ports.NodeID]int64{
+		idOf(keys[0]): 5 << 20,
+		idOf(keys[1]): 5 << 20,
+		idOf(keys[2]): 1 << 20,
+		idOf(keys[3]): 1 << 20,
+	}
+	setField(c, "bonded", liveBonded)
+
+	// Hold !matureNow() INDEPENDENT of the weight flatten via the domain axis. matureNow()
+	// reads bonded weights (matureNow → MatureCoefficient → C2Metric), so a naive weight
+	// flatten to N equal bonds would re-inflate the coefficient to ⌊N/3⌋+1 and flip
+	// matureNow() TRUE — coupling the weight-bytes ablation with the path-entry gate and
+	// masking the weight rule. Collapse the coefficient through NakamotoDomains instead:
+	// one SHARED declared domain aggregates all bonds into ONE address-diversity group
+	// (C2Metric, chain.go:1985), so NakamotoDomains=1 → MatureCoefficient()=1 <
+	// MatureValidators=2 for ANY weight distribution, flat or unequal. bondDomain is a
+	// committed field carried identically by both the full and flattened replicas, so the
+	// ONLY variable between them is the bonded WEIGHT bytes. (The ramp above latched with
+	// default UNSET domains → distinct groups → coeff high enough to mature; the shared
+	// domain is realized only now, as part of the de-maturation regime.)
+	domain := map[ports.NodeID]uint64{}
+	for _, k := range keys {
+		domain[idOf(k)] = 0x99 // one shared domain → NakamotoDomains capped at 1
+	}
+	setField(c, "bondDomain", domain)
+	if c.matureNow() {
+		t.Fatalf("bondedWeightBytesWorld: want !matureNow via the shared domain (coeff=%d)", c.MatureCoefficient())
+	}
+
+	// The probed block: proposer keys[0] (5 MiB) + a single attester keys[1] (5 MiB).
+	// seen={keys[1]} clears the Quorum=1 count floor; the silent whales-of-weight are
+	// keys[2]/keys[3] (they do NOT attest). The coalition carries ⅔ only because its
+	// TRUE weight is concentrated, not by head count (2 of 4 members).
+	b := &Block{Version: 1, Height: 4, Prev: prev, Entries: []ports.Entry{entry(35)}}
+	Sign(b, keys[0])
+	b.Atts = []Attestation{Attest(b, keys[1])}
+	return c, b
+}
+
+// TestBondedWeightBytesAreLoadBearing is the era-3 freeze gate's SIBLING for `bonded`
+// (blind PE ruling RULING-603-weight-bytes-discharge-2026-08-28): the committed
+// per-member WEIGHT bytes of live `bonded` — not merely its membership — must flip a
+// de-maturation verdict through requireDeMatureSuperQuorum. The everMature/membership
+// probes prove omission empties the bonded map and rejects via the COUNT floor
+// (ErrNoQuorum) or skips the bar entirely; they would still pass if `bonded` stored
+// membership with all weights set to a constant. This probe closes that: membership held
+// fixed and the weights flattened, the verdict must flip via the WEIGHT predicate
+// (ErrDeMatureQuorum). A validator that committed the true weights accepts; one that lost
+// them (flattened) rejects a block the network finalized — the weight bytes are
+// load-bearing in the committed root.
+func TestBondedWeightBytesAreLoadBearing(t *testing.T) {
+	c, b := bondedWeightBytesWorld(t)
+
+	// Full: the true unequal weights. The coalition holds ≥⅔ by real weight → ACCEPT.
+	full := snapshotBoot(c)
+	if got := quorumVerdict(full, b); got != "accept" {
+		t.Fatalf("full (true weights): want accept, got %s — the coalition should clear "+
+			"the ⅔-live-bonded-weight predicate on its real weight", got)
+	}
+
+	// Ablated: membership intact, weights flattened to a constant (MinBond). support/total
+	// collapses to 2/4 = ½ < ⅔ → the WEIGHT predicate rejects. The count floor is
+	// untouched (same membership, still ≥ MinBond → same seen), so this is unambiguously
+	// the weight rule.
+	ablated := snapshotBoot(c)
+	setField(ablated, "bonded", flattenWeights(c.bonded, c.cfg.MinBond))
+
+	// Assert the RED reason is the de-mature weight predicate specifically, not the count
+	// floor or a panic. quorumVerdict collapses errors to "reject"; call the predicate
+	// path directly so the discriminator is named.
+	seen, err := ablated.collectQuorumSigs(b, b.Atts, PhaseLegacy, 0)
+	if err != nil {
+		t.Fatalf("ablated collectQuorumSigs errored (%v) — membership must survive the "+
+			"weight-flatten ablation; only the weight bytes change", err)
+	}
+	stackErr := ablated.requireQuorumStack(b, seen)
+	if !errors.Is(stackErr, ErrDeMatureQuorum) {
+		t.Fatalf("ablated: want ErrDeMatureQuorum (the de-mature weight predicate is the "+
+			"discriminator), got %v (len(seen)=%d). If this is ErrNoQuorum the flip is "+
+			"membership/count, not the weight bytes — the gap this probe exists to close.",
+			stackErr, len(seen))
+	}
+	t.Logf("[weight-bytes] bonded weights: full=accept ablated=reject via %v "+
+		"(seen=%d clears the count floor; the ⅔-live-bonded-weight predicate is the discriminator)",
+		ErrDeMatureQuorum, len(seen))
+}
+
 // TestSnapshotBootMatchesReplayBoot is the equivalence assertion: with the FULL
 // committed set restored, a never-replayed replica must answer every probe
 // exactly as the replayed one does.
