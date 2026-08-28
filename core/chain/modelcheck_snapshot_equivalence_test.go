@@ -306,6 +306,94 @@ func bondedWorld(t *testing.T) (*Chain, *Block) {
 	return c, b
 }
 
+// spentWorld is a token-required launch/objective world with ONE serial already
+// spent (a committed token entry). It returns the replay-booted chain plus the
+// serial that is now spent. The probe re-submits that serial on a FRESH root:
+// ValidateEntry rejects it (ErrTokenSpent, chain.go:2229). A snapshot that lost
+// `spent` no longer sees the serial as used, re-verifies the still-valid token,
+// and ACCEPTS the replay — the double-spend the spent set exists to prevent.
+func spentWorld(t *testing.T) (*Chain, []byte, func([]byte) *ports.PublishToken) {
+	t.Helper()
+	oi := newOrderIssuers(t)
+	c, g := orderWorld(t, oi)
+
+	serial := []byte("leaveoneout-spent-serial")
+	b1 := &Block{Version: BlockVersionRounds, Height: 1, Prev: g.Hash(),
+		Entries: []ports.Entry{tokenEntry(7, oi.mint(serial))}}
+	commitRounds(b1, oi.keys, 0)
+	if err := c.Append(*b1); err != nil {
+		t.Fatalf("spentWorld commit: %v", err)
+	}
+	return c, serial, oi.mint
+}
+
+// slashedWorld is an anchor launch world with ONE anchor slashed by a committed
+// equivocation proof. It returns the replay-booted chain plus the slashed anchor
+// ID. The probe asks attesterQualified(culprit): a slashed identity is refused
+// (chain.go:1026) BEFORE the launchAnchor fallthrough. A snapshot that lost
+// `slashed` re-admits the anchor via launchAnchor — the flip depends on `slashed`
+// alone, not bonded (the anchor never carried a bond). The culprit is the FIFTH
+// key, not one of the four whose quorum commits the slash block, so slashing it
+// never disturbs that quorum.
+func slashedWorld(t *testing.T) (*Chain, ports.NodeID) {
+	t.Helper()
+	keys := make([]ed25519.PrivateKey, 4)
+	anchors := map[ports.NodeID]bool{}
+	for i := range keys {
+		keys[i] = key(int64(34000 + i))
+		anchors[idOf(keys[i])] = true
+	}
+	culprit := key(34099) // a fifth anchor, not needed for the carrying quorum
+	anchors[idOf(culprit)] = true
+	cfg := Config{Quorum: 1, MinBond: 1 << 20, ByzantineQuorum: true,
+		Anchors: anchors, AnchorQuorum: 1, MatureValidators: 99}
+	c := New(cfg, func(ports.NodeID) int64 { return 0 })
+	c.SetBondVerifier(objectiveVerify)
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
+	Sign(g, keys[0])
+	if err := c.AppendGenesis(*g); err != nil {
+		t.Fatalf("slashedWorld genesis: %v", err)
+	}
+
+	// The culprit provably double-signs; height 1 carries the slash. Committed by
+	// the four-anchor quorum, which the culprit is not part of.
+	b1 := &Block{Version: BlockVersionRounds, Height: 1, Prev: g.Hash(),
+		Slashes: []Equivocation{slashProof(culprit, g.Hash(), 101, 102)}}
+	commitRounds(b1, keys, 0)
+	if err := c.Append(*b1); err != nil {
+		t.Fatalf("slashedWorld slash: %v", err)
+	}
+	return c, idOf(culprit)
+}
+
+// setValuedProbes are the leave-one-out probes for `spent` and `slashed`, each
+// bound to the world that populates it. block/serial are prebuilt by the world;
+// the field's omission (via snapshotBoot) is the only variable.
+func spentProbe(serial []byte, mint func([]byte) *ports.PublishToken) probe {
+	return probe{
+		name:   "re-spending a committed serial on a fresh root must be rejected; a snapshot that lost spent accepts the double-spend",
+		detect: []string{"spent"},
+		ask: func(c *Chain) string {
+			e := entry(99) // a fresh, never-published root
+			e.Token = mint(serial)
+			return verdict(c.ValidateEntry(e))
+		},
+	}
+}
+
+func slashedProbe(culprit ports.NodeID) probe {
+	return probe{
+		name:   "a slashed anchor must be disqualified; a snapshot that lost slashed re-admits it via launchAnchor",
+		detect: []string{"slashed"},
+		ask: func(c *Chain) string {
+			if c.attesterQualified(culprit) {
+				return "qualified"
+			}
+			return "disqualified"
+		},
+	}
+}
+
 // quorumVerdict runs the real qualification + quorum path for a block WITHOUT the
 // head-extension check: collectQuorumSigs admits attesters via attesterQualifiedAt
 // (which reads bonded in the objective regime and epochSet in a mature epoch), then
@@ -464,6 +552,10 @@ func TestSnapshotBootMatchesReplayBoot(t *testing.T) {
 	bondedC, bondedBlock := bondedWorld(t)
 	epochSetPs, bondedPs := weightProbes(epochSetBlock, bondedBlock)
 
+	// The set-valued spent/slashed probes each run against their own world.
+	spentC, spentSerial, spentMint := spentWorld(t)
+	slashedC, slashedCulprit := slashedWorld(t)
+
 	check := func(replayed *Chain, ps []probe) {
 		snap := snapshotBoot(replayed)
 		for _, p := range ps {
@@ -485,6 +577,8 @@ func TestSnapshotBootMatchesReplayBoot(t *testing.T) {
 	check(replayed, all)
 	check(weightC, epochSetPs)
 	check(bondedC, bondedPs)
+	check(spentC, []probe{spentProbe(spentSerial, spentMint)})
+	check(slashedC, []probe{slashedProbe(slashedCulprit)})
 }
 
 // probeUncovered names committed fields for which no probe yet exists. It is a
@@ -494,14 +588,12 @@ func TestSnapshotBootMatchesReplayBoot(t *testing.T) {
 // Each entry says what a probe would have to construct — these are honest gaps,
 // not fields believed irrelevant.
 var probeUncovered = map[string]string{
-	"spent": "needs tokenQuorum>0 and a blind-signed publish token to replay a serial",
 	"bondRootProven": "the G3 displacement rule only fires when a DECLARED (genesis) owner " +
 		"is displaced by a PROVEN claim; this world's owner is already proven, so the " +
 		"branch is unreachable here — needs a genesis-declared bond root",
 	"bondRegHeight": "the min-interval rule is gated behind regGateActive (#506); this " +
 		"world has no RegGateActivationHeight, so the rule never fires — needs a " +
 		"gate-active world",
-	"slashed":        "needs a committed equivocation proof, then a block proposed by the slashed node",
 	"regVersion":     "needs a rotateEpoch lock-in tally across a boundary (#506)",
 	"bondDomain":     "read by C2Metric, which is a metric rather than a validity predicate",
 	"validatorsSeen": "read by Mature/C2Metric in legacy mode only",
@@ -529,10 +621,14 @@ func TestLeaveOneOutProvesEachFieldLoadBearing(t *testing.T) {
 	weightC, epochSetBlock := weightWorld(t)
 	bondedC, bondedBlock := bondedWorld(t)
 	epochSetPs, bondedPs := weightProbes(epochSetBlock, bondedBlock)
+	spentC, spentSerial, spentMint := spentWorld(t)
+	slashedC, slashedCulprit := slashedWorld(t)
 	worlds := []worldGroup{
 		{"launch", func(*testing.T) *Chain { return replayed }, probes(revokedRoot, ownedRoot, keys, prev)},
 		{"mature-epoch", func(*testing.T) *Chain { return weightC }, epochSetPs},
 		{"objective-bonded", func(*testing.T) *Chain { return bondedC }, bondedPs},
+		{"token-spent", func(*testing.T) *Chain { return spentC }, []probe{spentProbe(spentSerial, spentMint)}},
+		{"slashed-anchor", func(*testing.T) *Chain { return slashedC }, []probe{slashedProbe(slashedCulprit)}},
 	}
 
 	// Guard the declared debt against the live struct first: a newly added

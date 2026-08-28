@@ -36,6 +36,25 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   job. Shares the drive-and-measure helper with the OOM diagnostic so the measurement
   has one source of truth. Derivation and false-positive analysis:
   `docs/thinking/2026-08-27-o-depth-ci-gate.md`.
+- **Order-independence + leave-one-out coverage for the `spent` and `slashed`
+  SMT leaves, and a permanent vacuous-∅ guard** (2026-08-28). The keystone
+  order-independence oracle reported "16/16 committedSet fields identical" while
+  its fixture left `spent` and `slashed` empty, so two of the sixteen comparisons
+  were `DeepEqual(∅, ∅)` — vacuous (PE ruling
+  `silt-reviews/.../RULING-keystone-spent-slashed-classification-2026-08-28.md`).
+  `twoOrderings` now commits two blind-signed publish-token spends and two
+  committed equivocation slashes across two opposite orderings, so both fields are
+  NON-EMPTY and byte-identical across order. A new fixture-side guard fails the
+  order-independence test if any committedSet field it compares is empty in both
+  orderings and not declared in `orderVacuous` (a shrinking debt with reasons), so
+  "all N identical" can never again read as coverage over an empty map. The
+  snapshot-equivalence / leave-one-out oracle gains `spent` and `slashed` probes
+  (each flips a real verdict on omission), and both leave `probeUncovered`. A new
+  `TestBondedOrderFreeUnderSlashInteraction` traces the PE's flagged residual —
+  apply()'s `delete(c.bonded, culprit)` paired with `slashed[culprit]=true` — and
+  proves `bonded` byte-identical across two opposite slash orderings. Test-only;
+  no consensus rule moved. Each new probe was ablated (injected order-dependence →
+  RED, reverted → green).
 - **λ_H arrival-rate instrumentation — the one measurement the CT-1 conditional
   theorem is owed** (2026-08-27). The C-1 lift to CERTIFIED-CONDITIONAL
   (`silt-reviews/.../C1-maturity-before-capture-CONDITIONAL-THEOREM-LIFT-2026-08-27.md`)
