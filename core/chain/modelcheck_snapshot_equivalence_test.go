@@ -222,20 +222,20 @@ func commitRounds(b *Block, keys []ed25519.PrivateKey, round uint64) {
 	}
 }
 
-func probes(revokedRoot, ownedRoot ports.Hash, keys []ed25519.PrivateKey, prev ports.Hash) []probe {
+func probes(revokedRoot ports.Hash, keys []ed25519.PrivateKey, prev ports.Hash) []probe {
 	return []probe{
 		{
 			name:   "dup-publish must be rejected",
 			detect: []string{"byRoot"},
 			ask:    func(c *Chain) string { return verdict(c.ValidateEntry(entry(9))) },
 		},
-		{
-			name:   "revoking an unknown root must be rejected",
-			detect: []string{"byRoot"},
-			ask: func(c *Chain) string {
-				return verdict(c.validateTakedowns(&Block{Revocations: []ports.Hash{entry(77).Root}}))
-			},
-		},
+		// NOTE: the former "revoking an unknown root must be rejected" probe was REMOVED
+		// (2026-08-28, docs/thinking/2026-08-28-keystone-shadowedprobes-discharge.md). Its
+		// verdict (validateTakedowns on a never-published root) does not depend on the carried
+		// byRoot set at all — an isolated ablation of byRoot showed no flip — so its byRoot
+		// detect tag was mis-declared decoration. byRoot is soundly and independently covered
+		// by "dup-publish must be rejected" above (a republish rejected ONLY because byRoot
+		// carries the height-1 root). Removing the mis-tagged probe loses no field coverage.
 		{
 			name:   "un-revoking a root that was revoked must be ACCEPTED",
 			detect: []string{"revoked"},
@@ -243,48 +243,15 @@ func probes(revokedRoot, ownedRoot ports.Hash, keys []ed25519.PrivateKey, prev p
 				return verdict(c.validateTakedowns(&Block{Unrevocations: []ports.Hash{revokedRoot}}))
 			},
 		},
-		{
-			// F1 first-owner-wins lives in apply(), not in a validate predicate:
-			// a second identity claiming an already-owned bond root must NOT
-			// gain standing. Without bondRootOwner the claim succeeds, which is
-			// one plot backing two identities — a direct C1 no-discount break.
-			name:    "a second identity cannot take an already-owned bond root",
-			detect:  []string{"bondRootOwner"},
-			mutates: true,
-			ask: func(c *Chain) string {
-				claimant := idOf(keys[2])
-				b := Block{Version: BlockVersionRounds, Height: 3, Prev: prev}
-				b.BondRegs = append(b.BondRegs, bondRegAt(keys[2], ownedRoot, twoMiB, prev))
-				c.apply(b)
-				if _, ok := c.bonded[claimant]; ok {
-					return "claim-succeeded"
-				}
-				return "claim-blocked"
-			},
-		},
-		{
-			// bondRootProven is the G3 discriminator (chain.go:2786): once a root's
-			// owner is PROVEN, a later proven claim by another identity must NOT
-			// displace it (F1 holds among proven claims). richHistory's owner
-			// (keys[1], height>0) IS proven, so a second PROVEN claim on ownedRoot is
-			// blocked. A snapshot that lost bondRootProven sees the owner as merely
-			// DECLARED, so `proven && !bondRootProven[root]` fires the displacement —
-			// the true owner is wrongly stripped and the challenger earns the root.
-			// That is a C1 no-discount break the field exists to prevent.
-			name:    "a proven bond-root owner cannot be displaced by a later proven claim",
-			detect:  []string{"bondRootProven"},
-			mutates: true,
-			ask: func(c *Chain) string {
-				challenger := idOf(keys[2])
-				b := Block{Version: BlockVersionRounds, Height: 3, Prev: prev}
-				b.BondRegs = append(b.BondRegs, bondRegAt(keys[2], ownedRoot, twoMiB, prev))
-				c.apply(b)
-				if _, ok := c.bonded[challenger]; ok {
-					return "displaced-the-proven-owner"
-				}
-				return "proven-owner-held"
-			},
-		},
+		// NOTE: the two bond-root displacement probes ("a second identity cannot take an
+		// already-owned bond root" → bondRootOwner, and "a proven bond-root owner cannot be
+		// displaced" → bondRootProven) were REMOVED from this launch world (2026-08-28,
+		// docs/thinking/2026-08-28-keystone-shadowedprobes-discharge.md). In richHistory the two
+		// fields are COUPLED: both probes ask via c.bonded[claimant] where dropping EITHER field
+		// admits the challenger, so the leave-one-out loop's first-flipping probe shadows the
+		// second — decoration the neuter meta-guard flags. Each field now has its OWN
+		// sole-discriminator world (provenDisplaceWorld for bondRootProven, restoreOwnerWorld for
+		// bondRootOwner), where dropping it ALONE flips a verdict the other field does not control.
 	}
 }
 
@@ -1039,6 +1006,170 @@ func validatorsSeenProbe(anchorBlock *Block, trigger Block) probe {
 	}
 }
 
+// provenDisplaceWorld (bondRootProven) — the SOLE-DISCRIMINATOR world for bondRootProven,
+// discharging the shadowedProbes debt entry per RULING-bondregheight-probe-neuter-guard-
+// 2026-08-28 Q4. A PROVEN owner (keys[1], its height-1 reg went through validateBondRegs so
+// proven := b.Height>0 sets bondRootProven[root]=true) holds `root`. The probe then applies a
+// PROVEN challenger (keys[2]) registering the SAME root. This isolates bondRootProven from
+// bondRootOwner: bondRootOwner is carried on BOTH the full and ablated replicas, so the flip is
+// carried by bondRootProven ALONE.
+//
+// Full snapshot: the displacement guard (chain.go:2845) is !(proven && !bondRootProven[root]) =
+// !(true && !true) = true → continue → the challenger earns nothing (proven-vs-proven, F1 holds).
+// bondRootProven-dropped snapshot: !(true && !false) = false → the guard does NOT continue →
+// delete(bonded, owner) strips the true owner and the challenger is credited. The verdict flips
+// on bondRootProven alone. This is the "proof beats declaration" G3 rule (chain.go:2840) OBSERVED,
+// not modified (STOP boundary). See docs/thinking/2026-08-28-keystone-shadowedprobes-discharge.md.
+//
+// It returns the replay-booted chain, the owned root, the challenger keys, and the prev hash the
+// challenger reg is bound to.
+func provenDisplaceWorld(t *testing.T) (*Chain, ports.Hash, []ed25519.PrivateKey, ports.Hash) {
+	t.Helper()
+	c, keys, g := roundsWorld(t)
+
+	// Height 1: keys[1] proves its OWN root (bondReg derives Root from the public key). Because
+	// b.Height>0, apply() sets bondRootProven[root]=true — a PROVEN owner, not a genesis declarant.
+	ownedRoot := ports.HashBytes(keys[1].Public().(ed25519.PublicKey))
+	b1 := &Block{Version: BlockVersionRounds, Height: 1, Prev: g.Hash(),
+		Entries: []ports.Entry{entry(9)}}
+	b1.BondRegs = append(b1.BondRegs, bondReg(keys[1], twoMiB, g.Hash()))
+	commitRounds(b1, keys, 0)
+	if err := c.Append(*b1); err != nil {
+		t.Fatalf("provenDisplaceWorld height 1: %v", err)
+	}
+	if !c.bondRootProven[ownedRoot] {
+		t.Fatalf("provenDisplaceWorld: bondRootProven[root] not set — the field the probe ablates")
+	}
+	if c.bondRootOwner[ownedRoot] != idOf(keys[1]) {
+		t.Fatalf("provenDisplaceWorld: bondRootOwner[root] != keys[1] — owner must be held constant")
+	}
+	return c, ownedRoot, keys, b1.Hash()
+}
+
+// provenDisplaceProbe applies a PROVEN challenger (keys[2]) claiming the already-proven-owned
+// root. It is the sole discriminator for bondRootProven: bondRootOwner is present on both the
+// full and ablated replicas, so ONLY dropping bondRootProven flips the displacement verdict. Its
+// RED is a real verdict flip (proven-owner-held → displaced-the-proven-owner), not a panic.
+func provenDisplaceProbe(ownedRoot ports.Hash, keys []ed25519.PrivateKey, prev ports.Hash) probe {
+	return probe{
+		name:    "a proven bond-root owner cannot be displaced by a later proven claim (owner-held world)",
+		detect:  []string{"bondRootProven"},
+		mutates: true, // it apply()s a challenger block; runs against throwaway replicas
+		ask: func(c *Chain) string {
+			challenger := idOf(keys[2])
+			b := Block{Version: BlockVersionRounds, Height: 2, Prev: prev}
+			b.BondRegs = append(b.BondRegs, bondRegAt(keys[2], ownedRoot, twoMiB, prev))
+			c.apply(b)
+			if _, ok := c.bonded[challenger]; ok {
+				return "displaced-the-proven-owner"
+			}
+			return "proven-owner-held"
+		},
+	}
+}
+
+// restoreOwnerWorld (bondRootOwner) — the SOLE-DISCRIMINATOR world for bondRootOwner, discharging
+// the shadowedProbes debt entry per RULING-bondregheight-probe-neuter-guard-2026-08-28 Q4. It
+// exploits the coupling ASYMMETRY the PE named: bondRootOwner feeds TWO predicates — displacement
+// (chain.go:2839) AND restoresHeldStanding (chain.go:3054, the #506 R-rule exemption) — while
+// bondRootProven feeds only displacement. This world drives restoresHeldStanding, which reads
+// bondRootOwner and NEVER bondRootProven, so bondRootProven cannot shadow the flip.
+//
+// The #506 R-rule (chain.go:1497) fires iff regGateActive(h) && (h-regH < R) &&
+// !restoresHeldStanding(id, root). restoresHeldStanding (chain.go:3050) returns true iff a mature
+// epoch AND bondRootOwner[root]==id AND bonded[id]<MinBond (LAPSED) AND id in epochSet. The gate is
+// armed by RegGateActivationHeight (per-world genesis config, chain.go:3027), NOT the latch — so
+// gateLockedIn is unset and gateHeight is 0, and dropping either does nothing to regGateActive.
+//
+// x freezes into epochSet at genesis, re-registers its OWN root at height 1 (bondRegHeight[x]=1),
+// then its LIVE bonded[x] is set below MinBond (a lapse) via setField. Full snapshot: a within-R
+// re-reg for x on its OWN root past the boundary is EXEMPTED (restoresHeldStanding true) → accept.
+// bondRootOwner-dropped snapshot: bondRootOwner[rootX] != x → restoresHeldStanding false → the
+// R-rule fires → ErrRegGate. bondRootProven-dropped: no effect (never read here). This OBSERVES the
+// R-rule and its exemption; neither is modified (STOP boundary).
+func restoreOwnerWorld(t *testing.T) *Chain {
+	t.Helper()
+	const w = int64(2) << 20
+	prop, x := key(73001), key(73002)
+	// Two members so epochs freeze a set; RegGateActivationHeight arms the gate independent of the
+	// latch. MatureValidators is UNSET so Mature() holds trivially (chain.go:1813) and everMature
+	// latches at genesis — the same construction matureEpochWorld uses — so rotateEpoch at the
+	// height-2 boundary freezes {prop,x} into epochSet (rotateEpoch only freezes once everMature,
+	// chain.go:2985). EpochBlocks=2 puts that boundary at height 2.
+	cfg := Config{Quorum: 1, MinBond: 1 << 20, ByzantineQuorum: true,
+		EpochBlocks: 2, BondTTLBlocks: 40, RegGateActivationHeight: 1}
+	c := New(cfg, func(ports.NodeID) int64 { return 0 })
+	c.SetBondVerifier(objectiveVerify)
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
+	g.BondRegs = []BondReg{
+		bondRegFull(prop, ports.HashBytes(pubOf(prop)), w, ports.Hash{}, BlockVersionRegGate, 0),
+		bondRegFull(x, ports.HashBytes(pubOf(x)), w, ports.Hash{}, BlockVersionRegGate, 0),
+	}
+	Sign(g, prop)
+	if err := c.AppendGenesis(*g); err != nil {
+		t.Fatalf("restoreOwnerWorld genesis: %v", err)
+	}
+	// Height 1: x re-registers its OWN root → bondRegHeight[x]=1, bondRootOwner[rootX]=x.
+	rootX := ports.HashBytes(pubOf(x))
+	b1 := &Block{Version: BlockVersionRounds, Height: 1, Prev: g.Hash(),
+		Entries:  []ports.Entry{entry(1)},
+		BondRegs: []BondReg{bondRegFull(x, rootX, w, g.Hash(), BlockVersionRegGate, 0)}}
+	commitRounds(b1, []ed25519.PrivateKey{prop, x}, 0)
+	if err := c.Append(*b1); err != nil {
+		t.Fatalf("restoreOwnerWorld height 1: %v", err)
+	}
+	// Height 2: the epoch boundary. prop proposes, x attests → the maturity latch trips and
+	// rotateEpoch(2) freezes {prop,x} into epochSet.
+	b2 := &Block{Version: BlockVersionRounds, Height: 2, Prev: b1.Hash(),
+		Entries: []ports.Entry{entry(2)}}
+	commitRounds(b2, []ed25519.PrivateKey{prop, x}, 0)
+	if err := c.Append(*b2); err != nil {
+		t.Fatalf("restoreOwnerWorld boundary: %v", err)
+	}
+	if !c.matureEpoch {
+		t.Fatalf("restoreOwnerWorld: matureEpoch did not set (epochSet=%d)", len(c.epochSet))
+	}
+	if _, seated := c.epochSet[idOf(x)]; !seated {
+		t.Fatalf("restoreOwnerWorld: x not seated in epochSet — restoresHeldStanding needs it")
+	}
+	if c.bondRootOwner[rootX] != idOf(x) {
+		t.Fatalf("restoreOwnerWorld: bondRootOwner[rootX] != x — the field the probe ablates")
+	}
+	// Realize the LAPSE: x's live standing has dropped below MinBond (it released its plot and did
+	// not renew in time). restoresHeldStanding requires bonded[id] < MinBond, so a still-bonded x
+	// would fall through to the storm-protection path. epochSet still seats x for this epoch.
+	live := map[ports.NodeID]int64{idOf(prop): w}
+	setField(c, "bonded", live)
+	if c.bonded[idOf(x)] >= cfg.MinBond {
+		t.Fatalf("restoreOwnerWorld: x must be LAPSED (bonded<MinBond) for restoresHeldStanding")
+	}
+	return c
+}
+
+// restoreOwnerProbe drives a within-R re-registration for x on its OWN root past the genesis
+// activation boundary in a mature epoch. It is the SOLE discriminator for bondRootOwner: the
+// R-rule exemption restoresHeldStanding reads bondRootOwner (chain.go:3054) and NOT
+// bondRootProven, so dropping bondRootOwner flips accept→ErrRegGate while dropping bondRootProven
+// does nothing. Its RED is the real #506 ErrRegGate rejection, not a panic. It detects ONLY
+// bondRootOwner (bondRegHeight, which the R-rule also reads, has its own world; keeping detect
+// narrow keeps this probe's unique credit to bondRootOwner).
+func restoreOwnerProbe(c *Chain) probe {
+	x := key(73002)
+	rootX := ports.HashBytes(pubOf(x))
+	// A within-R re-reg for x PAST the activation boundary: height 3 > RegGateActivationHeight=1,
+	// and 3-1=2 < R=10. Full → restoresHeldStanding exempts → accept; bondRootOwner-dropped →
+	// exemption fails → ErrRegGate.
+	past := &Block{Version: 1, Height: 3, Prev: ports.Hash{},
+		BondRegs: []BondReg{bondRegFull(x, rootX, twoMiB, ports.Hash{}, BlockVersionRegGate, 0)}}
+	return probe{
+		name: "a lapsed frozen-epoch member re-proving its OWN root within R must be EXEMPTED from the " +
+			"#506 gate; a snapshot that lost bondRootOwner cannot match restoresHeldStanding and " +
+			"wrongly rejects the restore (accept → ErrRegGate)",
+		detect: []string{"bondRootOwner"},
+		ask:    func(c *Chain) string { return regVerdict(c, past) },
+	}
+}
+
 // weightBytesWorld is the era-3 freeze gate (#603): a mature epoch whose FROZEN
 // per-member weights are UNEQUAL, and a block whose support coalition clears the
 // COUNT floor but whose verdict is carried by the ⅔-WEIGHT predicate. It is the
@@ -1379,11 +1510,11 @@ func TestSnapshotBootStateRootMatchesReplayBoot(t *testing.T) {
 // committed set restored, a never-replayed replica must answer every probe
 // exactly as the replayed one does.
 func TestSnapshotBootMatchesReplayBoot(t *testing.T) {
-	replayed, keys, revokedRoot, ownedRoot := richHistory(t)
+	replayed, keys, revokedRoot, _ := richHistory(t)
 	_, head := replayed.Head()
 	prev := replayed.Blocks(0)[head-1].Hash()
 
-	all := probes(revokedRoot, ownedRoot, keys, prev)
+	all := probes(revokedRoot, keys, prev)
 
 	// The consensus-weight probes each run against their own mature/objective world.
 	weightC, epochSetBlock := weightWorld(t)
@@ -1402,6 +1533,10 @@ func TestSnapshotBootMatchesReplayBoot(t *testing.T) {
 	gateC := gateWorld(t)
 	lockedInProbe, heightProbe := gateProbes(gateC)
 	bondRegHeightC := bondRegHeightWorld(t)
+
+	// The bond-root sole-discriminator worlds (2026-08-28 shadowedProbes discharge).
+	provenC, provenRoot, provenKeys, provenPrev := provenDisplaceWorld(t)
+	restoreC := restoreOwnerWorld(t)
 
 	check := func(replayed *Chain, ps []probe) {
 		snap := snapshotBoot(replayed)
@@ -1430,6 +1565,8 @@ func TestSnapshotBootMatchesReplayBoot(t *testing.T) {
 	check(matureEpochC, []probe{matureEpochProbe(matureEpochBlock)})
 	check(gateC, []probe{lockedInProbe, heightProbe})
 	check(bondRegHeightC, []probe{bondRegHeightProbe(bondRegHeightC)})
+	check(provenC, []probe{provenDisplaceProbe(provenRoot, provenKeys, provenPrev)})
+	check(restoreC, []probe{restoreOwnerProbe(restoreC)})
 }
 
 // probeUncovered names committed fields for which no probe yet exists. It is a
@@ -1507,7 +1644,7 @@ func TestLeaveOneOutProvesEachFieldLoadBearing(t *testing.T) {
 // cannot share the gate-lock world without becoming decoration.
 func buildLeaveOneOutWorlds(t *testing.T) []worldGroup {
 	t.Helper()
-	replayed, keys, revokedRoot, ownedRoot := richHistory(t)
+	replayed, keys, revokedRoot, _ := richHistory(t)
 	_, head := replayed.Head()
 	prev := replayed.Blocks(0)[head-1].Hash()
 
@@ -1526,8 +1663,13 @@ func buildLeaveOneOutWorlds(t *testing.T) []worldGroup {
 	domainC, domainAnchorBlock, domainTrigger := domainWorld(t)
 	seenC, seenAnchorBlock, seenTrigger := validatorsSeenWorld(t)
 
+	// The bond-root sole-discriminator worlds (2026-08-28 shadowedProbes discharge). Each
+	// isolates ONE of the coupled displacement fields on the world where it alone flips a verdict.
+	provenC, provenRoot, provenKeys, provenPrev := provenDisplaceWorld(t)
+	restoreC := restoreOwnerWorld(t)
+
 	return []worldGroup{
-		{"launch", func(*testing.T) *Chain { return replayed }, probes(revokedRoot, ownedRoot, keys, prev)},
+		{"launch", func(*testing.T) *Chain { return replayed }, probes(revokedRoot, keys, prev)},
 		{"mature-epoch", func(*testing.T) *Chain { return weightC }, epochSetPs},
 		{"objective-bonded", func(*testing.T) *Chain { return bondedC }, bondedPs},
 		{"token-spent", func(*testing.T) *Chain { return spentC }, []probe{spentProbe(spentSerial, spentMint)}},
@@ -1539,6 +1681,8 @@ func buildLeaveOneOutWorlds(t *testing.T) []worldGroup {
 		{"gate-tally", func(*testing.T) *Chain { return regVersionC }, []probe{regVersionProbe()}},
 		{"domain-latch", func(*testing.T) *Chain { return domainC }, []probe{domainProbe(domainAnchorBlock, domainTrigger)}},
 		{"validators-seen", func(*testing.T) *Chain { return seenC }, []probe{validatorsSeenProbe(seenAnchorBlock, seenTrigger)}},
+		{"proven-displace", func(*testing.T) *Chain { return provenC }, []probe{provenDisplaceProbe(provenRoot, provenKeys, provenPrev)}},
+		{"restore-owner", func(*testing.T) *Chain { return restoreC }, []probe{restoreOwnerProbe(restoreC)}},
 	}
 }
 
@@ -1630,24 +1774,21 @@ func leaveOneOutFlipped(t *testing.T, worlds []worldGroup, logf func(string, ...
 // only shrink. Removing a probe from this map without making it a sole discriminator RED-flags
 // this test, so the debt cannot be quietly abandoned either.
 var shadowedProbes = map[string]string{
-	// byRoot is soundly caught by "dup-publish must be rejected". This probe's verdict does
-	// not actually depend on the byRoot SET being carried: revoking a never-published root is
-	// rejected whether or not byRoot is present (isolated ablation shows no flip). Its detect
-	// tag is mis-declared. FIX (in scope, low risk): drop its byRoot detect tag / move it out
-	// of the leave-one-out field set — it is a validity-rule probe, not a snapshot-field probe.
-	"revoking an unknown root must be rejected": "byRoot already caught by dup-publish; this " +
-		"probe does not depend on the carried byRoot set (mis-tagged). Owed: retag/remove.",
-
-	// bondRootOwner and bondRootProven are COUPLED in the displacement predicate
-	// (chain.go:2839-2849): the challenger block gains standing if EITHER field is dropped, and
-	// both probes observe it via c.bonded[claimant]. Separating them into independent
-	// sole-discriminator worlds touches the F1/C1 no-discount ownership semantics —
-	// research-gated. ROUTED: needs a Researcher-certified design for two worlds where
-	// owner-vs-proven are independently droppable. Do NOT fix blind.
-	"a second identity cannot take an already-owned bond root": "bondRootOwner coupled with " +
-		"bondRootProven in the displacement predicate (chain.go:2839). ROUTED: research-gated split.",
-	"a proven bond-root owner cannot be displaced by a later proven claim": "bondRootProven " +
-		"coupled with bondRootOwner in the displacement predicate (chain.go:2839). ROUTED: research-gated split.",
+	// EMPTY (2026-08-28): all three prior debt entries are DISCHARGED as in-scope fixture work
+	// per RULING-bondregheight-probe-neuter-guard-2026-08-28 Q4 (see
+	// docs/thinking/2026-08-28-keystone-shadowedprobes-discharge.md):
+	//   - "revoking an unknown root must be rejected": REMOVED. Its verdict did not depend on the
+	//     carried byRoot set (mis-tagged decoration); byRoot stays covered by "dup-publish".
+	//   - "a second identity cannot take an already-owned bond root" (bondRootOwner): the launch
+	//     probe was decoration (owner/proven coupled in richHistory). bondRootOwner now has its
+	//     OWN sole-discriminator world (restoreOwnerWorld), driving restoresHeldStanding
+	//     (chain.go:3054) — a predicate bondRootProven never reads.
+	//   - "a proven bond-root owner cannot be displaced by a later proven claim" (bondRootProven):
+	//     the launch probe was decoration. bondRootProven now has its OWN sole-discriminator world
+	//     (provenDisplaceWorld), where dropping it ALONE flips the displacement verdict while
+	//     bondRootOwner is held constant.
+	// If a NEW probe lands shadowed, TestNeuteringAnyProbeBreaksCompleteness FAILS naming it
+	// unless it is added here with a routing note. The list must only SHRINK.
 }
 
 func TestNeuteringAnyProbeBreaksCompleteness(t *testing.T) {
