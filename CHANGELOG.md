@@ -33,6 +33,32 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   change, no validity predicate, no `BlockVersion`/`versionSupported` change — those are
   later certified steps. Decision + freeze conditions recorded in `docs/decisions.md`;
   encoding deliberation in `docs/thinking/2026-08-28-era3-state-root-value-encoding.md`.
+- **era-3 committed state-root SCHEMA + HASH (build step 2a of the certified sequence)**
+  (2026-08-29; format ratified, mint-v4 correction ratified, this step is model-check-tier
+  only). Commits the two roots INTO the block schema so attesters sign them, and makes a v4
+  block decodable — WITHOUT flipping what nodes mint. New `Block` fields `StateRoot` and
+  `LogRoot` (`*ports.Hash`, cbor tags 15/16, `omitempty`), both folded into the `Hash()`
+  unsigned body (unlike `Atts`/`PrepareQC`/`CommitRound`/`Pruned`, which are excluded) so a
+  forged root cannot ride a valid signature. New `BlockVersionStateRoot = 4`;
+  `versionSupported` widened to `<= 4` so a v4 block DECODES and is accepted (research cert
+  Q7 mint-v4 requirement — a v4 block must not be silently mis-validated under era-2 rules);
+  a version beyond 4 is still refused loudly with `ErrBlockVersion`. **THE LOAD-BEARING
+  COMPAT DECISION:** an era-2 block hashes and validates BYTE-IDENTICALLY after this change
+  (committed history is never re-interpreted). The roots are POINTERS because `omitempty`
+  does NOT omit a zero fixed-size array — a plain `ports.Hash` would emit 32 zero bytes for
+  every era-2 block and change its hash; the byte-identity oracle caught exactly that. A
+  nil pointer is omitted (era-2 unchanged); a set pointer is emitted (era-3 always carries a
+  definite, non-zero root — the empty-log root is `sha256("")` and the empty-state root is
+  the SMT over the four always-present scalar leaves, both fixed non-zero constants). New
+  `modelcheck_era3_schema_test.go`: a golden-hash byte-identity oracle (a v2 block hashes to
+  its pre-2a value, verified against `origin/main`), a tamper oracle (a modified
+  StateRoot/LogRoot fails the signature check), a decode oracle (v4 accepted, v5 rejected),
+  and a population oracle (a v4 block carries the chain's `StateRoot()`/`LogRoot()`) — each
+  with its defect injected and watched go RED. **STOP boundary honored:** no validity
+  predicate rejects on a root mismatch (step 2b), no mint-version flip and no activation
+  height (step 2c) — production minting stays `BlockVersionRounds`, so no v4 block is minted
+  before its predicate exists. Compat deliberation in
+  `docs/thinking/2026-08-29-era3-step2a-commit-roots-schema.md`.
 
 ### Changed
 - **CONSENSUS-RULE: canonicalize same-id intra-block bond registrations in `apply()`**
