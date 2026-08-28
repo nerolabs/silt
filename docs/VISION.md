@@ -49,7 +49,14 @@ to the anonymity trilemma's real limit.
 adversarial input first, then fast — *bounded-then-fast*, never OOM. A validator does not
 hold the whole registry to do its job: it validates by **proof**, checking each block's
 state transition against witnesses supplied by the tier above, so the honest-validator
-floor stays a floor as the network grows to all-content-ever. The operator earns standing by
+floor stays a floor as the network grows to all-content-ever. This is the **ratified**
+posture (#600): the floor box is a *semi-stateless witness-validating full validator* —
+same security as a tree-holding node, narrower self-sufficiency. Its liveness rests on a
+**load-bearing but decentralized** dependency: at least one reachable honest witness
+provider from an **open, multi-provider** tier (any archival or pruning node may serve
+witnesses; no permissioned few). A witness-less floor box **stalls, never accepts** — safety
+never rides on the tier above. Holding the whole tree survives only as a bigger-box opt-in
+for nodes that choose it, never as the floor default. The operator earns standing by
 providing real, sustained, address-diverse storage and serving real demand — and earns
 balance-lane credit for the bandwidth they relay and for holding a rebuilt replica (the
 repair bounty is a custody rent to the new holder of a reconstructed shard; reconstruction
@@ -153,7 +160,10 @@ under a **state root**: a history-independent sparse Merkle tree over the set-va
 plus a separate append-only root for the transparency log — two kinds of committed data,
 each under a root whose structure matches it. Because the root is committed, a validator on
 the floor box does not need the tree: it checks each transition against witnesses, and the
-tree lives a tier above. A fresh node cold-syncs from a recent weak-subjectivity checkpoint —
+tree lives a tier above. This is the **ratified** floor-box posture (#600), not an
+aspiration — witness-serving is an **open, un-permissioned** responsibility of the tiers
+above, so the floor box's liveness dependency on them stays decentralized, never a
+single-provider choke. A fresh node cold-syncs from a recent weak-subjectivity checkpoint —
 silt is weakly subjective, like every proof-of-stake-class system, and honest about it — and
 an organically-crashed node re-pins itself from its own last finalized checkpoint without a
 human in the loop.

@@ -181,6 +181,15 @@ close itself is the owner's call and is deliberately HELD. The current order:
    certified oracles as failing-first RED homes, era-3 gate as #506 tenant #2.
    Owner/builder calls held: lifetime-owner vs TTL-lapse for `bondRootOwner`
    (both C2-sound), rebuild-vs-persist (a build-immutable-#8 measurement).
+   **RE-SEQUENCED 2026-08-28 (#600 ratified): the era-3 format freeze is now
+   critical-path, no longer deferrable.** With witness-validation ratified as the
+   floor-box's primary posture (hold-tree demoted to a bigger-box opt-in), the
+   witness path is **vacuous until the `Block` commits BOTH roots** — the state SMT
+   root and the append-only transparency-log root — over the completeness-proven
+   field set (`Block` commits neither today). Hold-tree previously let the format
+   freeze wait; it no longer does. So the consensus-weight probe residuals still
+   hard-gate the freeze: `bonded`-weight and `epochSet` first, then `spent`/`slashed`
+   must reach the keystone oracles green before era-3 freezes (#603).
 4. **The publish-bound re-derivation** — ✅ DONE (2026-08-27): 360 → 300 s, derived
    downward from fe2376a-deep's measured ~48 s/height cadence; the #451 escape floor
    (a consensus-liveness parameter) left untouched.
