@@ -62,6 +62,32 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   strictly stronger, and order-free by construction.
 
 ### Added
+- **Keystone leave-one-out — fix a shared-block SHADOWING decoration probe + add a
+  structural neuter meta-guard** (2026-08-28, model-check/unit tier; no consensus rule
+  touched). A blind review found `bondRegHeightProbe`
+  (`core/chain/modelcheck_snapshot_equivalence_test.go`) was DECORATION in the running
+  oracle: it shared its within-R re-reg block with `lockedInProbe` in the `gate-lock`
+  world (gate armed by `gateLockedIn`), so the leave-one-out loop — which breaks on the
+  first flipping probe — let `lockedInProbe` catch the `bondRegHeight` ablation first and
+  `bondRegHeightProbe` never ran. Neuter it and the oracle stayed green: a probe that
+  proved nothing. **Part 1:** give `bondRegHeight` its own sole-discriminator world
+  `bondRegHeightWorld`, where the #506 gate is armed by `cfg.RegGateActivationHeight > 0`
+  (chain.go:3027) instead of `gateLockedIn`, so `gateLockedIn`/`gateHeight` are unset and
+  `bondRegHeight` is the ONLY committed-field discriminator. A within-R re-reg past the
+  activation boundary is **`ErrRegGate`**-rejected with the field, accepted without it;
+  neutering the probe now turns `TestLeaveOneOutProvesEachFieldLoadBearing` RED
+  (`changed NO verdict in any world`). `RegGateActivationHeight` is per-world genesis
+  config selecting the regime (the certified pre-latch trusted-fleet mode, chain.go:201);
+  the R-rule is untouched. **Part 2:** `TestNeuteringAnyProbeBreaksCompleteness` neuters
+  EACH probe in turn (forces its `ask` constant, keeps its `detect` tag) and asserts the
+  completeness guard goes RED — every probe must be the SOLE catcher of at least one
+  field. `buildLeaveOneOutWorlds`/`leaveOneOutFlipped` are extracted so the guard and the
+  oracle share one code path; neutering is non-destructive (fresh probe copies per
+  iteration). Running the guard honestly surfaced three PRE-EXISTING shadowed probes
+  (`byRoot` double-coverage; the `bondRootOwner`/`bondRootProven` displacement coupling,
+  chain.go:2839) — quarantined in a declared, shrink-only `shadowedProbes` debt list with
+  routing notes (the bond-root split is research-gated), not suppressed. Deliberation:
+  `docs/thinking/2026-08-28-keystone-bondregheight-sole-discriminator.md`.
 - **Keystone leave-one-out — the latch/gate/domain tranche proven load-bearing**
   (2026-08-28, model-check/unit tier; no consensus rule touched — probes a threshold,
   moves none). `TestLeaveOneOutProvesEachFieldLoadBearing`
@@ -103,9 +129,35 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   demonstrated red is decoration). STOP boundaries held: every flip changes which
   identities are ADMITTED (qualification) or whether a reg is a valid PAYLOAD — never the
   weight-sum seam (chain.go:2450-2456), the epochSet freeze / `rotateEpoch` (I3), the
-  `⌈A/2⌉` threshold, or #603's weight discriminator. `probeUncovered` now holds only
-  `bondRegHeight` and `validatorsSeen`. Deliberation:
+  `⌈A/2⌉` threshold, or #603's weight discriminator. Deliberation:
   `docs/thinking/2026-08-28-keystone-leaveoneout-latch-gate-domain.md`.
+- **Keystone leave-one-out — the last two committed fields closed; `probeUncovered` is
+  now EMPTY** (2026-08-28, model-check/unit tier; no consensus rule touched — probes a
+  threshold, moves none). `TestLeaveOneOutProvesEachFieldLoadBearing`
+  (`core/chain/modelcheck_snapshot_equivalence_test.go`) now covers every committed field:
+  - `bondRegHeight` — the #506 min-interval R-rule (chain.go:1497), which reads
+    `c.bondRegHeight[id]` and fires only when present. `gateWorld` (the #623 gate-active
+    world) carries `bondRegHeight[x]=1`; a within-R re-reg PAST H_act must be refused. Full
+    → **`ErrRegGate`** ("re-registered 4 blocks after its last reg, R=10"); bondRegHeight-
+    dropped → the rule never fires → accept (a reg-flood identity admitted). The prior
+    "no gate-active world" reason was STALE. (A third probe on `gateProbes`' `past` block.)
+  - `validatorsSeen` — **overturns the prior "legacy mode only" reason, which was WRONG.**
+    `C2Metric` enumerates `validatorsSeen` in the OBJECTIVE regime (chain.go:1978) →
+    `MatureCoefficient` → `matureNow()` (objective branch, chain.go:1867) → the maturity
+    latch (chain.go:2893) → the launch-anchor shed — the same verdict path `bondDomain`
+    rides. `validatorsSeenWorld` holds four anchors plus six equal real bonds each in a
+    DISTINCT declared domain, all seen; a mutating probe applies a block. Full →
+    `validatorsSeen` enumerates six participants → coefficient 3 ≥ MatureValidators 2 →
+    matures → sheds the anchors → an anchor-only commit is **`ErrNoQuorum`** ("0 qualified,
+    need 4"). validatorsSeen-dropped → the C2Metric loop sees zero participants → coefficient
+    0 → immature → anchors held → accept.
+  Both ablation-proven: the defect was injected and watched go RED with the named error
+  (`ErrRegGate` / `ErrNoQuorum`), flip reject→accept in each case. STOP boundaries held —
+  bondRegHeight flips a VALIDITY verdict, validatorsSeen a QUALIFICATION verdict; neither
+  touches the weight-sum seam (chain.go:2450-2456), the epochSet freeze / `rotateEpoch`
+  (I3), the `⌈A/2⌉` threshold, or #603. `probeUncovered` is now EMPTY: every committed
+  field has a leave-one-out probe with a demonstrated ablation RED. Deliberation:
+  `docs/thinking/2026-08-28-keystone-leaveoneout-bondregheight-validatorsseen.md`.
 - **Named the genesis same-root premise (residual R-G) — no genesis validity change**
   (2026-08-28). PR #618's `seenRoot` per-root distinct-ID dedup lives in
   `validateBondRegs`, which `AppendGenesis` (chain.go) does NOT run — it goes straight
