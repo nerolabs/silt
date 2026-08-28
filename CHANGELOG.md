@@ -107,6 +107,29 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   locally (+13/13 in a prior run cut short by the default go-test timeout).
 
 ### Added
+- **Keystone leave-one-out — discharge all three `shadowedProbes` entries as in-scope
+  fixture work; the debt list is now EMPTY** (2026-08-28, model-check/unit tier; no
+  consensus rule touched — the probes OBSERVE existing predicates, move no rule). A blind
+  PE ruling (`RULING-bondregheight-probe-neuter-guard-2026-08-28`, Q4) overrode the prior
+  "research-gated" routing on the `bondRootOwner`/`bondRootProven` split: the coupling was
+  a property of how the launch-world probes were built (both asked via `c.bonded[claimant]`
+  in `richHistory`, where dropping EITHER field admits the challenger), not of the fields.
+  The fix uses the field asymmetry: `bondRootProven` feeds ONE predicate (displacement,
+  chain.go:2845), `bondRootOwner` feeds TWO (displacement AND `restoresHeldStanding`,
+  chain.go:3054). **`bondRootProven`** gets `provenDisplaceWorld` — a PROVEN owner holds a
+  root, a PROVEN challenger claims it; dropping `bondRootProven` ALONE (owner held constant)
+  flips the displacement verdict `proven-owner-held`→`displaced-the-proven-owner`.
+  **`bondRootOwner`** gets `restoreOwnerWorld` — a LAPSED frozen-epoch member re-proving its
+  OWN root within R is EXEMPTED by `restoresHeldStanding` (which reads `bondRootOwner`, never
+  `bondRootProven`); dropping `bondRootOwner` ALONE flips `accept`→**`ErrRegGate`**, while
+  dropping `bondRootProven` in that world does nothing (uncoupled). The two shadowed launch
+  probes are REMOVED; the mis-tagged `revoking an unknown root` probe (its verdict did not
+  depend on the carried `byRoot` set) is REMOVED, `byRoot` still covered by `dup-publish`.
+  Both new probes survive their own neuter — `TestLeaveOneOutProvesEachFieldLoadBearing`
+  REDs naming the exact field, and `TestNeuteringAnyProbeBreaksCompleteness` is GREEN with
+  `shadowedProbes` EMPTY. The displacement predicate, `restoresHeldStanding`, and the #506
+  R-rule are only OBSERVED; per-world genesis config selects the regime. Deliberation:
+  `docs/thinking/2026-08-28-keystone-shadowedprobes-discharge.md`.
 - **Keystone leave-one-out — fix a shared-block SHADOWING decoration probe + add a
   structural neuter meta-guard** (2026-08-28, model-check/unit tier; no consensus rule
   touched). A blind review found `bondRegHeightProbe`
