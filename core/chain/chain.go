@@ -2272,7 +2272,14 @@ func (c *Chain) ValidateProposal(b *Block) error {
 		}
 		seen[e.Root] = true
 	}
-	return nil
+	// era-3 (v4) committed-root predicate (build step 2b). A no-op for sub-v4 blocks
+	// (era-2 rules unchanged); for a v4 block it rejects a nil root, or a StateRoot/
+	// LogRoot that does not equal the post-apply recompute. Placed LAST so a v4 block
+	// must first be a valid era-2 block, then additionally satisfy the roots — the
+	// additive, strict-superset shape (no era-2 verdict changes). This is the ONE root
+	// check site: ValidateCommit calls ValidateProposal first, so the commit path
+	// carries it too. See era3validity.go and the 2b deliberation.
+	return c.validateEra3Roots(b)
 }
 
 // ValidateEntry runs the per-entry checks against the CURRENT chain state —
@@ -2361,7 +2368,7 @@ func (c *Chain) validateTakedowns(b *Block) error {
 // delayed-quorum and S2 equivocate-then-misreport schedules.
 func (c *Chain) ValidateCommit(b *Block) error {
 	if err := c.ValidateProposal(b); err != nil {
-		return err
+		return err // the era-3 (v4) root predicate (step 2b) rides in here, via ValidateProposal
 	}
 	if b.Version >= BlockVersionRounds {
 		if err := c.requireProposerPrepare(b); err != nil {

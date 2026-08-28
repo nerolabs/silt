@@ -50,6 +50,16 @@ func (l *Log) Append(entry ports.Hash) int {
 // Size is the number of entries currently in the log.
 func (l *Log) Size() int { return len(l.entries) }
 
+// Clone returns a deep copy of the log — a fresh entries slice with the same
+// contents — so a caller can Append to the copy without mutating the original.
+// Used by the era-3 dry-run recompute (core/chain), which applies a candidate
+// block to a scratch chain to compute the post-apply LogRoot without touching
+// live state. Entries are value types (ports.Hash), so a slice copy is a full
+// deep copy.
+func (l *Log) Clone() *Log {
+	return &Log{entries: append([]ports.Hash(nil), l.entries...)}
+}
+
 // Root is the Merkle Tree Head over all entries — the log's current commitment.
 func (l *Log) Root() ports.Hash { return mth(l.entries) }
 

@@ -59,6 +59,39 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   height (step 2c) — production minting stays `BlockVersionRounds`, so no v4 block is minted
   before its predicate exists. Compat deliberation in
   `docs/thinking/2026-08-29-era3-step2a-commit-roots-schema.md`.
+- **era-3 committed state-root VALIDITY PREDICATE (build step 2b of the certified
+  sequence)** (2026-08-29; format ratified). Closes the 2a→2b window: 2a made a v4 block
+  decodable and signed the roots, but NO predicate read them, so a v4 block validated on
+  its era-2 merits alone. This step adds the v4-gated validity predicate
+  (`core/chain/era3validity.go`, `validateEra3Roots`), hooked into `ValidateProposal` (the
+  one root-check site — an honest attester runs it before signing, and `ValidateCommit`
+  invokes it first, so both consensus-entry paths carry the check). For a v4 block it
+  enforces: (1) both roots present — a nil `StateRoot`/`LogRoot` is rejected explicitly with
+  `ErrEra3RootMissing` (the check 2a's `omitempty` schema deferred here, per the 2a ruling);
+  (2) the committed `StateRoot` equals the SMT recomputed over the POST-APPLY committedSet
+  (`ErrEra3StateRootMismatch`); (3) the committed `LogRoot` equals the POST-APPLY
+  RFC-6962 revocation-log root (`ErrEra3LogRootMismatch`). Because the `StateRoot` leaves
+  encode the `bonded`/`epochSet` WEIGHTS summed in the three super-quorum finality
+  predicates, a wrong-value leaf is a consensus SAFETY attack, not a read bug — enforcing
+  `root == recompute` makes the value encoding load-bearing, relying on the step-1
+  determinism oracle for cross-node byte-identity. The post-apply recompute runs on a
+  throwaway clone (`cloneForDryRun` + the real `apply()`), so live chain state is never
+  mutated during validation; the clone uses the one authoritative state-transition function,
+  so a value-encoding or apply bug surfaces identically on the proposer's and validator's
+  side. New `translog.Log.Clone()` deep-copies the transparency log for the dry run.
+  ERA-GATING: the predicate fires ONLY for `Version >= BlockVersionStateRoot` (v4); a
+  v2/v3 block validates under era-2 rules UNCHANGED (additive, strict-superset rejection).
+  New `modelcheck_era3_validity_test.go`: accept (roots = independent post-apply recompute),
+  wrong-`StateRoot`/wrong-`LogRoot` reject, nil-root reject, the v2-unaffected era-gate, the
+  commit-path carry-through, and a drift guard (`TestDryRunCloneCopiesEveryAppliedField`,
+  the #558 class — the clone must copy every history-derived field, distinct-backed) — each
+  with its defect injected and watched go RED. Invariants: preserves I1–I5, alters none; it
+  ADDS a v4-gated validity rejection and is a pure function of (block, committed state), so
+  every honest replica computes the same verdict (I5). **STOP boundary honored:** no
+  mint-version flip and no activation height (step 2c) — the predicate is inert in
+  production until 2c because no v4 block is minted yet, but it is correct now so 2c cannot
+  land before it. Deliberation in
+  `docs/thinking/2026-08-29-era3-step2b-validity-predicate.md`.
 
 ### Changed
 - **CONSENSUS-RULE: canonicalize same-id intra-block bond registrations in `apply()`**
