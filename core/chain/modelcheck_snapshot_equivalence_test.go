@@ -690,9 +690,20 @@ func gateWorld(t *testing.T) *Chain {
 }
 
 // gateProbes builds the within-R re-registration blocks for x at heights straddling
-// gateHeight, and the three probes that drive them. bondRegHeight[x]=1 and R≈10, so a
+// gateHeight, and the two probes that drive them. bondRegHeight[x]=1 and R≈10, so a
 // reg at any height within 10 of block 1 is "too soon" ONLY where the gate is active.
-func gateProbes(c *Chain) (probe, probe, probe) {
+//
+// bondRegHeight is DELIBERATELY not probed here. In gateWorld the gate is armed by
+// gateLockedIn (chain.go:3030, the chain-derived lock-in path), so the within-R
+// past-gateHeight block is a verdict flip for BOTH gateLockedIn and bondRegHeight —
+// they share the block, and the leave-one-out loop breaks on the first probe that
+// flips. lockedInProbe runs first and shadows a bondRegHeightProbe here, so such a
+// probe would be DECORATION (neuter it and the oracle stays green — the shadowing
+// class documented near this file's top, the 2nd instance after bondRootProven).
+// bondRegHeight gets its OWN sole-discriminator world (bondRegHeightWorld) where the
+// gate is armed by RegGateActivationHeight instead — there gateLockedIn is unset, so
+// dropping bondRegHeight is the ONLY committed-field flip and nothing shadows it.
+func gateProbes(c *Chain) (probe, probe) {
 	x := key(70003)
 	rootX := ports.HashBytes(pubOf(x))
 	gh := c.gateHeight
@@ -709,20 +720,6 @@ func gateProbes(c *Chain) (probe, probe, probe) {
 		detect: []string{"gateLockedIn"},
 		ask:    func(c *Chain) string { return regVerdict(c, past) },
 	}
-	// bondRegHeight: the SAME within-R re-reg PAST gateHeight. The #506 R-rule
-	// (chain.go:1497) reads `regH, ok := c.bondRegHeight[id]` and fires only when ok.
-	// Full → bondRegHeight[x]=1, gate active at gh+1, (gh+1)-1 < R, x still bonded so
-	// restoresHeldStanding is false → the R-rule fires → ErrRegGate (reject). A snapshot
-	// that lost bondRegHeight finds ok=false → the rule never fires → the reg falls to
-	// validateBondRegWindow, which accepts → a reg-flood identity admitted. Same block as
-	// the gateLockedIn probe; the discriminating field differs (gate-armed vs. last-reg
-	// height). See docs/thinking/2026-08-28-keystone-leaveoneout-bondregheight-validatorsseen.md.
-	bondRegHeightProbe := probe{
-		name: "a within-R re-registration past H_act must be rejected on the last-reg height; a " +
-			"snapshot that lost bondRegHeight cannot fire the #506 R-rule (ErrRegGate → accept)",
-		detect: []string{"bondRegHeight"},
-		ask:    func(c *Chain) string { return regVerdict(c, past) },
-	}
 	// gateHeight: a within-R re-reg BELOW gateHeight (pre-gate, so accepted). Full →
 	// accept; gateHeight-dropped (→ 0) makes regGateActive = gateLockedIn && h>0 fire
 	// for this height → the R-rule rejects. The flip runs the OPPOSITE way.
@@ -733,7 +730,89 @@ func gateProbes(c *Chain) (probe, probe, probe) {
 		detect: []string{"gateHeight"},
 		ask:    func(c *Chain) string { return regVerdict(c, pre) },
 	}
-	return lockedInProbe, bondRegHeightProbe, heightProbe
+	return lockedInProbe, heightProbe
+}
+
+// bondRegHeightWorld (bondRegHeight) — the SOLE-DISCRIMINATOR world for bondRegHeight.
+// The #506 gate is armed by genesis config (RegGateActivationHeight, chain.go:3027),
+// NOT by the maturity lock-in (gateLockedIn). That is what makes bondRegHeight the only
+// committed field whose omission flips this world's probe: gateLockedIn is unset and
+// gateHeight is 0, so ablating either does nothing (regGateActive takes the
+// RegGateActivationHeight branch, chain.go:3028). No epochs, no anchors, no frozen set —
+// a minimal trusted-fleet launch chain (the exact deployment mode
+// RegGateActivationHeight exists for, chain.go:201). This is per-world genesis config on
+// a throwaway chain selecting the regime; the R-rule itself is untouched (STOP boundary).
+//
+// x re-registers its own root at height 1 → bondRegHeight[x]=1. R=10 (BondTTLBlocks=40).
+// The probed block is a within-R re-reg for x PAST the activation boundary. Full →
+// bondRegHeight[x]=1, (h-1) < R, epochs disabled so restoresHeldStanding is false → the
+// R-rule fires → ErrRegGate. A snapshot that lost bondRegHeight reads regH,ok=false → the
+// rule never fires → the reg falls to validateBondRegWindow, which accepts → a reg-flood
+// identity admitted. See docs/thinking/2026-08-28-keystone-bondregheight-sole-discriminator.md.
+func bondRegHeightWorld(t *testing.T) *Chain {
+	t.Helper()
+	const w = int64(2) << 20
+	prop, x := key(72001), key(72002)
+	// Activation boundary at height 2: the R-rule governs every block of height > 2,
+	// with no readiness signalling (the pre-latch genesis-declared mode).
+	cfg := Config{Quorum: 1, MinBond: 1 << 20, ByzantineQuorum: true,
+		BondTTLBlocks: 40, RegGateActivationHeight: 2}
+	c := New(cfg, func(ports.NodeID) int64 { return 0 })
+	c.SetBondVerifier(objectiveVerify)
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
+	g.BondRegs = []BondReg{
+		bondRegFull(prop, ports.HashBytes(pubOf(prop)), w, ports.Hash{}, BlockVersionRegGate, 0),
+		bondRegFull(x, ports.HashBytes(pubOf(x)), w, ports.Hash{}, BlockVersionRegGate, 0),
+	}
+	Sign(g, prop)
+	if err := c.AppendGenesis(*g); err != nil {
+		t.Fatalf("bondRegHeightWorld genesis: %v", err)
+	}
+	// Height 1: x re-registers its OWN root → bondRegHeight[x]=1. Height 1 ≤ boundary,
+	// so this reg is old-rules valid (the gate is strictly-greater-than, chain.go:3028).
+	// Era-1 (legacy) block: this world exercises the version-independent R-rule path
+	// (validateBondRegs), not the round certificate.
+	rootX := ports.HashBytes(pubOf(x))
+	b1 := &Block{Version: 1, Height: 1, Prev: g.Hash(),
+		Entries:  []ports.Entry{entry(1)},
+		BondRegs: []BondReg{bondRegFull(x, rootX, w, g.Hash(), BlockVersionRegGate, 0)}}
+	Sign(b1, prop)
+	b1.Atts = []Attestation{Attest(b1, x)}
+	if err := c.Append(*b1); err != nil {
+		t.Fatalf("bondRegHeightWorld height 1: %v", err)
+	}
+	if c.gateLockedIn {
+		t.Fatalf("bondRegHeightWorld: gateLockedIn must be UNSET (gate armed by "+
+			"RegGateActivationHeight, not the latch) — got gateLockedIn=%v gateHeight=%d",
+			c.gateLockedIn, c.gateHeight)
+	}
+	if _, ok := c.bondRegHeight[idOf(x)]; !ok {
+		t.Fatalf("bondRegHeightWorld: bondRegHeight[x] not recorded — the field the probe ablates")
+	}
+	return c
+}
+
+// bondRegHeightProbe drives the #506 R-rule against a within-R re-reg PAST the genesis
+// activation boundary. In bondRegHeightWorld this is the SOLE committed-field
+// discriminator: gateLockedIn is unset and gateHeight is 0, so the flip is carried by
+// bondRegHeight alone (chain.go:1497 reads regH,ok := c.bondRegHeight[id]). Its RED is
+// the real #506 ErrRegGate rejection, not a panic — a lost bondRegHeight makes the rule
+// silently skip and admit a reg-flood identity, a C1/#503 storm the field prevents.
+func bondRegHeightProbe(c *Chain) probe {
+	x := key(72002)
+	rootX := ports.HashBytes(pubOf(x))
+	// A within-R re-reg PAST the activation boundary (height 3 > RegGateActivationHeight=2;
+	// 3-1=2 < R=10). Full → ErrRegGate; bondRegHeight-dropped → accept. regVerdict calls
+	// validateBondRegs directly (chain.go:1497), which reads b.Height only — the block
+	// version is irrelevant on this path (mirrors the set-valued ValidateEntry probes).
+	past := &Block{Version: 1, Height: 3, Prev: ports.Hash{},
+		BondRegs: []BondReg{bondRegFull(x, rootX, twoMiB, ports.Hash{}, BlockVersionRegGate, 0)}}
+	return probe{
+		name: "a within-R re-registration past the genesis activation boundary must be rejected on " +
+			"the last-reg height; a snapshot that lost bondRegHeight cannot fire the #506 R-rule (ErrRegGate → accept)",
+		detect: []string{"bondRegHeight"},
+		ask:    func(c *Chain) string { return regVerdict(c, past) },
+	}
 }
 
 // regVersionWorld (regVersion). regVersion is read at exactly ONE verdict-relevant
@@ -1094,7 +1173,8 @@ func TestSnapshotBootMatchesReplayBoot(t *testing.T) {
 	deMatureC, deMatureBlock := deMatureWorld(t)
 	matureEpochC, matureEpochBlock := matureEpochWorld(t)
 	gateC := gateWorld(t)
-	lockedInProbe, bondRegHeightProbe, heightProbe := gateProbes(gateC)
+	lockedInProbe, heightProbe := gateProbes(gateC)
+	bondRegHeightC := bondRegHeightWorld(t)
 
 	check := func(replayed *Chain, ps []probe) {
 		snap := snapshotBoot(replayed)
@@ -1121,7 +1201,8 @@ func TestSnapshotBootMatchesReplayBoot(t *testing.T) {
 	check(slashedC, []probe{slashedProbe(slashedCulprit)})
 	check(deMatureC, []probe{everMatureProbe(deMatureBlock)})
 	check(matureEpochC, []probe{matureEpochProbe(matureEpochBlock)})
-	check(gateC, []probe{lockedInProbe, bondRegHeightProbe, heightProbe})
+	check(gateC, []probe{lockedInProbe, heightProbe})
+	check(bondRegHeightC, []probe{bondRegHeightProbe(bondRegHeightC)})
 }
 
 // probeUncovered names committed fields for which no probe yet exists. It is a
@@ -1154,54 +1235,12 @@ var probeUncovered = map[string]string{
 // consensus-correctness discipline, an oracle that sees something it cannot
 // explain FLAGS; it never assumes-benign.
 func TestLeaveOneOutProvesEachFieldLoadBearing(t *testing.T) {
-	replayed, keys, revokedRoot, ownedRoot := richHistory(t)
-	_, head := replayed.Head()
-	prev := replayed.Blocks(0)[head-1].Hash()
-
-	// Three worlds: the launch richHistory world for the set-valued probes, plus a
-	// mature-epoch world (epochSet) and an anchorless objective world (bonded) for
-	// the consensus-weight fields, which are load-bearing only in those regimes.
-	weightC, epochSetBlock := weightWorld(t)
-	bondedC, bondedBlock := bondedWorld(t)
-	epochSetPs, bondedPs := weightProbes(epochSetBlock, bondedBlock)
-	spentC, spentSerial, spentMint := spentWorld(t)
-	slashedC, slashedCulprit := slashedWorld(t)
-
-	// The latch/gate/domain tranche (2026-08-28): each field's leave-one-out flip
-	// lives outside the count path, so each gets the world where it is load-bearing.
-	deMatureC, deMatureBlock := deMatureWorld(t)
-	matureEpochC, matureEpochBlock := matureEpochWorld(t)
-	gateC := gateWorld(t)
-	lockedInProbe, bondRegHeightProbe, heightProbe := gateProbes(gateC)
-	regVersionC := regVersionWorld(t)
-	domainC, domainAnchorBlock, domainTrigger := domainWorld(t)
-	seenC, seenAnchorBlock, seenTrigger := validatorsSeenWorld(t)
-
-	worlds := []worldGroup{
-		{"launch", func(*testing.T) *Chain { return replayed }, probes(revokedRoot, ownedRoot, keys, prev)},
-		{"mature-epoch", func(*testing.T) *Chain { return weightC }, epochSetPs},
-		{"objective-bonded", func(*testing.T) *Chain { return bondedC }, bondedPs},
-		{"token-spent", func(*testing.T) *Chain { return spentC }, []probe{spentProbe(spentSerial, spentMint)}},
-		{"slashed-anchor", func(*testing.T) *Chain { return slashedC }, []probe{slashedProbe(slashedCulprit)}},
-		{"de-mature", func(*testing.T) *Chain { return deMatureC }, []probe{everMatureProbe(deMatureBlock)}},
-		{"mature-epoch-flag", func(*testing.T) *Chain { return matureEpochC }, []probe{matureEpochProbe(matureEpochBlock)}},
-		{"gate-lock", func(*testing.T) *Chain { return gateC }, []probe{lockedInProbe, bondRegHeightProbe, heightProbe}},
-		{"gate-tally", func(*testing.T) *Chain { return regVersionC }, []probe{regVersionProbe()}},
-		{"domain-latch", func(*testing.T) *Chain { return domainC }, []probe{domainProbe(domainAnchorBlock, domainTrigger)}},
-		{"validators-seen", func(*testing.T) *Chain { return seenC }, []probe{validatorsSeenProbe(seenAnchorBlock, seenTrigger)}},
-	}
+	worlds := buildLeaveOneOutWorlds(t)
 
 	// Guard the declared debt against the live struct first: a newly added
 	// committed field must be probed (in SOME world) or explicitly recorded as
 	// unprobed.
-	covered := map[string]bool{}
-	for _, w := range worlds {
-		for _, p := range w.probes {
-			for _, f := range p.detect {
-				covered[f] = true
-			}
-		}
-	}
+	covered := coveredFields(worlds)
 	for _, name := range fieldsOfKind(committedSet) {
 		if covered[name] {
 			if _, dup := probeUncovered[name]; dup {
@@ -1219,6 +1258,83 @@ func TestLeaveOneOutProvesEachFieldLoadBearing(t *testing.T) {
 	// The ablation itself: for each world, drop one committed field that world's
 	// probes cover and expect a changed verdict. A field is proven load-bearing
 	// once ANY world's probe flips on its omission.
+	flipped := leaveOneOutFlipped(t, worlds, t.Logf)
+	for name := range covered {
+		if !flipped[name] {
+			t.Errorf("omitting committed field %q changed NO verdict in any world.\n"+
+				"Either the field is not actually load-bearing (so committing it "+
+				"is bloat on the snapshot — revisit the Q2 enumeration and the Q3 "+
+				"growth analysis), or the probes are not adversarial enough. This "+
+				"is a finding to route, not a test to relax.", name)
+		}
+	}
+}
+
+// buildLeaveOneOutWorlds constructs the full leave-one-out world set. It is a
+// FACTORY, called fresh by both the oracle and the neuter meta-guard: the guard
+// mutates a probe in a returned copy, so each call must yield independent probes.
+//
+// The latch/gate/domain tranche (2026-08-28): each field's leave-one-out flip lives
+// outside the count path, so each gets the world where it is load-bearing. bondRegHeight
+// has its OWN sole-discriminator world (bondRegHeightWorld) — see gateProbes for why it
+// cannot share the gate-lock world without becoming decoration.
+func buildLeaveOneOutWorlds(t *testing.T) []worldGroup {
+	t.Helper()
+	replayed, keys, revokedRoot, ownedRoot := richHistory(t)
+	_, head := replayed.Head()
+	prev := replayed.Blocks(0)[head-1].Hash()
+
+	weightC, epochSetBlock := weightWorld(t)
+	bondedC, bondedBlock := bondedWorld(t)
+	epochSetPs, bondedPs := weightProbes(epochSetBlock, bondedBlock)
+	spentC, spentSerial, spentMint := spentWorld(t)
+	slashedC, slashedCulprit := slashedWorld(t)
+
+	deMatureC, deMatureBlock := deMatureWorld(t)
+	matureEpochC, matureEpochBlock := matureEpochWorld(t)
+	gateC := gateWorld(t)
+	lockedInProbe, heightProbe := gateProbes(gateC)
+	bondRegHeightC := bondRegHeightWorld(t)
+	regVersionC := regVersionWorld(t)
+	domainC, domainAnchorBlock, domainTrigger := domainWorld(t)
+	seenC, seenAnchorBlock, seenTrigger := validatorsSeenWorld(t)
+
+	return []worldGroup{
+		{"launch", func(*testing.T) *Chain { return replayed }, probes(revokedRoot, ownedRoot, keys, prev)},
+		{"mature-epoch", func(*testing.T) *Chain { return weightC }, epochSetPs},
+		{"objective-bonded", func(*testing.T) *Chain { return bondedC }, bondedPs},
+		{"token-spent", func(*testing.T) *Chain { return spentC }, []probe{spentProbe(spentSerial, spentMint)}},
+		{"slashed-anchor", func(*testing.T) *Chain { return slashedC }, []probe{slashedProbe(slashedCulprit)}},
+		{"de-mature", func(*testing.T) *Chain { return deMatureC }, []probe{everMatureProbe(deMatureBlock)}},
+		{"mature-epoch-flag", func(*testing.T) *Chain { return matureEpochC }, []probe{matureEpochProbe(matureEpochBlock)}},
+		{"gate-lock", func(*testing.T) *Chain { return gateC }, []probe{lockedInProbe, heightProbe}},
+		{"bondreg-height", func(*testing.T) *Chain { return bondRegHeightC }, []probe{bondRegHeightProbe(bondRegHeightC)}},
+		{"gate-tally", func(*testing.T) *Chain { return regVersionC }, []probe{regVersionProbe()}},
+		{"domain-latch", func(*testing.T) *Chain { return domainC }, []probe{domainProbe(domainAnchorBlock, domainTrigger)}},
+		{"validators-seen", func(*testing.T) *Chain { return seenC }, []probe{validatorsSeenProbe(seenAnchorBlock, seenTrigger)}},
+	}
+}
+
+// coveredFields is the union of every probe's detect set — the committed fields the
+// oracle claims to prove load-bearing.
+func coveredFields(worlds []worldGroup) map[string]bool {
+	covered := map[string]bool{}
+	for _, w := range worlds {
+		for _, p := range w.probes {
+			for _, f := range p.detect {
+				covered[f] = true
+			}
+		}
+	}
+	return covered
+}
+
+// leaveOneOutFlipped runs the pure ablation loop and returns the set of committed
+// fields whose omission flipped SOME world's probe. It asserts nothing — the caller
+// decides what a flip (or its absence) means. logf receives a per-flip line; pass a
+// no-op to run it silently (the meta-guard neuters probes and does not want the noise).
+func leaveOneOutFlipped(t *testing.T, worlds []worldGroup, logf func(string, ...any)) map[string]bool {
+	t.Helper()
 	flipped := map[string]bool{}
 	for _, w := range worlds {
 		wcov := map[string]bool{}
@@ -1243,7 +1359,7 @@ func TestLeaveOneOutProvesEachFieldLoadBearing(t *testing.T) {
 					// Logged so the pass is evidence, not an assertion: CI shows
 					// which world+probe caught which field, and a field that starts
 					// "diverging" only via an unrelated panic is visible here.
-					t.Logf("[%s] omitting %-16s → probe %q: full=%s ablated=%s", w.name, name, p.name, fv, av)
+					logf("[%s] omitting %-16s → probe %q: full=%s ablated=%s", w.name, name, p.name, fv, av)
 					flipped[name] = true
 					break
 				}
@@ -1255,13 +1371,123 @@ func TestLeaveOneOutProvesEachFieldLoadBearing(t *testing.T) {
 			}
 		}
 	}
-	for name := range covered {
-		if !flipped[name] {
-			t.Errorf("omitting committed field %q changed NO verdict in any world.\n"+
-				"Either the field is not actually load-bearing (so committing it "+
-				"is bloat on the snapshot — revisit the Q2 enumeration and the Q3 "+
-				"growth analysis), or the probes are not adversarial enough. This "+
-				"is a finding to route, not a test to relax.", name)
+	return flipped
+}
+
+// TestNeuteringAnyProbeBreaksCompleteness is the structural anti-DECORATION guard. It
+// closes the shared-block SHADOWING class: two probes bound to the same world+block, so
+// the leave-one-out loop (which breaks on the FIRST flipping probe) lets an earlier probe
+// catch a later probe's field, leaving the later probe proving nothing — neuter it and the
+// oracle stays green. This has bitten twice: bondRootProven aliasing (documented near this
+// file's top, ..._test.go:90-102) and bondRegHeightProbe shadowed by lockedInProbe in
+// gateWorld (fixed here by giving bondRegHeight its own sole-discriminator world).
+//
+// The guard: EVERY probe must be the SOLE catcher for at least one committed field. For
+// each probe in turn, neuter it (force its ask to a constant, keep its detect tag) and
+// re-run the ablation. If the oracle's completeness guard would STILL pass — every covered
+// field still flips in some world — that probe caught nothing no other probe catches: it is
+// shadowed decoration, and this test FAILS naming it. A neuter that drops at least one field
+// out of the flipped set is the probe doing real work.
+//
+// Neutering is non-destructive: buildLeaveOneOutWorlds is a factory, so each iteration gets
+// fresh probes and mutating one copy's ask cannot leak into the next iteration or the real
+// oracle.
+//
+// shadowedProbes is a DECLARED, SHRINKING debt (the probeUncovered discipline applied to
+// probes, not fields): probes that this guard proves are NOT yet sole discriminators, each
+// with the reason and the routing owed. It exists because running the guard honestly for the
+// FIRST time surfaced pre-existing shadowing this fix did not create — a finding to route, not
+// to suppress by weakening the guard. bondRegHeightProbe was on this list before its fix
+// (bondRegHeightWorld) and is now OFF it — the guard is what proved the fix. Any NEW probe that
+// lands shadowed FAILS here unless it is added to this list with a routing note; the list must
+// only shrink. Removing a probe from this map without making it a sole discriminator RED-flags
+// this test, so the debt cannot be quietly abandoned either.
+var shadowedProbes = map[string]string{
+	// byRoot is soundly caught by "dup-publish must be rejected". This probe's verdict does
+	// not actually depend on the byRoot SET being carried: revoking a never-published root is
+	// rejected whether or not byRoot is present (isolated ablation shows no flip). Its detect
+	// tag is mis-declared. FIX (in scope, low risk): drop its byRoot detect tag / move it out
+	// of the leave-one-out field set — it is a validity-rule probe, not a snapshot-field probe.
+	"revoking an unknown root must be rejected": "byRoot already caught by dup-publish; this " +
+		"probe does not depend on the carried byRoot set (mis-tagged). Owed: retag/remove.",
+
+	// bondRootOwner and bondRootProven are COUPLED in the displacement predicate
+	// (chain.go:2839-2849): the challenger block gains standing if EITHER field is dropped, and
+	// both probes observe it via c.bonded[claimant]. Separating them into independent
+	// sole-discriminator worlds touches the F1/C1 no-discount ownership semantics —
+	// research-gated. ROUTED: needs a Researcher-certified design for two worlds where
+	// owner-vs-proven are independently droppable. Do NOT fix blind.
+	"a second identity cannot take an already-owned bond root": "bondRootOwner coupled with " +
+		"bondRootProven in the displacement predicate (chain.go:2839). ROUTED: research-gated split.",
+	"a proven bond-root owner cannot be displaced by a later proven claim": "bondRootProven " +
+		"coupled with bondRootOwner in the displacement predicate (chain.go:2839). ROUTED: research-gated split.",
+}
+
+func TestNeuteringAnyProbeBreaksCompleteness(t *testing.T) {
+	// The full covered set, computed once from an unmodified world set. Every neuter is
+	// judged against this: a probe is load-bearing iff neutering it drops some field.
+	fullCovered := coveredFields(buildLeaveOneOutWorlds(t))
+
+	// Enumerate (world, probe) coordinates by index so a neuter can target exactly one.
+	type coord struct{ wi, pi int }
+	var coords []coord
+	{
+		w0 := buildLeaveOneOutWorlds(t)
+		for wi := range w0 {
+			for pi := range w0[wi].probes {
+				coords = append(coords, coord{wi, pi})
+			}
+		}
+	}
+
+	stillShadowed := map[string]bool{}
+	for _, co := range coords {
+		worlds := buildLeaveOneOutWorlds(t) // fresh probes: mutation stays local
+		target := &worlds[co.wi].probes[co.pi]
+		name := target.name
+
+		// Neuter: force the verdict constant, keep detect. A constant ask returns the
+		// same value for the full and ablated replicas, so this probe can never be the
+		// one that flips — exactly a decoration probe.
+		target.ask = func(*Chain) string { return "NEUTERED" }
+
+		flipped := leaveOneOutFlipped(t, worlds, func(string, ...any) {})
+
+		// With this one probe neutered, is any field it was supposed to catch now caught
+		// by NOTHING? If every field still flips, this probe was redundant (shadowed).
+		soleCatcher := false
+		for f := range fullCovered {
+			if !flipped[f] {
+				soleCatcher = true // this probe is the ONLY one that flips f
+				break
+			}
+		}
+		if soleCatcher {
+			// A load-bearing probe that is (wrongly) still on the debt list is itself a
+			// finding: the debt must reflect reality.
+			if _, listed := shadowedProbes[name]; listed {
+				t.Errorf("probe %q is a SOLE discriminator but is still listed in shadowedProbes — "+
+					"remove the stale entry; the debt list must only shrink.", name)
+			}
+			continue
+		}
+		// Shadowed: neutering it changed nothing the guard sees. Accept ONLY if declared.
+		stillShadowed[name] = true
+		if _, allowed := shadowedProbes[name]; !allowed {
+			t.Errorf("neutering probe %q left the completeness guard GREEN — every committed "+
+				"field still flips in some world without it. That probe is the SOLE catcher of "+
+				"NO field: it is shadowed DECORATION (the shared-block shadowing class, "+
+				"..._test.go:90-102). Give the field it claims its OWN sole-discriminator world "+
+				"(as bondRegHeightWorld does), or record it in shadowedProbes with a routing note.", name)
+		}
+	}
+
+	// The debt may only SHRINK: a name declared shadowed that is no longer shadowed must be
+	// removed from the list. This is what forces bondRegHeightProbe off the list once fixed.
+	for name := range shadowedProbes {
+		if !stillShadowed[name] {
+			t.Errorf("probe %q is declared in shadowedProbes but is NO LONGER shadowed "+
+				"(it is now a sole discriminator or was removed) — delete the stale debt entry.", name)
 		}
 	}
 }

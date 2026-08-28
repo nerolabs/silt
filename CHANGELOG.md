@@ -62,6 +62,32 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   strictly stronger, and order-free by construction.
 
 ### Added
+- **Keystone leave-one-out — fix a shared-block SHADOWING decoration probe + add a
+  structural neuter meta-guard** (2026-08-28, model-check/unit tier; no consensus rule
+  touched). A blind review found `bondRegHeightProbe`
+  (`core/chain/modelcheck_snapshot_equivalence_test.go`) was DECORATION in the running
+  oracle: it shared its within-R re-reg block with `lockedInProbe` in the `gate-lock`
+  world (gate armed by `gateLockedIn`), so the leave-one-out loop — which breaks on the
+  first flipping probe — let `lockedInProbe` catch the `bondRegHeight` ablation first and
+  `bondRegHeightProbe` never ran. Neuter it and the oracle stayed green: a probe that
+  proved nothing. **Part 1:** give `bondRegHeight` its own sole-discriminator world
+  `bondRegHeightWorld`, where the #506 gate is armed by `cfg.RegGateActivationHeight > 0`
+  (chain.go:3027) instead of `gateLockedIn`, so `gateLockedIn`/`gateHeight` are unset and
+  `bondRegHeight` is the ONLY committed-field discriminator. A within-R re-reg past the
+  activation boundary is **`ErrRegGate`**-rejected with the field, accepted without it;
+  neutering the probe now turns `TestLeaveOneOutProvesEachFieldLoadBearing` RED
+  (`changed NO verdict in any world`). `RegGateActivationHeight` is per-world genesis
+  config selecting the regime (the certified pre-latch trusted-fleet mode, chain.go:201);
+  the R-rule is untouched. **Part 2:** `TestNeuteringAnyProbeBreaksCompleteness` neuters
+  EACH probe in turn (forces its `ask` constant, keeps its `detect` tag) and asserts the
+  completeness guard goes RED — every probe must be the SOLE catcher of at least one
+  field. `buildLeaveOneOutWorlds`/`leaveOneOutFlipped` are extracted so the guard and the
+  oracle share one code path; neutering is non-destructive (fresh probe copies per
+  iteration). Running the guard honestly surfaced three PRE-EXISTING shadowed probes
+  (`byRoot` double-coverage; the `bondRootOwner`/`bondRootProven` displacement coupling,
+  chain.go:2839) — quarantined in a declared, shrink-only `shadowedProbes` debt list with
+  routing notes (the bond-root split is research-gated), not suppressed. Deliberation:
+  `docs/thinking/2026-08-28-keystone-bondregheight-sole-discriminator.md`.
 - **Keystone leave-one-out — the latch/gate/domain tranche proven load-bearing**
   (2026-08-28, model-check/unit tier; no consensus rule touched — probes a threshold,
   moves none). `TestLeaveOneOutProvesEachFieldLoadBearing`
