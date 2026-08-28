@@ -666,9 +666,9 @@ var probeUncovered = map[string]string{
 		"gate-locked replica plus an R-rule-violating or same-id-twice reg past H_act whose " +
 		"window check passes on the ablated (gate-off) path — a full nonce-valid block history, " +
 		"which a history-less snapshot replica cannot supply cleanly",
-	"gateHeight": "same as gateLockedIn — order-independence COVERED, leave-one-out needs a nonce-valid post-H_act block",
-	"everMature":     "needs the maturity latch to trip, then a launchAnchor/handoff-dependent check",
-	"matureEpoch":    "needs the #357 Cond B handoff, then a regime-dependent quorum check",
+	"gateHeight":  "same as gateLockedIn — order-independence COVERED, leave-one-out needs a nonce-valid post-H_act block",
+	"everMature":  "needs the maturity latch to trip, then a launchAnchor/handoff-dependent check",
+	"matureEpoch": "needs the #357 Cond B handoff, then a regime-dependent quorum check",
 }
 
 // TestLeaveOneOutProvesEachFieldLoadBearing is the sharp half. For every

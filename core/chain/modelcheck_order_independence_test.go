@@ -393,6 +393,7 @@ var matureFields = []string{"everMature", "matureEpoch", "epochSet"}
 // members with regVersion ≥ BlockVersionRegGate.
 //   - If x commits version 3: ready = 3w, 3·3w=9w > 2·3w=6w → gateLockedIn, gateHeight set.
 //   - If x commits version 2: ready = 2w, 3·2w=6w > 6w is FALSE → NOT locked in.
+//
 // So x is the EXACT swing: before the apply()-canonicalization fix, the slice order
 // decided x's committed version, hence whether the gate locked — an order-dependent
 // gateLockedIn/gateHeight (a committedSet fork). After the fix, canonicalBondRegs
