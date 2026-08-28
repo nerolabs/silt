@@ -62,6 +62,50 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   strictly stronger, and order-free by construction.
 
 ### Added
+- **Keystone leave-one-out — the latch/gate/domain tranche proven load-bearing**
+  (2026-08-28, model-check/unit tier; no consensus rule touched — probes a threshold,
+  moves none). `TestLeaveOneOutProvesEachFieldLoadBearing`
+  (`core/chain/modelcheck_snapshot_equivalence_test.go`) now covers six more committed
+  fields, each moved out of `probeUncovered` with a real verdict-flipping probe on the
+  world where the field is load-bearing:
+  - `everMature` — the de-mature bar (`requireQuorumStack`, chain.go:2471). `deMatureWorld`
+    latches maturity while decentralized, then live weight concentrates (whale) so
+    `!matureNow()`; a sub-⅔ real-bond coalition that clears the count floor must be
+    refused. Full → **`ErrDeMatureQuorum`** (5 MiB of 105, need ≥70); everMature-dropped →
+    accept (bar skipped).
+  - `matureEpoch` — the frozen-weight quorum (chain.go:2457). `matureEpochWorld` freezes
+    unequal weights (silent whales) and narrows live bonded to the two coalition members;
+    a below-⅔ commit that clears the count floor (bftThreshold(2)=1) must be refused.
+    Full → **`ErrNoQuorumWeight`** (2 MiB of 23, need >15); matureEpoch-dropped → accept
+    (weight rule skipped, qualification leaves the frozen branch).
+  - `gateLockedIn` — the #506 R-rule (`regGateActive`, chain.go:3030). `gateWorld` locks
+    the gate at a boundary; a within-R re-reg PAST H_act must be refused. Full →
+    **`ErrRegGate`**; gateLockedIn-dropped → accept (gate never armed).
+  - `gateHeight` — same predicate, OPPOSITE direction: a within-R re-reg BELOW H_act must
+    be accepted. Full → accept; gateHeight-dropped (H_act collapses to 0) →
+    **`ErrRegGate`** (gate active early).
+  - `regVersion` — read at exactly ONE verdict-relevant site, the `rotateEpoch` #506
+    lock-in tally (chain.go:3007), so a mutating probe APPLIES the boundary block, trips
+    the maturity latch, and runs the tally. Full (⅔-ready) locks the gate → a within-R reg
+    is **`ErrRegGate`**; regVersion-dropped tallies zero ready weight → gate never locks →
+    accept.
+  - `bondDomain` — **overturns the prior "metric, not a validity predicate" excuse.**
+    bondDomain feeds `matureNow()` via the A-axis Nakamoto coefficient (`C2Metric` →
+    `MatureCoefficient`), and `matureNow()` gates the maturity latch (chain.go:2893) and
+    thereby the launch-anchor shed. `domainWorld` merges all bonds into ONE declared
+    domain so the network stays immature and an anchor-only commit is accepted; a mutating
+    probe applies a block. bondDomain-dropped counts the bonds as independent → the
+    coefficient rises → the latch trips → the anchors shed → the same commit is REJECTED
+    (`0 qualified` via the anchor-shed). Full → accept; dropped → reject.
+  Each probe was ablation-proven: its defect was injected and watched go RED with the
+  named error, and the oracle's "changed NO verdict in any world" guard was confirmed to
+  FIRE end-to-end when a probe's discriminator is neutralized (a green with no
+  demonstrated red is decoration). STOP boundaries held: every flip changes which
+  identities are ADMITTED (qualification) or whether a reg is a valid PAYLOAD — never the
+  weight-sum seam (chain.go:2450-2456), the epochSet freeze / `rotateEpoch` (I3), the
+  `⌈A/2⌉` threshold, or #603's weight discriminator. `probeUncovered` now holds only
+  `bondRegHeight` and `validatorsSeen`. Deliberation:
+  `docs/thinking/2026-08-28-keystone-leaveoneout-latch-gate-domain.md`.
 - **Named the genesis same-root premise (residual R-G) — no genesis validity change**
   (2026-08-28). PR #618's `seenRoot` per-root distinct-ID dedup lives in
   `validateBondRegs`, which `AppendGenesis` (chain.go) does NOT run — it goes straight
