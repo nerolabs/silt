@@ -59,6 +59,41 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `RULING-618-updated-sameroot-dedup-fix-2026-08-28`
   (`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-618-updated-sameroot-dedup-fix-2026-08-28.md`),
   residual R-G.
+- **Order-independence coverage for the mature-epoch family — the `orderVacuous` debt,
+  next increment** (2026-08-28). The order-independence model-check oracle
+  (`modelcheck_order_independence_test.go`) declared the mature-epoch family
+  (`everMature`, `matureEpoch`, `epochSet`) as `orderVacuous`: the launch-anchor
+  `twoOrderings` world never matures (`MatureValidators=99`), so those fields were
+  compared over ∅ and their order-independence was unproven. A new `matureOrderings`
+  fixture brings an ANCHORLESS objective world (epochs on, `MatureValidators=2`) to
+  maturity over two OPPOSITE-order histories: a bonded non-quorum victim is slashed at
+  height 1 in one ordering and height 3 in the other, so the `(bonded, slashed)` maps
+  are built by two genuinely different histories (per the #618 lesson that a commutative
+  fixture is a decoration). Both freeze the SAME four-member `epochSet` at the height-4
+  boundary (`liveQualifiedSet` excludes the slashed victim), and both latch `everMature`
+  / set `matureEpoch`. All three fields are non-empty and byte-identical across the two
+  slash orderings. `epochSet` is order-INVARIANT BY CONSTRUCTION: `rotateEpoch` runs LAST
+  in `apply` on the final post-block state, so the freeze is a deterministic read of the
+  `bonded`/`slashed` maps whose own order-independence #617/#618 cover. This fixture
+  therefore CONFIRMS invariance; it does not discover-or-refute a fork the way #618 did,
+  because no admissible slash ordering in this world lets the intermediate `bonded=5`
+  state reach the freeze. Un-stressed residual, on the record: the latch/handoff HEIGHT
+  dimensions are NOT varied — all validators bond at genesis, so the latch trips at the
+  same height in both orderings; acceptable because `everMature`/`matureEpoch` are one-way
+  final-state bools that cannot flip, but they are the honest residual (the consensus-
+  correctness trip-wire did not trip; no rule touched).
+  `TestCommittedSetFieldsAreOrderIndependent` now pairs each committed field with its
+  populating world (the union-of-worlds pattern the snapshot oracle already uses); a
+  dedicated `TestMatureEpochFamilyIsOrderIndependent` asserts the latch/handoff/freeze
+  ACTUALLY FIRED (coverage is not vacuous) and the two orderings reached identical state.
+  Three ablations verified RED-then-GREEN (drop a governor from one frozen `epochSet`;
+  flip `matureEpoch`/`everMature` in one chain — each names the field). Three fields
+  removed from `orderVacuous`. Two-list union: `epochSet` already had a leave-one-out
+  snapshot probe (#604), so it now clears BOTH oracle lists (freeze-ready);
+  `everMature`/`matureEpoch` clear the order-independence list only and remain
+  `probeUncovered`-owed. The #506-gate family (`gateLockedIn`, `gateHeight`) is left for
+  the next increment. Deliberation: `docs/thinking/2026-08-28-orderVacuous-mature-epoch.md`.
+  Test/fixture only; no consensus rule changed.
 - **Order-independence coverage for the bond-registration family — the #617 debt,
   first increment** (2026-08-28). PR #617 declared six committed bond-registration
   fields (`bonded`, `bondRootOwner`, `bondRootProven`, `bondRegHeight`, `regVersion`,
