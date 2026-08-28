@@ -72,6 +72,14 @@ reintroduce silently. For EACH probe in the leave-one-out oracle it neuters that
 completeness guard would STILL pass — every covered field still flips in some world — that
 probe is the SOLE catcher of NO field: shadowed decoration, and the guard FAILS naming it.
 
+**The precise rule the guard enforces: every probe uniquely flips at least one field.**
+The guard judges sole-catchness by ACTUAL VERDICT FLIPS (`leaveOneOutFlipped`), NOT by
+`detect` tags — a probe cannot claim via its tag a field it never flips. This is stricter
+than "no decoration": a probe that redundantly covers a field is permitted ONLY if it also
+uniquely flips some OTHER field; a probe that uniquely flips nothing is flagged even if its
+tag names a covered field. That conservative bias is exactly what a completeness-axis
+freeze gate wants — it forbids any probe deletable without losing field coverage.
+
 Non-destructive by construction: `buildLeaveOneOutWorlds` is a factory, so each neuter
 targets a fresh probe copy; mutation cannot leak into the next iteration or the real oracle.
 The oracle's ablation logic is extracted into `leaveOneOutFlipped` so the guard and the
@@ -100,12 +108,29 @@ listed also RED-flags it.
 
 2. **`a second identity cannot take an already-owned bond root` (detect: `bondRootOwner`)**
    and **`a proven bond-root owner cannot be displaced …` (detect: `bondRootProven`).**
-   These two fields are COUPLED in the displacement predicate (chain.go:2839-2849): the
-   challenger block gains standing if EITHER field is dropped, and both probes observe it
-   via `c.bonded[claimant]`. Separating them into independent sole-discriminator worlds
-   touches the F1/C1 no-discount ownership semantics — **research-gated**. ROUTED: needs a
-   Researcher-certified design for two worlds where owner-vs-proven are independently
-   droppable. Not fixed blind.
+   The blind PE review (`RULING-bondregheight-probe-neuter-guard-2026-08-28.md`)
+   OVERTURNED this consult's initial research-gated routing. It is **IN-SCOPE FIXTURE
+   work, not research-gated** — an owed fixture, not a Researcher consult.
+
+   The coupling I saw is a property of THESE PROBES, not of the fields. Both current
+   probes ask via `c.bonded[claimant]` in a world where dropping EITHER field produces
+   the same observable, so they cannot tell the fields apart. The fields themselves are
+   NOT symmetrically coupled: `bondRootProven` feeds exactly ONE predicate (displacement,
+   chain.go:2845), while `bondRootOwner` feeds TWO (displacement AND the R-rule exemption
+   `restoresHeldStanding`, chain.go:3054). A fixture that drops `bondRootProven` alone
+   (holding `bondRootOwner`) flips the displacement verdict `held`→`displaced` via the
+   EXISTING rule (chain.go:2845 as written): `proven && !bondRootProven` goes
+   `true && !true = false` (no displacement) to `true && !false = true` (displaces). That
+   moves no threshold and re-decides no ownership semantics — it only OBSERVES the rule
+   that already exists.
+
+   Research-gating would only apply to CHANGING the rule (merging the two fields, or
+   discounting ownership so proof no longer beats declaration). Proving the current
+   fields individually load-bearing is fixture work. OWED: build two probes — (a) a
+   proven-vs-proven displacement world isolating `bondRootProven`; (b) a `restoresHeldStanding`
+   exemption (or owner-observing) world isolating `bondRootOwner`. Reclassify from
+   `research-gated` to `owed fixture`; not fixed blind in THIS commit only to keep it
+   reviewable.
 
 ## Tension surfaced to the Planner
 
@@ -121,4 +146,5 @@ genuine finding routed above, not scope this change silently absorbs.
 No probe or world moves a consensus rule. The weight-sum seam (chain.go:2450-2456), the
 epochSet freeze / `rotateEpoch` (I3), and the ⌈A/2⌉ threshold are untouched.
 `RegGateActivationHeight` is per-world genesis config selecting the regime; the R-rule is
-unchanged. The bond-root ownership split is ROUTED, not built.
+unchanged. The bond-root ownership split is OWED IN-SCOPE FIXTURE (per the PE ruling), not
+built in this commit — a later fixture, not a Researcher consult.
