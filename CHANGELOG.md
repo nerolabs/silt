@@ -72,8 +72,16 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   fixture is a decoration). Both freeze the SAME four-member `epochSet` at the height-4
   boundary (`liveQualifiedSet` excludes the slashed victim), and both latch `everMature`
   / set `matureEpoch`. All three fields are non-empty and byte-identical across the two
-  orderings — the maturity latch, the #357 Cond-B handoff, and the epoch freeze are
-  order-INDEPENDENT (the consensus-correctness trip-wire did not trip; no rule touched).
+  slash orderings. `epochSet` is order-INVARIANT BY CONSTRUCTION: `rotateEpoch` runs LAST
+  in `apply` on the final post-block state, so the freeze is a deterministic read of the
+  `bonded`/`slashed` maps whose own order-independence #617/#618 cover. This fixture
+  therefore CONFIRMS invariance; it does not discover-or-refute a fork the way #618 did,
+  because no admissible slash ordering in this world lets the intermediate `bonded=5`
+  state reach the freeze. Un-stressed residual, on the record: the latch/handoff HEIGHT
+  dimensions are NOT varied — all validators bond at genesis, so the latch trips at the
+  same height in both orderings; acceptable because `everMature`/`matureEpoch` are one-way
+  final-state bools that cannot flip, but they are the honest residual (the consensus-
+  correctness trip-wire did not trip; no rule touched).
   `TestCommittedSetFieldsAreOrderIndependent` now pairs each committed field with its
   populating world (the union-of-worlds pattern the snapshot oracle already uses); a
   dedicated `TestMatureEpochFamilyIsOrderIndependent` asserts the latch/handoff/freeze

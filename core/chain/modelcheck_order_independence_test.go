@@ -294,6 +294,14 @@ func twoOrderings(t *testing.T) (*Chain, *Chain) {
 // MatureCoefficient=2 ≥ MatureValidators=2 once they are seen); matureEpoch and the
 // frozen epochSet are set at the height-4 rotation. The property under test: two
 // opposite slash orders reach byte-identical everMature, matureEpoch, epochSet.
+//
+// SCOPE (per RULING-620): epochSet is order-INVARIANT BY CONSTRUCTION — rotateEpoch runs
+// LAST in apply on the final post-block state, so the freeze reads only the converged
+// bonded/slashed maps (their order-independence is #617/#618's job). This fixture CONFIRMS
+// that invariance; it does not discover-or-refute a fork as #618 did. Un-stressed residual:
+// the latch/handoff HEIGHT is NOT varied — all validators bond at genesis, so the latch
+// trips at the SAME height in both orderings. Acceptable (one-way final-state bools cannot
+// flip), but named so the residual is on the record before the era-3 freeze.
 func matureOrderings(t *testing.T) (*Chain, *Chain) {
 	t.Helper()
 	build := func(slashEarly bool) *Chain {
@@ -640,7 +648,11 @@ func TestMatureEpochFamilyIsOrderIndependent(t *testing.T) {
 		}
 	}
 	t.Logf("network matured and froze an identical %d-member epochSet across two opposite "+
-		"slash orderings — the maturity latch and epoch freeze are order-INDEPENDENT", len(a.epochSet))
+		"slash orderings — epochSet is order-INVARIANT BY CONSTRUCTION (rotateEpoch is last "+
+		"in apply, a deterministic read of bonded/slashed; #617/#618 cover those). This "+
+		"CONFIRMS invariance; it does not discover-or-refute a fork as #618 did. Residual: "+
+		"latch/handoff HEIGHT not varied (all bond at genesis), one-way bools that cannot flip",
+		len(a.epochSet))
 }
 
 // TestRevLogRootIsOrderDependent is the concrete #597 statement, asserted on

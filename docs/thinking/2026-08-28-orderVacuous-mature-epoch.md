@@ -81,25 +81,47 @@ exact code paths that write these fields:
 
 1. **`everMature` (the latch).** `Mature()` reads `MatureCoefficient()` over the committed
    `bonded` ledger. The latch trips the FIRST block after which the coefficient crosses
-   `MatureValidators`. If the maturity-making bonds are spread across multiple blocks, the
-   HEIGHT at which the latch trips depends on the order the bonds arrive. The stress: bring
-   the network to maturity by committing the SAME set of bonds in two OPPOSITE orders
-   (block order swapped AND intra-block BondReg slice order flipped), then run to the same
-   final height. `everMature` is a one-way latch, so both must end `true`; the finding
-   would be if one ordering latched and the other did not at the same final height.
+   `MatureValidators`. The stress this increment ACTUALLY builds: bring the network to
+   maturity and vary a SLASH height (1 vs 3), then run to the same final height.
+   `everMature` is a one-way latch, so both end `true`. NOTE the residual named below —
+   the latch HEIGHT is not varied in the built fixture; all validators bond at genesis, so
+   the latch trips at the same height in both orderings.
 
 2. **`matureEpoch` + `epochSet` (the rotation freeze).** `rotateEpoch` freezes
-   `liveQualifiedSet()` — a pure read of `bonded`/`slashed` at the boundary. The stress:
-   the boundary must be crossed in BOTH orderings after the latch, and the frozen set must
-   be byte-identical. To make the freeze non-trivially order-exposed, the maturity-making
-   bonds arrive in different orders BEFORE the boundary, so the `bonded` map is built up by
-   two different histories that must converge to the same frozen `epochSet`.
+   `liveQualifiedSet()` — a pure read of `bonded`/`slashed` at the boundary. Because
+   `rotateEpoch` runs LAST in `apply` on the final post-block state, the freeze reads only
+   the converged final maps; the intermediate `bonded=5` state the slash-timing varies
+   never reaches it. So `epochSet` is order-INVARIANT BY CONSTRUCTION here: a deterministic
+   read of `bonded`/`slashed`, whose own order-independence #617/#618 cover. The stress
+   built varies the slash height so the two `(bonded, slashed)` histories differ before the
+   boundary and must converge to the same frozen `epochSet`.
 
-3. **Assertion.** Commit the identical bond set in two opposite orderings, cross the same
-   boundary at the same final height, and assert `everMature`, `matureEpoch`, and
+3. **Assertion.** Commit the identical governing set in two opposite slash orderings, cross
+   the same boundary at the same final height, and assert `everMature`, `matureEpoch`, and
    `epochSet` are byte-identical (`reflect.DeepEqual`). The existing `orderVacuous` guard
    in `TestCommittedSetFieldsAreOrderIndependent` then enforces the fields stay non-empty
    and covered.
+
+**What this CONFIRMS vs what #618 DISCOVERED.** This fixture confirms `epochSet` is an
+order-invariant read of already-covered inputs. It does NOT discover-or-refute a fork the
+way #618 did — no admissible slash ordering in this world can put the divergent
+intermediate state into the freeze, because the freeze is last in `apply`. A green here
+means "the freeze is a deterministic read of order-independent maps," not "a
+divergence-capable ordering was tried and converged."
+
+**Un-stressed residual (on the record for the era-3 freeze).** Two dimensions are NOT
+exercised, and the claim above does not cover them:
+
+- **Latch HEIGHT under spread bonds.** All bonds are at genesis, so the latch trips at the
+  same height in both orderings. An ordering where maturity-making bonds arrive across
+  DIFFERENT blocks could trip the latch at different heights. `everMature` is a one-way
+  final-state bool, so this cannot flip the committed value — but it is not stressed.
+- **`matureEpoch` handoff HEIGHT.** Same root cause: the handoff fires at the first
+  post-latch boundary, which is height 4 in both orderings because the latch is at height
+  1 in both. Handoff-height variation is not exercised.
+
+These are acceptable to defer — they cannot flip a one-way final-state bool — but they are
+the honest residual, not a proven property of this fixture.
 
 The two orderings reach the SAME logical state (same validators bonded, same final
 height, same boundary). If the committed mature-epoch state DIFFERS, that is a REAL
