@@ -2811,7 +2811,21 @@ func (c *Chain) apply(b Block) {
 	// Sybil standings off one shared plot. The first owner may re-register (renew
 	// or resize) its own root freely.
 	proven := b.Height > 0 // genesis regs are declared; height>0 went through validateBondRegs
-	for _, r := range b.BondRegs {
+	// CONSENSUS-RULE (canonicalize same-id intra-block regs, cert
+	// sameid-twoversion-intrablock-bondreg-contention 2026-08-28): a block may carry
+	// more than one BondReg for the SAME validator id (a legal F1 renew/resize, or a
+	// Byzantine same-id-two-version block admissible pre-#506-gate). The old loop
+	// resolved these LAST-WRITER-WINS by slice position, so regVersion/bondDomain/
+	// bonded committed an order-dependent value → an order-dependent history-
+	// independent SMT root (a latent fork; regVersion also feeds the #506 lock-in
+	// tally, so gateLockedIn/gateHeight inherited the split). Fold to ONE canonical
+	// winner per id by a TOTAL ORDER that is a pure function of content — largest
+	// Size, then Version, then Domain, then Sig — and apply ALL of that winner's
+	// fields. The result is identical however the proposer ordered the slice. Reject
+	// was refuted (it breaks the legal resize); canonicalize is the certified fix.
+	// The winner is applied in a deterministic id order so the ownership/displacement
+	// writes (bondRootOwner/bondRootProven) are order-free too.
+	for _, r := range canonicalBondRegs(b.BondRegs) {
 		if len(r.Validator) != ed25519.PublicKeySize {
 			continue
 		}
@@ -2891,6 +2905,73 @@ func (c *Chain) apply(b Block) {
 	if c.epochsEnabled() && b.Height%c.cfg.EpochBlocks == 0 {
 		c.rotateEpoch(b.Height)
 	}
+}
+
+// canonicalBondRegs folds a block's BondRegs to at most one reg per validator id,
+// choosing the SAME-ID winner by a TOTAL ORDER on content, and returns one reg per
+// id in FIRST-APPEARANCE order. It is the ordering-canonicalization half of the SMR
+// block-determinism requirement: same-id multi-reg is legitimate content (a
+// renew/resize), so it is CANONICALIZED rather than rejected (the #618 sibling
+// rejected distinct-id same-root content, which has no legitimate form). See the
+// CONSENSUS-RULE note in apply() and the cert
+// sameid-twoversion-intrablock-bondreg-contention 2026-08-28.
+//
+// The winner rule is largest Size, then Version, then Domain, then Sig bytes — a
+// strict total order that is a pure function of the reg's content, independent of
+// slice position. "Largest size wins" makes a resize monotone: the intended larger
+// registration takes regardless of which order the proposer listed the regs, which
+// is the right renew/resize semantics (and keeps TestSameRootSameIDRenewAdmitted
+// green — reg2's 2S wins in both orderings).
+//
+// SCOPE (deliberate, cert §3(a1) + the residual R-G premise): this fold ONLY collapses
+// SAME-ID multi-reg. It does NOT re-order distinct ids — the winners are emitted in the
+// order their id first appears in the slice. Sorting the winners by id would ALSO make
+// the DISTINCT-ID same-root case order-independent, which is a genuinely different rule:
+// #618 rejects that collision at height>0 validity, and at genesis it is the intentionally
+// order-dependent residual R-G premise (TestGenesisSameRootApplyIsOrderDependent). Both
+// are OUT of this cert's scope and research-gated; touching them silently would break a
+// named premise. Preserving first-appearance order keeps the distinct-id ownership-branch
+// behavior byte-for-byte identical to the pre-fold loop.
+func canonicalBondRegs(regs []BondReg) []BondReg {
+	if len(regs) <= 1 {
+		return regs
+	}
+	winners := make(map[ports.NodeID]int, len(regs)) // id → index into out
+	out := make([]BondReg, 0, len(regs))
+	for _, r := range regs {
+		if len(r.Validator) != ed25519.PublicKeySize {
+			continue // malformed regs are dropped by apply()'s own guard; skip here too
+		}
+		id := r.ValidatorID()
+		if idx, seen := winners[id]; seen {
+			if bondRegLess(out[idx], r) { // r beats the incumbent under the total order
+				out[idx] = r // canonical winner replaces IN PLACE — first-appearance slot kept
+			}
+			continue
+		}
+		winners[id] = len(out)
+		out = append(out, r)
+	}
+	return out
+}
+
+// bondRegLess reports whether a ranks BELOW b under the canonical same-id winner
+// order: largest Size, then Version, then Domain, then Sig bytes. All four keys are
+// content, so the order is a pure function of the reg and does not depend on slice
+// position. The last key (Sig) makes the order TOTAL — two regs identical in
+// Size/Version/Domain still have a deterministic winner, so there is never a tie the
+// slice order could break.
+func bondRegLess(a, b BondReg) bool {
+	if a.Size != b.Size {
+		return a.Size < b.Size
+	}
+	if a.Version != b.Version {
+		return a.Version < b.Version
+	}
+	if a.Domain != b.Domain {
+		return a.Domain < b.Domain
+	}
+	return bytes.Compare(a.Sig, b.Sig) < 0
 }
 
 // rotateEpoch begins a new epoch at boundary height h. During the launch phase

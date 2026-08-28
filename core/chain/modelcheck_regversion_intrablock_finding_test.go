@@ -8,51 +8,45 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// CONSENSUS FINDING (2026-08-28, the #506-gate order-independence increment):
-// the committedSet field `regVersion` is ORDER-DEPENDENT on intra-block BondReg
-// slice order, and so is `bondDomain`. This is a #618-class fork: two honest
-// replicas that apply the IDENTICAL admissible block in a different BondReg slice
-// order commit DIFFERENT committed state, hence a different history-independent
-// SMT root, hence a consensus split.
+// CONSENSUS-RULE COVERING PROBE (2026-08-28, the #506-gate order-independence
+// increment) — the RED-then-GREEN gate for the certified canonicalization fix in
+// apply() (cert sameid-twoversion-intrablock-bondreg-contention 2026-08-28,
+// resolution §3(a1): fold same-id multi-reg to one canonical winner by a total
+// order — largest Size, then Version, then Domain, then Sig).
 //
-// MECHANISM (read from source, chain.go):
-//   - apply() iterates b.BondRegs in slice order and does, per reg:
-//        c.regVersion[id] = r.Version   (chain.go:2842, "latest committed reg governs")
-//        c.bondDomain[id] = r.Domain    (chain.go:2843, "latest wins")
-//     So for a SINGLE id carrying two regs in one block, LAST-IN-SLICE-ORDER wins.
-//   - The same-id-twice-in-one-block guard (seenReg, chain.go:1464-1467, 1493-1496)
-//     is GATE-GATED: it is only allocated and checked when regGateActive(b.Height)
-//     is true. The gate is active only AFTER lock-in (regGateActive, chain.go:2945).
-//     So BEFORE the gate locks, a block with two regs for the same id on its OWN
-//     root is ADMISSIBLE on the validated path.
-//   - The #618 seenRoot guard (chain.go:1482-1488) does NOT catch this: it rejects
-//     DISTINCT ids on the SAME root; a validator re-registering its OWN root
-//     (same id: renew/resize) is explicitly legal (F1) and stays admitted.
+// This REPLACES the earlier finding-repro (TestRegVersionIntraBlockOrderFinding),
+// which ASSERTED the buggy divergence so the finding was on the record while it was
+// routed to the Researcher. The fix has landed; this probe now asserts the FIXED
+// property: two same-id regs with distinct Version/Domain/Size in ONE pre-gate block
+// commit BYTE-IDENTICAL regVersion/bondDomain/bonded across BOTH intra-block slice
+// orderings.
 //
-// WHY IT MATTERS: regVersion feeds the #506 gate lock-in tally in rotateEpoch
-// (chain.go:2922-2934): `if c.regVersion[id] >= BlockVersionRegGate { ready += w }`.
-// A validator whose committed version is order-dependent can therefore make the
-// GATE (gateLockedIn / gateHeight — themselves committedSet) order-dependent when
-// its weight is the >2/3 swing. Even absent the swing, regVersion and bondDomain
-// are directly under the SMT root, so the split is already a fork.
+// MECHANISM the probe pins (chain.go):
+//   - apply() folds b.BondRegs through canonicalBondRegs() before the bond loop, so
+//     for a single id carrying multiple regs a canonical winner is chosen by
+//     bondRegLess (largest Size, then Version, then Domain, then Sig) and ALL its
+//     fields (regVersion, bondDomain, bonded, bondRootOwner, …) are applied. The
+//     winner is a pure function of block content, not slice position.
+//   - Before the fix apply() took the LAST reg in slice order, so flipping the slice
+//     flipped the committed regVersion/bondDomain/bonded — an order-dependent
+//     history-independent SMT root (a #618-class fork). regVersion feeds the #506
+//     lock-in tally (rotateEpoch), so gateLockedIn/gateHeight inherited the split.
 //
-// STATUS: ROUTED to Researcher + human (a consensus-rule / validity-layer change,
-// above the Builder seat per the research gate). NO rule is changed here. This
-// test ASSERTS THE OBSERVED (current) behavior so:
-//   (1) the finding is on the record with an executable repro, and
-//   (2) the suite stays green until the certified fix lands, at which point this
-//       test FLIPS (both orderings converge → the reflect.DeepEqual becomes true)
-//       and must be rewritten into the order-independence oracle as coverage.
-//
-// The certified resolution will most likely mirror #618: reject the divergent
-// input at VALIDITY (make the same-id-twice-in-one-block guard UNCONDITIONAL, not
-// gate-gated — the same shape as making seenRoot unconditional), so the
-// order-dependent commit never enters the chain. That decision is the
-// Researcher's + human's, not the Builder's.
-func TestRegVersionIntraBlockOrderFinding(t *testing.T) {
+// ABLATION (session-7 "inject the defect" rule): stash the canonicalBondRegs fold
+// in apply() (revert to `for _, r := range b.BondRegs`) and this test goes RED — the
+// two orderings diverge (regVersion 3 vs 2, distinct bondDomain, distinct bonded).
+// With the fold in place it is GREEN. The RED-then-GREEN transcript is pasted in the
+// PR / the docs/thinking note.
+func TestRegVersionIntraBlockOrderIndependent(t *testing.T) {
 	// build commits ONE pre-gate block carrying two regs for validator v on its own
-	// root: v=2 and v=BlockVersionRegGate(3). v3Last controls slice order.
-	build := func(v3Last bool) (*Chain, error) {
+	// root, with DISTINCT Version, Domain, AND Size, so the canonical total order is
+	// exercised on all three primary keys. hiFirst controls the intra-block slice
+	// order — the ONLY variable between the two chains.
+	//
+	// The canonical winner (largest Size, then Version, then Domain, then Sig): the
+	// larger-size reg wins. Here `hi` carries the larger size (2*twoMiB) AND the
+	// higher version/domain, so `hi` is the winner under BOTH orderings.
+	build := func(hiFirst bool) (*Chain, error) {
 		v := key(90001)
 		gov := []ed25519.PrivateKey{key(90002), key(90003)} // committing quorum
 		cfg := Config{Quorum: 1, MinBond: 1 << 20, ByzantineQuorum: true,
@@ -72,11 +66,15 @@ func TestRegVersionIntraBlockOrderFinding(t *testing.T) {
 
 		prev := g.Hash()
 		rootV := ports.HashBytes(v.Public().(ed25519.PublicKey))
-		low := bondRegFull(v, rootV, twoMiB, prev, 2, 0x11)
-		high := bondRegFull(v, rootV, twoMiB, prev, BlockVersionRegGate, 0x22)
-		regs := []BondReg{high, low} // v3 first → v=2 wins
-		if v3Last {
-			regs = []BondReg{low, high} // v3 last → v=3 wins
+		// Two regs for v on its OWN root, distinct in ALL three total-order keys:
+		//   lo:  size twoMiB,     version 2,                domain 0x11
+		//   hi:  size 2*twoMiB,   version BlockVersionRegGate(3), domain 0x22
+		// hi has the larger size, so hi is the canonical winner in both orderings.
+		lo := bondRegFull(v, rootV, twoMiB, prev, 2, 0x11)
+		hi := bondRegFull(v, rootV, 2*twoMiB, prev, BlockVersionRegGate, 0x22)
+		regs := []BondReg{lo, hi} // hi last
+		if hiFirst {
+			regs = []BondReg{hi, lo} // hi first
 		}
 		b := &Block{Version: BlockVersionRounds, Height: 1, Prev: prev,
 			Entries: []ports.Entry{entry(1)}, BondRegs: regs}
@@ -84,47 +82,68 @@ func TestRegVersionIntraBlockOrderFinding(t *testing.T) {
 		return c, c.Append(*b)
 	}
 
-	a, errA := build(true)  // v=3 last  → regVersion[v]=3, bondDomain[v]=0x22
-	b, errB := build(false) // v=3 first → regVersion[v]=2, bondDomain[v]=0x11
+	a, errA := build(true)  // hi first
+	b, errB := build(false) // hi last
 
-	// Premise: the block is ADMISSIBLE in BOTH orderings. If a future validity
-	// change rejects it, this guard fires and the finding is (correctly) closed —
-	// rewrite this test into order-independence coverage at that point.
+	// Premise: the block is ADMISSIBLE in BOTH orderings — the certified fix
+	// CANONICALIZES the commit, it does NOT reject the block (reject was refuted,
+	// it breaks the legal resize). If a future validity change rejects it, this
+	// guard fires and names the premise break.
 	if errA != nil || errB != nil {
-		t.Fatalf("PREMISE CHANGED: the same-id-two-version block is no longer admissible "+
-			"in both orderings (errA=%v errB=%v). If a certified validity fix now rejects "+
-			"it, this finding is closed — move regVersion/bondDomain into the "+
-			"order-independence oracle as covered fields.", errA, errB)
+		t.Fatalf("the same-id two-version block is no longer ADMISSIBLE in both orderings "+
+			"(errA=%v errB=%v) — the certified fix canonicalizes at APPLY, it does not "+
+			"reject at validity. A rejection here means the resolution drifted from the "+
+			"cert (§3(a): canonicalize, not reject); STOP and re-derive.", errA, errB)
 	}
 
 	v := idOf(key(90001))
-	// The OBSERVED divergence — asserted as the current (buggy) truth so the finding
-	// is executable and the suite stays green pending the certified fix.
-	if a.regVersion[v] == b.regVersion[v] {
-		t.Fatalf("regVersion CONVERGED (%d == %d) — the finding appears FIXED. Re-derive: "+
-			"the same-id-two-version intra-block slice order should still pick last-in-slice "+
-			"unless a validity/apply change landed. If fixed, move this into the oracle.",
+	// The certified property: the committed same-id-slot fields are BYTE-IDENTICAL
+	// across the two intra-block orderings — the fold makes the winner a pure
+	// function of block content, not slice position.
+	if a.regVersion[v] != b.regVersion[v] {
+		t.Fatalf("regVersion DIVERGED across intra-block orderings (%d vs %d) — the "+
+			"canonicalBondRegs fold in apply() is not order-independent. This is the "+
+			"#618-class fork the cert gates on; the fix has regressed.",
 			a.regVersion[v], b.regVersion[v])
 	}
-	if a.bondDomain[v] == b.bondDomain[v] {
-		t.Fatalf("bondDomain CONVERGED (%#x == %#x) — same as above", a.bondDomain[v], b.bondDomain[v])
+	if a.bondDomain[v] != b.bondDomain[v] {
+		t.Fatalf("bondDomain DIVERGED across intra-block orderings (%#x vs %#x) — same "+
+			"as above; the fold must select ONE winner and take ALL its fields.",
+			a.bondDomain[v], b.bondDomain[v])
 	}
-	t.Logf("FINDING REPRODUCED (routed, not fixed here): committedSet fields are "+
-		"intra-block-slice-order dependent for a same-id two-version reg —\n"+
-		"  regVersion[v]: v3Last=%d  v3First=%d\n"+
-		"  bondDomain[v]: v3Last=%#x  v3First=%#x\n"+
-		"Two honest replicas applying the identical admissible block in different "+
-		"BondReg order commit different SMT-committed state (a #618-class fork).",
-		a.regVersion[v], b.regVersion[v], a.bondDomain[v], b.bondDomain[v])
+	if a.bonded[v] != b.bonded[v] {
+		t.Fatalf("bonded DIVERGED across intra-block orderings (%d vs %d) — same as above",
+			a.bonded[v], b.bonded[v])
+	}
 
-	// Sanity: the divergence is ONLY in the two-version validator's fields — the
-	// governors' state matches, confirming the finding is exactly the same-id seam
-	// and not a broader fixture asymmetry.
-	delete(a.regVersion, v)
-	delete(b.regVersion, v)
-	if !reflect.DeepEqual(a.regVersion, b.regVersion) {
-		t.Fatalf("unexpected divergence beyond the two-version validator: %v vs %v — "+
-			"the finding is wider than the same-id seam; re-scope before routing",
-			a.regVersion, b.regVersion)
+	// The winner is the largest-size reg (hi): version 3, domain 0x22, size 2*twoMiB.
+	// This pins the total order's semantics, not merely convergence — a fold that
+	// converged on the WRONG reg (e.g. smallest size) would pass the equality checks
+	// above but fail here.
+	if a.regVersion[v] != BlockVersionRegGate {
+		t.Fatalf("canonical winner is not the largest-size reg: regVersion=%d want %d "+
+			"(hi: version 3) — the total order (largest Size, then Version, …) picked wrong",
+			a.regVersion[v], BlockVersionRegGate)
+	}
+	if a.bondDomain[v] != 0x22 {
+		t.Fatalf("canonical winner domain=%#x want 0x22 (hi) — total order picked wrong", a.bondDomain[v])
+	}
+	if a.bonded[v] != 2*twoMiB {
+		t.Fatalf("canonical winner size=%d want %d (hi, the larger reg — resize is monotone)",
+			a.bonded[v], 2*twoMiB)
+	}
+	t.Logf("same-id two-version intra-block reg is order-INDEPENDENT: both orderings "+
+		"commit regVersion=%d bondDomain=%#x bonded=%d (the largest-Size winner)",
+		a.regVersion[v], a.bondDomain[v], a.bonded[v])
+
+	// Sanity: the whole committed bond state matches, not just the two-version
+	// validator's fields — confirms the fold did not perturb the governors.
+	for _, name := range []string{"regVersion", "bondDomain", "bonded", "bondRootOwner",
+		"bondRootProven", "bondRegHeight"} {
+		if !reflect.DeepEqual(fieldValue(a, name), fieldValue(b, name)) {
+			t.Fatalf("bond field %q DIFFERS across the two orderings beyond the two-version "+
+				"validator — the canonicalization is order-sensitive somewhere else:\n"+
+				"  hiFirst: %v\n  hiLast:  %v", name, fieldValue(a, name), fieldValue(b, name))
+		}
 	}
 }
