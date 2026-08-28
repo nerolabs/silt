@@ -690,9 +690,9 @@ func gateWorld(t *testing.T) *Chain {
 }
 
 // gateProbes builds the within-R re-registration blocks for x at heights straddling
-// gateHeight, and the two probes that drive them. bondRegHeight[x]=1 and R≈10, so a
+// gateHeight, and the three probes that drive them. bondRegHeight[x]=1 and R≈10, so a
 // reg at any height within 10 of block 1 is "too soon" ONLY where the gate is active.
-func gateProbes(c *Chain) (probe, probe) {
+func gateProbes(c *Chain) (probe, probe, probe) {
 	x := key(70003)
 	rootX := ports.HashBytes(pubOf(x))
 	gh := c.gateHeight
@@ -709,6 +709,20 @@ func gateProbes(c *Chain) (probe, probe) {
 		detect: []string{"gateLockedIn"},
 		ask:    func(c *Chain) string { return regVerdict(c, past) },
 	}
+	// bondRegHeight: the SAME within-R re-reg PAST gateHeight. The #506 R-rule
+	// (chain.go:1497) reads `regH, ok := c.bondRegHeight[id]` and fires only when ok.
+	// Full → bondRegHeight[x]=1, gate active at gh+1, (gh+1)-1 < R, x still bonded so
+	// restoresHeldStanding is false → the R-rule fires → ErrRegGate (reject). A snapshot
+	// that lost bondRegHeight finds ok=false → the rule never fires → the reg falls to
+	// validateBondRegWindow, which accepts → a reg-flood identity admitted. Same block as
+	// the gateLockedIn probe; the discriminating field differs (gate-armed vs. last-reg
+	// height). See docs/thinking/2026-08-28-keystone-leaveoneout-bondregheight-validatorsseen.md.
+	bondRegHeightProbe := probe{
+		name: "a within-R re-registration past H_act must be rejected on the last-reg height; a " +
+			"snapshot that lost bondRegHeight cannot fire the #506 R-rule (ErrRegGate → accept)",
+		detect: []string{"bondRegHeight"},
+		ask:    func(c *Chain) string { return regVerdict(c, past) },
+	}
 	// gateHeight: a within-R re-reg BELOW gateHeight (pre-gate, so accepted). Full →
 	// accept; gateHeight-dropped (→ 0) makes regGateActive = gateLockedIn && h>0 fire
 	// for this height → the R-rule rejects. The flip runs the OPPOSITE way.
@@ -719,7 +733,7 @@ func gateProbes(c *Chain) (probe, probe) {
 		detect: []string{"gateHeight"},
 		ask:    func(c *Chain) string { return regVerdict(c, pre) },
 	}
-	return lockedInProbe, heightProbe
+	return lockedInProbe, bondRegHeightProbe, heightProbe
 }
 
 // regVersionWorld (regVersion). regVersion is read at exactly ONE verdict-relevant
@@ -853,6 +867,91 @@ func domainProbe(anchorBlock *Block, trigger Block) probe {
 			"network stays immature and an anchor-only commit is accepted; a snapshot that lost " +
 			"bondDomain counts the bonds as independent, matures, sheds the anchors, and rejects it",
 		detect:  []string{"bondDomain"},
+		mutates: true, // it apply()s the trigger block; runs against throwaway replicas
+		ask: func(c *Chain) string {
+			c.apply(trigger)
+			return quorumVerdict(c, anchorBlock)
+		},
+	}
+}
+
+// validatorsSeenWorld (validatorsSeen). validatorsSeen is NOT legacy-only: in the
+// OBJECTIVE regime C2Metric enumerates it (chain.go:1978) to build the participating
+// bonded set the Nakamoto coefficient is computed over, and MatureCoefficient →
+// matureNow() (the objective branch, chain.go:1867) gates the maturity LATCH
+// (chain.go:2893) and thereby the launch-anchor shed. It is the SAME verdict path
+// bondDomain rides in domainWorld. The world holds four anchors plus six equal real
+// bonds each in a DISTINCT declared domain, all SEEN, everMature not yet latched. With
+// validatorsSeen carried, C2Metric counts six bonds across six domains → NakamotoDomains
+// = NakamotoBonds = 3 (6 MiB > the 4 MiB ⅓-threshold at the third) → MatureCoefficient
+// = 3 ≥ MatureValidators = 2 → matureNow TRUE. With validatorsSeen DROPPED (empty), the
+// C2Metric loop iterates zero times → total == 0 → coefficient 0 → matureNow FALSE. The
+// probe applies a block (mutating): full matures, latches everMature, sheds the anchors,
+// and REJECTS an anchor-only commit; a validatorsSeen-dropped replica stays immature so
+// the anchors keep eligibility and the same commit is ACCEPTED. The flip changes which
+// identities are ADMITTED (the anchors), never how any weight/count is summed.
+func validatorsSeenWorld(t *testing.T) (*Chain, *Block, Block) {
+	t.Helper()
+	anchorKeys := make([]ed25519.PrivateKey, 4)
+	anchors := map[ports.NodeID]bool{}
+	for i := range anchorKeys {
+		anchorKeys[i] = key(int64(45000 + i))
+		anchors[idOf(anchorKeys[i])] = true
+	}
+	realKeys := make([]ed25519.PrivateKey, 6)
+	for i := range realKeys {
+		realKeys[i] = key(int64(45100 + i))
+	}
+	cfg := Config{Quorum: 1, MinBond: 1 << 20, ByzantineQuorum: true,
+		Anchors: anchors, AnchorQuorum: 1, MatureValidators: 2}
+	c := New(cfg, func(ports.NodeID) int64 { return 0 })
+	c.SetBondVerifier(objectiveVerify)
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
+	Sign(g, anchorKeys[0])
+	if err := c.AppendGenesis(*g); err != nil {
+		t.Fatalf("validatorsSeenWorld genesis: %v", err)
+	}
+	// Bake the regime a snapshot would carry: six equal real bonds, each in a DISTINCT
+	// declared domain, all SEEN, everMature not yet latched. Distinct domains make the
+	// coefficient clear MatureValidators — so validatorsSeen (the enumeration) is the ONLY
+	// variable between mature and immature.
+	bonded := map[ports.NodeID]int64{}
+	domain := map[ports.NodeID]uint64{}
+	seen := map[ports.NodeID]bool{}
+	for i, k := range realKeys {
+		bonded[idOf(k)] = 2 << 20
+		domain[idOf(k)] = uint64(0x100 + i) // distinct domain per bond → six groups
+		seen[idOf(k)] = true
+	}
+	setField(c, "bonded", bonded)
+	setField(c, "bondDomain", domain)
+	setField(c, "validatorsSeen", seen)
+	if c.everMature {
+		t.Fatalf("validatorsSeenWorld: everMature latched at construction, want pre-latch")
+	}
+	if !c.matureNow() {
+		t.Fatalf("validatorsSeenWorld: want matureNow with validatorsSeen carried (coeff=%d)",
+			c.MatureCoefficient())
+	}
+
+	// The anchor-only probe block: proposer + two anchor attesters (clears the count
+	// floor while the anchors are eligible), zero real bond behind it.
+	pb := &Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(9)}}
+	Sign(pb, anchorKeys[0])
+	pb.Atts = []Attestation{Attest(pb, anchorKeys[1]), Attest(pb, anchorKeys[2])}
+
+	// The apply-block that re-evaluates Mature() (a trivial committed block).
+	trigger := Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(5)}}
+	return c, pb, trigger
+}
+
+func validatorsSeenProbe(anchorBlock *Block, trigger Block) probe {
+	return probe{
+		name: "validatorsSeen is load-bearing via the maturity latch (objective C2Metric, not " +
+			"legacy-only): with it carried the network matures, sheds the anchors, and rejects an " +
+			"anchor-only commit; a snapshot that lost validatorsSeen enumerates zero participants, " +
+			"stays immature, keeps the anchors, and accepts it (ErrNoQuorum → accept)",
+		detect:  []string{"validatorsSeen"},
 		mutates: true, // it apply()s the trigger block; runs against throwaway replicas
 		ask: func(c *Chain) string {
 			c.apply(trigger)
@@ -995,7 +1094,7 @@ func TestSnapshotBootMatchesReplayBoot(t *testing.T) {
 	deMatureC, deMatureBlock := deMatureWorld(t)
 	matureEpochC, matureEpochBlock := matureEpochWorld(t)
 	gateC := gateWorld(t)
-	lockedInProbe, heightProbe := gateProbes(gateC)
+	lockedInProbe, bondRegHeightProbe, heightProbe := gateProbes(gateC)
 
 	check := func(replayed *Chain, ps []probe) {
 		snap := snapshotBoot(replayed)
@@ -1022,7 +1121,7 @@ func TestSnapshotBootMatchesReplayBoot(t *testing.T) {
 	check(slashedC, []probe{slashedProbe(slashedCulprit)})
 	check(deMatureC, []probe{everMatureProbe(deMatureBlock)})
 	check(matureEpochC, []probe{matureEpochProbe(matureEpochBlock)})
-	check(gateC, []probe{lockedInProbe, heightProbe})
+	check(gateC, []probe{lockedInProbe, bondRegHeightProbe, heightProbe})
 }
 
 // probeUncovered names committed fields for which no probe yet exists. It is a
@@ -1032,16 +1131,19 @@ func TestSnapshotBootMatchesReplayBoot(t *testing.T) {
 // Each entry says what a probe would have to construct — these are honest gaps,
 // not fields believed irrelevant.
 var probeUncovered = map[string]string{
-	"bondRegHeight": "the min-interval rule is gated behind regGateActive (#506); this " +
-		"world has no RegGateActivationHeight, so the rule never fires — needs a " +
-		"gate-active world",
-	"validatorsSeen": "read by Mature/C2Metric in legacy mode only",
-	// everMature/matureEpoch/regVersion/gateLockedIn/gateHeight/bondDomain were moved
-	// to real leave-one-out probes on 2026-08-28 (the de-mature/mature-epoch-flag/
-	// gate-lock/gate-tally/domain-latch worlds). See docs/thinking/
-	// 2026-08-28-keystone-leaveoneout-latch-gate-domain.md. Notably bondDomain is NOT
-	// metric-only: it feeds matureNow() → the maturity latch → the launch-anchor shed,
-	// a real verdict (domainWorld/domainProbe), overturning the prior "metric" excuse.
+	// EMPTY (2026-08-28): every committed field now has a leave-one-out probe with a
+	// demonstrated ablation RED. The last two closed this tranche (see docs/thinking/
+	// 2026-08-28-keystone-leaveoneout-bondregheight-validatorsseen.md):
+	//   - bondRegHeight: gateWorld (#623) is a gate-active world where x carries
+	//     bondRegHeight[x]=1; a within-R re-reg past gateHeight is ErrRegGate-rejected
+	//     with the field and accepted without it (the #506 R-rule, chain.go:1497). The
+	//     prior "no gate-active world" reason was stale.
+	//   - validatorsSeen: NOT legacy-only — C2Metric enumerates it in the objective
+	//     regime (chain.go:1978) → MatureCoefficient → matureNow → the maturity latch →
+	//     the anchor shed (validatorsSeenWorld/validatorsSeenProbe). The prior
+	//     "legacy mode only" reason was wrong.
+	// If a NEW committed field is added, add its probe (in some world) or record here
+	// what a probe would have to construct — never leave it silent.
 }
 
 // TestLeaveOneOutProvesEachFieldLoadBearing is the sharp half. For every
@@ -1070,9 +1172,10 @@ func TestLeaveOneOutProvesEachFieldLoadBearing(t *testing.T) {
 	deMatureC, deMatureBlock := deMatureWorld(t)
 	matureEpochC, matureEpochBlock := matureEpochWorld(t)
 	gateC := gateWorld(t)
-	lockedInProbe, heightProbe := gateProbes(gateC)
+	lockedInProbe, bondRegHeightProbe, heightProbe := gateProbes(gateC)
 	regVersionC := regVersionWorld(t)
 	domainC, domainAnchorBlock, domainTrigger := domainWorld(t)
+	seenC, seenAnchorBlock, seenTrigger := validatorsSeenWorld(t)
 
 	worlds := []worldGroup{
 		{"launch", func(*testing.T) *Chain { return replayed }, probes(revokedRoot, ownedRoot, keys, prev)},
@@ -1082,9 +1185,10 @@ func TestLeaveOneOutProvesEachFieldLoadBearing(t *testing.T) {
 		{"slashed-anchor", func(*testing.T) *Chain { return slashedC }, []probe{slashedProbe(slashedCulprit)}},
 		{"de-mature", func(*testing.T) *Chain { return deMatureC }, []probe{everMatureProbe(deMatureBlock)}},
 		{"mature-epoch-flag", func(*testing.T) *Chain { return matureEpochC }, []probe{matureEpochProbe(matureEpochBlock)}},
-		{"gate-lock", func(*testing.T) *Chain { return gateC }, []probe{lockedInProbe, heightProbe}},
+		{"gate-lock", func(*testing.T) *Chain { return gateC }, []probe{lockedInProbe, bondRegHeightProbe, heightProbe}},
 		{"gate-tally", func(*testing.T) *Chain { return regVersionC }, []probe{regVersionProbe()}},
 		{"domain-latch", func(*testing.T) *Chain { return domainC }, []probe{domainProbe(domainAnchorBlock, domainTrigger)}},
+		{"validators-seen", func(*testing.T) *Chain { return seenC }, []probe{validatorsSeenProbe(seenAnchorBlock, seenTrigger)}},
 	}
 
 	// Guard the declared debt against the live struct first: a newly added
