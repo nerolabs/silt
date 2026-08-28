@@ -651,13 +651,24 @@ var probeUncovered = map[string]string{
 	"bondRegHeight": "the min-interval rule is gated behind regGateActive (#506); this " +
 		"world has no RegGateActivationHeight, so the rule never fires — needs a " +
 		"gate-active world",
-	"regVersion":     "needs a rotateEpoch lock-in tally across a boundary (#506)",
-	"bondDomain":     "read by C2Metric, which is a metric rather than a validity predicate",
+	// regVersion/bondDomain/gateLockedIn/gateHeight are now covered on the OTHER list —
+	// the order-independence oracle (regVersion/bondDomain by the same-id covering probe
+	// TestRegVersionIntraBlockOrderIndependent; gateLockedIn/gateHeight by
+	// gateSwingOrderings, cert sameid-twoversion-intrablock-bondreg-contention
+	// 2026-08-28). They remain unprobed on THIS list (leave-one-out load-bearingness):
+	// each entry says what a leave-one-out probe would still have to construct.
+	"regVersion": "order-independence COVERED (same-id probe). A leave-one-out probe needs a " +
+		"rotateEpoch lock-in tally across a boundary where dropping regVersion flips whether the " +
+		"#506 gate locks — a verdict-flip world, not the tally read gateSwingOrderings already drives",
+	"bondDomain":     "read by C2Metric, which is a metric rather than a validity predicate (order-independence is COVERED by the same-id probe)",
 	"validatorsSeen": "read by Mature/C2Metric in legacy mode only",
-	"gateLockedIn":   "needs the #506 gate to lock in, then an R-rule-violating reg past H_act",
-	"gateHeight":     "same as gateLockedIn",
-	"everMature":     "needs the maturity latch to trip, then a launchAnchor/handoff-dependent check",
-	"matureEpoch":    "needs the #357 Cond B handoff, then a regime-dependent quorum check",
+	"gateLockedIn": "order-independence COVERED (gateSwingOrderings). A leave-one-out probe needs a " +
+		"gate-locked replica plus an R-rule-violating or same-id-twice reg past H_act whose " +
+		"window check passes on the ablated (gate-off) path — a full nonce-valid block history, " +
+		"which a history-less snapshot replica cannot supply cleanly",
+	"gateHeight":  "same as gateLockedIn — order-independence COVERED, leave-one-out needs a nonce-valid post-H_act block",
+	"everMature":  "needs the maturity latch to trip, then a launchAnchor/handoff-dependent check",
+	"matureEpoch": "needs the #357 Cond B handoff, then a regime-dependent quorum check",
 }
 
 // TestLeaveOneOutProvesEachFieldLoadBearing is the sharp half. For every

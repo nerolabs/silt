@@ -180,6 +180,17 @@ func bondRegFull(s ed25519.PrivateKey, root ports.Hash, size int64, prev ports.H
 //     orderings; only their intra-block processing order varies. That intra-block
 //     order is precisely where the G3 proof-beats-declaration displacement rule
 //     (chain.go:2780-2794) could be order-sensitive.
+//
+// SCOPE CORRECTION (2026-08-28, cert sameid-twoversion-intrablock-bondreg-contention,
+// "What I corrected"): the two height-5 regs here are DISTINCT ids on DISJOINT roots
+// (honestH on rootShared, validatorX on rootX). That exercises the G3 displacement
+// under order variation, but it covers NOTHING for the SAME-ID two-version case — two
+// regs for ONE id in one block, the seam where apply()'s last-writer-wins over
+// regVersion/bondDomain was order-dependent. This fixture's regVersion/bondDomain
+// green was therefore an over-claim for that seam (it proves distinct-id disjoint-root
+// order-independence, not same-id). The same-id coverage is gateSwingOrderings (the
+// swing trip-wire) plus TestRegVersionIntraBlockOrderIndependent (the covering probe);
+// both are RED without the canonicalBondRegs fold in apply().
 func twoOrderings(t *testing.T) (*Chain, *Chain) {
 	t.Helper()
 
@@ -364,6 +375,112 @@ func matureOrderings(t *testing.T) (*Chain, *Chain) {
 // verify on the mature world rather than declare vacuous.
 var matureFields = []string{"everMature", "matureEpoch", "epochSet"}
 
+// gateSwingOrderings drives the #506 lock-in tally (rotateEpoch:2922) where a
+// SAME-ID TWO-VERSION validator is the exact >⅔ swing, and returns both chains, so
+// the #506-gate family — gateLockedIn, gateHeight — AND the same-id regVersion/
+// bondDomain seam are exercised under intra-block order variation rather than
+// declared vacuous. This is the fixture the cert
+// sameid-twoversion-intrablock-bondreg-contention (2026-08-28, residual R2) gates on.
+//
+// The regime twoOrderings/matureOrderings cannot reach: an anchorless objective world
+// with epochs on (EpochBlocks=2, MatureValidators=2) whose FROZEN mature set is
+// {r1, r2, x} at equal weight w. Two ready validators r1, r2 carry regVersion=3 from
+// genesis; the swing validator x submits TWO regs for its OWN id in the height-1
+// block — version 2 (size w) and version 3 (size 2w) — whose intra-block SLICE ORDER
+// is the variable.
+//
+// The tally at the height-2 boundary: total = 3w over {r1, r2, x}. ready counts
+// members with regVersion ≥ BlockVersionRegGate.
+//   - If x commits version 3: ready = 3w, 3·3w=9w > 2·3w=6w → gateLockedIn, gateHeight set.
+//   - If x commits version 2: ready = 2w, 3·2w=6w > 6w is FALSE → NOT locked in.
+//
+// So x is the EXACT swing: before the apply()-canonicalization fix, the slice order
+// decided x's committed version, hence whether the gate locked — an order-dependent
+// gateLockedIn/gateHeight (a committedSet fork). After the fix, canonicalBondRegs
+// picks the largest-Size reg (x's version-3 2w reg) in BOTH orders, so the gate locks
+// identically. The boundary block commits under LAUNCH rules (the freeze happens IN
+// rotateEpoch, after the block validated), so the count-floor quorum carries it — the
+// ⅔-weight rule does not bite until the next epoch.
+func gateSwingOrderings(t *testing.T) (*Chain, *Chain) {
+	t.Helper()
+	const w = int64(2) << 20 // per-validator weight (bond size), ≥ MinBond
+
+	build := func(v3First bool) *Chain {
+		r1, r2, x := key(70001), key(70002), key(70003)
+		cfg := Config{Quorum: 1, MinBond: 1 << 20, ByzantineQuorum: true,
+			EpochBlocks: 2, MatureValidators: 2}
+		c := New(cfg, func(ports.NodeID) int64 { return 0 })
+		c.SetBondVerifier(objectiveVerify)
+
+		// Genesis bonds all three at weight w. r1, r2 register READY (version 3) so
+		// they are the stable ⅔-of-ready majority-minus-the-swing. x bonds at genesis
+		// too (version 3 baseline) so it is in the frozen qualified set regardless of
+		// the height-1 slice order; its height-1 regs then CONTEND its committed version.
+		g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
+		g.BondRegs = []BondReg{
+			bondRegFull(r1, ports.HashBytes(pubOf(r1)), w, ports.Hash{}, BlockVersionRegGate, 0),
+			bondRegFull(r2, ports.HashBytes(pubOf(r2)), w, ports.Hash{}, BlockVersionRegGate, 0),
+			bondReg(x, w, ports.Hash{}),
+		}
+		Sign(g, r1)
+		if err := c.AppendGenesis(*g); err != nil {
+			t.Fatalf("gateSwingOrderings genesis: %v", err)
+		}
+
+		// Height 1 (pre-latch/pre-freeze): x submits TWO regs for its OWN id on its own
+		// root. Both SIZE w (so x's tally WEIGHT is w in every ordering, pre- and
+		// post-fix — the swing is over x's committed VERSION, not its weight), distinct
+		// in Version AND Domain:
+		//   loV:  size w, version 2,                    domain 0x33
+		//   hiV:  size w, version BlockVersionRegGate(3), domain 0x44
+		// The total order's primary key (Size) TIES, so the canonical winner is decided
+		// by the next key, Version: hiV (version 3) wins in BOTH orders post-fix. Pre-fix,
+		// LAST-in-slice wins, so v3First flips x's committed version — the swing.
+		rootX := ports.HashBytes(pubOf(x))
+		prev := g.Hash()
+		loV := bondRegFull(x, rootX, w, prev, 2, 0x33)
+		hiV := bondRegFull(x, rootX, w, prev, BlockVersionRegGate, 0x44)
+		regs := []BondReg{loV, hiV} // v3 last
+		if v3First {
+			regs = []BondReg{hiV, loV} // v3 first
+		}
+		// The proposer ROTATES across the two blocks (r1 proposes h1, r2 proposes h2)
+		// so validatorsSeen accumulates all three non-proposer attesters {r1, r2, x}
+		// over the chain — the maturity coefficient needs ≥ 2 distinct SEEN bonds, and
+		// the per-block proposer is excluded from validatorsSeen (apply()). Without the
+		// rotation only two are ever seen and the network never matures, so the tally
+		// (post-latch only) never runs. The tally SET is still exactly the three bonded
+		// validators (liveQualifiedSet reads bonded, not validatorsSeen).
+		b1 := &Block{Version: BlockVersionRounds, Height: 1, Prev: prev,
+			Entries: []ports.Entry{entry(1)}, BondRegs: regs}
+		commitRounds(b1, []ed25519.PrivateKey{r1, r2, x}, 0) // r1 proposes
+		if err := c.Append(*b1); err != nil {
+			t.Fatalf("gateSwingOrderings height 1 (v3First=%v): %v", v3First, err)
+		}
+
+		// Height 2: the epoch boundary. r2 proposes so r1 joins validatorsSeen; the
+		// maturity latch trips in this apply (three distinct seen bonds ≥
+		// MatureValidators=2), then rotateEpoch freezes {r1, r2, x} and runs the #506
+		// tally over their committed regVersion in the SAME commit (the boundary block
+		// that also trips maturity hands off in one commit, chain.go).
+		b2 := &Block{Version: BlockVersionRounds, Height: 2, Prev: b1.Hash(),
+			Entries: []ports.Entry{entry(2)}}
+		commitRounds(b2, []ed25519.PrivateKey{r2, r1, x}, 0) // r2 proposes (rotated)
+		if err := c.Append(*b2); err != nil {
+			t.Fatalf("gateSwingOrderings boundary (v3First=%v): %v", v3First, err)
+		}
+		return c
+	}
+	return build(true), build(false) // v3-first vs v3-last: opposite intra-block orders
+}
+
+// gateFields are the committedSet fields gateSwingOrderings covers — the #506-gate
+// lock-in family. They are EMPTY in both twoOrderings (no post-latch tally) and
+// matureOrderings (no regVersion signalling), so their order-independence is proven
+// on this swing world instead. Kept beside the fixture so the oracle guard knows to
+// verify them on the swing world rather than declare vacuous.
+var gateFields = []string{"gateLockedIn", "gateHeight"}
+
 // orderVacuous names committedSet fields that NEITHER twoOrderings NOR matureOrderings
 // populates — they belong to a regime those worlds do not enter. Each is compared as
 // DeepEqual(∅, ∅), so its order-independence is NOT proven by this oracle; the entry
@@ -378,11 +495,10 @@ var orderVacuous = map[string]string{
 	// regVersion, bondDomain) is COVERED by twoOrderings' height-5 bond block whose
 	// BondReg slice order flips (incl. a G3 displacement). The mature-epoch family
 	// (everMature, matureEpoch, epochSet) is COVERED by matureOrderings' opposite slash
-	// orders. Both are enforced non-empty below.
-	// #506 registration-gate state: no RegGateActivationHeight configured, and neither
-	// world drives the post-latch >⅔ regVersion lock-in tally (rotateEpoch:2922).
-	"gateLockedIn": "needs the #506 gate to lock in — a >⅔ regVersion-signalling frozen set across a post-latch boundary (rotateEpoch); the next family to cover",
-	"gateHeight":   "same as gateLockedIn",
+	// orders. The #506-gate family (gateLockedIn, gateHeight) is COVERED by
+	// gateSwingOrderings, whose same-id two-version swing validator flips the lock-in
+	// tally across intra-block orders (moved out 2026-08-28, cert
+	// sameid-twoversion-intrablock-bondreg-contention). All are enforced non-empty below.
 	// validatorsSeen is NOT listed: the attesting anchors qualify, so apply()
 	// populates it — its order-independence is genuinely exercised here.
 }
@@ -393,6 +509,7 @@ var orderVacuous = map[string]string{
 func TestCommittedSetFieldsAreOrderIndependent(t *testing.T) {
 	a, b := twoOrderings(t)
 	ma, mb := matureOrderings(t)
+	ga, gb := gateSwingOrderings(t)
 
 	fields := fieldsOfKind(committedSet)
 	if len(fields) == 0 {
@@ -401,17 +518,24 @@ func TestCommittedSetFieldsAreOrderIndependent(t *testing.T) {
 
 	// A field is covered on whichever world POPULATES it: the launch twoOrderings
 	// world for the launch/objective families, the mature matureOrderings world for
-	// the mature-epoch family. Pairing a field with its populating world is the same
-	// union-of-worlds pattern the snapshot oracle uses (worldGroup). matureFields
-	// declares which fields switch to the mature world; every other field uses the
-	// launch world.
+	// the mature-epoch family, the gateSwingOrderings world for the #506-gate family.
+	// Pairing a field with its populating world is the same union-of-worlds pattern the
+	// snapshot oracle uses (worldGroup). matureFields/gateFields declare which fields
+	// switch to which world; every other field uses the launch world.
 	mature := map[string]bool{}
 	for _, f := range matureFields {
 		mature[f] = true
 	}
+	gate := map[string]bool{}
+	for _, f := range gateFields {
+		gate[f] = true
+	}
 	worldOf := func(name string) (*Chain, *Chain) {
 		if mature[name] {
 			return ma, mb
+		}
+		if gate[name] {
+			return ga, gb
 		}
 		return a, b
 	}
@@ -460,6 +584,7 @@ func TestCommittedSetFieldsAreOrderIndependent(t *testing.T) {
 	mustCover := append([]string{"spent", "slashed",
 		"bonded", "bondRootOwner", "bondRootProven", "bondRegHeight", "regVersion", "bondDomain"},
 		matureFields...)
+	mustCover = append(mustCover, gateFields...)
 	for _, name := range mustCover {
 		if !populated[name] {
 			wa, wb := worldOf(name)
@@ -653,6 +778,74 @@ func TestMatureEpochFamilyIsOrderIndependent(t *testing.T) {
 		"CONFIRMS invariance; it does not discover-or-refute a fork as #618 did. Residual: "+
 		"latch/handoff HEIGHT not varied (all bond at genesis), one-way bools that cannot flip",
 		len(a.epochSet))
+}
+
+// TestGateLockInSwingIsOrderIndependent is the consensus-correctness trip-wire for
+// the #506-gate family (gateLockedIn, gateHeight) AND the certified real coverage of
+// the same-id regVersion/bondDomain seam. Byte-identity across the two orderings is
+// necessary but not sufficient: the match must be over a lock-in tally that ACTUALLY
+// FIRED with the two-version validator as the EXACT >⅔ swing, else the coverage is
+// vacuous (the #618 / session-7 lesson). This is the fixture the cert
+// sameid-twoversion-intrablock-bondreg-contention (2026-08-28, residual R2) gates on.
+//
+// It asserts directly: in BOTH intra-block orderings the gate LOCKED IN, at the SAME
+// gateHeight, and the swing validator x committed the SAME regVersion (BlockVersionRegGate,
+// the canonical largest-Size-then-Version winner) and bondDomain. Before the apply()
+// canonicalization fix, flipping the height-1 slice order flipped x's committed version
+// (v3 vs v2), and x is the marginal ⅔ ready-weight, so gateLockedIn/gateHeight forked
+// across the two orderings — the exact propagation the cert traces (a committedSet field
+// feeding a consensus-decision field). If the two orderings had reached DIFFERENT gate
+// state, that would be the live fork; they do not, because canonicalBondRegs makes x's
+// committed version a pure function of block content.
+func TestGateLockInSwingIsOrderIndependent(t *testing.T) {
+	x := idOf(key(70003)) // the two-version swing validator
+
+	a, b := gateSwingOrderings(t)
+
+	for _, tc := range []struct {
+		name string
+		c    *Chain
+	}{{"v3-first", a}, {"v3-last", b}} {
+		c := tc.c
+		if !c.matureEpoch {
+			t.Fatalf("[%s] matureEpoch did NOT set — the #506 tally runs only post-latch, so "+
+				"coverage is vacuous; the fixture never reached the boundary rotation", tc.name)
+		}
+		if !c.gateLockedIn {
+			t.Fatalf("[%s] gateLockedIn is FALSE — the #506 lock-in tally did not fire (the swing "+
+				"validator's version did not clear the >⅔ ready-weight bar). The coverage is "+
+				"vacuous: without a lock-in there is no gateHeight to compare. Re-derive the swing "+
+				"weights (x must be the marginal ready vote).", tc.name)
+		}
+		if c.gateHeight == 0 {
+			t.Fatalf("[%s] gateHeight is 0 after a lock-in — inconsistent state", tc.name)
+		}
+		// The swing validator committed the canonical (largest-Size, then Version) winner:
+		// version 3, the ready signal. If it committed 2, the gate would NOT have locked.
+		if c.regVersion[x] != BlockVersionRegGate {
+			t.Fatalf("[%s] swing validator committed regVersion=%d, want %d (the canonical "+
+				"version-3 winner) — the same-id fold picked the wrong reg", tc.name,
+				c.regVersion[x], BlockVersionRegGate)
+		}
+		if c.bondDomain[x] != 0x44 {
+			t.Fatalf("[%s] swing validator committed bondDomain=%#x, want 0x44 (the version-3 "+
+				"winner's domain) — the fold must take ALL fields of the ONE winning reg",
+				tc.name, c.bondDomain[x])
+		}
+	}
+
+	// The two orderings reach byte-identical gate state AND same-id bond state.
+	for _, name := range []string{"gateLockedIn", "gateHeight", "regVersion", "bondDomain"} {
+		if !reflect.DeepEqual(fieldValue(a, name), fieldValue(b, name)) {
+			t.Fatalf("field %q DIFFERS across the two intra-block orderings — the #506 gate "+
+				"inherited the same-id version split. This is the certified fork; the "+
+				"canonicalization has regressed:\n  v3-first: %v\n  v3-last:  %v",
+				name, fieldValue(a, name), fieldValue(b, name))
+		}
+	}
+	t.Logf("the #506 gate locked in identically across two opposite intra-block orderings "+
+		"(gateLockedIn=%v gateHeight=%d) with the same-id two-version validator as the ⅔ swing "+
+		"— gateLockedIn/gateHeight no longer inherit the version split", a.gateLockedIn, a.gateHeight)
 }
 
 // TestRevLogRootIsOrderDependent is the concrete #597 statement, asserted on

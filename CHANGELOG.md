@@ -9,6 +9,31 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Changed
+- **CONSENSUS-RULE: canonicalize same-id intra-block bond registrations in `apply()`**
+  (2026-08-28; certified + human-ratified). This is a state-transition consensus-rule
+  change. `apply()` (`core/chain/chain.go`) resolved multiple BondRegs for the SAME
+  validator id in one block LAST-WRITER-WINS by slice position, committing an
+  order-dependent `regVersion`/`bondDomain`/`bonded` → a different history-independent
+  SMT root for the same admissible block (a #618-class latent fork). The same-id-twice
+  guard (`seenReg`) is gate-gated, so pre-#506-gate this block is ADMISSIBLE (a legal
+  F1 renew/resize, which the #618 `seenRoot` distinct-id guard does not catch), and
+  `regVersion` feeds the #506 lock-in tally (`rotateEpoch`), so `gateLockedIn`/
+  `gateHeight` inherited the split when the two-version validator was the >⅔ swing.
+  Fix: fold the block's BondRegs to ONE canonical winner per id by a TOTAL ORDER on
+  content — **largest `Size`, then `Version`, then `Domain`, then `Sig`** — and apply
+  ALL of that winner's fields (`canonicalBondRegs`/`bondRegLess`, chain.go). The commit
+  is now a pure function of block content, identical across intra-block orderings.
+  REJECT was refuted (it breaks the legal resize); CANONICALIZE is the certified
+  direction (the resize's larger reg wins in both orders — the right renew/resize
+  semantics). Scope is same-id ONLY: distinct-id same-root is untouched (#618 rejects
+  it at height>0 validity; at genesis it is the named residual R-G premise). Coverage:
+  `TestRegVersionIntraBlockOrderIndependent` (the same-id covering probe, RED without
+  the fold), `gateSwingOrderings`/`TestGateLockInSwingIsOrderIndependent` (the #506
+  tally-swing fixture), and `regVersion`/`bondDomain`/`gateLockedIn`/`gateHeight` moved
+  out of `orderVacuous`. Negative control `TestSameRootSameIDRenewAdmitted` stays green.
+  Certification:
+  `silt-reviews/research/research-outcome/sameid-twoversion-intrablock-bondreg-contention-RESEARCH-CERTIFICATION-2026-08-28.md`.
+  Deliberation: `docs/thinking/2026-08-28-sameid-twoversion-canonicalize-apply.md`.
 - **CONSENSUS-RULE: reject a block carrying two bond registrations from distinct
   identities on the same root** (2026-08-28; certified + human-ratified). This is a
   validity-layer consensus-rule change. `validateBondRegs` (chain.go) deduped only
