@@ -1,6 +1,10 @@
 package chain
 
 import (
+	"crypto/ed25519"
+	"errors"
+	"os"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -216,4 +220,419 @@ func TestFutureEraRejectionIsAboutTheEraNotTheBytes(t *testing.T) {
 			"failure — the forged block may be malformed for an unrelated reason, "+
 			"which would make the loud-failure test pass vacuously", err)
 	}
+}
+
+// commitV4OnDisk extends the era3ValidityChain to commit ONE real v4 (era-3) block
+// carrying correct post-apply roots, so the chain's persisted history contains an era-3
+// block a fresh replica must Reload. It returns the full persisted history (genesis
+// through the v4 block, wire-roundtripped) and the proposer key that signed the v4 block.
+//
+// The v4 block is committed through Append (the commit path, which enforces the roots at
+// commit time), so a correct root is on disk. The tamper tests below then corrupt that
+// on-disk block and re-sign it — the exact re-signed-wrong-root-v4 attack the Reload path
+// must catch.
+func commitV4OnDisk(t *testing.T) (persisted []Block, prop ed25519.PrivateKey) {
+	t.Helper()
+	c, prop := era3ValidityChain(t)
+	att1, att2, att3 := key(30202), key(30203), key(30204)
+	keys := []ed25519.PrivateKey{prop, att1, att2, att3}
+
+	// Build a v4 block carrying the honest post-apply roots, then attach a full era-2
+	// two-phase certificate (v4 is >= BlockVersionRounds, so ValidateCommit requires the
+	// proposer-prepare + prepare-QC + precommit stack). Roots are set BEFORE commitRounds,
+	// which signs, so the signature covers them.
+	prev, next := c.Head()
+	b := &Block{Version: BlockVersionStateRoot, Height: next, Prev: prev, Entries: []ports.Entry{entry(9)}}
+	state, log, err := c.postApplyRoots(*b)
+	if err != nil {
+		t.Fatalf("postApplyRoots: %v", err)
+	}
+	b.StateRoot = &state
+	b.LogRoot = &log
+	commitRounds(b, keys, 0)
+	if err := c.Append(*b); err != nil {
+		t.Fatalf("commit honest v4 block: %v", err)
+	}
+
+	// Byte-faithful to what chainstore persists.
+	persisted, err = DecodeBlocks(EncodeBlocks(c.Blocks(0)))
+	if err != nil {
+		t.Fatalf("wire roundtrip: %v", err)
+	}
+	// Sanity: the last block is a v4 block, so the history genuinely exercises era-3.
+	if last := persisted[len(persisted)-1]; last.Version != BlockVersionStateRoot {
+		t.Fatalf("last persisted block is v%d, want v%d — the fixture is not era-3",
+			last.Version, BlockVersionStateRoot)
+	}
+	return persisted, prop
+}
+
+// TestReloadRejectsResignedWrongStateRootV4 is the A-bare regression. It is the hole the
+// blind PE ruled: appendStructural (the own-disk Reload path) verifies the proposer and
+// attester SIGNATURES — which cover the block Hash, roots included — but a signature over
+// a root proves only that the signer committed to THAT byte string, never that the root
+// equals the post-apply state. A v4 block with a WRONG StateRoot that is re-signed with
+// the proposer key passes every signature check in validateStructural. Integrity ≠
+// root-correctness.
+//
+// Before the fix this test is RED because Reload ACCEPTS the tampered block. The RED must
+// be that acceptance, and the GREEN must reject with ErrEra3StateRootMismatch — the
+// SAME named error the commit path raises — NOT a signature error (that would mean the
+// tamper broke integrity, not that the root check fired) and NOT a nil-map panic. The
+// ablation subtest below pins the cause.
+func TestReloadRejectsResignedWrongStateRootV4(t *testing.T) {
+	persisted, prop := commitV4OnDisk(t)
+
+	// Tamper: corrupt the v4 block's StateRoot and RE-SIGN with the proposer key, so the
+	// block is otherwise byte-valid. Only the root check can catch it.
+	tampered := resignWithWrongStateRoot(t, persisted, prop)
+
+	fresh := New(reloadCfg(), func(ports.NodeID) int64 { return 0 })
+	fresh.SetBondVerifier(objectiveVerify)
+	n, err := fresh.Reload(tampered)
+
+	if !errors.Is(err, ErrEra3StateRootMismatch) {
+		t.Fatalf("Reload of a re-signed wrong-StateRoot v4 block: got err=%v (restored %d), "+
+			"want ErrEra3StateRootMismatch.\nappendStructural verifies signatures but a "+
+			"signature over a wrong root is still a valid signature — the own-disk path "+
+			"must re-validate the root against post-apply state (A-bare), exactly as the "+
+			"commit path does.", err, n)
+	}
+	// Honest partial-restore count: genesis + block1 + revocation block were restored
+	// before the tampered v4 block (index 3) was rejected.
+	if n != len(persisted)-1 {
+		t.Errorf("Reload restored %d blocks before rejecting the tampered v4 block; want %d "+
+			"(everything up to but not including the tampered block)", n, len(persisted)-1)
+	}
+	// #558 half: the replica sits at the honest prefix head, not silently at genesis.
+	if _, h := fresh.Head(); h != uint64(len(persisted)-1) {
+		t.Errorf("after the rejected Reload the replica head is %d; want %d (the honest "+
+			"restored prefix)", h, len(persisted)-1)
+	}
+}
+
+// TestReloadWrongStateRootIsCaughtByTheRootCheckNotTheSignature is the ablation that
+// keeps the green above honest (the session-7 leave-one-out lesson: a green check with
+// no demonstrated correct-cause red is decoration). It proves TWO things:
+//
+//  1. The tampered block's PROPOSER SIGNATURE is VALID — validateStructural accepts it,
+//     so the block is NOT rejected for a signature/ancestry/quorum reason. The only
+//     remaining reason to reject it is the root check.
+//  2. The SAME tampered history, Reloaded WITHOUT the root check, would be ACCEPTED —
+//     demonstrated by the positive control (an honest, untampered v4 history Reloads
+//     cleanly), so the rejection above is caused by the wrong root, not by the block
+//     being malformed for an unrelated reason.
+func TestReloadWrongStateRootIsCaughtByTheRootCheckNotTheSignature(t *testing.T) {
+	persisted, prop := commitV4OnDisk(t)
+
+	// Positive control: the untampered v4 history Reloads cleanly. Without this, the
+	// rejection test could pass because the fixture itself is broken.
+	ctrl := New(reloadCfg(), func(ports.NodeID) int64 { return 0 })
+	ctrl.SetBondVerifier(objectiveVerify)
+	if n, err := ctrl.Reload(persisted); err != nil || n != len(persisted) {
+		t.Fatalf("the untampered v4 history must Reload cleanly (restored %d of %d, err=%v) — "+
+			"without this control the rejection test could pass for the wrong reason",
+			n, len(persisted), err)
+	}
+
+	tampered := resignWithWrongStateRoot(t, persisted, prop)
+
+	// Assertion 1: validateStructural (signatures + ancestry + quorum) ACCEPTS the
+	// tampered block. Replay the honest prefix into a fresh chain, then run
+	// validateStructural on the tampered block directly — it must pass, proving the
+	// re-sign made the wrong-root block signature-valid.
+	fresh := New(reloadCfg(), func(ports.NodeID) int64 { return 0 })
+	fresh.SetBondVerifier(objectiveVerify)
+	prefix := tampered[:len(tampered)-1]
+	if n, err := fresh.Reload(prefix); err != nil || n != len(prefix) {
+		t.Fatalf("honest prefix must Reload cleanly (restored %d of %d, err=%v)", n, len(prefix), err)
+	}
+	tb := tampered[len(tampered)-1]
+	if err := fresh.validateStructural(&tb); err != nil {
+		t.Fatalf("validateStructural REJECTED the tampered block (%v) — the re-sign did not "+
+			"make it signature-valid, so the root-check regression is testing the wrong "+
+			"thing (it must be the ROOT check, not the signature, that rejects)", err)
+	}
+
+	// Assertion 2: appendStructural (which now carries the post-apply root check) REJECTS
+	// it, and specifically with the root-mismatch error — not a signature error, not a
+	// panic. This is the demonstrated correct cause.
+	err := fresh.appendStructural(tb)
+	if !errors.Is(err, ErrEra3StateRootMismatch) {
+		t.Fatalf("appendStructural on the signature-valid, wrong-root block: got %v, want "+
+			"ErrEra3StateRootMismatch — the reject must be caused by the ROOT check", err)
+	}
+}
+
+// TestReloadRejectsResignedWrongLogRootV4 is the LogRoot sibling: the same re-signed
+// tamper on the LogRoot must be rejected with ErrEra3LogRootMismatch.
+func TestReloadRejectsResignedWrongLogRootV4(t *testing.T) {
+	persisted, prop := commitV4OnDisk(t)
+
+	tampered := append([]Block(nil), persisted...)
+	last := len(tampered) - 1
+	b := tampered[last]
+	wrong := *b.LogRoot
+	wrong[0] ^= 0xFF
+	b.LogRoot = &wrong
+	b.hashMemoSet = false
+	Sign(&b, prop)
+	// Re-attest: the re-sign changed the block hash, so the persisted attestations no
+	// longer verify. Re-attest with the same anchors so only the root check can reject.
+	b.Atts = nil
+	for _, k := range []ed25519.PrivateKey{key(30202), key(30203), key(30204)} {
+		b.Atts = append(b.Atts, Attest(&b, k))
+	}
+	tampered[last] = b
+	tampered, err := DecodeBlocks(EncodeBlocks(tampered))
+	if err != nil {
+		t.Fatalf("tamper roundtrip: %v", err)
+	}
+
+	fresh := New(reloadCfg(), func(ports.NodeID) int64 { return 0 })
+	fresh.SetBondVerifier(objectiveVerify)
+	if _, err := fresh.Reload(tampered); !errors.Is(err, ErrEra3LogRootMismatch) {
+		t.Fatalf("Reload of a re-signed wrong-LogRoot v4 block: got %v, want ErrEra3LogRootMismatch", err)
+	}
+}
+
+// resignWithWrongStateRoot corrupts the persisted v4 block's StateRoot, re-signs with the
+// proposer key, and re-attests with the launch anchors — so the returned history is
+// byte-valid at every signature check and differs from the honest history ONLY in the
+// committed StateRoot value. The re-sign is the attack: a naive integrity check ("the
+// signature covers the root, so the root is trusted") accepts it.
+func resignWithWrongStateRoot(t *testing.T, persisted []Block, prop ed25519.PrivateKey) []Block {
+	t.Helper()
+	out := append([]Block(nil), persisted...)
+	last := len(out) - 1
+	b := out[last]
+	if b.Version != BlockVersionStateRoot {
+		t.Fatalf("resignWithWrongStateRoot: last block is v%d, not v4", b.Version)
+	}
+	wrong := *b.StateRoot
+	wrong[0] ^= 0xFF
+	b.StateRoot = &wrong
+	b.hashMemoSet = false
+	Sign(&b, prop)
+	b.Atts = nil
+	for _, k := range []ed25519.PrivateKey{key(30202), key(30203), key(30204)} {
+		b.Atts = append(b.Atts, Attest(&b, k))
+	}
+	out[last] = b
+	out, err := DecodeBlocks(EncodeBlocks(out))
+	if err != nil {
+		t.Fatalf("tamper roundtrip: %v", err)
+	}
+	return out
+}
+
+// reloadCfg is the config era3ValidityChain builds, reconstructed so a fresh replica can
+// Reload its history. It must MATCH era3ValidityChain's config exactly, or the anchor set
+// / quorum differs and the replay fails for an unrelated reason.
+func reloadCfg() Config {
+	prop, att1, att2, att3 := key(30201), key(30202), key(30203), key(30204)
+	return Config{
+		Quorum: 1, MinBond: 1 << 20, ByzantineQuorum: true,
+		Anchors: map[ports.NodeID]bool{
+			idOf(prop): true, idOf(att1): true, idOf(att2): true, idOf(att3): true,
+		},
+		AnchorQuorum: 1,
+	}
+}
+
+// TestEveryDiskWritePathRunsTheEra3RootCheck is the write-set enumeration guard. It is
+// STRUCTURAL, not a hand-list: it discovers every Chain method that writes a block to the
+// live committed history by scanning for calls to c.apply(b), and asserts that each such
+// method also runs the era-3 root check on the block it applied. A FUTURE unguarded
+// disk-write path (fast-sync, import) fails this guard rather than silently re-opening the
+// A-bare hole.
+//
+// Enforcement mechanism (structural, rot-proof): the era-3 root check is centralized in
+// ONE named validator — validateEra3Roots (recompute-on-a-clone; checked BEFORE apply so a
+// rejection never leaves a bad block applied). Both disk-write families route through it:
+// the commit path via ValidateProposal → validateEra3Roots, and the reload path
+// (appendStructural) calls it directly. Any method that persists a block MUST route the
+// block's roots through it. The guard reads chain.go's source and asserts:
+//
+//   - every method whose body calls `c.apply(` also names validateEra3Roots (directly, or
+//     via a validator that does — ValidateCommit/ValidateProposal for the commit family),
+//     OR is on the explicit genesis allowlist (AppendGenesis: a v1 genesis is
+//     declared-not-agreed and carries no committed root by construction).
+//
+// A new `func (c *Chain) FastSync(b Block) { ...; c.apply(b); ... }` that forgets the root
+// check trips this guard: it calls c.apply but names no root validator and is not
+// allowlisted. That is the future hole this closes.
+func TestEveryDiskWritePathRunsTheEra3RootCheck(t *testing.T) {
+	src := readChainSource(t)
+	methods := methodsCallingApply(t, src)
+	if len(methods) == 0 {
+		t.Fatal("found NO methods calling c.apply — the scanner is broken (it must find at " +
+			"least Append/appendStructural/AppendGenesis), so this guard would pass vacuously")
+	}
+
+	// The named era-3 root validator. A disk-write method is guarded if its body names it,
+	// OR names a validator known to run it (the commit family funnels through
+	// ValidateProposal → validateEra3Roots).
+	rootValidators := []string{"validateEra3Roots"}
+	// Validators that themselves run a root validator (transitive coverage). ValidateCommit
+	// calls ValidateProposal, which calls validateEra3Roots — so a method calling either is
+	// covered. Kept as an explicit, auditable transitive set rather than a full call-graph
+	// walk; each entry is verified below to actually reach a root validator.
+	transitiveGuards := []string{"ValidateProposal", "ValidateCommit"}
+	// genesisAllowlist: methods that legitimately persist a block WITHOUT a committed root.
+	// A v1 genesis is declared-not-agreed (Bitcoin-shape) and carries no StateRoot/LogRoot
+	// by construction, so the era-3 predicate does not apply. This is the ONLY allowed
+	// exemption; adding to it is a reviewed decision, not a silent default.
+	genesisAllowlist := map[string]bool{"AppendGenesis": true}
+
+	// Verify the transitive guards genuinely reach a root validator, so the allowance is
+	// not a fiction that lets a real hole through.
+	for _, g := range transitiveGuards {
+		body := methodBody(t, src, g)
+		reaches := false
+		for _, rv := range rootValidators {
+			if strings.Contains(body, rv) {
+				reaches = true
+				break
+			}
+		}
+		// ValidateCommit reaches it via ValidateProposal; accept a call to another
+		// transitive guard as reaching too.
+		for _, other := range transitiveGuards {
+			if other != g && strings.Contains(body, other) {
+				reaches = true
+			}
+		}
+		if !reaches {
+			t.Fatalf("transitive guard %q no longer reaches an era-3 root validator — the "+
+				"guard's coverage assumption rotted; a disk-write path relying on it is now "+
+				"unguarded", g)
+		}
+	}
+
+	allowedNames := append(append([]string(nil), rootValidators...), transitiveGuards...)
+	for _, m := range methods {
+		if genesisAllowlist[m] {
+			continue
+		}
+		body := methodBody(t, src, m)
+		guarded := false
+		for _, name := range allowedNames {
+			if strings.Contains(body, name) {
+				guarded = true
+				break
+			}
+		}
+		if !guarded {
+			t.Errorf("method %q writes a block to disk (calls c.apply) but does NOT run the "+
+				"era-3 root check (names none of %v) and is not on the genesis allowlist. A "+
+				"disk-write path that skips the root check re-opens the A-bare hole: a "+
+				"re-signed wrong-root v4 block would be persisted unvalidated. Route its "+
+				"block's roots through validateEra3Roots (BEFORE apply, so a rejection leaves "+
+				"no bad block applied).", m, allowedNames)
+		}
+	}
+
+	// Belt-and-suspenders: the two paths we KNOW must be in the set are, so a scanner that
+	// silently matched nothing cannot pass.
+	haveAppend, haveStructural := false, false
+	for _, m := range methods {
+		switch m {
+		case "Append":
+			haveAppend = true
+		case "appendStructural":
+			haveStructural = true
+		}
+	}
+	if !haveAppend || !haveStructural {
+		t.Errorf("the apply-scanner missed a known disk-write path (Append=%v, "+
+			"appendStructural=%v) — the structural guard is not covering the real set",
+			haveAppend, haveStructural)
+	}
+}
+
+// readChainSource returns the source of core/chain/chain.go, located relative to this
+// test file so it does not depend on the working directory.
+func readChainSource(t *testing.T) string {
+	t.Helper()
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed — cannot locate the source directory")
+	}
+	dir := thisFile[:strings.LastIndex(thisFile, "/")]
+	b, err := os.ReadFile(dir + "/chain.go")
+	if err != nil {
+		t.Fatalf("read chain.go: %v", err)
+	}
+	return string(b)
+}
+
+// methodsCallingApply scans the source for methods with a `func (c *Chain) Name(` receiver
+// whose body contains a call to `c.apply(`. Returns the method names.
+func methodsCallingApply(t *testing.T, src string) []string {
+	t.Helper()
+	var out []string
+	for _, name := range chainMethodNames(src) {
+		if strings.Contains(methodBody(t, src, name), "c.apply(") {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+// chainMethodNames returns every `func (c *Chain) Name(` method name in src.
+func chainMethodNames(src string) []string {
+	const marker = "func (c *Chain) "
+	var names []string
+	seen := map[string]bool{}
+	for i := 0; ; {
+		j := strings.Index(src[i:], marker)
+		if j < 0 {
+			break
+		}
+		start := i + j + len(marker)
+		paren := strings.IndexByte(src[start:], '(')
+		if paren < 0 {
+			break
+		}
+		name := strings.TrimSpace(src[start : start+paren])
+		if name != "" && !seen[name] {
+			seen[name] = true
+			names = append(names, name)
+		}
+		i = start + paren
+	}
+	return names
+}
+
+// methodBody returns the source text of `func (c *Chain) name(...) { ... }` by brace
+// matching from the method's opening brace. Used to scope the c.apply / validator scans to
+// one method.
+func methodBody(t *testing.T, src, name string) string {
+	t.Helper()
+	marker := "func (c *Chain) " + name + "("
+	idx := strings.Index(src, marker)
+	if idx < 0 {
+		t.Fatalf("method %q not found in chain.go", name)
+	}
+	// Find the first '{' after the signature.
+	open := strings.IndexByte(src[idx:], '{')
+	if open < 0 {
+		t.Fatalf("method %q: no opening brace", name)
+	}
+	open += idx
+	depth := 0
+	for i := open; i < len(src); i++ {
+		switch src[i] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return src[open : i+1]
+			}
+		}
+	}
+	t.Fatalf("method %q: unbalanced braces", name)
+	return ""
 }

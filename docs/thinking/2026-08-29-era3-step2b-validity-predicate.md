@@ -50,14 +50,46 @@ carrying it is rejected.
   both entry points, and I add a comment at the `ValidateCommit` site recording that the root
   check rides in via `ValidateProposal`.
 - `validateStructural` (chain.go:2726, the Reload/own-disk replay path) does NOT call
-  `ValidateProposal` and is deliberately NOT gated in 2b. It re-applies THIS node's OWN
-  already-committed history and, by the `appendStructural` doc, intentionally skips live policy
-  gates a quorum already made. A tampered root on our own disk is already caught: the
-  proposer/attester signatures cover the whole block hash, which now includes the roots (2a Q4),
-  so `validateStructural`'s existing signature verify (chain.go:2736, 2765) rejects a bit-flipped
-  root at load. Adding a root RECOMPUTE to the reload path would be redundant work and could false-
-  stall a node whose live view legitimately differs at replay time. This scoping is called out so
-  the choice is auditable, not silent.
+  `ValidateProposal`.
+
+  **~~2b claim (REFUTED 2026-08-29, corrected in the reload-root-check follow-on):~~** *2b
+  argued the reload path needed no root check because "the proposer/attester signatures cover
+  the whole block hash, which now includes the roots, so `validateStructural`'s signature verify
+  rejects a bit-flipped root at load." That argument is WRONG.* A signature over a root proves
+  only that the signer committed to THAT byte string — it does NOT prove the root equals the
+  post-apply state. **Integrity ≠ root-correctness.** A v4 block whose `StateRoot` is a wrong
+  value but is **re-signed with the proposer key** (a corrupt/tampered own-disk block, or a
+  future fast-sync/import path feeding attacker-supplied bytes) passes every signature check in
+  `validateStructural`. The commit path recomputes and rejects such a block; the reload path
+  accepted it — an unenforced root on the own-disk path. This was proven with a failing-first
+  regression: `TestReloadRejectsResignedWrongStateRootV4` (RED on `a0f8839`, GREEN after the
+  fix), with an ablation subtest showing `validateStructural` ACCEPTS the re-signed block so the
+  reject is caused by the root check, not the signature.
+
+  **Corrected decision (A-bare, blind-PE ruled — `RULING-era3-reload-root-check-2026-08-29.md`,
+  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-era3-reload-root-check-2026-08-29.md`):**
+  `appendStructural` now calls `validateEra3Roots(&b)` directly — the SAME clone-recompute
+  predicate the commit path uses — **BEFORE `c.apply(b)`**. Before-apply, not after: a
+  post-apply-then-reject would leave the bad block applied to the live chain (head advanced,
+  `byRoot` mutated), which breaks Reload's load-bearing "keep the longest VALID prefix" contract
+  that the daemon relies on (`cmd/silt/daemon.go`: a replay failure continues with the prefix
+  chain, so a partially-applied bad block would poison a running node). *(The PE ruling's
+  "no clone needed, compare against live post-apply `c.StateRoot()`" is an efficiency note that
+  assumed apply-then-read is safe; validating on the clone before apply is the exact same verdict
+  at O(state)/block and preserves the prefix contract — recorded here as the one refinement over
+  the ruling's suggested encoding, surfaced to the PE/Tester in review.)* The named errors are
+  shared with the commit path, so proposer, validator, and reload agree or all fail. A v2/v3
+  block skips it (era-gated, Decision 4), UNCHANGED. A **structural write-set guard**
+  (`TestEveryDiskWritePathRunsTheEra3RootCheck`) now enumerates every `c.apply(b)` caller and
+  fails if any (except the genesis allowlist) skips the root check — so a FUTURE fast-sync/import
+  path cannot silently re-open this hole.
+
+  **Residual (the hold-the-tree bridge, named as a reopening item — see the "Reopening /
+  optimization" section below):** A-bare re-validates each v4 block's root on boot at
+  O(state)/block ⇒ O(depth²) over a full Reload. This is the correct BRIDGE until the
+  incremental-SMT / `ports.NodeStore` keystone-store workstream (#600) makes `StateRoot()`
+  O(depth) on every path, at which point the SAME `validateEra3Roots` call site becomes linear
+  with zero change. A-bare is the strictly-dominant bridge to incremental (PE ruling Q1).
 
 Placement inside `ValidateProposal`: AFTER the existing structural/quorum/entry checks return
 clean, at the end (a v4 block must first BE a valid era-2 block, then additionally satisfy the
@@ -174,3 +206,43 @@ In `core/chain/modelcheck_era3_validity_test.go`:
 The ACCEPT/REJECT tests drive the predicate through the real `ValidateProposal` entry point on a
 chain with populated committed state, building the v4 block's roots from the post-apply recompute
 (the honest proposer's computation) and perturbing for the RED cases.
+
+In `core/chain/reload_era3_boundary_test.go` (the reload-root-check follow-on, Decision 1
+correction):
+
+- `TestReloadRejectsResignedWrongStateRootV4` — a v4 block with a wrong `StateRoot` **re-signed
+  with the proposer key** is fed to a fresh replica via `Reload`. RED on `a0f8839` (Reload ACCEPTS,
+  `err=<nil>`, restores 4); GREEN after the fix with `ErrEra3StateRootMismatch`. The RED is the
+  acceptance, and the reject cause is pinned to the root check (not a signature error, not a panic).
+- `TestReloadWrongStateRootIsCaughtByTheRootCheckNotTheSignature` — the ablation: it proves the
+  re-signed block is signature-VALID (`validateStructural` accepts it) and that the untampered
+  history Reloads cleanly (positive control), so the reject is caused by the wrong root, not by an
+  unrelated malformation. RED on `a0f8839`.
+- `TestReloadRejectsResignedWrongLogRootV4` — the LogRoot sibling → `ErrEra3LogRootMismatch`.
+- `TestEveryDiskWritePathRunsTheEra3RootCheck` — the STRUCTURAL write-set guard: it scans
+  `chain.go` for every method calling `c.apply(b)` and asserts each runs `validateEra3Roots`
+  (directly or via the commit family), except the genesis allowlist. RED on `a0f8839` (it names
+  `appendStructural` as an unguarded disk-write path). A future fast-sync/import path that skips the
+  check fails this guard structurally, not by a hand-maintained list.
+
+## Reopening / optimization — the hold-the-tree bridge (A-bare → incremental-SMT, #600)
+
+A-bare re-validates each v4 block's committed root on boot by recomputing the SMT over the whole
+committed set: O(state)/block, hence **O(depth²) over a full Reload**. This is accepted as the
+correct BRIDGE, not the end state (blind-PE ruling `RULING-era3-reload-root-check-2026-08-29.md`,
+`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-era3-reload-root-check-2026-08-29.md`, Q2):
+
+- It does NOT trip the depth-war gate: `TestPerHeightCostLinear` lives in `sim/`, drives live
+  commits, and never calls `Reload`. The cost lands on a boot-time path the gate does not measure,
+  and it is unreachable until 2c mints v4.
+- The linear/stateless end-state is the **incremental-SMT / `ports.NodeStore`** keystone-store
+  workstream (#600): maintaining the state tree incrementally per `apply(b)` makes `StateRoot()`
+  O(depth) on EVERY path. When it lands, the SAME `validateEra3Roots` call site in
+  `appendStructural` becomes linear with **zero change** to the reload check — A-bare is the
+  strictly-dominant, forward-clean bridge (PE ruling Q1).
+- Tracking target (not a freeze gate): a future `TestReloadCostLinear` that is RED on A-bare and
+  GREEN on incremental gives the optimization a red-to-green home.
+
+**Reopening condition:** when `NodeStore` + the incremental tree land (#600), replace the
+per-block from-scratch recompute in `validateEra3Roots`/`postApplyRoots` with the incremental
+root; the equality check and the named errors stay identical.

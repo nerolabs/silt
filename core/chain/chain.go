@@ -2726,6 +2726,29 @@ func (c *Chain) appendStructural(b Block) error {
 	if err := c.validateStructural(&b); err != nil {
 		return err
 	}
+	// era-3 (v4) committed-root re-validation on the OWN-DISK reload path (A-bare).
+	//
+	// validateStructural verifies the proposer/attester signatures, which cover the
+	// block Hash (StateRoot/LogRoot included). But a signature covering a root proves
+	// only that the signer committed to THAT byte string — it does NOT prove the root
+	// equals the post-apply state. A v4 block whose StateRoot is wrong but is re-signed
+	// with the proposer key passes every signature check here. Integrity ≠ root-
+	// correctness. The commit paths (Append→ValidateCommit→ValidateProposal→
+	// validateEra3Roots) enforce the equality; this own-disk path skipped it, so a
+	// corrupt/tampered v4 disk block was accepted with an UNENFORCED root.
+	//
+	// The check runs BEFORE apply, on the same #558-guarded dry-run clone the commit
+	// path uses (validateEra3Roots → postApplyRoots), NOT after apply on live state. A
+	// post-apply-then-reject would leave the bad block applied to the live chain — head
+	// advanced, byRoot mutated — which breaks Reload's load-bearing "keep the longest
+	// VALID prefix" contract (cmd/silt/daemon.go: a replay failure continues with the
+	// prefix chain, so a partially-applied bad block would poison a running node). The
+	// clone recompute yields the identical verdict at O(state)/block with no live
+	// mutation on rejection. The named errors are shared with the commit path so
+	// proposer, validator, and reload agree or all fail.
+	if err := c.validateEra3Roots(&b); err != nil {
+		return err
+	}
 	c.apply(b)
 	return nil
 }

@@ -92,6 +92,34 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   production until 2c because no v4 block is minted yet, but it is correct now so 2c cannot
   land before it. Deliberation in
   `docs/thinking/2026-08-29-era3-step2b-validity-predicate.md`.
+- **era-3 committed-root check on the OWN-DISK Reload path (A-bare — closes the 2b
+  reload gap)** (2026-08-29; blind-PE ruled, no research gate). 2b enforced
+  `validateEra3Roots` on the commit paths but the `Reload`→`appendStructural` own-disk
+  replay path SKIPPED it, so a v4 block with a WRONG `StateRoot` **re-signed with the
+  proposer key** was accepted at load. 2b's Decision-1 argument — "the signature covers
+  the root, so `validateStructural`'s signature verify rejects a bad root" — was WRONG:
+  **integrity ≠ root-correctness**; a signature over a wrong root is still a valid
+  signature. `appendStructural` now calls `validateEra3Roots(&b)` — the SAME
+  clone-recompute predicate the commit path uses — **BEFORE `c.apply(b)`**, so a rejection
+  never leaves a bad block applied (preserving Reload's load-bearing "keep the longest
+  VALID prefix" contract the daemon relies on). Reuses the SAME named errors
+  (`ErrEra3RootMissing`/`ErrEra3StateRootMismatch`/`ErrEra3LogRootMismatch`) so proposer,
+  validator, and reload agree or all fail; a v2/v3 block skips it (era-gated), UNCHANGED.
+  New regression + guard in `core/chain/reload_era3_boundary_test.go`:
+  `TestReloadRejectsResignedWrongStateRootV4` (RED on `a0f8839`: Reload ACCEPTS the
+  re-signed wrong-root block; GREEN with `ErrEra3StateRootMismatch`), an ABLATION subtest
+  proving `validateStructural` accepts the re-signed block so the reject is the ROOT check
+  not the signature, the `LogRoot` sibling, and a STRUCTURAL write-set guard
+  (`TestEveryDiskWritePathRunsTheEra3RootCheck`) that enumerates every `c.apply(b)` caller
+  and fails a FUTURE unguarded disk-write path (fast-sync/import) rather than a
+  hand-maintained list. Invariants: preserves I1–I5, alters none — it extends an existing
+  v4-gated validity rejection to a second disk-write path. **Residual (named as a reopening
+  item):** A-bare re-validates each v4 root on boot at O(state)/block ⇒ O(depth²) over a
+  full Reload — the hold-the-tree bridge until the incremental-SMT / `ports.NodeStore`
+  keystone-store workstream (#600) makes `StateRoot()` linear on every path, at which point
+  the SAME call site becomes O(depth) with no change. Correction + reopening item recorded
+  in `docs/thinking/2026-08-29-era3-step2b-validity-predicate.md` (Decision 1); PE ruling
+  `RULING-era3-reload-root-check-2026-08-29.md`.
 
 ### Changed
 - **CONSENSUS-RULE: canonicalize same-id intra-block bond registrations in `apply()`**
