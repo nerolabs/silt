@@ -5,13 +5,16 @@ import (
 	"testing"
 )
 
-// TestPerHeightCostLinear is the STANDING GATE for the depth-war failure class:
-// per-height cost that grows with chain depth (#528, #535, #549, #555, #556,
-// #558, #560, #561, #562, #563, #572 — all field-confirmed, one class). A unit
-// test at a fixed height is ALWAYS green for an O(depth) bug (canonical: #555,
-// AllEntries built an O(n) slice per block — green in every constant-height
-// test, catastrophic at real chain depth). This gate measures the SLOPE of cost
-// vs depth and fails on super-linear growth.
+// TestPerHeightCostLinear is the STANDING GATE for the memory-accumulation
+// SUBSET of the depth-war failure class: per-height MEMORY that grows with chain
+// depth (#528, #535, #549, #555, #556, #558, #560, #561, #562, #563, #572 — all
+// field-confirmed, one class). It does NOT cover the whole class: the metric is
+// HeapObjects-based, so a CPU-time-shaped O(depth) defect (no extra allocation)
+// is out of scope — tracked in follow-on issue #616. A unit test at a fixed
+// height is ALWAYS green for an O(depth) bug (canonical: #555, AllEntries built
+// an O(n) slice per block — green in every constant-height test, catastrophic at
+// real chain depth). This gate measures the SLOPE of cost vs depth and fails on
+// super-linear growth.
 //
 // Metric: baseline-subtracted runtime.MemStats.HeapObjects. It is deterministic
 // across runs (seeded sim + a forced GC before each sample) — unlike HeapInuse,
@@ -25,12 +28,14 @@ import (
 // docs/thinking/2026-08-27-o-depth-ci-gate.md for the full derivation and the
 // false-positive analysis.
 //
-// Cost: ~6s to h=2000 in the full CI go-test job; ~1.5s to h=1000 under -short.
-// Both ladders span two doublings and catch the O(n²) class.
+// Cost: ~1.5s to h=1000 under -short; ~6s to h=2000 on the wide ladder. The
+// STANDING per-PR gate is the SHORT 250→500→1000 ladder (go test -short,
+// ci.yml:44,65); the wide 500→1000→2000 ladder runs on release.yml only. Both
+// ladders span two doublings and catch the O(n²) class.
 func TestPerHeightCostLinear(t *testing.T) {
-	// The ladder: three heights spanning two doublings. Under -short (the default
-	// dev/CI-race suite) use the smaller ladder to keep the fast path fast; the
-	// full go-test job runs the wider ladder. Both assert the same 2.6 bound.
+	// The ladder: three heights spanning two doublings. Under -short (the standing
+	// per-PR gate) use the smaller ladder to keep the fast path fast; the wider
+	// ladder runs on release.yml only. Both assert the same 2.6 bound.
 	ladder := []int{500, 1000, 2000}
 	if testing.Short() {
 		ladder = []int{250, 500, 1000}
