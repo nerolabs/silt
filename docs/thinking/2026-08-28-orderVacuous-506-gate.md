@@ -1,5 +1,13 @@
 # 2026-08-28 — order-independence: the #506-gate family (the LAST orderVacuous family)
 
+> **STATUS — SUPERSEDED by the resolution.** This is the finding-era deliberation
+> that DISCOVERED the seam and routed it. The finding was certified and FIXED by
+> canonicalization (not the reject predicted in the OUTCOME below). The shipped
+> decision, the certified fix, and the delivered coverage live in
+> `docs/thinking/2026-08-28-sameid-twoversion-canonicalize-apply.md`. Read that for
+> what shipped; read this for how the seam was found. The forward-looking "likely
+> resolution" in the OUTCOME was WRONG in direction — see the correction note there.
+
 ## The goal
 
 Cover the last two `orderVacuous` committedSet fields — `gateLockedIn`,
@@ -16,7 +24,17 @@ NOT inherit #620's convergent-by-construction assumption. Treat a #618-style
 order-DEPENDENCE finding as the EXPECTED outcome. Find the truth; do not produce a
 green.
 
-## ★★★ OUTCOME — CONSENSUS FINDING (routed, NOT fixed here). Do NOT cover the fields.
+## ★★★ OUTCOME — CONSENSUS FINDING (routed here, since CERTIFIED + FIXED by canonicalization)
+
+> **Resolution (added post-certification):** the finding below was routed to the
+> Researcher + human, CERTIFIED, and FIXED by CANONICALIZATION — fold same-id
+> intra-block regs to one content-chosen winner in `apply()`. The "likely certified
+> resolution" this section predicted (make the `seenReg` guard unconditional, i.e.
+> REJECT) was REFUTED: reject breaks the legal F1 renew/resize
+> (`TestSameRootSameIDRenewAdmitted`). The fields below are now COVERED on the
+> order-independence list. See
+> `docs/thinking/2026-08-28-sameid-twoversion-canonicalize-apply.md`. The text below
+> is preserved as the finding-era analysis that led to the route.
 
 The warning was RIGHT, and the seam is real. `regVersion` (and `bondDomain`, the
 same "latest-wins" slot) is ORDER-DEPENDENT on **intra-block BondReg slice order**
