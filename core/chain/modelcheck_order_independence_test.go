@@ -272,28 +272,108 @@ func twoOrderings(t *testing.T) (*Chain, *Chain) {
 	return build(p0, p1, true), build(p1, p0, false)
 }
 
-// orderVacuous names committedSet fields that twoOrderings genuinely cannot
-// populate — they belong to a regime this launch/objective, never-mature,
-// gate-inactive world does not enter. Each is compared as DeepEqual(∅, ∅) here,
-// so its order-independence is NOT proven by this oracle; the entry records what
-// a covering fixture would have to construct. This is a DECLARED, SHRINKING debt
-// (mirroring probeUncovered in the snapshot oracle): the guard below fails on any
-// NEW empty-vs-empty committedSet field not listed here, so the vacuous-green
-// hole can never silently reopen. `spent` and `slashed` were moved OUT of this
-// bucket by populating them with a real spend/slash order.
+// matureOrderings brings a network to MATURITY over two opposite-order histories
+// and returns both chains, so the mature-epoch family — everMature, matureEpoch,
+// epochSet — is exercised under order variation rather than declared vacuous.
+//
+// The regime twoOrderings cannot enter (it is a launch-anchor world with
+// MatureValidators=99): an ANCHORLESS objective world with epochs on and a small
+// MatureValidators, so the maturity latch trips on a real bonded set and the first
+// post-latch rotation freezes epochSet (#357 Conditions A+B).
+//
+// The order variable is a SLASH height, per the #618 lesson that a commutative
+// single-actor fixture is a decoration. A victim validator bonds at genesis
+// alongside the four-key governing quorum, then is slashed at height 1 in one
+// ordering and height 3 in the OTHER. So the (bonded, slashed) maps are built by
+// two genuinely different histories — bonded=5 vs 4 at height 1 — that must both
+// freeze the SAME epochSet at the height-4 boundary (liveQualifiedSet excludes the
+// slashed victim in both). The victim is NOT part of the committing quorum, so
+// slashing it early never denies the block that carries its own slash.
+//
+// everMature latches at height 1 in both orderings (the four bonded governors give
+// MatureCoefficient=2 ≥ MatureValidators=2 once they are seen); matureEpoch and the
+// frozen epochSet are set at the height-4 rotation. The property under test: two
+// opposite slash orders reach byte-identical everMature, matureEpoch, epochSet.
+func matureOrderings(t *testing.T) (*Chain, *Chain) {
+	t.Helper()
+	build := func(slashEarly bool) *Chain {
+		// Four governing keys (the committing quorum) plus one bonded, non-quorum
+		// victim. All bond at genesis so the quorum is stable across heights and the
+		// epochSet freeze reads a complete bonded ledger — only the slash HEIGHT varies.
+		gov := make([]ed25519.PrivateKey, 4)
+		for i := range gov {
+			gov[i] = key(int64(62000 + i))
+		}
+		victim := key(62099)
+		cfg := Config{Quorum: 1, MinBond: 1 << 20, ByzantineQuorum: true,
+			EpochBlocks: 4, MatureValidators: 2}
+		c := New(cfg, func(ports.NodeID) int64 { return 0 })
+		c.SetBondVerifier(objectiveVerify)
+
+		g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
+		for _, k := range append(append([]ed25519.PrivateKey{}, gov...), victim) {
+			g.BondRegs = append(g.BondRegs, bondReg(k, twoMiB, ports.Hash{}))
+		}
+		Sign(g, gov[0])
+		if err := c.AppendGenesis(*g); err != nil {
+			t.Fatalf("matureOrderings genesis: %v", err)
+		}
+
+		slashHeight := uint64(3)
+		if slashEarly {
+			slashHeight = 1
+		}
+		g0 := g.Hash()
+		prev := g0
+		for h := uint64(1); h <= 3; h++ {
+			b := &Block{Version: BlockVersionRounds, Height: h, Prev: prev,
+				Entries: []ports.Entry{entry(byte(h))}}
+			if h == slashHeight {
+				b.Slashes = []Equivocation{slashProof(victim, g0, 201, 202)}
+			}
+			commitRounds(b, gov, 0)
+			if err := c.Append(*b); err != nil {
+				t.Fatalf("matureOrderings height %d (slashEarly=%v): %v", h, slashEarly, err)
+			}
+			prev = b.Hash()
+		}
+		// Height 4: the epoch boundary — rotateEpoch sets matureEpoch and freezes epochSet.
+		b := &Block{Version: BlockVersionRounds, Height: 4, Prev: prev,
+			Entries: []ports.Entry{entry(44)}}
+		commitRounds(b, gov, 0)
+		if err := c.Append(*b); err != nil {
+			t.Fatalf("matureOrderings boundary (slashEarly=%v): %v", slashEarly, err)
+		}
+		return c
+	}
+	return build(true), build(false) // slash-early vs slash-late: opposite slash orders
+}
+
+// matureFields are the committedSet fields matureOrderings covers — the mature-epoch
+// family. They are EMPTY in the launch-anchor twoOrderings world, so their
+// order-independence is proven on this mature world instead. Kept beside the fixture
+// so the guard in TestCommittedSetFieldsAreOrderIndependent knows which fields to
+// verify on the mature world rather than declare vacuous.
+var matureFields = []string{"everMature", "matureEpoch", "epochSet"}
+
+// orderVacuous names committedSet fields that NEITHER twoOrderings NOR matureOrderings
+// populates — they belong to a regime those worlds do not enter. Each is compared as
+// DeepEqual(∅, ∅), so its order-independence is NOT proven by this oracle; the entry
+// records what a covering fixture would have to construct. This is a DECLARED, SHRINKING
+// debt (mirroring probeUncovered in the snapshot oracle): the guard below fails on any
+// NEW empty-vs-empty committedSet field not listed here, so the vacuous-green hole can
+// never silently reopen. `spent`/`slashed` (#617) and the bond-registration family
+// (#618) were moved out by twoOrderings; the mature-epoch family (everMature, matureEpoch,
+// epochSet) is now moved out by matureOrderings.
 var orderVacuous = map[string]string{
 	// Bond-registration state (bonded, bondRootOwner, bondRootProven, bondRegHeight,
-	// regVersion, bondDomain) is now COVERED: twoOrderings commits a height-5 bond
-	// block whose BondReg slice order flips between the two orderings, including a G3
-	// proof-beats-declaration displacement of a genesis squatter. The fields are
-	// non-empty in both orderings, so the guard below enforces they stay covered.
-	// Mature-epoch state: this world sets MatureValidators=99 and never matures,
-	// so epochStart/rotateEpoch never freezes an epoch set.
-	"epochSet":    "needs a mature epoch (rotateEpoch freeze); this world never matures",
-	"matureEpoch": "needs the #357 Condition-B handoff; this world never matures",
-	"everMature":  "needs the maturity latch to trip; MatureValidators=99 keeps it launch-phase",
-	// #506 registration-gate state: no RegGateActivationHeight configured here.
-	"gateLockedIn": "needs the #506 gate to lock in (no RegGateActivationHeight in this world)",
+	// regVersion, bondDomain) is COVERED by twoOrderings' height-5 bond block whose
+	// BondReg slice order flips (incl. a G3 displacement). The mature-epoch family
+	// (everMature, matureEpoch, epochSet) is COVERED by matureOrderings' opposite slash
+	// orders. Both are enforced non-empty below.
+	// #506 registration-gate state: no RegGateActivationHeight configured, and neither
+	// world drives the post-latch >⅔ regVersion lock-in tally (rotateEpoch:2922).
+	"gateLockedIn": "needs the #506 gate to lock in — a >⅔ regVersion-signalling frozen set across a post-latch boundary (rotateEpoch); the next family to cover",
 	"gateHeight":   "same as gateLockedIn",
 	// validatorsSeen is NOT listed: the attesting anchors qualify, so apply()
 	// populates it — its order-independence is genuinely exercised here.
@@ -304,33 +384,52 @@ var orderVacuous = map[string]string{
 // two histories reaching the same final set MUST agree on it exactly.
 func TestCommittedSetFieldsAreOrderIndependent(t *testing.T) {
 	a, b := twoOrderings(t)
+	ma, mb := matureOrderings(t)
 
 	fields := fieldsOfKind(committedSet)
 	if len(fields) == 0 {
 		t.Fatal("no committedSet fields — the classification or reflection is broken")
 	}
 
+	// A field is covered on whichever world POPULATES it: the launch twoOrderings
+	// world for the launch/objective families, the mature matureOrderings world for
+	// the mature-epoch family. Pairing a field with its populating world is the same
+	// union-of-worlds pattern the snapshot oracle uses (worldGroup). matureFields
+	// declares which fields switch to the mature world; every other field uses the
+	// launch world.
+	mature := map[string]bool{}
+	for _, f := range matureFields {
+		mature[f] = true
+	}
+	worldOf := func(name string) (*Chain, *Chain) {
+		if mature[name] {
+			return ma, mb
+		}
+		return a, b
+	}
+
 	// The durable fix (PE ruling "Coupling", 2026-08-28): a field that is EMPTY
 	// in both orderings is compared as DeepEqual(∅, ∅) — a vacuous green that
 	// asserts nothing. Every committedSet field the oracle claims to prove
-	// order-independent must be NON-EMPTY in at least one ordering, OR be
-	// explicitly declared in orderVacuous with the reason twoOrderings cannot
-	// populate it. Otherwise "all N identical" reads as coverage while some
+	// order-independent must be NON-EMPTY in at least one ordering of its populating
+	// world, OR be explicitly declared in orderVacuous with the reason no fixture
+	// populates it. Otherwise "all N identical" reads as coverage while some
 	// fraction of it is empty-vs-empty — exactly the shape that let `spent` and
 	// `slashed` show green over an unexercised map.
 	var undeclaredVacuous []string
 	populated := map[string]bool{}
 	for _, name := range fields {
-		if isZero(fieldValue(a, name)) && isZero(fieldValue(b, name)) {
+		wa, wb := worldOf(name)
+		if isZero(fieldValue(wa, name)) && isZero(fieldValue(wb, name)) {
 			if _, declared := orderVacuous[name]; !declared {
 				undeclaredVacuous = append(undeclaredVacuous, name)
 			}
 			continue
 		}
 		populated[name] = true
-		// A field cannot be both populated here and declared un-populatable.
+		// A field cannot be both populated and declared un-populatable.
 		if _, declared := orderVacuous[name]; declared {
-			t.Errorf("%q is populated by twoOrderings yet still listed in orderVacuous "+
+			t.Errorf("%q is populated by its fixture yet still listed in orderVacuous "+
 				"— remove the stale entry; its order-independence is now genuinely exercised.", name)
 		}
 	}
@@ -339,29 +438,33 @@ func TestCommittedSetFieldsAreOrderIndependent(t *testing.T) {
 			"in orderVacuous, so the order-independence comparison over them is "+
 			"DeepEqual(∅, ∅) — vacuous, asserting nothing: %v\n\n"+
 			"A field under the history-independent SMT must have its order-independence "+
-			"EXERCISED, not merely restated over an empty map. Extend twoOrderings to "+
+			"EXERCISED, not merely restated over an empty map. Extend a fixture to "+
 			"populate the field with a real event order (see the spent/slashed spends "+
-			"and slashes), or record in orderVacuous what a fixture would have to "+
-			"construct. Do not let the count of 'identical' fields include ones this "+
-			"history never touched.", len(undeclaredVacuous), undeclaredVacuous)
+			"and slashes, or matureOrderings' opposite slash orders), or record in "+
+			"orderVacuous what a fixture would have to construct. Do not let the count "+
+			"of 'identical' fields include ones no history touched.", len(undeclaredVacuous), undeclaredVacuous)
 	}
 	// Proof the coverage is real: the fields this work exists to cover must be
-	// non-empty in the fixture, not merely absent from orderVacuous. spent/slashed
-	// come from the spend+slash pairs; the bond-registration family comes from the
-	// height-5 bond block with its slice-order variation (incl. the G3 displacement).
-	for _, name := range []string{"spent", "slashed",
-		"bonded", "bondRootOwner", "bondRootProven", "bondRegHeight", "regVersion", "bondDomain"} {
+	// non-empty in their fixture, not merely absent from orderVacuous. spent/slashed
+	// come from the spend+slash pairs; the bond-registration family from the height-5
+	// bond block with its slice-order variation (incl. the G3 displacement); the
+	// mature-epoch family from matureOrderings' opposite slash orders.
+	mustCover := append([]string{"spent", "slashed",
+		"bonded", "bondRootOwner", "bondRootProven", "bondRegHeight", "regVersion", "bondDomain"},
+		matureFields...)
+	for _, name := range mustCover {
 		if !populated[name] {
-			t.Fatalf("%q must be NON-EMPTY in twoOrderings — the whole point of this "+
-				"fixture is to exercise its order-independence over a real event order, "+
-				"not DeepEqual(∅, ∅). len(a)=%d len(b)=%d", name,
-				reflect.ValueOf(fieldValue(a, name)).Len(), reflect.ValueOf(fieldValue(b, name)).Len())
+			wa, wb := worldOf(name)
+			t.Fatalf("%q must be NON-EMPTY in its fixture — the whole point is to exercise "+
+				"its order-independence over a real event order, not DeepEqual(∅, ∅). "+
+				"a-empty=%v b-empty=%v", name, isZero(fieldValue(wa, name)), isZero(fieldValue(wb, name)))
 		}
 	}
 
 	var orderDependent []string
 	for _, name := range fields {
-		if !reflect.DeepEqual(fieldValue(a, name), fieldValue(b, name)) {
+		wa, wb := worldOf(name)
+		if !reflect.DeepEqual(fieldValue(wa, name), fieldValue(wb, name)) {
 			orderDependent = append(orderDependent, name)
 		}
 	}
@@ -378,7 +481,8 @@ func TestCommittedSetFieldsAreOrderIndependent(t *testing.T) {
 			"or the state it accumulates must be made order-free.",
 			len(orderDependent), orderDependent)
 	}
-	t.Logf("all %d committedSet fields identical across opposite event orderings", len(fields))
+	t.Logf("all %d committedSet fields identical across opposite event orderings "+
+		"(mature-epoch family on matureOrderings, the rest on twoOrderings)", len(fields))
 }
 
 // TestCommittedLogFieldsAreGenuinelyOrderDependent is the other direction, and
@@ -475,6 +579,68 @@ func TestBondRegG3DisplacementIsOrderIndependent(t *testing.T) {
 	}
 	t.Logf("G3 displacement fired in both orderings and reached byte-identical bond state "+
 		"— proof-beats-declaration is order-INDEPENDENT (squatter %x displaced by %x)", sq[:6], h[:6])
+}
+
+// TestMatureEpochFamilyIsOrderIndependent is the consensus-correctness trip-wire
+// for the mature-epoch family (everMature, matureEpoch, epochSet). Byte-identity
+// across the two orderings is necessary but not sufficient: the match must be over
+// a maturity latch and an epoch freeze that ACTUALLY FIRED, and over two GENUINELY
+// different histories, else the coverage is vacuous (the #618 lesson).
+//
+// It asserts directly: in BOTH orderings the network matured (everMature), handed
+// off (matureEpoch), and froze the SAME four-key governing set into epochSet — the
+// slashed victim excluded. The victim is slashed at height 1 in one ordering and
+// height 3 in the other, so the (bonded, slashed) maps are built by two different
+// histories that must converge. If the two orderings had frozen DIFFERENT epoch
+// sets — or one matured and the other did not at the same final height — that would
+// be a REAL consensus finding (an order-sensitive maturity/rotation rule under a
+// history-independent root), STOP-and-escalate, NO rule change. They do not.
+func TestMatureEpochFamilyIsOrderIndependent(t *testing.T) {
+	victim := idOf(key(62099))
+	gov := make([]ports.NodeID, 4)
+	for i := range gov {
+		gov[i] = idOf(key(int64(62000 + i)))
+	}
+
+	a, b := matureOrderings(t)
+
+	for _, tc := range []struct {
+		name string
+		c    *Chain
+	}{{"slash-early", a}, {"slash-late", b}} {
+		c := tc.c
+		if !c.everMature {
+			t.Fatalf("[%s] everMature did NOT latch — the maturity path never fired, coverage is vacuous", tc.name)
+		}
+		if !c.matureEpoch {
+			t.Fatalf("[%s] matureEpoch did NOT set — the #357 Cond-B handoff never fired, coverage is vacuous", tc.name)
+		}
+		// The freeze captured exactly the four governors; the slashed victim is excluded.
+		if len(c.epochSet) != 4 {
+			t.Fatalf("[%s] epochSet froze %d members, want 4 (the governors, victim excluded) "+
+				"— the freeze did not capture the expected set", tc.name, len(c.epochSet))
+		}
+		if _, ok := c.epochSet[victim]; ok {
+			t.Fatalf("[%s] slashed victim %x is in the frozen epochSet — liveQualifiedSet should exclude it", tc.name, victim[:6])
+		}
+		for _, id := range gov {
+			if _, ok := c.epochSet[id]; !ok {
+				t.Fatalf("[%s] governor %x missing from frozen epochSet", tc.name, id[:6])
+			}
+		}
+	}
+
+	// The two orderings reach byte-identical mature-epoch state.
+	for _, name := range matureFields {
+		if !reflect.DeepEqual(fieldValue(a, name), fieldValue(b, name)) {
+			t.Fatalf("mature-epoch field %q DIFFERS across the two slash orderings — maturity/"+
+				"rotation is ORDER-DEPENDENT. This is a consensus finding to route, NOT a test "+
+				"to relax:\n  slash-early: %v\n  slash-late:  %v",
+				name, fieldValue(a, name), fieldValue(b, name))
+		}
+	}
+	t.Logf("network matured and froze an identical %d-member epochSet across two opposite "+
+		"slash orderings — the maturity latch and epoch freeze are order-INDEPENDENT", len(a.epochSet))
 }
 
 // TestRevLogRootIsOrderDependent is the concrete #597 statement, asserted on
