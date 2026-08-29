@@ -60,6 +60,11 @@ The Builder advises and shapes the question; the Researcher certifies; the human
 - **Research certifications** → `../silt-reviews/research/research-outcome/`.
 - **Code** → the silt repo (Builder only).
 - **Scars / run evidence** → the Tester's memory (the scar ledger), cited.
+- **Live agent memory** → `.claude/agent-memory`, a symlink to the shared external store
+  `~/.claude/silt-agent-memory`. It is gitignored and lives OUTSIDE git. NEVER `git add` it,
+  commit it, or open a PR with it. Seat DEFINITIONS (`.claude/agents/`) stay tracked; live
+  memory does not. New checkout or worktree: run `.claude/setup-agent-memory.sh` once to
+  establish the symlink. (History: committing live memory caused per-pull conflicts, #636/#638.)
 
 ## The Tester's ground truth on silt
 
