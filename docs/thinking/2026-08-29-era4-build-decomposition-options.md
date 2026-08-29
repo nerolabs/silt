@@ -15,7 +15,8 @@ against this commit).
 - Three new committed tags: `tagDueBucket` (TTL), `tagQualified` + `tagEpochStart` (rotation);
   `tagEpochSet` retained.
 - TWO-keyspace layout: frozen materialized `epochSet` + live `qualified` accelerator.
-- `RegCap = 256` fresh-reg validity rule (pinned; #299 re-mint gate recorded).
+- `RegCap = 256` per-block TOTAL BondReg count validity rule (fresh + renewal, after
+  `canonicalBondRegs`; pinned; re-derivation gate = all seven determinants at the next mint).
 - Recovery boundary (`effectiveEpochSet` at `LivenessRecoveryHeight`) SCOPED OUT of era-4-minimum.
 
 The design deliberation this build-plan implements is
@@ -34,7 +35,7 @@ witness-load-bearing.** The ordering, stated as the sequence:
 |---|---|---|---|---|
 | **4a** | widen-version + tags-defined-not-committed | Mint `BlockVersion=5`; add the three tags to the tag table and `stateRootTags`; extend `versionSupported <= 5` **guarded by the predicate landing in 4c** (see §3). Keyspaces declared, classification wired. | NONE yet (tags carry no leaves until the maps exist + are populated). | `TestStateFieldsAreClassified` reddens if a new committed field lacks a tag. |
 | **4b** | maintenance spine — `qualified` + due-bucket maps, hooks, drift-guards | Add the `qualified` and due-bucket in-memory maps; wire the five `qualified` hooks (2989/2995/3008/3019/3020) and the due-bucket insert/move/delete; commit them under the state root as v5-only leaves. NO predicate change, NO activation. | Changes the root **only for v5-tagged blocks** — but no block is v5 yet (predicate/activation not landed), so on the live chain the root is unchanged. The new leaves are exercised by the model-check corpus + the byte-identical replay, not by any produced block. | The `qualified` drift-guard (per site, **2989 reddens specifically**); the T-3 due-bucket dual-source drift-guard; the T-3 byte-identical StateRoot replay vs era-3; `TestDryRunCloneCopiesEveryAppliedField`. |
-| **4c** | v5 validity predicate + `RegCap` rule | The v5 committed-root validity predicate on EVERY disk-write path (incl. Reload); the `RegCap = 256` fresh-reg rule; `versionSupported <= 5` becomes live in the SAME release. | The predicate now REQUIRES the v5 root shape on v5 blocks. | The RegCap rejection test (>256 fresh regs → reject); the predicate-on-Reload test (re-signed wrong v5 root → reject on own-disk Reload). |
+| **4c** | v5 validity predicate + `RegCap` rule | The v5 committed-root validity predicate on EVERY disk-write path (incl. Reload); the `RegCap = 256` per-block TOTAL count rule (fresh + renewal); `versionSupported <= 5` becomes live in the SAME release. | The predicate now REQUIRES the v5 root shape on v5 blocks. | The RegCap rejection test (> 256 TOTAL regs of any mix → reject; ≤ 256 → accept); the predicate-on-Reload test (re-signed wrong v5 root → reject on own-disk Reload). |
 | **4d** | height-gated activation + mint-flip to v5 | Height-gated `H_era4`, one-way weight-tallied lock-in on an epoch-final boundary; all disk-write paths mint v5. | At/above `H_era4`, produced blocks are v5 and carry the new leaves; the root moves for real. | The activation-boundary test (v3/v4 block rejected at `H_era4` with the era-4 version error; laggard stalls not accepts); the Q5 recovery-branch agreement assertion. |
 
 **Why WITH, sequenced — not BEFORE and not AFTER:**
@@ -124,15 +125,16 @@ wrong, the drift-guard reddens against the model-check corpus, not against a pro
 **Does:** Add the v5 committed-root validity predicate on **every disk-write path including
 Reload** (the era-3 lesson: `5951a76`/`3af40bc` put the era-3 predicate on all paths incl. Reload;
 the own-disk Reload gap was a real finding — see `docs/thinking/2026-08-29-era3-reload-root-check-options.md`).
-Add the `RegCap = 256` fresh-reg validity rule (count distinct first-time registrations per block;
-`ok == false` in `chain.go:1587` marks a fresh reg; reject if > 256). Widen `versionSupported` to
-`<= 5` (`chain.go:740`) in this SAME release — PREDICATE-FIRST (§3).
+Add the `RegCap = 256` per-block TOTAL BondReg count validity rule (count the total regs after
+`canonicalBondRegs`, fresh AND renewal; reject if `len(canonicalBondRegs(b.BondRegs)) > 256`).
+Widen `versionSupported` to `<= 5` (`chain.go:740`) in this SAME release — PREDICATE-FIRST (§3).
 
 **Cost:** medium. Predicate wiring on all paths + the RegCap counter.
 **Benefit:** closes the interim window era-3 left open (version accepted before predicate). The
 predicate now checks the root the 4b spine produces.
-**Ablations:** RegCap — a block with 257 fresh regs must reject; the predicate — a re-signed wrong
-v5 root must reject on own-disk Reload (the era-3 A′ anchor-bound lesson).
+**Ablations:** RegCap — a block with > 256 TOTAL BondRegs of ANY mix (all-renewal, all-fresh, or
+mixed) must reject; ≤ 256 TOTAL must accept; the predicate — a re-signed wrong v5 root must reject
+on own-disk Reload (the era-3 A′ anchor-bound lesson).
 
 ### 4d — height-gated activation + mint-flip (the go-live PR)
 
@@ -253,11 +255,18 @@ behavior" and let the reviewer confirm no `apply()`/predicate/version-ceiling ch
    the Q5 assertion (§5) is the catch. **This is the sharpest ordering hazard:** it couples the
    intra-block ordering (§4) to the recovery-branch agreement (Q5) through the shared `qualified`
    map.
-3. **`RegCap` counts FRESH regs only, and fresh = `bondRegHeight` unset.** The rule must count
-   distinct first-time registrations (`chain.go:1587`, `ok == false`), NOT renewals — renewals are
-   exempt (#506 R-rule) and unbounded by RegCap by design. A RegCap that counts all `BondRegs`
-   would reject honest renewal-heavy blocks. **Owed check in 4c:** an ablation with 300 renewals +
-   200 fresh regs must ACCEPT (renewals don't count) while 257 fresh regs must REJECT.
+3. **`RegCap` counts the per-block TOTAL BondReg count — fresh AND renewal.** The rule counts
+   `len(canonicalBondRegs(b.BondRegs))`, NOT fresh-only. Renewals are NOT exempt: both fresh and
+   renewal write `bondRegHeight[id] = h` at the same apply site (`chain.go:2995-2996`) and land in
+   the same TTL due-bucket, and #506 rate-limits renewals per-IDENTITY not per block, so
+   O(registry) distinct ids can each renew once in one block → an O(registry) TTL read-set, the
+   exact wall era-4 removes. A fresh-only cap leaves the renewal term unbounded (Research REFUTED
+   fresh-only three times). The renewal-lapse worry is dead: a renewal is not smaller than a fresh
+   reg (both ~1.485 MB Answer), so the honest total ceiling equals the honest fresh ceiling.
+   **Owed check in 4c:** an ablation where a block with > 256 TOTAL BondRegs of ANY mix
+   (all-renewal, all-fresh, or mixed) REJECTS, and ≤ 256 TOTAL ACCEPTS. The old fresh-only
+   ablation (300 renewals + 200 fresh ACCEPT) is a green check with the defect uninjected — the
+   correct rule must be able to reject that 500-reg block.
 4. **Predicate-first coupling.** The `versionSupported <= 5` widen and the v5 predicate must be
    atomic in one release (§3). If they split across releases (widen in 4a, predicate in 4c), the
    interim binary decode-accepts v5 with no predicate — the era-3 interim exposure. The

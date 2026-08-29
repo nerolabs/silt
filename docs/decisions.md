@@ -662,21 +662,35 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
     heavier witness class with an O(boundary-delta) changed-leaf set (not O(payload)). This
     preserves the I1 sizing-set≠membership-set and I3 no-mid-epoch-churn invariants (`qualified`
     is a fourth distinct map in `cloneForDryRun`, `era3validity.go:173-175`).
-  - **A new `RegCap` fresh-registration validity rule, value = 256.** This caps distinct
-    fresh (first-time) bond registrations per block, bounding the boundary-witness read-set so it
-    fits the 2 GB floor box. **Andrew ratified `RegCap = 256`.** The RECERT2 certified the upper
-    bound `RegCap ≤ 16,384` at desk (`2 GiB / (EpochBlocks=8 × SProofMax=16 KiB)`, tight) but
-    ruled the *value* MEASUREMENT-REQUIRED, not desk-pinnable: it is a security parameter of the
-    same class as `SProofMax`, and the honest ceiling reduces to the minimum valid fresh-reg byte
-    size under the deployed `verifyBond`, which is not a chain constant. The ratified 256 is safe
-    **under the deployed ~1.5 MB genesis-proof scheme**, whose measured honest ceiling is ~1
-    fresh reg/block (`2 MiB / ~1.5 MB`); 256 sits far above the honest ceiling and far below
-    16,384, with margin on both sides.
-  - **HARD COUPLING GATE on #299 (succinct proofs).** If #299 ships, the measured honest ceiling
-    rises to ~2,000 fresh regs/block (smaller proofs pack more per block), which is **above 256**.
-    **`RegCap` MUST be re-measured and re-minted before or with #299** — shipping #299 with
-    `RegCap = 256` would reject honest fresh registrations. This is a hard dependency recorded ON
-    #299 (also in `docs/design/owned-residuals.md`, the RegCap owed-input).
+  - **A new `RegCap` per-block TOTAL BondReg count validity rule, value = 256.** This caps the
+    total BondRegs per block — **fresh AND renewal**, counted after `canonicalBondRegs` — as a v5
+    block-validity rule every replica checks on receipt, bounding the witness read-set so it fits
+    the 2 GB floor box. **Renewals are NOT exempt** (Research REFUTED fresh-only three times): both
+    fresh and renewal write `bondRegHeight[id]` at the same apply site (`chain.go:2995-2996`) and
+    land in the same TTL due-bucket, and #506 rate-limits renewals per-IDENTITY not per block, so
+    O(registry) distinct ids can each renew once in one block → an O(registry) TTL read-set, the
+    exact wall era-4 removes. A fresh-only cap leaves that term unbounded. The **instrument is a
+    COUNT cap, not a byte cap** (PE ruling): the witness is `count × SProofMax` (a flat per-proof
+    envelope), so reg bytes do not enter the witness cost — count does — and a byte cap's implied
+    count `floor(L/M)` inflates silently ~13× as `k` (`BondLabelSamples`) drops 64→1. A count cap
+    is invariant to `M` and is a single integer compare (I5-clean). **Andrew ratified
+    `RegCap = 256`.** The RECERT2 certified the upper bound `RegCap ≤ 16,384` at desk
+    (`2 GiB / (EpochBlocks=8 × SProofMax=16 KiB)`, tight) but ruled the *value* MEASUREMENT-REQUIRED,
+    not desk-pinnable: it is a security parameter of the same class as `SProofMax`, and the honest
+    ceiling reduces to `floor(B / min-valid-reg-byte-size under the deployed verifyBond)`, which is
+    not a chain constant. The ratified 256 is safe **under the deployed ~1.5 MB genesis-proof
+    scheme**, whose measured honest ceiling is ~1 reg/block at k=64 and 18 at the minimum permitted
+    k=1; 256 clears the k=1 floor of 18 by 14× and sits 64× below 16,384, with margin on both sides.
+    Its worst-case valid block (~363 MiB = 256 × ~1.485 MB) is bounded by real M0 Sybil cost (256
+    distinct sealed plots, per-root dedup), not a free DoS surface.
+  - **RE-DERIVATION GATE on all SEVEN determinants, not #299 alone.** `RegCap` is a function of
+    seven determinants — block budget `B`, `k` (`BondLabelSamples`), `Samples`, `BlockSize`,
+    `BondVDFDelay`, `MinBond`, and the proof scheme. Any one changing re-derives the value, gated at
+    the **next BlockVersion mint** (a validity-affecting parameter change requires a mint anyway).
+    #299 (succinct proofs) is the SHARPEST single determinant: `M` drops ~1000× and the measured
+    honest ceiling rises to ~2,000 regs/block, **above 256**, so `RegCap` MUST be re-measured and
+    re-minted before or with #299, or honest registrations are rejected. This is a hard dependency
+    recorded ON #299 (also in `docs/design/owned-residuals.md`, the RegCap owed-input).
   **SEPARABLE / scoped out of era-4-minimum (Andrew's call, deferred):** the recovery-boundary
   direction — witnessing the `effectiveEpochSet` recovery re-base at `LivenessRecoveryHeight`
   (`chain.go:1243-1248`), which needs either a committed recovery-height (a new consensus-rule
@@ -689,7 +703,8 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
   old-bucket delete), the T-3 byte-identical post-apply StateRoot replay vs an era-3 replay over a
   corpus, and the Q5 recovery-branch agreement assertion. The ORDERED build decomposition is a
   separate PACE deliberation (`docs/thinking/2026-08-29-era4-build-decomposition-options.md`); no
-  era-4 mechanism is built until `RegCap` is pinned — done here at 256, gated on #299.
+  era-4 mechanism is built until `RegCap` is pinned — done here at 256 (per-block TOTAL count),
+  with the re-derivation gate on all seven determinants at the next mint (#299 the sharpest).
 - **RATIFIED 2026-08-27 — "maturity before capture" ships as a safe-parameterization, not a
   theorem** (research certification
   `.../research-outcome/C1-maturity-before-capture-RESEARCH-CERTIFICATION-2026-08-27.md`;
