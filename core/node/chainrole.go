@@ -698,13 +698,18 @@ func (n *Node) ValidateEntryProposal(e ports.Entry) error {
 	}
 	prev, height := n.chain.Head()
 	b := &chain.Block{Version: chain.BlockVersion, Height: height, Prev: prev, Entries: []ports.Entry{e}}
-	// Mint-flip (era-3 step 2c): once era-3 is active, a v2 candidate would be
-	// rejected by the boundary rule (v2 at/above H_era3), so a real publish would
-	// falsely fail this local pre-check. Mint the version the real proposer would —
-	// v4 with roots at/above the boundary — so the pre-check tracks production. This
-	// candidate carries no folded content, so its post-apply roots are over the
-	// single-entry block, exactly what the real single-entry proposal would commit.
-	if n.chain.MintVersion(b.Height) >= chain.BlockVersionStateRoot {
+	// Mint-flip (era-3 step 2c, extended for era-4 step 4d): once an era is active, a
+	// lower-version candidate would be rejected by the boundary rule, so a real publish
+	// would falsely fail this local pre-check. Mint the version the real proposer would —
+	// v5 with roots at/above H_era4, else v4 with roots at/above H_era3 — so the pre-check
+	// tracks production. This candidate carries no folded content, so its post-apply roots
+	// are over the single-entry block, exactly what the real single-entry proposal would
+	// commit. era-4 is checked first (MintVersion returns v5 only where v4 also holds).
+	if mv := n.chain.MintVersion(b.Height); mv >= chain.BlockVersionWitnessable {
+		if err := n.chain.PopulateEra4Roots(b); err != nil {
+			return fmt.Errorf("validate-entry: era-4 root population: %w", err)
+		}
+	} else if mv >= chain.BlockVersionStateRoot {
 		if err := n.chain.PopulateEra3Roots(b); err != nil {
 			return fmt.Errorf("validate-entry: era-3 root population: %w", err)
 		}
@@ -852,15 +857,22 @@ func (n *Node) proposeBlock(b *chain.Block, attesters, broadcast []ports.NodeID,
 		}
 		n.pendingSlashes = still
 	}
-	// Mint-flip (era-3 build step 2c): at/above the era-3 activation boundary the
-	// chain mints v4 with populated committed roots; below it, v2 (the #432
-	// two-phase-certificate era). The chain owns the activation state, so ask it —
-	// MintVersion(height) is a pure function of committed history, identical on every
-	// honest proposer at this head (I5). PopulateEra3Roots runs AFTER all
-	// apply-affecting content (BondRegs, entries, slashes) is folded in above, so the
-	// roots cover the block as it will actually commit (post-apply state). Below the
-	// boundary the path is byte-for-byte the old v2 behavior.
-	if n.chain.MintVersion(b.Height) >= chain.BlockVersionStateRoot {
+	// Mint-flip (era-3 build step 2c, extended for era-4 step 4d): at/above the era-4
+	// activation boundary the chain mints v5 with populated committed roots (the era-3
+	// leaves PLUS the maintenance-spine keyspaces); at/above the era-3 boundary, v4; below
+	// both, v2 (the #432 two-phase-certificate era). The chain owns the activation state,
+	// so ask it — MintVersion(height) is a pure function of committed history, identical on
+	// every honest proposer at this head (I5). PopulateEra{3,4}Roots runs AFTER all
+	// apply-affecting content (BondRegs, entries, slashes) is folded in above, so the roots
+	// cover the block as it will actually commit (post-apply state). era-4 is checked first
+	// (MintVersion returns v5 only where v4 also holds, H_era4 >= H_era3). Below both
+	// boundaries the path is byte-for-byte the old v2 behavior.
+	if mv := n.chain.MintVersion(b.Height); mv >= chain.BlockVersionWitnessable {
+		if err := n.chain.PopulateEra4Roots(b); err != nil {
+			done(fmt.Errorf("propose: era-4 root population: %w", err))
+			return
+		}
+	} else if mv >= chain.BlockVersionStateRoot {
 		if err := n.chain.PopulateEra3Roots(b); err != nil {
 			done(fmt.Errorf("propose: era-3 root population: %w", err))
 			return

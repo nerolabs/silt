@@ -262,6 +262,26 @@ type Config struct {
 	// old-rules block). Monotonic height-gated activation keyed on finalized
 	// history either way (2c deliberation).
 	Era3ActivationHeight uint64
+	// Era4ActivationHeight is the PRE-LATCH activation override for the era-4 (v5)
+	// witnessable-transitions format (the v5 mint-flip + the v5-required boundary rule):
+	// when > 0, era-4 is active on every block of height >= this, with no readiness
+	// signalling — a trusted launch-anchor set coordinates its upgrade and declares the
+	// boundary as genesis config, exactly like Era3ActivationHeight. 0 (default) =
+	// post-latch behavior: era-4 activates only when era-4-aware bonded WEIGHT over a
+	// frozen epoch crosses the >⅔ finality super-quorum (see rotateEpoch, the
+	// regVersion >= BlockVersionWitnessable tally), which never fires without epochs.
+	// Consensus-critical genesis config, same discipline as Era3ActivationHeight.
+	//
+	// >= boundary (like era-3): era-4 is a MINT/FORMAT boundary, so H_era4 is itself the
+	// first v5 height.
+	//
+	// LAYERING CONSTRAINT (enforced in New): a v5 block commits a SUPERSET of the v4
+	// leaves, so era-4 cannot activate below the era-3 boundary. When both overrides are
+	// set, Era4ActivationHeight MUST be >= Era3ActivationHeight, or a v5 block would be
+	// minted below H_era3 — an ill-formed block. A misconfigured launch fails loudly at
+	// New rather than minting one. TODO(ratify): the mainnet activation height is a
+	// consensus value the human sets before mainnet — no default is picked here.
+	Era4ActivationHeight uint64
 }
 
 // WSCheckpoint is a recent trusted (height, hash) a replica will not reorg before.
@@ -1025,6 +1045,35 @@ type Chain struct {
 	// software states, so one const cannot gate both (cert Q7).
 	era3LockedIn bool
 	era3Height   uint64
+	// era4LockedIn/era4Height are the era-4 (v5) witnessable-transitions activation
+	// state, the era-3 era3LockedIn/era3Height mechanism reused ONE readiness level up
+	// (regVersion >= BlockVersionWitnessable, == 5). At the first mature epoch boundary
+	// where era-4-AWARE frozen weight clears the same >⅔ super-quorum, era-4 locks in
+	// ONE-WAY (monotonic — un-tightening would itself be a hard fork; a later ready-weight
+	// collapse stalls, never un-flips) and activation begins at the NEXT boundary:
+	// era4Height = H_era4, and v5 is REQUIRED (mint + validity) for every block of height
+	// >= era4Height. The >= (a MINT/FORMAT boundary, like era-3) makes H_era4 itself the
+	// first v5 height. Derived deterministically from committed history in rotateEpoch, so
+	// every replica — live or replaying — computes the identical H_era4; epoch boundaries
+	// are super-quorum-final (#357 Condition A), so H_era4 cannot be reorged out from under
+	// enforcement.
+	//
+	// A DISTINCT readiness level from era-3 (>= 4): a node signals 5 only when it can mint
+	// AND validate the v5 committed root (the maintenance-spine keyspaces). Because 5 > 4,
+	// an era-4 signaller is necessarily an era-3 signaller, so the era-4 tally can never
+	// lock in before the era-3 tally has the weight to — v5 ⊇ v4, and era-4 layers ON TOP
+	// of era-3 (a v5 block commits a superset of the v4 leaves).
+	//
+	// COMMITTED as V5-ONLY leaves (tagEra4LockedIn/tagEra4Height in stateRootLeavesV5): a
+	// v4 block cannot commit them without breaking the era-3 byte-identical freeze
+	// (immutable #632), and it does not need to — before activation these scalars are at
+	// their zero value, and era4Active first fires at era4Height, which is a v5 height. So
+	// on every block where a non-zero era-4 scalar matters, the block is v5 and the scalar
+	// is committed. This mirrors the 4b epochStart promotion (a v5-only scalar leaf). A
+	// node that forged them would produce a mismatching v5 root and be rejected — the
+	// activation state is itself committed-root-protected, exactly as in era-3.
+	era4LockedIn bool
+	era4Height   uint64
 	// bondDomain records the committed A-axis failure-domain label from each
 	// validator's LATEST bond registration (0 = unset). A pure function of the
 	// committed blocks, so C2Metric can count address-diverse participants
@@ -1106,6 +1155,20 @@ type Chain struct {
 // serves seen), which is the sense in which trust here is earned, not
 // declared.
 func New(cfg Config, rep func(ports.NodeID) int64) *Chain {
+	// LAYERING CONSTRAINT (era-4 4d): a v5 block commits a SUPERSET of the v4 leaves, so
+	// H_era4 must be at or above H_era3 — a genesis-declared era-4 boundary below the
+	// era-3 boundary would mint a v5 block on a chain that is not yet era-3-active, an
+	// ill-formed block. This is a launch-config programmer error, so it fails loudly here
+	// rather than producing an unminatable state at the boundary. Only checked when BOTH
+	// pre-latch overrides are set; the post-latch tally cannot violate it (a regVersion>=5
+	// signaller is necessarily a regVersion>=4 signaller, so era-4 never locks in before
+	// era-3).
+	if cfg.Era4ActivationHeight > 0 && cfg.Era3ActivationHeight > 0 &&
+		cfg.Era4ActivationHeight < cfg.Era3ActivationHeight {
+		panic(fmt.Sprintf("chain: Era4ActivationHeight (%d) must be >= Era3ActivationHeight (%d) "+
+			"— a v5 block commits a superset of the v4 leaves, so era-4 cannot activate below the "+
+			"era-3 boundary", cfg.Era4ActivationHeight, cfg.Era3ActivationHeight))
+	}
 	return &Chain{cfg: cfg, rep: rep,
 		byRoot:         make(map[ports.Hash]ports.Entry),
 		revoked:        make(map[ports.Hash]bool),
@@ -2490,6 +2553,15 @@ func (c *Chain) ValidateProposal(b *Block) error {
 	if err := c.validateEra3Version(b); err != nil {
 		return err
 	}
+	// era-4 (v5) version-boundary rule (build step 4d), the mirror one era up: at/above
+	// H_era4, v5 is REQUIRED. Checked here so the commit path (ValidateCommit calls
+	// ValidateProposal first) and, via appendStructural, the own-disk Reload path both
+	// enforce it. The roots predicate below (validateEra3Roots) already recomputes a v5
+	// block's root via StateRootForVersion(5); this rule is what forbids a laggard from
+	// committing a v4 block at a v5 height.
+	if err := c.validateEra4Version(b); err != nil {
+		return err
+	}
 	// era-3 (v4) committed-root predicate (build step 2b). A no-op for sub-v4 blocks
 	// (era-2 rules unchanged); for a v4 block it rejects a nil root, or a StateRoot/
 	// LogRoot that does not equal the post-apply recompute. Placed LAST so a v4 block
@@ -2958,6 +3030,13 @@ func (c *Chain) appendStructural(b Block) error {
 	if err := c.validateEra3Version(&b); err != nil {
 		return err
 	}
+	// era-4 (v5) version-boundary rule on the OWN-DISK reload path — the same symmetry the
+	// era-3 version check above has: both era boundaries are enforced on every disk-write
+	// path (4d, mirroring 2c). A v4 block at/above H_era4 is rejected here just as it is on
+	// the commit path.
+	if err := c.validateEra4Version(&b); err != nil {
+		return err
+	}
 	// era-3 (v4) committed-root re-validation on the OWN-DISK reload path (A-bare).
 	//
 	// validateStructural verifies the proposer/attester signatures, which cover the
@@ -3388,6 +3467,30 @@ func (c *Chain) rotateEpoch(h uint64) {
 			c.era3Height = h + c.cfg.EpochBlocks
 		}
 	}
+
+	// era-4 (v5) activation lock-in — build step 4d, the era-3 tally reused one readiness
+	// level up. Same frozen-set weight, same >⅔ super-quorum, same one-epoch-of-notice and
+	// monotonic guard — the ONLY difference is the readiness threshold:
+	// regVersion >= BlockVersionWitnessable (== 5), a DISTINCT signal from era-3's >= 4,
+	// because a node signals 5 only when it can mint AND validate the v5 committed root (the
+	// maintenance-spine keyspaces). Because 5 > 4, an era-4 signaller is necessarily an
+	// era-3 signaller, so this tally can never lock in before the era-3 tally has the weight
+	// to — v5 ⊇ v4, and era-4 layers ON TOP of era-3. Separate from the era-3 tally above (a
+	// node may run era-3 root software long before the era-4 witnessable-transitions
+	// software), so the two lock in independently.
+	if !c.era4LockedIn && c.cfg.Era4ActivationHeight == 0 && c.cfg.EpochBlocks > 0 {
+		var total, ready int64
+		for id, w := range set {
+			total += w
+			if c.regVersion[id] >= BlockVersionWitnessable {
+				ready += w
+			}
+		}
+		if total > 0 && 3*ready > 2*total {
+			c.era4LockedIn = true
+			c.era4Height = h + c.cfg.EpochBlocks
+		}
+	}
 }
 
 // era3Active reports whether the era-3 (v4) committed-state-root format governs a
@@ -3405,13 +3508,34 @@ func (c *Chain) era3Active(h uint64) bool {
 	return c.era3LockedIn && h >= c.era3Height
 }
 
+// era4Active reports whether the era-4 (v5) witnessable-transitions format governs a
+// block at height h: at/past the genesis-declared boundary (pre-latch override), or
+// at/past the chain-derived H_era4 (post-latch lock-in). At-or-greater, like era3Active:
+// era-4 is a MINT/FORMAT boundary, so H_era4 is itself the first v5 height. Derived from
+// committed history, so every replica — live or replaying — agrees; epoch-final, so a
+// reorg cannot move the boundary to un-enforce it (#357 Condition A). era-4 layers on top
+// of era-3 (a v5 block commits a superset of the v4 leaves); the New layering assertion
+// and the strictly-higher readiness threshold (>= 5) keep H_era4 >= H_era3.
+func (c *Chain) era4Active(h uint64) bool {
+	if c.cfg.Era4ActivationHeight > 0 {
+		return h >= c.cfg.Era4ActivationHeight
+	}
+	return c.era4LockedIn && h >= c.era4Height
+}
+
 // MintVersion is the BlockVersion a proposer should stamp for a NEW block at
-// height h: BlockVersionStateRoot (v4) at/above the era-3 activation boundary,
-// BlockVersionRounds (v2) below it. The propose path (core/node) asks the chain,
-// which owns the activation state, rather than re-deriving the boundary. Pure
-// function of committed state — every honest proposer at the same head mints the
-// identical version (I5).
+// height h: BlockVersionWitnessable (v5) at/above the era-4 activation boundary,
+// BlockVersionStateRoot (v4) at/above the era-3 boundary, BlockVersionRounds (v2)
+// below both. The propose path (core/node) asks the chain, which owns the activation
+// state, rather than re-deriving the boundary. Pure function of committed state — every
+// honest proposer at the same head mints the identical version (I5). The eras are
+// checked most-recent-first; era-4 activation implies era-3 activation (H_era4 >= H_era3,
+// enforced in New + by the >= 5 readiness threshold), so a v5 height is always also a v4
+// height.
 func (c *Chain) MintVersion(h uint64) uint64 {
+	if c.era4Active(h) {
+		return BlockVersionWitnessable
+	}
 	if c.era3Active(h) {
 		return BlockVersionStateRoot
 	}
@@ -3433,6 +3557,26 @@ func (c *Chain) PopulateEra3Roots(b *Block) error {
 		return err
 	}
 	b.Version = BlockVersionStateRoot
+	b.StateRoot = &sr
+	b.LogRoot = &lr
+	return nil
+}
+
+// PopulateEra4Roots stamps b as a v5 block and attaches this chain's committed
+// StateRoot/LogRoot over the POST-APPLY state of b — the v5 root (the era-3 leaves PLUS
+// the maintenance-spine keyspaces plus the era-4 activation scalars) a validator will
+// recompute and check (validateEra3Roots, which recomputes via StateRootForVersion(5)).
+// It sets b.Version = BlockVersionWitnessable BEFORE computing the roots so postApplyRoots
+// selects the v5 leaf set (StateRootForVersion reads b.Version). Called by the propose
+// path AFTER all apply-affecting content is folded into b, so the roots cover the block as
+// it will actually commit. A no-op below the era-4 boundary: the propose path calls this
+// only when MintVersion(h) == BlockVersionWitnessable.
+func (c *Chain) PopulateEra4Roots(b *Block) error {
+	b.Version = BlockVersionWitnessable // select the v5 leaf set for the recompute below
+	sr, lr, err := c.postApplyRoots(*b)
+	if err != nil {
+		return err
+	}
 	b.StateRoot = &sr
 	b.LogRoot = &lr
 	return nil
@@ -3749,6 +3893,8 @@ func (c *Chain) adopt(t *Chain) {
 	c.gateHeight = t.gateHeight     // replayed fork re-ran every rotation (Q2/I3)
 	c.era3LockedIn = t.era3LockedIn // era-3 (v4) activation is derived the same way:
 	c.era3Height = t.era3Height     // the replayed fork re-ran every rotation (Q5/I3)
+	c.era4LockedIn = t.era4LockedIn // era-4 (v5) activation is derived the same way:
+	c.era4Height = t.era4Height     // the replayed fork re-ran every rotation (4d)
 	c.bondDomain = t.bondDomain
 	c.slashed = t.slashed
 	c.everMature = t.everMature // the maturity latch is a function of the adopted history (F-1)

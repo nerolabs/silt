@@ -49,6 +49,12 @@ var (
 	// that height has no committed roots for a validator to check, which is exactly
 	// the silent-mis-validation era-3 exists to prevent (cert Q7). Build step 2c.
 	ErrEra3VersionRequired = errors.New("chain: block below era-3 (v4) at or above the era-3 activation height — v4 with committed roots is required")
+	// ErrEra4VersionRequired is a sub-v5 block at or above the era-4 activation boundary
+	// (era4Active). Once era-4 is active, v5 is REQUIRED — a v4 block at that height does
+	// not commit the maintenance-spine keyspaces the era-4 witnesses depend on, so
+	// accepting it at/past the boundary would silently drop the witnessable-transition
+	// commitments. Build step 4d, mirroring ErrEra3VersionRequired.
+	ErrEra4VersionRequired = errors.New("chain: block below era-4 (v5) at or above the era-4 activation height — v5 with the maintenance-spine committed root is required")
 )
 
 // validateEra3Version is the era-3 (v4) version-boundary rule (build step 2c). At or
@@ -69,6 +75,26 @@ var (
 func (c *Chain) validateEra3Version(b *Block) error {
 	if c.era3Active(b.Height) && b.Version < BlockVersionStateRoot {
 		return fmt.Errorf("%w: height %d version %d", ErrEra3VersionRequired, b.Height, b.Version)
+	}
+	return nil
+}
+
+// validateEra4Version is the era-4 (v5) version-boundary rule (build step 4d), the exact
+// mirror of validateEra3Version one era up. At or above the era-4 activation height
+// (era4Active — derived from PRIOR committed history, epoch-final so reorg-stable), v5 is
+// REQUIRED: a v4 block does not commit the maintenance-spine keyspaces the era-4 witnesses
+// depend on, so accepting it at/past the boundary silently drops the witnessable-transition
+// commitments. Below the boundary this never fires and era-3/era-2 validation is unchanged.
+//
+// It is a PURE HEADER CHECK, like validateEra3Version: era4Active reads only committed
+// state (era4LockedIn / era4Height / cfg), available BEFORE b is applied. It runs on the
+// SAME write paths as validateEra3Version — the commit path via ValidateProposal and the
+// own-disk Reload path (appendStructural) — so "every disk-write path enforces the era
+// boundary" is uniform across era-3 AND era-4. TestEveryDiskWritePathRunsTheEra4VersionCheck
+// pins it on every path.
+func (c *Chain) validateEra4Version(b *Block) error {
+	if c.era4Active(b.Height) && b.Version < BlockVersionWitnessable {
+		return fmt.Errorf("%w: height %d version %d", ErrEra4VersionRequired, b.Height, b.Version)
 	}
 	return nil
 }
@@ -158,6 +184,8 @@ func (c *Chain) cloneForDryRun() *Chain {
 		gateHeight:   c.gateHeight,
 		era3LockedIn: c.era3LockedIn,
 		era3Height:   c.era3Height,
+		era4LockedIn: c.era4LockedIn,
+		era4Height:   c.era4Height,
 		epochStart:   c.epochStart,
 		matureEpoch:  c.matureEpoch,
 	}

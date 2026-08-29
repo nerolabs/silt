@@ -96,6 +96,12 @@ var stateClass = map[string]struct {
 	"matureEpoch":    {committedSet, "cert field 15 — handoff flag (#357 Cond B)"},
 	"era3LockedIn":   {committedSet, "step 2c — era-3 (v4) activation latch (mirrors gateLockedIn, regVersion>=4)"},
 	"era3Height":     {committedSet, "step 2c — era-3 (v4) enforcement boundary H_era3 (mirrors gateHeight)"},
+	"era4LockedIn": {committedSet, "step 4d — era-4 (v5) activation latch (mirrors era3LockedIn, " +
+		"regVersion>=5). v5-ONLY scalar leaf (tagEra4LockedIn): committing it in the era-3 " +
+		"leaf set would break the byte-identical freeze. Before activation it is zero on v4 " +
+		"blocks; era4Active first fires at a v5 height, where it IS committed."},
+	"era4Height": {committedSet, "step 4d — era-4 (v5) enforcement boundary H_era4 (mirrors " +
+		"era3Height). v5-ONLY scalar leaf (tagEra4Height)."},
 
 	// ---- committed: era-4 (v5) maintenance spine (step 4b). Committed under the
 	// state root as v5-ONLY leaves — on a v4 block the marshaller emits no leaf for
@@ -254,6 +260,8 @@ func populateCommitted(c *Chain) {
 	c.gateHeight = 13
 	c.era3LockedIn = true
 	c.era3Height = 21
+	c.era4LockedIn = true
+	c.era4Height = 29
 	c.everMature = true
 	c.matureEpoch = true
 	c.epochStart = 17

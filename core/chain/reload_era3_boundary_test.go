@@ -585,7 +585,12 @@ func TestEveryDiskWritePathRunsTheEra3RootCheck(t *testing.T) {
 	//   - validateEra3Roots:   the committed-root check (2b).
 	//   - validateEra3Version: the version-boundary rule (2c) — the addition this guard now
 	//                          requires, so a path enforcing only the root check REDs.
-	era3Rules := []string{"validateEra3Roots", "validateEra3Version"}
+	//   - validateEra4Version: the era-4 (v5) version-boundary rule (4d) — enforced on the
+	//                          SAME paths as the era-3 version rule, so it is pinned on every
+	//                          disk-write path too. A path enforcing only the era-3 rules REDs.
+	//                          (The v5 committed-root check reuses validateEra3Roots, which
+	//                          recomputes via StateRootForVersion(b.Version) — already covered.)
+	era3Rules := []string{"validateEra3Roots", "validateEra3Version", "validateEra4Version"}
 	// Validators that themselves run BOTH era-3 rules (transitive coverage). ValidateProposal
 	// calls both; ValidateCommit calls ValidateProposal — so a method calling either is
 	// covered for both rules. Kept as an explicit, auditable transitive set rather than a

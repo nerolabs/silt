@@ -69,6 +69,16 @@ const (
 	tagDueBucket  = "dueBucket\x00"
 	tagQualified  = "qualified\x00"
 	tagEpochStart = "epochStart\x00"
+
+	// era-4 (v5) activation-scalar tags — the era-4 witnessable-transitions activation
+	// state (era4LockedIn/era4Height), committed as V5-ONLY scalar leaves in 4d. era-3
+	// committed its activation scalars in the era-3 leaf set (every v4 block); era-4
+	// cannot — that would edit the frozen era-3 leaf set (immutable #632). Emitted only by
+	// stateRootLeavesV5, so a v4 block's root stays byte-identical to era-3. Before
+	// activation these scalars are zero on the v4 blocks that don't commit them; era4Active
+	// first fires at a v5 height, which DOES commit them. Same pattern as epochStart.
+	tagEra4LockedIn = "era4LockedIn\x00"
+	tagEra4Height   = "era4Height\x00"
 )
 
 // stateRootTagsV5 is the era-4 (v5) committedSet field names committed ONLY under the
@@ -76,7 +86,7 @@ const (
 // the 18 era-3 fields. Bound to the live classification by
 // TestStateRootV5CoversExactlyTheV5Fields so it cannot drift. These are NOT in
 // stateRootTags (the era-3 set), which keeps the v4 root byte-identical to era-3.
-var stateRootTagsV5 = []string{"qualified", "dueBucket", "epochStart"}
+var stateRootTagsV5 = []string{"qualified", "dueBucket", "epochStart", "era4LockedIn", "era4Height"}
 
 // stateRootTags is the set of committedSet field names this file commits, used by
 // the oracle to assert coverage against the live classification: exactly the 18
@@ -194,6 +204,12 @@ func (c *Chain) stateRootLeavesV5() []statehash.Leaf {
 
 	// epochStart: one scalar leaf (O-1).
 	add(tagEpochStart, nil, statehash.EncodeUint64(c.epochStart))
+
+	// era-4 activation scalars: one scalar leaf each (4d). Committed here as v5-only so a
+	// forged activation boundary produces a mismatching v5 root and is rejected — the
+	// activation state is itself committed-root-protected, exactly as era-3's scalars are.
+	add(tagEra4LockedIn, nil, statehash.EncodeBool(c.era4LockedIn))
+	add(tagEra4Height, nil, statehash.EncodeUint64(c.era4Height))
 
 	return leaves
 }
