@@ -551,6 +551,75 @@ func era3SwingOrderings(t *testing.T) (*Chain, *Chain) {
 // gateFields, so their order-independence is proven on the era-3 swing world.
 var era3Fields = []string{"era3LockedIn", "era3Height"}
 
+// era4SwingOrderings is era3SwingOrderings at the era-4 (v5) readiness level (build step
+// 4d), the exact mirror one era up. The era-4 lock-in tally is the same tally with the bar
+// at BlockVersionWitnessable (>= 5), so its order-independence is proven the SAME way: a
+// same-id TWO-VERSION swing validator whose committed version is the exact >⅔ ready-weight
+// margin. A dedicated fixture keeps the era-3 fixture untouched.
+//
+// r1, r2 register READY at v5; x swings between v2 (loV) and v5 (hiV). The tally at the
+// height-2 boundary over {r1, r2, x} at weight w each:
+//   - x commits v5: ready = 3w, 3·3w > 2·3w → era4LockedIn set, era4Height = 2 + 2 = 4
+//     (and era3LockedIn set too — a v5 signaller is v4-ready).
+//   - x commits v2: era-4 ready = 2w, 3·2w > 6w is FALSE → era-4 NOT locked in.
+//
+// The same-id fold (canonicalBondRegs) must pick the SAME winner (largest-Size, then
+// Version → v5) in both slice orders, so era4LockedIn/era4Height are order-independent.
+func era4SwingOrderings(t *testing.T) (*Chain, *Chain) {
+	t.Helper()
+	const w = int64(2) << 20
+
+	build := func(v5First bool) *Chain {
+		r1, r2, x := key(70201), key(70202), key(70203)
+		cfg := Config{Quorum: 1, MinBond: 1 << 20, ByzantineQuorum: true,
+			EpochBlocks: 2, MatureValidators: 2}
+		c := New(cfg, func(ports.NodeID) int64 { return 0 })
+		c.SetBondVerifier(objectiveVerify)
+
+		g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
+		g.BondRegs = []BondReg{
+			bondRegFull(r1, ports.HashBytes(pubOf(r1)), w, ports.Hash{}, BlockVersionWitnessable, 0),
+			bondRegFull(r2, ports.HashBytes(pubOf(r2)), w, ports.Hash{}, BlockVersionWitnessable, 0),
+			bondReg(x, w, ports.Hash{}),
+		}
+		Sign(g, r1)
+		if err := c.AppendGenesis(*g); err != nil {
+			t.Fatalf("era4SwingOrderings genesis: %v", err)
+		}
+
+		// x submits TWO regs for its OWN id, same Size w (weight fixed), distinct Version
+		// and Domain: loV (v2, 0x33) and hiV (v5, 0x55). Size ties → Version breaks the tie
+		// → hiV (v5) is the canonical winner in BOTH orders.
+		rootX := ports.HashBytes(pubOf(x))
+		prev := g.Hash()
+		loV := bondRegFull(x, rootX, w, prev, 2, 0x33)
+		hiV := bondRegFull(x, rootX, w, prev, BlockVersionWitnessable, 0x55)
+		regs := []BondReg{loV, hiV} // v5 last
+		if v5First {
+			regs = []BondReg{hiV, loV} // v5 first
+		}
+		b1 := &Block{Version: BlockVersionRounds, Height: 1, Prev: prev,
+			Entries: []ports.Entry{entry(1)}, BondRegs: regs}
+		commitRounds(b1, []ed25519.PrivateKey{r1, r2, x}, 0) // r1 proposes
+		if err := c.Append(*b1); err != nil {
+			t.Fatalf("era4SwingOrderings height 1 (v5First=%v): %v", v5First, err)
+		}
+		b2 := &Block{Version: BlockVersionRounds, Height: 2, Prev: b1.Hash(),
+			Entries: []ports.Entry{entry(2)}}
+		commitRounds(b2, []ed25519.PrivateKey{r2, r1, x}, 0) // r2 proposes (rotated)
+		if err := c.Append(*b2); err != nil {
+			t.Fatalf("era4SwingOrderings boundary (v5First=%v): %v", v5First, err)
+		}
+		return c
+	}
+	return build(true), build(false) // v5-first vs v5-last: opposite intra-block orders
+}
+
+// era4Fields are the committedSet fields era4SwingOrderings covers — the era-4 (v5)
+// activation family. EMPTY in twoOrderings/matureOrderings for the same reasons as
+// gateFields/era3Fields, so their order-independence is proven on the era-4 swing world.
+var era4Fields = []string{"era4LockedIn", "era4Height"}
+
 // orderVacuous names committedSet fields that NEITHER twoOrderings NOR matureOrderings
 // populates — they belong to a regime those worlds do not enter. Each is compared as
 // DeepEqual(∅, ∅), so its order-independence is NOT proven by this oracle; the entry
@@ -597,6 +666,7 @@ func TestCommittedSetFieldsAreOrderIndependent(t *testing.T) {
 	ma, mb := matureOrderings(t)
 	ga, gb := gateSwingOrderings(t)
 	e3a, e3b := era3SwingOrderings(t)
+	e4a, e4b := era4SwingOrderings(t)
 
 	fields := fieldsOfKind(committedSet)
 	if len(fields) == 0 {
@@ -622,6 +692,10 @@ func TestCommittedSetFieldsAreOrderIndependent(t *testing.T) {
 	for _, f := range era3Fields {
 		era3[f] = true
 	}
+	era4 := map[string]bool{}
+	for _, f := range era4Fields {
+		era4[f] = true
+	}
 	worldOf := func(name string) (*Chain, *Chain) {
 		if mature[name] {
 			return ma, mb
@@ -631,6 +705,9 @@ func TestCommittedSetFieldsAreOrderIndependent(t *testing.T) {
 		}
 		if era3[name] {
 			return e3a, e3b
+		}
+		if era4[name] {
+			return e4a, e4b
 		}
 		return a, b
 	}
@@ -1047,6 +1124,62 @@ func TestEra3LockInSwingIsOrderIndependent(t *testing.T) {
 	t.Logf("era-3 locked in identically across two opposite intra-block orderings "+
 		"(era3LockedIn=%v era3Height=%d) with the same-id two-version validator as the ⅔ swing",
 		a.era3LockedIn, a.era3Height)
+}
+
+// TestEra4LockInSwingIsOrderIndependent is TestEra3LockInSwingIsOrderIndependent at the
+// era-4 (v5) readiness level (build step 4d). The same-id two-version swing validator's
+// committed version decides whether era-4 locks; the two opposite intra-block orderings
+// must reach byte-identical era4LockedIn/era4Height (and the same-id fold must pick the v5
+// winner in both). If the fold regressed, the two orderings would fork the era-4 activation
+// state — a committedSet fork under the history-independent SMT.
+func TestEra4LockInSwingIsOrderIndependent(t *testing.T) {
+	x := idOf(key(70203)) // the two-version swing validator
+
+	a, b := era4SwingOrderings(t)
+
+	for _, tc := range []struct {
+		name string
+		c    *Chain
+	}{{"v5-first", a}, {"v5-last", b}} {
+		c := tc.c
+		if !c.matureEpoch {
+			t.Fatalf("[%s] matureEpoch did NOT set — the era-4 tally runs only post-latch, so "+
+				"coverage is vacuous; the fixture never reached the boundary rotation", tc.name)
+		}
+		if !c.era4LockedIn {
+			t.Fatalf("[%s] era4LockedIn is FALSE — the era-4 lock-in tally did not fire (the swing "+
+				"validator's version did not clear the >⅔ ready-weight bar). Re-derive the swing "+
+				"weights (x must be the marginal ready vote).", tc.name)
+		}
+		if c.era4Height == 0 {
+			t.Fatalf("[%s] era4Height is 0 after a lock-in — inconsistent state", tc.name)
+		}
+		// era-4 activation implies era-3 activation (a v5 signaller is v4-ready) — the
+		// layering invariant, asserted on the swing world.
+		if !c.era3LockedIn {
+			t.Fatalf("[%s] era4LockedIn set but era3LockedIn is FALSE — era-4 must layer on era-3 "+
+				"(v5 ⊇ v4); a v5 signaller is necessarily v4-ready", tc.name)
+		}
+		// The swing validator committed the canonical (largest-Size, then Version) winner:
+		// version 5, the era-4 ready signal. If it committed 2, era-4 would NOT have locked.
+		if c.regVersion[x] != BlockVersionWitnessable {
+			t.Fatalf("[%s] swing validator committed regVersion=%d, want %d (the canonical "+
+				"version-5 winner) — the same-id fold picked the wrong reg", tc.name,
+				c.regVersion[x], BlockVersionWitnessable)
+		}
+	}
+
+	// The two orderings reach byte-identical era-4 activation state.
+	for _, name := range []string{"era4LockedIn", "era4Height"} {
+		if !reflect.DeepEqual(fieldValue(a, name), fieldValue(b, name)) {
+			t.Fatalf("field %q DIFFERS across the two intra-block orderings — era-4 activation "+
+				"inherited the same-id version split:\n  v5-first: %v\n  v5-last:  %v",
+				name, fieldValue(a, name), fieldValue(b, name))
+		}
+	}
+	t.Logf("era-4 locked in identically across two opposite intra-block orderings "+
+		"(era4LockedIn=%v era4Height=%d) with the same-id two-version validator as the ⅔ swing",
+		a.era4LockedIn, a.era4Height)
 }
 
 // TestRevLogRootIsOrderDependent is the concrete #597 statement, asserted on

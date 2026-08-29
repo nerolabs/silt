@@ -9,6 +9,31 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **era-4 increment 4d — height-gated activation + mint-flip to v5 (the go-live gate)**
+  (`core/chain/chain.go`, `core/chain/era3validity.go`, `core/chain/statehash.go`,
+  `core/node/chainrole.go`, `core/chain/modelcheck_era4_activation_test.go`, 2026-08-29).
+  Flips MINTING to `BlockVersionWitnessable` (v5) at/above the era-4 activation height, the exact
+  mirror of era-3 step 2c one era up: an `era4LockedIn`/`era4Height` activation latch (the era-3
+  tally reused with the readiness bar at `regVersion >= 5`), an `era4Active` height gate, a
+  `MintVersion` extension (v5 at/above H_era4), `PopulateEra4Roots`, and a `validateEra4Version`
+  version-boundary rule enforced on EVERY disk-write path (commit + own-disk Reload). The two
+  activation scalars are committed as V5-ONLY leaves (`tagEra4LockedIn`/`tagEra4Height` in
+  `stateRootLeavesV5`), so the frozen era-3 (v4) root stays byte-identical (#632). era-4 layers on
+  era-3 (a v5 block commits a superset of the v4 leaves): `New` PANICS if a genesis-declared
+  `Era4ActivationHeight` is set below `Era3ActivationHeight`. **The mainnet activation height is a
+  consensus value the HUMAN ratifies** — `Era4ActivationHeight` ships with NO default; the
+  post-latch readiness tally derives H_era4 from committed history. Does NOT re-touch the v5
+  predicate, RegCap, or the maintenance spine (4c/4b own those). Every activation gate ships with a
+  demonstrated RED (the six ablations in the approach doc). See
+  `docs/thinking/2026-08-29-era4-4d-activation-mintflip-approach.md`.
+- **Hardened the era-3 freeze guard `TestEra3RootByteIdenticalWithV5KeyspacesPresent`**
+  (`core/chain/modelcheck_stateroot_determinism_test.go`, 2026-08-29). The `withoutV5` baseline now
+  zeroes the era-4 latch scalars (`era4LockedIn`/`era4Height`) too. Before this, `populateCommitted`
+  set those scalars in BOTH baselines, so an era-4 scalar leaked into the v4 (era-3) marshaller under
+  a FRESH UNREGISTERED tag appeared identically in both and CANCELLED — the guard stayed green on a
+  real leak (the disjointness guard catches only registered-tag reuse). With the scalars zeroed, an
+  unregistered-tag leak now diverges the two v4 roots and reddens the guard, closing the coverage gap
+  against the era-3 byte-identical FREEZE (#632).
 - **era-4 increment 4c — the v5 validity predicate + RegCap + version-widen (PREDICATE-FIRST)**
   (`core/chain/chain.go`, `core/chain/modelcheck_era4_regcap_test.go`, 2026-08-29). Widens
   `versionSupported` to `<= BlockVersionWitnessable` (v5) so a v5 block DECODES, atomically with

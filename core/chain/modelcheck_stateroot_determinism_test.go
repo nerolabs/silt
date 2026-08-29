@@ -182,6 +182,14 @@ func TestEra3RootByteIdenticalWithV5KeyspacesPresent(t *testing.T) {
 	withoutV5.qualified = map[ports.NodeID]int64{}
 	withoutV5.dueBucket = map[uint64]map[ports.NodeID]struct{}{}
 	withoutV5.epochStart = 0
+	// Zero the era-4 latch scalars too. populateCommitted sets these in BOTH
+	// baselines, so a v5-only scalar (era4LockedIn/era4Height) leaked into the v4
+	// marshaller — INCLUDING under a fresh unregistered tag — would appear
+	// identically in withV5 and withoutV5 and CANCEL, leaving this freeze guard
+	// green on a real leak. Zeroing them here makes any such leak diverge the two
+	// v4 roots, so the guard reddens (the hazard-1 / era-3 FREEZE, #632).
+	withoutV5.era4LockedIn = false
+	withoutV5.era4Height = 0
 
 	// The era-3 entry point must ignore the v5 maps entirely.
 	a, err := withV5.StateRoot()
