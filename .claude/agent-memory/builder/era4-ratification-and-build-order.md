@@ -21,7 +21,9 @@ can't witness. era-4 makes both witnessable. Cert: RECERT2 CERTIFIED-WITH-CONDIT
 - TWO-keyspace: frozen materialized `epochSet` (sizes the quorum, mid-epoch immutable) +
   a live `qualified` accelerator (boundary-copy source, NOT a pointer target). RECERT2 Q1
   REFUTED the single-shared-keyspace direction.
-- `RegCap = 256` fresh-reg validity rule. See [[era4-regcap-299-gate]].
+- `RegCap = 256` per-block TOTAL BondReg count validity rule (fresh + renewal, after
+  `canonicalBondRegs`; a COUNT cap, not a byte cap). Re-derivation gate = all SEVEN
+  determinants at the next mint, #299 the sharpest. See [[era4-regcap-299-gate]].
 
 **The locked build order (PACE:
 `docs/thinking/2026-08-29-era4-build-decomposition-options.md`):**
