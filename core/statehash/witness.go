@@ -166,11 +166,22 @@ func verifySpec() *smt.TrieSpec {
 // it verifies the witness against the root and returns the three-valued Result.
 //
 // The membership/non-membership distinction is the value the caller asks the
-// witness to prove:
-//   - To test PRESENCE, pass the expected committed value. A verified proof of
-//     (key → value) yields ProvenPresent(value).
-//   - To test ABSENCE, pass a nil value. A verified non-membership proof yields
-//     ProvenAbsent.
+// witness to prove. It MUST match the library's own selection, which keys on
+// bytes.Equal(value, defaultEmptyValue) where defaultEmptyValue is a nil []byte
+// (pokt-network/smt@v1.0.0 proofs.go:411, types.go:18). bytes.Equal treats a nil
+// and an empty-but-non-nil []byte{} as equal, so the library routes BOTH to its
+// non-membership branch. This accessor therefore keys on len(value) == 0, not
+// value == nil: an empty-value query is an absence query on both sides.
+//   - To test PRESENCE, pass the expected committed value (len > 0). A verified
+//     proof of (key → value) yields ProvenPresent(value).
+//   - To test ABSENCE, pass an empty value (nil OR []byte{}). A verified
+//     non-membership proof yields ProvenAbsent.
+//
+// If this accessor keyed on value == nil while the library keys on len == 0, an
+// empty-but-non-nil []byte{} query against a VALID absence proof would verify
+// (library: non-membership) yet resolve to ProvenPresent(value="") here — a false
+// PRESENCE off an absence proof, the mirror of the C-7 §104 banned move. Keying on
+// len(value) == 0 forecloses that: an empty value can NEVER yield ProvenPresent.
 //
 // The wiring that makes the banned move unrepresentable:
 //   - no witness (nil) → NoWitness. Never ProvenAbsent.
@@ -179,8 +190,8 @@ func verifySpec() *smt.TrieSpec {
 //   - VerifyProof returns an error → NoWitness. Never ProvenAbsent.
 //
 // ProvenAbsent is reachable ONLY through the single branch below where
-// value == nil AND VerifyProof returned (true, nil). There is no other assignment
-// of ProvenAbsent in this package.
+// len(value) == 0 AND VerifyProof returned (true, nil). There is no other
+// assignment of ProvenAbsent in this package.
 func Resolve(root ports.Hash, key []byte, value []byte, w Witness) Result {
 	if w.proof == nil {
 		// No witness supplied. Expected missing-proof case → stall, never absent.
@@ -195,11 +206,16 @@ func Resolve(root ports.Hash, key []byte, value []byte, w Witness) Result {
 		return Result{outcome: NoWitness}
 	}
 
-	// The proof verified. The claim it proved is determined by `value`:
-	//   value == nil  → a non-membership claim verified → ProvenAbsent.
-	//   value != nil  → a membership claim for that value verified → ProvenPresent.
+	// The proof verified. The claim it proved is determined by `value`, keyed on
+	// len(value) == 0 to match the library's bytes.Equal(value, defaultEmptyValue)
+	// selection (defaultEmptyValue is nil; bytes.Equal treats nil and []byte{} as
+	// equal). Keying on len == 0 — not value == nil — is what prevents an
+	// empty-but-non-nil []byte{} query against a valid absence proof from yielding
+	// a false ProvenPresent (the mirror of the banned move).
+	//   len(value) == 0  → a non-membership claim verified → ProvenAbsent.
+	//   len(value)  > 0  → a membership claim for that value verified → ProvenPresent.
 	// This is the ONLY construction site for ProvenPresent and ProvenAbsent.
-	if value == nil {
+	if len(value) == 0 {
 		return Result{outcome: ProvenAbsent}
 	}
 	return Result{outcome: ProvenPresent, value: value}

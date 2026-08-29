@@ -28,8 +28,14 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   (`core/statehash/witness_test.go`) each watched RED-then-GREEN: a missing witness
   never yields `ProvenAbsent`; a wrong-root/tampered/membership-as-absence proof
   never yields `ProvenAbsent`; verified proofs classify correctly (not a vacuous
-  all-`NoWitness` accessor); and a source-scan asserts exactly one `ProvenAbsent`
-  construction site so a second (banned) one REDs before it can ship. This
+  all-`NoWitness` accessor); an empty-but-non-nil `[]byte{}` value query against a
+  valid absence proof resolves to `ProvenAbsent`, NEVER `ProvenPresent` (the MIRROR
+  of the banned move: the pokt library selects membership vs non-membership on
+  `bytes.Equal(value, defaultEmptyValue)` with `defaultEmptyValue == nil`, so
+  `Resolve` keys on `len(value) == 0` to match it and an empty value can never read
+  present); and a source-scan asserts exactly one construction site EACH for
+  `ProvenAbsent` and `ProvenPresent`, so a second (banned or mirror-banned) one REDs
+  before it can ship. This
   increment builds ONLY the accessor; the R3 per-block byte ceiling and D-2
   on-demand delivery are separate increments that feed its `NoWitness` arm. No
   consensus-rule (I1–I5) or frozen era-3 format change — a validation-layer accessor.

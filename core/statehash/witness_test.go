@@ -190,48 +190,100 @@ func TestFailedVerificationNeverAbsent(t *testing.T) {
 	})
 }
 
-// TestProvenAbsentHasExactlyOneConstructionSite is the by-construction ablation:
-// it proves PROVEN_ABSENT is constructible ONLY from a verified non-membership
-// proof, by asserting the accessor source contains EXACTLY ONE literal that sets
-// the outcome to ProvenAbsent, and that site sits after a successful VerifyProof
-// in the value==nil branch. If someone adds a second construction site — e.g. a
-// well-meaning "no witness, assume absent" shortcut (the banned move) — the count
-// goes to 2 and this test goes RED before that code can ship.
+// TestEmptyValueNeverPresent is the mirror-of-banned-move ablation (PE LOW
+// finding, 2026-08-29): an empty-but-non-nil []byte{} value query against a VALID
+// absence proof must resolve to PROVEN_ABSENT, NEVER PROVEN_PRESENT. The pokt
+// library selects membership vs non-membership on bytes.Equal(value,
+// defaultEmptyValue) with defaultEmptyValue == nil, and bytes.Equal treats nil and
+// []byte{} as equal — so the library verifies []byte{} as a NON-membership query.
+// If Resolve keyed on value == nil (the pre-fix code), that same []byte{} would
+// route to the ProvenPresent branch and return PROVEN_PRESENT(value="") off a
+// valid absence proof — a false PRESENCE, the mirror of the C-7 §104 banned move.
+// This test was watched RED against the value==nil code and GREEN after keying on
+// len(value) == 0 (see the builder report).
+func TestEmptyValueNeverPresent(t *testing.T) {
+	absent := []byte("absent-raw-key") // never inserted
+	trie, root := buildTrie(t, []byte("present-raw-key"))
+
+	key := Key(tagTest, absent)
+	proof, err := trie.Prove(key)
+	if err != nil {
+		t.Fatalf("Prove(absent): %v", err)
+	}
+
+	// An empty-but-non-nil value is an ABSENCE query (matches the library's
+	// bytes.Equal(value, defaultEmptyValue) selection). It must NEVER read present.
+	got := Resolve(root, key, []byte{}, NewWitness(proof))
+	if got.IsProvenPresent() {
+		t.Fatalf("MIRROR OF BANNED MOVE (C-7 §104): an empty-value ([]byte{}) query "+
+			"against a valid absence proof resolved to PROVEN_PRESENT value=%q — a false "+
+			"presence off an absence proof", got.Value())
+	}
+	if !got.IsProvenAbsent() {
+		t.Fatalf("an empty-value query against a valid absence proof must resolve to "+
+			"PROVEN_ABSENT, got %s", got.Outcome())
+	}
+	if got.Value() != nil {
+		t.Fatalf("PROVEN_ABSENT must carry no value, got %x", got.Value())
+	}
+}
+
+// TestOutcomesHaveExactlyOneConstructionSite is the by-construction ablation: it
+// proves each verified outcome is constructible from exactly ONE source literal.
+//   - PROVEN_ABSENT: only from a verified non-membership proof, in the len==0
+//     branch after a successful VerifyProof. A second site would be the banned
+//     C-7 §104 move (missing/failed witness read as absent).
+//   - PROVEN_PRESENT: only from a verified membership proof, in the len>0 branch.
+//     A second site would be the MIRROR banned move (an unverified path — or an
+//     empty-value absence query — read as present).
 //
-// This is the "prove it goes red if someone adds a path" requirement: the type's
-// unexported outcome field already prevents outside packages from fabricating
-// PROVEN_ABSENT; this test guards against a new construction site WITHIN the
-// package.
-func TestProvenAbsentHasExactlyOneConstructionSite(t *testing.T) {
+// The type's unexported outcome field already prevents outside packages from
+// fabricating either outcome; this test guards against a new construction site
+// WITHIN the package. If someone adds a shortcut, the count goes to 2 and this
+// test goes RED before that code can ship.
+func TestOutcomesHaveExactlyOneConstructionSite(t *testing.T) {
 	src, err := os.ReadFile("witness.go")
 	if err != nil {
 		t.Fatalf("read witness.go: %v", err)
 	}
 
-	// Match a Result literal that sets outcome: ProvenAbsent. Whitespace-tolerant.
-	// Any construction of a ProvenAbsent Result must go through such a literal
-	// because outcome is unexported and Result has no other mutator.
-	re := regexp.MustCompile(`outcome:\s*ProvenAbsent`)
-	sites := re.FindAllIndex(src, -1)
-	if len(sites) != 1 {
+	// Match a Result literal that sets each outcome. Whitespace-tolerant. Any
+	// construction must go through such a literal because outcome is unexported and
+	// Result has no other mutator.
+	absentSites := regexp.MustCompile(`outcome:\s*ProvenAbsent`).FindAllIndex(src, -1)
+	if len(absentSites) != 1 {
 		t.Fatalf("expected EXACTLY ONE construction site for PROVEN_ABSENT, found %d. "+
 			"A second site is the banned C-7 §104 move (missing/failed witness read as "+
 			"absent). Every non-verified path MUST construct NoWitness, not ProvenAbsent.",
-			len(sites))
+			len(absentSites))
+	}
+	presentSites := regexp.MustCompile(`outcome:\s*ProvenPresent`).FindAllIndex(src, -1)
+	if len(presentSites) != 1 {
+		t.Fatalf("expected EXACTLY ONE construction site for PROVEN_PRESENT, found %d. "+
+			"A second site is the MIRROR banned move (an unverified path, or an empty-value "+
+			"absence query, read as present). ProvenPresent must come ONLY from a verified "+
+			"membership proof in the len(value)>0 branch.",
+			len(presentSites))
 	}
 
-	// The single site must be guarded by a value==nil check (the non-membership
-	// query) that follows a successful verify — i.e. it must appear AFTER the
-	// `if value == nil {` guard in the function. We assert the guard exists and
-	// precedes the construction site in source order.
-	guard := regexp.MustCompile(`if value == nil \{`)
-	guardLoc := guard.FindIndex(src)
+	// The single ProvenAbsent site must be guarded by the len(value)==0 check (the
+	// non-membership query) that follows a successful verify — i.e. it must appear
+	// AFTER the `if len(value) == 0 {` guard in source order. This guard is what
+	// keys the accessor on len==0 to match the library's bytes.Equal(value,
+	// defaultEmptyValue) selection and foreclose the empty-value mirror.
+	guardLoc := regexp.MustCompile(`if len\(value\) == 0 \{`).FindIndex(src)
 	if guardLoc == nil {
-		t.Fatal("the `if value == nil {` non-membership guard is missing — PROVEN_ABSENT " +
-			"must be reachable only through the verified non-membership branch")
+		t.Fatal("the `if len(value) == 0 {` non-membership guard is missing — PROVEN_ABSENT " +
+			"must be reachable only through the verified non-membership branch, keyed on " +
+			"len==0 to match the library's empty-value convention")
 	}
-	if guardLoc[0] >= sites[0][0] {
+	if guardLoc[0] >= absentSites[0][0] {
 		t.Fatal("the PROVEN_ABSENT construction site is not inside the verified " +
-			"non-membership (value==nil) branch")
+			"non-membership (len(value)==0) branch")
+	}
+	// And the ProvenPresent site must sit AFTER that guard too (it is the else arm).
+	if presentSites[0][0] <= guardLoc[0] {
+		t.Fatal("the PROVEN_PRESENT construction site must follow the len(value)==0 guard " +
+			"(it is the membership else-arm)")
 	}
 }
