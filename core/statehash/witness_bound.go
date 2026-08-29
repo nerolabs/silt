@@ -114,6 +114,9 @@ type ReadEntry struct {
 	// ignored for QueryAbsent. Resolve keys on len(value) == 0 to select
 	// membership vs non-membership, matching the library's empty-value convention
 	// (witness.go Resolve doc), so a QueryPresent entry MUST carry a non-empty value.
+	// This is ENFORCED, not merely documented: IngestBlockWitnesses rejects a
+	// QueryPresent entry with an empty Value to NoWitness before Resolve, because Kind
+	// is authoritative and a presence query with no value is never a proven absence.
 	Value []byte
 }
 
@@ -257,6 +260,18 @@ func IngestBlockWitnesses(root ports.Hash, readSet []ReadEntry, bundle []RawWitn
 
 	results := make(map[string]Result, len(readSet))
 	for _, re := range readSet {
+		// Kind/Value agreement gate. Kind is AUTHORITATIVE. A QueryPresent read with
+		// no expected value is a malformed read-set entry: Resolve keys on
+		// len(value) == 0 to select the non-membership (absence) branch, so passing an
+		// empty value for a presence query would silently resolve to ProvenAbsent —
+		// Kind says present, Value wins as absent. That is the same class as the R4
+		// empty-value finding. Reject it to NoWitness BEFORE Resolve; a presence query
+		// with no value is never a proven absence.
+		if re.Kind == QueryPresent && len(re.Value) == 0 {
+			results[string(re.Key)] = Result{outcome: NoWitness}
+			continue
+		}
+
 		rw := byKey[string(re.Key)] // present by the shape gate
 
 		var proof smt.SparseMerkleProof
@@ -267,7 +282,8 @@ func IngestBlockWitnesses(root ports.Hash, readSet []ReadEntry, bundle []RawWitn
 		}
 
 		// The query value: empty for an absence query (Resolve keys on len==0 to
-		// select non-membership), the expected value for a presence query.
+		// select non-membership), the expected value for a presence query. A
+		// QueryPresent entry is guaranteed non-empty here by the gate above.
 		var value []byte
 		if re.Kind == QueryPresent {
 			value = re.Value

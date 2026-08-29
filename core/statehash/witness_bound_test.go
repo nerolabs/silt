@@ -62,23 +62,53 @@ func presenceProof(t testing.TB, rawKey []byte, otherKeys ...[]byte) (ports.Hash
 // hit an Unmarshal error path (still NoWitness, but the point is the bytes are
 // never touched by Unmarshal because the size check fires first). The safety
 // assertion is the outcome: NoWitness, never ProvenAbsent.
+//
+// This test is a GENUINE gate-1 discriminator: it goes RED when ONLY the per-proof
+// cap (gate 1) is disabled. A single-key read-set would NOT — C_block = 1·SProofMax,
+// so an over-SProofMax blob also breaches the per-block ceiling and gate 2 catches
+// it, the test stays green, and its name lies. To pin the failure to gate 1, the
+// read-set has TWO keys (C_block = 2·SProofMax) with a small honest proof for the
+// second, so the over-cap blob + the honest proof stay UNDER the block ceiling.
+// Only gate 1 can catch the oversized blob (mirrors TestOverProofCapIsPreParseNotVerify).
 func TestOverProofCapRejectedPreParse(t *testing.T) {
-	root, key, _ := absenceProof(t, []byte("absent-key"), []byte("k1"), []byte("k2"))
+	// Two absent keys against the same committed set → C_block = 2·SProofMax.
+	trie, root := buildTrie(t, []byte("k1"), []byte("k2"))
+	oversizedKey := Key(tagTest, []byte("oversized-key"))
+	honestKey := Key(tagTest, []byte("honest-key"))
+
+	honestProof, err := trie.Prove(honestKey)
+	if err != nil {
+		t.Fatalf("Prove(honest): %v", err)
+	}
+	honestEnc := encodeProof(t, honestProof)
 
 	// An oversized blob of non-proof bytes (SProofMax+1). If the gate ever tried to
 	// Unmarshal this, it would fail to decode — but the byte cap must fire FIRST, so
 	// Unmarshal is never reached. Either way the outcome must be NoWitness.
 	oversized := bytes.Repeat([]byte{0xAB}, SProofMax+1)
 
-	readSet := []ReadEntry{{Key: key, Kind: QueryAbsent}}
-	bundle := []RawWitness{{Key: key, Encoded: oversized}}
+	readSet := []ReadEntry{{Key: oversizedKey, Kind: QueryAbsent}, {Key: honestKey, Kind: QueryAbsent}}
+
+	// Premise: the over-cap blob breaches gate 1, but the bundle TOTAL stays under
+	// C_block = 2·SProofMax, so gate 2 (the ceiling) CANNOT catch it — only gate 1 can.
+	if len(oversized) <= SProofMax {
+		t.Fatalf("premise: oversized blob %d must exceed the per-proof cap %d", len(oversized), SProofMax)
+	}
+	if len(oversized)+len(honestEnc) > CBlock(readSet) {
+		t.Fatalf("premise: bundle %d must stay under C_block %d so ONLY the per-proof cap catches it",
+			len(oversized)+len(honestEnc), CBlock(readSet))
+	}
+	bundle := []RawWitness{
+		{Key: oversizedKey, Encoded: oversized},
+		{Key: honestKey, Encoded: honestEnc},
+	}
 
 	got := IngestBlockWitnesses(root, readSet, bundle)
 
 	if !got.Rejected {
 		t.Fatal("an over-S_proof_max witness must reject the bundle pre-parse")
 	}
-	r := got.Results[string(key)]
+	r := got.Results[string(oversizedKey)]
 	if r.IsProvenAbsent() {
 		t.Fatal("BANNED MOVE (C-7 §104): an over-cap witness resolved to PROVEN_ABSENT")
 	}
@@ -86,8 +116,8 @@ func TestOverProofCapRejectedPreParse(t *testing.T) {
 		t.Fatalf("an over-cap witness must resolve to NO_WITNESS, got %s", r.Outcome())
 	}
 	// The reason names the per-proof cap, confirming gate 1 fired (not gate 2/3).
-	if got.RejectReason == "" {
-		t.Fatal("expected a reject reason naming the per-proof cap")
+	if !strings.Contains(got.RejectReason, "S_proof_max") {
+		t.Fatalf("expected the per-proof cap (gate 1) to fire; got reason %q", got.RejectReason)
 	}
 }
 
@@ -384,6 +414,52 @@ func TestHonestBundleVerifies(t *testing.T) {
 	if !got.Results[string(absentKey)].IsProvenAbsent() {
 		t.Fatalf("absent key must verify to PROVEN_ABSENT, got %s",
 			got.Results[string(absentKey)].Outcome())
+	}
+}
+
+// TestPresenceQueryEmptyValueNeverProvenAbsent is the Kind/Value-disagreement
+// ablation (safety, blind PE review). A QueryPresent read carrying a nil/empty
+// Value is a MALFORMED read-set entry: Resolve keys on len(value) == 0 to select
+// the non-membership branch, so an empty value would route a presence query to
+// ProvenAbsent — Kind says present, Value wins as absent. Kind is authoritative,
+// so IngestBlockWitnesses must reject it to NoWitness BEFORE Resolve. This is the
+// same class as the R4 empty-value finding.
+//
+// RED premise: without the Kind/Value gate, a QueryPresent{Value: nil} entry
+// against a valid ABSENCE proof falls through to Resolve, which sees len(value)==0
+// and returns ProvenAbsent. GREEN after the gate: the entry resolves to NoWitness.
+func TestPresenceQueryEmptyValueNeverProvenAbsent(t *testing.T) {
+	// A valid non-membership (absence) proof for the key. This is the dangerous
+	// witness: if the presence query's empty value reaches Resolve, this proof
+	// verifies and yields ProvenAbsent.
+	root, key, absenceEnc := absenceProof(t, []byte("serial-K"), []byte("k1"), []byte("k2"))
+
+	for _, tc := range []struct {
+		name  string
+		value []byte
+	}{
+		{"nil value", nil},
+		{"empty non-nil value", []byte{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// A presence query with NO value — the malformed entry. The shape gate is
+			// satisfied (exactly one witness for the one read key), so the entry reaches
+			// the per-key resolve loop where the Kind/Value gate must catch it.
+			readSet := []ReadEntry{{Key: key, Kind: QueryPresent, Value: tc.value}}
+			bundle := []RawWitness{{Key: key, Encoded: absenceEnc}}
+
+			got := IngestBlockWitnesses(root, readSet, bundle)
+			r := got.Results[string(key)]
+			if r.IsProvenAbsent() {
+				t.Fatalf("Kind/Value DISAGREEMENT: a QueryPresent entry with %s against a valid "+
+					"absence proof resolved to PROVEN_ABSENT — Value won over an authoritative Kind "+
+					"(same class as the R4 empty-value finding)", tc.name)
+			}
+			if !r.MustStall() {
+				t.Fatalf("%s: a QueryPresent entry with no value must resolve to NO_WITNESS, got %s",
+					tc.name, r.Outcome())
+			}
+		})
 	}
 }
 
