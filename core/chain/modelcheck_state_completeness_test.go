@@ -94,6 +94,8 @@ var stateClass = map[string]struct {
 	"gateHeight":     {committedSet, "cert field 13b — #506 enforcement boundary H_act"},
 	"everMature":     {committedSet, "cert field 14 — one-way maturity latch (F-1)"},
 	"matureEpoch":    {committedSet, "cert field 15 — handoff flag (#357 Cond B)"},
+	"era3LockedIn":   {committedSet, "step 2c — era-3 (v4) activation latch (mirrors gateLockedIn, regVersion>=4)"},
+	"era3Height":     {committedSet, "step 2c — era-3 (v4) enforcement boundary H_era3 (mirrors gateHeight)"},
 
 	// ---- committed: NOT in the certification's enumeration (findings) ----
 	"revLog": {committedLog, "CERTIFIED #597: an ordered CT-style transparency log, " +
@@ -241,6 +243,8 @@ func populateCommitted(c *Chain) {
 	c.validatorsSeen = map[ports.NodeID]bool{id: true}
 	c.gateLockedIn = true
 	c.gateHeight = 13
+	c.era3LockedIn = true
+	c.era3Height = 21
 	c.everMature = true
 	c.matureEpoch = true
 	c.epochStart = 17

@@ -9,6 +9,30 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **era-3 committed state-root activation + mint-flip to v4 (build step 2c, the FINAL
+  step of the certified sequence)** (2026-08-29). Height-gates the era-3 (v4) committed
+  state-root format on a frozen-epoch-weight supermajority signalling `regVersion >= 4`
+  (`BlockVersionStateRoot`), the #506 lock-in machinery reused one readiness level up
+  (research cert `era3-committed-state-root-format-RESEARCH-CERTIFICATION-2026-08-28`
+  Q5/Q7). New `Config.Era3ActivationHeight` (the pre-latch trusted-fleet override,
+  mirroring `RegGateActivationHeight`) and derived committed state `era3LockedIn`/
+  `era3Height`: `rotateEpoch` tallies era-3-aware frozen weight and locks in one-way at
+  the same >⅔ super-quorum, enforcing from the NEXT boundary (`H_era3`). New
+  `Chain.era3Active(h)`, `Chain.MintVersion(h)`, and `Chain.PopulateEra3Roots(b)`. At/above
+  `H_era3` the propose path (`core/node/chainrole.go`) mints v4 with the committed roots
+  populated over the block's post-apply state; below it mints v2, UNCHANGED.
+  `ValidateProposal` rejects a sub-v4 block at/above `H_era3` (`ErrEra3VersionRequired`),
+  and the 2b root predicate rejects a wrong-rooted v4 block — so once era-3 activates, a
+  block must be v4 AND carry valid roots. Activation is derived from committed history and
+  keys on finalized epoch boundaries (#357 Condition A), so it is replay-identical and
+  reorg-stable. `era3LockedIn`/`era3Height` are `committedSet` (under the state root),
+  carried in `adopt`/`cloneForDryRun` and exercised by the completeness, order-independence
+  (new `era3SwingOrderings` same-id two-version swing), and leave-one-out
+  (new `era3World`/`era3Probes`) oracles. New model-check tests
+  (`modelcheck_era3_activation_test.go`) assert the mint-flip, the boundary rejection, the
+  weight-counted readiness gate, monotonicity, and reorg-stability, each with a demonstrated
+  ablation RED. Invariants: I1/I2/I4 untouched; I3 relied on (the rule change integrates
+  only at a finalized boundary, by weight); I5 preserved (pure functions of committed state).
 - **era-3 committed state-root computation (build step 1 of the certified sequence)**
   (2026-08-28; format ratified, this step is model-check-tier only). Computes the two
   era-3 roots and proves the per-field value encoding deterministic BEFORE the root

@@ -44,6 +44,11 @@ var (
 	// ErrEra3LogRootMismatch is a v4 block whose committed LogRoot does not equal the
 	// post-apply RFC-6962 revocation-log root.
 	ErrEra3LogRootMismatch = errors.New("chain: era-3 (v4) block LogRoot does not equal the recomputed post-apply revocation-log root")
+	// ErrEra3VersionRequired is a sub-v4 block at or above the era-3 activation
+	// boundary (era3Active). Once era-3 is active, v4 is REQUIRED — a v2/v3 block at
+	// that height has no committed roots for a validator to check, which is exactly
+	// the silent-mis-validation era-3 exists to prevent (cert Q7). Build step 2c.
+	ErrEra3VersionRequired = errors.New("chain: block below era-3 (v4) at or above the era-3 activation height — v4 with committed roots is required")
 )
 
 // validateEra3Roots is the era-3 (v4) committed-root predicate. For a sub-v4 block it
@@ -125,6 +130,8 @@ func (c *Chain) cloneForDryRun() *Chain {
 		everMature:   c.everMature,
 		gateLockedIn: c.gateLockedIn,
 		gateHeight:   c.gateHeight,
+		era3LockedIn: c.era3LockedIn,
+		era3Height:   c.era3Height,
 		epochStart:   c.epochStart,
 		matureEpoch:  c.matureEpoch,
 	}

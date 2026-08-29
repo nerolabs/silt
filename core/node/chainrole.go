@@ -698,6 +698,17 @@ func (n *Node) ValidateEntryProposal(e ports.Entry) error {
 	}
 	prev, height := n.chain.Head()
 	b := &chain.Block{Version: chain.BlockVersion, Height: height, Prev: prev, Entries: []ports.Entry{e}}
+	// Mint-flip (era-3 step 2c): once era-3 is active, a v2 candidate would be
+	// rejected by the boundary rule (v2 at/above H_era3), so a real publish would
+	// falsely fail this local pre-check. Mint the version the real proposer would —
+	// v4 with roots at/above the boundary — so the pre-check tracks production. This
+	// candidate carries no folded content, so its post-apply roots are over the
+	// single-entry block, exactly what the real single-entry proposal would commit.
+	if n.chain.MintVersion(b.Height) >= chain.BlockVersionStateRoot {
+		if err := n.chain.PopulateEra3Roots(b); err != nil {
+			return fmt.Errorf("validate-entry: era-3 root population: %w", err)
+		}
+	}
 	// Watermark-exempt (#397): this signed candidate exists only for the local
 	// pre-check and is NEVER released to the wire — a signature no peer can
 	// hold is not equivocation evidence. Only released signatures (proposeBlock
@@ -841,7 +852,22 @@ func (n *Node) proposeBlock(b *chain.Block, attesters, broadcast []ports.NodeID,
 		}
 		n.pendingSlashes = still
 	}
-	b.Version = chain.BlockVersionRounds // era 2: minted blocks carry two-phase certificates (#432)
+	// Mint-flip (era-3 build step 2c): at/above the era-3 activation boundary the
+	// chain mints v4 with populated committed roots; below it, v2 (the #432
+	// two-phase-certificate era). The chain owns the activation state, so ask it —
+	// MintVersion(height) is a pure function of committed history, identical on every
+	// honest proposer at this head (I5). PopulateEra3Roots runs AFTER all
+	// apply-affecting content (BondRegs, entries, slashes) is folded in above, so the
+	// roots cover the block as it will actually commit (post-apply state). Below the
+	// boundary the path is byte-for-byte the old v2 behavior.
+	if n.chain.MintVersion(b.Height) >= chain.BlockVersionStateRoot {
+		if err := n.chain.PopulateEra3Roots(b); err != nil {
+			done(fmt.Errorf("propose: era-3 root population: %w", err))
+			return
+		}
+	} else {
+		b.Version = chain.BlockVersionRounds // era 2: minted blocks carry two-phase certificates (#432)
+	}
 	chain.Sign(b, n.signer)
 	if err := n.chain.ValidateProposal(b); err != nil {
 		done(fmt.Errorf("propose: local pre-check: %w", err))

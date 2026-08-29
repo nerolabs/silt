@@ -244,6 +244,24 @@ type Config struct {
 	// RegGateActivationHeight. 0 (default) = off: a bled boundary stalls, which
 	// is the certified-correct behavior. A non-boundary value never fires.
 	LivenessRecoveryHeight uint64
+	// Era3ActivationHeight is the PRE-LATCH activation override for the era-3
+	// committed-state-root format (the v4 mint-flip + the v4-required boundary
+	// rule): when > 0, era-3 is active on every block of height >= this, with no
+	// readiness signalling — a trusted launch-anchor set coordinates its upgrade
+	// and declares the boundary as genesis config, exactly like
+	// RegGateActivationHeight (research cert Q5, mirroring the #506 pre-latch
+	// override). 0 (default) = post-latch behavior: era-3 activates only when
+	// era-3-aware bonded WEIGHT over a frozen epoch crosses the >⅔ finality
+	// super-quorum (see rotateEpoch, the regVersion >= BlockVersionStateRoot
+	// tally), which never fires without epochs. Consensus-critical genesis config,
+	// same discipline as MinBond/Anchors/RegGateActivationHeight.
+	//
+	// NOTE the >= (not >) boundary: era-3 is a MINT/FORMAT boundary, so H_era3 is
+	// itself the first v4 height ("at/above H_era3, a block MUST be v4"), unlike
+	// the #506 R-rule's height > H_act (where the boundary block is the last
+	// old-rules block). Monotonic height-gated activation keyed on finalized
+	// history either way (2c deliberation).
+	Era3ActivationHeight uint64
 }
 
 // WSCheckpoint is a recent trusted (height, hash) a replica will not reorg before.
@@ -937,6 +955,24 @@ type Chain struct {
 	// H_act cannot be reorged out from under enforcement (certification Q2/I3).
 	gateLockedIn bool
 	gateHeight   uint64
+	// era3LockedIn/era3Height are the era-3 (v4) committed-state-root activation
+	// state, the #506 gateLockedIn/gateHeight mechanism reused one readiness level
+	// up (research cert Q5/Q7). At the first mature epoch boundary where
+	// era-3-AWARE frozen weight (regVersion >= BlockVersionStateRoot, == 4) clears
+	// the same >⅔ super-quorum, era-3 locks in ONE-WAY (monotonic — un-tightening
+	// would itself be a hard fork; a later ready-weight collapse stalls, never
+	// un-flips) and activation begins at the NEXT boundary: era3Height = H_era3,
+	// and v4 is REQUIRED (mint + validity) for every block of height >= era3Height.
+	// The >= (vs #506's >) is because era-3 is a MINT/FORMAT boundary: H_era3 is
+	// itself the first v4 height. Derived deterministically from committed history
+	// in rotateEpoch, so every replica — live or replaying — computes the identical
+	// H_era3; epoch boundaries are super-quorum-final (#357 Condition A), so H_era3
+	// cannot be reorged out from under enforcement (certification Q5/I3). A DISTINCT
+	// readiness level from the #506 gate (>= 3): a node signals 4 only when it can
+	// enforce the R-rule AND validate committed roots — the two are different
+	// software states, so one const cannot gate both (cert Q7).
+	era3LockedIn bool
+	era3Height   uint64
 	// bondDomain records the committed A-axis failure-domain label from each
 	// validator's LATEST bond registration (0 = unset). A pure function of the
 	// committed blocks, so C2Metric can count address-diverse participants
@@ -2272,6 +2308,16 @@ func (c *Chain) ValidateProposal(b *Block) error {
 		}
 		seen[e.Root] = true
 	}
+	// era-3 (v4) version-boundary rule (build step 2c). At or above the era-3
+	// activation height (era3Active — derived from committed history, epoch-final so
+	// reorg-stable), v4 is REQUIRED: a v2/v3 block carries no committed roots for a
+	// validator to check, so accepting it at/past the boundary is the silent
+	// mis-validation era-3 exists to prevent (cert Q7). Below the boundary this never
+	// fires and era-2 validation is unchanged. Checked before the roots predicate so
+	// the failure names the version, not a missing root.
+	if c.era3Active(b.Height) && b.Version < BlockVersionStateRoot {
+		return fmt.Errorf("%w: height %d version %d", ErrEra3VersionRequired, b.Height, b.Version)
+	}
 	// era-3 (v4) committed-root predicate (build step 2b). A no-op for sub-v4 blocks
 	// (era-2 rules unchanged); for a v4 block it rejects a nil root, or a StateRoot/
 	// LogRoot that does not equal the post-apply recompute. Placed LAST so a v4 block
@@ -3096,6 +3142,77 @@ func (c *Chain) rotateEpoch(h uint64) {
 			c.gateHeight = h + c.cfg.EpochBlocks
 		}
 	}
+
+	// era-3 (v4) activation lock-in — build step 2c, the #506 tally reused one
+	// readiness level up (research cert Q5/Q7). Same frozen-set weight, same >⅔
+	// super-quorum, same one-epoch-of-notice and monotonic guard — the ONLY
+	// difference is the readiness threshold: regVersion >= BlockVersionStateRoot
+	// (== 4), a DISTINCT signal from the #506 gate's >= 3, because a node signals 4
+	// only when it can enforce the R-rule AND validate committed roots (cert Q7).
+	// Byzantine signal-inflation is absorbed by the shared threshold, identical to
+	// #506. Separate from the gate tally above (a node may know the R-rule long
+	// before it has the era-3 root software), so the two lock in independently.
+	if !c.era3LockedIn && c.cfg.Era3ActivationHeight == 0 && c.cfg.EpochBlocks > 0 {
+		var total, ready int64
+		for id, w := range set {
+			total += w
+			if c.regVersion[id] >= BlockVersionStateRoot {
+				ready += w
+			}
+		}
+		if total > 0 && 3*ready > 2*total {
+			c.era3LockedIn = true
+			c.era3Height = h + c.cfg.EpochBlocks
+		}
+	}
+}
+
+// era3Active reports whether the era-3 (v4) committed-state-root format governs a
+// block at height h: at/past the genesis-declared boundary (pre-latch override),
+// or at/past the chain-derived H_era3 (post-latch lock-in). At-or-greater (unlike
+// regGateActive's strictly-greater): era-3 is a MINT/FORMAT boundary, so H_era3 is
+// itself the first v4 height ("at/above H_era3, a block MUST be v4"), whereas the
+// #506 boundary block is the last OLD-rules block. Derived from committed history,
+// so every replica — live or replaying — agrees; epoch-final, so a reorg cannot
+// move the boundary to un-enforce it (#357 Condition A, cert Q5).
+func (c *Chain) era3Active(h uint64) bool {
+	if c.cfg.Era3ActivationHeight > 0 {
+		return h >= c.cfg.Era3ActivationHeight
+	}
+	return c.era3LockedIn && h >= c.era3Height
+}
+
+// MintVersion is the BlockVersion a proposer should stamp for a NEW block at
+// height h: BlockVersionStateRoot (v4) at/above the era-3 activation boundary,
+// BlockVersionRounds (v2) below it. The propose path (core/node) asks the chain,
+// which owns the activation state, rather than re-deriving the boundary. Pure
+// function of committed state — every honest proposer at the same head mints the
+// identical version (I5).
+func (c *Chain) MintVersion(h uint64) uint64 {
+	if c.era3Active(h) {
+		return BlockVersionStateRoot
+	}
+	return BlockVersionRounds
+}
+
+// PopulateEra3Roots stamps b as a v4 block and attaches this chain's committed
+// StateRoot/LogRoot over the POST-APPLY state of b — the roots a validator will
+// recompute and check (validateEra3Roots). It is called by the propose path AFTER
+// all apply-affecting content (BondRegs, entries, slashes) is folded into b, so the
+// roots cover the block as it will actually commit. The recompute uses the same
+// dry-run apply (postApplyRoots) the 2b predicate uses, so the proposer's root and
+// the validator's recompute come from one authoritative state-transition function.
+// A no-op below the era-3 boundary: the propose path only calls this when
+// MintVersion(h) == BlockVersionStateRoot.
+func (c *Chain) PopulateEra3Roots(b *Block) error {
+	sr, lr, err := c.postApplyRoots(*b)
+	if err != nil {
+		return err
+	}
+	b.Version = BlockVersionStateRoot
+	b.StateRoot = &sr
+	b.LogRoot = &lr
+	return nil
 }
 
 // regGateActive reports whether the #506 reg-inclusion rate bound governs a
@@ -3407,6 +3524,8 @@ func (c *Chain) adopt(t *Chain) {
 	c.regVersion = t.regVersion
 	c.gateLockedIn = t.gateLockedIn // #506 activation is derived state too: the
 	c.gateHeight = t.gateHeight     // replayed fork re-ran every rotation (Q2/I3)
+	c.era3LockedIn = t.era3LockedIn // era-3 (v4) activation is derived the same way:
+	c.era3Height = t.era3Height     // the replayed fork re-ran every rotation (Q5/I3)
 	c.bondDomain = t.bondDomain
 	c.slashed = t.slashed
 	c.everMature = t.everMature // the maturity latch is a function of the adopted history (F-1)
