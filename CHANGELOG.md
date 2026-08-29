@@ -9,6 +9,23 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **era-3 version-boundary rule enforced on the own-disk Reload path (step 2c
+  defense-in-depth symmetry)** (2026-08-29). Closes the asymmetry a blind PE ruled
+  (`RULING-era3-step2c-activation-mint-flip-2026-08-29`): 2b duplicated the era-3 ROOT
+  check onto `appendStructural` (the Reload/own-disk path), but the 2c VERSION-boundary
+  rule (`ErrEra3VersionRequired` — a v2 block at/above `H_era3` is invalid) lived only on
+  the commit path (`ValidateProposal`/`ValidateCommit`). The rule is extracted into a named
+  `validateEra3Version` and now run on BOTH consensus-entry paths, BEFORE apply (a rejected
+  block is never left applied — the longest-valid-prefix contract). Not exploitable today
+  (a valid quorum-signed v2 block cannot commit at/above `H_era3`), but a future disk-write
+  path (fast-sync/import) is where the gap could turn into a hole. The write-set guard
+  `TestEveryDiskWritePathRunsTheEra3RootCheck` now requires every disk-write path to run
+  BOTH the root check AND the version rule — a path enforcing only the root check REDs (a v2
+  block carries no roots, so the root check alone is era-gated off for it). New model-check
+  tests (`TestReloadRejectsV2AtEra3Boundary` with the signature-valid-cause ablation,
+  `TestReloadV2BoundaryRuleDoesNotOverReject`). No change to the activation condition,
+  mint-flip, weight tally, `epochSet` freeze, `⌈A/2⌉`, or value encoding. I5 preserved
+  (`validateEra3Version` is a pure header check against committed state).
 - **era-3 committed state-root activation + mint-flip to v4 (build step 2c, the FINAL
   step of the certified sequence)** (2026-08-29). Height-gates the era-3 (v4) committed
   state-root format on a frozen-epoch-weight supermajority signalling `regVersion >= 4`

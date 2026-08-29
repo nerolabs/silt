@@ -146,8 +146,11 @@ valid roots; a wrong root is already rejected by 2b.
 - classified `committedSet` in the completeness oracle → folded into the state root;
 - copied by value in `cloneForDryRun` (the dry-run apply must see the same activation state);
 - carried in `adopt` (a reorg replays every rotation, re-deriving them);
-- carried in the snapshot transfer (`transferState`) so a snapshot-booted node has the same
-  activation state.
+- carried on snapshot boot via their `committedSet` classification. Snapshot-boot equivalence is
+  a model-check property today (`snapshotBoot` in `modelcheck_snapshot_equivalence_test.go`
+  reflects over the committedSet classification); there is no production chain-state
+  snapshot-boot path yet, and no `transferState` function. The mechanism that carries these
+  fields is the committedSet classification itself, not a named transfer routine.
 
 Because they enter the state root, a node that forged them would produce a mismatching root and
 be rejected by 2b — the activation state is itself committed-root-protected.

@@ -2308,15 +2308,12 @@ func (c *Chain) ValidateProposal(b *Block) error {
 		}
 		seen[e.Root] = true
 	}
-	// era-3 (v4) version-boundary rule (build step 2c). At or above the era-3
-	// activation height (era3Active — derived from committed history, epoch-final so
-	// reorg-stable), v4 is REQUIRED: a v2/v3 block carries no committed roots for a
-	// validator to check, so accepting it at/past the boundary is the silent
-	// mis-validation era-3 exists to prevent (cert Q7). Below the boundary this never
-	// fires and era-2 validation is unchanged. Checked before the roots predicate so
-	// the failure names the version, not a missing root.
-	if c.era3Active(b.Height) && b.Version < BlockVersionStateRoot {
-		return fmt.Errorf("%w: height %d version %d", ErrEra3VersionRequired, b.Height, b.Version)
+	// era-3 (v4) version-boundary rule (build step 2c). Checked before the roots
+	// predicate so the failure names the version, not a missing root. Extracted into
+	// validateEra3Version (era3validity.go) so the OWN-DISK Reload path
+	// (appendStructural) runs the identical rule — see that function's doc.
+	if err := c.validateEra3Version(b); err != nil {
+		return err
 	}
 	// era-3 (v4) committed-root predicate (build step 2b). A no-op for sub-v4 blocks
 	// (era-2 rules unchanged); for a v4 block it rejects a nil root, or a StateRoot/
@@ -2770,6 +2767,20 @@ func (c *Chain) Reload(blocks []Block) (int, error) {
 // policy — that the quorum already made when this node committed the block.
 func (c *Chain) appendStructural(b Block) error {
 	if err := c.validateStructural(&b); err != nil {
+		return err
+	}
+	// era-3 (v4) version-boundary rule on the OWN-DISK reload path (build step 2c
+	// symmetry). The commit path enforces ErrEra3VersionRequired via ValidateProposal;
+	// this own-disk path did not call it, so a v2 block at/above H_era3 could be
+	// persisted here. Not exploitable today (a valid quorum-signed v2 block cannot exist
+	// at/above H_era3 — it committed via ValidateCommit, which rejects it), but the two
+	// era-3 consensus-entry rules must be symmetric across write paths, exactly as the
+	// root check below now is. A future unguarded disk-write path (fast-sync/import) is
+	// precisely where the asymmetry could turn into a hole. This is a PURE HEADER CHECK
+	// against era3Active (derived from PRIOR committed state, available BEFORE apply), so
+	// it runs BEFORE c.apply(b): a rejected block is not left applied, preserving the
+	// longest-valid-prefix contract (same discipline as the root check).
+	if err := c.validateEra3Version(&b); err != nil {
 		return err
 	}
 	// era-3 (v4) committed-root re-validation on the OWN-DISK reload path (A-bare).

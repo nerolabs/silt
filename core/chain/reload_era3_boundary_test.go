@@ -440,27 +440,128 @@ func reloadCfg() Config {
 	}
 }
 
+// TestReloadRejectsV2AtEra3Boundary is the step-2c defense-in-depth symmetry regression.
+// It is the version-boundary sibling of TestReloadRejectsResignedWrongStateRootV4: the 2b
+// root check was duplicated onto the own-disk Reload path (appendStructural), but the 2c
+// VERSION-boundary rule (ErrEra3VersionRequired — a v2 block at/above H_era3 is invalid)
+// lived ONLY on the commit path (ValidateProposal/ValidateCommit). appendStructural did not
+// run it, so a v2 block at/above H_era3 fed to Reload would be persisted unvalidated. This
+// is not exploitable today (a valid quorum-signed v2 block cannot commit at/above H_era3),
+// but a future unguarded disk-write path (fast-sync/import) is where the asymmetry could
+// turn into a hole. The blind PE ruled the asymmetry (RULING-era3-step2c...-2026-08-29).
+//
+// The forged block is SIGNATURE-VALID (a full two-phase certificate), so the ONLY reason to
+// reject it is the version rule. Before the fix appendStructural ACCEPTS it (RED); after,
+// it rejects with ErrEra3VersionRequired (GREEN) — NOT a signature error and NOT a panic.
+// The ablation subtest below pins that cause.
+func TestReloadRejectsV2AtEra3Boundary(t *testing.T) {
+	// Genesis-declared boundary at height 3: heights 1..2 are era-2, height >= 3 is era-3.
+	c, keys := era3AnchorChain(t, 3)
+	mustAppend(t, c, mintNext(t, c, keys)) // height 1, v2
+	mustAppend(t, c, mintNext(t, c, keys)) // height 2, v2
+
+	// Forge a signature-valid v2 block AT the boundary (height 3). The commit path would
+	// reject it (ValidateProposal → ErrEra3VersionRequired), so it can never reach disk
+	// through Append — we build it by hand and feed it to appendStructural directly, which
+	// is exactly the own-disk path being hardened.
+	prev, next := c.Head()
+	if next != 3 {
+		t.Fatalf("fixture: expected head 3 (H_era3), got %d", next)
+	}
+	v2AtBoundary := &Block{Version: BlockVersionRounds, Height: next, Prev: prev,
+		Entries: []ports.Entry{entry(byte(next))}}
+	twoPhaseSign(v2AtBoundary, keys)
+
+	// Assertion 1 (the RED cause pin): validateStructural ACCEPTS the block — its
+	// signatures/ancestry/quorum are valid, so the ONLY remaining reason to reject it is
+	// the version rule, not a signature failure.
+	if err := c.validateStructural(v2AtBoundary); err != nil {
+		t.Fatalf("validateStructural REJECTED the forged v2 boundary block (%v) — the forge is "+
+			"malformed for an unrelated reason, so the version-rule regression would test the "+
+			"wrong thing (it must be the VERSION check, not a signature check, that rejects)", err)
+	}
+
+	// Assertion 2 (the regression): appendStructural (the own-disk Reload path) REJECTS it
+	// with ErrEra3VersionRequired. RED before the fix (accepted), GREEN after, correct cause.
+	err := c.appendStructural(*v2AtBoundary)
+	if !errors.Is(err, ErrEra3VersionRequired) {
+		t.Fatalf("appendStructural on a signature-valid v2 block at H_era3: got %v, want "+
+			"ErrEra3VersionRequired.\nThe own-disk Reload path must run the version-boundary "+
+			"rule, exactly as the commit path does — the 2b root check symmetry extended to the "+
+			"2c version rule.", err)
+	}
+	// The rejection left NO block applied: head unchanged at 3 (longest-valid-prefix contract).
+	if _, h := c.Head(); h != 3 {
+		t.Fatalf("after the rejected appendStructural the head is %d; want 3 — a rejected block "+
+			"must not be left applied (the version check runs BEFORE apply)", h)
+	}
+}
+
+// TestReloadV2BoundaryRuleDoesNotOverReject is the over-rejection control for the version
+// rule on the Reload path: a legit v2 block BELOW H_era3, and a correct v4 block AT/ABOVE
+// H_era3, must both still Reload/appendStructural cleanly. Without this, the rule above
+// could pass by rejecting everything.
+func TestReloadV2BoundaryRuleDoesNotOverReject(t *testing.T) {
+	c, keys := era3AnchorChain(t, 3)
+
+	// A v2 block below H_era3 (height 1) appendStructurals cleanly.
+	b1 := mintNext(t, c, keys)
+	if b1.Version != BlockVersionRounds {
+		t.Fatalf("height 1 must mint v2, got v%d", b1.Version)
+	}
+	if err := c.appendStructural(*b1); err != nil {
+		t.Fatalf("a v2 block BELOW H_era3 must appendStructural cleanly, got %v — the version "+
+			"rule over-rejected below the boundary", err)
+	}
+	// Height 2, still below the boundary.
+	b2 := mintNext(t, c, keys)
+	if err := c.appendStructural(*b2); err != nil {
+		t.Fatalf("a v2 block at height 2 (below H_era3) must appendStructural cleanly, got %v", err)
+	}
+
+	// A correct v4 block AT H_era3 (height 3) appendStructurals cleanly.
+	b3 := mintNext(t, c, keys)
+	if b3.Version != BlockVersionStateRoot {
+		t.Fatalf("at H_era3 mintNext must produce v4, got v%d", b3.Version)
+	}
+	if err := c.appendStructural(*b3); err != nil {
+		t.Fatalf("a correct v4 block AT H_era3 must appendStructural cleanly, got %v — the "+
+			"version rule wrongly rejected a valid v4 block at the boundary", err)
+	}
+	if _, h := c.Head(); h != 4 {
+		t.Fatalf("after appending the v4 boundary block the head is %d; want 4", h)
+	}
+}
+
 // TestEveryDiskWritePathRunsTheEra3RootCheck is the write-set enumeration guard. It is
 // STRUCTURAL, not a hand-list: it discovers every Chain method that writes a block to the
 // live committed history by scanning for calls to c.apply(b), and asserts that each such
-// method also runs the era-3 root check on the block it applied. A FUTURE unguarded
-// disk-write path (fast-sync, import) fails this guard rather than silently re-opening the
-// A-bare hole.
+// method runs BOTH era-3 consensus-entry rules on the block it applied — the ROOT check
+// (validateEra3Roots) AND the VERSION-boundary rule (validateEra3Version). A FUTURE
+// unguarded disk-write path (fast-sync, import) fails this guard rather than silently
+// re-opening the A-bare hole OR the 2c version-boundary asymmetry.
 //
-// Enforcement mechanism (structural, rot-proof): the era-3 root check is centralized in
-// ONE named validator — validateEra3Roots (recompute-on-a-clone; checked BEFORE apply so a
-// rejection never leaves a bad block applied). Both disk-write families route through it:
-// the commit path via ValidateProposal → validateEra3Roots, and the reload path
-// (appendStructural) calls it directly. Any method that persists a block MUST route the
-// block's roots through it. The guard reads chain.go's source and asserts:
+// Why BOTH, not just the root check (the 2c hardening): a v2 block carries NO roots, so the
+// root check is era-gated OFF for it (validateEra3Roots returns nil for sub-v4). A future
+// disk-write path that ran ONLY the root check would satisfy the old guard while persisting
+// a v2 block at/above H_era3 — the exact defense-in-depth asymmetry the blind PE ruled
+// (RULING-era3-step2c...-2026-08-29). Requiring the version rule too makes "every disk-write
+// path enforces the era-3 rules" UNIFORM across root AND version.
 //
-//   - every method whose body CALLS validateEra3Roots (directly, or via a validator that
+// Enforcement mechanism (structural, rot-proof): each era-3 rule is centralized in ONE named
+// validator — validateEra3Roots and validateEra3Version — both checked BEFORE apply so a
+// rejection never leaves a bad block applied. Both disk-write families route through both:
+// the commit path via ValidateProposal (which calls both), and the reload path
+// (appendStructural) calls both directly. The guard reads chain.go's source and asserts,
+// for each of the two rules independently:
+//
+//   - every method's body CALLS that rule's validator (directly, or via a validator that
 //     does — ValidateCommit/ValidateProposal for the commit family), OR is on the explicit
-//     genesis allowlist (AppendGenesis: a v1 genesis is declared-not-agreed and carries no
-//     committed root by construction).
+//     genesis allowlist (AppendGenesis: a v1 genesis is declared-not-agreed, below any era-3
+//     boundary and carrying no committed root by construction).
 //
-// A new `func (c *Chain) FastSync(b Block) { ...; c.apply(b); ... }` that forgets the root
-// check trips this guard: it calls c.apply but never calls a root validator and is not
+// A new `func (c *Chain) FastSync(b Block) { ...; c.apply(b); ... }` that forgets EITHER
+// rule trips this guard: it calls c.apply but does not call that rule's validator and is not
 // allowlisted. That is the future hole this closes.
 //
 // Coverage is decided by callsFn, which matches a real CALL — the validator name followed
@@ -477,66 +578,75 @@ func TestEveryDiskWritePathRunsTheEra3RootCheck(t *testing.T) {
 			"least Append/appendStructural/AppendGenesis), so this guard would pass vacuously")
 	}
 
-	// The named era-3 root validator. A disk-write method is guarded if its body names it,
-	// OR names a validator known to run it (the commit family funnels through
-	// ValidateProposal → validateEra3Roots).
-	rootValidators := []string{"validateEra3Roots"}
-	// Validators that themselves run a root validator (transitive coverage). ValidateCommit
-	// calls ValidateProposal, which calls validateEra3Roots — so a method calling either is
-	// covered. Kept as an explicit, auditable transitive set rather than a full call-graph
-	// walk; each entry is verified below to actually reach a root validator.
+	// The two named era-3 consensus-entry validators. A disk-write method is guarded for a
+	// rule if its body names that rule's validator, OR names a validator known to run it
+	// (the commit family funnels through ValidateProposal, which calls BOTH).
+	//
+	//   - validateEra3Roots:   the committed-root check (2b).
+	//   - validateEra3Version: the version-boundary rule (2c) — the addition this guard now
+	//                          requires, so a path enforcing only the root check REDs.
+	era3Rules := []string{"validateEra3Roots", "validateEra3Version"}
+	// Validators that themselves run BOTH era-3 rules (transitive coverage). ValidateProposal
+	// calls both; ValidateCommit calls ValidateProposal — so a method calling either is
+	// covered for both rules. Kept as an explicit, auditable transitive set rather than a
+	// full call-graph walk; each entry is verified below to actually reach both rules.
 	transitiveGuards := []string{"ValidateProposal", "ValidateCommit"}
-	// genesisAllowlist: methods that legitimately persist a block WITHOUT a committed root.
-	// A v1 genesis is declared-not-agreed (Bitcoin-shape) and carries no StateRoot/LogRoot
-	// by construction, so the era-3 predicate does not apply. This is the ONLY allowed
-	// exemption; adding to it is a reviewed decision, not a silent default.
+	// genesisAllowlist: methods that legitimately persist a block WITHOUT the era-3 rules.
+	// A v1 genesis is declared-not-agreed (Bitcoin-shape), sits below any era-3 boundary and
+	// carries no StateRoot/LogRoot by construction, so neither era-3 predicate applies. This
+	// is the ONLY allowed exemption; adding to it is a reviewed decision, not a silent default.
 	genesisAllowlist := map[string]bool{"AppendGenesis": true}
 
-	// Verify the transitive guards genuinely reach a root validator, so the allowance is
-	// not a fiction that lets a real hole through.
+	// callsRule reports whether a method body runs the given rule directly, or via a
+	// transitive guard that reaches it.
+	callsRule := func(body, rule string) bool {
+		if callsFn(body, rule) {
+			return true
+		}
+		for _, g := range transitiveGuards {
+			if callsFn(body, g) {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Verify each transitive guard genuinely reaches BOTH era-3 rules, so the allowance is
+	// not a fiction that lets a real hole through. ValidateCommit reaches them via
+	// ValidateProposal, so a call to another transitive guard counts as reaching.
 	for _, g := range transitiveGuards {
 		body := methodBody(t, src, g)
-		reaches := false
-		for _, rv := range rootValidators {
-			if callsFn(body, rv) {
-				reaches = true
-				break
+		for _, rule := range era3Rules {
+			reaches := callsFn(body, rule)
+			for _, other := range transitiveGuards {
+				if other != g && callsFn(body, other) {
+					reaches = true
+				}
 			}
-		}
-		// ValidateCommit reaches it via ValidateProposal; accept a call to another
-		// transitive guard as reaching too.
-		for _, other := range transitiveGuards {
-			if other != g && callsFn(body, other) {
-				reaches = true
+			if !reaches {
+				t.Fatalf("transitive guard %q no longer reaches era-3 rule %q — the guard's "+
+					"coverage assumption rotted; a disk-write path relying on it is now "+
+					"unguarded for that rule", g, rule)
 			}
-		}
-		if !reaches {
-			t.Fatalf("transitive guard %q no longer reaches an era-3 root validator — the "+
-				"guard's coverage assumption rotted; a disk-write path relying on it is now "+
-				"unguarded", g)
 		}
 	}
 
-	allowedNames := append(append([]string(nil), rootValidators...), transitiveGuards...)
+	// The core assertion: every disk-write path runs BOTH rules.
 	for _, m := range methods {
 		if genesisAllowlist[m] {
 			continue
 		}
 		body := methodBody(t, src, m)
-		guarded := false
-		for _, name := range allowedNames {
-			if callsFn(body, name) {
-				guarded = true
-				break
+		for _, rule := range era3Rules {
+			if !callsRule(body, rule) {
+				t.Errorf("method %q writes a block to disk (calls c.apply) but does NOT run "+
+					"era-3 rule %q (neither directly nor via %v) and is not on the genesis "+
+					"allowlist. A disk-write path that skips an era-3 rule re-opens the hole it "+
+					"closes: skipping validateEra3Roots persists a re-signed wrong-root v4 block "+
+					"(A-bare); skipping validateEra3Version persists a v2 block at/above H_era3 "+
+					"(the 2c version-boundary asymmetry). Route the block through %q BEFORE apply, "+
+					"so a rejection leaves no bad block applied.", m, rule, transitiveGuards, rule)
 			}
-		}
-		if !guarded {
-			t.Errorf("method %q writes a block to disk (calls c.apply) but does NOT run the "+
-				"era-3 root check (names none of %v) and is not on the genesis allowlist. A "+
-				"disk-write path that skips the root check re-opens the A-bare hole: a "+
-				"re-signed wrong-root v4 block would be persisted unvalidated. Route its "+
-				"block's roots through validateEra3Roots (BEFORE apply, so a rejection leaves "+
-				"no bad block applied).", m, allowedNames)
 		}
 	}
 
