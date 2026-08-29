@@ -247,11 +247,11 @@ func TestDecodeRefusesForeignBlockVersion(t *testing.T) {
 	w.attestAll(b)
 
 	// A block from a future era (same bytes otherwise) round-trips through
-	// Encode but must be rejected by Decode. (BlockVersionStateRoot is the newest
-	// KNOWN era, #603/era-3 — foreign means beyond every known era. v4 itself now
-	// DECODES, per step 2a; foreign is v5+.)
+	// Encode but must be rejected by Decode. (BlockVersionWitnessable is the newest
+	// KNOWN era, era-4 4c — foreign means beyond every known era. v4 and v5 both now
+	// DECODE; foreign is v6+.)
 	future := *b
-	future.Version = BlockVersionStateRoot + 1
+	future.Version = BlockVersionWitnessable + 1
 	future.hashMemoSet = false // tampered copy keeps b's memo (#555); a wire block decodes without one
 	if _, err := Decode(Encode(&future)); !errors.Is(err, ErrBlockVersion) {
 		t.Fatalf("Decode accepted a foreign version, want ErrBlockVersion, got %v", err)

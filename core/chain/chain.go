@@ -356,6 +356,33 @@ const BlockVersionStateRoot = 4
 // window). 4d height-gates activation and flips minting to v5.
 const BlockVersionWitnessable = 5
 
+// RegCap is the era-4 (v5) per-block TOTAL BondReg count validity ceiling: a v5 block
+// is INVALID if the number of registrations it carries, counted AFTER canonicalBondRegs
+// (same-id fold), exceeds RegCap — fresh AND renewal together, no distinction. Every
+// replica enforces it on receipt (validateBondRegs → ValidateProposal), so no block
+// exceeding it can commit, so no TTL due-bucket (tagDueBucket) can exceed RegCap entries.
+// That bounds the era-4 TTL-firing witness read-set to a registry-INDEPENDENT constant —
+// the O(registry) wall era-4 exists to remove (RESEARCH-CERTIFICATION era4-regcap-recert
+// 2026-08-29, Q2). Counting the TOTAL (not fresh-only) is load-bearing: both fresh and
+// renewal write bondRegHeight[id]=h at the same apply site (chain.go, "reset the TTL
+// clock") and land in the same due-bucket, and #506 rate-limits renewals per-IDENTITY not
+// per-block, so O(registry) distinct ids can each renew once in one block. A fresh-only
+// cap leaves that renewal term unbounded (Research REFUTED fresh-only three times).
+//
+// VALUE N = 256 is CERTIFIED for the total-count rule (era4-regcap-VALUE-DERIVATION-VERDICT
+// 2026-08-29): it clears the honest ceiling at the lowest permitted k (18 at k=1) with 14×
+// margin, sits far below the witness-fit ceiling 16,384, and its worst-case valid block
+// (~363 MiB of 256 real space-time regs) is bounded by real Sybil seal cost, not a free DoS
+// surface (each reg needs a distinct sealed MinBond plot).
+//
+// RE-DERIVATION GATE: N = f(B, k, Samples, BlockSize, BondVDFDelay, MinBond, proof scheme) —
+// all SEVEN determinants of the minimum valid reg size. Any change to any one re-derives N
+// at the NEXT BlockVersion mint (the value is a frozen v5-format constant until then, like
+// SProofMax). #299 (succinct proofs) is the sharpest single determinant — it shrinks the
+// min reg ~1000× and raises the honest ceiling above 256, forcing a re-mint — but it is NOT
+// the only one. See docs/decisions.md (era-4 entry) and docs/design/owned-residuals.md.
+const RegCap = 256
+
 // Consensus signature phases (#432 two-phase gather, research-certified).
 // PhaseLegacy (0) is the era-1 bare-hash signature — what a pre-rounds
 // Attestation decodes as; never minted in era 2.
@@ -749,13 +776,18 @@ func Encode(b *Block) []byte {
 }
 
 // versionSupported: v1 (legacy single-phase), v2 (#432 rounds), v3 (#506 reg-gate
-// readiness tag), and v4 (era-3 committed state root) all decode; each validates under
-// ITS OWN era's rules (era-gated in ValidateCommit / VerifyEquivocation) — committed
-// history is never re-interpreted. The ceiling is BlockVersionStateRoot: a v4 block is
-// accepted at decode (step 2a), and its root-matches-recomputed-state predicate lands
-// in step 2b. A version BEYOND 4 is refused loudly with ErrBlockVersion — the hard-fork
-// guard: a block from a not-yet-known era is never silently mis-validated.
-func versionSupported(v uint64) bool { return v >= 1 && v <= BlockVersionStateRoot }
+// readiness tag), v4 (era-3 committed state root), and v5 (era-4 witnessable transitions)
+// all decode; each validates under ITS OWN era's rules (era-gated in ValidateCommit /
+// VerifyEquivocation) — committed history is never re-interpreted. The ceiling is
+// BlockVersionWitnessable: a v5 block is accepted at decode AND, in the SAME release (build
+// increment 4c, PREDICATE-FIRST), is subject to the era-4 validity rules — the v5
+// committed-root predicate (validateEra3Roots recomputes via StateRootForVersion(5)) and
+// the RegCap per-block BondReg count cap (validateBondRegs). Widening the decode ceiling
+// atomically with the predicate closes the era-3 interim window (a version decode-accepted
+// before its validity rule existed). A version BEYOND 5 is refused loudly with
+// ErrBlockVersion — the hard-fork guard: a block from a not-yet-known era is never silently
+// mis-validated.
+func versionSupported(v uint64) bool { return v >= 1 && v <= BlockVersionWitnessable }
 
 func Decode(raw []byte) (*Block, error) {
 	var b Block
@@ -763,7 +795,7 @@ func Decode(raw []byte) (*Block, error) {
 		return nil, fmt.Errorf("chain: decode block: %w", err)
 	}
 	if !versionSupported(b.Version) {
-		return nil, fmt.Errorf("%w: got %d, want 1..%d", ErrBlockVersion, b.Version, BlockVersionStateRoot)
+		return nil, fmt.Errorf("%w: got %d, want 1..%d", ErrBlockVersion, b.Version, BlockVersionWitnessable)
 	}
 	return &b, nil
 }
@@ -813,7 +845,7 @@ func DecodeBlocks(raw []byte) ([]Block, error) {
 	}
 	for i := range bs {
 		if !versionSupported(bs[i].Version) {
-			return nil, fmt.Errorf("%w: block %d got %d, want 1..%d", ErrBlockVersion, i, bs[i].Version, BlockVersionStateRoot)
+			return nil, fmt.Errorf("%w: block %d got %d, want 1..%d", ErrBlockVersion, i, bs[i].Version, BlockVersionWitnessable)
 		}
 	}
 	return bs, nil
@@ -835,6 +867,7 @@ var (
 	ErrTokenRequired      = errors.New("chain: entry has no publish token (required)")
 	ErrTokenSpent         = errors.New("chain: publish token serial already spent (double-spend)")
 	ErrBlockVersion       = errors.New("chain: unsupported block version")
+	ErrRegCapExceeded     = errors.New("chain: era-4 (v5) block exceeds RegCap — too many BondRegs (per-block TOTAL count, fresh + renewal, after same-id fold; bounds the TTL due-bucket witness read-set)")
 	ErrProposerPrepare    = errors.New("chain: era-2 commit lacks the proposer's round-scoped prepare (the authorship vote that makes a double-proposal attributable — #432/I5)")
 	ErrPublisherEntry     = errors.New("chain: entry carries a durable Publisher (records permanent linkage; publish unlinkably or run an explicitly trusted deployment)")
 	ErrEmptyFork          = errors.New("chain: cannot reconcile an empty fork")
@@ -1664,6 +1697,21 @@ func (c *Chain) validateBondRegs(b *Block) error {
 			}
 		}
 		return nil
+	}
+	// era-4 (v5) RegCap validity rule (build increment 4c). A v5 block is INVALID if its
+	// per-block TOTAL BondReg count — fresh AND renewal, counted AFTER canonicalBondRegs so
+	// a same-id renew/resize pair folds to one — exceeds RegCap. This bounds any single
+	// block's due-bucket inflow to RegCap, which bounds the TTL-firing witness read-set to a
+	// registry-independent constant (the O(registry) wall era-4 removes; see RegCap's doc).
+	// v5-GATED: a v4 (era-3) or earlier block is never subject to the count cap — era-3 is
+	// frozen, RegCap is a v5-only rule, so v4 stays byte- and behaviour-identical. Counted on
+	// this full-block path (not the pruned early-return above): a pruned block's regs were
+	// capped when it originally committed as a full block. Enforced here, on the commit path
+	// (ValidateProposal → this), so every replica rejects an over-cap block on receipt.
+	if b.Version >= BlockVersionWitnessable {
+		if n := len(canonicalBondRegs(b.BondRegs)); n > RegCap {
+			return fmt.Errorf("%w: %d BondRegs (cap %d)", ErrRegCapExceeded, n, RegCap)
+		}
 	}
 	nonces := c.recentBondRegNonces(b.Prev)
 	// #506 R-rule (VALIDITY, active only past the gate — regGateActive): a bond

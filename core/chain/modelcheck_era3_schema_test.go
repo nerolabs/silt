@@ -15,8 +15,9 @@ import (
 //     fields are added (committed history is never re-interpreted, chain.go:260-268).
 //  2. era-3 roots are attester-signed: a tampered StateRoot/LogRoot changes Hash(),
 //     so a signature over the real hash no longer verifies.
-//  3. v4 decodes and is accepted; v5+ is refused loudly with ErrBlockVersion (the
-//     hard-fork failure mode preserved).
+//  3. v4 decodes and is accepted; a version beyond the ceiling is refused loudly with
+//     ErrBlockVersion (the hard-fork failure mode preserved). era-4 4c widened the ceiling
+//     to v5, so the refused boundary is now v6+.
 //  4. population wiring: a v4 block constructed with the step-1 accessors carries
 //     StateRoot == c.StateRoot() and LogRoot == c.LogRoot().
 //
@@ -107,9 +108,14 @@ func TestEra3RootsAreAttesterSigned(t *testing.T) {
 }
 
 // TestV4DecodesAndIsAccepted proves the versionSupported widening: a v4 block round-trips
-// through Encode/Decode and is accepted; a v5 block is refused loudly with ErrBlockVersion.
-// RED: leave versionSupported at <= BlockVersionRegGate and Decode rejects the v4 block —
-// the accept assertion fails.
+// through Encode/Decode and is accepted; a version beyond the ceiling is refused loudly with
+// ErrBlockVersion. RED: leave versionSupported at <= BlockVersionRegGate and Decode rejects
+// the v4 block — the accept assertion fails.
+//
+// era-4 4c widened the ceiling to BlockVersionWitnessable (v5), so v5 now DECODES (its
+// TestV5DecodesAndIsAccepted counterpart proves it). The "beyond the ceiling" version this
+// test refuses therefore moved from BlockVersionStateRoot+1 (=5, now supported) to
+// BlockVersionWitnessable+1 (=6) — the current hard-fork guard boundary.
 func TestV4DecodesAndIsAccepted(t *testing.T) {
 	b := era3FixtureV4Block()
 
@@ -129,13 +135,14 @@ func TestV4DecodesAndIsAccepted(t *testing.T) {
 			*dec.StateRoot, *b.StateRoot, *dec.LogRoot, *b.LogRoot)
 	}
 
-	// A version beyond 4 is still refused loudly — the hard-fork guard.
+	// A version beyond the ceiling (v6, one past BlockVersionWitnessable) is still refused
+	// loudly — the hard-fork guard.
 	future := b
 	future.hashMemoSet = false
-	future.Version = BlockVersionStateRoot + 1
+	future.Version = BlockVersionWitnessable + 1
 	if _, err := Decode(Encode(&future)); !errors.Is(err, ErrBlockVersion) {
 		t.Fatalf("Decode accepted a v%d block, want ErrBlockVersion, got %v",
-			BlockVersionStateRoot+1, err)
+			BlockVersionWitnessable+1, err)
 	}
 }
 
