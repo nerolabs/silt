@@ -110,6 +110,9 @@ integration/twocloud/report.md
 integration/twocloud/report.html
 integration/**/silt
 
+# Live agent memory: shared external store, never tracked (see fix-memory-in-git.md)
+.claude/agent-memory
+
 # private scratch notes — never commit
 pico.save
 integration/cloudtest/terraform/network/.terraform/
