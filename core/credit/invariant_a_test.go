@@ -158,7 +158,7 @@ func TestInvariantA_NoNonMintPressRaisesStanding(t *testing.T) {
 		l.RecordAudit(n, id(9), true)                      // passed PoR audits fund balance only
 		l.RecordServeToObject(n, other, obj, id(9), 1<<40) // object-aware serve + auto-skim
 		l.RedeemDeliveryCredit(n, other, obj)              // witnessed delivery credit (PoD neutral lane)
-		l.RedeemRelayCredit(n, other, 1<<30)               // PayWord relay credit (PoD relay lane)
+		l.RedeemRelayCredit(n, other, 1<<30, 1<<30)        // PayWord relay credit (PoD relay lane)
 		_ = l.FundEscrow(obj, n, 1<<20)                    // prepay a durability reserve
 		l.PayBounty(obj, n, 1<<30)                         // drain the reserve to this identity
 		l.DecayStale(uint64(round+1), 1)

@@ -34,8 +34,14 @@ func TestRelayCreditNeverTouchesStanding(t *testing.T) {
 	relay, fetcher := id(1), id(2)
 
 	before := l.Reputation(relay)
-	for i := 0; i < 1_000; i++ { // a heavy relay volume
-		if paid := l.RedeemRelayCredit(relay, fetcher, fee); paid <= 0 {
+	// Iterate ABOVE bondUnit (64<<10 = 65,536). Reputation() is integer bonded
+	// points = bondedBytes / bondUnit, so a hypothetical +1-byte-per-call standing
+	// leak stays sub-threshold and invisible under 1,000 iterations. Running past
+	// bondUnit forces any per-call accumulating leak to cross one whole point and
+	// redden the assertion (Tester hardening) — a sub-threshold leak cannot hide.
+	const iters = (64 << 10) + 1 // 65,537 > bondUnit
+	for i := 0; i < iters; i++ { // a heavy relay volume, past the standing quantum
+		if paid := l.RedeemRelayCredit(relay, fetcher, fee, fee); paid <= 0 {
 			t.Fatalf("redeem %d paid %d, want > 0", i, paid)
 		}
 	}
@@ -59,7 +65,7 @@ func TestRelayCreditIsConserved(t *testing.T) {
 	fund(l, fetcher, chainValue)
 	fetcherBefore := l.Balance(fetcher)
 
-	paid := l.RedeemRelayCredit(relay, fetcher, chainValue)
+	paid := l.RedeemRelayCredit(relay, fetcher, chainValue, chainValue)
 	if paid != chainValue {
 		t.Fatalf("redeem paid %d, want the chain value %d (no skim in v1)", paid, chainValue)
 	}
@@ -80,7 +86,7 @@ func TestRelayCreditIsConserved(t *testing.T) {
 func TestSelfRelayPaysNothing(t *testing.T) {
 	l := New(50_000, 0)
 	n := id(1)
-	if paid := l.RedeemRelayCredit(n, n, 30_000); paid != 0 {
+	if paid := l.RedeemRelayCredit(n, n, 30_000, 30_000); paid != 0 {
 		t.Fatalf("self-relay paid %d, want 0", paid)
 	}
 	if got := l.Balance(n); got != 0 {
@@ -103,7 +109,7 @@ func TestRelayWashLoopIsAStrictLoss(t *testing.T) {
 	fund(l, fetcher, chainValue)
 	pairBefore := l.Balance(relay) + l.Balance(fetcher)
 
-	l.RedeemRelayCredit(relay, fetcher, chainValue)
+	l.RedeemRelayCredit(relay, fetcher, chainValue, chainValue)
 
 	pairAfter := l.Balance(relay) + l.Balance(fetcher)
 	// Conservation: the loop never mints. The pair is no better off than before
@@ -124,8 +130,42 @@ func TestRelayRedeemDrawsFromFetcherPaidCredit(t *testing.T) {
 	fund(l, fetcher, chainValue)
 
 	total := l.Balance(relay) + l.Balance(fetcher)
-	l.RedeemRelayCredit(relay, fetcher, chainValue)
+	l.RedeemRelayCredit(relay, fetcher, chainValue, chainValue)
 	if got := l.Balance(relay) + l.Balance(fetcher); got != total {
 		t.Fatalf("relay redeem changed the pair total %d → %d — it must be a pure transfer", total, got)
+	}
+}
+
+// TestRelayRedeemCannotExceedPaidInBudget is the conservation-cap test (PE
+// ruling H-1/Q2 coupling): RedeemRelayCredit must never let the relay redeem
+// more than the fetcher actually funded. The chain's committed budget is
+// S × increment, itself bounded by the fetcher's paid-in blind credit. A redeem
+// whose chainValue exceeds that budget must be rejected (pay 0), so a future
+// transport caller cannot over-redeem and drive a balance negative. Removing the
+// cap in RedeemRelayCredit turns this RED.
+func TestRelayRedeemCannotExceedPaidInBudget(t *testing.T) {
+	const budget = 20_000 // the fetcher's paid-in blind credit = S × increment
+	l := New(50_000, 0)
+	relay, fetcher := id(1), id(2)
+	fund(l, fetcher, budget)
+
+	relayBefore := l.Balance(relay)
+	fetcherBefore := l.Balance(fetcher)
+
+	// A relay claims a chain value ABOVE the funded budget — over-redemption.
+	over := int64(budget + 1)
+	if paid := l.RedeemRelayCredit(relay, fetcher, over, budget); paid != 0 {
+		t.Fatalf("redeem of %d against budget %d paid %d, want 0 — the relay over-redeemed past the fetcher's paid-in credit", over, budget, paid)
+	}
+	// No value moved: the cap rejected, it did not partially settle.
+	if got := l.Balance(relay); got != relayBefore {
+		t.Fatalf("relay balance moved to %d on a rejected over-redeem, want %d", got, relayBefore)
+	}
+	if got := l.Balance(fetcher); got != fetcherBefore {
+		t.Fatalf("fetcher balance moved to %d on a rejected over-redeem, want %d", got, fetcherBefore)
+	}
+	// At exactly the budget it settles — the cap is inclusive, not off-by-one.
+	if paid := l.RedeemRelayCredit(relay, fetcher, budget, budget); paid != budget {
+		t.Fatalf("redeem at exactly the budget %d paid %d, want %d", budget, paid, budget)
 	}
 }

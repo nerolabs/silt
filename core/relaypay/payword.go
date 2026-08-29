@@ -31,10 +31,11 @@ import (
 // measurement (docs/thinking/2026-08-30-pod-7.3-relay-compensation-design.md
 // §5); no billable run was needed. The binding constraint is (b), the chain-
 // state memory bound: MaxSessionBytes = 1 GiB (adapters/relay/server.go:40) is
-// objectSize_max, so S = 1 GiB / 4 KiB = 262,144 increments and the relay's
-// committed chain state = S · 32 B = 8 MB (MB-scale, holds). Constraint (a),
-// verify overhead, is slack: one SHA-256 (~57 ns) is <<1% of the time to
-// forward 4 KiB at any real relay speed. 4 KiB is the smallest power-of-two
+// objectSize_max, so S = 1 GiB / 4 KiB = 262,144 increments and the FETCHER's
+// committed chain state = S · 32 B = 8 MB (MB-scale, holds). The relay holds
+// only one 32-B preimage; the 8 MB is fetcher-side. Constraint (a), verify
+// overhead, is slack: one SHA-256 (order ~100 ns on arm64) is <<1% of the time
+// to forward 4 KiB at any real relay speed. 4 KiB is the smallest power-of-two
 // ≥ 3.20 KiB on a sub-chunk boundary (64 KiB / 16).
 const RelayIncrementBytes = 4096
 
@@ -142,10 +143,19 @@ func (v *Verifier) Advance(preimage []byte) error {
 // AdvanceTo verifies a preimage claimed to reach increment claimedCount, walking
 // the hash chain forward from the revealed preimage to the held value. It lets a
 // fetcher pay several increments at once (reveal x_5 to jump from count 0 to 5)
-// while the relay still verifies every link. It rejects a backward move, a
-// claimed count that the preimage does not actually reach, and walks are bounded
-// by claimedCount - count so a bogus claim cannot spin the relay. On success the
-// held preimage advances to the revealed value and count = claimedCount.
+// while the relay still verifies every link. It rejects a backward move and a
+// claimed count that the preimage does not actually reach. On success the held
+// preimage advances to the revealed value and count = claimedCount.
+//
+// WARNING — this walk is NOT bounded. It executes (claimedCount - count)
+// SHA-256 hashes BEFORE the equality check can reject, and claimedCount is an
+// unbounded caller int. A single bogus preimage with a large claimedCount spins
+// the relay for that many hashes (the PE measured ~5M hashes / ~0.28s on an M4
+// from one message). There is no clamp here and the Verifier does not store the
+// chain length S, so it cannot clamp. The CALLER MUST bound claimedCount to the
+// committed chain length before calling this. The S-clamp (carry S into the
+// session, reject count > S) is owed before any transport wiring — see gate
+// issue #644. Do not treat this as safe against an unauthenticated caller.
 func (v *Verifier) AdvanceTo(preimage []byte, claimedCount int) error {
 	if len(preimage) != hashLen {
 		return errors.New("relaypay: preimage wrong length")

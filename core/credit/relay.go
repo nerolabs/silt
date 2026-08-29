@@ -40,19 +40,34 @@ import "github.com/nerolabs/silt/ports"
 // the fetcher's already-paid blind credit into the relay operator's balance.
 // chainValue is the settled amount — count × increment for the highest preimage
 // the relay holds (the caller computes it from the core/relaypay verifier).
-// Returns the credit paid to the relay. Self-relay pays nothing, the same guard
-// as RedeemDeliveryCredit. It never touches standing.
+// budget is the fetcher's paid-in blind credit for this chain — the committed
+// chain budget S × increment, itself bounded by what the fetcher funded at blind
+// withdrawal. Returns the credit paid to the relay. Self-relay pays nothing, the
+// same guard as RedeemDeliveryCredit. It never touches standing.
+//
+// CONSERVATION CAP (load-bearing, the B3 close): the redeem is REJECTED (pays 0)
+// if chainValue exceeds budget. This bakes the conservation bound into the
+// settlement contract so a future transport caller cannot over-redeem past what
+// the fetcher funded and drive a balance negative. The cap is inclusive: a
+// redeem at exactly the budget settles. Removing this cap turns
+// TestRelayRedeemCannotExceedPaidInBudget RED. (The chain-length S that produces
+// this budget is also what clamps the AdvanceTo walk — the same missing object,
+// carried into the session at transport time. See gate issue #644.)
 //
 // It is a pure conserved transfer: the fetcher's balance decreases by exactly
 // what the relay's increases. The fetcher's balance is its paid-in blind credit;
-// a redeem beyond that credit is the caller's responsibility to prevent (the
-// relay stops forwarding when the chain is exhausted — self-enforcing, cert §2c).
-func (l *Ledger) RedeemRelayCredit(relay, fetcher ports.NodeID, chainValue int64) int64 {
+// the relay also stops forwarding when the chain is exhausted (self-enforcing,
+// cert §2c) — the cap here is the ledger-side backstop that does not depend on
+// the relay behaving.
+func (l *Ledger) RedeemRelayCredit(relay, fetcher ports.NodeID, chainValue, budget int64) int64 {
 	if relay == fetcher {
 		return 0 // self-relay earns nothing (the cheapest gaming, blocked)
 	}
 	if chainValue <= 0 {
 		return 0
+	}
+	if chainValue > budget {
+		return 0 // conservation cap: never redeem more than the fetcher funded
 	}
 	l.acct(fetcher).balance -= chainValue // drawn from the fetcher's paid-in blind credit
 	l.acct(relay).balance += chainValue   // into the relay operator's balance
