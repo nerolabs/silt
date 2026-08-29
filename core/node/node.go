@@ -641,6 +641,16 @@ type Node struct {
 	demandBank   *demand.Bank
 	demandIssuer *rsa.PublicKey
 
+	// PoD relay lane (§7.3, certified 2026-08-30). relayAccept gates whether this
+	// node accepts sender-funded PayWord chains (mirror of the demand-bank gate,
+	// off by default). relaySeenEph and relaySeenRoot enforce the two M0 guards:
+	// no ephemeral identity and no chain root is reused across sessions — reuse
+	// would upgrade the relay from a per-session to a longitudinal observer, a
+	// real Don't-#3 regression. See relayrole.go.
+	relayAccept   bool
+	relaySeenEph  map[ports.NodeID]bool
+	relaySeenRoot map[string]bool
+
 	// failure-domain gossip: domainID is this node's own domain hash
 	// (0 = unset); peerDomains accumulates peers' domains from gossip, so
 	// placement can spread columns across distinct domains.

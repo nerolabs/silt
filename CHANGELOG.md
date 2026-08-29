@@ -9,6 +9,28 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **PoD §7.3 relay compensation — the certified PayWord mechanism, failing-first**
+  (`core/relaypay/payword.go`, `core/credit/relay.go`, `core/node/relayrole.go`,
+  `cmd/silt/daemon.go`, 2026-08-30). A relay/gateway forwards content-blind bytes and
+  cannot sign a completed-delivery receipt, so it is paid as-it-goes by a sender-funded
+  PayWord hash chain (docs/design/pod.md §7.3, certified 2026-08-30): the fetcher commits
+  a chain root once, reveals one preimage per forwarded increment, and the relay verifies
+  each with one SHA-256 (`H(x_k) = x_{k-1}`) and redeems the highest into its operator
+  BALANCE. New `core/relaypay` primitive (chain build + relay-side incremental verify,
+  SHA-256 only, no new dependency). `RedeemRelayCredit` is the conserved-transfer sibling
+  of `RedeemDeliveryCredit`: it moves `balance` only, drawn from the fetcher's already-paid
+  blind credit, never mints, never touches `Reputation()` — classified `neutral` in the
+  Invariant-A reflection guard (the γ→1/N firewall; a PayWord chain is fundable with zero
+  object bytes by design). Two M0 access-privacy guards (immutable Don't-#3) are enforced by
+  construction in `OpenRelaySession` and ship failing-first: (i) a chain funded by a
+  DURABLE-account credit is REJECTED (funding must be an ephemeral blind credit,
+  `client.WithdrawDemandTokenPrivately`); (ii) a reused ephemeral identity or chain root
+  across sessions is REJECTED (no longitudinal linkage). Consumer gate `--accept-relay-payments`
+  mirrors `--accept-delivery-receipts`, OFF by default. The increment size `B` is a single
+  named constant `relaypay.RelayIncrementBytes` carrying `TODO(measure)` — the floor-box
+  measurement (build-immutable #8) lands before the value is final. See
+  `docs/thinking/2026-08-30-pod-7.3-relay-compensation-design.md`.
+
 - **era-4 increment 4d — height-gated activation + mint-flip to v5 (the go-live gate)**
   (`core/chain/chain.go`, `core/chain/era3validity.go`, `core/chain/statehash.go`,
   `core/node/chainrole.go`, `core/chain/modelcheck_era4_activation_test.go`, 2026-08-29).

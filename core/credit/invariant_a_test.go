@@ -94,6 +94,16 @@ var standingClassification = map[string]standingClass{
 	// this press staying neutral (delivery_test.go pins it against a heavy
 	// deliverer, the direct §7.1 firewall test).
 	"RedeemDeliveryCredit": neutral,
+
+	// PoD relay lane (relay.go, certified 2026-08-30). Relay/gateway bandwidth
+	// compensation settles a sender-funded PayWord chain into the relay
+	// operator's BALANCE, drawn from the fetcher's already-paid blind credit — a
+	// conserved transfer, never a mint. Like the delivery lane it MUST never move
+	// standing: a PayWord chain is fundable with zero object bytes by certified
+	// design (it pays for forwarding, which is unprovable), so this press buying
+	// even one unit of standing would convert funded chains into consensus weight
+	// (relay_test.go pins it against a heavy relay, the §7.3 firewall test).
+	"RedeemRelayCredit": neutral,
 }
 
 // TestInvariantA_EveryLedgerMethodClassified is the reflection guard: every
@@ -148,6 +158,7 @@ func TestInvariantA_NoNonMintPressRaisesStanding(t *testing.T) {
 		l.RecordAudit(n, id(9), true)                      // passed PoR audits fund balance only
 		l.RecordServeToObject(n, other, obj, id(9), 1<<40) // object-aware serve + auto-skim
 		l.RedeemDeliveryCredit(n, other, obj)              // witnessed delivery credit (PoD neutral lane)
+		l.RedeemRelayCredit(n, other, 1<<30)               // PayWord relay credit (PoD relay lane)
 		_ = l.FundEscrow(obj, n, 1<<20)                    // prepay a durability reserve
 		l.PayBounty(obj, n, 1<<30)                         // drain the reserve to this identity
 		l.DecayStale(uint64(round+1), 1)
