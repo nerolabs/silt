@@ -9,6 +9,36 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **witness floor-box validation — R4-a three-valued accessor spine**
+  (`core/statehash/witness.go`, 2026-08-29). The safety spine of the
+  semi-stateless floor box: an accessor that resolves a committed-set key against
+  the committed `StateRoot` with a supplied SMT witness into one of THREE outcomes
+  — `ProvenPresent(value)` (verified membership), `ProvenAbsent` (verified
+  non-membership), or `NoWitness` (no proof, or a proof that failed to verify).
+  The hard construction invariant: `ProvenAbsent` is constructible ONLY from a
+  verified non-membership proof — the `Result.outcome` field is unexported and has
+  exactly one `ProvenAbsent` construction site, guarded by the verified
+  non-membership branch. `NoWitness` is the zero value, so the safe state is the
+  default: every non-verified path (missing witness, failed verify, and — in later
+  increments — an R3 over-budget or D-2 failed-fetch verdict) resolves to
+  `NoWitness`, which the caller MUST treat as stall, never absent. This makes the
+  one banned move of the C-7 certification (§104: "no witness supplied → accept")
+  a type-level impossibility, not a code-review catch. Certified by C-7 and
+  `RULING-witness-floor-box-mechanism-2026-08-29` (R4). Ablation tests
+  (`core/statehash/witness_test.go`) each watched RED-then-GREEN: a missing witness
+  never yields `ProvenAbsent`; a wrong-root/tampered/membership-as-absence proof
+  never yields `ProvenAbsent`; verified proofs classify correctly (not a vacuous
+  all-`NoWitness` accessor); an empty-but-non-nil `[]byte{}` value query against a
+  valid absence proof resolves to `ProvenAbsent`, NEVER `ProvenPresent` (the MIRROR
+  of the banned move: the pokt library selects membership vs non-membership on
+  `bytes.Equal(value, defaultEmptyValue)` with `defaultEmptyValue == nil`, so
+  `Resolve` keys on `len(value) == 0` to match it and an empty value can never read
+  present); and a source-scan asserts exactly one construction site EACH for
+  `ProvenAbsent` and `ProvenPresent`, so a second (banned or mirror-banned) one REDs
+  before it can ship. This
+  increment builds ONLY the accessor; the R3 per-block byte ceiling and D-2
+  on-demand delivery are separate increments that feed its `NoWitness` arm. No
+  consensus-rule (I1–I5) or frozen era-3 format change — a validation-layer accessor.
 - **era-3 version-boundary rule enforced on the own-disk Reload path (step 2c
   defense-in-depth symmetry)** (2026-08-29). Closes the asymmetry a blind PE ruled
   (`RULING-era3-step2c-activation-mint-flip-2026-08-29`): 2b duplicated the era-3 ROOT
