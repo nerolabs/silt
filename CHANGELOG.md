@@ -9,6 +9,33 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **witness floor-box validation — R3 DoS bound (byte caps + shape gate)**
+  (`core/statehash/witness_bound.go`, 2026-08-29). The pre-verify resource gate
+  that guards the R4 accessor. At witness ingest, before any proof is parsed or
+  verified, three gates decide which witnesses are admissible: (1) a per-proof
+  byte cap `S_proof_max` = 16 KiB, enforced on the ENCODED size BEFORE unmarshal
+  (a byte cap, not a side-node count — the pokt library leaves
+  `NonMembershipLeafData` byte-unbounded, so a count cap ships and lies); (2) a
+  per-block byte ceiling `C_block = len(read-set) · S_proof_max`, derived per block
+  from the exact read-set (not a flat constant — it scales with the block, needs no
+  per-block transition cap, and is not a consensus change); (3) a shape gate — the
+  witness bundle must carry a proof for EXACTLY the block's read-set (no unread key,
+  no duplicate, no missing read key). The safety-critical wiring: EVERY rejection —
+  over per-proof cap, over per-block ceiling, shape mismatch, malformed/unparseable
+  — resolves to the R4 accessor's `NoWitness` outcome, NEVER `ProvenAbsent`. A
+  rejected witness read as a proven exclusion is the one banned move of C-7 (§104);
+  the ingest builds only `NoWitness` Results on rejection, and `ProvenAbsent` is
+  reachable only through the R4 `Resolve` admit branch. Security parameters
+  (`S_proof_max` = 16 KiB, the `C_block` derivation) certified by
+  `witness-floor-box-dos-bound-RESEARCH-CERTIFICATION-2026-08-29` and ratified by
+  Andrew; mechanism by `RULING-witness-floor-box-mechanism-2026-08-29` (R3).
+  Ablation tests (`core/statehash/witness_bound_test.go`) each watched RED-then-GREEN,
+  including the conflation guard (an over-budget/malformed/shape-violating witness
+  for an ABSENCE-query key must resolve to `NoWitness`, never `ProvenAbsent`). Scope:
+  the byte caps + shape gate only; D-2 on-demand delivery and the A-serve slow-loris
+  read deadline (a TIME attack the byte ceiling does not close) are increment 3. No
+  consensus-rule (I1–I5) or frozen era-3 format change — a validation-layer bound
+  (precedent: `MaxBondRegBytesPerBlock` is proposer-policy-only).
 - **witness floor-box validation — R4-a three-valued accessor spine**
   (`core/statehash/witness.go`, 2026-08-29). The safety spine of the
   semi-stateless floor box: an accessor that resolves a committed-set key against
