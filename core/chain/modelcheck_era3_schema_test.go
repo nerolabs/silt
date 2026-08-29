@@ -113,9 +113,11 @@ func TestEra3RootsAreAttesterSigned(t *testing.T) {
 // the v4 block — the accept assertion fails.
 //
 // era-4 4c widened the ceiling to BlockVersionWitnessable (v5), so v5 now DECODES (its
-// TestV5DecodesAndIsAccepted counterpart proves it). The "beyond the ceiling" version this
-// test refuses therefore moved from BlockVersionStateRoot+1 (=5, now supported) to
-// BlockVersionWitnessable+1 (=6) — the current hard-fork guard boundary.
+// TestReloadRejectsResignedWrongStateRootV5 counterpart proves it: that test commits an
+// honest v5 block through the commit path — which now accepts v5 — and round-trips it through
+// Encode/Decode). The "beyond the ceiling" version this test refuses therefore moved from
+// BlockVersionStateRoot+1 (=5, now supported) to BlockVersionWitnessable+1 (=6) — the current
+// hard-fork guard boundary.
 func TestV4DecodesAndIsAccepted(t *testing.T) {
 	b := era3FixtureV4Block()
 

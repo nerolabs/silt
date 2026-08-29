@@ -105,30 +105,37 @@ func buildV5WithRegs(t *testing.T, c *Chain, prop ed25519.PrivateKey, regs []ed2
 	return b
 }
 
-// TestRegCapAllFreshOverCapRejected — gate A. A v5 block with RegCap+1 all-FRESH regs is
-// rejected with ErrRegCapExceeded. RED: remove the RegCap gate in validateBondRegs → this
-// over-cap block ACCEPTS.
+// TestRegCapAllFreshOverCapRejected — gate A. A v5 block with 257 all-FRESH regs (one over the
+// ratified ceiling of 256) is rejected with ErrRegCapExceeded. The over-cap size is the LITERAL
+// 257, NOT RegCap+1: pinning the literal makes this test catch a too-HIGH cap mistake as well as
+// a missing gate. RED (gate ablation): remove the RegCap gate in validateBondRegs → this
+// over-cap block ACCEPTS. RED (value ablation): inject `const RegCap = 257` → the 257-reg block
+// is now AT the (wrong) ceiling and wrongly ACCEPTS.
 func TestRegCapAllFreshOverCapRejected(t *testing.T) {
+	const overCap = 257 // 256 + 1; pinned as a literal, not derived from RegCap
 	c, prop := era4RegCapChain(t, nil)
-	fresh := regKeys(410000, RegCap+1) // 257 brand-new ids
+	fresh := regKeys(410000, overCap) // 257 brand-new ids
 	b := buildV5WithRegs(t, c, prop, fresh)
 
-	if got := len(canonicalBondRegs(b.BondRegs)); got != RegCap+1 {
-		t.Fatalf("fixture: canonical count = %d, want %d (regs must not fold)", got, RegCap+1)
+	if got := len(canonicalBondRegs(b.BondRegs)); got != overCap {
+		t.Fatalf("fixture: canonical count = %d, want %d (regs must not fold)", got, overCap)
 	}
 	if err := c.ValidateProposal(b); !errors.Is(err, ErrRegCapExceeded) {
-		t.Fatalf("v5 block with %d all-fresh regs (cap %d): want ErrRegCapExceeded, got %v",
-			RegCap+1, RegCap, err)
+		t.Fatalf("v5 block with %d all-fresh regs (cap 256): want ErrRegCapExceeded, got %v",
+			overCap, err)
 	}
 }
 
 // TestRegCapAllRenewalOverCapRejected — gate B, the FLIPPED ablation. A v5 block with
-// RegCap+1 all-RENEWAL regs (every id pre-registered in genesis, so bondRegHeight[id] is
+// 257 all-RENEWAL regs (every id pre-registered in genesis, so bondRegHeight[id] is
 // set) is rejected. The REFUTED fresh-only rule would have EXEMPTED all of these and
-// wrongly accepted the block; the certified total-count rule rejects it. RED: remove the
-// RegCap gate → this over-cap all-renewal block ACCEPTS.
+// wrongly accepted the block; the certified total-count rule rejects it. The over-cap size
+// is the LITERAL 257, NOT RegCap+1, so this test also catches a too-HIGH cap. RED (gate
+// ablation): remove the RegCap gate → this over-cap all-renewal block ACCEPTS. RED (value
+// ablation): inject `const RegCap = 257` → the 257-reg block wrongly ACCEPTS.
 func TestRegCapAllRenewalOverCapRejected(t *testing.T) {
-	renew := regKeys(420000, RegCap+1) // 257 ids, all pre-registered in genesis below
+	const overCap = 257               // 256 + 1; pinned as a literal, not derived from RegCap
+	renew := regKeys(420000, overCap) // 257 ids, all pre-registered in genesis below
 	c, prop := era4RegCapChain(t, renew)
 	// Confirm the fixture actually made them renewals: bondRegHeight[id] set from genesis.
 	for _, r := range renew {
@@ -138,35 +145,38 @@ func TestRegCapAllRenewalOverCapRejected(t *testing.T) {
 	}
 	b := buildV5WithRegs(t, c, prop, renew)
 
-	if got := len(canonicalBondRegs(b.BondRegs)); got != RegCap+1 {
-		t.Fatalf("fixture: canonical count = %d, want %d", got, RegCap+1)
+	if got := len(canonicalBondRegs(b.BondRegs)); got != overCap {
+		t.Fatalf("fixture: canonical count = %d, want %d", got, overCap)
 	}
 	if err := c.ValidateProposal(b); !errors.Is(err, ErrRegCapExceeded) {
-		t.Fatalf("v5 block with %d all-RENEWAL regs (cap %d): want ErrRegCapExceeded, got %v "+
-			"(the fresh-only rule would have wrongly accepted this)", RegCap+1, RegCap, err)
+		t.Fatalf("v5 block with %d all-RENEWAL regs (cap 256): want ErrRegCapExceeded, got %v "+
+			"(the fresh-only rule would have wrongly accepted this)", overCap, err)
 	}
 }
 
 // TestRegCapMixedOverCapRejected — gate C. A v5 block with a fresh+renewal MIX totalling
-// RegCap+1 is rejected. 130 fresh + 127 renewal = 257 total. RED: remove the RegCap gate →
-// the mixed over-cap block ACCEPTS.
+// 257 is rejected. 130 fresh + 127 renewal = 257 total. The total is pinned to the LITERAL
+// 257 (= 256 + 1), NOT RegCap+1, so this test also catches a too-HIGH cap. RED (gate
+// ablation): remove the RegCap gate → the mixed over-cap block ACCEPTS. RED (value
+// ablation): inject `const RegCap = 257` → the 257-reg block wrongly ACCEPTS.
 func TestRegCapMixedOverCapRejected(t *testing.T) {
-	const nFresh, nRenew = 130, 127 // 257 total = RegCap+1
+	const overCap = 257             // 256 + 1; pinned as a literal, not derived from RegCap
+	const nFresh, nRenew = 130, 127 // 130 + 127 = 257 = overCap
 	renew := regKeys(430000, nRenew)
 	c, prop := era4RegCapChain(t, renew)
 	fresh := regKeys(431000, nFresh)
 	mix := append(append([]ed25519.PrivateKey(nil), fresh...), renew...)
 
-	if len(mix) != RegCap+1 {
-		t.Fatalf("fixture: mix size = %d, want %d", len(mix), RegCap+1)
+	if len(mix) != overCap {
+		t.Fatalf("fixture: mix size = %d, want %d", len(mix), overCap)
 	}
 	b := buildV5WithRegs(t, c, prop, mix)
-	if got := len(canonicalBondRegs(b.BondRegs)); got != RegCap+1 {
-		t.Fatalf("fixture: canonical count = %d, want %d", got, RegCap+1)
+	if got := len(canonicalBondRegs(b.BondRegs)); got != overCap {
+		t.Fatalf("fixture: canonical count = %d, want %d", got, overCap)
 	}
 	if err := c.ValidateProposal(b); !errors.Is(err, ErrRegCapExceeded) {
-		t.Fatalf("v5 block with %d fresh + %d renewal = %d total (cap %d): want ErrRegCapExceeded, got %v",
-			nFresh, nRenew, RegCap+1, RegCap, err)
+		t.Fatalf("v5 block with %d fresh + %d renewal = %d total (cap 256): want ErrRegCapExceeded, got %v",
+			nFresh, nRenew, overCap, err)
 	}
 }
 
@@ -213,26 +223,29 @@ func TestRegCapCountedAfterCanonicalFold(t *testing.T) {
 	}
 }
 
-// TestRegCapAtCeilingAccepted — gate E, the I4 liveness edge. A v5 block with EXACTLY RegCap
+// TestRegCapAtCeilingAccepted — gate E, the I4 liveness edge. A v5 block with EXACTLY 256
 // regs (a fresh+renewal mix) ACCEPTS — the predicate must not reject an honest at-ceiling
-// block. RED (gate ablation): set RegCap = 255 and this exactly-256 block wrongly REJECTS.
+// block. The fixture pins the LITERAL 256 (the ratified consensus value N), NOT the RegCap
+// constant: a value-pinning test must fail when the cap is set wrong. RED (value ablation):
+// inject `const RegCap = 255` and this exactly-256 block wrongly REJECTS.
 func TestRegCapAtCeilingAccepted(t *testing.T) {
+	const atCeiling = 256 // the ratified N; pinned as a literal, not derived from RegCap
 	const nRenew = 100
 	renew := regKeys(450000, nRenew)
 	c, prop := era4RegCapChain(t, renew)
-	fresh := regKeys(451000, RegCap-nRenew) // 156 fresh + 100 renewal = 256 total
+	fresh := regKeys(451000, atCeiling-nRenew) // 156 fresh + 100 renewal = 256 total
 	mix := append(append([]ed25519.PrivateKey(nil), fresh...), renew...)
 
-	if len(mix) != RegCap {
-		t.Fatalf("fixture: at-ceiling size = %d, want %d", len(mix), RegCap)
+	if len(mix) != atCeiling {
+		t.Fatalf("fixture: at-ceiling size = %d, want %d", len(mix), atCeiling)
 	}
 	b := buildV5WithRegs(t, c, prop, mix)
-	if got := len(canonicalBondRegs(b.BondRegs)); got != RegCap {
-		t.Fatalf("fixture: canonical count = %d, want %d", got, RegCap)
+	if got := len(canonicalBondRegs(b.BondRegs)); got != atCeiling {
+		t.Fatalf("fixture: canonical count = %d, want %d", got, atCeiling)
 	}
 	if err := c.ValidateProposal(b); err != nil {
 		t.Fatalf("v5 block AT the ceiling (%d regs, %d fresh + %d renewal): want ACCEPT, got %v",
-			RegCap, RegCap-nRenew, nRenew, err)
+			atCeiling, atCeiling-nRenew, nRenew, err)
 	}
 }
 

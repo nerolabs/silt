@@ -30,6 +30,15 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   all-renewal / mixed; at-ceiling accept; count-after-canonical-fold; v4-unaffected) and the v5
   Reload wrong-root rejection — each demonstrated RED before green. See
   `docs/thinking/2026-08-29-era4-4c-v5-predicate-regcap-approach.md`.
+- **era-4 4c test hardening — pin the ratified `RegCap` value from BOTH sides**
+  (`core/chain/modelcheck_era4_regcap_test.go`, `core/chain/modelcheck_era3_schema_test.go`,
+  2026-08-29, test/comment-only). Replaces the self-referential fixture sizes (derived from the
+  `RegCap` constant, so a wrong cap moved both sides together and stayed green) with the LITERAL
+  ratified value: the at-ceiling accept test pins `256`, and the three over-cap reject tests
+  (all-fresh / all-renewal / mixed) pin `257`. The value is now pinned against a too-LOW mistake
+  (`const RegCap = 255` reddens the at-ceiling test) AND a too-HIGH mistake (`const RegCap = 257`
+  reddens the over-cap tests), both demonstrated. Also fixes a dangling comment reference to a
+  non-existent `TestV5DecodesAndIsAccepted`.
 - **era-4 increment 4b — the maintenance spine (v5-gated, inert on the live chain)**
   (`core/chain/chain.go`, `core/chain/statehash.go`, `core/chain/era3validity.go`,
   `core/translog/translog.go`, 2026-08-29). Adds the two live-maintained derived
