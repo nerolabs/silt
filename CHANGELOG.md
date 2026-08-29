@@ -122,6 +122,17 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `RULING-era3-reload-root-check-2026-08-29.md`.
 
 ### Changed
+- **test-only: harden the era-3 disk-write guard to match a CALL, not a symbol name**
+  (2026-08-29). `TestEveryDiskWritePathRunsTheEra3RootCheck` decided coverage with
+  `strings.Contains(methodBody, "validateEra3Roots")`, which matched COMMENT text: a method
+  with `// validateEra3Roots skipped` plus a bare `c.apply(b)` scored "guarded" while
+  running no check, re-opening the A-bare hole the guard exists to close (Tester finding).
+  New `callsFn` helper strips line/block comments (`stripComments`) then requires the
+  validator name followed by `(`, so only a real call counts; applied at both the
+  transitive-reachability check and the main coverage loop. `TestGuardMatchesCallsNotCommentText`
+  is the ablation: comment-only and block-comment mentions RED, a real `validateEra3Roots(`
+  call (with or without whitespace before `(`) stays GREEN, no-mention stays RED. No
+  production code changed; the guarded set and genesis allowlist are unchanged.
 - **CONSENSUS-RULE: canonicalize same-id intra-block bond registrations in `apply()`**
   (2026-08-28; certified + human-ratified). This is a state-transition consensus-rule
   change. `apply()` (`core/chain/chain.go`) resolved multiple BondRegs for the SAME

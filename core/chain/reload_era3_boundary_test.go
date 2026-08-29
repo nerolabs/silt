@@ -454,14 +454,21 @@ func reloadCfg() Config {
 // (appendStructural) calls it directly. Any method that persists a block MUST route the
 // block's roots through it. The guard reads chain.go's source and asserts:
 //
-//   - every method whose body calls `c.apply(` also names validateEra3Roots (directly, or
-//     via a validator that does — ValidateCommit/ValidateProposal for the commit family),
-//     OR is on the explicit genesis allowlist (AppendGenesis: a v1 genesis is
-//     declared-not-agreed and carries no committed root by construction).
+//   - every method whose body CALLS validateEra3Roots (directly, or via a validator that
+//     does — ValidateCommit/ValidateProposal for the commit family), OR is on the explicit
+//     genesis allowlist (AppendGenesis: a v1 genesis is declared-not-agreed and carries no
+//     committed root by construction).
 //
 // A new `func (c *Chain) FastSync(b Block) { ...; c.apply(b); ... }` that forgets the root
-// check trips this guard: it calls c.apply but names no root validator and is not
+// check trips this guard: it calls c.apply but never calls a root validator and is not
 // allowlisted. That is the future hole this closes.
+//
+// Coverage is decided by callsFn, which matches a real CALL — the validator name followed
+// by `(` in the method body AFTER comments are stripped — not a bare symbol mention. The
+// earlier strings.Contains(body, name) form was defeatable two ways: a method with
+// `// validateEra3Roots intentionally skipped` plus a bare `c.apply(b)` scored "guarded"
+// while running no check (comment text matched), and any non-call mention of the symbol
+// matched too. TestGuardMatchesCallsNotCommentText is the ablation for that defeat.
 func TestEveryDiskWritePathRunsTheEra3RootCheck(t *testing.T) {
 	src := readChainSource(t)
 	methods := methodsCallingApply(t, src)
@@ -491,7 +498,7 @@ func TestEveryDiskWritePathRunsTheEra3RootCheck(t *testing.T) {
 		body := methodBody(t, src, g)
 		reaches := false
 		for _, rv := range rootValidators {
-			if strings.Contains(body, rv) {
+			if callsFn(body, rv) {
 				reaches = true
 				break
 			}
@@ -499,7 +506,7 @@ func TestEveryDiskWritePathRunsTheEra3RootCheck(t *testing.T) {
 		// ValidateCommit reaches it via ValidateProposal; accept a call to another
 		// transitive guard as reaching too.
 		for _, other := range transitiveGuards {
-			if other != g && strings.Contains(body, other) {
+			if other != g && callsFn(body, other) {
 				reaches = true
 			}
 		}
@@ -518,7 +525,7 @@ func TestEveryDiskWritePathRunsTheEra3RootCheck(t *testing.T) {
 		body := methodBody(t, src, m)
 		guarded := false
 		for _, name := range allowedNames {
-			if strings.Contains(body, name) {
+			if callsFn(body, name) {
 				guarded = true
 				break
 			}
@@ -548,6 +555,108 @@ func TestEveryDiskWritePathRunsTheEra3RootCheck(t *testing.T) {
 		t.Errorf("the apply-scanner missed a known disk-write path (Append=%v, "+
 			"appendStructural=%v) — the structural guard is not covering the real set",
 			haveAppend, haveStructural)
+	}
+}
+
+// callsFn reports whether methodBody contains a real CALL to fn — the name immediately
+// followed by `(` — after line and block comments are stripped. This is the robust form of
+// the coverage predicate. The naive strings.Contains(body, fn) it replaces matched two
+// non-calls: comment text (`// validateEra3Roots skipped`) and any bare symbol mention,
+// either of which would score an unguarded method as guarded. Stripping comments closes the
+// comment hole; requiring the trailing `(` closes the bare-mention hole. The trailing `(`
+// tolerates whitespace so `validateEra3Roots (` still counts.
+func callsFn(methodBody, fn string) bool {
+	code := stripComments(methodBody)
+	for i := 0; ; {
+		j := strings.Index(code[i:], fn)
+		if j < 0 {
+			return false
+		}
+		after := code[i+j+len(fn):]
+		k := 0
+		for k < len(after) && (after[k] == ' ' || after[k] == '\t' || after[k] == '\n' || after[k] == '\r') {
+			k++
+		}
+		if k < len(after) && after[k] == '(' {
+			return true
+		}
+		i += j + len(fn)
+	}
+}
+
+// stripComments removes // line comments and /* */ block comments from Go source. It does
+// not track string/rune literals — the method bodies scanned here contain no string literal
+// holding a `//` or `/*`, so the simple scan is sufficient and stays legible. If that ever
+// changes, prefer go/scanner over extending this.
+func stripComments(src string) string {
+	var b strings.Builder
+	for i := 0; i < len(src); {
+		if i+1 < len(src) && src[i] == '/' && src[i+1] == '/' {
+			for i < len(src) && src[i] != '\n' {
+				i++
+			}
+			continue
+		}
+		if i+1 < len(src) && src[i] == '/' && src[i+1] == '*' {
+			i += 2
+			for i+1 < len(src) && !(src[i] == '*' && src[i+1] == '/') {
+				i++
+			}
+			i += 2
+			continue
+		}
+		b.WriteByte(src[i])
+		i++
+	}
+	return b.String()
+}
+
+// TestGuardMatchesCallsNotCommentText is the ablation for the coverage predicate itself: it
+// injects the exact defeat a symbol-name grep permits and shows callsFn REDs on it. A
+// comment-only mention of the validator (with a bare c.apply and no real call) is genuinely
+// unguarded and must NOT count as covered; a real call must; no mention at all must not.
+// Before the callsFn change the comment-only case passed (green decoration); after, it is
+// caught.
+func TestGuardMatchesCallsNotCommentText(t *testing.T) {
+	const fn = "validateEra3Roots"
+
+	// commentOnly is the Tester's defeat verbatim: the validator name appears ONLY in a
+	// comment, the block is applied bare. A strings.Contains(body, fn) grep scores this
+	// "guarded"; it is not.
+	commentOnly := "{\n\t// validateEra3Roots intentionally skipped here\n\tc.apply(b)\n}"
+	if callsFn(commentOnly, fn) {
+		t.Errorf("callsFn scored a comment-only mention as a call — the guard is still "+
+			"defeatable by %q plus a bare c.apply(b), which re-opens the A-bare hole a "+
+			"future disk-write path could slip through", "// "+fn)
+	}
+
+	// blockCommentOnly is the same defeat via a /* */ comment, to prove stripComments covers
+	// both comment forms.
+	blockCommentOnly := "{\n\t/* validateEra3Roots handled elsewhere */\n\tc.apply(b)\n}"
+	if callsFn(blockCommentOnly, fn) {
+		t.Errorf("callsFn scored a block-comment mention as a call — stripComments must "+
+			"remove /* */ comments too")
+	}
+
+	// realCall is a genuinely guarded path: a real validateEra3Roots(...) call. It must count.
+	realCall := "{\n\tif err := c.validateEra3Roots(&b); err != nil {\n\t\treturn err\n\t}\n\tc.apply(b)\n}"
+	if !callsFn(realCall, fn) {
+		t.Errorf("callsFn missed a REAL %s(...) call — the fix broke the guard's true-positive "+
+			"path; genuinely guarded methods would now be flagged as holes", fn)
+	}
+
+	// spacedCall exercises the whitespace tolerance between name and `(`.
+	spacedCall := "{\n\tc.validateEra3Roots (&b)\n\tc.apply(b)\n}"
+	if !callsFn(spacedCall, fn) {
+		t.Errorf("callsFn missed a call with whitespace before `(` — %q should still count", fn+" (")
+	}
+
+	// noMention is a genuinely unguarded path: no reference to the validator at all. It must
+	// not count (unchanged from the naive predicate, but pinned so the fix cannot flip it).
+	noMention := "{\n\tc.apply(b)\n}"
+	if callsFn(noMention, fn) {
+		t.Errorf("callsFn scored a body with no mention of %s as guarded — impossible unless "+
+			"the matcher is broken", fn)
 	}
 }
 
