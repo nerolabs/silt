@@ -634,7 +634,7 @@ func TestGuardMatchesCallsNotCommentText(t *testing.T) {
 	// both comment forms.
 	blockCommentOnly := "{\n\t/* validateEra3Roots handled elsewhere */\n\tc.apply(b)\n}"
 	if callsFn(blockCommentOnly, fn) {
-		t.Errorf("callsFn scored a block-comment mention as a call — stripComments must "+
+		t.Errorf("callsFn scored a block-comment mention as a call — stripComments must " +
 			"remove /* */ comments too")
 	}
 
