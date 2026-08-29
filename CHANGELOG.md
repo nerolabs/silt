@@ -59,8 +59,80 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   height (step 2c) — production minting stays `BlockVersionRounds`, so no v4 block is minted
   before its predicate exists. Compat deliberation in
   `docs/thinking/2026-08-29-era3-step2a-commit-roots-schema.md`.
+- **era-3 committed state-root VALIDITY PREDICATE (build step 2b of the certified
+  sequence)** (2026-08-29; format ratified). Closes the 2a→2b window: 2a made a v4 block
+  decodable and signed the roots, but NO predicate read them, so a v4 block validated on
+  its era-2 merits alone. This step adds the v4-gated validity predicate
+  (`core/chain/era3validity.go`, `validateEra3Roots`), hooked into `ValidateProposal` (the
+  one root-check site — an honest attester runs it before signing, and `ValidateCommit`
+  invokes it first, so both consensus-entry paths carry the check). For a v4 block it
+  enforces: (1) both roots present — a nil `StateRoot`/`LogRoot` is rejected explicitly with
+  `ErrEra3RootMissing` (the check 2a's `omitempty` schema deferred here, per the 2a ruling);
+  (2) the committed `StateRoot` equals the SMT recomputed over the POST-APPLY committedSet
+  (`ErrEra3StateRootMismatch`); (3) the committed `LogRoot` equals the POST-APPLY
+  RFC-6962 revocation-log root (`ErrEra3LogRootMismatch`). Because the `StateRoot` leaves
+  encode the `bonded`/`epochSet` WEIGHTS summed in the three super-quorum finality
+  predicates, a wrong-value leaf is a consensus SAFETY attack, not a read bug — enforcing
+  `root == recompute` makes the value encoding load-bearing, relying on the step-1
+  determinism oracle for cross-node byte-identity. The post-apply recompute runs on a
+  throwaway clone (`cloneForDryRun` + the real `apply()`), so live chain state is never
+  mutated during validation; the clone uses the one authoritative state-transition function,
+  so a value-encoding or apply bug surfaces identically on the proposer's and validator's
+  side. New `translog.Log.Clone()` deep-copies the transparency log for the dry run.
+  ERA-GATING: the predicate fires ONLY for `Version >= BlockVersionStateRoot` (v4); a
+  v2/v3 block validates under era-2 rules UNCHANGED (additive, strict-superset rejection).
+  New `modelcheck_era3_validity_test.go`: accept (roots = independent post-apply recompute),
+  wrong-`StateRoot`/wrong-`LogRoot` reject, nil-root reject, the v2-unaffected era-gate, the
+  commit-path carry-through, and a drift guard (`TestDryRunCloneCopiesEveryAppliedField`,
+  the #558 class — the clone must copy every history-derived field, distinct-backed) — each
+  with its defect injected and watched go RED. Invariants: preserves I1–I5, alters none; it
+  ADDS a v4-gated validity rejection and is a pure function of (block, committed state), so
+  every honest replica computes the same verdict (I5). **STOP boundary honored:** no
+  mint-version flip and no activation height (step 2c) — the predicate is inert in
+  production until 2c because no v4 block is minted yet, but it is correct now so 2c cannot
+  land before it. Deliberation in
+  `docs/thinking/2026-08-29-era3-step2b-validity-predicate.md`.
+- **era-3 committed-root check on the OWN-DISK Reload path (A-bare — closes the 2b
+  reload gap)** (2026-08-29; blind-PE ruled, no research gate). 2b enforced
+  `validateEra3Roots` on the commit paths but the `Reload`→`appendStructural` own-disk
+  replay path SKIPPED it, so a v4 block with a WRONG `StateRoot` **re-signed with the
+  proposer key** was accepted at load. 2b's Decision-1 argument — "the signature covers
+  the root, so `validateStructural`'s signature verify rejects a bad root" — was WRONG:
+  **integrity ≠ root-correctness**; a signature over a wrong root is still a valid
+  signature. `appendStructural` now calls `validateEra3Roots(&b)` — the SAME
+  clone-recompute predicate the commit path uses — **BEFORE `c.apply(b)`**, so a rejection
+  never leaves a bad block applied (preserving Reload's load-bearing "keep the longest
+  VALID prefix" contract the daemon relies on). Reuses the SAME named errors
+  (`ErrEra3RootMissing`/`ErrEra3StateRootMismatch`/`ErrEra3LogRootMismatch`) so proposer,
+  validator, and reload agree or all fail; a v2/v3 block skips it (era-gated), UNCHANGED.
+  New regression + guard in `core/chain/reload_era3_boundary_test.go`:
+  `TestReloadRejectsResignedWrongStateRootV4` (RED on `a0f8839`: Reload ACCEPTS the
+  re-signed wrong-root block; GREEN with `ErrEra3StateRootMismatch`), an ABLATION subtest
+  proving `validateStructural` accepts the re-signed block so the reject is the ROOT check
+  not the signature, the `LogRoot` sibling, and a STRUCTURAL write-set guard
+  (`TestEveryDiskWritePathRunsTheEra3RootCheck`) that enumerates every `c.apply(b)` caller
+  and fails a FUTURE unguarded disk-write path (fast-sync/import) rather than a
+  hand-maintained list. Invariants: preserves I1–I5, alters none — it extends an existing
+  v4-gated validity rejection to a second disk-write path. **Residual (named as a reopening
+  item):** A-bare re-validates each v4 root on boot at O(state)/block ⇒ O(depth²) over a
+  full Reload — the hold-the-tree bridge until the incremental-SMT / `ports.NodeStore`
+  keystone-store workstream (#600) makes `StateRoot()` linear on every path, at which point
+  the SAME call site becomes O(depth) with no change. Correction + reopening item recorded
+  in `docs/thinking/2026-08-29-era3-step2b-validity-predicate.md` (Decision 1); PE ruling
+  `RULING-era3-reload-root-check-2026-08-29.md`.
 
 ### Changed
+- **test-only: harden the era-3 disk-write guard to match a CALL, not a symbol name**
+  (2026-08-29). `TestEveryDiskWritePathRunsTheEra3RootCheck` decided coverage with
+  `strings.Contains(methodBody, "validateEra3Roots")`, which matched COMMENT text: a method
+  with `// validateEra3Roots skipped` plus a bare `c.apply(b)` scored "guarded" while
+  running no check, re-opening the A-bare hole the guard exists to close (Tester finding).
+  New `callsFn` helper strips line/block comments (`stripComments`) then requires the
+  validator name followed by `(`, so only a real call counts; applied at both the
+  transitive-reachability check and the main coverage loop. `TestGuardMatchesCallsNotCommentText`
+  is the ablation: comment-only and block-comment mentions RED, a real `validateEra3Roots(`
+  call (with or without whitespace before `(`) stays GREEN, no-mention stays RED. No
+  production code changed; the guarded set and genesis allowlist are unchanged.
 - **CONSENSUS-RULE: canonicalize same-id intra-block bond registrations in `apply()`**
   (2026-08-28; certified + human-ratified). This is a state-transition consensus-rule
   change. `apply()` (`core/chain/chain.go`) resolved multiple BondRegs for the SAME
