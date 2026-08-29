@@ -595,6 +595,42 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
   field addition, the validity predicate, and the height-gated activation are later steps that
   re-trigger certification. This discharges the HARD FREEZE PREREQUISITE above's format half
   once #603 lands.
+- **FROZEN 2026-08-29 — the era-3 committed state-root format is IMMUTABLE as of build
+  `3af40bc`** (composed re-certification
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/era3-committed-state-root-format-BUILT-RECERTIFICATION-2026-08-29.md`;
+  the design certification it re-certifies,
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/era3-committed-state-root-format-RESEARCH-CERTIFICATION-2026-08-28.md`).
+  The composed, BUILT two-root format — shipped by PRs #627 (step 1 root computation), #629
+  (step 2a schema + v4-accept), #630 (step 2b validity predicate on every path), #631 (step 2c
+  activation + mint-flip) — is **CERTIFIED FOR THE FREEZE** and **Andrew ratified the freeze on
+  2026-08-29**. What is frozen, precisely:
+  - **The block schema.** `Block.StateRoot`/`Block.LogRoot` (`*ports.Hash`, cbor keys 15/16) folded
+    into the signed `Hash()` body so attesters sign them; `BlockVersionStateRoot = 4`;
+    `versionSupported(v) = v >= 1 && v <= 4`.
+  - **The committed field set.** The **18** `committedSet` fields under the state SMT root; the
+    field-tagged (`"fieldname\x00" ‖ rawKey`) NUL-terminated single keyspace; and the per-field
+    canonical VALUE encoding — the present-marker for the set-membership fields, and the canonical
+    value for the value-carrying maps (int64 8-byte big-endian for the `bonded`/`epochSet` weights,
+    uint64 8-byte BE for the heights/domains, raw-32 for `bondRootOwner`, one byte for
+    bools/`regVersion`), with the six scalars at reserved keys. The separate RFC-6962
+    transparency-log root over `revLog` is `LogRoot()` = `RevocationLogRoot()` (the ordered CT root,
+    never an SMT leaf — the #597 two-root shape).
+  - **The `v4` hard-fork activation.** Height-gated `H_era3`, one-way lock-in tallied by frozen
+    WEIGHT at `>⅔` and gated on `regVersion >= 4`, landing on an epoch-final, reorg-stable boundary
+    with `>=` (first-v4-height) semantics. At/above `H_era3` a v4 block with valid roots is required;
+    a v2 block there is rejected (`ErrEra3VersionRequired`); below `H_era3` validation is unchanged.
+  - **The verifier posture.** "No witness supplied for a key a predicate reads → never accept
+    (reject/stall)"; the root check AND the version-boundary rule are enforced on EVERY disk-write
+    path, including the node's own-disk Reload, check-before-apply.
+  **Governance posture — HARD FORK, confirmed by Andrew:** an un-upgraded node rejects a v4 block at
+  decode and STALLS at `H_era3` rather than accept an unvalidated root. That stall is the correct
+  safety-first behavior; every operator must upgrade before `H_era3`. **The immutability rule, stated
+  plainly: changing the frozen era-3 format requires a NEW ERA (a new `BlockVersion`), not an edit.**
+  **What is NOT frozen (open follow-on, so the freeze is not over-claimed):** (a) the WITNESS
+  floor-box validation mechanism (C-7 / #600 — witness soundness, the R3 witness size-DoS bound, and
+  the R4 missing-witness ≠ verified-exclusion accessor), and (b) the incremental-SMT / `ports.NodeStore`
+  optimization. Until the witness path ships, the A-bare `O(depth²)`-boot full-tree validator is the
+  certified hold-the-tree bridge (a bounded boot-time cost, not a freeze-blocker).
 - **RATIFIED 2026-08-27 — "maturity before capture" ships as a safe-parameterization, not a
   theorem** (research certification
   `.../research-outcome/C1-maturity-before-capture-RESEARCH-CERTIFICATION-2026-08-27.md`;

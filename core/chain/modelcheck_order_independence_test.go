@@ -698,7 +698,7 @@ func TestCommittedSetFieldsAreOrderIndependent(t *testing.T) {
 }
 
 // TestStateRootIsOrderIndependentAcrossHistories lifts the per-field
-// order-independence assertion to the ROOT — closing the gap between "the 16 fields
+// order-independence assertion to the ROOT — closing the gap between "the 18 fields
 // are equal" and "the computed StateRoot is equal." Two histories that reach the same
 // final committedSet must produce byte-identical StateRoots, because the root is a
 // pure function of that set. This is the era-3 root-equality half the format freeze
@@ -723,7 +723,7 @@ func TestStateRootIsOrderIndependentAcrossHistories(t *testing.T) {
 	a, b := twoOrderings(t)
 	if ra, rb := stateRoot(a), stateRoot(b); ra != rb {
 		t.Fatalf("twoOrderings: StateRoot DIFFERS across opposite orderings (%x != %x) — "+
-			"the 16 fields are equal (TestCommittedSetFieldsAreOrderIndependent) but the "+
+			"the 18 fields are equal (TestCommittedSetFieldsAreOrderIndependent) but the "+
 			"computed root is not, so a value-encoding defect made the root order-dependent. "+
 			"This is a consensus finding to route, not a test to relax.", ra, rb)
 	}

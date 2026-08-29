@@ -162,6 +162,29 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   in `docs/thinking/2026-08-29-era3-step2b-validity-predicate.md` (Decision 1); PE ruling
   `RULING-era3-reload-root-check-2026-08-29.md`.
 
+### Docs
+- **RATIFIED freeze of the era-3 committed state-root format recorded in canon**
+  (2026-08-29). Andrew ratified the composed re-certification and authorized the freeze:
+  the era-3 (`BlockVersion = 4`) two-root committed format is now IMMUTABLE as of build
+  `3af40bc`. Recorded a **FROZEN 2026-08-29** entry in `docs/decisions.md` (D-TIERING)
+  pinning exactly what is frozen — the block schema (`StateRoot`/`LogRoot` in `Hash()`,
+  `versionSupported <= 4`), the 18 `committedSet` fields under the state SMT root with the
+  per-field canonical value encoding, the separate RFC-6962 log root over `revLog`, the
+  height-gated `v4` hard-fork activation, and the "no witness → reject/stall" verifier
+  posture on every disk-write path — plus what is NOT frozen (the C-7/#600 witness floor-box
+  and the incremental-SMT/`ports.NodeStore` follow-on). Added a **frozen consensus formats**
+  marker to the Immutable tier of `docs/TENETS.md` Part IX: changing a frozen consensus
+  format requires a NEW ERA (a new `BlockVersion`), never an in-place edit. Certified by
+  `era3-committed-state-root-format-BUILT-RECERTIFICATION-2026-08-29.md`.
+- **Corrected stale "16 committedSet fields" / "four scalar leaves" comments to the actual
+  18 fields / 6 scalars** (2026-08-29). The two era-3 activation scalars
+  (`era3LockedIn`/`era3Height`) are now committed under the state root, so the marshaller
+  commits 18 committedSet fields (16 + 2) with 6 scalar leaves. Comment-accuracy only in
+  `core/chain/chain.go`, `core/chain/modelcheck_stateroot_determinism_test.go`, and
+  `core/chain/modelcheck_order_independence_test.go` — coverage is reflection-bound
+  (`TestStateRootCoversExactlyTheCommittedSetFields`), so no logic changed. Flagged
+  non-blocking by the Researcher in the re-certification.
+
 ### Changed
 - **test-only: harden the era-3 disk-write guard to match a CALL, not a symbol name**
   (2026-08-29). `TestEveryDiskWritePathRunsTheEra3RootCheck` decided coverage with
