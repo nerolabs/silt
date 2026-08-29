@@ -27,9 +27,12 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `client.WithdrawDemandTokenPrivately`); (ii) a reused ephemeral identity or chain root
   across sessions is REJECTED (no longitudinal linkage). Consumer gate `--accept-relay-payments`
   mirrors `--accept-delivery-receipts`, OFF by default. The increment size `B` is a single
-  named constant `relaypay.RelayIncrementBytes` carrying `TODO(measure)` — the floor-box
-  measurement (build-immutable #8) lands before the value is final. See
-  `docs/thinking/2026-08-30-pod-7.3-relay-compensation-design.md`.
+  named constant `relaypay.RelayIncrementBytes = 4096` (4 KiB), derived analytically from
+  the floor-box-equivalent measurement (build-immutable #8, no billable run): the binding
+  constraint is the chain-state memory bound — 1 GiB max object / 4 KiB = 262,144 increments,
+  chain state 8 MB (MB-scale); verify overhead (~57 ns SHA-256) is slack at any real relay
+  speed. `BenchmarkPayWordVerify` times the real `Verifier.Advance`. See
+  `docs/thinking/2026-08-30-pod-7.3-relay-compensation-design.md` §5.
 
 - **era-4 increment 4d — height-gated activation + mint-flip to v5 (the go-live gate)**
   (`core/chain/chain.go`, `core/chain/era3validity.go`, `core/chain/statehash.go`,

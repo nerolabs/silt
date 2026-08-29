@@ -27,16 +27,16 @@ import (
 // RelayIncrementBytes is the payload size, in bytes, of one PayWord increment —
 // the amount of forwarded payload one revealed preimage authorizes.
 //
-// TODO(measure): sourced from 2026-08-30 floor-box measurement. This value is
-// NOT a round-figure guess. Build-immutable #8 (evidence-not-guess, the
-// #299/#555 produce-cost scar): the increment size is the smallest B where the
-// per-increment verify (one SHA-256) is ≤ ~1% of the time to forward B payload
-// bytes on the 1 vCPU / 2 GB floor box AND the fetcher-held chain state
-// (objectSize/B × 32 B) stays MB-scale for the largest object class. The Tester
-// is deriving B; until that artifact lands this constant carries the marker and
-// MUST NOT be treated as final. Everything else in the relay-pay path is built
-// against this named constant so the measured value drops in one place.
-const RelayIncrementBytes = 0 // TODO(measure): sourced from 2026-08-30 floor-box measurement
+// B = 4,096 bytes (4 KiB), derived analytically from the floor-box-equivalent
+// measurement (docs/thinking/2026-08-30-pod-7.3-relay-compensation-design.md
+// §5); no billable run was needed. The binding constraint is (b), the chain-
+// state memory bound: MaxSessionBytes = 1 GiB (adapters/relay/server.go:40) is
+// objectSize_max, so S = 1 GiB / 4 KiB = 262,144 increments and the relay's
+// committed chain state = S · 32 B = 8 MB (MB-scale, holds). Constraint (a),
+// verify overhead, is slack: one SHA-256 (~57 ns) is <<1% of the time to
+// forward 4 KiB at any real relay speed. 4 KiB is the smallest power-of-two
+// ≥ 3.20 KiB on a sub-chunk boundary (64 KiB / 16).
+const RelayIncrementBytes = 4096
 
 // hashLen is the SHA-256 output length; every chain link is this wide.
 const hashLen = sha256.Size

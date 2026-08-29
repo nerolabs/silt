@@ -125,3 +125,36 @@ func TestAdvanceToWalksToClaimedCount(t *testing.T) {
 		t.Fatalf("a rejected AdvanceTo moved the count to %d", v.Count())
 	}
 }
+
+// BenchmarkPayWordVerify times the REAL per-increment verify — Verifier.Advance,
+// one SHA-256(32 B) plus the held-preimage advance — the cost §5 constraint (a)
+// weighs against forwarding time. Run without -race (timing only). The chain is
+// prebuilt so only the verify is timed; when the chain is exhausted the verifier
+// is reset outside the timed section.
+func BenchmarkPayWordVerify(b *testing.B) {
+	const S = 4096
+	tip := []byte("a-random-32-byte-tip-for-the-bench")
+	c, err := BuildChain(tip, S)
+	if err != nil {
+		b.Fatalf("BuildChain: %v", err)
+	}
+	// Preimages are revealed in order x_1 … x_S; each Advance is one SHA-256.
+	pre := make([][]byte, S+1)
+	for k := 1; k <= S; k++ {
+		pre[k] = c.Preimage(k)
+	}
+	v := NewVerifier(c.Root())
+	k := 1
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if err := v.Advance(pre[k]); err != nil {
+			b.Fatalf("Advance(%d) rejected a valid preimage: %v", k, err)
+		}
+		if k++; k > S {
+			b.StopTimer()
+			v = NewVerifier(c.Root())
+			k = 1
+			b.StartTimer()
+		}
+	}
+}
