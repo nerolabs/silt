@@ -1,90 +1,91 @@
 ---
 name: era4-regcap-measurement-2026-08-29
-description: Era-4 RegCap sizing: bond Answer measured ~1.5MB (#299 unshipped), honest-ceiling=1, RegCap bracket [1,16384] non-empty, proposed RegCap=256 (2026-08-29)
+description: Era-4 RegCap re-measure 2026-08-29: valid BondReg=1,485,573B (passes VerifySpaceTime); honest ceiling=1; prior 225B renewal measurement was PHANTOM (Answer-less reg rejected by verifyBond)
 metadata:
   type: project
 ---
 
-Measurement run 2026-08-29, against origin/main @ 0984db4. Updated same day with full measurement.
+## CORRECTION (2026-08-29, HEAD 0076337)
 
-## #299 shipped status: NO — OPEN
+The prior renewal measurement of **225 bytes** was a PHANTOM. An Answer-less BondReg is
+REJECTED by the deployed `verifyBond` at `chain.go:1617` → `bond.VerifySpaceTime`. The
+225-byte reg carries `Answer: []byte("answer")` (1 byte) in the gate tests, which fails
+verification. A reg that PASSES the validity verifier is NOT Answer-less.
 
-Issue #299 is OPEN. Grep of `#299` across `0984db4` confirms it is referenced only as a FUTURE
-structural close (`node.go:60,79`, `daemon.go:105`, `chainrole.go:1278`), not implemented. The
-deployed `verifyBond` scheme uses the full ~1.5 MB `Answer` field per fresh bond registration.
+## Valid BondReg measurement (re-measured 2026-08-29, HEAD 0076337)
 
-## Measured minimum fresh BondReg CBOR byte size
+Run: standalone Go program, `go run` in scratchpad (deleted after run), using:
+- `bond.Seal(pub, 1<<20)` — MinBond floor, 1 MiB
+- `c.AnswerSpaceTime(42, vdf.Default(), 1000, 64)` — deployed field config
+- `bond.VerifySpaceTime(pub, root, 1<<20, 42, ans, vdf.Default(), 1000, 64)` → **PASS**
+- `bond.EncodeAnswer(ans)` → answer bytes
+- `chain.NewBondReg(priv, root, size, ansBytes, prev, 0)`
+- `chain.Block{Version: chain.BlockVersion, BondRegs: []chain.BondReg{reg}}` + `chain.Encode`
+  (identical to `bondRegEncode` at `core/node/chainrole.go:1757-1759`)
 
-Source: `TestMeasure_AnswerSizeBreakdown299` (`core/bond/answer_size_measure_test.go`), run on
-0984db4. PASS in 0.68 s.
+### Measured output (exact)
 
-| Bond size | n blocks | Answer CBOR |
+```
+Encoded Answer: 1485340 bytes (1450.5 KiB, 1.417 MiB)
+bondRegEncode size: 1485573 bytes (1450.8 KiB, 1.417 MiB)
+bond.VerifySpaceTime: PASS
+Honest per-block ceiling = floor(2097152 / 1485573) = 1
+```
+
+**Minimum valid BondReg (renewal or fresh, passes VerifySpaceTime): 1,485,573 bytes.**
+
+The 233-byte envelope overhead (Block wrapper + BondReg header fields) is negligible
+relative to the ~1.485 MB Answer. Both fresh and renewal regs carry the same full Answer —
+the Answer is mandatory for the proof to pass.
+
+### Honest per-block ceiling
+
+```
+MaxBondRegBytesPerBlock = 2 << 20 = 2,097,152 B   (core/node/node.go:270)
+min valid reg = 1,485,573 B
+ceiling = floor(2,097,152 / 1,485,573) = 1
+```
+
+**Honest per-block ceiling = 1.** This is the same as the "fresh" number from the prior
+session. The prior session's fresh ceiling of 1 was correct; the renewal ceiling of 9,320
+was based on the PHANTOM 225-byte shape.
+
+## Determinants (with file:line for re-derivation gate)
+
+| Parameter | Value | Source |
 |---|---|---|
-| 8 MiB | 2048 | **1,497 KiB** (measured) |
-| 64 MiB | 16384 | **1,531 KiB** (measured) |
-| 1 GiB (floor) | ~263,672 | **~1,582 KiB** (extrapolated) |
+| Samples (possession blocks) | 20 | `core/bond/bond.go:108` |
+| DefaultLabelSamples k | 64 | `core/bond/bond.go:117` |
+| BlockSize | 4096 bytes | `core/bond/bond.go:93` |
+| BondVDFDelay (default) | 1000 squarings | `core/node/node.go:291` |
+| BondLabelSamples (default) | 64 | `core/node/node.go:292` |
+| MinBond floor (default -min-bond) | 1 MiB = 1,048,576 B | `cmd/silt/daemon.go:93` |
+| MaxBondRegBytesPerBlock (block body budget) | 2 MiB = 2,097,152 B | `core/node/node.go:270` |
 
-Answer size breakdown (64 label opens × 5 blocks × 4,096 B = 1,280 KiB block data;
-possession 20 × 4 KiB = 80 KiB; Merkle proofs grow ~34 B/depth level — proven by CBOR
-probe of manifest.Proof; model fits measured data within 6 KiB).
+## Combined picture (corrected)
 
-Production `DerivedBondFloor` = 2 × (2s × 270 MB/s) = 1,080,000,000 B ≈ 1,029 MiB
-(`daemon.go:1646-1653`). A 4 KiB minimum bond is never valid on an objective chain.
+| Reg shape | Min VALID size | Honest ceiling/block |
+|---|---|---|
+| Any (fresh or renewal, passes VerifySpaceTime) | 1,485,573 B | **1** |
 
-Non-Answer BondReg fields (CBOR-measured): Validator(32) + Root(32) + Size(5) + Sig(64) +
-CBOR overhead(6) + Answer field header(5) = 144 bytes.
+Ceiling = 1 at both the fresh and renewal shapes. The prior 225-byte phantom and the
+derived 9,320-ceiling are RETRACTED.
 
-**Minimum fresh BondReg CBOR size (at production floor) ≈ 1,531–1,582 KiB ≈ ~1.5 MB.**
+## RegCap bracket and proposed value (updated)
 
-The Answer field dominates entirely. The 144 B overhead is negligible.
+- Lower bound (honest valid ceiling): 1
+- Upper bound (witness fit at 2 GiB): 16,384
+- Bracket [1, 16,384] non-empty.
+- RegCap=256 sits 256× above the measured honest ceiling and 64× below the witness bound.
+  The earlier concern that RegCap=256 was "too low for renewal-packed blocks" is RETRACTED
+  — a renewal-packed block cannot hold more than 1 valid reg under the current byte budget.
 
-## Honest-ceiling computation
+## Sources cited (all on HEAD 0076337)
 
-`MaxBondRegBytesPerBlock = 2 MiB = 2,097,152 B` (`node.go:270`, confirmed at `node.go:79-80`
-"Proposer-side policy only"). This is the honest proposer's per-block byte budget for fresh regs.
-
-```
-honest_ceiling = floor(2,097,152 / 1,567,888) = 1   [using 64MiB measured proxy]
-honest_ceiling = floor(2,097,152 / 1,620,112) = 1   [using 1GiB extrapolation]
-```
-
-Both approaches give **honest_ceiling = 1**. Under the deployed scheme (#299 unshipped), an
-honest proposer can embed exactly ONE fresh bond registration per block within its 2 MiB budget.
-(node.go:76-77 confirms the proposer always embeds at least one even if it exceeds the budget,
-so the honest ceiling is ~1 fresh reg/block regardless of whether it slightly exceeds 2 MiB.)
-
-## RegCap bracket
-
-- Upper bound: `RegCap ≤ 16,384` (boundary-epoch witness fit: `RegCap × EpochBlocks × SProofMax ≤ 2 GiB`; `EpochBlocks=8` at `daemon.go:1729`, `SProofMax=16 KiB` at `witness_bound.go:78`). Derived. Exact.
-- Lower bound (honest-ceiling): **1**.
-- Bracket `[1, 16,384]` is NON-EMPTY.
-
-## Proposed RegCap = 256
-
-| Property | Value |
-|---|---|
-| Margin above honest ceiling | 256× (ceiling=1, RegCap=256) |
-| Margin below upper bound | 64× (16,384 / 256) |
-| Boundary epoch witness | 256 × 8 × 16 KiB = 32 MiB vs 2 GiB (64× headroom) |
-
-R3 C_block composition: `C_block = len(readSet) × SProofMax` (`witness_bound.go:202-203`). For a
-block with RegCap fresh regs, C_block adapts to the readSet (not a separate hard cap). The
-boundary-epoch constraint is the binding one; RegCap=256 gives 64× headroom there.
-
-RegCap=256 is a validity rule, not a proposer policy. The honest proposer operates at ~1 fresh
-reg/block (far below 256). RegCap=256 gives headroom for future proof compression (#299 — if
-shipped, ~192 B proofs → ~10k regs/2 MiB block → honest ceiling rises to ~10k, still within
-16,384) without needing a rule change.
-
-## Sources cited (all on 0984db4)
-
-- `MaxBondRegBytesPerBlock`: `node.go:270` (default 2<<20), "Proposer-side policy only" `node.go:79-80`
-- `DerivedBondFloor`: `daemon.go:1646-1653` (~1 GiB)
-- `EpochBlocks=8`: `daemon.go:1729`
-- `SProofMax=16 KiB`: `witness_bound.go:78`
-- `C_block = len(readSet)×SProofMax`: `witness_bound.go:202-203`
-- Answer size measurement: `core/bond/answer_size_measure_test.go:21`, run PASS 0.68s
-- #299 status: OPEN (`github.com/nerolabs/silt/issues/299`)
-- BondReg struct fields + omitempty: `chain.go:482-513`
-- `validateBondReg` requirements: `chain.go:1604-1620`
-- First-reg exemption from #506 rate-limit: `chain.go:1587` (`ok==false`)
+- `MaxBondRegBytesPerBlock`: `core/node/node.go:270` (2<<20)
+- `bondRegEncode`: `core/node/chainrole.go:1757-1759`
+- `verifyBond` call: `core/chain/chain.go:1617`
+- `VerifySpaceTime`: `core/bond/bond.go:428`
+- Field config defaults: `core/node/node.go:291-292`
+- MinBond floor default: `cmd/silt/daemon.go:93`
+- Measurement run: scratchpad Go program, exit 0, output captured 2026-08-29, deleted after

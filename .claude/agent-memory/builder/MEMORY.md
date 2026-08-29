@@ -7,3 +7,4 @@
 - [era-4 review fold-in](era4-review-fold-in.md) — the 5 fixes + 1 scope-out the PE ruling + Research cert forced into the era-4 doc; the verified 5 maintenance sites (2989 was missed); the new reg-cap validity rule; shared-keyspace pointer boundary; recovery boundary scoped out.
 - [era-4 ratification & build order](era4-ratification-and-build-order.md) — Option B RATIFIED (params locked, PR #635); the locked 4a→4b→4c→4d order + WHY the maintenance spine lands BEFORE the predicate (root moves only for v5 blocks).
 - [era-4 RegCap #299 gate](era4-regcap-299-gate.md) — RegCap=256 is a SECURITY param; hard #299 re-mint gate (honest ceiling rises above 256 under succinct proofs); 4c ablation.
+- [era-4 4a branch-prep](era4-4a-branch-prep.md) — PR #637 merged onto current main, CI-green, awaiting human merge go; the .claude/ add/add conflict resolution + the anticipated-but-absent CHANGELOG collision.
