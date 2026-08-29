@@ -7,7 +7,7 @@ import (
 
 // era-3 committed state root — build step 1 (certified sequence, choice 5 step 2).
 //
-// This file marshals the 16 committedSet fields of Chain into field-tagged,
+// This file marshals the 18 committedSet fields of Chain into field-tagged,
 // canonically-encoded SMT leaves and computes the StateRoot. It lives in package
 // chain because it reads the unexported committed fields directly (the same reason
 // the keystone oracles do). The SMT mechanics and the value encoders live in
@@ -20,13 +20,13 @@ import (
 // The per-field-class value encoding is pinned in
 // docs/thinking/2026-08-28-era3-state-root-value-encoding.md and certified by
 // era3-committed-state-root-format-RESEARCH-CERTIFICATION-2026-08-28.md (Q2/Q3/Q6).
-// The field tags are exactly the 16 committedSet field names classified in
+// The field tags are exactly the 18 committedSet field names classified in
 // modelcheck_state_completeness_test.go:81-96. revLog (committedLog -> its own
 // LogRoot) and epochStart (observable -> no root) are deliberately excluded.
 
 // State-root field tags. Each is a committedSet field name followed by a single
 // NUL, making the tag || rawKey concatenation injective across all fields and the
-// scalar reserved keys (research cert Q3). The set is EXACTLY the 16 committedSet
+// scalar reserved keys (research cert Q3). The set is EXACTLY the 18 committedSet
 // fields — a field added to Chain fails the completeness guard until classified,
 // and a committedSet field added here without a tag fails stateRootLeaves' coverage
 // assertion (both are enforced, not asserted by inspection).
@@ -50,10 +50,12 @@ const (
 	tagMatureEpoch  = "matureEpoch\x00"
 	tagGateLockedIn = "gateLockedIn\x00"
 	tagGateHeight   = "gateHeight\x00"
+	tagEra3LockedIn = "era3LockedIn\x00"
+	tagEra3Height   = "era3Height\x00"
 )
 
 // stateRootTags is the set of committedSet field names this file commits, used by
-// the oracle to assert coverage against the live classification: exactly the 16
+// the oracle to assert coverage against the live classification: exactly the 18
 // committedSet fields, no more, no fewer. If a committedSet field is added without
 // a leaf here, the coverage guard fails.
 var stateRootTags = []string{
@@ -61,9 +63,10 @@ var stateRootTags = []string{
 	"bonded", "epochSet", "bondRootOwner", "bondRootProven",
 	"bondRegHeight", "regVersion", "bondDomain",
 	"everMature", "matureEpoch", "gateLockedIn", "gateHeight",
+	"era3LockedIn", "era3Height",
 }
 
-// stateRootLeaves marshals the 16 committedSet fields into canonically-encoded,
+// stateRootLeaves marshals the 18 committedSet fields into canonically-encoded,
 // field-tagged leaves. The result is a pure function of the committed set: two
 // nodes with the same logical state produce byte-identical leaves regardless of map
 // iteration order (Go map order is random; the SMT root is order-invariant, so the
@@ -119,11 +122,13 @@ func (c *Chain) stateRootLeaves() []statehash.Leaf {
 	add(tagMatureEpoch, nil, statehash.EncodeBool(c.matureEpoch))
 	add(tagGateLockedIn, nil, statehash.EncodeBool(c.gateLockedIn))
 	add(tagGateHeight, nil, statehash.EncodeUint64(c.gateHeight))
+	add(tagEra3LockedIn, nil, statehash.EncodeBool(c.era3LockedIn))
+	add(tagEra3Height, nil, statehash.EncodeUint64(c.era3Height))
 
 	return leaves
 }
 
-// StateRoot computes the era-3 committed state SMT root over the 16 committedSet
+// StateRoot computes the era-3 committed state SMT root over the 18 committedSet
 // fields. It is a pure function of the committed set, identical whether the state
 // was reached by replay or by snapshot boot (the property the keystone rests on).
 // Step 1: computed and proven deterministic behind the oracles; not yet a Block

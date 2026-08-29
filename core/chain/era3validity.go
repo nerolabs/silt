@@ -44,7 +44,34 @@ var (
 	// ErrEra3LogRootMismatch is a v4 block whose committed LogRoot does not equal the
 	// post-apply RFC-6962 revocation-log root.
 	ErrEra3LogRootMismatch = errors.New("chain: era-3 (v4) block LogRoot does not equal the recomputed post-apply revocation-log root")
+	// ErrEra3VersionRequired is a sub-v4 block at or above the era-3 activation
+	// boundary (era3Active). Once era-3 is active, v4 is REQUIRED — a v2/v3 block at
+	// that height has no committed roots for a validator to check, which is exactly
+	// the silent-mis-validation era-3 exists to prevent (cert Q7). Build step 2c.
+	ErrEra3VersionRequired = errors.New("chain: block below era-3 (v4) at or above the era-3 activation height — v4 with committed roots is required")
 )
+
+// validateEra3Version is the era-3 (v4) version-boundary rule (build step 2c). At or
+// above the era-3 activation height (era3Active — derived from PRIOR committed history,
+// epoch-final so reorg-stable), v4 is REQUIRED: a v2/v3 block carries no committed roots
+// for a validator to check, so accepting it at/past the boundary is the silent
+// mis-validation era-3 exists to prevent (cert Q7). Below the boundary this never fires
+// and era-2 validation is unchanged.
+//
+// It is a PURE HEADER CHECK: era3Active reads only committed state (era3LockedIn /
+// era3Height / cfg), available BEFORE b is applied, and b.Version is a header field. No
+// clone, no apply. Both consensus-entry paths run it BEFORE applying b, so a rejected
+// block is never left applied (longest-valid-prefix contract): the commit path via
+// ValidateProposal, and the own-disk Reload path (appendStructural) directly. This
+// symmetry across write paths mirrors validateEra3Roots — "every disk-write path enforces
+// the era-3 rules" is UNIFORM across root AND version. The write-set guard
+// TestEveryDiskWritePathRunsTheEra3RootCheck pins that both are on every path.
+func (c *Chain) validateEra3Version(b *Block) error {
+	if c.era3Active(b.Height) && b.Version < BlockVersionStateRoot {
+		return fmt.Errorf("%w: height %d version %d", ErrEra3VersionRequired, b.Height, b.Version)
+	}
+	return nil
+}
 
 // validateEra3Roots is the era-3 (v4) committed-root predicate. For a sub-v4 block it
 // is a no-op (era-gating): a v2/v3 block validates under era-2 rules UNCHANGED. For a
@@ -125,6 +152,8 @@ func (c *Chain) cloneForDryRun() *Chain {
 		everMature:   c.everMature,
 		gateLockedIn: c.gateLockedIn,
 		gateHeight:   c.gateHeight,
+		era3LockedIn: c.era3LockedIn,
+		era3Height:   c.era3Height,
 		epochStart:   c.epochStart,
 		matureEpoch:  c.matureEpoch,
 	}

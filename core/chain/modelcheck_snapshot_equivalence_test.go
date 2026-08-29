@@ -474,6 +474,19 @@ func weightProbes(epochSetBlock, bondedBlock *Block) ([]probe, []probe) {
 // set-valued probes call ValidateEntry directly.
 func regVerdict(c *Chain, b *Block) string { return verdict(c.validateBondRegs(b)) }
 
+// era3VersionVerdict evaluates the era-3 (v4) version-boundary rule (step 2c) against
+// a snapshot-booted node for block b: at/above era3Active a sub-v4 block is rejected.
+// It is the exact predicate ValidateProposal runs (chain.go, before validateEra3Roots),
+// driven directly so a history-less replica can be interrogated — mirroring how the
+// gate probes call validateBondRegs rather than the full commit path. It reads
+// era3LockedIn/era3Height via era3Active, so a snapshot that dropped either flips the verdict.
+func era3VersionVerdict(c *Chain, b *Block) string {
+	if c.era3Active(b.Height) && b.Version < BlockVersionStateRoot {
+		return "reject"
+	}
+	return "accept"
+}
+
 // deMatureWorld (everMature). Epochs DISABLED, no anchors, so handedOff == the raw
 // everMature latch and requireEpochWeightQuorum never fires (it needs
 // epochsEnabled) — the de-maturation super-quorum is the ONLY regime gate. The
@@ -696,6 +709,77 @@ func gateProbes(c *Chain) (probe, probe) {
 			"gateHeight collapses H_act to 0, activating the gate early (accept → ErrRegGate)",
 		detect: []string{"gateHeight"},
 		ask:    func(c *Chain) string { return regVerdict(c, pre) },
+	}
+	return lockedInProbe, heightProbe
+}
+
+// era3World (era3LockedIn, era3Height) — the era-3 (v4) activation lock-in world (step
+// 2c). Structurally the gate world, but the three members signal regVersion ≥
+// BlockVersionStateRoot (v4), so the rotateEpoch era-3 tally clears the ⅔-ready
+// super-quorum: era3LockedIn is set and era3Height = boundary + EpochBlocks = 2 + 2 = 4.
+// The two probes present a plain v2 block straddling era3Height and read the
+// version-boundary verdict, which flips on the loss of either activation field.
+func era3World(t *testing.T) *Chain {
+	t.Helper()
+	const w = int64(2) << 20
+	r1, r2, x := key(70401), key(70402), key(70403)
+	cfg := Config{Quorum: 1, MinBond: 1 << 20, ByzantineQuorum: true,
+		EpochBlocks: 2, MatureValidators: 2, BondTTLBlocks: 40}
+	c := New(cfg, func(ports.NodeID) int64 { return 0 })
+	c.SetBondVerifier(objectiveVerify)
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
+	g.BondRegs = []BondReg{
+		bondRegFull(r1, ports.HashBytes(pubOf(r1)), w, ports.Hash{}, BlockVersionStateRoot, 0),
+		bondRegFull(r2, ports.HashBytes(pubOf(r2)), w, ports.Hash{}, BlockVersionStateRoot, 0),
+		bondRegFull(x, ports.HashBytes(pubOf(x)), w, ports.Hash{}, BlockVersionStateRoot, 0),
+	}
+	Sign(g, r1)
+	if err := c.AppendGenesis(*g); err != nil {
+		t.Fatalf("era3World genesis: %v", err)
+	}
+	// Height 1: proposer r1. Height 2: the epoch boundary; r2 proposes so r1 joins
+	// validatorsSeen → three distinct seen bonds → maturity latches, rotateEpoch freezes
+	// {r1,r2,x} and the era-3 tally locks (all ready v4). era3Height = 2 + EpochBlocks = 4.
+	b1 := &Block{Version: BlockVersionRounds, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(1)}}
+	commitRounds(b1, []ed25519.PrivateKey{r1, r2, x}, 0)
+	if err := c.Append(*b1); err != nil {
+		t.Fatalf("era3World height 1: %v", err)
+	}
+	b2 := &Block{Version: BlockVersionRounds, Height: 2, Prev: b1.Hash(), Entries: []ports.Entry{entry(2)}}
+	commitRounds(b2, []ed25519.PrivateKey{r2, r1, x}, 0)
+	if err := c.Append(*b2); err != nil {
+		t.Fatalf("era3World boundary: %v", err)
+	}
+	if !c.era3LockedIn || c.era3Height != 4 {
+		t.Fatalf("era3World: era-3 did not lock at H_era3=4 (lockedIn=%v H_era3=%d)", c.era3LockedIn, c.era3Height)
+	}
+	return c
+}
+
+// era3Probes builds the two version-boundary probes on era3World, straddling era3Height.
+//   - era3LockedIn: a v2 block AT/ABOVE era3Height. Full → reject (v4 required); a snapshot
+//     that lost era3LockedIn (→ false) makes era3Active false → the v2 block is accepted.
+//   - era3Height: a v2 block BELOW era3Height. Full → accept; a snapshot that lost era3Height
+//     (→ 0) makes era3Active = era3LockedIn && h>=0 fire at every height → the v2 block is
+//     rejected. The flip runs the OPPOSITE way, so the two fields are each a sole discriminator.
+func era3Probes(c *Chain) (probe, probe) {
+	eh := c.era3Height
+	v2At := func(h uint64) *Block {
+		return &Block{Version: BlockVersionRounds, Height: h, Prev: ports.Hash{}, Entries: []ports.Entry{entry(byte(h))}}
+	}
+	past := v2At(eh + 1)
+	lockedInProbe := probe{
+		name: "a v2 block at/above H_era3 must be rejected (v4 required); a snapshot that lost " +
+			"era3LockedIn treats era-3 as never activated (ErrEra3VersionRequired → accept)",
+		detect: []string{"era3LockedIn"},
+		ask:    func(c *Chain) string { return era3VersionVerdict(c, past) },
+	}
+	pre := v2At(eh - 1)
+	heightProbe := probe{
+		name: "a v2 block BELOW H_era3 must be accepted; a snapshot that lost era3Height " +
+			"collapses H_era3 to 0, activating era-3 early (accept → ErrEra3VersionRequired)",
+		detect: []string{"era3Height"},
+		ask:    func(c *Chain) string { return era3VersionVerdict(c, pre) },
 	}
 	return lockedInProbe, heightProbe
 }
@@ -1532,6 +1616,8 @@ func TestSnapshotBootMatchesReplayBoot(t *testing.T) {
 	matureEpochC, matureEpochBlock := matureEpochWorld(t)
 	gateC := gateWorld(t)
 	lockedInProbe, heightProbe := gateProbes(gateC)
+	era3C := era3World(t)
+	era3LockedInProbe, era3HeightProbe := era3Probes(era3C)
 	bondRegHeightC := bondRegHeightWorld(t)
 
 	// The bond-root sole-discriminator worlds (2026-08-28 shadowedProbes discharge).
@@ -1564,6 +1650,7 @@ func TestSnapshotBootMatchesReplayBoot(t *testing.T) {
 	check(deMatureC, []probe{everMatureProbe(deMatureBlock)})
 	check(matureEpochC, []probe{matureEpochProbe(matureEpochBlock)})
 	check(gateC, []probe{lockedInProbe, heightProbe})
+	check(era3C, []probe{era3LockedInProbe, era3HeightProbe})
 	check(bondRegHeightC, []probe{bondRegHeightProbe(bondRegHeightC)})
 	check(provenC, []probe{provenDisplaceProbe(provenRoot, provenKeys, provenPrev)})
 	check(restoreC, []probe{restoreOwnerProbe(restoreC)})
@@ -1658,6 +1745,8 @@ func buildLeaveOneOutWorlds(t *testing.T) []worldGroup {
 	matureEpochC, matureEpochBlock := matureEpochWorld(t)
 	gateC := gateWorld(t)
 	lockedInProbe, heightProbe := gateProbes(gateC)
+	era3C := era3World(t)
+	era3LockedInProbe, era3HeightProbe := era3Probes(era3C)
 	bondRegHeightC := bondRegHeightWorld(t)
 	regVersionC := regVersionWorld(t)
 	domainC, domainAnchorBlock, domainTrigger := domainWorld(t)
@@ -1677,6 +1766,7 @@ func buildLeaveOneOutWorlds(t *testing.T) []worldGroup {
 		{"de-mature", func(*testing.T) *Chain { return deMatureC }, []probe{everMatureProbe(deMatureBlock)}},
 		{"mature-epoch-flag", func(*testing.T) *Chain { return matureEpochC }, []probe{matureEpochProbe(matureEpochBlock)}},
 		{"gate-lock", func(*testing.T) *Chain { return gateC }, []probe{lockedInProbe, heightProbe}},
+		{"era3-activation", func(*testing.T) *Chain { return era3C }, []probe{era3LockedInProbe, era3HeightProbe}},
 		{"bondreg-height", func(*testing.T) *Chain { return bondRegHeightC }, []probe{bondRegHeightProbe(bondRegHeightC)}},
 		{"gate-tally", func(*testing.T) *Chain { return regVersionC }, []probe{regVersionProbe()}},
 		{"domain-latch", func(*testing.T) *Chain { return domainC }, []probe{domainProbe(domainAnchorBlock, domainTrigger)}},
