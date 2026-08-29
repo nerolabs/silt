@@ -172,10 +172,19 @@ close itself is the owner's call and is deliberately HELD. The current order:
    with three load-bearing obligations (snapshot-boot-equivalence oracle proves
    field completeness; incremental-cost oracle; era-2→3 Reload test ships ahead).
 2. **The PoD neutral-lane BUILD** (per the certified [design/pod.md](docs/design/pod.md)
-   §7): firewall failing-first test → supersede rule + no-PoR receipt →
-   `EnableDemandBank` + the conserved balance-lane consumer → the D-TIERING mode
-   flags (`--serve-content`/`--archive`). Owner knobs held: skim burn-vs-escrow
-   (escrow leaned), the relay dispute-TTP question (deferred with relay).
+   §7). **§7.1 SHIPPED (#590):** the conserved balance-lane consumer
+   (`RedeemDeliveryCredit`, `core/credit/delivery.go`), the supersede rule, the
+   no-PoR neutral receipt, and the firewall failing-first test
+   (`TestDeliveryCreditNeverTouchesStanding`). **§7.2 SHIPPED (#593/#594):** the
+   D-TIERING mode flags `--serve-content`/`--archive` (`cmd/silt/daemon.go`), the
+   daemon wiring, and e2e (`-accept-delivery-receipts`). The three owner knobs are
+   decided (**D-POD-KNOBS**, #592). The **B3 receipt-forgeability residual is CLOSED**
+   by the conservation design and regression-locked (`TestWashLoopIsAStrictLoss`,
+   `TestPaidBountyIsNotRecoverableBySupersede`); it is neutralized by the firewall
+   today and must close before any demand→standing fusion
+   (`docs/design/owned-residuals.md`). **§7.3 relay compensation is the remaining open
+   increment** (sender-funded incremental micropayment) and is **CONSULT-GATED** — an
+   owed follow-on mechanism-detail consult lands before any code.
 3. **The state-root keystone BUILD track** (larger; sequence against 2): SMT
    library call (`pokt-network/smt` closest-proof shape vs JMT port), the three
    certified oracles as failing-first RED homes, era-3 gate as #506 tenant #2.
