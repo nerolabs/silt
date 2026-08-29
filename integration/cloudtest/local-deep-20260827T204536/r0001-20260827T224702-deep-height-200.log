@@ -1,0 +1,14 @@
+=== RUN   TestConsensusMemoryGrowth
+    oom_growth_diag_test.go:105: h=0    HeapInuse=   1.2 MiB HeapObjects=1751      chainLen=1 tip=1
+    oom_growth_diag_test.go:105: h=25   HeapInuse=   2.0 MiB HeapObjects=7851      chainLen=26 tip=26
+    oom_growth_diag_test.go:105: h=50   HeapInuse=   2.6 MiB HeapObjects=13707     chainLen=51 tip=51
+    oom_growth_diag_test.go:105: h=75   HeapInuse=   3.4 MiB HeapObjects=19563     chainLen=76 tip=76
+    oom_growth_diag_test.go:105: h=100  HeapInuse=   3.8 MiB HeapObjects=25424     chainLen=101 tip=101
+    oom_growth_diag_test.go:105: h=125  HeapInuse=   4.4 MiB HeapObjects=31270     chainLen=126 tip=126
+    oom_growth_diag_test.go:105: h=150  HeapInuse=   5.4 MiB HeapObjects=37124     chainLen=151 tip=151
+    oom_growth_diag_test.go:105: h=175  HeapInuse=   6.0 MiB HeapObjects=42973     chainLen=176 tip=176
+    oom_growth_diag_test.go:105: h=200  HeapInuse=   6.3 MiB HeapObjects=48823     chainLen=201 tip=201
+    oom_growth_diag_test.go:105: h=200  HeapInuse=   6.3 MiB HeapObjects=48816     chainLen=201 tip=201
+--- PASS: TestConsensusMemoryGrowth (0.58s)
+PASS
+ok  	github.com/nerolabs/silt/sim	0.952s

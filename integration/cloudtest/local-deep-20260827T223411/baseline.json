@@ -1,0 +1,22 @@
+{
+  "type": "baseline",
+  "run": "local-deep-20260827T223411",
+  "harness": "sim/TestConsensusMemoryGrowth",
+  "seed": 11,
+  "heights": 200,
+  "elapsed_s": "0.56",
+  "measurements": [
+    {"h": 0,   "heap_mib": 1.1, "heap_objects": 1750,  "chain_len": 1},
+    {"h": 25,  "heap_mib": 1.9, "heap_objects": 7854,  "chain_len": 26},
+    {"h": 50,  "heap_mib": 2.5, "heap_objects": 13709, "chain_len": 51},
+    {"h": 75,  "heap_mib": 3.3, "heap_objects": 19568, "chain_len": 76},
+    {"h": 100, "heap_mib": 3.7, "heap_objects": 25418, "chain_len": 101},
+    {"h": 125, "heap_mib": 4.3, "heap_objects": 31270, "chain_len": 126},
+    {"h": 150, "heap_mib": 5.3, "heap_objects": 37119, "chain_len": 151},
+    {"h": 175, "heap_mib": 5.9, "heap_objects": 42972, "chain_len": 176},
+    {"h": 200, "heap_mib": 6.3, "heap_objects": 48822, "chain_len": 201}
+  ],
+  "finding": "HeapInuse grows linearly with height: 1.1 MiB at h=0 to 6.3 MiB at h=200 (5.7x). HeapObjects ~240/height. Prune NOT engaged in sim — this is the expected O(depth) growth shape. Consistent with scar-depth-war-lineage.",
+  "git_head": "9bfe8e2",
+  "timestamp": "2026-08-27T22:34:00Z"
+}

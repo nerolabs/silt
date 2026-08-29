@@ -1,0 +1,26 @@
+=== RUN   TestConsensusMemoryGrowth
+    oom_growth_diag_test.go:105: h=0    HeapInuse=   1.3 MiB HeapObjects=1745      chainLen=1 tip=1
+    oom_growth_diag_test.go:105: h=25   HeapInuse=   2.0 MiB HeapObjects=7849      chainLen=26 tip=26
+    oom_growth_diag_test.go:105: h=50   HeapInuse=   2.7 MiB HeapObjects=13698     chainLen=51 tip=51
+    oom_growth_diag_test.go:105: h=75   HeapInuse=   3.4 MiB HeapObjects=19558     chainLen=76 tip=76
+    oom_growth_diag_test.go:105: h=100  HeapInuse=   3.8 MiB HeapObjects=25413     chainLen=101 tip=101
+    oom_growth_diag_test.go:105: h=125  HeapInuse=   4.5 MiB HeapObjects=31271     chainLen=126 tip=126
+    oom_growth_diag_test.go:105: h=150  HeapInuse=   5.5 MiB HeapObjects=37123     chainLen=151 tip=151
+    oom_growth_diag_test.go:105: h=175  HeapInuse=   6.1 MiB HeapObjects=42972     chainLen=176 tip=176
+    oom_growth_diag_test.go:105: h=200  HeapInuse=   6.4 MiB HeapObjects=48822     chainLen=201 tip=201
+    oom_growth_diag_test.go:105: h=225  HeapInuse=   7.2 MiB HeapObjects=54672     chainLen=226 tip=226
+    oom_growth_diag_test.go:105: h=250  HeapInuse=   7.6 MiB HeapObjects=60522     chainLen=251 tip=251
+    oom_growth_diag_test.go:105: h=275  HeapInuse=   8.0 MiB HeapObjects=66372     chainLen=276 tip=276
+    oom_growth_diag_test.go:105: h=300  HeapInuse=   9.6 MiB HeapObjects=72228     chainLen=301 tip=301
+    oom_growth_diag_test.go:105: h=325  HeapInuse=  10.0 MiB HeapObjects=78078     chainLen=326 tip=326
+    oom_growth_diag_test.go:105: h=350  HeapInuse=  10.4 MiB HeapObjects=83928     chainLen=351 tip=351
+    oom_growth_diag_test.go:105: h=375  HeapInuse=  10.8 MiB HeapObjects=89778     chainLen=376 tip=376
+    oom_growth_diag_test.go:105: h=400  HeapInuse=  11.1 MiB HeapObjects=95628     chainLen=401 tip=401
+    oom_growth_diag_test.go:105: h=425  HeapInuse=  11.5 MiB HeapObjects=101478    chainLen=426 tip=426
+    oom_growth_diag_test.go:105: h=450  HeapInuse=  12.8 MiB HeapObjects=107328    chainLen=451 tip=451
+    oom_growth_diag_test.go:105: h=475  HeapInuse=  13.2 MiB HeapObjects=113178    chainLen=476 tip=476
+    oom_growth_diag_test.go:105: h=500  HeapInuse=  13.6 MiB HeapObjects=119028    chainLen=501 tip=501
+    oom_growth_diag_test.go:105: h=500  HeapInuse=  13.6 MiB HeapObjects=119021    chainLen=501 tip=501
+--- PASS: TestConsensusMemoryGrowth (1.39s)
+PASS
+ok  	github.com/nerolabs/silt/sim	1.580s

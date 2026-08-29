@@ -9,6 +9,16 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **era-4 increment 4a — schema + classification (inert)**
+  (`core/chain/chain.go`, `core/chain/statehash.go`, 2026-08-29). The first code
+  increment of the ratified era-4 build. Mints `BlockVersionWitnessable = 5` and
+  defines the three era-4 field tags `tagDueBucket`, `tagQualified`, `tagEpochStart`
+  reserving their on-wire byte layout. INERT on the live v4 chain: the tags carry no
+  leaves and are NOT yet in `stateRootTags` or classified, so no v4 block's committed
+  state root changes (the era-3 byte-identical/coverage guards stay green). Does NOT
+  widen `versionSupported` (held to 4c, predicate-first), add maintenance maps (4b),
+  add the v5 predicate (4c), or activate (4d). See
+  `docs/thinking/2026-08-29-era4-build-decomposition-options.md`, increment 4a.
 - **witness floor-box validation — R3 DoS bound (byte caps + shape gate)**
   (`core/statehash/witness_bound.go`, 2026-08-29). The pre-verify resource gate
   that guards the R4 accessor. At witness ingest, before any proof is parsed or

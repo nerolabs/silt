@@ -1,0 +1,46 @@
+debug: pprof at http://127.0.0.1:6060/debug/pprof/ (heap attribution)
+inbound-cap: 256M in-flight message budget (backpressure over cap; a flood stalls, doesn't OOM)
+pledge: 0 / 2147483648 bytes used
+bond: objective re-challenge TTL defaulted to 32 blocks for this untrusted (objective) swarm — standing lapses this many blocks after a validator's latest bond proof unless it renews, so a released plot can't keep voting. Override with -bond-ttl (0 disables; safe only for a trusted/demo swarm).
+consensus: Byzantine quorum sizing defaulted ON for this untrusted (objective) swarm — a commit needs a supermajority of the qualified bonded set so two quorums always share an honest validator. Override with -byzantine-quorum=false (safe only for a trusted swarm).
+consensus: operator-margin defaulted to 2 for this untrusted (objective) swarm — the C2 maturity shed discounts the bond-distinct Nakamoto coefficient by M, so one operator splitting real stake across ~M NodeIDs cannot fake the decentralization that sheds the launch anchors. Override with -operator-margin (1 = no split margin; safe only for a trusted/single-operator swarm).
+consensus: epoch-blocks defaulted to 8 for this untrusted (objective) swarm — after the young→mature handoff the finality quorum and validator set are frozen per epoch (rotated at finalized boundary blocks), so churning bonds cannot let two conflicting commits finalize against two different sets. Override with -epoch-blocks, identically across the swarm (0 disables; safe only for a trusted/demo swarm).
+log: debug and above → /var/lib/silt/debug.log
+proof-cache: 64M hot-proof RAM budget (rest page from disk to serve/audit)
+training wheels: 4 anchor(s), strict majority 3 required (objective; derived #402), shed at 4 independent validators
+genesis: silt:v1:_Onu6yOsAFGXLZnmfpQjgh_tyWB8u7SMUqQDAXHjINY:1-O2hkdHgz3S-1ewAWKyXrFQUI5Ed16PzMlyoNnBfEA
+bond: sealed a 64M storage bond for consensus standing
+consensus: OBJECTIVE fork-choice (default; on-chain bond ≥ 1M); 4 anchor(s) bootstrap the launch set, shed at maturity
+peer: 6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701@[::]:4001
+store: /var/lib/silt
+discovery: 1 peer(s) via -bootstrap
+discovery: 3 peer(s) via -persistent-peers
+persistent-peers: 3 configured (static, never-evicted consensus tier)
+serving; Ctrl-C to stop
+bootstrapped (3 table entries)
+⚠ ADVERSARY: -equivocate set (objective mode) — this validator will DELIBERATELY double-sign via a served conflicting fork (red-team harness, never honest)
+reachability: public — peers can dial this node directly
+chain: committed block 1 (0 entries, 1 bond-regs, 3 attestations)
+  C2: nakamoto 0 bonds → 0 operators (margin ×2) | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+  checkpoint: 1:df9d2245df5faa0d78ea21a52453a3b2b7334be3311ac341f759cf22c17d6814
+adversary: equivocation complete (double-signed height 1)
+re-announced 7 held chunks
+chain: committed block 2 (0 entries, 1 bond-regs, 3 attestations)
+  C2: nakamoto 0 bonds → 0 operators (margin ×2) | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+  checkpoint: 2:732cc20f884970f57bd3a9d3f899681c0c9392120c3d791128bab9163e484896
+chain: committed block 3 (0 entries, 1 bond-regs, 3 attestations)
+  C2: nakamoto 0 bonds → 0 operators (margin ×2) | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+  checkpoint: 3:65a5d71cee83ae30ba4c32893d7dc0fc57244b29b2c34087161cb35974e21c54
+chain: committed block 4 (0 entries, 1 bond-regs, 3 attestations)
+  C2: nakamoto 0 bonds → 0 operators (margin ×2) | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+  checkpoint: 4:483bc1e6ff80d37d4ff8ee20823512227365a2b49d9a283c5a17ab10efe3ff63
+chain: committed block 5 (0 entries, 1 bond-regs, 3 attestations)
+  C2: nakamoto 0 bonds → 0 operators (margin ×2) | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+  checkpoint: 5:a4f835e075d62ac6e57ed961f9870d61f06ab9192915181e1d577c381c30432b
+chain: caught up 1 block(s) from peers
+chain: committed block 7 (0 entries, 1 bond-regs, 3 attestations)
+  C2: nakamoto 0 bonds → 0 operators (margin ×2) | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+  checkpoint: 7:e0eabc759f4028f696446281ccaa80b7aa60d454f716c0dab381c60efb99c08e
+chain: committed block 8 (0 entries, 1 bond-regs, 3 attestations)
+  C2: nakamoto 0 bonds → 0 operators (margin ×2) | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+  checkpoint: 8:75db9a771b748f7d364fd7e0a2566ee24eac63b0fea3a2c95b281bf8b032be91
