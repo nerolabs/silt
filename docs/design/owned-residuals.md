@@ -540,6 +540,20 @@ discount, C2 no quiet capture, the demand→standing firewall) — those are hel
   enumeration obligation the keystone already carries. Lift condition: the consensus-weight
   probes (`bonded`/`epochSet`, then `spent`/`slashed`) reach the equivalence + order-varying
   oracles green before the era-3 format freezes (issue #603).
+- **`RegCap` is a security parameter with a HARD coupling to #299 (succinct proofs) — OWED
+  re-measurement gate.** era-4's `RegCap` fresh-registration validity rule (ratified value = **256**,
+  `docs/decisions.md`, era-4 entry 2026-08-29) bounds the epoch-boundary witness read-set so it fits
+  the 2 GB floor box. RECERT2 certified the upper bound `RegCap ≤ 16,384` at desk
+  (`2 GiB / (EpochBlocks=8 × SProofMax=16 KiB)`) but ruled the *value* measurement-required: the
+  honest ceiling is `2 MiB / (minimum valid fresh-reg byte size under the deployed verifyBond)`,
+  which is not a chain constant. 256 is safe under the deployed ~1.5 MB genesis-proof scheme (honest
+  ceiling ~1 fresh reg/block). **The gate:** if **#299 (succinct proofs)** ships, smaller proofs
+  raise the honest ceiling to ~2,000 fresh regs/block — **above 256** — so `RegCap` MUST be
+  re-measured and re-minted **before or with #299**, or honest fresh registrations are rejected.
+  Same class as `SProofMax` (`core/statehash/witness_bound.go:78`). Do not ship #299 without
+  re-deriving `RegCap` from a measured minimum fresh-reg byte size under the then-deployed proof
+  scheme (RECERT2 Q2,
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/era4-witnessable-transitions-RECERT2-2026-08-29.md`).
 
 ---
 
