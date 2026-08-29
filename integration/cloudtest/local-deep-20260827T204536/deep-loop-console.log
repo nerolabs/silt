@@ -1,0 +1,27 @@
+[deep-loop] PID=80638 | EVIDENCE_DIR=/Users/andrewedmond/Claude/claude/silt/integration/cloudtest/local-deep-20260827T204536
+[deep-loop] started at 2026-08-27T20:47:01Z
+[deep-loop] tracks: origin/main (git fetch + reset --hard each cycle)
+[deep-loop] results → /Users/andrewedmond/Claude/claude/silt/integration/cloudtest/local-deep-20260827T204536/results.jsonl
+[deep-loop] heights schedule: 200 500 1000 2000
+[deep-loop] HEAD after fetch+reset: 0a322c8c83e80ad5ac12ce68947a36e74f7faaff
+[deep-loop] === run 1 | commit=0a322c8c83e8 | type=deep-height param=200 seed=11 | 2026-08-27T20:47:02Z
+[deep-loop]   result=PASS | elapsed=1s | h=200 | heap=    oom_growth_diag_test.go:105: h=200  HeapInuse=   6.3 MiB HeapObjects=48816     chainLen=201 tip=201
+[deep-loop] sleeping 2s before next run…
+[deep-loop] HEAD after fetch+reset: 0a322c8c83e80ad5ac12ce68947a36e74f7faaff
+[deep-loop] === run 2 | commit=0a322c8c83e8 | type=deep-height param=500 seed=17 | 2026-08-27T20:47:06Z
+[deep-loop]   result=PASS | elapsed=2s | h=500 | heap=    oom_growth_diag_test.go:105: h=500  HeapInuse=  13.5 MiB HeapObjects=119021    chainLen=501 tip=501
+[deep-loop] sleeping 2s before next run…
+[deep-loop] HEAD after fetch+reset: 0a322c8c83e80ad5ac12ce68947a36e74f7faaff
+[deep-loop] === run 3 | commit=0a322c8c83e8 | type=suite-race param=race seed=0 | 2026-08-27T20:47:11Z
+[deep-loop]   result=PASS | elapsed=93s | h=? | heap=
+[deep-loop] sleeping 2s before next run…
+[deep-loop] HEAD after fetch+reset: 0a322c8c83e80ad5ac12ce68947a36e74f7faaff
+[deep-loop] === run 4 | commit=0a322c8c83e8 | type=deep-height param=1000 seed=31 | 2026-08-27T20:48:47Z
+[deep-loop]   result=PASS | elapsed=3s | h=1000 | heap=    oom_growth_diag_test.go:105: h=1000 HeapInuse=  26.4 MiB HeapObjects=236055    chainLen=1001 tip=1001
+[deep-loop] sleeping 2s before next run…
+[deep-loop] HEAD after fetch+reset: 0a322c8c83e80ad5ac12ce68947a36e74f7faaff
+[deep-loop] === run 5 | commit=0a322c8c83e8 | type=deep-height param=2000 seed=42 | 2026-08-27T20:48:53Z
+[deep-loop]   result=PASS | elapsed=6s | h=2000 | heap=    oom_growth_diag_test.go:105: h=2000 HeapInuse=  50.6 MiB HeapObjects=470104    chainLen=2001 tip=2001
+[deep-loop] sleeping 2s before next run…
+[deep-loop] HEAD after fetch+reset: 0a322c8c83e80ad5ac12ce68947a36e74f7faaff
+[deep-loop] === run 6 | commit=0a322c8c83e8 | type=suite-race param=race seed=0 | 2026-08-27T20:49:02Z

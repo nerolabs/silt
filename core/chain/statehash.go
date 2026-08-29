@@ -52,6 +52,22 @@ const (
 	tagGateHeight   = "gateHeight\x00"
 	tagEra3LockedIn = "era3LockedIn\x00"
 	tagEra3Height   = "era3Height\x00"
+
+	// era-4 (v5) field tags — DEFINED here in 4a, but NOT yet in stateRootTags and
+	// NOT yet emitted by stateRootLeaves. In 4a these keyspaces are RESERVED, not
+	// committed: the maintenance maps they tag (qualified, the due-bucket index) and
+	// the frozen epochStart marker do not exist on Chain until 4b, and no leaf is
+	// emitted under these tags until 4b commits them as v5-only. Adding them to
+	// stateRootTags now would redden the coverage guards (a tag must map to a
+	// committedSet struct field and emit a populated leaf) — that wiring lands in 4b
+	// with the fields and leaf loops, which is the only point classification can go
+	// red the correct way. Reserving the tag strings here fixes the on-wire byte
+	// layout (tag || rawKey) before any leaf uses it, so 4b cannot silently pick a
+	// colliding or re-ordered prefix. See
+	// docs/thinking/2026-08-29-era4-build-decomposition-options.md, increment 4a.
+	tagDueBucket  = "dueBucket\x00"
+	tagQualified  = "qualified\x00"
+	tagEpochStart = "epochStart\x00"
 )
 
 // stateRootTags is the set of committedSet field names this file commits, used by

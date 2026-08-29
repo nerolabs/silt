@@ -1,0 +1,474 @@
+2026-08-21T16:18:17.495Z info discovery peers=1 source=-bootstrap
+2026-08-21T16:18:17.495Z info discovery peers=3 source=-persistent-peers
+2026-08-21T16:18:17.496Z warn dial failed to=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b addr=10.20.0.74:4001 err="dial tcp 10.20.0.74:4001: connect: connection refused" budget=2s elapsed=1.196896ms
+2026-08-21T16:18:18.002Z debug gather/prepare: PREPARED from=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=1 round=0 bytes=1573289 regs=1
+2026-08-21T16:18:18.034Z debug gather/precommit: PRECOMMITTED from=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=1 round=0
+2026-08-21T16:18:18.067Z info block committed height=1 entries=0 regs=1 attestations=3 via=broadcast
+2026-08-21T16:18:25.512Z debug gather/prepare: PREPARED from=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 height=2 round=0 bytes=1573278 regs=1
+2026-08-21T16:18:25.512Z debug request retry to=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b kind=FindNode attempt=1
+2026-08-21T16:18:25.549Z debug gather/precommit: PRECOMMITTED from=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 height=2 round=0
+2026-08-21T16:18:25.576Z info block committed height=2 entries=0 regs=1 attestations=3 via=broadcast
+2026-08-21T16:18:25.766Z info bootstrapped table=3
+2026-08-21T16:18:25.766Z info standing self=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 reputation=1024
+2026-08-21T16:18:25.775Z info bond renewal submitted signed_next_height=3 size=67108864 peers=3
+2026-08-21T16:18:25.779Z info reachability verdict reach=public helpers=3
+2026-08-21T16:18:25.804Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T16:18:25.809Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T16:18:25.813Z info bond challenge peer=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 passed=true late=false standing=1024
+2026-08-21T16:18:51.253Z debug eventloop budget window_s=30 kind=ProposeBlock count=2 total_ms=54 max_ms=28 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:18:51.253Z debug eventloop budget window_s=30 kind=CommitBlock count=2 total_ms=27 max_ms=15 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:18:51.253Z debug eventloop budget window_s=30 kind=ReachabilityReply count=3 total_ms=0 max_ms=0 wait_total_ms=4 wait_max_ms=3
+2026-08-21T16:18:51.253Z debug eventloop budget window_s=30 kind=PrepareQC count=2 total_ms=41 max_ms=22 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:18:51.253Z debug eventloop budget window_s=30 kind=BondChallenge count=4 total_ms=133 max_ms=45 wait_total_ms=8 wait_max_ms=8
+2026-08-21T16:18:51.253Z debug eventloop budget window_s=30 kind=SubmitBondReg count=3 total_ms=51 max_ms=23 wait_total_ms=22 wait_max_ms=22
+2026-08-21T16:18:51.253Z debug eventloop budget window_s=30 kind=IssuerKeyReply count=6 total_ms=0 max_ms=0 wait_total_ms=43 wait_max_ms=12
+2026-08-21T16:18:51.253Z debug eventloop budget window_s=30 kind=SubmitBondRegAck count=3 total_ms=0 max_ms=0 wait_total_ms=6 wait_max_ms=3
+2026-08-21T16:18:51.253Z debug eventloop budget window_s=30 kind=bootstrap count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:18:51.253Z debug eventloop budget window_s=30 kind=GetIssuerKey count=6 total_ms=0 max_ms=0 wait_total_ms=73 wait_max_ms=36
+2026-08-21T16:18:51.253Z debug eventloop budget window_s=30 kind=AddProvider count=21 total_ms=0 max_ms=0 wait_total_ms=26 wait_max_ms=15
+2026-08-21T16:18:51.253Z debug eventloop budget window_s=30 kind=AddProviderAck count=21 total_ms=0 max_ms=0 wait_total_ms=1 wait_max_ms=1
+2026-08-21T16:18:51.253Z debug eventloop budget window_s=30 kind=FindNodeReply count=30 total_ms=0 max_ms=0 wait_total_ms=6 wait_max_ms=3
+2026-08-21T16:18:51.253Z debug eventloop budget window_s=30 kind=FindNode count=30 total_ms=2 max_ms=1 wait_total_ms=482 wait_max_ms=399
+2026-08-21T16:18:51.253Z debug eventloop budget window_s=30 kind=GetChainHead count=4 total_ms=21 max_ms=13 wait_total_ms=50 wait_max_ms=34
+2026-08-21T16:18:51.253Z debug eventloop budget window_s=30 kind=BondReply count=3 total_ms=20 max_ms=11 wait_total_ms=17 wait_max_ms=8
+2026-08-21T16:18:51.253Z debug eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:18:51.253Z debug eventloop budget window_s=30 kind=ChainHeadReply count=3 total_ms=5 max_ms=2 wait_total_ms=10 wait_max_ms=10
+2026-08-21T16:18:51.253Z debug eventloop budget window_s=30 kind=timer count=15 total_ms=13 max_ms=12 wait_total_ms=18 wait_max_ms=16
+2026-08-21T16:18:51.253Z debug eventloop budget window_s=30 kind=CheckReachability count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:18:55.787Z debug gather/prepare: PREPARED from=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=3 round=0 bytes=3147559 regs=1
+2026-08-21T16:18:55.787Z info standing self=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 reputation=1024
+2026-08-21T16:18:55.851Z info bond renewal submitted signed_next_height=3 size=67108864 peers=3
+2026-08-21T16:18:55.874Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T16:18:55.885Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T16:18:55.897Z info bond challenge peer=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 passed=true late=false standing=1024
+2026-08-21T16:18:56.019Z debug gather/precommit: PRECOMMITTED from=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=3 round=0
+2026-08-21T16:18:56.042Z warn validator slashed for equivocation culprit=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 height=2
+2026-08-21T16:18:56.046Z debug peer chain not adopted peer=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 err="chain: fork would revert a finalized (super-quorum-committed) objective block (BFT finality gate — reorg refused; prefer stall to reorg, D-1, #357 §3)"
+2026-08-21T16:18:56.177Z info block committed height=3 entries=0 regs=1 attestations=3 via=broadcast
+2026-08-21T16:19:18.166Z debug gather/prepare: PREPARED from=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=4 round=0 bytes=1573284 regs=1
+2026-08-21T16:19:18.205Z debug gather/precommit: PRECOMMITTED from=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=4 round=0
+2026-08-21T16:19:18.257Z info block committed height=4 entries=0 regs=1 attestations=3 via=broadcast
+2026-08-21T16:19:25.004Z debug eventloop budget window_s=33 kind=ProposeBlock count=2 total_ms=153 max_ms=113 wait_total_ms=1 wait_max_ms=0
+2026-08-21T16:19:25.004Z debug eventloop budget window_s=33 kind=PrepareQC count=2 total_ms=99 max_ms=83 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:19:25.004Z debug eventloop budget window_s=33 kind=ChainReply count=1 total_ms=28 max_ms=28 wait_total_ms=64 wait_max_ms=64
+2026-08-21T16:19:25.004Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:19:25.004Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=16 max_ms=7 wait_total_ms=94 wait_max_ms=81
+2026-08-21T16:19:25.004Z debug eventloop budget window_s=33 kind=SubmitBondReg count=1 total_ms=48 max_ms=48 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:19:25.004Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=33 max_ms=23 wait_total_ms=97 wait_max_ms=71
+2026-08-21T16:19:25.005Z debug eventloop budget window_s=33 kind=SubmitBondRegAck count=3 total_ms=0 max_ms=0 wait_total_ms=59 wait_max_ms=59
+2026-08-21T16:19:25.005Z debug eventloop budget window_s=33 kind=FindNode count=6 total_ms=1 max_ms=0 wait_total_ms=54 wait_max_ms=54
+2026-08-21T16:19:25.005Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:19:25.005Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=36 max_ms=14 wait_total_ms=54 wait_max_ms=24
+2026-08-21T16:19:25.005Z debug eventloop budget window_s=33 kind=timer count=6 total_ms=72 max_ms=71 wait_total_ms=25 wait_max_ms=17
+2026-08-21T16:19:25.005Z debug eventloop budget window_s=33 kind=CommitBlock count=2 total_ms=110 max_ms=71 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:19:25.005Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=290 max_ms=200 wait_total_ms=1 wait_max_ms=1
+2026-08-21T16:19:25.529Z debug gather/prepare: PREPARED from=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=5 round=0 bytes=1573289 regs=1
+2026-08-21T16:19:25.552Z debug gather/precommit: PRECOMMITTED from=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=5 round=0
+2026-08-21T16:19:25.608Z info block committed height=5 entries=0 regs=1 attestations=3 via=broadcast
+2026-08-21T16:19:25.789Z info standing self=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 reputation=1024
+2026-08-21T16:19:25.805Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T16:19:25.810Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T16:19:25.814Z info bond challenge peer=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 passed=true late=false standing=-1099511626752
+2026-08-21T16:19:25.870Z info bond renewal submitted signed_next_height=6 size=67108864 peers=3
+2026-08-21T16:19:25.912Z debug peer chain not adopted peer=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 err="chain: fork would revert a finalized (super-quorum-committed) objective block (BFT finality gate — reorg refused; prefer stall to reorg, D-1, #357 §3)"
+2026-08-21T16:19:26.018Z debug gather: starting (two-phase) height=6 round=0 bytes=1573269 regs=1 quorum=2 attesters=2
+2026-08-21T16:19:26.018Z debug gather: requesting prepare to=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=6 round=0 bytes=1573269 have=0 need=2
+2026-08-21T16:19:26.019Z debug gather: requesting prepare to=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=6 round=0 bytes=1573269 have=0 need=2
+2026-08-21T16:19:26.046Z debug gather: prepare collected from=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=6 have=1 need=2
+2026-08-21T16:19:26.048Z debug gather: prepare collected from=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=6 have=2 need=2
+2026-08-21T16:19:26.054Z debug gather: prepare-QC assembled — LOCKED height=6 round=0 prepares=3
+2026-08-21T16:19:26.091Z info block committed height=6 round=0 entries=0 regs=1 attestations=3 via=proposal
+2026-08-21T16:19:26.191Z info bond-reg drain: pending registrations committed height=6
+2026-08-21T16:19:48.140Z debug gather/prepare: PREPARED from=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=7 round=0 bytes=1573294 regs=1
+2026-08-21T16:19:48.166Z debug gather/precommit: PRECOMMITTED from=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=7 round=0
+2026-08-21T16:19:48.246Z info block committed height=7 entries=0 regs=1 attestations=3 via=broadcast
+2026-08-21T16:19:55.005Z debug eventloop budget window_s=30 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:19:55.005Z debug eventloop budget window_s=30 kind=CommitBlock count=2 total_ms=76 max_ms=49 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:19:55.005Z debug eventloop budget window_s=30 kind=PrepareQC count=2 total_ms=25 max_ms=14 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:19:55.005Z debug eventloop budget window_s=30 kind=SubmitBondRegAck count=3 total_ms=0 max_ms=0 wait_total_ms=3 wait_max_ms=3
+2026-08-21T16:19:55.005Z debug eventloop budget window_s=30 kind=PrecommitReply count=2 total_ms=29 max_ms=29 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:19:55.006Z debug eventloop budget window_s=30 kind=ProposeBlock count=2 total_ms=102 max_ms=52 wait_total_ms=9 wait_max_ms=9
+2026-08-21T16:19:55.006Z debug eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:19:55.006Z debug eventloop budget window_s=30 kind=BondChallenge count=3 total_ms=104 max_ms=45 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:19:55.006Z debug eventloop budget window_s=30 kind=SubmitBondReg count=1 total_ms=34 max_ms=34 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:19:55.006Z debug eventloop budget window_s=30 kind=GetChainHead count=3 total_ms=8 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:19:55.006Z debug eventloop budget window_s=30 kind=CommitAck count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:19:55.006Z debug eventloop budget window_s=30 kind=ChainReply count=1 total_ms=10 max_ms=10 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:19:55.006Z debug eventloop budget window_s=30 kind=AttestReply count=2 total_ms=9 max_ms=9 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:19:55.006Z debug eventloop budget window_s=30 kind=timer count=6 total_ms=8 max_ms=8 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:19:55.006Z debug eventloop budget window_s=30 kind=FindNode count=6 total_ms=1 max_ms=1 wait_total_ms=31 wait_max_ms=30
+2026-08-21T16:19:55.006Z debug eventloop budget window_s=30 kind=ChainHeadReply count=3 total_ms=109 max_ms=105 wait_total_ms=6 wait_max_ms=6
+2026-08-21T16:19:55.006Z debug eventloop budget window_s=30 kind=BondReply count=3 total_ms=15 max_ms=7 wait_total_ms=7 wait_max_ms=4
+2026-08-21T16:19:55.665Z debug gather/prepare: PREPARED from=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=8 round=0 bytes=1573294 regs=1
+2026-08-21T16:19:55.706Z debug gather/precommit: PRECOMMITTED from=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=8 round=0
+2026-08-21T16:19:55.827Z info block committed height=8 entries=0 regs=1 attestations=3 via=broadcast
+2026-08-21T16:19:55.841Z info standing self=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 reputation=1024
+2026-08-21T16:19:55.874Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T16:19:55.877Z info bond challenge peer=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 passed=true late=false standing=-1099511626752
+2026-08-21T16:19:55.883Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T16:19:55.991Z debug peer chain not adopted peer=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 err="chain: fork would revert a finalized (super-quorum-committed) objective block (BFT finality gate — reorg refused; prefer stall to reorg, D-1, #357 §3)"
+2026-08-21T16:19:56.153Z debug gather: starting (two-phase) height=9 round=0 bytes=1573277 regs=1 quorum=2 attesters=2
+2026-08-21T16:19:56.154Z debug gather: requesting prepare to=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=9 round=0 bytes=1573277 have=0 need=2
+2026-08-21T16:19:56.154Z debug gather: requesting prepare to=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=9 round=0 bytes=1573277 have=0 need=2
+2026-08-21T16:19:56.204Z debug gather: prepare collected from=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=9 have=1 need=2
+2026-08-21T16:19:56.206Z debug gather: prepare collected from=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=9 have=2 need=2
+2026-08-21T16:19:56.213Z debug gather: prepare-QC assembled — LOCKED height=9 round=0 prepares=3
+2026-08-21T16:19:56.258Z info block committed height=9 round=0 entries=0 regs=1 attestations=3 via=proposal
+2026-08-21T16:19:56.398Z info bond-reg drain: pending registrations committed height=9
+2026-08-21T16:20:18.670Z debug gather/prepare: PREPARED from=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=10 round=0 bytes=1573276 regs=1
+2026-08-21T16:20:18.781Z debug gather/precommit: PRECOMMITTED from=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=10 round=0
+2026-08-21T16:20:19.123Z info block committed height=10 entries=0 regs=1 attestations=3 via=broadcast
+2026-08-21T16:20:25.619Z debug gather/prepare: PREPARED from=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=11 round=0 bytes=1573276 regs=1
+2026-08-21T16:20:25.673Z debug gather/precommit: PRECOMMITTED from=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=11 round=0
+2026-08-21T16:20:25.760Z info block committed height=11 entries=0 regs=1 attestations=3 via=broadcast
+2026-08-21T16:20:25.842Z info standing self=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 reputation=1024
+2026-08-21T16:20:25.858Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T16:20:25.861Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T16:20:25.905Z info bond challenge peer=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 passed=true late=false standing=-1099511626752
+2026-08-21T16:20:25.913Z debug peer chain not adopted peer=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 err="chain: fork would revert a finalized (super-quorum-committed) objective block (BFT finality gate — reorg refused; prefer stall to reorg, D-1, #357 §3)"
+2026-08-21T16:20:26.023Z debug gather: starting (two-phase) height=12 round=0 bytes=1573277 regs=1 quorum=2 attesters=2
+2026-08-21T16:20:26.024Z debug gather: requesting prepare to=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=12 round=0 bytes=1573277 have=0 need=2
+2026-08-21T16:20:26.024Z debug gather: requesting prepare to=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=12 round=0 bytes=1573277 have=0 need=2
+2026-08-21T16:20:26.060Z debug gather: prepare collected from=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=12 have=1 need=2
+2026-08-21T16:20:26.060Z debug gather: prepare collected from=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=12 have=2 need=2
+2026-08-21T16:20:26.070Z debug gather: prepare-QC assembled — LOCKED height=12 round=0 prepares=3
+2026-08-21T16:20:26.137Z info block committed height=12 round=0 entries=0 regs=1 attestations=3 via=proposal
+2026-08-21T16:20:26.294Z info bond-reg drain: pending registrations committed height=12
+2026-08-21T16:20:28.750Z debug eventloop budget window_s=33 kind=PrecommitReply count=4 total_ms=93 max_ms=52 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:20:28.750Z debug eventloop budget window_s=33 kind=BondReply count=6 total_ms=30 max_ms=8 wait_total_ms=12 wait_max_ms=6
+2026-08-21T16:20:28.750Z debug eventloop budget window_s=33 kind=ChainHeadReply count=6 total_ms=278 max_ms=163 wait_total_ms=3 wait_max_ms=3
+2026-08-21T16:20:28.750Z debug eventloop budget window_s=33 kind=AttestReply count=4 total_ms=25 max_ms=18 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:20:28.750Z debug eventloop budget window_s=33 kind=timer count=8 total_ms=2 max_ms=0 wait_total_ms=62 wait_max_ms=51
+2026-08-21T16:20:28.750Z debug eventloop budget window_s=33 kind=BondChallenge count=5 total_ms=157 max_ms=69 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:20:28.750Z debug eventloop budget window_s=33 kind=CommitBlock count=3 total_ms=337 max_ms=223 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:20:28.750Z debug eventloop budget window_s=33 kind=FindNode count=6 total_ms=2 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:20:28.750Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:20:28.750Z debug eventloop budget window_s=33 kind=SubmitBondReg count=2 total_ms=163 max_ms=122 wait_total_ms=79 wait_max_ms=79
+2026-08-21T16:20:28.750Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:20:28.750Z debug eventloop budget window_s=33 kind=ChainReply count=2 total_ms=11 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:20:28.750Z debug eventloop budget window_s=33 kind=CommitAck count=6 total_ms=3 max_ms=2 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:20:28.750Z debug eventloop budget window_s=33 kind=ProposeBlock count=3 total_ms=335 max_ms=187 wait_total_ms=108 wait_max_ms=107
+2026-08-21T16:20:28.750Z debug eventloop budget window_s=33 kind=GetChainHead count=5 total_ms=24 max_ms=9 wait_total_ms=25 wait_max_ms=25
+2026-08-21T16:20:28.750Z debug eventloop budget window_s=33 kind=PrepareQC count=3 total_ms=76 max_ms=51 wait_total_ms=20 wait_max_ms=20
+2026-08-21T16:20:48.211Z debug gather/prepare: PREPARED from=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=13 round=0 bytes=1573284 regs=1
+2026-08-21T16:20:48.238Z debug gather/precommit: PRECOMMITTED from=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=13 round=0
+2026-08-21T16:20:48.342Z info block committed height=13 entries=0 regs=1 attestations=3 via=broadcast
+2026-08-21T16:20:55.848Z info standing self=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 reputation=1024
+2026-08-21T16:20:55.919Z info bond challenge peer=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 passed=true late=false standing=-1099511626752
+2026-08-21T16:20:55.939Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T16:20:55.987Z debug peer chain not adopted peer=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 err="chain: fork would revert a finalized (super-quorum-committed) objective block (BFT finality gate — reorg refused; prefer stall to reorg, D-1, #357 §3)"
+2026-08-21T16:20:56.239Z debug gather/prepare: PREPARED from=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=14 round=0 bytes=1573284 regs=1
+2026-08-21T16:20:56.262Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T16:20:56.267Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=14 round=0 mark_height=14 mark_round=0 pending=1 pending_entries=0
+2026-08-21T16:20:56.294Z debug gather/precommit: PRECOMMITTED from=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=14 round=0
+2026-08-21T16:20:56.395Z info block committed height=14 entries=0 regs=1 attestations=3 via=broadcast
+2026-08-21T16:20:58.750Z debug eventloop budget window_s=30 kind=PrepareQC count=2 total_ms=30 max_ms=16 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:20:58.750Z debug eventloop budget window_s=30 kind=FindNode count=6 total_ms=1 max_ms=0 wait_total_ms=33 wait_max_ms=32
+2026-08-21T16:20:58.750Z debug eventloop budget window_s=30 kind=SubmitBondReg count=1 total_ms=238 max_ms=238 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:20:58.750Z debug eventloop budget window_s=30 kind=ChainReply count=1 total_ms=26 max_ms=26 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:20:58.750Z debug eventloop budget window_s=30 kind=timer count=6 total_ms=14 max_ms=9 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:20:58.750Z debug eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:20:58.750Z debug eventloop budget window_s=30 kind=ProposeBlock count=2 total_ms=215 max_ms=150 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:20:58.750Z debug eventloop budget window_s=30 kind=CommitBlock count=2 total_ms=174 max_ms=111 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:20:58.750Z debug eventloop budget window_s=30 kind=BondReply count=3 total_ms=29 max_ms=12 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:20:58.750Z debug eventloop budget window_s=30 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:20:58.750Z debug eventloop budget window_s=30 kind=ChainHeadReply count=3 total_ms=10 max_ms=7 wait_total_ms=13 wait_max_ms=10
+2026-08-21T16:20:58.751Z debug eventloop budget window_s=30 kind=BondChallenge count=3 total_ms=158 max_ms=89 wait_total_ms=4 wait_max_ms=2
+2026-08-21T16:20:58.751Z debug eventloop budget window_s=30 kind=GetChainHead count=3 total_ms=12 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:21:25.855Z info standing self=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 reputation=1024
+2026-08-21T16:21:25.880Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T16:21:25.883Z info bond challenge peer=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 passed=true late=false standing=-1099511626752
+2026-08-21T16:21:25.888Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T16:21:25.910Z debug peer chain not adopted peer=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 err="chain: fork would revert a finalized (super-quorum-committed) objective block (BFT finality gate — reorg refused; prefer stall to reorg, D-1, #357 §3)"
+2026-08-21T16:21:26.012Z debug gather: starting (two-phase) height=15 round=0 bytes=1573286 regs=1 quorum=2 attesters=2
+2026-08-21T16:21:26.013Z debug gather: requesting prepare to=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=15 round=0 bytes=1573286 have=0 need=2
+2026-08-21T16:21:26.013Z debug gather: requesting prepare to=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=15 round=0 bytes=1573286 have=0 need=2
+2026-08-21T16:21:26.064Z debug gather: prepare collected from=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=15 have=1 need=2
+2026-08-21T16:21:26.066Z debug gather: prepare collected from=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=15 have=2 need=2
+2026-08-21T16:21:26.073Z debug gather: prepare-QC assembled — LOCKED height=15 round=0 prepares=3
+2026-08-21T16:21:26.123Z info block committed height=15 round=0 entries=0 regs=1 attestations=3 via=proposal
+2026-08-21T16:21:26.382Z info bond-reg drain: pending registrations committed height=15
+2026-08-21T16:21:28.750Z debug eventloop budget window_s=30 kind=GetChainHead count=3 total_ms=12 max_ms=9 wait_total_ms=57 wait_max_ms=57
+2026-08-21T16:21:28.751Z debug eventloop budget window_s=30 kind=SubmitBondReg count=1 total_ms=92 max_ms=92 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:21:28.751Z debug eventloop budget window_s=30 kind=AttestReply count=2 total_ms=8 max_ms=8 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:21:28.751Z debug eventloop budget window_s=30 kind=FindNode count=6 total_ms=1 max_ms=0 wait_total_ms=34 wait_max_ms=34
+2026-08-21T16:21:28.751Z debug eventloop budget window_s=30 kind=BondReply count=3 total_ms=16 max_ms=8 wait_total_ms=9 wait_max_ms=5
+2026-08-21T16:21:28.751Z debug eventloop budget window_s=30 kind=PrecommitReply count=2 total_ms=58 max_ms=58 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:21:28.751Z debug eventloop budget window_s=30 kind=CommitAck count=3 total_ms=1 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:21:28.751Z debug eventloop budget window_s=30 kind=ChainHeadReply count=3 total_ms=106 max_ms=105 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:21:28.751Z debug eventloop budget window_s=30 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:21:28.751Z debug eventloop budget window_s=30 kind=BondChallenge count=3 total_ms=164 max_ms=73 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:21:28.751Z debug eventloop budget window_s=30 kind=ChainReply count=1 total_ms=6 max_ms=6 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:21:28.751Z debug eventloop budget window_s=30 kind=timer count=6 total_ms=2 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:21:28.751Z debug eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:21:48.081Z debug gather/prepare: PREPARED from=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=16 round=0 bytes=1573293 regs=1
+2026-08-21T16:21:48.111Z debug gather/precommit: PRECOMMITTED from=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=16 round=0
+2026-08-21T16:21:48.251Z info block committed height=16 entries=0 regs=1 attestations=3 via=broadcast
+2026-08-21T16:21:55.648Z info standing self=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 reputation=1024
+2026-08-21T16:21:55.678Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T16:21:55.685Z info bond challenge peer=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 passed=true late=false standing=-1099511626752
+2026-08-21T16:21:55.749Z debug gather/prepare: PREPARED from=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=17 round=0 bytes=1573295 regs=1
+2026-08-21T16:21:55.753Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T16:21:55.767Z debug peer chain not adopted peer=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 err="chain: fork would revert a finalized (super-quorum-committed) objective block (BFT finality gate — reorg refused; prefer stall to reorg, D-1, #357 §3)"
+2026-08-21T16:21:55.776Z debug gather/precommit: PRECOMMITTED from=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=17 round=0
+2026-08-21T16:21:55.779Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=17 round=0 mark_height=17 mark_round=0 pending=1 pending_entries=0
+2026-08-21T16:21:55.904Z info block committed height=17 entries=0 regs=1 attestations=3 via=broadcast
+2026-08-21T16:22:02.382Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=16 max_ms=7 wait_total_ms=62 wait_max_ms=55
+2026-08-21T16:22:02.382Z debug eventloop budget window_s=33 kind=timer count=6 total_ms=1 max_ms=0 wait_total_ms=58 wait_max_ms=58
+2026-08-21T16:22:02.383Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:22:02.383Z debug eventloop budget window_s=33 kind=CommitBlock count=2 total_ms=155 max_ms=81 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:22:02.383Z debug eventloop budget window_s=33 kind=ChainReply count=1 total_ms=9 max_ms=9 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:22:02.383Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=281 max_ms=211 wait_total_ms=114 wait_max_ms=112
+2026-08-21T16:22:02.383Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=123 max_ms=116 wait_total_ms=29 wait_max_ms=29
+2026-08-21T16:22:02.383Z debug eventloop budget window_s=33 kind=PrepareQC count=2 total_ms=26 max_ms=17 wait_total_ms=5 wait_max_ms=5
+2026-08-21T16:22:02.383Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=4 max_ms=3 wait_total_ms=8 wait_max_ms=8
+2026-08-21T16:22:02.383Z debug eventloop budget window_s=33 kind=FindNode count=8 total_ms=3 max_ms=1 wait_total_ms=29 wait_max_ms=28
+2026-08-21T16:22:02.383Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:22:02.383Z debug eventloop budget window_s=33 kind=ProposeBlock count=2 total_ms=128 max_ms=64 wait_total_ms=1 wait_max_ms=1
+2026-08-21T16:22:02.383Z debug eventloop budget window_s=33 kind=SubmitBondReg count=1 total_ms=48 max_ms=48 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:22:25.541Z info standing self=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 reputation=1024
+2026-08-21T16:22:25.562Z info bond challenge peer=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 passed=true late=false standing=-1099511626752
+2026-08-21T16:22:25.568Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T16:22:25.573Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T16:22:25.671Z debug peer chain not adopted peer=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 err="chain: fork would revert a finalized (super-quorum-committed) objective block (BFT finality gate — reorg refused; prefer stall to reorg, D-1, #357 §3)"
+2026-08-21T16:22:25.771Z debug gather: starting (two-phase) height=18 round=0 bytes=1573277 regs=1 quorum=2 attesters=2
+2026-08-21T16:22:25.771Z debug gather: requesting prepare to=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=18 round=0 bytes=1573277 have=0 need=2
+2026-08-21T16:22:25.772Z debug gather: requesting prepare to=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=18 round=0 bytes=1573277 have=0 need=2
+2026-08-21T16:22:25.814Z debug gather: prepare collected from=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=18 have=1 need=2
+2026-08-21T16:22:25.825Z debug gather: prepare collected from=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=18 have=2 need=2
+2026-08-21T16:22:25.838Z debug gather: prepare-QC assembled — LOCKED height=18 round=0 prepares=3
+2026-08-21T16:22:25.921Z info block committed height=18 round=0 entries=0 regs=1 attestations=3 via=proposal
+2026-08-21T16:22:26.370Z info bond-reg drain: pending registrations committed height=18
+2026-08-21T16:22:35.932Z debug eventloop budget window_s=33 kind=AttestReply count=2 total_ms=18 max_ms=18 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:22:35.933Z debug eventloop budget window_s=33 kind=FindNodeReply count=9 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:22:35.933Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:22:35.933Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=15 max_ms=5 wait_total_ms=4 wait_max_ms=4
+2026-08-21T16:22:35.933Z debug eventloop budget window_s=33 kind=CommitAck count=3 total_ms=1 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:22:35.933Z debug eventloop budget window_s=33 kind=timer count=8 total_ms=11 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:22:35.933Z debug eventloop budget window_s=33 kind=FindNode count=7 total_ms=1 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:22:35.933Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=205 max_ms=91 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:22:35.933Z debug eventloop budget window_s=33 kind=PrecommitReply count=2 total_ms=129 max_ms=129 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:22:35.933Z debug eventloop budget window_s=33 kind=SubmitBondReg count=1 total_ms=117 max_ms=117 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:22:35.933Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=107 max_ms=100 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:22:35.933Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=24 max_ms=21 wait_total_ms=8 wait_max_ms=8
+2026-08-21T16:22:35.933Z debug eventloop budget window_s=33 kind=ChainReply count=1 total_ms=10 max_ms=10 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:22:47.928Z debug gather/prepare: PREPARED from=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=19 round=0 bytes=1573284 regs=1
+2026-08-21T16:22:47.961Z debug gather/precommit: PRECOMMITTED from=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=19 round=0
+2026-08-21T16:22:48.094Z info block committed height=19 entries=0 regs=1 attestations=3 via=broadcast
+2026-08-21T16:22:55.484Z info standing self=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 reputation=1024
+2026-08-21T16:22:55.594Z info bond challenge peer=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 passed=true late=false standing=-1099511626752
+2026-08-21T16:22:55.632Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T16:22:55.694Z debug peer chain not adopted peer=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 err="chain: fork would revert a finalized (super-quorum-committed) objective block (BFT finality gate — reorg refused; prefer stall to reorg, D-1, #357 §3)"
+2026-08-21T16:22:56.052Z debug gather/prepare: PREPARED from=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=20 round=0 bytes=1573284 regs=1
+2026-08-21T16:22:56.052Z warn eventloop task slow (node thread blocked) kind=ProposeBlock ms=277
+2026-08-21T16:22:56.068Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T16:22:56.080Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=20 round=0 mark_height=20 mark_round=0 pending=1 pending_entries=0
+2026-08-21T16:22:56.180Z debug gather/precommit: PRECOMMITTED from=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=20 round=0
+2026-08-21T16:22:56.552Z info block committed height=20 entries=0 regs=1 attestations=3 via=broadcast
+2026-08-21T16:23:05.824Z debug eventloop budget window_s=30 kind=ChainHeadReply count=3 total_ms=22 max_ms=15 wait_total_ms=64 wait_max_ms=46
+2026-08-21T16:23:05.825Z debug eventloop budget window_s=30 kind=ChainReply count=1 total_ms=37 max_ms=37 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:23:05.825Z debug eventloop budget window_s=30 kind=FindNode count=6 total_ms=2 max_ms=0 wait_total_ms=60 wait_max_ms=60
+2026-08-21T16:23:05.825Z debug eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:23:05.825Z debug eventloop budget window_s=30 kind=timer count=6 total_ms=9 max_ms=7 wait_total_ms=49 wait_max_ms=49
+2026-08-21T16:23:05.825Z debug eventloop budget window_s=30 kind=BondChallenge count=3 total_ms=231 max_ms=93 wait_total_ms=3 wait_max_ms=3
+2026-08-21T16:23:05.825Z debug eventloop budget window_s=30 kind=GetChainHead count=3 total_ms=15 max_ms=8 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:23:05.825Z debug eventloop budget window_s=30 kind=ProposeBlock count=2 total_ms=340 max_ms=277 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:23:05.825Z debug eventloop budget window_s=30 kind=PrepareQC count=2 total_ms=71 max_ms=56 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:23:05.825Z debug eventloop budget window_s=30 kind=SubmitBondReg count=1 total_ms=176 max_ms=176 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:23:05.825Z debug eventloop budget window_s=30 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:23:05.825Z debug eventloop budget window_s=30 kind=CommitBlock count=2 total_ms=316 max_ms=207 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:23:05.825Z debug eventloop budget window_s=30 kind=BondReply count=3 total_ms=74 max_ms=40 wait_total_ms=44 wait_max_ms=37
+2026-08-21T16:23:25.489Z info standing self=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 reputation=1024
+2026-08-21T16:23:25.509Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T16:23:25.513Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T16:23:25.518Z info bond challenge peer=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 passed=true late=false standing=-1099511626752
+2026-08-21T16:23:25.574Z debug peer chain not adopted peer=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 err="chain: fork would revert a finalized (super-quorum-committed) objective block (BFT finality gate — reorg refused; prefer stall to reorg, D-1, #357 §3)"
+2026-08-21T16:23:25.680Z debug gather: starting (two-phase) height=21 round=0 bytes=1573282 regs=1 quorum=2 attesters=2
+2026-08-21T16:23:25.681Z debug gather: requesting prepare to=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=21 round=0 bytes=1573282 have=0 need=2
+2026-08-21T16:23:25.685Z debug gather: requesting prepare to=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=21 round=0 bytes=1573282 have=0 need=2
+2026-08-21T16:23:25.755Z debug gather: prepare collected from=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=21 have=1 need=2
+2026-08-21T16:23:25.767Z debug gather: prepare collected from=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=21 have=2 need=2
+2026-08-21T16:23:25.775Z debug gather: prepare-QC assembled — LOCKED height=21 round=0 prepares=3
+2026-08-21T16:23:25.824Z info block committed height=21 round=0 entries=0 regs=1 attestations=3 via=proposal
+2026-08-21T16:23:26.152Z info bond-reg drain: pending registrations committed height=21
+2026-08-21T16:23:39.561Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:23:39.562Z debug eventloop budget window_s=33 kind=timer count=6 total_ms=2 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:23:39.562Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:23:39.562Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=143 max_ms=49 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:23:39.562Z debug eventloop budget window_s=33 kind=ChainReply count=1 total_ms=11 max_ms=11 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:23:39.562Z debug eventloop budget window_s=33 kind=SubmitBondReg count=2 total_ms=181 max_ms=98 wait_total_ms=2 wait_max_ms=2
+2026-08-21T16:23:39.562Z debug eventloop budget window_s=33 kind=PrecommitReply count=2 total_ms=109 max_ms=109 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:23:39.562Z debug eventloop budget window_s=33 kind=CommitAck count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:23:39.562Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=6 max_ms=3 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:23:39.562Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=15 max_ms=6 wait_total_ms=5 wait_max_ms=3
+2026-08-21T16:23:39.562Z debug eventloop budget window_s=33 kind=FindNode count=6 total_ms=1 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:23:39.562Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=118 max_ms=116 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:23:39.562Z debug eventloop budget window_s=33 kind=AttestReply count=2 total_ms=9 max_ms=9 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:23:47.928Z warn eventloop task slow (node thread blocked) kind=SubmitBondReg ms=302
+2026-08-21T16:23:48.545Z debug gather/prepare: PREPARED from=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=22 round=0 bytes=1573276 regs=1
+2026-08-21T16:23:48.708Z debug gather/precommit: PRECOMMITTED from=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=22 round=0
+2026-08-21T16:23:49.207Z info block committed height=22 entries=0 regs=1 attestations=3 via=broadcast
+2026-08-21T16:23:49.453Z warn eventloop task slow (node thread blocked) kind=CommitBlock ms=468
+2026-08-21T16:23:55.522Z info standing self=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 reputation=1024
+2026-08-21T16:23:55.633Z info bond challenge peer=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 passed=true late=false standing=-1099511626752
+2026-08-21T16:23:55.649Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T16:23:55.676Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T16:23:55.735Z debug peer chain not adopted peer=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 err="chain: fork would revert a finalized (super-quorum-committed) objective block (BFT finality gate — reorg refused; prefer stall to reorg, D-1, #357 §3)"
+2026-08-21T16:23:56.210Z debug gather/prepare: PREPARED from=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=23 round=0 bytes=1573290 regs=1
+2026-08-21T16:23:56.225Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=23 round=0 mark_height=23 mark_round=0 pending=2 pending_entries=0
+2026-08-21T16:23:56.314Z debug gather/precommit: PRECOMMITTED from=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=23 round=0
+2026-08-21T16:23:56.779Z info block committed height=23 entries=0 regs=1 attestations=3 via=broadcast
+2026-08-21T16:23:57.091Z warn eventloop task slow (node thread blocked) kind=CommitBlock ms=440
+2026-08-21T16:24:13.305Z debug eventloop budget window_s=33 kind=timer count=6 total_ms=8 max_ms=6 wait_total_ms=201 wait_max_ms=134
+2026-08-21T16:24:13.306Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=256 max_ms=93 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:24:13.306Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=27 max_ms=14 wait_total_ms=88 wait_max_ms=44
+2026-08-21T16:24:13.306Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=80 max_ms=43 wait_total_ms=35 wait_max_ms=19
+2026-08-21T16:24:13.306Z debug eventloop budget window_s=33 kind=ChainReply count=1 total_ms=36 max_ms=36 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:24:13.306Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:24:13.306Z debug eventloop budget window_s=33 kind=SubmitBondReg count=2 total_ms=531 max_ms=302 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:24:13.306Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=28 max_ms=18 wait_total_ms=188 wait_max_ms=140
+2026-08-21T16:24:13.306Z debug eventloop budget window_s=33 kind=CommitBlock count=2 total_ms=909 max_ms=468 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:24:13.306Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:24:13.306Z debug eventloop budget window_s=33 kind=ProposeBlock count=2 total_ms=340 max_ms=199 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:24:13.306Z debug eventloop budget window_s=33 kind=PrepareQC count=2 total_ms=127 max_ms=78 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:24:13.306Z debug eventloop budget window_s=33 kind=FindNode count=6 total_ms=2 max_ms=1 wait_total_ms=130 wait_max_ms=130
+2026-08-21T16:24:25.423Z info standing self=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 reputation=1024
+2026-08-21T16:24:25.483Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T16:24:25.497Z info bond challenge peer=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 passed=true late=false standing=-1099511626752
+2026-08-21T16:24:25.585Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T16:24:25.645Z debug peer chain not adopted peer=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 err="chain: fork would revert a finalized (super-quorum-committed) objective block (BFT finality gate — reorg refused; prefer stall to reorg, D-1, #357 §3)"
+2026-08-21T16:24:26.076Z debug gather: starting (two-phase) height=24 round=0 bytes=1573270 regs=1 quorum=2 attesters=2
+2026-08-21T16:24:26.079Z debug gather: requesting prepare to=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=24 round=0 bytes=1573270 have=0 need=2
+2026-08-21T16:24:26.082Z debug gather: requesting prepare to=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=24 round=0 bytes=1573270 have=0 need=2
+2026-08-21T16:24:26.090Z warn eventloop task slow (node thread blocked) kind=ChainHeadReply ms=440
+2026-08-21T16:24:26.242Z debug gather: prepare collected from=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=24 have=1 need=2
+2026-08-21T16:24:26.257Z debug gather: prepare collected from=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=24 have=2 need=2
+2026-08-21T16:24:26.293Z debug gather: prepare-QC assembled — LOCKED height=24 round=0 prepares=3
+2026-08-21T16:24:26.477Z info block committed height=24 round=0 entries=0 regs=1 attestations=3 via=proposal
+2026-08-21T16:24:26.640Z warn eventloop task slow (node thread blocked) kind=PrecommitReply ms=278
+2026-08-21T16:24:27.773Z info bond-reg drain: pending registrations committed height=24
+2026-08-21T16:24:46.830Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=1 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:24:46.831Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:24:46.831Z debug eventloop budget window_s=33 kind=AttestReply count=2 total_ms=51 max_ms=51 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:24:46.831Z debug eventloop budget window_s=33 kind=PrecommitReply count=2 total_ms=278 max_ms=278 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:24:46.831Z debug eventloop budget window_s=33 kind=SubmitBondReg count=1 total_ms=192 max_ms=192 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:24:46.831Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=448 max_ms=440 wait_total_ms=16 wait_max_ms=16
+2026-08-21T16:24:46.831Z debug eventloop budget window_s=33 kind=CommitAck count=3 total_ms=4 max_ms=2 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:24:46.831Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=183 max_ms=84 wait_total_ms=1 wait_max_ms=1
+2026-08-21T16:24:46.831Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=17 max_ms=6 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:24:46.831Z debug eventloop budget window_s=33 kind=FindNode count=7 total_ms=10 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:24:46.831Z debug eventloop budget window_s=33 kind=timer count=6 total_ms=7 max_ms=5 wait_total_ms=2 wait_max_ms=2
+2026-08-21T16:24:46.831Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=54 max_ms=22 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:24:46.831Z debug eventloop budget window_s=33 kind=ChainReply count=1 total_ms=33 max_ms=33 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:24:48.354Z debug gather/prepare: PREPARED from=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=25 round=0 bytes=1573291 regs=1
+2026-08-21T16:24:48.508Z debug gather/precommit: PRECOMMITTED from=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=25 round=0
+2026-08-21T16:24:49.010Z info block committed height=25 entries=0 regs=1 attestations=3 via=broadcast
+2026-08-21T16:24:49.418Z warn eventloop task slow (node thread blocked) kind=CommitBlock ms=586
+2026-08-21T16:24:55.376Z warn eventloop task slow (node thread blocked) kind=SubmitBondReg ms=271
+2026-08-21T16:24:55.377Z info standing self=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 reputation=1024
+2026-08-21T16:24:55.430Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T16:24:55.495Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T16:24:55.780Z info bond challenge peer=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 passed=true late=false standing=-1099511626752
+2026-08-21T16:24:55.838Z debug peer chain not adopted peer=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 err="chain: fork would revert a finalized (super-quorum-committed) objective block (BFT finality gate — reorg refused; prefer stall to reorg, D-1, #357 §3)"
+2026-08-21T16:24:56.377Z debug gather/prepare: PREPARED from=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=26 round=0 bytes=1573297 regs=1
+2026-08-21T16:24:56.394Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=26 round=0 mark_height=26 mark_round=0 pending=2 pending_entries=0
+2026-08-21T16:24:56.465Z debug gather/precommit: PRECOMMITTED from=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=26 round=0
+2026-08-21T16:24:56.849Z info block committed height=26 entries=0 regs=1 attestations=3 via=broadcast
+2026-08-21T16:24:57.269Z warn eventloop task slow (node thread blocked) kind=CommitBlock ms=520
+2026-08-21T16:25:16.758Z debug eventloop budget window_s=30 kind=FindNode count=6 total_ms=1 max_ms=0 wait_total_ms=183 wait_max_ms=183
+2026-08-21T16:25:16.759Z debug eventloop budget window_s=30 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:25:16.759Z debug eventloop budget window_s=30 kind=ChainHeadReply count=3 total_ms=27 max_ms=21 wait_total_ms=302 wait_max_ms=158
+2026-08-21T16:25:16.759Z debug eventloop budget window_s=30 kind=ChainReply count=1 total_ms=42 max_ms=42 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:25:16.759Z debug eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:25:16.759Z debug eventloop budget window_s=30 kind=timer count=6 total_ms=11 max_ms=10 wait_total_ms=97 wait_max_ms=52
+2026-08-21T16:25:16.759Z debug eventloop budget window_s=30 kind=BondChallenge count=3 total_ms=143 max_ms=67 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:25:16.759Z debug eventloop budget window_s=30 kind=CommitBlock count=2 total_ms=1107 max_ms=586 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:25:16.759Z debug eventloop budget window_s=30 kind=ProposeBlock count=2 total_ms=345 max_ms=186 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:25:16.759Z debug eventloop budget window_s=30 kind=GetChainHead count=3 total_ms=30 max_ms=15 wait_total_ms=36 wait_max_ms=36
+2026-08-21T16:25:16.759Z debug eventloop budget window_s=30 kind=PrepareQC count=2 total_ms=85 max_ms=54 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:25:16.759Z debug eventloop budget window_s=30 kind=SubmitBondReg count=2 total_ms=515 max_ms=271 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:25:16.759Z debug eventloop budget window_s=30 kind=BondReply count=3 total_ms=46 max_ms=16 wait_total_ms=121 wait_max_ms=121
+2026-08-21T16:25:25.369Z info standing self=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 reputation=1024
+2026-08-21T16:25:25.430Z info bond renewal submitted signed_next_height=27 size=67108864 peers=3
+2026-08-21T16:25:25.469Z info bond challenge peer=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 passed=true late=false standing=-1099511626752
+2026-08-21T16:25:25.528Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T16:25:25.565Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T16:25:25.899Z warn eventloop task slow (node thread blocked) kind=SubmitBondReg ms=324
+2026-08-21T16:25:26.027Z debug peer chain not adopted peer=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 err="chain: fork would revert a finalized (super-quorum-committed) objective block (BFT finality gate — reorg refused; prefer stall to reorg, D-1, #357 §3)"
+2026-08-21T16:25:26.434Z debug gather: starting (two-phase) height=27 round=0 bytes=1573284 regs=1 quorum=2 attesters=2
+2026-08-21T16:25:26.436Z debug gather: requesting prepare to=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=27 round=0 bytes=1573284 have=0 need=2
+2026-08-21T16:25:26.437Z debug gather: requesting prepare to=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=27 round=0 bytes=1573284 have=0 need=2
+2026-08-21T16:25:26.442Z warn eventloop task slow (node thread blocked) kind=ChainHeadReply ms=410
+2026-08-21T16:25:26.528Z debug gather: prepare collected from=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=27 have=1 need=2
+2026-08-21T16:25:26.566Z debug gather: prepare collected from=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=27 have=2 need=2
+2026-08-21T16:25:26.595Z debug gather: prepare-QC assembled — LOCKED height=27 round=0 prepares=3
+2026-08-21T16:25:26.747Z info block committed height=27 round=0 entries=0 regs=1 attestations=3 via=proposal
+2026-08-21T16:25:27.239Z warn eventloop task slow (node thread blocked) kind=PrecommitReply ms=588
+2026-08-21T16:25:28.390Z info bond-reg drain: pending registrations committed height=27
+2026-08-21T16:25:47.781Z debug gather/prepare: PREPARED from=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=28 round=0 bytes=1573297 regs=1
+2026-08-21T16:25:47.884Z debug gather/precommit: PRECOMMITTED from=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=28 round=0
+2026-08-21T16:25:48.367Z info block committed height=28 entries=0 regs=1 attestations=3 via=broadcast
+2026-08-21T16:25:48.750Z warn eventloop task slow (node thread blocked) kind=CommitBlock ms=489
+2026-08-21T16:25:50.314Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=112 max_ms=48 wait_total_ms=152 wait_max_ms=81
+2026-08-21T16:25:50.325Z debug eventloop budget window_s=33 kind=SubmitBondRegAck count=3 total_ms=0 max_ms=0 wait_total_ms=335 wait_max_ms=135
+2026-08-21T16:25:50.325Z debug eventloop budget window_s=33 kind=PrepareQC count=1 total_ms=43 max_ms=43 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:25:50.325Z debug eventloop budget window_s=33 kind=SubmitBondReg count=1 total_ms=324 max_ms=324 wait_total_ms=61 wait_max_ms=61
+2026-08-21T16:25:50.325Z debug eventloop budget window_s=33 kind=CommitAck count=3 total_ms=15 max_ms=11 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:25:50.325Z debug eventloop budget window_s=33 kind=ProposeBlock count=1 total_ms=142 max_ms=142 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:25:50.325Z debug eventloop budget window_s=33 kind=timer count=8 total_ms=72 max_ms=71 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:25:50.325Z debug eventloop budget window_s=33 kind=ChainReply count=1 total_ms=88 max_ms=88 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:25:50.325Z debug eventloop budget window_s=33 kind=AttestReply count=2 total_ms=32 max_ms=32 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:25:50.325Z debug eventloop budget window_s=33 kind=GetChainHead count=4 total_ms=25 max_ms=10 wait_total_ms=72 wait_max_ms=47
+2026-08-21T16:25:50.325Z debug eventloop budget window_s=33 kind=peer-persist count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:25:50.325Z debug eventloop budget window_s=33 kind=PrecommitReply count=2 total_ms=588 max_ms=588 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:25:50.325Z debug eventloop budget window_s=33 kind=FindNodeReply count=9 total_ms=0 max_ms=0 wait_total_ms=78 wait_max_ms=78
+2026-08-21T16:25:50.325Z debug eventloop budget window_s=33 kind=CommitBlock count=1 total_ms=489 max_ms=489 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:25:50.325Z debug eventloop budget window_s=33 kind=FindNode count=8 total_ms=3 max_ms=1 wait_total_ms=490 wait_max_ms=489
+2026-08-21T16:25:50.325Z debug eventloop budget window_s=33 kind=BondChallenge count=4 total_ms=305 max_ms=97 wait_total_ms=2 wait_max_ms=2
+2026-08-21T16:25:50.325Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=425 max_ms=410 wait_total_ms=196 wait_max_ms=119
+2026-08-21T16:25:55.222Z debug gather/prepare: PREPARED from=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=29 round=0 bytes=1573277 regs=1
+2026-08-21T16:25:55.261Z debug gather/precommit: PRECOMMITTED from=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=29 round=0
+2026-08-21T16:25:55.267Z info standing self=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 reputation=1024
+2026-08-21T16:25:55.292Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T16:25:55.296Z info bond challenge peer=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 passed=true late=false standing=-1099511626752
+2026-08-21T16:25:55.422Z info block committed height=29 entries=0 regs=1 attestations=3 via=broadcast
+2026-08-21T16:25:55.574Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T16:25:55.581Z debug peer chain not adopted peer=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 err="chain: fork would revert a finalized (super-quorum-committed) objective block (BFT finality gate — reorg refused; prefer stall to reorg, D-1, #357 §3)"
+2026-08-21T16:25:55.785Z debug gather: starting (two-phase) height=30 round=0 bytes=1573284 regs=1 quorum=2 attesters=2
+2026-08-21T16:25:55.786Z debug gather: requesting prepare to=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=30 round=0 bytes=1573284 have=0 need=2
+2026-08-21T16:25:55.787Z debug gather: requesting prepare to=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=30 round=0 bytes=1573284 have=0 need=2
+2026-08-21T16:25:55.874Z debug gather: prepare collected from=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=30 have=1 need=2
+2026-08-21T16:25:55.876Z debug gather: prepare collected from=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=30 have=2 need=2
+2026-08-21T16:25:55.891Z debug gather: prepare-QC assembled — LOCKED height=30 round=0 prepares=3
+2026-08-21T16:25:55.958Z info block committed height=30 round=0 entries=0 regs=1 attestations=3 via=proposal
+2026-08-21T16:25:56.903Z info bond-reg drain: pending registrations committed height=30
+2026-08-21T16:26:17.611Z debug gather/prepare: PREPARED from=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=31 round=0 bytes=1573291 regs=1
+2026-08-21T16:26:17.648Z debug gather/precommit: PRECOMMITTED from=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=31 round=0
+2026-08-21T16:26:17.839Z info block committed height=31 entries=0 regs=1 attestations=3 via=broadcast
+2026-08-21T16:26:23.904Z debug eventloop budget window_s=33 kind=AttestReply count=2 total_ms=21 max_ms=21 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:26:23.905Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:26:23.905Z debug eventloop budget window_s=33 kind=FindNode count=6 total_ms=1 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:26:23.905Z debug eventloop budget window_s=33 kind=CommitAck count=3 total_ms=1 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:26:23.905Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=100 max_ms=49 wait_total_ms=2 wait_max_ms=2
+2026-08-21T16:26:23.905Z debug eventloop budget window_s=33 kind=PrecommitReply count=2 total_ms=75 max_ms=75 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:26:23.905Z debug eventloop budget window_s=33 kind=ProposeBlock count=2 total_ms=160 max_ms=88 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:26:23.905Z debug eventloop budget window_s=33 kind=CommitBlock count=2 total_ms=350 max_ms=207 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:26:23.905Z debug eventloop budget window_s=33 kind=SubmitBondReg count=1 total_ms=32 max_ms=32 wait_total_ms=155 wait_max_ms=155
+2026-08-21T16:26:23.905Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=8 max_ms=5 wait_total_ms=164 wait_max_ms=164
+2026-08-21T16:26:23.905Z debug eventloop budget window_s=33 kind=PrepareQC count=2 total_ms=39 max_ms=20 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:26:23.905Z debug eventloop budget window_s=33 kind=GetChain count=1 total_ms=2 max_ms=2 wait_total_ms=202 wait_max_ms=202
+2026-08-21T16:26:23.905Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T16:26:23.905Z debug eventloop budget window_s=33 kind=timer count=6 total_ms=9 max_ms=8 wait_total_ms=16 wait_max_ms=16
+2026-08-21T16:26:23.905Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=179 max_ms=173 wait_total_ms=33 wait_max_ms=30
+2026-08-21T16:26:23.905Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=12 max_ms=4 wait_total_ms=198 wait_max_ms=194
+2026-08-21T16:26:23.905Z debug eventloop budget window_s=33 kind=ChainReply count=1 total_ms=7 max_ms=7 wait_total_ms=197 wait_max_ms=197
+2026-08-21T16:26:25.029Z info standing self=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 reputation=1024
+2026-08-21T16:26:25.097Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T16:26:25.109Z info bond challenge peer=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 passed=true late=false standing=-1099511626752
+2026-08-21T16:26:25.166Z debug peer chain not adopted peer=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 err="chain: fork would revert a finalized (super-quorum-committed) objective block (BFT finality gate — reorg refused; prefer stall to reorg, D-1, #357 §3)"
+2026-08-21T16:26:25.647Z debug gather/prepare: PREPARED from=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=32 round=0 bytes=1573291 regs=1
+2026-08-21T16:26:25.663Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T16:26:25.679Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=32 round=0 mark_height=32 mark_round=0 pending=2 pending_entries=0
+2026-08-21T16:26:25.799Z debug gather/precommit: PRECOMMITTED from=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=32 round=0
+2026-08-21T16:26:26.379Z info block committed height=32 entries=0 regs=1 attestations=3 via=broadcast
+2026-08-21T16:26:26.936Z warn eventloop task slow (node thread blocked) kind=CommitBlock ms=651

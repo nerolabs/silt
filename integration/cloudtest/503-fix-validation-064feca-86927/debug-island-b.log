@@ -1,0 +1,1260 @@
+2026-08-21T17:00:47.885Z info discovery peers=1 source=-bootstrap
+2026-08-21T17:00:47.890Z info discovery peers=3 source=-persistent-peers
+2026-08-21T17:00:47.912Z warn eventloop task waited (thread saturated) kind=FindNode wait_ms=2669
+2026-08-21T17:00:47.939Z warn dial failed to=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b addr=10.20.0.74:4001 err="dial tcp 10.20.0.74:4001: connect: connection refused" budget=2s elapsed=4.373411ms
+2026-08-21T17:00:56.149Z debug request retry to=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b kind=FindNode attempt=1
+2026-08-21T17:00:56.150Z debug request retry to=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 kind=FindNode attempt=1
+2026-08-21T17:01:04.066Z info bootstrapped table=3
+2026-08-21T17:01:04.066Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:01:05.072Z info bond renewal submitted signed_next_height=1 size=67108864 peers=3
+2026-08-21T17:01:06.770Z warn eventloop task slow (node thread blocked) kind=timer ms=2704
+2026-08-21T17:01:06.770Z warn eventloop task waited (thread saturated) kind=FindNodeReply wait_ms=2703
+2026-08-21T17:01:06.770Z warn eventloop task waited (thread saturated) kind=FindNode wait_ms=2703
+2026-08-21T17:01:06.783Z warn eventloop task waited (thread saturated) kind=CheckReachability wait_ms=2713
+2026-08-21T17:01:06.783Z warn eventloop task waited (thread saturated) kind=BondChallenge wait_ms=2714
+2026-08-21T17:01:07.662Z warn eventloop task slow (node thread blocked) kind=BondChallenge ms=878
+2026-08-21T17:01:07.662Z warn eventloop task waited (thread saturated) kind=GetIssuerKey wait_ms=3592
+2026-08-21T17:01:07.662Z warn eventloop task waited (thread saturated) kind=GetIssuerKey wait_ms=3592
+2026-08-21T17:01:07.662Z warn eventloop task waited (thread saturated) kind=ReachabilityReply wait_ms=3527
+2026-08-21T17:01:07.662Z info reachability verdict reach=public helpers=3
+2026-08-21T17:01:07.666Z warn eventloop task waited (thread saturated) kind=IssuerKeyReply wait_ms=2522
+2026-08-21T17:01:07.668Z warn eventloop task waited (thread saturated) kind=ReachabilityReply wait_ms=2466
+2026-08-21T17:01:07.946Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=true standing=1024
+2026-08-21T17:01:07.946Z warn eventloop task slow (node thread blocked) kind=BondReply ms=276
+2026-08-21T17:01:08.100Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=true standing=1024
+2026-08-21T17:01:08.533Z warn eventloop task slow (node thread blocked) kind=SubmitBondReg ms=432
+2026-08-21T17:01:09.090Z warn eventloop task slow (node thread blocked) kind=BondChallenge ms=554
+2026-08-21T17:01:09.096Z warn eventloop task waited (thread saturated) kind=GetIssuerKey wait_ms=2302
+2026-08-21T17:01:09.098Z warn eventloop task waited (thread saturated) kind=ChainHeadReply wait_ms=2162
+2026-08-21T17:01:09.249Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=true standing=1024
+2026-08-21T17:01:09.249Z warn eventloop task waited (thread saturated) kind=IssuerKeyReply wait_ms=2087
+2026-08-21T17:01:09.249Z warn eventloop task waited (thread saturated) kind=timer wait_ms=2051
+2026-08-21T17:01:11.513Z debug gather/prepare: PREPARED from=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=1 round=0 bytes=1573289 regs=1
+2026-08-21T17:01:11.514Z warn eventloop task slow (node thread blocked) kind=ProposeBlock ms=283
+2026-08-21T17:01:12.001Z debug gather/precommit: PRECOMMITTED from=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=1 round=0
+2026-08-21T17:01:12.001Z warn eventloop task slow (node thread blocked) kind=PrepareQC ms=301
+2026-08-21T17:01:12.404Z info block committed height=1 entries=0 regs=1 attestations=3 via=broadcast
+2026-08-21T17:01:21.590Z debug eventloop budget window_s=30 kind=AddProviderAck count=21 total_ms=5 max_ms=1 wait_total_ms=309 wait_max_ms=301
+2026-08-21T17:01:21.590Z debug eventloop budget window_s=30 kind=SubmitBondReg count=3 total_ms=624 max_ms=432 wait_total_ms=2777 wait_max_ms=1326
+2026-08-21T17:01:21.590Z debug eventloop budget window_s=30 kind=timer count=22 total_ms=2721 max_ms=2704 wait_total_ms=4661 wait_max_ms=2051
+2026-08-21T17:01:21.590Z debug eventloop budget window_s=30 kind=IssuerKeyReply count=6 total_ms=0 max_ms=0 wait_total_ms=10931 wait_max_ms=2522
+2026-08-21T17:01:21.590Z debug eventloop budget window_s=30 kind=GetChainHead count=3 total_ms=0 max_ms=0 wait_total_ms=1557 wait_max_ms=862
+2026-08-21T17:01:21.590Z debug eventloop budget window_s=30 kind=SubmitBondRegAck count=3 total_ms=0 max_ms=0 wait_total_ms=2943 wait_max_ms=1124
+2026-08-21T17:01:21.590Z debug eventloop budget window_s=30 kind=bootstrap count=1 total_ms=0 max_ms=0 wait_total_ms=14 wait_max_ms=14
+2026-08-21T17:01:21.590Z debug eventloop budget window_s=30 kind=GetIssuerKey count=6 total_ms=3 max_ms=1 wait_total_ms=13701 wait_max_ms=3592
+2026-08-21T17:01:21.590Z debug eventloop budget window_s=30 kind=PrepareQC count=1 total_ms=301 max_ms=301 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:01:21.590Z debug eventloop budget window_s=30 kind=CommitBlock count=1 total_ms=102 max_ms=102 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:01:21.590Z debug eventloop budget window_s=30 kind=BondChallenge count=3 total_ms=1653 max_ms=878 wait_total_ms=5584 wait_max_ms=2714
+2026-08-21T17:01:21.590Z debug eventloop budget window_s=30 kind=AddProvider count=21 total_ms=11 max_ms=5 wait_total_ms=928 wait_max_ms=309
+2026-08-21T17:01:21.590Z debug eventloop budget window_s=30 kind=ChainHeadReply count=3 total_ms=2 max_ms=2 wait_total_ms=2535 wait_max_ms=2162
+2026-08-21T17:01:21.590Z debug eventloop budget window_s=30 kind=BondReply count=3 total_ms=582 max_ms=276 wait_total_ms=4081 wait_max_ms=1936
+2026-08-21T17:01:21.590Z debug eventloop budget window_s=30 kind=ReachabilityReply count=3 total_ms=4 max_ms=3 wait_total_ms=7203 wait_max_ms=3527
+2026-08-21T17:01:21.590Z debug eventloop budget window_s=30 kind=ProposeBlock count=1 total_ms=283 max_ms=283 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:01:21.590Z debug eventloop budget window_s=30 kind=FindNodeReply count=31 total_ms=5 max_ms=2 wait_total_ms=5918 wait_max_ms=2703
+2026-08-21T17:01:21.590Z debug eventloop budget window_s=30 kind=CheckReachability count=3 total_ms=2 max_ms=2 wait_total_ms=5581 wait_max_ms=2713
+2026-08-21T17:01:21.590Z debug eventloop budget window_s=30 kind=FindNode count=28 total_ms=37 max_ms=13 wait_total_ms=8724 wait_max_ms=2703
+2026-08-21T17:01:21.590Z debug eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:01:33.876Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:01:34.067Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:01:34.117Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:01:34.139Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:01:36.786Z warn eventloop task slow (node thread blocked) kind=SubmitBondReg ms=607
+2026-08-21T17:01:36.920Z info bond renewal submitted signed_next_height=2 size=67108864 peers=3
+2026-08-21T17:01:37.077Z warn eventloop task slow (node thread blocked) kind=timer ms=259
+2026-08-21T17:01:38.523Z debug gather: starting (two-phase) height=2 round=0 bytes=1573271 regs=1 quorum=2 attesters=3
+2026-08-21T17:01:38.528Z debug gather: requesting prepare to=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 height=2 round=0 bytes=1573271 have=0 need=2
+2026-08-21T17:01:38.532Z debug gather: requesting prepare to=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=2 round=0 bytes=1573271 have=0 need=2
+2026-08-21T17:01:38.593Z debug gather: requesting prepare to=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=2 round=0 bytes=1573271 have=0 need=2
+2026-08-21T17:01:38.818Z warn eventloop task slow (node thread blocked) kind=ChainHeadReply ms=1366
+2026-08-21T17:01:39.439Z warn eventloop task slow (node thread blocked) kind=BondChallenge ms=620
+2026-08-21T17:01:39.634Z debug gather: prepare collected from=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 height=2 have=1 need=2
+2026-08-21T17:01:39.649Z debug gather: prepare collected from=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=2 have=2 need=2
+2026-08-21T17:01:39.738Z debug gather: prepare-QC assembled — LOCKED height=2 round=0 prepares=3
+2026-08-21T17:01:40.147Z info block committed height=2 round=0 entries=0 regs=1 attestations=3 via=proposal
+2026-08-21T17:01:40.850Z info bond-reg drain: pending registrations committed height=2
+2026-08-21T17:01:54.936Z debug eventloop budget window_s=33 kind=CommitAck count=3 total_ms=19 max_ms=13 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:01:54.937Z debug eventloop budget window_s=33 kind=FindNode count=6 total_ms=5 max_ms=4 wait_total_ms=4 wait_max_ms=3
+2026-08-21T17:01:54.937Z debug eventloop budget window_s=33 kind=timer count=6 total_ms=262 max_ms=259 wait_total_ms=439 wait_max_ms=439
+2026-08-21T17:01:54.937Z debug eventloop budget window_s=33 kind=SubmitBondReg count=2 total_ms=675 max_ms=607 wait_total_ms=216 wait_max_ms=216
+2026-08-21T17:01:54.937Z debug eventloop budget window_s=33 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=219 wait_max_ms=205
+2026-08-21T17:01:54.937Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:01:54.937Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=142 max_ms=71 wait_total_ms=17 wait_max_ms=17
+2026-08-21T17:01:54.937Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=1403 max_ms=1366 wait_total_ms=201 wait_max_ms=201
+2026-08-21T17:01:54.937Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=901 max_ms=620 wait_total_ms=829 wait_max_ms=829
+2026-08-21T17:01:54.937Z debug eventloop budget window_s=33 kind=SubmitBondRegAck count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:01:54.937Z debug eventloop budget window_s=33 kind=AttestReply count=3 total_ms=117 max_ms=117 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:01:54.937Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:01:54.937Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=58 max_ms=29 wait_total_ms=825 wait_max_ms=825
+2026-08-21T17:01:54.937Z debug eventloop budget window_s=33 kind=PrecommitReply count=3 total_ms=156 max_ms=156 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:02:03.653Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:02:03.795Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:02:03.820Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:02:03.825Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:02:08.413Z info round-change: recorded (#432 view-change) from=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b height=3 round=1 carries_lock=false
+2026-08-21T17:02:09.159Z debug gather/prepare: PREPARED from=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=3 round=0 bytes=3147570 regs=1
+2026-08-21T17:02:09.250Z debug gather/precommit: PRECOMMITTED from=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d height=3 round=0
+2026-08-21T17:02:09.922Z info block committed height=3 entries=0 regs=1 attestations=3 via=broadcast
+2026-08-21T17:02:28.449Z debug eventloop budget window_s=33 kind=PrepareQC count=1 total_ms=48 max_ms=48 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:02:28.449Z debug eventloop budget window_s=33 kind=CommitBlock count=1 total_ms=172 max_ms=172 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:02:28.449Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:02:28.449Z debug eventloop budget window_s=33 kind=SubmitBondReg count=2 total_ms=57 max_ms=33 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:02:28.449Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=11 max_ms=6 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:02:28.449Z debug eventloop budget window_s=33 kind=RoundChange count=1 total_ms=1 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:02:28.449Z debug eventloop budget window_s=33 kind=ProposeBlock count=1 total_ms=39 max_ms=39 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:02:28.449Z debug eventloop budget window_s=33 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:02:28.449Z debug eventloop budget window_s=33 kind=FindNode count=7 total_ms=2 max_ms=1 wait_total_ms=10 wait_max_ms=10
+2026-08-21T17:02:28.449Z debug eventloop budget window_s=33 kind=timer count=6 total_ms=6 max_ms=4 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:02:28.449Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=191 max_ms=127 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:02:28.449Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=4 max_ms=2 wait_total_ms=20 wait_max_ms=20
+2026-08-21T17:02:28.449Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:02:28.449Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=25 max_ms=14 wait_total_ms=35 wait_max_ms=30
+2026-08-21T17:02:33.533Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:02:33.775Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:02:33.829Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:02:33.843Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:02:36.738Z warn bond renewal suppressed: this identity is permanently evicted (F2 equivocation slash) — it can never re-earn standing; run a new identity to rejoin id=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701
+2026-08-21T17:02:39.060Z info block committed height=4 entries=0 regs=1 attestations=3 via=broadcast
+2026-08-21T17:02:40.081Z info block committed height=5 entries=0 regs=1 attestations=3 via=broadcast
+2026-08-21T17:03:02.137Z debug eventloop budget window_s=33 kind=SubmitBondReg count=1 total_ms=104 max_ms=104 wait_total_ms=3 wait_max_ms=3
+2026-08-21T17:03:02.142Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=19 max_ms=11 wait_total_ms=89 wait_max_ms=89
+2026-08-21T17:03:02.142Z debug eventloop budget window_s=33 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:03:02.142Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=65 max_ms=58 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:03:02.142Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=96 max_ms=53 wait_total_ms=132 wait_max_ms=75
+2026-08-21T17:03:02.142Z debug eventloop budget window_s=33 kind=CommitBlock count=2 total_ms=200 max_ms=103 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:03:02.142Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:03:02.142Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:03:02.142Z debug eventloop budget window_s=33 kind=FindNode count=7 total_ms=3 max_ms=1 wait_total_ms=92 wait_max_ms=89
+2026-08-21T17:03:02.146Z debug eventloop budget window_s=33 kind=timer count=6 total_ms=8 max_ms=6 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:03:02.146Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=313 max_ms=208 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:03:03.258Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:03:03.562Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:03:03.581Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:03:03.597Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:03:10.250Z info chain reconciled from peer peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 len=7
+2026-08-21T17:03:10.254Z warn eventloop task slow (node thread blocked) kind=ChainReply ms=3673
+2026-08-21T17:03:10.270Z warn eventloop task waited (thread saturated) kind=CommitBlock wait_ms=3217
+2026-08-21T17:03:10.283Z warn eventloop task waited (thread saturated) kind=BondChallenge wait_ms=2930
+2026-08-21T17:03:10.869Z warn eventloop task slow (node thread blocked) kind=ChainHeadReply ms=261
+2026-08-21T17:03:12.562Z info block committed height=7 entries=0 regs=1 attestations=3 via=broadcast
+2026-08-21T17:03:12.675Z warn eventloop task slow (node thread blocked) kind=CommitBlock ms=304
+2026-08-21T17:03:33.160Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:03:33.428Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:03:33.518Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:03:33.541Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:03:35.582Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=305 max_ms=261 wait_total_ms=74 wait_max_ms=74
+2026-08-21T17:03:35.582Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:03:35.582Z debug eventloop budget window_s=33 kind=FindNodeReply count=9 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:03:35.582Z debug eventloop budget window_s=33 kind=GetChain count=4 total_ms=1 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:03:35.582Z debug eventloop budget window_s=33 kind=BondReply count=6 total_ms=206 max_ms=56 wait_total_ms=33 wait_max_ms=19
+2026-08-21T17:03:35.582Z debug eventloop budget window_s=33 kind=FindNode count=7 total_ms=2 max_ms=0 wait_total_ms=20 wait_max_ms=19
+2026-08-21T17:03:35.582Z debug eventloop budget window_s=33 kind=BondChallenge count=5 total_ms=717 max_ms=182 wait_total_ms=2933 wait_max_ms=2930
+2026-08-21T17:03:35.582Z debug eventloop budget window_s=33 kind=GetChainHead count=4 total_ms=30 max_ms=20 wait_total_ms=1842 wait_max_ms=1586
+2026-08-21T17:03:35.582Z debug eventloop budget window_s=33 kind=ChainReply count=1 total_ms=3673 max_ms=3673 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:03:35.582Z debug eventloop budget window_s=33 kind=CommitBlock count=2 total_ms=318 max_ms=304 wait_total_ms=3217 wait_max_ms=3217
+2026-08-21T17:03:35.582Z debug eventloop budget window_s=33 kind=timer count=9 total_ms=14 max_ms=7 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:03:41.787Z info block committed height=8 entries=0 regs=1 attestations=3 via=broadcast
+2026-08-21T17:03:42.059Z warn eventloop task slow (node thread blocked) kind=CommitBlock ms=511
+2026-08-21T17:04:03.143Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:04:03.437Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:04:03.484Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:04:03.504Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:04:05.413Z warn eventloop task slow (node thread blocked) kind=BondChallenge ms=343
+2026-08-21T17:04:09.293Z debug eventloop budget window_s=33 kind=GetChain count=5 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:04:09.293Z debug eventloop budget window_s=33 kind=CommitBlock count=1 total_ms=511 max_ms=511 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:04:09.293Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:04:09.293Z debug eventloop budget window_s=33 kind=timer count=7 total_ms=4 max_ms=2 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:04:09.293Z debug eventloop budget window_s=33 kind=GetChainHead count=5 total_ms=37 max_ms=15 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:04:09.293Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=197 max_ms=132 wait_total_ms=111 wait_max_ms=88
+2026-08-21T17:04:09.293Z debug eventloop budget window_s=33 kind=ChainHeadReply count=6 total_ms=46 max_ms=22 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:04:09.293Z debug eventloop budget window_s=33 kind=FindNode count=6 total_ms=75 max_ms=74 wait_total_ms=10 wait_max_ms=9
+2026-08-21T17:04:09.293Z debug eventloop budget window_s=33 kind=BondChallenge count=4 total_ms=662 max_ms=343 wait_total_ms=2 wait_max_ms=2
+2026-08-21T17:04:09.293Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:04:33.097Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:04:33.384Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:04:33.420Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:04:33.443Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:04:36.407Z info round-change: advancing (#432 view-change) height=9 round=1 via=timeout locked=false pending=3 pending_entries=0
+2026-08-21T17:04:42.898Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=15 max_ms=8 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:04:42.899Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=1 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:04:42.899Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=345 max_ms=186 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:04:42.899Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=153 max_ms=96 wait_total_ms=190 wait_max_ms=115
+2026-08-21T17:04:42.899Z debug eventloop budget window_s=33 kind=RoundChangeAck count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:04:42.899Z debug eventloop budget window_s=33 kind=FindNode count=6 total_ms=4 max_ms=3 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:04:42.899Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:04:42.899Z debug eventloop budget window_s=33 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:04:42.899Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=13 max_ms=6 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:04:42.899Z debug eventloop budget window_s=33 kind=timer count=6 total_ms=7 max_ms=3 wait_total_ms=1 wait_max_ms=0
+2026-08-21T17:05:03.149Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:05:03.320Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:05:03.339Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:05:03.366Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:05:12.809Z debug eventloop budget window_s=30 kind=BondChallenge count=3 total_ms=473 max_ms=229 wait_total_ms=13 wait_max_ms=7
+2026-08-21T17:05:12.810Z debug eventloop budget window_s=30 kind=ChainHeadReply count=3 total_ms=12 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:05:12.810Z debug eventloop budget window_s=30 kind=timer count=6 total_ms=4 max_ms=2 wait_total_ms=126 wait_max_ms=126
+2026-08-21T17:05:12.810Z debug eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:05:12.810Z debug eventloop budget window_s=30 kind=BondReply count=3 total_ms=52 max_ms=19 wait_total_ms=8 wait_max_ms=8
+2026-08-21T17:05:12.810Z debug eventloop budget window_s=30 kind=GetChainHead count=3 total_ms=11 max_ms=4 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:05:12.810Z debug eventloop budget window_s=30 kind=FindNode count=6 total_ms=1 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:05:12.810Z debug eventloop budget window_s=30 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:05:12.810Z debug eventloop budget window_s=30 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:05:33.056Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:05:33.279Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:05:33.307Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:05:33.317Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:05:46.391Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=5 max_ms=2 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:05:46.394Z debug eventloop budget window_s=33 kind=FindNode count=8 total_ms=3 max_ms=2 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:05:46.394Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=12 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:05:46.394Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:05:46.394Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:05:46.394Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=306 max_ms=130 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:05:46.394Z debug eventloop budget window_s=33 kind=timer count=6 total_ms=11 max_ms=9 wait_total_ms=8 wait_max_ms=7
+2026-08-21T17:05:46.394Z debug eventloop budget window_s=33 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:05:46.394Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=85 max_ms=60 wait_total_ms=2 wait_max_ms=2
+2026-08-21T17:06:02.964Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:06:03.056Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:06:03.198Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:06:03.214Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:06:06.202Z info round-change: advancing (#432 view-change) height=9 round=2 via=timeout locked=false pending=3 pending_entries=0
+2026-08-21T17:06:20.036Z debug eventloop budget window_s=33 kind=RoundChangeAck count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:06:20.037Z debug eventloop budget window_s=33 kind=timer count=8 total_ms=11 max_ms=10 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:06:20.037Z debug eventloop budget window_s=33 kind=FindNode count=7 total_ms=5 max_ms=2 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:06:20.037Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=231 max_ms=118 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:06:20.037Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=8 max_ms=3 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:06:20.037Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=8 max_ms=4 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:06:20.037Z debug eventloop budget window_s=33 kind=peer-persist count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:06:20.037Z debug eventloop budget window_s=33 kind=FindNodeReply count=9 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:06:20.037Z debug eventloop budget window_s=33 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:06:20.037Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=49 max_ms=23 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:06:32.864Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:06:32.911Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:06:32.920Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:06:32.928Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:06:53.577Z debug eventloop budget window_s=33 kind=FindNode count=6 total_ms=2 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:06:53.577Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=24 max_ms=14 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:06:53.577Z debug eventloop budget window_s=33 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:06:53.577Z debug eventloop budget window_s=33 kind=timer count=6 total_ms=1 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:06:53.577Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:06:53.577Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=11 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:06:53.577Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=187 max_ms=73 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:06:53.577Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=10 max_ms=4 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:06:53.577Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:07:02.762Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:07:02.792Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:07:02.799Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:07:02.804Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:07:27.226Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:07:27.227Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:07:27.227Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=173 max_ms=70 wait_total_ms=2 wait_max_ms=1
+2026-08-21T17:07:27.227Z debug eventloop budget window_s=33 kind=FindNode count=6 total_ms=2 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:07:27.227Z debug eventloop budget window_s=33 kind=timer count=6 total_ms=3 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:07:27.227Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=8 max_ms=3 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:07:27.227Z debug eventloop budget window_s=33 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:07:27.227Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=17 max_ms=7 wait_total_ms=4 wait_max_ms=4
+2026-08-21T17:07:27.227Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=13 max_ms=6 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:07:32.661Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:07:32.726Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:07:32.732Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:07:32.737Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:08:00.877Z debug eventloop budget window_s=33 kind=FindNode count=8 total_ms=2 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:08:00.877Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=115 max_ms=52 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:08:00.877Z debug eventloop budget window_s=33 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:08:00.877Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=8 max_ms=4 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:08:00.877Z debug eventloop budget window_s=33 kind=timer count=6 total_ms=1 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:08:00.877Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:08:00.877Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:08:00.877Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=22 max_ms=11 wait_total_ms=11 wait_max_ms=8
+2026-08-21T17:08:00.877Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=9 max_ms=3 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:08:02.573Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:08:02.652Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:08:02.665Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:08:02.700Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:08:32.476Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:08:32.513Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:08:32.527Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:08:32.532Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:08:34.519Z debug eventloop budget window_s=33 kind=timer count=9 total_ms=2 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:08:34.519Z debug eventloop budget window_s=33 kind=FindNodeReply count=9 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:08:34.520Z debug eventloop budget window_s=33 kind=BondChallenge count=5 total_ms=275 max_ms=95 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:08:34.520Z debug eventloop budget window_s=33 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:08:34.520Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=9 max_ms=4 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:08:34.520Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:08:34.520Z debug eventloop budget window_s=33 kind=FindNode count=7 total_ms=1 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:08:34.520Z debug eventloop budget window_s=33 kind=BondReply count=6 total_ms=60 max_ms=15 wait_total_ms=16 wait_max_ms=13
+2026-08-21T17:08:34.520Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=7 max_ms=3 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:08:35.694Z info round-change: advancing (#432 view-change) height=9 round=3 via=timeout locked=false pending=3 pending_entries=0
+2026-08-21T17:09:02.368Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:09:02.401Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:09:02.415Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:09:02.420Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:09:08.159Z debug eventloop budget window_s=33 kind=timer count=7 total_ms=1 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:09:08.159Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:09:08.159Z debug eventloop budget window_s=33 kind=GetChainHead count=5 total_ms=14 max_ms=4 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:09:08.159Z debug eventloop budget window_s=33 kind=ChainHeadReply count=6 total_ms=16 max_ms=3 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:09:08.159Z debug eventloop budget window_s=33 kind=BondChallenge count=4 total_ms=186 max_ms=74 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:09:08.159Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=20 max_ms=11 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:09:08.159Z debug eventloop budget window_s=33 kind=RoundChangeAck count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:09:08.159Z debug eventloop budget window_s=33 kind=FindNode count=6 total_ms=5 max_ms=5 wait_total_ms=3 wait_max_ms=2
+2026-08-21T17:09:08.159Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:09:08.159Z debug eventloop budget window_s=33 kind=GetChain count=5 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:09:32.266Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:09:32.300Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:09:32.305Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:09:32.312Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:09:41.803Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:09:41.804Z debug eventloop budget window_s=33 kind=timer count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:09:41.804Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=201 max_ms=87 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:09:41.804Z debug eventloop budget window_s=33 kind=GetChain count=4 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:09:41.804Z debug eventloop budget window_s=33 kind=FindNode count=6 total_ms=15 max_ms=13 wait_total_ms=6 wait_max_ms=6
+2026-08-21T17:09:41.804Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:09:41.806Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=16 max_ms=7 wait_total_ms=3 wait_max_ms=3
+2026-08-21T17:09:41.806Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=23 max_ms=13 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:09:41.806Z debug eventloop budget window_s=33 kind=GetChainHead count=4 total_ms=22 max_ms=15 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:10:02.163Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:10:02.215Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:10:02.224Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:10:02.232Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:10:11.774Z debug eventloop budget window_s=30 kind=timer count=6 total_ms=2 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:10:11.774Z debug eventloop budget window_s=30 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:10:11.774Z debug eventloop budget window_s=30 kind=BondChallenge count=3 total_ms=246 max_ms=107 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:10:11.774Z debug eventloop budget window_s=30 kind=BondReply count=3 total_ms=23 max_ms=8 wait_total_ms=3 wait_max_ms=3
+2026-08-21T17:10:11.774Z debug eventloop budget window_s=30 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:10:11.774Z debug eventloop budget window_s=30 kind=GetChainHead count=3 total_ms=10 max_ms=6 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:10:11.777Z debug eventloop budget window_s=30 kind=ChainHeadReply count=3 total_ms=14 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:10:11.777Z debug eventloop budget window_s=30 kind=FindNode count=6 total_ms=1 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:10:11.777Z debug eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:10:32.164Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:10:32.203Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:10:32.225Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:10:32.235Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:10:45.404Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=22 max_ms=9 wait_total_ms=4 wait_max_ms=4
+2026-08-21T17:10:45.405Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=6 max_ms=2 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:10:45.405Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:10:45.405Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=139 max_ms=53 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:10:45.405Z debug eventloop budget window_s=33 kind=timer count=6 total_ms=1 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:10:45.405Z debug eventloop budget window_s=33 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:10:45.405Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=9 max_ms=4 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:10:45.405Z debug eventloop budget window_s=33 kind=FindNode count=8 total_ms=1 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:10:45.405Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:11:02.090Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:11:02.137Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:11:02.148Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:11:02.152Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:11:19.047Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=17 max_ms=8 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:11:19.048Z debug eventloop budget window_s=33 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:11:19.048Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=11 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:11:19.048Z debug eventloop budget window_s=33 kind=FindNodeReply count=9 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:11:19.048Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=17 max_ms=6 wait_total_ms=4 wait_max_ms=2
+2026-08-21T17:11:19.048Z debug eventloop budget window_s=33 kind=peer-persist count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:11:19.048Z debug eventloop budget window_s=33 kind=timer count=8 total_ms=3 max_ms=1 wait_total_ms=28 wait_max_ms=28
+2026-08-21T17:11:19.048Z debug eventloop budget window_s=33 kind=FindNode count=7 total_ms=5 max_ms=3 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:11:19.048Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=239 max_ms=146 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:11:32.035Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:11:32.172Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:11:32.183Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:11:32.223Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:11:52.670Z debug eventloop budget window_s=33 kind=FindNode count=6 total_ms=2 max_ms=0 wait_total_ms=2 wait_max_ms=1
+2026-08-21T17:11:52.671Z debug eventloop budget window_s=33 kind=timer count=6 total_ms=3 max_ms=1 wait_total_ms=45 wait_max_ms=45
+2026-08-21T17:11:52.671Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=51 max_ms=42 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:11:52.671Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=43 max_ms=18 wait_total_ms=10 wait_max_ms=10
+2026-08-21T17:11:52.671Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:11:52.671Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=341 max_ms=193 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:11:52.671Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=10 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:11:52.671Z debug eventloop budget window_s=33 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:11:52.671Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:12:01.940Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:12:02.109Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:12:02.121Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:12:02.135Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:12:03.700Z warn eventloop task slow (node thread blocked) kind=BondChallenge ms=264
+2026-08-21T17:12:26.280Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=66 max_ms=40 wait_total_ms=24 wait_max_ms=12
+2026-08-21T17:12:26.281Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:12:26.281Z debug eventloop budget window_s=33 kind=FindNode count=6 total_ms=2 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:12:26.281Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:12:26.281Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=12 max_ms=6 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:12:26.281Z debug eventloop budget window_s=33 kind=timer count=6 total_ms=7 max_ms=4 wait_total_ms=6 wait_max_ms=6
+2026-08-21T17:12:26.281Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=381 max_ms=264 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:12:26.281Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=31 max_ms=17 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:12:26.281Z debug eventloop budget window_s=33 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:12:31.836Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:12:31.879Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:12:31.886Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:12:31.891Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:12:35.150Z info round-change: advancing (#432 view-change) height=9 round=4 via=timeout locked=false pending=3 pending_entries=0
+2026-08-21T17:12:56.176Z debug eventloop budget window_s=30 kind=BondChallenge count=3 total_ms=207 max_ms=117 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:12:56.178Z debug eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:12:56.178Z debug eventloop budget window_s=30 kind=FindNode count=6 total_ms=1 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:12:56.178Z debug eventloop budget window_s=30 kind=ChainHeadReply count=3 total_ms=11 max_ms=6 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:12:56.178Z debug eventloop budget window_s=30 kind=RoundChangeAck count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:12:56.178Z debug eventloop budget window_s=30 kind=timer count=6 total_ms=6 max_ms=4 wait_total_ms=5 wait_max_ms=5
+2026-08-21T17:12:56.178Z debug eventloop budget window_s=30 kind=GetChainHead count=3 total_ms=17 max_ms=12 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:12:56.178Z debug eventloop budget window_s=30 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:12:56.178Z debug eventloop budget window_s=30 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:12:56.178Z debug eventloop budget window_s=30 kind=BondReply count=3 total_ms=31 max_ms=19 wait_total_ms=26 wait_max_ms=13
+2026-08-21T17:13:01.729Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:13:01.758Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:13:01.771Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:13:01.778Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:13:26.073Z debug eventloop budget window_s=30 kind=BondChallenge count=3 total_ms=129 max_ms=49 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:13:26.073Z debug eventloop budget window_s=30 kind=BondReply count=3 total_ms=30 max_ms=12 wait_total_ms=1 wait_max_ms=1
+2026-08-21T17:13:26.073Z debug eventloop budget window_s=30 kind=GetChainHead count=3 total_ms=18 max_ms=13 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:13:26.073Z debug eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:13:26.073Z debug eventloop budget window_s=30 kind=timer count=6 total_ms=1 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:13:26.073Z debug eventloop budget window_s=30 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:13:26.073Z debug eventloop budget window_s=30 kind=FindNode count=6 total_ms=2 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:13:26.073Z debug eventloop budget window_s=30 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:13:26.073Z debug eventloop budget window_s=30 kind=ChainHeadReply count=3 total_ms=9 max_ms=4 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:13:31.653Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:13:31.714Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:13:31.719Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:13:31.726Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:13:55.964Z debug eventloop budget window_s=30 kind=FindNode count=6 total_ms=4 max_ms=3 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:13:55.964Z debug eventloop budget window_s=30 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:13:55.964Z debug eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:13:55.964Z debug eventloop budget window_s=30 kind=BondChallenge count=3 total_ms=169 max_ms=78 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:13:55.964Z debug eventloop budget window_s=30 kind=GetChainHead count=3 total_ms=11 max_ms=4 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:13:55.964Z debug eventloop budget window_s=30 kind=timer count=6 total_ms=2 max_ms=1 wait_total_ms=24 wait_max_ms=24
+2026-08-21T17:13:55.964Z debug eventloop budget window_s=30 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:13:55.964Z debug eventloop budget window_s=30 kind=ChainHeadReply count=3 total_ms=11 max_ms=6 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:13:55.964Z debug eventloop budget window_s=30 kind=BondReply count=3 total_ms=21 max_ms=9 wait_total_ms=18 wait_max_ms=9
+2026-08-21T17:14:01.545Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:14:01.571Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:14:01.579Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:14:01.585Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:14:29.611Z debug eventloop budget window_s=33 kind=FindNode count=8 total_ms=2 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:14:29.611Z debug eventloop budget window_s=33 kind=timer count=6 total_ms=1 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:14:29.611Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=8 max_ms=4 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:14:29.611Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=19 max_ms=8 wait_total_ms=4 wait_max_ms=4
+2026-08-21T17:14:29.611Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=8 max_ms=3 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:14:29.611Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:14:29.611Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=160 max_ms=63 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:14:29.611Z debug eventloop budget window_s=33 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:14:29.611Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:14:31.445Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:14:31.473Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:14:31.489Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:14:31.515Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:15:01.341Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:15:01.369Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:15:01.380Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:15:01.389Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:15:03.255Z debug eventloop budget window_s=33 kind=timer count=9 total_ms=2 max_ms=0 wait_total_ms=3 wait_max_ms=3
+2026-08-21T17:15:03.255Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=9 max_ms=3 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:15:03.255Z debug eventloop budget window_s=33 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:15:03.255Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=12 max_ms=6 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:15:03.255Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:15:03.255Z debug eventloop budget window_s=33 kind=BondChallenge count=5 total_ms=314 max_ms=106 wait_total_ms=1 wait_max_ms=1
+2026-08-21T17:15:03.255Z debug eventloop budget window_s=33 kind=BondReply count=6 total_ms=38 max_ms=7 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:15:03.255Z debug eventloop budget window_s=33 kind=FindNode count=7 total_ms=1 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:15:03.255Z debug eventloop budget window_s=33 kind=FindNodeReply count=9 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:15:31.236Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:15:31.283Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:15:31.296Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:15:31.306Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:15:36.974Z debug eventloop budget window_s=33 kind=ChainHeadReply count=6 total_ms=14 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:15:36.974Z debug eventloop budget window_s=33 kind=BondChallenge count=4 total_ms=154 max_ms=70 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:15:36.975Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:15:36.975Z debug eventloop budget window_s=33 kind=GetChain count=5 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:15:36.975Z debug eventloop budget window_s=33 kind=FindNode count=6 total_ms=1 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:15:36.975Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=23 max_ms=11 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:15:36.975Z debug eventloop budget window_s=33 kind=GetChainHead count=5 total_ms=19 max_ms=7 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:15:36.975Z debug eventloop budget window_s=33 kind=timer count=7 total_ms=1 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:15:36.975Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:16:01.158Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:16:01.337Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:16:01.358Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:16:01.396Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:16:10.627Z debug eventloop budget window_s=33 kind=timer count=14 total_ms=23 max_ms=7 wait_total_ms=22 wait_max_ms=21
+2026-08-21T17:16:10.627Z debug eventloop budget window_s=33 kind=FindNodeReply count=27 total_ms=0 max_ms=0 wait_total_ms=3 wait_max_ms=1
+2026-08-21T17:16:10.627Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=308 max_ms=144 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:16:10.627Z debug eventloop budget window_s=33 kind=AddProviderAck count=21 total_ms=2 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:16:10.627Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=15 max_ms=6 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:16:10.627Z debug eventloop budget window_s=33 kind=AddProvider count=21 total_ms=5 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:16:10.627Z debug eventloop budget window_s=33 kind=GetChainHead count=4 total_ms=29 max_ms=18 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:16:10.627Z debug eventloop budget window_s=33 kind=FindNode count=27 total_ms=8 max_ms=4 wait_total_ms=2 wait_max_ms=0
+2026-08-21T17:16:10.627Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=66 max_ms=23 wait_total_ms=14 wait_max_ms=12
+2026-08-21T17:16:10.627Z debug eventloop budget window_s=33 kind=GetChain count=4 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:16:10.627Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:16:31.164Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:16:31.236Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:16:31.249Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:16:31.298Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:16:40.523Z debug eventloop budget window_s=30 kind=FindNode count=6 total_ms=2 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:16:40.523Z debug eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:16:40.523Z debug eventloop budget window_s=30 kind=timer count=6 total_ms=1 max_ms=0 wait_total_ms=110 wait_max_ms=110
+2026-08-21T17:16:40.523Z debug eventloop budget window_s=30 kind=BondChallenge count=3 total_ms=251 max_ms=119 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:16:40.523Z debug eventloop budget window_s=30 kind=BondReply count=3 total_ms=40 max_ms=13 wait_total_ms=1 wait_max_ms=1
+2026-08-21T17:16:40.523Z debug eventloop budget window_s=30 kind=GetChainHead count=3 total_ms=12 max_ms=4 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:16:40.523Z debug eventloop budget window_s=30 kind=ChainHeadReply count=3 total_ms=9 max_ms=4 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:16:40.523Z debug eventloop budget window_s=30 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:16:40.525Z debug eventloop budget window_s=30 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:17:01.200Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:17:01.342Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:17:01.363Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:17:01.382Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:17:14.000Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=2 wait_max_ms=1
+2026-08-21T17:17:14.000Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=8 max_ms=3 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:17:14.000Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=10 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:17:14.000Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=395 max_ms=186 wait_total_ms=13 wait_max_ms=12
+2026-08-21T17:17:14.000Z debug eventloop budget window_s=33 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:17:14.000Z debug eventloop budget window_s=33 kind=FindNode count=8 total_ms=3 max_ms=1 wait_total_ms=1 wait_max_ms=0
+2026-08-21T17:17:14.000Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:17:14.000Z debug eventloop budget window_s=33 kind=timer count=6 total_ms=12 max_ms=8 wait_total_ms=133 wait_max_ms=133
+2026-08-21T17:17:14.000Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=76 max_ms=37 wait_total_ms=34 wait_max_ms=25
+2026-08-21T17:17:31.092Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:17:31.131Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:17:31.138Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:17:31.144Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:17:47.623Z debug eventloop budget window_s=33 kind=timer count=8 total_ms=1 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:17:47.624Z debug eventloop budget window_s=33 kind=FindNodeReply count=9 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:17:47.624Z debug eventloop budget window_s=33 kind=FindNode count=7 total_ms=8 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:17:47.624Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=11 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:17:47.624Z debug eventloop budget window_s=33 kind=peer-persist count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:17:47.624Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=135 max_ms=63 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:17:47.624Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=25 max_ms=12 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:17:47.624Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=11 max_ms=4 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:17:47.624Z debug eventloop budget window_s=33 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:18:00.994Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:18:01.029Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:18:01.034Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:18:01.068Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:18:17.600Z debug eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:18:17.601Z debug eventloop budget window_s=30 kind=GetChainHead count=3 total_ms=10 max_ms=4 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:18:17.601Z debug eventloop budget window_s=30 kind=FindNode count=6 total_ms=3 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:18:17.601Z debug eventloop budget window_s=30 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:18:17.601Z debug eventloop budget window_s=30 kind=BondChallenge count=3 total_ms=193 max_ms=99 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:18:17.601Z debug eventloop budget window_s=30 kind=BondReply count=3 total_ms=27 max_ms=14 wait_total_ms=1 wait_max_ms=1
+2026-08-21T17:18:17.601Z debug eventloop budget window_s=30 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:18:17.601Z debug eventloop budget window_s=30 kind=timer count=6 total_ms=1 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:18:17.601Z debug eventloop budget window_s=30 kind=ChainHeadReply count=3 total_ms=14 max_ms=7 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:18:31.074Z warn eventloop task slow (node thread blocked) kind=BondChallenge ms=290
+2026-08-21T17:18:31.074Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:18:31.254Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:18:31.336Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:18:31.358Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:18:34.143Z info round-change: advancing (#432 view-change) height=9 round=5 via=timeout locked=false pending=3 pending_entries=0
+2026-08-21T17:18:51.234Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:18:51.243Z debug eventloop budget window_s=33 kind=FindNode count=6 total_ms=4 max_ms=2 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:18:51.245Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=166 max_ms=102 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:18:51.245Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=12 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:18:51.245Z debug eventloop budget window_s=33 kind=timer count=6 total_ms=1 max_ms=0 wait_total_ms=154 wait_max_ms=154
+2026-08-21T17:18:51.245Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:18:51.245Z debug eventloop budget window_s=33 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:18:51.245Z debug eventloop budget window_s=33 kind=RoundChangeAck count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:18:51.245Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=483 max_ms=290 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:18:51.250Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=18 max_ms=7 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:19:01.016Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:19:01.116Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:19:01.172Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:19:01.216Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:19:02.765Z warn eventloop task slow (node thread blocked) kind=BondChallenge ms=405
+2026-08-21T17:19:24.823Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:19:24.823Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=65 max_ms=28 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:19:24.823Z debug eventloop budget window_s=33 kind=timer count=6 total_ms=2 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:19:24.823Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=612 max_ms=405 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:19:24.823Z debug eventloop budget window_s=33 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:19:24.823Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=1 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:19:24.823Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=11 max_ms=6 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:19:24.823Z debug eventloop budget window_s=33 kind=FindNode count=6 total_ms=4 max_ms=2 wait_total_ms=1 wait_max_ms=0
+2026-08-21T17:19:24.823Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=20 max_ms=9 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:19:30.911Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:19:31.027Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:19:31.047Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:19:31.079Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:19:58.449Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:19:58.450Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=35 max_ms=29 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:19:58.450Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=347 max_ms=146 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:19:58.450Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=88 max_ms=46 wait_total_ms=11 wait_max_ms=10
+2026-08-21T17:19:58.450Z debug eventloop budget window_s=33 kind=FindNode count=8 total_ms=3 max_ms=2 wait_total_ms=1 wait_max_ms=0
+2026-08-21T17:19:58.450Z debug eventloop budget window_s=33 kind=timer count=6 total_ms=2 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:19:58.451Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=30 max_ms=19 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:19:58.451Z debug eventloop budget window_s=33 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:19:58.451Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=6 wait_max_ms=5
+2026-08-21T17:20:00.807Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:20:00.840Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:20:00.866Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:20:00.898Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:20:28.421Z debug eventloop budget window_s=30 kind=BondChallenge count=3 total_ms=246 max_ms=158 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:20:28.421Z debug eventloop budget window_s=30 kind=ChainHeadReply count=3 total_ms=29 max_ms=18 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:20:28.421Z debug eventloop budget window_s=30 kind=timer count=6 total_ms=2 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:20:28.421Z debug eventloop budget window_s=30 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:20:28.421Z debug eventloop budget window_s=30 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:20:28.421Z debug eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:20:28.421Z debug eventloop budget window_s=30 kind=GetChainHead count=3 total_ms=12 max_ms=6 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:20:28.421Z debug eventloop budget window_s=30 kind=BondReply count=3 total_ms=22 max_ms=8 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:20:28.421Z debug eventloop budget window_s=30 kind=FindNode count=6 total_ms=3 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:20:30.738Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:20:30.815Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:20:30.829Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:20:30.844Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:20:58.326Z debug eventloop budget window_s=30 kind=BondChallenge count=3 total_ms=227 max_ms=141 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:20:58.326Z debug eventloop budget window_s=30 kind=BondReply count=3 total_ms=50 max_ms=21 wait_total_ms=18 wait_max_ms=17
+2026-08-21T17:20:58.326Z debug eventloop budget window_s=30 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:20:58.326Z debug eventloop budget window_s=30 kind=ChainHeadReply count=3 total_ms=12 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:20:58.326Z debug eventloop budget window_s=30 kind=timer count=6 total_ms=2 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:20:58.326Z debug eventloop budget window_s=30 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:20:58.326Z debug eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:20:58.326Z debug eventloop budget window_s=30 kind=FindNode count=6 total_ms=6 max_ms=4 wait_total_ms=3 wait_max_ms=3
+2026-08-21T17:20:58.326Z debug eventloop budget window_s=30 kind=GetChainHead count=3 total_ms=12 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:21:00.640Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:21:00.758Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:21:00.769Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:21:00.833Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:21:02.921Z warn eventloop task slow (node thread blocked) kind=BondChallenge ms=837
+2026-08-21T17:21:30.534Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:21:30.620Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:21:30.648Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:21:30.662Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:21:31.937Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:21:31.938Z debug eventloop budget window_s=33 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:21:31.938Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=13 max_ms=6 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:21:31.938Z debug eventloop budget window_s=33 kind=FindNode count=6 total_ms=1 max_ms=1 wait_total_ms=2 wait_max_ms=1
+2026-08-21T17:21:31.938Z debug eventloop budget window_s=33 kind=BondChallenge count=4 total_ms=1163 max_ms=837 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:21:31.938Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=20 max_ms=12 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:21:31.938Z debug eventloop budget window_s=33 kind=timer count=9 total_ms=5 max_ms=2 wait_total_ms=5 wait_max_ms=5
+2026-08-21T17:21:31.938Z debug eventloop budget window_s=33 kind=FindNodeReply count=9 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:21:31.938Z debug eventloop budget window_s=33 kind=BondReply count=6 total_ms=99 max_ms=20 wait_total_ms=3 wait_max_ms=1
+2026-08-21T17:22:00.428Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:22:00.618Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:22:00.639Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:22:00.659Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:22:02.458Z warn eventloop task slow (node thread blocked) kind=BondChallenge ms=467
+2026-08-21T17:22:05.425Z debug eventloop budget window_s=33 kind=FindNode count=7 total_ms=6 max_ms=3 wait_total_ms=100 wait_max_ms=99
+2026-08-21T17:22:05.425Z debug eventloop budget window_s=33 kind=timer count=7 total_ms=7 max_ms=4 wait_total_ms=1 wait_max_ms=1
+2026-08-21T17:22:05.425Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:22:05.425Z debug eventloop budget window_s=33 kind=GetChainHead count=4 total_ms=15 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:22:05.425Z debug eventloop budget window_s=33 kind=ChainHeadReply count=6 total_ms=27 max_ms=6 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:22:05.425Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=68 max_ms=27 wait_total_ms=45 wait_max_ms=26
+2026-08-21T17:22:05.425Z debug eventloop budget window_s=33 kind=GetChain count=4 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:22:05.425Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=2 max_ms=2 wait_total_ms=175 wait_max_ms=87
+2026-08-21T17:22:05.425Z debug eventloop budget window_s=33 kind=BondChallenge count=5 total_ms=791 max_ms=467 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:22:30.440Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:22:30.554Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:22:30.588Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:22:30.603Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:22:35.425Z debug eventloop budget window_s=30 kind=ChainHeadReply count=3 total_ms=13 max_ms=6 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:22:35.425Z debug eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:22:35.425Z debug eventloop budget window_s=30 kind=BondChallenge count=3 total_ms=436 max_ms=186 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:22:35.425Z debug eventloop budget window_s=30 kind=GetChainHead count=3 total_ms=11 max_ms=4 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:22:35.425Z debug eventloop budget window_s=30 kind=BondReply count=3 total_ms=78 max_ms=45 wait_total_ms=14 wait_max_ms=14
+2026-08-21T17:22:35.425Z debug eventloop budget window_s=30 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:22:35.425Z debug eventloop budget window_s=30 kind=FindNode count=6 total_ms=10 max_ms=6 wait_total_ms=180 wait_max_ms=179
+2026-08-21T17:22:35.425Z debug eventloop budget window_s=30 kind=timer count=6 total_ms=10 max_ms=6 wait_total_ms=116 wait_max_ms=115
+2026-08-21T17:22:35.425Z debug eventloop budget window_s=30 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=188 wait_max_ms=186
+2026-08-21T17:23:00.353Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:23:00.438Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:23:00.486Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:23:00.527Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:23:02.119Z warn eventloop task slow (node thread blocked) kind=BondChallenge ms=251
+2026-08-21T17:23:09.097Z debug eventloop budget window_s=33 kind=GetChain count=5 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:23:09.097Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:23:09.097Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=92 wait_max_ms=55
+2026-08-21T17:23:09.097Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=386 max_ms=251 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:23:09.097Z debug eventloop budget window_s=33 kind=GetChainHead count=5 total_ms=38 max_ms=24 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:23:09.097Z debug eventloop budget window_s=33 kind=FindNode count=6 total_ms=2 max_ms=0 wait_total_ms=1 wait_max_ms=0
+2026-08-21T17:23:09.097Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=25 max_ms=19 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:23:09.097Z debug eventloop budget window_s=33 kind=timer count=6 total_ms=18 max_ms=10 wait_total_ms=15 wait_max_ms=15
+2026-08-21T17:23:09.097Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=60 max_ms=24 wait_total_ms=6 wait_max_ms=6
+2026-08-21T17:23:30.350Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:23:30.429Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:23:30.465Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:23:30.499Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:23:39.014Z debug eventloop budget window_s=30 kind=timer count=6 total_ms=7 max_ms=4 wait_total_ms=223 wait_max_ms=126
+2026-08-21T17:23:39.015Z debug eventloop budget window_s=30 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:23:39.016Z debug eventloop budget window_s=30 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=2 wait_max_ms=2
+2026-08-21T17:23:39.016Z debug eventloop budget window_s=30 kind=FindNode count=6 total_ms=5 max_ms=4 wait_total_ms=1 wait_max_ms=0
+2026-08-21T17:23:39.016Z debug eventloop budget window_s=30 kind=BondChallenge count=3 total_ms=566 max_ms=233 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:23:39.016Z debug eventloop budget window_s=30 kind=BondReply count=3 total_ms=65 max_ms=23 wait_total_ms=1 wait_max_ms=1
+2026-08-21T17:23:39.016Z debug eventloop budget window_s=30 kind=GetChainHead count=3 total_ms=13 max_ms=6 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:23:39.016Z debug eventloop budget window_s=30 kind=ChainHeadReply count=3 total_ms=11 max_ms=4 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:23:39.016Z debug eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:24:00.250Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:24:00.304Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:24:00.309Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:24:00.315Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:24:12.585Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:24:12.586Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:24:12.586Z debug eventloop budget window_s=33 kind=timer count=6 total_ms=0 max_ms=0 wait_total_ms=10 wait_max_ms=10
+2026-08-21T17:24:12.586Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=8 max_ms=4 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:24:12.586Z debug eventloop budget window_s=33 kind=FindNode count=8 total_ms=5 max_ms=2 wait_total_ms=1 wait_max_ms=1
+2026-08-21T17:24:12.586Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=187 max_ms=85 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:24:12.586Z debug eventloop budget window_s=33 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:24:12.586Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=23 max_ms=12 wait_total_ms=13 wait_max_ms=8
+2026-08-21T17:24:12.586Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=10 max_ms=4 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:24:30.149Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:24:30.176Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:24:30.196Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:24:30.202Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:24:46.128Z debug eventloop budget window_s=33 kind=FindNode count=6 total_ms=2 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:24:46.128Z debug eventloop budget window_s=33 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:24:46.128Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=10 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:24:46.128Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=212 max_ms=110 wait_total_ms=2 wait_max_ms=1
+2026-08-21T17:24:46.128Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=20 max_ms=8 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:24:46.128Z debug eventloop budget window_s=33 kind=peer-persist count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:24:46.128Z debug eventloop budget window_s=33 kind=timer count=8 total_ms=1 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:24:46.128Z debug eventloop budget window_s=33 kind=FindNodeReply count=9 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:24:46.128Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=17 max_ms=8 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:25:00.048Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:25:00.084Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:25:00.093Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:25:00.140Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:25:16.020Z debug eventloop budget window_s=30 kind=BondReply count=3 total_ms=34 max_ms=14 wait_total_ms=3 wait_max_ms=1
+2026-08-21T17:25:16.020Z debug eventloop budget window_s=30 kind=timer count=6 total_ms=1 max_ms=0 wait_total_ms=9 wait_max_ms=8
+2026-08-21T17:25:16.020Z debug eventloop budget window_s=30 kind=ChainHeadReply count=3 total_ms=21 max_ms=11 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:25:16.020Z debug eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:25:16.020Z debug eventloop budget window_s=30 kind=BondChallenge count=3 total_ms=154 max_ms=68 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:25:16.020Z debug eventloop budget window_s=30 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:25:16.020Z debug eventloop budget window_s=30 kind=GetChainHead count=3 total_ms=8 max_ms=3 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:25:16.020Z debug eventloop budget window_s=30 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:25:16.020Z debug eventloop budget window_s=30 kind=FindNode count=6 total_ms=2 max_ms=2 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:25:29.943Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:25:29.978Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:25:29.993Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:25:30.001Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:25:45.912Z debug eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:25:45.912Z debug eventloop budget window_s=30 kind=FindNode count=6 total_ms=3 max_ms=2 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:25:45.912Z debug eventloop budget window_s=30 kind=BondReply count=3 total_ms=21 max_ms=8 wait_total_ms=4 wait_max_ms=4
+2026-08-21T17:25:45.912Z debug eventloop budget window_s=30 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:25:45.912Z debug eventloop budget window_s=30 kind=BondChallenge count=3 total_ms=97 max_ms=46 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:25:45.912Z debug eventloop budget window_s=30 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:25:45.912Z debug eventloop budget window_s=30 kind=GetChainHead count=3 total_ms=11 max_ms=7 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:25:45.912Z debug eventloop budget window_s=30 kind=ChainHeadReply count=3 total_ms=9 max_ms=4 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:25:45.912Z debug eventloop budget window_s=30 kind=timer count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:25:59.837Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:25:59.915Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:25:59.938Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:25:59.949Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:26:01.621Z warn eventloop task slow (node thread blocked) kind=BondChallenge ms=276
+2026-08-21T17:26:19.555Z debug eventloop budget window_s=33 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:26:19.555Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=2 max_ms=2 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:26:19.555Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:26:19.555Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=8 max_ms=3 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:26:19.555Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=10 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:26:19.555Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=68 max_ms=36 wait_total_ms=17 wait_max_ms=17
+2026-08-21T17:26:19.555Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=364 max_ms=276 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:26:19.555Z debug eventloop budget window_s=33 kind=timer count=6 total_ms=2 max_ms=1 wait_total_ms=13 wait_max_ms=13
+2026-08-21T17:26:19.555Z debug eventloop budget window_s=33 kind=FindNode count=7 total_ms=3 max_ms=1 wait_total_ms=3 wait_max_ms=2
+2026-08-21T17:26:29.736Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:26:29.797Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:26:29.823Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:26:29.837Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:26:49.558Z debug eventloop budget window_s=30 kind=BondChallenge count=3 total_ms=237 max_ms=149 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:26:49.558Z debug eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:26:49.558Z debug eventloop budget window_s=30 kind=FindNode count=6 total_ms=1 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:26:49.558Z debug eventloop budget window_s=30 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:26:49.558Z debug eventloop budget window_s=30 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:26:49.558Z debug eventloop budget window_s=30 kind=BondReply count=3 total_ms=43 max_ms=15 wait_total_ms=4 wait_max_ms=4
+2026-08-21T17:26:49.558Z debug eventloop budget window_s=30 kind=ChainHeadReply count=3 total_ms=11 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:26:49.558Z debug eventloop budget window_s=30 kind=timer count=6 total_ms=5 max_ms=4 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:26:49.558Z debug eventloop budget window_s=30 kind=GetChainHead count=3 total_ms=9 max_ms=4 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:26:59.742Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:26:59.774Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:26:59.810Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:26:59.823Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:27:02.798Z info round-change: advancing (#432 view-change) height=9 round=6 via=timeout locked=false pending=3 pending_entries=0
+2026-08-21T17:27:03.938Z warn eventloop task slow (node thread blocked) kind=BondChallenge ms=458
+2026-08-21T17:27:19.559Z debug eventloop budget window_s=30 kind=FindNode count=6 total_ms=49 max_ms=47 wait_total_ms=1 wait_max_ms=0
+2026-08-21T17:27:19.560Z debug eventloop budget window_s=30 kind=BondChallenge count=3 total_ms=616 max_ms=458 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:27:19.560Z debug eventloop budget window_s=30 kind=timer count=6 total_ms=2 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:27:19.560Z debug eventloop budget window_s=30 kind=BondReply count=3 total_ms=34 max_ms=13 wait_total_ms=1 wait_max_ms=1
+2026-08-21T17:27:19.560Z debug eventloop budget window_s=30 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:27:19.560Z debug eventloop budget window_s=30 kind=GetChainHead count=3 total_ms=36 max_ms=28 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:27:19.560Z debug eventloop budget window_s=30 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:27:19.560Z debug eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:27:19.560Z debug eventloop budget window_s=30 kind=ChainHeadReply count=3 total_ms=10 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:27:19.560Z debug eventloop budget window_s=30 kind=RoundChangeAck count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:27:29.744Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:27:29.789Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:27:29.795Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:27:29.803Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:27:53.315Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=13 max_ms=8 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:27:53.316Z debug eventloop budget window_s=33 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:27:53.316Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=10 max_ms=3 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:27:53.316Z debug eventloop budget window_s=33 kind=timer count=6 total_ms=1 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:27:53.316Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=25 max_ms=10 wait_total_ms=6 wait_max_ms=4
+2026-08-21T17:27:53.316Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=287 max_ms=193 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:27:53.316Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:27:53.316Z debug eventloop budget window_s=33 kind=FindNode count=6 total_ms=1 max_ms=0 wait_total_ms=1 wait_max_ms=0
+2026-08-21T17:27:53.316Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:27:59.745Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:27:59.836Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:27:59.863Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:27:59.872Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:28:23.346Z debug eventloop budget window_s=30 kind=BondChallenge count=3 total_ms=186 max_ms=104 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:28:23.347Z debug eventloop budget window_s=30 kind=GetChainHead count=3 total_ms=7 max_ms=2 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:28:23.347Z debug eventloop budget window_s=30 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:28:23.347Z debug eventloop budget window_s=30 kind=ChainHeadReply count=3 total_ms=9 max_ms=4 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:28:23.347Z debug eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:28:23.347Z debug eventloop budget window_s=30 kind=FindNode count=6 total_ms=1 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:28:23.347Z debug eventloop budget window_s=30 kind=timer count=6 total_ms=1 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:28:23.347Z debug eventloop budget window_s=30 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:28:23.347Z debug eventloop budget window_s=30 kind=BondReply count=3 total_ms=69 max_ms=34 wait_total_ms=12 wait_max_ms=11
+2026-08-21T17:28:29.747Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:28:29.922Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:28:29.972Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:28:30.042Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:28:57.055Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=2 wait_max_ms=2
+2026-08-21T17:28:57.081Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=15 max_ms=7 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:28:57.081Z debug eventloop budget window_s=33 kind=timer count=6 total_ms=29 max_ms=24 wait_total_ms=2 wait_max_ms=2
+2026-08-21T17:28:57.081Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=88 max_ms=51 wait_total_ms=8 wait_max_ms=7
+2026-08-21T17:28:57.081Z debug eventloop budget window_s=33 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:28:57.081Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:28:57.081Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=29 max_ms=18 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:28:57.081Z debug eventloop budget window_s=33 kind=FindNode count=7 total_ms=15 max_ms=8 wait_total_ms=2 wait_max_ms=0
+2026-08-21T17:28:57.081Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=261 max_ms=170 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:28:59.768Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:29:00.040Z warn eventloop task slow (node thread blocked) kind=BondChallenge ms=254
+2026-08-21T17:29:00.113Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:29:00.229Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:29:00.264Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:29:01.672Z warn eventloop task slow (node thread blocked) kind=BondChallenge ms=271
+2026-08-21T17:29:27.120Z debug eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:29:27.120Z debug eventloop budget window_s=30 kind=GetChainHead count=3 total_ms=13 max_ms=7 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:29:27.120Z debug eventloop budget window_s=30 kind=timer count=6 total_ms=5 max_ms=2 wait_total_ms=42 wait_max_ms=42
+2026-08-21T17:29:27.120Z debug eventloop budget window_s=30 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:29:27.120Z debug eventloop budget window_s=30 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=55 wait_max_ms=55
+2026-08-21T17:29:27.120Z debug eventloop budget window_s=30 kind=ChainHeadReply count=3 total_ms=12 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:29:27.120Z debug eventloop budget window_s=30 kind=FindNode count=6 total_ms=9 max_ms=4 wait_total_ms=2 wait_max_ms=1
+2026-08-21T17:29:27.120Z debug eventloop budget window_s=30 kind=BondChallenge count=3 total_ms=612 max_ms=271 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:29:27.120Z debug eventloop budget window_s=30 kind=BondReply count=3 total_ms=151 max_ms=73 wait_total_ms=19 wait_max_ms=19
+2026-08-21T17:29:29.773Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:29:30.083Z warn eventloop task slow (node thread blocked) kind=BondChallenge ms=267
+2026-08-21T17:29:30.445Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:29:30.446Z warn eventloop task slow (node thread blocked) kind=BondReply ms=362
+2026-08-21T17:29:30.460Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:29:30.525Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:29:31.923Z warn eventloop task slow (node thread blocked) kind=BondChallenge ms=434
+2026-08-21T17:29:33.894Z warn eventloop task slow (node thread blocked) kind=BondChallenge ms=323
+2026-08-21T17:29:59.654Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:29:59.731Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:29:59.771Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:29:59.783Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:30:00.686Z debug eventloop budget window_s=33 kind=FindNodeReply count=9 total_ms=0 max_ms=0 wait_total_ms=45 wait_max_ms=28
+2026-08-21T17:30:00.686Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=30 max_ms=15 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:30:00.686Z debug eventloop budget window_s=33 kind=timer count=9 total_ms=4 max_ms=1 wait_total_ms=13 wait_max_ms=12
+2026-08-21T17:30:00.686Z debug eventloop budget window_s=33 kind=BondReply count=6 total_ms=454 max_ms=362 wait_total_ms=171 wait_max_ms=154
+2026-08-21T17:30:00.686Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=228 max_ms=199 wait_total_ms=3 wait_max_ms=2
+2026-08-21T17:30:00.686Z debug eventloop budget window_s=33 kind=BondChallenge count=4 total_ms=1066 max_ms=434 wait_total_ms=23 wait_max_ms=9
+2026-08-21T17:30:00.686Z debug eventloop budget window_s=33 kind=GetChain count=3 total_ms=2 max_ms=2 wait_total_ms=5 wait_max_ms=5
+2026-08-21T17:30:00.686Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:30:00.686Z debug eventloop budget window_s=33 kind=FindNode count=7 total_ms=3 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:30:01.696Z warn eventloop task slow (node thread blocked) kind=BondChallenge ms=329
+2026-08-21T17:30:29.721Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:30:29.943Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:30:30.039Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:30:30.054Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:30:30.747Z debug eventloop budget window_s=30 kind=BondReply count=3 total_ms=175 max_ms=123 wait_total_ms=277 wait_max_ms=141
+2026-08-21T17:30:30.747Z debug eventloop budget window_s=30 kind=BondChallenge count=3 total_ms=413 max_ms=329 wait_total_ms=123 wait_max_ms=123
+2026-08-21T17:30:30.747Z debug eventloop budget window_s=30 kind=FindNode count=6 total_ms=2 max_ms=1 wait_total_ms=1 wait_max_ms=1
+2026-08-21T17:30:30.747Z debug eventloop budget window_s=30 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:30:30.747Z debug eventloop budget window_s=30 kind=timer count=6 total_ms=5 max_ms=3 wait_total_ms=56 wait_max_ms=56
+2026-08-21T17:30:30.747Z debug eventloop budget window_s=30 kind=FindNodeReply count=6 total_ms=1 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:30:30.747Z debug eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:30:30.747Z debug eventloop budget window_s=30 kind=GetChainHead count=3 total_ms=17 max_ms=7 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:30:30.747Z debug eventloop budget window_s=30 kind=ChainHeadReply count=3 total_ms=5 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:30:31.673Z warn eventloop task slow (node thread blocked) kind=BondChallenge ms=268
+2026-08-21T17:30:59.822Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:31:00.088Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:31:00.112Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:31:00.248Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:31:01.786Z warn eventloop task slow (node thread blocked) kind=BondChallenge ms=265
+2026-08-21T17:31:04.530Z debug eventloop budget window_s=33 kind=timer count=15 total_ms=15 max_ms=5 wait_total_ms=21 wait_max_ms=21
+2026-08-21T17:31:04.535Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:31:04.535Z debug eventloop budget window_s=33 kind=FindNodeReply count=27 total_ms=0 max_ms=0 wait_total_ms=31 wait_max_ms=30
+2026-08-21T17:31:04.535Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=130 max_ms=57 wait_total_ms=54 wait_max_ms=48
+2026-08-21T17:31:04.535Z debug eventloop budget window_s=33 kind=GetChain count=4 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:31:04.535Z debug eventloop budget window_s=33 kind=AddProvider count=21 total_ms=6 max_ms=0 wait_total_ms=66 wait_max_ms=52
+2026-08-21T17:31:04.535Z debug eventloop budget window_s=33 kind=FindNode count=28 total_ms=16 max_ms=13 wait_total_ms=2 wait_max_ms=1
+2026-08-21T17:31:04.535Z debug eventloop budget window_s=33 kind=BondChallenge count=5 total_ms=923 max_ms=268 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:31:04.535Z debug eventloop budget window_s=33 kind=ChainHeadReply count=6 total_ms=44 max_ms=16 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:31:04.535Z debug eventloop budget window_s=33 kind=AddProviderAck count=21 total_ms=1 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:31:04.535Z debug eventloop budget window_s=33 kind=GetChainHead count=4 total_ms=74 max_ms=63 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:31:29.910Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:31:30.090Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:31:30.117Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:31:30.130Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:31:38.238Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=80 max_ms=40 wait_total_ms=62 wait_max_ms=35
+2026-08-21T17:31:38.238Z debug eventloop budget window_s=33 kind=timer count=6 total_ms=2 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:31:38.238Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:31:38.238Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=24 max_ms=15 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:31:38.238Z debug eventloop budget window_s=33 kind=GetChainHead count=5 total_ms=36 max_ms=14 wait_total_ms=1 wait_max_ms=1
+2026-08-21T17:31:38.238Z debug eventloop budget window_s=33 kind=GetChain count=5 total_ms=1 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:31:38.238Z debug eventloop budget window_s=33 kind=FindNode count=6 total_ms=2 max_ms=0 wait_total_ms=3 wait_max_ms=3
+2026-08-21T17:31:38.238Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=362 max_ms=187 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:31:38.238Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:31:59.811Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:31:59.871Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:31:59.937Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:31:59.955Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:32:11.904Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=10 max_ms=4 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:32:11.904Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:32:11.904Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=107 max_ms=40 wait_total_ms=8 wait_max_ms=7
+2026-08-21T17:32:11.904Z debug eventloop budget window_s=33 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:32:11.904Z debug eventloop budget window_s=33 kind=FindNode count=7 total_ms=2 max_ms=1 wait_total_ms=1 wait_max_ms=0
+2026-08-21T17:32:11.904Z debug eventloop budget window_s=33 kind=timer count=6 total_ms=3 max_ms=2 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:32:11.904Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:32:11.904Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=58 max_ms=32 wait_total_ms=40 wait_max_ms=34
+2026-08-21T17:32:11.904Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=11 max_ms=6 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:32:29.814Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:32:29.982Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:32:30.073Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:32:30.091Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:32:45.611Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=95 max_ms=56 wait_total_ms=197 wait_max_ms=108
+2026-08-21T17:32:45.611Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=252 max_ms=142 wait_total_ms=56 wait_max_ms=56
+2026-08-21T17:32:45.611Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=10 max_ms=4 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:32:45.611Z debug eventloop budget window_s=33 kind=peer-persist count=2 total_ms=0 max_ms=0 wait_total_ms=1 wait_max_ms=0
+2026-08-21T17:32:45.611Z debug eventloop budget window_s=33 kind=FindNodeReply count=9 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:32:45.611Z debug eventloop budget window_s=33 kind=FindNode count=7 total_ms=2 max_ms=1 wait_total_ms=1 wait_max_ms=1
+2026-08-21T17:32:45.611Z debug eventloop budget window_s=33 kind=timer count=8 total_ms=2 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:32:45.611Z debug eventloop budget window_s=33 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:32:45.611Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=12 max_ms=6 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:32:59.822Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:32:59.985Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:33:00.000Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:33:00.015Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:33:15.671Z debug eventloop budget window_s=30 kind=FindNode count=6 total_ms=3 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:33:15.671Z debug eventloop budget window_s=30 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:33:15.671Z debug eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:33:15.671Z debug eventloop budget window_s=30 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:33:15.671Z debug eventloop budget window_s=30 kind=timer count=6 total_ms=4 max_ms=3 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:33:15.675Z debug eventloop budget window_s=30 kind=BondReply count=3 total_ms=75 max_ms=45 wait_total_ms=30 wait_max_ms=16
+2026-08-21T17:33:15.675Z debug eventloop budget window_s=30 kind=BondChallenge count=3 total_ms=428 max_ms=202 wait_total_ms=29 wait_max_ms=29
+2026-08-21T17:33:15.675Z debug eventloop budget window_s=30 kind=GetChainHead count=3 total_ms=26 max_ms=15 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:33:15.675Z debug eventloop budget window_s=30 kind=ChainHeadReply count=3 total_ms=16 max_ms=8 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:33:29.919Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:33:30.041Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:33:30.090Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:33:30.107Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:33:49.368Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:33:49.369Z debug eventloop budget window_s=33 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:33:49.369Z debug eventloop budget window_s=33 kind=timer count=6 total_ms=3 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:33:49.369Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=64 max_ms=27 wait_total_ms=6 wait_max_ms=6
+2026-08-21T17:33:49.369Z debug eventloop budget window_s=33 kind=FindNode count=7 total_ms=2 max_ms=1 wait_total_ms=2 wait_max_ms=2
+2026-08-21T17:33:49.369Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=11 max_ms=4 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:33:49.369Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:33:49.369Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=281 max_ms=128 wait_total_ms=23 wait_max_ms=23
+2026-08-21T17:33:49.369Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=18 max_ms=9 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:33:59.922Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:33:59.989Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:33:59.998Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:34:00.009Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:34:19.409Z debug eventloop budget window_s=30 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:34:19.409Z debug eventloop budget window_s=30 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:34:19.409Z debug eventloop budget window_s=30 kind=FindNode count=6 total_ms=2 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:34:19.409Z debug eventloop budget window_s=30 kind=BondReply count=3 total_ms=29 max_ms=15 wait_total_ms=2 wait_max_ms=2
+2026-08-21T17:34:19.409Z debug eventloop budget window_s=30 kind=GetChainHead count=3 total_ms=6 max_ms=2 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:34:19.409Z debug eventloop budget window_s=30 kind=ChainHeadReply count=3 total_ms=9 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:34:19.409Z debug eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:34:19.409Z debug eventloop budget window_s=30 kind=timer count=6 total_ms=1 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:34:19.409Z debug eventloop budget window_s=30 kind=BondChallenge count=3 total_ms=149 max_ms=79 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:34:29.925Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:34:30.018Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:34:30.042Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:34:30.057Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:34:49.427Z debug eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:34:49.427Z debug eventloop budget window_s=30 kind=timer count=6 total_ms=7 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:34:49.427Z debug eventloop budget window_s=30 kind=BondChallenge count=3 total_ms=273 max_ms=106 wait_total_ms=3 wait_max_ms=3
+2026-08-21T17:34:49.427Z debug eventloop budget window_s=30 kind=GetChainHead count=3 total_ms=23 max_ms=15 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:34:49.427Z debug eventloop budget window_s=30 kind=FindNode count=6 total_ms=2 max_ms=0 wait_total_ms=1 wait_max_ms=1
+2026-08-21T17:34:49.427Z debug eventloop budget window_s=30 kind=BondReply count=3 total_ms=71 max_ms=32 wait_total_ms=18 wait_max_ms=11
+2026-08-21T17:34:49.427Z debug eventloop budget window_s=30 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:34:49.427Z debug eventloop budget window_s=30 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:34:49.427Z debug eventloop budget window_s=30 kind=ChainHeadReply count=3 total_ms=11 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:35:00.001Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:35:00.166Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:35:00.304Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:35:00.325Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:35:23.089Z debug eventloop budget window_s=33 kind=FindNode count=6 total_ms=2 max_ms=1 wait_total_ms=1 wait_max_ms=1
+2026-08-21T17:35:23.089Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=385 max_ms=215 wait_total_ms=12 wait_max_ms=12
+2026-08-21T17:35:23.089Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=12 max_ms=4 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:35:23.089Z debug eventloop budget window_s=33 kind=timer count=6 total_ms=1 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:35:23.089Z debug eventloop budget window_s=33 kind=GetChain count=3 total_ms=1 max_ms=0 wait_total_ms=2 wait_max_ms=2
+2026-08-21T17:35:23.089Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=21 max_ms=14 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:35:23.089Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:35:23.089Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=123 max_ms=62 wait_total_ms=194 wait_max_ms=106
+2026-08-21T17:35:23.089Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:35:30.010Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:35:30.105Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:35:30.164Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:35:30.215Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:35:53.116Z debug eventloop budget window_s=30 kind=FindNode count=6 total_ms=5 max_ms=4 wait_total_ms=1 wait_max_ms=1
+2026-08-21T17:35:53.117Z debug eventloop budget window_s=30 kind=GetChainHead count=3 total_ms=10 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:35:53.117Z debug eventloop budget window_s=30 kind=ChainHeadReply count=3 total_ms=10 max_ms=4 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:35:53.117Z debug eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:35:53.117Z debug eventloop budget window_s=30 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:35:53.117Z debug eventloop budget window_s=30 kind=timer count=6 total_ms=5 max_ms=3 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:35:53.117Z debug eventloop budget window_s=30 kind=BondReply count=3 total_ms=109 max_ms=50 wait_total_ms=32 wait_max_ms=32
+2026-08-21T17:35:53.117Z debug eventloop budget window_s=30 kind=BondChallenge count=3 total_ms=223 max_ms=92 wait_total_ms=67 wait_max_ms=67
+2026-08-21T17:35:53.117Z debug eventloop budget window_s=30 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:36:00.026Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:36:00.119Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:36:00.195Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:36:00.289Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:36:23.009Z debug eventloop budget window_s=30 kind=ChainHeadReply count=3 total_ms=7 max_ms=3 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:36:23.010Z debug eventloop budget window_s=30 kind=FindNode count=6 total_ms=1 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:36:23.010Z debug eventloop budget window_s=30 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:36:23.010Z debug eventloop budget window_s=30 kind=GetChainHead count=3 total_ms=39 max_ms=33 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:36:23.010Z debug eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:36:23.010Z debug eventloop budget window_s=30 kind=BondChallenge count=3 total_ms=320 max_ms=148 wait_total_ms=50 wait_max_ms=50
+2026-08-21T17:36:23.010Z debug eventloop budget window_s=30 kind=timer count=6 total_ms=2 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:36:23.010Z debug eventloop budget window_s=30 kind=BondReply count=3 total_ms=104 max_ms=50 wait_total_ms=58 wait_max_ms=58
+2026-08-21T17:36:23.010Z debug eventloop budget window_s=30 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:36:29.934Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:36:30.148Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:36:30.209Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:36:30.225Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:36:56.722Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:36:56.722Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=26 max_ms=15 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:36:56.722Z debug eventloop budget window_s=33 kind=GetChain count=3 total_ms=1 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:36:56.722Z debug eventloop budget window_s=33 kind=FindNode count=6 total_ms=5 max_ms=4 wait_total_ms=2 wait_max_ms=2
+2026-08-21T17:36:56.722Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=171 max_ms=134 wait_total_ms=246 wait_max_ms=127
+2026-08-21T17:36:56.722Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=195 max_ms=86 wait_total_ms=114 wait_max_ms=114
+2026-08-21T17:36:56.722Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=12 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:36:56.722Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:36:56.722Z debug eventloop budget window_s=33 kind=timer count=6 total_ms=2 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:36:59.937Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:37:00.016Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:37:00.058Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:37:00.081Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:37:26.750Z debug eventloop budget window_s=30 kind=ChainHeadReply count=3 total_ms=9 max_ms=4 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:37:26.750Z debug eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:37:26.750Z debug eventloop budget window_s=30 kind=timer count=6 total_ms=2 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:37:26.750Z debug eventloop budget window_s=30 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:37:26.750Z debug eventloop budget window_s=30 kind=FindNode count=6 total_ms=1 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:37:26.750Z debug eventloop budget window_s=30 kind=BondChallenge count=3 total_ms=93 max_ms=43 wait_total_ms=18 wait_max_ms=18
+2026-08-21T17:37:26.750Z debug eventloop budget window_s=30 kind=GetChainHead count=3 total_ms=9 max_ms=4 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:37:26.750Z debug eventloop budget window_s=30 kind=BondReply count=3 total_ms=68 max_ms=29 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:37:26.750Z debug eventloop budget window_s=30 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:37:29.957Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:37:30.091Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:37:30.169Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:37:30.189Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:38:00.057Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:38:00.260Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:38:00.313Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:38:00.333Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:38:00.559Z debug eventloop budget window_s=33 kind=timer count=7 total_ms=5 max_ms=2 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:38:00.559Z debug eventloop budget window_s=33 kind=BondChallenge count=4 total_ms=243 max_ms=147 wait_total_ms=20 wait_max_ms=20
+2026-08-21T17:38:00.559Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=10 max_ms=4 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:38:00.559Z debug eventloop budget window_s=33 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:38:00.559Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=11 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:38:00.559Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:38:00.559Z debug eventloop budget window_s=33 kind=FindNode count=8 total_ms=6 max_ms=3 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:38:00.559Z debug eventloop budget window_s=33 kind=BondReply count=6 total_ms=205 max_ms=53 wait_total_ms=201 wait_max_ms=61
+2026-08-21T17:38:00.559Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:38:30.059Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:38:30.118Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:38:30.146Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:38:30.172Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:38:33.094Z info round-change: advancing (#432 view-change) height=9 round=7 via=timeout locked=false pending=3 pending_entries=0
+2026-08-21T17:38:34.221Z debug eventloop budget window_s=33 kind=FindNodeReply count=9 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:38:34.221Z debug eventloop budget window_s=33 kind=GetChainHead count=4 total_ms=14 max_ms=4 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:38:34.221Z debug eventloop budget window_s=33 kind=GetChain count=4 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:38:34.221Z debug eventloop budget window_s=33 kind=FindNode count=7 total_ms=3 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:38:34.221Z debug eventloop budget window_s=33 kind=ChainHeadReply count=6 total_ms=19 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:38:34.221Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:38:34.221Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=37 max_ms=18 wait_total_ms=31 wait_max_ms=31
+2026-08-21T17:38:34.221Z debug eventloop budget window_s=33 kind=BondChallenge count=5 total_ms=167 max_ms=48 wait_total_ms=19 wait_max_ms=18
+2026-08-21T17:38:34.221Z debug eventloop budget window_s=33 kind=timer count=9 total_ms=2 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:38:34.221Z debug eventloop budget window_s=33 kind=RoundChangeAck count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:39:00.064Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:39:00.107Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:39:00.115Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:39:00.126Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:39:04.223Z debug eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:39:04.223Z debug eventloop budget window_s=30 kind=FindNode count=6 total_ms=5 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:39:04.223Z debug eventloop budget window_s=30 kind=GetChainHead count=3 total_ms=15 max_ms=9 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:39:04.223Z debug eventloop budget window_s=30 kind=ChainHeadReply count=3 total_ms=6 max_ms=2 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:39:04.223Z debug eventloop budget window_s=30 kind=timer count=6 total_ms=7 max_ms=6 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:39:04.223Z debug eventloop budget window_s=30 kind=BondChallenge count=3 total_ms=85 max_ms=35 wait_total_ms=3 wait_max_ms=3
+2026-08-21T17:39:04.223Z debug eventloop budget window_s=30 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:39:04.223Z debug eventloop budget window_s=30 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:39:04.223Z debug eventloop budget window_s=30 kind=BondReply count=3 total_ms=34 max_ms=15 wait_total_ms=16 wait_max_ms=9
+2026-08-21T17:39:30.074Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:39:30.353Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:39:30.369Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:39:30.473Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:39:33.008Z warn eventloop task slow (node thread blocked) kind=BondChallenge ms=1100
+2026-08-21T17:39:34.289Z debug eventloop budget window_s=30 kind=timer count=6 total_ms=12 max_ms=7 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:39:34.291Z debug eventloop budget window_s=30 kind=BondChallenge count=3 total_ms=1238 max_ms=1100 wait_total_ms=26 wait_max_ms=25
+2026-08-21T17:39:34.292Z debug eventloop budget window_s=30 kind=GetChainHead count=3 total_ms=16 max_ms=11 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:39:34.292Z debug eventloop budget window_s=30 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:39:34.292Z debug eventloop budget window_s=30 kind=BondReply count=3 total_ms=95 max_ms=47 wait_total_ms=88 wait_max_ms=78
+2026-08-21T17:39:34.292Z debug eventloop budget window_s=30 kind=FindNode count=6 total_ms=2 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:39:34.292Z debug eventloop budget window_s=30 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:39:34.292Z debug eventloop budget window_s=30 kind=ChainHeadReply count=3 total_ms=14 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:39:34.292Z debug eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:40:00.078Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:40:00.175Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:40:00.199Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:40:00.211Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:40:07.969Z debug eventloop budget window_s=33 kind=FindNode count=6 total_ms=2 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:40:07.969Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:40:07.969Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=150 max_ms=64 wait_total_ms=15 wait_max_ms=15
+2026-08-21T17:40:07.969Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=5 max_ms=2 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:40:07.969Z debug eventloop budget window_s=33 kind=GetChain count=5 total_ms=1 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:40:07.969Z debug eventloop budget window_s=33 kind=timer count=6 total_ms=16 max_ms=15 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:40:07.969Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:40:07.969Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=52 max_ms=22 wait_total_ms=3 wait_max_ms=3
+2026-08-21T17:40:07.969Z debug eventloop budget window_s=33 kind=GetChainHead count=5 total_ms=37 max_ms=20 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:40:30.083Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:40:30.225Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:40:30.303Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:40:30.376Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:40:37.986Z debug eventloop budget window_s=30 kind=timer count=6 total_ms=7 max_ms=4 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:40:37.986Z debug eventloop budget window_s=30 kind=BondReply count=3 total_ms=106 max_ms=69 wait_total_ms=106 wait_max_ms=106
+2026-08-21T17:40:37.986Z debug eventloop budget window_s=30 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:40:37.986Z debug eventloop budget window_s=30 kind=BondChallenge count=3 total_ms=129 max_ms=58 wait_total_ms=69 wait_max_ms=69
+2026-08-21T17:40:37.986Z debug eventloop budget window_s=30 kind=ChainHeadReply count=3 total_ms=17 max_ms=13 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:40:37.986Z debug eventloop budget window_s=30 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:40:37.986Z debug eventloop budget window_s=30 kind=GetChainHead count=3 total_ms=31 max_ms=22 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:40:37.986Z debug eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:40:37.986Z debug eventloop budget window_s=30 kind=FindNode count=6 total_ms=2 max_ms=2 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:41:00.140Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:41:00.309Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:41:00.337Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:41:00.356Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:41:11.798Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:41:11.799Z debug eventloop budget window_s=33 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:41:11.799Z debug eventloop budget window_s=33 kind=FindNode count=6 total_ms=4 max_ms=3 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:41:11.799Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=13 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:41:11.799Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=12 max_ms=6 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:41:11.799Z debug eventloop budget window_s=33 kind=timer count=6 total_ms=2 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:41:11.799Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:41:11.799Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=101 max_ms=53 wait_total_ms=99 wait_max_ms=50
+2026-08-21T17:41:11.799Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=171 max_ms=66 wait_total_ms=69 wait_max_ms=69
+2026-08-21T17:41:30.214Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:41:30.334Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:41:30.510Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:41:30.555Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:41:41.799Z debug eventloop budget window_s=30 kind=BondReply count=3 total_ms=220 max_ms=128 wait_total_ms=44 wait_max_ms=39
+2026-08-21T17:41:41.801Z debug eventloop budget window_s=30 kind=BondChallenge count=3 total_ms=174 max_ms=79 wait_total_ms=85 wait_max_ms=85
+2026-08-21T17:41:41.801Z debug eventloop budget window_s=30 kind=GetChainHead count=3 total_ms=14 max_ms=6 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:41:41.801Z debug eventloop budget window_s=30 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:41:41.801Z debug eventloop budget window_s=30 kind=FindNode count=6 total_ms=4 max_ms=3 wait_total_ms=1 wait_max_ms=0
+2026-08-21T17:41:41.801Z debug eventloop budget window_s=30 kind=timer count=6 total_ms=1 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:41:41.801Z debug eventloop budget window_s=30 kind=ChainHeadReply count=3 total_ms=9 max_ms=4 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:41:41.801Z debug eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:41:41.801Z debug eventloop budget window_s=30 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:42:00.312Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:42:00.465Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:42:00.471Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:42:00.494Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:42:15.532Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=9 max_ms=3 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:42:15.535Z debug eventloop budget window_s=33 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:42:15.535Z debug eventloop budget window_s=33 kind=timer count=6 total_ms=2 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:42:15.535Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:42:15.535Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=49 max_ms=37 wait_total_ms=19 wait_max_ms=17
+2026-08-21T17:42:15.535Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=121 max_ms=60 wait_total_ms=7 wait_max_ms=7
+2026-08-21T17:42:15.535Z debug eventloop budget window_s=33 kind=peer-persist count=2 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:42:15.535Z debug eventloop budget window_s=33 kind=FindNode count=8 total_ms=2 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:42:15.535Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=10 max_ms=4 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:42:30.398Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:42:30.554Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:42:30.590Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:42:30.639Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:42:49.230Z debug eventloop budget window_s=33 kind=FindNode count=7 total_ms=8 max_ms=3 wait_total_ms=9 wait_max_ms=9
+2026-08-21T17:42:49.230Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=16 max_ms=8 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:42:49.230Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:42:49.230Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=14 max_ms=6 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:42:49.230Z debug eventloop budget window_s=33 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:42:49.230Z debug eventloop budget window_s=33 kind=timer count=8 total_ms=7 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:42:49.230Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=157 max_ms=104 wait_total_ms=121 wait_max_ms=73
+2026-08-21T17:42:49.230Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=106 max_ms=39 wait_total_ms=84 wait_max_ms=84
+2026-08-21T17:42:49.230Z debug eventloop budget window_s=33 kind=FindNodeReply count=9 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:43:00.485Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:43:00.638Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:43:00.659Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:43:00.675Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:43:19.309Z debug eventloop budget window_s=30 kind=ChainHeadReply count=3 total_ms=12 max_ms=6 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:43:19.310Z debug eventloop budget window_s=30 kind=BondChallenge count=3 total_ms=142 max_ms=50 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:43:19.310Z debug eventloop budget window_s=30 kind=BondReply count=3 total_ms=69 max_ms=32 wait_total_ms=16 wait_max_ms=9
+2026-08-21T17:43:19.310Z debug eventloop budget window_s=30 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:43:19.310Z debug eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:43:19.310Z debug eventloop budget window_s=30 kind=timer count=6 total_ms=1 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:43:19.310Z debug eventloop budget window_s=30 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:43:19.310Z debug eventloop budget window_s=30 kind=FindNode count=6 total_ms=1 max_ms=0 wait_total_ms=1 wait_max_ms=1
+2026-08-21T17:43:19.310Z debug eventloop budget window_s=30 kind=GetChainHead count=3 total_ms=13 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:43:30.487Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:43:30.638Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:43:30.660Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:43:30.672Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:43:49.316Z debug eventloop budget window_s=30 kind=BondChallenge count=3 total_ms=171 max_ms=82 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:43:49.317Z debug eventloop budget window_s=30 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:43:49.317Z debug eventloop budget window_s=30 kind=GetChainHead count=3 total_ms=18 max_ms=10 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:43:49.317Z debug eventloop budget window_s=30 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:43:49.317Z debug eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:43:49.317Z debug eventloop budget window_s=30 kind=BondReply count=3 total_ms=69 max_ms=48 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:43:49.317Z debug eventloop budget window_s=30 kind=ChainHeadReply count=3 total_ms=14 max_ms=7 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:43:49.317Z debug eventloop budget window_s=30 kind=FindNode count=6 total_ms=4 max_ms=2 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:43:49.317Z debug eventloop budget window_s=30 kind=timer count=6 total_ms=2 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:44:00.512Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:44:00.701Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:44:00.721Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:44:00.740Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:44:23.070Z debug eventloop budget window_s=33 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:44:23.072Z debug eventloop budget window_s=33 kind=FindNode count=6 total_ms=1 max_ms=0 wait_total_ms=7 wait_max_ms=6
+2026-08-21T17:44:23.072Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=11 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:44:23.072Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=87 max_ms=49 wait_total_ms=40 wait_max_ms=24
+2026-08-21T17:44:23.072Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=13 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:44:23.072Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:44:23.072Z debug eventloop budget window_s=33 kind=timer count=6 total_ms=8 max_ms=7 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:44:23.072Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=344 max_ms=123 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:44:23.072Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:44:30.526Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:44:30.750Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:44:30.769Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:44:30.795Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:44:56.722Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=12 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:44:56.723Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=224 max_ms=106 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:44:56.723Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=117 max_ms=72 wait_total_ms=62 wait_max_ms=37
+2026-08-21T17:44:56.723Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:44:56.723Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:44:56.723Z debug eventloop budget window_s=33 kind=FindNode count=6 total_ms=2 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:44:56.723Z debug eventloop budget window_s=33 kind=timer count=6 total_ms=11 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:44:56.723Z debug eventloop budget window_s=33 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:44:56.723Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=12 max_ms=4 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:45:00.529Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:45:00.658Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:45:00.778Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:45:00.795Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:45:30.473Z debug eventloop budget window_s=33 kind=BondReply count=3 total_ms=55 max_ms=32 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:45:30.473Z debug eventloop budget window_s=33 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:45:30.473Z debug eventloop budget window_s=33 kind=ChainHeadReply count=3 total_ms=5 max_ms=2 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:45:30.473Z debug eventloop budget window_s=33 kind=timer count=6 total_ms=4 max_ms=3 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:45:30.473Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:45:30.473Z debug eventloop budget window_s=33 kind=BondChallenge count=3 total_ms=108 max_ms=48 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:45:30.473Z debug eventloop budget window_s=33 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:45:30.473Z debug eventloop budget window_s=33 kind=GetChainHead count=3 total_ms=19 max_ms=13 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:45:30.473Z debug eventloop budget window_s=33 kind=FindNode count=8 total_ms=7 max_ms=3 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:45:30.534Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:45:30.662Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:45:30.682Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:45:30.688Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:46:00.564Z debug eventloop budget window_s=30 kind=BondReply count=3 total_ms=35 max_ms=18 wait_total_ms=2 wait_max_ms=1
+2026-08-21T17:46:00.564Z debug eventloop budget window_s=30 kind=GetChainHead count=3 total_ms=17 max_ms=9 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:46:00.564Z debug eventloop budget window_s=30 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:46:00.564Z debug eventloop budget window_s=30 kind=FindNodeReply count=6 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:46:00.564Z debug eventloop budget window_s=30 kind=FindNode count=6 total_ms=2 max_ms=1 wait_total_ms=1 wait_max_ms=0
+2026-08-21T17:46:00.564Z debug eventloop budget window_s=30 kind=GetChain count=3 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:46:00.564Z debug eventloop budget window_s=30 kind=ChainHeadReply count=3 total_ms=12 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:46:00.564Z debug eventloop budget window_s=30 kind=timer count=6 total_ms=1 max_ms=1 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:46:00.564Z debug eventloop budget window_s=30 kind=BondChallenge count=3 total_ms=203 max_ms=83 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:46:00.567Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:46:00.784Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:46:00.812Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:46:00.834Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:46:30.447Z info standing self=6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 reputation=1024
+2026-08-21T17:46:30.501Z info bond challenge peer=43afadef8ba88f58135669aad5cfe0d011411d2bdca86701dd2d46129e341763 passed=true late=false standing=1024
+2026-08-21T17:46:30.574Z info bond challenge peer=d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d passed=true late=false standing=1024
+2026-08-21T17:46:30.590Z info bond challenge peer=58d111889d0db4b72060a44cf6e3a75d10f95dcd909b88dd5b3351cecd78c07b passed=true late=false standing=1024
+2026-08-21T17:46:34.101Z debug eventloop budget window_s=33 kind=ChainHeadReply count=6 total_ms=17 max_ms=4 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:46:34.101Z debug eventloop budget window_s=33 kind=FindNode count=28 total_ms=4 max_ms=0 wait_total_ms=93 wait_max_ms=90
+2026-08-21T17:46:34.101Z debug eventloop budget window_s=33 kind=AddProvider count=21 total_ms=8 max_ms=2 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:46:34.101Z debug eventloop budget window_s=33 kind=BondReply count=6 total_ms=133 max_ms=45 wait_total_ms=221 wait_max_ms=94
+2026-08-21T17:46:34.101Z debug eventloop budget window_s=33 kind=FindNodeReply count=30 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:46:34.101Z debug eventloop budget window_s=33 kind=AddProviderAck count=21 total_ms=2 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:46:34.101Z debug eventloop budget window_s=33 kind=peer-persist count=1 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:46:34.101Z debug eventloop budget window_s=33 kind=GetChainHead count=4 total_ms=16 max_ms=5 wait_total_ms=0 wait_max_ms=0
+2026-08-21T17:46:34.101Z debug eventloop budget window_s=33 kind=timer count=18 total_ms=10 max_ms=7 wait_total_ms=34 wait_max_ms=34
+2026-08-21T17:46:34.101Z debug eventloop budget window_s=33 kind=BondChallenge count=6 total_ms=570 max_ms=182 wait_total_ms=7 wait_max_ms=7
+2026-08-21T17:46:34.101Z debug eventloop budget window_s=33 kind=GetChain count=4 total_ms=0 max_ms=0 wait_total_ms=0 wait_max_ms=0

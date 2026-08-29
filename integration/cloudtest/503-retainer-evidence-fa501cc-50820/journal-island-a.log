@@ -1,0 +1,118 @@
+debug: pprof at http://127.0.0.1:6060/debug/pprof/ (heap attribution)
+inbound-cap: 256M in-flight message budget (backpressure over cap; a flood stalls, doesn't OOM)
+pledge: 0 / 2147483648 bytes used
+bond: objective re-challenge TTL defaulted to 32 blocks for this untrusted (objective) swarm — standing lapses this many blocks after a validator's latest bond proof unless it renews, so a released plot can't keep voting. Override with -bond-ttl (0 disables; safe only for a trusted/demo swarm).
+consensus: Byzantine quorum sizing defaulted ON for this untrusted (objective) swarm — a commit needs a supermajority of the qualified bonded set so two quorums always share an honest validator. Override with -byzantine-quorum=false (safe only for a trusted swarm).
+consensus: operator-margin defaulted to 2 for this untrusted (objective) swarm — the C2 maturity shed discounts the bond-distinct Nakamoto coefficient by M, so one operator splitting real stake across ~M NodeIDs cannot fake the decentralization that sheds the launch anchors. Override with -operator-margin (1 = no split margin; safe only for a trusted/single-operator swarm).
+consensus: epoch-blocks defaulted to 8 for this untrusted (objective) swarm — after the young→mature handoff the finality quorum and validator set are frozen per epoch (rotated at finalized boundary blocks), so churning bonds cannot let two conflicting commits finalize against two different sets. Override with -epoch-blocks, identically across the swarm (0 disables; safe only for a trusted/demo swarm).
+log: debug and above → /var/lib/silt/debug.log
+proof-cache: 64M hot-proof RAM budget (rest page from disk to serve/audit)
+training wheels: 4 anchor(s), strict majority 3 required (objective; derived #402), shed at 4 independent validators
+genesis: silt:v1:_Onu6yOsAFGXLZnmfpQjgh_tyWB8u7SMUqQDAXHjINY:1-O2hkdHgz3S-1ewAWKyXrFQUI5Ed16PzMlyoNnBfEA
+bond: sealed a 64M storage bond for consensus standing
+consensus: OBJECTIVE fork-choice (default; on-chain bond ≥ 1M); 4 anchor(s) bootstrap the launch set, shed at maturity
+peer: d7edbb02d970397d3872d4c9aba2efb9ea49b4c4a52edf88adb8190a3fcf6f7d@[::]:4001
+store: /var/lib/silt
+discovery: 3 peer(s) via -persistent-peers
+persistent-peers: 3 configured (static, never-evicted consensus tier)
+serving; Ctrl-C to stop
+chain: committed block 1 (0 entries, 1 bond-regs, 3 attestations)
+  C2: nakamoto 0 bonds → 0 operators (margin ×2) | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+  checkpoint: 1:df9d2245df5faa0d78ea21a52453a3b2b7334be3311ac341f759cf22c17d6814
+bootstrapped (3 table entries)
+reachability: public — peers can dial this node directly
+re-announced 7 held chunks
+chain: committed block 2 (0 entries, 1 bond-regs, 3 attestations)
+  C2: nakamoto 0 bonds → 0 operators (margin ×2) | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+  checkpoint: 2:732cc20f884970f57bd3a9d3f899681c0c9392120c3d791128bab9163e484896
+chain: slashed equivocator 6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 (double-signed at height 2)
+chain: committed block 3 (0 entries, 1 bond-regs, 3 attestations)
+  C2: nakamoto 0 bonds → 0 operators (margin ×2) | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+  checkpoint: 3:ee92b4bdeac8313c6c4f99f6eb8168c3a78fe91deb170873d421130d8174ec19
+chain: committed block 4 (0 entries, 1 bond-regs, 3 attestations)
+  C2: nakamoto 0 bonds → 0 operators (margin ×2) | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+  checkpoint: 4:a8e4cc426860be04819206c43396a81d4aadbd922911208bfe421c8fa4606d91
+chain: committed block 5 (0 entries, 1 bond-regs, 3 attestations)
+  C2: nakamoto 0 bonds → 0 operators (margin ×2) | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+  checkpoint: 5:356deaed03201d6ce2304697379be1e35ba6d4685d9d6bc83ed1b045c68ba100
+chain: committed block 6 (0 entries, 1 bond-regs, 3 attestations)
+  C2: nakamoto 0 bonds → 0 operators (margin ×2) | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+  checkpoint: 6:f089c54130c3b1ebb2312852ce8dfd0b75f23d16ba80e26a44178e2194aed48b
+chain: committed block 7 (0 entries, 1 bond-regs, 3 attestations)
+  C2: nakamoto 0 bonds → 0 operators (margin ×2) | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+  checkpoint: 7:e27d900c16aba4a12dd79988c50a54c76cedd15cd63fc3b377848e2eb98593d8
+chain: committed block 8 (0 entries, 1 bond-regs, 3 attestations)
+  C2: nakamoto 0 bonds → 0 operators (margin ×2) | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+  checkpoint: 8:32c82b7e201dac6b12976574dbdc221329a32af88e923fa382d6344222856edc
+chain: committed block 9 (0 entries, 1 bond-regs, 3 attestations)
+  C2: nakamoto 0 bonds → 0 operators (margin ×2) | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+  checkpoint: 9:7f8e187fbaa73310be66280ec7a5269a8181a8b00c181ecc9b3ffa4cf578fd14
+chain: committed block 10 (0 entries, 1 bond-regs, 3 attestations)
+  C2: nakamoto 0 bonds → 0 operators (margin ×2) | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+  checkpoint: 10:d5ba78093ca23d079d7b8651c40344003e0f8d2c42facf37b7d944b036c76099
+chain: committed block 11 (0 entries, 1 bond-regs, 3 attestations)
+  C2: nakamoto 0 bonds → 0 operators (margin ×2) | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+  checkpoint: 11:3834f4331116729678dd67c8dd667f85840193948a11bc528bf84e7b41297971
+chain: committed block 12 (0 entries, 1 bond-regs, 3 attestations)
+  C2: nakamoto 0 bonds → 0 operators (margin ×2) | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+  checkpoint: 12:83897894f648c58c50a5f601dcbf885339f7944b748d1a330052287d083a7107
+chain: committed block 13 (0 entries, 1 bond-regs, 3 attestations)
+  C2: nakamoto 0 bonds → 0 operators (margin ×2) | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+  checkpoint: 13:f1c8066409ca95c5eb4a44dc56ae3e227a4c74f28b685755d121a327699e650b
+chain: committed block 14 (0 entries, 1 bond-regs, 3 attestations)
+  C2: nakamoto 0 bonds → 0 operators (margin ×2) | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+  checkpoint: 14:42bfb304af7a8416e5d9fbdad9e7f0ef3a4e34915e99684355e7150b1d4ea962
+chain: committed block 15 (0 entries, 1 bond-regs, 3 attestations)
+  C2: nakamoto 0 bonds → 0 operators (margin ×2) | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+  checkpoint: 15:deaba9fc47724897355b62bc158c44627f039f802dbb20e20cde3954aa333cbd
+chain: committed block 16 (0 entries, 1 bond-regs, 3 attestations)
+  C2: nakamoto 0 bonds → 0 operators (margin ×2) | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+  checkpoint: 16:1acca29a7494d4a2f9f277292440fe8d619c3a536f0771d720da132e4686c2aa
+chain: committed block 17 (0 entries, 1 bond-regs, 3 attestations)
+  C2: nakamoto 0 bonds → 0 operators (margin ×2) | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+  checkpoint: 17:885048a468e6885055d15df9ef1f5ce84785d18890bb427bff9bbca9215de9e4
+chain: committed block 18 (0 entries, 1 bond-regs, 3 attestations)
+  C2: nakamoto 0 bonds → 0 operators (margin ×2) | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+  checkpoint: 18:0eb4c51e240f8884e6729cef97e43a74d2b6142bea6959017cd586775b6643b4
+chain: committed block 19 (0 entries, 1 bond-regs, 3 attestations)
+  C2: nakamoto 0 bonds → 0 operators (margin ×2) | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+  checkpoint: 19:c9d4178b72b2d0b939cbbc658d31c9bc2097aea9a147d853f4572b26aab9d2ad
+chain: committed block 20 (0 entries, 1 bond-regs, 3 attestations)
+  C2: nakamoto 0 bonds → 0 operators (margin ×2) | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+  checkpoint: 20:94b7f9dd26eba632ab78a5fff2cb3f5a8d605afe65954a316ad558e8cdf6e482
+chain: committed block 21 (0 entries, 1 bond-regs, 3 attestations)
+  C2: nakamoto 0 bonds → 0 operators (margin ×2) | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+  checkpoint: 21:803f85556c8eb04055b689b8d8e2dcca65d17e523fe95f7c309c20810741bc19
+chain: committed block 22 (0 entries, 1 bond-regs, 3 attestations)
+  C2: nakamoto 0 bonds → 0 operators (margin ×2) | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+  checkpoint: 22:be5dfadd49c998655314fd61b2f14854eba43fc1c28167a16fb8e3025110622a
+chain: committed block 23 (0 entries, 1 bond-regs, 3 attestations)
+  C2: nakamoto 0 bonds → 0 operators (margin ×2) | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+  checkpoint: 23:a40126ee7765a7b0a28753ba9c7bec2fea73816c1349d0eea865196842502e0e
+chain: committed block 24 (0 entries, 1 bond-regs, 3 attestations)
+  C2: nakamoto 0 bonds → 0 operators (margin ×2) | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+  checkpoint: 24:be7a58616eb7768c1698d9514a9d9de361245bd9d9865d3538e4c3787ec432f9
+chain: committed block 25 (0 entries, 1 bond-regs, 3 attestations)
+  C2: nakamoto 0 bonds → 0 operators (margin ×2) | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+  checkpoint: 25:df27fefa7f3e72c34ee2d3830487ae77742077976f9a2c68e93a4454d07416cc
+chain: committed block 26 (0 entries, 1 bond-regs, 3 attestations)
+  C2: nakamoto 0 bonds → 0 operators (margin ×2) | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+  checkpoint: 26:57cfa76ed90b1d1338e70103ce7c94f88de5925251d84afff76970231049ade0
+chain: committed block 27 (0 entries, 1 bond-regs, 3 attestations)
+  C2: nakamoto 0 bonds → 0 operators (margin ×2) | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+  checkpoint: 27:2298e65caa9fb178b485c257d7bad1ba50c8cb4eb74edbd5b53bebdbf1d9d3dd
+chain: committed block 28 (0 entries, 1 bond-regs, 3 attestations)
+  C2: nakamoto 0 bonds → 0 operators (margin ×2) | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+  checkpoint: 28:2038abd89a1a9bf02cebe56a21a1625b6c061cca1f62d2229cf62288f8f244ad
+chain: committed block 29 (0 entries, 1 bond-regs, 3 attestations)
+  C2: nakamoto 0 bonds → 0 operators (margin ×2) | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+  checkpoint: 29:1145a4fd01ac4789c1ff81ad3c4071a263268c4d419c451304a121078a210b06
+chain: committed block 30 (0 entries, 1 bond-regs, 3 attestations)
+  C2: nakamoto 0 bonds → 0 operators (margin ×2) | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+  checkpoint: 30:4776b2a99eb6f9076bbf7dd4b1c43d476ccdf7ebb26eb653e5186b5de0383ea7
+chain: committed block 31 (0 entries, 1 bond-regs, 3 attestations)
+  C2: nakamoto 0 bonds → 0 operators (margin ×2) | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+  checkpoint: 31:a125e41cb41ea124340f83beb3ae1ea30b0937b43b80b490829e620796e48afa
+chain: committed block 32 (0 entries, 1 bond-regs, 3 attestations)
+  C2: nakamoto 0 bonds → 0 operators (margin ×2) | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+  checkpoint: 32:86ef461bbb09e8eced35928a2ead9d19e72f122bd3ada2f58b4f29d67f73bc2b

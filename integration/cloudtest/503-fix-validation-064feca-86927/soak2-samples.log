@@ -1,0 +1,111 @@
+17:01:29 island-a rss=175.2MiB height=1 prune_events=0 blocks_pruned=0 reg_blocks=1
+17:01:29 island-b rss=170.3MiB height=1 prune_events=0 blocks_pruned=0 reg_blocks=1
+17:01:29 island-c rss=170.3MiB height=1 prune_events=0 blocks_pruned=0 reg_blocks=1
+17:01:29 island-d rss=187.6MiB height=1 prune_events=0 blocks_pruned=0 reg_blocks=1
+17:01:29 tick=0 done
+17:03:40 island-a rss=237.2MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=6
+17:03:40 island-b rss=262.3MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=7
+17:03:40 island-c rss=252.5MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:03:40 island-d rss=231.4MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:03:40 tick=1 done
+17:05:48 island-a rss=256.2MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=6
+17:05:48 island-b rss=264.5MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=7
+17:05:48 island-c rss=279.6MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:05:48 island-d rss=265.6MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:05:48 tick=2 done
+17:07:56 island-a rss=256MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=6
+17:07:56 island-b rss=258MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=7
+17:07:56 island-c rss=249.1MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:07:56 island-d rss=220.4MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:07:56 tick=3 done
+17:10:04 island-a rss=256.1MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=6
+17:10:04 island-b rss=258.1MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=7
+17:10:04 island-c rss=249.2MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:10:04 island-d rss=197.7MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:10:04 tick=4 done
+17:12:12 island-a rss=261MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=6
+17:12:12 island-b rss=242.1MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=7
+17:12:12 island-c rss=219.8MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:12:12 island-d rss=200.9MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:12:12 tick=5 done
+17:14:19 island-a rss=215MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=6
+17:14:19 island-b rss=220.1MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=7
+17:14:19 island-c rss=206MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:14:19 island-d rss=175.7MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:14:19 tick=6 done
+17:16:26 island-a rss=215.1MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=6
+17:16:26 island-b rss=220.1MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=7
+17:16:26 island-c rss=206.2MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:16:26 island-d rss=174.7MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:16:26 tick=7 done
+17:18:34 island-a rss=205.7MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=6
+17:18:34 island-b rss=218.4MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=7
+17:18:34 island-c rss=197.6MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:18:34 island-d rss=191.8MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:18:34 tick=8 done
+17:20:42 island-a rss=192.7MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=6
+17:20:42 island-b rss=218.4MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=7
+17:20:42 island-c rss=197.7MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:20:42 island-d rss=193.4MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:20:42 tick=9 done
+17:22:49 island-a rss=190.7MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=6
+17:22:49 island-b rss=218.4MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=7
+17:22:49 island-c rss=197.7MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:22:49 island-d rss=190MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:22:49 tick=10 done
+17:24:57 island-a rss=190.7MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=6
+17:24:57 island-b rss=218.5MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=7
+17:24:57 island-c rss=197.7MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:24:57 island-d rss=190.2MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:24:57 tick=11 done
+17:27:05 island-a rss=193MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=6
+17:27:05 island-b rss=215MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=7
+17:27:05 island-c rss=175.7MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:27:05 island-d rss=188.9MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:27:05 tick=12 done
+17:29:16 island-a rss=191MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=6
+17:29:16 island-b rss=215MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=7
+17:29:16 island-c rss=194.1MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:29:16 island-d rss=199.1MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:29:16 tick=13 done
+17:31:25 island-a rss=191.1MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=6
+17:31:25 island-b rss=213MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=7
+17:31:25 island-c rss=203.2MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:31:25 island-d rss=190.4MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:31:25 tick=14 done
+17:33:33 island-a rss=195.5MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=6
+17:33:33 island-b rss=213MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=7
+17:33:33 island-c rss=204.7MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:33:33 island-d rss=192.7MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:33:33 tick=15 done
+17:35:41 island-a rss=193.1MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=6
+17:35:41 island-b rss=213MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=7
+17:35:41 island-c rss=202.2MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:35:41 island-d rss=195MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:35:41 tick=16 done
+17:37:48 island-a rss=193.1MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=6
+17:37:48 island-b rss=206.6MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=7
+17:37:48 island-c rss=204.7MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:37:48 island-d rss=190.6MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:37:48 tick=17 done
+17:39:56 island-a rss=194MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=6
+17:39:56 island-b rss=206.6MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=7
+17:39:56 island-c rss=204.1MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:39:56 island-d rss=193.6MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:39:56 tick=18 done
+17:42:04 island-a rss=194.2MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=6
+17:42:04 island-b rss=206.6MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=7
+17:42:04 island-c rss=204.6MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:42:04 island-d rss=195.4MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:42:04 tick=19 done
+17:44:11 island-a rss=194.2MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=6
+17:44:11 island-b rss=213.1MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=7
+17:44:11 island-c rss=194.6MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:44:11 island-d rss=198.1MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:44:11 tick=20 done
+17:46:19 island-a rss=192.8MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=6
+17:46:19 island-b rss=213.1MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=7
+17:46:19 island-c rss=194.6MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:46:19 island-d rss=198.1MiB height=8 prune_events=0 blocks_pruned=0 reg_blocks=8
+17:46:19 tick=21 done
+SAMPLER DONE 17:46:26

@@ -338,6 +338,24 @@ const BlockVersionRegGate = 3
 // block is ever minted before its predicate exists.
 const BlockVersionStateRoot = 4
 
+// BlockVersionWitnessable is the era-4 rule era: the two whole-map apply() scans
+// (TTL-expiry and epoch rotation) become O(payload)-witnessable by committing two
+// new accelerator keyspaces — a due-height bucket index (TTL) and a materialized
+// `qualified` set with a frozen `epochStart` marker (rotation) — under the state
+// root as v5-only leaves. The design is RATIFIED in
+// docs/thinking/2026-08-29-era4-witnessable-transitions-options.md and the ordered
+// build in docs/thinking/2026-08-29-era4-build-decomposition-options.md.
+//
+// Build order (ratified, PREDICATE-FIRST): 4a (THIS) mints this constant and defines
+// the three new field tags, but does NOT lift versionSupported to <= 5, does NOT add
+// the maintenance maps, and does NOT emit any new leaf — so 4a is INERT on the live
+// v4 chain (no v4 block's committed root changes). 4b adds the maintenance spine and
+// commits the new leaves as v5-only. 4c adds the v5 validity predicate on every
+// disk-write path AND widens versionSupported to <= 5 in the SAME release (so the
+// decode ceiling and the predicate ship atomically — no interim decode-without-check
+// window). 4d height-gates activation and flips minting to v5.
+const BlockVersionWitnessable = 5
+
 // Consensus signature phases (#432 two-phase gather, research-certified).
 // PhaseLegacy (0) is the era-1 bare-hash signature — what a pre-rounds
 // Attestation decodes as; never minted in era 2.
