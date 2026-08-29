@@ -631,6 +631,80 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
   the R4 missing-witness ≠ verified-exclusion accessor), and (b) the incremental-SMT / `ports.NodeStore`
   optimization. Until the witness path ships, the A-bare `O(depth²)`-boot full-tree validator is the
   certified hold-the-tree bridge (a bounded boot-time cost, not a freeze-blocker).
+- **RATIFIED 2026-08-29 — era-4 witnessable state transitions (Option B), the format veto-gate**
+  (research re-certification RECERT2
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/era4-witnessable-transitions-RECERT2-2026-08-29.md`,
+  **CERTIFIED-WITH-CONDITIONS**; prior passes it supersedes:
+  `.../era4-witnessable-transitions-EQUIVALENCE-RESEARCH-2026-08-29.md` and
+  `.../era4-witnessable-transitions-RECERT-2026-08-29.md`; PE ruling
+  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-era4-witnessable-transitions-2026-08-29.md`;
+  design `docs/thinking/2026-08-29-era4-witnessable-transitions-options.md`). Andrew ratified the
+  format veto-gate on 2026-08-29. **Why era-4 exists:** two `apply()` operations scan whole
+  committed maps and so cannot be witness-validated by an O(payload) floor box — the TTL-expiry
+  sweep (`for id, regH := range c.bondRegHeight`, `chain.go:3005-3013`) and the epoch-rotation
+  qualified-set rebuild (`liveQualifiedSet` scans all of `c.bonded`, `chain.go:1198-1206`). era-4
+  makes both transitions witnessable so the tree-free floor box (C-7 / #600) can validate them.
+  **What is ratified, precisely (the four format items):**
+  - **`BlockVersion = 5`, `versionSupported(v) = v >= 1 && v <= 5`, PREDICATE-FIRST.** The version
+    ceiling widens in the **same release** as the v5 validity predicate, closing the interim
+    accept-a-wrong-root window that the era-3 rollout left open (era-3's `versionSupported <= 4`
+    landed a release before the predicate). Today `versionSupported` is `<= BlockVersionStateRoot`
+    = 4 (`chain.go:339, 740`); era-4 lifts the ceiling to 5 only when the predicate is present.
+  - **Three new committed field-tags added to the state SMT keyspace:** `tagDueBucket` (the TTL
+    due-height index), `tagQualified` (the live qualified accelerator), and `tagEpochStart`
+    (rotation observable, the O-1 commit). `tagEpochSet` is **retained** (the frozen materialized
+    era-3 shape, `statehash.go:40`); era-4 does not edit era-3 blocks.
+  - **TWO-keyspace layout for the qualified set (RECERT2 Q1, the corrected E-2).** `epochSet`
+    stays its own **frozen** materialized committed keyspace (mid-epoch immutable, sizes the
+    governing quorum via `effectiveEpochSet`, `chain.go:1243-1248`); a separate live-maintained
+    `qualified` keyspace is committed as a **boundary-computation accelerator**, not a pointer
+    target. At the boundary `epochSet := qualified` is a copy; the boundary block is a distinct,
+    heavier witness class with an O(boundary-delta) changed-leaf set (not O(payload)). This
+    preserves the I1 sizing-set≠membership-set and I3 no-mid-epoch-churn invariants (`qualified`
+    is a fourth distinct map in `cloneForDryRun`, `era3validity.go:173-175`).
+  - **A new `RegCap` per-block TOTAL BondReg count validity rule, value = 256.** This caps the
+    total BondRegs per block — **fresh AND renewal**, counted after `canonicalBondRegs` — as a v5
+    block-validity rule every replica checks on receipt, bounding the witness read-set so it fits
+    the 2 GB floor box. **Renewals are NOT exempt** (Research REFUTED fresh-only three times): both
+    fresh and renewal write `bondRegHeight[id]` at the same apply site (`chain.go:2995-2996`) and
+    land in the same TTL due-bucket, and #506 rate-limits renewals per-IDENTITY not per block, so
+    O(registry) distinct ids can each renew once in one block → an O(registry) TTL read-set, the
+    exact wall era-4 removes. A fresh-only cap leaves that term unbounded. The **instrument is a
+    COUNT cap, not a byte cap** (PE ruling): the witness is `count × SProofMax` (a flat per-proof
+    envelope), so reg bytes do not enter the witness cost — count does — and a byte cap's implied
+    count `floor(L/M)` inflates silently ~13× as `k` (`BondLabelSamples`) drops 64→1. A count cap
+    is invariant to `M` and is a single integer compare (I5-clean). **Andrew ratified
+    `RegCap = 256`.** The RECERT2 certified the upper bound `RegCap ≤ 16,384` at desk
+    (`2 GiB / (EpochBlocks=8 × SProofMax=16 KiB)`, tight) but ruled the *value* MEASUREMENT-REQUIRED,
+    not desk-pinnable: it is a security parameter of the same class as `SProofMax`, and the honest
+    ceiling reduces to `floor(B / min-valid-reg-byte-size under the deployed verifyBond)`, which is
+    not a chain constant. The ratified 256 is safe **under the deployed ~1.5 MB genesis-proof
+    scheme**, whose measured honest ceiling is ~1 reg/block at k=64 and 18 at the minimum permitted
+    k=1; 256 clears the k=1 floor of 18 by 14× and sits 64× below 16,384, with margin on both sides.
+    Its worst-case valid block (~363 MiB = 256 × ~1.485 MB) is bounded by real M0 Sybil cost (256
+    distinct sealed plots, per-root dedup), not a free DoS surface.
+  - **RE-DERIVATION GATE on all SEVEN determinants, not #299 alone.** `RegCap` is a function of
+    seven determinants — block budget `B`, `k` (`BondLabelSamples`), `Samples`, `BlockSize`,
+    `BondVDFDelay`, `MinBond`, and the proof scheme. Any one changing re-derives the value, gated at
+    the **next BlockVersion mint** (a validity-affecting parameter change requires a mint anyway).
+    #299 (succinct proofs) is the SHARPEST single determinant: `M` drops ~1000× and the measured
+    honest ceiling rises to ~2,000 regs/block, **above 256**, so `RegCap` MUST be re-measured and
+    re-minted before or with #299, or honest registrations are rejected. This is a hard dependency
+    recorded ON #299 (also in `docs/design/owned-residuals.md`, the RegCap owed-input).
+  **SEPARABLE / scoped out of era-4-minimum (Andrew's call, deferred):** the recovery-boundary
+  direction — witnessing the `effectiveEpochSet` recovery re-base at `LivenessRecoveryHeight`
+  (`chain.go:1243-1248`), which needs either a committed recovery-height (a new consensus-rule
+  gate) or the O-2 posture bound. RECERT2 R2 confirms it is cleanly separable; the Q5 recovery
+  branch's `liveQualifiedSet()`-must-agree-with-materialized-`qualified` coupling is discharged as
+  a **build-time assertion**, not an open soundness gap. **Build-time obligations owed under the
+  "inject the defect" rule (each ablation MUST go red before its increment is trusted):** the
+  `qualified` maintenance drift-guard (ablated per site 2989/2995/3008/3019/3020, reddening on the
+  2989 hook specifically), the T-3 due-bucket dual-source drift-guard (ablated on a missed renew
+  old-bucket delete), the T-3 byte-identical post-apply StateRoot replay vs an era-3 replay over a
+  corpus, and the Q5 recovery-branch agreement assertion. The ORDERED build decomposition is a
+  separate PACE deliberation (`docs/thinking/2026-08-29-era4-build-decomposition-options.md`); no
+  era-4 mechanism is built until `RegCap` is pinned — done here at 256 (per-block TOTAL count),
+  with the re-derivation gate on all seven determinants at the next mint (#299 the sharpest).
 - **RATIFIED 2026-08-27 — "maturity before capture" ships as a safe-parameterization, not a
   theorem** (research certification
   `.../research-outcome/C1-maturity-before-capture-RESEARCH-CERTIFICATION-2026-08-27.md`;

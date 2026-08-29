@@ -540,6 +540,29 @@ discount, C2 no quiet capture, the demand→standing firewall) — those are hel
   enumeration obligation the keystone already carries. Lift condition: the consensus-weight
   probes (`bonded`/`epochSet`, then `spent`/`slashed`) reach the equivalence + order-varying
   oracles green before the era-3 format freezes (issue #603).
+- **`RegCap` is a security parameter with a re-derivation gate on all SEVEN determinants — OWED
+  re-measurement gate.** era-4's `RegCap` per-block TOTAL BondReg count validity rule (fresh +
+  renewal, after `canonicalBondRegs`; a COUNT cap, not a byte cap; ratified value = **256**,
+  `docs/decisions.md`, era-4 entry 2026-08-29) bounds the witness read-set so it fits the 2 GB floor
+  box. Renewals are NOT exempt: both fresh and renewal land in the same TTL due-bucket
+  (`chain.go:2995-2996`), and #506 rate-limits renewals per-IDENTITY not per block, so a fresh-only
+  cap leaves an O(registry) renewal read-set unbounded (Research REFUTED fresh-only three times).
+  RECERT2 certified the upper bound `RegCap ≤ 16,384` at desk
+  (`2 GiB / (EpochBlocks=8 × SProofMax=16 KiB)`) but ruled the *value* measurement-required: the
+  honest ceiling is `floor(B / minimum valid reg byte size under the deployed verifyBond)`, which is
+  not a chain constant (~1 reg/block at k=64, 18 at the minimum permitted k=1). 256 clears the k=1
+  floor of 18 with margin and sits far below 16,384. **The gate:** `RegCap` is a function of seven
+  determinants — block budget `B`, `k` (`BondLabelSamples`), `Samples`, `BlockSize`, `BondVDFDelay`,
+  `MinBond`, and the proof scheme — and any one changing re-derives the value at the **next
+  BlockVersion mint**, NOT #299 alone. **#299 (succinct proofs)** is the sharpest single
+  determinant: `M` drops ~1000× and the honest ceiling rises to ~2,000 regs/block — **above 256** —
+  so `RegCap` MUST be re-measured and re-minted **before or with #299**, or honest registrations are
+  rejected. Same class as `SProofMax` (`core/statehash/witness_bound.go:78`). Do not mint a new
+  BlockVersion without re-deriving `RegCap` from a measured minimum valid reg byte size under the
+  then-deployed determinants (RECERT2 Q2 +
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/era4-regcap-recert-VERDICT-2026-08-29.md`,
+  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-era4-regcap-instrument-A-vs-B-2026-08-29.md`,
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/era4-regcap-VALUE-DERIVATION-VERDICT-2026-08-29.md`).
 
 ---
 
