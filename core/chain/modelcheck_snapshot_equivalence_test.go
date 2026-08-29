@@ -1676,6 +1676,29 @@ var probeUncovered = map[string]string{
 	//     "legacy mode only" reason was wrong.
 	// If a NEW committed field is added, add its probe (in some world) or record here
 	// what a probe would have to construct — never leave it silent.
+	//
+	// era-4 (v5) maintenance spine (step 4b). The leave-one-out snapshot oracle proves
+	// a field load-bearing by dropping it and watching a VALIDITY VERDICT flip. The v5
+	// predicate that READS these fields lands in 4c (the committed-root predicate) and
+	// 4d (activation) — in 4b there is no v5 verdict for a snapshot omission to flip,
+	// so a snapshot probe here would be vacuous by construction. Their necessity is
+	// instead proven at build in 4b by DEDICATED drift-guards and marshaller ablations,
+	// each demonstrated RED:
+	"qualified": "era-4 E-2 (4b). Necessity proven by TestQualifiedMaintenanceDriftGuard " +
+		"(per-site ablation, the 3007 displacement hook reddens specifically) and by the v5 " +
+		"marshaller coverage/emit guards. A snapshot leave-one-out probe becomes possible in " +
+		"4c/4d, when the v5 committed-root predicate reads the qualified-derived boundary set; " +
+		"a probe would then omit qualified, mis-copy the frozen epochSet at a boundary, and flip " +
+		"a weight-quorum verdict.",
+	"dueBucket": "era-4 T-3 (4b). Necessity proven by TestDueBucketDualSourceDriftGuard " +
+		"(a missed renew old-bucket delete reddens) and the byte-identical post-apply replay. A " +
+		"snapshot probe becomes possible in 4c, when the v5 predicate checks the due-bucket root; " +
+		"a probe would omit the bucket and flip the TTL-completeness verdict.",
+	"epochStart": "era-4 O-1 (4b). CERTIFIED narrowly: no quorum/validity predicate reads it " +
+		"(its only reader is Regime()), so by construction NO snapshot omission can flip a " +
+		"validity verdict — that is WHY it is safe to commit. Its commitment (not its necessity " +
+		"for a verdict) is exercised by the v5 marshaller tests. This entry is permanent, not a " +
+		"shrinking debt: a validity probe cannot exist for a field no predicate reads.",
 }
 
 // TestLeaveOneOutProvesEachFieldLoadBearing is the sharp half. For every

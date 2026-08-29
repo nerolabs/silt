@@ -9,6 +9,27 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **era-4 increment 4b — the maintenance spine (v5-gated, inert on the live chain)**
+  (`core/chain/chain.go`, `core/chain/statehash.go`, `core/chain/era3validity.go`,
+  `core/translog/translog.go`, 2026-08-29). Adds the two live-maintained derived
+  committed maps `qualified` (E-2, the boundary-computation accelerator) and the
+  due-height index `dueBucket` (T-3), and promotes `epochStart` to committed (O-1).
+  Wires the five `qualified` maintenance hooks at the bonded/slashed mutation sites,
+  the due-bucket insert/move/delete at the TTL machinery, and the boundary copy
+  `epochSet := qualified` (rotate-LAST; the #535 recovery boundary freezes from the
+  `liveQualifiedSet()` recompute, the Q5 coupling). Commits all three under the state
+  root as **v5-ONLY** leaves via an era-gated marshaller (`stateRootLeavesV5` /
+  `StateRootForVersion`), so a v4 block's committed root stays byte-identical to
+  era-3 (the era-3 freeze is preserved). The due-bucket value is an RFC-6962 MTH over
+  the CANONICAL (sorted-ascending / dedup / unpadded) id list, reusing
+  `translog.MTH`. Does NOT widen `versionSupported`, add the v5 predicate or the
+  RegCap rule (4c), or activate (4d) — inert on the live v4 chain. Ships two drift
+  guards (the `qualified` per-site guard reddens on the displacement site
+  specifically; the T-3 dual-source guard reddens on a missed renew old-bucket
+  delete), the byte-identical era-3 replay guard, the rotate-LAST stale-capture
+  ordering ablation, and the Q5 recovery-agreement guard — each demonstrated RED
+  before green. Does NOT touch `MaxBondRegBytesPerBlock` (proposer policy). See
+  `docs/thinking/2026-08-29-era4-4b-maintenance-spine-approach.md`.
 - **era-4 increment 4a — schema + classification (inert)**
   (`core/chain/chain.go`, `core/chain/statehash.go`, 2026-08-29). The first code
   increment of the ratified era-4 build. Mints `BlockVersionWitnessable = 5` and

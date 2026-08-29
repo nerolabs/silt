@@ -30,9 +30,19 @@ func TestStateRootCoversExactlyTheCommittedSetFields(t *testing.T) {
 	for _, name := range fieldsOfKind(committedSet) {
 		classified[name] = true
 	}
+	// A committedSet field is committed if it is in EITHER the era-3 tag set
+	// (stateRootTags — emitted for every v4+ root) OR the era-4 v5 tag set
+	// (stateRootTagsV5 — emitted ONLY for a v5 root). The v5 fields are deliberately
+	// absent from stateRootTags so a v4 block's root stays byte-identical to era-3
+	// (hazard-1); they escape the root ONLY if absent from BOTH lists.
 	committed := map[string]bool{}
 	for _, name := range stateRootTags {
 		committed[name] = true
+	}
+	v5 := map[string]bool{}
+	for _, name := range stateRootTagsV5 {
+		committed[name] = true
+		v5[name] = true
 	}
 
 	var missing []string
@@ -43,9 +53,21 @@ func TestStateRootCoversExactlyTheCommittedSetFields(t *testing.T) {
 	}
 	if len(missing) > 0 {
 		t.Fatalf("committedSet field(s) NOT committed to the StateRoot: %v\n\n"+
-			"A committedSet field with no leaf in stateRootLeaves escapes the root "+
-			"entirely — a snapshot-booted node could diverge on it undetected. Add its "+
-			"tag and leaf in statehash.go, or reclassify the field.", missing)
+			"A committedSet field with no leaf in stateRootLeaves/stateRootLeavesV5 escapes "+
+			"the root entirely — a snapshot-booted node could diverge on it undetected. Add "+
+			"its tag and leaf in statehash.go (stateRootTagsV5 for a v5-only field), or "+
+			"reclassify the field.", missing)
+	}
+
+	// The era-3 and v5 tag sets must be DISJOINT: a v5-only field in stateRootTags would
+	// leak into the v4 root and break the era-3 byte-identical freeze.
+	for name := range v5 {
+		for _, e3 := range stateRootTags {
+			if name == e3 {
+				t.Fatalf("field %q is in BOTH stateRootTags and stateRootTagsV5 — a v5-only "+
+					"field emitted into the era-3 root breaks the byte-identical freeze (hazard-1)", name)
+			}
+		}
 	}
 
 	var extra []string
@@ -106,6 +128,123 @@ func TestStateRootEmitsALeafForEveryCommittedField(t *testing.T) {
 			"stateRootLeaves — the field is silently missing from the StateRoot. Every "+
 			"populated committedSet field MUST emit at least one leaf. Restore the "+
 			"leaf loop in statehash.go.", missing)
+	}
+}
+
+// TestStateRootV5EmitsALeafForEveryV5Field is the era-4 EMIT guard: the v5 marshaller
+// (stateRootLeavesV5) must emit at least one leaf for each of the three v5-only
+// committedSet fields. A dropped v5 leaf loop makes that field silently absent from the
+// v5 root — the completeness defect the state root exists to prevent, now for era-4.
+// Matched by the fieldName\x00 key prefix, so renaming a tag cannot mask a drop.
+func TestStateRootV5EmitsALeafForEveryV5Field(t *testing.T) {
+	c := &Chain{}
+	populateCommitted(c)
+
+	leaves := c.stateRootLeavesV5()
+	var missing []string
+	for _, field := range stateRootTagsV5 {
+		prefix := append([]byte(field), 0x00)
+		found := false
+		for _, lf := range leaves {
+			if bytes.HasPrefix(lf.Key, prefix) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			missing = append(missing, field)
+		}
+	}
+	if len(missing) > 0 {
+		t.Fatalf("stateRootLeavesV5 emitted NO leaf for v5 committedSet field(s): %v\n\n"+
+			"The field is in stateRootTagsV5 but its leaf loop is absent from "+
+			"stateRootLeavesV5 — the field is silently missing from the v5 StateRoot. "+
+			"Restore the leaf loop in statehash.go.", missing)
+	}
+}
+
+// TestEra3RootByteIdenticalWithV5KeyspacesPresent is the hazard-1 gate: with the era-4
+// maintenance-spine maps FULLY POPULATED, the era-3 (v4) root — StateRoot(), and
+// StateRootForVersion(v4) — must be byte-identical to the root over a chain with those
+// maps EMPTY. The v5 keyspaces must not leak into the v4 root, or the era-3
+// byte-identical freeze (ratified 2026-08-29) breaks and every deployed v4 node
+// diverges.
+//
+// RED (the ablation, demonstrated in the 4b report): route the era-3 path through the
+// v5 marshaller (emit the v5 leaves into the v4 root) and this test goes red — the two
+// roots diverge because the populated chain's v5 leaves change the root.
+func TestEra3RootByteIdenticalWithV5KeyspacesPresent(t *testing.T) {
+	withV5 := &Chain{}
+	populateCommitted(withV5) // sets qualified, dueBucket, epochStart among others
+
+	withoutV5 := &Chain{}
+	populateCommitted(withoutV5)
+	withoutV5.qualified = map[ports.NodeID]int64{}
+	withoutV5.dueBucket = map[uint64]map[ports.NodeID]struct{}{}
+	withoutV5.epochStart = 0
+
+	// The era-3 entry point must ignore the v5 maps entirely.
+	a, err := withV5.StateRoot()
+	if err != nil {
+		t.Fatalf("StateRoot(withV5): %v", err)
+	}
+	b, err := withoutV5.StateRoot()
+	if err != nil {
+		t.Fatalf("StateRoot(withoutV5): %v", err)
+	}
+	if a != b {
+		t.Fatalf("era-3 StateRoot() is NOT byte-identical with v5 keyspaces present: %x != %x — "+
+			"the v5 leaves leaked into the v4 root, breaking the era-3 freeze (hazard-1)", a, b)
+	}
+
+	// StateRootForVersion(v4) must agree with StateRoot() and be v5-invariant too.
+	av4, err := withV5.StateRootForVersion(BlockVersionStateRoot)
+	if err != nil {
+		t.Fatalf("StateRootForVersion(v4, withV5): %v", err)
+	}
+	if av4 != a {
+		t.Fatalf("StateRootForVersion(v4) %x != StateRoot() %x — the v4 path must be the era-3 marshaller", av4, a)
+	}
+
+	// The v5 root MUST differ (the v5 leaves ARE committed there) — proves the gate is
+	// a real era switch, not a no-op that would make 4c/4d meaningless.
+	av5, err := withV5.StateRootForVersion(BlockVersionWitnessable)
+	if err != nil {
+		t.Fatalf("StateRootForVersion(v5, withV5): %v", err)
+	}
+	if av5 == a {
+		t.Fatalf("v5 StateRoot equals v4 StateRoot with populated v5 maps — the v5 keyspaces " +
+			"are NOT committed under the v5 root; the era gate is a no-op")
+	}
+}
+
+// TestStateRootV5IsOrderIndependent proves the v5 root is a pure function of the
+// committed set: recomputing over the same chain (random map order, and a due-bucket
+// whose id set is committed as an MTH over the CANONICAL sorted list) yields the
+// identical root. A non-canonical (map-order) bucket encoding would make this flap.
+func TestStateRootV5IsOrderIndependent(t *testing.T) {
+	c := &Chain{}
+	populateCommitted(c)
+	// A multi-id bucket is the case where canonical ordering actually bites.
+	c.dueBucket = map[uint64]map[ports.NodeID]struct{}{
+		43: {ports.NodeID{9}: {}, ports.NodeID{3}: {}, ports.NodeID{7}: {}, ports.NodeID{1}: {}},
+	}
+	c.qualified = map[ports.NodeID]int64{
+		{9}: 1 << 21, {3}: 1 << 21, {7}: 1 << 21,
+	}
+
+	first, err := c.StateRootForVersion(BlockVersionWitnessable)
+	if err != nil {
+		t.Fatalf("v5 StateRoot: %v", err)
+	}
+	for i := 0; i < 50; i++ {
+		got, err := c.StateRootForVersion(BlockVersionWitnessable)
+		if err != nil {
+			t.Fatalf("v5 StateRoot recompute %d: %v", i, err)
+		}
+		if got != first {
+			t.Fatalf("v5 StateRoot is not order-independent: recompute %d = %x, first = %x", i, got, first)
+		}
 	}
 }
 

@@ -1012,8 +1012,39 @@ type Chain struct {
 	// are disabled. Like every other derived field it is a pure function of the
 	// committed blocks: re-derived by apply on Reload/replay, carried by adopt.
 	epochSet map[ports.NodeID]int64
-	// epochStart is the height of the boundary block that began the current epoch
-	// (observability; rotation cadence is Config.EpochBlocks).
+	// qualified is the era-4 (v5) LIVE materialization of liveQualifiedSet(): every
+	// identity whose committed bond clears MinBond and is not slashed, with its
+	// weight, maintained INCREMENTALLY at every bonded/slashed mutation (the five
+	// sites in apply()) rather than recomputed by a whole-map scan. It is a
+	// BOUNDARY-COMPUTATION ACCELERATOR: at an epoch boundary rotateEpoch copies it
+	// into the FROZEN epochSet (epochSet := qualified) instead of running the
+	// O(registry) liveQualifiedSet() scan over bonded. It MUTATES mid-epoch and is a
+	// DISTINCT keyspace from the frozen epochSet — the two are semantically different
+	// objects (a live filter vs a frozen snapshot) that MUST diverge mid-epoch (era-4
+	// RECERT2 Q1). Committed under the state root as a v5-ONLY leaf (tagQualified);
+	// on a v4 block it contributes nothing so the era-3 root stays byte-identical.
+	// Redundant with filter(bonded, slashed, MinBond) by construction — the drift
+	// guard (TestQualifiedMaintenanceDriftGuard) is a HARD gate, not a comment.
+	qualified map[ports.NodeID]int64
+	// dueBucket is the era-4 (v5) T-3 due-height index: for each due-height h, the
+	// SET of bonded ids scheduled to expire at h (due height D(id) =
+	// bondRegHeight[id] + BondTTLBlocks + 1). One in-memory bucket per occupied
+	// height; a (re)registration inserts id into bucket D and, on a renew, removes it
+	// from its previous bucket D_old; TTL expiry and slash delete the entry. It turns
+	// the era-3 whole-map TTL sweep's completeness claim ("nothing else was due at h")
+	// into a single next-bucket membership query. Committed under the state root as a
+	// v5-ONLY leaf per occupied height (tagDueBucket), value = RFC-6962 MTH over the
+	// CANONICAL (sorted-ascending / dedup / unpadded) id list (era-4 design §4b;
+	// RECERT2 canonical-list pin). A DUAL SOURCE with bondRegHeight (era-3 had one),
+	// so the dual-source drift guard is a HARD gate.
+	dueBucket map[uint64]map[ports.NodeID]struct{}
+	// epochStart is the height of the boundary block that began the current epoch.
+	// era-4 (v5) COMMITS it under the state root (O-1, tagEpochStart, a v5-only
+	// scalar leaf): it is CERTIFIED narrowly (RECERT2 Residuals) — no quorum or
+	// validity predicate reads it (its only reader is Regime()), so committing it
+	// changes no quorum decision, removes one uncommitted observable, and doubles as
+	// the E-2 epoch pointer. On a v4 block it is not emitted, so the era-3 root stays
+	// byte-identical.
 	epochStart uint64
 	// matureEpoch is the ONE-WAY handoff flag (#357 Condition B): set at the first
 	// epoch rotation at-or-after the everMature latch trips, never cleared. The
@@ -1054,7 +1085,13 @@ func New(cfg Config, rep func(ports.NodeID) int64) *Chain {
 		bondRegHeight:  make(map[ports.NodeID]uint64),
 		regVersion:     make(map[ports.NodeID]uint8),
 		bondDomain:     make(map[ports.NodeID]uint64),
-		slashed:        make(map[ports.NodeID]bool)}
+		slashed:        make(map[ports.NodeID]bool),
+		// era-4 (v5) maintenance spine: the live qualified accelerator and the T-3
+		// due-height index. Maintained incrementally by apply(); committed as v5-only
+		// leaves. Always initialised (never nil) so the maintenance hooks and the
+		// dry-run clone operate on a real map even on a v4-only chain.
+		qualified: make(map[ports.NodeID]int64),
+		dueBucket: make(map[uint64]map[ports.NodeID]struct{})}
 }
 
 // SetBondVerifier wires the objective-fork-choice bond check (F6): given a
@@ -1221,6 +1258,77 @@ func (c *Chain) liveQualifiedSet() map[ports.NodeID]int64 {
 		}
 	}
 	return set
+}
+
+// idQualifies is the SINGLE source of the qualified-membership predicate, shared by
+// the incremental maintenance (qualifiedMaintain) and the recompute (liveQualifiedSet
+// re-expressed over it in tests). era-4: qualified == filter(bonded, slashed, MinBond)
+// is the whole equivalence claim, so the filter lives in one place. A bonded size that
+// clears MinBond and is not slashed qualifies, with weight = the bonded size.
+func (c *Chain) idQualifies(id ports.NodeID) (int64, bool) {
+	sz, bonded := c.bonded[id]
+	if bonded && sz >= c.cfg.MinBond && !c.slashed[id] {
+		return sz, true
+	}
+	return 0, false
+}
+
+// qualifiedMaintain is the era-4 (v5) incremental hook: after a bonded/slashed
+// mutation for id, bring qualified[id] into agreement with the current
+// filter(bonded, slashed, MinBond). Called at each of the five apply() mutation
+// sites so the live qualified accelerator is always equal to what liveQualifiedSet()
+// would recompute — the invariant the drift guard enforces (RECERT2 Q1). Idempotent:
+// it reads the post-mutation committed state and sets or deletes the one key.
+func (c *Chain) qualifiedMaintain(id ports.NodeID) {
+	if w, ok := c.idQualifies(id); ok {
+		c.qualified[id] = w
+	} else {
+		delete(c.qualified, id)
+	}
+}
+
+// dueBucketMoveOnReg is the era-4 (v5) T-3 hook for a (re)registration of id at
+// regHeight. On a renew it removes id from its PREVIOUS due-height bucket (derived
+// from the prior bondRegHeight[id]) and inserts it into the new due-height bucket
+// D = regHeight + BondTTLBlocks + 1. It MUST run BEFORE bondRegHeight[id] is
+// overwritten, so the old due-height is still derivable. A missed old-bucket delete
+// on renew is the sharpest TTL equivalence hazard (design §4) — the dual-source
+// drift guard reddens on it. With TTL disabled (BondTTLBlocks==0) the due height is
+// undefined and no bucket is maintained, matching era-3 skipping the sweep.
+func (c *Chain) dueBucketMoveOnReg(id ports.NodeID, regHeight uint64) {
+	ttl := c.cfg.BondTTLBlocks
+	if ttl == 0 {
+		return
+	}
+	if oldReg, ok := c.bondRegHeight[id]; ok {
+		c.dueBucketRemove(id, oldReg+ttl+1) // renew/resize: leave the previous bucket
+	}
+	c.dueBucketInsert(id, regHeight+ttl+1)
+}
+
+// dueBucketInsert adds id to the due-height bucket for height d (creating the bucket
+// if absent). One bucket = the set of ids due to expire at d.
+func (c *Chain) dueBucketInsert(id ports.NodeID, d uint64) {
+	b := c.dueBucket[d]
+	if b == nil {
+		b = make(map[ports.NodeID]struct{})
+		c.dueBucket[d] = b
+	}
+	b[id] = struct{}{}
+}
+
+// dueBucketRemove deletes id from the due-height bucket for height d, and removes the
+// bucket entirely once empty (buckets self-clean; a processed height can never be due
+// again because heights are monotone).
+func (c *Chain) dueBucketRemove(id ports.NodeID, d uint64) {
+	b := c.dueBucket[d]
+	if b == nil {
+		return
+	}
+	delete(b, id)
+	if len(b) == 0 {
+		delete(c.dueBucket, d)
+	}
 }
 
 // BoundaryLivenessFloorLost reports whether the chain is in the #535 wedge
@@ -3004,16 +3112,23 @@ func (c *Chain) apply(b Block) {
 			if !(proven && !c.bondRootProven[r.Root]) {
 				continue // shared root already backs another identity → no standing
 			}
-			delete(c.bonded, owner) // strip the displaced squatter's unproven standing
+			delete(c.bonded, owner)    // strip the displaced squatter's unproven standing
+			c.qualifiedMaintain(owner) // era-4 site 1: the displaced owner may leave qualified
 		}
 		c.bondRootOwner[r.Root] = id
 		if proven {
 			c.bondRootProven[r.Root] = true
 		}
+		// era-4 T-3: move the id's due-height bucket BEFORE overwriting bondRegHeight,
+		// so the OLD due-height (computed from the prior bondRegHeight) is removed on a
+		// renew and the id is re-inserted at the NEW due-height. A missed old-bucket
+		// delete is the sharpest TTL equivalence hazard (design §4).
+		c.dueBucketMoveOnReg(id, b.Height)
 		c.bonded[id] = r.Size
 		c.bondRegHeight[id] = b.Height // reset the TTL clock on every (re)registration (G4)
 		c.regVersion[id] = r.Version   // #506 readiness signal; latest committed reg governs
 		c.bondDomain[id] = r.Domain    // committed A-axis label (0 = unset); latest wins
+		c.qualifiedMaintain(id)        // era-4 site 2: fresh/renew/resize may join or leave qualified
 	}
 	// OBJECTIVE RE-CHALLENGE (retest G4): standing lapses if not renewed with a
 	// fresh proof within BondTTLBlocks. A validator that registers once and then
@@ -3023,9 +3138,11 @@ func (c *Chain) apply(b Block) {
 	if ttl := c.cfg.BondTTLBlocks; ttl > 0 {
 		for id, regH := range c.bondRegHeight {
 			if b.Height-regH > ttl {
+				c.dueBucketRemove(id, regH+ttl+1) // era-4 T-3: clear the expiring id's due-bucket
 				delete(c.bonded, id)
 				delete(c.bondRegHeight, id)
 				delete(c.regVersion, id) // a lapsed bond's readiness signal lapses with it
+				c.qualifiedMaintain(id)  // era-4 site 3: an expired bond leaves qualified
 			}
 		}
 	}
@@ -3034,8 +3151,9 @@ func (c *Chain) apply(b Block) {
 	// (validateSlashes) on the write paths; genesis slashes are declared.
 	for i := range b.Slashes {
 		culprit := b.Slashes[i].CulpritID()
-		c.slashed[culprit] = true
-		delete(c.bonded, culprit)
+		c.slashed[culprit] = true    // era-4 site 4: slashed ⟹ never qualified
+		delete(c.bonded, culprit)    // era-4 site 5: evict from bonded
+		c.qualifiedMaintain(culprit) // covers both 4 and 5: filter now excludes culprit
 	}
 	// Track distinct qualified validators for the maturity metric — a
 	// monotonic, chain-internal, auditable measure of decentralization.
@@ -3145,7 +3263,34 @@ func (c *Chain) rotateEpoch(h uint64) {
 		return
 	}
 	c.matureEpoch = true
-	set := c.liveQualifiedSet()
+	// era-4 E-2: the boundary FREEZES the qualified committed bonded set into epochSet.
+	// The freeze runs LAST (rotate-LAST, gated in apply()), AFTER this block's
+	// bonds/TTL/slashes, so it captures this block's POST-APPLY set — reading it before
+	// this block's maintenance would freeze a STALE set (an I3 mid-epoch-churn
+	// divergence; the sharpest ordering hazard, TestBoundaryCopyStaleCaptureOrderingAblation).
+	//
+	// The freeze SOURCE must equal the set that GOVERNED this boundary block's
+	// validation (effectiveEpochSet), or the frozen set diverges from what the quorum
+	// was sized over:
+	//   - Normal boundary: the block validated under the frozen epochSet, and the next
+	//     epoch freezes the live qualified accelerator. era-4 copies the MATERIALIZED
+	//     `qualified` map instead of re-running the O(registry) liveQualifiedSet() scan
+	//     — the era-4 apply win. In production qualified == liveQualifiedSet() by the
+	//     five-site maintenance invariant (the drift guard), so this is byte-identical
+	//     to era-3.
+	//   - #535 recovery boundary: the block validated under liveQualifiedSet() (the
+	//     re-base, effectiveEpochSet's recovery branch). The freeze MUST come from the
+	//     SAME recompute, or the frozen set would re-admit the lapsed weight the
+	//     operator recovered from (the Q5 coupling, RECERT2). At this one boundary the
+	//     materialized qualified and the recompute agree in production, but the recovery
+	//     re-base is defined against the recompute, so freeze from it explicitly.
+	// A deep copy so the frozen epochSet never aliases the live qualified map.
+	var set map[ports.NodeID]int64
+	if c.cfg.LivenessRecoveryHeight != 0 && h == c.cfg.LivenessRecoveryHeight {
+		set = c.liveQualifiedSet() // recovery re-base: freeze the live recompute
+	} else {
+		set = cloneInt64MapID(c.qualified) // normal: freeze the materialized accelerator
+	}
 	c.epochSet = set
 
 	// #506 lock-in detection (post-latch path; the pre-latch genesis override
@@ -3564,6 +3709,11 @@ func (c *Chain) adopt(t *Chain) {
 	c.epochSet = t.epochSet
 	c.epochStart = t.epochStart
 	c.matureEpoch = t.matureEpoch
+	// era-4 (v5) maintenance-spine maps are derived state like everything above: the
+	// replayed fork re-ran every apply(), so t's qualified/dueBucket ARE the adopted
+	// truth. A forgotten swap here reddens TestAdoptCopiesEveryCommittedField.
+	c.qualified = t.qualified
+	c.dueBucket = t.dueBucket
 }
 
 func (c *Chain) LookupRoot(root ports.Hash) (ports.Entry, bool) {
