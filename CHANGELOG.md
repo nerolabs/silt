@@ -9,6 +9,54 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **witness floor-box validation — R3 DoS bound (byte caps + shape gate)**
+  (`core/statehash/witness_bound.go`, 2026-08-29). The pre-verify resource gate
+  that guards the R4 accessor. At witness ingest, before any proof is parsed or
+  verified, three gates decide which witnesses are admissible: (1) a per-proof
+  byte cap `S_proof_max` = 16 KiB, enforced on the ENCODED size BEFORE unmarshal
+  (a byte cap, not a side-node count — the pokt library leaves
+  `NonMembershipLeafData` byte-unbounded, so a count cap ships and lies); (2) a
+  per-block byte ceiling `C_block = len(read-set) · S_proof_max`, derived per block
+  from the exact read-set (not a flat constant — it scales with the block, needs no
+  per-block transition cap, and is not a consensus change); (3) a shape gate — the
+  witness bundle must carry a proof for EXACTLY the block's read-set (no unread key,
+  no duplicate, no missing read key). The safety-critical wiring: EVERY rejection —
+  over per-proof cap, over per-block ceiling, shape mismatch, malformed/unparseable
+  — resolves to the R4 accessor's `NoWitness` outcome, NEVER `ProvenAbsent`. A
+  rejected witness read as a proven exclusion is the one banned move of C-7 (§104);
+  the ingest builds only `NoWitness` Results on rejection, and `ProvenAbsent` is
+  reachable only through the R4 `Resolve` admit branch. Security parameters
+  (`S_proof_max` = 16 KiB, the `C_block` derivation) certified by
+  `witness-floor-box-dos-bound-RESEARCH-CERTIFICATION-2026-08-29` and ratified by
+  Andrew; mechanism by `RULING-witness-floor-box-mechanism-2026-08-29` (R3).
+  Ablation tests (`core/statehash/witness_bound_test.go`) each watched RED-then-GREEN,
+  including the conflation guard (an over-budget/malformed/shape-violating witness
+  for an ABSENCE-query key must resolve to `NoWitness`, never `ProvenAbsent`). Scope:
+  the byte caps + shape gate only; D-2 on-demand delivery and the A-serve slow-loris
+  read deadline (a TIME attack the byte ceiling does not close) are increment 3. No
+  consensus-rule (I1–I5) or frozen era-3 format change — a validation-layer bound
+  (precedent: `MaxBondRegBytesPerBlock` is proposer-policy-only).
+
+### Fixed
+- **witness floor-box R3 — Kind/Value disagreement + a weak gate-1 test**
+  (`core/statehash/witness_bound.go`, `core/statehash/witness_bound_test.go`,
+  2026-08-29). Two follow-up fixes on the R3 DoS bound. (1) Safety (blind PE
+  review): a `ReadEntry{Kind: QueryPresent, Value: nil}` (or empty `Value`)
+  silently resolved to `ProvenAbsent` — `Resolve` routes a length-0 value to the
+  non-membership branch, so a presence query with no value verified against an
+  absence proof read as a proven absence (`Kind` and `Value` disagree, `Value`
+  won; the same class as the R4 empty-value finding). `IngestBlockWitnesses` now
+  rejects a `QueryPresent` entry with an empty `Value` to `NoWitness` before
+  `Resolve` — `Kind` is authoritative; a presence query with no value is never a
+  proven absence. New ablation `TestPresenceQueryEmptyValueNeverProvenAbsent`
+  (watched RED-then-GREEN). (2) Coverage (both Testers): the per-proof-cap
+  ablation `TestOverProofCapRejectedPreParse` did NOT go RED when only gate 1 (the
+  per-proof cap) was disabled — its single-key fixture (`C_block = 1·S_proof_max`)
+  was then caught by gate 2 (the per-block ceiling), so the test stayed green and
+  its name lied. It now uses a two-key read-set (`C_block = 2·S_proof_max`) with a
+  small honest second proof, so the over-cap blob stays under the block ceiling and
+  ONLY gate 1 can catch it — a genuine gate-1 discriminator (goes RED when gate 1
+  alone is removed). No consensus-rule (I1–I5) or frozen era-3 format change.
 - **witness floor-box validation — R4-a three-valued accessor spine**
   (`core/statehash/witness.go`, 2026-08-29). The safety spine of the
   semi-stateless floor box: an accessor that resolves a committed-set key against
