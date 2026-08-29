@@ -63,6 +63,14 @@ func (l *Log) Clone() *Log {
 // Root is the Merkle Tree Head over all entries — the log's current commitment.
 func (l *Log) Root() ports.Hash { return mth(l.entries) }
 
+// MTH is the RFC-6962 Merkle Tree Head over an ORDERED entry list, exposed so other
+// committed structures can reuse the one audited MTH implementation instead of
+// re-deriving it. era-4 (T-3) commits a due-height bucket as the MTH over the
+// CANONICAL (sorted-ascending / dedup / unpadded) id list — the caller is responsible
+// for canonicalising the list; MTH is a pure function of the ordered input. Identical
+// to Log.Root over the same entries.
+func MTH(entries []ports.Hash) ports.Hash { return mth(entries) }
+
 // RootAt is the Merkle Tree Head over the first `size` entries (the historical root
 // a consistency proof is checked against). size must be 0..Size().
 func (l *Log) RootAt(size int) (ports.Hash, error) {

@@ -571,6 +571,22 @@ var orderVacuous = map[string]string{
 	// sameid-twoversion-intrablock-bondreg-contention). All are enforced non-empty below.
 	// validatorsSeen is NOT listed: the attesting anchors qualify, so apply()
 	// populates it — its order-independence is genuinely exercised here.
+	//
+	// era-4 (v5) maintenance spine. `qualified` is NOT listed: it is
+	// filter(bonded, slashed, MinBond), so the same worlds that populate bonded
+	// populate it, and its order-independence is genuinely exercised across the
+	// opposite orderings. The remaining two need a regime these worlds do not enter:
+	"dueBucket": "era-4 T-3 due-height index — populated only with BondTTLBlocks>0 " +
+		"(TTL enabled), which neither twoOrderings nor matureOrderings sets. Its " +
+		"order-independence is instead proven directly by TestStateRootV5IsOrderIndependent " +
+		"(the canonical-MTH bucket over a random-order id set) and by the byte-identical " +
+		"post-apply replay (TestV5PostApplyRootByteIdenticalAcrossOrderings). A covering " +
+		"fixture would enable TTL and (re)register the same ids in two intra-block orders.",
+	"epochStart": "era-4 O-1 — the boundary height scalar. It is a pure function of height " +
+		"(h of the last rotation), not of event ORDER within a block, so two orderings of the " +
+		"same history reach the identical epochStart trivially; matureOrderings leaves it at a " +
+		"value the guard reads as zero. Its commitment is exercised by the v5 marshaller tests " +
+		"(TestStateRootV5EmitsALeafForEveryV5Field, TestStateRootV5IsOrderIndependent).",
 }
 
 // TestCommittedSetFieldsAreOrderIndependent is the load-bearing half. Every

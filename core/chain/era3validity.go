@@ -119,7 +119,11 @@ func (c *Chain) validateEra3Roots(b *Block) error {
 func (c *Chain) postApplyRoots(b Block) (state ports.Hash, log ports.Hash, err error) {
 	scratch := c.cloneForDryRun()
 	scratch.apply(b)
-	state, err = scratch.StateRoot()
+	// era-gated marshaller: a v5 block commits the era-4 maintenance-spine keyspaces
+	// (qualified/dueBucket/epochStart); a v4 block commits exactly the 18 era-3 leaves,
+	// byte-identical to era-3 (hazard-1). Selecting by b.Version ties the recompute to
+	// the era of the block being checked.
+	state, err = scratch.StateRootForVersion(b.Version)
 	if err != nil {
 		return ports.Hash{}, ports.Hash{}, err
 	}
@@ -157,6 +161,11 @@ func (c *Chain) cloneForDryRun() *Chain {
 		epochStart:   c.epochStart,
 		matureEpoch:  c.matureEpoch,
 	}
+	// ---- era-4 (v5) maintenance-spine maps: deep-copied so apply() on the clone
+	// maintains the copy, not the live chain (the same #558 drift protection as the
+	// era-3 maps). A forgotten copy here reddens TestDryRunCloneCopiesEveryAppliedField. ----
+	s.qualified = cloneInt64MapID(c.qualified)
+	s.dueBucket = cloneDueBucket(c.dueBucket)
 	// ---- input history: apply() appends b to blocks; copy so the live slice is untouched ----
 	s.blocks = append([]Block(nil), c.blocks...)
 	// ---- committedSet maps: deep-copied ----
@@ -216,6 +225,22 @@ func cloneInt64MapID(m map[ports.NodeID]int64) map[ports.NodeID]int64 {
 	out := make(map[ports.NodeID]int64, len(m))
 	for k, v := range m {
 		out[k] = v
+	}
+	return out
+}
+
+// cloneDueBucket deep-copies the era-4 due-height index: the outer map AND each inner
+// id-set, so the clone's apply() maintains its own buckets without writing through a
+// shared inner map into the live chain (a nested-map alias would be the #558 bug the
+// dry-run clone exists to avoid).
+func cloneDueBucket(m map[uint64]map[ports.NodeID]struct{}) map[uint64]map[ports.NodeID]struct{} {
+	out := make(map[uint64]map[ports.NodeID]struct{}, len(m))
+	for d, ids := range m {
+		inner := make(map[ports.NodeID]struct{}, len(ids))
+		for id := range ids {
+			inner[id] = struct{}{}
+		}
+		out[d] = inner
 	}
 	return out
 }

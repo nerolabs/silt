@@ -1,7 +1,12 @@
 package chain
 
 import (
+	"bytes"
+	"encoding/binary"
+	"sort"
+
 	"github.com/nerolabs/silt/core/statehash"
+	"github.com/nerolabs/silt/core/translog"
 	"github.com/nerolabs/silt/ports"
 )
 
@@ -53,22 +58,25 @@ const (
 	tagEra3LockedIn = "era3LockedIn\x00"
 	tagEra3Height   = "era3Height\x00"
 
-	// era-4 (v5) field tags — DEFINED here in 4a, but NOT yet in stateRootTags and
-	// NOT yet emitted by stateRootLeaves. In 4a these keyspaces are RESERVED, not
-	// committed: the maintenance maps they tag (qualified, the due-bucket index) and
-	// the frozen epochStart marker do not exist on Chain until 4b, and no leaf is
-	// emitted under these tags until 4b commits them as v5-only. Adding them to
-	// stateRootTags now would redden the coverage guards (a tag must map to a
-	// committedSet struct field and emit a populated leaf) — that wiring lands in 4b
-	// with the fields and leaf loops, which is the only point classification can go
-	// red the correct way. Reserving the tag strings here fixes the on-wire byte
-	// layout (tag || rawKey) before any leaf uses it, so 4b cannot silently pick a
-	// colliding or re-ordered prefix. See
-	// docs/thinking/2026-08-29-era4-build-decomposition-options.md, increment 4a.
+	// era-4 (v5) field tags — reserved in 4a, COMMITTED in 4b as V5-ONLY leaves. The
+	// maintenance maps they tag (qualified, the due-bucket index) and the frozen
+	// epochStart scalar are emitted by stateRootLeavesV5, which appends them to the
+	// era-3 leaf set. They are gated on the era: StateRoot() (the era-3 entry) still
+	// emits exactly the 18 era-3 leaves, so a v4 block's committed root stays
+	// byte-identical to era-3 (hazard-1). Only the v5 root computation
+	// (postApplyRoots on a v5 block) includes these leaves. The on-wire byte layout
+	// (tag || rawKey) was fixed in 4a so 4b cannot silently pick a colliding prefix.
 	tagDueBucket  = "dueBucket\x00"
 	tagQualified  = "qualified\x00"
 	tagEpochStart = "epochStart\x00"
 )
+
+// stateRootTagsV5 is the era-4 (v5) committedSet field names committed ONLY under the
+// v5 state root — the three maintenance-spine fields the v5 marshaller adds on top of
+// the 18 era-3 fields. Bound to the live classification by
+// TestStateRootV5CoversExactlyTheV5Fields so it cannot drift. These are NOT in
+// stateRootTags (the era-3 set), which keeps the v4 root byte-identical to era-3.
+var stateRootTagsV5 = []string{"qualified", "dueBucket", "epochStart"}
 
 // stateRootTags is the set of committedSet field names this file commits, used by
 // the oracle to assert coverage against the live classification: exactly the 18
@@ -150,6 +158,74 @@ func (c *Chain) stateRootLeaves() []statehash.Leaf {
 // Step 1: computed and proven deterministic behind the oracles; not yet a Block
 // field, not yet validated against.
 func (c *Chain) StateRoot() (ports.Hash, error) {
+	return statehash.Root(c.stateRootLeaves())
+}
+
+// stateRootLeavesV5 is the era-4 (v5) committed leaf set: the 18 era-3 leaves PLUS the
+// three maintenance-spine keyspaces (qualified, the due-bucket index, the epochStart
+// scalar). It is emitted ONLY for a v5 root computation (StateRootForVersion on a v5
+// block); the era-3 marshaller (stateRootLeaves) is untouched, so a v4 block's root is
+// byte-identical to era-3 (hazard-1). Like the era-3 leaves it is a pure function of
+// the committed set: the qualified leaves are order-free (one leaf per member); the
+// due-bucket leaf value is the MTH over the CANONICAL sorted id list, so it is
+// independent of Go map iteration order.
+func (c *Chain) stateRootLeavesV5() []statehash.Leaf {
+	leaves := c.stateRootLeaves()
+	add := func(tag string, rawKey, value []byte) {
+		leaves = append(leaves, statehash.Leaf{Key: statehash.Key(tag, rawKey), Value: value})
+	}
+
+	// qualified: one value-carrying leaf per member (weight = bonded size), the same
+	// shape as bonded/epochSet.
+	for id, w := range c.qualified {
+		add(tagQualified, id[:], statehash.EncodeInt64(w))
+	}
+
+	// dueBucket: one leaf per occupied due-height, key = uint64BE(height), value =
+	// RFC-6962 MTH over the CANONICAL (sorted-ascending / dedup / unpadded) id list.
+	// The canonical order makes the committed value independent of map iteration order
+	// and forecloses MTH malleability (design §4b; RECERT2 canonical-list pin). Empty
+	// buckets never occur — dueBucketRemove deletes a bucket once its last id leaves.
+	for h, ids := range c.dueBucket {
+		var key [8]byte
+		binary.BigEndian.PutUint64(key[:], h)
+		add(tagDueBucket, key[:], dueBucketMTH(ids))
+	}
+
+	// epochStart: one scalar leaf (O-1).
+	add(tagEpochStart, nil, statehash.EncodeUint64(c.epochStart))
+
+	return leaves
+}
+
+// dueBucketMTH commits a due-height bucket's id set as the RFC-6962 MTH over the
+// CANONICAL id list: sorted ascending by raw NodeID bytes, deduplicated (a set is
+// already unique), unpadded. The canonical order is what makes "recompute to this
+// bucket root" uniquely identify the set — two encodings of the same set cannot hash
+// to different roots (the malleability seam RECERT2 closes). The leaf entries are the
+// raw 32-byte NodeIDs; translog.MTH is the one audited RFC-6962 implementation, reused
+// here rather than re-derived.
+func dueBucketMTH(ids map[ports.NodeID]struct{}) []byte {
+	entries := make([]ports.Hash, 0, len(ids))
+	for id := range ids {
+		entries = append(entries, ports.Hash(id))
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return bytes.Compare(entries[i][:], entries[j][:]) < 0
+	})
+	root := translog.MTH(entries)
+	return root[:]
+}
+
+// StateRootForVersion computes the committed state root for a block of the given
+// version: the era-4 (v5) leaf set for v5+, the era-3 leaf set otherwise. This is the
+// era-gate that keeps a v4 block's root byte-identical to era-3 while a v5 block
+// commits the maintenance-spine keyspaces. postApplyRoots selects by the block's
+// version, so the recompute a validator runs matches the era of the block it checks.
+func (c *Chain) StateRootForVersion(version uint64) (ports.Hash, error) {
+	if version >= BlockVersionWitnessable {
+		return statehash.Root(c.stateRootLeavesV5())
+	}
 	return statehash.Root(c.stateRootLeaves())
 }
 

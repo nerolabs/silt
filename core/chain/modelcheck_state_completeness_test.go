@@ -97,6 +97,21 @@ var stateClass = map[string]struct {
 	"era3LockedIn":   {committedSet, "step 2c — era-3 (v4) activation latch (mirrors gateLockedIn, regVersion>=4)"},
 	"era3Height":     {committedSet, "step 2c — era-3 (v4) enforcement boundary H_era3 (mirrors gateHeight)"},
 
+	// ---- committed: era-4 (v5) maintenance spine (step 4b). Committed under the
+	// state root as v5-ONLY leaves — on a v4 block the marshaller emits no leaf for
+	// these, so the era-3 root stays byte-identical. They are set-valued derived
+	// state, so they classify committedSet: adopt swaps them, the dry-run clone copies
+	// them, and the v5 marshaller commits them. ----
+	"qualified": {committedSet, "era-4 4b (E-2) — live materialization of liveQualifiedSet(); " +
+		"the boundary-computation accelerator rotateEpoch copies into the frozen epochSet. " +
+		"v5-only leaf (tagQualified)."},
+	"dueBucket": {committedSet, "era-4 4b (T-3) — due-height index; one bucket per occupied " +
+		"expiry height, committed as an MTH over the canonical id list. v5-only leaf (tagDueBucket)."},
+	"epochStart": {committedSet, "era-4 4b (O-1) — PROMOTED from observable to committed. " +
+		"CERTIFIED narrowly (RECERT2): no quorum/validity predicate reads it (its only reader " +
+		"is Regime()), so committing it changes no quorum decision; it removes one uncommitted " +
+		"observable and doubles as the E-2 epoch pointer. v5-only scalar leaf (tagEpochStart)."},
+
 	// ---- committed: NOT in the certification's enumeration (findings) ----
 	"revLog": {committedLog, "CERTIFIED #597: an ordered CT-style transparency log, " +
 		"NOT set-valued state. Its root is the RFC-6962 MTH over an ORDERED slice " +
@@ -105,12 +120,6 @@ var stateClass = map[string]struct {
 		"— that category error would make the state root order-dependent. The snapshot " +
 		"carries the full entry list so a snapshot-booted node can extend the log and " +
 		"still serve H9 inclusion/consistency proofs."},
-	// ---- observable: history-derived, under no committed root ----
-	"epochStart": {observable, "CERTIFIED #597 Q4.3: rotateEpoch writes it " +
-		"(chain.go:2844) and adopt() swaps it, but its ONLY reader is Regime() — the " +
-		"permanent save/restore health instrumentation, not a block-validity predicate. " +
-		"So it must survive a reorg, but goes under no committed root: losing it " +
-		"misreports restore health, never validity."},
 
 	// ---- not committed ----
 	"blocks": {input, "the committed history itself; committed state is derived FROM this"},
@@ -248,6 +257,9 @@ func populateCommitted(c *Chain) {
 	c.everMature = true
 	c.matureEpoch = true
 	c.epochStart = 17
+	// era-4 (v5) maintenance spine.
+	c.qualified = map[ports.NodeID]int64{id: 1 << 21}
+	c.dueBucket = map[uint64]map[ports.NodeID]struct{}{43: {id: struct{}{}}}
 
 	rl := translog.New()
 	rl.Append(RevocationLeaf(RevOp, root, 5))
