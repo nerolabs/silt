@@ -20,7 +20,7 @@ import (
 // deterministic, not yet committed or validated against.
 
 // TestStateRootCoversExactlyTheCommittedSetFields is the coverage guard: the field
-// tags this file's marshaller commits must be EXACTLY the 16 committedSet fields the
+// tags this file's marshaller commits must be EXACTLY the 18 committedSet fields the
 // keystone classification enumerates. A committedSet field added to Chain without a
 // leaf in stateRootLeaves would silently escape the root — the completeness bug the
 // state root exists to prevent. This binds stateRootTags to the live classification
@@ -227,8 +227,8 @@ func TestStateRootChangesOnMembershipChange(t *testing.T) {
 
 // TestEmptyChainStateRootIsStable pins that an empty committedSet computes a definite,
 // reproducible root (the empty-vs-absent closure). Note a zero-value Chain still
-// commits the four scalar leaves (everMature=false, etc.), so the "empty" root is the
-// root over exactly those four scalar leaves — a fixed constant, not the empty-tree
+// commits the six scalar leaves (everMature=false, etc.), so the "empty" root is the
+// root over exactly those six scalar leaves — a fixed constant, not the empty-tree
 // root, and that is correct: the scalars are always present.
 func TestEmptyChainStateRootIsStable(t *testing.T) {
 	a, b := &Chain{}, &Chain{}

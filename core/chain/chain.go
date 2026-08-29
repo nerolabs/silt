@@ -317,8 +317,9 @@ const BlockVersionRounds = 2
 const BlockVersionRegGate = 3
 
 // BlockVersionStateRoot is the era-3 committed-state-root rule era (the keystone).
-// An era-3 block commits two attester-signed roots — StateRoot (an SMT over the 16
-// committedSet validity fields) and LogRoot (the RFC-6962 revocation-log MTH) — so
+// An era-3 block commits two attester-signed roots — StateRoot (an SMT over the 18
+// committedSet validity fields, the original 16 plus the two era-3 activation scalars
+// era3LockedIn/era3Height) and LogRoot (the RFC-6962 revocation-log MTH) — so
 // every validating node that accepts the block can check the state it commits to.
 //
 // era-3 is a HARD fork, NOT a soft fork (research cert Q5/Q7): it adds a schema and,
@@ -414,7 +415,7 @@ type Block struct {
 	Pruned ports.Hash `cbor:"14,keyasint,omitempty"`
 
 	// StateRoot and LogRoot are the era-3 committed roots (the keystone, #603/#597).
-	// StateRoot is the SMT over the 16 committedSet validity fields (StateRoot());
+	// StateRoot is the SMT over the 18 committedSet validity fields (StateRoot());
 	// LogRoot is the RFC-6962 MTH over the revocation transparency log (LogRoot() =
 	// RevocationLogRoot()). BOTH are folded into Hash below — unlike the QCs and
 	// CommitRound, attesters SIGN them, so a forged root cannot ride a valid signature.

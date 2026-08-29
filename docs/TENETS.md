@@ -612,6 +612,28 @@ reviewed consensus.**
      survived, on how many independent hosts).
   6. **Core carries zero meaning, forever** (T3) — the Aslan boundary.
 
+**Frozen consensus formats — a shipped-and-ratified wire/validity format is
+immutable; changing it requires a NEW ERA, never an edit.** Once a consensus
+format is built, certified, and ratified, its bytes are law: an in-place change
+would silently re-interpret committed history or split the network. A format is
+amended only by minting a new `BlockVersion` (a new era) behind a height-gated
+hard fork — the same deliberate, reviewed bar as the corners above.
+
+  - **The era-3 committed state-root format** — FROZEN 2026-08-29 (build
+    `3af40bc`). An era-3 (`BlockVersion = 4`) block commits two attester-signed
+    roots: **StateRoot** (a `pokt-network/smt` SMT over the 18 `committedSet`
+    validity fields, a field-tagged single keyspace with a per-field canonical
+    value encoding) and **LogRoot** (the RFC-6962 revocation-log MTH), both folded
+    into `Hash()`. Activation is a height-gated hard fork (`H_era3`, one-way
+    lock-in on a `regVersion >= 4` frozen-weight `>⅔` supermajority); an
+    un-upgraded node STALLS at `H_era3` rather than accept an unvalidated root
+    (safety-first). The precise frozen spec and its scope live in the
+    `docs/decisions.md` D-TIERING freeze entry (**FROZEN 2026-08-29**) and its
+    re-certification (`.../research-outcome/era3-committed-state-root-format-BUILT-RECERTIFICATION-2026-08-29.md`).
+    **Changing this format requires a new `BlockVersion` (a new era), not an
+    edit.** Not frozen: the witness floor-box validation mechanism and the
+    incremental-SMT / `ports.NodeStore` optimization (the C-7 / #600 follow-on).
+
 **Build-immutables — held at the same amendment bar, but about *how we build*,
 not *what silt is*.** The corners above are **product-immutables**: change one
 and it is a different project. These are **build-immutables**: change one and
@@ -959,3 +981,13 @@ re-tuned as the network grows — **not closed.**
   unbounded system on a 2 GB box is not inefficient, it is unsafe. The specific box
   spec stays an *Evolving* parameter (target may tighten toward ~1 GiB); the
   fit-and-measure discipline is immutable.
+- **2026-08-29 (frozen consensus format)** — Added the **frozen consensus formats**
+  entry to the Immutable tier and recorded the **era-3 committed state-root format** as
+  FROZEN (build `3af40bc`), ratified by the owner. A shipped, certified consensus format
+  is immutable: its bytes are law, and changing it in place would re-interpret committed
+  history or split the network, so amendment is a NEW ERA (a new `BlockVersion`) behind a
+  height-gated hard fork, never an edit. The era-3 format commits two attester-signed roots
+  (a state SMT over the 18 `committedSet` fields + the RFC-6962 revocation-log MTH); an
+  un-upgraded node stalls at `H_era3` rather than accept an unvalidated root. The precise
+  frozen spec lives in the `docs/decisions.md` D-TIERING freeze entry; certified by
+  `.../research-outcome/era3-committed-state-root-format-BUILT-RECERTIFICATION-2026-08-29.md`.
