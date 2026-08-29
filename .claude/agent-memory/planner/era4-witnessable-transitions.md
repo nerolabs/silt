@@ -1,68 +1,58 @@
 ---
 name: era4-witnessable-transitions
-description: era-4 new-era design (trustless witnessable transitions, Option B). Session-12: measurement DONE (boundary FITS 2GB, RegCap ≤ 16,384), Builder rev-2 DONE, Research re-cert round 2 IN FLIGHT.
+description: era-4 new-era design (trustless witnessable transitions, Option B). Session-12: design CERTIFIED-WITH-CONDITIONS + ratified; 4a built & reviewer-cleared; the RegCap COUNTING RULE was REFUTED (fresh-only) → reopened.
 metadata:
   type: project
 ---
 
-# era-4 witnessable transitions — the new-era track (Option B, 2026-08-29)
+# era-4 witnessable transitions — the new-era track (Option B, opened 2026-08-29)
 
 Opened after Andrew ratified Option B ([[witness-floor-box-inc3-refuted]]): make the two whole-map `apply()` transitions
-O(payload)/witnessable in a NEW era so the floor box stays fully trustless. origin/main `0984db4`.
+witnessable in a NEW era so the floor box stays fully trustless. Ground: `origin/main @ 0984db4`.
 
-## Design + review history
-- PACE `docs/thinking/2026-08-29-era4-witnessable-transitions-options.md`: T-3 (TTL → committed due-height BUCKET; "nothing else due"
-  = ONE non-membership proof) + E-2 (rotation → committed `qualified`) + O-1 (commit `epochStart`). New `BlockVersion=5`. Load-bearing
-  floor: pokt SMT has NO batch/range proof (leaves at `H(key)`).
-- PE `RULING-era4-witnessable-transitions-2026-08-29.md` — SHIP-WITH-FIXES.
-- Research `era4-witnessable-transitions-EQUIVALENCE-RESEARCH-2026-08-29.md` — GATED (caught the missed `chain.go:2989` maintenance site).
-- Builder revision (folded 5 fixes; scoped recovery boundary out).
-- Research RE-CERT `era4-witnessable-transitions-RECERT-2026-08-29.md` — STILL GATED (2 items).
-- **Builder rev-2 (session-12): folded the RE-CERT Q2 correction + the measured numbers. Re-cert round 2 IN FLIGHT.**
+## THE MECHANISM (CERTIFIED design)
+- **T-3 TTL:** commit a due-height BUCKET per height (`Key(tagDueBucket, uint64BE(h))`); "nothing else due at h" = ONE non-membership
+  proof. Bucket value = MTH over a CANONICAL (sorted/dedup/unpadded) carried id list (variant b). One bucket = one block's regs.
+- **E-2 rotation (corrected):** `epochSet` stays its OWN FROZEN materialized committed keyspace (era-3 `tagEpochSet` shape); a live
+  `tagQualified` keyspace is maintained at ALL FIVE `bonded`/`slashed` sites (2989/2995/3008/3019/3020) as a boundary accelerator; at the
+  boundary `epochSet := qualified` (a COPY). The boundary block is a DISTINCT, HEAVIER witness class = O(boundary-delta), bounded
+  ≤ RegCap×EpochBlocks×SProofMax. (The PE's shared-keyspace pointer-advance was REFUTED by Research — it broke mid-epoch I1/I3 immutability.)
+- **O-1:** commit `epochStart` (scalar `tagEpochStart`) — changes no quorum decision; doubles as the epoch pointer. Recovery boundary SCOPED OUT (R2).
+- New `BlockVersion=5`, `versionSupported<=5` predicate-first. pokt SMT has NO batch/range proof (leaves at H(key)) — the load-bearing floor.
 
-## ★★ RE-CERT (round 1) OUTCOME — GATED. Two items held it; three closed.
-**CLOSED by the revision:** (a) E-2 five-site maintenance enumeration (2989/2995/3008/3019/3020) grep-complete, the 2989 I1 fix listed
-correctly; (b) canonical id-list pin forecloses MTH malleability; (c) O-1 commit `epochStart` CERTIFIED narrowly + recovery boundary
-cleanly scoped out.
+## REVIEW LINEAGE (all 2026-08-29, under silt-reviews/)
+PACE `docs/thinking/2026-08-29-era4-witnessable-transitions-options.md` → PE `RULING-era4-witnessable-transitions` (SHIP-WITH-FIXES) →
+Research `era4-witnessable-transitions-EQUIVALENCE-RESEARCH` (GATED, caught missed 2989) → Builder rev → RE-CERT
+`era4-witnessable-transitions-RECERT` (STILL GATED: pointer-advance REFUTED + cap value) → Builder rev-2 (frozen epochSet, direction b) →
+**RE-CERT2 `era4-witnessable-transitions-RECERT2-2026-08-29.md` — CERTIFIED-WITH-CONDITIONS** (Q1 design sound; Q2 RegCap measurement-required).
 
-**★ ITEM 1 — REFUTED (load-bearing): the PE's POINTER-ADVANCE fix is UNSOUND.** Collapsing `qualified`+`epochSet` into ONE shared
-live-mutating keyspace breaks frozen-epoch-set safety. Verified: `epochSet` is a SEPARATE committed keyspace, FROZEN mid-epoch (assigned
-only at `rotateEpoch` `chain.go:3131` + `adopt` `:3546`); mid-epoch quorum reads the FROZEN set (`requireEpochWeightQuorum` `:2597`,
-`RoundCatchupMet` `:2631`); the code calls a mid-epoch set change "I3 churning-set unsoundness ... impossible" (`:1239-1241`). CORRECT
-DIRECTION (RE-CERT direction b): keep `epochSet` a FROZEN materialized keyspace; add a live `qualified` accelerator; the boundary COPIES
-qualified→epochSet and is a DISTINCT, HEAVIER witness class = O(boundary-delta). (Structural tension worked: PE proposed, Research refuted.)
+## MEASUREMENTS (session-12, Tester, local/no-billable)
+- SMT proof max 1,474 B @ 1M leaves << 16 KiB SProofMax; COUNT of proofs is the constraint. Boundary FITS 2 GB. RegCap UPPER bound = 16,384.
+- #299 (succinct proofs) NOT shipped → deployed fresh bond reg carries ~1.5 MB Answer → honest FRESH ceiling = 1/block (2 MiB budget `node.go:270`).
 
-**★ ITEM 2 — the reg-cap VALUE.** Cap classification CERTIFIED (new validity rule; #506 first-reg exemption `chain.go:1587`;
-`MaxBondRegBytesPerBlock` proposer-only `node.go:270`/`chainrole.go:798`). The NUMBER was "un-derivable at desk" per round 1 — session-12
-measurement now brackets it (below); the OPEN question is whether the desk upper-bound closes it or a run is still needed.
+## ★★★ THE RegCap COUNTING RULE IS REFUTED — value+rule REOPENED (Andrew authorized the correction)
+Blind Research verdict `.../research-outcome/era4-regcap-value-VERDICT-2026-08-29.md`: a FRESH-ONLY cap is UNSOUND. Buckets fill with
+EVERY BondReg (fresh AND renewal, `chain.go:2995`); #506 bounds renewals PER IDENTITY not per block → O(registry) ids can each renew once
+in ONE block → one bucket = O(registry) → the wall era-4 removes. **Correct rule: cap per-block TOTAL BondReg count (= bucket population).**
+Honest ceiling must be re-measured as `2 MiB / min(fresh, RENEWAL) reg size` (renewals pack smaller → ceiling >1, UN-measured; 256 may be too LOW).
+Correction path: fix rule (design doc + decomposition hazard-3 + #635 canon) → re-measure → re-cert → re-ratify. #299 re-mint gate still applies.
 
-## ★★★ THE HONEST META-SIGNAL — MEASURED: the boundary FITS
-Option B keeps discovering epoch/weight state is EPOCH-SCOPED → witnessing it has an epoch-scoped cost. Whole-map recompute → O(registry)
-→ Option B. The epoch boundary → O(boundary-delta), a HEAVIER witness class. **SESSION-12 MEASUREMENT SETTLED IT: the boundary FITS the
-2 GB box.** SMT proofs are tiny (max 1,474 B at 1M leaves << 16 KiB SProofMax); the COUNT of proofs is the constraint.
-`boundary_witness ≤ RegCap × EpochBlocks × SProofMax ≤ 2 GB` ⟹ **`RegCap ≤ 16,384 ids/block`** (EpochBlocks=8). No feasibility cliff.
-Honest cohorts sit far below 16,384 (the 2 MiB proposer byte budget alone ceilings honest per-block regs).
+## BUILD STATE
+- Decomposition PACE `docs/thinking/2026-08-29-era4-build-decomposition-options.md`: **4a** schema/version-const+tags → **4b** maintenance
+  spine → **4c** v5 predicate + RegCap + version-widen (predicate-first) → **4d** activation+mint-flip.
+- **4a BUILT + CLEARED BOTH BLIND REVIEWERS** (commit `7241f82`, branch `era4-4a-schema-classification`): reserves `BlockVersionWitnessable=5`
+  + tag STRINGS only, inert-by-guard. Tester PROMOTED; PE SHIP-WITH-FIXES (one DOC-only fix: the decomposition doc is cited in chain.go:346/
+  statehash.go:67/CHANGELOG but not in 4a's tree — resolves when #635 lands on main). NOT merged.
+- **PR #635** (canon record + decomposition doc, docs-only, green, NOT merged) — ⚠ still enshrines the REFUTED fresh-only RegCap; correct before merge.
 
-## SESSION-12 PROGRESS — measurement DONE, Builder rev-2 DONE, re-cert round 2 IN FLIGHT
-1. ✅ Tester MEASUREMENT (local, no billable): proof sizes + the RegCap bracket `λ_H ≤ RegCap ≤ 16,384`. λ_H (honest arrival rate) NOT
-   pinned in canon (`m0.md:487`, `owned-residuals.md:392`; cancels out of maturity theorem `decisions.md:662`) — but likely UPPER-boundable
-   at desk via the proposer byte budget. Tester call: do NOT burn a billable run on λ_H; the R1 correction is the first gate.
-2. ✅ Builder rev-2 of the design doc: E-2 now = frozen materialized `tagEpochSet` + live `tagQualified` accelerator (direction b); boundary
-   = COPY `epochSet := qualified`, stated as a distinct O(boundary-delta) witness class with the measured bound; two keyspaces settled;
-   §1/§5/§7/§9/§10/§11 updated. Direction (a)-alone REJECTED (reintroduces O(registry) scan). Doc-only, no code (build-process #6).
-3. ⏳ Research RE-CERT round 2 IN FLIGHT (blind): Q1 = is corrected E-2 sound (I1/I3 frozen-set immutability)? Q2 = can RegCap be pinned at
-   DESK (λ_H upper-bound via proposer budget) or does it need a measured run? Q3 = lift GATED→CERTIFIED (guards + T-3 replay as build-time
-   obligations, R2 recovery-boundary scoped out)?
-4. ON CERTIFIED → **VETO GATE to Andrew:** BlockVersion=5 + new tags (`tagDueBucket`/`tagQualified`/`tagEpochStart`) + two-keyspace layout +
-   the RegCap validity rule + its value. If Q2 says "needs measured λ_H" → escalate the billable-run decision to Andrew separately.
+## THREE HAZARDS (HOLD as gates)
+1. New keyspaces MUST be v5-GATED in the leaf marshaller or committing them breaks the era-3 freeze. 4b ablation owed.
+2. Rotate-LAST stale-capture (sharpest): any 4b hook after `rotateEpoch` reads `qualified` (`chain.go:3130`) freezes a STALE set = I3 divergence.
+   PE adds: keep the coverage guard's `extra` branch STRICT in 4b/4c or the reservation stops being inert-by-guard.
+3. The cap rule (REFUTED as fresh-only) must bound per-block TOTAL count. 4c ablation: honest renewal-heavy block ACCEPTS to ceiling; TOTAL>RegCap REJECTS.
 
-## Still-owed / decisions for Andrew
-- Recovery-boundary DIRECTION (commit `LivenessRecoveryHeight` = trustless, more scope; vs posture-bound) — his call, separable follow-on (R2).
-- era-3 residual: `versionSupported` admits v3 = silent mis-validation (prior era-3 ruling) — out of era-4 scope, open elsewhere.
-- OPS: the Researcher seat has NO Bash → can't `git fetch`; it verifies the `0984db4` tree by artifact-presence (acceptable, disclosed).
+## BUILD-TIME GATES (RECERT2 — each MUST ablate RED before its increment is trusted)
+`qualified` maintenance drift-guard (per-site; 2989 reddens specifically) · T-3 dual-source guard (ablate missed renew old-bucket delete) ·
+T-3 byte-identical era-3 replay corpus · Q5 recovery-branch agreement · existing completeness guards force the new tags.
 
-## Path
-PACE→PE→Research→revision→RE-CERT (GATED)→**measurement (DONE: boundary fits, RegCap≤16,384)→Builder rev-2 (DONE)→re-cert round 2 (IN
-FLIGHT)→VETO GATE (BlockVersion=5 + cap rule + boundary witness class)→2a→2b→2c build behind BOTH drift-guards→new-era FREEZE.** Multi-session.
-
-Related: [[witness-floor-box-inc3-refuted]], [[witness-floor-box-track]], [[session-resume]], [[keystone-era3-freeze-sequencing]].
+Related: [[session-resume]], [[witness-floor-box-inc3-refuted]], [[witness-floor-box-track]].
