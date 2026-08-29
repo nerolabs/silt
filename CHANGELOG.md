@@ -9,6 +9,36 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **era-4 increment 4c — the v5 validity predicate + RegCap + version-widen (PREDICATE-FIRST)**
+  (`core/chain/chain.go`, `core/chain/modelcheck_era4_regcap_test.go`, 2026-08-29). Widens
+  `versionSupported` to `<= BlockVersionWitnessable` (v5) so a v5 block DECODES, atomically with
+  the era-4 validity rules — closing the era-3 interim window (a version decode-accepted before its
+  validity rule existed). Two enforced rules: (1) the **`RegCap = 256` per-block TOTAL BondReg
+  count** validity rule (fresh AND renewal, counted AFTER `canonicalBondRegs`) — a v5 block with
+  more than 256 registrations is INVALID, which bounds any single TTL due-bucket's inflow to a
+  registry-INDEPENDENT constant (the O(registry) TTL-firing witness read-set era-4 exists to
+  remove; Research CERTIFIED the total-count rule and the value 256 for it). (2) the v5
+  committed-root predicate, which needs NO new code: `validateEra3Roots` recomputes via
+  `StateRootForVersion(b.Version)`, so a v5 block flows through it on EVERY disk-write path (commit
+  path via `ValidateProposal`, own-disk Reload via `appendStructural`) the instant the ceiling
+  widens. **v5-GATED: v4 (era-3) stays byte- and behaviour-identical** — RegCap does not apply to
+  v4 and the frozen era-3 format (#632) is untouched. Does NOT mint v5 (`BlockVersion` /
+  `MintVersion` stay v4), add an activation height (4d), or touch `MaxBondRegBytesPerBlock`
+  (proposer policy) or the 4b spine. Records the re-derivation gate: `RegCap` is a function of all
+  SEVEN determinants (B, k, Samples, BlockSize, BondVDFDelay, MinBond, proof scheme), re-derived at
+  the next `BlockVersion` mint. Ships the RegCap regression suite (over-cap reject for all-fresh /
+  all-renewal / mixed; at-ceiling accept; count-after-canonical-fold; v4-unaffected) and the v5
+  Reload wrong-root rejection — each demonstrated RED before green. See
+  `docs/thinking/2026-08-29-era4-4c-v5-predicate-regcap-approach.md`.
+- **era-4 4c test hardening — pin the ratified `RegCap` value from BOTH sides**
+  (`core/chain/modelcheck_era4_regcap_test.go`, `core/chain/modelcheck_era3_schema_test.go`,
+  2026-08-29, test/comment-only). Replaces the self-referential fixture sizes (derived from the
+  `RegCap` constant, so a wrong cap moved both sides together and stayed green) with the LITERAL
+  ratified value: the at-ceiling accept test pins `256`, and the three over-cap reject tests
+  (all-fresh / all-renewal / mixed) pin `257`. The value is now pinned against a too-LOW mistake
+  (`const RegCap = 255` reddens the at-ceiling test) AND a too-HIGH mistake (`const RegCap = 257`
+  reddens the over-cap tests), both demonstrated. Also fixes a dangling comment reference to a
+  non-existent `TestV5DecodesAndIsAccepted`.
 - **era-4 increment 4b — the maintenance spine (v5-gated, inert on the live chain)**
   (`core/chain/chain.go`, `core/chain/statehash.go`, `core/chain/era3validity.go`,
   `core/translog/translog.go`, 2026-08-29). Adds the two live-maintained derived
