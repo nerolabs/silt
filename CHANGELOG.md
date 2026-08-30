@@ -9,6 +9,65 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **PoD §7.3 transport BATCH 3 — the daemon control-frame binding: the paid relay
+  pump now runs on a LIVE node, failing-first**
+  (`docs/decisions.md`, `adapters/relay/wire.go`, `adapters/relay/server.go`,
+  `adapters/relay/client.go`, `core/node/relayrole.go`, `core/node/relaytransport.go`,
+  `cmd/silt/daemon.go`, 2026-08-30). Binds the Batch-2 paid pump to the live daemon so
+  a paid relay session runs end-to-end: open → paid connect → pay-as-you-go → settle.
+  Policy: **D-POD-RELAY-COEXIST** — paid relay is ADDITIVE (Option B, RATIFIED
+  2026-08-30); free swarm relay is UNCHANGED and shares the same transport caps
+  (`docs/thinking/2026-08-30-pod-7.3-batch3-daemon-binding-design.md`; cert
+  `silt-reviews/research/research-outcome/PoD-7.3-free-vs-paid-relay-coexistence-RESEARCH-CERTIFICATION-2026-08-30.md`).
+  - **The paid marker.** One optional `Paid uint64` field on the relay `ctrl` connect
+    frame carrying the node's session handle (`omitempty`; zero = free, byte-for-byte
+    today's path). A nonzero marker routes the connect to the paid splice; an old
+    client (no field) decodes to free.
+  - **The adapter/node seam.** The daemon installs a `PaidResolver` on the relay
+    `Server` (`SetPaidResolver` → `Node.ResolveRelayAuthorizer`) resolving
+    `(fetcher, handle)` to the node-owned authorizer via the SAME `ephID`-ownership
+    check `handleRelayPay` enforces, and a `PaidSettler` firing settle-at-close from
+    the live pump's return. The verifier + M0 guards stay in `core/node`; the adapter
+    stays a dumb byte pump. The resolver is called OFF the node loop and marshals the
+    lookup onto it (`clock.AfterFunc(0)`), so the loop-only session table keeps its
+    single-threaded invariant — `-race` clean across the seam.
+  - **Refuse-never-downgrade (certified residual #2).** A paid connect whose handle
+    does not resolve to a live, owned session is REFUSED, never spliced free — a free
+    downgrade would hand a non-payer an unfunded, uncapped forward. Failing-first.
+  - **Reaper teardown.** `sweepRelaySeen` now calls `sess.closeSession()` on each
+    reaped session so a reaped session's now-live pump drains and exits (no leaked
+    goroutine); single-settle is preserved (the reaper's `delete` makes a later
+    pump-completion settle a no-op). Closes the Batch-2 `TODO(Batch-3)`, failing-first.
+  - **e2e proof.** `e2e/relay_paid_test.go`: three real nodes over real TCP with the
+    seam wired, asserting forward integrity, the live pay-gate, conserved settle with
+    `Reputation()` unchanged (Invariant-A firewall), free relay still working with
+    payments on (the Option-B witness), and the M0 settlement-log audit.
+
+### Fixed
+- **PoD §7.3 BATCH 3 review fold-in — the paid e2e made `-race` clean and CI-caught**
+  (`e2e/relay_paid_test.go`, `.github/workflows/ci.yml`, 2026-08-30). Two follow-ups
+  from the Batch-3 reviews, no guard weakened.
+  - **Resolver stopped-loop hardening — DEFERRED (gate #651).** The off-loop
+    `ResolveRelayAuthorizer` marshals the session lookup onto the node loop and blocks
+    on the reply — safe today because the production loop never stops (PE-verified). A
+    future graceful-shutdown (`loop.Stop()` while the relay Server still accepts) would
+    leak one blocked resolver goroutine per paid connect. The naive fix (`time.After` in
+    a `select`) violates build-immutable #5 (no `time` in core) and a `Clock`-based
+    timeout is loop-bound (dropped when the loop stops), so bounding this read needs a
+    port/placement decision. Reverted to the PE-SHIP'd bare marshal-and-read (`86990af`)
+    and tracked as gate #651; whoever adds graceful shutdown owns bounding it.
+  - **e2e harness data race (Tester, failing-first).** `TestPaidRelaySessionEndToEnd`
+    polled `ledger.Balance` / `ledger.Reputation` directly from the test goroutine while
+    the event loop wrote the same field at settle (`RedeemRelayCredit`). The `Ledger` is
+    loop-only by design (no mutex). Both reads are now MARSHALED onto the relay node's
+    loop and returned over a cap-1 reply channel. TEST-ONLY — the production `Ledger`
+    stays mutex-free (loop-only invariant not weakened). The race is now real under
+    `-race` (was: test read vs `core/credit/relay.go:73` write) and passes with the fix.
+  - **CI now runs the in-process paid-relay e2e under `-race`.** The `-race` job uses
+    `-short`, which the e2e skips; the plain e2e job ran without `-race`. So the harness
+    race would have shipped green. The `e2e` job gains a dedicated `-race` step pinning
+    `TestPaidRelaySessionEndToEnd`, with a `=== RUN` assertion so a stale `-run` filter
+    (which `go test` treats as a silent 0-exit "no tests to run") fails the step loudly.
 - **PoD §7.3 transport BATCH 2 — the wire protocol (step 3) + the paid forwarding
   pump (step 4), failing-first, the live-networking batch**
   (`ports/net.go`, `ports/ports.go`, `core/relaypay/wire.go`,

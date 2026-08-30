@@ -569,6 +569,22 @@ func cmdDaemon(args []string) error {
 		}
 		defer rs.Close()
 		fmt.Printf("relay: serving at %s@%s (content-blind forwarding, capped)\n", id, rs.Addr())
+		// PoD §7.3 Batch 3: bind the paid relay pump to the live node. With
+		// --accept-relay-payments on, install the in-process seam so a paid connect
+		// (a connect frame carrying a session handle) resolves to the node-owned
+		// authorizer and runs the pay-as-you-go splice, settling at close. The seam is
+		// additive (D-POD-RELAY-COEXIST, Option B): free swarm relay is unchanged and
+		// shares the same caps; only a handle-marked connect takes the paid path, and
+		// an unresolved handle is REFUSED, never downgraded to free. Without this
+		// binding a paid-marked connect is refused (nil resolver), so free relay works
+		// with or without payments.
+		if *acceptRelayPayments {
+			rs.SetPaidResolver(func(fetcher ports.NodeID, handle uint64) (relay.Authorizer, bool) {
+				return nd.ResolveRelayAuthorizer(fetcher, handle)
+			})
+			rs.SetPaidSettler(nd.SettleRelaySessionForHandle)
+			fmt.Println("relay: paid sessions bound — a handle-marked connect runs the pay-as-you-go splice (free relay unchanged, shared caps)")
+		}
 		// Gossip the capability on every envelope — but only in a form
 		// peers can actually dial: a wildcard-bound relay borrows the
 		// -advertise host, and with neither there is nothing worth

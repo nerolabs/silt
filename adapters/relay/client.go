@@ -19,12 +19,26 @@ import (
 // a raw pipe to the target. The caller runs its own end-to-end TLS
 // handshake over it; the relay never holds bytes it can read.
 func DialThrough(cert tls.Certificate, relayID ports.NodeID, relayAddr string, target ports.NodeID) (net.Conn, error) {
+	return dialThrough(cert, relayID, relayAddr, target, 0)
+}
+
+// DialThroughPaid is DialThrough for a PAID relay session (PoD §7.3 Batch 3): it
+// carries the node-minted session handle on the connect frame's Paid field so the
+// relay routes this leg to the paid splice. The fetcher must have already opened the
+// session over the swarm wire (MsgRelayOpen) and be revealing preimages
+// (MsgRelayPay) so the relay's authorizer ceiling rises as bytes forward. A handle
+// the relay cannot resolve to a live, owned session is REFUSED, not spliced free.
+func DialThroughPaid(cert tls.Certificate, relayID ports.NodeID, relayAddr string, target ports.NodeID, handle uint64) (net.Conn, error) {
+	return dialThrough(cert, relayID, relayAddr, target, handle)
+}
+
+func dialThrough(cert tls.Certificate, relayID ports.NodeID, relayAddr string, target ports.NodeID, handle uint64) (net.Conn, error) {
 	conn, err := dialRelay(cert, relayID, relayAddr)
 	if err != nil {
 		return nil, err
 	}
 	conn.SetDeadline(time.Now().Add(opTimeout))
-	if err := writeCtrl(conn, ctrl{Op: "connect", Target: target[:]}); err != nil {
+	if err := writeCtrl(conn, ctrl{Op: "connect", Target: target[:], Paid: handle}); err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("relay connect: %w", err)
 	}

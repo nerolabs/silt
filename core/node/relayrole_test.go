@@ -9,7 +9,9 @@ package node
 // ephemeral identity or a chain across sessions.
 
 import (
+	"net"
 	"testing"
+	"time"
 
 	"github.com/nerolabs/silt/adapters/identity"
 	"github.com/nerolabs/silt/adapters/memstore"
@@ -274,6 +276,142 @@ func TestRelaySeenMapEvictsOnEpoch(t *testing.T) {
 	if _, err := n.OpenRelaySession(relayTestID(102), root(0xB2), 8, FundingEphemeralBlind); err == nil {
 		t.Fatalf("guard (ii) regression on reorg: root B (epoch 1) was re-admitted after the epoch moved backward")
 	}
+}
+
+// TestReapedSessionStopsLivePump is the Batch-3 reaper-teardown failing-first test
+// (design §3b), closing the TODO(Batch-3) in sweepRelaySeen. Once the daemon binding
+// wires SplicePaid, a reaped session may have a LIVE pump goroutine blocked in
+// paidPump on auth.Wait(), waiting for a ceiling that will never rise (the fetcher is
+// gone). Deleting the table entry alone leaks that goroutine — it blocks forever.
+//
+// The fix is one line at the reap site: sweepRelaySeen must call sess.closeSession()
+// so the pump's Done() check trips and the goroutine drains to its ceiling and
+// returns. RED before that line (the pump goroutine never exits — the timeout below
+// fires); green after.
+//
+// Ablation: remove sess.closeSession() from the reap loop → the pump stays blocked on
+// auth.Wait() and the "pump exited" assertion times out RED.
+func TestReapedSessionStopsLivePump(t *testing.T) {
+	n := newRelayTestNode(1)
+	n.EnableRelayAccept()
+
+	// Drive the epoch from a test-controlled variable so the sweep is deterministic.
+	var epoch uint64
+	n.setRelayEpochFnForTest(func() uint64 { return epoch })
+
+	const S = 8
+	c, _ := relaypay.BuildChain([]byte("reaped-session-live-pump-fresh!!!")[:32], S)
+	eph := relayTestID(9)
+	epoch = 0
+	sess, err := n.OpenRelaySession(eph, c.Root(), S, FundingEphemeralBlind)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	handle := uint64(1)
+	n.relaySessions[handle] = sess
+
+	// Start a LIVE pump against the session's authorizer. The ceiling is 0 (no Pay
+	// has raised it), so the origin's first chunk cannot be delivered and the pump
+	// blocks in paidPump on auth.Wait() — exactly a live session with a vanished
+	// fetcher. Real TCP conns so the pump's reads/writes behave like the live path.
+	ao, originEnd := relayTCPPair(t) // relay↔origin
+	bf, fetchEnd := relayTCPPair(t)  // relay↔fetcher
+	defer ao.Close()
+	defer originEnd.Close()
+	defer bf.Close()
+	defer fetchEnd.Close()
+
+	pumpDone := make(chan struct{})
+	go func() {
+		relaypaidPumpForTest(bf, ao, sess, int64(S)*relaypay.RelayIncrementBytes)
+		close(pumpDone)
+	}()
+
+	// The origin streams a chunk so the pump reaches the gate and blocks on the
+	// unmet ceiling (authBytes == 0).
+	go func() { originEnd.Write([]byte("first-increment-chunk-that-cannot-yet-be-delivered")) }()
+	// Give the pump a moment to reach and block on the gate.
+	time.Sleep(50 * time.Millisecond)
+	select {
+	case <-pumpDone:
+		t.Fatalf("pump exited before the reap — the test did not set up a live blocked pump")
+	default:
+	}
+
+	// Advance the epoch past the retention window and trigger the sweep. The reaper
+	// must reap this stale session AND stop its pump.
+	epoch = relayRetentionEpochs + 1
+	n.sweepRelaySeen(epoch)
+
+	if _, ok := n.relaySessions[handle]; ok {
+		t.Fatalf("reaped session still in the table after the sweep")
+	}
+	// The pump goroutine MUST exit now (closeSession woke it and Done() is set). If
+	// the reaper did not close the session, the pump stays blocked forever.
+	select {
+	case <-pumpDone:
+		// pump drained and exited — correct
+	case <-time.After(2 * time.Second):
+		t.Fatalf("reaped session's pump goroutine did not exit — the reaper did not tear it down (goroutine leak: the TODO(Batch-3) close is missing)")
+	}
+}
+
+// relaypaidPumpForTest drives the adapter paidPump against a node RelaySession as the
+// live path would. It lives here (not the relay package) so the node test can exercise
+// the reaper-teardown seam without importing test helpers across packages. It mirrors
+// what SplicePaid's forward lane does: read from the origin, gate on the session's
+// authorizer, write to the fetcher.
+func relaypaidPumpForTest(dst net.Conn, src net.Conn, sess *RelaySession, maxBytes int64) {
+	buf := make([]byte, 4096)
+	var forwarded int64
+	for forwarded < maxBytes {
+		n, rerr := src.Read(buf)
+		if n > 0 {
+			target := forwarded + int64(n)
+			for sess.AuthorizedBytes() < target {
+				if sess.Done() {
+					return
+				}
+				<-sess.Wait()
+			}
+			if _, werr := dst.Write(buf[:n]); werr != nil {
+				return
+			}
+			forwarded += int64(n)
+		}
+		if rerr != nil {
+			return
+		}
+	}
+}
+
+// relayTCPPair returns a connected pair of loopback TCP conns (the node-test analog of
+// the relay package's tcpPair).
+func relayTCPPair(t *testing.T) (*net.TCPConn, *net.TCPConn) {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	type res struct {
+		c   net.Conn
+		err error
+	}
+	ch := make(chan res, 1)
+	go func() {
+		c, aerr := ln.Accept()
+		ch <- res{c, aerr}
+	}()
+	client, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := <-ch
+	if r.err != nil {
+		t.Fatal(r.err)
+	}
+	return client.(*net.TCPConn), r.c.(*net.TCPConn)
 }
 
 // TestRelaySessionAdvancesAndSettles: the happy path. A session opened under a

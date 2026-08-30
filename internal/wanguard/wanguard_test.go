@@ -92,7 +92,7 @@ var ledger = map[siteKey]string{
 	// deadline is CLEARED (SetDeadline(time.Time{})) before the bulk splice, so
 	// it never bounds payload transfer. ctrlIdle (90s) is a keepalive-idle reaper.
 	// The relay control conn itself reconnects with exp backoff + pinger (durable).
-	"adapters/relay/client.go|DialThrough|conn.SetDeadline":  "op-bound — one relay connect exchange (opTimeout 10s); deadline cleared before the splice, never bounds payload",
+	"adapters/relay/client.go|dialThrough|conn.SetDeadline":  "op-bound — one relay connect exchange (opTimeout 10s); deadline cleared before the splice, never bounds payload",
 	"adapters/relay/client.go|acceptStream|conn.SetDeadline": "op-bound — one relay accept exchange (opTimeout); cleared before splice",
 	"adapters/relay/client.go|dialRelay|net.Dialer.Timeout":  "first-contact-modest — dial to the relay (5s); the control conn reconnects with exp backoff + keepalive (client.Run)",
 	"adapters/relay/client.go|session|conn.SetDeadline":      "op-bound — control op exchange (opTimeout)",

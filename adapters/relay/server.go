@@ -58,7 +58,43 @@ type Server struct {
 	seq      uint64
 	sessions int
 	perPeer  map[ports.NodeID]int
+
+	// paidResolver/paidSettler are the in-process seam to the node (PoD §7.3
+	// Batch 3). They are nil until the daemon installs them (SetPaidResolver/
+	// SetPaidSettler), which it does only when --accept-relay-payments is on. With
+	// them nil, a paid-marked connect is REFUSED (never downgraded to free), so a
+	// relay that does not accept payments cannot be tricked into an unfunded paid
+	// forward. Read-once at accept time; set once at startup before Serve races any
+	// connect, so no lock guards them.
+	paidResolver PaidResolver
+	paidSettler  PaidSettler
 }
+
+// PaidResolver resolves a paid session handle (from a connect frame's Paid field)
+// to the node-owned authorizer for that session, checking that `fetcher` (the
+// authenticated connector) OWNS the handle. It returns ok=false when no such live
+// session exists or the fetcher does not own it — the Server then REFUSES the
+// connect (never a free downgrade). The adapter does not know what a RelaySession
+// is; the node satisfies this interface (design §3, Option A: the node drives, the
+// adapter gates). The resolver is called from the Server's accept goroutine, OFF the
+// node's event loop, so the node's implementation must synchronize access to its
+// session table (it marshals the lookup onto its loop).
+type PaidResolver func(fetcher ports.NodeID, handle uint64) (Authorizer, bool)
+
+// PaidSettler fires once when a paid splice completes, handing the node the handle
+// and the forwarded byte count so it settles the session (design §3: settlement is
+// driven by the live pump's return). The node settles at close via
+// SettleRelaySession; the count is informational (the node's verifier count is the
+// settlement basis).
+type PaidSettler func(handle uint64, forwarded int64)
+
+// SetPaidResolver installs the paid-session resolver (the daemon wires
+// nd.ResolveRelayAuthorizer). Call once at startup, before any connect can arrive.
+func (s *Server) SetPaidResolver(r PaidResolver) { s.paidResolver = r }
+
+// SetPaidSettler installs the settle-at-close callback (the daemon wires
+// nd.SettleRelaySessionForHandle). Call once at startup.
+func (s *Server) SetPaidSettler(st PaidSettler) { s.paidSettler = st }
 
 // control is a registered NATed peer's standing conn. Writes come from
 // multiple goroutines (pongs from its reader, incoming notices from
@@ -79,6 +115,14 @@ type pendingSplice struct {
 	src    net.Conn // the connector, parked until the target accepts
 	target ports.NodeID
 	timer  *time.Timer
+
+	// paid session state (PoD §7.3 Batch 3). paid is the node-minted session handle
+	// from the connect frame's Paid field (0 = free). fetcher is the authenticated
+	// connector — the party the resolver checks OWNS the handle. Both are carried
+	// from connect to accept so the splice picks the paid vs free path with the
+	// authenticated identity, not a frame-claimed one.
+	paid    uint64
+	fetcher ports.NodeID
 }
 
 // Serve starts a relay listener at addr with ident's TLS certificate.
@@ -263,7 +307,9 @@ func (s *Server) connect(from ports.NodeID, conn *tls.Conn, fr ctrl) {
 	if reg != nil && !full {
 		s.seq++
 		id = s.seq
-		p := &pendingSplice{src: conn, target: target}
+		// Carry the paid handle (fr.Paid, 0 = free) and the AUTHENTICATED connector
+		// (from) so accept picks the paid vs free path against the real identity.
+		p := &pendingSplice{src: conn, target: target, paid: fr.Paid, fetcher: from}
 		p.timer = time.AfterFunc(opTimeout, func() { s.expire(id) })
 		s.pend[id] = p
 	}
@@ -315,6 +361,45 @@ func (s *Server) accept(from ports.NodeID, conn *tls.Conn, fr ctrl) {
 		conn.Close()
 		return
 	}
+	// PAID rendezvous (PoD §7.3 Batch 3): a connect that carried a nonzero handle is
+	// the byte-stream leg of a paid session. Resolve the node-owned authorizer for
+	// (fetcher, handle) BEFORE splicing. A paid connect that does not resolve to a
+	// live, fetcher-OWNED session is REFUSED here — never downgraded to the free
+	// splice (a free downgrade would hand a non-payer an unfunded, uncapped forward:
+	// the D-POD-RELAY-COEXIST correctness condition / certified residual #2). The
+	// resolver is nil on a relay that does not accept payments, which also refuses.
+	if p.paid != 0 {
+		var (
+			auth Authorizer
+			ok   bool
+		)
+		if s.paidResolver != nil {
+			auth, ok = s.paidResolver(p.fetcher, p.paid)
+		}
+		if !ok {
+			writeCtrl(conn, ctrl{Op: "err", Err: "paid session not authorized"})
+			writeCtrl(p.src, ctrl{Op: "err", Err: "paid session not authorized"})
+			p.src.Close()
+			conn.Close()
+			s.done(from) // release the accept-path session/perPeer increment
+			s.logf(ports.LogWarn, "relay refused: paid session unresolved", "target", from, "fetcher", p.fetcher, "handle", p.paid)
+			return
+		}
+		if writeCtrl(p.src, ctrl{Op: "ok"}) != nil || writeCtrl(conn, ctrl{Op: "ok"}) != nil {
+			p.src.Close()
+			conn.Close()
+			s.done(from)
+			return
+		}
+		p.src.SetDeadline(time.Time{})
+		conn.SetDeadline(time.Time{})
+		s.logf(ports.LogInfo, "relay paid splice", "target", from, "handle", p.paid)
+		// The target (from) is the ORIGIN side (a), the parked connector (p.src) is
+		// the FETCHER side (b): forward origin→fetcher is the paid direction.
+		go s.runPaidSplice(from, p.paid, conn, p.src, auth)
+		return
+	}
+
 	// Both ends hear "ok" and from then on own the pipe: the connector
 	// starts its end-to-end handshake, the target answers it.
 	if writeCtrl(p.src, ctrl{Op: "ok"}) != nil || writeCtrl(conn, ctrl{Op: "ok"}) != nil {
@@ -327,6 +412,20 @@ func (s *Server) accept(from ports.NodeID, conn *tls.Conn, fr ctrl) {
 	conn.SetDeadline(time.Time{})
 	s.logf(ports.LogInfo, "relay splice", "target", from)
 	go s.splice(from, p.src, conn)
+}
+
+// runPaidSplice runs a paid session and drives settlement at close. It is the live
+// bridge between SplicePaid (the adapter byte pump) and the node's settler: when the
+// pump returns (forward complete, byte cap, or teardown), the settler fires ONCE with
+// the handle and the forwarded count. The node's SettleRelaySession is itself
+// single-settle (it deletes the handle on first call), so even if the reaper already
+// closed and dropped the handle, this settle is a harmless no-op — no double-settle
+// (design §3b).
+func (s *Server) runPaidSplice(origin ports.NodeID, handle uint64, originConn, fetcherConn net.Conn, auth Authorizer) {
+	forwarded := s.SplicePaid(origin, originConn, fetcherConn, auth)
+	if s.paidSettler != nil {
+		s.paidSettler(handle, forwarded)
+	}
 }
 
 func (s *Server) done(target ports.NodeID) {
