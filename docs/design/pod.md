@@ -46,7 +46,7 @@ spec does not touch it.
 
 | Piece | Where | State |
 |---|---|---|
-| Receipt engine: blind withdraw → PoR-bound ack → bank → redeem | `core/demand/demand.go` | Built (#181), inert — `EnableDemandBank` has no production caller |
+| Receipt engine: blind withdraw → PoR-bound ack → bank → redeem | `core/demand/demand.go` | Built (#181), **LIVE** — production caller `cmd/silt/daemon.go:810` (behind `--accept-receipts`); redeem wired `core/node/demandrole.go:190` → `core/credit/delivery.go:89` |
 | Wire messages `MsgDeliveryReceipt`/`Ack` | `ports/net.go:149`, dispatched `core/node/node.go:1567` | Wired |
 | Per-byte serve credit (1 credit/byte, 1/8 skim to the object's escrow) | `core/node/node.go:1543-1545`, `core/credit/escrow.go:117-135` | Live — but **self-recorded**, per-node ledger |
 | Self-serve guard | `core/credit/credit.go:131-134` (`server == requester` earns nothing) | Live |
@@ -188,13 +188,17 @@ Consult `PoD-neutral-lane-B3-close-CONSULT-2026-08-26.md`; certification
    exists to buy (Tor's line failed; endpoint attestation dies under
    endpoint collusion) and TTP-free atomic fairness is proven impossible
    (Pagnia–Gärtner). Certified direction: **sender-funded, incremental,
-   exposure-bounded micropayment** (PayWord/Orchid/FairRelay shape, reusing
-   the blind-token machinery), dispute-only quorum-TTP backstop — the same
-   ASW frame `fairexchange.go` already builds, deferred on the same
-   neutrality grounds. Tit-for-tat is peer *selection*, never the payment
-   mechanism. Owner's call held: whether a dispute-only TTP is acceptable
-   at all; refusing it leaves an irreducible one-increment stiffing
-   residual (bound it by making the increment small).
+   exposure-bounded micropayment** (PayWord/Orchid shape, reusing the
+   blind-token machinery). Tit-for-tat is peer *selection*, never the
+   payment mechanism. **NO TTP — the relay leg is self-enforcing at both
+   ends** (D-POD-KNOBS knob 2, AMENDED 2026-08-27; re-certified 2026-08-30).
+   The earlier "dispute-only quorum-TTP, owner's call held" framing is
+   RESOLVED and does not survive: there is no adjudicable relay dispute at
+   all — a PayWord token self-authorizes (the relay can redeem only
+   increments the fetcher revealed) and forwarding is unprovable by any
+   mechanism, so a quorum has nothing to adjudicate. The only residual is
+   the irreducible one-increment stiff, bounded by making the increment
+   small (§7.3). The full mechanism is specified in §7.3.
 4. **Q4 — strong-form crypto: NOT adoptable.** The only pure-Go
    Camenisch–Shoup (`coinbase/kryptology` camshoup) is archived since 2022,
    do-not-use flagged, unaudited. If the strong form is ever pursued,
@@ -232,5 +236,161 @@ Consult `PoD-neutral-lane-B3-close-CONSULT-2026-08-26.md`; certification
 2. The D-TIERING near-term flags (`--serve-content`, `--archive`) —
    build-gated only, now unblocked.
 3. Relay compensation per the Q3 certified direction (sender-funded
-   incremental micropayment; a follow-on mechanism-detail consult once the
-   balance-lane consumer lands).
+   incremental micropayment). The balance-lane consumer has landed
+   (`cmd/silt/daemon.go:810`) and the follow-on mechanism consult is
+   certified (2026-08-30), so the mechanism is now specified in **§7.3**.
+
+## 7.3 Relay compensation (the mechanism)
+
+> **Status: CERTIFIED — 2026-08-30**
+> (`silt-reviews/research/research-outcome/PoD-relay-compensation-7.3-mechanism-RESEARCH-CERTIFICATION-2026-08-30.md`),
+> ratified basis D-POD-KNOBS knob 2 ([decisions.md](../decisions.md), lines
+> 869-907, AMENDED 2026-08-27). Deliberation:
+> [`thinking/2026-08-30-pod-7.3-relay-compensation-design.md`](../thinking/2026-08-30-pod-7.3-relay-compensation-design.md).
+> The mechanism shape is certified; do not re-derive it.
+
+### 7.3.1 Why relay needs a different mechanism than the neutral lane
+
+The neutral lane (§3) prices a *completed, content-verified* delivery. A
+relay/gateway is content-blind: it forwards bytes it cannot verify and never
+holds a verifiable object, so there is no completed-delivery receipt to sign.
+Two facts bound the design:
+
+- **No transit proof exists.** For the relay to be *owed* payment for forwarding
+  increment N it would have to prove it forwarded N — unprovable by any mechanism
+  (Tor's proof-of-bandwidth line failed; endpoint attestation dies under endpoint
+  collusion).
+- **TTP-free atomic fairness is impossible** (Pagnia–Gärtner). No mechanism makes
+  forward-then-pay atomic.
+
+The design is therefore **pay-as-you-go in small increments**, not
+prove-then-settle. The irreducible one-increment stiff is priced small, not
+adjudicated. **NO TTP** — the relay leg is self-enforcing at both ends
+(D-POD-KNOBS knob 2).
+
+### 7.3.2 The mechanism — sender-funded PayWord chain
+
+**PayWord hash chain construction.** The fetcher picks a random tip `x_{S+1}` and
+computes a chain by hashing:
+
+```
+x_S = H(x_{S+1}),  x_{S-1} = H(x_S),  … ,  x_0 = H(x_1)
+```
+
+`x_0` is the **root** (the value reached by hashing the most times). The fetcher
+commits `x_0` to the relay once, bound to a blind credit worth `S · increment`.
+To authorize the k-th increment the fetcher reveals `x_k`; the relay verifies
+`H(x_k) = x_{k-1}` against the preimage it currently holds (equivalently
+`H^k(x_k) = x_0`). One SHA-256 per increment. The relay redeems the highest
+preimage it holds for `k · increment` at settlement.
+
+Self-authorizing at both ends: the relay cannot forge a preimage (one-way hash),
+so the fetcher is fully protected with no dispute; the fetcher cannot deny a
+revealed preimage. If the fetcher stops revealing, the relay stops forwarding —
+the stiff is bounded to one increment.
+
+**Increment / redeem flow:**
+
+1. **Withdraw.** The fetcher blind-withdraws a credit worth `S · increment` under
+   a FRESH EPHEMERAL identity (`client.WithdrawDemandTokenPrivately`,
+   `client/privissue.go:48` — the D3 slice-1 path, already built). Invariant (i).
+2. **Commit the root.** The fetcher builds a FRESH PayWord chain and sends `x_0`
+   to the relay in a session-open message, bound to the blind credit. One chain
+   per session. Invariant (ii). The relay stores `(x_0, credit, k=0)`.
+3. **Pay as bytes forward.** After the relay forwards increment k the fetcher
+   reveals `x_k`; the relay checks `H(x_k) = x_{k-1}`, advances its held preimage,
+   sets `k`. If the fetcher stops, the relay stops.
+4. **Settle.** At epoch net-settlement the relay redeems its highest held preimage
+   for `k · increment` into its **operator balance** — the same committed-state
+   path delivery credit rides (Q5), **no new keystone field**. Conservation
+   holds: the credit is drawn from the fetcher's already-paid blind credit, never
+   minted.
+
+**Reuse of the shipped machinery:**
+
+- Blind ephemeral withdrawal: `client/privissue.go` (`WithdrawDemandTokenPrivately`).
+- Conserved settlement into balance: sibling of `core/credit/delivery.go`
+  `RedeemDeliveryCredit` — moves `balance` only, drawn from the fetcher's paid-in
+  credit, never touches `Reputation()` (`core/credit/credit.go:291-298`).
+- Consumer gate: mirrors the `--accept-receipts` gate at `cmd/silt/daemon.go:810`;
+  a relay opts in under an analogous flag, off by default.
+- Role model: the relay banks and settles the way `handleDeliveryReceipt`
+  (`core/node/demandrole.go:175`) does, keyed on the chain root and highest
+  preimage instead of a completed-delivery receipt.
+
+The only genuinely new code unit is the PayWord primitive (build S+1 hashes;
+verify `H(x_k) = x_{k-1}`), SHA-256 only, no new dependency.
+
+### 7.3.3 Conservation and the firewall (inherited, certified)
+
+- **Conservation:** the relay redeems ≤ the chain's value, drawn from the
+  fetcher's fee-paid blind credit. A colluding fetcher+relay under one operator
+  rebuys its own fee at break-even (or a strict loss with a skim). No new mint
+  surface (cert §2a).
+- **Firewall (Invariant A):** relay forwarding credit moves `balance` and nothing
+  else — structurally identical to delivery credit. It cannot enter
+  `Reputation()`. **One Invariant-A regime covers delivery + relay credit**
+  (cert §2b, Q6). Failing-first guard: a relay-credit redemption leaves the
+  relay's `Reputation()` unchanged (the `core/credit/invariant_a_test.go`
+  pattern).
+- **Wash / forgery is a strict self-loss:** forgery is cryptographically excluded
+  (PayWord self-authorizes), and wash is a strict loss under sender-funded
+  conservation (cert §2c).
+
+### 7.3.4 HARD design invariants — M0 access-privacy (IMMUTABLE, Don't-#3)
+
+These two constraints are non-negotiable build constraints, not notes. Violating
+either upgrades the relay into a **longitudinal observer** of the fetcher — an M0
+access-privacy violation (`docs/TENETS.md` Don't-#3). They are enforced by
+construction and each carries a failing-first guard.
+
+**(i) The PayWord chain root MUST bind to a BLIND credit under a FRESH EPHEMERAL
+identity, NEVER a durable one.**
+
+- *Enforced by:* funding the chain exclusively through
+  `client.WithdrawDemandTokenPrivately` (`client/privissue.go:48`), which
+  withdraws over a throwaway keypair and tears it down. The issuer authenticates
+  only an ephemeral key and charges no account it can tie to the fetcher. No code
+  path binds a chain root to a durable-account credit.
+- *Why non-negotiable:* binding a chain to a durable identity lets the relay tie
+  the fetcher's durable identity to what it fetched. Not permitted at any
+  performance price.
+- *Guard:* a chain root funded by a durable-account credit MUST be rejected.
+
+**(ii) A FRESH ephemeral identity AND a FRESH PayWord chain per session.**
+
+- *Enforced by:* one `WithdrawDemandTokenPrivately` call and one freshly-generated
+  tip per session-open. No chain or ephemeral identity is cached or reused across
+  sessions; the relay stores only `(root, credit, highest-preimage)` for the live
+  session and discards it at settlement.
+- *Why non-negotiable:* reusing a chain or ephemeral identity lets the relay link
+  a fetcher's sessions to each other — upgrading it from a per-session observer
+  (which sees only the IP it already routes) to a longitudinal one. A real
+  Don't-#3 regression.
+- *Guard:* a session-open reusing an ephemeral identity or a chain root MUST be
+  rejected.
+
+### 7.3.5 The increment size — an owed MEASUREMENT (build-immutable #8)
+
+The increment size `B` (payload bytes per increment) is a **floor-box measurement
+in BYTES, not a round figure** (the #299/#555 produce-cost scar). `B` is the
+smallest value satisfying both:
+
+- **(a)** per-increment verify (one SHA-256 over 32 B + preimage-advance) ≤ ~1% of
+  the time to forward `B` payload bytes on the 1 vCPU / 2 GB floor box; and
+- **(b)** chain state `S · 32 B` (where `S = objectSize / B`) stays MB-scale for
+  the largest object class, aligned to a sub-chunk boundary.
+
+The expected envelope is ~1–64 KiB; the exact value is pinned by the measurement,
+whose method is defined in the deliberation note. **No round figure ships without
+the measurement artifact.** This is the one quantitative gate before relay-payment
+code commits; it does not reopen the design.
+
+### 7.3.6 Residual (disclosed, priced small — not solved)
+
+The irreducible one-increment stiff (either direction) is not eliminable by any
+mechanism (Pagnia–Gärtner + forwarding-unprovability). The remedy is to bound the
+increment small (§7.3.5), NOT to adjudicate. A **skim on relay payment** is an
+engineering knob, conservation-safe either way (composes as the delivery skim,
+`delivery.go:120-124`); v1 ships without one for simplicity, since conservation
+already makes wash a strict non-gain.

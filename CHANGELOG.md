@@ -9,6 +9,47 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **PoD §7.3 relay compensation — the certified PayWord mechanism, failing-first**
+  (`core/relaypay/payword.go`, `core/credit/relay.go`, `core/node/relayrole.go`,
+  `cmd/silt/daemon.go`, 2026-08-30). A relay/gateway forwards content-blind bytes and
+  cannot sign a completed-delivery receipt, so it is paid as-it-goes by a sender-funded
+  PayWord hash chain (docs/design/pod.md §7.3, certified 2026-08-30): the fetcher commits
+  a chain root once, reveals one preimage per forwarded increment, and the relay verifies
+  each with one SHA-256 (`H(x_k) = x_{k-1}`) and redeems the highest into its operator
+  BALANCE. New `core/relaypay` primitive (chain build + relay-side incremental verify,
+  SHA-256 only, no new dependency). `RedeemRelayCredit` is the conserved-transfer sibling
+  of `RedeemDeliveryCredit`: it moves `balance` only, drawn from the fetcher's already-paid
+  blind credit, never mints, never touches `Reputation()` — classified `neutral` in the
+  Invariant-A reflection guard (the γ→1/N firewall; a PayWord chain is fundable with zero
+  object bytes by design). Two M0 access-privacy guards (immutable Don't-#3) are enforced by
+  construction in `OpenRelaySession` and ship failing-first: (i) a chain funded by a
+  DURABLE-account credit is REJECTED (funding must be an ephemeral blind credit,
+  `client.WithdrawDemandTokenPrivately`); (ii) a reused ephemeral identity or chain root
+  across sessions is REJECTED (no longitudinal linkage). Consumer gate `--accept-relay-payments`
+  mirrors `--accept-delivery-receipts`, OFF by default. The increment size `B` is a single
+  named constant `relaypay.RelayIncrementBytes = 4096` (4 KiB), derived analytically from
+  the floor-box-equivalent measurement (build-immutable #8, no billable run): the binding
+  constraint is the chain-state memory bound — 1 GiB max object / 4 KiB = 262,144 increments,
+  chain state 8 MB (MB-scale, fetcher-side); verify overhead (order ~100 ns SHA-256 on arm64)
+  is slack at any real relay speed. `BenchmarkPayWordVerify` times the real `Verifier.Advance`.
+  See `docs/thinking/2026-08-30-pod-7.3-relay-compensation-design.md` §5.
+
+- **PoD §7.3 relay compensation — blind-review fixes (PE SHIP-WITH-FIX + Tester PROMOTED)**
+  (`core/relaypay/payword.go`, `core/credit/relay.go`, `core/credit/relay_test.go`, 2026-08-30).
+  `RedeemRelayCredit` now takes the fetcher's paid-in `budget` as a REQUIRED parameter and
+  REJECTS any `chainValue > budget` (the conservation cap — bakes the B3-close bound into the
+  settlement contract so a future transport caller cannot over-redeem past what the fetcher
+  funded; ships failing-first as `TestRelayRedeemCannotExceedPaidInBudget`, RED without the cap).
+  Corrected the false safety comment on `Verifier.AdvanceTo` — the walk is NOT bounded (it runs
+  `claimedCount - count` unbounded hashes before rejecting; the caller MUST bound it), and the
+  8 MB chain state is FETCHER-side, not the relay's (the relay holds one 32-B preimage). The
+  AdvanceTo S-clamp (gate #644) and the `relaySeenEph`/`relaySeenRoot` epoch-tied eviction
+  (gate #645) are tracked as blockers for the transport increment, not fixed here.
+  `TestRelayCreditNeverTouchesStanding` now iterates past `bondUnit` (65,537 > 64<<10) so a
+  sub-threshold per-call standing leak cannot hide. Verify-cost figure corrected to order
+  ~100 ns on arm64 (measured ~110–270 ns/op on M4; the B-derivation conclusion is unchanged —
+  constraint (a) is still slack by ~100×).
+
 - **era-4 increment 4d — height-gated activation + mint-flip to v5 (the go-live gate)**
   (`core/chain/chain.go`, `core/chain/era3validity.go`, `core/chain/statehash.go`,
   `core/node/chainrole.go`, `core/chain/modelcheck_era4_activation_test.go`, 2026-08-29).
