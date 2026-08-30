@@ -855,16 +855,32 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
   local-only policy flag.** Andrew ratified all three. This is a decision record for the
   lane-1 witness-validating floor box (the #600 posture above), not a mechanism restatement;
   the mechanisms live in the cited certifications and the v5 recompute. The three items:
-  1. **Lane-1 witness read-set verdict RATIFIED (corrected form).** The sound floor-box
-     WITNESS read-set for a v5 block = validity reads ∪ `apply()` branch reads
-     (`slashed` / `bondRootOwner` / `bondRootProven`) ∪ era-4 accelerator reads (the single
-     `dueBucket[h]` non-membership leaf + the touched `qualified` / `epochSet` delta). It is
-     **O(payload)** for ordinary and TTL blocks and **O(boundary-delta)** at an epoch
-     boundary. **Load-bearing:** the FULL-NODE recompute stays **O(registry)**; only the
-     WITNESS read-set is bounded. The read-set producer MUST be **EXECUTION-DERIVED against
-     the v5 witnessable recompute**, never taken from `apply()`'s literal reads — the literal
-     reads yield the O(registry) set and defeat era-4. Cite:
-     `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/era4-witness-floor-box-readset-v5-RESEARCH-CERTIFICATION-2026-08-30.md`.
+  1. **Lane-1 witness read-set identity RATIFIED (AMENDED / complete form).** The sound
+     floor-box WITNESS read-set for a v5 block is the **23-keyspace** committed read-set
+     enumerated in the amended certification, with its per-leaf read-membership table (18
+     era-3 committed leaves + 5 v5-only leaves; each row names the recompute read site). It
+     is **O(payload)** for ordinary and TTL blocks; the boundary read-set is **O(RegCap)**
+     (see boundary bound below). **CORRECTION — the prior identity was INCOMPLETE and is
+     SUPERSEDED.** The earlier entry named validity reads ∪ `apply()` branch reads ∪ era-4
+     accelerator reads, but OMITTED the attestation-loop committed leaf `validatorsSeen`
+     (`apply()`'s per-attester `validatorsSeen[id]` write, gated on committed qualification
+     reads), the maturity-latch scalar `everMature`, and eight committed scalar leaves
+     (`bondDomain`, `matureEpoch`, `epochStart`, `era4LockedIn`, `era4Height`,
+     `gateLockedIn`, `gateHeight`, `era3LockedIn`, `era3Height`). A floor box witnessing only
+     the prior read-set could be made to **wrong-accept** a forged block on any omitted leaf.
+     The complete identity is the amended one. **Load-bearing:** the FULL-NODE recompute stays
+     **O(registry)**; only the WITNESS read-set is bounded. The read-set producer MUST be
+     **payload-driven (O(payload))**, and its completeness guard MUST be **EXECUTION-DERIVED**
+     — the recorded leaf-touch of the real v5 witnessable recompute (or a pre/post
+     `stateRootLeavesV5` leaf diff), ablated red on a dropped read — **never a hand-written
+     mirror**. A hand-written guard mirrored the hand-written producer, both inherited the
+     blind spot, and the guard stayed green over the accept-a-forgery gap. Cite the amended
+     certification by full path:
+     `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/era4-witness-floor-box-readset-v5-AMENDED-RESEARCH-CERTIFICATION-2026-08-30.md`
+     (supersedes the same-day
+     `.../era4-witness-floor-box-readset-v5-RESEARCH-CERTIFICATION-2026-08-30.md` on identity
+     and boundary label; that cert's REFUTE of "read-set = full O(payload) apply() touch-set"
+     still stands).
   2. **R1 — RegCap=256 MEASURED SAFE (no value change).** The honest per-block ceiling is
      **1 BondReg** at the deployed `k=64` / `MinBond=1 MiB` (a full space-time proof is
      ~1.46 MiB against the 2 MiB block budget), so RegCap=256 carries **255× headroom** and
@@ -872,6 +888,13 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
      boundary and fits the 2 GiB floor box. Re-derivation is required **only if one of the
      seven determinants changes** (tracked as **E6 on #299**). RegCap stays **256** — no value
      change from the era-4 pin above.
+     **Boundary bound corrected (amended cert, Claim 2):** the epoch-boundary WITNESS
+     read-set is **O(RegCap)**, NOT O(boundary-delta). O(boundary-delta) is the WRITE-set (the
+     changed leaves); the three `rotateEpoch` activation tallies read `regVersion` and sum
+     weight over EVERY frozen-set member, and the super-quorum predicate `3*ready > 2*total`
+     cannot be computed from a delta. **Box-fits at RegCap=256 is UNCHANGED and NO security
+     parameter moves** — only the boundary label / DoS-bound wording was wrong; correct every
+     downstream boundary witness-cost statement to `O(RegCap) · S_proof_max`.
   3. **R2 — #535 recovery-boundary disposition DECIDED (one local-only policy flag).** The
      recovery directive is sourced **ONLY from the box's own `-ws-checkpoint`-class config,
      NEVER from the proposer or the block**. Directive present for height h ⇒ validate

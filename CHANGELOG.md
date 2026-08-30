@@ -60,15 +60,19 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 - **Record the owner-ratified lane-1 (trustless floor box, increment 3) decisions**
   (`docs/decisions.md`, 2026-08-30). Decision record only — no code, consensus, economic,
   or security content changed. Adds one dated entry under the #600 floor-box thread
-  capturing three ratified items: (1) the lane-1 v5 witness read-set verdict (corrected
-  form) — the sound read-set is O(payload) / O(boundary-delta) and MUST be
-  execution-derived against the v5 witnessable recompute, while the full-node recompute
-  stays O(registry); (2) R1 — RegCap=256 measured safe (255× honest headroom, 32 MiB
-  boundary witness, no value change, re-derive only on a seven-determinant change, E6 on
-  #299); (3) R2 — #535 recovery-boundary disposition is one local-only `-ws-checkpoint`
-  policy flag (default cold-auditor / stall-loud; live-follower opt-in), closure gated on
-  the #603 `bonded`/`epochSet` keystone probes. Cites the certification
-  (`silt-reviews/research/research-outcome/era4-witness-floor-box-readset-v5-RESEARCH-CERTIFICATION-2026-08-30.md`)
+  capturing three ratified items: (1) the lane-1 v5 witness read-set identity (AMENDED /
+  complete form) — the sound read-set is the 23-keyspace committed read-set with its
+  per-leaf table; the prior incomplete identity omitted `validatorsSeen`, `everMature`, and
+  eight scalar leaves (a wrong-accept) and is SUPERSEDED; it is O(payload) with an
+  O(RegCap) boundary read-set, payload-driven, with an EXECUTION-DERIVED completeness guard
+  (never a hand-written mirror), while the full-node recompute stays O(registry); (2) R1 —
+  RegCap=256 measured safe (255× honest headroom, 32 MiB boundary witness, no value change,
+  re-derive only on a seven-determinant change, E6 on #299) — boundary read-set relabeled
+  O(RegCap), box-fit and security parameters UNCHANGED; (3) R2 — #535 recovery-boundary
+  disposition is one local-only `-ws-checkpoint` policy flag (default cold-auditor /
+  stall-loud; live-follower opt-in), closure gated on the #603 `bonded`/`epochSet` keystone
+  probes. Cites the amended certification
+  (`silt-reviews/research/research-outcome/era4-witness-floor-box-readset-v5-AMENDED-RESEARCH-CERTIFICATION-2026-08-30.md`)
   and the two #535 reconciliation docs.
 - **True-up: era-3 format FROZEN + era-4 spine BUILT, roadmap/design drift corrected**
   (`ROADMAP.md`, `docs/design/block-format-by-era.md`, `docs/decisions.md`, 2026-08-30).
