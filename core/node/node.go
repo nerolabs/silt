@@ -665,6 +665,15 @@ type Node struct {
 	// reads it from the chain (height / EpochBlocks); tests override it.
 	relayEpochFn func() uint64
 
+	// relaySessions is the live paid-relay session table (Batch 2 transport), keyed
+	// by the session handle the relay returns in MsgRelayOpenAck. Each entry holds a
+	// live RelaySession (the verifier + authorizer bridge) between MsgRelayOpen and
+	// close. relaySessionSeq assigns fresh handles. Touched only from the serialized
+	// message-handler path (the transport delivers handlers one at a time); the
+	// per-session authorizer state carries its own lock for the concurrent pump.
+	relaySessions   map[uint64]*RelaySession
+	relaySessionSeq uint64
+
 	// failure-domain gossip: domainID is this node's own domain hash
 	// (0 = unset); peerDomains accumulates peers' domains from gossip, so
 	// placement can spread columns across distinct domains.
@@ -1590,6 +1599,10 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 		n.handleRepairClaim(from, msg) // async: replies MsgRepairVote when the two legs settle (H7)
 	case ports.MsgDeliveryReceipt:
 		n.handleDeliveryReceipt(from, msg) // D-DEMAND: verify + bank a delivery receipt
+	case ports.MsgRelayOpen:
+		n.handleRelayOpen(from, msg) // PoD §7.3: open a paid relay session (M0 guards + S-clamp fire here)
+	case ports.MsgRelayPay:
+		n.handleRelayPay(from, msg) // PoD §7.3: a preimage reveal authorizes the next increment(s)
 	case ports.MsgBondChallenge:
 		n.reply(from, msg, n.answerBondChallenge(from, msg))
 	case ports.MsgTokenRequest:

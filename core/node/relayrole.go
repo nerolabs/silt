@@ -31,6 +31,8 @@ package node
 // or chain root. Their failing-first guards are in relayrole_test.go.
 
 import (
+	"sync"
+
 	"github.com/nerolabs/silt/core/relaypay"
 	"github.com/nerolabs/silt/ports"
 )
@@ -79,6 +81,7 @@ func (n *Node) EnableRelayAccept() {
 	n.relayAccept = true
 	n.relaySeenEph = make(map[ports.NodeID]uint64)
 	n.relaySeenRoot = make(map[string]uint64)
+	n.relaySessions = make(map[uint64]*RelaySession)
 	n.relayEvictionFloor = 0
 	// Production epoch source: the chain's head height / EpochBlocks — a sequential
 	// epoch index. With no chain or epochs disabled the epoch is 0 (no eviction; the
@@ -126,8 +129,79 @@ func (n *Node) sweepRelaySeen(epoch uint64) {
 // RelaySession is one live relay-payment session: the relay-side PayWord
 // verifier keyed on the committed chain root. It holds exactly one preimage
 // (32 B) regardless of chain length.
+//
+// The transport (Batch 2) adds the state a live session needs beyond the pure
+// verifier: the fetcher's ephemeral identity (the settlement payee-source), the
+// committed budget (S credits, the conservation cap), and the authorizer bridge
+// the paid pump reads (authorized-byte ceiling + a wake signal). The verifier's
+// monotonic count IS the settlement accumulator — settlement at close redeems
+// count × increment once, capped at the budget (design §5).
 type RelaySession struct {
 	verifier *relaypay.Verifier
+
+	ephID  ports.NodeID // the fetcher's fresh ephemeral identity (settlement source)
+	budget int64        // S × RelayIncrementCredit — the conservation cap
+
+	// authorizer bridge (design §2 Option A: the node drives, the adapter gates).
+	// authBytes is the forward-byte ceiling the paid pump may deliver up to; it
+	// rises to count × RelayIncrementBytes on each verified Pay. signal wakes the
+	// pump; done marks the session closing so the pump stops blocking.
+	mu        sync.Mutex
+	authBytes int64
+	done      bool
+	signal    chan struct{}
+}
+
+// newRelaySession builds a live session from a fresh verifier and its M0-verified
+// identity/budget. The signal channel is buffered depth-1 so a Pay that raises the
+// ceiling never blocks on a pump that is mid-forward.
+func newRelaySession(v *relaypay.Verifier, ephID ports.NodeID, budget int64) *RelaySession {
+	return &RelaySession{verifier: v, ephID: ephID, budget: budget, signal: make(chan struct{}, 1)}
+}
+
+// AuthorizedBytes reports the forward-byte ceiling the paid pump may deliver up to
+// (the relay adapter's authorizer seam). It is count × RelayIncrementBytes.
+func (s *RelaySession) AuthorizedBytes() int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.authBytes
+}
+
+// Wait returns the pump's wake channel (the authorizer seam).
+func (s *RelaySession) Wait() <-chan struct{} { return s.signal }
+
+// Done reports the session is closing — no further authorization will arrive (the
+// authorizer seam). The pump stops blocking and drains to its current ceiling.
+func (s *RelaySession) Done() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.done
+}
+
+// raiseCeiling recomputes the authorized-byte ceiling from the verifier count and
+// wakes the pump. Called after each verified Pay. The ceiling only ever rises (the
+// count is monotonic), so a pump reading a stale value only under-delivers, never
+// over-delivers.
+func (s *RelaySession) raiseCeiling() {
+	s.mu.Lock()
+	s.authBytes = int64(s.verifier.Count()) * relaypay.RelayIncrementBytes
+	s.mu.Unlock()
+	s.wake()
+}
+
+// closeSession marks the session done and wakes the pump so it can drain and stop.
+func (s *RelaySession) closeSession() {
+	s.mu.Lock()
+	s.done = true
+	s.mu.Unlock()
+	s.wake()
+}
+
+func (s *RelaySession) wake() {
+	select {
+	case s.signal <- struct{}{}:
+	default:
+	}
 }
 
 // OpenRelaySession opens a relay-payment session for a fetcher's PayWord chain.
@@ -178,15 +252,34 @@ func (n *Node) OpenRelaySession(ephID ports.NodeID, root []byte, S int, funding 
 	// Record the admit epoch so #645 eviction can age the entry out.
 	n.relaySeenEph[ephID] = epoch
 	n.relaySeenRoot[rootKey] = epoch
-	return &RelaySession{verifier: relaypay.NewVerifier(root, S)}, nil
+	budget := int64(S) * relaypay.RelayIncrementCredit
+	return newRelaySession(relaypay.NewVerifier(root, S), ephID, budget), nil
 }
 
 // Pay authorizes the next increment by verifying a revealed preimage — one
 // SHA-256 (relaypay.Verifier.Advance). If the fetcher stops revealing, the relay
 // stops forwarding; the irreducible one-increment stiff is bounded small by the
 // increment size (relaypay.RelayIncrementBytes, the owed floor-box measurement).
+// On success it raises the paid pump's byte ceiling so the forward stream releases
+// the newly-authorized increment.
 func (s *RelaySession) Pay(preimage []byte) error {
-	return s.verifier.Advance(preimage)
+	if err := s.verifier.Advance(preimage); err != nil {
+		return err
+	}
+	s.raiseCeiling()
+	return nil
+}
+
+// PayTo authorizes several increments at once by revealing x_claimedCount, walking
+// the chain forward (relaypay.Verifier.AdvanceTo). The walk is bounded to at most S
+// hashes by the #644 clamp. On success it raises the paid pump's ceiling to the new
+// count. This is the live-path entry the wire MsgRelayPay drives.
+func (s *RelaySession) PayTo(preimage []byte, claimedCount int) error {
+	if err := s.verifier.AdvanceTo(preimage, claimedCount); err != nil {
+		return err
+	}
+	s.raiseCeiling()
+	return nil
 }
 
 // Count returns the number of increments the relay is authorized to redeem for

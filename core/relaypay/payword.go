@@ -58,6 +58,14 @@ const MaxSessionBytes = 1 << 30
 // the attacker-chosen millions the unbounded path allowed (#644).
 const MaxChainLength = MaxSessionBytes / RelayIncrementBytes
 
+// RelayIncrementCredit is the credit value one forwarded increment settles for —
+// the settlement unit. One increment = one credit, so a session's settled value is
+// count × RelayIncrementCredit == count and the committed budget is S credits. The
+// fetcher's paid-in blind credit for the chain is S credits, so the conservation
+// chain is exactly count <= S <= paid-in (design §5). Keeping it 1 makes the
+// settlement arithmetic the identity and the conservation cap a plain count <= S.
+const RelayIncrementCredit = 1
+
 // hashLen is the SHA-256 output length; every chain link is this wide.
 const hashLen = sha256.Size
 
