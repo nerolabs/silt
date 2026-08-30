@@ -13,9 +13,25 @@ package node
 // live-path guard-reuse test asserts it).
 
 import (
+	"time"
+
 	"github.com/nerolabs/silt/core/relaypay"
 	"github.com/nerolabs/silt/ports"
 )
+
+// resolveRelayTimeout bounds how long the off-loop resolver blocks on the loop
+// reply before it DEGRADES TO REFUSE (PoD §7.3 Batch 3, PE LOW follow-up
+// RULING-pod-7.3-transport-batch3-daemon-binding-2026-08-30, finding 1). The loop
+// replies in microseconds normally; this is a generous ceiling that only fires if
+// the loop has stopped or stalled (e.g. a future graceful-shutdown calling
+// loop.Stop() while the relay Server still accepts). On timeout the resolver
+// returns ok=false, so the Server refuses the paid connect — never hangs, never
+// downgrades to free (certified residual #2). This removes the reliance on the
+// un-asserted invariant "the production loop never stops".
+//
+// It is a var (not a const) so the seam test can shorten it; production never
+// reassigns it.
+var resolveRelayTimeout = 5 * time.Second
 
 // handleRelayOpen is the relay side of MsgRelayOpen: decode the fetcher's chain
 // commitment, run it through OpenRelaySession (M0 guards + #644 clamp), and on
@@ -137,6 +153,14 @@ func (n *Node) RelaySessionForTest(handle uint64) (*RelaySession, bool) {
 // construction, because the map is still only ever read/written on the loop. The
 // caller (accept goroutine) is never the loop goroutine, so blocking here cannot
 // deadlock the loop.
+//
+// The reply read is TIMEOUT-BOUNDED (resolveRelayTimeout): if the loop has stopped
+// or stalled and the reply never arrives, the resolver returns ok=false and the
+// Server refuses the connect, rather than leaking a blocked goroutine per paid
+// connect. This makes the seam self-safe under a future graceful-shutdown that
+// calls loop.Stop() while the relay Server still accepts (PE finding 1). The reply
+// channel is cap-1, so the loop's send never blocks even after the resolver has
+// given up and returned.
 func (n *Node) ResolveRelayAuthorizer(fetcher ports.NodeID, handle uint64) (*RelaySession, bool) {
 	type result struct {
 		sess *RelaySession
@@ -151,8 +175,14 @@ func (n *Node) ResolveRelayAuthorizer(fetcher ports.NodeID, handle uint64) (*Rel
 		}
 		reply <- result{sess, true}
 	})
-	r := <-reply
-	return r.sess, r.ok
+	select {
+	case r := <-reply:
+		return r.sess, r.ok
+	case <-time.After(resolveRelayTimeout):
+		// The loop did not reply within the ceiling: stopped or stalled. Degrade
+		// to REFUSE (never hang, never downgrade to free).
+		return nil, false
+	}
 }
 
 // SettleRelaySessionForHandle is the node's settle-at-close driver for the live paid

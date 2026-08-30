@@ -82,6 +82,23 @@ jobs:
         # default 10m killed the binary mid-window (a sleeping-goroutine
         # panic at the poll loop, not a test verdict).
         run: go test ./e2e/ -count=1 -v -timeout 25m
+      - name: go test -race ./e2e (in-process paid-relay seam)
+        # The paid-relay e2e (TestPaidRelaySessionEndToEnd) is IN-PROCESS: it
+        # runs real event loops + goroutines in this test binary, not spawned
+        # daemons, so -race applies (unlike the subprocess-driven e2e above,
+        # which the top-level `race` job's -short correctly skips). The ledger
+        # is loop-only (no mutex); a test reading it off-loop trips a data race.
+        # This step keeps that regression caught in CI — the -short race job
+        # never sees this test because it t.Skips under -short.
+        # The explicit -run pins the ONE in-process test; if it is renamed and
+        # this filter stops matching, `go test` fails the step with
+        # "no tests to run" NOT silently — `-run` on a package with zero
+        # matches still exits 0, so we assert a match by requiring -v output.
+        run: |
+          out=$(go test -race ./e2e/ -run '^TestPaidRelaySessionEndToEnd$' -count=1 -v -timeout 10m 2>&1)
+          echo "$out"
+          echo "$out" | grep -q '^=== RUN   TestPaidRelaySessionEndToEnd$' || {
+            echo "::error::the paid-relay -race step matched NO test — the -run filter is stale (was the test renamed?)"; exit 1; }
 
   nat-integration:
     name: Integration — cross-NAT over a real relay (docker)

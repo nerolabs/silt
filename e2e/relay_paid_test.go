@@ -264,19 +264,37 @@ func TestPaidRelaySessionEndToEnd(t *testing.T) {
 	// Close the byte leg → the pump returns → the settler fires at close.
 	pipe.Close()
 
-	// ---- (c) CONSERVED SETTLE + firewall. Capture standing BEFORE settle so we can
-	// assert it is unchanged, then wait for the balance to reflect the settle.
-	repBefore := ledger.Reputation(rID.NodeID())
+	// ---- (c) CONSERVED SETTLE + firewall. The ledger is LOOP-ONLY by design (no
+	// mutex): the event-loop goroutine writes Balance via RedeemRelayCredit at settle.
+	// Reading it directly from THIS test goroutine would race that write (Tester
+	// finding). So every ledger read below is MARSHALED onto the relay node's loop and
+	// the value returned over a cap-1 reply channel — the same single-thread discipline
+	// the production seam uses. This is a TEST-ONLY fix; the production Ledger stays
+	// mutex-free (the loop-only invariant is not weakened).
+	readBalance := func() int64 {
+		ch := make(chan int64, 1)
+		rLoop.Post("check-balance", func() { ch <- ledger.Balance(rID.NodeID()) })
+		return <-ch
+	}
+	readReputation := func() int64 {
+		ch := make(chan int64, 1)
+		rLoop.Post("check-reputation", func() { ch <- ledger.Reputation(rID.NodeID()) })
+		return <-ch
+	}
+
+	// Capture standing BEFORE settle so we can assert it is unchanged, then wait for
+	// the balance to reflect the settle.
+	repBefore := readReputation()
 	balStart := int64(0) // the relay operator started at zero balance
 	wantCredit := int64(S) * relaypay.RelayIncrementCredit
 	deadline := time.Now().Add(5 * time.Second)
-	for ledger.Balance(rID.NodeID()) < balStart+wantCredit && time.Now().Before(deadline) {
+	for readBalance() < balStart+wantCredit && time.Now().Before(deadline) {
 		time.Sleep(50 * time.Millisecond)
 	}
-	if bal := ledger.Balance(rID.NodeID()); bal != balStart+wantCredit {
+	if bal := readBalance(); bal != balStart+wantCredit {
 		t.Fatalf("operator balance = %d after settle, want %d (= %d increments × %d) — settle not conserved", bal, balStart+wantCredit, S, relaypay.RelayIncrementCredit)
 	}
-	if rep := ledger.Reputation(rID.NodeID()); rep != repBefore {
+	if rep := readReputation(); rep != repBefore {
 		t.Fatalf("relay Reputation() moved from %d to %d on a relay settlement — the Invariant-A firewall is breached (relay credit must be balance-only)", repBefore, rep)
 	}
 
@@ -293,8 +311,8 @@ func TestPaidRelaySessionEndToEnd(t *testing.T) {
 		t.Fatal("no settlement log line found")
 	}
 	for _, forbidden := range []string{
-		fID.NodeID().String(),          // fetcher ephemeral identity
-		rID.NodeID().String(),          // relay identity
+		fID.NodeID().String(),            // fetcher ephemeral identity
+		rID.NodeID().String(),            // relay identity
 		hex.EncodeToString(chain.Root()), // chain root
 	} {
 		if forbidden != "" && strings.Contains(settleLine, forbidden) {

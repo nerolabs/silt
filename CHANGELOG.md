@@ -42,6 +42,34 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
     seam wired, asserting forward integrity, the live pay-gate, conserved settle with
     `Reputation()` unchanged (Invariant-A firewall), free relay still working with
     payments on (the Option-B witness), and the M0 settlement-log audit.
+
+### Fixed
+- **PoD §7.3 BATCH 3 review fold-in — resolver self-safe under a stopped loop, the
+  paid e2e made `-race` clean and CI-caught** (`core/node/relaytransport.go`,
+  `core/node/relaybind_test.go`, `e2e/relay_paid_test.go`, `.github/workflows/ci.yml`,
+  2026-08-30). Three follow-ups from the Batch-3 reviews, no guard weakened.
+  - **Resolver reply-channel timeout (PE LOW, finding 1, failing-first).**
+    `ResolveRelayAuthorizer` marshaled the session lookup onto the node loop and blocked
+    on an UNTIMED reply channel — safe only under the un-asserted invariant "the
+    production loop never stops". A future graceful-shutdown (`loop.Stop()` while the
+    relay Server still accepts) would leak one blocked resolver goroutine per paid
+    connect. The reply read is now a `select` with a generous timeout
+    (`resolveRelayTimeout`, 5s) that DEGRADES TO REFUSE — never hangs, never downgrades
+    to free (consistent with certified residual #2). Regression:
+    `TestResolveRelayAuthorizerRefusesWhenLoopStopped` (RED without the timeout: the
+    resolver blocks forever against a stopped loop).
+  - **e2e harness data race (Tester, failing-first).** `TestPaidRelaySessionEndToEnd`
+    polled `ledger.Balance` / `ledger.Reputation` directly from the test goroutine while
+    the event loop wrote the same field at settle (`RedeemRelayCredit`). The `Ledger` is
+    loop-only by design (no mutex). Both reads are now MARSHALED onto the relay node's
+    loop and returned over a cap-1 reply channel. TEST-ONLY — the production `Ledger`
+    stays mutex-free (loop-only invariant not weakened). The race is now real under
+    `-race` (was: test read vs `core/credit/relay.go:73` write) and passes with the fix.
+  - **CI now runs the in-process paid-relay e2e under `-race`.** The `-race` job uses
+    `-short`, which the e2e skips; the plain e2e job ran without `-race`. So the harness
+    race would have shipped green. The `e2e` job gains a dedicated `-race` step pinning
+    `TestPaidRelaySessionEndToEnd`, with a `=== RUN` assertion so a stale `-run` filter
+    (which `go test` treats as a silent 0-exit "no tests to run") fails the step loudly.
 - **PoD §7.3 transport BATCH 2 — the wire protocol (step 3) + the paid forwarding
   pump (step 4), failing-first, the live-networking batch**
   (`ports/net.go`, `ports/ports.go`, `core/relaypay/wire.go`,
