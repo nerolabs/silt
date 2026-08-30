@@ -51,7 +51,7 @@ func TestRelayVerifyAdvancesOneHash(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildChain: %v", err)
 	}
-	v := NewVerifier(c.Root())
+	v := NewVerifier(c.Root(), S)
 	if v.Count() != 0 {
 		t.Fatalf("fresh verifier count %d, want 0", v.Count())
 	}
@@ -75,7 +75,7 @@ func TestForgedPreimageRejected(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildChain: %v", err)
 	}
-	v := NewVerifier(c.Root())
+	v := NewVerifier(c.Root(), S)
 	if err := v.Advance([]byte("not-a-valid-preimage-at-all-nope!!")); err == nil {
 		t.Fatalf("verifier accepted a forged preimage")
 	}
@@ -105,7 +105,7 @@ func TestAdvanceToWalksToClaimedCount(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildChain: %v", err)
 	}
-	v := NewVerifier(c.Root())
+	v := NewVerifier(c.Root(), S)
 	// Jump straight to increment 5 by revealing x_5; the verifier walks 5 hashes.
 	if err := v.AdvanceTo(c.Preimage(5), 5); err != nil {
 		t.Fatalf("AdvanceTo(5) rejected a valid preimage: %v", err)
@@ -126,6 +126,65 @@ func TestAdvanceToWalksToClaimedCount(t *testing.T) {
 	}
 }
 
+// TestAdvanceToClampsToChainLength is the #644 failing-first test: an adversarial
+// oversized claimedCount (far past the committed chain length S) must be REJECTED
+// BEFORE the hash walk runs, so a single bogus MsgRelayPay cannot spin the relay
+// for millions of hashes. The Verifier carries S (NewVerifier(root, S)); AdvanceTo
+// rejects claimedCount > S before walking.
+//
+// The ablation: the per-verifier walk-step counter (v.walkSteps) must never exceed
+// S for this call. Removing the `claimedCount > S` clamp lets the walk run the full
+// attacker-chosen (claimedCount - count) hashes — the ~5M-hash spin the PE measured
+// — and the counter assertion turns RED.
+func TestAdvanceToClampsToChainLength(t *testing.T) {
+	const S = 8
+	tip := []byte("a-random-32-byte-tip-for-the-clamp")
+	c, err := BuildChain(tip, S)
+	if err != nil {
+		t.Fatalf("BuildChain: %v", err)
+	}
+	v := NewVerifier(c.Root(), S)
+
+	// An attacker sends a bogus preimage claiming to reach a count far past S.
+	// The preimage MUST be a valid 32-byte length (otherwise AdvanceTo rejects on
+	// the length check before the walk, and the ablation would not be exercised).
+	// Without the clamp this walks 5,000,000 hashes before the equality check can
+	// reject. With the clamp it is rejected before any walk.
+	bogus := make([]byte, hashLen) // 32 bytes of zeros: valid length, bogus value
+	const bogusCount = 5_000_000
+	// walkSteps accumulates across calls on the same verifier, so each sub-check
+	// measures the DELTA from a baseline taken just before its AdvanceTo call.
+	before := v.walkSteps
+	err = v.AdvanceTo(bogus, bogusCount)
+	if err == nil {
+		t.Fatalf("AdvanceTo accepted an oversized claimedCount %d > S=%d", bogusCount, S)
+	}
+	if steps := v.walkSteps - before; steps > uint64(S) {
+		t.Fatalf("oversized claimedCount drove %d hash-walk steps (> S=%d): the S-clamp is missing, the CPU-DoS is open", steps, S)
+	}
+	// The count must not have moved.
+	if v.Count() != 0 {
+		t.Fatalf("a rejected oversized AdvanceTo moved the count to %d", v.Count())
+	}
+
+	// A legitimate in-bounds AdvanceTo still works and its walk is bounded by S.
+	before = v.walkSteps
+	if err := v.AdvanceTo(c.Preimage(5), 5); err != nil {
+		t.Fatalf("in-bounds AdvanceTo(5) rejected: %v", err)
+	}
+	if steps := v.walkSteps - before; steps > uint64(S) {
+		t.Fatalf("in-bounds walk ran %d steps (> S=%d)", steps, S)
+	}
+	// Claiming exactly S is allowed; claiming S+1 is rejected before the walk.
+	before = v.walkSteps
+	if err := v.AdvanceTo(c.Preimage(5), S+1); err == nil {
+		t.Fatalf("AdvanceTo accepted claimedCount S+1 = %d > S=%d", S+1, S)
+	}
+	if steps := v.walkSteps - before; steps > uint64(S) {
+		t.Fatalf("an over-S claim ran %d hash-walk steps (> S=%d) before rejecting", steps, S)
+	}
+}
+
 // BenchmarkPayWordVerify times the REAL per-increment verify — Verifier.Advance,
 // one SHA-256(32 B) plus the held-preimage advance — the cost §5 constraint (a)
 // weighs against forwarding time. Run without -race (timing only). The chain is
@@ -143,7 +202,7 @@ func BenchmarkPayWordVerify(b *testing.B) {
 	for k := 1; k <= S; k++ {
 		pre[k] = c.Preimage(k)
 	}
-	v := NewVerifier(c.Root())
+	v := NewVerifier(c.Root(), S)
 	k := 1
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -152,7 +211,7 @@ func BenchmarkPayWordVerify(b *testing.B) {
 		}
 		if k++; k > S {
 			b.StopTimer()
-			v = NewVerifier(c.Root())
+			v = NewVerifier(c.Root(), S)
 			k = 1
 			b.StartTimer()
 		}

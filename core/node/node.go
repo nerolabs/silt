@@ -647,9 +647,23 @@ type Node struct {
 	// no ephemeral identity and no chain root is reused across sessions — reuse
 	// would upgrade the relay from a per-session to a longitudinal observer, a
 	// real Don't-#3 regression. See relayrole.go.
+	// relaySeenEph and relaySeenRoot map each admitted ephemeral identity / chain
+	// root to the EPOCH it was admitted in (#645). Eviction is epoch-tied, not raw
+	// FIFO: entries older than the retention window are swept lazily on
+	// OpenRelaySession, bounding the maps to sessions-per-epoch × the window rather
+	// than growing at the session rate forever. A raw FIFO evict of an old root
+	// would be a guard-(ii) regression (a re-admitted root re-opens cross-session
+	// linkage), so eviction is by epoch-TTL. See relayrole.go.
 	relayAccept   bool
-	relaySeenEph  map[ports.NodeID]bool
-	relaySeenRoot map[string]bool
+	relaySeenEph  map[ports.NodeID]uint64
+	relaySeenRoot map[string]uint64
+	// relayEvictionFloor is the MONOTONIC eviction floor: entries with an admit
+	// epoch below it are evicted, and it never lowers on a reorg (epochStart is
+	// reorg-swapped, so a backward epoch move must not un-evict — §4 reorg caveat).
+	relayEvictionFloor uint64
+	// relayEpochFn returns the current epoch for the relay-seen eviction. Production
+	// reads it from the chain (height / EpochBlocks); tests override it.
+	relayEpochFn func() uint64
 
 	// failure-domain gossip: domainID is this node's own domain hash
 	// (0 = unset); peerDomains accumulates peers' domains from gossip, so

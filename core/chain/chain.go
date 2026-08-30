@@ -2448,6 +2448,12 @@ func (c *Chain) Head() (ports.Hash, uint64) {
 	return last.Hash(), last.Height + 1
 }
 
+// EpochBlocks returns the configured epoch length in blocks (0 = epochs disabled).
+// Read-only getter of a config value; it changes no rule. The relay lane uses it
+// to derive a sequential epoch index (head height / EpochBlocks) for #645
+// epoch-tied seen-map eviction. See core/node/relayrole.go.
+func (c *Chain) EpochBlocks() uint64 { return c.cfg.EpochBlocks }
+
 func (c *Chain) Len() int { return len(c.blocks) }
 
 // FinalizedHeight is the height this node treats as irreversibly final — the anchor a

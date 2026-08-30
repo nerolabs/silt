@@ -9,6 +9,37 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **PoD §7.3 transport BATCH 1 — carry S (#644 DoS clamp) + epoch-tied seen-map
+  eviction (#645), failing-first, pure core (no wire)**
+  (`core/relaypay/payword.go`, `core/node/relayrole.go`, `core/node/node.go`,
+  `core/chain/chain.go`, 2026-08-30). Closes gate issues #644 and #645, the two
+  transport IOUs the PE ruling required BEFORE any wire. No wire protocol and no
+  forwarding loop (steps 3–4 of the decomposition are untouched). See
+  `docs/thinking/2026-08-30-pod-7.3-transport-design.md` §3–§5, §7.
+  - **#644 — carry S, clamp the walk.** `relaypay.NewVerifier(root, S)` now carries
+    the committed chain length S. `AdvanceTo` REJECTS `claimedCount > S` before the
+    hash walk, bounding the worst case from the ~5M-hash spin the PE measured to at
+    most S hashes. `OpenRelaySession` clamps the accepted `S <= relaypay.MaxChainLength
+    = MaxSessionBytes / RelayIncrementBytes = 262,144`, derived RELAY-SIDE from the
+    relay's own config and the protocol increment — never trusted from the fetcher.
+    `Verifier.Advance` rejects a reveal once `count == S` (a fetcher revealing the raw
+    tip would otherwise push count to S+1, an unfunded increment past the committed
+    budget). `count` is the monotonic single-settlement accumulator: `count * increment
+    <= S * increment <= the fetcher's paid-in blind credit`. Failing-first tests:
+    `TestAdvanceToClampsToChainLength` (a per-`Verifier` `walkSteps` field proves the
+    walk stays <= S; RED shows 5,000,000 steps unclamped), `TestOpenRelaySessionClampsChainLength`,
+    `TestRelaySessionPayCannotExceedChainLength`.
+  - **#645 — epoch-tied eviction with a monotonic floor.** `relaySeenEph`/`relaySeenRoot`
+    now tag each admitted ephemeral identity / chain root with its admit-EPOCH and are
+    swept lazily on `OpenRelaySession`. Eviction is epoch-TTL (retention = current +
+    previous epoch), NOT raw FIFO — a re-admitted root would be a guard-(ii) longitudinal
+    regression. The eviction floor is MONOTONIC: it never lowers on a reorg (`epochStart`
+    is reorg-swapped), so a backward epoch move cannot un-evict. The epoch is read from
+    the chain (`Chain.EpochBlocks()`, a new read-only getter; head height / EpochBlocks).
+    Failing-first `TestRelaySeenMapEvictsOnEpoch` ablates all three properties to RED:
+    unbounded growth (no sweep), too-eager eviction (previous-epoch reuse slips through),
+    and a lowered floor on reorg.
+
 - **PoD §7.3 relay compensation — the certified PayWord mechanism, failing-first**
   (`core/relaypay/payword.go`, `core/credit/relay.go`, `core/node/relayrole.go`,
   `cmd/silt/daemon.go`, 2026-08-30). A relay/gateway forwards content-blind bytes and
