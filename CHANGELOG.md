@@ -201,6 +201,17 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   consensus-rule, security-parameter, M0-privacy) and the sharp open questions for Research /
   PE. Flags that the heavy options couple to the unfrozen v5 format and the ungated v5
   accept-core recompute, so they cannot be soundly specified yet.
+- **Add the "Rocks" big-step tracker overlay to the roadmap** (`ROADMAP.md`,
+  `website/roadmap.html`, 2026-08-30). Documentation only — no code, consensus, economic,
+  or security content changed. Adds one section under *The ordered path* that maps the six
+  big rocks between here and V1 to the existing canon (the phases + the D-TIERING keystone
+  track): (1) trustless floor box — IN PROGRESS (read-set identity + RegCap=256 ratified,
+  accept-core recompute research-gated, R-boundary digest leaves IN DESIGN/CERT); (2)
+  third-operator committed settlement — DEFINITION (#658, gated economic mechanism under
+  blind review); (3) era-4/v5 format freeze — DEFERRED BY DESIGN; (4) #406 consensus
+  model-check — IN PROGRESS; (5) Phase 5 operational floor — NOT STARTED; (6) external red
+  team (#183) → R1 → V1 — GATED. An overlay, not a replacement: no existing roadmap content
+  was deleted or contradicted; in-flight items are marked, never claimed decided.
 - **Record the owner-ratified lane-1 (trustless floor box, increment 3) decisions**
   (`docs/decisions.md`, 2026-08-30). Decision record only — no code, consensus, economic,
   or security content changed. Adds one dated entry under the #600 floor-box thread

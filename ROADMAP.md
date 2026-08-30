@@ -54,6 +54,45 @@ to follow it top-down. The prior rule "M1 opens only after the M0 gate" is super
 enumerated, and both the deep field confirmation and a valid #183 depend on M1 being
 real.
 
+### The Rocks (big-step tracker)
+
+An **overlay** on the phases below, not a replacement: the six big rocks between here
+and V1, each mapped to the canon it lives in ([`docs/decisions.md`](docs/decisions.md),
+the phases, the D-TIERING keystone track). Live per-issue state stays in the `V1`
+milestone; this is the coarse "where are the boulders" view. In-flight work is marked
+IN PROGRESS / IN DESIGN / DEFINITION — never as decided.
+
+1. **Trustless floor box** (D-TIERING keystone / "lane 1"). **IN PROGRESS.** The
+   witness read-set producer (Part A, #656) and the additive floor-box v5 validation-mode
+   scaffold (Part B1, #657) are merged; the box holds `indeterminate-trustlessly` (never
+   wrongly accepts) until the recompute is built and certified. The 23-keyspace witness
+   read-set identity and RegCap=256 are **ratified** (decisions.md, lane-1 increment 3);
+   the accept-core **recompute is research-gated**, not yet built. Open crux **R-boundary:**
+   whole-set boundary reads (`qualified` / `validatorsSeen`) are **O(RegCap)** and likely
+   need committed digest-root leaves — a v5 format addition **IN DESIGN/CERT, not decided.**
+   Maps to: the D-TIERING keystone track (§3 of *Immediate next work*).
+2. **Third-operator committed settlement** (the next PoD economic frontier). **DEFINITION.**
+   Cross-operator settlement in committed state, replacing today's bilateral in-memory
+   ledgers. Design-space strawman filed (#658, DEFINITION only); a **gated economic
+   mechanism** (γ→1/N firewall #182 + conservation) under blind Research + PE evaluation.
+   Couples to the v5 format. Maps to: Phase 4 (PoD), the remaining heavier lane.
+3. **era-4 / v5 format freeze** (the closing act of Proof-of-Delivery; a second practiced
+   era freeze). **DEFERRED BY DESIGN.** era-4/v5 is kept OPEN-ENDED — no live chain, and
+   PoD may still reshape witnessable state (owner-ratified 2026-08-30). Hard gate: the v5
+   committed format — including the R-boundary digest leaves and any third-operator leaves —
+   must be settled and certified before the freeze. Maps to: the keystone track + Phase 4 close.
+4. **#406 consensus model-check (I1–I5).** **IN PROGRESS.** The deterministic adversarial
+   property harness that HARD-GATES every graded field run; each invariant ablation-proven.
+   Maps to: the M0-verification instrument (the *Verify tracks* gate).
+5. **Phase 5 — operational floor** (a node a person can run). **NOT STARTED (needs scoping).**
+   Per-platform packaging + signed installers + operator-consented R4 self-update, plus the
+   S6 scaling kills (incremental O(delta) proof maturation; reprovide dirty-tracking).
+   Maps to: Phase 5.
+6. **External red team (#183) → R1 field grade → V1.** **GATED (endgame).** Runs against
+   the economy-ON config, then a green multi-region R1 grade, then V1. #183's close condition
+   is MET and the issue carries the evidence; the close is the owner's call, deliberately held.
+   Maps to: Phase 6.
+
 1. **Phase 1 — Close the M0 tail (small, enumerated). ✅ COMPLETE (2026-08-19).**
    *(1.1 inbound-cap: resolved — v2b shelved to owned-residual E5 on the drain measurement
    (cap/drain ≈ 0.21s at 1227 MB/s real drain, well under the 2s bound); the publish-flood 502 was a
