@@ -44,20 +44,18 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
     payments on (the Option-B witness), and the M0 settlement-log audit.
 
 ### Fixed
-- **PoD §7.3 BATCH 3 review fold-in — resolver self-safe under a stopped loop, the
-  paid e2e made `-race` clean and CI-caught** (`core/node/relaytransport.go`,
-  `core/node/relaybind_test.go`, `e2e/relay_paid_test.go`, `.github/workflows/ci.yml`,
-  2026-08-30). Three follow-ups from the Batch-3 reviews, no guard weakened.
-  - **Resolver reply-channel timeout (PE LOW, finding 1, failing-first).**
-    `ResolveRelayAuthorizer` marshaled the session lookup onto the node loop and blocked
-    on an UNTIMED reply channel — safe only under the un-asserted invariant "the
-    production loop never stops". A future graceful-shutdown (`loop.Stop()` while the
-    relay Server still accepts) would leak one blocked resolver goroutine per paid
-    connect. The reply read is now a `select` with a generous timeout
-    (`resolveRelayTimeout`, 5s) that DEGRADES TO REFUSE — never hangs, never downgrades
-    to free (consistent with certified residual #2). Regression:
-    `TestResolveRelayAuthorizerRefusesWhenLoopStopped` (RED without the timeout: the
-    resolver blocks forever against a stopped loop).
+- **PoD §7.3 BATCH 3 review fold-in — the paid e2e made `-race` clean and CI-caught**
+  (`e2e/relay_paid_test.go`, `.github/workflows/ci.yml`, 2026-08-30). Two follow-ups
+  from the Batch-3 reviews, no guard weakened.
+  - **Resolver stopped-loop hardening — DEFERRED (gate #651).** The off-loop
+    `ResolveRelayAuthorizer` marshals the session lookup onto the node loop and blocks
+    on the reply — safe today because the production loop never stops (PE-verified). A
+    future graceful-shutdown (`loop.Stop()` while the relay Server still accepts) would
+    leak one blocked resolver goroutine per paid connect. The naive fix (`time.After` in
+    a `select`) violates build-immutable #5 (no `time` in core) and a `Clock`-based
+    timeout is loop-bound (dropped when the loop stops), so bounding this read needs a
+    port/placement decision. Reverted to the PE-SHIP'd bare marshal-and-read (`86990af`)
+    and tracked as gate #651; whoever adds graceful shutdown owns bounding it.
   - **e2e harness data race (Tester, failing-first).** `TestPaidRelaySessionEndToEnd`
     polled `ledger.Balance` / `ledger.Reputation` directly from the test goroutine while
     the event loop wrote the same field at settle (`RedeemRelayCredit`). The `Ledger` is
