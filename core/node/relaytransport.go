@@ -120,6 +120,54 @@ func (n *Node) RelaySessionForTest(handle uint64) (*RelaySession, bool) {
 	return s, ok
 }
 
+// ResolveRelayAuthorizer is the node's half of the adapter/node seam (PoD §7.3
+// Batch 3, design §3). The relay Server calls it from its accept goroutine to resolve
+// a paid connect's handle to the node-owned authorizer, checking that `fetcher` (the
+// authenticated connector) OWNS the handle — the SAME ephID-ownership check
+// handleRelayPay enforces (relaytransport.go: sess.ephID != from → deny). It returns
+// ok=false when no live session exists for the handle or the fetcher does not own it;
+// the Server then REFUSES the connect, never downgrading to free (certified residual
+// #2).
+//
+// CONCURRENCY SEAM (design §3, flagged): relaySessions is touched only from the
+// serialized event-loop path (node.go). This method is called OFF that loop (the
+// Server's accept goroutine), so it MARSHALS the lookup onto the loop via
+// clock.AfterFunc(0, …) and blocks on a reply channel. This keeps the single-threaded
+// invariant on the session table — no new mutex on the map, and -race clean by
+// construction, because the map is still only ever read/written on the loop. The
+// caller (accept goroutine) is never the loop goroutine, so blocking here cannot
+// deadlock the loop.
+func (n *Node) ResolveRelayAuthorizer(fetcher ports.NodeID, handle uint64) (*RelaySession, bool) {
+	type result struct {
+		sess *RelaySession
+		ok   bool
+	}
+	reply := make(chan result, 1)
+	n.clock.AfterFunc(0, func() {
+		sess, ok := n.relaySessions[handle]
+		if !ok || sess.ephID != fetcher {
+			reply <- result{nil, false}
+			return
+		}
+		reply <- result{sess, true}
+	})
+	r := <-reply
+	return r.sess, r.ok
+}
+
+// SettleRelaySessionForHandle is the node's settle-at-close driver for the live paid
+// path (design §3). The relay Server calls it from the paid pump's return (the
+// PaidSettler seam) with the handle and the forwarded byte count. It MARSHALS the
+// settlement onto the event loop (same concurrency seam as the resolver): SettleRelay
+// Session touches relaySessions and the ledger, both loop-only. The forwarded count is
+// informational — the verifier's monotonic count is the settlement basis, so the count
+// argument is not trusted for the credit amount. Single-settle is preserved:
+// SettleRelaySession deletes the handle on first call, so a reaper that already closed
+// and dropped the handle makes this a harmless no-op (no double-settle, design §3b).
+func (n *Node) SettleRelaySessionForHandle(handle uint64, forwarded int64) {
+	n.clock.AfterFunc(0, func() { n.SettleRelaySession(handle) })
+}
+
 // OpenRelaySessionRemote is the fetcher side of MsgRelayOpen: it sends the chain
 // commitment (root + S + funding) to relay and reports the session handle the relay
 // returns (or the refusal reason). The fetcher funds the chain under a fresh

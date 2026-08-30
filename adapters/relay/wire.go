@@ -57,6 +57,18 @@ type ctrl struct {
 	// node can't know its own public endpoint; this is how it learns one, which
 	// hole-punching (#27) needs to hand a peer a target to dial.
 	Addr string `cbor:"a,omitempty"`
+	// Paid marks a connect frame as the byte-stream leg of a PAID relay session
+	// (PoD §7.3 Batch 3). It carries the node-minted session handle the fetcher got
+	// in MsgRelayOpenAck. omitempty: zero (the default, absent on the wire) means a
+	// FREE swarm-relay connect — byte-for-byte today's path. Nonzero routes the
+	// connect to the paid splice: the relay Server resolves the handle to the
+	// node-owned authorizer (SetPaidResolver) and gates forwarding on it. An old
+	// client sends no Paid field, so it decodes to 0 = free — backward-compatible by
+	// construction. The handle is per-session and node-local (a monotonic table
+	// index minted per open, discarded at settlement): it carries no ephemeral or
+	// durable identity and no chain root, so it is not a cross-session-linking field
+	// (D-POD-RELAY-COEXIST M0 residual audit).
+	Paid uint64 `cbor:"p,omitempty"`
 }
 
 const (

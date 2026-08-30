@@ -146,13 +146,20 @@ func (n *Node) sweepRelaySeen(epoch uint64) {
 			delete(n.relaySeenRoot, root)
 		}
 	}
-	// Reap stale unsettled sessions on the same monotonic floor. A reaped session
-	// carries no live resource today (SplicePaid / the paid pump is test-only, not
-	// wired on the live path). TODO(Batch-3): when the daemon control-frame binding
-	// wires SplicePaid, this eviction MUST tear down the reaped session's pump
-	// (sess.closeSession()) so a reaped session's goroutine does not linger.
+	// Reap stale unsettled sessions on the same monotonic floor. Batch-3 wired the
+	// daemon control-frame binding, so a reaped session may have a LIVE pump
+	// goroutine blocked in paidPump on auth.Wait(), waiting for a ceiling the
+	// departed fetcher will never raise. closeSession() marks the session done and
+	// wakes the pump so it drains to its current ceiling and returns — no leaked
+	// goroutine. closeSession is idempotent (wake is a non-blocking send), so a later
+	// SettleRelaySession close on the same handle is harmless; but the delete here
+	// removes the handle, so the normal-close settle finds it absent and cannot
+	// double-settle (design §3b). A reaped-but-unsettled session forwarded only up to
+	// its authorized ceiling, so dropping it without a settle forfeits no owed credit
+	// beyond what an unclaimed session already forfeits.
 	for handle, sess := range n.relaySessions {
 		if sess.admitEpoch < newFloor {
+			sess.closeSession() // stop the now-live pump before dropping the entry
 			delete(n.relaySessions, handle)
 		}
 	}

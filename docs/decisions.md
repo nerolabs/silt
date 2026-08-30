@@ -932,6 +932,54 @@ decomposition.
 
 ---
 
+## D-POD-RELAY-COEXIST — paid relay is additive to free relay, under shared caps
+
+- **Status:** ✅ RATIFIED — 2026-08-30 (owner ratification of the certified no-regression
+  option). It answers the ONE policy question the §7.3 transport increment (Batch 3)
+  surfaces for the first time: what a relay with `--accept-relay-payments` on does when a
+  FREE swarm-relay connect arrives at the same listener.
+- **Basis:** the research certification
+  (`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/PoD-7.3-free-vs-paid-relay-coexistence-RESEARCH-CERTIFICATION-2026-08-30.md`),
+  which certified the composed policy against the three gates it touches (economic mechanism
+  / D-DEMAND-adjacent, M0 access-privacy / Don't-#3, and Don't-#1 not-forced-to-serve), and
+  the builder deliberation
+  (`docs/thinking/2026-08-30-pod-7.3-batch3-daemon-binding-design.md` §1).
+
+**The decision: Option B — paid relay is a PARALLEL opt-in path; free relay is UNCHANGED,
+and the two share the SAME transport caps** (`MaxSessions`/`PerPeerSessions`/
+`MaxSessionBytes`). A connect with a valid, node-owned paid handle runs the paid splice; every
+other connect runs the free splice exactly as today. Payment is purely additive — it gives an
+operator a reason to carry the paid sessions on top of the free floor, never a reason to
+withdraw the free floor.
+
+**Why this and not the alternatives** (the certification's verdicts, not re-derived here):
+- **Option A (paid REPLACES free): REFUTED** — an access regression. Coupling "accept payment"
+  to "withdraw free relay" strips NAT-fallback reachability from every non-paying peer, trading
+  an M0-adjacent connectivity value for a bandwidth-pricing feature. The correct direction is
+  additive-never-replacement.
+- **Option C (free rate-limited, paid uncapped): GATED, not for v1** — conservation-safe but it
+  introduces a NEW economic/security parameter (the free-vs-paid cap relationship) that no proof
+  covers, and it silently degrades the free floor when payments turn on. This is exactly the
+  "a durability knob was twice also a security parameter" trap (`docs/build-process.md`). It stays
+  closed unless a sharper pay-incentive is ever wanted, and only through the full research gate
+  with a measured free-reachability floor plus a Don't-#1 human ruling.
+
+**What may NOT be traded** (certified constraints that ride this policy):
+- No free-vs-paid cap parameter, no reserved paid headroom, no differential free rate-limit —
+  that is the GATED Option-C territory.
+- A paid connect whose handle does NOT resolve to a live, node-owned session must be REFUSED,
+  never downgraded to free (a free downgrade hands a non-payer an unfunded forward). This is a
+  correctness condition on the paid path, regression-locked (`adapters/relay`).
+- The paid handle is per-session and non-linking; the settlement log must never carry it in a
+  cross-session-correlating way (the M0 residual audit rides Batch 3).
+- **Held-in-tension, pre-existing (not introduced here):** free and paid share `MaxSessions`, so
+  a free-relay flood can still exhaust the shared fan-out cap. This is UNCHANGED from today (free
+  relay abuse is already flagged for launch); Option B does not worsen it. Insulating paid
+  sessions from a free flood is a SEPARATE reservation decision that would re-raise the Option-C
+  parameter gate — it is not folded into B.
+
+---
+
 ## What is NOT on this ledger
 
 The following are **build items or tuning knobs**, not owner-level decisions, and live in

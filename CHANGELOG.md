@@ -9,6 +9,39 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **PoD §7.3 transport BATCH 3 — the daemon control-frame binding: the paid relay
+  pump now runs on a LIVE node, failing-first**
+  (`docs/decisions.md`, `adapters/relay/wire.go`, `adapters/relay/server.go`,
+  `adapters/relay/client.go`, `core/node/relayrole.go`, `core/node/relaytransport.go`,
+  `cmd/silt/daemon.go`, 2026-08-30). Binds the Batch-2 paid pump to the live daemon so
+  a paid relay session runs end-to-end: open → paid connect → pay-as-you-go → settle.
+  Policy: **D-POD-RELAY-COEXIST** — paid relay is ADDITIVE (Option B, RATIFIED
+  2026-08-30); free swarm relay is UNCHANGED and shares the same transport caps
+  (`docs/thinking/2026-08-30-pod-7.3-batch3-daemon-binding-design.md`; cert
+  `silt-reviews/research/research-outcome/PoD-7.3-free-vs-paid-relay-coexistence-RESEARCH-CERTIFICATION-2026-08-30.md`).
+  - **The paid marker.** One optional `Paid uint64` field on the relay `ctrl` connect
+    frame carrying the node's session handle (`omitempty`; zero = free, byte-for-byte
+    today's path). A nonzero marker routes the connect to the paid splice; an old
+    client (no field) decodes to free.
+  - **The adapter/node seam.** The daemon installs a `PaidResolver` on the relay
+    `Server` (`SetPaidResolver` → `Node.ResolveRelayAuthorizer`) resolving
+    `(fetcher, handle)` to the node-owned authorizer via the SAME `ephID`-ownership
+    check `handleRelayPay` enforces, and a `PaidSettler` firing settle-at-close from
+    the live pump's return. The verifier + M0 guards stay in `core/node`; the adapter
+    stays a dumb byte pump. The resolver is called OFF the node loop and marshals the
+    lookup onto it (`clock.AfterFunc(0)`), so the loop-only session table keeps its
+    single-threaded invariant — `-race` clean across the seam.
+  - **Refuse-never-downgrade (certified residual #2).** A paid connect whose handle
+    does not resolve to a live, owned session is REFUSED, never spliced free — a free
+    downgrade would hand a non-payer an unfunded, uncapped forward. Failing-first.
+  - **Reaper teardown.** `sweepRelaySeen` now calls `sess.closeSession()` on each
+    reaped session so a reaped session's now-live pump drains and exits (no leaked
+    goroutine); single-settle is preserved (the reaper's `delete` makes a later
+    pump-completion settle a no-op). Closes the Batch-2 `TODO(Batch-3)`, failing-first.
+  - **e2e proof.** `e2e/relay_paid_test.go`: three real nodes over real TCP with the
+    seam wired, asserting forward integrity, the live pay-gate, conserved settle with
+    `Reputation()` unchanged (Invariant-A firewall), free relay still working with
+    payments on (the Option-B witness), and the M0 settlement-log audit.
 - **PoD §7.3 transport BATCH 2 — the wire protocol (step 3) + the paid forwarding
   pump (step 4), failing-first, the live-networking batch**
   (`ports/net.go`, `ports/ports.go`, `core/relaypay/wire.go`,
