@@ -1,7 +1,6 @@
 package chain
 
 import (
-	"crypto/ed25519"
 	"encoding/binary"
 	"sort"
 	"testing"
@@ -10,408 +9,647 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// R3 drift guard — the load-bearing defense for the v5 witness read-set producer
-// (lane-1 Part A, cert era4-witness-floor-box-readset-v5-RESEARCH-CERTIFICATION-
-// 2026-08-30, residual R3).
+// R3 EXECUTION-DERIVED completeness guard — the load-bearing defense for the v5 witness
+// read-set producer (lane-1 Part A, AMENDED cert
+// era4-witness-floor-box-readset-v5-AMENDED-RESEARCH-CERTIFICATION-2026-08-30, residual R3;
+// PE ruling RULING-lane1-partA-readset-v5-producer-2026-08-30, fixes 4 + 5).
 //
-// The certified obligation: the producer's enumerated read-set MUST equal the keys
-// the v5 witnessable recompute actually reads, and a future refactor that desyncs the
-// two MUST re-redden. This guard is the #654-vacuity-guard-class defense: two
-// INDEPENDENT enumerations of the same set, asserted equal over a branch-covering
-// corpus, ablated RED on a dropped key.
+// WHY THIS REPLACES THE PRIOR GUARD. The prior guard was a SECOND HAND-WRITTEN enumeration
+// (recomputeWitnessReadsV5) checked against the producer. Both inherited the prior cert's
+// blind spot (validatorsSeen, everMature, the scalars), so set-equality was GREEN over a
+// real accept-a-forgery gap. The amended cert makes an EXECUTION-DERIVED guard MANDATORY: the
+// "expected" read-set must be derived from the RECORDED leaf-touch of the REAL v5 recompute,
+// not from a mirror of the producer. A guard that compares the producer to a hand-written
+// table certifies nothing.
 //
-// The two independent sides:
-//   - THE PRODUCER (readset_v5.go, WitnessReadSetV5): walks the block's TRANSITIONS
-//     (per-entry, per-reg, per-slash) and emits the keys each reads.
-//   - THE RECOMPUTE-READS enumerator (recomputeWitnessReadsV5, below): walks the
-//     CERTIFIED IDENTITY grouped BY FIELD (all byRoot reads, then all spent reads,
-//     then the accelerator reads), a DISTINCT code path over the same block + state.
+// THE GROUND TRUTH. The real v5 recompute is postApplyRoots(b) → cloneForDryRun() → apply(b)
+// → StateRootForVersion(5) → stateRootLeavesV5 (era3validity.go:145, statehash.go:182). This
+// guard derives the recompute's read-set from that computation by TWO execution-derived
+// sources, NEITHER hand-written:
 //
-// A copy-paste bug in one side does not hide in the other (they are structured
-// differently), so their set-equality is a real cross-check, not a tautology. This is
-// the same dual-source discipline the RECERT2 maintenance drift guards use
-// (recomputeQualified / recomputeDueBucket in modelcheck_era4_maintenance_test.go).
+//   - THE WRITE-DIFF (Category 1 — write-target reads): the committed leaves whose value
+//     CHANGES between the pre-apply and post-apply stateRootLeavesV5. Every write-target is
+//     read (a map write needs the pre-state to compute the post-value; a monotonic scalar
+//     gates on its pre-state). This captures exactly the prior build's dropped leaves
+//     (validatorsSeen / everMature / the scalars are all write-targets).
+//   - THE LEAF-SENSITIVITY PERTURBATION (Category 2 — pure gate reads): for each committed
+//     leaf present pre-apply, perturb its value on a fresh clone and re-run the REAL
+//     postApplyRoots; a leaf whose perturbation CHANGES the output root is one the recompute
+//     READS (a floor box must witness it, else it cannot detect a forged value there). This
+//     catches the pure gate reads a write-diff misses (a slashed[id] gate on a non-slashed
+//     id, the boundary regVersion reads for unchanged frozen members, bonded/bondDomain
+//     maturity inputs).
 //
-// THE ABLATION (cert R3, the session-7 "green while covering nothing" scar): the
-// corpus MUST cover the empty-dueBucket[h] non-membership path (the whole era-4 win)
-// AND drop a dueBucket key + a qualified/epochSet delta key must redden. The ablation
-// subtests below inject exactly those divergences and assert the guard catches them.
+// THE ASSERTION. The producer's read-set must COVER (⊇) the union of the two ground-truth
+// sources. Over-witnessing is sound (a little extra witness bandwidth, never a wrong-accept);
+// UNDER-witnessing is the soundness hole. So the guard's binding direction is: producer ⊇
+// ground-truth. Over-emission to O(registry) is caught separately by
+// TestWitnessReadSetV5BoundedNotRegistrySized.
+//
+// THE ABLATION (the "inject the defect and watch it go red" discipline). The guard reddens on
+// the exact defects that escaped the prior build: a dropped attestation-loop read (the
+// validatorsSeen omission), a dropped slash-path qualified read, and the certified
+// boundedness ablation.
 
-// keySet is the comparable projection of a read-set: the sorted set of (tag||rawKey,
-// kind) pairs. Two read-sets are equal iff their keySets are equal. The value is NOT
-// compared here — the read-set IDENTITY is the (key, kind) pairs (which committed keys
-// the box must witness, and whether present/absent); the VALUE is a downstream shape
-// concern the producer fills from committed state and the recompute recomputes. The
-// guard's job is the KEYSET completeness the cert names.
-func keySet(rs []statehash.ReadEntry) []string {
-	out := make([]string, 0, len(rs))
+// keySet is the sorted set of leaf keys (tag||rawKey) in a read-set. The guard compares
+// KEYS: which committed leaves the box must witness. The kind (present/absent) and value are
+// downstream shape concerns; completeness is about the key set.
+func keySet(rs []statehash.ReadEntry) map[string]struct{} {
+	out := make(map[string]struct{}, len(rs))
 	for _, e := range rs {
-		out = append(out, string(e.Key)+"|"+kindStr(e.Kind))
+		out[string(e.Key)] = struct{}{}
 	}
-	sort.Strings(out)
 	return out
 }
 
-func kindStr(k statehash.QueryKind) string {
-	if k == statehash.QueryPresent {
-		return "present"
+// leafKeySet is the set of committed leaf keys a state emits under the v5 root, keyed by
+// string(leaf.Key) → string(leaf.Value). Two states' write-diff is the symmetric key/value
+// difference of their leafKeySets.
+func leafKeySet(c *Chain) map[string]string {
+	out := make(map[string]string)
+	for _, lf := range c.stateRootLeavesV5() {
+		out[string(lf.Key)] = string(lf.Value)
 	}
-	return "absent"
+	return out
 }
 
-// recomputeWitnessReadsV5 is the INDEPENDENT recompute-reads enumeration: the certified
-// read-set identity, grouped by field, computed over the pre-apply committed state. It
-// is deliberately a DIFFERENT code path from WitnessReadSetV5 (grouped by field, not by
-// transition) so their set-equality is a genuine cross-check. It targets the BOUNDED
-// WITNESSABLE RECOMPUTE — it NEVER ranges bondRegHeight (the O(registry) hazard); the
-// TTL completeness is the single dueBucket[h] leaf, exactly as the producer emits.
-func (c *Chain) recomputeWitnessReadsV5(b Block) []statehash.ReadEntry {
-	if b.Version < BlockVersionWitnessable {
-		return nil
-	}
-	acc := newReadSetAcc()
+// groundTruthReadSet derives the REAL v5 recompute's read-set for block b against the
+// pre-apply state c, by the two execution-derived sources (write-diff ∪ perturbation). It
+// mutates nothing on c: every apply runs on a fresh cloneForDryRun clone. Returns the set of
+// leaf keys the recompute reads.
+func groundTruthReadSet(t *testing.T, c *Chain, b Block) map[string]struct{} {
+	t.Helper()
+	reads := make(map[string]struct{})
 
-	// --- byRoot: publish dup-root (absent) ∪ revoke existence (present) ---
-	for i := range b.Entries {
-		acc.addAbsent(tagByRoot, b.Entries[i].Root[:])
-	}
-	for _, r := range b.Revocations {
-		acc.addPresent(tagByRoot, r[:], statehash.Present)
-	}
-	// --- spent: publish double-spend (absent) when a token rides ---
-	for i := range b.Entries {
-		if t := b.Entries[i].Token; t != nil {
-			acc.addAbsent(tagSpent, []byte(t.Serial))
+	// --- Source 1: the write-diff over the REAL recompute (cloneForDryRun + apply). ---
+	pre := leafKeySet(c)
+	post := c.cloneForDryRun()
+	post.apply(b)
+	postLeaves := leafKeySet(post)
+	for k, v := range postLeaves {
+		if pre[k] != v { // added or value-changed leaf → written → read
+			reads[k] = struct{}{}
 		}
 	}
-	// --- revoked: un-revoke existence (present) ---
-	for _, r := range b.Unrevocations {
-		acc.addPresent(tagRevoked, r[:], statehash.Present)
+	for k := range pre {
+		if _, still := postLeaves[k]; !still { // removed leaf → written (deleted) → read
+			reads[k] = struct{}{}
+		}
 	}
 
-	// --- the bond-reg reads, grouped by field over the canonical reg set ---
-	regs := canonicalBondRegs(b.BondRegs)
-	touched := make(map[ports.NodeID]struct{}) // ids whose bonded/qualified the recompute reads
-	for _, r := range regs {
-		if len(r.Validator) != ed25519.PublicKeySize || r.Size < c.cfg.MinBondBytes {
+	// --- Source 2: leaf-sensitivity perturbation over the REAL recompute. ---
+	// For each committed leaf L present pre-apply, perturb its value on a fresh clone, run the
+	// REAL apply, and compare the post-leaf-set to the unperturbed post-leaf-set — EXCLUDING
+	// L's own key. A CROSS-LEAF difference (some OTHER leaf changed) ⟹ the recompute READ L and
+	// used it to compute another leaf's post-value. That is a genuine read the box must witness.
+	//
+	// L's own key is EXCLUDED from the comparison because the perturbed value persists into the
+	// post-state for a leaf apply() does not overwrite — that self-persistence is NOT a read
+	// (the recompute never consulted L to produce anything). L's own write-target status (its
+	// post-value depending on its pre-value) is already captured by Source 1 (the write-diff).
+	// So perturbation isolates the PURE gate reads Source 1 misses.
+	refPost := c.cloneForDryRun()
+	refPost.apply(b)
+	refLeaves := leafKeySet(refPost)
+	for _, lf := range c.stateRootLeavesV5() {
+		clone := c.cloneForDryRun()
+		if !perturbLeaf(clone, lf.Key, lf.Value) {
+			continue // keyspace not perturbable by this helper (asserted covered elsewhere)
+		}
+		clone.apply(b)
+		pLeaves := leafKeySet(clone)
+		if crossLeafDiffers(refLeaves, pLeaves, string(lf.Key)) {
+			reads[string(lf.Key)] = struct{}{}
+		}
+	}
+	return reads
+}
+
+// crossLeafDiffers reports whether two post-leaf-sets differ on ANY key other than `self`
+// (the perturbed leaf's own key). A cross-leaf difference means perturbing `self` changed
+// some other committed leaf — i.e. the recompute read `self`.
+func crossLeafDiffers(ref, got map[string]string, self string) bool {
+	for k, v := range got {
+		if k == self {
 			continue
 		}
-		id := r.ValidatorID()
-		// slashed gate.
-		c.recEmitSlashed(acc, id)
-		if c.slashed[id] {
+		if ref[k] != v {
+			return true
+		}
+	}
+	for k := range ref {
+		if k == self {
 			continue
 		}
-		// bondRootOwner / bondRootProven (displacement branch).
-		if owner, claimed := c.bondRootOwner[r.Root]; claimed {
-			acc.addPresent(tagBondRootOwner, r.Root[:], statehash.EncodeID(owner))
-			c.recEmitBondRootProven(acc, r.Root)
-			if owner != id {
-				touched[owner] = struct{}{}
-			}
-		} else {
-			acc.addAbsent(tagBondRootOwner, r.Root[:])
-			acc.addAbsent(tagBondRootProven, r.Root[:])
-		}
-		// bondRegHeight (old-due-bucket derivation), one key per named id.
-		c.recEmitBondRegHeight(acc, id)
-		touched[id] = struct{}{}
-	}
-	// --- the slash reads, grouped by field ---
-	for i := range b.Slashes {
-		culprit := b.Slashes[i].CulpritID()
-		c.recEmitSlashed(acc, culprit)
-		touched[culprit] = struct{}{}
-	}
-	// bonded/qualified for every touched id (write-targets the recompute reads).
-	for id := range touched {
-		c.recEmitBonded(acc, id)
-		c.recEmitQualified(acc, id)
-	}
-
-	// --- era-4 TTL completeness: the single dueBucket[h] leaf ---
-	if c.cfg.BondTTLBlocks > 0 {
-		var hk [8]byte
-		binary.BigEndian.PutUint64(hk[:], b.Height)
-		if ids, occupied := c.dueBucket[b.Height]; occupied {
-			acc.addPresent(tagDueBucket, hk[:], dueBucketMTH(ids))
-			for id := range ids {
-				c.recEmitBonded(acc, id)
-				c.recEmitBondRegHeight(acc, id)
-				c.recEmitRegVersion(acc, id)
-				c.recEmitQualified(acc, id)
-			}
-		} else {
-			// The empty-bucket non-membership path (the whole era-4 win): one absent leaf.
-			acc.addAbsent(tagDueBucket, hk[:])
+		if _, ok := got[k]; !ok {
+			return true
 		}
 	}
+	return false
+}
 
-	// --- era-4 boundary delta: qualified freeze source ∪ prior epochSet ---
-	if c.epochsEnabled() && c.cfg.EpochBlocks > 0 && b.Height%c.cfg.EpochBlocks == 0 {
-		for id, w := range c.qualified {
-			acc.addPresent(tagQualified, id[:], statehash.EncodeInt64(w))
-			c.recEmitRegVersion(acc, id)
+// perturbLeaf mutates the committed map/scalar backing leaf `key` on clone to a value that
+// DIFFERS from its committed value, so a recompute that reads it produces a different root.
+// It is TEST-ONLY (same-package field access) and touches NO production code path — it only
+// writes into the clone's committed state before the dry-run apply. Returns false if the
+// keyspace is not one this helper perturbs (the caller skips it; TestGroundTruthPerturbation
+// Covers asserts the reachable keyspaces are all perturbable so no leaf silently escapes).
+//
+// The perturbation strategy per class: for a map leaf, flip presence (delete if present) — a
+// deleted leaf changes the leaf set, and a recompute that reads it computes a different
+// post-state. For a scalar, bump the value. The perturbation only needs to be OBSERVABLE by a
+// recompute that reads the leaf; it does not need to be a valid state.
+func perturbLeaf(clone *Chain, key, curVal []byte) bool {
+	tag, raw, ok := splitLeafKey(key)
+	if !ok {
+		return false
+	}
+	// Scalars: bump the scalar field so a reader sees a different pre-state.
+	switch tag {
+	case tagEverMature:
+		clone.everMature = !clone.everMature
+		return true
+	case tagMatureEpoch:
+		clone.matureEpoch = !clone.matureEpoch
+		return true
+	case tagGateLockedIn:
+		clone.gateLockedIn = !clone.gateLockedIn
+		return true
+	case tagGateHeight:
+		clone.gateHeight++
+		return true
+	case tagEra3LockedIn:
+		clone.era3LockedIn = !clone.era3LockedIn
+		return true
+	case tagEra3Height:
+		clone.era3Height++
+		return true
+	case tagEpochStart:
+		clone.epochStart++
+		return true
+	case tagEra4LockedIn:
+		clone.era4LockedIn = !clone.era4LockedIn
+		return true
+	case tagEra4Height:
+		clone.era4Height++
+		return true
+	}
+	// Map keyspaces: flip the leaf's presence (delete it), which any recompute that reads it
+	// will observe. raw is the map key.
+	var id ports.NodeID
+	var hash ports.Hash
+	copy(id[:], raw)
+	copy(hash[:], raw)
+	switch tag {
+	case tagByRoot:
+		delete(clone.byRoot, hash)
+	case tagSpent:
+		delete(clone.spent, string(raw))
+	case tagRevoked:
+		delete(clone.revoked, hash)
+	case tagSlashed:
+		delete(clone.slashed, id)
+	case tagValidatorsSeen:
+		delete(clone.validatorsSeen, id)
+	case tagBonded:
+		delete(clone.bonded, id)
+	case tagEpochSet:
+		delete(clone.epochSet, id)
+	case tagBondRootOwner:
+		delete(clone.bondRootOwner, hash)
+	case tagBondRootProven:
+		delete(clone.bondRootProven, hash)
+	case tagBondRegHeight:
+		delete(clone.bondRegHeight, id)
+	case tagRegVersion:
+		delete(clone.regVersion, id)
+	case tagBondDomain:
+		delete(clone.bondDomain, id)
+	case tagQualified:
+		delete(clone.qualified, id)
+	case tagDueBucket:
+		delete(clone.dueBucket, binary.BigEndian.Uint64(raw))
+	default:
+		return false
+	}
+	return true
+}
+
+// splitLeafKey splits a leaf key (tag||rawKey) into its field tag and raw key. The tag ends
+// at the first NUL (statehash.Key's scheme). Returns false if no NUL is found.
+func splitLeafKey(key []byte) (tag string, raw []byte, ok bool) {
+	for i, b := range key {
+		if b == 0 {
+			return string(key[:i+1]), key[i+1:], true
 		}
-		for id, w := range c.epochSet {
-			acc.addPresent(tagEpochSet, id[:], statehash.EncodeInt64(w))
-		}
 	}
-	return acc.entries()
+	return "", nil, false
 }
 
-func (c *Chain) recEmitSlashed(acc *readSetAcc, id ports.NodeID) {
-	if c.slashed[id] {
-		acc.addPresent(tagSlashed, id[:], statehash.Present)
-	} else {
-		acc.addAbsent(tagSlashed, id[:])
-	}
-}
-
-func (c *Chain) recEmitBondRootProven(acc *readSetAcc, root ports.Hash) {
-	if pv, ok := c.bondRootProven[root]; ok {
-		acc.addPresent(tagBondRootProven, root[:], statehash.EncodeBool(pv))
-	} else {
-		acc.addAbsent(tagBondRootProven, root[:])
-	}
-}
-
-func (c *Chain) recEmitBondRegHeight(acc *readSetAcc, id ports.NodeID) {
-	if h, ok := c.bondRegHeight[id]; ok {
-		acc.addPresent(tagBondRegHeight, id[:], statehash.EncodeUint64(h))
-	} else {
-		acc.addAbsent(tagBondRegHeight, id[:])
-	}
-}
-
-func (c *Chain) recEmitRegVersion(acc *readSetAcc, id ports.NodeID) {
-	if v, ok := c.regVersion[id]; ok {
-		acc.addPresent(tagRegVersion, id[:], statehash.EncodeUint8(v))
-	} else {
-		acc.addAbsent(tagRegVersion, id[:])
-	}
-}
-
-func (c *Chain) recEmitBonded(acc *readSetAcc, id ports.NodeID) {
-	if w, ok := c.bonded[id]; ok {
-		acc.addPresent(tagBonded, id[:], statehash.EncodeInt64(w))
-	} else {
-		acc.addAbsent(tagBonded, id[:])
-	}
-}
-
-func (c *Chain) recEmitQualified(acc *readSetAcc, id ports.NodeID) {
-	if w, ok := c.qualified[id]; ok {
-		acc.addPresent(tagQualified, id[:], statehash.EncodeInt64(w))
-	} else {
-		acc.addAbsent(tagQualified, id[:])
-	}
-}
-
-// v5ReadSetCorpusBlock labels one corpus block with the class it exercises, so a test
-// can assert the corpus actually covered each certified class (the vacuity guard).
+// v5ReadSetCorpusBlock labels one corpus block with the class it exercises, so a test can
+// assert the corpus actually covered each certified class (the vacuity guard).
 type v5ReadSetCorpusBlock struct {
 	block Block
 	label string
-	class string // "ordinary" | "ttl-empty" | "ttl-occupied" | "renew-move" | "slash" | "boundary"
+	// class: the certified transition class this block exercises. The vacuity guard requires
+	// the corpus to cover every one, INCLUDING the amended cert's additions: attested (the
+	// atts-loop / validatorsSeen path), maturity-latch (everMature false→true), and a
+	// standalone slash at a non-boundary height.
+	class string
 }
 
-// buildV5ReadSetCorpus applies a branch-covering block stream to a chain and returns
-// the PRE-APPLY snapshot for each block paired with the block, so the read-set producer
-// (which reads pre-apply state) can be exercised on each class. The corpus MUST cover
-// (cert R3): an ordinary block, a TTL-firing block with a NON-EMPTY dueBucket[h], a
-// TTL-firing block with an EMPTY dueBucket[h] (the whole era-4 win), a renew that moves
-// a bucket, a slash-before-due block, and an epoch-boundary block.
+// buildV5ReadSetCorpus applies a branch-covering block stream and returns the PRE-APPLY
+// snapshot chain paired with each block, so the producer (which reads pre-apply state) and
+// the execution-derived ground truth are computed against the state a floor box holds BEFORE
+// applying each block.
 //
-// The chain is objective + TTL-enabled + epochs-enabled so all three accelerator paths
-// are live. Blocks are minted at Version 1 for apply() (era-4 is not activated in the
-// fixture — like the RECERT2 maintenance tests, the point is read-set correctness over
-// the v5 recompute, which the producer computes on demand for a Version-5 view of each
-// block), but the READ-SET is computed for a v5 view (setV5 forces Version 5).
-func buildV5ReadSetCorpus(t *testing.T) []v5ReadSetCorpusBlock {
+// The corpus MUST cover (amended cert R3 + PE Q4): ordinary, ttl-empty (the era-4 win),
+// ttl-occupied, renew-move, boundary, ATTESTED (populated b.Atts → validatorsSeen write),
+// MATURITY-LATCH (everMature false→true), and a standalone SLASH at a non-boundary height.
+//
+// MatureValidators=2 (objective) so the maturity latch is a genuine false→true transition
+// (with MatureValidators=0 the latch fires vacuously at genesis and no transition is
+// witnessed). The network starts immature and matures as distinct bonds accrue.
+func buildV5ReadSetCorpus(t *testing.T) ([]v5ReadSetCorpusBlock, *Chain) {
 	t.Helper()
-	a, bb, cc, sq := key(90001), key(90002), key(90003), key(90004)
-	honest := key(90005)
+	a, bb, cc, dd := key(90001), key(90002), key(90003), key(90004)
+	sq := key(90005)
 
-	// MatureValidators=0 hands maturity off at the genesis boundary (the
-	// TestBoundaryCopyStaleCaptureOrderingAblation pattern), so post-genesis boundaries
-	// freeze a REAL epochSet — the epochSet-delta read path is genuinely exercised, and
-	// the h8 boundary reads a populated prior epochSet (the young→mature handoff the cert
-	// requires the corpus to cover).
 	cfg := Config{Quorum: 1, MinBond: era4MinBond, ByzantineQuorum: true,
-		EpochBlocks: 4, MatureValidators: 0, BondTTLBlocks: 4}
+		EpochBlocks: 4, MatureValidators: 2, BondTTLBlocks: 4}
 	c := New(cfg, func(ports.NodeID) int64 { return 0 })
 	c.SetBondVerifier(objectiveVerify)
 
+	// A SECOND chain replays the same stream to hand back per-block PRE-APPLY snapshots: the
+	// caller computes the producer + ground truth against `snap` BEFORE applying each block.
+	snap := New(cfg, func(ports.NodeID) int64 { return 0 })
+	snap.SetBondVerifier(objectiveVerify)
+
 	var corpus []v5ReadSetCorpusBlock
-	// snapshot(block, label, class) records the PRE-APPLY read-set inputs, then applies.
-	snapshot := func(blk *Block, label, class string) {
+	record := func(blk *Block, label, class string) {
 		t.Helper()
 		corpus = append(corpus, v5ReadSetCorpusBlock{block: *blk, label: label, class: class})
 		c.apply(*blk)
 	}
 
-	honestRoot := ports.HashBytes(pubOf(honest))
-	// Genesis (boundary h0): seat a, bb, cc; sq squats honest's root (unproven).
+	sqRoot := ports.HashBytes(pubOf(bb))
+	// Genesis (boundary h0): seat a, bb, cc (three distinct bonds, still < MatureValidators?
+	// MatureValidators counts distinct bonds; three ≥ 2 so the network can mature). sq squats
+	// bb's root (unproven).
 	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
 	g.BondRegs = []BondReg{
-		bondReg(a, 4<<20, ports.Hash{}),
-		bondReg(bb, 4<<20, ports.Hash{}),
-		bondReg(cc, 4<<20, ports.Hash{}),
-		{Validator: pubOf(sq), Root: honestRoot, Size: 4 << 20, Answer: []byte("valid")},
+		bondRegFull(a, ports.HashBytes(pubOf(a)), 4<<20, ports.Hash{}, 5, 1),
+		{Validator: pubOf(sq), Root: sqRoot, Size: 4 << 20, Answer: []byte("valid"), Domain: 2, Version: 5},
 	}
 	Sign(g, a)
-	snapshot(g, "genesis(boundary+regs)", "boundary")
+	record(g, "genesis(boundary+regs)", "boundary")
 
-	// h1: ORDINARY block — a plain publish, no reg/slash/TTL-fire, non-boundary.
+	// h1: ORDINARY publish, non-boundary, TTL empty.
 	prev := g.Hash()
 	b1 := &Block{Version: 1, Height: 1, Prev: prev, Entries: []ports.Entry{entry(1)}}
 	Sign(b1, a)
-	snapshot(b1, "h1 ordinary publish", "ordinary")
+	record(b1, "h1 ordinary publish", "ordinary")
 
-	// h2: honest PROVES honestRoot → DISPLACES sq (the displacement branch: bondRootOwner
-	// present, owner != id, reads bonded[sq]/qualified[sq]). Non-boundary, TTL empty at h2.
+	// h2: bb PROVES bb's root → DISPLACES sq (displacement branch: bondRootOwner present,
+	// owner != id, reads bonded[sq]/qualified[sq]). Also regs cc + dd (distinct bonds/domains)
+	// so the objective maturity coefficient rises toward MatureValidators=2. Non-boundary.
 	prev = b1.Hash()
 	b2 := &Block{Version: 1, Height: 2, Prev: prev, Entries: []ports.Entry{entry(2)},
-		BondRegs: []BondReg{bondRegFull(honest, honestRoot, 4<<20, prev, 5, 7)}}
+		BondRegs: []BondReg{
+			bondRegFull(bb, sqRoot, 4<<20, prev, 5, 3),
+			bondRegFull(cc, ports.HashBytes(pubOf(cc)), 4<<20, prev, 5, 4),
+			bondRegFull(dd, ports.HashBytes(pubOf(dd)), 4<<20, prev, 5, 5),
+		}}
 	Sign(b2, a)
-	snapshot(b2, "h2 displacement", "ordinary")
+	record(b2, "h2 displacement+regs", "ordinary")
 
-	// h3: RENEW a (moves its due-bucket D_old=0+4+1=5 → D_new=3+4+1=8) — the renew-move path.
+	// h3: ATTESTED block — bb + cc (qualified non-proposers) attest, so the atts loop writes
+	// validatorsSeen[bb]/[cc] (apply:3293-3298). The maturity latch READ path also fires here
+	// (everMature is false pre-apply, so Mature()→C2Metric ranges validatorsSeen), but the
+	// latch does NOT yet transition — it transitions at h4 (see below). Covers the attested
+	// class (the validatorsSeen write path).
 	prev = b2.Hash()
-	b3 := &Block{Version: 1, Height: 3, Prev: prev, Entries: []ports.Entry{entry(3)},
-		BondRegs: []BondReg{bondReg(a, 4<<20, prev)}}
+	b3 := &Block{Version: 1, Height: 3, Prev: prev, Entries: []ports.Entry{entry(3)}}
 	Sign(b3, a)
-	snapshot(b3, "h3 renew-move", "renew-move")
+	b3.Atts = []Attestation{Attest(b3, bb), Attest(b3, cc)}
+	record(b3, "h3 attested", "attested")
 
-	// h4: BOUNDARY block (h4 % EpochBlocks(4) == 0) AND slashes cc — boundary + slash.
+	// h4: BOUNDARY block (h4 % 4 == 0) that ALSO trips the MATURITY LATCH. By h4 pre-apply
+	// validatorsSeen holds bb + cc (attested at h3), both bonded with distinct domains ⇒
+	// MatureCoefficient ≥ 2 = MatureValidators, so everMature latches false→true DURING h4's
+	// apply, which then makes rotateEpoch freeze qualified→epochSet. The block genuinely
+	// exercises BOTH the boundary freeze and the maturity-latch transition, so it is recorded
+	// under both classes (the transition is real — the vacuity guard is not satisfied
+	// vacuously). It also carries attestations (the mature-epoch atts path).
 	prev = b3.Hash()
-	b4 := &Block{Version: 1, Height: 4, Prev: prev, Entries: []ports.Entry{entry(4)},
-		Slashes: []Equivocation{slashProof(cc, prev, 0x41, 0x42)}}
+	b4 := &Block{Version: 1, Height: 4, Prev: prev, Entries: []ports.Entry{entry(4)}}
 	Sign(b4, a)
-	snapshot(b4, "h4 boundary+slash", "boundary")
+	b4.Atts = []Attestation{Attest(b4, cc), Attest(b4, dd)}
+	corpus = append(corpus, v5ReadSetCorpusBlock{block: *b4, label: "h4 boundary", class: "boundary"})
+	corpus = append(corpus, v5ReadSetCorpusBlock{block: *b4, label: "h4 maturity-latch", class: "maturity-latch"})
+	c.apply(*b4)
 
-	// h5: TTL-FIRING with an OCCUPIED bucket. bb/cc/sq/honest reg'd at genesis (h0), due
-	// 0+4+1=5. So dueBucket[5] is occupied at h5 — the occupied-member-list path.
+	// h5: TTL-FIRING with an OCCUPIED bucket. a/sq reg'd at genesis (h0) due 0+4+1=5; sq was
+	// displaced (its bond stripped) but a is due at 5, so dueBucket[5] is occupied at h5.
 	prev = b4.Hash()
 	b5 := &Block{Version: 1, Height: 5, Prev: prev, Entries: []ports.Entry{entry(5)}}
 	Sign(b5, a)
-	snapshot(b5, "h5 ttl-occupied", "ttl-occupied")
+	record(b5, "h5 ttl-occupied", "ttl-occupied")
 
-	// h6: TTL-FIRING with an EMPTY bucket — the whole era-4 win. Nothing is due at h6
-	// (genesis regs due at 5 already swept; a renewed at h3 due 8; honest at h2 due 7).
-	// dueBucket[6] is empty → one non-membership leaf.
+	// h6: STANDALONE SLASH at a NON-boundary height (h6 % 4 != 0). Slash cc: slashed[cc]
+	// write, bonded[cc] delete, qualified[cc] maintain — the slash read path, unmasked by a
+	// boundary. This is the amended cert's required standalone-slash class.
 	prev = b5.Hash()
-	b6 := &Block{Version: 1, Height: 6, Prev: prev, Entries: []ports.Entry{entry(6)}}
+	b6 := &Block{Version: 1, Height: 6, Prev: prev, Entries: []ports.Entry{entry(6)},
+		Slashes: []Equivocation{slashProof(cc, prev, 0x41, 0x42)}}
 	Sign(b6, a)
-	snapshot(b6, "h6 ttl-empty", "ttl-empty")
+	record(b6, "h6 standalone-slash", "slash")
 
-	// h7: ordinary filler to reach the next boundary.
+	// h7: TTL-FIRING with an OCCUPIED bucket. bb/cc/dd reg'd at h2, due 2+4+1=7. cc was
+	// slashed at h6 (removed from bondRegHeight), so dueBucket[7] carries bb + dd at h7 — the
+	// occupied-member expiry path at the CURRENT height (heights are contiguous, chain.go:2490,
+	// so only dueBucket[b.Height] can fire — the era-4 single-leaf accelerator is exact).
 	prev = b6.Hash()
 	b7 := &Block{Version: 1, Height: 7, Prev: prev, Entries: []ports.Entry{entry(7)}}
 	Sign(b7, a)
-	snapshot(b7, "h7 ordinary filler", "ordinary")
+	record(b7, "h7 ttl-occupied(expiry)", "ttl-occupied")
 
-	// h8: MATURE BOUNDARY with a populated PRIOR epochSet. The h4 boundary (mature, since
-	// MatureValidators=0 handed off at genesis) froze qualified into epochSet, so at h8 the
-	// recompute reads BOTH the live qualified freeze source AND the prior frozen epochSet —
-	// the epochSet-delta read path. Covers the cert's boundary-delta class with real data.
+	// h8: BOUNDARY block (h8 % 4 == 0) — the mature boundary with a populated prior epochSet
+	// (frozen at h4). Covers the boundary freeze-over-prior-epochSet path with real data.
 	prev = b7.Hash()
 	b8 := &Block{Version: 1, Height: 8, Prev: prev, Entries: []ports.Entry{entry(8)}}
 	Sign(b8, a)
-	snapshot(b8, "h8 mature-boundary", "boundary")
+	record(b8, "h8 mature-boundary", "boundary")
 
-	return corpus
+	// h9: TTL-EMPTY — nothing is due at h9 (genesis due 5 swept at h5; h2 regs due 7 swept at
+	// h7; a renewed below). dueBucket[9] is empty → the single non-membership leaf, the era-4
+	// win. Non-boundary.
+	prev = b8.Hash()
+	b9 := &Block{Version: 1, Height: 9, Prev: prev, Entries: []ports.Entry{entry(9)}}
+	Sign(b9, a)
+	record(b9, "h9 ttl-empty", "ttl-empty")
+
+	// h10: RENEW a (moves its due-bucket D_old→D_new) — the renew-move path. a was last reg'd
+	// at genesis (due 5, already swept) then is renewed here, so the move inserts a fresh bucket.
+	prev = b9.Hash()
+	b10 := &Block{Version: 1, Height: 10, Prev: prev, Entries: []ports.Entry{entry(10)},
+		BondRegs: []BondReg{bondReg(a, 4<<20, prev)}}
+	Sign(b10, a)
+	record(b10, "h10 renew-move", "renew-move")
+
+	return corpus, snap
 }
 
-// setV5 returns a copy of b with Version forced to BlockVersionWitnessable, so the
-// read-set producer computes the v5 read-set for a block the fixture minted at v1
-// (the fixture applies at v1 to keep apply() on the era-2 path; the producer's job is
-// the v5 read-set, which it computes for any block viewed as v5).
+// setV5 returns a copy of b with Version forced to BlockVersionWitnessable, so the read-set
+// producer and the v5 recompute run for a block the fixture minted at v1.
 func setV5(b Block) Block {
 	b.Version = BlockVersionWitnessable
 	return b
 }
 
-// TestWitnessReadSetV5DriftGuard is the R3 drift guard: over a branch-covering corpus,
-// the producer's read-set keyset EQUALS the independent recompute-reads enumeration for
-// every block. A refactor of either side that changes what is read reddens here.
-//
-// RED (ablation subtests below): dropping a dueBucket key or a qualified/epochSet delta
-// key from the producer diverges the two keysets and reddens.
-func TestWitnessReadSetV5DriftGuard(t *testing.T) {
-	corpus := buildV5ReadSetCorpus(t)
-
-	// Rebuild the pre-apply chain state per block so the read-set is computed against the
-	// state a floor box holds BEFORE applying that block.
-	c := replayV5Corpus(t)
+// TestWitnessReadSetV5ExecutionDerivedGuard is the R3 execution-derived completeness guard:
+// over a branch-covering corpus, the producer's read-set must COVER (⊇) the ground-truth
+// read-set derived from the REAL v5 recompute (write-diff ∪ leaf-sensitivity perturbation).
+// A producer that DROPS a read the recompute needs (the prior build's validatorsSeen /
+// everMature / scalar omissions) reddens here against ground truth — NOT against a
+// hand-written mirror.
+func TestWitnessReadSetV5ExecutionDerivedGuard(t *testing.T) {
+	corpus, snap := buildV5ReadSetCorpus(t)
 	classesSeen := make(map[string]bool)
-	for i, cb := range corpus {
-		v5b := setV5(cb.block)
-		produced := c.WitnessReadSetV5(v5b)
-		recompute := c.recomputeWitnessReadsV5(v5b)
+	// Paired corpus entries (boundary+maturity-latch at h4) share ONE block and MUST both be
+	// evaluated against the SAME pre-apply state, so a block is applied only when advancing to
+	// a strictly greater height (the pending-block flush below).
+	var pending *Block
+	for i := range corpus {
+		cb := corpus[i]
+		// A new height means the previous height's block was fully evaluated: apply it now.
+		if pending != nil && cb.block.Height != pending.Height {
+			snap.apply(*pending)
+			pending = nil
+		}
 
-		pk, rk := keySet(produced), keySet(recompute)
-		if !equalStrSlices(pk, rk) {
-			t.Fatalf("[%s] read-set DRIFT: producer keyset != recompute-reads keyset\n producer=%v\n recompute=%v",
-				cb.label, pk, rk)
+		v5b := setV5(cb.block)
+		produced := keySet(snap.WitnessReadSetV5(v5b))
+		truth := groundTruthReadSet(t, snap, v5b)
+
+		// COVERAGE: every ground-truth read must be in the producer's read-set.
+		var missing []string
+		for k := range truth {
+			if _, ok := produced[k]; !ok {
+				missing = append(missing, prettyKey(k))
+			}
+		}
+		if len(missing) > 0 {
+			sort.Strings(missing)
+			t.Fatalf("[%s] read-set INCOMPLETE: producer omits %d ground-truth read(s) the real v5 recompute performs:\n  %v",
+				cb.label, len(missing), missing)
 		}
 		classesSeen[cb.class] = true
-		// Advance the chain by applying this block, so block i+1 sees the correct pre-apply state.
-		c.apply(cb.block)
-		_ = i
+
+		// NON-VACUITY of the class-specific transitions (the session-7 scar: a class label the
+		// block does not actually exercise makes the guard vacuous for it). Assert the
+		// load-bearing transitions genuinely fire, from ground truth:
+		switch cb.class {
+		case "maturity-latch":
+			// everMature MUST transition false→true on this block, else the latch read is a
+			// constant and the class is covered vacuously.
+			if snap.everMature {
+				t.Fatalf("[%s] maturity-latch VACUOUS: everMature already true pre-apply", cb.label)
+			}
+			post := snap.cloneForDryRun()
+			post.apply(cb.block)
+			if !post.everMature {
+				t.Fatalf("[%s] maturity-latch VACUOUS: everMature did not transition false→true", cb.label)
+			}
+		case "attested":
+			// The block must carry a qualified non-proposer attester whose validatorsSeen is
+			// newly written (the atts-loop write path), else the attested class is vacuous.
+			pre := leafKeySet(snap)
+			post := snap.cloneForDryRun()
+			post.apply(cb.block)
+			wroteVS := false
+			for k := range leafKeySet(post) {
+				tag, _, _ := splitLeafKey([]byte(k))
+				if tag == tagValidatorsSeen {
+					if _, had := pre[k]; !had {
+						wroteVS = true
+						break
+					}
+				}
+			}
+			if !wroteVS {
+				t.Fatalf("[%s] attested VACUOUS: no new validatorsSeen leaf written by the atts loop", cb.label)
+			}
+		}
+
+		// Mark this height's block pending; it is applied when the loop advances to a greater
+		// height (so all paired entries at this height see the shared pre-apply state).
+		blk := cb.block
+		pending = &blk
+	}
+	if pending != nil {
+		snap.apply(*pending)
 	}
 
-	// Vacuity guard (the session-7 scar): assert the corpus actually covered every class,
-	// ESPECIALLY the empty-dueBucket non-membership path — the whole era-4 win.
-	for _, class := range []string{"ordinary", "ttl-empty", "ttl-occupied", "renew-move", "boundary"} {
+	// Vacuity guard (the session-7 scar): the corpus must have covered every certified class,
+	// INCLUDING the amended cert's additions attested / maturity-latch / slash.
+	for _, class := range []string{"ordinary", "ttl-empty", "ttl-occupied", "renew-move",
+		"boundary", "attested", "maturity-latch", "slash"} {
 		if !classesSeen[class] {
-			t.Fatalf("corpus never covered class %q — the drift guard is vacuous for it", class)
+			t.Fatalf("corpus never covered class %q — the guard is vacuous for it", class)
 		}
 	}
 }
 
-// replayV5Corpus rebuilds a fresh chain seeded identically to buildV5ReadSetCorpus but
-// applies NOTHING yet — the caller applies each corpus block after computing its
-// pre-apply read-set. This keeps the read-set input = the pre-apply committed state.
-func replayV5Corpus(t *testing.T) *Chain {
-	t.Helper()
-	cfg := Config{Quorum: 1, MinBond: era4MinBond, ByzantineQuorum: true,
-		EpochBlocks: 4, MatureValidators: 0, BondTTLBlocks: 4}
-	c := New(cfg, func(ports.NodeID) int64 { return 0 })
-	c.SetBondVerifier(objectiveVerify)
-	return c
+// prettyKey renders a leaf key (tag||rawKey) as "tag:hex" for readable failure output.
+func prettyKey(k string) string {
+	tag, raw, ok := splitLeafKey([]byte(k))
+	if !ok {
+		return k
+	}
+	const hexd = "0123456789abcdef"
+	h := make([]byte, 0, len(raw)*2)
+	for _, b := range []byte(raw) {
+		h = append(h, hexd[b>>4], hexd[b&0xf])
+	}
+	return tag + string(h)
 }
 
-func equalStrSlices(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
+// TestGroundTruthPerturbationCovers guards the guard: every committed keyspace the corpus
+// pre-apply states carry must be perturbable by perturbLeaf, so no leaf silently escapes the
+// perturbation source (a keyspace perturbLeaf returns false for would be an unguarded read).
+func TestGroundTruthPerturbationCovers(t *testing.T) {
+	corpus, snap := buildV5ReadSetCorpus(t)
+	applied := make(map[uint64]bool)
+	for _, cb := range corpus {
+		for _, lf := range snap.stateRootLeavesV5() {
+			clone := snap.cloneForDryRun()
+			if !perturbLeaf(clone, lf.Key, lf.Value) {
+				tag, _, _ := splitLeafKey(lf.Key)
+				t.Fatalf("[%s] perturbLeaf cannot perturb keyspace %q — that leaf escapes the perturbation ground truth", cb.label, tag)
+			}
+		}
+		if !applied[cb.block.Height] {
+			snap.apply(cb.block)
+			applied[cb.block.Height] = true
 		}
 	}
-	return true
 }
 
-// TestWitnessReadSetV5BoundedNotRegistrySized is the O(payload) property (cert
-// §"Sub-question 2"): an ordinary block's and a TTL-EMPTY block's read-set size must NOT
-// scale with the registry — this is the whole era-4 win the producer must deliver (the
-// TTL completeness collapses to ONE dueBucket[h] non-membership leaf, never a
-// bondRegHeight scan). Two chains with DIFFERENT registry sizes but the SAME small block
-// payload must produce read-sets of the SAME size.
-//
-// This is the direct counter-proof to the certified sharpest hazard: a producer that
-// instrumented apply()'s TTL sweep would emit O(registry) keys here (one per id in
-// bondRegHeight), and the two sizes would DIVERGE. Equal sizes prove the producer targets
-// the bounded witnessable recompute, not apply()'s scan.
+// --- Ablations: inject the exact defects that escaped the prior build; assert RED. ---
+
+// TestWitnessReadSetV5DriftGuardAblation re-injects each escaped defect into the producer's
+// output and asserts the execution-derived guard's COVERAGE check goes RED (the read the real
+// recompute performs is no longer covered). GREEN-on-restore is the un-mutated
+// TestWitnessReadSetV5ExecutionDerivedGuard.
+func TestWitnessReadSetV5DriftGuardAblation(t *testing.T) {
+	corpus, snap := buildV5ReadSetCorpus(t)
+	// Hold the pre-apply snapshot at the attested block (validatorsSeen write) and the slash
+	// block (qualified[culprit] write) so the ablation targets a block that actually reads
+	// those leaves.
+	var attested, slash *Chain
+	var attestedBlk, slashBlk Block
+	applied := make(map[uint64]bool)
+	for _, cb := range corpus {
+		switch cb.class {
+		case "attested":
+			attested = snap.cloneForDryRun()
+			attestedBlk = cb.block
+		case "slash":
+			slash = snap.cloneForDryRun()
+			slashBlk = cb.block
+		}
+		if !applied[cb.block.Height] {
+			snap.apply(cb.block)
+			applied[cb.block.Height] = true
+		}
+	}
+	if attested == nil || slash == nil {
+		t.Fatal("corpus did not yield the attested and slash pre-apply states")
+	}
+
+	// coverageMisses reports the ground-truth reads the (possibly ablated) producer omits.
+	coverageMisses := func(c *Chain, blk Block, ablate func([]statehash.ReadEntry) []statehash.ReadEntry) []string {
+		v5b := setV5(blk)
+		produced := keySet(ablate(c.WitnessReadSetV5(v5b)))
+		truth := groundTruthReadSet(t, c, v5b)
+		var missing []string
+		for k := range truth {
+			if _, ok := produced[k]; !ok {
+				missing = append(missing, prettyKey(k))
+			}
+		}
+		sort.Strings(missing)
+		return missing
+	}
+
+	// --- Ablation 1: re-inject the validatorsSeen omission (drop the attestation-loop reads
+	// = every validatorsSeen key) from the attested block's producer output. ---
+	t.Run("drop-attestation-loop-reads-reddens", func(t *testing.T) {
+		// Pre-ablation: the guard is GREEN (producer covers ground truth).
+		if miss := coverageMisses(attested, attestedBlk, identityRS); len(miss) > 0 {
+			t.Fatalf("pre-ablation drift on attested block: producer already omits %v", miss)
+		}
+		miss := coverageMisses(attested, attestedBlk, dropTag(tagValidatorsSeen))
+		if len(miss) == 0 {
+			t.Fatal("GUARD FAILED TO REDDEN: dropping the validatorsSeen atts-loop reads still covered the recompute reads — the exact prior-build gap is unguarded")
+		}
+		if !containsTag(miss, "validatorsSeen") {
+			t.Fatalf("guard reddened but not on validatorsSeen: %v", miss)
+		}
+	})
+
+	// --- Ablation 2: re-inject the slash-path qualified[culprit] drop. ---
+	t.Run("drop-slash-qualified-read-reddens", func(t *testing.T) {
+		if miss := coverageMisses(slash, slashBlk, identityRS); len(miss) > 0 {
+			t.Fatalf("pre-ablation drift on slash block: producer already omits %v", miss)
+		}
+		miss := coverageMisses(slash, slashBlk, dropTag(tagQualified))
+		if len(miss) == 0 {
+			t.Fatal("GUARD FAILED TO REDDEN: dropping the slash-path qualified read still covered the recompute reads")
+		}
+		if !containsTag(miss, "qualified") {
+			t.Fatalf("guard reddened but not on qualified: %v", miss)
+		}
+	})
+}
+
+// identityRS is the no-op ablation (the un-mutated producer output).
+func identityRS(rs []statehash.ReadEntry) []statehash.ReadEntry { return rs }
+
+// dropTag returns an ablation that removes every read-set entry with the given field tag,
+// simulating a producer that forgot that keyspace's reads (the prior build's omission shape).
+func dropTag(tag string) func([]statehash.ReadEntry) []statehash.ReadEntry {
+	return func(rs []statehash.ReadEntry) []statehash.ReadEntry {
+		out := make([]statehash.ReadEntry, 0, len(rs))
+		for _, e := range rs {
+			t, _, ok := splitLeafKey(e.Key)
+			if ok && t == tag {
+				continue
+			}
+			out = append(out, e)
+		}
+		return out
+	}
+}
+
+func containsTag(pretty []string, tag string) bool {
+	for _, p := range pretty {
+		if len(p) >= len(tag) && p[:len(tag)] == tag {
+			return true
+		}
+	}
+	return false
+}
+
+// TestWitnessReadSetV5BoundedNotRegistrySized is the O(payload) boundedness property (amended
+// cert §"Per-class read-set"): an ordinary block's and a TTL-EMPTY block's read-set size must
+// NOT scale with the registry — the era-4 win the producer must deliver (the TTL completeness
+// collapses to ONE dueBucket[h] non-membership leaf, never a bondRegHeight scan). This is the
+// direct counter-proof to the certified sharpest hazard AND the over-emission guard: a
+// producer that instrumented apply()'s TTL sweep would emit O(registry) keys here and the two
+// sizes would DIVERGE. It reddens under an injected O(registry) scan (proven below).
 func TestWitnessReadSetV5BoundedNotRegistrySized(t *testing.T) {
-	// build(nReg) seats nReg bonded validators at genesis, then returns the chain plus a
-	// TTL-EMPTY block at a height where nothing is due (so the TTL path is the single
-	// non-membership leaf). Genesis regs (height 0) are due at 0+ttl+1 = 5; the probe block
-	// is at height 3 (< 5), so dueBucket[3] is empty — the empty-bucket path — regardless
-	// of how many ids are in the registry.
 	build := func(nReg int) (*Chain, Block) {
 		cfg := Config{Quorum: 1, MinBond: era4MinBond, ByzantineQuorum: true,
 			EpochBlocks: 64, MatureValidators: 0, BondTTLBlocks: 4}
@@ -425,8 +663,6 @@ func TestWitnessReadSetV5BoundedNotRegistrySized(t *testing.T) {
 		Sign(g, key(91000))
 		c.apply(*g)
 
-		// Advance to height 3 with empty ordinary blocks, so the probe block sees a fully
-		// seated registry but nothing due at its height.
 		prev := g.Hash()
 		for h := uint64(1); h <= 2; h++ {
 			bh := &Block{Version: 1, Height: h, Prev: prev, Entries: []ports.Entry{entry(byte(h))}}
@@ -439,17 +675,15 @@ func TestWitnessReadSetV5BoundedNotRegistrySized(t *testing.T) {
 		return c, probe
 	}
 
-	small, probeSmall := build(3)   // 3 registered validators
-	large, probeLarge := build(300) // 300 registered validators — 100x the registry
+	small, probeSmall := build(3)
+	large, probeLarge := build(300)
 
-	// Confirm the probe height's bucket is EMPTY on both (the era-4 win path).
 	if _, occ := small.dueBucket[3]; occ {
 		t.Fatal("probe height bucket unexpectedly occupied on small chain — not the empty-bucket path")
 	}
 	if _, occ := large.dueBucket[3]; occ {
 		t.Fatal("probe height bucket unexpectedly occupied on large chain — not the empty-bucket path")
 	}
-	// Confirm the registries genuinely differ (the test would be vacuous otherwise).
 	if len(small.bondRegHeight) == len(large.bondRegHeight) {
 		t.Fatalf("registries did not differ: small=%d large=%d", len(small.bondRegHeight), len(large.bondRegHeight))
 	}
@@ -465,113 +699,52 @@ func TestWitnessReadSetV5BoundedNotRegistrySized(t *testing.T) {
 	}
 }
 
-// TestWitnessReadSetV5DriftGuardAblation proves the guard is not decoration: it injects
-// each certified divergence (a dropped dueBucket key, a dropped qualified/epochSet delta
-// key) into a COPY of the producer's output and asserts the guard's equality check goes
-// RED. This is the "inject the defect and watch it go red" discipline (cert R3, the
-// session-7 rule). GREEN-on-restore is the un-mutated TestWitnessReadSetV5DriftGuard.
-func TestWitnessReadSetV5DriftGuardAblation(t *testing.T) {
-	corpus := buildV5ReadSetCorpus(t)
-	c := replayV5Corpus(t)
-
-	// Find and hold the pre-apply state at the empty-dueBucket block (ttl-empty) and the
-	// boundary block, so the ablation targets a block that actually reads those keys.
-	var ttlEmpty, boundary *Chain
-	var ttlEmptyBlk, boundaryBlk Block
-	for _, cb := range corpus {
-		switch cb.class {
-		case "ttl-empty":
-			ttlEmpty = c.cloneForDryRun() // pre-apply committed-state snapshot (read-only here)
-			ttlEmptyBlk = cb.block
-		case "boundary":
-			// Use the LAST boundary (h4) — it has a populated qualified/epochSet to drop from.
-			boundary = c.cloneForDryRun()
-			boundaryBlk = cb.block
+// TestWitnessReadSetV5BoundednessAblation proves the boundedness test is not decoration: an
+// injected O(registry) bondRegHeight scan makes the read-set scale with the registry, and the
+// equal-size assertion reddens. This is the certified boundedness ablation (the sharpest
+// hazard: instrumenting apply()'s scan defeats era-4).
+func TestWitnessReadSetV5BoundednessAblation(t *testing.T) {
+	build := func(nReg int) (*Chain, Block) {
+		cfg := Config{Quorum: 1, MinBond: era4MinBond, ByzantineQuorum: true,
+			EpochBlocks: 64, MatureValidators: 0, BondTTLBlocks: 4}
+		c := New(cfg, func(ports.NodeID) int64 { return 0 })
+		c.SetBondVerifier(objectiveVerify)
+		g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
+		for i := 0; i < nReg; i++ {
+			g.BondRegs = append(g.BondRegs, bondReg(key(int64(92000+i)), 4<<20, ports.Hash{}))
 		}
-		c.apply(cb.block)
+		Sign(g, key(92000))
+		c.apply(*g)
+		prev := g.Hash()
+		for h := uint64(1); h <= 2; h++ {
+			bh := &Block{Version: 1, Height: h, Prev: prev, Entries: []ports.Entry{entry(byte(h))}}
+			Sign(bh, key(92000))
+			c.apply(*bh)
+			prev = bh.Hash()
+		}
+		return c, Block{Version: BlockVersionWitnessable, Height: 3, Prev: prev, Entries: []ports.Entry{entry(3)}}
 	}
-	if ttlEmpty == nil || boundary == nil {
-		t.Fatal("corpus did not yield the ttl-empty and boundary pre-apply states")
+	small, probeSmall := build(3)
+	large, probeLarge := build(300)
+
+	// The INJECTED DEFECT: a producer that scans the whole bondRegHeight map (apply()'s TTL
+	// sweep shape) instead of the single dueBucket[h] leaf. Emit one read per registry id.
+	ablatedProducer := func(c *Chain, b Block) []statehash.ReadEntry {
+		rs := c.WitnessReadSetV5(b)
+		acc := newReadSetAcc()
+		for _, e := range rs {
+			acc.add(e)
+		}
+		for id := range c.bondRegHeight { // O(registry) scan — the defect
+			acc.addPresent(tagBondRegHeight, id[:], statehash.EncodeUint64(c.bondRegHeight[id]))
+		}
+		return acc.entries()
 	}
 
-	// --- Ablation 1: drop the dueBucket[h] key from the producer's read-set. ---
-	t.Run("drop-dueBucket-key-reddens", func(t *testing.T) {
-		v5b := setV5(ttlEmptyBlk)
-		full := ttlEmpty.WitnessReadSetV5(v5b)
-		recompute := ttlEmpty.recomputeWitnessReadsV5(v5b)
-		// Sanity: the un-ablated pair AGREES (the guard is green before ablation).
-		if !equalStrSlices(keySet(full), keySet(recompute)) {
-			t.Fatalf("pre-ablation drift on ttl-empty: producer=%v recompute=%v", keySet(full), keySet(recompute))
-		}
-		var hk [8]byte
-		binary.BigEndian.PutUint64(hk[:], v5b.Height)
-		dueKey := statehash.Key(tagDueBucket, hk[:])
-		ablated := dropKey(full, dueKey)
-		if len(ablated) == len(full) {
-			t.Fatalf("ablation targeted a key the read-set does not contain: %x — the ttl-empty block must read dueBucket[h]", dueKey)
-		}
-		if equalStrSlices(keySet(ablated), keySet(recompute)) {
-			t.Fatal("GUARD FAILED TO REDDEN: dropping the dueBucket[h] non-membership key still matched the recompute reads — the empty-bucket win is unguarded")
-		}
-	})
-
-	// --- Ablation 2: drop a qualified delta key from the boundary read-set. ---
-	t.Run("drop-qualified-delta-key-reddens", func(t *testing.T) {
-		v5b := setV5(boundaryBlk)
-		full := boundary.WitnessReadSetV5(v5b)
-		recompute := boundary.recomputeWitnessReadsV5(v5b)
-		if !equalStrSlices(keySet(full), keySet(recompute)) {
-			t.Fatalf("pre-ablation drift on boundary: producer=%v recompute=%v", keySet(full), keySet(recompute))
-		}
-		qKey, ok := firstKeyWithTag(full, tagQualified)
-		if !ok {
-			t.Fatal("boundary read-set carries no qualified delta key — the corpus did not populate qualified at the boundary")
-		}
-		ablated := dropKey(full, qKey)
-		if equalStrSlices(keySet(ablated), keySet(recompute)) {
-			t.Fatal("GUARD FAILED TO REDDEN: dropping a qualified delta key still matched the recompute reads — the boundary delta is unguarded")
-		}
-	})
-
-	// --- Ablation 3: drop an epochSet delta key from the boundary read-set. ---
-	t.Run("drop-epochSet-delta-key-reddens", func(t *testing.T) {
-		v5b := setV5(boundaryBlk)
-		full := boundary.WitnessReadSetV5(v5b)
-		recompute := boundary.recomputeWitnessReadsV5(v5b)
-		eKey, ok := firstKeyWithTag(full, tagEpochSet)
-		if !ok {
-			// If this boundary froze no prior epochSet (first boundary), skip — but the h4
-			// boundary follows the genesis boundary, so epochSet is populated.
-			t.Skip("boundary read-set carries no epochSet delta key (first-boundary case)")
-		}
-		ablated := dropKey(full, eKey)
-		if equalStrSlices(keySet(ablated), keySet(recompute)) {
-			t.Fatal("GUARD FAILED TO REDDEN: dropping an epochSet delta key still matched the recompute reads")
-		}
-	})
-}
-
-// dropKey returns rs with the first entry whose Key equals key removed. Used only by
-// the ablation to simulate a producer that forgot a read-set member.
-func dropKey(rs []statehash.ReadEntry, key []byte) []statehash.ReadEntry {
-	out := make([]statehash.ReadEntry, 0, len(rs))
-	dropped := false
-	for _, e := range rs {
-		if !dropped && string(e.Key) == string(key) {
-			dropped = true
-			continue
-		}
-		out = append(out, e)
+	rsSmall := ablatedProducer(small, probeSmall)
+	rsLarge := ablatedProducer(large, probeLarge)
+	if len(rsSmall) == len(rsLarge) {
+		t.Fatalf("ABLATION FAILED TO REDDEN: the injected O(registry) scan did not scale the read-set with the registry (small=%d large=%d) — the boundedness guard would not catch it",
+			len(rsSmall), len(rsLarge))
 	}
-	return out
-}
-
-// firstKeyWithTag returns the first read-set key whose field tag matches tag.
-func firstKeyWithTag(rs []statehash.ReadEntry, tag string) ([]byte, bool) {
-	for _, e := range rs {
-		if len(e.Key) >= len(tag) && string(e.Key[:len(tag)]) == tag {
-			return e.Key, true
-		}
-	}
-	return nil, false
 }

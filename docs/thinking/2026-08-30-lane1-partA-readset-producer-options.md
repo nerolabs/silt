@@ -1,158 +1,198 @@
-# Lane-1 Part A — the execution-derived v5 witness read-set producer: options
+# Lane-1 Part A — the execution-derived v5 witness read-set producer: options (REWRITTEN for the AMENDED cert)
 
 Date: 2026-08-30
 Author: Builder
-Certification governing this build:
-`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/era4-witness-floor-box-readset-v5-RESEARCH-CERTIFICATION-2026-08-30.md`
+Certification governing this build (AMENDED / SUPERSEDING):
+`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/era4-witness-floor-box-readset-v5-AMENDED-RESEARCH-CERTIFICATION-2026-08-30.md`
+PE ruling on the prior build (the fixes this rewrite lands):
+`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-lane1-partA-readset-v5-producer-2026-08-30.md`
 
-## What this increment ships
+## Why this is a REWRITE, not a first draft
 
-A producer that, for a v5 block, emits the WITNESS read-set as a `[]statehash.ReadEntry`
-(the type shipped in #633): the set of committed-state keys the v5 WITNESSABLE RECOMPUTE
-reads. Plus the R3 drift guard that re-reddens if the producer ever diverges from the keys
-the recompute actually reads.
+The prior build (PR #656 / `dbeccf1`) was SHIP-WITH-FIXES. Two defects, both now
+authoritative in the amended cert:
 
-The certified read-set identity (do NOT re-derive it):
+1. **The read-set was INCOMPLETE.** It omitted the attestation-loop reads (per attester:
+   `slashed[id]`, the qualification-set membership, the `validatorsSeen[id]` write-target),
+   the maturity-latch reads (`everMature` + its `Mature()` inputs `bonded`/`bondDomain`/
+   `C2Metric`), and the committed scalar leaves (`epochStart`/`era4LockedIn`/`era4Height`/
+   `matureEpoch`/`gateLockedIn`/`gateHeight`/`era3LockedIn`/`era3Height`). `validatorsSeen`
+   and `everMature` are consensus-load-bearing (maturity → anchor gating, F-1). A floor box
+   handed the incomplete read-set can be made to accept a forged block on any omitted leaf.
 
-> validity reads ∪ `apply()` branch reads (`slashed`/`bondRootOwner`/`bondRootProven`) ∪
-> era-4 accelerator reads (the single `dueBucket[h]` NON-MEMBERSHIP leaf + the touched
-> `qualified`/`epochSet` delta).
+2. **The drift guard was BLIND to the gap.** It was a SECOND hand-written enumeration
+   (`recomputeWitnessReadsV5`) checked against the producer. Both inherited the cert's blind
+   spot, so set-equality was GREEN over a real accept-a-forgery hole. This is the session-7
+   "green while covering nothing" scar, one dimension over: a check that passes because both
+   sides share the same omission.
 
-For three block classes: ordinary (O(payload)), TTL-firing (O(payload), includes the
-empty-`dueBucket[h]` non-membership case), epoch-boundary (O(boundary-delta), heavier).
+The amended cert's per-leaf table (23 committed keyspaces, its §"The CORRECTED, COMPLETE
+read-set identity") is now the authoritative checklist. The boundary bound is relabelled
+O(RegCap) (it reads the WHOLE frozen set for the three activation tallies), box-fits at 256
+unchanged.
 
-## The single sharpest hazard (certified §"Sub-question 2", §"What would lift…")
+## The load-bearing decision — HOW to build the execution-derived completeness guard
 
-The read-set is the keyset of the **witnessable recompute**, NOT of `apply()`. `apply()`
-still scans the whole `bondRegHeight` map every block (the TTL sweep, `chain.go:3272`), so
-instrumenting `apply()`'s literal reads yields the O(registry) set and DEFEATS era-4. The
-producer must target the bounded witnessable recompute:
+The producer enumeration stays payload-driven (bounded by construction — Option B from the
+prior doc, unchanged and still correct; instrumenting `apply()`'s literal reads yields the
+O(registry) set and defeats era-4, so that stays rejected). What CHANGES is the guard: it
+must be rooted in GROUND TRUTH — the recorded leaf-touch of the real v5 recompute — NOT a
+second hand-written table. The amended cert makes this MANDATORY (R3), with the decisive
+proof: a hand-written mirror shares the producer's blind spots and certifies nothing.
 
-- the TTL "nothing else expired" claim collapses to ONE `dueBucket[h]` non-membership leaf
-  (empty bucket) or the bucket's committed member list (non-empty) — it does NOT read every
-  id in `bondRegHeight`;
-- the boundary changed-leaf set is O(boundary-delta), a distinct heavier class.
+The real v5 recompute is fixed and already in the tree:
+`postApplyRoots(b)` → `cloneForDryRun()` → `apply(b)` on the clone → `StateRootForVersion(5)`
+→ `stateRootLeavesV5()` (`era3validity.go:145`, `statehash.go:182`). The guard must derive
+the "expected read-set" from THAT computation. Two committed-leaf read categories exist:
 
-## The design question: HOW to derive the read-set
+- **Category 1 — write-target reads.** Every leaf the recompute WRITES it first reads: map
+  write-targets need the pre-state to compute the post-value; monotonic scalars gate on
+  pre-state (`if !c.everMature`, `if !c.era4LockedIn`, …). These are exactly the leaves the
+  prior build dropped (`validatorsSeen`, `everMature`, the scalars are all write-targets).
+- **Category 2 — pure gate reads.** Leaves read but NOT written in this block: a `slashed[id]`
+  gate where `id` is not slashed, a boundary `regVersion` read for an unchanged frozen member,
+  the `bonded`/`bondDomain` maturity inputs. These do not appear in a write-diff.
 
-The producer must (a) target the bounded witnessable recompute, and (b) be provably in sync
-with what that recompute actually reads (R3). Two sub-decisions: (1) how to ENUMERATE the
-read-set, (2) how to build the R3 guard that keeps the enumeration honest.
+### Option G-1 — recording accessor over the clone's committed maps
 
-### Sub-decision 1 — how to enumerate the read-set
+The cert's first-named option. Wrap every committed map on the clone so each `c.bonded[id]`,
+`c.slashed[id]`, … read is recorded during the clone's `apply()`.
 
-**Option A — instrument `apply()` and record every committed-map access.** Wrap the live
-committed maps in a recording accessor, run `apply()`, collect the touched keys.
+- Cost: the committed maps are plain Go maps accessed DIRECTLY at hundreds of consensus sites
+  (`c.bonded[id]`, `c.slashed[id]`, `c.qualified[id]`, …). Go maps cannot intercept reads. To
+  record reads I would have to convert every access site to a method call — that is a
+  CONSENSUS-LOGIC change to `apply()`/`attesterQualified`/`matureNow`/`rotateEpoch`/`C2Metric`,
+  the exact gated change the scope forbids ("If a production hook is unavoidable, isolate it
+  test-only and flag it" — but this is not isolable; it rewrites the hot path).
+- Verdict: REJECTED. Not test-only-isolable; it changes consensus logic.
 
-- Cost: DIRECTLY DEFEATED by the certified hazard. `apply()`'s TTL sweep ranges the whole
-  `bondRegHeight` map (`chain.go:3272`) and the boundary tallies range the whole frozen set.
-  The recorded set is O(registry). This is the exact "build that instruments apply() derives
-  the O(registry) set and defeats era-4" the cert names as the single sharpest hazard.
-- Verdict: REJECTED. It rebuilds the wall era-4 removes.
+### Option G-2 — pre/post `stateRootLeavesV5` write-diff ALONE
 
-**Option B — a payload-driven enumerator that walks the block's transitions.** For a v5
-block, walk its payload (`Entries`, `Revocations`, `Unrevocations`, `BondRegs`, `Slashes`)
-and emit the committed key each transition reads, PLUS the bounded era-4 accelerator keys
-(`dueBucket[h]` for a TTL-firing height, and the touched `qualified`/`epochSet` delta). Each
-transition contributes O(1) keys; the accelerator contributes one `dueBucket[h]` leaf +
-the bucket members (RegCap-bounded) + the boundary delta. No whole-map scan.
+The cert's second-named option, taken literally. Compute `stateRootLeavesV5()` pre-apply and
+post-apply on the clone; the leaves whose value CHANGED are the recompute's writes; require
+the producer to cover them.
 
-- Benefit: bounded by construction. Ordinary/TTL blocks are O(payload); the boundary is
-  O(boundary-delta). This is the recompute's OWN read-set — the certified identity, member
-  for member. The producer's keys are derivable purely from the block + the committed state
-  it must witness against, which is exactly what a floor box holds.
-- Cost: it is a HAND-DIRECTED enumeration of the recompute's reads. If a future refactor of
-  the recompute changes what it reads, the enumerator silently desyncs. This is precisely
-  the R2/R3 residual the cert flags: "the derivation MUST be execution-derived, not
-  hand-written … it must be the recorded touch-set of the actual v5 witnessable recompute
-  over a branch-covering corpus, ablated."
-- Verdict: CHOSEN for the enumerator, PAIRED WITH the R3 guard below so it is not merely
-  hand-written — it is hand-written AND cross-checked against an execution recording.
+- Benefit: pure ground truth, zero consensus-logic change, catches EVERY Category-1 omission
+  — including exactly the prior build's dropped `validatorsSeen`/`everMature`/scalars.
+- Cost: a write-diff is only the WRITE-set. It does NOT capture Category-2 pure gate reads
+  (`slashed[id]` gate on a non-slashed id, boundary `regVersion` for unchanged members). A
+  producer that dropped a pure gate read would still pass. INCOMPLETE as a read-set guard.
+- Verdict: NECESSARY but INSUFFICIENT alone. Keep it as the primary source; pair with G-3.
 
-**Option C — rewrite `apply()`'s TTL/boundary branches to read via the accelerator, then
-instrument THAT.** Make `apply()` itself bounded (read `dueBucket[h]` instead of scanning
-`bondRegHeight`), then record its reads.
+### Option G-3 — leaf-sensitivity perturbation over the real recompute (the Category-2 source)
 
-- Cost: this is a CONSENSUS-RULE change to the one authoritative state-transition function.
-  The cert is explicit that the full-node recompute stays O(registry) BY DESIGN
-  (`chain.go:378`, RECERT2 Q1); the O(payload) property belongs to the WITNESS recompute, a
-  DIFFERENT computation. Changing `apply()` is a gated change beyond this increment's scope
-  ("If you find yourself changing a consensus rule or validity predicate, STOP").
-- Verdict: REJECTED. Out of scope and gated.
+For each committed leaf, PERTURB its pre-state value on a fresh clone, re-run the real
+recompute (`postApplyRoots`), and check whether the output StateRoot CHANGES. A leaf whose
+pre-state value affects the recompute's output root is, by definition, a leaf the recompute
+READS — the box MUST witness it, else it cannot detect a forged value there. A leaf whose
+perturbation leaves the root unchanged is genuinely not read for THIS block (a dead branch),
+and the producer correctly need not emit it.
 
-**Decision: Option B** — a payload-driven enumerator, bounded by construction, targeting the
-witnessable recompute's read-set. The soundness of the enumeration (that it reads EXACTLY
-what the recompute reads) is defended by the R3 guard, not by inspection.
+- Benefit: pure ground truth over the REAL recompute (no hand-written mirror, no
+  consensus-logic change). It captures BOTH categories: a write-target leaf changes the root
+  when perturbed (its post-value depends on its pre-value), AND a pure gate leaf changes the
+  root when perturbed (the gate flips a branch that changes some OTHER committed write). It is
+  the complement of the write-diff and subsumes it, but the write-diff is cheaper and sharper
+  for the common case, so I use both.
+- Cost: perturbation is per-leaf, so the probe set must be enumerated. I perturb (a) every
+  leaf the pre-apply state already carries, and (b) a representative injected value for each
+  of the 23 keyspaces at the payload-named keys (so a leaf ABSENT pre-apply but read as a
+  write-target — e.g. `validatorsSeen[attester]` false→true — is probed by injecting it and
+  seeing the root move). The probe is O(pre-state + payload), test-only, bounded by the small
+  corpus fixtures.
+- A subtlety: perturbation detects reads that AFFECT THE OUTPUT. A leaf read into a branch
+  that happens not to change any committed write for this block is not witness-necessary for
+  this block — which is the CORRECT read-set (a floor box need not witness a leaf whose value
+  cannot change the post-state root). So perturbation-sensitivity is precisely the soundness
+  criterion: "witness every leaf whose pre-state can change the recompute's committed root."
 
-### Sub-decision 2 — how to build the R3 drift guard
+### DECISION — G-2 (write-diff) ∪ G-3 (perturbation), both over the real `postApplyRoots`
 
-The cert (R3, §"The decisive completeness artifact") is explicit: the guard must
-EXECUTION-DERIVE the recompute's actual reads and redden if the producer's enumeration
-diverges. This is the load-bearing defense (treat it like the #654 vacuity guard).
+The execution-derived guard's "expected read-set" = the UNION of:
+- the pre/post `stateRootLeavesV5` write-diff (Category-1 write-targets), and
+- the leaf-sensitivity perturbation set (Category-1 ∪ Category-2, every leaf whose pre-state
+  perturbation moves the real recompute's committed root).
 
-**Option R3-A — record the reads of the ACTUAL witnessable recompute and compare.** Build a
-recording accessor over the committed state the witnessable recompute reads, run the
-recompute (the bounded verification: read `dueBucket[h]`, the touched deltas, the branch
-reads — NOT the `apply()` scan), collect the recorded key-set, assert it EQUALS the
-producer's enumerated key-set. Then ablate: drop a `dueBucket` key from the producer and
-watch RED; drop a `qualified`/`epochSet` delta key and watch RED; restore GREEN.
+Assert the PRODUCER's read-set COVERS (⊇) this ground-truth set. Both sources are computed
+from the real `postApplyRoots`/`stateRootLeavesV5`/`apply()` recompute on a clone; NEITHER is
+a hand-written table. This is the mechanism the amended cert reaffirms as MANDATORY.
 
-- Cost: requires a second, execution-recording implementation of the recompute's reads. But
-  the cert demands exactly this — "the recorded touch-set of the actual v5 witnessable
-  recompute."
-- Verdict: CHOSEN. This is the R3 obligation stated verbatim.
+Why COVERS (⊇) not EQUALS: the producer may soundly OVER-witness (emit a leaf the recompute
+does not strictly need); over-witnessing costs a little witness bandwidth but never a
+wrong-accept. UNDER-witnessing is the soundness hole. So the guard's binding direction is:
+the producer must be a SUPERSET of the ground-truth read-set. A separate bound test keeps the
+producer from over-emitting to O(registry) (the boundedness ablation, below).
 
-**Option R3-B — assert the producer's set is a subset of `apply()`'s touch-set.** Cheaper,
-but `apply()`'s touch-set is O(registry) and includes keys the witnessable recompute does
-NOT read. A subset check passes a producer that OMITS an accelerator key (the empty-bucket
-non-membership leaf is not in `apply()`'s touch-set at all — `apply()` reads
-`bondRegHeight`, not `dueBucket[h]`, on the sweep). It would certify nothing.
+This mechanism is TEST-ONLY. It uses `cloneForDryRun` + `postApplyRoots` + `stateRootLeavesV5`
+(all existing) and a test-only leaf-setter that mutates a clone's committed maps between
+clone and recompute. NO production hook is added; NO consensus rule or validity predicate is
+touched.
 
-- Verdict: REJECTED. It checks against the wrong set (the O(registry) apply reads), the
-  exact conflation the cert forbids.
+## The producer changes (per the amended cert's 23-keyspace table)
 
-**Decision: Option R3-A** — the guard records the WITNESSABLE recompute's reads over a
-branch-covering corpus and asserts set-equality with the producer, ablated red on a dropped
-`dueBucket` key AND on a dropped `qualified`/`epochSet` delta key.
+Add the omitted reads, keeping the payload-driven / O(payload) shape:
 
-Since the witnessable recompute is itself the thing being built (there is no separate v5
-verifier binary yet — that is Part B), the R3 guard's "recompute reads" side is derived by a
-recording enumerator that mirrors the recompute's DEFINED read-set (the certified identity),
-built INDEPENDENTLY of the producer's own construction (a distinct code path over the block
-+ committed state). Divergence between the two independent enumerations reddens. This is the
-same dual-source discipline the #654 vacuity guard and the RECERT2 maintenance drift guards
-use: two independent computations of the same set, asserted equal, ablated red.
+- **The attestation loop** (`apply:3293-3298`), per attester `a` in `b.Atts` with
+  `a.AttesterID() != b.ProposerID()`: the `attesterQualified(id)` input reads —
+  `slashed[id]`; under objective+matureEpoch the `epochSet`/`effectiveEpochSet` membership;
+  else `bonded[id]` — plus the `validatorsSeen[id]` write-target. One read-group per attester,
+  bounded by the quorum size (RegCap-bounded). Still O(payload).
+- **The maturity latch** (`apply:3303-3305`): `everMature` scalar pre-state, plus the
+  `Mature()`→`matureNow()` inputs — legacy mode reads the `validatorsSeen` set, objective mode
+  reads `MatureCoefficient`→`C2Metric` over `bonded` + `bondDomain`, and `matureEpoch` selects
+  the branch.
+- **The committed scalar leaves**: `epochStart`, `era4LockedIn`, `era4Height`, `matureEpoch`,
+  `gateLockedIn`, `gateHeight`, `era3LockedIn`, `era3Height`. Each is committed and gated on
+  its own pre-state in `apply`/`rotateEpoch`, so the recompute reads it. Emitted as
+  scalar-key reads (the reserved-key leaves at `statehash.go:155-160,206,211-212`).
+- **`bondDomain`** as a maturity READ input (objective C2 domain-distinct), beyond its
+  existing bond-reg write.
+- **The boundary read-set relabel**: O(RegCap), not O(boundary-delta). The three activation
+  tallies read `regVersion` and weight over EVERY frozen-set member (`rotateEpoch:3442/3465/
+  3489`); the producer already ranges the whole `qualified`/`epochSet`, which is correct — the
+  comment/label is corrected to O(RegCap).
 
-## The corpus (certified R3, §"The decisive completeness artifact")
+## The corpus additions (amended cert R3 + PE Q4)
 
-MUST include, or the guard certifies nothing:
+The prior corpus never populated `b.Atts` (`Sign` sets only Proposer, `chain.go:724-729`), so
+the attestation write path and maturity latch were DARK. Add:
 
-1. an ordinary block (publish + bond-reg, no TTL firing, non-boundary) — O(payload);
-2. a TTL-firing block with a NON-EMPTY `dueBucket[h]` (the member-list path);
-3. a TTL-firing block with an EMPTY `dueBucket[h]` — the single-non-membership-proof path,
-   THE WHOLE ERA-4 WIN. This is the height where nothing is due; the read-set carries the
-   one `dueBucket[h]` QueryAbsent leaf and nothing from a `bondRegHeight` scan;
-4. a renew that moves a bucket (`D_old`→`D_new`);
-5. a slash-before-due block;
-6. an epoch-boundary block (incl. the young→mature handoff) — O(boundary-delta).
+1. an **attested block** carrying real attestations from a qualified non-proposer attester
+   (constructed explicitly, not via `Sign`) so the atts-loop reads fire and `validatorsSeen`
+   is written;
+2. a **maturity-latch transition** (`everMature` false→true) so the latch read is a witnessed
+   change, not a constant;
+3. a **standalone slash block at a NON-boundary height** so the slash-path reads are covered
+   without the boundary path masking them.
 
-The guard ablates red on a dropped `dueBucket` key and a dropped `qualified`/`epochSet`
-delta key (the session-7 "green while covering nothing" scar: the empty-bucket path must be
-covered or the guard is vacuous).
+Add `attested`, `maturity-latch`, and `slash` to the required corpus classes in the vacuity
+guard so none can silently skip (the session-7 scar: a class the corpus never exercises makes
+the guard vacuous for it).
+
+## Regression proof (the whole point — inject the escaped defects, watch RED)
+
+The new execution-derived guard MUST redden on the exact defects that escaped the prior build:
+
+1. **Re-inject the `validatorsSeen` omission** (drop the attestation-loop reads from the
+   producer). The write-diff sees `validatorsSeen[attester]` change false→true on the attested
+   block; the producer no longer emits it → guard RED. (It was GREEN before, because the mirror
+   also omitted it.) Restore → GREEN.
+2. **Re-inject the slash-path `qualified[culprit]` drop.** The write-diff / perturbation sees
+   `qualified[culprit]` change on the slash block; producer drops it → RED. Restore → GREEN.
+3. **Keep the certified boundedness ablation.** Inject an O(registry) `bondRegHeight` scan into
+   the producer → the read-set scales with the registry → the bounded-not-registry-sized test
+   REDs. (Over-emitting to O(registry) is caught here, not by the coverage guard.)
 
 ## Scope guard (obeyed)
 
-This is the read-set PRODUCER only. NOT the #535 boundary policy (Part B), NOT wiring
-`IngestBlockWitnesses` into acceptance (Part B). No consensus rule or validity predicate is
-changed. The R2 #535 recovery-boundary observable (`cfg.LivenessRecoveryHeight` branch
-selection) is NOT closed here and is NOT this producer's job — the producer emits the read-set
-for the committed state; the recovery-branch SELECTION is a Part-B/operator-directive residual
-the cert scopes out (§"Sub-question 3").
+Producer + guard/test/corpus only. No consensus rule, no validity predicate, no production
+hook. The guard's leaf-perturbation setter is a test-only helper over a `cloneForDryRun`
+clone. The #535 recovery-boundary observable (R2) and the Part-B recompute soundness are NOT
+closed here and are NOT this producer's job.
 
 ## Conditional bounds (inherited, not re-opened)
 
-The O(payload)/O(boundary-delta) bounds are CONDITIONAL on RegCap bounding the per-block reg
-count and per-height bucket (cert R1, standing gate). This producer does not pin RegCap; it
-inherits the gate. The bound is O(payload) IF RegCap bounds the bucket, and RegCap's value is
-owed elsewhere (`era4-regcap-VALUE-DERIVATION-VERDICT-2026-08-29.md`).
-</content>
+O(payload) (ordinary/TTL) and O(RegCap) (boundary) are CONDITIONAL on RegCap bounding the
+per-block reg count, the per-height bucket, AND now the boundary frozen set and the attester
+quorum (amended cert R1). This producer does not pin RegCap; it inherits the standing gate
+(`era4-regcap-VALUE-DERIVATION-VERDICT-2026-08-29.md`).

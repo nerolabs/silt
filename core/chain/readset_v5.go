@@ -18,19 +18,39 @@ import (
 // StateRoot (the R4 accessor, core/statehash/witness.go). This producer computes
 // exactly which keys the box must witness for a given v5 block.
 //
-// CERTIFIED IDENTITY (do NOT re-derive it — cert
-// era4-witness-floor-box-readset-v5-RESEARCH-CERTIFICATION-2026-08-30):
+// CERTIFIED IDENTITY (do NOT re-derive it — AMENDED cert
+// era4-witness-floor-box-readset-v5-AMENDED-RESEARCH-CERTIFICATION-2026-08-30, the
+// per-leaf read-membership table over the 23 committed v5 keyspaces):
 //
 //	read-set = validity reads
-//	         ∪ apply() branch reads (slashed / bondRootOwner / bondRootProven)
+//	         ∪ apply() branch reads (slashed / bondRootOwner / bondRootProven / bonded /
+//	           bondRegHeight / regVersion / bondDomain + qualified maintenance)
+//	         ∪ THE ATTESTATION LOOP (per attester in b.Atts: slashed[id] +
+//	           qualification-set membership + the validatorsSeen[id] write-target)
+//	         ∪ THE MATURITY LATCH (everMature pre-state + Mature() inputs:
+//	           validatorsSeen in legacy mode, or bonded/bondDomain/C2Metric +
+//	           matureEpoch in objective mode)
+//	         ∪ THE COMMITTED SCALAR LEAVES (epochStart / era4LockedIn / era4Height /
+//	           matureEpoch / gateLockedIn / gateHeight / era3LockedIn / era3Height —
+//	           each gated on its own pre-state in apply()/rotateEpoch)
 //	         ∪ era-4 accelerator reads (the single dueBucket[h] NON-MEMBERSHIP leaf
-//	           on a TTL-firing height + the touched qualified / epochSet delta).
+//	           on a TTL-firing height + the O(RegCap) boundary frozen-set read).
+//
+// (The prior cert's identity — validity ∪ branch reads ∪ accelerator only — was
+// INCOMPLETE: it omitted the attestation loop, the maturity latch, and the scalars.
+// A floor box witnessing only that subset can be made to accept a forged block on
+// validatorsSeen/everMature/any scalar. The amended cert closes the identity; this
+// producer implements it and the execution-derived guard proves it against the real
+// v5 recompute — readset_v5_drift_test.go.)
 //
 // THREE block classes:
-//   - ordinary (no TTL firing, non-boundary): O(payload);
+//   - ordinary (no TTL firing, non-boundary): O(payload) (the atts loop adds one
+//     read-group per attester, bounded by the quorum ⊆ RegCap);
 //   - TTL-firing: O(payload), INCLUDING the empty-dueBucket[h] non-membership case
 //     (the whole era-4 win: one QueryAbsent leaf discharges "nothing else expired");
-//   - epoch-boundary: O(boundary-delta), the heavier witness class.
+//   - epoch-boundary: O(RegCap) — the three activation tallies read regVersion and
+//     weight over the WHOLE frozen set, so the boundary READ-set scales with the
+//     frozen-set size (= RegCap), NOT the boundary delta. Box-fits at RegCap=256.
 //
 // THE SHARP HAZARD (cert §"Sub-question 2", the single sharpest build hazard):
 // this producer targets the BOUNDED WITNESSABLE RECOMPUTE, NOT apply()'s literal
@@ -79,7 +99,27 @@ func (c *Chain) WitnessReadSetV5(b Block) []statehash.ReadEntry {
 	c.readSetBondRegs(b, acc)  // reg: slashed/bondRootOwner/bondRootProven/bonded/bondRegHeight + qualified/dueBucket delta
 	c.readSetSlashes(b, acc)   // slash: slashed write, bonded delete, qualified maintain
 
-	// ---- (2) era-4 accelerator: the TTL completeness leaf ----
+	// ---- (2) the attestation loop (apply:3293-3298) ----
+	// Per attester in b.Atts that is a qualified non-proposer, the recompute reads the
+	// attesterQualified inputs (slashed[id]; the qualification-set membership) and the
+	// validatorsSeen[id] write-target. This fires on essentially every real block. The
+	// prior build OMITTED it — the amended cert's confirmed completeness gap.
+	c.readSetAtts(b, acc)
+
+	// ---- (3) the maturity latch (apply:3303-3305) ----
+	// everMature pre-state + the Mature() inputs the latch gates on: the validatorsSeen
+	// set (legacy mode) or the C2Metric inputs bonded/bondDomain + the matureEpoch
+	// branch-selector (objective mode). The prior build OMITTED it.
+	c.readSetMaturityLatch(b, acc)
+
+	// ---- (4) the committed scalar leaves ----
+	// Each of epochStart/era4LockedIn/era4Height/matureEpoch/gateLockedIn/gateHeight/
+	// era3LockedIn/era3Height is committed and gated on its own pre-state in apply()/
+	// rotateEpoch (a monotonic-write guard or an unconditional marker), so the recompute
+	// reads each. The prior build OMITTED these entirely.
+	c.readSetScalars(acc)
+
+	// ---- (5) era-4 accelerator: the TTL completeness leaf ----
 	// The TTL sweep's "nothing else expired at height h" claim is discharged by ONE
 	// dueBucket[h] leaf, NOT a bondRegHeight scan (the era-4 win). If the bucket is
 	// occupied at h the recompute reads its committed member list (each member's
@@ -87,10 +127,10 @@ func (c *Chain) WitnessReadSetV5(b Block) []statehash.ReadEntry {
 	// bucket is empty the recompute needs a single NON-MEMBERSHIP proof of dueBucket[h].
 	c.readSetTTLCompleteness(b, acc)
 
-	// ---- (3) era-4 accelerator: the epoch-boundary delta ----
+	// ---- (6) era-4 accelerator: the epoch-boundary frozen-set read ----
 	// At a boundary (epochsEnabled && h % EpochBlocks == 0) the recompute freezes
-	// qualified into epochSet and reads the frozen-set weights for the activation
-	// tallies — O(boundary-delta), the heavier class.
+	// qualified into epochSet and reads regVersion + weight over the WHOLE frozen set
+	// for the three activation tallies — O(RegCap), the heavier class (NOT the delta).
 	c.readSetBoundaryDelta(b, acc)
 
 	return acc.entries()
@@ -123,6 +163,15 @@ func (a *readSetAcc) addAbsent(tag string, rawKey []byte) {
 // value), so a caller that cannot supply the committed value must use addAbsent.
 func (a *readSetAcc) addPresent(tag string, rawKey, value []byte) {
 	a.add(statehash.ReadEntry{Key: statehash.Key(tag, rawKey), Kind: statehash.QueryPresent, Value: value})
+}
+
+// addScalar emits a QueryPresent read of a scalar reserved-key leaf (rawKey = empty):
+// a committed scalar is ALWAYS present (one leaf at Key(tag)), and the recompute reads
+// its pre-state to reproduce the monotonic-write guard, so the box always witnesses it
+// present with its committed value. The value MUST be non-empty; the scalar encoders
+// (EncodeBool/EncodeUint64) return a single byte even for the zero value, so this is safe.
+func (a *readSetAcc) addScalar(tag string, value []byte) {
+	a.add(statehash.ReadEntry{Key: statehash.Key(tag, nil), Kind: statehash.QueryPresent, Value: value})
 }
 
 func (a *readSetAcc) add(e statehash.ReadEntry) {
@@ -237,16 +286,33 @@ func (c *Chain) readSetBondRegs(b Block, acc *readSetAcc) {
 
 		// bondRegHeight[id]: read for the OLD due-bucket derivation on a renew
 		// (dueBucketMoveOnReg, chain.go:1399). ONE key per named id, never the whole map.
-		if h, ok := c.bondRegHeight[id]; ok {
-			acc.addPresent(tagBondRegHeight, id[:], statehash.EncodeUint64(h))
+		// It is BOTH a read (the old bucket) and a write-target (reset to h, chain.go:3261).
+		oldReg, hadOldReg := c.bondRegHeight[id]
+		if hadOldReg {
+			acc.addPresent(tagBondRegHeight, id[:], statehash.EncodeUint64(oldReg))
 		} else {
 			acc.addAbsent(tagBondRegHeight, id[:])
 		}
 
-		// bonded[id] / qualified[id]: the write-targets the recompute reads to compute
-		// the post-write maintenance (qualifiedMaintain reads bonded/slashed, chain.go:1379).
+		// The due-bucket writes the reg performs (dueBucketMoveOnReg, chain.go:1394-1402):
+		// on a renew it REMOVES id from the OLD bucket (oldReg+ttl+1), and it always INSERTS
+		// id at the NEW bucket (b.Height+ttl+1). Both buckets are committed dueBucket leaves
+		// the recompute writes — the box must witness each. Bounded: at most two keys per reg.
+		if ttl := c.cfg.BondTTLBlocks; ttl > 0 {
+			c.addDueBucketRead(acc, b.Height+ttl+1)
+			if hadOldReg {
+				c.addDueBucketRead(acc, oldReg+ttl+1)
+			}
+		}
+
+		// bonded[id] / qualified[id] / regVersion[id] / bondDomain[id]: the write-targets the
+		// recompute reads to compute the post-write leaves (chain.go:3260-3264). regVersion and
+		// bondDomain are committed v5 leaves the reg overwrites; qualifiedMaintain reads
+		// bonded/slashed (chain.go:1379).
 		c.addBondedRead(acc, id)
 		c.addQualifiedRead(acc, id)
+		c.addRegVersionRead(acc, id)
+		c.addBondDomainRead(acc, id)
 	}
 }
 
@@ -266,6 +332,121 @@ func (c *Chain) readSetSlashes(b Block, acc *readSetAcc) {
 			acc.addAbsent(tagSlashed, culprit[:])
 		}
 	}
+}
+
+// readSetAtts emits the attestation-loop reads (apply:3293-3298). For each attester in
+// b.Atts that is NOT the proposer, the recompute evaluates attesterQualified(id) and, if
+// qualified, writes validatorsSeen[id]. It therefore reads, per attester:
+//   - slashed[id] (the F2 gate, attesterQualifiedAt:1280);
+//   - the qualification-set membership: under objective+matureEpoch the effectiveEpochSet
+//     membership (epochSet — attesterQualifiedAt:1297), else bonded[id]
+//     (attesterQualifiedAt:1300);
+//   - validatorsSeen[id], the write-target (apply:3296), read to compute the post-write
+//     leaf (present iff already seen, else absent → set present).
+//
+// O(len(b.Atts)) — the attester set is bounded by the quorum ⊆ RegCap, so this stays
+// O(payload). The read matches attesterQualified(id) = attesterQualifiedAt(id, 0): height 0
+// is never a #535 recovery boundary, so effectiveEpochSet(0) is the frozen epochSet (R2 is
+// the recovery-boundary residual, out of scope here). The legacy rep(id) branch reads no
+// committed SMT leaf, so it contributes nothing to the committed read-set.
+func (c *Chain) readSetAtts(b Block, acc *readSetAcc) {
+	proposer := b.ProposerID()
+	for i := range b.Atts {
+		id := b.Atts[i].AttesterID()
+		if id == proposer {
+			continue // apply() skips the proposer's own attestation (apply:3295)
+		}
+		// slashed[id]: the F2 gate, read for every attester.
+		if c.slashed[id] {
+			acc.addPresent(tagSlashed, id[:], statehash.Present)
+		} else {
+			acc.addAbsent(tagSlashed, id[:])
+		}
+		// The qualification-set membership read (objective mode only — the legacy rep
+		// branch reads no committed leaf). In a mature objective epoch the membership is
+		// the frozen epochSet; otherwise it is bonded[id].
+		if c.objective() {
+			if c.epochsEnabled() && c.matureEpoch {
+				c.addEpochSetRead(acc, id)
+			} else {
+				c.addBondedRead(acc, id)
+			}
+		}
+		// validatorsSeen[id]: the write-target the recompute reads to compute the
+		// post-write leaf (a Class-A set-membership leaf, statehash.go:127).
+		if c.validatorsSeen[id] {
+			acc.addPresent(tagValidatorsSeen, id[:], statehash.Present)
+		} else {
+			acc.addAbsent(tagValidatorsSeen, id[:])
+		}
+	}
+}
+
+// readSetMaturityLatch emits the maturity-latch reads (apply:3303-3305):
+// `if !c.everMature && c.Mature() { c.everMature = true }`. The recompute reads:
+//   - everMature scalar pre-state (the latch guard) — always, emitted by readSetScalars;
+//   - the Mature() inputs, only when the latch is not yet set (else Mature() is not
+//     evaluated, short-circuited by !everMature). In legacy mode Mature()→matureNow ranges
+//     the whole validatorsSeen set; in objective mode it reads MatureCoefficient→C2Metric
+//     over the whole bonded ledger AND bondDomain (the domain-distinct coefficient), plus
+//     matureEpoch selects the qualification branch (emitted by readSetScalars).
+//
+// The everMature scalar itself is emitted by readSetScalars (it is a committed scalar leaf
+// the recompute reads unconditionally). This method adds the Mature() INPUT leaves. When
+// MatureValidators<=0, Mature() short-circuits true without reading the set (chain.go:2140),
+// so no maturity inputs are read.
+func (c *Chain) readSetMaturityLatch(b Block, acc *readSetAcc) {
+	if c.everMature {
+		return // latch already set: !everMature short-circuits, Mature() is not evaluated
+	}
+	if c.cfg.MatureValidators <= 0 {
+		return // Mature() returns true without reading the committed set (chain.go:2140)
+	}
+	if !c.objective() {
+		// Legacy: matureNow ranges the whole validatorsSeen map (chain.go:2181). The
+		// recompute reads each validatorsSeen member (minus anchors). Bounded by RegCap.
+		for id := range c.validatorsSeen {
+			acc.addPresent(tagValidatorsSeen, id[:], statehash.Present)
+		}
+		return
+	}
+	// Objective: MatureCoefficient → C2Metric ranges validatorsSeen (chain.go:2305) — NOT the
+	// whole bonded ledger — and for each SEEN id reads slashed[id], bonded[id], bondDomain[id]
+	// (chain.go:2306-2312). The recompute reads each validatorsSeen member and its slashed /
+	// bonded / bondDomain leaves. Bounded by RegCap. (The amended cert said "over the whole
+	// bonded ledger"; the SOURCE ranges validatorsSeen — the execution-derived guard pinned
+	// this, which is exactly why the guard is ground-truth, not a mirror of the cert prose.)
+	for id := range c.validatorsSeen {
+		acc.addPresent(tagValidatorsSeen, id[:], statehash.Present)
+		if c.slashed[id] {
+			acc.addPresent(tagSlashed, id[:], statehash.Present)
+		} else {
+			acc.addAbsent(tagSlashed, id[:])
+		}
+		c.addBondedRead(acc, id)
+		c.addBondDomainRead(acc, id)
+	}
+}
+
+// readSetScalars emits the committed scalar-leaf reads. Each scalar is committed under the
+// v5 root and gated on its own pre-state in apply()/rotateEpoch (a monotonic-write guard,
+// e.g. `if !c.era4LockedIn`, or an unconditional marker like epochStart), so the recompute
+// reads every one of them to reproduce the post-state. They are ALWAYS present (one leaf per
+// scalar at its reserved key), so each is a QueryPresent with the committed encoded value.
+//
+// The eight era-3 + era-4 committed scalars (statehash.go:155-160,206,211-212): everMature,
+// matureEpoch, gateLockedIn, gateHeight, era3LockedIn, era3Height, epochStart, era4LockedIn,
+// era4Height. The prior build emitted NONE of these — the amended cert's confirmed omission.
+func (c *Chain) readSetScalars(acc *readSetAcc) {
+	acc.addScalar(tagEverMature, statehash.EncodeBool(c.everMature))
+	acc.addScalar(tagMatureEpoch, statehash.EncodeBool(c.matureEpoch))
+	acc.addScalar(tagGateLockedIn, statehash.EncodeBool(c.gateLockedIn))
+	acc.addScalar(tagGateHeight, statehash.EncodeUint64(c.gateHeight))
+	acc.addScalar(tagEra3LockedIn, statehash.EncodeBool(c.era3LockedIn))
+	acc.addScalar(tagEra3Height, statehash.EncodeUint64(c.era3Height))
+	acc.addScalar(tagEpochStart, statehash.EncodeUint64(c.epochStart))
+	acc.addScalar(tagEra4LockedIn, statehash.EncodeBool(c.era4LockedIn))
+	acc.addScalar(tagEra4Height, statehash.EncodeUint64(c.era4Height))
 }
 
 // readSetTTLCompleteness emits the era-4 TTL accelerator read: the dueBucket[h] leaf
@@ -312,34 +493,44 @@ func (c *Chain) readSetTTLCompleteness(b Block, acc *readSetAcc) {
 	}
 }
 
-// readSetBoundaryDelta emits the epoch-boundary accelerator reads: at a boundary the
-// recompute freezes qualified into epochSet and reads the frozen-set weights for the
-// activation tallies (rotateEpoch, chain.go:3421-3499). The changed-leaf set is the
-// symmetric difference between last epoch's frozen epochSet and this epoch's live
-// qualified = O(boundary-delta), the heavier witness class the cert names (NOT
-// O(payload)). Fires only at a boundary height with epochs enabled and the chain
-// mature (matureEpoch), matching rotateEpoch's freeze gate.
+// readSetBoundaryDelta emits the epoch-boundary reads: at a boundary the recompute freezes
+// qualified into epochSet and reads regVersion + weight over the WHOLE frozen set for the
+// three activation tallies (rotateEpoch, chain.go:3442/3465/3489). The predicate
+// `3*ready > 2*total` is a super-quorum over the FULL frozen weight — it CANNOT be computed
+// from a symmetric-difference delta, so the recompute reads every frozen-set member. The
+// boundary READ-set is therefore O(frozen-set) = O(RegCap), NOT O(boundary-delta) (the
+// AMENDED cert, PE Claim 2: O(boundary-delta) is the WRITE-set — the changed leaves — not
+// the read-set). Fires only at a boundary height with epochs enabled.
 //
-// The frozen-set members drive the regVersion-weighted activation tallies (the three
-// lock-in tallies read regVersion[id] per member), so the recompute reads each
-// boundary-delta member's qualified/epochSet/regVersion leaves. This is O(boundary-delta),
-// bounded by RegCap × EpochBlocks (cert §"Epoch-boundary block").
+// This producer already ranges the whole qualified (the freeze source) and the whole
+// epochSet (the prior frozen set), reading regVersion per qualified member — which IS the
+// O(RegCap) frozen-set read. Box-fits at RegCap=256 (amended cert; kilobytes of witness).
 func (c *Chain) readSetBoundaryDelta(b Block, acc *readSetAcc) {
 	if !c.epochsEnabled() || c.cfg.EpochBlocks == 0 || b.Height%c.cfg.EpochBlocks != 0 {
 		return
 	}
-	// The boundary reads the qualified accelerator (the freeze source) and the current
-	// epochSet (the prior frozen set, the delta's other side). The union of their keys
-	// is the boundary-delta read-set: each key present in either is a leaf the recompute
-	// touches to compute the symmetric difference and the new frozen weights.
+	// The boundary reads the qualified accelerator (the freeze SOURCE, chain.go:3425) and,
+	// for the activation tallies, regVersion + weight over the whole frozen set. The freeze
+	// OVERWRITES epochSet = clone(qualified), so each qualified member is an epochSet
+	// WRITE-TARGET the recompute reads. The producer emits, per qualified member: qualified[id]
+	// (source), regVersion[id] (tally, chain.go:3444/3467/3491), and epochSet[id] (freeze
+	// write-target). It ALSO emits the PRIOR epochSet members (write-targets the freeze may
+	// remove). O(RegCap).
+	//
+	// The freeze is gated on everMature (rotateEpoch:3395 early-return before it sets
+	// matureEpoch and freezes). This producer emits the frozen-set reads at EVERY boundary,
+	// even a pre-maturity one where the freeze does not fire — over-witnessing is SOUND (a
+	// superset never causes a wrong-accept), and it keeps the producer from having to predict
+	// the same-block maturity latch. The execution-derived guard proves the producer covers
+	// the actual freeze writes when it does fire.
 	for id, w := range c.qualified {
 		acc.addPresent(tagQualified, id[:], statehash.EncodeInt64(w))
-		// regVersion drives the activation tally (chain.go:3444/3467/3491).
 		if v, ok := c.regVersion[id]; ok {
 			acc.addPresent(tagRegVersion, id[:], statehash.EncodeUint8(v))
 		} else {
 			acc.addAbsent(tagRegVersion, id[:])
 		}
+		c.addEpochSetRead(acc, id) // the freeze write-target for this member
 	}
 	for id, w := range c.epochSet {
 		acc.addPresent(tagEpochSet, id[:], statehash.EncodeInt64(w))
@@ -365,5 +556,52 @@ func (c *Chain) addQualifiedRead(acc *readSetAcc, id ports.NodeID) {
 		acc.addPresent(tagQualified, id[:], statehash.EncodeInt64(w))
 	} else {
 		acc.addAbsent(tagQualified, id[:])
+	}
+}
+
+// addRegVersionRead emits the regVersion[id] read as the pre-apply presence/absence: a
+// write-target the reg overwrites (chain.go:3262) and the TTL sweep / boundary tally read.
+// regVersion is Class-B (value = EncodeUint8, statehash.go:148).
+func (c *Chain) addRegVersionRead(acc *readSetAcc, id ports.NodeID) {
+	if v, ok := c.regVersion[id]; ok {
+		acc.addPresent(tagRegVersion, id[:], statehash.EncodeUint8(v))
+	} else {
+		acc.addAbsent(tagRegVersion, id[:])
+	}
+}
+
+// addBondDomainRead emits the bondDomain[id] read as the pre-apply presence/absence: a
+// write-target the reg overwrites (chain.go:3263) and a C2Metric maturity input. bondDomain
+// is Class-B (value = EncodeUint64, statehash.go:151).
+func (c *Chain) addBondDomainRead(acc *readSetAcc, id ports.NodeID) {
+	if d, ok := c.bondDomain[id]; ok {
+		acc.addPresent(tagBondDomain, id[:], statehash.EncodeUint64(d))
+	} else {
+		acc.addAbsent(tagBondDomain, id[:])
+	}
+}
+
+// addDueBucketRead emits the dueBucket[h] read as the pre-apply presence/absence: the
+// committed bucket leaf (value = MTH over the canonical id list) when occupied, else a
+// non-membership leaf. Used for the reg's bucket-move write-targets and the TTL sweep.
+func (c *Chain) addDueBucketRead(acc *readSetAcc, h uint64) {
+	var hk [8]byte
+	binary.BigEndian.PutUint64(hk[:], h)
+	if ids, occ := c.dueBucket[h]; occ {
+		acc.addPresent(tagDueBucket, hk[:], dueBucketMTH(ids))
+	} else {
+		acc.addAbsent(tagDueBucket, hk[:])
+	}
+}
+
+// addEpochSetRead emits the epochSet[id] membership read as the pre-apply presence/absence:
+// the frozen-epoch qualification membership the atts-loop reads in a mature objective epoch
+// (effectiveEpochSet membership, attesterQualifiedAt:1297). epochSet is Class-B (value =
+// EncodeInt64(weight), statehash.go:135).
+func (c *Chain) addEpochSetRead(acc *readSetAcc, id ports.NodeID) {
+	if w, ok := c.epochSet[id]; ok {
+		acc.addPresent(tagEpochSet, id[:], statehash.EncodeInt64(w))
+	} else {
+		acc.addAbsent(tagEpochSet, id[:])
 	}
 }
