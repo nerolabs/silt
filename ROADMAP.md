@@ -182,9 +182,20 @@ close itself is the owner's call and is deliberately HELD. The current order:
    by the conservation design and regression-locked (`TestWashLoopIsAStrictLoss`,
    `TestPaidBountyIsNotRecoverableBySupersede`); it is neutralized by the firewall
    today and must close before any demand→standing fusion
-   (`docs/design/owned-residuals.md`). **§7.3 relay compensation is the remaining open
-   increment** (sender-funded incremental micropayment) and is **CONSULT-GATED** — an
-   owed follow-on mechanism-detail consult lands before any code.
+   (`docs/design/owned-residuals.md`). **§7.3 relay compensation SHIPPED
+   (#646/#647/#649/#650):** the certified sender-funded PayWord micropayment (the relay
+   leg is self-enforcing, no TTP — **D-POD-KNOBS** item 2), delivered across four merged
+   increments — PayWord machinery (#646), transport Batch 1 (#647; S-clamp #644 +
+   epoch-tied seen eviction #645), Batch 2 (#649; wire protocol + paid forwarding pump +
+   session reaper), and Batch 3 (#650; daemon binding, paid relay goes LIVE, closes #648).
+   The Batch-3 free-vs-paid routing policy was ratified as **Option B**
+   (**D-POD-RELAY-COEXIST** — paid relay is additive to free relay under shared caps).
+   Tracked
+   follow-ons remain (not blockers): #651 (resolver stopped-loop hardening, deferred to
+   graceful-shutdown work). A separate **GATED** residual — paid-reserved headroom —
+   re-opens a research-gated parameter and is not scheduled. **Third-operator committed
+   settlement is the remaining heavier PoD lane** (couples to the v5 keystone; own
+   certification when specced) — the next PoD frontier, not yet started.
 3. **The state-root keystone BUILD track** (larger; sequence against 2): SMT
    library call (`pokt-network/smt` closest-proof shape vs JMT port), the three
    certified oracles as failing-first RED homes, era-3 gate as #506 tenant #2.
