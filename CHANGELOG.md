@@ -188,6 +188,19 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   only — no consensus rule, validity predicate, or committed format changed.
 
 ### Docs
+- **Map the third-operator committed-settlement design space (DEFINITION only — the next PoD
+  frontier)** (`docs/thinking/2026-08-30-third-operator-committed-settlement-options.md`,
+  2026-08-30). A design-options strawman for a GATED economic mechanism: cross-operator
+  settlement into COMMITTED chain state, where an operator that is NOT the fetcher's direct
+  counterparty redeems value. No code, no mechanism decision, no recommendation. Frames the
+  hard constraints (the γ→1/N firewall / Invariant A; conservation / the banned per-receipt
+  subsidy; M0 Don't-#3; the keystone bounded-state rule; the STILL-SETTLING v5 format), lays
+  out four options for what-is-committed (log-only, net-balance leaf, per-receipt leaf,
+  settlement root) and three block-entry mechanisms, each with its own firewall + money-pump
+  analysis, and enumerates the gated surfaces (economic-mechanism, committed-format,
+  consensus-rule, security-parameter, M0-privacy) and the sharp open questions for Research /
+  PE. Flags that the heavy options couple to the unfrozen v5 format and the ungated v5
+  accept-core recompute, so they cannot be soundly specified yet.
 - **Record the owner-ratified lane-1 (trustless floor box, increment 3) decisions**
   (`docs/decisions.md`, 2026-08-30). Decision record only — no code, consensus, economic,
   or security content changed. Adds one dated entry under the #600 floor-box thread
