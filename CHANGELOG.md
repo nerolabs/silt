@@ -55,6 +55,28 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
     #535 boundary policy and NOT wiring `IngestBlockWitnesses` into acceptance (both Part B);
     no consensus rule or validity predicate changed, no production hook (the guard's
     leaf-perturbation setter is test-only).
+  - **The VALIDITY-READ guard gap, closed (test-only follow-on, PR #656)**
+    (`core/chain/readset_v5_drift_test.go`,
+    `docs/thinking/2026-08-30-lane1-partA-validity-read-guard-gap.md`, 2026-08-30). Blind
+    review found the guard's ground truth was `apply()`-shaped (write-diff ∪ apply-recompute
+    perturbation), but a floor box needs `validity ∪ apply-recompute`. `spent[serial]`
+    (`chain.go:2617`) and `revoked[root]` (`chain.go:2643`) are read ONLY in the validity
+    predicate, never in `apply()`, so both guard sources were structurally blind to them —
+    dropping either from the producer stayed GREEN (21 of 23 keyspaces reddened on drop; two
+    did not). Fix: a THIRD execution-derived ground-truth source, the VALIDITY-READ
+    perturbation — for each committed leaf, perturb its pre-state and run the REAL validity
+    read-predicates (`validateTakedowns` → `revoked`/`byRoot`; per-entry `ValidateEntry` →
+    `spent`/`byRoot`); a leaf whose perturbation FLIPS the accept/reject verdict is a
+    validity read. It excludes `validateEra3Roots` (the root recompute would flip every leaf;
+    that channel is Source 1's write-diff), mirroring Source 2's own-key exclusion — so it
+    isolates the pure validity-gate reads. A dedicated validity corpus
+    (`buildV5ValidityReadCorpus`) carries a token spend and a revoke→unrevoke so the reads
+    fire; the maintenance corpus is untouched. `TestWitnessReadSetV5AllKeyspacesRedOnDrop` is
+    the completeness proof: drop EACH of the 23 committed keyspaces one at a time and all 23
+    redden (`spent`/`revoked` now included). `TestWitnessReadSetV5ValidityReadsCovered` is
+    the coverage half. The producer's certified read-set is UNCHANGED (`spent`/`revoked` stay
+    emitted); no consensus/validity/statehash production change (the perturbation is
+    test-only).
 - **PoD §7.3 transport BATCH 3 — the daemon control-frame binding: the paid relay
   pump now runs on a LIVE node, failing-first**
   (`docs/decisions.md`, `adapters/relay/wire.go`, `adapters/relay/server.go`,

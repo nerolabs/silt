@@ -122,7 +122,58 @@ func groundTruthReadSet(t *testing.T, c *Chain, b Block) map[string]struct{} {
 			reads[string(lf.Key)] = struct{}{}
 		}
 	}
+
+	// --- Source 3: the VALIDITY-READ perturbation (the apply()-blind reads). ---
+	// The read-set a floor box needs is validity ∪ apply-recompute (AMENDED cert). Sources 1
+	// and 2 are BOTH apply()-shaped, so they are structurally blind to a leaf read ONLY in the
+	// VALIDITY predicate and never in apply(): spent[serial] (the double-spend gate,
+	// chain.go:2617) and revoked[root] (the un-revocation gate, chain.go:2643). Perturbing
+	// either changes NO apply-recompute leaf, so Sources 1/2 never list them — dropping them
+	// from the producer stayed GREEN (the "a read no guard catches" failure this guard exists
+	// to kill). Source 3 closes that: for each committed leaf L, perturb it on a fresh clone and
+	// re-run the REAL validity read-predicates; if the accept/reject VERDICT flips, the
+	// predicate READ L, so the box must witness it.
+	//
+	// This drives the production predicates that perform the reads — validateTakedowns (reads
+	// revoked/byRoot) and, per entry, ValidateEntry (reads spent/byRoot) — and EXCLUDES
+	// validateEra3Roots (the root recompute). The root predicate must be excluded: perturbing
+	// ANY committed leaf changes the recomputed root, so including it would flip the verdict for
+	// every leaf (all false positives). That root-recompute channel IS Source 1 (the write-diff
+	// is exactly the leaves the root commits). The exclusion mirrors Source 2's exclusion of the
+	// perturbed leaf's own key: each source isolates the channel the others miss. Source 3
+	// isolates the pure validity-gate reads. It only ADDS reads to the ground truth; the binding
+	// direction (producer ⊇ ground-truth) and soundness of over-witnessing are unchanged.
+	refVerdict := validityVerdict(c, b)
+	for _, lf := range c.stateRootLeavesV5() {
+		clone := c.cloneForDryRun()
+		if !perturbLeaf(clone, lf.Key, lf.Value) {
+			continue
+		}
+		if validityVerdict(clone, b) != refVerdict {
+			reads[string(lf.Key)] = struct{}{}
+		}
+	}
 	return reads
+}
+
+// validityVerdict runs the REAL validity read-predicates for block b against pre-apply state c
+// and returns "accept" or "reject" — the accept/reject verdict a floor box's validity check
+// yields. It runs the production predicates that perform the committed-state reads
+// (validateTakedowns → revoked/byRoot; per-entry ValidateEntry → spent/byRoot) and DELIBERATELY
+// EXCLUDES validateEra3Roots (the root recompute), because a perturbed leaf changes the
+// recomputed root and would flip the verdict for every leaf, swamping the pure-gate signal
+// Source 3 isolates (the root-recompute channel is Source 1's write-diff). The first rejecting
+// predicate short-circuits, matching ValidateProposal's own order.
+func validityVerdict(c *Chain, b Block) string {
+	if err := c.validateTakedowns(&b); err != nil {
+		return "reject"
+	}
+	for _, e := range b.Entries {
+		if err := c.ValidateEntry(e); err != nil {
+			return "reject"
+		}
+	}
+	return "accept"
 }
 
 // crossLeafDiffers reports whether two post-leaf-sets differ on ANY key other than `self`
@@ -501,6 +552,55 @@ func TestWitnessReadSetV5ExecutionDerivedGuard(t *testing.T) {
 	}
 }
 
+// TestWitnessReadSetV5ValidityReadsCovered extends the execution-derived guard to the VALIDITY
+// corpus: the producer's read-set must COVER (⊇) the ground-truth read-set (write-diff ∪
+// apply-perturbation ∪ VALIDITY-read perturbation) for a block that fires the apply()-blind
+// validity reads — spent[serial] (chain.go:2617) and revoked[root] (chain.go:2643). This is the
+// coverage half of the fix: it proves the producer STILL emits spent/revoked completely, checked
+// against execution-derived ground truth on the blocks that actually read them (the maintenance
+// corpus cannot — it has no token quorum and no revoke). The definitive drop check
+// (TestWitnessReadSetV5AllKeyspacesRedOnDrop) is the completeness half.
+//
+// The guard also asserts the two validity reads are GENUINELY in the ground truth (non-vacuity):
+// spent must appear for the spent probe, revoked for the revoked probe — else the corpus did not
+// exercise the read and the coverage check is empty for it.
+func TestWitnessReadSetV5ValidityReadsCovered(t *testing.T) {
+	corpus, snap := buildV5ValidityReadCorpus(t)
+	wantTag := map[string]string{"validity-spent": tagSpent, "validity-revoked": tagRevoked}
+	for _, cb := range corpus {
+		v5b := setV5(cb.block)
+		produced := keySet(snap.WitnessReadSetV5(v5b))
+		truth := groundTruthReadSet(t, snap, v5b)
+
+		var missing []string
+		for k := range truth {
+			if _, ok := produced[k]; !ok {
+				missing = append(missing, prettyKey(k))
+			}
+		}
+		if len(missing) > 0 {
+			sort.Strings(missing)
+			t.Fatalf("[%s] validity read-set INCOMPLETE: producer omits %d ground-truth read(s):\n  %v",
+				cb.label, len(missing), missing)
+		}
+
+		// Non-vacuity: the class's validity read must genuinely be in the ground truth (Source 3
+		// fired), else the probe did not exercise it.
+		if tag, ok := wantTag[cb.class]; ok {
+			found := false
+			for k := range truth {
+				if tg, _, _ := splitLeafKey([]byte(k)); tg == tag {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Fatalf("[%s] VACUOUS: ground truth has no %s read — the validity probe did not exercise it", cb.label, prettyTag(tag))
+			}
+		}
+	}
+}
+
 // prettyKey renders a leaf key (tag||rawKey) as "tag:hex" for readable failure output.
 func prettyKey(k string) string {
 	tag, raw, ok := splitLeafKey([]byte(k))
@@ -747,4 +847,174 @@ func TestWitnessReadSetV5BoundednessAblation(t *testing.T) {
 		t.Fatalf("ABLATION FAILED TO REDDEN: the injected O(registry) scan did not scale the read-set with the registry (small=%d large=%d) — the boundedness guard would not catch it",
 			len(rsSmall), len(rsLarge))
 	}
+}
+
+// --- The validity-read corpus + the definitive all-23-keyspaces completeness proof. ---
+
+// buildV5ValidityReadCorpus builds a corpus that genuinely EXERCISES the two committed leaves
+// read ONLY in the validity predicate (never in apply()): spent[serial] (the double-spend gate,
+// chain.go:2617) and revoked[root] (the un-revocation gate, chain.go:2643). The maintenance
+// corpus (buildV5ReadSetCorpus) runs tokenQuorum=0 and no revoke, so it cannot fire either read
+// — Source 3 needs a token-quorum world with a spend and a revoke→unrevoke to have a verdict to
+// flip. This corpus is ADDITIVE (it does not touch the maintenance corpus's boundedness/vacuity
+// properties) and its blocks are validity PROBES: both probe blocks are evaluated against the
+// SAME post-h1 pre-apply state.
+//
+// Returns the corpus (each block paired with a label) and the pre-apply snapshot chain, same
+// contract as buildV5ReadSetCorpus.
+func buildV5ValidityReadCorpus(t *testing.T) ([]v5ReadSetCorpusBlock, *Chain) {
+	t.Helper()
+	oi := newOrderIssuers(t)
+	// The two token issuers (oi.keys[0], oi.keys[1]) must be QUALIFIED attesters for
+	// publishtoken.Verify to accept their signatures (Verify's qualified callback =
+	// attesterQualified). Bond both, plus a third distinct bond, in an objective world with
+	// tokens required. MatureValidators=0 (this corpus targets validity reads, not the maturity
+	// latch). oi.keys[0] is the proposer.
+	prop := oi.keys[0]
+	cfg := Config{Quorum: 1, MinBond: era4MinBond, ByzantineQuorum: true,
+		EpochBlocks: 64, MatureValidators: 0, BondTTLBlocks: 4}
+	build := func() *Chain {
+		c := New(cfg, func(ports.NodeID) int64 { return 0 })
+		c.SetBondVerifier(objectiveVerify)
+		c.RequireTokens(2, oi.issuer)
+		return c
+	}
+	c := build()
+	snap := build()
+
+	// Genesis: bond the two issuer keys (so they qualify) + a third distinct bond, and publish a
+	// TOKEN entry that spends serial S1 (drives spent[S1] = true). entry(20)'s root is the one we
+	// later revoke → unrevoke.
+	serialS1 := []byte("validity-corpus-serial-1")
+	pubRoot := entry(20).Root
+	g := &Block{Version: 1, Height: 0}
+	g.Entries = []ports.Entry{tokenEntry(20, oi.mint(serialS1))}
+	g.BondRegs = []BondReg{
+		bondRegFull(oi.keys[0], ports.HashBytes(pubOf(oi.keys[0])), 4<<20, ports.Hash{}, 5, 1),
+		bondRegFull(oi.keys[1], ports.HashBytes(pubOf(oi.keys[1])), 4<<20, ports.Hash{}, 5, 2),
+		bondRegFull(oi.keys[2], ports.HashBytes(pubOf(oi.keys[2])), 4<<20, ports.Hash{}, 5, 3),
+	}
+	Sign(g, prop)
+	c.apply(*g)
+
+	// h1: REVOKE the published root (writes revoked[pubRoot]; reads byRoot[pubRoot]).
+	prev := g.Hash()
+	b1 := &Block{Version: 1, Height: 1, Prev: prev, Revocations: []ports.Hash{pubRoot}}
+	Sign(b1, prop)
+	c.apply(*b1)
+
+	var corpus []v5ReadSetCorpusBlock
+
+	// PROBE A — the spent read. An entry with a FRESH root (dup-root passes) carrying a token
+	// with the ALREADY-SPENT serial S1. ValidateEntry reads spent[S1] → reject; deleting spent[S1]
+	// → the token verifies → accept. The verdict flip is carried SOLELY by spent[S1], so Source 3
+	// lists spent as a read and dropping it from the producer reddens.
+	spentProbe := &Block{Version: 1, Height: 2, Prev: b1.Hash(),
+		Entries: []ports.Entry{tokenEntry(21, oi.mint(serialS1))}}
+	Sign(spentProbe, prop)
+	corpus = append(corpus, v5ReadSetCorpusBlock{block: *spentProbe, label: "spent-read probe", class: "validity-spent"})
+
+	// PROBE B — the revoked read. UN-REVOKE the revoked root. validateTakedowns reads
+	// revoked[pubRoot] → present → accept; deleting revoked[pubRoot] → not revoked → reject. The
+	// verdict flip is carried SOLELY by revoked[pubRoot].
+	revokedProbe := &Block{Version: 1, Height: 2, Prev: b1.Hash(), Unrevocations: []ports.Hash{pubRoot}}
+	Sign(revokedProbe, prop)
+	corpus = append(corpus, v5ReadSetCorpusBlock{block: *revokedProbe, label: "revoked-read probe", class: "validity-revoked"})
+
+	// Advance snap to the same post-h1 committed state the probes are evaluated against.
+	snap.apply(*g)
+	snap.apply(*b1)
+	return corpus, snap
+}
+
+// v5GuardCorpus pairs a corpus with its pre-apply snapshot so the guard and the definitive drop
+// check can run over BOTH the maintenance and validity corpora. The probe blocks in the validity
+// corpus all sit at the SAME post-h1 pre-apply state, so the snapshot is NOT advanced between
+// them (sequential=false), unlike the maintenance corpus, whose blocks are a height sequence.
+type v5GuardCorpus struct {
+	name       string
+	corpus     []v5ReadSetCorpusBlock
+	snap       *Chain
+	sequential bool
+}
+
+func allV5GuardCorpora(t *testing.T) []v5GuardCorpus {
+	t.Helper()
+	mc, ms := buildV5ReadSetCorpus(t)
+	vc, vs := buildV5ValidityReadCorpus(t)
+	return []v5GuardCorpus{
+		{name: "maintenance", corpus: mc, snap: ms, sequential: true},
+		{name: "validity", corpus: vc, snap: vs, sequential: false},
+	}
+}
+
+// TestWitnessReadSetV5AllKeyspacesRedOnDrop is THE DEFINITIVE COMPLETENESS PROOF: drop EACH of
+// the 23 committed keyspaces from the producer, one at a time, over the UNION of the maintenance
+// and validity corpora, and assert the execution-derived guard goes RED for EVERY one. A
+// keyspace reddens if some corpus block has a ground-truth read of it the ablated producer no
+// longer covers. All 23 must redden — including spent and revoked, which the prior guard was
+// blind to (Sources 1/2 are apply()-shaped; Source 3, the validity-read perturbation, catches
+// them). A keyspace that stays GREEN on drop is a read no guard catches — the exact defect this
+// guard exists to kill.
+func TestWitnessReadSetV5AllKeyspacesRedOnDrop(t *testing.T) {
+	tags := v5CommittedKeyspaceTags()
+	if len(tags) != 23 {
+		t.Fatalf("expected 23 committed keyspaces, got %d — the completeness proof must cover the full set", len(tags))
+	}
+	for _, tag := range tags {
+		tag := tag
+		t.Run(prettyTag(tag), func(t *testing.T) {
+			if !keyspaceReddensOnDrop(t, tag) {
+				t.Fatalf("GUARD BLIND: dropping keyspace %q from the producer left the execution-derived guard GREEN across every corpus block — a read no guard catches (the exact soundness hole this guard exists to kill)", prettyTag(tag))
+			}
+		})
+	}
+}
+
+// keyspaceReddensOnDrop reports whether dropping `tag` from the producer output makes the guard's
+// coverage check RED on SOME block across all corpora — i.e. the ablated producer omits a
+// ground-truth read of `tag` that the real recompute/validity performs.
+func keyspaceReddensOnDrop(t *testing.T, tag string) bool {
+	t.Helper()
+	drop := dropTag(tag)
+	for _, gc := range allV5GuardCorpora(t) {
+		applied := make(map[uint64]bool)
+		for _, cb := range gc.corpus {
+			v5b := setV5(cb.block)
+			produced := keySet(drop(gc.snap.WitnessReadSetV5(v5b)))
+			truth := groundTruthReadSet(t, gc.snap, v5b)
+			for k := range truth {
+				if _, ok := produced[k]; ok {
+					continue
+				}
+				tg, _, _ := splitLeafKey([]byte(k))
+				if tg == tag {
+					return true
+				}
+			}
+			if gc.sequential && !applied[cb.block.Height] {
+				gc.snap.apply(cb.block)
+				applied[cb.block.Height] = true
+			}
+		}
+	}
+	return false
+}
+
+// v5CommittedKeyspaceTags is the closed set of the 23 committed v5 keyspaces (statehash.go:39-81).
+func v5CommittedKeyspaceTags() []string {
+	return []string{
+		tagByRoot, tagSpent, tagRevoked, tagSlashed, tagValidatorsSeen, tagBonded, tagEpochSet,
+		tagBondRootOwner, tagBondRootProven, tagBondRegHeight, tagRegVersion, tagBondDomain,
+		tagQualified, tagDueBucket, tagEverMature, tagMatureEpoch, tagGateLockedIn, tagGateHeight,
+		tagEra3LockedIn, tagEra3Height, tagEpochStart, tagEra4LockedIn, tagEra4Height,
+	}
+}
+
+// prettyTag renders a field tag (which ends in a NUL) as a readable name for subtest output.
+func prettyTag(tag string) string {
+	if n := len(tag); n > 0 && tag[n-1] == 0 {
+		return tag[:n-1]
+	}
+	return tag
 }
