@@ -9,6 +9,46 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **era-4 (v5) trustless floor-box validation — lane-1 Part B increment B1 (the SOUND,
+  ADDITIVE slice: the #535 cold-auditor recovery-boundary policy + the additive entry
+  point; the accept-core recompute is research-gated and NOT built)**
+  (`core/chain/floorbox_v5.go`, `core/chain/floorbox_v5_test.go`,
+  `docs/thinking/2026-08-30-lane1-partB-witness-validation-options.md`, 2026-08-30).
+  `Chain.WitnessValidateV5(block, parentStateRoot, recoveryDirective)` is the ADDITIVE
+  floor-box validation MODE — a SEPARATE path a root-only client calls instead of holding
+  the tree. It changes NO full-node accept path: `apply()`, `validateEra3Roots`,
+  `postApplyRoots`, every validity predicate, and I1–I5 are untouched.
+  - **Ships the RATIFIED #535 policy** (decisions.md 2026-08-30 item 3): the recovery
+    directive is sourced ONLY from the box's own local `-ws-checkpoint`-class config
+    (`RecoveryDirective`), NEVER the proposer or the block. A directive PRESENT for an
+    ambiguous recovery boundary ⇒ proceed to trustless validation; ABSENT (cold-auditor
+    default) ⇒ a LOUD `IndeterminateTrustlessly` (do NOT accept, never trust the proposer);
+    `LiveFollower` is an OPT-IN flip. `RecoveryBoundaryDecision` is the standalone,
+    unit-tested policy; `isAmbiguousRecoveryBoundary` mirrors the full-node
+    `effectiveEpochSet` recovery-branch gate exactly (`chain.go:1466-1468`). The #535
+    residual is NOT claimed closed — closure is gated on the #603 `bonded`/`epochSet`
+    keystone probes (noted in-code).
+  - **The accept-core recompute is ROUTED TO THE RESEARCH GATE, not guessed.** The bounded
+    witnessable recompute that would decide Accept/Reject does not yet exist (PE ruling
+    `silt-reviews/principle-engineer/RULING-lane1-partA-readset-v5-producer-2026-08-30.md`,
+    premise 1: "a DIFFERENT, bounded witnessable recompute that does not yet exist in the
+    tree (Part B)"). Building it soundly is blocked on two verified obstructions: `apply()`
+    iterates WHOLE committed maps (the `bondRegHeight` TTL sweep, `chain.go:3272`) the
+    BOUNDED read-set does not witness in full, so a witness-seeded-clone replay computes the
+    WRONG write-set; and some read-set leaves are DIGESTS (`dueBucket[h]` is an MTH over its
+    id set, `statehash.go:224`), not the typed data `apply` iterates. A correct bounded
+    recompute is a NEW, soundness-critical, consensus-equivalent computation — a
+    research-gated surface. This increment REFUSES to guess it: `WitnessValidateV5` NEVER
+    returns `Accept` (proven by `TestWitnessValidateV5_NeverAcceptsWhileRecomputeGated`); the
+    safe-default `IndeterminateTrustlessly` (`ErrRecomputeGated`) holds until a certified
+    recompute lands, at which point its verdict slots into the marked seam.
+  - **Every proof case is ABLATED** (defect injected, watched red): the cold-auditor stall,
+    the directive-present proceed, the live-follower opt-in, the non-boundary non-ambiguity,
+    the epoch-boundary gate match, the v5-only version gate, and the never-Accept safety
+    invariant. `go test ./core/... ./internal/...` green; new tests green under `-race`.
+  - **B1/B2 boundary:** B1 = validate a witness bundle in hand (pure-core, witnesses fed in
+    tests) + the #535 policy. B2 (later) = any-of-N witness delivery / networking / daemon
+    mode, and the gated accept-core recompute.
 - **era-4 (v5) witness read-set PRODUCER — lane-1 Part A, REBUILT against the AMENDED
   cert (the COMPLETE read-set + an execution-derived completeness guard)**
   (`core/chain/readset_v5.go`, `core/chain/readset_v5_drift_test.go`,
