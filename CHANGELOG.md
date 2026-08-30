@@ -9,6 +9,33 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **era-4 (v5) witness read-set PRODUCER — lane-1 Part A (the trustless floor box's
+  execution-derived block read-set)**
+  (`core/chain/readset_v5.go`, `core/chain/readset_v5_drift_test.go`,
+  `docs/thinking/2026-08-30-lane1-partA-readset-producer-options.md`, 2026-08-30).
+  `Chain.WitnessReadSetV5(block)` emits, for a v5 block, the WITNESS read-set as a
+  `[]statehash.ReadEntry`: the committed-state keys the v5 witnessable recompute reads
+  to trustlessly re-derive the post-state root. The certified identity (cert
+  `silt-reviews/research/research-outcome/era4-witness-floor-box-readset-v5-RESEARCH-CERTIFICATION-2026-08-30.md`):
+  validity reads ∪ `apply()` branch reads (`slashed`/`bondRootOwner`/`bondRootProven`)
+  ∪ era-4 accelerator reads (the single `dueBucket[h]` non-membership leaf + the touched
+  `qualified`/`epochSet` delta). Handles all three block classes — ordinary and
+  TTL-firing (O(payload), incl. the empty-`dueBucket[h]` non-membership case, the whole
+  era-4 win) and epoch-boundary (O(boundary-delta)).
+  - **The certified hazard, obeyed.** The producer targets the BOUNDED witnessable
+    recompute, NOT `apply()`'s literal reads — `apply()` still scans the whole
+    `bondRegHeight` map every block, so instrumenting it would yield the O(registry) set
+    and defeat era-4. The producer is payload-driven; the TTL completeness collapses to
+    ONE `dueBucket[h]` leaf, never a per-id scan.
+  - **The R3 drift guard (`TestWitnessReadSetV5DriftGuard`).** An INDEPENDENT
+    recompute-reads enumeration (grouped by field, a distinct code path) is asserted
+    equal to the producer's read-set over a branch-covering corpus. Ablation-proven RED
+    on a dropped `dueBucket` key and a dropped `qualified`/`epochSet` delta key; restored
+    GREEN. Plus `TestWitnessReadSetV5BoundedNotRegistrySized` — the O(payload) property:
+    a TTL-empty block's read-set does NOT scale with the registry (proven RED under an
+    injected O(registry) scan). Scope: the read-set PRODUCER only — NOT the #535 boundary
+    policy and NOT wiring `IngestBlockWitnesses` into acceptance (both Part B); no
+    consensus rule or validity predicate changed.
 - **PoD §7.3 transport BATCH 3 — the daemon control-frame binding: the paid relay
   pump now runs on a LIVE node, failing-first**
   (`docs/decisions.md`, `adapters/relay/wire.go`, `adapters/relay/server.go`,
