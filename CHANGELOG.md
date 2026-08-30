@@ -43,6 +43,19 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
     `Reputation()` unchanged (Invariant-A firewall), free relay still working with
     payments on (the Option-B witness), and the M0 settlement-log audit.
 
+### Docs
+- **True-up: era-3 format FROZEN + era-4 spine BUILT, roadmap/design drift corrected**
+  (`ROADMAP.md`, `docs/design/block-format-by-era.md`, `docs/decisions.md`, 2026-08-30).
+  Documentation reconciliation only — no code, consensus, economic, or security content
+  changed. Reflects facts already on main: the era-3 committed state-root format
+  (`BlockVersion = 4`) is BUILT + FROZEN (#632, build `3af40bc`); the era-4
+  witnessable-transitions spine (`BlockVersion = 5`) is BUILT + merged across 4a–4d
+  (#637/#639/#640/#641); `RegCap` is the per-block TOTAL BondReg count cap (fresh +
+  renewal, after same-id fold) = 256, the "fresh-only" reading REFUTED. Records the
+  owner-ratified sequencing decision (2026-08-30): era-4/v5 is kept OPEN-ENDED and its
+  freeze is deferred to the end of Proof-of-Delivery, to run as a second practiced era
+  freeze.
+
 ### Fixed
 - **PoD §7.3 BATCH 3 review fold-in — the paid e2e made `-race` clean and CI-caught**
   (`e2e/relay_paid_test.go`, `.github/workflows/ci.yml`, 2026-08-30). Two follow-ups

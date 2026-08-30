@@ -196,20 +196,24 @@ close itself is the owner's call and is deliberately HELD. The current order:
    re-opens a research-gated parameter and is not scheduled. **Third-operator committed
    settlement is the remaining heavier PoD lane** (couples to the v5 keystone; own
    certification when specced) — the next PoD frontier, not yet started.
-3. **The state-root keystone BUILD track** (larger; sequence against 2): SMT
-   library call (`pokt-network/smt` closest-proof shape vs JMT port), the three
-   certified oracles as failing-first RED homes, era-3 gate as #506 tenant #2.
-   Owner/builder calls held: lifetime-owner vs TTL-lapse for `bondRootOwner`
-   (both C2-sound), rebuild-vs-persist (a build-immutable-#8 measurement).
-   **RE-SEQUENCED 2026-08-28 (#600 ratified): the era-3 format freeze is now
-   critical-path, no longer deferrable.** With witness-validation ratified as the
-   floor-box's primary posture (hold-tree demoted to a bigger-box opt-in), the
-   witness path is **vacuous until the `Block` commits BOTH roots** — the state SMT
-   root and the append-only transparency-log root — over the completeness-proven
-   field set (`Block` commits neither today). Hold-tree previously let the format
-   freeze wait; it no longer does. So the consensus-weight probe residuals still
-   hard-gate the freeze: `bonded`-weight and `epochSet` first, then `spent`/`slashed`
-   must reach the keystone oracles green before era-3 freezes (#603).
+3. **The state-root keystone track** — **era-3 format FROZEN 2026-08-29 (#632, build
+   `3af40bc`); era-4 witnessable-transitions spine BUILT + merged 2026-08-29.** The era-3
+   committed state-root format (`BlockVersion = 4`) is now in the Immutable tier
+   (`docs/TENETS.md` Part IX): the block commits a state SMT root plus an append-only
+   transparency-log root over the completeness-proven 18-field set, and changing it requires
+   a new era, not an edit. The trustless-floor-box path then continued as the **era-4
+   witnessable-transitions track (`BlockVersion = 5`)**, whose build spine landed across four
+   merged increments: 4a (#637 — mint v5 + reserve the three v5 field tags, inert), 4b (#639
+   — the maintenance spine: `qualified` + due-bucket + `epochStart`, v5-gated), 4c (#640 —
+   the v5 validity predicate + `RegCap` + version-widen), 4d (#641 — height-gated activation +
+   mint-flip). `RegCap` is the per-block TOTAL BondReg count cap — fresh AND renewal, after
+   the same-id fold — value **256** (`core/chain/chain.go:404`); the earlier "fresh-only"
+   reading was REFUTED and corrected. This is the **chain-side** witnessable-transitions spine
+   only; the trustless floor-box (witness) validator itself remains the open C-7 / #600
+   follow-on, not yet shipped. **Governance stance (owner-ratified 2026-08-30): era-4/v5 is
+   deliberately kept OPEN-ENDED — there is no live blockchain, and PoD may still reshape
+   witnessable state — so the v5 freeze is DEFERRED to the END of Proof-of-Delivery, to be run
+   as a second practiced era freeze** (the era-3 freeze being the first).
 4. **The publish-bound re-derivation** — ✅ DONE (2026-08-27): 360 → 300 s, derived
    downward from fe2376a-deep's measured ~48 s/height cadence; the #451 escape floor
    (a consensus-liveness parameter) left untouched.
