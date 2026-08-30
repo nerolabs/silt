@@ -253,3 +253,100 @@ func TestRelayWireGuardsFireOnLivePath(t *testing.T) {
 		t.Fatalf("guard (ii) bypassed on the wire: a reused ephemeral identity opened a second session")
 	}
 }
+
+// floodOpenMsg builds a synthetic MsgRelayOpen for a fresh-identity attacker open:
+// a distinct ephemeral `from` and a distinct chain root, funding-blind, S valid. It
+// is the exact wire input handleRelayOpen decodes on every guard-passing open.
+func floodOpenMsg(t *testing.T, seq uint64) (ports.NodeID, ports.Message) {
+	t.Helper()
+	// Distinct fresh ephemeral identity per open (guard (ii) rejects reuse, so a
+	// flood MUST use fresh identities — this mirrors the attacker).
+	from := ports.HashBytes([]byte(fmt.Sprintf("flood-eph-%d", seq)))
+	// Distinct fresh chain root per open (guard (ii) rejects root reuse too).
+	root := make([]byte, 32)
+	binaryPutUint64(root, seq)
+	open := relaypay.RelayOpen{Root: root, S: 8, Funding: int(FundingEphemeralBlind)}
+	blob, err := open.Marshal()
+	if err != nil {
+		t.Fatalf("marshal flood open %d: %v", seq, err)
+	}
+	return from, ports.Message{Kind: ports.MsgRelayOpen, Data: blob}
+}
+
+func binaryPutUint64(b []byte, v uint64) {
+	for i := 0; i < 8; i++ {
+		b[i] = byte(v >> (8 * uint(i)))
+	}
+}
+
+// TestRelayOpenFloodStaysBounded is the Batch-2 leak-fix failing-first test (PE
+// ruling 2026-08-30). A flood of fresh-identity MsgRelayOpen messages with NO
+// settlement must NOT grow relaySessions without bound. Two bounds hold it:
+//
+//  1. HARD CAP: within a single epoch, once the table is at relayMaxLiveSessions
+//     every further open is refused (OK=false), so the table never exceeds the cap.
+//     (Ablation: remove the cap check in OpenRelaySession → the table grows to N and
+//     this assertion reddens.)
+//  2. EPOCH SWEEP: after an epoch advance past the retention window, stale unsettled
+//     sessions are reaped, so the table does not carry a full epoch's admits forever.
+//     (Ablation: remove the session loop in sweepRelaySeen → the pre-advance
+//     sessions survive and the post-sweep assertion reddens.)
+//
+// Removing BOTH the cap and the sweep turns this test RED (unbounded growth to N).
+func TestRelayOpenFloodStaysBounded(t *testing.T) {
+	relay := newRelayTestNode(7002)
+	relay.EnableRelayAccept()
+
+	// Drive the epoch from a test-controlled variable so the sweep can be triggered
+	// deterministically without a full chain.
+	var epoch uint64
+	relay.setRelayEpochFnForTest(func() uint64 { return epoch })
+
+	// (1) HARD CAP: flood N >> cap fresh-identity opens within one epoch, none
+	// settled. The table must stay at or below the cap the whole time.
+	const N = relayMaxLiveSessions * 3
+	epoch = 0
+	for i := uint64(0); i < N; i++ {
+		from, msg := floodOpenMsg(t, i)
+		relay.handleRelayOpen(from, msg)
+		if got := relay.relayLiveSessionCountForTest(); got > relayMaxLiveSessions {
+			t.Fatalf("session table grew to %d after %d wire opens — exceeds the hard cap %d (unbounded-growth leak)", got, i+1, relayMaxLiveSessions)
+		}
+	}
+	atCap := relay.relayLiveSessionCountForTest()
+	if atCap != relayMaxLiveSessions {
+		t.Fatalf("after a flood of %d opens the table holds %d, want it pinned at the cap %d", N, atCap, relayMaxLiveSessions)
+	}
+
+	// (2) EPOCH SWEEP: advance the epoch past the retention window. The next open
+	// triggers sweepRelaySeen, which must reap the stale (epoch-0) unsettled sessions.
+	// After the advance the table drops far below the cap — the pre-advance flood did
+	// NOT survive.
+	epoch = relayRetentionEpochs + 1 // two epochs on, epoch-0 sessions age out
+	from, msg := floodOpenMsg(t, N)  // one fresh open to trigger the lazy sweep
+	relay.handleRelayOpen(from, msg)
+	if got := relay.relayLiveSessionCountForTest(); got > 1 {
+		t.Fatalf("after an epoch advance past retention the table holds %d stale sessions — the epoch sweep did not reap unsettled sessions (leak survives across epochs)", got)
+	}
+}
+
+// TestRelaySettledSessionRemovedPromptly pins the drain side of the fix: a
+// legitimately-settled session is removed from the table immediately at settlement
+// (the existing single-settle path), independent of any sweep. This guards against
+// a sweep-only fix that would leave settled sessions lingering until the next epoch.
+func TestRelaySettledSessionRemovedPromptly(t *testing.T) {
+	const S = 4
+	fetcher, relay, _, sched := relayPairForTest(t, nil, 1_000)
+	chain, _ := relaypay.BuildChain([]byte("prompt-removal-fresh-random-tip!!")[:32], S)
+
+	var handle uint64
+	fetcher.OpenRelaySessionRemote(relay.id, chain.Root(), S, FundingEphemeralBlind, func(h uint64, _ error) { handle = h })
+	sched.Run()
+	if relay.relayLiveSessionCountForTest() != 1 {
+		t.Fatalf("after one open the table holds %d sessions, want 1", relay.relayLiveSessionCountForTest())
+	}
+	relay.SettleRelaySession(handle)
+	if got := relay.relayLiveSessionCountForTest(); got != 0 {
+		t.Fatalf("after settlement the table holds %d sessions, want 0 — settled sessions must be removed promptly, not left for the sweep", got)
+	}
+}

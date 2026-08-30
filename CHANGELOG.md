@@ -247,6 +247,24 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   (precedent: `MaxBondRegBytesPerBlock` is proposer-policy-only).
 
 ### Fixed
+- **PoD §7.3 transport BATCH 2 — bound the live relay-session table (leak fix,
+  failing-first)** (`core/node/relayrole.go`, `core/node/relaytransport_test.go`,
+  `core/node/relayrole_test.go`, 2026-08-30). Closes the MEDIUM the blind PE ruling
+  surfaced (`RULING-pod-7.3-transport-batch2-2026-08-30.md`): `handleRelayOpen`
+  inserted a `relaySessions` entry on every guard-passing `MsgRelayOpen`, but the
+  only removal (`SettleRelaySession`) is not wired on the live path, so the daemon
+  flag `--accept-relay-payments` grew the table without bound from cheap
+  fresh-identity opens. Two bounds, mirroring the #645 seen-map fix: (1) an
+  epoch/TTL SWEEP — each session is stamped with its admit epoch and reaped by
+  `sweepRelaySeen` on the SAME monotonic floor as the seen maps once it ages past
+  the retention window; (2) a hard per-node CAP (`relayMaxLiveSessions = 4096`,
+  tunable) — an open past the ceiling is refused (`OK=false`), bounding growth
+  BETWEEN sweeps. `TestRelayOpenFloodStaysBounded` is RED under either ablation
+  (cap removed → table exceeds 4096; sweep removed → stale sessions survive the
+  epoch advance); `TestRelaySettledSessionRemovedPromptly` pins prompt removal on
+  settlement. No Batch-1/Batch-2 guard, M0 guard, or conservation cap was weakened.
+  TODO(Batch-3): when the daemon control-frame binding wires `SplicePaid`, the
+  session sweep must tear down a reaped session's pump.
 - **witness floor-box R3 — Kind/Value disagreement + a weak gate-1 test**
   (`core/statehash/witness_bound.go`, `core/statehash/witness_bound_test.go`,
   2026-08-29). Two follow-up fixes on the R3 DoS bound. (1) Safety (blind PE

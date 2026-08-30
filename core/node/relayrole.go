@@ -74,6 +74,21 @@ const (
 // outlive the sessions that could reuse it — one epoch back covers that.
 const relayRetentionEpochs = 1
 
+// relayMaxLiveSessions is the hard per-node ceiling on concurrent live paid-relay
+// sessions (Batch-2 leak fix, PE ruling 2026-08-30). The session table is written
+// from the wire on every guard-passing MsgRelayOpen and drained only at settlement
+// (never called on the live path yet), so without a cap a flood of cheap fresh-
+// identity opens grows it without bound between epoch sweeps. This ceiling bounds
+// growth BETWEEN sweeps: past it, a new open is refused (OK=false) rather than
+// admitted. The specific value is a TUNING call, not a correctness one — 4096 is a
+// conservative default (~4096 × ~200 B ≈ 800 KB worst-case table), well above any
+// honest concurrent-session count on a single relay and far below an OOM. Raise it
+// if a legitimate deployment ever saturates it.
+const relayMaxLiveSessions = 4096
+
+// errRelaySessionCap is returned when the live session table is at the hard cap.
+const errRelaySessionCap = relayError("relay: live session table at capacity (per-node concurrent-session cap); retry after in-flight sessions settle")
+
 // EnableRelayAccept opts this node into accepting sender-funded PayWord chains.
 // Off by default; the mirror of EnableDemandBank for the delivery lane. The
 // daemon wires it behind a flag (cmd/silt/daemon.go).
@@ -99,11 +114,18 @@ func (n *Node) EnableRelayAccept() {
 	}
 }
 
-// sweepRelaySeen evicts seen-map entries older than the retention window, keyed on
-// the current epoch, with a MONOTONIC eviction floor (#645). The floor never
-// lowers: a reorg that moves the epoch backward (epochStart is reorg-swapped) must
-// not un-evict a swept entry, or a previously-seen root could be re-admitted — a
-// guard-(ii) regression. So the floor is max(previousFloor, epoch - retention).
+// sweepRelaySeen evicts seen-map entries AND stale unsettled live sessions older
+// than the retention window, keyed on the current epoch, with a MONOTONIC eviction
+// floor (#645). The floor never lowers: a reorg that moves the epoch backward
+// (epochStart is reorg-swapped) must not un-evict a swept entry, or a previously-
+// seen root could be re-admitted — a guard-(ii) regression. So the floor is
+// max(previousFloor, epoch - retention).
+//
+// The session sweep shares the SAME floor as the seen-map sweep (Batch-2 leak fix,
+// PE ruling 2026-08-30): a session admitted in an epoch below the floor is an
+// unsettled leak — the settlement path is not wired on the live wire path yet — so
+// it is reaped here. This is the epoch/TTL half of the fix; relayMaxLiveSessions is
+// the hard-cap half that bounds growth BETWEEN sweeps.
 func (n *Node) sweepRelaySeen(epoch uint64) {
 	var newFloor uint64
 	if epoch > relayRetentionEpochs {
@@ -124,6 +146,16 @@ func (n *Node) sweepRelaySeen(epoch uint64) {
 			delete(n.relaySeenRoot, root)
 		}
 	}
+	// Reap stale unsettled sessions on the same monotonic floor. A reaped session
+	// carries no live resource today (SplicePaid / the paid pump is test-only, not
+	// wired on the live path). TODO(Batch-3): when the daemon control-frame binding
+	// wires SplicePaid, this eviction MUST tear down the reaped session's pump
+	// (sess.closeSession()) so a reaped session's goroutine does not linger.
+	for handle, sess := range n.relaySessions {
+		if sess.admitEpoch < newFloor {
+			delete(n.relaySessions, handle)
+		}
+	}
 }
 
 // RelaySession is one live relay-payment session: the relay-side PayWord
@@ -141,6 +173,13 @@ type RelaySession struct {
 
 	ephID  ports.NodeID // the fetcher's fresh ephemeral identity (settlement source)
 	budget int64        // S × RelayIncrementCredit — the conservation cap
+
+	// admitEpoch is the epoch this session was opened in. The session sweep
+	// (sweepRelaySessions) evicts sessions whose admit epoch has aged past the
+	// retention window, mirroring the #645 seen-map eviction. A wire open that is
+	// never settled cannot grow the table forever: it is reaped at the next
+	// epoch-tied sweep, and the hard cap bounds growth between sweeps.
+	admitEpoch uint64
 
 	// authorizer bridge (design §2 Option A: the node drives, the adapter gates).
 	// authBytes is the forward-byte ceiling the paid pump may deliver up to; it
@@ -225,6 +264,14 @@ func (n *Node) OpenRelaySession(ephID ports.NodeID, root []byte, S int, funding 
 	epoch := n.relayEpochFn()
 	n.sweepRelaySeen(epoch)
 
+	// Hard per-node concurrent-session cap (Batch-2 leak fix, PE ruling 2026-08-30).
+	// The sweep above frees any stale-epoch sessions first; if the table is STILL at
+	// the ceiling, refuse the open rather than admit an unbounded entry. This bounds
+	// growth between epoch sweeps against a flood of cheap fresh-identity opens.
+	if len(n.relaySessions) >= relayMaxLiveSessions {
+		return nil, errRelaySessionCap
+	}
+
 	// Guard (i): funding MUST be an ephemeral blind credit, never a durable account.
 	if funding != FundingEphemeralBlind {
 		return nil, errRelayDurableFunding
@@ -253,7 +300,9 @@ func (n *Node) OpenRelaySession(ephID ports.NodeID, root []byte, S int, funding 
 	n.relaySeenEph[ephID] = epoch
 	n.relaySeenRoot[rootKey] = epoch
 	budget := int64(S) * relaypay.RelayIncrementCredit
-	return newRelaySession(relaypay.NewVerifier(root, S), ephID, budget), nil
+	sess := newRelaySession(relaypay.NewVerifier(root, S), ephID, budget)
+	sess.admitEpoch = epoch // stamp for the session sweep (sweepRelaySeen)
+	return sess, nil
 }
 
 // Pay authorizes the next increment by verifying a revealed preimage — one
