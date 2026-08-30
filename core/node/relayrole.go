@@ -61,15 +61,66 @@ const (
 	errRelayDurableFunding = relayError("relay: chain root funded by a durable account rejected (M0 guard (i): funding must be an ephemeral blind credit)")
 	errRelayEphemeralReuse = relayError("relay: ephemeral identity reused across sessions rejected (M0 guard (ii): one ephemeral identity per session)")
 	errRelayChainReuse     = relayError("relay: chain root reused across sessions rejected (M0 guard (ii): one chain per session)")
+	errRelayChainTooLong   = relayError("relay: committed chain length S exceeds S_max = MaxSessionBytes / RelayIncrementBytes (#644 DoS clamp: bound the AdvanceTo walk)")
 )
+
+// relayRetentionEpochs is the seen-map retention window in epochs (#645). Keeping
+// the CURRENT and PREVIOUS epoch (window = 1 epoch back) protects a session opened
+// just before a boundary across the boundary, while bounding the maps to
+// sessions-per-epoch × 2 entries rather than the full admit history. A chain root
+// and ephemeral identity are single-use within an epoch, so an entry only needs to
+// outlive the sessions that could reuse it — one epoch back covers that.
+const relayRetentionEpochs = 1
 
 // EnableRelayAccept opts this node into accepting sender-funded PayWord chains.
 // Off by default; the mirror of EnableDemandBank for the delivery lane. The
 // daemon wires it behind a flag (cmd/silt/daemon.go).
 func (n *Node) EnableRelayAccept() {
 	n.relayAccept = true
-	n.relaySeenEph = make(map[ports.NodeID]bool)
-	n.relaySeenRoot = make(map[string]bool)
+	n.relaySeenEph = make(map[ports.NodeID]uint64)
+	n.relaySeenRoot = make(map[string]uint64)
+	n.relayEvictionFloor = 0
+	// Production epoch source: the chain's head height / EpochBlocks — a sequential
+	// epoch index. With no chain or epochs disabled the epoch is 0 (no eviction; the
+	// maps still bound-check but never rotate, which is the pre-epoch behavior).
+	n.relayEpochFn = func() uint64 {
+		if n.chain == nil {
+			return 0
+		}
+		eb := n.chain.EpochBlocks()
+		if eb == 0 {
+			return 0
+		}
+		_, height := n.chain.Head()
+		return height / eb
+	}
+}
+
+// sweepRelaySeen evicts seen-map entries older than the retention window, keyed on
+// the current epoch, with a MONOTONIC eviction floor (#645). The floor never
+// lowers: a reorg that moves the epoch backward (epochStart is reorg-swapped) must
+// not un-evict a swept entry, or a previously-seen root could be re-admitted — a
+// guard-(ii) regression. So the floor is max(previousFloor, epoch - retention).
+func (n *Node) sweepRelaySeen(epoch uint64) {
+	var newFloor uint64
+	if epoch > relayRetentionEpochs {
+		newFloor = epoch - relayRetentionEpochs
+	}
+	// Monotonic: the floor only moves forward, never backward on a reorg.
+	if newFloor <= n.relayEvictionFloor {
+		return // nothing new to evict; the floor did not advance
+	}
+	n.relayEvictionFloor = newFloor
+	for id, e := range n.relaySeenEph {
+		if e < newFloor {
+			delete(n.relaySeenEph, id)
+		}
+	}
+	for root, e := range n.relaySeenRoot {
+		if e < newFloor {
+			delete(n.relaySeenRoot, root)
+		}
+	}
 }
 
 // RelaySession is one live relay-payment session: the relay-side PayWord
@@ -94,25 +145,40 @@ func (n *Node) OpenRelaySession(ephID ports.NodeID, root []byte, S int, funding 
 	if !n.relayAccept {
 		return nil, errRelayAcceptDisabled
 	}
+	// #645: sweep stale-epoch seen entries lazily on the open path (this is exactly
+	// when the maps grow). Eviction is epoch-tied with a monotonic floor, so a
+	// reorg cannot un-evict a swept entry (guard-(ii)-safe).
+	epoch := n.relayEpochFn()
+	n.sweepRelaySeen(epoch)
+
 	// Guard (i): funding MUST be an ephemeral blind credit, never a durable account.
 	if funding != FundingEphemeralBlind {
 		return nil, errRelayDurableFunding
 	}
 	// Guard (ii): no ephemeral identity reused across sessions.
-	if n.relaySeenEph[ephID] {
+	if _, seen := n.relaySeenEph[ephID]; seen {
 		return nil, errRelayEphemeralReuse
 	}
 	// Guard (ii): no chain root reused across sessions.
 	rootKey := string(root)
-	if n.relaySeenRoot[rootKey] {
+	if _, seen := n.relaySeenRoot[rootKey]; seen {
 		return nil, errRelayChainReuse
 	}
 	if S <= 0 {
 		return nil, relayError("relay: chain length S must be positive")
 	}
-	n.relaySeenEph[ephID] = true
-	n.relaySeenRoot[rootKey] = true
-	return &RelaySession{verifier: relaypay.NewVerifier(root)}, nil
+	// #644 open-side clamp: reject a chain longer than the relay will ever forward.
+	// S_max is derived RELAY-SIDE (relaypay.MaxChainLength = MaxSessionBytes /
+	// RelayIncrementBytes = 262,144), never trusted from the fetcher. This caps the
+	// stored S the per-message AdvanceTo walk is then clamped against, bounding the
+	// worst-case walk to ~262K hashes instead of the attacker-chosen millions.
+	if S > relaypay.MaxChainLength {
+		return nil, errRelayChainTooLong
+	}
+	// Record the admit epoch so #645 eviction can age the entry out.
+	n.relaySeenEph[ephID] = epoch
+	n.relaySeenRoot[rootKey] = epoch
+	return &RelaySession{verifier: relaypay.NewVerifier(root, S)}, nil
 }
 
 // Pay authorizes the next increment by verifying a revealed preimage — one
