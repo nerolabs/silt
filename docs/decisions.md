@@ -850,6 +850,41 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
 - **Immutables preserved:** consensus engine untouched; M0 firewall reinforced; the
   hobbyist box (#8) is the point of the whole direction; content-blind core untouched (the
   root commits locators and status, never content meaning).
+- **RATIFIED 2026-08-30 — the trustless floor-box (lane-1, increment 3): the v5 witness
+  read-set is bounded, RegCap=256 is measured safe, and #535's recovery boundary is a
+  local-only policy flag.** Andrew ratified all three. This is a decision record for the
+  lane-1 witness-validating floor box (the #600 posture above), not a mechanism restatement;
+  the mechanisms live in the cited certifications and the v5 recompute. The three items:
+  1. **Lane-1 witness read-set verdict RATIFIED (corrected form).** The sound floor-box
+     WITNESS read-set for a v5 block = validity reads ∪ `apply()` branch reads
+     (`slashed` / `bondRootOwner` / `bondRootProven`) ∪ era-4 accelerator reads (the single
+     `dueBucket[h]` non-membership leaf + the touched `qualified` / `epochSet` delta). It is
+     **O(payload)** for ordinary and TTL blocks and **O(boundary-delta)** at an epoch
+     boundary. **Load-bearing:** the FULL-NODE recompute stays **O(registry)**; only the
+     WITNESS read-set is bounded. The read-set producer MUST be **EXECUTION-DERIVED against
+     the v5 witnessable recompute**, never taken from `apply()`'s literal reads — the literal
+     reads yield the O(registry) set and defeat era-4. Cite:
+     `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/era4-witness-floor-box-readset-v5-RESEARCH-CERTIFICATION-2026-08-30.md`.
+  2. **R1 — RegCap=256 MEASURED SAFE (no value change).** The honest per-block ceiling is
+     **1 BondReg** at the deployed `k=64` / `MinBond=1 MiB` (a full space-time proof is
+     ~1.46 MiB against the 2 MiB block budget), so RegCap=256 carries **255× headroom** and
+     rejects no honest block. The bounded `dueBucket` witness at 256 is **32 MiB** at an epoch
+     boundary and fits the 2 GiB floor box. Re-derivation is required **only if one of the
+     seven determinants changes** (tracked as **E6 on #299**). RegCap stays **256** — no value
+     change from the era-4 pin above.
+  3. **R2 — #535 recovery-boundary disposition DECIDED (one local-only policy flag).** The
+     recovery directive is sourced **ONLY from the box's own `-ws-checkpoint`-class config,
+     NEVER from the proposer or the block**. Directive present for height h ⇒ validate
+     trustlessly against the recomputed witnessable set. Directive absent at an ambiguous
+     boundary ⇒ emit a loud `indeterminate-trustlessly`, never trust the proposer. **DEFAULT =
+     cold-auditor** (stall-loud; favors full trustlessness); **live-follower** (proceed on the
+     full node's existing weak-subjectivity residual) is an **opt-in flip of the same flag**.
+     **GATE:** certifiable CLOSURE of this residual is **gated on the #603 `bonded` /
+     `epochSet` keystone probes** — do NOT mark this residual closed until those probes are
+     green. Cite:
+     `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/535-recovery-boundary-disposition-RECONCILIATION-2026-08-30.md`
+     and
+     `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RECONCILIATION-floorbox-livenessrecovery-boundary-2026-08-30.md`.
 
 ---
 

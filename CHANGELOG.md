@@ -57,6 +57,19 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   only — no consensus rule, validity predicate, or committed format changed.
 
 ### Docs
+- **Record the owner-ratified lane-1 (trustless floor box, increment 3) decisions**
+  (`docs/decisions.md`, 2026-08-30). Decision record only — no code, consensus, economic,
+  or security content changed. Adds one dated entry under the #600 floor-box thread
+  capturing three ratified items: (1) the lane-1 v5 witness read-set verdict (corrected
+  form) — the sound read-set is O(payload) / O(boundary-delta) and MUST be
+  execution-derived against the v5 witnessable recompute, while the full-node recompute
+  stays O(registry); (2) R1 — RegCap=256 measured safe (255× honest headroom, 32 MiB
+  boundary witness, no value change, re-derive only on a seven-determinant change, E6 on
+  #299); (3) R2 — #535 recovery-boundary disposition is one local-only `-ws-checkpoint`
+  policy flag (default cold-auditor / stall-loud; live-follower opt-in), closure gated on
+  the #603 `bonded`/`epochSet` keystone probes. Cites the certification
+  (`silt-reviews/research/research-outcome/era4-witness-floor-box-readset-v5-RESEARCH-CERTIFICATION-2026-08-30.md`)
+  and the two #535 reconciliation docs.
 - **True-up: era-3 format FROZEN + era-4 spine BUILT, roadmap/design drift corrected**
   (`ROADMAP.md`, `docs/design/block-format-by-era.md`, `docs/decisions.md`, 2026-08-30).
   Documentation reconciliation only — no code, consensus, economic, or security content
