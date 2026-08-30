@@ -844,6 +844,25 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   GATED (research certification + owner ratification required before build). Grounds the
   S6 kills in the real hot paths and the flixz F3 incident (~8m45s restart scan on a
   14 GB / 381K-file store); gives a build order and the two-half exit-gate demo.
+- **R-boundary DESIGN: the additive v5 digest-root format for the trustless floor box**
+  (`docs/thinking/2026-08-30-lane1-Rboundary-format-addition-design.md`, 2026-08-30). Design
+  only — NO production code, NO consensus/validity rule changed. Specifies the R-boundary
+  close the owner-ratified recompute direction owes: the v5 witnessable recompute reads three
+  committed keyspaces as WHOLE SETS (`qualified`, `epochSet`, `validatorsSeen`), each
+  committed one leaf PER MEMBER with no aggregate digest, so a root-only box cannot prove it
+  holds ALL members → an omitted frozen member flips the `3*ready>2*total` activation tally or
+  the maturity coefficient (a wrong-accept). The fix, additive and mirroring the `dueBucket`
+  MTH: commit three v5-only MTH digest-root leaves (`qualifiedRoot`/`epochSetRoot`/
+  `validatorsSeenRoot`) over each keyspace's canonical sorted id-list, gated on
+  `BlockVersionWitnessable` (v5) so era-3/v4 roots stay byte-identical; the box reconstructs
+  each MTH over the witnessed set and compares to the SMT-proven committed digest, closing
+  completeness by collision-resistance. Enumerates all 23 committed v5 keyspaces (whole-set vs
+  witnessed-per-key), states the `dueBucketRemove` no-empty-bucket invariant, and lists the
+  model-check obligations + the surfaces needing Research certification and owner ratification
+  (this is a gated v5 committed-format change). Cites the CRUX certification and the PE
+  cross-check
+  (`silt-reviews/research/research-outcome/era4-v5-floorbox-bounded-recompute-CRUX-RESEARCH-CERTIFICATION-2026-08-30.md`,
+  `silt-reviews/principle-engineer/RULING-era4-v5-floorbox-recompute-crux-CROSS-CHECK-2026-08-30.md`).
 - **Record the owner-ratified lane-1 (trustless floor box, increment 3) decisions**
   (`docs/decisions.md`, 2026-08-30). Decision record only — no code, consensus, economic,
   or security content changed. Adds one dated entry under the #600 floor-box thread
