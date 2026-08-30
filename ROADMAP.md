@@ -188,7 +188,9 @@ close itself is the owner's call and is deliberately HELD. The current order:
    increments — PayWord machinery (#646), transport Batch 1 (#647; S-clamp #644 +
    epoch-tied seen eviction #645), Batch 2 (#649; wire protocol + paid forwarding pump +
    session reaper), and Batch 3 (#650; daemon binding, paid relay goes LIVE, closes #648).
-   The Batch-3 free-vs-paid routing policy was ratified as **Option B**. Tracked
+   The Batch-3 free-vs-paid routing policy was ratified as **Option B**
+   (**D-POD-RELAY-COEXIST** — paid relay is additive to free relay under shared caps).
+   Tracked
    follow-ons remain (not blockers): #651 (resolver stopped-loop hardening, deferred to
    graceful-shutdown work). A separate **GATED** residual — paid-reserved headroom —
    re-opens a research-gated parameter and is not scheduled. **Third-operator committed
