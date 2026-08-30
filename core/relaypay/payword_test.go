@@ -132,8 +132,8 @@ func TestAdvanceToWalksToClaimedCount(t *testing.T) {
 // for millions of hashes. The Verifier carries S (NewVerifier(root, S)); AdvanceTo
 // rejects claimedCount > S before walking.
 //
-// The ablation: the walk-step counter (advanceToHashSteps) must never exceed S for
-// this call. Removing the `claimedCount > S` clamp lets the walk run the full
+// The ablation: the per-verifier walk-step counter (v.walkSteps) must never exceed
+// S for this call. Removing the `claimedCount > S` clamp lets the walk run the full
 // attacker-chosen (claimedCount - count) hashes — the ~5M-hash spin the PE measured
 // — and the counter assertion turns RED.
 func TestAdvanceToClampsToChainLength(t *testing.T) {
@@ -152,12 +152,14 @@ func TestAdvanceToClampsToChainLength(t *testing.T) {
 	// reject. With the clamp it is rejected before any walk.
 	bogus := make([]byte, hashLen) // 32 bytes of zeros: valid length, bogus value
 	const bogusCount = 5_000_000
-	advanceToHashSteps.Store(0)
+	// walkSteps accumulates across calls on the same verifier, so each sub-check
+	// measures the DELTA from a baseline taken just before its AdvanceTo call.
+	before := v.walkSteps
 	err = v.AdvanceTo(bogus, bogusCount)
 	if err == nil {
 		t.Fatalf("AdvanceTo accepted an oversized claimedCount %d > S=%d", bogusCount, S)
 	}
-	if steps := advanceToHashSteps.Load(); steps > int64(S) {
+	if steps := v.walkSteps - before; steps > uint64(S) {
 		t.Fatalf("oversized claimedCount drove %d hash-walk steps (> S=%d): the S-clamp is missing, the CPU-DoS is open", steps, S)
 	}
 	// The count must not have moved.
@@ -166,19 +168,19 @@ func TestAdvanceToClampsToChainLength(t *testing.T) {
 	}
 
 	// A legitimate in-bounds AdvanceTo still works and its walk is bounded by S.
-	advanceToHashSteps.Store(0)
+	before = v.walkSteps
 	if err := v.AdvanceTo(c.Preimage(5), 5); err != nil {
 		t.Fatalf("in-bounds AdvanceTo(5) rejected: %v", err)
 	}
-	if steps := advanceToHashSteps.Load(); steps > int64(S) {
+	if steps := v.walkSteps - before; steps > uint64(S) {
 		t.Fatalf("in-bounds walk ran %d steps (> S=%d)", steps, S)
 	}
 	// Claiming exactly S is allowed; claiming S+1 is rejected before the walk.
-	advanceToHashSteps.Store(0)
+	before = v.walkSteps
 	if err := v.AdvanceTo(c.Preimage(5), S+1); err == nil {
 		t.Fatalf("AdvanceTo accepted claimedCount S+1 = %d > S=%d", S+1, S)
 	}
-	if steps := advanceToHashSteps.Load(); steps > int64(S) {
+	if steps := v.walkSteps - before; steps > uint64(S) {
 		t.Fatalf("an over-S claim ran %d hash-walk steps (> S=%d) before rejecting", steps, S)
 	}
 }

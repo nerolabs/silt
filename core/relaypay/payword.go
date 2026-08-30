@@ -22,7 +22,6 @@ package relaypay
 import (
 	"crypto/sha256"
 	"errors"
-	"sync/atomic"
 )
 
 // RelayIncrementBytes is the payload size, in bytes, of one PayWord increment —
@@ -116,14 +115,6 @@ func (c *Chain) Preimage(k int) []byte {
 	return c.links[k]
 }
 
-// advanceToHashSteps counts the SHA-256 walk steps AdvanceTo executes. It is
-// test-only instrumentation for the #644 clamp ablation: a test resets it, calls
-// AdvanceTo with an oversized claimedCount, and asserts the walk ran at most S
-// steps (removing the clamp turns that assertion RED). One atomic add per hash on
-// the AdvanceTo path is negligible against the SHA-256 itself; the single-hash
-// Advance path is not instrumented.
-var advanceToHashSteps atomic.Int64
-
 // Verifier is the relay-side state for one PayWord session: the committed root,
 // the committed chain length S, the highest preimage revealed so far, and the
 // increment count it authorizes. It holds exactly one preimage (32 B) regardless
@@ -133,6 +124,16 @@ type Verifier struct {
 	held  []byte // the highest preimage verified so far; starts as the root x_0
 	count int    // increments authorized: held == x_count
 	s     int    // the committed chain length; count never exceeds this
+
+	// walkSteps accumulates the SHA-256 walk steps AdvanceTo has executed on this
+	// verifier. It is instrumentation for the #644 clamp ablation: a test reads
+	// v.walkSteps after an oversized AdvanceTo and asserts the walk ran at most S
+	// steps (removing the clamp turns that assertion RED). It is a plain field, not
+	// an atomic: AdvanceTo already requires exclusive access to the verifier (it
+	// mutates held/count), so the counter carries no synchronization beyond that.
+	// One increment per hash is negligible against the SHA-256 itself; the
+	// single-hash Advance path is not instrumented.
+	walkSteps uint64
 }
 
 // NewVerifier starts a relay-side session from the committed root x_0 with the
@@ -219,7 +220,7 @@ func (v *Verifier) AdvanceTo(preimage []byte, claimedCount int) error {
 	cur := cloneBytes(preimage)
 	for i := 0; i < steps; i++ {
 		cur = hash(cur)
-		advanceToHashSteps.Add(1)
+		v.walkSteps++
 	}
 	if !bytesEqual(cur, v.held) {
 		return errors.New("relaypay: preimage does not reach the claimed count")

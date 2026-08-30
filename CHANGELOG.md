@@ -26,7 +26,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
     tip would otherwise push count to S+1, an unfunded increment past the committed
     budget). `count` is the monotonic single-settlement accumulator: `count * increment
     <= S * increment <= the fetcher's paid-in blind credit`. Failing-first tests:
-    `TestAdvanceToClampsToChainLength` (an instrumented hash-step counter proves the
+    `TestAdvanceToClampsToChainLength` (a per-`Verifier` `walkSteps` field proves the
     walk stays <= S; RED shows 5,000,000 steps unclamped), `TestOpenRelaySessionClampsChainLength`,
     `TestRelaySessionPayCannotExceedChainLength`.
   - **#645 — epoch-tied eviction with a monotonic floor.** `relaySeenEph`/`relaySeenRoot`
