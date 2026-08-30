@@ -42,6 +42,19 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
     seam wired, asserting forward integrity, the live pay-gate, conserved settle with
     `Reputation()` unchanged (Invariant-A firewall), free relay still working with
     payments on (the Option-B witness), and the M0 settlement-log audit.
+- **Keystone leave-one-out coverage for the era-4 (v5) `qualified` and `dueBucket`
+  committed fields** (`core/chain/modelcheck_snapshot_equivalence_test.go`,
+  `docs/thinking/2026-08-30-keystone-era4-loo-qualified-duebucket.md`, 2026-08-30).
+  Both fields were deferred by `probeUncovered` to 4c/4d because in 4b no v5 verdict
+  read them; the committed-root predicate (4c #640) and activation (4d #641) landed,
+  so a snapshot leave-one-out now flips a real validity verdict. `v5RootWorld` +
+  `qualifiedRootProbe`/`dueBucketRootProbe` drive `validateEra3Roots` against a v5
+  block whose forged `StateRoot` omits the field's leaves: a full snapshot rejects it
+  (`ErrEra3StateRootMismatch`), a snapshot that lost the field recomputes the same
+  field-less root and wrongly ACCEPTS it (a `claim-succeeded` wrong-accept, not a
+  panic). A vacuity guard reddens if the field's leaves do not move the root. Removed
+  both fields from `probeUncovered`; no existing oracle weakened. Oracle/test coverage
+  only — no consensus rule, validity predicate, or committed format changed.
 
 ### Docs
 - **True-up: era-3 format FROZEN + era-4 spine BUILT, roadmap/design drift corrected**

@@ -1721,6 +1721,12 @@ func TestSnapshotBootMatchesReplayBoot(t *testing.T) {
 	provenC, provenRoot, provenKeys, provenPrev := provenDisplaceWorld(t)
 	restoreC := restoreOwnerWorld(t)
 
+	// The era-4 (v5) committed-root worlds (2026-08-30). With the FULL set carried, both
+	// the replayed and the snapshot replica recompute the v5 root WITH the field, so both
+	// reject the forged block — the equivalence this half asserts.
+	qualifiedC := v5RootWorld(t)
+	dueBucketC := v5RootWorld(t)
+
 	check := func(replayed *Chain, ps []probe) {
 		snap := snapshotBoot(replayed)
 		for _, p := range ps {
@@ -1752,6 +1758,144 @@ func TestSnapshotBootMatchesReplayBoot(t *testing.T) {
 	check(bondRegHeightC, []probe{bondRegHeightProbe(bondRegHeightC)})
 	check(provenC, []probe{provenDisplaceProbe(provenRoot, provenKeys, provenPrev)})
 	check(restoreC, []probe{restoreOwnerProbe(restoreC)})
+	check(qualifiedC, []probe{qualifiedRootProbe(t, qualifiedC)})
+	check(dueBucketC, []probe{dueBucketRootProbe(t, dueBucketC)})
+}
+
+// ---------------------------------------------------------------------------
+// The era-4 (v5) committed-root tranche (2026-08-30). Two committed fields —
+// `qualified` (the live qualified-set keyspace) and `dueBucket` (the TTL
+// due-height index) — whose leave-one-out flip lives in the v5 committed-ROOT
+// predicate (validateEra3Roots → StateRootForVersion(5), era3validity.go:114/152).
+// Deferred by probeUncovered to 4c/4d because in 4b no v5 verdict read them; 4c
+// (#640) and 4d (#641) landed the predicate, so the probes are now buildable.
+//
+// THE MECHANISM (the flip is a wrong-ACCEPT, not a panic). An honest full node
+// commits a v5 block whose StateRoot is the SMT over the COMPLETE post-apply
+// committed set, qualified/dueBucket leaves included (statehash.go:190/199). An
+// attacker forges a v5 block whose StateRoot was computed over a set that OMITS
+// the field. An honest validator recomputes WITH the field present → the roots
+// disagree → ErrEra3StateRootMismatch → reject. A snapshot-booted validator that
+// LOST the field recomputes WITHOUT those leaves → its recompute equals the
+// forged root → it ACCEPTS the forged block the honest node rejects. That is the
+// silent mis-validation the committed root exists to prevent: the field's absence
+// lets a wrong-rooted block through (claim-succeeded), it does not crash.
+//
+// STOP boundary: this is ORACLE/TEST coverage only. It ADDS no validity predicate,
+// changes no committed format, touches no consensus rule — it drives the EXISTING
+// 4c predicate (validateEra3Roots) against a forged block. Deliberation:
+// docs/thinking/2026-08-30-keystone-era4-loo-qualified-duebucket.md.
+// ---------------------------------------------------------------------------
+
+// v5RootWorld builds a minimal era-4 chain whose committed set populates BOTH
+// `qualified` and `dueBucket`: an epochless (no rotateEpoch to read qualified),
+// TTL-enabled (dueBucket live) genesis with four bonds ≥ MinBond. Every bond is
+// qualified (bonded, unslashed, ≥ MinBond) so qualified has four entries, and TTL
+// is on so each id sits in a due-height bucket. everMature is irrelevant to the
+// root; the world stays pre-latch and epochless deliberately so no boundary freeze
+// reads qualified and no path other than the committed-root predicate is in play.
+func v5RootWorld(t *testing.T) *Chain {
+	t.Helper()
+	keys := make([]ed25519.PrivateKey, 4)
+	for i := range keys {
+		keys[i] = key(int64(88000 + i))
+	}
+	// Epochs OFF (no EpochBlocks), TTL ON (BondTTLBlocks). No anchors, no maturity
+	// config — the world exists only to populate qualified/dueBucket and drive the
+	// v5 committed-root recompute.
+	cfg := Config{Quorum: 1, MinBond: 1 << 20, ByzantineQuorum: true, BondTTLBlocks: 40}
+	c := New(cfg, func(ports.NodeID) int64 { return 0 })
+	c.SetBondVerifier(objectiveVerify)
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
+	for _, k := range keys {
+		g.BondRegs = append(g.BondRegs, bondReg(k, twoMiB, ports.Hash{}))
+	}
+	Sign(g, keys[0])
+	if err := c.AppendGenesis(*g); err != nil {
+		t.Fatalf("v5RootWorld genesis: %v", err)
+	}
+	if len(c.qualified) != 4 {
+		t.Fatalf("v5RootWorld: want qualified populated (4 bonds), got %d — the field the probe ablates", len(c.qualified))
+	}
+	if len(c.dueBucket) == 0 {
+		t.Fatalf("v5RootWorld: want dueBucket populated (TTL on), got empty — the field the probe ablates")
+	}
+	return c
+}
+
+// forgedV5Block returns a v5 block that carries the StateRoot a node WHICH LOST
+// `omit` would compute, and the true (field-independent) LogRoot. It is the block
+// an attacker forges: its StateRoot matches the field-less recompute, so a
+// snapshot that dropped `omit` accepts it while a full snapshot rejects it.
+//
+// The forged StateRoot is computed by running the SAME post-apply recompute the
+// predicate runs (postApplyRoots → StateRootForVersion(5)) on a copy of the chain
+// with `omit` emptied, guaranteeing byte-identity with what the ablated snapshot
+// recomputes. The block carries NO bond regs / slashes and sits at a low height,
+// so apply() does not re-touch qualified/dueBucket (no reg, no TTL sweep at
+// height 1 with TTL=40, no epoch boundary) — the field's absence is the ONLY
+// variable between accept and reject.
+func forgedV5Block(t *testing.T, c *Chain, omit string) *Block {
+	t.Helper()
+	// The trivial v5 probe block: an entry-only block one height past genesis. No
+	// regs/slashes, so apply() runs no qualified/dueBucket maintenance; TTL=40 so
+	// height-1 sweeps nothing; epochs off so no boundary freeze.
+	fieldless := snapshotBoot(c, omit) // a copy of c with `omit` emptied (deep-copied)
+	probe := Block{Version: BlockVersionWitnessable, Height: 1, Prev: ports.Hash{},
+		Entries: []ports.Entry{entry(1)}}
+	// The StateRoot a field-less node computes over the post-apply set — exactly what
+	// the ablated snapshot will recompute in validateEra3Roots.
+	forgedState, forgedLog, err := fieldless.postApplyRoots(probe)
+	if err != nil {
+		t.Fatalf("forgedV5Block: post-apply recompute (omit=%s): %v", omit, err)
+	}
+	// Sanity: the forged (field-less) root MUST differ from the honest (field-present)
+	// root, or the ablation is vacuous — a probe that "flips" on identical roots proves
+	// nothing (the empty-map-not-nil-panic discipline demands a real accept/reject flip).
+	honestState, _, err := c.postApplyRoots(probe)
+	if err != nil {
+		t.Fatalf("forgedV5Block: honest post-apply recompute: %v", err)
+	}
+	if forgedState == honestState {
+		t.Fatalf("forgedV5Block(omit=%s): field-less root == field-present root — omitting %s "+
+			"changes no leaf, so the forged block is indistinguishable and the probe is vacuous. "+
+			"The world must populate %s so its leaves move the v5 root.", omit, omit, omit)
+	}
+	probe.StateRoot = &forgedState
+	probe.LogRoot = &forgedLog
+	return &probe
+}
+
+// qualifiedRootProbe drives the v5 committed-root predicate against a block whose
+// StateRoot omits the `qualified` leaves. A full snapshot recomputes WITH qualified
+// → the roots disagree → ErrEra3StateRootMismatch (reject). A snapshot that lost
+// qualified recomputes WITHOUT those leaves → the roots agree → it ACCEPTS the
+// wrong-rooted block (claim-succeeded). The flip is carried by qualified alone:
+// the forged LogRoot is the true one, and no other committed field's leaf moved.
+func qualifiedRootProbe(t *testing.T, c *Chain) probe {
+	forged := forgedV5Block(t, c, "qualified")
+	return probe{
+		name: "a v5 block whose committed StateRoot omits the qualified leaves must be REJECTED " +
+			"(ErrEra3StateRootMismatch); a snapshot that lost qualified recomputes the same " +
+			"field-less root and wrongly ACCEPTS it",
+		detect: []string{"qualified"},
+		ask:    func(c *Chain) string { return verdict(c.validateEra3Roots(forged)) },
+	}
+}
+
+// dueBucketRootProbe is the sibling for `dueBucket`: the forged v5 block's StateRoot
+// omits the due-height bucket leaves. A full snapshot recomputes WITH the buckets →
+// mismatch → reject; a snapshot that lost dueBucket recomputes the field-less root and
+// ACCEPTS the TTL-completeness violation the bucket leaf exists to commit.
+func dueBucketRootProbe(t *testing.T, c *Chain) probe {
+	forged := forgedV5Block(t, c, "dueBucket")
+	return probe{
+		name: "a v5 block whose committed StateRoot omits the dueBucket leaves must be REJECTED " +
+			"(ErrEra3StateRootMismatch); a snapshot that lost dueBucket recomputes the same " +
+			"field-less root and wrongly ACCEPTS the TTL-completeness violation",
+		detect: []string{"dueBucket"},
+		ask:    func(c *Chain) string { return verdict(c.validateEra3Roots(forged)) },
+	}
 }
 
 // probeUncovered names committed fields for which no probe yet exists. It is a
@@ -1775,23 +1919,13 @@ var probeUncovered = map[string]string{
 	// If a NEW committed field is added, add its probe (in some world) or record here
 	// what a probe would have to construct — never leave it silent.
 	//
-	// era-4 (v5) maintenance spine (step 4b). The leave-one-out snapshot oracle proves
-	// a field load-bearing by dropping it and watching a VALIDITY VERDICT flip. The v5
-	// predicate that READS these fields lands in 4c (the committed-root predicate) and
-	// 4d (activation) — in 4b there is no v5 verdict for a snapshot omission to flip,
-	// so a snapshot probe here would be vacuous by construction. Their necessity is
-	// instead proven at build in 4b by DEDICATED drift-guards and marshaller ablations,
-	// each demonstrated RED:
-	"qualified": "era-4 E-2 (4b). Necessity proven by TestQualifiedMaintenanceDriftGuard " +
-		"(per-site ablation, the 3007 displacement hook reddens specifically) and by the v5 " +
-		"marshaller coverage/emit guards. A snapshot leave-one-out probe becomes possible in " +
-		"4c/4d, when the v5 committed-root predicate reads the qualified-derived boundary set; " +
-		"a probe would then omit qualified, mis-copy the frozen epochSet at a boundary, and flip " +
-		"a weight-quorum verdict.",
-	"dueBucket": "era-4 T-3 (4b). Necessity proven by TestDueBucketDualSourceDriftGuard " +
-		"(a missed renew old-bucket delete reddens) and the byte-identical post-apply replay. A " +
-		"snapshot probe becomes possible in 4c, when the v5 predicate checks the due-bucket root; " +
-		"a probe would omit the bucket and flip the TTL-completeness verdict.",
+	// era-4 (v5) maintenance spine. `qualified` and `dueBucket` are now PROBED
+	// (2026-08-30): the v5 committed-root predicate landed in 4c (#640) / 4d (#641),
+	// so a snapshot leave-one-out CAN flip a real validity verdict — qualifiedRootProbe
+	// and dueBucketRootProbe (v5RootWorld) drive validateEra3Roots against a v5 block
+	// whose forged StateRoot omits the field's leaves: a full snapshot rejects it
+	// (ErrEra3StateRootMismatch), a field-dropped snapshot wrongly accepts it. The prior
+	// "no v5 verdict in 4b" deferral is discharged. `epochStart` stays below.
 	"epochStart": "era-4 O-1 (4b). CERTIFIED narrowly: no quorum/validity predicate reads it " +
 		"(its only reader is Regime()), so by construction NO snapshot omission can flip a " +
 		"validity verdict — that is WHY it is safe to commit. Its commitment (not its necessity " +
@@ -1880,6 +2014,14 @@ func buildLeaveOneOutWorlds(t *testing.T) []worldGroup {
 	provenC, provenRoot, provenKeys, provenPrev := provenDisplaceWorld(t)
 	restoreC := restoreOwnerWorld(t)
 
+	// The era-4 (v5) committed-root worlds (2026-08-30): qualified and dueBucket each flip
+	// the v5 committed-root predicate (validateEra3Roots) on a forged block whose StateRoot
+	// omits the field's leaves. Both share v5RootWorld (the forged block differs per field),
+	// so each gets its own build closure over an independent chain to keep the probes' state
+	// disjoint under snapshotBoot deep-copy.
+	qualifiedC := v5RootWorld(t)
+	dueBucketC := v5RootWorld(t)
+
 	return []worldGroup{
 		{"launch", func(*testing.T) *Chain { return replayed }, probes(revokedRoot, keys, prev)},
 		{"mature-epoch", func(*testing.T) *Chain { return weightC }, epochSetPs},
@@ -1897,6 +2039,8 @@ func buildLeaveOneOutWorlds(t *testing.T) []worldGroup {
 		{"validators-seen", func(*testing.T) *Chain { return seenC }, []probe{validatorsSeenProbe(seenAnchorBlock, seenTrigger)}},
 		{"proven-displace", func(*testing.T) *Chain { return provenC }, []probe{provenDisplaceProbe(provenRoot, provenKeys, provenPrev)}},
 		{"restore-owner", func(*testing.T) *Chain { return restoreC }, []probe{restoreOwnerProbe(restoreC)}},
+		{"v5-qualified-root", func(*testing.T) *Chain { return qualifiedC }, []probe{qualifiedRootProbe(t, qualifiedC)}},
+		{"v5-duebucket-root", func(*testing.T) *Chain { return dueBucketC }, []probe{dueBucketRootProbe(t, dueBucketC)}},
 	}
 }
 
