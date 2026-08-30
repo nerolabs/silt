@@ -705,6 +705,21 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
   separate PACE deliberation (`docs/thinking/2026-08-29-era4-build-decomposition-options.md`); no
   era-4 mechanism is built until `RegCap` is pinned — done here at 256 (per-block TOTAL count),
   with the re-derivation gate on all seven determinants at the next mint (#299 the sharpest).
+  - **BUILT 2026-08-29 — the era-4 (v5) witnessable-transitions build spine is COMPLETE and merged
+    to main.** The four ordered increments landed the chain-side transitions: 4a (#637 — mint
+    `BlockVersion = 5` + reserve the three v5 field tags, inert), 4b (#639 — the maintenance spine:
+    `qualified` + due-bucket + `epochStart`, v5-gated), 4c (#640 — the v5 validity predicate +
+    `RegCap` + version-widen), 4d (#641 — height-gated activation + mint-flip to v5). This is the
+    chain-side witnessable-transitions spine only; it does not by itself ship the trustless
+    floor-box (witness) validator, which remains the open C-7 / #600 follow-on.
+  - **SEQUENCING RATIFIED 2026-08-30 (owner, Andrew) — era-4/v5 is kept OPEN-ENDED; its freeze is
+    deferred to the END of Proof-of-Delivery.** *Why:* there is no live blockchain, so nothing is
+    minting v5 against an immutable contract yet, and PoD is expected to add or reshape witnessable
+    state. Freezing v5 now would freeze a format PoD may still move. *How to apply:* treat the era-4
+    format as still-open through the PoD build; run the v5 freeze as a **second practiced era freeze**
+    (the era-3 freeze on 2026-08-29 being the first) at the end of PoD, on the same
+    research-certified, owner-ratified path. Do not mark era-4/v5 as frozen or immutable until that
+    step is run.
 - **RATIFIED 2026-08-27 — "maturity before capture" ships as a safe-parameterization, not a
   theorem** (research certification
   `.../research-outcome/C1-maturity-before-capture-RESEARCH-CERTIFICATION-2026-08-27.md`;

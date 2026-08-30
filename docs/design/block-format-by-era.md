@@ -1,9 +1,15 @@
 # What's in a silt block, by era
 
 Status: reference. Describes the chain block as it exists in `core/chain/chain.go`
-today (era-1 and era-2, both shipped) and the **planned** era-3 state-root format
-(designed and ratified in principle, **not yet built**). Era-3 rows are marked
-PLANNED so this doc is not mistaken for shipped canon.
+today. era-1 and era-2 are shipped. The **era-3 committed state-root format
+(`BlockVersion = 4`) is BUILT and FROZEN** (2026-08-29, #632, build `3af40bc`;
+`docs/decisions.md` D-TIERING freeze entry, `docs/TENETS.md` Part IX Immutable tier).
+The **era-4 witnessable-transitions format (`BlockVersion = 5`) is BUILT and merged**
+(2026-08-29, PRs #637/#639/#640/#641) but is deliberately kept **OPEN-ENDED**: its
+freeze is deferred to the end of Proof-of-Delivery (owner-ratified 2026-08-30). Note
+the version numbering: `BlockVersionRegGate = 3` is an **unminted soft-fork readiness
+tag**; the era-3 state-root format shipped at **v4** (`BlockVersionStateRoot`), and
+era-4 at **v5** (`BlockVersionWitnessable`).
 
 ## The short version
 
@@ -18,11 +24,15 @@ silent flag-day — a change to **what the hash commits** or **how the block val
 |-----|-----------------|--------|---------------------|
 | era-1 | `1` (v1) | shipped, legacy | bare-hash consensus signatures (single-phase) |
 | era-2 | `2` = `BlockVersionRounds` (#432) | **shipped — minted today** | two-phase (prepare + precommit) round-scoped signatures |
-| era-3 | `3` = `BlockVersionRegGate` (#506) | tag exists; **state-root format PLANNED, not minted** | Block commits a **state SMT root** + a **transparency-log root** |
+| (reg-gate) | `3` = `BlockVersionRegGate` (#506) | **unminted soft-fork tag** | the #506 reg-inclusion rate bound — HEIGHT-enforced, never minted (minting it would be a hard fork; the R-rule only rejects payloads, so it stays a soft fork) |
+| era-3 | `4` = `BlockVersionStateRoot` (#632) | **BUILT + FROZEN 2026-08-29** | Block commits a **state SMT root** + a **transparency-log root** |
+| era-4 | `5` = `BlockVersionWitnessable` (#637/#639/#640/#641) | **BUILT + merged 2026-08-29; format kept OPEN-ENDED** | makes the TTL-expiry and epoch-rotation transitions **witnessable** (`RegCap` count cap, the `qualified`/due-bucket/`epochStart` spine) |
 
-`BlockVersion = BlockVersionRounds` (`chain.go:281`) — nodes mint **era-2** today.
-`BlockVersionRegGate = 3` (`chain.go:299`) already exists but is a *readiness tag*, not a
-minted version (see era-3 below).
+`BlockVersion = BlockVersionRounds` (`chain.go:319`) — nodes mint **era-2** today; the
+v4 and v5 formats are built and version-gated but activate at height-gated boundaries
+(`MintVersion(h)`, `chain.go:3540`). `BlockVersionRegGate = 3` (`chain.go:337`) is a
+*readiness tag*, not a minted version (see the reg-gate row above); the era-3 state-root
+format shipped at **v4**, not v3.
 
 ## The shared Block struct
 
@@ -81,13 +91,18 @@ same block value keeps one identity across rounds and re-serving.
   is why `BlockVersionRegGate` exists as a tag but is **not minted** (minting it would be a
   hard fork; the R-rule only rejects payloads, so it stays a soft fork).
 
-## era-3 — the state-root keystone (v3) — PLANNED, not built
+## era-3 — the state-root keystone (v4, `BlockVersionStateRoot`) — BUILT + FROZEN 2026-08-29
 
-Today the block commits **no state root**. The only `Root` fields are inside `BondReg`
-(`chain.go:419`, per-registration bond commitments) — not a root over the validity state.
-That is the gap era-3 closes.
+Before era-3, the block committed **no state root**. The only `Root` fields were inside
+`BondReg` (`chain.go:419`, per-registration bond commitments) — not a root over the
+validity state. That is the gap era-3 closes. The format shipped at **`BlockVersion = 4`**
+(the unminted `BlockVersionRegGate = 3` tag stayed a soft-fork readiness signal) and was
+**FROZEN 2026-08-29** (#632, build `3af40bc`): it is now in the Immutable tier
+(`docs/TENETS.md` Part IX), so changing it requires a NEW ERA (a new `BlockVersion`), not
+an edit. The full freeze scope — schema, the 18-field committed set, the v4 hard-fork
+activation, and the verifier posture — is in the `docs/decisions.md` D-TIERING freeze entry.
 
-The ratified era-3 format (C-7, `docs/decisions.md`) adds **two new hash-covered,
+The era-3 format (C-7, `docs/decisions.md`) adds **two new hash-covered,
 attester-signed roots** to the Block:
 
 1. a **state SMT root** — a history-independent sparse-Merkle root over the set-valued
@@ -102,26 +117,54 @@ against the trusted root — the stateless-client "floor box" — instead of hol
 registry tree (which grows without bound). This is the decentralization posture behind
 #600 / C-7.
 
-**Two hard prerequisites before era-3 can freeze:**
+**The two hard prerequisites for the freeze (both discharged before 2026-08-29):**
 
-- Every field committed under the state root must be proven **load-bearing** (no bloat) and
-  **order-independent** (identical content → identical root, no fork). That proof work is
-  the keystone model-check oracles in `core/chain/modelcheck_*_test.go`, in progress.
-- The floor-box verifier must carry the invariant **"no witness supplied for a key a
-  predicate reads → never accept (reject / stall)"** — accepting on a missing witness
-  inverts the safe-degradation proof.
+- Every field committed under the state root is proven **load-bearing** (no bloat) and
+  **order-independent** (identical content → identical root, no fork), via the keystone
+  model-check oracles in `core/chain/modelcheck_*_test.go`.
+- The verifier carries the invariant **"no witness supplied for a key a predicate reads →
+  never accept (reject / stall)"** — accepting on a missing witness inverts the
+  safe-degradation proof.
 
-**Why it must be frozen:** the committed field set and its encoding become a permanent
-consensus contract. A committed field that buys no verdict is permanent bloat; a
-non-canonical encoding forks. A sound witness scheme cannot even exist until the root is a
-committed, attested block field. So the format is proven complete and fork-free **once**,
-up front, then frozen (a research-certified, human-ratified step).
+**Why it is frozen:** the committed field set and its encoding are a permanent consensus
+contract. A committed field that buys no verdict is permanent bloat; a non-canonical
+encoding forks. So the format was proven complete and fork-free **once**, up front, then
+frozen (a research-certified, owner-ratified step).
+
+## era-4 — witnessable state transitions (v5, `BlockVersionWitnessable`) — BUILT + merged, format OPEN-ENDED
+
+era-4 makes two `apply()` transitions **witnessable** so a tree-free floor box can validate
+them without holding the whole registry: the TTL-expiry sweep and the epoch-rotation
+qualified-set rebuild, both of which previously scanned whole committed maps. The format
+shipped at **`BlockVersion = 5`** across four merged increments on 2026-08-29:
+
+- **4a (#637)** — mint `BlockVersion = 5` and reserve the three v5 field tags (inert).
+- **4b (#639)** — the maintenance spine: `qualified` + due-bucket + `epochStart`, v5-gated.
+- **4c (#640)** — the v5 validity predicate + the `RegCap` per-block count cap + version-widen.
+- **4d (#641)** — height-gated activation + the mint-flip to v5.
+
+`RegCap` is a **per-block TOTAL BondReg count** validity ceiling — fresh AND renewal,
+counted after `canonicalBondRegs` (same-id fold) — value **256** (`chain.go:404`, enforced
+`chain.go:1775`). The earlier "fresh-only" interpretation was REFUTED and corrected: both
+fresh and renewal land in the same TTL due-bucket, so a fresh-only cap leaves the read-set
+unbounded. Full mechanism and the seven-determinant re-derivation gate are in the
+`docs/decisions.md` era-4 entry.
+
+**This is the chain-side witnessable-transitions spine only.** It does not by itself ship
+the trustless floor-box (witness) validator, which remains the open C-7 / #600 follow-on.
+
+**The v5 format is deliberately kept OPEN-ENDED.** There is no live blockchain, and
+Proof-of-Delivery is expected to add or reshape witnessable state, so freezing v5 now would
+freeze a format PoD may still move. The **v5 freeze is deferred to the end of PoD**, to be
+run as a **second practiced era freeze** (the era-3 freeze being the first) on the same
+research-certified, owner-ratified path (owner-ratified 2026-08-30, `docs/decisions.md`).
 
 ## How eras coexist without a flag-day
 
 `Version` is committed by the hash and required at decode, so a block from one era can
 never be silently mis-validated under another era's rules (`chain.go:260-268`). Validation
 is era-gated (`ValidateCommit`, `VerifyEquivocation`): an era-1 block validates under era-1
-rules, an era-2 block under era-2 rules. Additive fields (via `keyasint,omitempty`) keep a
-version bump reserved for real rule/commitment changes — the era-3 state roots are exactly
-such a change, which is why they need a version and a freeze rather than a quiet field add.
+rules, an era-2 block under era-2 rules, and so on up to v5. Additive fields (via
+`keyasint,omitempty`) keep a version bump reserved for real rule/commitment changes — the
+era-3 state roots and the era-4 witnessable-transition fields are exactly such changes,
+which is why they need a version and a freeze rather than a quiet field add.
