@@ -15,11 +15,20 @@ import (
 //
 //	"Write the I1–I5 oracle as a single assertInvariants(replicas) called each step."
 //
-// The shipped tier already has strong EXHAUSTIVE per-invariant oracles
-// (modelcheck_test.go I1-launch, modelcheck_i3_test.go I1-mature/I3,
-// modelcheck_i2_exhaustive_test.go I2, modelcheck_i4_liveness_test.go +
-// modelcheck_441/451 I4, modelcheck_i5_accountable_test.go I5). Each drives its
-// OWN bespoke scenario and asserts its OWN invariant inside it. What was missing
+// The shipped tier already has strong EXHAUSTIVE per-invariant oracles. Each
+// drives its OWN bespoke scenario and asserts its OWN invariant inside it (paths
+// are relative to the repo root — the I1/I3/I5-enumeration oracles live in
+// core/chain, NOT this package):
+//   - core/chain/modelcheck_test.go              — I1 launch (anchor-coalition enum)
+//   - core/chain/modelcheck_i3_test.go           — I3 (weight-quorum set-constancy)
+//   - core/chain/modelcheck_i5_accountable_test.go
+//     + core/chain/modelcheck_i5_357_test.go     — I5 accountable safety
+//   - core/node/modelcheck_tier2_test.go         — I5 honest-never-slashed, real loop
+//   - core/node/modelcheck_i2_exhaustive_test.go — I2 (restart persistence)
+//   - core/node/modelcheck_i4_liveness_test.go
+//     + modelcheck_441_*/modelcheck_451_* siblings — I4 liveness
+//
+// What was missing
 // — verified by `grep -rn assertInvariants core/` returning nothing on
 // 61c75eb — is a single CROSS-CUTTING monitor that runs over the LIVE
 // multi-replica state of an ARBITRARY driven scenario and asserts the two

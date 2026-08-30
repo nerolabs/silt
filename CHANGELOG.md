@@ -25,7 +25,13 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   goes RED on an injected I1 disagreement and an injected I5 honest-slash, GREEN once
   removed; the honest 3-round schedule stays GREEN over 126 deliveries to finalized
   height 11 with all 8 replicas agreeing. I2/I3/I4 stay owned by their dedicated
-  exhaustive oracles — this monitor does not reimplement them.
+  exhaustive oracles — this monitor does not reimplement them. Also trues up the
+  oracle-coverage maps in both `core/node/modelcheck_unified_oracle_test.go` and
+  `core/chain/modelcheck_test.go`: the docstrings now cite the sibling per-invariant
+  oracles by their real repo-root paths (the I1/I3/I5-enumeration oracles are
+  `core/chain` files, not in-package), and the stale "NOT YET BUILT" list in
+  `core/chain/modelcheck_test.go` is corrected — those I1-mature/I3/I5/I2 oracles are
+  now built (per PE ruling `RULING-406-unified-modelcheck-oracle-2026-08-30.md`).
 - **era-4 (v5) trustless floor-box validation — lane-1 Part B increment B1 (the SOUND,
   ADDITIVE slice: the #535 cold-auditor recovery-boundary policy + the additive entry
   point; the accept-core recompute is research-gated and NOT built)**

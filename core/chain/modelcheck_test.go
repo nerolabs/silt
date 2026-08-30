@@ -17,16 +17,20 @@ import (
 // scenarios converge). Where the field discovered #357/B2/#397/#402 one region at a
 // time, this enumerates the same perimeter on a laptop in milliseconds.
 //
-// SCOPE — HONEST STATUS (S5; this is a WORK IN PROGRESS, don't read it as full I1–I5
-// coverage). IMPLEMENTED so far: the **I1 launch oracle** below — the exhaustive
+// SCOPE — this file is the **I1 launch oracle**: the exhaustive
 // no-two-disjoint-anchor-coalitions-finalize property over the N∈{3,4,5} launch regime,
-// the invariant all four scars (#357/B2/#397/#402) violated at their core. NOT YET
-// BUILT (documented next steps, `docs/thinking/2026-08-15-406-model-check-approach.md`):
-//   - I1 in the MATURE weight-quorum regime (the B2 catch);
-//   - I3 set-constancy (mid-epoch bank adds no quorum weight);
-//   - I5 deterministic fork-choice + honest-never-slashed (the #357/#397 catches);
-//   - I2 across a real restart and I5 through the real gather — TIER 2 (the simnet
-//     held-delivery layer over the node loop).
+// the invariant all four scars (#357/B2/#397/#402) violated at their core. The rest of
+// the I1–I5 perimeter named in `docs/thinking/2026-08-15-406-model-check-approach.md` is
+// now BUILT in sibling oracles (paths relative to the repo root):
+//   - I1 in the MATURE weight-quorum regime (the B2 catch) —
+//     core/chain/modelcheck_s1s2_mature_test.go, core/node/modelcheck_s1s2_mature_node_test.go;
+//   - I3 set-constancy (mid-epoch bank adds no quorum weight) — core/chain/modelcheck_i3_test.go;
+//   - I5 fork-choice determinism + honest-never-slashed (the #357/#397 catches) —
+//     core/chain/modelcheck_i5_accountable_test.go, core/chain/modelcheck_i5_357_test.go,
+//     core/node/modelcheck_tier2_test.go (through the real gather);
+//   - I2 across a real restart — core/node/modelcheck_i2_exhaustive_test.go.
+// The cross-cutting step-monitor over an arbitrary schedule is
+// core/node/modelcheck_unified_oracle_test.go (#406).
 // In-package so the oracle reads unexported state (finalityQuorumActive) directly — no
 // production API change, not research-gated.
 //
