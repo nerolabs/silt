@@ -9,6 +9,74 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **era-4 (v5) witness read-set PRODUCER — lane-1 Part A, REBUILT against the AMENDED
+  cert (the COMPLETE read-set + an execution-derived completeness guard)**
+  (`core/chain/readset_v5.go`, `core/chain/readset_v5_drift_test.go`,
+  `docs/thinking/2026-08-30-lane1-partA-readset-producer-options.md`, 2026-08-30).
+  `Chain.WitnessReadSetV5(block)` emits, for a v5 block, the WITNESS read-set as a
+  `[]statehash.ReadEntry`: the committed-state keys the v5 witnessable recompute reads to
+  trustlessly re-derive the post-state root. Now the COMPLETE 23-keyspace read-set per the
+  amended cert
+  (`silt-reviews/research/research-outcome/era4-witness-floor-box-readset-v5-AMENDED-RESEARCH-CERTIFICATION-2026-08-30.md`,
+  PE ruling `silt-reviews/principle-engineer/RULING-lane1-partA-readset-v5-producer-2026-08-30.md`).
+  - **The completeness gap, closed.** The prior build (`dbeccf1`, SHIP-WITH-FIXES) omitted
+    the attestation-loop reads (per attester: `slashed[id]` + the qualification-set
+    membership + the `validatorsSeen[id]` write-target), the maturity-latch reads
+    (`everMature` + the `Mature()`→`C2Metric` inputs over `validatorsSeen`, each member's
+    `bonded`/`bondDomain`/`slashed`), and the committed scalar leaves (`epochStart`/
+    `era4LockedIn`/`era4Height`/`matureEpoch`/`gateLockedIn`/`gateHeight`/`era3LockedIn`/
+    `era3Height`). Those leaves are consensus-load-bearing (`validatorsSeen`/`everMature` →
+    maturity → anchor gating, F-1); a floor box witnessing only the prior subset could be
+    made to accept a forged block on any of them. The rebuilt producer emits all of them,
+    payload-driven and O(payload) for ordinary/TTL, O(RegCap) at a boundary.
+  - **The execution-derived completeness guard (replaces the hand-written mirror).**
+    `TestWitnessReadSetV5ExecutionDerivedGuard` derives the "expected" read-set from the
+    RECORDED leaf-touch of the REAL v5 recompute (`postApplyRoots`/`stateRootLeavesV5` on a
+    `cloneForDryRun` clone), by two ground-truth sources — a pre/post leaf write-diff and a
+    leaf-sensitivity perturbation (a leaf whose pre-state perturbation changes some OTHER
+    committed leaf is one the recompute reads) — and asserts the producer COVERS (⊇) it. It
+    is NOT a second hand-written table (the prior guard was, so both sides shared the same
+    blind spot and stayed green over the gap — the session-7 "green while covering nothing"
+    scar). Corpus adds an attested block (real `b.Atts`), a maturity-latch transition
+    (`everMature` false→true), and a standalone slash at a non-boundary height; the vacuity
+    guard requires `attested`/`maturity-latch`/`slash` coverage.
+  - **Regression-proven RED on the escaped defects.** Dropping the attestation-loop reads
+    reddens the guard on `validatorsSeen` (the exact prior-build gap); dropping the
+    slash-path `qualified[culprit]` read reddens on `qualified`
+    (`TestWitnessReadSetV5DriftGuardAblation`). The certified boundedness ablation stays:
+    an injected O(registry) `bondRegHeight` scan scales the read-set with the registry and
+    `TestWitnessReadSetV5BoundedNotRegistrySized` / `...BoundednessAblation` redden.
+  - **Boundary bound relabelled O(RegCap).** The three activation tallies read `regVersion`
+    + weight over the WHOLE frozen set, so the boundary READ-set is O(frozen-set) = O(RegCap)
+    (not O(boundary-delta), which is the WRITE-set); box-fits at RegCap=256 unchanged. The
+    certified hazard is still obeyed — the producer targets the BOUNDED witnessable
+    recompute, never `apply()`'s O(registry) literal reads; the TTL completeness collapses
+    to one `dueBucket[h]` leaf. Scope: the read-set PRODUCER + guard/corpus only — NOT the
+    #535 boundary policy and NOT wiring `IngestBlockWitnesses` into acceptance (both Part B);
+    no consensus rule or validity predicate changed, no production hook (the guard's
+    leaf-perturbation setter is test-only).
+  - **The VALIDITY-READ guard gap, closed (test-only follow-on, PR #656)**
+    (`core/chain/readset_v5_drift_test.go`,
+    `docs/thinking/2026-08-30-lane1-partA-validity-read-guard-gap.md`, 2026-08-30). Blind
+    review found the guard's ground truth was `apply()`-shaped (write-diff ∪ apply-recompute
+    perturbation), but a floor box needs `validity ∪ apply-recompute`. `spent[serial]`
+    (`chain.go:2617`) and `revoked[root]` (`chain.go:2643`) are read ONLY in the validity
+    predicate, never in `apply()`, so both guard sources were structurally blind to them —
+    dropping either from the producer stayed GREEN (21 of 23 keyspaces reddened on drop; two
+    did not). Fix: a THIRD execution-derived ground-truth source, the VALIDITY-READ
+    perturbation — for each committed leaf, perturb its pre-state and run the REAL validity
+    read-predicates (`validateTakedowns` → `revoked`/`byRoot`; per-entry `ValidateEntry` →
+    `spent`/`byRoot`); a leaf whose perturbation FLIPS the accept/reject verdict is a
+    validity read. It excludes `validateEra3Roots` (the root recompute would flip every leaf;
+    that channel is Source 1's write-diff), mirroring Source 2's own-key exclusion — so it
+    isolates the pure validity-gate reads. A dedicated validity corpus
+    (`buildV5ValidityReadCorpus`) carries a token spend and a revoke→unrevoke so the reads
+    fire; the maintenance corpus is untouched. `TestWitnessReadSetV5AllKeyspacesRedOnDrop` is
+    the completeness proof: drop EACH of the 23 committed keyspaces one at a time and all 23
+    redden (`spent`/`revoked` now included). `TestWitnessReadSetV5ValidityReadsCovered` is
+    the coverage half. The producer's certified read-set is UNCHANGED (`spent`/`revoked` stay
+    emitted); no consensus/validity/statehash production change (the perturbation is
+    test-only).
 - **PoD §7.3 transport BATCH 3 — the daemon control-frame binding: the paid relay
   pump now runs on a LIVE node, failing-first**
   (`docs/decisions.md`, `adapters/relay/wire.go`, `adapters/relay/server.go`,
