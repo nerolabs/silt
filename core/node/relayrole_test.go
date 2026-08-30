@@ -35,6 +35,10 @@ func (n *Node) relaySeenEntryCountForTest() int {
 // can assert it never lowers on a reorg.
 func (n *Node) relayEvictionFloorForTest() uint64 { return n.relayEvictionFloor }
 
+// relayLiveSessionCountForTest returns the number of live paid-relay sessions in
+// the table — the bound the Batch-2 leak-fix flood test asserts stays capped.
+func (n *Node) relayLiveSessionCountForTest() int { return len(n.relaySessions) }
+
 // newRelayTestNode builds a node with a sim transport so New does not panic on a
 // nil transport. The relay guards are pure per-node state logic; the transport
 // is only there to satisfy the constructor.

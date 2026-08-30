@@ -158,6 +158,10 @@ const (
 	MsgRoundChangeAck        // OK: the round-change was received and recorded
 	MsgSubmitEntry           // Data: a CBOR entry a publisher submits for the designee's block to include (#441: entries are mempool content, never a second proposal stream)
 	MsgSubmitEntryAck        // OK: queued if valid; OK=false + Data: the synchronous refusal reason (#441 §2.2 — never refuse silently)
+	MsgRelayOpen             // Data: a CBOR relaypay.RelayOpen — a fetcher commits a chain root + funding + S to open a paid relay session (PoD §7.3 transport)
+	MsgRelayOpenAck          // OK + Height: the relay opened the session; Height carries the session handle. OK=false + Data: the refusal reason (M0 guard / S-clamp)
+	MsgRelayPay              // Data: a CBOR relaypay.RelayPay — a preimage reveal that authorizes the next forwarded increment(s) (PoD §7.3 transport)
+	MsgRelayPayAck           // OK + Height: the relay advanced; Height carries the authorized increment count. OK=false if the preimage did not verify
 )
 
 // StorageProof is a Merkle inclusion proof shipped alongside a chunk:
@@ -283,6 +287,8 @@ func (k MsgKind) String() string {
 		MsgGetIssuerKey: "GetIssuerKey", MsgIssuerKeyReply: "IssuerKeyReply",
 		MsgBondChallenge: "BondChallenge", MsgBondReply: "BondReply",
 		MsgTokenRequest: "TokenRequest", MsgTokenReply: "TokenReply",
+		MsgRelayOpen: "RelayOpen", MsgRelayOpenAck: "RelayOpenAck",
+		MsgRelayPay: "RelayPay", MsgRelayPayAck: "RelayPayAck",
 	}
 	if int(k) < len(names) && names[k] != "" {
 		return names[k]
@@ -293,7 +299,7 @@ func (k MsgKind) String() string {
 // IsReply reports whether this kind terminates a pending request.
 func (m Message) IsReply() bool {
 	switch m.Kind {
-	case MsgFindNodeReply, MsgGetProvidersReply, MsgAddProviderAck, MsgStoreChunkAck, MsgFetchChunkReply, MsgHasChunkReply, MsgChallengeReply, MsgAttestReply, MsgCommitAck, MsgChainReply, MsgChainHeadReply, MsgBondReply, MsgTokenReply, MsgIssuerKeyReply, MsgSubmitBondRegAck, MsgSubmitEntryAck, MsgRepairVote, MsgDeliveryReceiptAck, MsgCanonicalIssuersReply, MsgPrecommitReply, MsgRoundChangeAck:
+	case MsgFindNodeReply, MsgGetProvidersReply, MsgAddProviderAck, MsgStoreChunkAck, MsgFetchChunkReply, MsgHasChunkReply, MsgChallengeReply, MsgAttestReply, MsgCommitAck, MsgChainReply, MsgChainHeadReply, MsgBondReply, MsgTokenReply, MsgIssuerKeyReply, MsgSubmitBondRegAck, MsgSubmitEntryAck, MsgRepairVote, MsgDeliveryReceiptAck, MsgCanonicalIssuersReply, MsgPrecommitReply, MsgRoundChangeAck, MsgRelayOpenAck, MsgRelayPayAck:
 		return true
 	}
 	return false

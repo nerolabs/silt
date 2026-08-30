@@ -9,6 +9,57 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **PoD §7.3 transport BATCH 2 — the wire protocol (step 3) + the paid forwarding
+  pump (step 4), failing-first, the live-networking batch**
+  (`ports/net.go`, `ports/ports.go`, `core/relaypay/wire.go`,
+  `core/node/relaytransport.go`, `core/node/relayrole.go`, `core/node/node.go`,
+  `adapters/relay/paid.go`, 2026-08-30). Wires the Batch-1 machinery to live
+  transport: a fetcher opens a paid relay session over the wire, pays increments,
+  and the relay settles at close. REUSES the Batch-1 S-clamp, M0 guards, and
+  epoch-tied eviction — they are not re-implemented. See
+  `docs/thinking/2026-08-30-pod-7.3-transport-design.md` §1, §2, §6, §7.
+  - **The wire protocol (step 3).** Three request/reply kinds on the existing
+    `ports.Message` dispatch, mirroring the delivery-receipt lane: `MsgRelayOpen`
+    (fetcher commits chain root + funding + S), `MsgRelayPay` (a preimage reveal
+    that authorizes the next increment(s)), and their acks. Settlement is LOCAL at
+    close — NO wire message (the fetcher already paid at blind withdrawal; the relay
+    redeems its highest preimage via `RedeemRelayCredit`). `handleRelayOpen` routes
+    through `OpenRelaySession`, so the Batch-1 S-clamp / M0 guards / eviction all
+    fire on the live path; `handleRelayPay` drives the carried-S `Verifier`
+    (bounded advance). Sender side: `OpenRelaySessionRemote` + `SubmitRelayPay`. A
+    live session table on the relay keyed by handle; single settlement at close via
+    `SettleRelaySession` (the verifier's monotonic count is the accumulator).
+    `RedeemRelayCredit` is now on the `ports.CreditLedger` interface.
+  - **The paid forwarding pump (step 4).** `adapters/relay/paid.go`: a
+    payment-gated long-stream pump (`paidPump` / `paidSession` / `Server.SplicePaid`)
+    that forwards the paid direction up to the node-owned authorizer's ceiling
+    (raised on each verified pay), pay-as-you-go — if the fetcher stops revealing,
+    the relay stops forwarding and the stiff is bounded to ONE increment. THE
+    SPLICE-EOF GOTCHA: the existing `splice` closes BOTH conns on the first EOF
+    (swarm exchanges are short-lived); a paid ≤1 GiB session is not. The paid pump
+    does NOT tear down the paid forward stream on a reverse-direction EOF — the
+    forward stream ends on its OWN completion, never on the reverse direction
+    closing. The verifier and M0 guards stay in `core/node` (the tested layer); the
+    adapter is a dumb byte pump that only knows how many bytes it is cleared to
+    forward (design §2 Option A).
+  - **Failing-first tests (each RED before its code, verified by ablation):**
+    `adapters/relay/paid_test.go` — `TestPaidPumpForwardsOnlyAuthorizedBytes`
+    (pay-then-forward gate; RED when the gate is removed), `TestPaidPumpSurvivesReverseEOF`
+    (RED against the naive both-close-on-EOF splice), `TestSplicePaidFullSessionOverTCP`
+    (a real paid session over TCP, reverse-EOF mid-stream, settlement basis exact).
+    `core/node/relaytransport_test.go` — `TestRelayFullSessionConservedSettlement`
+    (open → pay N → settle redeems exactly N × increment, conserved; RED on a
+    double-settle), `TestRelaySettlementLogCarriesNoDurableField` (the M0 residual:
+    the settlement log line carries no durable/cross-session-stable field; RED when
+    a field leaks), `TestRelayWireGuardsFireOnLivePath` (the Batch-1 M0 guards + the
+    #644 clamp fire when driven through `MsgRelayOpen`; RED when the wire bypasses
+    `OpenRelaySession`).
+  - **Residual for the reviewer.** The daemon control-frame binding — carrying a
+    "paid" marker on the relay adapter's connect/accept frames and handing the
+    node-owned `Authorizer` into `SplicePaid` on the live TCP path — is the
+    remaining integration seam. The pump primitive and the wire lane are proven in
+    isolation and over TCP; wiring the two across the daemon's adapter/node boundary
+    is the follow-on.
 - **PoD §7.3 transport BATCH 1 — carry S (#644 DoS clamp) + epoch-tied seen-map
   eviction (#645), failing-first, pure core (no wire)**
   (`core/relaypay/payword.go`, `core/node/relayrole.go`, `core/node/node.go`,
@@ -196,6 +247,24 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   (precedent: `MaxBondRegBytesPerBlock` is proposer-policy-only).
 
 ### Fixed
+- **PoD §7.3 transport BATCH 2 — bound the live relay-session table (leak fix,
+  failing-first)** (`core/node/relayrole.go`, `core/node/relaytransport_test.go`,
+  `core/node/relayrole_test.go`, 2026-08-30). Closes the MEDIUM the blind PE ruling
+  surfaced (`RULING-pod-7.3-transport-batch2-2026-08-30.md`): `handleRelayOpen`
+  inserted a `relaySessions` entry on every guard-passing `MsgRelayOpen`, but the
+  only removal (`SettleRelaySession`) is not wired on the live path, so the daemon
+  flag `--accept-relay-payments` grew the table without bound from cheap
+  fresh-identity opens. Two bounds, mirroring the #645 seen-map fix: (1) an
+  epoch/TTL SWEEP — each session is stamped with its admit epoch and reaped by
+  `sweepRelaySeen` on the SAME monotonic floor as the seen maps once it ages past
+  the retention window; (2) a hard per-node CAP (`relayMaxLiveSessions = 4096`,
+  tunable) — an open past the ceiling is refused (`OK=false`), bounding growth
+  BETWEEN sweeps. `TestRelayOpenFloodStaysBounded` is RED under either ablation
+  (cap removed → table exceeds 4096; sweep removed → stale sessions survive the
+  epoch advance); `TestRelaySettledSessionRemovedPromptly` pins prompt removal on
+  settlement. No Batch-1/Batch-2 guard, M0 guard, or conservation cap was weakened.
+  TODO(Batch-3): when the daemon control-frame binding wires `SplicePaid`, the
+  session sweep must tear down a reaped session's pump.
 - **witness floor-box R3 — Kind/Value disagreement + a weak gate-1 test**
   (`core/statehash/witness_bound.go`, `core/statehash/witness_bound_test.go`,
   2026-08-29). Two follow-up fixes on the R3 DoS bound. (1) Safety (blind PE

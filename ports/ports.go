@@ -212,6 +212,12 @@ type CreditLedger interface {
 	// (the fetcher's withdrawal fee, less the durability skim). Returns the
 	// credits paid. Balance economy only — never standing.
 	RedeemDeliveryCredit(server, fetcher NodeID, root Hash) int64
+	// RedeemRelayCredit settles a PayWord relay chain at session close (PoD §7.3):
+	// it transfers chainValue from the fetcher's already-paid blind credit into the
+	// relay operator's balance, capped at budget (the committed chain budget, itself
+	// bounded by the fetcher's paid-in credit). Returns the credits paid. Conserved
+	// balance transfer, never a mint; never touches standing (the γ→1/N firewall).
+	RedeemRelayCredit(relay, fetcher NodeID, chainValue, budget int64) int64
 	// RecordAudit settles a storage challenge: a passed audit earns the
 	// prover a reward, a failed one costs a slash.
 	RecordAudit(prover NodeID, id ChunkID, passed bool)
