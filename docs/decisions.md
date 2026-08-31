@@ -908,6 +908,38 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
      `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/535-recovery-boundary-disposition-RECONCILIATION-2026-08-30.md`
      and
      `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RECONCILIATION-floorbox-livenessrecovery-boundary-2026-08-30.md`.
+- **RATIFIED 2026-08-31 — the v5 floor-box recompute DIRECTION and the R-boundary POSTURE
+  (HEAVY / fully-trustless).** Two owner ratifications on the lane-1 floor box: how the recompute
+  closes completeness, and how far it validates.
+  1. **Floor-box recompute DIRECTION RATIFIED (Andrew, 2026-08-30).** The v5 floor-box recompute
+     closes completeness by **MTH-reconstruction** — the `dueBucket` pattern: witness the id-list,
+     recompute the Merkle Tree Hash, require it equals the committed digest. **NO new cryptographic
+     primitive; NO `dueBucket` format change.** The direction reuses the existing committed-digest /
+     recompute machinery. Cite:
+     `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/era4-v5-floorbox-bounded-recompute-CRUX-RESEARCH-CERTIFICATION-2026-08-30.md`.
+  2. **R-boundary POSTURE RATIFIED HEAVY (Andrew, 2026-08-31).** The floor box reproduces **EVERY
+     validity predicate** (Option B, fully-trustless). It does **NOT** merely re-derive the state
+     root and trust finality for the accept decision. **Rationale (the owner's "pony" framing):**
+     the edge node (1 CPU / 2 GB) contributes as an economical **INDEPENDENT VALIDATOR** — it helps
+     build quorum and validates recent/upcoming blocks from bounded witnesses, not as a trusting
+     follower and not as an archival workhorse holding the whole state. The committed digest roots
+     are what make full validation fit the pony budget (bounded witness, measured to fit 2 GB). This
+     is what era-4 was built for.
+     - **Consequence — the v5 committed format needs an MTH digest-root leaf for every WHOLE-SET
+       committed read the heavy recompute performs — at least** `qualifiedRoot`, `epochSetRoot`,
+       `validatorsSeenRoot`, `bondedRoot` (**≥4**). The COMPLETE, exhaustive set is being established
+       by a **mechanical / execution-derived enumeration** across `apply ∪ ValidateCommit` (the
+       root-cause fix for repeated hand-enumeration misses), then Research-certified.
+     - **Blind spot to close:** the merged Part A (#656) producer + guard **do not witness the
+       quorum-stack whole-map reads** — to be closed. The **#657 `WitnessValidateV5` seam contract
+       WIDENS** from "accept iff root matches" to "**reproduce every validity predicate**."
+     - **The v5 format freeze stays DEFERRED** until the complete digest-root set is certified AND
+       the format addition owner-ratified (consistent with the 2026-08-30 open-ended-freeze
+       sequencing above).
+     - Cite the R-boundary reconciliations:
+       `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RECONCILIATION-lane1-Rboundary-root-count-2026-08-31.md`
+       and
+       `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/era4-v5-Rboundary-Rscope-RECONCILIATION-2026-08-31.md`.
 
 ---
 

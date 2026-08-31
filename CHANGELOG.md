@@ -188,6 +188,18 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   only — no consensus rule, validity predicate, or committed format changed.
 
 ### Docs
+- **Record two owner-ratified era-4 floor-box decisions in the ledger** (`docs/decisions.md`,
+  2026-08-31). Documentation only — NO code, consensus, economic, or security content changed;
+  records decisions certified/reconciled elsewhere. Under D-TIERING: (1) the v5 floor-box recompute
+  DIRECTION — completeness closed by MTH-reconstruction (the `dueBucket` pattern), NO new crypto
+  primitive and NO `dueBucket` format change (Andrew, 2026-08-30); (2) the R-boundary POSTURE
+  RATIFIED HEAVY — the floor box reproduces EVERY validity predicate (Option B, fully-trustless),
+  not merely re-derive-root-and-trust-finality (Andrew, 2026-08-31). Consequence: the v5 committed
+  format needs an MTH digest-root leaf per WHOLE-SET committed read (≥4: `qualifiedRoot`,
+  `epochSetRoot`, `validatorsSeenRoot`, `bondedRoot`), the complete set to be established by
+  execution-derived enumeration across `apply ∪ ValidateCommit` then certified; the #657
+  `WitnessValidateV5` seam widens to "reproduce every validity predicate"; the v5 format freeze
+  stays DEFERRED until certified + ratified.
 - **Map the third-operator committed-settlement design space (DEFINITION only — the next PoD
   frontier)** (`docs/thinking/2026-08-30-third-operator-committed-settlement-options.md`,
   2026-08-30). A design-options strawman for a GATED economic mechanism: cross-operator
