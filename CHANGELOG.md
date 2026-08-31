@@ -9,6 +9,37 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **v5 trustless floor box — recompute increment 2: the MATURITY-LATCH predicate reproduced
+  from witnesses (the C-6 teeth)** (`core/chain/floorbox_recompute_maturity_v5.go`,
+  `docs/thinking/2026-08-31-floorbox-recompute-increment2-maturity-latch-options.md`,
+  2026-08-31). Reproduces `matureNow` (the maturity-latch metric via `C2Metric`,
+  `chain.go:2178`) TRUSTLESSLY, from the committed StateRoot + witnesses alone, replicating
+  increment 1's structure. `matureNow` gates the de-mature super-quorum
+  (`everMature && objective() && !matureNow()`, `chain.go:2827`) and is the FIRST predicate
+  whose fold READS GENESIS CONFIG (`MinBond` / `Anchors` / `OperatorMargin` /
+  `MatureValidators`), so it is where the C-6 obligation finally has TEETH (increment 1's
+  predicate read only the fixed ⅔ constant). Additive: NO consensus rule, validity predicate,
+  or `apply()` change — a full node still folds `C2Metric` from its own maps; this is a
+  SEPARATE root-only path. The three-part proof: (1) SET-COMPLETENESS — reconstruct
+  `nodeSetMTH(validatorsSeen id-list)` and require it equals the committed `validatorsSeenRoot`
+  digest (F1's inert root now READ); (2) PER-MEMBER VALUES (C-1) — `Resolve` each member's
+  `slashed` / `bonded` / `bondDomain` leaf against the committed root, so a forged weight or
+  domain fails verification ⇒ stall; (3) GENESIS CONFIG (C-6) — `MinBond` / `Anchors` /
+  `OperatorMargin` / `MatureValidators` read from OWN cfg, never the witness. The box STILL
+  never-Accepts (`WitnessValidateV5` not flipped, the #657 accept flip waits). The producer
+  (`readset_v5.go`) now emits the `validatorsSeenRoot` completeness leaf + per-member
+  `slashed`/`bonded`/`bondDomain` reads; the drift guard's `validatorsSeenRoot`
+  inert-exclusion is REMOVED with a real red-on-drop ablation
+  (`TestValidatorsSeenRootReadReddensOnDrop`), and the three still-inert digest roots keep
+  their exclusion. Six hard ablations ship red-before-green: forged bonded weight (C-1),
+  forged bondDomain (C-1), forged slashed bit (C-1,
+  `TestRecomputeMatureNow_ForgedSlashedRejects`), omitted/injected member (completeness),
+  and the mandatory config-from-witness (C-6, `TestRecomputeMatureNow_ConfigFromOwnConfig`).
+  Equivalence to the full node's `matureNow` is now asserted by test on the SLASHED-SKIP fold
+  path (a fixture seats a committed slashed member) and the UNSET-DOMAIN `zeroDomainWeights`
+  fold path (a mixed set/unset-domain fixture), closing the two coverage gaps the blind PE
+  review flagged (both branches were previously exercised only in their always-false
+  direction). NOT a consensus-rule change.
 - **v5 trustless floor box — recompute increment 1: one weighted predicate reproduced from
   witnesses (the C-1 pattern)** (`core/chain/floorbox_recompute_v5.go`,
   `core/statehash/prover.go`,

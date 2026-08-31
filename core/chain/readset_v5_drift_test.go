@@ -73,24 +73,25 @@ func leafKeySet(c *Chain) map[string]string {
 	return out
 }
 
-// inertDigestRootTags is the set of the still-INERT whole-set digest-root tags: the four
-// whose keyspaces NO recompute reads yet (bonded / qualified / slashed / validatorsSeen). It
-// is stateRootDigestTagsV5 MINUS epochSetRoot, which increment 1 now READS (the recompute
-// reproduces requireEpochWeightQuorum over Σ epochSet — floorbox_recompute_v5.go). As each
+// inertDigestRootTags is the set of the still-INERT whole-set digest-root tags: the three
+// whose keyspaces NO recompute reads yet (bonded / qualified / slashed). It is
+// stateRootDigestTagsV5 MINUS epochSetRoot (increment 1 READS it — requireEpochWeightQuorum
+// over Σ epochSet, floorbox_recompute_v5.go) MINUS validatorsSeenRoot (increment 2 READS it —
+// matureNow over C2Metric's validatorsSeen fold, floorbox_recompute_maturity_v5.go). As each
 // later increment reproduces the predicate over its keyspace, that root moves OUT of this set
 // (its exclusion removed, a red-on-drop ablation added), until the set is empty. The
 // still-inert placeholder ablations (TestInertDigestRootsAwaitRecompute) are keyed on exactly
 // this set, so the "remove-on-recompute" obligation lives in CODE, not prose.
 var inertDigestRootTags = []string{
-	"bondedRoot", "qualifiedRoot", "slashedRoot", "validatorsSeenRoot",
+	"bondedRoot", "qualifiedRoot", "slashedRoot",
 }
 
 // digestRootLeafKeys is the set of the still-INERT whole-set digest-root leaf keys (tag||"",
-// empty raw key): bondedRoot / qualifiedRoot / slashedRoot / validatorsSeenRoot. epochSetRoot
-// is DELIBERATELY EXCLUDED — increment 1's recompute reads it, so it is no longer an inert
-// output commitment and must NOT be excluded from the ground-truth derivation (else a dropped
-// epochSet read the recompute needs would stay green). Bound to inertDigestRootTags so a
-// renamed or dropped inert root cannot silently escape this set.
+// empty raw key): bondedRoot / qualifiedRoot / slashedRoot. epochSetRoot (increment 1) and
+// validatorsSeenRoot (increment 2) are DELIBERATELY EXCLUDED — their recomputes read them, so
+// they are no longer inert output commitments and must NOT be excluded from the ground-truth
+// derivation (else a dropped epochSet/validatorsSeen read the recompute needs would stay green).
+// Bound to inertDigestRootTags so a renamed or dropped inert root cannot silently escape this set.
 func digestRootLeafKeys() map[string]struct{} {
 	out := make(map[string]struct{}, len(inertDigestRootTags))
 	for _, name := range inertDigestRootTags {
@@ -100,7 +101,8 @@ func digestRootLeafKeys() map[string]struct{} {
 }
 
 // isDigestRootLeaf reports whether leaf key k is one of the STILL-INERT F1 whole-set
-// digest-root leaves (the four, NOT epochSetRoot). Those leaves are DERIVED output commitments
+// digest-root leaves (the three, NOT epochSetRoot or validatorsSeenRoot). Those leaves are
+// DERIVED output commitments
 // over a whole keyspace's member set (statehash.go:262-266) that NO recompute reads yet (the
 // F1 STOP boundary still holds for them). They are the leaf-set analogue of the recomputed
 // state root: perturbing any member of a keyspace flips that keyspace's digest root, and the
@@ -113,9 +115,10 @@ func digestRootLeafKeys() map[string]struct{} {
 // a genuine read: a dropped per-MEMBER read still reddens, because the member leaf itself — not
 // its digest root — carries that signal.
 //
-// epochSetRoot is NO LONGER excluded (increment 1 reads it): its exclusion was removed so the
-// recompute's dependence on it is caught by the same discipline the 23 member keyspaces get
-// (TestEpochSetRootReadReddensOnDrop).
+// epochSetRoot (increment 1) and validatorsSeenRoot (increment 2) are NO LONGER excluded (their
+// recomputes read them): the exclusions were removed so each recompute's dependence on its digest
+// is caught by the same discipline the 23 member keyspaces get (TestEpochSetRootReadReddensOnDrop,
+// TestValidatorsSeenRootReadReddensOnDrop).
 func isDigestRootLeaf(k string) bool {
 	_, ok := digestRootLeafKeys()[k]
 	return ok
@@ -1144,6 +1147,26 @@ func TestEpochSetRootReadReddensOnDrop(t *testing.T) {
 	}
 }
 
+// TestValidatorsSeenRootReadReddensOnDrop is the increment-2 red-on-drop ablation for the
+// validatorsSeenRoot DIGEST-root READ: dropping the validatorsSeenRoot leaf from the producer must
+// redden the execution-derived guard, exactly as dropping any of the 23 member keyspaces does.
+// This is the discipline the digest root EARNS by becoming a genuine recompute read (the recompute
+// of matureNow reconstructs the validatorsSeen set's MTH and compares it to this committed leaf).
+// F1 committed validatorsSeenRoot INERT (excluded from the ground truth); increment 2 removed that
+// exclusion, so a producer that forgets to emit it now fails coverage.
+//
+// It reddens because on a block where validatorsSeen mutates (an attestation seats a new
+// validator), the write-diff flags validatorsSeenRoot as a changed leaf the recompute reads — the
+// same ground-truth signal the 23 member keyspaces get. A dropped validatorsSeenRoot leaves that
+// ground-truth read uncovered.
+func TestValidatorsSeenRootReadReddensOnDrop(t *testing.T) {
+	if !keyspaceReddensOnDrop(t, tagValidatorsSeenRoot) {
+		t.Fatal("GUARD BLIND: dropping the validatorsSeenRoot digest-root READ from the producer left " +
+			"the execution-derived guard GREEN — the increment-2 recompute reads validatorsSeenRoot for " +
+			"set-completeness, so a producer that omits it must redden (the F1 inert-exclusion was removed)")
+	}
+}
+
 // TestInertDigestRootsAwaitRecompute is the SKIP-GUARDED PLACEHOLDER ablation for the four
 // still-INERT whole-set digest roots (bonded / qualified / slashed / validatorsSeen). It encodes
 // the "remove-the-exclusion-when-you-recompute" obligation in CODE, not just prose (the PE's
@@ -1158,18 +1181,22 @@ func TestEpochSetRootReadReddensOnDrop(t *testing.T) {
 // legitimately inert and MUST stay excluded (removing the exclusion early would redden every
 // member of K as a false positive, since the digest reacts to every member).
 //
-// The test also ASSERTS the current partition is exactly right: epochSetRoot is NO LONGER inert
-// (it recomputes), and the four named roots ARE still inert. A drift in either direction fails.
+// The test also ASSERTS the current partition is exactly right: epochSetRoot (increment 1) and
+// validatorsSeenRoot (increment 2) are NO LONGER inert (they recompute), and the three named roots
+// ARE still inert. A drift in either direction fails.
 func TestInertDigestRootsAwaitRecompute(t *testing.T) {
-	// epochSetRoot must have LEFT the inert set (increment 1 recomputes it).
+	// epochSetRoot and validatorsSeenRoot must have LEFT the inert set (increments 1/2 recompute them).
 	for _, name := range inertDigestRootTags {
 		if name == "epochSetRoot" {
 			t.Fatal("epochSetRoot is still in inertDigestRootTags — increment 1 recomputes it, so it must be removed (its read is guarded by TestEpochSetRootReadReddensOnDrop)")
 		}
+		if name == "validatorsSeenRoot" {
+			t.Fatal("validatorsSeenRoot is still in inertDigestRootTags — increment 2 recomputes it, so it must be removed (its read is guarded by TestValidatorsSeenRootReadReddensOnDrop)")
+		}
 	}
-	// The four named roots must still BE inert (no recompute reads them yet).
+	// The three named roots must still BE inert (no recompute reads them yet).
 	wantInert := map[string]struct{}{
-		"bondedRoot": {}, "qualifiedRoot": {}, "slashedRoot": {}, "validatorsSeenRoot": {},
+		"bondedRoot": {}, "qualifiedRoot": {}, "slashedRoot": {},
 	}
 	gotInert := make(map[string]struct{}, len(inertDigestRootTags))
 	for _, name := range inertDigestRootTags {
