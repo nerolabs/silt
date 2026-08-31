@@ -212,6 +212,19 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   model-check — IN PROGRESS; (5) Phase 5 operational floor — NOT STARTED; (6) external red
   team (#183) → R1 → V1 — GATED. An overlay, not a replacement: no existing roadmap content
   was deleted or contradicted; in-flight items are marked, never claimed decided.
+- **Phase 5 operational-floor scoping — the operational floor decomposed into sized,
+  ordered increments** (`docs/thinking/2026-08-31-phase5-operational-floor-scoping.md`,
+  2026-08-31). Scoping/definition only — NO code, no consensus/economic/security content
+  changed. Decomposes ROADMAP.md Phase 5 into three groups: (a) pure-ops packaging /
+  installers / service integration (launchd, systemd, Windows service) — UNGATED;
+  (b) the two S6 scaling kills — O(delta) proof-maturation cold start (kill the O(store)
+  restart scan, `core/node/node.go:980-1028`, the named fast-follow at `:990-991`) and
+  reprovide dirty-tracking (kill the O(held) per-interval re-sign,
+  `core/node/repair.go:99-162`), each assessed UNGATED (perf, PE to confirm the
+  classification before build); and (c) R4 signed self-update — a SECURITY/TRUST surface,
+  GATED (research certification + owner ratification required before build). Grounds the
+  S6 kills in the real hot paths and the flixz F3 incident (~8m45s restart scan on a
+  14 GB / 381K-file store); gives a build order and the two-half exit-gate demo.
 - **Record the owner-ratified lane-1 (trustless floor box, increment 3) decisions**
   (`docs/decisions.md`, 2026-08-30). Decision record only — no code, consensus, economic,
   or security content changed. Adds one dated entry under the #600 floor-box thread
