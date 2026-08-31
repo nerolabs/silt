@@ -972,6 +972,17 @@ func TestWitnessReadSetV5BoundedNotRegistrySized(t *testing.T) {
 // injected O(registry) bondRegHeight scan makes the read-set scale with the registry, and the
 // equal-size assertion reddens. This is the certified boundedness ablation (the sharpest
 // hazard: instrumenting apply()'s scan defeats era-4).
+//
+// THE ASSERTION IS ON sizeExcludingFrozenSet, NOT raw len (PE ruling
+// RULING-floorbox-recompute-increment3-dematureQuorum-2026-08-31, fix 1). Since increment 1,
+// the RAW read-set already scales with the registry via the LEGITIMATE cert-blessed frozen-set
+// per-member weight reads (epochSet/bonded + their roots), so a raw-len comparison diverges even
+// with the injected scan NEUTERED — the test would stay GREEN without its defect (decoration).
+// Excluding the frozen-set reads (the same exclusion TestWitnessReadSetV5BoundedNotRegistrySized
+// uses via frozenSetWeightTag) isolates the O(payload) part, so the injected bondRegHeight scan —
+// a DIFFERENT tag, not excluded — is the ONLY thing that can make the excluded sizes diverge. The
+// red→green now depends on the defect: neuter the scan and the excluded sizes tie (GREEN);
+// restore it and they diverge (RED).
 func TestWitnessReadSetV5BoundednessAblation(t *testing.T) {
 	build := func(nReg int) (*Chain, Block) {
 		cfg := Config{Quorum: 1, MinBond: era4MinBond, ByzantineQuorum: true,
@@ -1012,9 +1023,18 @@ func TestWitnessReadSetV5BoundednessAblation(t *testing.T) {
 
 	rsSmall := ablatedProducer(small, probeSmall)
 	rsLarge := ablatedProducer(large, probeLarge)
-	if len(rsSmall) == len(rsLarge) {
-		t.Fatalf("ABLATION FAILED TO REDDEN: the injected O(registry) scan did not scale the read-set with the registry (small=%d large=%d) — the boundedness guard would not catch it",
-			len(rsSmall), len(rsLarge))
+
+	// Assert on the read-set size EXCLUDING the cert-blessed frozen-set weight reads (the same
+	// exclusion BoundedNotRegistrySized uses), NOT raw len. The raw len already scales with the
+	// registry via the legitimate frozen-set reads, so a raw comparison is decoration (green even
+	// with the injected scan neutered). Excluding those isolates the O(payload) part, so the
+	// injected bondRegHeight scan — a different, non-excluded tag — is the only thing that can make
+	// these diverge.
+	nSmall := sizeExcludingFrozenSet(rsSmall)
+	nLarge := sizeExcludingFrozenSet(rsLarge)
+	if nSmall == nLarge {
+		t.Fatalf("ABLATION FAILED TO REDDEN: the injected O(registry) scan did not scale the read-set (excluding the cert-blessed frozen-set weight reads) with the registry (small=%d large=%d) — the boundedness guard would not catch it",
+			nSmall, nLarge)
 	}
 }
 

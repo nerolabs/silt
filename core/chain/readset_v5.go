@@ -172,8 +172,10 @@ func (c *Chain) WitnessReadSetV5(b Block) []statehash.ReadEntry {
 //     constant (C-4 always-emit); the fold is then degenerate (total <= 0).
 //   - EVERY bonded MEMBER's weight leaf (C-1): the digest binds MEMBERSHIP only — the super-quorum
 //     tally is forgeable without a per-member value proof for each id. So the box must witness
-//     every bonded[id] weight leaf to fold Σ bonded. O(RegCap), the whole-set weight fold the
-//     de-mature super-quorum needs (the R-membership budget path; box-fits per the disk-backed
+//     every bonded[id] weight leaf to fold Σ bonded. O(bonded) = R-membership, the whole-set weight
+//     fold the de-mature super-quorum needs (NOT RegCap-bounded — RegCap is a per-block BondReg
+//     count cap, chain.go:404, whereas bonded and bondRegHeight are set and deleted together,
+//     chain.go:3260-3261/3275-3276, so bonded is registry-scale; box-fits per the disk-backed
 //     store measurement).
 //
 // This fires whenever bonded is non-empty (whenever the de-mature super-quorum has a set to fold),
@@ -191,7 +193,8 @@ func (c *Chain) readSetBondedRoot(acc *readSetAcc) {
 	// reconstructed MTH is the empty-MTH and the super-quorum fold is degenerate (total <= 0).
 	acc.addScalar(tagBondedRoot, nodeSetMTHFromInt64(c.bonded))
 	// The per-member weight leaves (C-1): the values the fold sums, one inclusion proof each. Empty
-	// when the bonded map is empty (degenerate super-quorum), O(bonded) = O(RegCap) otherwise.
+	// when the bonded map is empty (degenerate super-quorum), O(bonded) = R-membership otherwise
+	// (registry-scale, NOT RegCap-bounded; see the readSetBondedRoot doc-comment above).
 	for id := range c.bonded {
 		c.addBondedRead(acc, id)
 	}

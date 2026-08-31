@@ -127,6 +127,18 @@ type BondedSetWitness struct {
 // recovery boundary does not change it (no boundary carve-out for this predicate).
 //
 // This does NOT flip WitnessValidateV5 to Accept (the STOP boundary): it reproduces ONE predicate.
+//
+// ⚠ PARTIAL GATE — the accept-flip assembler (#657) MUST re-add everMature && objective().
+// The full-node caller gate is `everMature && objective() && !matureNow()` (chain.go:2827). This
+// recompute reproduces ONLY the `!matureNow()` condition (via RecomputeMatureNow, increment 2); it
+// does NOT reproduce `everMature` or `objective()`. That deferral is legitimate under this
+// increment's STOP boundary (the box still never-Accepts, so folding the bar in a state a full
+// node would skip is inert TODAY). But it is a LATENT TRAP for #657: in the reachable state
+// `!everMature && !matureNow()` (a young chain below the bar), a full node does NOT run this
+// predicate, yet RecomputeDeMatureSuperQuorum WOULD fold the de-mature bar. The accept-flip
+// assembler MUST gate this call on everMature && objective() before flipping to Accept, or it
+// would wrongly fold the de-mature bar on a not-yet-matured chain. The everMature leaf
+// (tagEverMature) is already in the v5 read-set (readset_v5.go), so the witness is available.
 func (c *Chain) RecomputeDeMatureSuperQuorum(
 	committedStateRoot ports.Hash,
 	proposer ports.NodeID,

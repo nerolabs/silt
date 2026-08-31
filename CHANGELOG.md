@@ -39,7 +39,19 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   threshold (C-6, failing-first, `TestRecomputeDeMatureSuperQuorum_ThresholdFromConstant`).
   Equivalence to the full node's de-mature verdict is asserted by test for both a coalition that
   meets and one that misses the ⅔ super-quorum, plus the maturity-gate no-op. NOT a
-  consensus-rule change.
+  consensus-rule change. PARTIAL GATE (flagged for the #657 accept-flip assembler): the full-node
+  caller gate is `everMature && objective() && !matureNow()` (`chain.go:2827`), but this recompute
+  reproduces ONLY `!matureNow()`. The `everMature`/`objective()` conditions are DEFERRED to the
+  accept-flip assembler (#657), which MUST re-add them before flipping to Accept — else the
+  reachable `!everMature && !matureNow()` state (a young chain below the bar, which a full node
+  does NOT gate on the de-mature predicate) would wrongly fold the de-mature bar. The `everMature`
+  witness (`tagEverMature`) is already in the v5 read-set. Also fixed a pre-existing decoration in
+  `TestWitnessReadSetV5BoundednessAblation`: it asserted on raw `len(readset)`, which already
+  scales with the registry via the legitimate cert-blessed frozen-set weight reads, so neutering
+  its injected `bondRegHeight` scan left it GREEN (the check did not depend on its defect). It now
+  asserts on `sizeExcludingFrozenSet` (the same exclusion `TestWitnessReadSetV5BoundedNotRegistrySized`
+  uses), so the injected scan is the only thing that can diverge it (red-before-green restored).
+  (Both per PE ruling `RULING-floorbox-recompute-increment3-dematureQuorum-2026-08-31`.)
 - **v5 trustless floor box — recompute increment 2: the MATURITY-LATCH predicate reproduced
   from witnesses (the C-6 teeth)** (`core/chain/floorbox_recompute_maturity_v5.go`,
   `docs/thinking/2026-08-31-floorbox-recompute-increment2-maturity-latch-options.md`,
