@@ -79,7 +79,48 @@ const (
 	// first fires at a v5 height, which DOES commit them. Same pattern as epochStart.
 	tagEra4LockedIn = "era4LockedIn\x00"
 	tagEra4Height   = "era4Height\x00"
+
+	// era-4 (v5) whole-set DIGEST-root tags — F1 of the ratified five-root format
+	// addition. Each is a SINGLE scalar leaf whose VALUE is the RFC-6962 MTH over the
+	// CANONICAL sorted id-list of that keyspace's member set (membership-only; weights
+	// stay in the per-member leaves). They exist so a root-only floor box can prove SET
+	// COMPLETENESS of a whole-set fold: an SMT lets a root-only holder prove inclusion of
+	// members it was given but nothing about members withheld, so a withholding prover
+	// hands a short read-set whose every inclusion proof still verifies. The MTH over the
+	// full id-list closes that gap — one missing id yields a different tree, hence a
+	// different root, hence a stall. Certified 2026-08-31 (v5-wholeset-digest-root cert);
+	// same closure dueBucketMTH already ships.
+	//
+	// INERT in F1: nothing READS these roots — no validity predicate, no recompute. F3
+	// wires the root-only recompute that consumes them (with the C-1 per-member value
+	// proofs and C-6 genesis config). F1 only COMMITS the bytes, exactly as era-4 4a
+	// committed its schema before 4b consumed it.
+	//
+	// C-4 (always-emit): emitted on EVERY v5 block; an empty keyspace commits
+	// translog.MTH(nil), the fixed empty-MTH constant — NO absent-vs-empty shortcut.
+	// C-7 (prefix-safe): each tag is \x00-terminated and does not collide under
+	// Key = tag||rawKey. `bondedRoot\x00` cannot collide with a per-member `bonded\x00||id`
+	// leaf — after the shared `bonded` prefix the existing tag has \x00 (0x00) and this
+	// one has `R` (0x52), so they diverge before either tag ends. Each root is a scalar
+	// leaf at tag||"" (empty raw key), and per-member raw keys are non-empty 32-byte
+	// NodeIDs, so no scalar-vs-member collision either. v5-ONLY: emitted by
+	// stateRootLeavesV5 only, so a v4 block's root stays byte-identical to era-3 (#632).
+	tagBondedRoot         = "bondedRoot\x00"
+	tagEpochSetRoot       = "epochSetRoot\x00"
+	tagQualifiedRoot      = "qualifiedRoot\x00"
+	tagSlashedRoot        = "slashedRoot\x00"
+	tagValidatorsSeenRoot = "validatorsSeenRoot\x00"
 )
+
+// stateRootDigestTagsV5 is the five v5-only WHOLE-SET digest-root tags added in F1. They
+// are NOT committedSet field names — they are DERIVED digests over existing keyspaces —
+// so they are deliberately NOT in stateRootTagsV5 (which binds to the reflected field
+// classification and would report these as unclassified extras). Their own EMIT guard
+// (TestStateRootV5EmitsEveryDigestRoot) binds this list to stateRootLeavesV5 so a dropped
+// digest-root leaf reddens, and a colliding/renamed tag is caught by the prefix match.
+var stateRootDigestTagsV5 = []string{
+	"bondedRoot", "epochSetRoot", "qualifiedRoot", "slashedRoot", "validatorsSeenRoot",
+}
 
 // stateRootTagsV5 is the era-4 (v5) committedSet field names committed ONLY under the
 // v5 state root — the three maintenance-spine fields the v5 marshaller adds on top of
@@ -211,7 +252,63 @@ func (c *Chain) stateRootLeavesV5() []statehash.Leaf {
 	add(tagEra4LockedIn, nil, statehash.EncodeBool(c.era4LockedIn))
 	add(tagEra4Height, nil, statehash.EncodeUint64(c.era4Height))
 
+	// era-4 (v5) whole-set DIGEST roots (F1). One scalar leaf per keyspace whose value is
+	// the MTH over the CANONICAL sorted id-list of that keyspace's member set. These
+	// commit SET COMPLETENESS for the five whole-set folds; they are INERT until F3's
+	// root-only recompute reads them. C-4 always-emit: an empty keyspace commits
+	// nodeSetMTH over an empty id-list == translog.MTH(nil), the fixed empty-MTH constant,
+	// with NO absent-vs-empty shortcut. Membership-only: weights stay in the per-member
+	// bonded/epochSet/qualified leaves above; these bind the id-SET, not the values.
+	add(tagBondedRoot, nil, nodeSetMTHFromInt64(c.bonded))
+	add(tagEpochSetRoot, nil, nodeSetMTHFromInt64(c.epochSet))
+	add(tagQualifiedRoot, nil, nodeSetMTHFromInt64(c.qualified))
+	add(tagSlashedRoot, nil, nodeSetMTHFromBool(c.slashed))
+	add(tagValidatorsSeenRoot, nil, nodeSetMTHFromBool(c.validatorsSeen))
+
 	return leaves
+}
+
+// nodeSetMTHFromInt64 commits the id-SET (keys only) of a value-carrying keyspace as the
+// canonical-list MTH. The int64 weights are DROPPED here on purpose — the digest binds
+// membership; the weights are committed by the per-member leaves (bonded/epochSet/
+// qualified). See nodeSetMTH.
+func nodeSetMTHFromInt64(m map[ports.NodeID]int64) []byte {
+	ids := make([]ports.NodeID, 0, len(m))
+	for id := range m {
+		ids = append(ids, id)
+	}
+	return nodeSetMTH(ids)
+}
+
+// nodeSetMTHFromBool commits the id-SET of a set-membership keyspace (slashed,
+// validatorsSeen) as the canonical-list MTH. See nodeSetMTH.
+func nodeSetMTHFromBool(m map[ports.NodeID]bool) []byte {
+	ids := make([]ports.NodeID, 0, len(m))
+	for id := range m {
+		ids = append(ids, id)
+	}
+	return nodeSetMTH(ids)
+}
+
+// nodeSetMTH commits a NodeID set as the RFC-6962 MTH over the CANONICAL id list: sorted
+// ascending by raw NodeID bytes, unpadded (a set is already unique). The canonical order
+// is what makes "recompute to this root" uniquely identify the set — two encodings of the
+// same set cannot hash to different roots (the malleability seam RECERT2 closes). An empty
+// set yields translog.MTH(nil), the fixed empty-MTH constant (C-4 always-emit: an empty
+// keyspace is committed, not skipped). translog.MTH is the one audited RFC-6962
+// implementation, reused rather than re-derived. This is the same closure dueBucketMTH
+// ships, factored so the five F1 digest roots and the due-bucket index share one canonical
+// encoding.
+func nodeSetMTH(ids []ports.NodeID) []byte {
+	entries := make([]ports.Hash, 0, len(ids))
+	for _, id := range ids {
+		entries = append(entries, ports.Hash(id))
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return bytes.Compare(entries[i][:], entries[j][:]) < 0
+	})
+	root := translog.MTH(entries)
+	return root[:]
 }
 
 // dueBucketMTH commits a due-height bucket's id set as the RFC-6962 MTH over the
@@ -222,15 +319,11 @@ func (c *Chain) stateRootLeavesV5() []statehash.Leaf {
 // raw 32-byte NodeIDs; translog.MTH is the one audited RFC-6962 implementation, reused
 // here rather than re-derived.
 func dueBucketMTH(ids map[ports.NodeID]struct{}) []byte {
-	entries := make([]ports.Hash, 0, len(ids))
+	set := make([]ports.NodeID, 0, len(ids))
 	for id := range ids {
-		entries = append(entries, ports.Hash(id))
+		set = append(set, id)
 	}
-	sort.Slice(entries, func(i, j int) bool {
-		return bytes.Compare(entries[i][:], entries[j][:]) < 0
-	})
-	root := translog.MTH(entries)
-	return root[:]
+	return nodeSetMTH(set)
 }
 
 // StateRootForVersion computes the committed state root for a block of the given
