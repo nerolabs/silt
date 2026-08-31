@@ -9,6 +9,39 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **v5 trustless floor box — recompute increment 4: the QUALIFIED-COUNT predicate reproduced
+  from witnesses (the `slashed`-over-bonded whole-set read)**
+  (`core/chain/floorbox_recompute_qualifiedCount_v5.go`,
+  `docs/thinking/2026-08-31-floorbox-recompute-increment4-qualified-slashed-options.md`,
+  2026-08-31). Reproduces `qualifiedCount` (the distinct-qualified validator COUNT N that sizes
+  the count-quorum floor, `chain.go:1479`) TRUSTLESSLY, from the committed StateRoot + witnesses
+  alone, replicating increments 1-3's C-1 pattern over the WHOLE `bonded` map. This closes the
+  `slashed`-over-bonded quorum-stack whole-set read the #664 enumeration named as the keyspace
+  the earlier hand-lists OMITTED. Additive: NO consensus rule, validity predicate, or `apply()`
+  change — a full node still counts `bonded[id] >= MinBond && !slashed[id]` from its own maps;
+  this is a SEPARATE root-only path. The four-part proof: (1) SET-COMPLETENESS over `bonded` —
+  reconstruct `nodeSetMTH(whole-bonded id-list)` and require it equals the committed `bondedRoot`
+  digest (reuses the root increment 3 already reads); (2) PER-MEMBER BONDED WEIGHT (C-1) —
+  `Resolve` each `bonded` weight leaf (the `>= MinBond` screen operand), so a forged weight fails
+  ⇒ stall; (3) PER-MEMBER SLASHED BIT (C-1) — `Resolve` each `slashed[id]` present/absent, so a
+  prover can neither drop a slash (inflate N) nor inject one (deflate N); (4) OWN CONFIG (C-6) —
+  `MinBond` read from own `cfg`, never the witness. The box STILL never-Accepts
+  (`WitnessValidateV5` not flipped, the #657 accept flip waits). Six hard ablations ship
+  red-before-green (each injected into production and watched to flip the verdict): forged bonded
+  weight (`_ForgedBondedWeightRejects`, N inflated to 4), dropped slash
+  (`_DroppedSlashRejects`, N inflated to 4), injected slash (`_InjectedSlashRejects`, N deflated
+  to 2), omitted/injected member (completeness, `_{Omitted,Injected}MemberRejects`), and
+  config-from-witness `MinBond` (C-6, failing-first, `_MinBondFromConfig`, N inflated to 4).
+  Equivalence to the full node's `qualifiedCount()` is asserted by test across the `>= MinBond`
+  and slashed screens. TWO STOP-AND-REPORT findings correct the task's premise: (a) `qualified`
+  is an APPLY-channel whole-set read (the `rotateEpoch` freeze `epochSet := clone(qualified)`),
+  NOT a quorum-stack fold — its only validity gate is the Path-1 state-root recompute
+  (`validateEra3Roots`→`postApplyRoots`→`apply`), a large separate piece that warrants its own
+  increment, so `qualifiedRoot` STAYS inert; (b) `slashedRoot` the DIGEST has no whole-set reader
+  (`qualifiedCount` reads `slashed[id]` per-member over the bonded domain, anchored on
+  `bondedRoot`), so it too STAYS inert — no producer change, no digest-root exclusion removed,
+  `TestInertDigestRootsAwaitRecompute` unchanged (still skips both roots). NOT a consensus-rule
+  change; the box never-Accepts.
 - **v5 trustless floor box — recompute increment 3: the DE-MATURE SUPER-QUORUM predicate
   reproduced from witnesses** (`core/chain/floorbox_recompute_dematureQuorum_v5.go`,
   `docs/thinking/2026-08-31-floorbox-recompute-increment3-dematureQuorum-options.md`,
