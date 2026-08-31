@@ -71,6 +71,25 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `epochSetRoot` byte-exact check analogous to class A's `...AttDigestByteExact`.
 
 ### Added
+- **v5 trustless floor box — three pre-Accept hardening ablations for the era-4 v5 recompute (7a/7e/7f)**
+  (`core/statehash/fold_test.go`, `core/chain/floorbox_recompute_stateroot_bondreg_v5_test.go`,
+  `core/chain/floorbox_recompute_stateroot_ttl_v5_test.go`, 2026-08-31). Test-only; the box STILL
+  never-Accepts, no `apply()`/consensus change. Each is red-before-green (inject the defect, watch the
+  REAL code path stall, restore). **7a** — a DIRECT adversarial ablation for the R-fold's delete
+  off-path siblings. MEASURED against `pokt-network/smt@v1.0.0`: a delete-sibling's authenticity rides
+  its DIGEST (proof-anchored to the verified `SideNodes`), NOT its preimage content — `parseTrieNode`
+  stamps a resolved node with the lookup-key digest and `digestNode` returns that CACHED digest without
+  re-hashing, so corrupting a sibling PREIMAGE is a ~13% no-op while corrupting its DIGEST un-seeds the
+  honest referenced node and stalls ~96%. The ablation corrupts the digest and requires the real fold
+  to go RED; the delete cross-product byte-exact pin stays load-bearing. **7e** — class-B
+  bonded-but-NOT-qualified: a fresh reg with `MinBondBytes <= Size < MinBond` writes
+  `bonded`/`bondDomain` but does NOT enter `qualified` (a previously untested delta branch); a positive
+  test reproduces it byte-exact vs real `apply()` + `StateRootForVersion(5)`, and an ablation that
+  forges the qualification stalls. **7f** — class-T multi-block contiguity: the `dueBucket[b.Height]`
+  scope-gate is sound only under chain height-contiguity (apply's sweep is `>=`); a multi-block schedule
+  of consecutive sweep heights firing distinct buckets is reproduced byte-exact, and an ablation that
+  SKIPS a height (so apply's `>=` vacuums a bucket the `==` gate never witnesses) stalls — so a future
+  contiguity break reddens.
 - **v5 trustless floor box — Path-1 state-root recompute P1-e, CLASSES A (attestations →
   validatorsSeen) and P (epoch rotation → epochSet + boundary scalars): the LAST two Path-1 classes**
   (`core/chain/floorbox_recompute_stateroot_atts_v5.go`,

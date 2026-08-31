@@ -420,6 +420,128 @@ func TestRecomputeStateRootBondRegAblationBoundaryOutOfScope(t *testing.T) {
 	}
 }
 
+// --- 7e: class-B BELOW-MinBond fresh reg (bonded, NOT qualified). ---
+//
+// A fresh bond reg with MinBondBytes <= Size < MinBond passes the objective anti-release floor
+// (chain.go:3232, so it writes bonded/bondRegHeight/regVersion/bondDomain and moves the TTL
+// due-bucket) but does NOT enter qualified (chain.go:3264 qualifiedMaintain: size < MinBond ⇒ not
+// qualified). This path was unexercised: every prior B fixture registers at or above MinBond, so the
+// "bonded-but-not-qualified" branch of the delta (postBonded grows, postQual unchanged, no
+// qualifiedRoot digest touched, no qualified||id leaf) had no test. The below-floor fixture sets
+// MinBondBytes < MinBond so a mid-range size lands in the gap.
+
+// buildBelowMinBondFixture is buildBondFixture with a distinct anti-release floor below MinBond, so a
+// fresh reg can be bonded without qualifying. It seats only a proposer (no shared-root squatter — the
+// below-MinBond path is about the qualification gate, not displacement).
+func buildBelowMinBondFixture(t *testing.T) bondFixture {
+	t.Helper()
+	cfg := Config{Quorum: 1, MinBond: 4 << 20, MinBondBytes: 1 << 20, ByzantineQuorum: true,
+		EpochBlocks: 1 << 20, MatureValidators: 0, BondTTLBlocks: 64}
+	c := New(cfg, func(ports.NodeID) int64 { return 0 })
+	c.SetBondVerifier(objectiveVerify)
+
+	prop := key(83001)
+	g := &Block{Version: BlockVersionWitnessable, Height: 0, Entries: []ports.Entry{entry(30)}}
+	g.BondRegs = append(g.BondRegs,
+		bondRegFull(prop, ports.HashBytes(pubOf(prop)), 8<<20, ports.Hash{}, 5, 1)) // proposer qualifies
+	Sign(g, prop)
+	c.apply(*g)
+
+	leaves := c.stateRootLeavesV5()
+	prover, err := statehash.NewProver(leaves)
+	if err != nil {
+		t.Fatalf("NewProver: %v", err)
+	}
+	prevRoot := prover.Root()
+	sr, err := c.StateRootForVersion(BlockVersionWitnessable)
+	if err != nil {
+		t.Fatalf("StateRootForVersion: %v", err)
+	}
+	if sr != prevRoot {
+		t.Fatalf("fixture pre-root mismatch: prover=%x chain=%x", prevRoot, sr)
+	}
+	return bondFixture{c: c, prevRoot: prevRoot, prover: prover, proposer: prop}
+}
+
+// TestRecomputeStateRootBondRegBelowMinBondAgreesWithApply is the POSITIVE 7e test: a fresh reg at a
+// size in [MinBondBytes, MinBond) is bonded-but-not-qualified, and the recompute reproduces the
+// committed StateRoot byte-exact vs the real apply() + StateRootForVersion(5). It confirms the delta
+// grows bonded (touching bondedRoot) WITHOUT touching qualifiedRoot or writing qualified||id.
+func TestRecomputeStateRootBondRegBelowMinBondAgreesWithApply(t *testing.T) {
+	f := buildBelowMinBondFixture(t)
+	prev, h := f.c.Head()
+	fresh := key(83009)
+	fid := ports.HashBytes(pubOf(fresh))
+	size := int64(2 << 20) // MinBondBytes(1MiB) <= 2MiB < MinBond(4MiB)
+	b := Block{Version: BlockVersionWitnessable, Height: h, Prev: prev,
+		BondRegs: []BondReg{bondRegFull(fresh, ports.HashBytes(pubOf(fresh)), size, prev, 5, 9)}}
+
+	// Confirm the fixture actually exercises the bonded-but-not-qualified path in real apply().
+	clone := f.c.cloneForDryRun()
+	clone.apply(b)
+	if _, bonded := clone.bonded[fid]; !bonded {
+		t.Fatalf("fixture: below-floor reg not bonded — ablation vacuous")
+	}
+	if _, qual := clone.qualified[fid]; qual {
+		t.Fatalf("fixture: below-MinBond reg WRONGLY qualified — fixture size not in the gap")
+	}
+
+	newDue := h + f.c.cfg.BondTTLBlocks + 1
+	committed := f.applyAndCommittedRoot(t, b)
+	w := f.bondWitness(t, b, []uint64{newDue})
+
+	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err != nil {
+		t.Fatalf("below-MinBond B recompute should AGREE with real apply() but stalled: %v", err)
+	}
+}
+
+// TestRecomputeStateRootBondRegBelowMinBondAblationForgedQualification is the 7e ablation: forge a
+// committed StateRoot in which the below-MinBond id WAS wrongly added to qualified. The box derives
+// the CORRECT delta (bonded grows, qualified unchanged), folds an honest qualifiedRoot that still
+// EXCLUDES the id, and that MISMATCHES the forged committed root ⇒ stall. This drives the REAL
+// recompute and proves the qualification gate is load-bearing (a below-floor id can never be smuggled
+// into qualified). Red-before-green: the honest committed root (no forged qualification) AGREES
+// (the positive test above).
+func TestRecomputeStateRootBondRegBelowMinBondAblationForgedQualification(t *testing.T) {
+	f := buildBelowMinBondFixture(t)
+	prev, h := f.c.Head()
+	fresh := key(83009)
+	fid := ports.HashBytes(pubOf(fresh))
+	size := int64(2 << 20)
+	b := Block{Version: BlockVersionWitnessable, Height: h, Prev: prev,
+		BondRegs: []BondReg{bondRegFull(fresh, ports.HashBytes(pubOf(fresh)), size, prev, 5, 9)}}
+
+	// Forge: apply honestly, then WRONGLY add the below-floor id to qualified (the smuggle) and
+	// recompute the committed StateRoot over that buggy post-state.
+	buggyClone := f.c.cloneForDryRun()
+	buggyClone.apply(b)
+	if _, bonded := buggyClone.bonded[fid]; !bonded {
+		t.Fatalf("fixture: below-floor reg not bonded — ablation vacuous")
+	}
+	if _, qual := buggyClone.qualified[fid]; qual {
+		t.Fatalf("fixture: below-MinBond reg already qualified — nothing to forge")
+	}
+	buggyClone.qualified[fid] = size // FORGE the qualification
+	buggyCommitted, err := buggyClone.StateRootForVersion(BlockVersionWitnessable)
+	if err != nil {
+		t.Fatalf("buggy StateRootForVersion: %v", err)
+	}
+
+	newDue := h + f.c.cfg.BondTTLBlocks + 1
+	w := f.bondWitness(t, b, []uint64{newDue})
+	err = f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, buggyCommitted, b, w)
+	if err == nil {
+		t.Fatalf("ABLATION FAILED: a committed root that forged qualification for a below-MinBond id must stall, got nil")
+	}
+	// The box's honest qualifiedRoot excludes the id; the forged committed root includes it. Depending
+	// on whether the box supplies a qualifiedRoot digest op for the (honestly-unchanged) set, the
+	// stall surfaces as a fold or a final-equality mismatch — both never-Accept.
+	if !errors.Is(err, ErrRecomputeStateRootFold) && !errors.Is(err, ErrRecomputeStateRootMismatch) &&
+		!errors.Is(err, ErrRecomputeStateRootDigest) {
+		t.Fatalf("ABLATION FAILED: expected a fold/mismatch/digest stall, got %v", err)
+	}
+}
+
 // uniqueU64 returns the distinct values in order.
 func uniqueU64(vs ...uint64) []uint64 {
 	seen := map[uint64]struct{}{}

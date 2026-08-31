@@ -596,4 +596,120 @@ func TestFoldAblationSeedRootMismatch(t *testing.T) {
 	}
 }
 
+// TestFoldAblationCorruptDeleteSibling is the DIRECT adversarial ablation for the R-fold's delete
+// off-path siblings (7a). It pins WHERE a corrupt delete-sibling is caught, established by
+// measurement against pokt-network/smt@v1.0.0's real code path (see the mechanism note below).
+//
+// THE MECHANISM — a delete-sibling's AUTHENTICITY rides its DIGEST, not its preimage content.
+// FoldChangedPaths seeds each DeleteSiblings entry into the node store keyed under its digest
+// (fold.go:135, seed[string(sib.Digest)] = sib.Preimage). The library resolves an off-path sibling
+// by the digest the on-path parent inner node references (smt.go:298, resolveLazy(*sib)), and
+// parseTrieNode stamps the RESOLVED node with `digest: <the lookup key>` and `persisted: true`
+// (smt.go:575-599). On Commit, digestNode returns that CACHED digest for a persisted leaf/inner
+// WITHOUT re-hashing the preimage (trie_spec.go:80-104). So:
+//   - Corrupting a sibling's PREIMAGE while keeping its digest key is a near-silent no-op: the
+//     cached digest still propagates. (Measured: only ~13% of deletes stall on preimage corruption,
+//     and only where the library must re-encode the node — the extension-absorb branch.)
+//   - Corrupting a sibling's DIGEST un-seeds the honest referenced node: the on-path parent still
+//     references the TRUE sidenode digest (proof-anchored, VerifyProof'd against prevStateRoot), which
+//     is now absent from the store, so the library cannot resolve it → the fold DIVERGES or errors.
+//     (Measured: ~96% of deletes stall.)
+//
+// The load-bearing authenticity boundary is therefore the sibling DIGEST, which is pinned to the
+// verified proof's SideNodes. This ablation corrupts that digest and requires the REAL fold path to
+// go RED — a short/forged delete sibling can never fold to the honest post-root.
+//
+// KEEP the delete cross-product pin (TestFoldByteExactRandomized / TestFoldCaseDelete) load-bearing:
+// this ablation is ADDITIVE and does not touch it.
+func TestFoldAblationCorruptDeleteSibling(t *testing.T) {
+	rng := rand.New(rand.NewSource(4711))
+	// Build a delete whose FoldOp carries at least one non-placeholder off-path sibling (a real
+	// leaf/extension/inner node the library must resolve during the delete's promotion).
+	var (
+		pre    map[string][]byte
+		delKey string
+		ops    []FoldOp
+		prover *Prover
+		opIdx  = -1
+	)
+	for attempt := 0; attempt < 5000 && opIdx < 0; attempt++ {
+		var first string
+		pre, _, _, first = caseDeleteMany(rng)
+		delKey = first
+		p, err := NewProver(leafSlice(pre))
+		if err != nil {
+			t.Fatal(err)
+		}
+		prover = p
+		ops = buildFoldOps(t, prover, pre, map[string][]byte{}, map[string]bool{delKey: true})
+		for i := range ops {
+			if ops[i].NewValue == nil && len(ops[i].DeleteSiblings) > 0 {
+				opIdx = i
+				break
+			}
+		}
+	}
+	if opIdx < 0 {
+		t.Fatal("could not build a delete op carrying a non-empty delete sibling")
+	}
+	prevRoot := prover.Root()
+
+	post := map[string][]byte{}
+	for k, v := range pre {
+		post[k] = v
+	}
+	delete(post, delKey)
+	want, err := Root(leafSlice(post))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// GREEN precondition: the HONEST delete (uncorrupted siblings) matches the committed post-root.
+	gotGood, err := FoldChangedPaths(prevRoot, ops)
+	if err != nil {
+		t.Fatalf("precondition: honest delete fold errored: %v", err)
+	}
+	if gotGood != want {
+		t.Fatalf("precondition: honest delete fold must match Root(post): got %x want %x", gotGood, want)
+	}
+
+	// INJECT: corrupt EVERY delete-sibling's DIGEST (flip a byte). The on-path parent nodes,
+	// reconstructed from the VERIFIED proof, still reference the TRUE sidenode digests; those are now
+	// absent from the seed, so the library cannot resolve them ⇒ the fold errors or diverges. This is
+	// the authenticity boundary: a forged delete sibling can never reproduce the honest post-root.
+	badOps := cloneFoldOps(ops)
+	for j := range badOps[opIdx].DeleteSiblings {
+		d := append([]byte(nil), badOps[opIdx].DeleteSiblings[j].Digest...)
+		d[len(d)-1] ^= 0xFF
+		badOps[opIdx].DeleteSiblings[j].Digest = d
+	}
+
+	gotBad, errBad := FoldChangedPaths(prevRoot, badOps)
+	// RED: EITHER the library errors resolving the missing sibling OR the computed root diverges from
+	// the honest post-root (the caller's final StateRoot equality then fails). Both are never-Accept.
+	if errBad == nil && gotBad == want {
+		t.Fatal("ABLATION FAILED: corrupting the delete-sibling digests still folded to the honest post-root — the delete-sibling authenticity is not load-bearing")
+	}
+}
+
+// cloneFoldOps deep-copies a FoldOp slice so an ablation can corrupt a sibling without mutating the
+// honest ops.
+func cloneFoldOps(ops []FoldOp) []FoldOp {
+	out := make([]FoldOp, len(ops))
+	for i := range ops {
+		out[i] = ops[i]
+		if ops[i].DeleteSiblings != nil {
+			sibs := make([]FoldSibling, len(ops[i].DeleteSiblings))
+			for j := range ops[i].DeleteSiblings {
+				sibs[j] = FoldSibling{
+					Digest:   append([]byte(nil), ops[i].DeleteSiblings[j].Digest...),
+					Preimage: append([]byte(nil), ops[i].DeleteSiblings[j].Preimage...),
+				}
+			}
+			out[i].DeleteSiblings = sibs
+		}
+	}
+	return out
+}
+
 var _ = sha256.Size
