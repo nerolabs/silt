@@ -264,19 +264,21 @@ func TestRecomputeStateRootAblationOmittedProof(t *testing.T) {
 	}
 }
 
-// TestRecomputeStateRootAblationOutOfScope: a block carrying an out-of-scope class (a BondReg)
-// ⇒ scope-gate stall, never Accept.
+// TestRecomputeStateRootAblationOutOfScope: a block carrying an out-of-scope class (a non-proposer
+// attestation, class A) ⇒ scope-gate stall, never Accept. (Class B bond regs are now IN scope —
+// P1-d — so an out-of-scope ablation uses class A, which stays deferred on the R-A-frozenset residual.)
 func TestRecomputeStateRootAblationOutOfScope(t *testing.T) {
 	f := buildStateRootFixture(t)
 	b := f.nextERBlock()
-	// Inject a BondReg — an out-of-scope class for P1-a.
-	b.BondRegs = append(b.BondRegs, bondRegFull(key(52002), ports.HashBytes(pubOf(key(52002))), 4<<20, ports.Hash{}, 5, 2))
+	// Inject a non-proposer attestation — an out-of-scope class (A), it may write validatorsSeen.
+	bb := b
+	b.Atts = append(b.Atts, Attest(&bb, key(52002)))
 	committed := f.applyAndCommittedRoot(t, b)
 	w := f.witnessForBlock(t, b)
 
 	err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w)
 	if !errors.Is(err, ErrRecomputeStateRootScopeStall) {
-		t.Fatalf("ABLATION FAILED: an out-of-scope BondReg must stall at the scope gate, got %v", err)
+		t.Fatalf("ABLATION FAILED: an out-of-scope non-proposer att must stall at the scope gate, got %v", err)
 	}
 }
 

@@ -65,6 +65,36 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   byte-exact digest check. Certs:
   `floorbox-Rboundary-writeset-digest-reconstruction-RESEARCH-CERTIFICATION-2026-08-31`,
   `RULING-floorbox-recompute-P1b-SA-digest-scope-2026-08-31`.
+- **v5 trustless floor box — Path-1 state-root recompute P1-c + P1-d, CLASSES T (TTL sweep) and B
+  (bond registrations): two more delta-derivable digest classes on the changed-digest primitive**
+  (`core/chain/floorbox_recompute_stateroot_ttl_v5.go`,
+  `core/chain/floorbox_recompute_stateroot_bondreg_v5.go`,
+  `core/chain/floorbox_recompute_stateroot_v5.go`,
+  `docs/thinking/2026-08-31-floorbox-recompute-BT-options.md`, 2026-08-31). Widens the O(payload)
+  state-root recompute to reproduce `validateEra3Roots`' StateRoot equality for a TTL-expiry block
+  and a bond-registration block, reusing the P1-b changed-digest primitive. The exact write-sets
+  were MEASURED off real `apply()` + `stateRootLeavesV5()` (not guessed). **Class T** derives the
+  expired set from the `dueBucket[b.Height]` accelerator (the O(1)/O(bucket) witness, NOT a whole
+  `bondRegHeight` scan): each expired id deletes `bonded`/`bondRegHeight`/`regVersion`/`qualified`
+  leaves and the whole bucket empties, changing `bondedRoot`/`qualifiedRoot`. The bucket MTH is
+  anchored via the CRUX closure — the box reconstructs `dueBucketMTH(members)` and the scope gate
+  requires it PROVE PRESENT against `prevStateRoot`, so a forged/short expired set stalls. **Class
+  B** reproduces `apply()`'s bond-reg loop exactly: `canonicalBondRegs` same-id canonicalization,
+  the MinBond/malformed/slashed screens from OWN cfg, the per-root PROOF-BEATS-DECLARATION
+  displacement (the displaced squatter is read from committed `bondRootOwner[Root]`, an id NOT in
+  the payload — the R-B-displacement residual, fold-caught), and the `dueBucketMoveOnReg` old-bucket
+  delete + new-bucket insert (each an MTH leaf reconstructed from its witnessed pre-set). A pure
+  same-id renew touches NO whole-set digest (the id-set is unchanged). The scope gate widens so B and
+  T blocks are IN scope; the epoch-boundary (P) check moves FIRST so a boundary stalls as a scope
+  stall regardless of TTL; A/P/M stay out-of-scope-stalling. Box STILL never-Accepts (R-scope). No
+  `apply()`/consensus change. COST is HONEST: NOT O(payload) — reconstructing `bondedRoot`/
+  `qualifiedRoot` is a whole-list MTH fold, so B and T are O(payload) + O(|bonded|) + O(|qualified|)
+  + O(|touched buckets|) ≈ O(registry) per touched digest, riding R-membership (OPEN, for the #657
+  accept-flip). Ships with R3 execution-derived ablations against real `apply()` +
+  `StateRootForVersion(5)`, each watched RED before green: (T) forged expired set, bonded-not-deleted,
+  omitted digest, out-of-scope compound, byte-exact digest; (B) fresh/renew/displacement agreement,
+  displacement-not-applied, forged screen, boundary-out-of-scope. Cert:
+  `floorbox-Rboundary-writeset-digest-reconstruction-RESEARCH-CERTIFICATION-2026-08-31`.
 - **v5 trustless floor box — recompute increment 4: the QUALIFIED-COUNT predicate reproduced
   from witnesses (the `slashed`-over-bonded whole-set read)**
   (`core/chain/floorbox_recompute_qualifiedCount_v5.go`,

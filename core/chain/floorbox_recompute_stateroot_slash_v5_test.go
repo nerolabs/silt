@@ -454,19 +454,20 @@ func TestRecomputeStateRootSlashAblationCircularAnchor(t *testing.T) {
 	}
 }
 
-// --- Ablation 7: an out-of-scope compound — a slash block that ALSO carries a bond reg stalls at
-// the scope gate (B is out of scope), never Accepts.
+// --- Ablation 7: an out-of-scope compound — a slash block that ALSO carries a non-proposer att
+// (class A) stalls at the scope gate, never Accepts. (Class B bond regs are now IN scope — P1-d — so
+// the out-of-scope compound uses class A, which stays deferred on the R-A-frozenset residual.)
 func TestRecomputeStateRootSlashAblationCompoundOutOfScope(t *testing.T) {
 	f := buildSlashFixture(t)
 	b := f.slashBlock()
-	prev, _ := f.c.Head()
-	b.BondRegs = append(b.BondRegs, bondRegFull(key(53077), ports.HashBytes(pubOf(key(53077))), 4<<20, prev, 5, 7))
+	bb := b
+	b.Atts = append(b.Atts, Attest(&bb, key(53077)))
 	committed := f.applyAndCommittedRoot(t, b)
 	w := f.witnessForSlash(t, b)
 
 	err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w)
 	if !errors.Is(err, ErrRecomputeStateRootScopeStall) {
-		t.Fatalf("ABLATION FAILED: a slash+bondreg compound must stall at the scope gate, got %v", err)
+		t.Fatalf("ABLATION FAILED: a slash+non-proposer-att compound must stall at the scope gate, got %v", err)
 	}
 }
 

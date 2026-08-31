@@ -120,12 +120,26 @@ type StateRootWitness struct {
 	// TTL expiry fires at b.Height, so the block can be E/R-only. A membership proof (an occupied
 	// bucket) or a missing/failed proof stalls the scope gate. Supplied only when BondTTLBlocks > 0.
 	DueBucketProof statehash.Witness
-	// DigestPreSets carries, for each class-S touched whole-set digest scalar (slashedRoot /
-	// bondedRoot / qualifiedRoot), the claimed pre-state member id-list + the digest leaf inclusion
-	// proof against prevStateRoot. Empty for an E/R-only block (no digest scalar changes). The box
-	// reconstructs each pre-set MTH and requires it equals the committed pre-digest (completeness
-	// anchor), then folds the payload-derived post-digest (P1-b class S).
+	// DigestPreSets carries, for each touched whole-set digest scalar (slashedRoot / bondedRoot /
+	// qualifiedRoot), the claimed pre-state member id-list + the digest leaf inclusion proof against
+	// prevStateRoot. Empty for an E/R-only block (no digest scalar changes). The box reconstructs
+	// each pre-set MTH and requires it equals the committed pre-digest (completeness anchor), then
+	// folds the payload/accelerator-derived post-digest (class S slashes, class B bond regs, class T
+	// TTL sweep).
 	DigestPreSets []StateRootDigestWitness
+	// TTLSweep carries the class-T accelerator delta: the members of dueBucket[b.Height] (the expired
+	// set) + the bucket MTH inclusion proof + the bucket-delete off-path siblings. Present only for a
+	// firing TTL sweep block (P1-c). The box reconstructs dueBucketMTH(Members) and requires it equals
+	// the committed bucket value (the CRUX completeness anchor).
+	TTLSweep *StateRootTTLWitness
+	// BondRegScreens carries, per bond-reg Root, the committed pre-state ownership the class-B
+	// displacement branch reads (bondRootOwner / bondRootProven). Present only for a bond-reg block
+	// (P1-d). The box derives the B delta from these + its own cfg screens (R-B-displacement).
+	BondRegScreens []StateRootBondRegScreen
+	// BondRegBuckets carries, per affected TTL due-height, the pre-state bucket member id-list + the
+	// bucket leaf proof against prevStateRoot. Present only for a bond-reg block with TTL enabled
+	// (the dueBucketMoveOnReg leaf effect). The box reconstructs each affected bucket's MTH.
+	BondRegBuckets []StateRootBucketWitness
 }
 
 // RecomputeStateRootEntriesRevocations reproduces validateEra3Roots' StateRoot equality check
@@ -155,7 +169,7 @@ func (c *Chain) RecomputeStateRootEntriesRevocations(
 	// payload-visible classes (BondReg / Slash / non-proposer Att) and the epoch boundary are
 	// checked from the block + own cfg; the TTL-expiry class is checked from the O(1) dueBucket
 	// non-membership witness (NOT a whole-state scan).
-	if reason := c.stateRootScopeGate(prevStateRoot, b, w.DueBucketProof); reason != nil {
+	if reason := c.stateRootScopeGate(prevStateRoot, b, w); reason != nil {
 		return reason
 	}
 
@@ -173,8 +187,29 @@ func (c *Chain) RecomputeStateRootEntriesRevocations(
 		if dErr != nil {
 			return dErr
 		}
-		digestOps = dOps
+		digestOps = append(digestOps, dOps...)
 		writeSet = append(writeSet, stateRootSlashWriteSet(b, preBonded, preQualified)...)
+	}
+	// Class B (bond regs, P1-d): derive the delta from b.BondRegs + own-cfg screens + the per-root
+	// displacement witnesses, then reconstruct the touched digests + affected dueBucket leaves.
+	if len(b.BondRegs) > 0 {
+		bOps, bWrites, bErr := c.bondRegOps(b, w)
+		if bErr != nil {
+			return bErr
+		}
+		digestOps = append(digestOps, bOps...)
+		writeSet = append(writeSet, bWrites...)
+	}
+	// Class T (TTL sweep, P1-c): derive the expired set from the dueBucket[b.Height] accelerator
+	// witness, then reconstruct the touched digests + the bucket DELETE.
+	if w.TTLSweep != nil {
+		tOps, preBonded, preQualified, expired, tErr := stateRootTTLDigestOps(*w.TTLSweep, w.DigestPreSets)
+		if tErr != nil {
+			return tErr
+		}
+		digestOps = append(digestOps, tOps...)
+		writeSet = append(writeSet, stateRootTTLWriteSet(expired, w.TTLSweep.Height, preQualified)...)
+		_ = preBonded
 	}
 
 	// (3) MATCH each derived write to its supplied pre-state witness and build the fold ops. A
@@ -232,17 +267,21 @@ func (c *Chain) RecomputeStateRootEntriesRevocations(
 // non-membership witness — NEVER a whole-state scan (the O(payload) re-anchor). Every clause maps
 // to a later sub-increment; removing a clause is the visible signal that its class's recompute has
 // landed.
-func (c *Chain) stateRootScopeGate(prevStateRoot ports.Hash, b Block, dueBucketProof statehash.Witness) error {
-	// Class B (bond regs): payload-visible, deferred to P1-d. Class S (slashes) is now IN scope
-	// (P1-b) — it is handled by the changed-digest write-set (stateRootSlashWriteSet +
-	// stateRootSlashDigestOps), so it is NOT stalled here.
-	if len(b.BondRegs) > 0 {
-		return fmt.Errorf("%w: %d bond reg(s)", ErrRecomputeStateRootScopeStall, len(b.BondRegs))
+func (c *Chain) stateRootScopeGate(prevStateRoot ports.Hash, b Block, w StateRootWitness) error {
+	// Class B (bond regs, P1-d) is now IN scope — handled by bondRegOps (the reproduced
+	// canonicalization + displacement + due-bucket delta). Class S (slashes, P1-b) is also IN scope.
+	// Neither is stalled here.
+	// Class P (epoch rotation, deferred): rotateEpoch fires at a boundary and is UNCONDITIONALLY out
+	// of scope — check it FIRST, before the witness-dependent T clause, so a boundary block stalls as
+	// a scope stall regardless of whether its dueBucket witness is present. epochsEnabled/EpochBlocks
+	// are read from OWN cfg (C-6).
+	if c.epochsEnabled() && c.cfg.EpochBlocks > 0 && b.Height%c.cfg.EpochBlocks == 0 {
+		return fmt.Errorf("%w: height %d is an epoch boundary", ErrRecomputeStateRootScopeStall, b.Height)
 	}
-	// Class A (attestation tracking, P1-b): a non-proposer att writes validatorsSeen when the
-	// attester is qualified. P1-a does not reproduce attesterQualified's membership screen, so stall
-	// if ANY att could write validatorsSeen. Conservative (a proposer-only att set is a no-op for
-	// validatorsSeen); it never wrong-Accepts.
+	// Class A (attestation tracking, deferred): a non-proposer att writes validatorsSeen when the
+	// attester is qualified. This increment does not reproduce attesterQualified's frozen-epochSet
+	// screen (R-A-frozenset), so stall if ANY att could write validatorsSeen. Conservative (a
+	// proposer-only att set is a no-op for validatorsSeen); it never wrong-Accepts.
 	proposer := b.ProposerID()
 	for _, a := range b.Atts {
 		if a.AttesterID() != proposer {
@@ -250,24 +289,40 @@ func (c *Chain) stateRootScopeGate(prevStateRoot ports.Hash, b Block, dueBucketP
 		}
 	}
 	// Class T (TTL sweep, P1-c): an expiry fires at b.Height iff dueBucket[uint64BE(h)] is occupied
-	// (chain.go:3274). The O(payload) re-anchor: verify a NON-MEMBERSHIP proof of dueBucket[h]
-	// against prevStateRoot. ProvenAbsent ⇒ no expiry ⇒ E/R-only is safe. A membership proof (an
-	// occupied bucket), a missing proof, or a failed verify ⇒ stall. dueBucket keys are v5-only, so
-	// this clause is inert on a chain with BondTTLBlocks == 0.
+	// (chain.go:3274). The box distinguishes the two cases from the dueBucket witness against
+	// prevStateRoot:
+	//   - PROVEN ABSENT  ⇒ no expiry fires ⇒ the block is E/R(+B/S)-only; w.TTLSweep must be nil.
+	//   - PROVEN PRESENT ⇒ a sweep fires ⇒ class T is in scope; w.TTLSweep must carry the expired set.
+	// A missing/failed proof, or a witness/scope disagreement (present but no TTLSweep, or absent but
+	// a TTLSweep supplied), stalls. dueBucket keys are v5-only, so this clause is inert when
+	// BondTTLBlocks == 0.
 	if c.cfg.BondTTLBlocks > 0 {
 		var hk [8]byte
 		binary.BigEndian.PutUint64(hk[:], b.Height)
 		key := statehash.Key(tagDueBucket, hk[:])
-		res := statehash.Resolve(prevStateRoot, key, nil, dueBucketProof)
-		if !res.IsProvenAbsent() {
-			return fmt.Errorf("%w: dueBucket[%d] not proven absent (a TTL expiry may fire at this height)",
-				ErrRecomputeStateRootTTLWitness, b.Height)
+		absent := statehash.Resolve(prevStateRoot, key, nil, w.DueBucketProof)
+		if absent.IsProvenAbsent() {
+			// No sweep fires. A TTLSweep witness for a non-firing height is a scope error.
+			if w.TTLSweep != nil {
+				return fmt.Errorf("%w: dueBucket[%d] proven absent but a TTL sweep witness was supplied",
+					ErrRecomputeStateRootTTLWitness, b.Height)
+			}
+		} else {
+			// Not proven absent ⇒ a sweep may fire ⇒ class T is in scope. Require the expired-set
+			// witness keyed at b.Height, and PROVE the bucket PRESENT with the value the witness's
+			// member list reconstructs (dueBucketMTH(Members)). A forged/short member list yields a
+			// value that does not verify against prevStateRoot ⇒ NoWitness ⇒ stall — so the scope gate
+			// also enforces the CRUX completeness anchor, not just the recompute.
+			if w.TTLSweep == nil || w.TTLSweep.Height != b.Height || len(w.TTLSweep.Members) == 0 {
+				return fmt.Errorf("%w: dueBucket[%d] not proven absent but no matching TTL sweep witness",
+					ErrRecomputeStateRootTTLWitness, b.Height)
+			}
+			bucketMTH := dueBucketMTHFromSlice(w.TTLSweep.Members)
+			if !statehash.Resolve(prevStateRoot, key, bucketMTH, w.DueBucketProof).IsProvenPresent() {
+				return fmt.Errorf("%w: dueBucket[%d] present-proof did not verify the reconstructed expired-set MTH",
+					ErrRecomputeStateRootTTLWitness, b.Height)
+			}
 		}
-	}
-	// Class P (epoch rotation, P1-e): rotateEpoch fires at a boundary. Stall on any boundary.
-	// epochsEnabled/EpochBlocks are read from OWN cfg (C-6).
-	if c.epochsEnabled() && c.cfg.EpochBlocks > 0 && b.Height%c.cfg.EpochBlocks == 0 {
-		return fmt.Errorf("%w: height %d is an epoch boundary", ErrRecomputeStateRootScopeStall, b.Height)
 	}
 	return nil
 }
