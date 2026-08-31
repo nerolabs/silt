@@ -9,6 +9,29 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **consensus model-check — the unified step-oracle `assertInvariants(replicas)` (#406)**
+  (`core/node/modelcheck_unified_oracle_test.go`,
+  `docs/thinking/2026-08-30-406-consensus-modelcheck-harness-options.md`, 2026-08-30).
+  Test-infra only; no consensus rule, validity predicate, or `apply()` change. The
+  existing per-invariant oracles each drive their own scenario and assert their own
+  invariant; the spec (`docs/design/consensus-model-check.md`) also calls for a single
+  cross-cutting oracle "called each step" — absent until now (`grep assertInvariants`
+  returned nothing). This adds `assertInvariants(replicas)` plus a deterministic
+  `stepDriver` that delivers one message at a time over the real mature 4+4 node world
+  (`matureWorld`) and asserts the oracle after EVERY delivery. Covers the two invariants
+  expressible as pure functions of observable cross-replica state: **I1** (no two replicas
+  finalize different block hashes at one height, via `FinalizedHeight`+`Blocks`) and
+  **I5** (no honest replica slashed, via `OnSlash`). Ablated to the hard bar: the oracle
+  goes RED on an injected I1 disagreement and an injected I5 honest-slash, GREEN once
+  removed; the honest 3-round schedule stays GREEN over 126 deliveries to finalized
+  height 11 with all 8 replicas agreeing. I2/I3/I4 stay owned by their dedicated
+  exhaustive oracles — this monitor does not reimplement them. Also trues up the
+  oracle-coverage maps in both `core/node/modelcheck_unified_oracle_test.go` and
+  `core/chain/modelcheck_test.go`: the docstrings now cite the sibling per-invariant
+  oracles by their real repo-root paths (the I1/I3/I5-enumeration oracles are
+  `core/chain` files, not in-package), and the stale "NOT YET BUILT" list in
+  `core/chain/modelcheck_test.go` is corrected — those I1-mature/I3/I5/I2 oracles are
+  now built (per PE ruling `RULING-406-unified-modelcheck-oracle-2026-08-30.md`).
 - **era-4 (v5) trustless floor-box validation — lane-1 Part B increment B1 (the SOUND,
   ADDITIVE slice: the #535 cold-auditor recovery-boundary policy + the additive entry
   point; the accept-core recompute is research-gated and NOT built)**
