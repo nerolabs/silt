@@ -1083,6 +1083,50 @@ withdraw the free floor.
   sessions from a free flood is a SEPARATE reservation decision that would re-raise the Option-C
   parameter gate — it is not folded into B.
 
+## D-V5-WHOLESET-ROOTS — five whole-set digest-root leaves close the heavy-posture set-completeness gap
+
+- **Status:** ✅ RATIFIED — 2026-08-31 (owner ratification). Andrew ratified adding **five
+  v5-only committed MTH digest-root leaves** to the OPEN era-4/v5 committed format:
+  `bondedRoot`, `epochSetRoot`, `qualifiedRoot`, `slashedRoot`, `validatorsSeenRoot`. Each is a
+  **membership-only digest** (weight/value rides the existing per-member leaves), **always-emit**,
+  mirroring the certified `dueBucket` MTH.
+- **What they buy:** they let the heavy-posture floor box prove **SET-completeness** for the five
+  whole-set committed reads — `bonded`/`slashed`/`epochSet`/`validatorsSeen` in the quorum stack;
+  `qualified` in the apply-channel boundary freeze — by **reconstruct-and-compare**, closing the
+  whole-set wrong-accept gap. Without them a floor box validating by proof can be fed an
+  incomplete set (omitted members) and cannot detect it.
+- **Basis:** the research certification
+  (`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/v5-wholeset-digest-root-addition-RESEARCH-CERTIFICATION-2026-08-31.md`),
+  the PE cert cross-check
+  (`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-v5-wholeset-digest-root-cert-crosscheck-2026-08-31.md`),
+  and the read-set enumeration
+  (`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-readset-v5-quorum-wholeset-enumeration-2026-08-31.md`).
+
+**Additive, immutable preserved.** The addition **appends to `stateRootLeavesV5` only**; the 18
+era-3 leaves are untouched, so a **v4 root stays byte-identical** (era-3 is frozen, #632). This is
+an addition to the OPEN era-4/v5 format, permitted by the deferred-freeze decision. **It is NOT an
+immutable trade.**
+
+**Seven binding build / model-check conditions** (none desk-liftable — each must be met in the
+build + model-check tier before the v5 format freezes):
+- **C-1 (load-bearing):** the recompute composes `digest ∪ per-member value/inclusion proofs` — the
+  digest binds MEMBERSHIP; 4 of 5 folds are weight/predicate sums, so per-member weights MUST be
+  verified or the tally is forgeable.
+- **C-2:** the #535 cold-auditor directive-trust is PRESERVED — the roots witness set-completeness,
+  not directive authenticity (`LivenessRecoveryHeight` stays cfg-carried / uncommitted).
+- **C-3:** the corpus-poise caveat travels — the 5-set is proven by the closed-23 schema + the PE
+  call-tree trace, not by the perturbation oracle.
+- **C-4:** always-emit is mandatory — the keyspaces can be empty; empty = `translog.MTH(nil)`, a
+  fixed constant; no absent-vs-empty shortcut.
+- **C-5:** the ablation suite — per-keyspace + #535-boundary + empty + forged-weight +
+  slashed-omission, each red-before-green.
+- **C-6:** the recompute reads genesis-pinned config (`MinBond`, `Anchors`, `OperatorMargin`) from
+  its OWN genesis config, NEVER the witness.
+- **C-7:** the new tags are `\x00`-terminated / prefix-safe (`Key = tag||rawKey`) and bound into the
+  coverage guard.
+
+**The v5 format freeze stays DEFERRED** until the addition is built and model-checked.
+
 ---
 
 ## What is NOT on this ledger

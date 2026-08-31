@@ -225,6 +225,19 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   execution-derived enumeration across `apply ∪ ValidateCommit` then certified; the #657
   `WitnessValidateV5` seam widens to "reproduce every validity predicate"; the v5 format freeze
   stays DEFERRED until certified + ratified.
+- **Record the RATIFIED v5 five-root whole-set digest-root format addition (D-V5-WHOLESET-ROOTS)**
+  (`docs/decisions.md`, 2026-08-31). Owner-ratified addition of five v5-only committed MTH
+  digest-root leaves — `bondedRoot`, `epochSetRoot`, `qualifiedRoot`, `slashedRoot`,
+  `validatorsSeenRoot` — membership-only digests (always-emit, mirroring the certified `dueBucket`
+  MTH) that let the heavy-posture floor box prove SET-completeness for the five whole-set committed
+  reads by reconstruct-and-compare, closing the whole-set wrong-accept gap. Additive: appends to
+  `stateRootLeavesV5` only, the 18 era-3 leaves untouched, so a v4 root stays byte-identical (era-3
+  frozen, #632) — NOT an immutable trade. Ships with seven binding, non-desk-liftable build /
+  model-check conditions (C-1 per-member weight verification is load-bearing; C-2 #535
+  directive-trust preserved; C-3 corpus-poise caveat; C-4 always-emit; C-5 ablation suite; C-6
+  genesis-pinned config; C-7 prefix-safe tags), and the v5 format freeze stays DEFERRED until built
+  and model-checked. Cites the research certification, the PE cert cross-check, and the read-set
+  enumeration (all 2026-08-31, `silt-reviews/`).
 - **Map the third-operator committed-settlement design space (DEFINITION only — the next PoD
   frontier)** (`docs/thinking/2026-08-30-third-operator-committed-settlement-options.md`,
   2026-08-30). A design-options strawman for a GATED economic mechanism: cross-operator
