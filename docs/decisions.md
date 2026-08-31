@@ -940,6 +940,39 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
        `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RECONCILIATION-lane1-Rboundary-root-count-2026-08-31.md`
        and
        `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/era4-v5-Rboundary-Rscope-RECONCILIATION-2026-08-31.md`.
+- **RATIFIED 2026-08-31 — the O(payload) HYBRID state-root recompute for the trustless floor
+  box.** Andrew ratified the design that lets the tree-free **pony** (1 CPU / 2 GB) fully
+  validate a block's committed `StateRoot` in **O(payload)**, not O(whole-state) — preserving
+  the heavy / fully-trustless posture (the HEAVY R-boundary ratified above) **without** a
+  hold-tree box, a light posture, or a new cryptographic primitive. This grounds the node-tier
+  ratio vision (ponies : horses : archival ≈ **10000 : 100 : 1** — ponies DOMINATE validation,
+  so full validation MUST fit 2 GB).
+  1. **The design (HYBRID, class-partitioned).** The box:
+     1. **DERIVES the write-set** from the block's payload + the era-4 accelerators
+        (`dueBucket` for TTL; the digest roots for whole-set commitments) — running the
+        **generator**, not the prover;
+     2. **collects each changed leaf's pre-state proof** against `prevStateRoot`;
+     3. **FOLDS only those changed paths** to COMPUTE the post-root;
+     4. requires it **`== b.StateRoot`**.
+     Deriving the write-set closes **completeness**; the fold catches any **discrepancy**.
+     Neither verify-only nor fold-only closes; **together they do**. The **write-set derivation
+     is the load-bearing object** (same lineage as the read-set completeness / R-boundary work
+     above).
+  2. **Class-partitioned.** Payload / `dueBucket`-driven classes (**E / R / T**) are
+     certified-in-direction **now**; whole-map classes (**B / P / M**) inherit the still-open
+     R-boundary write-set completeness.
+  3. **GATED-on-build residuals.**
+     - **R-fold** — the multi-leaf SMT fold pinned **byte-exact** and ablated per structural
+       case (the **largest new burden**).
+     - **scope-gate** re-anchored on `dueBucket[h]`.
+     - **R-writeset** — B / P / M ⊂ R-boundary.
+     - **R-scope** — the box stays **never-Accept** until R-fold is pinned.
+     - **R3** — an execution-derived drift guard vs the real `apply()`.
+     - Standing **R1** (RegCap) and **R2** (#535) carry forward.
+     Cite:
+     `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/floorbox-recompute-P1a-Opayload-multileaf-RESEARCH-CERTIFICATION-2026-08-31.md`
+     and
+     `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-floorbox-recompute-P1a-Opayload-multileaf-2026-08-31.md`.
 
 ---
 

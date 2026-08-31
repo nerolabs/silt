@@ -409,6 +409,22 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   only — no consensus rule, validity predicate, or committed format changed.
 
 ### Docs
+- **Record the RATIFIED O(payload) HYBRID state-root recompute for the trustless floor box**
+  (`docs/decisions.md`, 2026-08-31). Documentation only — NO code, consensus, economic, or
+  security content changed; records a decision certified/ruled elsewhere. Under D-TIERING: Andrew
+  ratified the design that lets the tree-free pony (1 CPU / 2 GB) fully validate a block's
+  committed `StateRoot` in O(payload), not O(whole-state) — preserving the heavy / fully-trustless
+  posture without a hold-tree box, a light posture, or a new cryptographic primitive; grounds the
+  node-tier ratio vision (ponies : horses : archival ≈ 10000 : 100 : 1). The HYBRID design is
+  class-partitioned: the box DERIVES the write-set from payload + era-4 accelerators (running the
+  generator, not the prover), collects each changed leaf's pre-state proof against `prevStateRoot`,
+  FOLDS only those paths to compute the post-root, and requires it `== b.StateRoot` — derivation
+  closes completeness, the fold catches discrepancy, neither closes alone. Payload/`dueBucket`
+  classes (E/R/T) certified-in-direction now; whole-map classes (B/P/M) inherit the open R-boundary
+  write-set completeness. GATED-on-build residuals: R-fold (multi-leaf SMT fold pinned byte-exact +
+  ablated per case), scope-gate re-anchored on `dueBucket[h]`, R-writeset (B/P/M), R-scope (box
+  stays never-Accept until R-fold pinned), R3 (execution-derived drift guard vs real `apply()`);
+  standing R1 (RegCap) + R2 (#535).
 - **Record two owner-ratified era-4 floor-box decisions in the ledger** (`docs/decisions.md`,
   2026-08-31). Documentation only — NO code, consensus, economic, or security content changed;
   records decisions certified/reconciled elsewhere. Under D-TIERING: (1) the v5 floor-box recompute
