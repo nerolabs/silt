@@ -302,26 +302,59 @@ func TestRecomputeStateRootSlashAblationForgedQualifiedScreen(t *testing.T) {
 	}
 }
 
-// --- Ablation 3: mis-derived delta — the slash does NOT delete bonded. We simulate the bug by
-// building the digest ops with a delta that skips the bonded delete, and check the recomputed
-// bondedRoot diverges from the real one (post-root != StateRoot). This proves the bonded delete is
-// load-bearing.
+// --- Ablation 3: mis-derived delta — the slash does NOT delete bonded. This ablation drives the
+// REAL RecomputeStateRootEntriesRevocations path (session-7 scar: a hand-built root comparison that
+// never touches the production fold is DECORATION — it stays green even if the box's bonded delete
+// regresses). We forge a committed StateRoot that reflects the BUGGY post-state (culprit STILL
+// bonded post-slash) and hand the box an HONEST witness. The box derives the CORRECT S delta (it
+// DELETES the culprit from post-bonded, stateroot_slash_v5.go:176), folds the honest bondedRoot, and
+// that must MISMATCH the buggy committed root ⇒ ErrRecomputeStateRootMismatch. This proves the box's
+// bonded delete is load-bearing: were the box to skip the delete (the regression this guards), its
+// recompute would MATCH the buggy committed root and wrongly return nil.
 func TestRecomputeStateRootSlashAblationBondedNotDeleted(t *testing.T) {
 	f := buildSlashFixture(t)
 	b := f.slashBlock()
+	cid := ports.HashBytes(pubOf(f.culprit))
 
-	clone := f.c.cloneForDryRun()
-	clone.apply(b)
-	trueBondedRoot := nodeSetMTHFromInt64(clone.bonded)
+	// The honest committed root: apply() deletes the culprit from bonded.
+	honestClone := f.c.cloneForDryRun()
+	honestClone.apply(b)
+	honestBonded := nodeSetMTHFromInt64(honestClone.bonded)
 
-	// Build the post-bonded set WITHOUT deleting the culprit (the mis-derived delta).
-	preBonded := idSet(f.preIDsBonded())
-	buggyPostBonded := cloneIDSet(preBonded) // no delete of culprit
-	buggyRoot := nodeSetMTH(idsOf(buggyPostBonded))
+	// The BUGGY committed root: apply the slash, then re-insert the culprit into bonded at its
+	// pre-slash bond value — modelling "the slash did NOT delete bonded". Everything else (slashed,
+	// qualified, E/R) is the honest post-state, so ONLY the bonded set membership differs.
+	buggyClone := f.c.cloneForDryRun()
+	preBond, ok := buggyClone.bonded[cid]
+	if !ok {
+		t.Fatalf("fixture: culprit not bonded pre-slash")
+	}
+	buggyClone.apply(b)
+	if _, stillBonded := buggyClone.bonded[cid]; stillBonded {
+		t.Fatalf("fixture: apply() did NOT delete the culprit from bonded — ablation is vacuous")
+	}
+	buggyClone.bonded[cid] = preBond // undo the delete: the mis-derived (bonded-not-deleted) post-state
+	buggyBonded := nodeSetMTHFromInt64(buggyClone.bonded)
+	if string(buggyBonded) == string(honestBonded) {
+		t.Fatalf("ABLATION VACUOUS: re-adding the culprit produced the SAME bondedRoot as the honest " +
+			"delete — the culprit must be bonded pre-slash for this ablation to bite")
+	}
+	buggyCommitted, err := buggyClone.StateRootForVersion(BlockVersionWitnessable)
+	if err != nil {
+		t.Fatalf("buggy StateRootForVersion: %v", err)
+	}
 
-	if string(buggyRoot) == string(trueBondedRoot) {
-		t.Fatalf("ABLATION VACUOUS: not deleting the slashed culprit produced the SAME bondedRoot — " +
-			"the culprit must be bonded pre-slash for this ablation to bite")
+	// Drive the REAL path with an HONEST witness against the BUGGY committed root. The box's honest
+	// bonded delete makes its recomputed root diverge from the buggy committed root ⇒ terminal stall.
+	w := f.witnessForSlash(t, b)
+	err = f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, buggyCommitted, b, w)
+	if err == nil {
+		t.Fatalf("ABLATION FAILED: a committed root reflecting bonded-not-deleted must stall the honest " +
+			"recompute, got nil (the box's bonded delete is not load-bearing)")
+	}
+	if !errors.Is(err, ErrRecomputeStateRootMismatch) {
+		t.Fatalf("ABLATION FAILED: expected ErrRecomputeStateRootMismatch (honest bondedRoot != buggy "+
+			"committed root), got %v", err)
 	}
 }
 
@@ -443,14 +476,6 @@ func dropID(ids []ports.NodeID, drop ports.NodeID) []ports.NodeID {
 		if id != drop {
 			out = append(out, id)
 		}
-	}
-	return out
-}
-
-func idsOf(m map[ports.NodeID]struct{}) []ports.NodeID {
-	out := make([]ports.NodeID, 0, len(m))
-	for id := range m {
-		out = append(out, id)
 	}
 	return out
 }
