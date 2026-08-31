@@ -5,7 +5,7 @@ description: >
   BLIND to reviewers, surfaces unresolved tension, and escalates vision-level and
   material-progress decisions to the human. Defends the vision and sequencing. Does not
   make immutable-trades.
-tools: Agent(builder, researcher, tester, principal-engineer), Read, Grep, Glob, Write
+tools: Agent(builder, researcher, tester, principal-engineer, crypto-specialist, red-team, economist), Read, Grep, Glob, Write
 disallowedTools: Edit, Bash
 model: opus
 memory: project
