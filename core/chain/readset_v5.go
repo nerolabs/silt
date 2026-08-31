@@ -142,7 +142,55 @@ func (c *Chain) WitnessReadSetV5(b Block) []statehash.ReadEntry {
 	// committed this root inert; increment 1 makes it a genuine read.
 	c.readSetEpochSetRoot(acc)
 
+	// ---- (8) trustless recompute increment 2: the validatorsSeenRoot completeness leaf ----
+	// The root-only recompute of matureNow (the maturity-latch metric, floorbox_recompute_maturity_v5.go)
+	// proves SET-COMPLETENESS of validatorsSeen by reconstructing the committed validatorsSeenRoot
+	// digest from the witnessed id-list. So the box must witness the validatorsSeenRoot leaf itself
+	// (a presence proof of the committed MTH), plus each member's slashed/bonded/bondDomain leaves
+	// (the C2Metric per-member inputs, the C-1 composition). F1 committed this root inert;
+	// increment 2 makes it a genuine read.
+	c.readSetValidatorsSeenRoot(acc)
+
 	return acc.entries()
+}
+
+// readSetValidatorsSeenRoot emits the reads the root-only recompute of matureNow performs
+// (floorbox_recompute_maturity_v5.go), the C2Metric composition:
+//
+//   - the validatorsSeenRoot DIGEST leaf (set-completeness): the recompute reconstructs the
+//     validatorsSeen set's committed MTH from the witnessed id-list and compares it to this
+//     committed leaf. One omitted member ⇒ a different MTH ⇒ stall. An empty validatorsSeen
+//     commits the fixed empty-MTH constant (C-4 always-emit); the fold is then degenerate.
+//   - EVERY validatorsSeen MEMBER's slashed / bonded / bondDomain leaves (C-1): the digest binds
+//     MEMBERSHIP only — the operator/domain-distinct coefficient is forgeable without a per-member
+//     value proof for each id. So the box must witness every member's committed state to fold
+//     C2Metric. O(RegCap), bounded by the seen set (box-fits at RegCap=256).
+//
+// This fires whenever validatorsSeen is non-empty (whenever the maturity latch has a set to fold),
+// NOT only when the latch is not yet set — the de-mature super-quorum gate (chain.go:2827) runs
+// matureNow in ValidateCommit on every mature block AFTER the latch is set, so the recompute reads
+// the whole seen set every block. The per-member slashed/bonded/bondDomain leaves emitted here
+// overlap (dedup) with readSetAtts's and readSetMaturityLatch's reads.
+func (c *Chain) readSetValidatorsSeenRoot(acc *readSetAcc) {
+	// The digest-root completeness leaf (membership commitment). ALWAYS emitted (C-4 always-emit:
+	// an empty validatorsSeen commits the fixed empty-MTH constant), because the digest root is a
+	// committed leaf on every v5 block AND a write-target where validatorsSeen mutates — the box
+	// must witness its pre-state either way.
+	acc.addScalar(tagValidatorsSeenRoot, nodeSetMTHFromBool(c.validatorsSeen))
+	// Per-member: the validatorsSeen[id] MEMBERSHIP leaf (the set-completeness reconstruction reads
+	// each member's presence to rebuild the MTH) + the C2Metric inputs (C-1): slashed membership,
+	// bonded weight, bondDomain domain. One (non-)inclusion proof each. Empty when the seen set is
+	// empty (degenerate metric).
+	for id := range c.validatorsSeen {
+		acc.addPresent(tagValidatorsSeen, id[:], statehash.Present)
+		if c.slashed[id] {
+			acc.addPresent(tagSlashed, id[:], statehash.Present)
+		} else {
+			acc.addAbsent(tagSlashed, id[:])
+		}
+		c.addBondedRead(acc, id)
+		c.addBondDomainRead(acc, id)
+	}
 }
 
 // readSetEpochSetRoot emits the reads the root-only recompute of requireEpochWeightQuorum
