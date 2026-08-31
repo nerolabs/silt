@@ -233,6 +233,8 @@ func (f bondFixture) bondWitness(t *testing.T, b Block, affectedBuckets []uint64
 		}
 		w.DueBucketProof = dp
 	}
+	// Class M: mature-from-genesis fixture ⇒ everMature already latched (pre=true), no crossing.
+	w.Maturity = latchedMaturityWitness(t, f.prover, f.preValue)
 	return w
 }
 

@@ -9,6 +9,32 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Fixed
+- **v5 trustless floor box — close the last Path-1 completeness gap: the OFF-boundary `everMature`
+  maturity latch (class M), + a permanent emission-keyed leaf-diff guard**
+  (`core/chain/floorbox_recompute_stateroot_maturitylatch_v5.go`,
+  `core/chain/floorbox_recompute_stateroot_v5.go`, `core/chain/floorbox_recompute_stateroot_rotate_v5.go`,
+  `docs/thinking/2026-08-31-floorbox-classM-everMature-offboundary.md`, 2026-08-31). `apply()` latches
+  `everMature` false→true at the TOP of EVERY block where `!everMature && Mature()` (chain.go:3303-3305),
+  BEFORE the boundary gate. #678 reproduced that leaf write ONLY inside class P (boundary-gated), so the
+  GENERIC off-boundary maturity crossing (`h % EpochBlocks != 0`) had no reproducer ⇒ the recompute
+  folded no `tagEverMature` op ⇒ recomputed root != committed StateRoot ⇒ STALL. SAFE (never a
+  wrong-accept — the box still never-Accepts) but a LIVENESS gap fatal to the #657 accept-flip:
+  off-boundary is the generic crossing (`(EpochBlocks-1)/EpochBlocks`). Fix: a boundary-independent
+  **class-M** reproducer in the recompute entry, the SINGLE OWNER of the `tagEverMature` write. It
+  fires on ANY block whose latch flips, REUSING `RecomputeMatureNow` (#668, not a rebuild) over the
+  committed post-apply state, and threads the post-latch `everMature` into class P for its freeze gate
+  (P's `tagEverMature` emission REMOVED — no double-emit at a boundary-coincident crossing). NO
+  `apply()`/consensus change; the box STILL never-Accepts. PERMANENT GUARD (the real deliverable — end
+  the one-at-a-time discovery of unreproduced writes): an emission-keyed differential leaf-diff test
+  that, on a real `apply()` over a dry-run clone, diffs `stateRootLeavesV5()` PRE vs POST and asserts
+  the committed-leaf key-diff equals the recompute's folded key-set — keyed on the LIVE marshaller
+  output, so a FUTURE committed tag is caught with zero guard edits. Driven by a reachability generator
+  whose schedule INCLUDES an off-boundary maturity crossing; ABLATED RED against the pre-fix recompute
+  (class M removed) reddening naming exactly `everMature`, then GREEN with the fix. Plus the two #678
+  Tester-flagged coverage tests via the real entry on BOTH off- and on-boundary crossings: (b) an
+  omitted `tagEverMature` write stalls; (c) a forged maturity screen (per-member bonded/slashed)
+  stalls. #678's thinking-doc trued up (the `everMature` LATCH is any-height; the epoch FREEZE handoff
+  is boundary-only — the two are separable).
 - **v5 trustless floor box — close the class-P young→mature HANDOFF-boundary completeness gap**
   (`core/chain/floorbox_recompute_stateroot_rotate_v5.go`,
   `core/chain/floorbox_recompute_stateroot_v5.go`,

@@ -58,13 +58,22 @@ POST-apply committed state (it reads `committedStateRoot`, the post-apply root).
 
 statehash.go:196: `add(tagEverMature, nil, statehash.EncodeBool(c.everMature))` — a
 Class-C scalar leaf in `stateRootLeaves` (inherited by `stateRootLeavesV5`). So the
-`everMature` false→true transition on the handoff CHANGES a committed leaf. The
-recompute must reconstruct that write (fold the `tagEverMature` scalar), not merely
-consume the post value. There is NO class-M recompute wired into the entry
-(`RecomputeStateRootEntriesRevocations` dispatches E/R/S/B/T/A/P — no M), so the P
-class is the only place the handoff `everMature` write can be reconstructed. The
-handoff is always a boundary for the freeze to matter, and P is the boundary class, so
-this is the correct home.
+`everMature` false→true transition CHANGES a committed leaf. The recompute must
+reconstruct that write (fold the `tagEverMature` scalar), not merely consume the post
+value.
+
+> **CORRECTION (2026-08-31, superseded by the class-M work in
+> `2026-08-31-floorbox-classM-everMature-offboundary.md`).** This doc's original
+> reasoning — "the handoff is always a boundary for the freeze to matter, and P is the
+> boundary class, so this is the correct home" — CONFLATED two separable facts. The
+> `everMature` LATCH is ANY-HEIGHT: `apply()` latches it at chain.go:3303-3305, at the
+> TOP of every block, BEFORE the boundary gate (chain.go:3315). The epoch-set FREEZE
+> handoff is boundary-only: `rotateEpoch` is boundary-gated. #678 correctly fixed the
+> latch write that COINCIDES with a boundary, but homing the leaf write in class P left
+> the GENERIC off-boundary latch (`h % EpochBlocks != 0`) with no reproducer — a
+> liveness gap (PE write-obligation ledger, 2026-08-31). The `tagEverMature` write is
+> now owned by a boundary-independent **class M** (the single owner); class P keeps only
+> the post-latch READ that gates its freeze. Read the class-M doc for the current shape.
 
 ## The fix (reuse the existing maturity recompute; no consensus change)
 

@@ -108,22 +108,12 @@ type StateRootRotateWitness struct {
 	// MatureEpoch is the matureEpoch scalar witness (folded iff the pre-value is false and the box
 	// latches it this boundary).
 	MatureEpoch StateRootRotateScalar
-	// EverMature is the everMature scalar witness. Its OldValue is the PRE-latch everMature; the box
-	// computes the POST-latch value (pre || matureNow(thisBlock)) and, at the young→mature HANDOFF
-	// boundary (pre false → post true), FOLDS this scalar false→true. everMature is a committed v5 leaf
-	// (statehash.go:196) and apply() latches it (class M) BEFORE rotateEpoch (chain.go:3303-3316), so on
-	// the handoff the box must reconstruct that write — there is no separate class-M recompute, and the
-	// boundary class P is the only class that fires at a boundary. Folded ONLY on the handoff (post !=
-	// pre); a pre-latched boundary leaves it unchanged (R-P-sameblock-order, but for the everMature
-	// scalar).
-	EverMature StateRootRotateScalar
-	// SeenSet is the maturity witness (validatorsSeen id-list + per-member bonded/domain/slashed proofs
-	// + the validatorsSeenRoot digest proof) the box feeds to RecomputeMatureNow to decide the handoff.
-	// REQUIRED only when the pre-latch everMature is FALSE (the box must reconstruct matureNow(thisBlock)
-	// to know whether this boundary is the handoff); a pre-latched boundary supplies no SeenSet and never
-	// reads it. The maturity recompute verifies every field against the committed (POST-apply) StateRoot,
-	// so a forged maturity witness cannot make the box wrongly latch or wrongly skip.
-	SeenSet SeenSetWitness
+	// The everMature scalar + the SeenSet maturity witness are NOT homed here. The everMature latch is
+	// class M (StateRootMaturityWitness on the entry, floorbox_recompute_stateroot_maturitylatch_v5.go),
+	// the boundary-independent SINGLE owner of the tagEverMature write. Class P consumes only the
+	// post-latch everMature the entry threads in (the freeze gate) — it neither reads the maturity
+	// witness nor emits the leaf.
+	//
 	// GateLockedIn / GateHeight / Era3LockedIn / Era3Height / Era4LockedIn / Era4Height are the six
 	// activation-tally scalar witnesses. Each is folded iff the box's tally flips the lock-in this
 	// boundary (monotonic; own-cfg gated).
@@ -203,9 +193,9 @@ func hasNonProposerAtt(b Block) bool {
 // safety-first behavior the operator directive assumes).
 func (c *Chain) rotateOps(
 	b Block,
-	committedStateRoot ports.Hash,
 	w StateRootWitness,
 	postQualified map[ports.NodeID]struct{},
+	everMature bool,
 ) ([]statehash.FoldOp, error) {
 	rw := w.Rotate
 	if rw == nil {
@@ -218,27 +208,12 @@ func (c *Chain) rotateOps(
 			ErrRecomputeStateRootScopeStall, b.Height)
 	}
 
-	// THE MATURITY LATCH (class M), reconstructed. apply() latches everMature BEFORE rotateEpoch
+	// THE MATURITY LATCH READ (class M owns the WRITE). apply() latches everMature BEFORE rotateEpoch
 	// (chain.go:3303-3316): post_everMature = pre_everMature || matureNow(thisBlock). rotate's
-	// early-return + freeze read the POST-latch value. The box computes the post value so it can (a) gate
-	// the freeze on it and (b) reconstruct the everMature committed-leaf WRITE at the young→mature
-	// handoff (the ONE boundary the pre value diverges from the post value). Reusing RecomputeMatureNow
-	// (the maturity-latch recompute, floorbox_recompute_maturity_v5.go) — NOT a rebuild.
-	preEverMature := decodeBoolLeaf(rw.EverMature.OldValue)
-	everMature := preEverMature
-	if !preEverMature {
-		// Only when unlatched: reconstruct matureNow over the POST-apply committed state (the latch reads
-		// the post-block bonded/seen set, so it verifies against committedStateRoot, not prevStateRoot).
-		// matureNow's objective branch is what apply()'s Mature() evaluates in the objective phase (the
-		// only phase the box reproduces; MatureValidators>0 here, else everMature latches at genesis and
-		// preEverMature is already true). A forged maturity witness cannot verify against the committed
-		// root ⇒ RecomputeMatureNow stalls ⇒ the box stalls (never wrongly latches).
-		matureNow, mErr := c.RecomputeMatureNow(committedStateRoot, rw.SeenSet)
-		if mErr != nil {
-			return nil, fmt.Errorf("%w: maturity recompute for the handoff decision: %v", ErrRecomputeStateRootDigest, mErr)
-		}
-		everMature = matureNow
-	}
+	// early-return + freeze read the POST-latch value. The box computes that value ONCE in the entry
+	// (class M, floorbox_recompute_stateroot_maturitylatch_v5.go, the SINGLE owner of the tagEverMature
+	// leaf write) and threads it here as everMature — so P gates the freeze on it WITHOUT re-deriving or
+	// re-emitting the leaf (no double-emit at a boundary-coincident crossing).
 
 	var ops []statehash.FoldOp
 
@@ -248,15 +223,9 @@ func (c *Chain) rotateOps(
 	}
 
 	if !everMature {
-		// Pre-latch boundary: ONLY epochStart is written. No freeze, no tallies, no everMature write.
+		// Pre-latch boundary: ONLY epochStart is written. No freeze, no tallies. (The tagEverMature write
+		// is class M's, not P's — and on a pre-latch boundary there is no crossing, so M emits nothing.)
 		return ops, nil
-	}
-
-	// everMature = true. Fold the committed everMature scalar iff it flips this boundary (the young→mature
-	// HANDOFF: pre false → post true). This is the class-M write, reconstructed by P because the handoff
-	// is always a boundary and P is the boundary class. Monotonic one-way latch (F-1).
-	if op, changed := scalarFoldOp(tagEverMature, rw.EverMature, statehash.EncodeBool(true)); changed {
-		ops = append(ops, op)
 	}
 
 	// matureEpoch = true. Fold iff the pre-value was false (monotonic one-way latch).

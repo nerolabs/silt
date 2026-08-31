@@ -231,7 +231,6 @@ func (f rotateFixture) witnessForBoundary(t *testing.T, b Block) StateRootWitnes
 	}
 	rw.EpochStart = f.scalarWit(t, tagEpochStart)
 	rw.MatureEpoch = f.scalarWit(t, tagMatureEpoch)
-	rw.EverMature = f.scalarWit(t, tagEverMature)
 	rw.GateLockedIn = f.scalarWit(t, tagGateLockedIn)
 	rw.GateHeight = f.scalarWit(t, tagGateHeight)
 	rw.Era3LockedIn = f.scalarWit(t, tagEra3LockedIn)
@@ -239,6 +238,11 @@ func (f rotateFixture) witnessForBoundary(t *testing.T, b Block) StateRootWitnes
 	rw.Era4LockedIn = f.scalarWit(t, tagEra4LockedIn)
 	rw.Era4Height = f.scalarWit(t, tagEra4Height)
 	w.Rotate = &rw
+
+	// Class M maturity witness. This fixture is mature-from-genesis (MatureValidators=0), so everMature
+	// is already latched pre-state (pre=true) — class M emits nothing and reads no SeenSet, but the entry
+	// still requires the witness so the latch is never silently skipped.
+	w.Maturity = &StateRootMaturityWitness{EverMature: f.scalarWit(t, tagEverMature)}
 
 	// dueBucket scope-gate proof (non-membership at b.Height, unless a bond reg TTL bucket collides).
 	if f.c.cfg.BondTTLBlocks > 0 {
@@ -371,8 +375,8 @@ func TestRecomputeStateRootRotateEpochSetRootByteExact(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reconstructPostQualified: %v", err)
 	}
-	committed := f.applyAndCommittedRoot(t, b)
-	ops, err := f.c.rotateOps(b, committed, w, postQual)
+	// Mature-from-genesis fixture ⇒ post-latch everMature is true (class M threads it in).
+	ops, err := f.c.rotateOps(b, w, postQual, true)
 	if err != nil {
 		t.Fatalf("rotateOps: %v", err)
 	}
@@ -611,7 +615,7 @@ func TestRecomputeStateRootRotateAblationRecoveryStalls(t *testing.T) {
 	Sign(&rb, prop)
 
 	// rotateOps must stall at the recovery boundary regardless of witness.
-	_, err := c.rotateOps(rb, ports.Hash{}, StateRootWitness{Rotate: &StateRootRotateWitness{}}, map[ports.NodeID]struct{}{})
+	_, err := c.rotateOps(rb, StateRootWitness{Rotate: &StateRootRotateWitness{}}, map[ports.NodeID]struct{}{}, true)
 	if !errors.Is(err, ErrRecomputeStateRootScopeStall) {
 		t.Fatalf("ABLATION FAILED: the #535 recovery boundary must stall, got %v", err)
 	}
@@ -868,15 +872,21 @@ func (f handoffFixture) witnessForHandoff(t *testing.T, b Block) StateRootWitnes
 	}
 	rw.EpochStart = scalarWit(tagEpochStart)
 	rw.MatureEpoch = scalarWit(tagMatureEpoch)
-	rw.EverMature = scalarWit(tagEverMature)
 	rw.GateLockedIn = scalarWit(tagGateLockedIn)
 	rw.GateHeight = scalarWit(tagGateHeight)
 	rw.Era3LockedIn = scalarWit(tagEra3LockedIn)
 	rw.Era3Height = scalarWit(tagEra3Height)
 	rw.Era4LockedIn = scalarWit(tagEra4LockedIn)
 	rw.Era4Height = scalarWit(tagEra4Height)
-	rw.SeenSet = f.seenWitnessPost(t, applied)
 	w.Rotate = &rw
+
+	// Class M maturity witness (the SINGLE owner of the tagEverMature write): the pre-latch everMature
+	// scalar proof + the POST-apply SeenSet. On this fixture the boundary block IS the crossing, so
+	// class M reconstructs matureNow over the applied state and emits the everMature false→true op.
+	w.Maturity = &StateRootMaturityWitness{
+		EverMature: scalarWit(tagEverMature),
+		SeenSet:    f.seenWitnessPost(t, applied),
+	}
 
 	// dueBucket scope-gate proof (non-membership at b.Height).
 	var hk [8]byte
