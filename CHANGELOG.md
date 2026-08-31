@@ -8,6 +8,31 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Fixed
+- **v5 trustless floor box — close the class-P young→mature HANDOFF-boundary completeness gap**
+  (`core/chain/floorbox_recompute_stateroot_rotate_v5.go`,
+  `core/chain/floorbox_recompute_stateroot_v5.go`,
+  `docs/thinking/2026-08-31-floorbox-handoff-boundary-completeness.md`, 2026-08-31). `apply()` latches
+  `everMature` (the maturity latch, class M) BEFORE `rotateEpoch` (chain.go:3303-3316), so on the ONE
+  boundary that flips `everMature` false→true — the young→mature handoff — real `apply()` freezes the
+  `epochSet` but the class-P recompute read the PRE-latch `everMature` and took the `!everMature`
+  early-return, freezing NOTHING ⇒ recomputed root != committed StateRoot ⇒ STALL. SAFE (fold-caught,
+  never a wrong-accept) but a LIVENESS gap: every real objective chain crosses the handoff exactly
+  once, so the box could never validate that block. Every class-P positive test used
+  `MatureValidators=0` (mature-from-genesis), so the path was unexercised. The fix consumes the
+  POST-latch value: `post_everMature = pre_everMature || matureNow(thisBlock)`, computed by REUSING
+  the existing maturity recompute (`RecomputeMatureNow`, #668) over the committed post-apply state,
+  and gates the freeze on it. Because `everMature` is a committed v5 leaf (statehash.go:196), the box
+  also reconstructs the `everMature` false→true WRITE on the handoff (there is no separate class-M
+  recompute; P is the boundary class). Same class as R-P-sameblock-order, but for the `everMature`
+  scalar. O(registry)-honest; NO `apply()`/consensus change; the box STILL never-Accepts. Regression:
+  a handoff-boundary POSITIVE test (young at genesis, matures at the boundary) that AGREES with real
+  `apply()` + `StateRootForVersion(5)` and FAILS against the pre-fix code, plus a pre-`everMature`
+  ablation (RED). Test cleanups (blind Tester on #677): renamed the mislabeled
+  `...AblationFlippedTally` to `...AblationForgedFreezeWeight` (it forges a freeze weight, not a
+  tally; the load-bearing tally test is `...AblationLiveTallyForgedRegVersion`); added a standalone
+  `epochSetRoot` byte-exact check analogous to class A's `...AttDigestByteExact`.
+
 ### Added
 - **v5 trustless floor box — Path-1 state-root recompute P1-e, CLASSES A (attestations →
   validatorsSeen) and P (epoch rotation → epochSet + boundary scalars): the LAST two Path-1 classes**

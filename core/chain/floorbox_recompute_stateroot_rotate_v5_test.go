@@ -355,6 +355,43 @@ func TestRecomputeStateRootRotateWithBondRegAgreesWithApply(t *testing.T) {
 	}
 }
 
+// --- Byte-exact: the reconstructed epochSetRoot equals nodeSetMTH over the real frozen post-set.
+// Analogous to class A's TestRecomputeStateRootAttDigestByteExact: compares the rotate op's NewValue
+// for tagEpochSetRoot directly to nodeSetMTHFromInt64(clone.epochSet). ---
+func TestRecomputeStateRootRotateEpochSetRootByteExact(t *testing.T) {
+	f := buildRotateFixture(t)
+	nv := key(55077)
+	reg := bondRegFull(nv, ports.HashBytes(pubOf(nv)), 6<<20, ports.Hash{}, 5, 3)
+	b := f.boundaryBlock(&reg) // a membership change at the freeze, so the frozen set is non-trivial
+	clone := f.c.cloneForDryRun()
+	clone.apply(b)
+
+	w := f.witnessForBoundary(t, b)
+	postQual, err := f.c.reconstructPostQualified(b, w)
+	if err != nil {
+		t.Fatalf("reconstructPostQualified: %v", err)
+	}
+	committed := f.applyAndCommittedRoot(t, b)
+	ops, err := f.c.rotateOps(b, committed, w, postQual)
+	if err != nil {
+		t.Fatalf("rotateOps: %v", err)
+	}
+
+	want := nodeSetMTHFromInt64(clone.epochSet)
+	found := false
+	for _, op := range ops {
+		if string(op.Key) == string(statehash.Key(tagEpochSetRoot, nil)) {
+			found = true
+			if string(op.NewValue) != string(want) {
+				t.Fatalf("epochSetRoot not byte-exact: got %x want %x", op.NewValue, want)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("no epochSetRoot op emitted at the boundary freeze")
+	}
+}
+
 // --- Ablation 1: STALE FREEZE — freeze the PRE-delta qualified set (drop the just-bonded validator
 // from the frozen member witness). The box's reconstructed post-qualified INCLUDES it, so the member
 // set mismatches ⇒ stall (R-P-sameblock-order). ---
@@ -412,21 +449,15 @@ func TestRecomputeStateRootRotateAblationShortQualifiedSet(t *testing.T) {
 	}
 }
 
-// --- Ablation 3: FLIPPED tally — a boundary at genesis where the era-4 lock-in FIRES. Forging a
-// frozen member's regVersion below the era-4 threshold flips the tally, so the box would NOT lock in
-// era4 ⇒ wrong era4LockedIn scalar ⇒ mismatch. We probe this at the GENESIS boundary via a fresh
-// fixture whose lock-ins fire at genesis, reconstructing that boundary. ---
-func TestRecomputeStateRootRotateAblationFlippedTally(t *testing.T) {
-	// A genesis boundary that locks in era4 (regVersion 5 over the whole frozen set). We reconstruct
-	// the h=2 boundary but FORGE a member's regVersion down; since era3/era4 already locked at genesis
-	// in this fixture, use a fixture where a later boundary re-tallies. Simplest: assert the tally is
-	// LOAD-BEARING by injecting a regVersion that would flip a NOT-yet-locked tally. In the standard
-	// fixture all tallies locked at genesis, so instead we verify the box READS the witnessed
-	// regVersion by confirming a forged regVersion that would change a tally is rejected when a tally
-	// is live. We construct a fixture with a genesis-declared activation height that keeps era4 UNLOCKED
-	// until a real signal — see rotateOps: a locked tally is skipped, so forging regVersion is inert
-	// once locked. This ablation therefore drives the AGREE path and confirms a forged regVersion on a
-	// LIVE member changes the epochSet weight leaf, which is fold-caught.
+// --- Ablation 3: FORGED FREEZE WEIGHT → wrong epochSet leaf. This ablation does NOT exercise the
+// tally path: the standard fixture (MatureValidators=0) locks ALL three activation tallies at the
+// GENESIS boundary, so at the h=2 boundary rotateTallyOps is a no-op (every tally is already locked
+// and skipped). The stall here comes from forging a frozen member's WEIGHT: the per-member epochSet
+// leaf value = the qualified weight, so a wrong weight diverges the epochSet[id] leaf ⇒ post-root !=
+// StateRoot ⇒ fold-caught. It proves the per-member freeze weight is load-bearing. The LOAD-BEARING
+// tally test is TestRecomputeStateRootRotateAblationLiveTallyForgedRegVersion (3b), which keeps era4
+// UNLOCKED until a live h=2 signal and forges regVersion to flip that tally. ---
+func TestRecomputeStateRootRotateAblationForgedFreezeWeight(t *testing.T) {
 	f := buildRotateFixture(t)
 	b := f.boundaryBlock(nil)
 	committed := f.applyAndCommittedRoot(t, b)
@@ -580,8 +611,386 @@ func TestRecomputeStateRootRotateAblationRecoveryStalls(t *testing.T) {
 	Sign(&rb, prop)
 
 	// rotateOps must stall at the recovery boundary regardless of witness.
-	_, err := c.rotateOps(rb, StateRootWitness{Rotate: &StateRootRotateWitness{}}, map[ports.NodeID]struct{}{})
+	_, err := c.rotateOps(rb, ports.Hash{}, StateRootWitness{Rotate: &StateRootRotateWitness{}}, map[ports.NodeID]struct{}{})
 	if !errors.Is(err, ErrRecomputeStateRootScopeStall) {
 		t.Fatalf("ABLATION FAILED: the #535 recovery boundary must stall, got %v", err)
 	}
+}
+
+// ============================================================================================
+// THE YOUNG→MATURE HANDOFF BOUNDARY (the Path-1 completeness gap this file closes).
+//
+// apply() latches everMature (class M) BEFORE rotateEpoch (chain.go:3303-3316), so on the ONE
+// boundary that flips everMature false→true — the young→mature handoff — real apply() freezes the
+// epochSet but the box (pre-fix) took the !everMature early-return and froze NOTHING → root mismatch
+// → STALL. Every OTHER class-P test uses MatureValidators=0 (mature-from-genesis), so everMature is
+// latched at h=0 and this path is unexercised. These tests seat the network YOUNG at genesis and
+// mature it AT the boundary (the latch flips false→true at the boundary height).
+// ============================================================================================
+
+// handoffFixture builds a v5 chain that is YOUNG at genesis (validatorsSeen empty ⇒ coefficient 0 <
+// MatureValidators) and matures AT the h=2 boundary: the boundary block carries non-proposer atts that
+// seat two qualified validators into validatorsSeen, crossing MatureValidators=2. apply() seats them,
+// then the latch (class M) flips everMature false→true, then rotateEpoch freezes — all in the boundary
+// block. The box must reproduce the M-write + the freeze from the pre-state + witnesses.
+type handoffFixture struct {
+	c        *Chain
+	prevRoot ports.Hash
+	prover   *statehash.Prover
+	proposer ed25519.PrivateKey
+	att1     ed25519.PrivateKey
+	att2     ed25519.PrivateKey
+	att3     ed25519.PrivateKey
+}
+
+func buildHandoffFixture(t *testing.T) handoffFixture {
+	t.Helper()
+	// MatureValidators=2. The Nakamoto coefficient over N equal unset-domain bonds is the fewest whose
+	// cumulative weight EXCEEDS total/3; for THREE equal bonds that is 2 (one bond = total/3, not >). So
+	// the network first clears the bar only once THREE distinct validators are seated — which happens AT
+	// the h=2 boundary block. EpochBlocks=2 ⇒ h=2 is the boundary. TTL enabled for the scope-gate path.
+	cfg := Config{Quorum: 1, MinBond: era4MinBond, MinBondBytes: era4MinBond, ByzantineQuorum: true,
+		EpochBlocks: 2, MatureValidators: 2, BondTTLBlocks: 64}
+	c := New(cfg, func(ports.NodeID) int64 { return 0 })
+	c.SetBondVerifier(objectiveVerify)
+
+	prop := key(56001)
+	att1 := key(56002)
+	att2 := key(56003)
+	att3 := key(56004)
+	// Genesis: bond proposer + three attesters (equal weight, distinct unset-domain groups). NO atts, so
+	// validatorsSeen is EMPTY ⇒ coefficient 0 ⇒ the network is YOUNG (everMature=false).
+	g := &Block{Version: BlockVersionWitnessable, Height: 0}
+	g.BondRegs = append(g.BondRegs,
+		bondRegFull(prop, ports.HashBytes(pubOf(prop)), 8<<20, ports.Hash{}, 5, 1),
+		bondRegFull(att1, ports.HashBytes(pubOf(att1)), 8<<20, ports.Hash{}, 5, 2),
+		bondRegFull(att2, ports.HashBytes(pubOf(att2)), 8<<20, ports.Hash{}, 5, 3),
+		bondRegFull(att3, ports.HashBytes(pubOf(att3)), 8<<20, ports.Hash{}, 5, 4),
+	)
+	Sign(g, prop)
+	c.apply(*g)
+	if c.everMature {
+		t.Fatalf("fixture: network must be YOUNG at genesis (everMature=false), got true")
+	}
+
+	// h=1: a plain E/R block, NO seating atts — validatorsSeen stays empty, network stays young.
+	prev, _ := c.Head()
+	b1 := Block{Version: BlockVersionWitnessable, Height: 1, Prev: prev, Entries: []ports.Entry{entry(61)}}
+	Sign(&b1, prop)
+	c.apply(b1)
+	if c.everMature {
+		t.Fatalf("fixture: network must still be young at h=1, got everMature=true")
+	}
+	_, h := c.Head()
+	if h != 2 {
+		t.Fatalf("fixture: expected head h=2 (next block is the boundary), got %d", h)
+	}
+
+	leaves := c.stateRootLeavesV5()
+	prover, err := statehash.NewProver(leaves)
+	if err != nil {
+		t.Fatalf("NewProver: %v", err)
+	}
+	prevRoot := prover.Root()
+	sr, err := c.StateRootForVersion(BlockVersionWitnessable)
+	if err != nil {
+		t.Fatalf("StateRootForVersion: %v", err)
+	}
+	if sr != prevRoot {
+		t.Fatalf("fixture pre-root mismatch")
+	}
+	return handoffFixture{c: c, prevRoot: prevRoot, prover: prover, proposer: prop, att1: att1, att2: att2, att3: att3}
+}
+
+// handoffBoundaryBlock builds the h=2 boundary block carrying non-proposer atts from att1+att2 (the
+// seating that crosses the maturity bar) plus an E/R entry.
+func (f handoffFixture) handoffBoundaryBlock() Block {
+	prev, h := f.c.Head()
+	b := Block{Version: BlockVersionWitnessable, Height: h, Prev: prev, Entries: []ports.Entry{entry(99)}}
+	b.Atts = append(b.Atts, Attest(&b, f.att1), Attest(&b, f.att2), Attest(&b, f.att3))
+	Sign(&b, f.proposer)
+	return b
+}
+
+func (f handoffFixture) preValue(key []byte) []byte {
+	for _, lf := range f.c.stateRootLeavesV5() {
+		if string(lf.Key) == string(key) {
+			return lf.Value
+		}
+	}
+	return nil
+}
+
+func (f handoffFixture) prove(t *testing.T, key []byte) statehash.Witness {
+	t.Helper()
+	wit, err := f.prover.Prove(key)
+	if err != nil {
+		t.Fatalf("Prove(%x): %v", key, err)
+	}
+	return wit
+}
+
+func (f handoffFixture) proveWithSiblings(t *testing.T, key []byte) (statehash.Witness, []statehash.FoldSibling) {
+	t.Helper()
+	wit, sibs, err := f.prover.ProveWithSiblings(key)
+	if err != nil {
+		t.Fatalf("ProveWithSiblings(%x): %v", key, err)
+	}
+	return wit, sibs
+}
+
+func (f handoffFixture) sortedIDs(m map[ports.NodeID]int64) []ports.NodeID {
+	out := make([]ports.NodeID, 0, len(m))
+	for id := range m {
+		out = append(out, id)
+	}
+	return sortIDs(out)
+}
+
+// seenWitnessPost builds the SeenSetWitness the box feeds RecomputeMatureNow for the handoff decision.
+// It witnesses the POST-apply validatorsSeen set against the POST-apply committed root (the maturity
+// latch reads the post-block seen/bonded set), so it is built from a prover over the applied clone.
+func (f handoffFixture) seenWitnessPost(t *testing.T, applied *Chain) SeenSetWitness {
+	t.Helper()
+	postProver, err := statehash.NewProver(applied.stateRootLeavesV5())
+	if err != nil {
+		t.Fatalf("NewProver(post): %v", err)
+	}
+	rootVal := nodeSetMTHFromBool(applied.validatorsSeen)
+	rootProof, err := postProver.Prove(statehash.Key(tagValidatorsSeenRoot, nil))
+	if err != nil {
+		t.Fatalf("Prove(validatorsSeenRoot post): %v", err)
+	}
+	ids := make([]ports.NodeID, 0, len(applied.validatorsSeen))
+	members := make(map[ports.NodeID]MemberStateWitness, len(applied.validatorsSeen))
+	for id := range applied.validatorsSeen {
+		ids = append(ids, id)
+		mw := MemberStateWitness{}
+		sp, err := postProver.Prove(statehash.Key(tagSlashed, id[:]))
+		if err != nil {
+			t.Fatalf("Prove(slashed): %v", err)
+		}
+		mw.Slashed = applied.slashed[id]
+		mw.SlashedProof = sp
+		bp, err := postProver.Prove(statehash.Key(tagBonded, id[:]))
+		if err != nil {
+			t.Fatalf("Prove(bonded): %v", err)
+		}
+		mw.Bonded = applied.bonded[id]
+		mw.BondedProof = bp
+		dp, err := postProver.Prove(statehash.Key(tagBondDomain, id[:]))
+		if err != nil {
+			t.Fatalf("Prove(bondDomain): %v", err)
+		}
+		d, present := applied.bondDomain[id]
+		mw.Domain = d
+		mw.DomainPresent = present
+		mw.DomainProof = dp
+		members[id] = mw
+	}
+	return SeenSetWitness{IDs: ids, SeenRootWitness: rootProof, SeenRootValue: rootVal, Members: members}
+}
+
+// witnessForHandoff builds the full compound (E/R + A + P) witness for the handoff boundary block,
+// including the everMature pre-scalar proof and the SeenSet maturity witness the fix consumes.
+func (f handoffFixture) witnessForHandoff(t *testing.T, b Block) StateRootWitness {
+	t.Helper()
+	var w StateRootWitness
+
+	// E/R changed leaves.
+	for _, wr := range applyEntriesRevocationsWriteSet(b) {
+		w.ChangedLeaves = append(w.ChangedLeaves, StateRootChangedLeafWitness{
+			Key: wr.key, OldValue: f.preValue(wr.key), Proof: f.prove(t, wr.key),
+		})
+	}
+
+	// The applied clone (post-apply state) — the freeze source + the maturity witness target.
+	applied := f.c.cloneForDryRun()
+	applied.apply(b)
+
+	// Class A: validatorsSeen ADDs + the validatorsSeenRoot digest. Screen each non-proposer attester
+	// from the fixture's committed pre-state.
+	preSeen := idSet(f.sortedSeenIDs())
+	screens := map[ports.NodeID]StateRootAttScreen{}
+	proposer := b.ProposerID()
+	for i := range b.Atts {
+		id := b.Atts[i].AttesterID()
+		if id == proposer {
+			continue
+		}
+		sz, bp := f.c.bonded[id]
+		_, inES := f.c.epochSet[id]
+		sc := StateRootAttScreen{Attester: id, Slashed: f.c.slashed[id], InEpochSet: inES, BondedSize: sz, BondedPresent: bp}
+		screens[id] = sc
+		w.AttScreens = append(w.AttScreens, sc)
+	}
+	aWrites, _, err := f.c.stateRootAttWriteSet(b, preSeen, screens)
+	if err != nil {
+		t.Fatalf("stateRootAttWriteSet: %v", err)
+	}
+	for _, wr := range aWrites {
+		w.ChangedLeaves = append(w.ChangedLeaves, StateRootChangedLeafWitness{
+			Key: wr.key, OldValue: f.preValue(wr.key), Proof: f.prove(t, wr.key),
+		})
+	}
+
+	// DigestPreSets: validatorsSeenRoot (class A), qualifiedRoot (freeze source anchor), epochSetRoot
+	// (freeze digest).
+	w.DigestPreSets = append(w.DigestPreSets,
+		StateRootDigestWitness{Tag: tagValidatorsSeenRoot, PreIDs: f.sortedSeenIDs(), Proof: f.prove(t, statehash.Key(tagValidatorsSeenRoot, nil))},
+		StateRootDigestWitness{Tag: tagQualifiedRoot, PreIDs: f.sortedIDs(f.c.qualified), Proof: f.prove(t, statehash.Key(tagQualifiedRoot, nil))},
+		StateRootDigestWitness{Tag: tagEpochSetRoot, PreIDs: f.sortedIDs(f.c.epochSet), Proof: f.prove(t, statehash.Key(tagEpochSetRoot, nil))},
+	)
+
+	// Rotate witness: frozen members (the POST-qualified freeze set) + prior epochSet droppers +
+	// scalars + the SeenSet maturity witness.
+	var rw StateRootRotateWitness
+	for id, wt := range applied.qualified {
+		esKey := statehash.Key(tagEpochSet, id[:])
+		rw.Members = append(rw.Members, StateRootRotateMember{
+			ID: id, Weight: wt, RegVersion: f.c.regVersion[id], RegVersionKnown: true,
+			EpochSetProof: f.prove(t, esKey), EpochSetOldValue: f.preValue(esKey),
+		})
+	}
+	for id := range f.c.epochSet {
+		if _, stillFrozen := applied.qualified[id]; stillFrozen {
+			continue
+		}
+		esKey := statehash.Key(tagEpochSet, id[:])
+		wit, sibs := f.proveWithSiblings(t, esKey)
+		rw.PriorEpochSet = append(rw.PriorEpochSet, StateRootRotateMember{
+			ID: id, EpochSetOldValue: f.preValue(esKey), EpochSetProof: wit, EpochSetDeleteSiblings: sibs,
+		})
+	}
+	scalarWit := func(tag string) StateRootRotateScalar {
+		key := statehash.Key(tag, nil)
+		return StateRootRotateScalar{OldValue: f.preValue(key), Proof: f.prove(t, key)}
+	}
+	rw.EpochStart = scalarWit(tagEpochStart)
+	rw.MatureEpoch = scalarWit(tagMatureEpoch)
+	rw.EverMature = scalarWit(tagEverMature)
+	rw.GateLockedIn = scalarWit(tagGateLockedIn)
+	rw.GateHeight = scalarWit(tagGateHeight)
+	rw.Era3LockedIn = scalarWit(tagEra3LockedIn)
+	rw.Era3Height = scalarWit(tagEra3Height)
+	rw.Era4LockedIn = scalarWit(tagEra4LockedIn)
+	rw.Era4Height = scalarWit(tagEra4Height)
+	rw.SeenSet = f.seenWitnessPost(t, applied)
+	w.Rotate = &rw
+
+	// dueBucket scope-gate proof (non-membership at b.Height).
+	var hk [8]byte
+	putUint64BE(hk[:], b.Height)
+	w.DueBucketProof = f.prove(t, statehash.Key(tagDueBucket, hk[:]))
+	return w
+}
+
+func (f handoffFixture) sortedSeenIDs() []ports.NodeID {
+	out := make([]ports.NodeID, 0, len(f.c.validatorsSeen))
+	for id := range f.c.validatorsSeen {
+		out = append(out, id)
+	}
+	return sortIDs(out)
+}
+
+func (f handoffFixture) committedRoot(t *testing.T, b Block) ports.Hash {
+	t.Helper()
+	clone := f.c.cloneForDryRun()
+	clone.apply(b)
+	sr, err := clone.StateRootForVersion(BlockVersionWitnessable)
+	if err != nil {
+		t.Fatalf("clone StateRootForVersion: %v", err)
+	}
+	return sr
+}
+
+// --- Handoff POSITIVE: the box AGREES with real apply() over the young→mature handoff boundary. The
+// boundary block seats the attesters, the latch flips everMature false→true, and the freeze fires —
+// the box must reproduce the M-write + the freeze. This MUST fail against the pre-fix code (verified
+// by the ablation below, which forces the pre-everMature read). ---
+func TestRecomputeStateRootRotateHandoffAgreesWithApply(t *testing.T) {
+	f := buildHandoffFixture(t)
+	b := f.handoffBoundaryBlock()
+
+	// Precondition: the boundary block IS the handoff — apply() flips everMature false→true here.
+	applied := f.c.cloneForDryRun()
+	applied.apply(b)
+	if !applied.everMature {
+		t.Fatalf("fixture: the boundary block must latch everMature true (the handoff); got false")
+	}
+	if len(applied.epochSet) == 0 {
+		t.Fatalf("fixture: the handoff freeze must produce a non-empty epochSet")
+	}
+
+	committed := f.committedRoot(t, b)
+	w := f.witnessForHandoff(t, b)
+
+	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err != nil {
+		t.Fatalf("handoff recompute should AGREE with real apply() but stalled: %v", err)
+	}
+}
+
+// --- Handoff ablation: force P to consume the PRE everMature (the bug). The box then takes the
+// early-return, freezes NOTHING, and omits the everMature/matureEpoch/epochSet writes ⇒ recomputed
+// root != committed StateRoot ⇒ STALL (RED). Restoring the post-latch read makes it GREEN (the
+// positive test above). This proves the fix is load-bearing at the exact boundary the gap lives on. ---
+func TestRecomputeStateRootRotateHandoffAblationPreEverMature(t *testing.T) {
+	f := buildHandoffFixture(t)
+	b := f.handoffBoundaryBlock()
+	committed := f.committedRoot(t, b)
+	w := f.witnessForHandoff(t, b)
+
+	// Reproduce the BUG: pre-fix, rotateOps read the PRE everMature (false on the handoff) and took the
+	// !everMature early-return — writing ONLY epochStart, NO freeze, NO everMature/matureEpoch/epochSet
+	// writes. Model that exact buggy class-P op set (epochStart-only) and fold it with the honest E/R+A
+	// ops; the recomputed root must DIVERGE from the honest committed root (the box would STALL).
+	buggyPOps := []statehash.FoldOp{{
+		Key:      statehash.Key(tagEpochStart, nil),
+		OldValue: w.Rotate.EpochStart.OldValue,
+		NewValue: statehash.EncodeUint64(b.Height),
+		Proof:    w.Rotate.EpochStart.Proof,
+	}}
+	entryOps := f.nonRotateOps(t, b, w)
+	buggyRoot, err := statehash.FoldChangedPaths(f.prevRoot, append(entryOps, buggyPOps...))
+	if err != nil {
+		t.Fatalf("fold (buggy): %v", err)
+	}
+	if buggyRoot == committed {
+		t.Fatalf("ABLATION FAILED: the pre-everMature freeze must diverge the root, but it matched")
+	}
+
+	// And the FIXED path AGREES (post-latch) — the RED→GREEN pair on the same fixture.
+	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err != nil {
+		t.Fatalf("the fixed (post-latch) recompute should AGREE, got %v", err)
+	}
+}
+
+// nonRotateOps rebuilds the E/R + class-A FoldOps the entry constructs for the handoff block, so the
+// ablation can fold them together with a BUGGY class-P op set. It mirrors the entry's write-set →
+// FoldOp assembly (floorbox_recompute_stateroot_v5.go) for E/R + A only.
+func (f handoffFixture) nonRotateOps(t *testing.T, b Block, w StateRootWitness) []statehash.FoldOp {
+	t.Helper()
+	witByKey := map[string]*StateRootChangedLeafWitness{}
+	for i := range w.ChangedLeaves {
+		witByKey[string(w.ChangedLeaves[i].Key)] = &w.ChangedLeaves[i]
+	}
+	var ops []statehash.FoldOp
+	// Class A digest ops + per-member writes.
+	aOps, aWrites, err := f.c.attOps(b, w)
+	if err != nil {
+		t.Fatalf("attOps: %v", err)
+	}
+	ops = append(ops, aOps...)
+	writeSet := applyEntriesRevocationsWriteSet(b)
+	writeSet = append(writeSet, aWrites...)
+	for _, wr := range writeSet {
+		wit, ok := witByKey[string(wr.key)]
+		if !ok || wit.Proof.IsNil() {
+			t.Fatalf("no witness for derived key %x", wr.key)
+		}
+		ops = append(ops, statehash.FoldOp{
+			Key: wr.key, OldValue: wit.OldValue, NewValue: wr.newValue, Proof: wit.Proof, DeleteSiblings: wit.DeleteSiblings,
+		})
+	}
+	return ops
 }

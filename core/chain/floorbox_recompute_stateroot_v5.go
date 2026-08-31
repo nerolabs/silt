@@ -248,7 +248,7 @@ func (c *Chain) RecomputeStateRootEntriesRevocations(
 		if pqErr != nil {
 			return pqErr
 		}
-		pOps, pErr := c.rotateOps(b, w, postQualified)
+		pOps, pErr := c.rotateOps(b, committedStateRoot, w, postQualified)
 		if pErr != nil {
 			return pErr
 		}
