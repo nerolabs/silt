@@ -9,6 +9,33 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **v5 trustless floor box — Path-1 state-root recompute, sub-increment P1-a: `validateEra3Roots`
+  reproduced root-only for the entry + revocation classes**
+  (`core/chain/floorbox_recompute_stateroot_v5.go`,
+  `docs/thinking/2026-08-31-floorbox-recompute-path1-stateroot-options.md`, 2026-08-31). Reproduces
+  `validateEra3Roots`' StateRoot equality check (`era3validity.go:128` — the committed `StateRoot`
+  MUST equal the SMT over the post-apply committed leaf set) TRUSTLESSLY, from two committed roots +
+  a witnessed pre-state alone, for a v5 block whose only committed-state effect is its entries
+  (`byRoot`/`spent`) and revocations/un-revocations (`revoked`). This is the FIRST sub-increment of
+  the Path-1 recompute; the full `validateEra3Roots` spans eight `apply()` transition classes and is
+  decomposed for planner sequencing in the PACE doc (P1-a lands the root-equality SPINE; classes S/A,
+  T, B, P, M are the later sub-increments). A root-only box cannot replay `apply()` (it scans whole
+  O(registry) maps — the TTL sweep, the boundary tallies); it instead reconstructs the pre-state
+  leaf set, applies the payload transitions, and requires the SMT over the post-state leaf set equals
+  the block's committed `StateRoot`. The COMPLETENESS ANCHOR is the P1-a novelty every later class
+  reuses: the previous block's committed `StateRoot` is itself the SMT over the COMPLETE pre-state
+  leaf set, so the box requires `Root(witnessedPreLeaves) == prevStateRoot` — one omitted/injected/
+  tampered pre-leaf diverges the root and stalls, needing NO per-keyspace F1 digest (the pre-state
+  root anchors the WHOLE set). A never-Accept SCOPE GATE stalls on any out-of-scope class (bond reg,
+  slash, `validatorsSeen`-writing att, TTL expiry at this height, epoch boundary), detected soundly
+  from the witnessed pre-state + own config (C-6) so a later sub-increment's absence is never a
+  silent wrong-Accept. Additive: NO consensus rule, validity predicate, or `apply()` change; the box
+  STILL never-Accepts (`WitnessValidateV5` not flipped). Does NOT consume `qualifiedRoot` — that is
+  the boundary-freeze class P1-e; reading it here would be a decoration read. Seven hard ablations
+  ship red-before-green (each injected and watched to flip nil→stall): omitted/injected/tampered
+  pre-leaf ⇒ pre-state-anchor stall; tampered committed `StateRoot` and omitted payload write ⇒
+  post-state mismatch stall; each out-of-scope class ⇒ never-Accept stall; duplicate pre-leaf ⇒
+  malformed-witness stall.
 - **v5 trustless floor box — recompute increment 4: the QUALIFIED-COUNT predicate reproduced
   from witnesses (the `slashed`-over-bonded whole-set read)**
   (`core/chain/floorbox_recompute_qualifiedCount_v5.go`,
