@@ -22,8 +22,9 @@ import (
 // for the box's verification to succeed. A caller builds a Prover from exactly the leaf set that
 // produced the committed root (e.g. Chain.stateRootLeavesV5 for a v5 block).
 type Prover struct {
-	trie *smt.SMT
-	root ports.Hash
+	trie  *smt.SMT
+	root  ports.Hash
+	nodes map[string][]byte // the committed node store, for fold sibling-preimage lookups
 }
 
 // NewProver commits the given leaves into a fresh SMT and returns a Prover over the committed
@@ -31,7 +32,8 @@ type Prover struct {
 // keeps the committed trie so it can issue proofs. A duplicate key is a caller marshalling bug
 // (the same contract as Root) and is reported.
 func NewProver(leaves []Leaf) (*Prover, error) {
-	trie := smt.NewSparseMerkleTrie(simplemap.NewSimpleMap(), sha256.New())
+	nodes := map[string][]byte{}
+	trie := smt.NewSparseMerkleTrie(simplemap.NewSimpleMapWithMap(nodes), sha256.New())
 	seen := make(map[string]struct{}, len(leaves))
 	for _, lf := range leaves {
 		if _, dup := seen[string(lf.Key)]; dup {
@@ -47,7 +49,18 @@ func NewProver(leaves []Leaf) (*Prover, error) {
 	}
 	var root ports.Hash
 	copy(root[:], trie.Root())
-	return &Prover{trie: trie, root: root}, nil
+	return &Prover{trie: trie, root: root, nodes: nodes}, nil
+}
+
+// nodePreimage returns the committed preimage of the node with the given digest, or nil if the
+// store does not hold it. Used by ProveWithSiblings to collect a delete's off-path sibling
+// preimages. The returned slice is a copy — the caller may retain it past the prover's lifetime.
+func (p *Prover) nodePreimage(digest []byte) ([]byte, error) {
+	pre, ok := p.nodes[string(digest)]
+	if !ok {
+		return nil, nil
+	}
+	return append([]byte(nil), pre...), nil
 }
 
 // Root returns the committed SMT root this Prover proves against. It equals what Root(leaves)

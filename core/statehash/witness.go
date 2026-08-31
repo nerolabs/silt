@@ -149,6 +149,21 @@ type Witness struct {
 // missing-proof case, not an error.
 func NewWitness(proof *smt.SparseMerkleProof) Witness { return Witness{proof: proof} }
 
+// IsNil reports whether the witness carries no proof (an absent witness). It lets a
+// caller detect the missing-proof case before Resolve without exposing the wrapped
+// library proof.
+func (w Witness) IsNil() bool { return w.proof == nil }
+
+// SideNodeCount returns the number of sidenodes in the wrapped proof (0 for a nil
+// witness). It is the O(payload) cost measure: a witness's fetch cost scales with its
+// sidenode count, which grows with log(state size), not total state.
+func (w Witness) SideNodeCount() int {
+	if w.proof == nil {
+		return 0
+	}
+	return len(w.proof.SideNodes)
+}
+
 // verifySpec is the TrieSpec the accessor verifies proofs under. It MUST match
 // the spec statehash.Root builds its trie with (smt.NewSparseMerkleTrie(store,
 // sha256.New()) — a non-sum SHA-256 trie), or a valid proof against the committed

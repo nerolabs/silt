@@ -9,6 +9,35 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **v5 trustless floor box — Path-1 state-root recompute P1-a, the O(payload) HYBRID: fold only
+  the CHANGED paths (classes E + R), flat in total state**
+  (`core/statehash/fold.go`, `core/chain/floorbox_recompute_stateroot_v5.go`,
+  `docs/thinking/2026-08-31-floorbox-recompute-Rfold-options.md`, 2026-08-31). Reproduces
+  `validateEra3Roots`' StateRoot equality TRUSTLESSLY at O(payload) cost, superseding the
+  O(whole-state) P1-a (which witnessed the entire pre-state). The CERTIFIED hybrid: (1) DERIVE the
+  E/R write-set from the block payload itself (the box runs the generator, not the prover, so the
+  changed-key set is complete by construction); (2) WITNESS each changed leaf's pre-state proof
+  against `prevStateRoot`; (3) FOLD only the changed paths to compute the post-state root; (4)
+  require the computed root == `b.StateRoot`. The R-fold primitive (`statehash.FoldChangedPaths`)
+  DELEGATES all tree surgery to the audited `pokt-network/smt@v1.0.0` — it reconstructs a partial
+  trie over the changed paths and replays the library's own `Update`/`Delete`, so the prior naive
+  fold's 36%-wrong-root trap (hand-rolling add-displacement, the three delete sibling-promotion
+  cases, extension split/absorb) does not recur. Pinned BYTE-EXACT against `statehash.Root` over a
+  randomized structural cross-product: **18,000 trials across 3 seeds, 0 failures** (add-disjoint /
+  add-displacing / overwrite / delete leaf-promote / extension-absorb / inner-fold / shared-prefix
+  interactions / extension present-absent), each structural rule ablated red-before-green. The
+  scope gate is RE-ANCHORED off the whole-`bondRegHeight` scan onto the O(1) `dueBucket[h]`
+  non-membership accelerator (or the O(payload) claim would be false). Cost proven FLAT: the same
+  small E/R block against a 100-entry vs a 10,000-entry pre-state uses **3 changed-leaf witnesses
+  at both sizes** (payload-fixed) and 28 → 53 sidenodes (log N, not 100×). The box STILL
+  never-Accepts (`WitnessValidateV5` not flipped — research cert R-scope). Additive: NO consensus
+  rule, validity predicate, or `apply()` change. Ablations ship red-before-green: tampered
+  StateRoot, un-named extra committed write (the cert's wrong-accept), forged / omitted
+  changed-leaf proof, out-of-scope class, non-absent dueBucket TTL witness — plus the R3
+  execution-derived drift guard against real `apply()` + `StateRootForVersion(5)`, watched red on a
+  mis-derived write-set. Certs:
+  `floorbox-recompute-P1a-Opayload-multileaf-RESEARCH-CERTIFICATION-2026-08-31`,
+  `RULING-floorbox-recompute-P1a-Opayload-multileaf-2026-08-31`.
 - **v5 trustless floor box — recompute increment 4: the QUALIFIED-COUNT predicate reproduced
   from witnesses (the `slashed`-over-bonded whole-set read)**
   (`core/chain/floorbox_recompute_qualifiedCount_v5.go`,
