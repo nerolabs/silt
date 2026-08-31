@@ -34,7 +34,18 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   Tester-flagged coverage tests via the real entry on BOTH off- and on-boundary crossings: (b) an
   omitted `tagEverMature` write stalls; (c) a forged maturity screen (per-member bonded/slashed)
   stalls. #678's thinking-doc trued up (the `everMature` LATCH is any-height; the epoch FREEZE handoff
-  is boundary-only — the two are separable).
+  is boundary-only — the two are separable). FOLLOW-UP (PE write-obligation ledger acceptance bar):
+  the leaf-diff generator now drives ALL 28 committed-leaf tags through the diff assertion — E/R/A/P/M
+  plus class-S (slash), class-B (bond-reg, incl. displacement) and class-T (TTL sweep), which the first
+  cut left un-driven (16 of 28). A SELF-CHECKING coverage meta-assertion
+  (`TestLeafDiffGuardCoversEveryEmittableTag`) asserts the UNION of tags the scenarios exercise EQUALS
+  the FULL emittable tag set of the live `stateRootLeavesV5()` marshaller (derived from
+  `populateCommitted`, itself reflection-pinned) — so a FUTURE format tag with no scenario reddens THIS
+  test by name, closing the generator's own blind spot permanently. Its teeth are demonstrated
+  (`TestLeafDiffCoverageMetaHasTeeth`: drop a scenario ⇒ the comparison names the uncovered tags), and
+  the diff-minus-fold NAMING path is exercised per-class for S/B/T via real recompute ops with one
+  emission dropped (`TestLeafDiffNamingPathPerClassSBT`, red-before-green). Test-only; no `apply()` /
+  class-M / consensus change; the box still never-Accepts.
 - **v5 trustless floor box — close the class-P young→mature HANDOFF-boundary completeness gap**
   (`core/chain/floorbox_recompute_stateroot_rotate_v5.go`,
   `core/chain/floorbox_recompute_stateroot_v5.go`,
