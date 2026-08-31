@@ -122,7 +122,33 @@ func (f stateRootFixture) witnessForBlock(t *testing.T, b Block) StateRootWitnes
 		}
 		w.DueBucketProof = dp
 	}
+	// Class M maturity witness. This fixture is mature-from-genesis (MatureValidators=0), so everMature
+	// is already latched pre-state (pre=true): class M emits nothing and reads no SeenSet. The entry
+	// still requires the witness so the latch is never silently skipped.
+	w.Maturity = f.maturityWitness(t)
 	return w
+}
+
+// maturityWitness builds the class-M witness: the pre-state everMature scalar proof. On a
+// mature-from-genesis fixture the pre-value is true, so no SeenSet is needed (no crossing).
+func (f stateRootFixture) maturityWitness(t *testing.T) *StateRootMaturityWitness {
+	t.Helper()
+	return latchedMaturityWitness(t, f.prover, f.preValue)
+}
+
+// latchedMaturityWitness builds a class-M witness for a block on an ALREADY-LATCHED chain: the
+// pre-state everMature scalar proof, pre-value true (no crossing ⇒ no SeenSet needed). Shared by the
+// per-class recompute test fixtures (atts / ttl / slash / bondreg), all of which are
+// mature-from-genesis. prove proves a leaf key against the fixture's prevStateRoot; preValue reads the
+// committed pre-value.
+func latchedMaturityWitness(t *testing.T, prover *statehash.Prover, preValue func([]byte) []byte) *StateRootMaturityWitness {
+	t.Helper()
+	key := statehash.Key(tagEverMature, nil)
+	wit, err := prover.Prove(key)
+	if err != nil {
+		t.Fatalf("Prove(everMature): %v", err)
+	}
+	return &StateRootMaturityWitness{EverMature: StateRootRotateScalar{OldValue: preValue(key), Proof: wit}}
 }
 
 // preValue returns the committed pre-state value of a leaf key, by consulting the fixture chain's

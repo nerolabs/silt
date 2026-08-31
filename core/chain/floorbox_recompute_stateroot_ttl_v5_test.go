@@ -207,6 +207,8 @@ func (f ttlFixture) ttlSweepWitness(t *testing.T, b Block, expired []ports.NodeI
 	for _, wr := range stateRootTTLWriteSet(expired, b.Height, preQualified) {
 		w.ChangedLeaves = append(w.ChangedLeaves, f.leafWitness(t, wr))
 	}
+	// Class M: mature-from-genesis fixture ⇒ everMature already latched (pre=true), no crossing.
+	w.Maturity = latchedMaturityWitness(t, f.prover, f.preValue)
 	return w
 }
 

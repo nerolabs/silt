@@ -176,6 +176,8 @@ func (f attFixture) witnessForAtt(t *testing.T, b Block) StateRootWitness {
 		}
 		w.DueBucketProof = dp
 	}
+	// Class M: mature-from-genesis fixture ⇒ everMature already latched (pre=true), no crossing.
+	w.Maturity = latchedMaturityWitness(t, f.prover, f.preValue)
 	return w
 }
 
@@ -323,6 +325,7 @@ func TestRecomputeStateRootAttProposerOnlyNoWrite(t *testing.T) {
 		dp, _ := f.prover.Prove(statehash.Key(tagDueBucket, hk[:]))
 		w.DueBucketProof = dp
 	}
+	w.Maturity = latchedMaturityWitness(t, f.prover, f.preValue)
 	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err != nil {
 		t.Fatalf("a proposer-only att block is E/R-only and should AGREE, got %v", err)
 	}

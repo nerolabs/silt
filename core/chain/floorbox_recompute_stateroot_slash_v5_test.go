@@ -166,6 +166,8 @@ func (f slashFixture) witnessForSlash(t *testing.T, b Block) StateRootWitness {
 		}
 		w.DueBucketProof = dp
 	}
+	// Class M: mature-from-genesis fixture ⇒ everMature already latched (pre=true), no crossing.
+	w.Maturity = latchedMaturityWitness(t, f.prover, f.preValue)
 	return w
 }
 

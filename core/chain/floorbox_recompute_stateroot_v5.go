@@ -76,6 +76,13 @@ var (
 	// payload write, or a tampered committed StateRoot all land here.
 	ErrRecomputeStateRootMismatch = errors.New("chain: floor-box O(payload) state-root recompute — recomputed post-state root does not equal the block's committed StateRoot")
 
+	// ErrRecomputeStateRootMaturity marks a stall in the class-M everMature latch reconstruction: the
+	// class-M maturity witness is missing (so the box cannot rule out an everMature crossing), or the
+	// maturity recompute (RecomputeMatureNow) could not verify the SeenSet witness against the committed
+	// root. The box will not fold — or omit — the tagEverMature write on an unverified maturity verdict;
+	// it stalls (never-Accept preserved).
+	ErrRecomputeStateRootMaturity = errors.New("chain: floor-box state-root recompute — the class-M everMature latch could not be reconstructed (no maturity witness, or the maturity recompute could not verify the SeenSet against the committed root)")
+
 	// ErrRecomputeStateRootDigest marks a stall in the class-S changed-whole-set-digest reconstruction
 	// (P1-b): a touched digest (slashedRoot / bondedRoot / qualifiedRoot) with no supplied pre-set
 	// witness, or a pre-set id-list that does not reconstruct the committed pre-digest. The box will
@@ -147,10 +154,16 @@ type StateRootWitness struct {
 	AttScreens []StateRootAttScreen
 	// Rotate carries the class-P epoch-boundary witness: the pre-qualified id-set (the freeze source),
 	// the per-frozen-member regVersion (the activation tallies), the prior epochSet, and the rotate
-	// scalar pre-values (epochStart / matureEpoch / everMature / the three lock-in scalars). Present
-	// only for an epoch-boundary block (P1-e). The box applies the same block's S/B/T qualified deltas
-	// FIRST, then freezes (rotate-LAST). See floorbox_recompute_stateroot_rotate_v5.go.
+	// scalar pre-values (epochStart / matureEpoch / the three lock-in scalars). Present only for an
+	// epoch-boundary block (P1-e). The box applies the same block's S/B/T qualified deltas FIRST, then
+	// freezes (rotate-LAST). See floorbox_recompute_stateroot_rotate_v5.go. The everMature latch is NOT
+	// homed here — it is class M (Maturity below), the boundary-independent single owner.
 	Rotate *StateRootRotateWitness
+	// Maturity carries the class-M everMature latch witness: the committed pre-state everMature scalar
+	// proof + the SeenSet maturity witness. Class M is the SINGLE owner of the tagEverMature write; it
+	// fires on ANY block whose maturity latch flips (boundary-independent), and threads the post-latch
+	// everMature into class P for its freeze gate. See floorbox_recompute_stateroot_maturitylatch_v5.go.
+	Maturity *StateRootMaturityWitness
 }
 
 // RecomputeStateRootEntriesRevocations reproduces validateEra3Roots' StateRoot equality check
@@ -176,12 +189,53 @@ func (c *Chain) RecomputeStateRootEntriesRevocations(
 	b Block,
 	w StateRootWitness,
 ) (reason error) {
+	// (1-3) Assemble the fold ops for every reproduced transition class (the write-set → FoldOp
+	// pipeline, including the scope gate). A stall here is a never-Accept.
+	ops, err := c.assembleStateRootRecomputeOps(prevStateRoot, committedStateRoot, b, w)
+	if err != nil {
+		return err
+	}
+
+	// (4) FOLD the changed paths to compute the post-state root. FoldChangedPaths verifies each
+	// changed-leaf proof against prevStateRoot before folding it; a forged / omitted / mis-valued
+	// proof stalls here.
+	postRoot, err := statehash.FoldChangedPaths(prevStateRoot, ops)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrRecomputeStateRootFold, err)
+	}
+
+	// (5) POST-STATE EQUALITY. Require the recomputed post-root equals the block's committed
+	// StateRoot. This IS validateEra3Roots' equality check, reproduced root-only. A forged committed
+	// leaf, an omitted/injected payload write, or a tampered b.StateRoot all diverge the recomputed
+	// root ⇒ stall. It does NOT Accept — the caller consumes this verdict under the never-Accept
+	// scaffold.
+	if postRoot != committedStateRoot {
+		return fmt.Errorf("%w: recomputed %x != committed %x",
+			ErrRecomputeStateRootMismatch, postRoot, committedStateRoot)
+	}
+	return nil
+}
+
+// assembleStateRootRecomputeOps runs the scope gate, derives the per-class write-set, and matches
+// each derived write to its pre-state witness — returning the complete FoldOp set the recompute
+// folds for block b (or a stall reason). It is the op-assembly half of
+// RecomputeStateRootEntriesRevocations, split out so the emission-keyed completeness guard
+// (floorbox_recompute_leafdiff_v5_test.go) can compare the FOLDED key-set against the ground-truth
+// committed-leaf diff a real apply() produces — the property that ends the one-at-a-time discovery of
+// unreproduced writes. The returned ops carry the folded keys; the caller folds them and checks the
+// root.
+func (c *Chain) assembleStateRootRecomputeOps(
+	prevStateRoot ports.Hash,
+	committedStateRoot ports.Hash,
+	b Block,
+	w StateRootWitness,
+) ([]statehash.FoldOp, error) {
 	// (1) SCOPE GATE. Stall (never-Accept) on any transition class P1-a does not reproduce. The
 	// payload-visible classes (BondReg / Slash / non-proposer Att) and the epoch boundary are
 	// checked from the block + own cfg; the TTL-expiry class is checked from the O(1) dueBucket
 	// non-membership witness (NOT a whole-state scan).
 	if reason := c.stateRootScopeGate(prevStateRoot, b, w); reason != nil {
-		return reason
+		return nil, reason
 	}
 
 	// (2) DERIVE the write-set from the block payload. The box runs the generator, not the prover —
@@ -203,7 +257,7 @@ func (c *Chain) RecomputeStateRootEntriesRevocations(
 	if len(b.Slashes) > 0 {
 		dOps, preBonded, preQualified, dErr := stateRootSlashDigestOps(b, w.DigestPreSets)
 		if dErr != nil {
-			return dErr
+			return nil, dErr
 		}
 		digestOps = append(digestOps, dOps...)
 		writeSet = append(writeSet, stateRootSlashWriteSet(b, preBonded, preQualified)...)
@@ -213,7 +267,7 @@ func (c *Chain) RecomputeStateRootEntriesRevocations(
 	if len(b.BondRegs) > 0 {
 		bOps, bWrites, bErr := c.bondRegOps(b, w)
 		if bErr != nil {
-			return bErr
+			return nil, bErr
 		}
 		digestOps = append(digestOps, bOps...)
 		writeSet = append(writeSet, bWrites...)
@@ -223,7 +277,7 @@ func (c *Chain) RecomputeStateRootEntriesRevocations(
 	if w.TTLSweep != nil {
 		tOps, preBonded, preQualified, expired, tErr := stateRootTTLDigestOps(*w.TTLSweep, w.DigestPreSets)
 		if tErr != nil {
-			return tErr
+			return nil, tErr
 		}
 		digestOps = append(digestOps, tOps...)
 		writeSet = append(writeSet, stateRootTTLWriteSet(expired, w.TTLSweep.Height, preQualified)...)
@@ -234,23 +288,38 @@ func (c *Chain) RecomputeStateRootEntriesRevocations(
 	if hasNonProposerAtt(b) {
 		aOps, aWrites, aErr := c.attOps(b, w)
 		if aErr != nil {
-			return aErr
+			return nil, aErr
 		}
 		digestOps = append(digestOps, aOps...)
 		writeSet = append(writeSet, aWrites...)
 	}
+	// Class M (everMature maturity latch): the BOUNDARY-INDEPENDENT single owner of the tagEverMature
+	// write. apply() latches everMature false→true on ANY block where !everMature && Mature()
+	// (chain.go:3303-3305), BEFORE the boundary gate — so M dispatches every block, not only at a
+	// boundary. It reuses RecomputeMatureNow over committedStateRoot (#668, not a rebuild), emits the
+	// tagEverMature op on the crossing, and reports the POST-latch everMature the block commits. The
+	// post value is threaded into class P (below) so P can gate its freeze on it WITHOUT re-emitting
+	// (single owner — no double-emit at a boundary-coincident crossing). See
+	// floorbox_recompute_stateroot_maturitylatch_v5.go.
+	mOps, postEverMature, mErr := c.maturityLatchOps(committedStateRoot, w)
+	if mErr != nil {
+		return nil, mErr
+	}
+	digestOps = append(digestOps, mOps...)
+
 	// Class P (epoch rotation, P1-e): rotate runs LAST. Reconstruct the POST-apply qualified set in
 	// apply() order (B → T → S), freeze it into epochSet, reconstruct epochSetRoot + per-member
 	// epochSet leaves, run the three activation tallies over per-member regVersion witnesses (own-cfg
-	// thresholds + activation guards), and reconstruct the rotate scalars. R-P-sameblock-order.
+	// thresholds + activation guards), and reconstruct the rotate scalars. R-P-sameblock-order. The
+	// post-latch everMature (from class M) gates the freeze; P does NOT emit the tagEverMature leaf.
 	if isBoundary {
 		postQualified, pqErr := c.reconstructPostQualified(b, w)
 		if pqErr != nil {
-			return pqErr
+			return nil, pqErr
 		}
-		pOps, pErr := c.rotateOps(b, committedStateRoot, w, postQualified)
+		pOps, pErr := c.rotateOps(b, w, postQualified, postEverMature)
 		if pErr != nil {
-			return pErr
+			return nil, pErr
 		}
 		digestOps = append(digestOps, pOps...)
 	}
@@ -266,14 +335,14 @@ func (c *Chain) RecomputeStateRootEntriesRevocations(
 	for _, wr := range writeSet {
 		wit, ok := witByKey[string(wr.key)]
 		if !ok || wit.Proof.IsNil() {
-			return fmt.Errorf("%w: no witness for derived changed key %x", ErrRecomputeStateRootFold, wr.key)
+			return nil, fmt.Errorf("%w: no witness for derived changed key %x", ErrRecomputeStateRootFold, wr.key)
 		}
 		// Consistency of the CLAIMED pre-state with the derived write: a delete (un-revocation) must
 		// claim a PRESENT pre-state — you cannot delete an absent leaf. A false claim here would let a
 		// witness turn a delete into a no-op; the check forecloses it (and the fold verifies the claim
 		// against prevStateRoot regardless).
 		if wr.newValue == nil && len(wit.OldValue) == 0 {
-			return fmt.Errorf("%w: un-revocation delete of key %x claims an absent pre-state", ErrRecomputeStateRootFold, wr.key)
+			return nil, fmt.Errorf("%w: un-revocation delete of key %x claims an absent pre-state", ErrRecomputeStateRootFold, wr.key)
 		}
 		ops = append(ops, statehash.FoldOp{
 			Key:            wr.key,
@@ -283,25 +352,7 @@ func (c *Chain) RecomputeStateRootEntriesRevocations(
 			DeleteSiblings: wit.DeleteSiblings,
 		})
 	}
-
-	// (4) FOLD the changed paths to compute the post-state root. FoldChangedPaths verifies each
-	// changed-leaf proof against prevStateRoot before folding it; a forged / omitted / mis-valued
-	// proof stalls here.
-	postRoot, err := statehash.FoldChangedPaths(prevStateRoot, ops)
-	if err != nil {
-		return fmt.Errorf("%w: %v", ErrRecomputeStateRootFold, err)
-	}
-
-	// (5) POST-STATE EQUALITY. Require the recomputed post-root equals the block's committed
-	// StateRoot. This IS validateEra3Roots' equality check, reproduced root-only. A forged committed
-	// leaf, an omitted/injected payload write, or a tampered b.StateRoot all diverge the recomputed
-	// root ⇒ stall. It does NOT Accept — the caller consumes this verdict under the never-Accept
-	// scaffold.
-	if postRoot != committedStateRoot {
-		return fmt.Errorf("%w: recomputed %x != committed %x",
-			ErrRecomputeStateRootMismatch, postRoot, committedStateRoot)
-	}
-	return nil
+	return ops, nil
 }
 
 // stateRootScopeGate stalls (returns ErrRecomputeStateRootScopeStall / ...TTLWitness) if block b
