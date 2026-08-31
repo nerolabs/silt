@@ -73,12 +73,58 @@ func leafKeySet(c *Chain) map[string]string {
 	return out
 }
 
-// digestRootLeafKeys is the set of the five v5 WHOLE-SET digest-root leaf keys (tag||"",
-// empty raw key). These are the F1 committed leaves: bondedRoot / epochSetRoot /
-// qualifiedRoot / slashedRoot / validatorsSeenRoot. Bound to stateRootDigestTagsV5 (the
-// production emit-guard list) so a renamed or dropped digest root cannot silently escape
-// this set.
+// inertDigestRootTags is the set of the still-INERT whole-set digest-root tags: the four
+// whose keyspaces NO recompute reads yet (bonded / qualified / slashed / validatorsSeen). It
+// is stateRootDigestTagsV5 MINUS epochSetRoot, which increment 1 now READS (the recompute
+// reproduces requireEpochWeightQuorum over Σ epochSet — floorbox_recompute_v5.go). As each
+// later increment reproduces the predicate over its keyspace, that root moves OUT of this set
+// (its exclusion removed, a red-on-drop ablation added), until the set is empty. The
+// still-inert placeholder ablations (TestInertDigestRootsAwaitRecompute) are keyed on exactly
+// this set, so the "remove-on-recompute" obligation lives in CODE, not prose.
+var inertDigestRootTags = []string{
+	"bondedRoot", "qualifiedRoot", "slashedRoot", "validatorsSeenRoot",
+}
+
+// digestRootLeafKeys is the set of the still-INERT whole-set digest-root leaf keys (tag||"",
+// empty raw key): bondedRoot / qualifiedRoot / slashedRoot / validatorsSeenRoot. epochSetRoot
+// is DELIBERATELY EXCLUDED — increment 1's recompute reads it, so it is no longer an inert
+// output commitment and must NOT be excluded from the ground-truth derivation (else a dropped
+// epochSet read the recompute needs would stay green). Bound to inertDigestRootTags so a
+// renamed or dropped inert root cannot silently escape this set.
 func digestRootLeafKeys() map[string]struct{} {
+	out := make(map[string]struct{}, len(inertDigestRootTags))
+	for _, name := range inertDigestRootTags {
+		out[string(statehash.Key(name+"\x00", nil))] = struct{}{}
+	}
+	return out
+}
+
+// isDigestRootLeaf reports whether leaf key k is one of the STILL-INERT F1 whole-set
+// digest-root leaves (the four, NOT epochSetRoot). Those leaves are DERIVED output commitments
+// over a whole keyspace's member set (statehash.go:262-266) that NO recompute reads yet (the
+// F1 STOP boundary still holds for them). They are the leaf-set analogue of the recomputed
+// state root: perturbing any member of a keyspace flips that keyspace's digest root, and the
+// digest root is itself a changed (written) leaf every membership-mutating block. Neither
+// signal is a WITNESSED per-member read the floor box must prove — the box RECOMPUTES the
+// digest from the members it already witnessed. So the ground-truth derivation excludes these
+// leaves from BOTH the write-diff (Source 1) and the cross-leaf perturbation (Source 2), the
+// same way Source 3 excludes validateEra3Roots (the root recompute) and Source 2 excludes the
+// perturbed leaf's own key. This is a false-positive exclusion, not a change to what counts as
+// a genuine read: a dropped per-MEMBER read still reddens, because the member leaf itself — not
+// its digest root — carries that signal.
+//
+// epochSetRoot is NO LONGER excluded (increment 1 reads it): its exclusion was removed so the
+// recompute's dependence on it is caught by the same discipline the 23 member keyspaces get
+// (TestEpochSetRootReadReddensOnDrop).
+func isDigestRootLeaf(k string) bool {
+	_, ok := digestRootLeafKeys()[k]
+	return ok
+}
+
+// allDigestRootLeafKeys is the set of ALL FIVE F1 whole-set digest-root leaf keys, inert AND
+// read (bonded / epochSet / qualified / slashed / validatorsSeen). Bound to
+// stateRootDigestTagsV5 (the production emit-guard list).
+func allDigestRootLeafKeys() map[string]struct{} {
 	out := make(map[string]struct{}, len(stateRootDigestTagsV5))
 	for _, name := range stateRootDigestTagsV5 {
 		out[string(statehash.Key(name+"\x00", nil))] = struct{}{}
@@ -86,21 +132,17 @@ func digestRootLeafKeys() map[string]struct{} {
 	return out
 }
 
-// isDigestRootLeaf reports whether leaf key k is one of the five F1 whole-set digest-root
-// leaves. Those leaves are DERIVED output commitments over a whole keyspace's member set
-// (statehash.go:262-266), INERT in F1 (no validity predicate reads them — the F1 STOP
-// boundary). They are the leaf-set analogue of the recomputed state root: perturbing any
-// member of a keyspace flips that keyspace's digest root, and the digest root is itself a
-// changed (written) leaf every membership-mutating block. Neither signal is a WITNESSED
-// per-member read the floor box must prove — the box RECOMPUTES the digest from the members
-// it already witnessed, exactly as it recomputes the state root. So the ground-truth
-// derivation excludes these leaves from BOTH the write-diff (Source 1) and the cross-leaf
-// perturbation (Source 2), the same way Source 3 excludes validateEra3Roots (the root
-// recompute) and Source 2 excludes the perturbed leaf's own key. This is a false-positive
-// exclusion, not a change to what counts as a genuine read: a dropped per-MEMBER read still
-// reddens, because the member leaf itself — not its digest root — carries that signal.
-func isDigestRootLeaf(k string) bool {
-	_, ok := digestRootLeafKeys()[k]
+// isDerivedDigestRootLeaf reports whether leaf key k is ANY of the five F1 whole-set
+// digest-root leaves (inert or read). ALL five are DERIVED output commitments recomputed from a
+// whole keyspace's members — none has an independent backing field, so NONE can be perturbed by
+// perturbLeaf (its "value" is a pure function of its keyspace's members). The perturbation-LOOP
+// exemption uses this superset, so it exempts epochSetRoot too: epochSetRoot is a genuine
+// recompute READ (excluded from isDigestRootLeaf so its read is guarded), but it still cannot be
+// PERTURBED as a standalone keyspace — its read signal comes from perturbing its MEMBERS, which
+// flip it as a cross-leaf diff. The two roles are distinct: read-exclusion (the 4 inert) vs.
+// can't-perturb (all 5).
+func isDerivedDigestRootLeaf(k string) bool {
+	_, ok := allDigestRootLeafKeys()[k]
 	return ok
 }
 
@@ -685,9 +727,9 @@ func TestGroundTruthPerturbationCovers(t *testing.T) {
 	for _, cb := range corpus {
 		digestSeen := make(map[string]bool)
 		for _, lf := range snap.stateRootLeavesV5() {
-			if isDigestRootLeaf(string(lf.Key)) {
+			if isDerivedDigestRootLeaf(string(lf.Key)) {
 				digestSeen[string(lf.Key)] = true
-				continue // derived output commitment: exempt (see doc), but must be present.
+				continue // derived output commitment (all 5): can't perturb, but must be present.
 			}
 			clone := snap.cloneForDryRun()
 			if !perturbLeaf(clone, lf.Key, lf.Value) {
@@ -695,9 +737,9 @@ func TestGroundTruthPerturbationCovers(t *testing.T) {
 				t.Fatalf("[%s] perturbLeaf cannot perturb keyspace %q — that leaf escapes the perturbation ground truth", cb.label, tag)
 			}
 		}
-		// The five digest-root leaves are always-emit (C-4): each must be present in the leaf
+		// All FIVE digest-root leaves are always-emit (C-4): each must be present in the leaf
 		// set, so the exemption above names live leaves, not phantom ones.
-		for k := range digestRootLeafKeys() {
+		for k := range allDigestRootLeafKeys() {
 			if !digestSeen[k] {
 				tag, _, _ := splitLeafKey([]byte(k))
 				t.Fatalf("[%s] digest-root leaf %q absent from the v5 leaf set — the perturbation exemption names a phantom leaf", cb.label, tag)
@@ -816,13 +858,45 @@ func containsTag(pretty []string, tag string) bool {
 	return false
 }
 
+// frozenSetWeightTag reports whether a read-set entry belongs to the CERT-BLESSED O(frozen-set)
+// weight-quorum read: the epochSet per-member weight leaves + the epochSetRoot completeness
+// leaf the increment-1 recompute of requireEpochWeightQuorum reads (floorbox_recompute_v5.go).
+// That read scales with the FROZEN SET (RegCap-bounded, box-fits at RegCap=256 — cert R1), which
+// is a DIFFERENT and legitimate cost class from the banned O(registry) bondRegHeight apply-sweep
+// this boundedness test targets. The test excludes these so it isolates its actual hazard.
+func frozenSetWeightTag(e statehash.ReadEntry) bool {
+	tag, _, ok := splitLeafKey(e.Key)
+	return ok && (tag == tagEpochSet || tag == tagEpochSetRoot)
+}
+
+// sizeExcludingFrozenSet is the read-set size minus the cert-blessed frozen-set weight reads.
+func sizeExcludingFrozenSet(rs []statehash.ReadEntry) int {
+	n := 0
+	for _, e := range rs {
+		if !frozenSetWeightTag(e) {
+			n++
+		}
+	}
+	return n
+}
+
 // TestWitnessReadSetV5BoundedNotRegistrySized is the O(payload) boundedness property (amended
 // cert §"Per-class read-set"): an ordinary block's and a TTL-EMPTY block's read-set size must
-// NOT scale with the registry — the era-4 win the producer must deliver (the TTL completeness
-// collapses to ONE dueBucket[h] non-membership leaf, never a bondRegHeight scan). This is the
-// direct counter-proof to the certified sharpest hazard AND the over-emission guard: a
-// producer that instrumented apply()'s TTL sweep would emit O(registry) keys here and the two
-// sizes would DIVERGE. It reddens under an injected O(registry) scan (proven below).
+// NOT scale with the registry via the banned O(registry) bondRegHeight apply-sweep — the era-4
+// win the producer must deliver (the TTL completeness collapses to ONE dueBucket[h]
+// non-membership leaf, never a bondRegHeight scan). This is the direct counter-proof to the
+// certified sharpest hazard AND the over-emission guard: a producer that instrumented apply()'s
+// TTL sweep would emit O(registry) keys here and the two sizes would DIVERGE.
+//
+// SCOPED to the bondRegHeight hazard (increment 1 refinement): the mature-block read-set now
+// ALSO carries the cert-blessed O(frozen-set) weight-quorum read (epochSet + epochSetRoot — the
+// requireEpochWeightQuorum recompute reads the whole frozen set every mature block, RegCap-
+// bounded, box-fits — cert R1). That is a legitimate, separately-bounded class, NOT the banned
+// bondRegHeight scan. This fixture matures at genesis (MatureValidators=0), so the frozen set is
+// populated; the test excludes the frozen-set reads (sizeExcludingFrozenSet) so it still catches
+// a bondRegHeight scan — a different tag — while accommodating the cert-blessed frozen-set read.
+// The dedicated bondRegHeight-scan ablation (TestWitnessReadSetV5BoundednessAblation) proves the
+// teeth are intact.
 func TestWitnessReadSetV5BoundedNotRegistrySized(t *testing.T) {
 	build := func(nReg int) (*Chain, Block) {
 		cfg := Config{Quorum: 1, MinBond: era4MinBond, ByzantineQuorum: true,
@@ -865,11 +939,17 @@ func TestWitnessReadSetV5BoundedNotRegistrySized(t *testing.T) {
 	rsSmall := small.WitnessReadSetV5(probeSmall)
 	rsLarge := large.WitnessReadSetV5(probeLarge)
 
-	if len(rsSmall) != len(rsLarge) {
-		t.Fatalf("TTL-EMPTY read-set SCALED WITH THE REGISTRY: |small(reg=%d)|=%d, |large(reg=%d)|=%d — "+
-			"the producer is reading O(registry) keys (the certified sharpest hazard: it instrumented "+
-			"apply()'s bondRegHeight scan instead of the bounded dueBucket[h] non-membership leaf)",
-			len(small.bondRegHeight), len(rsSmall), len(large.bondRegHeight), len(rsLarge))
+	// Compare read-set size EXCLUDING the cert-blessed frozen-set weight reads (epochSet /
+	// epochSetRoot). What remains must NOT scale with the registry — a bondRegHeight apply-sweep
+	// (a DIFFERENT tag) would make it diverge.
+	nSmall := sizeExcludingFrozenSet(rsSmall)
+	nLarge := sizeExcludingFrozenSet(rsLarge)
+	if nSmall != nLarge {
+		t.Fatalf("TTL-EMPTY read-set (excluding the cert-blessed frozen-set weight reads) SCALED WITH THE REGISTRY: "+
+			"|small(reg=%d)|=%d, |large(reg=%d)|=%d — the producer is reading O(registry) keys (the certified "+
+			"sharpest hazard: it instrumented apply()'s bondRegHeight scan instead of the bounded dueBucket[h] "+
+			"non-membership leaf)",
+			len(small.bondRegHeight), nSmall, len(large.bondRegHeight), nLarge)
 	}
 }
 
@@ -1041,6 +1121,88 @@ func TestWitnessReadSetV5AllKeyspacesRedOnDrop(t *testing.T) {
 			if !keyspaceReddensOnDrop(t, tag) {
 				t.Fatalf("GUARD BLIND: dropping keyspace %q from the producer left the execution-derived guard GREEN across every corpus block — a read no guard catches (the exact soundness hole this guard exists to kill)", prettyTag(tag))
 			}
+		})
+	}
+}
+
+// TestEpochSetRootReadReddensOnDrop is the increment-1 red-on-drop ablation for the epochSetRoot
+// DIGEST-root READ: dropping the epochSetRoot leaf from the producer must redden the
+// execution-derived guard, exactly as dropping any of the 23 member keyspaces does. This is the
+// discipline the digest root EARNS by becoming a genuine recompute read (the recompute of
+// requireEpochWeightQuorum reconstructs the frozen set's MTH and compares it to this committed
+// leaf). F1 committed epochSetRoot INERT (excluded from the ground truth); increment 1 removed
+// that exclusion, so a producer that forgets to emit it now fails coverage.
+//
+// It reddens because at the boundary block (h4), where epochSet is (re)frozen, the write-diff
+// flags epochSetRoot as a changed leaf the recompute reads — the same ground-truth signal the 23
+// member keyspaces get. A dropped epochSetRoot leaves that ground-truth read uncovered.
+func TestEpochSetRootReadReddensOnDrop(t *testing.T) {
+	if !keyspaceReddensOnDrop(t, tagEpochSetRoot) {
+		t.Fatal("GUARD BLIND: dropping the epochSetRoot digest-root READ from the producer left the " +
+			"execution-derived guard GREEN — the increment-1 recompute reads epochSetRoot for " +
+			"set-completeness, so a producer that omits it must redden (the F1 inert-exclusion was removed)")
+	}
+}
+
+// TestInertDigestRootsAwaitRecompute is the SKIP-GUARDED PLACEHOLDER ablation for the four
+// still-INERT whole-set digest roots (bonded / qualified / slashed / validatorsSeen). It encodes
+// the "remove-the-exclusion-when-you-recompute" obligation in CODE, not just prose (the PE's
+// request): for each still-inert root, the test SKIPS with the exact instruction a future
+// increment must follow when it reproduces that keyspace's weighted predicate.
+//
+// The obligation each skip carries: when increment N reproduces the predicate that folds
+// keyspace K (e.g. requireDeMatureSuperQuorum over Σ bonded), it MUST (1) remove K's root from
+// inertDigestRootTags so isDigestRootLeaf no longer excludes it from the ground truth, (2) emit
+// the K-root read + per-member weight reads in the producer, and (3) turn this placeholder into
+// a real red-on-drop ablation like TestEpochSetRootReadReddensOnDrop. Until then the root is
+// legitimately inert and MUST stay excluded (removing the exclusion early would redden every
+// member of K as a false positive, since the digest reacts to every member).
+//
+// The test also ASSERTS the current partition is exactly right: epochSetRoot is NO LONGER inert
+// (it recomputes), and the four named roots ARE still inert. A drift in either direction fails.
+func TestInertDigestRootsAwaitRecompute(t *testing.T) {
+	// epochSetRoot must have LEFT the inert set (increment 1 recomputes it).
+	for _, name := range inertDigestRootTags {
+		if name == "epochSetRoot" {
+			t.Fatal("epochSetRoot is still in inertDigestRootTags — increment 1 recomputes it, so it must be removed (its read is guarded by TestEpochSetRootReadReddensOnDrop)")
+		}
+	}
+	// The four named roots must still BE inert (no recompute reads them yet).
+	wantInert := map[string]struct{}{
+		"bondedRoot": {}, "qualifiedRoot": {}, "slashedRoot": {}, "validatorsSeenRoot": {},
+	}
+	gotInert := make(map[string]struct{}, len(inertDigestRootTags))
+	for _, name := range inertDigestRootTags {
+		gotInert[name] = struct{}{}
+	}
+	if len(gotInert) != len(wantInert) {
+		t.Fatalf("inert digest-root set drifted: got %v, want %v", inertDigestRootTags, wantInert)
+	}
+	for name := range wantInert {
+		if _, ok := gotInert[name]; !ok {
+			t.Fatalf("expected %q to be inert, but it is not in inertDigestRootTags", name)
+		}
+	}
+
+	// Per still-inert root: a skip-guarded placeholder carrying the remove-on-recompute obligation.
+	for _, name := range inertDigestRootTags {
+		name := name
+		tag := name + "\x00"
+		t.Run(name, func(t *testing.T) {
+			// The root is INERT by design right now: dropping it from the producer does NOT redden
+			// (no recompute reads it), which is exactly why it stays excluded. Confirm that
+			// precondition so the placeholder is honest — an inert root that unexpectedly reddened
+			// would mean a recompute already reads it and the exclusion is now WRONG.
+			if keyspaceReddensOnDrop(t, tag) {
+				t.Fatalf("%q unexpectedly reddens on drop — some recompute now reads it, so its "+
+					"isDigestRootLeaf exclusion is stale: remove %q from inertDigestRootTags, emit its "+
+					"reads in the producer, and replace this placeholder with a real red-on-drop ablation", name, name)
+			}
+			t.Skipf("OBLIGATION (remove-on-recompute): %q is still inert — no recompute reads it yet. "+
+				"When the increment that reproduces its weighted predicate lands, remove %q from "+
+				"inertDigestRootTags, emit the K-root + per-member weight reads in the producer, and "+
+				"replace this skip with a real red-on-drop ablation (see TestEpochSetRootReadReddensOnDrop).",
+				name, name)
 		})
 	}
 }

@@ -9,6 +9,32 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **v5 trustless floor box — recompute increment 1: one weighted predicate reproduced from
+  witnesses (the C-1 pattern)** (`core/chain/floorbox_recompute_v5.go`,
+  `core/statehash/prover.go`,
+  `docs/thinking/2026-08-31-floorbox-recompute-increment1-options.md`, 2026-08-31).
+  Reproduces `requireEpochWeightQuorum` (the mature-phase >⅔ frozen-WEIGHT super-quorum,
+  `Σ epochSet`) TRUSTLESSLY, from the committed StateRoot + witnesses alone, proving the C-1
+  weight-composition pattern the `v5-wholeset-digest-root` cert (2026-08-31) names as the
+  load-bearing gap. Additive: NO consensus rule, validity predicate, or `apply()` change —
+  a full node still folds the quorum from its own `epochSet`; this is a SEPARATE root-only
+  path (the `floorbox_v5.go` posture). The recompute is the three-part proof the cert
+  requires: (1) SET-COMPLETENESS — reconstruct `nodeSetMTH(id-list)` and require it equals
+  the committed `epochSetRoot` digest (F1's inert root now READ), so an omitted/injected
+  member ⇒ a different MTH ⇒ stall; (2) PER-MEMBER WEIGHT (C-1) — `Resolve` each
+  `epochSet[id]` weight leaf against the committed root, so a forged weight fails
+  verification ⇒ stall (the digest bound membership; the tally was forgeable without this);
+  (3) GENESIS CONFIG (C-6) — the fold reads own consensus params, never a witnessed
+  threshold. The box STILL never-Accepts: `WitnessValidateV5` is NOT flipped to Accept (the
+  #657 accept flip waits until ALL predicates are reproduced). The producer
+  (`readset_v5.go`) now emits the `epochSetRoot` completeness leaf + the per-member
+  `epochSet` weight reads; the drift guard's `epochSetRoot` inert-exclusion is REMOVED with
+  a real red-on-drop ablation (`TestEpochSetRootReadReddensOnDrop`), and the four still-inert
+  digest roots keep their exclusion with a skip-guarded remove-on-recompute placeholder
+  (`TestInertDigestRootsAwaitRecompute`). Three hard ablations ship red-before-green:
+  forged-weight (C-1), omitted/injected member (completeness), config-from-witness (C-6).
+  `core/statehash.Prover` is the provider-side complement to `Resolve` (builds the SMT
+  inclusion/non-inclusion proofs a box verifies). NOT a consensus-rule change.
 - **v5 floor box — the QUORUM-STACK whole-set read enumeration + blind-spot closure**
   (`core/chain/readset_v5_quorum_wholeset_test.go`,
   `docs/thinking/2026-08-31-Rboundary-mechanical-wholeset-enumeration-options.md`,

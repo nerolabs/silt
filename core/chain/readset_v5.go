@@ -133,7 +133,47 @@ func (c *Chain) WitnessReadSetV5(b Block) []statehash.ReadEntry {
 	// for the three activation tallies — O(RegCap), the heavier class (NOT the delta).
 	c.readSetBoundaryDelta(b, acc)
 
+	// ---- (7) trustless recompute increment 1: the epochSetRoot completeness leaf ----
+	// The root-only recompute of requireEpochWeightQuorum (floorbox_recompute_v5.go) proves
+	// SET-COMPLETENESS of the frozen epochSet by reconstructing the committed epochSetRoot
+	// digest from the witnessed id-list. So the box must witness the epochSetRoot leaf itself
+	// (a presence proof of the committed MTH). One leaf, O(1) — the per-member epochSet weights
+	// (the C-1 composition) are already emitted by readSetBoundaryDelta and readSetAtts. F1
+	// committed this root inert; increment 1 makes it a genuine read.
+	c.readSetEpochSetRoot(acc)
+
 	return acc.entries()
+}
+
+// readSetEpochSetRoot emits the reads the root-only recompute of requireEpochWeightQuorum
+// performs (floorbox_recompute_v5.go), the C-1 composition:
+//
+//   - the epochSetRoot DIGEST leaf (set-completeness): the recompute reconstructs the frozen
+//     epochSet's committed MTH from the witnessed id-list and compares it to this committed
+//     leaf. One omitted member ⇒ a different MTH ⇒ stall. An empty epochSet commits the fixed
+//     empty-MTH constant (C-4 always-emit); the fold is then degenerate (total <= 0).
+//   - EVERY epochSet MEMBER's weight leaf (C-1): the digest binds MEMBERSHIP only — the weight
+//     tally is forgeable without a per-member value proof for each id. So the box must witness
+//     every epochSet[id] weight leaf to fold Σ epochSet. O(RegCap), the whole-set weight fold
+//     the frozen quorum needs (bounded by the frozen-set size, box-fits at RegCap=256).
+//
+// This fires whenever epochSet is non-empty (whenever the weight quorum has a set to fold), NOT
+// only at a boundary — requireEpochWeightQuorum runs in ValidateCommit on every mature block,
+// so the recompute reads the whole frozen set every block, not just when it is re-frozen. The
+// per-member epochSet leaves emitted here overlap (dedup) with readSetBoundaryDelta's and
+// readSetAtts's epochSet reads.
+func (c *Chain) readSetEpochSetRoot(acc *readSetAcc) {
+	// The digest-root completeness leaf (membership commitment). ALWAYS emitted (C-4 always-emit:
+	// an empty epochSet commits the fixed empty-MTH constant), because the digest root is a
+	// committed leaf on every v5 block AND a write-target at a boundary where epochSet is (re)frozen
+	// — the box must witness its pre-state either way. When epochSet is empty the reconstructed MTH
+	// is the empty-MTH and the weight fold is degenerate (total <= 0).
+	acc.addScalar(tagEpochSetRoot, nodeSetMTHFromInt64(c.epochSet))
+	// The per-member weight leaves (C-1): the values the fold sums, one inclusion proof each. Empty
+	// when the frozen set is empty (degenerate quorum), O(frozen-set) otherwise.
+	for id := range c.epochSet {
+		c.addEpochSetRead(acc, id)
+	}
 }
 
 // readSetAcc accumulates read-set entries, deduplicating by (key, kind). The shape
