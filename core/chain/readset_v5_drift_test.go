@@ -83,15 +83,16 @@ func leafKeySet(c *Chain) map[string]string {
 // still-inert placeholder ablations (TestInertDigestRootsAwaitRecompute) are keyed on exactly
 // this set, so the "remove-on-recompute" obligation lives in CODE, not prose.
 var inertDigestRootTags = []string{
-	"bondedRoot", "qualifiedRoot", "slashedRoot",
+	"qualifiedRoot", "slashedRoot",
 }
 
 // digestRootLeafKeys is the set of the still-INERT whole-set digest-root leaf keys (tag||"",
-// empty raw key): bondedRoot / qualifiedRoot / slashedRoot. epochSetRoot (increment 1) and
-// validatorsSeenRoot (increment 2) are DELIBERATELY EXCLUDED — their recomputes read them, so
-// they are no longer inert output commitments and must NOT be excluded from the ground-truth
-// derivation (else a dropped epochSet/validatorsSeen read the recompute needs would stay green).
-// Bound to inertDigestRootTags so a renamed or dropped inert root cannot silently escape this set.
+// empty raw key): qualifiedRoot / slashedRoot. epochSetRoot (increment 1), validatorsSeenRoot
+// (increment 2), and bondedRoot (increment 3) are DELIBERATELY EXCLUDED — their recomputes read
+// them, so they are no longer inert output commitments and must NOT be excluded from the
+// ground-truth derivation (else a dropped epochSet/validatorsSeen/bonded read the recompute needs
+// would stay green). Bound to inertDigestRootTags so a renamed or dropped inert root cannot
+// silently escape this set.
 func digestRootLeafKeys() map[string]struct{} {
 	out := make(map[string]struct{}, len(inertDigestRootTags))
 	for _, name := range inertDigestRootTags {
@@ -101,8 +102,8 @@ func digestRootLeafKeys() map[string]struct{} {
 }
 
 // isDigestRootLeaf reports whether leaf key k is one of the STILL-INERT F1 whole-set
-// digest-root leaves (the three, NOT epochSetRoot or validatorsSeenRoot). Those leaves are
-// DERIVED output commitments
+// digest-root leaves (the two, NOT epochSetRoot / validatorsSeenRoot / bondedRoot). Those leaves
+// are DERIVED output commitments
 // over a whole keyspace's member set (statehash.go:262-266) that NO recompute reads yet (the
 // F1 STOP boundary still holds for them). They are the leaf-set analogue of the recomputed
 // state root: perturbing any member of a keyspace flips that keyspace's digest root, and the
@@ -115,10 +116,11 @@ func digestRootLeafKeys() map[string]struct{} {
 // a genuine read: a dropped per-MEMBER read still reddens, because the member leaf itself — not
 // its digest root — carries that signal.
 //
-// epochSetRoot (increment 1) and validatorsSeenRoot (increment 2) are NO LONGER excluded (their
-// recomputes read them): the exclusions were removed so each recompute's dependence on its digest
-// is caught by the same discipline the 23 member keyspaces get (TestEpochSetRootReadReddensOnDrop,
-// TestValidatorsSeenRootReadReddensOnDrop).
+// epochSetRoot (increment 1), validatorsSeenRoot (increment 2), and bondedRoot (increment 3) are
+// NO LONGER excluded (their recomputes read them): the exclusions were removed so each recompute's
+// dependence on its digest is caught by the same discipline the 23 member keyspaces get
+// (TestEpochSetRootReadReddensOnDrop, TestValidatorsSeenRootReadReddensOnDrop,
+// TestBondedRootReadReddensOnDrop).
 func isDigestRootLeaf(k string) bool {
 	_, ok := digestRootLeafKeys()[k]
 	return ok
@@ -861,18 +863,28 @@ func containsTag(pretty []string, tag string) bool {
 	return false
 }
 
-// frozenSetWeightTag reports whether a read-set entry belongs to the CERT-BLESSED O(frozen-set)
-// weight-quorum read: the epochSet per-member weight leaves + the epochSetRoot completeness
-// leaf the increment-1 recompute of requireEpochWeightQuorum reads (floorbox_recompute_v5.go).
-// That read scales with the FROZEN SET (RegCap-bounded, box-fits at RegCap=256 — cert R1), which
-// is a DIFFERENT and legitimate cost class from the banned O(registry) bondRegHeight apply-sweep
-// this boundedness test targets. The test excludes these so it isolates its actual hazard.
+// frozenSetWeightTag reports whether a read-set entry belongs to a CERT-BLESSED whole-set
+// weight-quorum read the trustless recompute performs — a DIFFERENT and legitimate cost class from
+// the banned O(registry) bondRegHeight apply-sweep this boundedness test targets. Two such classes
+// exist:
+//   - the increment-1 O(frozen-set) read: the epochSet per-member weight leaves + the epochSetRoot
+//     completeness leaf (requireEpochWeightQuorum recompute, floorbox_recompute_v5.go) — RegCap-
+//     bounded (cert R1);
+//   - the increment-3 O(bonded) read: the bonded per-member weight leaves + the bondedRoot
+//     completeness leaf (requireDeMatureSuperQuorum recompute,
+//     floorbox_recompute_dematureQuorum_v5.go) — the whole-bonded R-membership budget path (box-fits
+//     per the disk-backed-store measurement).
+//
+// Both scale with a committed weight SET the box must witness to fold a super-quorum, not with the
+// banned bondRegHeight scan (a DIFFERENT tag the test still catches). The test excludes these so it
+// isolates its actual hazard. The dedicated bondRegHeight-scan ablation
+// (TestWitnessReadSetV5BoundednessAblation) proves the teeth are intact.
 func frozenSetWeightTag(e statehash.ReadEntry) bool {
 	tag, _, ok := splitLeafKey(e.Key)
-	return ok && (tag == tagEpochSet || tag == tagEpochSetRoot)
+	return ok && (tag == tagEpochSet || tag == tagEpochSetRoot || tag == tagBonded || tag == tagBondedRoot)
 }
 
-// sizeExcludingFrozenSet is the read-set size minus the cert-blessed frozen-set weight reads.
+// sizeExcludingFrozenSet is the read-set size minus the cert-blessed whole-set weight reads.
 func sizeExcludingFrozenSet(rs []statehash.ReadEntry) int {
 	n := 0
 	for _, e := range rs {
@@ -960,6 +972,17 @@ func TestWitnessReadSetV5BoundedNotRegistrySized(t *testing.T) {
 // injected O(registry) bondRegHeight scan makes the read-set scale with the registry, and the
 // equal-size assertion reddens. This is the certified boundedness ablation (the sharpest
 // hazard: instrumenting apply()'s scan defeats era-4).
+//
+// THE ASSERTION IS ON sizeExcludingFrozenSet, NOT raw len (PE ruling
+// RULING-floorbox-recompute-increment3-dematureQuorum-2026-08-31, fix 1). Since increment 1,
+// the RAW read-set already scales with the registry via the LEGITIMATE cert-blessed frozen-set
+// per-member weight reads (epochSet/bonded + their roots), so a raw-len comparison diverges even
+// with the injected scan NEUTERED — the test would stay GREEN without its defect (decoration).
+// Excluding the frozen-set reads (the same exclusion TestWitnessReadSetV5BoundedNotRegistrySized
+// uses via frozenSetWeightTag) isolates the O(payload) part, so the injected bondRegHeight scan —
+// a DIFFERENT tag, not excluded — is the ONLY thing that can make the excluded sizes diverge. The
+// red→green now depends on the defect: neuter the scan and the excluded sizes tie (GREEN);
+// restore it and they diverge (RED).
 func TestWitnessReadSetV5BoundednessAblation(t *testing.T) {
 	build := func(nReg int) (*Chain, Block) {
 		cfg := Config{Quorum: 1, MinBond: era4MinBond, ByzantineQuorum: true,
@@ -1000,9 +1023,18 @@ func TestWitnessReadSetV5BoundednessAblation(t *testing.T) {
 
 	rsSmall := ablatedProducer(small, probeSmall)
 	rsLarge := ablatedProducer(large, probeLarge)
-	if len(rsSmall) == len(rsLarge) {
-		t.Fatalf("ABLATION FAILED TO REDDEN: the injected O(registry) scan did not scale the read-set with the registry (small=%d large=%d) — the boundedness guard would not catch it",
-			len(rsSmall), len(rsLarge))
+
+	// Assert on the read-set size EXCLUDING the cert-blessed frozen-set weight reads (the same
+	// exclusion BoundedNotRegistrySized uses), NOT raw len. The raw len already scales with the
+	// registry via the legitimate frozen-set reads, so a raw comparison is decoration (green even
+	// with the injected scan neutered). Excluding those isolates the O(payload) part, so the
+	// injected bondRegHeight scan — a different, non-excluded tag — is the only thing that can make
+	// these diverge.
+	nSmall := sizeExcludingFrozenSet(rsSmall)
+	nLarge := sizeExcludingFrozenSet(rsLarge)
+	if nSmall == nLarge {
+		t.Fatalf("ABLATION FAILED TO REDDEN: the injected O(registry) scan did not scale the read-set (excluding the cert-blessed frozen-set weight reads) with the registry (small=%d large=%d) — the boundedness guard would not catch it",
+			nSmall, nLarge)
 	}
 }
 
@@ -1167,25 +1199,46 @@ func TestValidatorsSeenRootReadReddensOnDrop(t *testing.T) {
 	}
 }
 
-// TestInertDigestRootsAwaitRecompute is the SKIP-GUARDED PLACEHOLDER ablation for the four
-// still-INERT whole-set digest roots (bonded / qualified / slashed / validatorsSeen). It encodes
-// the "remove-the-exclusion-when-you-recompute" obligation in CODE, not just prose (the PE's
+// TestBondedRootReadReddensOnDrop is the increment-3 red-on-drop ablation for the bondedRoot
+// DIGEST-root READ: dropping the bondedRoot leaf from the producer must redden the
+// execution-derived guard, exactly as dropping any of the 23 member keyspaces does. This is the
+// discipline the digest root EARNS by becoming a genuine recompute read (the recompute of
+// requireDeMatureSuperQuorum reconstructs the whole bonded set's MTH and compares it to this
+// committed leaf). F1 committed bondedRoot INERT (excluded from the ground truth); increment 3
+// removed that exclusion, so a producer that forgets to emit it now fails coverage.
+//
+// It reddens because on a block where bonded mutates (a bond reg seats or a slash evicts a
+// validator), the write-diff flags bondedRoot as a changed leaf the recompute reads — the same
+// ground-truth signal the 23 member keyspaces get. A dropped bondedRoot leaves that ground-truth
+// read uncovered.
+func TestBondedRootReadReddensOnDrop(t *testing.T) {
+	if !keyspaceReddensOnDrop(t, tagBondedRoot) {
+		t.Fatal("GUARD BLIND: dropping the bondedRoot digest-root READ from the producer left the " +
+			"execution-derived guard GREEN — the increment-3 recompute reads bondedRoot for " +
+			"set-completeness, so a producer that omits it must redden (the F1 inert-exclusion was removed)")
+	}
+}
+
+// TestInertDigestRootsAwaitRecompute is the SKIP-GUARDED PLACEHOLDER ablation for the two
+// still-INERT whole-set digest roots (qualified / slashed). It encodes the
+// "remove-the-exclusion-when-you-recompute" obligation in CODE, not just prose (the PE's
 // request): for each still-inert root, the test SKIPS with the exact instruction a future
 // increment must follow when it reproduces that keyspace's weighted predicate.
 //
 // The obligation each skip carries: when increment N reproduces the predicate that folds
-// keyspace K (e.g. requireDeMatureSuperQuorum over Σ bonded), it MUST (1) remove K's root from
-// inertDigestRootTags so isDigestRootLeaf no longer excludes it from the ground truth, (2) emit
-// the K-root read + per-member weight reads in the producer, and (3) turn this placeholder into
-// a real red-on-drop ablation like TestEpochSetRootReadReddensOnDrop. Until then the root is
-// legitimately inert and MUST stay excluded (removing the exclusion early would redden every
-// member of K as a false positive, since the digest reacts to every member).
+// keyspace K, it MUST (1) remove K's root from inertDigestRootTags so isDigestRootLeaf no longer
+// excludes it from the ground truth, (2) emit the K-root read + per-member weight reads in the
+// producer, and (3) turn this placeholder into a real red-on-drop ablation like
+// TestEpochSetRootReadReddensOnDrop. Until then the root is legitimately inert and MUST stay
+// excluded (removing the exclusion early would redden every member of K as a false positive,
+// since the digest reacts to every member).
 //
-// The test also ASSERTS the current partition is exactly right: epochSetRoot (increment 1) and
-// validatorsSeenRoot (increment 2) are NO LONGER inert (they recompute), and the three named roots
-// ARE still inert. A drift in either direction fails.
+// The test also ASSERTS the current partition is exactly right: epochSetRoot (increment 1),
+// validatorsSeenRoot (increment 2), and bondedRoot (increment 3) are NO LONGER inert (they
+// recompute), and the two named roots ARE still inert. A drift in either direction fails.
 func TestInertDigestRootsAwaitRecompute(t *testing.T) {
-	// epochSetRoot and validatorsSeenRoot must have LEFT the inert set (increments 1/2 recompute them).
+	// epochSetRoot / validatorsSeenRoot / bondedRoot must have LEFT the inert set (increments 1/2/3
+	// recompute them).
 	for _, name := range inertDigestRootTags {
 		if name == "epochSetRoot" {
 			t.Fatal("epochSetRoot is still in inertDigestRootTags — increment 1 recomputes it, so it must be removed (its read is guarded by TestEpochSetRootReadReddensOnDrop)")
@@ -1193,10 +1246,13 @@ func TestInertDigestRootsAwaitRecompute(t *testing.T) {
 		if name == "validatorsSeenRoot" {
 			t.Fatal("validatorsSeenRoot is still in inertDigestRootTags — increment 2 recomputes it, so it must be removed (its read is guarded by TestValidatorsSeenRootReadReddensOnDrop)")
 		}
+		if name == "bondedRoot" {
+			t.Fatal("bondedRoot is still in inertDigestRootTags — increment 3 recomputes it, so it must be removed (its read is guarded by TestBondedRootReadReddensOnDrop)")
+		}
 	}
-	// The three named roots must still BE inert (no recompute reads them yet).
+	// The two named roots must still BE inert (no recompute reads them yet).
 	wantInert := map[string]struct{}{
-		"bondedRoot": {}, "qualifiedRoot": {}, "slashedRoot": {},
+		"qualifiedRoot": {}, "slashedRoot": {},
 	}
 	gotInert := make(map[string]struct{}, len(inertDigestRootTags))
 	for _, name := range inertDigestRootTags {
