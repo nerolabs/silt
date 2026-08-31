@@ -9,6 +9,37 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **v5 trustless floor box — recompute increment 3: the DE-MATURE SUPER-QUORUM predicate
+  reproduced from witnesses** (`core/chain/floorbox_recompute_dematureQuorum_v5.go`,
+  `docs/thinking/2026-08-31-floorbox-recompute-increment3-dematureQuorum-options.md`,
+  2026-08-31). Reproduces `requireDeMatureSuperQuorum` (the F-1 de-mature super-quorum over
+  the WHOLE `bonded` map, `chain.go:2947`) TRUSTLESSLY, from the committed StateRoot +
+  witnesses alone, replicating increments 1/2's structure over a DIFFERENT keyspace: the whole
+  `bonded` id-list (the R-membership budget path), rather than the frozen `epochSet`. Additive:
+  NO consensus rule, validity predicate, or `apply()` change — a full node still folds
+  `Σ bonded` from its own map; this is a SEPARATE root-only path. The three-part proof:
+  (1) SET-COMPLETENESS — reconstruct `nodeSetMTH(whole-bonded id-list)` and require it equals
+  the committed `bondedRoot` digest (F1's inert root now READ); (2) PER-MEMBER WEIGHT (C-1) —
+  `Resolve` each member's `bonded` weight leaf against the committed root, so a forged weight
+  fails verification ⇒ stall; (3) THRESHOLD (C-6) — the ⅔ ratio is the fixed consensus
+  constant, never read from the witness. The de-mature predicate fires only when
+  `!matureNow()`, so the recompute GATES on the REPRODUCED maturity state (reuses increment 2's
+  `RecomputeMatureNow`): it folds the super-quorum only in the reproduced `!matureNow` state and
+  is a no-op (`met=true`, matching the full node's skip) when mature. `requireDeMatureSuperQuorum`
+  consults no epoch set, so the #535 recovery boundary does not change this fold (no boundary
+  carve-out for this predicate). The box STILL never-Accepts (`WitnessValidateV5` not flipped,
+  the #657 accept flip waits). The producer (`readset_v5.go`) now emits the `bondedRoot`
+  completeness leaf + per-member whole-`bonded` weight reads; the drift guard's `bondedRoot`
+  inert-exclusion is REMOVED with a real red-on-drop ablation
+  (`TestBondedRootReadReddensOnDrop`), and the two still-inert digest roots (`qualifiedRoot`,
+  `slashedRoot`) keep their exclusion. Three hard ablations ship red-before-green: forged
+  bonded weight (C-1, `TestRecomputeDeMatureSuperQuorum_ForgedBondedWeightRejects`),
+  omitted/injected member (completeness,
+  `TestRecomputeDeMatureSuperQuorum_{Omitted,Injected}MemberRejects`), and config-from-witness
+  threshold (C-6, failing-first, `TestRecomputeDeMatureSuperQuorum_ThresholdFromConstant`).
+  Equivalence to the full node's de-mature verdict is asserted by test for both a coalition that
+  meets and one that misses the ⅔ super-quorum, plus the maturity-gate no-op. NOT a
+  consensus-rule change.
 - **v5 trustless floor box — recompute increment 2: the MATURITY-LATCH predicate reproduced
   from witnesses (the C-6 teeth)** (`core/chain/floorbox_recompute_maturity_v5.go`,
   `docs/thinking/2026-08-31-floorbox-recompute-increment2-maturity-latch-options.md`,

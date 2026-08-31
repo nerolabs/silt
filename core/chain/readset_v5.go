@@ -151,7 +151,50 @@ func (c *Chain) WitnessReadSetV5(b Block) []statehash.ReadEntry {
 	// increment 2 makes it a genuine read.
 	c.readSetValidatorsSeenRoot(acc)
 
+	// ---- (9) trustless recompute increment 3: the bondedRoot completeness leaf ----
+	// The root-only recompute of requireDeMatureSuperQuorum (floorbox_recompute_dematureQuorum_v5.go)
+	// proves SET-COMPLETENESS of the WHOLE bonded map by reconstructing the committed bondedRoot
+	// digest from the witnessed id-list. So the box must witness the bondedRoot leaf itself (a
+	// presence proof of the committed MTH), plus each bonded member's weight leaf (the C-1
+	// composition the super-quorum fold sums). F1 committed this root inert; increment 3 makes it a
+	// genuine read.
+	c.readSetBondedRoot(acc)
+
 	return acc.entries()
+}
+
+// readSetBondedRoot emits the reads the root-only recompute of requireDeMatureSuperQuorum performs
+// (floorbox_recompute_dematureQuorum_v5.go), the C-1 composition:
+//
+//   - the bondedRoot DIGEST leaf (set-completeness): the recompute reconstructs the whole bonded
+//     set's committed MTH from the witnessed id-list and compares it to this committed leaf. One
+//     omitted member ⇒ a different MTH ⇒ stall. An empty bonded map commits the fixed empty-MTH
+//     constant (C-4 always-emit); the fold is then degenerate (total <= 0).
+//   - EVERY bonded MEMBER's weight leaf (C-1): the digest binds MEMBERSHIP only — the super-quorum
+//     tally is forgeable without a per-member value proof for each id. So the box must witness
+//     every bonded[id] weight leaf to fold Σ bonded. O(RegCap), the whole-set weight fold the
+//     de-mature super-quorum needs (the R-membership budget path; box-fits per the disk-backed
+//     store measurement).
+//
+// This fires whenever bonded is non-empty (whenever the de-mature super-quorum has a set to fold),
+// NOT only when the de-mature gate actually binds — requireDeMatureSuperQuorum runs in
+// ValidateCommit whenever everMature && objective() && !matureNow() (chain.go:2827), a per-block
+// state the producer cannot cheaply predict. Emitting the whole-bonded reads whenever bonded is
+// non-empty is SOUND (a superset never causes a wrong-accept), and the recompute gates on the
+// reproduced matureNow so a mature block folds nothing. The per-member bonded leaves emitted here
+// overlap (dedup) with readSetBondRegs/readSetAtts/readSetMaturityLatch's bonded reads.
+func (c *Chain) readSetBondedRoot(acc *readSetAcc) {
+	// The digest-root completeness leaf (membership commitment). ALWAYS emitted (C-4 always-emit:
+	// an empty bonded map commits the fixed empty-MTH constant), because the digest root is a
+	// committed leaf on every v5 block AND a write-target wherever bonded mutates (a reg seats, a
+	// slash evicts) — the box must witness its pre-state either way. When bonded is empty the
+	// reconstructed MTH is the empty-MTH and the super-quorum fold is degenerate (total <= 0).
+	acc.addScalar(tagBondedRoot, nodeSetMTHFromInt64(c.bonded))
+	// The per-member weight leaves (C-1): the values the fold sums, one inclusion proof each. Empty
+	// when the bonded map is empty (degenerate super-quorum), O(bonded) = O(RegCap) otherwise.
+	for id := range c.bonded {
+		c.addBondedRead(acc, id)
+	}
 }
 
 // readSetValidatorsSeenRoot emits the reads the root-only recompute of matureNow performs
