@@ -454,9 +454,9 @@ func TestRecomputeStateRootSlashAblationCircularAnchor(t *testing.T) {
 	}
 }
 
-// --- Ablation 7: an out-of-scope compound — a slash block that ALSO carries a non-proposer att
-// (class A) stalls at the scope gate, never Accepts. (Class B bond regs are now IN scope — P1-d — so
-// the out-of-scope compound uses class A, which stays deferred on the R-A-frozenset residual.)
+// --- Ablation 7: a slash+non-proposer-att compound. Class A is now IN scope (P1-e), so the block
+// DISPATCHES to the A reconstruction. The slash witness carries no A witness (AttScreens /
+// validatorsSeenRoot digest), so the A dispatch stalls (never-Accept preserved). ---
 func TestRecomputeStateRootSlashAblationCompoundOutOfScope(t *testing.T) {
 	f := buildSlashFixture(t)
 	b := f.slashBlock()
@@ -466,8 +466,11 @@ func TestRecomputeStateRootSlashAblationCompoundOutOfScope(t *testing.T) {
 	w := f.witnessForSlash(t, b)
 
 	err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w)
-	if !errors.Is(err, ErrRecomputeStateRootScopeStall) {
-		t.Fatalf("ABLATION FAILED: a slash+non-proposer-att compound must stall at the scope gate, got %v", err)
+	if err == nil {
+		t.Fatalf("ABLATION FAILED: a slash+unwitnessed-att compound must stall, got nil")
+	}
+	if !errors.Is(err, ErrRecomputeStateRootDigest) && !errors.Is(err, ErrRecomputeStateRootFold) {
+		t.Fatalf("ABLATION FAILED: expected a digest/fold stall for the unwitnessed class-A part, got %v", err)
 	}
 }
 

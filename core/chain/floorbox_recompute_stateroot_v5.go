@@ -140,6 +140,17 @@ type StateRootWitness struct {
 	// bucket leaf proof against prevStateRoot. Present only for a bond-reg block with TTL enabled
 	// (the dueBucketMoveOnReg leaf effect). The box reconstructs each affected bucket's MTH.
 	BondRegBuckets []StateRootBucketWitness
+	// AttScreens carries, per non-proposer attester, the committed pre-state qualification inputs the
+	// class-A screen reads (slashed / frozen epochSet membership / bonded). Present only for a block
+	// with non-proposer atts (P1-e). The box computes qualification itself from own-cfg over these,
+	// then reconstructs the validatorsSeenRoot digest. See floorbox_recompute_stateroot_atts_v5.go.
+	AttScreens []StateRootAttScreen
+	// Rotate carries the class-P epoch-boundary witness: the pre-qualified id-set (the freeze source),
+	// the per-frozen-member regVersion (the activation tallies), the prior epochSet, and the rotate
+	// scalar pre-values (epochStart / matureEpoch / everMature / the three lock-in scalars). Present
+	// only for an epoch-boundary block (P1-e). The box applies the same block's S/B/T qualified deltas
+	// FIRST, then freezes (rotate-LAST). See floorbox_recompute_stateroot_rotate_v5.go.
+	Rotate *StateRootRotateWitness
 }
 
 // RecomputeStateRootEntriesRevocations reproduces validateEra3Roots' StateRoot equality check
@@ -182,6 +193,13 @@ func (c *Chain) RecomputeStateRootEntriesRevocations(
 	// agree on the pre-state, and neither trusts a witness scalar — C-1).
 	writeSet := applyEntriesRevocationsWriteSet(b)
 	var digestOps []statehash.FoldOp
+	// postQualified is the POST-apply qualified id-SET a boundary (class P) freezes (rotate-LAST,
+	// R-P-sameblock-order). It is reconstructed by a DEDICATED pass in apply() order (B → T → S) on the
+	// anchored pre-qualified set, AFTER the digest ops (whose emission order is irrelevant — each
+	// touched digest is a pure function of pre + its own delta). Built only when a boundary needs it.
+	isBoundary := c.epochsEnabled() && c.cfg.EpochBlocks > 0 && b.Height%c.cfg.EpochBlocks == 0
+
+	// Class S (slashes, P1-b): reconstruct the three touched digests + the per-member write-set.
 	if len(b.Slashes) > 0 {
 		dOps, preBonded, preQualified, dErr := stateRootSlashDigestOps(b, w.DigestPreSets)
 		if dErr != nil {
@@ -210,6 +228,31 @@ func (c *Chain) RecomputeStateRootEntriesRevocations(
 		digestOps = append(digestOps, tOps...)
 		writeSet = append(writeSet, stateRootTTLWriteSet(expired, w.TTLSweep.Height, preQualified)...)
 		_ = preBonded
+	}
+	// Class A (attestations → validatorsSeen, P1-e): screen each non-proposer att from own-cfg over
+	// the per-attester witnesses, derive the validatorsSeen ADDs, reconstruct validatorsSeenRoot.
+	if hasNonProposerAtt(b) {
+		aOps, aWrites, aErr := c.attOps(b, w)
+		if aErr != nil {
+			return aErr
+		}
+		digestOps = append(digestOps, aOps...)
+		writeSet = append(writeSet, aWrites...)
+	}
+	// Class P (epoch rotation, P1-e): rotate runs LAST. Reconstruct the POST-apply qualified set in
+	// apply() order (B → T → S), freeze it into epochSet, reconstruct epochSetRoot + per-member
+	// epochSet leaves, run the three activation tallies over per-member regVersion witnesses (own-cfg
+	// thresholds + activation guards), and reconstruct the rotate scalars. R-P-sameblock-order.
+	if isBoundary {
+		postQualified, pqErr := c.reconstructPostQualified(b, w)
+		if pqErr != nil {
+			return pqErr
+		}
+		pOps, pErr := c.rotateOps(b, w, postQualified)
+		if pErr != nil {
+			return pErr
+		}
+		digestOps = append(digestOps, pOps...)
 	}
 
 	// (3) MATCH each derived write to its supplied pre-state witness and build the fold ops. A
@@ -268,26 +311,16 @@ func (c *Chain) RecomputeStateRootEntriesRevocations(
 // to a later sub-increment; removing a clause is the visible signal that its class's recompute has
 // landed.
 func (c *Chain) stateRootScopeGate(prevStateRoot ports.Hash, b Block, w StateRootWitness) error {
-	// Class B (bond regs, P1-d) is now IN scope — handled by bondRegOps (the reproduced
-	// canonicalization + displacement + due-bucket delta). Class S (slashes, P1-b) is also IN scope.
-	// Neither is stalled here.
-	// Class P (epoch rotation, deferred): rotateEpoch fires at a boundary and is UNCONDITIONALLY out
-	// of scope — check it FIRST, before the witness-dependent T clause, so a boundary block stalls as
-	// a scope stall regardless of whether its dueBucket witness is present. epochsEnabled/EpochBlocks
-	// are read from OWN cfg (C-6).
-	if c.epochsEnabled() && c.cfg.EpochBlocks > 0 && b.Height%c.cfg.EpochBlocks == 0 {
-		return fmt.Errorf("%w: height %d is an epoch boundary", ErrRecomputeStateRootScopeStall, b.Height)
-	}
-	// Class A (attestation tracking, deferred): a non-proposer att writes validatorsSeen when the
-	// attester is qualified. This increment does not reproduce attesterQualified's frozen-epochSet
-	// screen (R-A-frozenset), so stall if ANY att could write validatorsSeen. Conservative (a
-	// proposer-only att set is a no-op for validatorsSeen); it never wrong-Accepts.
-	proposer := b.ProposerID()
-	for _, a := range b.Atts {
-		if a.AttesterID() != proposer {
-			return fmt.Errorf("%w: att by a non-proposer may write validatorsSeen", ErrRecomputeStateRootScopeStall)
-		}
-	}
+	// Class B (bond regs, P1-d) / Class S (slashes, P1-b) are IN scope — handled by bondRegOps /
+	// stateRootSlashDigestOps. Class A (attestations → validatorsSeen, P1-e) and Class P (epoch
+	// rotation, P1-e) are ALSO now IN scope — handled by attOps / rotateOps. None is stalled here.
+	//
+	// R-A-legacy: a legacy-mode block (a v5 block never is, by construction) cannot reproduce the
+	// rep(id) screen from committed state — attOps asserts objective and stalls otherwise.
+	// R-P-recovery: the #535 recovery boundary re-bases from liveQualifiedSet(), which the box cannot
+	// reconstruct from the qualified digest — rotateOps stalls at that one boundary. Both are stalls in
+	// the class dispatch, not here (they need the witness/block, not just the scope predicate).
+	//
 	// Class T (TTL sweep, P1-c): an expiry fires at b.Height iff dueBucket[uint64BE(h)] is occupied
 	// (chain.go:3274). The box distinguishes the two cases from the dueBucket witness against
 	// prevStateRoot:

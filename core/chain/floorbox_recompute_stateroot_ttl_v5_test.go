@@ -342,13 +342,14 @@ func TestRecomputeStateRootTTLAblationOmittedDigest(t *testing.T) {
 	}
 }
 
-// --- Ablation 5: an out-of-scope compound — a sweep block that ALSO carries a non-proposer att
-// stalls at the scope gate (A is out of scope), never Accepts. ---
+// --- Ablation 5: a sweep+non-proposer-att compound. Class A is now IN scope (P1-e), so the block
+// DISPATCHES to the A reconstruction. The sweep witness carries no A witness (AttScreens /
+// validatorsSeenRoot digest), so the A dispatch stalls (never-Accept preserved). ---
 func TestRecomputeStateRootTTLAblationCompoundOutOfScope(t *testing.T) {
 	f := buildTTLFixture(t)
 	b := f.sweepBlock()
 	expired := f.expiredMembers()
-	// Add a non-proposer att (class A, out of scope).
+	// Add a non-proposer att (class A — now in scope, but unwitnessed here).
 	other := key(71077)
 	bb := b
 	b.Atts = []Attestation{Attest(&bb, other)}
@@ -356,7 +357,10 @@ func TestRecomputeStateRootTTLAblationCompoundOutOfScope(t *testing.T) {
 	w := f.ttlSweepWitness(t, b, expired)
 
 	err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w)
-	if !errors.Is(err, ErrRecomputeStateRootScopeStall) {
-		t.Fatalf("ABLATION FAILED: a sweep+non-proposer-att compound must stall at the scope gate, got %v", err)
+	if err == nil {
+		t.Fatalf("ABLATION FAILED: a sweep+unwitnessed-att compound must stall, got nil")
+	}
+	if !errors.Is(err, ErrRecomputeStateRootDigest) && !errors.Is(err, ErrRecomputeStateRootFold) {
+		t.Fatalf("ABLATION FAILED: expected a digest/fold stall for the unwitnessed class-A part, got %v", err)
 	}
 }

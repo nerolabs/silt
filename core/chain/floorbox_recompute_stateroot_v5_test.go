@@ -264,21 +264,26 @@ func TestRecomputeStateRootAblationOmittedProof(t *testing.T) {
 	}
 }
 
-// TestRecomputeStateRootAblationOutOfScope: a block carrying an out-of-scope class (a non-proposer
-// attestation, class A) ⇒ scope-gate stall, never Accept. (Class B bond regs are now IN scope —
-// P1-d — so an out-of-scope ablation uses class A, which stays deferred on the R-A-frozenset residual.)
-func TestRecomputeStateRootAblationOutOfScope(t *testing.T) {
+// TestRecomputeStateRootAttIncompleteWitnessStalls: class A (non-proposer att) is now IN scope
+// (P1-e), so a class-A block DISPATCHES. With an E/R-only witness (no AttScreens, no validatorsSeenRoot
+// digest) the box cannot reconstruct the A delta ⇒ it stalls (never-Accept preserved). The stall moves
+// from the scope gate to the A dispatch, but it is still a stall — never a wrong-Accept.
+func TestRecomputeStateRootAttIncompleteWitnessStalls(t *testing.T) {
 	f := buildStateRootFixture(t)
 	b := f.nextERBlock()
-	// Inject a non-proposer attestation — an out-of-scope class (A), it may write validatorsSeen.
+	// Inject a non-proposer attestation (class A) but supply only the E/R witness (no A witness).
 	bb := b
 	b.Atts = append(b.Atts, Attest(&bb, key(52002)))
 	committed := f.applyAndCommittedRoot(t, b)
 	w := f.witnessForBlock(t, b)
 
 	err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w)
-	if !errors.Is(err, ErrRecomputeStateRootScopeStall) {
-		t.Fatalf("ABLATION FAILED: an out-of-scope non-proposer att must stall at the scope gate, got %v", err)
+	if err == nil {
+		t.Fatalf("ABLATION FAILED: a class-A block with an incomplete (E/R-only) witness must stall, got nil")
+	}
+	// The A dispatch stalls on the missing validatorsSeenRoot digest / attester screen (never-Accept).
+	if !errors.Is(err, ErrRecomputeStateRootDigest) && !errors.Is(err, ErrRecomputeStateRootFold) {
+		t.Fatalf("ABLATION FAILED: expected a digest/fold stall for an unwitnessed class-A block, got %v", err)
 	}
 }
 

@@ -9,6 +9,37 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **v5 trustless floor box — Path-1 state-root recompute P1-e, CLASSES A (attestations →
+  validatorsSeen) and P (epoch rotation → epochSet + boundary scalars): the LAST two Path-1 classes**
+  (`core/chain/floorbox_recompute_stateroot_atts_v5.go`,
+  `core/chain/floorbox_recompute_stateroot_rotate_v5.go`,
+  `core/chain/floorbox_recompute_stateroot_v5.go`,
+  `docs/thinking/2026-08-31-floorbox-recompute-AP-options.md`, 2026-08-31). Completes the O(payload)
+  + O(registry-per-digest) state-root recompute: E/R/S/B/T/A/P is now the full apply() transition
+  set. The exact write-sets were MEASURED off real `apply()` + `stateRootLeavesV5()` (not guessed).
+  **Class A** screens each non-proposer attester from OWN cfg over per-attester point witnesses
+  (`slashed` F2 gate, then FROZEN `epochSet[id]` membership in a mature epoch — R-A-membership-source,
+  NOT live `bonded` — else pre-maturity `bonded>=MinBond || launchAnchor`), derives the
+  `validatorsSeen||id` ADDs, and reconstructs `validatorsSeenRoot`. Legacy mode (`rep(id)`, not a
+  committed leaf) STALLS (R-A-legacy; a v5 block is objective by construction). **Class P** reproduces
+  EVERY `rotateEpoch` write (R-P-boundary-scalars): `epochStart` (always), `matureEpoch`, the
+  `epochSet` freeze (per-member leaves + `epochSetRoot`), and the three activation-tally lock-in
+  scalars (`gateLockedIn`/`gateHeight`, `era3`/`era4`). The freeze SOURCE is the POST-apply `qualified`
+  set — the box replays this block's B/T/S qualified deltas in apply() ORDER on the anchored
+  pre-qualified set, THEN freezes (R-P-sameblock-order; a stale pre-delta freeze is the I3 hazard,
+  fold-caught). The three tallies compute `3*ready > 2*total` from per-member `regVersion` WITNESSES
+  over the frozen set with OWN-cfg thresholds (3/4/5) + activation guards (R-P-tally-regversion). The
+  #535 recovery boundary (`liveQualifiedSet()` re-base) is NOT reconstructed from committed state — it
+  STALLS (R-P-recovery, the ratified trust-the-directive carve-out C-2). The scope gate widens so A and
+  P blocks are IN scope; E/R/S/B/T/A/P is now the complete set (no out-of-scope class remains). Box
+  STILL never-Accepts (R-scope). No `apply()`/consensus change. COST is HONEST: A is O(payload) screen
+  + O(|validatorsSeen|) digest; P is O(|qualified|) freeze + tallies — both O(registry), riding
+  R-membership (OPEN, for the #657 accept-flip). Ships with R3 execution-derived ablations against real
+  `apply()` + `StateRootForVersion(5)`, each watched RED before green: (A) forged qualification screen,
+  legacy-mode, omitted `validatorsSeenRoot`, proposer-only no-write, byte-exact digest; (P) steady-state
+  + bond-reg-compound agreement, stale (pre-delta) freeze, short qualified-set witness, live-tally
+  forged `regVersion`, forged freeze weight, missing `epochStart` scalar, #535-recovery stall. Cert:
+  `floorbox-recompute-classA-classP-wholeset-RESEARCH-CERTIFICATION-2026-08-31`.
 - **v5 trustless floor box — Path-1 state-root recompute P1-a, the O(payload) HYBRID: fold only
   the CHANGED paths (classes E + R), flat in total state**
   (`core/statehash/fold.go`, `core/chain/floorbox_recompute_stateroot_v5.go`,
