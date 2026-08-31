@@ -62,14 +62,25 @@ the phases, the D-TIERING keystone track). Live per-issue state stays in the `V1
 milestone; this is the coarse "where are the boulders" view. In-flight work is marked
 IN PROGRESS / IN DESIGN / DEFINITION — never as decided.
 
-1. **Trustless floor box** (D-TIERING keystone / "lane 1"). **IN PROGRESS.** The
-   witness read-set producer (Part A, #656) and the additive floor-box v5 validation-mode
-   scaffold (Part B1, #657) are merged; the box holds `indeterminate-trustlessly` (never
-   wrongly accepts) until the recompute is built and certified. The 23-keyspace witness
-   read-set identity and RegCap=256 are **ratified** (decisions.md, lane-1 increment 3);
-   the accept-core **recompute is research-gated**, not yet built. Open crux **R-boundary:**
-   whole-set boundary reads (`qualified` / `validatorsSeen`) are **O(RegCap)** and likely
-   need committed digest-root leaves — a v5 format addition **IN DESIGN/CERT, not decided.**
+1. **Trustless floor box** (D-TIERING keystone / "lane 1"). **IN PROGRESS — the recompute
+   is built and merged; the accept-flip is the single remaining step.** The witness read-set
+   producer (Part A, #656) and the additive floor-box v5 validation-mode scaffold (Part B1,
+   #657) are merged; the box still holds `indeterminate-trustlessly` (never wrongly accepts).
+   **R-boundary DECIDED (owner-ratified 2026-08-31, decisions.md):** the **heavy / fully-trustless**
+   posture — the box reproduces every validity predicate, it does not re-derive the state root and
+   trust finality. Whole-set committed reads are backed by MTH digest-root leaves; **≥4** carry a
+   recompute reader (`bondedRoot`, `epochSetRoot`, `qualifiedRoot`, `validatorsSeenRoot`), and the
+   committed v5 format emits all five (adding `slashedRoot`, F1). **The `apply()` transition set is
+   reproduced and merged:** the O(payload) HYBRID recompute (payload/`dueBucket`-derived write-set +
+   the R-fold over changed paths) covers the E/R spine and classes S/B/T/A/P plus the class-M
+   maturity latch — O(payload)+O(registry), via a changed-digest write-set primitive. A
+   **write-obligation ledger** (an emission-keyed differential guard) confirms **the committed-leaf
+   diff a real `apply()` produces equals the key-set the recompute folds (28/28 committed leaf kinds)**,
+   and self-detects a future added or renamed leaf. **Cost:** the witness bundle is measured **flat in
+   the total state** — O(payload)+O(log N), not O(whole-state) — so the recompute fits the 1-CPU/2-GB
+   "pony" budget. **Remaining: the accept-flip** — wire `WitnessValidateV5` to the merged recompute and
+   return Accept-iff-all-predicates-pass. **Owner-ratified (pre-launch)**; gated on the #406
+   model-check cert and the accept-flip gates. One step to a validating pony.
    Maps to: the D-TIERING keystone track (§3 of *Immediate next work*).
 2. **Third-operator committed settlement** (the next PoD economic frontier). **DEFINITION.**
    Cross-operator settlement in committed state, replacing today's bilateral in-memory
@@ -78,9 +89,10 @@ IN PROGRESS / IN DESIGN / DEFINITION — never as decided.
    Couples to the v5 format. Maps to: Phase 4 (PoD), the remaining heavier lane.
 3. **era-4 / v5 format freeze** (the closing act of Proof-of-Delivery; a second practiced
    era freeze). **DEFERRED BY DESIGN.** era-4/v5 is kept OPEN-ENDED — no live chain, and
-   PoD may still reshape witnessable state (owner-ratified 2026-08-30). Hard gate: the v5
-   committed format — including the R-boundary digest leaves and any third-operator leaves —
-   must be settled and certified before the freeze. Maps to: the keystone track + Phase 4 close.
+   PoD may still reshape witnessable state (owner-ratified 2026-08-30). The R-boundary digest
+   leaves are ratified and merged (F1, five roots); the hard gate is the COMPLETE exhaustive
+   digest-root set — the mechanically-enumerated whole-set reads — plus any third-operator leaves,
+   certified before the freeze (decisions.md). Maps to: the keystone track + Phase 4 close.
 4. **#406 consensus model-check (I1–I5).** **IN PROGRESS.** The deterministic adversarial
    property harness that HARD-GATES every graded field run; each invariant ablation-proven.
    Maps to: the M0-verification instrument (the *Verify tracks* gate).
