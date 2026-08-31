@@ -38,6 +38,33 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   mis-derived write-set. Certs:
   `floorbox-recompute-P1a-Opayload-multileaf-RESEARCH-CERTIFICATION-2026-08-31`,
   `RULING-floorbox-recompute-P1a-Opayload-multileaf-2026-08-31`.
+- **v5 trustless floor box — Path-1 state-root recompute P1-b, CLASS S (slashes): the
+  changed-whole-set-digest write-set primitive, the first delta-derivable digest class**
+  (`core/chain/floorbox_recompute_stateroot_slash_v5.go`,
+  `core/chain/floorbox_recompute_stateroot_v5.go`,
+  `docs/thinking/2026-08-31-floorbox-recompute-P1b-S-digest-writeset-options.md`, 2026-08-31).
+  Widens the O(payload) state-root recompute to reproduce `validateEra3Roots`' StateRoot equality
+  for a block that carries on-chain equivocation slashes. A slash of `culprit` changes THREE
+  whole-set DIGEST scalars (`slashedRoot`/`bondedRoot`/`qualifiedRoot`) — each an MTH over the
+  whole post-state id-set — on top of three per-member leaves. The certified changed-digest
+  primitive reconstructs each: (1) anchor the witnessed PRE-set id-list against the pre-digest
+  committed under `prevStateRoot` (NOT `StateRoot` — that is circular; the `FoldOp`'s `OldValue`
+  = `nodeSetMTH(preIDs)` is verified against `prevStateRoot` by `FoldChangedPaths`); (2) apply the
+  payload-DERIVED membership delta (slashed ADD culprit, bonded DELETE, qualified DELETE — the
+  qualified delete derived from the anchored pre-set, C-1, NOT trusted from a witness scalar); (3)
+  `NewValue = nodeSetMTH(postIDs)`; (4) fold the digest scalar as one changed leaf, require
+  `postRoot == b.StateRoot`. Reuses `FoldChangedPaths`/`nodeSetMTH`; no `apply()`/consensus change.
+  The scope gate widens so S blocks are IN scope; A/B/T/P/M stay out-of-scope-stalling (a slash
+  block that also carries a bond reg / non-proposer att / firing TTL / boundary stalls). Box STILL
+  never-Accepts (R-scope). COST is HONEST: NOT O(payload) — reconstructing a digest is a whole-list
+  MTH fold with no incremental update, so class S is O(payload leaves) + O(|keyspace|) per touched
+  digest ≈ O(registry) per digest, riding directly on R-membership (OPEN, for the #657 accept-flip).
+  Ships with R3 execution-derived ablations against real `apply()` + `StateRootForVersion(5)`,
+  each watched RED before green: forged qualified-screen pre-set, slash-doesn't-delete-bonded,
+  wrong culprit, omitted touched-digest reconstruction, the circular `StateRoot`-anchor swap, and a
+  byte-exact digest check. Certs:
+  `floorbox-Rboundary-writeset-digest-reconstruction-RESEARCH-CERTIFICATION-2026-08-31`,
+  `RULING-floorbox-recompute-P1b-SA-digest-scope-2026-08-31`.
 - **v5 trustless floor box — recompute increment 4: the QUALIFIED-COUNT predicate reproduced
   from witnesses (the `slashed`-over-bonded whole-set read)**
   (`core/chain/floorbox_recompute_qualifiedCount_v5.go`,

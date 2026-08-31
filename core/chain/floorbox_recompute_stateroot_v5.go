@@ -75,6 +75,12 @@ var (
 	// ErrEra3StateRootMismatch reproduced root-only — a forged committed leaf, an omitted / injected
 	// payload write, or a tampered committed StateRoot all land here.
 	ErrRecomputeStateRootMismatch = errors.New("chain: floor-box O(payload) state-root recompute — recomputed post-state root does not equal the block's committed StateRoot")
+
+	// ErrRecomputeStateRootDigest marks a stall in the class-S changed-whole-set-digest reconstruction
+	// (P1-b): a touched digest (slashedRoot / bondedRoot / qualifiedRoot) with no supplied pre-set
+	// witness, or a pre-set id-list that does not reconstruct the committed pre-digest. The box will
+	// not fold an unwitnessed / uncompleteness-anchored digest change; it stalls.
+	ErrRecomputeStateRootDigest = errors.New("chain: floor-box state-root recompute — a class-S touched whole-set digest (slashed/bonded/qualified root) is missing its pre-set witness or its pre-set id-list does not reconstruct the committed pre-digest")
 )
 
 // StateRootChangedLeafWitness is the pre-state proof for ONE payload-changed leaf, supplied to the
@@ -114,14 +120,24 @@ type StateRootWitness struct {
 	// TTL expiry fires at b.Height, so the block can be E/R-only. A membership proof (an occupied
 	// bucket) or a missing/failed proof stalls the scope gate. Supplied only when BondTTLBlocks > 0.
 	DueBucketProof statehash.Witness
+	// DigestPreSets carries, for each class-S touched whole-set digest scalar (slashedRoot /
+	// bondedRoot / qualifiedRoot), the claimed pre-state member id-list + the digest leaf inclusion
+	// proof against prevStateRoot. Empty for an E/R-only block (no digest scalar changes). The box
+	// reconstructs each pre-set MTH and requires it equals the committed pre-digest (completeness
+	// anchor), then folds the payload-derived post-digest (P1-b class S).
+	DigestPreSets []StateRootDigestWitness
 }
 
 // RecomputeStateRootEntriesRevocations reproduces validateEra3Roots' StateRoot equality check
-// TRUSTLESSLY and at O(payload) cost for a v5 block whose ONLY committed-state effect is its
-// entries and revocations/un-revocations (classes E + R). It returns nil iff the block's committed
-// StateRoot equals the SMT over the post-apply committed leaf set a full node would compute — the
-// same verdict validateEra3Roots reaches — and a stall reason otherwise. It NEVER returns "valid"
-// for an out-of-scope block: it stalls loud, never-Accepts.
+// TRUSTLESSLY for a v5 block whose committed-state effect is its entries and revocations/
+// un-revocations (classes E + R) and/or its on-chain equivocation slashes (class S, P1-b). It
+// returns nil iff the block's committed StateRoot equals the SMT over the post-apply committed leaf
+// set a full node would compute — the same verdict validateEra3Roots reaches — and a stall reason
+// otherwise. It NEVER returns "valid" for an out-of-scope block: it stalls loud, never-Accepts.
+//
+// COST is O(payload) for a pure E/R block; a class-S block is O(payload) + O(|keyspace|) per touched
+// whole-set digest (slashed/bonded/qualified) ≈ O(registry) per digest — the digest reconstruction
+// is a whole-list MTH fold, NOT O(payload) (R-cost-wholeset). See the P1-b file doc-comment.
 //
 // prevStateRoot is the previous block's committed StateRoot (the pre-state the changed-leaf proofs
 // verify against). committedStateRoot is b.StateRoot. The box holds both roots (attester-signed)
@@ -143,9 +159,23 @@ func (c *Chain) RecomputeStateRootEntriesRevocations(
 		return reason
 	}
 
-	// (2) DERIVE the E/R write-set from the block payload. The box runs the generator, not the
-	// prover — so the changed-key set is complete by construction (no un-named leaf escapes).
+	// (2) DERIVE the write-set from the block payload. The box runs the generator, not the prover —
+	// so the changed-key set is complete by construction (no un-named leaf escapes). E/R gives the
+	// byRoot/spent/revoked leaves; class S (P1-b) gives the slashed/bonded/qualified per-member leaves
+	// PLUS the three changed whole-set digest scalars, reconstructed via the certified changed-digest
+	// primitive. The digest ops are built FIRST because they anchor the pre-bonded / pre-qualified
+	// membership the S per-member write-set consumes (so the per-member delta and the digest delta
+	// agree on the pre-state, and neither trusts a witness scalar — C-1).
 	writeSet := applyEntriesRevocationsWriteSet(b)
+	var digestOps []statehash.FoldOp
+	if len(b.Slashes) > 0 {
+		dOps, preBonded, preQualified, dErr := stateRootSlashDigestOps(b, w.DigestPreSets)
+		if dErr != nil {
+			return dErr
+		}
+		digestOps = dOps
+		writeSet = append(writeSet, stateRootSlashWriteSet(b, preBonded, preQualified)...)
+	}
 
 	// (3) MATCH each derived write to its supplied pre-state witness and build the fold ops. A
 	// derived write with no matching witness stalls the fold (an unverified change is never folded).
@@ -153,7 +183,8 @@ func (c *Chain) RecomputeStateRootEntriesRevocations(
 	for i := range w.ChangedLeaves {
 		witByKey[string(w.ChangedLeaves[i].Key)] = &w.ChangedLeaves[i]
 	}
-	ops := make([]statehash.FoldOp, 0, len(writeSet))
+	ops := make([]statehash.FoldOp, 0, len(writeSet)+len(digestOps))
+	ops = append(ops, digestOps...)
 	for _, wr := range writeSet {
 		wit, ok := witByKey[string(wr.key)]
 		if !ok || wit.Proof.IsNil() {
@@ -202,12 +233,11 @@ func (c *Chain) RecomputeStateRootEntriesRevocations(
 // to a later sub-increment; removing a clause is the visible signal that its class's recompute has
 // landed.
 func (c *Chain) stateRootScopeGate(prevStateRoot ports.Hash, b Block, dueBucketProof statehash.Witness) error {
-	// Class B (bond regs), Class S (slashes): payload-visible, deferred to P1-d / P1-b.
+	// Class B (bond regs): payload-visible, deferred to P1-d. Class S (slashes) is now IN scope
+	// (P1-b) — it is handled by the changed-digest write-set (stateRootSlashWriteSet +
+	// stateRootSlashDigestOps), so it is NOT stalled here.
 	if len(b.BondRegs) > 0 {
 		return fmt.Errorf("%w: %d bond reg(s)", ErrRecomputeStateRootScopeStall, len(b.BondRegs))
-	}
-	if len(b.Slashes) > 0 {
-		return fmt.Errorf("%w: %d slash(es)", ErrRecomputeStateRootScopeStall, len(b.Slashes))
 	}
 	// Class A (attestation tracking, P1-b): a non-proposer att writes validatorsSeen when the
 	// attester is qualified. P1-a does not reproduce attesterQualified's membership screen, so stall
