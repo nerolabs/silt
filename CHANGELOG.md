@@ -9,6 +9,31 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **v5 floor box — the QUORUM-STACK whole-set read enumeration + blind-spot closure**
+  (`core/chain/readset_v5_quorum_wholeset_test.go`,
+  `docs/thinking/2026-08-31-Rboundary-mechanical-wholeset-enumeration-options.md`,
+  2026-08-31). Test-infra + enumeration only; NO consensus rule, validity predicate, or
+  `apply()` change, and NO committed digest-root leaf added (that is the gated format
+  change). The merged execution-derived read-set guard (`readset_v5_drift_test.go`) derives
+  ground truth from `apply(b)` + a validity source that runs `validateTakedowns` +
+  per-entry `ValidateEntry` — it NEVER runs the QUORUM STACK, so it was structurally blind
+  to every committed map the stack reads AS A WHOLE SET (a SUM/COUNT over the entire map).
+  That blind spot is the root cause of three hand-enumeration misses this session. This
+  increment fixes it by EXECUTION-DERIVATION, not hand-listing: an untouched-member
+  perturbation oracle runs the FULL contract (`collectQuorumSigs` + `requireQuorumStack`,
+  plus the apply channel) over poised worlds and flags a keyspace as whole-set iff
+  perturbing a member the block does NOT touch flips the accept/reject verdict or the
+  recomputed root. The EXHAUSTIVE full-contract whole-set-read set is
+  `{bonded, epochSet, qualified, slashed, validatorsSeen}`: the quorum-stack folds are
+  `{bonded, epochSet, slashed, validatorsSeen}` (`slashed` via `qualifiedCount`'s
+  `!slashed[id]` fold — the keyspace the ≥4 starting list OMITS; `validatorsSeen` via the
+  de-mature gate's `matureNow()` → `MatureCoefficient` fold), and `qualified` is an
+  APPLY-channel whole-set read (the boundary freeze), not a quorum-stack fold (the ≥4
+  list's mis-attribution). The blind-spot-closed red→green ablation runs per keyspace: the
+  PRE-extension guard is GREEN (blind), the EXTENDED guard is RED (the per-key producer
+  omits the whole-map completeness read), and a positive control (augmenting the producer
+  with the completeness leaf → GREEN) proves the RED is the missing whole-map read, not a
+  tautology.
 - **consensus model-check — the unified step-oracle `assertInvariants(replicas)` (#406)**
   (`core/node/modelcheck_unified_oracle_test.go`,
   `docs/thinking/2026-08-30-406-consensus-modelcheck-harness-options.md`, 2026-08-30).
