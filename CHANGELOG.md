@@ -55,6 +55,19 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   byte-identical (a digest root emitted into the era-3 path reddens the immutable gate);
   each root load-bearing (add/drop a member moves its root); empty keyspace commits the
   empty-MTH constant; the emit guard forces all five tags.
+  Reconciled the R3 execution-derived read-set completeness guard and the quorum-stack
+  whole-set enumeration (#664) with the new digest-root leaves
+  (`core/chain/readset_v5_drift_test.go`, `core/chain/readset_v5_quorum_wholeset_test.go`):
+  the five digest roots are DERIVED output commitments the box recomputes, not witnessed
+  reads, so the ground-truth derivation excludes them from the write-diff and the cross-leaf
+  perturbation (`isDigestRootLeaf`) — the leaf-set analogue of the existing `validateEra3Roots`
+  root-recompute exclusion. Without the exclusion, perturbing any member of the five
+  keyspaces flips that keyspace's digest root and the guard falsely reports every member as
+  read, and the apply-channel enumeration mis-attributes quorum-stack folds (e.g. `slashed`)
+  to the apply channel. Pure reconciliation: no guard-model change — the ablations still
+  redden on a dropped per-member read (the member's own leaf, not its digest root, carries
+  that signal), and the `TestGroundTruthPerturbationCovers` keyspace-coverage invariant keeps
+  its teeth (the digest-root exemption is narrow and asserts each digest-root leaf is present).
 - **consensus model-check — the unified step-oracle `assertInvariants(replicas)` (#406)**
   (`core/node/modelcheck_unified_oracle_test.go`,
   `docs/thinking/2026-08-30-406-consensus-modelcheck-harness-options.md`, 2026-08-30).
