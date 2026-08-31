@@ -371,8 +371,9 @@ func TestRecomputeStateRootBondRegAblationForgedScreen(t *testing.T) {
 	}
 }
 
-// --- Ablation 6: an out-of-scope compound — a bond-reg block at an epoch boundary stalls at the
-// scope gate (P is out of scope), never Accepts. ---
+// --- Ablation 6: a bond-reg block at an epoch boundary. Class P is now IN scope (P1-e), so the block
+// DISPATCHES to the rotate reconstruction. With an EMPTY witness (no rotate witness, no digest pre-sets)
+// the box cannot reconstruct the boundary ⇒ it stalls (never-Accept preserved). ---
 func TestRecomputeStateRootBondRegAblationBoundaryOutOfScope(t *testing.T) {
 	// A fixture with a small EpochBlocks so a boundary is reachable, and epochs enabled.
 	cfg := Config{Quorum: 1, MinBond: era4MinBond, ByzantineQuorum: true,
@@ -406,8 +407,14 @@ func TestRecomputeStateRootBondRegAblationBoundaryOutOfScope(t *testing.T) {
 
 	var w StateRootWitness
 	err := c.RecomputeStateRootEntriesRevocations(prevRoot, committed, b, w)
-	if !errors.Is(err, ErrRecomputeStateRootScopeStall) {
-		t.Fatalf("ABLATION FAILED: a bond-reg block at an epoch boundary must stall at the scope gate, got %v", err)
+	if err == nil {
+		t.Fatalf("ABLATION FAILED: a boundary bond-reg block with an empty witness must stall, got nil")
+	}
+	// The block dispatches (B/P in scope); the empty witness fails an anchor — either the TTL
+	// scope-gate non-membership proof (dueBucket), the digest anchor, or the fold. All never-Accept.
+	if !errors.Is(err, ErrRecomputeStateRootDigest) && !errors.Is(err, ErrRecomputeStateRootFold) &&
+		!errors.Is(err, ErrRecomputeStateRootTTLWitness) {
+		t.Fatalf("ABLATION FAILED: expected a ttl/digest/fold stall for an unwitnessed boundary block, got %v", err)
 	}
 }
 

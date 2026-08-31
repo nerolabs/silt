@@ -315,21 +315,29 @@ func stateRootBondRegDigestOps(
 // by the fold), derives the full B delta, and reconstructs the touched digests + affected dueBucket
 // leaves. It returns the digest FoldOps and the per-member write-set the caller folds together.
 func (c *Chain) bondRegOps(b Block, w StateRootWitness) ([]statehash.FoldOp, []stateRootWrite, error) {
+	ops, writes, _, err := c.bondRegOpsWithQual(b, w)
+	return ops, writes, err
+}
+
+// bondRegOpsWithQual is bondRegOps that ALSO returns the POST-apply qualified id-set the class-B
+// delta produces. A boundary block's class-P freeze needs this (the freeze copies the post-qualified
+// set, R-P-sameblock-order); a non-boundary block ignores the third return.
+func (c *Chain) bondRegOpsWithQual(b Block, w StateRootWitness) ([]statehash.FoldOp, []stateRootWrite, map[ports.NodeID]struct{}, error) {
 	byTag := make(map[string]*StateRootDigestWitness, len(w.DigestPreSets))
 	for i := range w.DigestPreSets {
 		byTag[w.DigestPreSets[i].Tag] = &w.DigestPreSets[i]
 	}
 	preBonded, err := anchoredPreSet(byTag, tagBondedRoot)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	preQualified, err := anchoredPreSet(byTag, tagQualifiedRoot)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	preSlashed, err := anchoredPreSet(byTag, tagSlashedRoot)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	// Prior bondRegHeight for each id, read from the supplied changed-leaf witnesses' OldValue. A
@@ -357,13 +365,13 @@ func (c *Chain) bondRegOps(b Block, w StateRootWitness) ([]statehash.FoldOp, []s
 
 	delta, err := c.stateRootBondRegWriteSet(b, preBonded, preQualified, preSlashed, screens, preBondRegHeight)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	ops, err := stateRootBondRegDigestOps(delta, preBonded, preQualified, w.DigestPreSets, buckets)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	return ops, delta.writes, nil
+	return ops, delta.writes, delta.postQual, nil
 }
 
 // idFromTaggedKey extracts the raw NodeID from a field-tagged leaf key if it carries the given tag.
