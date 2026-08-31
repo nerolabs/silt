@@ -9,6 +9,14 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Fixed
+- **Docs/comment true-up (no logic change):** ROADMAP Rock 1 updated to the built recompute state
+  (recompute reproduces the `apply()` transition set — E/R spine + classes S/B/T/A/P + class-M latch —
+  guarded by the 28/28 write-obligation leaf-diff; the accept-flip is the single remaining step; the
+  R-boundary heavy posture and five committed digest roots are ratified). `core/statehash/fold.go`
+  delete-sibling comments corrected: the soundness anchor is the caller's final computed-root vs
+  committed-StateRoot equality (`ImportSparseMerkleTrie.Root()` does not re-walk the seed), NOT a
+  "seed-root equality check" — the code performs none. CHANGELOG `apply()` TTL-sweep prose corrected
+  `>=` → `>` to match `chain.go` (`b.Height-regH > ttl`).
 - **v5 trustless floor box — close the last Path-1 completeness gap: the OFF-boundary `everMature`
   maturity latch (class M), + a permanent emission-keyed leaf-diff guard**
   (`core/chain/floorbox_recompute_stateroot_maturitylatch_v5.go`,
@@ -86,9 +94,9 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `bonded`/`bondDomain` but does NOT enter `qualified` (a previously untested delta branch); a positive
   test reproduces it byte-exact vs real `apply()` + `StateRootForVersion(5)`, and an ablation that
   forges the qualification stalls. **7f** — class-T multi-block contiguity: the `dueBucket[b.Height]`
-  scope-gate is sound only under chain height-contiguity (apply's sweep is `>=`); a multi-block schedule
+  scope-gate is sound only under chain height-contiguity (apply's sweep is `>`); a multi-block schedule
   of consecutive sweep heights firing distinct buckets is reproduced byte-exact, and an ablation that
-  SKIPS a height (so apply's `>=` vacuums a bucket the `==` gate never witnesses) stalls — so a future
+  SKIPS a height (so apply's `>` vacuums a bucket the `==` gate never witnesses) stalls — so a future
   contiguity break reddens.
 - **v5 trustless floor box — Path-1 state-root recompute P1-e, CLASSES A (attestations →
   validatorsSeen) and P (epoch rotation → epochSet + boundary scalars): the LAST two Path-1 classes**

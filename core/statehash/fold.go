@@ -78,8 +78,10 @@ type FoldOp struct {
 	// level (smt.go:298), and a single proof carries only their digests. Each is (digest,
 	// preimage) — the digest is the sidenode value the parent inner node references (for an
 	// extension-node sibling this is NOT sha256(preimage), so the digest must be carried, not
-	// recomputed). Each is keyed in the seed under its digest; the seed-root equality check
-	// verifies them faithful to prevStateRoot. Empty for a set/overwrite/add.
+	// recomputed). Each is keyed in the seed under its digest. Their soundness is anchored by the
+	// caller's FINAL computed-root vs committed-StateRoot equality (step 4 below), not by any
+	// seed-root check: an injected sibling folds into the delete's re-derivation and diverges the
+	// computed root, which then mismatches the committed StateRoot ⇒ stall. Empty for a set/overwrite/add.
 	DeleteSiblings []FoldSibling
 }
 
@@ -128,8 +130,9 @@ func FoldChangedPaths(prevStateRoot ports.Hash, ops []FoldOp) (ports.Hash, error
 		// (2) Reconstruct the on-path node preimages into the seed (mirrors verifyProofWithUpdates).
 		seedFromProof(seed, op.Proof.proof, op.Key, op.OldValue)
 		// (3) For a delete, seed the off-path sibling preimages the library's Delete resolves at
-		// every inner level. Each is keyed under its digest; the seed-root check (step 4) verifies
-		// them faithful to prevStateRoot, so an injected sibling cannot survive.
+		// every inner level. Each is keyed under its digest; step 4 does NOT re-validate the seed, so
+		// an injected sibling is caught only downstream — it diverges the computed post-root, which
+		// then mismatches the caller's committed StateRoot (the final equality) ⇒ stall.
 		if op.NewValue == nil {
 			for _, sib := range op.DeleteSiblings {
 				seed[string(sib.Digest)] = sib.Preimage
