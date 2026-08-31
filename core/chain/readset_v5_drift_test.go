@@ -73,6 +73,37 @@ func leafKeySet(c *Chain) map[string]string {
 	return out
 }
 
+// digestRootLeafKeys is the set of the five v5 WHOLE-SET digest-root leaf keys (tag||"",
+// empty raw key). These are the F1 committed leaves: bondedRoot / epochSetRoot /
+// qualifiedRoot / slashedRoot / validatorsSeenRoot. Bound to stateRootDigestTagsV5 (the
+// production emit-guard list) so a renamed or dropped digest root cannot silently escape
+// this set.
+func digestRootLeafKeys() map[string]struct{} {
+	out := make(map[string]struct{}, len(stateRootDigestTagsV5))
+	for _, name := range stateRootDigestTagsV5 {
+		out[string(statehash.Key(name+"\x00", nil))] = struct{}{}
+	}
+	return out
+}
+
+// isDigestRootLeaf reports whether leaf key k is one of the five F1 whole-set digest-root
+// leaves. Those leaves are DERIVED output commitments over a whole keyspace's member set
+// (statehash.go:262-266), INERT in F1 (no validity predicate reads them — the F1 STOP
+// boundary). They are the leaf-set analogue of the recomputed state root: perturbing any
+// member of a keyspace flips that keyspace's digest root, and the digest root is itself a
+// changed (written) leaf every membership-mutating block. Neither signal is a WITNESSED
+// per-member read the floor box must prove — the box RECOMPUTES the digest from the members
+// it already witnessed, exactly as it recomputes the state root. So the ground-truth
+// derivation excludes these leaves from BOTH the write-diff (Source 1) and the cross-leaf
+// perturbation (Source 2), the same way Source 3 excludes validateEra3Roots (the root
+// recompute) and Source 2 excludes the perturbed leaf's own key. This is a false-positive
+// exclusion, not a change to what counts as a genuine read: a dropped per-MEMBER read still
+// reddens, because the member leaf itself — not its digest root — carries that signal.
+func isDigestRootLeaf(k string) bool {
+	_, ok := digestRootLeafKeys()[k]
+	return ok
+}
+
 // groundTruthReadSet derives the REAL v5 recompute's read-set for block b against the
 // pre-apply state c, by the two execution-derived sources (write-diff ∪ perturbation). It
 // mutates nothing on c: every apply runs on a fresh cloneForDryRun clone. Returns the set of
@@ -82,16 +113,26 @@ func groundTruthReadSet(t *testing.T, c *Chain, b Block) map[string]struct{} {
 	reads := make(map[string]struct{})
 
 	// --- Source 1: the write-diff over the REAL recompute (cloneForDryRun + apply). ---
+	// The five F1 digest-root leaves are DERIVED output commitments (isDigestRootLeaf): they
+	// change value on every membership-mutating block, but the box recomputes them from the
+	// members it already witnessed — they are not a witnessed read. Exclude them, else this
+	// source's write-diff flags each digest root as "written → read."
 	pre := leafKeySet(c)
 	post := c.cloneForDryRun()
 	post.apply(b)
 	postLeaves := leafKeySet(post)
 	for k, v := range postLeaves {
+		if isDigestRootLeaf(k) {
+			continue
+		}
 		if pre[k] != v { // added or value-changed leaf → written → read
 			reads[k] = struct{}{}
 		}
 	}
 	for k := range pre {
+		if isDigestRootLeaf(k) {
+			continue
+		}
 		if _, still := postLeaves[k]; !still { // removed leaf → written (deleted) → read
 			reads[k] = struct{}{}
 		}
@@ -177,11 +218,21 @@ func validityVerdict(c *Chain, b Block) string {
 }
 
 // crossLeafDiffers reports whether two post-leaf-sets differ on ANY key other than `self`
-// (the perturbed leaf's own key). A cross-leaf difference means perturbing `self` changed
-// some other committed leaf — i.e. the recompute read `self`.
+// (the perturbed leaf's own key) and other than a DIGEST-ROOT leaf. A cross-leaf difference
+// means perturbing `self` changed some other committed leaf — i.e. the recompute read
+// `self`.
+//
+// The five F1 digest-root leaves are excluded (isDigestRootLeaf): each is a whole-keyspace
+// MTH digest, so perturbing ANY member of that keyspace flips its digest root. Counting that
+// flip as a cross-leaf difference would make crossLeafDiffers report EVERY member of the five
+// keyspaces as "read" — a false positive, since the digest root is an inert output
+// commitment the box recomputes, not a witnessed per-member read (F1 STOP boundary). This is
+// the leaf-set analogue of Source 3's validateEra3Roots exclusion: a whole-set commitment
+// reacts to every member, so it cannot be the signal that isolates which single leaf was
+// read. The per-member read signal is carried by the member's OWN leaf, unaffected here.
 func crossLeafDiffers(ref, got map[string]string, self string) bool {
 	for k, v := range got {
-		if k == self {
+		if k == self || isDigestRootLeaf(k) {
 			continue
 		}
 		if ref[k] != v {
@@ -189,7 +240,7 @@ func crossLeafDiffers(ref, got map[string]string, self string) bool {
 		}
 	}
 	for k := range ref {
-		if k == self {
+		if k == self || isDigestRootLeaf(k) {
 			continue
 		}
 		if _, ok := got[k]; !ok {
@@ -618,15 +669,38 @@ func prettyKey(k string) string {
 // TestGroundTruthPerturbationCovers guards the guard: every committed keyspace the corpus
 // pre-apply states carry must be perturbable by perturbLeaf, so no leaf silently escapes the
 // perturbation source (a keyspace perturbLeaf returns false for would be an unguarded read).
+//
+// EXEMPTION — the five F1 digest-root leaves (isDigestRootLeaf). They are DERIVED output
+// commitments recomputed by stateRootLeavesV5 from the whole keyspace, so no direct write
+// persists (the next recompute overwrites it) and they carry no independent pre-state a
+// reader could observe. They are deliberately excluded from the perturbation and write-diff
+// sources (an inert F1 output commitment is not a witnessed read), so requiring them
+// perturbable here would be incoherent. The exemption is NARROW: it names exactly the five
+// digest-root leaves, so any OTHER unhandled keyspace still reddens. To keep the guard's
+// teeth, the loop asserts the corpus actually CARRIES each digest-root leaf (they are not
+// silently absent) — a real leaf, exempt from perturbation for a stated reason, not a gap.
 func TestGroundTruthPerturbationCovers(t *testing.T) {
 	corpus, snap := buildV5ReadSetCorpus(t)
 	applied := make(map[uint64]bool)
 	for _, cb := range corpus {
+		digestSeen := make(map[string]bool)
 		for _, lf := range snap.stateRootLeavesV5() {
+			if isDigestRootLeaf(string(lf.Key)) {
+				digestSeen[string(lf.Key)] = true
+				continue // derived output commitment: exempt (see doc), but must be present.
+			}
 			clone := snap.cloneForDryRun()
 			if !perturbLeaf(clone, lf.Key, lf.Value) {
 				tag, _, _ := splitLeafKey(lf.Key)
 				t.Fatalf("[%s] perturbLeaf cannot perturb keyspace %q — that leaf escapes the perturbation ground truth", cb.label, tag)
+			}
+		}
+		// The five digest-root leaves are always-emit (C-4): each must be present in the leaf
+		// set, so the exemption above names live leaves, not phantom ones.
+		for k := range digestRootLeafKeys() {
+			if !digestSeen[k] {
+				tag, _, _ := splitLeafKey([]byte(k))
+				t.Fatalf("[%s] digest-root leaf %q absent from the v5 leaf set — the perturbation exemption names a phantom leaf", cb.label, tag)
 			}
 		}
 		if !applied[cb.block.Height] {

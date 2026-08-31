@@ -320,15 +320,25 @@ func applyChannelWholeSetKeyspaces(t *testing.T) map[string]bool {
 }
 
 // crossMemberLeafDiffers reports whether two post-apply leaf sets differ on ANY key that
-// is NOT of the perturbed keyspace `tag` — a difference in some OTHER leaf caused by the
-// untouched perturbation, i.e. apply() read the perturbed keyspace whole-set to compute
-// another leaf. Differences WITHIN `tag` are excluded: the perturbed member persisting
-// into the post-state is self-persistence, not a read (mirrors readset_v5_drift_test.go's
-// crossLeafDiffers self-exclusion, one keyspace up).
+// is NOT of the perturbed keyspace `tag` and is NOT a digest-root leaf — a difference in some
+// OTHER leaf caused by the untouched perturbation, i.e. apply() read the perturbed keyspace
+// whole-set to compute another leaf. Differences WITHIN `tag` are excluded: the perturbed
+// member persisting into the post-state is self-persistence, not a read (mirrors
+// readset_v5_drift_test.go's crossLeafDiffers self-exclusion, one keyspace up).
+//
+// The five F1 digest-root leaves are ALSO excluded (isDigestRootLeaf). Each is a
+// whole-keyspace MTH digest, so perturbing an untouched member of ANY of the five keyspaces
+// flips that keyspace's digest root — a leaf outside `tag`. Counting that flip would make
+// this APPLY-channel oracle flag every keyspace with a digest root (e.g. `slashed`, which is
+// a QUORUM-STACK fold via qualifiedCount, not an apply fold), corrupting the channel
+// attribution the enumeration exists to establish. The digest roots are inert F1 output
+// commitments (no apply/validity predicate reads them — F1 STOP boundary); they are the
+// leaf-set analogue of the recomputed state root, which crossLeafDiffers already excludes.
 func crossMemberLeafDiffers(ref, got map[string]string, tag string) bool {
 	inTag := func(k string) bool { tg, _, _ := splitLeafKey([]byte(k)); return tg == tag }
+	skip := func(k string) bool { return inTag(k) || isDigestRootLeaf(k) }
 	for k, v := range got {
-		if inTag(k) {
+		if skip(k) {
 			continue
 		}
 		if ref[k] != v {
@@ -336,7 +346,7 @@ func crossMemberLeafDiffers(ref, got map[string]string, tag string) bool {
 		}
 	}
 	for k := range ref {
-		if inTag(k) {
+		if skip(k) {
 			continue
 		}
 		if _, ok := got[k]; !ok {

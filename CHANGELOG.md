@@ -34,6 +34,40 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   omits the whole-map completeness read), and a positive control (augmenting the producer
   with the completeness leaf → GREEN) proves the RED is the missing whole-map read, not a
   tautology.
+- **v5 state root — the five whole-set DIGEST-root leaves, increment F1 (format-only)**
+  (`core/chain/statehash.go`, `core/chain/modelcheck_stateroot_digestroots_test.go`,
+  `docs/thinking/2026-08-31-v5-five-digest-roots-F1-options.md`, 2026-08-31). Additive,
+  v5-ONLY, INERT. Adds `bondedRoot`, `epochSetRoot`, `qualifiedRoot`, `slashedRoot`,
+  `validatorsSeenRoot` — one scalar leaf each whose value is the RFC-6962 MTH over the
+  CANONICAL sorted id-list of that keyspace's member set (membership-only; weights stay in
+  the per-member leaves). They commit SET COMPLETENESS for the five whole-set committed
+  reads so a root-only floor box can reconstruct-and-compare, closing the gap that an SMT
+  inclusion proof certifies only the members you were given. Certified 2026-08-31
+  (`v5-wholeset-digest-root-addition-RESEARCH-CERTIFICATION`, PE cross-check
+  `RULING-v5-wholeset-digest-root-cert-crosscheck`). Emitted by `stateRootLeavesV5` ONLY,
+  after the untouched era-3 leaves, so a v4/era-3 root stays BYTE-IDENTICAL (immutable
+  #632). C-4 always-emit: an empty keyspace commits `translog.MTH(nil)`, the fixed
+  empty-MTH constant, with NO absent-vs-empty shortcut. C-7 prefix-safe: each tag is
+  `\x00`-terminated and collision-free under `Key = tag||rawKey`, bound to a dedicated
+  emit guard (`stateRootDigestTagsV5`). NOTHING reads the roots this increment — no
+  validity predicate, no recompute; F3 wires the root-only recompute (with the C-1
+  per-member value proofs and C-6 genesis config). Ablated red-before-green: v4
+  byte-identical (a digest root emitted into the era-3 path reddens the immutable gate);
+  each root load-bearing (add/drop a member moves its root); empty keyspace commits the
+  empty-MTH constant; the emit guard forces all five tags.
+  Reconciled the R3 execution-derived read-set completeness guard and the quorum-stack
+  whole-set enumeration (#664) with the new digest-root leaves
+  (`core/chain/readset_v5_drift_test.go`, `core/chain/readset_v5_quorum_wholeset_test.go`):
+  the five digest roots are DERIVED output commitments the box recomputes, not witnessed
+  reads, so the ground-truth derivation excludes them from the write-diff and the cross-leaf
+  perturbation (`isDigestRootLeaf`) — the leaf-set analogue of the existing `validateEra3Roots`
+  root-recompute exclusion. Without the exclusion, perturbing any member of the five
+  keyspaces flips that keyspace's digest root and the guard falsely reports every member as
+  read, and the apply-channel enumeration mis-attributes quorum-stack folds (e.g. `slashed`)
+  to the apply channel. Pure reconciliation: no guard-model change — the ablations still
+  redden on a dropped per-member read (the member's own leaf, not its digest root, carries
+  that signal), and the `TestGroundTruthPerturbationCovers` keyspace-coverage invariant keeps
+  its teeth (the digest-root exemption is narrow and asserts each digest-root leaf is present).
 - **consensus model-check — the unified step-oracle `assertInvariants(replicas)` (#406)**
   (`core/node/modelcheck_unified_oracle_test.go`,
   `docs/thinking/2026-08-30-406-consensus-modelcheck-harness-options.md`, 2026-08-30).
