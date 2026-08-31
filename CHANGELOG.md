@@ -57,6 +57,11 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   the long-standing "measurement owed" residual in `docs/decisions.md` C-5 G2 and
   `docs/design/owned-residuals.md` G2; gates R2.6 repair-payee and folds into the owed node-store
   coexistence test.
+- **Gate-4 whole-set bonded witness size — measured, scar closed** (`core/chain/floorbox_wholeset_witness_size_measure_test.go`,
+  `docs/thinking/2026-08-31-floorbox-wholeset-witness-size-measurement.md`, 2026-08-31). Test/measurement
+  only — NO production code, consensus rule, validity predicate, or committed format changed. A `_test.go`
+  measurement that sizes the whole-set bonded-member witness the heavy floor box must carry, closing the
+  gate-4 unfiled-measurement scar with a citable number instead of an estimate.
 
 ### Fixed
 - **A4 provisional-eviction money-pump — close the double-pay at FIFO eviction (Boulder 0, R0.4a;
