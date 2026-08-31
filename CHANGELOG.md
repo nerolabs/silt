@@ -31,10 +31,15 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `slashed`/`bonded`/`bondDomain` reads; the drift guard's `validatorsSeenRoot`
   inert-exclusion is REMOVED with a real red-on-drop ablation
   (`TestValidatorsSeenRootReadReddensOnDrop`), and the three still-inert digest roots keep
-  their exclusion. Four hard ablations ship red-before-green: forged bonded weight (C-1),
-  forged bondDomain (C-1), omitted/injected member (completeness), and the mandatory
-  config-from-witness (C-6, `TestRecomputeMatureNow_ConfigFromOwnConfig`). NOT a
-  consensus-rule change.
+  their exclusion. Six hard ablations ship red-before-green: forged bonded weight (C-1),
+  forged bondDomain (C-1), forged slashed bit (C-1,
+  `TestRecomputeMatureNow_ForgedSlashedRejects`), omitted/injected member (completeness),
+  and the mandatory config-from-witness (C-6, `TestRecomputeMatureNow_ConfigFromOwnConfig`).
+  Equivalence to the full node's `matureNow` is now asserted by test on the SLASHED-SKIP fold
+  path (a fixture seats a committed slashed member) and the UNSET-DOMAIN `zeroDomainWeights`
+  fold path (a mixed set/unset-domain fixture), closing the two coverage gaps the blind PE
+  review flagged (both branches were previously exercised only in their always-false
+  direction). NOT a consensus-rule change.
 - **v5 trustless floor box — recompute increment 1: one weighted predicate reproduced from
   witnesses (the C-1 pattern)** (`core/chain/floorbox_recompute_v5.go`,
   `core/statehash/prover.go`,

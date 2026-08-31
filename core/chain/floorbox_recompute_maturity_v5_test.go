@@ -53,6 +53,20 @@ type maturityBond struct {
 // and operatorMargin are the box's own config knobs the recompute reads (C-6).
 func buildMaturityFixture(t *testing.T, matureValidators, operatorMargin int, bonds []maturityBond) maturityFixture {
 	t.Helper()
+	return buildMaturityFixtureSlashing(t, matureValidators, operatorMargin, bonds, nil)
+}
+
+// buildMaturityFixtureSlashing is buildMaturityFixture with an extra step: after the bonds are
+// seated (so their ids are in validatorsSeen), each key in slash is marked slashed in the committed
+// state BEFORE the StateRoot/Prover are snapshotted. The slashed bit is set directly on c.slashed
+// (white-box, same package), so the snapshotted root emits a committed slashed INCLUSION leaf for
+// that id (statehash.go stateRootLeavesV5 emits tagSlashed→Present for every id in c.slashed). This
+// lets a fixture exercise C2Metric's slashed-SKIP fold path with a REAL committed slashed member —
+// one the recompute must witness, verify (inclusion), and skip, so it does not count toward the
+// coefficient. Slashing leaves the member's bonded/bondDomain leaves intact; only the slashed screen
+// changes its treatment, matching C2Metric (chain.go:2306).
+func buildMaturityFixtureSlashing(t *testing.T, matureValidators, operatorMargin int, bonds []maturityBond, slash []ed25519.PrivateKey) maturityFixture {
+	t.Helper()
 	const minBond = int64(1) << 20
 	a1, a2 := key(1), key(2)
 	cfg := Config{
@@ -78,8 +92,21 @@ func buildMaturityFixture(t *testing.T, matureValidators, operatorMargin int, bo
 		prev = appendCommit(t, c, a1, prev, a2, b.priv)
 	}
 
+	// Seat the requested slashed members into the committed slashed set BEFORE the snapshot, so the
+	// snapshotted StateRoot carries an inclusion-provable slashed leaf for each. Precondition: the
+	// target must already be a seated validatorsSeen member (its slashed-skip must be a fold step,
+	// not an omission).
+	for _, sk := range slash {
+		id := idOf(sk)
+		if !c.validatorsSeen[id] {
+			t.Fatalf("fixture precondition: slash target %x is not a seated validatorsSeen member", id[:])
+		}
+		c.slashed[id] = true
+	}
+
 	// The seated validators (non-anchor members of validatorsSeen). C2Metric folds exactly these
-	// (minus slashed); the two anchors are screened by the own-Anchors gate.
+	// (minus slashed); the two anchors are screened by the own-Anchors gate. members INCLUDES any
+	// slashed id: the recompute witnesses and skips it (slashed-skip is a fold step, not an omission).
 	members := make([]ports.NodeID, 0, len(c.validatorsSeen))
 	for id := range c.validatorsSeen {
 		if cfg.Anchors[id] {
@@ -182,6 +209,21 @@ func diverseBonds() []maturityBond {
 	}
 }
 
+// mixedDomainBonds is a fixture set of five bonds where THREE members declare domain 0 (UNSET) and
+// two declare distinct non-zero domains. This exercises C2Metric's zeroDomainWeights branch (each
+// unset-domain bond forms its OWN address-diversity group, never aggregated) alongside the non-zero
+// domainWeight aggregation — the common mixed real case the recompute must reproduce. Weights are
+// spread so the Nakamoto fold is non-trivial.
+func mixedDomainBonds() []maturityBond {
+	return []maturityBond{
+		{key(40), 8 << 20, 0}, // unset domain → its own group
+		{key(41), 6 << 20, 0}, // unset domain → its own group
+		{key(42), 5 << 20, 0}, // unset domain → its own group
+		{key(43), 4 << 20, 0xD4},
+		{key(44), 4 << 20, 0xE5},
+	}
+}
+
 // TestRecomputeMatureNow_MatchesFullNode is the equivalence anchor: over the SAME committed state,
 // the trustless recompute's verdict equals the full node's matureNow verdict — for BOTH a mature
 // config (low bar) and an immature config (high bar). This proves the recompute reproduces the
@@ -214,6 +256,143 @@ func TestRecomputeMatureNow_MatchesFullNode(t *testing.T) {
 		}
 		if got {
 			t.Fatal("a MatureValidators=6 bar over 5 members must NOT be met")
+		}
+	})
+}
+
+// TestRecomputeMatureNow_MatchesFullNode_SlashedMember is the equivalence anchor for the
+// SLASHED-SKIP fold path (PE ruling gap 1): a fixture seats a REAL committed slashed non-anchor
+// member, so C2Metric actually skips it. The recompute must witness that member (inclusion proof of
+// its slashed bit), skip it in the fold, and land on the SAME verdict as the full node's matureNow —
+// proving the slashed-skip equivalence by test, not by inspection.
+//
+// TEETH at the knee: 6 members are seated with weights 8,6,5,4,4,4 (M each); one of the 4M members
+// is slashed. The full node folds only the five UNslashed bonds (8,6,5,4,4; total 27M) → Nakamoto
+// coefficient 2 (8+6=14M > 27M/3=9M). A recompute that WRONGLY counted the slashed member would fold
+// six bonds (total 31M, threshold 10.33M) — still coefficient 2 here, but the assertion is that the
+// recompute equals matureNow with the slashed member PRESENT in the witnessed set and skipped, which
+// only holds if the slashed screen fires. A MatureValidators=2 bar is cleared; a =3 bar is missed.
+func TestRecomputeMatureNow_MatchesFullNode_SlashedMember(t *testing.T) {
+	slashedBonds := []maturityBond{
+		{key(50), 8 << 20, 0xA1},
+		{key(51), 6 << 20, 0xB2},
+		{key(52), 5 << 20, 0xC3},
+		{key(53), 4 << 20, 0xD4},
+		{key(54), 4 << 20, 0xE5},
+		{key(55), 4 << 20, 0xF6}, // this one is slashed → skipped by C2Metric
+	}
+	slashVictim := key(55)
+
+	t.Run("mature: low bar cleared, slashed member skipped (matches full node)", func(t *testing.T) {
+		f := buildMaturityFixtureSlashing(t, 2, 1, slashedBonds, []ed25519.PrivateKey{slashVictim})
+		if !f.c.slashed[idOf(slashVictim)] {
+			t.Fatal("fixture precondition: the slash victim must be committed slashed")
+		}
+		w := f.witnessFor(t)
+		got, reason := f.c.RecomputeMatureNow(f.root, w)
+		if reason != nil {
+			t.Fatalf("recompute stalled unexpectedly: %v", reason)
+		}
+		if got != f.c.matureNow() {
+			t.Fatalf("recompute verdict %v != full node matureNow() %v (slashed-skip diverged)", got, f.c.matureNow())
+		}
+		if !got {
+			t.Fatal("five unslashed diverse bonds must clear a MatureValidators=2 bar")
+		}
+	})
+
+	t.Run("immature: high bar missed, slashed member skipped (matches full node)", func(t *testing.T) {
+		f := buildMaturityFixtureSlashing(t, 6, 1, slashedBonds, []ed25519.PrivateKey{slashVictim})
+		w := f.witnessFor(t)
+		got, reason := f.c.RecomputeMatureNow(f.root, w)
+		if reason != nil {
+			t.Fatalf("recompute stalled unexpectedly: %v", reason)
+		}
+		if got != f.c.matureNow() {
+			t.Fatalf("recompute verdict %v != full node matureNow() %v (slashed-skip diverged)", got, f.c.matureNow())
+		}
+		if got {
+			t.Fatal("a MatureValidators=6 bar over five unslashed members must NOT be met")
+		}
+	})
+}
+
+// TestRecomputeMatureNow_ForgedSlashedRejects is HARD ABLATION (PE ruling gap 1, C-1): a prover
+// cannot flip a member's committed slashed bit to shrink or pad the folded tally. It forges a
+// committed-NOT-slashed member's witnessed Slashed to true while KEEPING its NON-inclusion proof —
+// the proof proves the member ABSENT from the slashed set, so Resolve against the claimed-present
+// value cannot yield ProvenPresent ⇒ the slashed(present) branch fails ⇒ stall.
+//
+// RED-BEFORE-GREEN (evidence, reported in the PR): I confirmed this ablation is a genuine negative
+// control by injecting the defect into production — dropping the `mw.Slashed && !IsProvenPresent()`
+// guard so a claimed-present-but-absent slashed bit is accepted. With the guard removed this test
+// goes RED (the forged slashed member is folded as skipped → coefficient shifts → the assertion that
+// the recompute STALLS fails). With the production guard in place it is GREEN. See PR notes.
+func TestRecomputeMatureNow_ForgedSlashedRejects(t *testing.T) {
+	// A clean fixture: no seated member is committed slashed, so every member's slashed proof is a
+	// NON-inclusion proof. Forging one to claim Slashed=true keeps that non-inclusion proof.
+	f := buildMaturityFixture(t, 2, 1, diverseBonds())
+	w := f.witnessFor(t)
+	if _, reason := f.c.RecomputeMatureNow(f.root, w); reason != nil {
+		t.Fatalf("baseline should reach a verdict with no stall; reason=%v", reason)
+	}
+
+	victim := f.members[0]
+	if f.c.slashed[victim] {
+		t.Fatal("fixture precondition: the forge victim must be committed NOT slashed")
+	}
+
+	// THE INJECTED DEFECT: forge the member's claimed slashed bit to true while KEEPING its original
+	// NON-inclusion proof (built for the committed-absent slashed leaf). Resolve(present-value,
+	// non-inclusion-proof) cannot be ProvenPresent ⇒ the slashed(present) check fails ⇒ stall.
+	forged := cloneWitness(w)
+	mw := forged.Members[victim]
+	mw.Slashed = true
+	forged.Members[victim] = mw
+
+	got, reason := f.c.RecomputeMatureNow(f.root, forged)
+	if got {
+		t.Fatal("C-1 VIOLATION: a forged slashed bit was accepted — a prover can flip slashed to reshape the tally")
+	}
+	if !errors.Is(reason, ErrRecomputeMemberStateUnproven) {
+		t.Fatalf("forged slashed should stall on ErrRecomputeMemberStateUnproven; got %v", reason)
+	}
+}
+
+// TestRecomputeMatureNow_MatchesFullNode_UnsetDomain is the equivalence anchor for the UNSET-DOMAIN
+// (zeroDomainWeights) fold path (PE ruling gap 2): a fixture where several members declare domain 0
+// (unset). Each unset-domain bond forms its OWN address-diversity group (never aggregated), so the
+// recompute's zeroDomainWeights branch (floorbox_recompute_maturity_v5.go:255) must reproduce
+// C2Metric's handling (chain.go:2315). The verdict must equal matureNow for the mixed set/unset
+// domain case — the common real chain, asserted by test not inspection.
+func TestRecomputeMatureNow_MatchesFullNode_UnsetDomain(t *testing.T) {
+	t.Run("mature: low bar cleared with unset-domain members (matches full node)", func(t *testing.T) {
+		f := buildMaturityFixture(t, 2, 1, mixedDomainBonds())
+		w := f.witnessFor(t)
+		got, reason := f.c.RecomputeMatureNow(f.root, w)
+		if reason != nil {
+			t.Fatalf("recompute stalled unexpectedly: %v", reason)
+		}
+		if got != f.c.matureNow() {
+			t.Fatalf("recompute verdict %v != full node matureNow() %v (unset-domain fold diverged)", got, f.c.matureNow())
+		}
+		if !got {
+			t.Fatal("five bonds (three unset-domain, two distinct) must clear a MatureValidators=2 bar")
+		}
+	})
+
+	t.Run("immature: high bar missed with unset-domain members (matches full node)", func(t *testing.T) {
+		f := buildMaturityFixture(t, 6, 1, mixedDomainBonds())
+		w := f.witnessFor(t)
+		got, reason := f.c.RecomputeMatureNow(f.root, w)
+		if reason != nil {
+			t.Fatalf("recompute stalled unexpectedly: %v", reason)
+		}
+		if got != f.c.matureNow() {
+			t.Fatalf("recompute verdict %v != full node matureNow() %v (unset-domain fold diverged)", got, f.c.matureNow())
+		}
+		if got {
+			t.Fatal("a MatureValidators=6 bar over five members must NOT be met")
 		}
 	})
 }
