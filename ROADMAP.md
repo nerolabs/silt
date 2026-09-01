@@ -279,7 +279,7 @@ economy-off HEAD certifies a network nobody runs. Design:
   (expected). A seam held in tension (bounded cost, documented residual) is a PASS; a seam silently
   assumed closed is the failure mode. Findings are triaged/fixed to the build-immutable bar (unit +
   integration + e2e + inverted PoC) and re-attacked until a clean verdict. Brief:
-  `docs/reviews/m0-redteam-brief.md`. Pairs with the multi-machine field test (#52) to render the
+  `docs/reviews/m0-redteam-brief-2026-08.md`. Pairs with the multi-machine field test (#52) to render the
   verdict. This is the gate to declaring M0 *held* (not merely built) and defines the R1 field
   grade → V1 endgame. #183's close condition is MET and the issue carries the evidence — the close
   is the owner's call, deliberately held.

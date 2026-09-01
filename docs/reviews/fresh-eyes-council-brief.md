@@ -6,7 +6,7 @@ PR, Marketing, Governance** — whose job is to **protect everyone who builds an
 silt.** Each hat names its single biggest concern and a recommended mitigation. This is
 distinct from the technical/architecture review ([`fresh-eyes-brief.md`](fresh-eyes-brief.md),
 "is the system sound?") and from the adversarial security red-team
-([`m0-redteam-brief.md`](m0-redteam-brief.md), "break M0"). The council asks: *given what
+([`m0-redteam-brief-2026-08.md`](m0-redteam-brief-2026-08.md), "break M0"). The council asks: *given what
 silt now is, what cross-functional risk could hurt the people involved, and how do we
 design it out before launch?*
 
