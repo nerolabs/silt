@@ -3,7 +3,7 @@
 This is the complete set of operations a person can perform with silt, by
 role. It is the **contract** the QA phase works against: the
 [acceptance team](reviews/m0-acceptance-brief.md) verifies every operation
-here *works as described*, and the [red team](reviews/m0-redteam-brief.md)
+here *works as described*, and the [red team](reviews/m0-redteam-brief-2026-08.md)
 attacks the same surface *deeper*. If an operation you need isn't here, that
 is a gap worth reporting.
 
@@ -189,7 +189,7 @@ Runnable as [`examples/flows567-convergence-fault-restart.sh`](../examples/READM
   consensus-controlling standing more cheaply than honestly providing that much
   real, served, sustained, address-diverse storage (C1), and honest wealth cannot
   silently concentrate past capture (C2). See
-  [the red-team brief](reviews/m0-redteam-brief.md) and the design doc's §6.
+  [the red-team brief](reviews/m0-redteam-brief-2026-08.md) and the design doc's §6.
 
 ---
 

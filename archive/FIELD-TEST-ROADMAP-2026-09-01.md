@@ -1,9 +1,37 @@
+# Retired field-test roadmap — folded into ROADMAP (SSOT), archived 2026-09-01
+
+> ⚠ **HISTORICAL — FROZEN, NOT THE PLAN.** This was a SECOND task roadmap for the
+> field-test tree. Its still-live parity/coverage/truthfulness items were **folded into
+> `ROADMAP.md`'s "Residual backlog" section** ("Field-test harness residuals") on
+> 2026-09-01 as part of the one-task-SSOT consolidation. `ROADMAP.md` is the single
+> source of truth for forward work. Read this only for provenance and the per-item fix
+> directions. The RC field-test GATE itself is MET — see the current state in
+> [`../integration/FIELD-TEST-STATUS.md`](../integration/FIELD-TEST-STATUS.md).
+>
+> **Fold-map (what became of each ranked item):**
+>
+> | # | Item | Disposition |
+> |---|---|---|
+> | 1 | GCP acceptance pass | **DONE** — RC run `585c82a-58990` graded 28P/0G/0F/2-skip (#532, `eb57d50`); deep lineage `fe2376a`-deep 30P/1G/0F. |
+> | 2,4,5,6,7,8,10 | harness truthfulness gaps | **Folded** → ROADMAP Residual backlog "Field-test harness residuals" (tracked under #303, the test-honesty audit). |
+> | 3 | C2-Sybil cloud flow | **Folded** → ROADMAP Residual backlog (harness coverage; kin to the #303 audit + R4 M0 gates). |
+> | 9 | `upgrade` chain reload | **DONE** — CHAIN_OK asserts positive head height (`upgrade/run.sh:239`). |
+> | 11 | Wire demand (#264) | **Folded** → ROADMAP Residual backlog #264 (the demand daemon-wire seam). |
+> | 12 | `chaos` WAVE-2 redundant bootstrap | **Folded** → ROADMAP Residual backlog "Field-test harness residuals". |
+> | 13,16 | parity + AWS/two-cloud | **Folded** → ROADMAP Residual backlog "Field-test harness residuals" (parity + GCP-only + far-end AWS). |
+> | 14 | #281 empty-routing-table wire-cert | **Folded** → ROADMAP Residual backlog "Field-test harness residuals". |
+> | 15 | GCP substrate operability | **RETITLED — gate MET, quota/preflight hardening still worthwhile.** The full 13-node run completed and graded (the RC sheet); the IP-quota/zone-capacity pre-flight + public-IP-footprint shrink + `nuke` label-sweep are folded → ROADMAP Residual backlog. |
+
+---
+
+**Original content (frozen 2026-09-01) follows.**
+
 # Field-test roadmap — per-substrate parity + the honest backlog
 
 The `integration/README.md` "Roadmap: per-substrate parity" section points here.
 This is the tracked backlog for the field-test tree: where local and GCP coverage
 should converge, plus the ranked extension/hardening opportunities surfaced by the
-2026-08-10 audit (read alongside [`FIELD-TEST-STATUS.md`](FIELD-TEST-STATUS.md),
+2026-08-10 audit (read alongside [`FIELD-TEST-STATUS.md`](../integration/FIELD-TEST-STATUS.md),
 the honest current state).
 
 ## Direction: one scenario, either substrate
@@ -22,7 +50,12 @@ Severity/verdict tags: **[truthfulness]** = the test could pass while the proper
 is broken (fix first); **[coverage]** = a real gap to close; **[parity]** = the
 local↔cloud convergence work above.
 
-1. **[coverage] Run the GCP acceptance pass for real.** The billable pass is the
+1. **[coverage] Run the GCP acceptance pass for real — DONE.** The RC field-test
+   gate is MET: RC run `585c82a-58990` graded **28 pass / 0 gap / 0 fail /
+   2 skip-by-design** (#532, `eb57d50`), on the deep-run lineage `fe2376a`-deep
+   (30P/1G/0F). The multi-region run graded the durability retrieval floor, the pure
+   Sybil anchor gate, and real inter-region timing. (Original open framing preserved
+   below for provenance.) The billable pass was the
    actual remaining gate. First-run blockers are now fixed (see the cloudtest
    first-run PR); do `SMOKE=1` → full, tune SLOs/log-regexes on first contact,
    then let the multi-region run decide the durability retrieval floor, the pure
@@ -115,8 +148,12 @@ local↔cloud convergence work above.
     real `re-bootstrapped: recovered from an empty routing table` line, turning the
     narrated story into a measured property.
 
-15. **[coverage] GCP substrate operability — the RC-gate is not reachable today.**
-    The full 13-node run is blocked by two *environmental* constraints (not product
+15. **[coverage] GCP substrate operability — RC gate MET; quota/preflight hardening
+    still worthwhile.** The full 13-node run has since completed and graded (the RC
+    sheet in item 1). The remaining work is the environmental-robustness hardening below;
+    it does NOT block the gate. The original "not reachable today" framing is preserved
+    for provenance: the full 13-node run was blocked by two *environmental* constraints
+    (not product
     bugs): a `us-central1-a` E2 capacity shortage (8 of 13 nodes land there; confirmed
     across e2-small and e2-medium) and the default `IN_USE_ADDRESSES` = 8/region quota
     (the topology needs ~11 external IPs, so a single-zone `PIN_ZONE` run blows it, and

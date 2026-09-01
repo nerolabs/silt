@@ -1,6 +1,12 @@
 # H7 slice 2 — center-less proof-of-correct-repair (design)
 
-> **Status: design, not built.** This is the build-design for H7 slice 2 (issue
+> **Status: BUILT** — the two pure verification legs plus the wired verdict/slash
+> judge SHIPPED. `core/repairproof/` (`VerifyByRecompute`, `VerifyRetrievability`,
+> `Decide`) is wired into the live judge `core/node/repairclaim.go`, and a red-team
+> gate (`core/node/redteam_repair_claim_test.go`) is present. The OPEN remainder is
+> the bandwidth-blind homomorphic upgrade + domain-diverse caretaker quorum
+> SELECTION (§4/§6, tracked in §12 open questions). This is the build-design for H7
+> slice 2 (issue
 > [#95](https://github.com/nerolabs/silt/issues/95)), the verification half of the
 > durability story. Slice 1 (the escrow/bounty *primitives* — `FundEscrow`,
 > `RecordServeToObject` auto-skim, `BountyFor`, `PayBounty`) has shipped in

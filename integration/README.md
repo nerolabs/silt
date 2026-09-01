@@ -61,8 +61,7 @@ Prototype and iterate locally; **certify on GCP.**
 > every suite: genuine PASS vs reported FINDING vs stated gap, the scoping caveats
 > (e.g. `sybil` #5 falls back to the standing gate on a laptop; `chaos` WAVE 2 is an
 > unpinned observation; `demand` #6 has no seam yet), and what has actually been
-> *run* vs only *dry-validated* (all of `cloudtest/` is dry-validated only — zero
-> GCP spend so far).
+> *run* vs only *dry-validated*.
 
 ---
 
@@ -251,4 +250,6 @@ node-abstraction (`exec-on-node` + `assert-on-log`, already the shape of both
 either substrate, and add the GCP scenarios that only real hardware can answer —
 **scale-out** repair-under-churn (50+ nodes), a **real firewall partition** for
 consensus, **`tc` link shaping** for fetch-under-load, and long-haul **soak**.
-Track this alongside `integration/FIELD-TEST-ROADMAP.md`.
+The still-live parity/hardening items now live in ROADMAP.md's **Residual backlog**
+("Field-test harness residuals"); the retired per-substrate backlog is archived at
+`archive/FIELD-TEST-ROADMAP-2026-09-01.md`.

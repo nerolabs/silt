@@ -23,14 +23,22 @@
 - [ ] **Multi-machine field test — the R1 gate (#52)**, including the adversarial-consensus
   SAFETY sub-suite over the real wire (equivocation-slash, partition→heavier-fork heal,
   low-bond reject, forged-block reject), not just liveness.
-- [x] **External red-team verdict against the C1 + C2 composition (#183)** — self-graded
-  does not count (B8). M0 is *held* only when these pass at declared parameters.
-  **DELIVERED 2026-08-24 — M0 HOLDS** at the shipped defaults, commit `5d1e303`:
-  no C1 (no-discount) break, no C2 (quiet-capture) break, no I1–I5 safety break.
-  Verdict: `/Users/andrewedmond/Claude/claude/silt-reviews/redteam-august-23/M0-REDTEAM-VERDICT-183.md`.
+- [ ] **External red-team verdict against the C1 + C2 composition (#183)** — self-graded
+  does not count (B8). M0 is *held* only when an EXTERNAL party (independent audit /
+  public bounty / separate red-team) denies C1 (no-discount), C2 (quiet-capture), and
+  I1–I5 safety at declared parameters. **The external engagement has NOT yet run — this
+  is the still-open M0 close gate (ROADMAP `R4.4` / Boulder 4).** An INTERNAL
+  fresh-context red-team seat attacked `5d1e303` on 2026-08-24 as PRE-external assurance
+  and found no C1/C2/I1–I5 break at the shipped defaults. Per B8 the internal seat is
+  silt's own party, so **self-graded does not count — M0 is BUILT and internally-clean,
+  NOT externally certified as held.** The internal verdict is genuine pre-external
+  evidence that lowers risk, not the B8 certification:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/redteam-august-23/M0-REDTEAM-VERDICT-183.md`
+  (INTERNAL red-team seat — see its provenance header).
   One real bounded liveness finding (F-1, `MsgSubmitEntry` CPU gap under the opt-in
   `-require-tokens` mode) — **FIXED (PR #547)**; two harness coverage caveats (C-1
   exhaustive-tier I5/I2 oracles, C-2 disk-backed I2 durability) — **CLOSED (this PR)**.
+  The external pass is the gate (ROADMAP `R4.4`); keep this box UNCHECKED until it runs.
 
 **Red-team entry criteria (#183 does not start until all hold) — ALL MET as of 2026-08-24:**
 - [x] **#432 rounds+locking landed and model-check-green across round boundaries** (the

@@ -22,7 +22,7 @@ A few structural through-lines, stated once:
   quiet capture)**, held in tension, where forging N standings costs N× of *every*
   non-substitutable resource — `C_honest = disk × address-diversity × time ×
   served-demand`. The parts that make each axis real are built and internally
-  hardened (Gate 4): an identity-bound proof-of-**space-time** bond over a proven
+  hardened (the M0 trust-plane mechanism): an identity-bound proof-of-**space-time** bond over a proven
   depth-robust graph (axis D), a proof-of-retrieval that verifies possession
   **without fetching**, signed provider records + failure-domain diversity against
   key-surround (axis A), and equivocation slashing with forks reconciling to the
@@ -195,7 +195,7 @@ deferred.
 - **Sybil answer: token-less, work-backed, identity-bound reputation.**
   Standing costs a challenged storage bond (T1/#82); a young network also
   gates commits behind maturity-scaled anchor sign-off (T2/#83 training
-  wheels). The **real mechanism is now built** (Gate 4: a proof-of-space-time
+  wheels). The **real mechanism is now built** (the M0 trust-plane mechanism: a proof-of-space-time
   bond, a verify-without-fetch PoR, fork-choice reconciliation, and equivocation
   slashing), so Sybil (B) and its downstream (D1/D3) are priced by real
   space-time held over time; **independent review + the multi-machine field test

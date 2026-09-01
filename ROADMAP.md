@@ -572,6 +572,44 @@ live in [`docs/thinking/2026-09-01-residual-defect-repro-recipes.md`](docs/think
   `dmesg | tail` into `failed-nodes-<run>.log` BEFORE returning, the same capture path the flow
   failures use. Fires only on the FAIL branch (cheap).
 
+**Field-test harness residuals (folded from the retired `integration/FIELD-TEST-ROADMAP.md`, 2026-09-01):**
+The RC field-test gate is MET (RC run `585c82a-58990` graded 28 pass / 0 gap / 0 fail /
+2 skip-by-design, #532 `eb57d50`; deep lineage `fe2376a`-deep 30P/1G/0F). What remains is
+harness truthfulness/coverage/parity hardening — none gates the Boulder spine. The full
+list and per-item fix directions live in
+[`archive/FIELD-TEST-ROADMAP-2026-09-01.md`](archive/FIELD-TEST-ROADMAP-2026-09-01.md);
+the load-bearing still-live items:
+- **Harness truthfulness hardening — tracked under #303** (the test-honesty audit). Each
+  is a way a green harness could hide a broken property: the consensus P0 negative control
+  needs a real quorum + a positive control; refusal reasons should be read from the daemon
+  log, not client stdout; `soak` memory-growth and `churn` seeded-placement gates need
+  falsifiable oracles; `bond` C1 must assert reputation ∝ bond (two bond sizes, ratio
+  roughly linear); `nat` hole-punch should assert the direct path bypassed the relay;
+  `redteam` should cross-check the honest target's head height is unchanged. `upgrade`
+  chain-reload (CHAIN_OK positive height) is DONE.
+- **Demand field test (#264, above).** `integration/demand` becomes real only once the
+  demand P2/P3 seam is wired into the daemon fetch path — the same #264 residual listed
+  under Durability/repair/demand below.
+- **`chaos` WAVE-2 redundant-bootstrap survival — root-cause open.** Does a redundant
+  (≥2 seed) bootstrap survive one crashing? Pin it, then fix + assert or document the
+  single-bootstrap topology limit.
+- **#281 empty-routing-table self-heal wire-certification.** Fixed in-product
+  (`Node.StartBootstrapRetry`) but no cloud flow disables the startup TCP-wait to exercise
+  the real `re-bootstrapped: recovered from an empty routing table` path over the wire.
+- **GCP substrate operability — RC gate MET; quota/preflight hardening still worthwhile.**
+  The full 13-node run is completed and graded (the RC sheet above). Separately: a
+  full-topology run is still blocked by two ENVIRONMENTAL constraints (not product bugs) —
+  a `us-central1-a` E2 capacity shortage and the default `IN_USE_ADDRESSES` = 8/region
+  quota (~11 external IPs needed). Worth doing: a pre-flight that checks IP headroom + zone
+  capacity before `apply`; shrink the public-IP footprint (IAP-only/bastion) so a
+  single-zone full run fits the default quota; make `nuke` sweep the leaked
+  VPC/subnets/firewall/routes by label and stop swallowing `terraform destroy` stderr.
+- **Per-substrate parity + GCP-only scenarios (parity).** Factor the shared
+  `exec-on-node`/`assert-on-log` node abstraction so one scenario targets either substrate,
+  then add scale-out churn (50+ nodes), a real firewall partition, `tc` link-shaping, and
+  long-haul soak. An **AWS variant + two-cloud** field test is the far end (a fallback
+  substrate when GCP capacity/quota blocks, then a GCP+AWS split for real inter-provider WAN).
+
 **Durability / repair / demand residuals:**
 - **Repair dial-storm to dead holders — #277.** The DHT walk re-dials dead holders every sweep
   (the `deadUntil` negative cache is consulted on the fetch/repair decision path but not on the

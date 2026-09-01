@@ -6,8 +6,9 @@ clear `PASS`/`FAIL`, and **kills only the daemons it started** (tracked PIDs, no
 blanket `pkill` — safe to run on a box already running silt). Scratch lives
 under `<repo>/_examples_*` and is git-ignored; delete it anytime.
 
-These double as the multi-machine field test the project owes itself (roadmap
-#52): running `flows567-…` from the docs *is* that test, done locally.
+These are the local loopback form of the acceptance flows: running `flows567-…`
+from the docs walks them on one box. The GCP multi-machine field test lives in
+[`integration/cloudtest/`](../integration/cloudtest/).
 
 ## Run them
 

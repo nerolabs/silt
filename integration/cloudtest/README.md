@@ -158,19 +158,20 @@ a few dollars; `faithful` bond mode (bigger disks, longer plot time) costs more.
 A `fast` green means "the system works over the real wire"; a `faithful` green
 additionally means "standing cost real resources". Don't conflate them.
 
-## First-run shakedown (honest status)
+## Operational notes
 
-This harness is validated locally where it can be: `topology.py` generates the
-real, deterministic argv for every node (proven against `silt id`), and all shell
-is syntax-checked. The **cloud path — `terraform apply`, the SSH/journald log
-matching, and the exact quorum arithmetic — is validated on the first real run**
-(it needs a live GCP project + spend). Expect first-run tuning in two places, both
-flagged in code:
+This harness has RUN for real on GCP: the RC run `585c82a-58990` graded
+28 pass / 0 gap / 0 fail / 2 skip-by-design (#532, `eb57d50`), on the deep-run
+lineage `fe2376a`-deep (30P/1G/0F). `topology.py` generates the real, deterministic
+argv for every node (proven against `silt id`), all shell is syntax-checked, and the
+cloud path — `terraform apply`, the SSH/journald log matching, and the quorum
+arithmetic — is exercised by those graded runs. Two tuning points were resolved on
+first contact and are noted here so a future operator knows where they live:
 
 - **Quorum sizing for fault tolerance** — `-quorum` vs. the default-on
   `-byzantine-quorum` interplay for the validator count. The `6-fault-tolerance`
-  scenario records the *observed* threshold as a `gap` (not a hard fail) so the
-  first run tells you the exact number to pin.
+  scenario records the *observed* threshold as a `gap` (not a hard fail); the RC run
+  pinned the number.
 - **Log-match patterns** — `waitfor` regexes in `scenarios.sh` are matched
   against the daemon's `-log info` output; if a phrasing differs on the live
   build, the check reports `gap`, not a false `pass`.
