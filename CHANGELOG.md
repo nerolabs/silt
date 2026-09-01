@@ -9,6 +9,20 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Docs
+- **`docs/TENETS.md` restructured into pure guiding principles (owner-ratified 2026-09-01,
+  no logic change):** the tenets now state what "good" looks like as an *outcome*,
+  abstracted away from mechanism, ship-status, proof machinery, format specifics, and
+  issue/PR war-stories — the build looks *up* to the tenets, they never look *down* at the
+  build. Mechanism/history relocated to companions (`design/m0.md`, `decisions.md`,
+  `network-durability.md`, `build-process.md`, `network-protection.md`,
+  `design/owned-residuals.md`) and to the new `docs/tenets-history.md` (the extracted
+  amendment log + build-immutable war-stories). Adds an **Immutable Register** index and the
+  tenet-tier **T-AR** (no permanent center of *reward*) principle. A fix-cycle restored four
+  principles a blind review found wrongly dropped: the maturation bet (mature vs. young
+  regime + the named capture race, immutable #3), the design-target framing of the Sybil
+  composition (Part 0), and two permanent Douceur residuals (pre-farmable bare-age; wash is
+  re-priced, not proven away). No immutable was traded — a presentation restructure.
+  Relocation audit trail: `docs/thinking/2026-09-01-tenets-principles-purge-ledger.md`.
 - **Session-17 PACE deliberations + Rock/Boulder roadmap (planning, no logic change):** four
   build-day design docs land in `docs/thinking/` ahead of the upcoming build — the floor-box
   witness-soundness fix (Resolve-anchor every witness value, `2026-09-01-floorbox-witness-soundness-fix-design.md`),
