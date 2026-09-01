@@ -37,7 +37,7 @@
   (INTERNAL red-team seat — see its provenance header).
   One real bounded liveness finding (F-1, `MsgSubmitEntry` CPU gap under the opt-in
   `-require-tokens` mode) — **FIXED (PR #547)**; two harness coverage caveats (C-1
-  exhaustive-tier I5/I2 oracles, C-2 disk-backed I2 durability) — **CLOSED (this PR)**.
+  exhaustive-tier I5/I2 oracles, C-2 disk-backed I2 durability) — **CLOSED (PR #548)**.
   The external pass is the gate (ROADMAP `R4.4`); keep this box UNCHECKED until it runs.
 
 **Red-team entry criteria (#183 does not start until all hold) — ALL MET as of 2026-08-24:**
