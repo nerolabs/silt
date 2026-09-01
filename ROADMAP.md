@@ -176,7 +176,9 @@ Accept. Certification:
   **additionally requires** (per the R1.4 cert §R1.4-FLIP):
   - **R-membership** — OPEN: a set-size bound on the qualified / `validatorsSeen` sets;
   - the **EXTERNAL B8 red-team pass** (R1.7) — owner-ratified HARD precondition;
-  - the **#535 recovery-boundary decision** (cold-auditor directive-trust boundary);
+  - the **recovery-boundary decision** (cold-auditor directive-trust boundary) — repro/residual
+    in [`docs/thinking/2026-09-01-residual-defect-repro-recipes.md`](docs/thinking/2026-09-01-residual-defect-repro-recipes.md)
+    (formerly #535);
   - the **legacy-mode invariant** (the pre-v5 path stays sound under the flip).
   **Decoupled from the era-4/v5 freeze** (R3.4): the flip proceeds pre-freeze;
   `WitnessValidateV5` changes no committed format field, so the freeze re-confirms
@@ -234,7 +236,8 @@ economy-off HEAD certifies a network nobody runs. Design:
   [`docs/thinking/2026-09-01-smt-domain-separation-close-design.md`](docs/thinking/2026-09-01-smt-domain-separation-close-design.md).
 - **R3.2 · Close the oracle probeUncovered debt fully (from R1.6)** · Tester. Freeze gate.
 - **R3.3 · Record PayWord/RegCap re-derivation dependencies** · doc-only; re-derive only if
-  #299 moves.
+  the bond-proof size / N² cost residual moves (measured numbers in the **Residual backlog**
+  below, "Bond-proof reply size / N² cost"; formerly #299).
 - **R3.4 · era-4/v5 format freeze — DECISION RATIFIED: deferred to the RELEASE CANDIDATE (not
   end-of-PoD), and DECOUPLED from the flip.** `WitnessValidateV5` changes no committed format
   field, so the flip (R1.8) proceeds pre-freeze; the freeze then re-confirms byte-identity of
