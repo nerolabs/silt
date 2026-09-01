@@ -165,7 +165,17 @@ func (l *Ledger) PayBounty(root ports.Hash, repairer ports.NodeID, amount int64)
 	e.balance -= amount
 	e.paid += amount
 	e.repairs++ // one shard-repair funded (a short final payment still counts as one)
-	l.acct(repairer).balance += amount
+	r := l.acct(repairer)
+	r.balance += amount
+	// Per-NODE repair observability: count the repair against the repairer and
+	// accumulate the credits it earned. This is the per-node dual of the
+	// per-object e.repairs — the escrow count cannot say WHO did the work, and the
+	// repair-work concentration metric (economy observability) needs the per-node
+	// series. It feeds no standing, no conservation, no disbursement rule; it only
+	// records observable work already paid. Standing stays minted by the bond press
+	// alone (Reputation), so this cannot re-open the γ→1/N firewall.
+	r.repairsDone++
+	r.bountyEarned += amount
 	return amount
 }
 

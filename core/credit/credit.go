@@ -60,6 +60,16 @@ type account struct {
 	// correctness recompute. Deliberate but bounded fraud — a large finite dent,
 	// not the permanent burial equivocation earns.
 	falseRepairs int
+	// repairsDone counts the shard-repairs THIS node was paid a bounty for as the
+	// repairer (incremented in PayBounty where the repairer's balance is credited).
+	// The per-OBJECT repair count lives on objectEscrow.repairs; this is the
+	// per-NODE dual the repair-work observability needs (the escrow count cannot
+	// tell you WHO did the work). bountyEarned is the lifetime credits earned that
+	// way, so an operator can separate serve revenue from repair revenue in the
+	// margin panel. Both are observability only — read-side balance-economy
+	// accounting, NEVER an input to Reputation or any standing/conservation rule.
+	repairsDone  int64
+	bountyEarned int64
 }
 
 // Ledger implements ports.CreditLedger plus the observability the sim's
@@ -320,6 +330,17 @@ func (l *Ledger) CanPublish(n ports.NodeID) bool    { return l.acct(n).balance >
 func (l *Ledger) Fee() int64                        { return l.fee }
 func (l *Ledger) ServedBytes(n ports.NodeID) int64  { return l.acct(n).servedBytes }
 func (l *Ledger) FetchedBytes(n ports.NodeID) int64 { return l.acct(n).fetchedBytes }
+
+// RepairsDone is the count of shard-repairs node n was paid a bounty for as the
+// repairer — the per-node repair-work counter (the dual of objectEscrow.repairs,
+// which counts repairs PER OBJECT and cannot attribute them to a node). Pure
+// observability: it moves no credit and confers no standing. Reading moves nothing.
+func (l *Ledger) RepairsDone(n ports.NodeID) int64 { return l.acct(n).repairsDone }
+
+// BountyEarned is the lifetime credits node n earned as a repairer (the bounty
+// half of its balance, so an operator can separate serve revenue from repair
+// revenue). Pure observability; never a standing input. Reading moves nothing.
+func (l *Ledger) BountyEarned(n ports.NodeID) int64 { return l.acct(n).bountyEarned }
 
 func (l *Ledger) ChargePublish(n ports.NodeID) error {
 	a := l.acct(n)

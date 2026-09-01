@@ -80,6 +80,7 @@ func (s *uiServer) serve(addr string) (string, error) {
 	static, _ := fs.Sub(uiFiles, "ui")
 	mux.Handle("/", http.FileServer(http.FS(static)))
 	mux.HandleFunc("GET /api/status", s.apiStatus)
+	mux.HandleFunc("GET /api/economy/self", s.apiEconomySelf)
 	mux.HandleFunc("GET /api/roots", s.apiRoots)
 	mux.HandleFunc("GET /api/registry", s.apiRegistry)
 	mux.HandleFunc("GET /api/chain", s.apiChain)
@@ -331,6 +332,14 @@ type objDurability struct {
 	Paid       int64  `json:"paid"`
 	Repairs    int64  `json:"repairs"`
 	HorizonSec int64  `json:"horizonSec"` // -1 = not yet measurable (no burn observed); >=0 = projected
+	// Finite is credit.Horizon's own second return: true only when a real burn has
+	// been observed (Paid>0) so the horizon is measurable. false renders as "horizon
+	// not yet measurable", NEVER as "perpetual" (instruments.go:47-49) — never fake
+	// precision. Cliff is the solvency early-warning (Boulder 2 R2.1 Panel 1): the
+	// reserve has a measurable, finite horizon within the warning window, i.e. the
+	// object's funded durability runs out soon at the observed burn rate.
+	Finite bool `json:"finite"`
+	Cliff  bool `json:"cliff"`
 }
 
 // durabilitySnapshot builds the durability block from the node's cared objects.
@@ -346,8 +355,17 @@ func (s *uiServer) durabilitySnapshot(uptime time.Duration) *durabilityInfo {
 	}
 	for _, rd := range cared {
 		hs := int64(-1)
-		if h, finite := credit.Horizon(rd.Snapshot, ports.Duration(uptime)); finite {
+		finite := false
+		cliff := false
+		if h, ok := credit.Horizon(rd.Snapshot, ports.Duration(uptime)); ok {
+			finite = true
 			hs = int64(h / ports.Duration(time.Second))
+			// Cliff: a measurable horizon at or below the warning window is the
+			// funding-cliff early-warning (Panel 1). A depleted reserve (horizon 0)
+			// is the sharpest cliff. Not-yet-measurable (finite==false) is never a
+			// cliff — an unmeasured burn is not a proven-safe one, so it is surfaced
+			// as "not yet measurable", not as green.
+			cliff = h <= horizonWarningWindow
 		}
 		di.Objects = append(di.Objects, objDurability{
 			Root:       rd.Root.String(),
@@ -356,9 +374,200 @@ func (s *uiServer) durabilitySnapshot(uptime time.Duration) *durabilityInfo {
 			Paid:       rd.Snapshot.Paid,
 			Repairs:    rd.Snapshot.Repairs,
 			HorizonSec: hs,
+			Finite:     finite,
+			Cliff:      cliff,
 		})
 	}
 	return di
+}
+
+// horizonWarningWindow is how close to the funded horizon running out an object's
+// reserve must be before Panel 1 flags a cliff. It is a presentation threshold
+// (evolving-tier), not a mechanism: it changes no validity, disbursement, or
+// standing rule — it only decides when the dashboard turns a bar red. 30 days is a
+// conservative re-endowment lead time for an operator watching cold data. Local to
+// the read path; no network number is invented here.
+const horizonWarningWindow = ports.Duration(30 * 24 * time.Hour)
+
+// apiEconomySelf serves the economy-observability SELF panels (Boulder 2, R2.1
+// slice 6a): the four LOCAL-EXACT panels an operator reads to see their own
+// economy's health from ONE node, with no aggregator and no network estimation.
+// Every field is read from this node's own Ledger/care state, so every number is
+// local-exact. It ships cert-free and economy-OFF: with the repair economy off the
+// escrows still fill (the auto-skim), so the accounting is real; only the bounty
+// disbursement is dormant, which `bountyOn` reports. Read-only GET; reading moves
+// nothing (the #89 gate lets read-only localhost through without a token).
+//
+// Knowability tier is stamped per block: everything here is "local-exact" except
+// the wash AUTHENTICITY, which is "not-knowable" (Douceur — a node cannot prove
+// another identity is a Sybil), so the wash block is a SHAPE self-check labeled
+// "suspected", never "detected", and is never a slashing input.
+func (s *uiServer) apiEconomySelf(w http.ResponseWriter, r *http.Request) {
+	// Panel 2 margin: revenue is local-exact; operator cost is off-ledger and
+	// private, so it is an OPTIONAL query parameter (?cost=N credits/observation
+	// window), never a persisted flag. Absent, the margin is "cost not supplied"
+	// and only revenue renders — the panel never asserts a margin it cannot ground.
+	costGiven := false
+	var cost int64
+	if c := r.URL.Query().Get("cost"); c != "" {
+		if v, err := strconv.ParseInt(c, 10, 64); err == nil {
+			cost = v
+			costGiven = true
+		}
+	}
+
+	var self node.EconomySelf
+	var di *durabilityInfo
+	var uptime time.Duration
+	s.onLoop(func() {
+		uptime = time.Since(s.started)
+		self = s.nd.EconomySelf()
+		di = s.durabilitySnapshot(uptime)
+	})
+
+	// Panel 3 (is durability self-funding): skim-in vs bounty-out. funded is the
+	// lifetime skim-in (prepay + auto-skim); paid is the lifetime bounty-out. A
+	// persistent paid>funded is the drain signal. Pooled + per-object.
+	var poolFunded, poolPaid int64
+	objects := make([]economyObject, 0, len(di.Objects))
+	for _, o := range di.Objects {
+		poolFunded += o.Funded
+		poolPaid += o.Paid
+		objects = append(objects, economyObject{
+			Root:       o.Root,
+			Reserve:    o.Reserve,
+			SkimIn:     o.Funded,
+			BountyOut:  o.Paid,
+			Net:        o.Funded - o.Paid,
+			Repairs:    o.Repairs,
+			HorizonSec: o.HorizonSec,
+			Finite:     o.Finite,
+			Cliff:      o.Cliff,
+		})
+	}
+
+	// Panel 4 (wash self-check): the SHAPE only. Serve/fetch byte symmetry near 1.0
+	// plus net-negative churn is the wash signature — but authenticity is
+	// not-knowable, so this is a self-check that lets an HONEST operator SEE their
+	// own shape and show they are not the cluster. Never authenticity, never a
+	// slash input. Symmetry = min/max so it is in [0,1] and undefined (0) when the
+	// node has neither served nor fetched.
+	symmetry := 0.0
+	if self.ServedBytes > 0 || self.FetchedBytes > 0 {
+		lo, hi := self.ServedBytes, self.FetchedBytes
+		if lo > hi {
+			lo, hi = hi, lo
+		}
+		if hi > 0 {
+			symmetry = float64(lo) / float64(hi)
+		}
+	}
+	// "suspected" only: symmetric byte flow (near 1:1 serve:fetch) AND a
+	// non-positive balance (churn that nets to nothing or debt) is the shape a wash
+	// pair leaves. An honest hot server has high symmetry but a POSITIVE balance;
+	// an honest leech has low symmetry. The conjunction is what narrows it.
+	washSuspected := symmetry >= washSymmetryThreshold && self.Balance <= 0
+
+	out := economySelf{
+		Tier: "local-exact",
+		Revenue: economyRevenue{
+			Balance:      self.Balance,
+			ServedBytes:  self.ServedBytes,
+			FetchedBytes: self.FetchedBytes,
+			RepairsDone:  self.RepairsDone,
+			BountyEarned: self.BountyEarned,
+			// Serve revenue is what the balance holds net of repair revenue; it is a
+			// derived split for the panel, not a second accumulator. It can be
+			// negative if the node has spent (funded escrows, publish fees) more than
+			// it earned serving — that is real and honestly shown.
+			ServeRevenue: self.Balance - self.BountyEarned,
+		},
+		Margin: economyMargin{
+			CostGiven: costGiven,
+			Cost:      cost,
+			Margin:    self.Balance - cost,
+			Note:      "revenue is local-exact; cost is operator-supplied (?cost=N), so margin is exact GIVEN your cost number",
+		},
+		SelfFunding: economySelfFunding{
+			SkimIn:    poolFunded,
+			BountyOut: poolPaid,
+			Net:       poolFunded - poolPaid,
+			BountyOn:  di.BountyOn,
+		},
+		Wash: economyWash{
+			Symmetry:             symmetry,
+			BalanceNonPositive:   self.Balance <= 0,
+			Suspected:            washSuspected,
+			AuthenticityKnowable: false,
+			Note:                 "SHAPE self-check only. Authenticity is not-knowable (Douceur); this is 'suspected', never 'detected', and never a slashing input",
+		},
+		Objects: objects,
+	}
+	writeJSON(w, out)
+}
+
+// washSymmetryThreshold is how close serve:fetch byte flow must be to 1:1 before
+// the wash self-check calls the shape "suspected". Presentation threshold
+// (evolving-tier), not a mechanism: it gates a dashboard label, never a slash. A
+// wash pair ping-pongs bytes, so its serve and fetch totals track each other;
+// 0.9 catches near-symmetric flow while leaving an honest hot server (serves far
+// more than it fetches) below it.
+const washSymmetryThreshold = 0.9
+
+// economySelf is the SELF-panel response (GET /api/economy/self). One flat object
+// carrying the four local-exact panels: Revenue+Margin (Panel 2 am-I-profitable),
+// SelfFunding (Panel 3 is-durability-self-funding), Wash (Panel 4 wash self-check),
+// and Objects (Panel 1 my-solvency, per cared object with its cliff flag).
+type economySelf struct {
+	Tier        string             `json:"tier"` // "local-exact" — every field here is read from this node's own ledger
+	Revenue     economyRevenue     `json:"revenue"`
+	Margin      economyMargin      `json:"margin"`
+	SelfFunding economySelfFunding `json:"selfFunding"`
+	Wash        economyWash        `json:"wash"`
+	Objects     []economyObject    `json:"objects"`
+}
+
+type economyRevenue struct {
+	Balance      int64 `json:"balance"`
+	ServedBytes  int64 `json:"servedBytes"`
+	FetchedBytes int64 `json:"fetchedBytes"`
+	RepairsDone  int64 `json:"repairsDone"`
+	BountyEarned int64 `json:"bountyEarned"`
+	ServeRevenue int64 `json:"serveRevenue"` // balance − bountyEarned (derived split)
+}
+
+type economyMargin struct {
+	CostGiven bool   `json:"costGiven"` // false: cost not supplied, margin is balance-only
+	Cost      int64  `json:"cost"`
+	Margin    int64  `json:"margin"` // balance − cost (exact given the operator's cost)
+	Note      string `json:"note"`
+}
+
+type economySelfFunding struct {
+	SkimIn    int64 `json:"skimIn"`    // pooled lifetime funded (prepay + auto-skim)
+	BountyOut int64 `json:"bountyOut"` // pooled lifetime paid (repair bounties)
+	Net       int64 `json:"net"`       // skimIn − bountyOut; persistently negative = drain
+	BountyOn  bool  `json:"bountyOn"`  // does repair actually disburse on this node (-economy)
+}
+
+type economyWash struct {
+	Symmetry             float64 `json:"symmetry"`             // min(serve,fetch)/max(serve,fetch), in [0,1]
+	BalanceNonPositive   bool    `json:"balanceNonPositive"`   // net-negative/zero churn
+	Suspected            bool    `json:"suspected"`            // shape matches a wash pair (NOT a detection)
+	AuthenticityKnowable bool    `json:"authenticityKnowable"` // always false: Douceur
+	Note                 string  `json:"note"`
+}
+
+type economyObject struct {
+	Root       string `json:"root"`
+	Reserve    int64  `json:"reserve"`
+	SkimIn     int64  `json:"skimIn"`
+	BountyOut  int64  `json:"bountyOut"`
+	Net        int64  `json:"net"`
+	Repairs    int64  `json:"repairs"`
+	HorizonSec int64  `json:"horizonSec"`
+	Finite     bool   `json:"finite"`
+	Cliff      bool   `json:"cliff"`
 }
 
 const (

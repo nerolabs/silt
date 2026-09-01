@@ -212,6 +212,26 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `epochSetRoot` byte-exact check analogous to class A's `...AttDigestByteExact`.
 
 ### Added
+- **Economy observability MVP — the four local-exact SELF panels (Boulder 2, R2.1 slice 6a)**
+  (`GET /api/economy/self` in `cmd/silt/ui.go`; per-node repair counter in `core/credit`, 2026-09-01).
+  An operator now reads their OWN economy health from ONE node — no aggregator, no gossip, no network
+  estimation — every field read from this node's own `Ledger`/`care` state and stamped `local-exact`.
+  Ships cert-free and economy-OFF (the auto-skim still fills escrows with the economy off, so the
+  accounting is real; `bountyOn` reports whether repair actually disburses). Four panels: **(1)
+  my-solvency** — per cared object a funded-horizon `cliff` flag (a measurable, finite horizon inside a
+  30-day warning window; a not-yet-measurable object renders `finite=false`, NEVER faked as
+  perpetual); **(2) am-I-profitable** — revenue split into serve vs bounty, margin = balance − an
+  OPTIONAL operator-supplied `?cost=N` (never a persisted flag; absent, margin is flagged not-given, so
+  it is never asserted as fact); **(3) is-durability-self-funding** — pooled + per-object skim-in
+  (`funded`) vs bounty-out (`paid`) with the drain signal `net<0`; **(4) wash self-check** — a
+  serve/fetch symmetry SHAPE self-check conjoined with non-positive balance, labeled "suspected" NEVER
+  "detected" (authenticity is not-knowable — Douceur — so it is never a slashing input). Adds the one
+  new state the design flagged: a per-node `RepairsDone`/`BountyEarned` counter incremented in
+  `PayBounty` (the per-object `repairs` count cannot attribute work to a node) — pure observability,
+  classified `neutral` by the Invariant-A guard (it feeds no standing/conservation/disbursement rule).
+  Extends the existing `/api/status` durability block with `finite`/`cliff`. Every check is
+  ablation-proven: the repair counter, the wash conjunction's balance clause, and the pooled net each
+  redden when their logic is inverted. Deliberation: `docs/thinking/2026-09-01-economy-observability-design.md`.
 - **v5 trustless floor box — three pre-Accept hardening ablations for the era-4 v5 recompute (7a/7e/7f)**
   (`core/statehash/fold_test.go`, `core/chain/floorbox_recompute_stateroot_bondreg_v5_test.go`,
   `core/chain/floorbox_recompute_stateroot_ttl_v5_test.go`, 2026-08-31). Test-only; the box STILL

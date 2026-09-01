@@ -842,6 +842,46 @@ func (n *Node) CreditBalance() int64 {
 	return n.ledger.Balance(n.id)
 }
 
+// EconomySelf snapshots THIS node's own local-exact economy accounting — the
+// numbers the economy-observability SELF panels read (Boulder 2, R2.1 slice 6a):
+// balance, lifetime served/fetched bytes, and repair-work (count + credits earned
+// as a repairer). Every field is read from this node's own Ledger, so all of it is
+// local-exact and none of it touches standing (Invariant A). Zero-valued with no
+// ledger wired. Observability; reading moves nothing.
+func (n *Node) EconomySelf() EconomySelf {
+	if n.ledger == nil {
+		return EconomySelf{}
+	}
+	es := EconomySelf{Balance: n.ledger.Balance(n.id)}
+	// ServedBytes/FetchedBytes/RepairsDone/BountyEarned are observability readers on
+	// *credit.Ledger, none of them on the ports.CreditLedger interface (the port is
+	// deliberately the consensus-relevant surface). Reach them through an optional
+	// interface so a node with a bare ports.CreditLedger (e.g. a test double) still
+	// compiles and reports zero — the same optional-interface pattern the bond
+	// auditor uses for RecordBondChallenge (credit.go).
+	if r, ok := n.ledger.(interface {
+		ServedBytes(ports.NodeID) int64
+		FetchedBytes(ports.NodeID) int64
+		RepairsDone(ports.NodeID) int64
+		BountyEarned(ports.NodeID) int64
+	}); ok {
+		es.ServedBytes = r.ServedBytes(n.id)
+		es.FetchedBytes = r.FetchedBytes(n.id)
+		es.RepairsDone = r.RepairsDone(n.id)
+		es.BountyEarned = r.BountyEarned(n.id)
+	}
+	return es
+}
+
+// EconomySelf is this node's own local-exact economy accounting (EconomySelf()).
+type EconomySelf struct {
+	Balance      int64 // spendable credit balance (serve revenue + bounty revenue − spends)
+	ServedBytes  int64 // lifetime bytes this node served (the serve-work signal)
+	FetchedBytes int64 // lifetime bytes this node fetched (the wash-symmetry denominator)
+	RepairsDone  int64 // shard-repairs this node was paid a bounty for (repair-work count)
+	BountyEarned int64 // lifetime credits earned as a repairer (repair revenue, split from serve)
+}
+
 // CaredDurability snapshots the durability accounting of every object this node
 // caretakes (n.care) — the reserve that funds each one's repairs, what it has
 // earned via the serve auto-skim, and what it has paid out. This is the

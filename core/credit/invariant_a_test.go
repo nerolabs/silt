@@ -85,6 +85,8 @@ var standingClassification = map[string]standingClass{
 	"EscrowPaid":          neutral, // observability
 	"EscrowRepairs":       neutral, // observability (cost-per-repair denominator)
 	"DurabilitySnapshot":  neutral, // observability (finite-but-renewable instrument input)
+	"RepairsDone":         neutral, // observability (per-node repair-work count; no standing)
+	"BountyEarned":        neutral, // observability (repair revenue split; no standing)
 
 	// PoD neutral lane (delivery.go, certified 2026-08-26). The witnessed
 	// delivery credit is a CONSERVED balance transfer (the fetcher's withdrawal
