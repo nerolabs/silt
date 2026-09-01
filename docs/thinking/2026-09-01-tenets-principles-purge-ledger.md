@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-01
 **Author seat:** Builder
-**Status:** DRAFT for owner ratification (edits the supreme/immutable doc — NOT merged).
+**Status:** OWNER-RATIFIED 2026-09-01 (edits the supreme/immutable doc — PR to main, owner merges).
 
 ## Purpose
 

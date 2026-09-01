@@ -9,8 +9,8 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Docs
-- **`docs/TENETS.md` restructured into pure guiding principles (DRAFT — owner ratification
-  pending, no logic change):** the tenets now state what "good" looks like as an *outcome*,
+- **`docs/TENETS.md` restructured into pure guiding principles (owner-ratified 2026-09-01,
+  no logic change):** the tenets now state what "good" looks like as an *outcome*,
   abstracted away from mechanism, ship-status, proof machinery, format specifics, and
   issue/PR war-stories — the build looks *up* to the tenets, they never look *down* at the
   build. Mechanism/history relocated to companions (`design/m0.md`, `decisions.md`,

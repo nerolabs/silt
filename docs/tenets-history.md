@@ -299,5 +299,6 @@ principle can be judged against the scar that made it.
   BitTorrent+BitCoin tagline → a fidelity note); and a NEW **tenet-tier** principle,
   **anti-recentralization** (Lane 6): no permanent center of *reward* — the edge tier that
   does the majority of the work must remain a net-positive place to do it (the economic
-  dual of "no permanent center of control"). No immutable was traded; this is a
-  presentation restructure. Draft pending owner ratification.
+  dual of "no permanent center of control"). No immutable was traded — the mission and every
+  corner are preserved, abstracted away from mechanism. This is a presentation restructure.
+  **OWNER-RATIFIED 2026-09-01.**
