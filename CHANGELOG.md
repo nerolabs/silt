@@ -71,6 +71,29 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `9d50437`, GREEN after); `TestA4MoneyPumpConservation` and
   `TestProvisionalCapIsBoundedAndDeterministic` stay GREEN. Design:
   `docs/thinking/2026-09-01-provorder-desync-fix-design.md`.
+- **`provOrder` eviction front-drop desync — the cursor fix (Boulder 0, 2026-09-01;
+  conservation-shape-neutral):** the Tester's compaction fuzz
+  (`TestCompactionTombstoneFuzz/eviction-dominant`, seed `0xdeadbeef0002`) failed deterministically at
+  step 13154 (full ops, not `-short`). The eviction loop dropped the FIFO front by re-slicing
+  (`provOrder = provOrder[1:]`), which shifts every surviving entry down one physical position but
+  left `provIndex` holding the STALE positions. `removeFromProvOrder` then tombstoned the WRONG live
+  slot, compaction dropped a live lane's order entry, and a ghost index entry could reverse a live
+  re-served lane's self-mint (grief, not a mint). A real product defect the R0.4/R0.4a fixes left on
+  the eviction side — it fires only when the eviction loop runs repeatedly (poolSize > maxProvisional),
+  which the `-short` path never reaches. Fix (`core/credit/delivery.go`, `credit.go`): a logical head
+  cursor `provHead` replaces the front re-slice — eviction advances the cursor and nils the dropped
+  slot, so `provIndex` holds ABSOLUTE positions a front-drop never invalidates. Amortized O(1) per op,
+  no survivor-index rewrite (the RT-DELIV-1b stall is not reintroduced — the product path drives
+  100K/150K full ops in ~145 ms under `-race`); `compactProvOrder` resets the cursor on rebuild and
+  still caps the slice at `2*maxProvisional` (build-immutable #8). Conservation is untouched — no
+  change to `reverseProvisional`, the fee/skim arithmetic, the terminal-reversal sites, or the
+  `provKey` shape (RT-DELIV-3 stays separately cert-gated), so the R0.4 conservation cert holds. Also
+  fixed a harness gap the desync had masked: the fuzz's redeem-branch fallback-serve did not predict
+  its eviction, so `expectedTotal` under-counted — the identical prediction block from the other serve
+  branches was added (test-only, no product accounting change). All three fuzz scenarios GREEN at full
+  op counts; `TestA4MoneyPumpConservation` and the prior Boulder-0 gates stay GREEN. Ablation reddens
+  the fuzz at step 13154 again. Design:
+  `docs/thinking/2026-09-01-provorder-eviction-cursor-fix-design.md`.
 - **Docs/comment true-up (no logic change):** ROADMAP Rock 1 updated to the built recompute state
   (recompute reproduces the `apply()` transition set — E/R spine + classes S/B/T/A/P + class-M latch —
   guarded by the 28/28 write-obligation leaf-diff; the accept-flip is the single remaining step; the

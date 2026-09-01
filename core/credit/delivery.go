@@ -116,17 +116,25 @@ func (l *Ledger) trackProvisional(server, requester ports.NodeID, root ports.Has
 	if !ok {
 		// FIFO-evict the oldest LIVE lane while the map is at cap. Tombstones
 		// (nil, left by a redeem) are skipped, never counted as an eviction —
-		// they carry no lane to reverse. Dropping the tombstoned front here is
-		// also what keeps provOrder from retaining dead prefixes at the head.
+		// they carry no lane to reverse. The front is advanced by the provHead
+		// CURSOR, not by re-slicing (provOrder[1:]). Re-slicing would shift every
+		// survivor down one physical position while provIndex still held the old
+		// positions — the desync the fuzz caught (seed 0xdeadbeef0002 step
+		// 13154), where removeFromProvOrder then tombstoned a live slot and a
+		// ghost index entry reversed a re-served lane's self-mint. Advancing the
+		// cursor and nilling the dropped slot leaves every survivor's absolute
+		// position (and thus provIndex) untouched: amortized O(1), no survivor
+		// index rewrite.
 		for len(l.provisional) >= maxProvisional {
-			for len(l.provOrder) > 0 && l.provOrder[0] == nil {
-				l.provOrder = l.provOrder[1:]
+			for l.provHead < len(l.provOrder) && l.provOrder[l.provHead] == nil {
+				l.provHead++
 			}
-			if len(l.provOrder) == 0 {
+			if l.provHead >= len(l.provOrder) {
 				break
 			}
-			old := *l.provOrder[0]
-			l.provOrder = l.provOrder[1:]
+			old := *l.provOrder[l.provHead]
+			l.provOrder[l.provHead] = nil
+			l.provHead++
 			delete(l.provIndex, old)
 			if evicted, eok := l.provisional[old]; eok {
 				l.reverseProvisional(evicted.server, old.root, evicted)
@@ -157,13 +165,18 @@ func (l *Ledger) removeFromProvOrder(k provKey) {
 	}
 }
 
-// compactProvOrder keeps provOrder bounded on the redeem-heavy path (where the
-// eviction loop never fires because the map stays small). When the slice grows
-// past 2*maxProvisional it is rebuilt with the tombstones dropped and the index
-// repointed. Compaction touches at most len(provOrder) entries but runs only
-// once every ~maxProvisional appends, so it amortizes to O(1) per serve and
-// never scans on the hot redeem path. The slice is thereby capped at
-// 2*maxProvisional — bounded state on the floor box (build-immutable #8).
+// compactProvOrder keeps provOrder bounded on BOTH churn paths. On the
+// redeem-heavy path the tombstones are redeem-left nils; on the eviction-heavy
+// path they are the nils the provHead cursor leaves behind as it advances (the
+// cursor never re-slices, so the physical slice grows until compaction reclaims
+// it). When the slice grows past 2*maxProvisional it is rebuilt with the
+// tombstones dropped, the index repointed to the fresh positions, and the
+// provHead cursor reset to 0 (the rebuild drops the whole dead prefix, so there
+// is no logical front left to skip). Compaction touches at most len(provOrder)
+// entries but runs only once every ~maxProvisional appends, so it amortizes to
+// O(1) per serve and never scans on the hot redeem path. The slice is thereby
+// capped at 2*maxProvisional — bounded state on the floor box (build-immutable
+// #8).
 func (l *Ledger) compactProvOrder() {
 	if len(l.provOrder) <= 2*maxProvisional {
 		return
@@ -176,6 +189,7 @@ func (l *Ledger) compactProvOrder() {
 		}
 	}
 	l.provOrder = live
+	l.provHead = 0
 }
 
 // RedeemDeliveryCredit settles a WITNESSED delivery (a banked, verified

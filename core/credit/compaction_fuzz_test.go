@@ -204,9 +204,37 @@ func runCompactionFuzz(t *testing.T, seed int64, ops, poolSize int) {
 		case action < 8:
 			// REDEEM (only if the lane is live).
 			if _, ok := l.provisional[k]; !ok {
-				// Not live; serve instead.
+				// Not live; serve instead. This serve can ALSO force a FIFO
+				// eviction when the map is at cap — the same eviction the
+				// action<5 / default serve branches predict. Predict it here too
+				// so expectedTotal subtracts the evicted lane's reversed
+				// self-mint; omitting it under-counts by the reversed mint (the
+				// eviction-dominant conservation gap the desync fix uncovered).
 				skim := int64(serveSize) * SkimNum / SkimDen
 				net := int64(serveSize) - skim
+				var evictedPoolIdx *int
+				if _, alreadyLive := l.provisional[k]; !alreadyLive && len(l.provisional) >= maxProvisional {
+					for _, kp := range l.provOrder {
+						if kp == nil {
+							continue
+						}
+						for pi, pl := range pool {
+							ek := provKey{requester: pl.req, root: pl.obj}
+							if ek == *kp {
+								piCopy := pi
+								evictedPoolIdx = &piCopy
+								break
+							}
+						}
+						break
+					}
+				}
+				if evictedPoolIdx != nil {
+					if em := liveMints[*evictedPoolIdx]; em != nil {
+						expectedTotal -= em.net + em.skim
+						delete(liveMints, *evictedPoolIdx)
+					}
+				}
 				if em, alreadyLive := liveMints[idx]; alreadyLive {
 					em.net += net
 					em.skim += skim

@@ -98,9 +98,20 @@ type Ledger struct {
 	// are dropped by an amortized-O(1) compaction (delivery.go), which keeps the
 	// slice bounded even on the redeem-heavy path where the eviction loop never
 	// runs (RT-DELIV-1/1b/2 fix).
+	//
+	// provHead is the FIFO front CURSOR: a logical index into provOrder marking
+	// the oldest slot not yet dropped by eviction. Eviction advances provHead and
+	// nils the dropped slot rather than re-slicing (provOrder[1:]), which would
+	// shift every survivor's absolute position and silently invalidate provIndex
+	// (the RT-DELIV-3-adjacent desync fuzz found at seed 0xdeadbeef0002 step
+	// 13154). With the cursor, provIndex holds absolute positions that a
+	// front-drop never touches, so eviction stays amortized O(1) and never
+	// rewrites a survivor's index. Compaction rebuilds the slice and resets
+	// provHead to 0.
 	provisional map[provKey]*provisionalServe
 	provOrder   []*provKey
 	provIndex   map[provKey]int
+	provHead    int
 
 	// Audit economics: storage that survives a spot-check earns rent;
 	// storage that turns out to be a lie is slashed hard. Balances may
