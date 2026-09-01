@@ -1931,6 +1931,27 @@ var probeUncovered = map[string]string{
 		"validity verdict — that is WHY it is safe to commit. Its commitment (not its necessity " +
 		"for a verdict) is exercised by the v5 marshaller tests. This entry is permanent, not a " +
 		"shrinking debt: a validity probe cannot exist for a field no predicate reads.",
+
+	// R1.6 — the class-M poisoning / validatorsSeenRoot path, enumerated by STAGE (A1/A2/A3) so the
+	// poisoning-path coverage is named, not silent. These are cross-reference entries, NOT committed-field
+	// omission debt: their keys are stage labels (never field names), so the field-omission guard above
+	// never matches them. Each names the DRIVEN gate in
+	// floorbox_recompute_adversarialroot_v5_test.go that closes it. The poisoning is traced end-to-end in
+	// PE ruling Q2 (RULING-floorbox-R1.2-invariant-pins-2026-09-01.md, 8 steps).
+	"A1-spurious-validatorsSeen-add": "STAGE A1 (class-A screen source). An UNANCHORED class-A screen " +
+		"(Slashed/InEpochSet/BondedSize/BondedPresent) that flips qualification emits a spurious " +
+		"validatorsSeen||id ADD. CLOSED by the R1.2 screen Resolve anchors; driven by " +
+		"TestAdversarialRoot_ClassA_ForgedInEpochSet and _ForgedSlashed (a forged screen cannot prove " +
+		"the qualification predicate against prevStateRoot ⇒ stall at source).",
+	"A2-inflated-validatorsSeenRoot": "STAGE A2 (committed digest). The spurious A1 ADD inflates the " +
+		"validatorsSeenRoot digest the attacker commits as b.StateRoot. CLOSED at source: with A1 " +
+		"anchored, the honest seen-set is the only set that reconstructs, so the committed digest cannot " +
+		"be inflated. Driven by the class-M cross-class gate (forges the screen AND the committed root).",
+	"A3-classM-inherits-inflated-set": "STAGE A3 (class-M inheritance). class-M's " +
+		"RecomputeMatureNow(committedStateRoot) reconstructs the SAME inflated set and can latch " +
+		"everMature early. CLOSED at source by A1: TestAdversarialRoot_ClassM_PoisonedBySpuriousAtt drives " +
+		"the poison through the full entry and asserts the class-A anchor STALLS before the spurious ADD " +
+		"can inflate the seen-set class-M inherits. This is the PE Q2 REQUIRED cross-class pin.",
 }
 
 // TestLeaveOneOutProvesEachFieldLoadBearing is the sharp half. For every

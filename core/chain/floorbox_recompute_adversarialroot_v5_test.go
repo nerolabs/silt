@@ -1754,6 +1754,15 @@ var r12CoverageTable = map[string]map[string]r12Disposition{
 		"OwnerProof":  {"already-anchored", "the anchoring proof for PriorOwner/Claimed (verified via Resolve)"},
 		"ProvenProof": {"already-anchored", "the anchoring proof for PriorProven (verified via Resolve)"},
 	},
+	// R1.6: the StateRootRotateScalar carrier is now reflection-pinned (was R1.4 residual
+	// R-CARRIER-REFLECTION). OldValue is dual-use: the fold OldValue for always-emitted scalars
+	// (epochStart/matureEpoch — anchored) AND the UNANCHORED branch predicate for the activation locks
+	// (rotate_v5.go:442,:450,:458 — the CONFIRMED BREAK, classified FIX-OPEN). Proof is the always-anchored
+	// fold inclusion proof. See floorbox_recompute_perfield_oracle_v5_test.go PART C.
+	"StateRootRotateScalar": {
+		"OldValue": {"FIX-OPEN", "TestOpenBreak_Era4LockedInOldValuePredicate"},
+		"Proof":    {"already-anchored", "the scalar leaf inclusion proof, verified by the fold OldValue vs prevStateRoot when the scalar op is emitted"},
+	},
 }
 
 // r12Carriers returns the reflected type of each untrusted witness carrier the R1.2 fix anchors.
@@ -1762,6 +1771,7 @@ func r12Carriers() []reflect.Type {
 		reflect.TypeOf(StateRootAttScreen{}),
 		reflect.TypeOf(StateRootRotateMember{}),
 		reflect.TypeOf(StateRootBondRegScreen{}),
+		reflect.TypeOf(StateRootRotateScalar{}), // R1.6: closes R-CARRIER-REFLECTION for the scalar carrier
 	}
 }
 
@@ -1783,8 +1793,8 @@ func TestAdversarialRootCoverageIsComplete(t *testing.T) {
 					"  A new untrusted field must be either FIX (with a driven adversarial-root gate) or\n"+
 					"  already-anchored (with a stated reason). Add it to r12CoverageTable.", name, f.Name)
 			}
-			if disp.kind != "FIX" && disp.kind != "already-anchored" {
-				t.Fatalf("COVERAGE GAP: %s.%s has invalid disposition %q (want FIX or already-anchored)", name, f.Name, disp.kind)
+			if disp.kind != "FIX" && disp.kind != "already-anchored" && disp.kind != "FIX-OPEN" {
+				t.Fatalf("COVERAGE GAP: %s.%s has invalid disposition %q (want FIX, FIX-OPEN, or already-anchored)", name, f.Name, disp.kind)
 			}
 			if disp.detail == "" {
 				t.Fatalf("COVERAGE GAP: %s.%s classified %q with no detail (gate name or reason required)", name, f.Name, disp.kind)
@@ -1817,6 +1827,26 @@ func TestAdversarialRootCoverageIsComplete(t *testing.T) {
 	// enumerates the 10 per-field FIX gates; class-M is the cross-class gate (not a single carrier field).
 	if len(fixGates) != 10 {
 		t.Fatalf("COVERAGE: expected 10 per-field FIX gates in the cert table, got %d: %v", len(fixGates), fixGates)
+	}
+	// R1.6 FIX-OPEN rows: a confirmed wrong-accept awaiting the anchoring fix (routed to the Researcher).
+	// Each names its RED-on-current-code open-break gate. The count MUST be exactly 1 (StateRootRotateScalar
+	// .OldValue predicate) until the fix lands and flips it to already-anchored — then this drops to 0.
+	openGates := map[string]string{}
+	for carrier, table := range r12CoverageTable {
+		for field, disp := range table {
+			if disp.kind != "FIX-OPEN" {
+				continue
+			}
+			if disp.detail == "" {
+				t.Fatalf("COVERAGE: FIX-OPEN %s.%s has no open-break gate named", carrier, field)
+			}
+			openGates[carrier+"."+field] = disp.detail
+		}
+	}
+	if len(openGates) != 1 {
+		t.Fatalf("COVERAGE: expected exactly 1 FIX-OPEN row (the scalar OldValue predicate break), got %d: %v.\n"+
+			"  If the anchoring fix landed, reclassify StateRootRotateScalar.OldValue as already-anchored (0 open).\n"+
+			"  If a NEW open break was found, it must be a routed, named entry — not a silent one.", len(openGates), openGates)
 	}
 }
 
