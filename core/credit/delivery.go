@@ -25,13 +25,24 @@ package credit
 // the observables stay honest (S5) — only the PAYMENT is superseded.
 //
 // BOUNDED (build-immutable #8): the provisional map is capped; at the cap the
-// oldest entry is forgotten (deterministic FIFO — no map iteration, B2) and that
-// serve stays permanently on the self-record lane. The residual — a receipt
-// redeemed after its provisional record was evicted double-pays that one
-// delivery by its bytes-net — is bounded by the cap and is strictly smaller
-// than the pre-existing self-mint exposure the certification holds separately
-// ("the deeper flag": witnessing all cross-operator serves would subsume the
-// self-mint; not this slice).
+// oldest entry is FIFO-evicted (deterministic — no map iteration, B2). The
+// FIFO order slice (provOrder) is kept in lockstep with the map at BOTH removal
+// sites: eviction pops the front, and a redeem tombstones the lane's slot in
+// O(1) via provIndex. An amortized-O(1) compaction caps the slice at
+// 2*maxProvisional, so the redeem-heavy path (where the eviction loop never
+// fires) can neither grow provOrder without bound nor let a stale key survive
+// to reverse a re-served lane (the RT-DELIV-1/1b/2 fix, red-team 2026-09-01;
+// verified by TestProvOrderStaysBoundedAcrossRedeems /
+// TestRedeemDoesNotLeaveDuplicateOrderEntry). Eviction
+// REVERSES the evicted lane's eager self-mint before forgetting it (A4 fix,
+// Boulder 0, R0.4a — trackProvisional below), so an evicted lane is left in the
+// same accounting state as "never served". A receipt redeemed after its lane was
+// evicted therefore pays the conserved leg ONLY and mints nothing — no
+// double-pay. The give is the unwitnessed bilateral fallback: an evicted,
+// never-redeemed serve loses its self-record. That is an under-pay at the
+// >maxProvisional tail, never an over-pay and never a denial (rule (b): one
+// delivery, one payment). The deeper fix ("witnessing all cross-operator serves
+// would subsume the self-mint") stays the tracked (b)-full follow-on.
 //
 // NEVER STANDING: everything here moves the balance economy only. No field this
 // file touches is read by Reputation — asserted structurally by the Invariant-A
@@ -53,28 +64,132 @@ type provKey struct {
 // provisionalServe is the self-credit a serve recorded before any receipt: the
 // net balance the server credited itself and the skim it routed to the object's
 // escrow. A redeem reverses both, then pays the conserved credit instead.
+//
+// server is the account that received the self-mint. The redeem path is told the
+// server by its caller, but EVICTION has only the lane, so the server is stored
+// here to let the eviction reversal (A4 fix) debit the exact account that was
+// credited at serve time.
 type provisionalServe struct {
-	net  int64
-	skim int64
+	server ports.NodeID
+	net    int64
+	skim   int64
+}
+
+// reverseProvisional undoes a lane's eager self-mint: it debits the server's
+// balance by p.net and reduces the object's escrow by p.skim, floored at what
+// the reserve still holds (a bounty paid out between serve and reversal is real
+// durability work, never recoverable — build-immutable #2). It is the single
+// reversal used by BOTH terminal-reversal sites: redeem-in-window and eviction.
+// Keeping one implementation is what makes the escrow floor identical at both.
+func (l *Ledger) reverseProvisional(server ports.NodeID, root ports.Hash, p *provisionalServe) {
+	l.acct(server).balance -= p.net
+	if e, eok := l.escrow[root]; eok {
+		r := p.skim
+		if r > e.balance {
+			r = e.balance
+		}
+		e.balance -= r
+		e.funded -= r
+		if e.funded < 0 {
+			e.funded = 0
+		}
+	}
 }
 
 // trackProvisional records an object-aware serve's self-credit for later
 // supersession. Called by RecordServeToObject only.
-func (l *Ledger) trackProvisional(requester ports.NodeID, root ports.Hash, net, skim int64) {
+//
+// EVICTION REVERSAL (A4 money-pump fix, Boulder 0, R0.4a): when the map is at
+// cap and the oldest lane is FIFO-evicted, its eager self-mint is REVERSED
+// before the lane is forgotten — not left on the server's balance. This closes
+// the double-pay: after eviction an evicted lane is in the same accounting state
+// as "never served" (mint gone, skim floored-reversed, entry gone), so a later
+// redeem for that lane pays the conserved leg ONLY and mints nothing. Rule (b):
+// one delivery, one payment. The cost is the unwitnessed bilateral fallback —
+// an evicted, never-redeemed serve loses its self-record — an under-pay at the
+// >maxProvisional tail, never an over-pay, never a denial. Verified by
+// TestA4MoneyPumpConservation. Design:
+// docs/thinking/2026-09-01-a4-provisional-eviction-fix-design.md.
+func (l *Ledger) trackProvisional(server, requester ports.NodeID, root ports.Hash, net, skim int64) {
 	k := provKey{requester: requester, root: root}
 	p, ok := l.provisional[k]
 	if !ok {
-		for len(l.provisional) >= maxProvisional && len(l.provOrder) > 0 {
-			old := l.provOrder[0]
-			l.provOrder = l.provOrder[1:]
-			delete(l.provisional, old) // oldest lane falls back to self-record forever
+		// FIFO-evict the oldest LIVE lane while the map is at cap. Tombstones
+		// (nil, left by a redeem) are skipped, never counted as an eviction —
+		// they carry no lane to reverse. The front is advanced by the provHead
+		// CURSOR, not by re-slicing (provOrder[1:]). Re-slicing would shift every
+		// survivor down one physical position while provIndex still held the old
+		// positions — the desync the fuzz caught (seed 0xdeadbeef0002 step
+		// 13154), where removeFromProvOrder then tombstoned a live slot and a
+		// ghost index entry reversed a re-served lane's self-mint. Advancing the
+		// cursor and nilling the dropped slot leaves every survivor's absolute
+		// position (and thus provIndex) untouched: amortized O(1), no survivor
+		// index rewrite.
+		for len(l.provisional) >= maxProvisional {
+			for l.provHead < len(l.provOrder) && l.provOrder[l.provHead] == nil {
+				l.provHead++
+			}
+			if l.provHead >= len(l.provOrder) {
+				break
+			}
+			old := *l.provOrder[l.provHead]
+			l.provOrder[l.provHead] = nil
+			l.provHead++
+			delete(l.provIndex, old)
+			if evicted, eok := l.provisional[old]; eok {
+				l.reverseProvisional(evicted.server, old.root, evicted)
+				delete(l.provisional, old)
+			}
 		}
-		p = &provisionalServe{}
+		p = &provisionalServe{server: server}
 		l.provisional[k] = p
-		l.provOrder = append(l.provOrder, k)
+		kk := k
+		l.provOrder = append(l.provOrder, &kk)
+		l.provIndex[k] = len(l.provOrder) - 1
+		l.compactProvOrder()
 	}
 	p.net += net
 	p.skim += skim
+}
+
+// removeFromProvOrder drops a lane's FIFO entry in O(1) by tombstoning its slot
+// (nil) via the position index. Called at every map removal that is NOT an
+// eviction (redeem) so provOrder never retains a key whose live lane is gone.
+// The tombstones are reclaimed by compactProvOrder. This is the single sync
+// point that closes RT-DELIV-1/1b/2: the map and the live entries of provOrder
+// stay in lockstep, and no stale key can survive to reverse a re-served lane.
+func (l *Ledger) removeFromProvOrder(k provKey) {
+	if i, ok := l.provIndex[k]; ok {
+		l.provOrder[i] = nil
+		delete(l.provIndex, k)
+	}
+}
+
+// compactProvOrder keeps provOrder bounded on BOTH churn paths. On the
+// redeem-heavy path the tombstones are redeem-left nils; on the eviction-heavy
+// path they are the nils the provHead cursor leaves behind as it advances (the
+// cursor never re-slices, so the physical slice grows until compaction reclaims
+// it). When the slice grows past 2*maxProvisional it is rebuilt with the
+// tombstones dropped, the index repointed to the fresh positions, and the
+// provHead cursor reset to 0 (the rebuild drops the whole dead prefix, so there
+// is no logical front left to skip). Compaction touches at most len(provOrder)
+// entries but runs only once every ~maxProvisional appends, so it amortizes to
+// O(1) per serve and never scans on the hot redeem path. The slice is thereby
+// capped at 2*maxProvisional — bounded state on the floor box (build-immutable
+// #8).
+func (l *Ledger) compactProvOrder() {
+	if len(l.provOrder) <= 2*maxProvisional {
+		return
+	}
+	live := l.provOrder[:0:0]
+	for _, kp := range l.provOrder {
+		if kp != nil {
+			live = append(live, kp)
+			l.provIndex[*kp] = len(live) - 1
+		}
+	}
+	l.provOrder = live
+	l.provHead = 0
 }
 
 // RedeemDeliveryCredit settles a WITNESSED delivery (a banked, verified
@@ -92,24 +207,17 @@ func (l *Ledger) RedeemDeliveryCredit(server, fetcher ports.NodeID, root ports.H
 	}
 	s := l.acct(server)
 
-	// Supersede: reverse this delivery's provisional self-credit. The escrow
-	// reversal is floored at what the reserve still holds — a bounty paid out
-	// between serve and redeem is real durability work, not recoverable.
+	// Supersede: reverse this delivery's provisional self-credit, then forget the
+	// lane. The reversal (escrow floored at what the reserve still holds — a bounty
+	// paid out between serve and redeem is real durability work, not recoverable)
+	// is shared verbatim with the eviction site. If the lane was already evicted,
+	// its mint was reversed at eviction, so there is nothing here to reverse: the
+	// redeem pays the conserved leg only (rule (b), one delivery one payment).
 	k := provKey{requester: fetcher, root: root}
 	if p, ok := l.provisional[k]; ok {
-		s.balance -= p.net
-		if e, eok := l.escrow[root]; eok {
-			r := p.skim
-			if r > e.balance {
-				r = e.balance
-			}
-			e.balance -= r
-			e.funded -= r
-			if e.funded < 0 {
-				e.funded = 0
-			}
-		}
+		l.reverseProvisional(server, root, p)
 		delete(l.provisional, k)
+		l.removeFromProvOrder(k) // keep provOrder in sync (RT-DELIV-1/1b/2 fix)
 	}
 
 	// Conservation: pay the fee the fetcher already paid in, less the skim.

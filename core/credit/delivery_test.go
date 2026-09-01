@@ -204,10 +204,67 @@ func TestPaidBountyIsNotRecoverableBySupersede(t *testing.T) {
 	}
 }
 
+// TestPaidBountyIsNotRecoverableByEviction is the sibling guard on the NEW
+// eviction-reversal site (A4 fix, Boulder 0). The eviction reversal shares the
+// same floored-skim logic as redeem, so the same invariant must hold there: a
+// repair bounty paid out between serve and EVICTION is real durability work and
+// can never be clawed back. If the eviction reversal ever dropped the floor,
+// evicting a lane whose skim was already spent would drive the reserve negative.
+// This makes the floor at the eviction site non-regressible (build-immutable #2),
+// exactly as TestPaidBountyIsNotRecoverableBySupersede does for the redeem site.
+func TestPaidBountyIsNotRecoverableByEviction(t *testing.T) {
+	const fee = 50_000
+	l := New(fee, 0)
+	server, repairer := id(1), id(3)
+	obj, chunk := ports.HashBytes([]byte("evicted-floor-obj")), id(9)
+
+	// Lane 0 serves and routes its skim into the object's reserve…
+	first := ports.NodeID(ports.HashBytes([]byte("first-requester")))
+	const bytes = 1 << 20
+	l.RecordServeToObject(server, first, obj, chunk, bytes)
+	serveSkim := int64(bytes) * SkimNum / SkimDen
+	if got := l.EscrowBalance(obj); got != serveSkim {
+		t.Fatalf("setup: escrow %d, want %d", got, serveSkim)
+	}
+
+	// …a repair bounty spends it before the lane is evicted. That credit is now in
+	// the repairer's hands for real durability work.
+	paidOut := l.PayBounty(obj, repairer, serveSkim)
+	if paidOut != serveSkim || l.EscrowBalance(obj) != 0 {
+		t.Fatalf("setup: bounty paid %d, escrow left %d", paidOut, l.EscrowBalance(obj))
+	}
+	repairerBal := l.Balance(repairer)
+
+	// Flood the map past the cap so lane 0 is FIFO-evicted. Eviction reverses lane
+	// 0's mint; its skim reversal must FLOOR at the (now empty) reserve — not claw
+	// back the paid bounty and not drive the reserve negative. Use a fresh object
+	// per flood lane so their skims don't refill obj's reserve.
+	for i := 0; i < maxProvisional; i++ {
+		req := ports.NodeID(ports.HashBytes([]byte{'r', byte(i), byte(i >> 8), byte(i >> 16)}))
+		floodObj := ports.HashBytes([]byte{byte(i), byte(i >> 8), byte(i >> 16)})
+		l.RecordServeToObject(server, req, floodObj, chunk, 8)
+	}
+	if _, present := l.provisional[provKey{requester: first, root: obj}]; present {
+		t.Fatal("lane 0 was not evicted — flood did not push it out")
+	}
+
+	if got := l.Balance(repairer); got != repairerBal {
+		t.Fatalf("eviction clawed back a paid bounty: repairer %d → %d — real repair work must be non-recoverable", repairerBal, got)
+	}
+	if got := l.EscrowBalance(obj); got != 0 {
+		t.Fatalf("escrow = %d, want 0 (floored at the empty reserve, no clawback, no negative)", got)
+	}
+}
+
 // TestProvisionalCapIsBoundedAndDeterministic drives the supersede tracker past
-// its cap (build-immutable #8: bounded before fast) and pins the documented
-// residual: an evicted lane's later redeem does NOT reverse the self-record
-// (double-pay bounded by the cap), while an in-window lane still supersedes.
+// its cap (build-immutable #8: bounded before fast) and pins the CORRECT rule (b)
+// behavior after the A4 fix: eviction REVERSES the evicted lane's self-mint, so
+// an evicted lane's later redeem pays the conserved leg ONLY and mints nothing —
+// an evicted-then-redeemed lane equals a never-existed redeem. It also pins the
+// bound (map never exceeds the cap) and FIFO determinism (lane 0 is the one
+// evicted). It was previously an encoding of the buggy rule (c) — evicted redeem
+// pays conserved WITHOUT reversing the retained mint, the double-pay — and is
+// flipped here per the A4 design.
 func TestProvisionalCapIsBoundedAndDeterministic(t *testing.T) {
 	const fee = 50_000
 	l := New(fee, 0)
@@ -217,9 +274,16 @@ func TestProvisionalCapIsBoundedAndDeterministic(t *testing.T) {
 	// Lane 0 — the one that will be evicted.
 	first := ports.NodeID(ports.HashBytes([]byte("first-requester")))
 	const bytes = 1 << 10
-	l.RecordServeToObject(server, first, obj, chunk, bytes)
+	skim := int64(bytes) * SkimNum / SkimDen
+	net := int64(bytes) - skim // the eager self-mint lane 0 recorded
 
-	// Flood distinct lanes past the cap.
+	l.RecordServeToObject(server, first, obj, chunk, bytes)
+	if got := l.Balance(server); got != net {
+		t.Fatalf("setup: lane-0 serve credited %d, want the self-mint %d", got, net)
+	}
+
+	// Flood distinct lanes past the cap. Lane 0 (FIFO-oldest) is evicted; its
+	// self-mint must be reversed at eviction under rule (b).
 	for i := 0; i < maxProvisional; i++ {
 		req := ports.NodeID(ports.HashBytes([]byte{'r', byte(i), byte(i >> 8), byte(i >> 16)}))
 		l.RecordServeToObject(server, req, ports.HashBytes([]byte{byte(i), byte(i >> 8), byte(i >> 16)}), chunk, 8)
@@ -227,12 +291,33 @@ func TestProvisionalCapIsBoundedAndDeterministic(t *testing.T) {
 	if got := len(l.provisional); got > maxProvisional {
 		t.Fatalf("provisional map grew to %d, cap is %d — unbounded state on the floor box", got, maxProvisional)
 	}
+	// FIFO determinism: lane 0 is the evicted one, not some other lane.
+	if _, present := l.provisional[provKey{requester: first, root: obj}]; present {
+		t.Fatal("lane 0 was not FIFO-evicted — eviction order is non-deterministic")
+	}
 
-	// Lane 0 was evicted (FIFO): its redeem pays the conserved credit WITHOUT
-	// reversing the self-record — the bounded, documented residual.
+	// Rule (b): eviction reversed lane 0's self-mint. A redeem for the evicted
+	// lane finds nothing to reverse and pays the conserved leg only. So the
+	// server's balance moves by exactly +paid, and the pre-existing lane-0 mint
+	// (net) is no longer on the books — the evicted-then-redeemed total equals a
+	// never-existed redeem. Under the OLD bug the lane-0 mint would still be on
+	// the balance, so balBefore would carry net and the redeem would stack on top.
 	balBefore := l.Balance(server)
 	paid := l.RedeemDeliveryCredit(server, first, obj)
 	if got := l.Balance(server); got != balBefore+paid {
-		t.Fatalf("evicted-lane redeem changed balance by %d, want +%d only (no reversal after eviction)", got-balBefore, paid)
+		t.Fatalf("evicted-lane redeem changed balance by %d, want +%d only (conserved leg, no double-pay)", got-balBefore, paid)
+	}
+	// The lane-0 self-mint must have been cleared by eviction, not still resident.
+	// Compare against a fresh ledger where lane 0 NEVER served: same flood, same
+	// redeem, same terminal server balance. Evicted-then-redeemed == never-existed.
+	ref := New(fee, 0)
+	for i := 0; i < maxProvisional; i++ {
+		req := ports.NodeID(ports.HashBytes([]byte{'r', byte(i), byte(i >> 8), byte(i >> 16)}))
+		ref.RecordServeToObject(server, req, ports.HashBytes([]byte{byte(i), byte(i >> 8), byte(i >> 16)}), chunk, 8)
+	}
+	refPaid := ref.RedeemDeliveryCredit(server, first, obj)
+	if l.Balance(server) != ref.Balance(server) || paid != refPaid {
+		t.Fatalf("evicted-then-redeemed server balance %d (paid %d) != never-existed %d (paid %d) — lane-0 mint was not cleared by eviction",
+			l.Balance(server), paid, ref.Balance(server), refPaid)
 	}
 }

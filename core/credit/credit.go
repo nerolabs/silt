@@ -92,9 +92,26 @@ type Ledger struct {
 	// (requester, root) so a later witnessed receipt can SUPERSEDE it
 	// instead of stacking on it (the PoD conservation rule — delivery.go).
 	// provOrder is the deterministic FIFO for the cap eviction (B2: no map
-	// iteration in core).
+	// iteration in core). It holds pointers so a lane removed at redeem can be
+	// tombstoned in place (nil) in O(1) without a slice scan; provIndex gives
+	// each live lane's current position for that O(1) tombstone. Dead tombstones
+	// are dropped by an amortized-O(1) compaction (delivery.go), which keeps the
+	// slice bounded even on the redeem-heavy path where the eviction loop never
+	// runs (RT-DELIV-1/1b/2 fix).
+	//
+	// provHead is the FIFO front CURSOR: a logical index into provOrder marking
+	// the oldest slot not yet dropped by eviction. Eviction advances provHead and
+	// nils the dropped slot rather than re-slicing (provOrder[1:]), which would
+	// shift every survivor's absolute position and silently invalidate provIndex
+	// (the RT-DELIV-3-adjacent desync fuzz found at seed 0xdeadbeef0002 step
+	// 13154). With the cursor, provIndex holds absolute positions that a
+	// front-drop never touches, so eviction stays amortized O(1) and never
+	// rewrites a survivor's index. Compaction rebuilds the slice and resets
+	// provHead to 0.
 	provisional map[provKey]*provisionalServe
-	provOrder   []provKey
+	provOrder   []*provKey
+	provIndex   map[provKey]int
+	provHead    int
 
 	// Audit economics: storage that survives a spot-check earns rent;
 	// storage that turns out to be a lie is slashed hard. Balances may
@@ -117,6 +134,7 @@ func New(fee, grant int64) *Ledger {
 		rootOwner:   make(map[ports.Hash]ports.NodeID),
 		escrow:      make(map[ports.Hash]*objectEscrow),
 		provisional: make(map[provKey]*provisionalServe),
+		provIndex:   make(map[provKey]int),
 		AuditReward: 1_000,
 		AuditSlash:  25_000,
 	}

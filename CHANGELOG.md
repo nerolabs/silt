@@ -32,6 +32,68 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   coexistence test.
 
 ### Fixed
+- **A4 provisional-eviction money-pump — close the double-pay at FIFO eviction (Boulder 0, R0.4a;
+  economic-mechanism change, B3 conservation — Researcher re-cert pending):** an object-aware serve
+  eagerly self-mints `bytes − skim` to the server and routes `skim` to the object's escrow, tracking
+  the lane as provisional so a later witnessed receipt supersedes it (`RedeemDeliveryCredit` reverses
+  the mint, then pays the conserved `fee − skim`). When the bounded provisional map (`maxProvisional`,
+  build-immutable #8) FIFO-evicted the oldest lane, it forgot the lane but LEFT the mint on the
+  server's balance; a receipt redeemed after eviction then paid the conserved leg on top — one
+  delivery paid twice, a network-minted per-receipt subsidy (the banned dual). Fix (the (b)-minimal
+  claw-back, `core/credit/delivery.go`): eviction now REVERSES the evicted lane's self-mint before
+  forgetting it, via the same floored reversal the redeem uses (`reverseProvisional`, shared verbatim
+  so the escrow floor is identical at both sites — a repair bounty paid between serve and eviction is
+  never clawed back). An evicted lane is thereby left in the same accounting state as "never served",
+  so an evicted-then-redeemed lane equals a never-existed redeem: conserved leg only, mints nothing.
+  The give is the unwitnessed bilateral fallback — an evicted, never-redeemed serve loses its
+  self-record (an under-pay at the `>maxProvisional` tail, never an over-pay, never a denial). New
+  gate `core/credit/money_pump_test.go` `TestA4MoneyPumpConservation` pins the closed-system
+  invariant `Σbalances + Σescrow == grant + legitimate transfers` (RED at `delta=+1024` before, GREEN
+  after); `TestProvisionalCapIsBoundedAndDeterministic` flipped from encoding the buggy rule (c) to
+  the correct rule (b); new `TestPaidBountyIsNotRecoverableByEviction` guards the escrow floor at the
+  new reversal site. Design: `docs/thinking/2026-09-01-a4-provisional-eviction-fix-design.md`.
+- **A4 follow-on — `provOrder` desync fix (Boulder 0; conservation-shape-neutral, red-team
+  2026-09-01):** the A4 fix leaned on `provOrder`, the FIFO order slice, which `RedeemDeliveryCredit`
+  never kept in sync — it deleted the redeemed lane from the `provisional` map but left the key in
+  `provOrder`. On the redeem-heavy path (map stays small, eviction loop never fires) the slice grew
+  one entry per witnessed delivery, forever: unbounded state on the floor box (build-immutable #8,
+  HIGH), an attacker-buildable single-serve stall on the serialized consensus loop when the dead
+  prefix is finally scanned (MEDIUM-HIGH), and a stale front entry that reversed a LIVE re-served
+  lane's mint before any redeem (MEDIUM, grief). Not a mint — the red-team's conservation fuzz
+  refuted the double-pay. Fix (`core/credit/delivery.go`, `credit.go`): `provOrder` becomes
+  `[]*provKey` with a companion `provIndex` position map; a redeem tombstones the lane's slot in O(1)
+  (no slice scan), eviction skips tombstones and pops the oldest live lane, and an amortized-O(1)
+  `compactProvOrder` caps the slice at `2*maxProvisional`. Conservation is untouched — no change to
+  what is minted or reversed, only WHEN/HOW the order-slice key is removed; the conserved-lane key
+  shape is unchanged, so the R0.4 conservation cert stays valid (the `provKey`-server shape change,
+  RT-DELIV-3, is routed separately as cert-gated). New gates `core/credit/delivery_provorder_test.go`
+  `TestProvOrderStaysBoundedAcrossRedeems` / `TestRedeemDoesNotLeaveDuplicateOrderEntry` (RED at
+  `9d50437`, GREEN after); `TestA4MoneyPumpConservation` and
+  `TestProvisionalCapIsBoundedAndDeterministic` stay GREEN. Design:
+  `docs/thinking/2026-09-01-provorder-desync-fix-design.md`.
+- **`provOrder` eviction front-drop desync — the cursor fix (Boulder 0, 2026-09-01;
+  conservation-shape-neutral):** the Tester's compaction fuzz
+  (`TestCompactionTombstoneFuzz/eviction-dominant`, seed `0xdeadbeef0002`) failed deterministically at
+  step 13154 (full ops, not `-short`). The eviction loop dropped the FIFO front by re-slicing
+  (`provOrder = provOrder[1:]`), which shifts every surviving entry down one physical position but
+  left `provIndex` holding the STALE positions. `removeFromProvOrder` then tombstoned the WRONG live
+  slot, compaction dropped a live lane's order entry, and a ghost index entry could reverse a live
+  re-served lane's self-mint (grief, not a mint). A real product defect the R0.4/R0.4a fixes left on
+  the eviction side — it fires only when the eviction loop runs repeatedly (poolSize > maxProvisional),
+  which the `-short` path never reaches. Fix (`core/credit/delivery.go`, `credit.go`): a logical head
+  cursor `provHead` replaces the front re-slice — eviction advances the cursor and nils the dropped
+  slot, so `provIndex` holds ABSOLUTE positions a front-drop never invalidates. Amortized O(1) per op,
+  no survivor-index rewrite (the RT-DELIV-1b stall is not reintroduced — the product path drives
+  100K/150K full ops in ~145 ms under `-race`); `compactProvOrder` resets the cursor on rebuild and
+  still caps the slice at `2*maxProvisional` (build-immutable #8). Conservation is untouched — no
+  change to `reverseProvisional`, the fee/skim arithmetic, the terminal-reversal sites, or the
+  `provKey` shape (RT-DELIV-3 stays separately cert-gated), so the R0.4 conservation cert holds. Also
+  fixed a harness gap the desync had masked: the fuzz's redeem-branch fallback-serve did not predict
+  its eviction, so `expectedTotal` under-counted — the identical prediction block from the other serve
+  branches was added (test-only, no product accounting change). All three fuzz scenarios GREEN at full
+  op counts; `TestA4MoneyPumpConservation` and the prior Boulder-0 gates stay GREEN. Ablation reddens
+  the fuzz at step 13154 again. Design:
+  `docs/thinking/2026-09-01-provorder-eviction-cursor-fix-design.md`.
 - **Docs/comment true-up (no logic change):** ROADMAP Rock 1 updated to the built recompute state
   (recompute reproduces the `apply()` transition set — E/R spine + classes S/B/T/A/P + class-M latch —
   guarded by the 28/28 write-obligation leaf-diff; the accept-flip is the single remaining step; the
