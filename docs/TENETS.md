@@ -133,12 +133,25 @@ field-defining claim is therefore:
 
 **Ruin comes from composition, not a lone primitive.** No single mechanism can
 *prevent* Sybils under free minting + no permanent center; the guarantee lives in
-the *system*. Each part denies one economy of scale a Sybil relies on, so every
-shortcut on one axis trips another axis's check, and forging standing becomes
-indistinguishable from honest provision. Sybil-resistance is therefore
-*re-pricing + concentration-bounding*, not prevention; the residual — an honest
-whale who genuinely provides that much — is *bounded*, not eliminated. The
-mechanism of the interlock, and which axes are wired at any moment, live in
+the *system*. Each part denies one economy of scale a Sybil relies on. The
+composition is *designed so that* every shortcut on one axis trips another axis's
+check, and forging standing *would become* indistinguishable from honest
+provision. Sybil-resistance is therefore *re-pricing + concentration-bounding*,
+not prevention; the composition faces permanent Douceur limits it can bound but
+never dissolve:
+
+- **The honest whale** — an actor who genuinely provides that much real,
+  non-substitutable work — is *bounded* by the concentration metric, not
+  eliminated.
+- **Bare age is pre-farmable** — standing cannot accrue from age alone; a bare
+  age gate is farmable ahead of time, so the only sound form of the time axis is
+  continuous re-proof, never an acquisition-time age credit.
+- **Wash is re-priced, not proven away** — a demand receipt can be made
+  unforgeable and fetcher-unlinkable, but *unlinkable is not authenticated*:
+  self-dealt demand is a Douceur limit, so the demand axis is priced by
+  *cost-to-wash*, never proven wash-free.
+
+The mechanism of the interlock, and which axes are wired at any moment, live in
 [`design/m0.md`](design/m0.md); those are build state, and build state does not
 belong in a tenet.
 
@@ -574,9 +587,13 @@ reviewed consensus.**
      and the decentralized path exists from day one. What is forbidden is a
      *standing* dependency on any node — not the honest admission that a young
      network leans on scaffolding while it matures. M0's Sybil soundness is
-     *conditional* on this maturation, bridged by a **shed metric** over
-     bond-distinct operators; the shed is a **one-way latch** that never re-arms,
-     so no later concentration can restore a standing dependency on the anchors.
+     *conditional* on this maturation: the composition is sound in the **mature
+     regime**, and the anchors scaffold the **young** one — the bet, stated
+     plainly, is that **maturity is reached before the scaffolding can be
+     captured.** That is a permanent structural race, true for every launch, not
+     a phase that ends. It is bridged by a **shed metric** over bond-distinct
+     operators; the shed is a **one-way latch** that never re-arms, so no later
+     concentration can restore a standing dependency on the anchors.
      The honest cost of "no permanent center" is a bounded, socially-recoverable
      re-centralization residual (the honest whale) — owned in
      [`design/m0.md`](design/m0.md), not a privileged party.
@@ -632,7 +649,8 @@ recorded in [`tenets-history.md`](tenets-history.md).
      adversary's own path can move — *latency proves proximity, never diligence.*
      A timing signal may ship as a **soft, disclosed** deterrent, but a **hard**
      security gate must be structural, and an unbuilt structure is an **owned,
-     named residual**, not a wall-clock stopgap.
+     named residual**, not a wall-clock stopgap. The owned residuals are written
+     down — **consult [`design/owned-residuals.md`](design/owned-residuals.md).**
   4. **Cheap honest participation is a security constraint, not a marketing
      feature.** No defense may raise the floor of honest participation. A
      mechanism that prices out the small operator — scaling a min-bond off a

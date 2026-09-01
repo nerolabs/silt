@@ -94,8 +94,30 @@ Each carries the **union** of its caveats (no hedge dropped to shorten):
   (consolidated) to `docs/tenets-history.md`; disciplines also in
   `build-process.md` / `network-durability.md` / `owned-residuals.md`. ✓
 
-**Nothing removed from TENETS.md was lost.** Every cut block is either already in a
-companion (confirmed by grep, cited above) or was moved into `tenets-history.md`.
+**Correction (fix-cycle, 2026-09-01).** The prior blanket claim here — "nothing
+removed from TENETS.md was lost" — was **FALSE**. A blind review found four
+principles that were **dropped, not relocated**: the maturation bet (the
+young-vs-mature regime split + the named race), and two permanent Douceur
+residuals (the pre-farmable bare-age limit and "wash is re-priced, not proven
+away"). These are *principles*, not mechanism or ship-status, so their home is
+`TENETS.md` itself — a companion pointer does not discharge them. They have been
+**RESTORED to TENETS.md** in this fix-cycle (see the fix-cycle table below), not
+relocated out. The corrected claim: **every block of mechanism / ship-status /
+history was relocated to a companion (confirmed by grep, cited above) or moved to
+`tenets-history.md`; every abstracted *principle* was kept in — and the four that
+were wrongly dropped are now restored.**
+
+---
+
+## Fix-cycle restorations (2026-09-01) — RESTORED to TENETS.md, not relocated out
+
+| # | Restored principle | Where in TENETS | Why it belongs in the tenet (not a companion) |
+|---|---|---|---|
+| R1 | **The maturation bet** — soundness holds in the **mature** regime, the anchors scaffold the **young** one, and the bet is that *maturity is reached before the scaffolding can be captured* (a permanent structural race, true for every launch). | Immutable #3 (Part IX). | It is the *conditional* under which M0's Sybil corner is sound — a principle the reader must see at the tenet, not a mechanism. Mechanism (latch name, super-quorum, metric numbers) stays in `design/m0.md`. |
+| R2 | **Sybil over-claim → design-target framing** — "the composition is *designed so that* … forging standing *would become* indistinguishable from honest provision," not an achieved Sybil-proof property. | Part 0 ("ruin comes from composition"). | A verb-class fix on a published-claim principle; reading it as achieved would over-state M0. The `≈ D today` ship-status stays in `design/m0.md`. |
+| R3 | **Pre-farmable bare-age residual** — standing cannot accrue from age alone; the only sound time axis is continuous re-proof. | Part 0 (the permanent-Douceur-limits list). | A permanent limit on what the composition can promise — a principle, stated with no issue number or mechanism. |
+| R4 | **Wash is re-priced, not proven away** — a demand receipt can be unforgeable + fetcher-unlinkable, but *unlinkable ≠ authenticated*; self-dealt demand is a Douceur limit, priced by cost-to-wash. | Part 0 (the permanent-Douceur-limits list). | Same class as R3 — a permanent demand-authenticity limit, stated as principle. |
+| R5 | **Build-immutable #3 companion pointer** to `design/owned-residuals.md`, for parity with #5/#6/#7/#8. | Build-immutable #3 (Part IX). | Not a lost principle — a lost *pointer*; #3 names an "owned, named residual" and now links its register, matching its siblings. |
 
 ---
 
@@ -112,3 +134,15 @@ companion (confirmed by grep, cited above) or was moved into `tenets-history.md`
 - New internal links added (`tenets-history.md`, `network-protection.md`,
   `design/m0.md`, `decisions.md`, `ROADMAP.md`) should be checked by
   `check_links.py` at ratification.
+- **CHANGELOG entry added (fix-cycle, 2026-09-01):** the "Docs" entry the prior
+  draft deferred is now in `CHANGELOG.md` under `## [Unreleased] → ### Docs`.
+  **`website/changelog.html` regen IS owed at ratification** — `CHANGELOG.md` is
+  the source and `scripts/gen_changelog.py` stamps `website/changelog.html` from
+  it. This draft does **not** run it (no side-effecting/generated-file writes in a
+  pending-ratification draft; the `website/*.html` are generated, never
+  hand-edited). Regen command to run at ratification:
+  `python3 scripts/gen_changelog.py`.
+- **Both `docs/TENETS.md` and `docs/tenets-history.md` are in the worktree draft
+  commit and merge together** — confirmed tracked in HEAD, and `TENETS.md` links
+  `tenets-history.md` in 3 places (foot pointer + build-immutables provenance +
+  register). Neither can merge without the other.
