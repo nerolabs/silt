@@ -1198,3 +1198,74 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
 - **Byzantine size-estimation under *adversarial* NodeID placement** — the CPR `O(n^{1−δ})`
   fault tolerance is proven for *random* placement; a stake-splitter's chosen NodeIDs
   degrade it by an amount the literature does not quantify (B1's flagged gap).
+
+---
+
+## D-A4-CONSERVATION — the A4 provisional-lane money-pump is closed; B3 conservation re-certified
+
+- **Status:** ✅ RATIFIED — 2026-09-01 (owner ratification; PR #686 merged). The A4
+  money-pump — an evicted-then-redeemed provisional delivery lane that kept the eager
+  self-mint AND took the conserved leg (the supersede reversal was skipped when the
+  provisional record was gone) — is closed on `main`. It was the only break exploitable
+  today (behind `-accept-delivery-receipts`; `-economy` default false), bond-gated so it
+  bought no consensus standing but broke the certified B3 conservation close and could fund
+  spam/publish at scale.
+- **What shipped:** **(b)-minimal** — a shared `reverseProvisional` claws back the eager
+  self-mint at eviction (one delivery, one payment), with the server identity now stored on
+  the provisional so eviction reverses the exact credited account. Alongside it,
+  `provOrder`/`provIndex` FIFO-order integrity landed (a blind red-team pass and a compaction
+  fuzz each found and closed a desync).
+- **Cert:** **R0.4 CERTIFIED** — conservation
+  (`Σ balances + Σ escrow == grant + legitimate transfers`) holds across all three terminal
+  lane states (never-redeemed, in-window-redeemed, evicted-then-redeemed); no new money pump;
+  neither firewall (γ→1/N, standing) re-opened. Basis:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/A4-provisional-eviction-conservation-RESEARCH-CERTIFICATION-2026-09-01.md`.
+  This cert supersedes, on the eviction axis, the prior B3 close cert
+  (`PoD-neutral-lane-B3-close-RESEARCH-CERTIFICATION-2026-08-26.md`), which did not model
+  bounded-map eviction.
+- **Direction on (b):** (b)-minimal-now / (b)-full-later is CERTIFIED sound. (b)-minimal is a
+  complete, conservation-correct close on its own; (b)-full (receipt-expiry) is an optional
+  deeper simplification, not a soundness dependency.
+- **R0.4b — receipt-expiry (full (b)-prunable) PARKED, evidence-gated.** Re-open when the
+  unwitnessed-bilateral under-pay tail bites (>8192 un-redeemed lanes on one node), and only
+  after two owner calls: (1) the **privacy-safe shape** — epoch-granular / serial-indexed,
+  NEVER a wall-clock `NotAfter` (which adds a timing quasi-identifier on the D3/H8 channel);
+  (2) a **TTL-bounds measurement** (the honest-pony redemption-latency tail at the
+  >8192-lane regime is unmeasured; no value may be pinned at desk). It is a **separate**
+  certification unit (new receipt-lifetime rule + unlinkability interaction + new floor-box
+  state bound + credit-layer eviction wiring), not folded into R0.4. Scoping cert:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4-receipt-expiry-scoping-RESEARCH-CERTIFICATION-2026-09-01.md`.
+- **Open residual — RT-DELIV-3:** the delivery-credit `provKey` omits the server, a latent
+  conservation break reachable only in the shared-ledger *sim* (not per-node prod). The
+  next-session decision: fix now (add the server to `provKey`, which changes the conserved-lane
+  key shape → **re-opens this R0.4 cert**) vs track as a sim-only residual.
+
+## D-FLOORBOX-WITNESS-SOUNDNESS — Resolve-anchoring is the correct direction; fold-equality is NOT a universal backstop
+
+- **Status:** ✅ RATIFIED — 2026-09-01 (owner ratification). Two linked research verdicts on
+  the floor-box witness-soundness spine (Boulder 1), certified together:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/floorbox-R1.3-refutation-R1.4-witness-soundness-RESEARCH-CERTIFICATION-2026-09-01.md`.
+- **R1.3 — REFUTED (certs withdrawn).** The 2026-08-31 class-A / class-P / class-B directional
+  certs are **WITHDRAWN**. They rested on the premise that fold-equality
+  (`postRoot == StateRoot`) is a universal backstop that catches a forged witness value. That
+  premise is FALSE: classes P/A/B read witness VALUES and PREDICATES as fold NewValues or
+  branch decisions without resolving them against `prevStateRoot`, and an attacker who forges a
+  block controls the committed root too, so `postRoot == StateRoot` holds by construction. The
+  withdrawn certs are
+  `floorbox-recompute-classA-classP-wholeset-RESEARCH-CERTIFICATION-2026-08-31.md` and
+  `floorbox-Rboundary-writeset-digest-reconstruction-RESEARCH-CERTIFICATION-2026-08-31.md`.
+  **Correct direction:** every untrusted witness read must be `Resolve`d (present or absent)
+  against `prevStateRoot` — the one root the attacker does NOT control — before it is trusted,
+  and **NoWitness must stall** (never fall through to a false/absent read).
+- **R1.4 — CERTIFIED (recompute soundness, as a NEVER-ACCEPT increment).** At the fixed
+  artifact every untrusted predicate/value read in classes P/A/B and the class-A screen is
+  Resolve-anchored against `prevStateRoot`; the whole-set digest pre-sets are fold-anchored; the
+  23-field carrier table is complete by reflection with teeth; and each of the 10 per-field
+  anchors plus the cross-class class-M poisoning path has a driven adversarial-committed-root
+  gate that wrong-accepts if its anchor is dropped. The box still **never-Accepts**. This
+  merged as a standalone never-Accept increment.
+- **Scope boundary — this is NOT the accept-flip.** R1.4 certifies recompute soundness only; it
+  is the flip's PRECONDITION, not its grant. The accept-flip (R1.8, a consensus-rule change, I1)
+  additionally requires: **R-membership** (OPEN — a set-size bound on qualified / `validatorsSeen`);
+  the **EXTERNAL B8 red-team pass** (owner-ratified HARD precondition); the **#535
+  recovery-boundary decision**; and the **legacy-mode invariant**.
