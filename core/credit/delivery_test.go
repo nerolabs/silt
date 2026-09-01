@@ -244,7 +244,7 @@ func TestPaidBountyIsNotRecoverableByEviction(t *testing.T) {
 		floodObj := ports.HashBytes([]byte{byte(i), byte(i >> 8), byte(i >> 16)})
 		l.RecordServeToObject(server, req, floodObj, chunk, 8)
 	}
-	if _, present := l.provisional[provKey{requester: first, root: obj}]; present {
+	if _, present := l.provisional[provKey{server: server, requester: first, root: obj}]; present {
 		t.Fatal("lane 0 was not evicted — flood did not push it out")
 	}
 
@@ -292,7 +292,7 @@ func TestProvisionalCapIsBoundedAndDeterministic(t *testing.T) {
 		t.Fatalf("provisional map grew to %d, cap is %d — unbounded state on the floor box", got, maxProvisional)
 	}
 	// FIFO determinism: lane 0 is the evicted one, not some other lane.
-	if _, present := l.provisional[provKey{requester: first, root: obj}]; present {
+	if _, present := l.provisional[provKey{server: server, requester: first, root: obj}]; present {
 		t.Fatal("lane 0 was not FIFO-evicted — eviction order is non-deterministic")
 	}
 

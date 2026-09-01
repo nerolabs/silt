@@ -64,6 +64,24 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   gate-4 unfiled-measurement scar with a citable number instead of an estimate.
 
 ### Fixed
+- **RT-DELIV-3 — delivery-credit `provKey` now includes the server identity (Boulder 0 residual;
+  economic-mechanism change, B3 conservation — Researcher re-cert pending):** the provisional
+  delivery-lane key was `{requester, root}`, omitting the server. In per-node prod each ledger has a
+  single server (`server = n.id`), so the lane is uniquely identified and the shape is effectively
+  unchanged. But the shared-ledger SIM routes every operator's serves into ONE `Ledger`; there, two
+  distinct servers serving the SAME object to the SAME fetcher collided on one lane. The second
+  serve's `trackProvisional` found the first server's lane and folded its `net + skim` into it, leaving
+  the lane's stored server as the FIRST server. The terminal reversal (redeem or FIFO eviction) then
+  reversed the COMBINED mint against the WRONG account — a conservation break that reverses or pays the
+  wrong server and drifts `Σbalances + Σescrow` from the initial grant. Fix (`core/credit/delivery.go`):
+  add `server` to `provKey` (mirroring how `provisionalServe` already stores the server from the R0.3
+  A4 fix), so each `(server, requester, root)` gets its own lane and every reversal debits the exact
+  account credited. New gate `core/credit/money_pump_test.go` `TestA4SharedLedgerServerCollisionConservation`
+  drives ≥2 distinct servers into one shared ledger (serve→ChargePublish→redeem) and pins the
+  closed-system invariant `Σbalances + Σescrow == initial grant + legitimate self-mints` against a total
+  computed independently from the operations (RED at `delta=−1024` before, GREEN after). No prod behavior
+  change (one server per ledger keeps the key constant); the fuzz/order tests were updated to the new key
+  shape only.
 - **A4 provisional-eviction money-pump — close the double-pay at FIFO eviction (Boulder 0, R0.4a;
   economic-mechanism change, B3 conservation — Researcher re-cert pending):** an object-aware serve
   eagerly self-mints `bytes − skim` to the server and routes `skim` to the object's escrow, tracking
