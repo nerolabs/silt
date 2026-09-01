@@ -780,3 +780,987 @@ func TestAdversarialRoot_ClassM_PoisonedBySpuriousAtt(t *testing.T) {
 		"  to prevent the spurious validatorsSeen||id ADD that feeds this wrong-latch.",
 		forgedRoot, prevRoot, thirdID[:4], c.bonded[thirdID], era4MinBond)
 }
+
+// =============================================================================
+// PART 3 — R1.1 REMAINING ADVERSARIAL-COMMITTED-ROOT GATES
+// =============================================================================
+//
+// These 8 gates complete the Tier-A adversarial-committed-root coverage.
+// Each gate:
+//   1. Builds a fixture where the forged field is meaningful (affects the recompute output).
+//   2. Forges the field value in the witness.
+//   3. Calls adversarialCommittedRoot → gets forgedRoot (same code path as the box).
+//   4. Asserts forgedRoot != honestRoot (forge is real, not vacuous).
+//   5. Asserts Recompute(prev, forgedRoot, b, forgedWit) == nil (wrong-accept = RED on main).
+//   nil = wrong-accept = RED gate = the gap is real. After R1.2 each gate must return non-nil.
+
+// =============================================================================
+// CLASS P — RegVersion
+// =============================================================================
+//
+// TestAdversarialRoot_ClassP_ForgedRegVersion — adversarial-committed-root gate for
+// StateRootRotateMember.RegVersion.
+//
+// Attack: forge a frozen member's RegVersion from 5→4. The era-4 tally now fails (the forged member
+// no longer counts toward ready-for-threshold-5). The box omits era4LockedIn/era4Height ops from its
+// fold → forgedRoot lacks those scalars. The attacker commits this root; the box wrong-accepts.
+//
+// The existing ablation TestRecomputeStateRootRotateAblationLiveTallyForgedRegVersion proves the
+// honest-root path stalls (mismatch). This gate proves the ADVERSARIAL-ROOT path wrong-accepts (nil).
+// Both are needed: the ablation confirms the field matters; this gate confirms it is attackable.
+//
+// Gate is RED on main (nil = wrong-accept). After R1.2 this gate must return non-nil.
+func TestAdversarialRoot_ClassP_ForgedRegVersion(t *testing.T) {
+	cfg := Config{Quorum: 1, MinBond: era4MinBond, MinBondBytes: era4MinBond, ByzantineQuorum: true,
+		EpochBlocks: 2, MatureValidators: 0, BondTTLBlocks: 0}
+	c := New(cfg, func(ports.NodeID) int64 { return 0 })
+	c.SetBondVerifier(objectiveVerify)
+
+	// small: rv=4, below era-4 threshold (needs rv>=5). big: rv=5, dominant weight.
+	small := key(77001)
+	big := key(77002)
+
+	g := &Block{Version: BlockVersionWitnessable, Height: 0}
+	g.BondRegs = append(g.BondRegs,
+		bondRegFull(small, ports.HashBytes(pubOf(small)), 2<<20, ports.Hash{}, 4, 1),
+	)
+	Sign(g, small)
+	c.apply(*g)
+	if c.era4LockedIn {
+		t.Fatalf("fixture: era4 must be UNLOCKED at genesis (single rv=4 member)")
+	}
+
+	// h=1: add big (rv=5, dominant weight) so the era-4 tally fires at the h=2 boundary.
+	prev1, _ := c.Head()
+	b1 := Block{Version: BlockVersionWitnessable, Height: 1, Prev: prev1}
+	b1.BondRegs = append(b1.BondRegs, bondRegFull(big, ports.HashBytes(pubOf(big)), 16<<20, ports.Hash{}, 5, 2))
+	Sign(&b1, small)
+	c.apply(b1)
+
+	// Confirm honest apply() locks era-4 at h=2.
+	prev2, h2 := c.Head()
+	rb := Block{Version: BlockVersionWitnessable, Height: h2, Prev: prev2, Entries: []ports.Entry{entry(99)}}
+	Sign(&rb, small)
+	sanity := c.cloneForDryRun()
+	sanity.apply(rb)
+	if !sanity.era4LockedIn {
+		t.Fatalf("fixture: era4 must lock at h=2 boundary in honest apply()")
+	}
+	if c.era4LockedIn {
+		t.Fatalf("fixture: era4 must NOT be locked pre-state")
+	}
+
+	// Build rotateFixture manually (same pattern as existing Ablation 3b).
+	f := rotateFixture{c: c, proposer: small}
+	leaves := c.stateRootLeavesV5()
+	prover, err := statehash.NewProver(leaves)
+	if err != nil {
+		t.Fatalf("NewProver: %v", err)
+	}
+	f.prover = prover
+	f.prevRoot = prover.Root()
+
+	honestCommitted, err := sanity.StateRootForVersion(BlockVersionWitnessable)
+	if err != nil {
+		t.Fatalf("StateRootForVersion: %v", err)
+	}
+	w := f.witnessForBoundary(t, rb)
+
+	// Baseline: honest witness agrees with apply().
+	if checkErr := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, honestCommitted, rb, w); checkErr != nil {
+		t.Fatalf("honest boundary witness must agree with apply(): %v", checkErr)
+	}
+
+	// FORGE: big's RegVersion 5→4. Era-4 tally fails → forgedRoot lacks era4LockedIn/era4Height.
+	bigID := ports.HashBytes(pubOf(big))
+	originalRV := uint8(0)
+	for i := range w.Rotate.Members {
+		if w.Rotate.Members[i].ID == bigID {
+			originalRV = w.Rotate.Members[i].RegVersion
+			w.Rotate.Members[i].RegVersion = 4
+			break
+		}
+	}
+	if originalRV != 5 {
+		t.Fatalf("fixture: big must have rv=5 pre-forge (got rv=%d)", originalRV)
+	}
+
+	forgedRoot, honestRoot := adversarialCommittedRoot(t, f.c, f.prevRoot, honestCommitted, rb, w)
+
+	if forgedRoot == honestRoot {
+		t.Fatalf("GATE VACUOUS: forgedRoot == honestRoot after forging big rv 5→4.\n"+
+			"  Expected forgedRoot to lack era4LockedIn/era4Height scalars.\n"+
+			"  era4LockedIn pre-state=%v", c.era4LockedIn)
+	}
+
+	// RED gate: wrong-accept on main.
+	err = f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, forgedRoot, rb, w)
+	if err != nil {
+		t.Fatalf("GATE MISFIRED (ForgedRegVersion): Recompute stalled against forgedRoot.\n"+
+			"  Expected nil (wrong-accept = RED gate on main). Got: %v\n"+
+			"  forgedRoot=%x honestRoot=%x bigID=%x forgedRV=4 originalRV=%d",
+			err, forgedRoot, honestRoot, bigID[:4], originalRV)
+	}
+	t.Logf("GATE RED (confirmed): RegVersion forgeable on main (adversarial-root path).\n"+
+		"  forgedRoot=%x\n  honestRoot=%x\n  bigID=%x rv forged %d→4\n"+
+		"  forgedRoot lacks era4LockedIn/era4Height scalars that honestRoot carries.\n"+
+		"  R1.2 must anchor RegVersion via Shape V to close this gate.",
+		forgedRoot, honestRoot, bigID[:4], originalRV)
+}
+
+// =============================================================================
+// CLASS P — RegVersionKnown
+// =============================================================================
+//
+// TestAdversarialRoot_ClassP_ForgedRegVersionKnown — adversarial-committed-root gate for
+// StateRootRotateMember.RegVersionKnown.
+//
+// Attack: forge a frozen member's RegVersionKnown from true→false. The box no longer adds the
+// member to regVersionByID, so regVersionByID[id] defaults to 0 (below threshold 5). The era-4 tally
+// fails → forgedRoot lacks era4LockedIn/era4Height scalars → wrong-accept.
+//
+// Same fixture as ForgedRegVersion. The forge is a different field (RegVersionKnown, not RegVersion),
+// but the effect on the tally is identical: the member stops counting toward the ready weight.
+//
+// Gate is RED on main (nil = wrong-accept). After R1.2 this gate must return non-nil.
+func TestAdversarialRoot_ClassP_ForgedRegVersionKnown(t *testing.T) {
+	cfg := Config{Quorum: 1, MinBond: era4MinBond, MinBondBytes: era4MinBond, ByzantineQuorum: true,
+		EpochBlocks: 2, MatureValidators: 0, BondTTLBlocks: 0}
+	c := New(cfg, func(ports.NodeID) int64 { return 0 })
+	c.SetBondVerifier(objectiveVerify)
+
+	small := key(77101)
+	big := key(77102)
+
+	g := &Block{Version: BlockVersionWitnessable, Height: 0}
+	g.BondRegs = append(g.BondRegs,
+		bondRegFull(small, ports.HashBytes(pubOf(small)), 2<<20, ports.Hash{}, 4, 1),
+	)
+	Sign(g, small)
+	c.apply(*g)
+
+	prev1, _ := c.Head()
+	b1 := Block{Version: BlockVersionWitnessable, Height: 1, Prev: prev1}
+	b1.BondRegs = append(b1.BondRegs, bondRegFull(big, ports.HashBytes(pubOf(big)), 16<<20, ports.Hash{}, 5, 2))
+	Sign(&b1, small)
+	c.apply(b1)
+
+	prev2, h2 := c.Head()
+	rb := Block{Version: BlockVersionWitnessable, Height: h2, Prev: prev2, Entries: []ports.Entry{entry(99)}}
+	Sign(&rb, small)
+	sanity := c.cloneForDryRun()
+	sanity.apply(rb)
+	if !sanity.era4LockedIn {
+		t.Fatalf("fixture: era4 must lock at h=2 boundary")
+	}
+	if c.era4LockedIn {
+		t.Fatalf("fixture: era4 must NOT be locked pre-state")
+	}
+
+	f := rotateFixture{c: c, proposer: small}
+	leaves := c.stateRootLeavesV5()
+	prover, err := statehash.NewProver(leaves)
+	if err != nil {
+		t.Fatalf("NewProver: %v", err)
+	}
+	f.prover = prover
+	f.prevRoot = prover.Root()
+
+	honestCommitted, err := sanity.StateRootForVersion(BlockVersionWitnessable)
+	if err != nil {
+		t.Fatalf("StateRootForVersion: %v", err)
+	}
+	w := f.witnessForBoundary(t, rb)
+
+	if checkErr := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, honestCommitted, rb, w); checkErr != nil {
+		t.Fatalf("honest boundary witness must agree with apply(): %v", checkErr)
+	}
+
+	// FORGE: big's RegVersionKnown true→false.
+	// Effect: regVersionByID[bigID] is never set → defaults to 0 → below era-4 threshold 5 → tally fails.
+	bigID := ports.HashBytes(pubOf(big))
+	originalKnown := false
+	for i := range w.Rotate.Members {
+		if w.Rotate.Members[i].ID == bigID {
+			originalKnown = w.Rotate.Members[i].RegVersionKnown
+			w.Rotate.Members[i].RegVersionKnown = false
+			w.Rotate.Members[i].RegVersion = 0
+			break
+		}
+	}
+	if !originalKnown {
+		t.Fatalf("fixture: big must have RegVersionKnown=true pre-forge (regVersion=5 leaf exists)")
+	}
+
+	forgedRoot, honestRoot := adversarialCommittedRoot(t, f.c, f.prevRoot, honestCommitted, rb, w)
+
+	if forgedRoot == honestRoot {
+		t.Fatalf("GATE VACUOUS: forgedRoot == honestRoot after forging big RegVersionKnown true→false.\n"+
+			"  era4LockedIn pre=%v", c.era4LockedIn)
+	}
+
+	err = f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, forgedRoot, rb, w)
+	if err != nil {
+		t.Fatalf("GATE MISFIRED (ForgedRegVersionKnown): Recompute stalled against forgedRoot.\n"+
+			"  Expected nil (wrong-accept = RED gate on main). Got: %v\n"+
+			"  forgedRoot=%x honestRoot=%x bigID=%x",
+			err, forgedRoot, honestRoot, bigID[:4])
+	}
+	t.Logf("GATE RED (confirmed): RegVersionKnown forgeable on main (adversarial-root path).\n"+
+		"  forgedRoot=%x\n  honestRoot=%x\n  bigID=%x RegVersionKnown forged true→false\n"+
+		"  forgedRoot lacks era4LockedIn/era4Height scalars that honestRoot carries.\n"+
+		"  R1.2 must anchor RegVersionKnown via Shape V to close this gate.",
+		forgedRoot, honestRoot, bigID[:4])
+}
+
+// =============================================================================
+// CLASS A — Slashed
+// =============================================================================
+//
+// TestAdversarialRoot_ClassA_ForgedSlashed — adversarial-committed-root gate for
+// StateRootAttScreen.Slashed.
+//
+// Attack: a truly-slashed attester has Slashed forged to false. attesterQualifiedFromScreen returns
+// true (F2 gate bypassed). A spurious validatorsSeen||id ADD is emitted. The attacker commits the
+// inflated validatorsSeenRoot → wrong-accept.
+//
+// Fixture: a slashed attester exists pre-state (applied via an equivocation proof). The test block
+// carries an att from the culprit. Honest apply() skips it (slashed). Gate forges Slashed=false →
+// box seats the culprit → inflated seen set → forgedRoot != honestRoot → nil (wrong-accept).
+//
+// Gate is RED on main (nil = wrong-accept). After R1.2 this gate must return non-nil.
+func TestAdversarialRoot_ClassA_ForgedSlashed(t *testing.T) {
+	// EpochBlocks=0: epochsEnabled()=false → pre-maturity A-qualification path always active.
+	// MatureValidators=0: Mature()=true always → everMature=true post-genesis → latchedMaturityWitness works (no SeenSet).
+	cfg := Config{Quorum: 1, MinBond: era4MinBond, ByzantineQuorum: true,
+		EpochBlocks: 0, MatureValidators: 0, BondTTLBlocks: 0}
+	c := New(cfg, func(ports.NodeID) int64 { return 0 })
+	c.SetBondVerifier(objectiveVerify)
+
+	prop := key(78001)
+	culprit := key(78002)
+
+	g := &Block{Version: BlockVersionWitnessable, Height: 0}
+	g.BondRegs = append(g.BondRegs,
+		bondRegFull(prop, ports.HashBytes(pubOf(prop)), 8<<20, ports.Hash{}, 5, 1),
+		bondRegFull(culprit, ports.HashBytes(pubOf(culprit)), 4<<20, ports.Hash{}, 5, 2),
+	)
+	Sign(g, prop)
+	c.apply(*g)
+	culpritID := ports.HashBytes(pubOf(culprit))
+
+	if !c.everMature {
+		t.Fatalf("fixture: everMature must be true post-genesis (MatureValidators=0)")
+	}
+
+	// Slash culprit at h=1.
+	prev1, h1 := c.Head()
+	bSlash := Block{Version: BlockVersionWitnessable, Height: h1, Prev: prev1,
+		Slashes: []Equivocation{slashProof(culprit, prev1, 0x41, 0x42)}}
+	Sign(&bSlash, prop)
+	c.apply(bSlash)
+	if !c.slashed[culpritID] {
+		t.Fatalf("fixture: culprit must be slashed after the slash block")
+	}
+	if c.validatorsSeen[culpritID] {
+		t.Fatalf("fixture: culprit must NOT be in validatorsSeen")
+	}
+
+	// Pre-state at h=2: culprit is slashed, everMature=true, validatorsSeen empty.
+	leaves := c.stateRootLeavesV5()
+	prover, err := statehash.NewProver(leaves)
+	if err != nil {
+		t.Fatalf("NewProver: %v", err)
+	}
+	prevRoot := prover.Root()
+	sr, err := c.StateRootForVersion(BlockVersionWitnessable)
+	if err != nil {
+		t.Fatalf("StateRootForVersion: %v", err)
+	}
+	if sr != prevRoot {
+		t.Fatalf("pre-root mismatch")
+	}
+	preValue := func(k []byte) []byte {
+		for _, lf := range leaves {
+			if string(lf.Key) == string(k) {
+				return lf.Value
+			}
+		}
+		return nil
+	}
+
+	// Test block: culprit attests at h=2. Honest apply() skips culprit (slashed).
+	prev2, h2 := c.Head()
+	bTest := Block{Version: BlockVersionWitnessable, Height: h2, Prev: prev2, Entries: []ports.Entry{entry(77)}}
+	bTest.Atts = append(bTest.Atts, Attest(&bTest, culprit))
+	Sign(&bTest, prop)
+
+	clone := c.cloneForDryRun()
+	clone.apply(bTest)
+	honestCommitted, err := clone.StateRootForVersion(BlockVersionWitnessable)
+	if err != nil {
+		t.Fatalf("honestCommitted: %v", err)
+	}
+	if clone.validatorsSeen[culpritID] {
+		t.Fatalf("fixture: culprit must NOT be in validatorsSeen after honest apply (slashed)")
+	}
+
+	preSeen := map[ports.NodeID]struct{}{}
+	for id := range c.validatorsSeen {
+		preSeen[id] = struct{}{}
+	}
+	preSeenIDs := sortIDs(func() []ports.NodeID {
+		var out []ports.NodeID
+		for id := range c.validatorsSeen {
+			out = append(out, id)
+		}
+		return out
+	}())
+	leafWit := func(k []byte) StateRootChangedLeafWitness {
+		old := preValue(k)
+		wit, pErr := prover.Prove(k)
+		if pErr != nil {
+			t.Fatalf("Prove(%x): %v", k, pErr)
+		}
+		return StateRootChangedLeafWitness{Key: k, OldValue: old, Proof: wit}
+	}
+	seenRootKey := statehash.Key(tagValidatorsSeenRoot, nil)
+	seenRootWit, pErr := prover.Prove(seenRootKey)
+	if pErr != nil {
+		t.Fatalf("Prove(validatorsSeenRoot): %v", pErr)
+	}
+
+	// epochsEnabled()=false (EpochBlocks=0) → pre-maturity A-qualification: (BondedPresent && BondedSize >= MinBond) || launchAnchor.
+	// Honest: Slashed=true → F2 gate → false (BondedSize/BondedPresent irrelevant for F2).
+	// NOTE: slashing removes culprit from bonded map (chain.go:3288), so c.bonded[culpritID]=0.
+	// The honest screen reflects the real post-slash state: not bonded.
+	honestScreen := StateRootAttScreen{
+		Attester: culpritID, Slashed: true, InEpochSet: false,
+		BondedSize: 0, BondedPresent: false,
+	}
+	var w StateRootWitness
+	for _, wr := range applyEntriesRevocationsWriteSet(bTest) {
+		w.ChangedLeaves = append(w.ChangedLeaves, leafWit(wr.key))
+	}
+	w.AttScreens = []StateRootAttScreen{honestScreen}
+	w.DigestPreSets = []StateRootDigestWitness{{Tag: tagValidatorsSeenRoot, PreIDs: preSeenIDs, Proof: seenRootWit}}
+	// everMature=true post-genesis → latchedMaturityWitness gives preEverMature=true → no SeenSet needed.
+	w.Maturity = latchedMaturityWitness(t, prover, preValue)
+
+	if checkErr := c.RecomputeStateRootEntriesRevocations(prevRoot, honestCommitted, bTest, w); checkErr != nil {
+		t.Fatalf("honest witness (Slashed=true) must agree with apply(): %v", checkErr)
+	}
+
+	// FORGE: Slashed=false + BondedPresent=true + BondedSize=MinBond.
+	// The attacker claims culprit is not slashed AND is bonded at MinBond.
+	// Pre-maturity path: (true && MinBond >= MinBond) = true → spurious validatorsSeen ADD.
+	// NOTE: slashing deleted the bonded leaf; the attacker forges its presence (forged non-membership
+	// proof for validatorsSeen||culpritID is still valid — that leaf IS absent in prevRoot).
+	forgedScreen := StateRootAttScreen{
+		Attester: culpritID, Slashed: false, InEpochSet: false,
+		BondedSize: era4MinBond, BondedPresent: true, // forged: claim culprit is bonded at MinBond
+	}
+
+	// Derive the forged A write-set (spurious ADD for culprit).
+	forgedScreensMap := map[ports.NodeID]StateRootAttScreen{culpritID: forgedScreen}
+	forgedAWrites, _, forgedAErr := c.stateRootAttWriteSet(bTest, preSeen, forgedScreensMap)
+	if forgedAErr != nil {
+		t.Fatalf("forged stateRootAttWriteSet: %v", forgedAErr)
+	}
+	if len(forgedAWrites) == 0 {
+		t.Fatalf("GATE CONSTRUCTION: forged Slashed=false + BondedSize>=MinBond must produce a validatorsSeen ADD")
+	}
+
+	// Build forged witness: E/R leaves + forged A leaves (absent pre-state, non-membership proof).
+	var forgedW StateRootWitness
+	for _, wr := range applyEntriesRevocationsWriteSet(bTest) {
+		forgedW.ChangedLeaves = append(forgedW.ChangedLeaves, leafWit(wr.key))
+	}
+	for _, wr := range forgedAWrites {
+		forgedW.ChangedLeaves = append(forgedW.ChangedLeaves, leafWit(wr.key))
+	}
+	forgedW.AttScreens = []StateRootAttScreen{forgedScreen}
+	forgedW.DigestPreSets = []StateRootDigestWitness{{Tag: tagValidatorsSeenRoot, PreIDs: preSeenIDs, Proof: seenRootWit}}
+	forgedW.Maturity = w.Maturity
+
+	forgedRoot, honestRoot := adversarialCommittedRoot(t, c, prevRoot, honestCommitted, bTest, forgedW)
+
+	if forgedRoot == honestRoot {
+		t.Fatalf("GATE VACUOUS: forgedRoot == honestRoot after forging Slashed true→false.\n"+
+			"  culpritID=%x (bond deleted by slash; forged BondedPresent=true BondedSize=MinBond)", culpritID[:4])
+	}
+
+	err = c.RecomputeStateRootEntriesRevocations(prevRoot, forgedRoot, bTest, forgedW)
+	if err != nil {
+		t.Fatalf("GATE MISFIRED (ForgedSlashed): Recompute stalled against forgedRoot.\n"+
+			"  Expected nil (wrong-accept = RED gate on main). Got: %v\n"+
+			"  forgedRoot=%x honestRoot=%x culpritID=%x",
+			err, forgedRoot, honestRoot, culpritID[:4])
+	}
+	t.Logf("GATE RED (confirmed): Slashed forgeable on main (adversarial-root path).\n"+
+		"  forgedRoot=%x\n  honestRoot=%x\n  culpritID=%x Slashed forged true→false\n"+
+		"  F2 gate bypassed; culprit spuriously seated into validatorsSeen.\n"+
+		"  R1.2 must anchor Slashed via Shape S (slashedRoot anchoredPreSet) to close this gate.",
+		forgedRoot, honestRoot, culpritID[:4])
+}
+
+// =============================================================================
+// CLASS A — BondedSize
+// =============================================================================
+//
+// TestAdversarialRoot_ClassA_ForgedBondedSize — adversarial-committed-root gate for
+// StateRootAttScreen.BondedSize.
+//
+// Attack: an attester bonded BELOW MinBond has BondedSize forged to >= MinBond. The pre-maturity
+// qualification predicate (sc.BondedPresent && sc.BondedSize >= MinBond) flips true → spurious
+// validatorsSeen ADD → inflated validatorsSeenRoot → wrong-accept.
+//
+// Fixture: MatureValidators=0 (everMature=true after genesis → latchedMaturityWitness works, no SeenSet
+// needed), EpochBlocks=0 (epochsEnabled()=false → pre-maturity A-qualification path always active).
+// One attester bonded below MinBond. Test block has that attester attest. Honest: excluded. Forged:
+// BondedSize raised to MinBond → included.
+//
+// Gate is RED on main (nil = wrong-accept). After R1.2 this gate must return non-nil.
+func TestAdversarialRoot_ClassA_ForgedBondedSize(t *testing.T) {
+	// EpochBlocks=0: no epochs → epochsEnabled()=false → pre-maturity path always.
+	// MatureValidators=0: Mature()=true always → everMature=true after genesis → latchedMaturityWitness ok.
+	cfg := Config{Quorum: 1, MinBond: era4MinBond, ByzantineQuorum: true,
+		EpochBlocks: 0, MatureValidators: 0, BondTTLBlocks: 0}
+	c := New(cfg, func(ports.NodeID) int64 { return 0 })
+	c.SetBondVerifier(objectiveVerify)
+
+	prop := key(78101)
+	underBonded := key(78102)
+	underBondedID := ports.HashBytes(pubOf(underBonded))
+	smallBond := era4MinBond - 1 // just below MinBond
+
+	g := &Block{Version: BlockVersionWitnessable, Height: 0}
+	g.BondRegs = append(g.BondRegs,
+		bondRegFull(prop, ports.HashBytes(pubOf(prop)), 8<<20, ports.Hash{}, 5, 1),
+		bondRegFull(underBonded, ports.HashBytes(pubOf(underBonded)), smallBond, ports.Hash{}, 5, 2),
+	)
+	Sign(g, prop)
+	c.apply(*g)
+
+	if !c.everMature {
+		t.Fatalf("fixture: everMature must be true post-genesis (MatureValidators=0)")
+	}
+	ubBonded, ubPresent := c.bonded[underBondedID]
+	if !ubPresent {
+		t.Fatalf("fixture: underBonded must be in bonded map")
+	}
+	if ubBonded >= era4MinBond {
+		t.Fatalf("fixture: underBonded must be BELOW MinBond (size=%d >= MinBond=%d)", ubBonded, era4MinBond)
+	}
+
+	// Pre-state at h=1.
+	leaves := c.stateRootLeavesV5()
+	prover, err := statehash.NewProver(leaves)
+	if err != nil {
+		t.Fatalf("NewProver: %v", err)
+	}
+	prevRoot := prover.Root()
+	sr, err := c.StateRootForVersion(BlockVersionWitnessable)
+	if err != nil {
+		t.Fatalf("StateRootForVersion: %v", err)
+	}
+	if sr != prevRoot {
+		t.Fatalf("pre-root mismatch")
+	}
+	preValue := func(k []byte) []byte {
+		for _, lf := range leaves {
+			if string(lf.Key) == string(k) {
+				return lf.Value
+			}
+		}
+		return nil
+	}
+
+	// Test block: underBonded attests. Honest: excluded (BondedSize < MinBond).
+	prev, h := c.Head()
+	bTest := Block{Version: BlockVersionWitnessable, Height: h, Prev: prev, Entries: []ports.Entry{entry(66)}}
+	bTest.Atts = append(bTest.Atts, Attest(&bTest, underBonded))
+	Sign(&bTest, prop)
+
+	clone := c.cloneForDryRun()
+	clone.apply(bTest)
+	honestCommitted, err := clone.StateRootForVersion(BlockVersionWitnessable)
+	if err != nil {
+		t.Fatalf("honestCommitted: %v", err)
+	}
+	if clone.validatorsSeen[underBondedID] {
+		t.Fatalf("fixture: underBonded must NOT be in validatorsSeen after honest apply (BondedSize < MinBond)")
+	}
+
+	preSeen := map[ports.NodeID]struct{}{}
+	for id := range c.validatorsSeen {
+		preSeen[id] = struct{}{}
+	}
+	preSeenIDs := sortIDs(func() []ports.NodeID {
+		var out []ports.NodeID
+		for id := range c.validatorsSeen {
+			out = append(out, id)
+		}
+		return out
+	}())
+	leafWit := func(k []byte) StateRootChangedLeafWitness {
+		old := preValue(k)
+		wit, pErr := prover.Prove(k)
+		if pErr != nil {
+			t.Fatalf("Prove(%x): %v", k, pErr)
+		}
+		return StateRootChangedLeafWitness{Key: k, OldValue: old, Proof: wit}
+	}
+	seenRootKey := statehash.Key(tagValidatorsSeenRoot, nil)
+	seenRootWit, pErr := prover.Prove(seenRootKey)
+	if pErr != nil {
+		t.Fatalf("Prove(validatorsSeenRoot): %v", pErr)
+	}
+
+	honestScreen := StateRootAttScreen{
+		Attester: underBondedID, Slashed: false, InEpochSet: false,
+		BondedSize: ubBonded, BondedPresent: true,
+	}
+	var w StateRootWitness
+	for _, wr := range applyEntriesRevocationsWriteSet(bTest) {
+		w.ChangedLeaves = append(w.ChangedLeaves, leafWit(wr.key))
+	}
+	w.AttScreens = []StateRootAttScreen{honestScreen}
+	w.DigestPreSets = []StateRootDigestWitness{{Tag: tagValidatorsSeenRoot, PreIDs: preSeenIDs, Proof: seenRootWit}}
+	// everMature=true → latchedMaturityWitness gives preEverMature=true → no SeenSet needed.
+	w.Maturity = latchedMaturityWitness(t, prover, preValue)
+
+	if checkErr := c.RecomputeStateRootEntriesRevocations(prevRoot, honestCommitted, bTest, w); checkErr != nil {
+		t.Fatalf("honest witness (BondedSize below MinBond) must agree with apply(): %v", checkErr)
+	}
+
+	// FORGE: raise BondedSize to MinBond → qualifies via pre-maturity path.
+	forgedBondedSize := era4MinBond
+	forgedScreen := StateRootAttScreen{
+		Attester: underBondedID, Slashed: false, InEpochSet: false,
+		BondedSize: forgedBondedSize, BondedPresent: true,
+	}
+	forgedScreensMap := map[ports.NodeID]StateRootAttScreen{underBondedID: forgedScreen}
+	forgedAWrites, _, forgedAErr := c.stateRootAttWriteSet(bTest, preSeen, forgedScreensMap)
+	if forgedAErr != nil {
+		t.Fatalf("forged stateRootAttWriteSet: %v", forgedAErr)
+	}
+	if len(forgedAWrites) == 0 {
+		t.Fatalf("GATE CONSTRUCTION: forged BondedSize=MinBond must qualify underBonded")
+	}
+
+	var forgedW StateRootWitness
+	for _, wr := range applyEntriesRevocationsWriteSet(bTest) {
+		forgedW.ChangedLeaves = append(forgedW.ChangedLeaves, leafWit(wr.key))
+	}
+	for _, wr := range forgedAWrites {
+		forgedW.ChangedLeaves = append(forgedW.ChangedLeaves, leafWit(wr.key))
+	}
+	forgedW.AttScreens = []StateRootAttScreen{forgedScreen}
+	forgedW.DigestPreSets = []StateRootDigestWitness{{Tag: tagValidatorsSeenRoot, PreIDs: preSeenIDs, Proof: seenRootWit}}
+	forgedW.Maturity = w.Maturity
+
+	forgedRoot, honestRoot := adversarialCommittedRoot(t, c, prevRoot, honestCommitted, bTest, forgedW)
+
+	if forgedRoot == honestRoot {
+		t.Fatalf("GATE VACUOUS: forgedRoot == honestRoot after forging BondedSize %d→%d.",
+			ubBonded, forgedBondedSize)
+	}
+
+	err = c.RecomputeStateRootEntriesRevocations(prevRoot, forgedRoot, bTest, forgedW)
+	if err != nil {
+		t.Fatalf("GATE MISFIRED (ForgedBondedSize): Recompute stalled against forgedRoot.\n"+
+			"  Expected nil (wrong-accept = RED gate on main). Got: %v\n"+
+			"  forgedRoot=%x honestRoot=%x ubBonded=%d forgedSize=%d MinBond=%d",
+			err, forgedRoot, honestRoot, ubBonded, forgedBondedSize, era4MinBond)
+	}
+	t.Logf("GATE RED (confirmed): BondedSize forgeable on main (adversarial-root path).\n"+
+		"  forgedRoot=%x\n  honestRoot=%x\n  underBondedID=%x BondedSize forged %d→%d (MinBond=%d)\n"+
+		"  Pre-maturity qualification gate bypassed; attester spuriously seated.\n"+
+		"  R1.2 must anchor BondedSize via Shape V to close this gate.",
+		forgedRoot, honestRoot, underBondedID[:4], ubBonded, forgedBondedSize, era4MinBond)
+}
+
+// =============================================================================
+// CLASS A — BondedPresent
+// =============================================================================
+//
+// TestAdversarialRoot_ClassA_ForgedBondedPresent — adversarial-committed-root gate for
+// StateRootAttScreen.BondedPresent.
+//
+// Attack: an attester with NO bonded leaf (BondedPresent=false honestly) is forged to
+// BondedPresent=true with BondedSize >= MinBond. The pre-maturity predicate flips true →
+// spurious validatorsSeen ADD → wrong-accept.
+//
+// Same fixture design as BondedSize: MatureValidators=0, EpochBlocks=0.
+//
+// Gate is RED on main (nil = wrong-accept). After R1.2 this gate must return non-nil.
+func TestAdversarialRoot_ClassA_ForgedBondedPresent(t *testing.T) {
+	cfg := Config{Quorum: 1, MinBond: era4MinBond, ByzantineQuorum: true,
+		EpochBlocks: 0, MatureValidators: 0, BondTTLBlocks: 0}
+	c := New(cfg, func(ports.NodeID) int64 { return 0 })
+	c.SetBondVerifier(objectiveVerify)
+
+	prop := key(78201)
+	notBonded := key(78202)
+	notBondedID := ports.HashBytes(pubOf(notBonded))
+
+	g := &Block{Version: BlockVersionWitnessable, Height: 0}
+	g.BondRegs = append(g.BondRegs,
+		bondRegFull(prop, ports.HashBytes(pubOf(prop)), 8<<20, ports.Hash{}, 5, 1),
+	)
+	Sign(g, prop)
+	c.apply(*g)
+
+	if !c.everMature {
+		t.Fatalf("fixture: everMature must be true post-genesis (MatureValidators=0)")
+	}
+	if _, ok := c.bonded[notBondedID]; ok {
+		t.Fatalf("fixture: notBonded must NOT be in bonded map")
+	}
+
+	leaves := c.stateRootLeavesV5()
+	prover, err := statehash.NewProver(leaves)
+	if err != nil {
+		t.Fatalf("NewProver: %v", err)
+	}
+	prevRoot := prover.Root()
+	sr, err := c.StateRootForVersion(BlockVersionWitnessable)
+	if err != nil {
+		t.Fatalf("StateRootForVersion: %v", err)
+	}
+	if sr != prevRoot {
+		t.Fatalf("pre-root mismatch")
+	}
+	preValue := func(k []byte) []byte {
+		for _, lf := range leaves {
+			if string(lf.Key) == string(k) {
+				return lf.Value
+			}
+		}
+		return nil
+	}
+
+	prev, h := c.Head()
+	bTest := Block{Version: BlockVersionWitnessable, Height: h, Prev: prev, Entries: []ports.Entry{entry(67)}}
+	bTest.Atts = append(bTest.Atts, Attest(&bTest, notBonded))
+	Sign(&bTest, prop)
+
+	clone := c.cloneForDryRun()
+	clone.apply(bTest)
+	honestCommitted, err := clone.StateRootForVersion(BlockVersionWitnessable)
+	if err != nil {
+		t.Fatalf("honestCommitted: %v", err)
+	}
+	if clone.validatorsSeen[notBondedID] {
+		t.Fatalf("fixture: notBonded must NOT be in validatorsSeen after honest apply")
+	}
+
+	preSeen := map[ports.NodeID]struct{}{}
+	for id := range c.validatorsSeen {
+		preSeen[id] = struct{}{}
+	}
+	preSeenIDs := sortIDs(func() []ports.NodeID {
+		var out []ports.NodeID
+		for id := range c.validatorsSeen {
+			out = append(out, id)
+		}
+		return out
+	}())
+	leafWit := func(k []byte) StateRootChangedLeafWitness {
+		old := preValue(k)
+		wit, pErr := prover.Prove(k)
+		if pErr != nil {
+			t.Fatalf("Prove(%x): %v", k, pErr)
+		}
+		return StateRootChangedLeafWitness{Key: k, OldValue: old, Proof: wit}
+	}
+	seenRootKey := statehash.Key(tagValidatorsSeenRoot, nil)
+	seenRootWit, pErr := prover.Prove(seenRootKey)
+	if pErr != nil {
+		t.Fatalf("Prove(validatorsSeenRoot): %v", pErr)
+	}
+
+	honestScreen := StateRootAttScreen{
+		Attester: notBondedID, Slashed: false, InEpochSet: false,
+		BondedSize: 0, BondedPresent: false,
+	}
+	var w StateRootWitness
+	for _, wr := range applyEntriesRevocationsWriteSet(bTest) {
+		w.ChangedLeaves = append(w.ChangedLeaves, leafWit(wr.key))
+	}
+	w.AttScreens = []StateRootAttScreen{honestScreen}
+	w.DigestPreSets = []StateRootDigestWitness{{Tag: tagValidatorsSeenRoot, PreIDs: preSeenIDs, Proof: seenRootWit}}
+	w.Maturity = latchedMaturityWitness(t, prover, preValue)
+
+	if checkErr := c.RecomputeStateRootEntriesRevocations(prevRoot, honestCommitted, bTest, w); checkErr != nil {
+		t.Fatalf("honest witness (BondedPresent=false) must agree with apply(): %v", checkErr)
+	}
+
+	// FORGE: BondedPresent=true, BondedSize=MinBond → qualifies via pre-maturity path.
+	forgedScreen := StateRootAttScreen{
+		Attester: notBondedID, Slashed: false, InEpochSet: false,
+		BondedSize: era4MinBond, BondedPresent: true,
+	}
+	forgedScreensMap := map[ports.NodeID]StateRootAttScreen{notBondedID: forgedScreen}
+	forgedAWrites, _, forgedAErr := c.stateRootAttWriteSet(bTest, preSeen, forgedScreensMap)
+	if forgedAErr != nil {
+		t.Fatalf("forged stateRootAttWriteSet: %v", forgedAErr)
+	}
+	if len(forgedAWrites) == 0 {
+		t.Fatalf("GATE CONSTRUCTION: forged BondedPresent=true BondedSize=MinBond must qualify notBonded")
+	}
+
+	var forgedW StateRootWitness
+	for _, wr := range applyEntriesRevocationsWriteSet(bTest) {
+		forgedW.ChangedLeaves = append(forgedW.ChangedLeaves, leafWit(wr.key))
+	}
+	for _, wr := range forgedAWrites {
+		forgedW.ChangedLeaves = append(forgedW.ChangedLeaves, leafWit(wr.key))
+	}
+	forgedW.AttScreens = []StateRootAttScreen{forgedScreen}
+	forgedW.DigestPreSets = []StateRootDigestWitness{{Tag: tagValidatorsSeenRoot, PreIDs: preSeenIDs, Proof: seenRootWit}}
+	forgedW.Maturity = w.Maturity
+
+	forgedRoot, honestRoot := adversarialCommittedRoot(t, c, prevRoot, honestCommitted, bTest, forgedW)
+
+	if forgedRoot == honestRoot {
+		t.Fatalf("GATE VACUOUS: forgedRoot == honestRoot after forging BondedPresent false→true.")
+	}
+
+	err = c.RecomputeStateRootEntriesRevocations(prevRoot, forgedRoot, bTest, forgedW)
+	if err != nil {
+		t.Fatalf("GATE MISFIRED (ForgedBondedPresent): Recompute stalled against forgedRoot.\n"+
+			"  Expected nil (wrong-accept = RED gate on main). Got: %v\n"+
+			"  forgedRoot=%x honestRoot=%x notBondedID=%x",
+			err, forgedRoot, honestRoot, notBondedID[:4])
+	}
+	t.Logf("GATE RED (confirmed): BondedPresent forgeable on main (adversarial-root path).\n"+
+		"  forgedRoot=%x\n  honestRoot=%x\n  notBondedID=%x BondedPresent forged false→true\n"+
+		"  Attester with no bonded leaf spuriously seated into validatorsSeen.\n"+
+		"  R1.2 must anchor BondedPresent via Shape V to close this gate.",
+		forgedRoot, honestRoot, notBondedID[:4])
+}
+
+// =============================================================================
+// CLASS B — PriorOwner
+// =============================================================================
+//
+// TestAdversarialRoot_ClassB_ForgedPriorOwner — adversarial-committed-root gate for
+// StateRootBondRegScreen.PriorOwner.
+//
+// Attack: in a displacement scenario (honest proven reg vs. unproven squatter), forge PriorOwner to
+// equal the new registrant's ID. The displacement branch checks `o != id`: with o == honestID == id,
+// the condition is false → no displacement. The box derives a delta without the squatter's
+// bonded/qualified deletes. The attacker commits this root → wrong-accept.
+//
+// Fixture: buildBondFixture has a genesis squatter on a shared root (unproven). The gate forges the
+// screen to report the squatter's PriorOwner AS the new honest registrant → displacement suppressed.
+//
+// Gate is RED on main (nil = wrong-accept). After R1.2 this gate must return non-nil.
+func TestAdversarialRoot_ClassB_ForgedPriorOwner(t *testing.T) {
+	f := buildBondFixture(t)
+	prev, h := f.c.Head()
+	honest := key(83001)
+	honestID := ports.HashBytes(pubOf(honest))
+	sqID := ports.HashBytes(pubOf(f.squatter))
+
+	b := Block{Version: BlockVersionWitnessable, Height: h, Prev: prev,
+		BondRegs: []BondReg{bondRegFull(honest, f.sharedRoot, 4<<20, prev, 5, 3)}}
+
+	// Confirm displacement fires in honest apply().
+	sanity := f.c.cloneForDryRun()
+	sanity.apply(b)
+	if _, still := sanity.bonded[sqID]; still {
+		t.Fatalf("fixture: displacement must fire for the gate to be meaningful")
+	}
+
+	honestCommitted := f.applyAndCommittedRoot(t, b)
+	newDue := h + f.c.cfg.BondTTLBlocks + 1
+	w := f.bondWitness(t, b, []uint64{newDue})
+
+	// Honest witness agrees with apply().
+	if checkErr := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, honestCommitted, b, w); checkErr != nil {
+		t.Fatalf("honest witness (displacement) must agree with apply(): %v", checkErr)
+	}
+
+	// FORGE PriorOwner: claim the shared root's prior owner IS the new honest registrant.
+	// stateRootBondRegWriteSet reads: `if o, isClaimed := owner[root]; isClaimed && o != id`.
+	// With o=honestID, id=honestID: o==id → false → branch skipped → squatter NOT displaced.
+	for i := range w.BondRegScreens {
+		if w.BondRegScreens[i].Root == f.sharedRoot {
+			w.BondRegScreens[i].PriorOwner = honestID // forge: claim honest IS the prior owner
+			break
+		}
+	}
+
+	// adversarialCommittedRoot derives the forged write-set (no squatter deletes) from the forged screen.
+	// Honest ChangedLeaves is a SUPERSET of forged derived keys (extra leaves are unused, no stall).
+	forgedRoot, honestRoot := adversarialCommittedRoot(t, f.c, f.prevRoot, honestCommitted, b, w)
+
+	if forgedRoot == honestRoot {
+		t.Fatalf("GATE VACUOUS: forgedRoot == honestRoot after forging PriorOwner to honestID.\n"+
+			"  sqID=%x honestID=%x sharedRoot=%x", sqID[:4], honestID[:4], f.sharedRoot[:4])
+	}
+
+	err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, forgedRoot, b, w)
+	if err != nil {
+		t.Fatalf("GATE MISFIRED (ForgedPriorOwner): Recompute stalled against forgedRoot.\n"+
+			"  Expected nil (wrong-accept = RED gate on main). Got: %v\n"+
+			"  forgedRoot=%x honestRoot=%x sqID=%x honestID=%x",
+			err, forgedRoot, honestRoot, sqID[:4], honestID[:4])
+	}
+	t.Logf("GATE RED (confirmed): PriorOwner forgeable on main (adversarial-root path).\n"+
+		"  forgedRoot=%x\n  honestRoot=%x\n  sqID=%x survives (displacement suppressed by PriorOwner forge)\n"+
+		"  forgedPriorOwner=%x (=honestID → o==id → no displacement)\n"+
+		"  R1.2 must anchor PriorOwner via Shape V (bondRootOwner||root Resolve) to close this gate.",
+		forgedRoot, honestRoot, sqID[:4], honestID[:4])
+}
+
+// =============================================================================
+// CLASS B — Claimed
+// =============================================================================
+//
+// TestAdversarialRoot_ClassB_ForgedClaimed — adversarial-committed-root gate for
+// StateRootBondRegScreen.Claimed.
+//
+// Attack: forge Claimed=false for a root that IS honestly claimed by the squatter. The displacement
+// branch `if o, isClaimed := owner[root]; isClaimed && o != id` requires isClaimed=true. With
+// Claimed=false, isClaimed=false → branch skipped → no displacement. Squatter keeps standing.
+// The attacker commits the delta without squatter deletes → wrong-accept.
+//
+// Gate is RED on main (nil = wrong-accept). After R1.2 this gate must return non-nil.
+func TestAdversarialRoot_ClassB_ForgedClaimed(t *testing.T) {
+	f := buildBondFixture(t)
+	prev, h := f.c.Head()
+	honest := key(83101)
+	sqID := ports.HashBytes(pubOf(f.squatter))
+
+	b := Block{Version: BlockVersionWitnessable, Height: h, Prev: prev,
+		BondRegs: []BondReg{bondRegFull(honest, f.sharedRoot, 4<<20, prev, 5, 3)}}
+
+	sanity := f.c.cloneForDryRun()
+	sanity.apply(b)
+	if _, still := sanity.bonded[sqID]; still {
+		t.Fatalf("fixture: displacement must fire in honest apply()")
+	}
+
+	honestCommitted := f.applyAndCommittedRoot(t, b)
+	newDue := h + f.c.cfg.BondTTLBlocks + 1
+	w := f.bondWitness(t, b, []uint64{newDue})
+
+	if checkErr := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, honestCommitted, b, w); checkErr != nil {
+		t.Fatalf("honest witness must agree with apply(): %v", checkErr)
+	}
+
+	// FORGE: Claimed=false → isClaimed=false → displacement branch not entered → squatter survives.
+	for i := range w.BondRegScreens {
+		if w.BondRegScreens[i].Root == f.sharedRoot {
+			w.BondRegScreens[i].Claimed = false
+			w.BondRegScreens[i].PriorOwner = ports.NodeID{}
+			w.BondRegScreens[i].PriorProven = false
+			break
+		}
+	}
+
+	forgedRoot, honestRoot := adversarialCommittedRoot(t, f.c, f.prevRoot, honestCommitted, b, w)
+
+	if forgedRoot == honestRoot {
+		t.Fatalf("GATE VACUOUS: forgedRoot == honestRoot after forging Claimed true→false.\n"+
+			"  sqID=%x sharedRoot=%x", sqID[:4], f.sharedRoot[:4])
+	}
+
+	err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, forgedRoot, b, w)
+	if err != nil {
+		t.Fatalf("GATE MISFIRED (ForgedClaimed): Recompute stalled against forgedRoot.\n"+
+			"  Expected nil (wrong-accept = RED gate on main). Got: %v\n"+
+			"  forgedRoot=%x honestRoot=%x sqID=%x",
+			err, forgedRoot, honestRoot, sqID[:4])
+	}
+	t.Logf("GATE RED (confirmed): Claimed forgeable on main (adversarial-root path).\n"+
+		"  forgedRoot=%x\n  honestRoot=%x\n  sqID=%x survives (displacement skipped, Claimed forged true→false)\n"+
+		"  R1.2 must anchor Claimed via Shape V (bondRootOwner||root absent-proof) to close this gate.",
+		forgedRoot, honestRoot, sqID[:4])
+}
+
+// =============================================================================
+// CLASS B — PriorProven
+// =============================================================================
+//
+// TestAdversarialRoot_ClassB_ForgedPriorProven — adversarial-committed-root gate for
+// StateRootBondRegScreen.PriorProven.
+//
+// Attack: the displacement fires iff `proven && !provenRoot[r.Root]` where
+// proven=(b.Height>0) and provenRoot[r.Root]=sc.PriorProven. An unproven squatter
+// (PriorProven=false honestly) is forged to PriorProven=true. Then:
+//   `proven && !true = false` → `!false = true` → `continue`
+// The honest reg is REJECTED (the loop body is skipped entirely). The squatter keeps its bonded
+// standing AND the honest reg gets no standing. The committed delta omits both the squatter deletes
+// AND the honest reg inserts. The attacker commits this root → wrong-accept.
+//
+// Gate is RED on main (nil = wrong-accept). After R1.2 this gate must return non-nil.
+func TestAdversarialRoot_ClassB_ForgedPriorProven(t *testing.T) {
+	f := buildBondFixture(t)
+	prev, h := f.c.Head()
+	honest := key(83201)
+	sqID := ports.HashBytes(pubOf(f.squatter))
+	honestID := ports.HashBytes(pubOf(honest))
+
+	b := Block{Version: BlockVersionWitnessable, Height: h, Prev: prev,
+		BondRegs: []BondReg{bondRegFull(honest, f.sharedRoot, 4<<20, prev, 5, 3)}}
+
+	// Confirm displacement fires AND honest reg lands in honest apply().
+	sanity := f.c.cloneForDryRun()
+	sanity.apply(b)
+	if _, still := sanity.bonded[sqID]; still {
+		t.Fatalf("fixture: squatter must be displaced in honest apply()")
+	}
+	if _, ok := sanity.bonded[honestID]; !ok {
+		t.Fatalf("fixture: honest reg must land in honest apply()")
+	}
+	// Squatter must be UNPROVEN (genesis-declared): PriorProven=false is the honest value.
+	if f.c.bondRootProven[f.sharedRoot] {
+		t.Fatalf("fixture: squatter's root must be UNPROVEN for PriorProven forge to flip the branch")
+	}
+
+	honestCommitted := f.applyAndCommittedRoot(t, b)
+	newDue := h + f.c.cfg.BondTTLBlocks + 1
+	w := f.bondWitness(t, b, []uint64{newDue})
+
+	if checkErr := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, honestCommitted, b, w); checkErr != nil {
+		t.Fatalf("honest witness must agree with apply(): %v", checkErr)
+	}
+
+	// FORGE: PriorProven=false → true. Displacement condition:
+	//   proven(h=1>0=true) && !provenRoot[root](=!true=false) → false → !false → continue.
+	// The honest reg is REJECTED (continues out of loop body without writing anything).
+	// The box derives a delta where: no squatter deletes, no honest reg inserts.
+	// This matches a root where the squatter is still bonded and honest reg is absent.
+	for i := range w.BondRegScreens {
+		if w.BondRegScreens[i].Root == f.sharedRoot {
+			w.BondRegScreens[i].PriorProven = true
+			break
+		}
+	}
+
+	forgedRoot, honestRoot := adversarialCommittedRoot(t, f.c, f.prevRoot, honestCommitted, b, w)
+
+	if forgedRoot == honestRoot {
+		t.Fatalf("GATE VACUOUS: forgedRoot == honestRoot after forging PriorProven false→true.\n"+
+			"  sqID=%x honestID=%x h=%d proven(h>0)=%v", sqID[:4], honestID[:4], h, h > 0)
+	}
+
+	err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, forgedRoot, b, w)
+	if err != nil {
+		t.Fatalf("GATE MISFIRED (ForgedPriorProven): Recompute stalled against forgedRoot.\n"+
+			"  Expected nil (wrong-accept = RED gate on main). Got: %v\n"+
+			"  forgedRoot=%x honestRoot=%x sqID=%x honestID=%x",
+			err, forgedRoot, honestRoot, sqID[:4], honestID[:4])
+	}
+	t.Logf("GATE RED (confirmed): PriorProven forgeable on main (adversarial-root path).\n"+
+		"  forgedRoot=%x\n  honestRoot=%x\n"+
+		"  sqID=%x survives + honestID=%x rejected (PriorProven forged false→true)\n"+
+		"  Honest reg REJECTED (loop continues), squatter unbothered.\n"+
+		"  R1.2 must anchor PriorProven via Shape V (bondRootProven||root Resolve) to close this gate.",
+		forgedRoot, honestRoot, sqID[:4], honestID[:4])
+}
