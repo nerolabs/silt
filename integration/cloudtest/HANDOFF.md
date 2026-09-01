@@ -1,3 +1,18 @@
+> **⚠ SUPERSEDED — first-real-run mission COMPLETE (banner added 2026-09-01).**
+> The "drive the GCP field test through its **first real run**" premise below is
+> historical. The first real runs happened 2026-08-10; deep multi-region graded runs
+> have been **routine** since, the harness drives the full DEEP flow (warm net → deep
+> heights → prune → converge → graded sheet → teardown), and the **Phase-3 exit gate is
+> MET** (`fe2376a`-deep, 30P/1G/0F; #585) alongside a clean RC sheet (`585c82a`, 28P/0G/0F;
+> #532). Current field-test state lives in `../FIELD-TEST-STATUS.md`.
+>
+> **This doc is retained for its operational debug/teardown playbook only** — the
+> cheap-first spend discipline, the teardown-verify checklist, and the IAP-debug steps
+> remain accurate and useful. Ignore the "first run", "definition of done = first green",
+> and "known first-run tuning points" framing.
+
+---
+
 # Field-test shakedown — handoff for a fresh Claude session
 
 **You are a new Claude session with no prior context.** Your job: drive the silt

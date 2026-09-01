@@ -1,4 +1,4 @@
-# Field-test status — honest handoff (2026-08-10)
+# Field-test status — honest handoff (2026-08-10; cloud section trued up 2026-09-01)
 
 For a team **assessing coverage against the immutables and extending the local +
 cloud field tests**. This is the *honest* current state — what each suite really
@@ -51,94 +51,82 @@ ROADMAP #7. (STATUS and ROADMAP previously contradicted each other on this; ROAD
   gap**, tracked in **issue #264** (wire demand into the daemon fetch path + add a
   demand sim scenario → then add `integration/demand`).
 
-## Cloud (`integration/cloudtest`) — FIRST REAL GCP RUNS DONE (2026-08-10)
+## Cloud (`integration/cloudtest`) — deep multi-region runs are ROUTINE; Phase-3 exit gate MET
 
-**The harness has now touched real GCP** (three runs, all torn down to zero
-residual). It is no longer dry-validated-only.
+**The GCP harness is mature.** The first real runs happened 2026-08-10; since then the
+harness has executed dozens of **DEEP multi-region graded** runs and drives the full flow
+(warm multi-region net → deep heights → prune → converge → graded sheet → clean teardown).
+Two banked milestones anchor its maturity:
+
+- **Phase-3 EXIT GATE MET** — DEEP run `fe2376a-deep` graded **30 pass / 1 gap / 0 fail** at
+  **height 132, prune engaged, converged** (#585, `d9635c4`; Phase 3 banked in #587,
+  `959b935`). This certified the deep-height / long-run envelope the SMOKE could not reach.
+- **A clean RC sheet** — RC run `585c82a-58990` graded **28 pass / 0 gap / 0 fail /
+  2 skip-by-design** (#532, `eb57d50`).
+
+The deep-run lineage that got there (each a graded multi-region artifact set in
+`integration/cloudtest/`): `a434494`-deep (#564, `#555` crawl cured), `027c354`-deep
+(#575, memory war won — 0 OOM), `474718e`-deep (#579, S7 economy closed on the wire),
+`8a52aba`-deep (#584, first 10-maturing PASS), `fe2376a`-deep (#585, the exit gate).
 
 | cloud flow | mirrors | status |
 |---|---|---|
-| `flow_publisher_unlinkability` | privacy #3 | **RAN — PASS on SMOKE** (real chain refused the durable publisher link; verified the #270 harness fix live) |
-| `flow_durability_turnover` | durability #2 | authored; skipped on SMOKE (needs store-2); not yet exercised on a warm full run |
-| `flow_chaos_crash` | chaos #7 | authored; skipped on SMOKE (needs store-2); not yet exercised on a warm full run |
-| `flow_web_ui_guard` | client #4 (guard over a real VM) | **RAN — PASS on SMOKE** (401/403/200 on a real VM) |
-| `flow_c2_no_capture` | sybil #5 (**opt-in** `SYBILS=8`) | authored + `terraform validate`; records an honest `skip` without the cohort; not yet run with `SYBILS=8` |
+| `flow_publisher_unlinkability` | privacy #3 | **RAN — PASS** (real chain refused the durable publisher link) |
+| `flow_durability_turnover` | durability #2 | **RAN — graded** in the DEEP runs (store-2 present; the retrieval-floor exercised deep) |
+| `flow_chaos_crash` | chaos #7 | **RAN — graded** in the DEEP runs (store-2 present) |
+| `flow_web_ui_guard` | client #4 (guard over a real VM) | **RAN — PASS** (401/403/200 on a real VM) |
+| `flow_c2_no_capture` | sybil #5 (**opt-in** `SYBILS=8`) | authored + `terraform validate`; records an honest `skip` without the cohort; the pure anchor gate needs a real run with `SYBILS=8` |
 
-### What the real runs showed
+### What the real runs established
 
-- **SMOKE (4 nodes): 8 pass / 1 gap / 0 fail.** The one gap is `8-takedown` (needs
-  store-2, absent in SMOKE). Network warmed in ~11s. Clean teardown, zero residual.
-- **Full 13-node run: FOUND A REAL PRODUCT BUG (#281) — NOW FIXED IN-PRODUCT.** silt
-  originally did a **one-shot bootstrap**; the three joining validators started before
-  the boot validator's listener was up, came up with **empty routing tables**, and
-  **never re-bootstrapped** — so the 4-validator cross-region net never meshed, the
-  chain stayed at height 0, and every publish timed out. Diagnosed live (val-b could
-  TCP-reach val-a:4001 but never retried). This is exactly what the two-substrate
-  immutable is for: the 2-node SMOKE's lucky timing masked it.
-- **#281 is fixed IN-PRODUCT (issue closed).** silt now self-heals an empty routing
-  table: `Node.StartBootstrapRetry` (`core/node/bootstrap.go`) periodically re-runs
-  the Kademlia join against the `-bootstrap` seeds while the routing table is empty,
-  default `-bootstrap-retry=15s` (`cmd/silt/daemon.go:81`, wired at `:839`; disable
-  with `0`). On recovery it logs `re-bootstrapped: recovered from an empty routing
-  table (N table entries)`. Unit-tested by `core/node/bootstrap_test.go`
-  (`TestBootstrapRetryRecoversIsolatedNode` + 3 more). So a node that started before
-  its bootstrap target was listening now recovers on its own.
-- **The empty-routing-table recovery IS now certified over real TCP (e2e); the residual
-  is the CLOUD/WAN flow only.** `e2e/bootstrap_test.go` `TestBootstrapRetryRecoversColdStartRace`
-  exercises exactly the defect end-to-end without any belt: B joins through A while A is
-  DOWN → B comes up with **0 table entries** (precondition asserted) → A's listener starts →
-  B self-heals with **no restart**, asserting the real `re-bootstrapped: recovered from an
-  empty routing table (N table entries)` line. So the fix is certified at the real-daemon/
-  real-socket tier — the earlier "uncertified on either substrate" note was stale. The cloud
-  startup script *also* waits for the `-bootstrap` host:port before starting silt
-  (`provision/silt-startup.sh`, modelling seed-first ordering), so the one remaining gap is a
-  **cloud** flow that disables that TCP-wait on a single joining validator and asserts the
-  same line over a real WAN (tracked in ROADMAP; §B of the blind field-test critique). A
-  netem-hardened variant of the race is also tracked (the e2e test's tight 500ms/0-retry
-  config is a clean-localhost timing test, deliberately not adverse-network-hardened). The 18s warm-up the fix produced was verified live (val-b/c/d = 5/8/3
-  table entries, was 0/0/0). Also gated `flow_convergence` on a real committed block
-  (height-0 no longer falsely "converges"), and added a GCP-native
-  `max_run_duration`+`DELETE` auto-delete guard after a SIGKILLed orchestrator once
-  leaked on-demand VMs (the `shutdown -h +TTL` guard only halts the guest).
+- **The two-substrate immutable earned its keep on the first full run.** silt originally did
+  a **one-shot bootstrap**; three joining validators started before the boot validator's
+  listener was up, came up with **empty routing tables**, and **never re-bootstrapped** — so
+  the cross-region net never meshed, the chain stayed at height 0, and every publish timed
+  out (#281). The 2-node SMOKE's lucky timing masked it; the full run exposed it.
+- **#281 is fixed IN-PRODUCT (issue closed).** silt self-heals an empty routing table:
+  `Node.StartBootstrapRetry` (`core/node/bootstrap.go`) periodically re-runs the Kademlia
+  join against the `-bootstrap` seeds while the routing table is empty, default
+  `-bootstrap-retry=15s`. On recovery it logs `re-bootstrapped: recovered from an empty
+  routing table (N table entries)`. Unit-tested (`core/node/bootstrap_test.go`) and certified
+  over real TCP by `e2e/bootstrap_test.go` `TestBootstrapRetryRecoversColdStartRace` (B joins
+  through a DOWN A → comes up with 0 table entries → A's listener starts → B self-heals with
+  no restart, asserting the real recovery line).
+- **The deep runs then drove the real envelope** — deep heights, prune engaged, convergence,
+  the durability retrieval floor, cross-NAT, and the #184 accountability drills, all under
+  real multi-region WAN timing. `flow_convergence` is gated on a real committed block
+  (height-0 no longer falsely "converges"); a GCP-native `max_run_duration`+`DELETE`
+  auto-delete guard backstops teardown after a SIGKILLed orchestrator once leaked on-demand
+  VMs (the `shutdown -h +TTL` guard only halts the guest).
 
-### Operational caveats for the next full run
-- **Zone capacity:** an on-demand (`core_on_demand=true`) run hit a **transient
-  `us-central1-a` e2-small shortage** for the 3 on-demand cores that land there
-  (val-a, val-d, registry). Retry, or spread the on-demand core across zones.
-- **All-SPOT tradeoff:** `CORE_ON_DEMAND=false` dodges the capacity issue but a core
-  node (the registry) was **SPOT-preempted** mid-run — which on-demand core exists to
-  avoid. A clean full-suite green needs an on-demand run when the zone has capacity.
-- **C2-Sybil (#5)** cloud flow is built (`flow_c2_no_capture`, opt-in `SYBILS=8`);
-  the pure anchor gate is certified by running it on GCP — not yet done. See item 2.
+### Operational caveats (still live)
+- **Zone capacity:** on-demand (`core_on_demand=true`) runs can hit a transient
+  `us-central1-a` e2-small shortage for the on-demand cores that land there. Retry, or spread
+  the on-demand core across zones.
+- **All-SPOT tradeoff:** `CORE_ON_DEMAND=false` dodges the capacity issue but a core node can
+  be SPOT-preempted mid-run — which on-demand core exists to avoid.
 
-## Highest-value extension opportunities (ranked)
+## Remaining extension opportunities (ranked)
 
-1. **A clean full-suite green on an ON-DEMAND full run** — the SMOKE passed 8/1/0
-   and the bootstrap fix (#282) is verified (net warms in 18s), but a *warm* full
-   13-node run has not yet graded all flows end-to-end: the on-demand attempt hit a
-   transient `us-central1-a` capacity shortage, and the all-SPOT fallback lost the
-   registry to preemption. Retry `core_on_demand=true` when the zone has capacity
-   (or spread the on-demand core across zones) to certify the durability *retrieval
-   floor*, cross-NAT, the #184 drills, and real multi-region timing on a live warm
-   network.
-2. **#5 C2-Sybil cloud flow — BUILT (opt-in), needs a real run.** A `sybil` role
-   (`-validator -objective`, equal `-bond`, one shared `-domain sybilnet`,
-   referencing the real anchor set it does NOT control) is now in `topology.py`,
-   opt-in via `SYBILS=8` (off by default; adds the cohort on SPOT). `flow_c2_no_capture`
-   banks the Sybil bonds during warmup, stops every anchor (Sybil self-majority
-   cannot advance the chain — `ErrAnchorRequired`), then restores the anchors (chain
-   resumes — the clincher). ≥8 equal single-domain bonds trip the **atomization
-   note**. Dry-validated (topology gen + `terraform validate`); the **real GCP run**
-   is what certifies the pure anchor gate the laptop can only scope down to the
-   standing gate.
-3. **Root-cause the chaos WAVE 2 observation** — does a *redundant* bootstrap (≥2
-   registry/seed nodes) survive one crashing? Is it provider-record persistence, or
-   the restarted sole-bootstrap failing to re-mesh with live holders? Pin it, then
-   either fix + assert, or downgrade to a documented topology limitation.
-4. **Wire demand (#264)** so #6 becomes a real field test (P2 fair-exchange abort
-   ⇒ token reusable; P3 wash ⇒ one bonded identity + a real fee per unit of demand).
-5. ~~Automate `bond`'s C1 "reputation ∝ bond"~~ — **DONE** (plot-size gate; see
-   the suite table's `bond` caveat).
+1. **#5 C2-Sybil cloud flow — BUILT (opt-in), needs a real run with `SYBILS=8`.** A `sybil`
+   role (`-validator -objective`, equal `-bond`, one shared `-domain sybilnet`, referencing
+   the real anchor set it does NOT control) is in `topology.py`, opt-in via `SYBILS=8` (off by
+   default; adds the cohort on SPOT). `flow_c2_no_capture` banks the Sybil bonds during
+   warmup, stops every anchor (Sybil self-majority cannot advance the chain —
+   `ErrAnchorRequired`), then restores the anchors (chain resumes — the clincher). ≥8 equal
+   single-domain bonds trip the **atomization note**. Dry-validated (topology gen +
+   `terraform validate`); the **real GCP run** is what certifies the pure anchor gate the
+   laptop can only scope down to the standing gate.
+2. **Root-cause the chaos WAVE 2 observation** — does a *redundant* bootstrap (≥2
+   registry/seed nodes) survive one crashing? Is it provider-record persistence, or the
+   restarted sole-bootstrap failing to re-mesh with live holders? Pin it, then either fix +
+   assert, or downgrade to a documented topology limitation.
+3. **Wire demand (#264)** so #6 becomes a real field test (P2 fair-exchange abort ⇒ token
+   reusable; P3 wash ⇒ one bonded identity + a real fee per unit of demand).
+4. ~~A clean full-suite green on a warm full run~~ — **DONE** (Phase-3 exit gate
+   `fe2376a`-deep 30P/1G/0F + the RC sheet `585c82a` 28P/0G/0F).
+5. ~~Automate `bond`'s C1 "reputation ∝ bond"~~ — **DONE** (plot-size gate; see the suite
+   table's `bond` caveat).
 
 ## What to trust
 
