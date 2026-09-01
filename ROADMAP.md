@@ -5,24 +5,39 @@
 > lives in [`docs/design/m0.md`](docs/design/m0.md) (the composition spec). *The
 > principles that keep it honest* are [`docs/TENETS.md`](docs/TENETS.md). *What the
 > owner has decided* lives in [`docs/decisions.md`](docs/decisions.md). This file is
-> the **narrative path**: where we are, what the forward tracks are, and why they're
-> ordered the way they are. It is not a tracker — live state is the GitHub **`V1`
-> milestone** and its issues.
+> the **single source of truth for tasks** and the **narrative path**: where we are,
+> what the Boulders are, and why they're ordered the way they are. The GitHub issue
+> tracker is being retired as a task driver (see the SSOT note below).
 >
 > The earlier **Gate 0→6 spine** (with Gate 4 as "the M0 mechanism to build") is
 > **retired**: that mechanism is built and the mission was reframed (below). The
 > `v0.1.x`/`0.2.x` tags are **experimental / learning releases**, not steps on the
 > march to V1; that history lives in `docs/buildlog/`.
 
-## Tenets are the destination; this roadmap is the path
+> **★ Single source of truth for tasks (2026-09-01).** This file — specifically the
+> **Boulder/Rock spine** below ("The Boulders (current big-step tracker)") — is the SINGLE
+> SOURCE OF TRUTH for live work. The path to the Release Candidate (V1) is the Boulders,
+> executed in order under their stated dependencies. The GitHub issue tracker is being
+> **retired** as a task driver; all live work lives here. A handful of umbrella/frontier
+> issues (#183, #182, #180, #179, #94, #52) remain as evidence anchors the Boulders point
+> at — they are not a second task list. Residual/off-critical-path items are enumerated in
+> the **Residual backlog** section at the end of this file; repro recipes for named field
+> defects live in the cited `docs/design/` and `docs/thinking/` docs.
+
+## Tenets are the destination; the Boulders are the track
 
 **V1 is defined by the tenets, satisfied and field-proven — not by a feature
-list.** Every track below advances one or more tenets; if a step serves no tenet,
-it doesn't belong here. The relationship is one-way: **tenets guide the roadmap.**
-A tenet gates V1 as a *principle*, never a *mechanism* — with one deliberate
-exception, **M0** (the mission itself), whose *real* mechanism is in V1 by
-definition. **Release is gated by proof (R1):** a tenet is "met" only when
-field-proven multi-machine, not sim- or single-host-only.
+list.** Every Boulder below advances one or more tenets; if a step serves no tenet,
+it doesn't belong here. The relationship, stated once: **the tenets are the
+destination; the Boulder/Rock spine is the current track that operationalizes them.**
+(The earlier framings — "tenets are the roadmap" and, later, "the ordered path is the
+track" — are retired; both are preserved in
+[`/archive/roadmap-history-2026-09-01.md`](archive/roadmap-history-2026-09-01.md). The
+D-M1-PIVOT *decision* they carried stands — see `docs/decisions.md`.) A tenet gates
+V1 as a *principle*, never a *mechanism* — with one deliberate exception, **M0** (the
+mission itself), whose *real* mechanism is in V1 by definition. **Release is gated by
+proof (R1):** a tenet is "met" only when field-proven multi-machine, not sim- or
+single-host-only.
 
 ## The launch stance — harden-first
 
@@ -38,21 +53,12 @@ We do not reinvent primitives (crypto, transport, codec); we adopt the strongest
 proven ones and reserve novelty for the composition and incentives — where M0
 lives — proven by spec + an **external** red-team, never self-graded.
 
-## The ordered path (the V1 roadmap — ratified 2026-08-19, D-M1-PIVOT)
-
-**Why this section exists.** "Tenets are the roadmap" proved too loose: it let a month
-of effort pool on one axis (consensus correctness / memory survival — necessary, and
-now complete and verified) while the other axis (the S7 economy, bandwidth pricing, the
-operational floor) received none. The 2026-08-19 fresh-eyes audit
-([`docs/thinking/2026-08-19-fresh-eyes-audit-and-the-m1-pivot.md`](docs/thinking/2026-08-19-fresh-eyes-audit-and-the-m1-pivot.md))
-found the trust plane verifying end-to-end but the durability economy **built,
-test-proven, and switched off in every shipped node** — a network on track to earn a
-security certificate without a demonstrated reason to exist at equilibrium. So the
-tenets stay the *destination*; **this ordered path is the track**, and work is expected
-to follow it top-down. The prior rule "M1 opens only after the M0 gate" is superseded
-([`docs/decisions.md`](docs/decisions.md) D-M1-PIVOT): the M0 tail is small and
-enumerated, and both the deep field confirmation and a valid #183 depend on M1 being
-real.
+> *The retired "The ordered path" preamble + numbered Phases 1–6 lived here (2026-08-19,
+> D-M1-PIVOT framing). Extracted 2026-09-01 to
+> [`/archive/roadmap-history-2026-09-01.md`](archive/roadmap-history-2026-09-01.md) — the
+> D-M1-PIVOT decision it carried (M1 interleaves with the M0 tail; storage-economy-first;
+> firewall unchanged; harness never softens) stands and lives in `docs/decisions.md`; the
+> phase packaging is superseded by the Boulders below.*
 
 ### The Boulders (current big-step tracker — Rock/Boulder synthesis, 2026-09-01)
 
@@ -60,7 +66,8 @@ real.
 *Superseded Rocks*), reorganizing the same board into **five sequenced Boulders** after a
 7-seat audit ([`docs/thinking/2026-09-01-*-design.md`](docs/thinking/), the four PACE
 deliberations). **Boulders** are the major arcs; **Rocks** are the ordered deliverables inside
-each. Live per-issue state stays in the `V1` milestone; this is the coarse view. Items are
+each. This spine is the SSOT for live work; the Residual backlog (end of file) holds the
+off-critical-path tail. Items are
 marked owner-DECISION, cert-gated, or RED-first as they apply. The overnight owner-ratified
 decisions are folded in (R0.2, R1.7, R2.3, R2.5, R2.6, R3.4).
 
@@ -288,7 +295,8 @@ demand→standing bright-line to R4.1.
    Cross-operator settlement in committed state, replacing today's bilateral in-memory
    ledgers. Design-space strawman filed (#658, DEFINITION only); a **gated economic
    mechanism** (γ→1/N firewall #182 + conservation) under blind Research + PE evaluation.
-   Couples to the v5 format. Maps to: Phase 4 (PoD); unchanged; attaches to R4.1.
+   Couples to the v5 format. Maps to: the PoD frontier (Boulder 2 economy + Boulder 3 freeze);
+   unchanged; attaches to R4.1.
 3. **era-4 / v5 format freeze** (the closing act of Proof-of-Delivery; a second practiced
    era freeze). **DEFERRED BY DESIGN.** era-4/v5 is kept OPEN-ENDED — no live chain, and
    PoD may still reshape witnessable state (owner-ratified 2026-08-30). The R-boundary digest
@@ -301,7 +309,7 @@ demand→standing bright-line to R4.1.
 5. **Phase 5 — operational floor** (a node a person can run). **NOT STARTED (needs scoping).**
    Per-platform packaging + signed installers + operator-consented R4 self-update, plus the
    S6 scaling kills (incremental O(delta) proof maturation; reprovide dirty-tracking).
-   Maps to: Phase 5.
+   Maps to: the operational-floor residual (Residual backlog; archived Phase 5).
 6. **External red team (#183) → R1 field grade → V1.** **GATED (endgame).** Runs against
    the economy-ON config, then a green multi-region R1 grade, then V1. #183's close condition
    is MET and the issue carries the evidence; the close is the owner's call, deliberately held.
@@ -309,211 +317,13 @@ demand→standing bright-line to R4.1.
 
 </details>
 
-1. **Phase 1 — Close the M0 tail (small, enumerated). ✅ COMPLETE (2026-08-19).**
-   *(1.1 inbound-cap: resolved — v2b shelved to owned-residual E5 on the drain measurement
-   (cap/drain ≈ 0.21s at 1227 MB/s real drain, well under the 2s bound); the publish-flood 502 was a
-   separate Care/NetGet loop self-deadlock, fixed (#474). 1.2 CPU gate: shipped (#476). 1.3 evidence
-   hygiene: RSS/heap telemetry shipped + field-validated over two runs (#478). 1.4 deep >h64 run:
-   deferred to Phase 3's exit gate by owner ruling — heights too expensive to accrue is Phase 3's
-   justification.)*
-   1. Inbound-cap hardening — **resolved-for-now 2026-08-19, sequenced behind 1.2 (two
-      PE rulings).** Per-peer fairness: shipped (v2a). The consensus-priority lane: a
-      timed drill proved the starvation lives in the loop's FIFO **drain**, not gate
-      admission (an admission reserve alone is insufficient), and its severe regime is
-      the bond-reg/VDF slow-drain — Phase 1.2's domain. Filed as owned residual **E5**
-      with the reach-recipe and the go/no-go (measure the real drain rate as a rider on
-      1.2, re-run the parked drill `drill/v2b-gate-starvation`; only a still-RED re-run
-      builds the two-class drain). The `-inbound-cap` two-axis sizing note shipped in
-      the flag help. *(Also corrected: the field publish-flood 502 was a Care/NetGet
-      event-loop self-deadlock — cap-independent, fixed separately; see
-      [docs/thinking/2026-08-19-publish-502-attribution-care-self-deadlock.md](docs/thinking/2026-08-19-publish-502-attribution-care-self-deadlock.md)
-      and the drill record
-      [docs/thinking/2026-08-19-v2b-gate-starvation-drill-design.md](docs/thinking/2026-08-19-v2b-gate-starvation-drill-design.md).)*
-   2. The `MsgSubmitBondReg` CPU gate (pre-#183 DoS floor) — **now also carries the E5
-      rider:** measure the real saturation drain rate at the shipped 256M cap during
-      this item's validation, and re-run the parked v2b drill re-parameterized to it
-      (the go/no-go for the two-class drain).
-   3. **Evidence hygiene:** commit the field-run artifacts; add RSS/heap telemetry to
-      `integration/cloudtest` so memory claims carry a citable, in-repo artifact
-      (build-immutable #7 applied to our own headlines).
-   4. Attempt the deep confirming run (longer soak; retention prune engaged past h64 at
-      production parameters). If heights starve the run's budget, that measurement is
-      Phase 3's justification — record it, don't force it.
-2. **Phase 2 — Economy-ON (the S7 keystone; enablement, not construction). ✅ COMPLETE
-   (2026-08-21): Slices 1–4 DONE — the exit gate CLOSED on the wire by the clean sheet
-   `f35a0f9-18198` (24 pass / 0 gap / 0 fail; liveness precondition HELD).**
-   - **Slice 1 (enable) DONE:** `-economy` flag (opt-in, default OFF); the bounty base is a protocol
-     price `credit.RepairBountyBase = c·(k·shardBytes)`, **`c=1` research-certified**; payee =
-     **(a-domain-fresh)** — the paramedic keeps the shard it rebuilt iff its own failure domain is
-     unused by the stripe (funds the reconstructor without reducing S2 dispersal); Invariant A held
-     (bounty pays balance, never standing), failing-first guards green.
-   - **Slice 2 (telemetry) DONE:** `/api/status` durability block (balance, bountyOn, per-object
-     reserve/funded/paid/repairs/horizon). **Slice 3 (endowment) DONE:** `POST /api/fund`.
-   - **§0.1 (repair RAM) MEASURED locally** (`core/erasure/reconstruct_mem_test.go`): a prod 64 MiB
-     stripe reconstructs **1.0 GiB resident** → OOMs a 2 GB box, so the economy grade uses 256 KiB
-     chunks (repair ≈ 2.5 MiB). *A prod-chunk field-confirm on a bigger box is a later option.*
-   - **Slice 4 (economy on the wire) = THE EXIT GATE, CLOSED (2026-08-21).** The gate row first
-     went green on `fa501cc-56689` (paid=432770; ledger identity prepay+skim=paid, reserve→0) but
-     that sheet was PROVISIONAL on its island OOM liveness FAIL (#503). The #503 bond-renewal storm
-     was research-certified and fixed same-day (PR #508), and the clean re-run **`f35a0f9-18198`
-     banked the sheet: 24 pass / 0 gap / 0 fail, liveness precondition HELD, islands flat at
-     0.34–0.38 GiB peak** (was 1.5–1.6 GiB + OOM×3). Economy on that run: paid=531080 over 1
-     repair, identity closed, post-payout skim already refilling the reserve. The g-series now has
-     three samples (432770 cloud / 629390 LOCAL / 531080 cloud). Exit gate met: prepay→(skim)→bounty
-     closes on a real network; standing coin-free.
-3. **Phase 3 — Cheap heights (the M1 lever with the M0 dividend). ✅ COMPLETE
-   (2026-08-26): the exit gate CLOSED on the wire by the deep sheet `fe2376a-deep`
-   (30 pass / 1 gap / 0 fail; the gap is a harness observer-arming question, #586).**
-   The gate row: `12-deep-heights` drove h78→**h132** (target 128) at **~48 s/height**
-   (was ~390 s at the arc's start), the #549 Q4 stabilization barrier cleared in 215 s,
-   **the retention prune ENGAGED on every validator at depth** (12b: 59 payload-stripped
-   blocks each, horizon h64) and the pruned chain **converged** (12c, h134+, shared
-   head). Worst RSS 0.65 GiB; zero OOM; every safety/adversarial row green; the economy
-   closed on the wire for the third consecutive sheet. The month of depth findings that
-   gated this — #528 knee, #535 boundary recovery, #549 view-sync, #555 hash-work,
-   #558 era-replay, #561 escape-walk, #563 memory, #572 restore under-latch — is
-   entirely fixed, each with a failing-first local RED home, and the last three runs
-   field-confirmed the stack (evidence PRs #564/#575/#579/#584/#585). *Deliberately
-   NOT built:* the #299 near-tier proof compression — the gate was met on prune +
-   the fixed depth costs alone, so proof-size work stays demand-driven (revisit if a
-   future regime pushes per-height cost back up; the parked sealing re-architecture
-   stays research-gated). *Gate clause DISCHARGED (2026-08-27):* the publish bound is
-   re-derived **downward** 360 → 300 s from fe2376a-deep's measured ~48 s/height cadence
-   (results-fe2376a-deep.jsonl:29). The finding: only the gather-leg term is cadence-free
-   arithmetic; the commit-wait leg is the #451 synchronizer 2-round escape FLOOR (150 s,
-   counted in fixed 30 s sweeps — a consensus-liveness parameter, left untouched). The
-   60 s shed is historical escape-rounding + stale slow-height padding the cheap cadence
-   retires; 300 s keeps the full escape window inside the bound (6.25× the measured
-   cadence). Derivation: `docs/thinking/2026-08-27-publish-bound-rederivation.md`
-   (#549-Q3 discipline: derived, not guessed).
-4. **Phase 4 — Proof-of-Delivery (price bandwidth).** Storage is priced; bandwidth is
-   not, so an open relay/gateway is a free-rider choke (the recentralization failure
-   mode). Spec + research consult **first**; the hard prerequisite is closing the
-   receipt-forgeability residual (a demand receipt is currently mintable with zero
-   object bytes — inert only while demand has no consumer). Wash re-priced per
-   D-DEMAND. **Firewall immutable:** delivery credits fund durability and relay
-   compensation, never consensus standing (γ→1/N, #182).
-5. **Phase 5 — The operational floor (a node a person can run).** Per-platform service
-   packaging (launchd / systemd / Windows service) + signed installers, and
-   operator-consented self-update per R4 (signed manifests, never silent — a working
-   downstream macOS signed+notarized+launchd reference exists and generalizes into
-   silt). Incremental O(delta) proof maturation (kill the O(store) restart scan);
-   reprovide dirty-tracking (kill the O(held) per-interval re-sign). Exit gate: a
-   non-developer installs a node that survives reboot and returns to serving in
-   seconds, and steady-state cost no longer scales with the whole held set (S6).
-6. **Phase 6 — External red team (#183) → V1 RC.** The engagement runs against the
-   **economy-ON** configuration — the network people will actually run. Then R1: a
-   fully green multi-region grade on the RC config, and V1.
-
-### Immediate next work (updated 2026-08-26 — post-Phase-3 priority order)
-
-Phases 1–3 are banked. The depth war is over: `fe2376a-deep` met the Phase 3 gate
-(h132, prune engaged, 0 fail) and closed the whole stall lineage (#549/#560/#561/
-#572/#573). #183's close condition is MET and the issue carries the evidence — the
-close itself is the owner's call and is deliberately HELD. The current order:
-
-1. **Phase 4 opening move — ✅ DONE (2026-08-26): the PoD spec shipped
-   ([design/pod.md](docs/design/pod.md)) and research CERTIFIED it same day**
-   (`silt-reviews/research/research-outcome/PoD-neutral-lane-B3-close-RESEARCH-CERTIFICATION-2026-08-26.md`):
-   the conservation close is sound (the only structural wash defense), with three
-   folded amendments — the supersede rule over the `RecordServe` self-mint is
-   load-bearing, the PoR leg is dropped in the neutral lane, and strong-form
-   Camenisch–Shoup is not adoptable (quorum-TTP/VSS is the route if ever). **The
-   state-root keystone consult is ALSO CERTIFIED**
-   (`silt-reviews/research/research-outcome/D-TIERING-state-root-keystone-RESEARCH-CERTIFICATION-2026-08-26.md`):
-   compact SMT over the set-valued state PLUS a separate append-only root for the
-   transparency log (refined 2026-08-27 by the #597 certification), era-3 rides the #506 version-gate as
-   tenant #2, rebuild-at-boot, self-checkpoint closes #559's crash-reboot case —
-   with three load-bearing obligations (snapshot-boot-equivalence oracle proves
-   field completeness; incremental-cost oracle; era-2→3 Reload test ships ahead).
-2. **The PoD neutral-lane BUILD** (per the certified [design/pod.md](docs/design/pod.md)
-   §7). **§7.1 SHIPPED (#590):** the conserved balance-lane consumer
-   (`RedeemDeliveryCredit`, `core/credit/delivery.go`), the supersede rule, the
-   no-PoR neutral receipt, and the firewall failing-first test
-   (`TestDeliveryCreditNeverTouchesStanding`). **§7.2 SHIPPED (#593/#594):** the
-   D-TIERING mode flags `--serve-content`/`--archive` (`cmd/silt/daemon.go`), the
-   daemon wiring, and e2e (`-accept-delivery-receipts`). The three owner knobs are
-   decided (**D-POD-KNOBS**, #592). The **B3 receipt-forgeability residual is CLOSED**
-   by the conservation design and regression-locked (`TestWashLoopIsAStrictLoss`,
-   `TestPaidBountyIsNotRecoverableBySupersede`); it is neutralized by the firewall
-   today and must close before any demand→standing fusion
-   (`docs/design/owned-residuals.md`). **§7.3 relay compensation SHIPPED
-   (#646/#647/#649/#650):** the certified sender-funded PayWord micropayment (the relay
-   leg is self-enforcing, no TTP — **D-POD-KNOBS** item 2), delivered across four merged
-   increments — PayWord machinery (#646), transport Batch 1 (#647; S-clamp #644 +
-   epoch-tied seen eviction #645), Batch 2 (#649; wire protocol + paid forwarding pump +
-   session reaper), and Batch 3 (#650; daemon binding, paid relay goes LIVE, closes #648).
-   The Batch-3 free-vs-paid routing policy was ratified as **Option B**
-   (**D-POD-RELAY-COEXIST** — paid relay is additive to free relay under shared caps).
-   Tracked
-   follow-ons remain (not blockers): #651 (resolver stopped-loop hardening, deferred to
-   graceful-shutdown work). A separate **GATED** residual — paid-reserved headroom —
-   re-opens a research-gated parameter and is not scheduled. **Third-operator committed
-   settlement is the remaining heavier PoD lane** (couples to the v5 keystone; own
-   certification when specced) — the next PoD frontier, not yet started.
-3. **The state-root keystone track** — **era-3 format FROZEN 2026-08-29 (#632, build
-   `3af40bc`); era-4 witnessable-transitions spine BUILT + merged 2026-08-29.** The era-3
-   committed state-root format (`BlockVersion = 4`) is now in the Immutable tier
-   (`docs/TENETS.md` Part IX): the block commits a state SMT root plus an append-only
-   transparency-log root over the completeness-proven 18-field set, and changing it requires
-   a new era, not an edit. The trustless-floor-box path then continued as the **era-4
-   witnessable-transitions track (`BlockVersion = 5`)**, whose build spine landed across four
-   merged increments: 4a (#637 — mint v5 + reserve the three v5 field tags, inert), 4b (#639
-   — the maintenance spine: `qualified` + due-bucket + `epochStart`, v5-gated), 4c (#640 —
-   the v5 validity predicate + `RegCap` + version-widen), 4d (#641 — height-gated activation +
-   mint-flip). `RegCap` is the per-block TOTAL BondReg count cap — fresh AND renewal, after
-   the same-id fold — value **256** (`core/chain/chain.go:404`); the earlier "fresh-only"
-   reading was REFUTED and corrected. This is the **chain-side** witnessable-transitions spine
-   only; the trustless floor-box (witness) validator itself remains the open C-7 / #600
-   follow-on, not yet shipped. **Governance stance (owner-ratified 2026-08-30): era-4/v5 is
-   deliberately kept OPEN-ENDED — there is no live blockchain, and PoD may still reshape
-   witnessable state — so the v5 freeze is DEFERRED to the END of Proof-of-Delivery, to be run
-   as a second practiced era freeze** (the era-3 freeze being the first).
-4. **The publish-bound re-derivation** — ✅ DONE (2026-08-27): 360 → 300 s, derived
-   downward from fe2376a-deep's measured ~48 s/height cadence; the #451 escape floor
-   (a consensus-liveness parameter) left untouched.
-   Derivation: `docs/thinking/2026-08-27-publish-bound-rederivation.md`.
-5. **#586** — the economy sheet's one open row (skim-observer arming under per-node
-   ledgers; harness-vs-product question filed on the issue).
-6. **Standing tail:** #559 (common crash-reboot case now closed by the keystone
-   cert's Q7 self-checkpoint; true-loss residual stays operator-anchored), #583
-   (e2e flake watch, 3rd occurrence = journal attribution), #574 thread 2 (drill
-   quarantine design), #530 (Docker e2e pre-genesis stall), Phase 5 scoping.
-
-The pre-gate order below is retained for context:
-
-1. **Quota gate (external, check FIRST each session):** the us-west1 `IN_USE_ADDRESSES`
-   8→16 preference. When it lands, the **SYBILS=8 + MATURING=1 coverage run** becomes
-   possible — the two standing structural SKIPs on every sheet (`5-sybil-no-capture`,
-   `10-maturing-handoff`), and the handoff/post-shed regime is the external red team's
-   sharpest seam-#8 target. That run is the next new field coverage, not a re-run.
-2. **The repair-sweep family with three runs' field data — #501 (the sweep is unbounded
-   under dead holders; now also CI-measured via the e2e flake history), #500
-   (fetch-retained copies never announce), #502 (restart orphans the repair working
-   set).** #501 first: it is the mechanism behind the widened (measured) e2e window and
-   the #509 bound miss; bounding the sweep re-tightens both.
-3. **#466 chain-serve pagination — the PE approach review, now evidence-backed** (the
-   #503 retainer attribution: 98 MB of retained `EncodeBlocks` output on the
-   dead-peer-serving node; ~310 MB per full-chain encode at cloud heights). The serve
-   working set is the remaining island memory term.
-4. **#506 — the Q3 reg-inclusion rate bound (validity rule), version-gated.** Required
-   per the #503 certification (the structural close against an adversarial
-   re-registrant); needs the coordinated-upgrade/version-gate story first.
-5. **Harness hardening, remaining from the 2026-08-19 audit:** (a) chaos-crash GAPs (not
-   FAILs) on a non-landed publish; (b) dedicated non-anchor registry (repoint REGREF);
-   (c) persistent VPC across runs (~7 min/run); (d) parallelize read-only scenarios.
-   Plus the small filed items: #509 (compute the down-designee bound from the #451
-   round arithmetic), #507 (the `TestMeasure_StoreChunkDrainRate` test race).
-6. **Phase 3 proper — cheap heights** (#299 near tiers: Merkle multiproof compression,
-   batch verification, reg/entry batching). Exit gate: a deep green sheet (h ≥ 128)
-   with the prune field-exercised at production parameters — which also delivers the
-   deferred Phase 1.4 deep run.
-7. **Fork (c) split-pay stays evidence-gated** — two clean economy grades have not yet
-   shown the (a-domain-fresh) gap biting; it stays parked until one does.
-
-**Standing parallel lane (blocks nothing):** the #183 procurement search (longest lead
-time, zero code dependency, still ownerless); evidence hygiene; stale-branch pruning
-(`drill/v2b-gate-starvation`, `evidence/soak-9453325-7258`, `oracle/451-locked-value-stall`).
+> *The retired numbered **Phases 1–6** block (Phases 1–3 COMPLETE; 4–6 the forward plan
+> the Boulders replaced) and the dated **"Immediate next work (2026-08-26)"** priority
+> snapshot lived here. Extracted 2026-09-01 to
+> [`/archive/roadmap-history-2026-09-01.md`](archive/roadmap-history-2026-09-01.md). The
+> Boulder spine above is the current packaging of the same board; still-live residuals
+> they named (#559, #583, #574, #530, #586, #501/#500/#502, #506, #299) are carried in the
+> Boulders and the **Residual backlog** at the end of this file.*
 
 ## Where we are now (the honest status)
 
@@ -591,49 +401,22 @@ time, zero code dependency, still ownerless); evidence hygiene; stale-branch pru
   tested — is **default-off in every shipped node with no enable path**, `g` has never
   been measured live, bandwidth is unpriced, and the operational floor (packaging,
   O(store) cold-start, O(held) reprovide) prices out the honest operator in practice.
-  Verdict: **M1 is the binding constraint.** The ordered path above is the response
-  (D-M1-PIVOT); full findings in
+  Verdict: **M1 is the binding constraint.** The Boulder spine above is the response
+  (D-M1-PIVOT — M1 interleaves with the M0 tail; the Boulders are the current packaging
+  of that ordered board); full findings in
   [`docs/thinking/2026-08-19-fresh-eyes-audit-and-the-m1-pivot.md`](docs/thinking/2026-08-19-fresh-eyes-audit-and-the-m1-pivot.md).
 
-## The forward tracks (what replaces the gate spine)
+## Verifying M0 is held (the Boulder 4 endgame frontier)
 
-Three kinds of work remain. **Build** makes the decided directions real; **verify**
-is the gate to declaring M0 *held* (not merely built); **research frontier** is the
-handful of items that need a new result, not a decision.
+Two kinds of work carry the endgame: **verify** is the gate to declaring M0 *held* (not
+merely built); **research frontier** is the handful of items that need a new result, not a
+decision. Both feed Boulder 4 and the external red team (#183).
 
-### Build tracks
-
-- **H8 — metadata-layer privacy (next).** The D-PRIV build track: mixnet transport +
-  **private DHT lookup** (server-held-DB PIR, Peer2PIR model — routing/provider
-  records only; blobs ride the mixnet) + **D3 issuance-mixing** (route token
-  issuance over the content-blind relay from an ephemeral identity, epoch-batched)
-  to close the publisher IP+timing link. Bounded by the anonymity trilemma; a stated
-  product tradeoff, not a blob-layer absolute.
-- **H9 — pluralistic takedown, provably non-global.** Signed subscribable label
-  layer + a **CT-style append-only transparency log** (every honored revocation
-  committed, with inclusion/consistency proofs) + a narrow opt-in denylist + the
-  **non-globality metric** (survivor Nakamoto-coefficient published as a certified
-  lower bound `≥ t` via a ZK threshold predicate). Low urgency.
-- **D-DEMAND — the blind demand receipt. ✅ P0–P3 BUILT** (#181): issue → PoR-bound
-  delivery-ack → bank → redeem, blind withdrawal, fee-burn + bonded-fetcher
-  cost-to-wash levers, self-dealing red-team at both tiers. Demand stays a **neutral
-  observable** (never standing). Remaining: the P2 dispute-*resolution* half (gated
-  on a verifiable-escrow primitive with no adoptable pure-Go impl) and
-  fetcher-unlinkability's timing leg (H8 epoch-batching).
-- **C2 metric wiring. ✅ BUILT** (#185): `chain.C2Metric()` over the committed bond
-  ledger (never gossip), consumed by the shed; `OperatorMargin` discounts for the
-  clustering unknowns. Still future: the H8 committee-certification consumer +
-  Byzantine-robust sampling.
-- **Registry economics (Gate-5 lineage). ✅ core shipped** — registry-only mode +
-  read-cost bounding (#206). Post-launch: liveness-pruning + federation (#207).
-- **M1 — efficiency + the economy. ⚠ Sequencing SUPERSEDED (2026-08-19, D-M1-PIVOT):**
-  the earlier rule "M1 opens only after the M0 gate" is retired — M1 now interleaves
-  with the M0 tail on the ordered path above (Phases 2–5), because the deep field
-  confirmation and a valid #183 both depend on it. The track's content stands:
-  #299's near tiers (Merkle multiproof, batch-verify) and reg/entry batching are
-  Phase 3; the full #299 sealing re-architecture stays parked (research-gated);
-  CPU/dial gauges remain allowed-early measurement. **The trust harness never softens
-  for M1 — cost budgets overlay the same runs** (unchanged).
+> *The retired **Build tracks** list (H8/H9 privacy+takedown, D-DEMAND/C2/registry status —
+> a third top-level organizing scheme) was extracted 2026-09-01 to
+> [`/archive/roadmap-history-2026-09-01.md`](archive/roadmap-history-2026-09-01.md). Its
+> still-live items (H8 #179, H9 #180, post-launch registry #207) are carried in the
+> **Residual backlog** below.*
 
 ### Verify tracks — the gate to "M0 held"
 
@@ -691,6 +474,97 @@ unproven, the shared-content H3 gap (γ→1/N, #182) is open, and in shipped cod
 the bond (D) axis gates standing so far (§ "where we are"). C2 is a **measurement
 bounded by an impossibility result** (Kwon) — held, not closed, by design. The
 verdict is rendered by the external red-team + the field test, together.
+
+## Residual backlog (tracked here, not on the Boulder critical path)
+
+These are the off-critical-path residuals migrated from the (retiring) GitHub issue tracker.
+They do NOT gate the Boulder spine; they are the honest tail. Each carries its provenance
+issue number as an anchor only. Repro recipes for the field defects (#558/#535/#530/#574/#586/#277)
+live in [`docs/thinking/2026-09-01-residual-defect-repro-recipes.md`](docs/thinking/2026-09-01-residual-defect-repro-recipes.md).
+
+**Security / data-safety residuals:**
+- **Transport authentication (TLS or Noise) — #437.** silt's wire is unauthenticated CBOR
+  (`adapters/tcpnet/wire.go`), so an on-path MITM can strip certificate signatures in transit.
+  Certified NOT a safety break and NOT a wedge (stripped blocks fail `ValidateCommit`, are inert,
+  never drive round-advance; only verifying sigs count; ≥⌊A/2⌋+1 full-certificate holders re-serve
+  over any honest path; residual = censorship over a controlled link, already tolerated by the
+  liveness model). Work: wire authentication/integrity at the transport layer — a pre-existing
+  transport property, orthogonal to consensus. Consult `docs/network-durability.md` before design
+  (build-immutable #5); research-gate the crypto choice. Cert:
+  `432-proposer-prepare-required-RESEARCH-CERTIFICATION-2026-08-16.md` §5.2.
+- **Crash-safety: torn `chain.cbor` → silent genesis fallback — #558.** A SIGKILL mid-persist
+  can tear the `chain.cbor` write; replay hits the damaged region and the daemon silently discards
+  finalized history back to genesis (the markstore is atomic; the chain store is not). Silent loss
+  on a common failure (OOM/power). Fix direction + RED home in the repro doc. **Real silent-loss
+  residual** (build-immutable: no-silent-loss floor).
+- **On-disk format migration policy — #237.** Upgrading a daemon onto a pre-format store is
+  silently destructive: the chain is rejected (`unsupported block version`) and silently reseeds
+  with only a one-line stderr notice; content is stranded. **Needs a POLICY call before any release
+  that crosses a format boundary:** (a) a migration path (read old store, upgrade proofs/chain), or
+  (b) refuse to start with a clear message (safe default). Relates to #70 (proof migration) / #98
+  (chain format).
+- **Silent-behavior observability — #235.** Three silent behaviors reduce field assertability:
+  (1) a healthy repair sweep emits no log line at any level ("is the caretaker working?" is
+  unanswerable until something breaks) — add `repair: sweep complete, all stripes healthy` and/or
+  per-repair counts; (2) `-revoke <bogus-root>` leaves the daemon silently inert — add `revoke:
+  root not yet committed, waiting` or an explicit refusal; (3) rolling upgrade across a format
+  boundary degrades with only a one-line stderr notice (ties to #237). Partly overlaps #237.
+
+**Test / harness debt:**
+- **Test-honesty audit — #303.** 27 adversarially-verified test-honesty issues + 9 product
+  findings from a per-harness audit (65 agents) of all 18 integration harnesses against the 5
+  field-test immutables — each a way a harness could go GREEN on a broken product (e.g. the
+  redteam SCENARIO 2/3 assertions key off a non-specific `!resp.OK`, so a dead/blanket-rejecting
+  H3 goes green; fix: add an H3 positive control). Open QA debt; overlaps but is not fully covered
+  by the Boulder-1 decoration-oracle gates.
+- **Harness reachability + flow-overlap (#574), Docker pre-genesis stall (#530), skim-observer
+  arming (#586).** Standing-tail harness defects; repro recipes + fix directions in the repro doc.
+  #530 first step is instrumentation (`-log debug`, capture one full client transcript), not a fix
+  (build-immutable #7).
+
+**Durability / repair / demand residuals:**
+- **Repair dial-storm to dead holders — #277.** The DHT walk re-dials dead holders every sweep
+  (the `deadUntil` negative cache is consulted on the fetch/repair decision path but not on the
+  walk's dials), so under heavy permanent loss a sweep can't finish though ≥k shards survive.
+  Scale-independent behavior; part of the pre-gate repair-sweep family (#501 unbounded sweep / #500
+  fetch-retained copies never announce / #502 restart orphans the working set). Repro in the doc.
+- **Wire demand P2/P3 into the daemon fetch path — #264.** `core/demand` P2 fair-exchange floor
+  and P3 cost-to-wash (fee-burn + bonded-fetcher credential) are real and unit-tested but have no
+  live daemon-wire seam (no `silt sim run demand` scenario, no CLI flag, no serve/fetch-path
+  enforcement), so a real field test can't cynically exercise them. Wire one/both (a sim scenario
+  and/or daemon-level demand enforcement), then add `integration/demand` asserting the outcome:
+  a freeloader can't fetch without paying; faking demand costs one bonded identity per unit + a real
+  fee. Phase-4 (PoD) detail; the firewall (delivery credits never fund standing, γ→1/N #182) is
+  immutable.
+- **Bond-proof reply size / N² cost — #299.** The encoded bond-challenge answer is ~1.5 MB,
+  near-flat in bond size (dominated by 64 label opens), so proofs are loss-sensitive over lossy TCP
+  and cost N²×1.5 MB per audit interval as the validator set grows. The sound fixes are structural
+  (SNARK-wrapped succinct proof → H-track; fewer samples = a soundness tradeoff, Evolving-tier,
+  research-gated; FEC needs QUIC first). An **owned, named residual**, not a stopgap. ROADMAP R3.3
+  keys the PayWord/RegCap re-derivation to "only if #299 moves" — this is where #299's measured
+  numbers live. Possible cheap interim (unverified): de-duplicate shared DRSample parent blocks in
+  the encoding (no soundness change) — measure before any k-reduction.
+
+**Operational floor (RC-path, needs scoping — the archived Phase 5):**
+- **A node a person can run.** Per-platform service packaging (launchd / systemd / Windows
+  service) + signed installers, and operator-consented self-update per R4 (signed manifests,
+  never silent). Plus the S6 scaling kills: incremental O(delta) proof maturation (kill the
+  O(store) restart scan) and reprovide dirty-tracking (kill the O(held) per-interval re-sign).
+  Exit gate: a non-developer installs a node that survives reboot and returns to serving in
+  seconds, and steady-state cost no longer scales with the whole held set. NOT STARTED.
+
+**Post-launch (explicitly not V1):**
+- **Registry liveness-pruning + federation — #207.** The read-cost-bounding lever of registry
+  economics shipped for M0 (per-IP rate limit + timeouts, #206). The remaining cheapness levers —
+  liveness-pruning of dead entries (needs a provider-liveness probe; inapplicable to the chain-backed
+  append-only registry) and federation/sharding of a large public registry — are post-launch scaling.
+  These do NOT gate M0.
+
+**Umbrella/frontier issues kept as evidence anchors (not a second task list):** #183 (external
+red team → the Boulder 4 endgame; close condition MET, owner deliberately holds), #182 (shared-content
+sealing frontier → R4.1 / research frontier above), #179 (H8 metadata privacy), #180 (H9 pluralistic
+takedown), #94 / #52 (the forward-tracks / R1 verify epics — now the Boulder structure itself),
+#406 (consensus model-check = Boulder 1 R1.5).
 
 ## The resolver layer ("Aslan" — separate product)
 
