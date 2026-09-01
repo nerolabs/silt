@@ -54,13 +54,161 @@ to follow it top-down. The prior rule "M1 opens only after the M0 gate" is super
 enumerated, and both the deep field confirmation and a valid #183 depend on M1 being
 real.
 
-### The Rocks (big-step tracker)
+### The Boulders (current big-step tracker — Rock/Boulder synthesis, 2026-09-01)
 
-An **overlay** on the phases below, not a replacement: the six big rocks between here
-and V1, each mapped to the canon it lives in ([`docs/decisions.md`](docs/decisions.md),
-the phases, the D-TIERING keystone track). Live per-issue state stays in the `V1`
-milestone; this is the coarse "where are the boulders" view. In-flight work is marked
-IN PROGRESS / IN DESIGN / DEFINITION — never as decided.
+**This is the current track.** It replaces the earlier six-Rock overlay (preserved below as
+*Superseded Rocks*), reorganizing the same board into **five sequenced Boulders** after a
+7-seat audit ([`docs/thinking/2026-09-01-*-design.md`](docs/thinking/), the four PACE
+deliberations). **Boulders** are the major arcs; **Rocks** are the ordered deliverables inside
+each. Live per-issue state stays in the `V1` milestone; this is the coarse view. Items are
+marked owner-DECISION, cert-gated, or RED-first as they apply. The overnight owner-ratified
+decisions are folded in (R0.2, R1.7, R2.3, R2.5, R2.6, R3.4).
+
+**Two whole-board sequencing constraints:**
+1. **Nothing turns the economy on over a live mint.** Boulder 0 (A4) precedes Boulder 2.
+2. **The accept-flip does not close until its whole witness-soundness spine is green and its
+   external pass clears.** The flip (R1.8) is a consensus-rule change (I1); the old "single
+   remaining step" framing hid 7 predecessors — see the flag under *Superseded Rocks*.
+
+#### Boulder 0 — Stop the live bleed (A4 money-pump) · independent · START NOW
+The only break exploitable on `main` today (behind `-accept-delivery-receipts`; `-economy`
+default false). Bond-gated so it buys no consensus standing, but breaks the certified B3
+conservation close and can fund spam/publish at scale.
+
+- **R0.1 · A4 conservation regression gate (RED-first)** · Tester · unit `core/credit/`.
+  Assert Σbalances + Σescrow == initial grant across flood→evict→redeem. Existing
+  `TestProvisionalCapIsBoundedAndDeterministic` (`delivery_test.go:207`) PASSES with the bug —
+  it must go RED on main first.
+- **R0.2 · redeem-without-provisional-record semantics — DECISION RATIFIED: (b)-prunable.**
+  One delivery, one payment; couple provisional lifetime to an ENFORCED receipt-expiry (not
+  (b)-minimal reverse-and-forget). Build-day first check: confirm `demand.go`/`Bank.Redeem`
+  enforces a finite receipt age; (b)-prunable needs it — add expiry first if absent.
+- **R0.3 · A4 fix (claw back the eager self-mint on eviction, per R0.2's rule)** · Builder · S.
+- **R0.4 · Economic re-cert of the B3 conservation close** · Researcher (RE-OPEN-CERT,
+  **cert-gated**). Prior B3 cert did not model bounded-map eviction; (b)-prunable edits
+  bilateral-fallback semantics → cert before the economy default flips.
+- **R0.5 · A4 node-path integration conservation gate** · Tester · integration. Proves the
+  fix is wired at `node.go:1576` + `demandrole.go:201`, not just in the ledger.
+
+#### Boulder 1 — Make the accept-flip safe (floor-box witness-soundness spine) · was Rock 1
+Root cause (verified, all seats): classes P/A/B take witness values/screens as `NewValue`s or
+branch predicates without `Resolve`-ing against `prevStateRoot`; the attacker controls the
+committed root too, so `postRoot==StateRoot` holds by construction. Sound classes route witness
+values as VerifyProof'd `OldValue`s — the fix mirrors them. Design:
+[`docs/thinking/2026-09-01-floorbox-witness-soundness-fix-design.md`](docs/thinking/2026-09-01-floorbox-witness-soundness-fix-design.md).
+
+- **R1.0 · Pin the held invariants BEFORE the refactor** · Tester/PE. The shared quorum
+  arithmetic (`requireQuorumStack`, `chain.go:2778`) must NOT fork between the live path and
+  the box (the #402 lesson); class-M is A2-poisoned (inherits the forged `validatorsSeenRoot`).
+- **R1.1 · Adversarial-committed-root regression gates for every P/A/B break (RED-first)** ·
+  Tester. Fixes the ablation blind spot: existing forge-tests forge against an HONEST root;
+  these forge the committed root from the forged ops, then assert non-nil while
+  forgedRoot≠honestRoot. One per witness FIELD. Also settles the open tension (is class-P
+  `Weight` fold-caught?) by evidence — the design resolves it YES-forgeable.
+- **R1.2 · Re-anchor P/A/B witness values as Resolved fold OldValues** · Builder · M. The fix.
+  Lands AFTER R1.0 pins, WITH R1.1 gates.
+- **R1.3 · RE-OPEN + REFUTE the class-A/P/B directional certs** · Researcher (RE-OPEN-CERT,
+  **cert-gated**). The 2026-08-31 certs rest on a falsified "fold-equality is the universal
+  backstop" premise; withdraw + name the correct direction (Resolve-anchoring).
+- **R1.4 · Witness-soundness audit + per-predicate cert table (23 fields × membership-vs-value
+  × source)** · Builder enumerates + self-checking coverage test; Researcher CERTIFIES
+  (NEW-CERT, **cert-gated**). This IS the flip's certification. Also resolves the R-membership
+  residual (bound the qualified/validatorsSeen set size).
+- **R1.5 · Accept-flip model-check exercising the NEW Resolve path** · Tester · model-check.
+  Absorbs old Rock 4 (#406).
+- **R1.6 · Oracle coverage: 23 predicate fields each get an adversarial Resolve-path probe;
+  extend probeUncovered to name A1/A2/A3** · Tester. Also a freeze gate (Boulder 3).
+- **R1.7 · External red-team pass (B8) — DECISION RATIFIED: the external pass is a HARD
+  precondition of the flip.** Owner milestone-call + external seat. The recompute's OUTPUT is
+  C2's INPUT; internal cert cannot close "no adversary forges a witness the recompute accepts."
+  Cannot start until R1.1–R1.4 land (attack the fixed artifact). Model-check the
+  Resolve-every-value class under adversarial scheduling first, to convert the external pass
+  from discovery to bounded confirmation.
+- **R1.8 · The flip: wire `WitnessValidateV5` → Accept-iff-all-predicates-pass** · Builder · S.
+  Trivial code; gated on R1.1–R1.6 green + R1.7 external pass. The real last step of Rock 1.
+  **Decoupled from the era-4/v5 freeze** (R3.4): the flip proceeds pre-freeze; `WitnessValidateV5`
+  changes no committed format field, so the freeze re-confirms byte-identity later, at RC.
+
+#### Boulder 2 — Turn the economy on, prove it under adversary · depends on Boulder 0
+All solvency claims are sim-only today (economy default-off, no live enable path). An
+economy-off HEAD certifies a network nobody runs. Design:
+[`docs/thinking/2026-09-01-economy-observability-design.md`](docs/thinking/2026-09-01-economy-observability-design.md).
+
+- **R2.1 · Economy observability MVP + node-local APIs** · Builder · L (sliceable) ·
+  INDEPENDENT, start now. 4 local-exact panels (my solvency / am-I-profitable / durability
+  self-funding / wash self-check), extending the existing `/api/status` durability block.
+  Slice 6a ships cert-free, economy-off. ★ Build gap: no per-node `repairsDone` counter exists
+  (repair-work Gini blocked until it lands).
+- **R2.2 · Full observability set + testable telemetry gate** · Builder + Tester. Serve-work
+  Gini AND repair-work Gini (separate), per-tier margin, live `g`, funded-horizon-to-expiry,
+  wash-detection; network panels via the DHT crowd-estimator (knowability tiers).
+- **R2.3 · A4-fix + economy-ON packaging — DECISION RATIFIED: separate; A4 fix first.** The
+  conservation re-cert (R0.4) lands before the economy default flips regardless of packaging.
+  ★ The flag that arms A4 is `-accept-delivery-receipts`, not `-economy` — sequence it behind
+  the re-cert; do not let it ride silently in an economy-on PR.
+- **R2.4 · Economy-ON default flip** · Builder. After Boulder 0 + R0.4 cert.
+- **R2.5 · C-5 G2 RAM measurement at production chunk — DONE (2026-09-01): 1024 MiB resident.**
+  Measured locally at production chunk (16 × 64 MiB), +~512 MiB reclaimable (1536 MiB
+  allocation-inclusive peak). Consequence: on a 2 GB pony ONE repair fits, TWO concurrent
+  prod-chunk repairs OOM. Build-day: confirm a repair-concurrency limiter in
+  `core/node/repair.go` (PE found none); fold into the owed node-store coexistence test.
+- **R2.6 · Repair-payee model — DECISION RATIFIED: HOLD the ratified design; convert to a
+  G2-gate.** The `selfHold` conditional payee ALREADY pays the reconstructor where safe
+  (2026-08-19 ruling); the real surface is only the domain-collision case, and the binding
+  constraint is COST (the G2 RAM spike), not incentive. Any re-open needs a cert grounded on
+  the measured G2 (**cert-gated**, re-opens D-S7). Real seam: who re-endows cold-escrow + the
+  missing per-tier repair-work-Gini telemetry.
+- **R2.7 · Economy-ON adversarial-solvency verdict + attack pass** · Researcher (NEW-CERT,
+  **cert-gated**) + red-team. After R0.3 (mint fixed) + R2.6 (payee decided) + R2.2 (live
+  telemetry). Feeds the #183 external brief.
+- **R2.8 · Cold-repair funding path (who re-endows the long tail)** · Builder/economist. After
+  R2.2 quantifies the heat/tier/repair correlation silt cannot measure today.
+
+#### Boulder 3 — Freeze prerequisites (era-4/v5) · parallel · freeze-gated · was Rock 3
+- **R3.1 · Close/own the SMT second-preimage / domain-separation residual** · Builder (scope to
+  hashing first) + crypto/Researcher confirm. Load-bearing: a leaf/internal second-preimage
+  would defeat the fold-OldValue soundness Boulder 1 relies on. Design (NO hash change; the
+  library domain-separates by construction for silt's fixed-width leaves):
+  [`docs/thinking/2026-09-01-smt-domain-separation-close-design.md`](docs/thinking/2026-09-01-smt-domain-separation-close-design.md).
+- **R3.2 · Close the oracle probeUncovered debt fully (from R1.6)** · Tester. Freeze gate.
+- **R3.3 · Record PayWord/RegCap re-derivation dependencies** · doc-only; re-derive only if
+  #299 moves.
+- **R3.4 · era-4/v5 format freeze — DECISION RATIFIED: deferred to the RELEASE CANDIDATE (not
+  end-of-PoD), and DECOUPLED from the flip.** `WitnessValidateV5` changes no committed format
+  field, so the flip (R1.8) proceeds pre-freeze; the freeze then re-confirms byte-identity of
+  the recompute at RC. Owner-call, after the field set settles (R1.4) + domain-sep owned
+  (R3.1). The prior "freeze at end-of-PoD" framing is superseded.
+
+#### Boulder 4 — Standing gates + M0 endgame (post-PoD hardening) · was Rock 6
+- **R4.1 · PoD demand→standing bright-line gate (fires per PoD increment)** · Researcher cert
+  on trigger (**cert-gated**). Any increment wiring served demand toward standing re-opens the
+  C1 discount (γ→1/N, #182). A review gate, not scheduled work.
+- **R4.2 · Wire the A-axis (operator/domain) into standing** · Builder + Researcher (NEEDS-CERT,
+  **cert-gated**) · L · depends on PoD. Highest-value M0 hardening after the flip; today
+  `C_honest ≈ D`, A-axis self-declared (reputation-Sybil seam). The self-declared A-axis is an
+  explicit SECOND B8 external target.
+- **R4.3 · Continuous internal red-team hunt on the not-yet-run backlog** · red-team → feeds the
+  external seat. Backlog: class-P compound-block ordering; bondreg full path; DHT/eclipse/A-axis
+  layer; long-range/weak-subjectivity checkpoint; relay/PayWord economy; churn/restart
+  everMature under the R1.2 refactor.
+- **External red team (#183) → R1 field grade → V1** remains the endgame; #183's close condition
+  is MET and the issue carries the evidence — the close is the owner's call, deliberately held.
+
+**Watch-items / standing gates (not scheduled):** bond-floor vs pony-disk ratio (a dashboard
+row); owned-residual doc lines (SHA-256 pinned, store-free verify, R3 16 KiB cap); PayWord
+re-derivation. **A4 fix (Boulder 0) is Third-operator settlement's predecessor** — the old Rock 2
+(third-operator committed settlement, DEFINITION, #658) is unchanged and attaches its
+demand→standing bright-line to R4.1.
+
+<details>
+<summary><b>Superseded Rocks (2026-08-19→08-31 overlay — kept as history)</b></summary>
+
+> **⚠ Reconciliation flag (2026-09-01).** The old Rock 1 read *"the accept-flip is the single
+> remaining step."* The 7-seat audit found that FALSE: the flip has a witness-soundness spine
+> (re-anchor + refute + cert table + gates + external pass — Boulder 1's R1.0–R1.7) it never
+> named, and classes P/A/B currently accept forged witness values because they are not
+> Resolve-anchored. The flip is now R1.8, gated on that spine. Old Rock 4 (#406) folds in as
+> R1.5. This flag preserves the earlier framing and records the correction.
 
 1. **Trustless floor box** (D-TIERING keystone / "lane 1"). **IN PROGRESS — the recompute
    is built and merged; the accept-flip is the single remaining step.** The witness read-set
@@ -81,21 +229,21 @@ IN PROGRESS / IN DESIGN / DEFINITION — never as decided.
    "pony" budget. **Remaining: the accept-flip** — wire `WitnessValidateV5` to the merged recompute and
    return Accept-iff-all-predicates-pass. **Owner-ratified (pre-launch)**; gated on the #406
    model-check cert and the accept-flip gates. One step to a validating pony.
-   Maps to: the D-TIERING keystone track (§3 of *Immediate next work*).
+   Maps to: **Boulder 1** (the flip is R1.8, not a single step).
 2. **Third-operator committed settlement** (the next PoD economic frontier). **DEFINITION.**
    Cross-operator settlement in committed state, replacing today's bilateral in-memory
    ledgers. Design-space strawman filed (#658, DEFINITION only); a **gated economic
    mechanism** (γ→1/N firewall #182 + conservation) under blind Research + PE evaluation.
-   Couples to the v5 format. Maps to: Phase 4 (PoD), the remaining heavier lane.
+   Couples to the v5 format. Maps to: Phase 4 (PoD); unchanged; attaches to R4.1.
 3. **era-4 / v5 format freeze** (the closing act of Proof-of-Delivery; a second practiced
    era freeze). **DEFERRED BY DESIGN.** era-4/v5 is kept OPEN-ENDED — no live chain, and
    PoD may still reshape witnessable state (owner-ratified 2026-08-30). The R-boundary digest
    leaves are ratified and merged (F1, five roots); the hard gate is the COMPLETE exhaustive
    digest-root set — the mechanically-enumerated whole-set reads — plus any third-operator leaves,
-   certified before the freeze (decisions.md). Maps to: the keystone track + Phase 4 close.
+   certified before the freeze (decisions.md). Maps to: **Boulder 3** (freeze re-scoped to RC).
 4. **#406 consensus model-check (I1–I5).** **IN PROGRESS.** The deterministic adversarial
    property harness that HARD-GATES every graded field run; each invariant ablation-proven.
-   Maps to: the M0-verification instrument (the *Verify tracks* gate).
+   Maps to: **Boulder 1 R1.5** (folded into the flip's model-check).
 5. **Phase 5 — operational floor** (a node a person can run). **NOT STARTED (needs scoping).**
    Per-platform packaging + signed installers + operator-consented R4 self-update, plus the
    S6 scaling kills (incremental O(delta) proof maturation; reprovide dirty-tracking).
@@ -103,7 +251,9 @@ IN PROGRESS / IN DESIGN / DEFINITION — never as decided.
 6. **External red team (#183) → R1 field grade → V1.** **GATED (endgame).** Runs against
    the economy-ON config, then a green multi-region R1 grade, then V1. #183's close condition
    is MET and the issue carries the evidence; the close is the owner's call, deliberately held.
-   Maps to: Phase 6.
+   Maps to: **Boulder 4**.
+
+</details>
 
 1. **Phase 1 — Close the M0 tail (small, enumerated). ✅ COMPLETE (2026-08-19).**
    *(1.1 inbound-cap: resolved — v2b shelved to owned-residual E5 on the drain measurement

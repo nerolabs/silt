@@ -9,6 +9,17 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Docs
+- **Session-17 PACE deliberations + Rock/Boulder roadmap (planning, no logic change):** four
+  build-day design docs land in `docs/thinking/` ahead of the upcoming build — the floor-box
+  witness-soundness fix (Resolve-anchor every witness value, `2026-09-01-floorbox-witness-soundness-fix-design.md`),
+  the A4 provisional-eviction money-pump fix (`2026-09-01-a4-provisional-eviction-fix-design.md`),
+  the economy observability MVP (`2026-09-01-economy-observability-design.md`), and the SMT
+  domain-separation close (`2026-09-01-smt-domain-separation-close-design.md`). `ROADMAP.md`
+  reorganized to the ratified 5-Boulder plan (0 A4 money-pump · 1 accept-flip witness-soundness
+  spine · 2 economy-ON + observability · 3 era-4/v5 freeze · 4 standing gates + M0 endgame), with
+  the old 6-Rock overlay preserved as history and mapped forward. Folds in the ratified decisions
+  (R0.2 (b)-prunable, R1.7 external-pass-is-a-hard-precondition, R2.3 A4-first/separate, R2.5 G2 =
+  1024 MiB measured, R2.6 hold/G2-gate, R3.4 freeze deferred to RC and decoupled from the flip).
 - **Measure + commit the C-5 G2 repair-RAM number (no logic change):** the floor-box repair
   reconstruction footprint at the production minimum chunk is **1024 MiB resident** (16 shards ×
   64 MiB via in-place `ReconstructStripe`, `DefaultParams{K:10,N:16}`) plus ~512 MiB
