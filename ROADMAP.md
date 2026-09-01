@@ -188,6 +188,17 @@ Accept. Certification:
 - **R-CARRIER-REFLECTION** — 7 fold-input carriers are verified by hand; a **reflection pin**
   on those carriers is owed before R1.8 (so a future added carrier cannot slip the table
   silently).
+- **R-ROTATE-EPOCH-LAST — pin `rotateEpoch`-is-last-in-`apply` as load-bearing for `epochSet`
+  order-independence (#621).** Distinct from R-CARRIER-REFLECTION. `epochSet` order-independence
+  (proven in #620) holds only because `rotateEpoch` runs LAST in `apply` (`core/chain/chain.go`),
+  reading only the final post-block `bonded`/`slashed` state, so `epochSet =
+  liveQualifiedSet(bonded, slashed)` is order-invariant by construction. A refactor that moves
+  `rotateEpoch` before slash/bond application, or makes `liveQualifiedSet` read history rather than
+  the two final maps, would silently break the SMT history-independence premise for `epochSet` and
+  #620 would no longer hold. Owed before the era-4 format freeze (Boulder 3): a drift-guard
+  assertion or test that fails if the freeze can observe pre-final state. PE ruling:
+  `RULING-620-mature-epoch-order-independence-2026-08-28.md` ("Couplings the consult should carry
+  forward").
 - **SMT app-layer keyspace-injectivity oracle** — a **freeze-blocker (A2)**. It is currently a
   decoration; it needs a defect-injected gate (inject a keyspace collision, watch it go RED)
   before it counts as coverage.
@@ -256,8 +267,23 @@ economy-off HEAD certifies a network nobody runs. Design:
   external seat. Backlog: class-P compound-block ordering; bondreg full path; DHT/eclipse/A-axis
   layer; long-range/weak-subjectivity checkpoint; relay/PayWord economy; churn/restart
   everMature under the R1.2 refactor.
-- **External red team (#183) → R1 field grade → V1** remains the endgame; #183's close condition
-  is MET and the issue carries the evidence — the close is the owner's call, deliberately held.
+- **R4.4 · External red-team vs the C1 + C2 composition and the seven §7 seams (#183) — THE M0
+  close gate.** This is the RC-defining gate. A fresh, no-memory EXTERNAL red team (self-graded
+  does not count — B8 requires the certifying adversary to be external) attacks the BUILT system
+  and must find no strategy that (a) earns quorum-controlling standing for less than `q · C_honest`
+  (**C1**), (b) concentrates bonded weight past capture under adversarially-skewed measurement
+  (**C2**), or (c) breaks one of the seven `docs/design/m0.md` §7 composition seams (re-pricing/wealth
+  residue; cold-start scaffolding-capture; real-demand > wash-demand; privacy↔attribution linkage;
+  operator-clustering heuristic; time-axis gaming; new liveness/griefing surfaces). The unit of test
+  is the SYSTEM, not a primitive — a primitive failing a standalone Sybil-proof test is Douceur
+  (expected). A seam held in tension (bounded cost, documented residual) is a PASS; a seam silently
+  assumed closed is the failure mode. Findings are triaged/fixed to the build-immutable bar (unit +
+  integration + e2e + inverted PoC) and re-attacked until a clean verdict. Brief:
+  `docs/reviews/m0-redteam-brief.md`. Pairs with the multi-machine field test (#52) to render the
+  verdict. This is the gate to declaring M0 *held* (not merely built) and defines the R1 field
+  grade → V1 endgame. #183's close condition is MET and the issue carries the evidence — the close
+  is the owner's call, deliberately held.
+- The self-declared A-axis (R4.2) is an explicit SECOND external B8 target once wired.
 
 **Watch-items / standing gates (not scheduled):** bond-floor vs pony-disk ratio (a dashboard
 row); owned-residual doc lines (SHA-256 pinned, store-free verify, R3 16 KiB cap); PayWord
@@ -525,6 +551,26 @@ live in [`docs/thinking/2026-09-01-residual-defect-repro-recipes.md`](docs/think
   arming (#586).** Standing-tail harness defects; repro recipes + fix directions in the repro doc.
   #530 first step is instrumentation (`-log debug`, capture one full client transcript), not a fix
   (build-immutable #7).
+- **CPU-time O(depth) regression CI gate — #616.** The shipped O(depth) gate (#613) measures
+  baseline-subtracted `runtime.MemStats.HeapObjects`, so it catches allocation-shaped depth
+  blow-ups (the #555 `AllEntries` shape) but NOT CPU-time-shaped ones (the #528 per-height CPU
+  burn allocates little, so it slips the memory gate). Needed: a companion wall-time/CPU-time
+  slope-vs-depth gate analogous to the memory gate's two-stage doubling test. The blocker is
+  noise — wall-time is far noisier than a seeded byte-deterministic `HeapObjects` count, so this
+  needs its own **noise study first**: measure run-to-run variance of the per-height time cost,
+  derive a bound from that measurement (not a guessed constant), and prove it goes RED on an
+  injected CPU-time O(depth) defect before it can assert. Companions the Boulder-1/Boulder-3 test
+  gates. PE ruling: `RULING-613-odepth-ci-gate-2026-08-28.md` §B; deliberation
+  `docs/thinking/2026-08-27-o-depth-ci-gate.md` (lines 183–188).
+- **cloudtest infra-liveness-FAIL journal-capture gap — #504.** A distinct evidence-capture
+  defect. The flow-level capture-on-fail exists (`flow-evidence-*.log`), but the `infra-node-liveness`
+  row's FAIL path has NO capture step: on run fa501cc-56689 it named `island-c×3` crashes then let
+  the EXIT-trap teardown destroy them, losing crash-type attribution (OOM vs Go fatal), crash times,
+  and the pre-crash log tail — the exact build-immutable #7 canonical loss that ratified
+  capture-the-evidence-first (PR #394). Fix (third-time rule — a gate, not prose): when
+  `infra-node-liveness` records a FAIL, pull each named node's `journalctl -u silt` (all boots) +
+  `dmesg | tail` into `failed-nodes-<run>.log` BEFORE returning, the same capture path the flow
+  failures use. Fires only on the FAIL branch (cheap).
 
 **Durability / repair / demand residuals:**
 - **Repair dial-storm to dead holders — #277.** The DHT walk re-dials dead holders every sweep
@@ -549,6 +595,34 @@ live in [`docs/thinking/2026-09-01-residual-defect-repro-recipes.md`](docs/think
   numbers live. Possible cheap interim (unverified): de-duplicate shared DRSample parent blocks in
   the encoding (no soundness change) — measure before any k-reduction.
 
+**Consensus-touching residuals (tracked, NOT resolved — need the research gate when worked):**
+- **Objective-mode `Config.Quorum` floor divergence — #380 · tracked, NOT resolved —
+  consensus-touching (I1).** In objective mode the effective `ValidateCommit` requirement is
+  `max(Quorum, bftThreshold(validatorSetSize))` (`core/chain/chain.go` `RequiredQuorum`). `bftThreshold`
+  is a pure function of committed chain state (replica-identical), but the `Quorum` floor is LOCAL
+  config, so two honest replicas with different `-quorum` compute different validity for the SAME
+  committed block; a node whose floor exceeds a committed block's attestation count rejects it in
+  `Reconcile` and is stranded at genesis. Confirmed root cause of the SYBILS=8 field GAP (#338).
+  **Workaround shipped:** a uniform `-quorum` across the objective swarm (documented behavior,
+  `TestDivergentQuorumFloorStrandsSyncingNode338` passes today). **The product question is a
+  consensus-rule change (I1) and needs the research/owner gate before any build** (build-immutable
+  #6): should objective mode ignore the local `Quorum` floor in `ValidateCommit` and defer to
+  `bftThreshold`, keeping `Quorum` as a proposer-side gather target only? Options: (1) ignore the
+  floor in `ValidateCommit`; (2) a cheap non-gated startup warning when `-quorum` is set on an
+  objective+byzantine node; (3) leave as-is, documented. Do NOT assert resolved.
+- **Mature-regime PUBLISH starvation — #441 · tracked, NOT resolved — consensus-touching
+  (I4 liveness).** Field-observed (run a56ac10-42834): entry-carrying blocks committed only
+  pre-latch (h4–h23, latch at h26); NONE of the 52 post-latch blocks carries a publish entry,
+  though the chain stays live via renewal drains. Consensus SAFETY unaffected (S1/S2/I1–I5 held);
+  this is I4's *liveness* face for the ENTRY path. Leading (code-cited, NOT proven) mechanism: the
+  #432 view-change machinery is drain-only — `recordRoundChange` (`core/node/rounds.go`) fires the
+  drain proposal, the publish path (`httpregistry publish` → `proposeBlock`) has no round-aware
+  retry or new-view seat, so at mature steady state pending renewals own every height's rounds and
+  the publish loses every round. **A fix touches the certified #432 round machinery, so it needs a
+  research/PE consult BEFORE any build** (no unilateral change). Deterministic home: a repro
+  schedule in `matureWorld` (PR #440). Attribution: `docs/thinking/2026-08-16-run3-mature-handoff-passed-publish-starvation-found.md`.
+  Do NOT assert resolved.
+
 **Operational floor (RC-path, needs scoping — the archived Phase 5):**
 - **A node a person can run.** Per-platform service packaging (launchd / systemd / Windows
   service) + signed installers, and operator-consented self-update per R4 (signed manifests,
@@ -565,7 +639,7 @@ live in [`docs/thinking/2026-09-01-residual-defect-repro-recipes.md`](docs/think
   These do NOT gate M0.
 
 **Umbrella/frontier issues kept as evidence anchors (not a second task list):** #183 (external
-red team → the Boulder 4 endgame; close condition MET, owner deliberately holds), #182 (shared-content
+red team → **Boulder 4 R4.4, the M0 close gate**; close condition MET, owner deliberately holds), #182 (shared-content
 sealing frontier → R4.1 / research frontier above), #179 (H8 metadata privacy), #180 (H9 pluralistic
 takedown), #94 / #52 (the forward-tracks / R1 verify epics — now the Boulder structure itself),
 #406 (consensus model-check = Boulder 1 R1.5).
