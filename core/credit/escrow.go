@@ -136,7 +136,7 @@ func (l *Ledger) RecordServeToObject(server, requester ports.NodeID, root ports.
 	// The self-credit above is PROVISIONAL against a later witnessed receipt
 	// for this same delivery lane, which supersedes it (delivery.go — the PoD
 	// conservation rule). An unwitnessed serve keeps it: the bilateral fallback.
-	l.trackProvisional(requester, root, bytes-skim, skim)
+	l.trackProvisional(server, requester, root, bytes-skim, skim)
 	return skim
 }
 

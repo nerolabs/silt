@@ -32,6 +32,26 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   coexistence test.
 
 ### Fixed
+- **A4 provisional-eviction money-pump — close the double-pay at FIFO eviction (Boulder 0, R0.4a;
+  economic-mechanism change, B3 conservation — Researcher re-cert pending):** an object-aware serve
+  eagerly self-mints `bytes − skim` to the server and routes `skim` to the object's escrow, tracking
+  the lane as provisional so a later witnessed receipt supersedes it (`RedeemDeliveryCredit` reverses
+  the mint, then pays the conserved `fee − skim`). When the bounded provisional map (`maxProvisional`,
+  build-immutable #8) FIFO-evicted the oldest lane, it forgot the lane but LEFT the mint on the
+  server's balance; a receipt redeemed after eviction then paid the conserved leg on top — one
+  delivery paid twice, a network-minted per-receipt subsidy (the banned dual). Fix (the (b)-minimal
+  claw-back, `core/credit/delivery.go`): eviction now REVERSES the evicted lane's self-mint before
+  forgetting it, via the same floored reversal the redeem uses (`reverseProvisional`, shared verbatim
+  so the escrow floor is identical at both sites — a repair bounty paid between serve and eviction is
+  never clawed back). An evicted lane is thereby left in the same accounting state as "never served",
+  so an evicted-then-redeemed lane equals a never-existed redeem: conserved leg only, mints nothing.
+  The give is the unwitnessed bilateral fallback — an evicted, never-redeemed serve loses its
+  self-record (an under-pay at the `>maxProvisional` tail, never an over-pay, never a denial). New
+  gate `core/credit/money_pump_test.go` `TestA4MoneyPumpConservation` pins the closed-system
+  invariant `Σbalances + Σescrow == grant + legitimate transfers` (RED at `delta=+1024` before, GREEN
+  after); `TestProvisionalCapIsBoundedAndDeterministic` flipped from encoding the buggy rule (c) to
+  the correct rule (b); new `TestPaidBountyIsNotRecoverableByEviction` guards the escrow floor at the
+  new reversal site. Design: `docs/thinking/2026-09-01-a4-provisional-eviction-fix-design.md`.
 - **Docs/comment true-up (no logic change):** ROADMAP Rock 1 updated to the built recompute state
   (recompute reproduces the `apply()` transition set — E/R spine + classes S/B/T/A/P + class-M latch —
   guarded by the 28/28 write-obligation leaf-diff; the accept-flip is the single remaining step; the
