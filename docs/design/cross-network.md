@@ -129,7 +129,7 @@ gated in CI (`nat-holepunch` job over the `integration/nat` Docker harness).
 The make-or-break detail the harness surfaced: a real NAT firewall must
 *drop* unsolicited inbound (stealth), not RST it, or the first crossing SYN
 is refused instead of retransmitted. Code: `adapters/tcpnet/holepunch.go`
-(`HolePunch`, `reuseControl`), relay coordination in `adapters/relay`
+(`HolePunch`, `reuseport.Control` from `internal/reuseport`), relay coordination in `adapters/relay`
 (`punch` op, `coordinatePunch`, `RequestPunch`, `Observed`). (The live
 two-daemon *upgrade* is wired but not yet green end-to-end — blocked on a
 provider-discoverability issue in the minimal harness, not the punch itself.)

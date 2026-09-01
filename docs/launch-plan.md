@@ -17,8 +17,8 @@ audience we need. So the tenets are **field-proven — floors and pillars
 both — before we launch**: the durability floors, the DoS resistance,
 cross-network hole-punching, and a *real* verify-without-fetch proof-of-retrieval
 and a proof-of-space-time bond behind the trust plane — now **built and pending
-independent review** (Gate 4) — with publishing that stays cryptographically
-unlinkable from the reputation that earns it.
+independent review** (the M0 trust-plane mechanism) — with publishing that stays
+cryptographically unlinkable from the reputation that earns it.
 
 Feedback is still the point of the first release — market for technical
 people to **break it and tell us what's wrong**, especially the weaknesses
@@ -28,8 +28,8 @@ the *bar for what we hand them*: something that already stands up, not a
 request to finish our hardening for us. Legal posture and any entity are
 still decided later, informed by the engagement — nothing formal is committed
 on spec — but now *after* a credible artifact exists, not instead of one.
-The pre-launch work is tracked on the [ROADMAP.md](../ROADMAP.md) `V1`
-milestone and its issue spine; Andrew's personal review + hardening pass is
+The pre-launch work is tracked on the [ROADMAP.md](../ROADMAP.md) Boulder spine
+(the single task SSOT); Andrew's personal review + hardening pass is
 the final gate before any outreach.
 
 ## Positioning
@@ -108,7 +108,7 @@ infringement-oriented communities. Wrong audience, wrong signal, real downside.
 ## Actions, phased
 
 **Phase 0 — before any announcement (gate).**
-The technical bar comes first (harden-first): the `V1`-milestone issue spine
+The technical bar comes first (harden-first): the Boulder spine
 in [ROADMAP.md](../ROADMAP.md) field-proven, an independent security review, a
 signed, checksummed release (an early **0.x experimental/learning** build —
 feature-complete lands at 0.9.0/RC, true V1 at 1.0.0), and `CONTRIBUTING.md`.

@@ -39,8 +39,8 @@ compensated, cheaply enough to run on a transient edge box.
 | **Strong** (out of scope) | Consensus standing | Verifiable-escrow crypto **and** #182 sealing — both open |
 
 Delivery credits fund durability and compensation, **never consensus standing**.
-The firewall is structural (`core/credit/credit.go:282`, Invariant A) and this
-spec does not touch it.
+The firewall is structural (`core/credit/credit.go:290`, `bondUnit`/`Reputation`,
+Invariant A) and this spec does not touch it.
 
 ## 2. What exists (verified at HEAD `d9635c4`)
 
@@ -49,7 +49,7 @@ spec does not touch it.
 | Receipt engine: blind withdraw → PoR-bound ack → bank → redeem | `core/demand/demand.go` | Built (#181), **LIVE** — production caller `cmd/silt/daemon.go:810` (behind `--accept-receipts`); redeem wired `core/node/demandrole.go:190` → `core/credit/delivery.go:89` |
 | Wire messages `MsgDeliveryReceipt`/`Ack` | `ports/net.go:149`, dispatched `core/node/node.go:1567` | Wired |
 | Per-byte serve credit (1 credit/byte, 1/8 skim to the object's escrow) | `core/node/node.go:1543-1545`, `core/credit/escrow.go:117-135` | Live — but **self-recorded**, per-node ledger |
-| Self-serve guard | `core/credit/credit.go:131-134` (`server == requester` earns nothing) | Live |
+| Self-serve guard | `core/credit/credit.go:169` (`server == requester` earns nothing) | Live |
 | Cost-to-wash levers: fee at withdrawal (P3a), bonded-fetcher credential (P3b) | `demand.go:82-87`, `Bank.RequireBondedFetcher` | Built |
 
 The neutral lane is therefore **not a new payment**. It is the *witnessed* form
@@ -93,7 +93,7 @@ consumer and its invariant.
 
 5. **[CERT] The supersede rule (load-bearing, required before the firewall
    test means anything).** The serve path already self-mints 1 credit/byte
-   with no debit anywhere (`RecordServe`, `credit.go:131-137`) — an
+   with no debit anywhere (`RecordServe`, `credit.go:168`) — an
    unfunded mint that is precisely the banned per-receipt subsidy once a
    witnessed receipt pays for the same bytes. Certified rule: **a delivery
    paid by a redeemed receipt is never also self-credited**, deduped by the
@@ -123,7 +123,7 @@ withdrawal) and a fetcher signature (only the token's spender can mint it,
 paid a real fee and skips only the byte transfer. Under the §3 invariant the
 pair's best outcome is moving its own fee back to itself **minus the skim** —
 a strict loss per loop, identical to the honest self-serve case the ledger
-already blocks (`credit.go:131-134`). Forgery is not free minting; it is
+already blocks (`credit.go:169`). Forgery is not free minting; it is
 buying your own money back at a discount to yourself of `SkimNum/SkimDen`.
 
 The exposure this leg does **not** cover, and therefore the spec **bans**: any
@@ -236,13 +236,19 @@ Consult `PoD-neutral-lane-B3-close-CONSULT-2026-08-26.md`; certification
 2. The D-TIERING near-term flags (`--serve-content`, `--archive`) —
    build-gated only, now unblocked.
 3. Relay compensation per the Q3 certified direction (sender-funded
-   incremental micropayment). The balance-lane consumer has landed
-   (`cmd/silt/daemon.go:810`) and the follow-on mechanism consult is
-   certified (2026-08-30), so the mechanism is now specified in **§7.3**.
+   incremental micropayment) — **BUILT and LIVE** (`core/relaypay/payword.go`,
+   `core/node/relaytransport.go`; PRs #646–#650). The balance-lane consumer
+   landed (`cmd/silt/daemon.go:810`), the follow-on mechanism consult is
+   certified (2026-08-30), the mechanism is specified in **§7.3**, and the
+   increment is pinned at `RelayIncrementBytes = 4096`.
 
 ## 7.3 Relay compensation (the mechanism)
 
-> **Status: CERTIFIED — 2026-08-30**
+> **Status: BUILT — paid relay is LIVE** (`core/relaypay/payword.go`,
+> `core/node/relaytransport.go` — `handleRelayOpen` / `SettleRelaySession` /
+> `SplicePaid`; merged PRs #646–#650). The increment size is PINNED:
+> `RelayIncrementBytes = 4096` (`core/relaypay/payword.go:40`), so the owed
+> measurement of §7.3.5 is discharged. Design basis: **CERTIFIED — 2026-08-30**
 > (`silt-reviews/research/research-outcome/PoD-relay-compensation-7.3-mechanism-RESEARCH-CERTIFICATION-2026-08-30.md`),
 > ratified basis D-POD-KNOBS knob 2 ([decisions.md](../decisions.md), lines
 > 869-907, AMENDED 2026-08-27). Deliberation:
@@ -370,7 +376,12 @@ identity, NEVER a durable one.**
 - *Guard:* a session-open reusing an ephemeral identity or a chain root MUST be
   rejected.
 
-### 7.3.5 The increment size — an owed MEASUREMENT (build-immutable #8)
+### 7.3.5 The increment size — MEASUREMENT DISCHARGED, pinned at 4096 B (build-immutable #8)
+
+**Status: DONE.** The increment is pinned at `RelayIncrementBytes = 4096`
+(`core/relaypay/payword.go:40`), inside the ~1–64 KiB envelope derived below. The
+"one quantitative gate before relay-payment code commits" is met; the paid-relay
+code shipped (§7.3 head). The derivation is retained for provenance:
 
 The increment size `B` (payload bytes per increment) is a **floor-box measurement
 in BYTES, not a round figure** (the #299/#555 produce-cost scar). `B` is the
@@ -381,10 +392,10 @@ smallest value satisfying both:
 - **(b)** chain state `S · 32 B` (where `S = objectSize / B`) stays MB-scale for
   the largest object class, aligned to a sub-chunk boundary.
 
-The expected envelope is ~1–64 KiB; the exact value is pinned by the measurement,
-whose method is defined in the deliberation note. **No round figure ships without
-the measurement artifact.** This is the one quantitative gate before relay-payment
-code commits; it does not reopen the design.
+The expected envelope is ~1–64 KiB; the exact value was pinned by the measurement
+to **4096 B** (`RelayIncrementBytes`), whose method is defined in the deliberation
+note. The measurement artifact was produced and the value chosen; it did not reopen
+the design.
 
 ### 7.3.6 Residual (disclosed, priced small — not solved)
 

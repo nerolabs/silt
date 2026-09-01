@@ -61,8 +61,8 @@ web UI and desktop client) — that history and its marker system live in
 security review — the [threat model](docs/threat-model.md) is the
 honest account of what's weak.
 
-Where this is all going: [`ROADMAP.md`](ROADMAP.md), tracked as a single
-`V1` GitHub milestone and its issue spine. The resolver layer that maps
+Where this is all going: [`ROADMAP.md`](ROADMAP.md) — the Boulder spine is the
+single source of truth for the task order. The resolver layer that maps
 meaning onto opaque identifiers is a deliberately separate product:
 [`docs/aslan-boundary.md`](docs/aslan-boundary.md).
 

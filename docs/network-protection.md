@@ -127,7 +127,7 @@ Nearly every attack is easiest on a tiny network. We treat the early network
 as **training wheels**, honestly labeled: seeded/anchored trust that is
 time-boxed and pre-committed to shed, a gated reputation ramp, and
 maturity-scaled quorum thresholds. This is **built** (T2/#83:
-maturity-gated anchor sign-off on commits, now over the real Gate-4 bond), and
+maturity-gated anchor sign-off on commits, now over the real proof-of-space-time bond), and
 crucially the wheels come off on **measured decentralization thresholds**
 (reusing the Gini/observatory metrics), not on a political flag-day — so
 shedding them is mechanical. Hardening this to the real, multi-machine

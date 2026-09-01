@@ -8,6 +8,13 @@ mitigations ship. See the [fresh-eyes council](../archive/reviews/fresh-eyes-cou
 Status key: **built** (mitigation shipped) · **planned** (agreed, not
 yet done) · **open** (needs a decision).
 
+> Note: "Gate 4" / "gate spine" below is the **retired** name of the original
+> Gate 0→6 build framework; it now maps to the M0 trust-plane mechanism (the
+> proof-of-space-time bond + PoR + fork-choice + slashing composition, PRs
+> #117–#126). The risks and their statuses are unchanged; only the framework
+> label is stale. The "Recent status (2026-08-02)" section is a dated audit
+> record and keeps its period wording.
+
 | # | Risk | L×I | Mitigation | Status |
 |---|------|-----|------------|--------|
 | 1 | **CSAM / illegal content published to the network.** | High × Severe | Quorum-governed, decryption-free takedown by opaque hash; operator denylists; moderation at the resolver layer. | takedown **built**; denylist distribution **planned** |

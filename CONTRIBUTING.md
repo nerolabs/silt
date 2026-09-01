@@ -46,8 +46,10 @@ review. The branch is protected to enforce it.
    of `CHANGELOG.md` (and run `python3 scripts/gen_changelog.py` to update
    the page), and update `docs/` where relevant. Docs ship with code.
 4. **Review.** Every PR gets a maintainer review (currently
-   [@nerolabs](https://github.com/nerolabs)) **and** a Claude
-   `/code-review` pass for correctness and cleanup. Address the findings.
+   [@nerolabs](https://github.com/nerolabs)) **and** an agent review pass —
+   a principal-engineer seat for correctness/severity plus, for
+   security-touching changes, a red-team seat that judges the artifact blind.
+   Address the findings.
 5. **Merge.** Squash-merge once approved and green. Delete the branch.
 
 ## Commits & PRs

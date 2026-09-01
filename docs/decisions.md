@@ -417,6 +417,15 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
 
 ## D-M1-PIVOT — the ordered roadmap; M1 (economy + operability) interleaves with the M0 tail
 
+- **FRAMING SUPERSEDED-BY-Boulders (2026-09-01).** The "ordered path with phase
+  gates" / "the ordered path is the track" PACKAGING below is retired: ROADMAP.md
+  now carries the task order as the Boulder/Rock lattice (the single task SSOT), and
+  the numbered Phases + "the ordered path" phrasing are retired to
+  `/archive/roadmap-history-2026-09-01.md`. Only the framing is superseded — the
+  DECISION itself stands (M1 economy + operability interleaves with the M0 tail;
+  storage-economy-first; the standing-firewall unchanged; the trust harness never
+  softens). Read the clauses below that say "the ordered path is the track" as the
+  historical 2026-08-19 framing, now expressed as the Boulder spine.
 - **Status:** ✅ DECIDED — 2026-08-19 (owner ratification, fresh-eyes-audit session).
 - **Basis:** the fresh-eyes audit
   (`docs/thinking/2026-08-19-fresh-eyes-audit-and-the-m1-pivot.md`), which verified every
@@ -428,9 +437,11 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
   `credit.G` never computed on live data), bandwidth is unpriced, and the operational floor
   (packaging, cold-start, reprovide cost) prices out the honest operator in practice.
 - **Direction (decided):**
-  1. **ROADMAP.md carries an explicit ORDERED path with phase gates** ("The ordered path").
-     "Tenets are the roadmap" was too loose — it let effort pool on one axis with no
-     rebalancing force. Tenets remain the destination; the ordered path is the track.
+  1. **ROADMAP.md carries an explicit ORDERED task order** (2026-08-19 framing: an
+     "ordered path with phase gates," now the Boulder/Rock spine — see the
+     SUPERSEDED-BY-Boulders marker above). "Tenets are the roadmap" was too loose — it
+     let effort pool on one axis with no rebalancing force. Tenets remain the
+     destination; the ordered task spine is the track.
   2. **The prior sequencing rule "M1 opens only after the M0 gate" is SUPERSEDED.** The
      economy-enablement and height-cost work interleave with the M0 tail, because (a) field
      runs stall short of depth (h64) partly on M1 costs — heavy per-reg proofs, round
