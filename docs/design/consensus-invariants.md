@@ -32,7 +32,7 @@ The set is closed and small. Everything hit so far is a corollary of I1 + I3 + I
 - **#397** — launch finality granted on a **non-intersecting** 2-of-4 → two honest coalitions finalized conflicting blocks.
 - **#402** — `AnchorQuorum=1` leaves a free anchor whose lone signature satisfies the gate → a competing block commits. **Deeper root (research cert):** the launch general quorum was *sized over the 4 anchors but fillable from all 12 bonded validators* — size-set ≠ membership-set, so disjoint support existed before the anchor gate even applied. **Certified fix (2026-08-14):** launch finality requires a **strict anchor majority `⌊A/2⌋+1`** (=3 for A=4) counting the proposer-if-anchor, **sybils excluded from the launch finality count**; the consult's `⌈A/2⌉` was off by one for even A (a both-sybil-proposed 2-2 anchor split passes `AnchorQuorum=2` and the finality gate then *cements* a permanent conflicting-finalization partition). Chosen encoding: **(B) anchor-only launch proposing** (sybils drain via `MsgSubmitBondReg` submit-don't-propose, per #397) — removes the sybil-proposed fork at the source. Fault tolerance unchanged: 3-of-4 anchors up, 1-fault-tolerant.
 
-**Governs (code):** `core/chain/chain.go` — `RequiredQuorum` (:721), `validatorSetSize` (:742), `bftThreshold` (:703); the finality gate (~:2001–2024, `ErrPreFinalityReorg` :412); `ValidateCommit` anchor gate (~:1472); epoch weight sum (~:1827).
+**Governs (code):** `core/chain/chain.go` — `RequiredQuorum` (:1526), `validatorSetSize` (:1550), `bftThreshold` (:1497); the finality gate (~:3783–3820, `ErrPreFinalityReorg` :886 / :3820); `ValidateCommit` (:2665) launch anchor gate (~:2793); epoch weight sum (:1444).
 
 **Assert (test):** a property test — under *any* partition/proposer schedule, **no two distinct blocks at one height both satisfy the finality predicate.** This single property subsumes #357/B2/#397/#402. The threshold must be verified for true *set-intersection*, not "majority up": for A anchors, two finalizing anchor sets must be unable to be disjoint (mind the `⌈A/2⌉` vs `⌊A/2⌋+1` off-by-one — it is exactly where the seam reopens).
 
@@ -47,10 +47,10 @@ The set is closed and small. Everything hit so far is a corollary of I1 + I3 + I
 **Class.** Safety + accountability. It is what makes a double-sign *proof of malice* rather than an accident; if an honest validator can be induced to double-sign, the slash rule fires on a false premise and slashes the honest (see I5).
 
 **Scars:**
-- **#397** — `proposeBlock` signed a block without writing the never-sign-twice ledger (`chainrole.go:407`), so a racing proposer honestly attested a competitor → mutual slash → wedge.
-- **#397 (restart variant)** — the ledger is in-memory only; a sign→crash→restart→attest-competitor sequence equivocates an honest node and permanently slashes it (F2) — a churn-punishment (persona #4, S6).
+- **#397** — `proposeBlock` signed a block without writing the never-sign-twice ledger, so a racing proposer honestly attested a competitor → mutual slash → wedge.
+- **#397 (restart variant)** — the ledger was in-memory only; a sign→crash→restart→attest-competitor sequence equivocates an honest node and permanently slashes it (F2) — a churn-punishment (persona #4, S6).
 
-**Governs (code):** `core/node/chainrole.go` — proposer `chain.Sign` site (:407, the missing write), attest ledger (:168–175), propose guard (:696–703).
+**Governs (code):** `core/node/chainrole.go` — the durable watermark: `SetSignMarkStore` (:37, fsync'd `ports.SignMarkStore.Save`), `recordSign`/`recordSignLock` (:104/:114, consulted+advanced at every released signature), `slotCompare` (:75, orders `(height, round, phase)`); the released-signature record sites (proposer prepare :312/:940, precommit :350/:1097).
 
 **Assert (test):** unit + **restart injection** — sign at h, kill the process, restart, present a competitor at h → must refuse. The in-memory version passes *without* restart; only the persisted version satisfies the invariant. Prefer a **persisted monotonic last-signed watermark** `{height, hash}` (fsync before the signature goes to the wire) — O(1), crash-safe, and it also fixes the never-pruned map.
 
@@ -68,7 +68,7 @@ The set is closed and small. Everything hit so far is a corollary of I1 + I3 + I
 - **#357** — sizing against the live `qualifiedCount` shifted `RequiredQuorum` block-to-block as registrations drained → no fixed set → no intersection.
 - **B2 (handoff)** — un-matured, minimum-bond sybils entered the first epoch snapshot as **full members**, so `bftThreshold(memberCount)` handed a MinBond-per-head cohort stall power that weight-counting denies. (Fixed by #389 — weight-quorum. This invariant records *why*.)
 
-**Governs (code):** `core/chain/chain.go` — `validatorSetSize` (:742: anchors pre-handoff, frozen `epochSet` post-handoff — the correct pattern), `epochSet` (:518, :1765), the handoff (Condition B); weight sum (:1827).
+**Governs (code):** `core/chain/chain.go` — `validatorSetSize` (:1550: anchors pre-handoff, frozen `epochSet` post-handoff — the correct pattern), the frozen `epochSet` (declared :1096, assigned :3427 / handed off :3909), the handoff (Condition B); weight sum (:1444).
 
 **Assert (test):** membership is **constant within an epoch**; a bond that banks mid-epoch gains **zero** quorum weight until the next finalized boundary; quorum is computed over **weight**, not count.
 
@@ -83,7 +83,7 @@ The set is closed and small. Everything hit so far is a corollary of I1 + I3 + I
 **Class.** Safety + liveness reconciliation. This is what lets a young network commit at a low quorum (immutable #4) *without* the non-intersecting quorum being able to finalize a fork.
 
 **Scars:**
-- **#397** — launch treated `committed == finalized` at a non-intersecting 2-of-4 (`chain.go:2001` "Launch-phase: finalized == committed head"), so a clean 2-2 fork became **two finalized blocks that can never reorg → permanent wedge.** Decoupling commit (2, live) from final (intersecting, safe) lets fork-choice resolve the fork instead of wedging.
+- **#397** — launch treated `committed == finalized` at a non-intersecting 2-of-4 (`chain.go:3797` "Launch-phase: finalized == committed head"), so a clean 2-2 fork became **two finalized blocks that can never reorg → permanent wedge.** Decoupling commit (2, live) from final (intersecting, safe) lets fork-choice resolve the fork instead of wedging.
 - **#432 (the LIVENESS half — 2026-08-15; mechanism SHIPPED 2026-08-16).** The height-only
   #397 watermark permanently wedged a height whose gather fails: a crossed publish-vs-drain
   proposer race splitting the anchor signatures 2-2 left every anchor able to sign only its
@@ -108,7 +108,7 @@ The set is closed and small. Everything hit so far is a corollary of I1 + I3 + I
 
 **Ruling — I4 is a *permission*, not a build mandate (owner, 2026-08-14).** The invariant is satisfied whenever nothing non-intersecting can finalize; it does **not** require silt to build a commit/final decoupling. Research has twice ruled the minimal path instead: the #397 certification found launch finality already intersecting once the ledger write landed, and the #402 certification's M0 set is the strict-anchor-majority rule alone ("no fork-choice change, no D-1 change") — with an intersecting launch finality quorum, `commit == final` satisfies I4 trivially. The supporting research rule to remember: **the finality gate enforces, it does not create** — `ErrPreFinalityReorg` stops a node reverting its *own* head, never two groups finalizing conflicting blocks; leaning on the gate to fix a non-intersecting quorum *cements* the fork. A decoupling is built only if the model-check produces a schedule that violates I4 as stated — that evidence, not this scar note, reopens the question (build-immutable #7).
 
-**Governs (code):** `core/chain/chain.go` — finality gate (~:2001), `ErrPreFinalityReorg` (:412), `heavier`/`Reconcile` (:1651 / ~:2001).
+**Governs (code):** `core/chain/chain.go` — finality gate (~:3783–3820), `ErrPreFinalityReorg` (:886 / :3820), `heavier` (:3852) / `Reconcile` (:3761).
 
 - **#441 (the OPERATION-liveness face — 2026-08-16; mechanism SHIPPED same day).** Chain
   liveness is not the property the product promise needs: after the #432 escape restored
@@ -165,7 +165,7 @@ The set is closed and small. Everything hit so far is a corollary of I1 + I3 + I
 - **#357** — among zero-weight ramp forks, `heavier` fell to a **height-blind hash tiebreak** → committed blocks dropped by hash luck (non-deterministic-looking, and reorg-of-final).
 - **#397** — honest anchors were **slashed** because the double-sign-proof premise was falsified by I2's gap. Accountable safety was violated: the penalty hit the honest. Any harness/model that asserts "no honest schedule produces a slash" catches #397 immediately.
 
-**Governs (code):** `core/chain/chain.go` — `heavier` (:1651), `Reconcile` (~:2001); slash path `core/chain/equivocation.go`, `core/credit/credit.go` `SlashEquivocation`.
+**Governs (code):** `core/chain/chain.go` — `heavier` (:3852), `Reconcile` (:3761); slash path `core/chain/equivocation.go`, `core/credit/credit.go` `SlashEquivocation`.
 
 **Assert (test):** fork-choice is a **pure function** (replay determinism — same inputs → same head on every replica); and **no honest schedule ever produces a slash** (the accountable-safety oracle — this is the direct catch for #397).
 
