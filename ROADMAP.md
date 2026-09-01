@@ -196,10 +196,11 @@ economy-off HEAD certifies a network nobody runs. Design:
 [`docs/thinking/2026-09-01-economy-observability-design.md`](docs/thinking/2026-09-01-economy-observability-design.md).
 
 - **R2.1 · Economy observability MVP + node-local APIs** · Builder · L (sliceable) ·
-  INDEPENDENT, start now. 4 local-exact panels (my solvency / am-I-profitable / durability
-  self-funding / wash self-check), extending the existing `/api/status` durability block.
-  Slice 6a ships cert-free, economy-off. ★ Build gap: no per-node `repairsDone` counter exists
-  (repair-work Gini blocked until it lands).
+  **Slice 6a DONE** (shipped in #689 / commit 94c5c04). 4 local-exact panels (my solvency /
+  am-I-profitable / durability self-funding / wash self-check), extending the existing
+  `/api/status` durability block; ships cert-free, economy-off. The per-node `repairsDone`
+  counter landed with it (`core/credit/credit.go:71`, incremented at
+  `core/credit/escrow.go:177`), unblocking the repair-work Gini (R2.2).
 - **R2.2 · Full observability set + testable telemetry gate** · Builder + Tester. Serve-work
   Gini AND repair-work Gini (separate), per-tier margin, live `g`, funded-horizon-to-expiry,
   wash-detection; network panels via the DHT crowd-estimator (knowability tiers).
