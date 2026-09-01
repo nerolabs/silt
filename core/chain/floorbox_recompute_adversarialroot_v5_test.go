@@ -234,12 +234,12 @@ func TestActivationQuorumNonFork(t *testing.T) {
 	// If rotateTallyOps somehow emits a lock-in op for that case, the driven sub-test above reddens.
 	// The table here independently confirms canonicalQuorum(9,0)=false:
 	if canonicalQuorum(9, 0) {
-		t.Fatalf("QUORUM TABLE: canonicalQuorum(total=9, ready=0) must be false; got true.\n"+
-			"  The canonical quorum predicate 3*ready > 2*total is broken (3*0=0 > 18 is false).\n"+
+		t.Fatalf("QUORUM TABLE: canonicalQuorum(total=9, ready=0) must be false; got true.\n" +
+			"  The canonical quorum predicate 3*ready > 2*total is broken (3*0=0 > 18 is false).\n" +
 			"  This is a compile-time constant mismatch, not a runtime failure. Fix the predicate.")
 	}
 	if !canonicalQuorum(9, 9) {
-		t.Fatalf("QUORUM TABLE: canonicalQuorum(total=9, ready=9) must be true; got false.\n"+
+		t.Fatalf("QUORUM TABLE: canonicalQuorum(total=9, ready=9) must be true; got false.\n" +
 			"  3*9=27 > 2*9=18 must be true. The canonical quorum predicate is broken.")
 	}
 }
@@ -252,8 +252,8 @@ func TestActivationQuorumNonFork(t *testing.T) {
 // assembleStateRootRecomputeOps (the op-assembly half of the box) and FoldChangedPaths (the
 // fold), using the SAME code path the box uses. The result is the root the attacker would embed
 // in b.StateRoot. The gate asserts:
-//   1. forgedRoot != honestRoot (the forgery is real, not a no-op).
-//   2. Recompute(prev, forgedRoot, b, forgedWit) == nil (wrong-accept on main = RED gate).
+//  1. forgedRoot != honestRoot (the forgery is real, not a no-op).
+//  2. Recompute(prev, forgedRoot, b, forgedWit) == nil (wrong-accept on main = RED gate).
 //
 // honestCommitted is passed as the "committedStateRoot" for assembleStateRootRecomputeOps so the
 // class-M maturity recompute path can resolve against a valid root. For tests that need the class-M
@@ -547,7 +547,7 @@ func TestAdversarialRoot_ClassA_ForgedInEpochSet(t *testing.T) {
 func spuriousSeatedRoot(t *testing.T, base *Chain, b Block, id ports.NodeID) ports.Hash {
 	t.Helper()
 	clone := base.cloneForDryRun()
-	clone.apply(b)          // honest apply — does NOT seat id (screen excludes it)
+	clone.apply(b)                  // honest apply — does NOT seat id (screen excludes it)
 	clone.validatorsSeen[id] = true // the spurious class-A seating the attacker forges
 	root, err := clone.StateRootForVersion(BlockVersionWitnessable)
 	if err != nil {
@@ -1625,7 +1625,9 @@ func TestAdversarialRoot_ClassB_ForgedClaimed(t *testing.T) {
 // Attack: the displacement fires iff `proven && !provenRoot[r.Root]` where
 // proven=(b.Height>0) and provenRoot[r.Root]=sc.PriorProven. An unproven squatter
 // (PriorProven=false honestly) is forged to PriorProven=true. Then:
-//   `proven && !true = false` → `!false = true` → `continue`
+//
+//	`proven && !true = false` → `!false = true` → `continue`
+//
 // The honest reg is REJECTED (the loop body is skipped entirely). The squatter keeps its bonded
 // standing AND the honest reg gets no standing. The committed delta omits both the squatter deletes
 // AND the honest reg inserts. The attacker commits this root → wrong-accept.
