@@ -52,6 +52,25 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   after); `TestProvisionalCapIsBoundedAndDeterministic` flipped from encoding the buggy rule (c) to
   the correct rule (b); new `TestPaidBountyIsNotRecoverableByEviction` guards the escrow floor at the
   new reversal site. Design: `docs/thinking/2026-09-01-a4-provisional-eviction-fix-design.md`.
+- **A4 follow-on — `provOrder` desync fix (Boulder 0; conservation-shape-neutral, red-team
+  2026-09-01):** the A4 fix leaned on `provOrder`, the FIFO order slice, which `RedeemDeliveryCredit`
+  never kept in sync — it deleted the redeemed lane from the `provisional` map but left the key in
+  `provOrder`. On the redeem-heavy path (map stays small, eviction loop never fires) the slice grew
+  one entry per witnessed delivery, forever: unbounded state on the floor box (build-immutable #8,
+  HIGH), an attacker-buildable single-serve stall on the serialized consensus loop when the dead
+  prefix is finally scanned (MEDIUM-HIGH), and a stale front entry that reversed a LIVE re-served
+  lane's mint before any redeem (MEDIUM, grief). Not a mint — the red-team's conservation fuzz
+  refuted the double-pay. Fix (`core/credit/delivery.go`, `credit.go`): `provOrder` becomes
+  `[]*provKey` with a companion `provIndex` position map; a redeem tombstones the lane's slot in O(1)
+  (no slice scan), eviction skips tombstones and pops the oldest live lane, and an amortized-O(1)
+  `compactProvOrder` caps the slice at `2*maxProvisional`. Conservation is untouched — no change to
+  what is minted or reversed, only WHEN/HOW the order-slice key is removed; the conserved-lane key
+  shape is unchanged, so the R0.4 conservation cert stays valid (the `provKey`-server shape change,
+  RT-DELIV-3, is routed separately as cert-gated). New gates `core/credit/delivery_provorder_test.go`
+  `TestProvOrderStaysBoundedAcrossRedeems` / `TestRedeemDoesNotLeaveDuplicateOrderEntry` (RED at
+  `9d50437`, GREEN after); `TestA4MoneyPumpConservation` and
+  `TestProvisionalCapIsBoundedAndDeterministic` stay GREEN. Design:
+  `docs/thinking/2026-09-01-provorder-desync-fix-design.md`.
 - **Docs/comment true-up (no logic change):** ROADMAP Rock 1 updated to the built recompute state
   (recompute reproduces the `apply()` transition set — E/R spine + classes S/B/T/A/P + class-M latch —
   guarded by the 28/28 write-obligation leaf-diff; the accept-flip is the single remaining step; the

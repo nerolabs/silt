@@ -25,7 +25,15 @@ package credit
 // the observables stay honest (S5) — only the PAYMENT is superseded.
 //
 // BOUNDED (build-immutable #8): the provisional map is capped; at the cap the
-// oldest entry is FIFO-evicted (deterministic — no map iteration, B2). Eviction
+// oldest entry is FIFO-evicted (deterministic — no map iteration, B2). The
+// FIFO order slice (provOrder) is kept in lockstep with the map at BOTH removal
+// sites: eviction pops the front, and a redeem tombstones the lane's slot in
+// O(1) via provIndex. An amortized-O(1) compaction caps the slice at
+// 2*maxProvisional, so the redeem-heavy path (where the eviction loop never
+// fires) can neither grow provOrder without bound nor let a stale key survive
+// to reverse a re-served lane (the RT-DELIV-1/1b/2 fix, red-team 2026-09-01;
+// verified by TestProvOrderStaysBoundedAcrossRedeems /
+// TestRedeemDoesNotLeaveDuplicateOrderEntry). Eviction
 // REVERSES the evicted lane's eager self-mint before forgetting it (A4 fix,
 // Boulder 0, R0.4a — trackProvisional below), so an evicted lane is left in the
 // same accounting state as "never served". A receipt redeemed after its lane was
@@ -106,20 +114,68 @@ func (l *Ledger) trackProvisional(server, requester ports.NodeID, root ports.Has
 	k := provKey{requester: requester, root: root}
 	p, ok := l.provisional[k]
 	if !ok {
-		for len(l.provisional) >= maxProvisional && len(l.provOrder) > 0 {
-			old := l.provOrder[0]
+		// FIFO-evict the oldest LIVE lane while the map is at cap. Tombstones
+		// (nil, left by a redeem) are skipped, never counted as an eviction —
+		// they carry no lane to reverse. Dropping the tombstoned front here is
+		// also what keeps provOrder from retaining dead prefixes at the head.
+		for len(l.provisional) >= maxProvisional {
+			for len(l.provOrder) > 0 && l.provOrder[0] == nil {
+				l.provOrder = l.provOrder[1:]
+			}
+			if len(l.provOrder) == 0 {
+				break
+			}
+			old := *l.provOrder[0]
 			l.provOrder = l.provOrder[1:]
+			delete(l.provIndex, old)
 			if evicted, eok := l.provisional[old]; eok {
 				l.reverseProvisional(evicted.server, old.root, evicted)
+				delete(l.provisional, old)
 			}
-			delete(l.provisional, old)
 		}
 		p = &provisionalServe{server: server}
 		l.provisional[k] = p
-		l.provOrder = append(l.provOrder, k)
+		kk := k
+		l.provOrder = append(l.provOrder, &kk)
+		l.provIndex[k] = len(l.provOrder) - 1
+		l.compactProvOrder()
 	}
 	p.net += net
 	p.skim += skim
+}
+
+// removeFromProvOrder drops a lane's FIFO entry in O(1) by tombstoning its slot
+// (nil) via the position index. Called at every map removal that is NOT an
+// eviction (redeem) so provOrder never retains a key whose live lane is gone.
+// The tombstones are reclaimed by compactProvOrder. This is the single sync
+// point that closes RT-DELIV-1/1b/2: the map and the live entries of provOrder
+// stay in lockstep, and no stale key can survive to reverse a re-served lane.
+func (l *Ledger) removeFromProvOrder(k provKey) {
+	if i, ok := l.provIndex[k]; ok {
+		l.provOrder[i] = nil
+		delete(l.provIndex, k)
+	}
+}
+
+// compactProvOrder keeps provOrder bounded on the redeem-heavy path (where the
+// eviction loop never fires because the map stays small). When the slice grows
+// past 2*maxProvisional it is rebuilt with the tombstones dropped and the index
+// repointed. Compaction touches at most len(provOrder) entries but runs only
+// once every ~maxProvisional appends, so it amortizes to O(1) per serve and
+// never scans on the hot redeem path. The slice is thereby capped at
+// 2*maxProvisional — bounded state on the floor box (build-immutable #8).
+func (l *Ledger) compactProvOrder() {
+	if len(l.provOrder) <= 2*maxProvisional {
+		return
+	}
+	live := l.provOrder[:0:0]
+	for _, kp := range l.provOrder {
+		if kp != nil {
+			live = append(live, kp)
+			l.provIndex[*kp] = len(live) - 1
+		}
+	}
+	l.provOrder = live
 }
 
 // RedeemDeliveryCredit settles a WITNESSED delivery (a banked, verified
@@ -147,6 +203,7 @@ func (l *Ledger) RedeemDeliveryCredit(server, fetcher ports.NodeID, root ports.H
 	if p, ok := l.provisional[k]; ok {
 		l.reverseProvisional(server, root, p)
 		delete(l.provisional, k)
+		l.removeFromProvOrder(k) // keep provOrder in sync (RT-DELIV-1/1b/2 fix)
 	}
 
 	// Conservation: pay the fee the fetcher already paid in, less the skim.
