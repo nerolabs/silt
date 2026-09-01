@@ -171,7 +171,7 @@ func (f rotateFixture) rotateMember(t *testing.T, id ports.NodeID, weight int64)
 		t.Fatalf("Prove(epochSet %x): %v", id[:], err)
 	}
 	rv, ok := f.c.regVersion[id]
-	return StateRootRotateMember{
+	m := StateRootRotateMember{
 		ID:               id,
 		Weight:           weight,
 		RegVersion:       rv,
@@ -179,6 +179,13 @@ func (f rotateFixture) rotateMember(t *testing.T, id ports.NodeID, weight int64)
 		EpochSetProof:    esProof,
 		EpochSetOldValue: esOld,
 	}
+	// R1.2 anchors: the qualified||id weight proof (steady-state Weight anchor) and the regVersion||id
+	// proof (present when RegVersionKnown, else a non-membership proof). A fresh in-block bond has no
+	// pre-state qualified||id leaf, so QualifiedProof is a non-membership proof there and the box
+	// cross-checks Weight against the class-B write instead.
+	m.QualifiedProof = mustProve(f.prover, statehash.Key(tagQualified, id[:]))
+	m.RegVersionProof = mustProve(f.prover, statehash.Key(tagRegVersion, id[:]))
+	return m
 }
 
 // witnessForBoundary builds the full witness for a boundary block. It reconstructs the POST-apply
@@ -279,6 +286,8 @@ func (f rotateFixture) addBondRegWitness(t *testing.T, b Block, w *StateRootWitn
 		owner, claimed := f.c.bondRootOwner[r.Root]
 		w.BondRegScreens = append(w.BondRegScreens, StateRootBondRegScreen{
 			Root: r.Root, PriorOwner: owner, Claimed: claimed, PriorProven: f.c.bondRootProven[r.Root],
+			OwnerProof:  mustProve(f.prover, statehash.Key(tagBondRootOwner, r.Root[:])),
+			ProvenProof: mustProve(f.prover, statehash.Key(tagBondRootProven, r.Root[:])),
 		})
 	}
 	// Bucket witnesses for affected due-heights (a fresh reg inserts into b.Height+ttl+1).
@@ -304,7 +313,7 @@ func (f rotateFixture) addBondRegWitness(t *testing.T, b Block, w *StateRootWitn
 		BondRegScreens: w.BondRegScreens,
 		BondRegBuckets: w.BondRegBuckets,
 	}
-	_, bWrites, err := f.c.bondRegOps(b, tmp)
+	_, bWrites, err := f.c.bondRegOps(f.prevRoot, b, tmp)
 	if err != nil {
 		t.Fatalf("bondRegOps (witness build): %v", err)
 	}
@@ -350,7 +359,7 @@ func TestRecomputeStateRootRotateWithBondRegAgreesWithApply(t *testing.T) {
 		t.Fatalf("P+bondreg recompute should AGREE with real apply() but stalled: %v", err)
 	}
 	// Confirm the just-bonded validator IS in the reconstructed frozen set (else the ablation is vacuous).
-	postQual, err := f.c.reconstructPostQualified(b, w)
+	postQual, err := f.c.reconstructPostQualified(f.prevRoot, b, w)
 	if err != nil {
 		t.Fatalf("reconstructPostQualified: %v", err)
 	}
@@ -371,12 +380,12 @@ func TestRecomputeStateRootRotateEpochSetRootByteExact(t *testing.T) {
 	clone.apply(b)
 
 	w := f.witnessForBoundary(t, b)
-	postQual, err := f.c.reconstructPostQualified(b, w)
+	postQual, qualWrites, err := f.c.reconstructPostQualifiedWithWrites(f.prevRoot, b, w)
 	if err != nil {
-		t.Fatalf("reconstructPostQualified: %v", err)
+		t.Fatalf("reconstructPostQualifiedWithWrites: %v", err)
 	}
 	// Mature-from-genesis fixture ⇒ post-latch everMature is true (class M threads it in).
-	ops, err := f.c.rotateOps(b, w, postQual, true)
+	ops, err := f.c.rotateOps(f.prevRoot, b, w, postQual, qualWrites, true)
 	if err != nil {
 		t.Fatalf("rotateOps: %v", err)
 	}
@@ -478,8 +487,11 @@ func TestRecomputeStateRootRotateAblationForgedFreezeWeight(t *testing.T) {
 	if err == nil {
 		t.Fatalf("ABLATION FAILED: a forged freeze weight must stall, got nil")
 	}
-	if !errors.Is(err, ErrRecomputeStateRootMismatch) && !errors.Is(err, ErrRecomputeStateRootFold) {
-		t.Fatalf("ABLATION FAILED: expected a mismatch/fold stall for a forged freeze weight, got %v", err)
+	// R1.2: the forged Weight fails the qualified||id present-anchor against prevStateRoot (the honest
+	// QualifiedProof proves the true weight), so the class-P member anchor stalls
+	// (ErrRecomputeStateRootDigest) — a stronger, earlier catch than the pre-R1.2 fold/mismatch.
+	if !errors.Is(err, ErrRecomputeStateRootDigest) && !errors.Is(err, ErrRecomputeStateRootMismatch) && !errors.Is(err, ErrRecomputeStateRootFold) {
+		t.Fatalf("ABLATION FAILED: expected an anchor/mismatch/fold stall for a forged freeze weight, got %v", err)
 	}
 }
 
@@ -555,8 +567,12 @@ func TestRecomputeStateRootRotateAblationLiveTallyForgedRegVersion(t *testing.T)
 	if err == nil {
 		t.Fatalf("ABLATION FAILED: a forged (lowered) regVersion on a live tally must stall, got nil")
 	}
-	if !errors.Is(err, ErrRecomputeStateRootMismatch) {
-		t.Fatalf("ABLATION FAILED: expected ErrRecomputeStateRootMismatch (box fails to lock era4), got %v", err)
+	// R1.2: the forged RegVersion=4 fails the regVersion||id present-anchor against prevStateRoot (the
+	// honest RegVersionProof proves the true value 5), so the class-P member anchor stalls
+	// (ErrRecomputeStateRootDigest) BEFORE the tally runs — a stronger, earlier catch than the pre-R1.2
+	// mismatch (which relied on the box computing a wrong lock-in). Either is a valid never-Accept stall.
+	if !errors.Is(err, ErrRecomputeStateRootDigest) && !errors.Is(err, ErrRecomputeStateRootMismatch) {
+		t.Fatalf("ABLATION FAILED: expected an anchor or mismatch stall (box fails to lock era4), got %v", err)
 	}
 }
 
@@ -615,7 +631,7 @@ func TestRecomputeStateRootRotateAblationRecoveryStalls(t *testing.T) {
 	Sign(&rb, prop)
 
 	// rotateOps must stall at the recovery boundary regardless of witness.
-	_, err := c.rotateOps(rb, StateRootWitness{Rotate: &StateRootRotateWitness{}}, map[ports.NodeID]struct{}{}, true)
+	_, err := c.rotateOps(ports.Hash{}, rb, StateRootWitness{Rotate: &StateRootRotateWitness{}}, map[ports.NodeID]struct{}{}, nil, true)
 	if !errors.Is(err, ErrRecomputeStateRootScopeStall) {
 		t.Fatalf("ABLATION FAILED: the #535 recovery boundary must stall, got %v", err)
 	}
@@ -823,12 +839,18 @@ func (f handoffFixture) witnessForHandoff(t *testing.T, b Block) StateRootWitnes
 			continue
 		}
 		sz, bp := f.c.bonded[id]
-		_, inES := f.c.epochSet[id]
-		sc := StateRootAttScreen{Attester: id, Slashed: f.c.slashed[id], InEpochSet: inES, BondedSize: sz, BondedPresent: bp}
+		esVal, inES := f.c.epochSet[id]
+		sc := StateRootAttScreen{Attester: id, Slashed: f.c.slashed[id], InEpochSet: inES, BondedSize: sz, BondedPresent: bp,
+			SlashedProof:  mustProve(f.prover, statehash.Key(tagSlashed, id[:])),
+			EpochSetProof: mustProve(f.prover, statehash.Key(tagEpochSet, id[:])),
+			BondedProof:   mustProve(f.prover, statehash.Key(tagBonded, id[:]))}
+		if inES {
+			sc.EpochSetValue = statehash.EncodeInt64(esVal)
+		}
 		screens[id] = sc
 		w.AttScreens = append(w.AttScreens, sc)
 	}
-	aWrites, _, err := f.c.stateRootAttWriteSet(b, preSeen, screens)
+	aWrites, _, err := f.c.stateRootAttWriteSet(f.prevRoot, b, preSeen, screens)
 	if err != nil {
 		t.Fatalf("stateRootAttWriteSet: %v", err)
 	}
@@ -851,9 +873,12 @@ func (f handoffFixture) witnessForHandoff(t *testing.T, b Block) StateRootWitnes
 	var rw StateRootRotateWitness
 	for id, wt := range applied.qualified {
 		esKey := statehash.Key(tagEpochSet, id[:])
+		_, rvKnown := f.c.regVersion[id]
 		rw.Members = append(rw.Members, StateRootRotateMember{
-			ID: id, Weight: wt, RegVersion: f.c.regVersion[id], RegVersionKnown: true,
+			ID: id, Weight: wt, RegVersion: f.c.regVersion[id], RegVersionKnown: rvKnown,
 			EpochSetProof: f.prove(t, esKey), EpochSetOldValue: f.preValue(esKey),
+			QualifiedProof:  mustProve(f.prover, statehash.Key(tagQualified, id[:])),
+			RegVersionProof: mustProve(f.prover, statehash.Key(tagRegVersion, id[:])),
 		})
 	}
 	for id := range f.c.epochSet {
@@ -986,7 +1011,7 @@ func (f handoffFixture) nonRotateOps(t *testing.T, b Block, w StateRootWitness) 
 	}
 	var ops []statehash.FoldOp
 	// Class A digest ops + per-member writes.
-	aOps, aWrites, err := f.c.attOps(b, w)
+	aOps, aWrites, err := f.c.attOps(f.prevRoot, b, w)
 	if err != nil {
 		t.Fatalf("attOps: %v", err)
 	}

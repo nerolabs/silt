@@ -88,6 +88,23 @@ type StateRootRotateMember struct {
 	// EpochSetDeleteSiblings are the off-path siblings a dropped-member epochSet leaf DELETE resolves
 	// (empty for an ADD/overwrite; present only in PriorEpochSet entries that leave the set).
 	EpochSetDeleteSiblings []statehash.FoldSibling
+
+	// R1.2 WITNESS-SOUNDNESS ANCHORS (per-member proofs against prevStateRoot, BUILD notes D3/D4). The
+	// freeze writes EncodeInt64(Weight) into the epochSet||id leaf and the tally reads Weight/RegVersion;
+	// a forged Weight moves only the membership-only epochSet digest's per-member leaf (the ForgedFrozenWeight
+	// attack), and a forged RegVersion/RegVersionKnown flips a lock-in tally (the ForgedRegVersion attacks).
+	// Each is trusted only after its proof Resolves against prevStateRoot; a nil/forged proof stalls.
+	//
+	// QualifiedProof anchors Weight for a STEADY-STATE member (not bonded/resized this block): present-proof
+	// of qualified||id → EncodeInt64(Weight). For an id whose qualified||id this block MUTATED, the box
+	// cross-checks Weight against the class-B-derived qualWrites[id] instead (that leaf is anchored by the
+	// class-B fold), and QualifiedProof is not read.
+	QualifiedProof statehash.Witness
+	// RegVersionProof anchors RegVersion/RegVersionKnown: present-proof of regVersion||id → EncodeUint8(RegVersion)
+	// (RegVersionKnown=true) OR non-membership proof (RegVersionKnown=false), against prevStateRoot. For an
+	// id whose regVersion||id this block MUTATED (bonded in-block), the box cross-checks RegVersion against
+	// the class-B write instead and RegVersionProof is not read.
+	RegVersionProof statehash.Witness
 }
 
 // StateRootRotateWitness is the class-P epoch-boundary witness. It carries the pre-qualified id-set
@@ -134,25 +151,38 @@ type StateRootRotateWitness struct {
 // The pre-qualified anchor is the qualifiedRoot digest witness (verified against prevStateRoot). B's
 // full post-qualified set (from bondRegOpsWithQual) is authoritative for B's touched ids; T deletes
 // the expired set; S deletes the slashed culprits — matching qualifiedMaintain at each apply() site.
-func (c *Chain) reconstructPostQualified(b Block, w StateRootWitness) (map[ports.NodeID]struct{}, error) {
+func (c *Chain) reconstructPostQualified(prevStateRoot ports.Hash, b Block, w StateRootWitness) (map[ports.NodeID]struct{}, error) {
+	post, _, err := c.reconstructPostQualifiedWithWrites(prevStateRoot, b, w)
+	return post, err
+}
+
+// reconstructPostQualifiedWithWrites is reconstructPostQualified that ALSO returns the per-id
+// qualified leaf writes class B derived this block (R1.2 class-P Weight anchor, BUILD note D4). For
+// an id bonded/resized in THIS block the pre-state qualified||id leaf is stale/absent, so the
+// steady-state qualified-leaf anchor is wrong; the box cross-checks the frozen Weight against the
+// B-derived qualWrites[id] (itself anchored by the class-B fold) instead. qualWrites is nil for a
+// non-bond-reg boundary.
+func (c *Chain) reconstructPostQualifiedWithWrites(prevStateRoot ports.Hash, b Block, w StateRootWitness) (map[ports.NodeID]struct{}, map[ports.NodeID][]byte, error) {
 	byTag := make(map[string]*StateRootDigestWitness, len(w.DigestPreSets))
 	for i := range w.DigestPreSets {
 		byTag[w.DigestPreSets[i].Tag] = &w.DigestPreSets[i]
 	}
 	preQualified, err := anchoredPreSet(byTag, tagQualifiedRoot)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	post := cloneIDSet(preQualified)
+	var qualWrites map[ports.NodeID][]byte
 
 	// (1) Bond regs (apply() FIRST): B computes the whole post-qualified set from the same pre-qualified
 	// anchor. Adopt it wholesale as the qualified set post-B.
 	if len(b.BondRegs) > 0 {
-		_, _, bPostQual, bErr := c.bondRegOpsWithQual(b, w)
+		_, _, bPostQual, bQualWrites, bErr := c.bondRegOpsWithQualWrites(prevStateRoot, b, w)
 		if bErr != nil {
-			return nil, bErr
+			return nil, nil, bErr
 		}
 		post = cloneIDSet(bPostQual)
+		qualWrites = bQualWrites
 	}
 	// (2) TTL sweep (apply() SECOND): each expired id leaves qualified.
 	if w.TTLSweep != nil {
@@ -164,7 +194,7 @@ func (c *Chain) reconstructPostQualified(b Block, w StateRootWitness) (map[ports
 	for i := range b.Slashes {
 		delete(post, b.Slashes[i].CulpritID())
 	}
-	return post, nil
+	return post, qualWrites, nil
 }
 
 // hasNonProposerAtt reports whether the block carries any attestation from a non-proposer (the only
@@ -192,9 +222,11 @@ func hasNonProposerAtt(b Block) bool {
 // reproduce it from committed state, so it STALLS at a recovery boundary (never wrong-accepts — the
 // safety-first behavior the operator directive assumes).
 func (c *Chain) rotateOps(
+	prevStateRoot ports.Hash,
 	b Block,
 	w StateRootWitness,
 	postQualified map[ports.NodeID]struct{},
+	qualWrites map[ports.NodeID][]byte,
 	everMature bool,
 ) ([]statehash.FoldOp, error) {
 	rw := w.Rotate
@@ -240,6 +272,13 @@ func (c *Chain) rotateOps(
 	regVersionByID := make(map[ports.NodeID]uint8, len(rw.Members))
 	for i := range rw.Members {
 		m := rw.Members[i]
+		// R1.2: ANCHOR the frozen Weight and RegVersion against prevStateRoot BEFORE they enter the
+		// tally / epochSet-leaf freeze (BUILD notes D3/D4). This anchors the INPUTS to the activation
+		// quorum; the tally arithmetic (3*ready>2*total) in rotateTallyOps is UNTOUCHED (PE constraint 2,
+		// the #402 non-fork rule).
+		if err := c.anchorRotateMember(prevStateRoot, m, qualWrites); err != nil {
+			return nil, err
+		}
 		frozen[m.ID] = struct{}{}
 		weightByID[m.ID] = m.Weight
 		if m.RegVersionKnown {
@@ -277,6 +316,56 @@ func (c *Chain) rotateOps(
 	ops = append(ops, c.rotateTallyOps(b, rw, frozen, regVersionByID, weightByID)...)
 
 	return ops, nil
+}
+
+// anchorRotateMember re-anchors a frozen member's untrusted Weight and RegVersion against
+// prevStateRoot (R1.2, BUILD notes D3/D4), so a forged value cannot enter the epochSet-leaf freeze or
+// the activation tally. It touches NO tally arithmetic (PE constraint 2 / #402 non-fork).
+//
+// Weight: a member whose qualified||id leaf this block MUTATED (present in qualWrites) is cross-checked
+// against the class-B-derived write (anchored by the class-B fold); a steady-state member's Weight is
+// required to be the committed qualified||id value under prevStateRoot (present-proof at EncodeInt64(Weight)).
+//
+// RegVersion: matched to the PRE-state committed regVersion||id leaf — present-proof at
+// EncodeUint8(RegVersion) when RegVersionKnown, non-membership proof otherwise. A fresh in-block bond has
+// no pre-state regVersion leaf, so its honest witness sets RegVersionKnown=false and the absence proof
+// verifies. A forged RegVersion/RegVersionKnown that claims a pre-state value it cannot prove stalls.
+func (c *Chain) anchorRotateMember(prevStateRoot ports.Hash, m StateRootRotateMember, qualWrites map[ports.NodeID][]byte) error {
+	// Weight anchor.
+	if qw, mutated := qualWrites[m.ID]; mutated {
+		// In-block-mutated qualified leaf: cross-check against the class-B write (fold-anchored). A frozen
+		// member must have a non-nil (present) qualified write — a delete cannot be frozen.
+		if qw == nil {
+			return fmt.Errorf("%w: frozen member %x has a class-B qualified DELETE this block (cannot be frozen)",
+				ErrRecomputeStateRootDigest, m.ID[:])
+		}
+		if string(qw) != string(statehash.EncodeInt64(m.Weight)) {
+			return fmt.Errorf("%w: frozen member %x Weight %d does not match the class-B qualified write",
+				ErrRecomputeStateRootDigest, m.ID[:], m.Weight)
+		}
+	} else {
+		// Steady-state member: the frozen Weight IS the committed qualified||id leaf under prevStateRoot.
+		qualKey := statehash.Key(tagQualified, m.ID[:])
+		if !statehash.Resolve(prevStateRoot, qualKey, statehash.EncodeInt64(m.Weight), m.QualifiedProof).IsProvenPresent() {
+			return fmt.Errorf("%w: frozen member %x Weight %d not proven present in qualified||id against prevStateRoot",
+				ErrRecomputeStateRootDigest, m.ID[:], m.Weight)
+		}
+	}
+
+	// RegVersion anchor (matched to the pre-state committed regVersion||id leaf).
+	regKey := statehash.Key(tagRegVersion, m.ID[:])
+	if m.RegVersionKnown {
+		if !statehash.Resolve(prevStateRoot, regKey, statehash.EncodeUint8(m.RegVersion), m.RegVersionProof).IsProvenPresent() {
+			return fmt.Errorf("%w: frozen member %x RegVersion %d not proven present against prevStateRoot",
+				ErrRecomputeStateRootDigest, m.ID[:], m.RegVersion)
+		}
+	} else {
+		if !statehash.Resolve(prevStateRoot, regKey, nil, m.RegVersionProof).IsProvenAbsent() {
+			return fmt.Errorf("%w: frozen member %x RegVersionKnown=false not proven absent against prevStateRoot",
+				ErrRecomputeStateRootDigest, m.ID[:])
+		}
+	}
+	return nil
 }
 
 // rotateEpochSetLeafOps builds the per-member epochSet leaf FoldOps for the freeze. Each frozen

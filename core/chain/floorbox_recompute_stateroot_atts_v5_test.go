@@ -124,17 +124,25 @@ func (f attFixture) preIDsValidatorsSeen() []ports.NodeID {
 	return sortIDs(out)
 }
 
-// attScreen builds the per-attester screen witness reading the fixture chain's committed pre-state.
+// attScreen builds the per-attester screen witness reading the fixture chain's committed pre-state,
+// including the R1.2 per-field proofs against prevStateRoot (slashed / epochSet / bonded).
 func (f attFixture) attScreen(id ports.NodeID) StateRootAttScreen {
 	sz, bp := f.c.bonded[id]
-	_, inES := f.c.epochSet[id]
-	return StateRootAttScreen{
+	esVal, inES := f.c.epochSet[id]
+	sc := StateRootAttScreen{
 		Attester:      id,
 		Slashed:       f.c.slashed[id],
 		InEpochSet:    inES,
 		BondedSize:    sz,
 		BondedPresent: bp,
 	}
+	sc.SlashedProof = mustProve(f.prover, statehash.Key(tagSlashed, id[:]))
+	sc.EpochSetProof = mustProve(f.prover, statehash.Key(tagEpochSet, id[:]))
+	if inES {
+		sc.EpochSetValue = statehash.EncodeInt64(esVal)
+	}
+	sc.BondedProof = mustProve(f.prover, statehash.Key(tagBonded, id[:]))
+	return sc
 }
 
 // witnessForAtt builds the full witness for an att block: E/R + validatorsSeen changed leaves, the
@@ -157,7 +165,7 @@ func (f attFixture) witnessForAtt(t *testing.T, b Block) StateRootWitness {
 		screens[id] = f.attScreen(id)
 		w.AttScreens = append(w.AttScreens, f.attScreen(id))
 	}
-	aWrites, _, err := f.c.stateRootAttWriteSet(b, preSeen, screens)
+	aWrites, _, err := f.c.stateRootAttWriteSet(f.prevRoot, b, preSeen, screens)
 	if err != nil {
 		t.Fatalf("stateRootAttWriteSet: %v", err)
 	}
@@ -211,7 +219,7 @@ func TestRecomputeStateRootAttDigestByteExact(t *testing.T) {
 	clone := f.c.cloneForDryRun()
 	clone.apply(b)
 
-	ops, _, err := f.c.attOps(b, f.witnessForAtt(t, b))
+	ops, _, err := f.c.attOps(f.prevRoot, b, f.witnessForAtt(t, b))
 	if err != nil {
 		t.Fatalf("attOps: %v", err)
 	}
@@ -246,14 +254,15 @@ func TestRecomputeStateRootAttAblationForgedScreen(t *testing.T) {
 			w.AttScreens[i].InEpochSet = false
 		}
 	}
-	// The box now derives an EMPTY A write-set ⇒ validatorsSeen unchanged ⇒ no digest op ⇒ the
-	// recomputed root omits the att's write ⇒ mismatch with the honest committed root.
+	// R1.2: the forged InEpochSet=false requires a NON-MEMBERSHIP proof of epochSet||aid, but the honest
+	// EpochSetProof proves PRESENT (the attester IS in the frozen set), so the class-A anchor stalls
+	// (ErrRecomputeStateRootDigest) — a STRONGER, earlier catch than the pre-R1.2 fold mismatch.
 	err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w)
 	if err == nil {
 		t.Fatalf("ABLATION FAILED: a forged (not-in-epochSet) screen must stall, got nil")
 	}
-	if !errors.Is(err, ErrRecomputeStateRootMismatch) && !errors.Is(err, ErrRecomputeStateRootFold) {
-		t.Fatalf("ABLATION FAILED: expected a mismatch/fold stall, got %v", err)
+	if !errors.Is(err, ErrRecomputeStateRootDigest) && !errors.Is(err, ErrRecomputeStateRootMismatch) && !errors.Is(err, ErrRecomputeStateRootFold) {
+		t.Fatalf("ABLATION FAILED: expected an anchor/mismatch/fold stall, got %v", err)
 	}
 }
 
@@ -281,7 +290,7 @@ func TestRecomputeStateRootAttAblationLegacyMode(t *testing.T) {
 
 	// The legacy assertion lives in stateRootAttWriteSet (reached by the A dispatch). It must stall
 	// with a scope stall — the box refuses to reproduce rep(id) qualification from committed state.
-	_, _, wsErr := c.stateRootAttWriteSet(b, map[ports.NodeID]struct{}{}, map[ports.NodeID]StateRootAttScreen{})
+	_, _, wsErr := c.stateRootAttWriteSet(ports.Hash{}, b, map[ports.NodeID]struct{}{}, map[ports.NodeID]StateRootAttScreen{})
 	if !errors.Is(wsErr, ErrRecomputeStateRootScopeStall) {
 		t.Fatalf("ABLATION FAILED: a legacy-mode A screen must stall with a scope stall, got %v", wsErr)
 	}

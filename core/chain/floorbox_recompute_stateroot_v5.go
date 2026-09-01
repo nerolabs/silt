@@ -265,7 +265,7 @@ func (c *Chain) assembleStateRootRecomputeOps(
 	// Class B (bond regs, P1-d): derive the delta from b.BondRegs + own-cfg screens + the per-root
 	// displacement witnesses, then reconstruct the touched digests + affected dueBucket leaves.
 	if len(b.BondRegs) > 0 {
-		bOps, bWrites, bErr := c.bondRegOps(b, w)
+		bOps, bWrites, bErr := c.bondRegOps(prevStateRoot, b, w)
 		if bErr != nil {
 			return nil, bErr
 		}
@@ -286,7 +286,7 @@ func (c *Chain) assembleStateRootRecomputeOps(
 	// Class A (attestations → validatorsSeen, P1-e): screen each non-proposer att from own-cfg over
 	// the per-attester witnesses, derive the validatorsSeen ADDs, reconstruct validatorsSeenRoot.
 	if hasNonProposerAtt(b) {
-		aOps, aWrites, aErr := c.attOps(b, w)
+		aOps, aWrites, aErr := c.attOps(prevStateRoot, b, w)
 		if aErr != nil {
 			return nil, aErr
 		}
@@ -313,11 +313,11 @@ func (c *Chain) assembleStateRootRecomputeOps(
 	// thresholds + activation guards), and reconstruct the rotate scalars. R-P-sameblock-order. The
 	// post-latch everMature (from class M) gates the freeze; P does NOT emit the tagEverMature leaf.
 	if isBoundary {
-		postQualified, pqErr := c.reconstructPostQualified(b, w)
+		postQualified, qualWrites, pqErr := c.reconstructPostQualifiedWithWrites(prevStateRoot, b, w)
 		if pqErr != nil {
 			return nil, pqErr
 		}
-		pOps, pErr := c.rotateOps(b, w, postQualified, postEverMature)
+		pOps, pErr := c.rotateOps(prevStateRoot, b, w, postQualified, qualWrites, postEverMature)
 		if pErr != nil {
 			return nil, pErr
 		}

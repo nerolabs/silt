@@ -94,6 +94,29 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   op counts; `TestA4MoneyPumpConservation` and the prior Boulder-0 gates stay GREEN. Ablation reddens
   the fuzz at step 13154 again. Design:
   `docs/thinking/2026-09-01-provorder-eviction-cursor-fix-design.md`.
+- **v5 trustless floor box — R1.2 witness-soundness fix: re-anchor every class-P/A/B screen
+  predicate against `prevStateRoot` (still NEVER-ACCEPT)**
+  (`core/chain/floorbox_recompute_stateroot_atts_v5.go`, `..._rotate_v5.go`, `..._bondreg_v5.go`;
+  gates + coverage meta in `core/chain/floorbox_recompute_adversarialroot_v5_test.go`). The recompute
+  classes P (rotation), A (attestations→validatorsSeen), and B (bond regs) read per-member VALUES and
+  SCREEN PREDICATES from the untrusted witness structs and used them as fold `NewValue`s or branch
+  predicates WITHOUT resolving them against `prevStateRoot` — a wrong-accept-by-recompute the existing
+  ablations were blind to (they forged against an honest committed root; the attack moves the committed
+  root to match). The fix threads `prevStateRoot` into the screen/tally/write-set functions and requires
+  each untrusted read to `statehash.Resolve` present/absent against `prevStateRoot` before it is trusted
+  (`NoWitness`⇒stall, never a false read — C-7 §104): class A anchors `Slashed`/`InEpochSet`/
+  `BondedSize`/`BondedPresent` AT SOURCE in `attesterQualifiedFromScreen` (which reaches class M — a
+  forged screen can no longer inflate `validatorsSeenRoot`, PE ruling Q2); class P anchors the frozen
+  `Weight` (against `qualified||id`, or the class-B `qualWrites` for an in-block bond) and
+  `RegVersion`/`RegVersionKnown` (against `regVersion||id`) WITHOUT touching the `3*ready>2*total` tally
+  arithmetic (the #402 non-fork rule, `TestActivationQuorumNonFork` stays green); class B anchors
+  `PriorOwner`/`Claimed`/`PriorProven` (against `bondRootOwner||root` / `bondRootProven||root`). The box
+  STILL never-Accepts — the fix ADDS stall paths only; the STOP boundary and
+  `TestWitnessValidateV5_NeverAcceptsWhileRecomputeGated` are unchanged. Proven by the 11 adversarial-
+  committed-root gates (RED-on-main → green-after, each ablated red-then-green — every anchor is
+  load-bearing) plus a reflection-pinned coverage meta-assertion over the three witness carrier structs
+  (with a teeth companion). Design: `docs/thinking/2026-09-01-floorbox-witness-soundness-fix-design.md`
+  + `...-BUILD.md`; PE pins: `silt-reviews/principle-engineer/RULING-floorbox-R1.2-invariant-pins-2026-09-01.md`.
 - **Docs/comment true-up (no logic change):** ROADMAP Rock 1 updated to the built recompute state
   (recompute reproduces the `apply()` transition set — E/R spine + classes S/B/T/A/P + class-M latch —
   guarded by the 28/28 write-obligation leaf-diff; the accept-flip is the single remaining step; the
