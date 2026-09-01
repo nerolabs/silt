@@ -595,6 +595,38 @@ live in [`docs/thinking/2026-09-01-residual-defect-repro-recipes.md`](docs/think
   numbers live. Possible cheap interim (unverified): de-duplicate shared DRSample parent blocks in
   the encoding (no soundness change) — measure before any k-reduction.
 
+**Polish & latent wins (low-priority — folded from the retired `BACKLOG.md`, 2026-09-01):**
+These are small, still-open captured ideas — polish and opportunistic wins, not RC-critical.
+They carry no provenance issue (they never merited one); they gate nothing on the Boulder
+lattice. When one matures, promote it to the section it belongs in.
+
+- **Demand-responsive dispersion — pull half (storage placement).** The push half ships (a hot
+  holder leases cache copies away from its own failure domain — the dispersion re-spread in
+  `core/node/repair.go`). Still open: let a node that had to *fetch* a chunk under load
+  opportunistically cache and announce it, decaying when unused — so hot copies also gravitate
+  *toward* readers, not just away from hot holders. Kin to the repair-sweep residual #500
+  (fetch-retained copies never announce) above; a shared fix could subsume both.
+- **Domain-aware placement gaps (storage placement).** Query a candidate's failure domain when
+  gossip hasn't reached it yet (today placement spreads only across *learned* peer domains);
+  domain-aware capacity spill. Column placement will subsume the per-stripe anti-affinity repair
+  path later.
+- **Direct IPv6 dial before assuming a relay (networking latent win).** Try a direct IPv6 dial
+  before falling back to relayed transport — a cheap latent win before the relay fallback.
+- **Relay selection + failover (networking latent win).** A NATed node that discovers relays by
+  gossip currently adopts the lowest-ID one and commits to it; if the chosen relay won't
+  register, it retries that one forever instead of failing over. Fine while a swarm has one dev
+  relay; wants selection + failover once community relays are plural.
+- **`docs/` staleness enforcement (observability polish).** The `Docs ship with code` CI job
+  (`.github/workflows/ci.yml`) already fails a PR that touches `cmd/`/`core/`/`adapters/`
+  without a `CHANGELOG.md` update. Extending the same staleness enforcement to `docs/` is a
+  possible later tightening.
+- **e2e relay-in-the-middle variant (test/harness polish).** A relay-in-the-middle variant of
+  the multi-process e2e suite. (The kill-a-node erasure-resilience variant it was captured
+  alongside has since shipped as `e2e/economy_repair_test.go`.)
+- **Capacity/scaling shape test — deferred (test/harness polish).** The 3 GB shape test —
+  30×100 MB vs 300×10 MB — to characterize manifest/DHT overhead vs chunk-count. Deferred while
+  the dev box is RAM-bound.
+
 **Consensus-touching residuals (tracked, NOT resolved — need the research gate when worked):**
 - **Objective-mode `Config.Quorum` floor divergence — #380 · tracked, NOT resolved —
   consensus-touching (I1).** In objective mode the effective `ValidateCommit` requirement is
