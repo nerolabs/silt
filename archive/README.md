@@ -80,6 +80,15 @@ checklist), the 2026-08-08 red-team remediation consults, the answered
 `m0-build-complete.md`, and the older duplicate `m0-redteam-brief.md` (the
 living brief is `docs/reviews/m0-redteam-brief-2026-08.md`).
 
+### The retired root `BACKLOG.md` (folded 2026-09-01)
+
+`BACKLOG-2026-09-01.md` is the last state of the repo-root scratch backlog before it was
+retired. Its still-open captured ideas were folded into `ROADMAP.md`'s **Residual backlog**
+("Polish & latent wins") and the root file removed — one task SSOT (owner ratified option A).
+Items already shipped (chunk read-cache, roots-list pagination, buildlog pipeline, the
+kill-a-node erasure e2e) were dropped-as-shipped; #115 (UPnP/NAT-PMP) was dropped as stale.
+The archived file carries the full fold-map. Superseded by `ROADMAP.md`.
+
 ## The one live source outside the repo (read-only)
 
 The research memos and red-team field reports that drove this reset live **outside

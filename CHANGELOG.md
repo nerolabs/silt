@@ -9,6 +9,19 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Docs
+- **`BACKLOG.md` folded into `ROADMAP.md` (SSOT) and archived (owner-ratified 2026-09-01):**
+  the repo-root scratch backlog is retired so forward work has one source of truth. Its
+  genuinely-still-open captured ideas move into `ROADMAP.md`'s **Residual backlog** under a new
+  "Polish & latent wins" sub-section (low-priority, gate nothing on the Boulder lattice):
+  demand-dispersion pull half, domain-aware placement gaps, direct-IPv6-before-relay, relay
+  selection + failover, the `docs/`-staleness CI tightening, the relay-in-the-middle e2e variant,
+  and the deferred 3 GB shape test. Items verified already shipped were dropped, not folded:
+  the local chunk read-cache (`adapters/cachestore`, wired at `cmd/silt/daemon.go`), the
+  paginated roots list (#45), the buildlog pipeline (`docs/buildlog/` → `website/buildlog.html`),
+  and the kill-a-node erasure e2e (`e2e/economy_repair_test.go`); #115 (UPnP/NAT-PMP) was dropped
+  as stale (closed 2026-09-01, optimization-only, off the V1 path). The last state of the file is
+  frozen at `archive/BACKLOG-2026-09-01.md` with the full fold-map; the one doc link
+  (`docs/design/column-placement.md`) is repointed at ROADMAP. No code changed.
 - **`docs/TENETS.md` restructured into pure guiding principles (owner-ratified 2026-09-01,
   no logic change):** the tenets now state what "good" looks like as an *outcome*,
   abstracted away from mechanism, ship-status, proof machinery, format specifics, and

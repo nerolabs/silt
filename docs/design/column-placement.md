@@ -2,7 +2,7 @@
 
 **Status:** implemented and field-proven. Placement, provider records,
 retrieval, repair, and audit all operate on columns; the manifest is unchanged.
-See [BACKLOG.md](../../BACKLOG.md) and [ROADMAP.md](../../ROADMAP.md). The two
+See the **Residual backlog** in [ROADMAP.md](../../ROADMAP.md) (SSOT). The two
 follow-ups noted below have since landed: **failure-domain-aware placement**
 (bounding *cross-column* co-residence) and the **dispersion audit** are done,
 and the **push half** of demand-responsive dispersion (fan-out on heat) is
