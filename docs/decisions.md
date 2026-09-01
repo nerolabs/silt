@@ -784,9 +784,14 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
   cold data). **G3 — repair self-funds HOT objects only** (`S/R ≥ 24`); the cold one-hit
   majority (~50–60% of objects) rides D-S7's finite-but-renewable prepay horizon, not a
   self-sustaining earning; VISION carries the scope. **G2 — the floor-box reconstruction RAM
-  spike (~640 MiB–1 GiB on a 2 GB box) is UNMEASURED at production chunk size** (build-immutable
-  #8) — owed BEFORE the economy-ON field run, bundled with the node-store coexistence test
-  (`owned-residuals.md` G2). No immutable is traded; no certified leg or consensus surface is
+  spike is MEASURED at production chunk size (2026-09-01): 1024 MiB resident + ~512 MiB
+  GC-reclaimable = 1536 MiB allocation-inclusive peak** (prod chunk `DefaultParams{K:10,N:16}` ×
+  64 MiB = 16 shards materialized by `ReconstructStripe`; `-benchmem` B/op = 1,610,666,010 B,
+  237 allocs/op; method `core/erasure/reconstruct_mem_test.go:79` + `BenchmarkReconstructStripe_ProdChunk`,
+  Apple M4, git HEAD `d904d21`). **On the 2 GB pony reference box (build-immutable #8) ONE repair
+  fits; TWO concurrent production-chunk repairs OOM the box.** This gates the R2.6 repair-payee
+  decision and folds into the owed node-store coexistence test (same 2 GB budget). See
+  `owned-residuals.md` G2. No immutable is traded; no certified leg or consensus surface is
   reopened.
 - **The node store is a 7th dependency behind `ports.NodeStore`** (PE ruling Q1/Q2; Andrew
   concurred). Take an embedded pure-Go KV store — a hand-rolled engine is the textbook B8

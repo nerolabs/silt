@@ -8,6 +8,18 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Docs
+- **Measure + commit the C-5 G2 repair-RAM number (no logic change):** the floor-box repair
+  reconstruction footprint at the production minimum chunk is **1024 MiB resident** (16 shards ×
+  64 MiB via in-place `ReconstructStripe`, `DefaultParams{K:10,N:16}`) plus ~512 MiB
+  GC-reclaimable churn = **1536 MiB allocation-inclusive peak** (`-benchmem` B/op = 1,610,666,010 B,
+  237 allocs/op). Consequence on the 2 GB pony reference box (build-immutable #8): ONE repair fits,
+  TWO concurrent production-chunk repairs OOM. Method: `core/erasure/reconstruct_mem_test.go:79`
+  (resident) + `BenchmarkReconstructStripe_ProdChunk` (peak), Apple M4, git HEAD `d904d21`. Resolves
+  the long-standing "measurement owed" residual in `docs/decisions.md` C-5 G2 and
+  `docs/design/owned-residuals.md` G2; gates R2.6 repair-payee and folds into the owed node-store
+  coexistence test.
+
 ### Fixed
 - **Docs/comment true-up (no logic change):** ROADMAP Rock 1 updated to the built recompute state
   (recompute reproduces the `apply()` transition set — E/R spine + classes S/B/T/A/P + class-M latch —

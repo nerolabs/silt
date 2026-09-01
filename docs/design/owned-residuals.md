@@ -322,12 +322,20 @@ discount, C2 no quiet capture, the demand→standing firewall) — those are hel
   publisher-aligned caretakers have left, the most expensive repair step has no funded actor. VISION
   is corrected to what the mechanism pays (holder-side custody credit); not a defect to close, a
   shape to own.
-- **G2 — floor-box reconstruction RAM is UNMEASURED at production chunk size (measurement owed).**
-  The reconstruct path spikes ~640 MiB–1 GiB peak RAM on a 2 GB box (`erasure.go`); the 64 KiB sim
-  hides it ~1000×. If it OOMs, reconstruction migrates to large nodes and the floor box can hold and
-  serve but not repair — a scale-asymmetry. **Owed BEFORE the economy-ON field run** (build-immutable
-  #8), bundled with the node-store coexistence test (adjacent but distinct — this one is the repair
-  path, not the store).
+- **G2 — floor-box reconstruction RAM: MEASURED at production chunk size (2026-09-01).**
+  **1024 MiB resident** at the production minimum chunk (`DefaultParams{K:10,N:16}` × 64 MiB =
+  16 shards materialized in RAM through the in-place `ReconstructStripe`), plus ~512 MiB
+  GC-reclaimable churn: **1536 MiB allocation-inclusive peak** (`-benchmem` B/op =
+  1,610,666,010 B, 237 allocs/op). The 64 KiB sim chunk holds only ~1.0 MiB resident, hiding
+  the spike ~1000×. **Consequence on the 2 GB pony reference box (build-immutable #8): ONE
+  repair fits (1024 MiB left after the resident stripe); TWO concurrent production-chunk
+  repairs OOM the box.** If it OOMs under real coexistence, reconstruction migrates to large
+  nodes and the floor box can hold and serve but not repair — a scale-asymmetry.
+  Method: `core/erasure/reconstruct_mem_test.go:79` (skip-gated, resident figure) +
+  `BenchmarkReconstructStripe_ProdChunk` (B/op peak), Apple M4, git HEAD `d904d21`.
+  **This gates the R2.6 repair-payee decision** and must be **folded into the owed node-store
+  coexistence test** (same 2 GB budget — the store's evictable page cache and this repair
+  spike share the floor). Adjacent but distinct: this is the repair path, not the store.
 - **G3 — repair self-funds HOT objects only.** `S/R ≥ 24` for an object's own skim to fund its own
   repair; the cold one-hit majority rides D-S7's finite-but-renewable prepay horizon (D4), not a
   self-sustaining earning.
