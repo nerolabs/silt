@@ -85,6 +85,19 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   only — NO production code, consensus rule, validity predicate, or committed format changed. A `_test.go`
   measurement that sizes the whole-set bonded-member witness the heavy floor box must carry, closing the
   gate-4 unfiled-measurement scar with a citable number instead of an estimate.
+- **R-ROTATE-EPOCH-LAST — drift guard for the rotate-LAST coupling #620 leans on**
+  (`core/chain/rotate_epoch_last_drift_test.go`, 2026-09-02). Test only — NO production code,
+  consensus rule, validity predicate, or committed format changed (`chain.go` diff is zero lines).
+  #620's `epochSet` order-invariance holds ONLY because `rotateEpoch` runs LAST in `apply()` (reading
+  the block's post-apply `bonded`/`slashed`) and `liveQualifiedSet` reads ONLY those two final maps —
+  a load-bearing coupling with no guard until now (RULING-620 "Couplings the consult should carry
+  forward"). Four guards, each ablated RED before trust: an AST check that `rotateEpoch` is the last
+  statement of `apply()`; an AST read-set check that `liveQualifiedSet` touches only
+  `{bonded, slashed, cfg}` (no history); a behavioral purity check that a `blocks` mutation does not
+  move `liveQualifiedSet`'s output while a `slashed` mutation does; and a boundary-slash fixture where
+  the frozen `epochSet` equals the post-apply set and DIFFERS from the pre-block set (the distinguishing
+  ordering #620's fixture lacked). Moving rotate before the slash loop, or making `liveQualifiedSet`
+  read `c.blocks`, reddens the guards.
 
 ### Fixed
 - **RT-DELIV-3 — delivery-credit `provKey` now includes the server identity (Boulder 0 residual;
