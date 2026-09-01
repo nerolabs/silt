@@ -270,8 +270,8 @@ func TestR05NodePathConservation(t *testing.T) {
 	// correct (ChargePublish debit not recovered), but witnessed demand stays at 0.
 	// Verify the bank actually accepted the receipt (demand > 0).
 	if got := nd.WitnessedDemand(objRoot); got == 0 {
-		t.Errorf("demand bank did not bank the receipt (WitnessedDemand=0) — "+
-			"RedeemDeliveryCredit at demandrole.go:201 may not have been called. "+
+		t.Errorf("demand bank did not bank the receipt (WitnessedDemand=0) — " +
+			"RedeemDeliveryCredit at demandrole.go:201 may not have been called. " +
 			"Check that the receipt's Fetcher key hashes correctly to fetcherID.")
 	}
 }
