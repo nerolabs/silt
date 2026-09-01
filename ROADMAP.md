@@ -66,29 +66,57 @@ decisions are folded in (R0.2, R1.7, R2.3, R2.5, R2.6, R3.4).
 
 **Two whole-board sequencing constraints:**
 1. **Nothing turns the economy on over a live mint.** Boulder 0 (A4) precedes Boulder 2.
+   Boulder 0 is now DONE + MERGED (PR #686); the R0.4 conservation re-cert cleared before any
+   economy default flip.
 2. **The accept-flip does not close until its whole witness-soundness spine is green and its
    external pass clears.** The flip (R1.8) is a consensus-rule change (I1); the old "single
    remaining step" framing hid 7 predecessors — see the flag under *Superseded Rocks*.
 
-#### Boulder 0 — Stop the live bleed (A4 money-pump) · independent · START NOW
-The only break exploitable on `main` today (behind `-accept-delivery-receipts`; `-economy`
-default false). Bond-gated so it buys no consensus standing, but breaks the certified B3
-conservation close and can fund spam/publish at scale.
+#### Boulder 0 — Stop the live bleed (A4 money-pump) · ✅ DONE + MERGED (PR #686, 2026-09-01)
+The only break exploitable on `main` (behind `-accept-delivery-receipts`; `-economy`
+default false). Bond-gated so it bought no consensus standing, but it broke the certified B3
+conservation close and could fund spam/publish at scale. **CLOSED:** the live money-pump is
+dead. **R0.4 CERTIFIED** — conservation (`Σ balances + Σ escrow == grant + legitimate transfers`)
+holds across all three terminal lane states (never-redeemed, in-window-redeemed,
+evicted-then-redeemed); both firewalls (γ→1/N and standing) untouched. Shipped **(b)-minimal**
+(the eviction claw-back), NOT full (b)-prunable — receipt-expiry is parked as R0.4b (below).
+Alongside the ledger fix, `provOrder`/`provIndex` integrity landed: a blind red-team pass and a
+compaction fuzz each found and closed a FIFO-order desync.
 
-- **R0.1 · A4 conservation regression gate (RED-first)** · Tester · unit `core/credit/`.
-  Assert Σbalances + Σescrow == initial grant across flood→evict→redeem. Existing
-  `TestProvisionalCapIsBoundedAndDeterministic` (`delivery_test.go:207`) PASSES with the bug —
-  it must go RED on main first.
-- **R0.2 · redeem-without-provisional-record semantics — DECISION RATIFIED: (b)-prunable.**
-  One delivery, one payment; couple provisional lifetime to an ENFORCED receipt-expiry (not
-  (b)-minimal reverse-and-forget). Build-day first check: confirm `demand.go`/`Bank.Redeem`
-  enforces a finite receipt age; (b)-prunable needs it — add expiry first if absent.
-- **R0.3 · A4 fix (claw back the eager self-mint on eviction, per R0.2's rule)** · Builder · S.
-- **R0.4 · Economic re-cert of the B3 conservation close** · Researcher (RE-OPEN-CERT,
-  **cert-gated**). Prior B3 cert did not model bounded-map eviction; (b)-prunable edits
-  bilateral-fallback semantics → cert before the economy default flips.
-- **R0.5 · A4 node-path integration conservation gate** · Tester · integration. Proves the
-  fix is wired at `node.go:1576` + `demandrole.go:201`, not just in the ledger.
+- **R0.1 · A4 conservation regression gate (RED-first)** · ✅ DONE. Asserts
+  `Σ balances + Σ escrow == initial grant` across flood→evict→redeem
+  (`money_pump_test.go`, `TestA4MoneyPumpConservation`); RED on main → GREEN on the fix.
+- **R0.2 · redeem-without-provisional-record semantics — DECISION: (b)-minimal SHIPPED;
+  (b)-prunable is the ratified longer-term direction, parked as R0.4b.** (b)-minimal
+  reverses the eager self-mint at eviction (one delivery, one payment) and is a
+  conservation-correct close on its own. The full (b)-prunable form — couple provisional
+  lifetime to an ENFORCED receipt-expiry — is a separate, evidence-gated certification unit
+  (R0.4b), not a soundness dependency of the shipped fix.
+- **R0.3 · A4 fix (claw back the eager self-mint on eviction)** · ✅ DONE. Shared
+  `reverseProvisional` at both eviction and redeem (identical escrow floor at each);
+  `provisionalServe` now stores the server identity so eviction reverses the exact credited
+  account.
+- **R0.4 · Economic re-cert of the B3 conservation close** · ✅ CERTIFIED (2026-09-01)
+  (`A4-provisional-eviction-conservation-RESEARCH-CERTIFICATION-2026-09-01.md`). The prior B3
+  cert did not model bounded-map eviction; this cert closes exactly that residual and confirms
+  no new money pump and no firewall re-open.
+- **R0.5 · A4 node-path integration conservation gate** · ✅ DONE. Proves the fix is wired at
+  the node path (`node.go` + `demandrole.go`), not just in the ledger.
+
+**Decisions to make next session (Boulder 0 residuals):**
+- **RT-DELIV-3 · delivery-credit `provKey` omits the server.** A latent conservation break
+  reachable only in the shared-ledger *sim* (all serves share one ledger), NOT in per-node
+  prod (each node's ledger has a single server identity). **Decide:** fix now — add the server
+  to `provKey`, which changes the conserved-lane key shape and therefore **re-opens the R0.4
+  conservation cert** — vs track it as a sim-only residual.
+- **R0.4b · receipt-expiry (the full (b)-prunable form) — PARKED, evidence-gated.** Re-open
+  when the unwitnessed-bilateral under-pay tail bites: **>8192 un-redeemed lanes on one node**.
+  Two owner calls gate the build first (per the R0.4b scoping cert,
+  `R0.4-receipt-expiry-scoping-RESEARCH-CERTIFICATION-2026-09-01.md`): (1) the
+  **privacy-safe shape** — epoch-granular / serial-indexed, NEVER a wall-clock `NotAfter`
+  (which adds a timing quasi-identifier on the D3/H8 channel); and (2) a **TTL-bounds
+  measurement** (the honest-pony redemption-latency tail at the >8192-lane regime is
+  unmeasured — no value may be pinned at desk).
 
 #### Boulder 1 — Make the accept-flip safe (floor-box witness-soundness spine) · was Rock 1
 Root cause (verified, all seats): classes P/A/B take witness values/screens as `NewValue`s or
@@ -97,37 +125,63 @@ committed root too, so `postRoot==StateRoot` holds by construction. Sound classe
 values as VerifyProof'd `OldValue`s — the fix mirrors them. Design:
 [`docs/thinking/2026-09-01-floorbox-witness-soundness-fix-design.md`](docs/thinking/2026-09-01-floorbox-witness-soundness-fix-design.md).
 
-- **R1.0 · Pin the held invariants BEFORE the refactor** · Tester/PE. The shared quorum
-  arithmetic (`requireQuorumStack`, `chain.go:2778`) must NOT fork between the live path and
-  the box (the #402 lesson); class-M is A2-poisoned (inherits the forged `validatorsSeenRoot`).
+**Status (2026-09-01): R1.0 / R1.1 / R1.2 DONE; R1.3 REFUTED; R1.4 CERTIFIED. The
+accept-flip (R1.8) is NOT done** — it now has four additional named preconditions (below the
+increment list). The recompute-soundness increment merged as a standalone **never-Accept**
+change: the box gained the Resolve-anchoring but still emits `indeterminate-trustlessly`, never
+Accept. Certification:
+[`floorbox-R1.3-refutation-R1.4-witness-soundness-RESEARCH-CERTIFICATION-2026-09-01.md`](../silt-reviews/research/research-outcome/floorbox-R1.3-refutation-R1.4-witness-soundness-RESEARCH-CERTIFICATION-2026-09-01.md).
+
+- **R1.0 · Pin the held invariants BEFORE the refactor** · ✅ DONE. The shared quorum
+  arithmetic (`requireQuorumStack`) does not fork between the live path and the box (the #402
+  lesson); class-M is A2-poisoned (inherits the forged `validatorsSeenRoot`).
 - **R1.1 · Adversarial-committed-root regression gates for every P/A/B break (RED-first)** ·
-  Tester. Fixes the ablation blind spot: existing forge-tests forge against an HONEST root;
-  these forge the committed root from the forged ops, then assert non-nil while
-  forgedRoot≠honestRoot. One per witness FIELD. Also settles the open tension (is class-P
-  `Weight` fold-caught?) by evidence — the design resolves it YES-forgeable.
-- **R1.2 · Re-anchor P/A/B witness values as Resolved fold OldValues** · Builder · M. The fix.
-  Lands AFTER R1.0 pins, WITH R1.1 gates.
-- **R1.3 · RE-OPEN + REFUTE the class-A/P/B directional certs** · Researcher (RE-OPEN-CERT,
-  **cert-gated**). The 2026-08-31 certs rest on a falsified "fold-equality is the universal
-  backstop" premise; withdraw + name the correct direction (Resolve-anchoring).
-- **R1.4 · Witness-soundness audit + per-predicate cert table (23 fields × membership-vs-value
-  × source)** · Builder enumerates + self-checking coverage test; Researcher CERTIFIES
-  (NEW-CERT, **cert-gated**). This IS the flip's certification. Also resolves the R-membership
-  residual (bound the qualified/validatorsSeen set size).
+  ✅ DONE. Proved **all 11 P/A/B witness fields forgeable**: each gate forges the committed
+  root from the forged ops, then asserts non-nil while forgedRoot≠honestRoot. Settled the open
+  tension by evidence — class-P `Weight` IS forgeable (`epochSetRoot` is membership-only).
+- **R1.2 · Re-anchor P/A/B witness values as Resolved fold OldValues** · ✅ DONE. Every
+  untrusted P/A/B value/predicate and the class-A screen read is now `Resolve`d against
+  `prevStateRoot` (the one root the attacker does not control); **NoWitness ⇒ stall** (never
+  falls through to a false/absent read). The whole-set digest pre-sets are fold-anchored.
+- **R1.3 · RE-OPEN + REFUTE the class-A/P/B directional certs** · ✅ REFUTED (2026-09-01).
+  The 2026-08-31 class-A/P/B directional certs are **WITHDRAWN**: their "fold-equality
+  (`postRoot == StateRoot`) is a universal backstop" premise is FALSIFIED (an attacker who
+  forges the block controls the committed root too, so equality holds by construction). Correct
+  direction named: **Resolve-anchoring against `prevStateRoot`**.
+- **R1.4 · Witness-soundness recompute cert (23-field carrier table, membership-vs-value ×
+  source)** · ✅ CERTIFIED (2026-09-01), bounded strictly to **recompute soundness as a
+  NEVER-ACCEPT increment**. The 23-field carrier table is complete by reflection with teeth;
+  each of the 10 per-field anchors plus the class-M poisoning path has a driven
+  adversarial-committed-root gate that wrong-accepts if its anchor is dropped. This is NOT the
+  flip's certification — it is its precondition.
 - **R1.5 · Accept-flip model-check exercising the NEW Resolve path** · Tester · model-check.
-  Absorbs old Rock 4 (#406).
+  Absorbs old Rock 4 (#406). NOT done.
 - **R1.6 · Oracle coverage: 23 predicate fields each get an adversarial Resolve-path probe;
-  extend probeUncovered to name A1/A2/A3** · Tester. Also a freeze gate (Boulder 3).
+  extend probeUncovered to name A1/A2/A3** · Tester. Also a freeze gate (Boulder 3). NOT done.
 - **R1.7 · External red-team pass (B8) — DECISION RATIFIED: the external pass is a HARD
   precondition of the flip.** Owner milestone-call + external seat. The recompute's OUTPUT is
   C2's INPUT; internal cert cannot close "no adversary forges a witness the recompute accepts."
-  Cannot start until R1.1–R1.4 land (attack the fixed artifact). Model-check the
-  Resolve-every-value class under adversarial scheduling first, to convert the external pass
-  from discovery to bounded confirmation.
+  Attack the FIXED artifact (R1.1–R1.4 have landed). Model-check the Resolve-every-value class
+  under adversarial scheduling first, to convert the external pass from discovery to bounded
+  confirmation.
 - **R1.8 · The flip: wire `WitnessValidateV5` → Accept-iff-all-predicates-pass** · Builder · S.
-  Trivial code; gated on R1.1–R1.6 green + R1.7 external pass. The real last step of Rock 1.
-  **Decoupled from the era-4/v5 freeze** (R3.4): the flip proceeds pre-freeze; `WitnessValidateV5`
-  changes no committed format field, so the freeze re-confirms byte-identity later, at RC.
+  **NOT done.** Trivial code; a consensus-rule change (I1). Beyond R1.5/R1.6 green, the flip
+  **additionally requires** (per the R1.4 cert §R1.4-FLIP):
+  - **R-membership** — OPEN: a set-size bound on the qualified / `validatorsSeen` sets;
+  - the **EXTERNAL B8 red-team pass** (R1.7) — owner-ratified HARD precondition;
+  - the **#535 recovery-boundary decision** (cold-auditor directive-trust boundary);
+  - the **legacy-mode invariant** (the pre-v5 path stays sound under the flip).
+  **Decoupled from the era-4/v5 freeze** (R3.4): the flip proceeds pre-freeze;
+  `WitnessValidateV5` changes no committed format field, so the freeze re-confirms
+  byte-identity later, at RC.
+
+**Carried residuals (worth a line, owed before the flip):**
+- **R-CARRIER-REFLECTION** — 7 fold-input carriers are verified by hand; a **reflection pin**
+  on those carriers is owed before R1.8 (so a future added carrier cannot slip the table
+  silently).
+- **SMT app-layer keyspace-injectivity oracle** — a **freeze-blocker (A2)**. It is currently a
+  decoration; it needs a defect-injected gate (inject a keyspace collision, watch it go RED)
+  before it counts as coverage.
 
 #### Boulder 2 — Turn the economy on, prove it under adversary · depends on Boulder 0
 All solvency claims are sim-only today (economy default-off, no live enable path). An
