@@ -15,7 +15,9 @@ The defect is a SELF-CONTRADICTION inside one file. We flag a doc only when BOTH
   2. the same doc body asserts a built/shipped state (see BUILT_RE).
 
 A genuinely-unbuilt spec — "design, not built" with NO built-marker — is fine and
-is NOT flagged. That keeps the false-positive rate at zero on honest specs.
+is NOT flagged. A NEGATED built-marker ("No code has shipped", "not yet shipped",
+"has not shipped") is also NOT flagged: the lint flags only self-contradiction — a
+not-built Status header alongside a NON-NEGATED built-marker in the body.
 
 Dependency-free (stdlib only). Run: python3 scripts/check_status_headers.py
 """
@@ -66,6 +68,36 @@ BUILT_MARKERS = [
     (re.compile(r"(?i)\bin\s+production\b"), "in production"),
 ]
 
+# Negation cues. If any of these tokens precedes a built-marker within a few
+# tokens on the SAME line, the marker is negated ("No code has shipped", "not yet
+# shipped", "has not shipped", "yet to ship", "to be built") and does NOT count as
+# a built assertion. This is a general guard: it applies to every marker, not just
+# "shipped", because "not yet live" / "not built" negate the others too.
+NEG_CUES = {
+    "not", "never", "no", "hasn't", "haven't", "isn't",
+    "won't", "aren't", "wasn't", "weren't",
+}
+# Multi-word cues checked as a suffix of the preceding-tokens window.
+NEG_PHRASES = [("yet", "to"), ("to", "be")]
+# How many tokens before the marker to inspect for a negation cue.
+NEG_WINDOW = 4
+
+
+def _negated(line: str, marker_start: int) -> bool:
+    """True if the built-marker at marker_start on `line` is negated by a cue
+    within NEG_WINDOW tokens immediately preceding it on the same line."""
+    prefix = line[:marker_start]
+    # Tokenize the prefix into lowercase word tokens (strip punctuation).
+    tokens = re.findall(r"[a-z']+", prefix.lower())
+    window = tokens[-NEG_WINDOW:]
+    if any(tok in NEG_CUES for tok in window):
+        return True
+    for a, b in NEG_PHRASES:
+        for i in range(len(window) - 1):
+            if window[i] == a and window[i + 1] == b:
+                return True
+    return False
+
 
 def iter_docs():
     """Yield doc .md paths under docs/, skipping frozen-history subtrees."""
@@ -93,8 +125,9 @@ def scan(path: Path):
 
     for i, line in enumerate(lines, 1):
         for rx, label in BUILT_MARKERS:
-            if rx.search(line):
-                return not_built_hit, (i, label, line.strip())
+            for m in rx.finditer(line):
+                if not _negated(line, m.start()):
+                    return not_built_hit, (i, label, line.strip())
     return None
 
 
