@@ -41,13 +41,45 @@ func TestStoreProfile(t *testing.T) {
 
 	t.Logf("host: GOARCH=%s GOOS=%s NumCPU=%d fsync=%v",
 		runtime.GOARCH, runtime.GOOS, runtime.NumCPU(), sync)
-	t.Logf("%-8s %-10s %10s %10s %9s %8s %10s %11s %10s",
-		"backend", "n", "build", "per-key", "heapMB", "rssMB", "onDiskMB", "apply100", "reopen")
+
+	// The coexistence balloon (SILT_COEXIST_BALLOON_MB): held resident for the
+	// WHOLE scale loop so every rssMB row below is RSS-UNDER-PRESSURE, directly
+	// comparable to the prior no-pressure table. On a no-swap floor box the
+	// balloon competes for physical RAM against bbolt's page cache — the read is
+	// whether rssMB sheds toward the ~305 MB heap floor (coexistence holds) or the
+	// box OOMs. See docs/thinking/2026-08-27-coexistence-balloon.md.
+	bMB := balloonMB(t)
+	pressure := "no-pressure"
+	if bMB > 0 {
+		rssPre := residentMB()
+		touched, checksum := inflateBalloon(bMB)
+		runtime.GC()
+		rssPost := residentMB()
+		pressure = "UNDER-PRESSURE"
+		t.Logf("BALLOON: %d MiB held resident, touched %d pages, checksum=%d, "+
+			"residentMB %.1f -> %.1f (delta %.1f) — rssMB rows below are under this pressure",
+			bMB, touched, checksum, rssPre, rssPost, rssPost-rssPre)
+		if residentMB() > 0 && rssPost-rssPre < float64(bMB)*0.8 {
+			t.Fatalf("balloon requested %d MiB but resident RSS only rose %.1f MiB — "+
+				"the balloon is NOT resident, the measurement would be false; aborting",
+				bMB, rssPost-rssPre)
+		}
+	}
+
+	t.Logf("%-8s %-10s %10s %10s %9s %14s %10s %11s %10s",
+		"backend", "n", "build", "per-key", "heapMB", "rssMB("+pressure+")", "onDiskMB", "apply100", "reopen")
 
 	for _, backend := range backends {
 		for _, n := range scales {
 			runOneStoreProfile(t, backend, n, perBlock, sync)
 		}
+	}
+
+	// Keep the balloon referenced past the loop so it stays resident for the last
+	// row's measurement; drop it only now that all rows are recorded.
+	if bMB > 0 {
+		t.Logf("BALLOON: releasing %d MiB (heldBalloon=%d bytes at loop end)", bMB, len(heldBalloon))
+		heldBalloon = nil
 	}
 }
 
@@ -179,7 +211,7 @@ func runOneStoreProfile(t *testing.T, backend string, n, perBlock int, sync bool
 	reopenMS := float64(time.Since(rs).Nanoseconds()) / 1e6
 	st2.Close()
 
-	t.Logf("%-8s %-10d %9.2fs %8.1fus %8.1f %7.1f %9.1f %9.2fms %8.2fms",
+	t.Logf("%-8s %-10d %9.2fs %8.1fus %8.1f %13.1f %9.1f %9.2fms %8.2fms",
 		backend, n,
 		float64(buildNS)/1e9,
 		float64(buildNS)/float64(n)/1e3,

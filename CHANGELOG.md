@@ -1764,6 +1764,25 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   proves `bonded` byte-identical across two opposite slash orderings. Test-only;
   no consensus rule moved. Each new probe was ablated (injected order-dependence →
   RED, reverted → green).
+- **The coexistence balloon — the instrument that makes the floor-box RSS
+  measurement mean something** (2026-08-27). The node-store profile
+  (`docs/thinking/2026-08-27-disk-backed-mapstore-options.md`) recorded bbolt at
+  1M keys as heap 305 MB / RSS 1328 MB, but on an otherwise-idle box — so the
+  1328 MB over-counts the coexistence risk by exactly its kernel-evictable page
+  cache, and the #600 question (does the cache shed toward the ~305 MB unevictable
+  floor under a ~1 GB daemon's pressure, or does the box OOM?) went untested. This
+  adds an env-gated (`SILT_COEXIST_BALLOON_MB`) memory balloon to
+  `internal/smtspike/TestStoreProfile`: it allocates that many MiB of anonymous
+  RAM, writes every page to fault it fully resident, and pins a live reference for
+  the whole scale loop, so on a no-swap box the balloon genuinely competes for
+  physical RAM against bbolt's page cache. Every `rssMB` row is then measured
+  under that pressure and labelled `rssMB(UNDER-PRESSURE)`. Unset/0 preserves the
+  prior behavior byte-for-byte (`rssMB(no-pressure)`). `TestBalloonResident`
+  proves the balloon pins real RSS: cross-platform via touched-page count +
+  checksum, and on the Linux floor box via the `residentMB()` jump (a
+  malloc'd-but-untouched buffer creates no pressure and is caught RED). Pure
+  test/measurement harness — no consensus, economic, or security code. See
+  `docs/thinking/2026-08-27-coexistence-balloon.md`.
 - **λ_H arrival-rate instrumentation — the one measurement the CT-1 conditional
   theorem is owed** (2026-08-27). The C-1 lift to CERTIFIED-CONDITIONAL
   (`silt-reviews/.../C1-maturity-before-capture-CONDITIONAL-THEOREM-LIFT-2026-08-27.md`)
