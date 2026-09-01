@@ -94,6 +94,54 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   op counts; `TestA4MoneyPumpConservation` and the prior Boulder-0 gates stay GREEN. Ablation reddens
   the fuzz at step 13154 again. Design:
   `docs/thinking/2026-09-01-provorder-eviction-cursor-fix-design.md`.
+- **v5 trustless floor box — R1.2 witness-soundness fix: re-anchor every class-P/A/B screen
+  predicate against `prevStateRoot` (still NEVER-ACCEPT)**
+  (`core/chain/floorbox_recompute_stateroot_atts_v5.go`, `..._rotate_v5.go`, `..._bondreg_v5.go`;
+  gates + coverage meta in `core/chain/floorbox_recompute_adversarialroot_v5_test.go`). The recompute
+  classes P (rotation), A (attestations→validatorsSeen), and B (bond regs) read per-member VALUES and
+  SCREEN PREDICATES from the untrusted witness structs and used them as fold `NewValue`s or branch
+  predicates WITHOUT resolving them against `prevStateRoot` — a wrong-accept-by-recompute the existing
+  ablations were blind to (they forged against an honest committed root; the attack moves the committed
+  root to match). The fix threads `prevStateRoot` into the screen/tally/write-set functions and requires
+  each untrusted read to `statehash.Resolve` present/absent against `prevStateRoot` before it is trusted
+  (`NoWitness`⇒stall, never a false read — C-7 §104): class A anchors `Slashed`/`InEpochSet`/
+  `BondedSize`/`BondedPresent` AT SOURCE in `attesterQualifiedFromScreen` (which reaches class M — a
+  forged screen can no longer inflate `validatorsSeenRoot`, PE ruling Q2); class P anchors the frozen
+  `Weight` (against `qualified||id`, or the class-B `qualWrites` for an in-block bond) and
+  `RegVersion`/`RegVersionKnown` (against `regVersion||id`) WITHOUT touching the `3*ready>2*total` tally
+  arithmetic (the #402 non-fork rule, `TestActivationQuorumNonFork` stays green); class B anchors
+  `PriorOwner`/`Claimed`/`PriorProven` (against `bondRootOwner||root` / `bondRootProven||root`). The box
+  STILL never-Accepts — the fix ADDS stall paths only; the STOP boundary and
+  `TestWitnessValidateV5_NeverAcceptsWhileRecomputeGated` are unchanged. Proven by the 11 adversarial-
+  committed-root gates (RED-on-main → green-after, each ablated red-then-green — every anchor is
+  load-bearing) plus a reflection-pinned coverage meta-assertion over the three witness carrier structs
+  (with a teeth companion). Design: `docs/thinking/2026-09-01-floorbox-witness-soundness-fix-design.md`
+  + `...-BUILD.md`; PE pins: `silt-reviews/principle-engineer/RULING-floorbox-R1.2-invariant-pins-2026-09-01.md`.
+- **v5 trustless floor box — R1.2 witness-soundness: three gate-coverage gap closures (test-only)**
+  (`core/chain/floorbox_recompute_adversarialroot_gaps_v5_test.go`). Three gaps in the R1.2
+  gate set are independently closed so R1.4 certification rests on a complete foundation:
+  (1) `TestAdversarialRoot_ClassA_ForgedSlashed_StillBonded` — the existing `ForgedSlashed` fixture
+  slashes the culprit and removes it from `bonded` (`chain.go:3288`), so a forged `Slashed=false`
+  with `BondedPresent=true` is caught by the `BondedProof` ABSENCE check before the `Slashed`
+  absent-proof runs; ablating only the `Slashed` anchor in the original fixture still stalls (no
+  wrong-accept). The new variant injects the culprit into BOTH `slashed` AND `bonded` (synthetic
+  state impossible on a real chain but constructible in a test), so `BondedProof` proves PRESENT —
+  the ONLY remaining defense is the `Slashed` absent-proof at `atts_v5.go:169`. Ablating it alone
+  in this variant would produce a wrong-accept. Companion probe
+  `TestAdversarialRoot_ClassA_ForgedSlashed_BondedProofCatchesFirst` documents the gap in the
+  original fixture. (2) `TestMatureEpochImpliesEverMature_InvariantPin` — pins the emergent invariant
+  `matureEpoch ⇒ everMature` (currently enforced only by `rotateEpoch`'s early-return at
+  `chain.go:3395-3398`). Sweeps real `apply()` paths through genesis, the maturity-latch event, and
+  the first epoch boundary; asserts the invariant at each step. Teeth demonstrated: injecting
+  `matureEpoch=true` with `everMature=false` is detected by the invariant predicate — the pin would
+  redden if a future `rotateEpoch` edit drops the `everMature` guard. (3)
+  `TestAdversarialRoot_ClassB_ForgedPreBondRegHeight` — dedicated adversarial-root point gate for the
+  class-B old-bucket source `preBondRegHeight` (read from `ChangedLeaves[i].OldValue` for
+  `bondRegHeight||id` keys, `bondreg_v5.go:405-411`). Forges the `OldValue` from 0 (genesis
+  reg-height) to 5, causing the box to emit a DELETE on the wrong old due-bucket (70 instead of 65);
+  the fold produces the wrong root → mismatch → stall. The coverage meta-assertion
+  (`TestAdversarialRootCoverageIsComplete`) field count is unchanged (10 FIX gates); no product
+  code changed.
 - **Docs/comment true-up (no logic change):** ROADMAP Rock 1 updated to the built recompute state
   (recompute reproduces the `apply()` transition set — E/R spine + classes S/B/T/A/P + class-M latch —
   guarded by the 28/28 write-obligation leaf-diff; the accept-flip is the single remaining step; the

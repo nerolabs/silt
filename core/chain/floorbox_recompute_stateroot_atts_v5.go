@@ -62,6 +62,28 @@ type StateRootAttScreen struct {
 	BondedSize int64
 	// BondedPresent reports whether bonded[id] is present pre-state.
 	BondedPresent bool
+
+	// R1.2 WITNESS-SOUNDNESS ANCHORS (per-field proofs against prevStateRoot). Each predicate the
+	// screen reads is anchored the same way a fold-written leaf is: by a proof the box VERIFIES
+	// against prevStateRoot before the read is trusted. Without them a forged screen flips
+	// qualification and emits a spurious validatorsSeen||id ADD (class-A source of the class-M
+	// poisoning, PE ruling Q2). The box resolves each proof and STALLS (MustStall) on a nil/forged
+	// proof — never falls through to a false/absent read (C-7 §104 banned move).
+	//
+	// SlashedProof anchors Slashed: present-proof of slashed||id (Slashed=true) OR non-membership
+	// proof (Slashed=false), against prevStateRoot.
+	SlashedProof statehash.Witness
+	// EpochSetProof anchors InEpochSet: present-proof of epochSet||id at the committed frozen weight
+	// (InEpochSet=true) OR non-membership proof (InEpochSet=false). Membership is all the mature-epoch
+	// screen needs (weight discarded, R-A-membership-source); the box requires the presence/absence
+	// proof to verify and does not read the weight.
+	EpochSetProof statehash.Witness
+	// EpochSetValue is the committed epochSet||id leaf value (the frozen weight) the EpochSetProof
+	// proves present when InEpochSet=true. Nil/empty when InEpochSet=false (an absence proof).
+	EpochSetValue []byte
+	// BondedProof anchors BondedPresent/BondedSize: present-proof of bonded||id at EncodeInt64(BondedSize)
+	// (BondedPresent=true) OR non-membership proof (BondedPresent=false), against prevStateRoot.
+	BondedProof statehash.Witness
 }
 
 // stateRootAttWriteSet derives the class-A per-member committed-leaf write-set for block b,
@@ -75,6 +97,7 @@ type StateRootAttScreen struct {
 // witnesses (C-1) — never a witness verdict. It returns the post-validatorsSeen id-set for the
 // digest reconstruction and the write-set for the fold.
 func (c *Chain) stateRootAttWriteSet(
+	prevStateRoot ports.Hash,
 	b Block,
 	preValidatorsSeen map[ports.NodeID]struct{},
 	screens map[ports.NodeID]StateRootAttScreen,
@@ -104,7 +127,11 @@ func (c *Chain) stateRootAttWriteSet(
 		if !ok {
 			return nil, nil, fmt.Errorf("%w: no attester screen witness for non-proposer att %x", ErrRecomputeStateRootDigest, id[:])
 		}
-		if !c.attesterQualifiedFromScreen(sc) {
+		qualified, qErr := c.attesterQualifiedFromScreen(prevStateRoot, sc)
+		if qErr != nil {
+			return nil, nil, qErr // a screen predicate could not be anchored against prevStateRoot ⇒ stall
+		}
+		if !qualified {
 			continue // not qualified ⇒ no validatorsSeen write
 		}
 		// Qualified non-proposer att ⇒ validatorsSeen||id ADD (Present). Idempotent if already seen.
@@ -118,17 +145,72 @@ func (c *Chain) stateRootAttWriteSet(
 // witnessed committed pre-state inputs + the box's OWN cfg (C-6) — never a witness verdict. It
 // reproduces the height-0 form (height 0 is never a #535 recovery boundary, so effectiveEpochSet(0)
 // is the frozen epochSet). Legacy mode is unreachable here (the caller asserts objective).
-func (c *Chain) attesterQualifiedFromScreen(sc StateRootAttScreen) bool {
+//
+// R1.2: every screen predicate is ANCHORED against prevStateRoot BEFORE it is read (PE ruling Q1
+// invariant #2, the poisoning entry point). A forged Slashed/InEpochSet/BondedPresent/BondedSize
+// flips qualification and emits a spurious validatorsSeen||id ADD (class-M poisoning source). Each
+// read is trusted only after its proof Resolves against prevStateRoot; a nil/forged proof yields
+// NoWitness ⇒ stall (never a false/absent read, C-7 §104). Returns (qualified, stall-reason).
+func (c *Chain) attesterQualifiedFromScreen(prevStateRoot ports.Hash, sc StateRootAttScreen) (bool, error) {
+	id := sc.Attester
+
+	// F2 gate — the slashed[id] pre-state. Anchor Slashed either way: present ⇒ inclusion proof of
+	// slashed||id → Present; absent ⇒ non-membership proof. A forged Slashed=false for a truly-slashed
+	// attester (the ForgedSlashed attack) fails the absence proof against prevStateRoot ⇒ stall.
+	slashedKey := statehash.Key(tagSlashed, id[:])
+	var slashedVal []byte
 	if sc.Slashed {
-		return false // F2: the one live mid-epoch disqualification
+		slashedVal = statehash.Present
 	}
+	slashedRes := statehash.Resolve(prevStateRoot, slashedKey, slashedVal, sc.SlashedProof)
+	if sc.Slashed && !slashedRes.IsProvenPresent() {
+		return false, fmt.Errorf("%w: attester %x Slashed=true not proven present against prevStateRoot", ErrRecomputeStateRootDigest, id[:])
+	}
+	if !sc.Slashed && !slashedRes.IsProvenAbsent() {
+		return false, fmt.Errorf("%w: attester %x Slashed=false not proven absent against prevStateRoot", ErrRecomputeStateRootDigest, id[:])
+	}
+	if sc.Slashed {
+		return false, nil // F2: the one live mid-epoch disqualification
+	}
+
 	if c.epochsEnabled() && c.matureEpoch {
 		// R-A-membership-source: the mature-epoch screen is FROZEN epochSet membership, weight
-		// discarded. A bond that joined mid-epoch is NOT yet in epochSet, so its att does not write.
-		return sc.InEpochSet
+		// discarded. Anchor InEpochSet: present ⇒ inclusion proof of epochSet||id at its committed
+		// weight; absent ⇒ non-membership proof. A forged InEpochSet=true for a non-member (the
+		// ForgedInEpochSet attack) fails the presence proof ⇒ stall.
+		epochSetKey := statehash.Key(tagEpochSet, id[:])
+		var epochSetVal []byte
+		if sc.InEpochSet {
+			epochSetVal = sc.EpochSetValue // the committed frozen weight; membership is what the screen uses
+		}
+		epochSetRes := statehash.Resolve(prevStateRoot, epochSetKey, epochSetVal, sc.EpochSetProof)
+		if sc.InEpochSet && !epochSetRes.IsProvenPresent() {
+			return false, fmt.Errorf("%w: attester %x InEpochSet=true not proven present against prevStateRoot", ErrRecomputeStateRootDigest, id[:])
+		}
+		if !sc.InEpochSet && !epochSetRes.IsProvenAbsent() {
+			return false, fmt.Errorf("%w: attester %x InEpochSet=false not proven absent against prevStateRoot", ErrRecomputeStateRootDigest, id[:])
+		}
+		return sc.InEpochSet, nil
 	}
-	// Pre-maturity objective: committed bonded size clears MinBond OR a launch anchor bootstraps.
-	return (sc.BondedPresent && sc.BondedSize >= c.cfg.MinBond) || c.launchAnchor(sc.Attester)
+
+	// Pre-maturity objective: committed bonded size clears MinBond OR a launch anchor bootstraps. Anchor
+	// BondedPresent/BondedSize: present ⇒ inclusion proof of bonded||id → EncodeInt64(BondedSize); absent
+	// ⇒ non-membership proof. A forged BondedPresent=true / BondedSize>=MinBond for an under/un-bonded
+	// attester (the ForgedBondedSize / ForgedBondedPresent attacks) fails its proof ⇒ stall. launchAnchor
+	// is own-cfg (C-6), never a witness — no anchor needed.
+	bondedKey := statehash.Key(tagBonded, id[:])
+	var bondedVal []byte
+	if sc.BondedPresent {
+		bondedVal = statehash.EncodeInt64(sc.BondedSize)
+	}
+	bondedRes := statehash.Resolve(prevStateRoot, bondedKey, bondedVal, sc.BondedProof)
+	if sc.BondedPresent && !bondedRes.IsProvenPresent() {
+		return false, fmt.Errorf("%w: attester %x BondedPresent=true (size %d) not proven present against prevStateRoot", ErrRecomputeStateRootDigest, id[:], sc.BondedSize)
+	}
+	if !sc.BondedPresent && !bondedRes.IsProvenAbsent() {
+		return false, fmt.Errorf("%w: attester %x BondedPresent=false not proven absent against prevStateRoot", ErrRecomputeStateRootDigest, id[:])
+	}
+	return (sc.BondedPresent && sc.BondedSize >= c.cfg.MinBond) || c.launchAnchor(sc.Attester), nil
 }
 
 // stateRootAttDigestOp reconstructs the validatorsSeenRoot whole-set digest as a FoldOp, IFF the
@@ -157,7 +239,7 @@ func stateRootAttDigestOp(
 // from the validatorsSeenRoot digest witness, screens each non-proposer attester (own-cfg over the
 // per-attester witnesses), derives the write-set + post-set, and reconstructs the touched digest.
 // It returns the digest FoldOps and the per-member write-set the caller folds together.
-func (c *Chain) attOps(b Block, w StateRootWitness) ([]statehash.FoldOp, []stateRootWrite, error) {
+func (c *Chain) attOps(prevStateRoot ports.Hash, b Block, w StateRootWitness) ([]statehash.FoldOp, []stateRootWrite, error) {
 	byTag := make(map[string]*StateRootDigestWitness, len(w.DigestPreSets))
 	for i := range w.DigestPreSets {
 		byTag[w.DigestPreSets[i].Tag] = &w.DigestPreSets[i]
@@ -170,7 +252,7 @@ func (c *Chain) attOps(b Block, w StateRootWitness) ([]statehash.FoldOp, []state
 	for _, sc := range w.AttScreens {
 		screens[sc.Attester] = sc
 	}
-	writes, postSeen, err := c.stateRootAttWriteSet(b, preSeen, screens)
+	writes, postSeen, err := c.stateRootAttWriteSet(prevStateRoot, b, preSeen, screens)
 	if err != nil {
 		return nil, nil, err
 	}

@@ -68,6 +68,20 @@ type StateRootBondRegScreen struct {
 	Claimed bool
 	// PriorProven is the committed bondRootProven[Root] pre-state (false if unclaimed or unproven).
 	PriorProven bool
+
+	// R1.2 WITNESS-SOUNDNESS ANCHORS (per-root proofs against prevStateRoot, BUILD note D5). The
+	// displacement branch reads PriorOwner/Claimed/PriorProven to decide whether to strip a squatter's
+	// standing; a forged read flips the decision (the ForgedPriorOwner/Claimed/PriorProven attacks). Each
+	// is anchored the same way a fold-written leaf is — by a proof the box VERIFIES against prevStateRoot
+	// before the read is trusted. A nil/forged proof yields NoWitness ⇒ stall (never a false read).
+	//
+	// OwnerProof anchors PriorOwner/Claimed: present-proof of bondRootOwner||root → EncodeID(PriorOwner)
+	// (Claimed=true) OR non-membership proof (Claimed=false).
+	OwnerProof statehash.Witness
+	// ProvenProof anchors PriorProven: present-proof of bondRootProven||root → EncodeBool(true)
+	// (PriorProven=true) OR non-membership proof (PriorProven=false — apply writes the proven leaf only
+	// when true, so an unproven claimed root has no proven leaf). Read only when Claimed=true.
+	ProvenProof statehash.Witness
 }
 
 // StateRootBucketWitness carries, for ONE affected TTL due-bucket, the claimed pre-state member
@@ -114,6 +128,7 @@ type bucketMove struct {
 // then emit the surviving winners' per-member writes + the bonded/qualified/due-bucket membership
 // changes. proven = b.Height > 0 (a height>0 reg went through validateBondRegs; genesis is declared).
 func (c *Chain) stateRootBondRegWriteSet(
+	prevStateRoot ports.Hash,
 	b Block,
 	preBonded, preQualified, preSlashed map[ports.NodeID]struct{},
 	screens map[ports.Hash]StateRootBondRegScreen,
@@ -128,11 +143,44 @@ func (c *Chain) stateRootBondRegWriteSet(
 	owner := map[ports.Hash]ports.NodeID{}
 	claimed := map[ports.Hash]bool{}
 	provenRoot := map[ports.Hash]bool{}
+	// R1.2: ANCHOR the per-root displacement inputs against prevStateRoot BEFORE reading them (BUILD
+	// note D5). The displacement branch (below) reads owner[root]/claimed[root]/provenRoot[root] to
+	// decide whether to strip a squatter's standing. A forged PriorOwner/Claimed/PriorProven flips that
+	// decision (the ForgedPriorOwner/Claimed/PriorProven attacks). Each is trusted only after its proof
+	// Resolves against prevStateRoot; a nil/forged proof yields NoWitness ⇒ stall.
 	for root, sc := range screens {
+		ownerKey := statehash.Key(tagBondRootOwner, root[:])
 		if sc.Claimed {
+			// Claimed=true ⇒ bondRootOwner||root present at EncodeID(PriorOwner).
+			ownerRes := statehash.Resolve(prevStateRoot, ownerKey, statehash.EncodeID(sc.PriorOwner), sc.OwnerProof)
+			if !ownerRes.IsProvenPresent() {
+				return bondRegDelta{}, fmt.Errorf("%w: bondReg root %x Claimed=true owner %x not proven present against prevStateRoot",
+					ErrRecomputeStateRootDigest, root[:], sc.PriorOwner[:])
+			}
+			// PriorProven: true ⇒ bondRootProven||root present at EncodeBool(true); false ⇒ absent (apply
+			// writes the proven leaf only when true, so an unproven claimed root has NO proven leaf).
+			provenKey := statehash.Key(tagBondRootProven, root[:])
+			if sc.PriorProven {
+				if !statehash.Resolve(prevStateRoot, provenKey, statehash.EncodeBool(true), sc.ProvenProof).IsProvenPresent() {
+					return bondRegDelta{}, fmt.Errorf("%w: bondReg root %x PriorProven=true not proven present against prevStateRoot",
+						ErrRecomputeStateRootDigest, root[:])
+				}
+			} else {
+				if !statehash.Resolve(prevStateRoot, provenKey, nil, sc.ProvenProof).IsProvenAbsent() {
+					return bondRegDelta{}, fmt.Errorf("%w: bondReg root %x PriorProven=false not proven absent against prevStateRoot",
+						ErrRecomputeStateRootDigest, root[:])
+				}
+			}
 			owner[root] = sc.PriorOwner
 			claimed[root] = true
 			provenRoot[root] = sc.PriorProven
+		} else {
+			// Claimed=false ⇒ bondRootOwner||root ABSENT (an unclaimed root). A forged Claimed=false for a
+			// truly-claimed root (the ForgedClaimed attack) fails the absence proof ⇒ stall.
+			if !statehash.Resolve(prevStateRoot, ownerKey, nil, sc.OwnerProof).IsProvenAbsent() {
+				return bondRegDelta{}, fmt.Errorf("%w: bondReg root %x Claimed=false owner not proven absent against prevStateRoot",
+					ErrRecomputeStateRootDigest, root[:])
+			}
 		}
 	}
 
@@ -314,30 +362,39 @@ func stateRootBondRegDigestOps(
 // pre-state bondRegHeight from the supplied changed-leaf witnesses (verified against prevStateRoot
 // by the fold), derives the full B delta, and reconstructs the touched digests + affected dueBucket
 // leaves. It returns the digest FoldOps and the per-member write-set the caller folds together.
-func (c *Chain) bondRegOps(b Block, w StateRootWitness) ([]statehash.FoldOp, []stateRootWrite, error) {
-	ops, writes, _, err := c.bondRegOpsWithQual(b, w)
+func (c *Chain) bondRegOps(prevStateRoot ports.Hash, b Block, w StateRootWitness) ([]statehash.FoldOp, []stateRootWrite, error) {
+	ops, writes, _, err := c.bondRegOpsWithQual(prevStateRoot, b, w)
 	return ops, writes, err
 }
 
 // bondRegOpsWithQual is bondRegOps that ALSO returns the POST-apply qualified id-set the class-B
 // delta produces. A boundary block's class-P freeze needs this (the freeze copies the post-qualified
 // set, R-P-sameblock-order); a non-boundary block ignores the third return.
-func (c *Chain) bondRegOpsWithQual(b Block, w StateRootWitness) ([]statehash.FoldOp, []stateRootWrite, map[ports.NodeID]struct{}, error) {
+func (c *Chain) bondRegOpsWithQual(prevStateRoot ports.Hash, b Block, w StateRootWitness) ([]statehash.FoldOp, []stateRootWrite, map[ports.NodeID]struct{}, error) {
+	ops, writes, postQual, _, err := c.bondRegOpsWithQualWrites(prevStateRoot, b, w)
+	return ops, writes, postQual, err
+}
+
+// bondRegOpsWithQualWrites is bondRegOpsWithQual that ALSO returns the per-id qualified leaf writes
+// (R1.2 class-P Weight anchor, BUILD note D4). The class-P freeze cross-checks each frozen member's
+// witnessed Weight against the B-derived qualWrites[id] for an id bonded in THIS block (whose
+// pre-state qualified||id leaf is stale/absent). qualWrites is anchored by the class-B fold.
+func (c *Chain) bondRegOpsWithQualWrites(prevStateRoot ports.Hash, b Block, w StateRootWitness) ([]statehash.FoldOp, []stateRootWrite, map[ports.NodeID]struct{}, map[ports.NodeID][]byte, error) {
 	byTag := make(map[string]*StateRootDigestWitness, len(w.DigestPreSets))
 	for i := range w.DigestPreSets {
 		byTag[w.DigestPreSets[i].Tag] = &w.DigestPreSets[i]
 	}
 	preBonded, err := anchoredPreSet(byTag, tagBondedRoot)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	preQualified, err := anchoredPreSet(byTag, tagQualifiedRoot)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	preSlashed, err := anchoredPreSet(byTag, tagSlashedRoot)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 
 	// Prior bondRegHeight for each id, read from the supplied changed-leaf witnesses' OldValue. A
@@ -363,15 +420,15 @@ func (c *Chain) bondRegOpsWithQual(b Block, w StateRootWitness) ([]statehash.Fol
 		buckets[bw.DueHeight] = bw
 	}
 
-	delta, err := c.stateRootBondRegWriteSet(b, preBonded, preQualified, preSlashed, screens, preBondRegHeight)
+	delta, err := c.stateRootBondRegWriteSet(prevStateRoot, b, preBonded, preQualified, preSlashed, screens, preBondRegHeight)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	ops, err := stateRootBondRegDigestOps(delta, preBonded, preQualified, w.DigestPreSets, buckets)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
-	return ops, delta.writes, delta.postQual, nil
+	return ops, delta.writes, delta.postQual, delta.qualWrites, nil
 }
 
 // idFromTaggedKey extracts the raw NodeID from a field-tagged leaf key if it carries the given tag.

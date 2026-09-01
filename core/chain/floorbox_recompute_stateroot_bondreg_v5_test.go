@@ -132,6 +132,8 @@ func (f bondFixture) bondScreen(root ports.Hash) StateRootBondRegScreen {
 		PriorOwner:  owner,
 		Claimed:     claimed,
 		PriorProven: f.c.bondRootProven[root],
+		OwnerProof:  mustProve(f.prover, statehash.Key(tagBondRootOwner, root[:])),
+		ProvenProof: mustProve(f.prover, statehash.Key(tagBondRootProven, root[:])),
 	}
 }
 
@@ -214,7 +216,7 @@ func (f bondFixture) bondWitness(t *testing.T, b Block, affectedBuckets []uint64
 	for id, h := range f.c.bondRegHeight {
 		preBRH[id] = h
 	}
-	delta, err := f.c.stateRootBondRegWriteSet(b, preBonded, preQualified, preSlashed, screens, preBRH)
+	delta, err := f.c.stateRootBondRegWriteSet(f.prevRoot, b, preBonded, preQualified, preSlashed, screens, preBRH)
 	if err != nil {
 		t.Fatalf("stateRootBondRegWriteSet: %v", err)
 	}
@@ -366,10 +368,11 @@ func TestRecomputeStateRootBondRegAblationForgedScreen(t *testing.T) {
 	if err == nil {
 		t.Fatalf("ABLATION FAILED: a forged (unclaimed) screen must stall, got nil")
 	}
-	// The box skips the displacement, so the squatter's bonded delete is missing from its write-set;
-	// the honest committed root reflects the delete ⇒ fold/mismatch stall.
-	if !errors.Is(err, ErrRecomputeStateRootFold) && !errors.Is(err, ErrRecomputeStateRootMismatch) {
-		t.Fatalf("ABLATION FAILED: expected a fold/mismatch stall, got %v", err)
+	// R1.2: the forged Claimed=false requires a NON-MEMBERSHIP proof of bondRootOwner||sharedRoot, but
+	// the honest OwnerProof proves it PRESENT (the squatter owns it), so the class-B anchor stalls
+	// (ErrRecomputeStateRootDigest) — a stronger, earlier catch than the pre-R1.2 fold/mismatch.
+	if !errors.Is(err, ErrRecomputeStateRootDigest) && !errors.Is(err, ErrRecomputeStateRootFold) && !errors.Is(err, ErrRecomputeStateRootMismatch) {
+		t.Fatalf("ABLATION FAILED: expected an anchor/fold/mismatch stall, got %v", err)
 	}
 }
 

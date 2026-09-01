@@ -222,12 +222,18 @@ func (f offBoundaryMaturityFixture) witnessForCrossing(t *testing.T, b Block) St
 			continue
 		}
 		sz, bp := f.c.bonded[id]
-		_, inES := f.c.epochSet[id]
-		sc := StateRootAttScreen{Attester: id, Slashed: f.c.slashed[id], InEpochSet: inES, BondedSize: sz, BondedPresent: bp}
+		esVal, inES := f.c.epochSet[id]
+		sc := StateRootAttScreen{Attester: id, Slashed: f.c.slashed[id], InEpochSet: inES, BondedSize: sz, BondedPresent: bp,
+			SlashedProof:  mustProve(f.prover, statehash.Key(tagSlashed, id[:])),
+			EpochSetProof: mustProve(f.prover, statehash.Key(tagEpochSet, id[:])),
+			BondedProof:   mustProve(f.prover, statehash.Key(tagBonded, id[:]))}
+		if inES {
+			sc.EpochSetValue = statehash.EncodeInt64(esVal)
+		}
 		screens[id] = sc
 		w.AttScreens = append(w.AttScreens, sc)
 	}
-	aWrites, _, err := f.c.stateRootAttWriteSet(b, preSeen, screens)
+	aWrites, _, err := f.c.stateRootAttWriteSet(f.prevRoot, b, preSeen, screens)
 	if err != nil {
 		t.Fatalf("stateRootAttWriteSet: %v", err)
 	}
@@ -320,7 +326,7 @@ func (f offBoundaryMaturityFixture) nonMaturityOps(t *testing.T, b Block, w Stat
 		witByKey[string(w.ChangedLeaves[i].Key)] = &w.ChangedLeaves[i]
 	}
 	var ops []statehash.FoldOp
-	aOps, aWrites, err := f.c.attOps(b, w)
+	aOps, aWrites, err := f.c.attOps(f.prevRoot, b, w)
 	if err != nil {
 		t.Fatalf("attOps: %v", err)
 	}
