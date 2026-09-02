@@ -30,6 +30,7 @@ import (
 	"github.com/nerolabs/silt/adapters/diskstore"
 	"github.com/nerolabs/silt/adapters/eventloop"
 	"github.com/nerolabs/silt/adapters/fileregistry"
+	"github.com/nerolabs/silt/adapters/guardstore"
 	"github.com/nerolabs/silt/adapters/httpregistry"
 	"github.com/nerolabs/silt/adapters/identity"
 	"github.com/nerolabs/silt/adapters/lan"
@@ -618,7 +619,21 @@ func cmdDaemon(args []string) error {
 	// chain-less daemon so the chain-gated call sites below never nil-panic.
 	saveChain := func(string) {}
 	ledger := credit.New(50_000, 500_000) // starter grant so a fresh publisher can pay token fees
-	nd0ledger := ledger                   // wired onto the node below
+	// R0.4b re-break F2: the cross-server double-redeem guard is DURABLE, and it is
+	// restored HERE — before the node exists, so before any receipt can be accepted. A
+	// restart used to evict every guarded token, in-window or not, and the identical
+	// wire receipt paid a second time. A store that cannot be opened or read is a
+	// refuse-to-start, the same rule the sign-mark store keeps: starting with an empty
+	// guard IS the eviction this closes.
+	if gs, gerr := guardstore.Open(filepath.Join(*storeDir, "paidserials.log")); gerr != nil {
+		return fmt.Errorf("delivery-credit guard store: %w", gerr)
+	} else {
+		ledger.SetPaidSerialStore(gs)
+		if lerr := ledger.LoadPaidSerials(); lerr != nil {
+			return fmt.Errorf("delivery-credit guard store: %w", lerr)
+		}
+	}
+	nd0ledger := ledger // wired onto the node below
 	if *validator {
 		anchorSet := map[ports.NodeID]bool{}
 		for _, s := range strings.Split(*anchorList, ",") {
@@ -857,40 +872,57 @@ func cmdDaemon(args []string) error {
 				if derr != nil {
 					return fmt.Errorf("demand issuer key store: %w", derr)
 				}
-				// The band is generated and written to disk OFF the node loop (an
-				// RSA-2048 keygen is hundreds of milliseconds and the loop is
-				// single-threaded), and only the installs are posted back onto it.
-				rotateDemandKeys = func(cur uint64) {
-					var band []struct {
-						e uint64
-						k *rsa.PrivateKey
-					}
-					if err := des.RotateWindow(rand.Reader, cur, demand.DefaultWindow,
-						func(e uint64, k *rsa.PrivateKey) {
-							band = append(band, struct {
-								e uint64
-								k *rsa.PrivateKey
-							}{e, k})
-						}); err != nil {
-						fmt.Printf("delivery receipts: demand key rotation for epoch %d FAILED: %v\n", cur, err)
-						return
-					}
-					loop.Post("demand-keys", func() {
-						for _, kv := range band {
-							nd.SetDemandIssuerKey(kv.e, kv.k)
+				// DEGRADE TO LANE-OFF, NEVER TO DAEMON-DEAD (red-team re-break F7).
+				// A corrupt or unreadable demand key file used to come straight out of
+				// runDaemon, so one bad byte in demandkeys.cbor stopped chain participation,
+				// storage and serving too — a blast radius wildly out of proportion to an
+				// OPTIONAL receipt lane. The file is NEVER rewritten or regenerated on this
+				// path: quietly minting new keys over already-committed fingerprints is the
+				// UNRECOVERABLE failure (F6), so the store is left exactly as found for an
+				// operator to restore. The refusal is loud, on stdout, at boot.
+				_, lerr := des.Load()
+				switch {
+				case lerr != nil:
+					fmt.Printf("delivery receipts: LANE OFF — the demand issuer key store is unreadable: %v\n", lerr)
+					fmt.Printf("delivery receipts: %s was NOT modified; restore it from backup and restart to re-enable the lane. Chain, storage and serving continue.\n",
+						filepath.Join(*storeDir, "issuer", "demandkeys.cbor"))
+				default:
+					// The band is generated and written to disk OFF the node loop (an
+					// RSA-2048 keygen is hundreds of milliseconds and the loop is
+					// single-threaded), and only the installs are posted back onto it.
+					rotateDemandKeys = func(cur uint64) {
+						var band []struct {
+							e uint64
+							k *rsa.PrivateKey
 						}
-					})
+						if err := des.RotateWindow(rand.Reader, cur, demand.DefaultWindow,
+							func(e uint64, k *rsa.PrivateKey) {
+								band = append(band, struct {
+									e uint64
+									k *rsa.PrivateKey
+								}{e, k})
+							}); err != nil {
+							fmt.Printf("delivery receipts: demand key rotation for epoch %d FAILED: %v\n", cur, err)
+							return
+						}
+						loop.Post("demand-keys", func() {
+							for _, kv := range band {
+								nd.SetDemandIssuerKey(kv.e, kv.k)
+							}
+						})
+					}
+					// Boot install runs synchronously: the lane must not be dark for the
+					// first commits, and this is before the loop is running.
+					demandEpoch = nd.DemandEpoch()
+					if kerr := installDemandKeys(nd, des, rand.Reader, demandEpoch); kerr != nil {
+						fmt.Printf("delivery receipts: LANE OFF — the boot key rotation failed: %v\n", kerr)
+						break
+					}
+					nd.EnableDemandBank(nd.ID())
+					fmt.Println("delivery receipts: ACCEPTING — banking witnessed deliveries and settling the conserved delivery credit (balance only, never standing)")
+					fmt.Printf("delivery receipts: token validity window = %d epochs; per-epoch demand keys pre-published to epoch %d; key_E is resolved against the committed E→key binding (needs an era-4/v5 chain)\n",
+						demand.DefaultWindow, demandEpoch+demand.DefaultWindow)
 				}
-				// Boot install runs synchronously: the lane must not be dark for the
-				// first commits, and this is before the loop is running.
-				demandEpoch = nd.DemandEpoch()
-				if kerr := installDemandKeys(nd, des, rand.Reader, demandEpoch); kerr != nil {
-					return fmt.Errorf("demand issuer keys: %w", kerr)
-				}
-				nd.EnableDemandBank(nd.ID())
-				fmt.Println("delivery receipts: ACCEPTING — banking witnessed deliveries and settling the conserved delivery credit (balance only, never standing)")
-				fmt.Printf("delivery receipts: token validity window = %d epochs; per-epoch demand keys pre-published to epoch %d; key_E is resolved against the committed E→key binding (needs an era-4/v5 chain)\n",
-					demand.DefaultWindow, demandEpoch+demand.DefaultWindow)
 			}
 			if *acceptRelayPayments {
 				// PoD relay lane (§7.3, certified 2026-08-30): accept sender-funded

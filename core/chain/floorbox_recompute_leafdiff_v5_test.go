@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -274,6 +275,67 @@ var leafDiffOutOfScopeTags = map[string]string{
 		"stateRootScopeGate stalls on it (ErrRecomputeStateRootScopeStall). The keyspace is INERT " +
 		"to consensus — no validity predicate, quorum, fork-choice rule, or recompute reads it — " +
 		"so there is no fold for a diff to be compared against.",
+}
+
+// TestLeafDiff_IssuerKeyCommitIsPayloadOnly earns the WORD "ONLY" in the exemption above.
+//
+// The exemption was FALSE when it was written (red-team re-break F1, 2026-09-03):
+// applyIssuerKeys pruned the keyspace by BLOCK HEIGHT on every apply, so a block carrying no
+// registrations deleted committed issuerKeyCommit leaves at every epoch turn — writes the
+// scope gate waved through and the fold never reproduced, measured as a two-way box/full-node
+// split. Stalling on the payload predicate is only sound if the payload predicate is EXACT, so
+// the "only" clause needs its own gate, not just a stall gate for the positive case.
+//
+// It sweeps a run of registration-free blocks ACROSS several epoch turns over a pre-state that
+// holds committed issuer keys, and requires that not one of them changes an issuerKeyCommit
+// leaf. Re-introducing any height-driven write to the keyspace reddens it.
+func TestLeafDiff_IssuerKeyCommitIsPayloadOnly(t *testing.T) {
+	if _, ok := leafDiffOutOfScopeTags["issuerKeyCommit"]; !ok {
+		t.Skip("issuerKeyCommit is in scope now; it needs a real leaf-diff scenario instead")
+	}
+	cfg := Config{Quorum: 1, MinBond: era4MinBond, ByzantineQuorum: true,
+		EpochBlocks: 2, MatureValidators: 0, BondTTLBlocks: 4096}
+	c := New(cfg, func(ports.NodeID) int64 { return 0 })
+	c.SetBondVerifier(objectiveVerify)
+	prop := key(91200)
+	g := &Block{Version: BlockVersionWitnessable, Height: 0}
+	g.BondRegs = append(g.BondRegs,
+		bondRegFull(prop, ports.HashBytes(pubOf(prop)), 8<<20, ports.Hash{}, 5, 1))
+	g.IssuerKeys = []IssuerKeyReg{SignIssuerKeyReg(prop, 0, ports.Hash{0x77})}
+	Sign(g, prop)
+	c.apply(*g)
+
+	committedIssuerKeyLeaves := func(ch *Chain) map[string]string {
+		out := map[string]string{}
+		for _, lf := range ch.stateRootLeavesV5() {
+			if tagOfKey(string(lf.Key)) == "issuerKeyCommit" {
+				out[string(lf.Key)] = string(lf.Value)
+			}
+		}
+		return out
+	}
+	if len(committedIssuerKeyLeaves(c)) != 1 {
+		t.Fatalf("fixture: expected one committed issuerKeyCommit leaf")
+	}
+
+	// 24 registration-free blocks = 12 epoch turns at EpochBlocks=2, well past the point the
+	// height-driven prune dropped epoch 0 (it fired at cur=5, height 10).
+	for h := uint64(1); h <= 24; h++ {
+		before := committedIssuerKeyLeaves(c)
+		prev, hh := c.Head()
+		b := Block{Version: BlockVersionWitnessable, Height: hh, Prev: prev,
+			Entries: []ports.Entry{entry(byte(h))}}
+		Sign(&b, prop)
+		c.apply(b)
+		after := committedIssuerKeyLeaves(c)
+		if !reflect.DeepEqual(before, after) {
+			t.Fatalf("height %d (epoch %d): a block carrying NO IssuerKeys changed the "+
+				"issuerKeyCommit leaf set (%d leaves -> %d). The exemption's word ONLY is false "+
+				"again: the scope gate's len(b.IssuerKeys) > 0 predicate cannot see this write "+
+				"and the O(payload) fold cannot reproduce it — a box/full-node split at every "+
+				"such block.", hh, c.blockEpoch(hh), len(before), len(after))
+		}
+	}
 }
 
 // TestLeafDiffOutOfScopeTagsActuallyStall earns every leafDiffOutOfScopeTags entry:

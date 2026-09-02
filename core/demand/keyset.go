@@ -118,8 +118,15 @@ func (k *Keyset) Window() uint64 { return k.window }
 // resolved pub against the committed E ↦ key_E binding FIRST — an unchecked Put is
 // exactly the targeted-key fingerprinting channel the cert gates on (see the package
 // note above). A nil pub is ignored.
+//
+// A MALFORMED KEY IS ALSO IGNORED (red-team re-break F4, 2026-09-03). Resolving
+// against the commitment proves WHICH BYTES the issuer serves; it proves nothing about
+// whether those bytes are an RSA key. A held N = 0 panicked the verifier and a held
+// N = 1 verified an arbitrary (serial, sig) pair — a universal forgery behind a
+// perfectly valid consensus pin. blindtoken.ValidatePub is the single definition of
+// well-formedness and this is the door it guards; Held reports what actually went in.
 func (k *Keyset) Put(epoch uint64, pub *rsa.PublicKey) {
-	if pub == nil {
+	if pub == nil || blindtoken.ValidatePub(pub) != nil {
 		return
 	}
 	k.keys[epoch] = pub

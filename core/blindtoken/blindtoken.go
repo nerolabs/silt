@@ -168,6 +168,13 @@ func demandMsg(epoch uint64, serial []byte) []byte {
 }
 
 func blindD(rng io.Reader, pub *rsa.PublicKey, msg []byte, domain string) (blinded, secret []byte, err error) {
+	// LAST-LINE KEY VALIDITY (red-team re-break F4). Every modexp below reduces mod
+	// pub.N, and big.Int.Mod PANICS on a zero modulus — a committed N = 0 crashed the
+	// whole fetcher lane. The key should already have been refused at ParsePub and at
+	// Keyset.Put; this makes a bypass a legible error instead of a process death.
+	if err := ValidatePub(pub); err != nil {
+		return nil, nil, err
+	}
 	m := fullDomainHashD(pub, msg, domain)
 	if m.Sign() == 0 {
 		return nil, nil, ErrZeroHash
@@ -206,6 +213,9 @@ func SignBlinded(priv *rsa.PrivateKey, blinded []byte) []byte {
 // Unblind turns the issuer's blind signature into a signature on the plain
 // serial, using the secret from Blind.
 func Unblind(pub *rsa.PublicKey, blindSig, secret []byte) []byte {
+	if ValidatePub(pub) != nil {
+		return nil // see blindD: a degenerate modulus must not reach the modexp
+	}
 	bs := new(big.Int).SetBytes(blindSig)
 	r := new(big.Int).SetBytes(secret)
 	rInv := new(big.Int).ModInverse(r, pub.N)
@@ -239,6 +249,12 @@ func VerifyDemand(pub *rsa.PublicKey, epoch uint64, serial, sig []byte) bool {
 }
 
 func verifyD(pub *rsa.PublicKey, msg, sig []byte, domain string) bool {
+	// A malformed key VERIFIES NOTHING (red-team re-break F4). N = 1 made the FDH image
+	// 0 and s^e mod 1 == 0, so every (serial, sig) pair verified; E = 1 made the
+	// signature the message itself. Both are refused here rather than answered "true".
+	if ValidatePub(pub) != nil {
+		return false
+	}
 	m := fullDomainHashD(pub, msg, domain)
 	s := new(big.Int).SetBytes(sig)
 	check := new(big.Int).Exp(s, big.NewInt(int64(pub.E)), pub.N)

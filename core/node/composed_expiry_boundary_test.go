@@ -484,10 +484,18 @@ func TestComposedBoundary_SameFingerprintAtTwoEpochsDoesNotRedateTokens(t *testi
 	// this — and it must still not revive the token.
 	f.advanceEpochs(t, int(demand.DefaultWindow))
 	cur := f.a.chainEpoch()
-	if _, still := f.chain.IssuerKeyCommitment(f.aIdent.NodeID(), 0); still {
-		t.Fatal("setup: the epoch-0 commitment should have been pruned out of the band by now")
-	}
+	// The prune is PAYLOAD-DRIVEN (red-team re-break F1, 2026-09-03): a block carrying no
+	// registrations writes nothing in the issuerKeyCommit keyspace, not even a delete, so
+	// the epoch-0 commitment leaves the band on the next REGISTRATION-carrying block
+	// rather than on the next epoch turn. That is the whole point of the change — a
+	// height-driven delete is a committed write the floor box's O(payload) fold cannot
+	// reproduce and its scope gate cannot see. The §2.3 refutation is unaffected: the
+	// same fresh registration that prunes epoch 0 is the one that would revive the token.
 	f.commitIssuerKeyAt(t, cur, f.issuerPriv)
+	if _, still := f.chain.IssuerKeyCommitment(f.aIdent.NodeID(), 0); still {
+		t.Fatal("setup: the epoch-0 commitment should have been pruned out of the band by " +
+			"the registration-carrying block just committed")
+	}
 	f.b.FetchDemandIssuerKeys(f.aIdent.NodeID(), func(int, error) {})
 	f.a.clock.(interface{ Run() }).Run()
 	if f.present(t, f.b, token) {

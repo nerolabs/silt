@@ -414,6 +414,23 @@ func (c *Chain) stateRootScopeGate(prevStateRoot ports.Hash, b Block, w StateRoo
 	// compute a post-root missing those leaves and land on ErrRecomputeStateRootMismatch
 	// — a stall either way, but one that reads as "forged root". Stall EXPLICITLY so the
 	// out-of-scope class is named rather than mis-attributed. The box never-Accepts.
+	//
+	// THIS PAYLOAD PREDICATE IS EXACT ONLY BECAUSE apply() MAKES IT SO (red-team
+	// re-break F1, 2026-09-03). It was NOT exact: applyIssuerKeys used to prune the
+	// keyspace by BLOCK HEIGHT on every apply, so a zero-registration block at an epoch
+	// turn deleted committed leaves this gate waved through and this fold never
+	// reproduced — a two-way box/full-node split (box AGREES with a forged root; box
+	// reads an honest block as forged). The close is at the source: the prune now runs
+	// only inside the registration-carrying branch (core/chain/issuerkey.go), so
+	// "len(b.IssuerKeys) == 0 ⇒ no issuerKeyCommit write" is a property of apply(), not
+	// an assumption of the gate. The reason it is closed THERE and not here: the box has
+	// no sound way to reproduce a height-driven delete over this keyspace — statehash
+	// offers point membership/non-membership only (no range proof), and issuerKeyCommit
+	// carries no set-completeness digest leaf (unlike dueBucket's MTH, which is exactly
+	// what makes class T's height-driven sweep witnessable). A witness-supplied member
+	// list would be omission-forgeable, and the conservative alternative — stall at
+	// every epoch boundary — would make every boundary block Indeterminate forever.
+	// TestLeafDiff_IssuerKeyCommitIsPayloadOnly and the R0.4b C3 split gates pin it.
 	if len(b.IssuerKeys) > 0 {
 		return fmt.Errorf("%w: block carries %d demand-issuer key registration(s) (R0.4b, issuerKeyCommit)",
 			ErrRecomputeStateRootScopeStall, len(b.IssuerKeys))

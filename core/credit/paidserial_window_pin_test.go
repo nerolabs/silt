@@ -83,7 +83,7 @@ func TestGuardLifetimeMatchesDemandKeysetLifetime(t *testing.T) {
 		// the sweep directly — the question is which entries it drops, not when.
 		l.sweptEpoch = 0
 		l.reserveSweepForTest(cur)
-		_, guardRemembers := l.paidSerial[string(tok.Serial)]
+		_, guardRemembers := l.paidSerial[paidKey(0, tok.Serial)]
 
 		if upstreamAccepts != guardRemembers {
 			t.Fatalf("epoch %d: the demand layer accepts=%v but the guard remembers=%v. "+

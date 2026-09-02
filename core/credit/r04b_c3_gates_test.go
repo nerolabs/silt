@@ -116,7 +116,7 @@ func TestSharedKeyRotationDoesNotReopenThePump(t *testing.T) {
 	cur := demand.DefaultWindow + 1
 	s.rotate(cur)
 	l.sweepExpiredSerials(cur)
-	if _, still := l.paidSerial[string(toks[0].Serial)]; still {
+	if _, still := l.paidSerial[paidKey(0, toks[0].Serial)]; still {
 		t.Fatal("setup: the guard did not sweep the expired epoch-0 entries, so this " +
 			"test would pass for the wrong reason (the guard, not expiry, refusing)")
 	}

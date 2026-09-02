@@ -48,7 +48,13 @@ package credit
 // file touches is read by Reputation — asserted structurally by the Invariant-A
 // guard (invariant_a_test.go) and the delivery firewall test.
 
-import "github.com/nerolabs/silt/ports"
+import (
+	"encoding/binary"
+	"fmt"
+	"sort"
+
+	"github.com/nerolabs/silt/ports"
+)
 
 // maxProvisional caps the supersede-tracking map (see the bounding note above).
 const maxProvisional = 8192
@@ -300,6 +306,15 @@ const (
 	ReasonGuardFull = "paid-serial-guard-full"
 	// ReasonNoFee: the ledger's fee is zero, so there is nothing to settle.
 	ReasonNoFee = "no-fee"
+	// ReasonGuardUnloaded: a durable guard store is attached but its contents have
+	// not been loaded yet, so this ledger does not know what it already paid. Refuse
+	// rather than pay — a redeem before load completes is exactly the restart window
+	// the store exists to close (red-team re-break F2).
+	ReasonGuardUnloaded = "paid-serial-guard-unloaded"
+	// ReasonGuardStore: the durable guard entry could not be written. The entry is
+	// persisted BEFORE any credit moves, so a store failure is an under-pay, never a
+	// payout with no guard entry.
+	ReasonGuardStore = "paid-serial-store-write-failed"
 )
 
 // GuardFullRefusals is how many redeems this ledger refused because the paid-serial
@@ -345,8 +360,11 @@ func (l *Ledger) RedeemDeliveryCreditReason(server, fetcher ports.NodeID, root p
 		if currentEpoch > l.epochWatermark {
 			l.epochWatermark = currentEpoch
 		}
-		if _, paid := l.paidSerial[string(serial)]; paid {
-			return 0, ReasonAlreadyPaid // this serial already funded one conserved payout — mint 0
+		if l.paidStore != nil && !l.guardLoaded {
+			return 0, ReasonGuardUnloaded
+		}
+		if _, paid := l.paidSerial[paidKey(issuedEpoch, serial)]; paid {
+			return 0, ReasonAlreadyPaid // this TOKEN already funded one conserved payout — mint 0
 		}
 		// Backdated redeem: the issuing epoch has left the window measured at the
 		// watermark, so some redeemer on this ledger is already past it and the
@@ -390,17 +408,30 @@ func (l *Ledger) RedeemDeliveryCreditReason(server, fetcher ports.NodeID, root p
 	if fee <= 0 {
 		return 0, ReasonNoFee
 	}
+
+	// RECORD THE GUARD ENTRY, DURABLY, BEFORE ANY CREDIT MOVES (red-team re-break F2).
+	// The ordering is the whole property, and it is SignMarkStore's: a crash between
+	// the two leaves a guard entry for a payout that never happened (an under-pay,
+	// self-healing when the window advances), never a payout with no guard entry —
+	// which a restart would let a second server collect all over again. A store that
+	// cannot write refuses the payout for the same reason.
+	//
+	// This is the ONE refusal that lands AFTER the supersede above, so the lane has
+	// already given up its unwitnessed self-credit. That direction is safe: the
+	// supersede is purely subtractive (it reverses a self-mint), so the outcome is an
+	// under-pay — never an over-pay, and never a mint.
+	if len(serial) > 0 {
+		if err := l.addPaidSerial(serial, server, issuedEpoch); err != nil {
+			return 0, ReasonGuardStore
+		}
+	}
+
 	skim := fee * SkimNum / SkimDen
 	s.balance += fee - skim
 	e := l.escrowFor(root)
 	e.balance += skim
 	e.funded += skim
 
-	// Record this serial as funded so no OTHER server (and no re-submit) can redeem
-	// the same token again. Recorded ONLY on the paying path — a fee<=0 no-op never
-	// marks a serial, so an honest retry after a non-paying attempt is not wrongly
-	// blocked.
-	l.addPaidSerial(serial, server, issuedEpoch)
 	return fee - skim, ReasonPaid
 }
 
@@ -429,11 +460,37 @@ func (l *Ledger) sweepExpiredSerials(current uint64) {
 		return // nothing can have left the window yet
 	}
 	floor := current - paidSerialWindow
+	removed := false
 	for k, p := range l.paidSerial {
 		if p.epoch < floor {
 			delete(l.paidSerial, k)
+			removed = true
 		}
 	}
+	// The durable log is append-only, so an expiry sweep is the ONE event that shrinks
+	// it. Compacting here (and only here) keeps the file within 2x the live cap while
+	// costing nothing on the redeem path. A failed compaction is not an accounting
+	// error — the log is a superset of the live set, and a superset only ever refuses
+	// more — so it does not fail the sweep.
+	if removed && l.paidStore != nil {
+		_ = l.paidStore.Compact(l.livePaidSerials())
+	}
+}
+
+// livePaidSerials is the guard's contents in a DETERMINISTIC order (by key), so a
+// compaction never depends on Go map iteration order (B2).
+func (l *Ledger) livePaidSerials() []ports.PaidSerial {
+	keys := make([]string, 0, len(l.paidSerial))
+	for k := range l.paidSerial {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	out := make([]ports.PaidSerial, 0, len(keys))
+	for _, k := range keys {
+		e := l.paidSerial[k]
+		out = append(out, ports.PaidSerial{Serial: serialOfPaidKey(k), Server: e.server, Epoch: e.epoch})
+	}
+	return out
 }
 
 // reservePaidSerial makes room for one more guarded serial, or reports that it
@@ -457,20 +514,92 @@ func (l *Ledger) reservePaidSerial(current uint64) bool {
 	return len(l.paidSerial) < maxPaidSerial
 }
 
-// addPaidSerial marks serial as having funded one conserved delivery payout on this
-// ledger, recording the server that collected it and the token's ISSUING EPOCH (the
-// expiry key). A zero-length serial is not recorded — it was unguarded on entry, so
-// recording it would waste a slot.
+// paidKey is the guard key: the token, not the serial. It is
+// uint64BE(issueEpoch)||serial — the same epoch wire form the demand FDH message and
+// the issuerKeyCommit leaf use.
+//
+// WHY THE EPOCH IS IN THE KEY (red-team re-break F3, 2026-09-03). Keyed by the serial
+// alone, the entry's expiry epoch was whatever the FIRST redeem supplied and later
+// redeems returned early — i.e. the MINIMUM epoch over the tokens sharing a serial.
+// The withdrawer picks both the serial and the epoch, so it can hold two valid tokens
+// on ONE serial at two epochs; the low-epoch entry then expired and the guard forgot a
+// serial for which a still-in-window token existed. "Evicted ⇒ expired" was false.
+// Keyed by the token, an entry is removed only once ITS OWN issue epoch is outside the
+// band, which is the coupling condition the certification requires. The pump the guard
+// closes is unaffected: the same TOKEN redeemed at two servers is one key either way,
+// and a second token on the same serial costs a second withdrawal fee.
+func paidKey(issuedEpoch uint64, serial []byte) string {
+	var k [8]byte
+	binary.BigEndian.PutUint64(k[:], issuedEpoch)
+	return string(k[:]) + string(serial)
+}
+
+// serialOfPaidKey recovers the serial from a guard key (the inverse of paidKey's
+// suffix), for the durable store's records.
+func serialOfPaidKey(k string) []byte { return []byte(k[8:]) }
+
+// addPaidSerial marks the TOKEN (issue epoch, serial) as having funded one conserved
+// delivery payout on this ledger, recording the server that collected it. A
+// zero-length serial is not recorded — it was unguarded on entry, so recording it
+// would waste a slot.
 //
 // The cap is enforced by the caller's reservePaidSerial before any payment, so this
 // never has to choose a victim: by the time it runs there is a free slot.
-func (l *Ledger) addPaidSerial(serial []byte, server ports.NodeID, issuedEpoch uint64) {
+//
+// It returns the DURABLE-WRITE error, and the caller refuses the payout on one. See
+// the call site for why the order matters.
+func (l *Ledger) addPaidSerial(serial []byte, server ports.NodeID, issuedEpoch uint64) error {
 	if len(serial) == 0 {
-		return
+		return nil
 	}
-	key := string(serial)
+	key := paidKey(issuedEpoch, serial)
 	if _, ok := l.paidSerial[key]; ok {
-		return // already recorded (the guard above already refused a re-redeem)
+		return nil // already recorded (the guard above already refused a re-redeem)
+	}
+	if l.paidStore != nil {
+		if err := l.paidStore.Append(ports.PaidSerial{Serial: serial, Server: server, Epoch: issuedEpoch}); err != nil {
+			return err
+		}
 	}
 	l.paidSerial[key] = paidSerialEntry{server: server, epoch: issuedEpoch}
+	return nil
+}
+
+// SetPaidSerialStore attaches the durable guard store and marks the guard UNLOADED.
+// Until LoadPaidSerials succeeds every guarded redeem is refused (ReasonGuardUnloaded)
+// rather than paid: a ledger that does not yet know what it already paid must not pay.
+func (l *Ledger) SetPaidSerialStore(s ports.PaidSerialStore) {
+	l.paidStore = s
+	l.guardLoaded = false
+}
+
+// LoadPaidSerials restores the guard from its durable store. It is the RESTORE half of
+// "a restart is not an eviction"; the daemon calls it before the node accepts any
+// receipt.
+//
+// A store holding more than the cap is a REFUSE-TO-START error, not a truncation:
+// dropping the surplus would be exactly the arbitrary eviction of live entries the
+// design refutes, and no ledger writing through this store can produce such a file.
+func (l *Ledger) LoadPaidSerials() error {
+	if l.paidStore == nil {
+		return nil
+	}
+	entries, err := l.paidStore.Load()
+	if err != nil {
+		return err
+	}
+	fresh := make(map[string]paidSerialEntry, len(entries))
+	for _, e := range entries {
+		if len(e.Serial) == 0 {
+			continue
+		}
+		fresh[paidKey(e.Epoch, e.Serial)] = paidSerialEntry{server: e.Server, epoch: e.Epoch}
+	}
+	if len(fresh) > maxPaidSerial {
+		return fmt.Errorf("credit: persisted paid-serial guard holds %d entries, cap is %d",
+			len(fresh), maxPaidSerial)
+	}
+	l.paidSerial = fresh
+	l.guardLoaded = true
+	return nil
 }

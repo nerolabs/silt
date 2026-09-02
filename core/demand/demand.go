@@ -53,6 +53,9 @@ import (
 	"crypto/ed25519"
 	"crypto/rsa"
 	"crypto/sha256"
+	"encoding/binary"
+	"errors"
+	"fmt"
 	"io"
 
 	"github.com/fxamacker/cbor/v2"
@@ -178,12 +181,29 @@ func Ack(fetcher ed25519.PrivateKey, token Token, object ports.Hash, server port
 // built in M0.
 type BondCheck func(fetcherPubKey []byte) (slot string, ok bool)
 
-// Bank is a server's neutral demand ledger: the set of already-redeemed token
-// serials (double-spend guard) and the per-object count of witnessed deliveries.
+// Bank is a server's neutral demand ledger: the set of already-redeemed TOKENS
+// (double-spend guard) and the per-object count of witnessed deliveries.
 // Demand is an OBSERVABLE — it is never read by consensus standing.
+//
+// EVERY MAP HERE IS BOUNDED (build-immutable #8; red-team re-break F5, 2026-09-03).
+// They were not: spent, demand and credited had no cap, no sweep and no eviction path
+// of any kind, in the very layer the credit guard's bounded-and-expiry-swept design
+// leans on for its "evicted ⇒ expired" coupling. spent is capped and expiry-swept on
+// the token validity window; demand and credited are capped by object count. At the
+// cap every one of them REFUSES rather than evicting — forgetting a live entry is the
+// refuted FIFO design, and an under-count of a neutral observable is the safe error.
 type Bank struct {
-	spent  map[string]bool
-	demand map[ports.Hash]int64
+	// spent is keyed by (ISSUE EPOCH, serial) — the token, not the serial. Keying by
+	// serial alone made the entry's expiry epoch the MINIMUM over the tokens sharing a
+	// serial (the withdrawer picks both), so the guard forgot a serial while a
+	// still-in-window token on it existed. The value is the issue epoch, so the sweep
+	// never has to decode a key.
+	spent map[string]uint64
+	// sweptEpoch is the last epoch sweepExpiredSpent actually ran at: entries expire on
+	// the epoch clock, so a second scan inside one epoch can free nothing the first did
+	// not, and the amortized cost drops from O(cap) per redeem to O(cap) per epoch.
+	sweptEpoch uint64
+	demand     map[ports.Hash]int64
 	// bonded, when set (RequireBondedFetcher / P3b), gates a receipt on the fetcher
 	// showing a bond-distinct credential and makes demand count DISTINCT bonded
 	// fetchers per object via credited[object][slot].
@@ -191,13 +211,67 @@ type Bank struct {
 	credited map[ports.Hash]map[string]bool
 }
 
+// The bank's bounds. maxSpentTokens is DERIVED the same way core/credit derives its
+// paid-serial cap — W epochs x the epoch cadence x the per-block object-aware serve
+// rate, floored generously — so the guard can never deny an honest lane at any serve
+// rate the design models. maxDemandObjects bounds the two per-object observables.
+const (
+	spentEpochBlocks    = 8   // the epoch cadence the cap is derived against
+	spentServesPerBlock = 256 // the per-block serve rate the cap is sized for
+	maxSpentFloor       = 65_536
+	maxSpentTokens      = max(maxSpentFloor, int(DefaultWindow)*spentEpochBlocks*spentServesPerBlock)
+	// maxDemandObjects bounds demand[] and credited[]. Each entry costs the attacker a
+	// real withdrawal fee (a receipt only lands here after its token verified), so this
+	// is a ceiling on memory, not a rate limit.
+	maxDemandObjects = 1 << 20
+)
+
 // NewBank returns an empty demand ledger.
 func NewBank() *Bank {
 	return &Bank{
-		spent:    map[string]bool{},
+		spent:    map[string]uint64{},
 		demand:   map[ports.Hash]int64{},
 		credited: map[ports.Hash]map[string]bool{},
 	}
+}
+
+// spentKey is the (issue epoch, serial) guard key: 8-byte big-endian epoch then the
+// serial, the same epoch wire form the FDH message and the issuerKeyCommit leaf use.
+func spentKey(epoch uint64, serial []byte) string {
+	var k [8]byte
+	binary.BigEndian.PutUint64(k[:], epoch)
+	return string(k[:]) + string(serial)
+}
+
+// sweepExpiredSpent drops every guarded token whose ISSUE EPOCH has left the validity
+// window at current. THIS IS THE ONLY EVICTION PATH: a dropped token is one no held
+// key_E verifies any more (keyset.Prune has already removed its key), so evicted ⇒
+// expired ⇒ un-redeemable, per entry, which is the coupling condition the R0.4b
+// certification requires.
+func (b *Bank) sweepExpiredSpent(current, window uint64) {
+	if current <= window {
+		return // nothing can have left the window yet
+	}
+	floor := current - window
+	for k, e := range b.spent {
+		if e < floor {
+			delete(b.spent, k)
+		}
+	}
+}
+
+// reserveSpent makes room for one more guarded token, or reports that it cannot. It
+// sweeps expired entries (at most once per epoch) and only then checks the cap; it
+// NEVER evicts a live entry. false ⇒ the caller refuses the receipt.
+func (b *Bank) reserveSpent(current, window uint64) bool {
+	if len(b.spent) < maxSpentTokens {
+		return true
+	}
+	if current > b.sweptEpoch {
+		b.sweptEpoch = current
+		b.sweepExpiredSpent(current, window)
+	}
+	return len(b.spent) < maxSpentTokens
 }
 
 // RequireBondedFetcher turns on the P3b bonded-fetcher credential: from now on a
@@ -242,17 +316,32 @@ func (b *Bank) Redeem(keys *Keyset, current uint64, token Token, r DeliveryRecei
 	if string(token.Serial) != string(r.Serial) {
 		return false, issuedEpoch, "receipt serial does not match token"
 	}
-	if b.spent[string(r.Serial)] {
+	// The serial is ATTACKER-CHOSEN and becomes a map key, so its LENGTH is bounded
+	// here as well as at the wire decode (red-team re-break F5 amplifier): no honest
+	// withdrawal produces anything but a blindtoken.SerialSize serial, and the guards'
+	// entry CAP bounds count, never bytes.
+	if len(r.Serial) > blindtoken.SerialSize {
+		return false, issuedEpoch, "token serial is longer than a serial can be"
+	}
+	key := spentKey(issuedEpoch, r.Serial)
+	if _, done := b.spent[key]; done {
 		return false, issuedEpoch, "double-spend: serial already redeemed"
 	}
 	if len(r.Fetcher) != ed25519.PublicKeySize || !ed25519.Verify(r.Fetcher, r.receiptMsg(), r.Sig) {
 		return false, issuedEpoch, "fetcher signature invalid"
 	}
+	// The guard set is BOUNDED, and at the cap it refuses rather than forgetting a
+	// live token (build-immutable #8; the refuted alternative is FIFO eviction, which
+	// is self-financing for the flooder). Reserve BEFORE anything is recorded so a
+	// refusal leaves no trace.
+	if !b.reserveSpent(current, keys.Window()) {
+		return false, issuedEpoch, "double-spend guard full of still-redeemable tokens"
+	}
 	// The token is now consumed — crypto, issuance, and delivery all verified — so
-	// mark the serial spent BEFORE the bonded-fetcher gate. A receipt rejected only
+	// mark the token spent BEFORE the bonded-fetcher gate. A receipt rejected only
 	// for lacking the credential still burns its one-time token, so an unbonded
 	// self-dealer cannot retry the same token to amplify anything.
-	b.spent[string(r.Serial)] = true
+	b.spent[key] = issuedEpoch
 	// P3b bonded-fetcher credential: count toward demand only if the fetcher shows a
 	// bond-distinct credential, and count DISTINCT bonded fetchers per object — so a
 	// self-dealer running one bonded identity mints N valid receipts but moves demand
@@ -265,6 +354,9 @@ func (b *Bank) Redeem(keys *Keyset, current uint64, token Token, r DeliveryRecei
 		}
 		seen := b.credited[r.Object]
 		if seen == nil {
+			if len(b.credited) >= maxDemandObjects {
+				return false, issuedEpoch, "bonded-fetcher credit map full"
+			}
 			seen = map[string]bool{}
 			b.credited[r.Object] = seen
 		}
@@ -272,6 +364,9 @@ func (b *Bank) Redeem(keys *Keyset, current uint64, token Token, r DeliveryRecei
 			return false, issuedEpoch, "demand already counted for this bonded fetcher on this object"
 		}
 		seen[slot] = true
+	}
+	if _, known := b.demand[r.Object]; !known && len(b.demand) >= maxDemandObjects {
+		return false, issuedEpoch, "witnessed-demand map full"
 	}
 	b.demand[r.Object]++
 	return true, issuedEpoch, ""
@@ -294,12 +389,42 @@ func (s SubmittedReceipt) Marshal() ([]byte, error) {
 	return cbor.Marshal(s)
 }
 
+// ErrOversizedReceipt rejects a wire bundle whose attacker-chosen variable-length
+// fields exceed what the lane can ever have issued.
+var ErrOversizedReceipt = errors.New("demand: submitted receipt field exceeds its bound")
+
+// maxTokenSigBytes bounds the blind signature on the wire: it is an element of Z_N,
+// so it cannot exceed the largest modulus any lane will hold
+// (blindtoken.MaxModulusBits).
+const maxTokenSigBytes = blindtoken.MaxModulusBits / 8
+
 // UnmarshalSubmittedReceipt parses a wire bundle. Every field is untrusted input to
 // be re-verified at Redeem, never established fact.
+//
+// THE VARIABLE-LENGTH FIELDS ARE BOUNDED HERE (red-team re-break F5 amplifier,
+// 2026-09-03). A SubmittedReceipt rides a 132 MiB frame (adapters/tcpnet), and the
+// serial becomes a KEY in two long-lived maps — the demand bank's spent set and the
+// credit ledger's paid-serial guard — both of which cap COUNT and neither of which
+// capped BYTES. A single accepted receipt could therefore pin an attacker-chosen
+// number of megabytes. An honest serial is exactly blindtoken.SerialSize; an honest
+// signature is at most one modulus wide. Anything else is a decode error, refused
+// before it can be stored, counted, or hashed.
 func UnmarshalSubmittedReceipt(b []byte) (SubmittedReceipt, error) {
 	var s SubmittedReceipt
 	if err := cbor.Unmarshal(b, &s); err != nil {
 		return SubmittedReceipt{}, err
+	}
+	if len(s.Token.Serial) > blindtoken.SerialSize || len(s.Receipt.Serial) > blindtoken.SerialSize {
+		return SubmittedReceipt{}, fmt.Errorf("%w: serial %d/%d bytes, max %d",
+			ErrOversizedReceipt, len(s.Token.Serial), len(s.Receipt.Serial), blindtoken.SerialSize)
+	}
+	if len(s.Token.Sig) > maxTokenSigBytes {
+		return SubmittedReceipt{}, fmt.Errorf("%w: token signature %d bytes, max %d",
+			ErrOversizedReceipt, len(s.Token.Sig), maxTokenSigBytes)
+	}
+	if len(s.Receipt.Sig) > ed25519.SignatureSize || len(s.Receipt.Fetcher) > ed25519.PublicKeySize {
+		return SubmittedReceipt{}, fmt.Errorf("%w: receipt signature %d bytes / fetcher key %d bytes",
+			ErrOversizedReceipt, len(s.Receipt.Sig), len(s.Receipt.Fetcher))
 	}
 	return s, nil
 }

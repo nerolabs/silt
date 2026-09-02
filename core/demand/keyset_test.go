@@ -204,7 +204,7 @@ func TestRedeemRejectsExpiredTokenBeforeCrediting(t *testing.T) {
 	if bank.Demand(s.object) != 0 {
 		t.Fatalf("demand moved to %d on an expired token", bank.Demand(s.object))
 	}
-	if bank.spent[string(tok.Serial)] {
+	if len(bank.spent) != 0 {
 		t.Fatal("an expired token was marked spent - expiry must reject BEFORE consuming, " +
 			"or a clock disagreement would burn an honest fetcher's token")
 	}

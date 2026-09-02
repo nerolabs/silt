@@ -9,6 +9,73 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Security
+- **R0.4b C3 re-break round — ten confirmed red-team breaks closed (DO NOT MERGE unratified;
+  F1 is a consensus-rule change awaiting certification):** a second blind pass on the C3 close
+  (`RED-TEAM-R0.4b-C3-close-RE-BREAK-2026-09-03`) confirmed ten breaks and two refutations. The
+  (b1) epoch binding held under every attack; the breaks were in the machinery around it. Every
+  probe ships as a regression gate (`rt_r04b_c3_*`), run RED against the pre-fix build first.
+  - **F1 (CRITICAL, latent) — the floor box and the full node disagreed about the same block at
+    every epoch turn.** `applyIssuerKeys` pruned `issuerKeyCommit` by BLOCK HEIGHT on every v5
+    apply, so a block carrying ZERO registrations deleted committed leaves; the box's scope gate
+    stalls only on `len(b.IssuerKeys) > 0` and its O(payload) fold has no op for the prune. Both
+    directions were measured: the box AGREED with a forged root a full node rejects, and read an
+    HONEST zero-registration block as a forged root. Safe today only because `WitnessValidateV5`
+    never Accepts — a wrong-Accept the moment R1.8 flips it. **Closed at the source: the prune is
+    now PAYLOAD-DRIVEN**, running only inside the registration-carrying branch, so
+    "no registrations ⇒ no `issuerKeyCommit` write" is a property of `apply()` instead of an
+    assumption of the box. The keyspace stays bounded — every ADD is in-band by validity, so
+    pruning at each add re-establishes the 2W+2-bucket bound on every block that can grow it.
+    Reproducing the prune in the fold is NOT available: `core/statehash` has point
+    membership/non-membership only, and `issuerKeyCommit` carries no set-completeness digest
+    (unlike `dueBucket`'s MTH), so a witness-supplied member list would be omission-forgeable.
+    Gated by `rt_r04b_c3_split_test.go`, which drives the scenario through the box recompute, the
+    live `validateEra3Roots`, and `WitnessValidateV5` cold-auditor and live-follower, and asserts
+    the tiers never disagree.
+  - **F2 — a restart evicted every guarded token and the same wire receipt paid twice.** Both
+    serial guards were process memory with no persistence and no restore — the one eviction mode
+    the design forbids, performed by every node at every boot. New `ports.PaidSerialStore` +
+    `adapters/guardstore`: an append-only log of fixed-width records, fsync per append, atomic
+    temp+fsync+rename+dir-fsync on compaction. The ledger persists the entry BEFORE any credit
+    moves (the `SignMarkStore` ordering), a redeem before the load completes is refused
+    (`paid-serial-guard-unloaded`) rather than paid, and a store that cannot write refuses the
+    payout (`paid-serial-store-write-failed`).
+  - **F3 — "evicted ⇒ expired" was false in-process.** The guard was keyed by the serial alone
+    while its expiry epoch was the FIRST redeem's — the MINIMUM over the tokens sharing a serial,
+    both of which the withdrawer picks. Both guards are now keyed by the TOKEN
+    (`uint64BE(issueEpoch) ‖ serial`), so an entry is removed only once ITS OWN issue epoch is
+    outside the band.
+  - **F4 — a committed RSA key was never validated.** The commitment attests 32 bytes, which
+    binds WHICH BYTES an issuer serves and nothing about whether they are a key: `N = 0` panicked
+    every verifier inside `big.Int.Mod` (a bonded Byzantine issuer crashing every fetcher that
+    transacted with it), `N = 1` verified every `(serial, sig)` pair, `E = 1` made the signature
+    the message. New `blindtoken.ValidatePub` (N odd, positive, 2048–8192 bits; E odd, > 1,
+    ≤ 2^32−1) is enforced at `ParsePub`, at `Keyset.Put`, and before every modexp.
+  - **F5 — `demand.Bank.spent` was unbounded, and no guard bounded the serial's SIZE.** `spent` is
+    now capped and expiry-swept (refuse, never evict, at the cap); `demand`/`credited` are capped
+    by object count; and the serial, the token signature and the receipt's ed25519 fields are
+    bounded at the wire decode and again at `Bank.Redeem`, so no attacker-chosen byte count on a
+    132 MiB frame can become a long-lived map key.
+  - **F6 — `EpochStore` had no lock** while the daemon launched every epoch turn as a bare
+    goroutine, so two overlapping rotations lost a key whose fingerprint was already staged for
+    commitment — and, because registration is first-write-wins, that epoch's lane is dead
+    forever. Serialized behind a mutex spanning the whole load→generate→save cycle. `-race` cannot
+    see this class (each goroutine loads its own map), so the gate asserts the outcome.
+  - **F7 — one corrupt byte in a demand key file bricked the whole validator.** The daemon now
+    reads the store before arming the lane and degrades to LANE-OFF, loudly; chain, storage and
+    serving continue, and the file is never rewritten or regenerated.
+  - **F9 — gate F never failed on the stamp.** Clause (c) was a `t.Logf`, suppressed under a plain
+    `go test`, so raising the mint stamp passed a fully green tree. It is a hard failure now, with
+    a teeth-proof for the tripwire itself, plus a driven gate for the `Era4ActivationHeight` route
+    to v5 that bypasses the readiness tally entirely.
+  - **F8 (open, deliberately) — the monotone epoch watermark is a one-call permanent denial.** One
+    unvalidated `currentEpoch = 2^62` refuses every subsequent honest redeem for the ledger's
+    life. Bounding it is a mechanism choice about what the ledger may trust of a redeemer's clock,
+    at a boundary that is not authenticated at all — routed to the Researcher with the question of
+    whether R0.4b-5 buys anything in its own threat model. Unreachable on the shipped per-node
+    topology.
+  - **F10 (disclosed) — cap griefing costs only the skim**, which lands in the escrow of the
+    griefer's own root. Quantified and pinned so the disclosure cannot go stale; production
+    `grant = 0` remains the close.
 - **R0.4b C3 close — the issue epoch is now inside the blind-signed message, and the demand
   lane is a scheduled, separately-keyed lane (DO NOT MERGE unratified; gates the R0.4b merge):**
   a blind red-team pass on the R0.4b build confirmed six breaks, and the converged research

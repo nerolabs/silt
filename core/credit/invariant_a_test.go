@@ -102,6 +102,8 @@ var standingClassification = map[string]standingClass{
 	"RedeemDeliveryCreditReason": neutral,
 	"GuardFullRefusals":          neutral, // observability (paid-serial guard cap hits)
 	"SerialSweeps":               neutral, // observability (expiry sweep count, RT-E bound)
+	"SetPaidSerialStore":         neutral, // attaches the durable guard store; moves nothing
+	"LoadPaidSerials":            neutral, // restores the guard from disk; moves nothing
 
 	// PoD relay lane (relay.go, certified 2026-08-30). Relay/gateway bandwidth
 	// compensation settles a sender-funded PayWord chain into the relay

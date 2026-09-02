@@ -43,9 +43,10 @@ package chain
 //
 // A DISTINCTNESS VALIDITY RULE IS REFUTED, not merely unbuilt (converged verdict
 // §2.3). A rule rejecting a fingerprint already bound to another epoch could only see
-// the RETAINED BAND — pruneIssuerKeyCommit keeps [cur−W, cur+prePublish] — so at
-// epoch 2W+1 the old commitment is gone and the same fingerprint is registrable
-// again, lengthening the pump's period from W+1 to 2W+1 rather than closing it.
+// the RETAINED BAND — pruneIssuerKeyCommit narrows to [cur−W, cur+prePublish] at each
+// registration-carrying block — so a few epochs on the old commitment is gone and the
+// same fingerprint is registrable again, lengthening the pump's period rather than
+// closing it.
 // Remembering every fingerprint forever is unbounded committed state, which
 // build-immutable #8 forbids. It would also convert the honest restart into a
 // self-invalid proposal. Do not add it.
@@ -261,7 +262,21 @@ func (c *Chain) validateGenesisIssuerKeys(b *Block) error {
 // rests on: once (epoch, issuer) is committed it is never replaced, so an issuer
 // cannot re-point key_E after the fact. A duplicate is skipped silently — it is not
 // an error, so a racing re-submission cannot wedge block production.
+//
+// PAYLOAD-DRIVEN, NOT HEIGHT-DRIVEN (red-team re-break F1, 2026-09-03). A block that
+// carries NO registrations writes NOTHING in this keyspace — it does not even prune.
+// This is a consensus rule, not an optimization: the floor box's O(payload) recompute
+// derives its write-set from the block PAYLOAD and its scope gate stalls on
+// len(b.IssuerKeys) > 0, so any committed write this keyspace makes on an empty
+// payload is a write the box can neither fold nor name. It measured as a two-way
+// consensus SPLIT at every epoch turn: the box AGREED with a forged root the full
+// node rejects, and read an HONEST zero-registration block as a forged root
+// (rt_r04b_c3_split_test.go). Keeping the prune here — inside the len>0 branch — is
+// what makes the box's premise TRUE rather than merely asserted.
 func (c *Chain) applyIssuerKeys(b Block) {
+	if len(b.IssuerKeys) == 0 {
+		return
+	}
 	if c.issuerKeyCommit == nil {
 		c.issuerKeyCommit = map[uint64]map[ports.NodeID]ports.Hash{}
 	}
@@ -286,10 +301,21 @@ func (c *Chain) applyIssuerKeys(b Block) {
 // keyset has already dropped that key, so a token from that epoch verifies under
 // nothing), and nothing newer can be registered.
 //
+// CALLED ONLY FROM THE REGISTRATION-CARRYING BRANCH of applyIssuerKeys. That is the
+// F1 close, and it costs nothing: every ADD is in-band by validity (validateIssuerKeys
+// admits only cur <= e <= cur+prePublish), so pruning at each add re-establishes
+// "at most 2W+2 epoch buckets" on every block that can grow the keyspace. A run of
+// registration-free blocks cannot grow it, so skipping the prune there cannot break
+// the bound — it only lets already-committed leaves outlive the band until the next
+// registration sweeps them. Nothing reads the band: the demand keyset's own window
+// (core/demand/keyset.go) decides what a token can verify against, and
+// validateIssuerKeys already rejects a backdated epoch, so a lingering leaf is
+// unreachable, not authoritative.
+//
 // The scan is over EPOCHS, not issuers — at most 2W+2 outer keys survive by
-// construction — so this is O(W) per block, not O(state). It is driven purely by the
-// block height, so every replica prunes identically (a pure function of committed
-// history, which is what keeps the root deterministic across replay and snapshot
+// construction — so this is O(W) per registration-carrying block, not O(state). It is
+// a pure function of the block height and the pre-state, so every replica prunes
+// identically (which is what keeps the root deterministic across replay and snapshot
 // boot).
 func (c *Chain) pruneIssuerKeyCommit(h uint64) {
 	cur := c.blockEpoch(h)

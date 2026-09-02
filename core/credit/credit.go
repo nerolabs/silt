@@ -154,6 +154,17 @@ type Ledger struct {
 	// firewall is untouched.
 	paidSerial map[string]paidSerialEntry
 
+	// paidStore is the DURABLE half of the guard, and guardLoaded says whether this
+	// ledger has read it yet (R0.4b re-break F2, 2026-09-03). Without it a restart is
+	// an eviction of EVERY entry, in-window or not — the one eviction mode the design
+	// forbids, and the one every node performs. The ledger appends to the store BEFORE
+	// it moves any credit, and refuses every guarded redeem while a store is attached
+	// but unloaded. Nil store = the pre-existing in-memory-only behaviour (the sim and
+	// most tests), which is sound exactly as long as the ledger it guards is equally
+	// ephemeral — see the delivery.go call site.
+	paidStore   ports.PaidSerialStore
+	guardLoaded bool
+
 	// epochWatermark is the HIGHEST consensus epoch any redeemer has presented to
 	// this ledger — R0.4b-5, the shared-ledger epoch-skew close.
 	//

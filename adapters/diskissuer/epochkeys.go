@@ -37,13 +37,29 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/fxamacker/cbor/v2"
 )
 
 // EpochStore persists a validator's per-epoch demand-issuer keys at
 // dir/demandkeys.cbor.
-type EpochStore struct{ path string }
+//
+// SERIALIZED (red-team re-break F6, 2026-09-03). The daemon launches every epoch turn
+// as a bare `go rotateDemandKeys(cur)`, and EnsureBand is a read-modify-write over ONE
+// file. Two turns that overlap — an RSA band is ~5 keygens ~ 1 s and an epoch is 8
+// blocks — both Load, both generate, and the later Save CLOBBERS the earlier: a LOST
+// UPDATE of a key whose fingerprint the earlier goroutine already staged for on-chain
+// commitment. applyIssuerKeys is first-write-wins, so once that fingerprint commits the
+// regenerated key can NEVER be registered and the lane is dead for that epoch forever,
+// with nothing to detect it (EnsureBand cannot see the commitment). The race detector
+// never catches it — each goroutine's Load builds its own map, so the corruption is a
+// file-level lost update, not a memory race (measured: -race -count=5 reports nothing).
+// This mutex is the fix; it makes the whole load-generate-save cycle atomic.
+type EpochStore struct {
+	mu   sync.Mutex
+	path string
+}
 
 // epochKeyFile is the on-disk form: epoch → PKCS#1 DER private key.
 type epochKeyFile struct {
@@ -62,6 +78,12 @@ func OpenEpochs(dir string) (*EpochStore, error) {
 // Load returns the persisted per-epoch keys. An absent file is an empty map and no
 // error (first run); a corrupt or unparsable file is a real error.
 func (s *EpochStore) Load() (map[uint64]*rsa.PrivateKey, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.load()
+}
+
+func (s *EpochStore) load() (map[uint64]*rsa.PrivateKey, error) {
 	blob, rerr := os.ReadFile(s.path)
 	if rerr != nil {
 		if os.IsNotExist(rerr) {
@@ -86,6 +108,12 @@ func (s *EpochStore) Load() (map[uint64]*rsa.PrivateKey, error) {
 
 // Save writes the whole band atomically with owner-only permissions.
 func (s *EpochStore) Save(keys map[uint64]*rsa.PrivateKey) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.save(keys)
+}
+
+func (s *EpochStore) save(keys map[uint64]*rsa.PrivateKey) error {
 	f := epochKeyFile{Keys: make(map[uint64][]byte, len(keys))}
 	for e, k := range keys {
 		f.Keys[e] = x509.MarshalPKCS1PrivateKey(k)
@@ -150,7 +178,15 @@ func (s *EpochStore) Save(keys map[uint64]*rsa.PrivateKey) error {
 // pre-publication window the chain accepts, so a token withdrawn at any epoch
 // boundary finds key_E already committed. rng is injected (nil uses crypto/rand).
 func (s *EpochStore) EnsureBand(rng io.Reader, keepFrom, genFrom, genTo uint64) (map[uint64]*rsa.PrivateKey, error) {
-	keys, err := s.Load()
+	// The lock spans load → generate → save, not each step: two overlapping rotations
+	// that each Load a consistent map still lose one band when the second Save lands.
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.ensureBand(rng, keepFrom, genFrom, genTo)
+}
+
+func (s *EpochStore) ensureBand(rng io.Reader, keepFrom, genFrom, genTo uint64) (map[uint64]*rsa.PrivateKey, error) {
+	keys, err := s.load()
 	if err != nil {
 		return nil, err
 	}
@@ -173,7 +209,7 @@ func (s *EpochStore) EnsureBand(rng io.Reader, keepFrom, genFrom, genTo uint64) 
 		changed = true
 	}
 	if changed {
-		if err := s.Save(keys); err != nil {
+		if err := s.save(keys); err != nil {
 			return nil, err
 		}
 	}
@@ -194,10 +230,15 @@ func (s *EpochStore) RotateWindow(rng io.Reader, cur, w uint64, install func(epo
 	if cur > w {
 		keepFrom = cur - w
 	}
-	keys, err := s.EnsureBand(rng, keepFrom, cur, cur+w)
+	s.mu.Lock()
+	keys, err := s.ensureBand(rng, keepFrom, cur, cur+w)
+	s.mu.Unlock()
 	if err != nil {
 		return err
 	}
+	// install runs OUTSIDE the lock: it posts onto the node loop, and holding a store
+	// mutex across a caller-supplied callback is how a rotation deadlocks against
+	// anything the callback touches.
 	for e, k := range keys {
 		install(e, k)
 	}
