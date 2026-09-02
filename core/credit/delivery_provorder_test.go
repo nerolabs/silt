@@ -64,7 +64,7 @@ func TestRedeemDoesNotLeaveDuplicateOrderEntry(t *testing.T) {
 	node := id(1)
 	req := ports.NodeID(ports.HashBytes([]byte("dup-req")))
 	obj := ports.HashBytes([]byte("dup-obj"))
-	kx := provKey{requester: req, root: obj}
+	kx := provKey{server: node, requester: req, root: obj}
 
 	count := func() int {
 		c := 0

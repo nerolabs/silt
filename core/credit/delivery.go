@@ -53,10 +53,22 @@ import "github.com/nerolabs/silt/ports"
 // maxProvisional caps the supersede-tracking map (see the bounding note above).
 const maxProvisional = 8192
 
-// provKey identifies one delivery lane: this ledger's owner served object root
-// to requester. The receipt's Fetcher key hashes to the requester NodeID
-// (NodeID = sha256(pubkey)), which is what lets a redeem find the serve.
+// provKey identifies one delivery lane: server served object root to requester.
+// The receipt's Fetcher key hashes to the requester NodeID (NodeID =
+// sha256(pubkey)), which is what lets a redeem find the serve.
+//
+// server is part of the identity so distinct servers writing the SAME (root,
+// requester) into ONE ledger get distinct lanes (RT-DELIV-3). Per-node prod has
+// a single server per ledger (server = n.id), so this field is constant there
+// and the shape is unchanged in effect. But the shared-ledger SIM routes every
+// operator's serves into one Ledger; without server in the key, serves of the
+// same object to the same fetcher by two servers collide on one lane, and the
+// terminal reversal (redeem or eviction) then debits ONE server's provisional
+// mint for work the other did — a conservation break that reverses or pays the
+// wrong account. server in the key keeps each (server, requester, root) its own
+// lane, so every reversal hits the exact account that was credited.
 type provKey struct {
+	server    ports.NodeID
 	requester ports.NodeID
 	root      ports.Hash
 }
@@ -111,7 +123,7 @@ func (l *Ledger) reverseProvisional(server ports.NodeID, root ports.Hash, p *pro
 // TestA4MoneyPumpConservation. Design:
 // docs/thinking/2026-09-01-a4-provisional-eviction-fix-design.md.
 func (l *Ledger) trackProvisional(server, requester ports.NodeID, root ports.Hash, net, skim int64) {
-	k := provKey{requester: requester, root: root}
+	k := provKey{server: server, requester: requester, root: root}
 	p, ok := l.provisional[k]
 	if !ok {
 		// FIFO-evict the oldest LIVE lane while the map is at cap. Tombstones
@@ -213,7 +225,7 @@ func (l *Ledger) RedeemDeliveryCredit(server, fetcher ports.NodeID, root ports.H
 	// is shared verbatim with the eviction site. If the lane was already evicted,
 	// its mint was reversed at eviction, so there is nothing here to reverse: the
 	// redeem pays the conserved leg only (rule (b), one delivery one payment).
-	k := provKey{requester: fetcher, root: root}
+	k := provKey{server: server, requester: fetcher, root: root}
 	if p, ok := l.provisional[k]; ok {
 		l.reverseProvisional(server, root, p)
 		delete(l.provisional, k)
