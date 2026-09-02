@@ -261,6 +261,10 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   tally; the load-bearing tally test is `...AblationLiveTallyForgedRegVersion`); added a standalone
   `epochSetRoot` byte-exact check analogous to class A's `...AttDigestByteExact`.
 
+### Tests
+- **Open-break regression gate: cross-server double-redeem money pump (confirmed break, blind red-team run on origin/main = abe2d35, 2026-09-02):** `core/credit/open_break_cross_server_double_redeem_test.go` `TestOpenBreak_CrossServerDoubleRedeemMoneyPump`. K colluding servers share ONE demand-withdrawal token; with ONE `ChargePublish` (one fee), K calls to `RedeemDeliveryCredit` for the same `(fetcher, object)` each fire the conserved leg unconditionally (`delivery.go:229-231`), because the per-server double-spend guard (`Bank.spent[serial]`, `core/node/demandrole.go:108`) lives in the node-handler layer and is NOT consulted by the ledger. Result: `Σbalances + Σescrow` climbs by exactly `(K−1)·fee` (K=2 → +50000, K=3 → +100000, K=5 → +200000). Gate asserts the current broken behavior (delta == (K−1)·fee) so CI stays GREEN; subtests named `openBreakDeltaK=N` will FAIL when the cross-server redeem gate is added, which is the signal to flip to a conservation-pass assertion. This is the second confirmed delivery-credit money pump (first: A4 provisional-eviction, fixed Boulder 0 R0.4a); distinct axis — K servers, one fee, K payouts. ENCODE ONLY — do NOT merge (economy/M0-adjacent; held for owner ratification). Scar: `.claude/agent-memory/tester/scar-cross-server-double-redeem.md`.
+
+
 ### Added
 - **Economy observability MVP — the four local-exact SELF panels (Boulder 2, R2.1 slice 6a)**
   (`GET /api/economy/self` in `cmd/silt/ui.go`; per-node repair counter in `core/credit`, 2026-09-01).
