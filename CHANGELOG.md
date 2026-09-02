@@ -289,6 +289,23 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 
 ### Added
+- **Floor-box Resolve-path scheduling oracle (Boulder 1, R1.5 — model-check tier, test-only)**
+  (`core/chain/modelcheck_floorbox_schedule_oracle_v5_test.go`,
+  `core/chain/modelcheck_floorbox_schedule_oracle_tests_v5_test.go`, 2026-09-02). The consensus
+  model-check had ZERO coverage of the floor-box Resolve path because `WitnessValidateV5`
+  short-circuits at the never-Accept STOP boundary (`floorbox_v5.go:244`) before the recompute.
+  This oracle exercises the recompute DIRECTLY (`RecomputeStateRootEntriesRevocations`), pre-flip.
+  Two additions: (1) a box-as-I1-participant scheduling oracle — an adversarial scheduler delivers
+  honest and forged witnesses to disjoint boxes under adversarial delivery order, asserting I1 (no
+  two honest boxes Accept conflicting roots at one height) and I5 (an honest box is never wrongly
+  refused); (2) a multi-block Resolve schedule asserting each box's verdict is stable under reorder
+  (Resolve is pure over prevStateRoot + block) and that a forged witness at height h does not poison
+  prevStateRoot for h+1 (I3-adjacent). Drives two known compound-shape breaks RED as documented-open
+  gates: (a) the class-P activation-lock `LockedIn.OldValue` tally-suppression wrong-accept
+  (`rotate_v5.go:442,:450,:458` × `scalarFoldOp:473`), and (b) the `RegVersion` in-block cross-check
+  gap (`apply()`'s tally reads the just-written in-block regVersion at `chain.go:3444` while the box
+  anchors regVersion against pre-state, absent for a fresh in-block bond). Changes no production
+  consensus path; the box still never-Accepts.
 - **Economy observability MVP — the four local-exact SELF panels (Boulder 2, R2.1 slice 6a)**
   (`GET /api/economy/self` in `cmd/silt/ui.go`; per-node repair counter in `core/credit`, 2026-09-01).
   An operator now reads their OWN economy health from ONE node — no aggregator, no gossip, no network
