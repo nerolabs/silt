@@ -182,6 +182,9 @@ jobs:
         run: python3 scripts/check_tenet_qualifiers.py
       - name: Scar-lint — no doc's not-built Status header may contradict a built/shipped body (scar:status-header-vs-body-contradiction-2026-09-01)
         run: python3 scripts/check_status_headers.py
+      - name: Scar-lint — every cited test name must resolve to a real test (scar:cited-test-does-not-exist-2026-09-02)
+        # External review trees are absent in CI, so this checks the repo only.
+        run: python3 scripts/check_cited_tests.py
 
   docs-shipped:
     name: Docs ship with code
