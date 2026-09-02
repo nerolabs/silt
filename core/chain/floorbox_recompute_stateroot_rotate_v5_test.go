@@ -164,13 +164,22 @@ func (f rotateFixture) scalarWit(t *testing.T, tag string) StateRootRotateScalar
 // POST-qualified weight, its regVersion, and its prior epochSet leaf proof (the freeze write-target).
 func (f rotateFixture) rotateMember(t *testing.T, id ports.NodeID, weight int64) StateRootRotateMember {
 	t.Helper()
+	return f.rotateMemberPost(t, id, weight, f.c.regVersion)
+}
+
+// rotateMemberPost builds a frozen-member witness whose RegVersion is taken from the supplied
+// regVersion map. Callers pass the POST-apply clone's regVersion so an in-block bonded member carries
+// its just-written version (RegVersionKnown=true) — the DIRECTION B in-block cross-check input. For a
+// steady-state member the post map equals pre-state, so the pre-state RegVersionProof still resolves.
+func (f rotateFixture) rotateMemberPost(t *testing.T, id ports.NodeID, weight int64, regVersion map[ports.NodeID]uint8) StateRootRotateMember {
+	t.Helper()
 	esKey := statehash.Key(tagEpochSet, id[:])
 	esOld := f.preValue(esKey)
 	esProof, err := f.prover.Prove(esKey)
 	if err != nil {
 		t.Fatalf("Prove(epochSet %x): %v", id[:], err)
 	}
-	rv, ok := f.c.regVersion[id]
+	rv, ok := regVersion[id]
 	m := StateRootRotateMember{
 		ID:               id,
 		Weight:           weight,
@@ -182,7 +191,8 @@ func (f rotateFixture) rotateMember(t *testing.T, id ports.NodeID, weight int64)
 	// R1.2 anchors: the qualified||id weight proof (steady-state Weight anchor) and the regVersion||id
 	// proof (present when RegVersionKnown, else a non-membership proof). A fresh in-block bond has no
 	// pre-state qualified||id leaf, so QualifiedProof is a non-membership proof there and the box
-	// cross-checks Weight against the class-B write instead.
+	// cross-checks Weight against the class-B write instead; likewise the box cross-checks RegVersion
+	// against the class-B regVerWrites for an in-block member (DIRECTION B) and does not read the proof.
 	m.QualifiedProof = mustProve(f.prover, statehash.Key(tagQualified, id[:]))
 	m.RegVersionProof = mustProve(f.prover, statehash.Key(tagRegVersion, id[:]))
 	return m
@@ -217,10 +227,11 @@ func (f rotateFixture) witnessForBoundary(t *testing.T, b Block) StateRootWitnes
 		f.digestWitness(t, tagEpochSetRoot, f.preEpochSetIDs()),
 	)
 
-	// Rotate witness: frozen members + prior epochSet droppers + scalars.
+	// Rotate witness: frozen members + prior epochSet droppers + scalars. An in-block bonded member
+	// carries its POST-write regVersion (from the applied clone) — the DIRECTION B cross-check input.
 	var rw StateRootRotateWitness
 	for id, wt := range clone.qualified {
-		rw.Members = append(rw.Members, f.rotateMember(t, id, wt))
+		rw.Members = append(rw.Members, f.rotateMemberPost(t, id, wt, clone.regVersion))
 	}
 	// Prior epochSet members not in the new frozen set → DELETE witnesses.
 	for id := range f.c.epochSet {
@@ -380,12 +391,12 @@ func TestRecomputeStateRootRotateEpochSetRootByteExact(t *testing.T) {
 	clone.apply(b)
 
 	w := f.witnessForBoundary(t, b)
-	postQual, qualWrites, err := f.c.reconstructPostQualifiedWithWrites(f.prevRoot, b, w)
+	postQual, qualWrites, regVerWrites, err := f.c.reconstructPostQualifiedWithWrites(f.prevRoot, b, w)
 	if err != nil {
 		t.Fatalf("reconstructPostQualifiedWithWrites: %v", err)
 	}
 	// Mature-from-genesis fixture ⇒ post-latch everMature is true (class M threads it in).
-	ops, err := f.c.rotateOps(f.prevRoot, b, w, postQual, qualWrites, true)
+	ops, err := f.c.rotateOps(f.prevRoot, b, w, postQual, qualWrites, regVerWrites, true)
 	if err != nil {
 		t.Fatalf("rotateOps: %v", err)
 	}
@@ -631,7 +642,7 @@ func TestRecomputeStateRootRotateAblationRecoveryStalls(t *testing.T) {
 	Sign(&rb, prop)
 
 	// rotateOps must stall at the recovery boundary regardless of witness.
-	_, err := c.rotateOps(ports.Hash{}, rb, StateRootWitness{Rotate: &StateRootRotateWitness{}}, map[ports.NodeID]struct{}{}, nil, true)
+	_, err := c.rotateOps(ports.Hash{}, rb, StateRootWitness{Rotate: &StateRootRotateWitness{}}, map[ports.NodeID]struct{}{}, nil, nil, true)
 	if !errors.Is(err, ErrRecomputeStateRootScopeStall) {
 		t.Fatalf("ABLATION FAILED: the #535 recovery boundary must stall, got %v", err)
 	}
@@ -873,9 +884,10 @@ func (f handoffFixture) witnessForHandoff(t *testing.T, b Block) StateRootWitnes
 	var rw StateRootRotateWitness
 	for id, wt := range applied.qualified {
 		esKey := statehash.Key(tagEpochSet, id[:])
-		_, rvKnown := f.c.regVersion[id]
+		// POST-apply regVersion (DIRECTION B): equals pre-state here (no in-block bond at the handoff).
+		rv, rvKnown := applied.regVersion[id]
 		rw.Members = append(rw.Members, StateRootRotateMember{
-			ID: id, Weight: wt, RegVersion: f.c.regVersion[id], RegVersionKnown: rvKnown,
+			ID: id, Weight: wt, RegVersion: rv, RegVersionKnown: rvKnown,
 			EpochSetProof: f.prove(t, esKey), EpochSetOldValue: f.preValue(esKey),
 			QualifiedProof:  mustProve(f.prover, statehash.Key(tagQualified, id[:])),
 			RegVersionProof: mustProve(f.prover, statehash.Key(tagRegVersion, id[:])),
@@ -962,6 +974,51 @@ func TestRecomputeStateRootRotateHandoffAgreesWithApply(t *testing.T) {
 
 	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err != nil {
 		t.Fatalf("handoff recompute should AGREE with real apply() but stalled: %v", err)
+	}
+}
+
+// --- DIRECTION A MatureEpoch SUPPRESS gate (classP-anchoring cert 2026-09-02, P-s2). The handoff
+// boundary is the first mature rotation: apply() flips matureEpoch false→true. A forged
+// MatureEpoch.OldValue=true makes scalarFoldOp suppress the emit (post==pre), so the matureEpoch
+// write is omitted and never fold-checked. The attacker commits a root that OMITS the matureEpoch
+// write. Direction A (rotateOps → anchorRotateScalar(tagMatureEpoch)) Resolves the committed
+// pre-value (false) present against prevStateRoot BEFORE the emit decision; a forged =true fails
+// IsProvenPresent ⇒ STALL. This gate forges the suppression and asserts the box STALLS. ---
+func TestRecomputeStateRootRotateMatureEpochOldValueSuppressionStalls(t *testing.T) {
+	f := buildHandoffFixture(t)
+	b := f.handoffBoundaryBlock()
+
+	// Baseline: the honest witness (MatureEpoch.OldValue=false, the real flip) AGREES with apply().
+	committed := f.committedRoot(t, b)
+	w := f.witnessForHandoff(t, b)
+	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err != nil {
+		t.Fatalf("baseline must agree: %v", err)
+	}
+
+	// FORGE: claim matureEpoch was ALREADY latched (OldValue=true) ⇒ scalarFoldOp suppresses the emit.
+	fw := f.witnessForHandoff(t, b)
+	fw.Rotate.MatureEpoch.OldValue = statehash.EncodeBool(true)
+
+	// The attacker commits the SUPPRESSED root: the post-apply state with matureEpoch forced back to
+	// false (the false→true write omitted).
+	sup := f.c.cloneForDryRun()
+	sup.apply(b)
+	sup.matureEpoch = false
+	forgedRoot, err := sup.StateRootForVersion(BlockVersionWitnessable)
+	if err != nil {
+		t.Fatalf("forgedRoot: %v", err)
+	}
+	if forgedRoot == committed {
+		t.Fatalf("GATE VACUOUS: forged suppressed root == honest committed root")
+	}
+
+	if rerr := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, forgedRoot, b, fw); rerr == nil {
+		t.Fatalf("ANCHOR REGRESSED: box WRONG-ACCEPTS a forged MatureEpoch.OldValue=true suppression.\n"+
+			"  Direction A (anchorRotateScalar(tagMatureEpoch)) must STALL a forged pre-latch value.\n"+
+			"  forgedRoot=%x honest=%x", forgedRoot, committed)
+	} else {
+		t.Logf("ANCHOR HOLDS (Direction A): a forged MatureEpoch.OldValue=true STALLS (%v) — the matureEpoch "+
+			"pre-state anchor catches the latch suppression.", rerr)
 	}
 }
 

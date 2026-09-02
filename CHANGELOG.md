@@ -100,6 +100,31 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   read `c.blocks`, reddens the guards.
 
 ### Fixed
+- **Floor-box class-P scalar-anchoring — Direction A + B (Boulder 1; cert-touching, re-opens R1.4;
+  box still never-Accepts, blind re-cert + blind Tester run pending):** closes the confirmed class-P
+  recompute wrong-accept (×4) and the fresh-in-block-bond false-stall the R1.6/R1.5 OPEN-BREAK gates
+  drove. Root cause: `scalarFoldOp` (`core/chain/floorbox_recompute_stateroot_rotate_v5.go`) verifies a
+  scalar's pre-state proof ONLY on emit; on the suppression path (`OldValue==newValue`) the pre-value
+  is never fold-verified, so a forged `OldValue` that suppresses the emit (or gates a branch) is never
+  checked and the box agrees with a lock-free / latch-free committed root. **Direction A** adds an
+  unconditional pre-state `Resolve(...).IsProvenPresent()` anchor (`anchorRotateScalar`) BEFORE the
+  emit/branch decision for the seven suppressible scalars (`MatureEpoch` + the three lock-in bools and
+  their ridden height scalars) and — cross-class — `everMature`
+  (`floorbox_recompute_stateroot_maturitylatch_v5.go`); every scalar leaf is committed unconditionally,
+  so a forged value fails `IsProvenPresent` ⇒ `NoWitness` ⇒ STALL (stall-adding only; the box never
+  gains an Accept path). **Direction B** surfaces `regVerWrites` (the fold-anchored post-write
+  regVersion) from class B and adds the in-block RegVersion cross-check `anchorRotateMember` lacked,
+  mirroring the existing Weight in-block treatment — so a boundary block carrying a decisive fresh bond
+  now agrees with `apply()` instead of under-counting and stalling. The #402 tally arithmetic
+  (`3*ready > 2*total`) and every committed v5 format field are UNTOUCHED. The R1.6
+  `TestOpenBreak_*LockedInOldValuePredicate` and R1.5 `TestScheduleOracle_OpenBreak_A/_B` gates are
+  flipped from assert-wrong-accept to assert-stall; new suppress-path gates cover `MatureEpoch` and
+  `everMature`; a split coverage walk (`scalarSuppressObligations`, R-COVERAGE-SCALAR-SPLIT) classifies
+  every scalar emit-anchored vs suppress-anchored so a future suppressible scalar cannot be
+  wholesale-classified "anchored"; and the two R-ROTATE drift-guard brittleness riders are folded in
+  (allowlist the sanctioned `idQualifies` predicate; assert rotate-is-last-in-gate-body, not
+  exactly-one-statement). Box still never-Accepts (`TestWitnessValidateV5_NeverAccepts*` green). Design:
+  `docs/thinking/2026-09-02-floorbox-classP-scalar-anchoring-design.md`.
 - **RT-DELIV-3 — delivery-credit `provKey` now includes the server identity (Boulder 0 residual;
   economic-mechanism change, B3 conservation — Researcher re-cert pending):** the provisional
   delivery-lane key was `{requester, root}`, omitting the server. In per-node prod each ledger has a

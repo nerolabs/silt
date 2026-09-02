@@ -301,7 +301,7 @@ func (c *Chain) assembleStateRootRecomputeOps(
 	// post value is threaded into class P (below) so P can gate its freeze on it WITHOUT re-emitting
 	// (single owner — no double-emit at a boundary-coincident crossing). See
 	// floorbox_recompute_stateroot_maturitylatch_v5.go.
-	mOps, postEverMature, mErr := c.maturityLatchOps(committedStateRoot, w)
+	mOps, postEverMature, mErr := c.maturityLatchOps(prevStateRoot, committedStateRoot, w)
 	if mErr != nil {
 		return nil, mErr
 	}
@@ -313,11 +313,11 @@ func (c *Chain) assembleStateRootRecomputeOps(
 	// thresholds + activation guards), and reconstruct the rotate scalars. R-P-sameblock-order. The
 	// post-latch everMature (from class M) gates the freeze; P does NOT emit the tagEverMature leaf.
 	if isBoundary {
-		postQualified, qualWrites, pqErr := c.reconstructPostQualifiedWithWrites(prevStateRoot, b, w)
+		postQualified, qualWrites, regVerWrites, pqErr := c.reconstructPostQualifiedWithWrites(prevStateRoot, b, w)
 		if pqErr != nil {
 			return nil, pqErr
 		}
-		pOps, pErr := c.rotateOps(prevStateRoot, b, w, postQualified, qualWrites, postEverMature)
+		pOps, pErr := c.rotateOps(prevStateRoot, b, w, postQualified, qualWrites, regVerWrites, postEverMature)
 		if pErr != nil {
 			return nil, pErr
 		}

@@ -66,6 +66,7 @@ type StateRootMaturityWitness struct {
 // over committedStateRoot; if mature it emits the tagEverMature false→true FoldOp and reports
 // post=true. A missing/forged maturity witness stalls (never-Accept preserved).
 func (c *Chain) maturityLatchOps(
+	prevStateRoot ports.Hash,
 	committedStateRoot ports.Hash,
 	w StateRootWitness,
 ) (ops []statehash.FoldOp, postEverMature bool, reason error) {
@@ -76,6 +77,16 @@ func (c *Chain) maturityLatchOps(
 		// block on a pre-latched chain still supplies a Maturity witness (pre=true, no SeenSet needed);
 		// the entry requires it so the latch is never silently skipped.
 		return nil, false, fmt.Errorf("%w: no class-M maturity witness (cannot rule out an everMature crossing)", ErrRecomputeStateRootMaturity)
+	}
+	// DIRECTION A cross-class anchor (classP-anchoring cert 2026-09-02, §2 corollary; reopens R1.4 Q4
+	// on the suppression axis). preEverMature is read below as a BRANCH predicate: a forged
+	// EverMature.OldValue=true returns post=true with NO crossing recompute and NO leaf write — the
+	// identical suppression the class-P scalars have. Anchor everMature's committed pre-value present
+	// against prevStateRoot BEFORE trusting the branch, so a forged pre-latch value stalls. The scalar
+	// leaf is always committed (statehash.go:196), so IsProvenPresent is the correct three-valued
+	// check; a mismatch ⇒ NoWitness ⇒ stall (never-Accept preserved).
+	if !statehash.Resolve(prevStateRoot, statehash.Key(tagEverMature, nil), mw.EverMature.OldValue, mw.EverMature.Proof).IsProvenPresent() {
+		return nil, false, fmt.Errorf("%w: everMature.OldValue not proven present against prevStateRoot (Direction A anchor)", ErrRecomputeStateRootMaturity)
 	}
 	preEverMature := decodeBoolLeaf(mw.EverMature.OldValue)
 	if preEverMature {

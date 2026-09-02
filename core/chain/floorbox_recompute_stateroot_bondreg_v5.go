@@ -105,11 +105,12 @@ type StateRootBucketWitness struct {
 // bondRegDelta is the fully-reproduced effect of one block's bond regs on the committed leaf set,
 // derived by reproducing apply()'s canonicalization + screens + displacement + due-bucket moves.
 type bondRegDelta struct {
-	writes      []stateRootWrite          // per-member leaf writes (bonded/bondRegHeight/regVersion/bondDomain/owner/proven adds+changes, displaced deletes)
-	bucketMoves map[uint64]bucketMove     // due-height → the insert/delete on that bucket
-	postBonded  map[ports.NodeID]struct{} // bonded id-set AFTER the block (for bondedRoot)
-	postQual    map[ports.NodeID]struct{} // qualified id-set AFTER the block (for qualifiedRoot)
-	qualWrites  map[ports.NodeID][]byte   // per-id qualified leaf write (value or nil=delete)
+	writes       []stateRootWrite          // per-member leaf writes (bonded/bondRegHeight/regVersion/bondDomain/owner/proven adds+changes, displaced deletes)
+	bucketMoves  map[uint64]bucketMove     // due-height → the insert/delete on that bucket
+	postBonded   map[ports.NodeID]struct{} // bonded id-set AFTER the block (for bondedRoot)
+	postQual     map[ports.NodeID]struct{} // qualified id-set AFTER the block (for qualifiedRoot)
+	qualWrites   map[ports.NodeID][]byte   // per-id qualified leaf write (value or nil=delete)
+	regVerWrites map[ports.NodeID]uint8    // per-id regVersion||id write (in-block bond; fold-anchored via the class-B changed leaf)
 }
 
 // bucketMove records the id-set inserts/deletes on one due-bucket this block.
@@ -186,6 +187,7 @@ func (c *Chain) stateRootBondRegWriteSet(
 
 	var writes []stateRootWrite
 	qualWrites := map[ports.NodeID][]byte{}
+	regVerWrites := map[ports.NodeID]uint8{}
 	bucketMoves := map[uint64]bucketMove{}
 	touchBucket := func(d uint64) bucketMove {
 		bm, ok := bucketMoves[d]
@@ -251,6 +253,11 @@ func (c *Chain) stateRootBondRegWriteSet(
 			stateRootWrite{key: statehash.Key(tagRegVersion, id[:]), newValue: statehash.EncodeUint8(r.Version)},
 			stateRootWrite{key: statehash.Key(tagBondDomain, id[:]), newValue: statehash.EncodeUint64(r.Domain)},
 		)
+		// DIRECTION B (classP-anchoring cert 2026-09-02, P-r2): record the just-written regVersion so the
+		// class-P freeze can cross-check an in-block bond's tally regVersion against this fold-anchored
+		// value (the regVersion||id leaf is in `writes`, verified by the class-B fold), rather than the
+		// PRE-state Resolve (which is absent for a fresh in-block bond and forces the id to count 0).
+		regVerWrites[id] = r.Version
 		regHeight[id] = b.Height
 		regHeightKnown[id] = true
 		postBonded[id] = struct{}{}
@@ -269,11 +276,12 @@ func (c *Chain) stateRootBondRegWriteSet(
 	}
 
 	return bondRegDelta{
-		writes:      writes,
-		bucketMoves: bucketMoves,
-		postBonded:  postBonded,
-		postQual:    postQual,
-		qualWrites:  qualWrites,
+		writes:       writes,
+		bucketMoves:  bucketMoves,
+		postBonded:   postBonded,
+		postQual:     postQual,
+		qualWrites:   qualWrites,
+		regVerWrites: regVerWrites,
 	}, nil
 }
 
@@ -371,30 +379,32 @@ func (c *Chain) bondRegOps(prevStateRoot ports.Hash, b Block, w StateRootWitness
 // delta produces. A boundary block's class-P freeze needs this (the freeze copies the post-qualified
 // set, R-P-sameblock-order); a non-boundary block ignores the third return.
 func (c *Chain) bondRegOpsWithQual(prevStateRoot ports.Hash, b Block, w StateRootWitness) ([]statehash.FoldOp, []stateRootWrite, map[ports.NodeID]struct{}, error) {
-	ops, writes, postQual, _, err := c.bondRegOpsWithQualWrites(prevStateRoot, b, w)
+	ops, writes, postQual, _, _, err := c.bondRegOpsWithQualWrites(prevStateRoot, b, w)
 	return ops, writes, postQual, err
 }
 
 // bondRegOpsWithQualWrites is bondRegOpsWithQual that ALSO returns the per-id qualified leaf writes
-// (R1.2 class-P Weight anchor, BUILD note D4). The class-P freeze cross-checks each frozen member's
-// witnessed Weight against the B-derived qualWrites[id] for an id bonded in THIS block (whose
-// pre-state qualified||id leaf is stale/absent). qualWrites is anchored by the class-B fold.
-func (c *Chain) bondRegOpsWithQualWrites(prevStateRoot ports.Hash, b Block, w StateRootWitness) ([]statehash.FoldOp, []stateRootWrite, map[ports.NodeID]struct{}, map[ports.NodeID][]byte, error) {
+// (R1.2 class-P Weight anchor, BUILD note D4) AND the per-id regVersion writes (DIRECTION B in-block
+// RegVersion cross-check, classP-anchoring cert 2026-09-02 P-r2). The class-P freeze cross-checks
+// each frozen member's witnessed Weight against the B-derived qualWrites[id], and its tally
+// regVersion against regVerWrites[id], for an id bonded in THIS block (whose pre-state qualified||id
+// / regVersion||id leaves are stale/absent). Both are anchored by the class-B fold.
+func (c *Chain) bondRegOpsWithQualWrites(prevStateRoot ports.Hash, b Block, w StateRootWitness) ([]statehash.FoldOp, []stateRootWrite, map[ports.NodeID]struct{}, map[ports.NodeID][]byte, map[ports.NodeID]uint8, error) {
 	byTag := make(map[string]*StateRootDigestWitness, len(w.DigestPreSets))
 	for i := range w.DigestPreSets {
 		byTag[w.DigestPreSets[i].Tag] = &w.DigestPreSets[i]
 	}
 	preBonded, err := anchoredPreSet(byTag, tagBondedRoot)
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
 	preQualified, err := anchoredPreSet(byTag, tagQualifiedRoot)
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
 	preSlashed, err := anchoredPreSet(byTag, tagSlashedRoot)
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
 
 	// Prior bondRegHeight for each id, read from the supplied changed-leaf witnesses' OldValue. A
@@ -422,13 +432,13 @@ func (c *Chain) bondRegOpsWithQualWrites(prevStateRoot ports.Hash, b Block, w St
 
 	delta, err := c.stateRootBondRegWriteSet(prevStateRoot, b, preBonded, preQualified, preSlashed, screens, preBondRegHeight)
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
 	ops, err := stateRootBondRegDigestOps(delta, preBonded, preQualified, w.DigestPreSets, buckets)
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
-	return ops, delta.writes, delta.postQual, delta.qualWrites, nil
+	return ops, delta.writes, delta.postQual, delta.qualWrites, delta.regVerWrites, nil
 }
 
 // idFromTaggedKey extracts the raw NodeID from a field-tagged leaf key if it carries the given tag.

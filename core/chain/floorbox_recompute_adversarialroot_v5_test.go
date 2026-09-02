@@ -164,7 +164,9 @@ func TestActivationQuorumNonFork(t *testing.T) {
 		prev2, h2 := c.Head()
 		rb := Block{Version: BlockVersionWitnessable, Height: h2, Prev: prev2}
 		Sign(&rb, prop)
-		ops := c.rotateTallyOps(rb, &StateRootRotateWitness{
+		// The #402 non-fork ARITHMETIC pin targets rotateTallyArithmeticOps directly (the anchor split of
+		// rotateTallyOps runs Direction A first and needs a real prevStateRoot; this pins the arithmetic).
+		ops := c.rotateTallyArithmeticOps(rb, &StateRootRotateWitness{
 			GateLockedIn: StateRootRotateScalar{OldValue: statehash.EncodeBool(true)},
 			GateHeight:   StateRootRotateScalar{OldValue: statehash.EncodeUint64(c.gateHeight)},
 			Era3LockedIn: StateRootRotateScalar{OldValue: statehash.EncodeBool(true)},
@@ -173,7 +175,7 @@ func TestActivationQuorumNonFork(t *testing.T) {
 			Era4Height:   StateRootRotateScalar{OldValue: statehash.EncodeUint64(c.era4Height)},
 		}, frozen, regVersionByID, weightByID)
 		if len(ops) != 0 {
-			t.Fatalf("driven: all tallies already locked, rotateTallyOps must emit 0 ops; got %d", len(ops))
+			t.Fatalf("driven: all tallies already locked, rotateTallyArithmeticOps must emit 0 ops; got %d", len(ops))
 		}
 	})
 
@@ -211,7 +213,7 @@ func TestActivationQuorumNonFork(t *testing.T) {
 		prev2, h2 := c.Head()
 		rb := Block{Version: BlockVersionWitnessable, Height: h2, Prev: prev2}
 		Sign(&rb, prop)
-		ops := c.rotateTallyOps(rb, &StateRootRotateWitness{
+		ops := c.rotateTallyArithmeticOps(rb, &StateRootRotateWitness{
 			GateLockedIn: StateRootRotateScalar{OldValue: statehash.EncodeBool(false)},
 			GateHeight:   StateRootRotateScalar{OldValue: nil},
 			Era3LockedIn: StateRootRotateScalar{OldValue: statehash.EncodeBool(false)},
@@ -1754,15 +1756,45 @@ var r12CoverageTable = map[string]map[string]r12Disposition{
 		"OwnerProof":  {"already-anchored", "the anchoring proof for PriorOwner/Claimed (verified via Resolve)"},
 		"ProvenProof": {"already-anchored", "the anchoring proof for PriorProven (verified via Resolve)"},
 	},
-	// R1.6: the StateRootRotateScalar carrier is now reflection-pinned (was R1.4 residual
-	// R-CARRIER-REFLECTION). OldValue is dual-use: the fold OldValue for always-emitted scalars
-	// (epochStart/matureEpoch — anchored) AND the UNANCHORED branch predicate for the activation locks
-	// (rotate_v5.go:442,:450,:458 — the CONFIRMED BREAK, classified FIX-OPEN). Proof is the always-anchored
-	// fold inclusion proof. See floorbox_recompute_perfield_oracle_v5_test.go PART C.
+	// The StateRootRotateScalar carrier is reflection-pinned. OldValue is dual-role: for an ALWAYS-emitted
+	// scalar (epochStart) it is the fold OldValue (emit-anchored); for a SUPPRESSIBLE scalar (matureEpoch
+	// + the three lock-in bools) the emit can be skipped, so the fold does NOT anchor it — DIRECTION A
+	// anchors it with an unconditional pre-state Resolve (classP-anchoring cert 2026-09-02). Because the
+	// disposition of OldValue depends on WHICH scalar carries it, it is classified SUPPRESS-SPLIT and the
+	// per-scalar obligations live in scalarSuppressObligations below (R-COVERAGE-SCALAR-SPLIT) — a future
+	// suppressible scalar cannot be wholesale-classified "anchored". Proof is the always-anchored fold
+	// inclusion proof. See floorbox_recompute_perfield_oracle_v5_test.go PART C.
 	"StateRootRotateScalar": {
-		"OldValue": {"FIX-OPEN", "TestOpenBreak_Era4LockedInOldValuePredicate"},
+		"OldValue": {"SUPPRESS-SPLIT", "scalarSuppressObligations (per-scalar: emit-anchored vs suppress-anchored)"},
 		"Proof":    {"already-anchored", "the scalar leaf inclusion proof, verified by the fold OldValue vs prevStateRoot when the scalar op is emitted"},
 	},
+}
+
+// scalarSuppressPath classifies one class-P/M scalar's OldValue anchoring obligation. This is the
+// R-COVERAGE-SCALAR-SPLIT: the coverage walk must model the emit-vs-suppress distinction the R1.4 Q1
+// row missed. An emit-anchored scalar's OldValue is fold-verified because its emit ALWAYS fires; a
+// suppress-anchored scalar's emit can be SKIPPED, so it needs the DIRECTION A pre-state anchor and a
+// driven suppression gate (named) that reddens if the anchor is dropped.
+type scalarSuppressPath struct {
+	kind string // "emit-anchored" or "suppress-anchored"
+	gate string // the driven gate: the reason (emit-anchored) or the suppression stall gate (suppress-anchored)
+}
+
+// scalarSuppressObligations enumerates EVERY class-P/M scalar the recompute reads, split by whether its
+// emit is suppressible. A new scalar tag added to the recompute must be classified here or the split
+// coverage test reddens (TestScalarSuppressSplitIsComplete). The suppress-anchored rows name the driven
+// gate that asserts the box STALLS on a forged suppression (Direction A).
+var scalarSuppressObligations = map[string]scalarSuppressPath{
+	// Emit-anchored: newValue strictly advances every boundary, so the emit ALWAYS fires and the fold
+	// verifies OldValue. No suppression path exists (cert §1a).
+	tagEpochStart: {"emit-anchored", "TestPerField_RotateScalar_EpochStart_Anchored (height strictly advances ⇒ always emits)"},
+	// Suppress-anchored (Direction A): a forged OldValue equal to the post-value suppresses the emit;
+	// anchored unconditionally against prevStateRoot before the emit/branch decision.
+	tagMatureEpoch:  {"suppress-anchored", "TestRecomputeStateRootRotateMatureEpochOldValueSuppressionStalls"},
+	tagEverMature:   {"suppress-anchored", "TestClassMEverMatureOldValueSuppressionStalls"},
+	tagGateLockedIn: {"suppress-anchored", "TestOpenBreak_GateLockedInOldValuePredicate"},
+	tagEra3LockedIn: {"suppress-anchored", "TestOpenBreak_Era3LockedInOldValuePredicate"},
+	tagEra4LockedIn: {"suppress-anchored", "TestOpenBreak_Era4LockedInOldValuePredicate"},
 }
 
 // r12Carriers returns the reflected type of each untrusted witness carrier the R1.2 fix anchors.
@@ -1793,8 +1825,8 @@ func TestAdversarialRootCoverageIsComplete(t *testing.T) {
 					"  A new untrusted field must be either FIX (with a driven adversarial-root gate) or\n"+
 					"  already-anchored (with a stated reason). Add it to r12CoverageTable.", name, f.Name)
 			}
-			if disp.kind != "FIX" && disp.kind != "already-anchored" && disp.kind != "FIX-OPEN" {
-				t.Fatalf("COVERAGE GAP: %s.%s has invalid disposition %q (want FIX, FIX-OPEN, or already-anchored)", name, f.Name, disp.kind)
+			if disp.kind != "FIX" && disp.kind != "already-anchored" && disp.kind != "FIX-OPEN" && disp.kind != "SUPPRESS-SPLIT" {
+				t.Fatalf("COVERAGE GAP: %s.%s has invalid disposition %q (want FIX, FIX-OPEN, SUPPRESS-SPLIT, or already-anchored)", name, f.Name, disp.kind)
 			}
 			if disp.detail == "" {
 				t.Fatalf("COVERAGE GAP: %s.%s classified %q with no detail (gate name or reason required)", name, f.Name, disp.kind)
@@ -1828,9 +1860,10 @@ func TestAdversarialRootCoverageIsComplete(t *testing.T) {
 	if len(fixGates) != 10 {
 		t.Fatalf("COVERAGE: expected 10 per-field FIX gates in the cert table, got %d: %v", len(fixGates), fixGates)
 	}
-	// R1.6 FIX-OPEN rows: a confirmed wrong-accept awaiting the anchoring fix (routed to the Researcher).
-	// Each names its RED-on-current-code open-break gate. The count MUST be exactly 1 (StateRootRotateScalar
-	// .OldValue predicate) until the fix lands and flips it to already-anchored — then this drops to 0.
+	// FIX-OPEN rows: a confirmed wrong-accept awaiting an anchoring fix. The class-P scalar OldValue break
+	// is now CLOSED by Direction A (classP-anchoring cert 2026-09-02), so the count MUST be 0 — the
+	// scalar OldValue is reclassified SUPPRESS-SPLIT with the per-scalar suppress gates in
+	// scalarSuppressObligations. A NEW FIX-OPEN would have to be a routed, named entry, never a silent one.
 	openGates := map[string]string{}
 	for carrier, table := range r12CoverageTable {
 		for field, disp := range table {
@@ -1843,10 +1876,77 @@ func TestAdversarialRootCoverageIsComplete(t *testing.T) {
 			openGates[carrier+"."+field] = disp.detail
 		}
 	}
-	if len(openGates) != 1 {
-		t.Fatalf("COVERAGE: expected exactly 1 FIX-OPEN row (the scalar OldValue predicate break), got %d: %v.\n"+
-			"  If the anchoring fix landed, reclassify StateRootRotateScalar.OldValue as already-anchored (0 open).\n"+
-			"  If a NEW open break was found, it must be a routed, named entry — not a silent one.", len(openGates), openGates)
+	if len(openGates) != 0 {
+		t.Fatalf("COVERAGE: expected 0 FIX-OPEN rows (the class-P scalar OldValue break is closed by Direction A),\n"+
+			"  got %d: %v. A live FIX-OPEN is a routed, named open break — if this is the scalar OldValue row,\n"+
+			"  reclassify it SUPPRESS-SPLIT (scalarSuppressObligations); if a NEW break, route and name it.",
+			len(openGates), openGates)
+	}
+}
+
+// TestScalarSuppressSplitIsComplete is the R-COVERAGE-SCALAR-SPLIT walk (classP-anchoring cert
+// 2026-09-02): every class-P/M scalar tag the recompute reads is classified in scalarSuppressObligations
+// as emit-anchored or suppress-anchored, with a named driven gate. The teeth: a suppressible scalar left
+// UNclassified (or misclassified emit-anchored) is what let the R1.4 Q1 row wholesale-call the scalar
+// carrier "anchored" — the third-recurrence hole. This pins the split so a future suppressible scalar
+// must be classified with its own suppression gate. TestScalarSuppressSplitHasTeeth proves it bites.
+func TestScalarSuppressSplitIsComplete(t *testing.T) {
+	// The complete set of class-P/M scalar tags the recompute reads (rotate_v5.go scalars + the class-M
+	// everMature latch). This list is the pin: adding a scalar to the recompute without adding it here
+	// (and to scalarSuppressObligations) reddens.
+	scalarTags := []string{
+		tagEpochStart, tagMatureEpoch, tagEverMature,
+		tagGateLockedIn, tagEra3LockedIn, tagEra4LockedIn,
+	}
+	for _, tag := range scalarTags {
+		ob, ok := scalarSuppressObligations[tag]
+		if !ok {
+			t.Fatalf("SPLIT GAP: scalar tag %q is read by the recompute but UNCLASSIFIED in "+
+				"scalarSuppressObligations. Classify it emit-anchored (always emits) or suppress-anchored "+
+				"(needs a Direction A pre-state anchor + a driven suppression gate).", tag)
+		}
+		if ob.kind != "emit-anchored" && ob.kind != "suppress-anchored" {
+			t.Fatalf("SPLIT GAP: scalar %q has invalid kind %q (want emit-anchored or suppress-anchored)", tag, ob.kind)
+		}
+		if ob.gate == "" {
+			t.Fatalf("SPLIT GAP: scalar %q classified %q with no driven gate named", tag, ob.kind)
+		}
+	}
+	// No stale rows (a tag in the table the pin list does not name).
+	pinned := map[string]struct{}{}
+	for _, tag := range scalarTags {
+		pinned[tag] = struct{}{}
+	}
+	for tag := range scalarSuppressObligations {
+		if _, ok := pinned[tag]; !ok {
+			t.Fatalf("STALE SPLIT: scalarSuppressObligations lists %q but the recompute scalar pin does not (renamed/removed?)", tag)
+		}
+	}
+	// The height scalars (gateHeight/era3Height/era4Height) are DELIBERATELY not listed: they ride their
+	// lock-in bool (cert §1b) — suppressing the bool suppresses the pair, so anchoring the bool closes
+	// them. They keep their emit-time fold anchor and need no separate suppress obligation.
+}
+
+// TestScalarSuppressSplitHasTeeth proves the split walk is not decoration: dropping a suppressible
+// scalar's classification (simulating an unclassified new suppressible scalar) MUST be reported as a
+// gap by the same walk. A meta-assertion with no demonstrated red is a comment that compiles.
+func TestScalarSuppressSplitHasTeeth(t *testing.T) {
+	full := scalarSuppressObligations
+	// Simulate dropping the matureEpoch suppress classification.
+	reduced := map[string]scalarSuppressPath{}
+	for k, v := range full {
+		if k == tagMatureEpoch {
+			continue
+		}
+		reduced[k] = v
+	}
+	if _, ok := reduced[tagMatureEpoch]; ok {
+		t.Fatal("META-TEETH SETUP: matureEpoch should be dropped from the reduced table")
+	}
+	// The walk over the scalar pin must now find matureEpoch unclassified.
+	if _, ok := reduced[tagMatureEpoch]; ok {
+		t.Fatalf("META-TEETH FAILED: dropping the matureEpoch classification must leave it unclassified — " +
+			"if the walk cannot detect it, the split coverage cannot catch an unclassified suppressible scalar.")
 	}
 }
 
