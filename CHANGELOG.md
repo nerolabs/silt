@@ -9,6 +9,27 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Testing
+- **R-CARRIER-REFLECTION — the fold-input carrier reflection pin (Boulder 1 carried residual, owed
+  before the R1.8 accept-flip; test-only, no production logic changed):** closes the last
+  hand-verified surface in the R1.4 witness-soundness cert. That cert held R-CARRIER-REFLECTION as
+  BOUNDED-BUT-OPEN — `TestAdversarialRootCoverageIsComplete` reflects only the value/predicate
+  carriers, so the fold-input carriers were "verified by hand" and a future added or renamed carrier
+  field could slip the coverage table silently. `TestFoldInputCarrierCoverageIsComplete`
+  (`core/chain/floorbox_recompute_carrier_reflection_v5_test.go`) now walks the TRANSITIVE struct
+  closure of the state-root fold's witness bundle (`StateRootWitness` + `SeenSetWitness`) by
+  reflection — 13 carrier types / 73 fields — and asserts EXACT EQUALITY against the declared
+  coverage: the union of the existing `r12CoverageTable` and the new `foldInputCoverageTable`, which
+  classifies all 47 previously-unpinned fold-input fields `already-anchored` with the specific anchor
+  named (fold OldValue against `prevStateRoot` / `Resolve` / payload-derived set). A new carrier type,
+  a new field, or a stale row all go RED. Injected-defect evidence: adding an unclassified field to
+  `StateRootDigestWitness`, deleting the `StateRootTTLWitness.Members` row, and renaming
+  `StateRootTTLWitness.Members` each drive the pin RED while the pre-existing coverage tests stay
+  GREEN — the residual, demonstrated; a coupling-preserving refactor (extracted helper, renamed local)
+  does not false-RED. `TestFoldInputCarrierCoverageHasTeeth` drives the SAME walk (not a
+  re-implementation) over `reflect.StructOf`-synthesized violations in all five directions. Scope
+  boundaries are asserted rather than assumed: the sibling predicate-recompute witnesses are out of
+  scope because they are unreachable from the fold's bundle, and the pin reddens if one ever becomes
+  reachable.
 - **Floor-box R1.6 — per-field Resolve-path oracle probes for the 23-field carrier table + a
   confirmed recompute wrong-accept, ROUTED (Boulder 1; test-only, never-Accept unchanged):** hardens
   the R1.4 witness-soundness cert, which left residual R-CARRIER-REFLECTION (the coverage walk pinned
