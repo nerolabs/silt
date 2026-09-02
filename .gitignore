@@ -95,6 +95,7 @@ integration/chaos/silt
 integration/cloudtest/.last_run_id
 integration/cloudtest/run-justification.log
 integration/cloudtest/__pycache__/
+scripts/__pycache__/
 
 # Two-cloud field test (integration/twocloud): generated split topology + run outputs.
 integration/twocloud/config.env

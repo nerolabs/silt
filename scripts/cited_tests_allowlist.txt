@@ -1,0 +1,66 @@
+# Allowlist for scripts/check_cited_tests.py
+# scar:cited-test-does-not-exist-2026-09-02
+#
+# One bare test name per line. `#` starts a comment. A name here is a citation
+# the lint will NOT fail on.
+#
+# THIS FILE IS A LEDGER OF KNOWN-UNBACKED CITATIONS, NOT A DUMPING GROUND.
+# Every entry states WHY. Two legitimate reasons only:
+#   (H) HISTORICAL — the citation deliberately names a test that was removed or
+#       renamed, and the text is a frozen record (a CHANGELOG entry, a comment
+#       that says "this REPLACES the earlier X").
+#   (O) OWED — the citation is a live defect: it claims a property is verified by
+#       a test that does not exist. The entry names the owed work. An OWED entry
+#       is a debt to pay down, not a permanent exemption. Removing it is the
+#       definition of done.
+#
+# Adding a name here to silence a red build, without establishing which case it
+# is, reintroduces the exact defect this lint exists to catch.
+
+# ---------------------------------------------------------------------------
+# (O) OWED — the citation that fired the third-time rule (count 5, 2026-09-02)
+# ---------------------------------------------------------------------------
+# Cited by a core/credit/delivery.go comment (on an unmerged R0.4b branch) and
+# then REPEATED by a research certification at
+#   silt-reviews/research/research-outcome/
+#   R0.4b-per-epoch-key-expiry-BUILD-VERIFICATION-RESEARCH-CERTIFICATION-2026-09-02.md:126
+# as pinning the paid-serial window to the demand window (the three copies of W).
+# No `func TestPaidSerialWindowMatchesDemandWindow(` has ever existed anywhere in
+# the tree. The test is OWED; a separate round writes it. Delete this line then.
+TestPaidSerialWindowMatchesDemandWindow
+
+# ---------------------------------------------------------------------------
+# (O) OWED — comments left stale by a test rename
+# ---------------------------------------------------------------------------
+# core/repairproof/repairproof_test.go:69 — renamed to
+# TestVerifyByRecompute_SurvivorSetSizes; the comment kept the old name.
+TestVerifyByRecompute_ExactlyKSurvivorsSuffice
+
+# adapters/markstore/markstore_test.go:82 — the case is now covered by
+# TestDiskMissingVsCorrupt; the comment kept the old name.
+TestDiskMissingIsCleanStart
+
+# core/relaypay/payword_test.go:97 — names a property whose test was folded into
+# TestAdvanceToWalksToClaimedCount; no func by this name exists.
+TestSkippedIncrementsAllowedInOrder
+
+# core/chain/f1_latch_test.go:12 — cites the red-team PoC by its PROPERTY name.
+# The func is TestMaturityLatchDoesNotRearmAnchorsOnDemature.
+TestDematurationHaltsChainOrHandsPermanentPowerToRetiredAnchor
+
+# ---------------------------------------------------------------------------
+# (H) HISTORICAL — deliberate references to tests that no longer exist
+# ---------------------------------------------------------------------------
+# core/chain/modelcheck_regversion_intrablock_finding_test.go:17 — the comment
+# reads "This REPLACES the earlier finding-repro (TestRegVersionIntraBlockOrder
+# Finding)". Naming the superseded test is the point of the sentence.
+TestRegVersionIntraBlockOrderFinding
+
+# CHANGELOG.md:1223 — the entry itself records that this name was non-existent.
+# It is the write-up of a prior instance of this very defect.
+TestV5DecodesAndIsAccepted
+
+# CHANGELOG.md:4657 and :4762 — frozen CHANGELOG history naming regression tests
+# since renamed or removed. The CHANGELOG is append-only; it is not trued up.
+TestBreak1_LateBondAnswerEarnsNoStanding
+TestChargePricesAllByWork

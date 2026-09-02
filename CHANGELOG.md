@@ -85,6 +85,37 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `scripts/check_claims.py` that the cited-tests lint already excludes: a plain `os.walk` resolved
   claim-backing tests against `.claude/worktrees/` copies of OTHER branches — measured, 121 test names
   resolvable only there — so a ledger claim could read as backed while `main` enforced nothing.
+- **`scripts/check_cited_tests.py` — a cited test that does not exist now fails the build
+  (`scar:cited-test-does-not-exist-2026-09-02`; tooling only, no production logic changed):**
+  encodes a fired third-time rule — *a green check that does not verify the property it claims*.
+  The instance: a `core/credit/delivery.go` comment cited
+  `TestPaidSerialWindowMatchesDemandWindow` as pinning the paid-serial window to the demand
+  window, and a research certification then repeated the claim. No `func
+  TestPaidSerialWindowMatchesDemandWindow(` has ever existed. Both texts read as "this property
+  is verified"; nothing verified it. The lint resolves every `TestXxx` cited in a Go COMMENT
+  (under `cmd/ core/ adapters/ ports/ sim/ integration/ e2e/`), in `CHANGELOG.md`, `ROADMAP.md`
+  and `docs/**`, against the `func TestXxx(` declarations in the tree, and fails listing each
+  phantom as `path:line  TestName  (no such test)`. This widens `check_claims.py`, which
+  enforced the same linkage for `docs/design/claims-ledger.md` ALONE — the narrow scope is
+  exactly why the delivery.go comment got through.
+  - A real Go scanner masks code and string literals, so `t.Run("TestFoo")` and a name inside a
+    string are not citations. Family citations (`TestOpenBreak_*Locked…`, `TestFoo_{A,B}`) resolve
+    by prefix, and identifiers soft-wrapped across comment lines resolve joined.
+  - `.claude/` is excluded and this is load-bearing: it holds agent worktrees, full copies of the
+    repo on other branches, and scanning them would let a phantom "resolve" against a test that
+    exists only on an unmerged branch. Frozen history (`/archive/`, `docs/thinking|reviews|buildlog/`)
+    is excluded for the same reason `check_status_headers.py` excludes it.
+  - The external certification/ruling trees are ADVISORY (`--strict-external` to enforce): they are
+    outside the repo and not version-locked to it. They are absent in CI, so CI stays hermetic.
+  - `scripts/cited_tests_allowlist.txt` ships as a LEDGER of the 9 known-unbacked citations left on
+    the tree, each labelled frozen-HISTORY or OWED. An OWED entry is a debt whose repayment is
+    DELETING the line, and this branch pays two of them down on arrival: the guards written in
+    PR #707 — `TestStateRootV5CoversExactlyTheV5Fields` and
+    `TestEveryDiskWritePathRunsTheEra4VersionCheck` — now exist, so the two production comments
+    that claimed a binding no test enforced (`core/chain/statehash.go:128` on `stateRootTagsV5`
+    drift, `core/chain/era3validity.go:93` on the era-4 disk-write-path leg) are backed and their
+    allowlist entries are removed rather than carried.
+  - Wired into the `website` CI job and documented in the new `scripts/README.md`.
 - **R-CARRIER-REFLECTION — the fold-input carrier reflection pin (Boulder 1 carried residual, owed
   before the R1.8 accept-flip; test-only, no production logic changed):** closes the last
   hand-verified surface in the R1.4 witness-soundness cert. That cert held R-CARRIER-REFLECTION as
