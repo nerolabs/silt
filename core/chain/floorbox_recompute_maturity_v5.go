@@ -150,6 +150,38 @@ type SeenSetWitness struct {
 	Members map[ports.NodeID]MemberStateWitness
 }
 
+// SeenSetStreamWitness is the STREAMING form of SeenSetWitness. It carries the SAME anchored
+// inputs — the complete id-list, the committed validatorsSeenRoot digest proof — but delivers the
+// per-member MemberStateWitness through a PULL provider instead of a resident map. The box requests
+// one member's witness, verifies its proofs against the committed root, folds the scalar, and drops
+// that member's proof heap before requesting the next. Resident witness drops from O(N·depth) (the
+// whole Members map, ~20 KB/member) to O(depth) (one member in flight).
+//
+// SOUNDNESS: this changes ONLY how the per-member proof bytes are held in memory. WHAT is verified is
+// byte-identical to SeenSetWitness — the same committedStateRoot anchor, the same completeness MTH
+// over the FULL id-list (line-level identical, IDs stays whole; R-M-STREAM-COMPLETENESS), the same
+// per-member predicate, the same own-config screens. It is the certified soundness-neutral memory
+// refactor (Candidate 1, research cert 2026-09-02; PE Option 1). It is an in-memory Go type; nothing
+// here is serialized, so it is NOT a wire/format change (no v5 leaf, no committed object touched).
+type SeenSetStreamWitness struct {
+	// IDs is the COMPLETE validatorsSeen id-list — identical role to SeenSetWitness.IDs. It stays
+	// resident whole: the completeness MTH nodeSetMTH(IDs) must see the full list (a short list yields
+	// a different MTH ⇒ stall). Streaming frees per-member PROOF heaps, NOT the id-list. The id-list is
+	// small (32 B/id), so holding it whole is not the resident cost the refactor attacks.
+	IDs []ports.NodeID
+
+	// SeenRootWitness / SeenRootValue are identical to SeenSetWitness — the committed validatorsSeenRoot
+	// digest proof and the MTH value the reconstructed nodeSetMTH(IDs) is compared against.
+	SeenRootWitness statehash.Witness
+	SeenRootValue   []byte
+
+	// Member pulls one member's committed-state witness on demand. It returns (witness, true) when the
+	// id has a witness, or (_, false) when it does not — which stalls exactly as a missing map entry
+	// does in the resident form. The caller (the witness-delivery seam) is free to fetch/decode the
+	// proof lazily and let it be freed after the fold consumes it. Member MUST be non-nil.
+	Member func(ports.NodeID) (MemberStateWitness, bool)
+}
+
 // RecomputeMatureNow reproduces matureNow (the maturity-latch metric, chain.go:2178) TRUSTLESSLY,
 // from the committed StateRoot + the witness alone, for the OBJECTIVE phase. It returns (mature,
 // nil) where mature == matureNow()'s verdict a full node would produce, or (false, reason) when
@@ -160,10 +192,39 @@ type SeenSetWitness struct {
 // obligation has TEETH here (the config-from-witness ablation).
 //
 // This does NOT flip WitnessValidateV5 to Accept (the STOP boundary): it reproduces ONE predicate.
+//
+// This is the RESIDENT-MAP adapter over the streaming core: it wraps w.Members in a pull provider and
+// delegates to RecomputeMatureNowStreaming, so the fold logic lives in ONE place and the resident and
+// streaming paths cannot drift. The verdict is byte-identical to the streaming path.
 func (c *Chain) RecomputeMatureNow(committedStateRoot ports.Hash, w SeenSetWitness) (mature bool, reason error) {
+	return c.RecomputeMatureNowStreaming(committedStateRoot, SeenSetStreamWitness{
+		IDs:             w.IDs,
+		SeenRootWitness: w.SeenRootWitness,
+		SeenRootValue:   w.SeenRootValue,
+		Member: func(id ports.NodeID) (MemberStateWitness, bool) {
+			mw, ok := w.Members[id]
+			return mw, ok
+		},
+	})
+}
+
+// RecomputeMatureNowStreaming is the streaming core of the class-M maturity recompute. It reproduces
+// the SAME predicate as RecomputeMatureNow with the SAME anchoring against committedStateRoot, but it
+// pulls each member's proof witness on demand (w.Member) and lets that member's proof heap be freed
+// before the next member is verified. Resident witness is O(depth), not O(N·depth).
+//
+// SOUNDNESS-NEUTRAL by construction (certified 2026-09-02): every Resolve still verifies against the
+// same committedStateRoot; the completeness MTH still consumes the FULL id-list (line-identical); the
+// fold accumulates the same order-independent scalars. Freeing a member's proof heap after its Resolve
+// returns cannot change any verdict (VerifyProof is a pure function of (proof, root, key, value)).
+func (c *Chain) RecomputeMatureNowStreaming(committedStateRoot ports.Hash, w SeenSetStreamWitness) (mature bool, reason error) {
 	// (1) SET-COMPLETENESS. Prove the committed validatorsSeenRoot leaf present against the committed
 	// StateRoot, then require the reconstructed MTH over the witnessed id-list equals it. One omitted
 	// (or injected) member yields a different MTH ⇒ mismatch ⇒ stall.
+	//
+	// R-M-STREAM-COMPLETENESS: this consumes the FULL w.IDs — streaming frees per-member PROOF heaps,
+	// NEVER the id-list. A short/truncated id-list yields a different MTH and stalls here, identically
+	// to the resident form. (RED ablation: floorbox_recompute_maturity_streaming_v5_test.go.)
 	rootKey := statehash.Key(tagValidatorsSeenRoot, nil)
 	rootRes := statehash.Resolve(committedStateRoot, rootKey, w.SeenRootValue, w.SeenRootWitness)
 	if !rootRes.IsProvenPresent() {
@@ -176,18 +237,24 @@ func (c *Chain) RecomputeMatureNow(committedStateRoot ports.Hash, w SeenSetWitne
 	}
 
 	// (2) PER-MEMBER VALUES (C-1) + (3) OWN CONFIG (C-6) + (4) THE FOLD, byte-for-byte C2Metric
-	// (chain.go:2300-2382). For every member of the completeness-verified set, verify its
-	// slashed/bonded/bondDomain leaves against the committed root, then fold exactly as C2Metric:
+	// (chain.go:2300-2382). For every member of the completeness-verified set, PULL its witness, verify
+	// its slashed/bonded/bondDomain leaves against the committed root, then fold exactly as C2Metric:
 	// skip own-Anchors and slashed members; a bond >= own MinBond joins `sizes` and its domain
 	// aggregates (non-zero domain) or forms its own group (unset). Own config governs the screen,
-	// the margin, and the threshold — never the witness (C-6).
+	// the margin, and the threshold — never the witness (C-6). The pulled `mw` (and its proof heaps) is
+	// scoped to this iteration: it is freed before the next member is pulled.
+	// A nil provider cannot deliver any member's witness, so no member can be verified. The safe
+	// default is to stall (never-Accept), exactly as a resident witness with no Members map would.
+	if w.Member == nil {
+		return false, fmt.Errorf("%w: no member provider (nil Member)", ErrRecomputeMemberStateUnproven)
+	}
 	minBond := c.cfg.MinBond
 	sizes := make([]int64, 0, len(w.IDs))
 	domainWeight := make(map[uint64]int64) // A axis: non-zero domains aggregated
 	var zeroDomainWeights []int64          // domain 0 (unset) → each its own group
 	var total int64
 	for _, id := range w.IDs {
-		mw, ok := w.Members[id]
+		mw, ok := w.Member(id)
 		if !ok {
 			// A member in the completeness-verified set has no state witness: the box cannot verify
 			// its committed state, so it cannot fold the set. Stall, never fold a partial set.
