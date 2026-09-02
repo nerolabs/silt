@@ -217,8 +217,10 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
   and authenticity residuals documented). P1: the retrieval token is **blind-withdrawn** under an
   issuer blind signature (`blindtoken` demand domain — `Withdraw → SignWithdrawal → Unblind`), so the
   issuer signs it without learning the serial → the redeemed token is cryptographically unlinkable to
-  its withdrawal. **Wired into the node** (`core/node/demandrole.go`): a fetcher `AcquireDemandToken`
-  over the existing token-request wire, then `SubmitDeliveryReceipt` (a `MsgDeliveryReceipt` carrying
+  its withdrawal. **Wired into the node** (`core/node/demandrole.go`): a fetcher
+  `AcquireDemandTokenInWindow` on the per-epoch demand lane (R0.4b — the original
+  `AcquireDemandToken` over the shared token-request wire is deleted: the publish key never
+  enters the demand keyset), then `SubmitDeliveryReceipt` (a `MsgDeliveryReceipt` carrying
   the token + PoR-bound ack) to the server, which banks it into a **neutral witnessed-demand
   observable** (`WitnessedDemand`) — never standing; replays and forged/mis-issued tokens are rejected
   over the wire. **◑ P2 optimistic fair exchange — the abort-SAFETY floor is built + regression-locked

@@ -93,7 +93,7 @@ func TestDemandReceiptFlowBanksWitnessedDemand(t *testing.T) {
 	impostor, _ := rsa.GenerateKey(rand.Reader, 2048)
 	serial := make([]byte, 32)
 	rand.Read(serial)
-	blinded, secret, _ := demand.Withdraw(rand.Reader, &impostor.PublicKey, serial)
+	blinded, secret, _ := demand.Withdraw(rand.Reader, &impostor.PublicKey, 0, serial)
 	forged := demand.Unblind(&impostor.PublicKey, serial, demand.SignWithdrawal(impostor, blinded), secret)
 	fetcher.SubmitDeliveryReceipt(server.ID(), forged, object, func(c bool, _ error) { credited = c })
 	cl.Sched.Run()

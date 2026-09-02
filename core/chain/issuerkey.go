@@ -24,12 +24,31 @@ package chain
 // EQUALS the committed one, so an off-commitment (targeted) key is rejectable by
 // construction — the property TestIssuerKey_OffCommitmentKeyIsRefused pins.
 //
-// APPEND-ONLY IS THE WHOLE SECURITY PROPERTY. A commitment for (epoch, issuer) is
-// written ONCE and never overwritten (first-write-wins, the same dedup discipline
-// bondRootOwner ships). An issuer that could rewrite key_E after seeing who redeems
-// under it would have the equivocation channel back. apply() therefore SKIPS a
-// duplicate rather than replacing it, and a duplicate is not a validity error — a
-// racing re-submission must not be able to wedge block production.
+// APPEND-ONLY IS THE ANTI-EQUIVOCATION PROPERTY — and only that. A commitment for
+// (epoch, issuer) is written ONCE and never overwritten (first-write-wins, the same
+// dedup discipline bondRootOwner ships). An issuer that could rewrite key_E after
+// seeing who redeems under it would have the equivocation channel back. apply()
+// therefore SKIPS a duplicate rather than replacing it, and a duplicate is not a
+// validity error — a racing re-submission must not be able to wedge block production.
+//
+// WHAT APPEND-ONLY DOES NOT BUY (corrected 2026-09-02, red-team break 1). It does NOT
+// make a token's issuing epoch well-defined. Nothing here forbids ONE fingerprint from
+// being committed for SEVERAL epochs, and an ordinary restart does exactly that: the
+// persisted key is re-installed for the new boot epoch. Under a key bound to two
+// epochs, a token that carried its epoch only in the KEY could be re-dated to the
+// newer one — guard entries expired while tokens did not, and the cross-server
+// double-redeem pump re-opened. The close is at the token, not here: the issue epoch
+// is inside the blind-signed message (core/blindtoken, the RFC 9578 token_key_id
+// schema), so a token verifies under exactly one (key_E, E) pair.
+//
+// A DISTINCTNESS VALIDITY RULE IS REFUTED, not merely unbuilt (converged verdict
+// §2.3). A rule rejecting a fingerprint already bound to another epoch could only see
+// the RETAINED BAND — pruneIssuerKeyCommit keeps [cur−W, cur+prePublish] — so at
+// epoch 2W+1 the old commitment is gone and the same fingerprint is registrable
+// again, lengthening the pump's period from W+1 to 2W+1 rather than closing it.
+// Remembering every fingerprint forever is unbounded committed state, which
+// build-immutable #8 forbids. It would also convert the honest restart into a
+// self-invalid proposal. Do not add it.
 //
 // BACKDATING IS REJECTED. A registration may name its OWN epoch or one up to W
 // epochs AHEAD (a pre-published key SCHEDULE, which is what lets a token issued at
@@ -160,6 +179,13 @@ func (c *Chain) blockEpoch(h uint64) uint64 {
 	}
 	return h / c.cfg.EpochBlocks
 }
+
+// BlockEpoch is the consensus epoch index a block at height h falls in — the same
+// clock validateIssuerKeys judges a registration's epoch against. Exported for the
+// PROPOSER, which must know the epoch of the block it is about to build in order to
+// drop a staged registration that has gone stale (see the pendingIssuerKeys fold in
+// core/node/chainrole.go). Read-only; changes no rule.
+func (c *Chain) BlockEpoch(h uint64) uint64 { return c.blockEpoch(h) }
 
 // validateIssuerKeys checks a block's demand-issuer key registrations. Every clause
 // is a REJECT, never a silent drop: a registration a validator cannot verify must

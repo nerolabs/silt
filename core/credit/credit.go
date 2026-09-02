@@ -172,6 +172,22 @@ type Ledger struct {
 	// this is a cheap close ahead of any shared-ledger or third-operator settlement.
 	epochWatermark uint64
 
+	// sweptEpoch is the last epoch at which sweepExpiredSerials actually ran, and
+	// guardFullRefusals counts the redeems refused because the guard set was full of
+	// still-live serials. Both are OBSERVABILITY-AND-COST bookkeeping for the R0.4b
+	// guard, not part of any accounting rule.
+	//
+	// SWEEP AT MOST ONCE PER EPOCH (red-team RT-E, measured 1.32 ms per refused redeem
+	// at a full live cap): the sweep is a full scan of the guard map, and it was run
+	// on EVERY reserve call once the map reached the cap — so a full cap turned each
+	// refused receipt into a 65,536-entry scan, an amplifier a griefer gets for free.
+	// Nothing can expire twice within one epoch, so one sweep per epoch is exactly as
+	// effective and amortizes to O(1). Purely a cost fix: the set of entries swept is
+	// identical.
+	sweptEpoch        uint64
+	guardFullRefusals int64
+	sweeps            int64
+
 	// Audit economics: storage that survives a spot-check earns rent;
 	// storage that turns out to be a lie is slashed hard. Balances may
 	// go negative — debt is the scarlet letter. Exported so scenarios

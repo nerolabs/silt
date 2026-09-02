@@ -87,10 +87,7 @@ func (s *Store) LoadOrCreate(rng io.Reader) (*rsa.PrivateKey, error) {
 	} else if ok {
 		return k, nil
 	}
-	if rng == nil {
-		rng = rand.Reader
-	}
-	k, err := rsa.GenerateKey(rng, keySize)
+	k, err := generateKey(rng)
 	if err != nil {
 		return nil, err
 	}
@@ -98,4 +95,13 @@ func (s *Store) LoadOrCreate(rng io.Reader) (*rsa.PrivateKey, error) {
 		return nil, err
 	}
 	return k, nil
+}
+
+// generateKey mints one RSA issuer key. rng is injected (nil uses crypto/rand) to
+// keep both stores testable without ambient randomness.
+func generateKey(rng io.Reader) (*rsa.PrivateKey, error) {
+	if rng == nil {
+		rng = rand.Reader
+	}
+	return rsa.GenerateKey(rng, keySize)
 }

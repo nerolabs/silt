@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/rand"
+	"crypto/rsa"
 	"flag"
 	"fmt"
 	"net"
@@ -42,6 +43,7 @@ import (
 	"github.com/nerolabs/silt/core/bond"
 	"github.com/nerolabs/silt/core/chain"
 	"github.com/nerolabs/silt/core/credit"
+	"github.com/nerolabs/silt/core/demand"
 	"github.com/nerolabs/silt/core/denylist"
 	"github.com/nerolabs/silt/core/genesis"
 	"github.com/nerolabs/silt/core/link"
@@ -814,6 +816,11 @@ func cmdDaemon(args []string) error {
 		// carry one — no Publisher identity on-chain. The issuer key PERSISTS
 		// (#93 / §3d): a restart reuses it, so outstanding tokens stay verifiable
 		// and peers' cached issuer keys don't go stale.
+		// R0.4b demand-key rotation state: the epoch the band was last built for,
+		// and the (off-loop) rotation step. Both stay nil/zero unless
+		// -accept-delivery-receipts wires the demand lane.
+		var rotateDemandKeys func(cur uint64)
+		var demandEpoch uint64
 		if is, ierr := diskissuer.Open(filepath.Join(*storeDir, "issuer")); ierr != nil {
 			return fmt.Errorf("token issuer store: %w", ierr)
 		} else if issuerKey, kerr := is.LoadOrCreate(rand.Reader); kerr == nil {
@@ -824,18 +831,66 @@ func cmdDaemon(args []string) error {
 				// certification's Q5 settlement answer covers (per-node
 				// bookkeeping suffices; committed balances are only needed for a
 				// credit a THIRD operator must honor).
-				// R0.4b: the demand issuer key is now PER-EPOCH and the redeemer
-				// resolves key_E against the consensus-attested E ↦ key_E binding.
-				// The persisted key is installed for the current epoch; ROTATION IS
-				// OPS POLICY and is deliberately not scheduled here (cert residual
-				// R5). Until the commitment for an epoch is on-chain, the bank
-				// verifies nothing — refusing an unanchored key is the certified
-				// behavior, not a bug (without the binding, per-epoch keys are worse
-				// for privacy than no epoch at all).
-				nd.SetDemandIssuerKey(nd.DemandEpoch(), issuerKey)
+				//
+				// R0.4b C3 close: the demand issuer key is PER-EPOCH, SCHEDULED
+				// here, and is NEVER the publish key. Two rules, both load-bearing:
+				//
+				//   - THE PUBLISH KEY NEVER ENTERS THE DEMAND KEYSET. It cannot be
+				//     rotated (committed publish tokens re-verify against it on
+				//     replay), so installing it as key_{boot} gave the demand lane a
+				//     life of exactly W+1 epochs — after which the bank rejected
+				//     every token while the fee-charging paths kept charging. With
+				//     the lanes separated, a demand blind bought on the publish lane
+				//     is simply not a demand token, and every shipped withdrawal
+				//     path now runs on the pinned demand lane.
+				//   - ROTATION IS SCHEDULED, NOT OPS POLICY. The band [cur, cur+W]
+				//     is pre-published so key_E is committed before epoch E opens,
+				//     and [cur−W, cur] is retained so an in-window past epoch is
+				//     still signable (the epoch-boundary race). Keygen and the disk
+				//     write run OFF the node loop; only the installs are posted back.
+				//
+				// Until the commitment for an epoch is on-chain, the bank verifies
+				// nothing — refusing an unanchored key is the certified behavior, not
+				// a bug (without the binding, per-epoch keys are worse for privacy
+				// than no epoch at all).
+				des, derr := diskissuer.OpenEpochs(filepath.Join(*storeDir, "issuer"))
+				if derr != nil {
+					return fmt.Errorf("demand issuer key store: %w", derr)
+				}
+				// The band is generated and written to disk OFF the node loop (an
+				// RSA-2048 keygen is hundreds of milliseconds and the loop is
+				// single-threaded), and only the installs are posted back onto it.
+				rotateDemandKeys = func(cur uint64) {
+					var band []struct {
+						e uint64
+						k *rsa.PrivateKey
+					}
+					if err := des.RotateWindow(rand.Reader, cur, demand.DefaultWindow,
+						func(e uint64, k *rsa.PrivateKey) {
+							band = append(band, struct {
+								e uint64
+								k *rsa.PrivateKey
+							}{e, k})
+						}); err != nil {
+						fmt.Printf("delivery receipts: demand key rotation for epoch %d FAILED: %v\n", cur, err)
+						return
+					}
+					loop.Post("demand-keys", func() {
+						for _, kv := range band {
+							nd.SetDemandIssuerKey(kv.e, kv.k)
+						}
+					})
+				}
+				// Boot install runs synchronously: the lane must not be dark for the
+				// first commits, and this is before the loop is running.
+				demandEpoch = nd.DemandEpoch()
+				if kerr := installDemandKeys(nd, des, rand.Reader, demandEpoch); kerr != nil {
+					return fmt.Errorf("demand issuer keys: %w", kerr)
+				}
 				nd.EnableDemandBank(nd.ID())
 				fmt.Println("delivery receipts: ACCEPTING — banking witnessed deliveries and settling the conserved delivery credit (balance only, never standing)")
-				fmt.Println("delivery receipts: token validity window = 4 epochs; key_E is resolved against the committed E→key binding (needs an era-4/v5 chain)")
+				fmt.Printf("delivery receipts: token validity window = %d epochs; per-epoch demand keys pre-published to epoch %d; key_E is resolved against the committed E→key binding (needs an era-4/v5 chain)\n",
+					demand.DefaultWindow, demandEpoch+demand.DefaultWindow)
 			}
 			if *acceptRelayPayments {
 				// PoD relay lane (§7.3, certified 2026-08-30): accept sender-funded
@@ -864,6 +919,18 @@ func cmdDaemon(args []string) error {
 		// floor exit. Ephemeral observer state — the chain stays a pure reader.
 		lambdaH := newLambdaHTracker(*lambdaHWindow)
 		nd.OnCommit(func(b chain.Block) {
+			// R0.4b: advance the per-epoch demand key schedule when the consensus
+			// epoch turns. Generating RSA keys and writing them to disk would block
+			// the single loop for hundreds of milliseconds, so the work runs in a
+			// goroutine and posts the installs back; one rotation is in flight at a
+			// time because demandEpoch is bumped here, on the loop, before the
+			// goroutine starts.
+			if rotateDemandKeys != nil {
+				if cur := nd.DemandEpoch(); cur > demandEpoch {
+					demandEpoch = cur
+					go rotateDemandKeys(cur)
+				}
+			}
 			// bond-regs is the DRAIN CURVE's per-block resolution: without it a
 			// journal cannot say which committed blocks banked which registrations
 			// (run 09fbe60-84613 read entries=0 as "empty" while regs were landing).

@@ -39,6 +39,14 @@ var (
 	// already spent. The requester meant to spend a credit; do not silently
 	// charge the durable identity instead.
 	errCreditRefused = errors.New("node: attached publish credit is invalid or already spent")
+
+	// ErrDemandEpochMismatch refuses a demand-token reply signed for an epoch the
+	// withdrawal did not name (R0.4b (b1)). The issue epoch is inside the
+	// blind-signed message, so such a signature unblinds to nothing redeemable —
+	// failing here makes an issuer's attempt to hand a cohort a different key a
+	// DENIAL the fetcher sees, not a tagged token it discovers is worthless at
+	// redemption.
+	ErrDemandEpochMismatch = errors.New("node: demand-token reply names a different issue epoch than the withdrawal")
 )
 
 // EnableTokenIssuer makes this validator blind-sign publish-token requests

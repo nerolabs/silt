@@ -2,21 +2,43 @@ package demand
 
 // R0.4b — the per-epoch issuer keyset and the token validity WINDOW.
 //
-// THE CONSTRUCTION (certified 2026-09-02, R0.4b-per-epoch-issuer-key-expiry): the
-// issuer holds one RSA key per epoch and blind-signs an epoch-E withdrawal under
-// key_E. THE EPOCH LIVES IN THE KEY, NEVER IN THE TOKEN — Token{Serial,Sig} and the
+// THE CONSTRUCTION (certified 2026-09-02, R0.4b-per-epoch-issuer-key-expiry, as
+// amended by the red-team reconciliation verdict of the same date, §2.4 fix (b1)):
+// the issuer holds one RSA key per epoch and blind-signs an epoch-E withdrawal under
+// key_E OVER A MESSAGE THAT BINDS E. A token verifies under exactly the PAIR
+// (key_E, E).
+//
+// THE EPOCH IS NOT A TOKEN FIELD AND NOT A RECEIPT FIELD — Token{Serial,Sig} and the
 // signed receiptMsg are byte-identical to the pre-R0.4b shape, so the change adds
-// ZERO new receipt quasi-identifier (cert Verdict 3). At redemption the epoch is
-// DISCOVERED by which held key verifies the signature; the issuer keeps no
-// serial↔epoch map, so serial→withdrawer stays blind.
+// ZERO new receipt quasi-identifier (cert Verdict 3; the epoch is a CONSENSUS epoch
+// index, not wall-clock, so the R0.4 Q1 refutation of a wall-clock stamp does not
+// reach it). At redemption the epoch is DISCOVERED by trying the held (key_e, e)
+// pairs; the issuer keeps no serial↔epoch map, so serial→withdrawer stays blind.
+//
+// WHY THE EPOCH MUST BE IN THE SIGNED MESSAGE, not only in the key. The first
+// R0.4b build put the epoch ONLY in the key. Then issuedEpoch(token) was a function
+// of the token AND the verifier's current keyset: one RSA key bound to two epochs —
+// which an ordinary RESTART produces, since the persisted key was re-registered for
+// the new boot epoch, and which no validity rule forbids — made an old token verify
+// under the NEWEST epoch that key is held for. Guard entries at the credit layer
+// then expired while the tokens did not, and the cross-server double-redeem pump
+// re-opened (red-team probes G and I, 2026-09-02). Binding E into the blind-signed
+// message makes issuedEpoch a PURE FUNCTION OF THE TOKEN for ANY key schedule,
+// which is the coupling condition "evicted ⇒ expired ⇒ un-redeemable" needs. This
+// also restores the RFC 9578 schema faithfully: Privacy Pass signs token_key_id
+// INSIDE token_input, and a Privacy Pass token cannot be re-dated for exactly that
+// reason (tenet B8 — adopt the analogue's schema, do not invent one).
+//
+// ROTATION IS THEREFORE LIVENESS, NOT SOUNDNESS. Something must be committed for the
+// current epoch or the lane cannot issue; but soundness holds even if the issuer
+// re-registers one key forever. Fresh keys per epoch remain defence in depth (a
+// discarded private key cannot backdate-sign) and are what the daemon schedules.
 //
 // EXPIRY IS THE HELD KEYSET, NOT AN ARITHMETIC CHECK. A verifier holds keys only
 // for epochs in [current−W, current]. A token verifies iff its issuing epoch's key
 // is still held; when the chain advances and key_{current−W−1} is dropped, every
 // token from that epoch stops verifying AT ONCE. There is no per-token expiry field
-// to forge or mis-read. This is the Privacy Pass key-rotation schema (Davidson et
-// al. 2018; RFC 9578) imported directly, which is what tenet B8 asks for — adopt the
-// analogue's schema, do not invent one.
+// to forge or mis-read.
 //
 // WHY THIS EXISTS: it is the second half of the ratified (b)-prunable rule. It makes
 // "evicted ⇒ expired ⇒ un-redeemable" TRUE at the credit layer, which is what closes
@@ -109,6 +131,22 @@ func (k *Keyset) Key(epoch uint64) *rsa.PublicKey { return k.keys[epoch] }
 // Len is how many epoch keys are held. Bounded by the caller to W+1 via Prune.
 func (k *Keyset) Len() int { return len(k.keys) }
 
+// Retain drops every held key for which keep reports false. It is how a redeemer
+// makes its keyset FOLLOW THE CHAIN: the pin is a CACHE of the chain's committed
+// E ↦ key_E binding, not an independent record, so after a reorg (or any adoption
+// that re-points a commitment) a held key whose fingerprint no longer matches the
+// CURRENT commitment must be dropped rather than kept and verified against
+// (red-team probe H, 2026-09-02 — the redeemer otherwise accepts the abandoned
+// fork's key and refuses the canonical one for W+1 epochs). Iteration order does not
+// matter: keep is a pure predicate on one (epoch, key) pair.
+func (k *Keyset) Retain(keep func(epoch uint64, pub *rsa.PublicKey) bool) {
+	for e, pub := range k.keys {
+		if !keep(e, pub) {
+			delete(k.keys, e)
+		}
+	}
+}
+
 // Prune drops every key whose epoch has left the window at current — the operation
 // that ENFORCES expiry. After Prune the held set is exactly {key_E : current−W <= E
 // <= current} for the keys the caller supplied, so every token from a dropped epoch
@@ -122,11 +160,17 @@ func (k *Keyset) Prune(current uint64) {
 	}
 }
 
-// VerifyInWindow reports the issuing epoch of t, if t verifies under some held key
-// whose epoch is within the window at current. It tries at most W+1 keys, newest
-// first (the common case is a token from the current or previous epoch, so the
-// expected cost is one RSA verify, and the worst case is W+1 — 5 at W=4, each a
-// single sub-millisecond modexp on the floor box).
+// VerifyInWindow reports the issuing epoch of t, if t verifies under some held
+// (key_e, e) PAIR whose epoch is within the window at current. It tries at most W+1
+// pairs, newest first (the common case is a token from the current or previous
+// epoch, so the expected cost is one RSA verify, and the worst case is W+1 — 5 at
+// W=4, each a single sub-millisecond modexp on the floor box).
+//
+// AT MOST ONE PAIR CAN MATCH, whatever keys are held: the epoch is inside the
+// signed message, so a signature made for epoch E fails the check at every e != E
+// even under the identical key (R0.4b (b1)). That is what makes the returned
+// issuedEpoch a pure function of the token — the property the credit layer's expiry
+// guard rests on.
 //
 // A token whose issuing epoch has left the window has NO held key that verifies it,
 // so this returns ok=false and the caller rejects it as "token expired or not
@@ -138,7 +182,7 @@ func (k *Keyset) VerifyInWindow(current uint64, t Token) (epoch uint64, ok bool)
 	}
 	e := current
 	for {
-		if pub := k.keys[e]; pub != nil && blindtoken.VerifyDemand(pub, t.Serial, t.Sig) {
+		if pub := k.keys[e]; pub != nil && blindtoken.VerifyDemand(pub, e, t.Serial, t.Sig) {
 			return e, true
 		}
 		if e == 0 || current-e >= k.window {

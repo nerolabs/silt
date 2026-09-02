@@ -9,6 +9,95 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Security
+- **R0.4b C3 close — the issue epoch is now inside the blind-signed message, and the demand
+  lane is a scheduled, separately-keyed lane (DO NOT MERGE unratified; gates the R0.4b merge):**
+  a blind red-team pass on the R0.4b build confirmed six breaks, and the converged research
+  verdict (`R0.4b-red-team-reconciliation-CONVERGED-RESEARCH-VERDICT-2026-09-02`) withdrew the
+  prior "pump closed for every K" claim. The pump re-opened whenever ONE RSA key was bound to
+  more than one epoch — which an ordinary RESTART does, since the persisted key was re-registered
+  for the new boot epoch. `VerifyInWindow` returned the NEWEST held epoch that verified, so an
+  epoch-0 token was re-dated to epoch 3; the credit guard swept its epoch-0 entry at `E + W`
+  while the token still verified, and a second server on the same ledger collected a second full
+  payout per serial. Fixed:
+  - **(b1) The issue epoch is bound into the demand FDH input** — `H(domain ‖ ctr ‖ epoch(8B BE)
+    ‖ serial)` under a new `silt/blinddemand/fdh/v2` domain, restoring RFC 9578's
+    `token_key_id`-in-the-signed-message schema the first import dropped. A signature verifies
+    under exactly the pair `(key_E, E)`, so `issuedEpoch(token)` is a PURE FUNCTION OF THE TOKEN
+    for any key schedule — the coupling condition "evicted ⇒ expired ⇒ un-redeemable" needs.
+    `Token{Serial,Sig}` and `receiptMsg` stay byte-identical (no new receipt quasi-identifier;
+    the epoch is a consensus epoch index, certified Q1-neutral), and the only wire change is that
+    the request NAMES `E` in the existing `Message.Height`. The publish and credit FDH domains
+    are unchanged byte-for-byte — committed publish tokens re-verify on every replay. The
+    proposed distinctness VALIDITY RULE was REFUTED and is not built: the committed band is
+    pruned, so it would lengthen the pump's period to `2W+1` rather than close it, and
+    remembering every fingerprint forever is unbounded committed state.
+  - **The publish key never enters the demand keyset, and rotation is SCHEDULED.** The daemon
+    installed the persisted publish key as `key_{boot}` once; from boot+1 the demand lane refused
+    to issue and from boot+W+1 the bank rejected everything, while the fee-charging withdrawal
+    path kept charging. New `diskissuer.EpochStore` persists a per-epoch band (one CBOR file,
+    atomic rewrite, `[cur−W, cur+W]` retained, `[cur, cur+W]` pre-published) and the daemon
+    rotates it off the node loop on every epoch turn.
+  - **A stale key registration no longer mutes the proposer forever.** A reg that missed its own
+    epoch rode `pendingIssuerKeys` indefinitely and failed the node's OWN local pre-check with
+    `ErrIssuerKeyEpoch` on every later proposal — a permanent, restart-only mute triggered by an
+    ordinary missed epoch. The proposer fold now DROPS it (policy, never validity) and the
+    schedule re-stages; `SetDemandIssuerKey` refuses to stage a backdated reg and prunes the
+    queue, which also closes an unbounded-growth path.
+  - **The pin FOLLOWS the chain.** "Once pinned, never re-pointed" was the wrong invariant for a
+    CACHE of a committed binding: after a reorg the redeemer kept verifying against the abandoned
+    fork's `key_E` and refused the canonical one for W+1 epochs. Held keys are re-validated
+    against the current commitment on every keyset read and re-pointed on mismatch.
+  - **Every shipped withdrawal path is on the pinned lane.** `swarm receipt` uses
+    `FetchDemandIssuerKeys` + `AcquireDemandTokenInWindow`; the D3 client
+    (`WithdrawDemandTokenPrivately`) carries a `(key, epoch)` its DURABLE parent resolved against
+    the committed binding and refuses a reply naming another epoch. The unpinned
+    `AcquireDemandToken` is deleted. A per-cohort key is a DENIAL again, not an accepted tagged
+    token.
+  - **Rollout rule encoded** (`TestReadinessStampImpliesIssuerKeyCoverage`): a binary may stamp
+    readiness v5 only if `Block.Hash` covers cbor 17 and `stateRootTagsV5` includes
+    `issuerKeyCommit`. The stamp is NOT raised here.
+  Design: `docs/thinking/2026-09-02-r0.4b-c3-close-design.md`.
+
+### Fixed
+- **The paid-serial guard sweeps at most once per epoch (R0.4b, red-team RT-E).** At a full cap
+  of still-live serials every refused redeem ran a full map scan — 1.32 ms per refused receipt at
+  65,536 entries, a free amplifier. Nothing can expire twice within one epoch, so the swept set is
+  identical and the cost is now amortized O(1). Purely a cost fix.
+- **A cap-full delivery refusal is OBSERVABLE (Tester finding).** Every non-paying redeem path
+  returned a bare `0`, indistinguishable from self-delivery, an already-paid serial, or a zero
+  fee — and surfaced at the node inside a log line reading "delivery receipt banked", which is
+  misleading because nothing was banked. `RedeemDeliveryCreditReason` now names the reason and
+  `GuardFullRefusals`/`SerialSweeps` count it; a banked receipt that settled nothing gets its own
+  WARN line. The announced "delivery receipt banked" marker is unchanged (S5).
+
+### Testing
+- **The cited gate that did not exist now exists (Tester finding).** `core/credit/delivery.go`
+  claimed `paidSerialWindow` was pinned to `demand.DefaultWindow` by
+  `TestPaidSerialWindowMatchesDemandWindow`; a repo-wide grep found only the comment. Both the
+  value pin and a behavioural seam gate (`TestGuardLifetimeMatchesDemandKeysetLifetime`, which
+  walks the epoch clock asserting "the demand layer still verifies this token" and "the guard
+  still remembers this serial" are the SAME predicate) are written. At the drifted value
+  `paidSerialWindow = 2` both go RED at epoch 3 — the Tester's measured control, where a second
+  server re-collects an evicted serial.
+- **Every red-team probe is now a permanent gate**, each with a RUN ablation: `TestDemandSignature
+  DoesNotVerifyAtAnotherEpoch` + `TestDemandFDHInputBindsTheEpochByteExactly` (b1, byte-exact);
+  `TestSharedKeyRotationDoesNotReopenThePump` (G); `TestComposedBoundary_SameFingerprintAtTwo
+  EpochsDoesNotRedateTokens` (G/I, the composed boundary R0.4b-8 under a re-registered key, plus
+  the `2W+1` replay that refutes the distinctness rule); `TestGuardHealsUnderASharedKey` (D);
+  `TestStaleIssuerKeyRegDoesNotMuteTheProposer` + `…PreFlipBoot` (A/A2);
+  `TestPinFollowsTheChainAcrossAReorg` (H); `TestCohortKeyIsADenialOnEveryShippedLane` (C, both
+  shipped shapes against a Byzantine issuer endpoint); `TestDemandLaneOutlivesTheWindowAndA
+  Restart` (B, > W+1 epochs plus a restart, driving the daemon's own rotation step);
+  `TestSweepRunsAtMostOncePerEpoch` (E, counts sweeps not time);
+  `TestReadinessStampImpliesIssuerKeyCoverage` (F).
+- **The provisional-lane + refused-redeem combination is gated**
+  (`TestRefusedRedeemLeavesOnlyTheBilateralFallback`): the Tester measured Σ up by exactly
+  `bytes` when a serve records its provisional self-mint and the redeem is then refused. The
+  bound is that this EQUALS the no-receipt baseline — the refusal adds nothing on top of the
+  pre-existing unwitnessed bilateral fallback — and the gate asserts exactly that at three byte
+  sizes.
+
+### Security
 - **R0.4b — the cross-server double-redeem money pump CLOSED by per-epoch issuer-key expiry
   (D-DEMAND economic mechanism + a committed-format addition; DO NOT MERGE unratified):**
   `RedeemDeliveryCredit` paid `fee − skim` on every call and never saw the token serial, while

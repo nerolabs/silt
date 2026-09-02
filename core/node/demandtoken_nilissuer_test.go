@@ -48,7 +48,7 @@ func TestDemandTokenRequestWithCreditAndNoPublishIssuerRefuses(t *testing.T) {
 	if err != nil {
 		t.Fatalf("serial: %v", err)
 	}
-	blinded, _, err := demand.Withdraw(rand.Reader, &f.committed.PublicKey, serial)
+	blinded, _, err := demand.Withdraw(rand.Reader, &f.committed.PublicKey, 0, serial)
 	if err != nil {
 		t.Fatalf("withdraw: %v", err)
 	}

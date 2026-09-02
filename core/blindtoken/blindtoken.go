@@ -49,7 +49,27 @@ const creditDomain = "silt/blindcredit/fdh/v1"
 // withdrawal is what makes the token unlinkable to the fetch at issuance time (the
 // issuer signs the blinded value, never seeing the serial); the residual IP/timing
 // channel is closed only by D3 issuance-mixing (shared with H8).
-const demandDomain = "silt/blinddemand/fdh/v1"
+//
+// v2 BINDS THE ISSUE EPOCH INTO THE SIGNED MESSAGE (R0.4b (b1), certified
+// 2026-09-02 in the red-team reconciliation verdict §2.4). RFC 9578 (Privacy Pass,
+// Blind RSA) signs token_input = token_type ‖ nonce ‖ challenge_digest ‖
+// token_key_id: THE KEY IDENTITY IS INSIDE THE SIGNED MESSAGE. The first R0.4b
+// import took Privacy Pass's key-per-period schema but dropped that binding, and
+// the omission was the whole break: with the epoch living only in the KEY, one RSA
+// key bound to two epochs (which an ordinary restart does) let a verifier re-date
+// an old token to the newest epoch that key is held for, so guard entries expired
+// while tokens did not, and the cross-server double-redeem pump re-opened.
+//
+// Binding E into the FDH input makes issuedEpoch(token) a PURE FUNCTION OF THE
+// TOKEN: a signature made over (E, serial) verifies under exactly the pair
+// (key_E, E) and under no other epoch, whatever key schedule the issuer runs. The
+// v1 domain is retired rather than extended so a v1 (unbound) demand signature can
+// never verify as a v2 one.
+//
+// This adds NO field to the token and NO field to the wire: the epoch is chosen by
+// the requester, blinded into the message, and named in the request the issuer
+// already answers with an epoch. See core/demand/keyset.go.
+const demandDomain = "silt/blinddemand/fdh/v2"
 
 // SerialSize is the length of a token's random serial.
 const SerialSize = 32
@@ -74,12 +94,14 @@ func fullDomainHash(pub *rsa.PublicKey, serial []byte) *big.Int {
 	return fullDomainHashD(pub, serial, fdhDomain)
 }
 
-// fullDomainHashD maps serial to an element of Z_N (RSA-FDH) under an explicit
+// fullDomainHashD maps msg to an element of Z_N (RSA-FDH) under an explicit
 // domain: expand SHA-256 in counter mode past the modulus length, then reduce.
+// msg is the serial for the publish and credit domains, and the epoch-prefixed
+// demandMsg for the demand domain.
 // Domain-separated and a few bytes wide of N to keep the mod bias negligible.
 // Distinct domains yield unrelated messages under the same key, which is how a
 // credit signature and a token signature made by one issuer never interchange.
-func fullDomainHashD(pub *rsa.PublicKey, serial []byte, domain string) *big.Int {
+func fullDomainHashD(pub *rsa.PublicKey, msg []byte, domain string) *big.Int {
 	nLen := (pub.N.BitLen() + 7) / 8
 	out := make([]byte, 0, nLen+sha256.Size)
 	for ctr := uint32(0); len(out) < nLen+8; ctr++ {
@@ -88,7 +110,7 @@ func fullDomainHashD(pub *rsa.PublicKey, serial []byte, domain string) *big.Int 
 		var cb [4]byte
 		binary.BigEndian.PutUint32(cb[:], ctr)
 		h.Write(cb[:])
-		h.Write(serial)
+		h.Write(msg)
 		out = h.Sum(out)
 	}
 	m := new(big.Int).SetBytes(out)
@@ -121,15 +143,32 @@ func BlindCredit(rng io.Reader, pub *rsa.PublicKey, serial []byte) (blinded, sec
 	return blindD(rng, pub, serial, creditDomain)
 }
 
-// BlindDemand blinds serial as a RETRIEVAL TOKEN (D-DEMAND, domain-separated from
-// a publish token and a credit, same key). The fetcher withdraws it blindly so the
-// issuer cannot link the token to a later fetch; it spends at delivery-ack time.
-func BlindDemand(rng io.Reader, pub *rsa.PublicKey, serial []byte) (blinded, secret []byte, err error) {
-	return blindD(rng, pub, serial, demandDomain)
+// BlindDemand blinds serial as a RETRIEVAL TOKEN for ISSUE EPOCH epoch (D-DEMAND,
+// domain-separated from a publish token and a credit, same key). The fetcher
+// withdraws it blindly so the issuer cannot link the token to a later fetch; it
+// spends at delivery-ack time.
+//
+// epoch is bound INTO the blind-signed message (see demandDomain), so the resulting
+// signature verifies under the pair (key_epoch, epoch) and no other — which is what
+// makes a token's issue epoch un-re-dateable. The issuer learns only the epoch the
+// request names (its own clock ±1); it never learns the serial.
+func BlindDemand(rng io.Reader, pub *rsa.PublicKey, epoch uint64, serial []byte) (blinded, secret []byte, err error) {
+	return blindD(rng, pub, demandMsg(epoch, serial), demandDomain)
 }
 
-func blindD(rng io.Reader, pub *rsa.PublicKey, serial []byte, domain string) (blinded, secret []byte, err error) {
-	m := fullDomainHashD(pub, serial, domain)
+// demandMsg is the byte-exact demand FDH input: the 8-byte big-endian issue epoch
+// followed by the serial. Big-endian to match every other epoch encoding in the
+// codebase (chain.issuerKeyRegMsg, the issuerKeyCommit leaf key, demandDedupKey), so
+// there is ONE epoch wire form to reason about. Pinned byte-for-byte by
+// TestDemandFDHInputBindsTheEpochByteExactly.
+func demandMsg(epoch uint64, serial []byte) []byte {
+	m := make([]byte, 8, 8+len(serial))
+	binary.BigEndian.PutUint64(m, epoch)
+	return append(m, serial...)
+}
+
+func blindD(rng io.Reader, pub *rsa.PublicKey, msg []byte, domain string) (blinded, secret []byte, err error) {
+	m := fullDomainHashD(pub, msg, domain)
 	if m.Sign() == 0 {
 		return nil, nil, ErrZeroHash
 	}
@@ -191,14 +230,16 @@ func VerifyCredit(pub *rsa.PublicKey, serial, sig []byte) bool {
 }
 
 // VerifyDemand checks that sig is a valid issuer signature on a RETRIEVAL TOKEN
-// serial (demand domain). A publish-token or credit signature fails this check and
-// vice versa, so the three token kinds are not interchangeable under one key.
-func VerifyDemand(pub *rsa.PublicKey, serial, sig []byte) bool {
-	return verifyD(pub, serial, sig, demandDomain)
+// serial ISSUED AT epoch (demand domain). A publish-token or credit signature fails
+// this check and vice versa, so the three token kinds are not interchangeable under
+// one key — and a token signed for a DIFFERENT epoch fails too, even under the very
+// same key, which is the R0.4b (b1) coupling.
+func VerifyDemand(pub *rsa.PublicKey, epoch uint64, serial, sig []byte) bool {
+	return verifyD(pub, demandMsg(epoch, serial), sig, demandDomain)
 }
 
-func verifyD(pub *rsa.PublicKey, serial, sig []byte, domain string) bool {
-	m := fullDomainHashD(pub, serial, domain)
+func verifyD(pub *rsa.PublicKey, msg, sig []byte, domain string) bool {
+	m := fullDomainHashD(pub, msg, domain)
 	s := new(big.Int).SetBytes(sig)
 	check := new(big.Int).Exp(s, big.NewInt(int64(pub.E)), pub.N)
 	return check.Cmp(m) == 0

@@ -73,12 +73,19 @@ type Token struct {
 	Sig    []byte // issuer blind signature over the serial (blindtoken demand domain)
 }
 
-// Withdraw is the fetcher side of a blind retrieval-token withdrawal: it blinds a
-// fresh serial (see blindtoken.NewSerial) so the issuer signs it without learning
-// the serial. It returns the blinded value to send the issuer and the secret to
-// unblind the reply.
-func Withdraw(rng io.Reader, issuerPub *rsa.PublicKey, serial []byte) (blinded, secret []byte, err error) {
-	return blindtoken.BlindDemand(rng, issuerPub, serial)
+// Withdraw is the fetcher side of a blind retrieval-token withdrawal FOR ISSUE
+// EPOCH epoch: it blinds a fresh serial (see blindtoken.NewSerial) so the issuer
+// signs it without learning the serial. It returns the blinded value to send the
+// issuer and the secret to unblind the reply.
+//
+// The withdrawer CHOOSES epoch and binds it into the blind-signed message (R0.4b
+// (b1)). The issuer signs under key_epoch only if it holds that key and epoch is in
+// its own window, so a requester can never name an epoch that outlives the honest
+// one; naming an EARLIER epoch only shortens its own token's life. Pass the epoch
+// the withdrawer's chain-resolved keyset supplied the key for — see
+// Node.AcquireDemandTokenInWindow, the only sound acquisition path.
+func Withdraw(rng io.Reader, issuerPub *rsa.PublicKey, epoch uint64, serial []byte) (blinded, secret []byte, err error) {
+	return blindtoken.BlindDemand(rng, issuerPub, epoch, serial)
 }
 
 // SignWithdrawal is the issuer side: it blind-signs the withdrawal, learning nothing
@@ -98,9 +105,12 @@ func Unblind(issuerPub *rsa.PublicKey, serial, blindSig, secret []byte) Token {
 }
 
 // VerifyToken reports whether t carries a valid issuer signature in the demand
-// domain (so a publish token or credit under the same key does not pass).
-func VerifyToken(issuerPub *rsa.PublicKey, t Token) bool {
-	return len(t.Serial) > 0 && blindtoken.VerifyDemand(issuerPub, t.Serial, t.Sig)
+// domain for ISSUE EPOCH epoch (so a publish token or credit under the same key does
+// not pass, and neither does a demand token issued for a different epoch under this
+// very key). Redeemers use Keyset.VerifyInWindow, which is this check run over the
+// (key_e, e) pairs the window still holds.
+func VerifyToken(issuerPub *rsa.PublicKey, epoch uint64, t Token) bool {
+	return len(t.Serial) > 0 && blindtoken.VerifyDemand(issuerPub, epoch, t.Serial, t.Sig)
 }
 
 // DeliveryReceipt is a fetcher's signed acknowledgement that it received the

@@ -30,8 +30,9 @@ func newEpochScene(t *testing.T, epochs ...uint64) epochScene {
 	return es
 }
 
-// withdraw runs a full blind withdrawal under key_epoch. The returned Token carries
-// NO epoch field — that is the whole construction.
+// withdraw runs a full blind withdrawal under key_epoch, with epoch bound INTO the
+// signed message (R0.4b (b1)). The returned Token still carries NO epoch field —
+// the epoch is in what was signed, never on the wire.
 func (es epochScene) withdraw(t *testing.T, epoch uint64) Token {
 	t.Helper()
 	priv := es.priv[epoch]
@@ -39,7 +40,7 @@ func (es epochScene) withdraw(t *testing.T, epoch uint64) Token {
 	if err != nil {
 		t.Fatalf("serial: %v", err)
 	}
-	blinded, secret, err := Withdraw(rand.Reader, &priv.PublicKey, serial)
+	blinded, secret, err := Withdraw(rand.Reader, &priv.PublicKey, epoch, serial)
 	if err != nil {
 		t.Fatalf("withdraw: %v", err)
 	}

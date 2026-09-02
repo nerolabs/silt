@@ -67,9 +67,14 @@ const maxProvisional = 8192
 // not by making it small).
 const (
 	// paidSerialWindow is W in epochs — the demand-token validity window. It MUST
-	// equal demand.DefaultWindow; the two are pinned together by
-	// TestPaidSerialWindowMatchesDemandWindow. It is duplicated rather than imported
-	// because core/credit carries no dependency on core/demand.
+	// equal demand.DefaultWindow: if this one is SMALLER the guard sweeps a serial the
+	// demand layer will still verify, and the self-financing eviction pump re-opens
+	// (measured: at window 2 vs 4 a second server re-collects an evicted serial for a
+	// full payout). It is duplicated rather than imported because core/credit carries
+	// no PRODUCTION dependency on core/demand; the two copies are pinned together by
+	// TestPaidSerialWindowMatchesDemandWindow and by the behavioural seam gate
+	// TestGuardLifetimeMatchesDemandKeysetLifetime, both in
+	// paidserial_window_pin_test.go, which import core/demand in TEST code only.
 	paidSerialWindow = uint64(4)
 	// paidSerialEpochBlocks is the epoch cadence the cap is derived against
 	// (DerivedEpochBlocks).
@@ -263,8 +268,56 @@ func (l *Ledger) compactProvOrder() {
 // token can no longer mint (K−1)·fee. See the paidSerial note in credit.go.
 func (l *Ledger) RedeemDeliveryCredit(server, fetcher ports.NodeID, root ports.Hash,
 	serial []byte, issuedEpoch, currentEpoch uint64) int64 {
+	paid, _ := l.RedeemDeliveryCreditReason(server, fetcher, root, serial, issuedEpoch, currentEpoch)
+	return paid
+}
+
+// The REASON a delivery redeem paid nothing. Every non-paying path used to return a
+// bare 0, so an operator could not tell "this server exceeded the serve rate the
+// guard was sized for" from the ordinary no-pay cases — and the node logged the
+// refusal under a line reading "delivery receipt banked", which is actively
+// misleading because nothing was banked (Tester finding, 2026-09-02).
+//
+// A plain string, not a typed enum: the value is log output, so a string keeps the
+// optional ports-side interface (core/node's deliveryReasoner) free of a core/credit
+// type and keeps the log line and the test assertion the same literal. The values
+// are an announced observable contract (S5) — do not rename one without treating it
+// as a marker change. Observability ONLY: no accounting rule reads them, and
+// standing never does.
+const (
+	// ReasonPaid: the conserved credit was settled.
+	ReasonPaid = "paid"
+	// ReasonSelfDelivery: server == fetcher.
+	ReasonSelfDelivery = "self-delivery"
+	// ReasonAlreadyPaid: this serial already funded one conserved payout.
+	ReasonAlreadyPaid = "serial-already-paid"
+	// ReasonBackdated: the issuing epoch has left the window at the ledger's
+	// monotone watermark.
+	ReasonBackdated = "token-backdated"
+	// ReasonGuardFull: the paid-serial guard is full of STILL-LIVE serials. This is
+	// the one that means "the serve rate exceeded the modeled bound the cap was
+	// derived against" — the operator-visible signal, counted by GuardFullRefusals.
+	ReasonGuardFull = "paid-serial-guard-full"
+	// ReasonNoFee: the ledger's fee is zero, so there is nothing to settle.
+	ReasonNoFee = "no-fee"
+)
+
+// GuardFullRefusals is how many redeems this ledger refused because the paid-serial
+// guard was full of still-live serials — the counter behind ReasonGuardFull.
+// Observability only; monotone.
+func (l *Ledger) GuardFullRefusals() int64 { return l.guardFullRefusals }
+
+// SerialSweeps is how many times the guard's expiry sweep has actually scanned the
+// map. Bounded to one per epoch (see the sweptEpoch note in credit.go); the gate on
+// that bound counts sweeps, not time.
+func (l *Ledger) SerialSweeps() int64 { return l.sweeps }
+
+// RedeemDeliveryCreditReason is RedeemDeliveryCredit plus the reason it paid
+// nothing. See the Reason* constants.
+func (l *Ledger) RedeemDeliveryCreditReason(server, fetcher ports.NodeID, root ports.Hash,
+	serial []byte, issuedEpoch, currentEpoch uint64) (int64, string) {
 	if server == fetcher {
-		return 0 // self-delivery earns nothing (the cheapest gaming, blocked)
+		return 0, ReasonSelfDelivery // self-delivery earns nothing (the cheapest gaming, blocked)
 	}
 
 	// R0.4b cross-server double-redeem guard. The FIRST completed redeem of a serial
@@ -293,7 +346,7 @@ func (l *Ledger) RedeemDeliveryCredit(server, fetcher ports.NodeID, root ports.H
 			l.epochWatermark = currentEpoch
 		}
 		if _, paid := l.paidSerial[string(serial)]; paid {
-			return 0 // this serial already funded one conserved payout — mint 0
+			return 0, ReasonAlreadyPaid // this serial already funded one conserved payout — mint 0
 		}
 		// Backdated redeem: the issuing epoch has left the window measured at the
 		// watermark, so some redeemer on this ledger is already past it and the
@@ -301,7 +354,7 @@ func (l *Ledger) RedeemDeliveryCredit(server, fetcher ports.NodeID, root ports.H
 		// only — an honest in-window redeem is unaffected because the watermark equals
 		// its own current epoch.
 		if issuedEpoch+paidSerialWindow < l.epochWatermark {
-			return 0
+			return 0, ReasonBackdated
 		}
 		if !l.reservePaidSerial(l.epochWatermark) {
 			// The guard set is full of STILL-LIVE (in-window, still-redeemable)
@@ -309,8 +362,11 @@ func (l *Ledger) RedeemDeliveryCredit(server, fetcher ports.NodeID, root ports.H
 			// design — it would re-open the self-financing eviction pump. Refuse to
 			// pay instead: an UNDER-pay, never an over-pay and never a mint, and it
 			// self-heals as the window advances. Reaching here requires a serve rate
-			// above the modeled bound the cap was derived against.
-			return 0
+			// above the modeled bound the cap was derived against, and the counter
+			// plus the typed reason are what make that visible to an operator instead
+			// of surfacing as an unexplained credit=0.
+			l.guardFullRefusals++
+			return 0, ReasonGuardFull
 		}
 	}
 
@@ -332,7 +388,7 @@ func (l *Ledger) RedeemDeliveryCredit(server, fetcher ports.NodeID, root ports.H
 	// Conservation: pay the fee the fetcher already paid in, less the skim.
 	fee := l.fee
 	if fee <= 0 {
-		return 0
+		return 0, ReasonNoFee
 	}
 	skim := fee * SkimNum / SkimDen
 	s.balance += fee - skim
@@ -345,7 +401,7 @@ func (l *Ledger) RedeemDeliveryCredit(server, fetcher ports.NodeID, root ports.H
 	// marks a serial, so an honest retry after a non-paying attempt is not wrongly
 	// blocked.
 	l.addPaidSerial(serial, server, issuedEpoch)
-	return fee - skim
+	return fee - skim, ReasonPaid
 }
 
 // sweepExpiredSerials drops every guarded serial whose issuing epoch has left the
@@ -388,7 +444,16 @@ func (l *Ledger) reservePaidSerial(current uint64) bool {
 	if len(l.paidSerial) < maxPaidSerial {
 		return true
 	}
-	l.sweepExpiredSerials(current)
+	// AT MOST ONE SWEEP PER EPOCH (RT-E). Entries expire on the epoch clock, so a
+	// second scan within the same epoch can free nothing a first scan did not: the
+	// swept set is identical and the amortized cost drops from O(cap) per refused
+	// redeem to O(cap) per epoch. Epoch 0 needs no latch — sweepExpiredSerials
+	// returns immediately while current <= W, so nothing can expire that early.
+	if current > l.sweptEpoch {
+		l.sweptEpoch = current
+		l.sweeps++
+		l.sweepExpiredSerials(current)
+	}
 	return len(l.paidSerial) < maxPaidSerial
 }
 

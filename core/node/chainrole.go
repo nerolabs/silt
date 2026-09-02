@@ -866,9 +866,26 @@ func (n *Node) proposeBlock(b *chain.Block, attesters, broadcast []ports.NodeID,
 	// must not be silently lost, or the issuer's keys stay unresolvable forever.
 	if len(n.pendingIssuerKeys) > 0 && n.chain.MintVersion(b.Height) >= chain.BlockVersionWitnessable {
 		var still []chain.IssuerKeyReg
+		blockEpoch := n.chain.BlockEpoch(b.Height)
 		for _, r := range n.pendingIssuerKeys {
 			if _, committed := n.chain.IssuerKeyCommitment(r.IssuerID(), r.Epoch); committed {
 				continue // already bound; append-only, never re-submit
+			}
+			// STALE REGISTRATION → DROP IT (red-team break 2, 2026-09-02).
+			// validateIssuerKeys REJECTS a backdated registration — that rule is
+			// correct, since committing key_E after epoch E has run is the
+			// equivocation move. But a staged reg that missed its own epoch (the
+			// node was not the designee inside its boot epoch, or it booted before
+			// the era-4 flip, or it restarted late in an epoch) used to RIDE AND STAY
+			// QUEUED, so every later proposal failed this node's OWN local pre-check
+			// with ErrIssuerKeyEpoch — a permanent, restart-only proposer mute. Drop
+			// it here instead and let the rotation schedule re-stage a registration
+			// for an epoch that is still registrable. Proposer POLICY, never
+			// validity: an attester's acceptance rule is untouched, so a mixed swarm
+			// cannot fork on it (the same shape as the IsSlashed filter on pending
+			// bond regs).
+			if r.Epoch < blockEpoch {
+				continue
 			}
 			// C2, the proposer self-wedge: validateIssuerKeys reads the bond ledger
 			// PRE-apply, so folding a registration into the very block that first

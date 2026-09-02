@@ -56,7 +56,7 @@ func (s scene) token(t *testing.T) Token {
 	if err != nil {
 		t.Fatalf("serial: %v", err)
 	}
-	blinded, secret, err := Withdraw(rand.Reader, s.issuerPub, serial)
+	blinded, secret, err := Withdraw(rand.Reader, s.issuerPub, 0, serial)
 	if err != nil {
 		t.Fatalf("withdraw: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestForgedTokenRejected(t *testing.T) {
 		t.Fatalf("impostor key: %v", err)
 	}
 	serial, _ := blindtoken.NewSerial(rand.Reader)
-	blinded, secret, _ := Withdraw(rand.Reader, &impostor.PublicKey, serial)
+	blinded, secret, _ := Withdraw(rand.Reader, &impostor.PublicKey, 0, serial)
 	forged := Unblind(&impostor.PublicKey, serial, SignWithdrawal(impostor, blinded), secret)
 	r := Ack(s.fetcher, forged, s.object, s.server)
 	bank := NewBank()
@@ -127,14 +127,14 @@ func TestForgedTokenRejected(t *testing.T) {
 func TestBlindWithdrawalIsUnlinkable(t *testing.T) {
 	s := newScene(t, "obj-C")
 	serial, _ := blindtoken.NewSerial(rand.Reader)
-	blinded, secret, err := Withdraw(rand.Reader, s.issuerPub, serial)
+	blinded, secret, err := Withdraw(rand.Reader, s.issuerPub, 0, serial)
 	if err != nil {
 		t.Fatalf("withdraw: %v", err)
 	}
 	// The token redeems under a valid signature the issuer never made on the serial
 	// directly (it signed only `blinded`).
 	tok := Unblind(s.issuerPub, serial, SignWithdrawal(s.issuerPriv, blinded), secret)
-	if !VerifyToken(s.issuerPub, tok) {
+	if !VerifyToken(s.issuerPub, 0, tok) {
 		t.Fatal("a blind-withdrawn token must verify under the issuer key")
 	}
 	// The issuer's signing-time view (`blinded`) must not equal or reveal the serial:

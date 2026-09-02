@@ -32,8 +32,19 @@ import (
 // issuer at issuerAddr, paying with a prepaid blind credit. It spins up a one-off
 // ephemeral identity + transport, withdraws over it, and tears everything down on
 // return. It returns the withdrawn token and the ephemeral NodeID the issuer saw (never
-// the fetcher's durable one). issuerPub is its token-issuer public key; credit is a blind
-// credit acquired earlier under the durable identity (Node.AcquireCredits).
+// the fetcher's durable one). credit is a blind credit acquired earlier under the
+// durable identity (Node.AcquireCredits).
+//
+// THE CALLER RESOLVES (issuerPub, epoch) AGAINST ITS CHAIN — it does not accept
+// whatever key the issuer serves (R0.4b, red-team break 5). The ephemeral node has no
+// chain, so it cannot check a key against the committed E ↦ key_E binding itself; the
+// DURABLE parent does that with Node.ResolvedDemandIssuerKey and passes the pair down.
+// That is what keeps a per-cohort key a DENIAL rather than an accepted, tagged token:
+// the epoch is inside the blind-signed message, so an issuer signing under any other
+// key produces a reply this withdrawal refuses (ErrDemandEpochMismatch) instead of a
+// token whose "which key verified you" fingerprints the cohort. Passing an unresolved
+// key here re-opens that channel — there is no safe way to call this with a key the
+// caller did not resolve.
 //
 // issuerAddr severs one or two links depending on its form (D3):
 //   - a DIRECT "host:port" hides the fetcher's IDENTITY (the issuer authenticates only
@@ -45,7 +56,8 @@ import (
 //
 // Timing-correlation (epoch-batching) is the remaining D3 hardening, deferred to the H8
 // mixnet.
-func WithdrawDemandTokenPrivately(rng io.Reader, issuerID ports.NodeID, issuerAddr string, issuerPub *rsa.PublicKey, credit ports.PublishCredit, timeout time.Duration) (demand.Token, ports.NodeID, error) {
+func WithdrawDemandTokenPrivately(rng io.Reader, issuerID ports.NodeID, issuerAddr string, issuerPub *rsa.PublicKey,
+	epoch uint64, credit ports.PublishCredit, timeout time.Duration) (demand.Token, ports.NodeID, error) {
 	eph, err := identity.Generate(rng)
 	if err != nil {
 		return demand.Token{}, ports.NodeID{}, fmt.Errorf("ephemeral identity: %w", err)
@@ -73,7 +85,7 @@ func WithdrawDemandTokenPrivately(rng io.Reader, issuerID ports.NodeID, issuerAd
 	ch := make(chan result, 1)
 	// Node methods run on the single-threaded event loop; post the withdrawal there.
 	loop.Post("api", func() {
-		nd.AcquireDemandTokenWithCredit(rng, issuerID, issuerPub, credit, func(tok demand.Token, err error) {
+		nd.AcquireDemandTokenWithCredit(rng, issuerID, issuerPub, epoch, credit, func(tok demand.Token, err error) {
 			ch <- result{tok, err}
 		})
 	})

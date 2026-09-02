@@ -127,10 +127,16 @@ func TestIssuerKey_UncommittedEpochIsRefused(t *testing.T) {
 	}
 }
 
-// TestIssuerKey_PinIsAppendOnly: once key_E is pinned it is never re-pointed, so a
-// later serve of a different key for the same epoch cannot displace it. Without this
-// a targeting issuer gets a second chance after the commitment has been checked once.
-func TestIssuerKey_PinIsAppendOnly(t *testing.T) {
+// TestIssuerKey_PinFollowsTheChain: while the COMMITMENT is unchanged, a later serve
+// of a different key for the same epoch cannot displace the pinned one — a targeting
+// issuer gets no second chance after the commitment has been checked once.
+//
+// The invariant is stated over the CHAIN, not over the pin: "a keyset never holds a
+// key whose fingerprint differs from the current commitment for that (issuer, epoch)".
+// Append-only belongs to the chain (applyIssuerKeys is first-write-wins); the pin is a
+// cache of it, and it must FOLLOW a re-pointed commitment — see
+// TestPinFollowsTheChainAcrossAReorg, which is the other half of this rule.
+func TestIssuerKey_PinFollowsTheChain(t *testing.T) {
 	f := newIssuerKeyFixture(t, 9303)
 	if !f.nd.pinDemandIssuerKey(f.issuer, 0, &f.committed.PublicKey) {
 		t.Fatal("setup: the committed key was refused")
@@ -196,15 +202,22 @@ func TestIssuerKey_SelfIssuanceGetsNoException(t *testing.T) {
 	}
 }
 
-// blindTokenUnder runs a full blind withdrawal under priv, producing a token that
-// verifies under priv's public key and nothing else.
+// blindTokenUnder runs a full blind withdrawal under priv for issue epoch 0,
+// producing a token that verifies under priv's public key AT EPOCH 0 and nothing
+// else.
 func blindTokenUnder(t *testing.T, priv *rsa.PrivateKey) demand.Token {
+	t.Helper()
+	return blindTokenUnderAt(t, priv, 0)
+}
+
+// blindTokenUnderAt is blindTokenUnder for an explicit issue epoch — the (b1) shape.
+func blindTokenUnderAt(t *testing.T, priv *rsa.PrivateKey, epoch uint64) demand.Token {
 	t.Helper()
 	serial := make([]byte, 32)
 	if _, err := rand.Read(serial); err != nil {
 		t.Fatalf("serial: %v", err)
 	}
-	blinded, secret, err := demand.Withdraw(rand.Reader, &priv.PublicKey, serial)
+	blinded, secret, err := demand.Withdraw(rand.Reader, &priv.PublicKey, epoch, serial)
 	if err != nil {
 		t.Fatalf("withdraw: %v", err)
 	}

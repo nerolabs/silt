@@ -96,6 +96,12 @@ var standingClassification = map[string]standingClass{
 	// this press staying neutral (delivery_test.go pins it against a heavy
 	// deliverer, the direct §7.1 firewall test).
 	"RedeemDeliveryCredit": neutral,
+	// R0.4b C3 close: the same press with its refusal reason returned, plus the two
+	// observability counters behind it. The reason and the counters are read by logs
+	// and tests only — no accounting rule and no standing press reads them.
+	"RedeemDeliveryCreditReason": neutral,
+	"GuardFullRefusals":          neutral, // observability (paid-serial guard cap hits)
+	"SerialSweeps":               neutral, // observability (expiry sweep count, RT-E bound)
 
 	// PoD relay lane (relay.go, certified 2026-08-30). Relay/gateway bandwidth
 	// compensation settles a sender-funded PayWord chain into the relay

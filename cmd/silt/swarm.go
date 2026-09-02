@@ -446,21 +446,29 @@ func swarmReceipt(args []string) error {
 	}
 	defer e.close()
 
-	// The issuer key must be known before a blind withdrawal can be unblinded.
+	// R0.4b: the withdrawal runs on the PINNED per-epoch demand lane, never the
+	// publish-token lane. FetchDemandIssuerKeys holds a served key_E only if its
+	// fingerprint equals the consensus-attested commitment for (server, E), so this
+	// client never blinds against a key the network has not agreed on — an issuer
+	// that serves this fetcher a private key gets a denial, not a tagged token. It
+	// also means the client needs a chain: a swarm join with no committed E ↦ key_E
+	// binding pins nothing and the withdrawal refuses rather than buying a token the
+	// bank will never honour.
+	var pinned int
 	var keyErr error
 	if rerr := run(func(done func()) {
-		e.nd.FetchIssuerKey(server, func(err error) { keyErr = err; done() })
+		e.nd.FetchDemandIssuerKeys(server, func(n int, err error) { pinned, keyErr = n, err; done() })
 	}); rerr != nil {
 		return rerr
 	}
-	if keyErr != nil {
-		return fmt.Errorf("fetch issuer key from %s: %w", server, keyErr)
+	if keyErr != nil || pinned == 0 {
+		return fmt.Errorf("resolve demand issuer keys from %s against the committed binding (pinned %d): %w", server, pinned, keyErr)
 	}
 
 	var tok demand.Token
 	var tokErr error
 	if rerr := run(func(done func()) {
-		e.nd.AcquireDemandToken(rand.Reader, server, func(t demand.Token, err error) {
+		e.nd.AcquireDemandTokenInWindow(rand.Reader, server, func(t demand.Token, _ uint64, err error) {
 			tok, tokErr = t, err
 			done()
 		})
