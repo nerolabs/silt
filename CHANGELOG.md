@@ -34,6 +34,33 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `floorbox-R-FOLD-LIVE-STATE-READS-RESEARCH-CERTIFICATION-2026-09-02.md`. Design:
   [`docs/thinking/2026-09-02-floorbox-fold-live-state-reads-fix-design.md`](docs/thinking/2026-09-02-floorbox-fold-live-state-reads-fix-design.md).
 
+### Changed
+- **Floor-box class-M maturity recompute — streaming proof verifier, cut resident witness
+  O(N·depth)→O(depth) (2026-09-02; Boulder 1; box-side only, consensus-inert, never-Accept
+  unchanged, cert-touching → blind re-cert/re-measure before merge):** `RecomputeMatureNow`
+  materialized ALL N `validatorsSeen` members' SMT proofs resident (`SeenSetWitness.Members`,
+  ~20 KB/member) before the fold, so the fold cost was GC over a multi-GB resident set, not compute
+  (measured box-side resident witness: ~311 MiB at N=100k, extrapolating multi-GB toward N=1M). Adds
+  `RecomputeMatureNowStreaming` + `SeenSetStreamWitness`, which PULLS each member's proof on demand,
+  verifies it against the committed root, folds the scalar, and drops that member's proof heap before
+  the next — resident witness drops to O(depth) (id-list + one in-flight member, a few KiB per member;
+  the id-list is the only O(N) box term and is small, ~32 MiB at N=1M). `RecomputeMatureNow` becomes a
+  thin resident-map adapter over the streaming core, so the fold logic lives in ONE place and the two
+  paths cannot drift. This is a pure MEMORY/PROCESSING refactor: the `committedStateRoot` anchor, the
+  completeness MTH over the FULL id-list, the per-member predicate, and the own-config screens are all
+  byte-identical — no consensus/validity rule, no metric, and NO WITNESS WIRE/FORMAT change (the
+  witness types are in-memory Go structs; the streaming provider is a Go function parameter). Ships the
+  R-M-STREAM-COMPLETENESS RED ablation (a short/truncated id-list still stalls
+  `ErrRecomputeSeenSetIncomplete`), a forged-member-value ablation (still stalls
+  `ErrRecomputeMemberStateUnproven` under streaming), a streamed==resident==full-node equivalence
+  suite, and a box-side re-measurement of resident-vs-streaming witness + fold time at
+  N∈{1e4,1e5,5e5,1e6} that derives the pony fold ceiling (the M_seen cap value; the remaining ceiling
+  is TIME, the O(N·log N) compute floor streaming does not remove, not RSS)
+  (`core/chain/floorbox_recompute_maturity_v5.go`,
+  `core/chain/floorbox_recompute_maturity_streaming_v5_test.go`,
+  `core/chain/floorbox_recompute_maturity_fold_cost_test.go`,
+  `docs/thinking/2026-09-02-classM-maturity-streaming-verifier-design.md`).
+
 ### Testing
 - **The COLD-BOX tier + the fold-file live-state allowlist pin (Boulder 1, R-COLD-BOX-HARNESS):**
   every recompute gate ran the recompute ON the chain that applied the history, so the test tier
