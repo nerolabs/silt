@@ -8,6 +8,29 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Testing
+- **Floor-box R1.6 — per-field Resolve-path oracle probes for the 23-field carrier table + a
+  confirmed recompute wrong-accept, ROUTED (Boulder 1; test-only, never-Accept unchanged):** hardens
+  the R1.4 witness-soundness cert, which left residual R-CARRIER-REFLECTION (the coverage walk pinned
+  only 3 of the 4 value/predicate carriers and gave the "already-anchored" fields no driven teeth).
+  Adds a driven per-field probe for each already-anchored carrier obligation (forge the field → assert
+  the box STALLS), pins the `StateRootRotateScalar` carrier into the reflection walk, and extends
+  `probeUncovered` to name the class-M poisoning stages A1/A2/A3 explicitly (each pointing at its
+  driven gate). The probes bite: ablating the class-A Slashed, class-B OwnerProof, and class-P Weight
+  Resolve anchors each drives its probe RED (`core/chain/floorbox_recompute_perfield_oracle_v5_test.go`,
+  coverage table in `floorbox_recompute_adversarialroot_v5_test.go`, A1/A2/A3 in
+  `modelcheck_snapshot_equivalence_test.go`). **The probe discipline surfaced a real break:** the
+  class-P activation-lock OldValue predicates (`GateLockedIn`/`Era3LockedIn`/`Era4LockedIn` `.OldValue`,
+  read at `rotate_v5.go:442,:450,:458`) are UNANCHORED branch reads — a forged `OldValue=true`
+  suppresses the lock-in emission so the value is never folded, and the attacker commits a lock-free
+  root → wrong-accept (confirmed for all three). This partially refutes the R1.4 Q1 "scalar pairs are
+  already-anchored" classification. Encoded as three RED-on-current-code OPEN-BREAK gates
+  (`TestOpenBreak_*LockedInOldValuePredicate`, classified `FIX-OPEN` in the coverage table) that assert
+  the current wrong-accept and must be flipped to assert-stall by the anchoring fix. ROUTED to the
+  Researcher/PE as a consensus-adjacent recompute-soundness break (research gate — the fix is a source
+  change to the certified class-P reconstruction). Design:
+  `docs/thinking/2026-09-02-floorbox-R1.6-per-field-oracle-probes-design.md`.
+
 ### Docs
 - **`BACKLOG.md` folded into `ROADMAP.md` (SSOT) and archived (owner-ratified 2026-09-01):**
   the repo-root scratch backlog is retired so forward work has one source of truth. Its
