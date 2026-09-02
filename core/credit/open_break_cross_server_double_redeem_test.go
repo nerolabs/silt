@@ -41,16 +41,25 @@ package credit
 // (l.provisional) covers only the SAME server redeeming a lane it served;
 // it has no cross-server memory.
 //
-// # OPEN-BREAK encoding
+// # CLOSED — the gate is FLIPPED (R0.4b, 2026-09-02)
 //
-// This test ASSERTS THE CURRENT BROKEN BEHAVIOR so the suite stays GREEN on
-// main and CI passes while the break is live. It verifies the exact
-// (K-1)·fee mint at K∈{2,3,5}.
+// This test asserted the (K-1)·fee mint while the break was live. The fix has
+// landed and the assertion is now the CONSERVATION assertion the comment above
+// always named as the flip condition: Σ(balances)+Σ(escrow) is UNCHANGED by the
+// attack, at every K.
 //
-// When the fix lands — a cross-server redeem gate keyed on (fetcher, object)
-// — the assertion flips from "delta == (K-1)*fee" to "delta == 0". At that
-// point the subtests named "openBreakDeltaK=N" will fail (that is the signal
-// to flip), and "conservedK=N" subtests added in the fix PR will go GREEN.
+// The close is NOT a gate keyed on (fetcher, object) — that would have denied a
+// legitimate second delivery of the same object to the same fetcher. It is keyed on
+// the TOKEN SERIAL: one demand token (one blind withdrawal, one serial, one fee)
+// funds exactly ONE conserved payout, so the K colluding servers' K receipts —
+// which all name the SAME serial, because they share one token — collapse to one
+// payout. The distinguisher is completed server-distinct redeems off one serial,
+// not "was the token reused", so honest abort-retry (a NEW completion, still the
+// first redeem of that serial) is untouched.
+//
+// The serial guard is bounded, and its EVICTION is expiry-only — see
+// delivery_serial_evict_regression_test.go for why a FIFO-bounded guard re-opened
+// this same pump in a self-financing form.
 //
 // # Relation to A4
 //
@@ -140,47 +149,50 @@ func TestOpenBreak_CrossServerDoubleRedeemMoneyPump(t *testing.T) {
 			// No server serves the object first (no provisional lane), so the
 			// provisional lookup is a no-op for each call; the conserved leg
 			// fires unconditionally every time.
+			// THE SHARED SERIAL is what makes this the cross-server attack: the K
+			// colluders hold ONE token, so all K receipts name the same serial.
+			sharedSerial := []byte("one-token-K-colluding-servers")
 			paid := make([]int64, tc.k)
 			for i, srv := range servers {
-				paid[i] = l.RedeemDeliveryCredit(id(srv), fetcher, obj)
+				paid[i] = l.RedeemDeliveryCredit(id(srv), fetcher, obj, sharedSerial, 0, 0)
 			}
 
 			gotTotal := sumLedger()
 
-			// OPEN-BREAK assertion: confirm the system mints (K-1)*fee.
-			// This assertion PASSES on the broken main (abe2d35) and will
-			// FAIL when the fix lands. Flip this to assert delta==0 on fix.
+			// CONSERVATION assertion (the flip): one fee in, one fee distributed,
+			// net zero. Nothing is minted at any K.
 			skim := int64(fee) * SkimNum / SkimDen
-			wantPayout := int64(fee - skim) // one honest payout
-			_ = wantPayout
+			wantPayout := int64(fee) - skim
+			wantTotal := initial
+			brokenTotal := initial + int64(tc.k-1)*int64(fee)
 
-			wantTotal := initial                              // what conservation demands (one fee in, one fee out)
-			brokenTotal := initial + int64(tc.k-1)*int64(fee) // what the bug produces
-
-			if gotTotal != brokenTotal {
-				// The break has been fixed — flip this test.
-				t.Errorf("OPEN-BREAK FLIPPED (fix detected):\n"+
-					"  gotTotal=%d, expected broken value=%d\n"+
-					"  delta from broken=%+d\n"+
-					"  If delta==0 (gotTotal==wantTotal=%d), the fix is in. "+
-					"Replace this test with a conservation-pass assertion.",
-					gotTotal, brokenTotal, gotTotal-brokenTotal, wantTotal)
-				return
+			if gotTotal != wantTotal {
+				t.Fatalf("CROSS-SERVER DOUBLE-REDEEM PUMP OPEN at K=%d:\n"+
+					"  sum(balances+escrow)=%d, want %d (conserved), minted %+d\n"+
+					"  the pre-fix broken value was %d ((K-1)*fee)\n"+
+					"  paid per server: %v\n"+
+					"  K servers sharing ONE token must collapse to ONE conserved payout.",
+					tc.k, gotTotal, wantTotal, gotTotal-wantTotal, brokenTotal, paid)
 			}
 
-			// Confirm the exact mint magnitude and per-server payout.
-			mintedCredits := gotTotal - wantTotal
-			wantMinted := int64(tc.k-1) * int64(fee)
-			if mintedCredits != wantMinted {
-				t.Errorf("OPEN-BREAK K=%d: minted %d credits, want %d\n"+
-					"  Σbalances+Σescrow=%d initial=%d fee=%d\n"+
-					"  paid per server: %v",
-					tc.k, mintedCredits, wantMinted,
-					gotTotal, initial, int64(fee), paid)
-			} else {
-				t.Logf("OPEN-BREAK K=%d CONFIRMED: minted %d credits = (K-1)*fee (%d-1)*%d\n"+
-					"  Σbalances+Σescrow=%d initial=%d paid per server: %v",
-					tc.k, mintedCredits, tc.k, int64(fee), gotTotal, initial, paid)
+			// Exactly ONE server collected, and it collected exactly fee-skim. The
+			// aggregate check above cannot see a re-distribution among the K servers
+			// that happens to sum right, so pin the per-call shape too.
+			var payers int
+			for i, p := range paid {
+				switch p {
+				case 0:
+					// refused: this serial already funded its one payout
+				case wantPayout:
+					payers++
+				default:
+					t.Fatalf("K=%d: server %d paid %d - want either 0 (refused) or fee-skim=%d",
+						tc.k, i, p, wantPayout)
+				}
+			}
+			if payers != 1 {
+				t.Fatalf("K=%d: %d servers collected a payout off ONE token, want exactly 1 (paid: %v)",
+					tc.k, payers, paid)
 			}
 		})
 	}

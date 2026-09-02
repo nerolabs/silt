@@ -857,6 +857,24 @@ func (n *Node) proposeBlock(b *chain.Block, attesters, broadcast []ports.NodeID,
 		}
 		n.pendingSlashes = still
 	}
+	// R0.4b: fold this node's staged per-epoch demand-issuer key commitments in.
+	// v5-ONLY — the era-3 leaf set does not commit this keyspace, so a v4 block
+	// carrying one is REJECTED (chain.validateIssuerKeys); staging them below the
+	// era-4 boundary would make our own proposal invalid. Registrations RIDE AND STAY
+	// QUEUED until the chain confirms the commitment, the same #397-Q4-ii discipline
+	// pendingSlashes uses: a commitment whose carrier proposal failed to gather quorum
+	// must not be silently lost, or the issuer's keys stay unresolvable forever.
+	if len(n.pendingIssuerKeys) > 0 && n.chain.MintVersion(b.Height) >= chain.BlockVersionWitnessable {
+		var still []chain.IssuerKeyReg
+		for _, r := range n.pendingIssuerKeys {
+			if _, committed := n.chain.IssuerKeyCommitment(r.IssuerID(), r.Epoch); committed {
+				continue // already bound; append-only, never re-submit
+			}
+			b.IssuerKeys = append(b.IssuerKeys, r)
+			still = append(still, r)
+		}
+		n.pendingIssuerKeys = still
+	}
 	// Mint-flip (era-3 build step 2c, extended for era-4 step 4d): at/above the era-4
 	// activation boundary the chain mints v5 with populated committed roots (the era-3
 	// leaves PLUS the maintenance-spine keyspaces); at/above the era-3 boundary, v4; below

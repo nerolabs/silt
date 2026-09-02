@@ -123,6 +123,37 @@ type Ledger struct {
 	provIndex   map[provKey]int
 	provHead    int
 
+	// paidSerial is the R0.4b CROSS-SERVER double-redeem guard. It records every
+	// demand-token SERIAL that has already had a completed, paid delivery redeem on
+	// this ledger, together with the server that collected it and the token's ISSUING
+	// EPOCH. The conserved leg of RedeemDeliveryCredit pays ONLY the first completed
+	// redeem of a serial; any later redeem of the SAME serial — by ANY server on this
+	// ledger — mints nothing. One fee (one blind withdrawal, one serial) funds exactly
+	// one conserved payout, so K colluding servers sharing one token can no longer
+	// mint (K−1)·fee.
+	//
+	// THE EPOCH IS WHAT MAKES THE BOUND SAFE. A bounded guard must forget entries, and
+	// forgetting a STILL-REDEEMABLE serial re-opens the pump — the red-team showed the
+	// FIFO version is self-financing, because each flood serial used to evict a victim
+	// is itself a paid delivery the colluding operator collects. So eviction here is
+	// EXPIRY-ONLY: an entry is dropped only once its issuing epoch has left the
+	// demand-token validity window, at which point the demand layer already rejects
+	// that token (no in-window key_E verifies it) before any credit path. Evicted ⇒
+	// expired ⇒ un-redeemable. See sweepExpiredSerials in delivery.go.
+	//
+	// BOUNDED (build-immutable #8): capped at maxPaidSerial, a DERIVED cap sized to
+	// dominate the honest live set (delivery.go). If the cap is ever reached with
+	// nothing expired, RedeemDeliveryCredit REFUSES TO PAY rather than forget a live
+	// serial — an under-pay, never an over-pay and never a mint.
+	//
+	// SCOPE: this closes the SHARED-ledger case only. K truly distinct-owner ledgers
+	// do not see each other's paidSerial, so the cross-owner-ledger variant remains
+	// the standing Douceur / demand-authenticity limit, neutralized today ONLY by the
+	// γ→1/N firewall (delivery credit is a BALANCE observable never wired to
+	// Reputation — Invariant-A). This guard touches no field Reputation reads, so the
+	// firewall is untouched.
+	paidSerial map[string]paidSerialEntry
+
 	// Audit economics: storage that survives a spot-check earns rent;
 	// storage that turns out to be a lie is slashed hard. Balances may
 	// go negative — debt is the scarlet letter. Exported so scenarios
@@ -145,6 +176,7 @@ func New(fee, grant int64) *Ledger {
 		escrow:      make(map[ports.Hash]*objectEscrow),
 		provisional: make(map[provKey]*provisionalServe),
 		provIndex:   make(map[provKey]int),
+		paidSerial:  make(map[string]paidSerialEntry),
 		AuditReward: 1_000,
 		AuditSlash:  25_000,
 	}

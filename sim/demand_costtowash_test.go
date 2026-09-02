@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/nerolabs/silt/adapters/simnet"
+	"github.com/nerolabs/silt/core/chain"
 	"github.com/nerolabs/silt/core/credit"
-	"github.com/nerolabs/silt/core/demand"
 	"github.com/nerolabs/silt/core/node"
 	"github.com/nerolabs/silt/ports"
 )
@@ -24,7 +24,9 @@ func TestDemandWashCostsRealFees(t *testing.T) {
 	const seed = 20260809
 	const fee = int64(1000)
 	cl := NewCluster(seed, 8, simnet.DefaultConfig(), node.DefaultConfig())
-	issuer, server, fetcher := cl.Nodes[0], cl.Nodes[1], cl.Nodes[2]
+	server, fetcher := cl.Nodes[1], cl.Nodes[2]
+	// R0.4b: the issuer's NodeID must be its committed identity (the production shape).
+	issuer, issuerSigner := identityNode(cl, 2026090203)
 
 	// The issuer charges + BURNS the retrieval fee (ChargePublish debits, credits no
 	// one) against the token requester's balance.
@@ -35,16 +37,17 @@ func TestDemandWashCostsRealFees(t *testing.T) {
 
 	// The washer controls BOTH the server (banks) and the fetcher (withdraws + acks) —
 	// the strongest self-dealer. Bond the fetcher so a spurious standing motion would show.
-	server.EnableDemandBank(&issuerKey.PublicKey)
 	_, fetcherSigner, _ := ed25519.GenerateKey(rand.Reader)
 	fetcher.SetSigner(fetcherSigner)
+	sc := chain.New(chain.Config{Quorum: 1}, func(ports.NodeID) int64 { return 1 << 30 })
+	if gerr := sc.AppendGenesis(issuerKeyGenesis(t, issuerSigner, issuerKey)); gerr != nil {
+		t.Fatalf("issuer-key genesis: %v", gerr)
+	}
+	wireDemandLane(t, cl, issuer, server, issuerSigner, issuerKey, sc, issuerSigner, demandFetcher{fetcher, fetcherSigner})
 	ledger.Register(fetcher.ID())
 	ledger.RecordBondChallenge(fetcher.ID(), fetcher.ID(), 64<<20, true, 1)
 	baselineStanding := ledger.Reputation(fetcher.ID())
 	startBalance := ledger.Balance(fetcher.ID())
-
-	fetcher.FetchIssuerKey(issuer.ID(), func(error) {})
-	cl.Sched.Run()
 
 	data := make([]byte, 16<<10)
 	cl.rng.Read(data)
@@ -55,14 +58,7 @@ func TestDemandWashCostsRealFees(t *testing.T) {
 	const N = 5
 	washed := 0
 	for i := 0; i < N; i++ {
-		var tok demand.Token
-		fetcher.AcquireDemandToken(rand.Reader, issuer.ID(), func(tk demand.Token, err error) {
-			if err != nil {
-				t.Fatalf("acquire %d: %v", i, err)
-			}
-			tok = tk
-		})
-		cl.Sched.Run()
+		tok := acquireDemandToken(t, cl, fetcher, issuer.ID())
 		fetcher.SubmitDeliveryReceipt(server.ID(), tok, object, func(c bool, err error) {
 			if err == nil && c {
 				washed++

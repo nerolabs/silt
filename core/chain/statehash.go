@@ -110,6 +110,27 @@ const (
 	tagQualifiedRoot      = "qualifiedRoot\x00"
 	tagSlashedRoot        = "slashedRoot\x00"
 	tagValidatorsSeenRoot = "validatorsSeenRoot\x00"
+
+	// R0.4b per-epoch demand-issuer key binding (era-4 / v5 only). One VALUE-CARRYING
+	// leaf per (epoch, issuer): rawKey = uint64BE(epoch) || issuerNodeID (40 bytes),
+	// value = the 32-byte sha256 fingerprint of that epoch's RSA blind-signing public
+	// key. The tag is \x00-terminated so tag||rawKey stays injective against every
+	// other field (research cert Q3), and `issuerKeyCommit\x00` cannot collide with any
+	// existing tag — no other tag shares the `issuerKey` prefix.
+	//
+	// PER-MEMBER, NOT AN MTH SCALAR (deliberate, see
+	// docs/thinking/2026-09-02-r0.4b-per-epoch-key-expiry-design.md §5). The F1
+	// whole-set digest roots exist so a root-only box can prove SET COMPLETENESS of a
+	// whole-set fold; nothing folds this keyspace. A redeemer resolves ONE (epoch,
+	// issuer) leaf, which a per-member inclusion proof answers directly and a digest
+	// scalar would not. If a root-only recompute ever folds this keyspace it needs its
+	// own digest root added to stateRootDigestTagsV5 first.
+	//
+	// v5-ONLY: emitted by stateRootLeavesV5 only, so a v4 block's root stays
+	// byte-identical to the frozen era-3 leaf set (#632), and a v4 block carrying a
+	// registration is REJECTED (validateIssuerKeys) so no committed state can escape
+	// its own committed root.
+	tagIssuerKey = "issuerKeyCommit\x00"
 )
 
 // stateRootDigestTagsV5 is the five v5-only WHOLE-SET digest-root tags added in F1. They
@@ -124,7 +145,8 @@ var stateRootDigestTagsV5 = []string{
 
 // stateRootTagsV5 is the era-4 (v5) committedSet field names committed ONLY under the
 // v5 state root — the maintenance-spine fields the v5 marshaller adds on top of the 18
-// era-3 fields. It is pinned from BOTH sides so it cannot drift:
+// era-3 fields, plus the R0.4b per-epoch issuer-key commitment. It is pinned from BOTH
+// sides so it cannot drift:
 //
 //   - to the live field CLASSIFICATION, by TestStateRootCoversExactlyTheCommittedSetFields
 //     (a committedSet field missing from stateRootTags AND this list is reported);
@@ -132,9 +154,15 @@ var stateRootDigestTagsV5 = []string{
 //     stateRootLeavesV5 actually emits are exactly this list plus stateRootTags plus
 //     stateRootDigestTagsV5 — no missing leaf, and no unlisted tag in the v5 root).
 //
+// Both pins bind to a FULLY-POPULATED chain, so a field listed here must be populated by
+// the test fixture's populateCommitted or the marshaller emits no leaf for it and the
+// second pin reddens. That is the coupling the rebase onto #709 surfaced.
+//
 // These are NOT in stateRootTags (the era-3 set), which keeps the v4 root byte-identical
 // to era-3.
-var stateRootTagsV5 = []string{"qualified", "dueBucket", "epochStart", "era4LockedIn", "era4Height"}
+var stateRootTagsV5 = []string{
+	"qualified", "dueBucket", "epochStart", "era4LockedIn", "era4Height", "issuerKeyCommit",
+}
 
 // stateRootTags is the set of committedSet field names this file commits, used by
 // the oracle to assert coverage against the live classification: exactly the 18
@@ -252,6 +280,18 @@ func (c *Chain) stateRootLeavesV5() []statehash.Leaf {
 
 	// epochStart: one scalar leaf (O-1).
 	add(tagEpochStart, nil, statehash.EncodeUint64(c.epochStart))
+
+	// issuerKeyCommit (R0.4b): one value-carrying leaf per (epoch, issuer), key =
+	// uint64BE(epoch) || issuerNodeID, value = the 32-byte key fingerprint. Order-free
+	// (one leaf per member), so the committed root is independent of Go map iteration
+	// order — the same property the bonded/epochSet/qualified per-member leaves have.
+	for epoch, byIssuer := range c.issuerKeyCommit {
+		var ek [8]byte
+		binary.BigEndian.PutUint64(ek[:], epoch)
+		for id, fp := range byIssuer {
+			add(tagIssuerKey, append(ek[:], id[:]...), statehash.EncodeID(ports.NodeID(fp)))
+		}
+	}
 
 	// era-4 activation scalars: one scalar leaf each (4d). Committed here as v5-only so a
 	// forged activation boundary produces a mismatching v5 root and is rejected — the

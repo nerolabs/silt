@@ -504,6 +504,17 @@ type Block struct {
 	StateRoot *ports.Hash `cbor:"15,keyasint,omitempty"`
 	LogRoot   *ports.Hash `cbor:"16,keyasint,omitempty"`
 
+	// IssuerKeys are R0.4b per-epoch demand-issuer key commitments: each binds one
+	// validator's RSA blind-signing public key for one epoch to its committed
+	// identity, so a redeemer can resolve key_E against consensus-attested state
+	// rather than one peer's say-so (the anti-fingerprinting binding the R0.4b
+	// certification makes MANDATORY — see issuerkey.go). Committed by Hash so
+	// attesters sign over them; omitempty keeps this ADDITIVE (a block with no
+	// registrations hashes exactly as before, the same discipline BondRegs and
+	// Slashes ship). VALID ONLY IN A v5 BLOCK — the era-3 leaf set does not commit
+	// this keyspace, so a v4 block carrying one is rejected (validateIssuerKeys).
+	IssuerKeys []IssuerKeyReg `cbor:"17,keyasint,omitempty"`
+
 	// hashMemo caches Hash() (#555). A block's hashed content is immutable once
 	// minted (Sign computes the hash it signs) or decoded, but Hash() re-marshaled
 	// the whole body — BondRegs' ~1.5 MB proofs included — and re-hashed it on
@@ -653,7 +664,7 @@ func (b *Block) Hash() ports.Hash {
 	// StateRoot/LogRoot are folded in so attesters sign the era-3 committed roots. For
 	// an era-2 block both are zero and omitempty omits them, so the marshalled body — and
 	// thus the hash — is byte-identical to pre-2a (the compat property, see the field doc).
-	unsigned := Block{Version: b.Version, Height: b.Height, Prev: b.Prev, Entries: b.Entries, Proposer: b.Proposer, Revocations: b.Revocations, Unrevocations: b.Unrevocations, BondRegs: b.BondRegs, Slashes: b.Slashes, StateRoot: b.StateRoot, LogRoot: b.LogRoot}
+	unsigned := Block{Version: b.Version, Height: b.Height, Prev: b.Prev, Entries: b.Entries, Proposer: b.Proposer, Revocations: b.Revocations, Unrevocations: b.Unrevocations, BondRegs: b.BondRegs, Slashes: b.Slashes, StateRoot: b.StateRoot, LogRoot: b.LogRoot, IssuerKeys: b.IssuerKeys}
 	buf := hashBufPool.Get().(*bytes.Buffer)
 	buf.Reset()
 	if err := encModeBuf.MarshalToBuffer(&unsigned, buf); err != nil {
@@ -1139,6 +1150,21 @@ type Chain struct {
 	// residual non-monotonicity Condition B exists to close). With epochs disabled
 	// the handoff degenerates to the raw latch (pre-Condition-B behavior).
 	matureEpoch bool
+	// issuerKeyCommit is the R0.4b consensus-attested per-epoch demand-issuer key
+	// binding: epoch -> (issuer NodeID -> sha256 fingerprint of that epoch's RSA
+	// blind-signing public key). It is what lets a redeemer resolve key_E against
+	// state every honest node agrees on instead of against one peer's say-so, which
+	// is what stops a Byzantine issuer serving a per-cohort key and turning "which
+	// key verified you" into a fingerprint (research certification 2026-09-02,
+	// Verdict 2 — the lighter pinned-keyset mitigation is REFUTED as sufficient).
+	//
+	// APPEND-ONLY: a committed (epoch, issuer) is never overwritten, so key_E cannot
+	// be re-pointed after the fact. Bounded: the retention band is a fixed number of
+	// epochs around the head, pruned every apply (pruneIssuerKeyCommit). Committed as
+	// v5-ONLY leaves (tagIssuerKey), so a v4 block's root stays byte-identical to the
+	// frozen era-3 leaf set. INERT to consensus — no validity predicate, quorum,
+	// fork-choice rule, or floor-box recompute reads it. See issuerkey.go.
+	issuerKeyCommit map[uint64]map[ports.NodeID]ports.Hash
 	// trustFloorOverride, when non-nil, pins the pruned-tolerance floor to the
 	// RECEIVING node's own anchor during a Reconcile replay, so the throwaway `tmp`
 	// replica trusts a payload-pruned block only strictly below the RECEIVER's
@@ -1187,7 +1213,10 @@ func New(cfg Config, rep func(ports.NodeID) int64) *Chain {
 		// leaves. Always initialised (never nil) so the maintenance hooks and the
 		// dry-run clone operate on a real map even on a v4-only chain.
 		qualified: make(map[ports.NodeID]int64),
-		dueBucket: make(map[uint64]map[ports.NodeID]struct{})}
+		dueBucket: make(map[uint64]map[ports.NodeID]struct{}),
+		// R0.4b per-epoch demand-issuer key binding. Always initialised so apply() and
+		// the dry-run clone operate on a real map even on a chain that never sees one.
+		issuerKeyCommit: make(map[uint64]map[ports.NodeID]ports.Hash)}
 }
 
 // SetBondVerifier wires the objective-fork-choice bond check (F6): given a
@@ -2539,7 +2568,7 @@ func (c *Chain) ValidateProposal(b *Block) error {
 		return fmt.Errorf("%w: proposer %s has %d, needs %d",
 			ErrLowReputation, b.ProposerID(), c.rep(b.ProposerID()), c.cfg.MinProposerRep)
 	}
-	if len(b.Entries) == 0 && len(b.Revocations) == 0 && len(b.Unrevocations) == 0 && len(b.BondRegs) == 0 && len(b.Slashes) == 0 {
+	if len(b.Entries) == 0 && len(b.Revocations) == 0 && len(b.Unrevocations) == 0 && len(b.BondRegs) == 0 && len(b.Slashes) == 0 && len(b.IssuerKeys) == 0 {
 		return errors.New("chain: empty block")
 	}
 	if err := c.validateTakedowns(b); err != nil {
@@ -2549,6 +2578,9 @@ func (c *Chain) ValidateProposal(b *Block) error {
 		return err
 	}
 	if err := c.validateSlashes(b); err != nil {
+		return err
+	}
+	if err := c.validateIssuerKeys(b); err != nil {
 		return err
 	}
 	seen := make(map[ports.Hash]bool)
@@ -3099,13 +3131,16 @@ func (c *Chain) validateStructural(b *Block) error {
 	if !ed25519.Verify(ed25519.PublicKey(b.Proposer), h[:], b.ProposerSig) {
 		return fmt.Errorf("%w: proposer", ErrBadSignature)
 	}
-	if len(b.Entries) == 0 && len(b.Revocations) == 0 && len(b.Unrevocations) == 0 && len(b.BondRegs) == 0 && len(b.Slashes) == 0 {
+	if len(b.Entries) == 0 && len(b.Revocations) == 0 && len(b.Unrevocations) == 0 && len(b.BondRegs) == 0 && len(b.Slashes) == 0 && len(b.IssuerKeys) == 0 {
 		return errors.New("chain: empty block")
 	}
 	if err := c.validateTakedowns(b); err != nil {
 		return err
 	}
 	if err := c.validateSlashes(b); err != nil {
+		return err
+	}
+	if err := c.validateIssuerKeys(b); err != nil {
 		return err
 	}
 	seen := make(map[ports.NodeID]bool)
@@ -3168,6 +3203,12 @@ func (c *Chain) AppendGenesis(b Block) error {
 	// the governed normal path, where ErrRevokeUnknownRoot enforces existence.
 	if len(b.Revocations) > 0 || len(b.Unrevocations) > 0 {
 		return ErrGenesisTakedown
+	}
+	// R0.4b: a genesis-declared demand-issuer key binding is admitted, but only under
+	// the same rules the normal path enforces. See validateGenesisIssuerKeys for why
+	// this door is open where the Revocations/Slashes doors are shut.
+	if err := c.validateGenesisIssuerKeys(&b); err != nil {
+		return err
 	}
 	// The same door, for the STRONGER lever (retest G1). AppendGenesis skips
 	// validateSlashes, and apply() unconditionally evicts every Slashes culprit
@@ -3304,6 +3345,13 @@ func (c *Chain) apply(b Block) {
 		delete(c.bonded, culprit)    // era-4 site 5: evict from bonded
 		c.qualifiedMaintain(culprit) // covers both 4 and 5: filter now excludes culprit
 	}
+	// R0.4b: commit this block's per-epoch demand-issuer key registrations
+	// (first-write-wins, then prune the retention band). Placed AFTER slashes so a
+	// culprit evicted in this same block cannot also land a fresh binding, and
+	// BEFORE the attestation/maturity/rotation tail so the rotate-LAST ordering
+	// invariant is untouched. Writes only the issuerKeyCommit keyspace, which no
+	// validity predicate, quorum, or fork-choice rule reads (issuerkey.go).
+	c.applyIssuerKeys(b)
 	// Track distinct qualified validators for the maturity metric — a
 	// monotonic, chain-internal, auditable measure of decentralization.
 	for _, a := range b.Atts {
@@ -3930,6 +3978,10 @@ func (c *Chain) adopt(t *Chain) {
 	// truth. A forgotten swap here reddens TestAdoptCopiesEveryCommittedField.
 	c.qualified = t.qualified
 	c.dueBucket = t.dueBucket
+	// R0.4b: the per-epoch issuer-key binding is derived state like everything above
+	// — the replayed fork re-ran every applyIssuerKeys, so t's binding IS the adopted
+	// truth. A forgotten swap here reddens TestAdoptCopiesEveryCommittedField.
+	c.issuerKeyCommit = t.issuerKeyCommit
 }
 
 func (c *Chain) LookupRoot(root ports.Hash) (ports.Entry, bool) {

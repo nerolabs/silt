@@ -824,8 +824,18 @@ func cmdDaemon(args []string) error {
 				// certification's Q5 settlement answer covers (per-node
 				// bookkeeping suffices; committed balances are only needed for a
 				// credit a THIRD operator must honor).
-				nd.EnableDemandBank(&issuerKey.PublicKey)
+				// R0.4b: the demand issuer key is now PER-EPOCH and the redeemer
+				// resolves key_E against the consensus-attested E ↦ key_E binding.
+				// The persisted key is installed for the current epoch; ROTATION IS
+				// OPS POLICY and is deliberately not scheduled here (cert residual
+				// R5). Until the commitment for an epoch is on-chain, the bank
+				// verifies nothing — refusing an unanchored key is the certified
+				// behavior, not a bug (without the binding, per-epoch keys are worse
+				// for privacy than no epoch at all).
+				nd.SetDemandIssuerKey(nd.DemandEpoch(), issuerKey)
+				nd.EnableDemandBank(nd.ID())
 				fmt.Println("delivery receipts: ACCEPTING — banking witnessed deliveries and settling the conserved delivery credit (balance only, never standing)")
+				fmt.Println("delivery receipts: token validity window = 4 epochs; key_E is resolved against the committed E→key binding (needs an era-4/v5 chain)")
 			}
 			if *acceptRelayPayments {
 				// PoD relay lane (§7.3, certified 2026-08-30): accept sender-funded

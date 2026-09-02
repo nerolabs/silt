@@ -8,6 +8,62 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Security
+- **R0.4b — the cross-server double-redeem money pump CLOSED by per-epoch issuer-key expiry
+  (D-DEMAND economic mechanism + a committed-format addition; DO NOT MERGE unratified):**
+  `RedeemDeliveryCredit` paid `fee − skim` on every call and never saw the token serial, while
+  `demand.Bank.spent` is per-SERVER. So K colluding servers sharing ONE demand token (one blind
+  withdrawal, one `ChargePublish`, one serial) each fired the conserved leg and minted exactly
+  `(K−1)·fee` — the banned per-receipt subsidy. A bounded FIFO paid-serial guard alone was REFUTED by
+  the red-team: each flood serial used to evict a victim is itself a paid delivery the colluding
+  operator collects, so advancing the FIFO costs nothing and frees a whole window of already-paid
+  serials for re-collection — the pump is self-financing.
+  The certified close (research certification 2026-09-02, crypto advisory R-ECON-4, economist advisory
+  R0.4b) is Privacy Pass key rotation (RFC 9578) imported as a schema:
+  - **The epoch lives in the KEY, never in the token.** `Token{Serial,Sig}` and the signed
+    `receiptMsg` are byte-identical; `demand.Keyset` holds `{key_E : current−W ≤ E ≤ current}` and
+    `Bank.Redeem` accepts iff some held key verifies (≤ W+1 RSA verifies). The held keyset IS the
+    window, so there is no per-token expiry field to forge. `W = 4` epochs, an Evolving-tier knob
+    denominated in `DerivedEpochBlocks` and resolved from the consensus epoch clock
+    (`head_height/EpochBlocks`) — never wall-clock.
+  - **A CONSENSUS-ATTESTED `E ↦ key_E` binding** (new committed keyspace `issuerKeyCommit`, new
+    additive `Block.IssuerKeys`, new v5-only leaf `issuerKeyCommit\x00`). Without it, per-epoch keys
+    are WORSE for privacy than no epoch: an issuer serving a distinct `key_E` to a small cohort turns
+    "which key verified you" into a fingerprint, and a pinned/published keyset does not close it (an
+    issuer that equivocates on keys equivocates on its published list too). A redeemer REFUSES a key
+    whose fingerprint is not the committed one, refuses an epoch with no commitment, and gets no
+    self-issuance exception. Append-only, no backdating, bonded-gated in objective mode, pruned to a
+    bounded epoch band, and **v5-only** — a v4 block carrying a registration is rejected, so the frozen
+    era-3 leaf set and every v4 root stay byte-identical.
+  - **Credit-layer expiry visibility (R0.4b-3):** `RedeemDeliveryCredit` now takes the serial, its
+    issuing epoch, and the current epoch. The paid-serial guard evicts **BY EXPIRY ONLY**, so a
+    forgotten serial is always one no in-window key can still validate ("evicted ⇒ expired ⇒
+    un-redeemable"). At a cap full of still-live serials it REFUSES TO PAY rather than forget one — an
+    under-pay, never an over-pay and never a mint. The cap is DERIVED
+    (`W × EpochBlocks × maxServeTrackedPerBlock`, floored at 65,536), not a bare 8192, so it dominates
+    the honest live set.
+  Gates: `TestOpenBreak_CrossServerDoubleRedeemMoneyPump` FLIPPED from asserting the `(K−1)·fee` mint
+  to asserting Σ(balances+escrow) conserved at K∈{2,3,5}; the red-team's
+  `TestSerialGuard_EvictThenReRedeemMintsZero` and `TestSerialGuard_EvictionPumpIsNotSelfFinancing`
+  land as permanent gates and hold TOGETHER WITH `TestSerialGuard_SetIsBounded` — the triple no
+  FIFO-alone design satisfies (ablation: restoring FIFO eviction keeps `SetIsBounded` GREEN and turns
+  both eviction gates RED). New mandatory equivocation gate
+  `TestIssuerKey_OffCommitmentKeyIsRefused` (+ uncommitted-epoch, append-only-pin, no-chain and
+  no-self-exception siblings). `TestAbortLeavesTokenReusable` and the `TestInvariantA_*` firewall
+  guards stay GREEN; the new committed field gets its `stateClass` row, its `stateRootTagsV5` tag, a
+  real leave-one-out probe (`issuerKeyRootProbe`), and an EARNED leaf-diff exclusion whose scope-gate
+  stall is itself asserted. `core/demand/keyset.go`, `core/chain/issuerkey.go`,
+  `core/node/demandkeys.go`, `core/credit/delivery.go`. Design:
+  `docs/thinking/2026-09-02-r0.4b-per-epoch-key-expiry-design.md`.
+  **Disclosed deviation:** the routing named `MsgGetIssuerKey`/`answerIssuerKey`/`peerIssuerKeys` as
+  the path to make epoch-plural. Verified against source, those serve the PUBLISH-token issuer key,
+  which is the chain's `issuerKey` lookup and is re-verified against committed publish tokens on every
+  replay — rotating it per epoch would be a consensus break. The per-epoch keyset is therefore a
+  SEPARATE demand lane (`MsgGetDemandIssuerKeys` / `MsgDemandTokenRequest`); the publish lane is
+  untouched. **Scope:** the shared-ledger case only; K truly distinct-owner ledgers share no
+  paid-serial set, so the cross-owner variant remains the standing Douceur / demand-authenticity limit,
+  neutralized today only by the γ→1/N firewall. Automatic per-epoch keygen scheduling (cert residual
+  R5) and the W-value measurement (R0.4b-2, the Tester's sim) are NOT in this change.
 ### Fixed
 - **Floor-box class-A screen no longer reads LIVE box state — Direction A, an R1.8 flip precondition
   (Boulder 1; recompute-side only, no committed/wire format change, never-Accept unchanged):** the

@@ -53,6 +53,48 @@ import "github.com/nerolabs/silt/ports"
 // maxProvisional caps the supersede-tracking map (see the bounding note above).
 const maxProvisional = 8192
 
+// The R0.4b paid-serial guard's DERIVED cap (economist advisory §3, residual
+// R-ECON-2). The cap must DOMINATE the honest live set so that EXPIRY — not the cap
+// — does the eviction work. A live paid serial is one whose issuing epoch is still
+// in the validity window, so the live set is bounded by what this server can itself
+// serve in that time: serveRate x W x EpochBlocks. Keeping a bare 8192 alongside a
+// 4-epoch window is the ONE combination to avoid: the cap would then evict a
+// still-in-window (still-redeemable) lane, which is exactly the refuted design.
+//
+// At ~90 B/serial the 65,536 floor is ~5.6 MB — three orders of magnitude inside the
+// 2 GB floor box, so the cap is sized to NEVER deny an honest lane rather than to
+// save bytes that do not need saving (build-immutable #8 is satisfied by the BOUND,
+// not by making it small).
+const (
+	// paidSerialWindow is W in epochs — the demand-token validity window. It MUST
+	// equal demand.DefaultWindow; the two are pinned together by
+	// TestPaidSerialWindowMatchesDemandWindow. It is duplicated rather than imported
+	// because core/credit carries no dependency on core/demand.
+	paidSerialWindow = uint64(4)
+	// paidSerialEpochBlocks is the epoch cadence the cap is derived against
+	// (DerivedEpochBlocks).
+	paidSerialEpochBlocks = 8
+	// maxServeTrackedPerBlock is the per-block object-aware serve rate the cap is
+	// sized for.
+	maxServeTrackedPerBlock = 256
+	// maxPaidSerialFloor is the generous minimum the derived cap is floored at.
+	maxPaidSerialFloor = 65_536
+)
+
+// maxPaidSerial is the derived cap: W x EpochBlocks x maxServeTrackedPerBlock,
+// floored at maxPaidSerialFloor. Derived, never a bare constant — see above.
+const maxPaidSerial = max(maxPaidSerialFloor,
+	int(paidSerialWindow)*paidSerialEpochBlocks*maxServeTrackedPerBlock)
+
+// paidSerialEntry is one guarded serial: the server that collected its single
+// conserved payout, and the epoch whose issuer key signed the token. The epoch is the
+// EXPIRY key — the only thing eviction is allowed to act on. See credit.go's
+// paidSerial note and sweepExpiredSerials.
+type paidSerialEntry struct {
+	server ports.NodeID
+	epoch  uint64
+}
+
 // provKey identifies one delivery lane: server served object root to requester.
 // The receipt's Fetcher key hashes to the requester NodeID (NodeID =
 // sha256(pubkey)), which is what lets a redeem find the serve.
@@ -213,10 +255,50 @@ func (l *Ledger) compactProvOrder() {
 // safety rests on the reversal floor below). Returns the credits paid to the
 // server. Self-delivery pays nothing, same guard as RecordServe. It never
 // touches standing.
-func (l *Ledger) RedeemDeliveryCredit(server, fetcher ports.NodeID, root ports.Hash) int64 {
+// serial is the redeemed receipt's token serial and issuedEpoch is the epoch whose
+// issuer key signed that token (discovered at demand.Bank.Redeem — it rides no field
+// on the token). currentEpoch is the consensus epoch at the head. Together they close
+// the CROSS-SERVER DOUBLE-REDEEM: one demand token (one blind withdrawal, one serial,
+// one fee) funds exactly ONE conserved payout, so K colluding servers sharing one
+// token can no longer mint (K−1)·fee. See the paidSerial note in credit.go.
+func (l *Ledger) RedeemDeliveryCredit(server, fetcher ports.NodeID, root ports.Hash,
+	serial []byte, issuedEpoch, currentEpoch uint64) int64 {
 	if server == fetcher {
 		return 0 // self-delivery earns nothing (the cheapest gaming, blocked)
 	}
+
+	// R0.4b cross-server double-redeem guard. The FIRST completed redeem of a serial
+	// pays; any later redeem of the SAME serial — by ANY server on this ledger,
+	// including a second colluding server holding its own self-named receipt — mints
+	// nothing. A refused redeem returns BEFORE the supersede/pay block, so the
+	// object-aware serve keeps its unwitnessed self-record (the legitimate bilateral
+	// fallback) exactly as if no valid receipt had arrived.
+	//
+	// Legit abort-retry survives: an aborted server delivers nothing, banks nothing,
+	// and never reaches here, so the honest completion at the retry server is the
+	// FIRST redeem of that serial and pays (core/demand TestAbortLeavesTokenReusable).
+	// The distinguisher is completed server-distinct redeems off ONE serial, not "was
+	// the token reused".
+	//
+	// A missing serial (len == 0) is unguarded: no production caller redeems without
+	// the receipt serial (core/node/demandrole.go), and this keeps the legacy /
+	// unwitnessed test paths that never carried one working while the witnessed path
+	// — the only pump surface — stays fully gated.
+	if len(serial) > 0 {
+		if _, paid := l.paidSerial[string(serial)]; paid {
+			return 0 // this serial already funded one conserved payout — mint 0
+		}
+		if !l.reservePaidSerial(currentEpoch) {
+			// The guard set is full of STILL-LIVE (in-window, still-redeemable)
+			// serials. Forgetting one to make room is exactly the refuted FIFO
+			// design — it would re-open the self-financing eviction pump. Refuse to
+			// pay instead: an UNDER-pay, never an over-pay and never a mint, and it
+			// self-heals as the window advances. Reaching here requires a serve rate
+			// above the modeled bound the cap was derived against.
+			return 0
+		}
+	}
+
 	s := l.acct(server)
 
 	// Supersede: reverse this delivery's provisional self-credit, then forget the
@@ -242,5 +324,73 @@ func (l *Ledger) RedeemDeliveryCredit(server, fetcher ports.NodeID, root ports.H
 	e := l.escrowFor(root)
 	e.balance += skim
 	e.funded += skim
+
+	// Record this serial as funded so no OTHER server (and no re-submit) can redeem
+	// the same token again. Recorded ONLY on the paying path — a fee<=0 no-op never
+	// marks a serial, so an honest retry after a non-paying attempt is not wrongly
+	// blocked.
+	l.addPaidSerial(serial, server, issuedEpoch)
 	return fee - skim
+}
+
+// sweepExpiredSerials drops every guarded serial whose issuing epoch has left the
+// validity window at current. THIS IS THE ONLY EVICTION PATH, and that is the whole
+// R0.4b fix.
+//
+// Why expiry-only is load-bearing: the demand layer rejects a token whose issuing
+// epoch has left the window BEFORE any credit path (no held key_E verifies it), so a
+// serial dropped here is one no honest or dishonest party can ever redeem again. The
+// evicted set and the expired set are the SAME set — the coupling condition the
+// R0.4b certification (Verdict 1) requires for "evicted ⇒ expired ⇒ un-redeemable".
+//
+// The REFUTED alternative was FIFO eviction: it forgets a still-in-window serial, and
+// re-collecting a whole evicted window is self-financing (each flood serial is itself
+// a paid delivery the colluding operator collects, so advancing the FIFO costs
+// nothing). Red-team 2026-09-02; pinned RED-before/GREEN-after by
+// TestSerialGuard_EvictThenReRedeemMintsZero and
+// TestSerialGuard_EvictionPumpIsNotSelfFinancing, which must both hold WITH
+// TestSerialGuard_SetIsBounded — the triple no FIFO-alone design can satisfy.
+//
+// Deterministic: driven by the epoch stored per entry, never by map iteration order
+// (B2). Nothing observable depends on WHICH entries go, only on which epochs expired.
+func (l *Ledger) sweepExpiredSerials(current uint64) {
+	if current <= paidSerialWindow {
+		return // nothing can have left the window yet
+	}
+	floor := current - paidSerialWindow
+	for k, p := range l.paidSerial {
+		if p.epoch < floor {
+			delete(l.paidSerial, k)
+		}
+	}
+}
+
+// reservePaidSerial makes room for one more guarded serial, or reports that it
+// cannot. It sweeps expired entries first and only then checks the cap; it NEVER
+// evicts a live entry. false means "the cap is full of still-redeemable serials",
+// which the caller turns into a refusal to pay (see RedeemDeliveryCredit).
+func (l *Ledger) reservePaidSerial(current uint64) bool {
+	if len(l.paidSerial) < maxPaidSerial {
+		return true
+	}
+	l.sweepExpiredSerials(current)
+	return len(l.paidSerial) < maxPaidSerial
+}
+
+// addPaidSerial marks serial as having funded one conserved delivery payout on this
+// ledger, recording the server that collected it and the token's ISSUING EPOCH (the
+// expiry key). A zero-length serial is not recorded — it was unguarded on entry, so
+// recording it would waste a slot.
+//
+// The cap is enforced by the caller's reservePaidSerial before any payment, so this
+// never has to choose a victim: by the time it runs there is a free slot.
+func (l *Ledger) addPaidSerial(serial []byte, server ports.NodeID, issuedEpoch uint64) {
+	if len(serial) == 0 {
+		return
+	}
+	key := string(serial)
+	if _, ok := l.paidSerial[key]; ok {
+		return // already recorded (the guard above already refused a re-redeem)
+	}
+	l.paidSerial[key] = paidSerialEntry{server: server, epoch: issuedEpoch}
 }

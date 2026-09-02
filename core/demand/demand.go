@@ -197,28 +197,46 @@ func NewBank() *Bank {
 func (b *Bank) RequireBondedFetcher(check BondCheck) { b.bonded = check }
 
 // Redeem verifies a banked receipt against the token that authorized it and, if it
-// is a first-seen, validly-issued, correctly-delivered receipt for the named
-// server, credits the object's witnessed-demand counter once. It reports whether it
-// credited, plus the reason it didn't (for observability/tests). It NEVER touches
-// standing.
+// is a first-seen, validly-issued, IN-WINDOW, correctly-delivered receipt for the
+// named server, credits the object's witnessed-demand counter once. It reports
+// whether it credited, the token's ISSUING EPOCH (so the caller can carry expiry
+// down to the credit layer), and the reason it didn't credit (for
+// observability/tests). It NEVER touches standing.
 //
-// Rejections (each an unforgeability property): a token not signed by the issuer;
-// a serial already redeemed (double-spend); a receipt whose serial ≠ the token's;
-// a fetcher signature that doesn't verify (which also covers a receipt tampered
-// toward another object, server, or fetcher — all three are inside the signed
-// message).
-func (b *Bank) Redeem(issuerPub *rsa.PublicKey, token Token, r DeliveryReceipt) (credited bool, reason string) {
-	if !VerifyToken(issuerPub, token) {
-		return false, "token not issued"
+// keys is the redeemer's per-epoch issuer keyset and current is the CONSENSUS epoch
+// index (head_height / EpochBlocks — deterministic and Byzantine-agreed, never
+// wall-clock). The token is accepted only if some held key_E verifies it with
+// current − E <= W (R0.4b; see keyset.go). The issuing epoch is DISCOVERED here —
+// it rides no field on the token and is never recorded against a withdrawer.
+//
+// EXPIRY IS PURELY SUBTRACTIVE. It can only ever REJECT a redemption, and a rejected
+// redeem credits zero — the return happens before b.demand[...]++ and before the
+// serial is marked spent. So conservation (#receipts(C) <= #issued-tokens-spent) is
+// preserved a fortiori: a narrower acceptance set cannot exceed the issued-token
+// bound. No path here mints.
+//
+// Rejections (each an unforgeability property): a token no in-window issuer key
+// signed (not issued, or EXPIRED — the two are indistinguishable by construction,
+// which is the point); a serial already redeemed (double-spend); a receipt whose
+// serial ≠ the token's; a fetcher signature that doesn't verify (which also covers
+// a receipt tampered toward another object, server, or fetcher — all three are
+// inside the signed message).
+func (b *Bank) Redeem(keys *Keyset, current uint64, token Token, r DeliveryReceipt) (credited bool, issuedEpoch uint64, reason string) {
+	if keys == nil {
+		return false, 0, "no issuer keyset"
+	}
+	issuedEpoch, inWindow := keys.VerifyInWindow(current, token)
+	if !inWindow {
+		return false, 0, "token expired or not issued"
 	}
 	if string(token.Serial) != string(r.Serial) {
-		return false, "receipt serial does not match token"
+		return false, issuedEpoch, "receipt serial does not match token"
 	}
 	if b.spent[string(r.Serial)] {
-		return false, "double-spend: serial already redeemed"
+		return false, issuedEpoch, "double-spend: serial already redeemed"
 	}
 	if len(r.Fetcher) != ed25519.PublicKeySize || !ed25519.Verify(r.Fetcher, r.receiptMsg(), r.Sig) {
-		return false, "fetcher signature invalid"
+		return false, issuedEpoch, "fetcher signature invalid"
 	}
 	// The token is now consumed — crypto, issuance, and delivery all verified — so
 	// mark the serial spent BEFORE the bonded-fetcher gate. A receipt rejected only
@@ -233,7 +251,7 @@ func (b *Bank) Redeem(issuerPub *rsa.PublicKey, token Token, r DeliveryReceipt) 
 	if b.bonded != nil {
 		slot, ok := b.bonded(r.Fetcher)
 		if !ok {
-			return false, "fetcher not bond-distinct (bonded-fetcher credential required)"
+			return false, issuedEpoch, "fetcher not bond-distinct (bonded-fetcher credential required)"
 		}
 		seen := b.credited[r.Object]
 		if seen == nil {
@@ -241,12 +259,12 @@ func (b *Bank) Redeem(issuerPub *rsa.PublicKey, token Token, r DeliveryReceipt) 
 			b.credited[r.Object] = seen
 		}
 		if seen[slot] {
-			return false, "demand already counted for this bonded fetcher on this object"
+			return false, issuedEpoch, "demand already counted for this bonded fetcher on this object"
 		}
 		seen[slot] = true
 	}
 	b.demand[r.Object]++
-	return true, ""
+	return true, issuedEpoch, ""
 }
 
 // Demand is the witnessed-delivery count banked for object — an observable, never

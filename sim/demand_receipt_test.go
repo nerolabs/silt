@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/nerolabs/silt/adapters/simnet"
+	"github.com/nerolabs/silt/core/chain"
 	"github.com/nerolabs/silt/core/demand"
 	"github.com/nerolabs/silt/core/node"
 	"github.com/nerolabs/silt/ports"
@@ -21,7 +22,9 @@ import (
 func TestDemandReceiptFlowBanksWitnessedDemand(t *testing.T) {
 	const seed = 20260809
 	cl := NewCluster(seed, 8, simnet.DefaultConfig(), node.DefaultConfig())
-	issuer, server, fetcher := cl.Nodes[0], cl.Nodes[1], cl.Nodes[2]
+	server, fetcher := cl.Nodes[1], cl.Nodes[2]
+	// R0.4b: the issuer's NodeID must be its committed identity (the production shape).
+	issuer, issuerSigner := identityNode(cl, 2026090202)
 
 	// The issuer blind-signs retrieval tokens (no ledger → free withdrawal; the
 	// fee-burn cost-to-wash knob is D-DEMAND P3).
@@ -31,22 +34,25 @@ func TestDemandReceiptFlowBanksWitnessedDemand(t *testing.T) {
 	}
 	issuer.EnableTokenIssuer(issuerKey)
 
-	// The server banks receipts (trusting the issuer's key) and the fetcher signs them.
-	server.EnableDemandBank(&issuerKey.PublicKey)
+	// The server banks receipts against the issuer's COMMITTED per-epoch key, and the
+	// fetcher signs them.
 	_, fetcherSigner, _ := ed25519.GenerateKey(rand.Reader)
 	fetcher.SetSigner(fetcherSigner)
+	sc := chain.New(chain.Config{Quorum: 1}, func(ports.NodeID) int64 { return 1 << 30 })
+	if gerr := sc.AppendGenesis(issuerKeyGenesis(t, issuerSigner, issuerKey)); gerr != nil {
+		t.Fatalf("issuer-key genesis: %v", gerr)
+	}
+	wireDemandLane(t, cl, issuer, server, issuerSigner, issuerKey, sc, issuerSigner, demandFetcher{fetcher, fetcherSigner})
 
 	// The object the fetcher "received" from the server.
 	data := make([]byte, 32<<10)
 	cl.rng.Read(data)
 	object := ports.HashBytes(data)
 
-	// Fetcher learns the issuer key, then withdraws a blind retrieval token.
-	fetcher.FetchIssuerKey(issuer.ID(), func(error) {})
-	cl.Sched.Run()
+	// Fetcher withdraws a blind retrieval token on the R0.4b demand lane.
 	var tok demand.Token
 	var gotTok bool
-	fetcher.AcquireDemandToken(rand.Reader, issuer.ID(), func(tk demand.Token, err error) {
+	fetcher.AcquireDemandTokenInWindow(rand.Reader, issuer.ID(), func(tk demand.Token, _ uint64, err error) {
 		if err != nil {
 			t.Fatalf("acquire demand token: %v", err)
 		}

@@ -27,6 +27,7 @@ import (
 	"github.com/nerolabs/silt/adapters/memstore"
 	"github.com/nerolabs/silt/adapters/simclock"
 	"github.com/nerolabs/silt/adapters/simnet"
+	"github.com/nerolabs/silt/core/chain"
 	"github.com/nerolabs/silt/core/credit"
 	"github.com/nerolabs/silt/core/demand"
 	"github.com/nerolabs/silt/ports"
@@ -63,8 +64,32 @@ func TestR05NodePathConservation(t *testing.T) {
 
 	ledger := credit.New(fee, 0 /*grant=0: no auto-credits on registration*/)
 	nd.SetLedger(ledger)
-	nd.EnableDemandBank(issuerPub)
 	nd.SetSigner(serverIdent.Signer())
+
+	// R0.4b: the bank verifies against a per-epoch keyset whose key_E was resolved
+	// against the CONSENSUS-ATTESTED binding, so this fixture must commit the binding
+	// before the receipt can be banked at all. The node issues to itself (the
+	// bilateral shape the daemon runs), so the issuer identity is serverID. Epochs
+	// are off, so the consensus epoch is 0 throughout.
+	c := chain.New(chain.Config{Quorum: 1}, func(ports.NodeID) int64 { return 1 << 30 })
+	g := chain.Block{
+		Version: chain.BlockVersionWitnessable,
+		Height:  0,
+		Entries: []ports.Entry{{Root: ports.HashBytes([]byte("r05-genesis-entry"))}},
+		IssuerKeys: []chain.IssuerKeyReg{
+			chain.SignIssuerKeyReg(serverIdent.Signer(), 0, demand.KeyFingerprint(issuerPub)),
+		},
+	}
+	chain.Sign(&g, serverIdent.Signer())
+	if gerr := c.AppendGenesis(g); gerr != nil {
+		t.Fatalf("genesis committing the issuer-key binding: %v", gerr)
+	}
+	nd.EnableChain(c, serverIdent.Signer())
+	nd.SetDemandIssuerKey(0, issuerPriv)
+	nd.EnableDemandBank(serverID)
+	if ks := nd.DemandIssuerKeyset(serverID); ks == nil || ks.Key(0) == nil {
+		t.Fatal("setup: the committed issuer key was not pinned - the bank would reject every receipt")
+	}
 
 	fetcherIdent := identity.FromSeed(8002)
 	fetcherID := fetcherIdent.NodeID()
@@ -116,7 +141,7 @@ func TestR05NodePathConservation(t *testing.T) {
 	// Rebuild with grant=fee so every new account starts with one fee's worth.
 	ledger = credit.New(fee, fee)
 	nd.SetLedger(ledger)
-	nd.EnableDemandBank(issuerPub)
+	nd.EnableDemandBank(serverID)
 
 	// Pre-register server and fetcher (grant each fee credits).
 	ledger.Register(serverID)

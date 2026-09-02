@@ -249,7 +249,51 @@ func v5EmittableLeafTags(t *testing.T) map[string]struct{} {
 	for _, lf := range c.stateRootLeavesV5() {
 		tags[tagOfKey(string(lf.Key))] = struct{}{}
 	}
+	for tag := range leafDiffOutOfScopeTags {
+		delete(tags, tag)
+	}
 	return tags
+}
+
+// leafDiffOutOfScopeTags names committed-leaf tags the diff-minus-fold guard CANNOT
+// exercise, because the O(payload) recompute does not reproduce the block class that
+// writes them and STALLS on it instead. A scenario for such a tag could not be added
+// to generateLeafDiffScenarios at all: that guard requires the recompute to AGREE,
+// and a stalling recompute never agrees.
+//
+// This is NOT the coverage debt the meta-assertion exists to catch. A dropped
+// emission of one of these tags cannot become a silent wrong-Accept, because the box
+// refuses the whole block. The exclusion is EARNED, not asserted:
+// TestLeafDiffOutOfScopeTagsActuallyStall drives a block writing each excluded tag
+// through the real scope gate and requires a stall — so if a future increment brings
+// the class in scope, that test reddens and forces the tag out of this set and into a
+// real scenario.
+var leafDiffOutOfScopeTags = map[string]string{
+	"issuerKeyCommit": "R0.4b per-epoch demand-issuer key binding. Written only by a block " +
+		"carrying IssuerKeys, a transition class the O(payload) recompute does not reproduce; " +
+		"stateRootScopeGate stalls on it (ErrRecomputeStateRootScopeStall). The keyspace is INERT " +
+		"to consensus — no validity predicate, quorum, fork-choice rule, or recompute reads it — " +
+		"so there is no fold for a diff to be compared against.",
+}
+
+// TestLeafDiffOutOfScopeTagsActuallyStall earns every leafDiffOutOfScopeTags entry:
+// the block class that writes the tag must make the real scope gate STALL. Without
+// this the exclusion list would be an unchecked escape hatch — exactly the blind spot
+// the coverage meta-assertion exists to close.
+func TestLeafDiffOutOfScopeTagsActuallyStall(t *testing.T) {
+	if _, ok := leafDiffOutOfScopeTags["issuerKeyCommit"]; ok {
+		f := buildStateRootFixture(t)
+		b := f.nextERBlock()
+		b.IssuerKeys = []IssuerKeyReg{
+			SignIssuerKeyReg(key(91100), f.c.blockEpoch(b.Height), ports.Hash{0x77}),
+		}
+		err := f.c.stateRootScopeGate(f.prevRoot, b, f.witnessForBlock(t, b))
+		if !errors.Is(err, ErrRecomputeStateRootScopeStall) {
+			t.Fatalf("a block carrying IssuerKeys did NOT stall the scope gate (err=%v). "+
+				"The class is in scope now, so issuerKeyCommit must LEAVE leafDiffOutOfScopeTags "+
+				"and gain a real generateLeafDiffScenarios scenario.", err)
+		}
+	}
 }
 
 // TestLeafDiffGuardCompleteness is the permanent emission-keyed guard: for every generated block, the

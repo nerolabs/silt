@@ -211,7 +211,14 @@ type CreditLedger interface {
 	// provisional serve self-credit and pays the server the conserved credit
 	// (the fetcher's withdrawal fee, less the durability skim). Returns the
 	// credits paid. Balance economy only — never standing.
-	RedeemDeliveryCredit(server, fetcher NodeID, root Hash) int64
+	//
+	// serial is the redeemed receipt's token serial; it gates the cross-server
+	// double-redeem so one token funds exactly one conserved payout (K colluding
+	// servers sharing one token cannot mint (K−1)·fee). issuedEpoch is the epoch
+	// whose issuer key signed that token and currentEpoch is the consensus epoch at
+	// the head: together they let the guard set evict BY EXPIRY, so a forgotten
+	// serial is always one no in-window issuer key can still validate (R0.4b).
+	RedeemDeliveryCredit(server, fetcher NodeID, root Hash, serial []byte, issuedEpoch, currentEpoch uint64) int64
 	// RedeemRelayCredit settles a PayWord relay chain at session close (PoD §7.3):
 	// it transfers chainValue from the fetcher's already-paid blind credit into the
 	// relay operator's balance, capped at budget (the committed chain budget, itself

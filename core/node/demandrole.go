@@ -101,12 +101,19 @@ func (n *Node) AcquireDemandTokenWithCredit(rng io.Reader, issuer ports.NodeID, 
 }
 
 // EnableDemandBank makes this node BANK delivery receipts: on a MsgDeliveryReceipt
-// it verifies the receipt against issuerPub (the retrieval-token issuer it trusts)
-// and, if valid + first-seen + a correct delivery to THIS server, credits the
-// object's witnessed-demand counter. Demand is a neutral observable — never standing.
-func (n *Node) EnableDemandBank(issuerPub *rsa.PublicKey) {
+// it verifies the receipt against the per-epoch key WINDOW of the retrieval-token
+// issuer it trusts and, if valid + IN-WINDOW + first-seen + a correct delivery to
+// THIS server, credits the object's witnessed-demand counter. Demand is a neutral
+// observable — never standing.
+//
+// R0.4b: issuer is a NodeID, not an RSA key. The bank verifies against
+// {key_E : current−W <= E <= current}, and a key enters that window ONLY after its
+// fingerprint matched the consensus-attested commitment (pinDemandIssuerKey). Taking
+// a raw key here would be exactly the architecture the R0.4b certification refuses:
+// a redeemer with nothing consensus-attested to resolve key_E against.
+func (n *Node) EnableDemandBank(issuer ports.NodeID) {
 	n.demandBank = demand.NewBank()
-	n.demandIssuer = issuerPub
+	n.demandIssuer = issuer
 }
 
 // RequireBondedFetchers turns on the P3b bonded-fetcher credential for this node's
@@ -174,7 +181,15 @@ func (n *Node) SubmitDeliveryReceipt(server ports.NodeID, token demand.Token, ob
 // as the delivering server, so a receipt for another server can't be redirected here.
 func (n *Node) handleDeliveryReceipt(from ports.NodeID, msg ports.Message) {
 	deny := func() { n.reply(from, msg, ports.Message{Kind: ports.MsgDeliveryReceiptAck, OK: false}) }
-	if n.demandBank == nil || n.demandIssuer == nil {
+	if n.demandBank == nil {
+		deny()
+		return
+	}
+	// R0.4b: the keyset is the validity window. Pruned to [current−W, current] on
+	// read, so a token whose issuing epoch has left the window has NO key that
+	// verifies it and is rejected before any credit path.
+	keys := n.DemandIssuerKeyset(n.demandIssuer)
+	if keys == nil {
 		deny()
 		return
 	}
@@ -187,7 +202,8 @@ func (n *Node) handleDeliveryReceipt(from ports.NodeID, msg ports.Message) {
 		deny() // a receipt must name this server; don't bank one addressed elsewhere
 		return
 	}
-	credited, reason := n.demandBank.Redeem(n.demandIssuer, sub.Token, sub.Receipt)
+	current := n.chainEpoch()
+	credited, issuedEpoch, reason := n.demandBank.Redeem(keys, current, sub.Token, sub.Receipt)
 	if credited {
 		// The PoD neutral lane (docs/design/pod.md §3, certified): a banked
 		// receipt settles the conserved delivery credit — the fetcher's
@@ -198,7 +214,12 @@ func (n *Node) handleDeliveryReceipt(from ports.NodeID, msg ports.Message) {
 		// lane it supersedes.
 		var paid int64
 		if n.ledger != nil {
-			paid = n.ledger.RedeemDeliveryCredit(n.id, ports.HashBytes(sub.Receipt.Fetcher), sub.Receipt.Object)
+			// The serial gates the cross-server double-redeem (one token funds ONE
+			// conserved payout); the issuing epoch is what lets the guard set evict
+			// BY EXPIRY, so an evicted serial is always an un-redeemable one (R0.4b-3,
+			// the certification's coupling condition).
+			paid = n.ledger.RedeemDeliveryCredit(n.id, ports.HashBytes(sub.Receipt.Fetcher),
+				sub.Receipt.Object, sub.Receipt.Serial, issuedEpoch, current)
 		}
 		n.logf(ports.LogInfo, "delivery receipt banked", "object", sub.Receipt.Object,
 			"demand", n.demandBank.Demand(sub.Receipt.Object), "credit", paid)

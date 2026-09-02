@@ -409,6 +409,16 @@ func (c *Chain) stateRootScopeGate(prevStateRoot ports.Hash, b Block, w StateRoo
 	// reconstruct from the qualified digest — rotateOps stalls at that one boundary. Both are stalls in
 	// the class dispatch, not here (they need the witness/block, not just the scope predicate).
 	//
+	// R0.4b (issuer-key registrations): a block carrying IssuerKeys writes the
+	// issuerKeyCommit keyspace, which this box does not reproduce. The fold would then
+	// compute a post-root missing those leaves and land on ErrRecomputeStateRootMismatch
+	// — a stall either way, but one that reads as "forged root". Stall EXPLICITLY so the
+	// out-of-scope class is named rather than mis-attributed. The box never-Accepts.
+	if len(b.IssuerKeys) > 0 {
+		return fmt.Errorf("%w: block carries %d demand-issuer key registration(s) (R0.4b, issuerKeyCommit)",
+			ErrRecomputeStateRootScopeStall, len(b.IssuerKeys))
+	}
+
 	// Class T (TTL sweep, P1-c): an expiry fires at b.Height iff dueBucket[uint64BE(h)] is occupied
 	// (chain.go:3274). The box distinguishes the two cases from the dueBucket witness against
 	// prevStateRoot:

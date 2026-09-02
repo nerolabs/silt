@@ -253,7 +253,7 @@ func runCompactionFuzz(t *testing.T, seed int64, ops, poolSize int) {
 					t.Fatalf("seed=%#x step=%d: ChargePublish: %v", seed, step, err)
 				}
 				expectedTotal -= fee
-				_ = l.RedeemDeliveryCredit(server, ln.req, ln.obj)
+				_ = l.RedeemDeliveryCredit(server, ln.req, ln.obj, nil, 0, 0)
 				expectedTotal += int64(fee) - (em.net + em.skim)
 				delete(liveMints, idx)
 			}

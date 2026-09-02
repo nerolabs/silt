@@ -37,7 +37,7 @@ func TestProvOrderStaysBoundedAcrossRedeems(t *testing.T) {
 		req := ports.NodeID(ports.HashBytes([]byte{'u', byte(i), byte(i >> 8), byte(i >> 16), byte(i >> 24)}))
 		obj := ports.HashBytes([]byte{'v', byte(i), byte(i >> 8), byte(i >> 16), byte(i >> 24)})
 		l.RecordServeToObject(node, req, obj, id(9), 8)
-		l.RedeemDeliveryCredit(node, req, obj)
+		l.RedeemDeliveryCredit(node, req, obj, nil, 0, 0)
 	}
 
 	// The map is bounded (all redeemed → ~0). The order slice MUST be bounded too.
@@ -78,7 +78,7 @@ func TestRedeemDoesNotLeaveDuplicateOrderEntry(t *testing.T) {
 
 	const bytes = 1 << 12
 	l.RecordServeToObject(node, req, obj, id(9), bytes) // lane + order entry #1
-	l.RedeemDeliveryCredit(node, req, obj)              // deletes map entry; MUST also drop order entry
+	l.RedeemDeliveryCredit(node, req, obj, nil, 0, 0)   // deletes map entry; MUST also drop order entry
 	if count() != 0 {
 		t.Fatalf("after redeem, key still in provOrder %d time(s) — the redeem left a stale FIFO entry", count())
 	}

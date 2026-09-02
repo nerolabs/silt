@@ -1726,6 +1726,7 @@ func TestSnapshotBootMatchesReplayBoot(t *testing.T) {
 	// reject the forged block — the equivalence this half asserts.
 	qualifiedC := v5RootWorld(t)
 	dueBucketC := v5RootWorld(t)
+	issuerKeyC := v5RootWorld(t)
 
 	check := func(replayed *Chain, ps []probe) {
 		snap := snapshotBoot(replayed)
@@ -1760,6 +1761,7 @@ func TestSnapshotBootMatchesReplayBoot(t *testing.T) {
 	check(restoreC, []probe{restoreOwnerProbe(restoreC)})
 	check(qualifiedC, []probe{qualifiedRootProbe(t, qualifiedC)})
 	check(dueBucketC, []probe{dueBucketRootProbe(t, dueBucketC)})
+	check(issuerKeyC, []probe{issuerKeyRootProbe(t, issuerKeyC)})
 }
 
 // ---------------------------------------------------------------------------
@@ -1819,6 +1821,16 @@ func v5RootWorld(t *testing.T) *Chain {
 	}
 	if len(c.dueBucket) == 0 {
 		t.Fatalf("v5RootWorld: want dueBucket populated (TTL on), got empty — the field the probe ablates")
+	}
+	// R0.4b: populate the per-epoch issuer-key binding so its leaves move the v5
+	// root and issuerKeyRootProbe is not vacuous. Set DIRECTLY rather than via a
+	// registration block: this world runs epochless (EpochBlocks == 0, so every
+	// height is epoch 0) and its genesis is v1, while a registration is v5-only. The
+	// probe asks whether the committed ROOT depends on this field, not how the field
+	// was written — the write path (signature, era gate, backdating, first-write-wins,
+	// pruning) is driven separately in issuerkey_test.go.
+	c.issuerKeyCommit = map[uint64]map[ports.NodeID]ports.Hash{
+		0: {ports.HashBytes([]byte("v5RootWorld-issuer")): ports.Hash{0x5A}},
 	}
 	return c
 }
@@ -1894,6 +1906,27 @@ func dueBucketRootProbe(t *testing.T, c *Chain) probe {
 			"(ErrEra3StateRootMismatch); a snapshot that lost dueBucket recomputes the same " +
 			"field-less root and wrongly ACCEPTS the TTL-completeness violation",
 		detect: []string{"dueBucket"},
+		ask:    func(c *Chain) string { return verdict(c.validateEra3Roots(forged)) },
+	}
+}
+
+// issuerKeyRootProbe is the sibling for `issuerKeyCommit` (R0.4b): the forged v5
+// block's StateRoot omits the per-epoch issuer-key binding leaves. A full snapshot
+// recomputes WITH them -> mismatch -> reject; a snapshot that lost the binding
+// recomputes the field-less root and ACCEPTS it.
+//
+// That accept is the real hazard, not a bookkeeping one. The binding is what a
+// redeemer resolves key_E against; a replica whose committed root does not cover it
+// cannot detect a validator having committed a DIFFERENT key_E, which is exactly the
+// targeted-key fingerprinting channel the binding exists to close.
+func issuerKeyRootProbe(t *testing.T, c *Chain) probe {
+	forged := forgedV5Block(t, c, "issuerKeyCommit")
+	return probe{
+		name: "a v5 block whose committed StateRoot omits the issuerKeyCommit leaves must be " +
+			"REJECTED (ErrEra3StateRootMismatch); a snapshot that lost issuerKeyCommit " +
+			"recomputes the same field-less root and wrongly ACCEPTS it, losing the " +
+			"anti-fingerprinting E->key_E binding",
+		detect: []string{"issuerKeyCommit"},
 		ask:    func(c *Chain) string { return verdict(c.validateEra3Roots(forged)) },
 	}
 }
@@ -2042,6 +2075,7 @@ func buildLeaveOneOutWorlds(t *testing.T) []worldGroup {
 	// disjoint under snapshotBoot deep-copy.
 	qualifiedC := v5RootWorld(t)
 	dueBucketC := v5RootWorld(t)
+	issuerKeyC := v5RootWorld(t)
 
 	return []worldGroup{
 		{"launch", func(*testing.T) *Chain { return replayed }, probes(revokedRoot, keys, prev)},
@@ -2062,6 +2096,7 @@ func buildLeaveOneOutWorlds(t *testing.T) []worldGroup {
 		{"restore-owner", func(*testing.T) *Chain { return restoreC }, []probe{restoreOwnerProbe(restoreC)}},
 		{"v5-qualified-root", func(*testing.T) *Chain { return qualifiedC }, []probe{qualifiedRootProbe(t, qualifiedC)}},
 		{"v5-duebucket-root", func(*testing.T) *Chain { return dueBucketC }, []probe{dueBucketRootProbe(t, dueBucketC)}},
+		{"v5-issuerkey-root", func(*testing.T) *Chain { return issuerKeyC }, []probe{issuerKeyRootProbe(t, issuerKeyC)}},
 	}
 }
 
