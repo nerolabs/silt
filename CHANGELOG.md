@@ -55,7 +55,14 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `ErrRecomputeMemberStateUnproven` under streaming), a streamed==resident==full-node equivalence
   suite, and a box-side re-measurement of resident-vs-streaming witness + fold time at
   N∈{1e4,1e5,5e5,1e6} that derives the pony fold ceiling (the M_seen cap value; the remaining ceiling
-  is TIME, the O(N·log N) compute floor streaming does not remove, not RSS)
+  is TIME, the O(N·log N) compute floor streaming does not remove, not RSS). The three
+  `TestMeasureRecomputeMatureNow*` measurement tests are pure reporting — they carry no
+  `t.Error`/`t.Fatal` — and now skip in their ENTIRETY under `-short` rather than skipping only
+  their largest rung, which is what CI's `go test -short` and `go test -race -short` lanes run:
+  measured `-race -short` cost for the group falls 63.2 s → 1.7 s. The property gates
+  (`..._Structural`, N=200 and N=2000, including the O(depth) streaming-witness accounting
+  assertion) and all five streaming soundness ablations stay ALWAYS-ON — 0.34 s and 0.25 s
+  respectively — so no assertion is gated behind `-short`
   (`core/chain/floorbox_recompute_maturity_v5.go`,
   `core/chain/floorbox_recompute_maturity_streaming_v5_test.go`,
   `core/chain/floorbox_recompute_maturity_fold_cost_test.go`,

@@ -86,14 +86,18 @@ type foldCostRow struct {
 // N=1M runs unless -short is set. All three sizes run by default because the slope from
 // 10k to 1M is the key output.
 func TestMeasureRecomputeMatureNowFoldCost(t *testing.T) {
+	// Pure MEASUREMENT: this test asserts nothing, it prints the fold-cost table.
+	// Every property gate lives in TestMeasureRecomputeMatureNowFoldCost_Structural,
+	// which stays always-on. Skipping the whole test under -short (rather than only its
+	// largest rung) is what keeps the default CI lanes fast: `go test -race -short` paid
+	// 34.4 s here for the N=10k/100k rungs alone, for output no gate reads.
+	if testing.Short() {
+		t.Skip("fold-cost measurement skipped under -short; run without -short to regenerate the table")
+	}
 	sizes := []int{10_000, 100_000, 1_000_000}
 
 	rows := make([]foldCostRow, 0, len(sizes))
 	for _, N := range sizes {
-		if N == 1_000_000 && testing.Short() {
-			t.Logf("N=1M skipped under -short")
-			continue
-		}
 		t.Logf("--- measuring N=%d ---", N)
 		r := measureFoldCost(t, N)
 		rows = append(rows, r)
@@ -520,14 +524,17 @@ type streamCostRow struct {
 //
 //	go test ./core/chain/ -run TestMeasureRecomputeMatureNowStreamingWin -v -count=1 -timeout=1800s
 func TestMeasureRecomputeMatureNowStreamingWin(t *testing.T) {
+	// Pure MEASUREMENT, same contract as TestMeasureRecomputeMatureNowFoldCost: no
+	// assertions here. The O(depth) streaming-witness accounting gate is
+	// TestMeasureRecomputeMatureNowStreamingWin_Structural, always-on at N=2000.
+	// `go test -race -short` paid 26.9 s here for the N=10k/100k rungs alone.
+	if testing.Short() {
+		t.Skip("streaming-win measurement skipped under -short; run without -short to regenerate the table")
+	}
 	sizes := []int{10_000, 100_000, 500_000, 1_000_000}
 
 	rows := make([]streamCostRow, 0, len(sizes))
 	for _, N := range sizes {
-		if N >= 500_000 && testing.Short() {
-			t.Logf("N=%d skipped under -short", N)
-			continue
-		}
 		t.Logf("--- streaming-win measure N=%d ---", N)
 		rows = append(rows, measureStreamingWin(t, N))
 	}
