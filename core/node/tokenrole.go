@@ -25,6 +25,20 @@ var (
 	errNoIssuerKey  = errors.New("node: peer has no issuer key")
 
 	errNoCanonicalIssuers = errors.New("node: peer served no canonical issuer set (no chain)")
+
+	// errNoTokenIssuer refuses a CREDIT-BEARING request on a node that runs no
+	// publish issuer. There is no key to verify the credit against, so the credit
+	// cannot be honoured — fail closed. Before this guard the verify call
+	// dereferenced a nil issuer ((*blindtoken.Issuer).Public reads i.key
+	// unconditionally), so one crafted credit-bearing request from any peer
+	// crashed the node. Reachable on the demand lane, where the handler gates on
+	// the DEMAND issuer for the epoch and not on the publish issuer.
+	errNoTokenIssuer = errors.New("node: no publish token issuer — cannot verify an attached credit")
+
+	// errCreditRefused means a credit was presented but does not verify, or is
+	// already spent. The requester meant to spend a credit; do not silently
+	// charge the durable identity instead.
+	errCreditRefused = errors.New("node: attached publish credit is invalid or already spent")
 )
 
 // EnableTokenIssuer makes this validator blind-sign publish-token requests
@@ -114,9 +128,9 @@ func (n *Node) answerTokenRequest(from ports.NodeID, msg ports.Message) ports.Me
 		reply.OK = true
 		return reply // a retry of an issuance already settled: same sig, no new charge
 	}
-	charge := n.tokenChargeFor(from, msg.Credit)
-	if charge == nil {
-		return reply // a credit was presented but is invalid or already spent
+	charge, err := n.tokenChargeFor(from, msg.Credit)
+	if err != nil {
+		return reply // no issuer to verify against, or the credit is invalid/spent
 	}
 	blindSig, err := n.tokenIssuer.Issue(charge, msg.Data)
 	if err != nil {
@@ -135,8 +149,8 @@ func (n *Node) answerTokenRequest(from ports.NodeID, msg ports.Message) ports.Me
 	return reply
 }
 
-// tokenChargeFor returns the settlement closure for a token request, or nil if
-// the request must be refused. The fee-decoupling is purely ADDITIVE (M0 privacy
+// tokenChargeFor returns the settlement closure for a token request, or a typed
+// refusal error if the request must not be served. The fee-decoupling is purely ADDITIVE (M0 privacy
 // D3 / F4): if the request carries a valid, unspent prepaid credit, that credit
 // is SPENT and the requester's durable identity is NOT charged — severing the
 // per-publish fee link. With no credit attached the legacy path charges the
@@ -144,27 +158,30 @@ func (n *Node) answerTokenRequest(from ports.NodeID, msg ports.Message) ports.Me
 // present but invalid or already spent is refused (nil) rather than silently
 // charged — the requester meant to spend a credit. Domain separation
 // (VerifyCredit) means a credit can never double as a publish token.
-func (n *Node) tokenChargeFor(from ports.NodeID, credit *ports.PublishCredit) func() error {
+func (n *Node) tokenChargeFor(from ports.NodeID, credit *ports.PublishCredit) (func() error, error) {
 	if credit == nil {
 		return func() error {
 			if n.ledger != nil {
 				return n.ledger.ChargePublish(from) // legacy: charges the durable identity
 			}
 			return nil
-		}
+		}, nil
+	}
+	if n.tokenIssuer == nil {
+		return nil, errNoTokenIssuer // no key to verify the credit against — fail closed
 	}
 	if len(credit.Serial) == 0 || !blindtoken.VerifyCredit(n.tokenIssuer.Public(), credit.Serial, credit.Sig) {
-		return nil // a credit was presented but does not verify
+		return nil, errCreditRefused // a credit was presented but does not verify
 	}
 	key := string(credit.Serial)
 	if n.creditSpent[key] {
-		return nil // double-spend
+		return nil, errCreditRefused // double-spend
 	}
 	return func() error {
 		// Spend on settlement so a signing failure does not burn the credit.
 		n.creditSpent[key] = true
 		return nil
-	}
+	}, nil
 }
 
 // AcquireCredits mints `count` prepaid publish credits from issuer `v` (a normal,

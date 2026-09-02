@@ -64,6 +64,60 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   paid-serial set, so the cross-owner variant remains the standing Douceur / demand-authenticity limit,
   neutralized today only by the γ→1/N firewall. Automatic per-epoch keygen scheduling (cert residual
   R5) and the W-value measurement (R0.4b-2, the Tester's sim) are NOT in this change.
+- **R0.4b fix-up — the two build-verification merge conditions, plus the epoch-skew close
+  (D-DEMAND; mechanism-neutral, no consensus rule changed):** the build-verification research
+  certification (2026-09-02) CERTIFIED the composed mechanism and GATED the artifact on two
+  proposer/handler-local defects. Both are closed here, with the residual the same verification
+  named.
+  - **C1 — remote nil-receiver panic.** `answerDemandTokenRequest` gates on the DEMAND issuer for the
+    current epoch, not on the PUBLISH issuer, and routes an attached prepaid credit to
+    `tokenChargeFor`, which verified it against `n.tokenIssuer.Public()`.
+    `(*blindtoken.Issuer).Public` dereferences `i.key` unconditionally, so ONE crafted
+    `MsgDemandTokenRequest` crashed any node running the demand lane without a publish issuer.
+    `tokenChargeFor` now returns a typed refusal (`errNoTokenIssuer` / `errCreditRefused`) instead of
+    dereferencing: a credit cannot be honoured when there is no key to verify it against. The
+    credit-FREE path is untouched, so such a node still serves ordinary withdrawals.
+  - **C2 — proposer self-wedge on a current-era network.** `validateIssuerKeys` reads the bond ledger
+    PRE-apply, while `proposeBlock` folded the proposer's own first `BondReg` AND every staged
+    `pendingIssuerKeys` entry into the SAME block — so the local pre-check failed with
+    `ErrIssuerKeyUnbonded`, and because a staged registration rides and stays queued, every later
+    proposal failed identically. A fresh `-accept-delivery-receipts` validator could never propose
+    again. Closed as proposer POLICY (`chain.IssuerKeyRegAdmissible`, mirroring the validity clause
+    beside it): defer a registration whose issuer is not bonded in the pre-state. No validity rule
+    changes, so an attester still ACCEPTS a block carrying a deferred registration and a mixed swarm
+    cannot fork on it — the same shape as the `IsSlashed` filter on pending bond regs (#503 Q1(a)).
+  - **R0.4b-5 — shared-ledger epoch skew.** The sweep and the admission check ran against the
+    CALLER's `currentEpoch`, so two redeemers sharing one ledger whose heads straddle a boundary
+    could re-pay one token: A at current 10 sweeps a serial issued at epoch 5; B, still at current 9,
+    holds `key_5` and its own demand layer accepts. The ledger now keeps a monotone
+    `epochWatermark` — the highest epoch any redeemer has presented — and both the sweep and a new
+    backdate refusal run against it. Purely subtractive: the worst case is an under-pay during a
+    skew, never an over-pay and never a mint.
+  Gates, each RED before and GREEN after:
+  `TestDemandTokenRequestWithCreditAndNoPublishIssuerRefuses` (drives the crafted message over the
+  handler AND the wire dispatch; RED = SIGSEGV at `core/blindtoken/issuer.go:58`) and
+  `TestTokenChargeForRefusalsAreTyped`; `TestIssuerKeyRegDoesNotWedgeTheProposer` (a fresh validator
+  on an already-current-era network proposes, then lands its registration within a bounded number of
+  blocks; RED = `ErrIssuerKeyUnbonded` on every proposal) and
+  `TestIssuerKeyRegAdmissibleMirrorsTheValidityClause`; `TestEpochWatermark_LaggardRedeemerCannotRePay`
+  (carrying its own no-skew control, so the refusal is measured against the mint it replaced),
+  `_IsMonotone` and `_UnguardedRedeemIsUnaffected`.
+  **R0.4b-8, the composed boundary, is also closed here.** The per-layer triple never crossed the
+  expiry boundary (both eviction gates run at epoch 0 and pass because the CAP refuses) and every
+  node/sim fixture ran at `EpochBlocks = 0`, where the consensus epoch is 0 forever.
+  `TestComposedExpiryBoundary_EvictedSerialIsRefusedUpstream` is the first node-layer fixture with a
+  REAL epoch clock: two servers on one ledger and one chain, a receipt paid at epoch E, the chain
+  advanced past E+W, and the same token refused upstream at the demand window on a second server
+  whose own `spent` set is empty. Ablation: a no-op `Keyset.Prune` plus an unbounded
+  `VerifyInWindow` scan turns it RED on exactly the "server B banked it" line.
+  `TestComposedExpiryBoundary_EvictionIsClosedAtBothLayers` then drives the red-team's eviction pump
+  across the boundary with the window bypassed and shows the credit layer refuses too.
+  **Two ordering facts recorded** because they narrow the exposure the certification reasoned about:
+  `RedeemDeliveryCredit` tests `paidSerial` membership BEFORE `reservePaidSerial` (which is what
+  sweeps), and `reservePaidSerial` returns early while under the cap. So the credit layer forgets a
+  serial only under CAP PRESSURE — eviction is not merely expiry-only, it is expiry-and-cap-gated.
+  `core/node/tokenrole.go`, `core/node/demandkeys.go`, `core/node/chainrole.go`,
+  `core/chain/issuerkey.go`, `core/credit/delivery.go`, `core/credit/credit.go`.
 ### Fixed
 - **Floor-box class-A screen no longer reads LIVE box state — Direction A, an R1.8 flip precondition
   (Boulder 1; recompute-side only, no committed/wire format change, never-Accept unchanged):** the

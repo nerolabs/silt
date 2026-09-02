@@ -154,6 +154,24 @@ type Ledger struct {
 	// firewall is untouched.
 	paidSerial map[string]paidSerialEntry
 
+	// epochWatermark is the HIGHEST consensus epoch any redeemer has presented to
+	// this ledger — R0.4b-5, the shared-ledger epoch-skew close.
+	//
+	// The guard above evicts and admits against the CALLER's epoch. Two redeemers
+	// sharing one ledger whose heads straddle a boundary can therefore re-pay: A at
+	// current = 10 sweeps a serial issued at epoch 5; B, still at current = 9, holds
+	// key_5, accepts the token at its own demand layer, and the ledger — having
+	// forgotten the serial — pays a second time. The ledger is the shared resource,
+	// so the ledger is where the monotone clock belongs: it sweeps and admits against
+	// max(epoch ever seen), never against a laggard's view.
+	//
+	// PURELY SUBTRACTIVE, like the rest of the guard. A monotone watermark can only
+	// widen what is refused, never what is paid, so the worst case is an UNDER-pay of
+	// one server's conserved leg during a skew — never an over-pay and never a mint.
+	// Unreachable in today's production topology (one ledger per node, one head), so
+	// this is a cheap close ahead of any shared-ledger or third-operator settlement.
+	epochWatermark uint64
+
 	// Audit economics: storage that survives a spot-check earns rent;
 	// storage that turns out to be a lie is slashed hard. Balances may
 	// go negative — debt is the scarlet letter. Exported so scenarios

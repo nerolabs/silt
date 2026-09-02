@@ -285,10 +285,25 @@ func (l *Ledger) RedeemDeliveryCredit(server, fetcher ports.NodeID, root ports.H
 	// unwitnessed test paths that never carried one working while the witnessed path
 	// — the only pump surface — stays fully gated.
 	if len(serial) > 0 {
+		// R0.4b-5: advance the ledger's monotone epoch watermark, then run the whole
+		// guard against IT rather than against this caller's view. On a shared ledger
+		// a laggard redeemer must not be able to un-sweep or re-admit what a further-
+		// ahead redeemer has already retired.
+		if currentEpoch > l.epochWatermark {
+			l.epochWatermark = currentEpoch
+		}
 		if _, paid := l.paidSerial[string(serial)]; paid {
 			return 0 // this serial already funded one conserved payout — mint 0
 		}
-		if !l.reservePaidSerial(currentEpoch) {
+		// Backdated redeem: the issuing epoch has left the window measured at the
+		// watermark, so some redeemer on this ledger is already past it and the
+		// serial may have been swept. Refuse rather than pay a second time. Under-pay
+		// only — an honest in-window redeem is unaffected because the watermark equals
+		// its own current epoch.
+		if issuedEpoch+paidSerialWindow < l.epochWatermark {
+			return 0
+		}
+		if !l.reservePaidSerial(l.epochWatermark) {
 			// The guard set is full of STILL-LIVE (in-window, still-redeemable)
 			// serials. Forgetting one to make room is exactly the refuted FIFO
 			// design — it would re-open the self-financing eviction pump. Refuse to

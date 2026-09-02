@@ -308,9 +308,9 @@ func (n *Node) answerDemandTokenRequest(from ports.NodeID, msg ports.Message) po
 		reply.OK = true
 		return reply // a retry of an issuance already settled: same sig, no new charge
 	}
-	charge := n.tokenChargeFor(from, msg.Credit)
-	if charge == nil {
-		return reply
+	charge, err := n.tokenChargeFor(from, msg.Credit)
+	if err != nil {
+		return reply // no publish issuer to verify an attached credit, or the credit is invalid/spent
 	}
 	blindSig, err := iss.Issue(charge, msg.Data)
 	if err != nil {

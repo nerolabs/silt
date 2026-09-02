@@ -870,6 +870,18 @@ func (n *Node) proposeBlock(b *chain.Block, attesters, broadcast []ports.NodeID,
 			if _, committed := n.chain.IssuerKeyCommitment(r.IssuerID(), r.Epoch); committed {
 				continue // already bound; append-only, never re-submit
 			}
+			// C2, the proposer self-wedge: validateIssuerKeys reads the bond ledger
+			// PRE-apply, so folding a registration into the very block that first
+			// records its issuer's bond fails our own local pre-check below — and the
+			// registration stays queued, so every later proposal fails the same way.
+			// DEFER instead: keep it staged and fold it once the bond is committed.
+			// Proposer POLICY only (IssuerKeyRegAdmissible mirrors the validity clause
+			// but decides nothing) — an attester still accepts a block carrying a reg
+			// we deferred, so a mixed swarm cannot fork on it.
+			if !n.chain.IssuerKeyRegAdmissible(r.IssuerID()) {
+				still = append(still, r)
+				continue
+			}
 			b.IssuerKeys = append(b.IssuerKeys, r)
 			still = append(still, r)
 		}

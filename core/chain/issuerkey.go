@@ -283,6 +283,24 @@ func (c *Chain) IssuerKeyCommitment(issuer ports.NodeID, epoch uint64) (ports.Ha
 	return fp, ok
 }
 
+// IssuerKeyRegAdmissible reports whether a registration by issuer would clear the
+// PRE-APPLY bonded gate of validateIssuerKeys at the current head. It mirrors that
+// clause exactly and lives beside it so the two cannot drift.
+//
+// This exists for the PROPOSER, and it is POLICY, not validity. validateIssuerKeys
+// reads `c.bonded` BEFORE the block applies, so a proposer that folds its own first
+// BondReg and its own staged key registration into the SAME block fails its own local
+// pre-check with ErrIssuerKeyUnbonded — and, because a staged registration rides and
+// stays queued, re-fails on every later proposal. That is a permanent self-wedge for a
+// fresh validator on a current-era objective network. Asking this before folding defers
+// the registration to a block after the bond commits. Nothing about block VALIDITY
+// changes: an attester still accepts a block carrying a registration this proposer
+// chose to defer, so a mixed swarm cannot fork on it. Same shape as the IsSlashed
+// filter on pending bond regs.
+func (c *Chain) IssuerKeyRegAdmissible(issuer ports.NodeID) bool {
+	return c.cfg.MinBond == 0 || c.bonded[issuer] > 0
+}
+
 // cloneIssuerKeyCommit deep-copies the committed binding so a dry-run apply mutates
 // the copy, never the live chain (the #558 drift class).
 func cloneIssuerKeyCommit(m map[uint64]map[ports.NodeID]ports.Hash) map[uint64]map[ports.NodeID]ports.Hash {
