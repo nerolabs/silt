@@ -165,7 +165,7 @@ func (f attFixture) witnessForAtt(t *testing.T, b Block) StateRootWitness {
 		screens[id] = f.attScreen(id)
 		w.AttScreens = append(w.AttScreens, f.attScreen(id))
 	}
-	aWrites, _, err := f.c.stateRootAttWriteSet(f.prevRoot, b, preSeen, screens)
+	aWrites, _, err := f.c.stateRootAttWriteSet(f.prevRoot, b, preSeen, screens, livePreForProbe(f.c))
 	if err != nil {
 		t.Fatalf("stateRootAttWriteSet: %v", err)
 	}
@@ -219,7 +219,7 @@ func TestRecomputeStateRootAttDigestByteExact(t *testing.T) {
 	clone := f.c.cloneForDryRun()
 	clone.apply(b)
 
-	ops, _, err := f.c.attOps(f.prevRoot, b, f.witnessForAtt(t, b))
+	ops, _, err := f.c.attOps(f.prevRoot, b, f.witnessForAtt(t, b), livePreForProbe(f.c))
 	if err != nil {
 		t.Fatalf("attOps: %v", err)
 	}
@@ -290,7 +290,7 @@ func TestRecomputeStateRootAttAblationLegacyMode(t *testing.T) {
 
 	// The legacy assertion lives in stateRootAttWriteSet (reached by the A dispatch). It must stall
 	// with a scope stall — the box refuses to reproduce rep(id) qualification from committed state.
-	_, _, wsErr := c.stateRootAttWriteSet(ports.Hash{}, b, map[ports.NodeID]struct{}{}, map[ports.NodeID]StateRootAttScreen{})
+	_, _, wsErr := c.stateRootAttWriteSet(ports.Hash{}, b, map[ports.NodeID]struct{}{}, map[ports.NodeID]StateRootAttScreen{}, livePreForProbe(c))
 	if !errors.Is(wsErr, ErrRecomputeStateRootScopeStall) {
 		t.Fatalf("ABLATION FAILED: a legacy-mode A screen must stall with a scope stall, got %v", wsErr)
 	}

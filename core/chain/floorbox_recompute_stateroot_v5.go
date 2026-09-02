@@ -88,6 +88,18 @@ var (
 	// witness, or a pre-set id-list that does not reconstruct the committed pre-digest. The box will
 	// not fold an unwitnessed / uncompleteness-anchored digest change; it stalls.
 	ErrRecomputeStateRootDigest = errors.New("chain: floor-box state-root recompute — a class-S touched whole-set digest (slashed/bonded/qualified root) is missing its pre-set witness or its pre-set id-list does not reconstruct the committed pre-digest")
+
+	// ErrRecomputeBoxWiring marks a stall at the BOX ENTRY: the injected bond verifier is not wired,
+	// so objective() / epochsEnabled() are false for a WIRING reason rather than a config one
+	// (R-VERIFYBOND-WIRING, R-FOLD-LIVE-STATE-READS cert 2026-09-02 Q4 row 3).
+	//
+	// This is the #572 replay shape, recorded and fixed once already (PR #582): a chain replayed its
+	// history BEFORE the verifier was wired, so objective() was false during replay, qualification fell
+	// to the legacy rep path over an empty ledger, and the everMature latch never tripped. In the box
+	// the same mis-wiring silently flips the class-A screen branch and the isBoundary scope gate. It is
+	// stall-only either way, but a fold mismatch three classes later is the WRONG place to learn it —
+	// the entry asserts it so the failure is LOUD and names the cause.
+	ErrRecomputeBoxWiring = errors.New("chain: floor-box state-root recompute — the box has no bond verifier wired (SetBondVerifier), so objective()/epochsEnabled() would silently take the legacy branch; the box stalls at the entry rather than screening under the wrong rule (#572 replay shape)")
 )
 
 // StateRootChangedLeafWitness is the pre-state proof for ONE payload-changed leaf, supplied to the
@@ -159,10 +171,14 @@ type StateRootWitness struct {
 	// freezes (rotate-LAST). See floorbox_recompute_stateroot_rotate_v5.go. The everMature latch is NOT
 	// homed here — it is class M (Maturity below), the boundary-independent single owner.
 	Rotate *StateRootRotateWitness
-	// Maturity carries the class-M everMature latch witness: the committed pre-state everMature scalar
-	// proof + the SeenSet maturity witness. Class M is the SINGLE owner of the tagEverMature write; it
-	// fires on ANY block whose maturity latch flips (boundary-independent), and threads the post-latch
-	// everMature into class P for its freeze gate. See floorbox_recompute_stateroot_maturitylatch_v5.go.
+	// Maturity carries the class-M everMature latch witness AND the committed young→mature HANDOFF
+	// pre-state: the everMature + matureEpoch scalar proofs against prevStateRoot, plus the SeenSet
+	// maturity witness. REQUIRED on every block. Class M is the SINGLE owner of the tagEverMature
+	// write; it fires on ANY block whose maturity latch flips (boundary-independent), and threads the
+	// post-latch everMature into class P for its freeze gate. The matureEpoch pre-value is the CLASS-A
+	// screen's branch selector, anchored by handoffPreState before any class dispatches — the box never
+	// reads its own latch fields (R-FOLD-LIVE-STATE-READS cert 2026-09-02). See
+	// floorbox_recompute_stateroot_maturitylatch_v5.go.
 	Maturity *StateRootMaturityWitness
 }
 
@@ -230,6 +246,27 @@ func (c *Chain) assembleStateRootRecomputeOps(
 	b Block,
 	w StateRootWitness,
 ) ([]statehash.FoldOp, error) {
+	// (0) WIRING ASSERTION — LOUD, at the box entry (R-VERIFYBOND-WIRING). objective() and
+	// epochsEnabled() are read as branch predicates by the class-A screen and the isBoundary scope
+	// gate; both depend on the INJECTED verifyBond, not on committed state or genesis cfg. An unwired
+	// box takes the legacy branch everywhere and fails later as an opaque fold mismatch. Assert once,
+	// here, so the #572 replay shape fails at the entry naming its cause.
+	if c.verifyBond == nil {
+		return nil, ErrRecomputeBoxWiring
+	}
+
+	// (0b) HANDOFF PRE-STATE — the DIRECTION-A anchor of the committed everMature / matureEpoch pair
+	// against prevStateRoot, run UNCONDITIONALLY before ANY class dispatches (R-FOLD-LIVE-STATE-READS
+	// cert 2026-09-02, Q3 step 2). Hoisted ahead of class A because the class-A screen's BRANCH
+	// SELECTOR is the pre-state matureEpoch and its anchor-eligibility input is the pre-state handoff;
+	// class M below consumes the already-anchored pre-everMature (one Resolve per scalar, not two).
+	// Unconditional means a block with no atts and no boundary still anchors, so no branch can
+	// suppress the anchor.
+	pre, preErr := c.handoffPreState(prevStateRoot, w)
+	if preErr != nil {
+		return nil, preErr
+	}
+
 	// (1) SCOPE GATE. Stall (never-Accept) on any transition class P1-a does not reproduce. The
 	// payload-visible classes (BondReg / Slash / non-proposer Att) and the epoch boundary are
 	// checked from the block + own cfg; the TTL-expiry class is checked from the O(1) dueBucket
@@ -286,7 +323,7 @@ func (c *Chain) assembleStateRootRecomputeOps(
 	// Class A (attestations → validatorsSeen, P1-e): screen each non-proposer att from own-cfg over
 	// the per-attester witnesses, derive the validatorsSeen ADDs, reconstruct validatorsSeenRoot.
 	if hasNonProposerAtt(b) {
-		aOps, aWrites, aErr := c.attOps(prevStateRoot, b, w)
+		aOps, aWrites, aErr := c.attOps(prevStateRoot, b, w, pre)
 		if aErr != nil {
 			return nil, aErr
 		}
@@ -301,7 +338,7 @@ func (c *Chain) assembleStateRootRecomputeOps(
 	// post value is threaded into class P (below) so P can gate its freeze on it WITHOUT re-emitting
 	// (single owner — no double-emit at a boundary-coincident crossing). See
 	// floorbox_recompute_stateroot_maturitylatch_v5.go.
-	mOps, postEverMature, mErr := c.maturityLatchOps(prevStateRoot, committedStateRoot, w)
+	mOps, postEverMature, mErr := c.maturityLatchOps(committedStateRoot, w, pre)
 	if mErr != nil {
 		return nil, mErr
 	}

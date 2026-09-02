@@ -282,7 +282,7 @@ func TestAdversarialRoot_ClassA_ForgedSlashed_BondedProofCatchesFirst(t *testing
 		EpochSetProof: mustProve(prover, statehash.Key(tagEpochSet, culpritID[:])),
 		BondedProof:   mustProve(prover, statehash.Key(tagBonded, culpritID[:])),
 	}
-	_, qualErr := c.attesterQualifiedFromScreen(prevRoot, forgedScreen)
+	_, qualErr := c.attesterQualifiedFromScreen(prevRoot, forgedScreen, livePreForProbe(c))
 	if qualErr == nil {
 		t.Fatalf("PROBE FAILED: forged screen must stall (at Slashed or BondedPresent check)")
 	}

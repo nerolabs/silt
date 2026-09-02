@@ -8,7 +8,56 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Fixed
+- **Floor-box class-A screen no longer reads LIVE box state — Direction A, an R1.8 flip precondition
+  (Boulder 1; recompute-side only, no committed/wire format change, never-Accept unchanged):** the
+  class-A attestation screen picked its qualification branch from `c.matureEpoch`
+  (`core/chain/floorbox_recompute_stateroot_atts_v5.go`) and its anchor eligibility from
+  `c.launchAnchor` → `c.handedOff()` (`core/chain/chain.go`) — box-own fields written ONLY by
+  `apply→rotateEpoch` and `adopt`. The recompute's deployment target "holds NO registry and replays
+  NO apply()", so on a COLD box those fields are never set and the mature-epoch branch is
+  unreachable: every mature-epoch block was screened under the PRE-maturity rule. Both failure
+  directions were live with every witness proof passing — a mid-epoch joiner (bonded ≥ MinBond, ∉ the
+  frozen `epochSet`, the I3 identity) folded into an attacker's committed root (wrong-accept, and the
+  class-M poisoning entry), and the same attestation inside an HONEST block stalling the box (false
+  stall). The fix Resolves the already-committed `tagMatureEpoch` leaf present against
+  `prevStateRoot`, UNCONDITIONALLY, before the branch — homed on the class-M carrier
+  `StateRootMaturityWitness` (required every block) rather than the boundary-only rotate witness —
+  and evaluates the launch-anchor rule through ONE shared predicate `launchAnchorGiven(id, handedOff)`
+  that the live node and the box both call (the #402 non-fork rule). `apply()`'s attestation loop runs
+  BEFORE `rotateEpoch` (rotate-LAST, #620/PR #703), so the committed PRE-value is exactly the oracle,
+  including on the handoff block itself. Adds the certified `matureEpoch ⇒ everMature` pre-state
+  cross-check and a LOUD entry assertion that the injected bond verifier is wired
+  (`ErrRecomputeBoxWiring`) so the #572 replay shape fails at the box entry, not as a fold mismatch.
+  Stall-adding only; the one-way latch WRITE, the #402 tally arithmetic, and every committed format
+  are untouched. Research cert:
+  `floorbox-R-FOLD-LIVE-STATE-READS-RESEARCH-CERTIFICATION-2026-09-02.md`. Design:
+  [`docs/thinking/2026-09-02-floorbox-fold-live-state-reads-fix-design.md`](docs/thinking/2026-09-02-floorbox-fold-live-state-reads-fix-design.md).
+
 ### Testing
+- **The COLD-BOX tier + the fold-file live-state allowlist pin (Boulder 1, R-COLD-BOX-HARNESS):**
+  every recompute gate ran the recompute ON the chain that applied the history, so the test tier
+  shared the producer's blind spot — third occurrence in this spine (R1.3 fold-caught premise,
+  class-P suppression, live-state reads). `core/chain/floorbox_recompute_coldbox_v5_test.go` adds a
+  permanent tier that drives the REAL entry on a `New(cfg)` box which never applied a block, holds no
+  registry, and is fed only `(prevStateRoot, committedStateRoot, b, w)`. The class-A / class-M /
+  class-P agreement and adversarial-root gates are re-run in it, plus four driven D1 gates: the
+  adversarial mid-epoch-joiner root must STALL, the honest block must AGREE, a forged
+  `MatureEpoch.OldValue` must STALL in both polarities, and a live follower re-auditing a pre-handoff
+  block must AGREE. Measured ablations: restoring the two live reads (`c.matureEpoch` +
+  `c.launchAnchor`) drives THREE RED — the D1 safety gate by wrong-accept, the D1 liveness gate by
+  false stall, and the Direction-2 live-follower gate by a post-root mismatch; the forged-OldValue
+  anchor gate reddens instead under the complementary ablation (dropping the Direction-A
+  `tagMatureEpoch` anchor), in both polarities. Every pre-existing gate stays green under both, which
+  is precisely why the defect survived four sub-increments. The allowlist pin reddens on the live
+  read by name and file:line.
+  `core/chain/floorbox_recompute_foldlivestate_pin_v5_test.go` is the recurrence teeth: an AST walk
+  over `floorbox_recompute_*_v5.go` that reddens on ANY `c.<selector>` outside a narrow allowlist
+  (`cfg`, `objective`, `epochsEnabled`, `operatorMargin`, `launchAnchorGiven`, and self-dispatch).
+  `matureEpoch`, `everMature`, `launchAnchor`, `handedOff` and every committed map are explicitly
+  DENIED — allowlisting them would pin the defect in place. `StateRootMaturityWitness` joins the
+  fold-input carrier coverage table (`foldInputCoverageTable`, the R-CARRIER-REFLECTION pin) with a
+  row for its new `MatureEpoch` field, so the reflection walk stays exact.
 - **R-CARRIER-REFLECTION — the fold-input carrier reflection pin (Boulder 1 carried residual, owed
   before the R1.8 accept-flip; test-only, no production logic changed):** closes the last
   hand-verified surface in the R1.4 witness-soundness cert. That cert held R-CARRIER-REFLECTION as

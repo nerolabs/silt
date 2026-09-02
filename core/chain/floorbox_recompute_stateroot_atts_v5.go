@@ -101,6 +101,7 @@ func (c *Chain) stateRootAttWriteSet(
 	b Block,
 	preValidatorsSeen map[ports.NodeID]struct{},
 	screens map[ports.NodeID]StateRootAttScreen,
+	pre stateRootHandoffPre,
 ) ([]stateRootWrite, map[ports.NodeID]struct{}, error) {
 	// R-A-legacy: the legacy branch falls to rep(id), which is NOT a committed leaf, so the box
 	// cannot reproduce it from committed state. A v5 block is objective by construction, but assert
@@ -127,7 +128,7 @@ func (c *Chain) stateRootAttWriteSet(
 		if !ok {
 			return nil, nil, fmt.Errorf("%w: no attester screen witness for non-proposer att %x", ErrRecomputeStateRootDigest, id[:])
 		}
-		qualified, qErr := c.attesterQualifiedFromScreen(prevStateRoot, sc)
+		qualified, qErr := c.attesterQualifiedFromScreen(prevStateRoot, sc, pre)
 		if qErr != nil {
 			return nil, nil, qErr // a screen predicate could not be anchored against prevStateRoot ⇒ stall
 		}
@@ -146,12 +147,17 @@ func (c *Chain) stateRootAttWriteSet(
 // reproduces the height-0 form (height 0 is never a #535 recovery boundary, so effectiveEpochSet(0)
 // is the frozen epochSet). Legacy mode is unreachable here (the caller asserts objective).
 //
+// `pre` is the box's ANCHORED committed pre-state handoff view (handoffPreState). Every value this
+// screen consults is now either witness-Resolved against prevStateRoot or own-cfg (C-6) — NO live
+// box state decides a branch or a value (R-FOLD-LIVE-STATE-READS cert 2026-09-02, Q1/Q3; pinned by
+// the fold-file c.<selector> allowlist, floorbox_recompute_foldlivestate_pin_v5_test.go).
+//
 // R1.2: every screen predicate is ANCHORED against prevStateRoot BEFORE it is read (PE ruling Q1
 // invariant #2, the poisoning entry point). A forged Slashed/InEpochSet/BondedPresent/BondedSize
 // flips qualification and emits a spurious validatorsSeen||id ADD (class-M poisoning source). Each
 // read is trusted only after its proof Resolves against prevStateRoot; a nil/forged proof yields
 // NoWitness ⇒ stall (never a false/absent read, C-7 §104). Returns (qualified, stall-reason).
-func (c *Chain) attesterQualifiedFromScreen(prevStateRoot ports.Hash, sc StateRootAttScreen) (bool, error) {
+func (c *Chain) attesterQualifiedFromScreen(prevStateRoot ports.Hash, sc StateRootAttScreen, pre stateRootHandoffPre) (bool, error) {
 	id := sc.Attester
 
 	// F2 gate — the slashed[id] pre-state. Anchor Slashed either way: present ⇒ inclusion proof of
@@ -173,7 +179,14 @@ func (c *Chain) attesterQualifiedFromScreen(prevStateRoot ports.Hash, sc StateRo
 		return false, nil // F2: the one live mid-epoch disqualification
 	}
 
-	if c.epochsEnabled() && c.matureEpoch {
+	// THE BRANCH SELECTOR — the ANCHORED committed pre-state, never c.matureEpoch
+	// (R-FOLD-LIVE-STATE-READS cert 2026-09-02). apply()'s attestation loop (chain.go:3293-3298) runs
+	// BEFORE rotateEpoch (chain.go:3306, rotate-LAST), so the value a full node screens against is the
+	// PRE-state matureEpoch committed in prevStateRoot — exactly pre.matureEpoch, Resolved present by
+	// handoffPreState before this dispatch. A box that replays no apply() has no c.matureEpoch to read;
+	// reading it made every mature-epoch block take the pre-maturity branch (wrong-accept of a
+	// mid-epoch joiner against an attacker root, false stall on an honest one).
+	if c.epochsEnabled() && pre.matureEpoch {
 		// R-A-membership-source: the mature-epoch screen is FROZEN epochSet membership, weight
 		// discarded. Anchor InEpochSet: present ⇒ inclusion proof of epochSet||id at its committed
 		// weight; absent ⇒ non-membership proof. A forged InEpochSet=true for a non-member (the
@@ -210,7 +223,11 @@ func (c *Chain) attesterQualifiedFromScreen(prevStateRoot ports.Hash, sc StateRo
 	if !sc.BondedPresent && !bondedRes.IsProvenAbsent() {
 		return false, fmt.Errorf("%w: attester %x BondedPresent=false not proven absent against prevStateRoot", ErrRecomputeStateRootDigest, id[:])
 	}
-	return (sc.BondedPresent && sc.BondedSize >= c.cfg.MinBond) || c.launchAnchor(sc.Attester), nil
+	// launchAnchorGiven is the SAME predicate the live node uses (chain.go), parameterized on the
+	// handoff bool rather than reading c.handedOff() — the #402 non-fork rule, one function, two
+	// callers. The box supplies the ANCHORED pre-state handoff (matureEpoch with epochs enabled,
+	// everMature without); the live node supplies c.handedOff().
+	return (sc.BondedPresent && sc.BondedSize >= c.cfg.MinBond) || c.launchAnchorGiven(sc.Attester, pre.handedOff), nil
 }
 
 // stateRootAttDigestOp reconstructs the validatorsSeenRoot whole-set digest as a FoldOp, IFF the
@@ -239,7 +256,7 @@ func stateRootAttDigestOp(
 // from the validatorsSeenRoot digest witness, screens each non-proposer attester (own-cfg over the
 // per-attester witnesses), derives the write-set + post-set, and reconstructs the touched digest.
 // It returns the digest FoldOps and the per-member write-set the caller folds together.
-func (c *Chain) attOps(prevStateRoot ports.Hash, b Block, w StateRootWitness) ([]statehash.FoldOp, []stateRootWrite, error) {
+func (c *Chain) attOps(prevStateRoot ports.Hash, b Block, w StateRootWitness, pre stateRootHandoffPre) ([]statehash.FoldOp, []stateRootWrite, error) {
 	byTag := make(map[string]*StateRootDigestWitness, len(w.DigestPreSets))
 	for i := range w.DigestPreSets {
 		byTag[w.DigestPreSets[i].Tag] = &w.DigestPreSets[i]
@@ -252,7 +269,7 @@ func (c *Chain) attOps(prevStateRoot ports.Hash, b Block, w StateRootWitness) ([
 	for _, sc := range w.AttScreens {
 		screens[sc.Attester] = sc
 	}
-	writes, postSeen, err := c.stateRootAttWriteSet(prevStateRoot, b, preSeen, screens)
+	writes, postSeen, err := c.stateRootAttWriteSet(prevStateRoot, b, preSeen, screens, pre)
 	if err != nil {
 		return nil, nil, err
 	}

@@ -415,10 +415,12 @@ func TestRecomputeStateRootBondRegAblationBoundaryOutOfScope(t *testing.T) {
 	if err == nil {
 		t.Fatalf("ABLATION FAILED: a boundary bond-reg block with an empty witness must stall, got nil")
 	}
-	// The block dispatches (B/P in scope); the empty witness fails an anchor — either the TTL
-	// scope-gate non-membership proof (dueBucket), the digest anchor, or the fold. All never-Accept.
+	// The block dispatches (B/P in scope); the empty witness fails an anchor — the class-M/handoff
+	// pre-state anchor (which the entry now runs FIRST and UNCONDITIONALLY, R-FOLD-LIVE-STATE-READS
+	// 2026-09-02), the TTL scope-gate non-membership proof (dueBucket), the digest anchor, or the
+	// fold. All never-Accept; WHICH anchor fires first is incidental, the stall is the property.
 	if !errors.Is(err, ErrRecomputeStateRootDigest) && !errors.Is(err, ErrRecomputeStateRootFold) &&
-		!errors.Is(err, ErrRecomputeStateRootTTLWitness) {
+		!errors.Is(err, ErrRecomputeStateRootTTLWitness) && !errors.Is(err, ErrRecomputeStateRootMaturity) {
 		t.Fatalf("ABLATION FAILED: expected a ttl/digest/fold stall for an unwitnessed boundary block, got %v", err)
 	}
 }

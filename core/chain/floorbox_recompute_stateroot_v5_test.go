@@ -143,12 +143,25 @@ func (f stateRootFixture) maturityWitness(t *testing.T) *StateRootMaturityWitnes
 // committed pre-value.
 func latchedMaturityWitness(t *testing.T, prover *statehash.Prover, preValue func([]byte) []byte) *StateRootMaturityWitness {
 	t.Helper()
-	key := statehash.Key(tagEverMature, nil)
+	return &StateRootMaturityWitness{
+		EverMature:  handoffScalarWit(t, prover, preValue, tagEverMature),
+		MatureEpoch: handoffScalarWit(t, prover, preValue, tagMatureEpoch),
+	}
+}
+
+// handoffScalarWit builds the pre-state scalar witness for one committed handoff latch leaf
+// (tagEverMature / tagMatureEpoch). BOTH now travel on the class-M carrier: handoffPreState anchors
+// them against prevStateRoot before any class dispatches, and the class-A screen reads the anchored
+// pre-matureEpoch as its branch selector instead of the box's live c.matureEpoch
+// (R-FOLD-LIVE-STATE-READS cert 2026-09-02).
+func handoffScalarWit(t *testing.T, prover *statehash.Prover, preValue func([]byte) []byte, tag string) StateRootRotateScalar {
+	t.Helper()
+	key := statehash.Key(tag, nil)
 	wit, err := prover.Prove(key)
 	if err != nil {
-		t.Fatalf("Prove(everMature): %v", err)
+		t.Fatalf("Prove(%s): %v", tag, err)
 	}
-	return &StateRootMaturityWitness{EverMature: StateRootRotateScalar{OldValue: preValue(key), Proof: wit}}
+	return StateRootRotateScalar{OldValue: preValue(key), Proof: wit}
 }
 
 // preValue returns the committed pre-state value of a leaf key, by consulting the fixture chain's

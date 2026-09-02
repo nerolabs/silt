@@ -233,7 +233,7 @@ func (f offBoundaryMaturityFixture) witnessForCrossing(t *testing.T, b Block) St
 		screens[id] = sc
 		w.AttScreens = append(w.AttScreens, sc)
 	}
-	aWrites, _, err := f.c.stateRootAttWriteSet(f.prevRoot, b, preSeen, screens)
+	aWrites, _, err := f.c.stateRootAttWriteSet(f.prevRoot, b, preSeen, screens, livePreForProbe(f.c))
 	if err != nil {
 		t.Fatalf("stateRootAttWriteSet: %v", err)
 	}
@@ -249,8 +249,9 @@ func (f offBoundaryMaturityFixture) witnessForCrossing(t *testing.T, b Block) St
 	// Class M maturity witness: the pre-latch everMature scalar proof (pre=false ⇒ the crossing) + the
 	// POST-apply SeenSet the box feeds RecomputeMatureNow.
 	w.Maturity = &StateRootMaturityWitness{
-		EverMature: StateRootRotateScalar{OldValue: f.preValue(statehash.Key(tagEverMature, nil)), Proof: f.prove(t, statehash.Key(tagEverMature, nil))},
-		SeenSet:    f.seenWitnessPost(t, applied),
+		EverMature:  StateRootRotateScalar{OldValue: f.preValue(statehash.Key(tagEverMature, nil)), Proof: f.prove(t, statehash.Key(tagEverMature, nil))},
+		MatureEpoch: StateRootRotateScalar{OldValue: f.preValue(statehash.Key(tagMatureEpoch, nil)), Proof: f.prove(t, statehash.Key(tagMatureEpoch, nil))},
+		SeenSet:     f.seenWitnessPost(t, applied),
 	}
 
 	// dueBucket scope-gate proof (non-membership at b.Height).
@@ -371,7 +372,7 @@ func (f offBoundaryMaturityFixture) nonMaturityOps(t *testing.T, b Block, w Stat
 		witByKey[string(w.ChangedLeaves[i].Key)] = &w.ChangedLeaves[i]
 	}
 	var ops []statehash.FoldOp
-	aOps, aWrites, err := f.c.attOps(f.prevRoot, b, w)
+	aOps, aWrites, err := f.c.attOps(f.prevRoot, b, w, livePreForProbe(f.c))
 	if err != nil {
 		t.Fatalf("attOps: %v", err)
 	}
@@ -447,7 +448,8 @@ func TestRecomputeStateRootClassMOmittedWriteStalls(t *testing.T) {
 			// means the fold never touches the everMature leaf, leaving the pre-state value (false) under
 			// the recomputed root, while the committed root commits true ⇒ mismatch.
 			w.Maturity = &StateRootMaturityWitness{
-				EverMature: StateRootRotateScalar{OldValue: statehash.EncodeBool(true), Proof: w.Maturity.EverMature.Proof},
+				EverMature:  StateRootRotateScalar{OldValue: statehash.EncodeBool(true), Proof: w.Maturity.EverMature.Proof},
+				MatureEpoch: w.Maturity.MatureEpoch,
 			}
 
 			err := c.RecomputeStateRootEntriesRevocations(prevRoot, committed, b, w)
