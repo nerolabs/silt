@@ -91,7 +91,10 @@ func (c *Chain) validateEra3Version(b *Block) error {
 // SAME write paths as validateEra3Version — the commit path via ValidateProposal and the
 // own-disk Reload path (appendStructural) — so "every disk-write path enforces the era
 // boundary" is uniform across era-3 AND era-4. TestEveryDiskWritePathRunsTheEra4VersionCheck
-// pins it on every path.
+// pins it on every path three ways: STRUCTURALLY (every c.apply caller runs this rule, so a
+// future write path reddens), by SCANNER COMPLETENESS (the only apply outside chain.go is
+// postApplyRoots' dry-run clone), and BEHAVIOURALLY (Append, Reload and Reconcile are each
+// driven with a signature-valid v4 block at H_era4 and must reject it, applying nothing).
 func (c *Chain) validateEra4Version(b *Block) error {
 	if c.era4Active(b.Height) && b.Version < BlockVersionWitnessable {
 		return fmt.Errorf("%w: height %d version %d", ErrEra4VersionRequired, b.Height, b.Version)

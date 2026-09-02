@@ -2,8 +2,10 @@ package chain
 
 import (
 	"bytes"
+	"sort"
 	"testing"
 
+	"github.com/nerolabs/silt/core/statehash"
 	"github.com/nerolabs/silt/ports"
 )
 
@@ -79,6 +81,114 @@ func TestStateRootCoversExactlyTheCommittedSetFields(t *testing.T) {
 	if len(extra) > 0 {
 		t.Fatalf("StateRoot commits tag(s) that are NOT classified committedSet: %v\n\n"+
 			"Either the field was reclassified (drop its tag) or the tag is stale.", extra)
+	}
+}
+
+// TestStateRootV5CoversExactlyTheV5Fields is the CURRENT-ERA (v5) counterpart of the
+// era-3 coverage guard above, and the guard statehash.go's stateRootTagsV5 comment cites.
+// The era-3 guard binds the era-3 TAG LIST to the field classification; it says nothing
+// about what the v5 marshaller actually EMITS. This closes the other side: the tag set
+// stateRootLeavesV5 emits — on a fully-populated chain, over the exact leaves the v5 root
+// is computed from — must be EXACTLY the union of the three declared v5 tag lists:
+//
+//   - stateRootTags         — the 18 era-3 committedSet fields (a v5 root is a superset);
+//   - stateRootTagsV5       — the five era-4 maintenance-spine committedSet fields;
+//   - stateRootDigestTagsV5 — the five F1 whole-set digest roots (derived, not fields).
+//
+// Both directions are load-bearing and NEITHER is covered by the existing guards:
+//
+//   - MISSING (declared, not emitted): TestStateRootV5EmitsALeafForEveryV5Field and
+//     TestStateRootV5EmitsEveryDigestRoot each cover ONE list, and the era-3 emit guard
+//     runs against stateRootLeaves. Nothing checks the era-3 leaves ON THE V5 PATH, so a
+//     v5-only regression dropping an era-3 leaf loop from stateRootLeavesV5 stays green.
+//   - EXTRA (emitted, not declared): nothing covers this at all. A leaf added to
+//     stateRootLeavesV5 under a tag on no list is invisible to every list-driven guard —
+//     the classification binding, both emit guards, and the leaf-diff coverage
+//     meta-assertion all iterate a LIST — so it enters the consensus root unreviewed, and
+//     no witness or recompute knows it is there.
+//
+// Both sides are derived by construction: the emitted side from the live marshaller (a
+// leaf key is tag\x00||rawKey, so the tag is the key up to the first NUL), the declared
+// side from the tag lists themselves. Neither is a hand copy, so neither can drift.
+//
+// The final assertion ties the enumerated leaves to the ROOT: the SMT over
+// stateRootLeavesV5() must equal StateRootForVersion(v5), so "covered" means covered by
+// the root a v5 block commits, not merely present in a slice some other code path built.
+//
+// RED (demonstrated, 2026-09-02): drop `add(tagEpochStart, ...)` from stateRootLeavesV5
+// and this test names epochStart MISSING; add an unlisted `add("shadow\x00", ...)` leaf
+// and it names shadow EXTRA.
+func TestStateRootV5CoversExactlyTheV5Fields(t *testing.T) {
+	// DECLARED: the union of the three v5 tag lists, built from the lists themselves.
+	declared := map[string]struct{}{}
+	for _, list := range [][]string{stateRootTags, stateRootTagsV5, stateRootDigestTagsV5} {
+		for _, tag := range list {
+			declared[tag] = struct{}{}
+		}
+	}
+	if len(declared) == 0 {
+		t.Fatal("the v5 tag lists are all empty — this guard would pass vacuously")
+	}
+
+	// EMITTED: the tags the live v5 marshaller actually produces on a chain where every
+	// committedSet field is populated (populateCommitted's completeness against the
+	// classification is itself pinned, by TestAdoptCopiesEveryCommittedField).
+	emitted := v5EmittableLeafTags(t)
+	if len(emitted) == 0 {
+		t.Fatal("stateRootLeavesV5 emitted NO leaves for a fully-populated chain — the v5 " +
+			"marshaller is not running, so this guard would pass vacuously")
+	}
+
+	var missing, extra []string
+	for tag := range declared {
+		if _, ok := emitted[tag]; !ok {
+			missing = append(missing, tag)
+		}
+	}
+	for tag := range emitted {
+		if _, ok := declared[tag]; !ok {
+			extra = append(extra, tag)
+		}
+	}
+	sort.Strings(missing)
+	sort.Strings(extra)
+
+	if len(missing) > 0 {
+		t.Errorf("the v5 state root does NOT cover declared tag(s): %v\n\n"+
+			"The tag is in stateRootTags / stateRootTagsV5 / stateRootDigestTagsV5 but "+
+			"stateRootLeavesV5 emits no leaf for it on a fully-populated chain — the keyspace "+
+			"is silently absent from the root a v5 block commits, so two replicas can diverge "+
+			"on it undetected. Restore the leaf loop in statehash.go.\n"+
+			"  declared(%d): %v\n  emitted(%d): %v",
+			missing, len(declared), sortedSet(declared), len(emitted), sortedSet(emitted))
+	}
+	if len(extra) > 0 {
+		t.Errorf("the v5 state root covers tag(s) on NO declared list: %v\n\n"+
+			"stateRootLeavesV5 emits a leaf under a tag that is in none of stateRootTags, "+
+			"stateRootTagsV5, stateRootDigestTagsV5. Every other coverage guard iterates one of "+
+			"those LISTS, so an unlisted tag is invisible to all of them and enters the consensus "+
+			"root unreviewed. Add the tag to the list its class belongs to (a committedSet field "+
+			"to stateRootTagsV5, a derived whole-set digest to stateRootDigestTagsV5), or drop "+
+			"the leaf.\n  declared(%d): %v\n  emitted(%d): %v",
+			extra, len(declared), sortedSet(declared), len(emitted), sortedSet(emitted))
+	}
+
+	// The enumerated leaves must BE the v5 root's preimage. Without this the set equality
+	// above could hold over a leaf slice the committed root is not actually computed from.
+	c := &Chain{}
+	populateCommitted(c)
+	want, err := statehash.Root(c.stateRootLeavesV5())
+	if err != nil {
+		t.Fatalf("statehash.Root over stateRootLeavesV5: %v", err)
+	}
+	got, err := c.StateRootForVersion(BlockVersionWitnessable)
+	if err != nil {
+		t.Fatalf("StateRootForVersion(v5): %v", err)
+	}
+	if got != want {
+		t.Fatalf("StateRootForVersion(v5) = %x but the SMT over stateRootLeavesV5() = %x — the "+
+			"v5 root is NOT computed from the leaf set this guard enumerates, so its coverage "+
+			"assertion says nothing about the committed root", got, want)
 	}
 }
 

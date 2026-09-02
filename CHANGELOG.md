@@ -58,6 +58,33 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   DENIED — allowlisting them would pin the defect in place. `StateRootMaturityWitness` joins the
   fold-input carrier coverage table (`foldInputCoverageTable`, the R-CARRIER-REFLECTION pin) with a
   row for its new `MatureEpoch` field, so the reflection walk stays exact.
+- **Two cited-but-missing consensus guards, written (test-only; the cited-tests lint's OWED ledger,
+  paid down by two):** production comments on two consensus-facing surfaces claimed a test enforced a
+  property, and no such test existed anywhere in the tree — the `scar:cited-test-does-not-exist`
+  class. `TestStateRootV5CoversExactlyTheV5Fields`
+  (`core/chain/modelcheck_stateroot_determinism_test.go`), cited by `core/chain/statehash.go`, is the
+  current-era (v5) counterpart of the era-3 coverage guard: the tag set `stateRootLeavesV5` actually
+  emits on a fully-populated chain must EQUAL the union of `stateRootTags`, `stateRootTagsV5` and
+  `stateRootDigestTagsV5` (28 tags), with both sides derived by construction — the emitted side from
+  the live marshaller's leaf keys, the declared side from the lists — and the enumerated leaves tied
+  to the root by asserting `statehash.Root(stateRootLeavesV5()) == StateRootForVersion(v5)`. The EXTRA
+  direction was covered by nothing: every other guard iterates a LIST, so a leaf under an unlisted tag
+  entered the consensus root invisible to all of them. Injected-defect evidence: dropping the
+  `tagEpochStart` leaf names `epochStart` MISSING; adding an unlisted `shadow` leaf names it EXTRA.
+  `TestEveryDiskWritePathRunsTheEra4VersionCheck` (`core/chain/era4_writepath_version_test.go`), cited
+  by `core/chain/era3validity.go`, is the era-4 write-path guard — only the era-3 sibling existed. It
+  has three legs: STRUCTURAL (every `c.apply` caller runs `validateEra4Version`, discovered by
+  scanning rather than listed, so a future fast-sync/import path reddens), SCANNER COMPLETENESS (the
+  only `.apply` outside `chain.go` is `postApplyRoots`' dry-run clone, so the `chain.go`-scoped scan is
+  total), and BEHAVIORAL (`Append`, `Reload` and `Reconcile` are each driven with a signature-valid v4
+  block at `H_era4` and must reject it with `ErrEra4VersionRequired`, applying nothing). Injected-defect
+  evidence: removing the check from `appendStructural` names `appendStructural` structurally and shows
+  Reload PERSISTING the forged boundary block; removing it from `ValidateProposal` reddens the
+  transitive-guard check plus the Append and Reconcile legs. Both comments are corrected to cite what
+  now actually holds them. Also closes the same worktree-walk unsoundness in
+  `scripts/check_claims.py` that the cited-tests lint already excludes: a plain `os.walk` resolved
+  claim-backing tests against `.claude/worktrees/` copies of OTHER branches — measured, 121 test names
+  resolvable only there — so a ledger claim could read as backed while `main` enforced nothing.
 - **R-CARRIER-REFLECTION — the fold-input carrier reflection pin (Boulder 1 carried residual, owed
   before the R1.8 accept-flip; test-only, no production logic changed):** closes the last
   hand-verified surface in the R1.4 witness-soundness cert. That cert held R-CARRIER-REFLECTION as

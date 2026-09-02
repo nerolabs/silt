@@ -41,7 +41,13 @@ def all_test_funcs() -> set:
     """Every `func TestXxx(` defined anywhere in the tree."""
     funcs = set()
     for dirpath, dirs, files in os.walk(ROOT):
-        dirs[:] = [d for d in dirs if d not in (".git", "node_modules", "dist")]
+        # .claude is excluded and this is LOAD-BEARING: it holds agent worktrees, which
+        # are full copies of the repo on OTHER branches. Walking them lets a ledger claim
+        # "resolve" against a test that exists only on an unmerged branch — the claim reads
+        # as backed while main has nothing enforcing it. Same exclusion, same reason, as
+        # scripts/check_cited_tests.py.
+        dirs[:] = [d for d in dirs if d not in
+                   (".git", ".claude", "node_modules", "dist", "vendor", "__pycache__")]
         for f in files:
             if f.endswith("_test.go"):
                 try:
