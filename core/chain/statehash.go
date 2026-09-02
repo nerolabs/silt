@@ -123,10 +123,17 @@ var stateRootDigestTagsV5 = []string{
 }
 
 // stateRootTagsV5 is the era-4 (v5) committedSet field names committed ONLY under the
-// v5 state root — the three maintenance-spine fields the v5 marshaller adds on top of
-// the 18 era-3 fields. Bound to the live classification by
-// TestStateRootV5CoversExactlyTheV5Fields so it cannot drift. These are NOT in
-// stateRootTags (the era-3 set), which keeps the v4 root byte-identical to era-3.
+// v5 state root — the maintenance-spine fields the v5 marshaller adds on top of the 18
+// era-3 fields. It is pinned from BOTH sides so it cannot drift:
+//
+//   - to the live field CLASSIFICATION, by TestStateRootCoversExactlyTheCommittedSetFields
+//     (a committedSet field missing from stateRootTags AND this list is reported);
+//   - to the live MARSHALLER, by TestStateRootV5CoversExactlyTheV5Fields (the tags
+//     stateRootLeavesV5 actually emits are exactly this list plus stateRootTags plus
+//     stateRootDigestTagsV5 — no missing leaf, and no unlisted tag in the v5 root).
+//
+// These are NOT in stateRootTags (the era-3 set), which keeps the v4 root byte-identical
+// to era-3.
 var stateRootTagsV5 = []string{"qualified", "dueBucket", "epochStart", "era4LockedIn", "era4Height"}
 
 // stateRootTags is the set of committedSet field names this file commits, used by
