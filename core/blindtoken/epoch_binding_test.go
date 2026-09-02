@@ -11,7 +11,7 @@ package blindtoken
 // ABLATION (drop the epoch from the FDH input, i.e. make demandMsg return the serial):
 // TestDemandSignatureDoesNotVerifyAtAnotherEpoch and
 // TestDemandFDHInputBindsTheEpochByteExactly both go RED. The credit-layer pump gate
-// (core/credit TestGuardExpiryHoldsUnderASharedKey) goes RED with them.
+// (core/credit TestGuardHealsUnderASharedKey) goes RED with them.
 
 import (
 	"bytes"

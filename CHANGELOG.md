@@ -59,6 +59,17 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   Design: `docs/thinking/2026-09-02-r0.4b-c3-close-design.md`.
 
 ### Fixed
+- **A demand-key refusal that resolved nothing now names a reason (Tester finding).** The
+  `swarm receipt` guard was `if keyErr != nil || pinned == 0` over a message formatting `keyErr`
+  with `%w`, so the pinned-0-with-no-error branch — the branch every client hits on a chain that
+  carries no committed `E → key_E` binding — printed the literal `%!w(<nil>)`. Both branches now
+  carry a cause (`demandKeyResolutionError`); the refusal itself is unchanged, since withdrawing
+  against an unanchored key is what the committed binding exists to prevent.
+- **The per-epoch demand key store fsyncs its directory after the rename.** The band's bytes were
+  synced but the rename that publishes them was not, so a power cut could lose a whole freshly
+  rotated band — every key for the epochs whose fingerprints the rotation just staged. The old
+  file was always safe (temp+rename); this is what makes the NEW one durable. Same shape as
+  `adapters/markstore`.
 - **The paid-serial guard sweeps at most once per epoch (R0.4b, red-team RT-E).** At a full cap
   of still-live serials every refused redeem ran a full map scan — 1.32 ms per refused receipt at
   65,536 entries, a free amplifier. Nothing can expire twice within one epoch, so the swept set is
@@ -71,6 +82,24 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   WARN line. The announced "delivery receipt banked" marker is unchanged (S5).
 
 ### Testing
+- **The "delivery receipt paid NO credit" WARN line is now gated (Tester finding; observable-log
+  contract, second instance).** The line an operator reads when a banked receipt settles nothing
+  was asserted by no test. `TestBankedButUnpaidReceiptLogsTheWarnLine` pins the exact event
+  string, the WARN level, and both fields (`reason`, `serial_guard_refusals`) on the real node
+  handler path, and re-asserts that the announced `delivery receipt banked` marker still ships
+  beside it. Ablations run: reword the event, drop the counter field, or log it at INFO — all
+  RED.
+- **The demand key store's atomic write is gated
+  (`TestEpochStoreSurvivesACrashBeforeRename`).** Atomicity was asserted by inspection only. The
+  gate drives both failure shapes: a stale `.tmp-demandkeys-*` artifact from a crash between
+  `CreateTemp` and `Rename` (the committed band must load byte-identically past it, and must not
+  be regenerated — its fingerprints are already committed, append-only), and a `Save` that cannot
+  write (the committed band must survive). Ablation run: replace temp+rename with a direct
+  `os.WriteFile` and the second case goes RED, because a direct write to an existing 0600 file
+  succeeds even in a read-only directory and destroys the committed band.
+- **Stale citation fixed:** `core/blindtoken/epoch_binding_test.go` cited a `core/credit`
+  `TestGuardExpiryHoldsUnderASharedKey` that does not exist; the gate is
+  `TestGuardHealsUnderASharedKey`.
 - **The cited gate that did not exist now exists (Tester finding).** `core/credit/delivery.go`
   claimed `paidSerialWindow` was pinned to `demand.DefaultWindow` by
   `TestPaidSerialWindowMatchesDemandWindow`; a repo-wide grep found only the comment. Both the

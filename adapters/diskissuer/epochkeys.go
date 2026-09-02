@@ -114,7 +114,21 @@ func (s *EpochStore) Save(keys map[uint64]*rsa.PrivateKey) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmp.Name(), s.path)
+	if err := os.Rename(tmp.Name(), s.path); err != nil {
+		return err
+	}
+	// fsync the DIRECTORY so the rename itself is durable. Without it the new file's
+	// bytes are on disk but the directory entry that points at them may not be, so a
+	// power cut can lose the whole band — every key for the epochs whose fingerprints
+	// this rotation just staged for commitment. The old file stays intact either way
+	// (that is what temp+rename buys); this is what makes the NEW band survive.
+	// Same shape as adapters/markstore's Save. Best-effort: a directory that cannot
+	// be opened for sync is not a reason to fail a write that already landed.
+	if df, derr := os.Open(filepath.Dir(s.path)); derr == nil {
+		_ = df.Sync()
+		df.Close()
+	}
+	return nil
 }
 
 // EnsureBand is the one call the rotation scheduler makes each epoch. It loads the

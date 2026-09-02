@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -461,8 +462,8 @@ func swarmReceipt(args []string) error {
 	}); rerr != nil {
 		return rerr
 	}
-	if keyErr != nil || pinned == 0 {
-		return fmt.Errorf("resolve demand issuer keys from %s against the committed binding (pinned %d): %w", server, pinned, keyErr)
+	if err := demandKeyResolutionError(server, pinned, keyErr); err != nil {
+		return err
 	}
 
 	var tok demand.Token
@@ -499,4 +500,40 @@ func swarmReceipt(args []string) error {
 	}
 	fmt.Printf("delivery receipt banked by %s for %s\n", server, root)
 	return nil
+}
+
+// errNoCommittedDemandKeyBinding is the pinned==0, no-transport-error case: the
+// issuer answered, but not one key it served resolved against a committed
+// E -> key_E binding.
+var errNoCommittedDemandKeyBinding = errors.New(
+	"the issuer served no key that resolves against a committed E->key binding — either it has " +
+		"committed none (the binding needs an era-4/v5 chain: `silt status` shows the block era) " +
+		"or the keys it served are off-commitment")
+
+// demandKeyResolutionError says WHY a per-epoch demand-key resolution produced
+// nothing this client may withdraw against, or nil when it produced something.
+//
+// Two distinct outcomes reach the same refusal and they need distinct text. A
+// transport/serving failure carries keyErr. A resolution failure does NOT: the
+// request succeeded and pinned is simply 0, because nothing the issuer served
+// matched the committed binding. Formatting the second case with %w printed the
+// literal `%!w(<nil>)` to the operator (Tester finding, 2026-09-03), which names no
+// cause at all — and this refusal is the one an operator is most likely to hit,
+// since a chain with no committed E -> key_E binding pins nothing.
+//
+// The refusal itself is NOT softened here: with no committed binding there is no
+// anti-fingerprinting anchor, and the certification is explicit that withdrawing
+// without the anchor is unsafe (core/node/demandkeys.go pinDemandIssuerKey). This
+// function only makes the reason legible.
+func demandKeyResolutionError(server ports.NodeID, pinned int, keyErr error) error {
+	switch {
+	case keyErr != nil:
+		return fmt.Errorf("resolve demand issuer keys from %s against the committed binding (pinned %d): %w",
+			server, pinned, keyErr)
+	case pinned == 0:
+		return fmt.Errorf("resolve demand issuer keys from %s against the committed binding (pinned 0): %w",
+			server, errNoCommittedDemandKeyBinding)
+	default:
+		return nil
+	}
 }

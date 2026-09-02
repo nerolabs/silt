@@ -6,9 +6,11 @@ package diskissuer
 // and PRUNING (the band must not grow without bound; build-immutable #8).
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -151,4 +153,134 @@ func TestEpochStoreAbsentIsEmpty(t *testing.T) {
 	if err != nil || len(keys) != 0 {
 		t.Fatalf("absent store: %d keys, err %v", len(keys), err)
 	}
+}
+
+// TestEpochStoreSurvivesACrashBeforeRename pins the ATOMICITY of Save, which until
+// now was asserted by inspection only (Tester finding, 2026-09-03: zero tests
+// referenced demandkeys.cbor or the temp name).
+//
+// Why it matters more here than for an ordinary cache: a half-written band is
+// UNRECOVERABLE. The fingerprints of the keys already on disk are committed on-chain,
+// first-write-wins, and backdating is rejected — so a store that comes back partially
+// written cannot be repaired by regenerating, and the demand lane is dead for the
+// whole window. The committed band must survive any failed write, not just a clean one.
+//
+// Two failure shapes, both real:
+//
+//   - CRASH BETWEEN CreateTemp AND Rename. The artifact is a stale .tmp-demandkeys-*
+//     file beside an untouched demandkeys.cbor. The store must load the OLD band
+//     byte-identically and must not be confused by the leftover. This also pins the
+//     one-file design (§3.3): a Load that scanned the directory instead of reading one
+//     fixed path would parse this garbage.
+//   - A Save THAT CANNOT WRITE. Ablation: replace temp+rename with a direct
+//     os.WriteFile(s.path, ...) and the second subtest goes RED — a direct write to an
+//     existing 0600 file succeeds in a read-only directory, so the committed band is
+//     destroyed and replaced. temp+rename fails at CreateTemp instead, leaving the
+//     committed band intact.
+func TestEpochStoreSurvivesACrashBeforeRename(t *testing.T) {
+	dir := t.TempDir()
+	s, err := OpenEpochs(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	committed, err := s.EnsureBand(rand.Reader, 0, 0, smallBand)
+	if err != nil {
+		t.Fatal(err)
+	}
+	storePath := filepath.Join(dir, "demandkeys.cbor")
+	before, err := os.ReadFile(storePath)
+	if err != nil {
+		t.Fatalf("the band was not persisted at %s: %v", storePath, err)
+	}
+
+	sameBand := func(t *testing.T, got map[uint64]*rsa.PrivateKey) {
+		t.Helper()
+		if len(got) != len(committed) {
+			t.Fatalf("band came back with %d keys, want the committed %d", len(got), len(committed))
+		}
+		for e, k := range committed {
+			g := got[e]
+			if g == nil {
+				t.Fatalf("epoch %d vanished — its committed fingerprint can never be re-registered", e)
+			}
+			if g.N.Cmp(k.N) != 0 || g.D.Cmp(k.D) != 0 || g.PublicKey.E != k.PublicKey.E {
+				t.Fatalf("epoch %d came back as a DIFFERENT key — the committed binding is "+
+					"append-only, so the lane is dead for the whole window", e)
+			}
+		}
+	}
+
+	t.Run("stale temp file from a crash before rename", func(t *testing.T) {
+		// Exactly what a crash between CreateTemp and Rename leaves: a temp file with
+		// the store's own prefix, holding a partial (here: unparsable) band.
+		tmp, terr := os.CreateTemp(dir, ".tmp-demandkeys-*")
+		if terr != nil {
+			t.Fatal(terr)
+		}
+		if _, werr := tmp.Write(before[:len(before)/2]); werr != nil {
+			t.Fatal(werr)
+		}
+		tmp.Close()
+
+		after, rerr := os.ReadFile(storePath)
+		if rerr != nil {
+			t.Fatalf("demandkeys.cbor must survive the crash: %v", rerr)
+		}
+		if !bytes.Equal(before, after) {
+			t.Fatal("demandkeys.cbor changed while a write was in flight — the write is not atomic")
+		}
+		s2, oerr := OpenEpochs(dir)
+		if oerr != nil {
+			t.Fatal(oerr)
+		}
+		loaded, lerr := s2.Load()
+		if lerr != nil {
+			t.Fatalf("the committed band must still load past a stale temp file: %v", lerr)
+		}
+		sameBand(t, loaded)
+		// And the restart path itself: EnsureBand must reload, never regenerate.
+		reloaded, eerr := s2.EnsureBand(rand.Reader, 0, 0, smallBand)
+		if eerr != nil {
+			t.Fatal(eerr)
+		}
+		sameBand(t, reloaded)
+		os.Remove(tmp.Name())
+	})
+
+	t.Run("a Save that cannot write leaves the committed band intact", func(t *testing.T) {
+		if os.Geteuid() == 0 {
+			t.Skip("root ignores directory permissions, so the failure cannot be induced")
+		}
+		if err := os.Chmod(dir, 0o500); err != nil {
+			t.Fatal(err)
+		}
+		defer os.Chmod(dir, 0o700)
+
+		next := map[uint64]*rsa.PrivateKey{}
+		for e, k := range committed {
+			next[e] = k
+		}
+		fresh, gerr := generateKey(rand.Reader)
+		if gerr != nil {
+			t.Fatal(gerr)
+		}
+		next[smallBand+1] = fresh
+		if serr := s.Save(next); serr == nil {
+			t.Fatal("Save into a read-only directory reported success — a direct write would, " +
+				"temp+rename must not")
+		}
+		after, rerr := os.ReadFile(storePath)
+		if rerr != nil {
+			t.Fatalf("a failed Save destroyed the committed band: %v", rerr)
+		}
+		if !bytes.Equal(before, after) {
+			t.Fatal("a failed Save REWROTE demandkeys.cbor — the committed fingerprints on disk " +
+				"no longer match the chain, and the binding is append-only")
+		}
+		loaded, lerr := s.Load()
+		if lerr != nil {
+			t.Fatalf("the committed band must still load after a failed Save: %v", lerr)
+		}
+		sameBand(t, loaded)
+	})
 }
