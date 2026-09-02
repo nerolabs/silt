@@ -419,26 +419,21 @@ func TestPerFieldProbeBites(t *testing.T) {
 }
 
 // =============================================================================
-// PART C — OPEN-BREAK gates: the activation-lock OldValue predicates wrong-accept (ROUTED)
+// PART C — CLOSED-BREAK gates: the activation-lock OldValue predicates now STALL (Direction A)
 // =============================================================================
 //
-// rotate_v5.go:442,:450,:458 read rw.GateLockedIn.OldValue / rw.Era3LockedIn.OldValue /
-// rw.Era4LockedIn.OldValue as a BRANCH PREDICATE (!decodeBoolLeaf(...)) to decide whether to attempt
-// each activation lock-in. The OldValue is UNTRUSTED and is only fold-verified when scalarFoldOp emits
-// an op (i.e. when the value CHANGES). A forged OldValue=true SUPPRESSES the lock-in attempt: no op is
-// emitted, the forged OldValue is never folded, and the attacker commits a root WITHOUT the lock
-// scalars → the box WRONG-ACCEPTS.
+// rotate_v5.go read rw.GateLockedIn.OldValue / rw.Era3LockedIn.OldValue / rw.Era4LockedIn.OldValue
+// as a BRANCH PREDICATE (!decodeBoolLeaf(...)) to decide whether to attempt each activation lock-in.
+// The OldValue was UNTRUSTED and only fold-verified when scalarFoldOp emitted an op (i.e. when the
+// value CHANGED). A forged OldValue=true SUPPRESSED the lock-in attempt: no op emitted, the forged
+// OldValue never folded, and the attacker committed a root WITHOUT the lock scalars → a WRONG-ACCEPT.
 //
-// CONFIRMED reproducible for all three (gate/era3/era4) on a fixture where the honest boundary locks
-// all three. This partially REFUTES the R1.4 Q1 "scalar pairs are already-anchored: fold OldValue"
-// classification (true ONLY when an op is emitted). ROUTED to the Researcher/PE as a consensus-adjacent
-// recompute-soundness break (research gate: consensus-rule reconstruction; the Builder does not decide
-// soundness). The FIX (anchor the LockedIn.OldValue predicate against prevStateRoot before the branch
-// read, mirroring the R1.2 Weight/RegVersion anchors) is a source change to the certified recompute.
-//
-// THESE GATES ASSERT THE CURRENT WRONG-ACCEPT (== nil) so they are GREEN on this branch and the suite
-// is not red. The fix PR MUST flip each to assert-stall (err != nil). Until then this is the
-// executable RED-on-current-code evidence that a full-node reconstruction relies on the lock scalars.
+// FIXED by DIRECTION A (classP-anchoring cert 2026-09-02): rotateTallyOps now anchors each lock-in
+// bool's committed pre-value against prevStateRoot (anchorRotateScalar → Resolve.IsProvenPresent)
+// UNCONDITIONALLY, before the branch read. A forged OldValue that cannot Resolve present ⇒ NoWitness
+// ⇒ STALL. These gates now assert the STALL (err != nil): each forges the lock-in OldValue=true, the
+// box refuses to agree with the lock-free forgedRoot, and the anchor is the difference. The box still
+// NEVER Accepts (WitnessValidateV5 → Gated); this is STALL-ADDING ONLY.
 
 // allThreeLockFixture builds a chain where the honest h=2 boundary locks gate+era3+era4 (a single
 // dominant rv=5 member added post-genesis to a rv=0 genesis). Returns the fixture, the boundary block,
@@ -511,10 +506,11 @@ func forgedRootSuppressLock(t *testing.T, base *Chain, b Block, which string) po
 	return root
 }
 
-// runLockPredicateOpenBreak drives one activation-lock OldValue predicate: forge it true (suppress
-// emission), build the lock-free forgedRoot, and assert the CURRENT wrong-accept. When the fix lands,
-// flip the final assertion to require err != nil.
-func runLockPredicateOpenBreak(t *testing.T, which string, forge func(*StateRootRotateWitness)) {
+// runLockPredicateAnchorStall drives one activation-lock OldValue predicate: forge it true (which
+// WOULD suppress the lock-in emission), build the lock-free forgedRoot, and assert the box STALLS
+// (Direction A anchor). The baseline (honest witness → honest root) must still agree, proving the
+// anchor only rejects the forgery, not the honest path.
+func runLockPredicateAnchorStall(t *testing.T, which string, forge func(*StateRootRotateWitness)) {
 	f, rb, honestCommitted := allThreeLockFixture(t)
 	w := f.witnessForBoundary(t, rb)
 	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, honestCommitted, rb, w); err != nil {
@@ -526,31 +522,30 @@ func runLockPredicateOpenBreak(t *testing.T, which string, forge func(*StateRoot
 		t.Fatalf("[%s] GATE VACUOUS: forgedRoot == honestCommitted", which)
 	}
 	err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, forgedRoot, rb, w)
-	if err != nil {
-		// The fix has landed: the predicate is now anchored. Flip this gate to assert-stall (remove the
-		// open-break scaffold) — the break is closed.
-		t.Fatalf("[%s] OPEN-BREAK gate now STALLS (err=%v): the LockedIn.OldValue predicate is anchored.\n"+
-			"  FLIP this gate to assert a stall (err != nil) and update the R1.4 cert / coverage table.", which, err)
+	if err == nil {
+		t.Fatalf("[%s] ANCHOR REGRESSED: box WRONG-ACCEPTS a forged LockedIn.OldValue=true predicate.\n"+
+			"  Direction A (rotateTallyOps → anchorRotateScalar) must Resolve the lock-in OldValue present\n"+
+			"  against prevStateRoot BEFORE the branch read; a forged OldValue must STALL. forgedRoot=%x honest=%x",
+			which, forgedRoot, honestCommitted)
 	}
-	t.Logf("[%s] OPEN BREAK (ROUTED): box WRONG-ACCEPTS a forged LockedIn.OldValue predicate — "+
-		"the lock-in emission was suppressed and the forged OldValue was never folded. "+
-		"forgedRoot=%x honest=%x", which, forgedRoot, honestCommitted)
+	t.Logf("[%s] ANCHOR HOLDS (Direction A): a forged LockedIn.OldValue=true STALLS (%v) — the pre-state "+
+		"anchor catches the suppression; the box never agrees with the lock-free forgedRoot.", which, err)
 }
 
 func TestOpenBreak_GateLockedInOldValuePredicate(t *testing.T) {
-	runLockPredicateOpenBreak(t, "gate", func(rw *StateRootRotateWitness) {
+	runLockPredicateAnchorStall(t, "gate", func(rw *StateRootRotateWitness) {
 		rw.GateLockedIn.OldValue = statehash.EncodeBool(true)
 	})
 }
 
 func TestOpenBreak_Era3LockedInOldValuePredicate(t *testing.T) {
-	runLockPredicateOpenBreak(t, "era3", func(rw *StateRootRotateWitness) {
+	runLockPredicateAnchorStall(t, "era3", func(rw *StateRootRotateWitness) {
 		rw.Era3LockedIn.OldValue = statehash.EncodeBool(true)
 	})
 }
 
 func TestOpenBreak_Era4LockedInOldValuePredicate(t *testing.T) {
-	runLockPredicateOpenBreak(t, "era4", func(rw *StateRootRotateWitness) {
+	runLockPredicateAnchorStall(t, "era4", func(rw *StateRootRotateWitness) {
 		rw.Era4LockedIn.OldValue = statehash.EncodeBool(true)
 	})
 }

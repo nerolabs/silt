@@ -100,10 +100,12 @@ type StateRootRotateMember struct {
 	// cross-checks Weight against the class-B-derived qualWrites[id] instead (that leaf is anchored by the
 	// class-B fold), and QualifiedProof is not read.
 	QualifiedProof statehash.Witness
-	// RegVersionProof anchors RegVersion/RegVersionKnown: present-proof of regVersion||id → EncodeUint8(RegVersion)
-	// (RegVersionKnown=true) OR non-membership proof (RegVersionKnown=false), against prevStateRoot. For an
-	// id whose regVersion||id this block MUTATED (bonded in-block), the box cross-checks RegVersion against
-	// the class-B write instead and RegVersionProof is not read.
+	// RegVersionProof anchors RegVersion/RegVersionKnown for a STEADY-STATE member: present-proof of
+	// regVersion||id → EncodeUint8(RegVersion) (RegVersionKnown=true) OR non-membership proof
+	// (RegVersionKnown=false), against prevStateRoot. For an id whose regVersion||id this block MUTATED
+	// (bonded in-block), the box cross-checks RegVersion against the class-B regVerWrites[id] value
+	// (fold-anchored, = apply()'s post-write tally input) and RegVersionProof is NOT read — the DIRECTION
+	// B in-block cross-check (classP-anchoring cert 2026-09-02 P-r2), built in anchorRotateMember.
 	RegVersionProof statehash.Witness
 }
 
@@ -152,7 +154,7 @@ type StateRootRotateWitness struct {
 // full post-qualified set (from bondRegOpsWithQual) is authoritative for B's touched ids; T deletes
 // the expired set; S deletes the slashed culprits — matching qualifiedMaintain at each apply() site.
 func (c *Chain) reconstructPostQualified(prevStateRoot ports.Hash, b Block, w StateRootWitness) (map[ports.NodeID]struct{}, error) {
-	post, _, err := c.reconstructPostQualifiedWithWrites(prevStateRoot, b, w)
+	post, _, _, err := c.reconstructPostQualifiedWithWrites(prevStateRoot, b, w)
 	return post, err
 }
 
@@ -162,27 +164,29 @@ func (c *Chain) reconstructPostQualified(prevStateRoot ports.Hash, b Block, w St
 // steady-state qualified-leaf anchor is wrong; the box cross-checks the frozen Weight against the
 // B-derived qualWrites[id] (itself anchored by the class-B fold) instead. qualWrites is nil for a
 // non-bond-reg boundary.
-func (c *Chain) reconstructPostQualifiedWithWrites(prevStateRoot ports.Hash, b Block, w StateRootWitness) (map[ports.NodeID]struct{}, map[ports.NodeID][]byte, error) {
+func (c *Chain) reconstructPostQualifiedWithWrites(prevStateRoot ports.Hash, b Block, w StateRootWitness) (map[ports.NodeID]struct{}, map[ports.NodeID][]byte, map[ports.NodeID]uint8, error) {
 	byTag := make(map[string]*StateRootDigestWitness, len(w.DigestPreSets))
 	for i := range w.DigestPreSets {
 		byTag[w.DigestPreSets[i].Tag] = &w.DigestPreSets[i]
 	}
 	preQualified, err := anchoredPreSet(byTag, tagQualifiedRoot)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	post := cloneIDSet(preQualified)
 	var qualWrites map[ports.NodeID][]byte
+	var regVerWrites map[ports.NodeID]uint8
 
 	// (1) Bond regs (apply() FIRST): B computes the whole post-qualified set from the same pre-qualified
 	// anchor. Adopt it wholesale as the qualified set post-B.
 	if len(b.BondRegs) > 0 {
-		_, _, bPostQual, bQualWrites, bErr := c.bondRegOpsWithQualWrites(prevStateRoot, b, w)
+		_, _, bPostQual, bQualWrites, bRegVerWrites, bErr := c.bondRegOpsWithQualWrites(prevStateRoot, b, w)
 		if bErr != nil {
-			return nil, nil, bErr
+			return nil, nil, nil, bErr
 		}
 		post = cloneIDSet(bPostQual)
 		qualWrites = bQualWrites
+		regVerWrites = bRegVerWrites
 	}
 	// (2) TTL sweep (apply() SECOND): each expired id leaves qualified.
 	if w.TTLSweep != nil {
@@ -194,7 +198,7 @@ func (c *Chain) reconstructPostQualifiedWithWrites(prevStateRoot ports.Hash, b B
 	for i := range b.Slashes {
 		delete(post, b.Slashes[i].CulpritID())
 	}
-	return post, qualWrites, nil
+	return post, qualWrites, regVerWrites, nil
 }
 
 // hasNonProposerAtt reports whether the block carries any attestation from a non-proposer (the only
@@ -227,6 +231,7 @@ func (c *Chain) rotateOps(
 	w StateRootWitness,
 	postQualified map[ports.NodeID]struct{},
 	qualWrites map[ports.NodeID][]byte,
+	regVerWrites map[ports.NodeID]uint8,
 	everMature bool,
 ) ([]statehash.FoldOp, error) {
 	rw := w.Rotate
@@ -261,6 +266,15 @@ func (c *Chain) rotateOps(
 	}
 
 	// matureEpoch = true. Fold iff the pre-value was false (monotonic one-way latch).
+	//
+	// DIRECTION A (class-P classP-anchoring cert 2026-09-02, P-s2): a monotonic scalar whose emit the
+	// box may SUPPRESS must have its pre-state value Resolved against prevStateRoot UNCONDITIONALLY,
+	// before the emit decision. scalarFoldOp folds (and so fold-verifies OldValue) ONLY on emit; a
+	// forged matureEpoch.OldValue=true suppresses the emit and is never fold-checked, so the box would
+	// wrong-accept a root that omits the matureEpoch write. Anchor it here first.
+	if err := anchorRotateScalar(prevStateRoot, tagMatureEpoch, rw.MatureEpoch); err != nil {
+		return nil, err
+	}
 	if op, changed := scalarFoldOp(tagMatureEpoch, rw.MatureEpoch, statehash.EncodeBool(true)); changed {
 		ops = append(ops, op)
 	}
@@ -276,7 +290,7 @@ func (c *Chain) rotateOps(
 		// tally / epochSet-leaf freeze (BUILD notes D3/D4). This anchors the INPUTS to the activation
 		// quorum; the tally arithmetic (3*ready>2*total) in rotateTallyOps is UNTOUCHED (PE constraint 2,
 		// the #402 non-fork rule).
-		if err := c.anchorRotateMember(prevStateRoot, m, qualWrites); err != nil {
+		if err := c.anchorRotateMember(prevStateRoot, m, qualWrites, regVerWrites); err != nil {
 			return nil, err
 		}
 		frozen[m.ID] = struct{}{}
@@ -313,7 +327,11 @@ func (c *Chain) rotateOps(
 	// The three activation tallies over the frozen set (own-cfg thresholds + activation guards). Each
 	// folds a lock-in bool + height scalar iff it flips this boundary. regVersion is a per-member
 	// WITNESS (R-P-tally-regversion); the thresholds (3/4/5) and *ActivationHeight guards are own-cfg.
-	ops = append(ops, c.rotateTallyOps(b, rw, frozen, regVersionByID, weightByID)...)
+	tallyOps, tallyErr := c.rotateTallyOps(prevStateRoot, b, rw, frozen, regVersionByID, weightByID)
+	if tallyErr != nil {
+		return nil, tallyErr
+	}
+	ops = append(ops, tallyOps...)
 
 	return ops, nil
 }
@@ -326,11 +344,17 @@ func (c *Chain) rotateOps(
 // against the class-B-derived write (anchored by the class-B fold); a steady-state member's Weight is
 // required to be the committed qualified||id value under prevStateRoot (present-proof at EncodeInt64(Weight)).
 //
-// RegVersion: matched to the PRE-state committed regVersion||id leaf — present-proof at
-// EncodeUint8(RegVersion) when RegVersionKnown, non-membership proof otherwise. A fresh in-block bond has
-// no pre-state regVersion leaf, so its honest witness sets RegVersionKnown=false and the absence proof
-// verifies. A forged RegVersion/RegVersionKnown that claims a pre-state value it cannot prove stalls.
-func (c *Chain) anchorRotateMember(prevStateRoot ports.Hash, m StateRootRotateMember, qualWrites map[ports.NodeID][]byte) error {
+// RegVersion (DIRECTION B, classP-anchoring cert 2026-09-02 P-r2): a member whose regVersion||id leaf
+// this block MUTATED (bonded in-block, present in regVerWrites) is cross-checked against the class-B
+// POST-write regVersion — the value apply()'s rotate tally reads (chain.go:3444), fold-anchored by the
+// class-B changed leaf — and RegVersionProof is NOT read. Without this the fresh in-block bond has no
+// pre-state regVersion leaf, so its honest witness would set RegVersionKnown=false → the tally counts
+// it as 0 → the box UNDER-counts ready weight and false-stalls where apply() finalizes. A steady-state
+// member's RegVersion is matched to the PRE-state committed regVersion||id leaf — present-proof at
+// EncodeUint8(RegVersion) when RegVersionKnown, non-membership proof otherwise. A forged
+// RegVersion/RegVersionKnown that claims a value it cannot prove (pre-state) or that mismatches the
+// class-B write (in-block) stalls.
+func (c *Chain) anchorRotateMember(prevStateRoot ports.Hash, m StateRootRotateMember, qualWrites map[ports.NodeID][]byte, regVerWrites map[ports.NodeID]uint8) error {
 	// Weight anchor.
 	if qw, mutated := qualWrites[m.ID]; mutated {
 		// In-block-mutated qualified leaf: cross-check against the class-B write (fold-anchored). A frozen
@@ -352,7 +376,19 @@ func (c *Chain) anchorRotateMember(prevStateRoot ports.Hash, m StateRootRotateMe
 		}
 	}
 
-	// RegVersion anchor (matched to the pre-state committed regVersion||id leaf).
+	// RegVersion anchor.
+	if rv, mutated := regVerWrites[m.ID]; mutated {
+		// DIRECTION B in-block cross-check: the id bonded THIS block, so the PRE-state regVersion||id
+		// leaf is absent — the pre-state Resolve is the WRONG oracle. Cross-check the tally regVersion
+		// against the class-B POST-write value (fold-anchored). The frozen witness MUST report the
+		// in-block regVersion known and equal to the write; RegVersionProof is not read.
+		if !m.RegVersionKnown || m.RegVersion != rv {
+			return fmt.Errorf("%w: frozen in-block member %x tally RegVersion(known=%v,%d) does not match the class-B regVersion write %d",
+				ErrRecomputeStateRootDigest, m.ID[:], m.RegVersionKnown, m.RegVersion, rv)
+		}
+		return nil
+	}
+	// Steady-state member: matched to the pre-state committed regVersion||id leaf.
 	regKey := statehash.Key(tagRegVersion, m.ID[:])
 	if m.RegVersionKnown {
 		if !statehash.Resolve(prevStateRoot, regKey, statehash.EncodeUint8(m.RegVersion), m.RegVersionProof).IsProvenPresent() {
@@ -414,7 +450,52 @@ func rotateEpochSetLeafOps(
 // in iff `!locked && Config.*ActivationHeight == 0 && EpochBlocks > 0 && total > 0 && 3*ready >
 // 2*total`, and folds the lock-in bool + height scalar. It folds a scalar only when the box's
 // post-value differs from the witnessed pre-value.
+//
+// DIRECTION A (classP-anchoring cert 2026-09-02, P-s3/s5/s7 + P-s4/s6/s8): the three lock-in bools
+// (GateLockedIn/Era3LockedIn/Era4LockedIn.OldValue) are read RAW as BRANCH predicates below to
+// decide whether to run each tally, AND their emit is suppressible. A forged OldValue=true skips
+// the tally, so no lock-in op is emitted and the forged OldValue is never fold-checked — the box
+// wrong-accepts a lock-free root. Anchor each bool's committed pre-value against prevStateRoot
+// UNCONDITIONALLY, BEFORE the branch read, so the predicate is trusted. The height scalars ride the
+// bool (cert §1b): suppressing the bool suppresses the pair, so anchoring the bool closes them, and
+// they keep their emit-time fold anchor. The tally ARITHMETIC (3*ready>2*total, the 3/4/5 levels,
+// the *ActivationHeight guards) is byte-for-byte UNTOUCHED (#402 non-fork / PE constraint 2) — this
+// anchors the INPUT bool, never the threshold.
 func (c *Chain) rotateTallyOps(
+	prevStateRoot ports.Hash,
+	b Block,
+	rw *StateRootRotateWitness,
+	frozen map[ports.NodeID]struct{},
+	regVersionByID map[ports.NodeID]uint8,
+	weightByID map[ports.NodeID]int64,
+) ([]statehash.FoldOp, error) {
+	// DIRECTION A: anchor the three lock-in branch-predicate bools before any branch read.
+	for _, la := range []struct {
+		tag string
+		wit StateRootRotateScalar
+	}{
+		{tagGateLockedIn, rw.GateLockedIn},
+		{tagEra3LockedIn, rw.Era3LockedIn},
+		{tagEra4LockedIn, rw.Era4LockedIn},
+	} {
+		if err := anchorRotateScalar(prevStateRoot, la.tag, la.wit); err != nil {
+			return nil, err
+		}
+	}
+	// The tally ARITHMETIC is factored out so the #402 non-fork arithmetic pins can exercise it in
+	// isolation (without a prevStateRoot). The anchor above is the only Direction-A addition on the
+	// production path; the arithmetic below is byte-for-byte the certified quorum rule.
+	return c.rotateTallyArithmeticOps(b, rw, frozen, regVersionByID, weightByID), nil
+}
+
+// rotateTallyArithmeticOps is the pure tally ARITHMETIC of the three activation lock-ins, split out of
+// rotateTallyOps so the anchor (Direction A) is not on this path. It reads no prevStateRoot: the
+// caller (rotateTallyOps) has already anchored the lock-in branch predicates. It reproduces
+// rotateEpoch's quorum (chain.go:3440-3499) byte-for-byte (#402 non-fork / PE constraint 2): sum the
+// frozen-set weight (total) and the ready weight (regVersion >= threshold), lock in iff `!locked &&
+// Config.*ActivationHeight == 0 && EpochBlocks > 0 && total > 0 && 3*ready > 2*total`, folding the
+// lock-in bool + height scalar only when the box's post-value differs from the witnessed pre-value.
+func (c *Chain) rotateTallyArithmeticOps(
 	b Block,
 	rw *StateRootRotateWitness,
 	frozen map[ports.NodeID]struct{},
@@ -479,6 +560,27 @@ func scalarFoldOp(tag string, wit StateRootRotateScalar, newValue []byte) (state
 		NewValue: newValue,
 		Proof:    wit.Proof,
 	}, true
+}
+
+// anchorRotateScalar is the DIRECTION-A pre-state anchor for a SUPPRESSIBLE monotonic scalar
+// (classP-anchoring cert 2026-09-02, §2 Direction A). A scalar whose emit the box may SKIP (its
+// post-value can equal the witnessed pre-value) must have its pre-state OldValue Resolved against
+// prevStateRoot UNCONDITIONALLY — before, and independently of, the emit/branch decision. Without
+// this, scalarFoldOp fold-verifies OldValue ONLY on emit, so a forged OldValue that suppresses the
+// emit (or gates a branch) is never checked and the box wrong-accepts a root that omits the change.
+//
+// Every scalar leaf is committed unconditionally (statehash.go:196-253; EncodeBool(false)=[]byte{0}
+// is non-empty), so a committed scalar leaf is ALWAYS present pre-state. The anchor therefore
+// requires IsProvenPresent: a forged OldValue mismatches the committed leaf ⇒ VerifyProof fails ⇒
+// NoWitness (witness.go:216) ⇒ stall. This is STALL-ADDING ONLY — NoWitness never yields an Accept
+// (the C-7 banned move stays unrepresentable at the primitive).
+func anchorRotateScalar(prevStateRoot ports.Hash, tag string, wit StateRootRotateScalar) error {
+	key := statehash.Key(tag, nil)
+	if !statehash.Resolve(prevStateRoot, key, wit.OldValue, wit.Proof).IsProvenPresent() {
+		return fmt.Errorf("%w: suppressible scalar %q OldValue not proven present against prevStateRoot (Direction A anchor)",
+			ErrRecomputeStateRootDigest, tag)
+	}
+	return nil
 }
 
 // decodeBoolLeaf decodes a committed bool scalar leaf value (statehash.EncodeBool). An absent/empty

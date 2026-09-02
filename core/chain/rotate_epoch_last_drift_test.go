@@ -92,7 +92,12 @@ func callName(e ast.Expr) string {
 // block's post-apply state, which holds iff no bonded/slashed mutation runs after it.
 //
 // The guard asserts, from the AST of apply(): the final top-level statement is the
-// epoch-rotation gate, and its ONLY body statement is the c.rotateEpoch(...) call.
+// epoch-rotation gate, and rotateEpoch is the LAST statement IN THAT GATE'S BODY. The
+// invariant is rotate-is-last, NOT that the gate body holds exactly one statement — a
+// benign extra statement (e.g. a metric emit or a post-rotate assertion) that runs AFTER
+// rotateEpoch does not move the freeze source, so it must not false-RED this guard. What
+// WOULD break order-invariance is a bonded/slashed mutation running after rotate, which
+// requires rotate to no longer be last.
 //
 // RED-on-injection (verified, then restored): moving the `if c.epochsEnabled() && … {
 // c.rotateEpoch(b.Height) }` gate above the slash loop in apply() makes the last
@@ -114,14 +119,18 @@ func TestRotateEpochIsLastInApply(t *testing.T) {
 			"rotateEpoch is NOT last, so the boundary freeze may read a PRE-final (mid-apply) set "+
 			"(I3 mid-epoch-churn divergence; #620 order-invariance premise broken)", last)
 	}
-	if len(ifs.Body.List) != 1 {
-		t.Fatalf("the final gate of apply() has %d body statements, want exactly 1 (the rotateEpoch call) — "+
-			"an extra statement in the boundary gate is not the guarded shape", len(ifs.Body.List))
+	if len(ifs.Body.List) == 0 {
+		t.Fatal("the final gate of apply() has an EMPTY body — it no longer calls rotateEpoch")
 	}
-	es, ok := ifs.Body.List[0].(*ast.ExprStmt)
+	// rotateEpoch must be the LAST statement in the gate body (not necessarily the only one): a
+	// bonded/slashed mutation AFTER it is what breaks order-invariance, and that can only happen if
+	// rotate is not last in the body.
+	lastInGate := ifs.Body.List[len(ifs.Body.List)-1]
+	es, ok := lastInGate.(*ast.ExprStmt)
 	if !ok || callName(es.X) != "rotateEpoch" {
-		t.Fatalf("the final gate of apply() does not call c.rotateEpoch(...) as its sole body statement — "+
-			"got %T; rotateEpoch is NOT the last thing apply() does (the freeze may read a stale set)", ifs.Body.List[0])
+		t.Fatalf("the final statement of apply()'s boundary gate does not call c.rotateEpoch(...) — "+
+			"got %T; rotateEpoch is NOT the last thing apply() does (the freeze may read a stale set). "+
+			"A statement AFTER rotateEpoch that mutates bonded/slashed reopens the I3 churn fork.", lastInGate)
 	}
 }
 
@@ -142,10 +151,13 @@ func TestLiveQualifiedSetReadsOnlyFinalMaps(t *testing.T) {
 	_, f := parseChainAST(t)
 	lqs := chainMethod(t, f, "liveQualifiedSet")
 
-	// The ONLY receiver fields the freeze read is allowed to touch. bonded/slashed are
-	// the two final maps; cfg supplies MinBond. Adding ANY other field is a history read
-	// (or a new coupling) and must be re-certified, not slipped in silently.
-	allowed := map[string]bool{"bonded": true, "slashed": true, "cfg": true}
+	// The ONLY receiver members the freeze read is allowed to touch. bonded/slashed are
+	// the two final maps; cfg supplies MinBond. idQualifies is the SANCTIONED single-source
+	// qualified-membership predicate (chain.go:1359-1361) — it reads ONLY bonded/slashed/cfg
+	// itself (guarded by TestIdQualifiesReadsOnlyFinalMaps below), so re-expressing
+	// liveQualifiedSet over it (the refactor #620 invites) does NOT widen the read-set. Adding
+	// ANY OTHER member is a history read (or a new coupling) and must be re-certified.
+	allowed := map[string]bool{"bonded": true, "slashed": true, "cfg": true, "idQualifies": true}
 
 	refs := map[string]bool{}
 	ast.Inspect(lqs.Body, func(n ast.Node) bool {
@@ -162,23 +174,62 @@ func TestLiveQualifiedSetReadsOnlyFinalMaps(t *testing.T) {
 	})
 
 	if len(refs) == 0 {
-		t.Fatal("liveQualifiedSet references NO receiver field — it no longer reads bonded/slashed at all; " +
+		t.Fatal("liveQualifiedSet references NO receiver member — it no longer reads bonded/slashed at all; " +
 			"the freeze source moved, the #620 premise no longer describes this function")
 	}
 	for field := range refs {
 		if !allowed[field] {
-			t.Fatalf("liveQualifiedSet reads c.%s — NOT one of the two final maps {bonded, slashed} or cfg. "+
+			t.Fatalf("liveQualifiedSet reads c.%s — NOT one of {bonded, slashed, cfg, idQualifies}. "+
 				"If it reads history (blocks/revLog/bondRegHeight/…), the frozen epochSet becomes "+
 				"history-DEPENDENT and the SMT history-independence premise for the mature set (#620) breaks. "+
 				"This is a research-gated change, not a refactor.", field)
 		}
 	}
-	// The two maps must BOTH still be read — a freeze that dropped `slashed` would admit
-	// a slashed member; one that dropped `bonded` would freeze an empty set.
+	// The freeze predicate must STILL be filter(bonded, slashed, MinBond): either liveQualifiedSet
+	// reads bonded+slashed directly, OR it delegates to idQualifies (which reads them — guarded
+	// separately). One of the two shapes must hold, or the freeze source moved.
+	directShape := refs["bonded"] && refs["slashed"]
+	delegatedShape := refs["idQualifies"]
+	if !directShape && !delegatedShape {
+		t.Fatalf("liveQualifiedSet no longer reads {bonded, slashed} directly NOR delegates to idQualifies — "+
+			"the freeze predicate changed; the frozen epochSet is no longer filter(bonded, slashed, MinBond). refs=%v", refs)
+	}
+}
+
+// TestIdQualifiesReadsOnlyFinalMaps guards the sanctioned idQualifies predicate the read-set
+// allowlist above trusts: idQualifies must itself read ONLY the two final maps + cfg. If a
+// refactor re-expressed liveQualifiedSet over idQualifies (the #620-invited change) AND idQualifies
+// then grew a history read, the frozen epochSet would become history-dependent through the delegate.
+// This closes that transitive hole — the allowlist is only safe because idQualifies is pinned too.
+func TestIdQualifiesReadsOnlyFinalMaps(t *testing.T) {
+	_, f := parseChainAST(t)
+	iq := chainMethod(t, f, "idQualifies")
+
+	allowed := map[string]bool{"bonded": true, "slashed": true, "cfg": true}
+	refs := map[string]bool{}
+	ast.Inspect(iq.Body, func(n ast.Node) bool {
+		se, ok := n.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		id, ok := se.X.(*ast.Ident)
+		if !ok || id.Name != "c" {
+			return true
+		}
+		refs[se.Sel.Name] = true
+		return true
+	})
+	for field := range refs {
+		if !allowed[field] {
+			t.Fatalf("idQualifies reads c.%s — NOT one of {bonded, slashed, cfg}. The read-set allowlist in "+
+				"TestLiveQualifiedSetReadsOnlyFinalMaps trusts idQualifies to read only the final maps; a history "+
+				"read here makes a liveQualifiedSet-over-idQualifies refactor silently history-dependent.", field)
+		}
+	}
 	for _, must := range []string{"bonded", "slashed"} {
 		if !refs[must] {
-			t.Fatalf("liveQualifiedSet no longer reads c.%s — the freeze predicate changed; "+
-				"the frozen epochSet is no longer filter(bonded, slashed, MinBond)", must)
+			t.Fatalf("idQualifies no longer reads c.%s — the qualified-membership predicate changed; "+
+				"filter(bonded, slashed, MinBond) is no longer the single-source rule", must)
 		}
 	}
 }

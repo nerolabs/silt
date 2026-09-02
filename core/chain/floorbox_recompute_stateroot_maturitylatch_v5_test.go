@@ -316,6 +316,51 @@ func TestRecomputeStateRootClassMOffBoundaryAblationNoClassM(t *testing.T) {
 	}
 }
 
+// --- DIRECTION A cross-class SUPPRESS gate (classP-anchoring cert 2026-09-02, §2 corollary; reopens
+// R1.4 Q4 on the suppression axis). A forged EverMature.OldValue=true makes maturityLatchOps return
+// post=true with NO crossing recompute and NO leaf write — the identical scalar-suppression the
+// class-P locks have. The attacker then commits a root that OMITS the everMature false→true write. The
+// Direction A anchor (Resolve everMature.OldValue present against prevStateRoot) catches the forgery:
+// the committed pre-value is false, so a forged =true fails IsProvenPresent ⇒ STALL. This gate forges
+// the suppression and asserts the box STALLS (never wrong-accepts the lock-free / latch-free root). ---
+func TestClassMEverMatureOldValueSuppressionStalls(t *testing.T) {
+	f := buildOffBoundaryMaturityFixture(t)
+	b := f.crossingBlock()
+
+	// Baseline: the honest witness (EverMature.OldValue=false, the real crossing) AGREES with apply().
+	committed := f.committedRoot(t, b)
+	w := f.witnessForCrossing(t, b)
+	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err != nil {
+		t.Fatalf("baseline must agree: %v", err)
+	}
+
+	// FORGE: claim everMature was ALREADY latched pre-state (OldValue=true). maturityLatchOps would
+	// return post=true with no crossing recompute and no everMature write.
+	fw := f.witnessForCrossing(t, b)
+	fw.Maturity.EverMature.OldValue = statehash.EncodeBool(true)
+
+	// The attacker commits the SUPPRESSED root: the post-apply state with everMature forced back to
+	// false (the false→true write omitted).
+	sup := f.applied(b)
+	sup.everMature = false
+	forgedRoot, err := sup.StateRootForVersion(BlockVersionWitnessable)
+	if err != nil {
+		t.Fatalf("forgedRoot: %v", err)
+	}
+	if forgedRoot == committed {
+		t.Fatalf("GATE VACUOUS: forged suppressed root == honest committed root")
+	}
+
+	if rerr := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, forgedRoot, b, fw); rerr == nil {
+		t.Fatalf("ANCHOR REGRESSED: box WRONG-ACCEPTS a forged EverMature.OldValue=true suppression.\n"+
+			"  Direction A (maturityLatchOps → Resolve everMature.OldValue present against prevStateRoot)\n"+
+			"  must STALL a forged pre-latch value. forgedRoot=%x honest=%x", forgedRoot, committed)
+	} else {
+		t.Logf("ANCHOR HOLDS (Direction A cross-class): a forged EverMature.OldValue=true STALLS (%v) — "+
+			"the everMature pre-state anchor catches the latch suppression.", rerr)
+	}
+}
+
 // nonMaturityOps rebuilds the E/R + class-A FoldOps for the crossing block, WITHOUT the class-M
 // everMature op — modelling the pre-fix off-boundary recompute so the ablation can fold them and show
 // the root diverges.

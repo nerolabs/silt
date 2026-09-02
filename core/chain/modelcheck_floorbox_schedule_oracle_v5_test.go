@@ -39,20 +39,23 @@ import (
 //      is stable under reorder (Resolve is pure over prevStateRoot + block), and a forged
 //      witness at height h does NOT poison prevStateRoot for h+1's Resolve (I3-adjacent).
 //
-// KNOWN COMPOUND-SHAPE BREAKS this oracle DRIVES (RED / documented-open, per the task):
-//   (a) class-P activation-lock LockedIn.OldValue unanchored wrong-accept
-//       (rotate_v5.go:442,:450,:458). A forged GateLockedIn.OldValue=true SUPPRESSES the
-//       activation tally; because the suppressed tally emits no lock-in op, the forged OldValue
-//       is never fold-checked, and the box wrong-accepts a block that OMITTED a mandatory
-//       lock-in. Driven by TestScheduleOracle_OpenBreak_A_ForgedLockInOldValueSuppression.
+// COMPOUND-SHAPE BREAKS this oracle DRIVES — now CLOSED (classP-anchoring cert 2026-09-02):
+//   (a) class-P activation-lock LockedIn.OldValue unanchored wrong-accept. A forged
+//       GateLockedIn.OldValue=true SUPPRESSED the activation tally; the suppressed tally emitted no
+//       lock-in op, the forged OldValue was never fold-checked, and the box wrong-accepted a block
+//       that OMITTED a mandatory lock-in. FIXED by DIRECTION A (rotateTallyOps anchors each lock-in
+//       bool against prevStateRoot before the branch read). Driven by
+//       TestScheduleOracle_OpenBreak_A_ForgedLockInOldValueSuppression — now asserts the STALL.
 //   (b) RegVersion in-block cross-check gap. apply()'s rotate tally reads the JUST-WRITTEN
-//       regVersion of an in-block bond (chain.go:3444); the box anchors regVersion against
-//       PRE-state (absent for a fresh in-block bond → RegVersionKnown=false → excluded), so
-//       the box's tally diverges from apply()'s. Driven by
-//       TestScheduleOracle_OpenBreak_B_InBlockRegVersionTallyDivergence.
+//       regVersion of an in-block bond (chain.go:3444); the box anchored regVersion against PRE-state
+//       only (absent for a fresh in-block bond → RegVersionKnown=false → excluded → false-stall).
+//       FIXED by DIRECTION B (regVerWrites → anchorRotateMember in-block cross-check). Driven by
+//       TestScheduleOracle_OpenBreak_B_InBlockRegVersionTallyDivergence — now asserts AGREE-on-honest
+//       + STALL-on-suppressed.
 //
-// A blind Tester verifies the oracle actually BITES: the two OPEN-BREAK gates assert nil
-// (wrong-accept) TODAY. When R1.x closes the break, the gate reddens with a fix-pointer.
+// A blind Tester verifies the oracle BITES: each gate asserts the box now STALLS the forgery (and,
+// for (b), AGREES on the honest in-block boundary). The box STILL never Accepts (WitnessValidateV5 →
+// Gated); these are recompute-verdict gates, stall-adding only.
 
 // =============================================================================
 // Shared fixture builders (self-contained; no dependency on the R1.6 branch files)
@@ -245,7 +248,10 @@ func boundaryWitnessFor(t *testing.T, c *Chain, prover *statehash.Prover, b Bloc
 		if err != nil {
 			t.Fatalf("Prove(epochSet %x): %v", id[:], err)
 		}
-		rv, ok := c.regVersion[id]
+		// An in-block bonded member carries its POST-write regVersion (from the applied clone) — the
+		// DIRECTION B cross-check input; a steady-state member's post == pre so the RegVersionProof
+		// still resolves.
+		rv, ok := clone.regVersion[id]
 		rw.Members = append(rw.Members, StateRootRotateMember{
 			ID: id, Weight: wt, RegVersion: rv, RegVersionKnown: ok,
 			EpochSetProof: esProof, EpochSetOldValue: preValue(esKey),

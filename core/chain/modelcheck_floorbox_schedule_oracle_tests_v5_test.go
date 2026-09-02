@@ -41,16 +41,16 @@ func TestScheduleOracle_HonestBaselineAgrees(t *testing.T) {
 }
 
 // =============================================================================
-// KNOWN COMPOUND-SHAPE BREAK (a) — class-P activation-lock LockedIn.OldValue.
-// rotate_v5.go:442,:450,:458 read rw.GateLockedIn/Era3LockedIn/Era4LockedIn.OldValue as the
-// "already locked in" tally gate. scalarFoldOp (:473) folds a scalar ONLY when it CHANGES, so
-// a forged OldValue=true that SUPPRESSES a tally emits NO op and is never fold-checked. The box
-// then computes a root that OMITS the mandatory lock-in write. An attacker who commits that
-// suppressed root gets a wrong-accept.
+// CLOSED-BREAK (a) — class-P activation-lock LockedIn.OldValue, now anchored (DIRECTION A).
+// rotate_v5.go read rw.GateLockedIn/Era3LockedIn/Era4LockedIn.OldValue as the "already locked in"
+// tally gate. scalarFoldOp folds a scalar ONLY when it CHANGES, so a forged OldValue=true that
+// SUPPRESSED a tally emitted NO op and was never fold-checked — the box computed a root that OMITTED
+// the mandatory lock-in write and wrong-accepted the suppressed root.
 //
-// DRIVEN RED / documented-open: the recompute returns nil (wrong-accept) TODAY. When the box
-// anchors the lock-in OldValue against prevStateRoot (the R1.x fix), this gate reddens with the
-// fix-pointer below.
+// FIXED (classP-anchoring cert 2026-09-02): rotateTallyOps now anchors each lock-in bool's committed
+// pre-value against prevStateRoot (anchorRotateScalar → Resolve.IsProvenPresent) UNCONDITIONALLY,
+// before the branch read. A forged OldValue=true (committed pre-value is false) fails IsProvenPresent
+// ⇒ NoWitness ⇒ STALL. This gate asserts the STALL.
 // =============================================================================
 
 func TestScheduleOracle_OpenBreak_A_ForgedLockInOldValueSuppression(t *testing.T) {
@@ -68,8 +68,8 @@ func TestScheduleOracle_OpenBreak_A_ForgedLockInOldValueSuppression(t *testing.T
 		t.Fatalf("baseline: honest witness must AGREE: %v", err)
 	}
 
-	// FORGE: claim the gate/era3 tallies are ALREADY locked in. rotateTallyOps skips the tally,
-	// so no lock-in op is emitted, and the forged OldValue is never fold-checked.
+	// FORGE: claim the gate/era3 tallies are ALREADY locked in. Pre-fix this suppressed the tally so
+	// no lock-in op was emitted and the forged OldValue was never fold-checked.
 	fw := boundaryWitnessFor(t, c, prover, b)
 	fw.Rotate.GateLockedIn.OldValue = statehash.EncodeBool(true)
 	fw.Rotate.Era3LockedIn.OldValue = statehash.EncodeBool(true)
@@ -81,31 +81,32 @@ func TestScheduleOracle_OpenBreak_A_ForgedLockInOldValueSuppression(t *testing.T
 	}
 
 	err := c.RecomputeStateRootEntriesRevocations(prevRoot, forgedRoot, b, fw)
-	if err != nil {
-		t.Fatalf("OPEN-BREAK (a) CLOSED: the box now STALLS a forged LockedIn.OldValue "+
-			"suppression (%v).\n"+
-			"  If this is the intended R1.x fix (anchor rw.*LockedIn.OldValue against prevStateRoot\n"+
-			"  at rotate_v5.go:442,:450,:458 — fold the scalar EVEN when unchanged, or Resolve it),\n"+
-			"  DELETE this documented-open gate and REPLACE it with a stall-assertion (err != nil).", err)
+	if err == nil {
+		t.Fatalf("ANCHOR REGRESSED (a): box WRONG-ACCEPTS a forged LockedIn.OldValue=true suppression.\n"+
+			"  Direction A (rotateTallyOps → anchorRotateScalar) must Resolve each lock-in OldValue present\n"+
+			"  against prevStateRoot before the branch read; a forged OldValue must STALL. forgedRoot=%x honest=%x",
+			forgedRoot, honest)
 	}
-	t.Logf("OPEN-BREAK (a) DRIVEN RED (documented-open): forged LockedIn.OldValue=true SUPPRESSES the "+
-		"activation tally and WRONG-ACCEPTS a block that omitted the lock-in.\n"+
-		"  site: rotate_v5.go:442,:450,:458 (gate: !decodeBoolLeaf(OldValue)) × scalarFoldOp:473 "+
-		"(unchanged scalar not folded → OldValue never fold-checked).\n"+
-		"  forgedRoot=%x honest=%x", forgedRoot, honest)
+	t.Logf("CLOSED-BREAK (a): a forged LockedIn.OldValue=true suppression STALLS (%v) — the Direction A "+
+		"pre-state anchor catches it; the box never agrees with the lock-free forgedRoot.", err)
 }
 
 // =============================================================================
-// KNOWN COMPOUND-SHAPE BREAK (b) — RegVersion in-block cross-check gap.
+// CLOSED-BREAK (b) — RegVersion in-block cross-check, now built (DIRECTION B).
 // apply()'s rotate tally (chain.go:3444) reads the JUST-WRITTEN c.regVersion[id] of an in-block
-// bond (rotate runs LAST, after the block's bonds). The box anchors regVersion against PRE-state
-// (anchorRotateMember, rotate_v5.go:355-367): a fresh in-block bond has no pre-state regVersion
-// leaf, so its honest witness sets RegVersionKnown=false and the box EXCLUDES it from the tally.
-// The box's tally therefore diverges from apply()'s. When the in-block bond's weight is decisive,
-// apply() locks in but the box does not — so the box AGREES with an attacker who commits the
-// suppressed (no-lock-in) root: a wrong-accept.
+// bond (rotate runs LAST, after the block's bonds). Pre-fix the box anchored regVersion against
+// PRE-state only: a fresh in-block bond had no pre-state regVersion leaf, so its honest witness set
+// RegVersionKnown=false and the box EXCLUDED it from the tally, DIVERGING from apply() — and (when
+// the in-block weight was decisive) AGREEING with an attacker who committed the suppressed
+// (no-lock-in) root: a wrong-accept.
 //
-// DRIVEN RED / documented-open: nil (wrong-accept) TODAY. Fix pointer in the failure message.
+// FIXED by DIRECTION B (classP-anchoring cert 2026-09-02 P-r2): bondRegOpsWithQualWrites now surfaces
+// regVerWrites (the fold-anchored post-write regVersion), and anchorRotateMember cross-checks an
+// in-block member's tally regVersion against it (mirroring the Weight in-block treatment). The box's
+// tally now MATCHES apply()'s: it counts the in-block bond and locks in, so it STALLS against the
+// suppressed forgedRoot instead of agreeing. (The honest witness that reports RegVersionKnown=false
+// for the in-block member now mismatches the class-B write ⇒ stall — the honest full witness must
+// carry the in-block regVersion.) This gate asserts the STALL.
 // =============================================================================
 
 func TestScheduleOracle_OpenBreak_B_InBlockRegVersionTallyDivergence(t *testing.T) {
@@ -148,14 +149,15 @@ func TestScheduleOracle_OpenBreak_B_InBlockRegVersionTallyDivergence(t *testing.
 
 	prover, prevRoot := proverFor(t, c)
 	w := boundaryWitnessFor(t, c, prover, b2)
-	// Confirm the box's witness excludes the in-block regVersion (RegVersionKnown=false).
+	// DIRECTION B: the honest witness now carries the in-block bond's POST-write regVersion (known),
+	// so the box counts it in the tally and matches apply().
 	foundNew := false
 	for _, m := range w.Rotate.Members {
 		if m.ID == newvID {
 			foundNew = true
-			if m.RegVersionKnown {
-				t.Fatalf("fixture: the in-block bond newv must witness RegVersionKnown=false "+
-					"(no pre-state regVersion leaf); got known=%v rv=%d", m.RegVersionKnown, m.RegVersion)
+			if !m.RegVersionKnown || m.RegVersion != BlockVersionRegGate {
+				t.Fatalf("fixture: the in-block bond newv must witness its POST-write regVersion "+
+					"(known=true, rv=%d); got known=%v rv=%d", BlockVersionRegGate, m.RegVersionKnown, m.RegVersion)
 			}
 		}
 	}
@@ -168,7 +170,15 @@ func TestScheduleOracle_OpenBreak_B_InBlockRegVersionTallyDivergence(t *testing.
 		t.Fatalf("honest root: %v", err)
 	}
 
-	// The suppressed root: post-apply state with ONLY the gate lock-in undone (era3 is guarded off).
+	// LIVENESS: the box now AGREES with apply() on the honest root (it counts the in-block regVersion
+	// and locks in), where the pre-fix box false-stalled.
+	if herr := c.RecomputeStateRootEntriesRevocations(prevRoot, honest, b2, w); herr != nil {
+		t.Fatalf("DIRECTION B LIVENESS REGRESSED: the box false-stalls on the honest in-block-bond boundary "+
+			"(%v). The in-block regVersion cross-check (regVerWrites → anchorRotateMember) must let the box "+
+			"count the in-block bond and AGREE with apply().", herr)
+	}
+
+	// SAFETY: the suppressed root (gate lock-in undone) — the box must STALL (it locks in; apply() did too).
 	sup := c.cloneForDryRun()
 	sup.apply(b2)
 	sup.gateLockedIn = false
@@ -182,18 +192,15 @@ func TestScheduleOracle_OpenBreak_B_InBlockRegVersionTallyDivergence(t *testing.
 	}
 
 	rerr := c.RecomputeStateRootEntriesRevocations(prevRoot, forgedRoot, b2, w)
-	if rerr != nil {
-		t.Fatalf("OPEN-BREAK (b) CLOSED: the box now STALLS the in-block-regVersion tally "+
-			"divergence (%v).\n"+
-			"  If this is the intended R1.x fix (cross-check the in-block bond's regVersion against\n"+
-			"  the class-B write — the just-registered version — the way Weight is cross-checked at\n"+
-			"  anchorRotateMember:335-345, so the box's tally matches apply()'s at chain.go:3444),\n"+
-			"  DELETE this documented-open gate and REPLACE it with a stall-assertion (err != nil).", rerr)
+	if rerr == nil {
+		t.Fatalf("ANCHOR REGRESSED (b): box WRONG-ACCEPTS a suppressed-lock-in root on an in-block-bond "+
+			"boundary. Direction B must count the in-block regVersion so the box's tally locks in and STALLS\n"+
+			"  against the suppressed root. newv=%x forgedRoot=%x honest=%x", newvID[:4], forgedRoot, honest)
 	}
-	t.Logf("OPEN-BREAK (b) DRIVEN RED (documented-open): the box EXCLUDES an in-block bond's just-written "+
-		"regVersion from the activation tally (RegVersionKnown=false), diverging from apply() "+
-		"(chain.go:3444) and WRONG-ACCEPTING a block that omitted the lock-in.\n"+
-		"  newv=%x forgedRoot=%x honest=%x", newvID[:4], forgedRoot, honest)
+	t.Logf("CLOSED-BREAK (b): the box AGREES with apply() on the honest in-block-bond boundary AND STALLS "+
+		"(%v) against the suppressed root — the Direction B in-block regVersion cross-check closed both the "+
+		"false-stall (liveness) and the wrong-accept (safety).\n  newv=%x forgedRoot=%x honest=%x",
+		rerr, newvID[:4], forgedRoot, honest)
 }
 
 // =============================================================================
@@ -304,22 +311,20 @@ func TestScheduleOracle_I1_DisjointBoxesNoConflictingAccept(t *testing.T) {
 	t.Logf("I1 HELD (honest-witness quorum): the honest quorum Accepted only the honest root; the "+
 		"attacked box stalled. accepted=%v", acceptedRoot)
 
-	// DIAGNOSTIC — the fork the OPEN-BREAK enables. If box-C is fed a FORGED witness (the
-	// suppression of OPEN-BREAK (a)), it DOES Accept the conflicting root. Under the accept-flip
-	// that is a live I1 fork: box-C finalizes the conflicting root while box-A/box-B finalize the
-	// honest root at the SAME height. The oracle asserts this fork is REACHABLE via a forged
-	// witness (so the break is not benign) — and that closing OPEN-BREAK (a) is what removes it.
+	// ANCHOR: the fork OPEN-BREAK (a) enabled is now CLOSED (Direction A). Feeding box-C the FORGED
+	// suppression witness for the conflicting root now STALLS — the box cannot be driven to Accept a
+	// lock-free root, so the I1 fork the accept-flip would have shipped is removed. This asserts the
+	// fork is UNREACHABLE via the forged witness (the closed-break side of the earlier diagnostic).
 	forgedC := New(c.cfg, func(ports.NodeID) int64 { return 0 })
 	forgedC.SetBondVerifier(objectiveVerify)
 	forkErr := forgedC.RecomputeStateRootEntriesRevocations(prevRoot, conflicting, b, forgedSuppressionWitness(t, c, prover, b))
 	if forkErr == nil {
-		t.Logf("I1 FORK REACHABLE (pre-flip diagnostic): a FORGED witness makes box-C Accept the "+
-			"CONFLICTING root %x while the honest quorum Accepts %x — the fork OPEN-BREAK (a) enables. "+
-			"Closing rotate_v5.go:442/:450/:458 removes it.", conflicting, honest)
-	} else {
-		t.Fatalf("I1 diagnostic expected the OPEN-BREAK (a) fork to be reachable via a forged witness, "+
-			"but box-C stalled (%v). If OPEN-BREAK (a) is CLOSED, update this diagnostic and the (a) gate together.", forkErr)
+		t.Fatalf("I1 FORK REACHABLE (anchor regressed): a FORGED suppression witness made box-C Accept the "+
+			"CONFLICTING root %x while the honest quorum Accepts %x — Direction A must STALL it "+
+			"(rotate_v5.go anchorRotateScalar). The accept-flip would ship this fork.", conflicting, honest)
 	}
+	t.Logf("I1 FORK CLOSED (Direction A): a FORGED suppression witness now STALLS (%v) — box-C cannot Accept "+
+		"the lock-free conflicting root, so the fork OPEN-BREAK (a) enabled is removed.", forkErr)
 }
 
 // TestScheduleOracle_I5_HonestNeverSlashed asserts an honest box (honest witness + honest root)
