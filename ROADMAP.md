@@ -185,9 +185,12 @@ Accept. Certification:
   byte-identity later, at RC.
 
 **Carried residuals (worth a line, owed before the flip):**
-- **R-CARRIER-REFLECTION** — 7 fold-input carriers are verified by hand; a **reflection pin**
-  on those carriers is owed before R1.8 (so a future added carrier cannot slip the table
-  silently).
+- **R-CARRIER-REFLECTION — DONE (2026-09-02, test-only).** The fold-input carriers were verified
+  by hand; they are now pinned by reflection. `TestFoldInputCarrierCoverageIsComplete`
+  (`core/chain/floorbox_recompute_carrier_reflection_v5_test.go`) walks the transitive struct
+  closure of the state-root fold's witness bundle (13 carrier types / 73 fields) and requires exact
+  equality with the declared coverage (`r12CoverageTable` ∪ `foldInputCoverageTable`), so an added
+  carrier type, an added field, or a stale row goes RED. Teeth demonstrated by injection.
 - **R-ROTATE-EPOCH-LAST — pin `rotateEpoch`-is-last-in-`apply` as load-bearing for `epochSet`
   order-independence (#621).** Distinct from R-CARRIER-REFLECTION. `epochSet` order-independence
   (proven in #620) holds only because `rotateEpoch` runs LAST in `apply` (`core/chain/chain.go`),
