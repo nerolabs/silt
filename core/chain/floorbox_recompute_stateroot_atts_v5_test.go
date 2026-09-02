@@ -73,11 +73,14 @@ func buildAttFixture(t *testing.T) attFixture {
 	return attFixture{c: c, prevRoot: prevRoot, prover: prover, proposer: prop, att: att}
 }
 
-// attBlock builds a block with one E/R entry + one non-proposer att by the fixture's attester.
+// attBlock builds a block with one E/R entry + a LastCommit carrier holding one carried signer
+// (the fixture's attester, who is not the parent's proposer). R-BOX-ATTESTS O1: the v5 seating
+// source is the hash-covered carrier over b.Prev, not the block's own Atts.
 func (f attFixture) attBlock() Block {
 	prev, h := f.c.Head()
+	head, _ := f.c.headBlock()
 	b := Block{Version: BlockVersionWitnessable, Height: h, Prev: prev, Entries: []ports.Entry{entry(42)}}
-	b.Atts = append(b.Atts, Attest(&b, f.att))
+	b.LastCommit = append(b.LastCommit, AttestAt(&head, f.att, 0, PhasePrecommit))
 	return b
 }
 
@@ -156,16 +159,17 @@ func (f attFixture) witnessForAtt(t *testing.T, b Block) StateRootWitness {
 	// The A per-member write-set (validatorsSeen ADDs): build with the same pre-set the box derives.
 	preSeen := idSet(f.preIDsValidatorsSeen())
 	screens := map[ports.NodeID]StateRootAttScreen{}
-	proposer := b.ProposerID()
-	for i := range b.Atts {
-		id := b.Atts[i].AttesterID()
-		if id == proposer {
+	w.ParentProposer, w.ParentProposerSig = f.c.CarrierParentProposerWitness()
+	parentProposer, _ := f.c.headProposerID()
+	for i := range b.LastCommit {
+		id := b.LastCommit[i].AttesterID()
+		if id == parentProposer {
 			continue
 		}
 		screens[id] = f.attScreen(id)
 		w.AttScreens = append(w.AttScreens, f.attScreen(id))
 	}
-	aWrites, _, err := f.c.stateRootAttWriteSet(f.prevRoot, b, preSeen, screens, livePreForProbe(f.c))
+	aWrites, _, err := f.c.stateRootAttWriteSet(f.prevRoot, b, preSeen, screens, livePreForProbe(f.c), w.ParentProposer, w.ParentProposerSig)
 	if err != nil {
 		t.Fatalf("stateRootAttWriteSet: %v", err)
 	}
@@ -285,12 +289,14 @@ func TestRecomputeStateRootAttAblationLegacyMode(t *testing.T) {
 	}
 
 	prev, h := c.Head()
+	head, _ := c.headBlock()
 	b := Block{Version: BlockVersionWitnessable, Height: h, Prev: prev}
-	b.Atts = append(b.Atts, Attest(&b, att))
+	b.LastCommit = append(b.LastCommit, AttestAt(&head, att, 0, PhasePrecommit))
+	pub, sig := c.CarrierParentProposerWitness()
 
 	// The legacy assertion lives in stateRootAttWriteSet (reached by the A dispatch). It must stall
 	// with a scope stall — the box refuses to reproduce rep(id) qualification from committed state.
-	_, _, wsErr := c.stateRootAttWriteSet(ports.Hash{}, b, map[ports.NodeID]struct{}{}, map[ports.NodeID]StateRootAttScreen{}, livePreForProbe(c))
+	_, _, wsErr := c.stateRootAttWriteSet(ports.Hash{}, b, map[ports.NodeID]struct{}{}, map[ports.NodeID]StateRootAttScreen{}, livePreForProbe(c), pub, sig)
 	if !errors.Is(wsErr, ErrRecomputeStateRootScopeStall) {
 		t.Fatalf("ABLATION FAILED: a legacy-mode A screen must stall with a scope stall, got %v", wsErr)
 	}

@@ -201,17 +201,13 @@ func (c *Chain) reconstructPostQualifiedWithWrites(prevStateRoot ports.Hash, b B
 	return post, qualWrites, regVerWrites, nil
 }
 
-// hasNonProposerAtt reports whether the block carries any attestation from a non-proposer (the only
-// atts that can write validatorsSeen).
-func hasNonProposerAtt(b Block) bool {
-	proposer := b.ProposerID()
-	for i := range b.Atts {
-		if b.Atts[i].AttesterID() != proposer {
-			return true
-		}
-	}
-	return false
-}
+// hasCarrierSigners reports whether the block carries a LastCommit attestation carrier — the only
+// class-A dispatch condition since R-BOX-ATTESTS O1 (2026-09-03) re-pointed the seating source from
+// the block's own uncovered Atts to the hash-covered carrier. The PARENT-proposer exclusion is
+// applied INSIDE attOps (it needs the anchored parent-proposer witness, which this predicate does
+// not have); a carrier holding only the parent's proposer therefore dispatches class A and emits
+// nothing, which is correct — the digest op is suppressed when the post-set equals the pre-set.
+func hasCarrierSigners(b Block) bool { return len(b.LastCommit) > 0 }
 
 // rotateOps reconstructs the class-P boundary FoldOps: the epochSetRoot digest, the per-member
 // epochSet leaf ADD/DELETEs, and the rotate scalar changes (epochStart / matureEpoch / lock-ins).

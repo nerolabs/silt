@@ -86,9 +86,19 @@ var foldInputCoverageTable = map[string]map[string]r12Disposition{
 		"TTLSweep":       {"already-anchored", "presence is own-cfg + height gated (BondTTLBlocks, dueBucket[h]), never witness-decided (C-6); values classified under StateRootTTLWitness"},
 		"BondRegScreens": {"already-anchored", "derived-set: one screen per payload bond-reg Root; values classified under StateRootBondRegScreen (R1.2 FIX gates)"},
 		"BondRegBuckets": {"already-anchored", "derived-set: one entry per payload-derived affected due-height; values classified under StateRootBucketWitness"},
-		"AttScreens":     {"already-anchored", "derived-set: one screen per non-proposer attester in b.Atts; values classified under StateRootAttScreen (R1.2 FIX gates)"},
-		"Rotate":         {"already-anchored", "presence is own-cfg gated (epochsEnabled && h%EpochBlocks==0), never witness-decided (C-6); values classified under StateRootRotateWitness"},
-		"Maturity":       {"already-anchored", "REQUIRED on every v5 block — maturityLatchOps STALLS on a nil Maturity, so its presence is not attacker-optional; values classified under StateRootMaturityWitness"},
+		"AttScreens":     {"already-anchored", "derived-set: one screen per carried non-parent-proposer signer in b.LastCommit — the HASH-COVERED carrier (R-BOX-ATTESTS O1), so the derived set is a pure function of signed content; values classified under StateRootAttScreen (R1.2 FIX gates)"},
+		// R-BOX-ATTESTS O1 (2026-09-03). The carrier transition excludes id == parent.ProposerID(),
+		// and the parent's proposer identity is NOT a committed leaf, so it cannot be Resolved against
+		// prevStateRoot like every other class-A screen input. It is anchored instead by the PARENT'S
+		// OWN PROPOSER SIGNATURE over the hash-covered b.Prev. Both fields decide a branch (the skip),
+		// so both are FIX with driven gates. The residual the anchor leaves — it proves "this key
+		// signed b.Prev", not "this key IS the parent's proposer", so a signer can drop its OWN seat —
+		// is R-CARRIER-PARENTPROPOSER, bounded to the downward-only discretion O1 already discloses.
+		// See carrierParentProposerFromWitness (carrier.go).
+		"ParentProposer":    {"FIX", "TestAdversarialRoot_ClassA_ForgedParentProposer"},
+		"ParentProposerSig": {"FIX", "TestAdversarialRoot_ClassA_MissingParentProposerSig"},
+		"Rotate":            {"already-anchored", "presence is own-cfg gated (epochsEnabled && h%EpochBlocks==0), never witness-decided (C-6); values classified under StateRootRotateWitness"},
+		"Maturity":          {"already-anchored", "REQUIRED on every v5 block — maturityLatchOps STALLS on a nil Maturity, so its presence is not attacker-optional; values classified under StateRootMaturityWitness"},
 	},
 	// ---- class E/R: the payload changed-leaf carrier ----
 	"StateRootChangedLeafWitness": {

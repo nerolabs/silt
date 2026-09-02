@@ -500,8 +500,7 @@ func TestRecomputeStateRootTTLAblationCompoundOutOfScope(t *testing.T) {
 	expired := f.expiredMembers()
 	// Add a non-proposer att (class A — now in scope, but unwitnessed here).
 	other := key(71077)
-	bb := b
-	b.Atts = []Attestation{Attest(&bb, other)}
+	b.LastCommit = []Attestation{carrierEntry(f.c, other)}
 	committed := f.applyAndCommittedRoot(t, b)
 	w := f.ttlSweepWitness(t, b, expired)
 

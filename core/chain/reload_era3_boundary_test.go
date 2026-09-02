@@ -590,7 +590,11 @@ func TestEveryDiskWritePathRunsTheEra3RootCheck(t *testing.T) {
 	//                          disk-write path too. A path enforcing only the era-3 rules REDs.
 	//                          (The v5 committed-root check reuses validateEra3Roots, which
 	//                          recomputes via StateRootForVersion(b.Version) — already covered.)
-	era3Rules := []string{"validateEra3Roots", "validateEra3Version", "validateEra4Version"}
+	//   - validateCarrier:     the era-4 (v5) LastCommit carrier validity rule (R-BOX-ATTESTS
+	//                          O1). The carrier is a TRANSITION input (it writes validatorsSeen),
+	//                          so a disk-write path that skips it can persist a block whose
+	//                          seating rule was never checked. Enforced on the SAME paths.
+	era3Rules := []string{"validateEra3Roots", "validateEra3Version", "validateEra4Version", "validateCarrier"}
 	// Validators that themselves run BOTH era-3 rules (transitive coverage). ValidateProposal
 	// calls both; ValidateCommit calls ValidateProposal — so a method calling either is
 	// covered for both rules. Kept as an explicit, auditable transitive set rather than a

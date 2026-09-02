@@ -311,8 +311,7 @@ func TestRecomputeStateRootAttIncompleteWitnessStalls(t *testing.T) {
 	f := buildStateRootFixture(t)
 	b := f.nextERBlock()
 	// Inject a non-proposer attestation (class A) but supply only the E/R witness (no A witness).
-	bb := b
-	b.Atts = append(b.Atts, Attest(&bb, key(52002)))
+	b.LastCommit = append(b.LastCommit, carrierEntry(f.c, key(52002)))
 	committed := f.applyAndCommittedRoot(t, b)
 	w := f.witnessForBlock(t, b)
 

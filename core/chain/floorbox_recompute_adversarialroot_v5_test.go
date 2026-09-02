@@ -419,7 +419,7 @@ func TestAdversarialRoot_ClassA_ForgedInEpochSet(t *testing.T) {
 	// Test block at h=2: newAtt attests. apply() skips it (not in epochSet).
 	prev2, h2 := c.Head()
 	bTest := Block{Version: BlockVersionWitnessable, Height: h2, Prev: prev2, Entries: []ports.Entry{entry(55)}}
-	bTest.Atts = append(bTest.Atts, Attest(&bTest, newAtt))
+	bTest.LastCommit = append(bTest.LastCommit, carrierEntry(c, newAtt))
 	Sign(&bTest, prop)
 
 	// Honest committed root: apply() skips newAtt.
@@ -470,6 +470,7 @@ func TestAdversarialRoot_ClassA_ForgedInEpochSet(t *testing.T) {
 		w.ChangedLeaves = append(w.ChangedLeaves, leafWit(wr.key))
 	}
 	w.AttScreens = []StateRootAttScreen{honestScreen}
+	w.ParentProposer, w.ParentProposerSig = c.CarrierParentProposerWitness()
 	// No A writes (newAtt not qualified) → no validatorsSeenRoot change.
 	preSeenIDs := sortIDs(func() []ports.NodeID {
 		var out []ports.NodeID
@@ -508,6 +509,7 @@ func TestAdversarialRoot_ClassA_ForgedInEpochSet(t *testing.T) {
 	}
 	forgedW.Maturity = w.Maturity
 	forgedW.AttScreens = []StateRootAttScreen{forgedScreen}
+	forgedW.ParentProposer, forgedW.ParentProposerSig = c.CarrierParentProposerWitness()
 	// The spurious A write-set the ATTACKER folds into forgedRoot: validatorsSeen||newAtt ADD + the
 	// updated validatorsSeenRoot digest. (Built directly — the box's own assembler now ANCHORS and
 	// would stall, so the attacker computes the inflated committed root itself.)
@@ -654,7 +656,7 @@ func TestAdversarialRoot_ClassM_PoisonedBySpuriousAtt(t *testing.T) {
 	// Test block at h=2: third attests. Honest apply() skips it (not in epochSet).
 	prev2, h2 := c.Head()
 	bTest := Block{Version: BlockVersionWitnessable, Height: h2, Prev: prev2, Entries: []ports.Entry{entry(88)}}
-	bTest.Atts = append(bTest.Atts, Attest(&bTest, third))
+	bTest.LastCommit = append(bTest.LastCommit, carrierEntry(c, third))
 	Sign(&bTest, prop)
 
 	clone := c.cloneForDryRun()
@@ -691,6 +693,7 @@ func TestAdversarialRoot_ClassM_PoisonedBySpuriousAtt(t *testing.T) {
 		w.ChangedLeaves = append(w.ChangedLeaves, leafWit(wr.key))
 	}
 	w.AttScreens = []StateRootAttScreen{honestScreen}
+	w.ParentProposer, w.ParentProposerSig = c.CarrierParentProposerWitness()
 	w.DigestPreSets = []StateRootDigestWitness{{Tag: tagValidatorsSeenRoot, PreIDs: preSeenIDs, Proof: seenRootWit}}
 	// everMature latched at genesis (MatureValidators=0) → class M is pre-latched, emits nothing, reads
 	// no SeenSet. The latched maturity witness supplies just the everMature pre-state scalar proof.
@@ -713,6 +716,7 @@ func TestAdversarialRoot_ClassM_PoisonedBySpuriousAtt(t *testing.T) {
 
 	forgedW := w
 	forgedW.AttScreens = []StateRootAttScreen{forgedScreen}
+	forgedW.ParentProposer, forgedW.ParentProposerSig = c.CarrierParentProposerWitness()
 	forgedW.ChangedLeaves = append(append([]StateRootChangedLeafWitness(nil), w.ChangedLeaves...),
 		leafWit(statehash.Key(tagValidatorsSeen, thirdID[:])))
 
@@ -1056,7 +1060,7 @@ func TestAdversarialRoot_ClassA_ForgedSlashed(t *testing.T) {
 	// Test block: culprit attests at h=2. Honest apply() skips culprit (slashed).
 	prev2, h2 := c.Head()
 	bTest := Block{Version: BlockVersionWitnessable, Height: h2, Prev: prev2, Entries: []ports.Entry{entry(77)}}
-	bTest.Atts = append(bTest.Atts, Attest(&bTest, culprit))
+	bTest.LastCommit = append(bTest.LastCommit, carrierEntry(c, culprit))
 	Sign(&bTest, prop)
 
 	clone := c.cloneForDryRun()
@@ -1110,6 +1114,7 @@ func TestAdversarialRoot_ClassA_ForgedSlashed(t *testing.T) {
 		w.ChangedLeaves = append(w.ChangedLeaves, leafWit(wr.key))
 	}
 	w.AttScreens = []StateRootAttScreen{honestScreen}
+	w.ParentProposer, w.ParentProposerSig = c.CarrierParentProposerWitness()
 	w.DigestPreSets = []StateRootDigestWitness{{Tag: tagValidatorsSeenRoot, PreIDs: preSeenIDs, Proof: seenRootWit}}
 	// everMature=true post-genesis → latchedMaturityWitness gives preEverMature=true → no SeenSet needed.
 	w.Maturity = latchedMaturityWitness(t, prover, preValue)
@@ -1134,6 +1139,7 @@ func TestAdversarialRoot_ClassA_ForgedSlashed(t *testing.T) {
 
 	forgedW := w
 	forgedW.AttScreens = []StateRootAttScreen{forgedScreen}
+	forgedW.ParentProposer, forgedW.ParentProposerSig = c.CarrierParentProposerWitness()
 	forgedW.ChangedLeaves = append(append([]StateRootChangedLeafWitness(nil), w.ChangedLeaves...),
 		leafWit(statehash.Key(tagValidatorsSeen, culpritID[:])))
 
@@ -1225,7 +1231,7 @@ func TestAdversarialRoot_ClassA_ForgedBondedSize(t *testing.T) {
 	// Test block: underBonded attests. Honest: excluded (BondedSize < MinBond).
 	prev, h := c.Head()
 	bTest := Block{Version: BlockVersionWitnessable, Height: h, Prev: prev, Entries: []ports.Entry{entry(66)}}
-	bTest.Atts = append(bTest.Atts, Attest(&bTest, underBonded))
+	bTest.LastCommit = append(bTest.LastCommit, carrierEntry(c, underBonded))
 	Sign(&bTest, prop)
 
 	clone := c.cloneForDryRun()
@@ -1275,6 +1281,7 @@ func TestAdversarialRoot_ClassA_ForgedBondedSize(t *testing.T) {
 		w.ChangedLeaves = append(w.ChangedLeaves, leafWit(wr.key))
 	}
 	w.AttScreens = []StateRootAttScreen{honestScreen}
+	w.ParentProposer, w.ParentProposerSig = c.CarrierParentProposerWitness()
 	w.DigestPreSets = []StateRootDigestWitness{{Tag: tagValidatorsSeenRoot, PreIDs: preSeenIDs, Proof: seenRootWit}}
 	// everMature=true → latchedMaturityWitness gives preEverMature=true → no SeenSet needed.
 	w.Maturity = latchedMaturityWitness(t, prover, preValue)
@@ -1294,6 +1301,7 @@ func TestAdversarialRoot_ClassA_ForgedBondedSize(t *testing.T) {
 
 	forgedW := w
 	forgedW.AttScreens = []StateRootAttScreen{forgedScreen}
+	forgedW.ParentProposer, forgedW.ParentProposerSig = c.CarrierParentProposerWitness()
 	forgedW.ChangedLeaves = append(append([]StateRootChangedLeafWitness(nil), w.ChangedLeaves...),
 		leafWit(statehash.Key(tagValidatorsSeen, underBondedID[:])))
 
@@ -1373,7 +1381,7 @@ func TestAdversarialRoot_ClassA_ForgedBondedPresent(t *testing.T) {
 
 	prev, h := c.Head()
 	bTest := Block{Version: BlockVersionWitnessable, Height: h, Prev: prev, Entries: []ports.Entry{entry(67)}}
-	bTest.Atts = append(bTest.Atts, Attest(&bTest, notBonded))
+	bTest.LastCommit = append(bTest.LastCommit, carrierEntry(c, notBonded))
 	Sign(&bTest, prop)
 
 	clone := c.cloneForDryRun()
@@ -1423,6 +1431,7 @@ func TestAdversarialRoot_ClassA_ForgedBondedPresent(t *testing.T) {
 		w.ChangedLeaves = append(w.ChangedLeaves, leafWit(wr.key))
 	}
 	w.AttScreens = []StateRootAttScreen{honestScreen}
+	w.ParentProposer, w.ParentProposerSig = c.CarrierParentProposerWitness()
 	w.DigestPreSets = []StateRootDigestWitness{{Tag: tagValidatorsSeenRoot, PreIDs: preSeenIDs, Proof: seenRootWit}}
 	w.Maturity = latchedMaturityWitness(t, prover, preValue)
 
@@ -1440,6 +1449,7 @@ func TestAdversarialRoot_ClassA_ForgedBondedPresent(t *testing.T) {
 
 	forgedW := w
 	forgedW.AttScreens = []StateRootAttScreen{forgedScreen}
+	forgedW.ParentProposer, forgedW.ParentProposerSig = c.CarrierParentProposerWitness()
 	forgedW.ChangedLeaves = append(append([]StateRootChangedLeafWitness(nil), w.ChangedLeaves...),
 		leafWit(statehash.Key(tagValidatorsSeen, notBondedID[:])))
 

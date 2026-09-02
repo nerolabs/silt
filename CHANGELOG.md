@@ -766,6 +766,36 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `core/node/tokenrole.go`, `core/node/demandkeys.go`, `core/node/chainrole.go`,
   `core/chain/issuerkey.go`, `core/credit/delivery.go`, `core/credit/credit.go`.
 ### Fixed
+- **`LastCommit` attestation carrier — the R-BOX-ATTESTS fix, era-4 (v5) only (owner call O1,
+  ratified 2026-09-03; the frozen era-3 format and transition are untouched):** `apply()` wrote
+  `validatorsSeen` from `b.Atts`, but `Hash()` excludes `Atts` and the committed-root predicate
+  re-runs the real `apply()` over the ATTACHED certificate. A proposer populates its roots BEFORE
+  it gathers precommits, so ANY certificate that would seat a new attester made the recomputed root
+  differ from the signed one and every replica — including the proposer's own — rejected that block
+  ("commit rejected by own replica"). Two HIGH consequences: the decentralization MEASUREMENT froze
+  (only blocks seating nobody could commit, so `validatorsSeen` was constant from the first
+  root-checked block, permanently ceilinging `MatureCoefficient` and reading zero arrivals forever),
+  and the chain stalled intermittently for any round whose first-to-quorum prefix carried a
+  qualified never-seen attester (connected, all-honest, unbounded in expectation). The fix moves the
+  seating input into HASH-COVERED content: a v5 block carries `LastCommit []Attestation` (additive
+  cbor key 18, `omitempty`, folded into `Hash()`) republishing the PARENT's precommits, and the v5
+  transition seats each carried signer that is not the parent's proposer and is `attesterQualified`
+  against the child's pre-state — folded BEFORE the block's bond registrations, TTL expiries and
+  slashes (structurally pinned). A v5 block's own `Atts` now write nothing. Validity: every entry
+  verifies over `b.Prev` at `PhasePrecommit` at its own round (deliberately NOT bound to
+  `CommitRound`, which `Hash()` does not cover); distinct ids; a sub-v5 block carrying the field is
+  invalid; height 1's carrier is empty BY RULE and genesis attestations are refused BY RULE
+  (previously a convention, not a rule). The floor-box class-A recompute and the v5 read-set model
+  are re-pointed to the carrier, with the parent-proposer exclusion anchored by the parent's own
+  proposer signature over the hash-covered `b.Prev`. Disclosed: the seat lands ONE BLOCK LATE
+  (monotone, benign); a proposer can DELAY a seating by omitting a signer but can never FORGE one
+  (downward-only, unenforceable by rule). Every carrier-free block hashes BYTE-IDENTICALLY to
+  pre-carrier code (drift guard), so the era-3 freeze (#632) is untouched, the readiness stamp is
+  NOT raised in this round, and fork-choice weight (owner call O3) is deliberately untouched.
+  Gates G1-G6b, G8, G9 of the converged verdict ship with it, each driven RED first.
+  (`core/chain/carrier.go`, `core/chain/chain.go`, `core/node/chainrole.go`,
+  `core/chain/floorbox_recompute_stateroot_atts_v5.go`, `core/chain/readset_v5.go`;
+  `docs/thinking/2026-09-03-lastcommit-carrier-round-A-design.md`)
 - **Floor-box class-A screen no longer reads LIVE box state — Direction A, an R1.8 flip precondition
   (Boulder 1; recompute-side only, no committed/wire format change, never-Accept unchanged):** the
   class-A attestation screen picked its qualification branch from `c.matureEpoch`

@@ -706,6 +706,7 @@ func (n *Node) ValidateEntryProposal(e ports.Entry) error {
 	// are over the single-entry block, exactly what the real single-entry proposal would
 	// commit. era-4 is checked first (MintVersion returns v5 only where v4 also holds).
 	if mv := n.chain.MintVersion(b.Height); mv >= chain.BlockVersionWitnessable {
+		b.LastCommit = n.chain.HeadCarrier() // track production: a real v5 proposal carries the carrier
 		if err := n.chain.PopulateEra4Roots(b); err != nil {
 			return fmt.Errorf("validate-entry: era-4 root population: %w", err)
 		}
@@ -934,6 +935,19 @@ func (n *Node) proposeBlock(b *chain.Block, attesters, broadcast []ports.NodeID,
 	// (MintVersion returns v5 only where v4 also holds, H_era4 >= H_era3). Below both
 	// boundaries the path is byte-for-byte the old v2 behavior.
 	if mv := n.chain.MintVersion(b.Height); mv >= chain.BlockVersionWitnessable {
+		// era-4 (v5) ATTESTATION CARRIER (R-BOX-ATTESTS, owner call O1, ratified 2026-09-03).
+		// Attach the PARENT's precommits BEFORE populating the roots: the carrier is folded into
+		// Hash() and it is the v5 validatorsSeen transition input, so the roots must cover it and
+		// the Sign below must sign it. That IS the fix — the proposer holds these bytes before it
+		// gathers, so the root it signs is the root the block commits, and a certificate that
+		// would seat a new attester no longer makes its own block invalid.
+		//
+		// HONEST-MAXIMAL, and the discretion is UNENFORCEABLE: "carry everything you hold" cannot
+		// be a validity rule, because no replica can know what this proposer held. The discretion
+		// is DOWNWARD-ONLY — signatures are genuine and unforgeable, so a proposer can DELAY a
+		// seating by omitting a signer but can never FORGE one, and an under-carrying proposer
+		// harms only its own fork. See Chain.HeadCarrier.
+		b.LastCommit = n.chain.HeadCarrier()
 		if err := n.chain.PopulateEra4Roots(b); err != nil {
 			done(fmt.Errorf("propose: era-4 root population: %w", err))
 			return

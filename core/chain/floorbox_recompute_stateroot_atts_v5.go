@@ -8,7 +8,17 @@ import (
 )
 
 // era-4 (v5) trustless floor-box RECOMPUTE — Path-1 state-root recompute, sub-increment P1-e,
-// CLASS A (attestations → validatorsSeen) — the FOURTH changed-whole-set-digest class.
+// CLASS A (the LastCommit carrier → validatorsSeen) — the FOURTH changed-whole-set-digest class.
+//
+// RE-POINTED 2026-09-03 by R-BOX-ATTESTS owner call O1 (gate G8). The class-A input source is the
+// block's HASH-COVERED LastCommit carrier — the PARENT's precommits, verified over b.Prev — not
+// the block's own uncovered b.Atts. Before the re-point the box derived class A from b.Atts, so a
+// peer serving a same-hash copy of a committed block with a legitimately DIFFERENT certificate (a
+// same-round superset, shape S5) made the box compute a different post-set and Reject a canonical
+// block. With the carrier the derivation is a pure function of hash-covered content, so every
+// replica and the box agree on the class-A write-set by construction; the prevStateRoot anchoring
+// the screen already had is then exactly right, because for the child prevStateRoot IS the
+// parent'"'"'s committed post-state, which is the state the chain'"'"'s applyCarrier screens against.
 //
 // CERTIFIED-IN-DIRECTION (2026-08-31):
 //   research: floorbox-recompute-classA-classP-wholeset-RESEARCH-CERTIFICATION-2026-08-31.md
@@ -19,10 +29,11 @@ import (
 // root-only for a v5 block whose committed-state effect is entries/revocations (E/R) PLUS a set
 // of non-proposer attestations that write validatorsSeen (A). It stalls loud on every other class.
 //
-// WHY A NEEDS THE DIGEST PRIMITIVE. The A-write (chain.go:3293-3298) fires for every non-proposer
-// attester `id` with `attesterQualified(id)`: it sets `validatorsSeen[id] = true` (ADD-ONLY —
+// WHY A NEEDS THE DIGEST PRIMITIVE. The A-write (applyCarrier, carrier.go) fires for every carried
+// signer `id` that is not the PARENT'"'"'s proposer and has `attesterQualified(id)` against the
+// child'"'"'s pre-state: it sets `validatorsSeen[id] = true` (ADD-ONLY —
 // apply never deletes validatorsSeen). Measured leaf diff (docs/thinking/2026-08-31-...-AP-options):
-//   - validatorsSeen||id  ADD (Present)      per qualifying non-proposer attester
+//   - validatorsSeen||id  ADD (Present)      per qualifying carried signer
 //   - validatorsSeenRoot   CHANGE             the whole-set digest over the post-set
 // The digest scalar (nodeSetMTHFromBool, statehash.go:266) is an RFC-6962 MTH over the WHOLE
 // post-state validatorsSeen id-set — a whole-list fold with no incremental update — so the box
@@ -44,7 +55,7 @@ import (
 // COST — HONEST. NOT O(payload). O(|atts|) screen + O(|validatorsSeen|) digest ≈ O(registry). Rides
 // R-membership (OPEN, load-bearing for the #657 accept-flip).
 
-// StateRootAttScreen carries, for ONE non-proposer attester, the committed pre-state qualification
+// StateRootAttScreen carries, for ONE carried non-parent-proposer signer, the committed pre-state qualification
 // inputs the box reads to compute whether the att writes validatorsSeen: the slashed[id] flag, the
 // mature-epoch epochSet[id] membership, and (pre-maturity) the bonded[id] presence. It is UNTRUSTED
 // — the box computes qualification itself from own-cfg over these, and any wrong claim either fails
@@ -87,8 +98,10 @@ type StateRootAttScreen struct {
 }
 
 // stateRootAttWriteSet derives the class-A per-member committed-leaf write-set for block b,
-// reproducing apply()'s attestation loop (chain.go:3293-3298) LEAF EFFECT: one validatorsSeen||id
-// ADD (Present) per non-proposer attester the box computes to be qualified. It is ADD-ONLY (apply
+// reproducing applyCarrier'"'"'s LEAF EFFECT (carrier.go): one validatorsSeen||id ADD (Present) per
+// carried signer the box computes to be qualified, excluding the parent'"'"'s proposer. The carrier
+// fold runs BEFORE this block'"'"'s bond regs / TTL / slashes in apply(), which is why the screen'"'"'s
+// prevStateRoot anchoring is the correct pre-state. It is ADD-ONLY (apply
 // never deletes validatorsSeen). An attester already in validatorsSeen pre-state is an idempotent
 // re-set (still emitted; the leaf value is unchanged, so it does not move validatorsSeenRoot — the
 // digest emit is gated on the post-SET differing from the pre-SET, see stateRootAttDigestOp).
@@ -102,6 +115,7 @@ func (c *Chain) stateRootAttWriteSet(
 	preValidatorsSeen map[ports.NodeID]struct{},
 	screens map[ports.NodeID]StateRootAttScreen,
 	pre stateRootHandoffPre,
+	parentProposerPub, parentProposerSig []byte,
 ) ([]stateRootWrite, map[ports.NodeID]struct{}, error) {
 	// R-A-legacy: the legacy branch falls to rep(id), which is NOT a committed leaf, so the box
 	// cannot reproduce it from committed state. A v5 block is objective by construction, but assert
@@ -111,14 +125,31 @@ func (c *Chain) stateRootAttWriteSet(
 			ErrRecomputeStateRootScopeStall)
 	}
 
-	proposer := b.ProposerID()
+	// R-BOX-ATTESTS (O1): the v5 seating source is the HASH-COVERED LastCommit carrier, never
+	// the block's own uncovered Atts. The box is v5-only; a sub-v5 block's frozen b.Atts rule is
+	// not reproduced here (it is the defect the carrier closes) — stall rather than guess.
+	if b.Version < BlockVersionWitnessable {
+		return nil, nil, fmt.Errorf("%w: class-A reproduces the era-4 (v5) carrier rule; block is v%d",
+			ErrRecomputeStateRootScopeStall, b.Version)
+	}
+	// The excluded id is the PARENT's proposer (the carrier republishes precommits over b.Prev,
+	// so the block being attested is the parent). Anchored against the hash-covered b.Prev by the
+	// parent's own proposer signature; a missing/forged pair stalls.
+	var parentProposer ports.NodeID
+	if len(b.LastCommit) > 0 {
+		var pErr error
+		parentProposer, pErr = carrierParentProposerFromWitness(b.Prev, parentProposerPub, parentProposerSig)
+		if pErr != nil {
+			return nil, nil, pErr
+		}
+	}
 	postSeen := cloneIDSet(preValidatorsSeen)
 	seen := map[ports.NodeID]struct{}{} // dedup: a block may repeat an attester id
 	var writes []stateRootWrite
-	for i := range b.Atts {
-		id := b.Atts[i].AttesterID()
-		if id == proposer {
-			continue // apply() skips the proposer's own attestation (chain.go:3295)
+	for i := range b.LastCommit {
+		id := b.LastCommit[i].AttesterID()
+		if id == parentProposer {
+			continue // the parent's proposer does not seat itself off its own block (applyCarrier)
 		}
 		if _, done := seen[id]; done {
 			continue
@@ -126,7 +157,7 @@ func (c *Chain) stateRootAttWriteSet(
 		seen[id] = struct{}{}
 		sc, ok := screens[id]
 		if !ok {
-			return nil, nil, fmt.Errorf("%w: no attester screen witness for non-proposer att %x", ErrRecomputeStateRootDigest, id[:])
+			return nil, nil, fmt.Errorf("%w: no attester screen witness for carried non-proposer signer %x", ErrRecomputeStateRootDigest, id[:])
 		}
 		qualified, qErr := c.attesterQualifiedFromScreen(prevStateRoot, sc, pre)
 		if qErr != nil {
@@ -253,7 +284,7 @@ func stateRootAttDigestOp(
 }
 
 // attOps is the class-A assembly the recompute entry calls: it anchors the pre-validatorsSeen set
-// from the validatorsSeenRoot digest witness, screens each non-proposer attester (own-cfg over the
+// from the validatorsSeenRoot digest witness, screens each carried signer (own-cfg over the
 // per-attester witnesses), derives the write-set + post-set, and reconstructs the touched digest.
 // It returns the digest FoldOps and the per-member write-set the caller folds together.
 func (c *Chain) attOps(prevStateRoot ports.Hash, b Block, w StateRootWitness, pre stateRootHandoffPre) ([]statehash.FoldOp, []stateRootWrite, error) {
@@ -269,7 +300,7 @@ func (c *Chain) attOps(prevStateRoot ports.Hash, b Block, w StateRootWitness, pr
 	for _, sc := range w.AttScreens {
 		screens[sc.Attester] = sc
 	}
-	writes, postSeen, err := c.stateRootAttWriteSet(prevStateRoot, b, preSeen, screens, pre)
+	writes, postSeen, err := c.stateRootAttWriteSet(prevStateRoot, b, preSeen, screens, pre, w.ParentProposer, w.ParentProposerSig)
 	if err != nil {
 		return nil, nil, err
 	}

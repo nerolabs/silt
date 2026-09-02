@@ -212,8 +212,13 @@ func TestHashLiteralPinHasTeeth(t *testing.T) {
 		t.Errorf("SOURCE GATE: TEETH FAILED — removing IssuerKeys from the literal was not reported missing (got %v)", missing)
 	}
 
-	// Teeth 2: fold an exclusion (Atts) — must be reported extra.
-	injected := strings.Replace(string(src), "IssuerKeys: b.IssuerKeys}", "IssuerKeys: b.IssuerKeys, Atts: b.Atts}", 1)
+	// Teeth 2: fold an exclusion (Atts) — must be reported extra. Injected at the HEAD of the
+	// literal so the fixture does not depend on which field the literal happens to end with
+	// (it ended with IssuerKeys before the LastCommit carrier landed, LastCommit after).
+	injected := strings.Replace(string(src), "unsigned := Block{", "unsigned := Block{Atts: b.Atts, ", 1)
+	if injected == string(src) {
+		t.Fatal("SOURCE GATE: teeth fixture — `unsigned := Block{` not found verbatim in bodyHash; update the teeth to the literal's current spelling")
+	}
 	keys, found = hashLiteralKeys(injected)
 	if !found {
 		t.Fatal("SOURCE GATE: teeth fixture — injected literal no longer parses")

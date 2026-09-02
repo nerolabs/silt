@@ -153,6 +153,39 @@ unbounded. Full mechanism and the seven-determinant re-derivation gate are in th
 **This is the chain-side witnessable-transitions spine only.** It does not by itself ship
 the trustless floor-box (witness) validator, which remains the open C-7 / #600 follow-on.
 
+### The v5 `LastCommit` attestation carrier (additive, 2026-09-03)
+
+| cbor key | field | covered by `Hash()` | rule |
+|---|---|---|---|
+| `18` | `LastCommit []Attestation` | **YES** | v5-only. Republishes the PARENT block's precommits. |
+
+Added by owner call **O1** of the R-BOX-ATTESTS converged verdict (2026-09-02, ratified
+2026-09-03). It is the **only** input to the v5 `validatorsSeen` transition; a v5 block's own
+`Atts` write nothing.
+
+**Why it exists.** `Hash()` excludes `Atts`, but pre-carrier `apply()` wrote `validatorsSeen`
+from them, and the root predicate re-runs `apply` over the ATTACHED certificate. A proposer
+populates its roots BEFORE it gathers, so any certificate that would seat a NEW attester made
+the recomputed root differ from the signed one and every replica rejected that block. The
+consequences were a permanently frozen decentralization measurement and an intermittent
+all-honest stall. The carrier moves the seating input into hash-covered content the proposer
+holds before it signs.
+
+**Rules.** Every entry verifies over `b.Prev` at `PhasePrecommit` at its own round (NOT bound
+to `CommitRound`, which `Hash()` does not cover); ids are distinct; a sub-v5 block carrying the
+field is invalid; height 1's carrier is empty by rule and genesis attestations are refused by
+rule. The transition seats each carried signer that is not the parent's proposer and is
+`attesterQualified` against the child's pre-state, folded BEFORE the block's bond
+registrations / TTL / slashes.
+
+**Compatibility.** `omitempty`, so a block carrying no carrier hashes byte-identically to
+pre-carrier code — the frozen era-3 (v4) format is untouched (`TestCarrierHashDriftGuard`).
+The frozen sub-v5 `b.Atts` seating rule is left byte-for-byte and now runs only for sub-v5
+blocks. cbor key **18**, not 17: 17 is reserved for the R0.4b `IssuerKeys` field.
+
+**Disclosed:** the seat lands one block late (monotone, benign); a proposer can DELAY a seating
+by omitting a signer but can never FORGE one (downward-only, unenforceable by rule).
+
 **The v5 format is deliberately kept OPEN-ENDED.** There is no live blockchain, and
 Proof-of-Delivery is expected to add or reshape witnessable state, so freezing v5 now would
 freeze a format PoD may still move. The **v5 freeze is deferred to the end of PoD**, to be

@@ -164,6 +164,19 @@ type StateRootWitness struct {
 	// with non-proposer atts (P1-e). The box computes qualification itself from own-cfg over these,
 	// then reconstructs the validatorsSeenRoot digest. See floorbox_recompute_stateroot_atts_v5.go.
 	AttScreens []StateRootAttScreen
+	// ParentProposer / ParentProposerSig carry the PARENT block's proposer public key and its
+	// proposer signature — the one class-A input that is NOT committed state. The era-4 carrier
+	// transition excludes id == parent.ProposerID() (R-BOX-ATTESTS O1), and the box holds no
+	// parent block (WitnessValidateV5 receives only b + parentStateRoot), so the identity must
+	// be witnessed. It is ANCHORED, not trusted: the box requires
+	// ed25519.Verify(ParentProposer, b.Prev[:], ParentProposerSig) — the same bare-hash
+	// proposer-signature arithmetic the chain uses — and b.Prev is hash-covered. Required
+	// whenever b.LastCommit is non-empty; a missing or non-verifying pair STALLS (never falls
+	// through to "no exclusion", which would seat the parent's proposer). See
+	// carrierParentProposerFromWitness (carrier.go) for the exact residual this leaves
+	// (R-CARRIER-PARENTPROPOSER: it bounds a forgery to dropping the forger's OWN seat).
+	ParentProposer    []byte
+	ParentProposerSig []byte
 	// Rotate carries the class-P epoch-boundary witness: the pre-qualified id-set (the freeze source),
 	// the per-frozen-member regVersion (the activation tallies), the prior epochSet, and the rotate
 	// scalar pre-values (epochStart / matureEpoch / the three lock-in scalars). Present only for an
@@ -320,9 +333,10 @@ func (c *Chain) assembleStateRootRecomputeOps(
 		writeSet = append(writeSet, stateRootTTLWriteSet(expired, w.TTLSweep.Height, preQualified)...)
 		_ = preBonded
 	}
-	// Class A (attestations → validatorsSeen, P1-e): screen each non-proposer att from own-cfg over
-	// the per-attester witnesses, derive the validatorsSeen ADDs, reconstruct validatorsSeenRoot.
-	if hasNonProposerAtt(b) {
+	// Class A (the LastCommit carrier → validatorsSeen, P1-e): screen each carried signer from
+	// own-cfg over the per-attester witnesses, derive the validatorsSeen ADDs, reconstruct
+	// validatorsSeenRoot. The source is the HASH-COVERED carrier (R-BOX-ATTESTS O1), not b.Atts.
+	if hasCarrierSigners(b) {
 		aOps, aWrites, aErr := c.attOps(prevStateRoot, b, w, pre)
 		if aErr != nil {
 			return nil, aErr

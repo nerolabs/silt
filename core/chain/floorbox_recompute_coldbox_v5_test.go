@@ -254,7 +254,7 @@ func buildMidEpochJoiner(t *testing.T) attScenario {
 
 	prev2, h2 := c.Head()
 	b := Block{Version: BlockVersionWitnessable, Height: h2, Prev: prev2, Entries: []ports.Entry{entry(55)}}
-	b.Atts = append(b.Atts, Attest(&b, z))
+	b.LastCommit = append(b.LastCommit, carrierEntry(c, z))
 	Sign(&b, prop)
 
 	return attScenario{c: c, cfg: cfg, prover: prover, prevRoot: prover.Root(),
@@ -275,6 +275,11 @@ func buildHandoffWindow(t *testing.T) attScenario {
 	t.Helper()
 	f := buildOffBoundaryMaturityFixture(t)
 	crossing := f.crossingBlock()
+	// R-BOX-ATTESTS O1: the carrier fold excludes the PARENT's proposer. The crossing block IS the
+	// window block's parent, so it must be proposed by someone OTHER than Z (= f.proposer) or Z
+	// could never be carried into a seat and this gate would be VACUOUS. Re-sign it as att1; the
+	// carrier it already holds is over ITS parent and is unaffected by its own proposer.
+	Sign(&crossing, f.att1)
 	f.c.apply(crossing) // the off-boundary maturity crossing: everMature false→true, NO rotation
 
 	if !f.c.everMature {
@@ -318,7 +323,7 @@ func buildHandoffWindow(t *testing.T) attScenario {
 		t.Fatalf("window fixture: h=%d must be OFF-boundary", h)
 	}
 	b := Block{Version: BlockVersionWitnessable, Height: h, Prev: prev, Entries: []ports.Entry{entry(91)}}
-	b.Atts = append(b.Atts, Attest(&b, f.proposer))
+	b.LastCommit = append(b.LastCommit, carrierEntry(f.c, f.proposer))
 	Sign(&b, f.att1)
 
 	return attScenario{c: f.c, cfg: cfg, prover: prover, prevRoot: prover.Root(),
@@ -350,6 +355,7 @@ func (f attScenario) witness(t *testing.T, seatZ bool) StateRootWitness {
 		EpochSetProof: mustProve(f.prover, statehash.Key(tagEpochSet, f.zID[:])),
 		BondedProof:   mustProve(f.prover, statehash.Key(tagBonded, f.zID[:])),
 	}}
+	w.ParentProposer, w.ParentProposerSig = f.c.CarrierParentProposerWitness()
 	var preSeen []ports.NodeID
 	for id := range f.c.validatorsSeen {
 		preSeen = append(preSeen, id)

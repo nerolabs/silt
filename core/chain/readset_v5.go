@@ -468,9 +468,9 @@ func (c *Chain) readSetSlashes(b Block, acc *readSetAcc) {
 	}
 }
 
-// readSetAtts emits the attestation-loop reads (apply:3293-3298). For each attester in
-// b.Atts that is NOT the proposer, the recompute evaluates attesterQualified(id) and, if
-// qualified, writes validatorsSeen[id]. It therefore reads, per attester:
+// readSetAtts emits the era-4 CARRIER fold reads (applyCarrier, carrier.go). For each signer in
+// b.LastCommit that is NOT the PARENT'"'"'s proposer, the recompute evaluates attesterQualified(id)
+// and, if qualified, writes validatorsSeen[id]. It therefore reads, per carried signer:
 //   - slashed[id] (the F2 gate, attesterQualifiedAt:1280);
 //   - the qualification-set membership: under objective+matureEpoch the effectiveEpochSet
 //     membership (epochSet — attesterQualifiedAt:1297), else bonded[id]
@@ -478,17 +478,22 @@ func (c *Chain) readSetSlashes(b Block, acc *readSetAcc) {
 //   - validatorsSeen[id], the write-target (apply:3296), read to compute the post-write
 //     leaf (present iff already seen, else absent → set present).
 //
-// O(len(b.Atts)) — the attester set is bounded by the quorum ⊆ RegCap, so this stays
-// O(payload). The read matches attesterQualified(id) = attesterQualifiedAt(id, 0): height 0
+// O(len(b.LastCommit)) — the carrier is bounded by the same R-membership set bound the flip
+// already owes (distinct ids, each a genuine parent precommit), so this stays O(payload). The read matches attesterQualified(id) = attesterQualifiedAt(id, 0): height 0
 // is never a #535 recovery boundary, so effectiveEpochSet(0) is the frozen epochSet (R2 is
 // the recovery-boundary residual, out of scope here). The legacy rep(id) branch reads no
 // committed SMT leaf, so it contributes nothing to the committed read-set.
 func (c *Chain) readSetAtts(b Block, acc *readSetAcc) {
-	proposer := b.ProposerID()
-	for i := range b.Atts {
-		id := b.Atts[i].AttesterID()
-		if id == proposer {
-			continue // apply() skips the proposer's own attestation (apply:3295)
+	if b.Version < BlockVersionWitnessable {
+		return // the frozen prior-era b.Atts rule is not modelled here; the v5 read-set is the carrier's
+	}
+	// The excluded id is the PARENT's proposer: the read-set is computed on a live chain whose
+	// head IS b's parent, the same source apply() captures before appending.
+	parentProposer, _ := c.headProposerID()
+	for i := range b.LastCommit {
+		id := b.LastCommit[i].AttesterID()
+		if id == parentProposer {
+			continue // applyCarrier skips the parent's proposer
 		}
 		// slashed[id]: the F2 gate, read for every attester.
 		if c.slashed[id] {

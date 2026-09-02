@@ -10,21 +10,13 @@ import (
 // MG-C / R-CARRIER-GENESIS-DISPOSAL (delta cert
 // LASTCOMMIT-CARRIER-26977a4-DELTA-CERTIFICATION-2026-09-03 §6; ROADMAP).
 //
-// Block.Atts is OUTSIDE the Hash() preimage (see hash_literal_pin_test.go). A serving
-// peer can therefore append an unsigned stub attestation to a genesis it relays: the
-// hash is byte-identical, the proposer signature still verifies, and the
-// genesis-divergence check passes. Whatever AppendGenesis does with that stub is done
-// at zero cost to the attacker, on two live paths — Reload (own disk, chain.go:3160)
-// and Reconcile (peer-supplied fork, chain.go:4012).
-//
-// The rule the cert certifies: STRIP an unsigned slot (Atts), REFUSE a hash-covered one
-// (LastCommit). "Strip" means nil b.Atts BEFORE c.apply(b): the sub-v5 seating loop
-// (chain.go:3471) runs over b.Atts and would otherwise pre-seat validatorsSeen from a
-// signature nobody made.
-//
-// On main (b328268) AppendGenesis neither refuses nor strips: the stub reaches apply()
-// and pre-seats. On the carrier branch it refuses (ErrGenesisAtts) — the free denial
-// lever. Both are RED here; the Builder's split fix makes them GREEN.
+// Only the HASH-COVERED half is gated here: a genesis carrying a LastCommit carrier is
+// authored, signed content and is REFUSED (ErrGenesisLastCommit). The UNSIGNED slot
+// (Atts, outside the Hash() preimage — see hash_literal_pin_test.go) is deliberately NOT
+// gated: stripping it broke the anchor bootstrap (the launch anchors' genesis
+// attestations are what seat them into validatorsSeen on core/node), so its disposal
+// (strip-all vs seat-only-verified) is RESEARCH-GATED and AppendGenesis keeps main's
+// pre-carrier behaviour for it. Do not add an Atts gate here without that verdict.
 
 // stubAttFor is the attacker's stub: the REAL public key of a QUALIFIED validator that
 // signs nothing else in the test, with a 64-zero-byte signature nobody produced. A

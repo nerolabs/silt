@@ -140,7 +140,7 @@ func TestAdversarialRoot_ClassA_ForgedSlashed_StillBonded(t *testing.T) {
 	delete(honestClone.bonded, culpritID) // restore real post-slash state (no bonded entry)
 	prev2, h2 := c.Head()
 	bTest := Block{Version: BlockVersionWitnessable, Height: h2, Prev: prev2, Entries: []ports.Entry{entry(78)}}
-	bTest.Atts = append(bTest.Atts, Attest(&bTest, culprit))
+	bTest.LastCommit = append(bTest.LastCommit, carrierEntry(c, culprit))
 	Sign(&bTest, prop)
 
 	applyClone := honestClone.cloneForDryRun()
@@ -205,6 +205,7 @@ func TestAdversarialRoot_ClassA_ForgedSlashed_StillBonded(t *testing.T) {
 	forgedW.ChangedLeaves = append(forgedW.ChangedLeaves,
 		leafWit(statehash.Key(tagValidatorsSeen, culpritID[:])))
 	forgedW.AttScreens = []StateRootAttScreen{forgedScreen}
+	forgedW.ParentProposer, forgedW.ParentProposerSig = c.CarrierParentProposerWitness()
 	forgedW.DigestPreSets = []StateRootDigestWitness{{Tag: tagValidatorsSeenRoot, PreIDs: preSeenIDs, Proof: seenRootWit}}
 	forgedW.Maturity = latchedMaturityWitness(t, prover, preValue)
 
@@ -364,7 +365,7 @@ func TestMatureEpochImpliesEverMature_InvariantPin(t *testing.T) {
 		// h=1: att attests -> seats into validatorsSeen -> Mature() trips -> everMature latches.
 		prev, h := c.Head()
 		b1 := Block{Version: BlockVersionWitnessable, Height: h, Prev: prev}
-		b1.Atts = append(b1.Atts, Attest(&b1, att))
+		b1.LastCommit = append(b1.LastCommit, carrierEntry(c, att))
 		Sign(&b1, prop)
 		c.apply(b1)
 		checkInv(c, "h=1 att attests (latch event)")

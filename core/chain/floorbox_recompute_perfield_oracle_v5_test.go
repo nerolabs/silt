@@ -142,7 +142,7 @@ func TestPerField_AttScreen_BondedProof(t *testing.T) {
 	}
 	prev, h := c.Head()
 	bTest := Block{Version: BlockVersionWitnessable, Height: h, Prev: prev, Entries: []ports.Entry{entry(60)}}
-	bTest.Atts = append(bTest.Atts, Attest(&bTest, att))
+	bTest.LastCommit = append(bTest.LastCommit, carrierEntry(c, att))
 	Sign(&bTest, prop)
 
 	clone := c.cloneForDryRun()
@@ -167,6 +167,7 @@ func TestPerField_AttScreen_BondedProof(t *testing.T) {
 	}
 	w.ChangedLeaves = append(w.ChangedLeaves, leafWit(statehash.Key(tagValidatorsSeen, attID[:])))
 	w.AttScreens = []StateRootAttScreen{honestScreen}
+	w.ParentProposer, w.ParentProposerSig = c.CarrierParentProposerWitness()
 	w.DigestPreSets = []StateRootDigestWitness{{Tag: tagValidatorsSeenRoot,
 		PreIDs: sortIDs(nil), Proof: mustProve(prover, statehash.Key(tagValidatorsSeenRoot, nil))}}
 	w.Maturity = latchedMaturityWitness(t, prover, preValue)
