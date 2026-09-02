@@ -179,7 +179,18 @@ Accept. Certification:
   - the **recovery-boundary decision** (cold-auditor directive-trust boundary) — repro/residual
     in [`docs/thinking/2026-09-01-residual-defect-repro-recipes.md`](docs/thinking/2026-09-01-residual-defect-repro-recipes.md)
     (formerly #535);
-  - the **legacy-mode invariant** (the pre-v5 path stays sound under the flip).
+  - the **legacy-mode invariant** (the pre-v5 path stays sound under the flip);
+  - **R-FOLD-LIVE-STATE-READS — the fold reads NO live box state** (research cert
+    `floorbox-R-FOLD-LIVE-STATE-READS-RESEARCH-CERTIFICATION-2026-09-02.md`, GATED). The class-A
+    screen selected its qualification branch from `c.matureEpoch` and its anchor eligibility from
+    `c.launchAnchor` → `c.handedOff()` — box-own fields written only by `apply→rotateEpoch` and
+    `adopt`. The deployment target replays no `apply()`, so a COLD box never set them and screened
+    every mature-epoch block under the pre-maturity rule: wrong-accept of a mid-epoch joiner against
+    an attacker's root, and false stall on an honest one, with every witness proof passing.
+    **Direction A landed** (the branch selector is the Resolved `tagMatureEpoch` pre-value anchored
+    against `prevStateRoot`; `launchAnchorGiven` is the one shared predicate) together with the
+    **R-COLD-BOX-HARNESS** tier and the fold-file live-state allowlist pin. The remaining flip
+    obligation is that the cold-box tier stays the tier every new recompute gate runs in.
   **Decoupled from the era-4/v5 freeze** (R3.4): the flip proceeds pre-freeze;
   `WitnessValidateV5` changes no committed format field, so the freeze re-confirms
   byte-identity later, at RC.
@@ -188,9 +199,19 @@ Accept. Certification:
 - **R-CARRIER-REFLECTION — DONE (2026-09-02, test-only).** The fold-input carriers were verified
   by hand; they are now pinned by reflection. `TestFoldInputCarrierCoverageIsComplete`
   (`core/chain/floorbox_recompute_carrier_reflection_v5_test.go`) walks the transitive struct
-  closure of the state-root fold's witness bundle (13 carrier types / 73 fields) and requires exact
+  closure of the state-root fold's witness bundle (13 carrier types / 74 fields) and requires exact
   equality with the declared coverage (`r12CoverageTable` ∪ `foldInputCoverageTable`), so an added
   carrier type, an added field, or a stale row goes RED. Teeth demonstrated by injection.
+  The R-FOLD-LIVE-STATE-READS fix added the `StateRootMaturityWitness.MatureEpoch` carrier field;
+  it ships with its own `r12CoverageTable` row, so the pin stays green.
+- **R-COLD-BOX-HARNESS — CLOSED as a permanent tier** (`core/chain/floorbox_recompute_coldbox_v5_test.go`).
+  Every recompute gate had run on the chain that APPLIED the history, so the test tier shared the
+  producer's blind spot — third occurrence in this spine (R1.3 fold-caught premise, class-P
+  suppression, live-state reads). The tier drives the real entry on a `New(cfg)` box that never
+  applied a block. New recompute gates run in it.
+- **R-VERIFYBOND-WIRING — CLOSED.** The injected `verifyBond` is asserted once at the box entry
+  (`ErrRecomputeBoxWiring`), so the #572 replay shape fails loud and named instead of as a fold
+  mismatch three classes later.
 - **R-ROTATE-EPOCH-LAST — pin `rotateEpoch`-is-last-in-`apply` as load-bearing for `epochSet`
   order-independence (#621).** Distinct from R-CARRIER-REFLECTION. `epochSet` order-independence
   (proven in #620) holds only because `rotateEpoch` runs LAST in `apply` (`core/chain/chain.go`),

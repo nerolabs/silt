@@ -260,7 +260,7 @@ func (f rotateFixture) witnessForBoundary(t *testing.T, b Block) StateRootWitnes
 	// Class M maturity witness. This fixture is mature-from-genesis (MatureValidators=0), so everMature
 	// is already latched pre-state (pre=true) — class M emits nothing and reads no SeenSet, but the entry
 	// still requires the witness so the latch is never silently skipped.
-	w.Maturity = &StateRootMaturityWitness{EverMature: f.scalarWit(t, tagEverMature)}
+	w.Maturity = &StateRootMaturityWitness{EverMature: f.scalarWit(t, tagEverMature), MatureEpoch: f.scalarWit(t, tagMatureEpoch)}
 
 	// dueBucket scope-gate proof (non-membership at b.Height, unless a bond reg TTL bucket collides).
 	if f.c.cfg.BondTTLBlocks > 0 {
@@ -861,7 +861,7 @@ func (f handoffFixture) witnessForHandoff(t *testing.T, b Block) StateRootWitnes
 		screens[id] = sc
 		w.AttScreens = append(w.AttScreens, sc)
 	}
-	aWrites, _, err := f.c.stateRootAttWriteSet(f.prevRoot, b, preSeen, screens)
+	aWrites, _, err := f.c.stateRootAttWriteSet(f.prevRoot, b, preSeen, screens, livePreForProbe(f.c))
 	if err != nil {
 		t.Fatalf("stateRootAttWriteSet: %v", err)
 	}
@@ -921,8 +921,9 @@ func (f handoffFixture) witnessForHandoff(t *testing.T, b Block) StateRootWitnes
 	// scalar proof + the POST-apply SeenSet. On this fixture the boundary block IS the crossing, so
 	// class M reconstructs matureNow over the applied state and emits the everMature false→true op.
 	w.Maturity = &StateRootMaturityWitness{
-		EverMature: scalarWit(tagEverMature),
-		SeenSet:    f.seenWitnessPost(t, applied),
+		EverMature:  scalarWit(tagEverMature),
+		MatureEpoch: scalarWit(tagMatureEpoch),
+		SeenSet:     f.seenWitnessPost(t, applied),
 	}
 
 	// dueBucket scope-gate proof (non-membership at b.Height).
@@ -1068,7 +1069,7 @@ func (f handoffFixture) nonRotateOps(t *testing.T, b Block, w StateRootWitness) 
 	}
 	var ops []statehash.FoldOp
 	// Class A digest ops + per-member writes.
-	aOps, aWrites, err := f.c.attOps(f.prevRoot, b, w)
+	aOps, aWrites, err := f.c.attOps(f.prevRoot, b, w, livePreForProbe(f.c))
 	if err != nil {
 		t.Fatalf("attOps: %v", err)
 	}

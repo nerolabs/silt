@@ -1768,6 +1768,11 @@ var r12CoverageTable = map[string]map[string]r12Disposition{
 		"OldValue": {"SUPPRESS-SPLIT", "scalarSuppressObligations (per-scalar: emit-anchored vs suppress-anchored)"},
 		"Proof":    {"already-anchored", "the scalar leaf inclusion proof, verified by the fold OldValue vs prevStateRoot when the scalar op is emitted"},
 	},
+	// NOTE: the class-M carrier StateRootMaturityWitness — which since R-FOLD-LIVE-STATE-READS homes
+	// BOTH young→mature handoff scalars (everMature and matureEpoch) — is owned by
+	// foldInputCoverageTable (floorbox_recompute_carrier_reflection_v5_test.go). A carrier is declared
+	// in EXACTLY ONE table; the reflection pin reddens on a carrier in both. Its per-scalar
+	// Direction-A obligations still live in scalarSuppressObligations below.
 }
 
 // scalarSuppressPath classifies one class-P/M scalar's OldValue anchoring obligation. This is the
@@ -1790,7 +1795,10 @@ var scalarSuppressObligations = map[string]scalarSuppressPath{
 	tagEpochStart: {"emit-anchored", "TestPerField_RotateScalar_EpochStart_Anchored (height strictly advances ⇒ always emits)"},
 	// Suppress-anchored (Direction A): a forged OldValue equal to the post-value suppresses the emit;
 	// anchored unconditionally against prevStateRoot before the emit/branch decision.
-	tagMatureEpoch:  {"suppress-anchored", "TestRecomputeStateRootRotateMatureEpochOldValueSuppressionStalls"},
+	// matureEpoch has TWO consumers: class P's boundary WRITE (suppressible emit) and — since
+	// R-FOLD-LIVE-STATE-READS (2026-09-02) — the class-A screen's BRANCH SELECTOR, anchored on EVERY
+	// block by handoffPreState. Both are driven.
+	tagMatureEpoch:  {"suppress-anchored", "TestRecomputeStateRootRotateMatureEpochOldValueSuppressionStalls + TestColdBox_D1_ForgedMatureEpochOldValueStalls"},
 	tagEverMature:   {"suppress-anchored", "TestClassMEverMatureOldValueSuppressionStalls"},
 	tagGateLockedIn: {"suppress-anchored", "TestOpenBreak_GateLockedInOldValuePredicate"},
 	tagEra3LockedIn: {"suppress-anchored", "TestOpenBreak_Era3LockedInOldValuePredicate"},

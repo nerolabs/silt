@@ -1257,7 +1257,23 @@ func (c *Chain) launchAnchor(id ports.NodeID) bool {
 	// Condition B), so after the everMature latch trips mid-epoch the anchors keep
 	// governing — deterministically, for at most EpochBlocks more blocks — until
 	// the finalized boundary sheds them; without epochs it is the raw latch.
-	return len(c.cfg.Anchors) > 0 && c.cfg.Anchors[id] && !c.handedOff()
+	return c.launchAnchorGiven(id, c.handedOff())
+}
+
+// launchAnchorGiven is launchAnchor with the handoff predicate SUPPLIED rather than read from
+// this replica's live latch fields. It is the ONE definition of the launch-anchor rule; the two
+// callers differ only in where the handoff bool comes from (R-FOLD-LIVE-STATE-READS cert
+// 2026-09-02, Q3 step 3 — the #402 non-fork rule, one function, never a second copy):
+//
+//   - the LIVE node (launchAnchor above) supplies c.handedOff(), its own applied state;
+//   - the trustless floor-box recompute supplies the handoff predicate computed from the
+//     COMMITTED pre-state scalars Resolved against prevStateRoot (matureEpoch with epochs
+//     enabled, everMature without) — because a box that replays no apply() has no live latch
+//     to read, and reading one made its class-A screen diverge from what a full node accepts.
+//
+// It reads own-cfg ONLY (Anchors), never live state, so it is safe for the fold files to call.
+func (c *Chain) launchAnchorGiven(id ports.NodeID, handedOff bool) bool {
+	return len(c.cfg.Anchors) > 0 && c.cfg.Anchors[id] && !handedOff
 }
 
 // attesterQualified reports whether id may have its attestation counted toward

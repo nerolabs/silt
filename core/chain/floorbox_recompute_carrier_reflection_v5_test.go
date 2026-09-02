@@ -133,7 +133,11 @@ var foldInputCoverageTable = map[string]map[string]r12Disposition{
 	// ---- class M: the everMature latch bundle ----
 	"StateRootMaturityWitness": {
 		"EverMature": {"already-anchored", "class-M scalar, SUPPRESS-ANCHORED: scalarSuppressObligations[tagEverMature] (Direction A pre-state anchor against prevStateRoot plus a driven suppression gate); fields under StateRootRotateScalar"},
-		"SeenSet":    {"already-anchored", "the maturity witness RecomputeMatureNow verifies against committedStateRoot; read only when the pre-latch everMature is false, and a missing/forged one stalls (values classified under SeenSetWitness)"},
+		// R-FOLD-LIVE-STATE-READS (cert 2026-09-02, Q3 step 1): the class-A screen's BRANCH SELECTOR.
+		// Homed on this carrier because it is REQUIRED on every block, while the class-P rotate witness
+		// is nil off-boundary. Anchored UNCONDITIONALLY by handoffPreState before any class dispatches.
+		"MatureEpoch": {"already-anchored", "class-M/A scalar, SUPPRESS-ANCHORED: scalarSuppressObligations[tagMatureEpoch] (Direction A pre-state anchor in handoffPreState against prevStateRoot, plus the driven both-polarity gate TestColdBox_D1_ForgedMatureEpochOldValueStalls); fields under StateRootRotateScalar"},
+		"SeenSet":     {"already-anchored", "the maturity witness RecomputeMatureNow verifies against committedStateRoot; read only when the pre-latch everMature is false, and a missing/forged one stalls (values classified under SeenSetWitness)"},
 	},
 	// ---- class M: the validatorsSeen set witness ----
 	"SeenSetWitness": {
