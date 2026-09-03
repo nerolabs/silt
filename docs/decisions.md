@@ -1316,7 +1316,12 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
   nothing: one proof spans ~1 KB to hundreds of MB), enforced first on every write path in
   every era; at-cap accepts; the proposer packs `pendingSlashes` under it and carries the
   rest. Raising it never admits a forged slash; lowering it never convicts an honest
-  validator — that is the whole argument that it is not a security parameter.
+  validator — that is the whole argument that it is not a security parameter. **The PE
+  review adds the other face (F-2):** the value is also the size above which a
+  double-signer's evidence cannot be committed, so an equivocator who makes both its blocks
+  over-cap keeps its on-chain seat (the local ledger still penalises it; the class pre-existed
+  at the 132 MiB frame). Whether I5's COMPLETENESS half makes the value research-gated is
+  routed to the Researcher; the owner hears this before ratifying the number.
   **Provisional value 16 MiB — the owner ratifies the NUMBER on immutable-#8 grounds.**
   Derived from shipped bounds: one legitimate evidence pair is at most two blocks at the
   default per-block budgets (2 MiB regs + 64 KiB entries) ≈ 4.2 MiB, so 16 MiB admits three
@@ -1329,7 +1334,25 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
   the honest-node vector (`core/node`, reproduced first); T-6 the cap over/at; G-2 honest
   detection never pairs a pruned block; G-4 memo bypass; G-6 one hash function (source pin);
   the I5 model-check gained three axes (declared-vs-signed height; `Pruned` ∈ {unset, real,
-  forged}; era ∈ {1, 2}; 9,792 cases). Removing the recompute turns six gates RED.
+  forged}; era ∈ {1, 2}; 9,792 cases). Removing the recompute turns six gates RED; the
+  Tester's independent half-revert matrix shows the refusal half and the recompute half are
+  each gated on their own. Packing gate `TestProposerPacksPendingSlashesUnderTheBytesCap`
+  (`core/node`): a backlog over the cap is carried, the proposal never exceeds the cap, and a
+  proof that alone exceeds it is dropped, never embedded (PE ruling F-1).
+- **G-1, stated exactly.** Artifacts scanned: the four persisted chain fixtures in the tree
+  (`core/chain/testdata/archival/{era1,era2,era2-pruned,mixed-era1-era2}.cbor`), against BOTH
+  new invalidation predicates (pruned evidence; `Slashes` over 16 MiB). They carry zero
+  `Slashes` at all, so both pass vacuously. No persisted field chain (`chain.cbor`) exists in
+  the tree or in the local cloudtest evidence directories; the flixz deployment was not
+  scanned. **Accepted explicitly:** no persisted chain silt holds carries a committed slash,
+  and no network mints them today; the rule ships unconditional, no grandfather height. If a
+  field box with committed slashes is ever restored onto this binary, the reload truncates at
+  the first invalidated block and stalls loudly rather than accept it.
+- **PE ruling:** MERGE-WITH-CONDITIONS, conditions F-1 and F-4 landed in the same PR
+  (`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-R0.6-i5-evidence-recompute-3131d5a-2026-09-03.md`).
+  Owed after: F-5 (pin `finalized > pruneFloor`, the G-2 derivation); the F-2 research
+  question; a byte-tight at-ceiling fixture (the Tester: the accepted list lands 1.12 MiB
+  under the cap).
 - **Residuals, OPEN and named (not decided here).** R-EVIDENCE-BYTES (re-priced, bounded by
   the cap; re-opens if `RegCap` rises or #299 lands); R-BIG-EVIDENCE-UNSLASHABLE
   (pre-existing: evidence over the transport frame was never gossipable); **R-BOX** (the

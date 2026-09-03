@@ -31,13 +31,25 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   removed behaviour), `core/node/r06_i5_evidence_recompute_test.go` (T-5, the honest-node
   vector, reproduced first), and the I5 model-check's three new axes (declared-vs-signed height;
   `Pruned` ∈ {unset, real, forged}; era ∈ {1, 2}; 9,792 cases). G-1: every persisted chain
-  fixture scanned, zero committed slashes with pruned evidence — the fork set is empty. G-3
+  fixture scanned (`core/chain/testdata/archival/*.cbor`, both predicates: pruned evidence and
+  `Slashes` over the cap; they carry no `Slashes` at all, so both pass vacuously; no field
+  `chain.cbor` exists locally; accepted explicitly in D-F2-EVIDENCE-RECOMPUTE) — the fork set is
+  empty. Packing gate `TestProposerPacksPendingSlashesUnderTheBytesCap` (`core/node`): a
+  backlog over the cap is carried, the proposal never exceeds it, and a proof that alone
+  exceeds it is dropped, never queued or embedded (PE F-1: embedding one would doom every
+  later proposal by that node). Detection scans only the served suffix (PE F-3: candidate
+  selection body-hashes both sides, and the genesis-rooted reconstruction re-hashed the whole
+  chain per sweep, 228 ms at n=600). G-3
   harness `TestSlashesBytesCapWorstCaseCost` (5 reg-laden proofs fill the cap; 15.0 MiB
   resident; 11.5 ms to validate). Accepted cost R-LATE-REVEAL (a double-sign whose evidence was
   already pruned is unslashable; safety unaffected). Residuals OPEN by name: R-EVIDENCE-BYTES,
   R-BIG-EVIDENCE-UNSLASHABLE, R-BOX (the floor box's un-verified `b.Slashes` read), R-MEMO,
   R-RELOAD-RE-VERIFY. Canon: `docs/decisions.md` D-F2-EVIDENCE-RECOMPUTE; consensus-invariants
-  I5 scar; `retention.go` premise re-worded. Certification:
+  I5 scar; `retention.go` premise re-worded. PE: MERGE-WITH-CONDITIONS (F-1, F-4 landed;
+  F-2 the cap value is also the eviction-escape threshold — routed to the Researcher before
+  the owner ratifies the number; F-5 owed:
+  `silt-reviews/principle-engineer/RULING-R0.6-i5-evidence-recompute-3131d5a-2026-09-03.md`).
+  Certification:
   `silt-reviews/research/research-outcome/I5-cross-height-pruned-slash-forgery-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md`;
   deliberation `docs/thinking/2026-09-03-r0.6-i5-evidence-recompute-design.md`.
 - **R0.4b C3 merge-gate close — the CI job that did not parse, and the C-3 hardness checks on an

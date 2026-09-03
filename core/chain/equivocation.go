@@ -156,9 +156,11 @@ func FindEquivocations(a, b []Block) []Equivocation {
 		bb := &b[i]
 		// Candidate selection uses the SAME body-recomputed hash as CheckEquivocation
 		// (R0.6 G-6): a Pruned digest or a stale memo must not decide which pairs are
-		// even candidates. Cost: two body hashes per FORK block (the fork is the peer's
-		// served suffix above our finalized head, so this is bounded by the work the
-		// reconcile already spends validating those blocks), never per chain block.
+		// even candidates. Cost: two body hashes per block of b that has a same-height
+		// partner in a — so CALLERS must pass only the heights that can actually
+		// diverge (the served suffix), never a shared genesis-rooted prefix
+		// (core/node/chainrole.go, the detection call site; PE ruling F-3 measured
+		// 228 ms/sweep at n=600 when the whole chain was passed).
 		ab, ok := byHeight[bb.Height]
 		if !ok || ab.bodyHash() == bb.bodyHash() {
 			continue // no block at this height on the other side, or the same block

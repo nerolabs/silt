@@ -415,8 +415,17 @@ const RegCap = 256
 // pins two full block bodies — BondReg.Answer included — permanently resident on every
 // node, in the one slot pruning cannot reach. A BYTE ceiling, not a count: one proof
 // spans ~1 KB (header-only pair) to hundreds of MB (two reg-laden blocks), so a count
-// bounds nothing. The proposer packs pendingSlashes under this cap and carries the rest
-// (core/node/chainrole.go), so an honest backlog never produces a doomed proposal.
+// bounds nothing. The proposer packs pendingSlashes under this cap and carries the rest;
+// a proof that ALONE exceeds the cap is never queued or embedded (core/node/chainrole.go),
+// because it can never commit and embedding it would doom every later proposal.
+//
+// The value is ALSO the size above which a double-signer's evidence cannot be committed —
+// an equivocator who signs two over-cap blocks keeps its on-chain seat (the local ledger
+// still penalises it). The certification argues "not a security parameter" for the
+// honest-never-slashed direction; whether the COMPLETENESS direction (I5's other half)
+// makes the value research-gated is routed to the Researcher (PE ruling
+// RULING-R0.6-i5-evidence-recompute-3131d5a-2026-09-03 F-2). The class pre-existed at the
+// 132 MiB transport frame (R-BIG-EVIDENCE-UNSLASHABLE); this constant lowers it to 16 MiB.
 //
 // PROVISIONAL VALUE — OWNER RATIFIES on immutable-#8 grounds (G-3 measurement pending;
 // TestSlashesBytesCapWorstCaseCost reports the resident/decode/validate cost at the cap).
