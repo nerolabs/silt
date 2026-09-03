@@ -9,6 +9,16 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Security
+- **R4.3a — the DHT eclipse cap no longer exempts an undeclared domain.** `core/dht/table.go`
+  treated domain 0 as "unknown ⇒ never capped", so a key-surround adversary escaped the H5-B
+  per-bucket diversity cap by omitting `-domain` (R4.2 direction certification §3, CERTIFIED).
+  Now an unknown domain counts against one shared bucket under the same cap; known distinct domains
+  are still admitted past it; the cap-off path is unchanged. Gates `core/node/r43a_dht_domain0_test.go`
+  (`TestR43a_UnknownDomainPeersAreCappedTogether` RED before, two survival gates). The R4.2
+  "measure / publish" step ships with it: the daemon's C2 status line prints `NakamotoDomains` and
+  `DistinctDomains`. The structural close (key the cap on the OBSERVED remote address, retiring
+  `-domain` from the DHT — the build-immutable-#3 flag split) is filed as R4.3b. Deliberation:
+  `docs/thinking/2026-09-03-r4.3a-dht-domain0-exemption-design.md`.
 - **R0.7 interim — the paid relay lane pays 0 until the R2.14 prepayment anchor; RT-RELAY-3 walk
   budget enforced; relay-lane doc truth.** The break (RT-RELAY-1, behind `--accept-relay-payments`,
   default OFF): `SettleRelaySession` settled on the RELAY's own ledger and `RedeemRelayCredit` debited

@@ -15,8 +15,15 @@ type Table struct {
 	// perDomainCap > 0, a bucket admits at most perDomainCap peers sharing one
 	// domain, so an adversary minting many NodeIDs in ONE domain (a cheap key-
 	// surround from a single /24) can't fill the buckets near a key and crowd out
-	// the honest, domain-diverse peers a lookup needs. Domain 0 (unknown) is never
-	// capped — an unknown peer is assumed independent (like preferFreshDomain).
+	// the honest, domain-diverse peers a lookup needs. Domain 0 (unknown) counts
+	// against ONE shared "unknown" bucket under the same cap (R4.3a): the domain is a
+	// free self-declaration off the wire, so "unknown ⇒ never capped" was an exemption
+	// from the eclipse defence that cost an adversary nothing (omit -domain). Unknown ⇒
+	// capped is the conservative default a routing defence wants; the C2 metric keeps
+	// its own opposite default (unset ⇒ independent) because it is a different
+	// consumer of the label (build-immutable #3). preferFreshDomain (storage placement,
+	// a preference not a veto) is unchanged. The structural close — keying this cap on
+	// the OBSERVED remote address, as geth and Bitcoin Core do — is R4.3b.
 	domainOf     func(ports.NodeID) uint64
 	perDomainCap int
 }
@@ -35,15 +42,14 @@ func (t *Table) SetDiversity(domainOf func(ports.NodeID) uint64, perDomainCap in
 }
 
 // domainSaturated reports whether bucket b already holds perDomainCap peers in
-// id's (known) domain — in which case a NEW peer from that domain is not admitted.
+// id's domain — in which case a NEW peer from that domain is not admitted. Domain 0
+// (unknown / undeclared) is a domain like any other here: R4.3a closed the exemption
+// under which an undeclared peer was never capped.
 func (t *Table) domainSaturated(b []ports.NodeID, id ports.NodeID) bool {
 	if t.domainOf == nil || t.perDomainCap <= 0 {
 		return false
 	}
 	d := t.domainOf(id)
-	if d == 0 {
-		return false // unknown domain: assumed independent, never capped
-	}
 	cnt := 0
 	for _, e := range b {
 		if t.domainOf(e) == d {

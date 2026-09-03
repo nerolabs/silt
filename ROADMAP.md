@@ -935,11 +935,21 @@ economy-off HEAD certifies a network nobody runs. Design:
   external seat. Backlog: class-P compound-block ordering; bondreg full path; DHT/eclipse/A-axis
   layer; long-range/weak-subjectivity checkpoint; relay/PayWord economy; churn/restart
   everMature under the R1.2 refactor.
-- **R4.3a · DHT domain-0 exemption + the single `-domain` flag — NEW 2026-09-03 (from R4.2; Builder, small; not research-gated).**
-  `core/dht/table.go:44-45` never caps domain 0 — an exemption from an eclipse defence that geth and
-  Bitcoin Core key on the OBSERVED address; and `daemon.go:316-317` feeds ONE `-domain` flag to both the
-  eclipse cap and the consensus metric, whose consumers want opposite defaults — a literal
-  build-immutable-#3 violation. Fix both; a distinct R4.3 hunt target. Source: the R4.2 direction cert.
+- **R4.3a · DHT domain-0 exemption — ✅ BUILT 2026-09-03 (PR pending, branch `builder/r4.3a-dht-domain0-cap`); the flag split is carried to R4.3b.**
+  `core/dht/table.go` never capped domain 0 — an exemption from an eclipse defence that cost an adversary
+  nothing (omit `-domain`). Now an unknown domain counts against one shared bucket under the same
+  per-domain cap (unknown ⇒ capped, the routing default); the C2 metric keeps its opposite default
+  (unset ⇒ independent) because it is a different consumer. Gates `TestR43a_*` (`core/node`): capped
+  together (RED before), known distinct domains still admitted, cap-off legacy. The R4.2 measure step ships
+  with it: the daemon's C2 line now prints `NakamotoDomains` / `DistinctDomains`. Deliberation:
+  [`docs/thinking/2026-09-03-r4.3a-dht-domain0-exemption-design.md`](docs/thinking/2026-09-03-r4.3a-dht-domain0-exemption-design.md).
+  Source: the R4.2 direction cert §3.
+- **R4.3b · key the DHT eclipse cap on the OBSERVED remote address (the geth / Bitcoin Core form) — NEW 2026-09-03 (Builder + crypto-specialist advisory on the bucket width; not research-gated per the R4.2 cert).**
+  Closes the second evasion R4.3a does not (declare N random labels) and retires `-domain` from the DHT
+  entirely, which IS the build-immutable-#3 split of the single flag (`daemon.go:316-317`): the transport
+  must surface each peer's remote address to the node (a ports change; the sim needs a domain oracle).
+  A second declared label was REFUSED as churn (the same free declaration under a new name). Owner: whether
+  the literal second label is wanted before R4.3b lands (one flag + an additive gossip field).
 - **R4.4 · External red-team vs the C1 + C2 composition and the seven §7 seams (#183) — THE M0
   close gate.** This is the RC-defining gate, and **it is the same pass as R1.7** — one external B8
   engagement, not two. **RATIFIED 2026-09-03: it runs at the RELEASE CANDIDATE, AFTER the era-4/v5

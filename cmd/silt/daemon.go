@@ -1025,8 +1025,9 @@ func cmdDaemon(args []string) error {
 						wheels = "shed permanently (matured; live decentralization has since dropped — real-bond super-quorum in force, anchors NOT re-armed)"
 					}
 				}
-				fmt.Printf("  C2: nakamoto %d bonds → %d operators (margin ×%d) | cost-to-corrupt %d MiB of %d MiB bonded across %d | concentration HHI %.2f Gini %.2f top %.0f%% uniformity %.0f%% | wheels %s\n",
-					m.NakamotoBonds, m.NakamotoOperators, m.Margin,
+				// R4.2 "measure / publish": the A-axis numbers were computed but never printed.
+				fmt.Printf("  C2: nakamoto %d bonds → %d operators (margin ×%d) → %d domains of %d distinct | cost-to-corrupt %d MiB of %d MiB bonded across %d | concentration HHI %.2f Gini %.2f top %.0f%% uniformity %.0f%% | wheels %s\n",
+					m.NakamotoBonds, m.NakamotoOperators, m.Margin, m.NakamotoDomains, m.DistinctDomains,
 					m.CostToCorruptBytes>>20, m.TotalBondedBytes>>20, m.Participants,
 					m.HHI, m.Gini, m.TopShare*100, m.WeightUniformity*100, wheels)
 				// Concentration alarm (D-C2 / F-1 follow-up): the honest whale C2 cannot
