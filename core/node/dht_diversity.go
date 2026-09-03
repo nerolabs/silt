@@ -13,7 +13,13 @@ import "github.com/nerolabs/silt/ports"
 // diverseNear returns up to count peers near key from the routing table, admitting
 // at most DHTDomainCap peers per failure domain — so a single-domain cluster near
 // the key can't monopolise the set. With the cap off (≤ 0) it is just the count
-// nearest peers. Domain 0 (unknown) is never capped (assumed independent).
+// nearest peers. Domain 0 (unknown) is never capped here (assumed independent), and
+// must stay so: this is the announce/resolve SELECTION set, and in a swarm where
+// nobody sets -domain every peer is domain 0, so capping it would collapse the
+// provider set to DHTDomainCap peers (replication collapse). The same reasoning is
+// why the ADMISSION cap (core/dht/table.go domainSaturated) keeps its unknown
+// exemption too — the red-team showed capping it locks buckets in the default swarm.
+// The eclipse close is R4.3b (observed-address keying), not a label rule here.
 func (n *Node) diverseNear(key ports.Hash, count int) []ports.NodeID {
 	all := n.table.Closest(key, n.table.Size()) // everything, distance-sorted
 	cap := n.cfg.DHTDomainCap
