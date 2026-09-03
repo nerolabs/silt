@@ -25,7 +25,7 @@ func mkValidators(t *testing.T, n int) []validator {
 		if err != nil {
 			t.Fatal(err)
 		}
-		iss := blindtoken.NewIssuer(key)
+		iss := blindtoken.NewIssuer(rand.Reader, key)
 		vs[i] = validator{id: ports.HashBytes([]byte{byte(i + 1)}), iss: iss, pub: iss.Public()}
 	}
 	return vs
@@ -45,7 +45,11 @@ func mkToken(t *testing.T, rng *mrand.Rand, serial []byte, signers []validator) 
 		if err != nil {
 			t.Fatal(err)
 		}
-		tok.Sigs = append(tok.Sigs, ports.TokenSig{Validator: v.id, Sig: blindtoken.Unblind(v.pub, blindSig, secret)})
+		sig, uerr := blindtoken.Unblind(v.pub, serial, blindSig, secret)
+		if uerr != nil {
+			t.Fatal(uerr)
+		}
+		tok.Sigs = append(tok.Sigs, ports.TokenSig{Validator: v.id, Sig: sig})
 	}
 	return tok
 }

@@ -185,6 +185,10 @@ jobs:
       - name: Scar-lint — every cited test name must resolve to a real test (scar:cited-test-does-not-exist-2026-09-02)
         # External review trees are absent in CI, so this checks the repo only.
         run: python3 scripts/check_cited_tests.py
+      - name: Scar-lint — a source-text test gate must be labelled and must name its runtime cover (scar:source-gate-promises-a-runtime-property-2026-09-03)
+        run: python3 scripts/check_source_gates.py
+      - name: Scar-lint — no unresolved merge-conflict marker may reach a branch (scar:conflict-markers-shipped-in-ci-yml-2026-09-03)
+        run: python3 scripts/check_conflict_markers.py
 
   docs-shipped:
     name: Docs ship with code

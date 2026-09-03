@@ -53,6 +53,9 @@ import (
 	"crypto/ed25519"
 	"crypto/rsa"
 	"crypto/sha256"
+	"encoding/binary"
+	"errors"
+	"fmt"
 	"io"
 
 	"github.com/fxamacker/cbor/v2"
@@ -73,34 +76,61 @@ type Token struct {
 	Sig    []byte // issuer blind signature over the serial (blindtoken demand domain)
 }
 
-// Withdraw is the fetcher side of a blind retrieval-token withdrawal: it blinds a
-// fresh serial (see blindtoken.NewSerial) so the issuer signs it without learning
-// the serial. It returns the blinded value to send the issuer and the secret to
-// unblind the reply.
-func Withdraw(rng io.Reader, issuerPub *rsa.PublicKey, serial []byte) (blinded, secret []byte, err error) {
-	return blindtoken.BlindDemand(rng, issuerPub, serial)
+// Withdraw is the fetcher side of a blind retrieval-token withdrawal FOR ISSUE
+// EPOCH epoch: it blinds a fresh serial (see blindtoken.NewSerial) so the issuer
+// signs it without learning the serial. It returns the blinded value to send the
+// issuer and the secret to unblind the reply.
+//
+// The withdrawer CHOOSES epoch and binds it into the blind-signed message (R0.4b
+// (b1)). The issuer signs under key_epoch only if it holds that key and epoch is in
+// its own window, so a requester can never name an epoch that outlives the honest
+// one; naming an EARLIER epoch only shortens its own token's life. Pass the epoch
+// the withdrawer's chain-resolved keyset supplied the key for — see
+// Node.AcquireDemandTokenInWindow, the only sound acquisition path.
+func Withdraw(rng io.Reader, issuerPub *rsa.PublicKey, epoch uint64, serial []byte) (blinded, secret []byte, err error) {
+	return blindtoken.BlindDemand(rng, issuerPub, epoch, serial)
 }
 
 // SignWithdrawal is the issuer side: it blind-signs the withdrawal, learning nothing
 // about the serial. Charging or burning the fetch fee against the withdrawal is the
 // caller's job (the cost-to-wash knob is P3).
-func SignWithdrawal(issuerPriv *rsa.PrivateKey, blinded []byte) []byte {
-	return blindtoken.SignBlinded(issuerPriv, blinded)
+//
+// rng is the injected randomness the private-key operation blinds with (advisory C-2;
+// see blindtoken.SignBlinded). A nil return is a refusal — a non-canonical blinded
+// value, or a signature that failed verify-after-sign — and the wire already treats an
+// empty reply as "no token issued".
+func SignWithdrawal(rng io.Reader, issuerPriv *rsa.PrivateKey, blinded []byte) []byte {
+	sig, err := blindtoken.SignBlinded(rng, issuerPriv, blinded)
+	if err != nil {
+		return nil
+	}
+	return sig
 }
 
 // Unblind turns the issuer's blind signature into the unlinkable Token on the plain
-// serial, using the secret from Withdraw.
-func Unblind(issuerPub *rsa.PublicKey, serial, blindSig, secret []byte) Token {
+// serial, using the secret from Withdraw, and VERIFIES it under (key_epoch, epoch)
+// before returning (RFC 9474 §4.4 Finalize; advisory C-1). An issuer that returns a
+// dud is a legible error at withdrawal instead of a token discovered worthless at
+// redemption — which matters here beyond conformance, because an unredeemable token
+// leaves the serve's eager self-mint un-reversed (see blindtoken.Unblind).
+func Unblind(issuerPub *rsa.PublicKey, epoch uint64, serial, blindSig, secret []byte) (Token, error) {
+	sig, err := blindtoken.UnblindDemand(issuerPub, epoch, serial, blindSig, secret)
+	if err != nil {
+		return Token{}, err
+	}
 	return Token{
 		Serial: append([]byte(nil), serial...),
-		Sig:    blindtoken.Unblind(issuerPub, blindSig, secret),
-	}
+		Sig:    sig,
+	}, nil
 }
 
 // VerifyToken reports whether t carries a valid issuer signature in the demand
-// domain (so a publish token or credit under the same key does not pass).
-func VerifyToken(issuerPub *rsa.PublicKey, t Token) bool {
-	return len(t.Serial) > 0 && blindtoken.VerifyDemand(issuerPub, t.Serial, t.Sig)
+// domain for ISSUE EPOCH epoch (so a publish token or credit under the same key does
+// not pass, and neither does a demand token issued for a different epoch under this
+// very key). Redeemers use Keyset.VerifyInWindow, which is this check run over the
+// (key_e, e) pairs the window still holds.
+func VerifyToken(issuerPub *rsa.PublicKey, epoch uint64, t Token) bool {
+	return len(t.Serial) > 0 && blindtoken.VerifyDemand(issuerPub, epoch, t.Serial, t.Sig)
 }
 
 // DeliveryReceipt is a fetcher's signed acknowledgement that it received the
@@ -168,12 +198,29 @@ func Ack(fetcher ed25519.PrivateKey, token Token, object ports.Hash, server port
 // built in M0.
 type BondCheck func(fetcherPubKey []byte) (slot string, ok bool)
 
-// Bank is a server's neutral demand ledger: the set of already-redeemed token
-// serials (double-spend guard) and the per-object count of witnessed deliveries.
+// Bank is a server's neutral demand ledger: the set of already-redeemed TOKENS
+// (double-spend guard) and the per-object count of witnessed deliveries.
 // Demand is an OBSERVABLE — it is never read by consensus standing.
+//
+// EVERY MAP HERE IS BOUNDED (build-immutable #8; red-team re-break F5, 2026-09-03).
+// They were not: spent, demand and credited had no cap, no sweep and no eviction path
+// of any kind, in the very layer the credit guard's bounded-and-expiry-swept design
+// leans on for its "evicted ⇒ expired" coupling. spent is capped and expiry-swept on
+// the token validity window; demand and credited are capped by object count. At the
+// cap every one of them REFUSES rather than evicting — forgetting a live entry is the
+// refuted FIFO design, and an under-count of a neutral observable is the safe error.
 type Bank struct {
-	spent  map[string]bool
-	demand map[ports.Hash]int64
+	// spent is keyed by (ISSUE EPOCH, serial) — the token, not the serial. Keying by
+	// serial alone made the entry's expiry epoch the MINIMUM over the tokens sharing a
+	// serial (the withdrawer picks both), so the guard forgot a serial while a
+	// still-in-window token on it existed. The value is the issue epoch, so the sweep
+	// never has to decode a key.
+	spent map[string]uint64
+	// sweptEpoch is the last epoch sweepExpiredSpent actually ran at: entries expire on
+	// the epoch clock, so a second scan inside one epoch can free nothing the first did
+	// not, and the amortized cost drops from O(cap) per redeem to O(cap) per epoch.
+	sweptEpoch uint64
+	demand     map[ports.Hash]int64
 	// bonded, when set (RequireBondedFetcher / P3b), gates a receipt on the fetcher
 	// showing a bond-distinct credential and makes demand count DISTINCT bonded
 	// fetchers per object via credited[object][slot].
@@ -181,12 +228,74 @@ type Bank struct {
 	credited map[ports.Hash]map[string]bool
 }
 
+// The bank's bounds. maxSpentTokens is DERIVED the same way core/credit derives its
+// paid-serial cap — W epochs x the epoch cadence x the per-block object-aware serve
+// rate, floored generously — so the guard can never deny an honest lane at any serve
+// rate the design models. maxDemandObjects bounds the two per-object observables.
+const (
+	spentEpochBlocks    = 8   // the epoch cadence the cap is derived against
+	spentServesPerBlock = 256 // the per-block serve rate the cap is sized for
+	maxSpentFloor       = 65_536
+	maxSpentTokens      = max(maxSpentFloor, int(DefaultWindow)*spentEpochBlocks*spentServesPerBlock)
+	// maxDemandObjects bounds demand[] and credited[]. Each entry costs the attacker a
+	// real withdrawal fee (a receipt only lands here after its token verified), so this
+	// is a ceiling on memory, not a rate limit.
+	maxDemandObjects = 1 << 20
+)
+
 // NewBank returns an empty demand ledger.
 func NewBank() *Bank {
 	return &Bank{
-		spent:    map[string]bool{},
+		spent:    map[string]uint64{},
 		demand:   map[ports.Hash]int64{},
 		credited: map[ports.Hash]map[string]bool{},
+	}
+}
+
+// spentKey is the (issue epoch, serial) guard key: 8-byte big-endian epoch then the
+// serial, the same epoch wire form the FDH message and the issuerKeyCommit leaf use.
+func spentKey(epoch uint64, serial []byte) string {
+	var k [8]byte
+	binary.BigEndian.PutUint64(k[:], epoch)
+	return string(k[:]) + string(serial)
+}
+
+// sweepExpiredSpent drops every guarded token whose ISSUE EPOCH has left the validity
+// window at current. THIS IS THE ONLY EVICTION PATH: a dropped token is one no held
+// key_E verifies any more (keyset.Prune has already removed its key), so evicted ⇒
+// expired ⇒ un-redeemable, per entry, which is the coupling condition the R0.4b
+// certification requires.
+func (b *Bank) sweepExpiredSpent(current, window uint64) {
+	if current <= window {
+		return // nothing can have left the window yet
+	}
+	floor := current - window
+	for k, e := range b.spent {
+		if e < floor {
+			delete(b.spent, k)
+		}
+	}
+}
+
+// reserveSpent makes room for one more guarded token, or reports that it cannot. It
+// sweeps expired entries (at most once per epoch) and only then checks the cap; it
+// NEVER evicts a live entry. false ⇒ the caller refuses the receipt.
+func (b *Bank) reserveSpent(current, window uint64) bool {
+	if len(b.spent) < maxSpentTokens {
+		return true
+	}
+	b.sweepIfEpochAdvanced(current, window)
+	return len(b.spent) < maxSpentTokens
+}
+
+// sweepIfEpochAdvanced runs sweepExpiredSpent at most once per epoch. Driven both by
+// the epoch advance on the redeem path (crypto-specialist advisory C-7: expired
+// entries must not be retained until the cap is reached — the retention bound) and by
+// reserveSpent at the cap (the liveness bound). See core/credit's twin.
+func (b *Bank) sweepIfEpochAdvanced(current, window uint64) {
+	if current > b.sweptEpoch {
+		b.sweptEpoch = current
+		b.sweepExpiredSpent(current, window)
 	}
 }
 
@@ -197,34 +306,71 @@ func NewBank() *Bank {
 func (b *Bank) RequireBondedFetcher(check BondCheck) { b.bonded = check }
 
 // Redeem verifies a banked receipt against the token that authorized it and, if it
-// is a first-seen, validly-issued, correctly-delivered receipt for the named
-// server, credits the object's witnessed-demand counter once. It reports whether it
-// credited, plus the reason it didn't (for observability/tests). It NEVER touches
-// standing.
+// is a first-seen, validly-issued, IN-WINDOW, correctly-delivered receipt for the
+// named server, credits the object's witnessed-demand counter once. It reports
+// whether it credited, the token's ISSUING EPOCH (so the caller can carry expiry
+// down to the credit layer), and the reason it didn't credit (for
+// observability/tests). It NEVER touches standing.
 //
-// Rejections (each an unforgeability property): a token not signed by the issuer;
-// a serial already redeemed (double-spend); a receipt whose serial ≠ the token's;
-// a fetcher signature that doesn't verify (which also covers a receipt tampered
-// toward another object, server, or fetcher — all three are inside the signed
-// message).
-func (b *Bank) Redeem(issuerPub *rsa.PublicKey, token Token, r DeliveryReceipt) (credited bool, reason string) {
-	if !VerifyToken(issuerPub, token) {
-		return false, "token not issued"
+// keys is the redeemer's per-epoch issuer keyset and current is the CONSENSUS epoch
+// index (head_height / EpochBlocks — deterministic and Byzantine-agreed, never
+// wall-clock). The token is accepted only if some held key_E verifies it with
+// current − E <= W (R0.4b; see keyset.go). The issuing epoch is DISCOVERED here —
+// it rides no field on the token and is never recorded against a withdrawer.
+//
+// EXPIRY IS PURELY SUBTRACTIVE. It can only ever REJECT a redemption, and a rejected
+// redeem credits zero — the return happens before b.demand[...]++ and before the
+// serial is marked spent. So conservation (#receipts(C) <= #issued-tokens-spent) is
+// preserved a fortiori: a narrower acceptance set cannot exceed the issued-token
+// bound. No path here mints.
+//
+// Rejections (each an unforgeability property): a token no in-window issuer key
+// signed (not issued, or EXPIRED — the two are indistinguishable by construction,
+// which is the point); a serial already redeemed (double-spend); a receipt whose
+// serial ≠ the token's; a fetcher signature that doesn't verify (which also covers
+// a receipt tampered toward another object, server, or fetcher — all three are
+// inside the signed message).
+func (b *Bank) Redeem(keys *Keyset, current uint64, token Token, r DeliveryReceipt) (credited bool, issuedEpoch uint64, reason string) {
+	if keys == nil {
+		return false, 0, "no issuer keyset"
+	}
+	// Retire expired spent-set entries as the band advances rather than waiting for
+	// the cap (advisory C-7). Purely subtractive: a dropped entry is one no held key_E
+	// verifies any more, so it can never be redeemed again.
+	b.sweepIfEpochAdvanced(current, keys.Window())
+	issuedEpoch, inWindow := keys.VerifyInWindow(current, token)
+	if !inWindow {
+		return false, 0, "token expired or not issued"
 	}
 	if string(token.Serial) != string(r.Serial) {
-		return false, "receipt serial does not match token"
+		return false, issuedEpoch, "receipt serial does not match token"
 	}
-	if b.spent[string(r.Serial)] {
-		return false, "double-spend: serial already redeemed"
+	// The serial is ATTACKER-CHOSEN and becomes a map key, so its LENGTH is bounded
+	// here as well as at the wire decode (red-team re-break F5 amplifier): no honest
+	// withdrawal produces anything but a blindtoken.SerialSize serial, and the guards'
+	// entry CAP bounds count, never bytes.
+	if len(r.Serial) > blindtoken.SerialSize {
+		return false, issuedEpoch, "token serial is longer than a serial can be"
+	}
+	key := spentKey(issuedEpoch, r.Serial)
+	if _, done := b.spent[key]; done {
+		return false, issuedEpoch, "double-spend: serial already redeemed"
 	}
 	if len(r.Fetcher) != ed25519.PublicKeySize || !ed25519.Verify(r.Fetcher, r.receiptMsg(), r.Sig) {
-		return false, "fetcher signature invalid"
+		return false, issuedEpoch, "fetcher signature invalid"
+	}
+	// The guard set is BOUNDED, and at the cap it refuses rather than forgetting a
+	// live token (build-immutable #8; the refuted alternative is FIFO eviction, which
+	// is self-financing for the flooder). Reserve BEFORE anything is recorded so a
+	// refusal leaves no trace.
+	if !b.reserveSpent(current, keys.Window()) {
+		return false, issuedEpoch, "double-spend guard full of still-redeemable tokens"
 	}
 	// The token is now consumed — crypto, issuance, and delivery all verified — so
-	// mark the serial spent BEFORE the bonded-fetcher gate. A receipt rejected only
+	// mark the token spent BEFORE the bonded-fetcher gate. A receipt rejected only
 	// for lacking the credential still burns its one-time token, so an unbonded
 	// self-dealer cannot retry the same token to amplify anything.
-	b.spent[string(r.Serial)] = true
+	b.spent[key] = issuedEpoch
 	// P3b bonded-fetcher credential: count toward demand only if the fetcher shows a
 	// bond-distinct credential, and count DISTINCT bonded fetchers per object — so a
 	// self-dealer running one bonded identity mints N valid receipts but moves demand
@@ -233,20 +379,26 @@ func (b *Bank) Redeem(issuerPub *rsa.PublicKey, token Token, r DeliveryReceipt) 
 	if b.bonded != nil {
 		slot, ok := b.bonded(r.Fetcher)
 		if !ok {
-			return false, "fetcher not bond-distinct (bonded-fetcher credential required)"
+			return false, issuedEpoch, "fetcher not bond-distinct (bonded-fetcher credential required)"
 		}
 		seen := b.credited[r.Object]
 		if seen == nil {
+			if len(b.credited) >= maxDemandObjects {
+				return false, issuedEpoch, "bonded-fetcher credit map full"
+			}
 			seen = map[string]bool{}
 			b.credited[r.Object] = seen
 		}
 		if seen[slot] {
-			return false, "demand already counted for this bonded fetcher on this object"
+			return false, issuedEpoch, "demand already counted for this bonded fetcher on this object"
 		}
 		seen[slot] = true
 	}
+	if _, known := b.demand[r.Object]; !known && len(b.demand) >= maxDemandObjects {
+		return false, issuedEpoch, "witnessed-demand map full"
+	}
 	b.demand[r.Object]++
-	return true, ""
+	return true, issuedEpoch, ""
 }
 
 // Demand is the witnessed-delivery count banked for object — an observable, never
@@ -266,12 +418,42 @@ func (s SubmittedReceipt) Marshal() ([]byte, error) {
 	return cbor.Marshal(s)
 }
 
+// ErrOversizedReceipt rejects a wire bundle whose attacker-chosen variable-length
+// fields exceed what the lane can ever have issued.
+var ErrOversizedReceipt = errors.New("demand: submitted receipt field exceeds its bound")
+
+// maxTokenSigBytes bounds the blind signature on the wire: it is an element of Z_N,
+// so it cannot exceed the largest modulus any lane will hold
+// (blindtoken.MaxModulusBits).
+const maxTokenSigBytes = blindtoken.MaxModulusBits / 8
+
 // UnmarshalSubmittedReceipt parses a wire bundle. Every field is untrusted input to
 // be re-verified at Redeem, never established fact.
+//
+// THE VARIABLE-LENGTH FIELDS ARE BOUNDED HERE (red-team re-break F5 amplifier,
+// 2026-09-03). A SubmittedReceipt rides a 132 MiB frame (adapters/tcpnet), and the
+// serial becomes a KEY in two long-lived maps — the demand bank's spent set and the
+// credit ledger's paid-serial guard — both of which cap COUNT and neither of which
+// capped BYTES. A single accepted receipt could therefore pin an attacker-chosen
+// number of megabytes. An honest serial is exactly blindtoken.SerialSize; an honest
+// signature is at most one modulus wide. Anything else is a decode error, refused
+// before it can be stored, counted, or hashed.
 func UnmarshalSubmittedReceipt(b []byte) (SubmittedReceipt, error) {
 	var s SubmittedReceipt
 	if err := cbor.Unmarshal(b, &s); err != nil {
 		return SubmittedReceipt{}, err
+	}
+	if len(s.Token.Serial) > blindtoken.SerialSize || len(s.Receipt.Serial) > blindtoken.SerialSize {
+		return SubmittedReceipt{}, fmt.Errorf("%w: serial %d/%d bytes, max %d",
+			ErrOversizedReceipt, len(s.Token.Serial), len(s.Receipt.Serial), blindtoken.SerialSize)
+	}
+	if len(s.Token.Sig) > maxTokenSigBytes {
+		return SubmittedReceipt{}, fmt.Errorf("%w: token signature %d bytes, max %d",
+			ErrOversizedReceipt, len(s.Token.Sig), maxTokenSigBytes)
+	}
+	if len(s.Receipt.Sig) > ed25519.SignatureSize || len(s.Receipt.Fetcher) > ed25519.PublicKeySize {
+		return SubmittedReceipt{}, fmt.Errorf("%w: receipt signature %d bytes / fetcher key %d bytes",
+			ErrOversizedReceipt, len(s.Receipt.Sig), len(s.Receipt.Fetcher))
 	}
 	return s, nil
 }

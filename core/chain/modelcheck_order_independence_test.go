@@ -77,14 +77,17 @@ func newOrderIssuers(t *testing.T) *orderIssuers {
 	oi.mint = func(serial []byte) *ports.PublishToken {
 		tok := &ports.PublishToken{Serial: serial}
 		for _, v := range keys[:2] { // 2-of-4 quorum; both anchors qualify as issuers
-			iss := blindtoken.NewIssuer(priv[idOf(v)])
+			iss := blindtoken.NewIssuer(rand.Reader, priv[idOf(v)])
 			blinded, secret, err := blindtoken.Blind(rng, iss.Public(), serial)
 			if err != nil {
 				t.Fatalf("blind: %v", err)
 			}
 			blindSig, _ := iss.Issue(func() error { return nil }, blinded)
-			tok.Sigs = append(tok.Sigs, ports.TokenSig{Validator: idOf(v),
-				Sig: blindtoken.Unblind(iss.Public(), blindSig, secret)})
+			sig, uerr := blindtoken.Unblind(iss.Public(), serial, blindSig, secret)
+			if uerr != nil {
+				t.Fatalf("unblind: %v", uerr)
+			}
+			tok.Sigs = append(tok.Sigs, ports.TokenSig{Validator: idOf(v), Sig: sig})
 		}
 		return tok
 	}
@@ -651,6 +654,16 @@ var orderVacuous = map[string]string{
 		"(the canonical-MTH bucket over a random-order id set) and by the byte-identical " +
 		"post-apply replay (TestV5PostApplyRootByteIdenticalAcrossOrderings). A covering " +
 		"fixture would enable TTL and (re)register the same ids in two intra-block orders.",
+	"issuerKeyCommit": "R0.4b — the per-epoch demand-issuer key binding. Populated only by a " +
+		"block carrying IssuerKeys, which is v5-ONLY; neither twoOrderings nor matureOrderings " +
+		"mints a v5 block, so both orderings leave it empty. Its order-independence is not in " +
+		"doubt for a structural reason worth stating: apply writes it FIRST-WRITE-WINS keyed on " +
+		"(epoch, issuer) and never overwrites, so two orderings of the same registrations differ " +
+		"only in WHICH duplicate is skipped — and a duplicate that differs in fingerprint is " +
+		"skipped either way, so the surviving map is identical. That is exercised directly by " +
+		"TestIssuerKeyFirstWriteWinsIsOrderIndependent (issuerkey_test.go). A covering fixture " +
+		"here would have to mint a v5 block and flip its IssuerKeys slice order.",
+
 	"epochStart": "era-4 O-1 — the boundary height scalar. It is a pure function of height " +
 		"(h of the last rotation), not of event ORDER within a block, so two orderings of the " +
 		"same history reach the identical epochStart trivially; matureOrderings leaves it at a " +

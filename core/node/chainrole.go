@@ -857,6 +857,53 @@ func (n *Node) proposeBlock(b *chain.Block, attesters, broadcast []ports.NodeID,
 		}
 		n.pendingSlashes = still
 	}
+	// R0.4b: fold this node's staged per-epoch demand-issuer key commitments in.
+	// v5-ONLY — the era-3 leaf set does not commit this keyspace, so a v4 block
+	// carrying one is REJECTED (chain.validateIssuerKeys); staging them below the
+	// era-4 boundary would make our own proposal invalid. Registrations RIDE AND STAY
+	// QUEUED until the chain confirms the commitment, the same #397-Q4-ii discipline
+	// pendingSlashes uses: a commitment whose carrier proposal failed to gather quorum
+	// must not be silently lost, or the issuer's keys stay unresolvable forever.
+	if len(n.pendingIssuerKeys) > 0 && n.chain.MintVersion(b.Height) >= chain.BlockVersionWitnessable {
+		var still []chain.IssuerKeyReg
+		blockEpoch := n.chain.BlockEpoch(b.Height)
+		for _, r := range n.pendingIssuerKeys {
+			if _, committed := n.chain.IssuerKeyCommitment(r.IssuerID(), r.Epoch); committed {
+				continue // already bound; append-only, never re-submit
+			}
+			// STALE REGISTRATION → DROP IT (red-team break 2, 2026-09-02).
+			// validateIssuerKeys REJECTS a backdated registration — that rule is
+			// correct, since committing key_E after epoch E has run is the
+			// equivocation move. But a staged reg that missed its own epoch (the
+			// node was not the designee inside its boot epoch, or it booted before
+			// the era-4 flip, or it restarted late in an epoch) used to RIDE AND STAY
+			// QUEUED, so every later proposal failed this node's OWN local pre-check
+			// with ErrIssuerKeyEpoch — a permanent, restart-only proposer mute. Drop
+			// it here instead and let the rotation schedule re-stage a registration
+			// for an epoch that is still registrable. Proposer POLICY, never
+			// validity: an attester's acceptance rule is untouched, so a mixed swarm
+			// cannot fork on it (the same shape as the IsSlashed filter on pending
+			// bond regs).
+			if r.Epoch < blockEpoch {
+				continue
+			}
+			// C2, the proposer self-wedge: validateIssuerKeys reads the bond ledger
+			// PRE-apply, so folding a registration into the very block that first
+			// records its issuer's bond fails our own local pre-check below — and the
+			// registration stays queued, so every later proposal fails the same way.
+			// DEFER instead: keep it staged and fold it once the bond is committed.
+			// Proposer POLICY only (IssuerKeyRegAdmissible mirrors the validity clause
+			// but decides nothing) — an attester still accepts a block carrying a reg
+			// we deferred, so a mixed swarm cannot fork on it.
+			if !n.chain.IssuerKeyRegAdmissible(r.IssuerID()) {
+				still = append(still, r)
+				continue
+			}
+			b.IssuerKeys = append(b.IssuerKeys, r)
+			still = append(still, r)
+		}
+		n.pendingIssuerKeys = still
+	}
 	// Mint-flip (era-3 build step 2c, extended for era-4 step 4d): at/above the era-4
 	// activation boundary the chain mints v5 with populated committed roots (the era-3
 	// leaves PLUS the maintenance-spine keyspaces); at/above the era-3 boundary, v4; below

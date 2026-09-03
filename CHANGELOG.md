@@ -8,6 +8,612 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Security
+- **R0.4b C3 merge-gate close — the CI job that did not parse, and the C-3 hardness checks on an
+  unauthenticated hot path.** Inputs: the delta certification
+  `R0.4b-C3-01bf8e9-merge-prep-DELTA-CERTIFICATION-2026-09-03` (gates G-F, G-G, G-H) and the
+  crypto as-built advisory `ADVISORY-R0.4b-C3-crypto-items-as-built-01bf8e9-2026-09-03`
+  (items R1, R2, R4, R6). Full write-up:
+  `docs/thinking/2026-09-02-r0.4b-c3-close-design.md` §12.
+  - **G-F — unresolved git conflict markers in `.github/workflows/ci.yml` silently DELETED a CI
+    job.** A rebase resolution missed the file. The markers made it invalid YAML, so the
+    `Website — changelog + links` job stopped parsing and took out BOTH `check_cited_tests.py`
+    and `check_source_gates.py`. Nothing was red — the job did not fail, it did not exist, and
+    two shipped documents described the source-gate lint as CI-enforced while nothing in that job
+    ran. Resolved as the UNION of both steps. New `scripts/check_conflict_markers.py` is the
+    scar's gate: repo-wide, stdlib-only, excluding `.git/` and generated `website/`; it flags a
+    seven-`<` or seven-`>` header line anywhere, and a bare seven-`=` separator only in a file
+    that also carries a header (a row of `=` is a legal Markdown setext underline). Zero false
+    positives across 1,153 text files. Ablation: reinstating the markers reddens the lint and
+    breaks the YAML parse.
+  - **G-G / G-H — three false or incomplete claims on shipped surfaces.** (i) The two "(in CI)"
+    claims are now TRUE and name the job. (ii) The FP-2 crash-window fix directions were recorded
+    as co-equal; **Direction 2 (pay-then-append) is REFUTED** — it converts a residual under-pay
+    into a possible MINT (a crash between payout and append leaves a payout with no guard entry,
+    so the receipt re-pays on restart) and it removes the RT-DELIV-1/1b/2 bound. Direction 1
+    (write-ahead spanning the guard file and a ledger store) is the only sound direction.
+    (iii) The FP-2 precondition list is THREE, not two: F8, arm D, and `R-COMPACT-ORPHAN` —
+    re-priced, because C-7 moved compaction from ~never to once per epoch and its failure
+    direction is an **over-pay**.
+  - **Crypto R1 — one unauthenticated inbound frame bought ~28.6 ms of RSA work on the node
+    loop.** `handleDeliveryReceipt` calls `DemandIssuerKeyset` as its first action on any
+    `MsgDeliveryReceipt`, before the parse and before the sender screen; that call re-pins every
+    held epoch; and `demand.Keyset.Put` ran the full `ValidatePub` — hardness included, ~3.3 ms —
+    unconditionally, over a 9-epoch band. The C-3 split was correct inside `core/blindtoken` and
+    re-entered through another door. A memo could not live in the held map, because `Prune` drops
+    every future epoch on every read. Fixed with an admission memo in `Keyset.Put` keyed on
+    `KeyFingerprint` — the same sha256 the consensus `E ↦ key_E` binding commits to — skipping
+    the HARDNESS half only: `blindtoken.ValidateShape` (newly exported) still runs on every Put,
+    so the F4 refusals stay on every path. Memo bounded at 64 entries against a working set of 9.
+    Gate: `core/node TestC3_InboundReceiptsCostOHardnessChecksNotOPerMessage` COUNTS hardness
+    executions via the new `blindtoken.ValidatePubHardnessRuns()` (a timing test cannot see this
+    class), asserting the band's first admission costs exactly 5 and every one of 50 subsequent
+    messages costs 0, plus `TestC3_ADifferentCommittedKeyStillPaysFullAdmission`. Measured
+    `BenchmarkC3InboundDeliveryReceipt` at a 5-epoch band: **16.41 ms/msg before, 4.78 µs/msg
+    after** (3,436×). Ablation: remove the memo lookup → RED at "message 1: 5 hardness runs".
+  - **Three crypto divergences DECLARED, not changed** (code comment + design record §12).
+    (1) Minimal integer encoding is deliberate — RFC 8017/9474 require fixed-length
+    `modulus_len`, and silt's choice preserves the `s.Bytes()` wire format that committed
+    publish tokens re-verify against; the price is that it forecloses drop-in RFC 9474 interop,
+    at ~1 in 256 honest `blind_sig` values. (2) The blinding factor is drawn by mod-reduction
+    with 64 bits of slack, against RFC 9474 §4.2's rejection-sampling **MUST** — met within
+    `2^-64`, filed as ROADMAP Rock **`R0.4b-BLIND-SAMPLING`**. (3) `math/big`'s fixed-window
+    power-table lookup leaks the private exponent to a LOCAL cache attacker — unfixable in Go
+    (no exported raw RSA private operation) and shared with Cloudflare CIRCL's RFC 9474
+    implementation — so it is carried as a deployment assumption, written for operators as
+    `docs/network-durability.md` §9: do not run a demand issuer on a host with untrusted
+    co-tenants sharing its CPU cache.
+  - **The `ValidatePub` cost gate is now a RATIO, not a wall-clock budget.** The 5 ms in
+    `TestC3_ValidatePubCostBudget` was a builder round-up of one M4 measurement (3.3 ms), and the
+    CI runner measured 10.5 ms best — so the gate reddened on hardware, not on a regression. The
+    ruling `R0.4b-C3-ValidatePub-cost-gate-RULING-2026-09-03` **REFUTES** that 5 ms is a security
+    parameter (nothing in `ValidatePub` branches on it; the crypto advisory's design quantity is
+    the RATIO and the per-message denominator, not a millisecond ceiling) and certifies the
+    replacement: `best <= K × perVerify` with `K = 1000`, both sides 2048-bit `big.Int` work
+    measured in the same process, so a uniform hardware slowdown cancels. Measured 154× on an M4,
+    159× in the advisory, 170× on this box. The milliseconds are still LOGGED so a human reads the
+    real cost. This is the UPPER bound on admission cost; `TestC3_HardnessRunsAtAdmissionNotOnEveryModexp`
+    already asserts the LOWER bound (`perVerify*10 <= admission`), which trips if the hardness half
+    moves back onto the modexp path. Neither is calibrated to a machine.
+  - **The inbound-receipt cost gate asserts its wall-clock half only without `-race`.**
+    `TestC3_InboundReceiptsCostOHardnessChecksNotOPerMessage` pairs a COUNT gate (zero hardness
+    runs per inbound `MsgDeliveryReceipt` after admission — the property) with a 100 µs/message
+    wall-clock budget. The count runs under both builds. The race detector inflates the
+    measurement ~10× (4.8 µs uninstrumented, 45 µs under `-race` on the same box, 108 µs on the
+    CI runner's `-race` job) so the budget reddened on the detector, not on the path. A
+    `raceEnabled` constant pair (`core/node/race_{enabled,disabled}_test.go`, mirroring
+    `core/chain`) gates the wall-clock assertion; the cost is still logged under both builds.
+- **R0.4b C3 final pre-ratification round — the G-8 dark-lane disposition (iii), the
+  `swarm receipt` S5 legibility break, and the PE's final-review items.** Inputs: the G-8
+  convergence `R0.4b-C3-G8-dark-lane-CONVERGENCE-2026-09-03`, the PE final ruling
+  `RULING-R0.4b-C3-close-271ab81-final-2026-09-03`, and the Tester's `271ab81` verification.
+  Full write-up: `docs/thinking/2026-09-02-r0.4b-c3-close-design.md` §11.
+  - **`silt swarm receipt` stopped saying "NOT banked" on the one refusal a user hits (S5).**
+    The R0.4b withdrawal lane added a key-resolution step ABOVE the submit, so the announced
+    marker — which lives below the submit — became unreachable on the lane-off path: a daemon
+    without `-accept-delivery-receipts` refused correctly and the client reported something
+    else. That is the announced-observable class the `freeload: ON` rename scarred. Fix: the
+    lane-off case is now routed to the marker. `node.ErrNoIssuerKey` is EXPORTED (was
+    `errNoIssuerKey`) so the client can tell "that server does not run the lane" from "that
+    server's chain has no era-4 binding yet" — a lane-off daemon opens no demand key store,
+    runs no rotation and arms no bank, so it serves no issuer key at all. The marker is a
+    single `const notBankedMarker` shared by both emitting sites; the lane-off text
+    deliberately does not claim the token was spent, because nothing was withdrawn. Gates:
+    `cmd/silt TestLaneOffRefusalCarriesTheAnnouncedNotBankedMarker` (RED under ablation with
+    the exact text the Tester recorded) and `e2e TestDeliveryReceiptRefusedWhenLaneOff`, now
+    GREEN on the shipped topology. Residual `R-SWARM-NOTBANKED-DEAD` is closed by a
+    reachability argument written at the branch, not by deletion.
+  - **`rotateDemandKeys` stayed armed on a LANE OFF branch (PE H-2).** On a failed boot key
+    rotation the daemon printed `LANE OFF` and broke out with the scheduler still assigned, so
+    the OnCommit hook kept rotating: the node went on holding demand keys, staging
+    `IssuerKeyReg` commitments into consensus, serving `MsgGetDemandIssuerKeys` and blind-signing
+    withdrawals — charging the withdrawal fee — while `demandBank` stayed nil and denied every
+    receipt those tokens bought. Fixed by ORDER: the single assignment now sits below the single
+    failure exit, so no branch is left that can arm a lane it has just declared off. Gate:
+    `cmd/silt TestDaemonArmsTheRotatorOnlyAfterABootInstall`. Runtime observation of the
+    property is filed as `R-LANEOFF-ROTATION-RUNTIME`.
+  - **A corrupt paid-serial guard bricked nodes that have no delivery lane (PE H-3).**
+    `guardstore.Open` + `LoadPaidSerials` ran outside any flag branch and are a refuse-to-start,
+    so one bad byte in `paidserials.log` stopped a pure storage node that could never have
+    written the file — the F7 blast-radius lesson, applied in the same commit to
+    `demandkeys.cbor` and not to the file that commit adds. Both are now inside
+    `if *acceptReceipts`. The asymmetry is deliberate: inside the lane the guard is load-bearing
+    and a failure MUST stop the daemon. Gate: `e2e TestCorruptGuardStoreStopsOnlyTheDaemonThatUsesIt`,
+    both arms.
+  - **The compaction fuzz redeemed with a NIL serial, so it covered none of the guard it was
+    cited for (PE §4).** `RedeemDeliveryCreditReason` short-circuits its whole R0.4b guard on
+    `if len(serial) > 0`. `core/credit TestCompactionTombstoneFuzz` now mints a unique 32-byte
+    serial per redeem from the seeded rng on a moving epoch clock, exercising paid-serial
+    admission, the watermark advance and the per-epoch expiry sweep, and adds invariant (d): an
+    honest unique in-window serial must always pay, the guard must stay far under its cap, and
+    re-presenting a paid serial returns `serial-already-paid` while moving zero value. Measured
+    73.35 s against a 73.78 s baseline — no added budget.
+  - **The era-4 tally cannot latch on a non-objective chain — the trace behind the e2e re-scope,
+    now a test.** `epochsEnabled()` is `EpochBlocks > 0 && objective()`, `apply()` calls
+    `rotateEpoch` only under it, and the era-4 readiness tally lives inside `rotateEpoch`. New
+    `core/chain TestGateF_NonObjectiveTopologyCanNeverLatchEra4` injects a readiness stamp of
+    `BlockVersionWitnessable` on two chains differing only in objectivity and asserts the
+    objective CONTROL latches while the non-objective arm never does and `MintVersion` stays
+    below 5 at every height. Cross-referenced from gate F's clause (c) so a stamp-raising release
+    reads it at the edit.
+
+### Changed
+- **The e2e paid-delivery-lane test asserts the certified refusal (G-8 disposition (iii)).**
+  `TestDeliveryReceiptBankedOverTCP` is renamed `TestPaidDeliveryLaneRefusesWithoutACommittedKeyBinding`
+  and re-scoped: on the `-objective=false` fixture the client must refuse naming the missing
+  committed E→key binding, the server must bank nothing, and the daemon banner must announce
+  that the binding needs an era-4/v5 chain. The positive arm cannot pass on that fixture at any
+  readiness stamp, so it moves below e2e: new `sim TestPaidDeliveryLaneThreeCallComposition`
+  drives `FetchDemandIssuerKeys` → `AcquireDemandTokenInWindow` → `SubmitDeliveryReceipt` in
+  `cmd/silt/swarm.go`'s own order, on a real v5 chain with a real committed binding, through the
+  real wire handlers, TWICE, asserting `fee − skim` both times. Restoring the e2e positive arm is
+  filed as `R-E2E-ERA4-FIXTURE` and is bound to the stamp-raising release, by upgrading the
+  fixture to an objective bonded epoch-enabled topology — never by an activation override.
+
+### Fixed
+- **Three false claims corrected against the shipped tree (PE H-4, §4, §6).**
+  `docs/thinking/2026-09-02-r0.4b-c3-close-design.md` §7 said "no consensus-validity change"
+  when the change adds a validity predicate on both receive paths, a genesis door, a relaxed
+  empty-block rule and a changed `Block.Hash()` preimage; §9/F10 stated production `grant = 0`
+  as a close when the shipped daemon grants 500,000 and it is an open owner call. Both are
+  retracted in place. `R-COMPACT-ORPHAN`'s description is corrected to the measured behaviour —
+  the store SILENTLY REPORTS DURABILITY IT DOES NOT HAVE (`Append` returns nil after a failed
+  post-rename re-open, and `Load` then sees nothing) — and `ReasonGuardUnloaded` is annotated at
+  its declaration as unreachable on the shipped daemon, so the record stops counting it as an
+  operator signal. The `R-FLAT-FEE` comment in `core/credit/delivery.go` now names the
+  ACCUMULATED LANE rather than a chunk size: `trackProvisional` accumulates and the serve call
+  site fires per chunk, so every object above 50 KB is already past break-even.
+- **R0.4b C3 merge-prep — Tester defect F6, the LANE OFF gate's missing teeth, the G-E
+  comment gate, and crypto-specialist advisory items C-1 … C-8.** Inputs: the Tester's
+  `271ab81` verification, the delta certification
+  `R0.4b-C3-271ab81-G3-G4-GD-DELTA-CERTIFICATION-2026-09-03`, and
+  `ADVISORY-R0.4b-C3-blind-RSA-epoch-binding-2026-09-03`. Full item-by-item write-up with
+  root causes, gates and measurements: `docs/thinking/2026-09-02-r0.4b-c3-close-design.md` §10.
+  - **F6 (defect, permanent liveness cliff) — an EARLIER rotation pruned a LATER rotation's
+    already-staged pre-published key.** `EpochStore.ensureBand` pruned on the caller's own
+    band (`e > cur+w`). The daemon launches each epoch turn as a bare `go rotateDemandKeys(cur)`,
+    so turns complete out of order; a turn for an earlier `cur` deleted keys a later turn had
+    generated AND handed to `install(...)`, which stages their fingerprints on chain.
+    `applyIssuerKeys` is first-write-wins, so once the staged fingerprint commits the
+    regenerated key can never be registered — the demand lane is dead for that epoch, for that
+    issuer, permanently, and nothing detects it. Measured with no concurrency:
+    `RotateWindow(11)` then `RotateWindow(10)` loses epoch 15. Fix: the retained band's UPPER
+    EDGE is `max(genTo, highest epoch on disk)` — monotone, so no rotation can shrink another's
+    pre-publication; bounded, because the only writer above the edge is the generation loop,
+    which stops at `cur+w`. Gates: `TestRTC3_AnEarlierRotationDoesNotPruneALaterRotationsPrePublishedKey`
+    (deterministic, RED with `LOST=[15]`) and `TestRTC3_EpochStoreRotationsNeverLoseAnInstalledKey`
+    (the daemon's four overlapping turns ×80, RED with `LOST=[17]`). The adopted gate's
+    `if e < 9 || e > 14 { continue }` filter is REMOVED — its rationale had the direction
+    backwards and it carved out the only epoch ever lost. A false comment in
+    `cmd/silt/daemon.go` ("one rotation is in flight at a time") is corrected: bumping
+    `demandEpoch` prevents a duplicate rotation for the SAME epoch and nothing else.
+  - **The LANE OFF gate had no teeth; it now has a runtime twin.** The Tester reintroduced the
+    F7 daemon-death with every asserted string intact, using a different early return: source
+    gate GREEN, `go vet` clean. New `e2e/laneoff_corrupt_store_test.go`
+    `TestDaemonSurvivesACorruptDemandKeyStore` drives a real `silt daemon` over real TCP with a
+    corrupt `demandkeys.cbor` and asserts the process survives (registry, peer and bootstrap
+    lines all print), the lane never arms, both operator lines are exact and name the store
+    path, and the file is byte-unchanged. Ablation: reinstating the F7 death reddens it while
+    the source gate stays green.
+  - **Third-time rule closed as a LINT.** `scripts/check_source_gates.py`, run by the
+    `Website — changelog + links` job in `.github/workflows/ci.yml` (the claim was FALSE when
+    first written — see the G-F entry below — and is true as of this round): any
+    `_test.go` reading a non-testdata `.go` file is a SOURCE gate; its failure messages must
+    begin `SOURCE GATE:` and describe what was checked, and it must name a `RUNTIME GATE:` or
+    declare the behaviour `UNGATED:`. Three sites brought into compliance. Recorded as rule 8
+    in `docs/build-process.md`.
+  - **C-1 (RFC 9474 §4.4 Finalize, the advisory's top item) — the unblind step now VERIFIES.**
+    A malicious issuer could return a garbage blind signature: the fetcher paid the withdrawal
+    fee, fetched, signed a receipt, and the server's `Bank.Redeem` then refused it — so
+    `handleDeliveryReceipt` never called the ledger and the serve's eager unwitnessed self-mint
+    was NEVER REVERSED. An issuer handing out duds drove its whole cohort onto the self-mint
+    path at no cost to itself and with no detection. `Unblind` / `UnblindCredit` /
+    `UnblindDemand` verify under the domain (and for demand under `(key_E, E)`) before
+    returning; the refusal is legible at the client.
+  - **C-2 — the issuer's private-key operation is blinded and verified after signing.**
+    `SignBlinded` was a bare `Exp(b, D, N)` on attacker-chosen input over the network, which
+    is the Brumley–Boneh remote-timing setting; client-side blinding does not help the issuer,
+    which is why Go's own `crypto/rsa` blinds every private-key op. Now: random blinding
+    (rng INJECTED — `crypto/rand` is banned in core) plus `s^e == b mod N` before release, the
+    Boneh–DeMillo–Lipton countermeasure. **Wire format unchanged** — the blinding cancels, and
+    the gate asserts byte-equality with the plain modexp, which is what keeps the A2
+    retry-dedup honest.
+  - **C-3 — `ValidatePub` gains hardness checks, split from the hot path.** The advisory's
+    spike showed four moduli passing the shape-only bound set, two of them universal forgery
+    by any observer (a single 2048-bit prime; 122 seventeen-bit primes), plus `p²` and `e = 3`.
+    Added: the FIPS 186-5 exponent floor `e > 2^16`; no prime factor below `SmallFactorBound
+    = 2^20` (one gcd against a lazily-built primorial); not a perfect power; not prime. All
+    four shapes now REFUSED. **The hardness half runs only at ADMISSION** (`ParsePub`,
+    `demand.Keyset.Put`); the cheap `validateShape` stays the last line before every modexp.
+    Measured on Apple M4: admission **3.43 ms** (budget 5 ms, at most `W+1 = 5` pins per issuer
+    per window), one-time primorial build **~42 ms** (prewarmed off the loop at daemon boot),
+    verify **19.4 µs**. Leaving the hardness checks on the modexp path would have been a ~180x
+    CPU amplifier on the single-threaded node loop — a new DoS bought while closing a forgery.
+    Honest residual, stated: the bound is a BAR, not a proof; **blindness against a malicious
+    issuer is bounded by key-correctness assumptions, not proven, and the on-chain commitment
+    bounds EQUIVOCATION, not soundness.**
+  - **C-5 — RSA representatives are canonical, and that closes an issuance-dedup bypass.**
+    `SignBlinded` opened with `b.Mod(b, N)`, so `blinded`, `blinded + N` and any zero-padded
+    spelling signed identically — while `demandDedupKey` is keyed on the RAW blinded bytes, so
+    a re-encoding was a fresh cache key for an issuance already settled and the requester was
+    charged twice for one signature. Now RFC 8017 §5.2.2 range plus minimal encoding, applied
+    to the blinded value at the signer and to the signature at verify; `Issuer.Issue` checks
+    the input BEFORE the charge, so a refused spelling cannot take the fee.
+  - **C-6 — the RFC 9474 §4.2 `is_coprime(m, n)` check is present** (a shared factor with a
+    deliberately smooth modulus is a linkability tag the issuer can compute).
+  - **C-7 — expired guard entries are retired on the epoch-band advance, not only at the cap.**
+    Both `credit.paidSerial` and `demand.Bank.spent` swept only at the 65,536 cap, so on any
+    node below it — every node most of the time — expired entries were retained ON DISK
+    indefinitely, past the `W`-epoch window that is their whole justification. Soundness is
+    unaffected (refuse-not-evict is unchanged) and the new trigger is CHEAPER: O(cap) per epoch
+    instead of O(cap) per refused redeem. Prior art: Brands' epoch-partitioned spent list.
+  - **C-4 / C-8 — NOT built, recorded as ROADMAP Rocks with their reasons.** **R0.4b-PoP**: no
+    proof-of-possession of the RSA key in `validateIssuerKeys`, so a bonded issuer can register
+    another issuer's fingerprint (Duplicate-Signature Key Selection). Latent, not live — one
+    configured issuer, per-node ledgers — and the close is a validity-rule change, so it is
+    research-gated and owner-ratified before the stamp raise. **R0.4b-FDH**: length-prefixing
+    the FDH domain tag and widening the reduction slack both alter the FDH output, and the
+    publish and credit domains are byte-frozen against chain replay. The two code comments
+    claiming RFC 9578 fidelity are corrected: RFC 9578 signs `SHA256(SPKI)`; silt signs an
+    epoch index, which identifies neither issuer nor key.
+  - **G-E (delta-cert, comment-only) — the G-4 ordering invariant is restated correctly.**
+    "A witnessed receipt reverses the self-mint exactly once" is false on a re-served lane;
+    what is bounded is the LANE INSTANCE. Also corrected everywhere: "the 64 MiB production
+    chunk" is the tree's stated MINIMUM production chunk, and the number that matters is that
+    the break-even is B = 50,000 bytes against a SHIPPED default chunk of 65,536 — the lever
+    was live at the default configuration, not only at an aspirational size.
+  - **FP-2, measured, NOT fixed.** The other half of the supersede/append crash window: when
+    the guard append LANDS and the pay is lost, re-presenting the receipt returns
+    `serial-already-paid` above the supersede, so the server keeps the full **+58,720,256**
+    self-mint at a 64 MiB chunk with no witnessed reversal and no conserved payout, and the
+    receipt is burnt (Σ unmoved; no double-pay). Vacuous on the shipped in-memory ledger; live
+    the moment the ledger is persisted, because there are then two durable stores and no shared
+    transaction. Not fixed because neither candidate direction is ledger-local: a write-ahead
+    needs a cross-store transaction, and pay-then-append needs a guard-record wire change plus
+    moving `ReasonAlreadyPaid` below the supersede — an economic-mechanism change. Recorded as
+    a second precondition on the FP-2 flip, gated by
+    `TestFP2_CrashBetweenTheGuardAppendAndThePayBurnsTheReceipt`.
+
+- **R0.4b C3 certification fold-in — three merge-blocking gates closed (G-8, the dark paid
+  lane, is the owner's call and is NOT closed here):** the research certification
+  `R0.4b-C3-composed-close-bc062d0-RESEARCH-CERTIFICATION-2026-09-03` returned GATED.
+  - **G-3 — a torn tail was not realigned, so the next append LOST an acknowledged paid
+    serial.** `guardstore.Open` used `O_APPEND` with no size check. `Load` drops a trailing
+    partial record, which is sound only while it stays the tail: `O_APPEND` writes at the
+    file's unaligned size, so the next append shifted every record boundary after it and the
+    following `Load` spliced the orphan fragment onto the head of the real record. A plausible
+    spliced length byte (~1 in 8) makes that a SILENT wrong load with a paid serial no longer
+    guarded — the F2 double-pay through the adapter written to close F2. `Open` now truncates
+    back to the last complete record boundary and fsyncs before any append handle exists;
+    dropping the fragment is safe because `Append` had not returned, so nothing was paid
+    against it. Gated by `TestTornTailIsRealignedBeforeTheNextAppend` (RED before the fix and
+    under ablation).
+  - **G-4 — every guard refusal returned BEFORE the supersede, so a refusing server kept the
+    unfunded self-mint.** `RecordServeToObject` self-credits `0.875xB`; the conserved leg pays a
+    flat `fee - skim = 43,750`. Above 50,000 bytes refusing therefore beat being paid, and at
+    the tree's stated MINIMUM production chunk of 64 MiB it beat it by 1,342x
+    (+58,676,506), and by +13,594 at the SHIPPED 64 KiB default — a profitable,
+    OPERATOR-TRIGGERABLE supersede-disable on Boulder 0's conservation rule, since an operator
+    can fill its own guard with junk serials at a net cost of zero. The refusals now run BELOW
+    the supersede, under one stated invariant: **a witnessed receipt reverses the self-mint
+    exactly once, whether or not it is paid.** `serial-already-paid` deliberately stays ABOVE
+    it — the guard's own record is what bounds double-reversal on a re-served lane — and an
+    unwitnessed receipt never reaches the ledger at all, so the self-mint survives until a
+    valid receipt arrives. The root cause (a flat fee against a byte-proportional mint,
+    residual R-FLAT-FEE) is a D-POD-KNOBS re-pricing needing its own certification and is NOT
+    closed here. Gated by `core/credit/r04b_c3_g4_supersede_test.go` (server nets 0 on a
+    refusal at 1 kB / 64 kB / 64 MiB; the 1,342x arithmetic pinned; one receipt reverses once)
+    and `core/node.TestG4_UnwitnessedReceiptLeavesTheSelfMintAlone`.
+  - **G-D — three false code-doc claims on money/consensus surfaces corrected** (behaviour
+    unchanged): `issuerKeyCommit` is pruned only on a REGISTRATION-CARRYING apply, not every
+    apply; `epochWatermark` is an honest-skew correctness device, NOT the "purely subtractive"
+    Byzantine defence its comment claimed (one caller-supplied `2^62` denies the ledger
+    forever); and the paid-serial store is appended before the ledger PAYS, not before it moves
+    any credit — the supersede's subtractive reversal runs first.
+  - **Flip preconditions recorded (no build owed yet).** FP-2/F8: the ledger must OWN a
+    chain-anchored epoch before any shared-ledger, third-operator-settlement or persisted-ledger
+    deployment; a clamp is not a close, and the faucet rate limiter must not be keyed on the
+    watermark. FP-1: `demand.Bank.spent` must be persisted before witnessed demand confers any
+    value — the Tester's scar criterion is NARROWED (a guard needs memory as durable as the
+    thing it guards), not waived, and re-arms in full the moment `Bank.Demand` /
+    `Node.WitnessedDemand` acquires a non-observability consumer.
+
+- **R0.4b C3 re-break round — ten confirmed red-team breaks closed (DO NOT MERGE unratified;
+  F1 is a consensus-rule change awaiting certification):** a second blind pass on the C3 close
+  (`RED-TEAM-R0.4b-C3-close-RE-BREAK-2026-09-03`) confirmed ten breaks and two refutations. The
+  (b1) epoch binding held under every attack; the breaks were in the machinery around it. Every
+  probe ships as a regression gate (`rt_r04b_c3_*`), run RED against the pre-fix build first.
+  - **F1 (CRITICAL, latent) — the floor box and the full node disagreed about the same block at
+    every epoch turn.** `applyIssuerKeys` pruned `issuerKeyCommit` by BLOCK HEIGHT on every v5
+    apply, so a block carrying ZERO registrations deleted committed leaves; the box's scope gate
+    stalls only on `len(b.IssuerKeys) > 0` and its O(payload) fold has no op for the prune. Both
+    directions were measured: the box AGREED with a forged root a full node rejects, and read an
+    HONEST zero-registration block as a forged root. Safe today only because `WitnessValidateV5`
+    never Accepts — a wrong-Accept the moment R1.8 flips it. **Closed at the source: the prune is
+    now PAYLOAD-DRIVEN**, running only inside the registration-carrying branch, so
+    "no registrations ⇒ no `issuerKeyCommit` write" is a property of `apply()` instead of an
+    assumption of the box. The keyspace stays bounded — every ADD is in-band by validity, so
+    pruning at each add re-establishes the 2W+2-bucket bound on every block that can grow it.
+    Reproducing the prune in the fold is NOT available: `core/statehash` has point
+    membership/non-membership only, and `issuerKeyCommit` carries no set-completeness digest
+    (unlike `dueBucket`'s MTH), so a witness-supplied member list would be omission-forgeable.
+    Gated by `rt_r04b_c3_split_test.go`, which drives the scenario through the box recompute, the
+    live `validateEra3Roots`, and `WitnessValidateV5` cold-auditor and live-follower, and asserts
+    the tiers never disagree.
+  - **F2 — a restart evicted every guarded token and the same wire receipt paid twice.** Both
+    serial guards were process memory with no persistence and no restore — the one eviction mode
+    the design forbids, performed by every node at every boot. New `ports.PaidSerialStore` +
+    `adapters/guardstore`: an append-only log of fixed-width records, fsync per append, atomic
+    temp+fsync+rename+dir-fsync on compaction. The ledger persists the entry BEFORE any credit
+    moves (the `SignMarkStore` ordering), a redeem before the load completes is refused
+    (`paid-serial-guard-unloaded`) rather than paid, and a store that cannot write refuses the
+    payout (`paid-serial-store-write-failed`).
+  - **F3 — "evicted ⇒ expired" was false in-process.** The guard was keyed by the serial alone
+    while its expiry epoch was the FIRST redeem's — the MINIMUM over the tokens sharing a serial,
+    both of which the withdrawer picks. Both guards are now keyed by the TOKEN
+    (`uint64BE(issueEpoch) ‖ serial`), so an entry is removed only once ITS OWN issue epoch is
+    outside the band.
+  - **F4 — a committed RSA key was never validated.** The commitment attests 32 bytes, which
+    binds WHICH BYTES an issuer serves and nothing about whether they are a key: `N = 0` panicked
+    every verifier inside `big.Int.Mod` (a bonded Byzantine issuer crashing every fetcher that
+    transacted with it), `N = 1` verified every `(serial, sig)` pair, `E = 1` made the signature
+    the message. New `blindtoken.ValidatePub` (N odd, positive, 2048–8192 bits; E odd, > 1,
+    ≤ 2^32−1) is enforced at `ParsePub`, at `Keyset.Put`, and before every modexp.
+  - **F5 — `demand.Bank.spent` was unbounded, and no guard bounded the serial's SIZE.** `spent` is
+    now capped and expiry-swept (refuse, never evict, at the cap); `demand`/`credited` are capped
+    by object count; and the serial, the token signature and the receipt's ed25519 fields are
+    bounded at the wire decode and again at `Bank.Redeem`, so no attacker-chosen byte count on a
+    132 MiB frame can become a long-lived map key.
+  - **F6 — `EpochStore` had no lock** while the daemon launched every epoch turn as a bare
+    goroutine, so two overlapping rotations lost a key whose fingerprint was already staged for
+    commitment — and, because registration is first-write-wins, that epoch's lane is dead
+    forever. Serialized behind a mutex spanning the whole load→generate→save cycle. `-race` cannot
+    see this class (each goroutine loads its own map), so the gate asserts the outcome.
+  - **F7 — one corrupt byte in a demand key file bricked the whole validator.** The daemon now
+    reads the store before arming the lane and degrades to LANE-OFF, loudly; chain, storage and
+    serving continue, and the file is never rewritten or regenerated.
+  - **F9 — gate F never failed on the stamp.** Clause (c) was a `t.Logf`, suppressed under a plain
+    `go test`, so raising the mint stamp passed a fully green tree. It is a hard failure now, with
+    a teeth-proof for the tripwire itself, plus a driven gate for the `Era4ActivationHeight` route
+    to v5 that bypasses the readiness tally entirely.
+  - **F8 (open, deliberately) — the monotone epoch watermark is a one-call permanent denial.** One
+    unvalidated `currentEpoch = 2^62` refuses every subsequent honest redeem for the ledger's
+    life. Bounding it is a mechanism choice about what the ledger may trust of a redeemer's clock,
+    at a boundary that is not authenticated at all — routed to the Researcher with the question of
+    whether R0.4b-5 buys anything in its own threat model. Unreachable on the shipped per-node
+    topology.
+  - **F10 (disclosed) — cap griefing costs only the skim**, which lands in the escrow of the
+    griefer's own root. Quantified and pinned so the disclosure cannot go stale; production
+    `grant = 0` remains the close.
+- **R0.4b C3 close — the issue epoch is now inside the blind-signed message, and the demand
+  lane is a scheduled, separately-keyed lane (DO NOT MERGE unratified; gates the R0.4b merge):**
+  a blind red-team pass on the R0.4b build confirmed six breaks, and the converged research
+  verdict (`R0.4b-red-team-reconciliation-CONVERGED-RESEARCH-VERDICT-2026-09-02`) withdrew the
+  prior "pump closed for every K" claim. The pump re-opened whenever ONE RSA key was bound to
+  more than one epoch — which an ordinary RESTART does, since the persisted key was re-registered
+  for the new boot epoch. `VerifyInWindow` returned the NEWEST held epoch that verified, so an
+  epoch-0 token was re-dated to epoch 3; the credit guard swept its epoch-0 entry at `E + W`
+  while the token still verified, and a second server on the same ledger collected a second full
+  payout per serial. Fixed:
+  - **(b1) The issue epoch is bound into the demand FDH input** — `H(domain ‖ ctr ‖ epoch(8B BE)
+    ‖ serial)` under a new `silt/blinddemand/fdh/v2` domain, restoring RFC 9578's
+    `token_key_id`-in-the-signed-message schema the first import dropped. A signature verifies
+    under exactly the pair `(key_E, E)`, so `issuedEpoch(token)` is a PURE FUNCTION OF THE TOKEN
+    for any key schedule — the coupling condition "evicted ⇒ expired ⇒ un-redeemable" needs.
+    `Token{Serial,Sig}` and `receiptMsg` stay byte-identical (no new receipt quasi-identifier;
+    the epoch is a consensus epoch index, certified Q1-neutral), and the only wire change is that
+    the request NAMES `E` in the existing `Message.Height`. The publish and credit FDH domains
+    are unchanged byte-for-byte — committed publish tokens re-verify on every replay. The
+    proposed distinctness VALIDITY RULE was REFUTED and is not built: the committed band is
+    pruned, so it would lengthen the pump's period to `2W+1` rather than close it, and
+    remembering every fingerprint forever is unbounded committed state.
+  - **The publish key never enters the demand keyset, and rotation is SCHEDULED.** The daemon
+    installed the persisted publish key as `key_{boot}` once; from boot+1 the demand lane refused
+    to issue and from boot+W+1 the bank rejected everything, while the fee-charging withdrawal
+    path kept charging. New `diskissuer.EpochStore` persists a per-epoch band (one CBOR file,
+    atomic rewrite, `[cur−W, cur+W]` retained, `[cur, cur+W]` pre-published) and the daemon
+    rotates it off the node loop on every epoch turn.
+  - **A stale key registration no longer mutes the proposer forever.** A reg that missed its own
+    epoch rode `pendingIssuerKeys` indefinitely and failed the node's OWN local pre-check with
+    `ErrIssuerKeyEpoch` on every later proposal — a permanent, restart-only mute triggered by an
+    ordinary missed epoch. The proposer fold now DROPS it (policy, never validity) and the
+    schedule re-stages; `SetDemandIssuerKey` refuses to stage a backdated reg and prunes the
+    queue, which also closes an unbounded-growth path.
+  - **The pin FOLLOWS the chain.** "Once pinned, never re-pointed" was the wrong invariant for a
+    CACHE of a committed binding: after a reorg the redeemer kept verifying against the abandoned
+    fork's `key_E` and refused the canonical one for W+1 epochs. Held keys are re-validated
+    against the current commitment on every keyset read and re-pointed on mismatch.
+  - **Every shipped withdrawal path is on the pinned lane.** `swarm receipt` uses
+    `FetchDemandIssuerKeys` + `AcquireDemandTokenInWindow`; the D3 client
+    (`WithdrawDemandTokenPrivately`) carries a `(key, epoch)` its DURABLE parent resolved against
+    the committed binding and refuses a reply naming another epoch. The unpinned
+    `AcquireDemandToken` is deleted. A per-cohort key is a DENIAL again, not an accepted tagged
+    token.
+  - **Rollout rule encoded** (`TestReadinessStampImpliesIssuerKeyCoverage`): a binary may stamp
+    readiness v5 only if `Block.Hash` covers cbor 17 and `stateRootTagsV5` includes
+    `issuerKeyCommit`. The stamp is NOT raised here.
+  Design: `docs/thinking/2026-09-02-r0.4b-c3-close-design.md`.
+
+### Fixed
+- **A demand-key refusal that resolved nothing now names a reason (Tester finding).** The
+  `swarm receipt` guard was `if keyErr != nil || pinned == 0` over a message formatting `keyErr`
+  with `%w`, so the pinned-0-with-no-error branch — the branch every client hits on a chain that
+  carries no committed `E → key_E` binding — printed the literal `%!w(<nil>)`. Both branches now
+  carry a cause (`demandKeyResolutionError`); the refusal itself is unchanged, since withdrawing
+  against an unanchored key is what the committed binding exists to prevent.
+- **The per-epoch demand key store fsyncs its directory after the rename.** The band's bytes were
+  synced but the rename that publishes them was not, so a power cut could lose a whole freshly
+  rotated band — every key for the epochs whose fingerprints the rotation just staged. The old
+  file was always safe (temp+rename); this is what makes the NEW one durable. Same shape as
+  `adapters/markstore`.
+- **The paid-serial guard sweeps at most once per epoch (R0.4b, red-team RT-E).** At a full cap
+  of still-live serials every refused redeem ran a full map scan — 1.32 ms per refused receipt at
+  65,536 entries, a free amplifier. Nothing can expire twice within one epoch, so the swept set is
+  identical and the cost is now amortized O(1). Purely a cost fix.
+- **A cap-full delivery refusal is OBSERVABLE (Tester finding).** Every non-paying redeem path
+  returned a bare `0`, indistinguishable from self-delivery, an already-paid serial, or a zero
+  fee — and surfaced at the node inside a log line reading "delivery receipt banked", which is
+  misleading because nothing was banked. `RedeemDeliveryCreditReason` now names the reason and
+  `GuardFullRefusals`/`SerialSweeps` count it; a banked receipt that settled nothing gets its own
+  WARN line. The announced "delivery receipt banked" marker is unchanged (S5).
+
+### Testing
+- **The "delivery receipt paid NO credit" WARN line is now gated (Tester finding; observable-log
+  contract, second instance).** The line an operator reads when a banked receipt settles nothing
+  was asserted by no test. `TestBankedButUnpaidReceiptLogsTheWarnLine` pins the exact event
+  string, the WARN level, and both fields (`reason`, `serial_guard_refusals`) on the real node
+  handler path, and re-asserts that the announced `delivery receipt banked` marker still ships
+  beside it. Ablations run: reword the event, drop the counter field, or log it at INFO — all
+  RED.
+- **The demand key store's atomic write is gated
+  (`TestEpochStoreSurvivesACrashBeforeRename`).** Atomicity was asserted by inspection only. The
+  gate drives both failure shapes: a stale `.tmp-demandkeys-*` artifact from a crash between
+  `CreateTemp` and `Rename` (the committed band must load byte-identically past it, and must not
+  be regenerated — its fingerprints are already committed, append-only), and a `Save` that cannot
+  write (the committed band must survive). Ablation run: replace temp+rename with a direct
+  `os.WriteFile` and the second case goes RED, because a direct write to an existing 0600 file
+  succeeds even in a read-only directory and destroys the committed band.
+- **Stale citation fixed:** `core/blindtoken/epoch_binding_test.go` cited a `core/credit`
+  guard-expiry gate under a name no test has ever carried; the real gate is
+  `TestGuardHealsUnderASharedKey`. (The dead name is deliberately not repeated here —
+  `scripts/check_cited_tests.py` reads a backticked `Test…` in the CHANGELOG as a
+  citation, so writing it out would re-fail the lint that caught it.)
+- **The cited gate that did not exist now exists (Tester finding).** `core/credit/delivery.go`
+  claimed `paidSerialWindow` was pinned to `demand.DefaultWindow` by
+  `TestPaidSerialWindowMatchesDemandWindow`; a repo-wide grep found only the comment. Both the
+  value pin and a behavioural seam gate (`TestGuardLifetimeMatchesDemandKeysetLifetime`, which
+  walks the epoch clock asserting "the demand layer still verifies this token" and "the guard
+  still remembers this serial" are the SAME predicate) are written. At the drifted value
+  `paidSerialWindow = 2` both go RED at epoch 3 — the Tester's measured control, where a second
+  server re-collects an evicted serial.
+- **Every red-team probe is now a permanent gate**, each with a RUN ablation: `TestDemandSignature
+  DoesNotVerifyAtAnotherEpoch` + `TestDemandFDHInputBindsTheEpochByteExactly` (b1, byte-exact);
+  `TestSharedKeyRotationDoesNotReopenThePump` (G); `TestComposedBoundary_SameFingerprintAtTwo
+  EpochsDoesNotRedateTokens` (G/I, the composed boundary R0.4b-8 under a re-registered key, plus
+  the `2W+1` replay that refutes the distinctness rule); `TestGuardHealsUnderASharedKey` (D);
+  `TestStaleIssuerKeyRegDoesNotMuteTheProposer` + `…PreFlipBoot` (A/A2);
+  `TestPinFollowsTheChainAcrossAReorg` (H); `TestCohortKeyIsADenialOnEveryShippedLane` (C, both
+  shipped shapes against a Byzantine issuer endpoint); `TestDemandLaneOutlivesTheWindowAndA
+  Restart` (B, > W+1 epochs plus a restart, driving the daemon's own rotation step);
+  `TestSweepRunsAtMostOncePerEpoch` (E, counts sweeps not time);
+  `TestReadinessStampImpliesIssuerKeyCoverage` (F).
+- **The provisional-lane + refused-redeem combination is gated**
+  (`TestRefusedRedeemLeavesOnlyTheBilateralFallback`): the Tester measured Σ up by exactly
+  `bytes` when a serve records its provisional self-mint and the redeem is then refused. The
+  bound is that this EQUALS the no-receipt baseline — the refusal adds nothing on top of the
+  pre-existing unwitnessed bilateral fallback — and the gate asserts exactly that at three byte
+  sizes.
+
+### Security
+- **R0.4b — the cross-server double-redeem money pump CLOSED by per-epoch issuer-key expiry
+  (D-DEMAND economic mechanism + a committed-format addition; DO NOT MERGE unratified):**
+  `RedeemDeliveryCredit` paid `fee − skim` on every call and never saw the token serial, while
+  `demand.Bank.spent` is per-SERVER. So K colluding servers sharing ONE demand token (one blind
+  withdrawal, one `ChargePublish`, one serial) each fired the conserved leg and minted exactly
+  `(K−1)·fee` — the banned per-receipt subsidy. A bounded FIFO paid-serial guard alone was REFUTED by
+  the red-team: each flood serial used to evict a victim is itself a paid delivery the colluding
+  operator collects, so advancing the FIFO costs nothing and frees a whole window of already-paid
+  serials for re-collection — the pump is self-financing.
+  The certified close (research certification 2026-09-02, crypto advisory R-ECON-4, economist advisory
+  R0.4b) is Privacy Pass key rotation (RFC 9578) imported as a schema:
+  - **The epoch lives in the KEY, never in the token.** `Token{Serial,Sig}` and the signed
+    `receiptMsg` are byte-identical; `demand.Keyset` holds `{key_E : current−W ≤ E ≤ current}` and
+    `Bank.Redeem` accepts iff some held key verifies (≤ W+1 RSA verifies). The held keyset IS the
+    window, so there is no per-token expiry field to forge. `W = 4` epochs, an Evolving-tier knob
+    denominated in `DerivedEpochBlocks` and resolved from the consensus epoch clock
+    (`head_height/EpochBlocks`) — never wall-clock.
+  - **A CONSENSUS-ATTESTED `E ↦ key_E` binding** (new committed keyspace `issuerKeyCommit`, new
+    additive `Block.IssuerKeys`, new v5-only leaf `issuerKeyCommit\x00`). Without it, per-epoch keys
+    are WORSE for privacy than no epoch: an issuer serving a distinct `key_E` to a small cohort turns
+    "which key verified you" into a fingerprint, and a pinned/published keyset does not close it (an
+    issuer that equivocates on keys equivocates on its published list too). A redeemer REFUSES a key
+    whose fingerprint is not the committed one, refuses an epoch with no commitment, and gets no
+    self-issuance exception. Append-only, no backdating, bonded-gated in objective mode, pruned to a
+    bounded epoch band, and **v5-only** — a v4 block carrying a registration is rejected, so the frozen
+    era-3 leaf set and every v4 root stay byte-identical.
+  - **Credit-layer expiry visibility (R0.4b-3):** `RedeemDeliveryCredit` now takes the serial, its
+    issuing epoch, and the current epoch. The paid-serial guard evicts **BY EXPIRY ONLY**, so a
+    forgotten serial is always one no in-window key can still validate ("evicted ⇒ expired ⇒
+    un-redeemable"). At a cap full of still-live serials it REFUSES TO PAY rather than forget one — an
+    under-pay, never an over-pay and never a mint. The cap is DERIVED
+    (`W × EpochBlocks × maxServeTrackedPerBlock`, floored at 65,536), not a bare 8192, so it dominates
+    the honest live set.
+  Gates: `TestOpenBreak_CrossServerDoubleRedeemMoneyPump` FLIPPED from asserting the `(K−1)·fee` mint
+  to asserting Σ(balances+escrow) conserved at K∈{2,3,5}; the red-team's
+  `TestSerialGuard_EvictThenReRedeemMintsZero` and `TestSerialGuard_EvictionPumpIsNotSelfFinancing`
+  land as permanent gates and hold TOGETHER WITH `TestSerialGuard_SetIsBounded` — the triple no
+  FIFO-alone design satisfies (ablation: restoring FIFO eviction keeps `SetIsBounded` GREEN and turns
+  both eviction gates RED). New mandatory equivocation gate
+  `TestIssuerKey_OffCommitmentKeyIsRefused` (+ uncommitted-epoch, append-only-pin, no-chain and
+  no-self-exception siblings). `TestAbortLeavesTokenReusable` and the `TestInvariantA_*` firewall
+  guards stay GREEN; the new committed field gets its `stateClass` row, its `stateRootTagsV5` tag, a
+  real leave-one-out probe (`issuerKeyRootProbe`), and an EARNED leaf-diff exclusion whose scope-gate
+  stall is itself asserted. `core/demand/keyset.go`, `core/chain/issuerkey.go`,
+  `core/node/demandkeys.go`, `core/credit/delivery.go`. Design:
+  `docs/thinking/2026-09-02-r0.4b-per-epoch-key-expiry-design.md`.
+  **Disclosed deviation:** the routing named `MsgGetIssuerKey`/`answerIssuerKey`/`peerIssuerKeys` as
+  the path to make epoch-plural. Verified against source, those serve the PUBLISH-token issuer key,
+  which is the chain's `issuerKey` lookup and is re-verified against committed publish tokens on every
+  replay — rotating it per epoch would be a consensus break. The per-epoch keyset is therefore a
+  SEPARATE demand lane (`MsgGetDemandIssuerKeys` / `MsgDemandTokenRequest`); the publish lane is
+  untouched. **Scope:** the shared-ledger case only; K truly distinct-owner ledgers share no
+  paid-serial set, so the cross-owner variant remains the standing Douceur / demand-authenticity limit,
+  neutralized today only by the γ→1/N firewall. Automatic per-epoch keygen scheduling (cert residual
+  R5) and the W-value measurement (R0.4b-2, the Tester's sim) are NOT in this change.
+- **R0.4b fix-up — the two build-verification merge conditions, plus the epoch-skew close
+  (D-DEMAND; mechanism-neutral, no consensus rule changed):** the build-verification research
+  certification (2026-09-02) CERTIFIED the composed mechanism and GATED the artifact on two
+  proposer/handler-local defects. Both are closed here, with the residual the same verification
+  named.
+  - **C1 — remote nil-receiver panic.** `answerDemandTokenRequest` gates on the DEMAND issuer for the
+    current epoch, not on the PUBLISH issuer, and routes an attached prepaid credit to
+    `tokenChargeFor`, which verified it against `n.tokenIssuer.Public()`.
+    `(*blindtoken.Issuer).Public` dereferences `i.key` unconditionally, so ONE crafted
+    `MsgDemandTokenRequest` crashed any node running the demand lane without a publish issuer.
+    `tokenChargeFor` now returns a typed refusal (`errNoTokenIssuer` / `errCreditRefused`) instead of
+    dereferencing: a credit cannot be honoured when there is no key to verify it against. The
+    credit-FREE path is untouched, so such a node still serves ordinary withdrawals.
+  - **C2 — proposer self-wedge on a current-era network.** `validateIssuerKeys` reads the bond ledger
+    PRE-apply, while `proposeBlock` folded the proposer's own first `BondReg` AND every staged
+    `pendingIssuerKeys` entry into the SAME block — so the local pre-check failed with
+    `ErrIssuerKeyUnbonded`, and because a staged registration rides and stays queued, every later
+    proposal failed identically. A fresh `-accept-delivery-receipts` validator could never propose
+    again. Closed as proposer POLICY (`chain.IssuerKeyRegAdmissible`, mirroring the validity clause
+    beside it): defer a registration whose issuer is not bonded in the pre-state. No validity rule
+    changes, so an attester still ACCEPTS a block carrying a deferred registration and a mixed swarm
+    cannot fork on it — the same shape as the `IsSlashed` filter on pending bond regs (#503 Q1(a)).
+  - **R0.4b-5 — shared-ledger epoch skew.** The sweep and the admission check ran against the
+    CALLER's `currentEpoch`, so two redeemers sharing one ledger whose heads straddle a boundary
+    could re-pay one token: A at current 10 sweeps a serial issued at epoch 5; B, still at current 9,
+    holds `key_5` and its own demand layer accepts. The ledger now keeps a monotone
+    `epochWatermark` — the highest epoch any redeemer has presented — and both the sweep and a new
+    backdate refusal run against it. Purely subtractive: the worst case is an under-pay during a
+    skew, never an over-pay and never a mint.
+  Gates, each RED before and GREEN after:
+  `TestDemandTokenRequestWithCreditAndNoPublishIssuerRefuses` (drives the crafted message over the
+  handler AND the wire dispatch; RED = SIGSEGV at `core/blindtoken/issuer.go:58`) and
+  `TestTokenChargeForRefusalsAreTyped`; `TestIssuerKeyRegDoesNotWedgeTheProposer` (a fresh validator
+  on an already-current-era network proposes, then lands its registration within a bounded number of
+  blocks; RED = `ErrIssuerKeyUnbonded` on every proposal) and
+  `TestIssuerKeyRegAdmissibleMirrorsTheValidityClause`; `TestEpochWatermark_LaggardRedeemerCannotRePay`
+  (carrying its own no-skew control, so the refusal is measured against the mint it replaced),
+  `_IsMonotone` and `_UnguardedRedeemIsUnaffected`.
+  **R0.4b-8, the composed boundary, is also closed here.** The per-layer triple never crossed the
+  expiry boundary (both eviction gates run at epoch 0 and pass because the CAP refuses) and every
+  node/sim fixture ran at `EpochBlocks = 0`, where the consensus epoch is 0 forever.
+  `TestComposedExpiryBoundary_EvictedSerialIsRefusedUpstream` is the first node-layer fixture with a
+  REAL epoch clock: two servers on one ledger and one chain, a receipt paid at epoch E, the chain
+  advanced past E+W, and the same token refused upstream at the demand window on a second server
+  whose own `spent` set is empty. Ablation: a no-op `Keyset.Prune` plus an unbounded
+  `VerifyInWindow` scan turns it RED on exactly the "server B banked it" line.
+  `TestComposedExpiryBoundary_EvictionIsClosedAtBothLayers` then drives the red-team's eviction pump
+  across the boundary with the window bypassed and shows the credit layer refuses too.
+  **Two ordering facts recorded** because they narrow the exposure the certification reasoned about:
+  `RedeemDeliveryCredit` tests `paidSerial` membership BEFORE `reservePaidSerial` (which is what
+  sweeps), and `reservePaidSerial` returns early while under the cap. So the credit layer forgets a
+  serial only under CAP PRESSURE — eviction is not merely expiry-only, it is expiry-and-cap-gated.
+  `core/node/tokenrole.go`, `core/node/demandkeys.go`, `core/node/chainrole.go`,
+  `core/chain/issuerkey.go`, `core/credit/delivery.go`, `core/credit/credit.go`.
 ### Fixed
 - **Floor-box class-A screen no longer reads LIVE box state — Direction A, an R1.8 flip precondition
   (Boulder 1; recompute-side only, no committed/wire format change, never-Accept unchanged):** the

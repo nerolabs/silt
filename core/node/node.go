@@ -638,8 +638,25 @@ type Node struct {
 	// delivery receipts into, and the issuer public key it trusts to have signed the
 	// retrieval tokens those receipts spend (demandIssuer). Nil until EnableDemandBank.
 	// Demand is a NEUTRAL observable — never wired to consensus standing (γ→1/N).
-	demandBank   *demand.Bank
-	demandIssuer *rsa.PublicKey
+	demandBank *demand.Bank
+	// demandIssuer is the NodeID of the issuer whose demand tokens this bank
+	// accepts. R0.4b: the bank no longer holds ONE trusted RSA key — it holds a
+	// WINDOW of per-epoch keys (peerDemandKeys[demandIssuer]), each one PINNED only
+	// after its fingerprint matched the consensus-attested commitment. That is what
+	// makes an off-commitment (targeted, per-cohort) key refusable by construction.
+	demandIssuer ports.NodeID
+	// demandIssuers is the ISSUING side: this node's per-epoch demand blind-signing
+	// keys, retained for the validity window. Empty unless SetDemandIssuerKey was
+	// called. DISTINCT from tokenIssuer (the publish-token key), which must never
+	// rotate — committed publish tokens are re-verified against it on replay.
+	demandIssuers map[uint64]*blindtoken.Issuer
+	// peerDemandKeys is the VERIFYING side: per-issuer pinned keysets. A key enters
+	// only through pinDemandIssuerKey, i.e. only after resolving against the
+	// committed E ↦ key_E binding. See demandkeys.go.
+	peerDemandKeys map[ports.NodeID]*demand.Keyset
+	// pendingIssuerKeys are signed key commitments staged for inclusion in this
+	// node's next v5 proposal (drained in chainrole.go's propose path).
+	pendingIssuerKeys []chain.IssuerKeyReg
 
 	// PoD relay lane (§7.3, certified 2026-08-30). relayAccept gates whether this
 	// node accepts sender-funded PayWord chains (mirror of the demand-bank gate,
@@ -1134,6 +1151,7 @@ func New(id ports.NodeID, cfg Config, clock ports.Clock, tr ports.Transport, sto
 		entrySubmitRate:   make(map[ports.NodeID]*challengerRate),
 		slashedLocal:      make(map[ports.NodeID]bool),
 		peerIssuerKeys:    make(map[ports.NodeID]*rsa.PublicKey),
+		peerDemandKeys:    make(map[ports.NodeID]*demand.Keyset), // R0.4b pinned per-epoch demand keysets
 		creditSpent:       make(map[string]bool),
 		tokenIssued:       make(map[string]tokenIssuedEntry),
 		serveLoad:         make(map[ports.ChunkID]int),
@@ -1649,6 +1667,10 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 		n.reply(from, msg, n.answerTokenRequest(from, msg))
 	case ports.MsgGetIssuerKey:
 		n.reply(from, msg, n.answerIssuerKey())
+	case ports.MsgGetDemandIssuerKeys:
+		n.reply(from, msg, n.answerDemandIssuerKeys()) // R0.4b: serve the per-epoch key WINDOW
+	case ports.MsgDemandTokenRequest:
+		n.reply(from, msg, n.answerDemandTokenRequest(from, msg)) // R0.4b: blind-sign under key_current
 	case ports.MsgGetCanonicalIssuers:
 		n.reply(from, msg, n.answerCanonicalIssuers())
 	case ports.MsgCheckReachability:

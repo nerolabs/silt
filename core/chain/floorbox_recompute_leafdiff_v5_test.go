@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -234,14 +235,15 @@ func generateLeafDiffScenarios(t *testing.T) []leafDiffScenario {
 	return out
 }
 
-// v5EmittableLeafTags is the FULL set of committed-leaf field tags stateRootLeavesV5 can emit,
-// derived from the LIVE marshaller — NOT a hardcoded list. populateCommitted sets every committed
-// keyspace and scalar (it is itself reflection-pinned to the committed classification by
-// TestAdoptCopiesEveryCommittedField, so it cannot silently drop a field), and the marshaller then
-// emits one leaf per keyspace/scalar. A FUTURE committed-leaf tag added to stateRootLeavesV5 shows up
-// here automatically (populateCommitted must set its backing field, or the adopt guard reddens), which
-// grows the coverage bar the meta-assertion below enforces — with ZERO edits to this function.
-func v5EmittableLeafTags(t *testing.T) map[string]struct{} {
+// v5EmittedLeafTags is EVERY committed-leaf field tag stateRootLeavesV5 emits on a
+// fully-populated chain, derived from the LIVE marshaller — NOT a hardcoded list.
+// populateCommitted sets every committed keyspace and scalar (it is itself reflection-pinned
+// to the committed classification by TestAdoptCopiesEveryCommittedField, so it cannot silently
+// drop a field), and the marshaller then emits one leaf per keyspace/scalar.
+//
+// This is the ROOT-COVERAGE question — "what does a v5 block commit" — and it takes NO
+// exclusions. TestStateRootV5CoversExactlyTheV5Fields uses it.
+func v5EmittedLeafTags(t *testing.T) map[string]struct{} {
 	t.Helper()
 	c := &Chain{}
 	populateCommitted(c)
@@ -250,6 +252,129 @@ func v5EmittableLeafTags(t *testing.T) map[string]struct{} {
 		tags[tagOfKey(string(lf.Key))] = struct{}{}
 	}
 	return tags
+}
+
+// v5EmittableLeafTags is v5EmittedLeafTags minus the tags the diff-minus-fold guard cannot
+// exercise (leafDiffOutOfScopeTags). That is a DIFFERENT question from root coverage: "which
+// tags can a scenario in this file drive to agreement". A tag excluded here is still in the
+// committed root — it is only out of reach of THIS guard, because the recompute stalls on the
+// block class that writes it.
+//
+// The two were one function until the R0.4b rebase onto #707, and that was a real defect: the
+// new root-coverage pin inherited the leaf-diff guard's exclusion list and reported
+// issuerKeyCommit as NOT COMMITTED when the marshaller emits it on every v5 block. Keep them
+// separate. A FUTURE committed-leaf tag shows up in both automatically (populateCommitted must
+// set its backing field, or the adopt guard reddens), which grows the coverage bar the
+// meta-assertion below enforces — with ZERO edits to either function.
+func v5EmittableLeafTags(t *testing.T) map[string]struct{} {
+	t.Helper()
+	tags := v5EmittedLeafTags(t)
+	for tag := range leafDiffOutOfScopeTags {
+		delete(tags, tag)
+	}
+	return tags
+}
+
+// leafDiffOutOfScopeTags names committed-leaf tags the diff-minus-fold guard CANNOT
+// exercise, because the O(payload) recompute does not reproduce the block class that
+// writes them and STALLS on it instead. A scenario for such a tag could not be added
+// to generateLeafDiffScenarios at all: that guard requires the recompute to AGREE,
+// and a stalling recompute never agrees.
+//
+// This is NOT the coverage debt the meta-assertion exists to catch. A dropped
+// emission of one of these tags cannot become a silent wrong-Accept, because the box
+// refuses the whole block. The exclusion is EARNED, not asserted:
+// TestLeafDiffOutOfScopeTagsActuallyStall drives a block writing each excluded tag
+// through the real scope gate and requires a stall — so if a future increment brings
+// the class in scope, that test reddens and forces the tag out of this set and into a
+// real scenario.
+var leafDiffOutOfScopeTags = map[string]string{
+	"issuerKeyCommit": "R0.4b per-epoch demand-issuer key binding. Written only by a block " +
+		"carrying IssuerKeys, a transition class the O(payload) recompute does not reproduce; " +
+		"stateRootScopeGate stalls on it (ErrRecomputeStateRootScopeStall). The keyspace is INERT " +
+		"to consensus — no validity predicate, quorum, fork-choice rule, or recompute reads it — " +
+		"so there is no fold for a diff to be compared against.",
+}
+
+// TestLeafDiff_IssuerKeyCommitIsPayloadOnly earns the WORD "ONLY" in the exemption above.
+//
+// The exemption was FALSE when it was written (red-team re-break F1, 2026-09-03):
+// applyIssuerKeys pruned the keyspace by BLOCK HEIGHT on every apply, so a block carrying no
+// registrations deleted committed issuerKeyCommit leaves at every epoch turn — writes the
+// scope gate waved through and the fold never reproduced, measured as a two-way box/full-node
+// split. Stalling on the payload predicate is only sound if the payload predicate is EXACT, so
+// the "only" clause needs its own gate, not just a stall gate for the positive case.
+//
+// It sweeps a run of registration-free blocks ACROSS several epoch turns over a pre-state that
+// holds committed issuer keys, and requires that not one of them changes an issuerKeyCommit
+// leaf. Re-introducing any height-driven write to the keyspace reddens it.
+func TestLeafDiff_IssuerKeyCommitIsPayloadOnly(t *testing.T) {
+	if _, ok := leafDiffOutOfScopeTags["issuerKeyCommit"]; !ok {
+		t.Skip("issuerKeyCommit is in scope now; it needs a real leaf-diff scenario instead")
+	}
+	cfg := Config{Quorum: 1, MinBond: era4MinBond, ByzantineQuorum: true,
+		EpochBlocks: 2, MatureValidators: 0, BondTTLBlocks: 4096}
+	c := New(cfg, func(ports.NodeID) int64 { return 0 })
+	c.SetBondVerifier(objectiveVerify)
+	prop := key(91200)
+	g := &Block{Version: BlockVersionWitnessable, Height: 0}
+	g.BondRegs = append(g.BondRegs,
+		bondRegFull(prop, ports.HashBytes(pubOf(prop)), 8<<20, ports.Hash{}, 5, 1))
+	g.IssuerKeys = []IssuerKeyReg{SignIssuerKeyReg(prop, 0, ports.Hash{0x77})}
+	Sign(g, prop)
+	c.apply(*g)
+
+	committedIssuerKeyLeaves := func(ch *Chain) map[string]string {
+		out := map[string]string{}
+		for _, lf := range ch.stateRootLeavesV5() {
+			if tagOfKey(string(lf.Key)) == "issuerKeyCommit" {
+				out[string(lf.Key)] = string(lf.Value)
+			}
+		}
+		return out
+	}
+	if len(committedIssuerKeyLeaves(c)) != 1 {
+		t.Fatalf("fixture: expected one committed issuerKeyCommit leaf")
+	}
+
+	// 24 registration-free blocks = 12 epoch turns at EpochBlocks=2, well past the point the
+	// height-driven prune dropped epoch 0 (it fired at cur=5, height 10).
+	for h := uint64(1); h <= 24; h++ {
+		before := committedIssuerKeyLeaves(c)
+		prev, hh := c.Head()
+		b := Block{Version: BlockVersionWitnessable, Height: hh, Prev: prev,
+			Entries: []ports.Entry{entry(byte(h))}}
+		Sign(&b, prop)
+		c.apply(b)
+		after := committedIssuerKeyLeaves(c)
+		if !reflect.DeepEqual(before, after) {
+			t.Fatalf("height %d (epoch %d): a block carrying NO IssuerKeys changed the "+
+				"issuerKeyCommit leaf set (%d leaves -> %d). The exemption's word ONLY is false "+
+				"again: the scope gate's len(b.IssuerKeys) > 0 predicate cannot see this write "+
+				"and the O(payload) fold cannot reproduce it — a box/full-node split at every "+
+				"such block.", hh, c.blockEpoch(hh), len(before), len(after))
+		}
+	}
+}
+
+// TestLeafDiffOutOfScopeTagsActuallyStall earns every leafDiffOutOfScopeTags entry:
+// the block class that writes the tag must make the real scope gate STALL. Without
+// this the exclusion list would be an unchecked escape hatch — exactly the blind spot
+// the coverage meta-assertion exists to close.
+func TestLeafDiffOutOfScopeTagsActuallyStall(t *testing.T) {
+	if _, ok := leafDiffOutOfScopeTags["issuerKeyCommit"]; ok {
+		f := buildStateRootFixture(t)
+		b := f.nextERBlock()
+		b.IssuerKeys = []IssuerKeyReg{
+			SignIssuerKeyReg(key(91100), f.c.blockEpoch(b.Height), ports.Hash{0x77}),
+		}
+		err := f.c.stateRootScopeGate(f.prevRoot, b, f.witnessForBlock(t, b))
+		if !errors.Is(err, ErrRecomputeStateRootScopeStall) {
+			t.Fatalf("a block carrying IssuerKeys did NOT stall the scope gate (err=%v). "+
+				"The class is in scope now, so issuerKeyCommit must LEAVE leafDiffOutOfScopeTags "+
+				"and gain a real generateLeafDiffScenarios scenario.", err)
+		}
+	}
 }
 
 // TestLeafDiffGuardCompleteness is the permanent emission-keyed guard: for every generated block, the

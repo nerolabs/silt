@@ -211,7 +211,14 @@ type CreditLedger interface {
 	// provisional serve self-credit and pays the server the conserved credit
 	// (the fetcher's withdrawal fee, less the durability skim). Returns the
 	// credits paid. Balance economy only — never standing.
-	RedeemDeliveryCredit(server, fetcher NodeID, root Hash) int64
+	//
+	// serial is the redeemed receipt's token serial; it gates the cross-server
+	// double-redeem so one token funds exactly one conserved payout (K colluding
+	// servers sharing one token cannot mint (K−1)·fee). issuedEpoch is the epoch
+	// whose issuer key signed that token and currentEpoch is the consensus epoch at
+	// the head: together they let the guard set evict BY EXPIRY, so a forgotten
+	// serial is always one no in-window issuer key can still validate (R0.4b).
+	RedeemDeliveryCredit(server, fetcher NodeID, root Hash, serial []byte, issuedEpoch, currentEpoch uint64) int64
 	// RedeemRelayCredit settles a PayWord relay chain at session close (PoD §7.3):
 	// it transfers chainValue from the fetcher's already-paid blind credit into the
 	// relay operator's balance, capped at budget (the committed chain budget, itself
@@ -312,4 +319,46 @@ type SignMark struct {
 type SignMarkStore interface {
 	Load() (SignMark, bool, error) // ok=false: no mark persisted yet
 	Save(SignMark) error
+}
+
+// PaidSerial is one entry of the R0.4b cross-server double-redeem guard: a demand
+// token that has already funded one conserved delivery payout on a ledger, the server
+// that collected it, and the token's ISSUE EPOCH — the expiry key eviction is allowed
+// to act on. (Epoch, Serial) identifies the TOKEN; the serial alone does not, because
+// the withdrawer picks both.
+type PaidSerial struct {
+	Serial []byte
+	Server NodeID
+	Epoch  uint64
+}
+
+// PaidSerialStore persists the guard durably, so a RESTART is not an eviction.
+//
+// WHY IT EXISTS. The guard's soundness argument is "evicted ⇒ expired ⇒
+// un-redeemable": an entry may be forgotten only once no key can verify the token it
+// guards. Process memory breaks that outright — a restart forgets EVERY entry,
+// in-window or not, and the identical wire receipt pays a second time (measured,
+// red-team re-break F2, 2026-09-03). Persisting the guard is what makes the eviction
+// set and the expired set the same set across the one eviction event every node
+// performs.
+//
+// DURABILITY IS ORDERED, like SignMarkStore's. Append MUST make the entry durable
+// (fsync) BEFORE it returns: the ledger appends before it PAYS, so a crash between the
+// two leaves a guard entry for a payout that never happened (safe — an under-pay),
+// never a payout with no guard entry (which a restart would let a second server
+// collect again).
+//
+// "Before it pays", precisely — NOT "before it moves any credit". The redeem path
+// reverses the delivery's provisional self-mint (the supersede) before this append,
+// and that reversal is purely subtractive, so a crash between the reversal and the
+// append is again an under-pay. core/credit/delivery.go states the full ordering
+// invariant.
+type PaidSerialStore interface {
+	// Load returns every persisted entry. An absent store is an empty slice, no error.
+	Load() ([]PaidSerial, error)
+	// Append durably records one entry.
+	Append(PaidSerial) error
+	// Compact atomically replaces the whole store with live, dropping the entries an
+	// expiry sweep removed. Atomic: a crash mid-compact leaves the previous contents.
+	Compact([]PaidSerial) error
 }

@@ -228,6 +228,34 @@ and no deadline tuning fixes it.
   not initiate the gather. It reproduced only over real WAN (the no-latency sim has no
   inbound overlap). The symptom *looked* like a timeout; the cause was configure-vs-discover.
 
+## 9. One security property lives in the HOST, not the code — a demand issuer needs a cache-private box
+
+**Operator rule: do not run a silt daemon with the demand lane on
+(`-accept-delivery-receipts`, which makes the node a retrieval-token issuer) on a host
+that shares a CPU cache with untrusted co-tenants.** Dedicated hardware, or a VM with
+dedicated cores. That is the whole rule; the rest is why it cannot be fixed in code.
+
+The issuer's blind signature is an RSA private-key operation over `math/big`. silt blinds
+it (`SignBlinded`), which closes the **remote** timing channel — Go's Montgomery
+exponentiation ends in a data-dependent conditional subtraction, and that extra-reduction
+oracle is exactly the one Brumley–Boneh exploited across a network. Blinding does **not**
+close the second channel: the exponentiation indexes a power table at an
+**exponent-dependent** offset, and the private exponent is the same on every call, so a
+local attacker sharing the L1/L2 cache can recover its bits (Percival 2005;
+Yarom–Falkner FLUSH+RELOAD).
+
+**No Go implementation can close it.** Go's own `crypto/rsa` moved private-key operations
+onto a constant-time backend, but the standard library exports no raw RSA private
+operation, so every blind-signature library in Go is back on `math/big` — Cloudflare's
+CIRCL `blindrsa`, the reference Go implementation of RFC 9474, carries the identical
+residual. It is therefore a **declared deployment assumption**, not a defect to be
+patched: the same shape as §4's rule, one step further out. A property the code cannot
+hold is stated where the operator can hold it instead.
+
+Declared in code at `core/blindtoken/blindtoken.go` (`SignBlinded`) and for auditors in
+`docs/thinking/2026-09-02-r0.4b-c3-close-design.md` §12. Source: crypto-specialist
+advisory R6, 2026-09-03.
+
 ---
 
 ## silt's applied ledger (worked examples of this page)

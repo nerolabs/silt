@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/nerolabs/silt/adapters/simnet"
+	"github.com/nerolabs/silt/core/chain"
 	"github.com/nerolabs/silt/core/credit"
-	"github.com/nerolabs/silt/core/demand"
 	"github.com/nerolabs/silt/core/node"
 	"github.com/nerolabs/silt/ports"
 )
@@ -27,7 +27,10 @@ func TestDeliveryCreditConservedOverWire(t *testing.T) {
 	const seed = 20260826
 	const fee = int64(1000)
 	cl := NewCluster(seed, 8, simnet.DefaultConfig(), node.DefaultConfig())
-	server, fetcher := cl.Nodes[0], cl.Nodes[1]
+	fetcher := cl.Nodes[1]
+	// R0.4b: the server is also the issuer, and its NodeID must be its committed
+	// identity so the E->key_E binding names it (the production shape).
+	server, serverSigner := identityNode(cl, 2026090201)
 
 	// One node, both roles: issues the tokens it will later accept receipts
 	// for, and holds the one ledger the bilateral loop settles in.
@@ -37,13 +40,19 @@ func TestDeliveryCreditConservedOverWire(t *testing.T) {
 	if err != nil {
 		t.Fatalf("issuer key: %v", err)
 	}
-	server.EnableTokenIssuer(issuerKey)
-	server.EnableDemandBank(&issuerKey.PublicKey)
+	server.EnableTokenIssuer(rand.Reader, issuerKey)
 
 	// The fetcher signs receipts with its NODE identity key, so the receipt's
 	// Fetcher hashes to its NodeID — that is what routes the supersede lane.
 	_, fetcherSigner, _ := ed25519.GenerateKey(rand.Reader)
 	fetcher.SetSigner(fetcherSigner)
+
+	// R0.4b: commit this issuer's key_0 binding, then pin it on both sides.
+	sc := chain.New(chain.Config{Quorum: 1}, func(ports.NodeID) int64 { return 1 << 30 })
+	if gerr := sc.AppendGenesis(issuerKeyGenesis(t, serverSigner, issuerKey)); gerr != nil {
+		t.Fatalf("issuer-key genesis: %v", gerr)
+	}
+	wireDemandLane(t, cl, server, server, serverSigner, issuerKey, sc, serverSigner, demandFetcher{fetcher, fetcherSigner})
 
 	ledger.Register(server.ID())
 	ledger.Register(fetcher.ID())
@@ -51,24 +60,10 @@ func TestDeliveryCreditConservedOverWire(t *testing.T) {
 	serverStart := ledger.Balance(server.ID())
 	fetcherStart := ledger.Balance(fetcher.ID())
 
-	fetcher.FetchIssuerKey(server.ID(), func(error) {})
-	cl.Sched.Run()
-
 	object := ports.HashBytes([]byte("conserved-object"))
 
 	// Withdraw: the fee leaves the fetcher on the server's ledger.
-	var tok demand.Token
-	var gotTok bool
-	fetcher.AcquireDemandToken(rand.Reader, server.ID(), func(tk demand.Token, err error) {
-		if err != nil {
-			t.Fatalf("acquire token: %v", err)
-		}
-		tok, gotTok = tk, true
-	})
-	cl.Sched.Run()
-	if !gotTok {
-		t.Fatal("never acquired a token")
-	}
+	tok := acquireDemandToken(t, cl, fetcher, server.ID())
 	if got := fetcherStart - ledger.Balance(fetcher.ID()); got != fee {
 		t.Fatalf("withdrawal charged %d, want the fee %d", got, fee)
 	}

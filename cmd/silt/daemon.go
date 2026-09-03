@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/rand"
+	"crypto/rsa"
 	"flag"
 	"fmt"
 	"net"
@@ -29,6 +30,7 @@ import (
 	"github.com/nerolabs/silt/adapters/diskstore"
 	"github.com/nerolabs/silt/adapters/eventloop"
 	"github.com/nerolabs/silt/adapters/fileregistry"
+	"github.com/nerolabs/silt/adapters/guardstore"
 	"github.com/nerolabs/silt/adapters/httpregistry"
 	"github.com/nerolabs/silt/adapters/identity"
 	"github.com/nerolabs/silt/adapters/lan"
@@ -39,9 +41,11 @@ import (
 	"github.com/nerolabs/silt/adapters/relay"
 	"github.com/nerolabs/silt/adapters/tcpnet"
 	"github.com/nerolabs/silt/adapters/walltime"
+	"github.com/nerolabs/silt/core/blindtoken"
 	"github.com/nerolabs/silt/core/bond"
 	"github.com/nerolabs/silt/core/chain"
 	"github.com/nerolabs/silt/core/credit"
+	"github.com/nerolabs/silt/core/demand"
 	"github.com/nerolabs/silt/core/denylist"
 	"github.com/nerolabs/silt/core/genesis"
 	"github.com/nerolabs/silt/core/link"
@@ -616,7 +620,33 @@ func cmdDaemon(args []string) error {
 	// chain-less daemon so the chain-gated call sites below never nil-panic.
 	saveChain := func(string) {}
 	ledger := credit.New(50_000, 500_000) // starter grant so a fresh publisher can pay token fees
-	nd0ledger := ledger                   // wired onto the node below
+	// R0.4b re-break F2: the cross-server double-redeem guard is DURABLE, and it is
+	// restored HERE — before the node exists, so before any receipt can be accepted. A
+	// restart used to evict every guarded token, in-window or not, and the identical
+	// wire receipt paid a second time. A store that cannot be opened or read is a
+	// refuse-to-start, the same rule the sign-mark store keeps: starting with an empty
+	// guard IS the eviction this closes.
+	//
+	// GATED ON THE LANE (PE ruling H-3, 2026-09-03). The refuse-to-start is correct for
+	// a node that BANKS receipts: starting with an empty guard is the eviction. It is
+	// wrong for every other node, and it used to run unconditionally — so a corrupt
+	// paidserials.log bricked a pure storage node that has no delivery lane and could
+	// never have written the file. That is the F7 blast-radius lesson, which this same
+	// change applied to demandkeys.cbor and did not apply to the file it adds. The
+	// asymmetry with F7 is deliberate and is the whole point: inside the lane the guard
+	// is load-bearing and a failure MUST stop the daemon; outside the lane nothing can
+	// read or write it, so opening it at all is the defect.
+	if *acceptReceipts {
+		if gs, gerr := guardstore.Open(filepath.Join(*storeDir, "paidserials.log")); gerr != nil {
+			return fmt.Errorf("delivery-credit guard store: %w", gerr)
+		} else {
+			ledger.SetPaidSerialStore(gs)
+			if lerr := ledger.LoadPaidSerials(); lerr != nil {
+				return fmt.Errorf("delivery-credit guard store: %w", lerr)
+			}
+		}
+	}
+	nd0ledger := ledger // wired onto the node below
 	if *validator {
 		anchorSet := map[ports.NodeID]bool{}
 		for _, s := range strings.Split(*anchorList, ",") {
@@ -814,18 +844,118 @@ func cmdDaemon(args []string) error {
 		// carry one — no Publisher identity on-chain. The issuer key PERSISTS
 		// (#93 / §3d): a restart reuses it, so outstanding tokens stay verifiable
 		// and peers' cached issuer keys don't go stale.
+		// R0.4b demand-key rotation state: the epoch the band was last built for,
+		// and the (off-loop) rotation step. Both stay nil/zero unless
+		// -accept-delivery-receipts wires the demand lane.
+		var rotateDemandKeys func(cur uint64)
+		var demandEpoch uint64
 		if is, ierr := diskissuer.Open(filepath.Join(*storeDir, "issuer")); ierr != nil {
 			return fmt.Errorf("token issuer store: %w", ierr)
 		} else if issuerKey, kerr := is.LoadOrCreate(rand.Reader); kerr == nil {
-			nd.EnableTokenIssuer(issuerKey)
+			nd.EnableTokenIssuer(rand.Reader, issuerKey)
 			if *acceptReceipts {
 				// PoD neutral lane: bank receipts against the key that signed
 				// their tokens. issuer == server here — the bilateral shape the
 				// certification's Q5 settlement answer covers (per-node
 				// bookkeeping suffices; committed balances are only needed for a
 				// credit a THIRD operator must honor).
-				nd.EnableDemandBank(&issuerKey.PublicKey)
-				fmt.Println("delivery receipts: ACCEPTING — banking witnessed deliveries and settling the conserved delivery credit (balance only, never standing)")
+				//
+				// R0.4b C3 close: the demand issuer key is PER-EPOCH, SCHEDULED
+				// here, and is NEVER the publish key. Two rules, both load-bearing:
+				//
+				//   - THE PUBLISH KEY NEVER ENTERS THE DEMAND KEYSET. It cannot be
+				//     rotated (committed publish tokens re-verify against it on
+				//     replay), so installing it as key_{boot} gave the demand lane a
+				//     life of exactly W+1 epochs — after which the bank rejected
+				//     every token while the fee-charging paths kept charging. With
+				//     the lanes separated, a demand blind bought on the publish lane
+				//     is simply not a demand token, and every shipped withdrawal
+				//     path now runs on the pinned demand lane.
+				//   - ROTATION IS SCHEDULED, NOT OPS POLICY. The band [cur, cur+W]
+				//     is pre-published so key_E is committed before epoch E opens,
+				//     and [cur−W, cur] is retained so an in-window past epoch is
+				//     still signable (the epoch-boundary race). Keygen and the disk
+				//     write run OFF the node loop; only the installs are posted back.
+				//
+				// Until the commitment for an epoch is on-chain, the bank verifies
+				// nothing — refusing an unanchored key is the certified behavior, not
+				// a bug (without the binding, per-epoch keys are worse for privacy
+				// than no epoch at all).
+				des, derr := diskissuer.OpenEpochs(filepath.Join(*storeDir, "issuer"))
+				if derr != nil {
+					return fmt.Errorf("demand issuer key store: %w", derr)
+				}
+				// DEGRADE TO LANE-OFF, NEVER TO DAEMON-DEAD (red-team re-break F7).
+				// A corrupt or unreadable demand key file used to come straight out of
+				// runDaemon, so one bad byte in demandkeys.cbor stopped chain participation,
+				// storage and serving too — a blast radius wildly out of proportion to an
+				// OPTIONAL receipt lane. The file is NEVER rewritten or regenerated on this
+				// path: quietly minting new keys over already-committed fingerprints is the
+				// UNRECOVERABLE failure (F6), so the store is left exactly as found for an
+				// operator to restore. The refusal is loud, on stdout, at boot.
+				// Build the issuer-key hardness primorial off the node loop, once, so
+				// the first key pin does not pay ~40 ms on the loop (advisory C-3).
+				blindtoken.PrewarmValidatePub()
+				_, lerr := des.Load()
+				switch {
+				case lerr != nil:
+					fmt.Printf("delivery receipts: LANE OFF — the demand issuer key store is unreadable: %v\n", lerr)
+					fmt.Printf("delivery receipts: %s was NOT modified; restore it from backup and restart to re-enable the lane. Chain, storage and serving continue.\n",
+						filepath.Join(*storeDir, "issuer", "demandkeys.cbor"))
+				default:
+					// Boot install runs synchronously: the lane must not be dark for the
+					// first commits, and this is before the loop is running.
+					demandEpoch = nd.DemandEpoch()
+					if kerr := installDemandKeys(nd, des, rand.Reader, demandEpoch); kerr != nil {
+						fmt.Printf("delivery receipts: LANE OFF — the boot key rotation failed: %v\n", kerr)
+						break
+					}
+					// ARM THE EPOCH SCHEDULER — ONLY NOW, below the boot install's one
+					// failure exit (PE ruling H-2, 2026-09-03). This assignment used to sit
+					// ABOVE the install, so a failed boot rotation printed "LANE OFF" and
+					// `break`ed out with rotateDemandKeys still non-nil: the OnCommit hook
+					// kept rotating from the next epoch turn, and the node went on holding
+					// demand keys, STAGING IssuerKeyReg commitments into consensus, serving
+					// MsgGetDemandIssuerKeys and blind-signing withdrawals — charging the
+					// withdrawal fee — while demandBank stayed nil and denied every receipt
+					// those tokens bought. That is the "a fee burned for a token the system
+					// will never honour" failure this scheduler exists to close, resurrected
+					// on the degrade path.
+					//
+					// The fix is the ORDER, not a compensating `rotateDemandKeys = nil` on
+					// the failure branch: with the only assignment below the only failure
+					// exit, there is no branch left that can arm a lane it has just declared
+					// off. Pinned by cmd/silt TestDaemonArmsTheRotatorOnlyAfterABootInstall.
+					//
+					// The band is generated and written to disk OFF the node loop (an
+					// RSA-2048 keygen is hundreds of milliseconds and the loop is
+					// single-threaded), and only the installs are posted back onto it.
+					rotateDemandKeys = func(cur uint64) {
+						var band []struct {
+							e uint64
+							k *rsa.PrivateKey
+						}
+						if err := des.RotateWindow(rand.Reader, cur, demand.DefaultWindow,
+							func(e uint64, k *rsa.PrivateKey) {
+								band = append(band, struct {
+									e uint64
+									k *rsa.PrivateKey
+								}{e, k})
+							}); err != nil {
+							fmt.Printf("delivery receipts: demand key rotation for epoch %d FAILED: %v\n", cur, err)
+							return
+						}
+						loop.Post("demand-keys", func() {
+							for _, kv := range band {
+								nd.SetDemandIssuerKey(rand.Reader, kv.e, kv.k)
+							}
+						})
+					}
+					nd.EnableDemandBank(nd.ID())
+					fmt.Println("delivery receipts: ACCEPTING — banking witnessed deliveries and settling the conserved delivery credit (balance only, never standing)")
+					fmt.Printf("delivery receipts: token validity window = %d epochs; per-epoch demand keys pre-published to epoch %d; key_E is resolved against the committed E→key binding (needs an era-4/v5 chain)\n",
+						demand.DefaultWindow, demandEpoch+demand.DefaultWindow)
+				}
 			}
 			if *acceptRelayPayments {
 				// PoD relay lane (§7.3, certified 2026-08-30): accept sender-funded
@@ -854,6 +984,26 @@ func cmdDaemon(args []string) error {
 		// floor exit. Ephemeral observer state — the chain stays a pure reader.
 		lambdaH := newLambdaHTracker(*lambdaHWindow)
 		nd.OnCommit(func(b chain.Block) {
+			// R0.4b: advance the per-epoch demand key schedule when the consensus
+			// epoch turns. Generating RSA keys and writing them to disk would block
+			// the single loop for hundreds of milliseconds, so the work runs in a
+			// goroutine and posts the installs back.
+			//
+			// Bumping demandEpoch here, on the loop, before the goroutine starts
+			// prevents a DUPLICATE rotation for the SAME epoch. It does NOT serialize
+			// rotations: a band is ~5 RSA keygens ~1s and an epoch is 8 blocks, so
+			// turns for DIFFERENT epochs routinely overlap and complete out of order.
+			// That is the case that used to lose keys (red-team F6), and the store —
+			// not this comment — is what makes it safe: EpochStore serializes the whole
+			// load-generate-save cycle and its prune's upper edge is monotone, so no
+			// turn can shrink another turn's pre-publication. See
+			// adapters/diskissuer/epochkeys.go.
+			if rotateDemandKeys != nil {
+				if cur := nd.DemandEpoch(); cur > demandEpoch {
+					demandEpoch = cur
+					go rotateDemandKeys(cur)
+				}
+			}
 			// bond-regs is the DRAIN CURVE's per-block resolution: without it a
 			// journal cannot say which committed blocks banked which registrations
 			// (run 09fbe60-84613 read entries=0 as "empty" while regs were landing).

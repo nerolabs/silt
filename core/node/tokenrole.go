@@ -22,16 +22,50 @@ var (
 	// ErrTokenAcquire means fewer than k issuers granted a signature (e.g.
 	// offline or out of the requester's credit).
 	ErrTokenAcquire = errors.New("node: could not gather enough publish-token signatures")
-	errNoIssuerKey  = errors.New("node: peer has no issuer key")
+	// ErrNoIssuerKey means the peer answered the key request but serves no issuer
+	// key at all — it runs no token/demand issuer. EXPORTED because the client has
+	// to tell it apart from "the issuer served keys, none resolved against a
+	// committed binding": the first is "that server does not run the lane", the
+	// second is "that server's chain has no era-4 binding yet", and cmd/silt owes
+	// the operator a different sentence for each (S5, cmd/silt/swarm.go).
+	ErrNoIssuerKey = errors.New("node: peer has no issuer key")
 
 	errNoCanonicalIssuers = errors.New("node: peer served no canonical issuer set (no chain)")
+
+	// errNoTokenIssuer refuses a CREDIT-BEARING request on a node that runs no
+	// publish issuer. There is no key to verify the credit against, so the credit
+	// cannot be honoured — fail closed. Before this guard the verify call
+	// dereferenced a nil issuer ((*blindtoken.Issuer).Public reads i.key
+	// unconditionally), so one crafted credit-bearing request from any peer
+	// crashed the node. Reachable on the demand lane, where the handler gates on
+	// the DEMAND issuer for the epoch and not on the publish issuer.
+	errNoTokenIssuer = errors.New("node: no publish token issuer — cannot verify an attached credit")
+
+	// errCreditRefused means a credit was presented but does not verify, or is
+	// already spent. The requester meant to spend a credit; do not silently
+	// charge the durable identity instead.
+	errCreditRefused = errors.New("node: attached publish credit is invalid or already spent")
+
+	// ErrDemandEpochMismatch refuses a demand-token reply signed for an epoch the
+	// withdrawal did not name (R0.4b (b1)). The issue epoch is inside the
+	// blind-signed message, so such a signature unblinds to nothing redeemable —
+	// failing here makes an issuer's attempt to hand a cohort a different key a
+	// DENIAL the fetcher sees, not a tagged token it discovers is worthless at
+	// redemption.
+	ErrDemandEpochMismatch = errors.New("node: demand-token reply names a different issue epoch than the withdrawal")
 )
 
 // EnableTokenIssuer makes this validator blind-sign publish-token requests
 // (charging the fee to each requester) and serve its issuer public key to
 // peers who ask (MsgGetIssuerKey).
-func (n *Node) EnableTokenIssuer(key *rsa.PrivateKey) {
-	n.tokenIssuer = blindtoken.NewIssuer(key)
+//
+// rng is the randomness the PRIVATE-KEY operation blinds with (advisory C-2). This is
+// a network-facing signing oracle over attacker-chosen input, which is the
+// Brumley-Boneh remote-timing setting, so the blinding is not optional. It is injected
+// like every other randomness source in core (internal/depcheck bans crypto/rand
+// here); it does not change the signature produced, only the modexp's timing profile.
+func (n *Node) EnableTokenIssuer(rng io.Reader, key *rsa.PrivateKey) {
+	n.tokenIssuer = blindtoken.NewIssuer(rng, key)
 	n.issuerKeyDER = blindtoken.MarshalPub(&key.PublicKey)
 }
 
@@ -48,7 +82,7 @@ func (n *Node) FetchIssuerKey(v ports.NodeID, done func(error)) {
 		case err != nil:
 			done(err)
 		case !resp.OK || len(resp.Data) == 0:
-			done(errNoIssuerKey)
+			done(ErrNoIssuerKey)
 		default:
 			pub, perr := blindtoken.ParsePub(resp.Data)
 			if perr == nil {
@@ -114,9 +148,9 @@ func (n *Node) answerTokenRequest(from ports.NodeID, msg ports.Message) ports.Me
 		reply.OK = true
 		return reply // a retry of an issuance already settled: same sig, no new charge
 	}
-	charge := n.tokenChargeFor(from, msg.Credit)
-	if charge == nil {
-		return reply // a credit was presented but is invalid or already spent
+	charge, err := n.tokenChargeFor(from, msg.Credit)
+	if err != nil {
+		return reply // no issuer to verify against, or the credit is invalid/spent
 	}
 	blindSig, err := n.tokenIssuer.Issue(charge, msg.Data)
 	if err != nil {
@@ -135,8 +169,8 @@ func (n *Node) answerTokenRequest(from ports.NodeID, msg ports.Message) ports.Me
 	return reply
 }
 
-// tokenChargeFor returns the settlement closure for a token request, or nil if
-// the request must be refused. The fee-decoupling is purely ADDITIVE (M0 privacy
+// tokenChargeFor returns the settlement closure for a token request, or a typed
+// refusal error if the request must not be served. The fee-decoupling is purely ADDITIVE (M0 privacy
 // D3 / F4): if the request carries a valid, unspent prepaid credit, that credit
 // is SPENT and the requester's durable identity is NOT charged — severing the
 // per-publish fee link. With no credit attached the legacy path charges the
@@ -144,27 +178,30 @@ func (n *Node) answerTokenRequest(from ports.NodeID, msg ports.Message) ports.Me
 // present but invalid or already spent is refused (nil) rather than silently
 // charged — the requester meant to spend a credit. Domain separation
 // (VerifyCredit) means a credit can never double as a publish token.
-func (n *Node) tokenChargeFor(from ports.NodeID, credit *ports.PublishCredit) func() error {
+func (n *Node) tokenChargeFor(from ports.NodeID, credit *ports.PublishCredit) (func() error, error) {
 	if credit == nil {
 		return func() error {
 			if n.ledger != nil {
 				return n.ledger.ChargePublish(from) // legacy: charges the durable identity
 			}
 			return nil
-		}
+		}, nil
+	}
+	if n.tokenIssuer == nil {
+		return nil, errNoTokenIssuer // no key to verify the credit against — fail closed
 	}
 	if len(credit.Serial) == 0 || !blindtoken.VerifyCredit(n.tokenIssuer.Public(), credit.Serial, credit.Sig) {
-		return nil // a credit was presented but does not verify
+		return nil, errCreditRefused // a credit was presented but does not verify
 	}
 	key := string(credit.Serial)
 	if n.creditSpent[key] {
-		return nil // double-spend
+		return nil, errCreditRefused // double-spend
 	}
 	return func() error {
 		// Spend on settlement so a signing failure does not burn the credit.
 		n.creditSpent[key] = true
 		return nil
-	}
+	}, nil
 }
 
 // AcquireCredits mints `count` prepaid publish credits from issuer `v` (a normal,
@@ -200,7 +237,10 @@ func (n *Node) AcquireCredits(rng io.Reader, v ports.NodeID, count int,
 		n.request(v, ports.Message{Kind: ports.MsgTokenRequest, Data: blinded},
 			func(resp ports.Message, err error) {
 				if err == nil && resp.OK && len(resp.Data) > 0 {
-					if sig := blindtoken.Unblind(pub, resp.Data, secret); sig != nil {
+					// RFC 9474 §4.4 Finalize (advisory C-1): a credit that does not
+					// verify under the issuer's own key is dropped here, not carried
+					// forward as a credit that fails at spend time.
+					if sig, uerr := blindtoken.UnblindCredit(pub, serial, resp.Data, secret); uerr == nil {
 						credits = append(credits, ports.PublishCredit{Serial: serial, Sig: sig})
 					}
 				}
@@ -323,7 +363,8 @@ func (n *Node) acquireToken(rng io.Reader, serial []byte, validators []ports.Nod
 				func(resp ports.Message, rerr error) {
 					inflight--
 					if rerr == nil && resp.OK && len(resp.Data) > 0 {
-						if sig := blindtoken.Unblind(pub, resp.Data, secret); sig != nil {
+						// RFC 9474 §4.4 Finalize (advisory C-1).
+						if sig, uerr := blindtoken.Unblind(pub, serial, resp.Data, secret); uerr == nil {
 							sigs[i] = sig
 						}
 					}

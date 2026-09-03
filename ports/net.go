@@ -162,6 +162,14 @@ const (
 	MsgRelayOpenAck          // OK + Height: the relay opened the session; Height carries the session handle. OK=false + Data: the refusal reason (M0 guard / S-clamp)
 	MsgRelayPay              // Data: a CBOR relaypay.RelayPay — a preimage reveal that authorizes the next forwarded increment(s) (PoD §7.3 transport)
 	MsgRelayPayAck           // OK + Height: the relay advanced; Height carries the authorized increment count. OK=false if the preimage did not verify
+	// R0.4b per-epoch demand-issuer keys. A SEPARATE lane from MsgGetIssuerKey /
+	// MsgTokenRequest, which serve the PUBLISH-token issuer key: that key is the
+	// chain's issuerKey lookup and committed publish tokens are re-verified against
+	// it on every replay, so it must NOT rotate per epoch. See core/node/demandkeys.go.
+	MsgGetDemandIssuerKeys   // ask an issuer for its per-epoch demand-token key WINDOW {key_E : current−W <= E <= current}
+	MsgDemandIssuerKeysReply // Data: CBOR demandKeysetWire (epoch → DER public key); OK=false if the peer issues no demand tokens
+	MsgDemandTokenRequest    // Data: a blinded demand-token serial to blind-sign under the CURRENT epoch key (fee charged to sender, or to an attached credit)
+	MsgDemandTokenReply      // Data: the blind signature; Height: the issuing epoch E (which key_E signed it); OK=false if refused
 )
 
 // StorageProof is a Merkle inclusion proof shipped alongside a chunk:
@@ -285,6 +293,8 @@ func (k MsgKind) String() string {
 		MsgDeliveryReceipt: "DeliveryReceipt", MsgDeliveryReceiptAck: "DeliveryReceiptAck",
 		MsgGetCanonicalIssuers: "GetCanonicalIssuers", MsgCanonicalIssuersReply: "CanonicalIssuersReply",
 		MsgGetIssuerKey: "GetIssuerKey", MsgIssuerKeyReply: "IssuerKeyReply",
+		MsgGetDemandIssuerKeys: "GetDemandIssuerKeys", MsgDemandIssuerKeysReply: "DemandIssuerKeysReply",
+		MsgDemandTokenRequest: "DemandTokenRequest", MsgDemandTokenReply: "DemandTokenReply",
 		MsgBondChallenge: "BondChallenge", MsgBondReply: "BondReply",
 		MsgTokenRequest: "TokenRequest", MsgTokenReply: "TokenReply",
 		MsgRelayOpen: "RelayOpen", MsgRelayOpenAck: "RelayOpenAck",
@@ -299,7 +309,7 @@ func (k MsgKind) String() string {
 // IsReply reports whether this kind terminates a pending request.
 func (m Message) IsReply() bool {
 	switch m.Kind {
-	case MsgFindNodeReply, MsgGetProvidersReply, MsgAddProviderAck, MsgStoreChunkAck, MsgFetchChunkReply, MsgHasChunkReply, MsgChallengeReply, MsgAttestReply, MsgCommitAck, MsgChainReply, MsgChainHeadReply, MsgBondReply, MsgTokenReply, MsgIssuerKeyReply, MsgSubmitBondRegAck, MsgSubmitEntryAck, MsgRepairVote, MsgDeliveryReceiptAck, MsgCanonicalIssuersReply, MsgPrecommitReply, MsgRoundChangeAck, MsgRelayOpenAck, MsgRelayPayAck:
+	case MsgFindNodeReply, MsgGetProvidersReply, MsgAddProviderAck, MsgStoreChunkAck, MsgFetchChunkReply, MsgHasChunkReply, MsgChallengeReply, MsgAttestReply, MsgCommitAck, MsgChainReply, MsgChainHeadReply, MsgBondReply, MsgTokenReply, MsgIssuerKeyReply, MsgSubmitBondRegAck, MsgSubmitEntryAck, MsgRepairVote, MsgDeliveryReceiptAck, MsgCanonicalIssuersReply, MsgPrecommitReply, MsgRoundChangeAck, MsgRelayOpenAck, MsgRelayPayAck, MsgDemandIssuerKeysReply, MsgDemandTokenReply:
 		return true
 	}
 	return false

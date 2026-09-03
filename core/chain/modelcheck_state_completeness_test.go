@@ -113,6 +113,16 @@ var stateClass = map[string]struct {
 		"v5-only leaf (tagQualified)."},
 	"dueBucket": {committedSet, "era-4 4b (T-3) — due-height index; one bucket per occupied " +
 		"expiry height, committed as an MTH over the canonical id list. v5-only leaf (tagDueBucket)."},
+	"issuerKeyCommit": {committedSet, "R0.4b — the consensus-attested per-epoch demand-issuer " +
+		"key binding (epoch -> issuer -> key fingerprint). Committed so every honest node " +
+		"agrees on key_E and an off-commitment (targeted, per-cohort) key is rejectable by " +
+		"construction — the anti-fingerprinting binding the R0.4b certification makes " +
+		"MANDATORY (Verdict 2; the lighter pinned-keyset is REFUTED as sufficient). It is " +
+		"set-valued derived state: apply writes it, adopt swaps it, the dry-run clone copies " +
+		"it, and the v5 marshaller commits it. INERT to consensus — no validity predicate, " +
+		"quorum, fork-choice rule, or floor-box recompute reads it; the only reader is the " +
+		"demand-lane redeemer, out of band. v5-only leaf (tagIssuerKey)."},
+
 	"epochStart": {committedSet, "era-4 4b (O-1) — PROMOTED from observable to committed. " +
 		"CERTIFIED narrowly (RECERT2): no quorum/validity predicate reads it (its only reader " +
 		"is Regime()), so committing it changes no quorum decision; it removes one uncommitted " +
@@ -268,6 +278,8 @@ func populateCommitted(c *Chain) {
 	// era-4 (v5) maintenance spine.
 	c.qualified = map[ports.NodeID]int64{id: 1 << 21}
 	c.dueBucket = map[uint64]map[ports.NodeID]struct{}{43: {id: struct{}{}}}
+	// R0.4b per-epoch demand-issuer key binding: epoch -> issuer -> fingerprint.
+	c.issuerKeyCommit = map[uint64]map[ports.NodeID]ports.Hash{2: {id: ports.Hash{0xAB}}}
 
 	rl := translog.New()
 	rl.Append(RevocationLeaf(RevOp, root, 5))

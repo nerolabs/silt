@@ -38,6 +38,16 @@ func newScene(t *testing.T, objectLabel string) scene {
 	}
 }
 
+// keys is the redeemer's per-epoch keyset for this scene: the issuer's key bound to
+// epoch 0, with the default window. Every test here withdraws and redeems inside one
+// epoch, so epoch 0 / current 0 is the in-window case; the expiry behaviour itself is
+// pinned separately in keyset_test.go.
+func (s scene) keys() *Keyset {
+	ks := NewKeyset(DefaultWindow)
+	ks.Put(0, s.issuerPub)
+	return ks
+}
+
 // token runs a full blind withdrawal: the fetcher blinds a fresh serial, the issuer
 // blind-signs it (never seeing the serial), and the fetcher unblinds into a Token.
 func (s scene) token(t *testing.T) Token {
@@ -46,12 +56,16 @@ func (s scene) token(t *testing.T) Token {
 	if err != nil {
 		t.Fatalf("serial: %v", err)
 	}
-	blinded, secret, err := Withdraw(rand.Reader, s.issuerPub, serial)
+	blinded, secret, err := Withdraw(rand.Reader, s.issuerPub, 0, serial)
 	if err != nil {
 		t.Fatalf("withdraw: %v", err)
 	}
-	blindSig := SignWithdrawal(s.issuerPriv, blinded)
-	return Unblind(s.issuerPub, serial, blindSig, secret)
+	blindSig := SignWithdrawal(rand.Reader, s.issuerPriv, blinded)
+	tok, uerr := Unblind(s.issuerPub, 0, serial, blindSig, secret)
+	if uerr != nil {
+		t.Fatalf("unblind: %v", uerr)
+	}
+	return tok
 }
 
 // TestHonestDeliveryCreditsDemand: a real issued token, spent on a fetcher-signed
@@ -62,7 +76,7 @@ func TestHonestDeliveryCreditsDemand(t *testing.T) {
 	tok := s.token(t)
 	r := Ack(s.fetcher, tok, s.object, s.server)
 	bank := NewBank()
-	if ok, reason := bank.Redeem(s.issuerPub, tok, r); !ok {
+	if ok, _, reason := bank.Redeem(s.keys(), 0, tok, r); !ok {
 		t.Fatalf("honest receipt rejected: %s", reason)
 	}
 	if got := bank.Demand(s.object); got != 1 {
@@ -77,10 +91,10 @@ func TestDoubleSpendRejected(t *testing.T) {
 	tok := s.token(t)
 	r := Ack(s.fetcher, tok, s.object, s.server)
 	bank := NewBank()
-	if ok, _ := bank.Redeem(s.issuerPub, tok, r); !ok {
+	if ok, _, _ := bank.Redeem(s.keys(), 0, tok, r); !ok {
 		t.Fatal("first redeem should succeed")
 	}
-	if ok, reason := bank.Redeem(s.issuerPub, tok, r); ok || reason == "" {
+	if ok, _, reason := bank.Redeem(s.keys(), 0, tok, r); ok || reason == "" {
 		t.Fatalf("second redeem of the same serial must be rejected, got ok=%v", ok)
 	}
 	if got := bank.Demand(s.object); got != 1 {
@@ -98,11 +112,14 @@ func TestForgedTokenRejected(t *testing.T) {
 		t.Fatalf("impostor key: %v", err)
 	}
 	serial, _ := blindtoken.NewSerial(rand.Reader)
-	blinded, secret, _ := Withdraw(rand.Reader, &impostor.PublicKey, serial)
-	forged := Unblind(&impostor.PublicKey, serial, SignWithdrawal(impostor, blinded), secret)
+	blinded, secret, _ := Withdraw(rand.Reader, &impostor.PublicKey, 0, serial)
+	forged, ferr := Unblind(&impostor.PublicKey, 0, serial, SignWithdrawal(rand.Reader, impostor, blinded), secret)
+	if ferr != nil {
+		t.Fatalf("an impostor-signed token must still UNBLIND (it is valid under the impostor's own key); got %v", ferr)
+	}
 	r := Ack(s.fetcher, forged, s.object, s.server)
 	bank := NewBank()
-	if ok, _ := bank.Redeem(s.issuerPub, forged, r); ok {
+	if ok, _, _ := bank.Redeem(s.keys(), 0, forged, r); ok {
 		t.Fatal("a token not signed by the REAL issuer must be rejected")
 	}
 	if bank.Demand(s.object) != 0 {
@@ -117,14 +134,17 @@ func TestForgedTokenRejected(t *testing.T) {
 func TestBlindWithdrawalIsUnlinkable(t *testing.T) {
 	s := newScene(t, "obj-C")
 	serial, _ := blindtoken.NewSerial(rand.Reader)
-	blinded, secret, err := Withdraw(rand.Reader, s.issuerPub, serial)
+	blinded, secret, err := Withdraw(rand.Reader, s.issuerPub, 0, serial)
 	if err != nil {
 		t.Fatalf("withdraw: %v", err)
 	}
 	// The token redeems under a valid signature the issuer never made on the serial
 	// directly (it signed only `blinded`).
-	tok := Unblind(s.issuerPub, serial, SignWithdrawal(s.issuerPriv, blinded), secret)
-	if !VerifyToken(s.issuerPub, tok) {
+	tok, uerr := Unblind(s.issuerPub, 0, serial, SignWithdrawal(rand.Reader, s.issuerPriv, blinded), secret)
+	if uerr != nil {
+		t.Fatalf("unblind: %v", uerr)
+	}
+	if !VerifyToken(s.issuerPub, 0, tok) {
 		t.Fatal("a blind-withdrawn token must verify under the issuer key")
 	}
 	// The issuer's signing-time view (`blinded`) must not equal or reveal the serial:
@@ -134,7 +154,7 @@ func TestBlindWithdrawalIsUnlinkable(t *testing.T) {
 	}
 	// End to end: the unlinkable token still spends on a correct delivery.
 	r := Ack(s.fetcher, tok, s.object, s.server)
-	if ok, reason := NewBank().Redeem(s.issuerPub, tok, r); !ok {
+	if ok, _, reason := NewBank().Redeem(s.keys(), 0, tok, r); !ok {
 		t.Fatalf("blind-withdrawn token failed to redeem on a real delivery: %s", reason)
 	}
 }
@@ -160,7 +180,7 @@ func TestTamperedReceiptRejected(t *testing.T) {
 		r.Sig = append([]byte(nil), good.Sig...)
 		r.Fetcher = append([]byte(nil), good.Fetcher...)
 		mutate(&r)
-		if ok, _ := bank.Redeem(s.issuerPub, tok, r); ok {
+		if ok, _, _ := bank.Redeem(s.keys(), 0, tok, r); ok {
 			t.Fatalf("%s: a tampered receipt must be rejected", name)
 		}
 	}
@@ -185,7 +205,7 @@ func TestReceiptCarriesNoPossessionClaim(t *testing.T) {
 	// The fetcher never saw a single byte of the object; the ack still signs.
 	r := Ack(s.fetcher, tok, s.object, s.server)
 	bank := NewBank()
-	if ok, reason := bank.Redeem(s.issuerPub, tok, r); !ok {
+	if ok, _, reason := bank.Redeem(s.keys(), 0, tok, r); !ok {
 		t.Fatalf("the neutral-lane receipt must redeem without a possession proof (certified): %s", reason)
 	}
 	// What it bought: one unit of a NEUTRAL observable. Never standing (the
@@ -222,7 +242,8 @@ func (s scene) deliver(t *testing.T, bank *Bank) (bool, string) {
 	t.Helper()
 	tok := s.token(t)
 	r := Ack(s.fetcher, tok, s.object, s.server)
-	return bank.Redeem(s.issuerPub, tok, r)
+	credited, _, reason := bank.Redeem(s.keys(), 0, tok, r)
+	return credited, reason
 }
 
 // TestBondedGateRejectsUnbonded (P3b): with the credential required, a perfectly
@@ -235,7 +256,7 @@ func TestBondedGateRejectsUnbonded(t *testing.T) {
 
 	tok := s.token(t)
 	r := Ack(s.fetcher, tok, s.object, s.server)
-	if ok, reason := bank.Redeem(s.issuerPub, tok, r); ok {
+	if ok, _, reason := bank.Redeem(s.keys(), 0, tok, r); ok {
 		t.Fatal("an unbonded fetcher's receipt must not credit demand")
 	} else if reason == "" {
 		t.Fatal("rejection must carry a reason")
@@ -245,7 +266,7 @@ func TestBondedGateRejectsUnbonded(t *testing.T) {
 	}
 	// The token is burned: re-submitting the same receipt is a double-spend, not a
 	// second free attempt.
-	if ok, reason := bank.Redeem(s.issuerPub, tok, r); ok || reason != "double-spend: serial already redeemed" {
+	if ok, _, reason := bank.Redeem(s.keys(), 0, tok, r); ok || reason != "double-spend: serial already redeemed" {
 		t.Fatalf("consumed token must be spent; got ok=%v reason=%q", ok, reason)
 	}
 }

@@ -123,6 +123,97 @@ type Ledger struct {
 	provIndex   map[provKey]int
 	provHead    int
 
+	// paidSerial is the R0.4b CROSS-SERVER double-redeem guard. It records every
+	// demand-token SERIAL that has already had a completed, paid delivery redeem on
+	// this ledger, together with the server that collected it and the token's ISSUING
+	// EPOCH. The conserved leg of RedeemDeliveryCredit pays ONLY the first completed
+	// redeem of a serial; any later redeem of the SAME serial — by ANY server on this
+	// ledger — mints nothing. One fee (one blind withdrawal, one serial) funds exactly
+	// one conserved payout, so K colluding servers sharing one token can no longer
+	// mint (K−1)·fee.
+	//
+	// THE EPOCH IS WHAT MAKES THE BOUND SAFE. A bounded guard must forget entries, and
+	// forgetting a STILL-REDEEMABLE serial re-opens the pump — the red-team showed the
+	// FIFO version is self-financing, because each flood serial used to evict a victim
+	// is itself a paid delivery the colluding operator collects. So eviction here is
+	// EXPIRY-ONLY: an entry is dropped only once its issuing epoch has left the
+	// demand-token validity window, at which point the demand layer already rejects
+	// that token (no in-window key_E verifies it) before any credit path. Evicted ⇒
+	// expired ⇒ un-redeemable. See sweepExpiredSerials in delivery.go.
+	//
+	// BOUNDED (build-immutable #8): capped at maxPaidSerial, a DERIVED cap sized to
+	// dominate the honest live set (delivery.go). If the cap is ever reached with
+	// nothing expired, RedeemDeliveryCredit REFUSES TO PAY rather than forget a live
+	// serial — an under-pay, never an over-pay and never a mint.
+	//
+	// SCOPE: this closes the SHARED-ledger case only. K truly distinct-owner ledgers
+	// do not see each other's paidSerial, so the cross-owner-ledger variant remains
+	// the standing Douceur / demand-authenticity limit, neutralized today ONLY by the
+	// γ→1/N firewall (delivery credit is a BALANCE observable never wired to
+	// Reputation — Invariant-A). This guard touches no field Reputation reads, so the
+	// firewall is untouched.
+	paidSerial map[string]paidSerialEntry
+
+	// paidStore is the DURABLE half of the guard, and guardLoaded says whether this
+	// ledger has read it yet (R0.4b re-break F2, 2026-09-03). Without it a restart is
+	// an eviction of EVERY entry, in-window or not — the one eviction mode the design
+	// forbids, and the one every node performs. The ledger appends to the store BEFORE
+	// it PAYS — the supersede's reversal of the serve's self-mint runs first, which is
+	// safe because that reversal is purely subtractive (see delivery.go's ordering
+	// invariant) — and it refuses every guarded redeem while a store is attached but
+	// unloaded. Nil store = the pre-existing in-memory-only behaviour (the sim and
+	// most tests), which is sound exactly as long as the ledger it guards is equally
+	// ephemeral — see the delivery.go call site.
+	paidStore   ports.PaidSerialStore
+	guardLoaded bool
+
+	// epochWatermark is the HIGHEST consensus epoch any redeemer has presented to
+	// this ledger — R0.4b-5, the shared-ledger epoch-skew close.
+	//
+	// The guard above evicts and admits against the CALLER's epoch. Two redeemers
+	// sharing one ledger whose heads straddle a boundary can therefore re-pay: A at
+	// current = 10 sweeps a serial issued at epoch 5; B, still at current = 9, holds
+	// key_5, accepts the token at its own demand layer, and the ledger — having
+	// forgotten the serial — pays a second time. The ledger is the shared resource,
+	// so the ledger is where the monotone clock belongs: it sweeps and admits against
+	// max(epoch ever seen), never against a laggard's view.
+	//
+	// AN HONEST-SKEW CORRECTNESS DEVICE, NOT A BYZANTINE DEFENCE (research
+	// certification 2026-09-03, item 5 — this comment previously claimed the stronger
+	// property and was false as written). Against HONEST redeemers whose heads
+	// straddle a boundary the watermark can only widen what is refused, so the worst
+	// case is an UNDER-pay of one server's conserved leg — never an over-pay, never a
+	// mint. It is NOT a defence against a lying redeemer: currentEpoch is supplied by
+	// the caller, rises without bound and never falls, so ONE call at 2^62 refuses
+	// every honest redeem thereafter. It cannot become a Byzantine defence while this
+	// boundary is unauthenticated — an attacker able to lie about currentEpoch here
+	// can equally call the pay path with a fabricated serial, since nothing at this
+	// boundary proves a fee was collected.
+	//
+	// Both the lie and the skew are unreachable on today's production topology (one
+	// ledger per node; currentEpoch is n.chainEpoch(), bounded by the node's own head).
+	// FLIP PRECONDITION FP-2: before ANY shared-ledger, third-operator-settlement or
+	// persisted-ledger deployment, the ledger must OWN a chain-anchored epoch rather
+	// than take one as a parameter. A clamp on the advance is a mitigation, not a
+	// close, and the faucet rate limiter must NOT be keyed on this watermark.
+	epochWatermark uint64
+
+	// sweptEpoch is the last epoch at which sweepExpiredSerials actually ran, and
+	// guardFullRefusals counts the redeems refused because the guard set was full of
+	// still-live serials. Both are OBSERVABILITY-AND-COST bookkeeping for the R0.4b
+	// guard, not part of any accounting rule.
+	//
+	// SWEEP AT MOST ONCE PER EPOCH (red-team RT-E, measured 1.32 ms per refused redeem
+	// at a full live cap): the sweep is a full scan of the guard map, and it was run
+	// on EVERY reserve call once the map reached the cap — so a full cap turned each
+	// refused receipt into a 65,536-entry scan, an amplifier a griefer gets for free.
+	// Nothing can expire twice within one epoch, so one sweep per epoch is exactly as
+	// effective and amortizes to O(1). Purely a cost fix: the set of entries swept is
+	// identical.
+	sweptEpoch        uint64
+	guardFullRefusals int64
+	sweeps            int64
+
 	// Audit economics: storage that survives a spot-check earns rent;
 	// storage that turns out to be a lie is slashed hard. Balances may
 	// go negative — debt is the scarlet letter. Exported so scenarios
@@ -145,6 +236,7 @@ func New(fee, grant int64) *Ledger {
 		escrow:      make(map[ports.Hash]*objectEscrow),
 		provisional: make(map[provKey]*provisionalServe),
 		provIndex:   make(map[provKey]int),
+		paidSerial:  make(map[string]paidSerialEntry),
 		AuditReward: 1_000,
 		AuditSlash:  25_000,
 	}

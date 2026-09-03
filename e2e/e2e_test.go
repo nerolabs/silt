@@ -187,6 +187,18 @@ func TestContradictoryContentFlagsRefused(t *testing.T) {
 	d.waitFor(t, regexp.MustCompile(`contradict each other`), 20*time.Second)
 }
 
+// findInLog reads a daemon's LOG FILE once and returns the submatches, or nil. It is
+// the NEGATIVE counterpart of waitForInLog: used to assert a line is ABSENT, where
+// polling would only wait for a timeout that proves nothing extra.
+func findInLog(t *testing.T, path string, re *regexp.Regexp) []string {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read daemon log %s: %v", path, err)
+	}
+	return re.FindStringSubmatch(string(b))
+}
+
 // waitForInLog polls a daemon's LOG FILE (node/chain narration goes there, not to
 // stdout) until re matches, returning the submatches. The daemon prints the path
 // as "log: info and above → <path>".
@@ -206,17 +218,44 @@ func waitForInLog(t *testing.T, path string, re *regexp.Regexp, timeout time.Dur
 	return nil
 }
 
-// TestDeliveryReceiptBankedOverTCP is the e2e tier for the PoD neutral lane
-// (docs/design/pod.md §7.1, certified 2026-08-26) — the tier #590 honestly
-// reported as N/A because no daemon ran the lane yet. Now one does: a validator
-// started with -accept-delivery-receipts banks a real fetcher's signed receipt
-// arriving over a real socket, and settles the conserved delivery credit.
+// TestPaidDeliveryLaneRefusesWithoutACommittedKeyBinding is the e2e tier for the
+// PoD neutral lane (docs/design/pod.md §7.1, certified 2026-08-26).
 //
-// The peer is both issuer and server — the bilateral shape the certification's
-// settlement answer covers. The client withdraws a token blindly, signs a
-// receipt, and submits it; the daemon verifies it against its own issuer key,
-// banks it, and pays itself the fee-minus-skim.
-func TestDeliveryReceiptBankedOverTCP(t *testing.T) {
+// NAME HISTORY: this test was TestDeliveryReceiptBankedOverTCP, and it asserted the
+// POSITIVE arm — a receipt banked over a real socket, settling positive credit. From
+// R0.4b C3 onward a withdrawal is only sound against a key that resolves to a
+// COMMITTED E->key_E binding, and a binding needs an era-4/v5 chain. This fixture
+// cannot produce one, so the positive arm cannot pass here and this test now asserts
+// the CERTIFIED REFUSAL instead — which is the honest e2e observable today, and a
+// real contract of its own: the client must refuse legibly rather than buy a token
+// the bank will never honour.
+//
+// WHY THE FIXTURE CANNOT REACH v5 (G-8 convergence §1, 2026-09-03, traced at source):
+// the daemon below runs -objective=false, so chain.objective() is false, so
+// epochsEnabled() is false, so apply() never calls rotateEpoch — and the era-4
+// readiness tally lives INSIDE rotateEpoch. The tally therefore cannot latch on this
+// topology at ANY readiness stamp, on ANY binary, ever. Raising the stamp 3 -> 5 does
+// not green the old assertion. That trace is itself pinned by a test, so a future
+// stamp raise finds it: core/chain TestGateF_NonObjectiveTopologyCanNeverLatchEra4.
+//
+// RESTORING THE POSITIVE ARM — residual R-E2E-ERA4-FIXTURE (ROADMAP, Boulder-0
+// residuals). It comes back at the stamp-raising release, by UPGRADING THIS FIXTURE
+// to a topology the network can actually produce: objective + bonded + epochs
+// enabled, reaching the everMature latch, so the tally latches and v5 is EARNED.
+// Never by exposing Config.Era4ActivationHeight to the harness: that is the one
+// branch that skips every readiness predicate the tally embodies, so a green bought
+// with it would prove the lane works on a chain no rule ever approved.
+//
+// WHAT COVERS THE POSITIVE ARM MEANWHILE. sim TestPaidDeliveryLaneThreeCallComposition
+// drives the three shipped client calls in the order cmd/silt/swarm.go makes them —
+// FetchDemandIssuerKeys -> AcquireDemandTokenInWindow -> SubmitDeliveryReceipt — on an
+// in-process v5 chain with a real committed binding, through the real wire handlers,
+// TWICE, asserting positive settled credit both times. core/node
+// TestRTC3_RestartDoesNotRePayTheSameWireReceipt covers the same positive settlement
+// plus the replay and durable-restart refusals this test never asserted. What is
+// genuinely uncovered until the fixture upgrade is real tcpnet framing and OS-process
+// boot on the paid lane, and that is recorded as coverage debt, not as closed.
+func TestPaidDeliveryLaneRefusesWithoutACommittedKeyBinding(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e spawns processes; skipped under -short")
 	}
@@ -228,37 +267,45 @@ func TestDeliveryReceiptBankedOverTCP(t *testing.T) {
 		"-bond", "8M", "-min-bond-floor", "0",
 		"-capacity", "1G", "-mdns=false", "-id-seed", "4801")
 	a.waitFor(t, regexp.MustCompile(`delivery receipts: ACCEPTING`), 20*time.Second)
+
+	// (1) THE BANNER ANNOUNCES THE LANE IS DARK. The operator contract: a daemon that
+	// arms the lane on a chain that cannot commit a binding must SAY the binding is
+	// what it is waiting for, or "ACCEPTING" followed by silence forever is the only
+	// signal it gives (PE ruling §8). S5 — this string is a contract.
+	a.waitFor(t, regexp.MustCompile(
+		`key_E is resolved against the committed E→key binding \(needs an era-4/v5 chain\)`),
+		20*time.Second)
 	logPath := a.waitFor(t, regexp.MustCompile(`log: info and above → (\S+)`), 20*time.Second)[1]
 	peer := a.waitFor(t, rePeer, 20*time.Second)
 	bootstrapA := peer[1] + "@" + peer[2]
 
-	// A root the fetcher attests it received. The receipt carries no possession
-	// proof by certified design, so no bytes need to move for THIS assertion —
-	// what is under test is that a real daemon verifies, banks, and settles.
 	root := strings.Repeat("ab", 32)
 
-	out := runClient(t, "swarm", "receipt", root, "-peers", bootstrapA)
-	if !strings.Contains(out, "delivery receipt banked") {
-		t.Fatalf("receipt was not banked over TCP; client said: %s", out)
+	// (2) THE CLIENT REFUSES, and names the missing binding. A withdrawal against an
+	// unpinned key is the refused behaviour, not a bug: with no committed binding
+	// there is no anti-fingerprinting anchor, so buying the token is unsafe AND the
+	// bank would never honour it (core/node/demandkeys.go pinDemandIssuerKey).
+	out, err := runClientAllowErr(t, "swarm", "receipt", root, "-peers", bootstrapA)
+	if err == nil {
+		t.Fatalf("the client BANKED a receipt on a chain with no committed E->key binding; "+
+			"got: %s", out)
+	}
+	if !strings.Contains(out, "no key that resolves against a committed E->key binding") {
+		t.Fatalf("the refusal must name the missing committed binding — that is the one "+
+			"sentence that tells an operator this is an era-4 gate and not a broken peer. "+
+			"Got: %s", out)
+	}
+	// The lane-off sentence must NOT appear: this server IS running the lane.
+	if strings.Contains(out, "serves no demand issuer key") {
+		t.Fatalf("a daemon running -accept-delivery-receipts was reported as not running "+
+			"the lane — the two refusals are conflated: %s", out)
 	}
 
-	// Banking is only half of it — assert the daemon actually SETTLED the
-	// conserved credit. The node's own log carries the paid amount, and it must
-	// be positive: the fee the fetcher paid at withdrawal, less the durability
-	// skim. A zero would mean the lane banked a neutral observable and paid
-	// nothing — the silent no-op this assertion exists to catch.
-	m := waitForInLog(t, logPath, regexp.MustCompile(`delivery receipt banked .*credit=(\d+)`), 20*time.Second)
-	if m[1] == "0" {
-		t.Fatal("the receipt banked but settled credit=0 — the conserved delivery credit did not pay (is a ledger wired?)")
-	}
-
-	// The token is one-time: replaying the SAME flow mints a fresh token, so it
-	// must ALSO bank (a second genuine delivery), while the daemon's
-	// double-spend set is what stops a replayed serial. Assert the honest
-	// second delivery works — the replay defense is pinned at the unit tier.
-	out2 := runClient(t, "swarm", "receipt", root, "-peers", bootstrapA)
-	if !strings.Contains(out2, "delivery receipt banked") {
-		t.Fatalf("a second genuine delivery must also bank; client said: %s", out2)
+	// (3) THE SERVER BANKED NOTHING. Not merely "the client said no": the daemon's own
+	// log must carry no settlement at all. A banked-and-settled line here would mean
+	// the client refused a payout the server had already made.
+	if m := findInLog(t, logPath, regexp.MustCompile(`delivery receipt banked`)); m != nil {
+		t.Fatalf("the server banked a receipt the client never submitted: %q", m[0])
 	}
 }
 

@@ -8,6 +8,26 @@ import (
 	"testing"
 )
 
+// mustSign / mustUnblind keep these tests reading as round trips now that the
+// primitives return errors (advisory C-1 Finalize verification, C-2 verify-after-sign).
+func mustSign(t *testing.T, priv *rsa.PrivateKey, blinded []byte) []byte {
+	t.Helper()
+	sig, err := SignBlinded(rand.Reader, priv, blinded)
+	if err != nil {
+		t.Fatalf("SignBlinded: %v", err)
+	}
+	return sig
+}
+
+func mustUnblind(t *testing.T, pub *rsa.PublicKey, serial, blindSig, secret []byte) []byte {
+	t.Helper()
+	sig, err := Unblind(pub, serial, blindSig, secret)
+	if err != nil {
+		t.Fatalf("Unblind: %v", err)
+	}
+	return sig
+}
+
 func testKey(t *testing.T) *rsa.PrivateKey {
 	t.Helper()
 	k, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -29,7 +49,7 @@ func TestBlindRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sig := Unblind(pub, SignBlinded(priv, blinded), secret)
+	sig := mustUnblind(t, pub, serial, mustSign(t, priv, blinded), secret)
 	if !Verify(pub, serial, sig) {
 		t.Fatal("a blind-signed token must verify on its plain serial")
 	}
@@ -47,7 +67,7 @@ func TestForgeryAndTamperFail(t *testing.T) {
 		t.Fatal("a forged signature must not verify")
 	}
 	blinded, secret, _ := Blind(rng, pub, serial)
-	sig := Unblind(pub, SignBlinded(priv, blinded), secret)
+	sig := mustUnblind(t, pub, serial, mustSign(t, priv, blinded), secret)
 
 	other, _ := NewSerial(rng)
 	if Verify(pub, other, sig) {
@@ -81,7 +101,7 @@ func TestIssuerSeesNothingLinkable(t *testing.T) {
 	}
 	// Both still unblind to valid tokens on the same serial.
 	for _, p := range []struct{ b, s []byte }{{b1, s1}, {b2, s2}} {
-		sig := Unblind(pub, SignBlinded(priv, p.b), p.s)
+		sig := mustUnblind(t, pub, serial, mustSign(t, priv, p.b), p.s)
 		if !Verify(pub, serial, sig) {
 			t.Fatal("both blindings must unblind to a valid token")
 		}

@@ -21,7 +21,8 @@ import (
 // the P3b gate (chain.IsBonded) consults, without standing up consensus rounds. Each
 // bond gets a distinct Root so the per-root dedup (F1) counts them as distinct
 // identities.
-func bondingGenesis(t *testing.T, proposer ed25519.PrivateKey, bonded ...ed25519.PublicKey) *chain.Chain {
+func bondingGenesis(t *testing.T, proposer ed25519.PrivateKey, issuerReg chain.IssuerKeyReg,
+	bonded ...ed25519.PublicKey) *chain.Chain {
 	t.Helper()
 	const minBond = int64(1) << 20
 	propPub := proposer.Public().(ed25519.PublicKey)
@@ -45,11 +46,14 @@ func bondingGenesis(t *testing.T, proposer ed25519.PrivateKey, bonded ...ed25519
 	for _, pub := range bonded {
 		regs = append(regs, reg(pub))
 	}
+	// R0.4b: v5 genesis so it can commit the demand-issuer key binding (the era-3 leaf
+	// set does not carry that keyspace, so a pre-v5 block carrying one is rejected).
 	g := &chain.Block{
-		Version:  chain.BlockVersion,
-		Height:   0,
-		Entries:  []ports.Entry{synthEntry("bonded-demand genesis")},
-		BondRegs: regs,
+		Version:    chain.BlockVersionWitnessable,
+		Height:     0,
+		Entries:    []ports.Entry{synthEntry("bonded-demand genesis")},
+		BondRegs:   regs,
+		IssuerKeys: []chain.IssuerKeyReg{issuerReg},
 	}
 	chain.Sign(g, proposer)
 	if err := ch.AppendGenesis(*g); err != nil {
@@ -70,49 +74,44 @@ func bondingGenesis(t *testing.T, proposer ed25519.PrivateKey, bonded ...ed25519
 func TestDemandBondedFetcherCapsWash(t *testing.T) {
 	const seed = 20260807
 	cl := NewCluster(seed, 8, simnet.DefaultConfig(), node.DefaultConfig())
-	issuer, server := cl.Nodes[0], cl.Nodes[1]
+	server := cl.Nodes[1]
 	washer, other, unbonded := cl.Nodes[2], cl.Nodes[3], cl.Nodes[4]
+	// R0.4b: the issuer's NodeID must be its committed identity (the production shape).
+	issuer, issuerSigner := identityNode(cl, 2026090204)
 
 	// The issuer signs retrieval tokens (a funded ledger so withdrawals succeed; the
 	// fee is not what this test asserts — TestDemandWashCostsRealFees owns that).
 	issuerKey, _ := rsa.GenerateKey(rand.Reader, 2048)
 	ledger := credit.New(1000, 100_000) // grant funds each fetcher's withdrawals
 	issuer.SetLedger(ledger)
-	issuer.EnableTokenIssuer(issuerKey)
+	issuer.EnableTokenIssuer(rand.Reader, issuerKey)
 
 	// Each fetcher signs receipts with its own identity key; bond only the washer's
 	// and `other`'s keys on the server's committed chain, NOT the unbonded fetcher's.
-	sign := func(n *node.Node) ed25519.PublicKey {
+	sign := func(n *node.Node) (ed25519.PublicKey, ed25519.PrivateKey) {
 		pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 		n.SetSigner(priv)
-		return pub
+		return pub, priv
 	}
-	washerPub, otherPub, unbondedPub := sign(washer), sign(other), sign(unbonded)
+	washerPub, washerKey := sign(washer)
+	otherPub, otherKey := sign(other)
+	unbondedPub, unbondedKey := sign(unbonded)
 	_ = unbondedPub // deliberately left unbonded
 
 	_, serverSigner, _ := ed25519.GenerateKey(rand.Reader)
-	server.EnableChain(bondingGenesis(t, serverSigner, washerPub, otherPub), serverSigner)
-	server.EnableDemandBank(&issuerKey.PublicKey)
+	issuerReg := chain.SignIssuerKeyReg(issuerSigner, 0, demand.KeyFingerprint(&issuerKey.PublicKey))
+	sc := bondingGenesis(t, serverSigner, issuerReg, washerPub, otherPub)
+	wireDemandLane(t, cl, issuer, server, issuerSigner, issuerKey, sc, serverSigner,
+		demandFetcher{washer, washerKey}, demandFetcher{other, otherKey},
+		demandFetcher{unbonded, unbondedKey})
 	server.RequireBondedFetchers()
-
-	for _, f := range []*node.Node{washer, other, unbonded} {
-		f.FetchIssuerKey(issuer.ID(), func(error) {})
-	}
-	cl.Sched.Run()
 
 	data := make([]byte, 16<<10)
 	cl.rng.Read(data)
 	object := ports.HashBytes(data)
 
 	deliver := func(f *node.Node) bool {
-		var tok demand.Token
-		f.AcquireDemandToken(rand.Reader, issuer.ID(), func(tk demand.Token, err error) {
-			if err != nil {
-				t.Fatalf("acquire: %v", err)
-			}
-			tok = tk
-		})
-		cl.Sched.Run()
+		tok := acquireDemandToken(t, cl, f, issuer.ID())
 		credited := false
 		f.SubmitDeliveryReceipt(server.ID(), tok, object, func(c bool, err error) {
 			credited = err == nil && c

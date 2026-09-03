@@ -102,7 +102,13 @@ below (the flip/freeze/B8 order; R-BOX-ATTESTS O1/O2/O4).
   recommendation T; owner decision PENDING.** Sources:
   `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-O3-fork-choice-weight-R-vs-T-2026-09-03.md`,
   `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/O3-fork-choice-weight-R-vs-T-RESEARCH-RECOMMENDATION-2026-09-03.md`.
-- **R0.4b C3 (expiry) — four owner calls.** (1) **Break-1 ratification:** the payload-driven
+- **R0.4b C3 (expiry) — four owner calls, ALL RATIFIED 2026-09-03.** Owner: *“merge
+  please”*; on the consensus-rule veto gate, *“I accept”*. Each call below is now DECIDED, as
+  recommended, and is kept here with its source. **The ratifications:** (1) the payload-driven
+  `issuerKeyCommit` prune is ACCEPTED as a consensus rule; (2) the `IssuerKeys` per-block cap is a
+  **pre-freeze Rock, NOT a merge gate** — it is carried in R3.4's pre-freeze carry-list; (3)
+  `grant = 500_000` plus a faucet rate limit; (4) `RequireBondedFetchers` default **OFF**. (1)
+  **Break-1 ratification:** the payload-driven
   `issuerKeyCommit` prune is a **consensus rule** and is research-CERTIFIED
   (`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-composed-close-bc062d0-RESEARCH-CERTIFICATION-2026-09-03.md`
   §1). (2) **The `IssuerKeys` per-block count cap** — a v5 **validity rule** of the class `RegCap`
@@ -597,7 +603,9 @@ economy-off HEAD certifies a network nobody runs. Design:
   validator's key is never committed. Fail-closed, liveness only. Source:
   `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-composed-close-bc062d0-RESEARCH-CERTIFICATION-2026-09-03.md`
   (Residuals → Open).
-- **R2.12 · Grant + faucet rate limit; `RequireBondedFetchers` default — OWNER CALLS, pending.**
+- **R2.12 · Grant + faucet rate limit; `RequireBondedFetchers` default — OWNER CALLS,
+  RATIFIED 2026-09-03: keep `grant = 500_000` and rate-limit the faucet;
+  `RequireBondedFetchers` default OFF.** The remaining work is BUILDING the limiter.
   See the *Decisions owed* block. The limiter must gate the **grant**, not `Ledger.Register` (which
   is reached implicitly from `acct()`, including for the node's own id and for `PayBounty`).
   Sources:
@@ -605,6 +613,20 @@ economy-off HEAD certifies a network nobody runs. Design:
   `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-composed-close-bc062d0-RESEARCH-CERTIFICATION-2026-09-03.md`
   §6 (the "grant is the only non-self balance" claim is CORRECTED there: `PayBounty` credits a
   remote payee, but it is earned work, not a faucet).
+- **R2.13 · `R-COMPACT-ORPHAN` — `guardstore.Compact` silently reports durability it does not
+  have.** After a successful rename, a failed post-rename `OpenFile` leaves the append handle
+  pointing at the replaced (now unlinked) inode: subsequent `Append` calls fsync into an
+  unreachable file and return `nil`, and `Load` then sees nothing. `Compact`'s error is
+  discarded at the sweep call site, so the failure is silent. **This is the THIRD FP-2
+  precondition** (with F8 and arm D), re-priced by G-H because C-7 moved compaction from ~never
+  to once per epoch and its failure direction is an **over-pay**. Narrow (requires `OpenFile` to
+  fail after a successful rename) and ruled NOT a merge block at every review round. Sources:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-composed-close-bc062d0-RESEARCH-CERTIFICATION-2026-09-03.md`
+  (Residuals);
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-271ab81-G3-G4-GD-DELTA-CERTIFICATION-2026-09-03.md`
+  §4;
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-01bf8e9-merge-prep-DELTA-CERTIFICATION-2026-09-03.md`
+  (item 4).
 - **M_seen — the pony-class value is still OWED (carried).** The class-M streaming verifier (PR
   #709) removed RSS as the binding ceiling; the remaining ceiling is **TIME**, the O(N·log N)
   compute floor streaming does not remove. The cap value must be derived from a pony-class
@@ -901,6 +923,39 @@ issue number as an anchor only. Repro recipes for the field defects (#558/#535/#
 live in [`docs/thinking/2026-09-01-residual-defect-repro-recipes.md`](docs/thinking/2026-09-01-residual-defect-repro-recipes.md).
 
 **Security / data-safety residuals:**
+- **Demand issuer-key proof-of-possession (DSKS) — R0.4b-PoP.** `validateIssuerKeys`
+  (`core/chain/issuerkey.go`) requires a verifying ed25519 self-signature, an in-range epoch and
+  a bond, but **no proof that the registrant holds the RSA private key** whose fingerprint it
+  registers. Public keys are served publicly, so bonded issuer B can register issuer A's
+  fingerprint for epoch E; a redeemer resolving against B then pins A's key, and a token A
+  signed verifies under B's keyset — Duplicate-Signature Key Selection (Blake-Wilson & Menezes
+  1999). **Latent, not live:** `handleDeliveryReceipt` resolves ONE configured issuer and ledgers
+  are per-node, so the multi-issuer surface is not exercised today. The close is either a PoP in
+  the registration, or the faithful RFC 9578 binding `keyFingerprint(32) ‖ epoch(8) ‖ serial` in
+  `demandMsg`. Both are **validity-rule changes: research-gate + owner ratification, BEFORE the
+  stamp raise.** Source: crypto-specialist advisory C-4,
+  `/Users/andrewedmond/Claude/claude/silt-reviews/crypto-specialist/ADVISORY-R0.4b-C3-blind-RSA-epoch-binding-2026-09-03.md`.
+- **FDH domain-separation-tag length prefix + 128-bit reduction slack — R0.4b-FDH.** The three
+  FDH domains are not length-prefixed and `fullDomainHashD` expands to only `nLen + 8` bytes
+  (64 spare bits against RFC 9380 §5.2's `k = 128`). Both are sound as built — the crypto seat
+  verified the three domain constants differ at byte index 10, so no message produces a
+  cross-domain collision — but sound *by accident of the constants*. **Not fixed in R0.4b C3
+  because either change alters the FDH output, and the publish and credit domains are BYTE-FROZEN
+  against chain replay:** committed publish tokens re-verify on every replay, so changing their
+  signed bytes invalidates history. Fixing only the demand domain would leave two conventions in
+  one file. Do it as one versioned change, with a chain-era gate. Source: advisory C-8.
+- **Blinding-factor sampling: mod-reduction, not rejection sampling — R0.4b-BLIND-SAMPLING.**
+  `blindtoken.randInt` draws the blinding factor `r` (and the issuer-side blind `u`) by reducing
+  `(bitlen(N) + 64)` random bits mod `N`. RFC 9474 §4.2 states a **MUST**: *"The blinding factor r
+  MUST be randomly chosen from a uniform distribution. This is typically done via rejection
+  sampling."* silt meets it only **statistically** — the distribution is within `2^-64` of uniform.
+  **Declared, not fixed, in R0.4b C3:** it is a conformance gap rather than a break (no use of a
+  `2^-64` bias is known), and it changes no committed byte, so it neither blocks the close nor
+  should slip in unannounced. Work: rejection-sample into `[1, N)` and **bound the retry** — the
+  two loops calling `randInt` (`blindD`, `SignBlinded`) currently spin forever on a reader that
+  yields zeros. Declared at `core/blindtoken/blindtoken.go` (`randInt`) and in
+  `docs/thinking/2026-09-02-r0.4b-c3-close-design.md` §12. Source: crypto advisory R4,
+  `/Users/andrewedmond/Claude/claude/silt-reviews/crypto-specialist/ADVISORY-R0.4b-C3-crypto-items-as-built-01bf8e9-2026-09-03.md`.
 - **Transport authentication (TLS or Noise) — #437.** silt's wire is unauthenticated CBOR
   (`adapters/tcpnet/wire.go`), so an on-path MITM can strip certificate signatures in transit.
   Certified NOT a safety break and NOT a wedge (stripped blocks fail `ValidateCommit`, are inert,
@@ -940,6 +995,42 @@ live in [`docs/thinking/2026-09-01-residual-defect-repro-recipes.md`](docs/think
   coverage guard and the era-4 write-path guard) and closed the same worktree-walk unsoundness in
   `scripts/check_claims.py` (measured: 121 test names resolvable only in `.claude/worktrees/`).
   **Open:** the rest of the OWED ledger.
+- **e2e paid-delivery-lane fixture is `-objective=false` — R-E2E-ERA4-FIXTURE.** The e2e
+  delivery-receipt daemon runs `-objective=false`, so `chain.objective()` is false, so
+  `epochsEnabled()` is false, so `apply()` never calls `rotateEpoch` — and the era-4 readiness
+  tally lives inside it. **The tally can therefore never latch on that fixture, at any readiness
+  stamp, on any binary**, so the paid lane's POSITIVE arm has no e2e coverage:
+  `TestPaidDeliveryLaneRefusesWithoutACommittedKeyBinding` asserts the certified refusal
+  instead, and `sim TestPaidDeliveryLaneThreeCallComposition` + `core/node
+  TestRTC3_RestartDoesNotRePayTheSameWireReceipt` carry the positive arm below e2e. **This is a
+  PREREQUISITE of the stamp-raising release, not of the R0.4b merge:** restore the e2e positive
+  arm by UPGRADING THE FIXTURE to objective + bonded + epoch-enabled (a topology that reaches
+  the `everMature` latch), **never** by exposing `Config.Era4ActivationHeight` to a harness in
+  any form — that is the one branch that skips every readiness predicate the tally embodies.
+  The trace is pinned by `core/chain TestGateF_NonObjectiveTopologyCanNeverLatchEra4`. Source:
+  G-8 convergence,
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-G8-dark-lane-CONVERGENCE-2026-09-03.md`.
+- **LANE-OFF rotation disarm has no runtime observer — R-LANEOFF-ROTATION-RUNTIME.** That no
+  demand-key rotation goroutine RUNS after a failed boot install is pinned only by a source-ORDER
+  gate (`cmd/silt TestDaemonArmsTheRotatorOnlyAfterABootInstall`). Reaching the branch in a real
+  daemon needs an unwritable issuer directory whose publish-token key already exists; OBSERVING
+  the difference additionally needs the chain to cross an epoch boundary, which on a lone
+  validator needs a driven publish. Low: the fix is structural (the single assignment sits below
+  the single failure exit), so there is no branch left to regress into — but the property is
+  UNGATED at runtime and says so in the gate's own failure text. Source: PE ruling H-2,
+  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-R0.4b-C3-close-271ab81-final-2026-09-03.md`.
+- **A bare `go test ./...` has no margin against the default package timeout.**
+  `core/chain TestMeasureRecomputeMatureNowStreamingWin` is a long MEASUREMENT test, and it
+  puts the whole `core/chain` package close to Go's 10-minute default. Measured 2026-09-03 on
+  this branch's tree: the single test **309 s**, the package **530 s** with an explicit
+  `-timeout 40m`; a bare `go test ./...` on `origin/main` `2247235` was reported timing out in
+  `core/chain` (~7.5 min for the same test on that run). Nothing is broken — the test has an
+  always-on fast structural twin (`..._Structural`) and is skipped under `-short`, which is what
+  CI runs — but the documented full-suite command has no margin, and load decides whether it
+  passes. **Work:** document `go test -timeout 40m ./...` as the full-suite command, or move the
+  measurement behind an opt-in build tag. Do NOT simply shorten the measurement — the number is
+  the artifact. Untouched here: it is not this branch's test, and editing another branch's
+  measurement inside a receipt-expiry commit is how a regression hides.
 - **Test-honesty audit — #303.** 27 adversarially-verified test-honesty issues + 9 product
   findings from a per-harness audit (65 agents) of all 18 integration harnesses against the 5
   field-test immutables — each a way a harness could go GREEN on a broken product (e.g. the

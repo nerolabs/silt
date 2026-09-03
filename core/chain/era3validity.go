@@ -197,6 +197,9 @@ func (c *Chain) cloneForDryRun() *Chain {
 	// era-3 maps). A forgotten copy here reddens TestDryRunCloneCopiesEveryAppliedField. ----
 	s.qualified = cloneInt64MapID(c.qualified)
 	s.dueBucket = cloneDueBucket(c.dueBucket)
+	// R0.4b per-epoch issuer-key binding: deep-copied for the same reason — apply()
+	// on the clone must maintain the copy, not the live chain.
+	s.issuerKeyCommit = cloneIssuerKeyCommit(c.issuerKeyCommit)
 	// ---- input history: apply() appends b to blocks; copy so the live slice is untouched ----
 	s.blocks = append([]Block(nil), c.blocks...)
 	// ---- committedSet maps: deep-copied ----

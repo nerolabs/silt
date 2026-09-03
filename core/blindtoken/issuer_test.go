@@ -1,6 +1,7 @@
 package blindtoken
 
 import (
+	"crypto/rand"
 	"errors"
 	mrand "math/rand"
 	"testing"
@@ -12,7 +13,7 @@ import (
 // exactly once.
 func TestIssueChargesFeeSpendUnlinkableOnce(t *testing.T) {
 	priv := testKey(t)
-	iss := NewIssuer(priv)
+	iss := NewIssuer(rand.Reader, priv)
 	pub := iss.Public()
 	rng := mrand.New(mrand.NewSource(4))
 
@@ -30,7 +31,7 @@ func TestIssueChargesFeeSpendUnlinkableOnce(t *testing.T) {
 	if charged != 1 {
 		t.Fatalf("issuance must charge the fee exactly once, got %d", charged)
 	}
-	sig := Unblind(pub, blindSig, secret)
+	sig := mustUnblind(t, pub, serial, blindSig, secret)
 
 	// OUTCOME: the token spends (the issuer never saw this serial at issuance).
 	if err := iss.Spend(serial, sig); err != nil {
@@ -45,7 +46,7 @@ func TestIssueChargesFeeSpendUnlinkableOnce(t *testing.T) {
 // Fee preserved: if the charge fails (no credit), no token is minted.
 func TestNoFeeNoToken(t *testing.T) {
 	priv := testKey(t)
-	iss := NewIssuer(priv)
+	iss := NewIssuer(rand.Reader, priv)
 	rng := mrand.New(mrand.NewSource(5))
 	serial, _ := NewSerial(rng)
 	blinded, _, _ := Blind(rng, iss.Public(), serial)
@@ -59,7 +60,7 @@ func TestNoFeeNoToken(t *testing.T) {
 // A forged token — never issued — cannot be spent.
 func TestForgedTokenCannotSpend(t *testing.T) {
 	priv := testKey(t)
-	iss := NewIssuer(priv)
+	iss := NewIssuer(rand.Reader, priv)
 	rng := mrand.New(mrand.NewSource(6))
 	serial, _ := NewSerial(rng)
 	if err := iss.Spend(serial, []byte{9, 9, 9}); !errors.Is(err, ErrBadToken) {

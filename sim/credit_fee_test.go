@@ -45,7 +45,7 @@ func TestPrepaidCreditDecouplesFeeOverTheNetwork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	issuer.EnableTokenIssuer(rsaKey)
+	issuer.EnableTokenIssuer(rand.Reader, rsaKey)
 	issuerReg[issuerID] = &rsaKey.PublicKey
 
 	// The publisher (its durable standing key is what must not be re-charged).

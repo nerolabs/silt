@@ -47,13 +47,17 @@ func TestPublishTokensGateAndPreventDoubleSpend(t *testing.T) {
 	mint := func(serial []byte, signers []ed25519.PrivateKey) *ports.PublishToken {
 		tok := &ports.PublishToken{Serial: serial}
 		for _, v := range signers {
-			iss := blindtoken.NewIssuer(issuers[idOf(v)])
+			iss := blindtoken.NewIssuer(rand.Reader, issuers[idOf(v)])
 			blinded, secret, err := blindtoken.Blind(rng, iss.Public(), serial)
 			if err != nil {
 				t.Fatal(err)
 			}
 			blindSig, _ := iss.Issue(func() error { return nil }, blinded)
-			tok.Sigs = append(tok.Sigs, ports.TokenSig{Validator: idOf(v), Sig: blindtoken.Unblind(iss.Public(), blindSig, secret)})
+			sig, uerr := blindtoken.Unblind(iss.Public(), serial, blindSig, secret)
+			if uerr != nil {
+				t.Fatalf("unblind: %v", uerr)
+			}
+			tok.Sigs = append(tok.Sigs, ports.TokenSig{Validator: idOf(v), Sig: sig})
 		}
 		return tok
 	}

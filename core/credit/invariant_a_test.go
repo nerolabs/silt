@@ -96,6 +96,14 @@ var standingClassification = map[string]standingClass{
 	// this press staying neutral (delivery_test.go pins it against a heavy
 	// deliverer, the direct §7.1 firewall test).
 	"RedeemDeliveryCredit": neutral,
+	// R0.4b C3 close: the same press with its refusal reason returned, plus the two
+	// observability counters behind it. The reason and the counters are read by logs
+	// and tests only — no accounting rule and no standing press reads them.
+	"RedeemDeliveryCreditReason": neutral,
+	"GuardFullRefusals":          neutral, // observability (paid-serial guard cap hits)
+	"SerialSweeps":               neutral, // observability (expiry sweep count, RT-E bound)
+	"SetPaidSerialStore":         neutral, // attaches the durable guard store; moves nothing
+	"LoadPaidSerials":            neutral, // restores the guard from disk; moves nothing
 
 	// PoD relay lane (relay.go, certified 2026-08-30). Relay/gateway bandwidth
 	// compensation settles a sender-funded PayWord chain into the relay
@@ -159,7 +167,7 @@ func TestInvariantA_NoNonMintPressRaisesStanding(t *testing.T) {
 		l.RecordServe(n, other, id(9), 1<<40)              // terabytes of self-reported serving
 		l.RecordAudit(n, id(9), true)                      // passed PoR audits fund balance only
 		l.RecordServeToObject(n, other, obj, id(9), 1<<40) // object-aware serve + auto-skim
-		l.RedeemDeliveryCredit(n, other, obj)              // witnessed delivery credit (PoD neutral lane)
+		l.RedeemDeliveryCredit(n, other, obj, nil, 0, 0)   // witnessed delivery credit (PoD neutral lane)
 		l.RedeemRelayCredit(n, other, 1<<30, 1<<30)        // PayWord relay credit (PoD relay lane)
 		_ = l.FundEscrow(obj, n, 1<<20)                    // prepay a durability reserve
 		l.PayBounty(obj, n, 1<<30)                         // drain the reserve to this identity

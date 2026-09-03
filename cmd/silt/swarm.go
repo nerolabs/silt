@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -446,21 +447,29 @@ func swarmReceipt(args []string) error {
 	}
 	defer e.close()
 
-	// The issuer key must be known before a blind withdrawal can be unblinded.
+	// R0.4b: the withdrawal runs on the PINNED per-epoch demand lane, never the
+	// publish-token lane. FetchDemandIssuerKeys holds a served key_E only if its
+	// fingerprint equals the consensus-attested commitment for (server, E), so this
+	// client never blinds against a key the network has not agreed on — an issuer
+	// that serves this fetcher a private key gets a denial, not a tagged token. It
+	// also means the client needs a chain: a swarm join with no committed E ↦ key_E
+	// binding pins nothing and the withdrawal refuses rather than buying a token the
+	// bank will never honour.
+	var pinned int
 	var keyErr error
 	if rerr := run(func(done func()) {
-		e.nd.FetchIssuerKey(server, func(err error) { keyErr = err; done() })
+		e.nd.FetchDemandIssuerKeys(server, func(n int, err error) { pinned, keyErr = n, err; done() })
 	}); rerr != nil {
 		return rerr
 	}
-	if keyErr != nil {
-		return fmt.Errorf("fetch issuer key from %s: %w", server, keyErr)
+	if err := demandKeyResolutionError(server, pinned, keyErr); err != nil {
+		return err
 	}
 
 	var tok demand.Token
 	var tokErr error
 	if rerr := run(func(done func()) {
-		e.nd.AcquireDemandToken(rand.Reader, server, func(t demand.Token, err error) {
+		e.nd.AcquireDemandTokenInWindow(rand.Reader, server, func(t demand.Token, _ uint64, err error) {
 			tok, tokErr = t, err
 			done()
 		})
@@ -487,8 +496,80 @@ func swarmReceipt(args []string) error {
 	if !credited {
 		// Not an error the caller can fix by retrying: the token is spent either
 		// way (a consumed token is never replayable), so say so plainly.
-		return fmt.Errorf("delivery receipt was NOT banked by %s (the token is spent regardless; check that the server runs -accept-delivery-receipts)", server)
+		//
+		// REACHABILITY (residual R-SWARM-NOTBANKED-DEAD, closed by this argument
+		// rather than by deletion). This branch is NOT dead, and it is not the
+		// lane-off case: a lane-off peer never gets this far, because it serves no
+		// issuer key and the resolution above refuses first. What reaches here is a
+		// peer that DID serve a committed key — so the withdrawal succeeded — whose
+		// bank then declined the receipt: a spent serial, a backdated issue epoch, a
+		// full paid-serial guard, or a store write failure (core/credit/delivery.go
+		// ReasonAlreadyPaid / ReasonBackdated / ReasonGuardFull / ReasonGuardStore).
+		// Every one of those needs an era-4/v5 chain to be reachable at all, which is
+		// the same gate the whole positive lane sits behind (R-E2E-ERA4-FIXTURE), so
+		// it is unreachable-today for the same reason the success path is — not
+		// because no code path leads here.
+		return fmt.Errorf("%s %s (the token is spent regardless; check that the server runs -accept-delivery-receipts)", notBankedMarker, server)
 	}
 	fmt.Printf("delivery receipt banked by %s for %s\n", server, root)
 	return nil
+}
+
+// notBankedMarker is the ANNOUNCED marker for "your delivery receipt did not
+// bank" (S5: an announced string is an observable contract — the `freeload: ON`
+// scar). e2e TestDeliveryReceiptRefusedWhenLaneOff asserts it, and every refusal
+// on this command that leaves the receipt unbanked must carry it, so an operator
+// greps one phrase rather than a taxonomy of causes. It is a const, not two
+// literals, because the two sites that emit it must never drift apart.
+const notBankedMarker = "delivery receipt was NOT banked by"
+
+// errNoCommittedDemandKeyBinding is the pinned==0, no-transport-error case: the
+// issuer answered, but not one key it served resolved against a committed
+// E -> key_E binding.
+var errNoCommittedDemandKeyBinding = errors.New(
+	"the issuer served no key that resolves against a committed E->key binding — either it has " +
+		"committed none (the binding needs an era-4/v5 chain: `silt status` shows the block era) " +
+		"or the keys it served are off-commitment")
+
+// demandKeyResolutionError says WHY a per-epoch demand-key resolution produced
+// nothing this client may withdraw against, or nil when it produced something.
+//
+// Two distinct outcomes reach the same refusal and they need distinct text. A
+// transport/serving failure carries keyErr. A resolution failure does NOT: the
+// request succeeded and pinned is simply 0, because nothing the issuer served
+// matched the committed binding. Formatting the second case with %w printed the
+// literal `%!w(<nil>)` to the operator (Tester finding, 2026-09-03), which names no
+// cause at all — and this refusal is the one an operator is most likely to hit,
+// since a chain with no committed E -> key_E binding pins nothing.
+//
+// The refusal itself is NOT softened here: with no committed binding there is no
+// anti-fingerprinting anchor, and the certification is explicit that withdrawing
+// without the anchor is unsafe (core/node/demandkeys.go pinDemandIssuerKey). This
+// function only makes the reason legible.
+func demandKeyResolutionError(server ports.NodeID, pinned int, keyErr error) error {
+	switch {
+	case errors.Is(keyErr, node.ErrNoIssuerKey):
+		// THE LANE-OFF CASE, and the one an operator hits first. A daemon started
+		// without -accept-delivery-receipts opens no demand key store, runs no
+		// rotation and arms no bank, so it serves NO issuer key and this refusal is
+		// reached before a token is ever withdrawn. Carrying the announced "NOT
+		// banked" marker here is the S5 fix: the marker used to live only below the
+		// submit step, which this early return can never reach, so the daemon refused
+		// correctly and the client said something else (PE ruling §2, G-8 convergence
+		// §5, 2026-09-03).
+		//
+		// "The token is spent regardless" is deliberately NOT said: nothing was
+		// withdrawn, so the fetcher paid no fee and loses nothing by retrying against
+		// a server that runs the lane.
+		return fmt.Errorf("%s %s (no token was withdrawn, so nothing was spent): that server serves no demand issuer key — it is not running -accept-delivery-receipts: %w",
+			notBankedMarker, server, keyErr)
+	case keyErr != nil:
+		return fmt.Errorf("resolve demand issuer keys from %s against the committed binding (pinned %d): %w",
+			server, pinned, keyErr)
+	case pinned == 0:
+		return fmt.Errorf("resolve demand issuer keys from %s against the committed binding (pinned 0): %w",
+			server, errNoCommittedDemandKeyBinding)
+	default:
+		return nil
+	}
 }

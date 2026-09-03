@@ -51,7 +51,7 @@ func TestTokenIssueRetryIdempotent_LegacyFee(t *testing.T) {
 	if charged := start - ledger.Balance(durable); charged != fee {
 		t.Fatalf("a retried issuance must charge the fee ONCE: charged %d, want %d", charged, fee)
 	}
-	if sig := blindtoken.Unblind(pub, retry.Data, tsecret); !blindtoken.Verify(pub, ts, sig) {
+	if sig := mustUnblindToken(t, pub, ts, retry.Data, tsecret); !blindtoken.Verify(pub, ts, sig) {
 		t.Fatal("the deduped signature must still verify")
 	}
 }
@@ -77,7 +77,7 @@ func TestTokenIssueRetryIdempotent_CreditPath(t *testing.T) {
 	if !mint.OK {
 		t.Fatal("credit mint should succeed")
 	}
-	credit := ports.PublishCredit{Serial: cs, Sig: blindtoken.Unblind(pub, mint.Data, csecret)}
+	credit := ports.PublishCredit{Serial: cs, Sig: mustUnblindCredit(t, pub, cs, mint.Data, csecret)}
 
 	ts, _ := blindtoken.NewSerial(rand.Reader)
 	tblind, _, err := blindtoken.Blind(rand.Reader, pub, ts)
@@ -119,7 +119,7 @@ func TestTokenIssueDedupExpires(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	nd.EnableTokenIssuer(key)
+	nd.EnableTokenIssuer(rand.Reader, key)
 	pub := &key.PublicKey
 	durable := identity.FromSeed(2).NodeID()
 	ledger.Register(durable)

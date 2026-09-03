@@ -27,7 +27,7 @@ func TestAbortLeavesTokenReusable(t *testing.T) {
 	// The fetcher retries at serverB (s.server) and completes a genuine delivery. The
 	// same token redeems — proving the abort did not burn it.
 	r := Ack(s.fetcher, tok, s.object, s.server)
-	if ok, reason := NewBank().Redeem(s.issuerPub, tok, r); !ok {
+	if ok, _, reason := NewBank().Redeem(s.keys(), 0, tok, r); !ok {
 		t.Fatalf("an aborted exchange must leave the token reusable, but redeem failed: %s", reason)
 	}
 }
@@ -56,7 +56,7 @@ func TestPreReleaseCommitmentIsNotAReceipt(t *testing.T) {
 		Fetcher: append([]byte(nil), c.Fetcher...),
 		Sig:     append([]byte(nil), c.Sig...), // a commitment sig, over the wrong domain
 	}
-	if ok, reason := NewBank().Redeem(s.issuerPub, tok, forged); ok {
+	if ok, _, reason := NewBank().Redeem(s.keys(), 0, tok, forged); ok {
 		t.Fatalf("a pre-release commitment must not redeem as demand (got credited, reason=%q)", reason)
 	}
 }
@@ -90,7 +90,7 @@ func TestOptimisticPathStillCredits(t *testing.T) {
 	_ = Commit(s.fetcher, tok, s.object, s.server) // optimistic phase
 	r := Ack(s.fetcher, tok, s.object, s.server)
 	bank := NewBank()
-	if ok, reason := bank.Redeem(s.issuerPub, tok, r); !ok {
+	if ok, _, reason := bank.Redeem(s.keys(), 0, tok, r); !ok {
 		t.Fatalf("optimistic completion should credit: %s", reason)
 	}
 	if got := bank.Demand(s.object); got != 1 {
