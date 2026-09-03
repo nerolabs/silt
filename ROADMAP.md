@@ -95,9 +95,9 @@ carries the argument and the sources. Two are LIVE BREAKS and come first.
 1. **R0.6 (I5 break, LIVE on main) — ✅ RATIFIED 2026-09-03 (owner: "R0.6 ratified") and BUILT the same
    day** (branch `builder/r0.6-i5-evidence-recompute`; PR pending): evidence
    hashes recomputed from full bodies, `Pruned` never read, `Slashes` byte ceiling. The six RED-first gates
-   plus G-2/G-4/G-6 and the three-axis I5 model-check are GREEN; G-1 scanned zero hits. **Still owed: the
-   owner ratifies the `SlashesBytesCap` VALUE (provisional 16 MiB; G-3 measured — see
-   `docs/decisions.md` D-F2-EVIDENCE-RECOMPUTE).**
+   plus G-2/G-4/G-6 and the three-axis I5 model-check are GREEN; G-1 scanned zero hits. **MERGED (PR #714)
+   and the `SlashesBytesCap` VALUE (16 MiB) RATIFIED 2026-09-03 with its second face disclosed — see
+   `docs/decisions.md` D-F2-EVIDENCE-RECOMPUTE.**
 2. **R0.7 / R2.14 (relay mint, behind a default-off flag):** build the relay prepayment anchor
    (bilateral PayWord, issuer == relay) as a prerequisite of R2.9, with settlement paying 0 and the flag
    default-off until it lands.
@@ -173,7 +173,7 @@ carries the argument and the sources. Two are LIVE BREAKS and come first.
   **(iii) re-scope** the e2e gate to the certified era-4 refusal — never an activation override, in
   any form, in any binary
   (`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-G8-dark-lane-CONVERGENCE-2026-09-03.md`).
-- **R0.6 · I5 CROSS-HEIGHT `Pruned` SLASH FORGERY — CONFIRMED LIVE BREAK ON MAIN (2026-09-03); fix direction CERTIFIED; RATIFIED + BUILT 2026-09-03 (branch `builder/r0.6-i5-evidence-recompute`, PR pending); the cap VALUE ratification is owed.**
+- **R0.6 · I5 CROSS-HEIGHT `Pruned` SLASH FORGERY — CONFIRMED LIVE BREAK ON MAIN (2026-09-03); fix direction CERTIFIED; RATIFIED + BUILT + MERGED 2026-09-03 (PR #714); the cap VALUE (16 MiB) RATIFIED with its second face disclosed.**
   `VerifyEquivocation` reads height from the evidence struct (`equivocation.go:50`) but the signed
   message from `Hash()` (`:53`), which returns attacker-supplied `b.Pruned` (`chain.go:658-660`) for
   the two Blocks inside `Slashes[i]`. Two GENUINE signatures by an honest validator at two DIFFERENT
