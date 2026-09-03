@@ -949,7 +949,11 @@ economy-off HEAD certifies a network nobody runs. Design:
   entirely, which IS the build-immutable-#3 split of the single flag (`daemon.go:316-317`): the transport
   must surface each peer's remote address to the node (a ports change; the sim needs a domain oracle).
   A second declared label was REFUSED as churn (the same free declaration under a new name). Owner: whether
-  the literal second label is wanted before R4.3b lands (one flag + an additive gossip field).
+  the literal second label is wanted before R4.3b lands (one flag + an additive gossip field). **Coupling
+  (PE, 2026-09-03): observed-address keying collides with the relay tier — NATed ponies behind one
+  `-relay-via` present the relay's address and would be capped together; R4.3b must key on DIRECT
+  connections' addresses and treat relayed peers separately (immutable #4/#5).** Must not slip past the RC
+  gate: a labelled adversary (10 labelled eclipser incumbents → 1/6 discoverable) is untouched by R4.3a.
 - **R4.4 · External red-team vs the C1 + C2 composition and the seven §7 seams (#183) — THE M0
   close gate.** This is the RC-defining gate, and **it is the same pass as R1.7** — one external B8
   engagement, not two. **RATIFIED 2026-09-03: it runs at the RELEASE CANDIDATE, AFTER the era-4/v5

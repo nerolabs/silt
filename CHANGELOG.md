@@ -16,7 +16,9 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   are still admitted past it; the cap-off path is unchanged. Gates `core/node/r43a_dht_domain0_test.go`
   (`TestR43a_UnknownDomainPeersAreCappedTogether` RED before, two survival gates). The R4.2
   "measure / publish" step ships with it: the daemon's C2 status line prints `NakamotoDomains` and
-  `DistinctDomains`. The structural close (key the cap on the OBSERVED remote address, retiring
+  `DistinctDomains`. **Disclosed cost** (PE-measured): in a swarm where nobody sets `-domain`, honest
+  routing-table density roughly halves (N=30: avg 17.1 → 8.9 entries); lookups, bootstrap and consensus
+  are unaffected; a LABELLED adversary is not stopped (R4.3b). The structural close (key the cap on the OBSERVED remote address, retiring
   `-domain` from the DHT — the build-immutable-#3 flag split) is filed as R4.3b. Deliberation:
   `docs/thinking/2026-09-03-r4.3a-dht-domain0-exemption-design.md`.
 - **R0.7 interim — the paid relay lane pays 0 until the R2.14 prepayment anchor; RT-RELAY-3 walk
