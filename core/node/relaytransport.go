@@ -85,14 +85,18 @@ func (n *Node) handleRelayPay(from ports.NodeID, msg ports.Message) {
 }
 
 // SettleRelaySession settles the paid session at close and removes it from the
-// table (design §5: single settlement at close). It redeems the highest held
-// preimage ONCE — count × RelayIncrementCredit credit — capped at the committed
-// budget (S × increment), itself bounded by the fetcher's paid-in blind credit.
-// The verifier's monotonic count is the accumulator, so no per-call summation can
-// exceed the budget. Returns the credit paid to the relay (0 if the session is
-// unknown or the ledger is unset). The M0 residual (design §6): the settlement log
-// line carries NO durable or cross-session-stable field — only the count and the
-// paid credit, both per-session values.
+// table (design §5: single settlement at close). It presents the highest held
+// preimage ONCE — count × RelayIncrementCredit — to credit.RedeemRelayCredit.
+// R0.7 INTERIM (2026-09-03): that call PAYS 0 and moves nothing until the R2.14
+// prepayment anchor lands (core/credit/relay.go STATUS; the cert is
+// RELAY-LANE-per-node-ledger-mint-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md
+// §9 step 1). The session is still removed and the pump still closed, so the
+// single-settle property (TestNoDoubleSettleReaperAndPump) is unchanged. Returns
+// the credit paid to the relay (0 if the session is unknown or the ledger is
+// unset). The M0 residual (design §6): the settlement log line carries NO durable
+// or cross-session-stable field — only the count, the paid credit, and the S5
+// reason `no-anchor` (a constant, not a per-session value; G-RI-2 pins it, and
+// cmd/silt/observable_contract.go registers it).
 func (n *Node) SettleRelaySession(handle uint64) int64 {
 	sess, ok := n.relaySessions[handle]
 	if !ok {
@@ -109,7 +113,7 @@ func (n *Node) SettleRelaySession(handle uint64) int64 {
 	// per-session, non-durable values. No ephemeral or durable identity, no chain
 	// root — a relay operator's log must not carry a cross-session-stable field the
 	// settlement could be correlated on.
-	n.logf(ports.LogInfo, "relay session settled", "increments", sess.Count(), "credit", paid)
+	n.logf(ports.LogInfo, "relay session settled", "increments", sess.Count(), "credit", paid, "reason", "no-anchor")
 	return paid
 }
 

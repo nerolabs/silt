@@ -9,6 +9,32 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Security
+- **R0.7 interim — the paid relay lane pays 0 until the R2.14 prepayment anchor; RT-RELAY-3 walk
+  budget enforced; relay-lane doc truth.** The break (RT-RELAY-1, behind `--accept-relay-payments`,
+  default OFF): `SettleRelaySession` settled on the RELAY's own ledger and `RedeemRelayCredit` debited
+  the fetcher's fresh ephemeral, which on that ledger is a phantom auto-granted the faucet amount on
+  first touch, so the relay's balance rose by `chainValue` with nothing binding the chain to a payment
+  — a per-session mint the file's own comment called "never a mint". The anchor the 2026-08-27
+  certification's conservation verdict depends on (Q4(a)) was never built. The interim, a certified
+  NARROWING (under-pay only, no economic cert needed): `RedeemRelayCredit` returns 0 and performs NO
+  ledger mutation (a debit against a phantom grant is the same fiction); the `relay session settled`
+  line carries `reason=no-anchor` (S5, registered in `cmd/silt/observable_contract.go` with
+  `relay session settled` itself); the flag help and `docs/design/pod.md` §7.3 state that the lane pays
+  0 and why; the five false claims in `core/credit/relay.go` are rewritten to the certified facts.
+  RT-RELAY-3 (a bogus `claimedCount = S` preimage replayable forever on one session, ~53 ms relay CPU
+  per ~48-byte pay): `Verifier.walkSteps` is promoted from instrumentation to the enforced per-session
+  walk budget S — a claim whose walk would exceed it is refused with `ErrWalkBudgetExhausted` BEFORE
+  walking; the #644 per-call clamp is kept. Gates (RED-first, Tester): `TestRelayRedeemPaysZeroUntilAnchor`,
+  `TestRelayRedeemPaysZeroEvenWhenFetcherIsFunded`, `TestSettleRelaySessionPaysZeroUntilAnchor`,
+  `TestSettleRelaySessionLogCarriesNoAnchorReason`, `TestRelayPayAdvanceToCumulativeWalkBudgetEnforced`;
+  re-specified to pay 0: `TestRelayCreditIsConserved`, `TestRelayRedeemDrawsFromFetcherPaidCredit`,
+  `TestRelayRedeemCannotExceedPaidInBudget`, `TestRelayWashLoopIsAStrictLoss`,
+  `TestRelayFullSessionConservedSettlement`, `TestNoDoubleSettleReaperAndPump`, e2e
+  `TestPaidRelaySessionEndToEnd` (balance unchanged). Cert:
+  `silt-reviews/research/research-outcome/RELAY-LANE-per-node-ledger-mint-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md`
+  §2, §8, §9 step 1; break report
+  `silt-reviews/red-team/RED-TEAM-relay-lane-session-grant-and-byte-price-2026-09-03.md`; deliberation
+  `docs/thinking/2026-09-03-r0.7-relay-interim-design.md`. R2.14 is the fix.
 - **Gate tail — three owed gates.** (1) **R-S5-STRING-REGISTRY:** `cmd/silt/observable_contract.go`
   registers the 28 announced operator literals (S5 contracts) with their emitting file, dependant and
   runtime asserter; `TestObservableContractStringsAreStillEmitted` asserts each is still in the source,

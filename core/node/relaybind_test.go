@@ -17,6 +17,13 @@ package node
 // pattern needs the loop to run concurrently with the blocked caller; simclock's
 // scheduler is single-goroutine and would deadlock the pattern. Production uses
 // walltime, so this is the faithful tier for the seam.
+//
+// R0.7 INTERIM (2026-09-03): TestNoDoubleSettleReaperAndPump is RE-SPECIFIED to
+// "pays 0 until R2.14" per
+// RELAY-LANE-per-node-ledger-mint-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md
+// §9 step 1 — a PRESCRIBED goalpost move, recorded here, not silent. Its LOAD-
+// BEARING property (single-settle-at-close: a second settle of the same handle
+// is always a no-op) is unaffected by the interim and is still asserted.
 
 import (
 	"sync"
@@ -112,10 +119,22 @@ func TestResolveRelayAuthorizerOwnershipOffLoop(t *testing.T) {
 // second) finds it absent and pays 0 — single-settle. This test settles once (the
 // pump-completion path), then settles the SAME handle again (the reaper path), and
 // asserts the second settle is a no-op: it pays 0 and the operator balance does not
-// move twice.
+// move (twice, or at all — see the R0.7 interim note below).
 //
-// Ablation: remove the `delete(n.relaySessions, handle)` from SettleRelaySession → the
-// second settle re-redeems and this assertion reddens (double-pay).
+// R0.7 INTERIM (2026-09-03): RE-SPECIFIED to "pays 0 until R2.14" per
+// RELAY-LANE-per-node-ledger-mint-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md
+// §9 step 1. Before R0.7 this test's first assertion required `first > 0` (a
+// conserved nonzero settlement). Under the interim BOTH the first and the
+// second settle of the same handle must pay 0 and move nothing — the
+// single-settle property (delete-on-first-call, never re-redeem) is
+// independent of and unaffected by the interim, and stays load-bearing here.
+//
+// Ablation: remove the `delete(n.relaySessions, handle)` from SettleRelaySession →
+// a SECOND settle would still find the session and attempt to re-settle it; under
+// the interim this is not directly observable via the paid amount (both calls pay
+// 0 either way), so the ablation is instead checked structurally: the second call
+// must still find the handle already removed, i.e. RelaySessionForTest must report
+// the handle absent after the FIRST settle.
 func TestNoDoubleSettleReaperAndPump(t *testing.T) {
 	const S = 6
 	fetcher, relay, ledger, sched := relayPairForTest(t, nil, 10_000)
@@ -125,7 +144,7 @@ func TestNoDoubleSettleReaperAndPump(t *testing.T) {
 	fetcher.OpenRelaySessionRemote(relay.id, c.Root(), S, FundingEphemeralBlind, func(h uint64, _ error) { handle = h })
 	sched.Run()
 
-	// Pay all S increments so there is credit to settle.
+	// Pay all S increments so there would have been credit to settle, pre-interim.
 	for k := 1; k <= S; k++ {
 		fetcher.SubmitRelayPay(relay.id, handle, c.Preimage(k), k, func(int, error) {})
 		sched.Run()
@@ -133,12 +152,18 @@ func TestNoDoubleSettleReaperAndPump(t *testing.T) {
 
 	balBefore := ledger.Balance(relay.id)
 	first := relay.SettleRelaySession(handle) // pump-completion settle
-	if first <= 0 {
-		t.Fatalf("first settle paid %d, want > 0 (there were %d paid increments)", first, S)
+	if first != 0 {
+		t.Fatalf("first settle paid %d for an unanchored session (interim: no anchor type exists — R2.14), want 0", first)
 	}
 	balAfterFirst := ledger.Balance(relay.id)
-	if balAfterFirst != balBefore+first {
-		t.Fatalf("balance moved by %d on first settle, want %d", balAfterFirst-balBefore, first)
+	if balAfterFirst != balBefore {
+		t.Fatalf("balance moved by %d on the first (unanchored) settle, want 0", balAfterFirst-balBefore)
+	}
+	// The single-settle property: the handle must be gone after the FIRST
+	// settle regardless of what it paid — this is what the ablation (removing
+	// the `delete` call) would break.
+	if _, ok := relay.RelaySessionForTest(handle); ok {
+		t.Fatalf("the session handle still exists after the first settle — single-settlement-at-close is violated (the ablation this test guards against)")
 	}
 	// The reaper (or a racing pump) settles the SAME handle again. It must be a no-op.
 	second := relay.SettleRelaySession(handle)

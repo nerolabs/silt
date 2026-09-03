@@ -100,7 +100,10 @@ carries the argument and the sources. Two are LIVE BREAKS and come first.
    `docs/decisions.md` D-F2-EVIDENCE-RECOMPUTE.**
 2. **R0.7 / R2.14 (relay mint, behind a default-off flag):** build the relay prepayment anchor
    (bilateral PayWord, issuer == relay) as a prerequisite of R2.9, with settlement paying 0 and the flag
-   default-off until it lands.
+   default-off until it lands. **R0.7 INTERIM SHIPPED 2026-09-03** (owner GO): `RedeemRelayCredit` pays
+   0 and mutates nothing; the settlement line carries `reason=no-anchor`; the flag help and
+   `docs/design/pod.md` §7.3 say the lane pays 0; RT-RELAY-3's cumulative walk budget is enforced.
+   R2.14 is the fix.
 3. **R-STATEVIEW-ENUMERATION / R3.4 freeze scope:** the era-4 freeze scope is at most ONE leaf —
    `tagRevLogSize`, bought purely so a floor box survives a takedown block — and no leaf at all is
    needed for safety.
@@ -195,14 +198,22 @@ carries the argument and the sources. Two are LIVE BREAKS and come first.
   is already pruned becomes unslashable, paired with the `Slashes` byte ceiling. Sources:
   `/Users/andrewedmond/Claude/claude/silt-reviews/red-team/RED-TEAM-accept-chain-state-view-enumeration-2026-09-03.md` (F1),
   `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/I5-cross-height-pruned-slash-forgery-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md`.
-- **R0.7 · RELAY-LANE per-node-ledger MINT — CONFIRMED (2026-09-03), HIGH, live only with `--accept-relay-payments` (default OFF); fix = R2.14.**
+- **R0.7 · RELAY-LANE per-node-ledger MINT — CONFIRMED (2026-09-03), HIGH; INTERIM SHIPPED 2026-09-03 (pays 0; flag default-off; R2.14 is the fix).**
   `SettleRelaySession` settles on the RELAY's own ledger (`relaytransport.go:107`); `RedeemRelayCredit`
   debits the fetcher's fresh ephemeral, which on that ledger is a phantom auto-granted 500,000 on first
   touch (`credit.go:247-258`); the relay's balance rises by `chainValue` with nothing binding the chain
   to a real payment. 100 fresh-ephemeral sessions → relay +26,214,400 with zero bytes; with grant = 0
   the relay still gains. Self-deal: the attacker IS the relay. Reputation firewall HOLDS (balance
   economy only). `relay_test.go` pre-funds the fetcher on the SAME ledger and cannot see it;
-  `money_pump_test.go` never covers the relay lane. Interim: flag stays OFF and settlement pays 0.
+  `money_pump_test.go` never covers the relay lane. **Interim (shipped):** `RedeemRelayCredit` returns 0
+  and performs no ledger mutation (no debit of the phantom either); `SettleRelaySession` logs
+  `reason=no-anchor` (S5, registered); the flag help and `pod.md` §7.3 state the lane pays 0; the five
+  false claims in `relay.go` are rewritten to the certified facts; RT-RELAY-3 closed by promoting
+  `Verifier.walkSteps` to an enforced per-session budget S (`ErrWalkBudgetExhausted`, refused before
+  walking). Gates: `TestRelayRedeemPaysZeroUntilAnchor`, `TestRelayRedeemPaysZeroEvenWhenFetcherIsFunded`,
+  `TestSettleRelaySessionPaysZeroUntilAnchor`, `TestSettleRelaySessionLogCarriesNoAnchorReason`,
+  `TestRelayPayAdvanceToCumulativeWalkBudgetEnforced`; e2e `TestPaidRelaySessionEndToEnd` re-specified to
+  an unchanged balance. Deliberation: `docs/thinking/2026-09-03-r0.7-relay-interim-design.md`.
   Sources: `/Users/andrewedmond/Claude/claude/silt-reviews/red-team/RED-TEAM-relay-lane-session-grant-and-byte-price-2026-09-03.md`, the R2.14
   cert.
 - **`R-CARRIER-BYTES` — the validity bound, with the cost now MEASURED.** 1.3 M carrier entries fit
@@ -855,10 +866,16 @@ economy-off HEAD certifies a network nobody runs. Design:
   (INV-RELAY-CONS): `settled(R) ≤ Σ face(spent anchors)`, each verified / spent-once /
   `ChargePublish`-backed on the PAYING ledger; per-session ledger total unchanged. Five RED-first gates,
   none pre-funding the fetcher; the three existing pair-total tests are REWRITTEN. Face value caps a
-  session at 195.3 MiB vs `MaxSessionBytes` 1 GiB → allow k ≤ 6 credentials. **Until it lands:** the
-  flag stays default-off AND settlement pays 0; correct five false claims in `relay.go:16-61`.
-  **RT-RELAY-3 (MsgRelayPay preimage-walk CPU DoS, ~1083× byte→ms) is NOT closed by this** — promote
-  `Verifier.walkSteps` (`payword.go:136-144`) to an enforced per-session budget S (Builder + PE).
+  session at 195.3 MiB vs `MaxSessionBytes` 1 GiB → allow k ≤ 6 credentials. **Until it lands (the
+  R0.7 interim, SHIPPED 2026-09-03):** the flag stays default-off AND settlement pays 0
+  (`RedeemRelayCredit` returns 0, mutates nothing; log `reason=no-anchor`); the five false claims in
+  `relay.go` are rewritten. R2.14 fills `RedeemRelayCredit` with the anchor parameter and the conserved
+  transfer, and restores a positive `wantCredit` in e2e `TestPaidRelaySessionEndToEnd`.
+  **RT-RELAY-3 (MsgRelayPay preimage-walk CPU DoS, ~1083× byte→ms) is NOT closed by the anchor** — it
+  is closed by the interim: `Verifier.walkSteps` is the enforced per-session budget S
+  (`ErrWalkBudgetExhausted`, refused before walking; no slack, since a retransmit of an accepted
+  preimage fails the not-ahead check and costs nothing). PE ruling on slack still owed if a
+  re-transmit analysis ever justifies one.
   Side finding: `creditSpent` (`node.go:626`) has no cap/sweep/eviction on a shipped lane. Sources:
   the relay-lane fix cert above;
   `/Users/andrewedmond/Claude/claude/silt-reviews/red-team/RED-TEAM-relay-lane-session-grant-and-byte-price-2026-09-03.md`.

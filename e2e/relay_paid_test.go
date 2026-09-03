@@ -283,16 +283,32 @@ func TestPaidRelaySessionEndToEnd(t *testing.T) {
 	}
 
 	// Capture standing BEFORE settle so we can assert it is unchanged, then wait for
-	// the balance to reflect the settle.
+	// the settlement line and assert the balance did NOT move.
+	//
+	// R0.7 INTERIM (2026-09-03): the lane pays 0 until the R2.14 prepayment anchor
+	// lands, so wantCredit is 0 and the operator balance must be UNCHANGED by the
+	// settle (the pre-interim assertion of +S × RelayIncrementCredit was the
+	// RT-RELAY-1 mint, observed from the relay's side). Cert:
+	// silt-reviews/research/research-outcome/RELAY-LANE-per-node-ledger-mint-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md
+	// §9 step 1. R2.14 restores a positive, anchor-funded wantCredit here. Because
+	// 0 cannot be polled for, the settle is awaited on its S5 log line instead.
 	repBefore := readReputation()
-	balStart := int64(0) // the relay operator started at zero balance
-	wantCredit := int64(S) * relaypay.RelayIncrementCredit
+	balStart := readBalance()
+	wantCredit := int64(0)
 	deadline := time.Now().Add(5 * time.Second)
-	for readBalance() < balStart+wantCredit && time.Now().Before(deadline) {
+	settled := func() bool {
+		for _, ln := range log.lines() {
+			if strings.Contains(ln, "relay session settled") {
+				return true
+			}
+		}
+		return false
+	}
+	for !settled() && time.Now().Before(deadline) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	if bal := readBalance(); bal != balStart+wantCredit {
-		t.Fatalf("operator balance = %d after settle, want %d (= %d increments × %d) — settle not conserved", bal, balStart+wantCredit, S, relaypay.RelayIncrementCredit)
+		t.Fatalf("operator balance = %d after settle, want %d (unchanged: the R0.7 interim pays 0 until the R2.14 anchor) — got a payout of %d for %d increments", bal, balStart+wantCredit, bal-balStart, S)
 	}
 	if rep := readReputation(); rep != repBefore {
 		t.Fatalf("relay Reputation() moved from %d to %d on a relay settlement — the Invariant-A firewall is breached (relay credit must be balance-only)", repBefore, rep)
