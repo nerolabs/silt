@@ -75,6 +75,14 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
     real cost. This is the UPPER bound on admission cost; `TestC3_HardnessRunsAtAdmissionNotOnEveryModexp`
     already asserts the LOWER bound (`perVerify*10 <= admission`), which trips if the hardness half
     moves back onto the modexp path. Neither is calibrated to a machine.
+  - **The inbound-receipt cost gate asserts its wall-clock half only without `-race`.**
+    `TestC3_InboundReceiptsCostOHardnessChecksNotOPerMessage` pairs a COUNT gate (zero hardness
+    runs per inbound `MsgDeliveryReceipt` after admission — the property) with a 100 µs/message
+    wall-clock budget. The count runs under both builds. The race detector inflates the
+    measurement ~10× (4.8 µs uninstrumented, 45 µs under `-race` on the same box, 108 µs on the
+    CI runner's `-race` job) so the budget reddened on the detector, not on the path. A
+    `raceEnabled` constant pair (`core/node/race_{enabled,disabled}_test.go`, mirroring
+    `core/chain`) gates the wall-clock assertion; the cost is still logged under both builds.
 - **R0.4b C3 final pre-ratification round — the G-8 dark-lane disposition (iii), the
   `swarm receipt` S5 legibility break, and the PE's final-review items.** Inputs: the G-8
   convergence `R0.4b-C3-G8-dark-lane-CONVERGENCE-2026-09-03`, the PE final ruling

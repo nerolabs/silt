@@ -144,15 +144,24 @@ func TestC3_InboundReceiptsCostOHardnessChecksNotOPerMessage(t *testing.T) {
 	// The budget. A hardness run is ~3.3 ms, so ANY per-message hardness blows this by
 	// more than an order of magnitude; the check is a second, independent statement of
 	// the same property that also catches a cost regression the counter cannot see.
+	//
+	// NOT UNDER -race. The COUNT above is the property and runs under both builds. The
+	// wall-clock half is a measurement, and the race detector's instrumentation inflates
+	// it ~10x: 4.8 µs/message uninstrumented, 45 µs under -race on the same box, 108 µs
+	// on the CI runner's -race job, all on the same code (PR #711). Under -race the
+	// number measures the detector, not the path —
+	// the same reason `TestC3_ValidatePubCostBudget` sits behind `//go:build !race`. The
+	// cost is still LOGGED under both builds so a human reads it.
 	const budget = 100 * time.Microsecond
-	if perMsg > budget {
+	if perMsg > budget && !raceEnabled {
 		t.Fatalf("inbound MsgDeliveryReceipt cost %v/message over %d messages (budget %v). "+
 			"The C-3 design puts hardness at admission and SHAPE ONLY on this path.",
 			perMsg, messages, budget)
 	}
 	t.Logf("R1 CLOSED: %d-epoch band. Hardness runs = %d at the band's first admission, "+
-		"then 0 across %d further inbound receipts. Cost %v/message (budget %v).",
-		band, admission, messages, perMsg, budget)
+		"then 0 across %d further inbound receipts. Cost %v/message (budget %v, "+
+		"asserted only without -race; race=%v).",
+		band, admission, messages, perMsg, budget, raceEnabled)
 }
 
 // TestC3_ADifferentCommittedKeyStillPaysFullAdmission is the memo's teeth-check: the
