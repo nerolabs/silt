@@ -102,6 +102,8 @@ var standingClassification = map[string]standingClass{
 	"RedeemDeliveryCreditReason": neutral,
 	"GuardFullRefusals":          neutral, // observability (paid-serial guard cap hits)
 	"SerialSweeps":               neutral, // observability (expiry sweep count, RT-E bound)
+	"CompactFailures":            neutral, // observability (R2.13: durable-store Compact errors, counted never refused)
+	"LastCompactError":           neutral, // observability (R2.13: the most recent such error)
 	"SetPaidSerialStore":         neutral, // attaches the durable guard store; moves nothing
 	"LoadPaidSerials":            neutral, // restores the guard from disk; moves nothing
 

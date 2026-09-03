@@ -13,7 +13,9 @@
 //
 // THE SHAPE: an APPEND-ONLY LOG of fixed-width records, fsync'd per append, replaced
 // atomically on compaction (temp → fsync file → rename → fsync dir, the shape
-// adapters/markstore and adapters/diskissuer both use).
+// adapters/markstore and adapters/diskissuer both use), with the new append handle
+// opened on the temp file BEFORE the rename so a failed open can never orphan the
+// handle (R2.13, see Compact).
 //
 // Why not a whole-file rewrite per entry, like the epoch key store? The key store
 // writes a ~9-key band a few times an hour; this store writes one record per PAID
@@ -50,10 +52,28 @@ const (
 // exists to prevent.
 var ErrCorrupt = errors.New("guardstore: paid-serial store is corrupt")
 
+// ErrStoreBroken marks a store whose append handle can no longer be trusted to reach
+// the live path. It is STICKY until the process restarts: every later Append and
+// Compact fails with it, so the ledger refuses the payout (ReasonGuardStore) instead
+// of paying against a guard entry a restart would never see. Loud beats silent here:
+// the silent form of this state is R-COMPACT-ORPHAN, an over-pay.
+var ErrStoreBroken = errors.New("guardstore: paid-serial store is broken (append handle no longer trusted; restart to recover)")
+
+// openAppend is the OS hook used to open the append handle, both in Open and on the
+// temp file inside Compact. Indirected ONLY so a test can force that open to fail
+// without faking the filesystem — the R-COMPACT-ORPHAN defect (PE ruling
+// RULING-ledger-durability-family-FP2-R2.13-R2.10-2026-09-03.md §1, gate G-CO-1).
+// Production behaviour is unchanged: this is os.OpenFile and nothing else calls it.
+var openAppend = os.OpenFile
+
 // Disk is the append-only file store.
 type Disk struct {
 	path string
 	f    *os.File
+	// broken is the sticky backstop (ruling §1: "keep as backstop, not as the fix").
+	// Set only by Compact, only for a failure AFTER the rename — see the comment
+	// there for what can still fail — and checked first by Append and Compact.
+	broken error
 }
 
 // Open prepares the store at path, creating the parent directory if needed, and
@@ -65,7 +85,7 @@ func Open(path string) (*Disk, error) {
 	if err := realign(path); err != nil {
 		return nil, fmt.Errorf("guardstore: %w", err)
 	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	f, err := openAppend(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("guardstore: %w", err)
 	}
@@ -160,6 +180,9 @@ func (d *Disk) Load() ([]ports.PaidSerial, error) {
 // this before it moves any credit, so the ordering is what makes a crash an under-pay
 // rather than a double-pay.
 func (d *Disk) Append(p ports.PaidSerial) error {
+	if d.broken != nil {
+		return d.broken
+	}
 	rec, err := encode(p)
 	if err != nil {
 		return err
@@ -170,16 +193,45 @@ func (d *Disk) Append(p ports.PaidSerial) error {
 	return d.f.Sync()
 }
 
-// Compact atomically replaces the store with live. Temp → fsync file → rename → fsync
-// dir: the directory sync is what makes the RENAME durable, without it a power cut can
+// Compact atomically replaces the store with live. Temp → fsync file → open the new
+// append handle ON THE TEMP FILE → rename → fsync dir → swap handles.
+//
+// The directory sync is what makes the RENAME durable; without it a power cut can
 // leave the directory entry pointing at the old file while the new bytes are on disk.
+//
+// WHY THE NEW HANDLE IS OPENED BEFORE THE RENAME (R2.13, R-COMPACT-ORPHAN; PE ruling
+// RULING-ledger-durability-family-FP2-R2.13-R2.10-2026-09-03.md §1). The previous
+// shape renamed first and re-opened the append handle on d.path afterwards. If that
+// re-open failed, Compact returned the error but d.f still pointed at the inode the
+// rename had just unlinked; write AND fsync through that handle succeed (POSIX keeps an
+// open unlinked inode alive), so every later Append returned nil for a record no Load
+// could ever see — an over-pay, once per epoch since compaction moved onto the band
+// advance. rename(2) moves the directory entry, not the inode: a handle opened on the
+// temp file stays valid across the rename and then refers to the live path. So the
+// only fallible open now happens BEFORE any state changes, and a failure there leaves
+// the store exactly as it was (d.f valid, the log a superset of live — benign, it only
+// ever over-refuses). After the rename nothing fallible remains between it and the
+// handle swap.
+//
+// THE BACKSTOP (PE ruling RULING-R2.13-compact-orphan-11396f1 finding 1). It is keyed on
+// the ONE signal that means "the append handle no longer reaches the live path": after
+// the swap, the handle's inode must be the inode at d.path (os.SameFile). If it is not,
+// the store is marked broken (ErrStoreBroken, sticky until restart) and every later
+// Append fails loudly — never nil for a record Load cannot see. Closing the RETIRED
+// handle failing is NOT a broken store (that inode is already unlinked; its fate is
+// irrelevant to the live handle), so it is ignored: marking it broken would refuse
+// every payout on a healthy store until restart — the fail-closed-on-benign move the
+// ledger-durability ruling §1 refused at the sweep, relocated.
 func (d *Disk) Compact(live []ports.PaidSerial) error {
+	if d.broken != nil {
+		return d.broken
+	}
 	dir := filepath.Dir(d.path)
 	tmp, err := os.CreateTemp(dir, ".tmp-paidserials-*")
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmp.Name())
+	defer os.Remove(tmp.Name()) // a no-op once the rename has moved it
 	if err := tmp.Chmod(0o600); err != nil {
 		tmp.Close()
 		return err
@@ -204,21 +256,43 @@ func (d *Disk) Compact(live []ports.PaidSerial) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	if err := os.Rename(tmp.Name(), d.path); err != nil {
+	// The new append handle, opened on the temp inode BEFORE the rename. A failure
+	// here changes nothing: d.f is still the live handle and the temp is removed.
+	next, err := openAppend(tmp.Name(), os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
 		return err
 	}
+	if err := os.Rename(tmp.Name(), d.path); err != nil {
+		next.Close()
+		return err
+	}
+	// From here the directory entry is the new file and next already refers to it.
 	if df, derr := os.Open(dir); derr == nil {
 		_ = df.Sync()
 		df.Close()
 	}
-	// Re-open the append handle onto the replaced file.
 	old := d.f
-	f, err := os.OpenFile(d.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-	if err != nil {
-		return err
+	d.f = next
+	_ = old.Close() // the retired, already-unlinked inode: its close result says nothing about the live handle
+	if !d.handleReachesPath() {
+		d.broken = fmt.Errorf("%w: the append handle is not the file at %s after compaction", ErrStoreBroken, d.path)
+		return d.broken
 	}
-	d.f = f
-	return old.Close()
+	return nil
+}
+
+// handleReachesPath reports whether d.f's inode is the inode at d.path — the reachability
+// signal the backstop keys on. A stat failure counts as unreachable (loud, never silent).
+func (d *Disk) handleReachesPath() bool {
+	fi, err := d.f.Stat()
+	if err != nil {
+		return false
+	}
+	pi, err := os.Stat(d.path)
+	if err != nil {
+		return false
+	}
+	return os.SameFile(fi, pi)
 }
 
 // Mem is the in-memory variant for tests and the deterministic sim (no disk in the

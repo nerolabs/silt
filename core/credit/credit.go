@@ -213,6 +213,11 @@ type Ledger struct {
 	sweptEpoch        uint64
 	guardFullRefusals int64
 	sweeps            int64
+	// compactFailures / lastCompactErr record a durable-store Compact that returned an
+	// error at the sweep (R2.13). Observability, never a refusal: see
+	// sweepExpiredSerials for the two-class rule.
+	compactFailures int64
+	lastCompactErr  error
 
 	// Audit economics: storage that survives a spot-check earns rent;
 	// storage that turns out to be a lie is slashed hard. Balances may

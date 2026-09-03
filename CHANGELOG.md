@@ -215,6 +215,40 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   fixture to an objective bonded epoch-enabled topology — never by an activation override.
 
 ### Fixed
+- **R2.13 `R-COMPACT-ORPHAN` — a failed re-open inside the paid-serial guard store's `Compact` left
+  the append handle on an unlinked inode.** `adapters/guardstore` `Disk.Compact` renamed the temp file
+  onto the live path and only then re-opened its append handle; if that open failed, `Compact`
+  returned the error but `d.f` still pointed at the inode the rename had just unlinked. Write and
+  fsync through that handle succeed, so every later `Append` returned nil for a record no `Load`
+  could ever see, and the sole caller (`core/credit` `sweepExpiredSerials`) discarded the error
+  unconditionally. Direction: an OVER-pay, once per epoch since C-7 moved compaction onto the band
+  advance; latent today only because the ledger resets at the same restart (MEDIUM, PE ruling). Fix:
+  **open-before-rename** — the new append handle is opened on the temp file BEFORE `os.Rename`, so a
+  failure leaves the store unchanged with the old handle valid and nothing fallible runs between the
+  rename and the handle swap. Backstop: a sticky `guardstore.ErrStoreBroken`, keyed on the ONE
+  reachability signal (after the swap the handle's inode must be the inode at the path,
+  `os.SameFile`) and checked first by `Append` and `Compact`, so a broken store fails loudly and never
+  returns nil for a record `Load` cannot see; a retired handle's `Close` failure is NOT a broken store
+  (PE ruling `RULING-R2.13-compact-orphan-11396f1-2026-09-03.md` finding 1: keying on it refused every
+  payout on a healthy store). Port contract: `ports.PaidSerialStore.Compact` now
+  carries the handle clause (after a failed `Compact` the store MUST either remain
+  appendable-and-reachable or MUST fail every subsequent `Append`; it MUST NOT return nil from an
+  `Append` a later `Load` cannot see). Ledger: the sweep no longer discards the `Compact` error; it
+  is recorded (`Ledger.CompactFailures()`, `LastCompactError()`) and never refuses a payout by
+  itself — the two error classes stay split, a broken store is observed through `Append` failing and
+  the existing `ReasonGuardStore` path (blanket fail-closed at the sweep was REFUSED by the ruling as
+  a self-inflicted liveness break). Gates (G-CO-1 RED-first with controlled revert; G-CO-2 green by design; G-CO-3 a regression pin whose RED→GREEN came from the store double honouring the port clause, not from source; the backstop pins are positive tests):
+  `TestG_CO1_PostRenameOpenFailureOrphansTheAppendHandle`,
+  `TestG_CO2_BenignCompactionFailureDoesNotRefusePayouts` (anti-over-correction, stays green),
+  `TestG_CO3_BrokenStoreMustBeObservableByTheLedger`,
+  `TestR213_BackstopFiresWhenTheHandleDoesNotReachThePath (+ TestR213_RetiredHandleCloseFailureDoesNotBreakTheStore)`,
+  `TestR213_PreRenameOpenFailureLeavesTheStoreHealthy`,
+  `TestR213_BenignCompactionFailureIsRecordedNotDiscarded`. Also corrects the ROADMAP FP-1
+  parenthetical (the mirror crash window is not a pure under-pay, does not self-heal, and has a
+  shipped gate — ruling §4). Ruling:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-ledger-durability-family-FP2-R2.13-R2.10-2026-09-03.md`
+  §1 / §6. Deliberation: `docs/thinking/2026-09-03-r2.13-compact-orphan-design.md`.
+
 - **Three false claims corrected against the shipped tree (PE H-4, §4, §6).**
   `docs/thinking/2026-09-02-r0.4b-c3-close-design.md` §7 said "no consensus-validity change"
   when the change adds a validity predicate on both receive paths, a genesis door, a relaxed
