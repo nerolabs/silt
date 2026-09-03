@@ -846,14 +846,25 @@ func (n *Node) proposeBlock(b *chain.Block, attesters, broadcast []ports.NodeID,
 	// previously zeroed after one attempt, so a slash whose carrier proposal
 	// failed to gather quorum was silently dropped and the culprit's on-chain
 	// eviction could be lost).
+	// R0.6: pack under chain.SlashesBytesCap — the per-block encoded-BYTE ceiling
+	// every replica enforces (validateSlashes). Evidence is now always a FULL body
+	// pair, so a backlog of fat proofs can exceed one block; a proposal over the cap
+	// would be rejected by every replica while the queue requeued it forever (the
+	// doomed-proposal loop). So: embed in arrival order, always at least one, skip
+	// what would overflow (a later, smaller proof may still fit), and KEEP the rest
+	// queued — the drain proceeds at the cap rate with seniority preserved, the same
+	// shape as the bond-reg byte budget above.
 	if len(n.pendingSlashes) > 0 {
 		var still []chain.Equivocation
 		for _, e := range n.pendingSlashes {
 			if n.chain.IsSlashed(e.CulpritID()) {
 				continue
 			}
-			b.Slashes = append(b.Slashes, e)
 			still = append(still, e)
+			if len(b.Slashes) > 0 && chain.SlashesEncodedSize(append(b.Slashes[:len(b.Slashes):len(b.Slashes)], e)) > chain.SlashesBytesCap {
+				continue // carried to a later block
+			}
+			b.Slashes = append(b.Slashes, e)
 		}
 		n.pendingSlashes = still
 	}

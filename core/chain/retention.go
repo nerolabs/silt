@@ -15,8 +15,15 @@ package chain
 // research-outcome/safetyDepth-retention-horizon-RESEARCH-CERTIFICATION-2026-08-18.md):
 // one BondTTL for the bond-standing lifecycle (already ~4× the true ~8-head
 // BondRegHeadWindow re-verify need) + one BondTTL margin (slash-processing depth,
-// finality-lag, safety headroom). The slashing window drops out — slashing is served
-// by the retained headers+sigs, never the heavy Answer.
+// finality-lag, safety headroom). The slashing window does NOT drop out of this
+// derivation the way the original note claimed ("slashing is served by the retained
+// headers+sigs, never the heavy Answer"): under R0.6 (F2-EVIDENCE-RECOMPUTE) a pruned
+// block is never equivocation evidence, so slashability is BOUNDED BY THE PRUNE FLOOR.
+// The derivation survives because honest cross-fork detection only pairs heights at or
+// above the node's own finalized head, which is above pruneFloor (every honest evidence
+// block is still full); what is lost is the penalty for a late reveal below the floor,
+// where ErrPreFinalityReorg already forbids adoption (R-LATE-REVEAL, held in tension —
+// docs/decisions.md D-F2-EVIDENCE-RECOMPUTE).
 
 // RetentionHorizon reports the lowest height whose heavy BondReg.Answer this node must
 // still RETAIN in full: blocks with height < RetentionHorizon() are prune-eligible.

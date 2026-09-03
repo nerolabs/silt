@@ -92,10 +92,12 @@ through design and certification in one day. Record and index:
 [`docs/thinking/2026-09-03-roadmap-definition-program.md`](docs/thinking/2026-09-03-roadmap-definition-program.md).
 Each line below is the ONE sentence the certifying seat asks the owner to ratify; the Rock it lands on
 carries the argument and the sources. Two are LIVE BREAKS and come first.
-1. **R0.6 (I5 break, LIVE on main):** narrow F2 so equivocation evidence hashes are always recomputed
-   from full bodies and never read from `Pruned`, accepting that a double-sign whose evidence is already
-   pruned becomes unslashable, paired with a per-block encoded-byte ceiling on `Slashes`. Then: Tester
-   encodes the six RED-first gates; one Builder lands the fix. No era gate.
+1. **R0.6 (I5 break, LIVE on main) — ✅ RATIFIED 2026-09-03 (owner: "R0.6 ratified") and BUILT the same
+   day** (branch `builder/r0.6-i5-evidence-recompute`; PR pending): evidence
+   hashes recomputed from full bodies, `Pruned` never read, `Slashes` byte ceiling. The six RED-first gates
+   plus G-2/G-4/G-6 and the three-axis I5 model-check are GREEN; G-1 scanned zero hits. **Still owed: the
+   owner ratifies the `SlashesBytesCap` VALUE (provisional 16 MiB; G-3 measured — see
+   `docs/decisions.md` D-F2-EVIDENCE-RECOMPUTE).**
 2. **R0.7 / R2.14 (relay mint, behind a default-off flag):** build the relay prepayment anchor
    (bilateral PayWord, issuer == relay) as a prerequisite of R2.9, with settlement paying 0 and the flag
    default-off until it lands.
@@ -171,7 +173,7 @@ carries the argument and the sources. Two are LIVE BREAKS and come first.
   **(iii) re-scope** the e2e gate to the certified era-4 refusal — never an activation override, in
   any form, in any binary
   (`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-G8-dark-lane-CONVERGENCE-2026-09-03.md`).
-- **R0.6 · I5 CROSS-HEIGHT `Pruned` SLASH FORGERY — CONFIRMED LIVE BREAK ON MAIN (2026-09-03); fix direction CERTIFIED; OWNER RATIFICATION OWED; Tester gate owed.**
+- **R0.6 · I5 CROSS-HEIGHT `Pruned` SLASH FORGERY — CONFIRMED LIVE BREAK ON MAIN (2026-09-03); fix direction CERTIFIED; RATIFIED + BUILT 2026-09-03 (branch `builder/r0.6-i5-evidence-recompute`, PR pending); the cap VALUE ratification is owed.**
   `VerifyEquivocation` reads height from the evidence struct (`equivocation.go:50`) but the signed
   message from `Hash()` (`:53`), which returns attacker-supplied `b.Pruned` (`chain.go:658-660`) for
   the two Blocks inside `Slashes[i]`. Two GENUINE signatures by an honest validator at two DIFFERENT
@@ -855,7 +857,7 @@ economy-off HEAD certifies a network nobody runs. Design:
   artifact (see the sequencing constraint at the top of the Boulders). Owner-call, after the field
   set settles (R1.4) + domain-sep owned (R3.1). The prior "freeze at end-of-PoD" framing remains
   superseded.
-  **Pre-freeze carry-list — RE-PRICED 2026-09-03 by the enumeration closure cert: ZERO leaves are required for SAFETY.** What remains in freeze scope: **`tagRevLogSize`** (at most ONE leaf, LIVENESS-only — without it a floor box stalls terminally at the first takedown block after any pin; owner ratifies) · the `Block.IssuerKeys` per-block count cap (PE H-1) · the **`Slashes` per-block encoded-BYTE ceiling** (required by the R0.6 fix cert; a resource ceiling under immutable #8, not a security parameter; value measurement-gated) · **`R-AAXIS-TAG-RESERVE`** (one line: reserve the A-axis tag prefix so a future partition leaf is not a prefix collision — it does NOT avoid the era) · the O3 decision (RATIFIED T). **Dropped from the leaf list:** `tagLastProposer`, the parent hash/height, the K=8 hash window — all close with zero format change through the box-owned head record; R-membership (retire the whole-set folds is a leaf change ONLY if the C2 re-shape needs it — see its Rock). **Owed before the stamp raise, but not before the freeze:** R-CARRIER-PRUNED-HASH's end-to-end test, R-CARRIER-MODELCHECK, the `R-E2E-ERA4-FIXTURE` upgrade, the `IssuerKeyReg` PoP format slot (R-ISSUERKEY-POP).
+  **Pre-freeze carry-list — RE-PRICED 2026-09-03 by the enumeration closure cert: ZERO leaves are required for SAFETY.** What remains in freeze scope: **`tagRevLogSize`** (at most ONE leaf, LIVENESS-only — without it a floor box stalls terminally at the first takedown block after any pin; owner ratifies) · the `Block.IssuerKeys` per-block count cap (PE H-1) · the **`Slashes` per-block encoded-BYTE ceiling** (SHIPPED with R0.6, un-era-gated — it is a validity rule in every era, not a v5 leaf; what remains for the freeze is only that its VALUE be owner-ratified before the format is frozen) · **`R-AAXIS-TAG-RESERVE`** (one line: reserve the A-axis tag prefix so a future partition leaf is not a prefix collision — it does NOT avoid the era) · the O3 decision (RATIFIED T). **Dropped from the leaf list:** `tagLastProposer`, the parent hash/height, the K=8 hash window — all close with zero format change through the box-owned head record; R-membership (retire the whole-set folds is a leaf change ONLY if the C2 re-shape needs it — see its Rock). **Owed before the stamp raise, but not before the freeze:** R-CARRIER-PRUNED-HASH's end-to-end test, R-CARRIER-MODELCHECK, the `R-E2E-ERA4-FIXTURE` upgrade, the `IssuerKeyReg` PoP format slot (R-ISSUERKEY-POP).
   Sources: `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-floorbox-predicate-rederivation-structure-2026-09-03.md`
   §7, `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R-BOX-ATTESTS-scoping-CONVERGED-RESEARCH-VERDICT-2026-09-02.md`
   §9–§10, `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-R0.4b-C3-close-271ab81-final-2026-09-03.md`

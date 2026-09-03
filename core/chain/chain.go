@@ -403,6 +403,32 @@ const BlockVersionWitnessable = 5
 // the only one. See docs/decisions.md (era-4 entry) and docs/design/owned-residuals.md.
 const RegCap = 256
 
+// SlashesBytesCap is the per-block ceiling on the canonically-encoded BYTES of the
+// Slashes field, enforced on every write path in EVERY era (R0.6 (d-2), certification
+// I5-cross-height-pruned-slash-forgery-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03
+// §7). It is an immutable-#8 RESOURCE CEILING expressed as a validity rule — NOT a
+// security parameter and NOT RegCap's class: raising it never admits a forged slash
+// (CheckEquivocation is the only thing that convicts) and lowering it never convicts an
+// honest validator; it trades liveness (how much evidence one block carries) against
+// memory. It is needed because F2-EVIDENCE-RECOMPUTE makes FULL bodies the only
+// admissible evidence and Prune() never recurses into Slashes, so every admitted proof
+// pins two full block bodies — BondReg.Answer included — permanently resident on every
+// node, in the one slot pruning cannot reach. A BYTE ceiling, not a count: one proof
+// spans ~1 KB (header-only pair) to hundreds of MB (two reg-laden blocks), so a count
+// bounds nothing. The proposer packs pendingSlashes under this cap and carries the rest
+// (core/node/chainrole.go), so an honest backlog never produces a doomed proposal.
+//
+// PROVISIONAL VALUE — OWNER RATIFIES on immutable-#8 grounds (G-3 measurement pending;
+// TestSlashesBytesCapWorstCaseCost reports the resident/decode/validate cost at the cap).
+// Derivation from shipped bounds, not taste: an honest block is at most the default
+// per-block budgets (2 MiB of BondRegs + 64 KiB of entries, cmd/silt/daemon.go
+// -max-bondreg-bytes-per-block / -max-entry-bytes-per-block) plus a small header, so one
+// legitimate evidence pair is ≤ ~4.2 MiB; 16 MiB admits three such fat proofs, or
+// ~18,000 header-only proofs, per block, and is 1/8 of the 128 MiB transport frame
+// (adapters/tcpnet) that already bounds a block non-uniformly. A larger legitimate
+// backlog drains over successive blocks (liveness, not safety).
+const SlashesBytesCap = 16 << 20
+
 // Consensus signature phases (#432 two-phase gather, research-certified).
 // PhaseLegacy (0) is the era-1 bare-hash signature — what a pre-rounds
 // Attestation decodes as; never minted in era 2.
@@ -653,17 +679,38 @@ func (b *Block) Hash() ports.Hash {
 	// A pruned block's heavy body (BondReg.Answer) is gone, so its hash cannot be
 	// recomputed — it carries the pre-prune value. Authenticity is established by
 	// chain Prev-linkage to the trusted anchor + the Q2 gate (Reconcile), never by
-	// this field alone; a forged Pruned fails the proposer/attester signature check
-	// (sigs are over the real hash) and the decode invariant (Pruned ⟹ no Answer).
+	// this field alone. That linkage is the ONLY thing that authenticates a Pruned
+	// value: where an independent hash exists (the child's Prev, the anchor) a forged
+	// Pruned fails it, but a block that arrives with NO independent hash — the two
+	// evidence blocks inside Slashes[i] — has nothing binding Pruned to its body, so
+	// "the sigs are over the real hash" holds only for the digest the ACCUSER chose.
+	// The equivocation path therefore never reads this short-circuit: it recomputes
+	// from the body (bodyHash) and refuses pruned evidence outright (R0.6,
+	// F2-EVIDENCE-RECOMPUTE; docs/decisions.md D-F2-EVIDENCE-RECOMPUTE).
 	if b.IsPruned() {
 		return b.Pruned
 	}
 	if b.hashMemoSet {
 		return b.hashMemo
 	}
-	// StateRoot/LogRoot are folded in so attesters sign the era-3 committed roots. For
-	// an era-2 block both are zero and omitempty omits them, so the marshalled body — and
-	// thus the hash — is byte-identical to pre-2a (the compat property, see the field doc).
+	b.hashMemo = b.bodyHash()
+	b.hashMemoSet = true
+	return b.hashMemo
+}
+
+// bodyHash is the content digest recomputed from the block body, ALWAYS: it never
+// short-circuits to Pruned and never reads or writes hashMemo. It is the one hash
+// function the equivocation path uses (CheckEquivocation for verification and
+// FindEquivocations for candidate selection — G-6 of the R0.6 certification), because
+// an equivocation proof's blocks arrive with no independent hash: reading Pruned would
+// let the accuser choose the signed message (the I5 cross-height forgery), and reading
+// the memo would let an in-process value carry a digest over content it no longer
+// holds (RT-SV-2). Hash() memoizes exactly this value for a non-pruned block.
+//
+// StateRoot/LogRoot are folded in so attesters sign the era-3 committed roots. For an
+// era-2 block both are zero and omitempty omits them, so the marshalled body — and thus
+// the hash — is byte-identical to pre-2a (the compat property, see the field doc).
+func (b *Block) bodyHash() ports.Hash {
 	unsigned := Block{Version: b.Version, Height: b.Height, Prev: b.Prev, Entries: b.Entries, Proposer: b.Proposer, Revocations: b.Revocations, Unrevocations: b.Unrevocations, BondRegs: b.BondRegs, Slashes: b.Slashes, StateRoot: b.StateRoot, LogRoot: b.LogRoot, IssuerKeys: b.IssuerKeys}
 	buf := hashBufPool.Get().(*bytes.Buffer)
 	buf.Reset()
@@ -671,10 +718,9 @@ func (b *Block) Hash() ports.Hash {
 		panic(err) // canonical encoding of our own struct cannot fail
 	}
 	blockHashComputes.Add(1)
-	b.hashMemo = sha256.Sum256(buf.Bytes())
+	h := sha256.Sum256(buf.Bytes())
 	hashBufPool.Put(buf)
-	b.hashMemoSet = true
-	return b.hashMemo
+	return h
 }
 
 // blockHashComputes counts actual (non-memoized) Hash computations — the
@@ -690,11 +736,17 @@ func (b *Block) IsPruned() bool { return b.Pruned != (ports.Hash{}) }
 
 // Prune returns a payload-selective pruned copy of a FULL block: the heavy space-time
 // proofs (BondReg.Answer, ~1.5 MB each) are dropped and the pre-prune hash is stored,
-// so the block still hash-links and still carries its consensus signatures (unbounded
-// late-reveal slashing evidence) while shedding what OOMs a small box (build-immutable
-// #8). The header, signatures, and the light BondReg fields the STATE/slashing paths
-// read (Validator/Root/Size/Sig/Domain) are kept. Call ONLY on a finalized block
-// strictly below the retention horizon — the caller enforces that gate. Idempotent.
+// so the block still hash-links and still carries its consensus signatures while
+// shedding what OOMs a small box (build-immutable #8). A pruned block is NOT
+// equivocation evidence: its body no longer reproduces its hash, so CheckEquivocation
+// refuses it (R0.6) — a double-sign whose evidence blocks have both been pruned is
+// unslashable (R-LATE-REVEAL, held in tension; bounded to below the prune floor, where
+// ErrPreFinalityReorg already forbids adoption). Note that Prune does NOT recurse into
+// Slashes: evidence bodies embedded in a committed block stay resident forever, which is
+// why SlashesBytesCap bounds that slot. The header, signatures, and the light BondReg
+// fields the STATE paths read (Validator/Root/Size/Sig/Domain) are kept. Call ONLY on a
+// finalized block strictly below the retention horizon — the caller enforces that gate.
+// Idempotent.
 func (b Block) Prune() Block {
 	if b.IsPruned() {
 		return b
@@ -945,6 +997,19 @@ var (
 	// past the Q2 skip. The two are mutually exclusive by construction (Prune()
 	// drops every Answer); a hybrid is hand-crafted and refused (decode-invariant belt).
 	ErrMalformedPruned = errors.New("chain: block is marked pruned but carries a BondReg.Answer (malformed)")
+	// ErrPrunedEvidence rejects an equivocation proof whose evidence block is pruned
+	// (R0.6, F2-EVIDENCE-RECOMPUTE): a pruned body cannot reproduce its hash, so nothing
+	// binds the declared Height to the signed message and the accuser could pick the
+	// digest. Refused loudly and by name (S5) so a gate can tell "the rule fired" from
+	// "the fixture was degenerate". Always wrapped under ErrBadSlash on the write path.
+	ErrPrunedEvidence = errors.New("chain: equivocation evidence block is pruned — its body cannot reproduce its hash, so it binds no height and is not evidence (R0.6 F2-EVIDENCE-RECOMPUTE)")
+	// ErrNotEquivocation is CheckEquivocation's generic refusal for the honest
+	// exemptions (sequential heights, same block twice, mixed eras, no shared slot, no
+	// verifying signature) — the cases VerifyEquivocation has always returned false for.
+	ErrNotEquivocation = errors.New("chain: equivocation proof does not prove a double-sign")
+	// ErrSlashesBytesCapExceeded rejects a block whose canonically-encoded Slashes field
+	// exceeds SlashesBytesCap (R0.6 (d-2)); an at-cap block is accepted.
+	ErrSlashesBytesCapExceeded = errors.New("chain: block exceeds SlashesBytesCap — encoded Slashes bytes over the per-block ceiling (an immutable-#8 resource ceiling, not a security parameter)")
 	// ErrBadSlash rejects an on-chain equivocation record that is not a valid,
 	// self-verifying double-sign proof — so a forged slash cannot evict an honest
 	// validator (F2; forged-slash griefing stays denied).
@@ -1948,16 +2013,39 @@ func (c *Chain) ValidateBondRegErr(r BondReg) error {
 
 // validateSlashes verifies a block's on-chain equivocation records (F2): each
 // must be a self-verifying double-sign proof — the culprit's own signatures over
-// two DIFFERENT blocks at the SAME height. A forged accusation fails
-// VerifyEquivocation, so an honest validator cannot be evicted (forged-slash
-// griefing stays denied). Enforced on every write path.
+// two DIFFERENT blocks at the SAME height, with both hashes RECOMPUTED from full
+// bodies (never read from Pruned — R0.6). A forged accusation fails
+// CheckEquivocation, so an honest validator cannot be evicted (forged-slash
+// griefing stays denied); the named reason rides under ErrBadSlash. The
+// SlashesBytesCap ceiling is checked FIRST, before any signature work, so an
+// over-size field costs the validator one encode, not a verification sweep.
+// Enforced on every write path, every era.
 func (c *Chain) validateSlashes(b *Block) error {
+	if len(b.Slashes) == 0 {
+		return nil
+	}
+	if n := SlashesEncodedSize(b.Slashes); n > SlashesBytesCap {
+		return fmt.Errorf("%w: %d bytes (cap %d)", ErrSlashesBytesCapExceeded, n, SlashesBytesCap)
+	}
 	for i := range b.Slashes {
-		if !VerifyEquivocation(&b.Slashes[i]) {
-			return fmt.Errorf("%w: proof %d", ErrBadSlash, i)
+		if err := CheckEquivocation(&b.Slashes[i]); err != nil {
+			return fmt.Errorf("%w: proof %d: %w", ErrBadSlash, i, err)
 		}
 	}
 	return nil
+}
+
+// SlashesEncodedSize is the canonical CBOR size of a Slashes field — the quantity
+// SlashesBytesCap bounds. The proposer uses it to pack pendingSlashes under the cap.
+func SlashesEncodedSize(s []Equivocation) int {
+	if len(s) == 0 {
+		return 0
+	}
+	raw, err := encMode.Marshal(s)
+	if err != nil {
+		panic(err) // canonical encoding of our own struct cannot fail
+	}
+	return len(raw)
 }
 
 // BondedSize reports the objective on-chain bonded size for id (0 if none).
