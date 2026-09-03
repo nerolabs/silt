@@ -63,6 +63,18 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
     implementation — so it is carried as a deployment assumption, written for operators as
     `docs/network-durability.md` §9: do not run a demand issuer on a host with untrusted
     co-tenants sharing its CPU cache.
+  - **The `ValidatePub` cost gate is now a RATIO, not a wall-clock budget.** The 5 ms in
+    `TestC3_ValidatePubCostBudget` was a builder round-up of one M4 measurement (3.3 ms), and the
+    CI runner measured 10.5 ms best — so the gate reddened on hardware, not on a regression. The
+    ruling `R0.4b-C3-ValidatePub-cost-gate-RULING-2026-09-03` **REFUTES** that 5 ms is a security
+    parameter (nothing in `ValidatePub` branches on it; the crypto advisory's design quantity is
+    the RATIO and the per-message denominator, not a millisecond ceiling) and certifies the
+    replacement: `best <= K × perVerify` with `K = 1000`, both sides 2048-bit `big.Int` work
+    measured in the same process, so a uniform hardware slowdown cancels. Measured 154× on an M4,
+    159× in the advisory, 170× on this box. The milliseconds are still LOGGED so a human reads the
+    real cost. This is the UPPER bound on admission cost; `TestC3_HardnessRunsAtAdmissionNotOnEveryModexp`
+    already asserts the LOWER bound (`perVerify*10 <= admission`), which trips if the hardness half
+    moves back onto the modexp path. Neither is calibrated to a machine.
 - **R0.4b C3 final pre-ratification round — the G-8 dark-lane disposition (iii), the
   `swarm receipt` S5 legibility break, and the PE's final-review items.** Inputs: the G-8
   convergence `R0.4b-C3-G8-dark-lane-CONVERGENCE-2026-09-03`, the PE final ruling
