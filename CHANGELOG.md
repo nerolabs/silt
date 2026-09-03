@@ -9,6 +9,49 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Security
+- **R0.4b C3 certification fold-in — three merge-blocking gates closed (G-8, the dark paid
+  lane, is the owner's call and is NOT closed here):** the research certification
+  `R0.4b-C3-composed-close-bc062d0-RESEARCH-CERTIFICATION-2026-09-03` returned GATED.
+  - **G-3 — a torn tail was not realigned, so the next append LOST an acknowledged paid
+    serial.** `guardstore.Open` used `O_APPEND` with no size check. `Load` drops a trailing
+    partial record, which is sound only while it stays the tail: `O_APPEND` writes at the
+    file's unaligned size, so the next append shifted every record boundary after it and the
+    following `Load` spliced the orphan fragment onto the head of the real record. A plausible
+    spliced length byte (~1 in 8) makes that a SILENT wrong load with a paid serial no longer
+    guarded — the F2 double-pay through the adapter written to close F2. `Open` now truncates
+    back to the last complete record boundary and fsyncs before any append handle exists;
+    dropping the fragment is safe because `Append` had not returned, so nothing was paid
+    against it. Gated by `TestTornTailIsRealignedBeforeTheNextAppend` (RED before the fix and
+    under ablation).
+  - **G-4 — every guard refusal returned BEFORE the supersede, so a refusing server kept the
+    unfunded self-mint.** `RecordServeToObject` self-credits `0.875xB`; the conserved leg pays a
+    flat `fee - skim = 43,750`. Above 50,000 bytes refusing therefore beat being paid, and at
+    the 64 MiB production chunk it beat it by 1,342x (+58,676,506) — a profitable,
+    OPERATOR-TRIGGERABLE supersede-disable on Boulder 0's conservation rule, since an operator
+    can fill its own guard with junk serials at a net cost of zero. The refusals now run BELOW
+    the supersede, under one stated invariant: **a witnessed receipt reverses the self-mint
+    exactly once, whether or not it is paid.** `serial-already-paid` deliberately stays ABOVE
+    it — the guard's own record is what bounds double-reversal on a re-served lane — and an
+    unwitnessed receipt never reaches the ledger at all, so the self-mint survives until a
+    valid receipt arrives. The root cause (a flat fee against a byte-proportional mint,
+    residual R-FLAT-FEE) is a D-POD-KNOBS re-pricing needing its own certification and is NOT
+    closed here. Gated by `core/credit/r04b_c3_g4_supersede_test.go` (server nets 0 on a
+    refusal at 1 kB / 64 kB / 64 MiB; the 1,342x arithmetic pinned; one receipt reverses once)
+    and `core/node.TestG4_UnwitnessedReceiptLeavesTheSelfMintAlone`.
+  - **G-D — three false code-doc claims on money/consensus surfaces corrected** (behaviour
+    unchanged): `issuerKeyCommit` is pruned only on a REGISTRATION-CARRYING apply, not every
+    apply; `epochWatermark` is an honest-skew correctness device, NOT the "purely subtractive"
+    Byzantine defence its comment claimed (one caller-supplied `2^62` denies the ledger
+    forever); and the paid-serial store is appended before the ledger PAYS, not before it moves
+    any credit — the supersede's subtractive reversal runs first.
+  - **Flip preconditions recorded (no build owed yet).** FP-2/F8: the ledger must OWN a
+    chain-anchored epoch before any shared-ledger, third-operator-settlement or persisted-ledger
+    deployment; a clamp is not a close, and the faucet rate limiter must not be keyed on the
+    watermark. FP-1: `demand.Bank.spent` must be persisted before witnessed demand confers any
+    value — the Tester's scar criterion is NARROWED (a guard needs memory as durable as the
+    thing it guards), not waived, and re-arms in full the moment `Bank.Demand` /
+    `Node.WitnessedDemand` acquires a non-observability consumer.
+
 - **R0.4b C3 re-break round — ten confirmed red-team breaks closed (DO NOT MERGE unratified;
   F1 is a consensus-rule change awaiting certification):** a second blind pass on the C3 close
   (`RED-TEAM-R0.4b-C3-close-RE-BREAK-2026-09-03`) confirmed ten breaks and two refutations. The

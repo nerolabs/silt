@@ -179,3 +179,93 @@ func TestMaxSerialBytesMatchesTheTokenSerial(t *testing.T) {
 			maxSerialBytes, blindtoken.SerialSize)
 	}
 }
+
+// TestTornTailIsRealignedBeforeTheNextAppend is the G-3 gate (research certification
+// R0.4b-C3-composed-close-bc062d0, 2026-09-03).
+//
+// TestTornTailIsDroppedNotFatal above only proves Load SKIPS a torn tail on the same
+// handle. It never re-opens and never appends after the tear, so it does not see the
+// real sequence: Open sets the append offset to the file's UNALIGNED size, the next
+// Append lands at that offset, and the record boundary is permanently shifted. The
+// next Load then splices the orphan fragment onto the head of the real record and the
+// ACKNOWLEDGED entry — one the ledger already paid against — is gone. That is the F2
+// double-pay reached through a narrower door: the guard forgets a paid token.
+//
+// Ablate the realignment in Open and this goes RED with the appended serial absent.
+func TestTornTailIsRealignedBeforeTheNextAppend(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "paidserials.log")
+	d, err := Open(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	whole := []ports.PaidSerial{entry(1, 1), entry(2, 2), entry(3, 3)}
+	for _, e := range whole {
+		if err := d.Append(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := d.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// A crash mid-Append: the HEAD of a fourth record reached the disk. Half a real
+	// record, so its length byte is valid and the splice below is SILENT rather than
+	// an ErrCorrupt boot failure — the ~1-in-8 case the certification names.
+	torn, err := encode(entry(4, 4))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.OpenFile(p, os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.Write(torn[:recSize/2]); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Restart, then one more PAID delivery.
+	d2, err := Open(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	acked := entry(9, 9)
+	if err := d2.Append(acked); err != nil {
+		t.Fatal(err)
+	}
+	if err := d2.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Restart again: everything the ledger paid against must still be here.
+	d3, err := Open(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := d3.Load()
+	if err != nil {
+		t.Fatalf("load after tear+append: %v", err)
+	}
+	want := append(append([]ports.PaidSerial(nil), whole...), acked)
+	if len(got) != len(want) {
+		t.Fatalf("after tear -> reopen -> append -> reopen the store holds %d entries, want %d: %+v",
+			len(got), len(want), got)
+	}
+	for i := range want {
+		if string(got[i].Serial) != string(want[i].Serial) || got[i].Server != want[i].Server || got[i].Epoch != want[i].Epoch {
+			t.Fatalf("entry %d read back as %+v, want %+v. A mis-framed log LOSES an "+
+				"acknowledged paid serial — the F2 double-pay, through the adapter written to close it.",
+				i, got[i], want[i])
+		}
+	}
+	// And the torn fragment must be gone, not re-framed into a record.
+	st, err := os.Stat(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Size()%recSize != 0 {
+		t.Fatalf("the log is %d bytes, not a whole number of %d-byte records", st.Size(), recSize)
+	}
+}

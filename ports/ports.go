@@ -343,10 +343,16 @@ type PaidSerial struct {
 // performs.
 //
 // DURABILITY IS ORDERED, like SignMarkStore's. Append MUST make the entry durable
-// (fsync) BEFORE it returns: the ledger appends before it moves any credit, so a crash
-// between the two leaves a guard entry for a payout that never happened (safe — an
-// under-pay), never a payout with no guard entry (which a restart would let a second
-// server collect again).
+// (fsync) BEFORE it returns: the ledger appends before it PAYS, so a crash between the
+// two leaves a guard entry for a payout that never happened (safe — an under-pay),
+// never a payout with no guard entry (which a restart would let a second server
+// collect again).
+//
+// "Before it pays", precisely — NOT "before it moves any credit". The redeem path
+// reverses the delivery's provisional self-mint (the supersede) before this append,
+// and that reversal is purely subtractive, so a crash between the reversal and the
+// append is again an under-pay. core/credit/delivery.go states the full ordering
+// invariant.
 type PaidSerialStore interface {
 	// Load returns every persisted entry. An absent store is an empty slice, no error.
 	Load() ([]PaidSerial, error)

@@ -56,9 +56,13 @@ type Disk struct {
 	f    *os.File
 }
 
-// Open prepares the store at path, creating the parent directory if needed.
+// Open prepares the store at path, creating the parent directory if needed, and
+// REALIGNS a torn tail before handing back an append handle.
 func Open(path string) (*Disk, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return nil, fmt.Errorf("guardstore: %w", err)
+	}
+	if err := realign(path); err != nil {
 		return nil, fmt.Errorf("guardstore: %w", err)
 	}
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
@@ -66,6 +70,46 @@ func Open(path string) (*Disk, error) {
 		return nil, fmt.Errorf("guardstore: %w", err)
 	}
 	return &Disk{path: path, f: f}, nil
+}
+
+// realign truncates the file back to its last COMPLETE record boundary and fsyncs,
+// before any append handle exists (research certification 2026-09-03, gate G-3).
+//
+// WHY IT IS NOT OPTIONAL. Load drops a trailing partial record, which is sound only
+// while the partial record STAYS the tail. O_APPEND sets the write offset to the
+// file's size, so without this the next Append lands at an unaligned offset and every
+// record boundary after it is shifted by the size of the orphan fragment. The next
+// Load then splices the fragment onto the head of the real record: if the spliced
+// length byte is impossible the store is a refuse-to-start outage, and if it is
+// plausible (the fragment's first byte is a serial or NodeID byte, so roughly 1-in-8)
+// the load succeeds SILENTLY with wrong contents and an ACKNOWLEDGED paid serial —
+// one the ledger already paid against — is no longer guarded. That is the F2
+// double-pay, reached through the adapter written to close it.
+//
+// Dropping the fragment is safe by this store's own argument: a partial record means
+// Append had not returned, so the ledger had not moved any credit against it. Truncate
+// then fsync, so the shorter size is durable BEFORE any append can be written past it.
+func realign(path string) error {
+	f, err := os.OpenFile(path, os.O_WRONLY, 0o600)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil // a fresh store is aligned by construction
+		}
+		return err
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	rem := st.Size() % recSize
+	if rem == 0 {
+		return nil
+	}
+	if err := f.Truncate(st.Size() - rem); err != nil {
+		return err
+	}
+	return f.Sync()
 }
 
 // Close releases the append handle.

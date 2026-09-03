@@ -197,3 +197,92 @@ func TestRTC3_RestartDoesNotRePayTheSameWireReceipt(t *testing.T) {
 			firstPay, secondPay)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// G-4 gate (iii), on the shipped wire lane (research certification
+// R0.4b-C3-composed-close-bc062d0-RESEARCH-CERTIFICATION-2026-09-03, item 4).
+//
+// The G-4 fix makes every guard refusal reverse the serve's eager self-mint. The
+// boundary of that rule is WITNESSED: an unwitnessed or malformed receipt must NOT
+// reverse anything — the self-mint stays until a valid receipt arrives, which is the
+// legitimate unwitnessed bilateral fallback (RecordServeToObject's 1 credit/byte).
+//
+// The property is structural: demandBank.Redeem returns credited=false, so
+// handleDeliveryReceipt never calls the ledger at all. This gate holds it in place,
+// because "reverse on every refusal" is one careless hoist away from "reverse on
+// anything that arrives on the wire" — which would let an unauthenticated peer erase
+// a server's earnings for free.
+// ---------------------------------------------------------------------------
+func TestG4_UnwitnessedReceiptLeavesTheSelfMintAlone(t *testing.T) {
+	sched := simclock.New()
+	net := simnet.New(sched, 3, simnet.DefaultConfig())
+	srvIdent := identity.FromSeed(9301)
+	fetcherIdent := identity.FromSeed(9303)
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := c3Chain(t, 1, srvIdent.Signer(),
+		chain.SignIssuerKeyReg(srvIdent.Signer(), 0, demand.KeyFingerprint(&key.PublicKey)))
+
+	srv := New(srvIdent.NodeID(), DefaultConfig(), sched, net.Endpoint(srvIdent.NodeID()), memstore.New())
+	srv.SetSigner(srvIdent.Signer())
+	ledger := credit.New(50_000, 0)
+	srv.SetLedger(ledger)
+	srv.EnableChain(c, srvIdent.Signer())
+	srv.SetDemandIssuerKey(0, key)
+	srv.EnableDemandBank(srv.ID())
+
+	obj := ports.HashBytes([]byte("g4-unwitnessed-object"))
+	const served = int64(64 << 20)
+	ledger.Register(srv.ID())
+	ledger.Register(fetcherIdent.NodeID())
+	before := ledger.Balance(srv.ID())
+	ledger.RecordServeToObject(srv.ID(), fetcherIdent.NodeID(), obj, ports.ChunkID(obj), served)
+	selfMint := ledger.Balance(srv.ID()) - before
+	if selfMint <= 0 {
+		t.Fatalf("setup: the serve produced no self-mint (%+d)", selfMint)
+	}
+
+	// A receipt whose blind signature is garbage: correctly shaped, correctly
+	// addressed to this server, and NOT witnessed by the issuer.
+	serial, err := blindtoken.NewSerial(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forged := demand.Token{Serial: serial, Sig: make([]byte, 256)}
+	r := demand.Ack(fetcherIdent.Signer(), forged, obj, srv.ID())
+	blob, err := demand.SubmittedReceipt{Token: forged, Receipt: r}.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 3; i++ {
+		srv.handleDeliveryReceipt(fetcherIdent.NodeID(), ports.Message{Kind: ports.MsgDeliveryReceipt, Data: blob})
+	}
+	if got := ledger.Balance(srv.ID()) - before; got != selfMint {
+		t.Fatalf("an UNWITNESSED receipt moved the server's balance to %+d off pre-serve, "+
+			"want the intact self-mint %+d. The supersede reverses only for a receipt the "+
+			"bank verified; an unauthenticated peer must not be able to erase a serve.",
+			got, selfMint)
+	}
+
+	// The premise leg: this fixture CAN reverse. Without it the assertion above would
+	// pass on a lane that never reaches the ledger for any reason at all.
+	blinded, secret, err := demand.Withdraw(rand.Reader, &key.PublicKey, 0, serial)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tok := demand.Unblind(&key.PublicKey, serial, demand.SignWithdrawal(key, blinded), secret)
+	real := demand.Ack(fetcherIdent.Signer(), tok, obj, srv.ID())
+	realBlob, err := demand.SubmittedReceipt{Token: tok, Receipt: real}.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv.handleDeliveryReceipt(fetcherIdent.NodeID(), ports.Message{Kind: ports.MsgDeliveryReceipt, Data: realBlob})
+	if got := ledger.Balance(srv.ID()) - before; got == selfMint {
+		t.Fatalf("the WITNESSED receipt did not supersede the self-mint (still %+d) — "+
+			"the negative leg above proves nothing on a fixture that never reaches the ledger",
+			got)
+	}
+}

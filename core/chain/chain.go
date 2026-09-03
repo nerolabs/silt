@@ -1160,7 +1160,14 @@ type Chain struct {
 	//
 	// APPEND-ONLY: a committed (epoch, issuer) is never overwritten, so key_E cannot
 	// be re-pointed after the fact. Bounded: the retention band is a fixed number of
-	// epochs around the head, pruned every apply (pruneIssuerKeyCommit). Committed as
+	// epochs around the head, pruned on every apply THAT CARRIES A REGISTRATION
+	// (pruneIssuerKeyCommit, called only inside that branch). A registration-free
+	// block is a no-op — pruning by HEIGHT deleted committed leaves the floor box
+	// could neither see nor reproduce, which is the two-tier split red-team break F1
+	// closed. Every ADD is in-band by validity, so pruning at each add re-establishes
+	// at most 2W+1 buckets on every block that can grow the map: the bound holds
+	// (build-immutable #8). The behavioural give is residual R-BAND-DRAIN — after the
+	// last registration the band no longer drains to empty, it persists. Committed as
 	// v5-ONLY leaves (tagIssuerKey), so a v4 block's root stays byte-identical to the
 	// frozen era-3 leaf set. INERT to consensus — no validity predicate, quorum,
 	// fork-choice rule, or floor-box recompute reads it. See issuerkey.go.

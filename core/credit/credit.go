@@ -158,8 +158,10 @@ type Ledger struct {
 	// ledger has read it yet (R0.4b re-break F2, 2026-09-03). Without it a restart is
 	// an eviction of EVERY entry, in-window or not — the one eviction mode the design
 	// forbids, and the one every node performs. The ledger appends to the store BEFORE
-	// it moves any credit, and refuses every guarded redeem while a store is attached
-	// but unloaded. Nil store = the pre-existing in-memory-only behaviour (the sim and
+	// it PAYS — the supersede's reversal of the serve's self-mint runs first, which is
+	// safe because that reversal is purely subtractive (see delivery.go's ordering
+	// invariant) — and it refuses every guarded redeem while a store is attached but
+	// unloaded. Nil store = the pre-existing in-memory-only behaviour (the sim and
 	// most tests), which is sound exactly as long as the ledger it guards is equally
 	// ephemeral — see the delivery.go call site.
 	paidStore   ports.PaidSerialStore
@@ -176,11 +178,24 @@ type Ledger struct {
 	// so the ledger is where the monotone clock belongs: it sweeps and admits against
 	// max(epoch ever seen), never against a laggard's view.
 	//
-	// PURELY SUBTRACTIVE, like the rest of the guard. A monotone watermark can only
-	// widen what is refused, never what is paid, so the worst case is an UNDER-pay of
-	// one server's conserved leg during a skew — never an over-pay and never a mint.
-	// Unreachable in today's production topology (one ledger per node, one head), so
-	// this is a cheap close ahead of any shared-ledger or third-operator settlement.
+	// AN HONEST-SKEW CORRECTNESS DEVICE, NOT A BYZANTINE DEFENCE (research
+	// certification 2026-09-03, item 5 — this comment previously claimed the stronger
+	// property and was false as written). Against HONEST redeemers whose heads
+	// straddle a boundary the watermark can only widen what is refused, so the worst
+	// case is an UNDER-pay of one server's conserved leg — never an over-pay, never a
+	// mint. It is NOT a defence against a lying redeemer: currentEpoch is supplied by
+	// the caller, rises without bound and never falls, so ONE call at 2^62 refuses
+	// every honest redeem thereafter. It cannot become a Byzantine defence while this
+	// boundary is unauthenticated — an attacker able to lie about currentEpoch here
+	// can equally call the pay path with a fabricated serial, since nothing at this
+	// boundary proves a fee was collected.
+	//
+	// Both the lie and the skew are unreachable on today's production topology (one
+	// ledger per node; currentEpoch is n.chainEpoch(), bounded by the node's own head).
+	// FLIP PRECONDITION FP-2: before ANY shared-ledger, third-operator-settlement or
+	// persisted-ledger deployment, the ledger must OWN a chain-anchored epoch rather
+	// than take one as a parameter. A clamp on the advance is a mitigation, not a
+	// close, and the faucet rate limiter must NOT be keyed on this watermark.
 	epochWatermark uint64
 
 	// sweptEpoch is the last epoch at which sweepExpiredSerials actually ran, and
