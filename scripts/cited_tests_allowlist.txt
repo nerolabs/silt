@@ -74,3 +74,5 @@ TestChargePricesAllByWork
 # the old name asserted is not silently dropped — it is carried by
 # sim.TestPaidDeliveryLaneThreeCallComposition and tracked as R-E2E-ERA4-FIXTURE.
 TestDeliveryReceiptBankedOverTCP
+# (H) R0.6 (2026-09-03): superseded by TestPrunedEvidenceIsRefused — cited historically as the test that pinned the behaviour removed.
+TestQ2_PrunedBlockStillSlashable

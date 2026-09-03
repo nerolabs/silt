@@ -846,14 +846,33 @@ func (n *Node) proposeBlock(b *chain.Block, attesters, broadcast []ports.NodeID,
 	// previously zeroed after one attempt, so a slash whose carrier proposal
 	// failed to gather quorum was silently dropped and the culprit's on-chain
 	// eviction could be lost).
+	// R0.6: pack under chain.SlashesBytesCap — the per-block encoded-BYTE ceiling
+	// every replica enforces (validateSlashes). Evidence is now always a FULL body
+	// pair, so a backlog of fat proofs can exceed one block; a proposal over the cap
+	// would be rejected by every replica while the queue requeued it forever (the
+	// doomed-proposal loop). So: embed in arrival order, always at least one, skip
+	// what would overflow (a later, smaller proof may still fit), and KEEP the rest
+	// queued — the drain proceeds at the cap rate with seniority preserved, the same
+	// shape as the bond-reg byte budget above.
 	if len(n.pendingSlashes) > 0 {
 		var still []chain.Equivocation
 		for _, e := range n.pendingSlashes {
 			if n.chain.IsSlashed(e.CulpritID()) {
 				continue
 			}
-			b.Slashes = append(b.Slashes, e)
+			if chain.SlashesEncodedSize([]chain.Equivocation{e}) > chain.SlashesBytesCap {
+				// Can never commit anywhere (see slashEquivocators): DROP, never embed —
+				// embedding it would doom this and every later proposal by this node.
+				// Release the on-chain latch so a later, smaller proof can be queued.
+				delete(n.slashQueued, e.CulpritID())
+				n.logf(ports.LogWarn, "dropping queued equivocation proof over SlashesBytesCap", "culprit", e.CulpritID(), "height", e.A.Height)
+				continue
+			}
 			still = append(still, e)
+			if len(b.Slashes) > 0 && chain.SlashesEncodedSize(append(b.Slashes[:len(b.Slashes):len(b.Slashes)], e)) > chain.SlashesBytesCap {
+				continue // carried to a later block
+			}
+			b.Slashes = append(b.Slashes, e)
 		}
 		n.pendingSlashes = still
 	}
@@ -1270,16 +1289,36 @@ func (n *Node) slashEquivocators(a, b []chain.Block) {
 		// every ~2s indefinitely. The local penalty, warn line, and callback
 		// fire once per culprit; the ON-CHAIN record has its own lifecycle
 		// (pendingSlashes requeues until a commit confirms it).
+		// Queue the proof for on-chain recording so the OBJECTIVE set evicts the
+		// culprit in lockstep on every replica (F2), not just this local ledger.
+		// The on-chain latch (slashQueued) is SEPARATE from the local one below
+		// (Researcher V-1): a culprit whose first proof could not be queued must still
+		// get a later one queued.
+		//
+		// R0.6: a proof that ALONE exceeds chain.SlashesBytesCap can never commit on any
+		// replica, so it is never queued — queuing it would make every proposal by this
+		// node invalid for good (the local pre-check fails forever; the only removal is
+		// IsSlashed, which never flips). The local ledger penalty below still applies.
+		// Reachable by one Byzantine validator that signs a fat garbage block at a height
+		// it also honestly attested and serves it as a peer (PE ruling F-1), so it is
+		// logged by name, once per culprit; the culprit keeps its on-chain seat
+		// (R-BIG-EVIDENCE-UNSLASHABLE — the cap's second face, see SlashesBytesCap).
+		if n.chain != nil && !n.chain.IsSlashed(cid) && !n.slashQueued[cid] {
+			if sz := chain.SlashesEncodedSize([]chain.Equivocation{e}); sz > chain.SlashesBytesCap {
+				if !n.slashOverCapLogged[cid] {
+					n.slashOverCapLogged[cid] = true
+					n.logf(ports.LogWarn, "equivocation proof exceeds SlashesBytesCap; not queued for on-chain slashing", "culprit", cid, "height", e.A.Height, "bytes", sz, "cap", chain.SlashesBytesCap)
+				}
+			} else {
+				n.pendingSlashes = append(n.pendingSlashes, e)
+				n.slashQueued[cid] = true
+			}
+		}
 		if n.slashedLocal[cid] {
 			continue
 		}
 		n.slashedLocal[cid] = true
 		n.ledger.SlashEquivocation(cid) // legacy/rep path
-		// Queue the proof for on-chain recording so the OBJECTIVE set evicts the
-		// culprit in lockstep on every replica (F2), not just this local ledger.
-		if n.chain != nil && !n.chain.IsSlashed(cid) {
-			n.pendingSlashes = append(n.pendingSlashes, e)
-		}
 		n.logf(ports.LogWarn, "validator slashed for equivocation", "culprit", cid, "height", e.A.Height)
 		if n.onSlash != nil {
 			n.onSlash(cid, e.A.Height)
@@ -1373,7 +1412,17 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 			// — where forks can exist; below it, finality forbids a fork, so a
 			// sub-finalized double-sign is either already-slashed at commit or a
 			// >f attack out of the safety model.
-			n.slashEquivocators(old, full)
+			// R0.6 (PE ruling F-3): candidate selection body-hashes both sides, and
+			// reconstructFork is genesis-rooted, so scanning `full` would re-hash our
+			// own verified prefix twice per sweep (the #555 class, measured 43 µs →
+			// 228 ms at n=600). The prefix below the served start is OUR OWN blocks on
+			// both sides (identical, never a candidate), so scan only the heights the
+			// peer actually served: a cross-fork double-sign can exist only there.
+			cmp := old
+			if start := served[0].Height; start > 0 && uint64(len(old)) >= start {
+				cmp = old[start:]
+			}
+			n.slashEquivocators(cmp, served)
 			n.Stats.ChainSyncFullReconciles++
 			diag.reconciles++
 			if ok, rerr := n.chain.Reconcile(full); ok {

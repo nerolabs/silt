@@ -1282,3 +1282,106 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
   additionally requires: **R-membership** (OPEN — a set-size bound on qualified / `validatorsSeen`);
   the **EXTERNAL B8 red-team pass** (owner-ratified HARD precondition); the **#535
   recovery-boundary decision**; and the **legacy-mode invariant**.
+
+## D-F2-EVIDENCE-RECOMPUTE — equivocation evidence is recomputed from the body, never read from `Pruned`; `Slashes` gets a byte ceiling
+
+- **Status:** ✅ RATIFIED — 2026-09-03 (owner: *"R0.6 ratified"*). Built the same day on
+  `builder/r0.6-i5-evidence-recompute`. Certification:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/I5-cross-height-pruned-slash-forgery-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md`.
+  Deliberation: `docs/thinking/2026-09-03-r0.6-i5-evidence-recompute-design.md`.
+- **The break (I5, LIVE on main, every era).** `VerifyEquivocation` read the height from a
+  struct field but the signed message from `Hash()`, which short-circuits to the
+  accuser-supplied `Pruned` for the two blocks inside `Slashes[i]`. Two GENUINE signatures by
+  an honest validator at two DIFFERENT heights, re-labelled with one fictitious height,
+  verified as a double-sign; through `Append` the honest validator was slashed, evicted and
+  disqualified forever. A Byzantine PEER sufficed — an honest node queued the forgery itself.
+- **The rule (F2-EVIDENCE-RECOMPUTE, a narrowing consensus-rule change, NO era gate).** An
+  equivocation proof's two block hashes are always recomputed from the body (`bodyHash`),
+  never read from `Block.Pruned` and never from the hash memo; a pruned evidence block is
+  refused outright with `ErrPrunedEvidence`. One hash function serves both candidate
+  selection (`FindEquivocations`) and verification (`CheckEquivocation`), so proposer and
+  validator close in one edit. Strictly narrowing: it can never manufacture a slash. The
+  practical fork set is empty (G-1: every persisted chain fixture scanned, zero committed
+  slashes with pruned evidence); no grandfather height.
+- **The accepted cost — R-LATE-REVEAL, held in tension.** A double-sign whose evidence
+  blocks have BOTH been payload-pruned is unslashable. Bounded to below the prune floor
+  (honest detection pairs only heights at or above the node's finalized head, which is
+  above `pruneFloor`), where `ErrPreFinalityReorg` already forbids adoption: safety is
+  unaffected, only the penalty is lost. Closed only by the long-run form (d-3): a two-level
+  block hash (`AnswerDigest` in place of `Answer`) at the next `BlockVersion` mint.
+- **The pair — `SlashesBytesCap`, an immutable-#8 RESOURCE CEILING, not a security
+  parameter.** Full bodies are now the only admissible evidence and `Prune()` never recurses
+  into `Slashes`, so every admitted proof pins two full bodies (`BondReg.Answer` included)
+  permanently on every node. The ceiling is on canonically-encoded BYTES (a count bounds
+  nothing: one proof spans ~1 KB to hundreds of MB), enforced first on every write path in
+  every era; at-cap accepts; the proposer packs `pendingSlashes` under it and carries the
+  rest. Raising it never admits a forged slash; lowering it never convicts an honest
+  validator — that is the whole argument that it is not a security parameter. **The PE
+  review adds the other face (F-2):** the value is also the size above which a
+  double-signer's evidence cannot be committed, so an equivocator who makes both its blocks
+  over-cap keeps its on-chain seat (the local ledger still penalises it; the class pre-existed
+  at the 132 MiB frame). Whether I5's COMPLETENESS half makes the value research-gated is
+  routed to the Researcher — **and the Researcher's delta certification REFUTED the "not a
+  security parameter" wording as stated: the cap is DUAL-FACE** (a resource ceiling on the
+  honest-never-slashed axis; the evidence-size completeness bound on the deterrent axis). The
+  local ledger penalty is consensus-inert in objective mode, so an un-evicted equivocator keeps
+  its seat; a ≥⅓ coalition can make every pair over-cap with ~6 of its own valid renewals per
+  block, so for fat coalitions accountable safety degrades to plain safety (attribution
+  survives, eviction is lost). No admissible value closes that face — silt's evidence is the
+  whole signed body — so the number is still ratifiable on immutable-#8 grounds with the face
+  DISCLOSED; only the v5 two-level block hash (d-3) removes it, which therefore joins the R3.4
+  pre-freeze carry-list, and the face goes to the R4.4 external brief. Invariant on the value:
+  `SlashesBytesCap ≥ 2 × (default honest block) + overhead`. Two interims REFUTED: a
+  consensus block byte cap (collides with `RegCap`); an attester-side byte policy (collides with
+  the #432 forced-value rule). Source:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.6-SlashesBytesCap-value-security-face-DELTA-CERTIFICATION-2026-09-03.md`.
+  **Provisional value 16 MiB — the owner ratifies the NUMBER on immutable-#8 grounds, with the
+  second face disclosed. The owner sentence (Researcher Q4):** ratify 16 MiB as the memory ceiling
+  knowing it is also the evidence size above which a double-signer keeps its seat with no on-chain
+  penalty, including every member of a ≥⅓ coalition that splits finality using ~9 MB valid
+  blocks, a face no value of the cap closes and only (d-3) removes.
+  Derived from shipped bounds: one legitimate evidence pair is at most two blocks at the
+  default per-block budgets (2 MiB regs + 64 KiB entries) ≈ 4.2 MiB, so 16 MiB admits three
+  fat proofs (or ~18k header-only ones) and is 1/8 of the 128 MiB transport frame. G-3
+  measured (`TestSlashesBytesCapWorstCaseCost`): 5 reg-laden proofs at 3.00 MiB each fill the
+  cap; 15.0 MiB resident after decode; `validateSlashes` 11.5 ms.
+- **Gates (all GREEN; controlled revert RED).** T-1/T-2 the era-1/era-2 forgery through
+  `Append`; T-3 a genuine double-sign still convicts; T-4 `TestPrunedEvidenceIsRefused`
+  (supersedes `TestQ2_PrunedBlockStillSlashable`, which pinned the behaviour removed); T-5
+  the honest-node vector (`core/node`, reproduced first); T-6 the cap over/at; G-2 honest
+  detection never pairs a pruned block; G-4 memo bypass; G-6 one hash function (source pin);
+  the I5 model-check gained three axes (declared-vs-signed height; `Pruned` ∈ {unset, real,
+  forged}; era ∈ {1, 2}; 9,792 cases). Removing the recompute turns six gates RED; the
+  Tester's independent half-revert matrix shows the refusal half and the recompute half are
+  each gated on their own. Packing gate `TestProposerPacksPendingSlashesUnderTheBytesCap`
+  (`core/node`): a backlog over the cap is carried, the proposal never exceeds the cap, and a
+  proof that alone exceeds it is dropped, never embedded (PE ruling F-1). Researcher V-1 gate
+  `TestOverCapProofDoesNotSilenceLaterProofsByTheSameCulprit`: the once-per-culprit LOCAL
+  latch is separate from the ON-CHAIN queue latch, so a culprit whose first proof was over the
+  cap still gets a later small proof queued; the over-cap WARN line is pinned as an S5 contract
+  (V-6).
+- **G-1, stated exactly.** Artifacts scanned: the four persisted chain fixtures in the tree
+  (`core/chain/testdata/archival/{era1,era2,era2-pruned,mixed-era1-era2}.cbor`), against BOTH
+  new invalidation predicates (pruned evidence; `Slashes` over 16 MiB). They carry zero
+  `Slashes` at all, so both pass vacuously. No persisted field chain (`chain.cbor`) exists in
+  the tree or in the local cloudtest evidence directories; the flixz deployment was not
+  scanned. **Accepted explicitly:** no persisted chain silt holds carries a committed slash,
+  and no network mints them today; the rule ships unconditional, no grandfather height. If a
+  field box with committed slashes is ever restored onto this binary, the reload truncates at
+  the first invalidated block and stalls loudly rather than accept it.
+- **PE ruling:** MERGE-WITH-CONDITIONS, conditions F-1 and F-4 landed in the same PR
+  (`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-R0.6-i5-evidence-recompute-3131d5a-2026-09-03.md`).
+  Owed after: F-5 (pin `finalized > pruneFloor`, the G-2 derivation); the F-2 research
+  question; a byte-tight at-ceiling fixture (the Tester: the accepted list lands 1.12 MiB
+  under the cap).
+- **Residuals, OPEN and named (not decided here).** R-EVIDENCE-BYTES (re-priced, bounded by
+  the cap; re-opens if `RegCap` rises or #299 lands); R-BIG-EVIDENCE-UNSLASHABLE
+  (pre-existing: evidence over the transport frame was never gossipable); **R-BOX** (the
+  floor box reconstructs the slash write-set from `b.Slashes` without `CheckEquivocation` —
+  the rule must appear on both sides or `box.Accept ⇒ node.Accept` is vacuous over slashes;
+  routed to Boulder 1); R-MEMO (F5: `Hash()` writes a non-wire memo; G-4 covers this path
+  only); R-RELOAD-RE-VERIFY (own-disk replay re-runs `validateSlashes` on committed history —
+  whether to skip it is a separate consensus-rule question, NOT built on this cert).
+- **Canon text changed with it.** `docs/design/consensus-invariants.md` I5 (new scar +
+  assert); `core/chain/retention.go` (the "slashing window drops out" premise refuted);
+  `core/chain/chain.go` `Hash`/`Prune` docs.

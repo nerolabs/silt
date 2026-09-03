@@ -9,6 +9,58 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Security
+- **R0.6 — the I5 cross-height `Pruned` slash forgery (LIVE on main, every era) is closed:
+  equivocation evidence is recomputed from the body, never read from `Pruned`; `Slashes` gets a
+  per-block byte ceiling.** `VerifyEquivocation` read the height from a struct field but the
+  signed message from `Hash()`, which short-circuits to the accuser-supplied `Pruned` for the
+  two blocks inside `Slashes[i]`; two genuine signatures by an honest validator at two different
+  heights, re-labelled with one height, convicted it through `Append` — and a Byzantine PEER
+  sufficed, because an honest node queued the forgery on detection. Fix (owner-ratified,
+  research-CERTIFIED direction, NO era gate): `CheckEquivocation` (the named form of
+  `VerifyEquivocation`) refuses a pruned evidence block with `ErrPrunedEvidence` and hashes both
+  bodies with `bodyHash` — no `Pruned` short-circuit, no memo — and `FindEquivocations` selects
+  candidates with the SAME function, so proposer and validator close in one edit; the code now
+  matches the rule its own doc comment always stated. Paired with `SlashesBytesCap` (16 MiB,
+  PROVISIONAL — an immutable-#8 resource ceiling, not a security parameter; the owner ratifies
+  the value), checked first on every write path in every era, at-cap accepted; the proposer packs
+  `pendingSlashes` under it and carries the rest. Gates (RED-first, `Append` as oracle; six go
+  RED again under a controlled revert): `core/chain/r06_i5_evidence_recompute_test.go` (T-1/T-2
+  era-1/era-2 forgery, T-3 genuine double-sign still convicts, T-6 cap over/at, G-2 honest
+  detection never pairs a pruned block, G-4 memo bypass, G-6 one-hash-function source pin),
+  `TestPrunedEvidenceIsRefused` (supersedes `TestQ2_PrunedBlockStillSlashable`, which pinned the
+  removed behaviour), `core/node/r06_i5_evidence_recompute_test.go` (T-5, the honest-node
+  vector, reproduced first), and the I5 model-check's three new axes (declared-vs-signed height;
+  `Pruned` ∈ {unset, real, forged}; era ∈ {1, 2}; 9,792 cases). G-1: every persisted chain
+  fixture scanned (`core/chain/testdata/archival/*.cbor`, both predicates: pruned evidence and
+  `Slashes` over the cap; they carry no `Slashes` at all, so both pass vacuously; no field
+  `chain.cbor` exists locally; accepted explicitly in D-F2-EVIDENCE-RECOMPUTE) — the fork set is
+  empty. Packing gate `TestProposerPacksPendingSlashesUnderTheBytesCap` (`core/node`): a
+  backlog over the cap is carried, the proposal never exceeds it, and a proof that alone
+  exceeds it is dropped, never queued or embedded (PE F-1: embedding one would doom every
+  later proposal by that node). Detection scans only the served suffix (PE F-3: candidate
+  selection body-hashes both sides, and the genesis-rooted reconstruction re-hashed the whole
+  chain per sweep, 228 ms at n=600). G-3
+  harness `TestSlashesBytesCapWorstCaseCost` (5 reg-laden proofs fill the cap; 15.0 MiB
+  resident; 11.5 ms to validate). Accepted cost R-LATE-REVEAL (a double-sign whose evidence was
+  already pruned is unslashable; safety unaffected). Residuals OPEN by name: R-EVIDENCE-BYTES,
+  R-BIG-EVIDENCE-UNSLASHABLE, R-BOX (the floor box's un-verified `b.Slashes` read), R-MEMO,
+  R-RELOAD-RE-VERIFY. Canon: `docs/decisions.md` D-F2-EVIDENCE-RECOMPUTE; consensus-invariants
+  I5 scar; `retention.go` premise re-worded. Researcher delta cert on the cap value: the "not a
+  security parameter" wording is REFUTED as stated — the cap is DUAL-FACE (resource ceiling on the
+  honest axis; evidence-size completeness bound on the deterrent axis, which no value closes and
+  only the v5 two-level block hash (d-3) removes, now on the R3.4 carry-list and the R4.4 brief);
+  16 MiB stays ratifiable with the face disclosed. Its V-1 gate
+  `TestOverCapProofDoesNotSilenceLaterProofsByTheSameCulprit` caught and closed a defect the
+  F-1 fix had introduced (the once-per-culprit local latch silenced later small proofs after a
+  fat one); the over-cap WARN is pinned as an S5 line (V-6):
+  `silt-reviews/research/research-outcome/R0.6-SlashesBytesCap-value-security-face-DELTA-CERTIFICATION-2026-09-03.md`.
+  PE: MERGE-WITH-CONDITIONS (F-1, F-4 landed;
+  F-2 the cap value is also the eviction-escape threshold — routed to the Researcher before
+  the owner ratifies the number; F-5 owed:
+  `silt-reviews/principle-engineer/RULING-R0.6-i5-evidence-recompute-3131d5a-2026-09-03.md`).
+  Certification:
+  `silt-reviews/research/research-outcome/I5-cross-height-pruned-slash-forgery-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md`;
+  deliberation `docs/thinking/2026-09-03-r0.6-i5-evidence-recompute-design.md`.
 - **R0.4b C3 merge-gate close — the CI job that did not parse, and the C-3 hardness checks on an
   unauthenticated hot path.** Inputs: the delta certification
   `R0.4b-C3-01bf8e9-merge-prep-DELTA-CERTIFICATION-2026-09-03` (gates G-F, G-G, G-H) and the

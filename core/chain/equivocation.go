@@ -43,33 +43,61 @@ func (e *Equivocation) CulpritID() ports.NodeID { return sha256.Sum256(e.Culprit
 //     after a lock-free view-change is honest), so neither is evidence.
 //   - Mixed eras: not evidence (conservative — the upgrade boundary must never
 //     manufacture an honest slash; refusing is the fail-safe direction).
-func VerifyEquivocation(e *Equivocation) bool {
+func VerifyEquivocation(e *Equivocation) bool { return CheckEquivocation(e) == nil }
+
+// CheckEquivocation is VerifyEquivocation with the refusal named: nil iff e proves a
+// double-sign; ErrPrunedEvidence when an evidence block is pruned; ErrNotEquivocation
+// for the honest exemptions.
+//
+// R0.6 (F2-EVIDENCE-RECOMPUTE, certification I5-cross-height-pruned-slash-forgery-
+// FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03 §5): the two block hashes are ALWAYS
+// recomputed from the bodies (bodyHash) — never read from Block.Pruned and never from
+// the hashMemo cache — and a pruned block is refused outright. The height check below
+// is sound only because the signed message is a digest OVER the declared Height; for
+// a non-pruned body those are the same source. Reading Pruned severed them: two GENUINE
+// signatures by an honest validator at two DIFFERENT heights, re-labelled with one
+// fictitious height and carrying another block's real hash in Pruned, verified as a
+// double-sign and evicted the honest validator through Append (I5 broken, era 1 and 2).
+// Refusing pruned evidence is strictly narrowing — it can never manufacture a slash —
+// and it is the rule this type's doc comment has always stated ("recomputes their
+// hashes"). The cost (a double-sign whose evidence was already payload-pruned is
+// unslashable) is R-LATE-REVEAL, owned in docs/decisions.md D-F2-EVIDENCE-RECOMPUTE.
+// This is the one gate for BOTH the write path (validateSlashes) and detection
+// (FindEquivocations), so an honest proposer can never queue a proof every replica
+// rejects.
+func CheckEquivocation(e *Equivocation) error {
 	if len(e.Culprit) != ed25519.PublicKeySize {
-		return false
+		return ErrNotEquivocation
+	}
+	if e.A.IsPruned() || e.B.IsPruned() {
+		return ErrPrunedEvidence // a pruned body cannot reproduce its hash: no height is bound
 	}
 	if e.A.Height != e.B.Height {
-		return false // sequential signing is not equivocation
+		return ErrNotEquivocation // sequential signing is not equivocation
 	}
-	ha, hb := e.A.Hash(), e.B.Hash()
+	ha, hb := e.A.bodyHash(), e.B.bodyHash()
 	if ha == hb {
-		return false // the same block signed twice is not a conflict
+		return ErrNotEquivocation // the same block signed twice is not a conflict
 	}
 	av2, bv2 := e.A.Version >= BlockVersionRounds, e.B.Version >= BlockVersionRounds
 	if av2 != bv2 {
-		return false // mixed eras: never slashable (fail-safe)
+		return ErrNotEquivocation // mixed eras: never slashable (fail-safe)
 	}
 	if av2 {
 		// Era 2: the two signatures must share (round, phase).
 		for _, sa := range consensusSigScopes(e.Culprit, &e.A, ha) {
 			for _, sb := range consensusSigScopes(e.Culprit, &e.B, hb) {
 				if sa == sb {
-					return true
+					return nil
 				}
 			}
 		}
-		return false
+		return ErrNotEquivocation
 	}
-	return signedBlock(e.Culprit, &e.A, ha) && signedBlock(e.Culprit, &e.B, hb)
+	if signedBlock(e.Culprit, &e.A, ha) && signedBlock(e.Culprit, &e.B, hb) {
+		return nil
+	}
+	return ErrNotEquivocation
 }
 
 // sigScope identifies one consensus signature's slot: the (round, phase) it
@@ -126,8 +154,15 @@ func FindEquivocations(a, b []Block) []Equivocation {
 	caught := make(map[ports.NodeID]bool)
 	for i := range b {
 		bb := &b[i]
+		// Candidate selection uses the SAME body-recomputed hash as CheckEquivocation
+		// (R0.6 G-6): a Pruned digest or a stale memo must not decide which pairs are
+		// even candidates. Cost: two body hashes per block of b that has a same-height
+		// partner in a — so CALLERS must pass only the heights that can actually
+		// diverge (the served suffix), never a shared genesis-rooted prefix
+		// (core/node/chainrole.go, the detection call site; PE ruling F-3 measured
+		// 228 ms/sweep at n=600 when the whole chain was passed).
 		ab, ok := byHeight[bb.Height]
-		if !ok || ab.Hash() == bb.Hash() {
+		if !ok || ab.bodyHash() == bb.bodyHash() {
 			continue // no block at this height on the other side, or the same block
 		}
 		for _, pub := range signers(ab) {

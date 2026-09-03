@@ -148,29 +148,59 @@ func TestQ2_ReconcileGatesPrunedInReplay(t *testing.T) {
 	}
 }
 
-// TestQ2_PrunedBlockStillSlashable is the I5 / accountable-safety corner Opt 1 exists to
-// protect: payload-selective pruning keeps the header + consensus signatures, so a pruned
-// block remains valid late-reveal equivocation evidence. A culprit who double-signed
-// cannot escape the slash by having one (or both) conflicting blocks pruned — Hash()
-// returns the stored pre-prune value and the sigs are preserved, so VerifyEquivocation
-// still fires.
-func TestQ2_PrunedBlockStillSlashable(t *testing.T) {
+// TestPrunedEvidenceIsRefused is T-4 (I5-cross-height-pruned-slash-forgery-FIX-DIRECTION-
+// RESEARCH-CERTIFICATION-2026-09-03.md §10). It SUPERSEDES TestQ2_PrunedBlockStillSlashable
+// above (renamed in place) — the I5 / accountable-safety corner Opt 1 believed it was
+// protecting was itself the F1 break (RT-SV-1/T-1): "Hash() returns the stored pre-prune
+// value" is EXACTLY the decoupling that let a cross-height forgery through. The certified
+// fix (F2-EVIDENCE-RECOMPUTE, cert §5.1) computes both blocks' hashes by re-marshalling the
+// body and never trusts Block.Pruned, so a pruned block is no longer admissible evidence at
+// all — not even for a GENUINE, non-forged late-reveal double-sign (R-LATE-REVEAL, cert §12:
+// "held in tension, not closed", bounded to below the prune floor, where ErrPreFinalityReorg
+// already forbids adoption, so the safety consequence is nil and only the penalty is lost).
+// All three of the original test's behavioral assertions INVERT: RED today (the shipped rule
+// still trusts b.Pruned, so all three of the ORIGINAL assertions passed; they must now fail).
+func TestPrunedEvidenceIsRefused(t *testing.T) {
 	w := newWorld(DefaultConfig())
 	g := w.genesis()
 	a, b := w.conflicting(g, w.prop, w.vals[3], []ed25519.PrivateKey{w.vals[0]}, []ed25519.PrivateKey{w.vals[0]})
+	culpritID := idOf(w.vals[0])
 
 	if !VerifyEquivocation(&Equivocation{Culprit: pubOf(w.vals[0]), A: *a, B: *b}) {
-		t.Fatal("precondition: the full double-sign must be provable")
+		t.Fatal("precondition: the full (unpruned) double-sign must still be provable")
 	}
-	// Both sides pruned — the heavy payload is gone, the proof still verifies.
+
+	// Both sides pruned: F2-EVIDENCE-RECOMPUTE means this is NO LONGER valid evidence.
 	pa, pb := a.Prune(), b.Prune()
-	if !VerifyEquivocation(&Equivocation{Culprit: pubOf(w.vals[0]), A: pa, B: pb}) {
-		t.Fatal("a pruned block must remain valid late-reveal slashing evidence (I5) — " +
-			"payload-selective pruning keeps header + sigs")
+	if VerifyEquivocation(&Equivocation{Culprit: pubOf(w.vals[0]), A: pa, B: pb}) {
+		t.Fatal("T-4: a both-pruned pair must be REFUSED as evidence — Hash() must never trust " +
+			"the stored Pruned digest")
 	}
-	// The realistic late-reveal: one side already pruned, the accuser reveals the full other.
-	if !VerifyEquivocation(&Equivocation{Culprit: pubOf(w.vals[0]), A: *a, B: pb}) {
-		t.Fatal("a mixed full/pruned equivocation pair must still verify")
+	// The realistic late-reveal (one side already pruned) must ALSO be refused.
+	if VerifyEquivocation(&Equivocation{Culprit: pubOf(w.vals[0]), A: *a, B: pb}) {
+		t.Fatal("T-4: a mixed full/pruned pair must be REFUSED as evidence")
+	}
+
+	// Drive the mixed pair through the real commit path (Append is the oracle, cert §10
+	// preamble): committed history must not be slashable by pruned evidence either.
+	w.attestAll(a)
+	if err := w.c.Append(*a); err != nil {
+		t.Fatalf("committing the canonical fork: %v", err)
+	}
+	prev, height := w.c.Head()
+	bs := Block{Version: 1, Height: height, Prev: prev, Entries: []ports.Entry{entry(9)},
+		Slashes: []Equivocation{{Culprit: pubOf(w.vals[0]), A: *a, B: pb}}}
+	Sign(&bs, w.prop)
+	w.attestAll(&bs)
+	err := w.c.Append(bs)
+	if err == nil {
+		t.Fatal("T-4: Append accepted a slash whose evidence is pruned")
+	}
+	if !errors.Is(err, ErrBadSlash) && !errors.Is(err, ErrPrunedEvidence) {
+		t.Fatalf("T-4: want ErrBadSlash or ErrPrunedEvidence, got %v", err)
+	}
+	if w.c.slashed[culpritID] {
+		t.Fatal("T-4: culprit must not be slashed by pruned evidence")
 	}
 }
 
