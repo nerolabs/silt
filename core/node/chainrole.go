@@ -863,6 +863,8 @@ func (n *Node) proposeBlock(b *chain.Block, attesters, broadcast []ports.NodeID,
 			if chain.SlashesEncodedSize([]chain.Equivocation{e}) > chain.SlashesBytesCap {
 				// Can never commit anywhere (see slashEquivocators): DROP, never embed —
 				// embedding it would doom this and every later proposal by this node.
+				// Release the on-chain latch so a later, smaller proof can be queued.
+				delete(n.slashQueued, e.CulpritID())
 				n.logf(ports.LogWarn, "dropping queued equivocation proof over SlashesBytesCap", "culprit", e.CulpritID(), "height", e.A.Height)
 				continue
 			}
@@ -1287,27 +1289,36 @@ func (n *Node) slashEquivocators(a, b []chain.Block) {
 		// every ~2s indefinitely. The local penalty, warn line, and callback
 		// fire once per culprit; the ON-CHAIN record has its own lifecycle
 		// (pendingSlashes requeues until a commit confirms it).
+		// Queue the proof for on-chain recording so the OBJECTIVE set evicts the
+		// culprit in lockstep on every replica (F2), not just this local ledger.
+		// The on-chain latch (slashQueued) is SEPARATE from the local one below
+		// (Researcher V-1): a culprit whose first proof could not be queued must still
+		// get a later one queued.
+		//
+		// R0.6: a proof that ALONE exceeds chain.SlashesBytesCap can never commit on any
+		// replica, so it is never queued — queuing it would make every proposal by this
+		// node invalid for good (the local pre-check fails forever; the only removal is
+		// IsSlashed, which never flips). The local ledger penalty below still applies.
+		// Reachable by one Byzantine validator that signs a fat garbage block at a height
+		// it also honestly attested and serves it as a peer (PE ruling F-1), so it is
+		// logged by name, once per culprit; the culprit keeps its on-chain seat
+		// (R-BIG-EVIDENCE-UNSLASHABLE — the cap's second face, see SlashesBytesCap).
+		if n.chain != nil && !n.chain.IsSlashed(cid) && !n.slashQueued[cid] {
+			if sz := chain.SlashesEncodedSize([]chain.Equivocation{e}); sz > chain.SlashesBytesCap {
+				if !n.slashOverCapLogged[cid] {
+					n.slashOverCapLogged[cid] = true
+					n.logf(ports.LogWarn, "equivocation proof exceeds SlashesBytesCap; not queued for on-chain slashing", "culprit", cid, "height", e.A.Height, "bytes", sz, "cap", chain.SlashesBytesCap)
+				}
+			} else {
+				n.pendingSlashes = append(n.pendingSlashes, e)
+				n.slashQueued[cid] = true
+			}
+		}
 		if n.slashedLocal[cid] {
 			continue
 		}
 		n.slashedLocal[cid] = true
 		n.ledger.SlashEquivocation(cid) // legacy/rep path
-		// Queue the proof for on-chain recording so the OBJECTIVE set evicts the
-		// culprit in lockstep on every replica (F2), not just this local ledger.
-		// R0.6: a proof that ALONE exceeds chain.SlashesBytesCap can never commit on any
-		// replica, so it is never queued — queuing it would make every proposal by this
-		// node invalid for good (the local pre-check fails forever; the only removal is
-		// IsSlashed, which never flips). The local ledger penalty above still applies.
-		// Reachable by one Byzantine validator that signs a fat garbage block at a height
-		// it also honestly attested and serves it as a peer (PE ruling F-1), so it is
-		// logged by name; the culprit keeps its on-chain seat (R-BIG-EVIDENCE-UNSLASHABLE).
-		if n.chain != nil && !n.chain.IsSlashed(cid) {
-			if sz := chain.SlashesEncodedSize([]chain.Equivocation{e}); sz > chain.SlashesBytesCap {
-				n.logf(ports.LogWarn, "equivocation proof exceeds SlashesBytesCap; not queued for on-chain slashing", "culprit", cid, "height", e.A.Height, "bytes", sz, "cap", chain.SlashesBytesCap)
-			} else {
-				n.pendingSlashes = append(n.pendingSlashes, e)
-			}
-		}
 		n.logf(ports.LogWarn, "validator slashed for equivocation", "culprit", cid, "height", e.A.Height)
 		if n.onSlash != nil {
 			n.onSlash(cid, e.A.Height)

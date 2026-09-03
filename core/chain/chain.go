@@ -406,11 +406,15 @@ const RegCap = 256
 // SlashesBytesCap is the per-block ceiling on the canonically-encoded BYTES of the
 // Slashes field, enforced on every write path in EVERY era (R0.6 (d-2), certification
 // I5-cross-height-pruned-slash-forgery-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03
-// §7). It is an immutable-#8 RESOURCE CEILING expressed as a validity rule — NOT a
-// security parameter and NOT RegCap's class: raising it never admits a forged slash
-// (CheckEquivocation is the only thing that convicts) and lowering it never convicts an
-// honest validator; it trades liveness (how much evidence one block carries) against
-// memory. It is needed because F2-EVIDENCE-RECOMPUTE makes FULL bodies the only
+// §7). It is DUAL-FACE (the Researcher's delta certification
+// R0.6-SlashesBytesCap-value-security-face-DELTA-CERTIFICATION-2026-09-03 REFUTED the
+// original "not a security parameter" wording as stated): on I5's honest-never-slashed
+// axis it is an immutable-#8 RESOURCE CEILING expressed as a validity rule — raising it
+// never admits a forged slash (CheckEquivocation is the only thing that convicts) and
+// lowering it never convicts an honest validator; on I5's COMPLETENESS axis it is the
+// evidence size above which a double-signer keeps its seat (below). NOT RegCap's class.
+// Invariant the value must satisfy: SlashesBytesCap ≥ 2 × (default honest block) +
+// overhead — 16 MiB against ~4.2 MiB. It is needed because F2-EVIDENCE-RECOMPUTE makes FULL bodies the only
 // admissible evidence and Prune() never recurses into Slashes, so every admitted proof
 // pins two full block bodies — BondReg.Answer included — permanently resident on every
 // node, in the one slot pruning cannot reach. A BYTE ceiling, not a count: one proof
@@ -419,13 +423,19 @@ const RegCap = 256
 // a proof that ALONE exceeds the cap is never queued or embedded (core/node/chainrole.go),
 // because it can never commit and embedding it would doom every later proposal.
 //
-// The value is ALSO the size above which a double-signer's evidence cannot be committed —
-// an equivocator who signs two over-cap blocks keeps its on-chain seat (the local ledger
-// still penalises it). The certification argues "not a security parameter" for the
-// honest-never-slashed direction; whether the COMPLETENESS direction (I5's other half)
-// makes the value research-gated is routed to the Researcher (PE ruling
-// RULING-R0.6-i5-evidence-recompute-3131d5a-2026-09-03 F-2). The class pre-existed at the
-// 132 MiB transport frame (R-BIG-EVIDENCE-UNSLASHABLE); this constant lowers it to 16 MiB.
+// The second face: the value is ALSO the size above which a double-signer's evidence
+// cannot be committed — an equivocator who signs two over-cap blocks keeps its on-chain
+// seat, and the local ledger penalty is consensus-INERT in objective mode (no
+// qualification or weight site reads the ledger). A ≥⅓ coalition can make every pair
+// over-cap with ~6 of its own valid renewals per block at zero marginal cost, so for fat
+// coalitions accountable safety degrades to plain safety: attribution survives (the
+// over-cap WARN), eviction is lost. NO admissible value closes this face — silt's
+// evidence is the whole signed body — so the number is not what it turns on; only the
+// v5 two-level block hash (d-3, header + digests, fixed-size evidence) removes it, and
+// that sits on the R3.4 pre-freeze carry-list. The class pre-existed at the 132 MiB
+// transport frame (R-BIG-EVIDENCE-UNSLASHABLE); this constant lowers it to 16 MiB and
+// is disclosed to the R4.4 external brief. PE ruling
+// RULING-R0.6-i5-evidence-recompute-3131d5a-2026-09-03 F-2 raised it.
 //
 // PROVISIONAL VALUE — OWNER RATIFIES on immutable-#8 grounds (G-3 measurement pending;
 // TestSlashesBytesCapWorstCaseCost reports the resident/decode/validate cost at the cap).
@@ -1018,7 +1028,7 @@ var (
 	ErrNotEquivocation = errors.New("chain: equivocation proof does not prove a double-sign")
 	// ErrSlashesBytesCapExceeded rejects a block whose canonically-encoded Slashes field
 	// exceeds SlashesBytesCap (R0.6 (d-2)); an at-cap block is accepted.
-	ErrSlashesBytesCapExceeded = errors.New("chain: block exceeds SlashesBytesCap — encoded Slashes bytes over the per-block ceiling (an immutable-#8 resource ceiling, not a security parameter)")
+	ErrSlashesBytesCapExceeded = errors.New("chain: block exceeds SlashesBytesCap — encoded Slashes bytes over the per-block ceiling (an immutable-#8 resource ceiling on the honest axis; the evidence-size completeness bound on the other)")
 	// ErrBadSlash rejects an on-chain equivocation record that is not a valid,
 	// self-verifying double-sign proof — so a forged slash cannot evict an honest
 	// validator (F2; forged-slash griefing stays denied).

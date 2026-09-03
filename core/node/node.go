@@ -761,6 +761,14 @@ type Node struct {
 	// re-log/re-fire the callback every ~2s (the field hot-loop). The on-chain
 	// record keeps its own lifecycle (pendingSlashes requeues until committed).
 	slashedLocal map[ports.NodeID]bool
+	// slashQueued latches the ON-CHAIN queue per culprit, separately from slashedLocal
+	// (R0.6, Researcher V-1): set only when a proof is actually appended to
+	// pendingSlashes, cleared if that proof is later dropped, so a culprit whose first
+	// detected proof was over SlashesBytesCap (never queued) still gets a later, small
+	// proof queued for on-chain eviction. slashOverCapLogged keeps the over-cap WARN
+	// once per culprit (the #397 Q4-i hot-loop discipline).
+	slashQueued        map[ports.NodeID]bool
+	slashOverCapLogged map[ports.NodeID]bool
 	// chain-sync loop (F1): chainSyncSeed is the explicit attester set to
 	// reconcile against (may be empty — every learned validator bond is also a
 	// target), chainSyncOnCatchUp fires after a catch-up so the daemon persists,
@@ -1128,34 +1136,36 @@ func (n *Node) hostShardLocally(id ports.ChunkID, data []byte, proof *ports.Stor
 
 func New(id ports.NodeID, cfg Config, clock ports.Clock, tr ports.Transport, store ports.ChunkStore) *Node {
 	n := &Node{
-		cfg:               cfg,
-		id:                id,
-		clock:             clock,
-		tr:                tr,
-		store:             store,
-		table:             dht.NewTable(id, cfg.K),
-		provs:             dht.NewProviders(),
-		pending:           make(map[uint64]*pending),
-		reachable:         make(map[ports.NodeID]ports.Time),
-		dead:              make(map[ports.NodeID]corpse),
-		repairConfirm:     make(map[stripeKey]int),
-		staticPeers:       make(map[ports.NodeID]bool),
-		reachProbes:       make(map[uint64]*reachProbe),
-		proofMeta:         make(map[ports.ChunkID]proofMeta),
-		proofs:            newMemProofs(), // default in-mem backing; daemon injects the bounded disk-backed store
-		peerDomains:       make(map[ports.NodeID]uint64),
-		peerBonds:         make(map[ports.NodeID]bondInfo),
-		peerBondRTT:       make(map[ports.NodeID]*latWindow),
-		bondChallengeRate: make(map[ports.NodeID]*challengerRate),
-		bondSubmitRate:    make(map[ports.NodeID]*challengerRate),
-		entrySubmitRate:   make(map[ports.NodeID]*challengerRate),
-		slashedLocal:      make(map[ports.NodeID]bool),
-		peerIssuerKeys:    make(map[ports.NodeID]*rsa.PublicKey),
-		peerDemandKeys:    make(map[ports.NodeID]*demand.Keyset), // R0.4b pinned per-epoch demand keysets
-		creditSpent:       make(map[string]bool),
-		tokenIssued:       make(map[string]tokenIssuedEntry),
-		serveLoad:         make(map[ports.ChunkID]int),
-		leases:            make(map[ports.ChunkID]ports.Time),
+		cfg:                cfg,
+		id:                 id,
+		clock:              clock,
+		tr:                 tr,
+		store:              store,
+		table:              dht.NewTable(id, cfg.K),
+		provs:              dht.NewProviders(),
+		pending:            make(map[uint64]*pending),
+		reachable:          make(map[ports.NodeID]ports.Time),
+		dead:               make(map[ports.NodeID]corpse),
+		repairConfirm:      make(map[stripeKey]int),
+		staticPeers:        make(map[ports.NodeID]bool),
+		reachProbes:        make(map[uint64]*reachProbe),
+		proofMeta:          make(map[ports.ChunkID]proofMeta),
+		proofs:             newMemProofs(), // default in-mem backing; daemon injects the bounded disk-backed store
+		peerDomains:        make(map[ports.NodeID]uint64),
+		peerBonds:          make(map[ports.NodeID]bondInfo),
+		peerBondRTT:        make(map[ports.NodeID]*latWindow),
+		bondChallengeRate:  make(map[ports.NodeID]*challengerRate),
+		bondSubmitRate:     make(map[ports.NodeID]*challengerRate),
+		entrySubmitRate:    make(map[ports.NodeID]*challengerRate),
+		slashedLocal:       make(map[ports.NodeID]bool),
+		slashQueued:        make(map[ports.NodeID]bool),
+		slashOverCapLogged: make(map[ports.NodeID]bool),
+		peerIssuerKeys:     make(map[ports.NodeID]*rsa.PublicKey),
+		peerDemandKeys:     make(map[ports.NodeID]*demand.Keyset), // R0.4b pinned per-epoch demand keysets
+		creditSpent:        make(map[string]bool),
+		tokenIssued:        make(map[string]tokenIssuedEntry),
+		serveLoad:          make(map[ports.ChunkID]int),
+		leases:             make(map[ports.ChunkID]ports.Time),
 	}
 	if cfg.Domain != "" {
 		n.domainID = domainHash(cfg.Domain)

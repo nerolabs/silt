@@ -109,3 +109,76 @@ func TestProposerPacksPendingSlashesUnderTheBytesCap(t *testing.T) {
 		t.Fatalf("queue after packing: %d, want %d — the overflow must stay QUEUED (carried, not dropped) and the oversized proof must be DROPPED", len(tn.pendingSlashes), len(backlog))
 	}
 }
+
+// TestOverCapProofDoesNotSilenceLaterProofsByTheSameCulprit is the Researcher's V-1 gate
+// (R0.6-SlashesBytesCap-value-security-face-DELTA-CERTIFICATION-2026-09-03): the
+// once-per-culprit latch (#397 Q4-i) that stops the LOCAL penalty repeating must not also
+// stop the ON-CHAIN queue. With the over-cap drop, a culprit whose FIRST detected proof is
+// over the cap must still have a LATER, small proof queued for on-chain eviction — and the
+// over-cap refusal is an announced operator line (S5, the Researcher's V-6), pinned here.
+func TestOverCapProofDoesNotSilenceLaterProofsByTheSameCulprit(t *testing.T) {
+	sched := simclock.New()
+	net := simnet.New(sched, 1, simnet.DefaultConfig())
+	ledger := credit.New(50_000, 0)
+	repFn := func(n ports.NodeID) int64 { return ledger.Reputation(n) }
+
+	ti := identity.FromSeed(1)
+	tid := ti.NodeID()
+	tn := New(tid, DefaultConfig(), sched, net.Endpoint(tid), memstore.New())
+	tn.SetLedger(ledger)
+	lg := &captureLog{clock: sched}
+	tn.SetLogger(lg)
+
+	ch := chain.New(chain.DefaultConfig(), repFn)
+	g := &chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{mkEntry("g")}}
+	prop := identity.FromSeed(2)
+	chain.Sign(g, prop.Signer())
+	if err := ch.AppendGenesis(*g); err != nil {
+		t.Fatalf("genesis: %v", err)
+	}
+	tn.EnableChain(ch, ti.Signer())
+
+	culprit := identity.FromSeed(300)
+	fat := func(seed byte, chunks int) ports.Entry {
+		e := mkEntry(string(rune('a' + seed)))
+		e.ManifestChunks = make([]ports.ChunkID, chunks)
+		for i := range e.ManifestChunks {
+			e.ManifestChunks[i] = ports.HashBytes([]byte{seed, byte(i), byte(i >> 8), byte(i >> 16)})
+		}
+		return e
+	}
+	// One culprit, two double-signs: the first over the cap (two ~9 MiB bodies), the second
+	// small (two header-only bodies). Two different-height pairs would not share a culprit
+	// proof, so both pairs sit at height 1 — different forks the node syncs in sequence.
+	fork := func(seed byte, chunks int) []chain.Block {
+		b := &chain.Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{fat(seed, chunks)}}
+		chain.Sign(b, prop.Signer())
+		b.Atts = append(b.Atts, chain.Attest(b, culprit.Signer()))
+		return []chain.Block{*g, *b}
+	}
+	big := 9 * 32 << 10
+	tn.slashEquivocators(fork(0, big), fork(1, big)) // over-cap: must NOT queue, must WARN by name
+	if len(tn.pendingSlashes) != 0 {
+		t.Fatalf("an over-cap proof was queued (%d) — it can never commit", len(tn.pendingSlashes))
+	}
+	warned := false
+	for _, ev := range lg.events {
+		if ev == "equivocation proof exceeds SlashesBytesCap; not queued for on-chain slashing" {
+			warned = true
+		}
+	}
+	if !warned {
+		t.Fatalf("S5: the over-cap refusal must be announced by its contracted line; got %v", lg.events)
+	}
+
+	tn.slashEquivocators(fork(2, 1), fork(3, 1)) // a later SMALL proof by the same culprit
+	queued := 0
+	for _, e := range tn.pendingSlashes {
+		if e.CulpritID() == culprit.NodeID() {
+			queued++
+		}
+	}
+	if queued != 1 {
+		t.Fatalf("V-1: a small proof by a culprit whose first proof was over the cap was not queued (queued=%d, pending=%d) — the once-per-culprit LOCAL latch must not silence the ON-CHAIN queue", queued, len(tn.pendingSlashes))
+	}
+}

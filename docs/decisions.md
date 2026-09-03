@@ -1321,8 +1321,25 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
   double-signer's evidence cannot be committed, so an equivocator who makes both its blocks
   over-cap keeps its on-chain seat (the local ledger still penalises it; the class pre-existed
   at the 132 MiB frame). Whether I5's COMPLETENESS half makes the value research-gated is
-  routed to the Researcher; the owner hears this before ratifying the number.
-  **Provisional value 16 MiB — the owner ratifies the NUMBER on immutable-#8 grounds.**
+  routed to the Researcher — **and the Researcher's delta certification REFUTED the "not a
+  security parameter" wording as stated: the cap is DUAL-FACE** (a resource ceiling on the
+  honest-never-slashed axis; the evidence-size completeness bound on the deterrent axis). The
+  local ledger penalty is consensus-inert in objective mode, so an un-evicted equivocator keeps
+  its seat; a ≥⅓ coalition can make every pair over-cap with ~6 of its own valid renewals per
+  block, so for fat coalitions accountable safety degrades to plain safety (attribution
+  survives, eviction is lost). No admissible value closes that face — silt's evidence is the
+  whole signed body — so the number is still ratifiable on immutable-#8 grounds with the face
+  DISCLOSED; only the v5 two-level block hash (d-3) removes it, which therefore joins the R3.4
+  pre-freeze carry-list, and the face goes to the R4.4 external brief. Invariant on the value:
+  `SlashesBytesCap ≥ 2 × (default honest block) + overhead`. Two interims REFUTED: a
+  consensus block byte cap (collides with `RegCap`); an attester-side byte policy (collides with
+  the #432 forced-value rule). Source:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.6-SlashesBytesCap-value-security-face-DELTA-CERTIFICATION-2026-09-03.md`.
+  **Provisional value 16 MiB — the owner ratifies the NUMBER on immutable-#8 grounds, with the
+  second face disclosed. The owner sentence (Researcher Q4):** ratify 16 MiB as the memory ceiling
+  knowing it is also the evidence size above which a double-signer keeps its seat with no on-chain
+  penalty, including every member of a ≥⅓ coalition that splits finality using ~9 MB valid
+  blocks, a face no value of the cap closes and only (d-3) removes.
   Derived from shipped bounds: one legitimate evidence pair is at most two blocks at the
   default per-block budgets (2 MiB regs + 64 KiB entries) ≈ 4.2 MiB, so 16 MiB admits three
   fat proofs (or ~18k header-only ones) and is 1/8 of the 128 MiB transport frame. G-3
@@ -1338,7 +1355,11 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
   Tester's independent half-revert matrix shows the refusal half and the recompute half are
   each gated on their own. Packing gate `TestProposerPacksPendingSlashesUnderTheBytesCap`
   (`core/node`): a backlog over the cap is carried, the proposal never exceeds the cap, and a
-  proof that alone exceeds it is dropped, never embedded (PE ruling F-1).
+  proof that alone exceeds it is dropped, never embedded (PE ruling F-1). Researcher V-1 gate
+  `TestOverCapProofDoesNotSilenceLaterProofsByTheSameCulprit`: the once-per-culprit LOCAL
+  latch is separate from the ON-CHAIN queue latch, so a culprit whose first proof was over the
+  cap still gets a later small proof queued; the over-cap WARN line is pinned as an S5 contract
+  (V-6).
 - **G-1, stated exactly.** Artifacts scanned: the four persisted chain fixtures in the tree
   (`core/chain/testdata/archival/{era1,era2,era2-pruned,mixed-era1-era2}.cbor`), against BOTH
   new invalidation predicates (pruned evidence; `Slashes` over 16 MiB). They carry zero
