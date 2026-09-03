@@ -59,14 +59,12 @@ func TestForkChoiceRampCommittedChainOutweighsGenesis357(t *testing.T) {
 		t.Fatalf("setup: head should be at block-height 2 (Head()==3), got %d", h)
 	}
 
-	// §1a: an anchor-attested committed chain must carry NONZERO fork-choice weight
-	// during the ramp — otherwise every fork ties at 0 and the height-blind tiebreak
-	// governs (the reorg-to-height-0 defect). This is the hash-independent
-	// failing-first assertion: anchors contribute 0 today, so Weight()==0.
-	if c.Weight() <= 0 {
-		t.Fatalf("#357 §1a: a committed anchor-attested chain must have nonzero fork-choice "+
-			"weight during the ramp (zero-bond anchors must carry bootstrap weight), got %d", c.Weight())
-	}
+	// §1a (the `Weight() > 0` assertion) was DELETED 2026-09-03 (R-FORKCHOICE-RAMP-GUARD,
+	// O3 research recommendation §3.5 item 3): it asserted a property production does not
+	// have and was green only because this fixture hand-builds Version: 1 blocks with era-1
+	// attestations inside an objective config — a guard that passes only under an
+	// attestation era no node mints is not a guard. Invariant D below is the part that
+	// guards #357 and it stands. Under O3 Direction T the weight term itself is retired.
 
 	// §2: the validator set N the Byzantine quorum is sized against must be the FIXED
 	// anchor set during the ramp (4), NOT the live, zero-then-climbing qualifiedCount —

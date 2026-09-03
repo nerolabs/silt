@@ -1335,8 +1335,8 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
   consensus block byte cap (collides with `RegCap`); an attester-side byte policy (collides with
   the #432 forced-value rule). Source:
   `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.6-SlashesBytesCap-value-security-face-DELTA-CERTIFICATION-2026-09-03.md`.
-  **Provisional value 16 MiB — the owner ratifies the NUMBER on immutable-#8 grounds, with the
-  second face disclosed. The owner sentence (Researcher Q4):** ratify 16 MiB as the memory ceiling
+  **Value 16 MiB — ✅ RATIFIED by the owner 2026-09-03 ("2 ratified"), on immutable-#8 grounds, with
+  the second face disclosed. The sentence ratified (Researcher Q4):** ratify 16 MiB as the memory ceiling
   knowing it is also the evidence size above which a double-signer keeps its seat with no on-chain
   penalty, including every member of a ≥⅓ coalition that splits finality using ~9 MB valid
   blocks, a face no value of the cap closes and only (d-3) removes.

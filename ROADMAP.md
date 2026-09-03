@@ -95,9 +95,9 @@ carries the argument and the sources. Two are LIVE BREAKS and come first.
 1. **R0.6 (I5 break, LIVE on main) — ✅ RATIFIED 2026-09-03 (owner: "R0.6 ratified") and BUILT the same
    day** (branch `builder/r0.6-i5-evidence-recompute`; PR pending): evidence
    hashes recomputed from full bodies, `Pruned` never read, `Slashes` byte ceiling. The six RED-first gates
-   plus G-2/G-4/G-6 and the three-axis I5 model-check are GREEN; G-1 scanned zero hits. **Still owed: the
-   owner ratifies the `SlashesBytesCap` VALUE (provisional 16 MiB; G-3 measured — see
-   `docs/decisions.md` D-F2-EVIDENCE-RECOMPUTE).**
+   plus G-2/G-4/G-6 and the three-axis I5 model-check are GREEN; G-1 scanned zero hits. **MERGED (PR #714)
+   and the `SlashesBytesCap` VALUE (16 MiB) RATIFIED 2026-09-03 with its second face disclosed — see
+   `docs/decisions.md` D-F2-EVIDENCE-RECOMPUTE.**
 2. **R0.7 / R2.14 (relay mint, behind a default-off flag):** build the relay prepayment anchor
    (bilateral PayWord, issuer == relay) as a prerequisite of R2.9, with settlement paying 0 and the flag
    default-off until it lands.
@@ -173,7 +173,7 @@ carries the argument and the sources. Two are LIVE BREAKS and come first.
   **(iii) re-scope** the e2e gate to the certified era-4 refusal — never an activation override, in
   any form, in any binary
   (`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-G8-dark-lane-CONVERGENCE-2026-09-03.md`).
-- **R0.6 · I5 CROSS-HEIGHT `Pruned` SLASH FORGERY — CONFIRMED LIVE BREAK ON MAIN (2026-09-03); fix direction CERTIFIED; RATIFIED + BUILT 2026-09-03 (branch `builder/r0.6-i5-evidence-recompute`, PR pending); the cap VALUE ratification is owed.**
+- **R0.6 · I5 CROSS-HEIGHT `Pruned` SLASH FORGERY — CONFIRMED LIVE BREAK ON MAIN (2026-09-03); fix direction CERTIFIED; RATIFIED + BUILT + MERGED 2026-09-03 (PR #714); the cap VALUE (16 MiB) RATIFIED with its second face disclosed.**
   `VerifyEquivocation` reads height from the evidence struct (`equivocation.go:50`) but the signed
   message from `Hash()` (`:53`), which returns attacker-supplied `b.Pruned` (`chain.go:658-660`) for
   the two Blocks inside `Slashes[i]`. Two GENUINE signatures by an honest validator at two DIFFERENT
@@ -627,8 +627,9 @@ O3 is pending** (source for all four:
   whichever O3 direction lands. Source:
   `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-O3-fork-choice-weight-R-vs-T-2026-09-03.md`
   §5.
-- **R-FORKCHOICE-RAMP-GUARD — OPEN (Tester), small.** Delete the `Weight() > 0` assertion at
-  `core/chain/forkchoice_ramp357_test.go:66-69`; do **not** repair it. It asserts a property
+- **R-FORKCHOICE-RAMP-GUARD — ✅ DONE 2026-09-03 (gate-tail PR).** The `Weight() > 0` assertion at
+  `core/chain/forkchoice_ramp357_test.go` §1a is DELETED (not repaired), with a comment naming why;
+  Invariant D stands. *(Was:)* Delete the `Weight() > 0` assertion; do **not** repair it. It asserts a property
   production does not have and is green only because the fixture hand-builds `Version: 1` blocks
   with era-1 attestations inside an objective config — a guard that passes only under an attestation
   era no node mints is not a guard. Invariant D in the same file is the part that guards #357 and it
@@ -648,17 +649,24 @@ O3 is pending** (source for all four:
   §10 (O4).
 
 *Gate quality, coverage debt and small items:*
-- **R-AST-PIN-GLOB — OPEN, small.** The R-FOLD-LIVE-STATE-READS AST pin's glob does **not** cover
-  the file where three of five box defeats live: `floorbox_recompute_v5.go` and four others are
-  outside it. Direct evidence that AST gates fail by scope. Widen the glob and re-run. Source: the
-  PE structure ruling §8 item 2.
+- **R-AST-PIN-GLOB — ✅ DONE 2026-09-03 (gate-tail PR).** The R-FOLD-LIVE-STATE-READS AST pin's glob is
+  widened from `floorbox_recompute_*_v5.go` to `floorbox_*_v5.go`, covering `floorbox_recompute_v5.go`
+  and the four others the PE structure ruling §8 item 2 found outside it; the pin stays GREEN on the
+  widened set (no live-state read in the newly covered files). Direct evidence that AST gates fail by scope.
 - **R-INVENTORY-HAND-LIST — OPEN (Tester).** A gate that claims to cover "every X" but enumerates X
   as a hand-written literal is green because the list is shorter than X, and worse than no gate
   because the claim is now published in a test name. Demonstrated on the eleven-door legacy fence
   (which misses `RecomputeMatureNowStreaming`) and mirrored by R-FENCE-TABLE-DRIFT. Derive the
   surface from the code, not from a list. Source:
   `/Users/andrewedmond/Claude/claude/silt/.claude/agent-memory/tester/scar-inventory-gate-is-a-hand-list.md`.
-- **R-S5-STRING-REGISTRY — OPEN (Builder + Tester); scar at count 2, THIRD-TIME RULE ONE AWAY.**
+- **R-S5-STRING-REGISTRY — ✅ DONE 2026-09-03 (gate-tail PR); the scar reached count 3 (a34b61a: the instance-2 gate pinned the SYMBOL, not the literal) and the third-time rule FIRED.**
+  Shipped: `cmd/silt/observable_contract.go` (28 contracted operator literals with emitting file, dependant
+  and runtime asserter) + `TestObservableContractStringsAreStillEmitted` (presence in the SOURCE, file
+  exists, no duplicate pair, no strict-substring marker, every asserter resolves to a real `func Test`) +
+  `TestObservableContractHasTeeth`. Ablation: renaming the `NOT banked` literal turns the unit tier RED
+  (the exact instance-3 shape that only e2e caught). It proves the string is in the source, never that
+  it is reachable — the e2e assertion per marker stays. Original text kept below for the record.
+  *(Was:)* OPEN (Builder + Tester); scar at count 2, THIRD-TIME RULE ONE AWAY.
   An announced operator string is a contract (S5), and an upstream early-return breaks it while every
   unit test stays green (instance 1: `freeload: ON`; instance 2: the R0.4b `NOT banked` refusal). The
   proposed gate is a registry of contracted operator strings (27 seed entries verified present) plus
