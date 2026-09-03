@@ -235,14 +235,15 @@ func generateLeafDiffScenarios(t *testing.T) []leafDiffScenario {
 	return out
 }
 
-// v5EmittableLeafTags is the FULL set of committed-leaf field tags stateRootLeavesV5 can emit,
-// derived from the LIVE marshaller — NOT a hardcoded list. populateCommitted sets every committed
-// keyspace and scalar (it is itself reflection-pinned to the committed classification by
-// TestAdoptCopiesEveryCommittedField, so it cannot silently drop a field), and the marshaller then
-// emits one leaf per keyspace/scalar. A FUTURE committed-leaf tag added to stateRootLeavesV5 shows up
-// here automatically (populateCommitted must set its backing field, or the adopt guard reddens), which
-// grows the coverage bar the meta-assertion below enforces — with ZERO edits to this function.
-func v5EmittableLeafTags(t *testing.T) map[string]struct{} {
+// v5EmittedLeafTags is EVERY committed-leaf field tag stateRootLeavesV5 emits on a
+// fully-populated chain, derived from the LIVE marshaller — NOT a hardcoded list.
+// populateCommitted sets every committed keyspace and scalar (it is itself reflection-pinned
+// to the committed classification by TestAdoptCopiesEveryCommittedField, so it cannot silently
+// drop a field), and the marshaller then emits one leaf per keyspace/scalar.
+//
+// This is the ROOT-COVERAGE question — "what does a v5 block commit" — and it takes NO
+// exclusions. TestStateRootV5CoversExactlyTheV5Fields uses it.
+func v5EmittedLeafTags(t *testing.T) map[string]struct{} {
 	t.Helper()
 	c := &Chain{}
 	populateCommitted(c)
@@ -250,6 +251,24 @@ func v5EmittableLeafTags(t *testing.T) map[string]struct{} {
 	for _, lf := range c.stateRootLeavesV5() {
 		tags[tagOfKey(string(lf.Key))] = struct{}{}
 	}
+	return tags
+}
+
+// v5EmittableLeafTags is v5EmittedLeafTags minus the tags the diff-minus-fold guard cannot
+// exercise (leafDiffOutOfScopeTags). That is a DIFFERENT question from root coverage: "which
+// tags can a scenario in this file drive to agreement". A tag excluded here is still in the
+// committed root — it is only out of reach of THIS guard, because the recompute stalls on the
+// block class that writes it.
+//
+// The two were one function until the R0.4b rebase onto #707, and that was a real defect: the
+// new root-coverage pin inherited the leaf-diff guard's exclusion list and reported
+// issuerKeyCommit as NOT COMMITTED when the marshaller emits it on every v5 block. Keep them
+// separate. A FUTURE committed-leaf tag shows up in both automatically (populateCommitted must
+// set its backing field, or the adopt guard reddens), which grows the coverage bar the
+// meta-assertion below enforces — with ZERO edits to either function.
+func v5EmittableLeafTags(t *testing.T) map[string]struct{} {
+	t.Helper()
+	tags := v5EmittedLeafTags(t)
 	for tag := range leafDiffOutOfScopeTags {
 		delete(tags, tag)
 	}

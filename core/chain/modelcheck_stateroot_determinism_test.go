@@ -133,7 +133,12 @@ func TestStateRootV5CoversExactlyTheV5Fields(t *testing.T) {
 	// EMITTED: the tags the live v5 marshaller actually produces on a chain where every
 	// committedSet field is populated (populateCommitted's completeness against the
 	// classification is itself pinned, by TestAdoptCopiesEveryCommittedField).
-	emitted := v5EmittableLeafTags(t)
+	//
+	// v5EmittedLeafTags, NOT v5EmittableLeafTags: this guard asks what a v5 block COMMITS,
+	// so it takes no exclusions. The sibling helper subtracts leafDiffOutOfScopeTags, which
+	// is the different question of what the diff-minus-fold guard can drive — using it here
+	// would report a genuinely-committed keyspace as absent from the root.
+	emitted := v5EmittedLeafTags(t)
 	if len(emitted) == 0 {
 		t.Fatal("stateRootLeavesV5 emitted NO leaves for a fully-populated chain — the v5 " +
 			"marshaller is not running, so this guard would pass vacuously")

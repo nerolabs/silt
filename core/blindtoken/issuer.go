@@ -121,7 +121,7 @@ var ErrBadPubKey = errors.New("blindtoken: malformed issuer public key")
 //   - N is not a perfect power p^k — kills the p² case.
 //   - N is not itself prime (Miller-Rabin) — kills the single-prime universal forgery.
 //
-// COST, measured (TestValidatePubHardnessCostBudget): well under the 5 ms per-pin
+// COST, measured (TestC3_ValidatePubCostBudget): well under the 5 ms per-pin
 // budget, and it runs at most W+1 = 5 times per issuer per window.
 func ValidatePub(pub *rsa.PublicKey) error {
 	if err := validateShape(pub); err != nil {
