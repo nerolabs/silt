@@ -360,5 +360,15 @@ type PaidSerialStore interface {
 	Append(PaidSerial) error
 	// Compact atomically replaces the whole store with live, dropping the entries an
 	// expiry sweep removed. Atomic: a crash mid-compact leaves the previous contents.
+	//
+	// THE HANDLE CLAUSE (R2.13, R-COMPACT-ORPHAN). After a Compact that returns an
+	// error, the store MUST either remain appendable with Append still
+	// durable-and-reachable (the log is then a superset of live, which only ever
+	// over-refuses), or MUST fail every subsequent Append. It MUST NOT return nil
+	// from an Append whose record a later Load cannot see. The ledger reads a
+	// Compact error as benign and keeps redeeming; it refuses a payout only when
+	// Append fails. An adapter that violates this clause turns a compaction failure
+	// into an over-pay: the payout goes through against a guard entry the next
+	// restart never restores.
 	Compact([]PaidSerial) error
 }

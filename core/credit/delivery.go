@@ -334,6 +334,15 @@ func (l *Ledger) GuardFullRefusals() int64 { return l.guardFullRefusals }
 // that bound counts sweeps, not time.
 func (l *Ledger) SerialSweeps() int64 { return l.sweeps }
 
+// CompactFailures is how many expiry sweeps ended with the durable guard store
+// refusing to compact, and LastCompactError is the most recent such error (nil when
+// none). Observability only; monotone. A compaction failure is BENIGN for
+// accounting (the log stays a superset of the live set, see sweepExpiredSerials) but
+// an operator should see it: the file is no longer shrinking, and a store that is
+// actually broken also refuses every Append, which surfaces as ReasonGuardStore.
+func (l *Ledger) CompactFailures() int64  { return l.compactFailures }
+func (l *Ledger) LastCompactError() error { return l.lastCompactErr }
+
 // RedeemDeliveryCreditReason is RedeemDeliveryCredit plus the reason it paid
 // nothing. See the Reason* constants.
 func (l *Ledger) RedeemDeliveryCreditReason(server, fetcher ports.NodeID, root ports.Hash,
@@ -552,11 +561,26 @@ func (l *Ledger) sweepExpiredSerials(current uint64) {
 	}
 	// The durable log is append-only, so an expiry sweep is the ONE event that shrinks
 	// it. Compacting here (and only here) keeps the file within 2x the live cap while
-	// costing nothing on the redeem path. A failed compaction is not an accounting
-	// error — the log is a superset of the live set, and a superset only ever refuses
-	// more — so it does not fail the sweep.
+	// costing nothing on the redeem path.
+	//
+	// TWO ERROR CLASSES, NOT ONE (R2.13, PE ruling
+	// RULING-ledger-durability-family-FP2-R2.13-R2.10-2026-09-03.md §1). A failed
+	// compaction is not an accounting error: the port contract (ports.PaidSerialStore,
+	// the handle clause) guarantees the store is then EITHER still appendable with the
+	// log a superset of the live set — which only ever refuses more — OR failing every
+	// Append. So a Compact error is recorded here (the WARN; this package has no
+	// logger, counters are its observability surface) and never refuses a payout by
+	// itself. A store that is actually broken reports it the one way the redeem path
+	// already refuses on: Append fails, and RedeemDeliveryCreditReason returns
+	// ReasonGuardStore. Refusing on every Compact error instead was REFUSED by the
+	// ruling: it is a self-inflicted liveness break at exactly the load where a benign
+	// compaction fails. Gates: G-CO-2 (benign failure still pays) and G-CO-3 (broken
+	// store pays 0).
 	if removed && l.paidStore != nil {
-		_ = l.paidStore.Compact(l.livePaidSerials())
+		if err := l.paidStore.Compact(l.livePaidSerials()); err != nil {
+			l.compactFailures++
+			l.lastCompactErr = err
+		}
 	}
 }
 

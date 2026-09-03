@@ -698,10 +698,15 @@ O3 is pending** (source for all four:
   `/Users/andrewedmond/Claude/claude/silt-reviews/crypto-specialist/ADVISORY-R0.4b-C3-blind-RSA-epoch-binding-2026-09-03.md` C-4/Q3.
 - **FP-1 · `Bank.spent` persistence — OPEN, a flip precondition.** The in-memory spent guard has
   less durability than the thing it guards; narrowed, not waived, and re-armed the moment witnessed
-  demand confers any value. Source: the composed cert Residuals; the FP-1/FP-2 text is CERTIFIED
-  faithful in `R0.4b-C3-271ab81-G3-G4-GD-DELTA-CERTIFICATION-2026-09-03.md` §4.
-  *(The 2026-09-03 ledger-durability ruling REFUTES the earlier "mirror crash window is a pure
-  under-pay, self-heals, owes no gate" reading on all three clauses — see FP-2 below.)*
+  demand confers any value. Source: the composed cert Residuals; the FP-1/FP-2 wording is CERTIFIED
+  faithful in `R0.4b-C3-271ab81-G3-G4-GD-DELTA-CERTIFICATION-2026-09-03.md` §4, EXCEPT its reading of
+  the mirror crash window, corrected 2026-09-03 (ledger-durability ruling §4, doc-only, no cert needed):
+  the mirror crash window (the guard append lands, the payment is lost) is NOT a pure under-pay — the
+  supersede reversal is lost with the payment, so the server retains 58,720,256 against an honest
+  43,750 (`r04b_c3_crashwindow_test.go:97-106`); it does NOT self-heal — the guard entry expires, the
+  un-reversed mint is permanent; and it DOES have a shipped gate,
+  `TestFP2_CrashBetweenTheGuardAppendAndThePayBurnsTheReceipt`. That residual is FP-2's lost
+  supersede, below.
 - **FP-2 · the redeem ATOM (was "write-ahead across the guard file and a ledger store") — RE-DEFINED 2026-09-03; sequenced R2.13 → R2.10 → FP-2.**
   The brief named the wrong invariant: there is NO double-pay (`r04b_c3_crashwindow_test.go:84-89`, Σ
   unmoved). The residual is a **LOST SUPERSEDE**: the reversal at `delivery.go:449-454` sits OUTSIDE
@@ -814,15 +819,23 @@ economy-off HEAD certifies a network nobody runs. Design:
   denial — there is no funded honest path through it until R2.14. Sources: the economist advisory;
   `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/RELAY-LANE-per-node-ledger-mint-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md`;
   `/Users/andrewedmond/Claude/claude/silt-reviews/economist/ADVISORY-R0.4b-cap-griefing-grant-and-bonded-fetchers-2026-09-03.md`.
-- **R2.13 · `R-COMPACT-ORPHAN` — DEFINED 2026-09-03: real, cheap, NOT research-gated; FIRST in the R2.13 → R2.10 → FP-2 order.**
+- **R2.13 · `R-COMPACT-ORPHAN` — BUILT 2026-09-03 (PR pending, branch `builder/r2.13-compact-orphan`); NOT research-gated; FIRST in the R2.13 → R2.10 → FP-2 order.**
   Measured by the PE: after a successful rename, a failed post-rename `OpenFile` leaves the append
   handle on the unlinked inode; write AND fsync through the stale handle return success; `Load` never
   sees the record; `Compact`'s error is discarded at the sweep call site. Failure direction is an
-  OVER-pay, once per epoch since C-7. Fix: **open-before-rename** (fd swap), plus the missing port
-  clause at `ports/ports.go:361-363`. Do NOT blanket fail-closed at `delivery.go:559` — a pre-rename
-  failure is benign and over-correcting is a self-inflicted liveness break. Tester gate: inject the
-  post-rename open failure, assert the next append is visible to `Load`. Ships with the fix to the false
-  ROADMAP FP-1 parenthetical. Source: the ledger-durability ruling.
+  OVER-pay, once per epoch since C-7. Shipped: **open-before-rename** in `adapters/guardstore`
+  `Disk.Compact` (the new append handle is opened on the temp file BEFORE the rename, so nothing
+  fallible runs between the rename and the handle swap); a sticky `ErrStoreBroken` backstop checked
+  first by `Append` and `Compact`; the handle clause on `ports.PaidSerialStore.Compact`; and the
+  ledger-side two-class split at the sweep (a `Compact` error is counted, `CompactFailures()` /
+  `LastCompactError()`, never a refusal; a broken store fails `Append` and the existing
+  `ReasonGuardStore` path pays 0). Gates: `TestG_CO1_PostRenameOpenFailureOrphansTheAppendHandle`,
+  `TestG_CO2_BenignCompactionFailureDoesNotRefusePayouts`,
+  `TestG_CO3_BrokenStoreMustBeObservableByTheLedger`,
+  `TestR213_BackstopBrokenStoreFailsEveryAppendAndCompact`,
+  `TestR213_PreRenameOpenFailureLeavesTheStoreHealthy`,
+  `TestR213_BenignCompactionFailureIsRecordedNotDiscarded`. Deliberation:
+  `docs/thinking/2026-09-03-r2.13-compact-orphan-design.md`. Source: the ledger-durability ruling.
 - **R2.14 · Relay-lane prepayment ANCHOR — NEW 2026-09-03: a PREREQUISITE of R2.9; the fix for R0.7; owner ratification owed.**
   Per-node conservation is always AUTHORIZATION-anchored (privacy guard (ii) makes "debit the payer"
   unimplementable on any topology; `RedeemDeliveryCredit` debits no one either, `delivery.go:512-516`).
