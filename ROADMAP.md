@@ -86,6 +86,45 @@ below (the flip/freeze/B8 order; R-BOX-ATTESTS O1/O2/O4).
    "the flip proceeds pre-freeze; the freeze re-confirms byte-identity later" clause: a B8 pass
    bought against an unfrozen format would have to be re-bought at the freeze.
 
+**★★ OWNER RATIFICATIONS OWED — the 2026-09-03 definition program.** Eleven seat runs (PE ×5,
+Researcher ×6, red-team ×2, crypto-specialist ×2, economist ×1; all read-only) put every undefined Rock
+through design and certification in one day. Record and index:
+[`docs/thinking/2026-09-03-roadmap-definition-program.md`](docs/thinking/2026-09-03-roadmap-definition-program.md).
+Each line below is the ONE sentence the certifying seat asks the owner to ratify; the Rock it lands on
+carries the argument and the sources. Two are LIVE BREAKS and come first.
+1. **R0.6 (I5 break, LIVE on main):** narrow F2 so equivocation evidence hashes are always recomputed
+   from full bodies and never read from `Pruned`, accepting that a double-sign whose evidence is already
+   pruned becomes unslashable, paired with a per-block encoded-byte ceiling on `Slashes`. Then: Tester
+   encodes the six RED-first gates; one Builder lands the fix. No era gate.
+2. **R0.7 / R2.14 (relay mint, behind a default-off flag):** build the relay prepayment anchor
+   (bilateral PayWord, issuer == relay) as a prerequisite of R2.9, with settlement paying 0 and the flag
+   default-off until it lands.
+3. **R-STATEVIEW-ENUMERATION / R3.4 freeze scope:** the era-4 freeze scope is at most ONE leaf —
+   `tagRevLogSize`, bought purely so a floor box survives a takedown block — and no leaf at all is
+   needed for safety.
+4. **Carrier branch:** rebase `builder/lastcommit-carrier` onto main NOW behind the two hard merge
+   gates (the `Hash()` literal reflection pin; v5 tag-set equality); ratify the carrier byte-ceiling
+   VALUE only after a pony-class measurement exists; decide whether to buy the multi-block inclusion
+   window (R-CARRIER-CREDIT-DENIAL); decline the vector cap unless the M0 claim is re-opened.
+5. **R2.9:** adopt PayWord-denominated per-increment delivery settlement under gates G-1…G-6; accept
+   the interim exposure (suppression is the shipped default and conservation holds); order R2.14 → R2.9
+   → R2.4; choose strict parity or `r = 0` on the witnessed path; authorise the two blocking
+   measurements (`B_bootstrap`; the honest arrival rate).
+6. **FP-2 / ledger durability:** whether the ledger gets a durable store before the RC at all (PE:
+   close FP-2 by scope; land R2.13 and R2.10 regardless).
+7. **R4.2:** re-scope the A-axis to measure / publish / fix the DHT domain-0 exemption and the single
+   `-domain` flag / hand the A-axis to B8 as-is; do NOT wire A3.
+8. **R-ISSUERKEY-POP:** build the `IssuerKeyReg` PoP format slot now, or reserve it inert at the stamp
+   raise (the off-chain `demandMsg` binding is the fix either way).
+9. **R-E2E-ERA4-FIXTURE:** accept the e2e cost increase at the stamp raise.
+10. **R-membership:** close it by retiring `slashedRoot` and `validatorsSeenRoot` from the v5
+    committed digest set (D-V5-WHOLESET-ROOTS five → three) rather than by capping seated identities;
+    a hard fork at activation; gated on the box's explicit `objective()` guard.
+11. **Recovery boundary (#535):** the floor box is a COLD AUDITOR — unconditional loud stall, the two
+    directive knobs deleted, pruned blocks refused, `trustFloor` off the contract surface, recovery by
+    a fresh `-ws-checkpoint`-class anchor at H+1 treated as irrecoverable if unreachable.
+**Not the owner's:** the research-gated pieces are named on each Rock and stay with the Researcher.
+
 **★ Decisions owed to the owner (as of 2026-09-03).** Read these first; each names its source.
 - **Floor-box STRUCTURE (Boulder 1, pre-freeze) — RATIFIED 2026-09-03.** Owner: *"I accept the
   recommendation."* All three owner items are DECIDED as recommended: (1) the structure, (2) HOLD the
@@ -132,6 +171,38 @@ below (the flip/freeze/B8 order; R-BOX-ATTESTS O1/O2/O4).
   **(iii) re-scope** the e2e gate to the certified era-4 refusal — never an activation override, in
   any form, in any binary
   (`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-G8-dark-lane-CONVERGENCE-2026-09-03.md`).
+- **R0.6 · I5 CROSS-HEIGHT `Pruned` SLASH FORGERY — CONFIRMED LIVE BREAK ON MAIN (2026-09-03); fix direction CERTIFIED; OWNER RATIFICATION OWED; Tester gate owed.**
+  `VerifyEquivocation` reads height from the evidence struct (`equivocation.go:50`) but the signed
+  message from `Hash()` (`:53`), which returns attacker-supplied `b.Pruned` (`chain.go:658-660`) for
+  the two Blocks inside `Slashes[i]`. Two GENUINE signatures by an honest validator at two DIFFERENT
+  heights, re-labelled with one fictitious height, verify as a double-sign; through `Append` the honest
+  validator is slashed, evicted from `bonded`, disqualified forever. Era-1 and era-2 both. `Slashes`
+  is uncapped. **Needs no Byzantine proposer** — a Byzantine PEER makes an honest node slash and queue
+  the forgery. Reproduced end-to-end (red-team probe, re-run by the planner against main: 6/6). The I5
+  model-check is era-2-only and fuzzes one height — outside its schedule space by construction.
+  **Fix (CERTIFIED, 6 gates, NO era gate):** evidence hashes are ALWAYS recomputed from full bodies;
+  `Pruned` is never read for evidence — the rule `equivocation.go:21` already states; strictly
+  narrowing, so it can never manufacture a slash; placed in `VerifyEquivocation`, not
+  `validateSlashes`. Paired with a per-block encoded-BYTE ceiling on `Slashes` (required: `Prune()`
+  never recurses into `Slashes`, so embedded ~1.5 MB `Answer`s pin permanently). Binding height into
+  the signature domain REFUTED (era-1 bare-hash verify; cannot rebind minted history). Canon changes:
+  `retention.go:17-19`, `chain.go:691-697`. Model-check gains three axes (declared-vs-signed height;
+  `Pruned` ∈ {unset, real, forged}; era ∈ {1,2}). Six RED-first Tester gates with `Append` as
+  oracle; T-4 supersedes `TestQ2_PrunedBlockStillSlashable`. **Owner ratifies:** narrow F2 so evidence
+  hashes are always recomputed and never read from `Pruned`, accepting that a double-sign whose evidence
+  is already pruned becomes unslashable, paired with the `Slashes` byte ceiling. Sources:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/red-team/RED-TEAM-accept-chain-state-view-enumeration-2026-09-03.md` (F1),
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/I5-cross-height-pruned-slash-forgery-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md`.
+- **R0.7 · RELAY-LANE per-node-ledger MINT — CONFIRMED (2026-09-03), HIGH, live only with `--accept-relay-payments` (default OFF); fix = R2.14.**
+  `SettleRelaySession` settles on the RELAY's own ledger (`relaytransport.go:107`); `RedeemRelayCredit`
+  debits the fetcher's fresh ephemeral, which on that ledger is a phantom auto-granted 500,000 on first
+  touch (`credit.go:247-258`); the relay's balance rises by `chainValue` with nothing binding the chain
+  to a real payment. 100 fresh-ephemeral sessions → relay +26,214,400 with zero bytes; with grant = 0
+  the relay still gains. Self-deal: the attacker IS the relay. Reputation firewall HOLDS (balance
+  economy only). `relay_test.go` pre-funds the fetcher on the SAME ledger and cannot see it;
+  `money_pump_test.go` never covers the relay lane. Interim: flag stays OFF and settlement pays 0.
+  Sources: `/Users/andrewedmond/Claude/claude/silt-reviews/red-team/RED-TEAM-relay-lane-session-grant-and-byte-price-2026-09-03.md`, the R2.14
+  cert.
 - **`R-CARRIER-BYTES` — the validity bound, with the cost now MEASURED.** 1.3 M carrier entries fit
   a single 132 MiB frame and cost **42.2 s single-core** to validate, **130.18 MiB** on the wire,
   **1.13 GiB** max RSS — and are re-paid on every disk reload, permanently
@@ -258,11 +329,40 @@ Accept. Certification:
 - **R1.8 · The flip: wire `WitnessValidateV5` → Accept-iff-all-predicates-pass** · Builder · S.
   **NOT done.** Trivial code; a consensus-rule change (I1). Beyond R1.5/R1.6 green, the flip
   **additionally requires** (per the R1.4 cert §R1.4-FLIP):
-  - **R-membership** — OPEN: a set-size bound on the qualified / `validatorsSeen` sets;
+  - **R-membership — DEFINED 2026-09-03 (GATED, 7 gates; owner ratification owed; PRE-FREEZE).** Misnamed:
+    `bonded` is already bounded by RegCap·(TTL+1)+genesis ≈ 8,448 (three carve-outs incl. the era-4
+    activation window), `qualified ⊆ bonded`, `epochSet` is a clone. The real grow-only sets are
+    `validatorsSeen` and `slashed`, folded WHOLE on every post-latch block — a terminal-stall time bomb
+    for every box, not a DoS. **Direction (not a cap):** retire `slashedRoot` (soundness-neutral: zero
+    predicates iterate `slashed`) and `validatorsSeenRoot` (conditional: `{seen ∩ live-bonded}` =
+    `{bonded ∧ ≥MinBond ∧ ¬slashed ∧ ¬anchor ∧ ∈seen}` exactly, so enumerating `bonded` is complete)
+    from the v5 digest set, amending D-V5-WHOLESET-ROOTS from five roots to three; free today (production
+    mints era-2), a hard fork at activation. **G-1 blocks** until the box carries an explicit
+    `objective()` guard that stalls instead of silently taking the legacy `matureNow` branch
+    (`chain.go:2231-2238` is unreachable by WIRING, the #572 shape). Also: the `PreIDs` gate sits at
+    the DECODE boundary; `IngestBlockWitnesses` is structurally inapplicable to the root-only path.
+    **Owner sentence:** ratify that R-membership closes by removing the two grow-only sets from the
+    floor box's whole-set fold, retiring `slashedRoot` and `validatorsSeenRoot` from the v5 committed
+    digest set (D-V5-WHOLESET-ROOTS five → three), rather than by capping seated identities; free today,
+    a hard fork at activation, and not certified until the `objective()` guard lands. Sources:
+    `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-R-membership-and-recovery-boundary-535-2026-09-03.md`,
+    `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R-membership-unbounded-sets-and-recovery-boundary-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md`.
   - the **EXTERNAL B8 red-team pass** (R1.7) — owner-ratified HARD precondition;
-  - the **recovery-boundary decision** (cold-auditor directive-trust boundary) — repro/residual
-    in [`docs/thinking/2026-09-01-residual-defect-repro-recipes.md`](docs/thinking/2026-09-01-residual-defect-repro-recipes.md)
-    (formerly #535);
+  - the **recovery-boundary decision (formerly #535) — DEFINED 2026-09-03 (CERTIFIED (a′), 4 conditions; owner ratification owed).**
+    The shipped directive knob is INERT (`rotateOps` stalls on height alone; no directive in its
+    signature, pinned by `rotate_v5_test.go:645`); "commit the recovery height as a leaf" is structurally
+    impossible; the stall is TERMINAL, not one block; the ROADMAP-cited repro (the h64 wedge) does not
+    cover the question. (a′) is strictly narrowing ⇒ I1/I3/I4 safe. The re-anchor is the Ethereum
+    weak-subjectivity checkpoint schema silt already ships (`-ws-checkpoint`; `claims-ledger.md:43`);
+    adopt its IRRECOVERABLE-FAILURE clause. New: the pin binds `StateRoot` only for a NON-pruned block
+    (`chain.go:658-660` vs `:667`); a caller-supplied raised `trustFloor` skips the space-time re-verify
+    (`chain.go:1801-1815`) — so the box REFUSES pruned blocks and `trustFloor` leaves the contract surface.
+    **Owner sentence:** ratify that the floor box's role at a #535 recovery boundary is COLD AUDITOR —
+    it stalls loudly and unconditionally, `RecoveryDirective.Heights` and `LiveFollower` are deleted,
+    the box refuses pruned blocks outright rather than taking a trust floor from its caller, and the
+    operator's recovery path is a fresh `-ws-checkpoint`-class anchor at H+1 treated as a critical,
+    irrecoverable failure if unreachable. Sources: the ruling and certification above;
+    [`docs/thinking/2026-09-01-residual-defect-repro-recipes.md`](docs/thinking/2026-09-01-residual-defect-repro-recipes.md);
   - the **legacy-mode invariant** (the pre-v5 path stays sound under the flip);
   - **R-FOLD-LIVE-STATE-READS — the fold reads NO live box state** (research cert
     `floorbox-R-FOLD-LIVE-STATE-READS-RESEARCH-CERTIFICATION-2026-09-02.md`, GATED). The class-A
@@ -343,12 +443,29 @@ carries its source; none is decided by a seat.
   close them. `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-floorbox-predicate-rederivation-structure-2026-09-03.md`
   (option E), `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/floorbox-predicate-rederivation-STRUCTURE-RESEARCH-VIEW-2026-09-03.md`
   (option D).
-- **R-STATEVIEW-ENUMERATION — OPEN, a FREEZE precondition and the earliest item in the order.**
-  The certified inventory of every state read on the accept chain, classified as committed leaf /
-  box-owned config / block-local. The PE's one-pass enumeration closes with exactly one non-leaf
-  fact (`parent.ProposerID()` → `tagLastProposer`); **its whole job is to find what that pass
-  missed**, because a second non-leaf fact discovered after the freeze is a new era. Source: the PE
-  structure ruling §3, §7.
+- **R-STATEVIEW-ENUMERATION — CLOSED 2026-09-03 (closure GATED G-1…G-5; freeze scope CERTIFIED: ZERO leaves for safety).**
+  The exhaustive inventory found the "exactly one non-leaf fact" sketch wrong by five (N1 height axis
+  widened; N3 the K=8 ancestor walk; N4 the `LogRoot` half of the roots predicate; N5 `trustFloor`
+  node-local; N6 `verifyBond` parameterised by uncommitted node config; plus a fourth class, block-local
+  NOT hash-covered: `Atts`/`CommitRound`/`PrepareQC`/`Pruned`). The blind red-team hunt then found
+  F2–F15 (13 accepted, F3 rejected) and **F1, a confirmed I5 break (R0.6)**. The closure cert
+  REFUTES the four-leaf recommendation: every non-leaf fact closes with zero format change through a
+  box-owned head record, because `WitnessValidateV5` already takes `parentStateRoot` as an
+  unauthenticated driver parameter. Closure rests on a PARTITION, not a list:
+  `modelcheck_state_completeness_test.go:76-151` machine-classifies every `Chain` field, leaving
+  exactly two non-leaf containers (`blocks`, `revLog`). Two closure rules: the composition's input
+  identity is the WIRE BYTES (F5+F10); `trustFloor` as a caller parameter is REFUTED — a raised floor
+  skips the space-time re-verify (`chain.go:1801-1815`), so the box must refuse pruned blocks (F6).
+  The one candidate leaf is `tagRevLogSize`, LIVENESS-only (see R3.4). Not walked: `blindtoken.Verify`,
+  `vdf.Verify`/`manifest.VerifyProof`, the SMT library, `Reconcile`/`adopt`, `core/genesis`. Sources:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/INVENTORY-accept-chain-state-view-enumeration-2026-09-03.md`,
+  `/Users/andrewedmond/Claude/claude/silt-reviews/red-team/RED-TEAM-accept-chain-state-view-enumeration-2026-09-03.md`,
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R-STATEVIEW-ENUMERATION-closure-and-freeze-scope-RESEARCH-CERTIFICATION-2026-09-03.md`.
+  **Also filed from the hunt (definitions, not breaks):** F2 `rotateEpoch`'s activation tallies iterate
+  the NEWLY FROZEN set (`chain.go:3494/3496`), not pre-state `epochSet` — a box/node split the
+  composition must reproduce from the pre-state; F4 the K=8 nonce walk is TRUNCATED (`[1..8, 8…]`) —
+  a fixed-length ancestor list would let a box accept forged bonded standing; F5 `Hash()` writes a
+  non-wire memo (the accept chain mutates its input).
 - **R-BOXENTRY-RESIDUALS — OPEN (box-entry round A, HELD unmerged; the HOLD is RATIFIED
   2026-09-03).** The exported-door surface is HELD by owner decision (zero production callers today;
   unexporting is free now and migration work once part B starts): merge the arithmetic
@@ -395,33 +512,36 @@ O3 is pending** (source for all four:
   metric on `bonded` instead of `validatorsSeen`. It would remove the "attested a committed block"
   anti-declaration property, which makes it a **published-claim** change (Sybil metric semantics),
   not a consensus fix. Declined by default; reopening it is a separate certification. Source: §10.
-- **R-CARRIER-PARENT-BINDING — OPEN, a flip ENTRY blocker.** The box runs the shared
-  `validateCarrier`, but not the ancestry precondition its node-side caller establishes: on the full
-  node `ValidateProposal` refuses `b.Height != height || b.Prev != prev` FIRST, so "a genuine
-  precommit over `b.Prev`" means "over THE PARENT"; in the box it means "over a hash the ATTACKER
-  chose". Replaying a stale certificate re-opens the `everMature`/C2 maturity forge **with zero
-  forged signatures**. Two candidate directions, neither built nor certified: give the box the
-  parent hash+height as inputs, or commit the pair as v5 scalar leaves Resolved against
-  `prevStateRoot`. The HEIGHT axis (the height-1 empty-carrier rule) is label-enforced in the box
-  and has the same root cause. Source: `.../red-team/RED-TEAM-lastcommit-carrier-26977a4-RE-BREAK-2026-09-03.md`
-  RT2-CARRIER-13 / 13b / 13c.
-- **R-CARRIER-PARENTPROPOSER / `tagLastProposer` — OPEN, flip AND freeze precondition.** The class-A
-  carrier fold excludes `id == parent.ProposerID()`, which is **not a committed leaf**; the witnessed
-  `(pub, sig)` anchor is one-sided — DROP is bounded, **ADD is not** (a freshly minted keypair
-  verifies, matches no entry, and the parent's true proposer self-seats). Certified fix direction: a
-  `tagLastProposer` committed scalar leaf, Resolved like every other class-A input. **Additive
-  committed-format change on the open era — it must land BEFORE the era-4 freeze.** Source:
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/LASTCOMMIT-CARRIER-round-A-5d3fda0-RESEARCH-CERTIFICATION-2026-09-03.md`
-  §6.2 (FP-1).
-- **R-CARRIER-BYTES — OPEN, PROMOTED to a flip precondition, and a v5 VALIDITY rule (pre-freeze).**
-  See the *Decisions owed* block for the measured numbers. A bound needs its own certification plus
-  owner ratification; do not add one inline. Sources:
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/LASTCOMMIT-CARRIER-round-A-5d3fda0-RESEARCH-CERTIFICATION-2026-09-03.md`
-  §10.1,
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/LASTCOMMIT-CARRIER-26977a4-DELTA-CERTIFICATION-2026-09-03.md`
-  §2.4,
-  `/Users/andrewedmond/Claude/claude/silt-reviews/red-team/RED-TEAM-lastcommit-carrier-26977a4-RE-BREAK-2026-09-03.md`
-  RT2-CARRIER-15 / 17.
+- **R-CARRIER-PARENT-BINDING — DEFINED 2026-09-03 (CERTIFIED direction; flip-gated; ZERO format change).**
+  A silt consensus signature carries NO chain position (`consensusSigBytes = domain ‖ phase ‖ round ‖
+  hash`, `chain.go:752-767`), so every consumer must supply position from state it trusts. The box
+  binds the carrier to THE PARENT through a **box-owned head record** (`HeadRef`: parent hash, height,
+  and — per R-LOGROOT-FORMAT-SCOPE — parent `LogRoot`), the same trust class as the `parentStateRoot`
+  the driver already passes (`floorbox_v5.go:223`). Committing parent hash/height as leaves is
+  REFUTED (hash circular — `StateRoot` is inside the `Hash()` preimage; height redundant). Bundling
+  with `tagLastProposer` is REFUTED: there is no format delta. Also closes the height axis (13c). No
+  `HeadRef` symbol exists on any tree yet; `AdoptPin` on the box-entry branch is the evidence the box
+  can derive a trustworthy head. Sources:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/LASTCOMMIT-CARRIER-residuals-composed-direction-RESEARCH-CERTIFICATION-2026-09-03.md`,
+  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-lastcommit-carrier-residuals-direction-review-2026-09-03.md`.
+- **R-CARRIER-PARENTPROPOSER / `tagLastProposer` — RE-PRICED 2026-09-03: NOT a leaf, NOT pre-freeze.**
+  `parent.ProposerID()` closes with ZERO format change through the box-owned head record (above); the
+  enumeration closure cert supersedes the earlier "the ONE hard pre-freeze item" reading (its own §3.2)
+  and the R-BOX-ATTESTS §6.2 fix direction. Remains a flip precondition (the class-A carrier fold must
+  read it from `HeadRef`, never from a witnessed self-signed pair — ADD is unbounded). Source:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R-STATEVIEW-ENUMERATION-closure-and-freeze-scope-RESEARCH-CERTIFICATION-2026-09-03.md`.
+- **R-CARRIER-BYTES — DEFINED 2026-09-03: principle + formula CERTIFIED, VALUE GATED on a pony measurement; owner ratifies.**
+  It is **not a security parameter** (the box STALLS on an over-size witness, so safety holds at any
+  value); it is a build-immutable-#8 + box-liveness parameter, so the owner ratifies it on immutable
+  grounds. Derive the bound from the **box witness cost on unauthenticated input** (the same schema as
+  `adapters/tcpnet/tcpnet.go:63-72` and CometBFT `MaxBytes + MaxCommitBytes`), in BYTES not count
+  (distinct ids are free). A frame-derived bound is REFUTED (20.7× loose); a state-dependent threshold
+  is REFUTED (the #357 shifting-count shape). The PE review adds: the formula needs an **honest-carrier
+  LOWER bound** too (the liveness cliff used to refute a minimum applies to the maximum). The ungated
+  `anchoredPreSet` fold on `w.PreIDs` and the zero-caller `IngestBlockWitnesses` gate are the SAME
+  defect on two more surfaces — one rule, three surfaces. A pony-class measurement does not exist yet.
+  Sources: the composed-direction cert and the PE review above;
+  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-R-membership-and-recovery-boundary-535-2026-09-03.md`.
 - **R-CARRIER-PRUNED-HASH — OPEN, owed BEFORE the stamp raise (not a flip gate).** `Hash()`
   short-circuits to `b.Pruned`, and `Prune()` keeps `LastCommit` and `StateRoot`, so on a pruned
   block neither is signature-covered: `Pruned` is a linkage token, not a content commitment.
@@ -434,27 +554,53 @@ O3 is pending** (source for all four:
 - **R-CARRIER-GENESIS-DISPOSAL — OPEN, MERGE-BLOCKING on the carrier branch (MG-C).** The rule
   splits: genesis `Atts` must be **STRIPPED**, genesis `LastCommit` must be **REFUSED**. This
   corrects the round-A certification's own §2. Source: the delta cert §6.
-- **R-CARRIER-CREDIT-DENIAL — OPEN, live; owner + Researcher.** The carrier separates the seating
-  slot from the quorum slot, and it has **no minimum**: an under-carrying block still COMMITS, so
-  the denial lands on the canonical chain with no rule, no minimum and no attribution — available
-  actively (omit) and passively (be fast), both indistinguishable from honest behaviour. A carrier
-  minimum is a v5 validity-rule change: research-gated, owner-ratified; do not add one inline.
-  Source: the delta cert §8.1 (RT-CARRIER-4).
-- **R-CARRIER-DOUBLESIGN-SLOT — OPEN, RESEARCH-GATED (slashing-rule change).** The carrier is a
-  new, hash-covered, permanently committed slot for consensus signatures that **neither half of the
-  equivocation machinery reads** — with the same signatures in `LastCommit` rather than `b.Atts`,
-  `FindEquivocations` convicts nobody and the equivocator is seated on both forks. Widening
-  slashing evidence to a new signature slot is an I1/F2 rule change: Researcher certifies, owner
-  ratifies. Source: the delta cert §8.1 (RT-CARRIER-7).
-- **R-CARRIER-ROLLOUT-SIGNAL — OPEN, live at activation; = the O2 enforcement gap (OWNER call).**
-  Nothing on the wire distinguishes a pre-carrier from a post-carrier binary: both mint v5 and both
-  stamp readiness 3, and unknown cbor key 18 is silently dropped, so a partially upgraded fleet does
-  not fork — it degrades silently and asymmetrically back to the frozen-seating state the carrier
-  exists to fix. The tally path is protected (only carrier binaries stamp 5); the **genesis pre-latch
-  override path is not**. Source: the delta cert §8.1 (RT-CARRIER-3).
+- **R-CARRIER-CREDIT-DENIAL — RE-PRICED 2026-09-03: PRE-EXISTING on main; the carrier NARROWS it. GATED (window); minimum REFUTED; vector REFUTED.**
+  Main seats from `b.Atts` (`chain.go:3364`), which is outside the `Hash()` preimage, so today ANY relay
+  can deny a seating divergently (bounded by the quorum floor, `chain.go:2735`; at v4+ the same trim
+  rejects the block, `era3validity.go:131`). The carrier shrinks that to one proposer, agreed. A carrier
+  MINIMUM is REFUTED (mintability would depend on the proposer's stored non-hash-covered parent `Atts`
+  ⇒ liveness cliff; + #402 forks). A set-indexed VECTOR is REFUTED (needs a validator cap ⇒ ceilings
+  C2's measured domain ⇒ an M0 published-claim change; carried as **R-CARRIER-VECTOR-CAP**, owner).
+  A multi-block inclusion WINDOW is GATED (owner: whether to buy it). Only dated item: a doc fix. Sources:
+  the composed-direction cert and the PE review.
+- **R-CARRIER-DOUBLESIGN-SLOT — RE-CLASSIFIED 2026-09-03: NOT a consensus-rule change; severity LOW.**
+  Because `Atts` is outside the preimage, the evidence producer LIFTS a carried precommit onto the
+  evidence copy of the parent's `Atts` (hash unchanged, `VerifyEquivocation`'s accept set identical,
+  no format, no era gate). And `HeadCarrier` iterates `head.Atts` (two non-test callers), so
+  `LastCommit ⊆ parent.Atts` by construction — the "seated on both forks, convicts nobody" premise
+  cannot be produced by silt's own proposer. Build-spec: the lift must run BEFORE `signers()`;
+  `e.A = *ab` aliases the `Atts` backing array; `Slashes` is hash-covered, so this couples to
+  R-CARRIER-BYTES. Traps named for the Tester: SILENT-GREEN (adding `LastCommit` to the two loops
+  verifies against the carrying block's hash) and FALSE-SLASH (a `(height, phase)` join; height derived
+  from the carrying block's label). Corrects the `26977a4` delta cert §8.1. Residual
+  R-DOUBLESIGN-TIP-BLIND (LOW). Sources: the composed-direction cert and the PE review.
+- **R-CARRIER-ROLLOUT-SIGNAL — DEFINED 2026-09-03: CERTIFIED minimum; no part is a consensus rule; the override is LATENT.**
+  The readiness tally already IS BIP-9-shaped; the gap is the flag-day override, and
+  `Era4ActivationHeight` has **no `cmd/silt` flag** today. Minimum faithful mechanism (Cosmos
+  `x/upgrade` schema): a named upgrade + a declared binary version → startup refusal, plus a
+  self-naming stall on unknown cbor key 18. A strict CBOR decoder is REFUTED. **Release-runbook
+  precondition:** any future `Era4ActivationHeight` flag lands with the named-upgrade check. Sources:
+  the composed-direction cert (§ rollout), the PE review, and
+  `/Users/andrewedmond/Claude/claude/silt-reviews/crypto-specialist/ADVISORY-lastcommit-carrier-residuals-prior-art-2026-09-03.md`.
 - **R-CARRIER-MODELCHECK — GATED, owed BEFORE the stamp raise.** The model-check tier must state and
   drive the seating **AGREEMENT** property under the carrier (every replica seats the same set from
   the same hash-covered carrier), not merely the carrier's own validity. Source: the delta cert §7.
+- **R-LOGROOT-FORMAT-SCOPE — NEW 2026-09-03: a flip-gated SAFETY item; closes with ZERO format change.**
+  The node requires BOTH roots (`era3validity.go:134-136`); every witness artifact covers only the
+  `StateRoot` (`floorbox_recompute_stateroot_v5.go:501`, `readset_v5.go:23-38`, `statehash.go:29-30`),
+  and `core/translog` has no frontier/append primitive. A composition that Accepts without reproducing
+  `LogRoot` breaks `box.Accept ⇒ node.Accept`. Direction: verify-not-recompute (consistency +
+  per-leaf inclusion), carrying `parentLogRoot` in the head record and STALLING on revocation-bearing
+  blocks. Liveness needs the authenticated log size — see `tagRevLogSize` under R3.4. Sources: the PE
+  inventory (N4), the composed-direction cert (§ corrections), the PE review §5, the closure cert.
+- **R-HASH-LITERAL-PIN + R-V5-TAGSET-EQUALITY — NEW 2026-09-03: two HARD merge gates on the carrier branch (CD-0).**
+  Main's `Hash()` `unsigned` literal folds `IssuerKeys` not `LastCommit` (`chain.go:667`); the carrier
+  branch's folds `LastCommit` not `IssuerKeys`, has no `IssuerKeys` field at all, and is behind main by
+  2,907 lines in `core/chain` (base `1adca0f`); both branches rewrite the same box-entry file. A naive
+  merge holes the signed body. Gates: (1) a reflection pin that the `Hash()` literal names every
+  hash-covered field; (2) v5 tag-set equality against `statehash.go` (`issuerKeyCommit` joined the set
+  in #711). **Owner: rebase the carrier branch onto main NOW.** Verified by the planner, the Researcher
+  and the PE independently. Sources: the PE inventory, the composed-direction cert (CD-0), the PE review.
 
 *Fork-choice, canon and inventory (O3 / #558 family):*
 - **R-FORKCHOICE-WEIGHT (O3) — RATIFIED 2026-09-03: Direction T (owner: "Direction T"). BUILD
@@ -523,34 +669,48 @@ O3 is pending** (source for all four:
   needs either a reachability argument or removal — a dead branch must not carry an S5 contract.
   Source: `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-G8-dark-lane-CONVERGENCE-2026-09-03.md`
   §5.
-- **R-E2E-ERA4-FIXTURE — OPEN, a prerequisite of the STAMP-RAISING release (not of any PR).** The
-  e2e delivery-receipt fixture runs `-objective=false`, so `epochsEnabled()` is false, `rotateEpoch`
-  never runs, and the era-4 readiness tally **can never latch on it at any stamp value, on any
-  binary, forever**. The fixture must become objective + bonded + epoch-enabled before it can ever
-  green by tally — **never by an activation override, in any form, in any binary**. Carries the
-  coverage debt from G-8 option (iii): the e2e paid-lane positive arm is uncovered until then, and
-  the two genuinely-uncovered arms (the three-call happy-path composition; the second genuine
-  delivery on one lane) are owed as a node/sim-tier composition gate now. Source: the G-8
-  convergence §3, §4, §7.
-- **R-ISSUERKEY-POP — OPEN, crypto residual (latent).** `validateIssuerKeys` requires a verifying
-  ed25519 self-signature, an in-range epoch and a bond, but **no proof-of-possession of the RSA
-  key** — a bonded issuer can register another issuer's public-key fingerprint, a DSKS surface. Not
-  a live break today (one configured issuer, per-node ledgers), and the faithful RFC 9578 import
-  forecloses it by construction: sign `issuerID(32) ‖ epoch(8, BE) ‖ serial` (or the key
-  fingerprint) instead of the bare epoch. Until then, correct the two code comments claiming RFC 9578
-  fidelity. Source:
-  `/Users/andrewedmond/Claude/claude/silt-reviews/crypto-specialist/ADVISORY-R0.4b-C3-blind-RSA-epoch-binding-2026-09-03.md`
-  C-4 / Q3.
+- **R-E2E-ERA4-FIXTURE — RE-SCOPED 2026-09-03: NOT independently schedulable; a deliverable OF the stamp raise.**
+  Era-3 and era-4 are DARK on every real network (`NewBondReg` stamps v3 vs tallies needing 4/5; no
+  production activation-height setter; genesis stamps v2), so the fixture cannot green by tally on any
+  binary until the stamp raise, and never by an activation override (owner-ratified). The
+  "owed" composition gate ALREADY SHIPPED (`sim/demand_composition_test.go:52`, both arms incl. the
+  second delivery at `:144-148`); what is missing is its ABLATION twin. Owner: accept the e2e cost
+  increase at the stamp raise. Source:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-three-small-designs-issuerkey-pop-era4-e2e-fixture-smt-oracle-2026-09-03.md`.
+- **R-ISSUERKEY-POP — RE-DIRECTED 2026-09-03: the PoP is NOT the fix; bind `issuerID` into `demandMsg` (off-chain); reserve the format slot at the stamp raise.**
+  Binding the key FINGERPRINT is VACUOUS (B registers A's actual key bytes, fingerprint identical).
+  The sound close is off-chain: sign `issuerID ‖ epoch ‖ serial` in `demandMsg` — no committed byte,
+  no consensus cost (research-gated as a D-DEMAND change; PSS-vs-FDH routed). Nothing breaks for
+  already-registered keys because none can exist (eras dark). Coupling: (B) closes the attack but a PoP
+  is a FORMAT SLOT in `IssuerKeyReg` — reserve it inert at the STAMP RAISE or it freezes with no room.
+  Owner: build the slot now vs reserve-only. Until then, correct the two comments claiming RFC 9578
+  fidelity. Source: the three-small-designs ruling above;
+  `/Users/andrewedmond/Claude/claude/silt-reviews/crypto-specialist/ADVISORY-R0.4b-C3-blind-RSA-epoch-binding-2026-09-03.md` C-4/Q3.
 - **FP-1 · `Bank.spent` persistence — OPEN, a flip precondition.** The in-memory spent guard has
   less durability than the thing it guards; narrowed, not waived, and re-armed the moment witnessed
   demand confers any value. Source: the composed cert Residuals; the FP-1/FP-2 text is CERTIFIED
   faithful in `R0.4b-C3-271ab81-G3-G4-GD-DELTA-CERTIFICATION-2026-09-03.md` §4.
-  *(The mirror crash window — the guard append lands, the payment is lost — is RULED SAFE and owes no
-  gate: it is a pure under-pay that self-heals when the window advances, delta cert §3.)*
+  *(The 2026-09-03 ledger-durability ruling REFUTES the earlier "mirror crash window is a pure
+  under-pay, self-heals, owes no gate" reading on all three clauses — see FP-2 below.)*
+- **FP-2 · the redeem ATOM (was "write-ahead across the guard file and a ledger store") — RE-DEFINED 2026-09-03; sequenced R2.13 → R2.10 → FP-2.**
+  The brief named the wrong invariant: there is NO double-pay (`r04b_c3_crashwindow_test.go:84-89`, Σ
+  unmoved). The residual is a **LOST SUPERSEDE**: the reversal at `delivery.go:449-454` sits OUTSIDE
+  the certified `{guard entry, payout}` atom, so the server keeps 58,720,256 against an honest 43,750
+  (`:97-106`); the same atom reproduces the identical residual. The atom is the WHOLE redeem (five
+  mutations). Direction 2 (pay-then-append) stays REFUTED. Coupling: persisting the ledger BEFORE F8
+  (R2.10) upgrades the watermark poison from process-lifetime to PERMANENT — F8 gates the BUILD.
+  Research-gated: the atom boundary and replay idempotence (conservation). Owner: whether the ledger
+  gets a durable store before the RC at all (PE: close FP-2 by scope; land R2.13 and R2.10 anyway).
+  Source: `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-ledger-durability-family-FP2-R2.13-R2.10-2026-09-03.md`.
 
-- **SMT app-layer keyspace-injectivity oracle** — a **freeze-blocker (A2)**. It is currently a
-  decoration; it needs a defect-injected gate (inject a keyspace collision, watch it go RED)
-  before it counts as coverage.
+- **SMT app-layer keyspace-injectivity oracle — DEFINED 2026-09-03: a decoration, and the invariant its safety rests on is FALSE.**
+  `statehash.go:52-55` / `:99-101` claim "map raw keys are never empty"; `c.spent[string(e.Token.Serial)]`
+  (`chain.go:3254`) has zero validation, and `validateEntry`'s token branch is gated on `tokenQuorum > 0`
+  which no `cmd/` caller sets, so `Key("spent\x00","")` == the scalar form. No live collision; the margin
+  is one tag name, and the same serial is a floor-box read-set key (`readset_v5.md:333`, the A2 class).
+  Build: a `Serial` non-empty/length validity rule (research-gated: validity + immutable #8) and a
+  defect-injected gate (inject the empty serial, watch RED). Freeze-blocker stands. Source: the
+  three-small-designs ruling.
 
 #### Boulder 2 — Turn the economy on, prove it under adversary · depends on Boulder 0
 All solvency claims are sim-only today (economy default-off, no live enable path). An
@@ -570,7 +730,10 @@ economy-off HEAD certifies a network nobody runs. Design:
   conservation re-cert (R0.4) lands before the economy default flips regardless of packaging.
   ★ The flag that arms A4 is `-accept-delivery-receipts`, not `-economy` — sequence it behind
   the re-cert; do not let it ride silently in an economy-on PR.
-- **R2.4 · Economy-ON default flip** · Builder. After Boulder 0 + R0.4 cert.
+- **R2.4 · Economy-ON default flip — DEFINED 2026-09-03: lands AFTER R2.14 and R2.9, phased.** Under
+  the flat lane the flip reads to a pony as a 99.93% pay cut on a 64 MiB object. Order: correctness gates
+  (incl. FP-1) → economy-OFF baselines incl. the pre-flip Gini → canary → default. After Boulder 0 +
+  R0.4 cert. Source: `/Users/andrewedmond/Claude/claude/silt-reviews/economist/ADVISORY-boulder2-economy-definitions-2026-09-03.md`.
 - **R2.5 · C-5 G2 RAM measurement at production chunk — DONE (2026-09-01): 1024 MiB resident.**
   Measured locally at production chunk (16 × 64 MiB), +~512 MiB reclaimable (1536 MiB
   allocation-inclusive peak). Consequence: on a 2 GB pony ONE repair fits, TWO concurrent
@@ -582,64 +745,92 @@ economy-off HEAD certifies a network nobody runs. Design:
   constraint is COST (the G2 RAM spike), not incentive. Any re-open needs a cert grounded on
   the measured G2 (**cert-gated**, re-opens D-S7). Real seam: who re-endows cold-escrow + the
   missing per-tier repair-work-Gini telemetry.
-- **R2.7 · Economy-ON adversarial-solvency verdict + attack pass** · Researcher (NEW-CERT,
-  **cert-gated**) + red-team. After R0.3 (mint fixed) + R2.6 (payee decided) + R2.2 (live
-  telemetry). Feeds the #183 external brief.
-- **R2.8 · Cold-repair funding path (who re-endows the long tail)** · Builder/economist. After
-  R2.2 quantifies the heat/tier/repair correlation silt cannot measure today.
+- **R2.7 · Economy-ON adversarial-solvency verdict + attack pass — SCOPED 2026-09-03.** Five
+  solvency inequalities × seven attacks; the two unpriced today are **A2 supersede-suppression**
+  (highest; now CERTIFIED as a live incentive break, R2.9) and **A5 cold-start capture**; S5 must
+  include escrow recovered by self-repair. **Blocking telemetry:** `servedBytesWitnessed` /
+  `servedBytesUnwitnessed` (the A2 detector) and `bountyPaidToEscrowFunder` (the A4 detector) — neither
+  exists; without them R2.7 grades a benign workload. Researcher (NEW-CERT, cert-gated) + red-team,
+  after R2.14 + R2.9 + R2.2. Feeds the #183/R4.4 brief. Source: the economist advisory.
+- **R2.8 · Cold-repair funding path — DEFINED 2026-09-03.** Reserve-aware repair scheduling + early
+  cliff disclosure open to ANY funder + R2.9's expiring remainder. A network pool is REJECTED (a
+  censorship lever, drainable); never a mint. Today the caretaker pays 1024 MiB of RAM and THEN learns
+  the escrow is dry (`repairclaim.go:216`). Five inputs stay ASSUMPTION until live data: `B_bootstrap`,
+  honest arrival rate, object-size distribution, willingness to re-endow, escrow recoverability. After
+  R2.2. Source: the economist advisory.
 
 **New Rocks opened 2026-09-03 (Boulder 2 — economy):**
-- **R2.9 · D-POD-KNOBS re-pricing is now LOAD-BEARING (was a deferred knob)** · Researcher
-  (NEW-CERT, **cert-gated**) + economist. `R-FLAT-FEE` — a **flat** conserved fee (50,000) against a
-  **byte-proportional** unfunded self-mint (`bytes − bytes/8`) — is the ROOT CAUSE of G-4: past a
-  break-even of 50,000 accumulated lane bytes, **refusing** a witnessed receipt paid the server more
-  than accepting it, and the operator could trigger the refusal itself. G-4 is CLOSED at `271ab81`
-  by ordering every refusal below the supersede, so the lever is gone — but that fix makes the
-  standing consequence permanent: **every refusal now costs an honest server the entire accumulated
-  lane self-mint for that object**, and every new refusal path must go below the supersede by
-  default. `B` is the **accumulated lane** (the whole object), not one chunk, and the shipped default
-  chunk is 64 KiB — so the lever was live at the default, not only at the frame ceiling. Re-pricing
-  is a D-POD-KNOBS certification of its own. Sources:
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-composed-close-bc062d0-RESEARCH-CERTIFICATION-2026-09-03.md`
-  §4, `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-271ab81-G3-G4-GD-DELTA-CERTIFICATION-2026-09-03.md`
-  (Residuals), `/Users/andrewedmond/Claude/claude/silt-reviews/economist/ADVISORY-R0.4b-cap-griefing-grant-and-bonded-fetchers-2026-09-03.md`.
-- **R2.10 · F8 / FP-2 — the ledger must own a CHAIN-ANCHORED epoch; a clamp is not a close** ·
-  Builder + Researcher. Gates any shared-ledger, third-operator-settlement or **persisted**-ledger
-  deployment, and it **blocks the faucet rate limiter** (the limiter must not key on the ledger
-  watermark). Unreachable on the shipped topology today (one production caller, passing the node's
-  own `chainEpoch()`). Sources:
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-composed-close-bc062d0-RESEARCH-CERTIFICATION-2026-09-03.md`
-  §5;
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-271ab81-G3-G4-GD-DELTA-CERTIFICATION-2026-09-03.md`
-  §4.
+- **R2.9 · D-POD-KNOBS re-pricing — CERTIFIED as a LIVE incentive break; direction GATED (G-1…G-6); owner ratification owed; R2.14 is a PREREQUISITE.**
+  **Certified:** a server strictly prefers NEVER banking a witnessed receipt above B = 50,000 bytes —
+  payoff `0.875·(B − fee)`: +13,594 at 64 KiB, +58.7 M (1,342×) at 64 MiB — and suppression is one
+  default-off flag (`daemon.go:74`). **B3 conservation is INTACT** (conditioned on a banked receipt);
+  what breaks is incentive-compatibility of accept; no shipped gate pins it. **Certified with scope:**
+  `S/R ≥ 24·(B/fee)` ⇒ 32,212 at 64 MiB on the witnessed lane only; turning the conserved lane ON is a
+  1,342× durability DOWNGRADE, voiding knob 1's rationale. **Theorem:** D-S7 holds iff the PRICE is
+  byte-proportional; no clamp or ordering fix restores it. **Direction (GATED):** PayWord-denominated
+  per-increment delivery settlement (no new primitive class), `Ledger.fee` split into publish anti-spam
+  vs delivery settlement. Gates: G-1 parity STRICT (`p > r·U`; 0.763 today, at U = 64 KiB, r = 1 ⇒
+  p = 65,536); G-2 the clamp at the CREDIT site (clamping `p.net` re-opens the money pump); G-3
+  conservation never rests on a caller-supplied budget; G-4 re-derive `maxPaidSerial`; G-5 the numéraire
+  rescale covers all seven balance constants; G-6 remainder-to-escrow out of scope. **Blocking residual
+  is AFFORDABILITY:** at parity a 500,000 grant buys 488 KiB of fetch, ever (a build-immutable-#4
+  regression introduced by the fix); `r ≤ grant/B_bootstrap`, `B_bootstrap` UNMEASURED. Alternatives
+  (flat self-mint; cap the lane; rely on bonded fetchers) all REFUTED. Owner: the direction under
+  G-1…G-6; the interim exposure; R2.9 before R2.4; strict parity vs `r = 0` on the witnessed path; the
+  two measurements. Sources:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.9-D-POD-KNOBS-delivery-settlement-repricing-RESEARCH-CERTIFICATION-2026-09-03.md`,
+  the economist advisory.
+- **R2.10 · F8 — the ledger must own a CHAIN-ANCHORED epoch — DEFINED 2026-09-03; second in the R2.13 → R2.10 → FP-2 order.**
+  "Chain-anchored ≠ monotone": objective mode forbids the head falling (`chain.go:3888-3894`) but
+  legacy `heavier` decides on weight first and `adopt` swaps the block slice, so a heavier SHORTER fork
+  can lower `chainEpoch()` — F8 must **re-source the monotone latch**, not delete it (moot for the
+  weight term once O3-T lands; the height leg stays). Separately `-epoch-blocks 0` (`daemon.go:119`)
+  makes the epoch permanently 0, the sweep never fires (`delivery.go:542-544`), and the lane BRICKS at
+  65,536 paid deliveries — the epochs-disabled denomination is a security parameter (research-gated).
+  F8 gates the BUILD of any persisted ledger, not only its deployment. The faucet limiter keys on the
+  node's monotonic clock instead (R2.12), which dissolves the F8 block on it. Sources: the
+  ledger-durability ruling; the composed cert §5; the G3/G4/GD delta cert §4.
 - **R2.11 · R0.4b-11 — no peer-submit path for an issuer-key registration.** An attest-only
   validator's key is never committed. Fail-closed, liveness only. Source:
   `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-composed-close-bc062d0-RESEARCH-CERTIFICATION-2026-09-03.md`
   (Residuals → Open).
-- **R2.12 · Grant + faucet rate limit; `RequireBondedFetchers` default — OWNER CALLS,
-  RATIFIED 2026-09-03: keep `grant = 500_000` and rate-limit the faucet;
-  `RequireBondedFetchers` default OFF.** The remaining work is BUILDING the limiter.
-  See the *Decisions owed* block. The limiter must gate the **grant**, not `Ledger.Register` (which
-  is reached implicitly from `acct()`, including for the node's own id and for `PayBounty`).
-  Sources:
-  `/Users/andrewedmond/Claude/claude/silt-reviews/economist/ADVISORY-R0.4b-cap-griefing-grant-and-bonded-fetchers-2026-09-03.md`;
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-composed-close-bc062d0-RESEARCH-CERTIFICATION-2026-09-03.md`
-  §6 (the "grant is the only non-self balance" claim is CORRECTED there: `PayBounty` credits a
-  remote payee, but it is earned work, not a faucet).
-- **R2.13 · `R-COMPACT-ORPHAN` — `guardstore.Compact` silently reports durability it does not
-  have.** After a successful rename, a failed post-rename `OpenFile` leaves the append handle
-  pointing at the replaced (now unlinked) inode: subsequent `Append` calls fsync into an
-  unreachable file and return `nil`, and `Load` then sees nothing. `Compact`'s error is
-  discarded at the sweep call site, so the failure is silent. **This is the THIRD FP-2
-  precondition** (with F8 and arm D), re-priced by G-H because C-7 moved compaction from ~never
-  to once per epoch and its failure direction is an **over-pay**. Narrow (requires `OpenFile` to
-  fail after a successful rename) and ruled NOT a merge block at every review round. Sources:
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-composed-close-bc062d0-RESEARCH-CERTIFICATION-2026-09-03.md`
-  (Residuals);
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-271ab81-G3-G4-GD-DELTA-CERTIFICATION-2026-09-03.md`
-  §4;
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-01bf8e9-merge-prep-DELTA-CERTIFICATION-2026-09-03.md`
-  (item 4).
+- **R2.12 · Faucet rate limit — DEFINED 2026-09-03 (owner calls of 2026-09-03 stand: `grant = 500_000`, rate-limit the faucet, `RequireBondedFetchers` default OFF).**
+  The limiter is LOCAL ADMISSION CONTROL, not a consensus rule: key it on the node's monotonic clock
+  (never the ledger watermark — F8). Gate a separate `Grant(id)`, never `Register` (idempotent ⇒ a
+  denial at Register permanently excludes an honest fetcher). Cap binds at 1,311 grants/epoch;
+  100/epoch = 0.076× cap; a guard-fill grief costs 6,554 grants = 66 epochs at that rate. Evolving-tier
+  by a three-part test the Invariant-A guard checks mechanically. **Composition warning (relay cert):**
+  R2.12 plus a non-negative-payer check closes the relay mint but turns the relay lane into a 100%
+  denial — there is no funded honest path through it until R2.14. Sources: the economist advisory;
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/RELAY-LANE-per-node-ledger-mint-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md`;
+  `/Users/andrewedmond/Claude/claude/silt-reviews/economist/ADVISORY-R0.4b-cap-griefing-grant-and-bonded-fetchers-2026-09-03.md`.
+- **R2.13 · `R-COMPACT-ORPHAN` — DEFINED 2026-09-03: real, cheap, NOT research-gated; FIRST in the R2.13 → R2.10 → FP-2 order.**
+  Measured by the PE: after a successful rename, a failed post-rename `OpenFile` leaves the append
+  handle on the unlinked inode; write AND fsync through the stale handle return success; `Load` never
+  sees the record; `Compact`'s error is discarded at the sweep call site. Failure direction is an
+  OVER-pay, once per epoch since C-7. Fix: **open-before-rename** (fd swap), plus the missing port
+  clause at `ports/ports.go:361-363`. Do NOT blanket fail-closed at `delivery.go:559` — a pre-rename
+  failure is benign and over-correcting is a self-inflicted liveness break. Tester gate: inject the
+  post-rename open failure, assert the next append is visible to `Load`. Ships with the fix to the false
+  ROADMAP FP-1 parenthetical. Source: the ledger-durability ruling.
+- **R2.14 · Relay-lane prepayment ANCHOR — NEW 2026-09-03: a PREREQUISITE of R2.9; the fix for R0.7; owner ratification owed.**
+  Per-node conservation is always AUTHORIZATION-anchored (privacy guard (ii) makes "debit the payer"
+  unimplementable on any topology; `RedeemDeliveryCredit` debits no one either, `delivery.go:512-516`).
+  The relay's anchor was specified 2026-08-27 (Q4(a)) and NEVER BUILT: `RelayOpen.Funding` is a bare
+  fetcher-set int (`wire.go:20-24`); the shipped PayWord chain is missing two of Rivest–Shamir's four
+  steps. **CERTIFIED direction:** anchor the chain to a blind-signed, issuer-verifiable prepayment,
+  bilateral form (issuer == relay), gates G-A1…G-A5; zero new primitive class; NO-TTP preserved.
+  Escrow binding REFUTED; bonded ephemeral REFUTED; on-chain form contradicts Q5. Invariant to gate
+  (INV-RELAY-CONS): `settled(R) ≤ Σ face(spent anchors)`, each verified / spent-once /
+  `ChargePublish`-backed on the PAYING ledger; per-session ledger total unchanged. Five RED-first gates,
+  none pre-funding the fetcher; the three existing pair-total tests are REWRITTEN. Face value caps a
+  session at 195.3 MiB vs `MaxSessionBytes` 1 GiB → allow k ≤ 6 credentials. **Until it lands:** the
+  flag stays default-off AND settlement pays 0; correct five false claims in `relay.go:16-61`.
+  **RT-RELAY-3 (MsgRelayPay preimage-walk CPU DoS, ~1083× byte→ms) is NOT closed by this** — promote
+  `Verifier.walkSteps` (`payword.go:136-144`) to an enforced per-session budget S (Builder + PE).
+  Side finding: `creditSpent` (`node.go:626`) has no cap/sweep/eviction on a shipped lane. Sources:
+  the relay-lane fix cert above;
+  `/Users/andrewedmond/Claude/claude/silt-reviews/red-team/RED-TEAM-relay-lane-session-grant-and-byte-price-2026-09-03.md`.
 - **M_seen — the pony-class value is still OWED (carried).** The class-M streaming verifier (PR
   #709) removed RSS as the binding ceiling; the remaining ceiling is **TIME**, the O(N·log N)
   compute floor streaming does not remove. The cap value must be derived from a pony-class
@@ -664,12 +855,7 @@ economy-off HEAD certifies a network nobody runs. Design:
   artifact (see the sequencing constraint at the top of the Boulders). Owner-call, after the field
   set settles (R1.4) + domain-sep owned (R3.1). The prior "freeze at end-of-PoD" framing remains
   superseded.
-  **Pre-freeze carry-list (each is unfixable in-era once the format freezes):** `tagLastProposer`
-  (R-CARRIER-PARENTPROPOSER) · the `R-CARRIER-BYTES` byte ceiling · the `Block.IssuerKeys` per-block
-  count cap (PE H-1) · **R-STATEVIEW-ENUMERATION** (it decides which committed leaves the box needs;
-  the PE's one-pass sketch found exactly one, and its job is to find a second) · the O3 fork-choice
-  decision · R-membership. **Owed before the stamp raise, but not before the freeze:**
-  R-CARRIER-PRUNED-HASH's end-to-end test, R-CARRIER-MODELCHECK, the `R-E2E-ERA4-FIXTURE` upgrade.
+  **Pre-freeze carry-list — RE-PRICED 2026-09-03 by the enumeration closure cert: ZERO leaves are required for SAFETY.** What remains in freeze scope: **`tagRevLogSize`** (at most ONE leaf, LIVENESS-only — without it a floor box stalls terminally at the first takedown block after any pin; owner ratifies) · the `Block.IssuerKeys` per-block count cap (PE H-1) · the **`Slashes` per-block encoded-BYTE ceiling** (required by the R0.6 fix cert; a resource ceiling under immutable #8, not a security parameter; value measurement-gated) · **`R-AAXIS-TAG-RESERVE`** (one line: reserve the A-axis tag prefix so a future partition leaf is not a prefix collision — it does NOT avoid the era) · the O3 decision (RATIFIED T). **Dropped from the leaf list:** `tagLastProposer`, the parent hash/height, the K=8 hash window — all close with zero format change through the box-owned head record; R-membership (retire the whole-set folds is a leaf change ONLY if the C2 re-shape needs it — see its Rock). **Owed before the stamp raise, but not before the freeze:** R-CARRIER-PRUNED-HASH's end-to-end test, R-CARRIER-MODELCHECK, the `R-E2E-ERA4-FIXTURE` upgrade, the `IssuerKeyReg` PoP format slot (R-ISSUERKEY-POP).
   Sources: `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-floorbox-predicate-rederivation-structure-2026-09-03.md`
   §7, `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R-BOX-ATTESTS-scoping-CONVERGED-RESEARCH-VERDICT-2026-09-02.md`
   §9–§10, `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-R0.4b-C3-close-271ab81-final-2026-09-03.md`
@@ -679,14 +865,33 @@ economy-off HEAD certifies a network nobody runs. Design:
 - **R4.1 · PoD demand→standing bright-line gate (fires per PoD increment)** · Researcher cert
   on trigger (**cert-gated**). Any increment wiring served demand toward standing re-opens the
   C1 discount (γ→1/N, #182). A review gate, not scheduled work.
-- **R4.2 · Wire the A-axis (operator/domain) into standing** · Builder + Researcher (NEEDS-CERT,
-  **cert-gated**) · L · depends on PoD. Highest-value M0 hardening after the flip; today
-  `C_honest ≈ D`, A-axis self-declared (reputation-Sybil seam). The self-declared A-axis is an
-  explicit SECOND B8 external target.
+- **R4.2 · The A-axis (operator/domain) — RE-SCOPED 2026-09-03: MEASURE / PUBLISH / fix two DHT-layer defects / hand to B8 AS-IS; do NOT wire A3. Owner ratification owed.**
+  Direction cert: GATED on A3 (observed-address partition ratified by a ⅔-bonded attestation quorum) /
+  CERTIFIED on "measure, publish, do not wire." **The dilemma:** additive-only ⇒ `C_honest` unchanged
+  (the A-axis has NO reward consumer in silt); changes `C_honest` ⇒ a hard gate on routing reachability
+  ⇒ build-immutable #3 (`TENETS.md:646`). A3 occupies no third position, and its quorum is a CENTER
+  in two places (a ⅔ adversary attests honest validators into one group and keeps the launch anchors
+  permanently). Sealed-plot domain binding is INERT (the seed is already identity-bound,
+  `bond.go:164-172`; it also strands committed `bondRootOwner`/`byRoot`). C1 text: NO change; only
+  C2 changes, toward honesty. `M_cluster = declared/observed` REFUTED as a metric (B1 defines M as the
+  adversary's ratio). **Pre-flip, no-consensus-change program:** print `NakamotoDomains` /
+  `DistinctDomains` (computed, not printed, `daemon.go:1029-1031`); four pre-build refutation thresholds
+  in the cert. **New live finding (re-priced, → R4.4 brief):** a bonded adversary can DECLARE an honest
+  validator's published domain and suppress its maturity at one `MinBond` per collision
+  (`chain.go:2364-2365`) — cheaper than anything A3 defends. Era: `bondDomain` is an ERA-3 leaf
+  (`statehash.go:174`); `R-AAXIS-TAG-RESERVE` on the R3.4 carry-list. Residuals unverified: ASN price;
+  whether a validator endpoint is independently dialable by any bonded peer. Sources:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R4.2-A-axis-operator-diversity-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md`,
+  `/Users/andrewedmond/Claude/claude/silt-reviews/crypto-specialist/ADVISORY-R4.2-A-axis-operator-diversity-prior-art-2026-09-03.md`.
 - **R4.3 · Continuous internal red-team hunt on the not-yet-run backlog** · red-team → feeds the
   external seat. Backlog: class-P compound-block ordering; bondreg full path; DHT/eclipse/A-axis
   layer; long-range/weak-subjectivity checkpoint; relay/PayWord economy; churn/restart
   everMature under the R1.2 refactor.
+- **R4.3a · DHT domain-0 exemption + the single `-domain` flag — NEW 2026-09-03 (from R4.2; Builder, small; not research-gated).**
+  `core/dht/table.go:44-45` never caps domain 0 — an exemption from an eclipse defence that geth and
+  Bitcoin Core key on the OBSERVED address; and `daemon.go:316-317` feeds ONE `-domain` flag to both the
+  eclipse cap and the consensus metric, whose consumers want opposite defaults — a literal
+  build-immutable-#3 violation. Fix both; a distinct R4.3 hunt target. Source: the R4.2 direction cert.
 - **R4.4 · External red-team vs the C1 + C2 composition and the seven §7 seams (#183) — THE M0
   close gate.** This is the RC-defining gate, and **it is the same pass as R1.7** — one external B8
   engagement, not two. **RATIFIED 2026-09-03: it runs at the RELEASE CANDIDATE, AFTER the era-4/v5
