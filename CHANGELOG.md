@@ -9,6 +9,18 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Security
+- **Gate tail — three owed gates.** (1) **R-S5-STRING-REGISTRY:** `cmd/silt/observable_contract.go`
+  registers the 28 announced operator literals (S5 contracts) with their emitting file, dependant and
+  runtime asserter; `TestObservableContractStringsAreStillEmitted` asserts each is still in the source,
+  the file exists, no pair repeats, no marker is a strict substring of another, and every asserter is a
+  real `func Test`; `TestObservableContractHasTeeth` ablates. Built because the scar reached count 3
+  (`scar-observable-log-contract`: at `a34b61a` the instance-2 gate pinned the symbol, not the literal,
+  so a rename stayed green under `-short`); renaming the `NOT banked` literal now turns the unit tier
+  RED. It proves presence, never reachability — the e2e assertions stay. (2) **R-AST-PIN-GLOB:** the
+  fold live-state AST pin's glob widened to `floorbox_*_v5.go` (five floor-box files were outside it;
+  the pin stays green on them). (3) **R-FORKCHOICE-RAMP-GUARD:** the `Weight() > 0` §1a assertion in
+  `forkchoice_ramp357_test.go` is deleted, not repaired — it held only under an attestation era no node
+  mints (O3 recommendation §3.5 item 3); Invariant D stands.
 - **R0.6 — the I5 cross-height `Pruned` slash forgery (LIVE on main, every era) is closed:
   equivocation evidence is recomputed from the body, never read from `Pruned`; `Slashes` gets a
   per-block byte ceiling.** `VerifyEquivocation` read the height from a struct field but the

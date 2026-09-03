@@ -83,8 +83,11 @@ var foldLiveStateSiteAllowed = map[string]string{
 	"verifyBond": "assembleStateRootRecomputeOps",
 }
 
-// foldFileGlob is the set of non-test recompute fold files the pin covers.
-const foldFileGlob = "floorbox_recompute_*_v5.go"
+// foldFileGlob is the set of non-test floor-box files the pin covers. Widened 2026-09-03
+// (R-AST-PIN-GLOB): the earlier `floorbox_recompute_*_v5.go` missed `floorbox_recompute_v5.go`
+// and four others — the files three of five box defeats lived in — so an AST gate failed by
+// scope. Every `floorbox_*_v5.go` is now in.
+const foldFileGlob = "floorbox_*_v5.go"
 
 // TestFoldFilesReadNoLiveBoxState is the pin. Any `c.<sel>` in a fold file that is neither
 // allowlisted nor a self-dispatch method declared in a fold file reddens it.
