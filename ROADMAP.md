@@ -922,6 +922,18 @@ live in [`docs/thinking/2026-09-01-residual-defect-repro-recipes.md`](docs/think
   against chain replay:** committed publish tokens re-verify on every replay, so changing their
   signed bytes invalidates history. Fixing only the demand domain would leave two conventions in
   one file. Do it as one versioned change, with a chain-era gate. Source: advisory C-8.
+- **Blinding-factor sampling: mod-reduction, not rejection sampling — R0.4b-BLIND-SAMPLING.**
+  `blindtoken.randInt` draws the blinding factor `r` (and the issuer-side blind `u`) by reducing
+  `(bitlen(N) + 64)` random bits mod `N`. RFC 9474 §4.2 states a **MUST**: *"The blinding factor r
+  MUST be randomly chosen from a uniform distribution. This is typically done via rejection
+  sampling."* silt meets it only **statistically** — the distribution is within `2^-64` of uniform.
+  **Declared, not fixed, in R0.4b C3:** it is a conformance gap rather than a break (no use of a
+  `2^-64` bias is known), and it changes no committed byte, so it neither blocks the close nor
+  should slip in unannounced. Work: rejection-sample into `[1, N)` and **bound the retry** — the
+  two loops calling `randInt` (`blindD`, `SignBlinded`) currently spin forever on a reader that
+  yields zeros. Declared at `core/blindtoken/blindtoken.go` (`randInt`) and in
+  `docs/thinking/2026-09-02-r0.4b-c3-close-design.md` §12. Source: crypto advisory R4,
+  `/Users/andrewedmond/Claude/claude/silt-reviews/crypto-specialist/ADVISORY-R0.4b-C3-crypto-items-as-built-01bf8e9-2026-09-03.md`.
 - **Transport authentication (TLS or Noise) — #437.** silt's wire is unauthenticated CBOR
   (`adapters/tcpnet/wire.go`), so an on-path MITM can strip certificate signatures in transit.
   Certified NOT a safety break and NOT a wedge (stripped blocks fail `ValidateCommit`, are inert,

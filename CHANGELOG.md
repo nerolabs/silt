@@ -9,6 +9,60 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Security
+- **R0.4b C3 merge-gate close — the CI job that did not parse, and the C-3 hardness checks on an
+  unauthenticated hot path.** Inputs: the delta certification
+  `R0.4b-C3-01bf8e9-merge-prep-DELTA-CERTIFICATION-2026-09-03` (gates G-F, G-G, G-H) and the
+  crypto as-built advisory `ADVISORY-R0.4b-C3-crypto-items-as-built-01bf8e9-2026-09-03`
+  (items R1, R2, R4, R6). Full write-up:
+  `docs/thinking/2026-09-02-r0.4b-c3-close-design.md` §12.
+  - **G-F — unresolved git conflict markers in `.github/workflows/ci.yml` silently DELETED a CI
+    job.** A rebase resolution missed the file. The markers made it invalid YAML, so the
+    `Website — changelog + links` job stopped parsing and took out BOTH `check_cited_tests.py`
+    and `check_source_gates.py`. Nothing was red — the job did not fail, it did not exist, and
+    two shipped documents described the source-gate lint as CI-enforced while nothing in that job
+    ran. Resolved as the UNION of both steps. New `scripts/check_conflict_markers.py` is the
+    scar's gate: repo-wide, stdlib-only, excluding `.git/` and generated `website/`; it flags a
+    seven-`<` or seven-`>` header line anywhere, and a bare seven-`=` separator only in a file
+    that also carries a header (a row of `=` is a legal Markdown setext underline). Zero false
+    positives across 1,153 text files. Ablation: reinstating the markers reddens the lint and
+    breaks the YAML parse.
+  - **G-G / G-H — three false or incomplete claims on shipped surfaces.** (i) The two "(in CI)"
+    claims are now TRUE and name the job. (ii) The FP-2 crash-window fix directions were recorded
+    as co-equal; **Direction 2 (pay-then-append) is REFUTED** — it converts a residual under-pay
+    into a possible MINT (a crash between payout and append leaves a payout with no guard entry,
+    so the receipt re-pays on restart) and it removes the RT-DELIV-1/1b/2 bound. Direction 1
+    (write-ahead spanning the guard file and a ledger store) is the only sound direction.
+    (iii) The FP-2 precondition list is THREE, not two: F8, arm D, and `R-COMPACT-ORPHAN` —
+    re-priced, because C-7 moved compaction from ~never to once per epoch and its failure
+    direction is an **over-pay**.
+  - **Crypto R1 — one unauthenticated inbound frame bought ~28.6 ms of RSA work on the node
+    loop.** `handleDeliveryReceipt` calls `DemandIssuerKeyset` as its first action on any
+    `MsgDeliveryReceipt`, before the parse and before the sender screen; that call re-pins every
+    held epoch; and `demand.Keyset.Put` ran the full `ValidatePub` — hardness included, ~3.3 ms —
+    unconditionally, over a 9-epoch band. The C-3 split was correct inside `core/blindtoken` and
+    re-entered through another door. A memo could not live in the held map, because `Prune` drops
+    every future epoch on every read. Fixed with an admission memo in `Keyset.Put` keyed on
+    `KeyFingerprint` — the same sha256 the consensus `E ↦ key_E` binding commits to — skipping
+    the HARDNESS half only: `blindtoken.ValidateShape` (newly exported) still runs on every Put,
+    so the F4 refusals stay on every path. Memo bounded at 64 entries against a working set of 9.
+    Gate: `core/node TestC3_InboundReceiptsCostOHardnessChecksNotOPerMessage` COUNTS hardness
+    executions via the new `blindtoken.ValidatePubHardnessRuns()` (a timing test cannot see this
+    class), asserting the band's first admission costs exactly 5 and every one of 50 subsequent
+    messages costs 0, plus `TestC3_ADifferentCommittedKeyStillPaysFullAdmission`. Measured
+    `BenchmarkC3InboundDeliveryReceipt` at a 5-epoch band: **16.41 ms/msg before, 4.78 µs/msg
+    after** (3,436×). Ablation: remove the memo lookup → RED at "message 1: 5 hardness runs".
+  - **Three crypto divergences DECLARED, not changed** (code comment + design record §12).
+    (1) Minimal integer encoding is deliberate — RFC 8017/9474 require fixed-length
+    `modulus_len`, and silt's choice preserves the `s.Bytes()` wire format that committed
+    publish tokens re-verify against; the price is that it forecloses drop-in RFC 9474 interop,
+    at ~1 in 256 honest `blind_sig` values. (2) The blinding factor is drawn by mod-reduction
+    with 64 bits of slack, against RFC 9474 §4.2's rejection-sampling **MUST** — met within
+    `2^-64`, filed as ROADMAP Rock **`R0.4b-BLIND-SAMPLING`**. (3) `math/big`'s fixed-window
+    power-table lookup leaks the private exponent to a LOCAL cache attacker — unfixable in Go
+    (no exported raw RSA private operation) and shared with Cloudflare CIRCL's RFC 9474
+    implementation — so it is carried as a deployment assumption, written for operators as
+    `docs/network-durability.md` §9: do not run a demand issuer on a host with untrusted
+    co-tenants sharing its CPU cache.
 - **R0.4b C3 final pre-ratification round — the G-8 dark-lane disposition (iii), the
   `swarm receipt` S5 legibility break, and the PE's final-review items.** Inputs: the G-8
   convergence `R0.4b-C3-G8-dark-lane-CONVERGENCE-2026-09-03`, the PE final ruling
@@ -121,7 +175,9 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
     lines all print), the lane never arms, both operator lines are exact and name the store
     path, and the file is byte-unchanged. Ablation: reinstating the F7 death reddens it while
     the source gate stays green.
-  - **Third-time rule closed as a LINT.** `scripts/check_source_gates.py` (in CI): any
+  - **Third-time rule closed as a LINT.** `scripts/check_source_gates.py`, run by the
+    `Website — changelog + links` job in `.github/workflows/ci.yml` (the claim was FALSE when
+    first written — see the G-F entry below — and is true as of this round): any
     `_test.go` reading a non-testdata `.go` file is a SOURCE gate; its failure messages must
     begin `SOURCE GATE:` and describe what was checked, and it must name a `RUNTIME GATE:` or
     declare the behaviour `UNGATED:`. Three sites brought into compliance. Recorded as rule 8

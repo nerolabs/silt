@@ -145,8 +145,21 @@ func fullDomainHashD(pub *rsa.PublicKey, msg []byte, domain string) *big.Int {
 
 // randInt draws a random value in [0, max) from the injected reader. Core must
 // not touch ambient randomness (crypto/rand) — the adapter passes crypto/rand,
-// a sim passes a seeded source. A few extra bytes keep the mod bias negligible;
-// uniformity isn't security-critical for the blinding factor anyway.
+// a sim passes a seeded source.
+//
+// DECLARED DIVERGENCE FROM RFC 9474 §4.2 (crypto advisory R4, 2026-09-03). This is
+// MOD-REDUCTION with 64 bits of slack (8 extra bytes), not rejection sampling. RFC 9474
+// §4.2 says: "The blinding factor r MUST be randomly chosen from a uniform distribution.
+// This is typically done via rejection sampling." So a stated MUST is met only
+// STATISTICALLY here: the resulting distribution is within 2^-64 of uniform.
+//
+// NOT CHANGED IN R0.4b, deliberately. The gap is a conformance gap, not a break — a
+// 2^-64 bias in the blinding factor buys an attacker nothing anyone has shown how to
+// use — and changing the draw changes no committed byte, so it is not urgent and it is
+// not free to slip in silently either. Filed as ROADMAP Rock R0.4b-BLIND-SAMPLING with
+// the RFC citation. If you are implementing that Rock: rejection-sample into [1, N) and
+// keep the retry bounded, because both loops that call randInt spin forever on a reader
+// that yields zeros.
 func randInt(rng io.Reader, max *big.Int) (*big.Int, error) {
 	b := make([]byte, (max.BitLen()+7)/8+8)
 	if _, err := io.ReadFull(rng, b); err != nil {
@@ -265,6 +278,26 @@ func blindD(rng io.Reader, pub *rsa.PublicKey, msg []byte, domain string) (blind
 //     decryptAndCheck. It is also a free correctness check on our own signer.
 //
 // The WIRE FORMAT is unchanged: the returned bytes are s.Bytes(), exactly as before.
+//
+// DECLARED RESIDUAL — A LOCAL CACHE CHANNEL, WITH A DEPLOYMENT ASSUMPTION (crypto
+// advisory R6, 2026-09-03). Blinding closes the REMOTE channel: Go's expNNMontgomery
+// ends in a data-dependent conditional subtraction (math/big nat.go), which is
+// Schindler's extra-reduction oracle and the one Brumley-Boneh exploited over a network.
+// It does NOT close the other one. expNNMontgomery uses a fixed 4-bit window and indexes
+// its power table at powers[yi>>(_W-n)] — an EXPONENT-dependent memory access. D is
+// constant across calls, so blinding cannot hide it, and a local attacker sharing the
+// L1/L2 cache can recover D bits (Percival 2005; Yarom-Falkner FLUSH+RELOAD).
+//
+// THIS IS UNFIXABLE IN GO AND IT IS NOT SILT-SPECIFIC. Go 1.26's crypto/rsa moved
+// private-key operations off math/big onto the constant-time fips140/bigmod, but the
+// stdlib exports NO raw RSA private operation, so every blind-signature implementation
+// in Go must use math/big — including Cloudflare's CIRCL blindrsa, the reference Go
+// implementation of RFC 9474, which carries the identical residual.
+//
+// So it is carried as a DEPLOYMENT ASSUMPTION rather than a code fix: DO NOT RUN A
+// DEMAND ISSUER ON A HOST WITH UNTRUSTED CO-TENANTS SHARING ITS CPU CACHE. Recorded for
+// operators in docs/network-durability.md and for auditors in
+// docs/thinking/2026-09-02-r0.4b-c3-close-design.md §12.
 func SignBlinded(rng io.Reader, priv *rsa.PrivateKey, blinded []byte) ([]byte, error) {
 	if priv == nil || priv.N == nil {
 		return nil, fmt.Errorf("%w: nil private key", ErrBadPubKey)
@@ -308,6 +341,20 @@ func SignBlinded(rng io.Reader, priv *rsa.PrivateKey, blinded []byte) ([]byte, e
 // [0, N-1] AND minimally encoded (no leading zero bytes). RFC 8017 §5.2.2 requires the
 // range check; the minimality requirement is silt's, and it is what makes a signature
 // or a blinded value have exactly ONE valid wire spelling — see SignBlinded (1).
+//
+// DECLARED DIVERGENCE FROM RFC 8017 / RFC 9474 (crypto advisory R2, 2026-09-03).
+// RFC 8017 §4.1 I2OSP and RFC 9474 §4.3 step 5 produce a FIXED-LENGTH modulus_len octet
+// string, and RFC 9474 §4.4 step 1 refuses anything else. silt requires the OPPOSITE:
+// minimal encoding, refusing any leading zero. Both are canonical (each is injective),
+// and silt's is the DELIBERATE choice, because the alternative is not free: the wire
+// format is s.Bytes(), committed publish-token signatures re-verify on every chain
+// replay, and re-spelling them fixed-length would invalidate history.
+//
+// The price is stated so no one has to re-derive it: this FORECLOSES drop-in RFC 9474
+// interop. About 1 in 256 honest RFC-encoded blind_sig values begins with a zero octet
+// and would be refused here — an intermittent failure, which is the worst kind to meet
+// for the first time against a live peer. Any future RFC 9474 interop is a versioned
+// change behind the same era gate as R0.4b-FDH, not a local edit to this function.
 func canonicalRep(b []byte, n *big.Int) (*big.Int, error) {
 	if len(b) == 0 {
 		return nil, fmt.Errorf("%w: empty", ErrNotCanonical)

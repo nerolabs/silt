@@ -122,12 +122,27 @@ const DefaultWindow = uint64(4)
 type Keyset struct {
 	window uint64
 	keys   map[uint64]*rsa.PublicKey
+	// admitted is the ADMISSION MEMO: the fingerprints of keys whose hardness half
+	// has already been paid for on this keyset. See Put.
+	admitted map[ports.Hash]struct{}
 }
+
+// maxAdmitMemo bounds the admission memo (build-immutable #8 — bounded state). The
+// live working set is at most the issuer's staged band, 2W+1 = 9 distinct keys, so
+// 64 is ~7x headroom and the cap is never reached in operation. On overflow the memo
+// is DROPPED WHOLE rather than evicted one-by-one: an empty memo is always correct
+// (it only ever causes a re-validation, never an admission), and a whole-map drop is
+// three lines instead of an LRU.
+const maxAdmitMemo = 64
 
 // NewKeyset returns an empty keyset with validity window w (in epochs). A zero w is
 // legal and means "the issuing epoch only" — the tightest window, no late grace.
 func NewKeyset(w uint64) *Keyset {
-	return &Keyset{window: w, keys: map[uint64]*rsa.PublicKey{}}
+	return &Keyset{
+		window:   w,
+		keys:     map[uint64]*rsa.PublicKey{},
+		admitted: map[ports.Hash]struct{}{},
+	}
 }
 
 // Window is W, the number of epochs past issuance a token stays redeemable.
@@ -145,9 +160,42 @@ func (k *Keyset) Window() uint64 { return k.window }
 // perfectly valid consensus pin. blindtoken.ValidatePub is the single definition of
 // well-formedness and this is the door it guards; Held reports what actually went in.
 func (k *Keyset) Put(epoch uint64, pub *rsa.PublicKey) {
-	if pub == nil || blindtoken.ValidatePub(pub) != nil {
+	if pub == nil {
 		return
 	}
+	// THE ADMISSION MEMO (crypto advisory R1, 2026-09-03). ValidatePub's hardness half
+	// costs ~3.3 ms, and this door is driven from a HOT, UNAUTHENTICATED path:
+	// Node.DemandIssuerKeyset re-pins every held epoch on every read, and
+	// handleDeliveryReceipt calls it as its first action on any inbound
+	// MsgDeliveryReceipt — before the parse and before the sender screen. With the
+	// issuer's staged band 9 epochs deep that was 9 x 3.3 ms = ~28.6 ms of RSA work
+	// per one-byte message on the single-threaded node loop: the exact CPU amplifier
+	// the C-3 shape/hardness split exists to prevent, re-entered through another door.
+	//
+	// Re-Put is not idempotent-free: Prune drops every FUTURE epoch on every read, so
+	// the memo cannot live in k.keys — it must survive the deletion. Keying it on the
+	// fingerprint is what makes it sound: KeyFingerprint is the SAME sha256 the
+	// consensus E -> key_E binding commits to, so "these bytes were admitted before"
+	// is exactly as strong as the binding the caller already resolved against.
+	//
+	// SHAPE STILL RUNS ON EVERY PUT. The memo skips the hardness half only. That keeps
+	// the F4 refusals (the N = 0 panic, the N = 1 / E = 1 universal forgeries) on every
+	// path into the keyset, so no memo state can re-open them.
+	fp := KeyFingerprint(pub)
+	if _, ok := k.admitted[fp]; ok {
+		if blindtoken.ValidateShape(pub) != nil {
+			return
+		}
+		k.keys[epoch] = pub
+		return
+	}
+	if blindtoken.ValidatePub(pub) != nil {
+		return
+	}
+	if len(k.admitted) >= maxAdmitMemo {
+		k.admitted = map[ports.Hash]struct{}{}
+	}
+	k.admitted[fp] = struct{}{}
 	k.keys[epoch] = pub
 }
 

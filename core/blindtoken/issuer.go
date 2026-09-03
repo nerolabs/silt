@@ -8,6 +8,7 @@ import (
 	"io"
 	"math/big"
 	"sync"
+	"sync/atomic"
 )
 
 // ErrDoubleSpend is returned when a token serial is presented more than once.
@@ -127,6 +128,7 @@ func ValidatePub(pub *rsa.PublicKey) error {
 	if err := validateShape(pub); err != nil {
 		return err
 	}
+	validatePubHardnessRuns.Add(1)
 	if g := smallFactor(pub.N); g != nil {
 		return fmt.Errorf("%w: modulus shares a %d-bit factor with the primorial below %d "+
 			"— a smooth modulus is factorable by any verifier, so anyone can compute d "+
@@ -181,6 +183,34 @@ func validateShape(pub *rsa.PublicKey) error {
 	}
 	return nil
 }
+
+// ValidateShape is the exported CHEAP half — shape only, no hardness. It exists for one
+// caller: a door that has ALREADY admitted these exact key bytes (demand.Keyset.Put's
+// admission memo) and must not pay the ~3.3 ms hardness again on a hot path an
+// unauthenticated peer can drive. Everything that has NOT admitted the key calls
+// ValidatePub.
+//
+// Cost: a handful of big.Int bit tests, sub-microsecond. It keeps the F4 refusals
+// (N = 0 panic, N = 1 / E = 1 universal forgery) on every path, so a memo can never
+// re-open them.
+func ValidateShape(pub *rsa.PublicKey) error { return validateShape(pub) }
+
+// validatePubHardnessRuns counts executions of the HARDNESS half of ValidatePub.
+//
+// INSTRUMENTATION, not a control — nothing branches on it. It exists because the C-3
+// split ("hardness at admission, shape on the hot path") is a claim about HOW OFTEN an
+// expensive function runs, and the only honest way to gate that is to count it. Timing
+// cannot: the crypto advisory found the split silently re-broken through a different
+// door (Node.DemandIssuerKeyset re-Put every held key on every read, so one
+// unauthenticated inbound MsgDeliveryReceipt cost 9 x 3.3 ms on the node loop), and
+// TestC3_HardnessRunsAtAdmissionNotOnEveryModexp could not see it because it timed the
+// two functions in isolation instead of counting them along the node path.
+var validatePubHardnessRuns atomic.Uint64
+
+// ValidatePubHardnessRuns is how many times the hardness half has run in this process.
+// A gate asserts it grows with the number of DISTINCT admitted keys, never with the
+// number of inbound messages.
+func ValidatePubHardnessRuns() uint64 { return validatePubHardnessRuns.Load() }
 
 // SmallFactorBound is the trial-division bar: ValidatePub refuses any modulus with a
 // prime factor below it.

@@ -182,14 +182,13 @@ jobs:
         run: python3 scripts/check_tenet_qualifiers.py
       - name: Scar-lint — no doc's not-built Status header may contradict a built/shipped body (scar:status-header-vs-body-contradiction-2026-09-01)
         run: python3 scripts/check_status_headers.py
-<<<<<<< HEAD
       - name: Scar-lint — every cited test name must resolve to a real test (scar:cited-test-does-not-exist-2026-09-02)
         # External review trees are absent in CI, so this checks the repo only.
         run: python3 scripts/check_cited_tests.py
-=======
       - name: Scar-lint — a source-text test gate must be labelled and must name its runtime cover (scar:source-gate-promises-a-runtime-property-2026-09-03)
         run: python3 scripts/check_source_gates.py
->>>>>>> 56cbdb0 (fix(demand,credit,diskissuer): R0.4b C3 merge-prep — F6, LANE OFF teeth, G-E, crypto C-1..C-8)
+      - name: Scar-lint — no unresolved merge-conflict marker may reach a branch (scar:conflict-markers-shipped-in-ci-yml-2026-09-03)
+        run: python3 scripts/check_conflict_markers.py
 
   docs-shipped:
     name: Docs ship with code
