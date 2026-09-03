@@ -935,21 +935,37 @@ economy-off HEAD certifies a network nobody runs. Design:
   external seat. Backlog: class-P compound-block ordering; bondreg full path; DHT/eclipse/A-axis
   layer; long-range/weak-subjectivity checkpoint; relay/PayWord economy; churn/restart
   everMature under the R1.2 refactor.
-- **R4.3a · DHT domain-0 exemption — ✅ BUILT 2026-09-03 (PR pending, branch `builder/r4.3a-dht-domain0-cap`); the flag split is carried to R4.3b.**
-  `core/dht/table.go` never capped domain 0 — an exemption from an eclipse defence that cost an adversary
-  nothing (omit `-domain`). Now an unknown domain counts against one shared bucket under the same
-  per-domain cap (unknown ⇒ capped, the routing default); the C2 metric keeps its opposite default
-  (unset ⇒ independent) because it is a different consumer. Gates `TestR43a_*` (`core/node`): capped
-  together (RED before), known distinct domains still admitted, cap-off legacy. The R4.2 measure step ships
-  with it: the daemon's C2 line now prints `NakamotoDomains` / `DistinctDomains`. Deliberation:
+- **R4.3a · DHT domain-0 exemption — STRIPPED 2026-09-03 (owner: "strip and merge"); the metric print and the gates SHIPPED (PR #715); the exemption stays as a KNOWN HOLE closed by R4.3b.**
+  "Unknown ⇒ capped" was built and then REFUTED by the red-team: in the default (domainless) swarm every
+  honest peer is also unknown, so two early undeclared Sybils lock a K=8 bucket (honest admitted 6 → 0;
+  exclusion cost 8 → 2 identities), while a labelled adversary (N free labels ⇒ N domains) is untouched by
+  any declared-label rule. All four seats (crypto-specialist, economist, PE, red-team) converge: no second
+  declared label; the close is observed-address keying (R4.3b). Shipped instead: the R4.2 "measure /
+  publish" step (the daemon's C2 line prints `NakamotoDomains` / `DistinctDomains`); three gates in
+  `core/node/r43a_dht_domain0_test.go` — the red-team's Attack A inverted (two undeclared Sybils must
+  NOT lock a bucket; RED under the stripped rule), the OPEN-BREAK gate (labelled Sybils defeat the cap
+  today — flips RED when R4.3b lands, so the residual cannot close silently), and the third-party
+  domain-poisoning boundary that HELD. Deliberation:
   [`docs/thinking/2026-09-03-r4.3a-dht-domain0-exemption-design.md`](docs/thinking/2026-09-03-r4.3a-dht-domain0-exemption-design.md).
-  Source: the R4.2 direction cert §3.
+  Sources: the R4.2 direction cert §3; `/Users/andrewedmond/Claude/claude/silt-reviews/red-team/RED-TEAM-R4.3b-dht-eclipse-keying-2026-09-03.md`;
+  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-R4.3a-dht-domain0-cap-adb31e1-2026-09-03.md`.
 - **R4.3b · key the DHT eclipse cap on the OBSERVED remote address (the geth / Bitcoin Core form) — NEW 2026-09-03 (Builder + crypto-specialist advisory on the bucket width; not research-gated per the R4.2 cert).**
   Closes the second evasion R4.3a does not (declare N random labels) and retires `-domain` from the DHT
   entirely, which IS the build-immutable-#3 split of the single flag (`daemon.go:316-317`): the transport
   must surface each peer's remote address to the node (a ports change; the sim needs a domain oracle).
-  A second declared label was REFUSED as churn (the same free declaration under a new name). Owner: whether
-  the literal second label is wanted before R4.3b lands (one flag + an additive gossip field). **Coupling
+  A second declared label is REFUSED — DECIDED by the four-seat opinion set 2026-09-03 (owner heard all
+  four): it is the same free declaration under a new name, $0.00 different for the adversary. **The build
+  shape (converged):** three classes computed in the transport and exported as an opaque salted
+  `(class, group)` — DIRECT (the /24 of a completed TLS conversation, "answered at", never the address
+  book), UNVERIFIED (reply-learned IDs charged to their INTRODUCER's group, Bitcoin Core's srcgroup rule),
+  RELAYED (the relay's /24 as its own class with a per-relay cap and a reserve); a re-check at first
+  classification for the no-contact admission path; land in SHADOW MODE with the economist's five
+  telemetry series and DE-HERD relay selection first (today every NATed pony adopts the lowest-ID relay
+  for life); enable the veto only under measured thresholds. Sources:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/crypto-specialist/ADVISORY-R4.3b-dht-eclipse-keying-prior-art-2026-09-03.md`,
+  `/Users/andrewedmond/Claude/claude/silt-reviews/economist/ADVISORY-R4.3b-dht-eclipse-keying-edge-cost-2026-09-03.md`,
+  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/OPINION-R4.3b-dht-eclipse-keying-2026-09-03.md`,
+  `/Users/andrewedmond/Claude/claude/silt-reviews/red-team/RED-TEAM-R4.3b-dht-eclipse-keying-2026-09-03.md`. **Coupling
   (PE, 2026-09-03): observed-address keying collides with the relay tier — NATed ponies behind one
   `-relay-via` present the relay's address and would be capped together; R4.3b must key on DIRECT
   connections' addresses and treat relayed peers separately (immutable #4/#5).** Must not slip past the RC

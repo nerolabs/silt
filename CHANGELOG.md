@@ -9,18 +9,21 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Security
-- **R4.3a — the DHT eclipse cap no longer exempts an undeclared domain.** `core/dht/table.go`
-  treated domain 0 as "unknown ⇒ never capped", so a key-surround adversary escaped the H5-B
-  per-bucket diversity cap by omitting `-domain` (R4.2 direction certification §3, CERTIFIED).
-  Now an unknown domain counts against one shared bucket under the same cap; known distinct domains
-  are still admitted past it; the cap-off path is unchanged. Gates `core/node/r43a_dht_domain0_test.go`
-  (`TestR43a_UnknownDomainPeersAreCappedTogether` RED before, two survival gates). The R4.2
-  "measure / publish" step ships with it: the daemon's C2 status line prints `NakamotoDomains` and
-  `DistinctDomains`. **Disclosed cost** (PE-measured): in a swarm where nobody sets `-domain`, honest
-  routing-table density roughly halves (N=30: avg 17.1 → 8.9 entries); lookups, bootstrap and consensus
-  are unaffected; a LABELLED adversary is not stopped (R4.3b). The structural close (key the cap on the OBSERVED remote address, retiring
-  `-domain` from the DHT — the build-immutable-#3 flag split) is filed as R4.3b. Deliberation:
-  `docs/thinking/2026-09-03-r4.3a-dht-domain0-exemption-design.md`.
+- **R4.3a — STRIPPED to the measure step: the DHT eclipse cap keeps its undeclared-domain exemption
+  as a KNOWN HOLE; the A-axis metrics are printed; the red-team's findings ship as gates.** The
+  "unknown ⇒ capped" table change was built and then refuted by the red-team before merge: in the
+  default (domainless) swarm every honest peer is also unknown, so two early undeclared Sybils lock a
+  K=8 bucket (honest admitted 6 → 0, exclusion cost 8 → 2 identities), while N Sybils with N free
+  labels defeat any declared-label cap at $0. Owner ruled "strip and merge" after four seats converged
+  (no second declared label; the close is R4.3b observed-address keying, geth/Bitcoin Core schema, in
+  shadow mode). Shipped: the daemon's C2 status line prints `NakamotoDomains` and `DistinctDomains`
+  (the R4.2 "measure / publish" step); `core/node/r43a_dht_domain0_test.go` —
+  `TestR43a_TwoUndeclaredSybilsDoNotLockADomainlessBucket` (RED under the stripped rule),
+  `TestR43b_OPENBREAK_LabelledSybilsDefeatTheDomainCap` (asserts the open residual; flips when R4.3b
+  lands), `TestR43a_HelloWritesOnlyTheSendersOwnDomain` (the poisoning boundary that held); truthful
+  doc comments and flag help naming the hole. Sources: the R4.2 direction certification §3;
+  `silt-reviews/red-team/RED-TEAM-R4.3b-dht-eclipse-keying-2026-09-03.md`; the four R4.3b seat
+  opinions cited in ROADMAP R4.3b.
 - **R0.7 interim — the paid relay lane pays 0 until the R2.14 prepayment anchor; RT-RELAY-3 walk
   budget enforced; relay-lane doc truth.** The break (RT-RELAY-1, behind `--accept-relay-payments`,
   default OFF): `SettleRelaySession` settled on the RELAY's own ledger and `RedeemRelayCredit` debited
