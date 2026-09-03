@@ -901,6 +901,27 @@ issue number as an anchor only. Repro recipes for the field defects (#558/#535/#
 live in [`docs/thinking/2026-09-01-residual-defect-repro-recipes.md`](docs/thinking/2026-09-01-residual-defect-repro-recipes.md).
 
 **Security / data-safety residuals:**
+- **Demand issuer-key proof-of-possession (DSKS) — R0.4b-PoP.** `validateIssuerKeys`
+  (`core/chain/issuerkey.go`) requires a verifying ed25519 self-signature, an in-range epoch and
+  a bond, but **no proof that the registrant holds the RSA private key** whose fingerprint it
+  registers. Public keys are served publicly, so bonded issuer B can register issuer A's
+  fingerprint for epoch E; a redeemer resolving against B then pins A's key, and a token A
+  signed verifies under B's keyset — Duplicate-Signature Key Selection (Blake-Wilson & Menezes
+  1999). **Latent, not live:** `handleDeliveryReceipt` resolves ONE configured issuer and ledgers
+  are per-node, so the multi-issuer surface is not exercised today. The close is either a PoP in
+  the registration, or the faithful RFC 9578 binding `keyFingerprint(32) ‖ epoch(8) ‖ serial` in
+  `demandMsg`. Both are **validity-rule changes: research-gate + owner ratification, BEFORE the
+  stamp raise.** Source: crypto-specialist advisory C-4,
+  `/Users/andrewedmond/Claude/claude/silt-reviews/crypto-specialist/ADVISORY-R0.4b-C3-blind-RSA-epoch-binding-2026-09-03.md`.
+- **FDH domain-separation-tag length prefix + 128-bit reduction slack — R0.4b-FDH.** The three
+  FDH domains are not length-prefixed and `fullDomainHashD` expands to only `nLen + 8` bytes
+  (64 spare bits against RFC 9380 §5.2's `k = 128`). Both are sound as built — the crypto seat
+  verified the three domain constants differ at byte index 10, so no message produces a
+  cross-domain collision — but sound *by accident of the constants*. **Not fixed in R0.4b C3
+  because either change alters the FDH output, and the publish and credit domains are BYTE-FROZEN
+  against chain replay:** committed publish tokens re-verify on every replay, so changing their
+  signed bytes invalidates history. Fixing only the demand domain would leave two conventions in
+  one file. Do it as one versioned change, with a chain-era gate. Source: advisory C-8.
 - **Transport authentication (TLS or Noise) — #437.** silt's wire is unauthenticated CBOR
   (`adapters/tcpnet/wire.go`), so an on-path MITM can strip certificate signatures in transit.
   Certified NOT a safety break and NOT a wedge (stripped blocks fail `ValidateCommit`, are inert,

@@ -52,8 +52,14 @@ var (
 // EnableTokenIssuer makes this validator blind-sign publish-token requests
 // (charging the fee to each requester) and serve its issuer public key to
 // peers who ask (MsgGetIssuerKey).
-func (n *Node) EnableTokenIssuer(key *rsa.PrivateKey) {
-	n.tokenIssuer = blindtoken.NewIssuer(key)
+//
+// rng is the randomness the PRIVATE-KEY operation blinds with (advisory C-2). This is
+// a network-facing signing oracle over attacker-chosen input, which is the
+// Brumley-Boneh remote-timing setting, so the blinding is not optional. It is injected
+// like every other randomness source in core (internal/depcheck bans crypto/rand
+// here); it does not change the signature produced, only the modexp's timing profile.
+func (n *Node) EnableTokenIssuer(rng io.Reader, key *rsa.PrivateKey) {
+	n.tokenIssuer = blindtoken.NewIssuer(rng, key)
 	n.issuerKeyDER = blindtoken.MarshalPub(&key.PublicKey)
 }
 
@@ -225,7 +231,10 @@ func (n *Node) AcquireCredits(rng io.Reader, v ports.NodeID, count int,
 		n.request(v, ports.Message{Kind: ports.MsgTokenRequest, Data: blinded},
 			func(resp ports.Message, err error) {
 				if err == nil && resp.OK && len(resp.Data) > 0 {
-					if sig := blindtoken.Unblind(pub, resp.Data, secret); sig != nil {
+					// RFC 9474 §4.4 Finalize (advisory C-1): a credit that does not
+					// verify under the issuer's own key is dropped here, not carried
+					// forward as a credit that fails at spend time.
+					if sig, uerr := blindtoken.UnblindCredit(pub, serial, resp.Data, secret); uerr == nil {
 						credits = append(credits, ports.PublishCredit{Serial: serial, Sig: sig})
 					}
 				}
@@ -348,7 +357,8 @@ func (n *Node) acquireToken(rng io.Reader, serial []byte, validators []ports.Nod
 				func(resp ports.Message, rerr error) {
 					inflight--
 					if rerr == nil && resp.OK && len(resp.Data) > 0 {
-						if sig := blindtoken.Unblind(pub, resp.Data, secret); sig != nil {
+						// RFC 9474 §4.4 Finalize (advisory C-1).
+						if sig, uerr := blindtoken.Unblind(pub, serial, resp.Data, secret); uerr == nil {
 							sigs[i] = sig
 						}
 					}

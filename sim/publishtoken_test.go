@@ -53,7 +53,7 @@ func TestUnlinkablePublishViaQuorumToken(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		nd.EnableTokenIssuer(rsaKey)
+		nd.EnableTokenIssuer(rand.Reader, rsaKey)
 		issuerReg[ids[i]] = &rsaKey.PublicKey
 		ledger.RecordBondChallenge(ids[i], synthRoot(ids[i]), 8<<20, true, 1) // bonded → qualified issuer/attester
 		ch := chain.New(cfg, repFn)

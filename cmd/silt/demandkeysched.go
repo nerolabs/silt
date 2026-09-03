@@ -35,12 +35,16 @@ import (
 // demandKeyInstaller is the node half of the schedule: install key_E for epoch E and
 // stage its on-chain commitment.
 type demandKeyInstaller interface {
-	SetDemandIssuerKey(epoch uint64, priv *rsa.PrivateKey)
+	SetDemandIssuerKey(rng io.Reader, epoch uint64, priv *rsa.PrivateKey)
 }
 
 // installDemandKeys runs one rotation step for consensus epoch cur. It is the single
 // place the daemon binds the schedule to silt's W, so the band arithmetic (in the
 // adapter, window-agnostic) and the window value (core/demand) meet exactly once.
 func installDemandKeys(nd demandKeyInstaller, es *diskissuer.EpochStore, rng io.Reader, cur uint64) error {
-	return es.RotateWindow(rng, cur, demand.DefaultWindow, nd.SetDemandIssuerKey)
+	return es.RotateWindow(rng, cur, demand.DefaultWindow, func(e uint64, k *rsa.PrivateKey) {
+		// The SAME injected reader signs with the key it installs: the issuer blinds
+		// its private-key operation with it (advisory C-2).
+		nd.SetDemandIssuerKey(rng, e, k)
+	})
 }

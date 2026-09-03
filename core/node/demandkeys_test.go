@@ -188,14 +188,14 @@ func TestIssuerKey_SelfIssuanceGetsNoException(t *testing.T) {
 	if err != nil {
 		t.Fatalf("rogue key: %v", err)
 	}
-	f.nd.SetDemandIssuerKey(0, rogue)
+	f.nd.SetDemandIssuerKey(rand.Reader, 0, rogue)
 	if ks := f.nd.DemandIssuerKeyset(f.issuer); ks != nil && ks.Key(0) != nil {
 		t.Fatal("a node self-pinned its OWN uncommitted key — self-issuance must go " +
 			"through the same committed binding as any peer's key")
 	}
 
 	// The committed key, installed as its own, DOES resolve.
-	f.nd.SetDemandIssuerKey(0, f.committed)
+	f.nd.SetDemandIssuerKey(rand.Reader, 0, f.committed)
 	ks := f.nd.DemandIssuerKeyset(f.issuer)
 	if ks == nil || ks.Key(0) == nil {
 		t.Fatal("a node could not resolve its OWN committed key")
@@ -221,5 +221,9 @@ func blindTokenUnderAt(t *testing.T, priv *rsa.PrivateKey, epoch uint64) demand.
 	if err != nil {
 		t.Fatalf("withdraw: %v", err)
 	}
-	return demand.Unblind(&priv.PublicKey, serial, demand.SignWithdrawal(priv, blinded), secret)
+	tok, uerr := demand.Unblind(&priv.PublicKey, epoch, serial, demand.SignWithdrawal(rand.Reader, priv, blinded), secret)
+	if uerr != nil {
+		t.Fatalf("unblind: %v", uerr)
+	}
+	return tok
 }

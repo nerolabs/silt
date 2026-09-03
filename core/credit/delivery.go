@@ -340,10 +340,17 @@ func (l *Ledger) RedeemDeliveryCreditReason(server, fetcher ports.NodeID, root p
 	// including a second colluding server holding its own self-named receipt — mints
 	// nothing.
 	//
-	// THE ORDERING INVARIANT (research certification 2026-09-03, gate G-4):
+	// THE ORDERING INVARIANT (research certification 2026-09-03, gates G-4 and G-E):
 	//
-	//	A WITNESSED RECEIPT REVERSES THE SELF-MINT EXACTLY ONCE, WHETHER OR NOT IT
-	//	IS PAID.
+	//	EACH PROVISIONAL LANE INSTANCE IS REVERSED AT MOST ONCE, SO REVERSALS NEVER
+	//	EXCEED SERVES. A RECEIPT REVERSES AT MOST ONCE PER LANE INSTANCE.
+	//
+	// The supersede deletes the lane, so a re-presentation with no intervening serve
+	// moves nothing. A receipt that was REFUSED (and therefore never recorded in the
+	// guard) can reverse again after a fresh serve of the same lane — that is the
+	// accepted, purely-subtractive revenue grief, not a second payout. A receipt that
+	// was PAID is recorded, so ReasonAlreadyPaid returns above the supersede and it can
+	// never reverse again. What is bounded is the LANE INSTANCE, not the receipt.
 	//
 	// Only ReasonAlreadyPaid and ReasonSelfDelivery return above the supersede. Every
 	// OTHER refusal returns below it, so a refused receipt pays 0 AND gives up the
@@ -351,8 +358,10 @@ func (l *Ledger) RedeemDeliveryCreditReason(server, fetcher ports.NodeID, root p
 	//
 	// WHY. The conserved leg is FLAT (fee − skim = 43,750 at the shipped fee) and the
 	// self-mint is BYTE-PROPORTIONAL (0.875·B). Above B = 50,000 bytes a refusal was
-	// therefore worth MORE than being paid — at the 64 MiB production chunk, 1,342×
-	// more — and the operator can trigger a refusal itself by filling its own guard
+	// therefore worth MORE than being paid — at the tree's stated minimum production
+	// chunk of 64 MiB (core/pipeline/pipeline.go), 1,342× more, and already +13,594 at
+	// the SHIPPED 64 KiB default, which is 31% past the break-even — and the operator
+	// can trigger a refusal itself by filling its own guard
 	// with junk serials (Receipt.Object is attacker-chosen, so distinct roots are
 	// free). Keeping the mint on a refusal was a profitable, operator-triggerable
 	// supersede-disable on the whole of Boulder 0's conservation rule: RecordServe's
@@ -366,8 +375,10 @@ func (l *Ledger) RedeemDeliveryCreditReason(server, fetcher ports.NodeID, root p
 	// cannot say which serve it acknowledges. The guard's own record is what stops a
 	// re-presented receipt from reversing a RE-SERVED lane's fresh self-mint
 	// (RT-DELIV-1/1b/2). Hoisting the supersede above the AlreadyPaid screen would
-	// remove that bound. Below it, the reversal is bounded by the lane deletion: the
-	// second presentation finds no lane and moves nothing.
+	// remove that bound. Below it, the reversal is bounded by the lane deletion: a
+	// second presentation with no intervening serve finds no lane and moves nothing.
+	// (Ungated branch, owed as R-REFUSED-RESERVE-REVERSAL: serve → refusal → serve
+	// again → the same receipt reverses the SECOND lane's fresh mint, exactly once.)
 	//
 	// The reversal itself is PURELY SUBTRACTIVE (reverseProvisional only debits, and
 	// floors the escrow claw-back at what the reserve still holds), so the worst case
@@ -395,6 +406,20 @@ func (l *Ledger) RedeemDeliveryCreditReason(server, fetcher ports.NodeID, root p
 		// ahead redeemer has already retired.
 		if currentEpoch > l.epochWatermark {
 			l.epochWatermark = currentEpoch
+			// SWEEP ON THE BAND ADVANCE, NOT ONLY AT THE CAP (crypto-specialist
+			// advisory C-7, 2026-09-03). The cap-only trigger meant that on any node
+			// below 65,536 live serials — which is every node most of the time —
+			// expired guard entries were retained ON DISK indefinitely, far past the
+			// W-epoch window that is their whole justification. Soundness was never
+			// affected (refuse-not-evict is the correct choice and is unchanged), but
+			// state whose justification is a 4-epoch window must not outlive it: this
+			// is the data-minimisation answer, and it is the shape every
+			// epoch-scoped online e-cash since Brands uses — an epoch-partitioned
+			// spent list dropped at rollover rather than a database swept under load.
+			// It is also CHEAPER than the cap-triggered scan: O(cap) per epoch instead
+			// of O(cap) per refused redeem. The sweptEpoch latch makes it at most one
+			// scan per epoch however many callers drive it.
+			l.sweepIfEpochAdvanced(l.epochWatermark)
 		}
 		if _, paid := l.paidSerial[paidKey(issuedEpoch, serial)]; paid {
 			return 0, ReasonAlreadyPaid // this TOKEN already funded one conserved payout — mint 0
@@ -547,17 +572,25 @@ func (l *Ledger) reservePaidSerial(current uint64) bool {
 	if len(l.paidSerial) < maxPaidSerial {
 		return true
 	}
-	// AT MOST ONE SWEEP PER EPOCH (RT-E). Entries expire on the epoch clock, so a
-	// second scan within the same epoch can free nothing a first scan did not: the
-	// swept set is identical and the amortized cost drops from O(cap) per refused
-	// redeem to O(cap) per epoch. Epoch 0 needs no latch — sweepExpiredSerials
-	// returns immediately while current <= W, so nothing can expire that early.
+	l.sweepIfEpochAdvanced(current)
+	return len(l.paidSerial) < maxPaidSerial
+}
+
+// sweepIfEpochAdvanced runs sweepExpiredSerials AT MOST ONCE PER EPOCH (RT-E).
+// Entries expire on the epoch clock, so a second scan within the same epoch can free
+// nothing a first scan did not: the swept set is identical and the amortized cost is
+// O(cap) per epoch rather than O(cap) per caller. Epoch 0 needs no latch —
+// sweepExpiredSerials returns immediately while current <= W, so nothing can expire
+// that early.
+//
+// Two callers drive it: the epoch-watermark advance on the redeem path (advisory C-7,
+// the retention bound) and reservePaidSerial at the cap (the liveness bound).
+func (l *Ledger) sweepIfEpochAdvanced(current uint64) {
 	if current > l.sweptEpoch {
 		l.sweptEpoch = current
 		l.sweeps++
 		l.sweepExpiredSerials(current)
 	}
-	return len(l.paidSerial) < maxPaidSerial
 }
 
 // paidKey is the guard key: the token, not the serial. It is

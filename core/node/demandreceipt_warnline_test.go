@@ -103,7 +103,7 @@ func TestBankedButUnpaidReceiptLogsTheWarnLine(t *testing.T) {
 		t.Fatalf("genesis committing the issuer-key binding: %v", gerr)
 	}
 	nd.EnableChain(c, serverIdent.Signer())
-	nd.SetDemandIssuerKey(0, issuerPriv)
+	nd.SetDemandIssuerKey(rand.Reader, 0, issuerPriv)
 	nd.EnableDemandBank(serverID)
 	if ks := nd.DemandIssuerKeyset(serverID); ks == nil || ks.Key(0) == nil {
 		t.Fatal("setup: the committed issuer key was not pinned — the bank would reject every receipt")
@@ -121,7 +121,10 @@ func TestBankedButUnpaidReceiptLogsTheWarnLine(t *testing.T) {
 	if bErr != nil {
 		t.Fatalf("demand.Withdraw: %v", bErr)
 	}
-	token := demand.Unblind(issuerPub, serial, demand.SignWithdrawal(issuerPriv, blinded), secret)
+	token, uerr := demand.Unblind(issuerPub, 0, serial, demand.SignWithdrawal(rand.Reader, issuerPriv, blinded), secret)
+	if uerr != nil {
+		t.Fatalf("demand.Unblind: %v", uerr)
+	}
 	objRoot := ports.HashBytes([]byte("warnline-object-root"))
 	submitted := demand.SubmittedReceipt{
 		Token:   token,

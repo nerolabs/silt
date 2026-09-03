@@ -9,6 +9,115 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Security
+- **R0.4b C3 merge-prep — Tester defect F6, the LANE OFF gate's missing teeth, the G-E
+  comment gate, and crypto-specialist advisory items C-1 … C-8.** Inputs: the Tester's
+  `271ab81` verification, the delta certification
+  `R0.4b-C3-271ab81-G3-G4-GD-DELTA-CERTIFICATION-2026-09-03`, and
+  `ADVISORY-R0.4b-C3-blind-RSA-epoch-binding-2026-09-03`. Full item-by-item write-up with
+  root causes, gates and measurements: `docs/thinking/2026-09-02-r0.4b-c3-close-design.md` §10.
+  - **F6 (defect, permanent liveness cliff) — an EARLIER rotation pruned a LATER rotation's
+    already-staged pre-published key.** `EpochStore.ensureBand` pruned on the caller's own
+    band (`e > cur+w`). The daemon launches each epoch turn as a bare `go rotateDemandKeys(cur)`,
+    so turns complete out of order; a turn for an earlier `cur` deleted keys a later turn had
+    generated AND handed to `install(...)`, which stages their fingerprints on chain.
+    `applyIssuerKeys` is first-write-wins, so once the staged fingerprint commits the
+    regenerated key can never be registered — the demand lane is dead for that epoch, for that
+    issuer, permanently, and nothing detects it. Measured with no concurrency:
+    `RotateWindow(11)` then `RotateWindow(10)` loses epoch 15. Fix: the retained band's UPPER
+    EDGE is `max(genTo, highest epoch on disk)` — monotone, so no rotation can shrink another's
+    pre-publication; bounded, because the only writer above the edge is the generation loop,
+    which stops at `cur+w`. Gates: `TestRTC3_AnEarlierRotationDoesNotPruneALaterRotationsPrePublishedKey`
+    (deterministic, RED with `LOST=[15]`) and `TestRTC3_EpochStoreRotationsNeverLoseAnInstalledKey`
+    (the daemon's four overlapping turns ×80, RED with `LOST=[17]`). The adopted gate's
+    `if e < 9 || e > 14 { continue }` filter is REMOVED — its rationale had the direction
+    backwards and it carved out the only epoch ever lost. A false comment in
+    `cmd/silt/daemon.go` ("one rotation is in flight at a time") is corrected: bumping
+    `demandEpoch` prevents a duplicate rotation for the SAME epoch and nothing else.
+  - **The LANE OFF gate had no teeth; it now has a runtime twin.** The Tester reintroduced the
+    F7 daemon-death with every asserted string intact, using a different early return: source
+    gate GREEN, `go vet` clean. New `e2e/laneoff_corrupt_store_test.go`
+    `TestDaemonSurvivesACorruptDemandKeyStore` drives a real `silt daemon` over real TCP with a
+    corrupt `demandkeys.cbor` and asserts the process survives (registry, peer and bootstrap
+    lines all print), the lane never arms, both operator lines are exact and name the store
+    path, and the file is byte-unchanged. Ablation: reinstating the F7 death reddens it while
+    the source gate stays green.
+  - **Third-time rule closed as a LINT.** `scripts/check_source_gates.py` (in CI): any
+    `_test.go` reading a non-testdata `.go` file is a SOURCE gate; its failure messages must
+    begin `SOURCE GATE:` and describe what was checked, and it must name a `RUNTIME GATE:` or
+    declare the behaviour `UNGATED:`. Three sites brought into compliance. Recorded as rule 8
+    in `docs/build-process.md`.
+  - **C-1 (RFC 9474 §4.4 Finalize, the advisory's top item) — the unblind step now VERIFIES.**
+    A malicious issuer could return a garbage blind signature: the fetcher paid the withdrawal
+    fee, fetched, signed a receipt, and the server's `Bank.Redeem` then refused it — so
+    `handleDeliveryReceipt` never called the ledger and the serve's eager unwitnessed self-mint
+    was NEVER REVERSED. An issuer handing out duds drove its whole cohort onto the self-mint
+    path at no cost to itself and with no detection. `Unblind` / `UnblindCredit` /
+    `UnblindDemand` verify under the domain (and for demand under `(key_E, E)`) before
+    returning; the refusal is legible at the client.
+  - **C-2 — the issuer's private-key operation is blinded and verified after signing.**
+    `SignBlinded` was a bare `Exp(b, D, N)` on attacker-chosen input over the network, which
+    is the Brumley–Boneh remote-timing setting; client-side blinding does not help the issuer,
+    which is why Go's own `crypto/rsa` blinds every private-key op. Now: random blinding
+    (rng INJECTED — `crypto/rand` is banned in core) plus `s^e == b mod N` before release, the
+    Boneh–DeMillo–Lipton countermeasure. **Wire format unchanged** — the blinding cancels, and
+    the gate asserts byte-equality with the plain modexp, which is what keeps the A2
+    retry-dedup honest.
+  - **C-3 — `ValidatePub` gains hardness checks, split from the hot path.** The advisory's
+    spike showed four moduli passing the shape-only bound set, two of them universal forgery
+    by any observer (a single 2048-bit prime; 122 seventeen-bit primes), plus `p²` and `e = 3`.
+    Added: the FIPS 186-5 exponent floor `e > 2^16`; no prime factor below `SmallFactorBound
+    = 2^20` (one gcd against a lazily-built primorial); not a perfect power; not prime. All
+    four shapes now REFUSED. **The hardness half runs only at ADMISSION** (`ParsePub`,
+    `demand.Keyset.Put`); the cheap `validateShape` stays the last line before every modexp.
+    Measured on Apple M4: admission **3.43 ms** (budget 5 ms, at most `W+1 = 5` pins per issuer
+    per window), one-time primorial build **~42 ms** (prewarmed off the loop at daemon boot),
+    verify **19.4 µs**. Leaving the hardness checks on the modexp path would have been a ~180x
+    CPU amplifier on the single-threaded node loop — a new DoS bought while closing a forgery.
+    Honest residual, stated: the bound is a BAR, not a proof; **blindness against a malicious
+    issuer is bounded by key-correctness assumptions, not proven, and the on-chain commitment
+    bounds EQUIVOCATION, not soundness.**
+  - **C-5 — RSA representatives are canonical, and that closes an issuance-dedup bypass.**
+    `SignBlinded` opened with `b.Mod(b, N)`, so `blinded`, `blinded + N` and any zero-padded
+    spelling signed identically — while `demandDedupKey` is keyed on the RAW blinded bytes, so
+    a re-encoding was a fresh cache key for an issuance already settled and the requester was
+    charged twice for one signature. Now RFC 8017 §5.2.2 range plus minimal encoding, applied
+    to the blinded value at the signer and to the signature at verify; `Issuer.Issue` checks
+    the input BEFORE the charge, so a refused spelling cannot take the fee.
+  - **C-6 — the RFC 9474 §4.2 `is_coprime(m, n)` check is present** (a shared factor with a
+    deliberately smooth modulus is a linkability tag the issuer can compute).
+  - **C-7 — expired guard entries are retired on the epoch-band advance, not only at the cap.**
+    Both `credit.paidSerial` and `demand.Bank.spent` swept only at the 65,536 cap, so on any
+    node below it — every node most of the time — expired entries were retained ON DISK
+    indefinitely, past the `W`-epoch window that is their whole justification. Soundness is
+    unaffected (refuse-not-evict is unchanged) and the new trigger is CHEAPER: O(cap) per epoch
+    instead of O(cap) per refused redeem. Prior art: Brands' epoch-partitioned spent list.
+  - **C-4 / C-8 — NOT built, recorded as ROADMAP Rocks with their reasons.** **R0.4b-PoP**: no
+    proof-of-possession of the RSA key in `validateIssuerKeys`, so a bonded issuer can register
+    another issuer's fingerprint (Duplicate-Signature Key Selection). Latent, not live — one
+    configured issuer, per-node ledgers — and the close is a validity-rule change, so it is
+    research-gated and owner-ratified before the stamp raise. **R0.4b-FDH**: length-prefixing
+    the FDH domain tag and widening the reduction slack both alter the FDH output, and the
+    publish and credit domains are byte-frozen against chain replay. The two code comments
+    claiming RFC 9578 fidelity are corrected: RFC 9578 signs `SHA256(SPKI)`; silt signs an
+    epoch index, which identifies neither issuer nor key.
+  - **G-E (delta-cert, comment-only) — the G-4 ordering invariant is restated correctly.**
+    "A witnessed receipt reverses the self-mint exactly once" is false on a re-served lane;
+    what is bounded is the LANE INSTANCE. Also corrected everywhere: "the 64 MiB production
+    chunk" is the tree's stated MINIMUM production chunk, and the number that matters is that
+    the break-even is B = 50,000 bytes against a SHIPPED default chunk of 65,536 — the lever
+    was live at the default configuration, not only at an aspirational size.
+  - **FP-2, measured, NOT fixed.** The other half of the supersede/append crash window: when
+    the guard append LANDS and the pay is lost, re-presenting the receipt returns
+    `serial-already-paid` above the supersede, so the server keeps the full **+58,720,256**
+    self-mint at a 64 MiB chunk with no witnessed reversal and no conserved payout, and the
+    receipt is burnt (Σ unmoved; no double-pay). Vacuous on the shipped in-memory ledger; live
+    the moment the ledger is persisted, because there are then two durable stores and no shared
+    transaction. Not fixed because neither candidate direction is ledger-local: a write-ahead
+    needs a cross-store transaction, and pay-then-append needs a guard-record wire change plus
+    moving `ReasonAlreadyPaid` below the supersede — an economic-mechanism change. Recorded as
+    a second precondition on the FP-2 flip, gated by
+    `TestFP2_CrashBetweenTheGuardAppendAndThePayBurnsTheReceipt`.
+
 - **R0.4b C3 certification fold-in — three merge-blocking gates closed (G-8, the dark paid
   lane, is the owner's call and is NOT closed here):** the research certification
   `R0.4b-C3-composed-close-bc062d0-RESEARCH-CERTIFICATION-2026-09-03` returned GATED.
@@ -26,7 +135,8 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   - **G-4 — every guard refusal returned BEFORE the supersede, so a refusing server kept the
     unfunded self-mint.** `RecordServeToObject` self-credits `0.875xB`; the conserved leg pays a
     flat `fee - skim = 43,750`. Above 50,000 bytes refusing therefore beat being paid, and at
-    the 64 MiB production chunk it beat it by 1,342x (+58,676,506) — a profitable,
+    the tree's stated MINIMUM production chunk of 64 MiB it beat it by 1,342x
+    (+58,676,506), and by +13,594 at the SHIPPED 64 KiB default — a profitable,
     OPERATOR-TRIGGERABLE supersede-disable on Boulder 0's conservation rule, since an operator
     can fill its own guard with junk serials at a net cost of zero. The refusals now run BELOW
     the supersede, under one stated invariant: **a witnessed receipt reverses the self-mint
@@ -208,8 +318,10 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `os.WriteFile` and the second case goes RED, because a direct write to an existing 0600 file
   succeeds even in a read-only directory and destroys the committed band.
 - **Stale citation fixed:** `core/blindtoken/epoch_binding_test.go` cited a `core/credit`
-  `TestGuardExpiryHoldsUnderASharedKey` that does not exist; the gate is
-  `TestGuardHealsUnderASharedKey`.
+  guard-expiry gate under a name no test has ever carried; the real gate is
+  `TestGuardHealsUnderASharedKey`. (The dead name is deliberately not repeated here —
+  `scripts/check_cited_tests.py` reads a backticked `Test…` in the CHANGELOG as a
+  citation, so writing it out would re-fail the lint that caught it.)
 - **The cited gate that did not exist now exists (Tester finding).** `core/credit/delivery.go`
   claimed `paidSerialWindow` was pinned to `demand.DefaultWindow` by
   `TestPaidSerialWindowMatchesDemandWindow`; a repo-wide grep found only the comment. Both the

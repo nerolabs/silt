@@ -89,7 +89,7 @@ func wireDemandLane(t *testing.T, cl *Cluster, issuer, server *node.Node,
 	serverSigner ed25519.PrivateKey, fetchers ...demandFetcher) {
 	t.Helper()
 
-	issuer.SetDemandIssuerKey(0, issuerKey)
+	issuer.SetDemandIssuerKey(rand.Reader, 0, issuerKey)
 	server.EnableChain(serverChain, serverSigner)
 	server.EnableDemandBank(issuer.ID())
 

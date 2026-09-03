@@ -241,10 +241,17 @@ func TestEmptyValueNeverPresent(t *testing.T) {
 // fabricating either outcome; this test guards against a new construction site
 // WITHIN the package. If someone adds a shortcut, the count goes to 2 and this
 // test goes RED before that code can ship.
+//
+// This is a SOURCE gate: it counts literals in witness.go and compares their byte
+// offsets. It cannot observe an outcome. Every failure message below says so.
+// RUNTIME GATE: TestNoWitnessNeverAbsent, TestFailedVerificationNeverAbsent,
+// TestEmptyValueNeverPresent and TestResolveVerifiedProofsClassifyCorrectly drive the
+// resolver and assert the outcomes themselves; this gate only stops a NEW construction
+// site from appearing between those runs.
 func TestOutcomesHaveExactlyOneConstructionSite(t *testing.T) {
 	src, err := os.ReadFile("witness.go")
 	if err != nil {
-		t.Fatalf("read witness.go: %v", err)
+		t.Fatalf("SOURCE GATE: cannot read witness.go to count construction sites: %v", err)
 	}
 
 	// Match a Result literal that sets each outcome. Whitespace-tolerant. Any
@@ -252,14 +259,16 @@ func TestOutcomesHaveExactlyOneConstructionSite(t *testing.T) {
 	// Result has no other mutator.
 	absentSites := regexp.MustCompile(`outcome:\s*ProvenAbsent`).FindAllIndex(src, -1)
 	if len(absentSites) != 1 {
-		t.Fatalf("expected EXACTLY ONE construction site for PROVEN_ABSENT, found %d. "+
+		t.Fatalf("SOURCE GATE: counted `outcome: ProvenAbsent` literals in witness.go and "+
+			"expected EXACTLY ONE construction site for PROVEN_ABSENT, found %d. "+
 			"A second site is the banned C-7 §104 move (missing/failed witness read as "+
 			"absent). Every non-verified path MUST construct NoWitness, not ProvenAbsent.",
 			len(absentSites))
 	}
 	presentSites := regexp.MustCompile(`outcome:\s*ProvenPresent`).FindAllIndex(src, -1)
 	if len(presentSites) != 1 {
-		t.Fatalf("expected EXACTLY ONE construction site for PROVEN_PRESENT, found %d. "+
+		t.Fatalf("SOURCE GATE: counted `outcome: ProvenPresent` literals in witness.go and "+
+			"expected EXACTLY ONE construction site for PROVEN_PRESENT, found %d. "+
 			"A second site is the MIRROR banned move (an unverified path, or an empty-value "+
 			"absence query, read as present). ProvenPresent must come ONLY from a verified "+
 			"membership proof in the len(value)>0 branch.",
@@ -273,17 +282,18 @@ func TestOutcomesHaveExactlyOneConstructionSite(t *testing.T) {
 	// defaultEmptyValue) selection and foreclose the empty-value mirror.
 	guardLoc := regexp.MustCompile(`if len\(value\) == 0 \{`).FindIndex(src)
 	if guardLoc == nil {
-		t.Fatal("the `if len(value) == 0 {` non-membership guard is missing — PROVEN_ABSENT " +
+		t.Fatal("SOURCE GATE: the literal `if len(value) == 0 {` non-membership guard is " +
+			"missing from witness.go — PROVEN_ABSENT " +
 			"must be reachable only through the verified non-membership branch, keyed on " +
 			"len==0 to match the library's empty-value convention")
 	}
 	if guardLoc[0] >= absentSites[0][0] {
-		t.Fatal("the PROVEN_ABSENT construction site is not inside the verified " +
-			"non-membership (len(value)==0) branch")
+		t.Fatal("SOURCE GATE: by byte offset, the PROVEN_ABSENT construction site is not " +
+			"inside the verified non-membership (len(value)==0) branch")
 	}
 	// And the ProvenPresent site must sit AFTER that guard too (it is the else arm).
 	if presentSites[0][0] <= guardLoc[0] {
-		t.Fatal("the PROVEN_PRESENT construction site must follow the len(value)==0 guard " +
-			"(it is the membership else-arm)")
+		t.Fatal("SOURCE GATE: by byte offset, the PROVEN_PRESENT construction site does not " +
+			"follow the len(value)==0 guard (it is the membership else-arm)")
 	}
 }

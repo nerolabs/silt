@@ -22,6 +22,7 @@ import (
 	"crypto/rsa"
 	"errors"
 	"fmt"
+	"math/big"
 	"strings"
 	"testing"
 
@@ -161,7 +162,7 @@ func TestStaleIssuerKeyRegDoesNotMuteTheProposer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	nd.SetDemandIssuerKey(nd.DemandEpoch(), rsaKey)
+	nd.SetDemandIssuerKey(rand.Reader, nd.DemandEpoch(), rsaKey)
 	if nd.DemandEpoch() != 0 || len(nd.pendingIssuerKeys) != 1 {
 		t.Fatalf("setup: bootEpoch=%d pending=%d", nd.DemandEpoch(), len(nd.pendingIssuerKeys))
 	}
@@ -203,7 +204,7 @@ func TestStaleIssuerKeyRegPreFlipBoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	nd.SetDemandIssuerKey(nd.DemandEpoch(), rsaKey) // epoch 0, pre-flip
+	nd.SetDemandIssuerKey(rand.Reader, nd.DemandEpoch(), rsaKey) // epoch 0, pre-flip
 
 	for {
 		_, next := c.Head()
@@ -345,7 +346,7 @@ func TestCohortKeyIsADenialOnEveryShippedLane(t *testing.T) {
 			_ = iep.Send(from, ports.Message{Kind: ports.MsgDemandIssuerKeysReply, RID: msg.RID, OK: true, Data: blob})
 		case ports.MsgDemandTokenRequest:
 			_ = iep.Send(from, ports.Message{Kind: ports.MsgDemandTokenReply, RID: msg.RID, OK: true,
-				Data: demand.SignWithdrawal(keyB, msg.Data), Height: 1})
+				Data: rawSignBlinded(t, keyB, msg.Data), Height: 1})
 		}
 	})
 
@@ -400,7 +401,13 @@ func TestCohortKeyIsADenialOnEveryShippedLane(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	crossTok := demand.Unblind(pub, serial, demand.SignWithdrawal(keyB, blinded), secret)
+	// The reply is signed under key_B, so the RFC 9474 Finalize check against key_A
+	// (advisory C-1) refuses it at the client — one door earlier than the keyset.
+	if _, uerr := demand.Unblind(pub, epoch, serial, rawSignBlinded(t, keyB, blinded), secret); uerr == nil {
+		t.Fatal("Unblind returned a token for a signature made under a DIFFERENT key")
+	}
+	crossTok := demand.Token{Serial: serial,
+		Sig: rawUnblind(t, pub, rawSignBlinded(t, keyB, blinded), secret)}
 	ks := fetcher.DemandIssuerKeyset(issuerIdent.NodeID())
 	if _, ok := ks.VerifyInWindow(0, crossTok); ok {
 		t.Fatal("a signature made under key_B verified in a keyset holding key_A")
@@ -439,7 +446,8 @@ func TestDemandLaneOutlivesTheWindowAndARestart(t *testing.T) {
 		nd, _ := c3Node(t, 7421)
 		nd.SetLedger(credit.New(50_000, 5_000_000))
 		nd.EnableChain(c, signer)
-		if err := es.RotateWindow(rand.Reader, nd.DemandEpoch(), demand.DefaultWindow, nd.SetDemandIssuerKey); err != nil {
+		install := func(e uint64, k *rsa.PrivateKey) { nd.SetDemandIssuerKey(rand.Reader, e, k) }
+		if err := es.RotateWindow(rand.Reader, nd.DemandEpoch(), demand.DefaultWindow, install); err != nil {
 			t.Fatalf("rotation at boot: %v", err)
 		}
 		nd.EnableDemandBank(nd.ID())
@@ -500,7 +508,10 @@ func TestDemandLaneOutlivesTheWindowAndARestart(t *testing.T) {
 		if reply.Height != cur {
 			t.Fatalf("%s: the issuer signed for epoch %d, not the %d asked for", label, reply.Height, cur)
 		}
-		tok := demand.Unblind(pub, serial, reply.Data, secret)
+		tok, uerr := demand.Unblind(pub, cur, serial, reply.Data, secret)
+		if uerr != nil {
+			t.Fatalf("%s: unblind: %v", label, uerr)
+		}
 		rcpt := demand.Ack(fetcherIdent.Signer(), tok, obj, nd.ID())
 		credited, ep, why := nd.demandBank.Redeem(ks, cur, tok, rcpt)
 		if !credited {
@@ -516,7 +527,8 @@ func TestDemandLaneOutlivesTheWindowAndARestart(t *testing.T) {
 	// does on the commit stream.
 	for e := 1; e <= int(demand.DefaultWindow)+3; e++ {
 		c3Advance(t, c, others, 1)
-		if err := es.RotateWindow(rand.Reader, nd.DemandEpoch(), demand.DefaultWindow, nd.SetDemandIssuerKey); err != nil {
+		install := func(e uint64, k *rsa.PrivateKey) { nd.SetDemandIssuerKey(rand.Reader, e, k) }
+		if err := es.RotateWindow(rand.Reader, nd.DemandEpoch(), demand.DefaultWindow, install); err != nil {
 			t.Fatalf("rotation at epoch %d: %v", e, err)
 		}
 		commitStaged(nd)
@@ -539,11 +551,41 @@ func TestDemandLaneOutlivesTheWindowAndARestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	restarted.EnableTokenIssuer(pubKey)
+	restarted.EnableTokenIssuer(rand.Reader, pubKey)
 	ks := restarted.DemandIssuerKeyset(restarted.ID())
 	for e := uint64(0); e <= restarted.DemandEpoch(); e++ {
 		if k := ks.Key(e); k != nil && demand.KeyFingerprint(k) == demand.KeyFingerprint(&pubKey.PublicKey) {
 			t.Fatalf("the publish key entered the demand keyset at epoch %d", e)
 		}
 	}
+}
+
+// rawSignBlinded is what a BYZANTINE issuer does: reduce the blinded value mod its own
+// modulus and exponentiate, with none of SignBlinded's hygiene. It exists because the
+// honest signer now REFUSES an out-of-range representative (RFC 8017 §5.2.2, advisory
+// C-5), and a blind produced under key_A lands above key_B's modulus about half the
+// time — so driving the cohort-tagging attack through demand.SignWithdrawal would make
+// this gate a coin flip. The attacker is not bound by our canonical check; the property
+// under test is the FETCHER's refusal, so the attacker's signer must be unconditional.
+func rawSignBlinded(t *testing.T, priv *rsa.PrivateKey, blinded []byte) []byte {
+	t.Helper()
+	b := new(big.Int).SetBytes(blinded)
+	b.Mod(b, priv.N)
+	return new(big.Int).Exp(b, priv.D, priv.N).Bytes()
+}
+
+// rawUnblind is the UNVERIFIED unblind — the pre-C-1 behaviour — kept only so a gate
+// can construct a token whose signature is deliberately wrong and then prove a
+// downstream door refuses it. Production never does this: demand.Unblind runs the RFC
+// 9474 §4.4 Finalize check and refuses at the client.
+func rawUnblind(t *testing.T, pub *rsa.PublicKey, blindSig, secret []byte) []byte {
+	t.Helper()
+	bs := new(big.Int).SetBytes(blindSig)
+	r := new(big.Int).SetBytes(secret)
+	rInv := new(big.Int).ModInverse(r, pub.N)
+	if rInv == nil {
+		t.Fatal("secret is not invertible")
+	}
+	sig := new(big.Int).Mul(bs, rInv)
+	return sig.Mod(sig, pub.N).Bytes()
 }

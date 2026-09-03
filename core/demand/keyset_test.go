@@ -44,7 +44,11 @@ func (es epochScene) withdraw(t *testing.T, epoch uint64) Token {
 	if err != nil {
 		t.Fatalf("withdraw: %v", err)
 	}
-	return Unblind(&priv.PublicKey, serial, SignWithdrawal(priv, blinded), secret)
+	tok, uerr := Unblind(&priv.PublicKey, epoch, serial, SignWithdrawal(rand.Reader, priv, blinded), secret)
+	if uerr != nil {
+		t.Fatalf("unblind: %v", uerr)
+	}
+	return tok
 }
 
 func (es epochScene) keyset(w uint64, epochs ...uint64) *Keyset {

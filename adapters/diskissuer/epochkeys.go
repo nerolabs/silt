@@ -190,9 +190,36 @@ func (s *EpochStore) ensureBand(rng io.Reader, keepFrom, genFrom, genTo uint64) 
 	if err != nil {
 		return nil, err
 	}
+	// THE UPPER PRUNE EDGE IS MONOTONE, NOT THE CALLER'S (red-team F6, 2026-09-03).
+	//
+	// Pruning on `e > genTo` alone is a permanent liveness cliff. genTo is cur+w, and
+	// the daemon launches every epoch turn as a bare `go rotateDemandKeys(cur)`, so
+	// turns complete out of order. A turn for an EARLIER cur then deletes the
+	// pre-published keys a LATER turn already generated AND handed to install(), which
+	// stages their fingerprints on chain via Node.SetDemandIssuerKey. applyIssuerKeys is
+	// first-write-wins, so once a staged fingerprint commits, the key regenerated in its
+	// place can NEVER be registered: the demand lane is dead for that epoch, for that
+	// issuer, forever, and nothing detects it. Measured with no concurrency at all —
+	// RotateWindow(11) to completion, then RotateWindow(10), loses epoch 15.
+	//
+	// So the retained band's upper edge is max(genTo, highest epoch already on disk). It
+	// only ever grows, so no rotation can shrink another's pre-publication. It stays
+	// bounded because the ONLY writer above the edge is this function's own generation
+	// loop, which stops at cur+w: the band can never exceed max(cur)+w keys wide.
+	//
+	// The LOWER edge deliberately stays the caller's keepFrom. Dropping a past-epoch key
+	// is the intended drain (the key is out of the validity window and no fingerprint is
+	// staged forward against it), and an out-of-order earlier turn can only widen it,
+	// never lose a key the later turn kept.
+	keepTo := genTo
+	for e := range keys {
+		if e > keepTo {
+			keepTo = e
+		}
+	}
 	changed := false
 	for e := range keys {
-		if e < keepFrom || e > genTo {
+		if e < keepFrom || e > keepTo {
 			delete(keys, e)
 			changed = true
 		}

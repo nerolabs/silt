@@ -77,14 +77,17 @@ func newOrderIssuers(t *testing.T) *orderIssuers {
 	oi.mint = func(serial []byte) *ports.PublishToken {
 		tok := &ports.PublishToken{Serial: serial}
 		for _, v := range keys[:2] { // 2-of-4 quorum; both anchors qualify as issuers
-			iss := blindtoken.NewIssuer(priv[idOf(v)])
+			iss := blindtoken.NewIssuer(rand.Reader, priv[idOf(v)])
 			blinded, secret, err := blindtoken.Blind(rng, iss.Public(), serial)
 			if err != nil {
 				t.Fatalf("blind: %v", err)
 			}
 			blindSig, _ := iss.Issue(func() error { return nil }, blinded)
-			tok.Sigs = append(tok.Sigs, ports.TokenSig{Validator: idOf(v),
-				Sig: blindtoken.Unblind(iss.Public(), blindSig, secret)})
+			sig, uerr := blindtoken.Unblind(iss.Public(), serial, blindSig, secret)
+			if uerr != nil {
+				t.Fatalf("unblind: %v", uerr)
+			}
+			tok.Sigs = append(tok.Sigs, ports.TokenSig{Validator: idOf(v), Sig: sig})
 		}
 		return tok
 	}

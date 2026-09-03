@@ -9,7 +9,8 @@ package credit
 // only the supersede reverses it. Every guard refusal used to return BEFORE the
 // supersede, so a refusing server kept 0.875·B while a PAID one kept only fee−skim =
 // 43,750. The conserved leg is FLAT and the self-mint is BYTE-PROPORTIONAL, so above
-// B = 50,000 bytes refusing beats being paid, and at the 64 MiB production chunk it
+// B = 50,000 bytes refusing beats being paid, and at the tree's stated MINIMUM
+// production chunk of 64 MiB it
 // beats it by 1,342×. Cap-full is operator-reachable (fill your own guard with junk
 // serials; the red team measured the grief cost at exactly the skim), so this was a
 // PROFITABLE, OPERATOR-TRIGGERABLE supersede-disable.
@@ -42,7 +43,8 @@ func fullGuardLedger(t *testing.T, fee int64) *Ledger {
 
 // TestG4_RefusedReceiptDoesNotKeepTheSelfMint is gate (i)+(iv): a guard-full refusal
 // leaves the server at its PRE-SERVE balance — the self-mint reversed, nothing paid —
-// at every object size, including the 64 MiB production chunk where the old behaviour
+// at every object size, including 64 MiB (the tree's stated minimum production chunk)
+// where the old behaviour
 // was worth +58,676,506 over being paid.
 func TestG4_RefusedReceiptDoesNotKeepTheSelfMint(t *testing.T) {
 	const fee = 50_000

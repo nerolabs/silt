@@ -117,7 +117,7 @@ func newComposedFixture(t *testing.T) *composedFixture {
 		return nd
 	}
 	a, b := mk(aIdent), mk(bIdent)
-	a.SetDemandIssuerKey(0, issuerPriv)
+	a.SetDemandIssuerKey(rand.Reader, 0, issuerPriv)
 
 	// B pins A's key_0 through the real cross-check while epoch 0 is still in A's
 	// served window. Nothing later in this test re-fetches: the point is that a key
@@ -202,7 +202,11 @@ func (f *composedFixture) mintTokenAt(t *testing.T, epoch uint64, priv *rsa.Priv
 	if err := f.ledger.ChargePublish(f.fetcher.NodeID()); err != nil {
 		t.Fatalf("the fetcher must pay the withdrawal fee: %v", err)
 	}
-	return demand.Unblind(pub, serial, demand.SignWithdrawal(priv, blinded), secret)
+	tok, uerr := demand.Unblind(pub, epoch, serial, demand.SignWithdrawal(rand.Reader, priv, blinded), secret)
+	if uerr != nil {
+		t.Fatalf("unblind: %v", uerr)
+	}
+	return tok
 }
 
 // present submits a receipt for token naming `server` and reports whether the server
@@ -375,7 +379,7 @@ func (f *composedFixture) commitIssuerKeyAt(t *testing.T, epoch uint64, priv *rs
 	// stages the registration AND what makes A serve key_epoch to redeemers. Doing
 	// only the on-chain half would leave B unable to pin it, and this gate would then
 	// pass for the wrong reason (the ordinary window, not the epoch binding).
-	f.a.SetDemandIssuerKey(epoch, priv)
+	f.a.SetDemandIssuerKey(rand.Reader, epoch, priv)
 	var regs []chain.IssuerKeyReg
 	for _, r := range f.a.pendingIssuerKeys {
 		if r.Epoch == epoch {

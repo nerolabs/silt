@@ -41,6 +41,7 @@ import (
 	"github.com/nerolabs/silt/adapters/relay"
 	"github.com/nerolabs/silt/adapters/tcpnet"
 	"github.com/nerolabs/silt/adapters/walltime"
+	"github.com/nerolabs/silt/core/blindtoken"
 	"github.com/nerolabs/silt/core/bond"
 	"github.com/nerolabs/silt/core/chain"
 	"github.com/nerolabs/silt/core/credit"
@@ -839,7 +840,7 @@ func cmdDaemon(args []string) error {
 		if is, ierr := diskissuer.Open(filepath.Join(*storeDir, "issuer")); ierr != nil {
 			return fmt.Errorf("token issuer store: %w", ierr)
 		} else if issuerKey, kerr := is.LoadOrCreate(rand.Reader); kerr == nil {
-			nd.EnableTokenIssuer(issuerKey)
+			nd.EnableTokenIssuer(rand.Reader, issuerKey)
 			if *acceptReceipts {
 				// PoD neutral lane: bank receipts against the key that signed
 				// their tokens. issuer == server here — the bilateral shape the
@@ -880,6 +881,9 @@ func cmdDaemon(args []string) error {
 				// path: quietly minting new keys over already-committed fingerprints is the
 				// UNRECOVERABLE failure (F6), so the store is left exactly as found for an
 				// operator to restore. The refusal is loud, on stdout, at boot.
+				// Build the issuer-key hardness primorial off the node loop, once, so
+				// the first key pin does not pay ~40 ms on the loop (advisory C-3).
+				blindtoken.PrewarmValidatePub()
 				_, lerr := des.Load()
 				switch {
 				case lerr != nil:
@@ -907,7 +911,7 @@ func cmdDaemon(args []string) error {
 						}
 						loop.Post("demand-keys", func() {
 							for _, kv := range band {
-								nd.SetDemandIssuerKey(kv.e, kv.k)
+								nd.SetDemandIssuerKey(rand.Reader, kv.e, kv.k)
 							}
 						})
 					}
@@ -954,9 +958,17 @@ func cmdDaemon(args []string) error {
 			// R0.4b: advance the per-epoch demand key schedule when the consensus
 			// epoch turns. Generating RSA keys and writing them to disk would block
 			// the single loop for hundreds of milliseconds, so the work runs in a
-			// goroutine and posts the installs back; one rotation is in flight at a
-			// time because demandEpoch is bumped here, on the loop, before the
-			// goroutine starts.
+			// goroutine and posts the installs back.
+			//
+			// Bumping demandEpoch here, on the loop, before the goroutine starts
+			// prevents a DUPLICATE rotation for the SAME epoch. It does NOT serialize
+			// rotations: a band is ~5 RSA keygens ~1s and an epoch is 8 blocks, so
+			// turns for DIFFERENT epochs routinely overlap and complete out of order.
+			// That is the case that used to lose keys (red-team F6), and the store —
+			// not this comment — is what makes it safe: EpochStore serializes the whole
+			// load-generate-save cycle and its prune's upper edge is monotone, so no
+			// turn can shrink another turn's pre-publication. See
+			// adapters/diskissuer/epochkeys.go.
 			if rotateDemandKeys != nil {
 				if cur := nd.DemandEpoch(); cur > demandEpoch {
 					demandEpoch = cur

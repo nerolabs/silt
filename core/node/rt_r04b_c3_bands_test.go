@@ -112,7 +112,10 @@ func TestRTC3B_EchoedEpochWithAnotherEpochsKeyIsStillADenial(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tok := demand.Unblind(&keyA.PublicKey, serial, demand.SignWithdrawal(keyA, blinded), secret)
+	tok, uerr := demand.Unblind(&keyA.PublicKey, 0, serial, demand.SignWithdrawal(rand.Reader, keyA, blinded), secret)
+	if uerr != nil {
+		t.Fatal(uerr)
+	}
 
 	// The re-dating attempt: can the epoch-0 token be read as an epoch-1 token, so a
 	// guard entry swept at epoch 0's expiry leaves a still-verifying token?

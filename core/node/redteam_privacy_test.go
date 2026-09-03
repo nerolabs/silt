@@ -33,7 +33,7 @@ func newIssuerNode(t *testing.T, fee int64) (*Node, *credit.Ledger, *rsa.Private
 	if err != nil {
 		t.Fatal(err)
 	}
-	nd.EnableTokenIssuer(key)
+	nd.EnableTokenIssuer(rand.Reader, key)
 	return nd, ledger, key
 }
 
@@ -58,7 +58,7 @@ func TestRedteamF4_CreditDecouplesFeeFromPublish(t *testing.T) {
 	if !mint.OK {
 		t.Fatal("mint (a charged credit request) should succeed")
 	}
-	credit := ports.PublishCredit{Serial: cs, Sig: blindtoken.Unblind(pub, mint.Data, csecret)}
+	credit := ports.PublishCredit{Serial: cs, Sig: mustUnblindCredit(t, pub, cs, mint.Data, csecret)}
 	if !blindtoken.VerifyCredit(pub, credit.Serial, credit.Sig) {
 		t.Fatal("minted credit must verify under the credit domain")
 	}
@@ -77,7 +77,7 @@ func TestRedteamF4_CreditDecouplesFeeFromPublish(t *testing.T) {
 	if !pubReply.OK {
 		t.Fatal("publishing with a valid credit should succeed")
 	}
-	if tsig := blindtoken.Unblind(pub, pubReply.Data, tsecret); !blindtoken.Verify(pub, ts, tsig) {
+	if tsig := mustUnblindToken(t, pub, ts, pubReply.Data, tsecret); !blindtoken.Verify(pub, ts, tsig) {
 		t.Fatal("the issued publish token must verify under the token domain")
 	}
 	if ledger.Balance(durable) != afterMint {
@@ -105,7 +105,7 @@ func TestRedteamF4_CreditAndTokenDomainsAreDistinct(t *testing.T) {
 	serial, _ := blindtoken.NewSerial(rand.Reader)
 
 	cb, cs, _ := blindtoken.BlindCredit(rand.Reader, pub, serial)
-	csig := blindtoken.Unblind(pub, blindtoken.SignBlinded(key, cb), cs)
+	csig := mustUnblindCredit(t, pub, serial, mustSignBlinded(t, key, cb), cs)
 	if !blindtoken.VerifyCredit(pub, serial, csig) {
 		t.Fatal("a credit signature must verify as a credit")
 	}
@@ -114,7 +114,7 @@ func TestRedteamF4_CreditAndTokenDomainsAreDistinct(t *testing.T) {
 	}
 
 	tb, ts, _ := blindtoken.Blind(rand.Reader, pub, serial)
-	tsig := blindtoken.Unblind(pub, blindtoken.SignBlinded(key, tb), ts)
+	tsig := mustUnblindToken(t, pub, serial, mustSignBlinded(t, key, tb), ts)
 	if !blindtoken.Verify(pub, serial, tsig) {
 		t.Fatal("a token signature must verify as a token")
 	}
@@ -170,4 +170,33 @@ func mustSerial(t *testing.T) []byte {
 		t.Fatal(err)
 	}
 	return s
+}
+
+// mustUnblindCredit / mustUnblindToken keep these tests reading as flows now that the
+// unblind step runs the RFC 9474 §4.4 Finalize verification (advisory C-1).
+func mustUnblindCredit(t *testing.T, pub *rsa.PublicKey, serial, blindSig, secret []byte) []byte {
+	t.Helper()
+	sig, err := blindtoken.UnblindCredit(pub, serial, blindSig, secret)
+	if err != nil {
+		t.Fatalf("unblind credit: %v", err)
+	}
+	return sig
+}
+
+func mustUnblindToken(t *testing.T, pub *rsa.PublicKey, serial, blindSig, secret []byte) []byte {
+	t.Helper()
+	sig, err := blindtoken.Unblind(pub, serial, blindSig, secret)
+	if err != nil {
+		t.Fatalf("unblind token: %v", err)
+	}
+	return sig
+}
+
+func mustSignBlinded(t *testing.T, key *rsa.PrivateKey, blinded []byte) []byte {
+	t.Helper()
+	sig, err := blindtoken.SignBlinded(rand.Reader, key, blinded)
+	if err != nil {
+		t.Fatalf("sign blinded: %v", err)
+	}
+	return sig
 }

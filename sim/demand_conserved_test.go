@@ -40,7 +40,7 @@ func TestDeliveryCreditConservedOverWire(t *testing.T) {
 	if err != nil {
 		t.Fatalf("issuer key: %v", err)
 	}
-	server.EnableTokenIssuer(issuerKey)
+	server.EnableTokenIssuer(rand.Reader, issuerKey)
 
 	// The fetcher signs receipts with its NODE identity key, so the receipt's
 	// Fetcher hashes to its NodeID — that is what routes the supersede lane.

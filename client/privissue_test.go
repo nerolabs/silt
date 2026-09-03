@@ -30,7 +30,11 @@ func mintCredit(t *testing.T, issuer *blindtoken.Issuer) ports.PublishCredit {
 	if err != nil {
 		t.Fatalf("issue credit: %v", err)
 	}
-	return ports.PublishCredit{Serial: serial, Sig: blindtoken.Unblind(pub, sig, secret)}
+	csig, uerr := blindtoken.UnblindCredit(pub, serial, sig, secret)
+	if uerr != nil {
+		t.Fatalf("unblind credit: %v", uerr)
+	}
+	return ports.PublishCredit{Serial: serial, Sig: csig}
 }
 
 // d3Epoch is the issue epoch the D3 tests withdraw under. A non-zero value so a
@@ -117,7 +121,7 @@ func TestPrivateWithdrawalUsesEphemeralIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("issuer rsa key: %v", err)
 	}
-	issuer := blindtoken.NewIssuer(rsaKey)
+	issuer := blindtoken.NewIssuer(rand.Reader, rsaKey)
 	issuerPub := issuer.Public()
 
 	// A durable fetcher acquires a blind credit up front (this step IS linkable to the
@@ -171,7 +175,7 @@ func TestPrivateWithdrawalRefusedWithoutCredit(t *testing.T) {
 	rng := rand.Reader
 	issuerIdent := identity.FromSeed(90002)
 	rsaKey, _ := rsa.GenerateKey(rng, 2048)
-	issuer := blindtoken.NewIssuer(rsaKey)
+	issuer := blindtoken.NewIssuer(rand.Reader, rsaKey)
 	issuerPub := issuer.Public()
 
 	loop := eventloop.New()
@@ -225,7 +229,7 @@ func TestPrivateWithdrawalThroughRelay(t *testing.T) {
 	if err != nil {
 		t.Fatalf("issuer rsa key: %v", err)
 	}
-	issuer := blindtoken.NewIssuer(rsaKey)
+	issuer := blindtoken.NewIssuer(rand.Reader, rsaKey)
 	issuerPub := issuer.Public()
 	credit := mintCredit(t, issuer)
 

@@ -33,7 +33,7 @@ func TestDemandWashCostsRealFees(t *testing.T) {
 	ledger := credit.New(fee, 100*fee) // fee, and a grant that funds many withdrawals
 	issuer.SetLedger(ledger)
 	issuerKey, _ := rsa.GenerateKey(rand.Reader, 2048)
-	issuer.EnableTokenIssuer(issuerKey)
+	issuer.EnableTokenIssuer(rand.Reader, issuerKey)
 
 	// The washer controls BOTH the server (banks) and the fetcher (withdraws + acks) —
 	// the strongest self-dealer. Bond the fetcher so a spurious standing motion would show.

@@ -152,7 +152,7 @@ func TestRTC3_RestartDoesNotRePayTheSameWireReceipt(t *testing.T) {
 		}
 		nd.SetLedger(ledger)
 		nd.EnableChain(c, srvIdent.Signer())
-		nd.SetDemandIssuerKey(0, key)
+		nd.SetDemandIssuerKey(rand.Reader, 0, key)
 		nd.EnableDemandBank(nd.ID()) // issuer == server, the shipped wiring
 		return nd
 	}
@@ -165,7 +165,10 @@ func TestRTC3_RestartDoesNotRePayTheSameWireReceipt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tok := demand.Unblind(&key.PublicKey, serial, demand.SignWithdrawal(key, blinded), secret)
+	tok, uerr := demand.Unblind(&key.PublicKey, 0, serial, demand.SignWithdrawal(rand.Reader, key, blinded), secret)
+	if uerr != nil {
+		t.Fatal(uerr)
+	}
 	obj := ports.HashBytes([]byte("rt-c3b-object"))
 	r := demand.Ack(fetcherIdent.Signer(), tok, obj, srv.ID())
 	blob, err := demand.SubmittedReceipt{Token: tok, Receipt: r}.Marshal()
@@ -231,7 +234,7 @@ func TestG4_UnwitnessedReceiptLeavesTheSelfMintAlone(t *testing.T) {
 	ledger := credit.New(50_000, 0)
 	srv.SetLedger(ledger)
 	srv.EnableChain(c, srvIdent.Signer())
-	srv.SetDemandIssuerKey(0, key)
+	srv.SetDemandIssuerKey(rand.Reader, 0, key)
 	srv.EnableDemandBank(srv.ID())
 
 	obj := ports.HashBytes([]byte("g4-unwitnessed-object"))
@@ -273,7 +276,10 @@ func TestG4_UnwitnessedReceiptLeavesTheSelfMintAlone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tok := demand.Unblind(&key.PublicKey, serial, demand.SignWithdrawal(key, blinded), secret)
+	tok, uerr := demand.Unblind(&key.PublicKey, 0, serial, demand.SignWithdrawal(rand.Reader, key, blinded), secret)
+	if uerr != nil {
+		t.Fatal(uerr)
+	}
 	real := demand.Ack(fetcherIdent.Signer(), tok, obj, srv.ID())
 	realBlob, err := demand.SubmittedReceipt{Token: tok, Receipt: real}.Marshal()
 	if err != nil {

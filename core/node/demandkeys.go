@@ -84,14 +84,16 @@ func (n *Node) chainEpoch() uint64 {
 // running (red-team probe B, 2026-09-02). cmd/silt/daemon.go drives the schedule off
 // the commit stream, pre-publishing key_E for the whole [cur, cur+W] band; this
 // method is the per-epoch step it calls.
-func (n *Node) SetDemandIssuerKey(epoch uint64, priv *rsa.PrivateKey) {
+// rng is the randomness the private-key operation blinds with (advisory C-2); see
+// EnableTokenIssuer.
+func (n *Node) SetDemandIssuerKey(rng io.Reader, epoch uint64, priv *rsa.PrivateKey) {
 	if priv == nil {
 		return
 	}
 	if n.demandIssuers == nil {
 		n.demandIssuers = map[uint64]*blindtoken.Issuer{}
 	}
-	n.demandIssuers[epoch] = blindtoken.NewIssuer(priv)
+	n.demandIssuers[epoch] = blindtoken.NewIssuer(rng, priv)
 	// Retain only the window: older private keys are dropped, which is also what
 	// makes expiry real on the issuing side.
 	cur := n.chainEpoch()
@@ -371,7 +373,17 @@ func (n *Node) withdrawDemandToken(rng io.Reader, issuer ports.NodeID, pub *rsa.
 			done(demand.Token{}, 0, ErrDemandEpochMismatch)
 			return
 		}
-		done(demand.Unblind(pub, serial, resp.Data, secret), epoch, nil)
+		// RFC 9474 §4.4 Finalize (advisory C-1): verify the unblinded signature under
+		// key_epoch BEFORE handing the caller a token. A malicious issuer that returns
+		// a dud used to charge the withdrawal fee and hand back something that only
+		// failed at redemption — and a receipt that fails Bank.Redeem never reaches
+		// the ledger, so the serve's eager self-mint is never reversed. Refuse here.
+		tok, uerr := demand.Unblind(pub, epoch, serial, resp.Data, secret)
+		if uerr != nil {
+			done(demand.Token{}, 0, uerr)
+			return
+		}
+		done(tok, epoch, nil)
 	})
 }
 

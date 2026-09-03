@@ -31,7 +31,11 @@ func rtMint(t *testing.T, k *rsa.PrivateKey, epoch uint64, serial []byte) Token 
 	if err != nil {
 		t.Fatal(err)
 	}
-	return Unblind(&k.PublicKey, serial, SignWithdrawal(k, blinded), secret)
+	tok, uerr := Unblind(&k.PublicKey, epoch, serial, SignWithdrawal(rand.Reader, k, blinded), secret)
+	if uerr != nil {
+		t.Fatal(uerr)
+	}
+	return tok
 }
 
 // ---------------------------------------------------------------------------
@@ -112,7 +116,7 @@ func TestRTC3_DegenerateKeysAreRefusedEverywhere(t *testing.T) {
 			if _, _, err := blindtoken.BlindDemand(rand.Reader, tc.key, 3, []byte("s")); err == nil {
 				t.Fatalf("BlindDemand ran the modexp against a degenerate modulus")
 			}
-			if sig := blindtoken.Unblind(tc.key, []byte{1}, []byte{1}); sig != nil {
+			if _, uerr := blindtoken.Unblind(tc.key, []byte("s"), []byte{1}, []byte{1}); uerr == nil {
 				t.Fatalf("Unblind ran the modexp against a degenerate modulus")
 			}
 		})

@@ -32,7 +32,11 @@ func signDemandAt(t *testing.T, k *rsa.PrivateKey, e uint64, serial []byte) []by
 	if err != nil {
 		t.Fatalf("blind: %v", err)
 	}
-	return Unblind(&k.PublicKey, SignBlinded(k, blinded), secret)
+	sig, err := UnblindDemand(&k.PublicKey, e, serial, mustSign(t, k, blinded), secret)
+	if err != nil {
+		t.Fatalf("unblind: %v", err)
+	}
+	return sig
 }
 
 // TestDemandSignatureVerifiesAtItsOwnEpoch is the liveness half: the honest pair works.
@@ -114,9 +118,12 @@ func TestDemandDomainStillSeparatesFromPublishAndCredit(t *testing.T) {
 	serial, _ := NewSerial(rand.Reader)
 
 	pb, ps, _ := Blind(rand.Reader, &k.PublicKey, serial)
-	publishSig := Unblind(&k.PublicKey, SignBlinded(k, pb), ps)
+	publishSig := mustUnblind(t, &k.PublicKey, serial, mustSign(t, k, pb), ps)
 	cb, cs, _ := BlindCredit(rand.Reader, &k.PublicKey, serial)
-	creditSig := Unblind(&k.PublicKey, SignBlinded(k, cb), cs)
+	creditSig, cerr := UnblindCredit(&k.PublicKey, serial, mustSign(t, k, cb), cs)
+	if cerr != nil {
+		t.Fatalf("unblind credit: %v", cerr)
+	}
 	demandSig := signDemandAt(t, k, 0, serial)
 
 	if VerifyDemand(&k.PublicKey, 0, serial, publishSig) || VerifyDemand(&k.PublicKey, 0, serial, creditSig) {

@@ -45,7 +45,7 @@ func tokenNet(t *testing.T, seed int64, V int, cfg simnet.Config) (
 		if err != nil {
 			t.Fatal(err)
 		}
-		nd.EnableTokenIssuer(key)
+		nd.EnableTokenIssuer(rand.Reader, key)
 		issuerReg[ids[i]] = &key.PublicKey
 		nodes[i] = nd
 	}
@@ -181,7 +181,7 @@ func TestTokenGatherLossyPathChargesExactlyK(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				nd.EnableTokenIssuer(key)
+				nd.EnableTokenIssuer(rand.Reader, key)
 				issuerReg[ids[i]] = &key.PublicKey
 				nodes[i] = nd
 			}

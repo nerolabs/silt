@@ -57,7 +57,11 @@ func (s *sharedKeyScene) withdraw(t *testing.T, e uint64) demand.Token {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return demand.Unblind(&s.key.PublicKey, serial, demand.SignWithdrawal(s.key, blinded), secret)
+	tok, uerr := demand.Unblind(&s.key.PublicKey, e, serial, demand.SignWithdrawal(rand.Reader, s.key, blinded), secret)
+	if uerr != nil {
+		t.Fatal(uerr)
+	}
+	return tok
 }
 
 // TestSharedKeyRotationDoesNotReopenThePump is GATE G (red-team break 1, probe G).

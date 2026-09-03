@@ -56,7 +56,10 @@ func TestGuardLifetimeMatchesDemandKeysetLifetime(t *testing.T) {
 	// One token withdrawn at epoch 0, one guard entry recorded for it at epoch 0.
 	serial, _ := blindtoken.NewSerial(rand.Reader)
 	blinded, secret, _ := demand.Withdraw(rand.Reader, &key.PublicKey, 0, serial)
-	tok := demand.Unblind(&key.PublicKey, serial, demand.SignWithdrawal(key, blinded), secret)
+	tok, uerr := demand.Unblind(&key.PublicKey, 0, serial, demand.SignWithdrawal(rand.Reader, key, blinded), secret)
+	if uerr != nil {
+		t.Fatal(uerr)
+	}
 
 	l := New(50_000, 0)
 	srvA, srvB, fetcher := id(1), id(2), id(3)

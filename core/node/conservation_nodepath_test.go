@@ -85,7 +85,7 @@ func TestR05NodePathConservation(t *testing.T) {
 		t.Fatalf("genesis committing the issuer-key binding: %v", gerr)
 	}
 	nd.EnableChain(c, serverIdent.Signer())
-	nd.SetDemandIssuerKey(0, issuerPriv)
+	nd.SetDemandIssuerKey(rand.Reader, 0, issuerPriv)
 	nd.EnableDemandBank(serverID)
 	if ks := nd.DemandIssuerKeyset(serverID); ks == nil || ks.Key(0) == nil {
 		t.Fatal("setup: the committed issuer key was not pinned - the bank would reject every receipt")
@@ -244,8 +244,11 @@ func TestR05NodePathConservation(t *testing.T) {
 	if bErr != nil {
 		t.Fatalf("demand.Withdraw: %v", bErr)
 	}
-	blindSig := demand.SignWithdrawal(issuerPriv, blinded)
-	token := demand.Unblind(issuerPub, serial, blindSig, secret)
+	blindSig := demand.SignWithdrawal(rand.Reader, issuerPriv, blinded)
+	token, uerr := demand.Unblind(issuerPub, 0, serial, blindSig, secret)
+	if uerr != nil {
+		t.Fatalf("demand.Unblind: %v", uerr)
+	}
 
 	// Ack signs over (serial, objRoot, serverID) with the fetcher's private key.
 	receipt := demand.Ack(fetcherIdent.Signer(), token, objRoot, serverID)

@@ -150,7 +150,7 @@ func TestIssuerKeyRegDoesNotWedgeTheProposer(t *testing.T) {
 		t.Fatalf("issuer key: %v", err)
 	}
 	fresh.EnableBond(ids[0].Signer(), 2<<20)
-	fresh.SetDemandIssuerKey(fresh.DemandEpoch(), key)
+	fresh.SetDemandIssuerKey(rand.Reader, fresh.DemandEpoch(), key)
 	if len(fresh.pendingIssuerKeys) != 1 {
 		t.Fatalf("setup: the key registration must be staged, got %d", len(fresh.pendingIssuerKeys))
 	}

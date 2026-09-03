@@ -46,7 +46,7 @@ twice the correct mechanism was **already written**.
 
 ---
 
-## The gate — seven rules, all cheap
+## The gate — eight rules, all cheap
 
 1. **Instrument → attribute → *then* change.** No knob moves before a log, trace, or
    test **names the mechanism**. The moment `-log debug` was captured on the #286
@@ -88,6 +88,15 @@ twice the correct mechanism was **already written**.
    shrink the proof.* The cause was one layer down each time (no outbound addresses;
    propagation design). Ask *"what is the layer beneath this symptom?"* before patching
    the surface.
+
+8. **A gate's failure text may only claim what the gate measures.** A test that reads the
+   project's own `.go` source sees strings and order, never behaviour — so its message
+   starts `SOURCE GATE:`, says what it checked, and names either the runtime gate that
+   observes the behaviour or the residual it leaves `UNGATED:`. Enforced by
+   `scripts/check_source_gates.py` (scar count=3, 2026-09-03: the F7 daemon-death was
+   reintroduced verbatim with `TestDaemonDegradesTheDemandLaneInsteadOfDying` green and
+   `go vet` clean). The same rule generalises: whenever a gate, a comment, or a
+   CHANGELOG line says *verifies / equals / matches*, name the axes it compares.
 
 ---
 

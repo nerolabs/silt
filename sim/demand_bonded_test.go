@@ -84,7 +84,7 @@ func TestDemandBondedFetcherCapsWash(t *testing.T) {
 	issuerKey, _ := rsa.GenerateKey(rand.Reader, 2048)
 	ledger := credit.New(1000, 100_000) // grant funds each fetcher's withdrawals
 	issuer.SetLedger(ledger)
-	issuer.EnableTokenIssuer(issuerKey)
+	issuer.EnableTokenIssuer(rand.Reader, issuerKey)
 
 	// Each fetcher signs receipts with its own identity key; bond only the washer's
 	// and `other`'s keys on the server's committed chain, NOT the unbonded fetcher's.

@@ -36,7 +36,7 @@ func TestDemandTokenRequestWithCreditAndNoPublishIssuerRefuses(t *testing.T) {
 	nd := f.nd
 	// The node runs the DEMAND lane for epoch 0 but never calls EnableTokenIssuer,
 	// so it has no publish issuer. This is the reachable config the guard covers.
-	nd.SetDemandIssuerKey(0, f.committed)
+	nd.SetDemandIssuerKey(rand.Reader, 0, f.committed)
 	if nd.tokenIssuer != nil {
 		t.Fatal("setup: the fixture must have no publish issuer")
 	}
@@ -100,7 +100,7 @@ func TestTokenChargeForRefusalsAreTyped(t *testing.T) {
 	if err != nil {
 		t.Fatalf("issuer key: %v", err)
 	}
-	nd.EnableTokenIssuer(key)
+	nd.EnableTokenIssuer(rand.Reader, key)
 	if _, err := nd.tokenChargeFor(from, &ports.PublishCredit{Serial: []byte("s"), Sig: []byte("g")}); !errors.Is(err, errCreditRefused) {
 		t.Fatalf("bad credit: want errCreditRefused, got %v", err)
 	}

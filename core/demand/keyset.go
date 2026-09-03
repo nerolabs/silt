@@ -24,10 +24,29 @@ package demand
 // then expired while the tokens did not, and the cross-server double-redeem pump
 // re-opened (red-team probes G and I, 2026-09-02). Binding E into the blind-signed
 // message makes issuedEpoch a PURE FUNCTION OF THE TOKEN for ANY key schedule,
-// which is the coupling condition "evicted ⇒ expired ⇒ un-redeemable" needs. This
-// also restores the RFC 9578 schema faithfully: Privacy Pass signs token_key_id
-// INSIDE token_input, and a Privacy Pass token cannot be re-dated for exactly that
-// reason (tenet B8 — adopt the analogue's schema, do not invent one).
+// which is the coupling condition "evicted ⇒ expired ⇒ un-redeemable" needs. The MOVE
+// is Privacy Pass's — put the key's identity inside the signed message so a token
+// cannot be re-dated (tenet B8, adopt the analogue's schema).
+//
+// WHAT SILT ACTUALLY SIGNS, STATED EXACTLY (crypto-specialist advisory C-4,
+// 2026-09-03). RFC 9578 §5.3 signs token_input = 0x0002 ‖ nonce ‖ challenge_digest ‖
+// token_key_id, where token_key_id = SHA256(DER SubjectPublicKeyInfo of pk_I) — a hash
+// of the WHOLE issuer public key, identifying the issuer AND the key. silt signs an
+// EPOCH INDEX (8-byte BE ‖ serial; see blindtoken.demandMsg), which identifies
+// NEITHER. That is enough for the re-dating property, which is what R0.4b needed, and
+// it is NOT the RFC 9578 binding. Do not describe it as one.
+//
+// THE GAP THIS LEAVES, named: validateIssuerKeys (core/chain/issuerkey.go) requires a
+// verifying ed25519 self-signature, an in-range epoch and a bond — but NO
+// proof-of-possession of the RSA key. Nothing stops bonded issuer B from registering
+// issuer A's public-key fingerprint for epoch E (A's public key is served publicly);
+// a redeemer resolving against B then pins A's key, and a token A signed verifies
+// under B's keyset. That is Duplicate-Signature Key Selection (Blake-Wilson & Menezes
+// 1999). It is NOT live today — handleDeliveryReceipt resolves ONE configured issuer
+// and ledgers are per-node — so it is latent, and the close (an issuer-key
+// proof-of-possession, and/or binding keyFingerprint into demandMsg) is a VALIDITY-RULE
+// change: research-gated, owner-ratified, tracked as a ROADMAP Rock before the stamp
+// raise. Not built here.
 //
 // ROTATION IS THEREFORE LIVENESS, NOT SOUNDNESS. Something must be committed for the
 // current epoch or the lane cannot issue; but soundness holds even if the issuer

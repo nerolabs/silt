@@ -32,7 +32,7 @@ func TestDemandReceiptFlowBanksWitnessedDemand(t *testing.T) {
 	if err != nil {
 		t.Fatalf("issuer key: %v", err)
 	}
-	issuer.EnableTokenIssuer(issuerKey)
+	issuer.EnableTokenIssuer(rand.Reader, issuerKey)
 
 	// The server banks receipts against the issuer's COMMITTED per-epoch key, and the
 	// fetcher signs them.
@@ -94,7 +94,10 @@ func TestDemandReceiptFlowBanksWitnessedDemand(t *testing.T) {
 	serial := make([]byte, 32)
 	rand.Read(serial)
 	blinded, secret, _ := demand.Withdraw(rand.Reader, &impostor.PublicKey, 0, serial)
-	forged := demand.Unblind(&impostor.PublicKey, serial, demand.SignWithdrawal(impostor, blinded), secret)
+	forged, ferr := demand.Unblind(&impostor.PublicKey, 0, serial, demand.SignWithdrawal(rand.Reader, impostor, blinded), secret)
+	if ferr != nil {
+		t.Fatalf("the impostor's own signature must unblind under its own key: %v", ferr)
+	}
 	fetcher.SubmitDeliveryReceipt(server.ID(), forged, object, func(c bool, _ error) { credited = c })
 	cl.Sched.Run()
 	if credited {

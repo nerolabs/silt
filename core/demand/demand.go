@@ -94,17 +94,34 @@ func Withdraw(rng io.Reader, issuerPub *rsa.PublicKey, epoch uint64, serial []by
 // SignWithdrawal is the issuer side: it blind-signs the withdrawal, learning nothing
 // about the serial. Charging or burning the fetch fee against the withdrawal is the
 // caller's job (the cost-to-wash knob is P3).
-func SignWithdrawal(issuerPriv *rsa.PrivateKey, blinded []byte) []byte {
-	return blindtoken.SignBlinded(issuerPriv, blinded)
+//
+// rng is the injected randomness the private-key operation blinds with (advisory C-2;
+// see blindtoken.SignBlinded). A nil return is a refusal — a non-canonical blinded
+// value, or a signature that failed verify-after-sign — and the wire already treats an
+// empty reply as "no token issued".
+func SignWithdrawal(rng io.Reader, issuerPriv *rsa.PrivateKey, blinded []byte) []byte {
+	sig, err := blindtoken.SignBlinded(rng, issuerPriv, blinded)
+	if err != nil {
+		return nil
+	}
+	return sig
 }
 
 // Unblind turns the issuer's blind signature into the unlinkable Token on the plain
-// serial, using the secret from Withdraw.
-func Unblind(issuerPub *rsa.PublicKey, serial, blindSig, secret []byte) Token {
+// serial, using the secret from Withdraw, and VERIFIES it under (key_epoch, epoch)
+// before returning (RFC 9474 §4.4 Finalize; advisory C-1). An issuer that returns a
+// dud is a legible error at withdrawal instead of a token discovered worthless at
+// redemption — which matters here beyond conformance, because an unredeemable token
+// leaves the serve's eager self-mint un-reversed (see blindtoken.Unblind).
+func Unblind(issuerPub *rsa.PublicKey, epoch uint64, serial, blindSig, secret []byte) (Token, error) {
+	sig, err := blindtoken.UnblindDemand(issuerPub, epoch, serial, blindSig, secret)
+	if err != nil {
+		return Token{}, err
+	}
 	return Token{
 		Serial: append([]byte(nil), serial...),
-		Sig:    blindtoken.Unblind(issuerPub, blindSig, secret),
-	}
+		Sig:    sig,
+	}, nil
 }
 
 // VerifyToken reports whether t carries a valid issuer signature in the demand
@@ -267,11 +284,19 @@ func (b *Bank) reserveSpent(current, window uint64) bool {
 	if len(b.spent) < maxSpentTokens {
 		return true
 	}
+	b.sweepIfEpochAdvanced(current, window)
+	return len(b.spent) < maxSpentTokens
+}
+
+// sweepIfEpochAdvanced runs sweepExpiredSpent at most once per epoch. Driven both by
+// the epoch advance on the redeem path (crypto-specialist advisory C-7: expired
+// entries must not be retained until the cap is reached — the retention bound) and by
+// reserveSpent at the cap (the liveness bound). See core/credit's twin.
+func (b *Bank) sweepIfEpochAdvanced(current, window uint64) {
 	if current > b.sweptEpoch {
 		b.sweptEpoch = current
 		b.sweepExpiredSpent(current, window)
 	}
-	return len(b.spent) < maxSpentTokens
 }
 
 // RequireBondedFetcher turns on the P3b bonded-fetcher credential: from now on a
@@ -309,6 +334,10 @@ func (b *Bank) Redeem(keys *Keyset, current uint64, token Token, r DeliveryRecei
 	if keys == nil {
 		return false, 0, "no issuer keyset"
 	}
+	// Retire expired spent-set entries as the band advances rather than waiting for
+	// the cap (advisory C-7). Purely subtractive: a dropped entry is one no held key_E
+	// verifies any more, so it can never be redeemed again.
+	b.sweepIfEpochAdvanced(current, keys.Window())
 	issuedEpoch, inWindow := keys.VerifyInWindow(current, token)
 	if !inWindow {
 		return false, 0, "token expired or not issued"
