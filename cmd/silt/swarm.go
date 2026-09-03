@@ -496,11 +496,32 @@ func swarmReceipt(args []string) error {
 	if !credited {
 		// Not an error the caller can fix by retrying: the token is spent either
 		// way (a consumed token is never replayable), so say so plainly.
-		return fmt.Errorf("delivery receipt was NOT banked by %s (the token is spent regardless; check that the server runs -accept-delivery-receipts)", server)
+		//
+		// REACHABILITY (residual R-SWARM-NOTBANKED-DEAD, closed by this argument
+		// rather than by deletion). This branch is NOT dead, and it is not the
+		// lane-off case: a lane-off peer never gets this far, because it serves no
+		// issuer key and the resolution above refuses first. What reaches here is a
+		// peer that DID serve a committed key — so the withdrawal succeeded — whose
+		// bank then declined the receipt: a spent serial, a backdated issue epoch, a
+		// full paid-serial guard, or a store write failure (core/credit/delivery.go
+		// ReasonAlreadyPaid / ReasonBackdated / ReasonGuardFull / ReasonGuardStore).
+		// Every one of those needs an era-4/v5 chain to be reachable at all, which is
+		// the same gate the whole positive lane sits behind (R-E2E-ERA4-FIXTURE), so
+		// it is unreachable-today for the same reason the success path is — not
+		// because no code path leads here.
+		return fmt.Errorf("%s %s (the token is spent regardless; check that the server runs -accept-delivery-receipts)", notBankedMarker, server)
 	}
 	fmt.Printf("delivery receipt banked by %s for %s\n", server, root)
 	return nil
 }
+
+// notBankedMarker is the ANNOUNCED marker for "your delivery receipt did not
+// bank" (S5: an announced string is an observable contract — the `freeload: ON`
+// scar). e2e TestDeliveryReceiptRefusedWhenLaneOff asserts it, and every refusal
+// on this command that leaves the receipt unbanked must carry it, so an operator
+// greps one phrase rather than a taxonomy of causes. It is a const, not two
+// literals, because the two sites that emit it must never drift apart.
+const notBankedMarker = "delivery receipt was NOT banked by"
 
 // errNoCommittedDemandKeyBinding is the pinned==0, no-transport-error case: the
 // issuer answered, but not one key it served resolved against a committed
@@ -527,6 +548,21 @@ var errNoCommittedDemandKeyBinding = errors.New(
 // function only makes the reason legible.
 func demandKeyResolutionError(server ports.NodeID, pinned int, keyErr error) error {
 	switch {
+	case errors.Is(keyErr, node.ErrNoIssuerKey):
+		// THE LANE-OFF CASE, and the one an operator hits first. A daemon started
+		// without -accept-delivery-receipts opens no demand key store, runs no
+		// rotation and arms no bank, so it serves NO issuer key and this refusal is
+		// reached before a token is ever withdrawn. Carrying the announced "NOT
+		// banked" marker here is the S5 fix: the marker used to live only below the
+		// submit step, which this early return can never reach, so the daemon refused
+		// correctly and the client said something else (PE ruling §2, G-8 convergence
+		// §5, 2026-09-03).
+		//
+		// "The token is spent regardless" is deliberately NOT said: nothing was
+		// withdrawn, so the fetcher paid no fee and loses nothing by retrying against
+		// a server that runs the lane.
+		return fmt.Errorf("%s %s (no token was withdrawn, so nothing was spent): that server serves no demand issuer key — it is not running -accept-delivery-receipts: %w",
+			notBankedMarker, server, keyErr)
 	case keyErr != nil:
 		return fmt.Errorf("resolve demand issuer keys from %s against the committed binding (pinned %d): %w",
 			server, pinned, keyErr)

@@ -64,3 +64,13 @@ TestV5DecodesAndIsAccepted
 # since renamed or removed. The CHANGELOG is append-only; it is not trued up.
 TestBreak1_LateBondAnswerEarnsNoStanding
 TestChargePricesAllByWork
+
+# R0.4b C3 final round, 2026-09-03 — the e2e paid-lane test was RENAMED to
+# TestPaidDeliveryLaneRefusesWithoutACommittedKeyBinding when G-8 disposition (iii)
+# re-scoped it from the positive arm to the certified refusal. The old name is cited
+# ON PURPOSE in three places, and naming it is the point of each sentence: the new
+# test's NAME HISTORY block, sim/demand_composition_test.go's statement of which
+# coverage it replaces, and the CHANGELOG entry recording the rename. The property
+# the old name asserted is not silently dropped — it is carried by
+# sim.TestPaidDeliveryLaneThreeCallComposition and tracked as R-E2E-ERA4-FIXTURE.
+TestDeliveryReceiptBankedOverTCP

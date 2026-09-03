@@ -961,6 +961,42 @@ live in [`docs/thinking/2026-09-01-residual-defect-repro-recipes.md`](docs/think
   coverage guard and the era-4 write-path guard) and closed the same worktree-walk unsoundness in
   `scripts/check_claims.py` (measured: 121 test names resolvable only in `.claude/worktrees/`).
   **Open:** the rest of the OWED ledger.
+- **e2e paid-delivery-lane fixture is `-objective=false` — R-E2E-ERA4-FIXTURE.** The e2e
+  delivery-receipt daemon runs `-objective=false`, so `chain.objective()` is false, so
+  `epochsEnabled()` is false, so `apply()` never calls `rotateEpoch` — and the era-4 readiness
+  tally lives inside it. **The tally can therefore never latch on that fixture, at any readiness
+  stamp, on any binary**, so the paid lane's POSITIVE arm has no e2e coverage:
+  `TestPaidDeliveryLaneRefusesWithoutACommittedKeyBinding` asserts the certified refusal
+  instead, and `sim TestPaidDeliveryLaneThreeCallComposition` + `core/node
+  TestRTC3_RestartDoesNotRePayTheSameWireReceipt` carry the positive arm below e2e. **This is a
+  PREREQUISITE of the stamp-raising release, not of the R0.4b merge:** restore the e2e positive
+  arm by UPGRADING THE FIXTURE to objective + bonded + epoch-enabled (a topology that reaches
+  the `everMature` latch), **never** by exposing `Config.Era4ActivationHeight` to a harness in
+  any form — that is the one branch that skips every readiness predicate the tally embodies.
+  The trace is pinned by `core/chain TestGateF_NonObjectiveTopologyCanNeverLatchEra4`. Source:
+  G-8 convergence,
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-G8-dark-lane-CONVERGENCE-2026-09-03.md`.
+- **LANE-OFF rotation disarm has no runtime observer — R-LANEOFF-ROTATION-RUNTIME.** That no
+  demand-key rotation goroutine RUNS after a failed boot install is pinned only by a source-ORDER
+  gate (`cmd/silt TestDaemonArmsTheRotatorOnlyAfterABootInstall`). Reaching the branch in a real
+  daemon needs an unwritable issuer directory whose publish-token key already exists; OBSERVING
+  the difference additionally needs the chain to cross an epoch boundary, which on a lone
+  validator needs a driven publish. Low: the fix is structural (the single assignment sits below
+  the single failure exit), so there is no branch left to regress into — but the property is
+  UNGATED at runtime and says so in the gate's own failure text. Source: PE ruling H-2,
+  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-R0.4b-C3-close-271ab81-final-2026-09-03.md`.
+- **A bare `go test ./...` has no margin against the default package timeout.**
+  `core/chain TestMeasureRecomputeMatureNowStreamingWin` is a long MEASUREMENT test, and it
+  puts the whole `core/chain` package close to Go's 10-minute default. Measured 2026-09-03 on
+  this branch's tree: the single test **309 s**, the package **530 s** with an explicit
+  `-timeout 40m`; a bare `go test ./...` on `origin/main` `2247235` was reported timing out in
+  `core/chain` (~7.5 min for the same test on that run). Nothing is broken — the test has an
+  always-on fast structural twin (`..._Structural`) and is skipped under `-short`, which is what
+  CI runs — but the documented full-suite command has no margin, and load decides whether it
+  passes. **Work:** document `go test -timeout 40m ./...` as the full-suite command, or move the
+  measurement behind an opt-in build tag. Do NOT simply shorten the measurement — the number is
+  the artifact. Untouched here: it is not this branch's test, and editing another branch's
+  measurement inside a receipt-expiry commit is how a regression hides.
 - **Test-honesty audit — #303.** 27 adversarially-verified test-honesty issues + 9 product
   findings from a per-harness audit (65 agents) of all 18 integration harnesses against the 5
   field-test immutables — each a way a harness could go GREEN on a broken product (e.g. the

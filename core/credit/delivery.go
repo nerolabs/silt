@@ -310,6 +310,13 @@ const (
 	// not been loaded yet, so this ledger does not know what it already paid. Refuse
 	// rather than pay — a redeem before load completes is exactly the restart window
 	// the store exists to close (red-team re-break F2).
+	//
+	// NOT AN OPERATOR SIGNAL — it is UNREACHABLE on the shipped daemon (PE ruling §4,
+	// correction 2, 2026-09-03). cmd/silt opens and loads the store BEFORE the node
+	// exists and returns a start-up error if the load fails, so no receipt can arrive
+	// with the guard attached-but-unloaded. It is correct defence in depth for an
+	// EMBEDDER that wires the ledger itself, and the record must not count it as
+	// something an operator will ever see.
 	ReasonGuardUnloaded = "paid-serial-guard-unloaded"
 	// ReasonGuardStore: the durable guard entry could not be written. The entry is
 	// persisted BEFORE any credit moves, so a store failure is an under-pay, never a
@@ -357,11 +364,16 @@ func (l *Ledger) RedeemDeliveryCreditReason(server, fetcher ports.NodeID, root p
 	// eager 1-credit/byte self-mint RecordServeToObject took at serve time.
 	//
 	// WHY. The conserved leg is FLAT (fee − skim = 43,750 at the shipped fee) and the
-	// self-mint is BYTE-PROPORTIONAL (0.875·B). Above B = 50,000 bytes a refusal was
-	// therefore worth MORE than being paid — at the tree's stated minimum production
-	// chunk of 64 MiB (core/pipeline/pipeline.go), 1,342× more, and already +13,594 at
-	// the SHIPPED 64 KiB default, which is 31% past the break-even — and the operator
-	// can trigger a refusal itself by filling its own guard
+	// self-mint is BYTE-PROPORTIONAL (0.875·B). B IS THE WHOLE ACCUMULATED LANE, not
+	// one chunk (PE ruling §6, 2026-09-03): trackProvisional does `p.net += net` on an
+	// existing lane, and the serve call site fires PER CHUNK (core/node/node.go), so B
+	// is the total bytes this server has served for this (server, requester, root) —
+	// the whole object. Above B = 50,000 bytes a refusal was therefore worth MORE than
+	// being paid, so EVERY object above 50 KB was already past break-even; a 64 MiB
+	// object is 1,342× past it. (The production chunk is 64 KiB —
+	// pipeline.DefaultChunkSize — but the chunk size is not the relevant number, and
+	// naming it understated the exposure.) The operator can trigger a refusal itself
+	// by filling its own guard
 	// with junk serials (Receipt.Object is attacker-chosen, so distinct roots are
 	// free). Keeping the mint on a refusal was a profitable, operator-triggerable
 	// supersede-disable on the whole of Boulder 0's conservation rule: RecordServe's

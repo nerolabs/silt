@@ -280,7 +280,7 @@ func (n *Node) FetchDemandIssuerKeys(issuer ports.NodeID, done func(pinned int, 
 		case err != nil:
 			done(0, err)
 		case !resp.OK || len(resp.Data) == 0:
-			done(0, errNoIssuerKey)
+			done(0, ErrNoIssuerKey)
 		default:
 			var w demandKeysetWire
 			if uerr := cbor.Unmarshal(resp.Data, &w); uerr != nil {
@@ -317,13 +317,13 @@ func (n *Node) FetchDemandIssuerKeys(issuer ports.NodeID, done func(pinned int, 
 func (n *Node) AcquireDemandTokenInWindow(rng io.Reader, issuer ports.NodeID, done func(demand.Token, uint64, error)) {
 	ks := n.DemandIssuerKeyset(issuer)
 	if ks == nil {
-		done(demand.Token{}, 0, errNoIssuerKey)
+		done(demand.Token{}, 0, ErrNoIssuerKey)
 		return
 	}
 	cur := n.chainEpoch()
 	pub := ks.Key(cur)
 	if pub == nil {
-		done(demand.Token{}, 0, errNoIssuerKey)
+		done(demand.Token{}, 0, ErrNoIssuerKey)
 		return
 	}
 	n.withdrawDemandToken(rng, issuer, pub, cur, nil, done)

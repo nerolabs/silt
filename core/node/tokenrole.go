@@ -22,7 +22,13 @@ var (
 	// ErrTokenAcquire means fewer than k issuers granted a signature (e.g.
 	// offline or out of the requester's credit).
 	ErrTokenAcquire = errors.New("node: could not gather enough publish-token signatures")
-	errNoIssuerKey  = errors.New("node: peer has no issuer key")
+	// ErrNoIssuerKey means the peer answered the key request but serves no issuer
+	// key at all — it runs no token/demand issuer. EXPORTED because the client has
+	// to tell it apart from "the issuer served keys, none resolved against a
+	// committed binding": the first is "that server does not run the lane", the
+	// second is "that server's chain has no era-4 binding yet", and cmd/silt owes
+	// the operator a different sentence for each (S5, cmd/silt/swarm.go).
+	ErrNoIssuerKey = errors.New("node: peer has no issuer key")
 
 	errNoCanonicalIssuers = errors.New("node: peer served no canonical issuer set (no chain)")
 
@@ -76,7 +82,7 @@ func (n *Node) FetchIssuerKey(v ports.NodeID, done func(error)) {
 		case err != nil:
 			done(err)
 		case !resp.OK || len(resp.Data) == 0:
-			done(errNoIssuerKey)
+			done(ErrNoIssuerKey)
 		default:
 			pub, perr := blindtoken.ParsePub(resp.Data)
 			if perr == nil {

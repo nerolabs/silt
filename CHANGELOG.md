@@ -9,6 +9,86 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Security
+- **R0.4b C3 final pre-ratification round — the G-8 dark-lane disposition (iii), the
+  `swarm receipt` S5 legibility break, and the PE's final-review items.** Inputs: the G-8
+  convergence `R0.4b-C3-G8-dark-lane-CONVERGENCE-2026-09-03`, the PE final ruling
+  `RULING-R0.4b-C3-close-271ab81-final-2026-09-03`, and the Tester's `271ab81` verification.
+  Full write-up: `docs/thinking/2026-09-02-r0.4b-c3-close-design.md` §11.
+  - **`silt swarm receipt` stopped saying "NOT banked" on the one refusal a user hits (S5).**
+    The R0.4b withdrawal lane added a key-resolution step ABOVE the submit, so the announced
+    marker — which lives below the submit — became unreachable on the lane-off path: a daemon
+    without `-accept-delivery-receipts` refused correctly and the client reported something
+    else. That is the announced-observable class the `freeload: ON` rename scarred. Fix: the
+    lane-off case is now routed to the marker. `node.ErrNoIssuerKey` is EXPORTED (was
+    `errNoIssuerKey`) so the client can tell "that server does not run the lane" from "that
+    server's chain has no era-4 binding yet" — a lane-off daemon opens no demand key store,
+    runs no rotation and arms no bank, so it serves no issuer key at all. The marker is a
+    single `const notBankedMarker` shared by both emitting sites; the lane-off text
+    deliberately does not claim the token was spent, because nothing was withdrawn. Gates:
+    `cmd/silt TestLaneOffRefusalCarriesTheAnnouncedNotBankedMarker` (RED under ablation with
+    the exact text the Tester recorded) and `e2e TestDeliveryReceiptRefusedWhenLaneOff`, now
+    GREEN on the shipped topology. Residual `R-SWARM-NOTBANKED-DEAD` is closed by a
+    reachability argument written at the branch, not by deletion.
+  - **`rotateDemandKeys` stayed armed on a LANE OFF branch (PE H-2).** On a failed boot key
+    rotation the daemon printed `LANE OFF` and broke out with the scheduler still assigned, so
+    the OnCommit hook kept rotating: the node went on holding demand keys, staging
+    `IssuerKeyReg` commitments into consensus, serving `MsgGetDemandIssuerKeys` and blind-signing
+    withdrawals — charging the withdrawal fee — while `demandBank` stayed nil and denied every
+    receipt those tokens bought. Fixed by ORDER: the single assignment now sits below the single
+    failure exit, so no branch is left that can arm a lane it has just declared off. Gate:
+    `cmd/silt TestDaemonArmsTheRotatorOnlyAfterABootInstall`. Runtime observation of the
+    property is filed as `R-LANEOFF-ROTATION-RUNTIME`.
+  - **A corrupt paid-serial guard bricked nodes that have no delivery lane (PE H-3).**
+    `guardstore.Open` + `LoadPaidSerials` ran outside any flag branch and are a refuse-to-start,
+    so one bad byte in `paidserials.log` stopped a pure storage node that could never have
+    written the file — the F7 blast-radius lesson, applied in the same commit to
+    `demandkeys.cbor` and not to the file that commit adds. Both are now inside
+    `if *acceptReceipts`. The asymmetry is deliberate: inside the lane the guard is load-bearing
+    and a failure MUST stop the daemon. Gate: `e2e TestCorruptGuardStoreStopsOnlyTheDaemonThatUsesIt`,
+    both arms.
+  - **The compaction fuzz redeemed with a NIL serial, so it covered none of the guard it was
+    cited for (PE §4).** `RedeemDeliveryCreditReason` short-circuits its whole R0.4b guard on
+    `if len(serial) > 0`. `core/credit TestCompactionTombstoneFuzz` now mints a unique 32-byte
+    serial per redeem from the seeded rng on a moving epoch clock, exercising paid-serial
+    admission, the watermark advance and the per-epoch expiry sweep, and adds invariant (d): an
+    honest unique in-window serial must always pay, the guard must stay far under its cap, and
+    re-presenting a paid serial returns `serial-already-paid` while moving zero value. Measured
+    73.35 s against a 73.78 s baseline — no added budget.
+  - **The era-4 tally cannot latch on a non-objective chain — the trace behind the e2e re-scope,
+    now a test.** `epochsEnabled()` is `EpochBlocks > 0 && objective()`, `apply()` calls
+    `rotateEpoch` only under it, and the era-4 readiness tally lives inside `rotateEpoch`. New
+    `core/chain TestGateF_NonObjectiveTopologyCanNeverLatchEra4` injects a readiness stamp of
+    `BlockVersionWitnessable` on two chains differing only in objectivity and asserts the
+    objective CONTROL latches while the non-objective arm never does and `MintVersion` stays
+    below 5 at every height. Cross-referenced from gate F's clause (c) so a stamp-raising release
+    reads it at the edit.
+
+### Changed
+- **The e2e paid-delivery-lane test asserts the certified refusal (G-8 disposition (iii)).**
+  `TestDeliveryReceiptBankedOverTCP` is renamed `TestPaidDeliveryLaneRefusesWithoutACommittedKeyBinding`
+  and re-scoped: on the `-objective=false` fixture the client must refuse naming the missing
+  committed E→key binding, the server must bank nothing, and the daemon banner must announce
+  that the binding needs an era-4/v5 chain. The positive arm cannot pass on that fixture at any
+  readiness stamp, so it moves below e2e: new `sim TestPaidDeliveryLaneThreeCallComposition`
+  drives `FetchDemandIssuerKeys` → `AcquireDemandTokenInWindow` → `SubmitDeliveryReceipt` in
+  `cmd/silt/swarm.go`'s own order, on a real v5 chain with a real committed binding, through the
+  real wire handlers, TWICE, asserting `fee − skim` both times. Restoring the e2e positive arm is
+  filed as `R-E2E-ERA4-FIXTURE` and is bound to the stamp-raising release, by upgrading the
+  fixture to an objective bonded epoch-enabled topology — never by an activation override.
+
+### Fixed
+- **Three false claims corrected against the shipped tree (PE H-4, §4, §6).**
+  `docs/thinking/2026-09-02-r0.4b-c3-close-design.md` §7 said "no consensus-validity change"
+  when the change adds a validity predicate on both receive paths, a genesis door, a relaxed
+  empty-block rule and a changed `Block.Hash()` preimage; §9/F10 stated production `grant = 0`
+  as a close when the shipped daemon grants 500,000 and it is an open owner call. Both are
+  retracted in place. `R-COMPACT-ORPHAN`'s description is corrected to the measured behaviour —
+  the store SILENTLY REPORTS DURABILITY IT DOES NOT HAVE (`Append` returns nil after a failed
+  post-rename re-open, and `Load` then sees nothing) — and `ReasonGuardUnloaded` is annotated at
+  its declaration as unreachable on the shipped daemon, so the record stops counting it as an
+  operator signal. The `R-FLAT-FEE` comment in `core/credit/delivery.go` now names the
+  ACCUMULATED LANE rather than a chunk size: `trackProvisional` accumulates and the serve call
+  site fires per chunk, so every object above 50 KB is already past break-even.
 - **R0.4b C3 merge-prep — Tester defect F6, the LANE OFF gate's missing teeth, the G-E
   comment gate, and crypto-specialist advisory items C-1 … C-8.** Inputs: the Tester's
   `271ab81` verification, the delta certification

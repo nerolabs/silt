@@ -18,6 +18,21 @@ package credit
 //
 // Run with -short for a fast integrity check (fewer ops, suitable for -race);
 // run without -short for the full adversarial stress.
+//
+// REAL SERIALS (PE ruling @ 271ab81 §4, correction 1, 2026-09-03). Every redeem used
+// to pass a NIL serial, and `RedeemDeliveryCreditReason` short-circuits its whole
+// R0.4b guard on `if len(serial) > 0`. So this fuzz — cited as evidence for the
+// durable paid-serial guard — never touched `paidSerial`, the epoch watermark, or the
+// expiry sweep at all. It now drives a UNIQUE 32-byte serial per redeem on a moving
+// epoch clock, which puts the guard's admission, watermark advance and per-epoch sweep
+// under the same adversarial churn as provOrder, and adds invariant (d).
+//
+// The epoch clock advances every fuzzEpochEvery steps so the sweep retires expired
+// entries: with W = paidSerialWindow the live set is bounded by the redeems of the
+// last W+1 epochs, far under maxPaidSerial, so an HONEST unique in-window serial must
+// always pay. That is asserted, not assumed — a refusal here would mean the guard is
+// declining honest customers, and it would also silently break the conservation
+// arithmetic below.
 
 import (
 	"fmt"
@@ -69,6 +84,12 @@ func runCompactionFuzz(t *testing.T, seed int64, ops, poolSize int) {
 	const (
 		fee       = 50_000
 		serveSize = 256 // bytes per serve
+		// fuzzEpochEvery: steps per demand epoch. Chosen so the guard's live set —
+		// the redeems of the last paidSerialWindow+1 epochs — stays two orders of
+		// magnitude under maxPaidSerial (65,536), which keeps every honest serial
+		// admissible while still exercising the watermark advance and the sweep
+		// hundreds of times per scenario.
+		fuzzEpochEvery = 1_000
 	)
 
 	rng := rand.New(rand.NewSource(seed))
@@ -101,6 +122,18 @@ func runCompactionFuzz(t *testing.T, seed int64, ops, poolSize int) {
 		skim int64
 	}
 	liveMints := make(map[int]*mintEntry)
+
+	// The last serial this run actually paid on, for the replay assertion after the
+	// loop. Kept out of the loop's accounting: ReasonAlreadyPaid returns ABOVE the
+	// supersede, so a replay moves no value and cannot perturb conservation.
+	type paidRecord struct {
+		serial []byte
+		epoch  uint64
+		req    ports.NodeID
+		obj    ports.Hash
+	}
+	var lastPaid paidRecord
+	var havePaid bool
 
 	sumLedger := func() int64 {
 		var total int64
@@ -253,9 +286,32 @@ func runCompactionFuzz(t *testing.T, seed int64, ops, poolSize int) {
 					t.Fatalf("seed=%#x step=%d: ChargePublish: %v", seed, step, err)
 				}
 				expectedTotal -= fee
-				_ = l.RedeemDeliveryCredit(server, ln.req, ln.obj, nil, 0, 0)
+				// A UNIQUE, in-window serial: the honest case. It must ALWAYS pay —
+				// the guard exists to refuse a re-presented serial, never a new one.
+				epoch := uint64(step / fuzzEpochEvery)
+				serial := mintFuzzSerial(rng)
+				paid, reason := l.RedeemDeliveryCreditReason(server, ln.req, ln.obj, serial, epoch, epoch)
+				if paid <= 0 {
+					t.Fatalf("seed=%#x step=%d: an HONEST unique in-window serial was REFUSED "+
+						"(paid=%d reason=%q, epoch=%d, guard holds %d of %d). The paid-serial "+
+						"guard must bound a REPLAY, never an honest customer",
+						seed, step, paid, reason, epoch, len(l.paidSerial), maxPaidSerial)
+				}
+				lastPaid = paidRecord{serial: serial, epoch: epoch, req: ln.req, obj: ln.obj}
+				havePaid = true
 				expectedTotal += int64(fee) - (em.net + em.skim)
 				delete(liveMints, idx)
+
+				// Assert (d): the guard stays bounded. It is swept on the epoch
+				// advance, so it must never approach its cap on this workload — if it
+				// does, the sweep has stopped running and the next honest redeem is
+				// one step from a paid-serial-guard-full refusal.
+				if len(l.paidSerial) > maxPaidSerial/2 {
+					t.Fatalf("seed=%#x step=%d: the paid-serial guard holds %d entries "+
+						"(cap %d) at epoch %d — the per-epoch expiry sweep is not retiring "+
+						"expired serials, and guard-full refusals are imminent",
+						seed, step, len(l.paidSerial), maxPaidSerial, epoch)
+				}
 			}
 
 		default:
@@ -324,4 +380,34 @@ func runCompactionFuzz(t *testing.T, seed int64, ops, poolSize int) {
 			seed, got, expectedTotal, got-expectedTotal,
 			len(l.provOrder), len(l.provisional), len(l.provIndex))
 	}
+
+	// Assert (d), second half: the guard REFUSES the serial it just paid on, and the
+	// refusal costs nothing. ReasonAlreadyPaid returns above the supersede, so the
+	// re-presentation must move no value at all — re-checking conservation is what
+	// proves that, rather than trusting the reason string.
+	if !havePaid {
+		t.Fatalf("seed=%#x: no redeem ever paid — the guard assertions below are vacuous", seed)
+	}
+	paid, reason := l.RedeemDeliveryCreditReason(server, lastPaid.req, lastPaid.obj,
+		lastPaid.serial, lastPaid.epoch, uint64(ops/fuzzEpochEvery))
+	if paid != 0 || reason != ReasonAlreadyPaid {
+		t.Fatalf("seed=%#x: re-presenting an ALREADY-PAID serial paid %d with reason %q, "+
+			"want 0 / %q — one token, one conserved payout",
+			seed, paid, reason, ReasonAlreadyPaid)
+	}
+	if again := sumLedger(); again != got {
+		t.Fatalf("seed=%#x: refusing a replayed serial moved the ledger by %+d — "+
+			"ReasonAlreadyPaid returns ABOVE the supersede precisely so that it cannot",
+			seed, again-got)
+	}
+}
+
+// mintFuzzSerial draws a fresh 32-byte serial from the SEEDED rng, so a failure is
+// reproducible from the seed alone — the property the rest of this fuzz is built on.
+func mintFuzzSerial(rng *rand.Rand) []byte {
+	s := make([]byte, 32)
+	for i := range s {
+		s[i] = byte(rng.Intn(256))
+	}
+	return s
 }

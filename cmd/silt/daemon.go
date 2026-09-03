@@ -626,12 +626,24 @@ func cmdDaemon(args []string) error {
 	// wire receipt paid a second time. A store that cannot be opened or read is a
 	// refuse-to-start, the same rule the sign-mark store keeps: starting with an empty
 	// guard IS the eviction this closes.
-	if gs, gerr := guardstore.Open(filepath.Join(*storeDir, "paidserials.log")); gerr != nil {
-		return fmt.Errorf("delivery-credit guard store: %w", gerr)
-	} else {
-		ledger.SetPaidSerialStore(gs)
-		if lerr := ledger.LoadPaidSerials(); lerr != nil {
-			return fmt.Errorf("delivery-credit guard store: %w", lerr)
+	//
+	// GATED ON THE LANE (PE ruling H-3, 2026-09-03). The refuse-to-start is correct for
+	// a node that BANKS receipts: starting with an empty guard is the eviction. It is
+	// wrong for every other node, and it used to run unconditionally — so a corrupt
+	// paidserials.log bricked a pure storage node that has no delivery lane and could
+	// never have written the file. That is the F7 blast-radius lesson, which this same
+	// change applied to demandkeys.cbor and did not apply to the file it adds. The
+	// asymmetry with F7 is deliberate and is the whole point: inside the lane the guard
+	// is load-bearing and a failure MUST stop the daemon; outside the lane nothing can
+	// read or write it, so opening it at all is the defect.
+	if *acceptReceipts {
+		if gs, gerr := guardstore.Open(filepath.Join(*storeDir, "paidserials.log")); gerr != nil {
+			return fmt.Errorf("delivery-credit guard store: %w", gerr)
+		} else {
+			ledger.SetPaidSerialStore(gs)
+			if lerr := ledger.LoadPaidSerials(); lerr != nil {
+				return fmt.Errorf("delivery-credit guard store: %w", lerr)
+			}
 		}
 	}
 	nd0ledger := ledger // wired onto the node below
@@ -891,6 +903,30 @@ func cmdDaemon(args []string) error {
 					fmt.Printf("delivery receipts: %s was NOT modified; restore it from backup and restart to re-enable the lane. Chain, storage and serving continue.\n",
 						filepath.Join(*storeDir, "issuer", "demandkeys.cbor"))
 				default:
+					// Boot install runs synchronously: the lane must not be dark for the
+					// first commits, and this is before the loop is running.
+					demandEpoch = nd.DemandEpoch()
+					if kerr := installDemandKeys(nd, des, rand.Reader, demandEpoch); kerr != nil {
+						fmt.Printf("delivery receipts: LANE OFF — the boot key rotation failed: %v\n", kerr)
+						break
+					}
+					// ARM THE EPOCH SCHEDULER — ONLY NOW, below the boot install's one
+					// failure exit (PE ruling H-2, 2026-09-03). This assignment used to sit
+					// ABOVE the install, so a failed boot rotation printed "LANE OFF" and
+					// `break`ed out with rotateDemandKeys still non-nil: the OnCommit hook
+					// kept rotating from the next epoch turn, and the node went on holding
+					// demand keys, STAGING IssuerKeyReg commitments into consensus, serving
+					// MsgGetDemandIssuerKeys and blind-signing withdrawals — charging the
+					// withdrawal fee — while demandBank stayed nil and denied every receipt
+					// those tokens bought. That is the "a fee burned for a token the system
+					// will never honour" failure this scheduler exists to close, resurrected
+					// on the degrade path.
+					//
+					// The fix is the ORDER, not a compensating `rotateDemandKeys = nil` on
+					// the failure branch: with the only assignment below the only failure
+					// exit, there is no branch left that can arm a lane it has just declared
+					// off. Pinned by cmd/silt TestDaemonArmsTheRotatorOnlyAfterABootInstall.
+					//
 					// The band is generated and written to disk OFF the node loop (an
 					// RSA-2048 keygen is hundreds of milliseconds and the loop is
 					// single-threaded), and only the installs are posted back onto it.
@@ -914,13 +950,6 @@ func cmdDaemon(args []string) error {
 								nd.SetDemandIssuerKey(rand.Reader, kv.e, kv.k)
 							}
 						})
-					}
-					// Boot install runs synchronously: the lane must not be dark for the
-					// first commits, and this is before the loop is running.
-					demandEpoch = nd.DemandEpoch()
-					if kerr := installDemandKeys(nd, des, rand.Reader, demandEpoch); kerr != nil {
-						fmt.Printf("delivery receipts: LANE OFF — the boot key rotation failed: %v\n", kerr)
-						break
 					}
 					nd.EnableDemandBank(nd.ID())
 					fmt.Println("delivery receipts: ACCEPTING — banking witnessed deliveries and settling the conserved delivery credit (balance only, never standing)")

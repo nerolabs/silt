@@ -73,6 +73,13 @@ func TestReadinessStampImpliesIssuerKeyCoverage(t *testing.T) {
 	// deliberate EDIT HERE — and the edit is where a human re-reads (a) and (b) and
 	// confirms the release carrying the raise also carries cbor key 17 in the hashed
 	// block, validateIssuerKeys, and the issuerKeyCommit leaf.
+	//
+	// ALSO READ, at the same edit: TestGateF_NonObjectiveTopologyCanNeverLatchEra4.
+	// Raising the stamp does NOT by itself light up any topology — a -objective=false
+	// chain never evaluates the tally at all, so the paid delivery lane (and the e2e
+	// fixture that drives it) stays dark until the FIXTURE becomes objective, bonded
+	// and epoch-enabled. That is residual R-E2E-ERA4-FIXTURE, and it is a
+	// prerequisite of the stamp-raising release, not a consequence of it.
 	if msg := gateFStampPin(stamp); msg != "" {
 		t.Fatal(msg)
 	}

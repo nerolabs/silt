@@ -112,3 +112,69 @@ func TestDaemonLoadsThePaidSerialGuardBeforeTheNodeExists(t *testing.T) {
 			"before a receipt can arrive is UNGATED at this tier", iAttach, iLoad, iBank)
 	}
 }
+
+// TestDaemonArmsTheRotatorOnlyAfterABootInstall is the H-2 structure gate (PE ruling
+// @ 271ab81, 2026-09-03). `rotateDemandKeys` used to be assigned ABOVE the boot
+// install, so the boot-rotation-failure branch printed "LANE OFF" and `break`ed out
+// with the scheduler still armed: the OnCommit hook kept rotating, and the daemon went
+// on staging IssuerKeyReg commitments into consensus and charging withdrawal fees for
+// tokens a nil demandBank would deny forever.
+//
+// The fix is the ORDER — the single assignment now sits BELOW the single failure exit,
+// so no branch can arm a lane it has just declared off. Order is exactly what a source
+// gate can see, so this gate is faithful to its own limits.
+//
+// UNGATED: R-LANEOFF-ROTATION-RUNTIME — that no rotation goroutine actually RUNS after
+// a failed boot install has no runtime observer. Reaching that branch in a real daemon
+// needs an unwritable issuer directory whose publish-token key already exists (verified
+// by hand, 2026-09-03: the daemon prints "LANE OFF — the boot key rotation failed" and
+// keeps serving), and OBSERVING the difference additionally needs the chain to cross an
+// epoch boundary, which on a lone validator needs a driven publish. Filed rather than
+// approximated: a gate that waits for a line that cannot appear proves nothing.
+func TestDaemonArmsTheRotatorOnlyAfterABootInstall(t *testing.T) {
+	src, err := os.ReadFile("daemon.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Count on CODE only. This file's own subject matter names the forbidden
+	// assignment inside a comment in daemon.go, and a naive count reads that as a
+	// second assignment — the comment-masking trap scripts/check_source_gates.py
+	// documents.
+	body := stripLineComments(string(src))
+	iInstall := strings.Index(body, "if kerr := installDemandKeys(")
+	iArm := strings.Index(body, "rotateDemandKeys = func(")
+	iCount := strings.Count(body, "rotateDemandKeys = ")
+	switch {
+	case iInstall < 0 || iArm < 0:
+		t.Fatal("SOURCE GATE: `if kerr := installDemandKeys(` or `rotateDemandKeys = func(` " +
+			"is absent from daemon.go. Checked: two literals — re-anchor this gate")
+	case iArm < iInstall:
+		t.Fatalf("SOURCE GATE: daemon.go assigns rotateDemandKeys at byte %d, ABOVE the boot "+
+			"install at byte %d. Checked: SOURCE ORDER of two literals, which is not "+
+			"execution order. The consequence — a daemon that announces LANE OFF and then "+
+			"keeps rotating, staging on-chain key commitments and charging withdrawal fees "+
+			"for a bank that will deny every receipt (PE H-2) — is UNGATED at runtime "+
+			"(R-LANEOFF-ROTATION-RUNTIME)", iArm, iInstall)
+	case iCount != 1:
+		t.Fatalf("SOURCE GATE: daemon.go has %d assignments to rotateDemandKeys, want exactly "+
+			"1. Checked: a literal count. More than one assignment means the ordering above "+
+			"no longer decides whether the scheduler is armed, and this gate stops being a "+
+			"faithful check of the H-2 property", iCount)
+	}
+}
+
+// stripLineComments blanks `//` line comments, preserving byte offsets and line
+// structure so a source gate's offsets stay comparable with the raw file. It is
+// deliberately naive about string literals containing "//": no gate in this file
+// anchors on one, and a smarter mask is a parser, not a helper.
+func stripLineComments(src string) string {
+	out := []byte(src)
+	for i := 0; i+1 < len(out); i++ {
+		if out[i] == '/' && out[i+1] == '/' {
+			for j := i; j < len(out) && out[j] != '\n'; j++ {
+				out[j] = ' '
+			}
+		}
+	}
+	return string(out)
+}

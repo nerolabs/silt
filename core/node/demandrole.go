@@ -55,7 +55,7 @@ var ErrNoSigner = errors.New("node: no signing identity (SetSigner) — cannot s
 func (n *Node) AcquireDemandTokenWithCredit(rng io.Reader, issuer ports.NodeID, issuerPub *rsa.PublicKey,
 	epoch uint64, credit ports.PublishCredit, done func(demand.Token, error)) {
 	if issuerPub == nil {
-		done(demand.Token{}, errNoIssuerKey)
+		done(demand.Token{}, ErrNoIssuerKey)
 		return
 	}
 	c := credit // the issuer spends this instead of charging `from` (tokenChargeFor)
