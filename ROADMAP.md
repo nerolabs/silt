@@ -87,7 +87,12 @@ below (the flip/freeze/B8 order; R-BOX-ATTESTS O1/O2/O4).
    bought against an unfrozen format would have to be re-bought at the freeze.
 
 **★ Decisions owed to the owner (as of 2026-09-03).** Read these first; each names its source.
-- **Floor-box STRUCTURE (Boulder 1, pre-freeze).** Build option (E)/(D): ONE accept composition
+- **Floor-box STRUCTURE (Boulder 1, pre-freeze) — RATIFIED 2026-09-03.** Owner: *"I accept the
+  recommendation."* All three owner items are DECIDED as recommended: (1) the structure, (2) HOLD the
+  box-entry round-A export surface (merge the arithmetic, doors unexported), (3) the state-view
+  enumeration is a FREEZE precondition ordered before the structure build. The two research-gated
+  items (the one-sided contract form; the `R-CARRIER-BYTES` bound value) stay routed to the
+  Researcher. The recommendation, as ratified — build option (E)/(D): ONE accept composition
   `ValidateCommitV5(view, block)` over a three-valued `StateView`
   (`Present`/`ProvenAbsent`/`NoWitness`, where `NoWitness` STALLS), called by both the node and the
   box, with all 11 box doors **unexported** behind a single `WitnessValidateV5` door; the contract
@@ -97,9 +102,13 @@ below (the flip/freeze/B8 order; R-BOX-ATTESTS O1/O2/O4).
   **PRE-FREEZE** items: `tagLastProposer` and the carrier byte ceiling. Sources:
   `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-floorbox-predicate-rederivation-structure-2026-09-03.md`,
   `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/floorbox-predicate-rederivation-STRUCTURE-RESEARCH-VIEW-2026-09-03.md`.
-- **O3 — the fork-choice weight term.** Both seats independently recommend **Direction T (retire
-  the term; state `heavier` as height → head-hash)** over Direction R (repair). **Consensus
-  recommendation T; owner decision PENDING.** Sources:
+- **O3 — the fork-choice weight term — RATIFIED 2026-09-03: Direction T.** Owner: *"Direction T."*
+  Both seats independently recommended **Direction T (retire the term; state `heavier` as height →
+  head-hash)** over Direction R (repair). Ratifying T settles the one product premise the seats named
+  as the owner's: silt supports **no production posture without BFT finality**. The I5 restatement
+  and the no-reachable-divergence argument remain research-gated (Researcher certifies before the
+  build lands). Reopening condition stands: a shipping posture in which `FinalizedHeight()` lags
+  `Head()`. Sources:
   `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-O3-fork-choice-weight-R-vs-T-2026-09-03.md`,
   `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/O3-fork-choice-weight-R-vs-T-RESEARCH-RECOMMENDATION-2026-09-03.md`.
 - **R0.4b C3 (expiry) — four owner calls, ALL RATIFIED 2026-09-03.** Owner: *“merge
@@ -174,16 +183,17 @@ compaction fuzz each found and closed a FIFO-order desync.
   cert did not model; both firewalls (γ→1/N and standing) stay intact. Research cert (the change
   re-opened and re-closed R0.4):
   `RT-DELIV-3-provkey-server-identity-RESEARCH-CERTIFICATION-2026-09-02.md`.
-- **R0.4b · receipt-expiry (the full (b)-prunable form) — NO LONGER PARKED: BUILT, NOT MERGED,
-  GATED.** The two owner calls that gated the build were answered (per-epoch / serial-indexed keys,
-  never a wall-clock `NotAfter`) and the C3 close is built on `builder/r0.4b-c3-close-fix`
-  (`271ab81`). It ships the (b1) FDH epoch binding, the payload-driven `issuerKeyCommit` prune, the
-  token-keyed guards, and a persisted paid-serial store. **Merge is blocked**, not by design: the
-  required `e2e` CI job is RED and the `IssuerKeys` count cap (H-1) is owed in the same commit.
-  Verdicts: research `R0.4b-C3-composed-close-bc062d0-RESEARCH-CERTIFICATION-2026-09-03.md` (GATED;
+- **R0.4b · receipt-expiry (the full (b)-prunable form) — ✅ DONE + MERGED (PR #711, 2026-09-03).**
+  The two owner calls that gated the build were answered (per-epoch / serial-indexed keys, never a
+  wall-clock `NotAfter`). Ships the (b1) FDH epoch binding, the payload-driven `issuerKeyCommit`
+  prune (a ratified consensus rule), the token-keyed guards, a persisted paid-serial store, the
+  supersede ordering, and the blind-RSA `ValidatePub` hot-path/admission split. The last red CI job
+  was a `-race`-inflated timing budget, fixed by gating the wall-clock half only (count gate runs
+  under both builds). The `IssuerKeys` per-block cap (H-1) is a pre-freeze Rock in R3.4's carry-list,
+  NOT a merge gate (owner call). Verdicts: research `R0.4b-C3-composed-close-bc062d0-RESEARCH-CERTIFICATION-2026-09-03.md` (GATED;
   G-3/G-4/G-D since CLOSED per
   `R0.4b-C3-271ab81-G3-G4-GD-DELTA-CERTIFICATION-2026-09-03.md`), PE
-  `RULING-R0.4b-C3-close-271ab81-final-2026-09-03.md` (NOT merge-ready: red e2e + H-1), G-8
+  `RULING-R0.4b-C3-close-271ab81-final-2026-09-03.md`, G-8
   `R0.4b-C3-G8-dark-lane-CONVERGENCE-2026-09-03.md` (take option (iii)). The four owner calls are in
   the *Decisions owed* block above; the named residuals are Rocks under Boulder 1 and Boulder 2.
 
@@ -324,7 +334,8 @@ Accept. Certification:
 carries its source; none is decided by a seat.
 
 *The structure (the shape the box is built in):*
-- **R-STRUCTURE-REDERIVATION — OPEN, owner decision pending.** Build ONE accept composition
+- **R-STRUCTURE-REDERIVATION — RATIFIED 2026-09-03 (owner: "I accept the recommendation"); BUILD
+  OPEN, after R-STATEVIEW-ENUMERATION.** Build ONE accept composition
   `ValidateCommitV5(view, block)` over a three-valued `StateView`, both callers, all box doors
   unexported behind `WitnessValidateV5`; contract form becomes `box.Accept ⇒ node.Accept`. Five of
   five box defeats this cycle were **composition** errors (a tail reproduced without the
@@ -338,9 +349,10 @@ carries its source; none is decided by a seat.
   fact (`parent.ProposerID()` → `tagLastProposer`); **its whole job is to find what that pass
   missed**, because a second non-leaf fact discovered after the freeze is a new era. Source: the PE
   structure ruling §3, §7.
-- **R-BOXENTRY-RESIDUALS — OPEN (box-entry round A, HELD unmerged).** The exported-door surface is
-  recommended HELD (zero production callers today; unexporting is free now and migration work once
-  part B starts). Live findings owed with it: **N1** unqualified author credited by the frozen
+- **R-BOXENTRY-RESIDUALS — OPEN (box-entry round A, HELD unmerged; the HOLD is RATIFIED
+  2026-09-03).** The exported-door surface is HELD by owner decision (zero production callers today;
+  unexporting is free now and migration work once part B starts): merge the arithmetic
+  (`quorumWeightTally`, `screenSupportSlashed`), keep every door unexported. Live findings owed with it: **N1** unqualified author credited by the frozen
   weight quorum, **N2** the O2 precedence bypass via the driver-supplied `HasHeldHead`, **N3** the
   backward/off-chain pin walk, **N4** the de-mature super-quorum crediting a mid-epoch joiner,
   **N5** the missed fatal out-of-scope replay leg, **N6** the over-broad O2 refusal, **N7** the zero
@@ -445,8 +457,9 @@ O3 is pending** (source for all four:
   the same hash-covered carrier), not merely the carrier's own validity. Source: the delta cert §7.
 
 *Fork-choice, canon and inventory (O3 / #558 family):*
-- **R-FORKCHOICE-WEIGHT (O3) — consensus recommendation T, OWNER DECISION PENDING.** See the
-  *Decisions owed* block for the recommendation and its two sources. Direction T means: remove the
+- **R-FORKCHOICE-WEIGHT (O3) — RATIFIED 2026-09-03: Direction T (owner: "Direction T"). BUILD
+  OPEN, research-gated on the I5 restatement cert.** See the *Decisions owed* block for the
+  recommendation and its two sources. Direction T means: remove the
   weight comparison from `heavier`, delete `Weight()` / `blockWeight()` / `anchorWeight()` /
   `Config.AnchorWeight` (no operator-visible contract — no CLI flag exists), **preserve and promote
   the §1b height preference**, and re-ground the three legacy `Reconcile` fixtures on height →
