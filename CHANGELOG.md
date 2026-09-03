@@ -45,7 +45,16 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   already pruned is unslashable; safety unaffected). Residuals OPEN by name: R-EVIDENCE-BYTES,
   R-BIG-EVIDENCE-UNSLASHABLE, R-BOX (the floor box's un-verified `b.Slashes` read), R-MEMO,
   R-RELOAD-RE-VERIFY. Canon: `docs/decisions.md` D-F2-EVIDENCE-RECOMPUTE; consensus-invariants
-  I5 scar; `retention.go` premise re-worded. PE: MERGE-WITH-CONDITIONS (F-1, F-4 landed;
+  I5 scar; `retention.go` premise re-worded. Researcher delta cert on the cap value: the "not a
+  security parameter" wording is REFUTED as stated — the cap is DUAL-FACE (resource ceiling on the
+  honest axis; evidence-size completeness bound on the deterrent axis, which no value closes and
+  only the v5 two-level block hash (d-3) removes, now on the R3.4 carry-list and the R4.4 brief);
+  16 MiB stays ratifiable with the face disclosed. Its V-1 gate
+  `TestOverCapProofDoesNotSilenceLaterProofsByTheSameCulprit` caught and closed a defect the
+  F-1 fix had introduced (the once-per-culprit local latch silenced later small proofs after a
+  fat one); the over-cap WARN is pinned as an S5 line (V-6):
+  `silt-reviews/research/research-outcome/R0.6-SlashesBytesCap-value-security-face-DELTA-CERTIFICATION-2026-09-03.md`.
+  PE: MERGE-WITH-CONDITIONS (F-1, F-4 landed;
   F-2 the cap value is also the eviction-escape threshold — routed to the Researcher before
   the owner ratifies the number; F-5 owed:
   `silt-reviews/principle-engineer/RULING-R0.6-i5-evidence-recompute-3131d5a-2026-09-03.md`).
