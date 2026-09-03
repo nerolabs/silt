@@ -69,15 +69,66 @@ deliberations). **Boulders** are the major arcs; **Rocks** are the ordered deliv
 each. This spine is the SSOT for live work; the Residual backlog (end of file) holds the
 off-critical-path tail. Items are
 marked owner-DECISION, cert-gated, or RED-first as they apply. The overnight owner-ratified
-decisions are folded in (R0.2, R1.7, R2.3, R2.5, R2.6, R3.4).
+decisions are folded in (R0.2, R1.7, R2.3, R2.5, R2.6, R3.4), and the **2026-09-03 ratifications**
+below (the flip/freeze/B8 order; R-BOX-ATTESTS O1/O2/O4).
 
 **Two whole-board sequencing constraints:**
 1. **Nothing turns the economy on over a live mint.** Boulder 0 (A4) precedes Boulder 2.
    Boulder 0 is now DONE + MERGED (PR #686); the R0.4 conservation re-cert cleared before any
    economy default flip.
-2. **The accept-flip does not close until its whole witness-soundness spine is green and its
-   external pass clears.** The flip (R1.8) is a consensus-rule change (I1); the old "single
-   remaining step" framing hid 7 predecessors — see the flag under *Superseded Rocks*.
+2. **The accept-flip does not close until its whole witness-soundness spine is green, the era-4
+   format is FROZEN, and the external pass clears on the frozen artifact.** The flip (R1.8) is a
+   consensus-rule change (I1); the old "single remaining step" framing hid 7 predecessors — see the
+   flag under *Superseded Rocks*. **RATIFIED 2026-09-03 — the order is now:** internal flip
+   preconditions (R1.0–R1.6 + the named residuals) → **era-4/v5 format freeze at the RELEASE
+   CANDIDATE, which is the stamp-raising release (R3.4)** → **external B8 pass (R1.7 / R4.4) against
+   the FROZEN, still never-Accept artifact** → **R1.8, the flip**. This **reverses** R3.4's earlier
+   "the flip proceeds pre-freeze; the freeze re-confirms byte-identity later" clause: a B8 pass
+   bought against an unfrozen format would have to be re-bought at the freeze.
+
+**★ Decisions owed to the owner (as of 2026-09-03).** Read these first; each names its source.
+- **Floor-box STRUCTURE (Boulder 1, pre-freeze).** Build option (E)/(D): ONE accept composition
+  `ValidateCommitV5(view, block)` over a three-valued `StateView`
+  (`Present`/`ProvenAbsent`/`NoWitness`, where `NoWitness` STALLS), called by both the node and the
+  box, with all 11 box doors **unexported** behind a single `WitnessValidateV5` door; the contract
+  form becomes one-sided `box.Accept ⇒ node.Accept` (exact box-vs-node equality is REFUTED as a
+  certified form). Both seats also recommend **HOLDING** the box-entry round-A exported surface
+  (merge the arithmetic, keep the doors unexported — zero production callers today) and name two
+  **PRE-FREEZE** items: `tagLastProposer` and the carrier byte ceiling. Sources:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-floorbox-predicate-rederivation-structure-2026-09-03.md`,
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/floorbox-predicate-rederivation-STRUCTURE-RESEARCH-VIEW-2026-09-03.md`.
+- **O3 — the fork-choice weight term.** Both seats independently recommend **Direction T (retire
+  the term; state `heavier` as height → head-hash)** over Direction R (repair). **Consensus
+  recommendation T; owner decision PENDING.** Sources:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-O3-fork-choice-weight-R-vs-T-2026-09-03.md`,
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/O3-fork-choice-weight-R-vs-T-RESEARCH-RECOMMENDATION-2026-09-03.md`.
+- **R0.4b C3 (expiry) — four owner calls.** (1) **Break-1 ratification:** the payload-driven
+  `issuerKeyCommit` prune is a **consensus rule** and is research-CERTIFIED
+  (`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-composed-close-bc062d0-RESEARCH-CERTIFICATION-2026-09-03.md`
+  §1). (2) **The `IssuerKeys` per-block count cap** — a v5 **validity rule** of the class `RegCap`
+  already answers for `BondRegs`; measured ~33 s of ed25519 per validator per block at the 128 MiB
+  frame ceiling; free now while v5 is dark, a fork after era-4 opens
+  (`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-R0.4b-C3-close-271ab81-final-2026-09-03.md`
+  §3, §8). (3) **The production `grant` + faucet rate limit** — keep `grant = 500_000` and
+  rate-limit the faucet (structure fixed, rate is an Evolving-tier knob; do NOT key the limiter on
+  the ledger watermark — blocked on F8) and (4) **`RequireBondedFetchers` default OFF**
+  (`/Users/andrewedmond/Claude/claude/silt-reviews/economist/ADVISORY-R0.4b-cap-griefing-grant-and-bonded-fetchers-2026-09-03.md`,
+  certified in the composed cert §6). **G-8 no longer needs an owner call:** both seats converged on
+  **(iii) re-scope** the e2e gate to the certified era-4 refusal — never an activation override, in
+  any form, in any binary
+  (`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-G8-dark-lane-CONVERGENCE-2026-09-03.md`).
+- **`R-CARRIER-BYTES` — the validity bound, with the cost now MEASURED.** 1.3 M carrier entries fit
+  a single 132 MiB frame and cost **42.2 s single-core** to validate, **130.18 MiB** on the wire,
+  **1.13 GiB** max RSS — and are re-paid on every disk reload, permanently
+  (`/Users/andrewedmond/Claude/claude/silt/.claude/agent-memory/tester/pr-lastcommit-carrier-verification-2026-09-03.md`).
+  Red-team round 2 adds the box-side face: a **VALID junk carrier** costs the box **2.67 GiB** of
+  `AttScreen` witness for one canonical NO-OP block
+  (`/Users/andrewedmond/Claude/claude/silt-reviews/red-team/RED-TEAM-lastcommit-carrier-26977a4-RE-BREAK-2026-09-03.md`
+  RT2-CARRIER-17/17b). The two legs differ in reachability and that matters: the node's 42.2 s leg
+  requires a **qualified proposer**; the box's does not
+  (`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/LASTCOMMIT-CARRIER-26977a4-DELTA-CERTIFICATION-2026-09-03.md`
+  §2.4). A size rule on hash-covered content is a v5 validity rule: research-gated, owner-ratified,
+  and it must land **before** the era-4 freeze.
 
 #### Boulder 0 — Stop the live bleed (A4 money-pump) · ✅ DONE + MERGED (PR #686, 2026-09-01)
 The only break exploitable on `main` (behind `-accept-delivery-receipts`; `-economy`
@@ -110,20 +161,25 @@ compaction fuzz each found and closed a FIFO-order desync.
 - **R0.5 · A4 node-path integration conservation gate** · ✅ DONE. Proves the fix is wired at
   the node path (`node.go` + `demandrole.go`), not just in the ledger.
 
-**Decisions to make next session (Boulder 0 residuals):**
-- **RT-DELIV-3 · delivery-credit `provKey` omits the server.** A latent conservation break
-  reachable only in the shared-ledger *sim* (all serves share one ledger), NOT in per-node
-  prod (each node's ledger has a single server identity). **Decide:** fix now — add the server
-  to `provKey`, which changes the conserved-lane key shape and therefore **re-opens the R0.4
-  conservation cert** — vs track it as a sim-only residual.
-- **R0.4b · receipt-expiry (the full (b)-prunable form) — PARKED, evidence-gated.** Re-open
-  when the unwitnessed-bilateral under-pay tail bites: **>8192 un-redeemed lanes on one node**.
-  Two owner calls gate the build first (per the R0.4b scoping cert,
-  `R0.4-receipt-expiry-scoping-RESEARCH-CERTIFICATION-2026-09-01.md`): (1) the
-  **privacy-safe shape** — epoch-granular / serial-indexed, NEVER a wall-clock `NotAfter`
-  (which adds a timing quasi-identifier on the D3/H8 channel); and (2) a **TTL-bounds
-  measurement** (the honest-pony redemption-latency tail at the >8192-lane regime is
-  unmeasured — no value may be pinned at desk).
+**Boulder 0 residuals (status 2026-09-03):**
+- **RT-DELIV-3 · delivery-credit `provKey` omits the server** · ✅ **DONE + MERGED (PR #699), with
+  its open-break gate (PR #700).** DECIDED: fix now. The server identity is in `provKey`, which
+  additionally closes a conservation break in the shared-ledger MULTI-SERVER case the prior A4/R0.4
+  cert did not model; both firewalls (γ→1/N and standing) stay intact. Research cert (the change
+  re-opened and re-closed R0.4):
+  `RT-DELIV-3-provkey-server-identity-RESEARCH-CERTIFICATION-2026-09-02.md`.
+- **R0.4b · receipt-expiry (the full (b)-prunable form) — NO LONGER PARKED: BUILT, NOT MERGED,
+  GATED.** The two owner calls that gated the build were answered (per-epoch / serial-indexed keys,
+  never a wall-clock `NotAfter`) and the C3 close is built on `builder/r0.4b-c3-close-fix`
+  (`271ab81`). It ships the (b1) FDH epoch binding, the payload-driven `issuerKeyCommit` prune, the
+  token-keyed guards, and a persisted paid-serial store. **Merge is blocked**, not by design: the
+  required `e2e` CI job is RED and the `IssuerKeys` count cap (H-1) is owed in the same commit.
+  Verdicts: research `R0.4b-C3-composed-close-bc062d0-RESEARCH-CERTIFICATION-2026-09-03.md` (GATED;
+  G-3/G-4/G-D since CLOSED per
+  `R0.4b-C3-271ab81-G3-G4-GD-DELTA-CERTIFICATION-2026-09-03.md`), PE
+  `RULING-R0.4b-C3-close-271ab81-final-2026-09-03.md` (NOT merge-ready: red e2e + H-1), G-8
+  `R0.4b-C3-G8-dark-lane-CONVERGENCE-2026-09-03.md` (take option (iii)). The four owner calls are in
+  the *Decisions owed* block above; the named residuals are Rocks under Boulder 1 and Boulder 2.
 
 #### Boulder 1 — Make the accept-flip safe (floor-box witness-soundness spine) · was Rock 1
 Root cause (verified, all seats): classes P/A/B take witness values/screens as `NewValue`s or
@@ -132,9 +188,11 @@ committed root too, so `postRoot==StateRoot` holds by construction. Sound classe
 values as VerifyProof'd `OldValue`s — the fix mirrors them. Design:
 [`docs/thinking/2026-09-01-floorbox-witness-soundness-fix-design.md`](docs/thinking/2026-09-01-floorbox-witness-soundness-fix-design.md).
 
-**Status (2026-09-01): R1.0 / R1.1 / R1.2 DONE; R1.3 REFUTED; R1.4 CERTIFIED. The
-accept-flip (R1.8) is NOT done** — it now has four additional named preconditions (below the
-increment list). The recompute-soundness increment merged as a standalone **never-Accept**
+**Status (2026-09-03): R1.0 / R1.1 / R1.2 / R1.5 / R1.6 DONE; R1.3 REFUTED; R1.4 CERTIFIED then
+RE-OPENED and re-closed by the class-P scalar-anchoring fix (PR #704). The accept-flip (R1.8) is NOT
+done** — its precondition list has GROWN this session (the fold-live-state class, the box-entry
+round-A findings N1–N8, and the `LastCommit` carrier's parent-anchoring class), and the flip now
+lands **after** the era-4 freeze and the external B8 pass (see the sequencing constraint above). The recompute-soundness increment merged as a standalone **never-Accept**
 change: the box gained the Resolve-anchoring but still emits `indeterminate-trustlessly`, never
 Accept. Certification:
 [`floorbox-R1.3-refutation-R1.4-witness-soundness-RESEARCH-CERTIFICATION-2026-09-01.md`](../silt-reviews/research/research-outcome/floorbox-R1.3-refutation-R1.4-witness-soundness-RESEARCH-CERTIFICATION-2026-09-01.md).
@@ -161,16 +219,26 @@ Accept. Certification:
   each of the 10 per-field anchors plus the class-M poisoning path has a driven
   adversarial-committed-root gate that wrong-accepts if its anchor is dropped. This is NOT the
   flip's certification — it is its precondition.
-- **R1.5 · Accept-flip model-check exercising the NEW Resolve path** · Tester · model-check.
-  Absorbs old Rock 4 (#406). NOT done.
-- **R1.6 · Oracle coverage: 23 predicate fields each get an adversarial Resolve-path probe;
-  extend probeUncovered to name A1/A2/A3** · Tester. Also a freeze gate (Boulder 3). NOT done.
-- **R1.7 · External red-team pass (B8) — DECISION RATIFIED: the external pass is a HARD
-  precondition of the flip.** Owner milestone-call + external seat. The recompute's OUTPUT is
-  C2's INPUT; internal cert cannot close "no adversary forges a witness the recompute accepts."
-  Attack the FIXED artifact (R1.1–R1.4 have landed). Model-check the Resolve-every-value class
-  under adversarial scheduling first, to convert the external pass from discovery to bounded
-  confirmation.
+- **R1.5 · Accept-flip model-check exercising the NEW Resolve path** · ✅ **DONE (PR #702).**
+  A scheduling oracle over the Resolve path: honest-baseline agreement, I1 (disjoint boxes never
+  conflict-Accept), I5 (an honest node is never slashed), multi-block Resolve stability under
+  reorder, and no forged-witness poisoning of the next `prevStateRoot`; two OPEN-BREAK gates carry
+  distinct forged roots, so neither is vacuous. Absorbs old Rock 4 (#406).
+- **R1.6 · Oracle coverage: per-field adversarial Resolve-path probes** · ✅ **DONE (PR #701).**
+  Surfaced and gated a class-P activation-lock wrong-accept; the three OPEN-BREAK gates were each
+  confirmed non-vacuous (forged root ≠ honest committed root). The class-P fix landed separately
+  (PR #704, Direction A + B), which is why R1.4 was re-opened and re-closed.
+  **Residual:** `probeUncovered` still does not name A1/A2/A3 — that half is carried as R3.2, and
+  the class-A probes must be re-pointed if the `LastCommit` carrier lands (they read `b.Atts` today;
+  `R-BOX-ATTESTS-scoping-CONVERGED-RESEARCH-VERDICT-2026-09-02.md` §9 stale-list).
+- **R1.7 · External red-team pass (B8) — DECISION RATIFIED (re-ratified 2026-09-03): the external
+  pass is a HARD precondition of the flip, and it runs at the RELEASE CANDIDATE, AFTER the era-4
+  freeze.** Owner milestone-call + external seat; it is the same gate as **R4.4**, not a second one.
+  The recompute's OUTPUT is C2's INPUT; internal cert cannot close "no adversary forges a witness the
+  recompute accepts." **The artifact it attacks is the FROZEN, still never-Accept box** — attacking
+  an unfrozen format would buy a pass that has to be re-bought at the freeze. R1.5 (model-check) and
+  R1.6 (per-field probes) are DONE, which is what converts the external pass from discovery to
+  bounded confirmation.
 - **R1.8 · The flip: wire `WitnessValidateV5` → Accept-iff-all-predicates-pass** · Builder · S.
   **NOT done.** Trivial code; a consensus-rule change (I1). Beyond R1.5/R1.6 green, the flip
   **additionally requires** (per the R1.4 cert §R1.4-FLIP):
@@ -187,16 +255,37 @@ Accept. Certification:
     `adopt`. The deployment target replays no `apply()`, so a COLD box never set them and screened
     every mature-epoch block under the pre-maturity rule: wrong-accept of a mid-epoch joiner against
     an attacker's root, and false stall on an honest one, with every witness proof passing.
-    **Direction A landed** (the branch selector is the Resolved `tagMatureEpoch` pre-value anchored
-    against `prevStateRoot`; `launchAnchorGiven` is the one shared predicate) together with the
+    **Direction A landed (PR #706)** (the branch selector is the Resolved `tagMatureEpoch`
+    pre-value anchored against `prevStateRoot`; `launchAnchorGiven` is the one shared predicate)
+    together with the
     **R-COLD-BOX-HARNESS** tier and the fold-file live-state allowlist pin. The remaining flip
     obligation is that the cold-box tier stays the tier every new recompute gate runs in.
-  **Decoupled from the era-4/v5 freeze** (R3.4): the flip proceeds pre-freeze;
-  `WitnessValidateV5` changes no committed format field, so the freeze re-confirms
-  byte-identity later, at RC.
+
+  **Added to the precondition list 2026-09-02/03** (each is a Rock in the *New Rocks* block below,
+  with its source):
+  - **R-STRUCTURE-REDERIVATION** — the one-accept-composition build (owner decision pending), and
+    its **R-STATEVIEW-ENUMERATION** precursor, which is a FREEZE precondition earlier in the order
+    than the flip itself;
+  - **R-CARRIER-PARENT-BINDING** — a flip ENTRY blocker: the box reproduces `validateCarrier`
+    without the ancestry precondition its node-side caller establishes;
+  - **R-CARRIER-PARENTPROPOSER** (`tagLastProposer`) and **R-CARRIER-BYTES**, both also pre-freeze;
+  - **R-BOXENTRY-RESIDUALS** — box-entry round-A findings N1–N8 and the §8 residual set;
+  - **FP-1** — `Bank.spent` persistence, re-armed the moment witnessed demand confers value.
+
+  **ORDERING — RATIFIED 2026-09-03 (supersedes the earlier "decoupled; the flip proceeds
+  pre-freeze" clause):** the flip lands **AFTER** the era-4/v5 format freeze (R3.4) and **AFTER** the
+  external B8 pass on the frozen artifact. `WitnessValidateV5` still changes no committed format
+  field — the reason for the new order is the B8 pass, not the box: a pass bought against an unfrozen
+  format has to be re-bought at the freeze. Two further couplings this session make the order
+  load-bearing rather than merely tidy: the state-view enumeration the STRUCTURE build needs is
+  itself a **freeze precondition** (it decides which committed leaves the box requires, and a leaf
+  discovered after the freeze is a new era), and `R-CARRIER-BYTES` is a v5 **validity rule** that
+  cannot land in-era. PE ruling
+  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-floorbox-predicate-rederivation-structure-2026-09-03.md`
+  §7.
 
 **Carried residuals (worth a line, owed before the flip):**
-- **R-CARRIER-REFLECTION — DONE (2026-09-02, test-only).** The fold-input carriers were verified
+- **R-CARRIER-REFLECTION — DONE (PR #705, 2026-09-02, test-only).** The fold-input carriers were verified
   by hand; they are now pinned by reflection. `TestFoldInputCarrierCoverageIsComplete`
   (`core/chain/floorbox_recompute_carrier_reflection_v5_test.go`) walks the transitive struct
   closure of the state-root fold's witness bundle (13 carrier types / 74 fields) and requires exact
@@ -212,17 +301,234 @@ Accept. Certification:
 - **R-VERIFYBOND-WIRING — CLOSED.** The injected `verifyBond` is asserted once at the box entry
   (`ErrRecomputeBoxWiring`), so the #572 replay shape fails loud and named instead of as a fold
   mismatch three classes later.
-- **R-ROTATE-EPOCH-LAST — pin `rotateEpoch`-is-last-in-`apply` as load-bearing for `epochSet`
-  order-independence (#621).** Distinct from R-CARRIER-REFLECTION. `epochSet` order-independence
+- **R-ROTATE-EPOCH-LAST — DONE (PR #703, test-only): `rotateEpoch`-is-last-in-`apply` is now
+  pinned by a drift guard** as load-bearing for `epochSet` order-independence (#621).
+  Distinct from R-CARRIER-REFLECTION. `epochSet` order-independence
   (proven in #620) holds only because `rotateEpoch` runs LAST in `apply` (`core/chain/chain.go`),
   reading only the final post-block `bonded`/`slashed` state, so `epochSet =
   liveQualifiedSet(bonded, slashed)` is order-invariant by construction. A refactor that moves
   `rotateEpoch` before slash/bond application, or makes `liveQualifiedSet` read history rather than
   the two final maps, would silently break the SMT history-independence premise for `epochSet` and
   #620 would no longer hold. Owed before the era-4 format freeze (Boulder 3): a drift-guard
-  assertion or test that fails if the freeze can observe pre-final state. PE ruling:
+  assertion or test that fails if the freeze can observe pre-final state — **shipped**. PE ruling:
   `RULING-620-mature-epoch-order-independence-2026-08-28.md` ("Couplings the consult should carry
   forward").
+
+**New Rocks opened 2026-09-02/03 (Boulder 1 — flip preconditions and pre-freeze items).** Each
+carries its source; none is decided by a seat.
+
+*The structure (the shape the box is built in):*
+- **R-STRUCTURE-REDERIVATION — OPEN, owner decision pending.** Build ONE accept composition
+  `ValidateCommitV5(view, block)` over a three-valued `StateView`, both callers, all box doors
+  unexported behind `WitnessValidateV5`; contract form becomes `box.Accept ⇒ node.Accept`. Five of
+  five box defeats this cycle were **composition** errors (a tail reproduced without the
+  precondition its caller established), not missed screens, so a shared predicate *set* does not
+  close them. `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-floorbox-predicate-rederivation-structure-2026-09-03.md`
+  (option E), `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/floorbox-predicate-rederivation-STRUCTURE-RESEARCH-VIEW-2026-09-03.md`
+  (option D).
+- **R-STATEVIEW-ENUMERATION — OPEN, a FREEZE precondition and the earliest item in the order.**
+  The certified inventory of every state read on the accept chain, classified as committed leaf /
+  box-owned config / block-local. The PE's one-pass enumeration closes with exactly one non-leaf
+  fact (`parent.ProposerID()` → `tagLastProposer`); **its whole job is to find what that pass
+  missed**, because a second non-leaf fact discovered after the freeze is a new era. Source: the PE
+  structure ruling §3, §7.
+- **R-BOXENTRY-RESIDUALS — OPEN (box-entry round A, HELD unmerged).** The exported-door surface is
+  recommended HELD (zero production callers today; unexporting is free now and migration work once
+  part B starts). Live findings owed with it: **N1** unqualified author credited by the frozen
+  weight quorum, **N2** the O2 precedence bypass via the driver-supplied `HasHeldHead`, **N3** the
+  backward/off-chain pin walk, **N4** the de-mature super-quorum crediting a mid-epoch joiner,
+  **N5** the missed fatal out-of-scope replay leg, **N6** the over-broad O2 refusal, **N7** the zero
+  `PinRecord` resetting the forward-progress guard, **N8** the fail-path lazy-fold DoS. Plus the
+  §8 residual table's open set (R-SUPPORT-SLASHED-SCREEN, R-MALFORMED-DIVERGENCE,
+  R-PIN-LABEL-ESCAPE, R-PIN-REANCHOR-POSITION, R-PIN-BUDGET-ESCAPE, R-FENCE-TABLE-DRIFT,
+  R-BOUNDARY-PREDICATE-COVERAGE, R-BOX-ATTESTS invariant II / G-F). Sources:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/red-team/RED-TEAM-floorbox-box-entry-roundA-4a394fd-RE-BREAK-2026-09-03.md`,
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/floorbox-box-entry-round-A-fee43ba-DELTA-CERTIFICATION-2026-09-03.md`
+  §8.
+
+*The `LastCommit` carrier — R-BOX-ATTESTS. **O1, O2 and O4 are OWNER-RATIFIED (2026-09-03);
+O3 is pending** (source for all four:
+`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R-BOX-ATTESTS-scoping-CONVERGED-RESEARCH-VERDICT-2026-09-02.md`
+§10). Built on `builder/lastcommit-carrier`, NOT merged.*
+- **O1 — RATIFIED: the `LastCommit` carrier is an additive format field of the OPEN era**
+  (`LastCommit []Attestation`, additive cbor key, `omitempty`, **folded into `Hash()`**). Validity:
+  every entry verifies over `b.Prev`'s hash at `PhasePrecommit` at any single round (`CommitRound` is
+  uncovered, so the rule must not bind to it), distinct ids, a pre-v5 block carrying the field is
+  invalid, height 1's carrier is empty by rule, genesis carriers refused. Transition: seat each
+  carried signer with `id != parent.ProposerID()` and `attesterQualified` evaluated against the
+  child's pre-state; the child's own `Atts` write nothing; the frozen era-3 rule is left byte-for-byte.
+  The carrier fold runs **before** this block's bond regs / TTL / slashes, pinned the way rotate-LAST
+  is pinned. Disclosed: the seat lands one block late; a proposer can DELAY a seating but never FORGE
+  one. The smaller same-block `SeatAdds` alternative is explicitly not recommended.
+- **O2 — RATIFIED: the rollout rule, both paths.** The readiness stamp goes **3 → 5 directly; no
+  release ever stamps 4** — so era-3's frozen format is retired **without ever running**, recorded in
+  #632 as *frozen-and-retired-unrun* (a doc note; it edits no format). And: **no mainnet era
+  activation, by tally OR by pre-latch genesis override, on a binary without the carrier** — the
+  override bypasses `regVersion` entirely, so the stamp rule alone does not cover it. Note the
+  enforcement limit found this session: a "refuse activation on a pre-carrier binary" check is
+  **vacuous by construction** (any binary carrying the check carries the carrier); the predicate that
+  actually binds is *the full v5 carry-list has landed*, which no binary can evaluate about itself
+  except as the hard-coded stamp. The mixed-fleet exposure is safety-preserving (a pre-carrier node
+  drops cbor key 18, computes a different `Hash()`, and **stalls loudly**; it does not commit
+  divergent state) — the residual is `R-CARRIER-ROLLOUT-SIGNAL` below. Sources: §10 (O2) and
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-G8-dark-lane-CONVERGENCE-2026-09-03.md`
+  §2, §4.
+- **NOT re-opened (recorded so it is not silently reopened):** option **M** — re-basing the maturity
+  metric on `bonded` instead of `validatorsSeen`. It would remove the "attested a committed block"
+  anti-declaration property, which makes it a **published-claim** change (Sybil metric semantics),
+  not a consensus fix. Declined by default; reopening it is a separate certification. Source: §10.
+- **R-CARRIER-PARENT-BINDING — OPEN, a flip ENTRY blocker.** The box runs the shared
+  `validateCarrier`, but not the ancestry precondition its node-side caller establishes: on the full
+  node `ValidateProposal` refuses `b.Height != height || b.Prev != prev` FIRST, so "a genuine
+  precommit over `b.Prev`" means "over THE PARENT"; in the box it means "over a hash the ATTACKER
+  chose". Replaying a stale certificate re-opens the `everMature`/C2 maturity forge **with zero
+  forged signatures**. Two candidate directions, neither built nor certified: give the box the
+  parent hash+height as inputs, or commit the pair as v5 scalar leaves Resolved against
+  `prevStateRoot`. The HEIGHT axis (the height-1 empty-carrier rule) is label-enforced in the box
+  and has the same root cause. Source: `.../red-team/RED-TEAM-lastcommit-carrier-26977a4-RE-BREAK-2026-09-03.md`
+  RT2-CARRIER-13 / 13b / 13c.
+- **R-CARRIER-PARENTPROPOSER / `tagLastProposer` — OPEN, flip AND freeze precondition.** The class-A
+  carrier fold excludes `id == parent.ProposerID()`, which is **not a committed leaf**; the witnessed
+  `(pub, sig)` anchor is one-sided — DROP is bounded, **ADD is not** (a freshly minted keypair
+  verifies, matches no entry, and the parent's true proposer self-seats). Certified fix direction: a
+  `tagLastProposer` committed scalar leaf, Resolved like every other class-A input. **Additive
+  committed-format change on the open era — it must land BEFORE the era-4 freeze.** Source:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/LASTCOMMIT-CARRIER-round-A-5d3fda0-RESEARCH-CERTIFICATION-2026-09-03.md`
+  §6.2 (FP-1).
+- **R-CARRIER-BYTES — OPEN, PROMOTED to a flip precondition, and a v5 VALIDITY rule (pre-freeze).**
+  See the *Decisions owed* block for the measured numbers. A bound needs its own certification plus
+  owner ratification; do not add one inline. Sources:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/LASTCOMMIT-CARRIER-round-A-5d3fda0-RESEARCH-CERTIFICATION-2026-09-03.md`
+  §10.1,
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/LASTCOMMIT-CARRIER-26977a4-DELTA-CERTIFICATION-2026-09-03.md`
+  §2.4,
+  `/Users/andrewedmond/Claude/claude/silt-reviews/red-team/RED-TEAM-lastcommit-carrier-26977a4-RE-BREAK-2026-09-03.md`
+  RT2-CARRIER-15 / 17.
+- **R-CARRIER-PRUNED-HASH — OPEN, owed BEFORE the stamp raise (not a flip gate).** `Hash()`
+  short-circuits to `b.Pruned`, and `Prune()` keeps `LastCommit` and `StateRoot`, so on a pruned
+  block neither is signature-covered: `Pruned` is a linkage token, not a content commitment.
+  Pre-existing to the carrier, which is in fact its best-protected member. **Owed:** prove the
+  seen-fold never depends on a pruned body, and prove end-to-end that the first non-pruned
+  descendant's root recompute catches a rewritten ancestor. Do **not** make `Hash()` cover pruned
+  bodies — that defeats pruning (build-immutable #8). Source: the carrier delta cert
+  (`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/LASTCOMMIT-CARRIER-26977a4-DELTA-CERTIFICATION-2026-09-03.md`)
+  §5.
+- **R-CARRIER-GENESIS-DISPOSAL — OPEN, MERGE-BLOCKING on the carrier branch (MG-C).** The rule
+  splits: genesis `Atts` must be **STRIPPED**, genesis `LastCommit` must be **REFUSED**. This
+  corrects the round-A certification's own §2. Source: the delta cert §6.
+- **R-CARRIER-CREDIT-DENIAL — OPEN, live; owner + Researcher.** The carrier separates the seating
+  slot from the quorum slot, and it has **no minimum**: an under-carrying block still COMMITS, so
+  the denial lands on the canonical chain with no rule, no minimum and no attribution — available
+  actively (omit) and passively (be fast), both indistinguishable from honest behaviour. A carrier
+  minimum is a v5 validity-rule change: research-gated, owner-ratified; do not add one inline.
+  Source: the delta cert §8.1 (RT-CARRIER-4).
+- **R-CARRIER-DOUBLESIGN-SLOT — OPEN, RESEARCH-GATED (slashing-rule change).** The carrier is a
+  new, hash-covered, permanently committed slot for consensus signatures that **neither half of the
+  equivocation machinery reads** — with the same signatures in `LastCommit` rather than `b.Atts`,
+  `FindEquivocations` convicts nobody and the equivocator is seated on both forks. Widening
+  slashing evidence to a new signature slot is an I1/F2 rule change: Researcher certifies, owner
+  ratifies. Source: the delta cert §8.1 (RT-CARRIER-7).
+- **R-CARRIER-ROLLOUT-SIGNAL — OPEN, live at activation; = the O2 enforcement gap (OWNER call).**
+  Nothing on the wire distinguishes a pre-carrier from a post-carrier binary: both mint v5 and both
+  stamp readiness 3, and unknown cbor key 18 is silently dropped, so a partially upgraded fleet does
+  not fork — it degrades silently and asymmetrically back to the frozen-seating state the carrier
+  exists to fix. The tally path is protected (only carrier binaries stamp 5); the **genesis pre-latch
+  override path is not**. Source: the delta cert §8.1 (RT-CARRIER-3).
+- **R-CARRIER-MODELCHECK — GATED, owed BEFORE the stamp raise.** The model-check tier must state and
+  drive the seating **AGREEMENT** property under the carrier (every replica seats the same set from
+  the same hash-covered carrier), not merely the carrier's own validity. Source: the delta cert §7.
+
+*Fork-choice, canon and inventory (O3 / #558 family):*
+- **R-FORKCHOICE-WEIGHT (O3) — consensus recommendation T, OWNER DECISION PENDING.** See the
+  *Decisions owed* block for the recommendation and its two sources. Direction T means: remove the
+  weight comparison from `heavier`, delete `Weight()` / `blockWeight()` / `anchorWeight()` /
+  `Config.AnchorWeight` (no operator-visible contract — no CLI flag exists), **preserve and promote
+  the §1b height preference**, and re-ground the three legacy `Reconcile` fixtures on height →
+  hash. Do not leave the term inert: a dead consensus quantity that survives a retirement is exactly
+  how the third bare-hash verify site happened. **The next four Rocks ship in the SAME commit as
+  whichever direction the owner picks.** The reopening condition is narrow and named: evidence of a
+  shipping posture in which `FinalizedHeight()` lags `Head()`.
+- **R-558-VERIFIER-INVENTORY — OPEN (Tester).** A standing grep-shaped gate that **no attestation is
+  verified outside `verifyAtt`**. `#558`'s repair swept two of three bare-hash verify sites;
+  `blockWeight` is the third and was missed. Under Direction T the gate is satisfiable by
+  construction because the third site is deleted, so it ships **with the T commit**. Source:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/O3-fork-choice-weight-R-vs-T-RESEARCH-RECOMMENDATION-2026-09-03.md`
+  O3-R7.
+- **R-INTERLOCK-GATE — OPEN.** The binding interlock ("the `blockWeight` signature verify is never
+  repaired alone") has **zero test enforcement**: the PE applied exactly the forbidden one-line
+  change and `./core/... ./sim/...` was fully GREEN, EXIT=0. A gate is owed in the same commit as
+  whichever O3 direction lands. Source:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-O3-fork-choice-weight-R-vs-T-2026-09-03.md`
+  §5.
+- **R-FORKCHOICE-RAMP-GUARD — OPEN (Tester), small.** Delete the `Weight() > 0` assertion at
+  `core/chain/forkchoice_ramp357_test.go:66-69`; do **not** repair it. It asserts a property
+  production does not have and is green only because the fixture hand-builds `Version: 1` blocks
+  with era-1 attestations inside an objective config — a guard that passes only under an attestation
+  era no node mints is not a guard. Invariant D in the same file is the part that guards #357 and it
+  stands. Source: the O3 research recommendation §3.5 item 3 / O3-R3.
+- **R-I5-TEXT-AND-CLAIMS-LEDGER — OPEN, RESEARCH-GATED.** Two canon/ledger edits ride the O3
+  decision: the I5 restatement in `docs/design/consensus-invariants.md` (editing an invariant's
+  stated rule is inside the research gate — the PE explicitly does not assert that certification),
+  and `docs/design/claims-ledger.md:47` ("objective fork-choice heals a partition to the
+  heavier-standing chain"), which has been **false since 2026-08-16** and is backed by an era-1 unit
+  test no production path can produce. Re-word it to name the real mechanism: quorum finality plus
+  height. Sources: the O3 PE ruling §6 and the O3 research recommendation §3, O3-R2.
+- **R-O4-CANON-HASH-COVERAGE — RATIFIED in substance, NUMBERING PENDING.** Amend canon with the
+  hash-coverage rule covering **both** the transition and the fork-choice weight, with both scars and
+  both code sites; plus the #632 *frozen-and-retired-unrun* note. Whether it widens **I5** or mints
+  **I6** is the owner's; both seats agree the split is non-substantive. Source:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R-BOX-ATTESTS-scoping-CONVERGED-RESEARCH-VERDICT-2026-09-02.md`
+  §10 (O4).
+
+*Gate quality, coverage debt and small items:*
+- **R-AST-PIN-GLOB — OPEN, small.** The R-FOLD-LIVE-STATE-READS AST pin's glob does **not** cover
+  the file where three of five box defeats live: `floorbox_recompute_v5.go` and four others are
+  outside it. Direct evidence that AST gates fail by scope. Widen the glob and re-run. Source: the
+  PE structure ruling §8 item 2.
+- **R-INVENTORY-HAND-LIST — OPEN (Tester).** A gate that claims to cover "every X" but enumerates X
+  as a hand-written literal is green because the list is shorter than X, and worse than no gate
+  because the claim is now published in a test name. Demonstrated on the eleven-door legacy fence
+  (which misses `RecomputeMatureNowStreaming`) and mirrored by R-FENCE-TABLE-DRIFT. Derive the
+  surface from the code, not from a list. Source:
+  `/Users/andrewedmond/Claude/claude/silt/.claude/agent-memory/tester/scar-inventory-gate-is-a-hand-list.md`.
+- **R-S5-STRING-REGISTRY — OPEN (Builder + Tester); scar at count 2, THIRD-TIME RULE ONE AWAY.**
+  An announced operator string is a contract (S5), and an upstream early-return breaks it while every
+  unit test stays green (instance 1: `freeload: ON`; instance 2: the R0.4b `NOT banked` refusal). The
+  proposed gate is a registry of contracted operator strings (27 seed entries verified present) plus
+  a unit-tier presence test with a teeth test, keeping the e2e assertion for every registered marker
+  — the registry proves the string is still in the SOURCE, never that it is still REACHABLE. Full
+  buildable spec:
+  `/Users/andrewedmond/Claude/claude/silt/.claude/agent-memory/tester/scar-observable-log-contract.md`.
+- **R-SWARM-NOTBANKED-DEAD — OPEN, LOW.** After the lane-off legibility fix and PE H-2, the
+  `NOT banked` branch in `cmd/silt/swarm.go` may be genuinely unreachable on the shipped daemon. It
+  needs either a reachability argument or removal — a dead branch must not carry an S5 contract.
+  Source: `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-G8-dark-lane-CONVERGENCE-2026-09-03.md`
+  §5.
+- **R-E2E-ERA4-FIXTURE — OPEN, a prerequisite of the STAMP-RAISING release (not of any PR).** The
+  e2e delivery-receipt fixture runs `-objective=false`, so `epochsEnabled()` is false, `rotateEpoch`
+  never runs, and the era-4 readiness tally **can never latch on it at any stamp value, on any
+  binary, forever**. The fixture must become objective + bonded + epoch-enabled before it can ever
+  green by tally — **never by an activation override, in any form, in any binary**. Carries the
+  coverage debt from G-8 option (iii): the e2e paid-lane positive arm is uncovered until then, and
+  the two genuinely-uncovered arms (the three-call happy-path composition; the second genuine
+  delivery on one lane) are owed as a node/sim-tier composition gate now. Source: the G-8
+  convergence §3, §4, §7.
+- **R-ISSUERKEY-POP — OPEN, crypto residual (latent).** `validateIssuerKeys` requires a verifying
+  ed25519 self-signature, an in-range epoch and a bond, but **no proof-of-possession of the RSA
+  key** — a bonded issuer can register another issuer's public-key fingerprint, a DSKS surface. Not
+  a live break today (one configured issuer, per-node ledgers), and the faithful RFC 9578 import
+  forecloses it by construction: sign `issuerID(32) ‖ epoch(8, BE) ‖ serial` (or the key
+  fingerprint) instead of the bare epoch. Until then, correct the two code comments claiming RFC 9578
+  fidelity. Source:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/crypto-specialist/ADVISORY-R0.4b-C3-blind-RSA-epoch-binding-2026-09-03.md`
+  C-4 / Q3.
+- **FP-1 · `Bank.spent` persistence — OPEN, a flip precondition.** The in-memory spent guard has
+  less durability than the thing it guards; narrowed, not waived, and re-armed the moment witnessed
+  demand confers any value. Source: the composed cert Residuals; the FP-1/FP-2 text is CERTIFIED
+  faithful in `R0.4b-C3-271ab81-G3-G4-GD-DELTA-CERTIFICATION-2026-09-03.md` §4.
+  *(The mirror crash window — the guard append lands, the payment is lost — is RULED SAFE and owes no
+  gate: it is a pure under-pay that self-heals when the window advances, delta cert §3.)*
+
 - **SMT app-layer keyspace-injectivity oracle** — a **freeze-blocker (A2)**. It is currently a
   decoration; it needs a defect-injected gate (inject a keyspace collision, watch it go RED)
   before it counts as coverage.
@@ -263,6 +569,49 @@ economy-off HEAD certifies a network nobody runs. Design:
 - **R2.8 · Cold-repair funding path (who re-endows the long tail)** · Builder/economist. After
   R2.2 quantifies the heat/tier/repair correlation silt cannot measure today.
 
+**New Rocks opened 2026-09-03 (Boulder 2 — economy):**
+- **R2.9 · D-POD-KNOBS re-pricing is now LOAD-BEARING (was a deferred knob)** · Researcher
+  (NEW-CERT, **cert-gated**) + economist. `R-FLAT-FEE` — a **flat** conserved fee (50,000) against a
+  **byte-proportional** unfunded self-mint (`bytes − bytes/8`) — is the ROOT CAUSE of G-4: past a
+  break-even of 50,000 accumulated lane bytes, **refusing** a witnessed receipt paid the server more
+  than accepting it, and the operator could trigger the refusal itself. G-4 is CLOSED at `271ab81`
+  by ordering every refusal below the supersede, so the lever is gone — but that fix makes the
+  standing consequence permanent: **every refusal now costs an honest server the entire accumulated
+  lane self-mint for that object**, and every new refusal path must go below the supersede by
+  default. `B` is the **accumulated lane** (the whole object), not one chunk, and the shipped default
+  chunk is 64 KiB — so the lever was live at the default, not only at the frame ceiling. Re-pricing
+  is a D-POD-KNOBS certification of its own. Sources:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-composed-close-bc062d0-RESEARCH-CERTIFICATION-2026-09-03.md`
+  §4, `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-271ab81-G3-G4-GD-DELTA-CERTIFICATION-2026-09-03.md`
+  (Residuals), `/Users/andrewedmond/Claude/claude/silt-reviews/economist/ADVISORY-R0.4b-cap-griefing-grant-and-bonded-fetchers-2026-09-03.md`.
+- **R2.10 · F8 / FP-2 — the ledger must own a CHAIN-ANCHORED epoch; a clamp is not a close** ·
+  Builder + Researcher. Gates any shared-ledger, third-operator-settlement or **persisted**-ledger
+  deployment, and it **blocks the faucet rate limiter** (the limiter must not key on the ledger
+  watermark). Unreachable on the shipped topology today (one production caller, passing the node's
+  own `chainEpoch()`). Sources:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-composed-close-bc062d0-RESEARCH-CERTIFICATION-2026-09-03.md`
+  §5;
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-271ab81-G3-G4-GD-DELTA-CERTIFICATION-2026-09-03.md`
+  §4.
+- **R2.11 · R0.4b-11 — no peer-submit path for an issuer-key registration.** An attest-only
+  validator's key is never committed. Fail-closed, liveness only. Source:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-composed-close-bc062d0-RESEARCH-CERTIFICATION-2026-09-03.md`
+  (Residuals → Open).
+- **R2.12 · Grant + faucet rate limit; `RequireBondedFetchers` default — OWNER CALLS, pending.**
+  See the *Decisions owed* block. The limiter must gate the **grant**, not `Ledger.Register` (which
+  is reached implicitly from `acct()`, including for the node's own id and for `PayBounty`).
+  Sources:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/economist/ADVISORY-R0.4b-cap-griefing-grant-and-bonded-fetchers-2026-09-03.md`;
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-composed-close-bc062d0-RESEARCH-CERTIFICATION-2026-09-03.md`
+  §6 (the "grant is the only non-self balance" claim is CORRECTED there: `PayBounty` credits a
+  remote payee, but it is earned work, not a faucet).
+- **M_seen — the pony-class value is still OWED (carried).** The class-M streaming verifier (PR
+  #709) removed RSS as the binding ceiling; the remaining ceiling is **TIME**, the O(N·log N)
+  compute floor streaming does not remove. The cap value must be derived from a pony-class
+  measurement, and the transport budget must be stated with it. Source: `CHANGELOG.md` (Unreleased,
+  the class-M streaming verifier entry) and
+  `/Users/andrewedmond/Claude/claude/silt/.claude/agent-memory/tester/class-m-maturity-fold-cost-measurement-2026-09-02.md`.
+
 #### Boulder 3 — Freeze prerequisites (era-4/v5) · parallel · freeze-gated · was Rock 3
 - **R3.1 · Close/own the SMT second-preimage / domain-separation residual** · Builder (scope to
   hashing first) + crypto/Researcher confirm. Load-bearing: a leaf/internal second-preimage
@@ -273,11 +622,23 @@ economy-off HEAD certifies a network nobody runs. Design:
 - **R3.3 · Record PayWord/RegCap re-derivation dependencies** · doc-only; re-derive only if
   the bond-proof size / N² cost residual moves (measured numbers in the **Residual backlog**
   below, "Bond-proof reply size / N² cost"; formerly #299).
-- **R3.4 · era-4/v5 format freeze — DECISION RATIFIED: deferred to the RELEASE CANDIDATE (not
-  end-of-PoD), and DECOUPLED from the flip.** `WitnessValidateV5` changes no committed format
-  field, so the flip (R1.8) proceeds pre-freeze; the freeze then re-confirms byte-identity of
-  the recompute at RC. Owner-call, after the field set settles (R1.4) + domain-sep owned
-  (R3.1). The prior "freeze at end-of-PoD" framing is superseded.
+- **R3.4 · era-4/v5 format freeze — DECISION RATIFIED, REVISED 2026-09-03: still at the RELEASE
+  CANDIDATE (not end-of-PoD), and it is now the **stamp-raising** release that the flip and the
+  external B8 pass come AFTER, not before.** The earlier "DECOUPLED from the flip; the flip proceeds
+  pre-freeze" clause is **superseded**: R1.8 lands after the freeze and after B8 on the frozen
+  artifact (see the sequencing constraint at the top of the Boulders). Owner-call, after the field
+  set settles (R1.4) + domain-sep owned (R3.1). The prior "freeze at end-of-PoD" framing remains
+  superseded.
+  **Pre-freeze carry-list (each is unfixable in-era once the format freezes):** `tagLastProposer`
+  (R-CARRIER-PARENTPROPOSER) · the `R-CARRIER-BYTES` byte ceiling · the `Block.IssuerKeys` per-block
+  count cap (PE H-1) · **R-STATEVIEW-ENUMERATION** (it decides which committed leaves the box needs;
+  the PE's one-pass sketch found exactly one, and its job is to find a second) · the O3 fork-choice
+  decision · R-membership. **Owed before the stamp raise, but not before the freeze:**
+  R-CARRIER-PRUNED-HASH's end-to-end test, R-CARRIER-MODELCHECK, the `R-E2E-ERA4-FIXTURE` upgrade.
+  Sources: `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-floorbox-predicate-rederivation-structure-2026-09-03.md`
+  §7, `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R-BOX-ATTESTS-scoping-CONVERGED-RESEARCH-VERDICT-2026-09-02.md`
+  §9–§10, `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-R0.4b-C3-close-271ab81-final-2026-09-03.md`
+  §3.
 
 #### Boulder 4 — Standing gates + M0 endgame (post-PoD hardening) · was Rock 6
 - **R4.1 · PoD demand→standing bright-line gate (fires per PoD increment)** · Researcher cert
@@ -292,7 +653,10 @@ economy-off HEAD certifies a network nobody runs. Design:
   layer; long-range/weak-subjectivity checkpoint; relay/PayWord economy; churn/restart
   everMature under the R1.2 refactor.
 - **R4.4 · External red-team vs the C1 + C2 composition and the seven §7 seams (#183) — THE M0
-  close gate.** This is the RC-defining gate. A fresh, no-memory EXTERNAL red team (self-graded
+  close gate.** This is the RC-defining gate, and **it is the same pass as R1.7** — one external B8
+  engagement, not two. **RATIFIED 2026-09-03: it runs at the RELEASE CANDIDATE, AFTER the era-4/v5
+  format freeze (R3.4), against the frozen, still never-Accept artifact; R1.8 (the accept-flip) lands
+  after it.** A fresh, no-memory EXTERNAL red team (self-graded
   does not count — B8 requires the certifying adversary to be external) attacks the BUILT system
   and must find no strategy that (a) earns quorum-controlling standing for less than `q · C_honest`
   (**C1**), (b) concentrates bonded weight past capture under adversarially-skewed measurement
@@ -565,6 +929,17 @@ live in [`docs/thinking/2026-09-01-residual-defect-repro-recipes.md`](docs/think
   boundary degrades with only a one-line stderr notice (ties to #237). Partly overlaps #237.
 
 **Test / harness debt:**
+- **Cited-test lint + the OWED ledger it opened — PR #708 (lint) and PR #707 (first two payments).**
+  `scripts/check_cited_tests.py` fails the build when a `TestXxx` cited in a Go comment, `CHANGELOG.md`,
+  `ROADMAP.md` or `docs/**` resolves to no `func TestX(` in the repo — the
+  `scar:cited-test-does-not-exist-2026-09-02` class, where a phantom laundered from a production
+  comment into a research certification. In-repo citations are STRICT; external review trees are
+  ADVISORY (they may legitimately cite a test on an unmerged branch), and `.claude/` is excluded —
+  load-bearing, because those worktrees are copies of OTHER branches and scanning them would let a
+  phantom resolve. PR #707 wrote the first two cited-but-missing consensus guards (the v5 root
+  coverage guard and the era-4 write-path guard) and closed the same worktree-walk unsoundness in
+  `scripts/check_claims.py` (measured: 121 test names resolvable only in `.claude/worktrees/`).
+  **Open:** the rest of the OWED ledger.
 - **Test-honesty audit — #303.** 27 adversarially-verified test-honesty issues + 9 product
   findings from a per-harness audit (65 agents) of all 18 integration harnesses against the 5
   field-test immutables — each a way a harness could go GREEN on a broken product (e.g. the
