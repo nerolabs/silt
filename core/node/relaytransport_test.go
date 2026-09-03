@@ -7,9 +7,9 @@ package node
 //
 // The four properties pinned here:
 //
-//  3. FULL SESSION + CONSERVED SETTLEMENT: open → pay N → settle redeems exactly
-//     N × increment (≤ budget) via the verifier's monotonic count; conservation
-//     holds (the fetcher's balance falls by exactly what the relay's rises).
+//  3. FULL SESSION SETTLEMENT: open → pay N → settle redeems exactly
+//     N × increment (≤ budget) via the verifier's monotonic count, RE-SPECIFIED
+//     below to the R0.7 interim (pays 0 until R2.14).
 //
 //  4. M0 ON THE LIVE PATH: the settlement log line carries NO durable or
 //     cross-session-stable field (design §6 residual). Asserted against a
@@ -17,6 +17,13 @@ package node
 //
 //  5. LIVE-PATH GUARD REUSE: the Batch-1 M0 guards and the #644 S-clamp FIRE when
 //     driven through MsgRelayOpen — the wire path does not bypass them.
+//
+// R0.7 INTERIM (2026-09-03): TestRelayFullSessionConservedSettlement is
+// RE-SPECIFIED to "pays 0 until R2.14" per
+// RELAY-LANE-per-node-ledger-mint-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md
+// §9 step 1 — a PRESCRIBED goalpost move, recorded here, not silent. See also
+// core/node/r07_relay_interim_test.go (G-RI-1b, G-RI-2) and
+// docs/thinking/2026-09-03-r0.7-relay-interim-design.md.
 
 import (
 	"bytes"
@@ -51,7 +58,11 @@ func (c *capturingLogger) Log(_ ports.LogLevel, event string, kv ...any) {
 
 // relayPairForTest wires a fetcher node and a relay node over one sim transport,
 // with the relay accepting PayWord chains and holding a ledger for settlement. It
-// funds the fetcher's paid-in blind credit so settlement has a source to draw from.
+// funds the fetcher's paid-in blind credit so settlement has a source to draw from
+// (pre-interim shape; under the R0.7 interim the redeem no longer draws on it, but
+// the pre-funding is left in place so this fixture keeps modelling "an honest
+// fetcher who really did pay somewhere" for tests that only care about the M0
+// guards / wire plumbing, not the settlement amount).
 func relayPairForTest(t *testing.T, relayLog ports.Logger, fetcherBudget int64) (fetcher, relay *Node, ledger *credit.Ledger, sched *simclock.Scheduler) {
 	t.Helper()
 	sched = simclock.New()
@@ -81,8 +92,14 @@ func relayPairForTest(t *testing.T, relayLog ports.Logger, fetcherBudget int64) 
 	return fetcher, relay, ledger, sched
 }
 
-// TestRelayFullSessionConservedSettlement is failing-first test (3): a full live
-// session over the wire settles for exactly count × increment, conserved.
+// TestRelayFullSessionConservedSettlement is RE-SPECIFIED to the R0.7 interim
+// (cert §9 step 1): a full live session over the wire settles for 0, and moves
+// no balance on either side. Before R0.7 this pinned "settles for exactly
+// count × increment, conserved" — that shape is refuted
+// (RELAY-LANE-per-node-ledger-mint-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md
+// §2: settlement runs on the relay's own ledger and debits an account —
+// `sess.ephID` — that ledger has never seen; no anchor exists to justify any
+// nonzero payout). RED now: main still pays count × increment.
 func TestRelayFullSessionConservedSettlement(t *testing.T) {
 	const S = 6
 	fetcher, relay, ledger, sched := relayPairForTest(t, nil, 1_000)
@@ -129,18 +146,17 @@ func TestRelayFullSessionConservedSettlement(t *testing.T) {
 
 	// Settle at close: redeem the highest held preimage ONCE.
 	paid := relay.SettleRelaySession(handle)
-	want := int64(S) * relaypay.RelayIncrementCredit
-	if paid != want {
-		t.Fatalf("settlement paid %d, want count × increment = %d", paid, want)
+	if paid != 0 {
+		t.Fatalf("settlement paid %d for an unanchored session (S=%d paid increments), want 0 (interim: no anchor type exists — R2.14)", paid, S)
 	}
-	// Conservation: relay up by exactly `paid`, fetcher down by exactly `paid`.
-	if got := ledger.Balance(relayID) - relayBalBefore; got != paid {
-		t.Fatalf("relay balance rose by %d, want the settled %d", got, paid)
+	// Nothing moves on either side: the interim performs no ledger mutation.
+	if got := ledger.Balance(relayID); got != relayBalBefore {
+		t.Fatalf("relay balance moved %d → %d on an unanchored settlement, want unchanged", relayBalBefore, got)
 	}
-	if got := fetcherBalBefore - ledger.Balance(fetcherID); got != paid {
-		t.Fatalf("fetcher balance fell by %d, want the settled %d", got, paid)
+	if got := ledger.Balance(fetcherID); got != fetcherBalBefore {
+		t.Fatalf("fetcher balance moved %d → %d on an unanchored settlement, want unchanged", fetcherBalBefore, got)
 	}
-	// A second settle is a no-op (single settlement at close — the session is gone).
+	// A second settle is still a no-op (single settlement at close — the session is gone).
 	if again := relay.SettleRelaySession(handle); again != 0 {
 		t.Fatalf("a second settle of the same handle paid %d, want 0 — single-settlement-at-close is violated", again)
 	}
@@ -150,8 +166,12 @@ func TestRelayFullSessionConservedSettlement(t *testing.T) {
 // residual (design §6): the settlement log line must carry NO durable or
 // cross-session-stable field. It asserts the "relay session settled" record's keys
 // and values contain neither the fetcher's ephemeral NodeID, the relay's NodeID,
-// nor the chain root — only per-session, non-correlatable values (the increment
-// count and the paid credit).
+// nor the chain root — only per-session, non-correlatable values.
+//
+// R0.7 interim (2026-09-03): the line also carries `reason=no-anchor` (G-RI-2,
+// core/node/r07_relay_interim_test.go), so the kv count below is 6, not 4. The
+// reason is a constant string, not a per-session value, so it adds no
+// correlatable field; the forbidden-value scan above still covers it.
 func TestRelaySettlementLogCarriesNoDurableField(t *testing.T) {
 	const S = 4
 	log := &capturingLogger{}
@@ -198,9 +218,10 @@ func TestRelaySettlementLogCarriesNoDurableField(t *testing.T) {
 			}
 		}
 	}
-	// Also assert the keys are exactly the two non-durable ones we intend.
-	if len(rec.kv) != 4 { // "increments", <n>, "credit", <n>
-		t.Fatalf("settlement log has %d kv items, want 4 (increments, credit) — audit the log line for extra fields", len(rec.kv))
+	// Also assert the keys are exactly the three we intend: the two per-session
+	// values and the constant S5 reason.
+	if len(rec.kv) != 6 { // "increments", <n>, "credit", <n>, "reason", "no-anchor"
+		t.Fatalf("settlement log has %d kv items, want 6 (increments, credit, reason) — audit the log line for extra fields", len(rec.kv))
 	}
 }
 

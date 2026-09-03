@@ -1,13 +1,15 @@
 package node
 
-// PoD relay lane — the relay-accept role (docs/design/pod.md §7.3, certified
-// 2026-08-30). A relay/gateway forwards content-blind bytes toward a fetcher and
+// PoD relay lane — the relay-accept role (docs/design/pod.md §7.3). R0.7 INTERIM
+// (2026-09-03): settlement PAYS 0 until the R2.14 prepayment anchor lands; the
+// 2026-08-30 certification did not cover the shipped code's conservation (the
+// RELAY-LANE fix certification of 2026-09-03 supersedes it). A relay/gateway forwards content-blind bytes toward a fetcher and
 // is paid as-it-goes by a sender-funded PayWord hash chain (core/relaypay). It
 // cannot sign a completed-delivery receipt because it never holds a verifiable
 // object, so there is no delivery-receipt lane here — the fetcher commits a
 // chain root once, reveals one preimage per forwarded increment, and the relay
-// redeems the highest preimage it holds at epoch net-settlement
-// (credit.RedeemRelayCredit, the balance-only conserved transfer).
+// redeems the highest preimage it holds at session close
+// (credit.RedeemRelayCredit — pays 0 until R2.14; balance-only when it pays).
 //
 // TWO M0 GUARDS (bright-line, non-negotiable — immutable Don't-#3):
 //
@@ -339,7 +341,6 @@ func (s *RelaySession) PayTo(preimage []byte, claimedCount int) error {
 }
 
 // Count returns the number of increments the relay is authorized to redeem for
-// this session (the settled amount is Count × RelayIncrementBytes' credit value,
-// drawn from the fetcher's paid-in blind credit at settlement via
-// credit.RedeemRelayCredit).
+// this session (the settled amount would be Count × RelayIncrementCredit via
+// credit.RedeemRelayCredit — which pays 0 until the R2.14 anchor lands).
 func (s *RelaySession) Count() int { return s.verifier.Count() }

@@ -61,9 +61,10 @@ const MaxChainLength = MaxSessionBytes / RelayIncrementBytes
 // RelayIncrementCredit is the credit value one forwarded increment settles for —
 // the settlement unit. One increment = one credit, so a session's settled value is
 // count × RelayIncrementCredit == count and the committed budget is S credits. The
-// fetcher's paid-in blind credit for the chain is S credits, so the conservation
-// chain is exactly count <= S <= paid-in (design §5). Keeping it 1 makes the
-// settlement arithmetic the identity and the conservation cap a plain count <= S.
+// intended conservation chain is count <= S <= paid-in (design §5); NOTE that no
+// paid-in credit is bound to the chain until the R2.14 prepayment anchor lands, so
+// settlement pays 0 today (R0.7 interim). Keeping it 1 makes the settlement
+// arithmetic the identity and the conservation cap a plain count <= S.
 const RelayIncrementCredit = 1
 
 // hashLen is the SHA-256 output length; every chain link is this wide.
@@ -134,15 +135,23 @@ type Verifier struct {
 	s     int    // the committed chain length; count never exceeds this
 
 	// walkSteps accumulates the SHA-256 walk steps AdvanceTo has executed on this
-	// verifier. It is instrumentation for the #644 clamp ablation: a test reads
-	// v.walkSteps after an oversized AdvanceTo and asserts the walk ran at most S
-	// steps (removing the clamp turns that assertion RED). It is a plain field, not
-	// an atomic: AdvanceTo already requires exclusive access to the verifier (it
+	// verifier. It is the ENFORCED per-session walk budget (RT-RELAY-3, 2026-09-03):
+	// AdvanceTo refuses, before walking, any claim that would push it past S, so a
+	// session never costs the relay more than S hashes in total (see AdvanceTo).
+	// It is also what the #644 clamp ablation reads. It is a plain field, not an
+	// atomic: AdvanceTo already requires exclusive access to the verifier (it
 	// mutates held/count), so the counter carries no synchronization beyond that.
 	// One increment per hash is negligible against the SHA-256 itself; the
-	// single-hash Advance path is not instrumented.
+	// single-hash Advance path is not instrumented (one hash per call, and count
+	// <= S bounds its calls).
 	walkSteps uint64
 }
+
+// ErrWalkBudgetExhausted is returned by AdvanceTo when a claim's hash walk would
+// push the session's cumulative walk past the committed chain length S
+// (RT-RELAY-3). The session stays open; the caller acks OK=false. A session that
+// reaches this has already been sent at least one preimage that did not verify.
+var ErrWalkBudgetExhausted = errors.New("relaypay: session walk budget exhausted (cumulative walk would exceed the committed chain length S)")
 
 // NewVerifier starts a relay-side session from the committed root x_0 with the
 // committed chain length S. The relay then advances one preimage per forwarded
@@ -210,6 +219,22 @@ func (v *Verifier) Advance(preimage []byte) error {
 // claimedCount spins the relay for that many hashes (the PE measured ~5M hashes /
 // ~0.28s on an M4 from one message). Removing the clamp turns
 // TestAdvanceToClampsToChainLength RED.
+//
+// THE CUMULATIVE WALK BUDGET (RT-RELAY-3): the #644 clamp bounds ONE call to S
+// hashes; nothing bounded the COUNT of such calls. A rejected preimage leaves
+// count unmoved, so a bogus claimedCount = S is replayable forever on one open
+// session, each replay walking S hashes (the red-team measured ~53 ms per
+// ~48-byte bogus pay). The bound is exact and reuses walkSteps: every honest
+// walk step advances count toward its final value and count <= S, so an honest
+// session's cumulative walk is at most S. A claim whose walk would push
+// walkSteps past S is refused with ErrWalkBudgetExhausted BEFORE walking. No
+// slack: a retransmit of an already-accepted preimage fails the "not ahead"
+// check above the walk and costs nothing, so only a preimage that does not
+// verify spends budget, and the fetcher who sends one stiffs itself (the lane
+// is sender-funded; the relay stops forwarding when pays stop). Cert:
+// RELAY-LANE-per-node-ledger-mint-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md
+// §8. Removing the budget check turns
+// TestRelayPayAdvanceToCumulativeWalkBudgetEnforced RED.
 func (v *Verifier) AdvanceTo(preimage []byte, claimedCount int) error {
 	if len(preimage) != hashLen {
 		return errors.New("relaypay: preimage wrong length")
@@ -225,6 +250,12 @@ func (v *Verifier) AdvanceTo(preimage []byte, claimedCount int) error {
 	// Walk H forward (claimedCount - count) times; the result must be the held
 	// value. x_{claimedCount} hashed (claimedCount - count) times == x_count.
 	steps := claimedCount - v.count
+	// RT-RELAY-3 cumulative budget: refuse before walking if this walk would push
+	// the session's total past S. Checked here, after the per-call clamp, so the
+	// clamp's error text is unchanged for the single oversized-claim case.
+	if v.walkSteps+uint64(steps) > uint64(v.s) {
+		return ErrWalkBudgetExhausted
+	}
 	cur := cloneBytes(preimage)
 	for i := 0; i < steps; i++ {
 		cur = hash(cur)

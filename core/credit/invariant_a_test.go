@@ -107,9 +107,9 @@ var standingClassification = map[string]standingClass{
 	"SetPaidSerialStore":         neutral, // attaches the durable guard store; moves nothing
 	"LoadPaidSerials":            neutral, // restores the guard from disk; moves nothing
 
-	// PoD relay lane (relay.go, certified 2026-08-30). Relay/gateway bandwidth
-	// compensation settles a sender-funded PayWord chain into the relay
-	// operator's BALANCE, drawn from the fetcher's already-paid blind credit — a
+	// PoD relay lane (relay.go; R0.7 interim: pays 0 until R2.14). Relay/gateway
+	// bandwidth compensation would settle a sender-funded PayWord chain into the
+	// relay operator's BALANCE once the prepayment anchor binds it — a
 	// conserved transfer, never a mint. Like the delivery lane it MUST never move
 	// standing: a PayWord chain is fundable with zero object bytes by certified
 	// design (it pays for forwarding, which is unprovable), so this press buying

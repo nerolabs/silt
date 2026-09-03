@@ -254,6 +254,21 @@ Consult `PoD-neutral-lane-B3-close-CONSULT-2026-08-26.md`; certification
 > 869-907, AMENDED 2026-08-27). Deliberation:
 > [`thinking/2026-08-30-pod-7.3-relay-compensation-design.md`](../thinking/2026-08-30-pod-7.3-relay-compensation-design.md).
 > The mechanism shape is certified; do not re-derive it.
+>
+> **R0.7 INTERIM (2026-09-03) — the shipped lane PAYS 0 until the R2.14 prepayment
+> anchor lands.** The 2026-08-30 certification covers the mechanism shape, NOT the
+> shipped code's conservation: its conservation verdict (2026-08-27 Q7) is conditional
+> on the chain being anchored to a verified prepayment (Q4(a)), and that anchor was
+> never built — `RelayOpen.Funding` is a bare fetcher-set integer, and settlement runs
+> on the RELAY's own ledger against a fetcher identity that ledger has never seen, so
+> the pre-interim `RedeemRelayCredit` minted `chainValue` from the faucet grant instead
+> of transferring it (RT-RELAY-1). Now `RedeemRelayCredit` returns 0 and mutates
+> nothing, the settlement log line carries `reason=no-anchor`, and `--accept-relay-payments`
+> says so in its help. The §7.3.3 conservation bullet below describes the design, not the
+> shipped code, until R2.14. Cert:
+> `silt-reviews/research/research-outcome/RELAY-LANE-per-node-ledger-mint-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md`
+> (§2 the break, §9 step 1 this interim); deliberation
+> [`thinking/2026-09-03-r0.7-relay-interim-design.md`](../thinking/2026-09-03-r0.7-relay-interim-design.md).
 
 ### 7.3.1 Why relay needs a different mechanism than the neutral lane
 
@@ -329,7 +344,8 @@ verify `H(x_k) = x_{k-1}`), SHA-256 only, no new dependency.
 
 ### 7.3.3 Conservation and the firewall (inherited, certified)
 
-- **Conservation:** the relay redeems ≤ the chain's value, drawn from the
+- **Conservation (DESIGN — not the shipped code until R2.14; see the §7.3
+  status block):** the relay redeems ≤ the chain's value, drawn from the
   fetcher's fee-paid blind credit. A colluding fetcher+relay under one operator
   rebuys its own fee at break-even (or a strict loss with a skim). No new mint
   surface (cert §2a).

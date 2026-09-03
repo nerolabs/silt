@@ -56,4 +56,6 @@ var ObservableContract = []ContractedString{
 	{" proposal correctly REJECTED by ", "cmd/silt/daemon.go", "e2e proposal_reject (forge-block / lowbond-propose)", "TestForgedBlockRejectedOverTCP"},
 	{"ui: http://", "cmd/silt/daemon.go", "e2e publishflood parses the UI URL", "TestConcurrentUIPublishesAllSucceed"},
 	{"delivery receipt paid NO credit", "core/node/demandrole.go", "the only signal an operator gets when a banked receipt settles nothing", "TestBankedButUnpaidReceiptLogsTheWarnLine"},
+	{"relay session settled", "core/node/relaytransport.go", "e2e TestPaidRelaySessionEndToEnd and the M0 log audit (TestRelaySettlementLogCarriesNoDurableField) find the settlement line by it", "TestPaidRelaySessionEndToEnd"},
+	{"no-anchor", "core/node/relaytransport.go", "R0.7 interim: the settlement line's reason field tells an operator WHY the relay lane paid 0 (until R2.14)", "TestSettleRelaySessionLogCarriesNoAnchorReason"},
 }

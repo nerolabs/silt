@@ -219,11 +219,15 @@ type CreditLedger interface {
 	// the head: together they let the guard set evict BY EXPIRY, so a forgotten
 	// serial is always one no in-window issuer key can still validate (R0.4b).
 	RedeemDeliveryCredit(server, fetcher NodeID, root Hash, serial []byte, issuedEpoch, currentEpoch uint64) int64
-	// RedeemRelayCredit settles a PayWord relay chain at session close (PoD §7.3):
-	// it transfers chainValue from the fetcher's already-paid blind credit into the
-	// relay operator's balance, capped at budget (the committed chain budget, itself
-	// bounded by the fetcher's paid-in credit). Returns the credits paid. Conserved
-	// balance transfer, never a mint; never touches standing (the γ→1/N firewall).
+	// RedeemRelayCredit settles a PayWord relay chain at session close (PoD §7.3).
+	// R0.7 INTERIM (2026-09-03): it PAYS 0 and mutates nothing until the R2.14
+	// prepayment anchor lands — the shipped lane had no anchor binding the chain to
+	// a real payment, so "transfer from the fetcher's paid-in credit" was a mint
+	// against a phantom auto-granted account on the relay's own ledger. When R2.14
+	// lands: settles against a spent, relay-verified, fee-backed bearer credential,
+	// capped at budget; returns the credits paid. Never touches standing (the γ→1/N
+	// firewall) in either shape. Certification:
+	// silt-reviews/research/research-outcome/RELAY-LANE-per-node-ledger-mint-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md.
 	RedeemRelayCredit(relay, fetcher NodeID, chainValue, budget int64) int64
 	// RecordAudit settles a storage challenge: a passed audit earns the
 	// prover a reward, a failed one costs a slash.
