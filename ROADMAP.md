@@ -832,10 +832,18 @@ economy-off HEAD certifies a network nobody runs. Design:
   `ReasonGuardStore` path pays 0). Gates: `TestG_CO1_PostRenameOpenFailureOrphansTheAppendHandle`,
   `TestG_CO2_BenignCompactionFailureDoesNotRefusePayouts`,
   `TestG_CO3_BrokenStoreMustBeObservableByTheLedger`,
-  `TestR213_BackstopBrokenStoreFailsEveryAppendAndCompact`,
+  `TestR213_BackstopFiresWhenTheHandleDoesNotReachThePath (+ TestR213_RetiredHandleCloseFailureDoesNotBreakTheStore)`,
   `TestR213_PreRenameOpenFailureLeavesTheStoreHealthy`,
   `TestR213_BenignCompactionFailureIsRecordedNotDiscarded`. Deliberation:
   `docs/thinking/2026-09-03-r2.13-compact-orphan-design.md`. Source: the ledger-durability ruling.
+  **PE ruling on the build (`RULING-R2.13-compact-orphan-11396f1-2026-09-03.md`): MERGE-WITH-CONDITIONS —
+  the backstop is re-keyed to the reachability signal (`os.SameFile` of the handle and `d.path`; a retired
+  handle's `Close` failure no longer breaks a healthy store). OWED-AFTER (carried here): the BENIGN
+  compaction-failure class has no daemon WARN line — `CompactFailures` / `LastCompactError` are counters
+  read by nothing outside tests; surface them on the banked/status path via the `GuardFullRefusals`
+  optional-interface shape (`core/node/demandrole.go`). Also routed to FP-2's crash-point sweep: the
+  discarded directory-fsync error (a power cut between the rename and the directory entry becoming
+  durable strands post-compaction appends on the new inode).**
 - **R2.14 · Relay-lane prepayment ANCHOR — NEW 2026-09-03: a PREREQUISITE of R2.9; the fix for R0.7; owner ratification owed.**
   Per-node conservation is always AUTHORIZATION-anchored (privacy guard (ii) makes "debit the payer"
   unimplementable on any topology; `RedeemDeliveryCredit` debits no one either, `delivery.go:512-516`).

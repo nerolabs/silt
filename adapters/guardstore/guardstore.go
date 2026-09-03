@@ -213,13 +213,15 @@ func (d *Disk) Append(p ports.PaidSerial) error {
 // ever over-refuses). After the rename nothing fallible remains between it and the
 // handle swap.
 //
-// THE BACKSTOP. Anything that still fails after the rename marks the store broken
-// (ErrStoreBroken, sticky until restart) rather than returning an error the caller
-// might treat as benign. Today the only call after the rename that can fail is closing
-// the retired handle; that is not, in itself, a broken store, and marking it broken is
-// the deliberate loud-over-silent choice: a Close error after a successful write+fsync
-// is not a state this code understands, and the cost of the loud reading is an
-// under-pay until restart, never an over-pay.
+// THE BACKSTOP (PE ruling RULING-R2.13-compact-orphan-11396f1 finding 1). It is keyed on
+// the ONE signal that means "the append handle no longer reaches the live path": after
+// the swap, the handle's inode must be the inode at d.path (os.SameFile). If it is not,
+// the store is marked broken (ErrStoreBroken, sticky until restart) and every later
+// Append fails loudly — never nil for a record Load cannot see. Closing the RETIRED
+// handle failing is NOT a broken store (that inode is already unlinked; its fate is
+// irrelevant to the live handle), so it is ignored: marking it broken would refuse
+// every payout on a healthy store until restart — the fail-closed-on-benign move the
+// ledger-durability ruling §1 refused at the sweep, relocated.
 func (d *Disk) Compact(live []ports.PaidSerial) error {
 	if d.broken != nil {
 		return d.broken
@@ -271,11 +273,26 @@ func (d *Disk) Compact(live []ports.PaidSerial) error {
 	}
 	old := d.f
 	d.f = next
-	if err := old.Close(); err != nil {
-		d.broken = fmt.Errorf("%w: closing the retired append handle after compaction: %v", ErrStoreBroken, err)
+	_ = old.Close() // the retired, already-unlinked inode: its close result says nothing about the live handle
+	if !d.handleReachesPath() {
+		d.broken = fmt.Errorf("%w: the append handle is not the file at %s after compaction", ErrStoreBroken, d.path)
 		return d.broken
 	}
 	return nil
+}
+
+// handleReachesPath reports whether d.f's inode is the inode at d.path — the reachability
+// signal the backstop keys on. A stat failure counts as unreachable (loud, never silent).
+func (d *Disk) handleReachesPath() bool {
+	fi, err := d.f.Stat()
+	if err != nil {
+		return false
+	}
+	pi, err := os.Stat(d.path)
+	if err != nil {
+		return false
+	}
+	return os.SameFile(fi, pi)
 }
 
 // Mem is the in-memory variant for tests and the deterministic sim (no disk in the

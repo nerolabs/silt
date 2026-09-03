@@ -3,9 +3,9 @@ package guardstore
 // R2.13 — R-COMPACT-ORPHAN. Gate G-CO-1 (PE ruling
 // RULING-ledger-durability-family-FP2-R2.13-R2.10-2026-09-03.md §6, Tester assignment).
 //
-// THE MECHANISM (ruling §1, "the one measurement I ran", P7). Compact renames the temp
-// file onto d.path, THEN re-opens the append handle on the new path (guardstore.go, the
-// tail of Compact). If that re-open fails, Compact returns the error — the caller is
+// THE MECHANISM (ruling §1, "the one measurement I ran", P7) — as it was BEFORE the fix.
+// Compact renamed the temp file onto d.path, THEN re-opened the append handle on the new
+// path. If that re-open failed, Compact returned the error — the caller was
 // told — but d.f still points at the file's PREVIOUS inode, which the rename has just
 // unlinked. Writes and fsyncs through that stale handle succeed (POSIX keeps an open
 // unlinked inode alive), so a later Append returns nil while its record never reaches
@@ -41,18 +41,20 @@ func TestG_CO1_PostRenameOpenFailureOrphansTheAppendHandle(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Force exactly the post-rename re-open to fail. By the time this hook runs the
-	// rename (the state-changing step) has already happened — this only breaks the
-	// handle swap, matching the ruling's measurement.
+	// Force the open of the new append handle to fail. On the PRE-fix tree that open
+	// ran AFTER the rename (the handle swap broke, the ruling's measurement); on the
+	// fixed tree it runs BEFORE the rename. The gate asserts the PORT PROPERTY either
+	// way: after a failed Compact, Append is non-nil OR its record is visible to a fresh
+	// Load — never nil-and-invisible.
 	orig := openAppend
 	openAppend = func(string, int, os.FileMode) (*os.File, error) {
-		return nil, errors.New("injected: post-rename re-open failed")
+		return nil, errors.New("injected: open of the new append handle failed")
 	}
 	defer func() { openAppend = orig }()
 
 	compactErr := d.Compact([]ports.PaidSerial{entry(1, 1)})
 	if compactErr == nil {
-		t.Fatalf("Compact must report the forced post-rename re-open failure")
+		t.Fatalf("Compact must report the forced append-handle open failure")
 	}
 
 	// Append through whatever handle Compact left behind. Today that is the STALE
