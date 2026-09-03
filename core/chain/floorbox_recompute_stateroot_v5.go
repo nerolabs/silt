@@ -171,10 +171,18 @@ type StateRootWitness struct {
 	// be witnessed. It is ANCHORED, not trusted: the box requires
 	// ed25519.Verify(ParentProposer, b.Prev[:], ParentProposerSig) — the same bare-hash
 	// proposer-signature arithmetic the chain uses — and b.Prev is hash-covered. Required
-	// whenever b.LastCommit is non-empty; a missing or non-verifying pair STALLS (never falls
-	// through to "no exclusion", which would seat the parent's proposer). See
-	// carrierParentProposerFromWitness (carrier.go) for the exact residual this leaves
-	// (R-CARRIER-PARENTPROPOSER: it bounds a forgery to dropping the forger's OWN seat).
+	// whenever b.LastCommit is non-empty; a missing or MALFORMED pair STALLS.
+	//
+	// THE ANCHOR IS PARTIAL, IN A NAMED DIRECTION. It proves "the named key signed b.Prev", not
+	// "this key IS the parent's proposer". Dropping the forger's OWN seat needs that key (bounded,
+	// downward-only); but naming a FRESHLY MINTED keypair also verifies, matches no carrier entry,
+	// so nothing is skipped and the parent's TRUE proposer self-seats — one extra id per block, in
+	// the WRONG-ACCEPT direction, with no key of that proposer's required. The earlier claim here
+	// that the stall means the box "never falls through to no-exclusion" is WITHDRAWN: a
+	// well-formed fresh-key witness reaches exactly that state. See carrierParentProposerFromWitness
+	// (carrier.go) for both directions in full, and R-CARRIER-PARENTPROPOSER in ROADMAP.md — a FLIP
+	// PRECONDITION (inert while the box never-Accepts), whose certified fix direction is a
+	// `tagLastProposer` committed scalar landed before the era-4 freeze.
 	ParentProposer    []byte
 	ParentProposerSig []byte
 	// Rotate carries the class-P epoch-boundary witness: the pre-qualified id-set (the freeze source),

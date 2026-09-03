@@ -91,10 +91,17 @@ var foldInputCoverageTable = map[string]map[string]r12Disposition{
 		// and the parent's proposer identity is NOT a committed leaf, so it cannot be Resolved against
 		// prevStateRoot like every other class-A screen input. It is anchored instead by the PARENT'S
 		// OWN PROPOSER SIGNATURE over the hash-covered b.Prev. Both fields decide a branch (the skip),
-		// so both are FIX with driven gates. The residual the anchor leaves — it proves "this key
-		// signed b.Prev", not "this key IS the parent's proposer", so a signer can drop its OWN seat —
-		// is R-CARRIER-PARENTPROPOSER, bounded to the downward-only discretion O1 already discloses.
-		// See carrierParentProposerFromWitness (carrier.go).
+		// so both are FIX with driven gates. The residual the anchor leaves is
+		// R-CARRIER-PARENTPROPOSER, and it runs in TWO directions: DROP (a signer skips its OWN
+		// seat — needs that key, bounded, downward-only, and what these two gates cover) and ADD
+		// (a freshly minted keypair verifies, matches no carrier entry, so nothing is skipped and
+		// the parent's TRUE proposer self-seats — needs no key of that proposer's, one extra id
+		// per block, WRONG-ACCEPT direction). The ADD direction is NOT covered by these gates and
+		// is not bounded by key ownership; the earlier "bounded to the downward-only discretion"
+		// framing is WITHDRAWN (research certification 2026-09-03 §6.2). It is inert while the box
+		// never-Accepts and is tracked as a FLIP PRECONDITION in ROADMAP.md. See
+		// carrierParentProposerFromWitness (carrier.go) for the full statement and the certified
+		// fix direction (a `tagLastProposer` committed scalar, before the era-4 freeze).
 		"ParentProposer":    {"FIX", "TestAdversarialRoot_ClassA_ForgedParentProposer"},
 		"ParentProposerSig": {"FIX", "TestAdversarialRoot_ClassA_MissingParentProposerSig"},
 		"Rotate":            {"already-anchored", "presence is own-cfg gated (epochsEnabled && h%EpochBlocks==0), never witness-decided (C-6); values classified under StateRootRotateWitness"},

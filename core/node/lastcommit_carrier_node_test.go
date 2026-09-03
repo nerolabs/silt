@@ -133,12 +133,46 @@ func TestG2_CarrierNodeTierReplyOrder(t *testing.T) {
 
 	// --- Arms (ii): a fifth qualified, never-seen node placed FIRST in the attester list
 	// (held-delivery FIFO ⇒ its reply lands in the winning prefix), then the SAME fixture with
-	// it LAST (its reply is discarded). Both orderings must commit, and the fifth node must be
-	// seated within 2 heights when its precommit is carried. ---
+	// it LAST (its reply is discarded). Both orderings must commit; the fifth node is seated
+	// within 2 heights ONLY in the FIRST arm. ---
+	//
+	// THE DISCRIMINATOR IS THE COUNT, NOT "seen != 0" (MG-1 of the research certification
+	// LASTCOMMIT-CARRIER-round-A-5d3fda0-RESEARCH-CERTIFICATION-2026-09-03, §9). Asserting only
+	// `seen != 0` is satisfied by the three pre-existing anchors, so it does not witness the new
+	// seat at all: a regression that dropped the fifth node from the carrier would still pass.
+	// Each arm therefore pins the EXACT carrier membership and the EXACT seated count.
+	//
+	// THE ARITHMETIC, and why the two arms differ (R-CARRIER-PREFIX-ONLY, cert §5). Quorum stops
+	// at the first satisfying reply and finishPC DISCARDS every later one (chainrole.go:1059-1061
+	// returns before `pcs = append`), so height 1's certificate is the FIRST-TO-QUORUM PREFIX,
+	// not "everything the proposer received":
+	//
+	//	FIRST arm: replies arrive fifth, id1, id2, id3 ⇒ prefix closes at
+	//	           {proposer, fifth, id1, id2} — 4 entries. Height 2's carrier minus the PARENT's
+	//	           proposer (= the proposer of height 1, ids[0]) seats 3, the fifth INCLUDED.
+	//	LAST arm:  replies arrive id1, id2, id3, fifth ⇒ prefix closes at {proposer, id1, id2} —
+	//	           3 entries; the fifth's reply is discarded. The carrier seats 2, and the fifth
+	//	           is STRUCTURALLY NOT SEATED at this height.
+	//
+	// 3 versus 2 is the discriminator. The LAST arm proves the mask control (it still COMMITS —
+	// the R-BOX-ATTESTS defect rejected it); it does NOT prove the fifth is seated, and no
+	// assertion here may claim it does. The fifth is seated only once it makes a first-to-quorum
+	// prefix at some height.
 	for _, arm := range []struct {
-		name  string
+		name string
+		// first places the fifth node first in the attester list (held-delivery FIFO).
 		first bool
-	}{{"ii/fifth-node-FIRST", true}, {"ii/fifth-node-LAST", false}} {
+		// wantCarrierIdx is the EXACT expected membership of height 2's carrier, as indices into
+		// ids (4 = the fifth node). Index 0 is height 1's proposer, which the transition excludes.
+		wantCarrierIdx []int
+		// wantSeen is the EXACT expected validatorsSeen after height 2.
+		wantSeen int
+		// wantFifthSeated says whether the fifth node's precommit made the winning prefix.
+		wantFifthSeated bool
+	}{
+		{"ii/fifth-node-FIRST", true, []int{0, 4, 1, 2}, 3, true},
+		{"ii/fifth-node-LAST", false, []int{0, 1, 2}, 2, false},
+	} {
 		t.Run(arm.name, func(t *testing.T) {
 			nodes, ids, net, g := era4CarrierNet(t, 4, 1)
 			fifth := ids[4].NodeID()
@@ -148,7 +182,6 @@ func TestG2_CarrierNodeTierReplyOrder(t *testing.T) {
 			if got := nodes[0].chain.Regime().Bonded; got != 5 {
 				t.Fatalf("fixture VACUOUS (mask 2): want 5 committed bonds, got %d", got)
 			}
-			_ = fifth
 			var attesters []ports.NodeID
 			if arm.first {
 				attesters = []ports.NodeID{fifth, ids[1].NodeID(), ids[2].NodeID(), ids[3].NodeID()}
@@ -180,15 +213,56 @@ func TestG2_CarrierNodeTierReplyOrder(t *testing.T) {
 			if commitErr != nil {
 				t.Fatalf("G2(ii) RED (%s): height 2 (the carrier block) rejected: %v", arm.name, commitErr)
 			}
-			if len(b2.LastCommit) == 0 {
-				t.Fatal("height 2 must carry height 1's precommits")
+
+			// ---- MG-1: the exact carrier membership. ----
+			carried := map[ports.NodeID]bool{}
+			for i := range b2.LastCommit {
+				carried[b2.LastCommit[i].AttesterID()] = true
+			}
+			if len(carried) != len(b2.LastCommit) {
+				t.Fatalf("G2(ii) (%s): carrier has duplicate attester ids: %d entries, %d distinct",
+					arm.name, len(b2.LastCommit), len(carried))
+			}
+			want := map[ports.NodeID]bool{}
+			for _, i := range arm.wantCarrierIdx {
+				want[ids[i].NodeID()] = true
+			}
+			if len(carried) != len(want) {
+				t.Fatalf("G2(ii) (%s): want a %d-entry carrier (the first-to-quorum prefix), got %d",
+					arm.name, len(want), len(carried))
+			}
+			for id := range want {
+				if !carried[id] {
+					t.Fatalf("G2(ii) (%s): carrier is missing an expected signer %s", arm.name, id)
+				}
+			}
+			if carried[fifth] != arm.wantFifthSeated {
+				t.Fatalf("G2(ii) (%s): fifth node in the carrier = %v, want %v", arm.name, carried[fifth], arm.wantFifthSeated)
+			}
+
+			// ---- MG-1: the exact seated COUNT, plus the membership it implies. ----
+			// Every id is qualified (mask 2, asserted above) and the ONLY exclusion applyCarrier
+			// makes is the PARENT's proposer, so the seated set is exactly `carried` minus ids[0].
+			// Deriving it here and requiring it to equal the arm's hard-coded wantSeen means a
+			// drift in EITHER the carrier or the transition goes RED — neither can absorb the other.
+			parentProposer := ids[0].NodeID()
+			derived := 0
+			for id := range carried {
+				if id != parentProposer {
+					derived++
+				}
+			}
+			if derived != arm.wantSeen {
+				t.Fatalf("G2(ii) (%s): the carrier minus the parent proposer is %d ids, want %d — the fixture drifted",
+					arm.name, derived, arm.wantSeen)
 			}
 			seen := nodes[0].chain.Regime().ValidatorsSeen
-			if seen == 0 {
-				t.Fatalf("G2(ii) (%s): no attester was seated within 2 heights (the freeze is not lifted)", arm.name)
+			if seen != arm.wantSeen {
+				t.Fatalf("G2(ii) (%s): validatorsSeen = %d after height 2, want EXACTLY %d "+
+					"(carrier %v minus the parent's proposer)", arm.name, seen, arm.wantSeen, arm.wantCarrierIdx)
 			}
-			t.Logf("%s: committed heights 1-2, carrier=%d entries, validatorsSeen=%d",
-				arm.name, len(b2.LastCommit), seen)
+			t.Logf("%s: committed heights 1-2, carrier=%d entries, fifth carried=%v, validatorsSeen=%d",
+				arm.name, len(b2.LastCommit), carried[fifth], seen)
 		})
 	}
 }

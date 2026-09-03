@@ -942,11 +942,19 @@ func (n *Node) proposeBlock(b *chain.Block, attesters, broadcast []ports.NodeID,
 		// gathers, so the root it signs is the root the block commits, and a certificate that
 		// would seat a new attester no longer makes its own block invalid.
 		//
-		// HONEST-MAXIMAL, and the discretion is UNENFORCEABLE: "carry everything you hold" cannot
-		// be a validity rule, because no replica can know what this proposer held. The discretion
-		// is DOWNWARD-ONLY — signatures are genuine and unforgeable, so a proposer can DELAY a
-		// seating by omitting a signer but can never FORGE one, and an under-carrying proposer
-		// harms only its own fork. See Chain.HeadCarrier.
+		// THE DISCRETION IS UNENFORCEABLE: "carry everything you hold" cannot be a validity rule,
+		// because no replica can know what this proposer held. It is DOWNWARD-ONLY — signatures are
+		// genuine and unforgeable, so a proposer can DELAY a seating by omitting a signer but can
+		// never FORGE one, and an under-carrying proposer harms only its own fork.
+		//
+		// WHAT THIS ACTUALLY CARRIES, precisely (R-CARRIER-PREFIX-ONLY): the PARENT'S STORED
+		// CERTIFICATE, which is the FIRST-TO-QUORUM PREFIX, not "everything this node holds".
+		// finishPC snapshots pcs when the predicate holds and discards every later reply
+		// (see the gather loop below). So this is honest-maximal for a proposer that did NOT itself
+		// gather the parent, and it UNDER-CARRIES for a node proposing consecutive heights — an
+		// HONEST proposer can therefore also delay a seating, not only a malicious one. A slow
+		// attester is seated once it makes a first-to-quorum prefix at some height: a latency
+		// condition, not a permanent ceiling. See Chain.HeadCarrier.
 		b.LastCommit = n.chain.HeadCarrier()
 		if err := n.chain.PopulateEra4Roots(b); err != nil {
 			done(fmt.Errorf("propose: era-4 root population: %w", err))

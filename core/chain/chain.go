@@ -2760,7 +2760,8 @@ func (c *Chain) ValidateProposal(b *Block) error {
 	// carrier fails naming itself rather than as an opaque root mismatch — the roots
 	// predicate would fold the carrier's seating effect and report only "root != recompute".
 	// The own-disk Reload path runs the identical rule in appendStructural; both disk-write
-	// paths are pinned by TestEveryDiskWritePathRunsTheCarrierCheck.
+	// paths are pinned by TestEveryDiskWritePathRunsTheEra3RootCheck
+	// (core/chain/reload_era3_boundary_test.go), which was extended to require validateCarrier.
 	if err := c.validateCarrier(b); err != nil {
 		return err
 	}

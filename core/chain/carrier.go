@@ -63,8 +63,9 @@ var (
 	ErrCarrierBadSignature = errors.New("chain: LastCommit entry is not a genuine PhasePrecommit signature over the parent block hash")
 	// ErrCarrierDuplicateID is two carrier entries for the same attester id. O1: "distinct ids".
 	// The seating write is idempotent, so a duplicate cannot change the transition — but it can
-	// pad the block, and a rule that admits it would make the carrier's size unbounded by the
-	// R-membership set bound the flip already owes.
+	// pad the block. NOTE: distinctness does NOT bound the carrier. Distinct ids are free —
+	// every fresh keypair is a distinct id that passes all three clauses of validateCarrier — so
+	// there is no size rule here. See R-CARRIER-BYTES (ROADMAP.md, Boulder 1 carry-list).
 	ErrCarrierDuplicateID = errors.New("chain: LastCommit carries two entries for the same attester id")
 	// ErrGenesisLastCommit is a genesis block carrying a LastCommit carrier. Height 0 has no
 	// parent to attest, and the carrier is the hash-covered v5 seating input, so a declared
@@ -183,9 +184,26 @@ func (c *Chain) headProposerID() (ports.NodeID, bool) {
 // power a proposer already had by trimming its own certificate (refutation K), so the carrier adds
 // no new degree of freedom. An honest proposer that under-carries harms only its own fork.
 //
-// The source is the head block's stored certificate. Entries are filtered (genuine precommit over
-// the head hash) and deduped so the result satisfies validateCarrier by construction; a replica
-// that somehow stored a malformed certificate cannot mint an invalid block off it.
+// THE SOURCE IS THE HEAD BLOCK'S STORED CERTIFICATE (head.Atts), WHICH IS THE FIRST-TO-QUORUM
+// PREFIX — not "everything this replica holds" (R-CARRIER-PREFIX-ONLY, research certification
+// 2026-09-03 §5). The gatherer snapshots its precommit set at the moment the quorum predicate holds
+// and DISCARDS every reply that lands after (core/node/chainrole.go finishPC / the gather callback),
+// so those signatures are not retained anywhere. Consequences, stated rather than glossed:
+//
+//   - For a proposer that did NOT itself gather the parent, the parent's stored certificate IS
+//     everything it holds, so this is honest-maximal.
+//   - For a node proposing h and h+1 back to back it is NOT: precommits received after the prefix
+//     closed cannot be carried, so an HONEST proposer can also delay a seating — previously stated
+//     as a property of a malicious proposer only.
+//   - A persistently slow attester is seated once it makes a first-to-quorum prefix at SOME height.
+//     That is a latency condition, not the permanent seating freeze this fix closed.
+//
+// Making this literally maximal is NOT a producer-side one-liner: it would need a new post-commit
+// attestation store, with its own lifecycle and memory bound, inside the round machinery.
+//
+// Entries are filtered (genuine precommit over the head hash) and deduped so the result satisfies
+// validateCarrier by construction; a replica that somehow stored a malformed certificate cannot
+// mint an invalid block off it.
 //
 // Returns nil at height 0 — height 1's carrier is empty BY RULE (the genesis is declared, not
 // agreed), so a proposer at height 1 attaches nothing.
@@ -235,15 +253,40 @@ func (c *Chain) headBlock() (Block, bool) {
 // so the challenge is fixed by the block.
 //
 // This proves "the named key signed b.Prev". It does NOT prove "this key is THE parent's
-// proposer" — any key can sign any hash. The residual is therefore bounded to exactly this: an
-// attacker holding key K can make the box skip K's OWN seat. Moving any OTHER signer's seat
-// requires that signer's signature over b.Prev, which is the ed25519 unforgeability assumption.
-// "Drop your own seat" is precisely the downward-only discretion O1 already discloses for the
-// proposer, so this anchor reduces an unbounded one-seat forgery to a power the ratified design
-// already grants. Held open as a named input to the R1.8 accept-flip; the box never-Accepts today.
+// proposer" — any key can sign any hash. The residual has TWO directions, not one. An earlier
+// version of this comment stated only the first and called the residual bounded; the research
+// certification LASTCOMMIT-CARRIER-round-A-5d3fda0-RESEARCH-CERTIFICATION-2026-09-03 §6.2
+// REFUTED that bound. Both directions, stated honestly:
 //
-// A missing or non-verifying parent-proposer witness STALLS (never falls through to "no
-// exclusion", which would seat the parent's proposer — the C-7 §104 banned move).
+//	(1) DROP. If the witness names a key K that IS a carrier signer, K's seat is skipped.
+//	    This requires the attacker to hold K. Downward-only, and genuinely bounded to the
+//	    forger's OWN seat — the discretion O1 already discloses for the proposer. The two
+//	    driven FIX gates cover this direction.
+//	(2) ADD — NOT BOUNDED BY KEY OWNERSHIP. If the witness names a freshly minted keypair,
+//	    the pair verifies, the derived id matches NO carrier entry, so NOTHING is skipped and
+//	    the parent's TRUE proposer P self-seats. This needs no key of P's at all; it costs one
+//	    ed25519.Sign. It seats at most ONE extra id per block — but that id is precisely the
+//	    one the exclusion exists to remove (the anti-self-declaration property validatorsSeen
+//	    is built on). It is a WRONG-ACCEPT direction: the attacker authors a block whose
+//	    StateRoot has P seated, supplies the fresh-key witness, and this fold reproduces that
+//	    root while every full node computes without P and rejects the block.
+//
+// A missing or MALFORMED parent-proposer witness STALLS. That stall does NOT close direction (2):
+// a well-formed, genuinely verifying witness from a fresh keypair reaches the identical
+// "no exclusion" state, and an attacker has no reason to supply a malformed pair. The claim that
+// the anchor "never falls through to no-exclusion" is WITHDRAWN.
+//
+// INERT TODAY: WitnessValidateV5 returns IndeterminateTrustlessly with ErrRecomputeGated (never-Accept),
+// so there is no live exposure. This is therefore a FLIP PRECONDITION (FP-1), not a live defect —
+// tracked as R-CARRIER-PARENTPROPOSER in ROADMAP.md under Boulder 1.
+//
+// CERTIFIED FIX DIRECTION (cert §6.2, recommended option (b); NOT built here): bind the parent
+// proposer to COMMITTED content with a v5 committed scalar leaf — a `tagLastProposer` written by
+// apply() to b.ProposerID() and Resolved by the box against prevStateRoot like every other class-A
+// input. It is the shape the class-M/class-P scalars already use (statehash.go), it costs one leaf,
+// and it makes this input Resolve-anchored instead of self-signed. It is an ADDITIVE
+// committed-format change on the OPEN era, so it needs its own certification and it must land
+// BEFORE the era-4 freeze; after the freeze it is a new era.
 func carrierParentProposerFromWitness(prev ports.Hash, pub, sig []byte) (ports.NodeID, error) {
 	if len(pub) != ed25519.PublicKeySize || len(sig) != ed25519.SignatureSize {
 		return ports.NodeID{}, fmt.Errorf("%w: parent-proposer witness is missing or malformed (pub %d bytes, sig %d bytes)",

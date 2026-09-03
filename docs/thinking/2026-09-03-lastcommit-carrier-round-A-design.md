@@ -94,15 +94,47 @@ Three ways to give the box the parent proposer:
    `:3141`. ~96 bytes.
 
 What (3) proves and what it does not: it proves *the named key signed `b.Prev`*, not *this key is
-THE parent's proposer*. Anyone can sign `b.Prev` with their own key. The residual it leaves is
-therefore bounded to: **an attacker who holds key K can make the box skip K's own seat.** To move
-any *other* signer's seat the attacker would have to produce that signer's signature over `b.Prev`,
-which is the unforgeability assumption. Dropping your own seat is exactly the downward-only
-discretion O1 already discloses for the proposer ("a proposer can delay a seating by omitting a
-signer but can never forge one", §10 O1 *Disclosed*, §5.3 *downward only*). So option 3 reduces an
-unbounded one-seat forgery to a power the ratified design already grants. It is carried as
-**R-CARRIER-PARENTPROPOSER** in §7 residuals and is a named input to the R1.8 accept-flip, which
-the box's never-Accept posture holds shut today.
+THE parent's proposer*. Anyone can sign `b.Prev` with their own key.
+
+**CORRECTION (2026-09-03), forced by the build certification
+`LASTCOMMIT-CARRIER-round-A-5d3fda0-RESEARCH-CERTIFICATION-2026-09-03.md` §6.2.** This section
+originally stated the residual as bounded to "an attacker who holds key K can make the box skip K's
+own seat", and claimed the stall meant the box never falls through to "no exclusion". **The bound is
+one-sided and the never-falls-through claim is false. Both are withdrawn.** The witness-supplied key
+has **two** effects relative to truth:
+
+1. **DROP.** The named key K *is* a carrier signer ⇒ K's seat is skipped. Requires the attacker to
+   hold K. Downward-only, genuinely bounded to the forger's own seat. This is the direction the two
+   driven FIX gates (`TestAdversarialRoot_ClassA_ForgedParentProposer` /
+   `…_MissingParentProposerSig`) cover.
+2. **ADD — not bounded by key ownership.** The attacker mints a **fresh keypair**, signs `b.Prev`
+   with it, and supplies that. The pair verifies. Its derived id matches **no** carrier entry, so
+   **nothing is skipped** and the parent's **true** proposer P self-seats. **This requires no key of
+   P's at all** — one `ed25519.Sign` call. The stall fires only for a *missing or malformed* pair,
+   which an attacker has no reason to supply, so the anchor is close to vacuous against this
+   direction.
+
+**What (2) buys, priced exactly:** at most **one extra id per block** — but it is precisely the id
+the exclusion exists to remove, the anti-self-declaration property `validatorsSeen` is built on. And
+it is a **wrong-accept** direction, not a denial: the attacker authors a block whose `StateRoot`
+contains P seated, supplies the fresh-key witness, and the box's fold reproduces that root and
+returns nil, while every full node computes without P and rejects the block.
+
+**Status: inert, and a FLIP PRECONDITION (FP-1).** `WitnessValidateV5` returns
+`IndeterminateTrustlessly` with `ErrRecomputeGated` (never-Accept), so there is no live exposure at
+this commit. It is carried as **R-CARRIER-PARENTPROPOSER** in §7 and is now tracked in `ROADMAP.md`
+under Boulder 1, because ROADMAP is the task SSOT and a flip precondition living only in
+`docs/thinking/` is untracked.
+
+**Certified fix direction — named, NOT built in this round.** Bind the parent proposer to
+**committed content**: a v5 committed scalar leaf, `tagLastProposer`, written by `apply()` to
+`b.ProposerID()` and Resolved by the box against `prevStateRoot` like every other class-A input.
+This is the shape the class-M / class-P scalars already use (`statehash.go`), it costs one leaf, and
+it makes the input Resolve-anchored rather than self-signed. It is an **additive committed-format
+change on the open era**, so it needs **its own certification** and it must land **before the era-4
+freeze** — after the freeze it is a new era. Option (2) above (the whole parent block in the
+witness) remains sound but is rejected on cost; explicitly accepting the residual at flip time is an
+owner's call, and may only be put to the owner with this corrected bound in front of him.
 
 ### 3.4 Era gating and the frozen prior-era rule
 
@@ -135,7 +167,7 @@ to exist in order to compile). The RED output is transcribed in §6.
 | Gate | Tier | RED | GREEN |
 |---|---|---|---|
 | **G1** unseen-attester commit | cold chain | `era4AnchorChain(t,1,1)` → height-1 v5 `Append` fails `ErrEra3StateRootMismatch` | `TestG1_CarrierSeatsUnseenAttestersOneBlockLate` — height 1 commits with 0 seen; height 2 carries 4 entries and seats 3 |
-| **G2** node-tier reply order, 3 arms + 3 masks | node path, held delivery, no box driver | all three arms: `propose: commit rejected by own replica: … StateRoot does not equal the recomputed post-apply committed state root` | `TestG2_CarrierNodeTierReplyOrder` (`core/node`) — arm (i) commits; fifth node FIRST and LAST both commit and seat within 2 heights |
+| **G2** node-tier reply order, 3 arms + 3 masks | node path, held delivery, no box driver | all three arms: `propose: commit rejected by own replica: … StateRoot does not equal the recomputed post-apply committed state root` | `TestG2_CarrierNodeTierReplyOrder` (`core/node`) — arm (i) commits; the fifth node FIRST and LAST **both commit**, and each arm pins the EXACT carrier membership and seated count: FIRST carries 4 (`{proposer, fifth, id1, id2}`) and seats **3**, the fifth included; LAST carries 3 (`{proposer, id1, id2}`) and seats **2**, the fifth **structurally NOT seated** — its reply landed after the first-to-quorum prefix closed and `finishPC` discarded it (`chainrole.go:1059-1061`), so it is seated only once it makes a prefix at some later height (R-CARRIER-PREFIX-ONLY, §7). 3-versus-2 is the discriminator; `seen != 0` was not, and was satisfied by the pre-existing anchors (MG-1) |
 | **G3** served-variant determinism, 3 variants | cold chain | pre-carrier: a replica holding a superset certificate rejects a canonical block | `TestG3_ServedVariantDeterminism` — same-round superset AND different-round `(PrepareQC_r′, Atts_r′)` pair with rewritten `CommitRound` both accept with identical `StateRoot`; one child appended to all three replicas seats identically |
 | **G4** seating liveness + the metric **CEILING** | cold chain, objective arm | pre-carrier: an operator bonded after activation is never seated; `C2Metric().Participants` never rises | `TestG4_NewOperatorsRaiseTheCoefficient` — the joiner is seated within 2 heights. Asserts the ceiling lifting, NOT monotonicity (a seated member may lapse and re-bond, so a monotone assertion would be wrong and pass vacuously) |
 | **G5** compile-time rollout gate | unit | ablation: force the stamp to 4 → the gate fatals on the never-stamp-4 rule | `TestG5_StampFiveImpliesTheCarrierIsHashCovered` — **vacuously green by design** (the stamp is 3; this round does not raise it). It fires the moment a binary stamps 5 without carrier coverage, and fatals immediately on a stamp of 4 |
@@ -216,24 +248,53 @@ ABLATION B (move the carrier fold below the bond-reg loop):
 **Named and carried (from O1, unchanged):**
 
 - The seat lands **one block late**. Monotone, benign, disclosed.
-- Carrier bytes ≈ 100 B/signer, bounded by the same **R-membership** set bound the R1.8 flip
-  already owes. Still OPEN.
-- **Proposer under-carry discretion.** "Carry everything you hold" is unenforceable — no replica
-  can know what a proposer held — so a proposer can DELAY a seating. Downward-only: signatures are
-  genuine and unforgeable, so it can never FORGE one. Named in a code comment on `HeadCarrier` and
-  at the propose site, as O1 requires.
+- Carrier bytes ≈ 100 B/signer. **CORRECTION (cert §10.1): the "bounded by R-membership" clause is
+  WITHDRAWN — it never held, and the certification withdrew it from its own §12 too.** R-membership
+  bounds the *qualified* / `validatorsSeen` sets; `validateCarrier` applies **no** qualification
+  screen — it requires only `PhasePrecommit`, a verifying signature over `b.Prev`, and a distinct
+  id, all of which **any freshly minted keypair** satisfies. Unqualified entries write nothing in
+  `applyCarrier`, so they never enter the bounded set, but they are hash-covered, permanently
+  committed, and `ed25519.Verify`-ed by every replica on every validation and every reload. Derived
+  ceiling: `maxFrame` = 132 MiB (`adapters/tcpnet`) ÷ ~105 B per canonical-CBOR `Attestation`
+  ≈ **1.3 million entries in one block**; the verification wall-clock is **UNMEASURED** and is owed
+  on the real target before the freeze. Re-priced and made non-strippable rather than newly created:
+  `b.Atts` already carried the same per-entry verify cost, but the carrier's bytes are hash-covered
+  (not strippable by a serving peer) and are verified twice per validation. Tracked as
+  **R-CARRIER-BYTES** in `ROADMAP.md` (Boulder 1 carry-list, the stamp-raising release). Still OPEN.
+- **Proposer under-carry discretion, and `R-CARRIER-PREFIX-ONLY` (cert §5, held-in-tension).**
+  "Carry everything you hold" is unenforceable — no replica can know what a proposer held — so a
+  proposer can DELAY a seating. Downward-only: signatures are genuine and unforgeable, so it can
+  never FORGE one. Named in a code comment on `HeadCarrier` and at the propose site, as O1 requires.
+  **What `HeadCarrier` actually carries, stated exactly:** the parent's **stored certificate**
+  (`head.Atts`), which is the **first-to-quorum prefix** — `finishPC` snapshots `pcs` at the moment
+  the predicate holds (`chainrole.go:1028`) and discards every later reply (`:1059-1061`). So it is
+  honest-maximal for any proposer that did **not** itself gather the parent, and **not** maximal for
+  a node proposing consecutive heights: precommits received after the prefix closed were discarded
+  and cannot be carried. Consequence, and it corrects an earlier framing here: an **honest** proposer
+  can also delay a seating, not only a malicious one, and a persistently-slow attester is seated only
+  once it makes a first-to-quorum prefix at some height. That is a **latency condition, not a
+  permanent ceiling** — the §2.3(a) freeze is still closed. Downward-only and benign.
+  **Not fixed in this round, and the reason is measured, not stylistic:** carrying "everything you
+  hold" is not a producer-side one-liner, because the node **holds nothing more**. The late reply is
+  dropped at `chainrole.go:1059-1061` (`if finishedPC { return }`, before `pcs = append` at `:1069`)
+  and is never stored. Retaining it would need a new post-commit attestation store with its own
+  lifecycle and memory bound inside the round machinery — beyond the producer, so it is out of scope
+  for a text-only fold-in.
 - An attester that attests the parent and lapses within it is never seated. Bounded, benign.
 
 **New, opened by this round:**
 
-- **R-CARRIER-PARENTPROPOSER.** The box's parent-proposer exclusion is anchored by the parent's own
-  proposer signature over the hash-covered `b.Prev`, which proves *the named key signed `b.Prev`*,
-  not *this key is THE parent's proposer*. Bound: an attacker holding key K can make the box skip
-  K's OWN seat — the downward-only discretion O1 already discloses. It is NOT a wrong-accept vector
-  for any other identity (that needs that identity's signature). Held open as a named input to the
-  R1.8 accept-flip; the box's never-Accept posture holds it shut today. §3.3 records the two
-  alternatives (unanchored field — rejected; whole parent block in the witness — sound but blows
-  the box's cost story).
+- **R-CARRIER-PARENTPROPOSER** — **open, FP-1. Tracked in `ROADMAP.md` (Boulder 1).** The box's
+  parent-proposer exclusion is anchored by the parent's own proposer signature over the hash-covered
+  `b.Prev`, which proves *the named key signed `b.Prev`*, not *this key is THE parent's proposer*.
+  **Two directions, per §3.3 (the original one-sided bound is WITHDRAWN):** **DROP** — an attacker
+  holding key K can make the box skip K's OWN seat (bounded, downward-only, the discretion O1
+  discloses); **ADD** — a freshly minted keypair verifies, matches no carrier entry, so nothing is
+  skipped and the parent's TRUE proposer self-seats, requiring **no key of that proposer's**. ADD is
+  a **wrong-accept** direction, at most one id per block, and it is exactly the id the rule excludes.
+  Inert today (the box never-Accepts). **Certified fix direction (not built): a `tagLastProposer`
+  committed scalar, Resolved against `prevStateRoot` — an additive open-era format change that needs
+  its own certification and must land BEFORE the era-4 freeze.**
 - **The "any single round" reading.** §3.2. Recorded as an interpretation, not a rule change. If
   the certifier reads O1 the other way (all entries at one common round), the change is one `if`
   in `validateCarrier`.

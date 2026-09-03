@@ -796,6 +796,30 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   (`core/chain/carrier.go`, `core/chain/chain.go`, `core/node/chainrole.go`,
   `core/chain/floorbox_recompute_stateroot_atts_v5.go`, `core/chain/readset_v5.go`;
   `docs/thinking/2026-09-03-lastcommit-carrier-round-A-design.md`)
+- **`LastCommit` carrier — research-certification merge gates closed (test, comments and ROADMAP
+  only; NO design change, no rule change, and the box still never-Accepts):** the build
+  certification (`LASTCOMMIT-CARRIER-round-A-...-2026-09-03`) returned GATED on three items.
+  (1) Gate G2's GREEN assertion was under-specified — it asserted only `validatorsSeen != 0`, which
+  the three pre-existing anchors already satisfy, so a regression that silently dropped a signer
+  from the carrier passed. Each arm now pins the EXACT carrier membership and seated count (the
+  fifth node FIRST: 4 carried, 3 seated, the fifth included; LAST: 3 carried, 2 seated, the fifth
+  structurally NOT seated because its reply landed after the first-to-quorum prefix closed).
+  Ablation: under-carrying one genuine signer is now RED and was green before.
+  (2) The `R-CARRIER-PARENTPROPOSER` residual text was one-sided. Dropping the forger's OWN seat is
+  bounded, but the ADD direction is NOT bounded by key ownership — a freshly minted keypair verifies
+  against `b.Prev`, matches no carrier entry, so nothing is skipped and the parent's TRUE proposer
+  self-seats (one id per block, wrong-accept direction). The claim that a verifying witness never
+  falls through to "no exclusion" is WITHDRAWN. Inert today; filed as an R1.8 flip precondition with
+  its certified fix direction (a `tagLastProposer` committed scalar, owed BEFORE the era-4 freeze).
+  (3) The claim that carrier bytes are bounded by R-membership is WITHDRAWN — qualification is
+  applied only at the transition, so any fresh keypair passes `validateCarrier` and ~1.3M entries
+  fit `maxFrame`; filed as `R-CARRIER-BYTES` on the stamp-raise carry-list with its two candidate
+  bounds, both of which are v5 validity-rule changes needing certification. Also corrected: a
+  producer comment that claimed `HeadCarrier` carries "everything you hold" when it carries the
+  parent's first-to-quorum prefix, and a stale cited test name in `ValidateProposal`.
+  (`core/node/lastcommit_carrier_node_test.go`, `core/chain/carrier.go`, `core/chain/chain.go`,
+  `core/chain/readset_v5.go`, `core/chain/floorbox_recompute_stateroot_v5.go`,
+  `core/chain/floorbox_recompute_stateroot_atts_v5.go`, `core/node/chainrole.go`, `ROADMAP.md`)
 - **Floor-box class-A screen no longer reads LIVE box state — Direction A, an R1.8 flip precondition
   (Boulder 1; recompute-side only, no committed/wire format change, never-Accept unchanged):** the
   class-A attestation screen picked its qualification branch from `c.matureEpoch`

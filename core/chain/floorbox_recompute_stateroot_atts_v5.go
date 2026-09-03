@@ -52,8 +52,12 @@ import (
 // and dominates (R-cost-wholeset). A forged screen input fails its own changed-leaf/point proof
 // against prevStateRoot OR yields a wrong post-set ⇒ post-root != StateRoot ⇒ stall. No wrong-accept.
 //
-// COST — HONEST. NOT O(payload). O(|atts|) screen + O(|validatorsSeen|) digest ≈ O(registry). Rides
-// R-membership (OPEN, load-bearing for the #657 accept-flip).
+// COST — HONEST. O(|b.LastCommit|) screen + O(|validatorsSeen|) digest. The DIGEST term is
+// ≈ O(registry) and rides R-membership (OPEN, load-bearing for the #657 accept-flip). The SCREEN
+// term does NOT: validateCarrier applies no qualification screen, so |b.LastCommit| is bounded by
+// nothing but the transport frame (~1.3M entries in 132 MiB), and an earlier version of this line
+// that folded it into "≈ O(registry)" was wrong. See R-CARRIER-BYTES (ROADMAP.md, Boulder 1
+// carry-list) — a size rule on hash-covered content is a v5 validity rule and needs certification.
 
 // StateRootAttScreen carries, for ONE carried non-parent-proposer signer, the committed pre-state qualification
 // inputs the box reads to compute whether the att writes validatorsSeen: the slashed[id] flag, the

@@ -478,8 +478,20 @@ func (c *Chain) readSetSlashes(b Block, acc *readSetAcc) {
 //   - validatorsSeen[id], the write-target (apply:3296), read to compute the post-write
 //     leaf (present iff already seen, else absent → set present).
 //
-// O(len(b.LastCommit)) — the carrier is bounded by the same R-membership set bound the flip
-// already owes (distinct ids, each a genuine parent precommit), so this stays O(payload). The read matches attesterQualified(id) = attesterQualifiedAt(id, 0): height 0
+// O(len(b.LastCommit)). THE CARRIER IS NOT BOUNDED. An earlier version of this comment claimed it
+// was bounded by the same R-membership set bound the flip already owes; the research certification
+// LASTCOMMIT-CARRIER-round-A-5d3fda0-RESEARCH-CERTIFICATION-2026-09-03 §10.1 WITHDREW that claim,
+// and so does this comment. R-membership bounds the QUALIFIED / validatorsSeen sets; validateCarrier
+// screens for none of that — it requires only PhasePrecommit, a verifying signature over b.Prev, and
+// a distinct id, all three of which ANY freshly minted keypair satisfies. An unqualified entry writes
+// nothing here, so it never enters the bounded set, but it is still hash-covered, still permanently
+// committed, and still ed25519-verified by every replica on every validation and reload. There is no
+// size rule. Derived ceiling: maxFrame = 132 MiB (adapters/tcpnet) / ~105 B per canonical-CBOR
+// Attestation ≈ 1.3M entries in one block; the verification wall-clock is UNMEASURED. Tracked as
+// R-CARRIER-BYTES in ROADMAP.md (Boulder 1 carry-list for the stamp-raising release) — a size rule on
+// hash-covered content is a v5 VALIDITY rule and needs certification plus owner ratification.
+//
+// The read matches attesterQualified(id) = attesterQualifiedAt(id, 0): height 0
 // is never a #535 recovery boundary, so effectiveEpochSet(0) is the frozen epochSet (R2 is
 // the recovery-boundary residual, out of scope here). The legacy rep(id) branch reads no
 // committed SMT leaf, so it contributes nothing to the committed read-set.
