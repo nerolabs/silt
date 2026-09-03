@@ -334,3 +334,107 @@ re-point, but the DECLARATION is a certification act, not a build act.
   tier-2 node tier alongside them.
 - `scripts/gen_changelog.py` regenerated `website/changelog.html`; `scripts/check_links.py`,
   `check_status_headers.py`, `check_tenet_qualifiers.py`, `check_claims.py` all OK.
+
+---
+
+## Addendum — the red-team round + the structure ruling (2026-09-03)
+
+Two documents drove this addendum. Both are cited in full because everything below is traceable
+to one of them:
+
+- **Red-team:**
+  `/Users/andrewedmond/Claude/claude/silt-reviews/red-team/RED-TEAM-lastcommit-carrier-3bd13e2-2026-09-03.md`
+  (17 runnable probes at `.../red-team/probes/lastcommit-carrier-3bd13e2/`).
+- **PE structure ruling:**
+  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-floorbox-predicate-rederivation-structure-2026-09-03.md`
+
+### A.1 The break — finding → root cause → fix → gate
+
+**Finding (RT-CARRIER-1, wrong-accept, HIGH).** The trustless floor box agreed with a committed
+state root that every full node rejects. Measured at `3bd13e2`: a v5 block whose `LastCommit`
+carries the PUBLIC key of a real qualified validator with a 64-byte zero signature; the attacker
+computes `StateRoot` with the real `apply()`; `ValidateCommit` returns
+`ErrCarrierBadSignature`, and `RecomputeStateRootEntriesRevocations` returns `nil`.
+**Escalation (RT-CARRIER-12).** `validatorsSeen` is the sole input to `C2Metric` →
+`MatureCoefficient` → `matureNow` → the one-way `everMature` latch, and to the box's own
+`RecomputeMatureNow`. So the same forged carrier flips the maturity latch, with the box agreeing —
+i.e. the MEASURED decentralisation quantity TENETS Part 0's shed gates on was forgeable by anyone
+who can name a bonded operator's public key. Cost to the attacker: **no key material**. Bound:
+the transport frame.
+
+**Root cause.** The box's unit of reproduction was a Go function; the node's unit of rule is a
+PATH. The box reproduced `applyCarrier`'s TRANSITION — class A derives its write-set straight off
+`b.LastCommit[i].AttesterID()` — and never `validateCarrier`'s VALIDITY rule, which was wired only
+onto the node's two disk-write paths (`ValidateProposal`, `appendStructural`). `applyCarrier` does
+not verify signatures either, deliberately, because `validateCarrier` already did; so `apply()` and
+the box agreed with each other and both diverged from the node's verdict. The missed precondition
+sat one enclosing scope out — a different PHASE (validation, not transition). That is the ruling's
+§2 generative shape, and it is why a per-instance patch strategy does not terminate.
+
+**Fix — one function, three callers.** `assembleStateRootRecomputeOps` now calls the SAME
+`validateCarrier(&b)`, unconditionally, before any class dispatches. Not a box-side counterpart:
+a second implementation is the defect shape. Two supporting calls that make this the ruling's §3(E)
+structure rather than a patch:
+
+- **`validateCarrier` lost its `*Chain` receiver.** It never read one. Dropping it makes the shared
+  call legal inside a fold file *by type*: a package-level function cannot reach `c.slashed` or
+  `c.matureEpoch`, so R-FOLD-LIVE-STATE-READS is enforced here by the COMPILER, not by the AST
+  allowlist pin — whose glob the ruling measured as holed (§3(C), §8 item 2). **The allowlist was
+  not widened**, which the build task made a stop condition.
+- **`apply()` was NOT made to verify** (ruling §6(a): no). It does not close the gap — the box does
+  not call `apply()` — and making a total, infallible state transition fallible lands inside
+  validation via `postApplyRoots`.
+
+The verdict on failure is a STALL (`ErrRecomputeCarrierInvalid`). Never-Accept is unchanged.
+
+**Gate.** `core/chain/redteam_carrier_boxsplit_gate_test.go` — five permanent gates
+(`TestRTGateCarrier1`, `1b`, `1c` ×3 sub-cases, `1d`, `12`), each run under `eachTier` (warm box +
+COLD box). All five are RED at `3bd13e2` on both tiers and GREEN after. The oracle is the full
+node's ACCEPT PATH, `(*Chain).ValidateCommit` over a real driven block on a real chain — never
+`validateCarrier` itself (ruling O-1: a gate whose `want` comes from the single predicate the box
+is being compared against stays green through exactly this defect). The asserted claim is the
+IMPLICATION `box agrees ⇒ node accepts` (O-2), never the biconditional; each mutant's node verdict
+is recomputed per mutant (O-3); the witness bundle is honest and prover-built, so the forgery lives
+wholly inside hash-covered block content (O-5). Non-vacuity is a separate honest-twin control.
+
+### A.2 The fixture debt the fix exposed
+
+Six existing class-A fixtures minted their att block at **height 1** with a non-empty carrier — a
+block that is invalid by rule (`ErrCarrierAtHeightOne`) and that no full node would ever accept.
+Their "the box agrees with `apply()`" baselines were therefore asserting agreement on an
+unreachable block. Repaired with `advancePastHeightOne`, which applies one honest empty-carrier v5
+block so the fixture's next block lands at height 2. This is fixture repair, and it is what the
+ruling's O-3 requires: sweeps are built by MUTATING a block the node accepts.
+
+### A.3 The pruned-block hash claim (ruling §6(b))
+
+`chain.go`'s `Hash()` comment claimed "a forged `Pruned` fails the proposer/attester signature
+check". That is **backwards**. The attack is not forging `Pruned`; it is KEEPING `Pruned` and the
+real signatures while mutating the body — `Hash()` short-circuits to the stored field, so every
+signature still verifies. `Prune()` drops only `BondReg.Answer`; it KEEPS `LastCommit` and
+`StateRoot`. Corrected, and the invariant is now stated where the claim was: *the `Pruned` field is
+a linkage token, not a content commitment; no consensus decision may depend on re-reading the body
+of a pruned block.* `Hash()` and `Prune()` are unchanged — covering pruned bodies would defeat
+pruning, which exists for build-immutable #8. `TestPrunedBlockHashDoesNotCoverCarrierOrStateRoot`
+DOCUMENTS the property (asserting what is true today, plus the live containment: `validateCarrier`
+runs on pruned blocks with no `IsPruned` skip and binds to `b.Prev`, so entries are droppable but
+not forgeable). It is named for the **stamp-raise / pre-freeze checklist**; it is not a fix here.
+
+### A.4 The coupling this merge changes
+
+Calling `validateCarrier` from the box promotes **R-CARRIER-BYTES** from a stamp-raise item to a
+**flip precondition**: the box's per-block verification cost becomes frame-bounded rather than
+witness-bounded (measured by the PE: `ed25519.Verify` at 52.6 µs/op ⇒ ~68.4 s single-core at the
+~1.3 M-entry frame ceiling; the red-team measured ~52–93 s and ~1.79 GiB `readSetAtts`). The two
+gates coincide today because the flip is inert until the stamp raises, so the schedule is not
+wrong — but the REASON it is safe changed. Both candidate bounds are validity rules, not format, so
+both survive the era-4 freeze. Recorded in `ROADMAP.md` deliberately, not left as luck.
+
+### A.5 Filed, not built
+
+The red-team's other findings are ROADMAP Rocks under Boulder 1 (RT-CARRIER-4 credit denial,
+RT-CARRIER-7 the on-chain double-sign slot, RT-CARRIER-3 the silent pre-carrier rollout
+degradation, RT-CARRIER-2's pruned-hash test-before-stamp-raise, R-CARRIER-BYTES with the measured
+numbers, and `tagLastProposer` as a pre-freeze FORMAT item). None is built here. Two of them
+(`FindEquivocations` reading the carrier; any carrier size rule) are consensus-rule changes and are
+research-gated plus owner-ratified.

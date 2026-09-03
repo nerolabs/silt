@@ -49,6 +49,8 @@ func buildAttFixture(t *testing.T) attFixture {
 	Sign(g, prop)
 	c.apply(*g)
 
+	advancePastHeightOne(c, prop)
+
 	aid := ports.HashBytes(pubOf(att))
 	if !c.attesterQualified(aid) {
 		t.Fatalf("fixture: attester not qualified pre-block")
@@ -344,4 +346,21 @@ func TestRecomputeStateRootAttProposerOnlyNoWrite(t *testing.T) {
 	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err != nil {
 		t.Fatalf("a proposer-only att block is E/R-only and should AGREE, got %v", err)
 	}
+}
+
+// advancePastHeightOne applies one honest v5 block with an EMPTY carrier (height 1's carrier is
+// empty BY RULE, O1) so a genesis-only fixture's NEXT block lands at height 2.
+//
+// WHY EVERY CLASS-A FIXTURE NEEDS IT. The box entry now runs the SHARED validateCarrier
+// (assembleStateRootRecomputeOps — the RT-CARRIER-1 fix), and a height-1 block carrying a carrier is
+// INVALID. A fixture that minted one was driving the box with a block no full node would accept, so
+// its "the box agrees with apply()" baseline was asserting agreement on an unreachable block. This
+// is fixture repair, not a weakening of the rule: PE ruling
+// RULING-floorbox-predicate-rederivation-structure-2026-09-03.md O-3 requires sweeps to be built by
+// MUTATING a block the node accepts.
+func advancePastHeightOne(c *Chain, proposer ed25519.PrivateKey) {
+	prev, h := c.Head()
+	b := &Block{Version: BlockVersionWitnessable, Height: h, Prev: prev, Entries: []ports.Entry{entry(31)}}
+	Sign(b, proposer)
+	c.apply(*b)
 }

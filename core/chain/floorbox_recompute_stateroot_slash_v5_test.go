@@ -54,6 +54,7 @@ func buildSlashFixture(t *testing.T) slashFixture {
 	)
 	Sign(g, prop)
 	c.apply(*g)
+	advancePastHeightOne(c, prop)
 
 	// Confirm the culprit is bonded AND qualified pre-slash (else the ablations are vacuous).
 	cid := ports.HashBytes(pubOf(culprit))

@@ -724,6 +724,28 @@ func (b *Block) Hash() ports.Hash {
 	// The equivocation path therefore never reads this short-circuit: it recomputes
 	// from the body (bodyHash) and refuses pruned evidence outright (R0.6,
 	// F2-EVIDENCE-RECOMPUTE; docs/decisions.md D-F2-EVIDENCE-RECOMPUTE).
+	//
+	// THE PRUNED FIELD IS A LINKAGE TOKEN, NOT A CONTENT COMMITMENT — the complementary
+	// statement for the body fields Prune() keeps (PE ruling
+	// RULING-floorbox-predicate-rederivation-structure-2026-09-03.md §6(b), red-team
+	// RT-CARRIER-2). The attack is not forging Pruned. It is KEEPING Pruned and the
+	// real signatures while mutating the body: Hash() returns b.Pruned unchanged, so every
+	// signature still verifies. Prune() (below) drops only BondReg.Answer — it KEEPS
+	// LastCommit, StateRoot, Entries, Revocations, Slashes and the light BondReg fields, and
+	// none of them is covered by Hash() once the block is pruned. That is a pre-existing
+	// property of era-3 pruning, which exists for build-immutable #8; the era-4 carrier is
+	// simply the first TRANSITION input to ride it.
+	//
+	// THE INVARIANT THAT ACTUALLY HOLDS: a pruned block's integrity rests on
+	// (i) the recompute chain to the first NON-pruned descendant — whose signed StateRoot IS
+	// hash-covered and is recomputed over the (possibly rewritten) ancestor state — and
+	// (ii) trustFloor, below which alone a pruned block is trusted (Reconcile). CONSEQUENTLY:
+	// NO CONSENSUS DECISION MAY DEPEND ON RE-READING THE BODY OF A PRUNED BLOCK. The
+	// carrier is the best-protected member of the set — validateCarrier runs on both
+	// disk-write paths with no IsPruned skip and verifies over b.Prev, which pruning does not
+	// touch, so FABRICATING an entry still needs a real key; only DROPPING entries is free.
+	// The property is documented by TestPrunedBlockHashDoesNotCoverCarrierOrStateRoot
+	// (pruned_block_test.go), a PRE-FREEZE / pre-stamp-raise checklist item — not a fix here.
 	if b.IsPruned() {
 		return b.Pruned
 	}
@@ -2762,7 +2784,7 @@ func (c *Chain) ValidateProposal(b *Block) error {
 	// The own-disk Reload path runs the identical rule in appendStructural; both disk-write
 	// paths are pinned by TestEveryDiskWritePathRunsTheEra3RootCheck
 	// (core/chain/reload_era3_boundary_test.go), which was extended to require validateCarrier.
-	if err := c.validateCarrier(b); err != nil {
+	if err := validateCarrier(b); err != nil {
 		return err
 	}
 	// era-3 (v4) committed-root predicate (build step 2b). A no-op for sub-v4 blocks
@@ -3246,7 +3268,7 @@ func (c *Chain) appendStructural(b Block) error {
 	// refused here exactly as on the commit path; the root check below would catch a seating
 	// divergence, but it would name the root, not the cause. Pure block-local, so it runs
 	// BEFORE apply and a rejected block is never left applied.
-	if err := c.validateCarrier(&b); err != nil {
+	if err := validateCarrier(&b); err != nil {
 		return err
 	}
 	// era-3 (v4) committed-root re-validation on the OWN-DISK reload path (A-bare).

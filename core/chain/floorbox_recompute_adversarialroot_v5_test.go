@@ -1193,6 +1193,7 @@ func TestAdversarialRoot_ClassA_ForgedBondedSize(t *testing.T) {
 	)
 	Sign(g, prop)
 	c.apply(*g)
+	advancePastHeightOne(c, prop)
 
 	if !c.everMature {
 		t.Fatalf("fixture: everMature must be true post-genesis (MatureValidators=0)")
@@ -1349,6 +1350,7 @@ func TestAdversarialRoot_ClassA_ForgedBondedPresent(t *testing.T) {
 	)
 	Sign(g, prop)
 	c.apply(*g)
+	advancePastHeightOne(c, prop)
 
 	if !c.everMature {
 		t.Fatalf("fixture: everMature must be true post-genesis (MatureValidators=0)")

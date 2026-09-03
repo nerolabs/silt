@@ -50,7 +50,33 @@ import (
 //   4. legacy mode: rep(id) — NOT a committed leaf. R-A-legacy: assert objective-mode, STALL.
 // The screen is O(|atts|) point proofs; the validatorsSeenRoot reconstruction is O(|validatorsSeen|)
 // and dominates (R-cost-wholeset). A forged screen input fails its own changed-leaf/point proof
-// against prevStateRoot OR yields a wrong post-set ⇒ post-root != StateRoot ⇒ stall. No wrong-accept.
+// against prevStateRoot OR yields a wrong post-set ⇒ post-root != StateRoot ⇒ stall.
+//
+// THE INPUT AND THE SCREEN ARE ANCHORED BY TWO DIFFERENT THINGS. This paragraph used to end "No
+// wrong-accept", which was true of the SCREEN and false of the INPUT (red-team RT-CARRIER-1 /
+// RT-CARRIER-12, 2026-09-03; PE ruling RULING-floorbox-predicate-rederivation-structure-2026-09-03.md
+// §7 merge-condition 3). What is true now:
+//
+//	INPUT  — b.LastCommit is anchored by the SHARED validity rule. assembleStateRootRecomputeOps
+//	         calls validateCarrier(&b) (carrier.go) before any class dispatches: the same function,
+//	         on the same bytes, that ValidateProposal and appendStructural run on the full node —
+//	         one function, three callers. Every entry must be a genuine PhasePrecommit signature over
+//	         the hash-covered b.Prev, ids distinct, no sub-v5 carrier, no height-1 carrier. A carrier
+//	         the node refuses can no longer produce a class-A write-set at all; the box stalls with
+//	         ErrRecomputeCarrierInvalid. BEFORE that call the write-set was derived from
+//	         b.LastCommit[i].AttesterID() with no signature check, so a carrier of PUBLIC keys and
+//	         zero-byte signatures — no key material — seated arbitrary ids against the attacker's own
+//	         apply()-computed root while every full node rejected the block.
+//	SCREEN — the per-signer qualification inputs (slashed / epochSet / bonded) are anchored by their
+//	         own point proofs against prevStateRoot, and the write is fold-caught. That is the claim
+//	         this paragraph always supported.
+//	RESIDUAL — one class-A input is still anchored only PARTIALLY: the parent-proposer exclusion
+//	         (R-CARRIER-PARENTPROPOSER, ADD direction). See the ParentProposer field doc in
+//	         floorbox_recompute_stateroot_v5.go. It is a named flip precondition, not covered here.
+//
+// The box's verdict remains a STALL-or-agree: box.Accept ⇒ node.Accept, never the biconditional
+// (PE ruling O-2). The box is permitted to stall where the node accepts; it must never agree where
+// the node rejects.
 //
 // COST — HONEST. O(|b.LastCommit|) screen + O(|validatorsSeen|) digest. The DIGEST term is
 // ≈ O(registry) and rides R-membership (OPEN, load-bearing for the #657 accept-flip). The SCREEN

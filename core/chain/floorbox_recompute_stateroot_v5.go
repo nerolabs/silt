@@ -100,6 +100,25 @@ var (
 	// stall-only either way, but a fold mismatch three classes later is the WRONG place to learn it —
 	// the entry asserts it so the failure is LOUD and names the cause.
 	ErrRecomputeBoxWiring = errors.New("chain: floor-box state-root recompute — the box has no bond verifier wired (SetBondVerifier), so objective()/epochsEnabled() would silently take the legacy branch; the box stalls at the entry rather than screening under the wrong rule (#572 replay shape)")
+
+	// ErrRecomputeCarrierInvalid marks a stall at the BOX ENTRY because the block's LastCommit
+	// carrier fails the SHARED O1 validity rule (validateCarrier, carrier.go) — the same function,
+	// on the same block bytes, that ValidateProposal and appendStructural run on the full node.
+	//
+	// WHY THE BOX RUNS IT (RT-CARRIER-1 / RT-CARRIER-12, red-team 2026-09-03; PE ruling
+	// RULING-floorbox-predicate-rederivation-structure-2026-09-03.md §6(a) and §7 merge-condition 1).
+	// The box reproduced applyCarrier's TRANSITION (class A derives its write-set straight off
+	// b.LastCommit[i].AttesterID()) but not the carrier's VALIDITY rule, which lived only on the
+	// node's write paths. So an attacker could mint a v5 block whose carrier names the PUBLIC keys of
+	// real qualified validators with zero-byte signatures, compute StateRoot with the real apply()
+	// (applyCarrier does not verify either — by design, because validateCarrier already did), and
+	// publish: every full node REJECTS, and the box AGREED with the attacker's root. Cost to the
+	// attacker: no key material, bounded only by the frame. The escalation is RT-CARRIER-12 — the
+	// same forged carrier flips the one-way everMature latch and the box's own RecomputeMatureNow,
+	// i.e. it forges the MEASURED decentralisation quantity the maturity shed gates on.
+	//
+	// The fix is the shared call, not a box-side counterpart: one function, three callers.
+	ErrRecomputeCarrierInvalid = errors.New("chain: floor-box state-root recompute — the block's LastCommit carrier fails the shared O1 validity rule (validateCarrier); the box refuses to derive a class-A write-set from a carrier every full node rejects")
 )
 
 // StateRootChangedLeafWitness is the pre-state proof for ONE payload-changed leaf, supplied to the
@@ -274,6 +293,32 @@ func (c *Chain) assembleStateRootRecomputeOps(
 	// here, so the #572 replay shape fails at the entry naming its cause.
 	if c.verifyBond == nil {
 		return nil, ErrRecomputeBoxWiring
+	}
+
+	// (0a) THE SHARED CARRIER VALIDITY RULE — the same validateCarrier the full node runs on both
+	// disk-write paths (chain.go ValidateProposal / appendStructural), called here BEFORE any class
+	// dispatches, so no carrier id can enter the class-A write-set from a block the node refuses.
+	// ONE FUNCTION, THREE CALLERS (PE ruling RULING-floorbox-predicate-rederivation-structure-2026-09-03.md
+	// §6(a): "the box must reproduce it — by CALLING validateCarrier, not by writing a counterpart";
+	// §7 merge-condition 1). It is the first instance of that structure, not an exception to it.
+	//
+	// UNCONDITIONAL, like the handoff anchor below: validateCarrier returns nil for an empty carrier
+	// and for every prior era, so running it on every block costs nothing on the honest path and
+	// leaves no branch that can suppress the check. It is pure block-local — header + signatures, no
+	// committed state, no witness, no clone — and it takes NO *Chain receiver, so it cannot read live
+	// box state (the compiler enforces R-FOLD-LIVE-STATE-READS here; the AST allowlist pin is not
+	// widened).
+	//
+	// COST, and the coupling that comes with it: |b.LastCommit| x ed25519.Verify (52.6 us/op measured
+	// by the PE; ~68 s single-core at the ~1.3M-entry frame ceiling). Calling it from the box
+	// promotes R-CARRIER-BYTES from a stamp-raise item to a FLIP precondition — the box's per-block
+	// verification cost is now frame-bounded, not witness-bounded. Both candidate bounds are validity
+	// rules, not format, so both survive the era-4 freeze. Recorded in ROADMAP.md (R-CARRIER-BYTES).
+	//
+	// The verdict is a STALL (never-Accept is unchanged): the box refuses the block, it does not
+	// judge it. box.Accept => node.Accept, never the biconditional.
+	if err := validateCarrier(&b); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrRecomputeCarrierInvalid, err)
 	}
 
 	// (0b) HANDOFF PRE-STATE — the DIRECTION-A anchor of the committed everMature / matureEpoch pair

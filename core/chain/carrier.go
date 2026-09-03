@@ -97,7 +97,20 @@ var (
 // It does NOT check quorum, weight, or qualification. The carrier is a SEATING WITNESS: an
 // unqualified signer's entry is valid and simply writes nothing (applyCarrier screens it). Adding
 // a quorum check here would fork the #402 one-function-two-callers quorum stack.
-func (c *Chain) validateCarrier(b *Block) error {
+//
+// ONE FUNCTION, THREE CALLERS — and NO *Chain RECEIVER, deliberately (PE ruling
+// RULING-floorbox-predicate-rederivation-structure-2026-09-03.md §3(E), §6(a), §7 merge-condition 1;
+// this is the FIRST INSTANCE of that structure). The callers are the two full-node disk-write paths
+// (ValidateProposal, appendStructural) and the trustless floor box's recompute entry
+// (assembleStateRootRecomputeOps). The box applies the SAME validity function the node applies, so
+// the box's class-A write-set can never be derived from a carrier the node refuses — the
+// RT-CARRIER-1 / RT-CARRIER-12 wrong-accept, closed at the root rather than by a box-side
+// counterpart. Dropping the receiver is what makes that call legal in a fold file: a package-level
+// function CANNOT reach c.slashed / c.matureEpoch, so R-FOLD-LIVE-STATE-READS is enforced by the
+// compiler here instead of by the AST allowlist pin (which covers fold files only, and whose glob
+// the same ruling measured as holed). Do NOT re-add a receiver, and do NOT write a box-side
+// counterpart: a second implementation is the defect shape this closes.
+func validateCarrier(b *Block) error {
 	if len(b.LastCommit) == 0 {
 		return nil // the empty carrier is always valid — including at height 1 and on every prior era
 	}

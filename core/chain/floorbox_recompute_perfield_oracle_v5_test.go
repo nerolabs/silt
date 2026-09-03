@@ -124,6 +124,7 @@ func TestPerField_AttScreen_BondedProof(t *testing.T) {
 	)
 	Sign(g, prop)
 	c.apply(*g)
+	advancePastHeightOne(c, prop)
 	attID := ports.HashBytes(pubOf(att))
 
 	leaves := c.stateRootLeavesV5()

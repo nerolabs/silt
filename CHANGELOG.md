@@ -766,6 +766,38 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `core/node/tokenrole.go`, `core/node/demandkeys.go`, `core/node/chainrole.go`,
   `core/chain/issuerkey.go`, `core/credit/delivery.go`, `core/credit/credit.go`.
 ### Fixed
+- **Floor-box wrong-accept on the `LastCommit` carrier — the box now runs the SAME validity rule
+  the full node runs (one function, three callers):** the trustless floor box reproduced
+  `applyCarrier`'s TRANSITION (class A derived its write-set straight off
+  `b.LastCommit[i].AttesterID()`) but never `validateCarrier`'s VALIDITY rule, which was wired only
+  onto the node's two disk-write paths. So a v5 block whose carrier named the PUBLIC keys of real
+  qualified validators with 64 zero bytes for a signature — **no key material** — was rejected by
+  every full node (`ErrCarrierBadSignature`) and AGREED with by the box, against the attacker's own
+  `apply()`-computed root. Escalation: `validatorsSeen` is the sole input to `C2Metric` →
+  `MatureCoefficient` → `matureNow` → the one-way `everMature` latch and to the box's own
+  `RecomputeMatureNow`, so the same forged carrier flipped the maturity latch — the MEASURED
+  decentralization quantity the maturity shed gates on. Inert today (`WitnessValidateV5` never
+  returns Accept), so this was an R1.8 accept-flip entry blocker, not a live exposure. Fixed at the
+  root, per the PE structure ruling: `assembleStateRootRecomputeOps` now calls the shared
+  `validateCarrier(&b)` unconditionally before any class dispatches, and `validateCarrier` lost its
+  `*Chain` receiver so the COMPILER (not the AST allowlist pin, whose glob is holed) forbids a
+  live-state read on that path. `apply()` was deliberately NOT made to verify. An invalid carrier
+  is a STALL (`ErrRecomputeCarrierInvalid`); never-Accept is unchanged. Also corrected: the
+  class-A "No wrong-accept" doc claim (true of the SCREEN, false of the INPUT) and the backwards
+  pruned-block hash claim at `Hash()` — a pruned block's `Pruned` field is a **linkage token, not a
+  content commitment**, so no consensus decision may depend on re-reading a pruned block's body
+  (`Hash()`/`Prune()` unchanged; the property is documented, and the follow-ups are filed as Rocks
+  under Boulder 1). Six class-A test fixtures that minted an invalid HEIGHT-1 carrier block were
+  repaired to height 2. Gates: `core/chain/redteam_carrier_boxsplit_gate_test.go` — five gates,
+  each run on the warm AND cold box tiers, oracled on the full node's accept path
+  (`ValidateCommit`, never a single predicate) and asserting the implication
+  `box agrees ⇒ node accepts`, never the biconditional; all RED at `3bd13e2`, GREEN after.
+  (`core/chain/carrier.go`, `core/chain/chain.go`,
+  `core/chain/floorbox_recompute_stateroot_v5.go`,
+  `core/chain/floorbox_recompute_stateroot_atts_v5.go`;
+  red-team `RED-TEAM-lastcommit-carrier-3bd13e2-2026-09-03.md`;
+  PE ruling `RULING-floorbox-predicate-rederivation-structure-2026-09-03.md`;
+  design record `docs/thinking/2026-09-03-lastcommit-carrier-round-A-design.md` addendum.)
 - **`LastCommit` attestation carrier — the R-BOX-ATTESTS fix, era-4 (v5) only (owner call O1,
   ratified 2026-09-03; the frozen era-3 format and transition are untouched):** `apply()` wrote
   `validatorsSeen` from `b.Atts`, but `Hash()` excludes `Atts` and the committed-root predicate
