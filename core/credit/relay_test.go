@@ -21,9 +21,10 @@ package credit
 // core/credit/r07_relay_interim_test.go for the new G-RI-1 gates and
 // docs/thinking/2026-09-03-r0.7-relay-interim-design.md.
 //
-// TestSelfRelayPaysNothing and TestRelayCreditNeverTouchesStanding are
-// UNCHANGED — both are still true under the interim (self-relay pays 0 either
-// way; the firewall property does not depend on how much is paid).
+// TestSelfRelayPaysNothing is UNCHANGED (self-relay pays 0 either way).
+// TestRelayCreditNeverTouchesStanding is RE-SPECIFIED to the interim (its
+// standing assertion is vacuous while nothing is paid; it now also pins that no
+// account is touched) and R2.14 must restore its paid > 0 precondition.
 
 import (
 	"testing"
@@ -45,17 +46,21 @@ func fund(l *Ledger, n ports.NodeID, amount int64) {
 // which is unprovable), so relay credit buying even one unit of standing would
 // convert funded chains into consensus weight — the γ→1/N firewall.
 //
-// UNCHANGED by the R0.7 interim: the firewall property (Reputation stays flat)
-// holds trivially whether RedeemRelayCredit pays >0 or 0, so this test is left
-// asserting `paid <= 0` is never > 0 in either shape — it does not depend on
-// the pay-0 goalpost move at all. (It still calls RedeemRelayCredit and does
-// not assert on its return value beyond that it never raises Reputation.)
+// R0.7 INTERIM (RE-SPECIFIED, recorded — PE ruling RULING-R0.7-relay-interim-2719f2d
+// CONDITION-3): while RedeemRelayCredit pays 0 and mutates nothing, the standing
+// assertion is VACUOUS (it presses a return-0 body). So the interim form of this
+// test pins the interim's own property instead — no account is created or moved by
+// a settlement — and keeps the Reputation assertion for when R2.14 restores the
+// payout. **R2.14 MUST restore the `paid > 0` precondition** (the pre-interim shape:
+// fund the fetcher, assert paid > 0, then assert Reputation flat) or the firewall
+// test stays vacuous; the CHANGELOG and ROADMAP R2.14 line carry that obligation.
 func TestRelayCreditNeverTouchesStanding(t *testing.T) {
 	const fee = 50_000
 	l := New(fee, 0)
 	relay, fetcher := id(1), id(2)
 
 	before := l.Reputation(relay)
+	accountsBefore := len(l.accounts) // Reputation() itself touches the relay's account; settlement must add nothing
 	// Iterate ABOVE bondUnit (64<<10 = 65,536). Reputation() is integer bonded
 	// points = bondedBytes / bondUnit, so a hypothetical +1-byte-per-call standing
 	// leak stays sub-threshold and invisible under 1,000 iterations. Running past
@@ -67,6 +72,10 @@ func TestRelayCreditNeverTouchesStanding(t *testing.T) {
 	}
 	if got := l.Reputation(relay); got != before {
 		t.Fatalf("relay credit moved standing: Reputation %d → %d — the γ→1/N firewall is breached", before, got)
+	}
+	// The interim's own teeth: no settlement created or moved an account.
+	if got := len(l.accounts); got != accountsBefore {
+		t.Fatalf("R0.7 interim: RedeemRelayCredit must mutate nothing until R2.14, but settlement changed the account set %d → %d", accountsBefore, got)
 	}
 }
 

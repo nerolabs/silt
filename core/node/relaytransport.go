@@ -4,8 +4,8 @@ package node
 // design §1). Three request/reply message kinds mirror the delivery-receipt lane
 // (handleDeliveryReceipt): MsgRelayOpen (open a paid session), MsgRelayPay (a
 // preimage reveal), and their acks. Settlement is LOCAL at close — no wire message
-// (design §1, §5): the relay redeems its highest held preimage into its operator
-// balance via credit.RedeemRelayCredit.
+// (design §1, §5): the relay redeems its highest held preimage via
+// credit.RedeemRelayCredit — which PAYS 0 until the R2.14 anchor lands (R0.7).
 //
 // The two M0 guards and the #644 S-clamp fire on the LIVE path because
 // handleRelayOpen routes through OpenRelaySession — the SAME tested entry the

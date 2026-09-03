@@ -102,7 +102,7 @@ carries the argument and the sources. Two are LIVE BREAKS and come first.
    (bilateral PayWord, issuer == relay) as a prerequisite of R2.9, with settlement paying 0 and the flag
    default-off until it lands. **R0.7 INTERIM SHIPPED 2026-09-03** (owner GO): `RedeemRelayCredit` pays
    0 and mutates nothing; the settlement line carries `reason=no-anchor`; the flag help and
-   `docs/design/pod.md` §7.3 say the lane pays 0; RT-RELAY-3's cumulative walk budget is enforced.
+   `docs/design/pod.md` §7.3 say the lane pays 0; RT-RELAY-3's cumulative walk budget is enforced (bounded PER SESSION; sessions are free until R2.14 prices admission, so the composed bound is churn rate × S — PE ruling `RULING-R0.7-relay-interim-2719f2d-2026-09-03.md`).
    R2.14 is the fix.
 3. **R-STATEVIEW-ENUMERATION / R3.4 freeze scope:** the era-4 freeze scope is at most ONE leaf —
    `tagRevLogSize`, bought purely so a floor box survives a takedown block — and no leaf at all is
@@ -208,7 +208,7 @@ carries the argument and the sources. Two are LIVE BREAKS and come first.
   `money_pump_test.go` never covers the relay lane. **Interim (shipped):** `RedeemRelayCredit` returns 0
   and performs no ledger mutation (no debit of the phantom either); `SettleRelaySession` logs
   `reason=no-anchor` (S5, registered); the flag help and `pod.md` §7.3 state the lane pays 0; the five
-  false claims in `relay.go` are rewritten to the certified facts; RT-RELAY-3 closed by promoting
+  false claims in `relay.go` are rewritten to the certified facts; RT-RELAY-3 BOUNDED per session (not closed: admission is priced only by R2.14) by promoting
   `Verifier.walkSteps` to an enforced per-session budget S (`ErrWalkBudgetExhausted`, refused before
   walking). Gates: `TestRelayRedeemPaysZeroUntilAnchor`, `TestRelayRedeemPaysZeroEvenWhenFetcherIsFunded`,
   `TestSettleRelaySessionPaysZeroUntilAnchor`, `TestSettleRelaySessionLogCarriesNoAnchorReason`,

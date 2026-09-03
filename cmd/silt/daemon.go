@@ -964,7 +964,7 @@ func cmdDaemon(args []string) error {
 				// guards (ephemeral-blind funding; fresh identity + chain per
 				// session) are enforced by OpenRelaySession.
 				nd.EnableRelayAccept()
-				fmt.Println("relay payments: ACCEPTING — verifying sender-funded PayWord chains and settling relay credit (balance only, never standing)")
+				fmt.Println("relay payments: ACCEPTING — verifying sender-funded PayWord chains; settlement PAYS 0 until the R2.14 prepayment anchor lands (R0.7 interim; balance only, never standing)")
 			}
 			if *requireTokens > 0 {
 				ch.RequireTokens(*requireTokens, nd.IssuerKeyOf)
