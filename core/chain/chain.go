@@ -3349,6 +3349,15 @@ func (c *Chain) AppendGenesis(b Block) error {
 	// genesis order-independent BY REJECTION would be a consensus-rule change to
 	// genesis validity (research-gated) — see
 	// docs/thinking/2026-08-28-genesis-sameroot-residual.md option (b).
+	// MG-C (LASTCOMMIT-CARRIER-26977a4-DELTA-CERTIFICATION-2026-09-03 §6): genesis Atts
+	// are STRIPPED, never trusted and never fatal. Atts sit OUTSIDE the Hash() preimage,
+	// so a serving peer can append an unsigned stub attestation to a genesis it relays —
+	// the proposer signature still verifies and the genesis-divergence check passes.
+	// Refusing would let that zero-key-material stub wedge fork-adopt (Reconcile) and
+	// Reload; seating it would pre-seat validatorsSeen from unsigned bytes. The
+	// hash-covered carrier field (LastCommit, when present) is authored content and IS
+	// refused by the carrier rule. Gates: genesis_stub_atts_test.go.
+	b.Atts = nil
 	c.apply(b)
 	return nil
 }

@@ -564,9 +564,12 @@ O3 is pending** (source for all four:
   bodies — that defeats pruning (build-immutable #8). Source: the carrier delta cert
   (`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/LASTCOMMIT-CARRIER-26977a4-DELTA-CERTIFICATION-2026-09-03.md`)
   §5.
-- **R-CARRIER-GENESIS-DISPOSAL — OPEN, MERGE-BLOCKING on the carrier branch (MG-C).** The rule
-  splits: genesis `Atts` must be **STRIPPED**, genesis `LastCommit` must be **REFUSED**. This
-  corrects the round-A certification's own §2. Source: the delta cert §6.
+- **R-CARRIER-GENESIS-DISPOSAL — the STRIP half ✅ SHIPPED on main 2026-09-04 (carrier-merge-gates PR); the REFUSE half lands with the carrier.**
+  The rule splits: genesis `Atts` are **STRIPPED** (outside the `Hash()` preimage; a relayed stub was
+  silently SEATED into `validatorsSeen` on main — the Tester found main never refused it either), genesis
+  `LastCommit` is **REFUSED** (inside the preimage; `TestGenesisLastCommitIsRefused` arms by reflection
+  when the field lands). Gates `core/chain/genesis_stub_atts_test.go`. This corrects the round-A
+  certification's own §2. Source: the delta cert §6.
 - **R-CARRIER-CREDIT-DENIAL — RE-PRICED 2026-09-03: PRE-EXISTING on main; the carrier NARROWS it. GATED (window); minimum REFUTED; vector REFUTED.**
   Main seats from `b.Atts` (`chain.go:3364`), which is outside the `Hash()` preimage, so today ANY relay
   can deny a seating divergently (bounded by the quorum floor, `chain.go:2735`; at v4+ the same trim
@@ -606,7 +609,7 @@ O3 is pending** (source for all four:
   per-leaf inclusion), carrying `parentLogRoot` in the head record and STALLING on revocation-bearing
   blocks. Liveness needs the authenticated log size — see `tagRevLogSize` under R3.4. Sources: the PE
   inventory (N4), the composed-direction cert (§ corrections), the PE review §5, the closure cert.
-- **R-HASH-LITERAL-PIN + R-V5-TAGSET-EQUALITY — NEW 2026-09-03: two HARD merge gates on the carrier branch (CD-0).**
+- **R-HASH-LITERAL-PIN + R-V5-TAGSET-EQUALITY — ✅ ENCODED ON MAIN 2026-09-04 (carrier-merge-gates PR; green on main, teeth by injection, ablation RED): the two HARD merge gates the carrier rebase is held to (CD-0), plus the CD-2 `CheckEquivocation` golden accept set (26 cases, `core/chain/testdata/equivocation_golden.cbor`).**
   Main's `Hash()` `unsigned` literal folds `IssuerKeys` not `LastCommit` (`chain.go:667`); the carrier
   branch's folds `LastCommit` not `IssuerKeys`, has no `IssuerKeys` field at all, and is behind main by
   2,907 lines in `core/chain` (base `1adca0f`); both branches rewrite the same box-entry file. A naive
@@ -830,7 +833,7 @@ economy-off HEAD certifies a network nobody runs. Design:
   denial — there is no funded honest path through it until R2.14. Sources: the economist advisory;
   `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/RELAY-LANE-per-node-ledger-mint-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md`;
   `/Users/andrewedmond/Claude/claude/silt-reviews/economist/ADVISORY-R0.4b-cap-griefing-grant-and-bonded-fetchers-2026-09-03.md`.
-- **R2.13 · `R-COMPACT-ORPHAN` — BUILT 2026-09-03 (PR pending, branch `builder/r2.13-compact-orphan`); NOT research-gated; FIRST in the R2.13 → R2.10 → FP-2 order.**
+- **R2.13 · `R-COMPACT-ORPHAN` — ✅ MERGED 2026-09-03 (PR #717); NOT research-gated; FIRST in the R2.13 → R2.10 → FP-2 order.**
   Measured by the PE: after a successful rename, a failed post-rename `OpenFile` leaves the append
   handle on the unlinked inode; write AND fsync through the stale handle return success; `Load` never
   sees the record; `Compact`'s error is discarded at the sweep call site. Failure direction is an

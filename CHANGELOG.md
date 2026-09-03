@@ -9,6 +9,22 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Security
+- **Carrier merge gates on main, and MG-C: a relayed genesis stub attestation is stripped, not seated.**
+  `AppendGenesis` never refused a genesis carrying `Atts` and never stripped them: `Atts` sit outside
+  the `Hash()` preimage, so a serving peer could append an unsigned stub to a genesis it relays and
+  have it SEATED into `validatorsSeen` (the delta certification's MG-C, corrected by the Tester's
+  measurement on main). Fix: genesis `Atts` are stripped before apply; the hash-covered carrier field
+  is refused by the carrier rule when it lands. Gates: `TestGenesisStubAttsAreStrippedNotFatal`,
+  `TestReloadSurvivesAGenesisWithAStubAtt`, `TestGenesisStubAttSurvivesForkAdopt` (RED before),
+  `TestGenesisLastCommitIsRefused` (arms by reflection). Also landed, GREEN on main with teeth by
+  injection, so the `LastCommit` carrier rebase is held to them: `TestHashLiteralPinsEveryHashCoveredField`
+  (the `bodyHash` literal names every exported `Block` field except the five deliberate exclusions —
+  a dropped `IssuerKeys` or an unfolded `LastCommit` is RED; CD-0), `TestV5TagSetEqualityAcrossStatehashAndBox`
+  (the 29 v5 committed tags in `statehash.go` equal the runtime tag sets and the box's references,
+  with a one-entry allowlist), and the CD-2 `CheckEquivocation` golden corpus
+  (`core/chain/testdata/equivocation_golden.cbor`, 26 cases; the accept set cannot move unnoticed
+  across the merge). Sources: `LASTCOMMIT-CARRIER-residuals-composed-direction-RESEARCH-CERTIFICATION-2026-09-03.md`
+  CD-0/CD-2; `LASTCOMMIT-CARRIER-26977a4-DELTA-CERTIFICATION-2026-09-03.md` §6.
 - **R4.3a — STRIPPED to the measure step: the DHT eclipse cap keeps its undeclared-domain exemption
   as a KNOWN HOLE; the A-axis metrics are printed; the red-team's findings ship as gates.** The
   "unknown ⇒ capped" table change was built and then refuted by the red-team before merge: in the
