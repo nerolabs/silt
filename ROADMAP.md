@@ -102,7 +102,13 @@ below (the flip/freeze/B8 order; R-BOX-ATTESTS O1/O2/O4).
   recommendation T; owner decision PENDING.** Sources:
   `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-O3-fork-choice-weight-R-vs-T-2026-09-03.md`,
   `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/O3-fork-choice-weight-R-vs-T-RESEARCH-RECOMMENDATION-2026-09-03.md`.
-- **R0.4b C3 (expiry) — four owner calls.** (1) **Break-1 ratification:** the payload-driven
+- **R0.4b C3 (expiry) — four owner calls, ALL RATIFIED 2026-09-03.** Owner: *“merge
+  please”*; on the consensus-rule veto gate, *“I accept”*. Each call below is now DECIDED, as
+  recommended, and is kept here with its source. **The ratifications:** (1) the payload-driven
+  `issuerKeyCommit` prune is ACCEPTED as a consensus rule; (2) the `IssuerKeys` per-block cap is a
+  **pre-freeze Rock, NOT a merge gate** — it is carried in R3.4's pre-freeze carry-list; (3)
+  `grant = 500_000` plus a faucet rate limit; (4) `RequireBondedFetchers` default **OFF**. (1)
+  **Break-1 ratification:** the payload-driven
   `issuerKeyCommit` prune is a **consensus rule** and is research-CERTIFIED
   (`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-composed-close-bc062d0-RESEARCH-CERTIFICATION-2026-09-03.md`
   §1). (2) **The `IssuerKeys` per-block count cap** — a v5 **validity rule** of the class `RegCap`
@@ -597,7 +603,9 @@ economy-off HEAD certifies a network nobody runs. Design:
   validator's key is never committed. Fail-closed, liveness only. Source:
   `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-composed-close-bc062d0-RESEARCH-CERTIFICATION-2026-09-03.md`
   (Residuals → Open).
-- **R2.12 · Grant + faucet rate limit; `RequireBondedFetchers` default — OWNER CALLS, pending.**
+- **R2.12 · Grant + faucet rate limit; `RequireBondedFetchers` default — OWNER CALLS,
+  RATIFIED 2026-09-03: keep `grant = 500_000` and rate-limit the faucet;
+  `RequireBondedFetchers` default OFF.** The remaining work is BUILDING the limiter.
   See the *Decisions owed* block. The limiter must gate the **grant**, not `Ledger.Register` (which
   is reached implicitly from `acct()`, including for the node's own id and for `PayBounty`).
   Sources:
@@ -605,6 +613,20 @@ economy-off HEAD certifies a network nobody runs. Design:
   `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-composed-close-bc062d0-RESEARCH-CERTIFICATION-2026-09-03.md`
   §6 (the "grant is the only non-self balance" claim is CORRECTED there: `PayBounty` credits a
   remote payee, but it is earned work, not a faucet).
+- **R2.13 · `R-COMPACT-ORPHAN` — `guardstore.Compact` silently reports durability it does not
+  have.** After a successful rename, a failed post-rename `OpenFile` leaves the append handle
+  pointing at the replaced (now unlinked) inode: subsequent `Append` calls fsync into an
+  unreachable file and return `nil`, and `Load` then sees nothing. `Compact`'s error is
+  discarded at the sweep call site, so the failure is silent. **This is the THIRD FP-2
+  precondition** (with F8 and arm D), re-priced by G-H because C-7 moved compaction from ~never
+  to once per epoch and its failure direction is an **over-pay**. Narrow (requires `OpenFile` to
+  fail after a successful rename) and ruled NOT a merge block at every review round. Sources:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-composed-close-bc062d0-RESEARCH-CERTIFICATION-2026-09-03.md`
+  (Residuals);
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-271ab81-G3-G4-GD-DELTA-CERTIFICATION-2026-09-03.md`
+  §4;
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-01bf8e9-merge-prep-DELTA-CERTIFICATION-2026-09-03.md`
+  (item 4).
 - **M_seen — the pony-class value is still OWED (carried).** The class-M streaming verifier (PR
   #709) removed RSS as the binding ceiling; the remaining ceiling is **TIME**, the O(N·log N)
   compute floor streaming does not remove. The cap value must be derived from a pony-class
