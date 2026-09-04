@@ -8,7 +8,73 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Changed
+- **R2.9a — the `B_bootstrap` block now has a MINIMUM-REQUESTER FLOOR: below `R_min` it publishes
+  `suppressed: true` and no census count at all (G-BB-11).** The load-bearing fact is not that cells
+  leak. `stats.bytesServed` and `durability.objects[].funded` are published **unconditionally** and
+  **predate this instrument**, so at a degenerate census their deltas already say "the single
+  requester fetched X bytes of object Y". What the instrument adds is `requesters` — **the
+  anonymity-set size** — and publishing that is what converts a pre-existing aggregate counter into
+  an attributable observation about one identity. Suppressing cells while still publishing
+  `requesters` would therefore close nothing, so the floor withholds `cells`, `aged`, `requesters`,
+  `unstamped` **and** `maxOccupiedAgeEdgeNanos` (at one requester that last one is the singleton's
+  own age). The counts are **absent from the JSON, not published as zero**: a zero under a census of
+  nine is a false total a summing reader would take as measured, and a missing key cannot be
+  misread. The clock self-reports, both uptimes, the signed skew and every corruption flag survive
+  suppression — they describe the instrument rather than the population, and an operator needs them
+  exactly when the census is too small to publish. **`R_min = 10` is derived in code, not chosen.**
+  Estimating a `q`-quantile needs at least `⌈1/(1−q)⌉` observations in the read cell, so for any
+  `q ≥ 0.90` a census-wide floor of 10 is strictly dominated by the fit's own requirement and costs
+  it nothing; the constant is written as an integer ceiling over the certified `q` edge so it
+  re-derives if that edge ever moves, guarded by a compile-time assertion that it can never drop
+  below the certified 10. `q` itself stays UNPINNED — it is the owner's (G-BB-1). **This does not
+  contradict the earlier refusal to suppress low-count cells.** That ruling forbade suppressing
+  INDIVIDUAL CELLS, because suppression eats exactly the tail the quantile fit reads; this
+  suppresses the WHOLE BLOCK when the census is not a population, where there is no tail to eat.
+  Two different objects, and the code says so where a reader would otherwise fuse them. The floor is
+  applied at the ONE seam the histogram leaves the ledger by — `core/node`'s `Node.BBootstrap` —
+  with a source gate pinning that nothing outside `core/credit` calls the raw snapshot, so
+  `BBootstrapSnapshot` stays the honest operator-local census `BBootstrapRunPrecondition` needs to
+  refuse an empty run; the operator's own process already holds `fetchedBytes` keyed by `NodeID`, so
+  a node-local read gives it nothing it does not have, and the floor is a publication rule.
+  **What the floor does NOT close, stated rather than implied:** a polled series of cell deltas still
+  yields single-identity bin trajectories at ANY R — one identity crossing a bin edge shows as −1 at
+  one bin and +1 at another — because R governs attribution, not extraction. That is the open
+  residual **R-BB-DELTA-TRAJECTORY**, bounded by poll rate and by bin crossings per interval,
+  neither of which this instrument controls. The block was NOT moved to its own endpoint: an
+  observer polls two endpoints as easily as one, so separation buys nothing and adds surface. No
+  consensus rule, conservation rule or standing calculation reads any of this. Source: RESEARCH
+  CERTIFICATION `R2.9a-Bbootstrap-DELTA-contamination-privacy-floor-clock-RESEARCH-CERTIFICATION-2026-09-04`
+  §2.1–§2.4, gate G-BB-11.
+
 ### Testing
+- **R2.9a DELTA — four gates on the floor, the polling leak and the two refuted separations**
+  (`core/credit/r29a_minr_floor_test.go`, `core/node/r29a_minr_floor_test.go`,
+  `cmd/silt/r29a_minr_floor_test.go`). **BB-15, the floor**, at three tiers: the `core/credit`
+  method, the `core/node` seam and the JSON on the wire, each asserting that at `R_min − 1` no
+  census key survives and at exactly `R_min` all of them do (the rule is `≥ R_min`, not `> R_min`).
+  A companion recomputes `⌈1/(1−q)⌉` by a different method than the constant does, so the number and
+  its stated derivation cannot drift apart, and a source gate pins that the floor is applied at the
+  only seam. **BB-16, the polling oracle**: one requester, six fetches, a snapshot between each, and
+  an extractor that reports every single-identity bin transition in the delta sequence. It carries
+  its own POSITIVE CONTROL — the same extractor over the UNFLOORED local snapshots, where it must
+  find the trajectory (measured: 5 transitions across bins 80 → 84 → 86 → 88 → 90 → 92, the same
+  class of read the review measured as 80 → 84 → 86 → 88 → 89 → 90) — because a green result from
+  an oracle that can never fire proves nothing. **BB-18, the census is a SUPERSET**: three real
+  nodes on one simnet, where a peer fetching over the REPAIR path (`fetchStripeByColumn`, the
+  function `repair.go` and `repairclaim.go` both enter on) and a viewer fetching a plain chunk by id
+  land in the serving node's census in ONE CELL WITH COUNT 2. It asserts the contamination EXISTS
+  and is not a defect to fix: whether repairing peers belong in the estimand's population is an open
+  owner decision. **BB-19, the dead discriminator**: on a serving ledger `servedBytes > 0` holds for
+  exactly one account — the node's own — which is never in the census, so the proposed
+  repair-vs-viewer split partitions the census into everyone and nobody; pinned at the ledger
+  primitive and again on the real `MsgFetchChunk` serve path, where the fact that could regress is
+  the argument order at the two call sites. Six controlled reverts, each RED then restored: dropping
+  the floor call at the seam; rendering the counts despite suppression; withholding the grid while
+  still publishing `requesters` (the "closes nothing" defect); hand-picking `R_min`; lowering the
+  certified `q` edge (a compile error, by design); making the serve path skip coded-shard fetches;
+  and crediting the requester's `servedBytes`.
+
 - **G-FP2-0 — the D-FP2-SCOPE pin: the credit ledger's ephemerality is now a TESTED posture, not an
   accident** (`core/credit/gfp20_scope_close_test.go`). The owner ratified FP-2 closed by scope on
   2026-09-04, which re-arms FP-1, FP-2 and R-F8-RESTART-REWIND automatically on the first of three

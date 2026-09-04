@@ -97,7 +97,13 @@ func r29aFetch(led *credit.Ledger, i int, bytes int64) {
 // must be different objects, and off must be the default.
 func TestR29aStatusOmitsTheBlockUnlessAsked(t *testing.T) {
 	s, led, clk := r29aServer(t, false)
-	r29aFetch(led, 1, 4096)
+	// TEN requesters, not one: credit.BBootstrapMinRequesters is the minimum-requester
+	// floor (G-BB-11) and a smaller census publishes no counts at all, so a one-requester
+	// fixture would be asserting on a suppressed block rather than on the default-off
+	// property this gate is about.
+	for i := 0; i < credit.BBootstrapMinRequesters; i++ {
+		r29aFetch(led, i, 4096)
+	}
 	clk.now = ports.Time(3600 * 1e9)
 
 	if _, present, body := r29aBlock(t, s); present {
@@ -110,8 +116,8 @@ func TestR29aStatusOmitsTheBlockUnlessAsked(t *testing.T) {
 	if !present {
 		t.Fatalf("bBootstrap absent with the switch on")
 	}
-	if got := block["requesters"]; got != float64(1) {
-		t.Fatalf("requesters = %v, want 1", got)
+	if got := block["requesters"]; got != float64(credit.BBootstrapMinRequesters) {
+		t.Fatalf("requesters = %v, want %d", got, credit.BBootstrapMinRequesters)
 	}
 }
 
@@ -246,7 +252,7 @@ func TestR29aPayloadIsBoundedInTheRequesterCount(t *testing.T) {
 // exact age plus a monotone byte total, which let an observer polling /api/status match
 // rows across snapshots and reconstruct "first touch ≈ now − age".
 var r29aWireKeys = map[string]bool{
-	"clockSource": true, "ageAxisLive": true,
+	"clockSource": true, "ageAxisLive": true, "suppressed": true,
 	"requesters": true, "aged": true, "unstamped": true,
 	"uptimeNanos": true, "maxOccupiedAgeEdgeNanos": true,
 	"clockStepBack": true, "ageExceedsUptime": true,
@@ -309,11 +315,18 @@ func TestR29aWirePayloadReportsAClockStep(t *testing.T) {
 	const minute = int64(60 * 1e9)
 	const day = 24 * 60 * minute
 
-	// Clean: two identities an hour apart, no step, no flag.
+	// Clean: two COHORTS of five an hour apart, no step, no flag. Five and five rather
+	// than one and one because the minimum-requester floor (G-BB-11) withholds every
+	// census count below credit.BBootstrapMinRequesters, cells included — a two-identity
+	// fixture would publish a suppressed block and this gate would assert on nothing.
 	s, led, clk := r29aServer(t, true)
-	r29aFetch(led, 1, 4096)
+	for i := 0; i < 5; i++ {
+		r29aFetch(led, i, 4096)
+	}
 	clk.now = ports.Time(bbStatusHour)
-	r29aFetch(led, 2, 8192)
+	for i := 5; i < 10; i++ {
+		r29aFetch(led, i, 8192)
+	}
 	clk.now = ports.Time(2 * bbStatusHour)
 	block, present, raw := r29aBlock(t, s)
 	if !present {
@@ -349,9 +362,13 @@ func TestR29aWirePayloadReportsAClockStep(t *testing.T) {
 	// down. The skew is negative, and that sign is the only thing on the wire that
 	// distinguishes this failure from the forward one.
 	s, led, clk = r29aServer(t, true)
-	r29aFetch(led, 1, 4096)
+	for i := 0; i < 5; i++ {
+		r29aFetch(led, i, 4096)
+	}
 	clk.now = ports.Time(bbStatusHour)
-	r29aFetch(led, 2, 8192)
+	for i := 5; i < 10; i++ {
+		r29aFetch(led, i, 8192)
+	}
 	clk.now = ports.Time(4 * bbStatusHour)
 	before, _, _ := r29aBlock(t, s)
 	clk.step(-(2*bbStatusHour + 50*minute))
@@ -374,7 +391,11 @@ func TestR29aWirePayloadSelfReportsADeadClock(t *testing.T) {
 	s, _, _, led := economyServer(t, 0)
 	s.peerCount = func() int { return 0 }
 	s.bBootstrap = true // switched ON, but no clock is injected
-	r29aFetch(led, 1, 4096)
+	// Ten, so the census clears the minimum-requester floor: a dead clock and a census
+	// below the floor are different refusals and this gate is about the first one.
+	for i := 0; i < credit.BBootstrapMinRequesters; i++ {
+		r29aFetch(led, i, 4096)
+	}
 
 	block, present, raw := r29aBlock(t, s)
 	if !present {
@@ -386,7 +407,7 @@ func TestR29aWirePayloadSelfReportsADeadClock(t *testing.T) {
 	if block["cells"] != nil {
 		t.Fatalf("cells published with no clock injected: %s — an all-zero grid is indistinguishable from a genuinely young population", raw)
 	}
-	if block["requesters"] != float64(1) {
-		t.Fatalf("requesters = %v, want 1 — a dead clock must not hide the census, or 'off' and 'idle' fuse", block["requesters"])
+	if block["requesters"] != float64(credit.BBootstrapMinRequesters) {
+		t.Fatalf("requesters = %v, want %d — a dead clock must not hide the census, or 'off' and 'idle' fuse", block["requesters"], credit.BBootstrapMinRequesters)
 	}
 }

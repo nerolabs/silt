@@ -126,6 +126,66 @@ const (
 // either way, so an operator who disagrees with this threshold can read past it.
 const bbClockSkewToleranceNanos = int64(60 * 1e9)
 
+// THE MINIMUM-REQUESTER FLOOR (G-BB-11), and why it is a WHOLE-BLOCK rule rather than
+// the per-cell suppression this instrument REFUSES.
+//
+// Two different objects, and a reader must not fuse them:
+//
+//   - A LOW-COUNT CELL is never suppressed. Suppression there eats exactly the tail the
+//     quantile fit reads, and the bias is not correctable after the fact. That ruling
+//     stands (see the COUNTS ONLY note above).
+//   - THE WHOLE BLOCK is suppressed when the census is not a POPULATION. Below the floor
+//     there is no tail to eat, because there is nothing to fit.
+//
+// WHAT THE FLOOR ACTUALLY CLOSES, stated exactly, because the obvious reading is wrong.
+// The leak is not that a cell count identifies someone. `stats.bytesServed`
+// (cmd/silt/ui.go) and `durability.objects[].funded` (core/credit/escrow.go) are
+// published UNCONDITIONALLY and PREDATE this instrument: at one requester, their deltas
+// already say "the single requester fetched X bytes of object Y". What this instrument
+// adds is `requesters` — THE ANONYMITY-SET SIZE — and publishing that is what converts a
+// pre-existing aggregate counter into an attributable observation about one identity.
+// So suppressing cells while still publishing `requesters` would close NOTHING, and the
+// floor covers every census count, not just the grid.
+//
+// WHAT IT DOES NOT CLOSE. A polled series of cell deltas yields single-identity bin
+// trajectories at ANY R: one identity crossing a bin edge between two polls shows up as
+// -1 at one bin and +1 at another. The floor closes ATTRIBUTION (whose trajectory it is),
+// never EXTRACTION. That residual is R-BB-DELTA-TRAJECTORY, open, and bounded by the poll
+// rate and the number of bin crossings per interval — neither of which this instrument
+// controls. It is NOT claimed closed here.
+const (
+	// bbDerivedQuantileFloorPercent is NOT q. q is the owner's and is UNPINNED
+	// (G-BB-1). This is the LOWER EDGE OF THE RANGE OVER WHICH THE DERIVATION BELOW IS
+	// CERTIFIED: q >= 0.90. At any q at or above this edge the floor is strictly
+	// dominated by the fit's own sample requirement and therefore costs the fit nothing.
+	// AT q BELOW THIS EDGE THE DERIVATION MUST BE RE-RUN — that is why the rule is
+	// encoded here and not just its answer.
+	bbDerivedQuantileFloorPercent = 90
+
+	// bbQuantileObservationFloor is the RULE, evaluated: estimating a q-quantile needs at
+	// least ceil(1/(1-q)) observations IN THE READ CELL. Written as an integer ceiling
+	// over percent so it re-derives if the edge above moves:
+	//
+	//	ceil(100 / (100 - q%))   =   (100 + (100-q%) - 1) / (100 - q%)
+	//
+	// At q = 0.90 that is (100 + 10 - 1) / 10 = 10.
+	bbQuantileObservationFloor = (100 + (100 - bbDerivedQuantileFloorPercent) - 1) /
+		(100 - bbDerivedQuantileFloorPercent)
+
+	// BBootstrapMinRequesters is R_min, the CENSUS-WIDE floor. The derivation above is a
+	// requirement on ONE CELL of the eight-bucket age axis, so the census must carry far
+	// more than this; a census-wide floor of the same number is therefore strictly
+	// weaker than what the fit already needs, and costs it nothing.
+	BBootstrapMinRequesters = bbQuantileObservationFloor
+)
+
+// A compile-time guard, not a comment: the certified floor is R_min >= 10 whatever the
+// derivation above yields. If someone lowers bbDerivedQuantileFloorPercent far enough to
+// drive the derived floor under 10, this conversion of a negative constant to uint fails
+// to build, which is the only way to make "do not pin R_min below the certified floor"
+// structural rather than a promise.
+const _ = uint(BBootstrapMinRequesters - 10)
+
 // BBootstrapHistogram is the whole published object. It carries no per-identity datum
 // at all — no id, no salted label, no exact age, no row. Fixed-size by construction:
 // every field is a scalar or a fixed-length array, so the payload is constant in R.
@@ -137,7 +197,22 @@ type BBootstrapHistogram struct {
 	// is nil — the instrument REFUSES to publish age-conditioned cells rather than
 	// publish an all-zero age column indistinguishable from a young population
 	// (G-BB-2). "Disabled" and "empty" are different objects on the wire.
+	//
+	// Cells is ALSO nil when Suppressed is true, with the age axis live. The two cases
+	// are told apart by AgeAxisLive and Suppressed, which is why both are published.
 	AgeAxisLive bool
+
+	// Suppressed is the minimum-requester floor (G-BB-11), applied. TRUE means the
+	// census held fewer than BBootstrapMinRequesters requesters and EVERY
+	// census-derived quantity has been withheld: Requesters, Aged, Unstamped,
+	// MaxOccupiedAgeEdgeNanos and Cells. The clock self-reports, the uptimes, the skew
+	// and the axis description survive, because they describe the INSTRUMENT rather
+	// than the population.
+	//
+	// It is published rather than inferred. A reader that sees no cells must be able to
+	// tell "below the floor" from "no clock injected" without guessing, and a reader
+	// that sees zero counts must not read them as a measured zero.
+	Suppressed bool
 
 	// Requesters is the TRUE total: every account with fetchedBytes > 0. No cap, no
 	// truncation — this is a census. Aged + Unstamped == Requesters holds WHENEVER THE
@@ -236,6 +311,40 @@ func (h BBootstrapHistogram) CensoringBoundNanos() int64 {
 	return h.UptimeNanos
 }
 
+// WithMinRequesterFloor applies the minimum-requester floor (G-BB-11) and returns the
+// PUBLISHABLE histogram. Below BBootstrapMinRequesters it withholds every census-derived
+// quantity and says so; at or above the floor it returns the receiver unchanged.
+//
+// WHY IT IS A SEPARATE METHOD RATHER THAN PART OF BBootstrapSnapshot. The floor is about
+// PUBLICATION, not about recording. The serving operator's own process already holds
+// fetchedBytes keyed by NodeID and every ChunkID it answered, so a node-local read gives
+// the operator nothing it does not already have; the leak exists only against a reader
+// who is not the operator. BBootstrapSnapshot therefore stays the honest local census —
+// BBootstrapRunPrecondition needs to see an empty one to refuse the run — and this method
+// is applied at the ONE seam where the histogram leaves the ledger for a consumer:
+// core/node's Node.BBootstrap. Nothing outside core/credit calls BBootstrapSnapshot, and
+// a source gate in core/node pins that.
+//
+// It is a value method on a value receiver: it mutates nothing and allocates nothing on
+// the pass-through path.
+func (h BBootstrapHistogram) WithMinRequesterFloor() BBootstrapHistogram {
+	if h.Requesters >= BBootstrapMinRequesters {
+		return h
+	}
+	h.Suppressed = true
+	h.Requesters = 0
+	h.Aged = 0
+	h.Unstamped = 0
+	// Census-derived, and at a degenerate anonymity set it is a per-identity age
+	// observation: "the one requester is at least this old". It goes with the counts.
+	h.MaxOccupiedAgeEdgeNanos = 0
+	h.Cells = nil
+	// AgeExceedsUptime, ClockStepBack, ClockSuspect and the two uptimes SURVIVE. They
+	// are clock-corruption signals about the instrument, they carry no count, and an
+	// operator needs them exactly when the census is too small to publish.
+	return h
+}
+
 // BBootstrapByteBinRule is the byte axis, stated exactly. Published verbatim.
 const BBootstrapByteBinRule = "bin k covers [2^(k/4), 2^((k+1)/4)) bytes; k = floor(4*log2(bytes)); bin 163 is open-topped"
 
@@ -273,7 +382,13 @@ func BBootstrapRunPrecondition(prev, cur BBootstrapHistogram, windowNanos int64)
 		// process be accepted for a 7-day window after an 8-day forward step.
 		bad = append(bad, "uptime below W: the window asked for is longer than this process has actually been alive on a clock nothing can step, so its cell cannot be read")
 	}
-	if cur.Requesters == 0 {
+	if cur.Suppressed {
+		// The minimum-requester floor (G-BB-11) withheld every census count, so there
+		// is nothing to read. This is not a defect: below R_min there are too few
+		// observations to estimate a q-quantile at any q >= 0.9 anyway, so a run that
+		// reports this was void on the fit's own terms before it was void on privacy's.
+		bad = append(bad, fmt.Sprintf("census below the minimum-requester floor of %d: every census count was withheld (G-BB-11) and no quantile is estimable from this few observations", BBootstrapMinRequesters))
+	} else if cur.Requesters == 0 {
 		bad = append(bad, "no requesters: the census is empty")
 	}
 	if cur.ClockStepBack {

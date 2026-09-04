@@ -426,14 +426,31 @@ type bBootstrapInfo struct {
 	ClockSource string `json:"clockSource"` // "injected" | "none" — the age axis self-report (H-1)
 	AgeAxisLive bool   `json:"ageAxisLive"` // false ⇒ cells is null; NEVER an all-zero age column
 
-	Requesters int `json:"requesters"` // the TRUE total: every account with fetched bytes > 0
-	Aged       int `json:"aged"`       // how many landed in a cell; equals the sum of all cells
-	Unstamped  int `json:"unstamped"`  // counted, never dumped into age bucket 0
+	// THE MINIMUM-REQUESTER FLOOR (G-BB-11). suppressed is true when the census held
+	// fewer than credit.BBootstrapMinRequesters requesters, and then every census count
+	// below is ABSENT FROM THE JSON — not published as zero. A published zero would be a
+	// false total, and a reader that sums the block would read it as a measured one; a
+	// missing key cannot be misread. The pointers exist for exactly that: omitempty on a
+	// non-nil pointer still emits a legitimate 0, so "on and idle" and "below the floor"
+	// stay different objects, which is the same distinction the absent-vs-empty rule for
+	// the whole block draws.
+	//
+	// WHY THE FLOOR EXISTS, in one line, because the obvious reading is wrong: requesters
+	// is THE ANONYMITY-SET SIZE, and publishing it is what makes the UNCONDITIONALLY
+	// published stats.bytesServed and durability.objects[].funded deltas attributable to
+	// one identity. Suppressing cells while still publishing requesters would close
+	// nothing. What it does NOT close is the delta trajectory of a POLLED series
+	// (R-BB-DELTA-TRAJECTORY, open, bounded by poll rate).
+	Suppressed bool `json:"suppressed"`
 
-	UptimeNanos             int64 `json:"uptimeNanos"`             // elapsed on the WALL clock; moves with an NTP step, so not a bound on its own
-	MaxOccupiedAgeEdgeNanos int64 `json:"maxOccupiedAgeEdgeNanos"` // lower edge of the highest occupied bucket
-	ClockStepBack           bool  `json:"clockStepBack"`           // a subtraction crossed zero; ages clamped at 0. NOT the step detector — see clockSuspect
-	AgeExceedsUptime        bool  `json:"ageExceedsUptime"`        // the G-BB-4 censoring assertion failed — the run is suspect
+	Requesters *int `json:"requesters,omitempty"` // the TRUE total: every account with fetched bytes > 0. ABSENT below the floor
+	Aged       *int `json:"aged,omitempty"`       // how many landed in a cell; equals the sum of all cells. ABSENT below the floor
+	Unstamped  *int `json:"unstamped,omitempty"`  // counted, never dumped into age bucket 0. ABSENT below the floor
+
+	UptimeNanos             int64  `json:"uptimeNanos"`                       // elapsed on the WALL clock; moves with an NTP step, so not a bound on its own
+	MaxOccupiedAgeEdgeNanos *int64 `json:"maxOccupiedAgeEdgeNanos,omitempty"` // lower edge of the highest occupied bucket. ABSENT below the floor: at a degenerate anonymity set it is a per-identity age
+	ClockStepBack           bool   `json:"clockStepBack"`                     // a subtraction crossed zero; ages clamped at 0. NOT the step detector — see clockSuspect
+	AgeExceedsUptime        bool   `json:"ageExceedsUptime"`                  // the G-BB-4 censoring assertion failed — the run is suspect. Survives suppression: it is a clock signal, not a count
 
 	// The clock cross-check (G-BB-4 / BB-13). uptimeNanos and every age come off ONE
 	// wall clock, so a step moves both and cancels; monotonicUptimeNanos comes off a
@@ -466,24 +483,30 @@ func (s *uiServer) bBootstrapSnapshot() *bBootstrapInfo {
 		return nil
 	}
 	out := &bBootstrapInfo{
-		ClockSource:             h.ClockSource,
-		AgeAxisLive:             h.AgeAxisLive,
-		Requesters:              h.Requesters,
-		Aged:                    h.Aged,
-		Unstamped:               h.Unstamped,
-		UptimeNanos:             h.UptimeNanos,
-		MaxOccupiedAgeEdgeNanos: h.MaxOccupiedAgeEdgeNanos,
-		ClockStepBack:           h.ClockStepBack,
-		AgeExceedsUptime:        h.AgeExceedsUptime,
-		MonotonicSource:         h.MonotonicSource,
-		MonotonicUptimeNanos:    h.MonotonicUptimeNanos,
-		ClockSkewNanos:          h.ClockSkewNanos,
-		ClockSuspect:            h.ClockSuspect,
-		AgeEdgeNanos:            h.AgeEdgeNanos[:],
-		AgeBuckets:              credit.BBootstrapAgeBuckets,
-		BinsPerOctave:           h.BinsPerOctave,
-		ByteBins:                h.ByteBins,
-		ByteBinRule:             h.ByteBinRule,
+		ClockSource:          h.ClockSource,
+		AgeAxisLive:          h.AgeAxisLive,
+		Suppressed:           h.Suppressed,
+		UptimeNanos:          h.UptimeNanos,
+		ClockStepBack:        h.ClockStepBack,
+		AgeExceedsUptime:     h.AgeExceedsUptime,
+		MonotonicSource:      h.MonotonicSource,
+		MonotonicUptimeNanos: h.MonotonicUptimeNanos,
+		ClockSkewNanos:       h.ClockSkewNanos,
+		ClockSuspect:         h.ClockSuspect,
+		AgeEdgeNanos:         h.AgeEdgeNanos[:],
+		AgeBuckets:           credit.BBootstrapAgeBuckets,
+		BinsPerOctave:        h.BinsPerOctave,
+		ByteBins:             h.ByteBins,
+		ByteBinRule:          h.ByteBinRule,
+	}
+	if !h.Suppressed {
+		// Above the floor the census counts are published, INCLUDING legitimate zeros:
+		// a node with the instrument on and no traffic reports requesters 0, which a
+		// reader must be able to tell from a withheld count.
+		out.Requesters = &h.Requesters
+		out.Aged = &h.Aged
+		out.Unstamped = &h.Unstamped
+		out.MaxOccupiedAgeEdgeNanos = &h.MaxOccupiedAgeEdgeNanos
 	}
 	if h.Cells != nil {
 		out.Cells = make([][]int64, credit.BBootstrapAgeBuckets)

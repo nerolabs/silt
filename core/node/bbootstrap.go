@@ -19,6 +19,14 @@ import "github.com/nerolabs/silt/core/credit"
 // the same optional-interface pattern EconomySelf uses, so ports.CreditLedger stays the
 // consensus-relevant surface. Loop-owned (it reads the ledger); call it on the event
 // loop. Reading moves nothing.
+//
+// THIS IS THE SEAM THE MINIMUM-REQUESTER FLOOR IS APPLIED AT (G-BB-11). It is the one
+// route the histogram takes out of the ledger to any consumer — the ledger reference is
+// unexported and nothing outside core/credit calls BBootstrapSnapshot — so applying the
+// floor here makes "no census count reaches a consumer below the floor" structural
+// rather than a convention every future publisher has to remember. The rule and its
+// derivation live in core/credit; this line is the enforcement point, and
+// TestR29aBB15TheFloorIsAppliedAtTheOnlySeam pins it.
 func (n *Node) BBootstrap() (credit.BBootstrapHistogram, bool) {
 	if n.ledger == nil {
 		return credit.BBootstrapHistogram{}, false
@@ -29,5 +37,5 @@ func (n *Node) BBootstrap() (credit.BBootstrapHistogram, bool) {
 	if !ok {
 		return credit.BBootstrapHistogram{}, false
 	}
-	return r.BBootstrapSnapshot(), true
+	return r.BBootstrapSnapshot().WithMinRequesterFloor(), true
 }

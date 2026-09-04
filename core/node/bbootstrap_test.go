@@ -55,9 +55,14 @@ func TestR29aNodeSnapshotIsTheHistogramWithNoIdentity(t *testing.T) {
 	nd, ledger, sched := r29aNode(t)
 	server := ports.HashBytes([]byte("server"))
 
-	// An old identity fetches 1,000 bytes, then two hours pass, then a young one
-	// fetches 250.
-	ledger.RecordServe(server, r29aFetcher(1), ports.HashBytes([]byte("c1")), 1_000)
+	// Nine old identities fetch 1,000 bytes each, then two hours pass, then a young one
+	// fetches 250. The census is TEN, which is credit.BBootstrapMinRequesters: the
+	// minimum-requester floor (G-BB-11) is applied at this very seam, so a fixture below
+	// it would publish nothing at all and this gate would be asserting on a suppressed
+	// block instead of on the histogram it exists to audit.
+	for i := 0; i < 9; i++ {
+		ledger.RecordServe(server, r29aFetcher(byte(10+i)), ports.HashBytes([]byte("c1")), 1_000)
+	}
 	r29aAdvance(t, sched, 2*3600*ports.Second)
 	ledger.RecordServe(server, r29aFetcher(2), ports.HashBytes([]byte("c2")), 250)
 
@@ -68,8 +73,11 @@ func TestR29aNodeSnapshotIsTheHistogramWithNoIdentity(t *testing.T) {
 	if h.ClockSource != "injected" || !h.AgeAxisLive {
 		t.Fatalf("clock source = %q, ageAxisLive = %v — the sim scheduler IS the injected clock", h.ClockSource, h.AgeAxisLive)
 	}
-	if h.Requesters != 2 || h.Aged != 2 || h.Unstamped != 0 {
-		t.Fatalf("requesters/aged/unstamped = %d/%d/%d, want 2/2/0", h.Requesters, h.Aged, h.Unstamped)
+	if h.Requesters != 10 || h.Aged != 10 || h.Unstamped != 0 {
+		t.Fatalf("requesters/aged/unstamped = %d/%d/%d, want 10/10/0", h.Requesters, h.Aged, h.Unstamped)
+	}
+	if h.Suppressed {
+		t.Fatalf("the block is suppressed at exactly the floor of %d requesters — the floor is >= R_min publishes, not > R_min", credit.BBootstrapMinRequesters)
 	}
 	if h.UptimeNanos != int64(2*3600*ports.Second) {
 		t.Fatalf("uptimeNanos = %d, want %d", h.UptimeNanos, int64(2*3600*ports.Second))
@@ -84,16 +92,16 @@ func TestR29aNodeSnapshotIsTheHistogramWithNoIdentity(t *testing.T) {
 			total += c
 		}
 	}
-	if total != 2 {
-		t.Fatalf("cells total %d, want 2", total)
+	if total != 10 {
+		t.Fatalf("cells total %d, want 10", total)
 	}
 	// The young one: age exactly 0 (bucket 0), 250 bytes → bin floor(4·log2(250)) = 31.
 	if got := h.Cells[0][31]; got != 1 {
 		t.Fatalf("the age-0 identity (250 bytes → bin 31) count = %d, want 1; row 0 = %v", got, h.Cells[0])
 	}
-	// The old one: two hours → bucket 4 ([1h, 6h)), 1,000 bytes → bin 39.
-	if got := h.Cells[4][39]; got != 1 {
-		t.Fatalf("the two-hour-old identity (1,000 bytes → bin 39) count = %d in bucket 4, want 1; row 4 = %v", got, h.Cells[4])
+	// The old ones: two hours → bucket 4 ([1h, 6h)), 1,000 bytes → bin 39.
+	if got := h.Cells[4][39]; got != 9 {
+		t.Fatalf("the two-hour-old identities (1,000 bytes → bin 39) count = %d in bucket 4, want 9; row 4 = %v", got, h.Cells[4])
 	}
 	if h.MaxOccupiedAgeEdgeNanos > h.UptimeNanos || h.AgeExceedsUptime {
 		t.Fatalf("censoring invariant violated: max occupied edge %d, uptime %d", h.MaxOccupiedAgeEdgeNanos, h.UptimeNanos)
@@ -111,6 +119,7 @@ func TestR29aNodeSnapshotIsTheHistogramWithNoIdentity(t *testing.T) {
 		"BinsPerOctave": true, "ByteBins": true, "ByteBinRule": true, "Cells": true,
 		"MonotonicSource": true, "MonotonicUptimeNanos": true,
 		"ClockSkewNanos": true, "ClockSuspect": true,
+		"Suppressed": true,
 	}
 	for i := 0; i < rt.NumField(); i++ {
 		f := rt.Field(i)
