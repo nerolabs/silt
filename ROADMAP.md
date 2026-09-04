@@ -1223,6 +1223,28 @@ economy-off HEAD certifies a network nobody runs. Design:
   coverage gaps (owed, test-only): a simnet downgrade arm; a runtime capture that the group never reaches
   stdout/stderr in any format; a node-tier G-6 twin (the differential above, kept in scratch). Researcher
   cert on F1/F3/F2 in flight (`R4.3b-on-preconditions-relay-tier-and-ipv6-width-RESEARCH-CERTIFICATION-2026-09-04.md`).
+- **R4.3b-pre-on · the eight preconditions for `-dht-address-cap=on` — DEFINED 2026-09-04 (Researcher CERTIFIED: `R4.3b-on-preconditions-relay-tier-and-ipv6-width-RESEARCH-CERTIFICATION-2026-09-04.md`).**
+  Bonding the relay role is REFUTED (a capital-gated center of the NAT edge; immutable #3 fusion in reverse); a
+  relay-attested class stays REFUTED; the honest symmetric-NAT suppression the red-team measured is a
+  CONNECTION-REUSE artefact, not a NAT fact (pony↔public never needs a punch; `deliver` prefers the live relayed
+  conn) — the fix is **(v) the pony's own direct dial**: on a `viaRelay` frame from a peer with a direct address,
+  dial it once per peer per cooldown, adopt, reply on it; the observer classifies DIRECT and re-keys. CERTIFIED as
+  a precondition. `cap_relay` is re-classified NOT a security parameter (the adversary's cheapest route prices at
+  ⌈R/cap_direct⌉ /24s whenever ≥ 2 honest relays exist; certified range [2, K−R]; use K−R = 4 for `on`; the
+  reserve R stays the one security parameter). IPv6 `/32` is CERTIFIED as the FLOOR (a `/48` costs ~€0.003 via one
+  LIR `/29`, $0 via HE.net; two-level refuted): make the v6 width an Evolving flag with a `/32` floor refused under
+  `on`, series E split by family; the co-tenant collapse is real, v6-adoption-contingent, unmeasurable in cloudtest.
+  F2: exempt stays; a population-conditioned class rule is refuted (a remote lever); series E carries an exempt
+  gauge and the daemon WARNS in the proxied posture and on majority-group-0 inbound; the shadow run's nodes must
+  report exempt share = 0 (cloudtest binds 0.0.0.0). **Correction to the red-team's F1(a):** capture is not
+  introduced by the build — `KnownRelays()[0]` on main let ONE low-ID identity capture 100%; the de-herd bounds it
+  at N/(N+H). **The eight:** (1) de-herd + PE O-1/O-2 fixed; (2) (v) built, G-14 green under a symmetric `natBox`;
+  (3) `cap_relay ∈ [2, K−R]` and `R ≥ K/2` ratified with the printed floor; (4) the v6 width flag with the `/32`
+  floor + family split; (5) the exempt gauge + the announced warning; (6) PE O-3 (shadow evaluates `decide` before
+  the label check); (7) one ≥3-relay cloudtest shadow run on the grid + one at `NAT_MODE=symmetric`; (8) gates: the
+  red-team's six + G-14 reply-dial upgrade (RED today), G-15 `cap_relay` price invariance, G-16 v6 floor + split,
+  G-17 exempt gauge + warning line, G-18 ID-grind capture closed (RED on main), G-19 (v) not weaponisable. Builder +
+  Tester; the owner ratifies R and cap_relay, then `on`.
 - **R4.4 · External red-team vs the C1 + C2 composition and the seven §7 seams (#183) — THE M0
   close gate.** This is the RC-defining gate, and **it is the same pass as R1.7** — one external B8
   engagement, not two. **RATIFIED 2026-09-03: it runs at the RELEASE CANDIDATE, AFTER the era-4/v5
