@@ -501,8 +501,7 @@ carries its source; none is decided by a seat.
   `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/floorbox-box-entry-round-A-fee43ba-DELTA-CERTIFICATION-2026-09-03.md`
   §8.
 
-*The `LastCommit` carrier — R-BOX-ATTESTS. **O1 and O2 are OWNER-RATIFIED (2026-09-03); O4 is RATIFIED IN SUBSTANCE with its NUMBER (widen I5 vs mint I6)
-awaiting the owner; O3 is RATIFIED (Direction T, built in PR #722)** (source for all four:
+*The `LastCommit` carrier — R-BOX-ATTESTS. **O1 and O2 are OWNER-RATIFIED (2026-09-03); O4 is RATIFIED (widened I5, 2026-09-04); O3 is RATIFIED (Direction T, built in PR #722)** (source for all four:
 `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R-BOX-ATTESTS-scoping-CONVERGED-RESEARCH-VERDICT-2026-09-02.md`
 §10). **MERGED-pending-PR 2026-09-04:** the carrier branch (`builder/lastcommit-carrier`, three commits) is
 REBASED onto the carrier-merge-gates commit (`cf91f18` = main `b328268` + CD-0 / CD-2 / MG-C gates), every
@@ -575,25 +574,18 @@ gate GREEN incl. `-race -short` on `core/chain` + `core/node`; record
   bodies — that defeats pruning (build-immutable #8). Source: the carrier delta cert
   (`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/LASTCOMMIT-CARRIER-26977a4-DELTA-CERTIFICATION-2026-09-03.md`)
   §5.
-- **R-CARRIER-GENESIS-DISPOSAL — the `LastCommit` REFUSE half ✅ SHIPPED with the carrier; the `Atts` half CERTIFIED 2026-09-04 as "seat only VERIFIED attestations, strip the rest, never refuse" — OWNER RATIFICATION OWED.**
-  "Strip all" (the delta cert's MG-C) was built and REFUTED by CI (four `core/node` fixtures seed a verified
-  genesis att by convention); the Researcher then corrected two premises: production genesis carries NO
-  `Atts` at all (`core/genesis` emits Entries only; anchors seat at height ≥ 1 through the founding drain),
-  and the seating loop (`chain.go` `AppendGenesis` → apply) does NOT verify attestation signatures, so a
-  relayed unsigned stub is seated unverified (metric-inert, latch-inert, weight-inert on a production genesis;
-  the worst case is an era-3 root divergence on a fresh-sync victim until its next clean reconcile). The
-  certified rule: after the proposer-signature check, `b.Atts` becomes exactly the entries with
-  `verifyAtt(a, b.Hash())`; never an error; `LastCommit` on genesis refused (O1). Not era-gated (a height-0
-  rule); I3/I4/I5 strengthened; extensionally equal to today on every honest history. Ten Tester gates G1–G10
-  named in the cert. **Owner sentence:** ratify that a genesis block seats only the attestations whose
-  signature verifies over its hash, stripping the rest silently, and refuses a genesis `LastCommit`.
-  Two observations routed, NOT certified: **O-1** `blockWeight` verifies the bare hash while era-2
-  attestations sign `consensusSigBytes`, so by the code every era-2+ block weighs 0 and `heavier` already
-  falls to height/hash (moot under O3-T; needs a Tester probe); **O-2** `AppendGenesis` never checks
-  `IsPruned()` and `Reconcile` compares `fork[0].Hash()`, which returns `Pruned` — a relayer can serve a
-  "pruned" genesis with our hash, the honest proposer signature and an attacker-chosen body to a fresh-sync
-  victim (the genesis instance of the `Pruned`-linkage-token residual; red-team probe owed before a close).
-  Source: `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/genesis-atts-seating-rule-RESEARCH-CERTIFICATION-2026-09-04.md`.
+- **R-CARRIER-GENESIS-DISPOSAL — ✅ BOTH HALVES SHIPPED. `LastCommit` REFUSED (carrier, PR #720); genesis `Atts` seat ONLY VERIFIED attestations, strip the rest — RATIFIED 2026-09-04 (owner: "I ratify 1") and BUILT (PR pending).**
+  Before the rule the seating loop trusted genesis `Atts` unverified (a relayed stub seated a phantom into
+  `validatorsSeen` and diverged the era-3 root on a fresh-sync victim); "strip all" was REFUTED (it discarded a
+  real signer's consent — four bootstrap fixtures caught it). The certified rule: after the proposer-signature
+  check, `b.Atts` becomes exactly the entries with `verifyAtt(a, b.Hash())`; never an error; production genesis
+  carries no `Atts` (`TestProductionGenesisCarriesNoAtts`), so the filter is the identity on every honest
+  history. Gates G1–G10 in `core/chain/genesis_atts_seating_test.go` + `core/genesis/genesis_atts_test.go`
+  (G1–G6 RED before; strip-all and refuse-invalid each redden their own set). Not era-gated (a height-0 rule).
+  Certification: `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/genesis-atts-seating-rule-RESEARCH-CERTIFICATION-2026-09-04.md`.
+  Still routed, NOT certified: **O-2** a "pruned" genesis served to a fresh-sync victim with our hash and an
+  attacker-chosen body (`AppendGenesis` never checks `IsPruned()`; `Reconcile` compares `fork[0].Hash()`,
+  which returns `Pruned`) — red-team probe owed. **O-1** is closed by O3-T (the weight term is gone).
 - **R-CARRIER-CREDIT-DENIAL — RE-PRICED 2026-09-03: PRE-EXISTING on main; the carrier NARROWS it. GATED (window); minimum REFUTED; vector REFUTED.**
   Main seats from `b.Atts` (`chain.go:3364`), which is outside the `Hash()` preimage, so today ANY relay
   can deny a seating divergently (bounded by the quorum floor, `chain.go:2735`; at v4+ the same trim
@@ -747,7 +739,7 @@ gate GREEN incl. `-race -short` on `core/chain` + `core/node`; record
   heavier-standing chain"), which has been **false since 2026-08-16** and is backed by an era-1 unit
   test no production path can produce. Re-word it to name the real mechanism: quorum finality plus
   height. Sources: the O3 PE ruling §6 and the O3 research recommendation §3, O3-R2.
-- **R-O4-CANON-HASH-COVERAGE — BUILT 2026-09-04 as WIDENED I5 per the cert's §6 recommendation;
+- **R-O4-CANON-HASH-COVERAGE — ✅ DONE; NUMBERING RATIFIED 2026-09-04 (owner: "Widen I5").** Built as widened I5 in PR #722 (the hash-coverage rule inside I5's Statement and Assert, both scars and both code sites, two closure-table rows); no I6 is minted, so "I1–I5" stays load-bearing across the working rules, the model-check spec and `build-process.md`. Prior text kept for the record:
   the NUMBER (I5 vs I6) AWAITS the owner's ratification** (PE RULING-O3-direction-T-build-fa895f5
   condition 3: the cert §9.3 corrects "ratified" to "in substance, NUMBERING PENDING"; a builder
   cannot close an owner call by building one branch of it). Note for the call: I6 would re-open
