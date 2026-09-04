@@ -859,6 +859,23 @@ func cmdDaemon(args []string) error {
 			return fmt.Errorf("token issuer store: %w", ierr)
 		} else if issuerKey, kerr := is.LoadOrCreate(rand.Reader); kerr == nil {
 			nd.EnableTokenIssuer(rand.Reader, issuerKey)
+			// R2.13b (PE F-4): the credit-spent guard is DURABLE, in a SECOND
+			// guardstore file beside paidserials.log. The publish key above persists,
+			// so a credit it signed stays valid across every restart; a guard that
+			// lived in process memory re-opened every held credit for a second spend
+			// per restart. Opened wherever the publish issuer runs (the only role
+			// that can write it — the H-3 lane-gating rule), attached, then LOADED
+			// before the node serves anything. A load error is refuse-to-start:
+			// silently starting with an empty guard IS the eviction. Never the
+			// paid-serial file: its Compact keeps only the ledger's live set.
+			if cs, cerr := guardstore.Open(filepath.Join(*storeDir, "creditspent.log")); cerr != nil {
+				return fmt.Errorf("publish-credit guard store: %w", cerr)
+			} else {
+				nd.SetCreditSpentStore(cs)
+				if lerr := nd.LoadCreditSpent(); lerr != nil {
+					return fmt.Errorf("publish-credit guard store: %w", lerr)
+				}
+			}
 			// R2.14 (advisory finding E): the per-epoch demand-key schedule runs under
 			// EITHER lane. A relay accepting payments blind-signs its prepayment anchors
 			// under the same key_E (a fourth FDH domain, one key); without the schedule

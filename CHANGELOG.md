@@ -66,6 +66,43 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   live S5 drill contract with the stale-prose list as owed docs true-up.
 
 ### Security
+- **R2.13b — the publish-credit double-spend guard (`creditSpent`) is now DURABLE; an issuer
+  restart can no longer re-open every held credit for a second spend (PE finding F-4, confirmed
+  by reproduction 2026-09-04).** Mechanism: `creditSpent` was process memory, while a publish
+  credit's validity is the persisted publish key's lifetime (no epoch in
+  `silt/blindcredit/fdh/v1`), so each restart forgot every spent credit and honoured each again —
+  one 50,000 burn, two demand tokens with distinct serials, two conserved payouts (43,750 +
+  43,750); the durable paid-serial guard cannot catch it because it keys on the token serial.
+  Bound was credits held × restarts; balance only, never standing. Fix: a SECOND
+  `guardstore.Disk` at `<store>/creditspent.log` behind the unchanged `ports.PaidSerialStore`
+  (never a namespace in `paidserials.log`, whose `Compact` keeps only the ledger's live set and
+  would evict every credit record at the first sweep); `Node.SetCreditSpentStore` /
+  `LoadCreditSpent` mirror the paid-serial guard (attached then loaded before the node serves;
+  a load error is refuse-to-start); `tokenChargeFor` refuses while unloaded
+  (`errCreditGuardUnloaded`), refuses at the cap (`maxCreditSpent` = 65,536,
+  `errCreditGuardFull`, never evicts; no sweep because credits do not expire — a disclosed
+  liveness ceiling until the research-gated epoch-binding Rock), and Appends BEFORE the
+  in-memory mark, so an Append error refuses the withdrawal (`errCreditStore`) with the credit
+  unspent and no token signed. `Issue` already charges before `SignBlinded`, so a crash between
+  the durable append and the signature is an under-issue (a lost fee), never a mint; the
+  `tokenrole.go` comment claiming the opposite is corrected. Gates (RED-first):
+  `TestCreditSpentSurvivesIssuerRestart` (the PE reproduction; dropping the Append → RED),
+  `TestCreditSpentStoreFailureRefusesTheWithdrawal`, `TestCreditSpentCapRefusesNeverEvicts`,
+  `TestCreditSpentDiskStoreIsASecondFileBesidePaidSerials`,
+  `TestF4_UnloadedCreditStoreRefusesCreditBearingRequests`, `TestF4_AppendLandsBeforeSignBlinded`
+  (`core/node`), and the cmd/silt source gate
+  `TestDaemonWiresTheCreditSpentStoreBesideThePaidSerialStore`. Ruling:
+  `silt-reviews/principle-engineer/RULING-F4-creditSpent-durability-and-F3-fee-constancy-2026-09-04.md`. **PE review (`RULING-R2.13b-creditspent-build-fa9f988-2026-09-04.md`, MERGE-WITH-CONDITIONS,
+  landed):** the three guard-state refusals (full / store / unloaded) are now WARN-logged and counted on the
+  ISSUER (they collapsed to a silent `OK=false`); the file is BOUND to the publish key it was written under
+  (`Server` = SHA-256 of the issuer key; a foreign file refuses the boot by name), because **the only
+  recovery from a full guard is rotating the publish key AND clearing `creditspent.log` together** — rotate
+  alone keeps the dead records counted, clear alone re-opens F-4 for every credit under the still-valid key;
+  `TestCreditSpentLoadRefusesAboveTheCap` pins the boot refusal the docs claimed (unpinned before).
+  Capacity, sized by the PE: ~65,536 × ⌊N/k⌋ publishes per key lifetime (one credit per canonical-prefix
+  issuer per publish) — months for a flixz-class publisher — so an honest fill is realistic and the cap
+  is an OPERATOR-MANAGED ceiling until the epoch-binding Rock (R-CREDITSPENT-UNBOUNDED). With
+  `-require-tokens`, every validator at cap means the chain accepts no publishes.
 - **A genesis seats only the attestations that verify over its hash (D-GENESIS-ATTS-SEATING, owner-ratified
   2026-09-04).** `AppendGenesis` seated genesis `Atts` unverified, and `Atts` sit outside the `Hash()`
   preimage: a relaying peer could append an unsigned stub, have it SEATED into `validatorsSeen` (a phantom

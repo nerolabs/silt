@@ -950,7 +950,23 @@ economy-off HEAD certifies a network nobody runs. Design:
   optional-interface shape (`core/node/demandrole.go`). Also routed to FP-2's crash-point sweep: the
   discarded directory-fsync error (a power cut between the rename and the directory entry becoming
   durable strands post-compaction appends on the new inode).**
-- **R2.13b · F-4 — `creditSpent` is in-memory only (a restart re-opens every held publish credit for a second spend on the shipped D3 path) — NEW 2026-09-04 (PE-CONFIRMED by reproduction; OWED as its own Rock between R2.13 and R2.10; NOT blocking R2.14).**
+- **R2.13b · F-4 — `creditSpent` is in-memory only (a restart re-opens every held publish credit for a second spend on the shipped D3 path) — BUILT 2026-09-04 (branch `builder/r2.13b-creditspent-durability`, PR pending); PE-CONFIRMED by reproduction; its own Rock between R2.13 and R2.10; NOT blocking R2.14.**
+  **What shipped:** `creditSpent` is durable behind a SECOND `guardstore.Disk` (`<store>/creditspent.log`,
+  opened wherever the publish issuer runs, attached then loaded before the node serves, refuse-to-start on a
+  load error) via the unchanged `ports.PaidSerialStore` (`Serial` = credit serial, `Epoch` = 0);
+  `Node.SetCreditSpentStore` / `LoadCreditSpent`; `tokenChargeFor` refuses while unloaded
+  (`errCreditGuardUnloaded`), refuses at the cap (`maxCreditSpent` = 65,536, `errCreditGuardFull`, never
+  evicts, no sweep — credits do not expire, so the cap is a DISCLOSED liveness ceiling), and Appends BEFORE
+  the in-memory mark; an Append error refuses the withdrawal (`errCreditStore`) with the credit unspent.
+  The false `tokenrole.go` comment ("a signing failure does not burn the credit") is corrected: `Issue`
+  charges before `SignBlinded`, so the crash direction is under-issue. Gates (RED-first, Tester):
+  `TestCreditSpentSurvivesIssuerRestart` (the PE reproduction; ablating the Append → RED),
+  `TestCreditSpentStoreFailureRefusesTheWithdrawal`, `TestCreditSpentCapRefusesNeverEvicts`,
+  `TestCreditSpentDiskStoreIsASecondFileBesidePaidSerials`, cmd/silt
+  `TestDaemonWiresTheCreditSpentStoreBesideThePaidSerialStore` (source gate: open < attach < load,
+  refuse-to-start); plus the ruling's `TestF4_UnloadedCreditStoreRefusesCreditBearingRequests` and the
+  `TestF4_AppendLandsBeforeSignBlinded` order pin. Still OWED: the epoch-binding close
+  (R-CREDITSPENT-UNBOUNDED — a credit-format change, research-gated).
   One fee, two tokens after an issuer restart: the durable `paidSerial` guard cannot catch it (it keys on
   the token serial; the attacker holds two tokens); bound = credits held × restarts; balance only, the
   γ→1/N firewall untouched. Fix shape (plain durability engineering, no cert): a SECOND `guardstore.Disk`
@@ -961,6 +977,12 @@ economy-off HEAD certifies a network nobody runs. Design:
   "burn-backed" with F-4 as the open precondition. F-3 (`fee_E`): the fee is a compile-time constant, no flag —
   inert; a NOTE on the FP-2 carry-list, not freeze-timed; no inert fee slot in `IssuerKeyReg` (PE recommends
   against). Source: `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-F4-creditSpent-durability-and-F3-fee-constancy-2026-09-04.md`.
+  **PE review of the build (F1–F3 landed):** refusals WARN-logged on the issuer; the file bound to the
+  publish key (a foreign file refuses the boot); the above-cap boot refusal pinned. **Owner call (PE
+  recommends accept):** the cap is an OPERATOR-MANAGED ceiling — recovery is rotate-the-publish-key AND
+  clear `creditspent.log` together (documented in CHANGELOG) — until **R-CREDITSPENT-UNBOUNDED** (epoch-bind
+  the credit so the set can sweep; a credit-format change that partitions the D3 anonymity set;
+  research-gated) lands. With `-require-tokens`, all validators at cap ⇒ no publishes accepted.
 - **R2.14 · Relay-lane prepayment ANCHOR — BUILT 2026-09-04 (branch `builder/r2.14-relay-prepayment-anchor`, PR pending); a PREREQUISITE of R2.9; the fix for R0.7; construction CERTIFIED; owner "let's do both" taken as the build go.**
   **What shipped:** the fourth FDH domain `silt/blindrelay/fdh/v1` over `uint64BE(E) ‖ serial` under
   the relay's own committed `key_E` (`blindtoken.BlindRelayAnchor` / `VerifyRelayAnchor`;

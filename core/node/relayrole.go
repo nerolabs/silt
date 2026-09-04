@@ -74,8 +74,8 @@ const (
 	// that actually settles is the k blind-signed anchors bought under the fetcher's
 	// DURABLE identity (AcquireRelayAnchors → ChargePublish on the relay's ledger); the
 	// D3 path (a publish credit converted via WithdrawDemandTokenPrivately) is NOT
-	// anchor-eligible until F-4 (creditSpent durability, ROADMAP R2.13b) closes —
-	// cert correction C-4.
+	// anchor-eligible: F-4 (creditSpent durability) is closed by R2.13b, but eligibility
+	// is the Researcher's C-4 re-certification, not a consequence of the close.
 	FundingEphemeralBlind FundingSource = iota
 	// FundingDurableAccount is a chain funded by a durable-account credit. It is
 	// always REJECTED (M0 guard (i)) — it would link the fetcher's durable
