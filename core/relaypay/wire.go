@@ -25,13 +25,13 @@ import (
 	"github.com/nerolabs/silt/core/blindtoken"
 )
 
-// shippedAnchorFace is the face of one anchor at the shipped fee: cmd/silt's default
+// ShippedAnchorFace is the face of one anchor at the shipped fee: cmd/silt's default
 // --fee (50,000 credits), the value the relay's ledger charged for the blind
 // withdrawal (core/credit: face = Fee(), an identity with the burn). Pinned as a
 // literal here because core/relaypay carries no dependency on core/credit; the
 // derivation below is checked against a second, independent literal in
 // TestRelayMaxAnchorsPerSessionCoversTheSessionCeiling.
-const shippedAnchorFace = 50_000
+const ShippedAnchorFace = 50_000
 
 // MaxAnchorsPerSession is the decode/DoS bound on anchors per RelayOpen — DERIVED,
 // never a bare number (cert §5): the fewest anchors whose summed face covers the
@@ -40,7 +40,7 @@ const shippedAnchorFace = 50_000
 // MaxSessionBytes. A lower fee raises it (granularity / liveness, never soundness);
 // slack above the ceiling would only let an attacker pad an open with garbage
 // anchors that cost the relay a modexp each.
-const MaxAnchorsPerSession = (MaxChainLength*RelayIncrementCredit + shippedAnchorFace - 1) / shippedAnchorFace
+const MaxAnchorsPerSession = (MaxChainLength*RelayIncrementCredit + ShippedAnchorFace - 1) / ShippedAnchorFace
 
 // Anchor is one relay prepayment credential as presented at session open: the
 // serial and the relay's blind signature over (issue epoch, serial) in the

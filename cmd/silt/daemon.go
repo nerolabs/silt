@@ -50,6 +50,7 @@ import (
 	"github.com/nerolabs/silt/core/genesis"
 	"github.com/nerolabs/silt/core/link"
 	"github.com/nerolabs/silt/core/node"
+	"github.com/nerolabs/silt/core/relaypay"
 	"github.com/nerolabs/silt/ports"
 )
 
@@ -619,7 +620,7 @@ func cmdDaemon(args []string) error {
 	// Assigned in the validator block once the chain exists; a no-op on a
 	// chain-less daemon so the chain-gated call sites below never nil-panic.
 	saveChain := func(string) {}
-	ledger := credit.New(50_000, 500_000) // starter grant so a fresh publisher can pay token fees
+	ledger := credit.New(relaypay.ShippedAnchorFace, 500_000) // the ONE fee constant: publish fee == relay anchor face (R2.14 k_max derives from it); starter grant so a fresh publisher can pay token fees
 	// R0.4b re-break F2: the cross-server double-redeem guard is DURABLE, and it is
 	// restored HERE — before the node exists, so before any receipt can be accepted. A
 	// restart used to evict every guarded token, in-window or not, and the identical
