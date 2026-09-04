@@ -901,7 +901,33 @@ economy-off HEAD certifies a network nobody runs. Design:
 
 **New Rocks opened 2026-09-03 (Boulder 2 — economy):**
 - **R2.9 · D-POD-KNOBS re-pricing — CERTIFIED as a LIVE incentive break; direction ✅ RATIFIED 2026-09-04 (owner: "I also accept rulings on R2.9 and the future flixz.com measurement"), the six sentences of `R2.9-OWNER-BRIEF-2026-09-04.md`: (1) byte-denominated per-increment delivery settlement on PayWord under G-1…G-6, G-3 satisfied by R2.14's spend-at-open, G-4/G-5 re-derived for the shared guard and the single fee constant; (2) the interim exposure accepted and the order R2.14 → R2.9 → R2.4; (3) STRICT parity, the unwitnessed bilateral fallback kept, `r = 0` on the witnessed path NOT commissioned in v1; (4) the two measurements AUTHORISED — `B_bootstrap` (per-requester fetched bytes vs identity age on REAL traffic: a flixz.com export, since cloudtest cannot measure user behaviour; the raw per-requester byte counter exists on the ledger) and the honest arrival rate — and `grant/r` NOT pinned until the first exists (the affordability knob is the RATIO `grant/r`); (5) knob 1's cross-tier funding loop delivers 1/1,342 of its stated value on the witnessed lane at production sizes — escrow-over-burn stands, rationale corrected in `docs/decisions.md`; (6) no relay skim in v1 (R-RELAY-WASH-ZERO-LOSS re-opens with R2.12). BUILD OPEN behind R2.10; R2.14 landed (PR #721).**
-- **R2.9a · `B_bootstrap` export — NEW 2026-09-04 (Builder, small; a private handoff to flixz.com, off public repos).** Export per-requester `fetchedBytes` vs identity age from the ledger (`core/credit/escrow.go` / `credit.go` hold the raw counter; `/api/status` exports self only today) as a real-traffic series, so `grant/r` can be pinned before R2.4. Not a consensus or economic change; instrumentation only. The honest arrival rate rides the same export.
+- **R2.9a · `B_bootstrap` export — BUILT 2026-09-04 (branch `builder/r2.9a-bbootstrap-export`, PR pending); instrumentation only, no consensus and no economic change.**
+  **What shipped:** `core/credit/bbootstrap.go` — `FetchedBytesByRequester() []RequesterFetch`
+  (`{SaltedRequester, FetchedBytes, FirstSeenEpoch}`, largest-fetcher-first, capped at
+  `MaxRequesterFetchRows = 4096`) and `FetchedRequesters() (requesters, epoch)` so a truncated tail is
+  visible; a new per-account `firstSeenEpoch` stamped ONCE in `Register` from the ledger's own epoch
+  (`epochWatermark` today, `l.Epoch()` after R2.10 — a one-line switch in `bootstrapEpoch()`);
+  `core/node.BBootstrap()` turning that into `(ageEpochs, fetchedBytes)` rows; and
+  `/api/status → economy.bBootstrap = {epoch, requesters, truncated, series[]}`, emitted by every node,
+  economy-on or not (these are counters, not payouts). Both ledger readers are classified `neutral`
+  by the Invariant-A guard.
+  **The privacy pin (immutable #4, refuse-to-surveil):** the series is per-requester TOTAL bytes and
+  age — no object root, no chunk, no clock finer than the epoch. The ledger labels a requester with a
+  per-process random salted hash that is never persisted, so the series cannot be joined across
+  restarts or nodes; if the salt cannot be drawn the export emits nothing (fails closed). The HTTP
+  surface drops the label entirely and publishes `(age, bytes)` pairs only. Gates:
+  `TestR29a_TheExportCarriesNoRootAndNoRequesterID`,
+  `TestR29a_TheSaltedIDIsStableWithinALedgerAndUnjoinableAcross`,
+  `TestR29aStatusPublishesTheAgeVsBytesSeries` (closed key set, `(ageEpochs, fetchedBytes)` rows only),
+  plus `TestR29a_TwoRequestersCarryTheirOwnBytesAndAge`,
+  `TestR29a_FirstSeenEpochIsWrittenOnceSoAgeAdvancesWithTheLedgerEpoch`,
+  `TestR29a_TheSnapshotIsBoundedAndReportsTheTotal`, `TestR29a_NodeSeriesIsAgeAndBytesOnly`,
+  `TestR29a_EconomySelfFieldsAreUnchanged`, `TestR29aStatusCapsTheSeriesAndFlagsTruncation`.
+  **Why:** D-R2.9-DIRECTION sentence 4 — the affordability knob is the RATIO `grant/r`, and it is NOT
+  pinned until `B_bootstrap` (per-requester fetched bytes vs identity age on REAL traffic) exists;
+  cloudtest measures its own synthetic fetch plan and cannot produce it. The consumer is flixz.com, a
+  PRIVATE handoff off public repos: this branch ships the export, nothing else. The honest arrival
+  rate rides the same series.
   **Certified:** a server strictly prefers NEVER banking a witnessed receipt above B = 50,000 bytes —
   payoff `0.875·(B − fee)`: +13,594 at 64 KiB, +58.7 M (1,342×) at 64 MiB — and suppression is one
   default-off flag (`daemon.go:74`). **B3 conservation is INTACT** (conditioned on a banked receipt);

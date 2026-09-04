@@ -374,6 +374,7 @@ func (s *uiServer) apiStatus(w http.ResponseWriter, _ *http.Request) {
 		Chain        *chainInfo       `json:"chain,omitempty"`
 		Durability   *durabilityInfo  `json:"durability,omitempty"`
 		AddressCap   addressCapInfo   `json:"addressCap"` // R4.3b series A/B/E (shadow-run telemetry)
+		Economy      economyStatus    `json:"economy"`    // R2.9a B_bootstrap (the grant/r instrument)
 	}
 	out.ID = s.nd.ID().String()
 	out.Peer = s.selfPeer
@@ -396,6 +397,7 @@ func (s *uiServer) apiStatus(w http.ResponseWriter, _ *http.Request) {
 		}
 		out.Durability = s.durabilitySnapshot(uptime)
 		out.AddressCap = s.addressCapSnapshot()
+		out.Economy.BBootstrap = bBootstrapSnapshot(s.nd.BBootstrap())
 	})
 	writeJSON(w, out)
 }
@@ -592,6 +594,50 @@ func (s *uiServer) apiEconomySelf(w http.ResponseWriter, r *http.Request) {
 		Objects: objects,
 	}
 	writeJSON(w, out)
+}
+
+// economyStatus is the economy block of GET /api/status. It carries the B_bootstrap
+// series only; the local-exact SELF panels stay on GET /api/economy/self.
+type economyStatus struct {
+	BBootstrap bBootstrapInfo `json:"bBootstrap"`
+}
+
+// bBootstrapInfo is the published B_bootstrap series (R2.9a): per-requester fetched
+// bytes against identity age, the instrument D-R2.9-DIRECTION sentence 4 requires
+// before the affordability ratio grant/r can be pinned. cloudtest measures its own
+// synthetic fetch plan, so the numbers have to come off a deployment with real users.
+//
+// WHAT IT DELIBERATELY IS NOT (immutable #4, refuse-to-surveil). The wire form is a
+// scatter of (age, bytes) pairs. It carries no requester id — not even the ledger's
+// salted label, which stays inside the process — no object root, and no clock finer
+// than the epoch. An operator can fit grant/r from it and can learn nothing about who
+// fetched what. Every node emits it, economy-on or not: these are counters, not
+// payouts.
+type bBootstrapInfo struct {
+	Epoch      uint64          `json:"epoch"`      // ledger epoch the ages are measured against
+	Requesters int             `json:"requesters"` // how many requesters have fetched bytes (the TRUE total)
+	Truncated  bool            `json:"truncated"`  // the row cap dropped a tail of smaller fetchers
+	Series     []bBootstrapRow `json:"series"`     // sorted by age, then bytes
+}
+
+type bBootstrapRow struct {
+	AgeEpochs    uint64 `json:"ageEpochs"`
+	FetchedBytes int64  `json:"fetchedBytes"`
+}
+
+// bBootstrapSnapshot renders the node's series for the wire. It emits an empty array
+// rather than null so a consumer never has to special-case a fresh node.
+func bBootstrapSnapshot(s node.BBootstrapSeries) bBootstrapInfo {
+	out := bBootstrapInfo{
+		Epoch:      s.Epoch,
+		Requesters: s.Requesters,
+		Truncated:  s.Truncated,
+		Series:     make([]bBootstrapRow, 0, len(s.Series)),
+	}
+	for _, r := range s.Series {
+		out.Series = append(out.Series, bBootstrapRow{AgeEpochs: r.AgeEpochs, FetchedBytes: r.FetchedBytes})
+	}
+	return out
 }
 
 // washSymmetryThreshold is how close serve:fetch byte flow must be to 1:1 before

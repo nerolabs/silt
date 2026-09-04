@@ -8,6 +8,34 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Added
+- **R2.9a — the `B_bootstrap` export: per-requester fetched bytes vs identity age, on
+  `/api/status → economy.bBootstrap`.** Instrumentation only: no consensus rule, no economic
+  rule, no new counter — it publishes two numbers the ledger already keeps. `core/credit`
+  gains `FetchedBytesByRequester()` (rows of `{SaltedRequester, FetchedBytes, FirstSeenEpoch}`,
+  largest-fetcher-first, capped at `MaxRequesterFetchRows = 4096`) and
+  `FetchedRequesters() (requesters, epoch)` so a dropped tail stays visible; a per-account
+  `firstSeenEpoch` is stamped ONCE at account creation from the ledger's own monotone epoch;
+  `core/node.BBootstrap()` converts it to `(ageEpochs, fetchedBytes)` rows, and the daemon
+  publishes `{epoch, requesters, truncated, series[]}`. Every node emits it, economy-on or not
+  (counters, not payouts). Both ledger readers are classified `neutral` by the Invariant-A guard,
+  so nothing here can touch standing.
+  **The privacy shape is the design (immutable #4, refuse-to-surveil).** The series carries
+  per-requester TOTAL bytes and age only — no object root, no chunk id, no clock finer than the
+  epoch — so it cannot say what anybody fetched. Inside the process a requester is labelled with a
+  per-process randomly SALTED hash that is never persisted and never shared, so the series cannot
+  be joined across restarts or across nodes; if the salt cannot be drawn, the export emits nothing
+  rather than a joinable id. The HTTP surface drops the label entirely and publishes `(age, bytes)`
+  pairs. Pinned by `TestR29a_TheExportCarriesNoRootAndNoRequesterID`,
+  `TestR29a_TheSaltedIDIsStableWithinALedgerAndUnjoinableAcross` and
+  `TestR29aStatusPublishesTheAgeVsBytesSeries` (closed key set; rows are `(ageEpochs, fetchedBytes)`
+  only).
+  **Why now:** D-R2.9-DIRECTION sentence 4 — R2.9's affordability knob is the RATIO `grant/r`, and
+  it is not pinned until `B_bootstrap` exists on REAL traffic; cloudtest measures its own synthetic
+  fetch plan and cannot produce it. The consumer is a PRIVATE handoff to flixz.com, off the public
+  repos: this change ships the export and nothing else — no analysis, no consumer, no new endpoint
+  beyond the existing status block.
+
 ### Changed
 - **O3 Direction T — the fork-choice weight term is RETIRED; `heavier` is height → head-hash
   among descendants of the finalized head (a consensus-rule change, owner-ratified 2026-09-03,

@@ -51,6 +51,13 @@ type account struct {
 	bondFails     int
 	firstSeenTick uint64 // recorded; NOT read by any standing calc (see T-axis note above)
 	lastBondTick  uint64
+	// firstSeenEpoch is the ledger EPOCH at which this identity first touched the
+	// ledger (written once, in Register). It is the age half of the B_bootstrap
+	// series — per-requester fetched bytes vs identity age, the instrument R2.9's
+	// grant/r ratio is pinned from (bbootstrap.go). Like firstSeenTick it is DEAD
+	// for standing: no standing calculation reads it and it is not an
+	// acquisition-age gate. Observability only.
+	firstSeenEpoch uint64
 	// equivocations counts PROVEN consensus double-signs (core/chain). It is
 	// the gravest offense — an attack on consensus itself — so it does not
 	// merely dent standing, it buries it below any threshold forever.
@@ -239,6 +246,11 @@ type Ledger struct {
 	compactFailures int64
 	lastCompactErr  error
 
+	// fetchExportSalt is the per-process salt for the B_bootstrap export's requester
+	// labels, drawn on first use and never persisted (bbootstrap.go). It is
+	// observability plumbing: no accounting rule reads it.
+	fetchExportSalt []byte
+
 	// Audit economics: storage that survives a spot-check earns rent;
 	// storage that turns out to be a lie is slashed hard. Balances may
 	// go negative — debt is the scarlet letter. Exported so scenarios
@@ -329,7 +341,10 @@ func (l *Ledger) Register(n ports.NodeID) {
 	if _, ok := l.accounts[n]; ok {
 		return
 	}
-	l.accounts[n] = &account{balance: l.grant}
+	// firstSeenEpoch is stamped HERE, at account creation, and never again — the
+	// requester's first touch of this ledger (a fetch registers its account through
+	// acct()). It is the age half of the B_bootstrap series; see bbootstrap.go.
+	l.accounts[n] = &account{balance: l.grant, firstSeenEpoch: l.bootstrapEpoch()}
 	l.order = append(l.order, n)
 }
 

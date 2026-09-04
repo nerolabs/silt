@@ -88,6 +88,12 @@ var standingClassification = map[string]standingClass{
 	"RepairsDone":         neutral, // observability (per-node repair-work count; no standing)
 	"BountyEarned":        neutral, // observability (repair revenue split; no standing)
 
+	// R2.9a — the B_bootstrap export (bbootstrap.go). Both are pure readers of two
+	// counters the ledger already keeps (fetchedBytes, firstSeenEpoch); neither is
+	// read by Reputation and neither writes anything.
+	"FetchedBytesByRequester": neutral, // observability (per-requester bytes vs identity age; salted, root-free)
+	"FetchedRequesters":       neutral, // observability (the series' total + the ledger epoch it ages against)
+
 	// PoD neutral lane (delivery.go, certified 2026-08-26). The witnessed
 	// delivery credit is a CONSERVED balance transfer (the fetcher's withdrawal
 	// fee, less skim) that supersedes the serve self-record — pure balance

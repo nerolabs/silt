@@ -166,6 +166,13 @@ a real delivery, and no receipt proves the counterparty was independent. The
 neutral lane does not need authenticity — it needs wash to be unprofitable
 (§4.1) — and the strong form remains gated on #182 regardless.
 
+**The affordability instrument (R2.9a, built 2026-09-04).** R2.9's affordability knob
+is the RATIO `grant/r`, and it is not pinned until `B_bootstrap` — per-requester
+fetched bytes against identity age on REAL traffic — exists; that series is exported
+by `core/credit/bbootstrap.go` on `/api/status → economy.bBootstrap` as `(age, bytes)`
+pairs, salted and root-free, because a synthetic cloudtest fetch plan measures its own
+plan and not user behaviour (D-R2.9-DIRECTION sentence 4).
+
 ## 5. The consult verdicts (Q1–Q5, certified 2026-08-26)
 
 Consult `PoD-neutral-lane-B3-close-CONSULT-2026-08-26.md`; certification
