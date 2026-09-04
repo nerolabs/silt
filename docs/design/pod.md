@@ -389,9 +389,11 @@ verify `H(x_k) = x_{k-1}`), SHA-256 only, no new dependency.
   (cert §2b, Q6). Failing-first guard: a relay-credit redemption leaves the
   relay's `Reputation()` unchanged (the `core/credit/invariant_a_test.go`
   pattern).
-- **Wash / forgery is a strict self-loss:** forgery is cryptographically excluded
-  (PayWord self-authorizes), and wash is a strict loss under sender-funded
-  conservation (cert §2c).
+- **Wash / forgery:** forgery is cryptographically excluded (PayWord self-authorizes,
+  and the chain root is bound to relay-issued anchors, R2.14). Wash — the operator buying
+  anchors from itself and settling them back — is a WASH at full consumption, not a
+  strict loss: there is no relay skim in v1 (R-RELAY-WASH-ZERO-LOSS, an owner call before
+  R2.4; the 2026-09-04 as-built certification corrected the earlier "strict loss").
 
 ### 7.3.4 HARD design invariants — M0 access-privacy (IMMUTABLE, Don't-#3)
 

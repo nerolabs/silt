@@ -60,8 +60,13 @@ import (
 const maxProvisional = 8192
 
 // The R0.4b paid-serial guard's DERIVED cap (economist advisory §3, residual
-// R-ECON-2). The cap must DOMINATE the honest live set so that EXPIRY — not the cap
-// — does the eviction work. A live paid serial is one whose issuing epoch is still
+// R-ECON-2). Since R2.14 the guard holds TWO populations — paid delivery serials AND
+// spent relay anchors (k ≤ 6 per relay session) — so "the honest live set" below is
+// serves + anchored sessions × k; the derivation was not re-priced for the second
+// population (R-GUARD-SHARED-FILL, ROADMAP R2.14: a faucet-funded flood of relay opens
+// can fill the shared guard for ≤ W+1 epochs and both lanes REFUSE, never evict —
+// liveness only; closes with R2.12). The cap must DOMINATE the honest live set so that
+// EXPIRY — not the cap — does the eviction work. A live paid serial is one whose issuing epoch is still
 // in the validity window, so the live set is bounded by what this server can itself
 // serve in that time: serveRate x W x EpochBlocks. Keeping a bare 8192 alongside a
 // 4-epoch window is the ONE combination to avoid: the cap would then evict a

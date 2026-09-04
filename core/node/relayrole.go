@@ -70,8 +70,12 @@ import (
 type FundingSource int
 
 const (
-	// FundingEphemeralBlind is the ONLY accepted funding source: a blind credit
-	// withdrawn under a fresh ephemeral identity (client.WithdrawDemandTokenPrivately).
+	// FundingEphemeralBlind is the ONLY accepted funding source. R2.14: the funding
+	// that actually settles is the k blind-signed anchors bought under the fetcher's
+	// DURABLE identity (AcquireRelayAnchors → ChargePublish on the relay's ledger); the
+	// D3 path (a publish credit converted via WithdrawDemandTokenPrivately) is NOT
+	// anchor-eligible until F-4 (creditSpent durability, ROADMAP R2.13b) closes —
+	// cert correction C-4.
 	FundingEphemeralBlind FundingSource = iota
 	// FundingDurableAccount is a chain funded by a durable-account credit. It is
 	// always REJECTED (M0 guard (i)) — it would link the fetcher's durable

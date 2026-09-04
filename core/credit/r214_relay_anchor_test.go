@@ -205,6 +205,21 @@ func TestRelayCredentialIsSpentOncePerLedger(t *testing.T) {
 		}
 	})
 
+	// PE ruling RULING-R2.14-relay-anchor-dac0f39 C-1: the in-batch duplicate check is
+	// load-bearing (one burned anchor presented twice ⇒ face 2·fee ⇒ Δ Σ_L = +fee, a
+	// (k−1)·fee mint per burn) and was unpinned — removing it left every gate green.
+	t.Run("duplicate_within_one_batch_refused", func(t *testing.T) {
+		l := New(r214Fee, 0)
+		a := anchorsAt(0, 7, 1)[0]
+		if face, reason := l.SpendRelayAnchors([]RelayAnchor{a, a}, 0); face != 0 || reason == "" {
+			t.Fatalf("one anchor presented TWICE in a batch was accepted (face %d, reason %q) — a (k−1)·fee mint per burn", face, reason)
+		}
+		// Refusal recorded nothing: the anchor is still spendable once.
+		if face, reason := l.SpendRelayAnchors([]RelayAnchor{a}, 0); face != r214Fee || reason != "" {
+			t.Fatalf("after the refused duplicate batch the anchor must still spend once: (face %d, reason %q)", face, reason)
+		}
+	})
+
 	t.Run("all_or_nothing", func(t *testing.T) {
 		l := New(r214Fee, 0)
 		a1, a2 := anchorsAt(0, 1, 1)[0], anchorsAt(0, 2, 1)[0]

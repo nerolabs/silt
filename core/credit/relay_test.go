@@ -7,7 +7,7 @@ package credit
 // RedeemDeliveryCredit: never a mint, never touches Reputation().
 //
 // R2.14 RE-SPECIFICATION (Tester, 2026-09-04) — the three pair-total tests
-// (formerly at :90 TestRelayCreditIsConserved, :135 TestRelayWashLoopIsAStrictLoss,
+// (formerly at :90 TestRelayCreditIsConserved, :135 TestRelayWashLoopIsAWashNeverAGain,
 // :162 TestRelayRedeemDrawsFromFetcherPaidCredit, and :184
 // TestRelayRedeemCannotExceedPaidInBudget) are REWRITTEN to the LEDGER-TOTAL
 // oracle (sumConserved, T-2's oracle), not extended — cert
@@ -149,7 +149,7 @@ func TestSelfRelayPaysNothing(t *testing.T) {
 	}
 }
 
-// TestRelayWashLoopIsAStrictLoss (ledger-total form; the name is kept, the
+// TestRelayWashLoopIsAWashNeverAGain (ledger-total form; the name is kept, the
 // property is CORRECTED per cert §2.3 / C-1): the collusion loop — the relay
 // operator's durable identity D buys anchors on the relay's own ledger and the
 // operator's ephemeral settles them back — is NEVER a gain: Δ Σ_L = settled −
@@ -157,7 +157,7 @@ func TestSelfRelayPaysNothing(t *testing.T) {
 // R-RELAY-WASH-ZERO-LOSS, an owner call before R2.4); at any partial consumption
 // it is a strict loss. What it must never be is Δ > 0. RED on main (pays 0, so
 // the full-consumption case is −face, not 0).
-func TestRelayWashLoopIsAStrictLoss(t *testing.T) {
+func TestRelayWashLoopIsAWashNeverAGain(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		c    int64

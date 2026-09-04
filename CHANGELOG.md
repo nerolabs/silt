@@ -150,7 +150,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `TestRelayRedeemPaysZeroEvenWhenFetcherIsFunded`, `TestSettleRelaySessionPaysZeroUntilAnchor`,
   `TestSettleRelaySessionLogCarriesNoAnchorReason`, `TestRelayPayAdvanceToCumulativeWalkBudgetEnforced`;
   re-specified to pay 0: `TestRelayCreditIsConserved`, `TestRelayRedeemDrawsFromFetcherPaidCredit`,
-  `TestRelayRedeemCannotExceedPaidInBudget`, `TestRelayWashLoopIsAStrictLoss`,
+  `TestRelayRedeemCannotExceedPaidInBudget`, `TestRelayWashLoopIsAWashNeverAGain`,
   `TestRelayFullSessionConservedSettlement`, `TestNoDoubleSettleReaperAndPump`, e2e
   `TestPaidRelaySessionEndToEnd` (balance unchanged). Cert:
   `silt-reviews/research/research-outcome/RELAY-LANE-per-node-ledger-mint-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md`

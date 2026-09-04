@@ -103,7 +103,7 @@ carries the argument and the sources. Two are LIVE BREAKS and come first.
    (owner GO; pays 0). **R2.14 BUILT 2026-09-04 (owner "let's do both"; PR pending):** the construction
    certified in `R2.14-relay-prepayment-anchor-CONSTRUCTION-RESEARCH-CERTIFICATION-2026-09-04.md` §11
    is built under its fourteen gates; the interim is retired; admission is priced (RT-RELAY-3's
-   "sessions are free" half closed). Two owner calls carried: (1) R-ANCHOR-STALL accepted for v1 as
+   "sessions are free" half closed). Two owner calls carried, BOTH OPEN (the builder does not ratify — PE C-3): (1) R-ANCHOR-STALL for v1, proposed as
    a disclosed residual (the build takes "do both" as that acceptance; `MsgRelayFund` filed as the
    follow-on); (2) a relay skim before R2.4 — OPEN. The lane stays DARK until era-4.
 3. **R-STATEVIEW-ENUMERATION / R3.4 freeze scope:** the era-4 freeze scope is at most ONE leaf —
@@ -987,6 +987,19 @@ economy-off HEAD certifies a network nobody runs. Design:
   Side finding: `creditSpent` (`node.go:626`) has no cap/sweep/eviction on a shipped lane. Sources:
   the relay-lane fix cert above;
   `/Users/andrewedmond/Claude/claude/silt-reviews/red-team/RED-TEAM-relay-lane-session-grant-and-byte-price-2026-09-03.md`.
+  **As-built reviews (2026-09-04):** Researcher delta cert CERTIFIED (closes R-RELAY-MINT;
+  `R2.14-relay-anchor-as-built-dac0f39-DELTA-CERTIFICATION-2026-09-04.md`); PE MERGE-WITH-CONDITIONS
+  (`RULING-R2.14-relay-anchor-dac0f39-2026-09-04.md`), conditions landed. **New residuals, held in tension:**
+  **R-GUARD-SHARED-FILL** (any dialing identity gets the faucet grant on the relay's ledger, so ~6.5k identities
+  fill the SHARED paid-serial guard for ≤ W+1 epochs and BOTH lanes refuse — liveness only; closes with R2.12);
+  **R-REAPER-FORFEIT** (`sweepRelaySeen` reaps an unsettled session at `admitEpoch < epoch − 1` without settling;
+  fetcher-side price was 0 under the interim and is now ≤ 300,000 — **Tester must MEASURE whether a maximum
+  session settles inside one epoch before the flag is ever enabled**); **R-REFUSE-AND-SELF-SPEND** (PE O-1: at
+  open the relay holds k valid bearer pairs before any service; a relay that refuses the honest open can
+  self-open with a fresh ephemeral and settle Σ face for zero bytes — Δ Σ_L = 0, a capture not a mint; inert
+  while relay balance is private bookkeeping, load-bearing at FP-2/R2.10 — on that carry-list beside F-3;
+  direction (serial bound to root, or accept-and-gate) research-gated before R2.9). **Owner sentence still
+  unsaid:** accept R-ANCHOR-STALL at ≤ 300,000 credits per 1 GiB session as a disclosed v1 residual.
 - **M_seen — the pony-class value is still OWED (carried).** The class-M streaming verifier (PR
   #709) removed RSS as the binding ceiling; the remaining ceiling is **TIME**, the O(N·log N)
   compute floor streaming does not remove. The cap value must be derived from a pony-class
