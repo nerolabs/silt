@@ -16,11 +16,10 @@ import (
 // dropping committed blocks. The mature-regime sim never hit this (it tests stable,
 // nonzero weights), which is why the two-substrate immutable caught it in the field.
 //
-// This is the deterministic bootstrap-ramp repro (research Ask 4). It asserts the
-// §1 properties: (§1a) a committed anchor-attested chain carries real fork-choice
-// weight during the ramp, and (invariant D) reconciling a genesis-only fork never
-// drops a committed chain. Fails before the §1 fix (anchor bootstrap weight +
-// height-aware tiebreak); passes after.
+// This is the deterministic bootstrap-ramp repro (research Ask 4). It asserts
+// invariant D: reconciling a genesis-only fork never drops a committed chain. (The
+// §1a weight assertion is deleted — see below; the weight term itself is retired
+// under O3 Direction T, and the §1b height preference is the primary term.)
 func commitRampChain(t *testing.T) (*Chain, *Block, []any) {
 	t.Helper()
 	a1, a2, a3, a4 := key(11), key(12), key(13), key(14)

@@ -635,7 +635,8 @@ func (n *Node) reconstructFork(served []chain.Block) ([]chain.Block, error) {
 // is what makes "extension" the only adoptable shape (Reconcile's gate
 // refuses any fork not containing our committed head) and makes adoption
 // without a heavier() comparison sound (every appended block re-proves a
-// super-quorum commit, so the extension is strictly heavier by construction).
+// super-quorum commit and is strictly taller by construction, which is exactly
+// what heavier — height → head-hash — would select).
 func (n *Node) appendExtension(window []chain.Block) (appended int, ext bool, err error) {
 	head, next := n.chain.Head()
 	i := 0
@@ -1507,7 +1508,7 @@ func (n *Node) SyncChain(peers []ports.NodeID, done func(added int, err error)) 
 					// finality being ACTIVE: Reconcile's finality gate then refuses any
 					// fork that does not contain our committed head, so an extension is
 					// the only adoptable shape — and each appended block re-proves a
-					// super-quorum commit inside Append (strictly positive weight), so
+					// super-quorum commit inside Append (strictly greater height), so
 					// adoption here is exactly the outcome heavier() would force. Gated on
 					// len(served)==0 so a window run is judged in ONE mode, never spliced
 					// across fast and slow handling; loop occupancy per callback is

@@ -66,12 +66,24 @@ func attestedFork(prop ed25519.PrivateKey, vals []ed25519.PrivateKey, prev ports
 	return b
 }
 
-// F6, core: two replicas whose LOCAL reputation views could not be more
-// different (one trusts nobody, one trusts everyone) compute the SAME objective
-// fork-choice weight for the same block — because weight is the summed on-chain
-// bond, not the local audit view. This is the subjectivity the red-team turned
-// into a permanent fork; objective mode removes it.
-func TestRedteamF6_ObjectiveWeightAgreesAcrossDivergentReplicas(t *testing.T) {
+// F6, core — the ADMISSION axis only. Two replicas whose LOCAL reputation views
+// could not be more different (one trusts nobody, one trusts everyone) both ADMIT
+// the same objective block, hold the same head, and treat each other's IDENTICAL
+// chain as a no-op on Reconcile. That is what this fixture measures: objective
+// admission is not a function of the local audit view (the subjectivity the
+// red-team turned into a permanent fork).
+//
+// What it does NOT measure — the RANKING axis. Reconcile builds its throwaway
+// replica on the reconciling chain's own rep, so an identical chain ties under
+// ANY total order: this fixture PASSES with the retired rep-view weight restored
+// as heavier's first term (Tester ablation g at fa895f5). "Fork-choice reads only
+// Hash()-covered content" is gated by TestO3T_HeavierReadsOnlyHeightAndHeadHash
+// (the alias-aware purity pin), TestO3T_CertificateVariantNeverRanksHeavier and
+// TestO3T_ForkChoiceIsCertificateIndependentWithoutFinality — cite those, never
+// this, for the ranking claim. (Was …ObjectiveWeightAgreesAcrossDivergentReplicas,
+// which compared the retired Weight(); re-grounded on the preserved admission
+// property.)
+func TestRedteamF6_ObjectiveForkChoiceAgreesAcrossDivergentReplicas(t *testing.T) {
 	prop := key(1)
 	vals := []ed25519.PrivateKey{key(2), key(3), key(4), key(5)}
 
@@ -85,11 +97,33 @@ func TestRedteamF6_ObjectiveWeightAgreesAcrossDivergentReplicas(t *testing.T) {
 	if err := r2.Append(*fork); err != nil {
 		t.Fatalf("r2 append: %v", err)
 	}
-	if r1.Weight() != r2.Weight() {
-		t.Fatalf("F6 regression: objective weight diverged across replicas: r1=%d r2=%d", r1.Weight(), r2.Weight())
+	h1, n1 := r1.Head()
+	h2, n2 := r2.Head()
+	if h1 != h2 || n1 != n2 {
+		t.Fatalf("F6 regression (admission axis): the same objective block was admitted differently under two rep views: r1=%x@%d r2=%x@%d", h1[:4], n1, h2[:4], n2)
 	}
-	if want := int64(3) * twoMiB; r1.Weight() != want {
-		t.Fatalf("objective weight = %d, want %d (3 attesters × 2 MiB bond)", r1.Weight(), want)
+	// Each replica reconciles the other's (identical) chain: no adoption in either
+	// direction, heads unchanged, whatever the local rep view says about the
+	// attesters. An identical chain cannot discriminate a ranking term (see the
+	// doc comment); this half checks Reconcile's admission/no-op path only.
+	for _, dir := range []struct {
+		name string
+		me   *Chain
+		peer *Chain
+	}{{"r1<-r2", r1, r2}, {"r2<-r1", r2, r1}} {
+		adopted, err := dir.me.Reconcile(dir.peer.Blocks(0))
+		if err != nil {
+			t.Fatalf("%s: reconcile: %v", dir.name, err)
+		}
+		if adopted {
+			t.Fatalf("%s: F6 regression (admission axis): a replica ADOPTED an identical committed chain — Reconcile's no-op path is broken. NOT a ranking finding: this fixture cannot see a replica-local ranking term; the purity pin TestO3T_HeavierReadsOnlyHeightAndHeadHash is the gate for that", dir.name)
+		}
+	}
+	if h, _ := r1.Head(); h != h1 {
+		t.Fatal("r1 head moved across a no-op reconcile")
+	}
+	if h, _ := r2.Head(); h != h2 {
+		t.Fatal("r2 head moved across a no-op reconcile")
 	}
 }
 
@@ -153,54 +187,13 @@ func TestRedteamF6_ObjectiveForkChoiceConvergesByCatchUp(t *testing.T) {
 	}
 }
 
-// The break, for contrast: in LEGACY (reputation) mode, two replicas with
-// different rep views of one validator compute DIFFERENT weights for the same
-// fork — the exact divergence objective mode removes. This documents what the
-// fix is defending against.
-func TestRedteamF6_LegacyWeightDivergesAcrossReplicas(t *testing.T) {
-	prop := key(1)
-	vals := []ed25519.PrivateKey{key(2), key(3), key(4)}
-	cfg := Config{Quorum: 1, MinAttesterRep: 100} // legacy: no MinBond
-
-	// Both trust the proposer and vals[0..1]; they DISAGREE about vals[2].
-	base := func(n ports.NodeID) int64 {
-		if n == idOf(prop) || n == idOf(vals[0]) || n == idOf(vals[1]) {
-			return 1000
-		}
-		return 0
-	}
-	r1 := New(cfg, func(n ports.NodeID) int64 {
-		if n == idOf(vals[2]) {
-			return 1000 // r1 audited vals[2] and sees it qualified
-		}
-		return base(n)
-	})
-	r2 := New(cfg, func(n ports.NodeID) int64 {
-		if n == idOf(vals[2]) {
-			return 0 // r2 never audited vals[2]
-		}
-		return base(n)
-	})
-
-	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
-	Sign(g, prop)
-	if err := r1.AppendGenesis(*g); err != nil {
-		t.Fatal(err)
-	}
-	if err := r2.AppendGenesis(*g); err != nil {
-		t.Fatal(err)
-	}
-	fork := attestedFork(prop, vals, g.Hash(), entry(1), 3) // attested by all 3 vals
-	if err := r1.Append(*fork); err != nil {
-		t.Fatalf("r1 append: %v", err)
-	}
-	if err := r2.Append(*fork); err != nil {
-		t.Fatalf("r2 append: %v", err)
-	}
-	if r1.Weight() == r2.Weight() {
-		t.Fatal("setup: legacy weights should diverge on the disputed validator (the F6 break)")
-	}
-}
+// TestRedteamF6_LegacyWeightDivergesAcrossReplicas (the break, for contrast: two
+// legacy-mode replicas with different rep views computed DIFFERENT weights for the
+// same fork) was RETIRED with the weight term — O3 Direction T, 2026-09-03. The
+// residual it controlled for is closed by removal: fork-choice no longer reads the
+// rep view (or any replica-local state) in any mode, so the divergence it exhibited
+// cannot be constructed. The purity pin (TestO3T_HeavierReadsOnlyHeightAndHeadHash)
+// is the standing guard.
 
 // F4 §2c (privacy): the canonical issuer set is DETERMINISTIC and OBJECTIVE —
 // two replicas with maximally-divergent local reputation views produce the

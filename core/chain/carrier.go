@@ -43,9 +43,9 @@ import (
 // touched: statehash.go's leaf tags and encodings are unchanged. The carrier changes WHEN and
 // FROM WHAT the transition writes validatorsSeen, not the leaf.
 //
-// NOT IN THIS ROUND: the fork-choice weight decision (owner call O3) — blockWeight/heavier are
-// untouched. The carrier is designed so a later round COULD derive block h's weight from block
-// h+1's hash-covered LastCommit, but no weight code is added here.
+// FORK-CHOICE: the carrier is a VALIDITY input only. Fork-choice is height → head-hash (O3
+// Direction T, owner-ratified 2026-09-03; the weight term is retired) and reads no certificate,
+// LastCommit included — see `heavier` and its AST purity pin.
 
 var (
 	// ErrCarrierNotWitnessable is a block BELOW the current open era (v5) carrying the LastCommit

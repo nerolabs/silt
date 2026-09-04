@@ -13,10 +13,11 @@ import (
 // #357 (research cert 2026-08-13): the "reorged onto a heavier fork, new head height 0"
 // was a zero-weight tiebreak degeneracy — during the drain window anchor attesters have
 // bonded=0, so a committed chain weighed ≈0 and `heavier()` fell to a height-blind hash
-// tiebreak that a bare-genesis fork could win, dropping committed blocks. The fix: anchor
-// eligibility carries a fixed bootstrap fork-choice weight (so a committed chain outweighs
-// a shorter one) AND a quorum-finality gate makes a super-quorum-committed block
-// irreversible — fork-choice chooses only among descendants of the finalized head (D-1).
+// tiebreak that a bare-genesis fork could win, dropping committed blocks. The fix that
+// stands: a quorum-finality gate makes a super-quorum-committed block irreversible —
+// fork-choice chooses only among descendants of the finalized head (D-1) — and the §1b
+// height preference, now the PRIMARY fork-choice term (height → head-hash, O3 Direction T;
+// the anchor bootstrap weight that shipped alongside them is retired).
 //
 // This oracle asserts the invariant that closes #357: over adversarial competing forks
 // (shorter, genesis, and even TALLER conflicting), a super-quorum-finalized launch block
@@ -86,12 +87,11 @@ func TestModelCheck_357_NoReorgOfFinalizedLaunchBlock(t *testing.T) {
 	if finalHeight != 3 {
 		t.Fatalf("setup: committed head must be at height 3 (Head()==3), got %d", finalHeight)
 	}
-	// Positive control (the #357 weight face): a committed anchor-attested chain carries
-	// NONZERO fork-choice weight during the ramp — otherwise every fork ties at 0 and the
-	// height-blind hash tiebreak governs (the reorg-to-0 degeneracy).
-	if c.Weight() <= 0 {
-		t.Fatal("#357 weight face: a committed anchor-attested launch chain must carry nonzero fork-choice weight")
-	}
+	// (The "#357 weight face" positive control — `Weight() > 0` — that stood here was
+	// DELETED 2026-09-04 with the weight term (O3 Direction T; R-FORKCHOICE-RAMP-GUARD's
+	// twin site). It asserted a property production does not have: green only because this
+	// fixture hand-builds Version: 1 blocks with era-1 attestations. The oracle below is the
+	// part that guards #357 and it stands.)
 
 	// Adversarial competing forks, each re-Reconciled against the finalized chain: a bare
 	// genesis, a shorter conflict, an EQUAL-height conflict, and a TALLER conflict (the

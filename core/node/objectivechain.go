@@ -3,8 +3,8 @@
 // on-chain PoST-bond view: the chain verifies bond registrations with the same
 // space-time primitive the audit loop uses (EnableObjectiveChain), and a node
 // mints its own registration from its held bond (RegisterBondReg). With MinBond
-// set, fork-choice weight, quorum, and eligibility then become a function of the
-// chain — identical on every replica — so honest replicas can no longer diverge.
+// set, quorum and eligibility then become a function of the chain — identical on
+// every replica — so honest replicas can no longer diverge.
 package node
 
 import (

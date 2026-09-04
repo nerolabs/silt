@@ -64,16 +64,6 @@ type Config struct {
 	// validator. See RequiredQuorum. No effect in legacy (reputation) mode, where the
 	// qualified set size is a local, divergent view.
 	ByzantineQuorum bool
-	// AnchorWeight is the fixed fork-choice weight a zero-bond launch anchor carries
-	// during the young window (#357 §1a). It gives the anchor→bonded ramp an
-	// always-present, monotone weight signal so heavier() never has to decide a
-	// zero-weight tie on the height-blind head-hash (which dropped committed blocks to
-	// height 0 in the field). 0 = default to MinBond (see Chain.anchorWeight): an
-	// anchor then weighs like a minimally-bonded validator, a real bond of any size
-	// still outweighs it, and the weight vanishes at maturity (launchAnchor ⇒ false).
-	// Mature-regime fork-choice weight (summed committed bond, the C2 quantity) is
-	// unchanged, so this is C1/C2-neutral.
-	AnchorWeight int64
 	// Launch-window "training wheels" (risk 15): while the network is immature —
 	// its NAKAMOTO COEFFICIENT over non-anchor bonded weight is below
 	// MatureValidators — a commit ALSO needs AnchorQuorum attestations from Anchors
@@ -119,7 +109,7 @@ type Config struct {
 	AllowPublisher bool
 	// MinBond turns on OBJECTIVE fork-choice (D2 / red-team F6). When > 0 (and a
 	// bond verifier is wired, SetBondVerifier), proposer/attester eligibility,
-	// the quorum count, and the fork-choice WEIGHT are all decided by ON-CHAIN
+	// and the quorum count are all decided by ON-CHAIN
 	// bond registrations (Block.BondRegs) — a quantity every replica recomputes
 	// identically from the blocks — instead of the local, per-node reputation
 	// view. That is what stops two honest replicas with different audited sets
@@ -178,7 +168,7 @@ type Config struct {
 	// EpochBlocks freezes the MATURE-phase validator set per epoch (#357 research
 	// certification, Condition A): when > 0 in objective mode, the post-handoff
 	// finality quorum (validatorSetSize / RequiredQuorum), attester/proposer
-	// qualification, and attester fork-choice weight are read from a SNAPSHOT of the
+	// qualification, and the attester weight quorum are read from a SNAPSHOT of the
 	// committed bonded set taken at the last epoch-boundary block (height % EpochBlocks
 	// == 0), never recomputed live from the churning bonded map. Finality is
 	// quorum-INTERSECTION safety — two super-quorums are only guaranteed to share an
@@ -189,7 +179,7 @@ type Config struct {
 	// the §3 gate, so every rotation happens at a finalized checkpoint — and the
 	// young→mature handoff (Condition B) is simply the FIRST mature rotation: the
 	// anchors keep governing after the everMature latch trips mid-epoch, shedding at
-	// the next boundary, so the change in what fork-choice weight MEANS is rooted at an
+	// the next boundary, so the change in what quorum weight MEANS is rooted at an
 	// immutable base and can never reach back across it. Consensus-critical: every
 	// validator in a swarm must run the same value (like MinBond/Anchors — genesis
 	// config discipline). Keep it well below BondTTLBlocks: a frozen epoch extends a
@@ -1229,7 +1219,7 @@ type Chain struct {
 	// NodeID → bonded size, snapshotted from the committed bonded ledger at the
 	// last epoch-boundary block (rotateEpoch). While a mature epoch is in force
 	// (matureEpoch, EpochBlocks > 0), qualification, the finality quorum size N,
-	// and attester fork-choice weight all read THIS set — never the live-churning
+	// and the attester weight quorum all read THIS set — never the live-churning
 	// `bonded` map — because quorum-intersection safety (what makes a §3
 	// super-quorum FINAL) only holds when every quorum is taken over the same set.
 	// nil during the launch phase (the fixed anchor set governs) and when epochs
@@ -1276,8 +1266,8 @@ type Chain struct {
 	// holds; the HANDOFF — anchors shed, weight meaning flips to committed bond,
 	// quorum re-sizes onto the bonded snapshot — waits for the next epoch
 	// boundary, a block that is itself super-quorum-final under the §3 gate. That
-	// roots the change in what fork-choice weight MEANS at an immutable base, so
-	// bond-weighted fork-choice can never reach back across the boundary (the
+	// roots the change in what quorum weight MEANS at an immutable base, so
+	// the bond-weighted quorum can never reach back across the boundary (the
 	// residual non-monotonicity Condition B exists to close). With epochs disabled
 	// the handoff degenerates to the raw latch (pre-Condition-B behavior).
 	matureEpoch bool
@@ -1380,7 +1370,7 @@ func (c *Chain) objective() bool { return c.cfg.MinBond > 0 && c.verifyBond != n
 func (c *Chain) epochsEnabled() bool { return c.cfg.EpochBlocks > 0 && c.objective() }
 
 // handedOff reports whether the young→mature handoff has occurred — the moment
-// the anchors shed and consensus (eligibility, quorum sizing, fork-choice weight)
+// the anchors shed and consensus (eligibility, quorum sizing, quorum weight)
 // moves onto the committed bonded set. With epochs enabled this is the FIRST
 // mature epoch rotation (#357 Condition B: a finalized boundary block), which may
 // trail the everMature latch by up to EpochBlocks; with epochs disabled it is the
@@ -1408,14 +1398,11 @@ func (c *Chain) Objective() bool { return c.objective() }
 // trust. It sheds MECHANICALLY at maturity (Mature()), after which only real
 // on-chain bonds qualify. Anchors are expected to register their OWN real bonds
 // early (live self-registration), so this is a launch crutch, not a standing
-// exemption. It grants ELIGIBILITY plus a FIXED bootstrap fork-choice weight during
-// the young window (#357 §1a: Config.AnchorWeight, defaulting to MinBond) — the
-// sanctioned training-wheels trust that gives the anchor→bonded ramp a present,
-// monotone weight signal (without it every fresh fork weighed ≈0 and a height-blind
-// tiebreak dropped committed blocks to height 0). A real bond of any size still
-// outweighs a min-weight anchor, and the anchor weight VANISHES at maturity (this
-// returns false once everMature), so it is not a standing exemption and the
-// mature-regime fork-choice quantity (summed committed bond) is unchanged.
+// exemption. It grants ELIGIBILITY only. (The fixed bootstrap fork-choice weight it
+// once carried, #357 §1a, is retired with the weight term — O3 Direction T,
+// 2026-09-03: fork-choice is height → head-hash among descendants of the finalized
+// head, and the §1b height preference is the primary term, so a height-blind tiebreak
+// can no longer drop committed blocks.)
 func (c *Chain) launchAnchor(id ports.NodeID) bool {
 	// Gated on the one-way handoff, not the live Mature(): once the network has
 	// handed off, anchors lose bond-free eligibility FOREVER (F-1). An anchor that
@@ -2115,8 +2102,7 @@ func SlashesEncodedSize(s []Equivocation) int {
 }
 
 // BondedSize reports the objective on-chain bonded size for id (0 if none).
-// Exposed for observability and tests; it is the fork-choice weight of one of
-// id's attestations in objective mode.
+// Exposed for observability and tests.
 func (c *Chain) BondedSize(id ports.NodeID) int64 { return c.bonded[id] }
 
 // ProposerEligible reports whether id currently qualifies to propose — the same
@@ -3027,8 +3013,7 @@ func (c *Chain) requireQuorumStack(b *Block, seen map[ports.NodeID]bool) error {
 	// one head past bftThreshold, outright capture (a cheap-member majority
 	// committing with zero honest attestation). Weight-counting prices both at
 	// what C1 says they must cost: >⅓ (stall) / >⅔ (capture) of the epoch's
-	// REAL bonded weight. This also makes the quorum consistent with fork-choice
-	// (blockWeight already sums the same frozen snapshot weights).
+	// REAL bonded weight.
 	if c.cfg.ByzantineQuorum && c.objective() && c.epochsEnabled() && c.matureEpoch {
 		if err := c.requireEpochWeightQuorum(b.ProposerID(), seen, b.Height); err != nil {
 			return err
@@ -3959,101 +3944,13 @@ func (c *Chain) regMinInterval() uint64 {
 	return r
 }
 
-// Weight is the chain's fork-choice weight: the cumulative count, over every
-// block, of DISTINCT qualified non-proposer attestations. More real
-// validators standing behind a history makes it heavier — so the heaviest
-// chain is the one the most earned standing has committed to, not merely the
-// longest (which a fast Sybil could extend). Signatures are objective; the
-// qualification bar is the local reputation view, which converges among
-// honest replicas. (Making the weight fully partition-independent — objective
-// on-chain PoST-bond weight — is the recorded D2 hardening; see §3e.)
-func (c *Chain) Weight() int64 {
-	var w int64
-	for i := range c.blocks {
-		w += c.blockWeight(&c.blocks[i])
-	}
-	return w
-}
-
-// blockWeight is the fork-choice weight this block contributes. In OBJECTIVE
-// mode (F6) it sums the on-chain bonded SIZE of each distinct, non-proposer
-// attester whose signature verifies — a quantity every replica recomputes
-// identically from the chain, so honest replicas can never disagree on which
-// fork is heavier. In legacy mode it COUNTS those attesters, gated by the local
-// reputation view (which is what could diverge under a partition). Either way it
-// is the same rule ValidateCommit counts support by.
-func (c *Chain) blockWeight(b *Block) int64 {
-	h := b.Hash()
-	seen := make(map[ports.NodeID]bool)
-	var n int64
-	for _, a := range b.Atts {
-		if len(a.PubKey) != ed25519.PublicKeySize {
-			continue
-		}
-		id := a.AttesterID()
-		if seen[id] || id == b.ProposerID() {
-			continue
-		}
-		if !ed25519.Verify(ed25519.PublicKey(a.PubKey), h[:], a.Sig) {
-			continue
-		}
-		if !c.attesterQualified(id) {
-			continue
-		}
-		seen[id] = true
-		if c.objective() {
-			// #357 §1a — the ramp needs an always-present, monotone weight signal.
-			// A really-bonded attester weighs its committed bond (the mature-regime
-			// C2 quantity, unchanged). A qualified attester BELOW MinBond can only be
-			// a launch anchor (attesterQualified gated it) — during the young window
-			// it carries a fixed bootstrap weight (the sanctioned immutable-#3 training
-			// wheels), not 0. Without this, a fresh anchor-attested chain has Weight()≈0
-			// and heavier() falls through to a height-blind tiebreak that drops committed
-			// blocks to height 0. The weight vanishes at maturity (launchAnchor ⇒ false
-			// once everMature), so the mature-regime fork-choice quantity is untouched.
-			switch {
-			case c.epochsEnabled() && c.matureEpoch:
-				// #357 Condition A: during a mature epoch an attester weighs its
-				// SNAPSHOT bond (membership was already gated by attesterQualified
-				// above), so fork-choice weight is stable within the epoch — the
-				// same frozen quantity the finality quorum is sized over. Live
-				// renewals/growth integrate at the next rotation.
-				n += c.epochSet[id]
-			case c.bonded[id] >= c.cfg.MinBond:
-				n += c.bonded[id]
-			case c.launchAnchor(id):
-				n += c.anchorWeight()
-			}
-		} else {
-			n++ // legacy weight = count of qualified attesters
-		}
-	}
-	return n
-}
-
-// anchorWeight is the fixed fork-choice weight a zero-bond launch anchor carries
-// during the young window (#357 §1a). Config.AnchorWeight overrides it; unset it
-// defaults to MinBond, so an anchor weighs like a minimally-bonded validator — a
-// real bond of any size still outweighs an anchor, and once the network matures
-// anchors carry no weight at all (launchAnchor ⇒ false). A nonzero floor guarantees
-// the ramp always has a weight signal even if MinBond is 0 (sim/legacy configs).
-func (c *Chain) anchorWeight() int64 {
-	if c.cfg.AnchorWeight > 0 {
-		return c.cfg.AnchorWeight
-	}
-	if c.cfg.MinBond > 0 {
-		return c.cfg.MinBond
-	}
-	return 1 << 20
-}
-
 // Reconcile heals a fork (D2): given a peer's full chain from genesis, it
-// re-validates the whole thing in a throwaway replica and, iff that chain is
-// strictly heavier than ours (ties broken by the lower head hash), ADOPTS it —
-// rolling our replica back to the common genesis and forward onto the heavier
-// history. A diverged node therefore stops being forked forever (the old
-// SyncChain just `break`ed). The fork must share OUR genesis, so a peer cannot
-// swap the chain out from under us with a heavier foreign history; and every
+// re-validates the whole thing in a throwaway replica and, iff that chain wins
+// fork-choice over ours (heavier: strictly taller, ties broken by the lower head
+// hash), ADOPTS it — rolling our replica back to the common genesis and forward
+// onto the winning history. A diverged node therefore stops being forked forever
+// (the old SyncChain just `break`ed). The fork must share OUR genesis, so a peer
+// cannot swap the chain out from under us with a foreign history; and every
 // block is fully re-validated, so a lying peer wastes our time but cannot feed
 // us an invalid chain. Returns whether we adopted the fork.
 func (c *Chain) Reconcile(fork []Block) (bool, error) {
@@ -4083,7 +3980,7 @@ func (c *Chain) Reconcile(fork []Block) (bool, error) {
 	// it met RequiredQuorum, which §2 sizes over the PINNED validator set (the anchor set in
 	// the launch window). Quorum-intersection therefore makes it irreversible — so refuse any
 	// fork that does not CONTAIN our committed head, i.e. that would revert a finalized block.
-	// Fork-choice's heaviest-weight rule (heavier) then only ever adjudicates among DESCENDANTS
+	// Fork-choice (heavier: height → head-hash) then only ever adjudicates among DESCENDANTS
 	// of the finalized head (the Tendermint/Gasper rule) — "reorg to height 0" is structurally
 	// impossible. Finality is quorum-based, NEVER bare depth (a depth cap lets two partitions
 	// finalize conflicting blocks — worse than a reorg). Under a >⅓ partition a node simply
@@ -4091,7 +3988,7 @@ func (c *Chain) Reconcile(fork []Block) (bool, error) {
 	// storage plane keeps serving throughout (D-2), so durability is unaffected. Fork blocks
 	// are contiguous from genesis (index == height) and each hash chains its ancestry, so
 	// matching our head hash at its index proves the fork extends our exact finalized history.
-	// Legacy (subjective) mode keeps pure heaviest-chain reorg — it has no BFT finality.
+	// Legacy (subjective) mode keeps pure longest-chain reorg — it has no BFT finality.
 	// (Launch-phase: finalized == committed head over the pinned anchor set. The mature
 	// phase is sound with epochs enabled: Condition A freezes the finality set per epoch
 	// — every quorum is taken over the same snapshot, so super-quorums genuinely
@@ -4105,7 +4002,7 @@ func (c *Chain) Reconcile(fork []Block) (bool, error) {
 	// ByzantineQuorum) has no quorum intersection: a single attester "commits," so a block is
 	// NOT final and a lone equivocator can even split the honest set onto two committed forks.
 	// Applying a finality gate there would freeze that split; instead such a config keeps
-	// heaviest-chain reorg (and its equivocation slash heals by adopting the heavier fork).
+	// longest-chain reorg (and its equivocation slash heals by adopting the taller fork).
 	// With ByzantineQuorum on (the untrusted/production default) RequiredQuorum is already
 	// bftThreshold, so the gate always engages there. In a MATURE EPOCH the Byzantine bar
 	// is the >⅔ frozen-WEIGHT rule (requireEpochWeightQuorum, B2) rather than a head
@@ -4144,26 +4041,33 @@ func (c *Chain) Reconcile(fork []Block) (bool, error) {
 	return true, nil
 }
 
-// heavier reports whether chain a should win fork-choice over b: strictly more
-// weight, or equal weight with a deterministic lower-head-hash tiebreak so
-// every honest node picks the same winner.
+// heavier reports whether chain a should win fork-choice over b. It is a
+// deterministic total order, height → head-hash (I5): the strictly TALLER chain
+// wins; at equal height the lower head hash wins, so every honest node picks the
+// same winner. Both terms are read from the signed block body (Height is inside
+// Hash()'s unsigned struct; the head hash IS the body digest), so the order is a
+// pure function of the committed chain and of nothing a replica holds privately —
+// no certificate slot (Atts/PrepareQC/CommitRound), no replica-local state.
+//
+// A weight term is deliberately absent (owner-ratified 2026-09-03, O3 Direction T).
+// Reconcile's finality gate admits only forks that CONTAIN the committed head, and
+// on that set any pure, extension-monotone chain-weight function selects the same
+// head as height; the retired term also verified attestations against the bare
+// block hash (#558's third site) and read live qualification and bond state (the
+// #357 oscillation mechanism), so it was both inert and unsafe to repair. The §1b
+// height preference (#357) is now the PRIMARY term: a height-blind head-hash
+// tiebreak can never again let a genesis fork displace committed blocks.
+//
+// Reads ONLY blocks[len-1].Height and blocks[len-1].Hash() — pinned by an AST walk
+// (TestO3T_HeavierReadsOnlyHeightAndHeadHash). Do not add a read here; a fork-choice
+// input must be Hash()-covered and shared by every replica.
 func heavier(a, b *Chain) bool {
-	wa, wb := a.Weight(), b.Weight()
-	if wa != wb {
-		return wa > wb
-	}
-	// §1b (#357): on equal weight, prefer the TALLER chain. A heaviest-chain protocol
-	// must never let a SHORTER fork win a weight tie — the old height-blind head-hash
-	// tiebreak is exactly what let a genesis fork (height 0) displace committed blocks.
-	// Weight is still decided first, so a genuinely heavier shorter chain still wins;
-	// height only breaks a weight tie (monotonicity: never drop committed height for
-	// an equal-weight fork).
 	ah, bh := a.blocks[len(a.blocks)-1].Height, b.blocks[len(b.blocks)-1].Height
 	if ah != bh {
 		return ah > bh
 	}
-	// Same weight AND height ⇒ a deterministic head-hash tiebreak, so honest replicas
-	// still converge on one of two genuinely-equivalent forks.
+	// Equal height ⇒ a deterministic head-hash tiebreak, so honest replicas still
+	// converge on one of two genuinely-equivalent forks.
 	ha, hb := a.blocks[len(a.blocks)-1].Hash(), b.blocks[len(b.blocks)-1].Hash()
 	return bytesLess(ha[:], hb[:])
 }
