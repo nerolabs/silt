@@ -1410,3 +1410,29 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
   strip-all reddens G2 + G5's verified control + one bootstrap fixture; refuse-invalid reddens G1/G3/G4/G5/G6.
 - **Corrections travelling with this decision.** The 2026-09-03 delta certification's MG-C ("strip") is
   superseded; its premise "the launch anchors' genesis attestations seat them" was false.
+
+## D-R2.9-DIRECTION — byte-denominated per-increment delivery settlement; strict parity; the two measurements authorised
+
+- **Status:** ✅ RATIFIED — 2026-09-04 (owner: *"I also accept rulings on R2.9 and the future flixz.com
+  measurement"*). Brief: `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.9-OWNER-BRIEF-2026-09-04.md`;
+  certification: `R2.9-D-POD-KNOBS-delivery-settlement-repricing-RESEARCH-CERTIFICATION-2026-09-03.md`.
+- **The break (re-verified on main 2026-09-04):** a server strictly prefers never banking a witnessed
+  receipt above B = 50,000 bytes (payoff `0.875·(B − fee)`: +58.7 M, 1,342×, at 64 MiB); suppression is one
+  default-off flag. B3 conservation is intact; incentive-compatibility of accept is what breaks.
+- **The six rulings.** (1) Direction: PayWord-denominated per-increment delivery settlement under gates
+  G-1…G-6; G-3 is satisfied by R2.14's spend-at-open; G-4/G-5 are re-derived for the shared paid-serial guard
+  and the single fee constant (`relaypay.ShippedAnchorFace`). (2) The interim exposure is accepted
+  (suppression is the shipped default; conservation holds; disbursement is behind `-economy`) and the order is
+  R2.14 → R2.9 → R2.4. (3) STRICT parity (`p > r·U`); the unwitnessed bilateral fallback stays; `r = 0` on the
+  witnessed-capable path is NOT commissioned in v1. (4) The two measurements are authorised — `B_bootstrap`
+  (per-requester fetched bytes vs identity age on real traffic) and the honest arrival rate — and `grant/r`
+  is NOT pinned until the first exists: the affordability knob is the RATIO `grant/r` (a total rescale leaves
+  it invariant); parity-vs-`r = 0` decides only whether the bilateral fallback survives. (5) D-POD-KNOBS knob 1's
+  cross-tier funding loop delivers 1/1,342 of its stated value on the witnessed lane at production sizes;
+  escrow-over-burn STANDS on conservation grounds, its "funding loop" rationale is corrected here. (6) No relay
+  skim in v1; R-RELAY-WASH-ZERO-LOSS re-opens with R2.12 (a burn-only skim on a content-blind lane does not close
+  the faucet route that funds the wash).
+- **The instrument.** `B_bootstrap` is USER behaviour: cloudtest measures its own synthetic fetch plan and
+  cannot produce it. The raw per-requester byte counter exists on the ledger; the measurement is an export of
+  it on real traffic — flixz.com (a private handoff, off public repos) — R2.9a.
+- **Not decided here:** the value of `grant/r` (after R2.9a); R2.4's flip.
