@@ -1436,3 +1436,32 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
   cannot produce it. The raw per-requester byte counter exists on the ledger; the measurement is an export of
   it on real traffic — flixz.com (a private handoff, off public repos) — R2.9a.
 - **Not decided here:** the value of `grant/r` (after R2.9a); R2.4's flip.
+
+## D-FP2-SCOPE — the credit ledger stays ephemeral through the release candidate
+
+- **Status:** ✅ RATIFIED — 2026-09-04 (owner: *"scope close it is"*). Brief and certification:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/FP-2-redeem-atom-and-ledger-durability-OWNER-BRIEF-AND-CERTIFICATION-2026-09-04.md`.
+- **The decision.** The credit ledger (balances, escrow, provisional lanes) is NOT persisted before the RC.
+  This is an explicit, tested posture, not an accident: FP-2, FP-1 (`Bank.spent`) and R-F8-RESTART-REWIND stay
+  open and inert, and are re-armed automatically by the first of — the **R2.4 economy-ON default flip**, any
+  **shared or multi-operator ledger**, or any **PR that persists any balance the ledger reads**. A Tester pin
+  (G-FP2-0) fails when one arrives.
+- **Why, in one sentence.** Persisting the ledger opens an uncertified economic question larger than the
+  residual it closes: the account, order, escrow and root-owner maps are unbounded with no sound eviction
+  rule, and every candidate rule is itself an economic mechanism — evicting a positive balance destroys
+  money, evicting a negative one forgives a debt (the grant-refill mint), and refusing at the cap refuses to
+  pay a new server — so build-immutable #8 cannot be met without a fresh certification.
+- **The accepted cost, stated plainly.** The publish anti-spam fee's budget is per-process-lifetime rather
+  than per-identity, and a restart destroys every prepaid durability escrow. The only live mint is the grant
+  refill on a fresh account, which is the surface R2.12 already owns. Everything else lost at a restart is a
+  forgotten debt or a destroyed observable. Both paid lanes and the repair economy are default OFF, and no RC
+  gate names a durable ledger.
+- **If it is ever built (`D-FP2-BUILD`, not ratified):** a SINGLE checkpoint-plus-journal store that subsumes
+  `paidserials.log` — never two independent stores — in one PR with FP-1 and a certified account/escrow
+  eviction rule, persisting no standing field; gates G-FP2-1…7 are entry conditions.
+- **Two rulings that outlive the close.** **T-W:** the epoch advance sits OUTSIDE the redeem atom (which is
+  the supersede through the payout); refused ⊇ swept iff the redeem's watermark is at least the sweep's — an
+  ordering, not a transaction. So a future R-F8-RESTORE must persist the watermark *in the same atomic
+  checkpoint as the guard set it swept*, or it opens a second-payout path that does not exist today.
+  **Incremental persistence is refuted:** persisting balances without the provisional lanes is a mint, and
+  persisting the lanes without conditional replay reverses every re-served lane at every restart.

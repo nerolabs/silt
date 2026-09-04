@@ -814,7 +814,7 @@ gate GREEN incl. `-race -short` on `core/chain` + `core/node`; record
   Owner: build the slot now vs reserve-only. Until then, correct the two comments claiming RFC 9578
   fidelity. Source: the three-small-designs ruling above;
   `/Users/andrewedmond/Claude/claude/silt-reviews/crypto-specialist/ADVISORY-R0.4b-C3-blind-RSA-epoch-binding-2026-09-03.md` C-4/Q3.
-- **FP-1 · `Bank.spent` persistence — OPEN, a flip precondition.** The in-memory spent guard has
+- **FP-1 · `Bank.spent` persistence — OPEN and INERT under `D-FP2-SCOPE` (2026-09-04); re-armed with FP-2 by the same three triggers. Still a flip precondition.** The in-memory spent guard has
   less durability than the thing it guards; narrowed, not waived, and re-armed the moment witnessed
   demand confers any value. Source: the composed cert Residuals; the FP-1/FP-2 wording is CERTIFIED
   faithful in `R0.4b-C3-271ab81-G3-G4-GD-DELTA-CERTIFICATION-2026-09-03.md` §4, EXCEPT its reading of
@@ -825,24 +825,35 @@ gate GREEN incl. `-race -short` on `core/chain` + `core/node`; record
   un-reversed mint is permanent; and it DOES have a shipped gate,
   `TestFP2_CrashBetweenTheGuardAppendAndThePayBurnsTheReceipt`. That residual is FP-2's lost
   supersede, below.
-- **FP-2 · the redeem ATOM (was "write-ahead across the guard file and a ledger store") — RE-DEFINED 2026-09-03; sequenced R2.13 → R2.10 → FP-2.**
-  The brief named the wrong invariant: there is NO double-pay (`r04b_c3_crashwindow_test.go:84-89`, Σ
-  unmoved). The residual is a **LOST SUPERSEDE**: the reversal at `delivery.go:449-454` sits OUTSIDE
-  the certified `{guard entry, payout}` atom, so the server keeps 58,720,256 against an honest 43,750
-  (`:97-106`); the same atom reproduces the identical residual. The atom is the WHOLE redeem (five
-  mutations). Direction 2 (pay-then-append) stays REFUTED. Coupling: persisting the ledger BEFORE F8
-  (R2.10) upgrades the watermark poison from process-lifetime to PERMANENT — F8 gates the BUILD.
-  Research-gated: the atom boundary and replay idempotence (conservation). Owner: whether the ledger
-  gets a durable store before the RC at all (PE: close FP-2 by scope; land R2.13 and R2.10 anyway).
-  **Carry-list (from R2.10, 2026-09-04): `R-F8-RESTART-REWIND`** — the guard file is durable but the
-  epoch watermark is not, so a node that sweeps at epoch 10, compacts, and restarts on a chain rewound
-  to ≤ 9 re-admits a serial its keyset still verifies (open-inert: self-pay on a private ledger; real
-  once balances are transferable). Close = **R-F8-RESTORE**: persist the watermark in the SAME atom as
-  `paidSerial`, restore it, then raise to `max(restored, source.Epoch())`. Beside F-3 R-FEE-CONSTANCY
-  and R-REFUSE-AND-SELF-SPEND.
-  Source: `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-ledger-durability-family-FP2-R2.13-R2.10-2026-09-03.md`;
-  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.10-F8-chain-anchored-epoch-RESEARCH-CERTIFICATION-2026-09-04.md` §1.3.
-
+- **FP-2 · the redeem ATOM — ✅ CLOSED BY SCOPE 2026-09-04 (owner: "scope close it is"). `D-FP2-SCOPE`: the credit ledger stays EPHEMERAL through the RC — an explicit, tested posture, not an accident.**
+  Certification + brief: `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/FP-2-redeem-atom-and-ledger-durability-OWNER-BRIEF-AND-CERTIFICATION-2026-09-04.md`
+  (GATED; recommended close-by-scope, reached by a stronger route than the PE's "it is vacuous today":
+  **saying yes opens an uncertified economic question larger than the residual it closes** — `accounts`,
+  `order`, `escrow` and `rootOwner` are unbounded maps with NO sound eviction rule, and every candidate rule
+  is itself an economic mechanism (evicting a positive balance destroys money; evicting a negative one
+  forgives a debt, which IS the grant-refill mint; refusing at the cap refuses to pay a new server), so
+  build-immutable #8 cannot be satisfied without a fresh certification).
+  **Accepted cost, stated:** the publish-fee budget is per-process-lifetime rather than per-identity, and a
+  restart destroys every prepaid durability escrow. The only live mint today is the grant refill on a fresh
+  account (`acct()` → `Register`), the same surface **R2.12** owns; everything else is a forgotten debt or a
+  destroyed observable. Both paid lanes and `RepairEconomy` are default OFF and no RC gate names a durable
+  ledger. **FP-2, FP-1 and R-F8-RESTART-REWIND stay OPEN and INERT, re-armed automatically by the FIRST of:
+  the R2.4 economy-ON default flip · any shared or multi-operator ledger · any PR that persists any balance
+  the ledger reads.** OWED (Tester): **G-FP2-0**, the scope-close pin that fails when any of those three
+  arrives. If it is ever built: `D-FP2-BUILD` — a SINGLE checkpoint-plus-journal store that subsumes
+  `paidserials.log` (never two independent stores), in one PR with FP-1 and a CERTIFIED account/escrow
+  eviction rule, not persisting standing; G-FP2-1…7 are entry conditions.
+  **Two rulings that survive the close and bind future work:** (1) **T-W** — the epoch advance sits OUTSIDE
+  the redeem atom (the atom is M2…M5, the supersede through the payout): the sweep removes `{e : e+W < W_s}`
+  and the backdated screen refuses `{e : e+W < W_r}`, so refused ⊇ swept **iff `W_r ≥ W_s`** — an ORDERING,
+  not a transaction, and R-F8-LATCH survives untouched. The sharp consequence: **persisting the watermark
+  AFTER the compaction it authorised opens a second-payout path that does not exist on main**, so
+  R-F8-RESTORE is not "persist the watermark" but "persist it in the same atomic checkpoint as the guard set
+  it swept." (2) The PE's incremental shape (B) is **REFUTED**: with `provisional` persisted, unconditional
+  load-time replay reverses every re-served lane on every restart; without it (B) is vacuous — the repair IS
+  shape (A). Persisting balances WITHOUT `provisional` is a mint, so they go together or not at all.
+  I-c is restated: *no burnt receipt without its reversal* (the PE's "lane deleted" names a state the
+  measured arm never enters — `ReasonAlreadyPaid` returns above the supersede).
 - **SMT app-layer keyspace-injectivity oracle — DEFINED 2026-09-03: a decoration, and the invariant its safety rests on is FALSE.**
   `statehash.go:52-55` / `:99-101` claim "map raw keys are never empty"; `c.spent[string(e.Token.Serial)]`
   (`chain.go:3254`) has zero validation, and `validateEntry`'s token branch is gated on `tokenQuorum > 0`
