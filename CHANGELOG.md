@@ -66,6 +66,19 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   live S5 drill contract with the stale-prose list as owed docs true-up.
 
 ### Security
+- **A genesis seats only the attestations that verify over its hash (D-GENESIS-ATTS-SEATING, owner-ratified
+  2026-09-04).** `AppendGenesis` seated genesis `Atts` unverified, and `Atts` sit outside the `Hash()`
+  preimage: a relaying peer could append an unsigned stub, have it SEATED into `validatorsSeen` (a phantom
+  from zero key material) and diverge the era-3 committed root on a fresh-sync victim. Now `b.Atts` becomes
+  exactly the entries with `verifyAtt(a, b.Hash())` before apply; the rest are stripped, never refused
+  (refusing would let the same stub wedge fork-adopt and `Reload`). Production genesis carries no `Atts`
+  (`TestProductionGenesisCarriesNoAtts`), so the filter is the identity on every honest history. "Strip all"
+  (the earlier MG-C, briefly on a branch) was REFUTED by the bootstrap fixtures. Gates G1–G10
+  (`core/chain/genesis_atts_seating_test.go`, `core/genesis/genesis_atts_test.go`): G1–G6 RED before;
+  strip-all and refuse-invalid each redden their own set. Certification:
+  `silt-reviews/research/research-outcome/genesis-atts-seating-rule-RESEARCH-CERTIFICATION-2026-09-04.md`.
+  Also recorded: O4's numbering RATIFIED as widened I5 (no I6).
+
 - **R2.14 — the relay-lane prepayment ANCHOR (the R0.7 fix; R2.9's prerequisite): the PayWord
   chain root is now bound to blind-signed prepayment credentials the relay itself issued, and a
   relay settles at most what those credentials burned on its own ledger. BUILT ≠ LIVE: the lane is
