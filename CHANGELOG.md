@@ -8,6 +8,24 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Testing
+- **G-FP2-0 — the D-FP2-SCOPE pin: the credit ledger's ephemerality is now a TESTED posture, not an
+  accident** (`core/credit/gfp20_scope_close_test.go`). The owner ratified FP-2 closed by scope on
+  2026-09-04, which re-arms FP-1, FP-2 and R-F8-RESTART-REWIND automatically on the first of three
+  triggers. This source gate fails when one arrives. T1 parses the `credit.Ledger` declaration and
+  asserts its durable-store surface is exactly the paid-serial guard — one field, one attach method —
+  so a second store cannot land silently; the clock source is deliberately not counted, because a
+  clock carries no state across a restart. T2 asserts the `-economy` flag still defaults to false,
+  the R2.4 economy-ON flip being the first named trigger. T3 asserts no durable-append call site
+  under `core/credit` passes an argument naming a balance. Each failure message routes the change to
+  the FP-2 obligation set rather than to narrowing the gate, and names the certification. The fourth
+  trigger, a shared or multi-operator ledger, is not mechanically checkable from source and is
+  stated as uncovered. Controlled ablation: adding a real store field plus attach method to the
+  `Ledger`, and flipping the economy default, turned T1 and T2 RED; both were reverted. A teeth test
+  injects all three violations and also asserts the gate does not flag the clock source or the
+  serial-guard append.
+
+
 ### Changed
 - **O3 Direction T — the fork-choice weight term is RETIRED; `heavier` is height → head-hash
   among descendants of the finalized head (a consensus-rule change, owner-ratified 2026-09-03,
