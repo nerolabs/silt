@@ -29,7 +29,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   research-gated, R-CARRIER-GENESIS-DISPOSAL). (4) R-V5-TAGSET-EQUALITY — `issuerKeyCommit` stays in
   the v5 tag set. Fixture debt exposed: `c3Chain` minted a v5 genesis whose `Atts` pre-seated the
   fixture attester; under O1 a v5 genesis's `Atts` write nothing, so its genesis version now follows
-  its era (a sub-v5 genesis where the flip is later, like the production genesis). NOT in this change:
+  its era (a sub-v5 genesis where the flip is later, like the production genesis). NOT in this change (also CD-4, the `docs/design/m0.md` C2 sentence that the seating measurement is proposer-gated — owed before the R4.4 brief); 
   the readiness stamp (stays 3), an `Era4ActivationHeight` flag, the floor-box door exports (held),
   the R-CARRIER-BYTES value, R-CARRIER-PRUNED-HASH, R-CARRIER-MODELCHECK, `HeadRef` — each tracked on
   its Rock. Gates: `lastcommit_carrier_pins_test.go`, `lastcommit_carrier_v5_test.go`,
@@ -847,7 +847,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   slashes (structurally pinned). A v5 block's own `Atts` now write nothing. Validity: every entry
   verifies over `b.Prev` at `PhasePrecommit` at its own round (deliberately NOT bound to
   `CommitRound`, which `Hash()` does not cover); distinct ids; a sub-v5 block carrying the field is
-  invalid; height 1's carrier is empty BY RULE and genesis attestations are refused BY RULE
+  invalid; height 1's carrier is empty BY RULE and a genesis `LastCommit` is refused BY RULE (genesis `Atts` are NOT refused on this tree: they seat unverified as on main, pending the owner's ratification of the certified seat-only-verified rule)
   (previously a convention, not a rule). The floor-box class-A recompute and the v5 read-set model
   are re-pointed to the carrier, with the parent-proposer exclusion anchored by the parent's own
   proposer signature over the hash-covered `b.Prev`. Disclosed: the seat lands ONE BLOCK LATE

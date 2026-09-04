@@ -37,8 +37,9 @@ merged literal is held to "both fields, no hole" by a test rather than by attent
 2. MG-C, the hash-covered half only: `AppendGenesis` REFUSES `LastCommit` (inside the preimage: authored
    content; `ErrGenesisLastCommit`). **Correction during the build (coordinator, 2026-09-04):** the `Atts`
    STRIP the gates commit introduced is reverted — CI showed it breaks the anchor bootstrap (four
-   `core/node` gates fail with an era-3 root mismatch: a sub-v5 genesis's attestations by the launch
-   anchors are what seat them into `validatorsSeen`). Genesis `Atts` keep main's pre-carrier behaviour
+   `core/node` fixtures fail with an era-3 root mismatch: they seed a VERIFIED genesis att by convention;
+   production genesis carries no `Atts` at all and anchors seat at height ≥ 1 — the Researcher corrected
+   the "anchor bootstrap" premise the same night). Genesis `Atts` keep main's pre-carrier behaviour
    (neither stripped nor refused); the disposal (strip-all vs seat-only-verified) is research-gated and
    not the Builder's. The three `Atts` gates in `genesis_stub_atts_test.go` are removed;
    `TestGenesisLastCommitIsRefused` stays and is armed.

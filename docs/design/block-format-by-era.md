@@ -173,8 +173,9 @@ holds before it signs.
 
 **Rules.** Every entry verifies over `b.Prev` at `PhasePrecommit` at its own round (NOT bound
 to `CommitRound`, which `Hash()` does not cover); ids are distinct; a sub-v5 block carrying the
-field is invalid; height 1's carrier is empty by rule and genesis attestations are refused by
-rule. The transition seats each carried signer that is not the parent's proposer and is
+field is invalid; height 1's carrier is empty by rule and a genesis `LastCommit` is refused by
+rule (genesis `Atts`, outside the preimage, are not refused — the seat-only-verified rule is
+certified and awaits ratification). The transition seats each carried signer that is not the parent's proposer and is
 `attesterQualified` against the child's pre-state, folded BEFORE the block's bond
 registrations / TTL / slashes.
 
