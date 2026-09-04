@@ -66,14 +66,23 @@ func attestedFork(prop ed25519.PrivateKey, vals []ed25519.PrivateKey, prev ports
 	return b
 }
 
-// F6, core: two replicas whose LOCAL reputation views could not be more
-// different (one trusts nobody, one trusts everyone) make the SAME fork-choice
-// decision on the same chain — because fork-choice is height → head-hash over the
-// committed chain (O3 Direction T), not a function of the local audit view. This
-// is the subjectivity the red-team turned into a permanent fork; objective mode
-// removes it. (Was …ObjectiveWeightAgreesAcrossDivergentReplicas, which compared
-// the retired Weight(); re-grounded on the preserved property — same head, and the
-// same adopt decision when each replica reconciles the other's chain.)
+// F6, core — the ADMISSION axis only. Two replicas whose LOCAL reputation views
+// could not be more different (one trusts nobody, one trusts everyone) both ADMIT
+// the same objective block, hold the same head, and treat each other's IDENTICAL
+// chain as a no-op on Reconcile. That is what this fixture measures: objective
+// admission is not a function of the local audit view (the subjectivity the
+// red-team turned into a permanent fork).
+//
+// What it does NOT measure — the RANKING axis. Reconcile builds its throwaway
+// replica on the reconciling chain's own rep, so an identical chain ties under
+// ANY total order: this fixture PASSES with the retired rep-view weight restored
+// as heavier's first term (Tester ablation g at fa895f5). "Fork-choice reads only
+// Hash()-covered content" is gated by TestO3T_HeavierReadsOnlyHeightAndHeadHash
+// (the alias-aware purity pin), TestO3T_CertificateVariantNeverRanksHeavier and
+// TestO3T_ForkChoiceIsCertificateIndependentWithoutFinality — cite those, never
+// this, for the ranking claim. (Was …ObjectiveWeightAgreesAcrossDivergentReplicas,
+// which compared the retired Weight(); re-grounded on the preserved admission
+// property.)
 func TestRedteamF6_ObjectiveForkChoiceAgreesAcrossDivergentReplicas(t *testing.T) {
 	prop := key(1)
 	vals := []ed25519.PrivateKey{key(2), key(3), key(4), key(5)}
@@ -91,11 +100,12 @@ func TestRedteamF6_ObjectiveForkChoiceAgreesAcrossDivergentReplicas(t *testing.T
 	h1, n1 := r1.Head()
 	h2, n2 := r2.Head()
 	if h1 != h2 || n1 != n2 {
-		t.Fatalf("F6 regression: heads diverged across replicas: r1=%x@%d r2=%x@%d", h1[:4], n1, h2[:4], n2)
+		t.Fatalf("F6 regression (admission axis): the same objective block was admitted differently under two rep views: r1=%x@%d r2=%x@%d", h1[:4], n1, h2[:4], n2)
 	}
-	// Each replica reconciles the other's (identical) chain: fork-choice must be
-	// indifferent — no adoption in either direction, heads unchanged — whatever the
-	// local rep view says about the attesters.
+	// Each replica reconciles the other's (identical) chain: no adoption in either
+	// direction, heads unchanged, whatever the local rep view says about the
+	// attesters. An identical chain cannot discriminate a ranking term (see the
+	// doc comment); this half checks Reconcile's admission/no-op path only.
 	for _, dir := range []struct {
 		name string
 		me   *Chain
@@ -106,7 +116,7 @@ func TestRedteamF6_ObjectiveForkChoiceAgreesAcrossDivergentReplicas(t *testing.T
 			t.Fatalf("%s: reconcile: %v", dir.name, err)
 		}
 		if adopted {
-			t.Fatalf("%s: F6 regression: a replica adopted the same committed chain — fork-choice read something replica-local", dir.name)
+			t.Fatalf("%s: F6 regression (admission axis): a replica ADOPTED an identical committed chain — Reconcile's no-op path is broken. NOT a ranking finding: this fixture cannot see a replica-local ranking term; the purity pin TestO3T_HeavierReadsOnlyHeightAndHeadHash is the gate for that", dir.name)
 		}
 	}
 	if h, _ := r1.Head(); h != h1 {

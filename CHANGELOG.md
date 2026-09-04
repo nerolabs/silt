@@ -50,6 +50,20 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-O3-fork-choice-weight-R-vs-T-2026-09-03.md`,
   `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/O3-fork-choice-weight-R-vs-T-RESEARCH-RECOMMENDATION-2026-09-03.md`;
   deliberation `docs/thinking/2026-09-04-o3-direction-t-design.md`.
+- **O3-T gate hardening (test/docs-only; PE RULING-O3-direction-T-build-fa895f5 conditions 1-3).**
+  `TestO3T_HeavierReadsOnlyHeightAndHeadHash` is now ALIAS-AWARE: parameters resolved from the
+  declaration, taint tracked through `:=`/`=`/`var`/`range`, any selector on an alias and any tainted
+  argument to any call flagged — the PE's ablation D (`ca := a; len(ca.bonded)` at equal height, the
+  #357 replica-local class that passed every gate) is RED; `TestO3T_HeavierPinHasTeeth` carries C, D, a
+  range alias, a var-decl chain and a helper hand-off as an expected-site set. `TestO3T_VerifierInventoryPin`
+  resolves `crypto/ed25519` by IMPORT PATH (alias and dot imports hit, a decoy alias does not), matches
+  `VerifyWithOptions`, and walks `core/node` too (rows `verifyRoundChange` round-change envelope,
+  `OpenRelaySession` relay-open commitment — neither an attestation). The F6 fixture
+  `TestRedteamF6_ObjectiveForkChoiceAgreesAcrossDivergentReplicas` names the axis it measures
+  (admission under divergent rep views; it cannot discriminate a ranking term) and cites the interlock
+  oracles for the ranking axis. ROADMAP: `R-O4-CANON-HASH-COVERAGE` is BUILT as widened I5 with the
+  number awaiting the owner's ratification; the `daemon.go:994` "heavier fork" line is recorded as a
+  live S5 drill contract with the stale-prose list as owed docs true-up.
 
 ### Security
 - **R2.14 — the relay-lane prepayment ANCHOR (the R0.7 fix; R2.9's prerequisite): the PayWord

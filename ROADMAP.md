@@ -693,6 +693,18 @@ gate GREEN incl. `-race -short` on `core/chain` + `core/node`; record
   how the third bare-hash verify site happened. **The next four Rocks ship in the SAME commit as
   whichever direction the owner picks.** The reopening condition is narrow and named: evidence of a
   shipping posture in which `FinalizedHeight()` lags `Head()`.
+  **NOTE (PE RULING-O3-direction-T-build-fa895f5-2026-09-04 §2 Q6, OWED docs true-up):**
+  `cmd/silt/daemon.go:994` `chain: reorged onto a heavier fork (dropped N block(s), new head height H)`
+  is a LIVE S5 drill contract — `integration/consensus/run.sh:220,243,245` grep the exact string, and
+  `integration/consensus/README.md:87,100` + `integration/cloudtest/HANDOFF.md:166` describe it. The
+  build correctly did NOT rename it; any rename moves the emitter and all three consumers in ONE
+  commit (the `freeload: ON` scar; R-S5-STRING-REGISTRY). Stale "weight"/"heavier" PROSE (outcome
+  unchanged — those drills win by height): `sim/reorg_test.go:17-22,63-65`,
+  `sim/objective_consensus_test.go:23-25,97-121`, `integration/consensus/docker-compose.yml:12,19-20`,
+  `integration/run-all.sh:30`. Gate hardening landed with the O3-T PR (PE conditions 1+2): the purity
+  pin is alias-aware (PE ablation D, `ca := a; len(ca.bonded)`, now RED) and the verifier inventory
+  resolves `crypto/ed25519` by import path and covers `core/node` (two non-attestation rows:
+  `verifyRoundChange`, `OpenRelaySession`).
 - **R-558-VERIFIER-INVENTORY — ✅ DONE 2026-09-04 (with the T commit).** `core/chain/o3t_verifier_inventory_test.go`:
   an AST walk of every `ed25519.Verify` in non-test `core/chain` against a classified allowlist
   (`blockWeight` tombstoned, `signedBlock` allowlisted as era-1-gated — O3-R13 follow-on — and the
@@ -735,10 +747,14 @@ gate GREEN incl. `-race -short` on `core/chain` + `core/node`; record
   heavier-standing chain"), which has been **false since 2026-08-16** and is backed by an era-1 unit
   test no production path can produce. Re-word it to name the real mechanism: quorum finality plus
   height. Sources: the O3 PE ruling §6 and the O3 research recommendation §3, O3-R2.
-- **R-O4-CANON-HASH-COVERAGE — ✅ DONE 2026-09-04 as WIDENED I5 (the cert §6 recommendation; no
-  I6).** The hash-coverage rule is the third Statement paragraph of I5, with both scars (R-BOX-ATTESTS
-  transition site; the dead fork-choice weight / #558 third site) and both code sites, and two
-  closure-table rows. The #632 *frozen-and-retired-unrun* note is NOT landed (O3-R11: O2 not
+- **R-O4-CANON-HASH-COVERAGE — BUILT 2026-09-04 as WIDENED I5 per the cert's §6 recommendation;
+  the NUMBER (I5 vs I6) AWAITS the owner's ratification** (PE RULING-O3-direction-T-build-fa895f5
+  condition 3: the cert §9.3 corrects "ratified" to "in substance, NUMBERING PENDING"; a builder
+  cannot close an owner call by building one branch of it). Note for the call: I6 would re-open
+  "I1–I5" across three canon docs for no new property; the I6 form is the same text moved and two
+  closure rows re-pointed, no code change. The hash-coverage rule is the third Statement paragraph
+  of I5, with both scars (R-BOX-ATTESTS transition site; the dead fork-choice weight / #558 third
+  site) and both code sites, and two closure-table rows. The #632 *frozen-and-retired-unrun* note is NOT landed (O3-R11: O2 not
   recorded as ratified). *(Was:)* RATIFIED in substance, NUMBERING PENDING. Amend canon with the
   hash-coverage rule covering **both** the transition and the fork-choice weight, with both scars and
   both code sites; plus the #632 *frozen-and-retired-unrun* note. Whether it widens **I5** or mints

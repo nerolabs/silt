@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"go/types"
 	"sort"
 	"strings"
 	"testing"
@@ -66,86 +67,327 @@ var o3tHeavierAllowedOnBlock = map[string]bool{"Height": true, "Hash": true}
 // smuggle a read through a helper.
 var o3tHeavierAllowedCalls = map[string]bool{"len": true, "bytesLess": true}
 
-// o3tWalkHeavier classifies every read in a `heavier(a, b *Chain) bool` body and returns the
-// violations. Shared by the pin and the teeth test.
+// o3tWalkHeavier classifies every read in heavier's body and returns the violations. Shared by
+// the pin and the teeth test.
+//
+// The walk is ALIAS-AWARE. The form at fa895f5 keyed on the literal parameter names, and the PE's
+// ablation D (RULING-O3-direction-T-build-fa895f5-2026-09-04 §2 Q2) — `ca := a; if ha == hb
+// { return len(ca.bonded) > len(cb.bonded) }` — passed that pin AND every runtime oracle: the
+// (b2) twins hold identical replica-local state, so a replica-local ranking term agrees across
+// the fixture and is invisible at runtime. That is the #357 oscillation class T exists to make
+// unbuildable, so the SOURCE gate must see it. Rules, in the order they fire:
+//
+//   - the two parameters are resolved from the FuncDecl (both must be *Chain), not from their
+//     names; each starts TAINTED;
+//   - every identifier bound by :=, =, var, or a range key/value from an expression that
+//     mentions a tainted identifier becomes tainted, transitively — unless that expression is
+//     PURE: built only from literals, untainted locals, arithmetic, and the three allowed value
+//     reads <p>.blocks[i].Height, <p>.blocks[i].Hash() and len(<p>.blocks). The binding itself
+//     is reported: height → hash never needs a handle on chain state;
+//   - a selector on a parameter is allowed only as .blocks, and on .blocks[i] only as
+//     .Height / .Hash; a selector on a non-parameter alias is ALWAYS a violation;
+//   - a call is allowed only to `len` or `bytesLess` by bare identifier (a package-qualified or
+//     method call is a violation; the one method call allowed is <p>.blocks[i].Hash()), and any
+//     tainted, non-pure argument to any call is a violation.
+//
+// Limits, stated: the walk is lexical and flow-insensitive (a tainted name stays tainted for the
+// whole body; no scope analysis), so it can over-bite on contrived code — that is the right
+// failure direction for a four-line function. It cannot see through a helper defined elsewhere;
+// calling one is itself a violation.
 func o3tWalkHeavier(fset *token.FileSet, fd *ast.FuncDecl) []string {
 	var violations []string
-	params := map[string]bool{}
+	line := func(p token.Pos) string { return "chain.go:" + itoa(fset.Position(p).Line) }
+	report := func(p token.Pos, msg string) { violations = append(violations, line(p)+"  "+msg) }
+	tainted := map[string]string{} // identifier -> the parameter it is rooted at
+	isParam := map[string]bool{}
+	nParams := 0
 	if fd.Type.Params != nil {
 		for _, f := range fd.Type.Params.List {
+			isChain := false
+			if star, ok := f.Type.(*ast.StarExpr); ok {
+				if id, ok := star.X.(*ast.Ident); ok && id.Name == "Chain" {
+					isChain = true
+				}
+			}
 			for _, n := range f.Names {
-				params[n.Name] = true
+				nParams++
+				if !isChain {
+					report(n.Pos(), "parameter "+n.Name+" is not a *Chain — heavier compares two chains and nothing else")
+				}
+				tainted[n.Name] = n.Name
+				isParam[n.Name] = true
 			}
 		}
 	}
-	if len(params) != 2 || !params["a"] || !params["b"] {
-		violations = append(violations, "heavier's parameters are not exactly (a, b *Chain)")
+	if nParams != 2 {
+		violations = append(violations, "heavier does not take exactly two parameters")
 	}
-	// rootParam returns the parameter name an expression is rooted at (a or b), or "".
-	var rootParam func(e ast.Expr) string
-	rootParam = func(e ast.Expr) string {
+
+	// rootIdent descends to the leftmost identifier of an expression (nil if none).
+	var rootIdent func(e ast.Expr) *ast.Ident
+	rootIdent = func(e ast.Expr) *ast.Ident {
 		switch x := e.(type) {
 		case *ast.Ident:
-			if params[x.Name] {
-				return x.Name
+			return x
+		case *ast.SelectorExpr:
+			return rootIdent(x.X)
+		case *ast.IndexExpr:
+			return rootIdent(x.X)
+		case *ast.SliceExpr:
+			return rootIdent(x.X)
+		case *ast.CallExpr:
+			return rootIdent(x.Fun)
+		case *ast.ParenExpr:
+			return rootIdent(x.X)
+		case *ast.StarExpr:
+			return rootIdent(x.X)
+		case *ast.UnaryExpr:
+			return rootIdent(x.X)
+		case *ast.TypeAssertExpr:
+			return rootIdent(x.X)
+		}
+		return nil
+	}
+	// containsTaint: does any identifier anywhere in e carry taint?
+	containsTaint := func(e ast.Expr) bool {
+		found := false
+		ast.Inspect(e, func(n ast.Node) bool {
+			if id, ok := n.(*ast.Ident); ok && tainted[id.Name] != "" {
+				found = true
+			}
+			return !found
+		})
+		return found
+	}
+	// paramBlocks: e is exactly <param>.blocks.
+	paramBlocks := func(e ast.Expr) bool {
+		s, ok := e.(*ast.SelectorExpr)
+		if !ok || s.Sel.Name != "blocks" {
+			return false
+		}
+		id, ok := s.X.(*ast.Ident)
+		return ok && isParam[id.Name]
+	}
+	// isPure: e carries no chain state — literals, untainted locals, arithmetic over pure parts,
+	// and the three allowed value reads.
+	var isPure func(e ast.Expr) bool
+	isPure = func(e ast.Expr) bool {
+		switch x := e.(type) {
+		case nil:
+			return true
+		case *ast.BasicLit:
+			return true
+		case *ast.Ident:
+			return tainted[x.Name] == ""
+		case *ast.ParenExpr:
+			return isPure(x.X)
+		case *ast.UnaryExpr:
+			return isPure(x.X)
+		case *ast.StarExpr:
+			return isPure(x.X)
+		case *ast.BinaryExpr:
+			return isPure(x.X) && isPure(x.Y)
+		case *ast.KeyValueExpr:
+			return isPure(x.Key) && isPure(x.Value)
+		case *ast.SliceExpr:
+			return isPure(x.X) && isPure(x.Low) && isPure(x.High) && isPure(x.Max)
+		case *ast.CompositeLit:
+			for _, el := range x.Elts {
+				if !isPure(el) {
+					return false
+				}
+			}
+			return true
+		case *ast.IndexExpr:
+			// <param>.blocks[i] is a *Block handle, never pure; ha[i] on an untainted local is.
+			if paramBlocks(x.X) {
+				return false
+			}
+			return isPure(x.X) && isPure(x.Index)
+		case *ast.SelectorExpr:
+			// <param>.blocks[i].Height
+			if ix, ok := x.X.(*ast.IndexExpr); ok && paramBlocks(ix.X) && isPure(ix.Index) && x.Sel.Name == "Height" {
+				return true
+			}
+			return false
+		case *ast.CallExpr:
+			if id, ok := x.Fun.(*ast.Ident); ok {
+				switch {
+				case id.Name == "len" && len(x.Args) == 1 && paramBlocks(x.Args[0]):
+					return true // len(<param>.blocks)
+				case o3tHeavierAllowedCalls[id.Name]:
+					for _, a := range x.Args {
+						if !isPure(a) {
+							return false
+						}
+					}
+					return true
+				}
+				return false
+			}
+			// <param>.blocks[i].Hash()
+			if s, ok := x.Fun.(*ast.SelectorExpr); ok && len(x.Args) == 0 && s.Sel.Name == "Hash" {
+				if ix, ok := s.X.(*ast.IndexExpr); ok && paramBlocks(ix.X) && isPure(ix.Index) {
+					return true
+				}
+			}
+			return false
+		}
+		return false
+	}
+	// bind reports a binding of chain state and taints the bound identifiers.
+	bind := func(pos token.Pos, lhs []ast.Expr, rhs ast.Expr, how string) {
+		if !containsTaint(rhs) || isPure(rhs) {
+			return
+		}
+		src := tainted[rootIdent(rhs).Name]
+		if src == "" {
+			// rooted elsewhere (e.g. a call) but mentions a tainted name: attribute to the first taint found.
+			ast.Inspect(rhs, func(n ast.Node) bool {
+				if id, ok := n.(*ast.Ident); ok && src == "" && tainted[id.Name] != "" {
+					src = tainted[id.Name]
+				}
+				return src == ""
+			})
+		}
+		names := []string{}
+		for _, l := range lhs {
+			if id, ok := l.(*ast.Ident); ok {
+				if id.Name != "_" {
+					tainted[id.Name] = src
+				}
+				names = append(names, id.Name)
+			} else {
+				names = append(names, types.ExprString(l))
+			}
+		}
+		report(pos, strings.Join(names, ", ")+" "+how+" "+types.ExprString(rhs)+"  — derived from "+src+"'s state outside Height/Hash (taints "+strings.Join(names, ", ")+"); heavier may bind only blocks[i].Height, blocks[i].Hash() and len(blocks)")
+	}
+	why := func(name string) string {
+		if w := o3tHeavierDenied[name]; w != "" {
+			return w
+		}
+		return "not Height/Hash of a block — unclassified read"
+	}
+
+	ast.Inspect(fd.Body, func(n ast.Node) bool {
+		switch x := n.(type) {
+		case *ast.AssignStmt:
+			if len(x.Lhs) == len(x.Rhs) {
+				for i := range x.Lhs {
+					bind(x.Pos(), x.Lhs[i:i+1], x.Rhs[i], x.Tok.String())
+				}
+			} else {
+				for _, r := range x.Rhs {
+					bind(x.Pos(), x.Lhs, r, x.Tok.String())
+				}
+			}
+		case *ast.ValueSpec:
+			names := make([]ast.Expr, 0, len(x.Names))
+			for _, id := range x.Names {
+				names = append(names, id)
+			}
+			if len(x.Names) == len(x.Values) {
+				for i := range x.Names {
+					bind(x.Pos(), names[i:i+1], x.Values[i], "var =")
+				}
+			} else {
+				for _, v := range x.Values {
+					bind(x.Pos(), names, v, "var =")
+				}
+			}
+		case *ast.RangeStmt:
+			if containsTaint(x.X) && !isPure(x.X) {
+				var lhs []ast.Expr
+				if x.Key != nil {
+					lhs = append(lhs, x.Key)
+				}
+				if x.Value != nil {
+					lhs = append(lhs, x.Value)
+				}
+				bind(x.Pos(), lhs, x.X, x.Tok.String()+" range")
 			}
 		case *ast.SelectorExpr:
-			return rootParam(x.X)
-		case *ast.IndexExpr:
-			return rootParam(x.X)
-		case *ast.CallExpr:
-			return rootParam(x.Fun)
-		case *ast.ParenExpr:
-			return rootParam(x.X)
-		case *ast.SliceExpr:
-			return rootParam(x.X)
-		}
-		return ""
-	}
-	ast.Inspect(fd.Body, func(n ast.Node) bool {
-		pos := func(p token.Pos) string { return itoa(fset.Position(p).Line) }
-		switch x := n.(type) {
-		case *ast.SelectorExpr:
-			root := rootParam(x.X)
-			if root == "" {
+			root := rootIdent(x.X)
+			if root == nil || tainted[root.Name] == "" {
 				return true
 			}
 			name := x.Sel.Name
-			switch inner := x.X.(type) {
-			case *ast.SelectorExpr:
-				// a.<x>.<sel>: the inner a.<x> is flagged on its own visit; do not double-report.
+			if !isParam[root.Name] {
+				report(x.Pos(), root.Name+"."+name+" (alias of "+tainted[root.Name]+")  — "+why(name))
 				return true
+			}
+			switch inner := x.X.(type) {
 			case *ast.Ident:
 				// a.<sel>: only blocks.
 				if name != "blocks" {
-					why := o3tHeavierDenied[name]
-					if why == "" {
-						why = "not Height/Hash of a block — unclassified read"
-					}
-					violations = append(violations, "chain.go:"+pos(x.Pos())+"  "+root+"."+name+"  — "+why)
+					report(x.Pos(), root.Name+"."+name+"  — "+why(name))
 				}
 			case *ast.IndexExpr:
 				// a.blocks[i].<sel>: only Height / Hash.
-				if s, ok := inner.X.(*ast.SelectorExpr); ok && s.Sel.Name == "blocks" && o3tHeavierAllowedOnBlock[name] {
+				if paramBlocks(inner.X) && o3tHeavierAllowedOnBlock[name] {
 					return true
 				}
-				why := o3tHeavierDenied[name]
-				if why == "" {
-					why = "not Height/Hash of a block — unclassified read"
+				report(x.Pos(), root.Name+".blocks[...]."+name+"  — "+why(name))
+			case *ast.SelectorExpr:
+				if paramBlocks(inner) {
+					report(x.Pos(), root.Name+".blocks."+name+"  — a read on the blocks slice itself")
 				}
-				violations = append(violations, "chain.go:"+pos(x.Pos())+"  "+root+".blocks[...]."+name+"  — "+why)
+				// otherwise the inner a.<x> is flagged on its own visit; do not double-report.
 			default:
-				violations = append(violations, "chain.go:"+pos(x.Pos())+"  "+root+"...."+name+"  — a read through an unexpected expression shape")
+				report(x.Pos(), root.Name+"...."+name+"  — a read through an unexpected expression shape")
 			}
 		case *ast.CallExpr:
-			if id, ok := x.Fun.(*ast.Ident); ok && !o3tHeavierAllowedCalls[id.Name] {
-				violations = append(violations, "chain.go:"+pos(x.Pos())+"  call to "+id.Name+"()  — heavier may call only len and bytesLess")
+			switch fn := x.Fun.(type) {
+			case *ast.Ident:
+				if !o3tHeavierAllowedCalls[fn.Name] {
+					report(x.Pos(), "call to "+fn.Name+"()  — heavier may call only len and bytesLess")
+				}
+			case *ast.SelectorExpr:
+				root := rootIdent(fn.X)
+				allowedHash := false
+				if ix, ok := fn.X.(*ast.IndexExpr); ok && paramBlocks(ix.X) && fn.Sel.Name == "Hash" && len(x.Args) == 0 {
+					allowedHash = true
+				}
+				if !allowedHash && (root == nil || tainted[root.Name] == "") {
+					report(x.Pos(), "call to "+types.ExprString(fn)+"()  — heavier may call only len and bytesLess")
+				}
+				// a tainted receiver (a.Weight(), ca.Weight()) is reported by the selector rule.
+			default:
+				report(x.Pos(), "call through "+types.ExprString(x.Fun)+"  — heavier may call only len and bytesLess")
+			}
+			for _, arg := range x.Args {
+				if id, ok := x.Fun.(*ast.Ident); ok && id.Name == "len" && paramBlocks(arg) {
+					continue // len(<param>.blocks)
+				}
+				if containsTaint(arg) && !isPure(arg) {
+					report(x.Pos(), "tainted value "+types.ExprString(arg)+" passed to "+types.ExprString(x.Fun)+"()  — chain state handed to a helper")
+				}
 			}
 		}
 		return true
 	})
-	sort.Strings(violations)
+	sort.SliceStable(violations, func(i, j int) bool {
+		li, lj := o3tLineOf(violations[i]), o3tLineOf(violations[j])
+		if li != lj {
+			return li < lj
+		}
+		return violations[i] < violations[j]
+	})
 	return violations
+}
+
+// o3tLineOf extracts the line number from a "chain.go:N  ..." violation (0 if none).
+func o3tLineOf(v string) int {
+	rest := strings.TrimPrefix(v, "chain.go:")
+	n := 0
+	for _, r := range rest {
+		if r < '0' || r > '9' {
+			break
+		}
+		n = n*10 + int(r-'0')
+	}
+	return n
 }
 
 func o3tFindFunc(t *testing.T, fset *token.FileSet, af *ast.File, name string) *ast.FuncDecl {
@@ -181,7 +423,7 @@ func TestO3T_HeavierReadsOnlyHeightAndHeadHash(t *testing.T) {
 			"  Fork-choice must be a pure function of Hash()-covered content (I5). A certificate slot or a\n"+
 			"  replica-local field makes two honest replicas rank the same forks differently — the\n"+
 			"  interlock the PE showed had no enforcement (RULING-O3 §5). Retire the term (Direction T);\n"+
-			"  do not add the name to the allowlist.", len(v), strings.Join(v, "\n  "))
+			"  do not add the name to the allowlist, and do not reach the state through an alias or a helper.", len(v), strings.Join(v, "\n  "))
 	}
 	// bytesLess is the one helper allowed. Pin that it takes no *Chain, so it cannot become a door.
 	bl := o3tFindFunc(t, fset, af, "bytesLess")
@@ -194,29 +436,68 @@ func TestO3T_HeavierReadsOnlyHeightAndHeadHash(t *testing.T) {
 	}
 }
 
-// TestO3T_HeavierPinHasTeeth proves the walk bites: a synthetic heavier that re-injects
-// len(a.blocks[len-1].Atts) (the cert §8.2 RED-first injection), a.Weight(), and a helper call
-// is flagged at each site.
+// TestO3T_HeavierPinHasTeeth proves the walk bites, and bites ONLY where it should. The synthetic
+// heavier re-injects every shape the pin must see:
+//
+//	the cert §8.2 RED-first injection    len(a.blocks[len-1].Atts) as the first term
+//	the retired term                     a.Weight() / b.Weight()
+//	own-config + a helper given a param  a.cfg.MinBond, weightOf(a)
+//	PE ablation C (block alias)          x := a.blocks[len-1]; len(x.Atts)
+//	PE ablation D (chain alias)          ca, cb := a, b; len(ca.bonded) at equal height — the #357 class;
+//	                                     passed the lexical pin AND every runtime oracle at fa895f5
+//	a range alias                        for _, blk := range b.blocks { blk.PrepareQC }
+//	a var-decl alias, transitive         var y = ca; z := y; z.everMature
+//	a param handed to a helper           helper(b)
+//	a package-qualified call             bytes.Compare(...)
+//
+// Every violation the walk emits must match one expected site (no over-bite), every expected site
+// must be flagged (no hole), and the Height/Hash reads must never be flagged. The parameter names
+// are NOT a and b, so the walk is proven to resolve them from the declaration.
 func TestO3T_HeavierPinHasTeeth(t *testing.T) {
 	const injected = `package chain
 
-func heavier(a, b *Chain) bool {
-	na, nb := len(a.blocks[len(a.blocks)-1].Atts), len(b.blocks[len(b.blocks)-1].Atts)
+func heavier(lhs, rhs *Chain) bool {
+	na, nb := len(lhs.blocks[len(lhs.blocks)-1].Atts), len(rhs.blocks[len(rhs.blocks)-1].Atts)
 	if na != nb {
 		return na > nb
 	}
-	if wa, wb := a.Weight(), b.Weight(); wa != wb {
+	if wa, wb := lhs.Weight(), rhs.Weight(); wa != wb {
 		return wa > wb
 	}
-	if a.cfg.MinBond > 0 && weightOf(a) > 0 {
+	if lhs.cfg.MinBond > 0 && weightOf(lhs) > 0 {
 		return true
 	}
-	ah, bh := a.blocks[len(a.blocks)-1].Height, b.blocks[len(b.blocks)-1].Height
+	x := lhs.blocks[len(lhs.blocks)-1]
+	if len(x.Atts) > 0 {
+		return true
+	}
+	ah, bh := lhs.blocks[len(lhs.blocks)-1].Height, rhs.blocks[len(rhs.blocks)-1].Height
 	if ah != bh {
 		return ah > bh
 	}
-	ha, hb := a.blocks[len(a.blocks)-1].Hash(), b.blocks[len(b.blocks)-1].Hash()
-	return bytesLess(ha[:], hb[:])
+	ca, cb := lhs, rhs
+	if len(ca.bonded) != len(cb.bonded) {
+		return len(ca.bonded) > len(cb.bonded)
+	}
+	for _, blk := range rhs.blocks {
+		if len(blk.PrepareQC) > 0 {
+			return false
+		}
+	}
+	var y = ca
+	z := y
+	if z.everMature {
+		return true
+	}
+	if helper(rhs) {
+		return false
+	}
+	ha, hb := lhs.blocks[len(lhs.blocks)-1].Hash(), rhs.blocks[len(rhs.blocks)-1].Hash()
+	if bytes.Compare(ha[:], hb[:]) == 0 {
+		return false
+	}
+	n := len(lhs.blocks) - 1
+	return bytesLess(ha[:], hb[:]) && n >= 0
 }
 `
 	fset := token.NewFileSet()
@@ -226,16 +507,45 @@ func heavier(a, b *Chain) bool {
 	}
 	v := o3tWalkHeavier(fset, o3tFindFunc(t, fset, af, "heavier"))
 	joined := strings.Join(v, "\n")
-	for _, want := range []string{"a.blocks[...].Atts", "b.blocks[...].Atts", "a.Weight", "b.Weight", "a.cfg", "call to weightOf()"} {
+	expected := []string{
+		"lhs.blocks[...].Atts", "rhs.blocks[...].Atts",
+		"na := len(lhs.blocks[len(lhs.blocks) - 1].Atts)", "nb := len(rhs.blocks[len(rhs.blocks) - 1].Atts)",
+		"tainted value lhs.blocks[len(lhs.blocks) - 1].Atts passed to len()", "tainted value rhs.blocks[len(rhs.blocks) - 1].Atts passed to len()",
+		"lhs.Weight", "rhs.Weight", "wa := lhs.Weight()", "wb := rhs.Weight()",
+		"lhs.cfg",
+		"call to weightOf()", "tainted value lhs passed to weightOf()",
+		"x := lhs.blocks[len(lhs.blocks) - 1]", "x.Atts (alias of lhs)", "tainted value x.Atts passed to len()",
+		"ca := lhs", "cb := rhs", "ca.bonded (alias of lhs)", "cb.bonded (alias of rhs)",
+		"tainted value ca.bonded passed to len()", "tainted value cb.bonded passed to len()",
+		"blk := range rhs.blocks", "blk.PrepareQC (alias of rhs)", "tainted value blk.PrepareQC passed to len()",
+		"y var = ca", "z := y", "z.everMature (alias of lhs)",
+		"call to helper()", "tainted value rhs passed to helper()",
+		"call to bytes.Compare()",
+	}
+	for _, want := range expected {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("SOURCE GATE: PIN HAS NO TEETH — injected read %q was not flagged. Flagged:\n%s", want, joined)
 		}
 	}
-	if strings.Contains(joined, "].Height") || strings.Contains(joined, "].Hash") {
-		t.Fatalf("SOURCE GATE: PIN OVER-BITES — Height/Hash reads were flagged:\n%s", joined)
+	for _, line := range v {
+		matched := false
+		for _, want := range expected {
+			if strings.Contains(line, want) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			t.Fatalf("SOURCE GATE: PIN OVER-BITES — a violation matches no expected site:\n  %s\nall:\n%s", line, joined)
+		}
 	}
-	if len(v) != 6 {
-		t.Fatalf("SOURCE GATE: PIN TEETH COUNT — %d violation(s) flagged, want exactly 6 (Atts x2, Weight x2, cfg, weightOf):\n%s", len(v), joined)
+	for _, line := range v {
+		site, _, _ := strings.Cut(line, "  — ") // the guidance text after the dash names Height/Hash on purpose
+		for _, pure := range []string{"].Height", "].Hash", "ah :=", "bh :=", "ha :=", "hb :=", "n :="} {
+			if strings.Contains(site, pure) {
+				t.Fatalf("SOURCE GATE: PIN OVER-BITES — a Height/Hash/len(blocks) value read was flagged:\n  %s", line)
+			}
+		}
 	}
 }
 
