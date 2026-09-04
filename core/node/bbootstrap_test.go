@@ -37,8 +37,10 @@ func TestR29a_NodeSeriesIsAgeAndBytesOnly(t *testing.T) {
 
 	// old identity: first touch at epoch 0, 1,000 bytes.
 	ledger.RecordServe(server, r29aFetcher(1), ports.HashBytes([]byte("c1")), 1_000)
-	// move the ledger clock, then a young identity fetches less.
-	ledger.RedeemDeliveryCredit(server, r29aFetcher(9), ports.HashBytes([]byte("tick")), []byte("tick-6"), 6, 6)
+	// Move the ledger clock (R2.10: an injected source, not a call argument), then a
+	// young identity fetches less.
+	ledger.SetEpochSource(f8EpochFunc(func() uint64 { return 6 }))
+	ledger.RedeemDeliveryCredit(server, r29aFetcher(9), ports.HashBytes([]byte("tick")), []byte("tick-6"), 6)
 	ledger.RecordServe(server, r29aFetcher(2), ports.HashBytes([]byte("c2")), 250)
 
 	got := nd.BBootstrap()

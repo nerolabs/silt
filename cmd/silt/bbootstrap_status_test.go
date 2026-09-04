@@ -32,6 +32,11 @@ type r29aStatus struct {
 
 // r29aServer is economyServer plus the two /api/status collaborators the SELF-panel
 // fixture does not need (peerCount is a func field, nil there).
+// r29aEpoch is a fixed ports.EpochSource for the status fixtures (R2.10).
+type r29aEpoch uint64
+
+func (e r29aEpoch) Epoch() uint64 { return uint64(e) }
+
 func r29aServer(t *testing.T) (*uiServer, *credit.Ledger) {
 	t.Helper()
 	s, _, _, led := economyServer(t, 0)
@@ -63,7 +68,9 @@ func TestR29aStatusPublishesTheAgeVsBytesSeries(t *testing.T) {
 	young := ports.HashBytes([]byte("young-fetcher"))
 
 	led.RecordServe(server, old, ports.HashBytes([]byte("c1")), 4_000)
-	led.RedeemDeliveryCredit(server, ports.HashBytes([]byte("x")), ports.HashBytes([]byte("t")), []byte("tick-5"), 5, 5)
+	// R2.10: the ledger's epoch is an injected source, not a call argument.
+	led.SetEpochSource(r29aEpoch(5))
+	led.RedeemDeliveryCredit(server, ports.HashBytes([]byte("x")), ports.HashBytes([]byte("t")), []byte("tick-5"), 5)
 	led.RecordServe(server, young, ports.HashBytes([]byte("c2")), 900)
 
 	out, body := getR29aStatus(t, s)

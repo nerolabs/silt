@@ -14,12 +14,18 @@ import (
 // must never be able to say). They are instrumentation gates: nothing here moves
 // credit or standing.
 
-// advanceLedgerEpoch moves the ledger's own epoch clock by presenting a redeem with
-// a serial (delivery.go's watermark advance — the ledger's clock on this base; under
-// R2.10 the chain-anchored source drives the same number).
+// advanceLedgerEpoch moves the ledger's own epoch clock to `to` and drives one guarded
+// redeem so the watermark latches it. Since R2.10 the clock is an INJECTED source, not a
+// call argument: the mock below is this fixture's chain.
 func advanceLedgerEpoch(l *Ledger, to uint64) {
+	src, ok := l.epochSrc.(*mockEpochSource)
+	if !ok {
+		src = &mockEpochSource{}
+		l.SetEpochSource(src)
+	}
+	src.e = to
 	l.RedeemDeliveryCredit(id(200), id(201), ports.HashBytes([]byte("epoch-tick")),
-		[]byte(fmt.Sprintf("tick-%d", to)), to, to)
+		[]byte(fmt.Sprintf("tick-%d", to)), to)
 }
 
 func rowFor(t *testing.T, rows []RequesterFetch, bytes int64) RequesterFetch {

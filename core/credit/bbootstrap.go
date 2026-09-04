@@ -124,7 +124,7 @@ func (l *Ledger) FetchedRequesters() (requesters int, epoch uint64) {
 // Today that number is epochWatermark, the highest epoch any redeemer has presented
 // (see credit.go). Once the ledger OWNS a chain-anchored epoch (R2.10 / FP-2), this
 // is l.Epoch() — a one-line change here, and nothing else in the export moves.
-func (l *Ledger) bootstrapEpoch() uint64 { return l.epochWatermark }
+func (l *Ledger) bootstrapEpoch() uint64 { return l.Epoch() }
 
 // exportSalt returns this ledger's per-process B_bootstrap salt, drawing it on first
 // use. It is random, in-memory, never persisted and never leaves the process, so a
