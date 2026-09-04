@@ -568,29 +568,25 @@ gate GREEN incl. `-race -short` on `core/chain` + `core/node`; record
   bodies — that defeats pruning (build-immutable #8). Source: the carrier delta cert
   (`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/LASTCOMMIT-CARRIER-26977a4-DELTA-CERTIFICATION-2026-09-03.md`)
   §5.
-- **R-CARRIER-GENESIS-DISPOSAL — the REFUSE half (`LastCommit`) ✅ SHIPS with the carrier (2026-09-04, this PR); the `Atts` half is RESEARCH-GATED (owner + Researcher).**
-  The rule splits by preimage membership. Genesis `LastCommit` (inside the `Hash()` preimage; authored,
-  signed content; height 0 has no parent to attest) is **REFUSED** — `ErrGenesisLastCommit`, gate
-  `TestGenesisLastCommitIsRefused` (`core/chain/genesis_stub_atts_test.go`, armed by reflection the
-  moment the field exists). Genesis `Atts` (outside the preimage) keep main's pre-carrier behaviour —
-  **neither refused nor stripped**: the carrier-merge-gates strip (`b.Atts = nil` in `AppendGenesis`)
-  broke the anchor bootstrap on CI (four `core/node` gates: a sub-v5 genesis's attestations by the
-  launch anchors are what seat them into `validatorsSeen`) and is reverted. The open question —
-  strip-all vs seat-only-verified for a relayed stub — is a genesis-validity / seating-rule question
-  and is not the Builder's. NOTE the consequence already in force under O1: a **v5** genesis's `Atts`
-  write nothing (a v5 block seats only from its carrier, and genesis carriers are refused); the
-  production genesis is sub-v5 (`chain.BlockVersion`, no `Atts`), so this is inert in production and
-  bit only the `c3Chain` test fixture, whose genesis version now follows its era. Sources: the delta
-  cert §6; the correction recorded in `docs/thinking/2026-09-04-lastcommit-carrier-merge-design.md`.
-- **R-CARRIER-GENESIS-DISPOSAL — the Atts half RESEARCH-GATED 2026-09-04 (the delta cert's "STRIP" is REFUTED by the bootstrap); the `LastCommit` REFUSE half lands with the carrier.**
-  "Strip genesis `Atts`" was built and CI refuted it: genesis attestations by the launch anchors are how
-  the anchors are SEATED into `validatorsSeen` (four `core/node` bootstrap tests: `TestStaleIssuerKeyRegDoesNotMuteTheProposer`,
-  `TestStaleIssuerKeyRegPreFlipBoot`, `TestDemandLaneOutlivesTheWindowAndARestart`,
-  `TestRTC3B_ChainPruneBandNeverUndercutsTheKeysetWindow`). The exposure the cert named is real (a relayed
-  stub is attacker-writable, outside the preimage, and seats unverified); the sound rule — seat only
-  attestations that VERIFY over the genesis hash, strip the rest? — is a consensus-rule question routed to
-  the Researcher (`genesis-atts-seating`). Until ruled: behaviour unchanged; `TestGenesisLastCommitIsRefused`
-  (arms by reflection) is the only gate kept. This corrects the round-A certification's §2 AND the delta cert §6.
+- **R-CARRIER-GENESIS-DISPOSAL — the `LastCommit` REFUSE half ✅ SHIPPED with the carrier; the `Atts` half CERTIFIED 2026-09-04 as "seat only VERIFIED attestations, strip the rest, never refuse" — OWNER RATIFICATION OWED.**
+  "Strip all" (the delta cert's MG-C) was built and REFUTED by CI (four `core/node` fixtures seed a verified
+  genesis att by convention); the Researcher then corrected two premises: production genesis carries NO
+  `Atts` at all (`core/genesis` emits Entries only; anchors seat at height ≥ 1 through the founding drain),
+  and the seating loop (`chain.go` `AppendGenesis` → apply) does NOT verify attestation signatures, so a
+  relayed unsigned stub is seated unverified (metric-inert, latch-inert, weight-inert on a production genesis;
+  the worst case is an era-3 root divergence on a fresh-sync victim until its next clean reconcile). The
+  certified rule: after the proposer-signature check, `b.Atts` becomes exactly the entries with
+  `verifyAtt(a, b.Hash())`; never an error; `LastCommit` on genesis refused (O1). Not era-gated (a height-0
+  rule); I3/I4/I5 strengthened; extensionally equal to today on every honest history. Ten Tester gates G1–G10
+  named in the cert. **Owner sentence:** ratify that a genesis block seats only the attestations whose
+  signature verifies over its hash, stripping the rest silently, and refuses a genesis `LastCommit`.
+  Two observations routed, NOT certified: **O-1** `blockWeight` verifies the bare hash while era-2
+  attestations sign `consensusSigBytes`, so by the code every era-2+ block weighs 0 and `heavier` already
+  falls to height/hash (moot under O3-T; needs a Tester probe); **O-2** `AppendGenesis` never checks
+  `IsPruned()` and `Reconcile` compares `fork[0].Hash()`, which returns `Pruned` — a relayer can serve a
+  "pruned" genesis with our hash, the honest proposer signature and an attacker-chosen body to a fresh-sync
+  victim (the genesis instance of the `Pruned`-linkage-token residual; red-team probe owed before a close).
+  Source: `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/genesis-atts-seating-rule-RESEARCH-CERTIFICATION-2026-09-04.md`.
 - **R-CARRIER-CREDIT-DENIAL — RE-PRICED 2026-09-03: PRE-EXISTING on main; the carrier NARROWS it. GATED (window); minimum REFUTED; vector REFUTED.**
   Main seats from `b.Atts` (`chain.go:3364`), which is outside the `Hash()` preimage, so today ANY relay
   can deny a seating divergently (bounded by the quorum floor, `chain.go:2735`; at v4+ the same trim
@@ -916,6 +912,17 @@ economy-off HEAD certifies a network nobody runs. Design:
   optional-interface shape (`core/node/demandrole.go`). Also routed to FP-2's crash-point sweep: the
   discarded directory-fsync error (a power cut between the rename and the directory entry becoming
   durable strands post-compaction appends on the new inode).**
+- **R2.13b · F-4 — `creditSpent` is in-memory only (a restart re-opens every held publish credit for a second spend on the shipped D3 path) — NEW 2026-09-04 (PE-CONFIRMED by reproduction; OWED as its own Rock between R2.13 and R2.10; NOT blocking R2.14).**
+  One fee, two tokens after an issuer restart: the durable `paidSerial` guard cannot catch it (it keys on
+  the token serial; the attacker holds two tokens); bound = credits held × restarts; balance only, the
+  γ→1/N firewall untouched. Fix shape (plain durability engineering, no cert): a SECOND `guardstore.Disk`
+  (`creditspent.log`) behind the unchanged `ports.PaidSerialStore` with the R2.13 handle clause — NOT a
+  namespace in the paid-serial file (its compaction evicts anything not in the ledger's live set); append
+  before marking spent; cap and refuse-not-evict. Also: widen the Tester scar `scar-in-memory-guard-restart-hole`
+  to name `creditSpent` (count → 2) before R2.10. R2.14 cert §11's "`ChargePublish`-backed" is restated as
+  "burn-backed" with F-4 as the open precondition. F-3 (`fee_E`): the fee is a compile-time constant, no flag —
+  inert; a NOTE on the FP-2 carry-list, not freeze-timed; no inert fee slot in `IssuerKeyReg` (PE recommends
+  against). Source: `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-F4-creditSpent-durability-and-F3-fee-constancy-2026-09-04.md`.
 - **R2.14 · Relay-lane prepayment ANCHOR — NEW 2026-09-03: a PREREQUISITE of R2.9; the fix for R0.7; owner ratification owed.**
   Per-node conservation is always AUTHORIZATION-anchored (privacy guard (ii) makes "debit the payer"
   unimplementable on any topology; `RedeemDeliveryCredit` debits no one either, `delivery.go:512-516`).
