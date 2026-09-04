@@ -497,8 +497,12 @@ carries its source; none is decided by a seat.
 *The `LastCommit` carrier — R-BOX-ATTESTS. **O1, O2 and O4 are OWNER-RATIFIED (2026-09-03);
 O3 is pending** (source for all four:
 `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R-BOX-ATTESTS-scoping-CONVERGED-RESEARCH-VERDICT-2026-09-02.md`
-§10). Built on `builder/lastcommit-carrier`, NOT merged.*
-- **O1 — RATIFIED: the `LastCommit` carrier is an additive format field of the OPEN era**
+§10). **MERGED-pending-PR 2026-09-04:** the carrier branch (`builder/lastcommit-carrier`, three commits) is
+REBASED onto the carrier-merge-gates commit (`cf91f18` = main `b328268` + CD-0 / CD-2 / MG-C gates), every
+gate GREEN incl. `-race -short` on `core/chain` + `core/node`; record
+`docs/thinking/2026-09-04-lastcommit-carrier-merge-design.md`. The stamp is NOT raised; no
+`Era4ActivationHeight` flag; the box door exports are untouched.*
+- **O1 — RATIFIED; MERGED-pending-PR (2026-09-04): the `LastCommit` carrier is an additive format field of the OPEN era**
   (`LastCommit []Attestation`, additive cbor key, `omitempty`, **folded into `Hash()`**). Validity:
   every entry verifies over `b.Prev`'s hash at `PhasePrecommit` at any single round (`CommitRound` is
   uncovered, so the rule must not bind to it), distinct ids, a pre-v5 block carrying the field is
@@ -508,7 +512,7 @@ O3 is pending** (source for all four:
   The carrier fold runs **before** this block's bond regs / TTL / slashes, pinned the way rotate-LAST
   is pinned. Disclosed: the seat lands one block late; a proposer can DELAY a seating but never FORGE
   one. The smaller same-block `SeatAdds` alternative is explicitly not recommended.
-- **O2 — RATIFIED: the rollout rule, both paths.** The readiness stamp goes **3 → 5 directly; no
+- **O2 — RATIFIED; MERGED-pending-PR as asserts only (the stamp stays 3 — the raise is a separate release): the rollout rule, both paths.** The readiness stamp goes **3 → 5 directly; no
   release ever stamps 4** — so era-3's frozen format is retired **without ever running**, recorded in
   #632 as *frozen-and-retired-unrun* (a doc note; it edits no format). And: **no mainnet era
   activation, by tally OR by pre-latch genesis override, on a binary without the carrier** — the
@@ -564,6 +568,20 @@ O3 is pending** (source for all four:
   bodies — that defeats pruning (build-immutable #8). Source: the carrier delta cert
   (`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/LASTCOMMIT-CARRIER-26977a4-DELTA-CERTIFICATION-2026-09-03.md`)
   §5.
+- **R-CARRIER-GENESIS-DISPOSAL — the REFUSE half (`LastCommit`) ✅ SHIPS with the carrier (2026-09-04, this PR); the `Atts` half is RESEARCH-GATED (owner + Researcher).**
+  The rule splits by preimage membership. Genesis `LastCommit` (inside the `Hash()` preimage; authored,
+  signed content; height 0 has no parent to attest) is **REFUSED** — `ErrGenesisLastCommit`, gate
+  `TestGenesisLastCommitIsRefused` (`core/chain/genesis_stub_atts_test.go`, armed by reflection the
+  moment the field exists). Genesis `Atts` (outside the preimage) keep main's pre-carrier behaviour —
+  **neither refused nor stripped**: the carrier-merge-gates strip (`b.Atts = nil` in `AppendGenesis`)
+  broke the anchor bootstrap on CI (four `core/node` gates: a sub-v5 genesis's attestations by the
+  launch anchors are what seat them into `validatorsSeen`) and is reverted. The open question —
+  strip-all vs seat-only-verified for a relayed stub — is a genesis-validity / seating-rule question
+  and is not the Builder's. NOTE the consequence already in force under O1: a **v5** genesis's `Atts`
+  write nothing (a v5 block seats only from its carrier, and genesis carriers are refused); the
+  production genesis is sub-v5 (`chain.BlockVersion`, no `Atts`), so this is inert in production and
+  bit only the `c3Chain` test fixture, whose genesis version now follows its era. Sources: the delta
+  cert §6; the correction recorded in `docs/thinking/2026-09-04-lastcommit-carrier-merge-design.md`.
 - **R-CARRIER-GENESIS-DISPOSAL — the Atts half RESEARCH-GATED 2026-09-04 (the delta cert's "STRIP" is REFUTED by the bootstrap); the `LastCommit` REFUSE half lands with the carrier.**
   "Strip genesis `Atts`" was built and CI refuted it: genesis attestations by the launch anchors are how
   the anchors are SEATED into `validatorsSeen` (four `core/node` bootstrap tests: `TestStaleIssuerKeyRegDoesNotMuteTheProposer`,
@@ -593,6 +611,42 @@ O3 is pending** (source for all four:
   verifies against the carrying block's hash) and FALSE-SLASH (a `(height, phase)` join; height derived
   from the carrying block's label). Corrects the `26977a4` delta cert §8.1. Residual
   R-DOUBLESIGN-TIP-BLIND (LOW). Sources: the composed-direction cert and the PE review.
+- **R-CARRIER-BOXSPLIT — CLOSED 2026-09-03.** The box reproduced `applyCarrier`'s TRANSITION but
+  never `validateCarrier`'s VALIDITY rule, so a carrier of PUBLIC keys with zero-byte signatures
+  (no key material) seated arbitrary ids against the attacker's own `apply()`-computed root while
+  every full node rejected the block (red-team RT-CARRIER-1), and the same forgery flipped the
+  one-way `everMature` latch and the box's own `RecomputeMatureNow` (RT-CARRIER-12). Closed at the
+  root by the PE-ruled structure: `assembleStateRootRecomputeOps` calls the SHARED
+  `validateCarrier` — **one function, three callers**, receiver-free so the compiler (not the AST
+  allowlist pin) forbids a live-state read. Gates: `core/chain/redteam_carrier_boxsplit_gate_test.go`,
+  RED at `3bd13e2` on both the warm and COLD tiers. This also **closes R-CARRIER-SIG-COMPOSITION
+  (FP-2)** for the carrier: the box now runs `verifyAtt` on every carried entry via the shared rule.
+- **R-CARRIER-SIG-COMPOSITION — CLOSED 2026-09-03 by R-CARRIER-BOXSPLIT (the box now runs `verifyAtt` on every carried entry via the shared `validateCarrier`).** Was: OPEN, a flip precondition (FP-2) (cert §6.3). The box's class-A
+  derivation reads `b.LastCommit[i].AttesterID()` and **never calls `verifyAtt`**; `validateCarrier`
+  has only chain callers, never a box one. In-scope-correct today (the recompute reproduces root
+  equality, and on the chain the signature check is a separate composed predicate that runs first)
+  and pre-existing in shape (the pre-carrier class-A derivation did not verify `b.Atts` either). It
+  must be discharged in the composed flip predicate, when `Accept` starts meaning something.
+- **R-CARRIER-PREFIX-ONLY — held-in-tension, no action owed** (cert §5). `Chain.HeadCarrier` sources
+  the parent's **stored first-to-quorum certificate**, not "everything the proposer holds": replies
+  landing after the prefix closes are discarded and never stored. So an **honest** proposer of
+  consecutive heights under-carries and can delay a seating, not only a malicious one. Downward-only
+  and benign; a latency condition, not the seating freeze this fix closed. Making it literally
+  maximal needs a new post-commit attestation store inside the round machinery, not a producer-side
+  change. Comments corrected; no build owed.
+- **R-CARRIER-ORDER-ORACLE — OPEN, LOW (gate quality).** Red-team RT-CARRIER-6.
+  `TestCarrierFoldPrecedesBondRegsInApply` walks `apply`'s top-level statements and compares
+  indices, so it proves the CALL-SITE ordering and cannot fail for a semantic reordering that
+  preserves statement positions. The red-team supplied the missing behavioural oracle: a joiner
+  that bonds in block B and is carried in B's carrier is NOT seated under the shipped order and IS
+  under the swapped one (roots `7942cc2089cd` vs `6db991635115`). **Precondition to fix in the
+  gate:** this bites only in the PRE-MATURITY branch — in a mature epoch the class-A screen reads
+  the frozen `epochSet`, not `bonded` (R-A-membership-source), so a same-block bond reg is
+  invisible to the order. Related semantics note, currently stated nowhere: the shipped order SEATS
+  a validator in the very block that slashes it, and `validatorsSeen` is add-only, so the committed
+  leaf and the `validatorsSeenRoot` digest carry a proven equivocator forever (`C2Metric` filters
+  `slashed` at READ time, so the metric is unaffected, and chain and box AGREE — a semantics note,
+  not a divergence).
 - **R-CARRIER-ROLLOUT-SIGNAL — DEFINED 2026-09-03: CERTIFIED minimum; no part is a consensus rule; the override is LATENT.**
   The readiness tally already IS BIP-9-shaped; the gap is the flag-day override, and
   `Era4ActivationHeight` has **no `cmd/silt` flag** today. Minimum faithful mechanism (Cosmos
@@ -618,8 +672,9 @@ O3 is pending** (source for all four:
   2,907 lines in `core/chain` (base `1adca0f`); both branches rewrite the same box-entry file. A naive
   merge holes the signed body. Gates: (1) a reflection pin that the `Hash()` literal names every
   hash-covered field; (2) v5 tag-set equality against `statehash.go` (`issuerKeyCommit` joined the set
-  in #711). **Owner: rebase the carrier branch onto main NOW.** Verified by the planner, the Researcher
-  and the PE independently. Sources: the PE inventory, the composed-direction cert (CD-0), the PE review.
+  in #711). **The rebase is DONE (2026-09-04, this PR): the merged `bodyHash` literal names BOTH
+  `IssuerKeys` and `LastCommit`, `Prune()` keeps `LastCommit`, and both gates are GREEN on the
+  rebased branch.** Verified by the planner, the Researcher and the PE independently. Sources: the PE inventory, the composed-direction cert (CD-0), the PE review.
 
 *Fork-choice, canon and inventory (O3 / #558 family):*
 - **R-FORKCHOICE-WEIGHT (O3) — RATIFIED 2026-09-03: Direction T (owner: "Direction T"). BUILD

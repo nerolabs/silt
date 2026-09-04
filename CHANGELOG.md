@@ -9,6 +9,54 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Security
+- **The `LastCommit` attestation carrier is REBASED onto main behind its hard merge gates — the
+  R-BOX-ATTESTS fix (owner calls O1 and O2, ratified 2026-09-03) is now mergeable.** The rule, as
+  ratified: `LastCommit []Attestation` (cbor key 18, `omitempty`) republishes the PARENT's precommits
+  and is FOLDED INTO `Hash()`; validity is block-local (`validateCarrier`, one function, three callers:
+  `ValidateProposal`, `appendStructural`, the floor box entry) — every entry a genuine `PhasePrecommit`
+  signature over `b.Prev` at its own round, distinct ids, height 1 empty by rule, a pre-v5 block
+  carrying the field invalid, a genesis carrying it refused (`ErrGenesisLastCommit`); the transition
+  seats each carried signer with `id != parent.ProposerID()` and `attesterQualified` against the
+  child's PRE-state, folded BEFORE this block's bond regs / TTL / slashes (pinned like rotate-LAST),
+  and a v5 block's own `Atts` write nothing (the frozen era-3 rule is untouched, era-gated). Merge
+  resolutions, each decided by a gate rather than by eye: (1) CD-0 — the `bodyHash` literal names BOTH
+  open-era additive fields, `IssuerKeys` (17) and `LastCommit` (18); `Prune()` keeps `LastCommit`;
+  `TestHashLiteralPinsEveryHashCoveredField` + runtime pair GREEN, the teeth fixture made
+  order-independent. (2) CD-2 — `CheckEquivocation`'s accept set is byte-identical (26-case golden
+  corpus GREEN); the R0.6 `SlashesBytesCap` / `pendingSlashes` packing survive intact. (3) MG-C — the
+  hash-covered half only: genesis `LastCommit` is refused; genesis `Atts` keep main's pre-carrier
+  behaviour (neither stripped nor refused — the strip broke the anchor bootstrap; its disposal is
+  research-gated, R-CARRIER-GENESIS-DISPOSAL). (4) R-V5-TAGSET-EQUALITY — `issuerKeyCommit` stays in
+  the v5 tag set. Fixture debt exposed: `c3Chain` minted a v5 genesis whose `Atts` pre-seated the
+  fixture attester; under O1 a v5 genesis's `Atts` write nothing, so its genesis version now follows
+  its era (a sub-v5 genesis where the flip is later, like the production genesis). NOT in this change:
+  the readiness stamp (stays 3), an `Era4ActivationHeight` flag, the floor-box door exports (held),
+  the R-CARRIER-BYTES value, R-CARRIER-PRUNED-HASH, R-CARRIER-MODELCHECK, `HeadRef` — each tracked on
+  its Rock. Gates: `lastcommit_carrier_pins_test.go`, `lastcommit_carrier_v5_test.go`,
+  `redteam_carrier_boxsplit_gate_test.go`, `core/node/lastcommit_carrier_node_test.go`,
+  `readset_v5_drift_test.go`, `floorbox_recompute_carrier_reflection_v5_test.go`,
+  `genesis_stub_atts_test.go`, `r06_i5_evidence_recompute_test.go`, `r06_slashes_cap_packing_test.go`;
+  `-short` and `-race -short` GREEN on `core/chain` + `core/node`. Record:
+  `docs/thinking/2026-09-04-lastcommit-carrier-merge-design.md`. `core/chain/chain.go`,
+  `core/chain/carrier.go`, `core/chain/genesis_stub_atts_test.go`, `core/chain/hash_literal_pin_test.go`,
+  `core/node/r04b_c3_gates_test.go`.
+- **Carrier merge gates on main, and MG-C's hash-covered half (the `Atts` strip is REVERTED; its
+  disposal is research-gated).** `AppendGenesis` never refused a genesis carrying `Atts` and never
+  stripped them: `Atts` sit outside the `Hash()` preimage, so a serving peer could append an unsigned
+  stub to a genesis it relays and have it SEATED into `validatorsSeen` (the delta certification's MG-C,
+  corrected by the Tester's measurement on main). The strip-before-apply fix was built and then
+  reverted: on CI it broke the anchor bootstrap (four `core/node` gates — a sub-v5 genesis's
+  attestations by the launch anchors are what seat them). Genesis `Atts` keep their pre-carrier
+  behaviour; strip-all vs seat-only-verified is R-CARRIER-GENESIS-DISPOSAL (owner + Researcher). The
+  hash-covered carrier field IS refused when it lands: `TestGenesisLastCommitIsRefused` (arms by
+  reflection). Also landed, GREEN on main with teeth by
+  injection, so the `LastCommit` carrier rebase is held to them: `TestHashLiteralPinsEveryHashCoveredField`
+  (the `bodyHash` literal names every exported `Block` field except the five deliberate exclusions —
+  a dropped `IssuerKeys` or an unfolded `LastCommit` is RED; CD-0), `TestV5TagSetEqualityAcrossStatehashAndBox`
+  (the 29 v5 committed tags in `statehash.go` equal the runtime tag sets and the box's references,
+  with a one-entry allowlist), and the CD-2 `CheckEquivocation` golden corpus
+  (`core/chain/testdata/equivocation_golden.cbor`, 26 cases; the accept set cannot move unnoticed
+  across the merge). Sources: `LASTCOMMIT-CARRIER-residuals-composed-direction-RESEARCH-CERTIFICATION-2026-09-03.md`
 - **Carrier merge gates on main.** Landed GREEN on main with teeth by injection, so the `LastCommit`
   carrier rebase is held to them: `TestHashLiteralPinsEveryHashCoveredField` (the `bodyHash` literal
   names every exported `Block` field except the five deliberate exclusions — a dropped `IssuerKeys` or an

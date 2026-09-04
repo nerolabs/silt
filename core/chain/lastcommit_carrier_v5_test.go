@@ -101,7 +101,7 @@ func TestG1_CarrierSeatsUnseenAttestersOneBlockLate(t *testing.T) {
 	}
 }
 
-// TestG9_ProposalAttsDoNotMoveTheRecomputedRoot is GATE G9 (cold chain).
+// TestG9_StubAttsDoNotMoveTheRecomputedRoot is GATE G9 (cold chain).
 //
 // RED at d7e4df0: ValidateProposal checks no attestation signature, and validateEra3Roots folds
 // whatever b.Atts the proposal bytes carry (era3validity.go:117-138) — so a proposal carrying
@@ -392,7 +392,7 @@ func TestG3_ServedVariantDeterminism(t *testing.T) {
 	}
 }
 
-// TestG4_SeatingLivenessAndTheMetricCeiling is GATE G4 (cold chain, objective arm).
+// TestG4_NewOperatorsRaiseTheCoefficient is GATE G4 (cold chain, objective arm).
 //
 // The verdict is explicit that this asserts a CEILING, not monotonicity: a seated member may
 // lapse (TTL) and re-bond and be re-counted, so a monotone assertion is wrong and would pass
