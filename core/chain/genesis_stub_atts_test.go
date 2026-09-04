@@ -13,11 +13,9 @@ import (
 // Only the HASH-COVERED half is gated here: a genesis carrying a LastCommit carrier is
 // authored, signed content and is REFUSED (ErrGenesisLastCommit). The UNSIGNED slot
 // (Atts, outside the Hash() preimage — see hash_literal_pin_test.go) is deliberately NOT
-// gated here: stripping it broke four core/node fixtures that seed a verified genesis
-// att by convention (production genesis carries none — anchors seat at height >= 1), and
-// the certified disposal (seat only VERIFIED attestations, strip the rest) awaits the
-// owner's ratification, so AppendGenesis keeps main's
-// pre-carrier behaviour for it. Do not add an Atts gate here without that verdict.
+// gated here: its rule — seat only VERIFIED attestations, strip the rest — is
+// D-GENESIS-ATTS-SEATING (ratified 2026-09-04) and lives in genesis_atts_seating_test.go
+// (G1–G10). Production genesis carries none; anchors seat at height >= 1.
 
 // stubAttFor is the attacker's stub: the REAL public key of a QUALIFIED validator that
 // signs nothing else in the test, with a 64-zero-byte signature nobody produced. A
@@ -62,10 +60,9 @@ func assertGenesisStripped(t *testing.T, c *Chain, victim ports.NodeID, path str
 // the strip-not-fatal probe — gate (a): the direct AppendGenesis path.
 //
 // 2026-09-04: the three Atts-STRIP gates that lived here were WITHDRAWN with the strip
-// itself — stripping genesis Atts broke four core/node fixtures (the bootstrap they model
-// seeds a verified genesis att; production genesis carries none). The seat-only-verified
-// rule is now CERTIFIED and awaits ratification; the probes return as its gates G1–G10.
-// Only the LastCommit
+// itself — stripping genesis Atts broke fixtures that seed a verified genesis att. The
+// seat-only-verified rule is RATIFIED and BUILT; the probes returned as G1–G10 in
+// genesis_atts_seating_test.go. Only the LastCommit
 // refusal (the hash-covered half, still ratified) remains here.
 
 func TestGenesisLastCommitIsRefused(t *testing.T) {

@@ -70,9 +70,10 @@ var (
 	// ErrGenesisLastCommit is a genesis block carrying a LastCommit carrier. Height 0 has no
 	// parent to attest, and the carrier is the hash-covered v5 seating input, so a declared
 	// genesis carrying one is an authored pre-seating of validatorsSeen. O1 refuses it by rule.
-	// The UNSIGNED slot (Atts) is deliberately NOT covered by this error: its disposal on
-	// genesis is research-gated (R-CARRIER-GENESIS-DISPOSAL) and AppendGenesis keeps main's
-	// pre-carrier behaviour for it.
+	// The UNSIGNED slot (Atts) is deliberately NOT covered by this error: AppendGenesis
+	// FILTERS it instead — only attestations that verify over the genesis hash are seated,
+	// the rest are stripped (D-GENESIS-ATTS-SEATING, 2026-09-04) — because refusing an
+	// unsigned stub would let a relayer wedge fork-adopt and Reload for free.
 	ErrGenesisLastCommit = errors.New("chain: genesis block carries a LastCommit carrier — refused by rule; height 0 has no parent to attest and a declared genesis must not pre-seat validatorsSeen")
 )
 

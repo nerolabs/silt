@@ -981,7 +981,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   slashes (structurally pinned). A v5 block's own `Atts` now write nothing. Validity: every entry
   verifies over `b.Prev` at `PhasePrecommit` at its own round (deliberately NOT bound to
   `CommitRound`, which `Hash()` does not cover); distinct ids; a sub-v5 block carrying the field is
-  invalid; height 1's carrier is empty BY RULE and a genesis `LastCommit` is refused BY RULE (genesis `Atts` are NOT refused on this tree: they seat unverified as on main, pending the owner's ratification of the certified seat-only-verified rule)
+  invalid; height 1's carrier is empty BY RULE and a genesis `LastCommit` is refused BY RULE (genesis `Atts` are filtered by D-GENESIS-ATTS-SEATING, ratified and built the next day — see the entry above)
   (previously a convention, not a rule). The floor-box class-A recompute and the v5 read-set model
   are re-pointed to the carrier, with the parent-proposer exclusion anchored by the parent's own
   proposer signature over the hash-covered `b.Prev`. Disclosed: the seat lands ONE BLOCK LATE

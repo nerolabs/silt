@@ -585,7 +585,7 @@ gate GREEN incl. `-race -short` on `core/chain` + `core/node`; record
   Certification: `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/genesis-atts-seating-rule-RESEARCH-CERTIFICATION-2026-09-04.md`.
   Still routed, NOT certified: **O-2** a "pruned" genesis served to a fresh-sync victim with our hash and an
   attacker-chosen body (`AppendGenesis` never checks `IsPruned()`; `Reconcile` compares `fork[0].Hash()`,
-  which returns `Pruned`) — red-team probe owed. **O-1** is closed by O3-T (the weight term is gone).
+  which returns `Pruned`) — red-team probe owed. **The probe's threat statement must carry the composition the PE named (`RULING-genesis-atts-seating-build-2026-09-04.md`): under a kept `Pruned` the attacker owns the body, so it can declare `BondRegs` that qualify its OWN keys and attach genuine signatures over the public genesis hash — the verified-att filter admits them and `apply` seats them; the filter guarantees "no seat without a genuine signature", O-2 lets the attacker choose who is qualified.** **O-1** is closed by O3-T (the weight term is gone).
 - **R-CARRIER-CREDIT-DENIAL — RE-PRICED 2026-09-03: PRE-EXISTING on main; the carrier NARROWS it. GATED (window); minimum REFUTED; vector REFUTED.**
   Main seats from `b.Atts` (`chain.go:3364`), which is outside the `Hash()` preimage, so today ANY relay
   can deny a seating divergently (bounded by the quorum floor, `chain.go:2735`; at v4+ the same trim

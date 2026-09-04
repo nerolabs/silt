@@ -3391,14 +3391,11 @@ func (c *Chain) AppendGenesis(b Block) error {
 	// has no parent to attest, and the carrier is the hash-covered v5 validatorsSeen input, so
 	// a declared genesis carrying one would be an authored, signed pre-seating of the maturity
 	// metric. ONLY the hash-covered slot is refused here. Atts (outside the Hash() preimage)
-	// keep main's behaviour — neither refused nor stripped, seated UNVERIFIED by the loop
-	// below. Production genesis carries no Atts at all (core/genesis emits Entries only;
-	// anchors seat at height >= 1 through the founding drain); four core/node fixtures seed
-	// a verified genesis att by convention, which is why "strip all" broke them. The
-	// certified disposal — seat only the attestations that verify over the genesis hash,
-	// strip the rest — awaits the owner's ratification (R-CARRIER-GENESIS-DISPOSAL,
-	// genesis-atts-seating-rule-RESEARCH-CERTIFICATION-2026-09-04.md). Gate:
-	// TestGenesisLastCommitIsRefused.
+	// are FILTERED below, before apply: only the entries whose signature verifies over the
+	// genesis hash are seated; the rest are stripped, never refused (D-GENESIS-ATTS-SEATING,
+	// ratified 2026-09-04). Production genesis carries no Atts at all (core/genesis emits
+	// Entries only; anchors seat at height >= 1 through the founding drain). Gates:
+	// TestGenesisLastCommitIsRefused; genesis_atts_seating_test.go G1–G10.
 	if len(b.LastCommit) > 0 {
 		return fmt.Errorf("%w: %d LastCommit entries", ErrGenesisLastCommit, len(b.LastCommit))
 	}
