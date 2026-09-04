@@ -66,19 +66,14 @@ func assertGenesisStripped(t *testing.T, c *Chain, victim ports.NodeID, path str
 	}
 }
 
-// TestGenesisStubAttsAreStrippedNotFatal — gate (a): the direct AppendGenesis path.
-func TestGenesisStubAttsAreStrippedNotFatal(t *testing.T) {
-	w := newWorld(DefaultConfig())
-	g, victim := signedGenesisWithStub(t, w)
-	if err := w.c.AppendGenesis(g); err != nil {
-		t.Fatalf("AppendGenesis REFUSED a genesis whose only defect is an unsigned stub Att appended after signing: %v — REFUSE on a non-hash-covered slot is a free denial lever (MG-C)", err)
-	}
-	assertGenesisStripped(t, w.c, victim, "AppendGenesis")
-}
+// the strip-not-fatal probe — gate (a): the direct AppendGenesis path.
+//
+// 2026-09-04: the three Atts-STRIP gates that lived here were WITHDRAWN with the strip
+// itself — stripping genesis Atts breaks the anchor bootstrap (four core/node tests).
+// The Atts half of MG-C is research-gated; the tests are parked in the Researcher's
+// question (`genesis-atts-seating`), not deleted from history. Only the LastCommit
+// refusal (the hash-covered half, still ratified) remains here.
 
-// TestGenesisLastCommitIsRefused — gate (b): the hash-covered slot MUST be refused.
-// Written to compile on main, where Block has no LastCommit field: it skips with a
-// named reason until the carrier lands, then asserts refusal.
 func TestGenesisLastCommitIsRefused(t *testing.T) {
 	f, ok := reflect.TypeOf(Block{}).FieldByName("LastCommit")
 	if !ok {
@@ -108,57 +103,6 @@ func TestGenesisLastCommitIsRefused(t *testing.T) {
 	}
 }
 
-// TestReloadSurvivesAGenesisWithAStubAtt — gate (c): the own-disk path. Persist
+// the reload-survives probe — gate (c): the own-disk path. Persist
 // (EncodeBlocks, the bytes chainstore writes) a genesis that acquired a stub, reload it
 // into a fresh chain: no error, and the stub is stripped on the way in.
-func TestReloadSurvivesAGenesisWithAStubAtt(t *testing.T) {
-	w := newWorld(DefaultConfig())
-	g, victim := signedGenesisWithStub(t, w)
-	blocks, err := DecodeBlocks(EncodeBlocks([]Block{g}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(blocks[0].Atts) != 1 {
-		t.Fatal("premise: the stub must survive the persisted encoding (it is on the wire)")
-	}
-	fresh := New(DefaultConfig(), func(n ports.NodeID) int64 { return w.reps[n] })
-	n, err := fresh.Reload(blocks)
-	if err != nil {
-		t.Fatalf("Reload WEDGED on a persisted genesis carrying one unsigned stub Att (applied %d): %v — a node whose disk genesis ever acquired a stub never restarts (MG-C)", n, err)
-	}
-	if n != 1 {
-		t.Fatalf("Reload applied %d blocks, want 1", n)
-	}
-	assertGenesisStripped(t, fresh, victim, "Reload")
-}
-
-// TestGenesisStubAttSurvivesForkAdopt — the second live path the cert names: Reconcile
-// calls tmp.AppendGenesis(fork[0]) on a PEER-SUPPLIED fork. A heavier valid fork whose
-// relayed genesis carries a stub must still be adopted, with the stub stripped.
-func TestGenesisStubAttSurvivesForkAdopt(t *testing.T) {
-	w := newWorld(DefaultConfig())
-	g := w.genesis() // our own clean genesis, committed
-	light := w.forkBlock(g.Hash(), entry(1), 3)
-	if err := w.c.Append(*light); err != nil {
-		t.Fatal(err)
-	}
-	relayed := *g
-	stub, victim := stubAttFor(w)
-	relayed.Atts = []Attestation{stub}
-	relayed.hashMemoSet = false
-	if relayed.Hash() != g.Hash() {
-		t.Fatal("premise: the stub must not move the genesis hash")
-	}
-	heavy := w.forkBlock(g.Hash(), entry(2), 4)
-	adopted, err := w.c.Reconcile([]Block{relayed, *heavy})
-	if err != nil {
-		t.Fatalf("Reconcile REFUSED a heavier valid fork because its relayed genesis carries one unsigned stub Att: %v — fork-adopt is deniable by any serving peer at zero cost (MG-C)", err)
-	}
-	if !adopted {
-		t.Fatal("a strictly heavier fork must be adopted")
-	}
-	assertGenesisStripped(t, w.c, victim, "Reconcile")
-	if _, ok := w.c.LookupRoot(entry(2).Root); !ok {
-		t.Error("the adopted fork's entry must be present")
-	}
-}

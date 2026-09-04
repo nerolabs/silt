@@ -564,12 +564,15 @@ O3 is pending** (source for all four:
   bodies — that defeats pruning (build-immutable #8). Source: the carrier delta cert
   (`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/LASTCOMMIT-CARRIER-26977a4-DELTA-CERTIFICATION-2026-09-03.md`)
   §5.
-- **R-CARRIER-GENESIS-DISPOSAL — the STRIP half ✅ SHIPPED on main 2026-09-04 (carrier-merge-gates PR); the REFUSE half lands with the carrier.**
-  The rule splits: genesis `Atts` are **STRIPPED** (outside the `Hash()` preimage; a relayed stub was
-  silently SEATED into `validatorsSeen` on main — the Tester found main never refused it either), genesis
-  `LastCommit` is **REFUSED** (inside the preimage; `TestGenesisLastCommitIsRefused` arms by reflection
-  when the field lands). Gates `core/chain/genesis_stub_atts_test.go`. This corrects the round-A
-  certification's own §2. Source: the delta cert §6.
+- **R-CARRIER-GENESIS-DISPOSAL — the Atts half RESEARCH-GATED 2026-09-04 (the delta cert's "STRIP" is REFUTED by the bootstrap); the `LastCommit` REFUSE half lands with the carrier.**
+  "Strip genesis `Atts`" was built and CI refuted it: genesis attestations by the launch anchors are how
+  the anchors are SEATED into `validatorsSeen` (four `core/node` bootstrap tests: `TestStaleIssuerKeyRegDoesNotMuteTheProposer`,
+  `TestStaleIssuerKeyRegPreFlipBoot`, `TestDemandLaneOutlivesTheWindowAndARestart`,
+  `TestRTC3B_ChainPruneBandNeverUndercutsTheKeysetWindow`). The exposure the cert named is real (a relayed
+  stub is attacker-writable, outside the preimage, and seats unverified); the sound rule — seat only
+  attestations that VERIFY over the genesis hash, strip the rest? — is a consensus-rule question routed to
+  the Researcher (`genesis-atts-seating`). Until ruled: behaviour unchanged; `TestGenesisLastCommitIsRefused`
+  (arms by reflection) is the only gate kept. This corrects the round-A certification's §2 AND the delta cert §6.
 - **R-CARRIER-CREDIT-DENIAL — RE-PRICED 2026-09-03: PRE-EXISTING on main; the carrier NARROWS it. GATED (window); minimum REFUTED; vector REFUTED.**
   Main seats from `b.Atts` (`chain.go:3364`), which is outside the `Hash()` preimage, so today ANY relay
   can deny a seating divergently (bounded by the quorum floor, `chain.go:2735`; at v4+ the same trim
