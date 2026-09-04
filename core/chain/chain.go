@@ -3349,6 +3349,14 @@ func (c *Chain) AppendGenesis(b Block) error {
 	// genesis order-independent BY REJECTION would be a consensus-rule change to
 	// genesis validity (research-gated) — see
 	// docs/thinking/2026-08-28-genesis-sameroot-residual.md option (b).
+	// R-CARRIER-GENESIS-DISPOSAL, the Atts half — RESEARCH-GATED (2026-09-04). Genesis
+	// Atts sit OUTSIDE the Hash() preimage, so a relayed stub is attacker-writable, yet
+	// genesis Atts by the launch anchors are ALSO how the anchors are seated into
+	// validatorsSeen (the bootstrap). "Strip all" (the delta cert's MG-C) was built and
+	// REFUTED by four core/node bootstrap tests; the sound rule (seat only attestations
+	// that VERIFY over the genesis hash?) is a consensus-rule question routed to the
+	// Researcher. Until ruled: unchanged behaviour. The hash-covered carrier field
+	// (LastCommit) is authored content and IS refused by the carrier rule.
 	c.apply(b)
 	return nil
 }
