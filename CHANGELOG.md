@@ -27,6 +27,64 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 
 ### Changed
+- **R2.9a — the `B_bootstrap` instrument is a FULL-CENSUS COUNT HISTOGRAM, not a row export
+  (research-CERTIFIED 2026-09-04, verdict GATED on the shipped shape; a replacement of the
+  shape and the clock, not a patch).** The instrument `D-R2.9-DIRECTION` sentence 4 makes a
+  precondition of pinning `grant/r` now publishes one `int64` counter per (age bucket ×
+  log2-bytes bin): 8 age buckets × 164 quarter-log2 byte bins = 1,312 counters, measured at
+  one 10,496-byte allocation per snapshot and a 3.1 KiB payload at both R = 10 and
+  R = 20,000 — against the PE's measured 124 ms / 114 MiB for the row export at
+  R = 500,000. Every requester with `fetchedBytes > 0` is counted exactly once; no cap, no
+  truncation, no sampling, no salt, no hash, no sort, no per-row allocation, and no per-cell
+  byte SUM (a cell sum with count 1 is that identity's exact byte total in disguise).
+  **Two mechanisms drove the replacement.** (a) Retaining the top 4,096 rows BY BYTES
+  selects on the response variable of the regression the series exists to fit: it removes,
+  from every age cell, the identities below an unpublished threshold, so the YOUNG cells —
+  where the fit reads — empty first and hardest, and past R = 4,096 the age-conditional
+  quantile is unrecoverable. (b) The age axis was the consensus epoch, which is identically
+  0 on a non-validator (`EnableChain` sits inside `if *validator {`), so the export would
+  have published a constant on exactly the machine it was built for. The age axis now rides
+  the **injected `ports.Clock`** (`SetObservabilityClock`, the `SetEpochSource` pattern),
+  stamped once at first touch in `Register` — the certification's cited `firstSeenTick`
+  write fires only inside `RecordBondChallenge`, i.e. for bonded validators and never for a
+  pure fetcher, so it was not a usable stamp for this population. `firstSeenTick` is now
+  read for observability only and still by NO standing calculation (the T-axis note stands).
+  **Deleted:** `MaxRequesterFetchRows`, `SetExportSalt` and the salt, the daemon's
+  `crypto/rand` draw, `truncated`, the per-requester rows and the label hashing — the PE's
+  two blockers (`crypto/rand` in `core/`, the unsalted embedder) disappear under the shape
+  rather than being fixed. **The block is DEFAULT OFF** behind the new `-bbootstrap` flag
+  and is ABSENT from `/api/status` unless asked for: reads need no token there, so anything
+  published is world-readable wherever `-ui` is bound off loopback. Instrumentation only —
+  no conservation rule, no economic rule and no standing calculation reads it
+  (`SetObservabilityClock` and `BBootstrapSnapshot` are classified `neutral` under
+  Invariant A, and `TestR29aBBootstrapSnapshotWritesNothing` deep-compares the account map
+  across a snapshot, because the sibling defect in this family is a reader that goes through
+  `acct()` → `Register` and mints a 500,000 grant). **`W` and `q` are NOT pinned** — G-BB-1
+  makes that the owner's call, no reading rule is hard-coded anywhere, the age-edge table
+  carries a comment saying an edge may need adding, and `BBootstrapRunPrecondition` takes W
+  as a required argument with no default. The RUN stays blocked on G-BB-1.
+  Gates: `TestR29aDeadClockPublishesNoAgeCells` and
+  `TestR29aWirePayloadSelfReportsADeadClock` (BB-1: a ledger with no clock publishes an
+  explicit `clockSource` and a NULL grid, never an all-zero age column);
+  `TestR29aAgeAxisLivenessAndBoundaries` (BB-2, every edge driven at the edge and one ns
+  below); `TestR29aCensusIsCompleteAndUncapped` (BB-3);
+  `TestR29aYoungCellsAreExactUnderASkewedPopulation` (BB-4, the top-k refutation encoded);
+  `TestR29aPayloadIsBoundedInTheRequesterCount` (BB-5);
+  `TestR29aSnapshotCostDoesNotGrowInR` (BB-6, exactly one allocation at R = 1,000 and
+  R = 100,000); `TestR29aWirePayloadCarriesNoJoinKey` (BB-7, a CLOSED wire key set plus a
+  hex/byte-sum scan of the block's own bytes);
+  `TestR29aStatusOmitsTheBlockUnlessAsked` + `TestR29aDaemonDefaultsTheInstrumentOff`
+  (BB-8, runtime and source gate); `TestR29aOccupiedAgeBucketsNeverExceedUptime`
+  (BB-9/G-BB-4, with a foreign-tick teeth arm); `TestR29aRestartIsVisibleNotSilent` (BB-10);
+  `TestR29aBackwardClockStepClampsAndSaysSo` (BB-13, two arms — the isolating one steps the
+  clock back to after the ledger start but before the stamp);
+  `TestR29aRunPreconditionAcceptsOnlyAValidRun` (BB-14);
+  `TestR29aByteBinMatchesTheClosedForm`, `TestR29aUnstampedRequestersAreCountedNotAged`,
+  `TestR29aFirstTouchIsStampedOnceAtRegister`,
+  `TestR29aNodeSnapshotIsTheHistogramWithNoIdentity`, `TestR29aNoLedgerYieldsNoExport` and
+  `TestR29aEconomySelfFieldsAreUnchanged`. BB-12 is already covered by
+  `TestCoreImportsNoAdaptersAndNoEffects` (`internal/depcheck`) and is not duplicated.
+  Deliberation: `docs/thinking/2026-09-04-r29a-bbootstrap-histogram.md`.
 - **O3 Direction T — the fork-choice weight term is RETIRED; `heavier` is height → head-hash
   among descendants of the finalized head (a consensus-rule change, owner-ratified 2026-09-03,
   research-CERTIFIED 2026-09-04).** `Weight()`, `blockWeight()`, `anchorWeight()` and

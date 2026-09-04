@@ -45,11 +45,18 @@ type account struct {
 	// A time-of-ACQUISITION ramp is deferred: a bare age gate is pre-farmable
 	// (the coin-age anti-pattern), and the only sound form is a continuous
 	// bond-anchored VDF (M1+). lastBondTick drives the retention decay.
-	// firstSeenTick is recorded but is currently DEAD for standing — no
-	// standing calculation reads it; it is not an acquisition-age gate.
+	//
+	// firstSeenTick is the account's FIRST-TOUCH stamp on this ledger, written once
+	// in Register from the injected observability clock (R2.9a; bbootstrap.go). It
+	// is read for OBSERVABILITY ONLY — the B_bootstrap histogram's age axis — and
+	// still by NO standing calculation: it is not an acquisition-age gate, and the
+	// T-axis note above stands unchanged. It reaches the wire only as a coarse age
+	// bucket, never as a value. Without an injected clock it stays 0 ("unset") until
+	// a bond challenge stamps it (RecordBondChallenge, below), which is the shipped
+	// behaviour this change preserves.
 	bondedBytes   int64
 	bondFails     int
-	firstSeenTick uint64 // recorded; NOT read by any standing calc (see T-axis note above)
+	firstSeenTick uint64 // first touch; read by the B_bootstrap export ONLY, never by a standing calc
 	lastBondTick  uint64
 	// equivocations counts PROVEN consensus double-signs (core/chain). It is
 	// the gravest offense — an attack on consensus itself — so it does not
@@ -181,6 +188,16 @@ type Ledger struct {
 	// finality; one epoch behind the keyset at every boundary block, which refuses
 	// honest relay anchors as ReasonAnchorFuture once per epoch).
 	epochSrc ports.EpochSource
+
+	// obsClock is the injected ports.Clock the R2.9a B_bootstrap instrument ages
+	// identities against (SetObservabilityClock; bbootstrap.go carries the reasoning).
+	// It is an OBSERVABILITY clock and nothing else reads it: no accounting rule, no
+	// screen, no standing calculation. Nil is the safe state — no first-touch stamp is
+	// written and the snapshot publishes no age-conditioned cells. obsStartNanos is the
+	// clock's reading when it was injected, and is the censoring bound the snapshot
+	// publishes as UptimeNanos.
+	obsClock      ports.Clock
+	obsStartNanos int64
 
 	// epochWatermark is the HIGHEST epoch this ledger has ever READ from its source:
 	// epochWatermark = max(epochWatermark, epochSrc.Epoch()), taken once at the entry
@@ -325,11 +342,18 @@ func (l *Ledger) advanceEpoch() {
 
 // Register creates the node's account and applies the starting grant.
 // Registering twice is a no-op (no double grants).
+//
+// This is FIRST TOUCH on this ledger, and the only place an account is constructed, so
+// it is where the R2.9a observability stamp is written — once, structurally, rather
+// than by a guarded assignment at N call sites. Without an injected clock nothing is
+// stamped and this is byte-for-byte the shipped behaviour.
 func (l *Ledger) Register(n ports.NodeID) {
 	if _, ok := l.accounts[n]; ok {
 		return
 	}
-	l.accounts[n] = &account{balance: l.grant}
+	a := &account{balance: l.grant}
+	l.stampFirstTouch(a)
+	l.accounts[n] = a
 	l.order = append(l.order, n)
 }
 
