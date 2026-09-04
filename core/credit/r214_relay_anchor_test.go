@@ -192,6 +192,8 @@ func TestRelayLaneConservesTotalSupplyOnOnePerNodeLedger(t *testing.T) {
 func TestRelayCredentialIsSpentOncePerLedger(t *testing.T) {
 	t.Run("second_spend_refused", func(t *testing.T) {
 		l := New(r214Fee, 0)
+		clock := &mockEpochSource{}
+		l.SetEpochSource(clock) // R2.10: the ledger's clock (PE F2 — the epoch-2 arm was lost)
 		a := anchorsAt(0, 0, 1)
 		if face, reason := l.SpendRelayAnchors(a); face != r214Fee || reason != "" {
 			t.Fatalf("first spend: (face %d, reason %q), want (%d, \"\")", face, reason, r214Fee)
@@ -199,9 +201,12 @@ func TestRelayCredentialIsSpentOncePerLedger(t *testing.T) {
 		if face, reason := l.SpendRelayAnchors(a); face != 0 || reason == "" {
 			t.Fatalf("SECOND spend of the same anchor: (face %d, reason %q) — the credential was spent twice on one ledger", face, reason)
 		}
-		// Under a fresh ephemeral/session on a later epoch inside the window, still spent.
-		if face, _ := l.SpendRelayAnchors(a); face != 0 {
-			t.Fatalf("the same anchor spent again at epoch 2 (face %d) — the guard forgot a live entry", face)
+		// Under a fresh ephemeral/session on a LATER epoch inside the window, still spent —
+		// and refused as already-paid, not as future-dated (which would pass for the wrong
+		// reason at a watermark that never moved).
+		clock.e = 2
+		if face, reason := l.SpendRelayAnchors(a); face != 0 || reason != ReasonAlreadyPaid {
+			t.Fatalf("the same anchor spent again at epoch 2: (face %d, reason %q), want (0, %q) — the guard forgot a live entry", face, reason, ReasonAlreadyPaid)
 		}
 	})
 
@@ -237,6 +242,8 @@ func TestRelayCredentialIsSpentOncePerLedger(t *testing.T) {
 
 	t.Run("cap_refuses_never_evicts", func(t *testing.T) {
 		l := New(r214Fee, 0)
+		capClock := &mockEpochSource{}
+		l.SetEpochSource(capClock) // R2.10: the epoch advance below is the LEDGER's (PE F2)
 		var accepted []RelayAnchor
 		limit := 2 * maxPaidSerial
 		refused := false
@@ -276,8 +283,12 @@ func TestRelayCredentialIsSpentOncePerLedger(t *testing.T) {
 		if face, _ := l.SpendRelayAnchors(anchorsAt(0, limit+20, 1)); face != 0 {
 			t.Fatalf("a fresh anchor was accepted at cap (face %d) — a slot was freed by eviction, not expiry", face)
 		}
-		if face, _ := l.SpendRelayAnchors(anchorsAt(1, limit+30, 1)); face != 0 {
-			t.Fatalf("an epoch advance INSIDE the window (0 → 1, W = %d) freed a slot (face %d) — live entries were evicted, not expired", paidSerialWindow, face)
+		// The epoch advance is the LEDGER's (R2.10), not an argument: without moving the
+		// clock the epoch-1 anchor is refused as future-dated and this arm proves nothing
+		// (PE F2).
+		capClock.e = 1
+		if face, reason := l.SpendRelayAnchors(anchorsAt(1, limit+30, 1)); face != 0 || reason != ReasonGuardFull {
+			t.Fatalf("an epoch advance INSIDE the window (0 → 1, W = %d): (face %d, reason %q), want (0, %q) — live entries were evicted, not expired", paidSerialWindow, face, reason, ReasonGuardFull)
 		}
 	})
 }

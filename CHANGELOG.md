@@ -92,8 +92,15 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `TestF8_DaemonWiresTheLedgerEpochSourceToTheNode`,
   `TestF8_LedgerEpochFollowsTheChainThroughTheDaemonSeam`, and e2e
   `TestF8_PaidLanesRefuseToStartWithoutAnEpochClock`. Fixture cost: three legacy e2e daemons gain
-  `-epoch-blocks 8`; twelve unit fixtures that used the dropped parameter as their clock now drive a
-  mock source, assertions unchanged. Residual `R-F8-RESTART-REWIND` (durable guard, unpersisted
+  `-epoch-blocks 8`; **fifteen** unit fixtures that used the dropped parameter as their clock now drive a
+  mock source, assertions unchanged. **Three of those were caught by the blind PE review, not by the
+  migration** (`RULING-R2.10-F8-build-178ff3b-2026-09-04.md`): the compaction fuzz kept a moving `epoch`
+  bound only to `issuedEpoch`, so its watermark never advanced, the band sweep never ran, and its own
+  invariant (d) went RED past 32,768 live serials — invisible under `-short`, which is the tier CI runs;
+  two relay subtests (the epoch-2 re-spend, the in-window cap advance) passed for the wrong reason at a
+  watermark of 0. All three now drive the ledger's source, assert the reason, and the fuzz carries a
+  `-short`-visible tripwire: a scenario spanning more than the guard window whose sweep never ran is RED.
+  Residual `R-F8-RESTART-REWIND` (durable guard, unpersisted
   watermark) is filed on FP-2's carry-list with its close R-F8-RESTORE.
 - **R4.3b — the DHT eclipse cap (H5-B) now keys on the OBSERVED contacted-at address, in SHADOW
   MODE by default; de-herd relay selection.** Mechanism: the per-bucket cap keyed on the

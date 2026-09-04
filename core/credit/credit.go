@@ -279,6 +279,13 @@ func (l *Ledger) SetEpochSource(src ports.EpochSource) { l.epochSrc = src }
 // against: max(epochWatermark, source), the latched read (R-F8-LATCH). It reads the
 // source without moving the watermark — a pure observer for tests and operators; the
 // watermark advances only at the guarded entry points (advanceEpoch).
+//
+// CONCURRENCY (PE ruling RULING-R2.10-F8-build-178ff3b F5): the production source reads
+// the chain's block slice without a lock, which is safe only because every production
+// caller — the guarded redeem, the anchor spend, the status snapshot — runs on the node's
+// event loop, the chain's single writer. An off-loop caller of Epoch() (or of any guarded
+// method) would race the chain; there is none today, and adding one needs a lock, not a
+// second clock.
 func (l *Ledger) Epoch() uint64 {
 	if l.epochSrc == nil {
 		return l.epochWatermark

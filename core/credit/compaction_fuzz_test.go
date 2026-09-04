@@ -112,6 +112,15 @@ func runCompactionFuzz(t *testing.T, seed int64, ops, poolSize int) {
 
 	l := New(fee, 0 /*no auto-grant*/)
 
+	// R2.10 (PE ruling RULING-R2.10-F8-build-178ff3b F1): the ledger's clock is an
+	// injected source, not a call parameter. Before R2.10 this fuzz drove the watermark
+	// through RedeemDeliveryCreditReason's currentEpoch argument; the migration left the
+	// moving `epoch` bound only to issuedEpoch, so the watermark stayed 0, the band-advance
+	// sweep never ran, and invariant (d) went RED past 32,768 live serials — invisible under
+	// -short. The source below is the fuzz's clock; every point that moves `epoch` moves it.
+	clock := &mockEpochSource{}
+	l.SetEpochSource(clock)
+
 	// expectedTotal tracks the conservation quantity: Σbalances + Σescrow.
 	// Updated by explicit delta accounting at each operation.
 	expectedTotal := int64(0)
@@ -289,6 +298,7 @@ func runCompactionFuzz(t *testing.T, seed int64, ops, poolSize int) {
 				// A UNIQUE, in-window serial: the honest case. It must ALWAYS pay —
 				// the guard exists to refuse a re-presented serial, never a new one.
 				epoch := uint64(step / fuzzEpochEvery)
+				clock.e = epoch // the ledger's clock advances with the scenario (F1)
 				serial := mintFuzzSerial(rng)
 				paid, reason := l.RedeemDeliveryCreditReason(server, ln.req, ln.obj, serial, epoch)
 				if paid <= 0 {
@@ -372,6 +382,17 @@ func runCompactionFuzz(t *testing.T, seed int64, ops, poolSize int) {
 		}
 	}
 
+	// TRIPWIRE (PE ruling F1, the coupling): this fuzz's header claims it exercises the
+	// watermark advance and the per-epoch sweep. A migration that silently unbinds the
+	// clock makes that claim false while every assertion still passes under -short, which
+	// is how F1 shipped. Assert the sweep actually ran whenever the scenario spans more
+	// than the guard's window, so the claim is checked at the tier that runs by default.
+	if epochsSpanned := uint64(ops / fuzzEpochEvery); epochsSpanned > paidSerialWindow {
+		if l.SerialSweeps() == 0 {
+			t.Fatalf("seed=%#x: the scenario spanned %d epochs (window %d) but the expiry sweep NEVER ran — the ledger's epoch source is not wired to the scenario's clock", seed, epochsSpanned, paidSerialWindow)
+		}
+	}
+
 	// Final full conservation check.
 	got := sumLedger()
 	if got != expectedTotal {
@@ -388,6 +409,7 @@ func runCompactionFuzz(t *testing.T, seed int64, ops, poolSize int) {
 	if !havePaid {
 		t.Fatalf("seed=%#x: no redeem ever paid — the guard assertions below are vacuous", seed)
 	}
+	clock.e = uint64(ops / fuzzEpochEvery) // the final re-presentation runs at the last epoch (F1)
 	paid, reason := l.RedeemDeliveryCreditReason(server, lastPaid.req, lastPaid.obj,
 		lastPaid.serial, lastPaid.epoch)
 

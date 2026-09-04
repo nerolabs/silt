@@ -679,7 +679,7 @@ func cmdDaemon(args []string) error {
 	// permissive at epoch 0 for in-process fixtures. Keyed on effEpoch, never the raw
 	// flag: a defaulted objective validator gets DerivedEpochBlocks and must pass.
 	if (*acceptReceipts || *acceptRelayPayments) && effEpoch == 0 {
-		return fmt.Errorf("paid lanes: refusing to start — -accept-delivery-receipts and -accept-relay-payments need an epoch clock, and the effective -epoch-blocks is 0 (an explicit 0, or -objective=false with -epoch-blocks unset): the paid-serial guard expires entries by consensus epoch, so with no epoch clock nothing ever expires and both lanes brick at the guard cap. Set -epoch-blocks N (N > 0, identically across the swarm) or drop the lane flags")
+		return fmt.Errorf("paid lanes: refusing to start — -accept-delivery-receipts and -accept-relay-payments need an epoch clock, and the effective -epoch-blocks is 0 (an explicit 0, or -epoch-blocks unset in a posture that derives none: -objective=false, -min-rep 0, or a node started without -validator): the paid-serial guard expires entries by consensus epoch, so with no epoch clock nothing ever expires and both lanes brick at the guard cap. Set -epoch-blocks N (N > 0, identically across the swarm) or drop the lane flags")
 	}
 	if *acceptReceipts || *acceptRelayPayments {
 		if gs, gerr := guardstore.Open(filepath.Join(*storeDir, "paidserials.log")); gerr != nil {
