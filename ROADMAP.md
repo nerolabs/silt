@@ -881,7 +881,8 @@ economy-off HEAD certifies a network nobody runs. Design:
   R2.2. Source: the economist advisory.
 
 **New Rocks opened 2026-09-03 (Boulder 2 — economy):**
-- **R2.9 · D-POD-KNOBS re-pricing — CERTIFIED as a LIVE incentive break; direction GATED (G-1…G-6); owner ratification owed; R2.14 is a PREREQUISITE.**
+- **R2.9 · D-POD-KNOBS re-pricing — CERTIFIED as a LIVE incentive break; direction ✅ RATIFIED 2026-09-04 (owner: "I also accept rulings on R2.9 and the future flixz.com measurement"), the six sentences of `R2.9-OWNER-BRIEF-2026-09-04.md`: (1) byte-denominated per-increment delivery settlement on PayWord under G-1…G-6, G-3 satisfied by R2.14's spend-at-open, G-4/G-5 re-derived for the shared guard and the single fee constant; (2) the interim exposure accepted and the order R2.14 → R2.9 → R2.4; (3) STRICT parity, the unwitnessed bilateral fallback kept, `r = 0` on the witnessed path NOT commissioned in v1; (4) the two measurements AUTHORISED — `B_bootstrap` (per-requester fetched bytes vs identity age on REAL traffic: a flixz.com export, since cloudtest cannot measure user behaviour; the raw per-requester byte counter exists on the ledger) and the honest arrival rate — and `grant/r` NOT pinned until the first exists (the affordability knob is the RATIO `grant/r`); (5) knob 1's cross-tier funding loop delivers 1/1,342 of its stated value on the witnessed lane at production sizes — escrow-over-burn stands, rationale corrected in `docs/decisions.md`; (6) no relay skim in v1 (R-RELAY-WASH-ZERO-LOSS re-opens with R2.12). BUILD OPEN behind R2.10; R2.14 landed (PR #721).**
+- **R2.9a · `B_bootstrap` export — NEW 2026-09-04 (Builder, small; a private handoff to flixz.com, off public repos).** Export per-requester `fetchedBytes` vs identity age from the ledger (`core/credit/escrow.go` / `credit.go` hold the raw counter; `/api/status` exports self only today) as a real-traffic series, so `grant/r` can be pinned before R2.4. Not a consensus or economic change; instrumentation only. The honest arrival rate rides the same export.
   **Certified:** a server strictly prefers NEVER banking a witnessed receipt above B = 50,000 bytes —
   payoff `0.875·(B − fee)`: +13,594 at 64 KiB, +58.7 M (1,342×) at 64 MiB — and suppression is one
   default-off flag (`daemon.go:74`). **B3 conservation is INTACT** (conditioned on a banked receipt);
@@ -1011,7 +1012,7 @@ economy-off HEAD certifies a network nobody runs. Design:
   owner-accepted v1; follow-on **R2.14b `MsgRelayFund`** — a top-up with FRESH anchors on an admitted
   session, one guard spend per top-up, T-3/T-10 per top-up; "present k, spend lazily" REFUTED on
   guard (ii)); R-RELAY-ANON-SET (this relay's buyers in the W+1 band, by k and IP — the delivery
-  lane's D3 channel); **R-RELAY-WASH-ZERO-LOSS (owner call: a relay skim before R2.4 — OPEN)**;
+  lane's D3 channel); **R-RELAY-WASH-ZERO-LOSS (DECIDED 2026-09-04 with R2.9 sentence 6: NO relay skim in v1; re-opens with R2.12 — a burn-only skim on a content-blind lane does not close the faucet route that funds the wash)**;
   F-3 R-FEE-CONSTANCY (FP-2 / R2.10 carry); R-ANCHOR-REPRESENT-LINK; **R-DARK-UNTIL-ERA4** (BUILT ≠
   LIVE: needs a v5 `IssuerKeyReg`; a paid relay must be bonded in objective mode). Not widened: F-4
   (R2.13b; anchors are bought under the durable identity only). Deliberation:
