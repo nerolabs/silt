@@ -501,8 +501,8 @@ carries its source; none is decided by a seat.
   `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/floorbox-box-entry-round-A-fee43ba-DELTA-CERTIFICATION-2026-09-03.md`
   §8.
 
-*The `LastCommit` carrier — R-BOX-ATTESTS. **O1, O2 and O4 are OWNER-RATIFIED (2026-09-03);
-O3 is pending** (source for all four:
+*The `LastCommit` carrier — R-BOX-ATTESTS. **O1 and O2 are OWNER-RATIFIED (2026-09-03); O4 is RATIFIED IN SUBSTANCE with its NUMBER (widen I5 vs mint I6)
+awaiting the owner; O3 is RATIFIED (Direction T, built in PR #722)** (source for all four:
 `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R-BOX-ATTESTS-scoping-CONVERGED-RESEARCH-VERDICT-2026-09-02.md`
 §10). **MERGED-pending-PR 2026-09-04:** the carrier branch (`builder/lastcommit-carrier`, three commits) is
 REBASED onto the carrier-merge-gates commit (`cf91f18` = main `b328268` + CD-0 / CD-2 / MG-C gates), every
