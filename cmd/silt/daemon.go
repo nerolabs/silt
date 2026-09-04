@@ -117,6 +117,7 @@ func cmdDaemon(args []string) error {
 	signedProviderTTL := fs.Duration("signed-provider-ttl", 30*time.Minute, "freshness window stamped on signed provider records (M0 H5): a re-served record older than this is treated as expired, so an eclipsing node can't replay an ancient claim forever")
 	dhtDomainCap := fs.Int("dht-domain-cap", 2, "failure-domain diversity cap for DHT eclipse resistance (M0 H5-B): at most this many peers sharing one -domain are kept per routing bucket, and provider records are announced to / resolved from a domain-spread set — so an adversary owning the NodeIDs closest to a key but sitting in one domain (a ~$4 /24 key-surround) can't suppress discovery. Only bites when peers set distinct -domain labels; an UNDECLARED peer is exempt (a known hole: a free label cannot price an eclipse; R4.3b keys the cap on the OBSERVED address instead — in SHADOW mode by default, see -dht-address-cap). 0 = off (no diversity constraint)")
 	dhtAddressCap := fs.String("dht-address-cap", defaultAddressCapMode, "R4.3b DHT eclipse cap keyed on the OBSERVED contacted-at address (the geth / Bitcoin Core form; ROADMAP R4.3b): per routing bucket at most -dht-domain-cap peers whose completed TLS conversation came from ONE IPv4 /24 (-dht-address-width) or IPv6 /32; a peer reached through a relay is keyed on the RELAY's /24 as class RELAYED (at most -dht-relay-cap per relay per bucket); ALL non-direct entries (relayed, reply-learned-but-never-contacted, unclassified) are bounded at K minus -dht-address-reserve; a reply-learned id is charged to the replier's /24 until it answers; loopback / link-local exempt, RFC1918 and CGNAT classified; -bootstrap seeds and -persistent-peers exempt; at most 10 entries per /24 across the table. Groups are salted per process — never persisted, gossiped, committed or logged. off = no rule; shadow (default) = evaluate the rule and COUNT every would-be refusal on /api/status (addressCap.wouldRefuse over the R∈{4,6,8}×cap_relay∈{2,4} grid, relayFanIn, groupCensus) while refusing NOTHING; on = refuse. Enabling on is an owner call after a shadow run. This prices the endhost adversary in /24s; an AS-level adversary holding many prefixes (Erebus) is NOT priced by it")
+	bbootstrap := fs.Bool("bbootstrap", false, "R2.9a: publish the B_bootstrap histogram on GET /api/status (ROADMAP R2.9a). A full-census 2-D COUNT histogram over (identity age × log2 fetched bytes) — 8 age buckets × 164 quarter-log2 byte bins, ~10 KiB, constant in the requester count. Counts ONLY: no requester id, no salted label, no per-identity row, no exact age, and no per-cell byte SUM (a cell sum with count 1 is that identity's exact byte total in disguise). The age axis is the boot-relative elapsed tick from the node's injected clock, right-censored at the ledger's uptime — a restart destroys every account, so no window longer than the longest clean uptime is measurable at all. It is the instrument D-R2.9-DIRECTION sentence 4 makes a precondition of pinning grant/r, and it is INSTRUMENTATION ONLY: no conservation rule, no standing calculation and no economic rule reads it. DEFAULT OFF — /api/status needs no token, so anything published there is world-readable wherever -ui is bound off loopback")
 	dhtAddressWidth := fs.Int("dht-address-width", 24, "IPv4 prefix width (bits) the -dht-address-cap groups by; 24 = /24. IPv6 is fixed at /32 (an IPv6 /64 is free). A width narrower than the allocation unit hands the adversary free groups")
 	dhtRelayCap := fs.Int("dht-relay-cap", 2, "cap_relay for -dht-address-cap: at most this many RELAYED peers per relay /24 per routing bucket (shadow hypothesis 2; raising it above -dht-domain-cap lowers a self-run-relay adversary's cost by one /24 per step and is the owner's priced trade after the shadow run)")
 	dhtAddressReserve := fs.Int("dht-address-reserve", 4, "R, the DIRECT reserve per routing bucket for -dht-address-cap — a SECURITY parameter (Evolving tier): non-direct entries are bounded at K − R, so owning a bucket costs ⌈R / -dht-domain-cap⌉ paid /24s plus K − R free slots. Must be ≥ K/2 (refused otherwise: below it honest relays hand the adversary a bucket majority for free). Shadow hypothesis 4; the printed floor at startup is what the owner ratifies")
@@ -648,6 +649,28 @@ func cmdDaemon(args []string) error {
 	// chain-less daemon so the chain-gated call sites below never nil-panic.
 	saveChain := func(string) {}
 	ledger := credit.New(relaypay.ShippedAnchorFace, 500_000) // the ONE fee constant: publish fee == relay anchor face (R2.14 k_max derives from it); starter grant so a fresh publisher can pay token fees
+	// R2.9a (G-BB-2): the B_bootstrap age axis rides the SAME injected clock every node
+	// gets — core may not touch the wall clock (internal/depcheck), and the consensus
+	// epoch is refuted for this purpose because it is identically 0 on a non-validator,
+	// which is exactly the machine that will run this instrument.
+	//
+	// Injected UNCONDITIONALLY, before any account exists, so -bbootstrap controls
+	// exactly ONE thing: publication. The stamp itself is inert — a first-touch tick no
+	// standing calculation reads — and injecting it here means an operator who flips
+	// -bbootstrap on at the next restart gets a stamped population from that boot's
+	// first touch rather than a ledger full of unstamped accounts.
+	//
+	// TWO SOURCES, ONE CALL (G-BB-4). clk is a wall clock — adapters/walltime returns
+	// time.Now().UnixNano(), which discards Go's monotonic reading — so uptime and every
+	// age come off one steppable reading and a step cancels out of the comparison
+	// between them. obsStart is a time.Time, which DOES carry the monotonic reading, and
+	// time.Since reads it, so the closure below is elapsed time nothing can step: not an
+	// NTP correction, not an operator, not a container clock. Nothing is measured on it;
+	// it exists so the wall clock's divergence from it is visible in the artifact.
+	// Captured here rather than reusing the UI's `started` because it must be stamped in
+	// the same call as the wall origin, and the UI server does not exist yet.
+	obsStart := time.Now()
+	ledger.SetObservabilityClock(clk, func() int64 { return int64(time.Since(obsStart)) })
 	// R0.4b re-break F2: the cross-server double-redeem guard is DURABLE, and it is
 	// restored HERE — before the node exists, so before any receipt can be accepted. A
 	// restart used to evict every guarded token, in-window or not, and the identical
@@ -1252,6 +1275,7 @@ func cmdDaemon(args []string) error {
 			token:         token,
 			addressCap: addressCapConfig{Mode: addrMode.String(), Width: *dhtAddressWidth,
 				CapDirect: *dhtDomainCap, CapRelay: *dhtRelayCap, Reserve: *dhtAddressReserve},
+			bBootstrap: *bbootstrap, // R2.9a: default false — the block is ABSENT unless asked for
 		}
 		bound, err := ui.serve(*uiAddr)
 		if err != nil {
