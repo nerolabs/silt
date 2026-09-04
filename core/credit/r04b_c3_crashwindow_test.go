@@ -65,7 +65,7 @@ func TestFP2_CrashBetweenTheGuardAppendAndThePayBurnsTheReceipt(t *testing.T) {
 	// durable store; everything it wrote to ITS ledger is then discarded, which is what
 	// a process death between delivery.go's addPaidSerial and the payment does when the
 	// two stores share no transaction.
-	if paid, why := crashed.RedeemDeliveryCreditReason(srv, fetcher, obj, serial, 100, 100); paid != wantPaid || why != ReasonPaid {
+	if paid, why := crashed.RedeemDeliveryCreditReason(srv, fetcher, obj, serial, 100); paid != wantPaid || why != ReasonPaid {
 		t.Fatalf("setup: the pre-crash redeem must pay %d/%s, got %d/%s", wantPaid, ReasonPaid, paid, why)
 	}
 	if len(store.entries) != 1 {
@@ -77,7 +77,7 @@ func TestFP2_CrashBetweenTheGuardAppendAndThePayBurnsTheReceipt(t *testing.T) {
 		t.Fatal(err)
 	}
 	sigmaBefore := sumConserved(survivor)
-	paid, why := survivor.RedeemDeliveryCreditReason(srv, fetcher, obj, serial, 100, 100)
+	paid, why := survivor.RedeemDeliveryCreditReason(srv, fetcher, obj, serial, 100)
 
 	// (1) THE HARD INVARIANT — no double-pay, ever. ReasonAlreadyPaid sits ABOVE the
 	// supersede (RT-DELIV-1/1b/2), so the durable guard entry is what burns the receipt.

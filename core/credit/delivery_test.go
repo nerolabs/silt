@@ -26,7 +26,7 @@ func TestDeliveryCreditNeverTouchesStanding(t *testing.T) {
 
 	before := l.Reputation(server)
 	for i := 0; i < 1_000; i++ { // a heavy delivery volume
-		if paid := l.RedeemDeliveryCredit(server, fetcher, obj, nil, 0, 0); paid <= 0 {
+		if paid := l.RedeemDeliveryCredit(server, fetcher, obj, nil, 0); paid <= 0 {
 			t.Fatalf("redeem %d paid %d, want > 0", i, paid)
 		}
 	}
@@ -45,7 +45,7 @@ func TestDeliveryCreditIsConserved(t *testing.T) {
 	obj := id(7)
 
 	skim := int64(fee) * SkimNum / SkimDen
-	paid := l.RedeemDeliveryCredit(server, fetcher, obj, nil, 0, 0)
+	paid := l.RedeemDeliveryCredit(server, fetcher, obj, nil, 0)
 	if want := int64(fee) - skim; paid != want {
 		t.Fatalf("redeem paid %d, want fee−skim = %d", paid, want)
 	}
@@ -62,7 +62,7 @@ func TestDeliveryCreditIsConserved(t *testing.T) {
 func TestSelfDeliveryPaysNothing(t *testing.T) {
 	l := New(50_000, 0)
 	n := id(1)
-	if paid := l.RedeemDeliveryCredit(n, n, id(7), nil, 0, 0); paid != 0 {
+	if paid := l.RedeemDeliveryCredit(n, n, id(7), nil, 0); paid != 0 {
 		t.Fatalf("self-delivery paid %d, want 0", paid)
 	}
 	if got := l.Balance(n); got != 0 {
@@ -90,7 +90,7 @@ func TestWitnessedReceiptSupersedesServeSelfRecord(t *testing.T) {
 	}
 
 	// The witnessed receipt lands: supersede, then pay conserved.
-	paid := l.RedeemDeliveryCredit(server, fetcher, obj, nil, 0, 0)
+	paid := l.RedeemDeliveryCredit(server, fetcher, obj, nil, 0)
 	feeSkim := int64(fee) * SkimNum / SkimDen
 	if want := int64(fee) - feeSkim; paid != want {
 		t.Fatalf("redeem paid %d, want %d", paid, want)
@@ -130,7 +130,7 @@ func TestWashLoopIsAStrictLoss(t *testing.T) {
 		t.Fatalf("withdrawal fee: %v", err)
 	}
 	l.RecordServeToObject(server, fetcher, obj, chunk, 1<<10)
-	l.RedeemDeliveryCredit(server, fetcher, obj, nil, 0, 0)
+	l.RedeemDeliveryCredit(server, fetcher, obj, nil, 0)
 
 	pairAfter := l.Balance(server) + l.Balance(fetcher)
 	loss := pairBefore - pairAfter
@@ -190,7 +190,7 @@ func TestPaidBountyIsNotRecoverableBySupersede(t *testing.T) {
 
 	// The witnessed receipt lands late. Supersede must NOT claw back the spent
 	// bounty: the escrow reversal floors at the (now empty) reserve.
-	l.RedeemDeliveryCredit(server, fetcher, obj, nil, 0, 0)
+	l.RedeemDeliveryCredit(server, fetcher, obj, nil, 0)
 
 	if got := l.Balance(repairer); got != repairerBal {
 		t.Fatalf("supersede clawed back a paid bounty: repairer %d → %d — real repair work must be non-recoverable", repairerBal, got)
@@ -303,7 +303,7 @@ func TestProvisionalCapIsBoundedAndDeterministic(t *testing.T) {
 	// never-existed redeem. Under the OLD bug the lane-0 mint would still be on
 	// the balance, so balBefore would carry net and the redeem would stack on top.
 	balBefore := l.Balance(server)
-	paid := l.RedeemDeliveryCredit(server, first, obj, nil, 0, 0)
+	paid := l.RedeemDeliveryCredit(server, first, obj, nil, 0)
 	if got := l.Balance(server); got != balBefore+paid {
 		t.Fatalf("evicted-lane redeem changed balance by %d, want +%d only (conserved leg, no double-pay)", got-balBefore, paid)
 	}
@@ -315,7 +315,7 @@ func TestProvisionalCapIsBoundedAndDeterministic(t *testing.T) {
 		req := ports.NodeID(ports.HashBytes([]byte{'r', byte(i), byte(i >> 8), byte(i >> 16)}))
 		ref.RecordServeToObject(server, req, ports.HashBytes([]byte{byte(i), byte(i >> 8), byte(i >> 16)}), chunk, 8)
 	}
-	refPaid := ref.RedeemDeliveryCredit(server, first, obj, nil, 0, 0)
+	refPaid := ref.RedeemDeliveryCredit(server, first, obj, nil, 0)
 	if l.Balance(server) != ref.Balance(server) || paid != refPaid {
 		t.Fatalf("evicted-then-redeemed server balance %d (paid %d) != never-existed %d (paid %d) — lane-0 mint was not cleared by eviction",
 			l.Balance(server), paid, ref.Balance(server), refPaid)

@@ -110,7 +110,7 @@ func TestSharedKeyRotationDoesNotReopenThePump(t *testing.T) {
 		if err := l.ChargePublish(fetcher); err != nil {
 			t.Fatal(err)
 		}
-		if paid := l.RedeemDeliveryCredit(srvA, fetcher, obj, toks[i].Serial, ep, 0); paid == 0 {
+		if paid := l.RedeemDeliveryCredit(srvA, fetcher, obj, toks[i].Serial, ep); paid == 0 {
 			t.Fatalf("token %d: the honest first redeem must pay", i)
 		}
 	}
@@ -147,7 +147,7 @@ func TestSharedKeyRotationDoesNotReopenThePump(t *testing.T) {
 		// The honest server settles only on a credited receipt, so the ledger is
 		// never reached. Assert that by settling exactly as core/node does.
 		if credited {
-			reMinted += l.RedeemDeliveryCredit(srvB, fetcher, [32]byte(obj), tok.Serial, ep, cur)
+			reMinted += l.RedeemDeliveryCredit(srvB, fetcher, [32]byte(obj), tok.Serial, ep)
 		}
 	}
 	if delta := sum() - injected; delta != 0 || reMinted != 0 {
@@ -186,7 +186,7 @@ func TestGuardHealsUnderASharedKey(t *testing.T) {
 				t.Fatalf("epoch %d: token reported issuedEpoch %d — the guard would tag it "+
 					"with the wrong expiry and never free the slot", cur, ep)
 			}
-			if paid := l.RedeemDeliveryCredit(srv, fetcher, obj, tok.Serial, ep, cur); paid == 0 {
+			if paid := l.RedeemDeliveryCredit(srv, fetcher, obj, tok.Serial, ep); paid == 0 {
 				t.Fatalf("epoch %d: honest redeem paid nothing", cur)
 			}
 		}
@@ -211,8 +211,10 @@ func TestSweepRunsAtMostOncePerEpoch(t *testing.T) {
 	srv, fetcher := id(1), id(2)
 	obj := id(7)
 	const epoch = uint64(100)
+	src := &mockEpochSource{e: epoch} // R2.10 / F8: the ledger reads its clock; the test moves it
+	l.SetEpochSource(src)
 	for i := 0; i < maxPaidSerial; i++ {
-		l.RedeemDeliveryCredit(srv, fetcher, obj, testSerial(i), epoch, epoch)
+		l.RedeemDeliveryCredit(srv, fetcher, obj, testSerial(i), epoch)
 	}
 	if len(l.paidSerial) != maxPaidSerial {
 		t.Fatalf("setup: guard holds %d, want the cap %d", len(l.paidSerial), maxPaidSerial)
@@ -220,7 +222,7 @@ func TestSweepRunsAtMostOncePerEpoch(t *testing.T) {
 	base := l.SerialSweeps()
 	const refusals = 500
 	for i := 0; i < refusals; i++ {
-		if paid := l.RedeemDeliveryCredit(srv, fetcher, obj, testSerial(1_000_000+i), epoch, epoch); paid != 0 {
+		if paid := l.RedeemDeliveryCredit(srv, fetcher, obj, testSerial(1_000_000+i), epoch); paid != 0 {
 			t.Fatal("a redeem paid at a full LIVE cap — the guard must refuse, never evict a live entry")
 		}
 	}
@@ -234,7 +236,8 @@ func TestSweepRunsAtMostOncePerEpoch(t *testing.T) {
 	}
 	// A new epoch buys exactly one more sweep, not none: the guard must still heal.
 	base = l.SerialSweeps()
-	l.RedeemDeliveryCredit(srv, fetcher, obj, testSerial(2_000_000), epoch+1, epoch+1)
+	src.e = epoch + 1
+	l.RedeemDeliveryCredit(srv, fetcher, obj, testSerial(2_000_000), epoch+1)
 	if got := l.SerialSweeps() - base; got != 1 {
 		t.Fatalf("a new epoch ran %d sweeps, want exactly 1 — the once-per-epoch latch must "+
 			"not stop the guard healing", got)
@@ -247,29 +250,32 @@ func TestSweepRunsAtMostOncePerEpoch(t *testing.T) {
 // banked". Each non-paying path must now name itself.
 func TestCapFullRefusalIsObservable(t *testing.T) {
 	l := New(50_000, 0)
+	src := &mockEpochSource{} // R2.10 / F8: the backdated case moves the ledger's clock
+	l.SetEpochSource(src)
 	srv, fetcher := id(1), id(2)
 	obj := id(7)
-	if _, why := l.RedeemDeliveryCreditReason(srv, srv, obj, testSerial(1), 0, 0); why != ReasonSelfDelivery {
+	if _, why := l.RedeemDeliveryCreditReason(srv, srv, obj, testSerial(1), 0); why != ReasonSelfDelivery {
 		t.Fatalf("self-delivery reason = %q", why)
 	}
-	if paid, why := l.RedeemDeliveryCreditReason(srv, fetcher, obj, testSerial(2), 0, 0); paid == 0 || why != ReasonPaid {
+	if paid, why := l.RedeemDeliveryCreditReason(srv, fetcher, obj, testSerial(2), 0); paid == 0 || why != ReasonPaid {
 		t.Fatalf("an honest redeem: paid=%d reason=%q", paid, why)
 	}
-	if _, why := l.RedeemDeliveryCreditReason(srv, fetcher, obj, testSerial(2), 0, 0); why != ReasonAlreadyPaid {
+	if _, why := l.RedeemDeliveryCreditReason(srv, fetcher, obj, testSerial(2), 0); why != ReasonAlreadyPaid {
 		t.Fatalf("re-redeem reason = %q", why)
 	}
-	if _, why := l.RedeemDeliveryCreditReason(srv, fetcher, obj, testSerial(3), 0, 2*demand.DefaultWindow+2); why != ReasonBackdated {
+	src.e = 2*demand.DefaultWindow + 2
+	if _, why := l.RedeemDeliveryCreditReason(srv, fetcher, obj, testSerial(3), 0); why != ReasonBackdated {
 		t.Fatalf("backdated reason = %q", why)
 	}
-	if _, why := New(0, 0).RedeemDeliveryCreditReason(srv, fetcher, obj, testSerial(4), 0, 0); why != ReasonNoFee {
+	if _, why := New(0, 0).RedeemDeliveryCreditReason(srv, fetcher, obj, testSerial(4), 0); why != ReasonNoFee {
 		t.Fatalf("zero-fee reason = %q", why)
 	}
 
 	full := New(50_000, 0)
 	for i := 0; i < maxPaidSerial; i++ {
-		full.RedeemDeliveryCredit(srv, fetcher, obj, testSerial(i), 100, 100)
+		full.RedeemDeliveryCredit(srv, fetcher, obj, testSerial(i), 100)
 	}
-	paid, why := full.RedeemDeliveryCreditReason(srv, fetcher, obj, testSerial(9_000_001), 100, 100)
+	paid, why := full.RedeemDeliveryCreditReason(srv, fetcher, obj, testSerial(9_000_001), 100)
 	if paid != 0 || why != ReasonGuardFull {
 		t.Fatalf("cap-full refusal: paid=%d reason=%q, want 0 / %q — an operator cannot tell "+
 			"'the serve rate exceeded the modeled bound' from an ordinary no-pay otherwise",
@@ -313,7 +319,7 @@ func TestRefusedRedeemLeavesOnlyTheBilateralFallback(t *testing.T) {
 		if err := l.ChargePublish(fetcher); err != nil {
 			t.Fatal(err)
 		}
-		if paid := l.RedeemDeliveryCredit(srvA, fetcher, obj, serial, 0, 0); paid == 0 {
+		if paid := l.RedeemDeliveryCredit(srvA, fetcher, obj, serial, 0); paid == 0 {
 			t.Fatal("the honest first redeem must pay")
 		}
 
@@ -322,7 +328,7 @@ func TestRefusedRedeemLeavesOnlyTheBilateralFallback(t *testing.T) {
 		before := sum()
 		l.RecordServeToObject(srvB, fetcher, obj, ports.ChunkID(id(11)), bytesServed)
 		afterServe := sum()
-		paid, why := l.RedeemDeliveryCreditReason(srvB, fetcher, obj, serial, 0, 0)
+		paid, why := l.RedeemDeliveryCreditReason(srvB, fetcher, obj, serial, 0)
 		if paid != 0 || why != ReasonAlreadyPaid {
 			t.Fatalf("bytes=%d: the second server was paid %d (%q) off one serial", bytesServed, paid, why)
 		}

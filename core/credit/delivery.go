@@ -273,13 +273,14 @@ func (l *Ledger) compactProvOrder() {
 // touches standing.
 // serial is the redeemed receipt's token serial and issuedEpoch is the epoch whose
 // issuer key signed that token (discovered at demand.Bank.Redeem — it rides no field
-// on the token). currentEpoch is the consensus epoch at the head. Together they close
+// on the token), measured against the ledger's own consensus epoch (its injected
+// EpochSource — R2.10 / F8; no caller supplies one). Together they close
 // the CROSS-SERVER DOUBLE-REDEEM: one demand token (one blind withdrawal, one serial,
 // one fee) funds exactly ONE conserved payout, so K colluding servers sharing one
 // token can no longer mint (K−1)·fee. See the paidSerial note in credit.go.
 func (l *Ledger) RedeemDeliveryCredit(server, fetcher ports.NodeID, root ports.Hash,
-	serial []byte, issuedEpoch, currentEpoch uint64) int64 {
-	paid, _ := l.RedeemDeliveryCreditReason(server, fetcher, root, serial, issuedEpoch, currentEpoch)
+	serial []byte, issuedEpoch uint64) int64 {
+	paid, _ := l.RedeemDeliveryCreditReason(server, fetcher, root, serial, issuedEpoch)
 	return paid
 }
 
@@ -351,7 +352,7 @@ func (l *Ledger) LastCompactError() error { return l.lastCompactErr }
 // RedeemDeliveryCreditReason is RedeemDeliveryCredit plus the reason it paid
 // nothing. See the Reason* constants.
 func (l *Ledger) RedeemDeliveryCreditReason(server, fetcher ports.NodeID, root ports.Hash,
-	serial []byte, issuedEpoch, currentEpoch uint64) (int64, string) {
+	serial []byte, issuedEpoch uint64) (int64, string) {
 	if server == fetcher {
 		return 0, ReasonSelfDelivery // self-delivery earns nothing (the cheapest gaming, blocked)
 	}
@@ -426,27 +427,11 @@ func (l *Ledger) RedeemDeliveryCreditReason(server, fetcher ports.NodeID, root p
 	// unwitnessed test paths that never carried one working while the witnessed path
 	// — the only pump surface — stays fully gated.
 	if len(serial) > 0 {
-		// R0.4b-5: advance the ledger's monotone epoch watermark, then run the whole
-		// guard against IT rather than against this caller's view. On a shared ledger
-		// a laggard redeemer must not be able to un-sweep or re-admit what a further-
-		// ahead redeemer has already retired.
-		if currentEpoch > l.epochWatermark {
-			l.epochWatermark = currentEpoch
-			// SWEEP ON THE BAND ADVANCE, NOT ONLY AT THE CAP (crypto-specialist
-			// advisory C-7, 2026-09-03). The cap-only trigger meant that on any node
-			// below 65,536 live serials — which is every node most of the time —
-			// expired guard entries were retained ON DISK indefinitely, far past the
-			// W-epoch window that is their whole justification. Soundness was never
-			// affected (refuse-not-evict is the correct choice and is unchanged), but
-			// state whose justification is a 4-epoch window must not outlive it: this
-			// is the data-minimisation answer, and it is the shape every
-			// epoch-scoped online e-cash since Brands uses — an epoch-partitioned
-			// spent list dropped at rollover rather than a database swept under load.
-			// It is also CHEAPER than the cap-triggered scan: O(cap) per epoch instead
-			// of O(cap) per refused redeem. The sweptEpoch latch makes it at most one
-			// scan per epoch however many callers drive it.
-			l.sweepIfEpochAdvanced(l.epochWatermark)
-		}
+		// R0.4b-5 / R2.10: read the ledger's OWN clock once, raise the monotone
+		// watermark, sweep on a band advance, then run the whole guard against the
+		// WATERMARK (R-F8-LATCH). A source that lags or falls — a mock, an embedder —
+		// must not be able to un-sweep or re-admit what this ledger already retired.
+		l.advanceEpoch()
 		if _, paid := l.paidSerial[paidKey(issuedEpoch, serial)]; paid {
 			return 0, ReasonAlreadyPaid // this TOKEN already funded one conserved payout — mint 0
 		}

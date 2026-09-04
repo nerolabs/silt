@@ -133,6 +133,7 @@ func newAnchorCluster(t *testing.T, seed int64, n int, epochBlocks uint64, grant
 		}
 		r.node.SetLedger(r.ledger)
 		r.node.EnableChain(c, r.ident.Signer())
+		r.ledger.SetEpochSource(f8EpochFunc(r.node.chainEpoch)) // R2.10 / F8: the daemon's wiring, in-process
 		r.node.SetDemandIssuerKey(rand.Reader, 0, r.key)
 		r.node.EnableRelayAccept()
 		if ks := r.node.DemandIssuerKeyset(r.id()); ks == nil || ks.Key(0) == nil {

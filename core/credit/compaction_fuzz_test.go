@@ -290,7 +290,7 @@ func runCompactionFuzz(t *testing.T, seed int64, ops, poolSize int) {
 				// the guard exists to refuse a re-presented serial, never a new one.
 				epoch := uint64(step / fuzzEpochEvery)
 				serial := mintFuzzSerial(rng)
-				paid, reason := l.RedeemDeliveryCreditReason(server, ln.req, ln.obj, serial, epoch, epoch)
+				paid, reason := l.RedeemDeliveryCreditReason(server, ln.req, ln.obj, serial, epoch)
 				if paid <= 0 {
 					t.Fatalf("seed=%#x step=%d: an HONEST unique in-window serial was REFUSED "+
 						"(paid=%d reason=%q, epoch=%d, guard holds %d of %d). The paid-serial "+
@@ -389,7 +389,8 @@ func runCompactionFuzz(t *testing.T, seed int64, ops, poolSize int) {
 		t.Fatalf("seed=%#x: no redeem ever paid — the guard assertions below are vacuous", seed)
 	}
 	paid, reason := l.RedeemDeliveryCreditReason(server, lastPaid.req, lastPaid.obj,
-		lastPaid.serial, lastPaid.epoch, uint64(ops/fuzzEpochEvery))
+		lastPaid.serial, lastPaid.epoch)
+
 	if paid != 0 || reason != ReasonAlreadyPaid {
 		t.Fatalf("seed=%#x: re-presenting an ALREADY-PAID serial paid %d with reason %q, "+
 			"want 0 / %q — one token, one conserved payout",

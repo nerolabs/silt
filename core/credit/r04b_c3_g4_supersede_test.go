@@ -36,7 +36,7 @@ func fullGuardLedger(t *testing.T, fee int64) *Ledger {
 	l := New(fee, 0)
 	srv, fetcher, obj := id(1), id(2), id(7)
 	for i := 0; i < maxPaidSerial; i++ {
-		l.RedeemDeliveryCredit(srv, fetcher, obj, testSerial(i), 100, 100)
+		l.RedeemDeliveryCredit(srv, fetcher, obj, testSerial(i), 100)
 	}
 	return l
 }
@@ -63,7 +63,7 @@ func TestG4_RefusedReceiptDoesNotKeepTheSelfMint(t *testing.T) {
 			t.Fatalf("bytes=%d: setup produced no self-mint", bytesServed)
 		}
 
-		paid, why := l.RedeemDeliveryCreditReason(srv, fetcher, obj, testSerial(9_000_001), 100, 100)
+		paid, why := l.RedeemDeliveryCreditReason(srv, fetcher, obj, testSerial(9_000_001), 100)
 		if paid != 0 || why != ReasonGuardFull {
 			t.Fatalf("bytes=%d: setup expected a guard-full refusal, got paid=%d reason=%q",
 				bytesServed, paid, why)
@@ -116,7 +116,7 @@ func TestG4_TheEconomistsNumber(t *testing.T) {
 	if mint := l.Balance(srv) - before; mint != wantMint {
 		t.Fatalf("the 64 MiB self-mint is %d, want %d", mint, wantMint)
 	}
-	if paid, why := l.RedeemDeliveryCreditReason(srv, fetcher, obj, testSerial(9_000_002), 100, 100); paid != 0 || why != ReasonGuardFull {
+	if paid, why := l.RedeemDeliveryCreditReason(srv, fetcher, obj, testSerial(9_000_002), 100); paid != 0 || why != ReasonGuardFull {
 		t.Fatalf("expected a guard-full refusal, got paid=%d reason=%q", paid, why)
 	}
 	if got := l.Balance(srv) - before; got != 0 {
@@ -141,7 +141,7 @@ func TestG4_OneReceiptReversesExactlyOnce(t *testing.T) {
 	l.RecordServeToObject(srv, fetcher, obj, chunkOf(3), 64<<20)
 
 	serial := testSerial(9_000_003)
-	if paid, why := l.RedeemDeliveryCreditReason(srv, fetcher, obj, serial, 100, 100); paid != 0 || why != ReasonGuardFull {
+	if paid, why := l.RedeemDeliveryCreditReason(srv, fetcher, obj, serial, 100); paid != 0 || why != ReasonGuardFull {
 		t.Fatalf("first presentation: paid=%d reason=%q", paid, why)
 	}
 	afterFirst := l.Balance(srv)
@@ -150,7 +150,7 @@ func TestG4_OneReceiptReversesExactlyOnce(t *testing.T) {
 			afterFirst-before)
 	}
 	for i := 0; i < 3; i++ {
-		if paid, why := l.RedeemDeliveryCreditReason(srv, fetcher, obj, serial, 100, 100); paid != 0 || why != ReasonGuardFull {
+		if paid, why := l.RedeemDeliveryCreditReason(srv, fetcher, obj, serial, 100); paid != 0 || why != ReasonGuardFull {
 			t.Fatalf("re-presentation %d: paid=%d reason=%q", i, paid, why)
 		}
 	}
@@ -179,7 +179,7 @@ func TestG4_RecordedTokenDoesNotReverseAgain(t *testing.T) {
 
 	// First delivery: serve, then redeem. Paid, and the lane's mint is reversed.
 	l.RecordServeToObject(srv, fetcher, obj, chunkOf(4), 64<<20)
-	if paid, why := l.RedeemDeliveryCreditReason(srv, fetcher, obj, serial, 0, 0); why != ReasonPaid || paid == 0 {
+	if paid, why := l.RedeemDeliveryCreditReason(srv, fetcher, obj, serial, 0); why != ReasonPaid || paid == 0 {
 		t.Fatalf("setup: the first redeem must pay, got paid=%d reason=%q", paid, why)
 	}
 
@@ -187,7 +187,7 @@ func TestG4_RecordedTokenDoesNotReverseAgain(t *testing.T) {
 	beforeReserve := l.Balance(srv)
 	l.RecordServeToObject(srv, fetcher, obj, chunkOf(4), 64<<20)
 	freshMint := l.Balance(srv) - beforeReserve
-	if paid, why := l.RedeemDeliveryCreditReason(srv, fetcher, obj, serial, 0, 0); paid != 0 || why != ReasonAlreadyPaid {
+	if paid, why := l.RedeemDeliveryCreditReason(srv, fetcher, obj, serial, 0); paid != 0 || why != ReasonAlreadyPaid {
 		t.Fatalf("re-presentation: paid=%d reason=%q, want 0 / %q", paid, why, ReasonAlreadyPaid)
 	}
 	if got := l.Balance(srv) - beforeReserve; got != freshMint {

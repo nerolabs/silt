@@ -65,7 +65,7 @@ func TestRelayCreditNeverTouchesStanding(t *testing.T) {
 	before := l.Reputation(relay)
 	l.Register(buyer)
 	anchors := buyAnchors(t, l, buyer, 0, 0, 1)
-	face, reason := l.SpendRelayAnchors(anchors, 0) // the new neutral press
+	face, reason := l.SpendRelayAnchors(anchors) // the new neutral press
 	if face != r214Fee || reason != "" {
 		t.Fatalf("SpendRelayAnchors = (%d, %q), want (%d, \"\") — the anchored session never opened, so the firewall would be pressed by a pay-0 body again", face, reason, r214Fee)
 	}
@@ -112,7 +112,7 @@ func TestRelayCreditIsConserved(t *testing.T) {
 
 	anchors := buyAnchors(t, l, buyer, 0, 0, 1)
 	buyerAfterBurn := l.Balance(buyer)
-	face, reason := l.SpendRelayAnchors(anchors, 0)
+	face, reason := l.SpendRelayAnchors(anchors)
 	if face != r214Fee || reason != "" {
 		t.Fatalf("SpendRelayAnchors = (%d, %q), want (%d, \"\")", face, reason, r214Fee)
 	}
@@ -176,7 +176,7 @@ func TestRelayWashLoopIsAWashNeverAGain(t *testing.T) {
 			pairBefore := l.Balance(relay) + l.Balance(operatorDurable)
 
 			anchors := buyAnchors(t, l, operatorDurable, 0, 0, 1)
-			face, _ := l.SpendRelayAnchors(anchors, 0)
+			face, _ := l.SpendRelayAnchors(anchors)
 			paid := l.RedeemRelayCredit(relay, operatorEph, tc.c, face)
 			want := minI64(tc.c, r214Fee)
 			if paid != want {
@@ -215,7 +215,7 @@ func TestRelayRedeemDrawsFromFetcherPaidCredit(t *testing.T) {
 	l.Register(buyer)
 
 	anchors := buyAnchors(t, l, buyer, 0, 0, 1)
-	face, _ := l.SpendRelayAnchors(anchors, 0)
+	face, _ := l.SpendRelayAnchors(anchors)
 	buyerAfterBurn := l.Balance(buyer)
 	totalAfterSpend := sumConserved(l)
 
@@ -256,7 +256,7 @@ func TestRelayRedeemCannotExceedPaidInBudget(t *testing.T) {
 			before := sumConserved(l)
 
 			anchors := buyAnchors(t, l, buyer, 0, 0, 1)
-			budget, _ := l.SpendRelayAnchors(anchors, 0)
+			budget, _ := l.SpendRelayAnchors(anchors)
 			relayBefore := l.Balance(relay)
 
 			paid := l.RedeemRelayCredit(relay, eph, tc.c, budget)

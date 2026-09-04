@@ -76,21 +76,25 @@ func TestG_CO2_BenignCompactionFailureDoesNotRefusePayouts(t *testing.T) {
 	if err := l.LoadPaidSerials(); err != nil {
 		t.Fatal(err)
 	}
+	src := &mockEpochSource{} // R2.10 / F8: the ledger reads its clock; the test moves it
+	l.SetEpochSource(src)
 	srv, fetcher, obj := id(1), id(2), id(7)
 	l.Register(srv)
 	l.Register(fetcher)
 
 	// An epoch-0 serial so the later band advance has something to sweep, which is
 	// what drives sweepExpiredSerials into calling Compact.
-	if paid := l.RedeemDeliveryCredit(srv, fetcher, obj, testSerial(1), 0, 0); paid != wantPay {
+	if paid := l.RedeemDeliveryCredit(srv, fetcher, obj, testSerial(1), 0); paid != wantPay {
 		t.Fatalf("setup: epoch-0 redeem must pay %d, got %d", wantPay, paid)
 	}
 
 	// The band advances past the window: sweepExpiredSerials removes the epoch-0
 	// entry and calls Compact, which this store fails BENIGNLY. The redeem driving
 	// that advance must still pay.
+	src.e = paidSerialWindow + 1
 	paid, reason := l.RedeemDeliveryCreditReason(srv, fetcher, obj, testSerial(2),
-		paidSerialWindow+1, paidSerialWindow+1)
+		paidSerialWindow+1)
+
 	if paid != wantPay || reason != ReasonPaid {
 		t.Fatalf("a BENIGN (pre-rename) compaction failure must not refuse payouts: "+
 			"paid=%d reason=%q, want %d/%q. Fail-closed-on-any-Compact-error was REFUSED "+
@@ -172,6 +176,8 @@ func TestG_CO3_BrokenStoreMustBeObservableByTheLedger(t *testing.T) {
 	if err := l.LoadPaidSerials(); err != nil {
 		t.Fatal(err)
 	}
+	src := &mockEpochSource{} // R2.10 / F8: the ledger reads its clock; the test moves it
+	l.SetEpochSource(src)
 	srv, fetcher, obj := id(1), id(2), id(7)
 	l.Register(srv)
 	l.Register(fetcher)
@@ -179,7 +185,7 @@ func TestG_CO3_BrokenStoreMustBeObservableByTheLedger(t *testing.T) {
 	// An epoch-0 serial so the band advance below has something to sweep, driving
 	// Compact — which orphans the store's append handle (durable already holds this
 	// entry's replacement snapshot post-sweep, i.e. none — it expires).
-	if paid := l.RedeemDeliveryCredit(srv, fetcher, obj, testSerial(1), 0, 0); paid == 0 {
+	if paid := l.RedeemDeliveryCredit(srv, fetcher, obj, testSerial(1), 0); paid == 0 {
 		t.Fatalf("setup: epoch-0 redeem did not pay")
 	}
 
@@ -187,7 +193,8 @@ func TestG_CO3_BrokenStoreMustBeObservableByTheLedger(t *testing.T) {
 	// and itself redeems a FRESH serial at the new epoch. Its own guard append lands
 	// on the now-orphaned handle.
 	current := paidSerialWindow + 1
-	paid, reason := l.RedeemDeliveryCreditReason(srv, fetcher, obj, testSerial(2), current, current)
+	src.e = current
+	paid, reason := l.RedeemDeliveryCreditReason(srv, fetcher, obj, testSerial(2), current)
 	if !store.orphaned {
 		t.Fatalf("vacuous gate: the band advance never reached Compact, so the store was "+
 			"never orphaned (store.durable=%d)", len(store.durable))

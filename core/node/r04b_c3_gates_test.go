@@ -530,7 +530,7 @@ func TestDemandLaneOutlivesTheWindowAndARestart(t *testing.T) {
 		if !credited {
 			t.Fatalf("%s: the bank refused a token it had just issued at epoch %d: %s", label, cur, why)
 		}
-		return nd.ledger.RedeemDeliveryCredit(nd.ID(), ports.HashBytes(rcpt.Fetcher), obj, rcpt.Serial, ep, cur)
+		return nd.ledger.RedeemDeliveryCredit(nd.ID(), ports.HashBytes(rcpt.Fetcher), obj, rcpt.Serial, ep)
 	}
 	if paid := cycle(nd, "epoch 0"); paid == 0 {
 		t.Fatal("epoch 0: nothing paid")

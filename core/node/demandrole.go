@@ -146,7 +146,7 @@ func (n *Node) SubmitDeliveryReceipt(server ports.NodeID, token demand.Token, ob
 // no reason.
 type deliveryReasoner interface {
 	RedeemDeliveryCreditReason(server, fetcher ports.NodeID, root ports.Hash,
-		serial []byte, issuedEpoch, currentEpoch uint64) (int64, string)
+		serial []byte, issuedEpoch uint64) (int64, string)
 }
 
 // guardFullRefusalCounter is the monotone count of redeems refused for a full
@@ -203,13 +203,18 @@ func (n *Node) handleDeliveryReceipt(from ports.NodeID, msg ports.Message) {
 			// The serial gates the cross-server double-redeem (one token funds ONE
 			// conserved payout); the issuing epoch is what lets the guard set evict
 			// BY EXPIRY, so an evicted serial is always an un-redeemable one (R0.4b-3,
-			// the certification's coupling condition).
+			// the certification's coupling condition). The CURRENT epoch is not
+			// passed: the ledger reads it from its own EpochSource, which the daemon
+			// wires to this node's chainEpoch() — the same `current` the bank just
+			// redeemed against (R2.10 / F8).
 			if r, ok := n.ledger.(deliveryReasoner); ok {
 				paid, why = r.RedeemDeliveryCreditReason(n.id, ports.HashBytes(sub.Receipt.Fetcher),
-					sub.Receipt.Object, sub.Receipt.Serial, issuedEpoch, current)
+					sub.Receipt.Object, sub.Receipt.Serial, issuedEpoch)
+
 			} else {
 				paid = n.ledger.RedeemDeliveryCredit(n.id, ports.HashBytes(sub.Receipt.Fetcher),
-					sub.Receipt.Object, sub.Receipt.Serial, issuedEpoch, current)
+					sub.Receipt.Object, sub.Receipt.Serial, issuedEpoch)
+
 			}
 		}
 		n.logf(ports.LogInfo, "delivery receipt banked", "object", sub.Receipt.Object,

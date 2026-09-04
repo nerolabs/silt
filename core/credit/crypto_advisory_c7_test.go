@@ -27,6 +27,8 @@ func TestC7_ExpiredGuardEntriesAreRetiredOnTheBandAdvanceNotOnlyAtTheCap(t *test
 	if err := l.LoadPaidSerials(); err != nil {
 		t.Fatal(err)
 	}
+	src := &mockEpochSource{} // R2.10 / F8: the ledger reads its clock; the test moves it
+	l.SetEpochSource(src)
 	srv, fetcher, obj := id(1), id(2), id(7)
 	l.Register(srv)
 	l.Register(fetcher)
@@ -35,7 +37,7 @@ func TestC7_ExpiredGuardEntriesAreRetiredOnTheBandAdvanceNotOnlyAtTheCap(t *test
 	// whole point: this is the regime every node lives in.
 	const n = 8
 	for i := 0; i < n; i++ {
-		if paid := l.RedeemDeliveryCredit(srv, fetcher, obj, testSerial(i), 0, 0); paid == 0 {
+		if paid := l.RedeemDeliveryCredit(srv, fetcher, obj, testSerial(i), 0); paid == 0 {
 			t.Fatalf("setup: serial %d did not pay", i)
 		}
 	}
@@ -48,7 +50,8 @@ func TestC7_ExpiredGuardEntriesAreRetiredOnTheBandAdvanceNotOnlyAtTheCap(t *test
 
 	// The band advances past epoch 0 + W. Nothing here is near the cap, and no redeem
 	// needs to make room — the ONLY trigger is the watermark moving.
-	l.RedeemDeliveryCredit(srv, fetcher, obj, testSerial(9_000), paidSerialWindow+1, paidSerialWindow+1)
+	src.e = paidSerialWindow + 1
+	l.RedeemDeliveryCredit(srv, fetcher, obj, testSerial(9_000), paidSerialWindow+1)
 
 	for k, e := range l.paidSerial {
 		if e.epoch == 0 {
@@ -77,21 +80,24 @@ func TestC7_ExpiredGuardEntriesAreRetiredOnTheBandAdvanceNotOnlyAtTheCap(t *test
 // callers (the watermark advance and the cap).
 func TestC7_TheSweepStaysAtMostOncePerEpoch(t *testing.T) {
 	l := New(50_000, 500_000)
+	src := &mockEpochSource{e: 10} // R2.10 / F8: the ledger reads its clock; the test moves it
+	l.SetEpochSource(src)
 	srv, fetcher, obj := id(1), id(2), id(7)
 	l.Register(srv)
 	l.Register(fetcher)
 	for i := 0; i < 32; i++ {
-		l.RedeemDeliveryCredit(srv, fetcher, obj, testSerial(i), 10, 10)
+		l.RedeemDeliveryCredit(srv, fetcher, obj, testSerial(i), 10)
 	}
 	before := l.sweeps
 	for i := 0; i < 32; i++ {
-		l.RedeemDeliveryCredit(srv, fetcher, obj, testSerial(1_000+i), 10, 10)
+		l.RedeemDeliveryCredit(srv, fetcher, obj, testSerial(1_000+i), 10)
 	}
 	if got := l.sweeps - before; got != 0 {
 		t.Fatalf("%d redeems within ONE epoch drove %d sweeps; the latch must allow at "+
 			"most one per epoch", 32, got)
 	}
-	l.RedeemDeliveryCredit(srv, fetcher, obj, testSerial(2_000), 11, 11)
+	src.e = 11
+	l.RedeemDeliveryCredit(srv, fetcher, obj, testSerial(2_000), 11)
 	if got := l.sweeps - before; got != 1 {
 		t.Fatalf("the epoch advance drove %d sweeps, want exactly 1", got)
 	}

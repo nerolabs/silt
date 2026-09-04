@@ -21,17 +21,21 @@ func TestR213_BenignCompactionFailureIsRecordedNotDiscarded(t *testing.T) {
 	if err := l.LoadPaidSerials(); err != nil {
 		t.Fatal(err)
 	}
+	src := &mockEpochSource{}
+	l.SetEpochSource(src)
 	srv, fetcher, obj := id(1), id(2), id(7)
 	l.Register(srv)
 	l.Register(fetcher)
 	if l.CompactFailures() != 0 || l.LastCompactError() != nil {
 		t.Fatalf("fresh ledger must report no compaction failures")
 	}
-	if paid := l.RedeemDeliveryCredit(srv, fetcher, obj, testSerial(1), 0, 0); paid == 0 {
+	if paid := l.RedeemDeliveryCredit(srv, fetcher, obj, testSerial(1), 0); paid == 0 {
 		t.Fatal("setup: epoch-0 redeem did not pay")
 	}
+	src.e = paidSerialWindow + 1 // the band advance (R2.10 / F8: the ledger reads it)
 	paid, reason := l.RedeemDeliveryCreditReason(srv, fetcher, obj, testSerial(2),
-		paidSerialWindow+1, paidSerialWindow+1)
+		paidSerialWindow+1)
+
 	if paid == 0 || reason != ReasonPaid {
 		t.Fatalf("benign class must still pay: paid=%d reason=%q", paid, reason)
 	}

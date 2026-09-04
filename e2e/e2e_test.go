@@ -262,7 +262,7 @@ func TestPaidDeliveryLaneRefusesWithoutACommittedKeyBinding(t *testing.T) {
 	a := startDaemon(t, "receipt-banker",
 		"-listen", "127.0.0.1:0", "-store", t.TempDir(),
 		"-serve-registry", "127.0.0.1:0", "-validator",
-		"-accept-delivery-receipts",
+		"-accept-delivery-receipts", "-epoch-blocks", "8", // R2.10 / F8: a paid lane needs an epoch clock
 		"-objective=false", "-min-rep", "100", "-quorum", "1",
 		"-bond", "8M", "-min-bond-floor", "0",
 		"-capacity", "1G", "-mdns=false", "-id-seed", "4801")

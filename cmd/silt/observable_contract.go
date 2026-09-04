@@ -41,6 +41,7 @@ var ObservableContract = []ContractedString{
 	{"chain: slashed equivocator ", "cmd/silt/daemon.go", "e2e equivocation harness", "TestEquivocatorSlashedOverTCP"},
 	{"adversary: equivocation complete (double-signed height ", "cmd/silt/daemon.go", "e2e equivocation harness", "TestEquivocatorSlashedOverTCP"},
 	{"refusing to start", "cmd/silt/daemon.go", "e2e reRefuse", ""},
+	{"need an epoch clock", "cmd/silt/daemon.go", "R2.10 / F8 (R-F8-DISABLED): the paid-lane refusal at effective EpochBlocks == 0 must name both lane flags and -epoch-blocks; e2e reRefuseLine", "TestF8_PaidLanesRefuseToStartWithoutAnEpochClock"},
 	{"contradict each other", "cmd/silt/daemon.go", "e2e contradictory-flags refusal", "TestContradictoryContentFlagsRefused"},
 	{"-care needs a registry", "cmd/silt/daemon.go", "e2e economy_repair", "TestCareWithoutRegistryRefusesToStart"},
 	{"re-bootstrapped: recovered from an empty routing table", "cmd/silt/daemon.go", "e2e bootstrap self-heal (#281)", "TestBootstrapRetryRecoversColdStartRace"},

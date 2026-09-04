@@ -834,7 +834,14 @@ gate GREEN incl. `-race -short` on `core/chain` + `core/node`; record
   (R2.10) upgrades the watermark poison from process-lifetime to PERMANENT — F8 gates the BUILD.
   Research-gated: the atom boundary and replay idempotence (conservation). Owner: whether the ledger
   gets a durable store before the RC at all (PE: close FP-2 by scope; land R2.13 and R2.10 anyway).
-  Source: `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-ledger-durability-family-FP2-R2.13-R2.10-2026-09-03.md`.
+  **Carry-list (from R2.10, 2026-09-04): `R-F8-RESTART-REWIND`** — the guard file is durable but the
+  epoch watermark is not, so a node that sweeps at epoch 10, compacts, and restarts on a chain rewound
+  to ≤ 9 re-admits a serial its keyset still verifies (open-inert: self-pay on a private ledger; real
+  once balances are transferable). Close = **R-F8-RESTORE**: persist the watermark in the SAME atom as
+  `paidSerial`, restore it, then raise to `max(restored, source.Epoch())`. Beside F-3 R-FEE-CONSTANCY
+  and R-REFUSE-AND-SELF-SPEND.
+  Source: `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-ledger-durability-family-FP2-R2.13-R2.10-2026-09-03.md`;
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.10-F8-chain-anchored-epoch-RESEARCH-CERTIFICATION-2026-09-04.md` §1.3.
 
 - **SMT app-layer keyspace-injectivity oracle — DEFINED 2026-09-03: a decoration, and the invariant its safety rests on is FALSE.**
   `statehash.go:52-55` / `:99-101` claim "map raw keys are never empty"; `c.spent[string(e.Token.Serial)]`
@@ -914,16 +921,33 @@ economy-off HEAD certifies a network nobody runs. Design:
   two measurements. Sources:
   `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.9-D-POD-KNOBS-delivery-settlement-repricing-RESEARCH-CERTIFICATION-2026-09-03.md`,
   the economist advisory.
-- **R2.10 · F8 — the ledger must own a CHAIN-ANCHORED epoch — DEFINED 2026-09-03; second in the R2.13 → R2.10 → FP-2 order.**
-  "Chain-anchored ≠ monotone": objective mode forbids the head falling (`chain.go:3888-3894`) but
-  legacy `heavier` decides on weight first and `adopt` swaps the block slice, so a heavier SHORTER fork
-  can lower `chainEpoch()` — F8 must **re-source the monotone latch**, not delete it (moot for the
-  weight term once O3-T lands; the height leg stays). Separately `-epoch-blocks 0` (`daemon.go:119`)
-  makes the epoch permanently 0, the sweep never fires (`delivery.go:542-544`), and the lane BRICKS at
-  65,536 paid deliveries — the epochs-disabled denomination is a security parameter (research-gated).
-  F8 gates the BUILD of any persisted ledger, not only its deployment. The faucet limiter keys on the
-  node's monotonic clock instead (R2.12), which dissolves the F8 block on it. Sources: the
-  ledger-durability ruling; the composed cert §5; the G3/G4/GD delta cert §4.
+- **R2.10 · F8 — the ledger owns a CHAIN-ANCHORED epoch — BUILT 2026-09-04 (branch `builder/r2.10-f8-chain-anchored-epoch`, PR pending); research-CERTIFIED 2026-09-04; second in the R2.13 → R2.10 → FP-2 order. F8 is CLOSED for the in-process ledger.**
+  As built (rules R-F8-SOURCE / R-F8-LATCH / R-F8-DISABLED): the ledger reads its epoch from ONE
+  injected `ports.EpochSource` (`credit.SetEpochSource`; production source = the node's
+  `chainEpoch()`, the same function that prunes the keyset, drives `Bank.Redeem` and verifies relay
+  anchors; wired once by `cmd/silt` `wireLedgerEpochSource(ledger, nd)` after `EnableChain`); NO port
+  method takes an epoch (`RedeemDeliveryCredit[Reason]`, the `deliveryReasoner` twin and
+  `SpendRelayAnchors` all lost their parameter); the watermark is `max(watermark, source)` read once at
+  the entry of every guarded redeem and anchor spend, and every screen and the sweep run against the
+  WATERMARK, never the raw source. The latch is kept as a PORT CONTRACT and a restore-boundary value,
+  NOT a reorg defence: after O3-T `chainEpoch()` cannot fall in-process under any shipping posture (the
+  earlier "legacy `heavier` decides on weight first" premise is dead). `cmd/silt` REFUSES to start
+  `-accept-delivery-receipts` / `-accept-relay-payments` at effective `EpochBlocks == 0` with one
+  `refusing to start` line naming both flags and `-epoch-blocks` — a LIVENESS precondition, **not a
+  security parameter** (the earlier wording is corrected: the denomination is fixed at consensus
+  epochs and no proof reads the refusal; block-denominated expiry and a per-node default were both
+  REFUTED); core stays permissive at epoch 0. Three legacy e2e fixtures gain `-epoch-blocks 8`. Gates
+  G-F8-1…G-F8-6 (`TestF8_NoPortMethodCarriesAnEpoch`,
+  `TestF8_FallingSourceLowersNothingAndReadmitsNothing_Delivery`/`_Relay`,
+  `TestF8_PaidLanesRefuseToStartWithoutAnEpochClock`, the re-driven `TestEpochWatermark_LaggardRedeemerCannotRePay` / `TestEpochWatermark_IsMonotone`,
+  `TestF8_LedgerEpochIsTheNodesChainEpochAtEveryBlock`, `TestF8_LedgerFollowsItsSourceNotTheCaller`,
+  `TestF8_LedgerEpochFollowsTheChainThroughTheDaemonSeam`). Residual **R-F8-RESTART-REWIND**
+  (open-inert; the guard file is durable, the watermark is not, so a restart on a rewound chain
+  re-admits swept serials — self-pay on a private ledger) is on FP-2's carry-list with its close
+  R-F8-RESTORE. The faucet limiter keys on the node's monotonic clock instead (R2.12). Sources:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.10-F8-chain-anchored-epoch-RESEARCH-CERTIFICATION-2026-09-04.md`;
+  `docs/thinking/2026-09-04-r2.10-f8-chain-anchored-epoch-design.md`; the ledger-durability ruling
+  §2/§6; the composed cert §5.
 - **R2.11 · R0.4b-11 — no peer-submit path for an issuer-key registration.** An attest-only
   validator's key is never committed. Fail-closed, liveness only. Source:
   `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-composed-close-bc062d0-RESEARCH-CERTIFICATION-2026-09-03.md`

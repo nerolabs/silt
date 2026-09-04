@@ -55,10 +55,10 @@ func TestSerialGuard_SecondServerSameSerialMintsZero(t *testing.T) {
 	skim := int64(fee) * SkimNum / SkimDen
 	wantPay := int64(fee) - skim
 
-	if paid := l.RedeemDeliveryCredit(serverA, fetcher, obj, serial, 0, 0); paid != wantPay {
+	if paid := l.RedeemDeliveryCredit(serverA, fetcher, obj, serial, 0); paid != wantPay {
 		t.Fatalf("first redeem paid %d, want fee-skim=%d", paid, wantPay)
 	}
-	if paid := l.RedeemDeliveryCredit(serverB, fetcher, obj, serial, 0, 0); paid != 0 {
+	if paid := l.RedeemDeliveryCredit(serverB, fetcher, obj, serial, 0); paid != 0 {
 		t.Fatalf("second server on the same serial paid %d, want 0 - the cross-server pump is open", paid)
 	}
 	if got := l.Balance(serverB); got != 0 {
@@ -84,7 +84,7 @@ func TestSerialGuard_DistinctSerialsEachPay(t *testing.T) {
 
 	const n = 100
 	for i := 0; i < n; i++ {
-		if paid := l.RedeemDeliveryCredit(server, fetcher, obj, testSerial(i), 0, 0); paid != wantPay {
+		if paid := l.RedeemDeliveryCredit(server, fetcher, obj, testSerial(i), 0); paid != wantPay {
 			t.Fatalf("distinct-serial redeem %d paid %d, want fee-skim=%d - the guard blocked a legit delivery", i, paid, wantPay)
 		}
 	}
@@ -105,10 +105,10 @@ func TestSerialGuard_SameServerSameSerialIsIdempotent(t *testing.T) {
 	skim := int64(fee) * SkimNum / SkimDen
 	wantPay := int64(fee) - skim
 
-	if paid := l.RedeemDeliveryCredit(server, fetcher, obj, serial, 0, 0); paid != wantPay {
+	if paid := l.RedeemDeliveryCredit(server, fetcher, obj, serial, 0); paid != wantPay {
 		t.Fatalf("first redeem paid %d, want %d", paid, wantPay)
 	}
-	if paid := l.RedeemDeliveryCredit(server, fetcher, obj, serial, 0, 0); paid != 0 {
+	if paid := l.RedeemDeliveryCredit(server, fetcher, obj, serial, 0); paid != 0 {
 		t.Fatalf("re-submit of the same (serial, server) paid %d, want 0", paid)
 	}
 	if got := l.Balance(server); got != wantPay {
@@ -131,12 +131,25 @@ func TestSerialGuard_SetIsBounded(t *testing.T) {
 	// Drive well past the cap, all at ONE epoch so nothing can expire. The set must
 	// still never exceed maxPaidSerial.
 	cycles := maxPaidSerial * 3
+	var lastReason string
 	for i := 0; i < cycles; i++ {
-		l.RedeemDeliveryCredit(server, fetcher, obj, testSerial(i), 0, 0)
+		_, lastReason = l.RedeemDeliveryCreditReason(server, fetcher, obj, testSerial(i), 0)
 	}
 	if got := len(l.paidSerial); got > maxPaidSerial {
 		t.Fatalf("paidSerial map grew to %d after %d distinct serials, cap is %d - unbounded state on the floor box (build-immutable #8)",
 			got, cycles, maxPaidSerial)
+	}
+	// G-F8-3 brick ablation (R2.10 / F8, cert §6, 2026-09-04): with NO epoch clock
+	// (epoch 0 throughout, the -epoch-blocks 0 posture) nothing ever expires, so once
+	// the cap is full of still-live serials every further paid delivery is REFUSED —
+	// the lane bricks at maxPaidSerial. This ONE assertion is the unit-tier stand-in
+	// for driving 65,536 deliveries through an OS process; the daemon-tier
+	// consequence (refuse to start a paid lane with effective EpochBlocks == 0) is
+	// e2e TestF8_PaidLanesRefuseToStartWithoutAnEpochClock.
+	if lastReason != ReasonGuardFull {
+		t.Fatalf("the %dth redeem at a permanent epoch 0 returned reason %q, want %q: with no epoch "+
+			"clock the guard can never free a slot, so a full cap must refuse (R-F8-DISABLED's brick)",
+			cycles, lastReason, ReasonGuardFull)
 	}
 }
 
@@ -150,6 +163,8 @@ func TestSerialGuard_SetIsBounded(t *testing.T) {
 func TestSerialGuard_ExpiryFreesTheCap(t *testing.T) {
 	const fee = 50_000
 	l := New(fee, 0)
+	src := &mockEpochSource{} // R2.10 / F8: the ledger reads its clock; the test moves it
+	l.SetEpochSource(src)
 	server, fetcher := id(1), id(2)
 	obj := id(7)
 
@@ -158,21 +173,22 @@ func TestSerialGuard_ExpiryFreesTheCap(t *testing.T) {
 
 	// Fill the guard set at epoch 0.
 	for i := 0; i < maxPaidSerial; i++ {
-		l.RedeemDeliveryCredit(server, fetcher, obj, testSerial(i), 0, 0)
+		l.RedeemDeliveryCredit(server, fetcher, obj, testSerial(i), 0)
 	}
 	if got := len(l.paidSerial); got != maxPaidSerial {
 		t.Fatalf("guard set holds %d after filling to cap, want %d", got, maxPaidSerial)
 	}
 	// Still at epoch 0: every entry is in-window, so a fresh delivery must be
 	// REFUSED rather than evict a live entry.
-	if paid := l.RedeemDeliveryCredit(server, fetcher, obj, testSerial(-1), 0, 0); paid != 0 {
+	if paid := l.RedeemDeliveryCredit(server, fetcher, obj, testSerial(-1), 0); paid != 0 {
 		t.Fatalf("at a cap full of LIVE serials the redeem paid %d, want 0 - "+
 			"evicting a still-redeemable serial re-opens the eviction pump", paid)
 	}
 	// Advance past the window: every epoch-0 entry has expired and is now
 	// un-redeemable upstream, so its slot is safe to reclaim.
 	future := paidSerialWindow + 1
-	if paid := l.RedeemDeliveryCredit(server, fetcher, obj, testSerial(-2), future, future); paid != wantPay {
+	src.e = future
+	if paid := l.RedeemDeliveryCredit(server, fetcher, obj, testSerial(-2), future); paid != wantPay {
 		t.Fatalf("after the window advanced, a fresh delivery paid %d, want fee-skim=%d - "+
 			"expiry must free the cap or the guard becomes a permanent denial", paid, wantPay)
 	}
@@ -194,10 +210,10 @@ func TestSerialGuard_EmptySerialUnguarded(t *testing.T) {
 	skim := int64(fee) * SkimNum / SkimDen
 	wantPay := int64(fee) - skim
 
-	if paid := l.RedeemDeliveryCredit(server, fetcher, obj, nil, 0, 0); paid != wantPay {
+	if paid := l.RedeemDeliveryCredit(server, fetcher, obj, nil, 0); paid != wantPay {
 		t.Fatalf("empty-serial redeem 1 paid %d, want %d", paid, wantPay)
 	}
-	if paid := l.RedeemDeliveryCredit(server, fetcher, obj, nil, 0, 0); paid != wantPay {
+	if paid := l.RedeemDeliveryCredit(server, fetcher, obj, nil, 0); paid != wantPay {
 		t.Fatalf("empty-serial redeem 2 paid %d, want %d - empty serial must stay unguarded", paid, wantPay)
 	}
 	if got := len(l.paidSerial); got != 0 {
@@ -222,17 +238,17 @@ func TestSerialGuard_EvictThenReRedeemMintsZero(t *testing.T) {
 	obj := id(7)
 	target := []byte("target-serial")
 
-	if paid := l.RedeemDeliveryCredit(serverA, fetcher, obj, target, 0, 0); paid != wantPay {
+	if paid := l.RedeemDeliveryCredit(serverA, fetcher, obj, target, 0); paid != wantPay {
 		t.Fatalf("setup: honest first redeem paid %d, want %d", paid, wantPay)
 	}
 
 	// Flood maxPaidSerial fresh distinct serials to try to push `target` out.
 	for i := 0; i < maxPaidSerial; i++ {
-		l.RedeemDeliveryCredit(serverB, fetcher, obj, testSerial(1_000_000+i), 0, 0)
+		l.RedeemDeliveryCredit(serverB, fetcher, obj, testSerial(1_000_000+i), 0)
 	}
 
 	// Re-redeem the flooded-against, already-paid target on the second server.
-	reMint := l.RedeemDeliveryCredit(serverB, fetcher, obj, target, 0, 0)
+	reMint := l.RedeemDeliveryCredit(serverB, fetcher, obj, target, 0)
 	if reMint != 0 {
 		t.Fatalf("EVICTION PUMP: re-redeem of an evicted, already-paid serial minted %d, want 0 - "+
 			"the cross-server double-redeem guard forgot a STILL-REDEEMABLE serial, re-opening the pump",
@@ -266,19 +282,19 @@ func TestSerialGuard_EvictionPumpIsNotSelfFinancing(t *testing.T) {
 		if err := l.ChargePublish(fetcher); err != nil {
 			t.Fatalf("victim charge %d: %v", i, err)
 		}
-		l.RedeemDeliveryCredit(serverA, fetcher, obj, victims[i], 0, 0)
+		l.RedeemDeliveryCredit(serverA, fetcher, obj, victims[i], 0)
 	}
 	// Flood a fresh window on serverB to try to evict the victim window.
 	for i := 0; i < W; i++ {
 		if err := l.ChargePublish(fetcher); err != nil {
 			t.Fatalf("flood charge %d: %v", i, err)
 		}
-		l.RedeemDeliveryCredit(serverB, fetcher, obj, testSerial(2_000_000+i), 0, 0)
+		l.RedeemDeliveryCredit(serverB, fetcher, obj, testSerial(2_000_000+i), 0)
 	}
 	// Re-collect every victim on serverB.
 	var reMinted int64
 	for i := 0; i < W; i++ {
-		reMinted += l.RedeemDeliveryCredit(serverB, fetcher, obj, victims[i], 0, 0)
+		reMinted += l.RedeemDeliveryCredit(serverB, fetcher, obj, victims[i], 0)
 	}
 
 	final := sumConserved(l)
