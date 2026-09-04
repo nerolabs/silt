@@ -377,7 +377,6 @@ func TestDrainWindowOrderingConvergence(t *testing.T) {
 	r1, g := mk()
 	var chainX []Block
 	chainX = append(chainX, *g)
-	lastW := int64(0)
 	order := []struct {
 		k ports.NodeID
 		r func(prev ports.Hash) BondReg
@@ -393,11 +392,9 @@ func TestDrainWindowOrderingConvergence(t *testing.T) {
 			t.Fatalf("R1 drain block %d: %v", i+1, err)
 		}
 		chainX = append(chainX, *b)
-		if w := r1.Weight(); w <= lastW {
-			t.Fatalf("drain weight must be strictly monotone (anchor bootstrap weight): block %d weight %d, prev %d", i+1, w, lastW)
-		} else {
-			lastW = w
-		}
+		// (The strictly-monotone drain-weight check that stood here was deleted with the
+		// fork-choice weight term — O3 Direction T, 2026-09-03. The drain-convergence
+		// property below is the part this test guards and it stands.)
 	}
 
 	// Convergence: a lagging replica (committed only block 1) adopts the full

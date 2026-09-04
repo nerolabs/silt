@@ -76,3 +76,14 @@ TestChargePricesAllByWork
 TestDeliveryReceiptBankedOverTCP
 # (H) R0.6 (2026-09-03): superseded by TestPrunedEvidenceIsRefused — cited historically as the test that pinned the behaviour removed.
 TestQ2_PrunedBlockStillSlashable
+# O3 Direction T (2026-09-04): the fork-choice weight term was retired. These four
+# fixture names are cited in the CHANGELOG entry that records their rename/retirement
+# (TestReconcileAdoptsHeavierFork -> TestReconcileAdoptsTallerFork,
+# TestReconcileRejectsLighterFork -> TestReconcileRejectsShorterFork,
+# TestRedteamF6_ObjectiveWeightAgreesAcrossDivergentReplicas ->
+# TestRedteamF6_ObjectiveForkChoiceAgreesAcrossDivergentReplicas; the legacy-divergence
+# fixture retired with the term). Historical citations only.
+TestReconcileAdoptsHeavierFork
+TestReconcileRejectsLighterFork
+TestRedteamF6_ObjectiveWeightAgreesAcrossDivergentReplicas
+TestRedteamF6_LegacyWeightDivergesAcrossReplicas

@@ -680,8 +680,11 @@ gate GREEN incl. `-race -short` on `core/chain` + `core/node`; record
   rebased branch.** Verified by the planner, the Researcher and the PE independently. Sources: the PE inventory, the composed-direction cert (CD-0), the PE review.
 
 *Fork-choice, canon and inventory (O3 / #558 family):*
-- **R-FORKCHOICE-WEIGHT (O3) — RATIFIED 2026-09-03: Direction T (owner: "Direction T"). BUILD
-  OPEN, research-gated on the I5 restatement cert.** See the *Decisions owed* block for the
+- **R-FORKCHOICE-WEIGHT (O3) — ✅ MERGED-pending-PR 2026-09-04 (built on the certified form; one
+  commit with the four gates below).** Research-CERTIFIED to build 2026-09-04:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/O3-Direction-T-I5-restatement-and-divergence-RESEARCH-CERTIFICATION-2026-09-04.md`.
+  Deliberation: `docs/thinking/2026-09-04-o3-direction-t-design.md`. *(Was:)* RATIFIED 2026-09-03:
+  Direction T (owner: "Direction T"). See the *Decisions owed* block for the
   recommendation and its two sources. Direction T means: remove the
   weight comparison from `heavier`, delete `Weight()` / `blockWeight()` / `anchorWeight()` /
   `Config.AnchorWeight` (no operator-visible contract — no CLI flag exists), **preserve and promote
@@ -690,33 +693,53 @@ gate GREEN incl. `-race -short` on `core/chain` + `core/node`; record
   how the third bare-hash verify site happened. **The next four Rocks ship in the SAME commit as
   whichever direction the owner picks.** The reopening condition is narrow and named: evidence of a
   shipping posture in which `FinalizedHeight()` lags `Head()`.
-- **R-558-VERIFIER-INVENTORY — OPEN (Tester).** A standing grep-shaped gate that **no attestation is
+- **R-558-VERIFIER-INVENTORY — ✅ DONE 2026-09-04 (with the T commit).** `core/chain/o3t_verifier_inventory_test.go`:
+  an AST walk of every `ed25519.Verify` in non-test `core/chain` against a classified allowlist
+  (`blockWeight` tombstoned, `signedBlock` allowlisted as era-1-gated — O3-R13 follow-on — and the
+  PR #720 `carrier.go` `carrierParentProposerFromWitness` proposer-sig row the cert's table did
+  not have), with a teeth test; plus one real era-2 certificate driven through every era-2-reachable
+  attestation verifier. *(Was:)* OPEN (Tester). A standing grep-shaped gate that **no attestation is
   verified outside `verifyAtt`**. `#558`'s repair swept two of three bare-hash verify sites;
   `blockWeight` is the third and was missed. Under Direction T the gate is satisfiable by
   construction because the third site is deleted, so it ships **with the T commit**. Source:
   `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/O3-fork-choice-weight-R-vs-T-RESEARCH-RECOMMENDATION-2026-09-03.md`
   O3-R7.
-- **R-INTERLOCK-GATE — OPEN.** The binding interlock ("the `blockWeight` signature verify is never
+- **R-INTERLOCK-GATE — ✅ DONE 2026-09-04 (with the T commit).** `core/chain/o3t_interlock_test.go`
+  + `core/node/o3t_interlock_fastslow_test.go`: the `heavier` purity pin (AST; reads only
+  `blocks[len-1].Height`/`.Hash()`, teeth test), the certificate-variant determinism oracle in both
+  postures (finality: adopt-bit; no-finality: head), and fast/slow-path equivalence at both tiers.
+  Controlled revert recorded in the Builder's memory. *(Was:)* OPEN. The binding interlock ("the `blockWeight` signature verify is never
   repaired alone") has **zero test enforcement**: the PE applied exactly the forbidden one-line
   change and `./core/... ./sim/...` was fully GREEN, EXIT=0. A gate is owed in the same commit as
   whichever O3 direction lands. Source:
   `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-O3-fork-choice-weight-R-vs-T-2026-09-03.md`
   §5.
-- **R-FORKCHOICE-RAMP-GUARD — ✅ DONE 2026-09-03 (gate-tail PR).** The `Weight() > 0` assertion at
-  `core/chain/forkchoice_ramp357_test.go` §1a is DELETED (not repaired), with a comment naming why;
-  Invariant D stands. *(Was:)* Delete the `Weight() > 0` assertion; do **not** repair it. It asserts a property
+- **R-FORKCHOICE-RAMP-GUARD — ✅ DONE 2026-09-04 (both sites).** 2026-09-03 (gate-tail PR): the
+  `Weight() > 0` assertion at `core/chain/forkchoice_ramp357_test.go` §1a DELETED. 2026-09-04 (the T
+  commit): the TWIN `Weight() <= 0` at `modelcheck_i5_357_test.go` deleted (cert §8.3 found it
+  live), and `TestO3T_NoWeightTermReferenceSurvives` walks `core/ cmd/ sim/ e2e/` so no code
+  reference to the retired surface can return. Invariant D stands. *(Was:)* Delete the `Weight() > 0` assertion; do **not** repair it. It asserts a property
   production does not have and is green only because the fixture hand-builds `Version: 1` blocks
   with era-1 attestations inside an objective config — a guard that passes only under an attestation
   era no node mints is not a guard. Invariant D in the same file is the part that guards #357 and it
   stands. Source: the O3 research recommendation §3.5 item 3 / O3-R3.
-- **R-I5-TEXT-AND-CLAIMS-LEDGER — OPEN, RESEARCH-GATED.** Two canon/ledger edits ride the O3
+- **R-I5-TEXT-AND-CLAIMS-LEDGER — ✅ DONE 2026-09-04 (with the T commit).** I5 Statement/Assert/
+  scars/Governs/Literature per the cert §3 (verbatim; the R0.6 scar untouched) and
+  `claims-ledger.md` objective fork-choice row per cert §7; pinned by
+  `TestO3T_CanonI5TextMatchesCertification`, `TestO3T_NoWeightHeightHashOrderInDocs`,
+  `TestO3T_ClaimsLedgerForkChoiceRowMatchesCertification`; `check_claims.py` and
+  `check_cited_tests.py` green. *(Was:)* OPEN, RESEARCH-GATED. Two canon/ledger edits ride the O3
   decision: the I5 restatement in `docs/design/consensus-invariants.md` (editing an invariant's
   stated rule is inside the research gate — the PE explicitly does not assert that certification),
   and `docs/design/claims-ledger.md:47` ("objective fork-choice heals a partition to the
   heavier-standing chain"), which has been **false since 2026-08-16** and is backed by an era-1 unit
   test no production path can produce. Re-word it to name the real mechanism: quorum finality plus
   height. Sources: the O3 PE ruling §6 and the O3 research recommendation §3, O3-R2.
-- **R-O4-CANON-HASH-COVERAGE — RATIFIED in substance, NUMBERING PENDING.** Amend canon with the
+- **R-O4-CANON-HASH-COVERAGE — ✅ DONE 2026-09-04 as WIDENED I5 (the cert §6 recommendation; no
+  I6).** The hash-coverage rule is the third Statement paragraph of I5, with both scars (R-BOX-ATTESTS
+  transition site; the dead fork-choice weight / #558 third site) and both code sites, and two
+  closure-table rows. The #632 *frozen-and-retired-unrun* note is NOT landed (O3-R11: O2 not
+  recorded as ratified). *(Was:)* RATIFIED in substance, NUMBERING PENDING. Amend canon with the
   hash-coverage rule covering **both** the transition and the fork-choice weight, with both scars and
   both code sites; plus the #632 *frozen-and-retired-unrun* note. Whether it widens **I5** or mints
   **I6** is the owner's; both seats agree the split is non-substantive. Source:

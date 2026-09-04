@@ -82,7 +82,7 @@ var stateClass = map[string]struct {
 	"spent":          {committedSet, "cert field 2 — ValidateEntry replay-reject (#183 F-1 order)"},
 	"revoked":        {committedSet, "cert field 3 — validateTakedowns unrevocation target"},
 	"slashed":        {committedSet, "cert field 4 — qualification, quorum N, C2, de-mature super-quorum"},
-	"bonded":         {committedSet, "cert field 5 — qualification, blockWeight fork-choice, RoundCatchupMet"},
+	"bonded":         {committedSet, "cert field 5 — qualification, RoundCatchupMet (the fork-choice weight read is retired, O3 Direction T)"},
 	"epochSet":       {committedSet, "cert field 6 — frozen-set membership, validatorSetSize, weight quorum (#357 Cond A)"},
 	"bondRootOwner":  {committedSet, "cert field 7 — apply first-owner-wins dedup (F1)"},
 	"bondRootProven": {committedSet, "cert field 8 — apply displacement rule (G3)"},

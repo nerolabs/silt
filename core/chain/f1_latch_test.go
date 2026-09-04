@@ -229,9 +229,10 @@ func TestDeMatureSuperQuorumReplacesTheAnchorNet(t *testing.T) {
 
 // TestWeakSubjectivityCheckpointRefusesLongRangeReorg is the F-1 slice-4 regression:
 // a weak-subjectivity checkpoint pins a recent trusted block, so a fork that rewrites
-// history AT OR BEFORE it is refused — even when it is strictly HEAVIER (the long-range
-// attack that makes the maturity latch safe for a fresh node). A heavier fork that
-// keeps the checkpoint and only reorgs AFTER it is still adopted normally.
+// history AT OR BEFORE it is refused — even when it is strictly TALLER and would win
+// fork-choice (the long-range attack that makes the maturity latch safe for a fresh
+// node). A taller fork that keeps the checkpoint and only reorgs AFTER it is still
+// adopted normally.
 func TestWeakSubjectivityCheckpointRefusesLongRangeReorg(t *testing.T) {
 	mkBlock := func(w *world, prev ports.Hash, h uint64, e ports.Entry, nAtt int) *Block {
 		b := &Block{Version: 1, Height: h, Prev: prev, Entries: []ports.Entry{e}}
@@ -242,7 +243,7 @@ func TestWeakSubjectivityCheckpointRefusesLongRangeReorg(t *testing.T) {
 		return b
 	}
 
-	// Canonical history g → c1 → c2 (weights 3, 3). Build it first to learn c1's hash.
+	// Canonical history g → c1 → c2 (height 2). Build it first to learn c1's hash.
 	tmp := newWorld(DefaultConfig())
 	g := tmp.genesis()
 	c1 := mkBlock(tmp, g.Hash(), 1, entry(1), 3)
@@ -262,27 +263,31 @@ func TestWeakSubjectivityCheckpointRefusesLongRangeReorg(t *testing.T) {
 		}
 	}
 
-	// A HEAVIER fork that diverges at height 1 (rewrites the checkpoint block): weights
-	// 4 + 4 = 8 > canonical 6. It must be REFUSED regardless of weight.
+	// A TALLER fork that diverges at height 1 (rewrites the checkpoint block): height 3 >
+	// canonical 2, so fork-choice (height → head-hash) would pick it. It must be REFUSED
+	// regardless — the checkpoint admission filter runs before ranking.
 	preC1 := mkBlock(w, g.Hash(), 1, entry(3), 4)
 	preC2 := mkBlock(w, preC1.Hash(), 2, entry(4), 4)
-	adopted, err := w.c.Reconcile([]Block{*g, *preC1, *preC2})
+	preC3 := mkBlock(w, preC2.Hash(), 3, entry(6), 4)
+	adopted, err := w.c.Reconcile([]Block{*g, *preC1, *preC2, *preC3})
 	if adopted || !errors.Is(err, ErrPreCheckpointReorg) {
-		t.Fatalf("a heavier fork rewriting the checkpoint block must be refused with ErrPreCheckpointReorg (adopted=%v err=%v)", adopted, err)
+		t.Fatalf("a taller fork rewriting the checkpoint block must be refused with ErrPreCheckpointReorg (adopted=%v err=%v)", adopted, err)
 	}
 	if _, ok := w.c.LookupRoot(entry(2).Root); !ok {
 		t.Fatal("the canonical (checkpointed) history must remain after refusing the long-range fork")
 	}
-	t.Log("long-range reorg REFUSED: a heavier fork that rewrites pre-checkpoint history is rejected")
+	t.Log("long-range reorg REFUSED: a taller fork that rewrites pre-checkpoint history is rejected")
 
-	// A HEAVIER fork that KEEPS the checkpoint (c1) and only reorgs AFTER it (height 2)
-	// is adopted normally: weight 3 + 4 = 7 > canonical 6.
+	// A TALLER fork that KEEPS the checkpoint (c1) and only reorgs AFTER it (height 2)
+	// is adopted normally: height 3 > canonical 2. (Strictly taller, never an equal-height
+	// head-hash coin flip — the O3 Direction T re-grounding rule.)
 	postC2 := mkBlock(w, c1.Hash(), 2, entry(5), 4)
-	adopted, err = w.c.Reconcile([]Block{*g, *c1, *postC2})
+	postC3 := mkBlock(w, postC2.Hash(), 3, entry(7), 4)
+	adopted, err = w.c.Reconcile([]Block{*g, *c1, *postC2, *postC3})
 	if err != nil || !adopted {
-		t.Fatalf("a heavier POST-checkpoint reorg must be adopted (adopted=%v err=%v)", adopted, err)
+		t.Fatalf("a taller POST-checkpoint reorg must be adopted (adopted=%v err=%v)", adopted, err)
 	}
-	if _, ok := w.c.LookupRoot(entry(5).Root); !ok {
+	if _, ok := w.c.LookupRoot(entry(7).Root); !ok {
 		t.Fatal("the post-checkpoint reorg's entry should be present after adoption")
 	}
 	t.Log("post-checkpoint reorg ADOPTED: weak subjectivity only pins history at/before the checkpoint")

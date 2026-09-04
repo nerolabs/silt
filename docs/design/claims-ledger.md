@@ -44,7 +44,7 @@ load-bearing should be in neither.
 | **#184 — equivocation → slash** over the real wire | `TestEquivocatorSlashedOverTCP` |
 | **#184 — partition → heal** onto the heavier fork | `TestPartitionHealsToHeavierForkOverTCP` |
 | **#184 — forged-block → reject** by an honest validator | `TestForgedBlockRejectedOverTCP` |
-| **Objective fork-choice heals** a partition to the heavier-standing chain | `TestObjectiveConsensusCommitsOverTCP`, `TestReconcileAdoptsHeavierFork` |
+| **Objective fork-choice converges** a partition onto one history: a sub-quorum minority cannot commit (intersecting quorum, I1), stalls, and catches up to the majority's head — selected by height → head-hash among descendants of the finalized head | `TestObjectiveConsensusCommitsOverTCP`, `TestRedteamF6_ObjectiveForkChoiceConvergesByCatchUp`, `TestModelCheck_357_NoReorgOfFinalizedLaunchBlock` |
 | **Earned standing commits** on the safe path (not a `-quorum 0` rubber-stamp) | `TestBondEarnedStandingCommitsOverTCP` |
 | **T axis — retention:** unrenewed objective standing decays (no release-and-coast) | `TestObjectiveBondStandingDecaysWithoutRenewal` |
 
