@@ -83,7 +83,7 @@ The set is closed and small. Everything hit so far is a corollary of I1 + I3 + I
 **Class.** Safety + liveness reconciliation. This is what lets a young network commit at a low quorum (immutable #4) *without* the non-intersecting quorum being able to finalize a fork.
 
 **Scars:**
-- **#397** — launch treated `committed == finalized` at a non-intersecting 2-of-4 (`chain.go:3797` "Launch-phase: finalized == committed head"), so a clean 2-2 fork became **two finalized blocks that can never reorg → permanent wedge.** Decoupling commit (2, live) from final (intersecting, safe) lets fork-choice resolve the fork instead of wedging.
+- **#397** — launch treated `committed == finalized` at a non-intersecting 2-of-4 (`core/chain/chain.go:4006` "Launch-phase: finalized == committed head over the pinned anchor set"), so a clean 2-2 fork became **two finalized blocks that can never reorg → permanent wedge.** Decoupling commit (2, live) from final (intersecting, safe) lets fork-choice resolve the fork instead of wedging.
 - **#432 (the LIVENESS half — 2026-08-15; mechanism SHIPPED 2026-08-16).** The height-only
   #397 watermark permanently wedged a height whose gather fails: a crossed publish-vs-drain
   proposer race splitting the anchor signatures 2-2 left every anchor able to sign only its
