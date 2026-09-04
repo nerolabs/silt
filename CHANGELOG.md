@@ -66,6 +66,42 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   live S5 drill contract with the stale-prose list as owed docs true-up.
 
 ### Security
+- **R2.10 / F8 — the credit ledger owns a CHAIN-ANCHORED epoch (research-certified 2026-09-04).**
+  The paid-serial guard's sweep floor and every admission screen used to run against an epoch the
+  CALLER passed on `RedeemDeliveryCredit[Reason]` and `SpendRelayAnchors`, so the ledger's clock was an
+  unauthenticated port input (one call at 2^62 refused every honest redeem thereafter — F8). Now the
+  ledger reads its epoch from ONE injected `ports.EpochSource` (`credit.SetEpochSource`; the daemon
+  wires the node's `chainEpoch()` — the same function that prunes the demand keyset, drives the
+  receipt bank and verifies relay anchors — once, right after `EnableChain`, via
+  `wireLedgerEpochSource`), and NO `ports.CreditLedger` method takes an epoch: the parameter is removed
+  from `RedeemDeliveryCredit`, `RedeemDeliveryCreditReason`, the `core/node` `deliveryReasoner` twin
+  and `SpendRelayAnchors`. The watermark is `max(watermark, source)` read once at the entry of every
+  guarded redeem and anchor spend; the sweep and every screen run against the watermark, never the raw
+  source (a port contract — a mock or embedder source may fall; after O3 Direction T the production
+  clock cannot). The finalized-head epoch is refuted as a source (permanently 0 without BFT finality;
+  one epoch behind the keyset at every boundary, refusing honest anchors as `anchor-future-dated`).
+  **`cmd/silt` refuses to start `-accept-delivery-receipts` or `-accept-relay-payments` when the
+  effective `-epoch-blocks` is 0** (an explicit 0, or `-objective=false` with the flag unset): with no
+  epoch clock nothing expires and both lanes brick at the guard cap — a liveness precondition, not a
+  security parameter; core stays permissive at epoch 0. Gates: `TestF8_NoPortMethodCarriesAnEpoch`
+  (source), `TestF8_FallingSourceLowersNothingAndReadmitsNothing_Delivery`/`_Relay`,
+  `TestF8_NilSourceReadsAsEpochZero`, the re-driven `TestEpochWatermark_LaggardRedeemerCannotRePay` /
+  `TestEpochWatermark_IsMonotone`, `TestSerialGuard_SetIsBounded`'s new `guard-full` assertion (the
+  brick), `TestF8_LedgerEpochIsTheNodesChainEpochAtEveryBlock`,
+  `TestF8_LedgerFollowsItsSourceNotTheCaller`, `TestF8_DaemonRefusesPaidLanesWithoutAnEpochClock_Source`,
+  `TestF8_DaemonWiresTheLedgerEpochSourceToTheNode`,
+  `TestF8_LedgerEpochFollowsTheChainThroughTheDaemonSeam`, and e2e
+  `TestF8_PaidLanesRefuseToStartWithoutAnEpochClock`. Fixture cost: three legacy e2e daemons gain
+  `-epoch-blocks 8`; **fifteen** unit fixtures that used the dropped parameter as their clock now drive a
+  mock source, assertions unchanged. **Three of those were caught by the blind PE review, not by the
+  migration** (`RULING-R2.10-F8-build-178ff3b-2026-09-04.md`): the compaction fuzz kept a moving `epoch`
+  bound only to `issuedEpoch`, so its watermark never advanced, the band sweep never ran, and its own
+  invariant (d) went RED past 32,768 live serials — invisible under `-short`, which is the tier CI runs;
+  two relay subtests (the epoch-2 re-spend, the in-window cap advance) passed for the wrong reason at a
+  watermark of 0. All three now drive the ledger's source, assert the reason, and the fuzz carries a
+  `-short`-visible tripwire: a scenario spanning more than the guard window whose sweep never ran is RED.
+  Residual `R-F8-RESTART-REWIND` (durable guard, unpersisted
+  watermark) is filed on FP-2's carry-list with its close R-F8-RESTORE.
 - **R4.3b — the DHT eclipse cap (H5-B) now keys on the OBSERVED contacted-at address, in SHADOW
   MODE by default; de-herd relay selection.** Mechanism: the per-bucket cap keyed on the
   self-declared `-domain` label, so N Sybils with N free labels were N domains and an undeclared

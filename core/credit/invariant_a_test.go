@@ -105,6 +105,8 @@ var standingClassification = map[string]standingClass{
 	"CompactFailures":            neutral, // observability (R2.13: durable-store Compact errors, counted never refused)
 	"LastCompactError":           neutral, // observability (R2.13: the most recent such error)
 	"SetPaidSerialStore":         neutral, // attaches the durable guard store; moves nothing
+	"SetEpochSource":             neutral, // R2.10 / F8: injects the ledger's epoch clock; moves nothing
+	"Epoch":                      neutral, // R2.10 / F8: reads max(watermark, source); a pure observer
 	"LoadPaidSerials":            neutral, // restores the guard from disk; moves nothing
 
 	// PoD relay lane (relay.go; R0.7 interim: pays 0 until R2.14). Relay/gateway
@@ -158,6 +160,8 @@ func TestInvariantA_EveryLedgerMethodClassified(t *testing.T) {
 // here regardless of what the map claims.
 func TestInvariantA_NoNonMintPressRaisesStanding(t *testing.T) {
 	l := New(50_000, 0)
+	src := &mockEpochSource{} // R2.10 / F8: the relay press below spends an anchor AT the round's epoch
+	l.SetEpochSource(src)
 	n := id(1)
 	other := id(2)
 
@@ -169,11 +173,12 @@ func TestInvariantA_NoNonMintPressRaisesStanding(t *testing.T) {
 	// reserve, skimming serve revenue into it, and paying a bounty out of it must
 	// all leave a bondless identity at zero standing.
 	for round := 0; round < 5; round++ {
+		src.e = uint64(round)
 		l.Register(n)
 		l.RecordServe(n, other, id(9), 1<<40)              // terabytes of self-reported serving
 		l.RecordAudit(n, id(9), true)                      // passed PoR audits fund balance only
 		l.RecordServeToObject(n, other, obj, id(9), 1<<40) // object-aware serve + auto-skim
-		l.RedeemDeliveryCredit(n, other, obj, nil, 0, 0)   // witnessed delivery credit (PoD neutral lane)
+		l.RedeemDeliveryCredit(n, other, obj, nil, 0)      // witnessed delivery credit (PoD neutral lane)
 		// PayWord relay credit (PoD relay lane), pressed against an ANCHORED session
 		// so the settle body actually pays (cert §3): buy one anchor through the
 		// real burn, spend it, settle the whole budget to n.
@@ -181,7 +186,7 @@ func TestInvariantA_NoNonMintPressRaisesStanding(t *testing.T) {
 		if err := l.ChargePublish(other); err != nil {
 			t.Fatalf("round %d: issuance burn: %v", round, err)
 		}
-		face, reason := l.SpendRelayAnchors(anchorsAt(uint64(round), round, 1), uint64(round))
+		face, reason := l.SpendRelayAnchors(anchorsAt(uint64(round), round, 1))
 		if face != l.Fee() || reason != "" {
 			t.Fatalf("round %d: SpendRelayAnchors = (%d, %q), want (%d, \"\") — the relay press would be vacuous", round, face, reason, l.Fee())
 		}

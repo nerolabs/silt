@@ -138,7 +138,7 @@ func TestRelayLaneConservesTotalSupplyOnOnePerNodeLedger(t *testing.T) {
 				if got := sumConserved(l); got != before-kFee {
 					t.Fatalf("after the issuance burn the total is %d, want before − k·fee = %d", got, before-kFee)
 				}
-				face, reason := l.SpendRelayAnchors(anchors, 0)
+				face, reason := l.SpendRelayAnchors(anchors)
 				if reason != "" || face != kFee {
 					t.Fatalf("SpendRelayAnchors(k=%d) = (face %d, reason %q), want (k·fee = %d, \"\") — face is an identity with the burn (cert §2.1)", k, face, reason, kFee)
 				}
@@ -192,16 +192,21 @@ func TestRelayLaneConservesTotalSupplyOnOnePerNodeLedger(t *testing.T) {
 func TestRelayCredentialIsSpentOncePerLedger(t *testing.T) {
 	t.Run("second_spend_refused", func(t *testing.T) {
 		l := New(r214Fee, 0)
+		clock := &mockEpochSource{}
+		l.SetEpochSource(clock) // R2.10: the ledger's clock (PE F2 — the epoch-2 arm was lost)
 		a := anchorsAt(0, 0, 1)
-		if face, reason := l.SpendRelayAnchors(a, 0); face != r214Fee || reason != "" {
+		if face, reason := l.SpendRelayAnchors(a); face != r214Fee || reason != "" {
 			t.Fatalf("first spend: (face %d, reason %q), want (%d, \"\")", face, reason, r214Fee)
 		}
-		if face, reason := l.SpendRelayAnchors(a, 0); face != 0 || reason == "" {
+		if face, reason := l.SpendRelayAnchors(a); face != 0 || reason == "" {
 			t.Fatalf("SECOND spend of the same anchor: (face %d, reason %q) — the credential was spent twice on one ledger", face, reason)
 		}
-		// Under a fresh ephemeral/session on a later epoch inside the window, still spent.
-		if face, _ := l.SpendRelayAnchors(a, 2); face != 0 {
-			t.Fatalf("the same anchor spent again at epoch 2 (face %d) — the guard forgot a live entry", face)
+		// Under a fresh ephemeral/session on a LATER epoch inside the window, still spent —
+		// and refused as already-paid, not as future-dated (which would pass for the wrong
+		// reason at a watermark that never moved).
+		clock.e = 2
+		if face, reason := l.SpendRelayAnchors(a); face != 0 || reason != ReasonAlreadyPaid {
+			t.Fatalf("the same anchor spent again at epoch 2: (face %d, reason %q), want (0, %q) — the guard forgot a live entry", face, reason, ReasonAlreadyPaid)
 		}
 	})
 
@@ -211,11 +216,11 @@ func TestRelayCredentialIsSpentOncePerLedger(t *testing.T) {
 	t.Run("duplicate_within_one_batch_refused", func(t *testing.T) {
 		l := New(r214Fee, 0)
 		a := anchorsAt(0, 7, 1)[0]
-		if face, reason := l.SpendRelayAnchors([]RelayAnchor{a, a}, 0); face != 0 || reason == "" {
+		if face, reason := l.SpendRelayAnchors([]RelayAnchor{a, a}); face != 0 || reason == "" {
 			t.Fatalf("one anchor presented TWICE in a batch was accepted (face %d, reason %q) — a (k−1)·fee mint per burn", face, reason)
 		}
 		// Refusal recorded nothing: the anchor is still spendable once.
-		if face, reason := l.SpendRelayAnchors([]RelayAnchor{a}, 0); face != r214Fee || reason != "" {
+		if face, reason := l.SpendRelayAnchors([]RelayAnchor{a}); face != r214Fee || reason != "" {
 			t.Fatalf("after the refused duplicate batch the anchor must still spend once: (face %d, reason %q)", face, reason)
 		}
 	})
@@ -223,26 +228,28 @@ func TestRelayCredentialIsSpentOncePerLedger(t *testing.T) {
 	t.Run("all_or_nothing", func(t *testing.T) {
 		l := New(r214Fee, 0)
 		a1, a2 := anchorsAt(0, 1, 1)[0], anchorsAt(0, 2, 1)[0]
-		if face, _ := l.SpendRelayAnchors([]RelayAnchor{a2}, 0); face != r214Fee {
+		if face, _ := l.SpendRelayAnchors([]RelayAnchor{a2}); face != r214Fee {
 			t.Fatalf("setup: spending a2 alone gave face %d, want %d", face, r214Fee)
 		}
-		if face, reason := l.SpendRelayAnchors([]RelayAnchor{a1, a2}, 0); face != 0 || reason == "" {
+		if face, reason := l.SpendRelayAnchors([]RelayAnchor{a1, a2}); face != 0 || reason == "" {
 			t.Fatalf("a batch with an already-spent anchor was accepted (face %d, reason %q) — must refuse all-or-nothing", face, reason)
 		}
 		// a1 was NOT recorded by the refused batch: it is still spendable.
-		if face, reason := l.SpendRelayAnchors([]RelayAnchor{a1}, 0); face != r214Fee {
+		if face, reason := l.SpendRelayAnchors([]RelayAnchor{a1}); face != r214Fee {
 			t.Fatalf("a1 is no longer spendable after a REFUSED batch (face %d, reason %q) — the refused open recorded an anchor; the fetcher lost anchor 1 because anchor 2 was spent (cert §2.2, T-10)", face, reason)
 		}
 	})
 
 	t.Run("cap_refuses_never_evicts", func(t *testing.T) {
 		l := New(r214Fee, 0)
+		capClock := &mockEpochSource{}
+		l.SetEpochSource(capClock) // R2.10: the epoch advance below is the LEDGER's (PE F2)
 		var accepted []RelayAnchor
 		limit := 2 * maxPaidSerial
 		refused := false
 		for i := 0; i < limit; i += 6 {
 			batch := anchorsAt(0, i, 6)
-			if face, _ := l.SpendRelayAnchors(batch, 0); face == 0 {
+			if face, _ := l.SpendRelayAnchors(batch); face == 0 {
 				refused = true
 				break
 			}
@@ -255,7 +262,7 @@ func TestRelayCredentialIsSpentOncePerLedger(t *testing.T) {
 			t.Fatalf("%d live same-epoch anchors were recorded without a refusal — the relay guard is unbounded (the paidSerial cap %d is not applied)", len(accepted), maxPaidSerial)
 		}
 		for _, idx := range []int{0, len(accepted) / 2, len(accepted) - 1} {
-			if face, _ := l.SpendRelayAnchors([]RelayAnchor{accepted[idx]}, 0); face != 0 {
+			if face, _ := l.SpendRelayAnchors([]RelayAnchor{accepted[idx]}); face != 0 {
 				t.Fatalf("at cap, previously spent anchor #%d became spendable again (face %d) — the guard EVICTED a live entry to make room (the R0.4b eviction pump)", idx, face)
 			}
 		}
@@ -266,18 +273,22 @@ func TestRelayCredentialIsSpentOncePerLedger(t *testing.T) {
 		// is EXACTLY full and one more fresh anchor must be refused.
 		filled := 0
 		for ; filled < 6; filled++ {
-			if face, _ := l.SpendRelayAnchors(anchorsAt(0, limit+10+filled, 1), 0); face == 0 {
+			if face, _ := l.SpendRelayAnchors(anchorsAt(0, limit+10+filled, 1)); face == 0 {
 				break
 			}
 		}
 		if filled >= 6 {
 			t.Fatalf("6 single anchors were accepted after a k=6 batch was refused — the batch refusal was not a cap refusal")
 		}
-		if face, _ := l.SpendRelayAnchors(anchorsAt(0, limit+20, 1), 0); face != 0 {
+		if face, _ := l.SpendRelayAnchors(anchorsAt(0, limit+20, 1)); face != 0 {
 			t.Fatalf("a fresh anchor was accepted at cap (face %d) — a slot was freed by eviction, not expiry", face)
 		}
-		if face, _ := l.SpendRelayAnchors(anchorsAt(1, limit+30, 1), 1); face != 0 {
-			t.Fatalf("an epoch advance INSIDE the window (0 → 1, W = %d) freed a slot (face %d) — live entries were evicted, not expired", paidSerialWindow, face)
+		// The epoch advance is the LEDGER's (R2.10), not an argument: without moving the
+		// clock the epoch-1 anchor is refused as future-dated and this arm proves nothing
+		// (PE F2).
+		capClock.e = 1
+		if face, reason := l.SpendRelayAnchors(anchorsAt(1, limit+30, 1)); face != 0 || reason != ReasonGuardFull {
+			t.Fatalf("an epoch advance INSIDE the window (0 → 1, W = %d): (face %d, reason %q), want (0, %q) — live entries were evicted, not expired", paidSerialWindow, face, reason, ReasonGuardFull)
 		}
 	})
 }
@@ -294,7 +305,7 @@ func TestRelaySettlementIgnoresForwardedBytesIsBoundedByAnchor(t *testing.T) {
 	l.Register(relay)
 	l.Register(buyer)
 	anchors := buyAnchors(t, l, buyer, 0, 0, 1)
-	face, reason := l.SpendRelayAnchors(anchors, 0)
+	face, reason := l.SpendRelayAnchors(anchors)
 	if face != r214Fee || reason != "" {
 		t.Fatalf("SpendRelayAnchors(k=1) = (%d, %q), want (%d, \"\")", face, reason, r214Fee)
 	}
@@ -367,7 +378,7 @@ func TestRelaySettlementNeverLeavesAnAccountNegative(t *testing.T) {
 		if buyerAfterBurn != r214Grant-k*r214Fee {
 			t.Fatalf("buyer balance after 6 burns is %d, want %d", buyerAfterBurn, r214Grant-k*r214Fee)
 		}
-		face, _ := l.SpendRelayAnchors(anchors, 0)
+		face, _ := l.SpendRelayAnchors(anchors)
 		relayBefore := l.Balance(relay)
 		settled := l.RedeemRelayCredit(relay, eph, 1<<40, face)
 		if settled != k*r214Fee {
@@ -400,7 +411,7 @@ func TestRelayAnchorGuardSurvivesRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	a := anchorsAt(0, 0, 1)
-	if face, reason := l1.SpendRelayAnchors(a, 0); face != r214Fee {
+	if face, reason := l1.SpendRelayAnchors(a); face != r214Fee {
 		t.Fatalf("first spend: (face %d, reason %q), want (%d, \"\")", face, reason, r214Fee)
 	}
 	found := false
@@ -419,7 +430,7 @@ func TestRelayAnchorGuardSurvivesRestart(t *testing.T) {
 	if err := l2.LoadPaidSerials(); err != nil {
 		t.Fatal(err)
 	}
-	if face, reason := l2.SpendRelayAnchors(a, 0); face != 0 || reason == "" {
+	if face, reason := l2.SpendRelayAnchors(a); face != 0 || reason == "" {
 		t.Fatalf("after a restart the same anchor was spent AGAIN (face %d, reason %q) — restart is an eviction (red-team F2); one fee, two sessions", face, reason)
 	}
 
@@ -427,16 +438,16 @@ func TestRelayAnchorGuardSurvivesRestart(t *testing.T) {
 	l3 := New(r214Fee, r214Grant)
 	l3.SetPaidSerialStore(store)
 	b := anchorsAt(0, 1, 1)
-	if face, reason := l3.SpendRelayAnchors(b, 0); face != 0 || reason == "" {
+	if face, reason := l3.SpendRelayAnchors(b); face != 0 || reason == "" {
 		t.Fatalf("a spend on an attached-but-unloaded guard was accepted (face %d, reason %q) — the ledger cannot know what it already accepted", face, reason)
 	}
 	if err := l3.LoadPaidSerials(); err != nil {
 		t.Fatal(err)
 	}
-	if face, _ := l3.SpendRelayAnchors(b, 0); face != r214Fee {
+	if face, _ := l3.SpendRelayAnchors(b); face != r214Fee {
 		t.Fatalf("after the load a fresh anchor was still refused (face %d) — refuse-until-loaded must clear on load", face)
 	}
-	if face, _ := l3.SpendRelayAnchors(a, 0); face != 0 {
+	if face, _ := l3.SpendRelayAnchors(a); face != 0 {
 		t.Fatalf("after the load the ORIGINAL anchor was spendable (face %d) — the load did not restore the guard", face)
 	}
 
@@ -446,7 +457,7 @@ func TestRelayAnchorGuardSurvivesRestart(t *testing.T) {
 	if err := l4.LoadPaidSerials(); err != nil {
 		t.Fatal(err)
 	}
-	if face, reason := l4.SpendRelayAnchors(anchorsAt(0, 2, 1), 0); face != 0 || reason == "" {
+	if face, reason := l4.SpendRelayAnchors(anchorsAt(0, 2, 1)); face != 0 || reason == "" {
 		t.Fatalf("a spend whose guard entry could not be persisted was accepted (face %d, reason %q)", face, reason)
 	}
 }
@@ -467,7 +478,7 @@ func TestRelayAnchorGuardSurvivesRestart(t *testing.T) {
 func TestRelayAnchorGuardWindowMatchesKeysetWindow(t *testing.T) {
 	t.Run("future_epoch_refused", func(t *testing.T) {
 		l := New(r214Fee, 0)
-		if face, reason := l.SpendRelayAnchors(anchorsAt(10, 0, 1), 0); face != 0 || reason == "" {
+		if face, reason := l.SpendRelayAnchors(anchorsAt(10, 0, 1)); face != 0 || reason == "" {
 			t.Fatalf("an anchor from epoch 10 was spent at current epoch 0 (face %d, reason %q) — a future-dated entry can never be swept", face, reason)
 		}
 	})
@@ -493,8 +504,10 @@ func TestRelayAnchorGuardWindowMatchesKeysetWindow(t *testing.T) {
 	tok := demand.Token{Serial: serial, Sig: sig}
 
 	l := New(r214Fee, 0)
+	src := &mockEpochSource{} // R2.10 / F8: the ledger reads its clock; the loop moves it
+	l.SetEpochSource(src)
 	a0 := []RelayAnchor{{Epoch: 0, Serial: serial}}
-	if face, reason := l.SpendRelayAnchors(a0, 0); face != r214Fee {
+	if face, reason := l.SpendRelayAnchors(a0); face != r214Fee {
 		t.Fatalf("setup: the first spend must succeed, got (face %d, reason %q)", face, reason)
 	}
 
@@ -510,7 +523,8 @@ func TestRelayAnchorGuardWindowMatchesKeysetWindow(t *testing.T) {
 		}
 
 		l.sweptEpoch = 0 // force the expiry sweep to run at cur (the twin's idiom)
-		face, reason := l.SpendRelayAnchors(a0, cur)
+		src.e = cur
+		face, reason := l.SpendRelayAnchors(a0)
 		remembers := face == 0 && reason == ReasonAlreadyPaid
 
 		if upstreamAccepts && !remembers {

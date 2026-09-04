@@ -192,6 +192,17 @@ type AsyncRegistry interface {
 	LookupAsync(ctx context.Context, root Hash, done func(Entry, bool, error))
 }
 
+// EpochSource is the ONE clock a credit ledger reads its consensus epoch from
+// (R2.10 / F8, rule R-F8-SOURCE, research-certified 2026-09-04): injected once
+// at construction, never passed per call. The production source is the node's
+// chain epoch — the same function that prunes the demand keyset, drives the
+// receipt bank and verifies relay anchors, so the guard's expiry predicate and
+// the keyset's validity window are two predicates on one clock. A nil source
+// reads as 0, the value a chain-less node produces. The finalized-head epoch, a
+// wall clock and any caller-supplied value are not admissible sources (the
+// certification refutes each).
+type EpochSource interface{ Epoch() uint64 }
+
 // CreditLedger is the future proof-of-retrieval seam: nodes earn credit
 // for serving chunks and spend it on registry publishes. v1 accounting
 // is naive and trusting; the interface is what a cryptographically
@@ -215,10 +226,11 @@ type CreditLedger interface {
 	// serial is the redeemed receipt's token serial; it gates the cross-server
 	// double-redeem so one token funds exactly one conserved payout (K colluding
 	// servers sharing one token cannot mint (K−1)·fee). issuedEpoch is the epoch
-	// whose issuer key signed that token and currentEpoch is the consensus epoch at
-	// the head: together they let the guard set evict BY EXPIRY, so a forgotten
-	// serial is always one no in-window issuer key can still validate (R0.4b).
-	RedeemDeliveryCredit(server, fetcher NodeID, root Hash, serial []byte, issuedEpoch, currentEpoch uint64) int64
+	// whose issuer key signed that token; measured against the ledger's OWN
+	// consensus epoch (EpochSource — R2.10 / F8, no caller supplies one) it lets the
+	// guard set evict BY EXPIRY, so a forgotten serial is always one no in-window
+	// issuer key can still validate (R0.4b).
+	RedeemDeliveryCredit(server, fetcher NodeID, root Hash, serial []byte, issuedEpoch uint64) int64
 	// RedeemRelayCredit settles a PayWord relay chain at session close (PoD §7.3).
 	// R2.14 (2026-09-04): pays min(chainValue, budget) into the RELAY's balance only,
 	// where budget is the Σ face of the anchors SpendRelayAnchors recorded for this
@@ -236,9 +248,10 @@ type CreditLedger interface {
 	// batch that would overfill the bounded (epoch, serial) guard, an attached but
 	// unloaded durable store, or a store that cannot append all refuse with the
 	// named reason and record NOTHING (a refused open must not burn anchor 1
-	// because anchor 2 was spent). current is the consensus epoch the relay's
-	// keyset was pruned with; the guard's expiry window equals that keyset's.
-	SpendRelayAnchors(anchors []RelayAnchor, current uint64) (face int64, reason string)
+	// because anchor 2 was spent). The guard's expiry window equals the relay
+	// keyset's because both read the same clock: the ledger's EpochSource is the
+	// node's chain epoch, the value the keyset was pruned with (R2.10 / F8).
+	SpendRelayAnchors(anchors []RelayAnchor) (face int64, reason string)
 	// RecordAudit settles a storage challenge: a passed audit earns the
 	// prover a reward, a failed one costs a slash.
 	RecordAudit(prover NodeID, id ChunkID, passed bool)

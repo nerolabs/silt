@@ -154,7 +154,7 @@ func TestOpenBreak_CrossServerDoubleRedeemMoneyPump(t *testing.T) {
 			sharedSerial := []byte("one-token-K-colluding-servers")
 			paid := make([]int64, tc.k)
 			for i, srv := range servers {
-				paid[i] = l.RedeemDeliveryCredit(id(srv), fetcher, obj, sharedSerial, 0, 0)
+				paid[i] = l.RedeemDeliveryCredit(id(srv), fetcher, obj, sharedSerial, 0)
 			}
 
 			gotTotal := sumLedger()

@@ -167,35 +167,55 @@ type Ledger struct {
 	paidStore   ports.PaidSerialStore
 	guardLoaded bool
 
-	// epochWatermark is the HIGHEST consensus epoch any redeemer has presented to
-	// this ledger — R0.4b-5, the shared-ledger epoch-skew close.
+	// epochSrc is the ONE clock this ledger reads its consensus epoch from (R2.10 /
+	// F8, rule R-F8-SOURCE, research-certified 2026-09-04). It is injected once
+	// (SetEpochSource) and read at the ENTRY of every guarded redeem and anchor spend
+	// (advanceEpoch); no port method takes an epoch any more. In production it is
+	// the node's chainEpoch() — the same function that prunes the demand keyset,
+	// drives the receipt bank and verifies relay anchors — so the guard's expiry
+	// predicate and the keyset's validity window are two predicates on ONE clock,
+	// which is the coupling condition "evicted ⇒ expired ⇒ un-redeemable" rests on.
+	// Nil reads as 0, the value a chain-less node produces; that keeps every
+	// in-process fixture that never sets a source at today's epoch-0 behaviour.
+	// The finalized-head epoch is REFUTED as a source (permanently 0 without BFT
+	// finality; one epoch behind the keyset at every boundary block, which refuses
+	// honest relay anchors as ReasonAnchorFuture once per epoch).
+	epochSrc ports.EpochSource
+
+	// epochWatermark is the HIGHEST epoch this ledger has ever READ from its source:
+	// epochWatermark = max(epochWatermark, epochSrc.Epoch()), taken once at the entry
+	// of every guarded redeem and anchor spend, BEFORE the sweep and before every
+	// screen (R-F8-LATCH). The sweep floor and every admission screen (ReasonBackdated,
+	// ReasonAnchorFuture, the cap reserve) run against the watermark, never against
+	// the raw source value.
 	//
-	// The guard above evicts and admits against the CALLER's epoch. Two redeemers
-	// sharing one ledger whose heads straddle a boundary can therefore re-pay: A at
-	// current = 10 sweeps a serial issued at epoch 5; B, still at current = 9, holds
-	// key_5, accepts the token at its own demand layer, and the ledger — having
-	// forgotten the serial — pays a second time. The ledger is the shared resource,
-	// so the ledger is where the monotone clock belongs: it sweeps and admits against
-	// max(epoch ever seen), never against a laggard's view.
+	// WHY A LATCH WHEN THE SOURCE CANNOT FALL. After O3 Direction T the node's
+	// chainEpoch() is non-decreasing inside one process lifetime under every shipping
+	// posture (`heavier` is height-first; `adopt` only swaps in a taller-or-equal
+	// fork), so in production the max() never selects the old value. The latch stays
+	// for two other reasons: (1) it is the PORT CONTRACT — EpochSource is an
+	// interface, and the ledger cannot verify a mock or an embedder's source is
+	// monotone, so it must not depend on it (TestEpochWatermark_IsMonotone and the
+	// F8 falling-source gates pin exactly this); (2) it is the value FP-2 must persist
+	// at the restore boundary. It is NOT a reorg defence; there is no in-process
+	// reorg that lowers the head.
 	//
 	// AN HONEST-SKEW CORRECTNESS DEVICE, NOT A BYZANTINE DEFENCE (research
-	// certification 2026-09-03, item 5 — this comment previously claimed the stronger
-	// property and was false as written). Against HONEST redeemers whose heads
-	// straddle a boundary the watermark can only widen what is refused, so the worst
-	// case is an UNDER-pay of one server's conserved leg — never an over-pay, never a
-	// mint. It is NOT a defence against a lying redeemer: currentEpoch is supplied by
-	// the caller, rises without bound and never falls, so ONE call at 2^62 refuses
-	// every honest redeem thereafter. It cannot become a Byzantine defence while this
-	// boundary is unauthenticated — an attacker able to lie about currentEpoch here
-	// can equally call the pay path with a fabricated serial, since nothing at this
-	// boundary proves a fee was collected.
+	// certification 2026-09-03, item 5). Against a source that lags and then catches
+	// up the watermark can only widen what is refused, so the worst case is an
+	// UNDER-pay of one server's conserved leg — never an over-pay, never a mint. The
+	// former "one call at 2^62 poisons the ledger" exposure (F8) is closed by
+	// construction, not by a clamp: no port input moves this clock, only the
+	// injected source, and the production source is a pure read of the node's own
+	// committed chain.
 	//
-	// Both the lie and the skew are unreachable on today's production topology (one
-	// ledger per node; currentEpoch is n.chainEpoch(), bounded by the node's own head).
-	// FLIP PRECONDITION FP-2: before ANY shared-ledger, third-operator-settlement or
-	// persisted-ledger deployment, the ledger must OWN a chain-anchored epoch rather
-	// than take one as a parameter. A clamp on the advance is a mitigation, not a
-	// close, and the faucet rate limiter must NOT be keyed on this watermark.
+	// OPEN-INERT, routed to FP-2 as R-F8-RESTART-REWIND: the guard file is durable
+	// but the watermark is not, so a node that sweeps at epoch 10, compacts, and
+	// restarts on a chain rewound to epoch ≤ 9 has forgotten a serial its keyset
+	// still verifies. Self-pay on a private ledger today; real once balances are
+	// transferable. Close (R-F8-RESTORE): persist the watermark in the same atom as
+	// paidSerial, restore it, then raise to max(restored, epochSrc.Epoch()). The
+	// faucet rate limiter must NOT be keyed on this watermark (R2.12).
 	epochWatermark uint64
 
 	// sweptEpoch is the last epoch at which sweepExpiredSerials actually ran, and
@@ -244,6 +264,62 @@ func New(fee, grant int64) *Ledger {
 		paidSerial:  make(map[string]paidSerialEntry),
 		AuditReward: 1_000,
 		AuditSlash:  25_000,
+	}
+}
+
+// SetEpochSource injects the ONE clock this ledger reads its consensus epoch from
+// (R2.10 / F8, R-F8-SOURCE). Call it once, before any guarded redeem or anchor
+// spend; the daemon wires the node's chain epoch right after the chain is enabled.
+// A ledger with no source reads epoch 0 — a chain-less node's value — so nothing
+// here refuses: the epochs-disabled brick is refused at start-up in cmd/silt
+// (R-F8-DISABLED), and core stays permissive for in-process fixtures.
+func (l *Ledger) SetEpochSource(src ports.EpochSource) { l.epochSrc = src }
+
+// Epoch is the consensus epoch the NEXT guarded redeem or anchor spend will run
+// against: max(epochWatermark, source), the latched read (R-F8-LATCH). It reads the
+// source without moving the watermark — a pure observer for tests and operators; the
+// watermark advances only at the guarded entry points (advanceEpoch).
+//
+// CONCURRENCY (PE ruling RULING-R2.10-F8-build-178ff3b F5): the production source reads
+// the chain's block slice without a lock, which is safe only because every production
+// caller — the guarded redeem, the anchor spend, the status snapshot — runs on the node's
+// event loop, the chain's single writer. An off-loop caller of Epoch() (or of any guarded
+// method) would race the chain; there is none today, and adding one needs a lock, not a
+// second clock.
+func (l *Ledger) Epoch() uint64 {
+	if l.epochSrc == nil {
+		return l.epochWatermark
+	}
+	if cur := l.epochSrc.Epoch(); cur > l.epochWatermark {
+		return cur
+	}
+	return l.epochWatermark
+}
+
+// advanceEpoch is the ONE read of the source per guarded operation (R-F8-LATCH):
+// called at the entry of RedeemDeliveryCreditReason's guarded path and of
+// SpendRelayAnchors, before the sweep and before every screen. It raises the
+// watermark by max and, on a band advance, runs the expiry sweep against the
+// watermark — never against the raw source, which a mock or embedder may lower.
+func (l *Ledger) advanceEpoch() {
+	if l.epochSrc == nil {
+		return
+	}
+	if cur := l.epochSrc.Epoch(); cur > l.epochWatermark {
+		l.epochWatermark = cur
+		// SWEEP ON THE BAND ADVANCE, NOT ONLY AT THE CAP (crypto-specialist advisory
+		// C-7, 2026-09-03). The cap-only trigger meant that on any node below 65,536
+		// live serials — which is every node most of the time — expired guard entries
+		// were retained ON DISK indefinitely, far past the W-epoch window that is their
+		// whole justification. Soundness was never affected (refuse-not-evict is the
+		// correct choice and is unchanged), but state whose justification is a 4-epoch
+		// window must not outlive it: this is the data-minimisation answer, and it is
+		// the shape every epoch-scoped online e-cash since Brands uses — an
+		// epoch-partitioned spent list dropped at rollover rather than a database swept
+		// under load. It is also CHEAPER than the cap-triggered scan: O(cap) per epoch
+		// instead of O(cap) per refused redeem. The sweptEpoch latch makes it at most
+		// one scan per epoch however many callers drive it.
+		l.sweepIfEpochAdvanced(l.epochWatermark)
 	}
 }
 

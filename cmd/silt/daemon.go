@@ -669,6 +669,18 @@ func cmdDaemon(args []string) error {
 	// guard, two lanes — core/credit/relayanchor.go), so a relay that accepts
 	// payments needs it loaded for the same reason: a restart must not re-open a
 	// spent anchor for a second session.
+	//
+	// R2.10 / F8 (R-F8-DISABLED, research-certified 2026-09-04): both paid lanes need
+	// an EPOCH CLOCK. The (epoch, serial) guard expires entries by consensus epoch,
+	// so with effective EpochBlocks == 0 (an explicit -epoch-blocks 0, or the legacy
+	// -objective=false posture with the flag unset) nothing ever expires and both
+	// lanes brick at the guard cap — a LIVENESS precondition, not a security
+	// parameter. Refused here, in cmd/silt only; core/credit and core/node stay
+	// permissive at epoch 0 for in-process fixtures. Keyed on effEpoch, never the raw
+	// flag: a defaulted objective validator gets DerivedEpochBlocks and must pass.
+	if (*acceptReceipts || *acceptRelayPayments) && effEpoch == 0 {
+		return fmt.Errorf("paid lanes: refusing to start — -accept-delivery-receipts and -accept-relay-payments need an epoch clock, and the effective -epoch-blocks is 0 (an explicit 0, or -epoch-blocks unset in a posture that derives none: -objective=false, -min-rep 0, or a node started without -validator): the paid-serial guard expires entries by consensus epoch, so with no epoch clock nothing ever expires and both lanes brick at the guard cap. Set -epoch-blocks N (N > 0, identically across the swarm) or drop the lane flags")
+	}
 	if *acceptReceipts || *acceptRelayPayments {
 		if gs, gerr := guardstore.Open(filepath.Join(*storeDir, "paidserials.log")); gerr != nil {
 			return fmt.Errorf("delivery-credit guard store: %w", gerr)
@@ -818,6 +830,11 @@ func cmdDaemon(args []string) error {
 			}
 		}
 		nd.EnableChain(ch, ident.Signer())
+		// R2.10 / F8: the ledger's consensus epoch is READ from this node's chain,
+		// never passed by a caller. Wired here, right after the chain is enabled and
+		// before any lane can accept a receipt or a relay open; wired ONCE (the
+		// source gate counts it). The seam is wireLedgerEpochSource in ledger_epoch.go.
+		wireLedgerEpochSource(ledger, nd)
 		// saveChain (assigned below, declared at daemon scope) persists the replica AND prints the regime snapshot + head it
 		// went down with (#572 premise-(a)/(c) discriminator): paired with the
 		// restore-time regime line, the next under-latch names its layer in one

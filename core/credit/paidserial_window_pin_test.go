@@ -66,7 +66,7 @@ func TestGuardLifetimeMatchesDemandKeysetLifetime(t *testing.T) {
 	obj := id(7)
 	l.Register(fetcher)
 	l.accounts[fetcher].balance = 1 << 40
-	if paid := l.RedeemDeliveryCredit(srvA, fetcher, obj, tok.Serial, 0, 0); paid == 0 {
+	if paid := l.RedeemDeliveryCredit(srvA, fetcher, obj, tok.Serial, 0); paid == 0 {
 		t.Fatal("setup: the first redeem must pay")
 	}
 

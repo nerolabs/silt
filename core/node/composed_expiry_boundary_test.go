@@ -117,6 +117,7 @@ func newComposedFixture(t *testing.T) *composedFixture {
 		return nd
 	}
 	a, b := mk(aIdent), mk(bIdent)
+	ledger.SetEpochSource(f8EpochFunc(a.chainEpoch)) // R2.10 / F8: a and b share c, so one clock
 	a.SetDemandIssuerKey(rand.Reader, 0, issuerPriv)
 
 	// B pins A's key_0 through the real cross-check while epoch 0 is still in A's
@@ -308,7 +309,7 @@ func TestComposedExpiryBoundary_EvictionIsClosedAtBothLayers(t *testing.T) {
 	// merely the absence of a guard.
 	cur := f.a.chainEpoch()
 	if got := f.ledger.RedeemDeliveryCredit(f.b.id, f.fetcher.NodeID(), f.object,
-		token.Serial, 0, cur); got != 0 {
+		token.Serial, 0); got != 0 {
 		t.Fatalf("in-window: the serial guard must refuse a second payout, paid %d", got)
 	}
 	if got := f.sum(); got != paid {
@@ -330,7 +331,8 @@ func TestComposedExpiryBoundary_EvictionIsClosedAtBothLayers(t *testing.T) {
 	fill := func(i int, epoch uint64) int64 {
 		serial[0], serial[1], serial[2] = byte(i), byte(i>>8), byte(i>>16)
 		return f.ledger.RedeemDeliveryCredit(filler, fillFetcher, fillRoot,
-			append([]byte(nil), serial...), epoch, epoch)
+			append([]byte(nil), serial...), epoch)
+
 	}
 	for i := 0; i < composedMaxPaidSerial-1; i++ {
 		fill(i, cur)
@@ -354,7 +356,7 @@ func TestComposedExpiryBoundary_EvictionIsClosedAtBothLayers(t *testing.T) {
 	// watermark (R0.4b-5) has moved past issuedEpoch + W, so a backdated redeem cannot
 	// collect a second payout even with the demand window bypassed.
 	if got := f.ledger.RedeemDeliveryCredit(f.b.id, f.fetcher.NodeID(), f.object,
-		token.Serial, 0, cur); got != 0 {
+		token.Serial, 0); got != 0 {
 		t.Fatalf("the eviction pump re-opened: an evicted, expired serial paid %d", got)
 	}
 	if delta := f.sum() - swept; delta != 0 {

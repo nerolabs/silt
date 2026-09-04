@@ -834,7 +834,14 @@ gate GREEN incl. `-race -short` on `core/chain` + `core/node`; record
   (R2.10) upgrades the watermark poison from process-lifetime to PERMANENT — F8 gates the BUILD.
   Research-gated: the atom boundary and replay idempotence (conservation). Owner: whether the ledger
   gets a durable store before the RC at all (PE: close FP-2 by scope; land R2.13 and R2.10 anyway).
-  Source: `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-ledger-durability-family-FP2-R2.13-R2.10-2026-09-03.md`.
+  **Carry-list (from R2.10, 2026-09-04): `R-F8-RESTART-REWIND`** — the guard file is durable but the
+  epoch watermark is not, so a node that sweeps at epoch 10, compacts, and restarts on a chain rewound
+  to ≤ 9 re-admits a serial its keyset still verifies (open-inert: self-pay on a private ledger; real
+  once balances are transferable). Close = **R-F8-RESTORE**: persist the watermark in the SAME atom as
+  `paidSerial`, restore it, then raise to `max(restored, source.Epoch())`. Beside F-3 R-FEE-CONSTANCY
+  and R-REFUSE-AND-SELF-SPEND.
+  Source: `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-ledger-durability-family-FP2-R2.13-R2.10-2026-09-03.md`;
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.10-F8-chain-anchored-epoch-RESEARCH-CERTIFICATION-2026-09-04.md` §1.3.
 
 - **SMT app-layer keyspace-injectivity oracle — DEFINED 2026-09-03: a decoration, and the invariant its safety rests on is FALSE.**
   `statehash.go:52-55` / `:99-101` claim "map raw keys are never empty"; `c.spent[string(e.Token.Serial)]`
@@ -914,16 +921,33 @@ economy-off HEAD certifies a network nobody runs. Design:
   two measurements. Sources:
   `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.9-D-POD-KNOBS-delivery-settlement-repricing-RESEARCH-CERTIFICATION-2026-09-03.md`,
   the economist advisory.
-- **R2.10 · F8 — the ledger must own a CHAIN-ANCHORED epoch — DEFINED 2026-09-03; second in the R2.13 → R2.10 → FP-2 order.**
-  "Chain-anchored ≠ monotone": objective mode forbids the head falling (`chain.go:3888-3894`) but
-  legacy `heavier` decides on weight first and `adopt` swaps the block slice, so a heavier SHORTER fork
-  can lower `chainEpoch()` — F8 must **re-source the monotone latch**, not delete it (moot for the
-  weight term once O3-T lands; the height leg stays). Separately `-epoch-blocks 0` (`daemon.go:119`)
-  makes the epoch permanently 0, the sweep never fires (`delivery.go:542-544`), and the lane BRICKS at
-  65,536 paid deliveries — the epochs-disabled denomination is a security parameter (research-gated).
-  F8 gates the BUILD of any persisted ledger, not only its deployment. The faucet limiter keys on the
-  node's monotonic clock instead (R2.12), which dissolves the F8 block on it. Sources: the
-  ledger-durability ruling; the composed cert §5; the G3/G4/GD delta cert §4.
+- **R2.10 · F8 — the ledger owns a CHAIN-ANCHORED epoch — BUILT 2026-09-04 (branch `builder/r2.10-f8-chain-anchored-epoch`, PR pending); research-CERTIFIED 2026-09-04; second in the R2.13 → R2.10 → FP-2 order. F8 is CLOSED for the in-process ledger.**
+  As built (rules R-F8-SOURCE / R-F8-LATCH / R-F8-DISABLED): the ledger reads its epoch from ONE
+  injected `ports.EpochSource` (`credit.SetEpochSource`; production source = the node's
+  `chainEpoch()`, the same function that prunes the keyset, drives `Bank.Redeem` and verifies relay
+  anchors; wired once by `cmd/silt` `wireLedgerEpochSource(ledger, nd)` after `EnableChain`); NO port
+  method takes an epoch (`RedeemDeliveryCredit[Reason]`, the `deliveryReasoner` twin and
+  `SpendRelayAnchors` all lost their parameter); the watermark is `max(watermark, source)` read once at
+  the entry of every guarded redeem and anchor spend, and every screen and the sweep run against the
+  WATERMARK, never the raw source. The latch is kept as a PORT CONTRACT and a restore-boundary value,
+  NOT a reorg defence: after O3-T `chainEpoch()` cannot fall in-process under any shipping posture (the
+  earlier "legacy `heavier` decides on weight first" premise is dead). `cmd/silt` REFUSES to start
+  `-accept-delivery-receipts` / `-accept-relay-payments` at effective `EpochBlocks == 0` with one
+  `refusing to start` line naming both flags and `-epoch-blocks` — a LIVENESS precondition, **not a
+  security parameter** (the earlier wording is corrected: the denomination is fixed at consensus
+  epochs and no proof reads the refusal; block-denominated expiry and a per-node default were both
+  REFUTED); core stays permissive at epoch 0. Three legacy e2e fixtures gain `-epoch-blocks 8`. Gates
+  G-F8-1…G-F8-6 (`TestF8_NoPortMethodCarriesAnEpoch`,
+  `TestF8_FallingSourceLowersNothingAndReadmitsNothing_Delivery`/`_Relay`,
+  `TestF8_PaidLanesRefuseToStartWithoutAnEpochClock`, the re-driven `TestEpochWatermark_LaggardRedeemerCannotRePay` / `TestEpochWatermark_IsMonotone`,
+  `TestF8_LedgerEpochIsTheNodesChainEpochAtEveryBlock`, `TestF8_LedgerFollowsItsSourceNotTheCaller`,
+  `TestF8_LedgerEpochFollowsTheChainThroughTheDaemonSeam`). Residual **R-F8-RESTART-REWIND**
+  (open-inert; the guard file is durable, the watermark is not, so a restart on a rewound chain
+  re-admits swept serials — self-pay on a private ledger) is on FP-2's carry-list with its close
+  R-F8-RESTORE. The faucet limiter keys on the node's monotonic clock instead (R2.12). Sources:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.10-F8-chain-anchored-epoch-RESEARCH-CERTIFICATION-2026-09-04.md`;
+  `docs/thinking/2026-09-04-r2.10-f8-chain-anchored-epoch-design.md`; the ledger-durability ruling
+  §2/§6; the composed cert §5.
 - **R2.11 · R0.4b-11 — no peer-submit path for an issuer-key registration.** An attest-only
   validator's key is never committed. Fail-closed, liveness only. Source:
   `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-composed-close-bc062d0-RESEARCH-CERTIFICATION-2026-09-03.md`
@@ -1199,6 +1223,28 @@ economy-off HEAD certifies a network nobody runs. Design:
   coverage gaps (owed, test-only): a simnet downgrade arm; a runtime capture that the group never reaches
   stdout/stderr in any format; a node-tier G-6 twin (the differential above, kept in scratch). Researcher
   cert on F1/F3/F2 in flight (`R4.3b-on-preconditions-relay-tier-and-ipv6-width-RESEARCH-CERTIFICATION-2026-09-04.md`).
+- **R4.3b-pre-on · the eight preconditions for `-dht-address-cap=on` — DEFINED 2026-09-04 (Researcher CERTIFIED: `R4.3b-on-preconditions-relay-tier-and-ipv6-width-RESEARCH-CERTIFICATION-2026-09-04.md`).**
+  Bonding the relay role is REFUTED (a capital-gated center of the NAT edge; immutable #3 fusion in reverse); a
+  relay-attested class stays REFUTED; the honest symmetric-NAT suppression the red-team measured is a
+  CONNECTION-REUSE artefact, not a NAT fact (pony↔public never needs a punch; `deliver` prefers the live relayed
+  conn) — the fix is **(v) the pony's own direct dial**: on a `viaRelay` frame from a peer with a direct address,
+  dial it once per peer per cooldown, adopt, reply on it; the observer classifies DIRECT and re-keys. CERTIFIED as
+  a precondition. `cap_relay` is re-classified NOT a security parameter (the adversary's cheapest route prices at
+  ⌈R/cap_direct⌉ /24s whenever ≥ 2 honest relays exist; certified range [2, K−R]; use K−R = 4 for `on`; the
+  reserve R stays the one security parameter). IPv6 `/32` is CERTIFIED as the FLOOR (a `/48` costs ~€0.003 via one
+  LIR `/29`, $0 via HE.net; two-level refuted): make the v6 width an Evolving flag with a `/32` floor refused under
+  `on`, series E split by family; the co-tenant collapse is real, v6-adoption-contingent, unmeasurable in cloudtest.
+  F2: exempt stays; a population-conditioned class rule is refuted (a remote lever); series E carries an exempt
+  gauge and the daemon WARNS in the proxied posture and on majority-group-0 inbound; the shadow run's nodes must
+  report exempt share = 0 (cloudtest binds 0.0.0.0). **Correction to the red-team's F1(a):** capture is not
+  introduced by the build — `KnownRelays()[0]` on main let ONE low-ID identity capture 100%; the de-herd bounds it
+  at N/(N+H). **The eight:** (1) de-herd + PE O-1/O-2 fixed; (2) (v) built, G-14 green under a symmetric `natBox`;
+  (3) `cap_relay ∈ [2, K−R]` and `R ≥ K/2` ratified with the printed floor; (4) the v6 width flag with the `/32`
+  floor + family split; (5) the exempt gauge + the announced warning; (6) PE O-3 (shadow evaluates `decide` before
+  the label check); (7) one ≥3-relay cloudtest shadow run on the grid + one at `NAT_MODE=symmetric`; (8) gates: the
+  red-team's six + G-14 reply-dial upgrade (RED today), G-15 `cap_relay` price invariance, G-16 v6 floor + split,
+  G-17 exempt gauge + warning line, G-18 ID-grind capture closed (RED on main), G-19 (v) not weaponisable. Builder +
+  Tester; the owner ratifies R and cap_relay, then `on`.
 - **R4.4 · External red-team vs the C1 + C2 composition and the seven §7 seams (#183) — THE M0
   close gate.** This is the RC-defining gate, and **it is the same pass as R1.7** — one external B8
   engagement, not two. **RATIFIED 2026-09-03: it runs at the RELEASE CANDIDATE, AFTER the era-4/v5

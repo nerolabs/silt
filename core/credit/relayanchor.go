@@ -82,18 +82,17 @@ const (
 // anchors it recorded — the session budget — or 0 and the named reason it recorded
 // nothing.
 //
-// current is n.chainEpoch() at the relay, the epoch its self keyset was pruned
-// with. It advances the ledger's monotone epoch watermark exactly as
+// The epoch is the ledger's OWN (R2.10 / F8): it reads its injected EpochSource
+// once at entry and advances the monotone watermark exactly as
 // RedeemDeliveryCreditReason does (R0.4b-5), so the two lanes share one clock on
-// one guard.
-func (l *Ledger) SpendRelayAnchors(anchors []RelayAnchor, current uint64) (face int64, reason string) {
+// one guard. In production that source is the node's chainEpoch(), the value the
+// relay's self keyset was pruned with in the same event-loop turn, so an anchor
+// that verified in-window upstream is never above the ledger's clock here.
+func (l *Ledger) SpendRelayAnchors(anchors []RelayAnchor) (face int64, reason string) {
 	if len(anchors) == 0 {
 		return 0, ReasonNoAnchor
 	}
-	if current > l.epochWatermark {
-		l.epochWatermark = current
-		l.sweepIfEpochAdvanced(l.epochWatermark) // the band advance sweeps (advisory C-7)
-	}
+	l.advanceEpoch() // read the source once; the band advance sweeps (advisory C-7)
 	if l.paidStore != nil && !l.guardLoaded {
 		return 0, ReasonGuardUnloaded // a ledger that does not know what it accepted must not accept
 	}

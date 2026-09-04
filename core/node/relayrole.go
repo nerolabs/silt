@@ -428,7 +428,7 @@ func (n *Node) OpenRelaySession(ephID ports.NodeID, root []byte, S int, funding 
 	if ks == nil {
 		return nil, errRelayNoIssuerKey
 	}
-	cur := n.chainEpoch() // the epoch the keyset was just pruned with — and the guard's clock (T-12)
+	cur := n.chainEpoch() // the epoch the keyset was just pruned with; the ledger reads the SAME clock through its EpochSource (T-12, R2.10 / F8)
 	spend := make([]ports.RelayAnchor, 0, len(anchors))
 	for _, a := range anchors {
 		e, ok := ks.VerifyAnchorInWindow(cur, demand.Token{Serial: a.Serial, Sig: a.Sig})
@@ -440,7 +440,7 @@ func (n *Node) OpenRelaySession(ephID ports.NodeID, root []byte, S int, funding 
 	// Step 7: spend all-or-nothing into the ledger's bounded durable guard. A
 	// refusal records nothing (T-10) and leaves no seen-map entry either — the
 	// fetcher may re-present the good anchors under the same ephemeral and root.
-	face, reason := n.ledger.SpendRelayAnchors(spend, cur)
+	face, reason := n.ledger.SpendRelayAnchors(spend)
 	if face <= 0 {
 		switch reason {
 		case credit.ReasonAlreadyPaid:
