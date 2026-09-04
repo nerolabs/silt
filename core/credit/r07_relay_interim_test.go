@@ -52,7 +52,13 @@ func TestRelayRedeemPaysZeroUntilAnchor(t *testing.T) {
 	relayBefore := l.Balance(relay)
 
 	const chainValue = 262_144 // red-team's measured full-session mint (S=S_max)
-	const budget = 262_144     // S == MaxChainLength; chainValue == budget (inclusive cap)
+	// R2.14 RE-SPECIFICATION (Tester, 2026-09-04, recorded goalpost move): the
+	// budget of an UNANCHORED session is 0 — it is the ledger's Σ face of the
+	// anchors SpendRelayAnchors recorded, and none were. The interim's `budget =
+	// 262_144` was the OLD S × inc number the fix deletes (cert §2.4 door (vi),
+	// G-A3); passing it here after R2.14 would make the ledger pay a budget the
+	// node never derived. Cert T-1 (§9): "no anchors ⇒ paid == 0".
+	const budget = 0 // Σ face of zero spent anchors
 
 	paid := l.RedeemRelayCredit(relay, freshEphemeral, chainValue, budget)
 	if paid != 0 {
@@ -86,9 +92,11 @@ func TestRelayRedeemPaysZeroEvenWhenFetcherIsFunded(t *testing.T) {
 	relayBefore := l.Balance(relay)
 	fetcherBefore := l.Balance(fetcher)
 
-	paid := l.RedeemRelayCredit(relay, fetcher, chainValue, chainValue)
+	// R2.14 RE-SPECIFICATION (recorded goalpost move): budget 0 = Σ face of zero
+	// spent anchors. A funded fetcher balance is NOT an anchor; nothing may be drawn.
+	paid := l.RedeemRelayCredit(relay, fetcher, chainValue, 0)
 	if paid != 0 {
-		t.Fatalf("RedeemRelayCredit paid %d against a funded fetcher with no anchor, want 0 — the interim pays 0 unconditionally until R2.14, not conditionally on fetcher solvency", paid)
+		t.Fatalf("RedeemRelayCredit paid %d against a funded fetcher with no anchor, want 0 — a live balance is not an anchor; only Σ face of spent anchors funds a settlement (R2.14)", paid)
 	}
 	if got := l.Balance(relay); got != relayBefore {
 		t.Fatalf("relay balance moved %d -> %d on an unanchored settlement against a funded fetcher", relayBefore, got)

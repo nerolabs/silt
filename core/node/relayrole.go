@@ -1,40 +1,64 @@
 package node
 
-// PoD relay lane — the relay-accept role (docs/design/pod.md §7.3). R0.7 INTERIM
-// (2026-09-03): settlement PAYS 0 until the R2.14 prepayment anchor lands; the
-// 2026-08-30 certification did not cover the shipped code's conservation (the
-// RELAY-LANE fix certification of 2026-09-03 supersedes it). A relay/gateway forwards content-blind bytes toward a fetcher and
-// is paid as-it-goes by a sender-funded PayWord hash chain (core/relaypay). It
-// cannot sign a completed-delivery receipt because it never holds a verifiable
-// object, so there is no delivery-receipt lane here — the fetcher commits a
-// chain root once, reveals one preimage per forwarded increment, and the relay
-// redeems the highest preimage it holds at session close
-// (credit.RedeemRelayCredit — pays 0 until R2.14; balance-only when it pays).
+// PoD relay lane — the relay-accept role (docs/design/pod.md §7.3). A relay/gateway
+// forwards content-blind bytes toward a fetcher and is paid as-it-goes by a
+// sender-funded PayWord hash chain (core/relaypay). It cannot sign a
+// completed-delivery receipt because it never holds a verifiable object, so there
+// is no delivery-receipt lane here — the fetcher commits a chain root once, reveals
+// one preimage per forwarded increment, and the relay redeems the highest preimage
+// it holds at session close (credit.RedeemRelayCredit; balance-only, never
+// standing).
+//
+// R2.14 (2026-09-04): THE CHAIN ROOT IS ANCHORED. A session opens only against k
+// prepayment anchors — blind signatures under THIS relay's own chain-committed
+// per-epoch demand key (blindtoken relayAnchorDomain) that the fetcher's durable
+// identity bought from this relay through the ordinary withdrawal (a refusable
+// ChargePublish on this relay's ledger) — spent once into the ledger's bounded,
+// durable guard BEFORE admission, and the session's budget is the ledger's own
+// Σ face of what it spent. Rivest–Shamir's authorization half, bilateral form
+// (issuer == relay). Certification:
+// silt-reviews/research/research-outcome/R2.14-relay-prepayment-anchor-CONSTRUCTION-RESEARCH-CERTIFICATION-2026-09-04.md.
+// The R0.7 interim (pays 0) is retired by it. BUILT ≠ LIVE: an anchor verifies
+// only under a v5 IssuerKeyReg, so the lane is dark until era-4 and every open is
+// refused with a named reason until then (cert §8).
 //
 // TWO M0 GUARDS (bright-line, non-negotiable — immutable Don't-#3):
 //
-//   (i)  The chain root MUST bind to a blind credit under a FRESH EPHEMERAL
-//        identity, never a durable one. The fetcher funds the chain through
-//        client.WithdrawDemandTokenPrivately (client/privissue.go:48), which
-//        spins up a throwaway keypair, withdraws a blind credit over it, and
-//        tears it down — so the issuer authenticates only an ephemeral key and
-//        charges no account it can tie to the fetcher. A durable-funded chain is
-//        REJECTED at OpenRelaySession: binding a chain to a durable identity
-//        turns the relay into a party that can tie the fetcher's durable
-//        identity to what it fetched.
+//   (i)  The chain root MUST bind to a blind credential, never to a durable
+//        account. ENFORCED BY the anchor: a blind bearer credential verified
+//        under a chain-committed key. The relay signed it blind at purchase and
+//        holds no serial↔buyer map, so the ledger cannot link the anchor to the
+//        durable identity that paid (cert §4.1 — guard (i) is satisfied
+//        cryptographically). FundingSource is kept as the guard's TEST OBJECT (a
+//        durable-funded declaration is still refused); it enforces nothing on
+//        its own. The NETWORK residual is the delivery lane's D3 residual,
+//        unchanged: the relay saw the buyer's IP at purchase and the ephemeral's
+//        IP at open, so the anonymity set is this relay's anchor buyers in the
+//        W+1-epoch band, partitioned by k and by IP (R-RELAY-ANON-SET, cert §4.2).
+//        Buy ahead and in fixed bundles.
 //
 //   (ii) A FRESH ephemeral identity AND a FRESH chain per session. No ephemeral
 //        identity and no chain root is reused across sessions. Reuse upgrades the
 //        relay from a per-session observer (which sees only the IP it already
-//        routes) to a LONGITUDINAL one — a real Don't-#3 regression.
+//        routes) to a LONGITUDINAL one — a real Don't-#3 regression. The anchor
+//        guard REINFORCES it: an anchor spent in one session cannot appear in
+//        another for its whole W+1-epoch life.
 //
 // Both guards are enforced by construction here, not by a note: OpenRelaySession
-// rejects FundingDurableAccount and rejects any already-seen ephemeral identity
-// or chain root. Their failing-first guards are in relayrole_test.go.
+// rejects FundingDurableAccount, rejects any already-seen ephemeral identity or
+// chain root, and admits nothing without verified, freshly spent anchors. Their
+// failing-first guards are in relayrole_test.go and r214_relay_anchor_test.go.
 
 import (
+	"crypto/ed25519"
+	"crypto/sha256"
+	"encoding/binary"
+	"fmt"
 	"sync"
 
+	"github.com/nerolabs/silt/core/blindtoken"
+	"github.com/nerolabs/silt/core/credit"
+	"github.com/nerolabs/silt/core/demand"
 	"github.com/nerolabs/silt/core/relaypay"
 	"github.com/nerolabs/silt/ports"
 )
@@ -66,7 +90,50 @@ const (
 	errRelayEphemeralReuse = relayError("relay: ephemeral identity reused across sessions rejected (M0 guard (ii): one ephemeral identity per session)")
 	errRelayChainReuse     = relayError("relay: chain root reused across sessions rejected (M0 guard (ii): one chain per session)")
 	errRelayChainTooLong   = relayError("relay: committed chain length S exceeds S_max = MaxSessionBytes / RelayIncrementBytes (#644 DoS clamp: bound the AdvanceTo walk)")
+	errRelayBadRoot        = relayError("relay: chain root must be exactly one hash wide")
+
+	// The R2.14 anchor refusals — named S5 reasons, each surfaced in the open ack.
+	errRelayNoAnchor        = relayError("relay: session open carries no prepayment anchor (an unanchored session funds nothing; R2.14)")
+	errRelayTooManyAnchors  = relayError("relay: session open carries more anchors than MaxAnchorsPerSession")
+	errRelayAnchorMalformed = relayError("relay: prepayment anchor serial or signature is malformed")
+	errRelayFetcherMismatch = relayError("relay: sha256(Fetcher) != authenticated sender — the session-open commitment is not the sender's")
+	errRelayOpenSigInvalid  = relayError("relay: session-open commitment signature invalid (M binds relayID, root, S, k and every serial)")
+	errRelayNoIssuerKey     = relayError("relay: no self demand-issuer keyset (no chain commitment for key_E, or keys not scheduled) — the anchor lane is dark until era-4")
+	errRelayAnchorInvalid   = relayError("relay: prepayment anchor does not verify under this relay's committed key (wrong relay, wrong lane, or expired)")
+	errRelayAnchorSpent     = relayError("relay: prepayment anchor already spent on this ledger")
+	errRelayGuardFull       = relayError("relay: anchor guard full of live entries — refused, never evicted")
+	errRelayGuardRefused    = relayError("relay: anchor guard refused the spend")
+	errRelayNoLedger        = relayError("relay: no ledger wired — no paying ledger to spend anchors on")
+	errRelayNoSigner        = relayError("relay: this node has no signer to commit the session open with")
 )
+
+// relayOpenDomain is the domain of the session-open commitment M (R2.14; the
+// crypto advisory §1.3): M = sha256(relayOpenDomain ‖ relayID ‖ Root ‖ uint32BE(S)
+// ‖ uint32BE(k) ‖ serial_1 ‖ … ‖ serial_k). Every field is fixed-width (the root is
+// one hash, a serial is blindtoken.SerialSize — both enforced before M is
+// recomputed), so the encoding is injective without length prefixes. This is
+// Rivest–Shamir's M = {vendor, C_U, w_0, …}_SK_U: vendor = relayID, C_U = the
+// anchor serials, w_0 = Root, SK_U = the session ephemeral.
+const relayOpenDomain = "silt/relay/open/v1"
+
+// relayOpenCommitment recomputes M for the relay named by relayID. The fetcher
+// signs it with the session ephemeral (OpenRelaySessionRemote); the relay verifies
+// it under the presented Fetcher key before any RSA work (OpenRelaySession).
+func relayOpenCommitment(relayID ports.NodeID, root []byte, S int, anchors []relaypay.Anchor) []byte {
+	h := sha256.New()
+	h.Write([]byte(relayOpenDomain))
+	h.Write(relayID[:])
+	h.Write(root)
+	var b4 [4]byte
+	binary.BigEndian.PutUint32(b4[:], uint32(S))
+	h.Write(b4[:])
+	binary.BigEndian.PutUint32(b4[:], uint32(len(anchors)))
+	h.Write(b4[:])
+	for _, a := range anchors {
+		h.Write(a.Serial)
+	}
+	return h.Sum(nil)
+}
 
 // relayRetentionEpochs is the seen-map retention window in epochs (#645). Keeping
 // the CURRENT and PREVIOUS epoch (window = 1 epoch back) protects a session opened
@@ -181,7 +248,7 @@ type RelaySession struct {
 	verifier *relaypay.Verifier
 
 	ephID  ports.NodeID // the fetcher's fresh ephemeral identity (settlement source)
-	budget int64        // S × RelayIncrementCredit — the conservation cap
+	budget int64        // Σ face of the anchors spent at open — the conservation cap (R2.14; never S × inc)
 
 	// admitEpoch is the epoch this session was opened in. The session sweep
 	// (sweepRelaySessions) evicts sessions whose admit epoch has aged past the
@@ -230,11 +297,21 @@ func (s *RelaySession) Done() bool {
 // wakes the pump. Called after each verified Pay. The ceiling only ever rises (the
 // count is monotonic), so a pump reading a stale value only under-delivers, never
 // over-delivers.
+//
+// The ceiling is min(count, budget) × RelayIncrementBytes (R2.14, cert T-9): the
+// relay never forwards past the increments the spent anchors fund, so the funding
+// cap is visible on the wire rather than discovered at settlement.
 func (s *RelaySession) raiseCeiling() {
 	s.mu.Lock()
-	s.authBytes = int64(s.verifier.Count()) * relaypay.RelayIncrementBytes
+	s.authBytes = s.fundedCount() * relaypay.RelayIncrementBytes
 	s.mu.Unlock()
 	s.wake()
+}
+
+// fundedCount is min(count, budget / RelayIncrementCredit): the increments both
+// revealed and paid for.
+func (s *RelaySession) fundedCount() int64 {
+	return min(int64(s.verifier.Count()), s.budget/relaypay.RelayIncrementCredit)
 }
 
 // closeSession marks the session done and wakes the pump so it can drain and stop.
@@ -252,18 +329,29 @@ func (s *RelaySession) wake() {
 	}
 }
 
-// OpenRelaySession opens a relay-payment session for a fetcher's PayWord chain.
-// It enforces the gate and the two M0 guards:
-//   - the relay-accept gate must be on (errRelayAcceptDisabled);
-//   - funding must be FundingEphemeralBlind, never durable (guard (i));
-//   - ephID must not have opened a prior session, and root must not have been
-//     seen before (guard (ii)).
+// OpenRelaySession opens a relay-payment session for a fetcher's PayWord chain,
+// in the certified verify ORDER (cert §9 T-7; advisory §1.4) so a refused open costs
+// the least it can and leaves no trace:
 //
-// ephID is the fresh ephemeral NodeID the issuer authenticated (the value
-// client.WithdrawDemandTokenPrivately returns), root is the committed chain root
-// x_0, and S is the chain length. On success it records ephID and root as seen
-// and returns a session whose verifier starts from the root.
-func (n *Node) OpenRelaySession(ephID ports.NodeID, root []byte, S int, funding FundingSource) (*RelaySession, error) {
+//  1. the relay-accept gate; the epoch sweep; the live-session cap (free);
+//  2. guard (i) funding; guard (ii) ephemeral + root seen-maps (map lookups);
+//  3. S and root bounds, the #644 clamp;
+//  4. k bounds: 1 ≤ k ≤ MaxAnchorsPerSession; serial and signature widths;
+//  5. sha256(fetcherPub) == ephID, then ed25519 over the commitment M (~50 µs);
+//  6. each anchor under the SELF keyset — n.DemandIssuerKeyset(n.id), NEVER a
+//     peer's (G-A5: an anchor is a claim on the ledger that burned its fee, and only
+//     this relay's ledger did) — newest epoch first, stop at the first failure;
+//  7. ledger.SpendRelayAnchors, all-or-nothing, durable, before admission;
+//  8. record the seen-maps; budget := Σ face; admit.
+//
+// ephID is the fresh ephemeral NodeID the transport authenticated; root is the
+// committed chain root x_0; S is the chain length; anchors are the prepayment
+// credentials the root is committed under; fetcherPub and sig are the ephemeral's
+// public key and its signature over M (relayOpenCommitment). On success it records
+// ephID and root as seen and returns a session whose verifier starts from the root
+// and whose budget is the ledger's Σ face.
+func (n *Node) OpenRelaySession(ephID ports.NodeID, root []byte, S int, funding FundingSource,
+	anchors []relaypay.Anchor, fetcherPub, sig []byte) (*RelaySession, error) {
 	if !n.relayAccept {
 		return nil, errRelayAcceptDisabled
 	}
@@ -275,13 +363,12 @@ func (n *Node) OpenRelaySession(ephID ports.NodeID, root []byte, S int, funding 
 
 	// Hard per-node concurrent-session cap (Batch-2 leak fix, PE ruling 2026-08-30).
 	// The sweep above frees any stale-epoch sessions first; if the table is STILL at
-	// the ceiling, refuse the open rather than admit an unbounded entry. This bounds
-	// growth between epoch sweeps against a flood of cheap fresh-identity opens.
+	// the ceiling, refuse the open rather than admit an unbounded entry.
 	if len(n.relaySessions) >= relayMaxLiveSessions {
 		return nil, errRelaySessionCap
 	}
 
-	// Guard (i): funding MUST be an ephemeral blind credit, never a durable account.
+	// Guard (i): the declared funding MUST be the ephemeral blind form.
 	if funding != FundingEphemeralBlind {
 		return nil, errRelayDurableFunding
 	}
@@ -299,17 +386,71 @@ func (n *Node) OpenRelaySession(ephID ports.NodeID, root []byte, S int, funding 
 	}
 	// #644 open-side clamp: reject a chain longer than the relay will ever forward.
 	// S_max is derived RELAY-SIDE (relaypay.MaxChainLength = MaxSessionBytes /
-	// RelayIncrementBytes = 262,144), never trusted from the fetcher. This caps the
-	// stored S the per-message AdvanceTo walk is then clamped against, bounding the
-	// worst-case walk to ~262K hashes instead of the attacker-chosen millions.
+	// RelayIncrementBytes = 262,144), never trusted from the fetcher.
 	if S > relaypay.MaxChainLength {
 		return nil, errRelayChainTooLong
 	}
-	// Record the admit epoch so #645 eviction can age the entry out.
+	if len(root) != sha256.Size {
+		return nil, errRelayBadRoot
+	}
+
+	// R2.14 step 4: k bounds and field widths, before any crypto.
+	if len(anchors) == 0 {
+		return nil, errRelayNoAnchor
+	}
+	if len(anchors) > relaypay.MaxAnchorsPerSession {
+		return nil, errRelayTooManyAnchors
+	}
+	for _, a := range anchors {
+		if len(a.Serial) != blindtoken.SerialSize || len(a.Sig) == 0 || len(a.Sig) > blindtoken.MaxModulusBits/8 {
+			return nil, errRelayAnchorMalformed
+		}
+	}
+	// Step 5: the commitment. The ephemeral that signed M must be the sender the
+	// transport authenticated, and M must cover exactly what is presented.
+	if len(fetcherPub) != ed25519.PublicKeySize || sha256.Sum256(fetcherPub) != ephID {
+		return nil, errRelayFetcherMismatch
+	}
+	if !ed25519.Verify(ed25519.PublicKey(fetcherPub), relayOpenCommitment(n.id, root, S, anchors), sig) {
+		return nil, errRelayOpenSigInvalid
+	}
+	// Step 6: RSA under the SELF keyset only. With no chain, no committed key_E for
+	// this relay, or keys never scheduled, there is no keyset and the lane is dark
+	// with a named reason — the certified direction until era-4 (cert §8, T-13).
+	if n.ledger == nil {
+		return nil, errRelayNoLedger
+	}
+	ks := n.DemandIssuerKeyset(n.id)
+	if ks == nil {
+		return nil, errRelayNoIssuerKey
+	}
+	cur := n.chainEpoch() // the epoch the keyset was just pruned with — and the guard's clock (T-12)
+	spend := make([]ports.RelayAnchor, 0, len(anchors))
+	for _, a := range anchors {
+		e, ok := ks.VerifyAnchorInWindow(cur, demand.Token{Serial: a.Serial, Sig: a.Sig})
+		if !ok {
+			return nil, errRelayAnchorInvalid // stop at the first failure: ≤ W+1 modexps for a garbage open
+		}
+		spend = append(spend, ports.RelayAnchor{Epoch: e, Serial: a.Serial})
+	}
+	// Step 7: spend all-or-nothing into the ledger's bounded durable guard. A
+	// refusal records nothing (T-10) and leaves no seen-map entry either — the
+	// fetcher may re-present the good anchors under the same ephemeral and root.
+	face, reason := n.ledger.SpendRelayAnchors(spend, cur)
+	if face <= 0 {
+		switch reason {
+		case credit.ReasonAlreadyPaid:
+			return nil, errRelayAnchorSpent
+		case credit.ReasonGuardFull:
+			return nil, errRelayGuardFull
+		default:
+			return nil, fmt.Errorf("%w: %s", errRelayGuardRefused, reason)
+		}
+	}
+	// Step 8: admit. Record the admit epoch so #645 eviction can age the entry out.
 	n.relaySeenEph[ephID] = epoch
 	n.relaySeenRoot[rootKey] = epoch
-	budget := int64(S) * relaypay.RelayIncrementCredit
-	sess := newRelaySession(relaypay.NewVerifier(root, S), ephID, budget)
+	sess := newRelaySession(relaypay.NewVerifier(root, S), ephID, face)
 	sess.admitEpoch = epoch // stamp for the session sweep (sweepRelaySeen)
 	return sess, nil
 }
@@ -340,7 +481,7 @@ func (s *RelaySession) PayTo(preimage []byte, claimedCount int) error {
 	return nil
 }
 
-// Count returns the number of increments the relay is authorized to redeem for
-// this session (the settled amount would be Count × RelayIncrementCredit via
-// credit.RedeemRelayCredit — which pays 0 until the R2.14 anchor lands).
+// Count returns the number of increments the fetcher has revealed for this
+// session. The settled amount is min(Count, budget) × RelayIncrementCredit via
+// credit.RedeemRelayCredit (R2.14).
 func (s *RelaySession) Count() int { return s.verifier.Count() }

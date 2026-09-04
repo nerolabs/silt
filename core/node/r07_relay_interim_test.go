@@ -1,35 +1,21 @@
 package node
 
-// R0.7 relay interim — RED-first gates G-RI-1b and G-RI-2 (Tester, 2026-09-03).
+// R0.7 relay interim gates G-RI-1b and G-RI-2 (Tester, 2026-09-03), RE-SPECIFIED
+// by R2.14 (Builder, 2026-09-04) into the UNANCHORED ABLATION GUARDS — a recorded
+// goalpost move, not a silent one. The interim pinned "an unanchored session
+// settles for 0"; under R2.14 an unanchored session is never ADMITTED (cert §8:
+// "v1 open at a v2 relay: len(Anchors) == 0 ⇒ errRelayNoAnchor"), so the property
+// moves one step earlier: the wire refusal names the missing anchor, no session
+// exists to settle, no settlement line is emitted, and the relay's ledger does not
+// move. The shipped-grant topology (credit.New(50_000, 500_000), the RT-RELAY-1
+// shape) is kept for the same reason the cert's T-1 gives.
 //
 // Binding spec: RELAY-LANE-per-node-ledger-mint-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md
-// §9 step 1; docs/thinking/2026-09-03-r0.7-relay-interim-design.md §2 step 1
-// ("Named reason on the log line (`relay session settled` gains
-// `reason=no-anchor`), pinned as an S5 entry in the registry").
-//
-// G-RI-1b drives the SAME RT-RELAY-1 mint shape as core/credit's G-RI-1
-// (TestRelayRedeemPaysZeroUntilAnchor) but through the live node path
-// (SettleRelaySession, relaytransport.go:96), against the SHIPPED grant
-// (credit.New(50_000, 500_000), cmd/silt/daemon.go:622) — deliberately not
-// the grant=0 the package's existing relayPairForTest fixture uses, for the
-// same reason the certification's T-1 gives: grant=0 would pass this gate for
-// the wrong reason once R2.12 lands (a zero-balance phantom debited to
-// negative looks similar to "paid 0" even without a real fix). A fresh
-// fixture (relayPairShippedGrant) is used instead of editing the existing
-// relayPairForTest so no other test's ledger topology changes underneath it.
-//
-// G-RI-2 pins the S5 observable-log-contract addition: the settlement log
-// line must carry a named `reason` field with value `no-anchor`. Reused
-// fixture: capturingLogger (relaytransport_test.go:37), already scoped to
-// exactly this settlement line and already wired into relayPairForTest's
-// optional relayLog param. (core/node/repair_sweep_duration_501_test.go:33's
-// captureLog helper was considered — it captures the same shape (event + kv +
-// timestamp) but is built for the #501 phase-narration rig and pulls in
-// erasure/manifest/pipeline/registry dependencies unrelated to this gate;
-// capturingLogger is the closer, already-relay-scoped fixture, so it is
-// reused rather than duplicated.)
+// §9 step 1 (the interim); R2.14-relay-prepayment-anchor-CONSTRUCTION-RESEARCH-CERTIFICATION-2026-09-04.md
+// §8 (the refusal); docs/thinking/2026-09-04-r2.14-relay-prepayment-anchor-design.md.
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/nerolabs/silt/adapters/identity"
@@ -42,13 +28,9 @@ import (
 )
 
 // relayPairShippedGrant wires a fetcher and a relay node exactly like
-// relayPairForTest (relaytransport_test.go:55), except the ledger carries the
-// SHIPPED grant (500,000, daemon.go:622) instead of 0, and the fetcher's
-// fresh ephemeral is left COMPLETELY UNTOUCHED on the relay's ledger — no
-// RecordServe pre-funding call. That is the real RT-RELAY-1 topology: in
-// production the fetcher's actual payment landed on a demand-token issuer's
-// ledger, never the relay's, so the relay's ledger has never seen this
-// identity before settlement.
+// relayPairForTest (relaytransport_test.go), except the ledger carries the
+// SHIPPED grant (500,000, daemon.go) instead of 0. The fetcher's fresh ephemeral
+// is a total stranger to the relay's ledger — the RT-RELAY-1 topology.
 func relayPairShippedGrant(t *testing.T, relayLog ports.Logger) (fetcher, relay *Node, ledger *credit.Ledger, sched *simclock.Scheduler) {
 	t.Helper()
 	sched = simclock.New()
@@ -64,10 +46,10 @@ func relayPairShippedGrant(t *testing.T, relayLog ports.Logger) (fetcher, relay 
 	}
 
 	ledger = credit.New(50_000, 500_000) // the shipped grant, deliberately — cert T-1
-	// Deliberately NO ledger.RecordServe(...) pre-funding call: the fetcher's
-	// fresh ephemeral must be a total stranger to this ledger, matching the
-	// red-team's reproduced RT-RELAY-1 shape.
+	ledger.Register(rID.NodeID())
 	relay.SetLedger(ledger)
+	fetcher.SetSigner(fID.Signer())
+	commitSelfDemandKey(t, relay, rID, cachedRSAKey(t, 1))
 	relay.EnableRelayAccept()
 
 	fetcher.Bootstrap([]ports.NodeID{rID.NodeID()}, func() {})
@@ -76,11 +58,11 @@ func relayPairShippedGrant(t *testing.T, relayLog ports.Logger) (fetcher, relay 
 	return fetcher, relay, ledger, sched
 }
 
-// TestSettleRelaySessionPaysZeroUntilAnchor is G-RI-1b: a full paid session,
-// driven over the wire exactly like TestRelayFullSessionConservedSettlement,
-// settles through SettleRelaySession for 0, and the relay's ledger balance is
-// unchanged. TODAY (main): the session settles for S x RelayIncrementCredit
-// and the relay's balance rises by exactly that — RED.
+// TestSettleRelaySessionPaysZeroUntilAnchor is G-RI-1b re-specified for R2.14: an
+// UNANCHORED open over the wire (the v1 payload shape) is refused with the named
+// reason, no session exists to settle, and the relay's ledger — every account on
+// it — is exactly as it was. Ablation: admit an open with no anchors → the open
+// succeeds and this reddens.
 func TestSettleRelaySessionPaysZeroUntilAnchor(t *testing.T) {
 	const S = 6
 	fetcher, relay, ledger, sched := relayPairShippedGrant(t, nil)
@@ -90,63 +72,44 @@ func TestSettleRelaySessionPaysZeroUntilAnchor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildChain: %v", err)
 	}
-
 	relayID := relay.id
-	fetcherID := fetcher.id
 	relayBalBefore := ledger.Balance(relayID)
+	accountsBefore := len(ledger.Balances())
 
 	var handle uint64
 	var openErr error
 	got := false
-	fetcher.OpenRelaySessionRemote(relayID, chain.Root(), S, FundingEphemeralBlind, func(h uint64, e error) {
+	fetcher.OpenRelaySessionRemote(relayID, chain.Root(), S, FundingEphemeralBlind, nil, func(h uint64, e error) {
 		handle, openErr, got = h, e, true
 	})
 	sched.Run()
-	if !got || openErr != nil {
-		t.Fatalf("open over wire: got=%v err=%v", got, openErr)
+	if !got {
+		t.Fatal("open over wire: no reply")
 	}
-	if handle == 0 {
-		t.Fatalf("relay returned a zero session handle")
+	if openErr == nil || handle != 0 {
+		t.Fatalf("an UNANCHORED open was admitted over the wire (handle=%d) — R2.14 admits nothing without a spent anchor", handle)
 	}
-
-	for k := 1; k <= S; k++ {
-		var authorized int
-		var payErr error
-		done := false
-		fetcher.SubmitRelayPay(relayID, handle, chain.Preimage(k), k, func(a int, e error) {
-			authorized, payErr, done = a, e, true
-		})
-		sched.Run()
-		if !done || payErr != nil {
-			t.Fatalf("pay increment %d over wire: done=%v err=%v", k, done, payErr)
-		}
-		if authorized != k {
-			t.Fatalf("after paying increment %d the relay authorized %d, want %d", k, authorized, k)
-		}
+	if !strings.Contains(openErr.Error(), errRelayNoAnchor.Error()) {
+		t.Fatalf("unanchored open refused for %q, want the named reason %q", openErr, errRelayNoAnchor)
 	}
-
-	paid := relay.SettleRelaySession(handle)
-	if paid != 0 {
-		t.Fatalf("settlement paid %d for an unanchored session (S=%d paid increments), want 0 — the RT-RELAY-1 mint on the live SettleRelaySession path", paid, S)
+	if got := relay.relayLiveSessionCountForTest(); got != 0 {
+		t.Fatalf("%d live sessions after a refused unanchored open, want 0", got)
+	}
+	if paid := relay.SettleRelaySession(handle); paid != 0 {
+		t.Fatalf("settling the refused handle paid %d, want 0", paid)
 	}
 	if got := ledger.Balance(relayID); got != relayBalBefore {
-		t.Fatalf("relay balance moved %d -> %d on an unanchored (pay-0) settlement", relayBalBefore, got)
+		t.Fatalf("relay balance moved %d -> %d on a refused unanchored open", relayBalBefore, got)
 	}
-	// The fetcher's fresh ephemeral must still read as the untouched shipped
-	// grant: if it were debited by even 1 credit, this would no longer equal
-	// the grant (the ledger auto-registers on first Balance() touch too, so
-	// "untouched" here means "reads exactly the grant", not "reads 0").
-	const grant = 500_000
-	if got := ledger.Balance(fetcherID); got != grant {
-		t.Fatalf("fetcher balance reads %d, want the untouched grant %d — RedeemRelayCredit debited a phantom on an unanchored settlement", got, grant)
+	if got := len(ledger.Balances()); got != accountsBefore {
+		t.Fatalf("the account set changed %d -> %d — the fetcher's ephemeral was registered by a refused open", accountsBefore, got)
 	}
 }
 
-// TestSettleRelaySessionLogCarriesNoAnchorReason is G-RI-2 (S5): the
-// settlement log line names WHY it paid 0. Once the interim ships, "relay
-// session settled" must carry a `reason` key with value `no-anchor`. TODAY
-// (main): the log line carries only "increments" and "credit" — no `reason`
-// key at all — RED.
+// TestSettleRelaySessionLogCarriesNoAnchorReason is G-RI-2 re-specified for R2.14:
+// an unanchored session never settles, so NO "relay session settled" line is
+// emitted for it; the anchor's absence is named in the wire refusal instead (the
+// S5 `no-anchor` registry entry is retired for `anchored`, cmd/silt/observable_contract.go).
 func TestSettleRelaySessionLogCarriesNoAnchorReason(t *testing.T) {
 	const S = 4
 	log := &capturingLogger{}
@@ -159,36 +122,17 @@ func TestSettleRelaySessionLogCarriesNoAnchorReason(t *testing.T) {
 	}
 
 	var handle uint64
-	fetcher.OpenRelaySessionRemote(relay.id, chain.Root(), S, FundingEphemeralBlind, func(h uint64, _ error) { handle = h })
+	var openErr error
+	fetcher.OpenRelaySessionRemote(relay.id, chain.Root(), S, FundingEphemeralBlind, nil, func(h uint64, e error) { handle, openErr = h, e })
 	sched.Run()
-	for k := 1; k <= S; k++ {
-		fetcher.SubmitRelayPay(relay.id, handle, chain.Preimage(k), k, func(int, error) {})
-		sched.Run()
+	if openErr == nil || !strings.Contains(openErr.Error(), "no prepayment anchor") {
+		t.Fatalf("unanchored open: err=%v, want a refusal naming the missing anchor", openErr)
 	}
 	relay.SettleRelaySession(handle)
 
-	var rec *logRecord
-	for i := range log.records {
-		if log.records[i].event == "relay session settled" {
-			rec = &log.records[i]
-			break
+	for _, rec := range log.records {
+		if rec.event == "relay session settled" {
+			t.Fatalf("a 'relay session settled' line was emitted for an unanchored open (%+v) — nothing was admitted, so nothing may settle", rec.kv)
 		}
-	}
-	if rec == nil {
-		t.Fatalf("no 'relay session settled' log record captured")
-	}
-
-	reasonFound := false
-	for i := 0; i+1 < len(rec.kv); i += 2 {
-		key, _ := rec.kv[i].(string)
-		if key == "reason" {
-			reasonFound = true
-			if val, _ := rec.kv[i+1].(string); val != "no-anchor" {
-				t.Fatalf("settlement log 'reason' = %q, want %q", rec.kv[i+1], "no-anchor")
-			}
-		}
-	}
-	if !reasonFound {
-		t.Fatalf("settlement log record %+v carries no 'reason' key — the S5 no-anchor disclosure (design doc §2 step 1) is missing", rec.kv)
 	}
 }

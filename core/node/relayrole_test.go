@@ -17,6 +17,7 @@ import (
 	"github.com/nerolabs/silt/adapters/memstore"
 	"github.com/nerolabs/silt/adapters/simclock"
 	"github.com/nerolabs/silt/adapters/simnet"
+	"github.com/nerolabs/silt/core/credit"
 	"github.com/nerolabs/silt/core/relaypay"
 	"github.com/nerolabs/silt/ports"
 )
@@ -51,14 +52,25 @@ func newRelayTestNode(idSeed int64) *Node {
 	return New(ident.NodeID(), DefaultConfig(), sched, net.Endpoint(ident.NodeID()), memstore.New())
 }
 
+// newAnchoredRelayTestNode is newRelayTestNode plus the R2.14 anchor lane's
+// preconditions — a ledger and a chain-committed demand key_0 — so an anchored open
+// (openAnchored) is admissible. The chain-less form above stays for the tests that
+// need the lane DARK (TestRelayOpenRefusesWithoutSelfKeyset).
+func newAnchoredRelayTestNode(t *testing.T, idSeed int64) *Node {
+	t.Helper()
+	n := newRelayTestNode(idSeed)
+	n.SetLedger(credit.New(50_000, 0))
+	commitSelfDemandKey(t, n, identity.FromSeed(idSeed), cachedRSAKey(t, int(idSeed%4)))
+	return n
+}
+
 // TestRelayAcceptOffByDefault: a node does not accept PayWord chains until the
 // gate is enabled — the mirror of the delivery-receipt gate being off by
 // default. OpenRelaySession returns an error while the gate is off.
 func TestRelayAcceptOffByDefault(t *testing.T) {
-	n := newRelayTestNode(1)
+	n := newAnchoredRelayTestNode(t, 1)
 	c, _ := relaypay.BuildChain([]byte("a-fresh-random-tip-for-the-session"), 8)
-	eph := relayTestID(9)
-	_, err := n.OpenRelaySession(eph, c.Root(), 8, FundingEphemeralBlind)
+	_, err := openAnchored(t, n, 9, c.Root(), 8)
 	if err == nil {
 		t.Fatalf("OpenRelaySession succeeded with the relay-accept gate OFF — it must be gated")
 	}
@@ -70,17 +82,16 @@ func TestRelayAcceptOffByDefault(t *testing.T) {
 // that can tie the fetcher's durable identity to what it fetched — an M0
 // access-privacy violation, not permitted at any performance price.
 func TestRelayGuardI_DurableFundingRejected(t *testing.T) {
-	n := newRelayTestNode(1)
+	n := newAnchoredRelayTestNode(t, 1)
 	n.EnableRelayAccept()
 	c, _ := relaypay.BuildChain([]byte("a-fresh-random-tip-for-the-session"), 8)
-	eph := relayTestID(9)
 
-	// A durable-funded chain MUST be rejected.
-	if _, err := n.OpenRelaySession(eph, c.Root(), 8, FundingDurableAccount); err == nil {
+	// A durable-funded chain MUST be rejected (even with a valid anchor).
+	if _, _, err := openAnchoredWith(t, n, 9, c.Root(), 8, FundingDurableAccount); err == nil {
 		t.Fatalf("guard (i) missing: a chain funded by a DURABLE-account credit was accepted — M0 Don't-#3 violation")
 	}
 	// The ephemeral-blind path is the ONLY accepted funding source.
-	if _, err := n.OpenRelaySession(eph, c.Root(), 8, FundingEphemeralBlind); err != nil {
+	if _, err := openAnchored(t, n, 9, c.Root(), 8); err != nil {
 		t.Fatalf("the ephemeral-blind funding path must be accepted: %v", err)
 	}
 }
@@ -90,25 +101,24 @@ func TestRelayGuardI_DurableFundingRejected(t *testing.T) {
 // REJECTED. Reuse upgrades the relay from a per-session observer to a
 // longitudinal one — a real Don't-#3 regression.
 func TestRelayGuardII_EphemeralReuseRejected(t *testing.T) {
-	n := newRelayTestNode(1)
+	n := newAnchoredRelayTestNode(t, 1)
 	n.EnableRelayAccept()
 
-	eph := relayTestID(9)
 	c1, _ := relaypay.BuildChain([]byte("session-one-fresh-random-tip-value"), 8)
 	c2, _ := relaypay.BuildChain([]byte("session-two-fresh-random-tip-value"), 8)
 
-	if _, err := n.OpenRelaySession(eph, c1.Root(), 8, FundingEphemeralBlind); err != nil {
+	if _, err := openAnchored(t, n, 9, c1.Root(), 8); err != nil {
 		t.Fatalf("first session for a fresh ephemeral identity must open: %v", err)
 	}
-	// Reusing the SAME ephemeral identity for a second session must be rejected.
-	if _, err := n.OpenRelaySession(eph, c2.Root(), 8, FundingEphemeralBlind); err == nil {
+	// Reusing the SAME ephemeral identity for a second session must be rejected
+	// (with a fresh anchor — the refusal is the identity, not the credential).
+	if _, err := openAnchored(t, n, 9, c2.Root(), 8); err == nil {
 		t.Fatalf("guard (ii) missing: a REUSED ephemeral identity opened a second session — longitudinal-linkage regression")
 	}
 
 	// And reusing the SAME chain root under a fresh ephemeral identity must also
 	// be rejected — a chain must not span sessions.
-	fresh := relayTestID(10)
-	if _, err := n.OpenRelaySession(fresh, c1.Root(), 8, FundingEphemeralBlind); err == nil {
+	if _, err := openAnchored(t, n, 10, c1.Root(), 8); err == nil {
 		t.Fatalf("guard (ii) missing: a REUSED chain root opened a second session — a chain must not span sessions")
 	}
 }
@@ -124,21 +134,19 @@ func TestRelayGuardII_EphemeralReuseRejected(t *testing.T) {
 // with an arbitrarily large S, re-opening the unbounded-walk DoS — this test turns
 // RED.
 func TestOpenRelaySessionClampsChainLength(t *testing.T) {
-	n := newRelayTestNode(1)
+	n := newAnchoredRelayTestNode(t, 1)
 	n.EnableRelayAccept()
 
 	// A chain the fetcher CLAIMS is one past the relay's ceiling. The root value is
 	// irrelevant to the clamp — the reject happens on S before any chain work.
-	eph := relayTestID(9)
 	root := make([]byte, 32)
 	oversized := relaypay.MaxChainLength + 1
-	if _, err := n.OpenRelaySession(eph, root, oversized, FundingEphemeralBlind); err == nil {
+	if _, err := openAnchored(t, n, 9, root, oversized); err == nil {
 		t.Fatalf("OpenRelaySession accepted S=%d > S_max=%d: the #644 open-side clamp is missing", oversized, relaypay.MaxChainLength)
 	}
 
 	// Exactly S_max is accepted (inclusive ceiling).
-	eph2 := relayTestID(10)
-	if _, err := n.OpenRelaySession(eph2, root, relaypay.MaxChainLength, FundingEphemeralBlind); err != nil {
+	if _, err := openAnchored(t, n, 10, root, relaypay.MaxChainLength); err != nil {
 		t.Fatalf("OpenRelaySession rejected S == S_max=%d, which must be accepted: %v", relaypay.MaxChainLength, err)
 	}
 }
@@ -155,15 +163,14 @@ func TestOpenRelaySessionClampsChainLength(t *testing.T) {
 // Removing the `count >= S` exhaustion guard in Verifier.Advance turns this RED
 // (the tip reveal advances count to S+1).
 func TestRelaySessionPayCannotExceedChainLength(t *testing.T) {
-	n := newRelayTestNode(1)
+	n := newAnchoredRelayTestNode(t, 1)
 	n.EnableRelayAccept()
 
 	const S = 4
 	// A 32-byte tip so the tip itself is a valid-length preimage to reveal past S.
 	tip := []byte("a-fresh-32-byte-tip-for-exhaustcap")[:32]
 	c, _ := relaypay.BuildChain(tip, S)
-	eph := relayTestID(9)
-	sess, err := n.OpenRelaySession(eph, c.Root(), S, FundingEphemeralBlind)
+	sess, err := openAnchored(t, n, 9, c.Root(), S)
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -206,7 +213,7 @@ func TestRelaySessionPayCannotExceedChainLength(t *testing.T) {
 // The epoch is injected via the test seat's relayEpochFn override so the test does
 // not need a full chain wired; production reads the epoch from the chain.
 func TestRelaySeenMapEvictsOnEpoch(t *testing.T) {
-	n := newRelayTestNode(1)
+	n := newAnchoredRelayTestNode(t, 1)
 	n.EnableRelayAccept()
 
 	// Drive the epoch from a test-controlled variable.
@@ -217,27 +224,27 @@ func TestRelaySeenMapEvictsOnEpoch(t *testing.T) {
 
 	// Epoch 0: admit eph#1 / root A.
 	epoch = 0
-	if _, err := n.OpenRelaySession(relayTestID(1), root(0xA1), 8, FundingEphemeralBlind); err != nil {
+	if _, err := openAnchored(t, n, 1, root(0xA1), 8); err != nil {
 		t.Fatalf("epoch 0 open: %v", err)
 	}
 
 	// Epoch 1: admit eph#2 / root B. Nothing evicted yet (retention keeps current +
 	// previous). Both A and B are still on file.
 	epoch = 1
-	if _, err := n.OpenRelaySession(relayTestID(2), root(0xB2), 8, FundingEphemeralBlind); err != nil {
+	if _, err := openAnchored(t, n, 2, root(0xB2), 8); err != nil {
 		t.Fatalf("epoch 1 open: %v", err)
 	}
 
 	// (2) GUARD (ii) across the boundary: root A (epoch 0) is the PREVIOUS epoch at
 	// epoch 1 — reusing it must still be REJECTED, not evicted-then-accepted.
-	if _, err := n.OpenRelaySession(relayTestID(99), root(0xA1), 8, FundingEphemeralBlind); err == nil {
+	if _, err := openAnchored(t, n, 99, root(0xA1), 8); err == nil {
 		t.Fatalf("guard (ii) regression: a PREVIOUS-epoch chain root was re-admitted after one epoch advance")
 	}
 
 	// Epoch 2: admit eph#3 / root C. Now epoch 0 (root A, eph#1) is two epochs back
 	// and must be SWEPT — this is the bound.
 	epoch = 2
-	if _, err := n.OpenRelaySession(relayTestID(3), root(0xC3), 8, FundingEphemeralBlind); err != nil {
+	if _, err := openAnchored(t, n, 3, root(0xC3), 8); err != nil {
 		t.Fatalf("epoch 2 open: %v", err)
 	}
 
@@ -252,7 +259,7 @@ func TestRelaySeenMapEvictsOnEpoch(t *testing.T) {
 	// (1)/(2) The swept epoch-0 root A can now be re-admitted (it aged out past the
 	// retention window — the certified epoch-TTL boundary). This is the intended
 	// eviction, and it confirms the sweep actually happened.
-	if _, err := n.OpenRelaySession(relayTestID(100), root(0xA1), 8, FundingEphemeralBlind); err != nil {
+	if _, err := openAnchored(t, n, 100, root(0xA1), 8); err != nil {
 		t.Fatalf("epoch-0 root A should have aged out and be re-admittable at epoch 2: %v", err)
 	}
 
@@ -266,14 +273,14 @@ func TestRelaySeenMapEvictsOnEpoch(t *testing.T) {
 		t.Fatalf("eviction floor is %d after epoch 2, want 1", floorBefore)
 	}
 	epoch = 1 // reorg backward
-	if _, err := n.OpenRelaySession(relayTestID(101), root(0xD4), 8, FundingEphemeralBlind); err != nil {
+	if _, err := openAnchored(t, n, 101, root(0xD4), 8); err != nil {
 		t.Fatalf("open at reorged epoch 1: %v", err)
 	}
 	if floorAfter := n.relayEvictionFloorForTest(); floorAfter < floorBefore {
 		t.Fatalf("eviction floor LOWERED from %d to %d on a backward reorg — the monotonic guard is missing (guard-(ii) reorg regression)", floorBefore, floorAfter)
 	}
 	// Root B (epoch 1) is still on file and must still be REJECTED across the reorg.
-	if _, err := n.OpenRelaySession(relayTestID(102), root(0xB2), 8, FundingEphemeralBlind); err == nil {
+	if _, err := openAnchored(t, n, 102, root(0xB2), 8); err == nil {
 		t.Fatalf("guard (ii) regression on reorg: root B (epoch 1) was re-admitted after the epoch moved backward")
 	}
 }
@@ -292,7 +299,7 @@ func TestRelaySeenMapEvictsOnEpoch(t *testing.T) {
 // Ablation: remove sess.closeSession() from the reap loop → the pump stays blocked on
 // auth.Wait() and the "pump exited" assertion times out RED.
 func TestReapedSessionStopsLivePump(t *testing.T) {
-	n := newRelayTestNode(1)
+	n := newAnchoredRelayTestNode(t, 1)
 	n.EnableRelayAccept()
 
 	// Drive the epoch from a test-controlled variable so the sweep is deterministic.
@@ -301,9 +308,8 @@ func TestReapedSessionStopsLivePump(t *testing.T) {
 
 	const S = 8
 	c, _ := relaypay.BuildChain([]byte("reaped-session-live-pump-fresh!!!")[:32], S)
-	eph := relayTestID(9)
 	epoch = 0
-	sess, err := n.OpenRelaySession(eph, c.Root(), S, FundingEphemeralBlind)
+	sess, err := openAnchored(t, n, 9, c.Root(), S)
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -418,13 +424,12 @@ func relayTCPPair(t *testing.T) (*net.TCPConn, *net.TCPConn) {
 // fresh ephemeral identity + fresh chain accepts preimages in order and the
 // verifier tracks the settled count.
 func TestRelaySessionAdvancesAndSettles(t *testing.T) {
-	n := newRelayTestNode(1)
+	n := newAnchoredRelayTestNode(t, 1)
 	n.EnableRelayAccept()
 
 	const S = 8
 	c, _ := relaypay.BuildChain([]byte("the-happy-path-session-random-tip!"), S)
-	eph := relayTestID(9)
-	sess, err := n.OpenRelaySession(eph, c.Root(), S, FundingEphemeralBlind)
+	sess, err := openAnchored(t, n, 9, c.Root(), S)
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}

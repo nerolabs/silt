@@ -229,6 +229,18 @@ type CreditLedger interface {
 	// firewall) in either shape. Certification:
 	// silt-reviews/research/research-outcome/RELAY-LANE-per-node-ledger-mint-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md.
 	RedeemRelayCredit(relay, fetcher NodeID, chainValue, budget int64) int64
+	// SpendRelayAnchors records k VERIFIED relay prepayment anchors as spent on this
+	// ledger, all-or-nothing, and returns their summed face (k × Fee()) — the
+	// session budget RedeemRelayCredit may settle up to (R2.14, INV-RELAY-CONS:
+	// settled ≤ Σ face of spent anchors). The caller (core/node OpenRelaySession)
+	// verified each anchor under the relay's OWN committed key before calling; the
+	// ledger verifies nothing and guards everything: an anchor already spent, a
+	// batch that would overfill the bounded (epoch, serial) guard, an attached but
+	// unloaded durable store, or a store that cannot append all refuse with the
+	// named reason and record NOTHING (a refused open must not burn anchor 1
+	// because anchor 2 was spent). current is the consensus epoch the relay's
+	// keyset was pruned with; the guard's expiry window equals that keyset's.
+	SpendRelayAnchors(anchors []RelayAnchor, current uint64) (face int64, reason string)
 	// RecordAudit settles a storage challenge: a passed audit earns the
 	// prover a reward, a failed one costs a slash.
 	RecordAudit(prover NodeID, id ChunkID, passed bool)
@@ -334,6 +346,16 @@ type PaidSerial struct {
 	Serial []byte
 	Server NodeID
 	Epoch  uint64
+}
+
+// RelayAnchor is one relay prepayment anchor as the ledger guards it: the (issue
+// epoch, serial) pair the anchor's blind signature was made over (R2.14). The
+// signature itself never reaches the ledger — the node verified it under the relay's
+// committed key_E; the ledger records the token as spent so it can fund exactly one
+// session, and expires the record with the same window the keyset expires the key.
+type RelayAnchor struct {
+	Epoch  uint64
+	Serial []byte
 }
 
 // PaidSerialStore persists the guard durably, so a RESTART is not an eviction.

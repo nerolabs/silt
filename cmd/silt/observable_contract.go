@@ -57,5 +57,5 @@ var ObservableContract = []ContractedString{
 	{"ui: http://", "cmd/silt/daemon.go", "e2e publishflood parses the UI URL", "TestConcurrentUIPublishesAllSucceed"},
 	{"delivery receipt paid NO credit", "core/node/demandrole.go", "the only signal an operator gets when a banked receipt settles nothing", "TestBankedButUnpaidReceiptLogsTheWarnLine"},
 	{"relay session settled", "core/node/relaytransport.go", "e2e TestPaidRelaySessionEndToEnd and the M0 log audit (TestRelaySettlementLogCarriesNoDurableField) find the settlement line by it", "TestPaidRelaySessionEndToEnd"},
-	{"no-anchor", "core/node/relaytransport.go", "R0.7 interim: the settlement line's reason field tells an operator WHY the relay lane paid 0 (until R2.14)", "TestSettleRelaySessionLogCarriesNoAnchorReason"},
+	{"anchored", "core/node/relaytransport.go", "R2.14: the settlement line's reason field says the paid session was anchored (min(count, Σ face) settled); the R0.7 interim's no-anchor value is retired — an unanchored open is refused and never settles", "TestRelayAnchorsAreBoughtOnTheRelaysOwnLedger"},
 }

@@ -605,11 +605,19 @@ func (l *Ledger) livePaidSerials() []ports.PaidSerial {
 // evicts a live entry. false means "the cap is full of still-redeemable serials",
 // which the caller turns into a refusal to pay (see RedeemDeliveryCredit).
 func (l *Ledger) reservePaidSerial(current uint64) bool {
-	if len(l.paidSerial) < maxPaidSerial {
+	return l.reservePaidSerials(current, 1)
+}
+
+// reservePaidSerials is reservePaidSerial for k entries at once — a relay open
+// spends up to relaypay.MaxAnchorsPerSession anchors all-or-nothing, so the whole
+// batch must fit or none is recorded (R2.14 SpendRelayAnchors). Same rule: sweep
+// expired entries, then check the cap, never evict a live entry.
+func (l *Ledger) reservePaidSerials(current uint64, k int) bool {
+	if len(l.paidSerial)+k <= maxPaidSerial {
 		return true
 	}
 	l.sweepIfEpochAdvanced(current)
-	return len(l.paidSerial) < maxPaidSerial
+	return len(l.paidSerial)+k <= maxPaidSerial
 }
 
 // sweepIfEpochAdvanced runs sweepExpiredSerials AT MOST ONCE PER EPOCH (RT-E).

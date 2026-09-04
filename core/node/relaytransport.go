@@ -5,7 +5,7 @@ package node
 // (handleDeliveryReceipt): MsgRelayOpen (open a paid session), MsgRelayPay (a
 // preimage reveal), and their acks. Settlement is LOCAL at close — no wire message
 // (design §1, §5): the relay redeems its highest held preimage via
-// credit.RedeemRelayCredit — which PAYS 0 until the R2.14 anchor lands (R0.7).
+// credit.RedeemRelayCredit, bounded by the anchors spent at open (R2.14).
 //
 // The two M0 guards and the #644 S-clamp fire on the LIVE path because
 // handleRelayOpen routes through OpenRelaySession — the SAME tested entry the
@@ -13,6 +13,11 @@ package node
 // live-path guard-reuse test asserts it).
 
 import (
+	"crypto/ed25519"
+	"crypto/rsa"
+	"io"
+
+	"github.com/nerolabs/silt/core/blindtoken"
 	"github.com/nerolabs/silt/core/relaypay"
 	"github.com/nerolabs/silt/ports"
 )
@@ -41,7 +46,7 @@ func (n *Node) handleRelayOpen(from ports.NodeID, msg ports.Message) {
 	// payload) is what makes guard (ii)'s per-session-identity check bind the party
 	// that actually opened the conn.
 	funding := FundingSource(open.Funding)
-	sess, err := n.OpenRelaySession(from, open.Root, open.S, funding)
+	sess, err := n.OpenRelaySession(from, open.Root, open.S, funding, open.Anchors, open.Fetcher, open.Sig)
 	if err != nil {
 		deny(err.Error()) // M0 guard / S-clamp refusal — surfaced, never silent
 		return
@@ -86,17 +91,16 @@ func (n *Node) handleRelayPay(from ports.NodeID, msg ports.Message) {
 
 // SettleRelaySession settles the paid session at close and removes it from the
 // table (design §5: single settlement at close). It presents the highest held
-// preimage ONCE — count × RelayIncrementCredit — to credit.RedeemRelayCredit.
-// R0.7 INTERIM (2026-09-03): that call PAYS 0 and moves nothing until the R2.14
-// prepayment anchor lands (core/credit/relay.go STATUS; the cert is
-// RELAY-LANE-per-node-ledger-mint-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md
-// §9 step 1). The session is still removed and the pump still closed, so the
-// single-settle property (TestNoDoubleSettleReaperAndPump) is unchanged. Returns
-// the credit paid to the relay (0 if the session is unknown or the ledger is
-// unset). The M0 residual (design §6): the settlement log line carries NO durable
-// or cross-session-stable field — only the count, the paid credit, and the S5
-// reason `no-anchor` (a constant, not a per-session value; G-RI-2 pins it, and
-// cmd/silt/observable_contract.go registers it).
+// preimage ONCE — count × RelayIncrementCredit — to credit.RedeemRelayCredit
+// against the session's anchor budget, which pays min(count, budget) into the
+// relay's balance and burns the remainder (R2.14; core/credit/relay.go STATUS).
+// The session is removed and the pump closed first, so the single-settle property
+// (TestNoDoubleSettleReaperAndPump) holds whatever the ledger pays. Returns the
+// credit paid to the relay (0 if the session is unknown or the ledger is unset).
+// The M0 residual (design §6): the settlement log line carries NO durable or
+// cross-session-stable field — only the count, the paid credit, and the S5 reason
+// `anchored` (a constant, not a per-session value; the recorded goalpost move from
+// the interim's `no-anchor`, registered in cmd/silt/observable_contract.go).
 func (n *Node) SettleRelaySession(handle uint64) int64 {
 	sess, ok := n.relaySessions[handle]
 	if !ok {
@@ -113,7 +117,7 @@ func (n *Node) SettleRelaySession(handle uint64) int64 {
 	// per-session, non-durable values. No ephemeral or durable identity, no chain
 	// root — a relay operator's log must not carry a cross-session-stable field the
 	// settlement could be correlated on.
-	n.logf(ports.LogInfo, "relay session settled", "increments", sess.Count(), "credit", paid, "reason", "no-anchor")
+	n.logf(ports.LogInfo, "relay session settled", "increments", sess.Count(), "credit", paid, "reason", "anchored")
 	return paid
 }
 
@@ -173,12 +177,22 @@ func (n *Node) SettleRelaySessionForHandle(handle uint64, forwarded int64) {
 }
 
 // OpenRelaySessionRemote is the fetcher side of MsgRelayOpen: it sends the chain
-// commitment (root + S + funding) to relay and reports the session handle the relay
-// returns (or the refusal reason). The fetcher funds the chain under a fresh
-// ephemeral identity BEFORE calling this (client.WithdrawDemandTokenPrivately); this
-// node's authenticated identity on the wire IS that ephemeral key.
-func (n *Node) OpenRelaySessionRemote(relay ports.NodeID, root []byte, S int, funding FundingSource, done func(handle uint64, err error)) {
-	open := relaypay.RelayOpen{Root: root, S: S, Funding: int(funding)}
+// commitment (root + S + funding + the prepayment anchors, signed by this node's
+// ephemeral key over the commitment M) to relay and reports the session handle the
+// relay returns (or the refusal reason). This node IS the session's fresh ephemeral
+// identity: its signer's public key is the Fetcher field and hashes to the NodeID
+// the transport authenticates. The anchors were bought earlier by the fetcher's
+// DURABLE identity (AcquireRelayAnchors) and handed to this ephemeral; they are
+// bearer credentials, so any fresh ephemeral may spend them (cert §2.1 deviation 1).
+func (n *Node) OpenRelaySessionRemote(relay ports.NodeID, root []byte, S int, funding FundingSource,
+	anchors []relaypay.Anchor, done func(handle uint64, err error)) {
+	if n.signer == nil {
+		done(0, errRelayNoSigner)
+		return
+	}
+	pub := n.signer.Public().(ed25519.PublicKey)
+	sig := ed25519.Sign(n.signer, relayOpenCommitment(relay, root, S, anchors))
+	open := relaypay.RelayOpen{Root: root, S: S, Funding: int(funding), Anchors: anchors, Fetcher: []byte(pub), Sig: sig}
 	blob, err := open.Marshal()
 	if err != nil {
 		done(0, err)
@@ -195,6 +209,66 @@ func (n *Node) OpenRelaySessionRemote(relay ports.NodeID, root []byte, S int, fu
 		}
 		done(resp.Height, nil) // Height carries the session handle
 	})
+}
+
+// AcquireRelayAnchors buys k relay prepayment anchors from relay under THIS node's
+// DURABLE identity (R2.14; docs/design/pod.md §7.3.2 step 1). Each is a blind
+// withdrawal in the relay-anchor domain (blindtoken.BlindRelayAnchor) under the
+// relay's chain-committed key for the current epoch — the same wire and the same
+// issuer path as a demand token (MsgDemandTokenRequest → answerDemandTokenRequest →
+// ChargePublish on the RELAY's ledger), so no issuer-side code changed: the issuer
+// signs opaque blinded bytes and charges the fee, without seeing the serial or the
+// domain. The burn lands on the ledger that will settle, refusably (INV-RELAY-CONS
+// (iii)).
+//
+// The key is the PINNED one (DemandIssuerKeyset(relay) → Key(cur)): a fetcher never
+// withdraws under a key the chain does not commit, so a targeting relay gets a
+// denial, not a fingerprint (the delivery lane's rule, R0.4b). The D3 private
+// purchase path (an ephemeral paying with a publish credit) is NOT used for anchors
+// until F-4 (creditSpent durability, R2.13b) is closed — cert C-4.
+//
+// Sequential, one withdrawal at a time. done fires once with the anchors bought;
+// on an error it fires with the anchors bought BEFORE the failure and the error, so
+// a caller never loses value it paid for. k is bounded by
+// relaypay.MaxAnchorsPerSession — a session cannot present more.
+func (n *Node) AcquireRelayAnchors(rng io.Reader, relay ports.NodeID, k int, done func([]relaypay.Anchor, error)) {
+	if k <= 0 || k > relaypay.MaxAnchorsPerSession {
+		done(nil, errRelayTooManyAnchors)
+		return
+	}
+	ks := n.DemandIssuerKeyset(relay)
+	if ks == nil {
+		done(nil, ErrNoIssuerKey)
+		return
+	}
+	cur := n.chainEpoch()
+	pub := ks.Key(cur)
+	if pub == nil {
+		done(nil, ErrNoIssuerKey)
+		return
+	}
+	var got []relaypay.Anchor
+	var next func()
+	next = func() {
+		if len(got) >= k {
+			done(got, nil)
+			return
+		}
+		n.withdrawBlind(rng, relay, pub, cur, nil,
+			func(r io.Reader, p *rsa.PublicKey, e uint64, serial []byte) ([]byte, []byte, error) {
+				return blindtoken.BlindRelayAnchor(r, p, e, serial)
+			},
+			blindtoken.UnblindRelayAnchor,
+			func(serial, sig []byte, err error) {
+				if err != nil {
+					done(got, err)
+					return
+				}
+				got = append(got, relaypay.Anchor{Serial: serial, Sig: sig})
+				next()
+			})
+	}
+	next()
 }
 
 // SubmitRelayPay is the fetcher side of MsgRelayPay: reveal x_count to authorize the

@@ -19,13 +19,18 @@ package e2e
 //	(a) FORWARD INTEGRITY — the fetcher reconstructs the exact object the origin holds.
 //	(b) LIVE PAY-GATE — the relay stops forwarding when reveals stop (bounded stiff).
 //	(c) CONSERVED SETTLE + firewall — the operator BALANCE rose by exactly
-//	    count × increment, and Reputation() (standing) is UNCHANGED (Invariant-A).
+//	    min(count × increment, Σ face) of the anchors the fetcher's DURABLE identity
+//	    bought from the relay (R2.14), the ledger total moved by settled − Σ face ≤ 0
+//	    (the unconsumed remainder is burned, never re-minted), and Reputation()
+//	    (standing) is UNCHANGED (Invariant-A).
 //	(d) FREE RELAY STILL WORKS with payments on — a non-paying peer reaches the origin
 //	    through free relay under the same caps (the Option-B witness, D-POD-RELAY-COEXIST).
 //	(e) M0 LOG AUDIT — the settlement log line carries no cross-session-correlating field.
 
 import (
 	"bytes"
+	"crypto/rand"
+	"crypto/rsa"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -41,11 +46,32 @@ import (
 	"github.com/nerolabs/silt/adapters/relay"
 	"github.com/nerolabs/silt/adapters/tcpnet"
 	"github.com/nerolabs/silt/adapters/walltime"
+	"github.com/nerolabs/silt/core/chain"
 	"github.com/nerolabs/silt/core/credit"
+	"github.com/nerolabs/silt/core/demand"
 	"github.com/nerolabs/silt/core/node"
 	"github.com/nerolabs/silt/core/relaypay"
 	"github.com/nerolabs/silt/ports"
 )
+
+// anchorChainFor builds a chain whose genesis commits key as relay's demand key_0
+// (a v5 IssuerKeyReg). Each node gets its OWN instance of the same genesis so no
+// chain object is shared across event loops.
+func anchorChainFor(t *testing.T, relay *identity.Identity, key *rsa.PrivateKey) *chain.Chain {
+	t.Helper()
+	c := chain.New(chain.Config{Quorum: 1}, func(ports.NodeID) int64 { return 1 << 30 })
+	g := chain.Block{
+		Version:    chain.BlockVersionWitnessable,
+		Height:     0,
+		Entries:    []ports.Entry{{Root: ports.HashBytes([]byte("paid-relay-e2e-genesis"))}},
+		IssuerKeys: []chain.IssuerKeyReg{chain.SignIssuerKeyReg(relay.Signer(), 0, demand.KeyFingerprint(&key.PublicKey))},
+	}
+	chain.Sign(&g, relay.Signer())
+	if err := c.AppendGenesis(g); err != nil {
+		t.Fatalf("genesis committing the relay's key_0: %v", err)
+	}
+	return c
+}
 
 // capLog collects a node's log lines so the M0 audit can inspect the settlement line.
 type capLog struct {
@@ -76,18 +102,29 @@ func TestPaidRelaySessionEndToEnd(t *testing.T) {
 	}
 	const inc = relaypay.RelayIncrementBytes
 	const S = 6 // the object is S increments long
+	const k = 1 // anchors bought for the session; face = the fee = 50,000 increments
+	const fee = int64(50_000)
 
-	// ---- Loops + transports for the fetcher and relay NODES (the payment lane).
-	fLoop, rLoop := eventloop.New(), eventloop.New()
+	// ---- Loops + transports for the fetcher's DURABLE identity, the session
+	// EPHEMERAL and the relay NODES (the payment lane).
+	dLoop, fLoop, rLoop := eventloop.New(), eventloop.New(), eventloop.New()
+	go dLoop.Run()
 	go fLoop.Run()
 	go rLoop.Run()
+	t.Cleanup(dLoop.Stop)
 	t.Cleanup(fLoop.Stop)
 	t.Cleanup(rLoop.Stop)
 
-	fID := identity.FromSeed(9101) // fetcher's FRESH EPHEMERAL identity
+	dID := identity.FromSeed(9100) // fetcher's DURABLE identity — buys the anchors
+	fID := identity.FromSeed(9101) // fetcher's FRESH EPHEMERAL identity — spends them
 	rID := identity.FromSeed(9102) // relay operator
 	oID := identity.FromSeed(9103) // origin (holds the object)
 
+	dTr, err := tcpnet.New(dLoop, dID, "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { dTr.Close() })
 	fTr, err := tcpnet.New(fLoop, fID, "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -99,22 +136,120 @@ func TestPaidRelaySessionEndToEnd(t *testing.T) {
 	}
 	t.Cleanup(func() { rTr.Close() })
 
+	dNode := node.New(dID.NodeID(), node.DefaultConfig(), walltime.New(dLoop), dTr, memstore.New())
 	fNode := node.New(fID.NodeID(), node.DefaultConfig(), walltime.New(fLoop), fTr, memstore.New())
 	rNode := node.New(rID.NodeID(), node.DefaultConfig(), walltime.New(rLoop), rTr, memstore.New())
 
-	// The relay's ledger + captured log (for assertions c and e).
-	ledger := credit.New(50_000, 0)
-	// Seed the fetcher's paid-in blind credit (stands in for the blind withdrawal it
-	// already funded under its ephemeral identity — the conservation SOURCE).
-	ledger.RecordServe(fID.NodeID(), rID.NodeID(), ports.ChunkID{}, 20_000)
+	// The relay's chain-committed demand key_0 (R2.14: the anchor lane's precondition
+	// — the same v5 IssuerKeyReg the delivery lane needs). The durable fetcher holds
+	// its own replica of the same genesis and pins the relay's key against it.
+	relayKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rNode.SetSigner(rID.Signer())
+	rNode.EnableChain(anchorChainFor(t, rID, relayKey), rID.Signer())
+	rNode.SetDemandIssuerKey(rand.Reader, 0, relayKey)
+	dNode.SetSigner(dID.Signer())
+	dNode.EnableChain(anchorChainFor(t, rID, relayKey), dID.Signer())
+	fNode.SetSigner(fID.Signer()) // the ephemeral signs the session-open commitment
+
+	// The relay's ledger + captured log (for assertions c and e). The shipped grant
+	// funds the durable buyer's anchor purchase; nothing is pre-funded for the
+	// ephemeral, which this ledger never sees as an account.
+	ledger := credit.New(fee, 500_000)
+	ledger.Register(rID.NodeID())
+	ledger.Register(dID.NodeID())
 	rNode.SetLedger(ledger)
 	log := &capLog{}
 	rNode.SetLogger(log)
 	rNode.EnableRelayAccept()
 
-	// Route the fetcher ↔ relay so MsgRelayOpen / MsgRelayPay flow.
+	// Route durable ↔ relay (the anchor purchase) and ephemeral ↔ relay (the
+	// session) so MsgDemandTokenRequest / MsgRelayOpen / MsgRelayPay flow.
+	dTr.AddPeer(rID.NodeID(), rTr.Addr())
+	rTr.AddPeer(dID.NodeID(), dTr.Addr())
 	fTr.AddPeer(rID.NodeID(), rTr.Addr())
 	rTr.AddPeer(fID.NodeID(), fTr.Addr())
+
+	// The ledger is LOOP-ONLY (no mutex): every read is marshaled onto the relay
+	// node's loop and returned over a cap-1 reply channel — the production seam's
+	// single-thread discipline (Tester finding; a test-only fix, the Ledger stays
+	// mutex-free).
+	readBalance := func(id ports.NodeID) int64 {
+		ch := make(chan int64, 1)
+		rLoop.Post("check-balance", func() { ch <- ledger.Balance(id) })
+		return <-ch
+	}
+	readTotal := func() int64 {
+		ch := make(chan int64, 1)
+		rLoop.Post("check-total", func() {
+			var sum int64
+			for _, b := range ledger.Balances() {
+				sum += b
+			}
+			ch <- sum
+		})
+		return <-ch
+	}
+	readReputation := func() int64 {
+		ch := make(chan int64, 1)
+		rLoop.Post("check-reputation", func() { ch <- ledger.Reputation(rID.NodeID()) })
+		return <-ch
+	}
+	totalStart := readTotal()
+	dStart := readBalance(dID.NodeID())
+
+	// ---- The DURABLE identity pins the relay's committed key and buys k anchors
+	// over the wire: the real blind withdrawal, charged by ChargePublish on the
+	// RELAY's ledger (the paying ledger is the settling ledger).
+	pinned := make(chan error, 1)
+	dLoop.Post("pin-keys", func() {
+		dNode.FetchDemandIssuerKeys(rID.NodeID(), func(n int, e error) {
+			if e == nil && n != 1 {
+				e = fmt.Errorf("pinned %d keys, want 1", n)
+			}
+			pinned <- e
+		})
+	})
+	select {
+	case e := <-pinned:
+		if e != nil {
+			t.Fatalf("durable fetcher could not pin the relay's committed key_0: %v", e)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("pinning the relay's demand key timed out")
+	}
+	anchorsCh := make(chan []relaypay.Anchor, 1)
+	anchorErr := make(chan error, 1)
+	dLoop.Post("buy-anchors", func() {
+		dNode.AcquireRelayAnchors(rand.Reader, rID.NodeID(), k, func(a []relaypay.Anchor, e error) {
+			if e != nil {
+				anchorErr <- e
+				return
+			}
+			anchorsCh <- a
+		})
+	})
+	var anchors []relaypay.Anchor
+	select {
+	case anchors = <-anchorsCh:
+	case e := <-anchorErr:
+		t.Fatalf("AcquireRelayAnchors: %v", e)
+	case <-time.After(10 * time.Second):
+		t.Fatal("anchor purchase timed out")
+	}
+	if len(anchors) != k {
+		t.Fatalf("bought %d anchors, want %d", len(anchors), k)
+	}
+	if got := readBalance(dID.NodeID()); got != dStart-k*fee {
+		t.Fatalf("durable buyer's balance on the RELAY's ledger is %d after buying %d anchors, want %d − k·fee = %d", got, k, dStart, dStart-k*fee)
+	}
+	// Baselines for (c), captured BEFORE the session: the settle fires when the
+	// forward stream completes (the paid pump returns on the origin's EOF, not on
+	// the fetcher's close), so any later read races a paying settle.
+	repBefore := readReputation()
+	balStart := readBalance(rID.NodeID())
 
 	// ---- The relay.Server (the byte-forwarding lane) with the PAID SEAM installed.
 	relaySrv, err := relay.Serve("127.0.0.1:0", identity.FromSeed(9102), relay.Config{}, nil)
@@ -169,7 +304,7 @@ func TestPaidRelaySessionEndToEnd(t *testing.T) {
 	handleCh := make(chan uint64, 1)
 	errCh := make(chan error, 1)
 	fLoop.Post("open", func() {
-		fNode.OpenRelaySessionRemote(rID.NodeID(), chain.Root(), S, node.FundingEphemeralBlind, func(h uint64, e error) {
+		fNode.OpenRelaySessionRemote(rID.NodeID(), chain.Root(), S, node.FundingEphemeralBlind, anchors, func(h uint64, e error) {
 			if e != nil {
 				errCh <- e
 				return
@@ -261,40 +396,19 @@ func TestPaidRelaySessionEndToEnd(t *testing.T) {
 		t.Fatalf("forward object corrupted through the paid splice (got %d bytes)", len(got))
 	}
 
-	// Close the byte leg → the pump returns → the settler fires at close.
+	// Close the byte leg (the pump has already returned on the origin's EOF and
+	// settled; this is the fetcher's side of the teardown).
 	pipe.Close()
 
-	// ---- (c) CONSERVED SETTLE + firewall. The ledger is LOOP-ONLY by design (no
-	// mutex): the event-loop goroutine writes Balance via RedeemRelayCredit at settle.
-	// Reading it directly from THIS test goroutine would race that write (Tester
-	// finding). So every ledger read below is MARSHALED onto the relay node's loop and
-	// the value returned over a cap-1 reply channel — the same single-thread discipline
-	// the production seam uses. This is a TEST-ONLY fix; the production Ledger stays
-	// mutex-free (the loop-only invariant is not weakened).
-	readBalance := func() int64 {
-		ch := make(chan int64, 1)
-		rLoop.Post("check-balance", func() { ch <- ledger.Balance(rID.NodeID()) })
-		return <-ch
-	}
-	readReputation := func() int64 {
-		ch := make(chan int64, 1)
-		rLoop.Post("check-reputation", func() { ch <- ledger.Reputation(rID.NodeID()) })
-		return <-ch
-	}
+	// ---- (c) CONSERVED SETTLE + firewall. Wait for the S5 settlement line, then
+	// assert the balance rose by exactly min(count × increment, Σ face) over the
+	// pre-session baseline — the anchor-funded payout R2.14 restores (the R0.7
+	// interim's wantCredit = 0 is retired; cert
+	// R2.14-relay-prepayment-anchor-CONSTRUCTION-RESEARCH-CERTIFICATION-2026-09-04.md
+	// §9 build-checked) — and the ledger TOTAL moved by settled − k·fee ≤ 0 across
+	// purchase → open → pay → settle: the unconsumed face is burned, never re-minted.
+	wantCredit := min(int64(S)*relaypay.RelayIncrementCredit, k*fee)
 
-	// Capture standing BEFORE settle so we can assert it is unchanged, then wait for
-	// the settlement line and assert the balance did NOT move.
-	//
-	// R0.7 INTERIM (2026-09-03): the lane pays 0 until the R2.14 prepayment anchor
-	// lands, so wantCredit is 0 and the operator balance must be UNCHANGED by the
-	// settle (the pre-interim assertion of +S × RelayIncrementCredit was the
-	// RT-RELAY-1 mint, observed from the relay's side). Cert:
-	// silt-reviews/research/research-outcome/RELAY-LANE-per-node-ledger-mint-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md
-	// §9 step 1. R2.14 restores a positive, anchor-funded wantCredit here. Because
-	// 0 cannot be polled for, the settle is awaited on its S5 log line instead.
-	repBefore := readReputation()
-	balStart := readBalance()
-	wantCredit := int64(0)
 	deadline := time.Now().Add(5 * time.Second)
 	settled := func() bool {
 		for _, ln := range log.lines() {
@@ -307,8 +421,11 @@ func TestPaidRelaySessionEndToEnd(t *testing.T) {
 	for !settled() && time.Now().Before(deadline) {
 		time.Sleep(50 * time.Millisecond)
 	}
-	if bal := readBalance(); bal != balStart+wantCredit {
-		t.Fatalf("operator balance = %d after settle, want %d (unchanged: the R0.7 interim pays 0 until the R2.14 anchor) — got a payout of %d for %d increments", bal, balStart+wantCredit, bal-balStart, S)
+	if bal := readBalance(rID.NodeID()); bal != balStart+wantCredit {
+		t.Fatalf("operator balance = %d after settle, want %d (+min(count × inc, Σ face) = %d) — got a payout of %d for %d increments", bal, balStart+wantCredit, wantCredit, bal-balStart, S)
+	}
+	if delta := readTotal() - totalStart; delta != wantCredit-k*fee || delta > 0 {
+		t.Fatalf("ledger total moved by %d across purchase → settle, want settled − k·fee = %d (≤ 0; the remainder is burned)", delta, wantCredit-k*fee)
 	}
 	if rep := readReputation(); rep != repBefore {
 		t.Fatalf("relay Reputation() moved from %d to %d on a relay settlement — the Invariant-A firewall is breached (relay credit must be balance-only)", repBefore, rep)
@@ -328,8 +445,10 @@ func TestPaidRelaySessionEndToEnd(t *testing.T) {
 	}
 	for _, forbidden := range []string{
 		fID.NodeID().String(),            // fetcher ephemeral identity
+		dID.NodeID().String(),            // fetcher DURABLE identity (the anchor buyer)
 		rID.NodeID().String(),            // relay identity
 		hex.EncodeToString(chain.Root()), // chain root
+		hex.EncodeToString(anchors[0].Serial),
 	} {
 		if forbidden != "" && strings.Contains(settleLine, forbidden) {
 			t.Fatalf("settlement log line leaks a cross-session-correlating field %q: %q", forbidden, settleLine)
