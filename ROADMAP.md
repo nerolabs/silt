@@ -950,7 +950,23 @@ economy-off HEAD certifies a network nobody runs. Design:
   optional-interface shape (`core/node/demandrole.go`). Also routed to FP-2's crash-point sweep: the
   discarded directory-fsync error (a power cut between the rename and the directory entry becoming
   durable strands post-compaction appends on the new inode).**
-- **R2.13b · F-4 — `creditSpent` is in-memory only (a restart re-opens every held publish credit for a second spend on the shipped D3 path) — NEW 2026-09-04 (PE-CONFIRMED by reproduction; OWED as its own Rock between R2.13 and R2.10; NOT blocking R2.14).**
+- **R2.13b · F-4 — `creditSpent` is in-memory only (a restart re-opens every held publish credit for a second spend on the shipped D3 path) — BUILT 2026-09-04 (branch `builder/r2.13b-creditspent-durability`, PR pending); PE-CONFIRMED by reproduction; its own Rock between R2.13 and R2.10; NOT blocking R2.14.**
+  **What shipped:** `creditSpent` is durable behind a SECOND `guardstore.Disk` (`<store>/creditspent.log`,
+  opened wherever the publish issuer runs, attached then loaded before the node serves, refuse-to-start on a
+  load error) via the unchanged `ports.PaidSerialStore` (`Serial` = credit serial, `Epoch` = 0);
+  `Node.SetCreditSpentStore` / `LoadCreditSpent`; `tokenChargeFor` refuses while unloaded
+  (`errCreditGuardUnloaded`), refuses at the cap (`maxCreditSpent` = 65,536, `errCreditGuardFull`, never
+  evicts, no sweep — credits do not expire, so the cap is a DISCLOSED liveness ceiling), and Appends BEFORE
+  the in-memory mark; an Append error refuses the withdrawal (`errCreditStore`) with the credit unspent.
+  The false `tokenrole.go` comment ("a signing failure does not burn the credit") is corrected: `Issue`
+  charges before `SignBlinded`, so the crash direction is under-issue. Gates (RED-first, Tester):
+  `TestCreditSpentSurvivesIssuerRestart` (the PE reproduction; ablating the Append → RED),
+  `TestCreditSpentStoreFailureRefusesTheWithdrawal`, `TestCreditSpentCapRefusesNeverEvicts`,
+  `TestCreditSpentDiskStoreIsASecondFileBesidePaidSerials`, cmd/silt
+  `TestDaemonWiresTheCreditSpentStoreBesideThePaidSerialStore` (source gate: open < attach < load,
+  refuse-to-start); plus the ruling's `TestF4_UnloadedCreditStoreRefusesCreditBearingRequests` and the
+  `TestF4_AppendLandsBeforeSignBlinded` order pin. Still OWED: the epoch-binding close
+  (R-CREDITSPENT-UNBOUNDED — a credit-format change, research-gated).
   One fee, two tokens after an issuer restart: the durable `paidSerial` guard cannot catch it (it keys on
   the token serial; the attacker holds two tokens); bound = credits held × restarts; balance only, the
   γ→1/N firewall untouched. Fix shape (plain durability engineering, no cert): a SECOND `guardstore.Disk`

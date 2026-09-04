@@ -622,8 +622,14 @@ type Node struct {
 	// requester's durable identity — so the per-publish fee no longer links the
 	// standing key to the publish. The fee was charged in bulk at mint (a normal,
 	// charged token request blinded in the credit domain). creditSpent is this
-	// issuer's online double-spend set.
-	creditSpent map[string]bool
+	// issuer's online double-spend set. It is DURABLE (R2.13b, PE F-4): creditStore
+	// is a second guardstore file (creditspent.log) appended BEFORE the in-memory
+	// mark, restored by LoadCreditSpent at boot; while a store is attached and
+	// creditLoaded is false every credit-bearing request is refused. See
+	// tokenrole.go for the shape and the (disclosed) liveness cap.
+	creditSpent  map[string]bool
+	creditStore  ports.PaidSerialStore
+	creditLoaded bool
 	// tokenIssued makes token ISSUANCE idempotent under transport retries
 	// (research certification 2026-08-13, A2): a lost REPLY makes the requester
 	// re-present the SAME blinded serial (requestAttempt re-sends msg.Data

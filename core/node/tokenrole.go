@@ -11,6 +11,7 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"errors"
+	"fmt"
 	"io"
 	"sort"
 
@@ -193,15 +194,110 @@ func (n *Node) tokenChargeFor(from ports.NodeID, credit *ports.PublishCredit) (f
 	if len(credit.Serial) == 0 || !blindtoken.VerifyCredit(n.tokenIssuer.Public(), credit.Serial, credit.Sig) {
 		return nil, errCreditRefused // a credit was presented but does not verify
 	}
+	if n.creditStore != nil && !n.creditLoaded {
+		// A guard that does not yet know what it already spent must not spend.
+		return nil, errCreditGuardUnloaded
+	}
 	key := string(credit.Serial)
 	if n.creditSpent[key] {
 		return nil, errCreditRefused // double-spend
 	}
+	if len(n.creditSpent) >= maxCreditSpent {
+		return nil, errCreditGuardFull // refuse, never evict (see maxCreditSpent)
+	}
 	return func() error {
-		// Spend on settlement so a signing failure does not burn the credit.
+		// Spend on settlement: Issue runs this closure AFTER the input check and
+		// BEFORE SignBlinded, so a rejected spelling costs nothing, and the durable
+		// record lands before any signature exists. A crash between the append and
+		// the signature burns the credit without issuing a token — the under-issue
+		// direction (a lost fee, never a mint), the same direction the paid-serial
+		// guard chose. (The earlier comment here, "a signing failure does not burn
+		// the credit", was false: the charge precedes the signature.)
+		if n.creditStore != nil {
+			if err := n.creditStore.Append(ports.PaidSerial{Serial: credit.Serial}); err != nil {
+				return fmt.Errorf("%w: %w", errCreditStore, err) // not marked: the requester retries once the store heals
+			}
+		}
 		n.creditSpent[key] = true
 		return nil
 	}, nil
+}
+
+// R2.13b (PE ruling F-4, 2026-09-04): the credit-spent guard is DURABLE.
+//
+// creditSpent used to be process memory. A publish credit carries no epoch
+// (silt/blindcredit/fdh/v1 blinds the serial only), so its validity is the persisted
+// publish key's lifetime — unbounded — while the guard's memory ended at the next
+// restart. Every held credit re-opened for a second spend per restart: one 50,000
+// burn, two demand tokens with distinct serials, two conserved payouts (measured by
+// the PE). The durable paid-serial guard cannot catch it: it keys on the TOKEN serial
+// and the replay yields a fresh token.
+//
+// The store is a SECOND guardstore.Disk (creditspent.log) behind the unchanged
+// ports.PaidSerialStore — never a namespace in paidserials.log, whose Compact keeps
+// only the ledger's live paid serials and would evict every credit record at the
+// first epoch sweep. Record shape: Serial = credit serial, Epoch = 0 (credits are not
+// epoch-bound), Server = zero.
+//
+// There is NO sweep: credits never expire, so nothing is ever eligible to leave the
+// set. The cap below is therefore a LIVENESS ceiling, disclosed: an issuer that has
+// recorded maxCreditSpent spends refuses every further credit-bearing request
+// (errCreditGuardFull) and keeps serving credit-free ones. Refusal is the under-issue
+// direction; eviction would re-open the F-4 hole one record at a time. The structural
+// close — an epoch in the credit's FDH message so the set can sweep on the band
+// advance — is a credit-format change under the D3 certification and is its own,
+// research-gated Rock (R-CREDITSPENT-UNBOUNDED).
+var (
+	// errCreditStore: the durable append failed. The credit is NOT marked spent and
+	// no token is signed; the requester can retry once the store heals.
+	errCreditStore = errors.New("node: credit-spent store write failed — credit not spent, no token issued")
+	// errCreditGuardFull: the durable set holds maxCreditSpent records. Refuse the
+	// new credit; never evict a recorded one.
+	errCreditGuardFull = errors.New("node: credit-spent guard full — refusing credit-bearing requests (no eviction)")
+	// errCreditGuardUnloaded: a store is attached but LoadCreditSpent has not
+	// succeeded. Credit-bearing requests are refused; credit-free ones are served.
+	errCreditGuardUnloaded = errors.New("node: credit-spent guard attached but not loaded")
+)
+
+// maxCreditSpent is the guard's record cap — the same order as the paid-serial
+// guard's floor (core/credit maxPaidSerialFloor). A cap at MINT is impossible: the
+// issuer cannot count outstanding blind credits.
+const maxCreditSpent = 65_536
+
+// SetCreditSpentStore attaches the durable credit-spent store and marks the guard
+// UNLOADED. Until LoadCreditSpent succeeds every credit-bearing token request is
+// refused (errCreditGuardUnloaded); credit-free requests are unaffected.
+func (n *Node) SetCreditSpentStore(s ports.PaidSerialStore) {
+	n.creditStore = s
+	n.creditLoaded = false
+}
+
+// LoadCreditSpent restores the guard from its store: the RESTORE half of "a restart
+// is not an eviction". The daemon calls it before the node serves anything. A store
+// holding more than maxCreditSpent records is a refuse-to-start error, not a
+// truncation: dropping the surplus is the eviction the guard exists to prevent, and
+// no node writing through this guard can produce such a file.
+func (n *Node) LoadCreditSpent() error {
+	if n.creditStore == nil {
+		return nil
+	}
+	entries, err := n.creditStore.Load()
+	if err != nil {
+		return err
+	}
+	fresh := make(map[string]bool, len(entries))
+	for _, e := range entries {
+		if len(e.Serial) == 0 {
+			continue
+		}
+		fresh[string(e.Serial)] = true
+	}
+	if len(fresh) > maxCreditSpent {
+		return fmt.Errorf("node: persisted credit-spent guard holds %d entries, cap is %d", len(fresh), maxCreditSpent)
+	}
+	n.creditSpent = fresh
+	n.creditLoaded = true
+	return nil
 }
 
 // AcquireCredits mints `count` prepaid publish credits from issuer `v` (a normal,
