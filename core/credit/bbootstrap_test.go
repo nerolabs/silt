@@ -13,20 +13,45 @@ import (
 	"encoding/binary"
 	"math"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/nerolabs/silt/ports"
 )
 
-// bbClock is the injected observability clock under test: a ports.Clock whose reading
-// the test moves by hand, including backwards. AfterFunc is never used by the instrument
-// (it only ever calls Now), so it is a no-op.
-type bbClock struct{ now ports.Time }
+// bbClock is BOTH time sources the instrument reads (G-BB-2 and G-BB-4), in one double,
+// because the property under test is the RELATIONSHIP between them.
+//
+//   - `now` is the wall clock the age axis rides. A test moves it by hand, forwards and
+//     backwards, because in production it is adapters/walltime and can be stepped.
+//   - `monotonic()` is the independent source nothing can step. It is DERIVED as
+//     `now − stepped`, so it tracks the wall clock exactly for as long as the wall clock
+//     is honest, and stays put across a step.
+//
+// So a test moves honest elapsed time by assigning `now`, and models an NTP step by
+// calling `step`, which moves only the wall reading. AfterFunc is never used by the
+// instrument (it only ever calls Now), so it is a no-op.
+type bbClock struct {
+	now     ports.Time // the wall clock: steppable, and what every age is measured on
+	stepped int64      // the accumulated wall-clock STEP; monotonic time excludes it
+}
 
 func (c *bbClock) Now() ports.Time                         { return c.now }
 func (c *bbClock) AfterFunc(ports.Duration, func()) func() { return func() {} }
 
+// monotonic is elapsed time on the source an operator, an NTP correction or a container
+// cannot move: everything the wall clock has done MINUS everything it has jumped.
+func (c *bbClock) monotonic() int64 { return int64(c.now) - c.stepped }
+
+// step models an NTP step of d (forward for d > 0, backward for d < 0): the wall clock
+// jumps, real elapsed time does not.
+func (c *bbClock) step(d int64) {
+	c.now += ports.Time(d)
+	c.stepped += d
+}
+
 var _ ports.Clock = (*bbClock)(nil)
+var _ ports.MonotonicNanos = (&bbClock{}).monotonic
 
 const (
 	bbMinute = int64(60 * 1e9)
@@ -127,7 +152,7 @@ func TestR29aAgeAxisLivenessAndBoundaries(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			clk := &bbClock{now: 1_000}
 			l := New(50_000, 0)
-			l.SetObservabilityClock(clk)
+			l.SetObservabilityClock(clk, clk.monotonic)
 			fetched(l, id(1), reqID(0), 4096)
 			clk.now = ports.Time(1_000 + tc.adv)
 
@@ -178,7 +203,7 @@ func TestR29aCensusIsCompleteAndUncapped(t *testing.T) {
 	const R = 10_000 // 2.4× the retired MaxRequesterFetchRows
 	clk := &bbClock{now: 1}
 	l := New(50_000, 0)
-	l.SetObservabilityClock(clk)
+	l.SetObservabilityClock(clk, clk.monotonic)
 	srv := id(1)
 	for i := 0; i < R; i++ {
 		clk.now = ports.Time(1 + int64(i)*1e6) // arrivals spread over time
@@ -216,7 +241,7 @@ func TestR29aYoungCellsAreExactUnderASkewedPopulation(t *testing.T) {
 	const young, old = 8_000, 2_000
 	clk := &bbClock{now: 1}
 	l := New(50_000, 0)
-	l.SetObservabilityClock(clk)
+	l.SetObservabilityClock(clk, clk.monotonic)
 	srv := id(1)
 
 	// The old cohort registers first and fetches large.
@@ -263,7 +288,7 @@ func TestR29aSnapshotCostDoesNotGrowInR(t *testing.T) {
 	measure := func(R int) (allocs float64, bytesPerRun uint64) {
 		clk := &bbClock{now: 1}
 		l := New(50_000, 0)
-		l.SetObservabilityClock(clk)
+		l.SetObservabilityClock(clk, clk.monotonic)
 		srv := id(1)
 		for i := 0; i < R; i++ {
 			fetched(l, srv, reqID(i), int64(1+i))
@@ -294,19 +319,23 @@ func TestR29aSnapshotCostDoesNotGrowInR(t *testing.T) {
 
 // --- BB-9: the censoring invariant, and G-BB-4 ------------------------------------
 
-// TestR29aOccupiedAgeBucketsNeverExceedUptime is BB-9 / G-BB-4. The payload carries the
-// ledger's own uptime, and the highest OCCUPIED age bucket's edge must not exceed it.
-// The invariant cannot be violated by construction — a first-touch stamp is never
-// earlier than the ledger start — so a violation means a foreign tick source reached
-// firstSeenTick, or the clock stepped. The second half of this test manufactures exactly
-// that, so the assertion is proven to have teeth rather than to be vacuous.
+// TestR29aOccupiedAgeBucketsNeverExceedUptime is BB-9 / G-BB-4: the highest OCCUPIED age
+// bucket's edge must not exceed the censoring bound.
+//
+// THE GATE'S TEETH COME FROM THE BOUND BEING INDEPENDENT of the ages. Against the wall
+// clock this assertion was decorative — uptime and every age are two differences of the
+// same reading, so a step moved both and cancelled, and the only way to violate it was to
+// write the private stamp field by hand. Against the MONOTONE bound it fires on the
+// production path: arm 2 below steps nothing but the wall clock, through the real API,
+// and the assertion goes true. The foreign-tick arm is kept because it is a different
+// hazard (a stamp in the wrong UNIT, not a clock that moved) and it still has teeth.
 func TestR29aOccupiedAgeBucketsNeverExceedUptime(t *testing.T) {
 	// The ledger is injected at a wall-clock-magnitude instant, which is what a real
 	// daemon does, and runs for three hours.
 	const boot = 10 * bbDay
 	clk := &bbClock{now: ports.Time(boot)}
 	l := New(50_000, 0)
-	l.SetObservabilityClock(clk)
+	l.SetObservabilityClock(clk, clk.monotonic)
 	fetched(l, id(1), reqID(0), 1<<20)
 	clk.now = ports.Time(boot + 3*bbHour)
 
@@ -321,12 +350,32 @@ func TestR29aOccupiedAgeBucketsNeverExceedUptime(t *testing.T) {
 		t.Fatalf("ageExceedsUptime set on an honest run")
 	}
 
-	// TEETH: plant a stamp from a FOREIGN tick source in a different unit — the real
+	// TEETH 1, ON THE PRODUCTION PATH: an 8-day forward NTP step. Nothing here reaches
+	// into the ledger — the wall clock jumps and that is all. The 3-hour-old identity is
+	// now reported as 8 days old and lands in the top bucket, while the process has
+	// genuinely been alive for 3 hours, so an occupied bucket exceeds the bound.
+	clk.step(8 * bbDay)
+	stepped := l.BBootstrapSnapshot()
+	if !stepped.AgeExceedsUptime {
+		t.Fatalf("ageExceedsUptime NOT set after an 8-day forward wall-clock step: max occupied edge %d, wall uptime %d, monotone uptime %d — the censoring assertion is comparing the wall clock against itself", stepped.MaxOccupiedAgeEdgeNanos, stepped.UptimeNanos, stepped.MonotonicUptimeNanos)
+	}
+	if stepped.MonotonicUptimeNanos != 3*bbHour {
+		t.Fatalf("monotonicUptimeNanos = %d after a wall-clock step, want %d — the second source must not move with the wall clock or it is not a second source", stepped.MonotonicUptimeNanos, 3*bbHour)
+	}
+	if stepped.CensoringBoundNanos() != 3*bbHour {
+		t.Fatalf("censoring bound = %d, want %d (the monotone uptime)", stepped.CensoringBoundNanos(), 3*bbHour)
+	}
+	clk.step(-8 * bbDay) // put the clock back; the arms below are about a foreign stamp
+
+	// TEETH 2: plant a stamp from a FOREIGN tick source in a different unit — the real
 	// hazard, since RecordBondChallenge also writes firstSeenTick, from the bond
 	// auditor's own clock. A tick of 1 against a wall-clock ledger makes the identity
 	// look ten days old on a three-hour-old process. The assertion must fire.
 	l.accounts[reqID(0)].firstSeenTick = 1
 	h = l.BBootstrapSnapshot()
+	if h.ClockSuspect {
+		t.Fatalf("clockSuspect set with the wall clock restored — a foreign stamp is not a clock step and the two must stay distinguishable (skew %d)", h.ClockSkewNanos)
+	}
 	if !h.AgeExceedsUptime {
 		t.Fatalf("ageExceedsUptime NOT set after a stamp older than the ledger start: max occupied edge %d, uptime %d — the censoring assertion is vacuous", h.MaxOccupiedAgeEdgeNanos, h.UptimeNanos)
 	}
@@ -345,7 +394,7 @@ func TestR29aOccupiedAgeBucketsNeverExceedUptime(t *testing.T) {
 func TestR29aRestartIsVisibleNotSilent(t *testing.T) {
 	clk := &bbClock{now: 1}
 	l := New(50_000, 0)
-	l.SetObservabilityClock(clk)
+	l.SetObservabilityClock(clk, clk.monotonic)
 	for i := 0; i < 100; i++ {
 		fetched(l, id(1), reqID(i), 1<<20)
 	}
@@ -358,7 +407,7 @@ func TestR29aRestartIsVisibleNotSilent(t *testing.T) {
 	// "Restart": the process is gone, so the ledger is gone. Only the wall clock
 	// carries over.
 	restarted := New(50_000, 0)
-	restarted.SetObservabilityClock(clk)
+	restarted.SetObservabilityClock(clk, clk.monotonic)
 	after := restarted.BBootstrapSnapshot()
 	if after.Requesters != 0 || after.Aged != 0 || sumCells(after) != 0 {
 		t.Fatalf("after restart: requesters = %d aged = %d cells = %d, want 0/0/0", after.Requesters, after.Aged, sumCells(after))
@@ -381,7 +430,7 @@ func TestR29aRestartIsVisibleNotSilent(t *testing.T) {
 func TestR29aBBootstrapSnapshotWritesNothing(t *testing.T) {
 	clk := &bbClock{now: 500}
 	l := New(50_000, 500_000)
-	l.SetObservabilityClock(clk)
+	l.SetObservabilityClock(clk, clk.monotonic)
 	for i := 0; i < 50; i++ {
 		fetched(l, id(1), reqID(i), int64(1<<uint(i%20)))
 	}
@@ -424,10 +473,10 @@ func TestR29aBackwardClockStepClampsAndSaysSo(t *testing.T) {
 		const boot = 10 * bbDay
 		clk := &bbClock{now: ports.Time(boot)}
 		l := New(50_000, 0)
-		l.SetObservabilityClock(clk)
+		l.SetObservabilityClock(clk, clk.monotonic)
 		clk.now = ports.Time(boot + 2*bbHour)
-		fetched(l, id(1), reqID(0), 1<<20)  // stamped two hours into the run
-		clk.now = ports.Time(boot + bbHour) // …then the clock steps back one hour
+		fetched(l, id(1), reqID(0), 1<<20) // stamped two hours into the run
+		clk.step(-bbHour)                  // …then the WALL clock steps back one hour
 
 		h := l.BBootstrapSnapshot()
 		if h.UptimeNanos != bbHour {
@@ -445,9 +494,9 @@ func TestR29aBackwardClockStepClampsAndSaysSo(t *testing.T) {
 	// negative too. It is clamped at zero, never underflowed.
 	clk := &bbClock{now: ports.Time(10 * bbDay)}
 	l := New(50_000, 0)
-	l.SetObservabilityClock(clk)
+	l.SetObservabilityClock(clk, clk.monotonic)
 	fetched(l, id(1), reqID(0), 1<<20)
-	clk.now = ports.Time(9 * bbDay)
+	clk.step(-bbDay)
 
 	h := l.BBootstrapSnapshot()
 	if !h.ClockStepBack {
@@ -475,6 +524,139 @@ func TestR29aBackwardClockStepClampsAndSaysSo(t *testing.T) {
 	}
 }
 
+// TestR29aWallClockStepIsDetectedNotAbsorbed is BB-13's substance and the regression for
+// the defect the blind review measured in the reviewed build: BOTH published uptimes came
+// off the same wall clock, so a step moved every age AND the bound they were checked
+// against by the same amount and cancelled. Measured then: an 8-day forward step put a
+// 30-second-old identity in the ">7 days" bucket on a 60-second-old process, raised no
+// flag, and let the run precondition accept a 7-day window. A 2 h 50 m backward step
+// reshaped every bucket and raised no flag either, because ClockStepBack only fires when
+// a subtraction crosses zero and 2 h 50 m is smaller than the ages it moved.
+//
+// The three arms below are the three states the artifact must be able to tell apart: a
+// clean run, a forward step and a backward step. They are driven ONLY through the wall
+// clock — nothing writes a private field, and nothing reaches past the public API.
+func TestR29aWallClockStepIsDetectedNotAbsorbed(t *testing.T) {
+	// The PE's fixture, exactly: a 30-second-old identity on a 60-second-old process.
+	const boot = 10 * bbDay
+	const week = 7 * bbDay
+	build := func() (*Ledger, *bbClock) {
+		clk := &bbClock{now: ports.Time(boot)}
+		l := New(50_000, 0)
+		l.SetObservabilityClock(clk, clk.monotonic)
+		// TWO identities, in two different age buckets. One is the PE's 30-second-old
+		// fixture; the other arrives at the injection instant and is 60 s old at the
+		// snapshot. Two occupied buckets are what keep the CLEAN arm out of the
+		// degeneracy refusal, so the arm tests the clock and nothing else.
+		fetched(l, id(1), reqID(1), 1<<10)  // age 60 s at the snapshot → bucket 2
+		clk.now = ports.Time(boot + 30*1e9) // 30 s in, the second identity arrives
+		fetched(l, id(1), reqID(0), 1<<20)  // age 30 s at the snapshot → bucket 1
+		clk.now = ports.Time(boot + 60*1e9) // …and the snapshot is taken at 60 s
+		return l, clk
+	}
+
+	// ARM 1 — CLEAN. The two sources agree, every flag is down, and a W the process has
+	// actually covered is accepted.
+	clean, _ := build()
+	h := clean.BBootstrapSnapshot()
+	if h.MonotonicSource != "injected" {
+		t.Fatalf("monotonicSource = %q, want \"injected\" — with no second source the cross-check is a self-comparison", h.MonotonicSource)
+	}
+	if h.ClockSkewNanos != 0 || h.ClockSuspect || h.ClockStepBack || h.AgeExceedsUptime {
+		t.Fatalf("clean run raised a flag: skew %d, suspect %v, stepBack %v, ageExceedsUptime %v", h.ClockSkewNanos, h.ClockSuspect, h.ClockStepBack, h.AgeExceedsUptime)
+	}
+	if h.UptimeNanos != 60*1e9 || h.MonotonicUptimeNanos != 60*1e9 {
+		t.Fatalf("clean uptimes = wall %d / monotone %d, want both 60 s", h.UptimeNanos, h.MonotonicUptimeNanos)
+	}
+	if bad := BBootstrapRunPrecondition(BBootstrapHistogram{}, h, 30*1e9); len(bad) != 0 {
+		t.Fatalf("a clean 60-second run was refused for a 30-second W: %v", bad)
+	}
+
+	// ARM 2 — an 8-DAY FORWARD STEP. The 30-second-old identity is reported as 8 days
+	// old and lands in the top bucket; real elapsed time is still 60 seconds.
+	fwdL, fwdClk := build()
+	fwdClk.step(8 * bbDay)
+	fwd := fwdL.BBootstrapSnapshot()
+	if fwd.Cells[BBootstrapAgeBuckets-1][bbootstrapByteBin(1<<20)] != 1 {
+		t.Fatalf("the forward step did not reshape the age axis, so this arm is not testing what it claims: row 7 = %v", nonZero(fwd.Cells[BBootstrapAgeBuckets-1]))
+	}
+	if !fwd.ClockSuspect {
+		t.Fatalf("clockSuspect NOT set after an 8-day forward step: wall uptime %d, monotone uptime %d, skew %d — the step was absorbed silently, which is exactly what BB-13 forbids", fwd.UptimeNanos, fwd.MonotonicUptimeNanos, fwd.ClockSkewNanos)
+	}
+	if fwd.ClockSkewNanos != 8*bbDay {
+		t.Fatalf("clockSkewNanos = %d after an 8-day forward step, want %d — the artifact must carry the SIZE of the step, not just a bit", fwd.ClockSkewNanos, 8*bbDay)
+	}
+	if !fwd.AgeExceedsUptime {
+		t.Fatalf("ageExceedsUptime NOT set after an 8-day forward step: max occupied edge %d against a %d-ns monotone bound", fwd.MaxOccupiedAgeEdgeNanos, fwd.MonotonicUptimeNanos)
+	}
+	if fwd.ClockStepBack {
+		t.Fatalf("clockStepBack set on a FORWARD step — the two directions must stay distinguishable")
+	}
+	// And the run is refused for a 7-day window, on the ground that matters: the process
+	// has been alive for 60 seconds however many days the wall clock claims.
+	bad := BBootstrapRunPrecondition(BBootstrapHistogram{}, fwd, week)
+	if !bbReasonContains(bad, "uptime below W") {
+		t.Fatalf("BBootstrapRunPrecondition did not refuse a 7-day W on a 60-second-old process after an 8-day forward step; reasons: %v", bad)
+	}
+	if !bbReasonContains(bad, "diverged from the monotone source") {
+		t.Fatalf("BBootstrapRunPrecondition did not report the divergence; reasons: %v", bad)
+	}
+
+	// ARM 3 — a 2 h 50 m BACKWARD STEP, smaller than the ages it moves, so no subtraction
+	// crosses zero and ClockStepBack stays down. This is the arm the reviewed build had
+	// no detector for at all.
+	backL, backClk := build()
+	backClk.now = ports.Time(boot + 3*bbHour) // let the identity reach three hours old
+	before := backL.BBootstrapSnapshot()
+	backClk.step(-(2*bbHour + 50*bbMinute))
+	back := backL.BBootstrapSnapshot()
+	if before.MaxOccupiedAgeEdgeNanos == back.MaxOccupiedAgeEdgeNanos {
+		t.Fatalf("the backward step did not reshape the age axis, so this arm is not testing what it claims: occupied edge %d before and after", back.MaxOccupiedAgeEdgeNanos)
+	}
+	if !back.ClockSuspect {
+		t.Fatalf("clockSuspect NOT set after a 2 h 50 m backward step: wall uptime %d, monotone uptime %d, skew %d — a step smaller than the ages it moves is exactly the silent reshaping BB-13 forbids", back.UptimeNanos, back.MonotonicUptimeNanos, back.ClockSkewNanos)
+	}
+	if back.ClockSkewNanos != -(2*bbHour + 50*bbMinute) {
+		t.Fatalf("clockSkewNanos = %d after a 2 h 50 m backward step, want %d", back.ClockSkewNanos, -(2*bbHour + 50*bbMinute))
+	}
+	if back.ClockStepBack {
+		t.Fatalf("clockStepBack set by a backward step that crossed no zero — it would then be reporting the wrong thing, and the two flags must stay distinguishable")
+	}
+	if back.AgeExceedsUptime {
+		t.Fatalf("ageExceedsUptime set by a BACKWARD step — a backward step deflates ages, so the censoring bound is not the arm that catches it; the two failures must stay distinguishable")
+	}
+	if bad := BBootstrapRunPrecondition(BBootstrapHistogram{}, back, bbHour); !bbReasonContains(bad, "diverged from the monotone source") {
+		t.Fatalf("BBootstrapRunPrecondition did not refuse a run taken across a 2 h 50 m backward step; reasons: %v", bad)
+	}
+
+	// The three states are pairwise DISTINGUISHABLE on the wire, which is the property a
+	// reader of the artifact actually needs: "something moved" is not a finding.
+	sig := func(x BBootstrapHistogram) [4]int64 {
+		b := func(v bool) int64 {
+			if v {
+				return 1
+			}
+			return 0
+		}
+		return [4]int64{b(x.ClockSuspect), b(x.AgeExceedsUptime), b(x.ClockStepBack), x.ClockSkewNanos}
+	}
+	if sig(h) == sig(fwd) || sig(h) == sig(back) || sig(fwd) == sig(back) {
+		t.Fatalf("clean %v, forward %v and backward %v are not pairwise distinguishable", sig(h), sig(fwd), sig(back))
+	}
+}
+
+// bbReasonContains reports whether any refusal reason mentions sub. The precondition
+// returns REASONS, not a bool, so a gate can assert the run was refused for the right
+// ground rather than for any ground at all.
+func bbReasonContains(reasons []string, sub string) bool {
+	for _, r := range reasons {
+		if strings.Contains(r, sub) {
+			return true
+		}
+	}
+	return false
+}
+
 // --- BB-14: the handoff precondition, one command --------------------------------
 
 // TestR29aRunPreconditionAcceptsOnlyAValidRun is BB-14, made executable BEFORE the
@@ -486,7 +668,7 @@ func TestR29aRunPreconditionAcceptsOnlyAValidRun(t *testing.T) {
 	build := func(uptime int64, arrivals []int64) BBootstrapHistogram {
 		clk := &bbClock{now: 1}
 		l := New(50_000, 0)
-		l.SetObservabilityClock(clk)
+		l.SetObservabilityClock(clk, clk.monotonic)
 		for i, at := range arrivals {
 			clk.now = ports.Time(1 + at)
 			fetched(l, id(1), reqID(i), int64(4096*(i+1)))
@@ -517,6 +699,40 @@ func TestR29aRunPreconditionAcceptsOnlyAValidRun(t *testing.T) {
 	// Everything in age bucket 0 — a degenerate axis that would fit nothing.
 	if bad := BBootstrapRunPrecondition(prev, build(0, []int64{0, 0, 0}), 0); len(bad) == 0 {
 		t.Fatalf("a degenerate age axis (every identity in bucket 0) was accepted")
+	}
+
+	// DEGENERACY, THE LIVE CASE. Bucket 0 is an age of EXACTLY 0 ns, which a wall clock
+	// essentially never produces, so a bucket-0-only rule cannot fire on the machine that
+	// will run this and that arm was decorative. The live degeneracy is "every counted
+	// identity in ONE bucket": three identities that arrive together and are all three
+	// hours old at the snapshot pile into bucket 4, bucket 0 is EMPTY, and the age axis
+	// carries no variation for a conditional quantile to read.
+	oneBucket := build(3*bbHour, []int64{0, 0, 0})
+	if sumCells(oneBucket) != 3 || len(nonZero(oneBucket.Cells[0])) != 0 {
+		t.Fatalf("the one-bucket fixture is not what this arm claims: aged %d, bucket 0 row = %v", oneBucket.Aged, nonZero(oneBucket.Cells[0]))
+	}
+	if got := BBootstrapRunPrecondition(prev, oneBucket, bbHour); !bbReasonContains(got, "ONE age bucket") {
+		t.Fatalf("a degenerate age axis with every identity in bucket 4 (NOT bucket 0) was accepted: %v", got)
+	}
+
+	// NO MONOTONE SOURCE. Without a second, independent clock the censoring assertion and
+	// the skew check are comparisons of the wall clock against itself, so every clock arm
+	// above is decorative and the configuration is refused outright.
+	noMono := func() BBootstrapHistogram {
+		clk := &bbClock{now: 1}
+		l := New(50_000, 0)
+		l.SetObservabilityClock(clk, nil)
+		fetched(l, id(1), reqID(0), 4096)
+		clk.now = ports.Time(1 + bbMinute)
+		fetched(l, id(1), reqID(1), 8192)
+		clk.now = ports.Time(1 + 6*bbHour)
+		return l.BBootstrapSnapshot()
+	}()
+	if noMono.MonotonicSource != "none" || noMono.CensoringBoundNanos() != noMono.UptimeNanos {
+		t.Fatalf("the no-monotone fixture is not what this arm claims: source %q, bound %d, wall uptime %d", noMono.MonotonicSource, noMono.CensoringBoundNanos(), noMono.UptimeNanos)
+	}
+	if got := BBootstrapRunPrecondition(prev, noMono, bbHour); !bbReasonContains(got, "no monotone source") {
+		t.Fatalf("a run with no monotone source was accepted: %v", got)
 	}
 }
 
@@ -575,7 +791,7 @@ func TestR29aUnstampedRequestersAreCountedNotAged(t *testing.T) {
 	srv := id(1)
 	fetched(l, srv, reqID(0), 1<<20) // registered with NO clock: unstamped
 	clk := &bbClock{now: ports.Time(bbDay)}
-	l.SetObservabilityClock(clk)
+	l.SetObservabilityClock(clk, clk.monotonic)
 	fetched(l, srv, reqID(1), 1<<20) // registered after injection: stamped
 	clk.now = ports.Time(bbDay + bbHour)
 
@@ -604,7 +820,7 @@ func TestR29aUnstampedRequestersAreCountedNotAged(t *testing.T) {
 func TestR29aFirstTouchIsStampedOnceAtRegister(t *testing.T) {
 	clk := &bbClock{now: 1_000}
 	l := New(50_000, 0)
-	l.SetObservabilityClock(clk)
+	l.SetObservabilityClock(clk, clk.monotonic)
 	r := reqID(0)
 	fetched(l, id(1), r, 1<<10)
 	first := l.accounts[r].firstSeenTick

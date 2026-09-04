@@ -659,7 +659,18 @@ func cmdDaemon(args []string) error {
 	// standing calculation reads — and injecting it here means an operator who flips
 	// -bbootstrap on at the next restart gets a stamped population from that boot's
 	// first touch rather than a ledger full of unstamped accounts.
-	ledger.SetObservabilityClock(clk)
+	//
+	// TWO SOURCES, ONE CALL (G-BB-4). clk is a wall clock — adapters/walltime returns
+	// time.Now().UnixNano(), which discards Go's monotonic reading — so uptime and every
+	// age come off one steppable reading and a step cancels out of the comparison
+	// between them. obsStart is a time.Time, which DOES carry the monotonic reading, and
+	// time.Since reads it, so the closure below is elapsed time nothing can step: not an
+	// NTP correction, not an operator, not a container clock. Nothing is measured on it;
+	// it exists so the wall clock's divergence from it is visible in the artifact.
+	// Captured here rather than reusing the UI's `started` because it must be stamped in
+	// the same call as the wall origin, and the UI server does not exist yet.
+	obsStart := time.Now()
+	ledger.SetObservabilityClock(clk, func() int64 { return int64(time.Since(obsStart)) })
 	// R0.4b re-break F2: the cross-server double-redeem guard is DURABLE, and it is
 	// restored HERE — before the node exists, so before any receipt can be accepted. A
 	// restart used to evict every guarded token, in-window or not, and the identical

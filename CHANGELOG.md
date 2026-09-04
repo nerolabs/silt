@@ -27,6 +27,42 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 
 ### Changed
+- **R2.9a — the `B_bootstrap` clock cross-check now compares TWO INDEPENDENT time sources, so
+  an NTP step is detected instead of cancelling out (blocker F-1 from the blind PE review of
+  `f0234be`).** `UptimeNanos` and every age were both differences taken from one reading of one
+  `ports.Clock`, and `adapters/walltime` returns `time.Now().UnixNano()`, which discards Go's
+  monotonic reading — so a step landed in the minuend of both and **cancelled out of the
+  comparison between them**. The certified G-BB-4 assertion "largest occupied age edge ≤ uptime"
+  was therefore invariant under exactly the event it existed to detect, and the code comment
+  saying it "cannot be violated by construction" was the defect rather than the proof. Measured
+  in the reviewed build: an 8-day forward step put a **30-second-old identity in the ">7 days"
+  bucket**, reported 8 days of uptime, raised no flag, and made `BBootstrapRunPrecondition`
+  **accept a 7-day window on a 60-second-old process**; a 2 h 50 m backward step reshaped every
+  bucket unflagged, because `ClockStepBack` fires only when a subtraction crosses zero.
+  **The fix:** `SetObservabilityClock` takes a second source, `ports.MonotonicNanos`, and stamps
+  both origins in ONE call so "same instant" is structural rather than a call-ordering hope. The
+  daemon supplies a closure over `time.Since` on a `time.Time`, which carries Go's monotonic
+  reading; `core` and `ports` may not import `time` (`internal/depcheck`), so it arrives injected,
+  the same shape `SetEpochSource` uses. Nothing is measured on it — its only job is to make a step
+  VISIBLE. New payload fields: `monotonicSource`, `monotonicUptimeNanos` (**the real censoring
+  bound**), `clockSkewNanos` (signed, taken from the raw wall delta before the clamp, so a step
+  past the ledger start reports its full size and the two directions stay distinguishable) and
+  `clockSuspect` (`|skew| ≥ 60 s` — DERIVED as the width of the narrowest positive-width age
+  bucket, so below it a divergence cannot displace an identity by a whole bucket). The G-BB-4
+  assertion and the precondition's W arm now read `CensoringBoundNanos()`, so **BB-9 fires on the
+  production path** and a run whose *monotone* uptime does not cover W is refused whatever the
+  wall clock says. With no monotone source injected the check degenerates back into a
+  self-comparison, and the precondition refuses that configuration outright rather than reading a
+  zero. **BB-14's degeneracy arm was dead** on a wall clock (it required an age of exactly 0 ns)
+  and now fires on the live case: every counted identity in ONE bucket, whichever bucket, because
+  the estimand is a quantile *conditioned* on age. Also corrected: the false payload-contract
+  comment (`Aged + Unstamped == Requesters` holds only while the age axis is live), the
+  `ClockStepBack` comment (it is not the step detector), and the deliberation's "absorbed by
+  clamping and reported, never silently reshaped", which was measured false. Six controlled
+  ablations, each reverted, redden a named arm: the censoring bound back to wall uptime, the skew
+  detector off, the precondition W arm back to wall uptime, degeneracy back to bucket-0-only, the
+  injection literal removed, and the injection moved after `nd.SetLedger`.
+  Deliberation: `docs/thinking/2026-09-04-r29a-bbootstrap-histogram.md` ("Round 2").
 - **R2.9a — the `B_bootstrap` instrument is a FULL-CENSUS COUNT HISTOGRAM, not a row export
   (research-CERTIFIED 2026-09-04, verdict GATED on the shipped shape; a replacement of the
   shape and the clock, not a patch).** The instrument `D-R2.9-DIRECTION` sentence 4 makes a
@@ -74,10 +110,16 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   R = 100,000); `TestR29aWirePayloadCarriesNoJoinKey` (BB-7, a CLOSED wire key set plus a
   hex/byte-sum scan of the block's own bytes);
   `TestR29aStatusOmitsTheBlockUnlessAsked` + `TestR29aDaemonDefaultsTheInstrumentOff`
-  (BB-8, runtime and source gate); `TestR29aOccupiedAgeBucketsNeverExceedUptime`
-  (BB-9/G-BB-4, with a foreign-tick teeth arm); `TestR29aRestartIsVisibleNotSilent` (BB-10);
-  `TestR29aBackwardClockStepClampsAndSaysSo` (BB-13, two arms — the isolating one steps the
-  clock back to after the ledger start but before the stamp);
+  (BB-8, runtime and source gate, the source gate split in two so the clock assertion
+  carries its own honest `UNGATED:` residual plus an injection-ORDER check);
+  `TestR29aOccupiedAgeBucketsNeverExceedUptime` (BB-9/G-BB-4, one production-path arm — an
+  8-day forward wall-clock step — and one foreign-tick arm);
+  `TestR29aRestartIsVisibleNotSilent` (BB-10);
+  `TestR29aWallClockStepIsDetectedNotAbsorbed` and
+  `TestR29aWirePayloadReportsAClockStep` (BB-13, clean / forward / backward, pairwise
+  distinguishable, at the ledger and on the wire);
+  `TestR29aBackwardClockStepClampsAndSaysSo` (BB-13's clamping arms — the isolating one
+  steps the clock back to after the ledger start but before the stamp);
   `TestR29aRunPreconditionAcceptsOnlyAValidRun` (BB-14);
   `TestR29aByteBinMatchesTheClosedForm`, `TestR29aUnstampedRequestersAreCountedNotAged`,
   `TestR29aFirstTouchIsStampedOnceAtRegister`,

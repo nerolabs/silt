@@ -23,7 +23,11 @@ func r29aNode(t *testing.T) (*Node, *credit.Ledger, *simclock.Scheduler) {
 	ledger := credit.New(50_000, 0)
 	// G-BB-2: the age axis rides an INJECTED ports.Clock, so a sim passes its own
 	// scheduler and the whole instrument stays deterministic and replayable by seed.
-	ledger.SetObservabilityClock(sched)
+	// G-BB-4's second source is the SAME scheduler here, deliberately: in a sim there is
+	// no wall clock to step, so the two agree by construction and the skew is a constant
+	// zero. The step behaviour is driven where the step is possible — core/credit's
+	// BB-13 arms, which move the two sources apart by hand.
+	ledger.SetObservabilityClock(sched, func() int64 { return int64(sched.Now()) })
 	nd := New(ident.NodeID(), DefaultConfig(), sched, net.Endpoint(ident.NodeID()), memstore.New())
 	nd.SetLedger(ledger)
 	return nd, ledger, sched
@@ -105,6 +109,8 @@ func TestR29aNodeSnapshotIsTheHistogramWithNoIdentity(t *testing.T) {
 		"Unstamped": true, "UptimeNanos": true, "MaxOccupiedAgeEdgeNanos": true,
 		"ClockStepBack": true, "AgeExceedsUptime": true, "AgeEdgeNanos": true,
 		"BinsPerOctave": true, "ByteBins": true, "ByteBinRule": true, "Cells": true,
+		"MonotonicSource": true, "MonotonicUptimeNanos": true,
+		"ClockSkewNanos": true, "ClockSuspect": true,
 	}
 	for i := 0; i < rt.NumField(); i++ {
 		f := rt.Field(i)

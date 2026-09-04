@@ -38,8 +38,22 @@ package credit
 // machine that will run this, so an epoch-aged export would publish a constant. A ledger
 // with no clock injected publishes NO age-conditioned cells at all — never an all-zero
 // age column that a reader could mistake for a genuinely young population.
+//
+// TWO CLOCKS, AND WHY (G-BB-4 / BB-13). The injected ports.Clock is a WALL clock in
+// production: adapters/walltime returns time.Now().UnixNano(), which discards Go's
+// monotonic reading. Uptime and every age are both differences taken from ONE reading of
+// it, so a step in that clock moves both minuends and CANCELS out of any comparison
+// between them. The first build asserted "largest occupied age edge <= uptime" against
+// that wall uptime and called it unviolatable by construction; measured, an 8-day forward
+// step put a 30-second-old identity in the ">7 days" bucket, reported 8 days of uptime,
+// raised no flag, and made the run precondition accept a 60-second-old process for a
+// 7-day window. That is the silent age reshaping BB-13 forbids, and it is why a SECOND,
+// INDEPENDENT source is injected alongside the clock: ports.MonotonicNanos, which nothing
+// can step. The divergence between them IS the step. It is published as a number
+// (ClockSkewNanos) as well as a flag, so an analyst can judge it against their own W.
 
 import (
+	"fmt"
 	"math/bits"
 
 	"github.com/nerolabs/silt/ports"
@@ -97,6 +111,21 @@ const (
 	bbQuarter3 = uint64(7755900482342532096)
 )
 
+// bbClockSkewToleranceNanos is how far the wall clock may diverge from the monotone
+// source before the artifact declares the run suspect. It is ONE MINUTE, and the number
+// is DERIVED rather than picked: one minute is the width of the narrowest positive-width
+// age bucket (bucket 1 spans (0, 1 minute) — bbAgeEdgeNanos below). Below one bucket
+// width a divergence cannot displace an identity by a whole bucket; at or above it, it
+// can, and the bottom of the age axis is exactly where the fit reads a FRESH identity.
+//
+// It is deliberately on the strict side. A long run that accumulates a minute of ordinary
+// NTP slew is flagged even though a minute is negligible against a W of days, and that
+// costs a re-run. The other error — a step reshaping the young cells with nobody
+// noticing — costs a wrong grant/r, and grant/r lands on M0 (too high cheapens Sybil
+// bootstrap). The asymmetry decides the direction. ClockSkewNanos carries the raw number
+// either way, so an operator who disagrees with this threshold can read past it.
+const bbClockSkewToleranceNanos = int64(60 * 1e9)
+
 // BBootstrapHistogram is the whole published object. It carries no per-identity datum
 // at all — no id, no salted label, no exact age, no row. Fixed-size by construction:
 // every field is a scalar or a fixed-length array, so the payload is constant in R.
@@ -111,7 +140,10 @@ type BBootstrapHistogram struct {
 	AgeAxisLive bool
 
 	// Requesters is the TRUE total: every account with fetchedBytes > 0. No cap, no
-	// truncation — this is a census, and Aged + Unstamped == Requesters always.
+	// truncation — this is a census. Aged + Unstamped == Requesters holds WHENEVER THE
+	// AGE AXIS IS LIVE, and only then: with no clock injected a requester is counted
+	// here and placed in neither counter, so the honest reading of a dead-clock payload
+	// is Requesters > 0 with Aged == Unstamped == 0 (BB-1 pins exactly 5 / 0 / 0).
 	Requesters int
 	// Aged is how many of those requesters were placed into a cell. Sum(Cells) == Aged.
 	Aged int
@@ -120,27 +152,59 @@ type BBootstrapHistogram struct {
 	// would make them look brand new — a silent age reshaping.
 	Unstamped int
 
-	// UptimeNanos is the ledger's own elapsed time since the clock was injected. It is
-	// the CENSORING BOUND: no identity can carry an age greater than it, so no window
-	// W larger than the longest clean uptime is measurable at all, ever (accounts are
-	// in-memory and a restart destroys every one — R-BB-CENSORED-WINDOW). Carrying it
-	// in the payload puts that bound in the artifact instead of in a separate scrape.
+	// UptimeNanos is the ledger's elapsed time on the INJECTED ports.Clock since that
+	// clock was injected. In production that is a wall clock, so this number moves with
+	// an NTP step and is NOT on its own a bound on anything — read CensoringBoundNanos
+	// instead. It is published because the analyst needs both sides of the skew.
 	UptimeNanos int64
+
+	// MonotonicSource is the second time source's self-report: "injected" when a
+	// ports.MonotonicNanos was wired, "none" when it was not. "None" and "zero elapsed"
+	// have to be different objects for the same reason "off" and "idle" do.
+	MonotonicSource string
+	// MonotonicUptimeNanos is elapsed time on the source NOTHING CAN STEP. It is the
+	// real CENSORING BOUND: no identity can have been known to this ledger for longer
+	// than the process has been running, whatever the wall clock says, so no window W
+	// larger than the longest clean monotone uptime is measurable at all, ever (accounts
+	// are in-memory and a restart destroys every one — R-BB-CENSORED-WINDOW). Zero when
+	// no monotone source is injected.
+	MonotonicUptimeNanos int64
+	// ClockSkewNanos is the wall clock's elapsed time minus MonotonicUptimeNanos: how far
+	// the wall clock has diverged from real elapsed time since injection. It is taken
+	// from the RAW wall delta, before the clamp UptimeNanos applies, so a step past the
+	// ledger start still reports its full size instead of reporting zero. On a clean run
+	// it is zero to within the two reads. POSITIVE means the wall clock jumped FORWARD
+	// (ages inflated, identities pushed up the age axis); NEGATIVE means it jumped BACK
+	// (ages deflated, identities pulled down). It is also zero when no monotone source is
+	// injected, which is why the run precondition refuses that configuration outright
+	// rather than reading the zero as a clean run.
+	ClockSkewNanos int64
+	// ClockSuspect is |ClockSkewNanos| >= bbClockSkewToleranceNanos: the wall clock has
+	// diverged far enough to have moved an identity a whole age bucket. This is the flag
+	// that catches a step in EITHER direction, including the ones ClockStepBack cannot
+	// see because no subtraction crossed zero.
+	ClockSuspect bool
 
 	// MaxOccupiedAgeEdgeNanos is the lower edge of the highest age bucket that has any
 	// count. Zero when nothing is occupied.
 	MaxOccupiedAgeEdgeNanos int64
 	// ClockStepBack is set when the injected clock read EARLIER than a stamp (or than
-	// the ledger start). The age is clamped to zero rather than underflowed, and this
-	// flag says so — a wall clock discards Go's monotonic reading (adapters/walltime),
-	// so an NTP step is a real hazard and a boot-time step lands at the start of the
-	// observation window (R-BB-WALLCLOCK-STEP).
+	// the ledger start), so a subtraction would have gone negative. The age is clamped
+	// to zero rather than underflowed, and this flag says so.
+	//
+	// IT IS NOT THE CLOCK-STEP DETECTOR, and must not be read as one: it fires only when
+	// a step is large enough to cross zero. A backward step SMALLER than the accounts'
+	// ages — measured, 2 h 50 m against 3-hour-old identities — reshapes every bucket
+	// and never trips it. ClockSuspect is the detector (R-BB-WALLCLOCK-STEP).
 	ClockStepBack bool
-	// AgeExceedsUptime is the G-BB-4 assertion, evaluated at snapshot time:
-	// MaxOccupiedAgeEdgeNanos must be <= UptimeNanos. It cannot be violated by
-	// construction (a stamp is never earlier than the ledger start), so a true here
-	// means a foreign tick source reached firstSeenTick, or the clock stepped. Either
-	// way the run is suspect and the artifact says so.
+	// AgeExceedsUptime is the G-BB-4 censoring assertion, evaluated at snapshot time:
+	// MaxOccupiedAgeEdgeNanos must be <= CensoringBoundNanos(). With a monotone source
+	// injected the two sides come from INDEPENDENT clocks, so this fires on the
+	// production path — a forward wall-clock step ages identities past a bound that did
+	// not move. With NO monotone source it degenerates into a comparison of the wall
+	// clock against itself, invariant under every step, and can then only catch a stamp
+	// written from a foreign tick source. That degeneracy is why
+	// BBootstrapRunPrecondition refuses a run with no monotone source at all.
 	AgeExceedsUptime bool
 
 	// The axes, published so the artifact is self-describing for a third party.
@@ -155,6 +219,21 @@ type BBootstrapHistogram struct {
 
 	// Cells[ageBucket][byteBin] is a COUNT of identities. nil when AgeAxisLive is false.
 	Cells *[BBootstrapAgeBuckets][BBootstrapByteBins]int64
+}
+
+// CensoringBoundNanos is the largest age this artifact can honestly carry: elapsed time
+// on the source that cannot be stepped, when one is injected, and otherwise the wall
+// clock's own elapsed time. It is a method rather than a field so the published field set
+// stays the audited one (core/node/bbootstrap_test.go pins it by reflection).
+//
+// The fallback is stated rather than hidden: with no monotone source this returns a
+// quantity derived from the same clock the ages are, which is exactly the self-comparison
+// F-1 named, so the run precondition refuses that configuration.
+func (h BBootstrapHistogram) CensoringBoundNanos() int64 {
+	if h.MonotonicSource == "injected" {
+		return h.MonotonicUptimeNanos
+	}
+	return h.UptimeNanos
 }
 
 // BBootstrapByteBinRule is the byte axis, stated exactly. Published verbatim.
@@ -181,15 +260,27 @@ func BBootstrapRunPrecondition(prev, cur BBootstrapHistogram, windowNanos int64)
 		// A live-but-FROZEN clock is as fatal as an absent one (H-1).
 		bad = append(bad, "clock not advancing: uptime did not move between the two snapshots")
 	}
-	if cur.UptimeNanos < windowNanos {
-		// The age axis is right-censored at uptime, permanently (R-BB-CENSORED-WINDOW).
-		bad = append(bad, "uptime below W: the window asked for is longer than this process has been alive, so its cell cannot be read")
+	if cur.MonotonicSource != "injected" {
+		// Without a second, independent source, uptime is a wall-clock quantity
+		// cross-checked against itself: a step moves every age and the bound it is
+		// compared against by the SAME amount and cancels. Every clock arm below is
+		// then decorative, so this one refuses the whole configuration (F-1).
+		bad = append(bad, "no monotone source: uptime is a wall-clock quantity cross-checked against itself, so a clock step would reshape every age invisibly")
+	}
+	if cur.CensoringBoundNanos() < windowNanos {
+		// The age axis is right-censored at the MONOTONE uptime, permanently
+		// (R-BB-CENSORED-WINDOW). Reading the wall clock here is what let a 60-second-old
+		// process be accepted for a 7-day window after an 8-day forward step.
+		bad = append(bad, "uptime below W: the window asked for is longer than this process has actually been alive on a clock nothing can step, so its cell cannot be read")
 	}
 	if cur.Requesters == 0 {
 		bad = append(bad, "no requesters: the census is empty")
 	}
 	if cur.ClockStepBack {
-		bad = append(bad, "clock stepped backwards: ages were clamped and the run is suspect")
+		bad = append(bad, "clock stepped backwards past zero: ages were clamped and the run is suspect")
+	}
+	if cur.ClockSuspect {
+		bad = append(bad, fmt.Sprintf("wall clock diverged from the monotone source by %d ns (tolerance %d): ages were reshaped by at least one bucket, %s", cur.ClockSkewNanos, bbClockSkewToleranceNanos, bbSkewDirection(cur.ClockSkewNanos)))
 	}
 	if cur.AgeExceedsUptime {
 		bad = append(bad, "an occupied age bucket exceeds uptime: a foreign tick source or a clock step reached the stamps")
@@ -197,36 +288,71 @@ func BBootstrapRunPrecondition(prev, cur BBootstrapHistogram, windowNanos int64)
 	if cur.Unstamped > 0 {
 		bad = append(bad, "unstamped requesters present: accounts predate the clock injection and carry no age")
 	}
-	if cur.Cells != nil {
-		degenerate := true
-		for b := 1; b < BBootstrapAgeBuckets && degenerate; b++ {
+	if cur.Cells != nil && cur.Aged > 0 {
+		// DEGENERACY IS "ONE BUCKET", not "bucket 0". The certified check was written
+		// against the epoch clock, where every age really was 0 and bucket 0 was the
+		// whole population. Under an injected wall clock bucket 0 is an age of EXACTLY
+		// 0 ns, which that clock essentially never produces, so a bucket-0 test cannot
+		// fire on the machine that will run this and the one case it would catch (a
+		// frozen clock) is already caught above. The live degeneracy is a census with no
+		// VARIATION on the age axis — everything piled in the top bucket after a long
+		// uptime, or everything in bucket 1 on a short one — because the estimand is a
+		// quantile CONDITIONED on age and one occupied bucket conditions on nothing.
+		occupied := 0
+		for b := 0; b < BBootstrapAgeBuckets; b++ {
 			for _, n := range cur.Cells[b] {
 				if n > 0 {
-					degenerate = false
+					occupied++
 					break
 				}
 			}
 		}
-		if degenerate && cur.Aged > 0 {
-			bad = append(bad, "degenerate age axis: every counted identity sits in age bucket 0")
+		if occupied < 2 {
+			bad = append(bad, "degenerate age axis: every counted identity sits in ONE age bucket, so there is no age variation to condition the quantile on")
 		}
 	}
 	return bad
 }
 
-// SetObservabilityClock injects the ONE clock the B_bootstrap age axis reads (R2.9a,
-// G-BB-2). It follows SetEpochSource exactly: call it once, at construction, before any
-// account exists; the daemon wires the same ports.Clock it hands every node, and a sim
-// passes adapters/simclock and stays deterministic. core may not touch the wall clock
-// (internal/depcheck), which is why this is a setter and not a package-level default.
+// bbSkewDirection says which way the wall clock jumped, because the two directions are
+// different failures: forward inflates every age and pushes identities UP the axis (and
+// trips the censoring assertion, since the bound did not move), backward deflates them
+// and pulls identities DOWN (and trips nothing else, which is why this flag exists).
+func bbSkewDirection(skew int64) string {
+	if skew > 0 {
+		return "the wall clock jumped FORWARD, so ages are inflated and identities were pushed up the age axis"
+	}
+	return "the wall clock jumped BACK, so ages are deflated and identities were pulled down the age axis"
+}
+
+// SetObservabilityClock injects the TWO time sources the B_bootstrap instrument reads
+// (R2.9a, G-BB-2 and G-BB-4). It follows SetEpochSource: call it once, at construction,
+// before any account exists; the daemon wires the same ports.Clock it hands every node,
+// and a sim passes adapters/simclock and stays deterministic. core may not touch the wall
+// clock (internal/depcheck), which is why this is a setter and not a package default.
+//
+//   - c is the AGE clock. Every age and the published UptimeNanos come off it. In
+//     production it is a wall clock and it can be stepped.
+//   - mono is an INDEPENDENT elapsed-nanosecond source that cannot be stepped
+//     (ports.MonotonicNanos; in cmd/silt a closure over time.Since, which uses Go's
+//     monotonic reading). Nothing is measured on it. Its only job is to make a step in c
+//     VISIBLE, as a divergence between two quantities that should track.
+//
+// ONE CALL, TWO ORIGINS, ON PURPOSE. Both start instants are stamped here, in the same
+// call, so the offset between them is fixed at zero by construction. Two setters would
+// make "injected at the same instant" a call-ordering hope, and any gap between them
+// would read forever after as skew — which is the same class of defect (a check that
+// depends on an unenforced ordering) this method exists to close.
 //
 // It moves nothing. Its only effect is that Register begins stamping a first-touch tick
 // — a field no standing calculation reads (see the T-axis note on account.firstSeenTick)
 // and that reaches the wire only as a coarse bucket.
 //
-// A ledger with no clock is the safe state: the snapshot reports ClockSource "none" and
-// publishes no cells.
-func (l *Ledger) SetObservabilityClock(c ports.Clock) {
+// Either argument may be nil, and nil is the safe state, not a silent downgrade: with no
+// clock the snapshot reports ClockSource "none" and publishes no cells; with no monotone
+// source it reports MonotonicSource "none" and BBootstrapRunPrecondition REFUSES the run
+// because the censoring assertion is then a self-comparison.
+func (l *Ledger) SetObservabilityClock(c ports.Clock, mono ports.MonotonicNanos) {
 	l.obsClock = c
 	if c != nil {
 		now := c.Now()
@@ -234,6 +360,10 @@ func (l *Ledger) SetObservabilityClock(c ports.Clock) {
 			now = 0
 		}
 		l.obsStartNanos = int64(now)
+	}
+	l.obsMono = mono
+	if mono != nil {
+		l.obsMonoStartNano = mono()
 	}
 }
 
@@ -312,11 +442,12 @@ func bbootstrapAgeBucket(ageNanos int64) int {
 // Loop-owned, like every other ledger read: call it on the node's event loop.
 func (l *Ledger) BBootstrapSnapshot() BBootstrapHistogram {
 	out := BBootstrapHistogram{
-		ClockSource:   "none",
-		AgeEdgeNanos:  bbAgeEdgeNanos,
-		BinsPerOctave: BBootstrapBinsPerOctave,
-		ByteBins:      BBootstrapByteBins,
-		ByteBinRule:   BBootstrapByteBinRule,
+		ClockSource:     "none",
+		MonotonicSource: "none",
+		AgeEdgeNanos:    bbAgeEdgeNanos,
+		BinsPerOctave:   BBootstrapBinsPerOctave,
+		ByteBins:        BBootstrapByteBins,
+		ByteBinRule:     BBootstrapByteBinRule,
 	}
 	if l.obsClock != nil {
 		out.ClockSource = "injected"
@@ -325,12 +456,31 @@ func (l *Ledger) BBootstrapSnapshot() BBootstrapHistogram {
 	}
 
 	now := l.obsNowNanos()
+	wallElapsed := int64(0)
 	if l.obsClock != nil {
-		if up := now - l.obsStartNanos; up >= 0 {
-			out.UptimeNanos = up
+		wallElapsed = now - l.obsStartNanos
+		if wallElapsed >= 0 {
+			out.UptimeNanos = wallElapsed
 		} else {
 			out.ClockStepBack = true // the clock read earlier than the ledger's own start
 		}
+	}
+	// The cross-check (G-BB-4). Both uptimes are measured from the SAME injection
+	// instant, so on a clean run they agree to within the two reads and the skew is
+	// nanoseconds. A step in the wall clock moves one and not the other, and the
+	// difference is the step — in a signed quantity, so the two directions stay
+	// distinguishable.
+	if l.obsMono != nil {
+		out.MonotonicSource = "injected"
+		if up := l.obsMono() - l.obsMonoStartNano; up > 0 {
+			out.MonotonicUptimeNanos = up
+		}
+		// From the RAW wall delta, not from the clamped UptimeNanos: a step big enough
+		// to drive the wall delta negative is clamped to zero for publication, and
+		// taking the skew from the clamped value would hide the largest steps there are.
+		out.ClockSkewNanos = wallElapsed - out.MonotonicUptimeNanos
+		out.ClockSuspect = out.ClockSkewNanos >= bbClockSkewToleranceNanos ||
+			out.ClockSkewNanos <= -bbClockSkewToleranceNanos
 	}
 
 	maxOccupied := -1
@@ -362,9 +512,11 @@ func (l *Ledger) BBootstrapSnapshot() BBootstrapHistogram {
 	}
 	if maxOccupied >= 0 {
 		out.MaxOccupiedAgeEdgeNanos = bbAgeEdgeNanos[maxOccupied]
-		// G-BB-4: the censoring assertion. An age can only exceed uptime if a stamp
-		// came from a clock other than the injected one, or the clock stepped.
-		out.AgeExceedsUptime = out.MaxOccupiedAgeEdgeNanos > out.UptimeNanos
+		// G-BB-4: the censoring assertion, against the bound the wall clock cannot
+		// move. An occupied bucket above it means either a stamp from a foreign tick
+		// source or a FORWARD wall-clock step, which ages identities past a process
+		// that has not been alive that long.
+		out.AgeExceedsUptime = out.MaxOccupiedAgeEdgeNanos > out.CensoringBoundNanos()
 	}
 	return out
 }

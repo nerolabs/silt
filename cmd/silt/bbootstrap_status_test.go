@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
@@ -27,15 +28,26 @@ func r29aServer(t *testing.T, publish bool) (*uiServer, *credit.Ledger, *r29aClo
 	s.peerCount = func() int { return 0 }
 	s.bBootstrap = publish
 	clk := &r29aClock{}
-	led.SetObservabilityClock(clk)
+	led.SetObservabilityClock(clk, clk.monotonic)
 	return s, led, clk
 }
 
-// r29aClock is the injected observability clock: a ports.Clock the test moves by hand.
-type r29aClock struct{ now ports.Time }
+// r29aClock is BOTH injected observability sources: the wall clock the test moves by
+// hand, and the monotone source G-BB-4 cross-checks it against. `monotonic` is derived
+// from `now` so the two agree unless the test calls `step`, which moves only the wall
+// reading — an NTP step.
+type r29aClock struct {
+	now     ports.Time
+	stepped int64
+}
 
 func (c *r29aClock) Now() ports.Time                         { return c.now }
 func (c *r29aClock) AfterFunc(ports.Duration, func()) func() { return func() {} }
+func (c *r29aClock) monotonic() int64                        { return int64(c.now) - c.stepped }
+func (c *r29aClock) step(d int64) {
+	c.now += ports.Time(d)
+	c.stepped += d
+}
 
 func getR29aStatusBody(t *testing.T, s *uiServer) string {
 	t.Helper()
@@ -68,6 +80,9 @@ func r29aBlock(t *testing.T, s *uiServer) (map[string]any, bool, string) {
 	}
 	return block, true, string(raw)
 }
+
+// bbStatusHour is one hour in nanoseconds, the unit the wire-tier clock fixtures move in.
+const bbStatusHour = int64(3600 * 1e9)
 
 func r29aFetch(led *credit.Ledger, i int, bytes int64) {
 	led.RecordServe(ports.HashBytes([]byte("srv")), ports.HashBytes([]byte{byte(i), byte(i >> 8), 0x29}), ports.Hash{}, bytes)
@@ -106,6 +121,13 @@ func TestR29aStatusOmitsTheBlockUnlessAsked(t *testing.T) {
 //
 // RUNTIME GATE: TestR29aStatusOmitsTheBlockUnlessAsked observes the actual behaviour —
 // that an unset switch produces no block on the wire.
+//
+// IT ASSERTS ONE THING ONLY. It used to carry a second assertion, about the observability
+// clock injection, under this same doc comment — and that cover line was a lie for the
+// second assertion, because TestR29aStatusOmitsTheBlockUnlessAsked observes the FLAG and
+// nothing about the clock. scripts/check_source_gates.py passed anyway: it requires a
+// NAMED cover, not a MATCHING one. The clock assertion now lives in its own gate below,
+// with the honest annotation.
 func TestR29aDaemonDefaultsTheInstrumentOff(t *testing.T) {
 	src, err := os.ReadFile("daemon.go")
 	if err != nil {
@@ -114,8 +136,46 @@ func TestR29aDaemonDefaultsTheInstrumentOff(t *testing.T) {
 	if !strings.Contains(string(src), "fs.Bool(\"bbootstrap\", false,") {
 		t.Fatalf("SOURCE GATE: daemon.go does not declare the -bbootstrap flag with a false default; the literal fs.Bool(\"bbootstrap\", false, is absent. GET /api/status needs no token, so the instrument must be OFF unless an operator asks for it")
 	}
-	if !strings.Contains(string(src), "ledger.SetObservabilityClock(clk)") {
-		t.Fatalf("SOURCE GATE: daemon.go does not inject the observability clock; the literal ledger.SetObservabilityClock(clk) is absent. Without it the age axis is dead and the export refuses to publish any age-conditioned cell")
+}
+
+// TestR29aDaemonInjectsBothClocksBeforeTheLedgerIsReachable is the SOURCE GATE behind
+// G-BB-2 and G-BB-4. It reads three things out of daemon.go's TEXT: that both
+// observability sources are injected in ONE call, that the monotone one is Go's monotonic
+// reading rather than a second wall-clock read, and that the call appears BEFORE
+// nd.SetLedger.
+//
+// The ORDER is the property that matters and it is why this is worth a source gate at
+// all. Injection must precede the first account, or requesters register unstamped, carry
+// no age and void the run. nd.SetLedger is the right anchor and node.New is not: the
+// daemon constructs the node long before it constructs the ledger, and the ledger cannot
+// receive a RecordServe — the only thing that creates a requester account — until it is
+// attached. So "before nd.SetLedger" is the source-visible form of "before any account
+// exists".
+//
+// UNGATED: no test in this repo boots the real daemon, so NOTHING observes at runtime
+// that a live daemon reports clockSource "injected", monotonicSource "injected" and
+// unstamped == 0. Both cmd/silt fixtures inject the clocks by hand and would keep passing
+// if daemon.go stopped injecting them entirely. The source order is the only evidence
+// there is, and this comment says so rather than naming a cover that does not cover it
+// (scar:source-gate-promises-a-runtime-property-2026-09-03). The behavioural consequence
+// IS covered, one tier down: core/credit's TestR29aUnstampedRequestersAreCountedNotAged
+// shows what an account registered before injection reports, and BB-14 refuses a run that
+// carries any such account.
+func TestR29aDaemonInjectsBothClocksBeforeTheLedgerIsReachable(t *testing.T) {
+	src, err := os.ReadFile("daemon.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	inject := strings.Index(string(src), "ledger.SetObservabilityClock(clk, func() int64 { return int64(time.Since(")
+	if inject < 0 {
+		t.Fatalf("SOURCE GATE: daemon.go does not inject BOTH observability sources in one call; the literal ledger.SetObservabilityClock(clk, func() int64 { return int64(time.Since( is absent. The age axis needs the ports.Clock or it is dead, and the censoring assertion needs a source time.Since reads — Go's monotonic reading — or it compares the wall clock against itself and no NTP step is detectable")
+	}
+	attach := strings.Index(string(src), "nd.SetLedger(")
+	if attach < 0 {
+		t.Fatalf("SOURCE GATE: daemon.go no longer contains the literal nd.SetLedger( — this gate anchors the injection ORDER on it and cannot check the order without it")
+	}
+	if inject > attach {
+		t.Fatalf("SOURCE GATE: daemon.go injects the observability clocks at byte %d, AFTER nd.SetLedger at byte %d. Injection must precede the first account, and the first account can only be created once the ledger is attached to the node; injecting later leaves requesters unstamped, carrying no age, and voids the run", inject, attach)
 	}
 }
 
@@ -190,6 +250,8 @@ var r29aWireKeys = map[string]bool{
 	"requesters": true, "aged": true, "unstamped": true,
 	"uptimeNanos": true, "maxOccupiedAgeEdgeNanos": true,
 	"clockStepBack": true, "ageExceedsUptime": true,
+	"monotonicSource": true, "monotonicUptimeNanos": true,
+	"clockSkewNanos": true, "clockSuspect": true,
 	"ageEdgeNanos": true, "ageBuckets": true,
 	"binsPerOctave": true, "byteBins": true, "byteBinRule": true,
 	"cells": true,
@@ -233,6 +295,75 @@ func TestR29aWirePayloadCarriesNoJoinKey(t *testing.T) {
 	// scanning a populated payload rather than an empty one.
 	if got := block["requesters"]; got != float64(40) {
 		t.Fatalf("requesters = %v, want 40 — the privacy scan must run against a populated payload", got)
+	}
+}
+
+// TestR29aWirePayloadReportsAClockStep is the wire half of BB-13 / G-BB-4. The detection
+// is worth nothing if it stops at the ledger: the artifact a third party reads is this
+// JSON block, so the step has to be legible THERE, with its size and its direction.
+//
+// Both fixtures below step ONLY the wall clock. The monotone source stays where it was,
+// which is what makes the divergence visible at all — the reviewed build derived uptime
+// and every age from one clock, so a step moved both and cancelled.
+func TestR29aWirePayloadReportsAClockStep(t *testing.T) {
+	const minute = int64(60 * 1e9)
+	const day = 24 * 60 * minute
+
+	// Clean: two identities an hour apart, no step, no flag.
+	s, led, clk := r29aServer(t, true)
+	r29aFetch(led, 1, 4096)
+	clk.now = ports.Time(bbStatusHour)
+	r29aFetch(led, 2, 8192)
+	clk.now = ports.Time(2 * bbStatusHour)
+	block, present, raw := r29aBlock(t, s)
+	if !present {
+		t.Fatalf("bBootstrap absent")
+	}
+	if block["monotonicSource"] != "injected" {
+		t.Fatalf("monotonicSource = %v, want \"injected\" — without it the cross-check is a self-comparison; %s", block["monotonicSource"], raw)
+	}
+	if block["clockSkewNanos"] != float64(0) || block["clockSuspect"] != false {
+		t.Fatalf("a clean run reports skew %v / suspect %v, want 0 / false", block["clockSkewNanos"], block["clockSuspect"])
+	}
+
+	// Forward: an 8-day NTP step. The block must carry the SIZE and the sign, and must
+	// say the censoring assertion failed — two-hour-old identities now look 8 days old
+	// on a process that has been alive for two hours.
+	clk.step(8 * day)
+	block, _, raw = r29aBlock(t, s)
+	if block["clockSuspect"] != true {
+		t.Fatalf("clockSuspect not published after an 8-day forward step: %s", raw)
+	}
+	if block["clockSkewNanos"] != float64(8*day) {
+		t.Fatalf("clockSkewNanos = %v after an 8-day forward step, want %d", block["clockSkewNanos"], 8*day)
+	}
+	if block["monotonicUptimeNanos"] != float64(2*bbStatusHour) {
+		t.Fatalf("monotonicUptimeNanos = %v, want %d — the second source must not move with the wall clock", block["monotonicUptimeNanos"], 2*bbStatusHour)
+	}
+	if block["ageExceedsUptime"] != true {
+		t.Fatalf("ageExceedsUptime not published after a forward step: %s", raw)
+	}
+
+	// Backward: 2 h 50 m on a FOUR-hour-old process, so the step is smaller than both the
+	// uptime and the ages it moves, no subtraction crosses zero, and clockStepBack stays
+	// down. The skew is negative, and that sign is the only thing on the wire that
+	// distinguishes this failure from the forward one.
+	s, led, clk = r29aServer(t, true)
+	r29aFetch(led, 1, 4096)
+	clk.now = ports.Time(bbStatusHour)
+	r29aFetch(led, 2, 8192)
+	clk.now = ports.Time(4 * bbStatusHour)
+	before, _, _ := r29aBlock(t, s)
+	clk.step(-(2*bbStatusHour + 50*minute))
+	block, _, raw = r29aBlock(t, s)
+	if reflect.DeepEqual(before["cells"], block["cells"]) {
+		t.Fatalf("the backward step did not reshape the age axis, so this arm is not testing what it claims: the cell grid is identical before and after")
+	}
+	if block["clockSuspect"] != true || block["clockStepBack"] != false {
+		t.Fatalf("a 2 h 50 m backward step published suspect %v / stepBack %v, want true / false: %s", block["clockSuspect"], block["clockStepBack"], raw)
+	}
+	if skew := block["clockSkewNanos"].(float64); skew >= 0 {
+		t.Fatalf("clockSkewNanos = %v after a backward step, want a NEGATIVE number — the sign is what tells the two step directions apart on the wire", skew)
 	}
 }
 

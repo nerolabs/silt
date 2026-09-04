@@ -194,10 +194,23 @@ type Ledger struct {
 	// It is an OBSERVABILITY clock and nothing else reads it: no accounting rule, no
 	// screen, no standing calculation. Nil is the safe state — no first-touch stamp is
 	// written and the snapshot publishes no age-conditioned cells. obsStartNanos is the
-	// clock's reading when it was injected, and is the censoring bound the snapshot
-	// publishes as UptimeNanos.
+	// clock's reading when it was injected; the snapshot publishes the difference as
+	// UptimeNanos. That is a WALL-clock quantity and is not on its own a bound on
+	// anything — the censoring bound is obsMono's elapsed time, below.
 	obsClock      ports.Clock
 	obsStartNanos int64
+
+	// obsMono is the SECOND, independent time source the same setter injects, and it is
+	// the whole of the R2.9a clock-step defence. obsClock is a wall clock
+	// (adapters/walltime returns time.Now().UnixNano(), which discards Go's monotonic
+	// reading), so uptime and every age are two differences of ONE stepped reading and a
+	// step cancels out of any comparison between them. obsMono is stepped by nothing, so
+	// the divergence between the two IS the step, published as ClockSkewNanos. Both
+	// origins are stamped inside one call so the offset between them is structural
+	// rather than a call-ordering hope. Nil is the safe state: the snapshot reports
+	// MonotonicSource "none" and BBootstrapRunPrecondition REFUSES the run.
+	obsMono          ports.MonotonicNanos
+	obsMonoStartNano int64
 
 	// epochWatermark is the HIGHEST epoch this ledger has ever READ from its source:
 	// epochWatermark = max(epochWatermark, epochSrc.Epoch()), taken once at the entry

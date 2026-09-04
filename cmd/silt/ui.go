@@ -430,10 +430,20 @@ type bBootstrapInfo struct {
 	Aged       int `json:"aged"`       // how many landed in a cell; equals the sum of all cells
 	Unstamped  int `json:"unstamped"`  // counted, never dumped into age bucket 0
 
-	UptimeNanos             int64 `json:"uptimeNanos"`             // the censoring bound: no age can exceed it
+	UptimeNanos             int64 `json:"uptimeNanos"`             // elapsed on the WALL clock; moves with an NTP step, so not a bound on its own
 	MaxOccupiedAgeEdgeNanos int64 `json:"maxOccupiedAgeEdgeNanos"` // lower edge of the highest occupied bucket
-	ClockStepBack           bool  `json:"clockStepBack"`           // the clock read backwards; ages clamped at 0, said out loud
-	AgeExceedsUptime        bool  `json:"ageExceedsUptime"`        // the G-BB-4 assertion failed — the run is suspect
+	ClockStepBack           bool  `json:"clockStepBack"`           // a subtraction crossed zero; ages clamped at 0. NOT the step detector — see clockSuspect
+	AgeExceedsUptime        bool  `json:"ageExceedsUptime"`        // the G-BB-4 censoring assertion failed — the run is suspect
+
+	// The clock cross-check (G-BB-4 / BB-13). uptimeNanos and every age come off ONE
+	// wall clock, so a step moves both and cancels; monotonicUptimeNanos comes off a
+	// source nothing can step, and the difference between them IS the step. It is
+	// published as a signed number as well as a flag, because the two directions are
+	// different failures and an analyst judges the magnitude against their own W.
+	MonotonicSource      string `json:"monotonicSource"`      // "injected" | "none" — the cross-check's self-report
+	MonotonicUptimeNanos int64  `json:"monotonicUptimeNanos"` // the REAL censoring bound: no age can exceed it
+	ClockSkewNanos       int64  `json:"clockSkewNanos"`       // wall − monotone; positive = the wall clock jumped forward
+	ClockSuspect         bool   `json:"clockSuspect"`         // the divergence moved identities at least a whole age bucket
 
 	AgeEdgeNanos  []int64 `json:"ageEdgeNanos"`  // lower edges; bucket i = [i, i+1), last open
 	AgeBuckets    int     `json:"ageBuckets"`    //
@@ -465,6 +475,10 @@ func (s *uiServer) bBootstrapSnapshot() *bBootstrapInfo {
 		MaxOccupiedAgeEdgeNanos: h.MaxOccupiedAgeEdgeNanos,
 		ClockStepBack:           h.ClockStepBack,
 		AgeExceedsUptime:        h.AgeExceedsUptime,
+		MonotonicSource:         h.MonotonicSource,
+		MonotonicUptimeNanos:    h.MonotonicUptimeNanos,
+		ClockSkewNanos:          h.ClockSkewNanos,
+		ClockSuspect:            h.ClockSuspect,
 		AgeEdgeNanos:            h.AgeEdgeNanos[:],
 		AgeBuckets:              credit.BBootstrapAgeBuckets,
 		BinsPerOctave:           h.BinsPerOctave,

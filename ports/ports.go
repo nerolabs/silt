@@ -203,6 +203,19 @@ type AsyncRegistry interface {
 // certification refutes each).
 type EpochSource interface{ Epoch() uint64 }
 
+// MonotonicNanos returns nanoseconds elapsed on a source that CANNOT be stepped by an
+// operator, an NTP correction or a container clock — Go's monotonic reading, which
+// `time.Since` uses and which `time.Time.UnixNano()` discards. It is a func rather than
+// an interface because there is exactly one method and the adapter is a closure over a
+// process-start instant (`cmd/silt`); core and ports may not import `time`
+// (internal/depcheck), so the reading has to arrive injected.
+//
+// The ONE thing it is for (R2.9a): a quantity INDEPENDENT of the ports.Clock, so that a
+// step in the wall clock shows up as a divergence between the two instead of cancelling
+// out of a comparison taken twice from the same reading. The origin is whatever instant
+// the consumer first calls it at; only differences are meaningful.
+type MonotonicNanos func() int64
+
 // CreditLedger is the future proof-of-retrieval seam: nodes earn credit
 // for serving chunks and spend it on registry publishes. v1 accounting
 // is naive and trusting; the interface is what a cryptographically
