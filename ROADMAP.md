@@ -117,8 +117,9 @@ carries the argument and the sources. Two are LIVE BREAKS and come first.
    the interim exposure (suppression is the shipped default and conservation holds); order R2.14 → R2.9
    → R2.4; choose strict parity or `r = 0` on the witnessed path; authorise the two blocking
    measurements (`B_bootstrap`; the honest arrival rate).
-6. **FP-2 / ledger durability:** whether the ledger gets a durable store before the RC at all (PE:
-   close FP-2 by scope; land R2.13 and R2.10 regardless).
+6. **FP-2 / ledger durability — ✅ RATIFIED 2026-09-04 (owner: "scope close it is").** The credit
+   ledger stays EPHEMERAL through the RC; FP-1, FP-2 and R-F8-RESTART-REWIND go OPEN-and-INERT,
+   re-armed by three named triggers. See `docs/decisions.md` D-FP2-SCOPE.
 7. **R4.2:** re-scope the A-axis to measure / publish / fix the DHT domain-0 exemption and the single
    `-domain` flag / hand the A-axis to B8 as-is; do NOT wire A3.
 8. **R-ISSUERKEY-POP:** build the `IssuerKeyReg` PoP format slot now, or reserve it inert at the stamp
@@ -130,6 +131,18 @@ carries the argument and the sources. Two are LIVE BREAKS and come first.
 11. **Recovery boundary (#535):** the floor box is a COLD AUDITOR — unconditional loud stall, the two
     directive knobs deleted, pruned blocks refused, `trustFloor` off the contract surface, recovery by
     a fresh `-ws-checkpoint`-class anchor at H+1 treated as irrecoverable if unreachable.
+12. **G-BB-1 — pin `W` and `q` for the `B_bootstrap` run (R2.9a). NEW 2026-09-04, and it BLOCKS the
+    run, not the build.** The instrument-sufficiency certification proves the exported quantity is
+    the right one (T-U: affordability is `r·B_i ≤ g` PER SERVER, so `grant/r` must dominate
+    `max_i B_i`, never `Σ_i B_i`) — but the estimand does not exist until the owner names the two
+    numbers that define it: **W**, the age window that counts as "new" (a duration, e.g. one hour,
+    one day), and **q**, the quantile of new-user fetched bytes `grant/r` must cover (e.g. 0.95).
+    One age-bucket edge must EQUAL the chosen W. A pure fetcher earns nothing on the serving ledger
+    (R-FETCHER-INCOME), so "new user" has no self-evident duration to fall back on. Source:
+    `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.9a-Bbootstrap-instrument-sufficiency-RESEARCH-CERTIFICATION-2026-09-04.md`
+    §1.4, §4.2. Advisory input: the Economist. The related default-on question (§4.4) is the owner's
+    too; the Researcher's input is that the histogram removes every per-identity datum, so either
+    default is defensible against Don't #3, and it still recommends default-off.
 **Not the owner's:** the research-gated pieces are named on each Rock and stay with the Researcher.
 
 **★ Decisions owed to the owner (as of 2026-09-03).** Read these first; each names its source.
@@ -912,7 +925,6 @@ economy-off HEAD certifies a network nobody runs. Design:
 
 **New Rocks opened 2026-09-03 (Boulder 2 — economy):**
 - **R2.9 · D-POD-KNOBS re-pricing — CERTIFIED as a LIVE incentive break; direction ✅ RATIFIED 2026-09-04 (owner: "I also accept rulings on R2.9 and the future flixz.com measurement"), the six sentences of `R2.9-OWNER-BRIEF-2026-09-04.md`: (1) byte-denominated per-increment delivery settlement on PayWord under G-1…G-6, G-3 satisfied by R2.14's spend-at-open, G-4/G-5 re-derived for the shared guard and the single fee constant; (2) the interim exposure accepted and the order R2.14 → R2.9 → R2.4; (3) STRICT parity, the unwitnessed bilateral fallback kept, `r = 0` on the witnessed path NOT commissioned in v1; (4) the two measurements AUTHORISED — `B_bootstrap` (per-requester fetched bytes vs identity age on REAL traffic: a flixz.com export, since cloudtest cannot measure user behaviour; the raw per-requester byte counter exists on the ledger) and the honest arrival rate — and `grant/r` NOT pinned until the first exists (the affordability knob is the RATIO `grant/r`); (5) knob 1's cross-tier funding loop delivers 1/1,342 of its stated value on the witnessed lane at production sizes — escrow-over-burn stands, rationale corrected in `docs/decisions.md`; (6) no relay skim in v1 (R-RELAY-WASH-ZERO-LOSS re-opens with R2.12). BUILD OPEN behind R2.10; R2.14 landed (PR #721).**
-- **R2.9a · `B_bootstrap` export — NEW 2026-09-04 (Builder, small; a private handoff to flixz.com, off public repos).** Export per-requester `fetchedBytes` vs identity age from the ledger (`core/credit/escrow.go` / `credit.go` hold the raw counter; `/api/status` exports self only today) as a real-traffic series, so `grant/r` can be pinned before R2.4. Not a consensus or economic change; instrumentation only. The honest arrival rate rides the same export.
   **Certified:** a server strictly prefers NEVER banking a witnessed receipt above B = 50,000 bytes —
   payoff `0.875·(B − fee)`: +13,594 at 64 KiB, +58.7 M (1,342×) at 64 MiB — and suppression is one
   default-off flag (`daemon.go:74`). **B3 conservation is INTACT** (conditioned on a banked receipt);
@@ -932,6 +944,7 @@ economy-off HEAD certifies a network nobody runs. Design:
   two measurements. Sources:
   `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.9-D-POD-KNOBS-delivery-settlement-repricing-RESEARCH-CERTIFICATION-2026-09-03.md`,
   the economist advisory.
+- **R2.9a · `B_bootstrap` export — BUILT 2026-09-04 and HELD (PR #728); the instrument-sufficiency certification returned GATED and RESHAPES it. Rebuild OPEN.** A private handoff to flixz.com, off public repos: export the distribution of per-requester `fetchedBytes` against identity age from the serving ledger as a real-traffic series, so `grant/r` can be pinned before R2.4. Instrumentation only; not a consensus or economic change. The honest arrival rate rides the same export. **Certified — the quantity is right, the shape and the clock were not.** T-U (the unit-of-account theorem): affordability is `r·B_i ≤ g` PER SERVER, so `grant/r` must dominate `max_i B_i`, never `Σ_i B_i` — which refutes two of the four PE biases, flips the sign of a third, and upholds and sharpens the fourth (the age axis is right-censored at process uptime, permanently, because the ledger is ephemeral by scope). **Clock: C3**, the boot-relative elapsed tick from the injected `ports.Clock` the node already carries, reusing `firstSeenTick` (`core/credit/credit.go:52`, written `:381-383`, fed from `core/node/bondaudit.go:157`), published only bucketed. The consensus epoch is REFUTED on three grounds: identically 0 on a non-validator (so the export publishes a constant), an exact swarm-wide join key when it is alive, and a deployment-dependent duration that makes the fit unportable. **Shape: a full-census 2-D count histogram** (age bucket × quarter-log2 byte bin ≈ 1,312 `int64` counters ≈ 10 KiB, against the PE's measured 114 MiB for the row export at R = 500,000) — counts only, no per-cell byte sums, no rows, no salt, no `MaxRequesterFetchRows`, no `truncated`. Top-k is REFUTED for a sharper reason than lost shape: the estimand is conditional on age and the rule selects on the response variable, emptying the young cells first and hardest — exactly where the fit reads — and the payload never publishes the threshold, so the bias is not correctable after the fact. Reservoir sampling is correct but dominated (it needs randomness inside `core/credit`, the rule `internal/depcheck` enforces, and it re-introduces the per-row join key). The histogram dissolves the PE's B1 and B4 blockers by construction: no randomness, no salt. **BLOCKED on G-BB-1**, an owner call and item 12 of the owed list: `W` and `q` are undefined, and without `W` the series has no reading rule. Seven further gates G-BB-2…G-BB-8 and fourteen Tester gates in the certification. Source: `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.9a-Bbootstrap-instrument-sufficiency-RESEARCH-CERTIFICATION-2026-09-04.md`.
 - **R2.10 · F8 — the ledger owns a CHAIN-ANCHORED epoch — BUILT 2026-09-04 (branch `builder/r2.10-f8-chain-anchored-epoch`, PR pending); research-CERTIFIED 2026-09-04; second in the R2.13 → R2.10 → FP-2 order. F8 is CLOSED for the in-process ledger.**
   As built (rules R-F8-SOURCE / R-F8-LATCH / R-F8-DISABLED): the ledger reads its epoch from ONE
   injected `ports.EpochSource` (`credit.SetEpochSource`; production source = the node's
