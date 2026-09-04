@@ -49,6 +49,8 @@ func buildAttFixture(t *testing.T) attFixture {
 	Sign(g, prop)
 	c.apply(*g)
 
+	advancePastHeightOne(c, prop)
+
 	aid := ports.HashBytes(pubOf(att))
 	if !c.attesterQualified(aid) {
 		t.Fatalf("fixture: attester not qualified pre-block")
@@ -73,11 +75,14 @@ func buildAttFixture(t *testing.T) attFixture {
 	return attFixture{c: c, prevRoot: prevRoot, prover: prover, proposer: prop, att: att}
 }
 
-// attBlock builds a block with one E/R entry + one non-proposer att by the fixture's attester.
+// attBlock builds a block with one E/R entry + a LastCommit carrier holding one carried signer
+// (the fixture's attester, who is not the parent's proposer). R-BOX-ATTESTS O1: the v5 seating
+// source is the hash-covered carrier over b.Prev, not the block's own Atts.
 func (f attFixture) attBlock() Block {
 	prev, h := f.c.Head()
+	head, _ := f.c.headBlock()
 	b := Block{Version: BlockVersionWitnessable, Height: h, Prev: prev, Entries: []ports.Entry{entry(42)}}
-	b.Atts = append(b.Atts, Attest(&b, f.att))
+	b.LastCommit = append(b.LastCommit, AttestAt(&head, f.att, 0, PhasePrecommit))
 	return b
 }
 
@@ -156,16 +161,17 @@ func (f attFixture) witnessForAtt(t *testing.T, b Block) StateRootWitness {
 	// The A per-member write-set (validatorsSeen ADDs): build with the same pre-set the box derives.
 	preSeen := idSet(f.preIDsValidatorsSeen())
 	screens := map[ports.NodeID]StateRootAttScreen{}
-	proposer := b.ProposerID()
-	for i := range b.Atts {
-		id := b.Atts[i].AttesterID()
-		if id == proposer {
+	w.ParentProposer, w.ParentProposerSig = f.c.CarrierParentProposerWitness()
+	parentProposer, _ := f.c.headProposerID()
+	for i := range b.LastCommit {
+		id := b.LastCommit[i].AttesterID()
+		if id == parentProposer {
 			continue
 		}
 		screens[id] = f.attScreen(id)
 		w.AttScreens = append(w.AttScreens, f.attScreen(id))
 	}
-	aWrites, _, err := f.c.stateRootAttWriteSet(f.prevRoot, b, preSeen, screens, livePreForProbe(f.c))
+	aWrites, _, err := f.c.stateRootAttWriteSet(f.prevRoot, b, preSeen, screens, livePreForProbe(f.c), w.ParentProposer, w.ParentProposerSig)
 	if err != nil {
 		t.Fatalf("stateRootAttWriteSet: %v", err)
 	}
@@ -285,12 +291,14 @@ func TestRecomputeStateRootAttAblationLegacyMode(t *testing.T) {
 	}
 
 	prev, h := c.Head()
+	head, _ := c.headBlock()
 	b := Block{Version: BlockVersionWitnessable, Height: h, Prev: prev}
-	b.Atts = append(b.Atts, Attest(&b, att))
+	b.LastCommit = append(b.LastCommit, AttestAt(&head, att, 0, PhasePrecommit))
+	pub, sig := c.CarrierParentProposerWitness()
 
 	// The legacy assertion lives in stateRootAttWriteSet (reached by the A dispatch). It must stall
 	// with a scope stall — the box refuses to reproduce rep(id) qualification from committed state.
-	_, _, wsErr := c.stateRootAttWriteSet(ports.Hash{}, b, map[ports.NodeID]struct{}{}, map[ports.NodeID]StateRootAttScreen{}, livePreForProbe(c))
+	_, _, wsErr := c.stateRootAttWriteSet(ports.Hash{}, b, map[ports.NodeID]struct{}{}, map[ports.NodeID]StateRootAttScreen{}, livePreForProbe(c), pub, sig)
 	if !errors.Is(wsErr, ErrRecomputeStateRootScopeStall) {
 		t.Fatalf("ABLATION FAILED: a legacy-mode A screen must stall with a scope stall, got %v", wsErr)
 	}
@@ -338,4 +346,21 @@ func TestRecomputeStateRootAttProposerOnlyNoWrite(t *testing.T) {
 	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err != nil {
 		t.Fatalf("a proposer-only att block is E/R-only and should AGREE, got %v", err)
 	}
+}
+
+// advancePastHeightOne applies one honest v5 block with an EMPTY carrier (height 1's carrier is
+// empty BY RULE, O1) so a genesis-only fixture's NEXT block lands at height 2.
+//
+// WHY EVERY CLASS-A FIXTURE NEEDS IT. The box entry now runs the SHARED validateCarrier
+// (assembleStateRootRecomputeOps — the RT-CARRIER-1 fix), and a height-1 block carrying a carrier is
+// INVALID. A fixture that minted one was driving the box with a block no full node would accept, so
+// its "the box agrees with apply()" baseline was asserting agreement on an unreachable block. This
+// is fixture repair, not a weakening of the rule: PE ruling
+// RULING-floorbox-predicate-rederivation-structure-2026-09-03.md O-3 requires sweeps to be built by
+// MUTATING a block the node accepts.
+func advancePastHeightOne(c *Chain, proposer ed25519.PrivateKey) {
+	prev, h := c.Head()
+	b := &Block{Version: BlockVersionWitnessable, Height: h, Prev: prev, Entries: []ports.Entry{entry(31)}}
+	Sign(b, proposer)
+	c.apply(*b)
 }

@@ -738,7 +738,7 @@ func buildHandoffFixture(t *testing.T) handoffFixture {
 func (f handoffFixture) handoffBoundaryBlock() Block {
 	prev, h := f.c.Head()
 	b := Block{Version: BlockVersionWitnessable, Height: h, Prev: prev, Entries: []ports.Entry{entry(99)}}
-	b.Atts = append(b.Atts, Attest(&b, f.att1), Attest(&b, f.att2), Attest(&b, f.att3))
+	b.LastCommit = append(b.LastCommit, carrierEntry(f.c, f.att1), carrierEntry(f.c, f.att2), carrierEntry(f.c, f.att3))
 	Sign(&b, f.proposer)
 	return b
 }
@@ -839,14 +839,15 @@ func (f handoffFixture) witnessForHandoff(t *testing.T, b Block) StateRootWitnes
 	applied := f.c.cloneForDryRun()
 	applied.apply(b)
 
-	// Class A: validatorsSeen ADDs + the validatorsSeenRoot digest. Screen each non-proposer attester
+	// Class A: validatorsSeen ADDs + the validatorsSeenRoot digest. Screen each carried signer
 	// from the fixture's committed pre-state.
 	preSeen := idSet(f.sortedSeenIDs())
 	screens := map[ports.NodeID]StateRootAttScreen{}
-	proposer := b.ProposerID()
-	for i := range b.Atts {
-		id := b.Atts[i].AttesterID()
-		if id == proposer {
+	w.ParentProposer, w.ParentProposerSig = f.c.CarrierParentProposerWitness()
+	parentProposer, _ := f.c.headProposerID()
+	for i := range b.LastCommit {
+		id := b.LastCommit[i].AttesterID()
+		if id == parentProposer {
 			continue
 		}
 		sz, bp := f.c.bonded[id]
@@ -861,7 +862,7 @@ func (f handoffFixture) witnessForHandoff(t *testing.T, b Block) StateRootWitnes
 		screens[id] = sc
 		w.AttScreens = append(w.AttScreens, sc)
 	}
-	aWrites, _, err := f.c.stateRootAttWriteSet(f.prevRoot, b, preSeen, screens, livePreForProbe(f.c))
+	aWrites, _, err := f.c.stateRootAttWriteSet(f.prevRoot, b, preSeen, screens, livePreForProbe(f.c), w.ParentProposer, w.ParentProposerSig)
 	if err != nil {
 		t.Fatalf("stateRootAttWriteSet: %v", err)
 	}

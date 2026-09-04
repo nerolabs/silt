@@ -10,21 +10,14 @@ import (
 // MG-C / R-CARRIER-GENESIS-DISPOSAL (delta cert
 // LASTCOMMIT-CARRIER-26977a4-DELTA-CERTIFICATION-2026-09-03 §6; ROADMAP).
 //
-// Block.Atts is OUTSIDE the Hash() preimage (see hash_literal_pin_test.go). A serving
-// peer can therefore append an unsigned stub attestation to a genesis it relays: the
-// hash is byte-identical, the proposer signature still verifies, and the
-// genesis-divergence check passes. Whatever AppendGenesis does with that stub is done
-// at zero cost to the attacker, on two live paths — Reload (own disk, chain.go:3160)
-// and Reconcile (peer-supplied fork, chain.go:4012).
-//
-// The rule the cert certifies: STRIP an unsigned slot (Atts), REFUSE a hash-covered one
-// (LastCommit). "Strip" means nil b.Atts BEFORE c.apply(b): the sub-v5 seating loop
-// (chain.go:3471) runs over b.Atts and would otherwise pre-seat validatorsSeen from a
-// signature nobody made.
-//
-// On main (b328268) AppendGenesis neither refuses nor strips: the stub reaches apply()
-// and pre-seats. On the carrier branch it refuses (ErrGenesisAtts) — the free denial
-// lever. Both are RED here; the Builder's split fix makes them GREEN.
+// Only the HASH-COVERED half is gated here: a genesis carrying a LastCommit carrier is
+// authored, signed content and is REFUSED (ErrGenesisLastCommit). The UNSIGNED slot
+// (Atts, outside the Hash() preimage — see hash_literal_pin_test.go) is deliberately NOT
+// gated here: stripping it broke four core/node fixtures that seed a verified genesis
+// att by convention (production genesis carries none — anchors seat at height >= 1), and
+// the certified disposal (seat only VERIFIED attestations, strip the rest) awaits the
+// owner's ratification, so AppendGenesis keeps main's
+// pre-carrier behaviour for it. Do not add an Atts gate here without that verdict.
 
 // stubAttFor is the attacker's stub: the REAL public key of a QUALIFIED validator that
 // signs nothing else in the test, with a 64-zero-byte signature nobody produced. A
@@ -69,9 +62,10 @@ func assertGenesisStripped(t *testing.T, c *Chain, victim ports.NodeID, path str
 // the strip-not-fatal probe — gate (a): the direct AppendGenesis path.
 //
 // 2026-09-04: the three Atts-STRIP gates that lived here were WITHDRAWN with the strip
-// itself — stripping genesis Atts breaks the anchor bootstrap (four core/node tests).
-// The Atts half of MG-C is research-gated; the tests are parked in the Researcher's
-// question (`genesis-atts-seating`), not deleted from history. Only the LastCommit
+// itself — stripping genesis Atts broke four core/node fixtures (the bootstrap they model
+// seeds a verified genesis att; production genesis carries none). The seat-only-verified
+// rule is now CERTIFIED and awaits ratification; the probes return as its gates G1–G10.
+// Only the LastCommit
 // refusal (the hash-covered half, still ratified) remains here.
 
 func TestGenesisLastCommitIsRefused(t *testing.T) {

@@ -560,6 +560,24 @@ type Block struct {
 	// this keyspace, so a v4 block carrying one is rejected (validateIssuerKeys).
 	IssuerKeys []IssuerKeyReg `cbor:"17,keyasint,omitempty"`
 
+	// LastCommit republishes the PARENT block's precommit attestations. It is the era-4
+	// (v5) ATTESTATION CARRIER (R-BOX-ATTESTS, owner call O1, ratified 2026-09-03) and it
+	// is the ONLY input to the v5 validatorsSeen transition — see carrier.go for the
+	// defect it closes and applyCarrier for the rule.
+	//
+	// FOLDED INTO Hash() (unlike Atts/PrepareQC/CommitRound, which are certificate slots a
+	// replica may legitimately hold differently). That is the whole point: the proposer
+	// holds these bytes BEFORE it populates and signs its committed roots, so the root it
+	// signs is the root the block commits.
+	//
+	// ADDITIVE + omitempty: a nil carrier is omitted from the canonical encoding, so every
+	// block that does not carry one — every era-2 and era-3 block, and every v5 block at
+	// height 1 — hashes BYTE-IDENTICALLY to pre-carrier code (pinned by
+	// TestCarrierHashDriftGuard). cbor key 18, not 17: 17 is the R0.4b IssuerKeys
+	// field above (merged to main before this carrier), so the two additive open-era fields
+	// never collide on the wire.
+	LastCommit []Attestation `cbor:"18,keyasint,omitempty"`
+
 	// hashMemo caches Hash() (#555). A block's hashed content is immutable once
 	// minted (Sign computes the hash it signs) or decoded, but Hash() re-marshaled
 	// the whole body — BondRegs' ~1.5 MB proofs included — and re-hashed it on
@@ -706,6 +724,28 @@ func (b *Block) Hash() ports.Hash {
 	// The equivocation path therefore never reads this short-circuit: it recomputes
 	// from the body (bodyHash) and refuses pruned evidence outright (R0.6,
 	// F2-EVIDENCE-RECOMPUTE; docs/decisions.md D-F2-EVIDENCE-RECOMPUTE).
+	//
+	// THE PRUNED FIELD IS A LINKAGE TOKEN, NOT A CONTENT COMMITMENT — the complementary
+	// statement for the body fields Prune() keeps (PE ruling
+	// RULING-floorbox-predicate-rederivation-structure-2026-09-03.md §6(b), red-team
+	// RT-CARRIER-2). The attack is not forging Pruned. It is KEEPING Pruned and the
+	// real signatures while mutating the body: Hash() returns b.Pruned unchanged, so every
+	// signature still verifies. Prune() (below) drops only BondReg.Answer — it KEEPS
+	// LastCommit, StateRoot, Entries, Revocations, Slashes and the light BondReg fields, and
+	// none of them is covered by Hash() once the block is pruned. That is a pre-existing
+	// property of era-3 pruning, which exists for build-immutable #8; the era-4 carrier is
+	// simply the first TRANSITION input to ride it.
+	//
+	// THE INVARIANT THAT ACTUALLY HOLDS: a pruned block's integrity rests on
+	// (i) the recompute chain to the first NON-pruned descendant — whose signed StateRoot IS
+	// hash-covered and is recomputed over the (possibly rewritten) ancestor state — and
+	// (ii) trustFloor, below which alone a pruned block is trusted (Reconcile). CONSEQUENTLY:
+	// NO CONSENSUS DECISION MAY DEPEND ON RE-READING THE BODY OF A PRUNED BLOCK. The
+	// carrier is the best-protected member of the set — validateCarrier runs on both
+	// disk-write paths with no IsPruned skip and verifies over b.Prev, which pruning does not
+	// touch, so FABRICATING an entry still needs a real key; only DROPPING entries is free.
+	// The property is documented by TestPrunedBlockHashDoesNotCoverCarrierOrStateRoot
+	// (pruned_block_test.go), a PRE-FREEZE / pre-stamp-raise checklist item — not a fix here.
 	if b.IsPruned() {
 		return b.Pruned
 	}
@@ -729,8 +769,15 @@ func (b *Block) Hash() ports.Hash {
 // StateRoot/LogRoot are folded in so attesters sign the era-3 committed roots. For an
 // era-2 block both are zero and omitempty omits them, so the marshalled body — and thus
 // the hash — is byte-identical to pre-2a (the compat property, see the field doc).
+//
+// LastCommit is folded in for the SAME reason one era up: the era-4 carrier is a TRANSITION
+// input (it writes validatorsSeen), so it must be covered by the signature the attesters
+// give — that coverage IS the R-BOX-ATTESTS fix (O1). A nil carrier is omitted by omitempty,
+// so every pre-carrier block's hash bytes are unchanged. The literal below MUST name BOTH
+// open-era additive fields (IssuerKeys, LastCommit): TestHashLiteralPinsEveryHashCoveredField
+// (hash_literal_pin_test.go) is RED if either is dropped (CD-0).
 func (b *Block) bodyHash() ports.Hash {
-	unsigned := Block{Version: b.Version, Height: b.Height, Prev: b.Prev, Entries: b.Entries, Proposer: b.Proposer, Revocations: b.Revocations, Unrevocations: b.Unrevocations, BondRegs: b.BondRegs, Slashes: b.Slashes, StateRoot: b.StateRoot, LogRoot: b.LogRoot, IssuerKeys: b.IssuerKeys}
+	unsigned := Block{Version: b.Version, Height: b.Height, Prev: b.Prev, Entries: b.Entries, Proposer: b.Proposer, Revocations: b.Revocations, Unrevocations: b.Unrevocations, BondRegs: b.BondRegs, Slashes: b.Slashes, StateRoot: b.StateRoot, LogRoot: b.LogRoot, IssuerKeys: b.IssuerKeys, LastCommit: b.LastCommit}
 	buf := hashBufPool.Get().(*bytes.Buffer)
 	buf.Reset()
 	if err := encModeBuf.MarshalToBuffer(&unsigned, buf); err != nil {
@@ -2730,6 +2777,16 @@ func (c *Chain) ValidateProposal(b *Block) error {
 	if err := c.validateEra4Version(b); err != nil {
 		return err
 	}
+	// era-4 (v5) LastCommit carrier validity (R-BOX-ATTESTS, O1). A pure block-local check
+	// (header + signatures, no committed state), placed BEFORE the roots predicate so a bad
+	// carrier fails naming itself rather than as an opaque root mismatch — the roots
+	// predicate would fold the carrier's seating effect and report only "root != recompute".
+	// The own-disk Reload path runs the identical rule in appendStructural; both disk-write
+	// paths are pinned by TestEveryDiskWritePathRunsTheEra3RootCheck
+	// (core/chain/reload_era3_boundary_test.go), which was extended to require validateCarrier.
+	if err := validateCarrier(b); err != nil {
+		return err
+	}
 	// era-3 (v4) committed-root predicate (build step 2b). A no-op for sub-v4 blocks
 	// (era-2 rules unchanged); for a v4 block it rejects a nil root, or a StateRoot/
 	// LogRoot that does not equal the post-apply recompute. Placed LAST so a v4 block
@@ -3205,6 +3262,15 @@ func (c *Chain) appendStructural(b Block) error {
 	if err := c.validateEra4Version(&b); err != nil {
 		return err
 	}
+	// era-4 (v5) LastCommit carrier validity on the OWN-DISK reload path — the same symmetry
+	// the era-3/era-4 version checks above have (R-BOX-ATTESTS, O1). The carrier is a
+	// TRANSITION input, so a disk block carrying a forged or mis-versioned carrier must be
+	// refused here exactly as on the commit path; the root check below would catch a seating
+	// divergence, but it would name the root, not the cause. Pure block-local, so it runs
+	// BEFORE apply and a rejected block is never left applied.
+	if err := validateCarrier(&b); err != nil {
+		return err
+	}
 	// era-3 (v4) committed-root re-validation on the OWN-DISK reload path (A-bare).
 	//
 	// validateStructural verifies the proposer/attester signatures, which cover the
@@ -3336,6 +3402,21 @@ func (c *Chain) AppendGenesis(b Block) error {
 	if len(b.Slashes) > 0 {
 		return ErrGenesisTakedown
 	}
+	// R-BOX-ATTESTS (O1): a genesis carrying a LastCommit carrier is refused BY RULE. Height 0
+	// has no parent to attest, and the carrier is the hash-covered v5 validatorsSeen input, so
+	// a declared genesis carrying one would be an authored, signed pre-seating of the maturity
+	// metric. ONLY the hash-covered slot is refused here. Atts (outside the Hash() preimage)
+	// keep main's behaviour — neither refused nor stripped, seated UNVERIFIED by the loop
+	// below. Production genesis carries no Atts at all (core/genesis emits Entries only;
+	// anchors seat at height >= 1 through the founding drain); four core/node fixtures seed
+	// a verified genesis att by convention, which is why "strip all" broke them. The
+	// certified disposal — seat only the attestations that verify over the genesis hash,
+	// strip the rest — awaits the owner's ratification (R-CARRIER-GENESIS-DISPOSAL,
+	// genesis-atts-seating-rule-RESEARCH-CERTIFICATION-2026-09-04.md). Gate:
+	// TestGenesisLastCommitIsRefused.
+	if len(b.LastCommit) > 0 {
+		return fmt.Errorf("%w: %d LastCommit entries", ErrGenesisLastCommit, len(b.LastCommit))
+	}
 	// NAMED PREMISE (residual R-G, era-3 freeze coupling): AppendGenesis does NOT
 	// run validateBondRegs, so the #618 seenRoot per-root distinct-ID dedup does
 	// NOT cover genesis. Genesis apply() IS order-dependent for two distinct-ID
@@ -3349,19 +3430,22 @@ func (c *Chain) AppendGenesis(b Block) error {
 	// genesis order-independent BY REJECTION would be a consensus-rule change to
 	// genesis validity (research-gated) — see
 	// docs/thinking/2026-08-28-genesis-sameroot-residual.md option (b).
-	// R-CARRIER-GENESIS-DISPOSAL, the Atts half — RESEARCH-GATED (2026-09-04). Genesis
-	// Atts sit OUTSIDE the Hash() preimage, so a relayed stub is attacker-writable, yet
-	// genesis Atts by the launch anchors are ALSO how the anchors are seated into
-	// validatorsSeen (the bootstrap). "Strip all" (the delta cert's MG-C) was built and
-	// REFUTED by four core/node bootstrap tests; the sound rule (seat only attestations
-	// that VERIFY over the genesis hash?) is a consensus-rule question routed to the
-	// Researcher. Until ruled: unchanged behaviour. The hash-covered carrier field
-	// (LastCommit) is authored content and IS refused by the carrier rule.
+	// R-CARRIER-GENESIS-DISPOSAL, the Atts half — CERTIFIED 2026-09-04 as "seat only the
+	// attestations that VERIFY over the genesis hash; strip the rest; never refuse"
+	// (genesis-atts-seating-rule-RESEARCH-CERTIFICATION-2026-09-04.md); OWNER RATIFICATION
+	// OWED (a height-0 state-transition change; validatorsSeen is an era-3 leaf), so the
+	// behaviour here is UNCHANGED until ratified: genesis Atts are seated unverified.
+	// "Strip all" (the earlier MG-C) was built and REFUTED. The hash-covered carrier field
+	// (LastCommit) is authored content and IS refused below by the carrier rule.
 	c.apply(b)
 	return nil
 }
 
 func (c *Chain) apply(b Block) {
+	// R-BOX-ATTESTS (O1): the parent's proposer, captured BEFORE b is appended — it is the
+	// one id the carrier fold excludes (the parent's proposer does not seat itself off its
+	// own block). Absent only for the genesis, which carries no attestations by rule.
+	parentProposer, _ := c.headProposerID()
 	c.blocks = append(c.blocks, b)
 	for _, e := range b.Entries {
 		c.byRoot[e.Root] = e
@@ -3389,6 +3473,15 @@ func (c *Chain) apply(b Block) {
 	// DIFFERENT identity earns nothing, so a colluding operator cannot back N
 	// Sybil standings off one shared plot. The first owner may re-register (renew
 	// or resize) its own root freely.
+	// ---- era-4 (v5) ATTESTATION CARRIER FOLD (R-BOX-ATTESTS, O1) — ORDER-PINNED FIRST ----
+	// This runs BEFORE this block's bond registrations, TTL expiries and slashes, so the
+	// qualification screen reads the CHILD'S PRE-STATE = the parent's committed post-state =
+	// the floor box's prevStateRoot. Chain and box therefore screen against the same state by
+	// construction. Pinned structurally by TestCarrierFoldPrecedesBondRegsInApply — moving it
+	// below the bond loop screens a mid-apply state no committed root names (the sibling of
+	// the rotate-LAST hazard, #620). No-op for a sub-v5 block: see applyCarrier.
+	c.applyCarrier(b, parentProposer)
+
 	proven := b.Height > 0 // genesis regs are declared; height>0 went through validateBondRegs
 	// CONSENSUS-RULE (canonicalize same-id intra-block regs, cert
 	// sameid-twoversion-intrablock-bondreg-contention 2026-08-28): a block may carry
@@ -3476,10 +3569,19 @@ func (c *Chain) apply(b Block) {
 	c.applyIssuerKeys(b)
 	// Track distinct qualified validators for the maturity metric — a
 	// monotonic, chain-internal, auditable measure of decentralization.
-	for _, a := range b.Atts {
-		id := a.AttesterID()
-		if id != b.ProposerID() && c.attesterQualified(id) {
-			c.validatorsSeen[id] = true
+	//
+	// FROZEN PRIOR-ERA RULE (R-BOX-ATTESTS, O1). This loop is left BYTE-FOR-BYTE and is now
+	// era-gated to sub-v5 blocks. It is the defect: b.Atts is NOT covered by Hash(), so the
+	// seating write it performs is a transition input a replica may legitimately hold
+	// differently — the freeze + stall of converged verdict §2.3. era-3 (v4) is frozen (#632)
+	// and carries the defect forever, retired unrun under owner call O2. A v5 block seats from
+	// the hash-covered LastCommit carrier instead (applyCarrier, folded ABOVE the bond regs).
+	if b.Version < BlockVersionWitnessable {
+		for _, a := range b.Atts {
+			id := a.AttesterID()
+			if id != b.ProposerID() && c.attesterQualified(id) {
+				c.validatorsSeen[id] = true
+			}
 		}
 	}
 	// Latch maturity (F-1): once the network is first certified mature, record it
@@ -3738,7 +3840,13 @@ func (c *Chain) MintVersion(h uint64) uint64 {
 // StateRoot/LogRoot over the POST-APPLY state of b — the roots a validator will
 // recompute and check (validateEra3Roots). It is called by the propose path AFTER
 // all apply-affecting content (BondRegs, entries, slashes) is folded into b, so the
-// roots cover the block as it will actually commit. The recompute uses the same
+// roots cover the block as it will actually commit.
+//
+// R-BOX-ATTESTS (O1): that sentence was FALSE before the LastCommit carrier — the
+// attestation certificate is gathered AFTER this call, and the pre-carrier transition seated
+// validatorsSeen from it, so these roots could never cover a certificate that seated a new
+// attester. It stays false for a v4 block: era-3 is frozen and carries the defect, retired
+// unrun (owner call O2). See PopulateEra4Roots for where it becomes true. The recompute uses the same
 // dry-run apply (postApplyRoots) the 2b predicate uses, so the proposer's root and
 // the validator's recompute come from one authoritative state-transition function.
 // A no-op below the era-3 boundary: the propose path only calls this when
@@ -3760,8 +3868,12 @@ func (c *Chain) PopulateEra3Roots(b *Block) error {
 // recompute and check (validateEra3Roots, which recomputes via StateRootForVersion(5)).
 // It sets b.Version = BlockVersionWitnessable BEFORE computing the roots so postApplyRoots
 // selects the v5 leaf set (StateRootForVersion reads b.Version). Called by the propose
-// path AFTER all apply-affecting content is folded into b, so the roots cover the block as
-// it will actually commit. A no-op below the era-4 boundary: the propose path calls this
+// path AFTER all apply-affecting content is folded into b — INCLUDING the LastCommit
+// attestation carrier, which the propose path attaches immediately before this call — so the
+// roots cover the block as it will actually commit. That sentence becomes TRUE for the first
+// time here (R-BOX-ATTESTS O1): the carrier is hash-covered and is the sole v5 validatorsSeen
+// input, so unlike every prior era there is no post-signature transition input left.
+// A no-op below the era-4 boundary: the propose path calls this
 // only when MintVersion(h) == BlockVersionWitnessable.
 func (c *Chain) PopulateEra4Roots(b *Block) error {
 	b.Version = BlockVersionWitnessable // select the v5 leaf set for the recompute below

@@ -54,6 +54,7 @@ func buildSlashFixture(t *testing.T) slashFixture {
 	)
 	Sign(g, prop)
 	c.apply(*g)
+	advancePastHeightOne(c, prop)
 
 	// Confirm the culprit is bonded AND qualified pre-slash (else the ablations are vacuous).
 	cid := ports.HashBytes(pubOf(culprit))
@@ -462,8 +463,7 @@ func TestRecomputeStateRootSlashAblationCircularAnchor(t *testing.T) {
 func TestRecomputeStateRootSlashAblationCompoundOutOfScope(t *testing.T) {
 	f := buildSlashFixture(t)
 	b := f.slashBlock()
-	bb := b
-	b.Atts = append(b.Atts, Attest(&bb, key(53077)))
+	b.LastCommit = append(b.LastCommit, carrierEntry(f.c, key(53077)))
 	committed := f.applyAndCommittedRoot(t, b)
 	w := f.witnessForSlash(t, b)
 

@@ -86,9 +86,26 @@ var foldInputCoverageTable = map[string]map[string]r12Disposition{
 		"TTLSweep":       {"already-anchored", "presence is own-cfg + height gated (BondTTLBlocks, dueBucket[h]), never witness-decided (C-6); values classified under StateRootTTLWitness"},
 		"BondRegScreens": {"already-anchored", "derived-set: one screen per payload bond-reg Root; values classified under StateRootBondRegScreen (R1.2 FIX gates)"},
 		"BondRegBuckets": {"already-anchored", "derived-set: one entry per payload-derived affected due-height; values classified under StateRootBucketWitness"},
-		"AttScreens":     {"already-anchored", "derived-set: one screen per non-proposer attester in b.Atts; values classified under StateRootAttScreen (R1.2 FIX gates)"},
-		"Rotate":         {"already-anchored", "presence is own-cfg gated (epochsEnabled && h%EpochBlocks==0), never witness-decided (C-6); values classified under StateRootRotateWitness"},
-		"Maturity":       {"already-anchored", "REQUIRED on every v5 block — maturityLatchOps STALLS on a nil Maturity, so its presence is not attacker-optional; values classified under StateRootMaturityWitness"},
+		"AttScreens":     {"already-anchored", "derived-set: one screen per carried non-parent-proposer signer in b.LastCommit — the HASH-COVERED carrier (R-BOX-ATTESTS O1), so the derived set is a pure function of signed content; values classified under StateRootAttScreen (R1.2 FIX gates)"},
+		// R-BOX-ATTESTS O1 (2026-09-03). The carrier transition excludes id == parent.ProposerID(),
+		// and the parent's proposer identity is NOT a committed leaf, so it cannot be Resolved against
+		// prevStateRoot like every other class-A screen input. It is anchored instead by the PARENT'S
+		// OWN PROPOSER SIGNATURE over the hash-covered b.Prev. Both fields decide a branch (the skip),
+		// so both are FIX with driven gates. The residual the anchor leaves is
+		// R-CARRIER-PARENTPROPOSER, and it runs in TWO directions: DROP (a signer skips its OWN
+		// seat — needs that key, bounded, downward-only, and what these two gates cover) and ADD
+		// (a freshly minted keypair verifies, matches no carrier entry, so nothing is skipped and
+		// the parent's TRUE proposer self-seats — needs no key of that proposer's, one extra id
+		// per block, WRONG-ACCEPT direction). The ADD direction is NOT covered by these gates and
+		// is not bounded by key ownership; the earlier "bounded to the downward-only discretion"
+		// framing is WITHDRAWN (research certification 2026-09-03 §6.2). It is inert while the box
+		// never-Accepts and is tracked as a FLIP PRECONDITION in ROADMAP.md. See
+		// carrierParentProposerFromWitness (carrier.go) for the full statement and the certified
+		// fix direction (a `tagLastProposer` committed scalar, before the era-4 freeze).
+		"ParentProposer":    {"FIX", "TestAdversarialRoot_ClassA_ForgedParentProposer"},
+		"ParentProposerSig": {"FIX", "TestAdversarialRoot_ClassA_MissingParentProposerSig"},
+		"Rotate":            {"already-anchored", "presence is own-cfg gated (epochsEnabled && h%EpochBlocks==0), never witness-decided (C-6); values classified under StateRootRotateWitness"},
+		"Maturity":          {"already-anchored", "REQUIRED on every v5 block — maturityLatchOps STALLS on a nil Maturity, so its presence is not attacker-optional; values classified under StateRootMaturityWitness"},
 	},
 	// ---- class E/R: the payload changed-leaf carrier ----
 	"StateRootChangedLeafWitness": {

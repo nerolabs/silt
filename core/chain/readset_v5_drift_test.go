@@ -413,7 +413,7 @@ type v5ReadSetCorpusBlock struct {
 // applying each block.
 //
 // The corpus MUST cover (amended cert R3 + PE Q4): ordinary, ttl-empty (the era-4 win),
-// ttl-occupied, renew-move, boundary, ATTESTED (populated b.Atts → validatorsSeen write),
+// ttl-occupied, renew-move, boundary, ATTESTED (populated b.LastCommit carrier → validatorsSeen write),
 // MATURITY-LATCH (everMature false→true), and a standalone SLASH at a non-boundary height.
 //
 // MatureValidators=2 (objective) so the maturity latch is a genuine false→true transition
@@ -472,15 +472,19 @@ func buildV5ReadSetCorpus(t *testing.T) ([]v5ReadSetCorpusBlock, *Chain) {
 	Sign(b2, a)
 	record(b2, "h2 displacement+regs", "ordinary")
 
-	// h3: ATTESTED block — bb + cc (qualified non-proposers) attest, so the atts loop writes
-	// validatorsSeen[bb]/[cc] (apply:3293-3298). The maturity latch READ path also fires here
+	// h3: ATTESTED block — bb + cc (qualified, neither is the PARENT's proposer) are carried, so
+	// the carrier fold writes validatorsSeen[bb]/[cc] (applyCarrier, carrier.go). The maturity latch READ path also fires here
 	// (everMature is false pre-apply, so Mature()→C2Metric ranges validatorsSeen), but the
 	// latch does NOT yet transition — it transitions at h4 (see below). Covers the attested
 	// class (the validatorsSeen write path).
 	prev = b2.Hash()
-	b3 := &Block{Version: 1, Height: 3, Prev: prev, Entries: []ports.Entry{entry(3)}}
+	// v5 (BlockVersionWitnessable) + a LastCommit CARRIER: since R-BOX-ATTESTS O1 the
+	// validatorsSeen write is fed by the hash-covered carrier over b.Prev, not b.Atts, and it
+	// fires only for a v5 block. Modelling the v5 read-set with a v1 block carrying Atts would
+	// model a path the v5 transition no longer has.
+	b3 := &Block{Version: BlockVersionWitnessable, Height: 3, Prev: prev, Entries: []ports.Entry{entry(3)}}
 	Sign(b3, a)
-	b3.Atts = []Attestation{Attest(b3, bb), Attest(b3, cc)}
+	b3.LastCommit = []Attestation{carrierEntry(c, bb), carrierEntry(c, cc)}
 	record(b3, "h3 attested", "attested")
 
 	// h4: BOUNDARY block (h4 % 4 == 0) that ALSO trips the MATURITY LATCH. By h4 pre-apply
@@ -491,9 +495,9 @@ func buildV5ReadSetCorpus(t *testing.T) ([]v5ReadSetCorpusBlock, *Chain) {
 	// under both classes (the transition is real — the vacuity guard is not satisfied
 	// vacuously). It also carries attestations (the mature-epoch atts path).
 	prev = b3.Hash()
-	b4 := &Block{Version: 1, Height: 4, Prev: prev, Entries: []ports.Entry{entry(4)}}
+	b4 := &Block{Version: BlockVersionWitnessable, Height: 4, Prev: prev, Entries: []ports.Entry{entry(4)}}
 	Sign(b4, a)
-	b4.Atts = []Attestation{Attest(b4, cc), Attest(b4, dd)}
+	b4.LastCommit = []Attestation{carrierEntry(c, cc), carrierEntry(c, dd)}
 	corpus = append(corpus, v5ReadSetCorpusBlock{block: *b4, label: "h4 boundary", class: "boundary"})
 	corpus = append(corpus, v5ReadSetCorpusBlock{block: *b4, label: "h4 maturity-latch", class: "maturity-latch"})
 	c.apply(*b4)

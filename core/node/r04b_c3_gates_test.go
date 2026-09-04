@@ -58,8 +58,21 @@ func c3Chain(t *testing.T, era4At uint64, genesisSigner ed25519.PrivateKey, regs
 	c := chain.New(chain.Config{Quorum: 1, EpochBlocks: c3EpochBlocks,
 		Era3ActivationHeight: 1, Era4ActivationHeight: era4At},
 		func(ports.NodeID) int64 { return 1 << 30 })
+	// The genesis version follows the era it is minted in. A v5 genesis is needed only
+	// where IssuerKeys ride on it (validateGenesisIssuerKeys requires v5) or era-4 is
+	// active from height 1. A chain whose era-4 flip is LATER mints a sub-v5 genesis, like
+	// the production genesis (core/genesis, chain.BlockVersion): under the frozen sub-v5
+	// rule its Atts seat c3Attester at height 0, so the v4 blocks below do not trip the
+	// era-3 seating-after-root property (PopulateEra3Roots runs before the certificate).
+	// A v5 genesis's Atts write NOTHING under the LastCommit carrier rule (R-BOX-ATTESTS O1:
+	// a v5 block seats only from its hash-covered carrier, and genesis carriers are
+	// refused), so it cannot pre-seat the attester the v4 leg relies on.
+	gv := uint64(chain.BlockVersion)
+	if era4At <= 1 || len(regs) > 0 {
+		gv = chain.BlockVersionWitnessable
+	}
 	g := chain.Block{
-		Version:    chain.BlockVersionWitnessable,
+		Version:    gv,
 		Height:     0,
 		Entries:    []ports.Entry{c3Entry("c3-genesis")},
 		IssuerKeys: regs,

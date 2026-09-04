@@ -9,6 +9,37 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Security
+- **The `LastCommit` attestation carrier is REBASED onto main behind its hard merge gates — the
+  R-BOX-ATTESTS fix (owner calls O1 and O2, ratified 2026-09-03) is now mergeable.** The rule, as
+  ratified: `LastCommit []Attestation` (cbor key 18, `omitempty`) republishes the PARENT's precommits
+  and is FOLDED INTO `Hash()`; validity is block-local (`validateCarrier`, one function, three callers:
+  `ValidateProposal`, `appendStructural`, the floor box entry) — every entry a genuine `PhasePrecommit`
+  signature over `b.Prev` at its own round, distinct ids, height 1 empty by rule, a pre-v5 block
+  carrying the field invalid, a genesis carrying it refused (`ErrGenesisLastCommit`); the transition
+  seats each carried signer with `id != parent.ProposerID()` and `attesterQualified` against the
+  child's PRE-state, folded BEFORE this block's bond regs / TTL / slashes (pinned like rotate-LAST),
+  and a v5 block's own `Atts` write nothing (the frozen era-3 rule is untouched, era-gated). Merge
+  resolutions, each decided by a gate rather than by eye: (1) CD-0 — the `bodyHash` literal names BOTH
+  open-era additive fields, `IssuerKeys` (17) and `LastCommit` (18); `Prune()` keeps `LastCommit`;
+  `TestHashLiteralPinsEveryHashCoveredField` + runtime pair GREEN, the teeth fixture made
+  order-independent. (2) CD-2 — `CheckEquivocation`'s accept set is byte-identical (26-case golden
+  corpus GREEN); the R0.6 `SlashesBytesCap` / `pendingSlashes` packing survive intact. (3) MG-C — the
+  hash-covered half only: genesis `LastCommit` is refused; genesis `Atts` keep main's pre-carrier
+  behaviour (neither stripped nor refused — the strip broke the anchor bootstrap; its disposal is
+  research-gated, R-CARRIER-GENESIS-DISPOSAL). (4) R-V5-TAGSET-EQUALITY — `issuerKeyCommit` stays in
+  the v5 tag set. Fixture debt exposed: `c3Chain` minted a v5 genesis whose `Atts` pre-seated the
+  fixture attester; under O1 a v5 genesis's `Atts` write nothing, so its genesis version now follows
+  its era (a sub-v5 genesis where the flip is later, like the production genesis). NOT in this change (also CD-4, the `docs/design/m0.md` C2 sentence that the seating measurement is proposer-gated — owed before the R4.4 brief); 
+  the readiness stamp (stays 3), an `Era4ActivationHeight` flag, the floor-box door exports (held),
+  the R-CARRIER-BYTES value, R-CARRIER-PRUNED-HASH, R-CARRIER-MODELCHECK, `HeadRef` — each tracked on
+  its Rock. Gates: `lastcommit_carrier_pins_test.go`, `lastcommit_carrier_v5_test.go`,
+  `redteam_carrier_boxsplit_gate_test.go`, `core/node/lastcommit_carrier_node_test.go`,
+  `readset_v5_drift_test.go`, `floorbox_recompute_carrier_reflection_v5_test.go`,
+  `genesis_stub_atts_test.go`, `r06_i5_evidence_recompute_test.go`, `r06_slashes_cap_packing_test.go`;
+  `-short` and `-race -short` GREEN on `core/chain` + `core/node`. Record:
+  `docs/thinking/2026-09-04-lastcommit-carrier-merge-design.md`. `core/chain/chain.go`,
+  `core/chain/carrier.go`, `core/chain/genesis_stub_atts_test.go`, `core/chain/hash_literal_pin_test.go`,
+  `core/node/r04b_c3_gates_test.go`.
 - **Carrier merge gates on main.** Landed GREEN on main with teeth by injection, so the `LastCommit`
   carrier rebase is held to them: `TestHashLiteralPinsEveryHashCoveredField` (the `bodyHash` literal
   names every exported `Block` field except the five deliberate exclusions — a dropped `IssuerKeys` or an
@@ -766,6 +797,92 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `core/node/tokenrole.go`, `core/node/demandkeys.go`, `core/node/chainrole.go`,
   `core/chain/issuerkey.go`, `core/credit/delivery.go`, `core/credit/credit.go`.
 ### Fixed
+- **Floor-box wrong-accept on the `LastCommit` carrier — the box now runs the SAME validity rule
+  the full node runs (one function, three callers):** the trustless floor box reproduced
+  `applyCarrier`'s TRANSITION (class A derived its write-set straight off
+  `b.LastCommit[i].AttesterID()`) but never `validateCarrier`'s VALIDITY rule, which was wired only
+  onto the node's two disk-write paths. So a v5 block whose carrier named the PUBLIC keys of real
+  qualified validators with 64 zero bytes for a signature — **no key material** — was rejected by
+  every full node (`ErrCarrierBadSignature`) and AGREED with by the box, against the attacker's own
+  `apply()`-computed root. Escalation: `validatorsSeen` is the sole input to `C2Metric` →
+  `MatureCoefficient` → `matureNow` → the one-way `everMature` latch and to the box's own
+  `RecomputeMatureNow`, so the same forged carrier flipped the maturity latch — the MEASURED
+  decentralization quantity the maturity shed gates on. Inert today (`WitnessValidateV5` never
+  returns Accept), so this was an R1.8 accept-flip entry blocker, not a live exposure. Fixed at the
+  root, per the PE structure ruling: `assembleStateRootRecomputeOps` now calls the shared
+  `validateCarrier(&b)` unconditionally before any class dispatches, and `validateCarrier` lost its
+  `*Chain` receiver so the COMPILER (not the AST allowlist pin, whose glob is holed) forbids a
+  live-state read on that path. `apply()` was deliberately NOT made to verify. An invalid carrier
+  is a STALL (`ErrRecomputeCarrierInvalid`); never-Accept is unchanged. Also corrected: the
+  class-A "No wrong-accept" doc claim (true of the SCREEN, false of the INPUT) and the backwards
+  pruned-block hash claim at `Hash()` — a pruned block's `Pruned` field is a **linkage token, not a
+  content commitment**, so no consensus decision may depend on re-reading a pruned block's body
+  (`Hash()`/`Prune()` unchanged; the property is documented, and the follow-ups are filed as Rocks
+  under Boulder 1). Six class-A test fixtures that minted an invalid HEIGHT-1 carrier block were
+  repaired to height 2. Gates: `core/chain/redteam_carrier_boxsplit_gate_test.go` — five gates,
+  each run on the warm AND cold box tiers, oracled on the full node's accept path
+  (`ValidateCommit`, never a single predicate) and asserting the implication
+  `box agrees ⇒ node accepts`, never the biconditional; all RED at `3bd13e2`, GREEN after.
+  (`core/chain/carrier.go`, `core/chain/chain.go`,
+  `core/chain/floorbox_recompute_stateroot_v5.go`,
+  `core/chain/floorbox_recompute_stateroot_atts_v5.go`;
+  red-team `RED-TEAM-lastcommit-carrier-3bd13e2-2026-09-03.md`;
+  PE ruling `RULING-floorbox-predicate-rederivation-structure-2026-09-03.md`;
+  design record `docs/thinking/2026-09-03-lastcommit-carrier-round-A-design.md` addendum.)
+- **`LastCommit` attestation carrier — the R-BOX-ATTESTS fix, era-4 (v5) only (owner call O1,
+  ratified 2026-09-03; the frozen era-3 format and transition are untouched):** `apply()` wrote
+  `validatorsSeen` from `b.Atts`, but `Hash()` excludes `Atts` and the committed-root predicate
+  re-runs the real `apply()` over the ATTACHED certificate. A proposer populates its roots BEFORE
+  it gathers precommits, so ANY certificate that would seat a new attester made the recomputed root
+  differ from the signed one and every replica — including the proposer's own — rejected that block
+  ("commit rejected by own replica"). Two HIGH consequences: the decentralization MEASUREMENT froze
+  (only blocks seating nobody could commit, so `validatorsSeen` was constant from the first
+  root-checked block, permanently ceilinging `MatureCoefficient` and reading zero arrivals forever),
+  and the chain stalled intermittently for any round whose first-to-quorum prefix carried a
+  qualified never-seen attester (connected, all-honest, unbounded in expectation). The fix moves the
+  seating input into HASH-COVERED content: a v5 block carries `LastCommit []Attestation` (additive
+  cbor key 18, `omitempty`, folded into `Hash()`) republishing the PARENT's precommits, and the v5
+  transition seats each carried signer that is not the parent's proposer and is `attesterQualified`
+  against the child's pre-state — folded BEFORE the block's bond registrations, TTL expiries and
+  slashes (structurally pinned). A v5 block's own `Atts` now write nothing. Validity: every entry
+  verifies over `b.Prev` at `PhasePrecommit` at its own round (deliberately NOT bound to
+  `CommitRound`, which `Hash()` does not cover); distinct ids; a sub-v5 block carrying the field is
+  invalid; height 1's carrier is empty BY RULE and a genesis `LastCommit` is refused BY RULE (genesis `Atts` are NOT refused on this tree: they seat unverified as on main, pending the owner's ratification of the certified seat-only-verified rule)
+  (previously a convention, not a rule). The floor-box class-A recompute and the v5 read-set model
+  are re-pointed to the carrier, with the parent-proposer exclusion anchored by the parent's own
+  proposer signature over the hash-covered `b.Prev`. Disclosed: the seat lands ONE BLOCK LATE
+  (monotone, benign); a proposer can DELAY a seating by omitting a signer but can never FORGE one
+  (downward-only, unenforceable by rule). Every carrier-free block hashes BYTE-IDENTICALLY to
+  pre-carrier code (drift guard), so the era-3 freeze (#632) is untouched, the readiness stamp is
+  NOT raised in this round, and fork-choice weight (owner call O3) is deliberately untouched.
+  Gates G1-G6b, G8, G9 of the converged verdict ship with it, each driven RED first.
+  (`core/chain/carrier.go`, `core/chain/chain.go`, `core/node/chainrole.go`,
+  `core/chain/floorbox_recompute_stateroot_atts_v5.go`, `core/chain/readset_v5.go`;
+  `docs/thinking/2026-09-03-lastcommit-carrier-round-A-design.md`)
+- **`LastCommit` carrier — research-certification merge gates closed (test, comments and ROADMAP
+  only; NO design change, no rule change, and the box still never-Accepts):** the build
+  certification (`LASTCOMMIT-CARRIER-round-A-...-2026-09-03`) returned GATED on three items.
+  (1) Gate G2's GREEN assertion was under-specified — it asserted only `validatorsSeen != 0`, which
+  the three pre-existing anchors already satisfy, so a regression that silently dropped a signer
+  from the carrier passed. Each arm now pins the EXACT carrier membership and seated count (the
+  fifth node FIRST: 4 carried, 3 seated, the fifth included; LAST: 3 carried, 2 seated, the fifth
+  structurally NOT seated because its reply landed after the first-to-quorum prefix closed).
+  Ablation: under-carrying one genuine signer is now RED and was green before.
+  (2) The `R-CARRIER-PARENTPROPOSER` residual text was one-sided. Dropping the forger's OWN seat is
+  bounded, but the ADD direction is NOT bounded by key ownership — a freshly minted keypair verifies
+  against `b.Prev`, matches no carrier entry, so nothing is skipped and the parent's TRUE proposer
+  self-seats (one id per block, wrong-accept direction). The claim that a verifying witness never
+  falls through to "no exclusion" is WITHDRAWN. Inert today; filed as an R1.8 flip precondition with
+  its certified fix direction (a `tagLastProposer` committed scalar, owed BEFORE the era-4 freeze).
+  (3) The claim that carrier bytes are bounded by R-membership is WITHDRAWN — qualification is
+  applied only at the transition, so any fresh keypair passes `validateCarrier` and ~1.3M entries
+  fit `maxFrame`; filed as `R-CARRIER-BYTES` on the stamp-raise carry-list with its two candidate
+  bounds, both of which are v5 validity-rule changes needing certification. Also corrected: a
+  producer comment that claimed `HeadCarrier` carries "everything you hold" when it carries the
+  parent's first-to-quorum prefix, and a stale cited test name in `ValidateProposal`.
+  (`core/node/lastcommit_carrier_node_test.go`, `core/chain/carrier.go`, `core/chain/chain.go`,
+  `core/chain/readset_v5.go`, `core/chain/floorbox_recompute_stateroot_v5.go`,
+  `core/chain/floorbox_recompute_stateroot_atts_v5.go`, `core/node/chainrole.go`, `ROADMAP.md`)
 - **Floor-box class-A screen no longer reads LIVE box state — Direction A, an R1.8 flip precondition
   (Boulder 1; recompute-side only, no committed/wire format change, never-Accept unchanged):** the
   class-A attestation screen picked its qualification branch from `c.matureEpoch`
