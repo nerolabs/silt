@@ -98,11 +98,15 @@ type wouldRefuseRow struct {
 	Count    int    `json:"count"`
 }
 
+// relayFanInInfo is series B as seen from THIS node only (the cert's series-B aggregation
+// gap: the swarm-wide top-relay share is a harness-side join across nodes). LocalView is
+// always true here so a reader cannot mistake it for the swarm figure.
 type relayFanInInfo struct {
-	Relays   int     `json:"relays"`   // distinct relay groups with RELAYED entries
-	Clients  int     `json:"clients"`  // RELAYED entries in the table
-	TopShare float64 `json:"topShare"` // the top relay's share of them (0 when none)
-	PerRelay []int   `json:"perRelay"` // clients per relay, descending, unnamed
+	LocalView bool    `json:"localView"`
+	Relays    int     `json:"relays"`   // distinct relay groups with RELAYED entries
+	Clients   int     `json:"clients"`  // RELAYED entries in the table
+	TopShare  float64 `json:"topShare"` // the top relay's share of them (0 when none)
+	PerRelay  []int   `json:"perRelay"` // clients per relay, descending, unnamed
 }
 
 func className(c ports.PeerClass) string {
@@ -136,7 +140,7 @@ func (s *uiServer) addressCapSnapshot() addressCapInfo {
 		return a.CapRelay < b.CapRelay
 	})
 	per, top := tab.RelayFanIn()
-	info.RelayFanIn = relayFanInInfo{Relays: len(per), TopShare: top, PerRelay: []int{}}
+	info.RelayFanIn = relayFanInInfo{LocalView: true, Relays: len(per), TopShare: top, PerRelay: []int{}}
 	for _, n := range per {
 		info.RelayFanIn.Clients += n
 		info.RelayFanIn.PerRelay = append(info.RelayFanIn.PerRelay, n)

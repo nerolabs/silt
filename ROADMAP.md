@@ -1180,6 +1180,25 @@ economy-off HEAD certifies a network nobody runs. Design:
   `-relay-via` present the relay's address and would be capped together; R4.3b must key on DIRECT
   connections' addresses and treat relayed peers separately (immutable #4/#5).** Must not slip past the RC
   gate: a labelled adversary (10 labelled eclipser incumbents → 1/6 discoverable) is untouched by R4.3a.
+  **Reviews of the build (2026-09-04):** PE `RULING-R4.3b-address-keying-build-e45399a-2026-09-04.md`
+  MERGE-WITH-CONDITIONS (shadow inert for every admission and selection decision, verified against main); Tester
+  MERGE-READY (35/35; 12 ablations; node-tier shadow differential 40 nodes × 3 seeds: 0 table / announce /
+  resolve differences); red-team `RED-TEAM-R4.3b-address-keying-build-e45399a-2026-09-04.md` (the R4.3a headline
+  and the $0 IPv6 /64 rotation are CLOSED; shadow == off under 200 adversarial seeds; six findings, ALL about
+  `on`). **OWED BEFORE `on` (a Rock: R4.3b-pre-on):** PE O-1 de-herd picks from the first non-empty
+  `KnownRelays()` snapshot (the herd re-forms on gossip order — fix before the shadow run or it measures gossip
+  order); O-2 a refused `relay.Client` is never closed and retries forever; O-3 the kept label cap returns before
+  `decide`, so a declared same-/24 cohort under-counts in shadow (the default undeclared deployment measures
+  identically); red-team **F1** free relay identities capture the de-herd (10 ids → 77% of ponies) and under `on`
+  the RELAYED cap suppresses the NON-punchable population (symmetric NAT / CGNAT / mobile) — the relay-tier
+  dilemma, → Researcher; **F2** loopback/link-local observed addresses are DIRECT at group 0 = cap-exempt AND
+  zero the shadow series (default `-listen 127.0.0.1`) — a group-0-dominance WARN at minimum, → Builder +
+  Researcher; **F3** IPv6 fixed at /32 collapses honest cloud co-tenants (2/8 admitted) — width → Researcher;
+  F4 introducer laundering fills the non-DIRECT reserve (transient, DIRECT reserve untouched); F5 series-A
+  counters accumulate without reset; F6 `/api/status.addressCap` counts are recon (no group, no salt). Tester
+  coverage gaps (owed, test-only): a simnet downgrade arm; a runtime capture that the group never reaches
+  stdout/stderr in any format; a node-tier G-6 twin (the differential above, kept in scratch). Researcher
+  cert on F1/F3/F2 in flight (`R4.3b-on-preconditions-relay-tier-and-ipv6-width-RESEARCH-CERTIFICATION-2026-09-04.md`).
 - **R4.4 · External red-team vs the C1 + C2 composition and the seven §7 seams (#183) — THE M0
   close gate.** This is the RC-defining gate, and **it is the same pass as R1.7** — one external B8
   engagement, not two. **RATIFIED 2026-09-03: it runs at the RELEASE CANDIDATE, AFTER the era-4/v5
