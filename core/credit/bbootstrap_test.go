@@ -28,6 +28,15 @@ func advanceLedgerEpoch(l *Ledger, to uint64) {
 		[]byte(fmt.Sprintf("tick-%d", to)), to)
 }
 
+// newExportLedger is a ledger with an injected B_bootstrap salt — the shape every
+// caller has since R2.9a: core never draws one (internal/depcheck), the daemon injects
+// random bytes at boot, a test injects a fixed value and gets a reproducible series.
+func newExportLedger(fee, grant int64) *Ledger {
+	l := New(fee, grant)
+	l.SetExportSalt([]byte("r29a-test-salt"))
+	return l
+}
+
 func rowFor(t *testing.T, rows []RequesterFetch, bytes int64) RequesterFetch {
 	t.Helper()
 	for _, r := range rows {
@@ -43,7 +52,7 @@ func rowFor(t *testing.T, rows []RequesterFetch, bytes int64) RequesterFetch {
 // requesters that first fetched at DIFFERENT epochs and fetched DIFFERENT volumes
 // appear as two rows carrying exactly their own numbers.
 func TestR29a_TwoRequestersCarryTheirOwnBytesAndAge(t *testing.T) {
-	l := New(100, 0)
+	l := newExportLedger(100, 0)
 	server := id(1)
 	early, late := id(2), id(3)
 
@@ -82,7 +91,7 @@ func TestR29a_TwoRequestersCarryTheirOwnBytesAndAge(t *testing.T) {
 // DIFFERENCE between the ledger's epoch now and the requester's first touch, so a
 // later fetch must not reset the identity's age back to zero.
 func TestR29a_FirstSeenEpochIsWrittenOnceSoAgeAdvancesWithTheLedgerEpoch(t *testing.T) {
-	l := New(100, 0)
+	l := newExportLedger(100, 0)
 	server, fetcher := id(1), id(2)
 
 	advanceLedgerEpoch(l, 3)
@@ -133,7 +142,7 @@ func TestR29a_TheExportCarriesNoRootAndNoRequesterID(t *testing.T) {
 		}
 	}
 	// And the emitted id must not BE the requester id (hex or raw).
-	l := New(100, 0)
+	l := newExportLedger(100, 0)
 	fetcher := id(9)
 	l.RecordServe(id(1), fetcher, ports.HashBytes([]byte("c")), 10)
 	row := l.FetchedBytesByRequester()[0]
@@ -147,27 +156,37 @@ func TestR29a_TheExportCarriesNoRootAndNoRequesterID(t *testing.T) {
 // nodes — a fresh ledger (a restart) salts the SAME requester to a different id.
 func TestR29a_TheSaltedIDIsStableWithinALedgerAndUnjoinableAcross(t *testing.T) {
 	fetcher := id(4)
-	mk := func() *Ledger {
+	mk := func(salt string) *Ledger {
 		l := New(100, 0)
+		l.SetExportSalt([]byte(salt))
 		l.RecordServe(id(1), fetcher, ports.HashBytes([]byte("c")), 42)
 		return l
 	}
-	a := mk()
+	a := mk("salt-of-process-A")
 	first := a.FetchedBytesByRequester()[0].SaltedRequester
 	again := a.FetchedBytesByRequester()[0].SaltedRequester
 	if first != again {
 		t.Fatalf("salted id is not stable within one ledger: %q vs %q", first, again)
 	}
-	b := mk()
+	// A second process holds a different salt (the daemon draws fresh bytes at boot —
+	// pinned at the cmd tier by TestR29aDaemonInjectsAFreshExportSalt, since core may
+	// not draw randomness itself). The SAME requester must label differently.
+	b := mk("salt-of-process-B")
 	if other := b.FetchedBytesByRequester()[0].SaltedRequester; other == first {
-		t.Fatalf("a restart re-salts to the SAME id %q — the series is joinable across processes", other)
+		t.Fatalf("two processes with different salts labelled the same requester %q — the series is joinable across processes", other)
+	}
+	// UNSET is the safe state: no salt, no rows at all.
+	c := New(100, 0)
+	c.RecordServe(id(1), fetcher, ports.HashBytes([]byte("c")), 42)
+	if rows := c.FetchedBytesByRequester(); len(rows) != 0 {
+		t.Fatalf("a ledger with NO salt emitted %d row(s) — the export must be silent rather than emit a joinable id", len(rows))
 	}
 }
 
 // TestR29a_TheSnapshotIsBoundedAndReportsTheTotal: the returned snapshot is capped
 // (build-immutable #8) and the caller can still tell it was truncated.
 func TestR29a_TheSnapshotIsBoundedAndReportsTheTotal(t *testing.T) {
-	l := New(100, 0)
+	l := newExportLedger(100, 0)
 	server := id(1)
 	const n = MaxRequesterFetchRows + 17
 	for i := 0; i < n; i++ {
@@ -193,7 +212,7 @@ func TestR29a_TheSnapshotIsBoundedAndReportsTheTotal(t *testing.T) {
 // TestR29a_ANodeThatNeverFetchedIsNotInTheSeries: the series is over REQUESTERS, so a
 // registered server with zero fetched bytes contributes no row (and no salted id).
 func TestR29a_ANodeThatNeverFetchedIsNotInTheSeries(t *testing.T) {
-	l := New(100, 500)
+	l := newExportLedger(100, 500)
 	l.Register(id(1))
 	l.Register(id(2))
 	if rows := l.FetchedBytesByRequester(); len(rows) != 0 {

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -41,6 +42,7 @@ func r29aServer(t *testing.T) (*uiServer, *credit.Ledger) {
 	t.Helper()
 	s, _, _, led := economyServer(t, 0)
 	s.peerCount = func() int { return 0 }
+	led.SetExportSalt([]byte("r29a-status-test-salt")) // R2.9a: injected, never drawn in core
 	return s, led
 }
 
@@ -176,5 +178,31 @@ func TestR29aStatusEmitsAnEmptySeriesNotNull(t *testing.T) {
 	}
 	if !strings.Contains(body, `"series":[]`) {
 		t.Fatalf("empty series is not an empty JSON array: %s", body)
+	}
+}
+
+// TestR29aDaemonInjectsAFreshExportSalt is where the "unjoinable across processes"
+// property actually lives (R2.9a). core/credit may not draw randomness — sims must stay
+// deterministic, and internal/depcheck pins that — so the ledger only ACCEPTS a salt and
+// the daemon is the one component that draws it. If this call goes away the export still
+// works, silently, with an unsalted... nothing: the ledger emits no rows without a salt.
+// So the risk this gate guards is the opposite one — a FIXED or derived salt slipping in,
+// which would make the series joinable across restarts and across nodes.
+//
+// SOURCE GATE: reads daemon.go as text; it can see the call and its argument, not that
+// the bytes are random at runtime. RUNTIME GATE: TestR29a_TheSaltedIDIsStableWithinALedgerAndUnjoinableAcross
+// (core/credit) covers the property that two different salts label the same requester
+// differently, and that no salt means no rows.
+func TestR29aDaemonInjectsAFreshExportSalt(t *testing.T) {
+	src, err := os.ReadFile("daemon.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(src)
+	if !strings.Contains(s, "ledger.SetExportSalt(salt)") {
+		t.Fatal("SOURCE GATE: daemon.go must inject the B_bootstrap export salt (ledger.SetExportSalt) — without it the export is silent")
+	}
+	if !strings.Contains(s, "rand.Read(salt)") {
+		t.Fatal("SOURCE GATE: the export salt must come from crypto/rand at boot — a fixed or derived salt makes the B_bootstrap series joinable across restarts and across nodes")
 	}
 }

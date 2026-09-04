@@ -31,7 +31,6 @@ package credit
 // salted id and publishes (age, bytes) pairs only. See cmd/silt/ui.go.
 
 import (
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"sort"
@@ -75,7 +74,7 @@ type RequesterFetch struct {
 func (l *Ledger) FetchedBytesByRequester() []RequesterFetch {
 	salt, ok := l.exportSalt()
 	if !ok {
-		return nil // no salt, no export: never emit an id an operator could join on
+		return nil // no salt set, no export: never emit an id an operator could join on
 	}
 	rows := make([]RequesterFetch, 0, MaxRequesterFetchRows)
 	for _, n := range l.order {
@@ -126,18 +125,28 @@ func (l *Ledger) FetchedRequesters() (requesters int, epoch uint64) {
 // is l.Epoch() — a one-line change here, and nothing else in the export moves.
 func (l *Ledger) bootstrapEpoch() uint64 { return l.Epoch() }
 
-// exportSalt returns this ledger's per-process B_bootstrap salt, drawing it on first
-// use. It is random, in-memory, never persisted and never leaves the process, so a
-// restart re-salts and no two ledgers agree — which is exactly what stops the series
-// being joined across restarts or nodes. false means the salt could not be drawn; the
-// caller must then emit nothing.
+// SetExportSalt injects this process's B_bootstrap salt. The ledger never DRAWS one:
+// core carries no effects and no ambient randomness, so sims stay deterministic — the
+// rule `internal/depcheck` pins ("randomness must be injected"), and the reason this is
+// a setter rather than a lazy draw. The daemon passes fresh random bytes at boot; a sim
+// or a test passes a fixed value and gets a reproducible series.
+//
+// The salt is in-memory, never persisted and never leaves the process, so a restart
+// re-salts and no two nodes agree — which is exactly what stops the series being joined
+// across restarts or across nodes. UNSET is the safe state: with no salt the export
+// emits NOTHING rather than an id an operator could join on.
+func (l *Ledger) SetExportSalt(salt []byte) {
+	if len(salt) == 0 {
+		l.fetchExportSalt = nil
+		return
+	}
+	l.fetchExportSalt = append([]byte(nil), salt...)
+}
+
+// exportSalt returns the injected salt. false means none was set — emit nothing.
 func (l *Ledger) exportSalt() ([]byte, bool) {
-	if l.fetchExportSalt == nil {
-		s := make([]byte, 16)
-		if _, err := rand.Read(s); err != nil {
-			return nil, false
-		}
-		l.fetchExportSalt = s
+	if len(l.fetchExportSalt) == 0 {
+		return nil, false
 	}
 	return l.fetchExportSalt, true
 }

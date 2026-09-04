@@ -21,6 +21,7 @@ func r29aNode(t *testing.T) (*Node, *credit.Ledger) {
 	net := simnet.New(sched, 1, simnet.DefaultConfig())
 	ident := identity.FromSeed(29001)
 	ledger := credit.New(50_000, 0)
+	ledger.SetExportSalt([]byte("r29a-node-test-salt")) // R2.9a: core never draws one; the daemon injects
 	nd := New(ident.NodeID(), DefaultConfig(), sched, net.Endpoint(ident.NodeID()), memstore.New())
 	nd.SetLedger(ledger)
 	return nd, ledger

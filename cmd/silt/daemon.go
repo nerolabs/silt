@@ -648,6 +648,18 @@ func cmdDaemon(args []string) error {
 	// chain-less daemon so the chain-gated call sites below never nil-panic.
 	saveChain := func(string) {}
 	ledger := credit.New(relaypay.ShippedAnchorFace, 500_000) // the ONE fee constant: publish fee == relay anchor face (R2.14 k_max derives from it); starter grant so a fresh publisher can pay token fees
+	// R2.9a: the B_bootstrap export's requester label is salted per PROCESS, and core
+	// may not draw randomness (internal/depcheck — sims stay deterministic), so the
+	// daemon injects it here. Fresh bytes per boot means the series cannot be joined across
+	// restarts or across nodes. If the draw fails the salt stays unset and the export
+	// emits NOTHING — instrumentation fails closed on privacy; it never blocks the node.
+	if salt := make([]byte, 16); true {
+		if _, rerr := rand.Read(salt); rerr == nil {
+			ledger.SetExportSalt(salt)
+		} else {
+			fmt.Printf("b_bootstrap: export DISABLED — could not draw a per-process salt: %v\n", rerr)
+		}
+	}
 	// R0.4b re-break F2: the cross-server double-redeem guard is DURABLE, and it is
 	// restored HERE — before the node exists, so before any receipt can be accepted. A
 	// restart used to evict every guarded token, in-window or not, and the identical

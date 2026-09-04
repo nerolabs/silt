@@ -24,7 +24,10 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   per-requester TOTAL bytes and age only — no object root, no chunk id, no clock finer than the
   epoch — so it cannot say what anybody fetched. Inside the process a requester is labelled with a
   per-process randomly SALTED hash that is never persisted and never shared, so the series cannot
-  be joined across restarts or across nodes; if the salt cannot be drawn, the export emits nothing
+  be joined across restarts or across nodes. The salt is INJECTED, never drawn in core: `core/` carries
+  no ambient randomness so sims stay deterministic (`internal/depcheck` pins it), so the ledger only
+  accepts a salt (`SetExportSalt`) and the daemon draws fresh bytes at boot. Unset is the safe state —
+  with no salt the export emits nothing
   rather than a joinable id. The HTTP surface drops the label entirely and publishes `(age, bytes)`
   pairs. Pinned by `TestR29a_TheExportCarriesNoRootAndNoRequesterID`,
   `TestR29a_TheSaltedIDIsStableWithinALedgerAndUnjoinableAcross` and

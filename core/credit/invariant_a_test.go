@@ -91,6 +91,7 @@ var standingClassification = map[string]standingClass{
 	// R2.9a — the B_bootstrap export (bbootstrap.go). Both are pure readers of two
 	// counters the ledger already keeps (fetchedBytes, firstSeenEpoch); neither is
 	// read by Reputation and neither writes anything.
+	"SetExportSalt":           neutral, // injects the export's per-process label salt; touches no balance
 	"FetchedBytesByRequester": neutral, // observability (per-requester bytes vs identity age; salted, root-free)
 	"FetchedRequesters":       neutral, // observability (the series' total + the ledger epoch it ages against)
 
