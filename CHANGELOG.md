@@ -83,6 +83,25 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   number awaiting the owner's ratification; the `daemon.go:994` "heavier fork" line is recorded as a
   live S5 drill contract with the stale-prose list as owed docs true-up.
 
+### Testing
+- **R3.1 V1/V2 — the SMT second-preimage / domain-separation scope invariants are pinned
+  (test-only, 2026-09-04; design
+  `docs/thinking/2026-09-01-smt-domain-separation-close-design.md`).**
+  V1 (`core/statehash/smt_domain_separation_test.go`) asserts the leaf/inner node-type prefix
+  bytes differ (`0x00` vs `0x01`, reconstructed via `fold.go`'s own
+  `foldLeafPreimage`/`foldInnerPreimage`) and that swapping a genuine node's body onto the
+  OTHER type's prefix never reproduces the real library-committed root — the operational form
+  of "a shortened proof cannot substitute one node type for the other." Ablation: with
+  `foldInnerPrefix` forced equal to `foldLeafPrefix`, both tests go RED. V2
+  (`internal/depcheck/smt_domain_separation_test.go`) is an AST-walked (not grepped, not
+  hand-listed) inventory over `core/`, `cmd/`, `adapters/`, `internal/` pinning the three scope
+  conditions the argument needs: SI-1 exactly one `smt.NewTrieSpec` construction site and it is
+  `(sha256.New(), false)`; SI-2 zero `WithValueHasher` references; SI-3 zero
+  `ProveClosest`/`VerifyClosestProof`/`SparseMerkleClosestProof`/`nilPathHasher`/`newNilPathHasher`
+  references. Each of the three violations was injected in a scratch file and confirmed to
+  redden its gate independently. The Researcher certifies the disjoint-preimage argument itself
+  separately; these gates hold the scope conditions, not the argument.
+
 ### Security
 - **R2.10 / F8 — the credit ledger owns a CHAIN-ANCHORED epoch (research-certified 2026-09-04).**
   The paid-serial guard's sweep floor and every admission screen used to run against an epoch the
