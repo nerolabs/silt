@@ -3391,14 +3391,11 @@ func (c *Chain) AppendGenesis(b Block) error {
 	// has no parent to attest, and the carrier is the hash-covered v5 validatorsSeen input, so
 	// a declared genesis carrying one would be an authored, signed pre-seating of the maturity
 	// metric. ONLY the hash-covered slot is refused here. Atts (outside the Hash() preimage)
-	// keep main's behaviour — neither refused nor stripped, seated UNVERIFIED by the loop
-	// below. Production genesis carries no Atts at all (core/genesis emits Entries only;
-	// anchors seat at height >= 1 through the founding drain); four core/node fixtures seed
-	// a verified genesis att by convention, which is why "strip all" broke them. The
-	// certified disposal — seat only the attestations that verify over the genesis hash,
-	// strip the rest — awaits the owner's ratification (R-CARRIER-GENESIS-DISPOSAL,
-	// genesis-atts-seating-rule-RESEARCH-CERTIFICATION-2026-09-04.md). Gate:
-	// TestGenesisLastCommitIsRefused.
+	// are FILTERED below, before apply: only the entries whose signature verifies over the
+	// genesis hash are seated; the rest are stripped, never refused (D-GENESIS-ATTS-SEATING,
+	// ratified 2026-09-04). Production genesis carries no Atts at all (core/genesis emits
+	// Entries only; anchors seat at height >= 1 through the founding drain). Gates:
+	// TestGenesisLastCommitIsRefused; genesis_atts_seating_test.go G1–G10.
 	if len(b.LastCommit) > 0 {
 		return fmt.Errorf("%w: %d LastCommit entries", ErrGenesisLastCommit, len(b.LastCommit))
 	}
@@ -3415,13 +3412,30 @@ func (c *Chain) AppendGenesis(b Block) error {
 	// genesis order-independent BY REJECTION would be a consensus-rule change to
 	// genesis validity (research-gated) — see
 	// docs/thinking/2026-08-28-genesis-sameroot-residual.md option (b).
-	// R-CARRIER-GENESIS-DISPOSAL, the Atts half — CERTIFIED 2026-09-04 as "seat only the
-	// attestations that VERIFY over the genesis hash; strip the rest; never refuse"
-	// (genesis-atts-seating-rule-RESEARCH-CERTIFICATION-2026-09-04.md); OWNER RATIFICATION
-	// OWED (a height-0 state-transition change; validatorsSeen is an era-3 leaf), so the
-	// behaviour here is UNCHANGED until ratified: genesis Atts are seated unverified.
-	// "Strip all" (the earlier MG-C) was built and REFUTED. The hash-covered carrier field
-	// (LastCommit) is authored content and IS refused below by the carrier rule.
+	// R-CARRIER-GENESIS-DISPOSAL, the Atts half — RATIFIED 2026-09-04 (owner: "I ratify 1";
+	// genesis-atts-seating-rule-RESEARCH-CERTIFICATION-2026-09-04.md §4.1): a genesis seats
+	// ONLY the attestations whose signature verifies over its hash; the rest are STRIPPED,
+	// never refused. Atts sit outside the Hash() preimage, so a relaying peer can append an
+	// unsigned stub that the proposer signature does not cover; before this rule the stub
+	// was seated into validatorsSeen (a phantom seat from zero key material, and an era-3
+	// committed-root divergence on a fresh-sync victim), and refusing it would let that same
+	// zero-cost stub wedge fork-adopt and Reload. Production genesis carries no Atts at all
+	// (core/genesis emits Entries only); the filter is extensionally the identity on every
+	// honest history and costs |Atts| verifies once. The committed blocks[0].Atts is the
+	// verified subset, so Save / serve / Reload are idempotent. "Strip all" (the earlier
+	// MG-C) was REFUTED: it discarded a real signer's consent and forked the seating
+	// predicate. The hash-covered carrier field (LastCommit) is authored content and is
+	// refused above. Gates: genesis_atts_seating_test.go G1–G10.
+	if len(b.Atts) > 0 {
+		h := b.Hash()
+		verified := b.Atts[:0:0]
+		for _, a := range b.Atts {
+			if verifyAtt(a, h) {
+				verified = append(verified, a)
+			}
+		}
+		b.Atts = verified
+	}
 	c.apply(b)
 	return nil
 }

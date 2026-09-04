@@ -1385,3 +1385,28 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
 - **Canon text changed with it.** `docs/design/consensus-invariants.md` I5 (new scar +
   assert); `core/chain/retention.go` (the "slashing window drops out" premise refuted);
   `core/chain/chain.go` `Hash`/`Prune` docs.
+
+## D-GENESIS-ATTS-SEATING — a genesis seats only the attestations that verify over its hash; the rest are stripped, never refused
+
+- **Status:** ✅ RATIFIED — 2026-09-04 (owner: *"I ratify 1"*). Certification:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/genesis-atts-seating-rule-RESEARCH-CERTIFICATION-2026-09-04.md`.
+- **The rule.** In `AppendGenesis`, after the proposer-signature check and before apply, `b.Atts` becomes
+  exactly the entries with `verifyAtt(a, b.Hash())`; never an error on this account; the committed
+  `blocks[0].Atts` is the verified subset (so save / serve / reload are idempotent); a genesis `LastCommit`
+  is refused (O1, hash-covered). A height-0 state-transition change (`validatorsSeen` is an era-3 leaf), so
+  ratified, not era-gated: a height-0 rule cannot be.
+- **Why.** `Atts` sit outside the `Hash()` preimage. A relaying peer could append an unsigned stub the
+  proposer signature does not cover; the seating loop never verified attestation signatures, so the stub
+  seated a phantom into `validatorsSeen` and diverged the era-3 committed root on a fresh-sync victim.
+  Refusing the stub would let the same zero-key-material input wedge fork-adopt and `Reload`.
+- **The two refuted alternatives.** *Strip all* (the delta cert's MG-C, built and reverted 2026-09-04):
+  discards a real signer's consent and forks the seating predicate into a second copy; four bootstrap
+  fixtures that seed a verified genesis attestation caught it. *Refuse present-but-invalid*: a zero-byte
+  signature is present-but-invalid; that refusal is the free denial lever.
+- **Soundness.** I1/I2 untouched; I3, I4, I5 strengthened; extensionally equal to the old rule on every
+  honest history (production genesis carries no attestations — `core/genesis` emits Entries only; anchors
+  seat at height ≥ 1 through the founding drain). Cost: |Atts| verifies once at boot, 0 in production.
+- **Gates.** G1–G10 (`core/chain/genesis_atts_seating_test.go`, `core/genesis/genesis_atts_test.go`);
+  strip-all reddens G2 + G5's verified control + one bootstrap fixture; refuse-invalid reddens G1/G3/G4/G5/G6.
+- **Corrections travelling with this decision.** The 2026-09-03 delta certification's MG-C ("strip") is
+  superseded; its premise "the launch anchors' genesis attestations seat them" was false.
