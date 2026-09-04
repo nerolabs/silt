@@ -50,6 +50,7 @@ import (
 	"github.com/nerolabs/silt/core/genesis"
 	"github.com/nerolabs/silt/core/link"
 	"github.com/nerolabs/silt/core/node"
+	"github.com/nerolabs/silt/core/relaypay"
 	"github.com/nerolabs/silt/ports"
 )
 
@@ -72,7 +73,7 @@ func cmdDaemon(args []string) error {
 	freeload := fs.Bool("freeload", false, "role separation (#47): serve the registry/relay/routing role but REFUSE to store or serve content — for public-infrastructure operators who run a rendezvous registry without being conscripted into hosting arbitrary content. The node still carries DHT routing; it just holds and serves no chunks")
 	serveContent := fs.Bool("serve-content", true, "D-TIERING capability axis: hold and serve content shards (the edge tier's core contribution, bounded by -capacity). ON by default — this is what an ordinary node does. The explicit form exists so a tier profile composes positively (`-serve-content -archive=false -validator=false` is the transient edge box) rather than as a double negative. `-serve-content=false` is the same refusal as -freeload; passing both with opposite senses is refused rather than silently resolved")
 	acceptReceipts := fs.Bool("accept-delivery-receipts", false, "PoD neutral lane (docs/design/pod.md, certified 2026-08-26): BANK delivery receipts from fetchers this node served, and settle the conserved delivery credit — the fetcher's retrieval fee less the durability skim, which routes to the delivered object's repair escrow. Requires the token-issuer role (implied by -validator), because a receipt is verified against the issuer key that signed its retrieval token; the bilateral issuer==server shape is what the certification's per-node settlement answer covers. Delivery credit is BALANCE ONLY and can never become consensus standing (the γ→1/N firewall) — a receipt is mintable with zero object bytes by design, and conservation, not possession, is what makes forging it unprofitable. Off by default")
-	acceptRelayPayments := fs.Bool("accept-relay-payments", false, "PoD relay lane (docs/design/pod.md §7.3): ACCEPT sender-funded PayWord payment chains for forwarding content-blind bytes as a relay/gateway. THIS LANE PAYS 0 (R0.7 interim, 2026-09-03): settlement credits nothing to this node's operator BALANCE until the R2.14 prepayment anchor lands, because the shipped chain is bound to no verifiable payment — the fetcher's funding claim is a bare integer, and settling it on this node's ledger would mint credit from the faucet grant rather than transfer it (RELAY-LANE-per-node-ledger-mint-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md §9). Turning this on today buys an operator relay TRAFFIC, not relay REVENUE. What still holds: a fetcher commits a chain root once under a FRESH EPHEMERAL identity (never a durable account, M0 guard (i)) and reveals one preimage per forwarded increment; this node verifies each with one SHA-256 under a per-session walk budget; a fresh identity and chain are required PER SESSION (M0 guard (ii): no cross-session linkage); nothing here ever touches standing (the γ→1/N firewall). Off by default")
+	acceptRelayPayments := fs.Bool("accept-relay-payments", false, "PoD relay lane (docs/design/pod.md §7.3): ACCEPT sender-funded PayWord payment chains for forwarding content-blind bytes as a relay/gateway, ANCHORED (R2.14, 2026-09-04) to prepayment credentials this node blind-signs under its own per-epoch demand key and sells for the retrieval fee — a fetcher's durable identity buys k ≤ 6 anchors here, a fresh ephemeral spends them at session open, and settlement pays min(paid increments, Σ face) into this node's operator BALANCE, burning the unconsumed remainder (settled ≤ Σ face, on this ledger). BUILT, NOT LIVE: an anchor verifies only under a chain-committed key (an era-4/v5 IssuerKeyReg — this node must be a bonded validator with the demand-key schedule, which this flag now turns on), so until era-4 activation every session open is REFUSED with a named reason and nothing is paid. What holds throughout: a fetcher commits a chain root once under a FRESH EPHEMERAL identity (M0 guard (i): the credential is blind, so the burn cannot be linked to the session) and reveals one preimage per forwarded increment; this node verifies each with one SHA-256 under a per-session walk budget; a fresh identity and chain are required PER SESSION (M0 guard (ii)); nothing here ever touches standing (the γ→1/N firewall). Off by default")
 	archive := fs.Bool("archive", false, "D-TIERING ARCHIVAL tier: retain every block's heavy space-time bond proof to genesis instead of shedding it below the rolling retention horizon, so this node can serve the deep history a pruning swarm has already dropped (what a node stranded past the prune horizon needs — #559's true-loss residual, ErrNeedCheckpoint). RETENTION ONLY, never validity: an archival node validates by exactly the same rules as a pruning one, so the tiers cannot fork against each other. Costs O(all history) resident payload — build-immutable #8 forbids it on the 1 vCPU / 2 GB box, which is the whole reason the tier model exists. Off by default")
 	registryOnly := fs.Bool("registry-only", false, "the LEANEST public-registry role (#47): serve a file-backed registry over HTTPS and construct NO storage node at all — no DHT, chunk store, chain, or caretaker. Unlike -freeload (a full routing node that refuses to host content), this builds nothing but the registry server, so a public-infrastructure operator runs a rendezvous registry at minimal cost. Needs -serve-registry <addr>")
 	// Empty default is deliberate: no built-in seed domain (neutral infra,
@@ -619,7 +620,7 @@ func cmdDaemon(args []string) error {
 	// Assigned in the validator block once the chain exists; a no-op on a
 	// chain-less daemon so the chain-gated call sites below never nil-panic.
 	saveChain := func(string) {}
-	ledger := credit.New(50_000, 500_000) // starter grant so a fresh publisher can pay token fees
+	ledger := credit.New(relaypay.ShippedAnchorFace, 500_000) // the ONE fee constant: publish fee == relay anchor face (R2.14 k_max derives from it); starter grant so a fresh publisher can pay token fees
 	// R0.4b re-break F2: the cross-server double-redeem guard is DURABLE, and it is
 	// restored HERE — before the node exists, so before any receipt can be accepted. A
 	// restart used to evict every guarded token, in-window or not, and the identical
@@ -636,7 +637,12 @@ func cmdDaemon(args []string) error {
 	// asymmetry with F7 is deliberate and is the whole point: inside the lane the guard
 	// is load-bearing and a failure MUST stop the daemon; outside the lane nothing can
 	// read or write it, so opening it at all is the defect.
-	if *acceptReceipts {
+	//
+	// R2.14: the relay lane's anchor guard SHARES this store (one (epoch, serial)
+	// guard, two lanes — core/credit/relayanchor.go), so a relay that accepts
+	// payments needs it loaded for the same reason: a restart must not re-open a
+	// spent anchor for a second session.
+	if *acceptReceipts || *acceptRelayPayments {
 		if gs, gerr := guardstore.Open(filepath.Join(*storeDir, "paidserials.log")); gerr != nil {
 			return fmt.Errorf("delivery-credit guard store: %w", gerr)
 		} else {
@@ -853,7 +859,12 @@ func cmdDaemon(args []string) error {
 			return fmt.Errorf("token issuer store: %w", ierr)
 		} else if issuerKey, kerr := is.LoadOrCreate(rand.Reader); kerr == nil {
 			nd.EnableTokenIssuer(rand.Reader, issuerKey)
-			if *acceptReceipts {
+			// R2.14 (advisory finding E): the per-epoch demand-key schedule runs under
+			// EITHER lane. A relay accepting payments blind-signs its prepayment anchors
+			// under the same key_E (a fourth FDH domain, one key); without the schedule
+			// it could issue nothing and would refuse every open. Only the BANK
+			// (EnableDemandBank) stays receipt-lane-specific.
+			if *acceptReceipts || *acceptRelayPayments {
 				// PoD neutral lane: bank receipts against the key that signed
 				// their tokens. issuer == server here — the bilateral shape the
 				// certification's Q5 settlement answer covers (per-node
@@ -951,20 +962,23 @@ func cmdDaemon(args []string) error {
 							}
 						})
 					}
-					nd.EnableDemandBank(nd.ID())
-					fmt.Println("delivery receipts: ACCEPTING — banking witnessed deliveries and settling the conserved delivery credit (balance only, never standing)")
-					fmt.Printf("delivery receipts: token validity window = %d epochs; per-epoch demand keys pre-published to epoch %d; key_E is resolved against the committed E→key binding (needs an era-4/v5 chain)\n",
+					if *acceptReceipts {
+						nd.EnableDemandBank(nd.ID())
+						fmt.Println("delivery receipts: ACCEPTING — banking witnessed deliveries and settling the conserved delivery credit (balance only, never standing)")
+					}
+					fmt.Printf("demand keys: token validity window = %d epochs; per-epoch demand keys pre-published to epoch %d; key_E is resolved against the committed E→key binding (needs an era-4/v5 chain)\n",
 						demand.DefaultWindow, demandEpoch+demand.DefaultWindow)
 				}
 			}
 			if *acceptRelayPayments {
-				// PoD relay lane (§7.3, certified 2026-08-30): accept sender-funded
-				// PayWord chains for forwarding content-blind bytes. Settlement is
-				// balance only, never standing (the γ→1/N firewall). The two M0
-				// guards (ephemeral-blind funding; fresh identity + chain per
-				// session) are enforced by OpenRelaySession.
+				// PoD relay lane (§7.3; R2.14 anchor certified 2026-09-04): accept
+				// sender-funded PayWord chains for forwarding content-blind bytes,
+				// each anchored to prepayment credentials this node signed under its
+				// own committed key_E and spent once at open. Settlement pays
+				// min(count, Σ face), balance only, never standing (the γ→1/N
+				// firewall). The two M0 guards are enforced by OpenRelaySession.
 				nd.EnableRelayAccept()
-				fmt.Println("relay payments: ACCEPTING — verifying sender-funded PayWord chains; settlement PAYS 0 until the R2.14 prepayment anchor lands (R0.7 interim; balance only, never standing)")
+				fmt.Println("relay payments: ACCEPTING — verifying sender-funded PayWord chains anchored to blind prepayment credentials under this node's committed demand key; settlement pays min(count, Σ face) (balance only, never standing); DARK until an era-4/v5 key commitment lands")
 			}
 			if *requireTokens > 0 {
 				ch.RequireTokens(*requireTokens, nd.IssuerKeyOf)

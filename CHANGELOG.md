@@ -9,6 +9,70 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Security
+- **R2.14 — the relay-lane prepayment ANCHOR (the R0.7 fix; R2.9's prerequisite): the PayWord
+  chain root is now bound to blind-signed prepayment credentials the relay itself issued, and a
+  relay settles at most what those credentials burned on its own ledger. BUILT ≠ LIVE: the lane is
+  DARK until era-4.** The construction, certified 2026-09-04 (owner: "let's do both"): a FOURTH FDH
+  domain `silt/blindrelay/fdh/v1` over `uint64BE(epoch) ‖ serial` under the relay's own
+  chain-committed per-epoch demand key (sound under one RSA key by domain separation — BNPS
+  one-more-inversion bounds tokens across ALL domains by fees paid); `RelayOpen` v2 =
+  `{Root, S, Funding, Anchors[k ≤ 6], Fetcher, Sig}` with the ephemeral's ed25519 signature over
+  `sha256("silt/relay/open/v1" ‖ relayID ‖ Root ‖ uint32BE(S) ‖ uint32BE(k) ‖ serials)` — Rivest–Shamir's
+  `M` with `C_U` the blind credentials; `MaxAnchorsPerSession = ⌈S_max / fee⌉ = 6` DERIVED in
+  source with decode bounds (serial ≤ 32 B, sig ≤ 1,024 B, Fetcher == 32, Sig == 64); the relay
+  verifies in the certified cheap-first ORDER (free guards → k bounds → `sha256(Fetcher) == from` →
+  ed25519 → RSA under the SELF keyset only, newest epoch first, stop at the first failure) and then
+  SPENDS all k anchors all-or-nothing into the ledger's bounded, durable `(epoch, serial)` guard —
+  the R0.4b paid-serial guard SHARED, not a third in-memory twin: refuse at cap, never evict;
+  expiry sweep on the demand-key window; restart is not an eviction — BEFORE admission, with
+  `budget = Σ face` (`S × increment` deleted). Settlement pays `min(count, budget)` into
+  `acct(relay)` only, never the ephemeral; the pump ceiling is `min(count, budget) × B`; the
+  unconsumed remainder is BURNED. Conservation on the paying ledger: `settled ≤ Σ face`
+  (INV-RELAY-CONS) and per session `Δ Σ_L = settled − Σ face ≤ 0`, equality iff fully consumed
+  (correction C-1: the 2026-09-03 "unchanged" corollary is withdrawn). The fetcher's DURABLE
+  identity buys anchors from the relay over the existing withdrawal wire (`AcquireRelayAnchors` →
+  `withdrawBlind`, the demand withdrawal generalised by lane; NO issuer-side change: the issuer signs
+  opaque blinded bytes and charges `ChargePublish`, refusable). The daemon schedules demand keys and
+  loads the guard store under `-accept-delivery-receipts || -accept-relay-payments` (finding E);
+  `-accept-relay-payments`' help is truthful ("built; dark until era-4; pays min(count, Σ face)").
+  Corrections folded in from the cert: C-1 (above); C-2 — "record face at spend" does NOT close fee
+  drift; `fee_E` per epoch key is the close, an FP-2 / R2.10 precondition (F-3); C-3 — "present all
+  k, spend lazily" is REFUTED (an unspent serial re-presented under a new ephemeral links sessions;
+  only a top-up with FRESH anchors is sound); C-4 — the D3 private-purchase path is NOT used for
+  anchors until `creditSpent` is durable (F-4, R2.13b). The fourteen gates, all GREEN (RED-first,
+  Tester 2026-09-04): T-1 `TestRelaySettlementRefusesUnanchoredSession` /
+  `TestRelayOpenRefusesUnanchoredSession`, T-2 `TestRelayLaneConservesTotalSupplyOnOnePerNodeLedger` /
+  `TestRelayAnchorsAreBoughtOnTheRelaysOwnLedger`, T-3 `TestRelayCredentialIsSpentOncePerLedger`
+  (incl. the two-relay G-A5 variant), T-4 `TestRelaySettlementIgnoresForwardedBytesIsBoundedByAnchor`,
+  T-5 `TestRelaySettlementNeverLeavesAnAccountNegative`, T-6 `TestRelayAnchorDomainIsNotADemandToken` /
+  `TestRelayAnchorSignatureIsNotADemandSignature`, T-7 `TestRelayOpenRefusesCheaplyBeforeRSA`
+  (`blindtoken.RelayAnchorVerifyRuns` counter), T-8 `TestRelayAnchorGuardSurvivesRestart`, T-9
+  `TestRelayCeilingNeverExceedsBudget`, T-10 `TestRelayOpenRefusalRecordsNoAnchor`, T-11
+  `TestRelayOpenCommitmentBindsRelayRootAndSerials`, T-12 `TestRelayAnchorGuardWindowMatchesKeysetWindow`,
+  T-13 `TestRelayOpenRefusesWithoutSelfKeyset`, T-14 `TestRelayAnchorDomainIsPinnedByteExactly`; wire
+  `TestRelayMaxAnchorsPerSessionCoversTheSessionCeiling`, `TestRelayOpenDecodeBoundsRefuseOversizedAnchors`;
+  `SpendRelayAnchors` classified `neutral` and pressed against an ANCHORED session in
+  `TestInvariantA_NoNonMintPressRaisesStanding`; the `paid > 0` precondition restored in
+  `TestRelayCreditNeverTouchesStanding`; e2e `TestPaidRelaySessionEndToEnd` buys a real anchor over
+  TCP under the durable identity and asserts `wantCredit = min(S, k·face)` with `Δ Σ_L ≤ 0`. The
+  R0.7 interim is RETIRED: an unanchored open is REFUSED (`errRelayNoAnchor`) rather than admitted
+  and paid 0 — `TestSettleRelaySessionPaysZeroUntilAnchor` / `TestSettleRelaySessionLogCarriesNoAnchorReason`
+  are re-specified as the unanchored ablation guards, and the S5 settlement reason `no-anchor` is
+  retired for `anchored` (recorded goalpost move, `cmd/silt/observable_contract.go`).
+  `TestRelayOpenFloodStaysBounded` is re-specified: admission is PRICED, so a free flood admits
+  nothing (the RT-RELAY-3 "sessions are free" half, closed); the cap and the sweep are pinned by
+  direct insertion. Residuals (cert §10): R-ANCHOR-STALL ≡ R-ANCHOR-GRANULARITY (≤ 300,000 credits
+  per 1 GiB session, burned; owner-accepted v1; follow-on R2.14b `MsgRelayFund`); R-RELAY-ANON-SET
+  (the delivery lane's D3 channel, narrower yield); R-RELAY-WASH-ZERO-LOSS (collusion is a WASH —
+  no v1 relay skim; owner call before R2.4); F-3 R-FEE-CONSTANCY; R-ANCHOR-REPRESENT-LINK;
+  R-DARK-UNTIL-ERA4 (a v5 `IssuerKeyReg` is needed; a paid relay must be bonded). Cert:
+  `silt-reviews/research/research-outcome/R2.14-relay-prepayment-anchor-CONSTRUCTION-RESEARCH-CERTIFICATION-2026-09-04.md`;
+  advisory: `silt-reviews/crypto-specialist/ADVISORY-R2.14-relay-prepayment-anchor-build-2026-09-04.md`;
+  record: `docs/thinking/2026-09-04-r2.14-relay-prepayment-anchor-design.md`. `core/blindtoken/blindtoken.go`,
+  `core/demand/keyset.go`, `ports/ports.go`, `core/credit/relayanchor.go`, `core/credit/relay.go`,
+  `core/credit/delivery.go`, `core/relaypay/wire.go`, `core/node/relayrole.go`,
+  `core/node/relaytransport.go`, `core/node/demandkeys.go`, `cmd/silt/daemon.go`,
+  `cmd/silt/observable_contract.go`, `e2e/relay_paid_test.go`, `docs/design/pod.md` §7.3.
 - **The `LastCommit` attestation carrier is REBASED onto main behind its hard merge gates — the
   R-BOX-ATTESTS fix (owner calls O1 and O2, ratified 2026-09-03) is now mergeable.** The rule, as
   ratified: `LastCommit []Attestation` (cbor key 18, `omitempty`) republishes the PARENT's precommits
@@ -86,7 +150,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `TestRelayRedeemPaysZeroEvenWhenFetcherIsFunded`, `TestSettleRelaySessionPaysZeroUntilAnchor`,
   `TestSettleRelaySessionLogCarriesNoAnchorReason`, `TestRelayPayAdvanceToCumulativeWalkBudgetEnforced`;
   re-specified to pay 0: `TestRelayCreditIsConserved`, `TestRelayRedeemDrawsFromFetcherPaidCredit`,
-  `TestRelayRedeemCannotExceedPaidInBudget`, `TestRelayWashLoopIsAStrictLoss`,
+  `TestRelayRedeemCannotExceedPaidInBudget`, `TestRelayWashLoopIsAWashNeverAGain`,
   `TestRelayFullSessionConservedSettlement`, `TestNoDoubleSettleReaperAndPump`, e2e
   `TestPaidRelaySessionEndToEnd` (balance unchanged). Cert:
   `silt-reviews/research/research-outcome/RELAY-LANE-per-node-ledger-mint-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md`

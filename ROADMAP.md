@@ -99,11 +99,13 @@ carries the argument and the sources. Two are LIVE BREAKS and come first.
    and the `SlashesBytesCap` VALUE (16 MiB) RATIFIED 2026-09-03 with its second face disclosed — see
    `docs/decisions.md` D-F2-EVIDENCE-RECOMPUTE.**
 2. **R0.7 / R2.14 (relay mint, behind a default-off flag):** build the relay prepayment anchor
-   (bilateral PayWord, issuer == relay) as a prerequisite of R2.9, with settlement paying 0 and the flag
-   default-off until it lands. **R0.7 INTERIM SHIPPED 2026-09-03** (owner GO): `RedeemRelayCredit` pays
-   0 and mutates nothing; the settlement line carries `reason=no-anchor`; the flag help and
-   `docs/design/pod.md` §7.3 say the lane pays 0; RT-RELAY-3's cumulative walk budget is enforced (bounded PER SESSION; sessions are free until R2.14 prices admission, so the composed bound is churn rate × S — PE ruling `RULING-R0.7-relay-interim-2719f2d-2026-09-03.md`).
-   R2.14 is the fix.
+   (bilateral PayWord, issuer == relay) as a prerequisite of R2.9. **R0.7 INTERIM SHIPPED 2026-09-03**
+   (owner GO; pays 0). **R2.14 BUILT 2026-09-04 (owner "let's do both"; PR pending):** the construction
+   certified in `R2.14-relay-prepayment-anchor-CONSTRUCTION-RESEARCH-CERTIFICATION-2026-09-04.md` §11
+   is built under its fourteen gates; the interim is retired; admission is priced (RT-RELAY-3's
+   "sessions are free" half closed). Two owner calls carried, BOTH OPEN (the builder does not ratify — PE C-3): (1) R-ANCHOR-STALL for v1, proposed as
+   a disclosed residual (the build takes "do both" as that acceptance; `MsgRelayFund` filed as the
+   follow-on); (2) a relay skim before R2.4 — OPEN. The lane stays DARK until era-4.
 3. **R-STATEVIEW-ENUMERATION / R3.4 freeze scope:** the era-4 freeze scope is at most ONE leaf —
    `tagRevLogSize`, bought purely so a floor box survives a takedown block — and no leaf at all is
    needed for safety.
@@ -198,7 +200,7 @@ carries the argument and the sources. Two are LIVE BREAKS and come first.
   is already pruned becomes unslashable, paired with the `Slashes` byte ceiling. Sources:
   `/Users/andrewedmond/Claude/claude/silt-reviews/red-team/RED-TEAM-accept-chain-state-view-enumeration-2026-09-03.md` (F1),
   `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/I5-cross-height-pruned-slash-forgery-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md`.
-- **R0.7 · RELAY-LANE per-node-ledger MINT — CONFIRMED (2026-09-03), HIGH; INTERIM SHIPPED 2026-09-03 (pays 0; flag default-off; R2.14 is the fix).**
+- **R0.7 · RELAY-LANE per-node-ledger MINT — CONFIRMED (2026-09-03), HIGH; INTERIM SHIPPED 2026-09-03 (pays 0); CLOSED BY R2.14 (BUILT 2026-09-04, PR pending — the interim is retired).**
   `SettleRelaySession` settles on the RELAY's own ledger (`relaytransport.go:107`); `RedeemRelayCredit`
   debits the fetcher's fresh ephemeral, which on that ledger is a phantom auto-granted 500,000 on first
   touch (`credit.go:247-258`); the relay's balance rises by `chainValue` with nothing binding the chain
@@ -214,6 +216,11 @@ carries the argument and the sources. Two are LIVE BREAKS and come first.
   `TestSettleRelaySessionPaysZeroUntilAnchor`, `TestSettleRelaySessionLogCarriesNoAnchorReason`,
   `TestRelayPayAdvanceToCumulativeWalkBudgetEnforced`; e2e `TestPaidRelaySessionEndToEnd` re-specified to
   an unchanged balance. Deliberation: `docs/thinking/2026-09-03-r0.7-relay-interim-design.md`.
+  **R2.14 retires the interim (2026-09-04):** an unanchored open is REFUSED (`errRelayNoAnchor`) rather
+  than admitted-and-paid-0, so `TestSettleRelaySessionPaysZeroUntilAnchor` /
+  `TestSettleRelaySessionLogCarriesNoAnchorReason` are re-specified as the unanchored ablation guards
+  (the refusal names the missing anchor; no settlement line); the S5 `no-anchor` reason is retired for
+  `anchored`; the e2e proof pays `min(S, k·face)` again with `Δ Σ_L ≤ 0`.
   Sources: `/Users/andrewedmond/Claude/claude/silt-reviews/red-team/RED-TEAM-relay-lane-session-grant-and-byte-price-2026-09-03.md`, the R2.14
   cert.
 - **`R-CARRIER-BYTES` — the validity bound, with the cost now MEASURED.** 1.3 M carrier entries fit
@@ -923,7 +930,40 @@ economy-off HEAD certifies a network nobody runs. Design:
   "burn-backed" with F-4 as the open precondition. F-3 (`fee_E`): the fee is a compile-time constant, no flag —
   inert; a NOTE on the FP-2 carry-list, not freeze-timed; no inert fee slot in `IssuerKeyReg` (PE recommends
   against). Source: `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-F4-creditSpent-durability-and-F3-fee-constancy-2026-09-04.md`.
-- **R2.14 · Relay-lane prepayment ANCHOR — NEW 2026-09-03: a PREREQUISITE of R2.9; the fix for R0.7; owner ratification owed.**
+- **R2.14 · Relay-lane prepayment ANCHOR — BUILT 2026-09-04 (branch `builder/r2.14-relay-prepayment-anchor`, PR pending); a PREREQUISITE of R2.9; the fix for R0.7; construction CERTIFIED; owner "let's do both" taken as the build go.**
+  **What shipped:** the fourth FDH domain `silt/blindrelay/fdh/v1` over `uint64BE(E) ‖ serial` under
+  the relay's own committed `key_E` (`blindtoken.BlindRelayAnchor` / `VerifyRelayAnchor`;
+  `demand.Keyset.VerifyAnchorInWindow`); `RelayOpen` v2 = `{Root, S, Funding, Anchors[k≤6], Fetcher,
+  Sig}` with `Sig` over `sha256("silt/relay/open/v1" ‖ relayID ‖ Root ‖ uint32BE(S) ‖ uint32BE(k) ‖
+  serials)` and decode bounds; `MaxAnchorsPerSession = ⌈S_max/fee⌉ = 6` DERIVED; `OpenRelaySession` in
+  the certified order (free guards → k bounds → sha256(Fetcher)==from → ed25519 → RSA under the SELF
+  keyset newest-first, stop at first failure → `SpendRelayAnchors` all-or-nothing → budget = Σ face);
+  `credit.SpendRelayAnchors` into the SHARED R0.4b paid-serial guard (cap / expiry sweep / durable
+  `PaidSerialStore`, classified `neutral`); `RedeemRelayCredit` pays `min(count, budget)` to
+  `acct(relay)` only; ceiling `min(count, budget) × B`; `AcquireRelayAnchors` under the DURABLE identity
+  through `withdrawBlind` (the generalised demand withdrawal — no issuer-side change); the daemon
+  schedules demand keys and loads the guard store under `accept-delivery-receipts || accept-relay-payments`.
+  **Gates (all GREEN):** T-1 `TestRelaySettlementRefusesUnanchoredSession` + `TestRelayOpenRefusesUnanchoredSession`;
+  T-2 `TestRelayLaneConservesTotalSupplyOnOnePerNodeLedger` + `TestRelayAnchorsAreBoughtOnTheRelaysOwnLedger`;
+  T-3 `TestRelayCredentialIsSpentOncePerLedger`; T-4 `TestRelaySettlementIgnoresForwardedBytesIsBoundedByAnchor`;
+  T-5 `TestRelaySettlementNeverLeavesAnAccountNegative`; T-6 `TestRelayAnchorDomainIsNotADemandToken` +
+  `TestRelayAnchorSignatureIsNotADemandSignature`; T-7 `TestRelayOpenRefusesCheaplyBeforeRSA`; T-8
+  `TestRelayAnchorGuardSurvivesRestart`; T-9 `TestRelayCeilingNeverExceedsBudget`; T-10
+  `TestRelayOpenRefusalRecordsNoAnchor`; T-11 `TestRelayOpenCommitmentBindsRelayRootAndSerials`; T-12
+  `TestRelayAnchorGuardWindowMatchesKeysetWindow`; T-13 `TestRelayOpenRefusesWithoutSelfKeyset`; T-14
+  `TestRelayAnchorDomainIsPinnedByteExactly`; wire `TestRelayMaxAnchorsPerSessionCoversTheSessionCeiling`,
+  `TestRelayOpenDecodeBoundsRefuseOversizedAnchors`; e2e `TestPaidRelaySessionEndToEnd` (durable buyer,
+  real purchase over TCP, `wantCredit = min(S, k·face)`, `Δ Σ_L = settled − k·fee ≤ 0`).
+  **Residuals (cert §10):** R-ANCHOR-STALL ≡ R-ANCHOR-GRANULARITY (≤ 300,000 per 1 GiB session, burned;
+  owner-accepted v1; follow-on **R2.14b `MsgRelayFund`** — a top-up with FRESH anchors on an admitted
+  session, one guard spend per top-up, T-3/T-10 per top-up; "present k, spend lazily" REFUTED on
+  guard (ii)); R-RELAY-ANON-SET (this relay's buyers in the W+1 band, by k and IP — the delivery
+  lane's D3 channel); **R-RELAY-WASH-ZERO-LOSS (owner call: a relay skim before R2.4 — OPEN)**;
+  F-3 R-FEE-CONSTANCY (FP-2 / R2.10 carry); R-ANCHOR-REPRESENT-LINK; **R-DARK-UNTIL-ERA4** (BUILT ≠
+  LIVE: needs a v5 `IssuerKeyReg`; a paid relay must be bonded in objective mode). Not widened: F-4
+  (R2.13b; anchors are bought under the durable identity only). Deliberation:
+  `docs/thinking/2026-09-04-r2.14-relay-prepayment-anchor-design.md`.
+  **History (the 2026-09-03 definition):**
   Per-node conservation is always AUTHORIZATION-anchored (privacy guard (ii) makes "debit the payer"
   unimplementable on any topology; `RedeemDeliveryCredit` debits no one either, `delivery.go:512-516`).
   The relay's anchor was specified 2026-08-27 (Q4(a)) and NEVER BUILT: `RelayOpen.Funding` is a bare
@@ -937,8 +977,8 @@ economy-off HEAD certifies a network nobody runs. Design:
   session at 195.3 MiB vs `MaxSessionBytes` 1 GiB → allow k ≤ 6 credentials. **Until it lands (the
   R0.7 interim, SHIPPED 2026-09-03):** the flag stays default-off AND settlement pays 0
   (`RedeemRelayCredit` returns 0, mutates nothing; log `reason=no-anchor`); the five false claims in
-  `relay.go` are rewritten. R2.14 fills `RedeemRelayCredit` with the anchor parameter and the conserved
-  transfer, and restores a positive `wantCredit` in e2e `TestPaidRelaySessionEndToEnd`.
+  `relay.go` are rewritten. R2.14 fills `RedeemRelayCredit` with the anchor budget and the conserved
+  transfer, and restores a positive `wantCredit` in e2e `TestPaidRelaySessionEndToEnd` — DONE above.
   **RT-RELAY-3 (MsgRelayPay preimage-walk CPU DoS, ~1083× byte→ms) is NOT closed by the anchor** — it
   is closed by the interim: `Verifier.walkSteps` is the enforced per-session budget S
   (`ErrWalkBudgetExhausted`, refused before walking; no slack, since a retransmit of an accepted
@@ -947,6 +987,19 @@ economy-off HEAD certifies a network nobody runs. Design:
   Side finding: `creditSpent` (`node.go:626`) has no cap/sweep/eviction on a shipped lane. Sources:
   the relay-lane fix cert above;
   `/Users/andrewedmond/Claude/claude/silt-reviews/red-team/RED-TEAM-relay-lane-session-grant-and-byte-price-2026-09-03.md`.
+  **As-built reviews (2026-09-04):** Researcher delta cert CERTIFIED (closes R-RELAY-MINT;
+  `R2.14-relay-anchor-as-built-dac0f39-DELTA-CERTIFICATION-2026-09-04.md`); PE MERGE-WITH-CONDITIONS
+  (`RULING-R2.14-relay-anchor-dac0f39-2026-09-04.md`), conditions landed. **New residuals, held in tension:**
+  **R-GUARD-SHARED-FILL** (any dialing identity gets the faucet grant on the relay's ledger, so ~6.5k identities
+  fill the SHARED paid-serial guard for ≤ W+1 epochs and BOTH lanes refuse — liveness only; closes with R2.12);
+  **R-REAPER-FORFEIT** (`sweepRelaySeen` reaps an unsettled session at `admitEpoch < epoch − 1` without settling;
+  fetcher-side price was 0 under the interim and is now ≤ 300,000 — **Tester must MEASURE whether a maximum
+  session settles inside one epoch before the flag is ever enabled**); **R-REFUSE-AND-SELF-SPEND** (PE O-1: at
+  open the relay holds k valid bearer pairs before any service; a relay that refuses the honest open can
+  self-open with a fresh ephemeral and settle Σ face for zero bytes — Δ Σ_L = 0, a capture not a mint; inert
+  while relay balance is private bookkeeping, load-bearing at FP-2/R2.10 — on that carry-list beside F-3;
+  direction (serial bound to root, or accept-and-gate) research-gated before R2.9). **Owner sentence still
+  unsaid:** accept R-ANCHOR-STALL at ≤ 300,000 credits per 1 GiB session as a disclosed v1 residual.
 - **M_seen — the pony-class value is still OWED (carried).** The class-M streaming verifier (PR
   #709) removed RSS as the binding ceiling; the remaining ceiling is **TIME**, the O(N·log N)
   compute floor streaming does not remove. The cap value must be derived from a pony-class

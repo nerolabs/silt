@@ -266,6 +266,35 @@ func (k *Keyset) VerifyInWindow(current uint64, t Token) (epoch uint64, ok bool)
 	}
 }
 
+// VerifyAnchorInWindow is VerifyInWindow's twin for RELAY PREPAYMENT ANCHORS
+// (R2.14): the same newest-first walk over the held (key_e, e) pairs, calling
+// blindtoken.VerifyRelayAnchor instead of VerifyDemand. Everything VerifyInWindow
+// says holds here unchanged — at most one pair can match (the epoch is inside the
+// signed message), the returned issuedEpoch is a pure function of the anchor, and an
+// anchor whose issuing epoch has left the window verifies under no held key. The
+// relay calls this under its OWN pinned keyset only (core/node OpenRelaySession,
+// cert G-A5): an anchor is a claim on the ledger that burned its fee, and only the
+// issuer's ledger did.
+//
+// It also refuses a signature that verifies in the DEMAND domain: the domains are
+// distinct FDH inputs under one key (blindtoken relayAnchorDomain), so a demand token
+// offered as an anchor fails at every pair — one fee, one lane (cert T-6).
+func (k *Keyset) VerifyAnchorInWindow(current uint64, t Token) (epoch uint64, ok bool) {
+	if len(t.Serial) == 0 {
+		return 0, false
+	}
+	e := current
+	for {
+		if pub := k.keys[e]; pub != nil && blindtoken.VerifyRelayAnchor(pub, e, t.Serial, t.Sig) {
+			return e, true
+		}
+		if e == 0 || current-e >= k.window {
+			return 0, false
+		}
+		e--
+	}
+}
+
 // KeyFingerprint is the 32-byte commitment to an issuer public key: sha256 over the
 // canonical wire encoding (blindtoken.MarshalPub). This is the value committed to
 // consensus state as key_E's binding for epoch E, and the value a redeemer compares

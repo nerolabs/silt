@@ -345,32 +345,58 @@ func (n *Node) AcquireDemandTokenInWindow(rng io.Reader, issuer ports.NodeID, do
 // this node's account (the D3 path).
 func (n *Node) withdrawDemandToken(rng io.Reader, issuer ports.NodeID, pub *rsa.PublicKey,
 	epoch uint64, credit *ports.PublishCredit, done func(demand.Token, uint64, error)) {
+	n.withdrawBlind(rng, issuer, pub, epoch, credit, demand.Withdraw,
+		func(p *rsa.PublicKey, e uint64, serial, blindSig, secret []byte) ([]byte, error) {
+			tok, err := demand.Unblind(p, e, serial, blindSig, secret)
+			return tok.Sig, err
+		},
+		func(serial, sig []byte, err error) {
+			if err != nil {
+				done(demand.Token{}, 0, err)
+				return
+			}
+			done(demand.Token{Serial: serial, Sig: sig}, epoch, nil)
+		})
+}
+
+// withdrawBlind is the lane-generic withdrawal withdrawDemandToken and
+// AcquireRelayAnchors share (R2.14): the blind and unblind primitives decide the
+// FDH domain (demand token vs relay anchor); everything else — the fresh serial,
+// the epoch named in the request, the refusal of a reply signed for any other
+// epoch, the verify-after-unblind — is identical, and the issuer side is untouched
+// (it signs opaque blinded bytes). done fires once with the serial and the
+// unblinded signature, or the error.
+func (n *Node) withdrawBlind(rng io.Reader, issuer ports.NodeID, pub *rsa.PublicKey,
+	epoch uint64, credit *ports.PublishCredit,
+	blind func(io.Reader, *rsa.PublicKey, uint64, []byte) (blinded, secret []byte, err error),
+	unblind func(pub *rsa.PublicKey, epoch uint64, serial, blindSig, secret []byte) ([]byte, error),
+	done func(serial, sig []byte, err error)) {
 
 	serial, err := blindtoken.NewSerial(rng)
 	if err != nil {
-		done(demand.Token{}, 0, err)
+		done(nil, nil, err)
 		return
 	}
-	blinded, secret, err := demand.Withdraw(rng, pub, epoch, serial)
+	blinded, secret, err := blind(rng, pub, epoch, serial)
 	if err != nil {
-		done(demand.Token{}, 0, err)
+		done(nil, nil, err)
 		return
 	}
 	req := ports.Message{Kind: ports.MsgDemandTokenRequest, Data: blinded, Height: epoch, Credit: credit}
 	n.request(issuer, req, func(resp ports.Message, rerr error) {
 		if rerr != nil {
-			done(demand.Token{}, 0, rerr)
+			done(nil, nil, rerr)
 			return
 		}
 		if !resp.OK || len(resp.Data) == 0 {
-			done(demand.Token{}, 0, ErrTokenAcquire)
+			done(nil, nil, ErrTokenAcquire)
 			return
 		}
 		if resp.Height != epoch {
 			// The issuer signed for an epoch we did not ask for. The signature is
 			// over OUR epoch's message, so it can only be a mismatch or a targeting
 			// attempt; either way the token would be un-redeemable.
-			done(demand.Token{}, 0, ErrDemandEpochMismatch)
+			done(nil, nil, ErrDemandEpochMismatch)
 			return
 		}
 		// RFC 9474 §4.4 Finalize (advisory C-1): verify the unblinded signature under
@@ -378,12 +404,12 @@ func (n *Node) withdrawDemandToken(rng io.Reader, issuer ports.NodeID, pub *rsa.
 		// a dud used to charge the withdrawal fee and hand back something that only
 		// failed at redemption — and a receipt that fails Bank.Redeem never reaches
 		// the ledger, so the serve's eager self-mint is never reversed. Refuse here.
-		tok, uerr := demand.Unblind(pub, epoch, serial, resp.Data, secret)
+		sig, uerr := unblind(pub, epoch, serial, resp.Data, secret)
 		if uerr != nil {
-			done(demand.Token{}, 0, uerr)
+			done(nil, nil, uerr)
 			return
 		}
-		done(tok, epoch, nil)
+		done(serial, sig, nil)
 	})
 }
 

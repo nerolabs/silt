@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"sync/atomic"
 )
 
 const fdhDomain = "silt/blindtoken/fdh/v1"
@@ -78,6 +79,30 @@ const creditDomain = "silt/blindcredit/fdh/v1"
 // the requester, blinded into the message, and named in the request the issuer
 // already answers with an epoch. See core/demand/keyset.go.
 const demandDomain = "silt/blinddemand/fdh/v2"
+
+// relayAnchorDomain is the FDH domain for RELAY-LANE PREPAYMENT ANCHORS (R2.14,
+// docs/design/pod.md §7.3.2 step 1). An anchor is a blind signature under the
+// RELAY's own per-epoch demand key_E over the SAME message layout as a demand token
+// (demandMsg: uint64BE(issueEpoch) ‖ serial), domain-separated from it — so one
+// signature verifies in exactly one lane. That separation is load-bearing for
+// conservation, not hygiene: the delivery lane's spent set (demand.Bank) and the
+// relay lane's spent set (credit.Ledger.SpendRelayAnchors) are different maps that
+// cannot see each other, so a token that verified in BOTH lanes would be one
+// 50,000-credit fee funding two payouts on the same node (advisory finding A; cert
+// §2.4 door (iii)).
+//
+// SOUND UNDER ONE RSA KEY (cert §6). SignBlinded is already a raw RSA-inversion
+// oracle on attacker-chosen input; a second domain changes what the REQUESTER hashes
+// before blinding, never what the oracle returns. Bellare–Namprempre–Pointcheval–
+// Semanko (J. Cryptology 2003, Def. 6.1 / Cor. 6.3) bound the number of valid
+// (message, signature) pairs across ALL domains by the number of inversions, and
+// Issue charges one fee per inversion — so one fee buys at most one token in at most
+// one lane.
+//
+// A FORMAT CONSTANT the T-6 proof depends on: pinned byte-exact by
+// TestRelayAnchorDomainIsPinnedByteExactly. A change is a token-format version, never
+// an edit.
+const relayAnchorDomain = "silt/blindrelay/fdh/v1"
 
 // SerialSize is the length of a token's random serial.
 const SerialSize = 32
@@ -398,6 +423,22 @@ func UnblindDemand(pub *rsa.PublicKey, epoch uint64, serial, blindSig, secret []
 	return unblindD(pub, demandMsg(epoch, serial), blindSig, secret, demandDomain)
 }
 
+// BlindRelayAnchor blinds serial as a RELAY PREPAYMENT ANCHOR for ISSUE EPOCH epoch
+// (R2.14; see relayAnchorDomain). The fetcher's durable identity withdraws it from
+// the relay it will later pay, blindly — the relay charges the fee and signs without
+// seeing the serial, so the anchor is unlinkable to the purchase. The message layout
+// is the demand layout byte for byte (demandMsg), under the relay-anchor domain.
+func BlindRelayAnchor(rng io.Reader, pub *rsa.PublicKey, epoch uint64, serial []byte) (blinded, secret []byte, err error) {
+	return blindD(rng, pub, demandMsg(epoch, serial), relayAnchorDomain)
+}
+
+// UnblindRelayAnchor is the relay-anchor twin of UnblindDemand: it unblinds the
+// issuer's reply into a signature over (epoch, serial) in the relay-anchor domain and
+// verifies it under (key_epoch, epoch) before returning (RFC 9474 §4.4 Finalize).
+func UnblindRelayAnchor(pub *rsa.PublicKey, epoch uint64, serial, blindSig, secret []byte) ([]byte, error) {
+	return unblindD(pub, demandMsg(epoch, serial), blindSig, secret, relayAnchorDomain)
+}
+
 func unblindD(pub *rsa.PublicKey, msg, blindSig, secret []byte, domain string) ([]byte, error) {
 	if err := validateShape(pub); err != nil {
 		return nil, err // see blindD: a degenerate modulus must not reach the modexp
@@ -442,6 +483,27 @@ func VerifyCredit(pub *rsa.PublicKey, serial, sig []byte) bool {
 // same key, which is the R0.4b (b1) coupling.
 func VerifyDemand(pub *rsa.PublicKey, epoch uint64, serial, sig []byte) bool {
 	return verifyD(pub, demandMsg(epoch, serial), sig, demandDomain)
+}
+
+// relayAnchorVerifyRuns counts VerifyRelayAnchor calls in this process — the
+// ValidatePubHardnessRuns idiom: INSTRUMENTATION, not a control. It exists because
+// the relay open path's cost claim ("free guards first; RSA last; stop at the first
+// bad anchor") is a claim about HOW OFTEN a modexp runs, and the only honest gate is
+// to count it (cert §9 T-7, core/node TestRelayOpenRefusesCheaplyBeforeRSA).
+var relayAnchorVerifyRuns atomic.Uint64
+
+// RelayAnchorVerifyRuns is how many relay-anchor RSA verifies have run in this
+// process.
+func RelayAnchorVerifyRuns() uint64 { return relayAnchorVerifyRuns.Load() }
+
+// VerifyRelayAnchor checks that sig is a valid issuer signature on a RELAY
+// PREPAYMENT ANCHOR serial ISSUED AT epoch (relay-anchor domain). A demand-token
+// signature under the same key, epoch and serial fails this check and vice versa —
+// one fee, one lane (cert §6.3) — and a signature for a different epoch fails too
+// (the R0.4b (b1) coupling, so an anchor cannot be re-dated past its guard entry).
+func VerifyRelayAnchor(pub *rsa.PublicKey, epoch uint64, serial, sig []byte) bool {
+	relayAnchorVerifyRuns.Add(1)
+	return verifyD(pub, demandMsg(epoch, serial), sig, relayAnchorDomain)
 }
 
 func verifyD(pub *rsa.PublicKey, msg, sig []byte, domain string) bool {

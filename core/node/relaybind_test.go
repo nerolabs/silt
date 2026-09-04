@@ -18,14 +18,14 @@ package node
 // scheduler is single-goroutine and would deadlock the pattern. Production uses
 // walltime, so this is the faithful tier for the seam.
 //
-// R0.7 INTERIM (2026-09-03): TestNoDoubleSettleReaperAndPump is RE-SPECIFIED to
-// "pays 0 until R2.14" per
-// RELAY-LANE-per-node-ledger-mint-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md
-// §9 step 1 — a PRESCRIBED goalpost move, recorded here, not silent. Its LOAD-
-// BEARING property (single-settle-at-close: a second settle of the same handle
-// is always a no-op) is unaffected by the interim and is still asserted.
+// R2.14 (2026-09-04): TestNoDoubleSettleReaperAndPump is RE-SPECIFIED back to a
+// PAYING first settle (min(count, Σ face) > 0, the anchored session) — the recorded
+// goalpost move that retires the R0.7 interim's "pays 0". Its LOAD-BEARING property
+// (single-settle-at-close: a second settle of the same handle is always a no-op)
+// is unchanged and still asserted.
 
 import (
+	"crypto/ed25519"
 	"sync"
 	"testing"
 	"time"
@@ -36,8 +36,8 @@ import (
 	"github.com/nerolabs/silt/adapters/simclock"
 	"github.com/nerolabs/silt/adapters/simnet"
 	"github.com/nerolabs/silt/adapters/walltime"
+	"github.com/nerolabs/silt/core/credit"
 	"github.com/nerolabs/silt/core/relaypay"
-	"github.com/nerolabs/silt/ports"
 )
 
 // newLoopNode builds a node backed by a real running event loop (walltime), so
@@ -52,17 +52,26 @@ func newLoopNode(t *testing.T, idSeed int64) *Node {
 	// the node's CLOCK is walltime so AfterFunc(0) fires on the real running loop.
 	net := simnet.New(simclock.New(), 1, simnet.DefaultConfig())
 	n := New(ident.NodeID(), DefaultConfig(), walltime.New(loop), net.Endpoint(ident.NodeID()), memstore.New())
+	// R2.14: a committed demand key_0 + a ledger, so an anchored open is admissible.
+	n.SetLedger(credit.New(50_000, 0))
+	commitSelfDemandKey(t, n, ident, cachedRSAKey(t, int(idSeed%4)))
 	return n
 }
 
 // openSessionOnLoop opens a relay session and inserts it into the table ON the loop
 // (via the resolver's own marshaling primitive), returning the handle. This mirrors
-// handleRelayOpen's loop-side insert without needing the full wire.
-func openSessionOnLoop(t *testing.T, n *Node, ephID ports.NodeID, root []byte, S int) uint64 {
+// handleRelayOpen's loop-side insert without needing the full wire. R2.14: the
+// session is anchored; the ephemeral is derived from ephSeed (its NodeID is what
+// the caller resolves by) and the anchor is minted OFF the loop, statelessly, so
+// concurrent callers race only through the loop-marshaled open itself.
+func openSessionOnLoop(t *testing.T, n *Node, ephSeed int64, root []byte, S int) uint64 {
 	t.Helper()
+	e := newEphemeral(ephSeed)
+	anchors := mintAnchorsFor(t, n, 0, 1)
+	sig := ed25519.Sign(e.priv, relayOpenCommitment(n.id, root, S, anchors))
 	done := make(chan uint64, 1)
 	n.clock.AfterFunc(0, func() {
-		sess, err := n.OpenRelaySession(ephID, root, S, FundingEphemeralBlind)
+		sess, err := n.OpenRelaySession(e.id, root, S, FundingEphemeralBlind, anchors, e.pub, sig)
 		if err != nil {
 			done <- 0
 			return
@@ -93,9 +102,9 @@ func TestResolveRelayAuthorizerOwnershipOffLoop(t *testing.T) {
 	n.EnableRelayAccept()
 
 	const S = 8
-	owner := relayTestID(0x11)
+	owner := newEphemeral(0x11).id
 	c, _ := relaypay.BuildChain([]byte("resolve-owner-fresh-random-tip-32")[:32], S)
-	handle := openSessionOnLoop(t, n, owner, c.Root(), S)
+	handle := openSessionOnLoop(t, n, 0x11, c.Root(), S)
 
 	// (a) The OWNER resolves to a live session — called off the loop.
 	sess, ok := n.ResolveRelayAuthorizer(owner, handle)
@@ -121,28 +130,24 @@ func TestResolveRelayAuthorizerOwnershipOffLoop(t *testing.T) {
 // asserts the second settle is a no-op: it pays 0 and the operator balance does not
 // move (twice, or at all — see the R0.7 interim note below).
 //
-// R0.7 INTERIM (2026-09-03): RE-SPECIFIED to "pays 0 until R2.14" per
-// RELAY-LANE-per-node-ledger-mint-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md
-// §9 step 1. Before R0.7 this test's first assertion required `first > 0` (a
-// conserved nonzero settlement). Under the interim BOTH the first and the
-// second settle of the same handle must pay 0 and move nothing — the
-// single-settle property (delete-on-first-call, never re-redeem) is
-// independent of and unaffected by the interim, and stays load-bearing here.
+// R2.14 (2026-09-04): the first settle PAYS again — min(count, Σ face) against an
+// anchored session (the R0.7 interim's pay-0 re-specification is retired). The
+// second settle of the same handle must pay 0 and move nothing.
 //
 // Ablation: remove the `delete(n.relaySessions, handle)` from SettleRelaySession →
-// a SECOND settle would still find the session and attempt to re-settle it; under
-// the interim this is not directly observable via the paid amount (both calls pay
-// 0 either way), so the ablation is instead checked structurally: the second call
-// must still find the handle already removed, i.e. RelaySessionForTest must report
-// the handle absent after the FIRST settle.
+// a SECOND settle finds the session and pays again (observable in the balance), and
+// RelaySessionForTest reports the handle still present after the FIRST settle.
 func TestNoDoubleSettleReaperAndPump(t *testing.T) {
 	const S = 6
-	fetcher, relay, ledger, sched := relayPairForTest(t, nil, 10_000)
+	fetcher, relay, ledger, sched := relayPairForTest(t, nil)
 	c, _ := relaypay.BuildChain([]byte("no-double-settle-fresh-random-tip")[:32], S)
 
 	var handle uint64
-	fetcher.OpenRelaySessionRemote(relay.id, c.Root(), S, FundingEphemeralBlind, func(h uint64, _ error) { handle = h })
+	fetcher.OpenRelaySessionRemote(relay.id, c.Root(), S, FundingEphemeralBlind, mintAnchorsFor(t, relay, 0, 1), func(h uint64, _ error) { handle = h })
 	sched.Run()
+	if handle == 0 {
+		t.Fatal("anchored open over the wire failed")
+	}
 
 	// Pay all S increments so there would have been credit to settle, pre-interim.
 	for k := 1; k <= S; k++ {
@@ -152,12 +157,12 @@ func TestNoDoubleSettleReaperAndPump(t *testing.T) {
 
 	balBefore := ledger.Balance(relay.id)
 	first := relay.SettleRelaySession(handle) // pump-completion settle
-	if first != 0 {
-		t.Fatalf("first settle paid %d for an unanchored session (interim: no anchor type exists — R2.14), want 0", first)
+	if want := int64(S) * relaypay.RelayIncrementCredit; first != want {
+		t.Fatalf("first settle paid %d for an anchored session with %d paid increments, want min(count, face) = %d (R2.14: the paid > 0 precondition is restored)", first, S, want)
 	}
 	balAfterFirst := ledger.Balance(relay.id)
-	if balAfterFirst != balBefore {
-		t.Fatalf("balance moved by %d on the first (unanchored) settle, want 0", balAfterFirst-balBefore)
+	if balAfterFirst != balBefore+first {
+		t.Fatalf("balance moved by %d on the first settle, want exactly the settled %d", balAfterFirst-balBefore, first)
 	}
 	// The single-settle property: the handle must be gone after the FIRST
 	// settle regardless of what it paid — this is what the ablation (removing
@@ -192,11 +197,10 @@ func TestResolveRelayAuthorizerRaceUnderConcurrentOpens(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			eph := relayTestID(byte(0x40 + i))
 			tip := make([]byte, 32)
 			tip[0], tip[1] = 0xEE, byte(i)
 			c, _ := relaypay.BuildChain(tip, S)
-			handles <- openSessionOnLoop(t, n, eph, c.Root(), S)
+			handles <- openSessionOnLoop(t, n, int64(0x40+i), c.Root(), S)
 		}(i)
 	}
 	// Resolvers: read the table off the loop concurrently.
@@ -204,7 +208,7 @@ func TestResolveRelayAuthorizerRaceUnderConcurrentOpens(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			eph := relayTestID(byte(0x40 + i))
+			eph := newEphemeral(int64(0x40 + i)).id
 			for j := 0; j < 8; j++ {
 				n.ResolveRelayAuthorizer(eph, uint64(i+1))
 			}

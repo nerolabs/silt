@@ -116,6 +116,10 @@ var standingClassification = map[string]standingClass{
 	// even one unit of standing would convert funded chains into consensus weight
 	// (relay_test.go pins it against a heavy relay, the §7.3 firewall test).
 	"RedeemRelayCredit": neutral,
+	// R2.14: the anchor spend records (epoch, serial) pairs in the paid-serial guard
+	// and returns their face — the session budget. Guard map, durable store and
+	// counters only; no field Reputation reads.
+	"SpendRelayAnchors": neutral,
 }
 
 // TestInvariantA_EveryLedgerMethodClassified is the reflection guard: every
@@ -170,9 +174,22 @@ func TestInvariantA_NoNonMintPressRaisesStanding(t *testing.T) {
 		l.RecordAudit(n, id(9), true)                      // passed PoR audits fund balance only
 		l.RecordServeToObject(n, other, obj, id(9), 1<<40) // object-aware serve + auto-skim
 		l.RedeemDeliveryCredit(n, other, obj, nil, 0, 0)   // witnessed delivery credit (PoD neutral lane)
-		l.RedeemRelayCredit(n, other, 1<<30, 1<<30)        // PayWord relay credit (PoD relay lane)
-		_ = l.FundEscrow(obj, n, 1<<20)                    // prepay a durability reserve
-		l.PayBounty(obj, n, 1<<30)                         // drain the reserve to this identity
+		// PayWord relay credit (PoD relay lane), pressed against an ANCHORED session
+		// so the settle body actually pays (cert §3): buy one anchor through the
+		// real burn, spend it, settle the whole budget to n.
+		l.acct(other).balance += l.Fee() // other is the durable buyer; fund the burn
+		if err := l.ChargePublish(other); err != nil {
+			t.Fatalf("round %d: issuance burn: %v", round, err)
+		}
+		face, reason := l.SpendRelayAnchors(anchorsAt(uint64(round), round, 1), uint64(round))
+		if face != l.Fee() || reason != "" {
+			t.Fatalf("round %d: SpendRelayAnchors = (%d, %q), want (%d, \"\") — the relay press would be vacuous", round, face, reason, l.Fee())
+		}
+		if paid := l.RedeemRelayCredit(n, other, 1<<30, face); paid != face {
+			t.Fatalf("round %d: RedeemRelayCredit paid %d against budget %d — the relay press is vacuous", round, paid, face)
+		}
+		_ = l.FundEscrow(obj, n, 1<<20) // prepay a durability reserve
+		l.PayBounty(obj, n, 1<<30)      // drain the reserve to this identity
 		l.DecayStale(uint64(round+1), 1)
 		if got := l.Reputation(n); got > 0 {
 			t.Fatalf("Invariant A violated: a non-mint press lifted a BONDLESS identity to standing %d > 0 "+

@@ -220,15 +220,25 @@ type CreditLedger interface {
 	// serial is always one no in-window issuer key can still validate (R0.4b).
 	RedeemDeliveryCredit(server, fetcher NodeID, root Hash, serial []byte, issuedEpoch, currentEpoch uint64) int64
 	// RedeemRelayCredit settles a PayWord relay chain at session close (PoD §7.3).
-	// R0.7 INTERIM (2026-09-03): it PAYS 0 and mutates nothing until the R2.14
-	// prepayment anchor lands — the shipped lane had no anchor binding the chain to
-	// a real payment, so "transfer from the fetcher's paid-in credit" was a mint
-	// against a phantom auto-granted account on the relay's own ledger. When R2.14
-	// lands: settles against a spent, relay-verified, fee-backed bearer credential,
-	// capped at budget; returns the credits paid. Never touches standing (the γ→1/N
-	// firewall) in either shape. Certification:
-	// silt-reviews/research/research-outcome/RELAY-LANE-per-node-ledger-mint-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md.
+	// R2.14 (2026-09-04): pays min(chainValue, budget) into the RELAY's balance only,
+	// where budget is the Σ face of the anchors SpendRelayAnchors recorded for this
+	// session (relay-issued, blind-signed, spent once on this ledger); an unanchored
+	// session has budget 0 and pays 0. Never touches the fetcher's account and never
+	// standing (the γ→1/N firewall). Δ Σ_L = settled − Σ face ≤ 0. Certification:
+	// silt-reviews/research/research-outcome/R2.14-relay-prepayment-anchor-CONSTRUCTION-RESEARCH-CERTIFICATION-2026-09-04.md.
 	RedeemRelayCredit(relay, fetcher NodeID, chainValue, budget int64) int64
+	// SpendRelayAnchors records k VERIFIED relay prepayment anchors as spent on this
+	// ledger, all-or-nothing, and returns their summed face (k × Fee()) — the
+	// session budget RedeemRelayCredit may settle up to (R2.14, INV-RELAY-CONS:
+	// settled ≤ Σ face of spent anchors). The caller (core/node OpenRelaySession)
+	// verified each anchor under the relay's OWN committed key before calling; the
+	// ledger verifies nothing and guards everything: an anchor already spent, a
+	// batch that would overfill the bounded (epoch, serial) guard, an attached but
+	// unloaded durable store, or a store that cannot append all refuse with the
+	// named reason and record NOTHING (a refused open must not burn anchor 1
+	// because anchor 2 was spent). current is the consensus epoch the relay's
+	// keyset was pruned with; the guard's expiry window equals that keyset's.
+	SpendRelayAnchors(anchors []RelayAnchor, current uint64) (face int64, reason string)
 	// RecordAudit settles a storage challenge: a passed audit earns the
 	// prover a reward, a failed one costs a slash.
 	RecordAudit(prover NodeID, id ChunkID, passed bool)
@@ -334,6 +344,16 @@ type PaidSerial struct {
 	Serial []byte
 	Server NodeID
 	Epoch  uint64
+}
+
+// RelayAnchor is one relay prepayment anchor as the ledger guards it: the (issue
+// epoch, serial) pair the anchor's blind signature was made over (R2.14). The
+// signature itself never reaches the ledger — the node verified it under the relay's
+// committed key_E; the ledger records the token as spent so it can fund exactly one
+// session, and expires the record with the same window the keyset expires the key.
+type RelayAnchor struct {
+	Epoch  uint64
+	Serial []byte
 }
 
 // PaidSerialStore persists the guard durably, so a RESTART is not an eviction.

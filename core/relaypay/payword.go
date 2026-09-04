@@ -61,10 +61,9 @@ const MaxChainLength = MaxSessionBytes / RelayIncrementBytes
 // RelayIncrementCredit is the credit value one forwarded increment settles for —
 // the settlement unit. One increment = one credit, so a session's settled value is
 // count × RelayIncrementCredit == count and the committed budget is S credits. The
-// intended conservation chain is count <= S <= paid-in (design §5); NOTE that no
-// paid-in credit is bound to the chain until the R2.14 prepayment anchor lands, so
-// settlement pays 0 today (R0.7 interim). Keeping it 1 makes the settlement
-// arithmetic the identity and the conservation cap a plain count <= S.
+// conservation chain is count <= min(S, Σ face of the spent anchors) (R2.14: the
+// ledger's budget is the anchors' face, never S). Keeping it 1 makes the settlement
+// arithmetic the identity and the cap a plain count <= budget.
 const RelayIncrementCredit = 1
 
 // hashLen is the SHA-256 output length; every chain link is this wide.

@@ -255,20 +255,25 @@ Consult `PoD-neutral-lane-B3-close-CONSULT-2026-08-26.md`; certification
 > [`thinking/2026-08-30-pod-7.3-relay-compensation-design.md`](../thinking/2026-08-30-pod-7.3-relay-compensation-design.md).
 > The mechanism shape is certified; do not re-derive it.
 >
-> **R0.7 INTERIM (2026-09-03) — the shipped lane PAYS 0 until the R2.14 prepayment
-> anchor lands.** The 2026-08-30 certification covers the mechanism shape, NOT the
-> shipped code's conservation: its conservation verdict (2026-08-27 Q7) is conditional
-> on the chain being anchored to a verified prepayment (Q4(a)), and that anchor was
-> never built — `RelayOpen.Funding` is a bare fetcher-set integer, and settlement runs
-> on the RELAY's own ledger against a fetcher identity that ledger has never seen, so
-> the pre-interim `RedeemRelayCredit` minted `chainValue` from the faucet grant instead
-> of transferring it (RT-RELAY-1). Now `RedeemRelayCredit` returns 0 and mutates
-> nothing, the settlement log line carries `reason=no-anchor`, and `--accept-relay-payments`
-> says so in its help. The §7.3.3 conservation bullet below describes the design, not the
-> shipped code, until R2.14. Cert:
-> `silt-reviews/research/research-outcome/RELAY-LANE-per-node-ledger-mint-FIX-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md`
-> (§2 the break, §9 step 1 this interim); deliberation
-> [`thinking/2026-09-03-r0.7-relay-interim-design.md`](../thinking/2026-09-03-r0.7-relay-interim-design.md).
+> **R2.14 BUILT (2026-09-04) — the relay-lane prepayment ANCHOR; the R0.7 interim
+> (pays 0, 2026-09-03) is retired.** The chain root is now anchored to k ≤ 6 blind-signed
+> prepayment credentials under the RELAY's own chain-committed per-epoch demand key
+> (a fourth FDH domain, `silt/blindrelay/fdh/v1`), bought by the fetcher's DURABLE identity
+> through the ordinary withdrawal (a refusable `ChargePublish` on the relay's ledger — the
+> paying ledger is the settling ledger), verified under the relay's SELF keyset and spent
+> once into the ledger's bounded durable `(epoch, serial)` guard BEFORE admission, with the
+> session budget = the ledger's own Σ face and settlement `min(count, Σ face)` into the
+> relay's balance. `settled ≤ Σ face` on the paying ledger (INV-RELAY-CONS); per session
+> `Δ Σ_L = settled − Σ face ≤ 0`, the unconsumed remainder BURNED (R-ANCHOR-STALL, ≤
+> 300,000 credits per 1 GiB session, an owner-accepted v1 residual; the certified follow-on
+> is a `MsgRelayFund` top-up with FRESH anchors). Collusion is a WASH at full consumption
+> (no v1 relay skim — an owner call before R2.4). **BUILT ≠ LIVE:** an anchor verifies only
+> under a v5 `IssuerKeyReg`, so the lane is DARK until era-4 activation; every open is
+> refused with a named reason until then, and `--accept-relay-payments` says so. Cert:
+> `silt-reviews/research/research-outcome/R2.14-relay-prepayment-anchor-CONSTRUCTION-RESEARCH-CERTIFICATION-2026-09-04.md`
+> (§2 conservation, §2.4 the six doors, §6 one key two domains, §9 gates T-1…T-14);
+> deliberation
+> [`thinking/2026-09-04-r2.14-relay-prepayment-anchor-design.md`](../thinking/2026-09-04-r2.14-relay-prepayment-anchor-design.md).
 
 ### 7.3.1 Why relay needs a different mechanism than the neutral lane
 
@@ -299,7 +304,8 @@ x_S = H(x_{S+1}),  x_{S-1} = H(x_S),  … ,  x_0 = H(x_1)
 ```
 
 `x_0` is the **root** (the value reached by hashing the most times). The fetcher
-commits `x_0` to the relay once, bound to a blind credit worth `S · increment`.
+commits `x_0` to the relay once, bound to k blind prepayment anchors worth
+`k · face` (face = the retrieval fee).
 To authorize the k-th increment the fetcher reveals `x_k`; the relay verifies
 `H(x_k) = x_{k-1}` against the preimage it currently holds (equivalently
 `H^k(x_k) = x_0`). One SHA-256 per increment. The relay redeems the highest
@@ -312,27 +318,54 @@ the stiff is bounded to one increment.
 
 **Increment / redeem flow:**
 
-1. **Withdraw.** The fetcher blind-withdraws a credit worth `S · increment` under
-   a FRESH EPHEMERAL identity (`client.WithdrawDemandTokenPrivately`,
-   `client/privissue.go:48` — the D3 slice-1 path, already built). Invariant (i).
-2. **Commit the root.** The fetcher builds a FRESH PayWord chain and sends `x_0`
-   to the relay in a session-open message, bound to the blind credit. One chain
-   per session. Invariant (ii). The relay stores `(x_0, credit, k=0)`.
+1. **Withdraw the anchors (R2.14).** The fetcher's DURABLE identity buys k ≤ 6
+   prepayment anchors FROM THE RELAY it will pay: each is a blind signature under
+   the relay's own chain-committed per-epoch demand key `key_E` in the
+   relay-anchor FDH domain (`blindtoken.BlindRelayAnchor` over
+   `uint64BE(E) ‖ serial`), charged through the ordinary withdrawal
+   (`Node.AcquireRelayAnchors` → `MsgDemandTokenRequest` →
+   `answerDemandTokenRequest` → `ChargePublish` on the RELAY's ledger, refusable).
+   The relay signs blind and holds no serial↔buyer map, so the anchor is a bearer
+   credential unlinkable to the purchase — that blind signature, not who dials, is
+   what satisfies invariant (i). Face = the fee the relay charged (one key, one
+   fee, one denomination: 50,000 credits = 195.3 MiB of forwarding). The D3
+   private-purchase path is NOT used for anchors until F-4 (`creditSpent`
+   durability, R2.13b) is closed.
+2. **Commit the root.** A FRESH EPHEMERAL identity builds a FRESH PayWord chain
+   and sends `RelayOpen{x_0, S, Anchors[k], Fetcher, Sig}` — Rivest–Shamir's
+   `M = {vendor, C_U, w_0, …}_SK_U` with `C_U` the anchor serials: `Sig` is the
+   ephemeral's ed25519 signature over `sha256("silt/relay/open/v1" ‖ relayID ‖ x_0
+   ‖ uint32BE(S) ‖ uint32BE(k) ‖ serials)`, and `sha256(Fetcher)` must equal the
+   authenticated sender. One chain and one ephemeral per session. Invariant (ii).
+   The relay verifies cheap-first (free guards → k bounds → ed25519 → RSA under
+   its SELF keyset only, newest epoch first, stop at the first failure), then
+   SPENDS all k anchors all-or-nothing into its ledger's bounded, durable
+   `(epoch, serial)` guard (the R0.4b paid-serial guard: refuse at cap, never
+   evict; expiry-only sweep on the demand-key window; restart is not an eviction)
+   BEFORE admitting the session with `budget = Σ face`. A refused open records
+   nothing.
 3. **Pay as bytes forward.** After the relay forwards increment k the fetcher
    reveals `x_k`; the relay checks `H(x_k) = x_{k-1}`, advances its held preimage,
-   sets `k`. If the fetcher stops, the relay stops.
-4. **Settle.** At epoch net-settlement the relay redeems its highest held preimage
-   for `k · increment` into its **operator balance** — the same committed-state
-   path delivery credit rides (Q5), **no new keystone field**. Conservation
-   holds: the credit is drawn from the fetcher's already-paid blind credit, never
-   minted.
+   sets `k`, and raises the pump's ceiling to `min(k, budget) × increment` — it
+   never forwards past what the anchors fund. If the fetcher stops, the relay stops.
+4. **Settle.** At session close the relay redeems its highest held preimage ONCE
+   for `min(k · increment, Σ face)` into its **operator balance**
+   (`credit.RedeemRelayCredit`, `acct(relay)` only — never the ephemeral, which
+   this ledger has no account for). The remainder `Σ face − settled` is burned.
+   Conservation on the paying ledger: `Δ Σ_L = settled − Σ face ≤ 0`, equality
+   iff fully consumed.
 
 **Reuse of the shipped machinery:**
 
-- Blind ephemeral withdrawal: `client/privissue.go` (`WithdrawDemandTokenPrivately`).
+- Blind withdrawal + per-epoch committed keys: the demand lane's
+  (`core/node/demandkeys.go` `withdrawBlind`, `pinDemandIssuerKey`,
+  `DemandIssuerKeyset`); the anchor adds one FDH domain string and nothing else
+  cryptographic (cert §6: sound under one key by BNPS one-more-inversion).
+- Spent-once guard: the R0.4b paid-serial guard (`core/credit/delivery.go`) shared
+  as-is — `core/credit/relayanchor.go` `SpendRelayAnchors`.
 - Conserved settlement into balance: sibling of `core/credit/delivery.go`
-  `RedeemDeliveryCredit` — moves `balance` only, drawn from the fetcher's paid-in
-  credit, never touches `Reputation()` (`core/credit/credit.go:291-298`).
+  `RedeemDeliveryCredit` — moves `balance` only, bounded by the anchors' face,
+  never touches `Reputation()`.
 - Consumer gate: mirrors the `--accept-receipts` gate at `cmd/silt/daemon.go:810`;
   a relay opts in under an analogous flag, off by default.
 - Role model: the relay banks and settles the way `handleDeliveryReceipt`
@@ -344,20 +377,23 @@ verify `H(x_k) = x_{k-1}`), SHA-256 only, no new dependency.
 
 ### 7.3.3 Conservation and the firewall (inherited, certified)
 
-- **Conservation (DESIGN — not the shipped code until R2.14; see the §7.3
-  status block):** the relay redeems ≤ the chain's value, drawn from the
-  fetcher's fee-paid blind credit. A colluding fetcher+relay under one operator
-  rebuys its own fee at break-even (or a strict loss with a skim). No new mint
-  surface (cert §2a).
+- **Conservation (BUILT, R2.14; gated T-1…T-5, T-8, T-10, T-12):** the relay
+  settles `min(count, Σ face)` of the anchors spent at open, each a refusable
+  burn on THIS ledger; `settled ≤ Σ face` (INV-RELAY-CONS) and per session
+  `Δ Σ_L ≤ 0`. A colluding fetcher+relay under one operator rebuys its own fee
+  at a WASH at full consumption (a strict loss at any partial consumption, or
+  with a skim — no v1 skim; owner call before R2.4). No new mint surface.
 - **Firewall (Invariant A):** relay forwarding credit moves `balance` and nothing
   else — structurally identical to delivery credit. It cannot enter
   `Reputation()`. **One Invariant-A regime covers delivery + relay credit**
   (cert §2b, Q6). Failing-first guard: a relay-credit redemption leaves the
   relay's `Reputation()` unchanged (the `core/credit/invariant_a_test.go`
   pattern).
-- **Wash / forgery is a strict self-loss:** forgery is cryptographically excluded
-  (PayWord self-authorizes), and wash is a strict loss under sender-funded
-  conservation (cert §2c).
+- **Wash / forgery:** forgery is cryptographically excluded (PayWord self-authorizes,
+  and the chain root is bound to relay-issued anchors, R2.14). Wash — the operator buying
+  anchors from itself and settling them back — is a WASH at full consumption, not a
+  strict loss: there is no relay skim in v1 (R-RELAY-WASH-ZERO-LOSS, an owner call before
+  R2.4; the 2026-09-04 as-built certification corrected the earlier "strict loss").
 
 ### 7.3.4 HARD design invariants — M0 access-privacy (IMMUTABLE, Don't-#3)
 
@@ -369,11 +405,18 @@ construction and each carries a failing-first guard.
 **(i) The PayWord chain root MUST bind to a BLIND credit under a FRESH EPHEMERAL
 identity, NEVER a durable one.**
 
-- *Enforced by:* funding the chain exclusively through
-  `client.WithdrawDemandTokenPrivately` (`client/privissue.go:48`), which
-  withdraws over a throwaway keypair and tears it down. The issuer authenticates
-  only an ephemeral key and charges no account it can tie to the fetcher. No code
-  path binds a chain root to a durable-account credit.
+- *Enforced by (R2.14):* the anchor is a BLIND bearer credential verified under
+  a chain-committed key. The relay signed it without seeing the serial and holds
+  no serial↔buyer map, so its ledger cannot link the spent anchor to the durable
+  identity that paid (cert §4.1: guard (i) is satisfied cryptographically). The
+  root binds to the anchors only in the ephemeral-signed commitment `M`. No code
+  path binds a chain root to a durable-account credit; `FundingDurableAccount` is
+  the guard's test object and is refused.
+- *Network residual, stated (R-RELAY-ANON-SET):* the relay saw the buyer's IP at
+  purchase and the ephemeral's IP at open — the delivery lane's D3 residual,
+  identical in channel and narrower in yield (who-talks-to-whom, content-blind).
+  The anonymity set is this relay's anchor buyers in the W+1-epoch band,
+  partitioned by k and by IP. Buy ahead and in fixed bundles.
 - *Why non-negotiable:* binding a chain to a durable identity lets the relay tie
   the fetcher's durable identity to what it fetched. Not permitted at any
   performance price.
@@ -381,10 +424,12 @@ identity, NEVER a durable one.**
 
 **(ii) A FRESH ephemeral identity AND a FRESH PayWord chain per session.**
 
-- *Enforced by:* one `WithdrawDemandTokenPrivately` call and one freshly-generated
-  tip per session-open. No chain or ephemeral identity is cached or reused across
-  sessions; the relay stores only `(root, credit, highest-preimage)` for the live
-  session and discards it at settlement.
+- *Enforced by:* one fresh ephemeral keypair and one freshly-generated tip per
+  session-open, and `OpenRelaySession`'s seen-maps. No chain or ephemeral identity
+  is cached or reused across sessions; the relay stores only `(root, budget,
+  highest-preimage)` for the live session and discards it at settlement. The
+  anchor guard reinforces it: an anchor spent in one session cannot appear in
+  another for its whole W+1-epoch life.
 - *Why non-negotiable:* reusing a chain or ephemeral identity lets the relay link
   a fetcher's sessions to each other — upgrading it from a per-session observer
   (which sees only the IP it already routes) to a longitudinal one. A real
