@@ -224,8 +224,9 @@ func (n *Node) OpenRelaySessionRemote(relay ports.NodeID, root []byte, S int, fu
 // The key is the PINNED one (DemandIssuerKeyset(relay) → Key(cur)): a fetcher never
 // withdraws under a key the chain does not commit, so a targeting relay gets a
 // denial, not a fingerprint (the delivery lane's rule, R0.4b). The D3 private
-// purchase path (an ephemeral paying with a publish credit) is NOT used for anchors
-// until F-4 (creditSpent durability, R2.13b) is closed — cert C-4.
+// purchase path (an ephemeral paying with a publish credit) is NOT used for anchors:
+// F-4 (creditSpent durability) is closed by R2.13b; making D3 credits anchor-eligible
+// is the Researcher's C-4 re-certification, not a consequence — cert C-4.
 //
 // Sequential, one withdrawal at a time. done fires once with the anchors bought;
 // on an error it fires with the anchors bought BEFORE the failure and the error, so

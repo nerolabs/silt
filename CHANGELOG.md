@@ -92,7 +92,17 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `TestF4_UnloadedCreditStoreRefusesCreditBearingRequests`, `TestF4_AppendLandsBeforeSignBlinded`
   (`core/node`), and the cmd/silt source gate
   `TestDaemonWiresTheCreditSpentStoreBesideThePaidSerialStore`. Ruling:
-  `silt-reviews/principle-engineer/RULING-F4-creditSpent-durability-and-F3-fee-constancy-2026-09-04.md`.
+  `silt-reviews/principle-engineer/RULING-F4-creditSpent-durability-and-F3-fee-constancy-2026-09-04.md`. **PE review (`RULING-R2.13b-creditspent-build-fa9f988-2026-09-04.md`, MERGE-WITH-CONDITIONS,
+  landed):** the three guard-state refusals (full / store / unloaded) are now WARN-logged and counted on the
+  ISSUER (they collapsed to a silent `OK=false`); the file is BOUND to the publish key it was written under
+  (`Server` = SHA-256 of the issuer key; a foreign file refuses the boot by name), because **the only
+  recovery from a full guard is rotating the publish key AND clearing `creditspent.log` together** — rotate
+  alone keeps the dead records counted, clear alone re-opens F-4 for every credit under the still-valid key;
+  `TestCreditSpentLoadRefusesAboveTheCap` pins the boot refusal the docs claimed (unpinned before).
+  Capacity, sized by the PE: ~65,536 × ⌊N/k⌋ publishes per key lifetime (one credit per canonical-prefix
+  issuer per publish) — months for a flixz-class publisher — so an honest fill is realistic and the cap
+  is an OPERATOR-MANAGED ceiling until the epoch-binding Rock (R-CREDITSPENT-UNBOUNDED). With
+  `-require-tokens`, every validator at cap means the chain accepts no publishes.
 - **A genesis seats only the attestations that verify over its hash (D-GENESIS-ATTS-SEATING, owner-ratified
   2026-09-04).** `AppendGenesis` seated genesis `Atts` unverified, and `Atts` sit outside the `Hash()`
   preimage: a relaying peer could append an unsigned stub, have it SEATED into `validatorsSeen` (a phantom

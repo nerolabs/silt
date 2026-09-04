@@ -627,9 +627,10 @@ type Node struct {
 	// mark, restored by LoadCreditSpent at boot; while a store is attached and
 	// creditLoaded is false every credit-bearing request is refused. See
 	// tokenrole.go for the shape and the (disclosed) liveness cap.
-	creditSpent  map[string]bool
-	creditStore  ports.PaidSerialStore
-	creditLoaded bool
+	creditSpent         map[string]bool
+	creditStore         ports.PaidSerialStore
+	creditGuardRefusals uint64 // R2.13b F1: refusals by guard state (full / store / unloaded)
+	creditLoaded        bool
 	// tokenIssued makes token ISSUANCE idempotent under transport retries
 	// (research certification 2026-08-13, A2): a lost REPLY makes the requester
 	// re-present the SAME blinded serial (requestAttempt re-sends msg.Data

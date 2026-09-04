@@ -10,6 +10,7 @@ package node
 import (
 	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
@@ -41,6 +42,9 @@ var (
 	// crashed the node. Reachable on the demand lane, where the handler gates on
 	// the DEMAND issuer for the epoch and not on the publish issuer.
 	errNoTokenIssuer = errors.New("node: no publish token issuer — cannot verify an attached credit")
+	// errCreditStoreForeignKey refuses to boot on a creditspent.log written under a
+	// different publish key (R2.13b F2): the file and the key rotate together.
+	errCreditStoreForeignKey = errors.New("node: credit-spent guard file belongs to another publish key")
 
 	// errCreditRefused means a credit was presented but does not verify, or is
 	// already spent. The requester meant to spend a credit; do not silently
@@ -151,7 +155,8 @@ func (n *Node) answerTokenRequest(from ports.NodeID, msg ports.Message) ports.Me
 	}
 	charge, err := n.tokenChargeFor(from, msg.Credit)
 	if err != nil {
-		return reply // no issuer to verify against, or the credit is invalid/spent
+		n.logCreditGuardRefusal(err) // R2.13b F1: a full / broken / unloaded guard is loud on the issuer
+		return reply                 // no issuer to verify against, or the credit is invalid/spent
 	}
 	blindSig, err := n.tokenIssuer.Issue(charge, msg.Data)
 	if err != nil {
@@ -214,7 +219,7 @@ func (n *Node) tokenChargeFor(from ports.NodeID, credit *ports.PublishCredit) (f
 		// guard chose. (The earlier comment here, "a signing failure does not burn
 		// the credit", was false: the charge precedes the signature.)
 		if n.creditStore != nil {
-			if err := n.creditStore.Append(ports.PaidSerial{Serial: credit.Serial}); err != nil {
+			if err := n.creditStore.Append(ports.PaidSerial{Serial: credit.Serial, Server: n.creditGuardOwner()}); err != nil {
 				return fmt.Errorf("%w: %w", errCreditStore, err) // not marked: the requester retries once the store heals
 			}
 		}
@@ -294,6 +299,18 @@ func (n *Node) LoadCreditSpent() error {
 	}
 	if len(fresh) > maxCreditSpent {
 		return fmt.Errorf("node: persisted credit-spent guard holds %d entries, cap is %d", len(fresh), maxCreditSpent)
+	}
+	// The file is BOUND to the publish key it was written under (PE ruling
+	// RULING-R2.13b-creditspent-build-fa9f988 F2): the only recovery from a full guard
+	// is rotating the publish key AND clearing this file together, and a file that
+	// outlives its key would re-open F-4 for every credit under the still-valid key.
+	// A record written under another key refuses the boot by name; an unbound record
+	// (zero Server) is tolerated (test-padded or pre-binding files — none exist in the field).
+	owner := n.creditGuardOwner()
+	for _, e := range entries {
+		if e.Server != (ports.NodeID{}) && e.Server != owner {
+			return fmt.Errorf("%w: creditspent.log was written under another publish key (%x…); rotate-and-clear go together", errCreditStoreForeignKey, e.Server[:4])
+		}
 	}
 	n.creditSpent = fresh
 	n.creditLoaded = true
@@ -478,4 +495,33 @@ func (n *Node) acquireToken(rng io.Reader, serial []byte, validators []ports.Nod
 		settle() // covers "no eligible candidates at all" and the k<=len cases
 	}
 	fire()
+}
+
+// creditGuardOwner is the fingerprint the credit-spent guard file is bound to: the
+// SHA-256 of this node's publish issuer public key (zero when no issuer is enabled).
+// Records carry it in the Server slot of ports.PaidSerial (no other use on this lane).
+func (n *Node) creditGuardOwner() ports.NodeID {
+	if n.tokenIssuer == nil {
+		return ports.NodeID{}
+	}
+	return ports.NodeID(sha256.Sum256(x509.MarshalPKCS1PublicKey(n.tokenIssuer.Public())))
+}
+
+// logCreditGuardRefusal makes the three guard-state refusals visible on the ISSUER (PE
+// ruling F1): a credit refused because the durable guard is full, broken, or not yet
+// loaded is an operator condition, not a client error; without this line the only
+// symptom of an issuer at cap was a DEBUG line on the client. The recovery from a full
+// guard is rotate-the-publish-key AND clear creditspent.log, together.
+func (n *Node) logCreditGuardRefusal(err error) {
+	switch {
+	case errors.Is(err, errCreditGuardFull):
+		n.creditGuardRefusals++
+		n.logf(ports.LogWarn, "publish credit refused: credit-spent guard FULL — rotate the publish key and clear creditspent.log together", "recorded", len(n.creditSpent), "cap", maxCreditSpent)
+	case errors.Is(err, errCreditStore):
+		n.creditGuardRefusals++
+		n.logf(ports.LogWarn, "publish credit refused: credit-spent store write failed", "err", err)
+	case errors.Is(err, errCreditGuardUnloaded):
+		n.creditGuardRefusals++
+		n.logf(ports.LogWarn, "publish credit refused: credit-spent guard attached but not loaded", "err", err)
+	}
 }

@@ -457,7 +457,8 @@ func (n *Node) answerDemandTokenRequest(from ports.NodeID, msg ports.Message) po
 	}
 	charge, err := n.tokenChargeFor(from, msg.Credit)
 	if err != nil {
-		return reply // no publish issuer to verify an attached credit, or the credit is invalid/spent
+		n.logCreditGuardRefusal(err) // R2.13b F1
+		return reply                 // no publish issuer to verify an attached credit, or the credit is invalid/spent
 	}
 	blindSig, err := iss.Issue(charge, msg.Data)
 	if err != nil {
