@@ -66,6 +66,39 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   live S5 drill contract with the stale-prose list as owed docs true-up.
 
 ### Security
+- **R4.3b — the DHT eclipse cap (H5-B) now keys on the OBSERVED contacted-at address, in SHADOW
+  MODE by default; de-herd relay selection.** Mechanism: the per-bucket cap keyed on the
+  self-declared `-domain` label, so N Sybils with N free labels were N domains and an undeclared
+  Sybil was exempt (R4.3a, the owned hole). Now the transport classifies every completed TLS
+  conversation as an opaque per-process-salted `(class, group)` — DIRECT at the peer's own IPv4 /24
+  (IPv6 /32), RELAYED at the RELAY's prefix on the two spliced paths, one namespace per prefix across
+  classes (cert C-1), DIRECT never downgraded (C-3) — and the table stores the class WITH the entry
+  (C-4), caps per (class, group) per bucket, bounds ALL non-DIRECT entries at K − R (C-2, R ≥ K/2),
+  charges reply-learned ids to their INTRODUCER's group until they answer (Bitcoin Core's srcgroup
+  rule, re-checked at first classification as a narrowing), exempts `-bootstrap` seeds and
+  `-persistent-peers`, and caps one prefix at 10 entries table-wide (geth). Loopback and link-local
+  are exempt; RFC1918 and CGNAT are CLASSIFIED (a private-range exemption would make the cloudtest
+  shadow run measure nothing). The group never leaves the process: no wire field, no peers-file
+  field, no log line (`TestR43b_G9_SaltIsPerProcessAndGroupNeverLeavesTheProcess`,
+  `TestR43b_G9_NoLogLineCarriesAGroup`). **`-dht-address-cap=off|shadow|on`, default `shadow`:** the
+  rule is evaluated and every would-be refusal is counted per bucket × class × the
+  R ∈ {4, 6, 8} × cap_relay ∈ {2, 4} grid, and NOTHING is refused — shadow admissions equal `off`
+  admissions exactly (`TestR43b_G6_ShadowChangesNoAdmissionAndCountsEveryRefusal`, a lock-step
+  differential over 12 seeds × 600 events). `-dht-address-width` (24), `-dht-relay-cap` (2),
+  `-dht-address-reserve` (4, refused below K/2 — a security parameter). `/api/status.addressCap`
+  carries series A (`wouldRefuse`), B (`relayFanIn`) and E (`groupCensus`) as aggregates. The R4.3a
+  open-break gate `TestR43b_OPENBREAK_LabelledSybilsDefeatTheDomainCap` is flipped to assert the
+  defence (eight labelled Sybils from one /24 hold ≤ 2 of a K=8 bucket under `on`; the inverse under
+  `off` is pinned); `TestR43b_G1_OneObservedGroupIsCappedUnderOn`,
+  `TestR43b_G10_ThirtyPoniesBehindOneRelayStayDiscoverable` (30/30 ponies behind one relay
+  discoverable under `on`; presence at public tables ≥ the `off` baseline summed over ten seeds) and
+  `TestR43b_G11_RelaySelectionSpreadsAndFailsOver` are the new gates. **De-herd:** a NATed node
+  picks among the gossiped relays by min H(self ‖ relayID) with fail-over past a relay that refuses
+  registration (`pickRelay`; was `KnownRelays()[0]` for life). Enabling `on` is an owner call after a
+  cloudtest shadow run (ROADMAP *Decisions owed*). The `-domain` label stays for the C2 metric and
+  `preferFreshDomain`; its legacy per-bucket cap remains wired (inert against an adversary).
+  Research-CERTIFIED (the RELAYED class and the reserve):
+  `silt-reviews/research/research-outcome/R4.3b-relayed-class-and-observed-address-keying-RESEARCH-CERTIFICATION-2026-09-04.md`.
 - **R2.13b — the publish-credit double-spend guard (`creditSpent`) is now DURABLE; an issuer
   restart can no longer re-open every held credit for a second spend (PE finding F-4, confirmed
   by reproduction 2026-09-04).** Mechanism: `creditSpent` was process memory, while a publish

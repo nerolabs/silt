@@ -47,6 +47,7 @@ import (
 	"github.com/nerolabs/silt/core/credit"
 	"github.com/nerolabs/silt/core/demand"
 	"github.com/nerolabs/silt/core/denylist"
+	"github.com/nerolabs/silt/core/dht"
 	"github.com/nerolabs/silt/core/genesis"
 	"github.com/nerolabs/silt/core/link"
 	"github.com/nerolabs/silt/core/node"
@@ -115,6 +116,10 @@ func cmdDaemon(args []string) error {
 	signedProviders := fs.Bool("signed-providers", true, "self-certifying DHT provider records (M0 H5): a node signs its 'I hold this' announcements with its identity key and re-verifies records served back on lookup, so a node holding the k-closest slots to a key cannot fabricate provider records for identities that never announced. Default ON; =false drops to the legacy unsigned path (trusted/demo swarm only)")
 	signedProviderTTL := fs.Duration("signed-provider-ttl", 30*time.Minute, "freshness window stamped on signed provider records (M0 H5): a re-served record older than this is treated as expired, so an eclipsing node can't replay an ancient claim forever")
 	dhtDomainCap := fs.Int("dht-domain-cap", 2, "failure-domain diversity cap for DHT eclipse resistance (M0 H5-B): at most this many peers sharing one -domain are kept per routing bucket, and provider records are announced to / resolved from a domain-spread set — so an adversary owning the NodeIDs closest to a key but sitting in one domain (a ~$4 /24 key-surround) can't suppress discovery. Only bites when peers set distinct -domain labels; an UNDECLARED peer is exempt (a known hole: a free label cannot price an eclipse — closed by R4.3b, observed-address keying). 0 = off (no diversity constraint)")
+	dhtAddressCap := fs.String("dht-address-cap", defaultAddressCapMode, "R4.3b DHT eclipse cap keyed on the OBSERVED contacted-at address (the geth / Bitcoin Core form; ROADMAP R4.3b): per routing bucket at most -dht-domain-cap peers whose completed TLS conversation came from ONE IPv4 /24 (-dht-address-width) or IPv6 /32; a peer reached through a relay is keyed on the RELAY's /24 as class RELAYED (at most -dht-relay-cap per relay per bucket); ALL non-direct entries (relayed, reply-learned-but-never-contacted, unclassified) are bounded at K minus -dht-address-reserve; a reply-learned id is charged to the replier's /24 until it answers; loopback / link-local exempt, RFC1918 and CGNAT classified; -bootstrap seeds and -persistent-peers exempt; at most 10 entries per /24 across the table. Groups are salted per process — never persisted, gossiped, committed or logged. off = no rule; shadow (default) = evaluate the rule and COUNT every would-be refusal on /api/status (addressCap.wouldRefuse over the R∈{4,6,8}×cap_relay∈{2,4} grid, relayFanIn, groupCensus) while refusing NOTHING; on = refuse. Enabling on is an owner call after a shadow run. This prices the endhost adversary in /24s; an AS-level adversary holding many prefixes (Erebus) is NOT priced by it")
+	dhtAddressWidth := fs.Int("dht-address-width", 24, "IPv4 prefix width (bits) the -dht-address-cap groups by; 24 = /24. IPv6 is fixed at /32 (an IPv6 /64 is free). A width narrower than the allocation unit hands the adversary free groups")
+	dhtRelayCap := fs.Int("dht-relay-cap", 2, "cap_relay for -dht-address-cap: at most this many RELAYED peers per relay /24 per routing bucket (shadow hypothesis 2; raising it above -dht-domain-cap lowers a self-run-relay adversary's cost by one /24 per step and is the owner's priced trade after the shadow run)")
+	dhtAddressReserve := fs.Int("dht-address-reserve", 4, "R, the DIRECT reserve per routing bucket for -dht-address-cap — a SECURITY parameter (Evolving tier): non-direct entries are bounded at K − R, so owning a bucket costs ⌈R / -dht-domain-cap⌉ paid /24s plus K − R free slots. Must be ≥ K/2 (refused otherwise: below it honest relays hand the adversary a bucket majority for free). Shadow hypothesis 4; the printed floor at startup is what the owner ratifies")
 	domain := fs.String("domain", "", "this node's failure-domain label (AS / rack / geo — e.g. \"as64500\" or \"us-east-1b\"). Two uses: DHT eclipse-resistance (H5-B, with -dht-domain-cap) AND, for a validator, it is COMMITTED in the bond so the C2 concentration metric counts ADDRESS-DIVERSE participants (A axis / D-C2) — a stake split across many keys in ONE domain cannot fake decentralization; shedding the launch anchors requires distinct domains, not just distinct keys. A WEAK signal (declared, transport-cross-checked, not proven); it prices concentration higher, it does not close the honest-whale residual. Empty = unset (independent for the C2 metric; exempt from the DHT cap — see -dht-domain-cap).")
 	bondTTL := fs.Uint64("bond-ttl", 0, "objective re-challenge cadence (M0 retest G4 / RT-2): objective standing LAPSES this many committed blocks after a validator's latest on-chain bond registration unless it renews with a fresh space-time proof — so a validator that registers once then releases its plot cannot keep voting. LEFT UNSET it defaults ON for an untrusted objective validator (derived cadence); an explicit 0 disables it (standing never expires; safe only for a trusted/demo swarm)")
 	epochBlocks := fs.Uint64("epoch-blocks", 0, "mature-phase validator-set epoch (#357 research certification, Conditions A+B): after the young→mature handoff, the finality quorum, validator qualification, and the weight quorum are read from a SNAPSHOT of the committed bonded set frozen at the last epoch boundary (a finalized block), rotated every this-many blocks — never recomputed live from the churning bond ledger, which would let two conflicting commits finalize against two different sets. The handoff itself waits for the first boundary after the maturity latch, so the anchor→bond handoff is rooted at a finalized base. CONSENSUS-CRITICAL: set it identically across the swarm (like -min-bond). LEFT UNSET it defaults ON for an untrusted objective validator (derived cadence, well under the bond TTL); an explicit 0 disables epochs (live recompute; safe only for a trusted/demo swarm)")
@@ -409,6 +414,28 @@ func cmdDaemon(args []string) error {
 	clk := walltime.New(loop)
 	nd := node.New(id, cfg, clk, tr, store)
 	nd.SetSigner(ident.Signer()) // sign self-certifying provider records (H5), not just chain blocks
+	// R4.3b: the DHT eclipse cap reads the transport's observed (class, group) per
+	// peer — never the declared -domain label. Shadow by default: counted, never
+	// applied. The reserve is refused below K/2 (the table would clamp it; the flag
+	// is refused so the operator sees it).
+	addrMode, err := parseAddressCapMode(*dhtAddressCap)
+	if err != nil {
+		return err
+	}
+	if *dhtAddressReserve < (cfg.K+1)/2 || *dhtAddressReserve > cfg.K {
+		return fmt.Errorf("-dht-address-reserve %d must be in [K/2, K] = [%d, %d] (research-certified floor; below K/2 the adversary owns a bucket majority for free via honest relays)", *dhtAddressReserve, (cfg.K+1)/2, cfg.K)
+	}
+	tr.SetAddressWidth(*dhtAddressWidth, 32)
+	nd.SetPeerClassifier(tr)
+	nd.SetAddressDiversity(addrMode, *dhtDomainCap, *dhtRelayCap, *dhtAddressReserve)
+	nd.Table().SetTableGroupCap(10) // geth's bucketIPLimit shape: one /24 holds at most 10 entries table-wide
+	paidPrefixes := 0
+	if *dhtDomainCap > 0 {
+		paidPrefixes = (*dhtAddressReserve + *dhtDomainCap - 1) / *dhtDomainCap
+	}
+	fmt.Printf("dht-address-cap: %s — cap_direct=%d cap_relay=%d reserve=%d (K=%d): eclipse floor per bucket = %d paid /%d prefixes + %d free slots; IPv6 /32; loopback/link-local exempt, RFC1918 classified%s\n",
+		addrMode, *dhtDomainCap, *dhtRelayCap, *dhtAddressReserve, cfg.K, paidPrefixes, *dhtAddressWidth, cfg.K-*dhtAddressReserve,
+		map[bool]string{true: " (shadow: counting would-be refusals, refusing nothing)", false: ""}[addrMode == dht.AddressCapShadow])
 	if *blockPeers != "" {
 		var blocked []ports.NodeID
 		for _, s := range strings.Split(*blockPeers, ",") {
@@ -1206,6 +1233,8 @@ func cmdDaemon(args []string) error {
 			peerCount:     func() int { return tr.PeerCount() },
 			carePublished: *carePublished,
 			token:         token,
+			addressCap: addressCapConfig{Mode: addrMode.String(), Width: *dhtAddressWidth,
+				CapDirect: *dhtDomainCap, CapRelay: *dhtRelayCap, Reserve: *dhtAddressReserve},
 		}
 		bound, err := ui.serve(*uiAddr)
 		if err != nil {
@@ -1245,6 +1274,9 @@ func cmdDaemon(args []string) error {
 			return err
 		}
 		addSeeds(ps, "-bootstrap")
+		for _, p := range ps {
+			nd.MarkSeed(p.ID) // operator-typed: exempt from the R4.3b address cap (cert C-2)
+		}
 	}
 	// The static consensus/anchor tier (#286 Layer 2): configure the validator set's
 	// addresses up front so a proposer can INITIATE the gather at genesis, and mark
@@ -1332,10 +1364,20 @@ func cmdDaemon(args []string) error {
 	// to answer someone with no dialable address), so the join is
 	// retried now that every envelope carries an address the swarm can
 	// actually reach us at.
-	leanOnRelay := func(viaID ports.NodeID, viaAddr string) {
+	//
+	// result, when non-nil, is told ONCE how the first registration went (nil =
+	// registered; err = refused) — the de-herd path re-picks on a refusal (R4.3b).
+	leanOnRelay := func(viaID ports.NodeID, viaAddr string, result func(error)) {
+		report := func(err error) {
+			if result != nil {
+				result(err)
+				result = nil
+			}
+		}
 		rc, err := relay.NewClient(ident, viaID, viaAddr, tr.RelayInbound, obs)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "relay-via:", err)
+			report(err)
 			return
 		}
 		// #27: let the transport upgrade a relay path to a direct one. The
@@ -1348,8 +1390,10 @@ func cmdDaemon(args []string) error {
 		go rc.Run(func(err error) {
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "relay-via: registration failed:", err)
+				report(err)
 				return
 			}
+			report(nil)
 			loop.Post("relay-via", func() {
 				tr.SetAdvertise(rc.Addr())
 				fmt.Printf("relay-via: registered — peers reach us at %s\n", rc.Addr())
@@ -1393,29 +1437,42 @@ func cmdDaemon(args []string) error {
 						fmt.Println("reachability: public — peers can dial this node directly")
 					case *relayVia != "":
 						fmt.Println("reachability: no peer could dial back — NATed; leaning on the -relay-via relay")
-						leanOnRelay(viaID, viaAddr)
+						leanOnRelay(viaID, viaAddr, nil)
 					default:
 						// No relay configured — but the swarm gossips
 						// relay capability, so one may already be (or soon
 						// become) known. Adopt the first that shows up.
 						fmt.Println("reachability: no peer could dial back — this node looks NATed; watching the swarm for a gossiped relay (-relay-via RELAYID@HOST:PORT skips the wait)")
 						dlog("natted, watching for gossiped relay")
-						// First cut: adopt the lowest-ID gossiped relay and
-						// commit to it (leanOnRelay then reconnects it with
-						// backoff for the node's lifetime, exactly as an
-						// explicit -relay-via would). Choosing among several
-						// relays and failing over when the chosen one won't
-						// register is a documented follow-up (see BACKLOG).
+						// De-herd (R4.3b): pick among the gossiped relays per node
+						// (min over H(self ‖ relayID), so a swarm spreads across its
+						// relays instead of every NATed pony adopting the lowest-ID
+						// relay for life), fail over past a relay that refuses
+						// registration, and commit to the one that registers
+						// (leanOnRelay then reconnects it with backoff for the node's
+						// lifetime, exactly as an explicit -relay-via would).
 						go func() {
+							refused := map[ports.NodeID]bool{}
 							for {
-								if rs := tr.KnownRelays(); len(rs) > 0 {
-									r := rs[0]
-									fmt.Printf("relay: discovered %s@%s via gossip — leaning on it\n", r.ID, r.Addr)
-									dlog("gossiped relay adopted", "relay", r.ID, "addr", r.Addr)
-									leanOnRelay(r.ID, r.Addr)
-									return
+								r, ok := pickRelay(id, tr.KnownRelays(), refused)
+								if !ok {
+									if len(refused) > 0 && len(tr.KnownRelays()) > 0 {
+										refused = map[ports.NodeID]bool{} // every known relay refused: retry them all
+									}
+									time.Sleep(5 * time.Second)
+									continue
 								}
-								time.Sleep(5 * time.Second)
+								fmt.Printf("relay: discovered %s@%s via gossip — leaning on it\n", r.ID, r.Addr)
+								dlog("gossiped relay adopted", "relay", r.ID, "addr", r.Addr)
+								result := make(chan error, 1)
+								leanOnRelay(r.ID, r.Addr, func(err error) { result <- err })
+								if err := <-result; err != nil {
+									refused[r.ID] = true
+									fmt.Printf("relay: %s refused registration (%v) — picking another\n", r.ID, err)
+									dlog("gossiped relay refused; re-picking", "relay", r.ID, "err", err)
+									continue
+								}
+								return
 							}
 						}()
 					}
@@ -1424,7 +1481,7 @@ func cmdDaemon(args []string) error {
 				// Nobody to ask (a lone node bootstrapping into an empty
 				// swarm): assume the conservative answer and take the relay.
 				fmt.Println("reachability: no peers to check with — assuming NATed; leaning on the -relay-via relay")
-				leanOnRelay(viaID, viaAddr)
+				leanOnRelay(viaID, viaAddr, nil)
 			}
 			// Start challenging peers' storage bonds (and refreshing our own
 			// standing): consensus writes are gated on earned, held storage.

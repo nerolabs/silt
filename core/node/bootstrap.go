@@ -39,7 +39,7 @@ func (n *Node) bootstrapRetryTick() {
 		// them until the cooldown lapses.
 		for _, s := range n.bootstrapSeeds {
 			delete(n.dead, s)
-			n.table.Observe(s)
+			n.observeSeed(s)
 		}
 		n.IterativeFindNode(n.id, func([]ports.NodeID) {
 			if s2 := n.table.Size(); s2 > 0 && n.bootstrapRejoin != nil {
