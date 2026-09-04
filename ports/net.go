@@ -322,3 +322,31 @@ type Transport interface {
 	Send(to NodeID, msg Message) error
 	SetHandler(func(from NodeID, msg Message))
 }
+
+// PeerClass is the OBSERVED address class of a peer, as the transport saw it
+// (R4.3b, the DHT eclipse cap keyed on the contacted-at address). Never a
+// declared label: a class is a fact about a completed conversation.
+type PeerClass uint8
+
+const (
+	// ClassUnverified: reply-learned, never contacted. Charged to the
+	// INTRODUCER's group (Bitcoin Core's srcgroup rule).
+	ClassUnverified PeerClass = iota
+	// ClassDirect: a TLS-completed conversation at the peer's own address.
+	ClassDirect
+	// ClassRelayed: reached through a relay splice; keyed on the RELAY's
+	// group, as its own class (research-certified 2026-09-04).
+	ClassRelayed
+)
+
+// PeerClassifier is the OPTIONAL port through which the DHT learns the
+// observed address class of a peer — never an IP. A transport that implements
+// it exports, per NodeID, the (class, group) of the completed conversation it
+// had with that peer: group = H(salt ‖ prefix(remoteAddr)), ONE namespace per
+// prefix across classes; the salt is per process, never persisted, never on the
+// wire. known=false means "no completed conversation": the DHT treats such an
+// entry as unclassified, bounded by the reserve. Group 0 is exempt (loopback,
+// link-local, unspecified): never capped per group.
+type PeerClassifier interface {
+	ClassOf(id NodeID) (class PeerClass, group uint64, known bool)
+}

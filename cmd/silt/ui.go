@@ -27,6 +27,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/nerolabs/silt/core/dht"
 	"io"
 	"io/fs"
 	"net"
@@ -60,10 +61,95 @@ type uiServer struct {
 	validator     bool
 	started       time.Time
 	peerCount     func() int
-	links         *linkbook.Book // client mode only (nil on a plain daemon)
-	carePublished bool           // daemon repairs content published through its own UI (#44)
-	token         string         // per-daemon bearer token gating state-changing calls (#89)
-	webOrigins    []string       // extra web origins allowed to draw content (e.g. https://app.example.com); off by default. Lets a hosted resolver surface render from this local node.
+	links         *linkbook.Book   // client mode only (nil on a plain daemon)
+	carePublished bool             // daemon repairs content published through its own UI (#44)
+	token         string           // per-daemon bearer token gating state-changing calls (#89)
+	webOrigins    []string         // extra web origins allowed to draw content (e.g. https://app.example.com); off by default. Lets a hosted resolver surface render from this local node.
+	addressCap    addressCapConfig // R4.3b: the configured observed-address cap, reported with series A/B/E
+}
+
+// addressCapConfig is the -dht-address-cap configuration as /api/status reports it.
+type addressCapConfig struct {
+	Mode      string `json:"mode"` // off | shadow | on
+	Width     int    `json:"width"`
+	CapDirect int    `json:"capDirect"`
+	CapRelay  int    `json:"capRelay"`
+	Reserve   int    `json:"reserve"`
+}
+
+// addressCapInfo is the R4.3b shadow-run telemetry (cert §6.3): series A (would-
+// refuse per bucket/class under the (R, cap_relay) grid, labelled with the width),
+// B (relay fan-in: counts and the top relay's share — never a relay's group) and E
+// (the per-bucket group-density census). Aggregates only: no group value leaves
+// the process.
+type addressCapInfo struct {
+	addressCapConfig
+	WouldRefuse []wouldRefuseRow   `json:"wouldRefuse"`
+	RelayFanIn  relayFanInInfo     `json:"relayFanIn"`
+	GroupCensus []dht.BucketCensus `json:"groupCensus"`
+}
+
+type wouldRefuseRow struct {
+	Bucket   int    `json:"bucket"`
+	Class    string `json:"class"` // direct | relayed | unverified
+	Reserve  int    `json:"reserve"`
+	CapRelay int    `json:"capRelay"`
+	Width    int    `json:"width"`
+	Count    int    `json:"count"`
+}
+
+// relayFanInInfo is series B as seen from THIS node only (the cert's series-B aggregation
+// gap: the swarm-wide top-relay share is a harness-side join across nodes). LocalView is
+// always true here so a reader cannot mistake it for the swarm figure.
+type relayFanInInfo struct {
+	LocalView bool    `json:"localView"`
+	Relays    int     `json:"relays"`   // distinct relay groups with RELAYED entries
+	Clients   int     `json:"clients"`  // RELAYED entries in the table
+	TopShare  float64 `json:"topShare"` // the top relay's share of them (0 when none)
+	PerRelay  []int   `json:"perRelay"` // clients per relay, descending, unnamed
+}
+
+func className(c ports.PeerClass) string {
+	switch c {
+	case ports.ClassDirect:
+		return "direct"
+	case ports.ClassRelayed:
+		return "relayed"
+	}
+	return "unverified"
+}
+
+func (s *uiServer) addressCapSnapshot() addressCapInfo {
+	tab := s.nd.Table()
+	info := addressCapInfo{addressCapConfig: s.addressCap, WouldRefuse: []wouldRefuseRow{}, GroupCensus: []dht.BucketCensus{}}
+	for k, v := range tab.ShadowRefusals() {
+		info.WouldRefuse = append(info.WouldRefuse, wouldRefuseRow{Bucket: k.Bucket, Class: className(k.Class),
+			Reserve: k.Reserve, CapRelay: k.CapRelay, Width: s.addressCap.Width, Count: v})
+	}
+	sort.Slice(info.WouldRefuse, func(i, j int) bool {
+		a, b := info.WouldRefuse[i], info.WouldRefuse[j]
+		if a.Bucket != b.Bucket {
+			return a.Bucket < b.Bucket
+		}
+		if a.Class != b.Class {
+			return a.Class < b.Class
+		}
+		if a.Reserve != b.Reserve {
+			return a.Reserve < b.Reserve
+		}
+		return a.CapRelay < b.CapRelay
+	})
+	per, top := tab.RelayFanIn()
+	info.RelayFanIn = relayFanInInfo{LocalView: true, Relays: len(per), TopShare: top, PerRelay: []int{}}
+	for _, n := range per {
+		info.RelayFanIn.Clients += n
+		info.RelayFanIn.PerRelay = append(info.RelayFanIn.PerRelay, n)
+	}
+	sort.Sort(sort.Reverse(sort.IntSlice(info.RelayFanIn.PerRelay)))
+	if rows := tab.GroupCensus(); rows != nil {
+		info.GroupCensus = rows
+	}
+	return info
 }
 
 func (s *uiServer) onLoop(fn func()) {
@@ -287,6 +373,7 @@ func (s *uiServer) apiStatus(w http.ResponseWriter, _ *http.Request) {
 		Reachability string           `json:"reachability"`
 		Chain        *chainInfo       `json:"chain,omitempty"`
 		Durability   *durabilityInfo  `json:"durability,omitempty"`
+		AddressCap   addressCapInfo   `json:"addressCap"` // R4.3b series A/B/E (shadow-run telemetry)
 	}
 	out.ID = s.nd.ID().String()
 	out.Peer = s.selfPeer
@@ -308,6 +395,7 @@ func (s *uiServer) apiStatus(w http.ResponseWriter, _ *http.Request) {
 			out.Chain = &chainInfo{Height: ch.Len(), Entries: len(ch.AllEntries())}
 		}
 		out.Durability = s.durabilitySnapshot(uptime)
+		out.AddressCap = s.addressCapSnapshot()
 	})
 	writeJSON(w, out)
 }

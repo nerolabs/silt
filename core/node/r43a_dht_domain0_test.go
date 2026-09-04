@@ -73,32 +73,47 @@ func TestR43a_TwoUndeclaredSybilsDoNotLockADomainlessBucket(t *testing.T) {
 	}
 }
 
-// TestR43b_OPENBREAK_LabelledSybilsDefeatTheDomainCap records the LIVE residual R4.3b
-// closes: N Sybils declaring N distinct free labels are N domains, so the per-domain cap
-// never fires and they fill the bucket. This gate asserts the attack SUCCEEDS today (the
-// break is open and owned, ROADMAP R4.3b). When R4.3b lands it goes RED and must be
-// flipped to assert the defence — an open break may not close silently.
+// TestR43b_OPENBREAK_LabelledSybilsDefeatTheDomainCap — FLIPPED 2026-09-04 (R4.3b G-1).
+// Until R4.3b this gate asserted the LIVE break: N Sybils declaring N distinct free labels
+// were N domains, the per-domain cap never fired, and they filled the bucket. R4.3b keys
+// the cap on the OBSERVED contacted-at address instead: the same eight Sybils, eight
+// labels, ONE observed /24, hold at most cap_direct of a K=8 bucket under
+// -dht-address-cap=on, and the two honest peers from other /24s are admitted. The
+// inverse is pinned so the break cannot reopen silently: under off the labelled surround
+// still fills the bucket (the label rule is inert against distinct labels), and it is the
+// address rule alone that defends. Name kept: CHANGELOG cites it.
 func TestR43b_OPENBREAK_LabelledSybilsDefeatTheDomainCap(t *testing.T) {
 	self := identity.FromSeed(1).NodeID()
-	tab := dht.NewTable(self, 8)
-	domainOf := map[ports.NodeID]uint64{}
-	tab.SetDiversity(func(id ports.NodeID) uint64 { return domainOf[id] }, 2)
-
 	ids := sameBucketIDs(t, self, 10, 60_000)
 	sybils, honest := ids[:8], ids[8:10]
-	for i, id := range sybils {
-		domainOf[id] = 0x1000 + uint64(i) // a distinct free label each
-		tab.Observe(id)
+
+	run := func(mode dht.AddressMode) (int, int) {
+		tab := dht.NewTable(self, 8)
+		labels := map[ports.NodeID]uint64{}
+		tab.SetDiversity(func(id ports.NodeID) uint64 { return labels[id] }, 2) // the legacy label rule, still wired
+		oracle := newR43bOracle()
+		tab.SetAddressDiversity(oracle, 2, 2, 4, mode)
+		for i, id := range sybils {
+			labels[id] = 0x1000 + uint64(i) // a distinct free label each …
+			oracle.direct(id, 0x5B24)       // … all answered from ONE observed /24
+			tab.Observe(id)
+		}
+		for i, id := range honest {
+			labels[id] = 0x2000
+			oracle.direct(id, 0xB00+uint64(i))
+			tab.Observe(id)
+		}
+		return countKept(tab, self, sybils), countKept(tab, self, honest)
 	}
-	for _, id := range honest {
-		domainOf[id] = 0x2000
-		tab.Observe(id)
+	if s, h := run(dht.AddressCapOff); s != 8 || h != 0 {
+		t.Fatalf("inverse pin: under off eight labelled Sybils from one /24 should still fill the bucket (8 kept, 0 honest); got %d/%d — the declared label is capping, or the fixture is no longer a surround", s, h)
 	}
-	if kept := countKept(tab, self, sybils); kept != 8 {
-		t.Fatalf("OPEN BREAK changed: %d of 8 labelled Sybils admitted (expected all 8 — a declared label costs $0). If R4.3b landed, flip this gate to assert the defence and close the ROADMAP residual", kept)
+	s, h := run(dht.AddressCapOn)
+	if s > 2 {
+		t.Fatalf("G-1 RED: %d of 8 labelled Sybils from ONE observed /24 admitted into a K=8 bucket under -dht-address-cap=on (cap_direct=2) — a declared label still keys the cap; N free labels are N domains", s)
 	}
-	if kept := countKept(tab, self, honest); kept != 0 {
-		t.Fatalf("OPEN BREAK changed: %d honest peers admitted past a labelled surround (expected 0 under the declared-label cap)", kept)
+	if h != 2 {
+		t.Fatalf("G-1 RED: %d of 2 honest peers (distinct observed /24s) admitted past the labelled surround under on; want 2", h)
 	}
 }
 

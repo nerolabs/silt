@@ -704,6 +704,12 @@ type Node struct {
 	domainID    uint64
 	peerDomains map[ports.NodeID]uint64
 
+	// R4.3b observed-address keying (address_class.go): the transport's classifier
+	// the DHT reads, the configured cap, and the operator-typed -bootstrap seeds.
+	classifier ports.PeerClassifier
+	addrCap    addressCapConfig
+	seedPeers  map[ports.NodeID]bool
+
 	// demand-responsive dispersion: serveLoad counts recent serves per
 	// chunk (decayed each demand tick); leases holds the expiry of each
 	// cache copy we took on under load; demandRunning guards the tick loop,
@@ -1733,7 +1739,7 @@ func (n *Node) Bootstrap(seeds []ports.NodeID, done func()) {
 		n.bootstrapSeeds = seeds // remember for empty-table re-bootstrap (#281)
 	}
 	for _, s := range seeds {
-		n.table.Observe(s)
+		n.observeSeed(s)
 	}
 	n.IterativeFindNode(n.id, func([]ports.NodeID) { done() })
 }
@@ -1821,7 +1827,9 @@ func (w *walk) step() {
 				} else {
 					w.l.OnReply(peer, resp.Nodes)
 					for _, id := range resp.Nodes {
-						w.n.table.Observe(id)
+						// Reply-learned, never contacted: UNVERIFIED, charged to the
+						// replier's group until it answers a query itself (R4.3b, cert §5).
+						w.n.table.ObserveIntroduced(id, peer)
 					}
 					if w.onProviders != nil && len(resp.ProviderRecs) > 0 && w.onProviders(resp.ProviderRecs) {
 						w.finished = true // caller has what it needs

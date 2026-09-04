@@ -133,6 +133,18 @@ carries the argument and the sources. Two are LIVE BREAKS and come first.
 **Not the owner's:** the research-gated pieces are named on each Rock and stay with the Researcher.
 
 **★ Decisions owed to the owner (as of 2026-09-03).** Read these first; each names its source.
+- **R4.3b — enable the observed-address eclipse cap (`-dht-address-cap=on`) and ratify R + cap_relay —
+  OWED (built 2026-09-04 in shadow).** The rule ships COUNTING, refusing nothing. The reserve R is a
+  SECURITY parameter (Evolving tier): the certified floor is ⌈R / cap_direct⌉ paid /24s + (K − R) free
+  slots per bucket, R ≥ K/2. Shadow hypothesis R = 4, cap_relay = 2 (floor at K = 8, cap_direct = 2: two
+  paid /24s + four free slots; the daemon prints it at startup). Preconditions the cert names before
+  `on`: (i) de-herd relay selection merged (in the same commit); (ii) one cloudtest shadow run with ≥ 3
+  relays on a non-exempt address plan (the 10.20.0.x plan IS classified) reporting series A honest
+  close-bucket would-refuse under the budget (economist proposes < 5 %) and series B top-relay share under
+  its threshold (< 20 %, aggregated harness-side from the relays' status lines). Then the owner ratifies
+  R and cap_relay with the printed floor beside them, and flips the default. Source:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R4.3b-relayed-class-and-observed-address-keying-RESEARCH-CERTIFICATION-2026-09-04.md`
+  §4, §6.3.
 - **Floor-box STRUCTURE (Boulder 1, pre-freeze) — RATIFIED 2026-09-03.** Owner: *"I accept the
   recommendation."* All three owner items are DECIDED as recommended: (1) the structure, (2) HOLD the
   box-entry round-A export surface (merge the arithmetic, doors unexported), (3) the state-view
@@ -1124,8 +1136,31 @@ economy-off HEAD certifies a network nobody runs. Design:
   [`docs/thinking/2026-09-03-r4.3a-dht-domain0-exemption-design.md`](docs/thinking/2026-09-03-r4.3a-dht-domain0-exemption-design.md).
   Sources: the R4.2 direction cert §3; `/Users/andrewedmond/Claude/claude/silt-reviews/red-team/RED-TEAM-R4.3b-dht-eclipse-keying-2026-09-03.md`;
   `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-R4.3a-dht-domain0-cap-adb31e1-2026-09-03.md`.
-- **R4.3b · key the DHT eclipse cap on the OBSERVED remote address (the geth / Bitcoin Core form) — NEW 2026-09-03 (Builder + crypto-specialist advisory on the bucket width; not research-gated per the R4.2 cert).**
-  Closes the second evasion R4.3a does not (declare N random labels) and retires `-domain` from the DHT
+- **R4.3b · key the DHT eclipse cap on the OBSERVED remote address (the geth / Bitcoin Core form) — BUILT 2026-09-04 in SHADOW MODE (PR pending; the RELAYED class and the reserve research-CERTIFIED 2026-09-04 with conditions C-1…C-4; the DIRECT/UNVERIFIED classes and shadow not gated per the R4.2 cert).**
+  **As built:** `ports.PeerClassifier` (optional; the core never sees an IP) → `tcpnet` classifies on a
+  completed handshake (DIRECT at the peer's own prefix, RELAYED at the RELAY's prefix on the two spliced
+  paths; one salted namespace per /24 across classes, C-1; DIRECT never downgraded, C-3; salt per process,
+  never persisted / gossiped / logged; loopback + link-local exempt, RFC1918 and CGNAT CLASSIFIED);
+  `core/dht` stores the class WITH the entry (C-4), caps per (class, group) per bucket, bounds ALL
+  non-DIRECT entries at K − R (C-2, R clamped ≥ K/2), charges reply-learned ids to their INTRODUCER's
+  group and re-checks them at first classification (a narrowing; class loss inert), exempts `-bootstrap`
+  seeds and `-persistent-peers`, and caps one group at 10 table-wide. `-dht-address-cap=off|shadow|on`
+  (default **shadow**: every would-be refusal is COUNTED per bucket × class × the R∈{4,6,8} × cap_relay∈{2,4}
+  grid and NOTHING is refused — shadow admissions equal off admissions exactly, G-6 differential over 12
+  seeds × 600 events), `-dht-address-width` (v4 /24; v6 fixed /32), `-dht-relay-cap` (2), `-dht-address-reserve`
+  (4; refused below K/2). `/api/status.addressCap` carries series A (`wouldRefuse`), B (`relayFanIn`: counts
+  and top share, never a group) and E (`groupCensus`). **De-herd relay selection** shipped in the same
+  commit: `pickRelay` = min over H(self ‖ relayID) with fail-over past a refusing relay (was
+  `KnownRelays()[0]` for life). Gates: 30 across `core/dht`, `core/node`, `adapters/tcpnet`,
+  `adapters/simnet`, `cmd/silt`; the R4.3a OPEN-BREAK gate flipped to assert the defence. The declared
+  `-domain` label stays for the C2 metric and `preferFreshDomain`; its legacy per-bucket cap stays wired
+  (inert against an adversary) and `diverseNear` still keys on it — selection keyed on the observed group
+  is deferred to the `on` enablement. **OWNER CALL (see *Decisions owed*):** ratify R and cap_relay with
+  the printed floor and enable `on`, after one non-exempt cloudtest shadow run with ≥ 3 relays reports
+  series A and B (G-13, field). Cert:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R4.3b-relayed-class-and-observed-address-keying-RESEARCH-CERTIFICATION-2026-09-04.md`;
+  deliberation `docs/thinking/2026-09-04-r4.3b-observed-address-keying-design.md`.
+  **History (2026-09-03, the direction):** closes the second evasion R4.3a does not (declare N random labels) and retires `-domain` from the DHT
   entirely, which IS the build-immutable-#3 split of the single flag (`daemon.go:316-317`): the transport
   must surface each peer's remote address to the node (a ports change; the sim needs a domain oracle).
   A second declared label is REFUSED — DECIDED by the four-seat opinion set 2026-09-03 (owner heard all
@@ -1145,6 +1180,25 @@ economy-off HEAD certifies a network nobody runs. Design:
   `-relay-via` present the relay's address and would be capped together; R4.3b must key on DIRECT
   connections' addresses and treat relayed peers separately (immutable #4/#5).** Must not slip past the RC
   gate: a labelled adversary (10 labelled eclipser incumbents → 1/6 discoverable) is untouched by R4.3a.
+  **Reviews of the build (2026-09-04):** PE `RULING-R4.3b-address-keying-build-e45399a-2026-09-04.md`
+  MERGE-WITH-CONDITIONS (shadow inert for every admission and selection decision, verified against main); Tester
+  MERGE-READY (35/35; 12 ablations; node-tier shadow differential 40 nodes × 3 seeds: 0 table / announce /
+  resolve differences); red-team `RED-TEAM-R4.3b-address-keying-build-e45399a-2026-09-04.md` (the R4.3a headline
+  and the $0 IPv6 /64 rotation are CLOSED; shadow == off under 200 adversarial seeds; six findings, ALL about
+  `on`). **OWED BEFORE `on` (a Rock: R4.3b-pre-on):** PE O-1 de-herd picks from the first non-empty
+  `KnownRelays()` snapshot (the herd re-forms on gossip order — fix before the shadow run or it measures gossip
+  order); O-2 a refused `relay.Client` is never closed and retries forever; O-3 the kept label cap returns before
+  `decide`, so a declared same-/24 cohort under-counts in shadow (the default undeclared deployment measures
+  identically); red-team **F1** free relay identities capture the de-herd (10 ids → 77% of ponies) and under `on`
+  the RELAYED cap suppresses the NON-punchable population (symmetric NAT / CGNAT / mobile) — the relay-tier
+  dilemma, → Researcher; **F2** loopback/link-local observed addresses are DIRECT at group 0 = cap-exempt AND
+  zero the shadow series (default `-listen 127.0.0.1`) — a group-0-dominance WARN at minimum, → Builder +
+  Researcher; **F3** IPv6 fixed at /32 collapses honest cloud co-tenants (2/8 admitted) — width → Researcher;
+  F4 introducer laundering fills the non-DIRECT reserve (transient, DIRECT reserve untouched); F5 series-A
+  counters accumulate without reset; F6 `/api/status.addressCap` counts are recon (no group, no salt). Tester
+  coverage gaps (owed, test-only): a simnet downgrade arm; a runtime capture that the group never reaches
+  stdout/stderr in any format; a node-tier G-6 twin (the differential above, kept in scratch). Researcher
+  cert on F1/F3/F2 in flight (`R4.3b-on-preconditions-relay-tier-and-ipv6-width-RESEARCH-CERTIFICATION-2026-09-04.md`).
 - **R4.4 · External red-team vs the C1 + C2 composition and the seven §7 seams (#183) — THE M0
   close gate.** This is the RC-defining gate, and **it is the same pass as R1.7** — one external B8
   engagement, not two. **RATIFIED 2026-09-03: it runs at the RELEASE CANDIDATE, AFTER the era-4/v5

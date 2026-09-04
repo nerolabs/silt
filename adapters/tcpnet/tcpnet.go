@@ -35,6 +35,7 @@
 package tcpnet
 
 import (
+	"crypto/rand"
 	"crypto/tls"
 	"encoding/binary"
 	"fmt"
@@ -117,6 +118,11 @@ type Transport struct {
 	// The newest conn wins the slot; a displaced one keeps serving its
 	// own readLoop until it dies naturally.
 	conns map[ports.NodeID]*peerConn
+	// classes is the observed (class, group) per peer with a live conversation
+	// (R4.3b, class.go); salt is per process, drawn at New, never persisted.
+	classes          map[ports.NodeID]peerClass
+	salt             [16]byte
+	v4Width, v6Width int
 	// adv, when set, replaces listenAddr in outgoing envelope stamps — a
 	// NATed node advertising "reach me via relay R" instead of a
 	// LAN address nobody outside the house can dial.
@@ -217,6 +223,12 @@ func New(loop *eventloop.Loop, ident *identity.Identity, listenAddr string) (*Tr
 		relays:     make(map[ports.NodeID]string),
 		conns:      make(map[ports.NodeID]*peerConn),
 		punchedAt:  make(map[ports.NodeID]time.Time),
+		classes:    make(map[ports.NodeID]peerClass),
+		v4Width:    defaultV4Width,
+		v6Width:    defaultV6Width,
+	}
+	if _, err := rand.Read(t.salt[:]); err != nil {
+		return nil, fmt.Errorf("tcpnet: salt: %w", err)
 	}
 	go t.acceptLoop()
 	return t, nil
@@ -534,6 +546,7 @@ func (t *Transport) deliver(to ports.NodeID, pair addrPair, frame []byte, freshD
 		}
 		viaRelay := addr == pair.relay
 		pc := t.adopt(to, conn, viaRelay)
+		t.observeConn(to, conn.RemoteAddr(), viaRelay) // the handshake completed in dialPeer
 		if err := pc.write(frame); err != nil {
 			t.dropConn(to, pc)
 			return
@@ -614,6 +627,7 @@ func (t *Transport) dropConn(id ports.NodeID, pc *peerConn) {
 	t.mu.Lock()
 	if t.conns[id] == pc {
 		delete(t.conns, id)
+		delete(t.classes, id) // the class map is bounded by live conns (C-4); the table keeps its own copy
 	}
 	t.mu.Unlock()
 	pc.conn.Close()
@@ -682,6 +696,7 @@ func (t *Transport) readLoop(conn *tls.Conn, viaRelay bool) {
 	// our replies to a NATed peer ride it, because no dial can ever go
 	// the other way.
 	pc := t.adopt(from, conn, viaRelay)
+	t.observeConn(from, conn.RemoteAddr(), viaRelay) // R4.3b: the observed contacted-at address
 	defer t.dropConn(from, pc)
 	for {
 		var hdr [4]byte

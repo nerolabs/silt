@@ -62,6 +62,9 @@ type Network struct {
 	relay    ports.NodeID
 	hasRelay bool
 	Stats    Stats
+	// classes is the R4.3b class oracle (class.go): what a direct delivery from
+	// id presents to the receiving endpoint.
+	classes map[ports.NodeID]simClass
 
 	// Held-delivery (model-check) mode. When held is true, Send parks each
 	// message's delivery closure in heldQ instead of scheduling it on the clock,
@@ -110,6 +113,8 @@ type Endpoint struct {
 	id      ports.NodeID
 	handler func(from ports.NodeID, msg ports.Message)
 	dead    bool
+	// seen is this endpoint's observed class per sender (class.go).
+	seen map[ports.NodeID]simClass
 }
 
 var _ ports.Transport = (*Endpoint)(nil)
@@ -179,6 +184,7 @@ func (e *Endpoint) Send(to ports.NodeID, msg ports.Message) error {
 			n.holes[[2]ports.NodeID{to, e.id}] = true
 		}
 		n.Stats.Delivered++
+		dst.observe(e.id, relayed) // R4.3b: the class the receiving transport would record
 		dst.handler(e.id, msg)
 	}
 	if n.held {

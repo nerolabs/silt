@@ -30,10 +30,14 @@ type Table struct {
 	// core/node/r43a_dht_domain0_test.go.
 	domainOf     func(ports.NodeID) uint64
 	perDomainCap int
+	// R4.3b: the observed-address cap (address.go). meta is the class stored WITH
+	// each tabled entry (cert C-4): captured at admission, deleted on Remove.
+	addr addressRule
+	meta map[ports.NodeID]entryMeta
 }
 
 func NewTable(self ports.NodeID, k int) *Table {
-	return &Table{self: self, k: k}
+	return &Table{self: self, k: k, meta: make(map[ports.NodeID]entryMeta)}
 }
 
 func (t *Table) Self() ports.NodeID { return t.self }
@@ -67,28 +71,15 @@ func (t *Table) domainSaturated(b []ports.NodeID, id ports.NodeID) bool {
 	return cnt >= t.perDomainCap
 }
 
-// Observe records that a peer was seen alive. Known peers move to the
-// back (newest). New peers join if the bucket has room; if it's full the
-// newcomer is dropped — Kademlia's insight is that the oldest live peer
-// is statistically the most reliable, so incumbents win. (The textbook
-// refinement — ping the oldest and evict only if it's dead — can slot in
-// here when repair lands in M4.)
-func (t *Table) Observe(id ports.NodeID) {
-	i := BucketIndex(t.self, id)
-	if i < 0 {
-		return // never table yourself
-	}
-	b := t.buckets[i]
-	for j, existing := range b {
-		if existing == id {
-			t.buckets[i] = append(append(b[:j:j], b[j+1:]...), id)
-			return
-		}
-	}
-	if len(b) < t.k && !t.domainSaturated(b, id) {
-		t.buckets[i] = append(b, id)
-	}
-}
+// Observe records that a peer was seen alive (a completed conversation, or a
+// seed). Known peers move to the back (newest). New peers join if the bucket has
+// room and the address rule admits them (address.go); if the bucket is full the
+// newcomer is dropped — Kademlia's insight is that the oldest live peer is
+// statistically the most reliable, so incumbents win. (The textbook refinement —
+// ping the oldest and evict only if it's dead — can slot in here when repair
+// lands in M4.) Reply-learned ids go through ObserveIntroduced; configured seeds
+// through ObserveStatic.
+func (t *Table) Observe(id ports.NodeID) { t.observe(id, nil, false) }
 
 // Remove drops a peer (observed dead, e.g. a request timed out).
 func (t *Table) Remove(id ports.NodeID) {
@@ -100,6 +91,7 @@ func (t *Table) Remove(id ports.NodeID) {
 	for j, existing := range b {
 		if existing == id {
 			t.buckets[i] = append(b[:j:j], b[j+1:]...)
+			delete(t.meta, id) // the class lives with the entry (C-4)
 			return
 		}
 	}
