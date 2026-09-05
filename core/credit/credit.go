@@ -28,6 +28,24 @@ type account struct {
 	balance      int64
 	servedBytes  int64
 	fetchedBytes int64
+	// grantPending (R2.12): this identity has NOT yet received the starter grant. Set at
+	// Register when a faucet is configured; cleared by Grant when the bucket admits (or the
+	// owner grant). ON THE ACCOUNT, not in a side set — a side pending-set would be a
+	// grow-only map (the validatorsSeen trap); the account already exists, so this costs
+	// one bool and no new unbounded state.
+	grantPending bool
+	// grantAdvanced (R2.12): this pending identity has already received the deny FLOOR as
+	// an ADVANCE on its grant. It stays pending; when a token later admits it, it is topped
+	// up to the full grant (grant − floor), never granted twice (Researcher certification
+	// R2.12-faucet-rate-tier-and-grant-ratio-composition §4.4–4.5, G-R212-3: a floor that
+	// SETTLED the grant made the build-immutable #4 failure permanent).
+	grantAdvanced int64 // the amount advanced (0 = none); the top-up is grant − this, never grant − the current floor
+	// grantDenied (R2.12): this identity has been REFUSED at a spend gate at least once. Set
+	// on the first plain denial (empty bucket, no floor) and never cleared, so
+	// grantsDenied below counts DISTINCT identities that met an empty bucket — the
+	// Economist's grantsDeniedDistinctTotal — rather than registrations (every pure read
+	// registers) or retries.
+	grantDenied  bool
 	auditsPassed int
 	auditsFailed int
 	// Storage-bond standing — the Sybil cost. bondedBytes is the size of
@@ -110,10 +128,32 @@ type account struct {
 // Ledger implements ports.CreditLedger plus the observability the sim's
 // economy scenario reports on.
 type Ledger struct {
-	fee      int64
-	grant    int64
-	accounts map[ports.NodeID]*account
-	order    []ports.NodeID // registration order: deterministic iteration
+	fee   int64
+	grant int64
+	// R2.12 — the faucet rate limit. nil = UNCONFIGURED: every first touch is granted at
+	// Register, byte-for-byte the pre-R2.12 behaviour (sims, fixtures, a daemon that has not
+	// set the flags). Configured, Register hands out a ZERO balance and the grant is applied
+	// at the first SPEND — CanPublish, ChargePublish, FundEscrow — iff the bucket admits;
+	// otherwise the identity stays grant-pending and is retried at its next spend. Only the
+	// spend path is metered: a repairer paid a bounty, a bond-challenged peer, a PoR prover
+	// and a fetcher credited fetched bytes never needed a balance, so metering them would
+	// drain the bucket with no attacker (the bond-audit sweep alone touches every bonded
+	// peer every 60 s — PE ruling S1) and would put an anti-Sybil limiter on the path that
+	// pays for durability work (economist §3.2).
+	faucet *faucet
+	// faucetDenyFloor: what an identity receives when the bucket is EMPTY. 0 = deny (it
+	// receives nothing and stays pending); > 0 = an ADVANCE of this much — the PE recommends
+	// exactly one fee — while it STAYS pending and is topped up to the full grant when a
+	// token later admits it. Never a settlement: the Researcher measured that clearing the
+	// pending flag on a floor grant capped a degraded identity below the #4 cliff forever
+	// (G-R212-3). The remaining owner's call is deny vs floor-as-advance; both are built.
+	faucetDenyFloor int64
+	grantsIssued    int64 // full starter grants completed (through the bucket, or the owner); a topped-up advance counts once, here
+	grantsDegraded  int64 // floor ADVANCES applied on an empty bucket (the identity stays pending)
+	grantsDenied    int64 // DISTINCT identities refused at a spend gate at least once (never retries, never registrations)
+	grantsPending   int64 // accounts currently grant-pending — REGISTRATIONS awaiting a spend, most of which never spend; not a denial count
+	accounts        map[ports.NodeID]*account
+	order           []ports.NodeID // registration order: deterministic iteration
 	// rootOwner binds each bond root to the first identity that proved it, so
 	// a bond root builds standing for AT MOST ONE identity. A colluding
 	// operator pointing N identities at one shared plot therefore earns one
@@ -391,8 +431,114 @@ func (l *Ledger) Register(n ports.NodeID) {
 	if _, ok := l.accounts[n]; ok {
 		return
 	}
-	l.accounts[n] = &account{balance: l.grant}
+	if l.faucet == nil {
+		l.accounts[n] = &account{balance: l.grant} // unconfigured: the pre-R2.12 faucet, at first touch
+	} else {
+		l.accounts[n] = &account{grantPending: true} // R2.12: zero until the first ADMITTED spend
+		l.grantsPending++
+	}
 	l.order = append(l.order, n)
+}
+
+// SetFaucet configures the R2.12 rate limit: a bucket of `capacity` grants accruing
+// `refill` per `intervalNanos` on the injected monotonic source, and the empty-bucket
+// behaviour `denyFloor` (0 = deny; > 0 = grant that much instead, once). A non-positive
+// capacity, refill or interval, or a nil source, leaves the ledger UNCONFIGURED — the
+// caller that owns the operator's flags refuses those; this method never builds a bucket
+// that cannot refill. Call it before the first account exists: accounts registered
+// unconfigured already hold their grant and are not re-metered.
+func (l *Ledger) SetFaucet(capacity, refill, intervalNanos, denyFloor int64, now ports.MonotonicNanos) {
+	l.faucet = newFaucet(capacity, refill, intervalNanos, now)
+	if denyFloor < 0 {
+		denyFloor = 0
+	}
+	l.faucetDenyFloor = denyFloor
+}
+
+// GrantOwner applies the starter grant to the node's OWN identity, UNMETERED and once. It
+// is exactly one identity per node; a node that denied itself could not publish or fund
+// its own escrow, and Balance(n.id) would read 0 until the first publish (PE ruling S7,
+// economist §3.3). Idempotent: a second call, or a call on an already-granted account,
+// does nothing. On an unconfigured ledger it is a plain Register.
+func (l *Ledger) GrantOwner(n ports.NodeID) {
+	l.Register(n)
+	l.completeGrant(l.accounts[n])
+}
+
+// completeGrant brings a pending account to the FULL grant — the whole grant, or the
+// remainder above an advance already applied — and retires the pending flag. The one
+// place the grant is completed, so an identity can never be granted twice.
+func (l *Ledger) completeGrant(a *account) {
+	if !a.grantPending {
+		return
+	}
+	a.balance += l.grant - a.grantAdvanced // the remainder above whatever was advanced, or the whole grant
+	a.grantPending, a.grantAdvanced = false, 0
+	l.grantsPending--
+	l.grantsIssued++
+}
+
+// applyGrant is the R2.12 admission step, called from the three SPEND gates and nowhere else.
+// It applies the starter grant iff the account is pending and the bucket admits; on an
+// empty bucket it applies the deny floor (if any) instead; a plain denial leaves the
+// account pending for a retry at its next spend. A no-op for a non-pending account, so a
+// spend by an identity that already holds its grant costs no token.
+func (l *Ledger) applyGrant(a *account) {
+	if !a.grantPending {
+		return
+	}
+	if l.faucet.take() {
+		l.completeGrant(a)
+		return
+	}
+	// Empty bucket. With a floor, ADVANCE it once and stay pending (G-R212-3): the
+	// identity can publish or buy anchors now and is topped up to the full grant when a
+	// token later admits it. Without a floor, a plain denial: nothing changes, retry later.
+	if l.faucetDenyFloor > 0 && a.grantAdvanced == 0 {
+		a.grantAdvanced = l.faucetDenyFloor
+		a.balance += l.faucetDenyFloor
+		l.grantsDegraded++
+		return
+	}
+	if !a.grantDenied {
+		a.grantDenied = true
+		l.grantsDenied++
+	}
+}
+
+// FaucetStats is the R2.12 telemetry (economist §2.5 / §4.2), node-local and
+// observability-only. Configured reports whether a bucket exists at all; the counters are
+// zero and meaningless when it does not. GrantsIssued counts identities FUNDED through the
+// faucet (and the owner) — it is NOT the honest arrival rate the R2.9a census measures
+// (that population is fetchers, at recordFetched; this one is spenders, at the spend
+// gates) and must not be positioned as one (PE S8a, economist §4.3).
+type FaucetStats struct {
+	Configured     bool
+	Capacity       int64
+	Refill         int64
+	IntervalNanos  int64
+	DenyFloor      int64
+	Level          int64
+	GrantsIssued   int64
+	GrantsDegraded int64
+	GrantsDenied   int64 // distinct identities refused at a spend gate at least once — the one counter that moves on a denial
+	GrantsPending  int64 // accounts registered and awaiting a spend; NOT denials (every pure read registers)
+}
+
+// Grant is the starter grant this ledger applies. Read-only; the start-up assertion in
+// cmd/silt reads it from HERE, never from a duplicated literal (PE code ruling BLK-3).
+func (l *Ledger) Grant() int64 { return l.grant }
+
+// FaucetStats reads the faucet telemetry. Reading moves nothing.
+func (l *Ledger) FaucetStats() FaucetStats {
+	if l.faucet == nil {
+		return FaucetStats{}
+	}
+	return FaucetStats{
+		Configured: true, Capacity: l.faucet.capacity, Refill: l.faucet.refill,
+		IntervalNanos: l.faucet.interval, DenyFloor: l.faucetDenyFloor, Level: l.faucet.Level(),
+		GrantsIssued: l.grantsIssued, GrantsDegraded: l.grantsDegraded, GrantsDenied: l.grantsDenied, GrantsPending: l.grantsPending,
+	}
 }
 
 func (l *Ledger) acct(n ports.NodeID) *account {
@@ -588,8 +734,18 @@ func (l *Ledger) Reputation(n ports.NodeID) int64 {
 		int64(a.equivocations)*equivocationSlash
 }
 
-func (l *Ledger) Balance(n ports.NodeID) int64      { return l.acct(n).balance }
-func (l *Ledger) CanPublish(n ports.NodeID) bool    { return l.acct(n).balance >= l.fee }
+func (l *Ledger) Balance(n ports.NodeID) int64 { return l.acct(n).balance }
+
+// CanPublish is a SPEND GATE: under R2.12 it first attempts the pending grant, because the
+// publish flow asks it before ChargePublish and a pending identity would otherwise be
+// refused before it could ever be funded.
+func (l *Ledger) CanPublish(n ports.NodeID) bool {
+	a := l.acct(n)
+	if l.faucet != nil {
+		l.applyGrant(a)
+	}
+	return a.balance >= l.fee
+}
 func (l *Ledger) Fee() int64                        { return l.fee }
 func (l *Ledger) ServedBytes(n ports.NodeID) int64  { return l.acct(n).servedBytes }
 func (l *Ledger) FetchedBytes(n ports.NodeID) int64 { return l.acct(n).fetchedBytes }
@@ -605,8 +761,13 @@ func (l *Ledger) RepairsDone(n ports.NodeID) int64 { return l.acct(n).repairsDon
 // revenue). Pure observability; never a standing input. Reading moves nothing.
 func (l *Ledger) BountyEarned(n ports.NodeID) int64 { return l.acct(n).bountyEarned }
 
+// ChargePublish is a SPEND GATE (R2.12): the pending grant is attempted first. Demand-token
+// withdrawal (core/node/tokenrole.go) and relay-anchor purchase (relayrole.go) both land here.
 func (l *Ledger) ChargePublish(n ports.NodeID) error {
 	a := l.acct(n)
+	if l.faucet != nil {
+		l.applyGrant(a)
+	}
 	if a.balance < l.fee {
 		return ports.ErrInsufficientCredit
 	}

@@ -37,6 +37,9 @@ func TestF8_PaidLanesRefuseToStartWithoutAnEpochClock(t *testing.T) {
 		"-objective=false", "-min-rep", "100", "-quorum", "1",
 		"-bond", "8M", "-min-bond-floor", "0",
 		"-capacity", "1G", "-mdns=false",
+		// R2.12 (G-R212-1): a priced lane refuses to start with the faucet unconfigured, so
+		// every paid-lane launch carries a rate; the F8 refusal under test is the epoch one.
+		"-grant-capacity", "256", "-grant-per-hour", "256",
 	}
 	lanes := []struct {
 		name, flag, seed, controlSeed string

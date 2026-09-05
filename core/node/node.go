@@ -20,6 +20,7 @@ import (
 	"github.com/nerolabs/silt/core/blindtoken"
 	"github.com/nerolabs/silt/core/bond"
 	"github.com/nerolabs/silt/core/chain"
+	"github.com/nerolabs/silt/core/credit"
 	"github.com/nerolabs/silt/core/demand"
 	"github.com/nerolabs/silt/core/denylist"
 	"github.com/nerolabs/silt/core/dht"
@@ -878,6 +879,16 @@ func (n *Node) CreditBalance() int64 {
 		return 0
 	}
 	return n.ledger.Balance(n.id)
+}
+
+// FaucetStats is the R2.12 faucet rate-limit telemetry read off this node's own ledger
+// (credit.FaucetStats). Observability only; reading moves nothing. Zero-valued — and
+// Configured false — with no ledger wired or a ledger that is not the concrete type.
+func (n *Node) FaucetStats() credit.FaucetStats {
+	if l, ok := n.ledger.(*credit.Ledger); ok && l != nil {
+		return l.FaucetStats()
+	}
+	return credit.FaucetStats{}
 }
 
 // EconomySelf snapshots THIS node's own local-exact economy accounting — the

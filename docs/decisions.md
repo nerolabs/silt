@@ -1858,7 +1858,8 @@ G-BB-31 is CLOSED at the Researcher's input value, which clears the corrected fl
 The G-BB-19 ratification sentence is the certification's §4 text VERBATIM, written for 64 GiB
 (`R2.9a-grant-over-r-32GiB-structural-pin-G-BB-19-RESEARCH-CERTIFICATION-2026-09-05.md`);
 its conditions bind: ephemeral ledger (any FP-2 re-arm reopens the pin and owes a
-grant-renewal path), R2.12 before priced delivery, `(K, N) = (10, 16)` and `F_min = 1`. It
+grant-renewal path), the R2.12 clause AS RESTATED below (G-BB-19′), `(K, N) = (10, 16)` and
+`F_min = 1`. It
 covers one object, never the cumulative draw; objects above `S_max` served from one host are
 not fetchable on the grant alone. **Still open and NOT closed by this ratification:** G-BB-30
 (the ratio is `g/λ` and a total rescale leaves it invariant — WHICH constant moves is a
@@ -1867,6 +1868,28 @@ separate decision with its own tier consequences, taken when R2.9 gives `r` a va
 this note: 128 MiB is the enforced maximum chunk, and that cliff was itself refuted).
 `R-PARITY-AMPLIFICATION` (the whole-object parity fetch that produced the 1.6×; cheap fix:
 per-stripe) is a build residual on the fetch path, not a pin condition.
+
+**G-BB-19′ — the pin's R2.12 clause, RESTATED 2026-09-05 (Researcher,
+`R2.12-faucet-rate-tier-and-grant-ratio-composition-RESEARCH-CERTIFICATION-2026-09-05.md`
+§3.6; documentary, the 64 GiB value is not reopened):** *R2.12 (the faucet rate limit) is
+BUILT and ENFORCED wherever priced delivery is enabled. Write the identity-arrival rate `A`
+(never `N`, which in this sentence is the erasure parameter). What the faucet bounds is `A`,
+the rate at which fresh identities come to hold a spendable starter balance on one ledger. It
+does not bound the byte-axis subsidy, which is bounded by the serving node's own upload
+capacity with or without a faucet; and it does not bound the account map, which `Register`
+grows on any first touch before the bucket is consulted. It is necessary because guard
+occupancy is the product `A · (g/f) · (W+1)` and both factors must be finite. The pin's
+realization must therefore satisfy, jointly, `g/r ≥ B_floor` and
+`C ≤ maxPaidSerial · (f/r) / ((W+1) · B_floor)` — which is satisfied by lowering the lane
+price `r`, and is violated by raising `g`.* Consequences recorded with it: **G-BB-30′** — `r`
+is a PRICE a fetcher pays, not the server's self-mint `λ`; the ratio is realized in the price,
+never by raising the grant (at 64 GiB via `g`, one grant is ~73× the whole guard cap and no
+faucet rate bounds it); **G-R212-2 BLOCKS era-4 activation of the relay lane** — the shipped
+relay price `RelayIncrementCredit/RelayIncrementBytes = 1/4096` (`core/relaypay/payword.go`)
+puts `g/r_relay` at 1.9 GiB, 23.4× BELOW the certified 44.7 GiB floor; lifted by re-pricing
+(raising `RelayIncrementBytes` ≈ 24×, which also shrinks the chain length and the guard
+population) or by a certified derivation that the #4 floor does not apply to a relayed fetch.
+The daemon now refuses to enable either priced lane with the faucet unconfigured (G-R212-1).
 
 ## D-UI-PRIVACY-FLAG — node-wide counters and the library link key go behind an operator flag; exposed in beta, withheld at release
 

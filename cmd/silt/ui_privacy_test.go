@@ -424,6 +424,9 @@ func TestPrivacyWithheldDocumentsCarryOnlyAllowedKeys(t *testing.T) {
 			t.Fatalf("privacy=on untokened /api/status carries undeclared key %q", k)
 		}
 	}
+	if _, has := status["faucet"]; has {
+		t.Fatalf("privacy=on untokened /api/status carries the R2.12 faucet block — its counters are arrival-adjacent and belong under countersWithheld")
+	}
 	// The Go type says the same thing: every statusInfo field either is in the allow-list
 	// by its JSON name, or is one of the two withheld fields (stats, and balance inside
 	// durability). A new field on statusInfo must be classified here before it ships.
@@ -433,7 +436,7 @@ func TestPrivacyWithheldDocumentsCarryOnlyAllowedKeys(t *testing.T) {
 		if name == "" || name == "-" {
 			continue
 		}
-		if !allowedStatus[name] && name != "stats" {
+		if !allowedStatus[name] && name != "stats" && name != "faucet" {
 			t.Fatalf("statusInfo field %s (json %q) is neither allowed on the privacy view nor declared withheld — classify it", f.Name, name)
 		}
 	}

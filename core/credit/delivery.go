@@ -65,7 +65,11 @@ const maxProvisional = 8192
 // serves + anchored sessions × k; the derivation was not re-priced for the second
 // population (R-GUARD-SHARED-FILL, ROADMAP R2.14: a faucet-funded flood of relay opens
 // can fill the shared guard for ≤ W+1 epochs and both lanes REFUSE, never evict —
-// liveness only; closes with R2.12). The cap must DOMINATE the honest live set so that
+// liveness only). R2.12 RE-PRICES it, it does not close it: occupancy is the product
+// `A · (g/f) · (W+1)` of the fresh-identity arrival rate the faucet bounds and the tokens
+// per grant it does not, so the residual closes only under the composed relation
+// `C ≤ maxPaidSerial · (f/r) / ((W+1) · B_floor)` (Researcher certification
+// R2.12-faucet-rate-tier-and-grant-ratio-composition-2026-09-05 §3.2). The cap must DOMINATE the honest live set so that
 // EXPIRY — not the cap — does the eviction work. A live paid serial is one whose issuing epoch is still
 // in the validity window, so the live set is bounded by what this server can itself
 // serve in that time: serveRate x W x EpochBlocks. Keeping a bare 8192 alongside a
@@ -101,6 +105,16 @@ const (
 // floored at maxPaidSerialFloor. Derived, never a bare constant — see above.
 const maxPaidSerial = max(maxPaidSerialFloor,
 	int(paidSerialWindow)*paidSerialEpochBlocks*maxServeTrackedPerBlock)
+
+// MaxPaidSerial and PaidSerialWindow are exported READ-ONLY for the R2.12 start-up
+// assertion in cmd/silt: `capacity × (grant/fee) × (W+1) ≤ MaxPaidSerial/4` ties the
+// faucet's burst, the grant, the fee and the guard cap — four constants in three packages
+// re-tuned by three different processes — so raising any one of them past the guard's
+// cliff refuses to start instead of silently opening a hole (economist §2.3).
+const (
+	MaxPaidSerial    = maxPaidSerial
+	PaidSerialWindow = paidSerialWindow
+)
 
 // paidSerialEntry is one guarded serial: the server that collected its single
 // conserved payout, and the epoch whose issuer key signed the token. The epoch is the

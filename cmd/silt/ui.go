@@ -518,10 +518,16 @@ type statusInfo struct {
 	Chain        *chainInfo       `json:"chain,omitempty"`
 	Durability   *durabilityInfo  `json:"durability,omitempty"`
 	AddressCap   addressCapInfo   `json:"addressCap"` // R4.3b series A/B/E (shadow-run telemetry)
+	// Faucet is the R2.12 rate-limit telemetry (credit.FaucetStats): configured or not,
+	// the bucket's policy and level, and the grant counters. The COUNTERS are node-wide
+	// arrival-adjacent numbers, so the whole block is withheld with `stats` under the
+	// privacy clause. It is NOT the R2.9a arrival series (it counts spenders, not
+	// fetchers) and must not be read as one.
+	Faucet *faucetInfo `json:"faucet,omitempty"`
 	// CountersWithheld is the privacy clause's marker on THIS document. It covers exactly
-	// two absences: the whole `stats` block above and `durability.balance`. A marker that
-	// named less than it covers would be a false fact in the other direction, so the set
-	// is enumerated here and the name is the set (S7).
+	// three absences: the whole `stats` block above, `durability.balance`, and the whole
+	// `faucet` block. A marker that named less than it covers would be a false fact in the
+	// other direction, so the set is enumerated here and the name is the set (S7).
 	CountersWithheld bool `json:"countersWithheld,omitempty"`
 	// Privacy reports the -privacy posture on every response, tokened or not: mode is the
 	// flag in force, default is the compiled default. A page renders the pre-release
@@ -661,6 +667,7 @@ func (s *uiServer) readerView(doc *statusInfo, r *http.Request) *statusInfo {
 		// D-UI-PRIVACY-FLAG: the node-wide serve counters. Assign, never mutate — the
 		// Stats pointer and the Balance pointer are shared with the cached document.
 		out.Stats = nil
+		out.Faucet = nil
 		out.Durability = privacyWithheldDurability(out.Durability)
 		out.CountersWithheld = true
 	}
@@ -726,6 +733,22 @@ func (s *uiServer) libraryView(doc libraryDoc, auth readerAuth) libraryDoc {
 		})
 	}
 	return out
+}
+
+// faucetInfo is the wire form of credit.FaucetStats (R2.12). Configured false means the
+// faucet is unlimited and every counter is zero and meaningless; the block is present so
+// "unlimited" and "withheld" stay different objects on the wire.
+type faucetInfo struct {
+	Configured     bool  `json:"configured"`
+	Capacity       int64 `json:"capacity,omitempty"`
+	PerInterval    int64 `json:"perInterval,omitempty"`
+	IntervalSec    int64 `json:"intervalSec,omitempty"`
+	DenyFloor      int64 `json:"denyFloor,omitempty"`
+	Level          int64 `json:"level"`
+	GrantsIssued   int64 `json:"grantsIssued"`
+	GrantsDegraded int64 `json:"grantsDegraded"`
+	GrantsDenied   int64 `json:"grantsDenied"`  // distinct identities refused at a spend gate — the counter that moves on a denial
+	GrantsPending  int64 `json:"grantsPending"` // registrations awaiting a spend; NOT denials
 }
 
 // privacyInfo is the -privacy posture published on every GET /api/status response.
@@ -833,6 +856,12 @@ func (s *uiServer) computeStatus(now time.Time) *statusInfo {
 			out.Chain = &chainInfo{Height: ch.Len(), Entries: len(ch.AllEntries())}
 		}
 		out.Durability = s.durabilitySnapshot(uptime)
+		if fs := s.nd.FaucetStats(); fs.Configured {
+			out.Faucet = &faucetInfo{Configured: true, Capacity: fs.Capacity, PerInterval: fs.Refill, IntervalSec: fs.IntervalNanos / 1e9,
+				DenyFloor: fs.DenyFloor, Level: fs.Level, GrantsIssued: fs.GrantsIssued, GrantsDegraded: fs.GrantsDegraded, GrantsDenied: fs.GrantsDenied, GrantsPending: fs.GrantsPending}
+		} else {
+			out.Faucet = &faucetInfo{}
+		}
 		out.economy = s.nd.EconomySelf()
 		out.AddressCap = s.addressCapSnapshot()
 		if s.statusExtra != nil {
