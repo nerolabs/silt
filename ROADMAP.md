@@ -131,10 +131,22 @@ carries the argument and the sources. Two are LIVE BREAKS and come first.
 11. **Recovery boundary (#535):** the floor box is a COLD AUDITOR — unconditional loud stall, the two
     directive knobs deleted, pruned blocks refused, `trustFloor` off the contract surface, recovery by
     a fresh `-ws-checkpoint`-class anchor at H+1 treated as irrecoverable if unreachable.
-12. **`B_bootstrap` run preconditions (R2.9a) — what is OPEN for the owner as of 2026-09-05, each with
-    its source; the ratified items are marked. The run stays BLOCKED until the open ones are pinned;
-    none blocks the build.**
-    - **OPEN · `q` and the population `P` (G-BB-1′, restated 2026-09-05 — `q` ONLY, `W` STRUCK; G-BB-9).** `q` is the
+12. **`B_bootstrap` run preconditions (R2.9a) — ALL SEVEN OWNER CALLS RATIFIED 2026-09-05** (`docs/decisions.md`
+    `D-R2.9a-RUN-CALLS` and `D-UI-PRIVACY-FLAG`; deliberation `docs/thinking/2026-09-05-r29a-owner-calls.md`).
+    **What the ratification creates, now owed:** (i) BUILDER — `BBootstrapBinsPerOctave` 4 → 1 (41 byte bins)
+    under the `bbootstrap` tag; (ii) BUILDER — refuse `-ui <routable> -bbootstrap` at startup, with a PACE
+    record for the G-BB-12′ mechanism that addresses the Red-team's reverse-proxy and `-allow-web-origin`
+    findings (the seats did not converge: bind refusal vs Tor-style remote-address policy); (iii) BUILDER —
+    the `-privacy` flag on the UI server (node-wide counters + `/api/library` `link` field; exposed in the
+    flixz beta with a pre-release label, withheld at release), PACE + blind PE review; (iv) RESEARCHER —
+    the G-BB-19 ratification sentence for `grant/r = 32 GiB` (constraint + TIER per direction, under the
+    ephemeral ledger) before the value ships in code; (v) the flixz handoff re-aimed at the honest arrival
+    rate and at falsifying the structural number (Economist §7), G-BB-5 answered first, T-1 built first.
+    Sequencing rule accepted with it: R2.12 lands at or before priced delivery goes live. The per-call
+    record below is kept as the audit trail; each lead is trued up.
+    - **RATIFIED 2026-09-05 · `P` = ALL HONEST FETCHERS including repairing and judging peers (G-BB-9); `q` left
+      UNPINNED because the run re-scope removed its consumer (G-BB-1′ disposition is the Researcher's). Original
+      statement kept below.** (G-BB-1′, restated 2026-09-05 — `q` ONLY, `W` STRUCK; G-BB-9). `q` is the
       quantile of the per-server draw `grant/r` must cover (e.g. 0.95). `P` is the population the
       quantile is over: viewers-only, or all honest fetchers including repairing/judging peers (a
       repairing caretaker fetches over the same priced path and pays the same `r`). The trade is
@@ -169,7 +181,8 @@ carries the argument and the sources. Two are LIVE BREAKS and come first.
       §1.4 (cited for the population choice only; that section's M0 framing, "viewers-only ⇒
       Sybil-dearer", is superseded by G-BB-22 and still stands uncorrected in the certification
       itself).
-    - **RUN PRECONDITION · `R-BB-CENSUS-MIXTURE` — open, and WORSE than certified (G-BB-9 must be
+    - **DISSOLVED 2026-09-05 by the `P` = all-honest-fetchers ratification (`C = 0` for tenure contamination,
+      residuals certification §3.3). Original statement kept below.** `R-BB-CENSUS-MIXTURE` — open, and WORSE than certified (G-BB-9 must be
       answered BEFORE the run).** The harmlessness argument for repair-traffic contamination assumed
       caretakers sit in old cells the fit ignores; under the top-bucket reading rule the fit reads
       EXACTLY those cells. `C`, the count of census requesters outside `P`, is undefined until `P` is,
@@ -178,7 +191,7 @@ carries the argument and the sources. Two are LIVE BREAKS and come first.
       own count of caretaking peers from its PLACEMENT records (G-BB-10′). `C_read` (a computed count)
       is REFUSED: it needs the identity-to-cell join the RE-CERT §4.6 already refused against the
       adversarial pad, and a refusal must apply uniformly. Source: `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.9a-BB-RESIDUALS-tier-asymmetry-W-gate-tension-census-mixture-RESEARCH-CERTIFICATION-2026-09-05.md` §3.
-    - **OPEN · the byte-axis bin count (G-BB-23).** `BBootstrapBinsPerOctave = 4`
+    - **RATIFIED 2026-09-05 · 1 BIN PER DOUBLING (G-BB-23); build owed. Original statement kept below.** `BBootstrapBinsPerOctave = 4`
       (`core/credit/bbootstrap.go`) was chosen with only the estimate's residual priced (19 % at
       4 bins/octave; 2× at 1). The other side was not on the table: the count of individually pinned
       identities (singleton cells) is set by the number of sparse tail bins, which is CONSTANT in
@@ -186,7 +199,8 @@ carries the argument and the sources. Two are LIVE BREAKS and come first.
       (`R-BB-SINGLETON-CELL`, G-BB-27) and the bin count is the ONLY lever that acts on this
       scale-invariant exposure. Don't #3 is on one side of the trade, so it is the owner's. Source:
       the same 2026-09-05 certification §3.3–3.4, §6.
-    - **OPEN · `R-BB-SIBLING-AGGREGATES`.** On a one-root node every node-wide counter is that
+    - **RATIFIED 2026-09-05 · behind the `-privacy` flag (`D-UI-PRIVACY-FLAG`): exposed in the flixz beta, withheld
+      at release, `-privacy=off` explicit; build owed. Original statement kept below.** `R-BB-SIBLING-AGGREGATES`. On a one-root node every node-wide counter is that
       root's counter. `stats.bytesServed` is published unauthenticated, rate-bounded by the
       snapshot cache to `⌊uptime/T⌋` distinct documents and NOT closed by it. Closing it means
       token-gating `stats.bytesServed`, which removes the observatory's bandwidth card and the
@@ -194,25 +208,31 @@ carries the argument and the sources. Two are LIVE BREAKS and come first.
       `D-STATUS-SNAPSHOT-INTERVAL` ("What this does NOT close");
       `/Users/andrewedmond/Claude/claude/silt-reviews/red-team/RED-TEAM-R2.9a-bbootstrap-instrument-and-containments-2026-09-05.md`
       F2.
-    - **FLAGGED, not acted on · `/api/library` serves the full content handle, link key included,
+    - **RATIFIED 2026-09-05 · the `link` field follows the same `-privacy` flag (`D-UI-PRIVACY-FLAG`); build owed.
+      Original statement kept below.** `/api/library` serves the full content handle, link key included,
       without a token** (`cmd/silt/ui.go` `apiLibrary`, the `link` field) under the #89
       read-only-localhost ergonomics. A capability, not a counter; pre-existing; outside R2.9a.
       Named so the owner decides whether the read-only exemption should cover it.
-    - **RE-PIN BEFORE ANY RUN · the provisional `grant/r`.** The provisional is `λ = 1` ⇒
+    - **RATIFIED 2026-09-05 · `grant/r` = 32 GiB, structural (`S_max` ≈ 28 GiB, `F_min = 1`, stripe floor 640 MiB);
+      ships only with the Researcher's G-BB-19 sentence; R2.12 before priced delivery. Original statement kept
+      below.** The provisional was `λ = 1` ⇒
       `grant/r = 500,000 bytes = 488 KiB`, which is 134× below one 64 MiB production chunk — the
       stated production floor in the `core/pipeline/pipeline.go` comment, not an enforced value
       (the code constant `DefaultChunkSize` is 64 KiB for the sim). Geometry alone refutes it
       before any measurement:
       build-immutable #4 is engaged at 134×. An earlier sentence conflated the 488 MiB CANDIDATE
       with the 488 KiB PROVISIONAL. Source: the same 2026-09-05 certification §2.1.
-    - **OPEN · G-BB-13′ Part A and Part B — live for every TAGGED build, moot for a default build.**
+    - **RATIFIED 2026-09-05 · Part A = REFUSE at startup; Part B not reached; build owed. Original statement kept
+      below.** G-BB-13′ Part A and Part B — live for every TAGGED build, moot for a default build.
       Part A: does silt refuse `-ui <routable> -bbootstrap`, or intend to support it? Part B: a
       VETO GATE on Don't #3, reached only if Part A says support. Every `B_bootstrap` run uses a
       tagged binary, so this gate binds every run; the tag narrows it to tagged builds and does
       not answer it (`D-BB-BUILD-TAG`, "What is explicitly NOT decided here"). Carried forward
       open and unchanged by the 2026-09-05 DONT3 certification §6. An earlier version of this
       block filed it under "no longer owed"; that was wrong.
-    - **OPEN · G-BB-12′ — required before any run, UNBUILT (a builder gate, listed here because it
+    - **STILL OPEN (a builder gate, not an owner call) · G-BB-12′ — required before any run, UNBUILT; its PACE must
+      address the reverse-proxy and `-allow-web-origin` findings, the seats having not converged on the mechanism
+      (`D-R2.9a-RUN-CALLS` item 4). Original statement kept below.** G-BB-12′ (listed here because it
       gates the run).** The code, not a handoff note, must establish that the reader is the
       operator before the block is published: bind refusal at startup, or a token gate. What
       exists today: `isLocalHost` (`cmd/silt/ui.go`) checks the client-controlled `Host` header and

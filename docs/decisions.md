@@ -1731,3 +1731,135 @@ here. Gates: `TestR29aEconomySelfIsServedFromTheStatusSnapshot`,
 `TestR29aOneCacheTwoViewsAnAnonymousReadDoesNotStripTheOperatorsView` (`cmd/silt`), and the
 live-daemon arm of `TestEconomyEndToEndOnLiveDaemon` (`e2e`). Source:
 `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/2026-09-05-RULING-r2.9a-status-surface-cache-stamp-and-f2-gate.md`.
+
+## D-R2.9a-RUN-CALLS — the seven `B_bootstrap` run-precondition calls, ratified 2026-09-05
+
+**Ratified 2026-09-05** by the owner, in one sitting, after a walk-through of each open call
+with its seat record. The five calls that belong to the run are here; the two that belong to
+the UI surface (`R-BB-SIBLING-AGGREGATES`, the `/api/library` link key) are `D-UI-PRIVACY-FLAG`
+below. ROADMAP item 12 carries the per-call sources.
+
+**1. `grant/r` is re-pinned at 32 GiB, on geometry, before any run.** The provisional
+`λ = 1 ⇒ 500,000 bytes` funded 1/134th of one 64 MiB production chunk and was refuted
+without measurement (necessity certification §2.1; residuals certification §1.3). The value
+follows the Economist's structural derivation `grant/r ≥ S_max / F_min`, never below the
+stripe floor `K × chunkSize_max = 640 MiB`, with the two policy inputs the owner supplied:
+`S_max` ≈ 28 GiB (*"Some movies can get up to 30GB of data in a single file"*), and
+`F_min = 1` assumed conservatively because column placement puts each column on the 3 nodes
+closest to its DHT key (`core/node/column.go`), so on a small fleet one host can be among the
+closest for every column and serve the whole object. 28 GiB with margin rounds to **32 GiB**.
+Owner's scope statement, recorded: *"I do anticipate much larger data sets will be published
+to silt, but those will be long tail (research data dumps, etc) without much demand, so for
+common / popular use 99.99% of files will be under 32GiB."* Consequence, accepted: an object
+above 32 GiB served from one host is not fetchable on the grant alone; it needs column spread
+across hosts or a paid balance. **Two things this pin does NOT do.** It covers one object,
+not the cumulative draw over the ledger's life: the grant is one-shot per (viewer, server),
+never topped up, and a pure viewer has no income path, so a repeat viewer on one server
+outruns any finite ratio (`R-BB-GRANT-NOT-RENEWABLE`, on FP-2's re-arm list). And it is a
+security parameter (build-immutable #4 calls cheap honest participation a security
+constraint), so it ships in code only with the Researcher's G-BB-19 ratification sentence
+naming the constraint and TIER each direction lands on, and under the ephemeral-ledger
+statement the Economist asked for. G-BB-17 is satisfied by construction: the number is
+structural, not a census reading. The Economist's condition stands as a sequencing rule:
+**R2.12 (the faucet rate limit) lands at or before priced delivery goes live**; otherwise
+the Economist's advice inverts to "do not enable priced delivery".
+
+**2. The population `P` is all honest fetchers, including repairing and judging peers**
+(G-BB-9). Owner: *"all honest fetchers, including repairing and judging peers."* Basis: the
+residuals certification §3.3 — under the top-bucket reading rule the long-tenured caretaker
+sits exactly in the read cell, and this answer puts caretakers inside `P` by definition, so
+`C = 0` and `R-BB-CENSUS-MIXTURE` dissolves rather than needing a bracket the handoff might
+not be able to form. The D-S7 half points the same way: a caretaker pays the same `r`, so
+excluding it risks a ratio that starves repair. The earlier "viewers-only ⇒ Sybil-dearer"
+reason was refuted (G-BB-22) and is not the basis.
+
+**3. The run is re-scoped per the Economist's advisory §7.** Owner: *"follow economist
+recommendation on scoping run."* `grant/r` is pinned structurally (item 1), and the flixz
+census is re-aimed at the honest arrival rate and at falsifying the structural number, not
+at pinning it. This drops the 14-day restart-free requirement (G-BB-25's one-shot constraint
+still applies to whatever window is run). **`q` is left unpinned**: under the re-scope no
+consumer of a quantile level remains, so G-BB-1′ has nothing to pin; the Researcher records
+its disposition. The Economist's remaining asks travel with the handoff: answer G-BB-5
+(gateway vs per-viewer nodes) first, and build T-1 (the insufficient-balance refusal
+histogram) as the direct observable of the build-immutable #4 harm. Source:
+`/Users/andrewedmond/Claude/claude/silt-reviews/economist/ADVISORY-R2.9a-grant-over-r-containment-and-pinning-2026-09-05.md`.
+
+**4. G-BB-13′ Part A: silt REFUSES `-ui <routable> -bbootstrap` at startup.** Owner:
+*"refuse at startup."* Part B (the Don't #3 veto gate on a routable histogram) is therefore
+not reached. Basis: the Economist verified no measurand needs a non-operator reader, so the
+containment costs the measurement nothing; G-BB-18's pad screen is produced by polling and is
+safe only when the poller is the operator; a containment that lives in an operator's head does
+not scale to the pony tier. Refuse at startup, never silently omit the block (the absent-vs-
+empty discipline). **What this does NOT decide: the G-BB-12′ mechanism.** The seats did not
+converge on it — the Economist and the PE favour the bind refusal, the Red-team demonstrated
+that a bind check is not access control (a default nginx `proxy_pass` forwards a loopback
+`Host`, and `-allow-web-origin` is a designed bypass) and warned against reusing the shared
+write token, and the Crypto-specialist documented Tor's per-connection remote-address policy
+as the prior-art family. The Builder's PACE record for G-BB-12′ must address the proxy case,
+and the ruling on the mechanism is a PE review, not this entry.
+
+**5. The byte axis moves to 1 bin per doubling** (G-BB-23). Owner: *"1 bin per doubling."*
+`BBootstrapBinsPerOctave` 4 → 1, `BBootstrapByteBins` 164 → 41. Basis: the Red-team's F4
+measured that at flixz's scale 35–86% of occupied cells hold one identity and the count of
+individually pinned identities is constant in the census size; the Researcher certified the
+bin count as the ONLY lever that acts on that exposure (merging and rounding refuted at this
+scale). The price is resolution, 19% → 2× ("between 4 and 8 GiB" instead of "between 4.0 and
+4.75 GiB"), and under item 3 the precision side lost its consumer while Don't #3 stays on the
+other side. Builder task under the `bbootstrap` build tag; the residual disclosure in the
+code comment updates with it.
+
+**Builds this ratification creates (ROADMAP item 12):** the bin-count change; the startup
+refusal plus the G-BB-12′ PACE; the G-BB-19 sentence from the Researcher before the 32 GiB
+ratio ships; the re-aimed handoff.
+
+## D-UI-PRIVACY-FLAG — node-wide counters and the library link key go behind an operator flag; exposed in beta, withheld at release
+
+**Ratified 2026-09-05** by the owner, closing `R-BB-SIBLING-AGGREGATES` and the `/api/library`
+link-key flag as decisions (the build is owed). Owner, on the counters: *"I actually am OKAY
+with small edge nodes exposing some data in the beginning. This should be flagged as 'DEBUG
+whilst in BETA, OFF in RELEASE'. Edge, hobbyist nodes will not need this UX, and it does
+expose private information. Additionally we can keep the economist / nerdy information its
+own toggle, for instance `-ui -privacy=off`, to make the point really clear."* On the link
+key: *"same thing … make it optional. We will default ON through the BETA of flixz (labelled
+pre-release information … this data is not exposed in production without the explicit
+`-privacy=off` flag)."*
+
+**The decision.** One operator flag on the UI server, `-privacy`, governs whether the
+following are served to an UNTOKENED reader: the node-wide `stats.bytesServed`,
+`durability.balance` and `revenue.*` on `GET /api/status` and `GET /api/economy/self` (the
+counters that on a one-root node are that root's counters, `D-STATUS-SNAPSHOT-INTERVAL`
+"What stays open"), and the `link` field of `GET /api/library` (the full `silt:v1:` handle,
+which carries the decryption key; `core/link/link.go`, *"Handle is the full capability:
+retrieve and decrypt"*). A token-bearing reader always gets them. **Default during the
+flixz beta: exposed**, with the documents labelled as pre-release information on the wire.
+**Default at release: withheld**; `-privacy=off` is the explicit opt-out for a node whose
+operator wants the observatory's served column and bandwidth card, or a hosted resolver that
+lists library links. The owner's reason the trade is acceptable in beta: the exposed case is
+a single-root node, and flixz's nodes hold a whole catalogue, so on flixz the node-wide
+total attributes nothing per title; the edge/hobbyist node, which is the exposed case, gets
+the withheld default at release.
+
+**What this resolves between seats.** The Economist wants the fleet metrics visible; the
+Red-team's F2 showed the node-wide total is the object half of who-fetches-what on a one-root
+node; the `#89` read-only exemption was reasoned for counters and the link is a capability,
+not a counter. The flag gives the Economist the data on any node whose operator opts in and
+gives the edge node the private default. It is a containment on the READER; it does not
+change what silt records (`D-DONT3-READING` prong (a) is untouched), and it takes the
+`R-DONT3-OBJECT-HALF` exposure knowingly for the beta window — an owner call on a Don't #3
+question, recorded as such.
+
+**Not decided here, for the Builder's PACE and a blind PE review:** the exact mechanism of
+the default flip (a build tag as in `D-BB-BUILD-TAG`, or a default that flips on the RC
+checklist), the wire form of the pre-release label, whether the observatory sends the token
+or requires `-privacy=off` on its targets, and the Red-team's F9 point that the token is an
+unscoped write credential (a read-scoped token is a separate follow-on, not a precondition).
+
+**One correction to the owner's rationale, recorded so it is not relied on.** The owner
+cited large archival nodes having *"access to the takedown list feature that can remove the
+ability of theirs to hold or serve that content"*. `D-TAKEDOWN` is a DECISION (a transparency
+log for provable non-globality, low urgency); no takedown-list feature is built. The
+privacy-flag decision does not depend on it.
+
+**Revisit trigger.** The RC gate flips the default; the flixz beta closing is the named
+moment. Any report of per-title attribution from a one-root beta node reopens the beta
+default early.
