@@ -49,6 +49,43 @@ jobs:
           if awk "BEGIN {exit !($total < $floor)}"; then
             echo "::error::coverage ${total}% is below the ${floor}% floor"; exit 1
           fi
+      # THE UNTAGGED R2.9a GATES CARRY THE LOAD FOR KEEPING THE INSTRUMENT OUT OF A DEFAULT
+      # BUILD, and nothing above asserts they still exist by name: `go test` reports a
+      # renamed or deleted test as nothing at all, and a t.Skip as a pass, so a rename
+      # would go unnoticed by every job. Same treatment as the tagged job below — named
+      # anchors, one per untagged gate, no skip. Rename a gate: update this list in the
+      # same commit.
+      - name: the untagged R2.9a gates really ran (not renamed away, not skipped)
+        run: |
+          out=$(go test -short -count=1 -v ./core/credit/ ./core/node/ ./cmd/silt/ -run 'R29a' 2>&1)
+          echo "$out"
+          for tst in \
+            TestR29aDefaultBuildStampsNoFirstTouchOnRegister \
+            TestR29aBondChallengeStampsNoFirstTouch \
+            TestR29aRetentionReadsLastBondTickInNanoseconds \
+            TestR29aLedgerStateIsEmptyInADefaultBuild \
+            TestR29aDefaultBuildHasNoCensusReaderOnTheLedger \
+            TestR29aBondAuditStampsAWallClockNanosecondNotACounter \
+            TestR29aDefaultBuildHasNoBBootstrapReaderOnTheNode \
+            TestR29aDefaultBuildHasNoBBootstrapFlag \
+            TestR29aDaemonHandsTheNodeAWallClock \
+            TestR29aDefaultBuildStatusHasNoBBootstrapKey \
+            TestR29aWalltimeAdapterIsAWallClock \
+            TestR29aBB21StaleIsIdentifiableAsStale \
+            TestR29aBB21OperatorsOwnWriteIsNotHiddenByTheCache \
+            TestR29aF2StatusWithholdsPerObjectDetailWithoutAToken \
+            TestR29aF2EconomySelfWithholdsPerObjectDetailWithoutAToken \
+            TestR29aF2NoUnauthenticatedResponseOnTheWholeSurfaceCarriesTheWithheldCounter \
+            TestR29aOneCacheTwoViewsAnAnonymousReadDoesNotStripTheOperatorsView \
+            TestR29aEconomySelfIsServedFromTheStatusSnapshot ; do
+            echo "$out" | grep -q "^--- PASS: ${tst} " || {
+              echo "::error::${tst} did not PASS in the DEFAULT build. Either it was renamed (fix this list), it was skipped, or the default build lost the gate."; exit 1; }
+          done
+          if echo "$out" | grep -q '^--- SKIP'; then
+            echo "::error::an untagged R2.9a gate SKIPPED. A skipped gate is a gate that rots."
+            echo "$out" | grep '^--- SKIP'; exit 1
+          fi
+          echo "OK — every named untagged gate ran and passed"
 
   race:
     name: Go — race detector

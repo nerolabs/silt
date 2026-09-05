@@ -373,9 +373,10 @@ func TestR29aOccupiedAgeBucketsNeverExceedUptime(t *testing.T) {
 	// wall-clock ledger makes the identity look ten days old on a three-hour-old
 	// process. The assertion must fire.
 	//
-	// THE CONCRETE WRITER THIS MODELLED IS NOW OUT OF REACH (G-BB-24): the bond
-	// auditor's tick lives in its own field (account.firstSeenTick) and the census reads
-	// account.firstFetchTick, so RecordBondChallenge cannot touch the age axis at all.
+	// THE CONCRETE WRITER THIS MODELLED IS NOW OUT OF REACH (G-BB-24, then G-BB-28): the
+	// bond auditor's tick lives in account.lastBondTick (retention only) and the census
+	// reads account.firstFetchTick, so RecordBondChallenge cannot touch the age axis at
+	// all.
 	//
 	// AND IT WAS NEVER A DIFFERENT UNIT — corrected 2026-09-05. The auditor passes
 	// uint64(n.clock.Now())+1 and the daemon hands node.New and bbootstrapInject the

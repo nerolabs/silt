@@ -1,19 +1,18 @@
 package node
 
-// D-BB-BUILD-TAG residual R-BB-BOND-STAMP-TUPLE — this file carries NO build tag,
-// because the fact it pins is true in both builds and the enforcement has to live in the
-// ordinary (untagged) test job.
+// D-BB-BUILD-TAG — this file carries NO build tag, because the fact it pins is true in
+// both builds and the enforcement has to live in the ordinary (untagged) test job.
 //
-// WHAT WENT WRONG. Four sites justified leaving account.firstSeenTick's surviving writer
-// alone by saying RecordBondChallenge is "stamped from the bond auditor's own request
-// counter rather than from a wall clock, and never for a fetcher". A blind review
-// measured the opposite on two real bonded validators. The tick is
-// uint64(n.clock.Now())+1, and the daemon's node clock is the walltime adapter, so the
-// stamp is time.Now().UnixNano()+1 — a wall-clock nanosecond, written for this node's own
-// id and for every bonded peer that answers a challenge. An identity that is both a
-// bonded peer and a fetcher therefore carries the whole
-// (identity, cumulative fetched bytes, first-seen wall-clock nanosecond) tuple in a
-// DEFAULT build.
+// WHAT WENT WRONG. Four sites justified leaving a bond-path first-seen stamp alone by
+// saying RecordBondChallenge is "stamped from the bond auditor's own request counter
+// rather than from a wall clock, and never for a fetcher". A blind review measured the
+// opposite on two real bonded validators. The tick is uint64(n.clock.Now())+1, and the
+// daemon's node clock is the walltime adapter, so the tick is time.Now().UnixNano()+1 —
+// a wall-clock nanosecond, passed for this node's own id and for every bonded peer that
+// answers a challenge. That first-seen stamp has since been DELETED (G-BB-28; residual
+// R-BB-BOND-STAMP-TUPLE closed) because nothing read it. The tick's unit still matters:
+// the ledger keeps it as lastBondTick, and DecayStale compares that against a
+// nanosecond BondMaxAge, so a counter here would silently disable retention.
 //
 // A comment saying so would rot the same way the wrong one did. This measures it.
 
@@ -56,10 +55,10 @@ func (r *bondTickRecorder) Reputation(ports.NodeID) int64 { return 0 }
 // clock increments by the elapsed time. Only the second arm can tell them apart — the
 // magnitude alone would pass if someone seeded a counter high.
 //
-// credit.Ledger.RecordBondChallenge stores the FIRST such tick verbatim into
-// account.firstSeenTick (core/credit/credit.go; gated by
-// TestR29aBondChallengeStillStampsFirstSeenTick), so what this test measures is the value
-// that becomes the `when` in the surviving tuple.
+// credit.Ledger.RecordBondChallenge stores this tick verbatim into account.lastBondTick
+// (core/credit/credit.go; the unit is pinned by
+// TestR29aRetentionReadsLastBondTickInNanoseconds), so what this test measures is the
+// value retention subtracts from `now`.
 func TestR29aBondAuditStampsAWallClockNanosecondNotACounter(t *testing.T) {
 	const t0 = ports.Time(1_788_599_138_518_548_000) // a real walltime.Now() reading
 	const hour = int64(3600 * 1e9)
@@ -84,12 +83,12 @@ func TestR29aBondAuditStampsAWallClockNanosecondNotACounter(t *testing.T) {
 		t.Fatalf("the auditor recorded %d bond challenges over two sweeps, want 2 — the fixture is not driving the self-record and every assertion below would be vacuous", len(rec.ticks))
 	}
 	if want := uint64(t0) + 1; rec.ticks[0] != want {
-		t.Fatalf("bond-audit tick = %d, want %d (uint64(clock.Now())+1). The stamp is DERIVED FROM THE CLOCK; four D-BB-BUILD-TAG texts once called it the auditor's request counter and were wrong (residual R-BB-BOND-STAMP-TUPLE)", rec.ticks[0], want)
+		t.Fatalf("bond-audit tick = %d, want %d (uint64(clock.Now())+1). The stamp is DERIVED FROM THE CLOCK; four D-BB-BUILD-TAG texts once called it the auditor's request counter and were wrong (residual R-BB-BOND-STAMP-TUPLE, since CLOSED under G-BB-28)", rec.ticks[0], want)
 	}
 	if rec.ticks[0] < 1_500_000_000_000_000_000 {
 		t.Fatalf("bond-audit tick = %d, below Unix-nanosecond magnitude on a wall-clock-valued clock — the daemon hands the node a walltime clock, so this stamp is a wall-clock instant and must read like one", rec.ticks[0])
 	}
 	if got := int64(rec.ticks[1] - rec.ticks[0]); got != hour {
-		t.Fatalf("two sweeps an hour apart produced ticks %d apart, want %d. A request COUNTER would move by 1; this moves by elapsed time, which is what makes the stamp a wall-clock reading and the surviving tuple a (identity, bytes, WHEN)", got, hour)
+		t.Fatalf("two sweeps an hour apart produced ticks %d apart, want %d. A request COUNTER would move by 1; this moves by elapsed time, which is what makes the tick a wall-clock reading in the unit DecayStale's BondMaxAge comparison needs", got, hour)
 	}
 }

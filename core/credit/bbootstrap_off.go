@@ -20,31 +20,26 @@ package credit
 //     through acct()). Untagged it is an empty body: the compiler inlines it away and
 //     both Register and recordFetched are byte-for-byte their pre-R2.9a selves.
 //
-// WHAT IS PRESERVED, DELIBERATELY. account.firstSeenTick still exists and is still
-// written by RecordBondChallenge (credit.go). That writer PREDATES R2.9a entirely and
-// this decision does not touch it.
-//
-// ITS TICK IS A WALL CLOCK. This comment said the opposite until 2026-09-05 — "the bond
-// auditor's own request counter rather than a wall clock" — and that was false in four
-// places at once. core/node/bondaudit.go stamps uint64(n.clock.Now())+1 and the daemon's
-// node clock is adapters/walltime, so the value is time.Now().UnixNano()+1. It fires on
-// a -validator node for that node's own id and for every BONDED peer that answers a
-// challenge; it never fires for an unbonded fetcher, and a non-validator daemon never
-// calls it at all. Measured by core/node's
-// TestR29aBondAuditStampsAWallClockNanosecondNotACounter.
-//
 // THE CONSEQUENCE, STATED HONESTLY. Before R2.9a the ledger held
 // (identity, cumulative bytes) for each requester. R2.9a added the WHEN on the SERVE
 // path, for every requester, unconditionally. In a default build that serve-path when is
 // gone: TestR29aDefaultBuildStampsNoFirstTouchOnRegister pins it in BOTH builds, because
 // it asserts on the un-injected state that is the only state a default build can reach.
 //
-// WHAT IS NOT GONE, and is filed rather than denied: on a -validator node an identity
-// that is both a bonded peer and a fetcher still carries
-// (identity, cumulative fetched bytes, first-seen WALL-CLOCK nanosecond) in a default
-// build, via the bond stamp. Open residual R-BB-BOND-STAMP-TUPLE (ROADMAP R2.9a). It is
-// narrow — bonded peers, not the fetcher population — it predates R2.9a, and it is NOT
-// closed here: the retention surface it feeds (DecayStale, BondMaxAge) is research-gated.
+// AND THE BOND PATH WRITES NO `WHEN` EITHER, since 2026-09-05. This comment used to say
+// that account.firstSeenTick was "preserved, deliberately" as RecordBondChallenge's own
+// mechanism, first calling its tick a request counter (false — it is a wall-clock
+// nanosecond, uint64(n.clock.Now())+1 over adapters/walltime) and then filing the
+// resulting (identity, cumulative fetched bytes, first-seen wall-clock nanosecond) tuple
+// on bonded validator peers as residual R-BB-BOND-STAMP-TUPLE. Nothing read that field in
+// any build: DecayStale reads lastBondTick, Reputation reads neither, the census reads
+// firstFetchTick. A retained `when` no decided function needs is SURPLUS under T-DONT3
+// prong (a) (D-DONT3-READING), so the write and the field are deleted (G-BB-28) and the
+// residual is CLOSED. Gates: TestR29aBondChallengeStampsNoFirstTouch (the inversion) and
+// TestR29aRetentionReadsLastBondTickInNanoseconds (retention untouched, and in the unit
+// BondMaxAge needs). core/node's TestR29aBondAuditStampsAWallClockNanosecondNotACounter
+// still measures the auditor's tick, because lastBondTick's unit is what retention
+// depends on.
 
 // bbootstrapState is empty in a default build. See the tagged declaration in
 // bbootstrap.go for the two injected time sources it holds under the tag.

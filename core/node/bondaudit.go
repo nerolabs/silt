@@ -154,7 +154,16 @@ func (n *Node) ReleaseBond() {
 }
 
 func (n *Node) bondAuditTick() {
-	now := uint64(n.clock.Now()) + 1 // +1 so the first tick is never 0 ("unset")
+	// THE +1 SERVES NO READER TODAY. It dates from the bond ledger's first commit,
+	// where it kept the tick off 0 so RecordBondChallenge's `firstSeenTick == 0`
+	// unset guard would fire exactly once. That field and guard are deleted
+	// (G-BB-28, 2026-09-05). Nothing treats a zero tick specially now: lastBondTick's
+	// only reader is DecayStale, whose sole test is `now - lastBondTick > maxAge`, and
+	// bondedBytes > 0 is set only on the line that also sets lastBondTick, so a bonded
+	// account never carries an unset tick. The +1 stays because moving the stored tick
+	// touches retention (and TestR29aBondAuditStampsAWallClockNanosecondNotACounter
+	// pins the exact value); it is not load-bearing. AuditBondsOnce carries the same +1.
+	now := uint64(n.clock.Now()) + 1
 	n.bondAuditOnce(now)
 	// Standing must be SUSTAINED: retire any bond not re-proven within
 	// BondMaxAge, so a validator that stops answering loses its vote.

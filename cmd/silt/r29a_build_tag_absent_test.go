@@ -157,17 +157,16 @@ func flagNamesDeclaredIn(t *testing.T, path string) []flagDecl {
 }
 
 // TestR29aDaemonHandsTheNodeAWallClock pins the fact the D-BB-BUILD-TAG texts got
-// BACKWARDS, and it is the reason residual R-BB-BOND-STAMP-TUPLE is filed rather than
-// denied. Four sites said account.firstSeenTick's surviving writer, RecordBondChallenge,
-// was "stamped from the bond auditor's own request counter rather than from a wall
-// clock". It is a wall clock: core/node/bondaudit.go computes uint64(n.clock.Now())+1,
-// and the clock the daemon hands the node is the walltime adapter, i.e.
-// time.Now().UnixNano().
+// BACKWARDS. Four sites said RecordBondChallenge's tick was "stamped from the bond
+// auditor's own request counter rather than from a wall clock". It is a wall clock:
+// core/node/bondaudit.go computes uint64(n.clock.Now())+1, and the clock the daemon
+// hands the node is the walltime adapter, i.e. time.Now().UnixNano().
 //
-// So on a -validator node, a DEFAULT silt build still holds
-// (identity, cumulative fetched bytes, first-seen wall-clock nanosecond) for any bonded
-// peer that also fetches. That is narrow and it predates R2.9a, but it is real, and the
-// claim that it is gone was false.
+// The first-seen stamp that fact exposed (residual R-BB-BOND-STAMP-TUPLE) has since been
+// DELETED under G-BB-28 — nothing read it. The unit still matters after the deletion:
+// the same tick is kept as lastBondTick and DecayStale compares it against a nanosecond
+// BondMaxAge, so a node clock that was not a wall clock would silently disable
+// retention (core/credit's TestR29aRetentionReadsLastBondTickInNanoseconds).
 //
 // This gate covers the one link no behavioural test can see — that the daemon's node
 // clock is the wall clock and not a sim clock — so it is a SOURCE gate and says so.
@@ -182,7 +181,7 @@ func TestR29aDaemonHandsTheNodeAWallClock(t *testing.T) {
 	}
 	for _, lit := range []string{"clk := walltime.New(loop)", "nd := node.New(id, cfg, clk,"} {
 		if !strings.Contains(string(src), lit) {
-			t.Fatalf("SOURCE GATE: daemon.go no longer contains the literal %q. This gate reads the daemon's clock wiring as text because no test in this repo boots the real daemon; if the wiring moved, re-anchor it here and re-check R-BB-BOND-STAMP-TUPLE, whose scope is 'the bond-audit stamp is a wall-clock nanosecond on a validator node'", lit)
+			t.Fatalf("SOURCE GATE: daemon.go no longer contains the literal %q. This gate reads the daemon's clock wiring as text because no test in this repo boots the real daemon; if the wiring moved, re-anchor it here and re-check that lastBondTick is still fed a wall-clock nanosecond on a validator node (DecayStale's BondMaxAge comparison depends on it)", lit)
 		}
 	}
 }

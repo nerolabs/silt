@@ -1531,7 +1531,9 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
 - **Gates.** `TestR29aTheFlagGatesTheRecordingNotJustThePublication` and
   `TestR29aFlippingTheFlagOnDoesNotRecoverThePastIsTheACCEPTEDCOST` (`cmd/silt`, tagged);
   `TestR29aDefaultBuildStampsNoFirstTouchOnRegister` and
-  `TestR29aBondChallengeStillStampsFirstSeenTick` (`core/credit`, BOTH builds);
+  `TestR29aBondChallengeStillStampsFirstSeenTick` (`core/credit`, BOTH builds; the latter since
+  INVERTED and renamed `TestR29aBondChallengeStampsNoFirstTouch` under G-BB-28, see the second
+  correction below);
   `TestR29aDefaultBuildHasNoCensusReaderOnTheLedger`,
   `TestR29aDefaultBuildHasNoBBootstrapReaderOnTheNode`,
   `TestR29aDefaultBuildHasNoBBootstrapFlag`, `TestR29aDefaultBuildStatusHasNoBBootstrapKey`
@@ -1571,6 +1573,44 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
     instead of `77`, so the gate itself shows the wall clock.
   - **No behaviour changed.** `RecordBondChallenge`, `DecayStale` and standing retention are
     untouched by this correction; only the texts and the gates moved.
+- **CLOSED — 2026-09-05, G-BB-28, appended not substituted.** `R-BB-BOND-STAMP-TUPLE` is closed by
+  deleting the stamp, not by re-arguing it. Certification:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.9a-DONT3-READING-AND-BOND-STAMP-TUPLE-RESEARCH-CERTIFICATION-2026-09-05.md`
+  §2 (Q2), ratified under `D-DONT3-READING`.
+  - **The ground:** the field had NO reader in any build configuration. `DecayStale` reads
+    `lastBondTick`; `Reputation` reads neither tick; the census reads `firstFetchTick` (since the
+    fetch-only stamp of PR #737). A retained `when` no decided function needs is SURPLUS under
+    T-DONT3 prong (a). "Predates R2.9a" grants no exemption, and "serves the bond auditor" was false:
+    the auditor never read it. The correction bullet above was therefore right on the fact and wrong
+    on the disposition — the residual was not research-gated by the retention surface, because the
+    retention surface never touched it.
+  - **What moved:** `account.firstSeenTick` and its write in `RecordBondChallenge` are deleted
+    (`core/credit/credit.go`). `lastBondTick`, `DecayStale` and `BondMaxAge` are untouched.
+  - **Gates:** `TestR29aBondChallengeStampsNoFirstTouch` (`core/credit`, untagged; the inversion of
+    `TestR29aBondChallengeStillStampsFirstSeenTick`, which asserted the write as "something else's
+    mechanism" — there was no other mechanism) reads the `account` type by reflection and asserts
+    its set of tick-typed fields (`uint64`, `ports.Time`, `ports.Duration`) is CLOSED — exactly
+    `{firstFetchTick, lastBondTick}` — so a tick added under ANY name reddens it with that name in
+    the message. It was first shipped as a name match on `firstseen`; the blind review re-added the
+    stamp as `bondSeenTick` and every gate stayed green, so the gate was widened to a type whitelist
+    (`bondSeenTick uint64` and `bondSeenAt ports.Time` both measured RED). It does not see a `when`
+    declared as a bare `int64`. `TestR29aRetentionReadsLastBondTickInNanoseconds`
+    (`core/credit`, untagged) is the ablation that proves the deletion was surgical — `lastBondTick`
+    still advances on a passing challenge, `DecayStale` still retires a bond one nanosecond past
+    `BondMaxAge = 300 * ports.Second`, and a counter-valued tick never lapses, which is why
+    `lastBondTick` must NOT be re-denominated. `TestR29aBondAuditStampsAWallClockNanosecondNotACounter`
+    (`core/node`) stays green unchanged: it measures the tick the auditor passes, not the stored field.
+    Both `core/credit` gates are named anchors in the default-build CI job.
+- **CORRECTION — 2026-09-05, G-BB-29, appended not substituted.** The bullet "Why a tag rather than
+  a better runtime gate" above is narrowed, not withdrawn. As written its rule — the binary
+  "contained the mechanism and merely declined to print it", i.e. recording per se is the break —
+  condemns `core/credit/delivery.go`'s `provKey{server, requester, root}` and `core/credit/escrow.go`,
+  which are `D-S7` and are not going anywhere. The certification cited at the top of this entry's
+  `CLOSED` bullet (§1.5) refutes that generalised rule and keeps the OUTCOME: the instrument must not
+  be in a default binary because it records **SURPLUS** under T-DONT3 prong (a) — a per-requester
+  `when` that no decided function needs — and is kept for the purpose prong (c) names, relating a
+  fetcher to bytes over time. `core/credit/bbootstrap.go`'s header comment carries the same
+  narrowing. `D-DONT3-READING` is the ratified reading; this entry is read under it.
 
 ---
 
@@ -1613,12 +1653,13 @@ prong is carried here rather than in VISION.
   D-S7 and only because it never leaves the node. **The first PR that persists the ledger
   engages prong (b) and moves it inside.** The FP-2 re-arm therefore carries a privacy trigger
   as well as its economic ones.
-- `R-BB-BOND-STAMP-TUPLE` — GATED on G-BB-28, remedy cost zero: `DecayStale` reads
-  `lastBondTick`, `Reputation` reads neither, and once the fetch-only stamp lands the
-  first-seen stamp is written by the auditor and read by nobody. Delete the write; retention is
-  untouched. `lastBondTick` must NOT change: `DecayStale` compares against
+- `R-BB-BOND-STAMP-TUPLE` — **CLOSED 2026-09-05 (G-BB-28)**, remedy cost zero: `DecayStale` reads
+  `lastBondTick`, `Reputation` reads neither, and once the fetch-only stamp landed the
+  first-seen stamp was written by the auditor and read by nobody. The write and the field are
+  deleted; retention is untouched. `lastBondTick` did NOT change: `DecayStale` compares against
   `BondMaxAge = 300 * ports.Second`, so it needs nanoseconds, and a counter would silently
-  disable retention.
+  disable retention — pinned by `TestR29aRetentionReadsLastBondTickInNanoseconds`. Record: the
+  `D-BB-BUILD-TAG` entry's second appended correction.
 ## D-STATUS-SNAPSHOT-INTERVAL — the `/api/status` recompute interval is 5 seconds
 
 **Ratified 2026-09-05** by the owner: *"I'll ratify the 5 seconds for now. We can always

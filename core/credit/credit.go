@@ -46,23 +46,22 @@ type account struct {
 	// (the coin-age anti-pattern), and the only sound form is a continuous
 	// bond-anchored VDF (M1+). lastBondTick drives the retention decay.
 	//
-	// firstSeenTick is the account's bond-challenge stamp (RecordBondChallenge,
-	// below), and it PREDATES the R2.9a instrument. Tick 0 means UNSET. No standing
-	// calculation reads it, and no part of the B_bootstrap instrument reads it either;
-	// the T-axis note above stands unchanged.
+	// THE BOND PATH WRITES NO FIRST-TOUCH STAMP. Until 2026-09-05 RecordBondChallenge
+	// also wrote a firstSeenTick: the wall-clock nanosecond of the first challenge an
+	// identity answered. Nothing read it in any build. DecayStale reads lastBondTick,
+	// Reputation reads neither, and the census reads firstFetchTick. A retained `when`
+	// that no decided function needs is SURPLUS under T-DONT3 prong (a)
+	// (D-DONT3-READING, docs/decisions.md), so the write and the field are deleted
+	// (G-BB-28; residual R-BB-BOND-STAMP-TUPLE CLOSED). Gate:
+	// TestR29aBondChallengeStampsNoFirstTouch.
 	//
-	// THE BOND WRITER IS A WALL CLOCK, AND THIS COMMENT SAID THE OPPOSITE UNTIL
-	// 2026-09-05. Corrected: core/node/bondaudit.go computes uint64(n.clock.Now())+1,
-	// and the clock the daemon hands the node is adapters/walltime, i.e.
-	// time.Now().UnixNano(). It fires on a -validator node only, for that node's own
-	// id and for every BONDED peer that answers a challenge — not for the general
-	// fetcher population. But an identity that is both a bonded peer and a fetcher
-	// carries the full (identity, cumulative bytes, first-seen WALL-CLOCK nanosecond)
-	// tuple in a default build. That is open residual R-BB-BOND-STAMP-TUPLE
-	// (ROADMAP R2.9a): narrow, predating R2.9a, disclosed rather than denied, and not
-	// closed here — the retention surface it feeds (DecayStale, BondMaxAge) is
-	// research-gated. Measured by core/node's
-	// TestR29aBondAuditStampsAWallClockNanosecondNotACounter.
+	// lastBondTick is the ONE tick a bond challenge writes, and it is a WALL-CLOCK
+	// NANOSECOND: core/node/bondaudit.go passes uint64(n.clock.Now())+1 over the
+	// daemon's adapters/walltime clock. The unit is load-bearing. DecayStale subtracts
+	// it from a `now` off the same clock and compares the difference against
+	// BondMaxAge = 300 * ports.Second (core/node/node.go); a counter here would never
+	// exceed that age and would silently disable retention. Gate:
+	// TestR29aRetentionReadsLastBondTickInNanoseconds.
 	//
 	// firstFetchTick is the account's FIRST-FETCH stamp (R2.9a; bbootstrap.go),
 	// written from the injected observability clock at the one place fetchedBytes is
@@ -77,24 +76,14 @@ type account struct {
 	// (D-BB-BUILD-TAG, docs/decisions.md). So a default silt node stamps nothing on
 	// the SERVE path: no fetcher is given a first-fetch time by having fetched.
 	//
-	// THEY ARE TWO FIELDS ON PURPOSE, AND NOT FOR TIDINESS (G-BB-24,
-	// R-BB-STAMP-BY-ANY-PATH). The stamp used to live in Register, which every
-	// ledger path reaches through acct(), so it recorded first touch by ANY path —
-	// bond audit, PoR grading, bounty payment, false-repair slash — and the age axis
-	// over-stated the age of every identity that is also a DHT participant. Merging
-	// the two fields cannot fix that, because the two writers record DIFFERENT EVENTS
-	// on the same identity: a fetch stamp guarded on "unset" would never fire for a
-	// peer the bond auditor challenged first, so the census would read that peer's
-	// age from the CHALLENGE — which is the defect, preserved.
-	//
-	// CORRECTED 2026-09-05, and the correction does not weaken the split: an earlier
-	// version of this paragraph argued the two fields were needed because the writers
-	// keep time in DIFFERENT UNITS (a request counter versus nanoseconds). They do
-	// not — the bond tick is a wall-clock nanosecond too, see above. Same unit, same
-	// origin, different EVENT, and the different event is what the split is for.
+	// IT IS STAMPED ON THE FETCH PATH, NOT IN Register (G-BB-24,
+	// R-BB-STAMP-BY-ANY-PATH). Register is reached through acct() by every ledger
+	// path — bond audit, PoR grading, bounty payment, false-repair slash — so a stamp
+	// there recorded first touch by ANY path and over-stated the age of every
+	// identity that is also a DHT participant. recordFetched is the one place
+	// fetchedBytes is written, so it is the one place a first-FETCH stamp belongs.
 	bondedBytes    int64
 	bondFails      int
-	firstSeenTick  uint64 // the BOND AUDITOR's first-touch wall-clock tick; never read by the B_bootstrap export
 	firstFetchTick uint64 // first FETCH; read by the B_bootstrap export ONLY, never by a standing calc
 	lastBondTick   uint64
 	// equivocations counts PROVEN consensus double-signs (core/chain). It is
@@ -468,13 +457,13 @@ func (l *Ledger) Audits(n ports.NodeID) (passed, failed int) {
 // stops being re-proven, and it compares it against a `now` from the same
 // clock, which is why the unit has to be time and not a count.
 //
-// THE UNIT MATTERS BEYOND STALENESS, and calling it a counter here is where
-// that got lost: the first tick a prover is seen at is written verbatim into
-// account.firstSeenTick above, so on a validator this is a wall-clock
-// first-touch stamp for every bonded peer (residual R-BB-BOND-STAMP-TUPLE).
-// The claim that a default build records no `when` was inherited from this
-// comment; corrected 2026-09-05. cf. por.go's n.rid, which IS a counter —
-// they are not the same thing.
+// THE UNIT MATTERS, and calling it a counter here is where that got lost: an
+// earlier version of this comment said "request counter", four other texts
+// inherited it, and a bond-path first-seen stamp was defended on that ground
+// until 2026-09-05. That stamp is deleted (G-BB-28; see the account struct):
+// a bond challenge writes lastBondTick and nothing else, and lastBondTick stays
+// nanoseconds because DecayStale compares it against BondMaxAge. cf. por.go's
+// n.rid, which IS a counter — they are not the same thing.
 //
 // NOTE: intentionally NOT (yet) on ports.CreditLedger. The bond auditor
 // reaches it through an optional interface (a type assertion) so this
@@ -482,9 +471,6 @@ func (l *Ledger) Audits(n ports.NodeID) (passed, failed int) {
 // the port once the auditor is wired in core/node/por.go.
 func (l *Ledger) RecordBondChallenge(prover ports.NodeID, root ports.Hash, provenBytes int64, passed bool, tick uint64) {
 	a := l.acct(prover)
-	if a.firstSeenTick == 0 {
-		a.firstSeenTick = tick
-	}
 	if passed {
 		// Root-owner dedup (see rootOwner): a bond root credits standing to at
 		// most one identity, so a colluding operator cannot amortise one plot

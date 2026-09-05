@@ -9,6 +9,70 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Fixed
+- **R2.9a — the four-residuals review fold-in (blind PE, 2026-09-05): the structural gate is a closed
+  tick set, not a name match; two open gates are put back in the owner block; two stale claims are
+  corrected; G-BB-29 is applied.** (1) `TestR29aBondChallengeStampsNoFirstTouch` matched field names
+  containing `firstseen`; the reviewer re-added the deleted stamp as `bondSeenTick` with the identical
+  unset-guarded write and `core/credit`, the CI anchor step and every other gate stayed green. The
+  gate now asserts the `account` type's set of tick-typed fields (`uint64`, `ports.Time`,
+  `ports.Duration`) is CLOSED, exactly `{firstFetchTick, lastBondTick}`, and both are present, so a
+  tick under any name fails with that name in the message (`bondSeenTick uint64`, `bondSeenAt
+  ports.Time` and a whitelist drift each RED). (2) ROADMAP item 12 filed `G-BB-13′` under "ratified,
+  no longer owed"; it is OPEN for tagged builds and moot only for the default build, and every
+  `B_bootstrap` run is a tagged run. It is restored as open, and `G-BB-12′` (the code, not a handoff
+  note, establishes the reader is the operator) is added as required-before-any-run and UNBUILT:
+  the only host check reads the client-controlled `Host` header and the token gate covers mutating
+  methods only. (3) The tagged `bbootstrap` CI job is REQUIRED since 2026-09-05 (the `main` ruleset's
+  fifth context, added sixteen seconds after PR #736 merged), not advisory as ROADMAP said; it is
+  the only check that sees a flag reintroduced under a non-literal name. (4)
+  `core/node/bondaudit.go`'s `+1` said "so the first tick is never 0 (unset)"; the unset guard was
+  the deleted `firstSeenTick` write (its only consumer since the bond ledger's first commit), and
+  nothing reads a zero `lastBondTick` specially — the comment now says the `+1` serves no reader
+  and stays because moving the tick touches retention. (5) G-BB-29 from the DONT3 certification —
+  the `D-BB-BUILD-TAG` reason text and `core/credit/bbootstrap.go`'s header narrowed from "recording
+  is the break" to "recording SURPLUS is the break" (T-DONT3 prong (a)), because the generalised rule
+  condemned `delivery.go`'s D-S7 `provKey` — is applied as an appended correction. Also: a stale
+  "(residual R-BB-BOND-STAMP-TUPLE)" in a `core/node` failure message now says the residual is
+  closed, and the 134× line names the 64 MiB chunk as the `pipeline.go` COMMENT's stated floor
+  (the code constant is 64 KiB for the sim).
+- **R2.9a — four residuals closed: the dead bond-path first-seen stamp is deleted (G-BB-28,
+  `R-BB-BOND-STAMP-TUPLE` CLOSED), the untagged R2.9a gates are name-anchored in CI, the texts that
+  put `grant/r` on M0's Sybil corner are corrected (G-BB-22), and the owner-decisions block is
+  trued up.** (1) `RecordBondChallenge` wrote `account.firstSeenTick` from the wall clock and nothing
+  read it in any build: `DecayStale` reads `lastBondTick`, `Reputation` reads neither, the census
+  reads `firstFetchTick`. A retained `when` no decided function needs is SURPLUS under T-DONT3
+  prong (a) (`D-DONT3-READING`), so the write and the field are gone; `lastBondTick`, `DecayStale`
+  and `BondMaxAge` are untouched. `TestR29aBondChallengeStillStampsFirstSeenTick`, whose doc block
+  called the write "something else's mechanism" (there was none), is INVERTED as
+  `TestR29aBondChallengeStampsNoFirstTouch` and reads the `account` type by reflection, asserting
+  its set of tick-typed fields (`uint64`, `ports.Time`, `ports.Duration`) is exactly
+  `{firstFetchTick, lastBondTick}`, so a tick added under any name reddens it (a `bondSeenTick`
+  and a `bondSeenAt ports.Time` both measured RED; a `when` declared as a bare `int64` is not
+  seen); new `TestR29aRetentionReadsLastBondTickInNanoseconds`
+  is the ablation that proves the deletion surgical — `lastBondTick` still advances, a bond lapses
+  one nanosecond past `BondMaxAge = 300 * ports.Second`, and a counter-valued tick never lapses,
+  which is why `lastBondTick` must not be re-denominated. Controlled reverts: restoring the field
+  and write, deleting the `lastBondTick` write, storing seconds, and disabling `DecayStale` are
+  each RED. `TestR29aBondAuditStampsAWallClockNanosecondNotACounter` stays green unchanged (it
+  observes the auditor's tick, not the stored field). (2) The default-build `go` CI job now asserts
+  eighteen named untagged R2.9a gates PASSED and nothing skipped, the same treatment the tagged job
+  already had: those tests carry the load for keeping the instrument out of a default build, and a
+  rename or deletion was visible to no job (renaming one gate and skipping another each fail the
+  step). (3) `core/credit/bbootstrap.go` (two sites) and the histogram doc block now in
+  `cmd/silt/bbootstrap.go` say where a wrong `grant/r` lands: build-immutable #4 from below, Don't
+  #7 / T-AR / build-immutable #8 from above — never M0's Sybil corner, because the grant mints
+  balance and standing is bond-only (Invariant A). The same claim in ROADMAP item 12 (G-BB-9's
+  "viewers-only ⇒ Sybil-dearer") and two lines of the dated 2026-09-04 PACE record carry dated
+  corrections. (4) ROADMAP owner-decisions item 12 is rewritten to what is open: `q` and `P`
+  (`W` is WITHDRAWN — a pure viewer has no income path, so the decision quantity is the cumulative
+  per-server draw and `W` is not a parameter of it), the byte-axis bin count (G-BB-23, the only
+  lever on a scale-invariant exposure), `R-BB-SIBLING-AGGREGATES`, the untokened `/api/library`
+  link key (flagged, pre-existing), and the 134×-short provisional `grant/r`; the 5-second interval,
+  the build tag and the three-prong reading are marked ratified. Sources:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.9a-DONT3-READING-AND-BOND-STAMP-TUPLE-RESEARCH-CERTIFICATION-2026-09-05.md` (Q2, G-BB-28)
+  and
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.9a-instrument-necessity-geometry-bound-and-tail-merging-RESEARCH-CERTIFICATION-2026-09-05.md`
+  (Q1, G-BB-22, G-BB-23). PACE record: `docs/thinking/2026-09-05-r29a-residuals.md`.
 - **R2.9a — the F2 gate on the status surface did not close F2: the pooled `selfFunding` sum and an
   uncached sibling endpoint republished the withheld counter at the reader's own rate. Both are
   closed, the ratified snapshot bound is corrected to say which endpoints it covers, and the
