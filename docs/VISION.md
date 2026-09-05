@@ -37,8 +37,9 @@ long as the content is retained, and the publisher can prove — to themselves a
 that their content was stored bit-perfect, or see an explicit failure. Publishing is a right,
 not a privilege granted by standing.
 
-**The fetcher** retrieves content and silt does not surveil them for it. There is no
-mechanism, anywhere in the design, that logs or links who-fetched-what. Retrieval rides
+**The fetcher** retrieves content and silt does not surveil them for it. A serving node
+necessarily sees what it serves and to whom, for as long as serving requires; silt records
+nothing beyond that, and nothing of it leaves the node. Retrieval rides
 unlinkable tokens over content-blind relays and private lookup, pushing access-privacy as
 far as proven cryptography allows at the metadata layer. silt does not promise the
 impossible — a global passive adversary watching all wires defeats any low-latency network —
