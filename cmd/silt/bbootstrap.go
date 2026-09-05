@@ -19,6 +19,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"time"
 
 	"github.com/nerolabs/silt/core/credit"
@@ -40,6 +41,37 @@ type statusExtras struct {
 func registerBBootstrapFlag(fs *flag.FlagSet) func() bool {
 	on := fs.Bool("bbootstrap", false, "R2.9a: RECORD AND PUBLISH the B_bootstrap histogram on GET /api/status (ROADMAP R2.9a). A full-census 2-D COUNT histogram over (identity age × log2 fetched bytes) — 8 age buckets × 41 log2 byte bins (one per doubling, 1 byte … 1 TiB), 328 counters, about 1.3 KiB on the wire, constant in the requester count. Counts ONLY: no requester id, no salted label, no per-identity row, no exact age, and no per-cell byte SUM (a cell sum with count 1 is that identity's exact byte total in disguise). The age axis is the boot-relative elapsed tick from the node's injected clock, right-censored at the ledger's uptime — a restart destroys every account, so no window longer than the longest clean uptime is measurable at all. It is the instrument D-R2.9-DIRECTION sentence 4 makes a precondition of pinning grant/r, and it is INSTRUMENTATION ONLY: no conservation rule, no standing calculation and no economic rule reads it. This FLAG IS ONLY PRESENT IN A BINARY BUILT WITH -tags bbootstrap (D-BB-BUILD-TAG); a default silt binary rejects it, because the mechanism is not compiled in. DEFAULT OFF, and off means NOT RECORDED, not merely unpublished: no observability clock is injected, so no account carries a first-touch time. Turning it on takes a restart and then a wait for the population to re-stamp. /api/status needs no token, so anything published there is world-readable wherever -ui is bound off loopback")
 	return func() bool { return *on }
+}
+
+// bbootstrapRefuseRoutableBind is G-BB-13′ Part A, owner-ratified 2026-09-05 ("refuse at
+// startup"; docs/decisions.md D-R2.9a-RUN-CALLS item 4), and the (a) half of G-BB-12′: a
+// tagged daemon REFUSES TO START when -bbootstrap is set and -ui names anything but a
+// loopback address. The predicate is isLocalHost — the same one the request guard uses
+// for the Host header — applied here to the OPERATOR'S OWN flag string before anything is
+// bound, so "127.0.0.1:8081", "localhost:8081", "[::1]:8081" and any 127/8 literal pass,
+// and "0.0.0.0:8081", "[::]:8081", ":8081" (all interfaces) and any LAN or public
+// literal or hostname are refused with both flag names in the message.
+//
+// REFUSE THE COMBINATION AT STARTUP, NEVER OMIT THE BLOCK AT REQUEST TIME. A block that
+// silently went missing on a routable bind would read as an idle instrument, which is
+// the absent-vs-empty ambiguity this file forbids everywhere else (the certification's
+// own words for form (a)). The shape is the -dht-address-reserve precedent in daemon.go:
+// a security-relevant flag combination the code will not run, stated as a constraint.
+//
+// WHAT THIS DOES AND DOES NOT ESTABLISH, so a bind check is not read as more than it is.
+// It removes the block from every reader that is not on this host, and it removes the
+// reason for the API token to ever leave the host (the operator scrapes locally). It does
+// NOT establish that a loopback connection IS the operator: a reverse proxy, an SSH
+// forward, a port-forward and a co-tenant process all arrive from loopback (Red-team F5),
+// and Tor's man page names the same residual for its own MetricsPortPolicy ("allowing
+// localhost, every user on the server will be able to access it"). The reader-is-the-
+// operator half of G-BB-12′ is the token requirement on the block, decided separately
+// (docs/thinking/2026-09-05-r29a-g12-reader-is-operator.md).
+func bbootstrapRefuseRoutableBind(uiAddr string, on bool) error {
+	if !on || uiAddr == "" || isLocalHost(uiAddr) {
+		return nil
+	}
+	return fmt.Errorf("-bbootstrap with -ui %q refused: the B_bootstrap histogram is published on GET /api/status and may only be served on a loopback bind (127.0.0.1, ::1, localhost); bind -ui to loopback and read it locally (curl, ssh -L, docker exec) — G-BB-13′ Part A, owner-ratified 2026-09-05", uiAddr)
 }
 
 // bbootstrapInject wires the TWO observability time sources into the ledger — AND ONLY

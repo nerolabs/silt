@@ -24,6 +24,8 @@ package main
 //     first-fetch time.
 //   - bbootstrapWireUI, called where daemon.go builds the UI server. Wires nothing, so
 //     uiServer.statusExtra stays nil.
+//   - bbootstrapRefuseRoutableBind, called where daemon.go is about to serve the UI.
+//     Refuses nothing: there is no instrument to protect and no -bbootstrap to be set.
 //
 // Each takes the same arguments as its tagged twin so the daemon's call sites are
 // identical in both builds and cannot drift apart silently.
@@ -48,3 +50,7 @@ func bbootstrapInject(*credit.Ledger, ports.Clock, bool) {}
 
 // bbootstrapWireUI wires nothing in a default build. uiServer.statusExtra stays nil.
 func bbootstrapWireUI(*uiServer, bool) {}
+
+// bbootstrapRefuseRoutableBind refuses nothing in a default build: -ui may bind anywhere,
+// exactly as before R2.9a, because there is no histogram on the surface to contain.
+func bbootstrapRefuseRoutableBind(string, bool) error { return nil }

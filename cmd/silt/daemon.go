@@ -1260,6 +1260,13 @@ func cmdDaemon(args []string) error {
 	fmt.Printf("store: %s\n", *storeDir)
 
 	if *uiAddr != "" {
+		// R2.9a, G-BB-13′ Part A (owner-ratified 2026-09-05): a tagged daemon with
+		// -bbootstrap set refuses to start unless -ui is a loopback bind. Checked
+		// before the token is minted and before anything is bound, so a refused
+		// combination leaves nothing behind. A no-op in a default build.
+		if err := bbootstrapRefuseRoutableBind(*uiAddr, bbootstrapOn()); err != nil {
+			return err
+		}
 		var capRep ports.CapacityReporter
 		if rep, ok := store.(ports.CapacityReporter); ok {
 			capRep = rep
