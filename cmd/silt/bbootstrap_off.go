@@ -20,7 +20,8 @@ package main
 //     (TestR29aDefaultBuildStatusHasNoBBootstrapKey).
 //   - registerBBootstrapFlag, called where daemon.go declares its flags. Declares none.
 //   - bbootstrapInject, called where daemon.go builds the ledger. Injects nothing, so
-//     credit.Ledger.stampFirstTouch has no clock and Register writes no first-touch time.
+//     credit.Ledger.stampFirstFetch has no clock and recordFetched writes no
+//     first-fetch time.
 //   - bbootstrapWireUI, called where daemon.go builds the UI server. Wires nothing, so
 //     uiServer.statusExtra stays nil.
 //

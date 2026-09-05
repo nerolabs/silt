@@ -24,9 +24,17 @@ import (
 // and no flag disabled it. R2.9a's genuine addition to the RECORD was the `when`.
 //
 // A ledger with no observability clock stamps nothing. In a default build that is
-// structural — stampFirstTouch is an empty function (bbootstrap_off.go) and there is no
+// structural — stampFirstFetch is an empty function (bbootstrap_off.go) and there is no
 // setter to call. In a tagged build it is the -bbootstrap default: the daemon calls
 // bbootstrapInject(ledger, clk, false), which injects nothing.
+//
+// THE FIXTURE DRIVES RecordServe, AND THAT IS THE STAMPING PATH. The R2.9a stamp moved
+// off Register onto recordFetched, the one write path for fetchedBytes (G-BB-24), so
+// the field this gate has to read is firstFetchTick — the census's own. firstSeenTick
+// is asserted alongside it because the whole claim is "a default build records no WHEN
+// for a fetcher", and either field carrying one would falsify it. This test keeps its
+// name because the property it pins is unchanged and D-BB-BUILD-TAG, the CHANGELOG and
+// bbootstrap_off.go all cite it.
 //
 // THE ARRIVAL ORDER AND GAP ARE WHAT THIS DENIES. The red-team probe recovered them from
 // two accounts' stamps alone. With no stamp there is no order and no gap.
@@ -43,8 +51,11 @@ func TestR29aDefaultBuildStampsNoFirstTouchOnRegister(t *testing.T) {
 		if a.fetchedBytes != 4096 {
 			t.Fatalf("requester %d: fetchedBytes = %d, want 4096 — the fixture must actually create a requester or the assertion below is vacuous", i, a.fetchedBytes)
 		}
+		if a.firstFetchTick != 0 {
+			t.Fatalf("requester %d: firstFetchTick = %d with NO observability clock injected, want 0. A default silt build must record no first-fetch time for a fetcher at all — the tuple is (identity, bytes), never (identity, bytes, WHEN). See D-BB-BUILD-TAG", i, a.firstFetchTick)
+		}
 		if a.firstSeenTick != 0 {
-			t.Fatalf("requester %d: firstSeenTick = %d with NO observability clock injected, want 0. A default silt build must record no first-seen time for a fetcher at all — the tuple is (identity, bytes), never (identity, bytes, WHEN). See D-BB-BUILD-TAG", i, a.firstSeenTick)
+			t.Fatalf("requester %d: firstSeenTick = %d after a SERVE, want 0. That field belongs to RecordBondChallenge and no serve-path write may reach it — a fetcher that was never bond-challenged carries no WHEN in any field. See D-BB-BUILD-TAG", i, a.firstSeenTick)
 		}
 	}
 }

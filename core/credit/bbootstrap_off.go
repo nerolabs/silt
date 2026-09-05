@@ -14,10 +14,11 @@ package credit
 //
 //   - Ledger holds the instrument's state in ONE field, `bb bbootstrapState`. Untagged
 //     that type is empty, so the field costs zero bytes and there is nothing to inject.
-//   - Register calls l.stampFirstTouch(a) — the one place an account is constructed, and
-//     therefore the one place a first-touch stamp could be written. Untagged it is an
-//     empty body: the compiler inlines it away and Register is byte-for-byte its
-//     pre-R2.9a self.
+//   - recordFetched calls l.stampFirstFetch(a) — the one place account.fetchedBytes is
+//     written, and therefore the one place a first-FETCH stamp could be written
+//     (G-BB-24; the stamp used to sit in Register, which every ledger path reaches
+//     through acct()). Untagged it is an empty body: the compiler inlines it away and
+//     both Register and recordFetched are byte-for-byte their pre-R2.9a selves.
 //
 // WHAT IS PRESERVED, DELIBERATELY. account.firstSeenTick still exists and is still
 // written by RecordBondChallenge (credit.go). That writer PREDATES R2.9a entirely and
@@ -49,6 +50,7 @@ package credit
 // bbootstrap.go for the two injected time sources it holds under the tag.
 type bbootstrapState struct{}
 
-// stampFirstTouch does nothing in a default build. There is no observability clock to
-// read and no age axis to place an identity on.
-func (l *Ledger) stampFirstTouch(*account) {}
+// stampFirstFetch does nothing in a default build. There is no observability clock to
+// read and no age axis to place an identity on, so account.firstFetchTick stays 0
+// ("unset") for every requester however much it fetches.
+func (l *Ledger) stampFirstFetch(*account) {}

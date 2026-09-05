@@ -369,17 +369,23 @@ func TestR29aOccupiedAgeBucketsNeverExceedUptime(t *testing.T) {
 	}
 	clk.step(-8 * bbDay) // put the clock back; the arms below are about a foreign stamp
 
-	// TEETH 2: plant a stamp from a FOREIGN tick source — the other writer of
-	// firstSeenTick is RecordBondChallenge, stamped by the bond auditor.
+	// TEETH 2: plant a stamp OUT OF RANGE for this process. A tick of 1 against a
+	// wall-clock ledger makes the identity look ten days old on a three-hour-old
+	// process. The assertion must fire.
 	//
-	// CORRECTED 2026-09-05: that stamp is NOT in a different unit. The auditor passes
+	// THE CONCRETE WRITER THIS MODELLED IS NOW OUT OF REACH (G-BB-24): the bond
+	// auditor's tick lives in its own field (account.firstSeenTick) and the census reads
+	// account.firstFetchTick, so RecordBondChallenge cannot touch the age axis at all.
+	//
+	// AND IT WAS NEVER A DIFFERENT UNIT — corrected 2026-09-05. The auditor passes
 	// uint64(n.clock.Now())+1 and the daemon hands node.New and bbootstrapInject the
 	// SAME walltime clock, so in production the two agree. The realistic divergence is a
 	// stamp written before this ledger's observability clock was injected, or carried
-	// across a restart — out of range, same unit. The fixture keeps the extreme value
-	// because the assertion must fire for ANY stamp older than the process, and a tick
-	// of 1 is the cheapest such value. The assertion must fire.
-	l.accounts[reqID(0)].firstSeenTick = 1
+	// across a restart: out of range, same unit. The arm stays, with the extreme value,
+	// because the assertion must fire for ANY stamp older than the process and a tick of
+	// 1 is the cheapest such value — a gate that only ever fired on a writer since
+	// re-pointed is a gate that has stopped being tested.
+	l.accounts[reqID(0)].firstFetchTick = 1
 	h = l.bBootstrapSnapshot()
 	if h.ClockSuspect {
 		t.Fatalf("clockSuspect set with the wall clock restored — a foreign stamp is not a clock step and the two must stay distinguishable (skew %d)", h.ClockSkewNanos)
@@ -832,30 +838,29 @@ func TestR29aUnstampedRequestersAreCountedNotAged(t *testing.T) {
 	}
 }
 
-// TestR29aFirstTouchIsStampedOnceAtRegister pins the stamp's placement. The estimand's
-// window opens at FIRST TOUCH on this ledger (the instant the faucet grant is minted),
-// so the stamp belongs in Register — the one place an account is constructed — and must
-// not move on later traffic.
-func TestR29aFirstTouchIsStampedOnceAtRegister(t *testing.T) {
+// TestR29aFirstFetchIsStampedOnceAtTheFirstFetch pins the stamp's placement. The
+// estimand's window opens at the identity's FIRST FETCH from this ledger, so the stamp
+// belongs at the one place fetchedBytes is written and must not move on later traffic.
+func TestR29aFirstFetchIsStampedOnceAtTheFirstFetch(t *testing.T) {
 	clk := &bbClock{now: 1_000}
 	l := New(50_000, 0)
 	l.SetObservabilityClock(clk, clk.monotonic)
 	r := reqID(0)
 	fetched(l, id(1), r, 1<<10)
-	first := l.accounts[r].firstSeenTick
+	first := l.accounts[r].firstFetchTick
 	if first != 1_001 {
-		t.Fatalf("firstSeenTick = %d, want 1,001 (clock 1,000, +1 so tick 0 stays UNSET)", first)
+		t.Fatalf("firstFetchTick = %d, want 1,001 (clock 1,000, +1 so tick 0 stays UNSET)", first)
 	}
 	clk.now = ports.Time(5 * bbDay)
 	fetched(l, id(1), r, 1<<10)
 	fetched(l, id(2), r, 1<<10)
-	if got := l.accounts[r].firstSeenTick; got != first {
-		t.Fatalf("firstSeenTick moved on later traffic: %d → %d — the window opens at FIRST touch, not the latest", first, got)
+	if got := l.accounts[r].firstFetchTick; got != first {
+		t.Fatalf("firstFetchTick moved on later traffic: %d → %d — the window opens at the FIRST fetch, not the latest", first, got)
 	}
 	// And with no clock the stamp stays unset, so the shipped behaviour is unchanged.
 	bare := New(50_000, 0)
 	fetched(bare, id(1), r, 1<<10)
-	if got := bare.accounts[r].firstSeenTick; got != 0 {
-		t.Fatalf("firstSeenTick = %d with no clock injected, want 0 — nil must stay the safe, behaviour-identical state", got)
+	if got := bare.accounts[r].firstFetchTick; got != 0 {
+		t.Fatalf("firstFetchTick = %d with no clock injected, want 0 — nil must stay the safe, behaviour-identical state", got)
 	}
 }

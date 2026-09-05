@@ -1619,3 +1619,74 @@ prong is carried here rather than in VISION.
   untouched. `lastBondTick` must NOT change: `DecayStale` compares against
   `BondMaxAge = 300 * ports.Second`, so it needs nanoseconds, and a counter would silently
   disable retention.
+## D-STATUS-SNAPSHOT-INTERVAL — the `/api/status` recompute interval is 5 seconds
+
+**Ratified 2026-09-05** by the owner: *"I'll ratify the 5 seconds for now. We can always
+take user feedback later."*
+
+**The parameter.** `statusSnapshotInterval = 5 * time.Second` (`cmd/silt/ui.go`). Between
+recomputes every caller is served the same cached document. It is a **security parameter**,
+not a tuning knob: `T` bounds a disclosure rate. An observer gets at most `floor(uptime/T)`
+distinct documents however fast it asks, and every bin crossing inside one interval is
+unresolvable. `docs/build-process.md` records that a durability knob has twice also turned
+out to be a security parameter; this one is a security parameter first.
+
+**Why a cache at all.** Certified REQUIRED on two independent grounds in
+`R2.9a-instrument-necessity-geometry-bound-and-tail-merging-RESEARCH-CERTIFICATION-2026-09-05.md`
+§3.5. First, the `R-BB-DELTA-TRAJECTORY` residual had been disclosed as "bounded by the poll
+rate", and the poll rate is the reader's choice, so that was never a bound. Second, the
+handler walked the whole never-evicted account set plus the whole chunk store inside the
+node's event loop on every unauthenticated GET, which is a build-immutable #8 finding on its
+own; caching caps a GET flood's amplification at one recompute per interval instead of at the
+attacker's request rate.
+
+**Why 5 seconds.** Derived from shipped numbers, bounded on both sides. From above by the fit:
+the narrowest positive-width age bucket is 60 s, and the candidate windows the edges bracket
+run from an hour to a week, so any `T` well inside 60 s is over-sampled by orders of magnitude
+and costs the estimate nothing. From above by the operator: the shipped dashboard polls every
+3,000 ms, so sitting just above that keeps the operator's view essentially live while making
+the recompute rate strictly lower than the request rate. From below by privacy and loop cost.
+
+**The cost, stated rather than buried.** The privacy side wants `T` much larger. At 5 seconds
+an observer still collects 17,280 documents a day. The owner took the liveness side knowingly.
+
+**Revisit trigger, named.** Operator feedback on dashboard liveness. The asymmetry matters:
+raising `T` costs the estimate nothing until it approaches 60 s, so moving in the privacy
+direction stays cheap later, while the liveness direction does not. One named site changes it.
+
+**What this does NOT close.** The cache degrades the per-object join; it does not remove it.
+At this deployment's traffic an interval routinely holds a single fetch, so an observer can
+still attribute that interval's bytes to a named root. `R-BB-SIBLING-AGGREGATES` stays open,
+and the token gate on the per-object detail is what actually closes the red-team's F2.
+
+**Correction, appended 2026-09-05 (the ratified text above is unchanged).** A blind
+principal-engineer review of the build measured the bound false as ratified. "At most
+`floor(uptime/T)` distinct documents however fast it asks" held for `/api/status` only:
+`/api/economy/self` republished `revenue.balance`, `revenue.servedBytes` and the pooled
+`selfFunding.*` recomputed per request, so an observer polling it got the same aggregates at its
+own rate (measured: a 16,388-credit step in `selfFunding.skimIn` recovered at 330 ms resolution,
+131,104 bytes of a root `/api/roots` had named). The closing sentence above was false at the
+same time: the token gate withheld `objects[]` but left `selfFunding.skimIn` open, which is
+`Σ objects[].funded`, and on a node caretaking one object the sum IS the withheld counter.
+
+As corrected (PR #737, second commit): (1) `/api/economy/self` is served from the SAME snapshot
+as `/api/status` — one document, one loop pass, invalidated together — and carries the same
+`snapshotTakenAtUnix` / `snapshotAgeSec` / `snapshotIntervalSec` stamps; (2) `selfFunding.*` is
+token-gated with `objects[]`, by allow-list. **The bound now reads precisely:** an observer gets
+at most `floor(uptime/T)` distinct ledger-derived documents from the two endpoints served off
+that snapshot, `GET /api/status` and `GET /api/economy/self`. `snapshotAgeSec` moves per serve by
+design, so "distinct" means distinct in what was counted. `/api/roots`, `/api/registry`,
+`/api/chain` and `/api/library` are not snapshotted and carry no ledger counter.
+
+**What stays open, named rather than implied.** The node-wide aggregates — `durability.balance`,
+`stats.BytesServed`, `revenue.*` — stay unauthenticated on both documents, because the
+cross-origin observatory (`cmd/silt/ui/observatory.html`) reads `stats.BytesServed` with no token
+by design and no cross-origin consumer reads `selfFunding.*` at all. On a node holding ONE root,
+which `/api/roots` names, those totals are that root's counters. That is
+`R-BB-SIBLING-AGGREGATES`: still open, now rate-bounded to `floor(uptime/T)`, not closed. Closing
+it means gating the observatory's bytes-served panel, which is the owner's trade and is not made
+here. Gates: `TestR29aEconomySelfIsServedFromTheStatusSnapshot`,
+`TestR29aF2NoUnauthenticatedResponseOnTheWholeSurfaceCarriesTheWithheldCounter`,
+`TestR29aOneCacheTwoViewsAnAnonymousReadDoesNotStripTheOperatorsView` (`cmd/silt`), and the
+live-daemon arm of `TestEconomyEndToEndOnLiveDaemon` (`e2e`). Source:
+`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/2026-09-05-RULING-r2.9a-status-surface-cache-stamp-and-f2-gate.md`.

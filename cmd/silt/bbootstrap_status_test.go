@@ -16,18 +16,19 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/nerolabs/silt/core/credit"
 	"github.com/nerolabs/silt/ports"
 )
 
-// r29aServer is economyServer plus the two /api/status collaborators the SELF-panel
-// fixture does not need: peerCount is a nil FUNC FIELD there, so any test that drives
-// /api/status off that fixture segfaults before it asserts anything.
+// r29aServer is statusServer (r29a_status_surface_test.go, untagged) plus the two
+// collaborators only the instrument needs: the /api/status renderer and the injected
+// observability clock. It builds on the untagged fixture rather than repeating it so
+// the two cannot drift — statusServer is where the nil-peerCount trap is fixed.
 func r29aServer(t *testing.T, publish bool) (*uiServer, *credit.Ledger, *r29aClock) {
 	t.Helper()
-	s, _, _, led := economyServer(t, 0)
-	s.peerCount = func() int { return 0 }
+	s, led := statusServer(t)
 	bbootstrapWireUI(s, publish)
 	clk := &r29aClock{}
 	// The fixture injects the clock DIRECTLY, on both arms, because these gates are
@@ -36,6 +37,19 @@ func r29aServer(t *testing.T, publish bool) (*uiServer, *credit.Ledger, *r29aClo
 	// TestR29aTheFlagGatesTheRecordingNotJustThePublication, which drives
 	// bbootstrapInject the way daemon.go does.
 	led.SetObservabilityClock(clk, clk.monotonic)
+	// EVERY POLL IN THIS FIXTURE IS A LATER POLL. /api/status serves a snapshot
+	// recomputed at most once per statusSnapshotInterval (G-BB-26), so a fixture that
+	// asks twice at the same instant would read the same document twice and every
+	// content assertion below would be asserting on a stale block rather than on the
+	// state the test just set up. Advancing one whole interval per read reproduces the
+	// per-request-recompute semantics these gates were written against, and it is what a
+	// real polling reader does. TestR29aBB21StatusSnapshotIsCachedForOneInterval is the
+	// gate that the caching itself works; it deliberately does NOT advance.
+	polls := 0
+	s.now = func() time.Time {
+		polls++
+		return s.started.Add(time.Duration(polls) * statusSnapshotInterval)
+	}
 	return s, led, clk
 }
 

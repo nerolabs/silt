@@ -58,7 +58,10 @@ func economyServer(t *testing.T, grant int64) (*uiServer, http.Handler, ports.No
 	nd := node.New(id.NodeID(), node.DefaultConfig(), walltime.New(loop), tr, memstore.New())
 	led := credit.New(0, grant)
 	nd.SetLedger(led)
-	s := &uiServer{loop: loop, nd: nd, token: "tok", started: time.Now()}
+	// peerCount is a func field the daemon always wires. Both documents are now served
+	// off the one status snapshot, so /api/economy/self reaches computeStatus too and a
+	// nil here would segfault before any assertion.
+	s := &uiServer{loop: loop, nd: nd, token: "tok", started: time.Now(), peerCount: func() int { return 0 }}
 	return s, s.guard(http.HandlerFunc(s.apiEconomySelf)), id.NodeID(), led
 }
 
@@ -69,6 +72,12 @@ func getEconomySelf(t *testing.T, h http.Handler, query string) economySelf {
 		url += "?" + query
 	}
 	r := httptest.NewRequest("GET", url, nil)
+	// The OPERATOR's read. Panel 1 (my-solvency) is per-object and therefore
+	// token-gated (red-team F2: delta skimIn x 8 is the exact byte count served of a
+	// NAMED root), and the operator's own browser already attaches this header to every
+	// same-origin /api/ call. TestR29aF2EconomySelfWithholdsPerObjectDetailWithoutAToken
+	// covers the untokened read.
+	r.Header.Set("Authorization", "Bearer tok")
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
 	if w.Code != 200 {
@@ -82,10 +91,21 @@ func getEconomySelf(t *testing.T, h http.Handler, query string) economySelf {
 }
 
 // A read endpoint moves nothing, so it must be reachable WITHOUT the bearer token
-// (the #89 read-only-localhost ergonomics). Every field is stamped local-exact.
+// (the #89 read-only-localhost ergonomics). Every field is stamped local-exact. This
+// is a real untokened request: getEconomySelf presents the token, and an earlier
+// version of this test called it while its comment said "no Authorization header".
 func TestEconomySelfIsReadOnlyAndLocalExact(t *testing.T) {
 	_, h, _, _ := economyServer(t, 5_000)
-	out := getEconomySelf(t, h, "") // no Authorization header
+	r := httptest.NewRequest("GET", "http://127.0.0.1:8080/api/economy/self", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r) // NO Authorization header
+	if w.Code != 200 {
+		t.Fatalf("untokened economy/self: status %d, body %s", w.Code, w.Body.String())
+	}
+	var out economySelf
+	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
 	if out.Tier != "local-exact" {
 		t.Fatalf("tier=%q, want local-exact", out.Tier)
 	}

@@ -26,9 +26,10 @@ import (
 // statusDurability is the subset of GET /api/status this test asserts on.
 type statusDurability struct {
 	Durability *struct {
-		BountyOn bool  `json:"bountyOn"`
-		Balance  int64 `json:"balance"`
-		Objects  []struct {
+		BountyOn       bool  `json:"bountyOn"`
+		Balance        int64 `json:"balance"`
+		DetailWithheld bool  `json:"detailWithheld"`
+		Objects        []struct {
 			Root    string `json:"root"`
 			Reserve int64  `json:"reserve"`
 			Funded  int64  `json:"funded"`
@@ -38,9 +39,26 @@ type statusDurability struct {
 	} `json:"durability"`
 }
 
-func getStatus(t *testing.T, base string) statusDurability {
+// getStatus reads the OPERATOR's view. The per-object durability array is token-gated
+// (red-team F2: delta funded x 8 is the exact byte count served of a NAMED content
+// root), so the operator's own reader presents the token — which is what the daemon's
+// own web UI does on every same-origin /api/ call. getStatusUntokened below is the
+// public reader, and the e2e gate asserts it sees no roots.
+func getStatus(t *testing.T, base, token string) statusDurability {
 	t.Helper()
-	resp, err := http.Get(base + "/api/status")
+	return decodeStatus(t, base, token)
+}
+
+func decodeStatus(t *testing.T, base, token string) statusDurability {
+	t.Helper()
+	req, err := http.NewRequest("GET", base+"/api/status", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
 	if err != nil {
 		t.Fatalf("GET /api/status: %v", err)
 	}
@@ -89,7 +107,7 @@ func TestEconomyEndToEndOnLiveDaemon(t *testing.T) {
 
 	// The economy must report ON (Slice 1's -economy flag → bountyOn), and the daemon
 	// carries its starter credit balance (what it could spend to fund durability).
-	s0 := getStatus(t, base)
+	s0 := getStatus(t, base, token)
 	if s0.Durability == nil || !s0.Durability.BountyOn {
 		t.Fatalf("economy not reported ON with -economy: %+v", s0.Durability)
 	}
@@ -118,7 +136,7 @@ func TestEconomyEndToEndOnLiveDaemon(t *testing.T) {
 	// The cared object shows up in the durability block (may take a sweep to register).
 	var root string
 	for deadline := time.Now().Add(15 * time.Second); time.Now().Before(deadline); {
-		s := getStatus(t, base)
+		s := getStatus(t, base, token)
 		if s.Durability != nil && len(s.Durability.Objects) > 0 {
 			root = s.Durability.Objects[0].Root
 			break
@@ -131,13 +149,13 @@ func TestEconomyEndToEndOnLiveDaemon(t *testing.T) {
 
 	// Endow the object's reserve from the daemon's own balance (Slice 3), and confirm
 	// the telemetry reflects the funded reserve + the debited balance.
-	balBefore := getStatus(t, base).Durability.Balance
+	balBefore := getStatus(t, base, token).Durability.Balance
 	const endow = 5000
 	fs, fb, err := apiFund(base, token, pub.Link, endow)
 	if err != nil || fs != http.StatusOK {
 		t.Fatalf("fund: status=%d err=%v body=%s", fs, err, fb)
 	}
-	s1 := getStatus(t, base)
+	s1 := getStatus(t, base, token)
 	if s1.Durability.Balance != balBefore-endow {
 		t.Fatalf("funding did not debit the balance: %d → %d (want -%d)", balBefore, s1.Durability.Balance, endow)
 	}
@@ -150,4 +168,80 @@ func TestEconomyEndToEndOnLiveDaemon(t *testing.T) {
 	if funded < endow {
 		t.Fatalf("object reserve %d < endowment %d — /api/fund did not credit the escrow the telemetry reads", funded, endow)
 	}
+
+	// R2.9a / red-team F2, on a REAL daemon over real HTTP (build-immutable #1, the
+	// e2e tier). The same GET without the token must carry the aggregates and NO
+	// per-object entry: `funded` moves by one eighth of every byte served of a NAMED
+	// root, so an unauthenticated reader polling it recovers the exact byte count
+	// served of that object. The operator's view above is unchanged; only the
+	// unauthenticated one loses the decomposition.
+	pubView := decodeStatus(t, base, "")
+	if pubView.Durability == nil {
+		t.Fatalf("the durability block vanished for an unauthenticated reader — the AGGREGATES stay open; only the per-object array is gated")
+	}
+	if len(pubView.Durability.Objects) != 0 {
+		t.Fatalf("unauthenticated /api/status published per-object durability: %+v — eight times the delta in `funded` is the exact byte count served of that named root", pubView.Durability.Objects)
+	}
+	if !pubView.Durability.DetailWithheld {
+		t.Fatalf("objects withheld but detailWithheld is false — a reader must be able to tell a withholding from a node that caretakes nothing")
+	}
+	if pubView.Durability.Balance != s1.Durability.Balance {
+		t.Fatalf("the node-wide balance changed with the token (%d vs %d) — this change publishes less, it never counts less", pubView.Durability.Balance, s1.Durability.Balance)
+	}
+
+	// THE SIBLING, on the same live daemon. The blind PE review found F2 still open
+	// here after the gate above: /api/economy/self withheld objects[] but published
+	// selfFunding.skimIn, the sum of objects[].funded, which on a one-object node IS
+	// the withheld counter — and it was recomputed per request, so the extraction ran
+	// at the reader's own rate. Untokened: no selfFunding key, no objects key, no root,
+	// and the same snapshot stamp as /api/status. Tokened: the operator's Panel 3 with
+	// the number.
+	pubSelf := getEconomySelfRaw(t, base, "")
+	if _, open := pubSelf["selfFunding"]; open {
+		t.Fatalf("unauthenticated /api/economy/self published selfFunding: %s — skimIn is the sum of the per-object funded counters and with one cared object it is that counter; /api/roots names the root", pubSelf["selfFunding"])
+	}
+	if _, open := pubSelf["objects"]; open {
+		t.Fatalf("unauthenticated /api/economy/self published objects: %s", pubSelf["objects"])
+	}
+	if string(pubSelf["detailWithheld"]) != "true" {
+		t.Fatalf("economy/self detail withheld but detailWithheld is %s", pubSelf["detailWithheld"])
+	}
+	for k, v := range pubSelf {
+		if strings.Contains(string(v), root) {
+			t.Fatalf("unauthenticated /api/economy/self names the cared root under %q: %s", k, v)
+		}
+	}
+	opSelf := getEconomySelfRaw(t, base, token)
+	var sf struct {
+		SkimIn int64 `json:"skimIn"`
+	}
+	if err := json.Unmarshal(opSelf["selfFunding"], &sf); err != nil || sf.SkimIn < endow {
+		t.Fatalf("the operator's Panel 3 is broken: selfFunding=%s err=%v, want skimIn >= the %d endowment", opSelf["selfFunding"], err, endow)
+	}
+	if string(opSelf["snapshotTakenAtUnix"]) == "" || string(pubSelf["snapshotIntervalSec"]) == "" {
+		t.Fatalf("economy/self carries no snapshot provenance — a cached number that cannot be told from a live one is the silent-loss shape: %v", pubSelf)
+	}
+}
+
+// getEconomySelfRaw reads GET /api/economy/self as a map of raw top-level keys, so an
+// ABSENT key (withheld) and a present-but-empty one stay distinguishable.
+func getEconomySelfRaw(t *testing.T, base, token string) map[string]json.RawMessage {
+	t.Helper()
+	req, err := http.NewRequest("GET", base+"/api/economy/self", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	if err != nil {
+		t.Fatalf("GET /api/economy/self: %v", err)
+	}
+	defer resp.Body.Close()
+	var out map[string]json.RawMessage
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode economy/self: %v", err)
+	}
+	return out
 }
