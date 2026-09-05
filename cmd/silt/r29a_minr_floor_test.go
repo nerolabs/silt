@@ -163,11 +163,12 @@ func TestR29aBB16PolledSeriesRevealsNoSingleIdentityTrajectory(t *testing.T) {
 	s, led, clk := r29aServer(t, true)
 	clk.now = ports.Time(2 * bbStatusHour) // a fixed instant: only the BYTES move
 
-	// ONE requester, six fetches, a poll between each. The cumulative totals walk the
-	// quarter-log2 axis one or two bins at a time, which is the regime the measurement
-	// was taken in.
+	// ONE requester, six fetches, a poll between each. The cumulative totals double
+	// each time (1, 2, 4, 8, 16, 32 MiB), so on the ratified one-bin-per-doubling axis
+	// every fetch crosses exactly one bin edge — the regime in which a polled series
+	// shows a single identity's trajectory most plainly.
 	const requester = 7
-	steps := []int64{1 << 20, 1 << 20, 1 << 20, 1 << 20, 2 << 20, 2 << 20}
+	steps := []int64{1 << 20, 1 << 20, 2 << 20, 4 << 20, 8 << 20, 16 << 20}
 
 	poll := func(s *uiServer, led *credit.Ledger, into *[]map[[2]int]int64, raws *[]string) {
 		t.Helper()

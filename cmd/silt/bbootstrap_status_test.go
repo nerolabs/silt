@@ -3,7 +3,7 @@
 package main
 
 // R2.9a — the B_bootstrap histogram on GET /api/status, under the top-level
-// `bBootstrap` key. Counts only: 8 age buckets × 164 quarter-log2 byte bins, plus the
+// `bBootstrap` key. Counts only: 8 age buckets × 41 log2 byte bins, plus the
 // census total, the clock self-report, the ledger's uptime and both axes. No identity,
 // no label, no row, no exact age, and no per-cell byte SUM (immutable #4).
 
@@ -237,7 +237,7 @@ func TestR29aDaemonInjectsBothClocksBeforeTheLedgerIsReachable(t *testing.T) {
 // "byte-identical in length at R = 10 and R = 500,000", which a JSON count histogram
 // cannot literally satisfy: the counts are decimal numbers, so 500,000 costs more digits
 // than 10. What IS asserted is the property behind it — the STRUCTURE is identical (same
-// key set, same 8 × 164 grid, same axis arrays) and the serialized length stays under a
+// key set, same 8 × 41 grid, same axis arrays) and the serialized length stays under a
 // fixed ceiling however large R gets. The row export's payload grew without bound in R;
 // this one does not grow at all except by digits.
 func TestR29aPayloadIsBoundedInTheRequesterCount(t *testing.T) {
@@ -280,10 +280,11 @@ func TestR29aPayloadIsBoundedInTheRequesterCount(t *testing.T) {
 			t.Fatalf("cell grid rows are not all %d bins wide: %v", credit.BBootstrapByteBins, rows)
 		}
 	}
-	// The ceiling: 32 KiB covers 1,312 counters, both axes and the metadata with room
-	// for every count to be six digits. R = 20,000 is 4.9× the row cap the refuted shape
-	// carried, and the payload does not notice.
-	const ceiling = 32 << 10
+	// The ceiling: 8 KiB covers 328 counters, both axes and the metadata with room for
+	// every count to be six digits (it was 32 KiB for the 1,312-counter grid before
+	// G-BB-23). R = 20,000 is 4.9× the row cap the refuted shape carried, and the payload
+	// does not notice.
+	const ceiling = 8 << 10
 	if bigSize > ceiling {
 		t.Fatalf("payload %d bytes at R = 20,000, above the %d-byte ceiling", bigSize, ceiling)
 	}

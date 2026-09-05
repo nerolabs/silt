@@ -8,6 +8,23 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Changed
+- **R2.9a — the `B_bootstrap` byte axis is ONE bin per doubling (2026-09-05, G-BB-23, owner-ratified in
+  `D-R2.9a-RUN-CALLS` item 5).** `BBootstrapBinsPerOctave` 4 → 1, `BBootstrapByteBins` 164 → 41, the grid
+  1,312 → 328 counters (≈ 2.6 KiB), the wire `byteBinRule` restated, the quarter-octave threshold
+  machinery deleted rather than left dead under the tag. Why: the Red-team's F4 measured that at the
+  census sizes the instrument is for, 35–86% of occupied cells hold ONE identity and the count of
+  individually pinned identities is constant in the census size; the Researcher certified the bin
+  count as the only lever that acts on that exposure (merging and rounding refuted at this scale).
+  The 19% → 2× resolution cost has no consumer under the ratified run re-scope (`grant/r` is pinned
+  structurally). `TestR29aByteBinMatchesTheClosedForm` pins the ratified value by name; BB-5's payload
+  ceiling is 8 KiB; BB-16's fixture doubles per fetch so each poll crosses one edge on the coarser
+  axis. **Blind PE fold-in (MERGE-AFTER):** the "about 4×" reduction claim was corrected to the measured
+  R-dependent factor (1.4× at the census floor, 2× at R = 25, 4× only at R ≳ 1,000; the floor and the
+  bin count are weakest in the same band), both touched gates were added to the tagged CI anchor list,
+  and `TestR29aTopBinSaturatesThroughTheSnapshot` covers the clamp end-to-end at 2^62 bytes.
+  Deliberation: `docs/thinking/2026-09-05-r29a-bin-count.md`.
+
 ### Fixed
 - **R2.9a — the four-residuals review fold-in (blind PE, 2026-09-05): the structural gate is a closed
   tick set, not a name match; two open gates are put back in the owner block; two stale claims are
