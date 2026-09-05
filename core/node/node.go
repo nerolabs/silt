@@ -385,6 +385,12 @@ type Stats struct {
 	// designation gates and ARMED a proposal (R2.11 gate observable: a drain keyed on queue
 	// length rather than on FOLDABLE work would arm here and fail the empty-block check).
 	DrainProposalsArmed int
+	// ParityColumnLookups / ParityShardsPulled count NetGet's parity fallback: provider lookups
+	// of parity columns (one per column consulted) and parity shards actually pulled. The
+	// per-stripe deficit walk (R-PARITY-AMPLIFICATION) makes both proportional to the damage,
+	// not the object; gates assert them.
+	ParityColumnLookups int
+	ParityShardsPulled  int
 	BountiesReleased    int
 	FalseRepairSlashes  int
 	// #277 dead-peer-envelope gauges (M1 baseline — the dial-storm is where trust

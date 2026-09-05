@@ -1832,9 +1832,15 @@ ratio ships; the re-aimed handoff.
 **Research verdict on item 1, appended 2026-09-05 — GATED; the VALUE 32 GiB is REFUTED and
 may not ship; the METHOD is CERTIFIED and G-BB-17 is lifted.**
 `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.9a-grant-over-r-32GiB-structural-pin-G-BB-19-RESEARCH-CERTIFICATION-2026-09-05.md`.
-The decisive artifact is `core/node/file.go:750-760`: when ANY data chunk is missing the
-fetcher pulls EVERY parity column of the whole object, so the worst-case per-server draw at
-`F = 1` is `S_max · (N/K)` = 1.6 × 27.94 GiB = **44.7 GiB**, not 27.94. The corrected formula is
+The decisive artifact was `core/node/file.go`'s parity fallback (the `allData()` / whole-column
+`fetchCols(parityCols, …)` block at the time): when ANY data chunk was missing the fetcher pulled
+EVERY parity column of the whole object, so the worst-case per-server draw at `F = 1` is
+`S_max · (N/K)` = 1.6 × 27.94 GiB = **44.7 GiB**, not 27.94. *Citation corrected 2026-09-06:* that
+block is now a per-stripe DEFICIT walk (`docs/thinking/2026-09-06-parity-fetch-per-stripe.md`), so
+an honest or WITHHOLDING provider can no longer force the object-size term; the N/K factor SURVIVES
+as the worst case because `fetchFrom` transfers a shard's bytes before it verifies them — a
+CORRUPTING provider forces `S · N/K` under any fetch policy. The pin's value is untouched; whether
+`R-PARITY-AMPLIFICATION` is discharged is research-gated. The corrected formula is
 `grant/r ≥ S_max · (N/K) / F_min`; 32 GiB covers 71.6 % of its own floor. This corrects the
 Economist's §4.1 and the Researcher's own necessity cert §2.1. Two more corrections: the
 "stripe floor `K × chunkSize_max` = 640 MiB" clause above is wrong twice (128 MiB is the

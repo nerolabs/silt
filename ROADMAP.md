@@ -1855,6 +1855,15 @@ the load-bearing still-live items:
   substrate when GCP capacity/quota blocks, then a GCP+AWS split for real inter-provider WAN).
 
 **Durability / repair / demand residuals:**
+- **Per-stripe parity fetch — BUILT 2026-09-06 (branch `builder/r-parity-amplification-per-stripe`).** NetGet's parity fallback is a
+  DEFICIT walk (per stripe, real data shards − present; one parity column consulted at a time; early exit) instead of
+  every parity column of the whole object; an honest or withholding provider can no longer force the object-size
+  term of `R-PARITY-AMPLIFICATION`. **NOT claimed discharged** (research-gated; a corrupting provider still forces
+  `S·N/K` because `fetchFrom` transfers before it verifies — the 64 GiB pin's worst case stands). Blind PE design
+  ruling `RULING-parity-fetch-per-stripe-design-2026-09-06.md` chose (A′) over the record's (A) (6× over-fetch, 1.5×
+  adversarial ceiling). **New residual `R-SPARSE-COLUMN-PROVIDER`:** `NetGetRetain` retainers become 1-of-T holders of
+  parity columns; `probeShard` walks providers sequentially and corpse gating does not skip live nodes; #500 unchanged.
+  Gates G-PS-1…7; two counters `stats.ParityColumnLookups` / `stats.ParityShardsPulled`.
 - **Repair dial-storm to dead holders — #277.** The DHT walk re-dials dead holders every sweep
   (the `deadUntil` negative cache is consulted on the fetch/repair decision path but not on the
   walk's dials), so under heavy permanent loss a sweep can't finish though ≥k shards survive.
