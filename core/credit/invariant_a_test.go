@@ -116,7 +116,7 @@ var standingClassification = map[string]standingClass{
 	// across it, because the sibling defect in this family is a reader that goes
 	// through acct() → Register and MINTS a 500,000 grant for every id it touches.
 	"SetObservabilityClock": neutral,
-	"BBootstrapSnapshot":    neutral,
+	"BBootstrapPublish":     neutral,
 	"Epoch":                 neutral, // R2.10 / F8: reads max(watermark, source); a pure observer
 	"LoadPaidSerials":       neutral, // restores the guard from disk; moves nothing
 

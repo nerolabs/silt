@@ -8,7 +8,148 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Changed
+- **R2.9a — the `B_bootstrap` block now has a MINIMUM-REQUESTER FLOOR: below `R_min` it publishes
+  `suppressed: true` and no census count at all (G-BB-11).** The load-bearing fact is not that cells
+  leak. `stats.bytesServed` and `durability.objects[].funded` are published **unconditionally** and
+  **predate this instrument**, so at a degenerate census their deltas already say "the single
+  requester fetched X bytes of object Y". What the instrument adds is `requesters` — **the
+  anonymity-set size** — and publishing that is what converts a pre-existing aggregate counter into
+  an attributable observation about one identity. Suppressing cells while still publishing
+  `requesters` would therefore close nothing, so the floor withholds `cells`, `aged`, `requesters`,
+  `unstamped` **and** `maxOccupiedAgeEdgeNanos` (at one requester that last one is the singleton's
+  own age). The counts are **absent from the JSON, not published as zero**: a zero under a census of
+  nine is a false total a summing reader would take as measured, and a missing key cannot be
+  misread. The clock self-reports, both uptimes and the signed skew survive suppression — they
+  describe the instrument rather than the population, and an operator needs them exactly when the
+  census is too small to publish. **`R_min = 10` is derived in code, not chosen.**
+  Estimating a `q`-quantile needs at least `⌈1/(1−q)⌉` observations in the read cell, so for any
+  `q ≥ 0.90` a census-wide floor of 10 is strictly dominated by the fit's own requirement and costs
+  it nothing; the constant is written as an integer ceiling over the certified `q` edge so it
+  re-derives if that edge ever moves, guarded by a compile-time assertion that it can never drop
+  below the certified 10. `q` itself stays UNPINNED — it is the owner's (G-BB-1). **This does not
+  contradict the earlier refusal to suppress low-count cells.** That ruling forbade suppressing
+  INDIVIDUAL CELLS, because suppression eats exactly the tail the quantile fit reads; this
+  suppresses the WHOLE BLOCK when the census is not a population, where there is no tail to eat.
+  Two different objects, and the code says so where a reader would otherwise fuse them. The floor is
+  applied where the histogram leaves `core/credit`, and the raw snapshot is UNEXPORTED, so the rule
+  is enforced by the compiler; the operator's own process already holds `fetchedBytes` keyed by
+  `NodeID`, so a node-local read gives it nothing it does not have, and the floor is a publication
+  rule.
+  **What the floor does NOT close, stated rather than implied:** a polled series of cell deltas still
+  yields single-identity bin trajectories at ANY R — one identity crossing a bin edge shows as −1 at
+  one bin and +1 at another — because R governs attribution, not extraction. That is the open
+  residual **R-BB-DELTA-TRAJECTORY**, bounded by poll rate and by bin crossings per interval,
+  neither of which this instrument controls. **And it does NOT bound the anonymity SET — see the
+  re-certification entry below, which corrects this.** The block was NOT moved to its own endpoint: an
+  observer polls two endpoints as easily as one, so separation buys nothing and adds surface. No
+  consensus rule, conservation rule or standing calculation reads any of this. Source: RESEARCH
+  CERTIFICATION `R2.9a-Bbootstrap-DELTA-contamination-privacy-floor-clock-RESEARCH-CERTIFICATION-2026-09-04`
+  §2.1–§2.4, gate G-BB-11.
+
+- **R2.9a RE-CERT — the floor is RE-CLASSIFIED, and the rule it enforces is now a PROPERTY rather
+  than a field list.** A blind review and a re-certification found two defects in the entry above and
+  refuted the FORM of its gate. **The claim, corrected first, because it is the part that matters:
+  the floor bounds the published census COUNT. It does NOT bound the anonymity SET.** The census
+  population is the set of identities that fetched; an identity is a keypair, the serve path has no
+  admission control beyond `freeload`/`chunkDenied`, and `Register` mints an account for any unseen
+  id — so an observer that can FETCH lifts the floor for nine keypairs and one chunk each, about
+  576 KiB. Because `fetchedBytes` never decreases and accounts are never deleted, that purchase is
+  **one-time and permanent for the process's lifetime**. The floor is retained and re-labelled: it is
+  a **fit precondition** (below `R_min` no `q`-quantile at `q ≥ 0.9` is estimable at all) and a
+  defence against a reader that **cannot** fetch. It is not a privacy mitigation against a capable
+  adversary, and the Don't #3 question is not answered by it. `suppressed: true` is itself a
+  disclosure — a published upper bound of `R_min − 1` on the anonymity set. New open residuals:
+  **R-BB-CENSUS-SYBIL-PAD**, **R-BB-ANONYMITY-SET-SIZE**, **R-BB-SUPPRESSED-IS-A-DISCLOSURE**.
+  **The rule is now a property.** Partition every published field: an **instrument** field's value is
+  a function of the injected clock sources, their injection instants and the compiled axis constants
+  alone; a **census** field's value depends on the ledger's accounts or order. Below `R_min` the
+  block must be a function of the instrument fields alone, with exactly one named exemption,
+  `suppressed`. A list had failed three times in one pull request — the certification's three fields,
+  the build's five, and a source gate reading two literal paths — so `WithMinRequesterFloor` now
+  **constructs** the suppressed block out of the instrument class instead of **clearing** a list of
+  census fields. A field nobody has foreseen takes its zero value, which is a compile-time constant:
+  the default flips from published to withheld. **Two fields were defects and both are fixed.**
+  `ageExceedsUptime` is a threshold on `maxOccupiedAgeEdgeNanos` — the very field the floor withholds
+  — so at a census of one it published a lower bound on that identity's age; it is now census class
+  and ABSENT below the floor. `clockStepBack` fused two arms and is **split**: the name keeps the
+  instrument arm (the wall clock read earlier than the ledger's own start, which touches no account),
+  and the per-account clamp becomes `ageClampedToZero`, census class and ABSENT below the floor. An
+  operator loses nothing either way — `clockSuspect` and the raw signed `clockSkewNanos` report the
+  same corruption and read no account. **The "only seam" source gate is DELETED, not widened.** It
+  read two hard-coded paths while claiming a whole-tree property and a reviewer ablated past it in
+  five lines. Widening it to walk the tree would not have closed it either, because the consuming
+  seam is duck-typed on a method name and any such walk must exclude `core/credit`, which is exactly
+  where a second exported reader would live. The close is the type system: the raw snapshot is now
+  **unexported** and `Ledger.BBootstrapPublish` — which floors — is the only route out of the
+  package, so no future publisher can obtain an unfloored census under any method name in any file.
+  Scope stated rather than implied: that is a rule about the histogram OBJECT. `FetchedBytes` and
+  `ServedBytes` are pre-existing exported per-identity readers and are unaffected, and a future
+  export returning census-derived scalars of another type is the stated residual
+  **R-BB-EXPORT-SCALAR-BYPASS**. `BBootstrapRunPrecondition` needed no raw census — it already keys
+  on `Suppressed` — and gained an arm for the split flag. Sources: RESEARCH CERTIFICATION
+  `R2.9a-minR-floor-RECERT-sybil-pad-and-estimand-steerability-RESEARCH-CERTIFICATION-2026-09-05`
+  §2.5, §5.1, §5.3, §5.4, gates G-BB-11′ and BB-20; RULING `R2.9a-minR-floor-3337e8b-2026-09-05`
+  M-1, M-2, B-1.
+
 ### Testing
+- **R2.9a DELTA — four gates on the floor, the polling leak and the two refuted separations**
+  (`core/credit/r29a_minr_floor_test.go`, `core/node/r29a_minr_floor_test.go`,
+  `cmd/silt/r29a_minr_floor_test.go`). **BB-15, the floor**, at three tiers: the `core/credit`
+  method, the `core/node` seam and the JSON on the wire, each asserting that at `R_min − 1` no
+  census key survives and at exactly `R_min` all of them do (the rule is `≥ R_min`, not `> R_min`).
+  A companion recomputes `⌈1/(1−q)⌉` by a different method than the constant does, so the number and
+  its stated derivation cannot drift apart. **BB-16, the polling oracle**: one requester, six fetches, a snapshot between each, and
+  an extractor that reports every single-identity bin transition in the delta sequence. It carries
+  its own POSITIVE CONTROL, which the re-certification entry below moves onto the wire and makes
+  stronger: the same extractor over a PUBLISHED series whose census has been padded over the floor,
+  where it must find the trajectory (the same class of read the review measured as
+  80 → 84 → 86 → 88 → 89 → 90) — because a green result from an oracle that can never fire proves
+  nothing. **BB-18, the census is a SUPERSET**: three real
+  nodes on one simnet, where a peer fetching over the REPAIR path (`fetchStripeByColumn`, the
+  function `repair.go` and `repairclaim.go` both enter on) and a viewer fetching a plain chunk by id
+  land in the serving node's census in ONE CELL WITH COUNT 2. It asserts the contamination EXISTS
+  and is not a defect to fix: whether repairing peers belong in the estimand's population is an open
+  owner decision. **BB-19, the dead discriminator**: on a serving ledger `servedBytes > 0` holds for
+  exactly one account — the node's own — which is never in the census, so the proposed
+  repair-vs-viewer split partitions the census into everyone and nobody; pinned at the ledger
+  primitive and again on the real `MsgFetchChunk` serve path, where the fact that could regress is
+  the argument order at the two call sites. Six controlled reverts, each RED then restored: dropping
+  the floor call at the seam; rendering the counts despite suppression; withholding the grid while
+  still publishing `requesters` (the "closes nothing" defect); hand-picking `R_min`; lowering the
+  certified `q` edge (a compile error, by design); making the serve path skip coded-shard fetches;
+  and crediting the requester's `servedBytes`.
+
+- **R2.9a RE-CERT — BB-20, the equivalence gate at the wire, plus a package-scope export gate**
+  (`cmd/silt/r29a_bb20_equivalence_test.go`, `core/credit/r29a_export_route_test.go`). **BB-20 runs
+  G-BB-11′ as a property instead of checking a list**: for any two ledger states below the floor
+  sharing the same clock state, the published `bBootstrap` JSON must be BYTE-IDENTICAL. It asserts on
+  the bytes `/api/status` emits, not at an internal seam, because the seam is where the two previous
+  enumerations were checked and where both misses got through — so a census-derived field reaching
+  the wire by ANY route reddens it without anyone having named the field. Three groups, each replaying
+  one clock script across several below-floor censuses so clock state is equal BY CONSTRUCTION rather
+  than by accident: varying ages and byte totals, an 8-day forward step (which discriminates
+  `ageExceedsUptime`), and a backward step past a first-touch stamp (which discriminates
+  `clockStepBack`'s census arm). **It was RED on the reviewed build and it found BOTH defects on its
+  own** — the forward-step and backward-step groups failed, one per defect — and it is green after
+  the fix. It ships with a positive control that drives the same scripts ABOVE the floor and requires
+  the blocks to DIFFER, so byte-identity below the floor cannot be an artifact of a fixture that
+  varies nothing. **The export-route gate** parses every non-test `.go` file of `core/credit` by
+  reading the directory, and requires that the only exported functions returning a
+  `BBootstrapHistogram` are `BBootstrapPublish` and `WithMinRequesterFloor` (which can only floor). It
+  closes the one hole the compiler cannot: a second exported reader added inside that package, which
+  no name-based gate in another package could see. Its own teeth are pinned by running the predicate
+  over a synthetic bypass that must flag a value return and a pointer return while ignoring an
+  unexported method. Ablations, each RED then restored: copying `ageExceedsUptime` through the floor
+  again; copying `ageClampedToZero` through; un-splitting the two `clockStepBack` arms; adding the
+  reviewer's exact bypass export to a THIRD file inside `core/credit` (build clean, gate RED — the
+  case a tree walk could never see); and the decisive one for the FORM — **adding a census field
+  nobody had foreseen and publishing it unconditionally on the wire without touching the floor, which
+  stays GREEN under the construction and goes RED the moment the floor is reverted to clearing a
+  list.** BB-16's positive control moved onto the wire in the process: the raw census no longer leaves
+  `core/credit`, so the control is now the SAME published path with the census padded over the floor
+  by nine identities — which is the review's own measured refutation, encoded as a permanent gate.
+
 - **G-FP2-0 — the D-FP2-SCOPE pin: the credit ledger's ephemerality is now a TESTED posture, not an
   accident** (`core/credit/gfp20_scope_close_test.go`). The owner ratified FP-2 closed by scope on
   2026-09-04, which re-arms FP-1, FP-2 and R-F8-RESTART-REWIND automatically on the first of three
