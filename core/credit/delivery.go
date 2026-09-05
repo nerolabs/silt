@@ -102,6 +102,16 @@ const (
 const maxPaidSerial = max(maxPaidSerialFloor,
 	int(paidSerialWindow)*paidSerialEpochBlocks*maxServeTrackedPerBlock)
 
+// MaxPaidSerial and PaidSerialWindow are exported READ-ONLY for the R2.12 start-up
+// assertion in cmd/silt: `capacity × (grant/fee) × (W+1) ≤ MaxPaidSerial/4` ties the
+// faucet's burst, the grant, the fee and the guard cap — four constants in three packages
+// re-tuned by three different processes — so raising any one of them past the guard's
+// cliff refuses to start instead of silently opening a hole (economist §2.3).
+const (
+	MaxPaidSerial    = maxPaidSerial
+	PaidSerialWindow = paidSerialWindow
+)
+
 // paidSerialEntry is one guarded serial: the server that collected its single
 // conserved payout, and the epoch whose issuer key signed the token. The epoch is the
 // EXPIRY key — the only thing eviction is allowed to act on. See credit.go's

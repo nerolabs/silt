@@ -102,6 +102,9 @@ func (l *Ledger) FundEscrow(root ports.Hash, funder ports.NodeID, amount int64) 
 		return nil
 	}
 	a := l.acct(funder)
+	if l.faucet != nil {
+		l.applyGrant(a) // R2.12: FundEscrow is the third SPEND GATE
+	}
 	if a.balance < amount {
 		return ports.ErrInsufficientCredit
 	}

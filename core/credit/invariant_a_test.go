@@ -57,8 +57,15 @@ var standingClassification = map[string]standingClass{
 
 	// Standing-neutral: balance economy, publishing, and observability. None
 	// touch bondedBytes, so none can move Reputation upward.
-	"Register":      neutral,
-	"RecordServe":   neutral, // self-reported serving funds BALANCE, never standing
+	"Register":    neutral,
+	"RecordServe": neutral, // self-reported serving funds BALANCE, never standing
+	// R2.12 — the faucet rate limit. All three move or read BALANCE only: SetFaucet
+	// configures the bucket, GrantOwner applies the node's own starter grant, FaucetStats is
+	// telemetry. The grant itself was always balance (Register minted it); R2.12 only meters
+	// WHEN it lands. Standing is bond-only (Invariant A) in both builds and both postures.
+	"SetFaucet":     neutral,
+	"GrantOwner":    neutral,
+	"FaucetStats":   neutral,
 	"ChargePublish": neutral,
 	"CanPublish":    neutral,
 	"Balance":       neutral,
