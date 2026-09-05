@@ -138,10 +138,11 @@ carries the argument and the sources. Two are LIVE BREAKS and come first.
     under the `bbootstrap` tag; (ii) ✅ BUILT 2026-09-05 (branch `builder/r2.9a-g12-reader-is-operator`) — startup refusal of `-ui <routable>
     -bbootstrap` AND of a non-owner-only token file; the block served only to the `Authorization`-header token,
     `bBootstrapWithheld` marker otherwise; ONE composition point `readerView`; mechanism ruled by the blind PE
-    (`RULING-R2.9a-G-BB-12-design-2026-09-05.md`, PROCEED-WITH-CHANGES, eight changes folded in); (iii) ✅ BUILT 2026-09-05 (branch `builder/r2.9a-privacy-flag`) — `-privacy on|off`, WITHHELD BY DEFAULT IN
-    EVERY BUILD (no beta/release flip; PE option E — this changes the ratified beta default and is the OWNER's to
-    confirm, `D-UI-PRIVACY-FLAG` build note), `countersWithheld` / `linksWithheld` markers, one composition
-    point over three documents, `render.js` + node-run page gate, `release.yml` artifact assertion; (iv) RESEARCHER — ⚠ GATED 2026-09-05: METHOD CERTIFIED, G-BB-17 LIFTED, **VALUE 32 GiB REFUTED** — the
+    (`RULING-R2.9a-G-BB-12-design-2026-09-05.md`, PROCEED-WITH-CHANGES, eight changes folded in); (iii) ✅ BUILT + MERGED 2026-09-05 (PR #744) — `-privacy on|off`, WITHHELD BY DEFAULT IN EVERY BUILD (no
+    beta/release flip; PE option E; the changed beta default RATIFIED by the owner the same day: "Agree with the
+    privacy change"), `countersWithheld` / `linksWithheld` markers, one composition
+    point over three documents, `render.js` + node-run page gate, `release.yml` artifact assertion; (iv) ✅ RATIFIED 2026-09-05 — **`grant/r` = 64 GiB** (owner: "Ratify 64GiB"; G-BB-31 CLOSED; G-BB-30 which constant
+    moves and G-BB-32 stay open, see `D-R2.9a-RUN-CALLS`). Path there: the Researcher's GATED verdict — METHOD CERTIFIED, G-BB-17 LIFTED, **VALUE 32 GiB REFUTED** — the
     whole-object parity fetch (`core/node/file.go:750-760`) makes the per-server draw `S_max·(N/K)` = 44.7 GiB,
     so the floor is `grant/r ≥ S_max·(N/K)/F_min`; **OWNER CALL RE-OPENED (G-BB-31): re-ratify ≥ 44.7 GiB,
     Researcher's input 64 GiB**; G-BB-30 (which constant moves, `g` or `λ` — a rescale decides nothing) and
@@ -224,9 +225,9 @@ carries the argument and the sources. Two are LIVE BREAKS and come first.
       without a token** (`cmd/silt/ui.go` `apiLibrary`, the `link` field) under the #89
       read-only-localhost ergonomics. A capability, not a counter; pre-existing; outside R2.9a.
       Named so the owner decides whether the read-only exemption should cover it.
-    - **RATIFIED 2026-09-05 as 32 GiB — then REFUTED the same day by the Researcher (GATED: method certified, value
-      too low by the parity draw, floor 44.7 GiB); OWNER RE-RATIFICATION OWED (G-BB-31, input 64 GiB). Original
-      statement kept below.** The provisional was `λ = 1` ⇒
+    - **RATIFIED 2026-09-05 as 32 GiB — REFUTED the same day by the Researcher (method certified, value too low by
+      the parity draw, floor 44.7 GiB) — RE-RATIFIED the same day at 64 GiB (owner: "Ratify 64GiB"; G-BB-31 closed).
+      Original statement kept below.** The provisional was `λ = 1` ⇒
       `grant/r = 500,000 bytes = 488 KiB`, which is 134× below one 64 MiB production chunk — the
       stated production floor in the `core/pipeline/pipeline.go` comment, not an enforced value
       (the code constant `DefaultChunkSize` is 64 KiB for the sim). Geometry alone refutes it
