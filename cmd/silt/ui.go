@@ -75,6 +75,14 @@ type uiServer struct {
 	// (bbootstrap_off.go) and this hook has no possible target.
 	statusExtra func(*statusExtras)
 
+	// privacy is the -privacy process flag (D-UI-PRIVACY-FLAG, owner-ratified 2026-09-05):
+	// true (the compiled default, "on") withholds the node-wide serve counters and the
+	// library link keys from a reader that has not authenticated; false ("off") publishes
+	// them to any reader the guard admits, and every response then carries privacy.mode
+	// "off" so the pages can label the node as publishing pre-release information. See
+	// readerView for the clauses and the predicate rule.
+	privacy bool
+
 	// The /api/status snapshot cache (R2.9a, G-BB-26). Guarded by its own mutex, not
 	// by the event loop: the whole point is that a request that hits a fresh cache
 	// never reaches the loop at all.
@@ -486,20 +494,40 @@ type chainInfo struct {
 // statusInfo is the GET /api/status document. It is a NAMED type because it is cached:
 // see statusSnapshotInterval for why, and computeStatus/apiStatus for how.
 type statusInfo struct {
-	ID           string           `json:"id"`
-	Peer         string           `json:"peer"`
-	UptimeSec    int64            `json:"uptimeSec"`
-	CapUsed      int64            `json:"capUsed"`
-	CapTotal     int64            `json:"capTotal"`
-	Chunks       int              `json:"chunks"`
-	Peers        int              `json:"peers"`
-	Stats        node.Stats       `json:"stats"`
+	ID        string `json:"id"`
+	Peer      string `json:"peer"`
+	UptimeSec int64  `json:"uptimeSec"`
+	CapUsed   int64  `json:"capUsed"`
+	CapTotal  int64  `json:"capTotal"`
+	Chunks    int    `json:"chunks"`
+	Peers     int    `json:"peers"`
+	// Stats is the WHOLE node.Stats block, or absent with countersWithheld when the
+	// privacy clause fires for an unauthenticated reader. The whole block, on purpose,
+	// and this over-withholds relative to D-UI-PRIVACY-FLAG's letter ("stats.bytesServed"):
+	// node.Stats carries no JSON tags, so every counter is public by its Go name, and on a
+	// one-root node ChunksServed × chunk size reconstructs BytesServed to within one chunk,
+	// while Repairs / ShardsRebuilt / Dispersals are per-object activity signals of the
+	// same root. Withholding one leaf and publishing its reconstruction closes nothing
+	// (blind PE design ruling RULING-UI-PRIVACY-FLAG-design-2026-09-05 S6). What the
+	// withheld reader loses that is NOT a serve signal — QueriesSent, Timeouts, Probes,
+	// RepairFailures, BlocksCommitted — has no consumer on any page.
+	Stats        *node.Stats      `json:"stats,omitempty"`
 	Network      node.NetEstimate `json:"network"`
 	Validator    bool             `json:"validator"`
 	Reachability string           `json:"reachability"`
 	Chain        *chainInfo       `json:"chain,omitempty"`
 	Durability   *durabilityInfo  `json:"durability,omitempty"`
 	AddressCap   addressCapInfo   `json:"addressCap"` // R4.3b series A/B/E (shadow-run telemetry)
+	// CountersWithheld is the privacy clause's marker on THIS document. It covers exactly
+	// two absences: the whole `stats` block above and `durability.balance`. A marker that
+	// named less than it covers would be a false fact in the other direction, so the set
+	// is enumerated here and the name is the set (S7).
+	CountersWithheld bool `json:"countersWithheld,omitempty"`
+	// Privacy reports the -privacy posture on every response, tokened or not: mode is the
+	// flag in force, default is the compiled default. A page renders the pre-release
+	// banner when mode is "off"; a fleet observer can tell "withheld by policy" from
+	// "withheld because you are not the operator" without guessing.
+	Privacy privacyInfo `json:"privacy"`
 	// statusExtras is EMPTY in a default build and contributes no key at all
 	// (measured: the emitted JSON is byte-identical to a build with no such field).
 	// Under the `bbootstrap` build tag it declares one optional pointer, `bBootstrap`,
@@ -555,6 +583,34 @@ func (s *uiServer) apiStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, out)
 }
 
+// ---- THE COMPOSITION POINT for every serve-time withhold on the UI's read surface ----
+//
+// Three documents, three view functions, ONE readerAuth: readerView (GET /api/status),
+// economyView (GET /api/economy/self) and libraryView (GET /api/library) are declared
+// together here and every handler routes its FULL document through its view function.
+// A withhold is a clause inside one of these three; never a rewrite inside a handler.
+//
+// THE MARKER CONVENTION. A withheld field is ABSENT, never a zero, and every absence class
+// has a sibling marker whose name is the set it covers: detailWithheld (the F2 per-object
+// detail), countersWithheld (the node-wide serve counters — enumerated on each field),
+// linksWithheld (the library link keys), bBootstrapWithheld (the R2.9a census). Absent and
+// empty stay different objects on the wire.
+//
+// THE PREDICATE RULE, so nobody re-derives it: a NODE-WIDE AGGREGATE takes readerAuth.token
+// (any accepted route — header, query or form; the same predicate as the finer per-object
+// detail beside it); a PER-REQUEST CAPABILITY or PER-IDENTITY RECORD takes
+// readerAuth.tokenHeader (Authorization header only — a URL secret lands in logs, and a
+// capability leaked once is leaked for good). That is why the census block and the library
+// link keys key on tokenHeader while the counters key on token.
+//
+// THE PRIVACY CLAUSE (-privacy, D-UI-PRIVACY-FLAG). With the flag on (the compiled default)
+// an unauthenticated reader is denied the node-wide counters and the link keys; the
+// operator's own tokened reads are unchanged; -privacy=off publishes them and labels the
+// node. Every privacy withhold is an ALLOW-LIST — a fresh struct naming what it KEEPS — so
+// a field added to a document later ships withheld until someone decides otherwise. The
+// opposite spelling, nil-ing named fields, is how the pooled selfFunding figures once
+// shipped open (see withheldEconomySelf).
+
 // readerAuth is what the node can establish about the caller of one request. It is
 // computed once per request and handed to every withhold, so no clause re-derives it.
 type readerAuth struct {
@@ -570,6 +626,15 @@ type readerAuth struct {
 	// discipline of Tor's control port and Bitcoin Core's .cookie). The dashboard already
 	// sends the header (cmd/silt/ui/app.js), so nothing the operator uses loses access.
 	tokenHeader bool
+	// privacy: the -privacy process flag is ON for this node. Not a fact about the
+	// caller, but every privacy clause needs it beside the two token facts, and reading
+	// it here keeps the clauses free of server state.
+	privacy bool
+}
+
+// readerAuthFor computes the reader's authorisation state once for a request.
+func (s *uiServer) readerAuthFor(r *http.Request) readerAuth {
+	return readerAuth{token: s.validToken(r), tokenHeader: s.validTokenHeader(r), privacy: s.privacy}
 }
 
 // readerView is THE ONE COMPOSITION POINT for every serve-time withhold on GET /api/status.
@@ -588,12 +653,119 @@ type readerAuth struct {
 // cleared *doc.X in place would withhold it from the operator's next read too.
 func (s *uiServer) readerView(doc *statusInfo, r *http.Request) *statusInfo {
 	out := *doc
-	auth := readerAuth{token: s.validToken(r), tokenHeader: s.validTokenHeader(r)}
+	auth := s.readerAuthFor(r)
 	if !auth.token {
 		out.Durability = withheldDurability(doc.Durability) // red-team F2
 	}
+	if auth.privacy && !auth.token {
+		// D-UI-PRIVACY-FLAG: the node-wide serve counters. Assign, never mutate — the
+		// Stats pointer and the Balance pointer are shared with the cached document.
+		out.Stats = nil
+		out.Durability = privacyWithheldDurability(out.Durability)
+		out.CountersWithheld = true
+	}
 	withholdBBootstrap(&out.statusExtras, auth.tokenHeader) // G-BB-12′; a no-op in a default build
 	return &out
+}
+
+// privacyWithheldDurability is the privacy clause's ALLOW-LIST for the durability block:
+// it keeps bountyOn and the F2 marker and nothing else. No balance (covered by
+// countersWithheld), and the per-object detail is already gone because the clause only
+// fires for a reader without a token.
+func privacyWithheldDurability(di *durabilityInfo) *durabilityInfo {
+	if di == nil {
+		return nil
+	}
+	return &durabilityInfo{BountyOn: di.BountyOn, DetailWithheld: di.DetailWithheld}
+}
+
+// economyView is the composition point for GET /api/economy/self. Two ALLOW-LISTS compose:
+// withheldEconomySelf for a reader without a token (F2), then privacyWithheldEconomySelf
+// when the privacy clause fires. Each returns a fresh struct naming what it keeps.
+func (s *uiServer) economyView(full economySelf, auth readerAuth) economySelf {
+	out := full
+	if !auth.token {
+		out = withheldEconomySelf(out)
+	}
+	if auth.privacy && !auth.token {
+		out = privacyWithheldEconomySelf(out)
+	}
+	return out
+}
+
+// privacyWithheldEconomySelf is the privacy clause's ALLOW-LIST for the self document: the
+// tier label, the two markers and the provenance stamps. revenue, margin and wash are all
+// covered by countersWithheld — wash is a RATIO of the two withheld byte counts and would
+// leak their quotient, so it goes with them (S7: the marker names the whole covered set).
+func privacyWithheldEconomySelf(full economySelf) economySelf {
+	return economySelf{
+		Tier:                full.Tier,
+		DetailWithheld:      full.DetailWithheld,
+		CountersWithheld:    true,
+		SnapshotTakenAtUnix: full.SnapshotTakenAtUnix,
+		SnapshotAgeSec:      full.SnapshotAgeSec,
+		SnapshotIntervalSec: full.SnapshotIntervalSec,
+	}
+}
+
+// libraryView is the composition point for GET /api/library. The link is a permanent
+// retrieve-and-decrypt capability (core/link), so it takes the HEADER predicate: with the
+// privacy flag on, a reader that did not present the token in the Authorization header
+// gets every row rebuilt from the allow-list below — root, label, added, onChain,
+// fileSize — with linksWithheld on the document. A row's Link is a string that can never
+// legitimately be empty (link.Parse("") fails), so omitempty on it is a true absence.
+func (s *uiServer) libraryView(doc libraryDoc, auth readerAuth) libraryDoc {
+	if !(auth.privacy && !auth.tokenHeader) {
+		return doc
+	}
+	out := libraryDoc{NetworkFiles: doc.NetworkFiles, OpaqueToYou: doc.OpaqueToYou, LinksWithheld: true}
+	out.Library = make([]libraryRow, 0, len(doc.Library))
+	for _, r := range doc.Library {
+		out.Library = append(out.Library, libraryRow{
+			Root: r.Root, Label: r.Label, Added: r.Added, OnChain: r.OnChain, FileSize: r.FileSize,
+		})
+	}
+	return out
+}
+
+// privacyInfo is the -privacy posture published on every GET /api/status response.
+type privacyInfo struct {
+	Mode    string `json:"mode"`    // "on" | "off" — the flag in force on this node
+	Default string `json:"default"` // the compiled default, so a reader can tell a chosen posture from an inherited one
+}
+
+// privacyDefaultWithheld is the compiled default of -privacy: WITHHELD in every build. There
+// is no beta/release flip in code (blind PE design ruling RULING-UI-PRIVACY-FLAG-design-
+// 2026-09-05 S4, option (E)): a default that a human must remember to flip at release is a
+// default that will one day ship wrong, and the owner's guarantee sentence — "this data is
+// not exposed in production without the explicit -privacy=off flag" — is honoured
+// literally by having no flip. The flixz beta nodes run -privacy=off and are labelled.
+// (The owner's other sentence, "default ON through the BETA", is the one this does not
+// honour; the change to that ratified default is flagged for the owner in
+// docs/decisions.md D-UI-PRIVACY-FLAG's appended note.) .github/workflows/release.yml
+// asserts this default on the built artifact.
+const privacyDefaultWithheld = true
+
+func privacyModeName(withheld bool) string {
+	if withheld {
+		return "on"
+	}
+	return "off"
+}
+
+// parsePrivacyFlag turns the -privacy string into the posture, refusing anything but the
+// two accepted values. A bool flag would reject the owner's literal syntax -privacy=off at
+// parse time, and a silent fallback on a typo would be either a silent-loss shape
+// (-privacy=false meaning "on") or a privacy failure (-privacy=0 meaning "off"), so the
+// only accepted spellings are "on" and "off" and everything else refuses to start.
+func parsePrivacyFlag(v string) (withheld bool, err error) {
+	switch v {
+	case "on":
+		return true, nil
+	case "off":
+		return false, nil
+	}
+	return false, fmt.Errorf("-privacy %q refused: accepted values are on (withhold node-wide serve counters and library link keys from unauthenticated readers; the default) and off (publish them to any reader the guard admits, labelled pre-release)", v)
 }
 
 // validTokenHeader is validToken restricted to the Authorization header: no query
@@ -645,6 +817,7 @@ func (s *uiServer) computeStatus(now time.Time) *statusInfo {
 	out.Peers = s.peerCount()
 	out.SnapshotTakenAtUnix = now.Unix()
 	out.SnapshotIntervalSec = int64(statusSnapshotInterval / time.Second)
+	out.Privacy = privacyInfo{Mode: privacyModeName(s.privacy), Default: privacyModeName(privacyDefaultWithheld)}
 	s.onLoop(func() {
 		out.Reachability = s.nd.Reachability().String()
 		if s.capRep != nil {
@@ -653,7 +826,8 @@ func (s *uiServer) computeStatus(now time.Time) *statusInfo {
 		if ids, err := s.nd.Store().List(context.Background()); err == nil {
 			out.Chunks = len(ids)
 		}
-		out.Stats = s.nd.Stats
+		st := s.nd.Stats
+		out.Stats = &st
 		out.Network = s.nd.EstimateNetwork()
 		if ch := s.nd.Chain(); ch != nil {
 			out.Chain = &chainInfo{Height: ch.Len(), Entries: len(ch.AllEntries())}
@@ -700,7 +874,9 @@ func (s *uiServer) computeStatus(now time.Time) *statusInfo {
 // root. But "names no root" is a property of the SURFACE, not of a field: GET /api/roots
 // publishes every held root unauthenticated, so on a node holding ONE root every
 // node-wide counter — balance here, stats.BytesServed above, revenue.* on the sibling
-// endpoint — is that root's counter. That is R-BB-SIBLING-AGGREGATES, open, now bounded
+// endpoint — is that root's counter. That was R-BB-SIBLING-AGGREGATES; since D-UI-PRIVACY-FLAG
+// those counters are withheld from unauthenticated readers by default (readerView's privacy
+// clause) and published only under -privacy=off, labelled. Under -privacy=off it is bounded
 // to floor(uptime/T) observations by the shared snapshot and NOT closed by this gate.
 // Closing it means gating stats.BytesServed, which the cross-origin observatory reads
 // with no token by design; that trade is the owner's (docs/decisions.md,
@@ -724,8 +900,11 @@ func withheldDurability(di *durabilityInfo) *durabilityInfo {
 // reads very differently from one that is live. Standing is never in this block
 // (Invariant A: credits fund durability, never consensus weight).
 type durabilityInfo struct {
-	BountyOn bool  `json:"bountyOn"`
-	Balance  int64 `json:"balance"`
+	BountyOn bool `json:"bountyOn"`
+	// Balance is a POINTER so the privacy clause can omit it: an int64 with omitempty
+	// would omit a legitimate zero balance, which is a false absence (S7). Present, it
+	// may legitimately be 0.
+	Balance *int64 `json:"balance,omitempty"`
 	// Objects is TOKEN-GATED and ABSENT without one (red-team F2; see
 	// withheldDurability for the mechanism and the reasoning). detailWithheld tells the
 	// two absences apart: `objects: []` means this node caretakes nothing,
@@ -759,9 +938,10 @@ func (s *uiServer) durabilitySnapshot(uptime time.Duration) *durabilityInfo {
 	cared := s.nd.CaredDurability()
 	di := &durabilityInfo{
 		BountyOn: s.nd.RepairBountyEnabled(),
-		Balance:  s.nd.CreditBalance(),
+		Balance:  new(int64),
 		Objects:  make([]objDurability, 0, len(cared)),
 	}
+	*di.Balance = s.nd.CreditBalance()
 	for _, rd := range cared {
 		hs := int64(-1)
 		finite := false
@@ -888,7 +1068,7 @@ func (s *uiServer) apiEconomySelf(w http.ResponseWriter, r *http.Request) {
 
 	out := economySelf{
 		Tier: "local-exact",
-		Revenue: economyRevenue{
+		Revenue: &economyRevenue{
 			Balance:      self.Balance,
 			ServedBytes:  self.ServedBytes,
 			FetchedBytes: self.FetchedBytes,
@@ -900,7 +1080,7 @@ func (s *uiServer) apiEconomySelf(w http.ResponseWriter, r *http.Request) {
 			// it earned serving — that is real and honestly shown.
 			ServeRevenue: self.Balance - self.BountyEarned,
 		},
-		Margin: economyMargin{
+		Margin: &economyMargin{
 			CostGiven: costGiven,
 			Cost:      cost,
 			Margin:    self.Balance - cost,
@@ -912,7 +1092,7 @@ func (s *uiServer) apiEconomySelf(w http.ResponseWriter, r *http.Request) {
 			Net:       poolFunded - poolPaid,
 			BountyOn:  di.BountyOn,
 		},
-		Wash: economyWash{
+		Wash: &economyWash{
 			Symmetry:             symmetry,
 			BalanceNonPositive:   self.Balance <= 0,
 			Suspected:            washSuspected,
@@ -924,9 +1104,7 @@ func (s *uiServer) apiEconomySelf(w http.ResponseWriter, r *http.Request) {
 		SnapshotAgeSec:      int64(now.Sub(takenAt).Seconds()),
 		SnapshotIntervalSec: doc.SnapshotIntervalSec,
 	}
-	if !s.validToken(r) {
-		out = withheldEconomySelf(out)
-	}
+	out = s.economyView(out, s.readerAuthFor(r))
 	writeJSON(w, &out)
 }
 
@@ -945,7 +1123,8 @@ func (s *uiServer) apiEconomySelf(w http.ResponseWriter, r *http.Request) {
 // What stays open: revenue (the node-wide balance and byte totals), margin and wash
 // (derived from them), the provenance stamps. These are the same node-wide aggregates
 // /api/status publishes and the observatory reads; on a node holding one root they are
-// that root's counters (R-BB-SIBLING-AGGREGATES, open — see withheldDurability).
+// that root's counters (R-BB-SIBLING-AGGREGATES — closed by default since D-UI-PRIVACY-FLAG:
+// withheld from unauthenticated readers unless the operator runs -privacy=off; see readerView).
 func withheldEconomySelf(full economySelf) economySelf {
 	return economySelf{
 		Tier:                full.Tier,
@@ -972,9 +1151,13 @@ const washSymmetryThreshold = 0.9
 // SelfFunding (Panel 3 is-durability-self-funding), Wash (Panel 4 wash self-check),
 // and Objects (Panel 1 my-solvency, per cared object with its cliff flag).
 type economySelf struct {
-	Tier    string         `json:"tier"` // "local-exact" — every field here is read from this node's own ledger
-	Revenue economyRevenue `json:"revenue"`
-	Margin  economyMargin  `json:"margin"`
+	Tier string `json:"tier"` // "local-exact" — every field here is read from this node's own ledger
+	// Revenue, Margin and Wash are POINTERS so the privacy clause can omit them; present,
+	// they are always all three present. countersWithheld covers exactly these three
+	// (wash is a ratio of the two withheld byte totals).
+	Revenue          *economyRevenue `json:"revenue,omitempty"`
+	Margin           *economyMargin  `json:"margin,omitempty"`
+	CountersWithheld bool            `json:"countersWithheld,omitempty"`
 	// SelfFunding and Objects are TOKEN-GATED and ABSENT without one (red-team F2; see
 	// withheldEconomySelf). This endpoint republishes the same per-root skimIn/bountyOut
 	// that /api/status withholds, and the pooled selfFunding sum equals the per-object
@@ -983,7 +1166,7 @@ type economySelf struct {
 	// `objects: []` with a selfFunding block means this node caretakes nothing;
 	// `detailWithheld: true` with neither key means the caller did not authenticate.
 	SelfFunding    *economySelfFunding `json:"selfFunding,omitempty"`
-	Wash           economyWash         `json:"wash"`
+	Wash           *economyWash        `json:"wash,omitempty"`
 	Objects        []economyObject     `json:"objects,omitempty"`
 	DetailWithheld bool                `json:"detailWithheld"`
 	// The provenance of the snapshot this document was served from — the same stamps,
@@ -1377,16 +1560,29 @@ func (s *uiServer) apiFetch(w http.ResponseWriter, r *http.Request) {
 // each annotated with what the network/chain currently knows about that
 // root — so the library distinguishes "yours and available" from "yours
 // but the network seems to have lost it".
+// libraryRow is one saved link on GET /api/library. Link is the full silt:v1: handle —
+// the retrieve-and-decrypt capability — and is absent with libraryDoc.LinksWithheld when
+// the privacy clause fires (libraryView).
+type libraryRow struct {
+	Root     string `json:"root"`
+	Link     string `json:"link,omitempty"`
+	Label    string `json:"label"`
+	Added    int64  `json:"added"`
+	OnChain  bool   `json:"onChain"`
+	FileSize int64  `json:"fileSize"`
+}
+
+// libraryDoc is the GET /api/library document. Typed, so the view function's allow-list
+// discipline has a type to hold it to (an untyped map cannot carry one).
+type libraryDoc struct {
+	Library       []libraryRow `json:"library"`
+	NetworkFiles  int          `json:"networkFiles"`
+	OpaqueToYou   int          `json:"opaqueToYou"`
+	LinksWithheld bool         `json:"linksWithheld,omitempty"`
+}
+
 func (s *uiServer) apiLibrary(w http.ResponseWriter, r *http.Request) {
-	type row struct {
-		Root     string `json:"root"`
-		Link     string `json:"link"`
-		Label    string `json:"label"`
-		Added    int64  `json:"added"`
-		OnChain  bool   `json:"onChain"`
-		FileSize int64  `json:"fileSize"`
-	}
-	var rows []row
+	rows := []libraryRow{}
 	items := []linkbook.Item{}
 	if s.links != nil {
 		items = s.links.Items()
@@ -1411,7 +1607,7 @@ func (s *uiServer) apiLibrary(w http.ResponseWriter, r *http.Request) {
 		rootHex := h.Root.String()
 		held[rootHex] = true
 		e, on := index[rootHex]
-		rows = append(rows, row{
+		rows = append(rows, libraryRow{
 			Root: rootHex, Link: it.Link, Label: it.Label, Added: it.Added,
 			OnChain: on, FileSize: e.FileSize,
 		})
@@ -1423,11 +1619,8 @@ func (s *uiServer) apiLibrary(w http.ResponseWriter, r *http.Request) {
 			opaque++
 		}
 	}
-	writeJSON(w, map[string]any{
-		"library":      rows,
-		"networkFiles": networkTotal,
-		"opaqueToYou":  opaque,
-	})
+	doc := s.libraryView(libraryDoc{Library: rows, NetworkFiles: networkTotal, OpaqueToYou: opaque}, s.readerAuthFor(r))
+	writeJSON(w, &doc)
 }
 
 func (s *uiServer) apiLibraryAdd(w http.ResponseWriter, r *http.Request) {

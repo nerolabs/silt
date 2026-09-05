@@ -25,6 +25,31 @@ jobs:
         run: go vet ./... && go test ./...
       - name: Build binaries (mac/windows/linux)
         run: ./build.sh "${GITHUB_REF_NAME}"
+      # THE COMPILED PRIVACY DEFAULT IS ASSERTED ON THE ARTIFACT, not on the source
+      # (D-UI-PRIVACY-FLAG; blind PE ruling RULING-UI-PRIVACY-FLAG-design-2026-09-05 S4).
+      # A released binary run with no -privacy flag must withhold the node-wide serve
+      # counters from an unauthenticated reader. This is what makes shipping the wrong
+      # default a FAILED RELEASE rather than a shipped one.
+      - name: The released binary withholds serve counters by default
+        run: |
+          bin="dist/silt-${GITHUB_REF_NAME}-linux-amd64"
+          "$bin" daemon -listen 127.0.0.1:0 -store /tmp/privacy-assert -ui 127.0.0.1:18081 > /tmp/privacy-assert.log 2>&1 &
+          pid=$!
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:18081/api/status > /tmp/status.json && break; sleep 1; done
+          kill "$pid" || true
+          python3 - <<'PY'
+          import json, sys
+          d = json.load(open("/tmp/status.json"))
+          bad = []
+          if d.get("privacy", {}).get("default") != "on": bad.append("privacy.default != on")
+          if d.get("privacy", {}).get("mode") != "on": bad.append("privacy.mode != on")
+          if "stats" in d: bad.append("stats present to an unauthenticated reader")
+          if d.get("countersWithheld") is not True: bad.append("countersWithheld marker missing")
+          if "balance" in d.get("durability", {}): bad.append("durability.balance present")
+          if bad:
+              print("::error::released binary's privacy default is wrong:", "; ".join(bad)); print(json.dumps(d, indent=1)[:2000]); sys.exit(1)
+          print("OK — released binary withholds serve counters by default")
+          PY
       - name: Extract release notes
         run: python3 scripts/release_notes.py "${GITHUB_REF_NAME}" > RELEASE_NOTES.md
       - name: Publish GitHub Release

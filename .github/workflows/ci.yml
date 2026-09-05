@@ -57,7 +57,7 @@ jobs:
       # same commit.
       - name: the untagged R2.9a gates really ran (not renamed away, not skipped)
         run: |
-          out=$(go test -short -count=1 -v ./core/credit/ ./core/node/ ./cmd/silt/ -run 'R29a' 2>&1)
+          out=$(go test -short -count=1 -v ./core/credit/ ./core/node/ ./cmd/silt/ -run 'R29a|Privacy' 2>&1)
           echo "$out"
           for tst in \
             TestR29aDefaultBuildStampsNoFirstTouchOnRegister \
@@ -77,7 +77,18 @@ jobs:
             TestR29aF2EconomySelfWithholdsPerObjectDetailWithoutAToken \
             TestR29aF2NoUnauthenticatedResponseOnTheWholeSurfaceCarriesTheWithheldCounter \
             TestR29aOneCacheTwoViewsAnAnonymousReadDoesNotStripTheOperatorsView \
-            TestR29aEconomySelfIsServedFromTheStatusSnapshot ; do
+            TestR29aEconomySelfIsServedFromTheStatusSnapshot \
+            TestPrivacyStatusWithholdsCountersFromUnauthenticatedReaders \
+            TestPrivacyZeroBalanceIsPublishedNotOmitted \
+            TestPrivacyEconomySelfIsAnAllowList \
+            TestPrivacyEconomySelfViewIsSpelledAsAnAllowList \
+            TestPrivacyLibraryLinkTakesTheHeaderPredicate \
+            TestPrivacyFlagRefusesAnythingButOnOrOff \
+            TestPrivacyBothSubcommandsParseTheFlagBeforeServing \
+            TestPrivacyAllThreeHandlersRouteThroughTheirView \
+            TestPrivacyPagesRenderWithheldDocumentsWithoutThrowing \
+            TestPrivacyWithheldDocumentsCarryOnlyAllowedKeys \
+            TestPrivacyWithholdDoesNotPoisonTheSharedCache ; do
             echo "$out" | grep -q "^--- PASS: ${tst} " || {
               echo "::error::${tst} did not PASS in the DEFAULT build. Either it was renamed (fix this list), it was skipped, or the default build lost the gate."; exit 1; }
           done

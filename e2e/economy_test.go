@@ -101,7 +101,12 @@ func TestEconomyEndToEndOnLiveDaemon(t *testing.T) {
 		"-validator", "-quorum", "0", "-min-rep", "0",
 		"-economy", "-care-published",
 		"-capacity", "1G", "-mdns=false", "-id-seed", "1001",
-		"-ui", "127.0.0.1:0")
+		// -privacy=off: this test's F2 arm asserts the node-wide AGGREGATES stay open
+		// to an unauthenticated reader while the per-object detail is withheld. Since
+		// D-UI-PRIVACY-FLAG (2026-09-05) the compiled default withholds the aggregates
+		// too, so the F2 property is asserted in the published posture; the default
+		// posture has its own live-daemon gate, TestPrivacyDefaultWithholdsCountersOnLiveDaemon.
+		"-ui", "127.0.0.1:0", "-privacy=off")
 	ui := a.waitFor(t, reUI, 20*time.Second)
 	base, token := "http://"+ui[1], ui[2]
 
@@ -244,4 +249,69 @@ func getEconomySelfRaw(t *testing.T, base, token string) map[string]json.RawMess
 		t.Fatalf("decode economy/self: %v", err)
 	}
 	return out
+}
+
+// TestPrivacyDefaultWithholdsCountersOnLiveDaemon is D-UI-PRIVACY-FLAG at the e2e tier
+// (build-immutable #1): a real daemon started with NO -privacy flag withholds the whole
+// stats block and durability.balance from an unauthenticated reader — absent, with the
+// countersWithheld marker, never a zero — publishes privacy.mode "on", and serves the
+// operator's tokened read unchanged. The compiled default is asserted here on a live
+// process the way release.yml asserts it on the released artifact.
+func TestPrivacyDefaultWithholdsCountersOnLiveDaemon(t *testing.T) {
+	a := startDaemon(t, "P",
+		"-listen", "127.0.0.1:0", "-store", t.TempDir(),
+		"-capacity", "1G", "-mdns=false", "-id-seed", "1002",
+		"-ui", "127.0.0.1:0")
+	ui := a.waitFor(t, reUI, 20*time.Second)
+	base, token := "http://"+ui[1], ui[2]
+
+	get := func(tok string) map[string]json.RawMessage {
+		t.Helper()
+		req, err := http.NewRequest("GET", base+"/api/status", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tok != "" {
+			req.Header.Set("Authorization", "Bearer "+tok)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("GET /api/status: %v", err)
+		}
+		defer resp.Body.Close()
+		var top map[string]json.RawMessage
+		if err := json.NewDecoder(resp.Body).Decode(&top); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		return top
+	}
+	pub := get("")
+	if _, has := pub["stats"]; has {
+		t.Fatalf("default posture, untokened: stats published: %s", pub["stats"])
+	}
+	if string(pub["countersWithheld"]) != "true" {
+		t.Fatalf("default posture, untokened: countersWithheld marker missing")
+	}
+	var dur map[string]json.RawMessage
+	if err := json.Unmarshal(pub["durability"], &dur); err != nil {
+		t.Fatal(err)
+	}
+	if _, has := dur["balance"]; has {
+		t.Fatalf("default posture, untokened: durability.balance published: %s", pub["durability"])
+	}
+	var priv struct{ Mode, Default string }
+	if err := json.Unmarshal(pub["privacy"], &priv); err != nil || priv.Mode != "on" || priv.Default != "on" {
+		t.Fatalf("privacy block = %s (err %v), want mode on / default on", pub["privacy"], err)
+	}
+	op := get(token)
+	if _, has := op["stats"]; !has {
+		t.Fatalf("default posture, OPERATOR: stats absent — the tokened read must be unchanged")
+	}
+	if _, has := op["countersWithheld"]; has {
+		t.Fatalf("default posture, OPERATOR: marker on a full document")
+	}
+	json.Unmarshal(op["durability"], &dur)
+	if _, has := dur["balance"]; !has {
+		t.Fatalf("default posture, OPERATOR: balance absent")
+	}
 }

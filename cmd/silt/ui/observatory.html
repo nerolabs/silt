@@ -5,6 +5,7 @@
 <title>Silt — observatory</title>
 <link rel="stylesheet" href="style.css">
 <script src="app.js"></script>
+<script src="render.js"></script>
 </head>
 <body>
 <nav>
@@ -16,6 +17,7 @@
   <a href="observatory.html" class="active">Observatory</a>
 </nav>
 <main>
+  <div id="banner" class="banner" hidden></div>
   <h1>Network observatory</h1>
   <p class="dim" style="margin-bottom:0.8rem">
     Aggregates live state from the daemon UIs you list below (this one is
@@ -76,12 +78,18 @@ async function observe() {
   }));
   const live = results.filter(r => !r.dead);
 
-  // Totals
-  let capUsed = 0, capTotal = 0, served = 0, chunks = 0;
-  for (const r of live) {
-    capUsed += r.status.capUsed; capTotal += r.status.capTotal;
-    served += r.status.stats.BytesServed || 0; chunks += r.status.chunks;
-  }
+  // Totals. Serve counters go through render.js: a -privacy=on daemon publishes no
+  // stats block to this (untokened, cross-origin) reader, and a bare dereference here
+  // used to abort the whole render for every daemon in the list.
+  let capUsed = 0, capTotal = 0;
+  for (const r of live) { capUsed += r.status.capUsed || 0; capTotal += r.status.capTotal || 0; }
+  const tot = siltRender.observatoryTotals(live);
+  const served = tot.served, chunks = tot.chunks;
+  const withheldNote = tot.withheldCount ? ` · ${tot.withheldCount} daemon(s) withhold their counters (-privacy=on)` : "";
+  const own = live.find(r => r.u === location.origin);
+  const banner = document.getElementById("banner");
+  const bannerText = own ? siltRender.prereleaseBanner(own.status) : "";
+  banner.textContent = bannerText; banner.hidden = !bannerText;
   const now = Date.now();
   let rate = "";
   if (lastServed !== null && now > lastAt) {
@@ -97,7 +105,7 @@ async function observe() {
     <div class="card"><h2>Chunks hosted</h2><div class="big">${chunks}</div>
       <div class="sub">across observed daemons</div></div>
     <div class="card"><h2>Serving bandwidth</h2><div class="big">${rate || "—"}</div>
-      <div class="sub">${fmtB(served)} served all-time</div></div>`;
+      <div class="sub">${fmtB(served)} served all-time (published daemons only)${withheldNote}</div></div>`;
 
   // Per-daemon table
   document.querySelector("#daemons tbody").innerHTML = results.map(r => r.dead
@@ -106,7 +114,7 @@ async function observe() {
         <td>${r.status.validator ? '<span class="pill on">validator</span>' : '<span class="pill">storage</span>'}</td>
         <td>${r.status.capTotal ? fmtB(r.status.capUsed)+" / "+fmtB(r.status.capTotal) : "∞"}</td>
         <td>${r.status.chunks}</td>
-        <td>${fmtB(r.status.stats.BytesServed||0)}</td>
+        <td>${siltRender.servedCell(r.status)}</td>
         <td>${r.status.chain ? "h"+r.status.chain.height : "—"}</td></tr>`).join("");
 
   // Files: union of registries + shard spread across daemons

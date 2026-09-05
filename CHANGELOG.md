@@ -9,6 +9,23 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **`-privacy` on the UI server (D-UI-PRIVACY-FLAG, owner-ratified 2026-09-05; blind PE design review
+  `RULING-UI-PRIVACY-FLAG-design-2026-09-05.md` folded in).** `on` (the compiled default, every build): the
+  node-wide serve counters — the whole `stats` block and `durability.balance` on `GET /api/status`; `revenue`,
+  `margin` and `wash` on `GET /api/economy/self` — are withheld from a reader that presents no API token, ABSENT
+  with the sibling marker `countersWithheld: true`, never a zero; the library's `link` field (a permanent
+  retrieve-and-decrypt capability) is withheld from a reader that did not present the token in the
+  `Authorization` header, with `linksWithheld: true` (live on `silt client`, which holds the linkbook). The
+  operator's tokened reads are unchanged. `off`: publish them to any admitted reader, and the node is labelled
+  PRE-RELEASE on its dashboard and observatory and via `privacy.{mode,default}` on every status response. Any
+  other value refuses to start. Every withhold on the three documents composes in one place (`readerView`,
+  `economyView`, `libraryView`, one `readerAuth`), each privacy withhold an allow-list. The pages' render logic
+  moved to `ui/render.js` and a node-run gate proves a withheld document never aborts a render. `release.yml`
+  asserts the compiled default on the built linux artifact. **Compatibility:** an OLDER observatory page
+  pointed at a NEW `-privacy=on` daemon aborts its render (the old inline `stats` dereference) — upgrade the
+  observing daemon. Blind PE code review (MERGE-AFTER) folded in: the library page renders "link withheld" instead
+  of a get button with an undefined link; a bad `-privacy` value refuses even with no `-ui`; the pointer-sharing
+  hazard on the cached document is gated. Deliberation: `docs/thinking/2026-09-05-ui-privacy-flag.md`.
 - **R2.9a — G-BB-12′ / G-BB-13′ Part A: the `B_bootstrap` block is served to the OPERATOR and to nobody
   else (2026-09-05; owner-ratified "refuse at startup", `D-R2.9a-RUN-CALLS` item 4; mechanism ruled by
   the blind PE, `RULING-R2.9a-G-BB-12-design-2026-09-05.md`).** Two startup refusals in a tagged

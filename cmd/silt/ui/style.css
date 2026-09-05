@@ -61,3 +61,6 @@ input[type=text], select {
 .pill { display: inline-block; padding: 0.1rem 0.55rem; border-radius: 999px; font-size: 0.75rem; border: 1px solid var(--border); color: var(--dim); }
 .pill.on { color: var(--ok); border-color: var(--ok); }
 #msg { margin-top: 0.8rem; }
+
+/* PRE-RELEASE banner: a node running -privacy=off says so on its own pages (D-UI-PRIVACY-FLAG). */
+.banner { background: var(--warn); color: #000; padding: .6rem .9rem; border-radius: 6px; margin-bottom: 1rem; font-weight: 600; }

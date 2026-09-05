@@ -5,6 +5,7 @@
 <title>Silt — library</title>
 <link rel="stylesheet" href="style.css">
 <script src="app.js"></script>
+<script src="render.js"></script>
 </head>
 <body>
 <nav>
@@ -16,6 +17,8 @@
   <span id="contrib" class="mono dim" style="margin-left:auto"></span>
 </nav>
 <main>
+  <div id="banner" class="banner" hidden></div>
+  <p id="linknote" class="dim" hidden></p>
   <h1>Your library</h1>
   <p class="dim" style="margin-bottom:1rem">
     Files you hold a <b>link</b> for. The network hosts many more identifiers,
@@ -42,6 +45,8 @@ const fmtB = b => !b ? "—" : b >= 1<<20 ? (b/(1<<20)).toFixed(1)+" MB"
 async function refresh() {
   try {
     const s = await (await fetch("/api/status")).json();
+    const banner = document.getElementById("banner");
+    if (banner) { const b = siltRender.prereleaseBanner(s); banner.textContent = b; banner.hidden = !b; }
     document.getElementById("contrib").textContent =
       s.capTotal > 0 ? "contributing " + fmtB(s.capUsed) + " / " + fmtB(s.capTotal)
                      : "consume-only";
@@ -56,10 +61,12 @@ async function refresh() {
         <td>${fmtB(f.fileSize)}</td>
         <td>${status}</td>
         <td style="text-align:right">
-          <button class="get" data-link="${f.link}">get</button>
+          ${siltRender.libraryGetCell(f, lib)}
           <button class="rm" data-root="${f.root}" style="background:transparent;color:var(--dim);border:1px solid var(--border)">remove</button>
         </td></tr>`;
     }).join("") || `<tr><td colspan=5 class="dim">no links yet — paste one above</td></tr>`;
+    const note = document.getElementById("linknote");
+    if (note) { note.textContent = lib.linksWithheld ? siltRender.LINK_WITHHELD_HINT : ""; note.hidden = !lib.linksWithheld; }
 
     document.getElementById("opaque").textContent =
       `The network hosts ${lib.networkFiles} registered identifier(s); ` +

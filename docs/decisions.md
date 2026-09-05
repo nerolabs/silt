@@ -1829,6 +1829,29 @@ the same band, R = 10–25, and are not independent containments.*
 refusal plus the G-BB-12′ PACE; the G-BB-19 sentence from the Researcher before the 32 GiB
 ratio ships; the re-aimed handoff.
 
+**Research verdict on item 1, appended 2026-09-05 — GATED; the VALUE 32 GiB is REFUTED and
+may not ship; the METHOD is CERTIFIED and G-BB-17 is lifted.**
+`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.9a-grant-over-r-32GiB-structural-pin-G-BB-19-RESEARCH-CERTIFICATION-2026-09-05.md`.
+The decisive artifact is `core/node/file.go:750-760`: when ANY data chunk is missing the
+fetcher pulls EVERY parity column of the whole object, so the worst-case per-server draw at
+`F = 1` is `S_max · (N/K)` = 1.6 × 27.94 GiB = **44.7 GiB**, not 27.94. The corrected formula is
+`grant/r ≥ S_max · (N/K) / F_min`; 32 GiB covers 71.6 % of its own floor. This corrects the
+Economist's §4.1 and the Researcher's own necessity cert §2.1. Two more corrections: the
+"stripe floor `K × chunkSize_max` = 640 MiB" clause above is wrong twice (128 MiB is the
+enforced maximum, and that cliff was itself refuted) — **G-BB-32**; and `grant/r = g/λ` is
+invariant under a total rescale, so pinning the RATIO decides nothing about WHICH constant
+moves (raising `g` inflates the free publish-token count; lowering `λ` makes small serves mint
+zero) — **G-BB-30**, a second decision nobody has made. `F_min = 1` is CERTIFIED as the only
+value the code supports (placement "prefers", never vetoes, a fresh domain; the fetch path
+concentrates); it flips only on a code change, never on fleet size. **OWNER CALL RE-OPENED —
+G-BB-31: re-ratify a value ≥ 44.7 GiB; the Researcher's input, not a pin, is 64 GiB.** The
+G-BB-19 sentence is DISCHARGED — written in the certification's §4 for 64 GiB and valid for
+any `V ≥ 44.7 GiB`. New residuals: `R-PARITY-AMPLIFICATION` (the whole-object parity fetch;
+cheap fix: per-stripe), `R-GRANT-RATIO-NOT-A-CONSTANT` (blocking, G-BB-30),
+`R-SMAX-PUBLISHER-CHOSEN`. What can ship before the value: the floor as a constant DERIVED in
+code from `erasure.DefaultParams`, with a refuse-below assertion on the eventual `g/λ` (the
+`-dht-address-reserve` shape) — an R2.9 build item, since `r` does not exist yet.
+
 ## D-UI-PRIVACY-FLAG — node-wide counters and the library link key go behind an operator flag; exposed in beta, withheld at release
 
 **Ratified 2026-09-05** by the owner, closing `R-BB-SIBLING-AGGREGATES` and the `/api/library`
@@ -1880,3 +1903,23 @@ privacy-flag decision does not depend on it.
 **Revisit trigger.** The RC gate flips the default; the flixz beta closing is the named
 moment. Any report of per-title attribution from a one-root beta node reopens the beta
 default early.
+
+**Build note, appended 2026-09-05 (the ratified text above is unchanged; ONE item is put back
+to the owner).** Built on branch `builder/r2.9a-privacy-flag` after a blind PE design review
+(`RULING-UI-PRIVACY-FLAG-design-2026-09-05.md`, PROCEED-WITH-CHANGES). (1) **The default is
+WITHHELD in every build — there is no beta/release flip in code.** The two sentences above
+conflict (*"default ON through the BETA"* vs *"not exposed in production without the explicit
+`-privacy=off` flag"*); the PE ruled the second is a guarantee and the first a convenience, and
+recommended no flip: a default a human must remember to change at release will one day ship
+wrong, and the cost of no flip is one flag on the flixz launch command. Built that way and
+asserted on the released artifact in `release.yml`. **This changes the ratified beta default and
+is the OWNER's to confirm or revert**; the one-line site is `privacyDefaultWithheld` in
+`cmd/silt/ui.go`. (2) The wire name is `stats.BytesServed` (no JSON tags on `node.Stats`), not
+`stats.bytesServed`; the WHOLE `stats` block is withheld, deliberately over the letter above,
+because `ChunksServed × chunk size` reconstructs the withheld byte count. (3) The link clause is
+live on `silt client` only — a plain daemon has no linkbook — while the counters clause is live
+on both. (4) `-privacy` is `on|off` as a string; any other value refuses to start. (5) The
+pre-release label is a banner on the dashboard and the observatory when `privacy.mode` is
+`off`, plus `privacy.{mode,default}` on every status response. (6) Compatibility: an OLDER
+observatory page pointed at a NEW `privacy=on` daemon aborts its render (the old inline
+dereference); upgrade the observing daemon.

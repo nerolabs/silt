@@ -60,6 +60,7 @@ func cmdClient(args []string) error {
 	dnsSeed := fs.String("dns-seed", "", "domain whose TXT records list bootstrap peers")
 	registryURL := fs.String("registry", "", "registry ref for browsing/publishing (ID@https://host:port)")
 	uiAddr := fs.String("ui", "127.0.0.1:8090", "local web UI address")
+	privacyFlag := fs.String("privacy", privacyModeName(privacyDefaultWithheld), "on|off (D-UI-PRIVACY-FLAG). on: node-wide serve counters and the library's link keys are withheld from readers that do not present the API token (a hosted resolver on an -allow-web-origin origin must send it in the Authorization header). off: publish them to any admitted reader, labelled pre-release. Any other value refuses to start")
 	allowWebOrigin := fs.String("allow-web-origin", "", "comma-separated web origins (e.g. https://app.example.com) allowed to draw content from this node's local API — off by default; lets a hosted resolver surface render from your local Silt node")
 	open := fs.Bool("open", true, "open the library in your browser on start")
 	debug := fs.Bool("debug", false, "shorthand for -log debug (the full firehose)")
@@ -183,6 +184,10 @@ func cmdClient(args []string) error {
 	if err != nil {
 		return err
 	}
+	privacyOn, err := parsePrivacyFlag(*privacyFlag)
+	if err != nil {
+		return err
+	}
 	ui := &uiServer{
 		loop: loop, nd: nd, reg: reg, capRep: capRep,
 		selfPeer:  fmt.Sprintf("%s@%s", id, tr.Addr()),
@@ -190,6 +195,7 @@ func cmdClient(args []string) error {
 		peerCount:  func() int { return tr.PeerCount() },
 		links:      links,
 		token:      token,
+		privacy:    privacyOn,
 		webOrigins: parseWebOrigins(*allowWebOrigin),
 	}
 	bound, err := ui.serve(*uiAddr)
