@@ -126,7 +126,9 @@ func (s *uiServer) nowWall() time.Time {
 //     per-interval cost O(R), which caps the amplification of a GET flood at 1 per
 //     interval instead of at the attacker's request rate.
 //
-// PROVISIONAL VALUE — OWNER RATIFIES. T bounds a disclosure rate, so it is a security
+// RATIFIED 2026-09-05 by the owner ("I'll ratify the 5 seconds for now. We can always
+// take user feedback later") — see docs/decisions.md D-STATUS-SNAPSHOT-INTERVAL. T bounds
+// a disclosure rate, so it is a security
 // parameter and not a tuning knob (docs/build-process.md: a durability knob has twice
 // also been a security parameter). Derived from shipped numbers, not taste, and bounded
 // on both sides:
@@ -143,9 +145,11 @@ func (s *uiServer) nowWall() time.Time {
 //     and less loop work.
 //
 // 5 s is above the poll period and 12x inside the narrowest bucket. The trade the owner
-// owns: the privacy side wants T much LARGER — at 5 s an observer still gets 17,280
-// documents a day — and only the owner can spend the dashboard's liveness on that. One
-// named site changes it.
+// TOOK, with the cost stated rather than buried: the privacy side wants T much LARGER —
+// at 5 s an observer still gets 17,280 documents a day. The ratification is explicitly
+// REVISITABLE on operator feedback about dashboard liveness; raising T costs the
+// estimate nothing until T approaches 60 s, so the privacy direction is cheap to take
+// later and the liveness direction is not. One named site changes it.
 const statusSnapshotInterval = 5 * time.Second
 
 // addressCapConfig is the -dht-address-cap configuration as /api/status reports it.

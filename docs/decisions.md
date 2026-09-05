@@ -1619,3 +1619,42 @@ prong is carried here rather than in VISION.
   untouched. `lastBondTick` must NOT change: `DecayStale` compares against
   `BondMaxAge = 300 * ports.Second`, so it needs nanoseconds, and a counter would silently
   disable retention.
+## D-STATUS-SNAPSHOT-INTERVAL — the `/api/status` recompute interval is 5 seconds
+
+**Ratified 2026-09-05** by the owner: *"I'll ratify the 5 seconds for now. We can always
+take user feedback later."*
+
+**The parameter.** `statusSnapshotInterval = 5 * time.Second` (`cmd/silt/ui.go`). Between
+recomputes every caller is served the same cached document. It is a **security parameter**,
+not a tuning knob: `T` bounds a disclosure rate. An observer gets at most `floor(uptime/T)`
+distinct documents however fast it asks, and every bin crossing inside one interval is
+unresolvable. `docs/build-process.md` records that a durability knob has twice also turned
+out to be a security parameter; this one is a security parameter first.
+
+**Why a cache at all.** Certified REQUIRED on two independent grounds in
+`R2.9a-instrument-necessity-geometry-bound-and-tail-merging-RESEARCH-CERTIFICATION-2026-09-05.md`
+§3.5. First, the `R-BB-DELTA-TRAJECTORY` residual had been disclosed as "bounded by the poll
+rate", and the poll rate is the reader's choice, so that was never a bound. Second, the
+handler walked the whole never-evicted account set plus the whole chunk store inside the
+node's event loop on every unauthenticated GET, which is a build-immutable #8 finding on its
+own; caching caps a GET flood's amplification at one recompute per interval instead of at the
+attacker's request rate.
+
+**Why 5 seconds.** Derived from shipped numbers, bounded on both sides. From above by the fit:
+the narrowest positive-width age bucket is 60 s, and the candidate windows the edges bracket
+run from an hour to a week, so any `T` well inside 60 s is over-sampled by orders of magnitude
+and costs the estimate nothing. From above by the operator: the shipped dashboard polls every
+3,000 ms, so sitting just above that keeps the operator's view essentially live while making
+the recompute rate strictly lower than the request rate. From below by privacy and loop cost.
+
+**The cost, stated rather than buried.** The privacy side wants `T` much larger. At 5 seconds
+an observer still collects 17,280 documents a day. The owner took the liveness side knowingly.
+
+**Revisit trigger, named.** Operator feedback on dashboard liveness. The asymmetry matters:
+raising `T` costs the estimate nothing until it approaches 60 s, so moving in the privacy
+direction stays cheap later, while the liveness direction does not. One named site changes it.
+
+**What this does NOT close.** The cache degrades the per-object join; it does not remove it.
+At this deployment's traffic an interval routinely holds a single fetch, so an observer can
+still attribute that interval's bytes to a named root. `R-BB-SIBLING-AGGREGATES` stays open,
+and the token gate on the per-object detail is what actually closes the red-team's F2.
