@@ -1,3 +1,5 @@
+//go:build bbootstrap
+
 package credit
 
 // R2.9a — the B_bootstrap histogram's gates. Each test names the Tester gate from

@@ -1,3 +1,5 @@
+//go:build bbootstrap
+
 package credit
 
 // R2.9a DELTA — the minimum-requester floor (G-BB-11) and the dead discriminator

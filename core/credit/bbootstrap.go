@@ -1,5 +1,22 @@
+//go:build bbootstrap
+
 package credit
 
+// THE INSTRUMENT COMPILES ONLY UNDER THE `bbootstrap` BUILD TAG (D-BB-BUILD-TAG,
+// ratified 2026-09-05). A default `go build` produces a binary with no histogram type,
+// no census reader, no age stamping and no -bbootstrap flag — bbootstrap_off.go is the
+// whole of what a default build keeps (an empty struct and an empty method).
+//
+// WHY A TAG AND NOT A BETTER RUNTIME GATE. TENETS Part VI Don't #3 is a claim about what
+// silt BUILDS — "silt builds no mechanism to observe or link who-fetches-what… The
+// refusal to build surveillance is absolute" — not a claim about who can currently read
+// the output. A shipped binary that contains the mechanism and merely declines to print
+// it satisfies the second reading and not the first. Every containment that regulates the
+// READER (a loopback bind, a status token) is a deployment posture layered on a binary
+// that still holds the capability, and the prior art reaches the same place: go-ethereum
+// resolved the analogous question by REMOVING the `personal` namespace from the
+// network-facing surface rather than authenticating it better (ADVISORY 2026-09-05).
+//
 // R2.9a — the B_bootstrap instrument: a full-census 2-D COUNT HISTOGRAM over
 // (identity age × log2 fetched bytes).
 //
@@ -582,11 +599,46 @@ func bbSkewDirection(skew int64) string {
 	return "the wall clock jumped BACK, so ages are deflated and identities were pulled down the age axis"
 }
 
+// bbootstrapState is the instrument's whole ledger-side state, held in one struct
+// because a build tag cannot split a struct's fields across files. Ledger carries it as
+// `bb`. In a default build the untagged declaration in bbootstrap_off.go is
+// `struct{}` — zero bytes, no clock, no origin, nothing to inject into.
+//
+// EVERY FIELD HERE IS NIL/ZERO UNTIL -bbootstrap IS PASSED. Injection is gated on the
+// flag (cmd/silt/bbootstrap.go), which is the second half of D-BB-BUILD-TAG.
+type bbootstrapState struct {
+	// obsClock is the injected ports.Clock the age axis reads. It is an OBSERVABILITY
+	// clock and nothing else reads it: no accounting rule, no screen, no standing
+	// calculation. Nil is the safe state — no first-touch stamp is written and the
+	// snapshot publishes no age-conditioned cells. obsStartNanos is the clock's reading
+	// when it was injected; the snapshot publishes the difference as UptimeNanos. That
+	// is a WALL-clock quantity and is not on its own a bound on anything — the censoring
+	// bound is obsMono's elapsed time, below.
+	obsClock      ports.Clock
+	obsStartNanos int64
+
+	// obsMono is the SECOND, independent time source the same setter injects, and it is
+	// the whole of the clock-step defence. obsClock is a wall clock (adapters/walltime
+	// returns time.Now().UnixNano(), which discards Go's monotonic reading), so uptime
+	// and every age are two differences of ONE stepped reading and a step cancels out of
+	// any comparison between them. obsMono is stepped by nothing, so the divergence
+	// between the two IS the step, published as ClockSkewNanos. Both origins are stamped
+	// inside one call so the offset between them is structural rather than a
+	// call-ordering hope. Nil is the safe state: the snapshot reports MonotonicSource
+	// "none" and BBootstrapRunPrecondition REFUSES the run.
+	obsMono          ports.MonotonicNanos
+	obsMonoStartNano int64
+}
+
 // SetObservabilityClock injects the TWO time sources the B_bootstrap instrument reads
 // (R2.9a, G-BB-2 and G-BB-4). It follows SetEpochSource: call it once, at construction,
 // before any account exists; the daemon wires the same ports.Clock it hands every node,
 // and a sim passes adapters/simclock and stays deterministic. core may not touch the wall
 // clock (internal/depcheck), which is why this is a setter and not a package default.
+//
+// THE DAEMON CALLS IT ONLY WHEN -bbootstrap IS SET (D-BB-BUILD-TAG, 2026-09-05), and this
+// method is only compiled at all under the `bbootstrap` build tag. Not calling it is what
+// makes "a default node records no first-touch time" true rather than merely unpublished.
 //
 //   - c is the AGE clock. Every age and the published UptimeNanos come off it. In
 //     production it is a wall clock and it can be stepped.
@@ -610,17 +662,17 @@ func bbSkewDirection(skew int64) string {
 // source it reports MonotonicSource "none" and BBootstrapRunPrecondition REFUSES the run
 // because the censoring assertion is then a self-comparison.
 func (l *Ledger) SetObservabilityClock(c ports.Clock, mono ports.MonotonicNanos) {
-	l.obsClock = c
+	l.bb.obsClock = c
 	if c != nil {
 		now := c.Now()
 		if now < 0 {
 			now = 0
 		}
-		l.obsStartNanos = int64(now)
+		l.bb.obsStartNanos = int64(now)
 	}
-	l.obsMono = mono
+	l.bb.obsMono = mono
 	if mono != nil {
-		l.obsMonoStartNano = mono()
+		l.bb.obsMonoStartNano = mono()
 	}
 }
 
@@ -628,10 +680,10 @@ func (l *Ledger) SetObservabilityClock(c ports.Clock, mono ports.MonotonicNanos)
 // a thing any shipped adapter produces, but a uint64 tick derived from a negative int64
 // would wrap into a nonsense age, so it is clamped at the one place it enters.
 func (l *Ledger) obsNowNanos() int64 {
-	if l.obsClock == nil {
+	if l.bb.obsClock == nil {
 		return 0
 	}
-	now := l.obsClock.Now()
+	now := l.bb.obsClock.Now()
 	if now < 0 {
 		return 0
 	}
@@ -643,7 +695,7 @@ func (l *Ledger) obsNowNanos() int64 {
 // assignment at N call sites. The +1 follows the bond auditor's convention
 // (core/node/bondaudit.go): tick 0 means UNSET, so the first tick is never 0.
 func (l *Ledger) stampFirstTouch(a *account) {
-	if l.obsClock == nil {
+	if l.bb.obsClock == nil {
 		return
 	}
 	a.firstSeenTick = uint64(l.obsNowNanos()) + 1
@@ -710,7 +762,7 @@ func (l *Ledger) bBootstrapSnapshot() BBootstrapHistogram {
 		ByteBins:        BBootstrapByteBins,
 		ByteBinRule:     BBootstrapByteBinRule,
 	}
-	if l.obsClock != nil {
+	if l.bb.obsClock != nil {
 		out.ClockSource = "injected"
 		out.AgeAxisLive = true
 		out.Cells = new([BBootstrapAgeBuckets][BBootstrapByteBins]int64)
@@ -718,8 +770,8 @@ func (l *Ledger) bBootstrapSnapshot() BBootstrapHistogram {
 
 	now := l.obsNowNanos()
 	wallElapsed := int64(0)
-	if l.obsClock != nil {
-		wallElapsed = now - l.obsStartNanos
+	if l.bb.obsClock != nil {
+		wallElapsed = now - l.bb.obsStartNanos
 		if wallElapsed >= 0 {
 			out.UptimeNanos = wallElapsed
 		} else {
@@ -731,9 +783,9 @@ func (l *Ledger) bBootstrapSnapshot() BBootstrapHistogram {
 	// nanoseconds. A step in the wall clock moves one and not the other, and the
 	// difference is the step — in a signed quantity, so the two directions stay
 	// distinguishable.
-	if l.obsMono != nil {
+	if l.bb.obsMono != nil {
 		out.MonotonicSource = "injected"
-		if up := l.obsMono() - l.obsMonoStartNano; up > 0 {
+		if up := l.bb.obsMono() - l.bb.obsMonoStartNano; up > 0 {
 			out.MonotonicUptimeNanos = up
 		}
 		// From the RAW wall delta, not from the clamped UptimeNanos: a step big enough

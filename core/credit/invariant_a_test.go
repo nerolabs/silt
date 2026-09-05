@@ -106,19 +106,13 @@ var standingClassification = map[string]standingClass{
 	"LastCompactError":           neutral, // observability (R2.13: the most recent such error)
 	"SetPaidSerialStore":         neutral, // attaches the durable guard store; moves nothing
 	"SetEpochSource":             neutral, // R2.10 / F8: injects the ledger's epoch clock; moves nothing
-	// R2.9a B_bootstrap (bbootstrap.go). The instrument is a COUNT histogram over
-	// (age × log2 bytes) and nothing reads it but an operator: no accounting rule, no
-	// screen, no conservation rule, and certainly no standing calculation. The clock
-	// setter's only effect is that Register stamps account.firstSeenTick — a field the
-	// T-axis note has always said no standing calc reads, and that is still true; the
-	// export reads it for observability only. The snapshot is a PURE reader and must
-	// stay one: TestR29aBBootstrapSnapshotWritesNothing deep-compares the account map
-	// across it, because the sibling defect in this family is a reader that goes
-	// through acct() → Register and MINTS a 500,000 grant for every id it touches.
-	"SetObservabilityClock": neutral,
-	"BBootstrapPublish":     neutral,
-	"Epoch":                 neutral, // R2.10 / F8: reads max(watermark, source); a pure observer
-	"LoadPaidSerials":       neutral, // restores the guard from disk; moves nothing
+	// R2.9a B_bootstrap: SetObservabilityClock and BBootstrapPublish are classified in
+	// invariant_a_bbootstrap_test.go, which compiles only under the `bbootstrap` build
+	// tag — the two methods do not exist in a default build (D-BB-BUILD-TAG). This map
+	// is checked in BOTH directions (a method with no entry fails; an entry with no
+	// method fails), so the entries have to be tagged exactly as the methods are.
+	"Epoch":           neutral, // R2.10 / F8: reads max(watermark, source); a pure observer
+	"LoadPaidSerials": neutral, // restores the guard from disk; moves nothing
 
 	// PoD relay lane (relay.go; R0.7 interim: pays 0 until R2.14). Relay/gateway
 	// bandwidth compensation would settle a sender-funded PayWord chain into the

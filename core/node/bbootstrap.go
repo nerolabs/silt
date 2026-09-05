@@ -1,3 +1,5 @@
+//go:build bbootstrap
+
 package node
 
 // R2.9a — the node-tier read of the B_bootstrap histogram. core/credit/bbootstrap.go is
@@ -10,7 +12,16 @@ package node
 //
 // Instrumentation only: nothing here moves credit, escrow or standing, and it is NOT
 // gated on -economy (the counters accrue on every node; only disbursement is gated).
-// Whether it is PUBLISHED is a separate, default-off decision made in cmd/silt.
+//
+// THIS FILE COMPILES ONLY UNDER THE `bbootstrap` BUILD TAG (D-BB-BUILD-TAG,
+// 2026-09-05). There is no untagged stub, because nothing untagged calls it: the only
+// caller is cmd/silt's status renderer, which is tagged the same way. A default silt
+// binary has no Node.BBootstrap method at all.
+//
+// Whether it is RECORDED and whether it is PUBLISHED are now the SAME default-off
+// decision, made in cmd/silt: -bbootstrap gates the clock injection, so on a node that
+// was not asked for the instrument this method has nothing to read — no account is
+// stamped and the block reports ClockSource "none" with a dead age axis.
 
 import "github.com/nerolabs/silt/core/credit"
 

@@ -1,3 +1,5 @@
+//go:build bbootstrap
+
 package main
 
 // R2.9a — the B_bootstrap histogram on GET /api/status, under the top-level
@@ -26,8 +28,13 @@ func r29aServer(t *testing.T, publish bool) (*uiServer, *credit.Ledger, *r29aClo
 	t.Helper()
 	s, _, _, led := economyServer(t, 0)
 	s.peerCount = func() int { return 0 }
-	s.bBootstrap = publish
+	bbootstrapWireUI(s, publish)
 	clk := &r29aClock{}
+	// The fixture injects the clock DIRECTLY, on both arms, because these gates are
+	// about the RENDERER. The daemon's own rule — that -bbootstrap gates the injection
+	// too, so an unasked-for instrument records nothing — is the separate seam gate
+	// TestR29aTheFlagGatesTheRecordingNotJustThePublication, which drives
+	// bbootstrapInject the way daemon.go does.
 	led.SetObservabilityClock(clk, clk.monotonic)
 	return s, led, clk
 }
@@ -111,7 +118,7 @@ func TestR29aStatusOmitsTheBlockUnlessAsked(t *testing.T) {
 	}
 	// Flip it on: now it is present, and present-with-zero-requesters is still a
 	// different object from absent.
-	s.bBootstrap = true
+	bbootstrapWireUI(s, true)
 	block, present, _ := r29aBlock(t, s)
 	if !present {
 		t.Fatalf("bBootstrap absent with the switch on")
@@ -135,12 +142,24 @@ func TestR29aStatusOmitsTheBlockUnlessAsked(t *testing.T) {
 // NAMED cover, not a MATCHING one. The clock assertion now lives in its own gate below,
 // with the honest annotation.
 func TestR29aDaemonDefaultsTheInstrumentOff(t *testing.T) {
-	src, err := os.ReadFile("daemon.go")
+	// THE FILE MOVED (D-BB-BUILD-TAG, 2026-09-05). The flag is declared in
+	// bbootstrap.go, which compiles only under the `bbootstrap` build tag, so a default
+	// binary has no such flag at all — a stronger form of "off" than a false default,
+	// and the reason this gate reads a different file than it used to.
+	src, err := os.ReadFile("bbootstrap.go")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(src), "fs.Bool(\"bbootstrap\", false,") {
-		t.Fatalf("SOURCE GATE: daemon.go does not declare the -bbootstrap flag with a false default; the literal fs.Bool(\"bbootstrap\", false, is absent. GET /api/status needs no token, so the instrument must be OFF unless an operator asks for it")
+		t.Fatalf("SOURCE GATE: cmd/silt/bbootstrap.go does not declare the -bbootstrap flag with a false default; the literal fs.Bool(\"bbootstrap\", false, is absent. GET /api/status needs no token, so the instrument must be OFF unless an operator asks for it")
+	}
+	// And daemon.go must not have grown a second, ungated declaration.
+	dsrc, err := os.ReadFile("daemon.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(dsrc), "fs.Bool(\"bbootstrap\"") {
+		t.Fatalf("SOURCE GATE: daemon.go declares -bbootstrap directly. It is an UNTAGGED file, so that would put the flag — and every reference it drags in — into a default silt binary, which is exactly what D-BB-BUILD-TAG removed")
 	}
 }
 
@@ -172,9 +191,21 @@ func TestR29aDaemonInjectsBothClocksBeforeTheLedgerIsReachable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	inject := strings.Index(string(src), "ledger.SetObservabilityClock(clk, func() int64 { return int64(time.Since(")
+	// THE CALL IS NOW A SEAM (D-BB-BUILD-TAG, 2026-09-05): daemon.go is untagged and
+	// calls bbootstrapInject, whose tagged implementation in bbootstrap.go holds the
+	// SetObservabilityClock call. The ORDER property this gate exists for is unchanged
+	// and still lives at daemon.go's call site, so the anchor moves to the seam and the
+	// one-call/monotonic-source property is checked in the file that now carries it.
+	inject := strings.Index(string(src), "bbootstrapInject(ledger, clk, bbootstrapOn())")
 	if inject < 0 {
-		t.Fatalf("SOURCE GATE: daemon.go does not inject BOTH observability sources in one call; the literal ledger.SetObservabilityClock(clk, func() int64 { return int64(time.Since( is absent. The age axis needs the ports.Clock or it is dead, and the censoring assertion needs a source time.Since reads — Go's monotonic reading — or it compares the wall clock against itself and no NTP step is detectable")
+		t.Fatalf("SOURCE GATE: daemon.go does not call bbootstrapInject(ledger, clk, bbootstrapOn()) — the literal is absent. That call is the ONLY place the observability clock can reach the ledger, and this gate anchors its ORDER against nd.SetLedger")
+	}
+	bsrc, err := os.ReadFile("bbootstrap.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(bsrc), "l.SetObservabilityClock(clk, func() int64 { return int64(time.Since(") {
+		t.Fatalf("SOURCE GATE: cmd/silt/bbootstrap.go does not inject BOTH observability sources in one call; the literal l.SetObservabilityClock(clk, func() int64 { return int64(time.Since( is absent. The age axis needs the ports.Clock or it is dead, and the censoring assertion needs a source time.Since reads — Go's monotonic reading — or it compares the wall clock against itself and no NTP step is detectable")
 	}
 	attach := strings.Index(string(src), "nd.SetLedger(")
 	if attach < 0 {
@@ -390,7 +421,7 @@ func TestR29aWirePayloadReportsAClockStep(t *testing.T) {
 func TestR29aWirePayloadSelfReportsADeadClock(t *testing.T) {
 	s, _, _, led := economyServer(t, 0)
 	s.peerCount = func() int { return 0 }
-	s.bBootstrap = true // switched ON, but no clock is injected
+	bbootstrapWireUI(s, true) // switched ON, but no clock is injected
 	// Ten, so the census clears the minimum-requester floor: a dead clock and a census
 	// below the floor are different refusals and this gate is about the first one.
 	for i := 0; i < credit.BBootstrapMinRequesters; i++ {

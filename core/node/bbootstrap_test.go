@@ -1,3 +1,5 @@
+//go:build bbootstrap
+
 package node
 
 import (

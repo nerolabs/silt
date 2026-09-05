@@ -46,14 +46,20 @@ type account struct {
 	// (the coin-age anti-pattern), and the only sound form is a continuous
 	// bond-anchored VDF (M1+). lastBondTick drives the retention decay.
 	//
-	// firstSeenTick is the account's FIRST-TOUCH stamp on this ledger, written once
-	// in Register from the injected observability clock (R2.9a; bbootstrap.go). It
-	// is read for OBSERVABILITY ONLY — the B_bootstrap histogram's age axis — and
-	// still by NO standing calculation: it is not an acquisition-age gate, and the
-	// T-axis note above stands unchanged. It reaches the wire only as a coarse age
-	// bucket, never as a value. Without an injected clock it stays 0 ("unset") until
-	// a bond challenge stamps it (RecordBondChallenge, below), which is the shipped
-	// behaviour this change preserves.
+	// firstSeenTick is the account's bond-challenge stamp (RecordBondChallenge,
+	// below), and it PREDATES the R2.9a instrument. Tick 0 means UNSET. No standing
+	// calculation reads it; the T-axis note above stands unchanged.
+	//
+	// IN A DEFAULT BUILD THAT BOND WRITER IS ITS ONLY WRITER. Register calls
+	// stampFirstTouch, which is a no-op declared in bbootstrap_off.go unless the
+	// binary was built with the `bbootstrap` tag AND the operator passed -bbootstrap
+	// (D-BB-BUILD-TAG, docs/decisions.md). So a default silt node records no
+	// first-touch wall-clock time for a fetcher at all: there is no
+	// (identity, bytes, when) tuple, because there is no `when`.
+	//
+	// Under the tag and the flag, Register stamps it from the injected observability
+	// clock and the B_bootstrap histogram's age axis reads it — for OBSERVABILITY
+	// ONLY, reaching the wire as a coarse age bucket and never as a value.
 	bondedBytes   int64
 	bondFails     int
 	firstSeenTick uint64 // first touch; read by the B_bootstrap export ONLY, never by a standing calc
@@ -189,28 +195,19 @@ type Ledger struct {
 	// honest relay anchors as ReasonAnchorFuture once per epoch).
 	epochSrc ports.EpochSource
 
-	// obsClock is the injected ports.Clock the R2.9a B_bootstrap instrument ages
-	// identities against (SetObservabilityClock; bbootstrap.go carries the reasoning).
-	// It is an OBSERVABILITY clock and nothing else reads it: no accounting rule, no
-	// screen, no standing calculation. Nil is the safe state — no first-touch stamp is
-	// written and the snapshot publishes no age-conditioned cells. obsStartNanos is the
-	// clock's reading when it was injected; the snapshot publishes the difference as
-	// UptimeNanos. That is a WALL-clock quantity and is not on its own a bound on
-	// anything — the censoring bound is obsMono's elapsed time, below.
-	obsClock      ports.Clock
-	obsStartNanos int64
-
-	// obsMono is the SECOND, independent time source the same setter injects, and it is
-	// the whole of the R2.9a clock-step defence. obsClock is a wall clock
-	// (adapters/walltime returns time.Now().UnixNano(), which discards Go's monotonic
-	// reading), so uptime and every age are two differences of ONE stepped reading and a
-	// step cancels out of any comparison between them. obsMono is stepped by nothing, so
-	// the divergence between the two IS the step, published as ClockSkewNanos. Both
-	// origins are stamped inside one call so the offset between them is structural
-	// rather than a call-ordering hope. Nil is the safe state: the snapshot reports
-	// MonotonicSource "none" and BBootstrapRunPrecondition REFUSES the run.
-	obsMono          ports.MonotonicNanos
-	obsMonoStartNano int64
+	// bb is the R2.9a B_bootstrap instrument's whole ledger-side state, and it is an
+	// EMPTY STRUCT in a default build. The instrument compiles only under the
+	// `bbootstrap` build tag (D-BB-BUILD-TAG, docs/decisions.md): untagged,
+	// bbootstrap_off.go declares `type bbootstrapState struct{}`, this field costs
+	// zero bytes, and there is no observability clock, no monotone source and no
+	// injection point anywhere in the binary. Tagged, bbootstrap.go declares the two
+	// injected time sources and their origins, and SetObservabilityClock fills them —
+	// but only when the operator passed -bbootstrap, so recording is gated on the flag
+	// too. Nil/absent is the safe state at every layer.
+	//
+	// It is ONE field rather than four because a build tag cannot split a struct: the
+	// fields have to live in a type that has a tagged and an untagged declaration.
+	bb bbootstrapState
 
 	// epochWatermark is the HIGHEST epoch this ledger has ever READ from its source:
 	// epochWatermark = max(epochWatermark, epochSrc.Epoch()), taken once at the entry
@@ -357,9 +354,14 @@ func (l *Ledger) advanceEpoch() {
 // Registering twice is a no-op (no double grants).
 //
 // This is FIRST TOUCH on this ledger, and the only place an account is constructed, so
-// it is where the R2.9a observability stamp is written — once, structurally, rather
-// than by a guarded assignment at N call sites. Without an injected clock nothing is
-// stamped and this is byte-for-byte the shipped behaviour.
+// it is where the R2.9a observability stamp would be written — once, structurally,
+// rather than by a guarded assignment at N call sites.
+//
+// stampFirstTouch is a NO-OP in a default build: it is declared empty in
+// bbootstrap_off.go and the instrument's real one compiles only under the `bbootstrap`
+// build tag, where it still writes nothing until -bbootstrap injects a clock
+// (D-BB-BUILD-TAG). Nothing is stamped and this is byte-for-byte the pre-R2.9a
+// behaviour.
 func (l *Ledger) Register(n ports.NodeID) {
 	if _, ok := l.accounts[n]; ok {
 		return
