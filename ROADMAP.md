@@ -134,7 +134,7 @@ carries the argument and the sources. Two are LIVE BREAKS and come first.
 12. **`B_bootstrap` run preconditions (R2.9a) — what is OPEN for the owner as of 2026-09-05, each with
     its source; the ratified items are marked. The run stays BLOCKED until the open ones are pinned;
     none blocks the build.**
-    - **OPEN · `q` and the population `P` (G-BB-1 as re-specified by G-BB-21; G-BB-9).** `q` is the
+    - **OPEN · `q` and the population `P` (G-BB-1′, restated 2026-09-05 — `q` ONLY, `W` STRUCK; G-BB-9).** `q` is the
       quantile of the per-server draw `grant/r` must cover (e.g. 0.95). `P` is the population the
       quantile is over: viewers-only, or all honest fetchers including repairing/judging peers (a
       repairing caretaker fetches over the same priced path and pays the same `r`). The trade is
@@ -149,13 +149,35 @@ carries the argument and the sources. Two are LIVE BREAKS and come first.
       dominate is the CUMULATIVE per-server draw over the ledger's life — one server uptime under
       the ephemeral ledger (`D-FP2-SCOPE`) — and `W` appears nowhere in the constraint; any finite
       `W` under-states it (`B(W) ≤ B(life)`, `R-BB-ESTIMAND-MISSPECIFIED`). The reading rule is the
-      top occupied age bucket after a clean uptime, not the young cells. Sources:
+      top occupied age bucket after a clean uptime, not the young cells. **`R-BB-W-GATE-TENSION` is
+      CLOSED by restatement** (the certification's own §1.2 removed `W` while its §6 carried G-BB-1
+      forward unchanged; G-BB-1′ pins `q` only and the sentence "without W there is no reading rule"
+      is withdrawn with it). **NO reading-rule flip (`R-BB-TIER-ASYMMETRY`, held in tension,
+      discharges into G-BB-19):** under the corrected landing the LOWER side is the heavier one
+      (Don't #7 / T-AR are Tenet-tier and amendable; build-immutables #4 / #8 are not), which
+      REVERSES the earlier composed finding — but it does NOT license "read the high end": G-BB-16 was
+      withdrawn for a wrong-target reason, so there is no interval to read an end of, and no reading
+      rule changes before `q` and `P` are pinned. What a cautious operator does instead is apply the
+      STRUCTURAL floor (no range read exists, `Get` is all-or-nothing; 64 MiB production chunk vs a
+      500,000 grant = 134.2×), which is admissible under build-immutable #3 where a single census is
+      not. G-BB-17 SURVIVES on a corrected ground: #4 calls cheap honest participation "a security
+      constraint, not a marketing feature", so `grant/r` is a security parameter regardless of
+      landing and may not be pinned from one adversary-movable number. Sources:
       `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.9a-instrument-necessity-geometry-bound-and-tail-merging-RESEARCH-CERTIFICATION-2026-09-05.md`
       §1.1–1.3, §2.2, §6 (G-BB-21, G-BB-22); G-BB-9 from
       `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.9a-Bbootstrap-DELTA-contamination-privacy-floor-clock-RESEARCH-CERTIFICATION-2026-09-04.md`
       §1.4 (cited for the population choice only; that section's M0 framing, "viewers-only ⇒
       Sybil-dearer", is superseded by G-BB-22 and still stands uncorrected in the certification
       itself).
+    - **RUN PRECONDITION · `R-BB-CENSUS-MIXTURE` — open, and WORSE than certified (G-BB-9 must be
+      answered BEFORE the run).** The harmlessness argument for repair-traffic contamination assumed
+      caretakers sit in old cells the fit ignores; under the top-bucket reading rule the fit reads
+      EXACTLY those cells. `C`, the count of census requesters outside `P`, is undefined until `P` is,
+      and cannot be recovered afterward from a histogram that carries no discriminator. Answering `P` =
+      "all honest fetchers" dissolves it outright. **The handoff must carry `C_max`** — the operator's
+      own count of caretaking peers from its PLACEMENT records (G-BB-10′). `C_read` (a computed count)
+      is REFUSED: it needs the identity-to-cell join the RE-CERT §4.6 already refused against the
+      adversarial pad, and a refusal must apply uniformly. Source: `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.9a-BB-RESIDUALS-tier-asymmetry-W-gate-tension-census-mixture-RESEARCH-CERTIFICATION-2026-09-05.md` §3.
     - **OPEN · the byte-axis bin count (G-BB-23).** `BBootstrapBinsPerOctave = 4`
       (`core/credit/bbootstrap.go`) was chosen with only the estimate's residual priced (19 % at
       4 bins/octave; 2× at 1). The other side was not on the table: the count of individually pinned
@@ -201,7 +223,14 @@ carries the argument and the sources. Two are LIVE BREAKS and come first.
       2026-09-05); the build tag (`D-BB-BUILD-TAG`, 2026-09-05); the three-prong reading of Don't #3
       (`D-DONT3-READING`, 2026-09-05; its G-BB-29 narrowing of the `D-BB-BUILD-TAG` reason text is
       applied as an appended correction). `R-BB-BOND-STAMP-TUPLE` is CLOSED (G-BB-28, 2026-09-05:
-      the bond-path first-seen stamp is deleted; nothing read it).
+      the bond-path first-seen stamp is deleted; nothing read it). **Gate bookkeeping 2026-09-05** (source: `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.9a-BB-RESIDUALS-tier-asymmetry-W-gate-tension-census-mixture-RESEARCH-CERTIFICATION-2026-09-05.md`
+      and the §9 appendix of `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.9a-minR-floor-RECERT-sybil-pad-and-estimand-steerability-RESEARCH-CERTIFICATION-2026-09-05.md`): G-BB-8 CLOSED as superseded by G-BB-21 + G-BB-22, no new
+      gate minted; G-BB-14's trigger is VOID (a two-armed conditional on `W`, BB-17 void alongside);
+      G-BB-15's trigger never mentioned `W` — it is strictly MORE demanding and merely unevaluable
+      (the top age bucket is open-topped), NOT void, and stays a live requirement. G-BB-22's CODE half
+      is CLOSED on `main` (#739 + the one missed frozen-record site marked inline in
+      `docs/thinking/2026-09-04-r29a-min-r-floor.md`); all three 2026-09-04/05 certifications now carry
+      dated §9 corrections for the M0 mislanding, the `W` withdrawal and the §5.1 over-count.
 **Not the owner's:** the research-gated pieces are named on each Rock and stay with the Researcher.
 
 **★ Decisions owed to the owner (as of 2026-09-03).** Read these first; each names its source.

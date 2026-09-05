@@ -106,7 +106,10 @@ code comment, the CHANGELOG and this record all state it as an open residual rat
 **The census mixture stays open too** (`R-BB-CENSUS-MIXTURE`). BB-18 pins that a repair-path fetch
 lands in the census indistinguishably from a viewer's. That is asserted as a **fact**, not a bug:
 whether repairing peers belong in the estimand's population is G-BB-9, the owner's, and it trades M0
-against D-S7.
+against D-S7 *(CORRECTED 2026-09-05, G-BB-22: NOT an M0 trade — the grant mints balance, standing is
+bond-only, free bytes build no bond; the trade is build-immutable #4 against Don't #7 / T-AR / #8. And
+the mixture is now a RUN precondition, not a harmless residual — see
+`R2.9a-BB-RESIDUALS-tier-asymmetry-W-gate-tension-census-mixture-RESEARCH-CERTIFICATION-2026-09-05.md`)*.
 
 ## 6. As built
 
