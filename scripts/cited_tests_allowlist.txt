@@ -87,3 +87,13 @@ TestReconcileAdoptsHeavierFork
 TestReconcileRejectsLighterFork
 TestRedteamF6_ObjectiveWeightAgreesAcrossDivergentReplicas
 TestRedteamF6_LegacyWeightDivergesAcrossReplicas
+
+# ---------------------------------------------------------------------------
+# (H) HISTORICAL — inverted and renamed under G-BB-28 (2026-09-05)
+# ---------------------------------------------------------------------------
+# TestR29aBondChallengeStillStampsFirstSeenTick asserted that RecordBondChallenge
+# wrote account.firstSeenTick. The field and the write are deleted (residual
+# R-BB-BOND-STAMP-TUPLE closed; nothing read it) and the gate is inverted as
+# TestR29aBondChallengeStampsNoFirstTouch. The old name survives in the dated
+# CHANGELOG entries and the D-BB-BUILD-TAG decision record, which say so.
+TestR29aBondChallengeStillStampsFirstSeenTick

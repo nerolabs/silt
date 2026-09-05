@@ -87,12 +87,22 @@ const (
 	// (quarter-log2), which resolves B to 19%. Plain log2 would resolve it to 2×,
 	// comfortably inside the ~1,000× span the grant/r decision covers — but 2× is
 	// NOT free at the margin, because both directions of the residual land on
-	// immutables (too high a grant/r cheapens Sybil bootstrap, M0; too low raises
-	// the floor of honest participation, build-immutable #4). There is no safe side
-	// to round to, so the certification's ruling is to SHRINK the trade rather than
-	// resolve it, and to carry the remaining interval into the ratification sentence
-	// (G-BB-8). At ~10 KiB against the row export's measured 114 MiB, the finer bins
-	// are free.
+	// immutables. Too low a grant/r raises the floor of honest participation
+	// (build-immutable #4, a cliff: below one chunk the honest fetcher gets zero
+	// usable bytes). Too high a grant/r is a metered subsidy of real work with no
+	// payment at the edge tier (Don't #7, T-AR) and a free-resource DoS surface
+	// (build-immutable #8). It does NOT land on M0's Sybil corner, and this comment
+	// said it did until 2026-09-05 (G-BB-22): M0's corner is about STANDING, Register
+	// mints BALANCE, RecordBondChallenge is the sole standing press (Invariant A),
+	// and free bytes build no bond. There is no safe side to round to, so the
+	// certification's ruling is to SHRINK the trade rather than resolve it, and to
+	// carry the remaining interval into the ratification sentence (G-BB-8).
+	//
+	// THE BIN COUNT IS ALSO A PRIVACY LEVER, AND THAT SIDE WAS NOT PRICED when 4 was
+	// chosen (G-BB-23, owner's call). The count of individually pinned identities is
+	// set by how many sparse tail bins the axis has, which is constant in the census
+	// size, so merging and rounding cannot close it and this constant is the only
+	// lever that can. 1 bin/octave cuts the axis to 41 bins at a 2x residual.
 	BBootstrapBinsPerOctave = 4
 )
 
@@ -138,9 +148,12 @@ const (
 // It is deliberately on the strict side. A long run that accumulates a minute of ordinary
 // NTP slew is flagged even though a minute is negligible against a W of days, and that
 // costs a re-run. The other error — a step reshaping the young cells with nobody
-// noticing — costs a wrong grant/r, and grant/r lands on M0 (too high cheapens Sybil
-// bootstrap). The asymmetry decides the direction. ClockSkewNanos carries the raw number
-// either way, so an operator who disagrees with this threshold can read past it.
+// noticing — costs a wrong grant/r, and a wrong grant/r lands on an immutable in
+// either direction: build-immutable #4 from below, Don't #7 / T-AR / build-immutable
+// #8 from above (not M0's Sybil corner, which is about standing and which a balance
+// grant cannot touch — G-BB-22). The asymmetry decides the direction. ClockSkewNanos
+// carries the raw number either way, so an operator who disagrees with this threshold
+// can read past it.
 const bbClockSkewToleranceNanos = int64(60 * 1e9)
 
 // THE MINIMUM-REQUESTER FLOOR (G-BB-11), and why it is a WHOLE-BLOCK rule rather than
@@ -723,12 +736,12 @@ func (l *Ledger) obsNowNanos() int64 {
 // above by the ledger's uptime. The axis is specified as time since first FETCH (see
 // the header), and recordFetched is where a fetch is recorded.
 //
-// IT NEVER TOUCHES account.firstSeenTick. That field belongs to RecordBondChallenge and
-// records a DIFFERENT EVENT — the first bond challenge this identity answered. Both are
-// wall-clock nanoseconds off the same daemon clock (corrected 2026-09-05; the earlier
-// claim that the auditor's tick was a request counter was wrong), so the split is not
-// about units: one shared field guarded on "unset" would keep the CHALLENGE instant for
-// a peer the auditor reached first, and publish that as its fetch age.
+// IT NEVER TOUCHES account.lastBondTick, the one tick a bond challenge writes. That
+// field is RETENTION (DecayStale), a last-proof reading in wall-clock nanoseconds, and
+// it records a different event on a different path. The bond path's own first-seen
+// stamp is gone (G-BB-28, 2026-09-05): nothing read it, and a `when` no decided
+// function needs is surplus under T-DONT3 prong (a). So an identity now carries at
+// most ONE first-touch time, this one, and only in a tagged build with the flag on.
 //
 // THIS FUNCTION IS THE INSTRUMENT'S ONLY WRITE, and it is the one call a build tag
 // cannot remove from an untagged function. bbootstrap_off.go declares an empty twin, so

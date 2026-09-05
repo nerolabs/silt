@@ -126,9 +126,10 @@ func TestR29aBB22AgeIsMeasuredFromTheFetchNotTheBondChallenge(t *testing.T) {
 	if h.AgeExceedsUptime {
 		t.Fatalf("ageExceedsUptime set on a clean fixture — a foreign tick unit reached the age axis")
 	}
-	// And the bond auditor's own field is untouched by any of this: it still carries the
-	// auditor's tick, which is what the bond auditor reads.
-	if got := l.accounts[peer].firstSeenTick; got != 7 {
-		t.Fatalf("firstSeenTick = %d, want the bond auditor's tick 7 — the R2.9a change must not disturb the bond auditor's own first-challenge stamp", got)
+	// And the bond auditor's own field is untouched by any of this: lastBondTick still
+	// carries the auditor's tick, which is what retention (DecayStale) reads. It is the
+	// ONLY tick a bond challenge writes since G-BB-28 deleted the first-seen stamp.
+	if got := l.accounts[peer].lastBondTick; got != 7 {
+		t.Fatalf("lastBondTick = %d, want the bond auditor's tick 7 — the R2.9a fetch stamp must not disturb the retention tick", got)
 	}
 }

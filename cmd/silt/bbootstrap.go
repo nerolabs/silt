@@ -97,7 +97,11 @@ func bbootstrapWireUI(s *uiServer, on bool) {
 // COUNT histogram over (identity age × log2 fetched bytes), the instrument
 // D-R2.9-DIRECTION sentence 4 requires before the affordability ratio grant/r can be
 // pinned. cloudtest measures its own synthetic fetch plan, so the numbers have to come
-// off a deployment with real users.
+// off a deployment with real users. WHERE grant/r LANDS, so the reader does not inherit
+// the earlier error (G-BB-22): too low is build-immutable #4 (the honest-participation
+// floor); too high is Don't #7 / T-AR / build-immutable #8 (unpaid real work at the edge
+// tier, a free-resource surface). Never M0's Sybil corner — the grant mints balance and
+// standing is bond-only (Invariant A).
 //
 // WHAT IT DELIBERATELY IS NOT (immutable #4, refuse-to-surveil). Counts, and nothing
 // else. No requester id — not even a salted label — no object root, no per-identity row,

@@ -52,7 +52,10 @@ numbers, against the Economist advisory's *guessed* 512 MiB). Plain log2 resolve
 The reason to spend more is that **2× is not free at the margin**: too high a `grant/r`
 cheapens Sybil bootstrap (M0); too low raises the floor of honest participation, which
 build-immutable #4 calls a regression against silt's reason to exist. Both directions of
-the residual land on immutables, so **there is no safe side to round to**. The certified
+the residual land on immutables, so **there is no safe side to round to**. *(CORRECTED
+2026-09-05, G-BB-22: the too-high direction does NOT land on M0's Sybil corner — the grant
+mints balance, standing is bond-only under Invariant A. It lands on Don't #7 / T-AR /
+build-immutable #8. The "no safe side" conclusion stands on the corrected landings.)* The certified
 ruling is to *shrink* the trade rather than resolve it. Quarter-log2 cuts the residual to
 19% for 1,312 counters — measured at **10,496 bytes** of fixed array and **one allocation
 per snapshot** — against 114 MiB for the row export. Taken.
@@ -210,8 +213,9 @@ Nothing is measured on the monotone source. Its only job is to make a step in th
   the width of the narrowest positive-width age bucket, so below it a divergence cannot
   displace an identity by a whole bucket and at or above it, it can. It is deliberately
   strict — a long run that accumulates a minute of ordinary slew is flagged, which costs a
-  re-run, while the other error costs a wrong `grant/r`, and `grant/r` lands on M0. The raw
-  number is published either way, so an operator can read past the threshold.
+  re-run, while the other error costs a wrong `grant/r`, and `grant/r` lands on M0 *(CORRECTED
+  2026-09-05, G-BB-22: on build-immutable #4 from below and Don't #7 / T-AR / #8 from above,
+  never M0)*. The raw number is published either way, so an operator can read past the threshold.
 
 **One call, not two setters.** Both origins are stamped inside `SetObservabilityClock`, so
 "the two sources start at the same instant" is structural. Two setters would make it a
