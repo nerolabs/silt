@@ -85,34 +85,41 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// The axis sizes. 8 × 164 = 1,312 int64 counters ≈ 10 KiB, fixed, whatever R is.
+// The axis sizes. 8 × 41 = 328 int64 counters ≈ 2.6 KiB, fixed, whatever R is.
 const (
 	// BBootstrapAgeBuckets is the number of identity-age buckets (the A axis).
 	BBootstrapAgeBuckets = 8
-	// BBootstrapByteBins is the number of fetched-byte bins (the B axis):
-	// BBootstrapBinsPerOctave bins per doubling over 2^0 … 2^40.75, top bin open.
-	BBootstrapByteBins = 164
-	// BBootstrapBinsPerOctave is the byte-axis resolution: 4 bins per doubling
-	// (quarter-log2), which resolves B to 19%. Plain log2 would resolve it to 2×,
-	// comfortably inside the ~1,000× span the grant/r decision covers — but 2× is
-	// NOT free at the margin, because both directions of the residual land on
-	// immutables. Too low a grant/r raises the floor of honest participation
-	// (build-immutable #4, a cliff: below one chunk the honest fetcher gets zero
-	// usable bytes). Too high a grant/r is a metered subsidy of real work with no
-	// payment at the edge tier (Don't #7, T-AR) and a free-resource DoS surface
-	// (build-immutable #8). It does NOT land on M0's Sybil corner, and this comment
-	// said it did until 2026-09-05 (G-BB-22): M0's corner is about STANDING, Register
-	// mints BALANCE, RecordBondChallenge is the sole standing press (Invariant A),
-	// and free bytes build no bond. There is no safe side to round to, so the
-	// certification's ruling is to SHRINK the trade rather than resolve it, and to
-	// carry the remaining interval into the ratification sentence (G-BB-8).
+	// BBootstrapByteBins is the number of fetched-byte bins (the B axis): one bin per
+	// doubling over 2^0 … 2^40 (1 byte … 1 TiB), top bin open.
+	BBootstrapByteBins = 41
+	// BBootstrapBinsPerOctave is the byte-axis resolution: ONE bin per doubling
+	// (plain log2), which resolves B to 2×. It was 4 (quarter-log2, 19%) until the
+	// owner ratified 1 on 2026-09-05 (G-BB-23; docs/decisions.md D-R2.9a-RUN-CALLS
+	// item 5). Two facts decided it, and both are recorded so the value is not re-
+	// litigated from the payload argument that chose 4:
 	//
-	// THE BIN COUNT IS ALSO A PRIVACY LEVER, AND THAT SIDE WAS NOT PRICED when 4 was
-	// chosen (G-BB-23, owner's call). The count of individually pinned identities is
-	// set by how many sparse tail bins the axis has, which is constant in the census
-	// size, so merging and rounding cannot close it and this constant is the only
-	// lever that can. 1 bin/octave cuts the axis to 41 bins at a 2x residual.
-	BBootstrapBinsPerOctave = 4
+	// THE BIN COUNT IS THE ONLY PRIVACY LEVER ON THIS GRID. A cell with count 1
+	// publishes one identity's age bracket and its cumulative bytes to the bin's
+	// width. The Red-team's F4 measured that at the census sizes this instrument is
+	// for (tens to a few hundred requesters) 35–86% of occupied cells are singletons,
+	// and that the ABSOLUTE count of individually pinned identities is roughly
+	// constant in the census size — the heaviest and lightest fetchers sit alone in
+	// sparse tail bins however large R grows. The floor (G-BB-11′) gates the census
+	// total, never a cell; merging and rounding are large-census tools and were
+	// REFUTED as closers at this scale (necessity certification 2026-09-05 §3.3).
+	// The exposed count scales with the number of sparse tail bins, i.e. with this
+	// constant, so 4 → 1 cuts the axis 164 → 41 and the pinned-identity count by
+	// about the same factor (R-BB-SINGLETON-CELL, reduced not closed).
+	//
+	// THE PRECISION SIDE LOST ITS CONSUMER. The 19% residual mattered when the census
+	// was to pin grant/r, and both directions of that residual land on immutables
+	// (build-immutable #4 from below — a cliff, zero usable bytes below one chunk;
+	// Don't #7 / T-AR / build-immutable #8 from above — a metered unpaid subsidy;
+	// NOT M0's Sybil corner, G-BB-22). Under the ratified run re-scope grant/r is
+	// pinned STRUCTURALLY from object geometry (32 GiB) and the census is re-aimed
+	// at the honest arrival rate and at falsifying that number, for which 2× ("between
+	// 4 and 8 GiB" rather than "between 4.0 and 4.75 GiB") is ample.
+	BBootstrapBinsPerOctave = 1
 )
 
 // bbAgeEdgeNanos are the LOWER edges of the age buckets, in nanoseconds. Bucket i
@@ -137,15 +144,6 @@ var bbAgeEdgeNanos = [BBootstrapAgeBuckets]int64{
 	24 * 3600 * 1e9,     // [24 hours, 7 days)
 	7 * 24 * 3600 * 1e9, // [7 days, ∞)
 }
-
-// The quarter-octave thresholds, as a mantissa normalised into [2^62, 2^63). Integer
-// comparison only: no math package, no floating point, exact and deterministic.
-// bbQuarter{1,2,3} = round(2^(k/4) · 2^62) for k = 1, 2, 3.
-const (
-	bbQuarter1 = uint64(5484249825272419328)
-	bbQuarter2 = uint64(6521908912666391552)
-	bbQuarter3 = uint64(7755900482342532096)
-)
 
 // bbClockSkewToleranceNanos is how far the wall clock may diverge from the monotone
 // source before the artifact declares the run suspect. It is ONE MINUTE, and the number
@@ -413,12 +411,11 @@ type BBootstrapHistogram struct {
 
 	// The axes, published so the artifact is self-describing for a third party.
 	AgeEdgeNanos  [BBootstrapAgeBuckets]int64 // lower edges; bucket i = [i, i+1), last open
-	BinsPerOctave int                         // 4
-	ByteBins      int                         // 164
-	// ByteBinRule states the byte axis exactly, as a closed form rather than a rounded
-	// array: floor(2^(k/4)) is not strictly increasing for k < 16 (integers below 16
-	// bytes cannot resolve a quarter octave), so a printed edge array would be a lie at
-	// the bottom where the closed form is exact everywhere.
+	BinsPerOctave int                         // 1
+	ByteBins      int                         // 41
+	// ByteBinRule states the byte axis exactly, as a closed form: at one bin per
+	// doubling every edge is an exact power of two, so the rule and an edge array say
+	// the same thing and the rule is the shorter, self-describing one.
 	ByteBinRule string
 
 	// Cells[ageBucket][byteBin] is a COUNT of identities. nil when AgeAxisLive is false.
@@ -540,7 +537,7 @@ func (l *Ledger) BBootstrapPublish() BBootstrapHistogram {
 }
 
 // BBootstrapByteBinRule is the byte axis, stated exactly. Published verbatim.
-const BBootstrapByteBinRule = "bin k covers [2^(k/4), 2^((k+1)/4)) bytes; k = floor(4*log2(bytes)); bin 163 is open-topped"
+const BBootstrapByteBinRule = "bin k covers [2^k, 2^(k+1)) bytes; k = floor(log2(bytes)); bin 40 is open-topped"
 
 // BBootstrapRunPrecondition is the handoff gate (BB-14), executable BEFORE the
 // deployment window instead of discovered after it: it takes two snapshots taken at
@@ -762,27 +759,16 @@ func (l *Ledger) stampFirstFetch(a *account) {
 	a.firstFetchTick = uint64(l.obsNowNanos()) + 1
 }
 
-// bbootstrapByteBin returns the quarter-log2 bin of b, or -1 for b <= 0 (an account with
-// no fetched bytes is not a requester and is not counted). Integer-only: bits.Len64 gives
-// floor(log2 b), and the quarter is decided by three comparisons against a normalised
-// mantissa. The top bin is open, so a fetch above 2^40.75 bytes saturates into bin 163
-// rather than being dropped — documented on the wire by ByteBinRule.
+// bbootstrapByteBin returns the log2 bin of b, or -1 for b <= 0 (an account with no
+// fetched bytes is not a requester and is not counted). Integer-only: bits.Len64 gives
+// floor(log2 b) exactly, no math package, no floating point. The top bin is open, so a
+// fetch of 2^40 bytes (1 TiB) or more saturates into bin 40 rather than being dropped —
+// documented on the wire by ByteBinRule.
 func bbootstrapByteBin(b int64) int {
 	if b <= 0 {
 		return -1
 	}
-	e := bits.Len64(uint64(b)) - 1 // 0 … 62 for a positive int64
-	m := uint64(b) << uint(62-e)   // normalised into [2^62, 2^63)
-	q := 0
-	switch {
-	case m >= bbQuarter3:
-		q = 3
-	case m >= bbQuarter2:
-		q = 2
-	case m >= bbQuarter1:
-		q = 1
-	}
-	k := BBootstrapBinsPerOctave*e + q
+	k := BBootstrapBinsPerOctave * (bits.Len64(uint64(b)) - 1) // 0 … 62 for a positive int64
 	if k >= BBootstrapByteBins {
 		k = BBootstrapByteBins - 1
 	}

@@ -97,13 +97,13 @@ func TestR29aNodeSnapshotIsTheHistogramWithNoIdentity(t *testing.T) {
 	if total != 10 {
 		t.Fatalf("cells total %d, want 10", total)
 	}
-	// The young one: age exactly 0 (bucket 0), 250 bytes → bin floor(4·log2(250)) = 31.
-	if got := h.Cells[0][31]; got != 1 {
-		t.Fatalf("the age-0 identity (250 bytes → bin 31) count = %d, want 1; row 0 = %v", got, h.Cells[0])
+	// The young one: age exactly 0 (bucket 0), 250 bytes → bin floor(log2(250)) = 7.
+	if got := h.Cells[0][7]; got != 1 {
+		t.Fatalf("the age-0 identity (250 bytes → bin 7) count = %d, want 1; row 0 = %v", got, h.Cells[0])
 	}
-	// The old ones: two hours → bucket 4 ([1h, 6h)), 1,000 bytes → bin 39.
-	if got := h.Cells[4][39]; got != 9 {
-		t.Fatalf("the two-hour-old identities (1,000 bytes → bin 39) count = %d in bucket 4, want 9; row 4 = %v", got, h.Cells[4])
+	// The old ones: two hours → bucket 4 ([1h, 6h)), 1,000 bytes → bin floor(log2(1000)) = 9.
+	if got := h.Cells[4][9]; got != 9 {
+		t.Fatalf("the two-hour-old identities (1,000 bytes → bin 9) count = %d in bucket 4, want 9; row 4 = %v", got, h.Cells[4])
 	}
 	if h.MaxOccupiedAgeEdgeNanos > h.UptimeNanos || h.AgeExceedsUptime || h.AgeClampedToZero {
 		t.Fatalf("censoring invariant violated: max occupied edge %d, uptime %d", h.MaxOccupiedAgeEdgeNanos, h.UptimeNanos)

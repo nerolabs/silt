@@ -38,7 +38,7 @@ type statusExtras struct {
 // returns a closure rather than writing a package-level variable so that two daemons in
 // one process (the tests do this) do not share one flag value.
 func registerBBootstrapFlag(fs *flag.FlagSet) func() bool {
-	on := fs.Bool("bbootstrap", false, "R2.9a: RECORD AND PUBLISH the B_bootstrap histogram on GET /api/status (ROADMAP R2.9a). A full-census 2-D COUNT histogram over (identity age × log2 fetched bytes) — 8 age buckets × 164 quarter-log2 byte bins, ~10 KiB, constant in the requester count. Counts ONLY: no requester id, no salted label, no per-identity row, no exact age, and no per-cell byte SUM (a cell sum with count 1 is that identity's exact byte total in disguise). The age axis is the boot-relative elapsed tick from the node's injected clock, right-censored at the ledger's uptime — a restart destroys every account, so no window longer than the longest clean uptime is measurable at all. It is the instrument D-R2.9-DIRECTION sentence 4 makes a precondition of pinning grant/r, and it is INSTRUMENTATION ONLY: no conservation rule, no standing calculation and no economic rule reads it. This FLAG IS ONLY PRESENT IN A BINARY BUILT WITH -tags bbootstrap (D-BB-BUILD-TAG); a default silt binary rejects it, because the mechanism is not compiled in. DEFAULT OFF, and off means NOT RECORDED, not merely unpublished: no observability clock is injected, so no account carries a first-touch time. Turning it on takes a restart and then a wait for the population to re-stamp. /api/status needs no token, so anything published there is world-readable wherever -ui is bound off loopback")
+	on := fs.Bool("bbootstrap", false, "R2.9a: RECORD AND PUBLISH the B_bootstrap histogram on GET /api/status (ROADMAP R2.9a). A full-census 2-D COUNT histogram over (identity age × log2 fetched bytes) — 8 age buckets × 41 log2 byte bins (one per doubling, 1 byte … 1 TiB), ~2.6 KiB, constant in the requester count. Counts ONLY: no requester id, no salted label, no per-identity row, no exact age, and no per-cell byte SUM (a cell sum with count 1 is that identity's exact byte total in disguise). The age axis is the boot-relative elapsed tick from the node's injected clock, right-censored at the ledger's uptime — a restart destroys every account, so no window longer than the longest clean uptime is measurable at all. It is the instrument D-R2.9-DIRECTION sentence 4 makes a precondition of pinning grant/r, and it is INSTRUMENTATION ONLY: no conservation rule, no standing calculation and no economic rule reads it. This FLAG IS ONLY PRESENT IN A BINARY BUILT WITH -tags bbootstrap (D-BB-BUILD-TAG); a default silt binary rejects it, because the mechanism is not compiled in. DEFAULT OFF, and off means NOT RECORDED, not merely unpublished: no observability clock is injected, so no account carries a first-touch time. Turning it on takes a restart and then a wait for the population to re-stamp. /api/status needs no token, so anything published there is world-readable wherever -ui is bound off loopback")
 	return func() bool { return *on }
 }
 
@@ -173,8 +173,8 @@ type bBootstrapInfo struct {
 
 	AgeEdgeNanos  []int64 `json:"ageEdgeNanos"`  // lower edges; bucket i = [i, i+1), last open
 	AgeBuckets    int     `json:"ageBuckets"`    //
-	BinsPerOctave int     `json:"binsPerOctave"` // 4 — quarter-log2 byte bins
-	ByteBins      int     `json:"byteBins"`      // 164
+	BinsPerOctave int     `json:"binsPerOctave"` // 1 — one log2 byte bin per doubling (G-BB-23, ratified 2026-09-05)
+	ByteBins      int     `json:"byteBins"`      // 41
 	ByteBinRule   string  `json:"byteBinRule"`   // the byte axis stated exactly, as a closed form
 
 	Cells [][]int64 `json:"cells"` // [ageBucket][byteBin] counts; null when the age axis is not live

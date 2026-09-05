@@ -301,7 +301,7 @@ func TestR29aSnapshotCostDoesNotGrowInR(t *testing.T) {
 		if sink.Requesters != R {
 			t.Fatalf("fixture: requesters = %d, want %d", sink.Requesters, R)
 		}
-		// One fixed allocation: the cell array. 8 × 164 × 8 = 10,496 bytes.
+		// One fixed allocation: the cell array. 8 × 41 × 8 = 2,624 bytes.
 		return allocs, uint64(BBootstrapAgeBuckets * BBootstrapByteBins * 8)
 	}
 
@@ -765,9 +765,12 @@ func TestR29aRunPreconditionAcceptsOnlyAValidRun(t *testing.T) {
 // --- the byte axis ----------------------------------------------------------------
 
 // TestR29aByteBinMatchesTheClosedForm pins the integer bin function against the float
-// reference it implements, k = floor(4·log2(b)). The instrument's bins are computed with
-// bits.Len64 and three integer comparisons — no math package, because core stays
-// deterministic — so the float reference lives here in the test, where it is allowed.
+// reference it implements, k = floor(log2(b)). The instrument's bins are computed with
+// bits.Len64 — no math package, because core stays deterministic — so the float reference
+// lives here in the test, where it is allowed. It also pins the RATIFIED resolution:
+// exactly one bin per doubling (G-BB-23, owner 2026-09-05, D-R2.9a-RUN-CALLS item 5). A
+// finer axis re-opens the singleton-cell exposure the Red-team's F4 measured; a coarser
+// one would need its own ratification. Either direction fails here by name.
 func TestR29aByteBinMatchesTheClosedForm(t *testing.T) {
 	if got := bbootstrapByteBin(0); got != -1 {
 		t.Fatalf("bin(0) = %d, want -1 — an account with no fetched bytes is not a requester", got)
@@ -775,36 +778,43 @@ func TestR29aByteBinMatchesTheClosedForm(t *testing.T) {
 	if got := bbootstrapByteBin(-5); got != -1 {
 		t.Fatalf("bin(-5) = %d, want -1", got)
 	}
-	// EXHAUSTIVE over the first 100,000 byte counts. 2^(k/4) is irrational unless k is a
-	// multiple of 4, so floor(4·log2(b)) is never ambiguous at a float boundary, and an
-	// exhaustive sweep beats trying to reconstruct the edges in floating point (which is
-	// wrong at the bottom anyway: quarter-octave edges below 4 bytes are not resolvable
-	// by an integer, so ceil(2^(k/4)) is not a faithful edge there).
+	if BBootstrapBinsPerOctave != 1 {
+		t.Fatalf("BBootstrapBinsPerOctave = %d, want 1 — the owner ratified ONE bin per doubling (G-BB-23); the bin count is the only privacy lever on this grid and does not move without a recorded ratification", BBootstrapBinsPerOctave)
+	}
+	// EXHAUSTIVE over the first 100,000 byte counts. Powers of two are exact in a float,
+	// so floor(log2(b)) is never ambiguous at a boundary, and an exhaustive sweep beats
+	// reconstructing the edges by hand.
 	for b := int64(1); b <= 100_000; b++ {
-		want := int(math.Floor(4 * math.Log2(float64(b))))
+		want := int(math.Floor(math.Log2(float64(b))))
 		if got := bbootstrapByteBin(b); got != want {
-			t.Fatalf("bin(%d) = %d, want floor(4*log2(%d)) = %d", b, got, b, want)
+			t.Fatalf("bin(%d) = %d, want floor(log2(%d)) = %d", b, got, b, want)
 		}
 	}
-	// And the exact, integer-only boundaries: a power of two opens bin 4e, and one byte
-	// below it closes bin 4e−1.
-	for e := 4; e <= 40; e++ {
+	// And the exact, integer-only boundaries across the whole axis: a power of two opens
+	// bin e, and one byte below it closes bin e−1.
+	for e := 1; e < BBootstrapByteBins; e++ {
 		b := int64(1) << uint(e)
-		if got := bbootstrapByteBin(b); got != 4*e {
-			t.Fatalf("bin(2^%d) = %d, want %d — a power of two must OPEN its octave's first bin", e, got, 4*e)
+		if got := bbootstrapByteBin(b); got != e {
+			t.Fatalf("bin(2^%d) = %d, want %d — a power of two must OPEN its own bin", e, got, e)
 		}
-		if got := bbootstrapByteBin(b - 1); got != 4*e-1 {
-			t.Fatalf("bin(2^%d − 1) = %d, want %d — one byte below must CLOSE the previous bin", e, got, 4*e-1)
+		if got := bbootstrapByteBin(b - 1); got != e-1 {
+			t.Fatalf("bin(2^%d − 1) = %d, want %d — one byte below must CLOSE the previous bin", e, got, e-1)
 		}
 	}
-	// The top bin is OPEN, not a silent drop: a fetch far above the nominal top lands
-	// in bin 163 and is counted.
+	// The top bin is OPEN, not a silent drop: 1 TiB exactly opens bin 40, and a fetch far
+	// above the nominal top lands in the same bin and is counted.
+	if got := bbootstrapByteBin(int64(1) << 40); got != BBootstrapByteBins-1 {
+		t.Fatalf("bin(2^40) = %d, want %d — 1 TiB opens the top bin", got, BBootstrapByteBins-1)
+	}
 	if got := bbootstrapByteBin(int64(1) << 62); got != BBootstrapByteBins-1 {
 		t.Fatalf("bin(2^62) = %d, want %d — the top bin is open-topped and must SATURATE, never drop a requester", got, BBootstrapByteBins-1)
 	}
-	// And the counter layout is exactly the certified size.
-	if n := BBootstrapAgeBuckets * BBootstrapByteBins; n != 1312 {
-		t.Fatalf("counter count = %d, want 1,312 (8 age buckets × 164 quarter-log2 byte bins)", n)
+	// And the counter layout is exactly the ratified size.
+	if n := BBootstrapAgeBuckets * BBootstrapByteBins; n != 328 {
+		t.Fatalf("counter count = %d, want 328 (8 age buckets × 41 log2 byte bins)", n)
+	}
+	if BBootstrapByteBinRule != "bin k covers [2^k, 2^(k+1)) bytes; k = floor(log2(bytes)); bin 40 is open-topped" {
+		t.Fatalf("ByteBinRule on the wire does not state the ratified axis: %q", BBootstrapByteBinRule)
 	}
 }
 
