@@ -31,11 +31,16 @@ verifier recomputes bottom-up and always prepends the type prefix itself (`proof
 
 The design record argued from fixed-width (65-byte) leaf and inner preimages. **That is wrong on the
 verify path**: `NonMembershipLeafData` is bounded only from below (`proofs.go:61-75`), so leaf preimages
-are not fixed-width. The argument that holds, and is certified, is stronger: the three preimage classes
-are **disjoint by their leading byte** (`0x00` / `0x01` / `0x02`), so no byte-string is a valid member of
-two classes and a type-confusion forgery needs a SHA-256 collision across the type boundary — a generic
-second-preimage, out of reach. silt's path and value digests are 32 bytes (`sha256.New()`, default value
-hasher), so inner preimages ARE fixed 65 bytes, but the argument does not rest on that.
+are not fixed-width. The argument that holds, and is certified, is stronger: the preimage classes are
+**disjoint by their leading byte**, so no byte-string is a valid member of two classes and a
+type-confusion forgery needs a SHA-256 collision across the type boundary — a generic second-preimage,
+out of reach. Two facts sharpen it (certification §2.3, §2.5): the INNER preimage is fixed at 65 bytes
+unconditionally because the verifier copies every side node into a fresh 32-byte buffer
+(`proofs.go:437-445`, `make`+`copy` — the library's normalisation, not silt's hasher choice, and not
+`validateBasic`, whose side-node size loop an attacker skips with `SiblingData = nil`); and **exactly two
+preimage classes enter a root** — `0x00` leaf and `0x01` inner — because an extension node's digest is the
+digest of its EXPANDED inner-node chain, so the `0x02` preimage never enters the digest chain on the verify
+path. (The `0x02` class matters on the fold surface, §6.1, where witness bytes are seeded as nodes.)
 
 ## 4. Scope conditions — each with its gate; violating any re-opens R3.1
 
@@ -67,13 +72,18 @@ every delete sibling is bound before seeding by the library's own rule — SHA-2
 inner preimage, the EXPANSION root for an extension preimage (`foldDigestMismatch`); the fold stalls with
 `ErrFoldSiblingUnbound` otherwise. Gate `TestR31UnboundDeleteSiblingStallsTheFold` with its bound control.
 
-**6.2 The `checkPrefix` panic.** The library enforces the leaf prefix with `panic` (`node_encoders.go:121-125`)
-inside `parseLeafNode`, `validateBasic` never checks the prefix byte, and non-test `core/` has no
-`recover()`. A 33-byte witness — `NonMembershipLeafData = {0x01, 32 bytes}`, no siblings — offered for any
-absence query crashed the process (safety held; liveness did not). **Close (G-R31-2):** `proofShapeParsable`
-refuses that shape BEFORE `VerifyProof` in both `Resolve` (→ `NoWitness`) and `FoldChangedPaths`
-(→ `ErrFoldProofShape`). Gate `TestR31MalformedLeafPrefixIsRefusedNotPanicked` captures the raw library
-panic as its positive control.
+**6.2 The parser panics.** The library enforces node prefixes with `panic` (`node_encoders.go:121-125`) and
+slices attacker bytes unbounded: `parseLeafNode` on a `NonMembershipLeafData` whose first byte is not
+`0x00` (a 33-byte witness, no siblings, for any absence query), and — the arm the first build missed
+(PE code ruling S1) — `hashPreimage(SiblingData)` at `proofs.go:89`, which `validateBasic` bounds nowhere:
+an empty `SiblingData`, or a `0x02` `SiblingData` shorter than 35 bytes, panics in `isExtNode` /
+`parseExtNode` (a 154-byte gob witness crashed `IngestBlockWitnesses`). Non-test `core/` has no
+`recover()`, so each was a remote process crash (safety held; liveness did not). **Close (G-R31-2):**
+`proofShapeParsable` refuses both shapes BEFORE `VerifyProof` in `Resolve` (→ `NoWitness`),
+`FoldChangedPaths` (→ `ErrFoldProofShape`) and, through `Resolve`, `IngestBlockWitnesses`. Gates
+`TestR31MalformedLeafPrefixIsRefusedNotPanicked` and `TestR31MalformedSiblingDataIsRefusedNotPanicked`
+capture the raw library panic as their positive controls at every shape. `SideNodes` need no arm
+(`make`+`copy`).
 
 ## 7. Wiring status, and the residuals
 
@@ -81,12 +91,16 @@ Every defect above was **latent**: the floor box has no production callers and n
 external red-team gate, B8, still holds the accept flip). That is why these are gates and not incidents.
 Held in tension: the fold's defence rests on the attester-signed `StateRoot`, which erodes C-7's *safety
 needs no trust in the tier above* until G-R31-1/2 are the defence. Bounded, not eliminated: the audit's
-scope commit (`3981639bd08cf52a7668c3681cbe2243d957e4ee`, verification) is not the `v1.0.0` tag — SI-7 pins
-the tag; provenance to the audited commit is carried here. Routed elsewhere: `hasher.go:103-108` is not
+scope commit `868237978c…` and verification commit `3981639bd08cf52a7668c3681cbe2243d957e4ee` (audit p.2) are
+not the `v1.0.0` tag — SI-7 pins the tag; provenance to the audited commits is carried here. Filed for
+Boulder 3, out of R3.1's scope: a hand-crafted 5-byte gob length prefix forces a ~10 MB allocation in
+`proof.Unmarshal` — `SProofMax` bounds ENCODED bytes, not parse memory (PE code ruling). Routed elsewhere: `hasher.go:103-108` is not
 goroutine-safe (single-loop today). Positive controls for both defects were owed to the Tester by the
 certification (it had no shell); they are the two `TestR31*` gates above, executed.
 
 ## 8. What lifts the rest
 
-G-R31-5 (owner), then G-R31-7: this record exists and is cross-linked (done), and G-R31-1 and G-R31-2 are
-discharged (done) — G-R31-7 then composes with the R1.7 external red-team gate for the #657 accept flip.
+G-R31-5 is the owner's. G-R31-7 requires this record (present, cross-linked) and G-R31-1 and G-R31-2
+discharged as BUILT — the binding on all three node types with its false-acceptance gate, and the shape
+check on BOTH `NonMembershipLeafData` and `SiblingData` — after which it composes with the R1.7 external
+red-team gate for the #657 accept flip. Nothing here is recorded CLOSED; R3.1 stays GATED until G-R31-5.

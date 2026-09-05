@@ -355,12 +355,29 @@ func foldDigestMismatch(digest, preimage []byte) bool {
 // NonMembershipLeafData = {0x01, 32 bytes}, no SiblingData, no SideNodes — offered for any
 // absence query would crash the process. Refuse the shape first; the caller maps the refusal
 // to NoWitness / a fold stall, never to a proven outcome.
+//
+// SIBLINGDATA IS THE SECOND ARM (PE code ruling RULING-R3.1-smt-domain-separation-code-8434591
+// S1, measured): validateBasic bounds SiblingData nowhere and calls hashPreimage(SiblingData)
+// whenever it is non-nil and SideNodes is non-empty; for a 0x02 (extension) prefix that is
+// parseExtNode slicing data[1:3] and data[3:35] unbounded, and for len == 0 it is
+// isExtNode's data[:1]. A 154-byte gob witness panicked IngestBlockWitnesses. The boundary,
+// pinned by sweep: any non-nil SiblingData panics at len == 0, or at [0] == 0x02 with
+// len < 35; len >= 35 is safe (childData = data[35:] may be empty). SideNodes need no arm:
+// the verifier copies each into a fresh 32-byte buffer.
 func proofShapeParsable(p *smt.SparseMerkleProof) bool {
 	if p == nil {
 		return false
 	}
 	if p.NonMembershipLeafData != nil && (len(p.NonMembershipLeafData) < 1 || p.NonMembershipLeafData[0] != 0x00) {
 		return false
+	}
+	if p.SiblingData != nil {
+		if len(p.SiblingData) == 0 {
+			return false
+		}
+		if p.SiblingData[0] == 0x02 && len(p.SiblingData) < 1+2+sha256.Size {
+			return false
+		}
 	}
 	return true
 }

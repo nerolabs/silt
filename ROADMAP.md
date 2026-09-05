@@ -1267,7 +1267,7 @@ economy-off HEAD certifies a network nobody runs. Design:
   disjoint-preimage argument on the VerifyProof path, prefix-free leading byte NOT fixed width; REFUTED the
   design record's completeness — two LATENT defects on the fold surface: witness-supplied siblings seeded into
   the library node store UNBOUND (audit Issue #2 on the verify side, zero hash work) and a 33-byte proof that
-  PANICS the process via checkPrefix with no recover() in core/; BOTH CLOSED on main behind gates G-R31-1/-2
+  PANICS the process via checkPrefix with no recover() in core/ (and, found by the blind PE code review, the same panic through an unbounded `SiblingData` — both arms now refused); both closed behind gates G-R31-1/-2
   (branch `builder/r3.1-smt-domain-separation-gates`); G-R31-3/-4/-6 built (sum-trie forbid + sha256 at every
   SMT site, NUL-terminated tags by source, go.mod v1.0.0 pin); the residual record
   `docs/design/state-root-domain-separation.md` written and cross-linked; **G-R31-5 OWNER CALL: `statehash.Root`
