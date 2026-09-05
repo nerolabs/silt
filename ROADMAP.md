@@ -1272,7 +1272,9 @@ economy-off HEAD certifies a network nobody runs. Design:
   SMT site, NUL-terminated tags by source, go.mod v1.0.0 pin); the residual record
   `docs/design/state-root-domain-separation.md` written and cross-linked; **G-R31-5 OWNER CALL: `statehash.Root`
   rejects an empty leaf value (SI-6, one line, a validity-surface tightening)**; the decline of the audit's
-  different-hash recommendation CERTIFIED; nothing here blocks the freeze). Cert:
+  different-hash recommendation CERTIFIED; nothing here blocks the freeze; blind PE code review MERGE with 0 over-refusals
+  on a 260-shape sweep). **Residual filed for Boulder 3 (PE, out of R3.1 scope): a 5-byte hand-crafted gob length prefix forces a
+  ~10 MB allocation in `proof.Unmarshal` — `SProofMax` bounds ENCODED bytes, not parse memory.** Cert:
   `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R3.1-SMT-domain-separation-disjoint-preimage-RESEARCH-CERTIFICATION-2026-09-06.md`.**
   Builder (scope to
   hashing first) + crypto/Researcher confirm. Load-bearing: a leaf/internal second-preimage

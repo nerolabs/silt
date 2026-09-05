@@ -17,10 +17,14 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   Issue #2 arriving on the verify side). Every sibling is now bound by the library's own rule — SHA-256 for
   leaf/inner preimages, the expansion root for an extension preimage — and the fold stalls with
   `ErrFoldSiblingUnbound` otherwise. (2) A proof whose `NonMembershipLeafData` does not begin with the leaf
-  prefix made the library PANIC in `checkPrefix` (no `recover()` in `core/`): a 33-byte remote crash. Both
-  `Resolve` and `FoldChangedPaths` now refuse that shape before `VerifyProof`. Both defects were latent — the
+  prefix made the library PANIC in `checkPrefix` (no `recover()` in `core/`): a 33-byte remote crash; and — found
+  by the blind PE code review — an empty `SiblingData`, or a `0x02` `SiblingData` shorter than 35 bytes, panicked
+  the library's unbounded `hashPreimage` slicing (a 154-byte crash through `IngestBlockWitnesses`). `Resolve`,
+  `FoldChangedPaths` and `IngestBlockWitnesses` now refuse exactly the library's panic set before `VerifyProof`
+  (measured: zero over-refusals). Both defects were latent — the
   floor box never Accepts yet. New gates: `TestR31UnboundDeleteSiblingStallsTheFold`,
-  `TestR31MalformedLeafPrefixIsRefusedNotPanicked` (its control captures the raw library panic), plus the scope
+  `TestR31ForgedExtensionSiblingDoesNotBind`, `TestR31MalformedLeafPrefixIsRefusedNotPanicked` and
+  `TestR31MalformedSiblingDataIsRefusedNotPanicked` (their controls capture the raw library panics), plus the scope
   pins `TestR31NoSumTrieAndEverySMTUsesSHA256`, `TestR31SMTModuleIsPinnedToTheCertifiedVersion`,
   `TestR31EveryStateHashTagEndsInExactlyOneNUL`. Record: `docs/design/state-root-domain-separation.md`.
 

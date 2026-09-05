@@ -47,7 +47,7 @@ path. (The `0x02` class matters on the fold surface, §6.1, where witness bytes 
 | SI | Condition | Gate | Status |
 |---|---|---|---|
 | SI-1 | Non-sum trie: every SMT silt constructs or imports is `sumTrie=false` | V2 (`internal/depcheck/smt_domain_separation_test.go`) pins one `NewTrieSpec(sha256.New(), false)` site; **G-R31-3** (`smt_r31_pins_test.go`) additionally forbids `NewSparseMerkleSumTrie`/`ImportSparseMerkleSumTrie` (the library sets `sumTrie=true` and `WithValueHasher(nil)` INSIDE those, invisible to V2) and requires `sha256.New()` at every `NewSparseMerkleTrie`/`ImportSparseMerkleTrie` | gated |
-| SI-2 | Default value hasher; never `WithValueHasher(nil)` | V2 | gated |
+| SI-2 | Default value hasher; never `WithValueHasher(nil)` — keeps the leaf's value slot a 32-byte SHA-256 digest, so the leaf preimage's width is what the argument (§3) says it is and a raw value can never be hashed into the leaf slot; certification `R-R31-SI2-WIDTH-NOTE` closed by this restatement | V2 | gated |
 | SI-3 | No closest-proof path (`ProveClosest`, `VerifyClosestProof`, `nilPathHasher`) | V2 | gated |
 | SI-4 | Key-space injectivity: every tag used with `statehash.Key` ends in exactly one NUL and has no other | **G-R31-4** (`core/chain/r31_key_tag_injective_test.go`, every `tag*` constant by source) | gated |
 | SI-5 | No externally-writeable node store: no entry silt did not itself bind to its digest | **G-R31-1** (below) | gated (was VIOLATED on `main` until 2026-09-06) |
@@ -64,7 +64,7 @@ parser before any hashing, and the store poisoning never consults a hashing sche
 
 ## 6. The two latent defects found on the composed surface, and their closes
 
-**6.1 The fold's writeable node store (SI-5; audit Issue #2 on the verify side).** `FoldChangedPaths`
+**6.1 The fold's writeable node store (SI-5; audit Issue #2, p.8, on the verify side).** `FoldChangedPaths`
 seeded the library's node store with witness-supplied `(Digest, Preimage)` sibling pairs and never
 checked `Digest == hashPreimage(Preimage)`; the library dispatches node type on `data[0]` and takes the
 digest from the LOOKUP KEY without recomputing it. A forged node cost zero hash work. **Close (G-R31-1):**
@@ -96,7 +96,8 @@ not the `v1.0.0` tag — SI-7 pins the tag; provenance to the audited commits is
 Boulder 3, out of R3.1's scope: a hand-crafted 5-byte gob length prefix forces a ~10 MB allocation in
 `proof.Unmarshal` — `SProofMax` bounds ENCODED bytes, not parse memory (PE code ruling). Routed elsewhere: `hasher.go:103-108` is not
 goroutine-safe (single-loop today). Positive controls for both defects were owed to the Tester by the
-certification (it had no shell); they are the two `TestR31*` gates above, executed.
+certification (it had no shell); they are the four `TestR31*` gates above (two per defect, including the
+false-acceptance direction of the binding), executed.
 
 ## 8. What lifts the rest
 
