@@ -51,6 +51,19 @@ func statusAt(t *testing.T, s *uiServer, at time.Time, tokened bool) string {
 	return w.Body.String()
 }
 
+// statusKeyPresent reports whether the top-level document carries key at all, and its
+// raw value when it does. statusKey fails on an absent key; this one is for the gates
+// that assert absence-versus-presence (the R2.9a three wire states).
+func statusKeyPresent(t *testing.T, body, key string) (json.RawMessage, bool) {
+	t.Helper()
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(body), &top); err != nil {
+		t.Fatalf("decode status: %v (%s)", err, body)
+	}
+	raw, ok := top[key]
+	return raw, ok
+}
+
 func statusKey(t *testing.T, body, key string) json.RawMessage {
 	t.Helper()
 	var top map[string]json.RawMessage

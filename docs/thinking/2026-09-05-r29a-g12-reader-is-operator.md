@@ -19,8 +19,12 @@ The Red-team then showed (a) is not access control.
 - `cmd/silt/ui.go:304-313` — `guard` checks the client-controlled `Host` header; `:395-411`
   `isLocalHost` never reads the connection's remote address; `:343` the token is required on
   MUTATING methods only. `GET /api/status` is untokened.
-- `cmd/silt/ui.go:290-293` — the listener is plain `net.Listen("tcp", addr)`; the bound
-  address is returned to `daemon.go:1285`, so a startup check has its input before serving.
+- `cmd/silt/ui.go:290-294` — the listener is plain `net.Listen("tcp", addr)`, and `ui.serve`
+  starts `go http.Serve` BEFORE it returns the bound address. So the startup check must read
+  the OPERATOR'S FLAG STRING, before `ui.serve` is called; a check on the returned address
+  would refuse a daemon that is already listening. *(Corrected per the blind PE ruling S7;
+  the first draft of this line said the bound address was the input, and the certification's
+  §3.3(a) carries the same error — flag it when that document is next touched.)*
 - `cmd/silt/daemon.go:431-433` — the precedent shape: `-dht-address-reserve` is REFUSED at
   startup with a message naming the constraint.
 - Red-team F5 (`TestRT_COMPOSE4_ReverseProxyHostPassesTheLoopbackGuard`): nginx's default
@@ -46,7 +50,15 @@ The Red-team then showed (a) is not access control.
 - `cmd/silt/ui.go:550-558` — the F2 pattern already in the tree: ONE cached document, the
   withheld view applied to a copy at serve time, keyed on `validToken(r)`. Absent-vs-empty is
   handled by a `detailWithheld` marker, never by a missing key.
-- `loadOrCreateUIToken` — the token lives at `<store>/ui-token`, mode 0600, owner-readable.
+- `loadOrCreateUIToken` — the token lives at `<store>/ui-token`, WRITTEN mode 0600; the store
+  directory itself is 0755 (`daemon.go` `MkdirAll(*storeDir, 0o755)`), so it is the FILE mode,
+  not the directory, that carries the operator predicate — and `loadOrCreateUIToken` reads an
+  existing file without checking its mode, which is why a startup mode check is part of the
+  build (PE ruling S5). *(Corrected per S7: the first draft said "0600 store directory".)*
+- `cmd/silt/ui/app.js:26-28` — the dashboard sends the token in the `Authorization` header;
+  the `?token=` query form serves form POSTs and download links, never `/api/status`. So a
+  header-only predicate for the block costs the operator nothing. *(Corrected per S7: the
+  first draft said the dashboard depends on the query form.)*
 
 **The question, stated exactly.** "The reader is the operator" is a claim about a PERSON's
 relationship to the node, and no network-position check can establish it: a loopback bind
@@ -96,7 +108,13 @@ actually check, without adding a second secret (a read-scoped token would be a t
 rotate and is the follow-on F9 asks for, not a precondition). (A) alone was ratified for Part
 A and ships in either case; the PE rules on whether (B) rides with it.
 
-**Residuals after (E), named:**
+**Residuals after (E), named (S8 adds the last two):**
+- `R-BB-WITHHELD-IS-A-DISCLOSURE` — the marker publishes "the instrument is on" to an on-host
+  untokened reader. Beside `R-BB-SUPPRESSED-IS-A-DISCLOSURE`. Revisit trigger: if the loopback
+  refusal is ever relaxed, G-BB-13′ Part B reopens on the marker, and that is the owner's.
+- The write credential enters the operator's routine measurement loop. Bounded by the
+  header-only predicate (S3) and by documenting the `$(cat <store>/ui-token)` idiom in the flag
+  help rather than the startup log line.
 - An operator who deliberately configures a proxy to inject the token has published the block
   themselves; silt refused the routable bind and the operator went around it. Disclosed, not
   closed — no mechanism distinguishes that from the operator's own `curl`.
@@ -116,5 +134,20 @@ cross-origin GET reads `withheld`; the F6 source gate (`client.go` wires no inst
 added to the tagged CI anchor list in the same PR (the four-residuals ruling's unanchored-gate
 residual, materialised once already on #742).
 
-**Status:** proposed — to blind PE review before the (B) half is coded; the (A) half is
-owner-ratified and is built in parallel.
+**The observatory under (E), so the next builder does not re-derive it.** The observatory
+(`cmd/silt/ui/observatory.html`) is a cross-origin localhost reader that deliberately sends no
+token (`app.js`), so it reads `bBootstrapWithheld: true`. That is correct — it never rendered
+the block — and it does NOT pre-empt `D-UI-PRIVACY-FLAG`'s open question of whether the
+observatory sends the token or requires `-privacy=off` on its targets.
+
+**Blind PE ruling on this record:** PROCEED-WITH-CHANGES
+(`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-R2.9a-G-BB-12-design-2026-09-05.md`).
+Option (E) upheld; eight changes, all built in the same PR: S1 the marker is a sibling key,
+never a zero-valued block (sixteen false facts measured); S2 the withhold is a tag-split pair
+applied to the COPY; S3 header-only token for the block; S4 the `D-BB-BUILD-TAG` scoping
+correction; S5 the token-file mode refusal; S6 the shared fixture reads as the operator and
+no content gate grew a "withheld is also acceptable" branch; S7 the three false claims above;
+S8 the two residuals. Plus the coupling it named: ONE composition point, `uiServer.readerView`,
+where `D-UI-PRIVACY-FLAG`'s clauses will land.
+
+**Status:** built (both halves); PE fold-in applied; to blind PE code review after CI.

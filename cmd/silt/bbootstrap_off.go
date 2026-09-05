@@ -11,9 +11,9 @@ package main
 // "flag provided but not defined: -bbootstrap". That is the intended answer. The
 // mechanism is not disabled, it is absent, and there is nothing to enable.
 //
-// WHY THESE FOUR DECLARATIONS SURVIVE. A build tag cannot delete a struct field, a
+// WHY THESE SIX DECLARATIONS SURVIVE. A build tag cannot delete a struct field, a
 // composite-literal member or a call from an untagged function, so the untagged tree
-// keeps exactly four references — one type and three one-line calls, all inert:
+// keeps exactly six references — one type and five one-line calls, all inert:
 //
 //   - statusExtras, embedded in the GET /api/status payload. Empty here, so
 //     encoding/json promotes nothing and the emitted bytes carry no extra key
@@ -24,8 +24,11 @@ package main
 //     first-fetch time.
 //   - bbootstrapWireUI, called where daemon.go builds the UI server. Wires nothing, so
 //     uiServer.statusExtra stays nil.
-//   - bbootstrapRefuseRoutableBind, called where daemon.go is about to serve the UI.
-//     Refuses nothing: there is no instrument to protect and no -bbootstrap to be set.
+//   - bbootstrapRefuseRoutableBind and bbootstrapRefuseInsecureTokenFile, called where
+//     daemon.go is about to serve the UI. Refuse nothing: there is no instrument to
+//     protect and no -bbootstrap to be set.
+//   - withholdBBootstrap, called from uiServer.readerView on every GET /api/status.
+//     Withholds nothing: statusExtras has no field to withhold.
 //
 // Each takes the same arguments as its tagged twin so the daemon's call sites are
 // identical in both builds and cannot drift apart silently.
@@ -54,3 +57,11 @@ func bbootstrapWireUI(*uiServer, bool) {}
 // bbootstrapRefuseRoutableBind refuses nothing in a default build: -ui may bind anywhere,
 // exactly as before R2.9a, because there is no histogram on the surface to contain.
 func bbootstrapRefuseRoutableBind(string, bool) error { return nil }
+
+// bbootstrapRefuseInsecureTokenFile refuses nothing in a default build: the token file's
+// mode is load-bearing only for the histogram, which is not here.
+func bbootstrapRefuseInsecureTokenFile(string, bool) error { return nil }
+
+// withholdBBootstrap withholds nothing in a default build: statusExtras is empty, so there
+// is no block on the document and no marker to raise.
+func withholdBBootstrap(*statusExtras, bool) {}

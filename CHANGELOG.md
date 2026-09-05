@@ -8,6 +8,20 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Added
+- **R2.9a — G-BB-12′ / G-BB-13′ Part A: the `B_bootstrap` block is served to the OPERATOR and to nobody
+  else (2026-09-05; owner-ratified "refuse at startup", `D-R2.9a-RUN-CALLS` item 4; mechanism ruled by
+  the blind PE, `RULING-R2.9a-G-BB-12-design-2026-09-05.md`).** Two startup refusals in a tagged
+  daemon: `-bbootstrap` with a non-loopback `-ui` bind, and `-bbootstrap` with a `<store>/ui-token` readable
+  beyond its owner (a 0644 token would hand every local user the operator predicate). At serve time the
+  block goes only to a request carrying the token in the `Authorization` HEADER — never `?token=`, which
+  lands in logs — and every other reader (a reverse proxy forwarding a loopback `Host`, a co-tenant, the
+  observatory or any localhost origin) gets the sibling marker `bBootstrapWithheld: true` and no block, so
+  the three wire states stay distinct key sets. All withholds on `GET /api/status` now compose in ONE
+  function, `uiServer.readerView` (the F2 per-object detail today; `D-UI-PRIVACY-FLAG`'s counters when
+  built). Default build untouched: the off twins refuse and withhold nothing. Nine tagged gates
+  (`TestR29aG12*`), all in the CI anchor list. Deliberation: `docs/thinking/2026-09-05-r29a-g12-reader-is-operator.md`.
+
 ### Changed
 - **R2.9a — the `B_bootstrap` byte axis is ONE bin per doubling (2026-09-05, G-BB-23, owner-ratified in
   `D-R2.9a-RUN-CALLS` item 5).** `BBootstrapBinsPerOctave` 4 → 1, `BBootstrapByteBins` 164 → 41, the grid

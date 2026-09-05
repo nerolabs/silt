@@ -20,6 +20,8 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/nerolabs/silt/core/credit"
@@ -33,13 +35,45 @@ type statusExtras struct {
 	// a reader that sees no key knows the instrument is off, and a reader that sees the
 	// key with zero requesters knows the instrument is on and the ledger is idle.
 	BBootstrap *bBootstrapInfo `json:"bBootstrap,omitempty"`
+	// BBootstrapWithheld is G-BB-12′'s marker: the instrument is ON and this reader is
+	// NOT the operator, so the block is not served to it. It is a SIBLING key, never a
+	// field inside the block — a zero-valued bBootstrapInfo would emit sixteen keys of
+	// false facts, including ageAxisLive:false + cells:null, which is byte-identical to
+	// the documented "no clock injected" state (blind PE ruling
+	// RULING-R2.9a-G-BB-12-design-2026-09-05 S1). Three wire states, each a distinct
+	// key set: neither key (default build, or tagged with the flag off); this key alone
+	// (on; not the operator); bBootstrap alone (on; the operator).
+	BBootstrapWithheld bool `json:"bBootstrapWithheld,omitempty"`
+}
+
+// withholdBBootstrap is the R2.9a clause of uiServer.readerView, the (b) half of G-BB-12′:
+// the B_bootstrap block is served only to a reader that presented the API token in the
+// Authorization header. Anyone else — a reverse proxy or port-forward arriving from
+// loopback (Red-team F5), a co-tenant process that cannot read the 0600 token file, a
+// cross-origin page (the observatory, or any http://localhost:* origin the guard
+// reflects), a ?token= query that could have come from a log — gets the withheld marker
+// and no block. Together with bbootstrapRefuseRoutableBind (which keeps the token from
+// ever needing to leave the host) this is the code establishing that the reader can
+// read <store>/ui-token, mode 0600 — the one checkable correlate of "is the operator".
+//
+// x is the COPY's extras (readerView copies the cached document first). This function
+// ASSIGNS nil into the copy and never mutates *x.BBootstrap: the pointer is shared with
+// the cache, and clearing through it would withhold the block from the operator's next
+// read too (S2). With the instrument off x.BBootstrap is already nil and neither key is
+// emitted — the marker must not appear on a node that has nothing to withhold.
+func withholdBBootstrap(x *statusExtras, operator bool) {
+	if x.BBootstrap == nil || operator {
+		return
+	}
+	x.BBootstrap = nil
+	x.BBootstrapWithheld = true
 }
 
 // registerBBootstrapFlag declares -bbootstrap on fs and returns a reader for it. It
 // returns a closure rather than writing a package-level variable so that two daemons in
 // one process (the tests do this) do not share one flag value.
 func registerBBootstrapFlag(fs *flag.FlagSet) func() bool {
-	on := fs.Bool("bbootstrap", false, "R2.9a: RECORD AND PUBLISH the B_bootstrap histogram on GET /api/status (ROADMAP R2.9a). A full-census 2-D COUNT histogram over (identity age × log2 fetched bytes) — 8 age buckets × 41 log2 byte bins (one per doubling, 1 byte … 1 TiB), 328 counters, about 1.3 KiB on the wire, constant in the requester count. Counts ONLY: no requester id, no salted label, no per-identity row, no exact age, and no per-cell byte SUM (a cell sum with count 1 is that identity's exact byte total in disguise). The age axis is the boot-relative elapsed tick from the node's injected clock, right-censored at the ledger's uptime — a restart destroys every account, so no window longer than the longest clean uptime is measurable at all. It is the instrument D-R2.9-DIRECTION sentence 4 makes a precondition of pinning grant/r, and it is INSTRUMENTATION ONLY: no conservation rule, no standing calculation and no economic rule reads it. This FLAG IS ONLY PRESENT IN A BINARY BUILT WITH -tags bbootstrap (D-BB-BUILD-TAG); a default silt binary rejects it, because the mechanism is not compiled in. DEFAULT OFF, and off means NOT RECORDED, not merely unpublished: no observability clock is injected, so no account carries a first-touch time. Turning it on takes a restart and then a wait for the population to re-stamp. /api/status needs no token, so anything published there is world-readable wherever -ui is bound off loopback")
+	on := fs.Bool("bbootstrap", false, "R2.9a: RECORD AND PUBLISH the B_bootstrap histogram on GET /api/status (ROADMAP R2.9a). A full-census 2-D COUNT histogram over (identity age × log2 fetched bytes) — 8 age buckets × 41 log2 byte bins (one per doubling, 1 byte … 1 TiB), 328 counters, about 1.3 KiB on the wire, constant in the requester count. Counts ONLY: no requester id, no salted label, no per-identity row, no exact age, and no per-cell byte SUM (a cell sum with count 1 is that identity's exact byte total in disguise). The age axis is the boot-relative elapsed tick from the node's injected clock, right-censored at the ledger's uptime — a restart destroys every account, so no window longer than the longest clean uptime is measurable at all. It is the instrument D-R2.9-DIRECTION sentence 4 makes a precondition of pinning grant/r, and it is INSTRUMENTATION ONLY: no conservation rule, no standing calculation and no economic rule reads it. This FLAG IS ONLY PRESENT IN A BINARY BUILT WITH -tags bbootstrap (D-BB-BUILD-TAG); a default silt binary rejects it, because the mechanism is not compiled in. DEFAULT OFF, and off means NOT RECORDED, not merely unpublished: no observability clock is injected, so no account carries a first-touch time. Turning it on takes a restart and then a wait for the population to re-stamp. THE READER MUST BE THE OPERATOR (G-BB-12′): the daemon refuses to start unless -ui is a loopback bind and <store>/ui-token is owner-only, and the block is served only to a request carrying that token in the Authorization header — read it with: curl -H \"Authorization: Bearer $(cat <store>/ui-token)\" http://127.0.0.1:<port>/api/status. Any other reader sees bBootstrapWithheld:true and no block")
 	return func() bool { return *on }
 }
 
@@ -72,6 +106,34 @@ func bbootstrapRefuseRoutableBind(uiAddr string, on bool) error {
 		return nil
 	}
 	return fmt.Errorf("-bbootstrap with -ui %q refused: the B_bootstrap histogram is published on GET /api/status and may only be served on a loopback bind (127.0.0.1, ::1, localhost); bind -ui to loopback and read it locally (curl, ssh -L, docker exec) — G-BB-13′ Part A, owner-ratified 2026-09-05", uiAddr)
+}
+
+// bbootstrapRefuseInsecureTokenFile is the second startup refusal G-BB-12′ needs, and it
+// exists because the (b) half makes a file mode load-bearing. withholdBBootstrap serves
+// the block to whoever presents <store>/ui-token, and the reason that establishes "the
+// reader is the operator" is that the file is owner-only (0600, written so by
+// loadOrCreateUIToken). loadOrCreateUIToken READS an existing file without checking its
+// mode, so a 0644 token — a restored backup, a `cp` without -p, a volume copy — would
+// silently hand every local user the operator predicate with every gate green (blind PE
+// ruling RULING-R2.9a-G-BB-12-design-2026-09-05 S5). With -bbootstrap set, a token file
+// readable by group or other refuses the start and names the fix. A missing file is fine:
+// it is about to be created 0600. Tagged build only; a default daemon is untouched.
+func bbootstrapRefuseInsecureTokenFile(storeDir string, on bool) error {
+	if !on {
+		return nil
+	}
+	path := filepath.Join(storeDir, "ui-token")
+	fi, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("-bbootstrap: cannot stat %s: %w", path, err)
+	}
+	if mode := fi.Mode().Perm(); mode&0o077 != 0 {
+		return fmt.Errorf("-bbootstrap refused: %s is mode %04o, readable beyond its owner; the B_bootstrap block is served to whoever presents this token, so it must be owner-only — run `chmod 0600 %s` (G-BB-12′)", path, mode, path)
+	}
+	return nil
 }
 
 // bbootstrapInject wires the TWO observability time sources into the ledger — AND ONLY
@@ -141,9 +203,11 @@ func bbootstrapWireUI(s *uiServer, on bool) {
 // exact byte total in disguise). An analyst can read Q_q(bytes | age bucket) from it and
 // can learn nothing about who fetched what.
 //
-// DEFAULT OFF (-bbootstrap). GET /api/status needs no token, so anything published here
-// is world-readable wherever -ui is bound off loopback; reversing a default is cheap now
-// and expensive after adoption, and the measurement needs exactly one deployment.
+// DEFAULT OFF (-bbootstrap), and served ONLY TO THE OPERATOR (G-BB-12′): a loopback
+// bind is refused at startup otherwise, and the block itself is withheld from any request
+// that does not carry the owner-only API token in the Authorization header
+// (withholdBBootstrap). Reversing a default is cheap now and expensive after adoption,
+// and the measurement needs exactly one deployment.
 type bBootstrapInfo struct {
 	ClockSource string `json:"clockSource"` // "injected" | "none" — the age axis self-report (H-1)
 	AgeAxisLive bool   `json:"ageAxisLive"` // false ⇒ cells is null; NEVER an all-zero age column

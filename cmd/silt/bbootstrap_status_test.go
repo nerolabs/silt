@@ -72,7 +72,14 @@ func (c *r29aClock) step(d int64) {
 
 func getR29aStatusBody(t *testing.T, s *uiServer) string {
 	t.Helper()
+	// THE FIXTURE READS AS THE OPERATOR. Since G-BB-12′ the block is served only to a
+	// request carrying the API token in the Authorization header; every content gate in
+	// this suite is a statement about what the OPERATOR sees, so the helper presents it.
+	// The untokened view has its own gates (r29a_g12_reader_is_operator_test.go), and no
+	// content gate may grow a "withheld is also acceptable" branch — that is how a real
+	// regression gets absorbed (blind PE ruling RULING-R2.9a-G-BB-12-design S6).
 	r := httptest.NewRequest("GET", "http://127.0.0.1:8080/api/status", nil)
+	r.Header.Set("Authorization", "Bearer "+s.token)
 	w := httptest.NewRecorder()
 	s.guard(http.HandlerFunc(s.apiStatus)).ServeHTTP(w, r)
 	if w.Code != 200 {

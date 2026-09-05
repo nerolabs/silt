@@ -1267,6 +1267,11 @@ func cmdDaemon(args []string) error {
 		if err := bbootstrapRefuseRoutableBind(*uiAddr, bbootstrapOn()); err != nil {
 			return err
 		}
+		// And G-BB-12′'s second refusal: the block is served to whoever presents the
+		// token, so the token file must be owner-only. Also a no-op in a default build.
+		if err := bbootstrapRefuseInsecureTokenFile(*storeDir, bbootstrapOn()); err != nil {
+			return err
+		}
 		var capRep ports.CapacityReporter
 		if rep, ok := store.(ports.CapacityReporter); ok {
 			capRep = rep
