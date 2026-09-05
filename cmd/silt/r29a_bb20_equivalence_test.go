@@ -1,3 +1,5 @@
+//go:build bbootstrap
+
 package main
 
 // R2.9a RE-CERT — BB-20, the G-BB-11′ EQUIVALENCE GATE, asserted AT THE WIRE.

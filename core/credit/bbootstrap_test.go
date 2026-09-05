@@ -1,3 +1,5 @@
+//go:build bbootstrap
+
 package credit
 
 // R2.9a — the B_bootstrap histogram's gates. Each test names the Tester gate from
@@ -367,10 +369,16 @@ func TestR29aOccupiedAgeBucketsNeverExceedUptime(t *testing.T) {
 	}
 	clk.step(-8 * bbDay) // put the clock back; the arms below are about a foreign stamp
 
-	// TEETH 2: plant a stamp from a FOREIGN tick source in a different unit — the real
-	// hazard, since RecordBondChallenge also writes firstSeenTick, from the bond
-	// auditor's own clock. A tick of 1 against a wall-clock ledger makes the identity
-	// look ten days old on a three-hour-old process. The assertion must fire.
+	// TEETH 2: plant a stamp from a FOREIGN tick source — the other writer of
+	// firstSeenTick is RecordBondChallenge, stamped by the bond auditor.
+	//
+	// CORRECTED 2026-09-05: that stamp is NOT in a different unit. The auditor passes
+	// uint64(n.clock.Now())+1 and the daemon hands node.New and bbootstrapInject the
+	// SAME walltime clock, so in production the two agree. The realistic divergence is a
+	// stamp written before this ledger's observability clock was injected, or carried
+	// across a restart — out of range, same unit. The fixture keeps the extreme value
+	// because the assertion must fire for ANY stamp older than the process, and a tick
+	// of 1 is the cheapest such value. The assertion must fire.
 	l.accounts[reqID(0)].firstSeenTick = 1
 	h = l.bBootstrapSnapshot()
 	if h.ClockSuspect {

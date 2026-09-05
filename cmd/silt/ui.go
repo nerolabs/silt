@@ -66,7 +66,13 @@ type uiServer struct {
 	token         string           // per-daemon bearer token gating state-changing calls (#89)
 	webOrigins    []string         // extra web origins allowed to draw content (e.g. https://app.example.com); off by default. Lets a hosted resolver surface render from this local node.
 	addressCap    addressCapConfig // R4.3b: the configured observed-address cap, reported with series A/B/E
-	bBootstrap    bool             // R2.9a: publish the B_bootstrap histogram on /api/status. DEFAULT FALSE (-bbootstrap)
+	// statusExtra, when non-nil, fills the one optional extra block on GET /api/status.
+	// IT IS NIL IN EVERY DEFAULT BUILD AND NOTHING CAN SET IT: the only implementation
+	// is the R2.9a B_bootstrap renderer in bbootstrap.go, which compiles under the
+	// `bbootstrap` build tag, and even there it is wired only when -bbootstrap is set
+	// (D-BB-BUILD-TAG, docs/decisions.md). Untagged, statusExtras is an empty struct
+	// (bbootstrap_off.go) and this hook has no possible target.
+	statusExtra func(*statusExtras)
 }
 
 // addressCapConfig is the -dht-address-cap configuration as /api/status reports it.
@@ -375,11 +381,18 @@ func (s *uiServer) apiStatus(w http.ResponseWriter, _ *http.Request) {
 		Chain        *chainInfo       `json:"chain,omitempty"`
 		Durability   *durabilityInfo  `json:"durability,omitempty"`
 		AddressCap   addressCapInfo   `json:"addressCap"` // R4.3b series A/B/E (shadow-run telemetry)
-		// R2.9a: ABSENT unless -bbootstrap is set. Absent and empty are different
-		// objects: a reader that sees no key knows the instrument is off, and a reader
-		// that sees the key with zero requesters knows the instrument is on and the
-		// ledger is idle.
-		BBootstrap *bBootstrapInfo `json:"bBootstrap,omitempty"`
+		// statusExtras is EMPTY in a default build and contributes no key at all
+		// (measured: the emitted JSON is byte-identical to a build with no such
+		// field). Under the `bbootstrap` build tag it declares one optional pointer,
+		// `bBootstrap`, which is ABSENT unless -bbootstrap is set — absent and empty
+		// stay different objects, so a reader that sees no key knows the instrument is
+		// off and a reader that sees the key with zero requesters knows it is on and
+		// the ledger is idle.
+		//
+		// It is an EMBEDDED STRUCT rather than an `any` field so that a default binary
+		// contains no JSON key name for it either: encoding/json promotes an embedded
+		// unexported struct's exported fields, and an empty one promotes nothing.
+		statusExtras
 	}
 	out.ID = s.nd.ID().String()
 	out.Peer = s.selfPeer
@@ -402,144 +415,11 @@ func (s *uiServer) apiStatus(w http.ResponseWriter, _ *http.Request) {
 		}
 		out.Durability = s.durabilitySnapshot(uptime)
 		out.AddressCap = s.addressCapSnapshot()
-		out.BBootstrap = s.bBootstrapSnapshot()
+		if s.statusExtra != nil {
+			s.statusExtra(&out.statusExtras)
+		}
 	})
 	writeJSON(w, out)
-}
-
-// bBootstrapInfo is the published B_bootstrap histogram (R2.9a): a full-census 2-D
-// COUNT histogram over (identity age × log2 fetched bytes), the instrument
-// D-R2.9-DIRECTION sentence 4 requires before the affordability ratio grant/r can be
-// pinned. cloudtest measures its own synthetic fetch plan, so the numbers have to come
-// off a deployment with real users.
-//
-// WHAT IT DELIBERATELY IS NOT (immutable #4, refuse-to-surveil). Counts, and nothing
-// else. No requester id — not even a salted label — no object root, no per-identity row,
-// no exact age, and no per-cell byte SUM (a cell sum with count 1 is that identity's
-// exact byte total in disguise). An analyst can read Q_q(bytes | age bucket) from it and
-// can learn nothing about who fetched what.
-//
-// DEFAULT OFF (-bbootstrap). GET /api/status needs no token, so anything published here
-// is world-readable wherever -ui is bound off loopback; reversing a default is cheap now
-// and expensive after adoption, and the measurement needs exactly one deployment.
-type bBootstrapInfo struct {
-	ClockSource string `json:"clockSource"` // "injected" | "none" — the age axis self-report (H-1)
-	AgeAxisLive bool   `json:"ageAxisLive"` // false ⇒ cells is null; NEVER an all-zero age column
-
-	// THE MINIMUM-REQUESTER FLOOR (G-BB-11). suppressed is true when the census held
-	// fewer than credit.BBootstrapMinRequesters requesters, and then every census count
-	// below is ABSENT FROM THE JSON — not published as zero. A published zero would be a
-	// false total, and a reader that sums the block would read it as a measured one; a
-	// missing key cannot be misread. The pointers exist for exactly that: omitempty on a
-	// non-nil pointer still emits a legitimate 0, so "on and idle" and "below the floor"
-	// stay different objects, which is the same distinction the absent-vs-empty rule for
-	// the whole block draws.
-	//
-	// WHY THE FLOOR EXISTS, in one line, because the obvious reading is wrong: requesters
-	// is THE ANONYMITY-SET SIZE, and publishing it is what makes the UNCONDITIONALLY
-	// published stats.bytesServed and durability.objects[].funded deltas attributable to
-	// one identity. Suppressing cells while still publishing requesters would close
-	// nothing.
-	//
-	// WHAT THE FLOOR IS NOT, corrected here because the first version of this comment
-	// implied the opposite (RE-CERTIFICATION 2026-09-05 §2.5). IT BOUNDS THE PUBLISHED
-	// CENSUS **COUNT**, NOT THE ANONYMITY **SET**. The census population is the set of
-	// identities that fetched, an identity is just a keypair, and the serve path has no
-	// admission control — so an observer that can FETCH lifts the floor for nine keypairs
-	// and one chunk each, permanently for the process's lifetime. The floor is a FIT
-	// PRECONDITION and a defence against a reader that CANNOT fetch. It is not a privacy
-	// mitigation against a capable adversary, and the Don't #3 question is not answered by
-	// it (R-BB-CENSUS-SYBIL-PAD, R-BB-ANONYMITY-SET-SIZE, both open). Nor does it close
-	// the delta trajectory of a POLLED series (R-BB-DELTA-TRAJECTORY, open, bounded by
-	// poll rate). And `suppressed: true` is itself a disclosure: a published upper bound
-	// of R_min − 1 on the anonymity set (R-BB-SUPPRESSED-IS-A-DISCLOSURE).
-	//
-	// THE RULE BEHIND WHICH KEYS ARE ABSENT IS A PROPERTY, NOT A LIST (G-BB-11′): below
-	// the floor this block is a function of the INSTRUMENT fields alone — the injected
-	// clock sources, their injection instants and the compiled axis constants — plus this
-	// one bit. Every key below that is a pointer is CENSUS class. BB-20 asserts the
-	// property on these exact bytes.
-	Suppressed bool `json:"suppressed"`
-
-	Requesters *int `json:"requesters,omitempty"` // the TRUE total: every account with fetched bytes > 0. ABSENT below the floor
-	Aged       *int `json:"aged,omitempty"`       // how many landed in a cell; equals the sum of all cells. ABSENT below the floor
-	Unstamped  *int `json:"unstamped,omitempty"`  // counted, never dumped into age bucket 0. ABSENT below the floor
-
-	UptimeNanos             int64  `json:"uptimeNanos"`                       // elapsed on the WALL clock; moves with an NTP step, so not a bound on its own
-	MaxOccupiedAgeEdgeNanos *int64 `json:"maxOccupiedAgeEdgeNanos,omitempty"` // lower edge of the highest occupied bucket. ABSENT below the floor: at a degenerate anonymity set it is a per-identity age
-	ClockStepBack           bool   `json:"clockStepBack"`                     // the wall clock read earlier than the LEDGER START. Instrument class — it touches no account — so it survives suppression. NOT the step detector; see clockSuspect
-	AgeClampedToZero        *bool  `json:"ageClampedToZero,omitempty"`        // the clock read earlier than an account's own stamp, so that age was clamped. CENSUS class: ABSENT below the floor
-	AgeExceedsUptime        *bool  `json:"ageExceedsUptime,omitempty"`        // the G-BB-4 censoring assertion failed — the run is suspect. CENSUS class (a threshold on maxOccupiedAgeEdgeNanos, which the floor withholds): ABSENT below the floor
-
-	// The clock cross-check (G-BB-4 / BB-13). uptimeNanos and every age come off ONE
-	// wall clock, so a step moves both and cancels; monotonicUptimeNanos comes off a
-	// source nothing can step, and the difference between them IS the step. It is
-	// published as a signed number as well as a flag, because the two directions are
-	// different failures and an analyst judges the magnitude against their own W.
-	MonotonicSource      string `json:"monotonicSource"`      // "injected" | "none" — the cross-check's self-report
-	MonotonicUptimeNanos int64  `json:"monotonicUptimeNanos"` // the REAL censoring bound: no age can exceed it
-	ClockSkewNanos       int64  `json:"clockSkewNanos"`       // wall − monotone; positive = the wall clock jumped forward
-	ClockSuspect         bool   `json:"clockSuspect"`         // the divergence moved identities at least a whole age bucket
-
-	AgeEdgeNanos  []int64 `json:"ageEdgeNanos"`  // lower edges; bucket i = [i, i+1), last open
-	AgeBuckets    int     `json:"ageBuckets"`    //
-	BinsPerOctave int     `json:"binsPerOctave"` // 4 — quarter-log2 byte bins
-	ByteBins      int     `json:"byteBins"`      // 164
-	ByteBinRule   string  `json:"byteBinRule"`   // the byte axis stated exactly, as a closed form
-
-	Cells [][]int64 `json:"cells"` // [ageBucket][byteBin] counts; null when the age axis is not live
-}
-
-// bBootstrapSnapshot renders the histogram for the wire, or nil when -bbootstrap is
-// unset (the block is then ABSENT from /api/status, not present-and-empty) or when no
-// ledger implements the export.
-func (s *uiServer) bBootstrapSnapshot() *bBootstrapInfo {
-	if !s.bBootstrap {
-		return nil
-	}
-	h, ok := s.nd.BBootstrap()
-	if !ok {
-		return nil
-	}
-	out := &bBootstrapInfo{
-		ClockSource:          h.ClockSource,
-		AgeAxisLive:          h.AgeAxisLive,
-		Suppressed:           h.Suppressed,
-		UptimeNanos:          h.UptimeNanos,
-		ClockStepBack:        h.ClockStepBack,
-		MonotonicSource:      h.MonotonicSource,
-		MonotonicUptimeNanos: h.MonotonicUptimeNanos,
-		ClockSkewNanos:       h.ClockSkewNanos,
-		ClockSuspect:         h.ClockSuspect,
-		AgeEdgeNanos:         h.AgeEdgeNanos[:],
-		AgeBuckets:           credit.BBootstrapAgeBuckets,
-		BinsPerOctave:        h.BinsPerOctave,
-		ByteBins:             h.ByteBins,
-		ByteBinRule:          h.ByteBinRule,
-	}
-	if !h.Suppressed {
-		// Above the floor the census counts are published, INCLUDING legitimate zeros:
-		// a node with the instrument on and no traffic reports requesters 0, which a
-		// reader must be able to tell from a withheld count.
-		out.Requesters = &h.Requesters
-		out.Aged = &h.Aged
-		out.Unstamped = &h.Unstamped
-		out.MaxOccupiedAgeEdgeNanos = &h.MaxOccupiedAgeEdgeNanos
-		// The two CENSUS-class corruption flags. They ride with the counts, not with
-		// the clock apparatus: ageExceedsUptime is a threshold on the withheld
-		// maxOccupiedAgeEdgeNanos, and ageClampedToZero can only fire if an account
-		// exists. An operator loses nothing below the floor — clockSuspect and the raw
-		// signed clockSkewNanos report the same corruption and read no account.
-		out.AgeClampedToZero = &h.AgeClampedToZero
-		out.AgeExceedsUptime = &h.AgeExceedsUptime
-	}
-	if h.Cells != nil {
-		out.Cells = make([][]int64, credit.BBootstrapAgeBuckets)
-		for i := range h.Cells {
-			out.Cells[i] = h.Cells[i][:]
-		}
-	}
-	return out
 }
 
 // durabilityInfo makes the built-but-previously-invisible S7 repair economy

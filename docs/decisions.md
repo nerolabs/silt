@@ -1465,3 +1465,109 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
   checkpoint as the guard set it swept*, or it opens a second-payout path that does not exist today.
   **Incremental persistence is refuted:** persisting balances without the provisional lanes is a mint, and
   persisting the lanes without conditional replay reverses every re-served lane at every restart.
+
+## D-BB-BUILD-TAG — the `B_bootstrap` instrument moves behind a build tag, and inside it the flag gates the RECORDING
+
+- **Status:** ✅ RATIFIED — 2026-09-05 (owner: *"I'll take your recommendation, proceed"*).
+- **Seat reports:**
+  `/Users/andrewedmond/Claude/claude/silt-reviews/red-team/RED-TEAM-R2.9a-bbootstrap-instrument-and-containments-2026-09-05.md`;
+  `/Users/andrewedmond/Claude/claude/silt-reviews/crypto-specialist/ADVISORY-R2.9a-Bbootstrap-observability-containment-prior-art-2026-09-05.md`;
+  `/Users/andrewedmond/Claude/claude/silt-reviews/economist/ADVISORY-R2.9a-grant-over-r-containment-and-pinning-2026-09-05.md`;
+  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-R2.9a-minR-floor-3337e8b-2026-09-05.md`.
+- **Certifications this is built on top of, both binding and neither reopened here:**
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.9a-Bbootstrap-DELTA-contamination-privacy-floor-clock-RESEARCH-CERTIFICATION-2026-09-04.md`
+  (G-BB-11, the minimum-requester floor) and
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.9a-minR-floor-RECERT-sybil-pad-and-estimand-steerability-RESEARCH-CERTIFICATION-2026-09-05.md`
+  (G-BB-11′, the property; BB-20). The instrument's shape is certified by
+  `R2.9a-Bbootstrap-instrument-sufficiency-RESEARCH-CERTIFICATION-2026-09-04.md` and is UNCHANGED —
+  no bin, edge, floor value or clock design moves here.
+- **The decision, in two sentences.** The instrument compiles only under the `bbootstrap` build tag,
+  so a default `go build` produces a binary with no histogram type, no census reader, no age
+  stamping and no `-bbootstrap` flag. Inside a tagged build the flag now gates the RECORDING as well
+  as the publication: the observability clock is injected only when the operator asked for it.
+- **Why a tag rather than a better runtime gate.** Part VI Don't #3 is a claim about what silt
+  **builds** — *"silt builds no mechanism to observe or link who-fetches-what… The refusal to build
+  surveillance is absolute"* — not a claim about who can currently read the output. The shipped
+  binary contained the mechanism and merely declined to print it, which satisfies the second reading
+  and not the first. The red-team's F3 is the concrete form: `cmd/silt/daemon.go:673` injected the
+  clock **unconditionally**, with a comment saying so deliberately, so every default-flags silt node
+  recorded `(identity, cumulative bytes, first-seen wall-clock nanosecond)` for every requester, in
+  RAM, with no flag to disable it. The `when` did not exist before R2.9a. Prior art reaches the same
+  place: go-ethereum answered the analogous question about its `personal` namespace by **removing
+  the capability from the network-facing surface**, not by authenticating it better.
+- **The trade this reverses, accepted deliberately.** Unconditional injection bought one property —
+  flipping `-bbootstrap` on at the next restart found an already-stamped population. That is gone. A
+  tagged operator restarts **with** the flag on and then waits for the population to re-stamp. It is
+  affordable because the instrument is run once, for one series, on one deployment, and because
+  G-BB-15 already requires monotone uptime ≥ 2× the read bucket's upper edge — the wait is the run's
+  own precondition, not a new cost on top. `BBootstrapRunPrecondition` voids a run carrying any
+  unstamped account, so the half-stamped population is refused rather than fitted.
+- **Alternatives rejected.**
+  - **A token-gated endpoint (containment #2).** REJECTED: silt's status token is a **single
+    unscoped secret that also authorises publishing and funding** (`cmd/silt/ui.go` `guard()`), so
+    handing it to a monitoring scraper hands over mutation. Red-team F9. It also regulates the
+    reader, which is the wrong axis for a claim about the artifact.
+  - **A loopback bind check (containment #1).** REJECTED in favour of the tag: the existing guard
+    checks a client-controlled `Host` header and **never the connection's `RemoteAddr`**, so a
+    reverse proxy — the standard production shape — defeats it (red-team F5, F11; go-ethereum states
+    the same limit verbatim for CORS). It remains a sound **deployment posture** and G-BB-12′ still
+    stands; it is not a substitute for the artifact-level claim.
+  - **Leaving it as-is with a better default.** REJECTED: a default-off flag on a mechanism that is
+    present is exactly the shape Don't #3 rules on, and the recording was not behind the flag at all.
+  - **Deleting the instrument.** NOT taken: `D-R2.9-DIRECTION` sentence 4 makes the measurement a
+    precondition of pinning `grant/r`, and the tag preserves the run at the cost of one build flag.
+- **What is explicitly NOT decided here.** The tail-merge of low-count cells (with the Researcher).
+  `W`, `q`, the population `P` (G-BB-1, G-BB-9). G-BB-13′ Part A/B, the routable-interface question —
+  the tag narrows it to tagged builds but does not answer it. Every open residual stands:
+  R-BB-DELTA-TRAJECTORY, R-BB-CENSUS-SYBIL-PAD, R-BB-ANONYMITY-SET-SIZE,
+  R-BB-SUPPRESSED-IS-A-DISCLOSURE, R-BB-EXPORT-SCALAR-BYPASS, R-BB-ESTIMAND-STEERABLE.
+- **What the tag does NOT close, stated because a build flag reads like more than it is.** Under the
+  tag, with the flag on, every red-team finding about the instrument's *contents* is live and
+  unchanged — F1 (the attacker mints the anonymity set for $0), F2 (object-level attribution joined
+  from the unconditionally published `stats.bytesServed` and `durability.objects[].funded`), F4, F7,
+  F8. The tag removes the mechanism from every node that was not asked for it; it does not make the
+  measurement safe on the node that runs it. **F2's object half is unflagged, unfloored and
+  untouched by this decision** — it predates R2.9a and needs its own.
+- **Gates.** `TestR29aTheFlagGatesTheRecordingNotJustThePublication` and
+  `TestR29aFlippingTheFlagOnDoesNotRecoverThePastIsTheACCEPTEDCOST` (`cmd/silt`, tagged);
+  `TestR29aDefaultBuildStampsNoFirstTouchOnRegister` and
+  `TestR29aBondChallengeStillStampsFirstSeenTick` (`core/credit`, BOTH builds);
+  `TestR29aDefaultBuildHasNoCensusReaderOnTheLedger`,
+  `TestR29aDefaultBuildHasNoBBootstrapReaderOnTheNode`,
+  `TestR29aDefaultBuildHasNoBBootstrapFlag`, `TestR29aDefaultBuildStatusHasNoBBootstrapKey`
+  (untagged only). CI job `bbootstrap` reads the linked default binary for symbols and flag, then
+  runs the tagged suite and asserts twelve named gates PASSED and nothing skipped.
+- **One thing preserved on purpose.** `account.firstSeenTick`'s other writer, in
+  `RecordBondChallenge`, predates R2.9a entirely, is stamped from the bond auditor's request counter
+  rather than a wall clock, and fires only for a validator answering a storage-bond challenge. It is
+  untouched, and it has its own gate so a later reader cannot mistake it for part of this mechanism.
+- **CORRECTION — 2026-09-05, appended not substituted.** The bullet immediately above is **false on
+  the fact**, and it is left standing so the record shows the correction rather than hiding it.
+  Source: the blind principal-engineer review
+  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-R2.9a-bbootstrap-build-tag-d5099fa-2026-09-05.md`
+  §6.2–6.3, which measured it on two real bonded validators.
+  - **What the entry said:** `RecordBondChallenge`'s tick "is stamped from the bond auditor's request
+    counter rather than a wall clock".
+  - **What is true:** it is a **wall clock**. `core/node/bondaudit.go` computes
+    `uint64(n.clock.Now()) + 1` (both at `bondAuditTick` and at `AuditBondsOnce`); the daemon builds
+    its node clock as `clk := walltime.New(loop)` and hands that same `clk` to `node.New`; and
+    `adapters/walltime` returns `time.Now().UnixNano()`. The cited DELTA certification had already
+    recorded this — the entry restated the certification's own fact backwards. The writer fires on a
+    `-validator` node (`StartBondAudit` is gated on `*validator`) for that node's own id and for
+    every **bonded** peer that answers a challenge; it never fires for an unbonded fetcher, and a
+    non-validator daemon never calls it.
+  - **What follows, and it is the reason this correction is not cosmetic:** an identity that is both
+    a bonded peer and a fetcher carries the full `(identity, cumulative fetched bytes, first-seen
+    wall-clock nanosecond)` tuple in a **default** build — the exact tuple this decision's texts said
+    was gone. The tuple's absence therefore holds on the **serve path**, for the general requester
+    population, which is what the tag and the flag actually changed; it does not hold for bonded
+    validator peers. Filed as open residual **R-BB-BOND-STAMP-TUPLE** (ROADMAP R2.9a), disclosed
+    rather than closed: the residual predates R2.9a and the retention surface it feeds (`DecayStale`,
+    `BondMaxAge`) is research-gated and routed separately.
+  - **Pinned by a test, not by this paragraph:** `TestR29aBondAuditStampsAWallClockNanosecondNotACounter`
+    (`core/node`, untagged) drives two real audit sweeps an hour apart and asserts the ticks differ
+    by the elapsed hour rather than by 1, so a request counter — including a high-seeded one — fails
+    it. `TestR29aBondChallengeStillStampsFirstSeenTick` now passes a Unix-nanosecond-magnitude tick
+    instead of `77`, so the gate itself shows the wall clock.
+  - **No behaviour changed.** `RecordBondChallenge`, `DecayStale` and standing retention are
+    untouched by this correction; only the texts and the gates moved.

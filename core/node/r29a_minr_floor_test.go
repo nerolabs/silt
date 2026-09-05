@@ -1,3 +1,5 @@
+//go:build bbootstrap
+
 package node
 
 // R2.9a DELTA — the node tier of the minimum-requester floor (G-BB-11 / BB-15), the

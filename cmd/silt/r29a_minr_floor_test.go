@@ -1,3 +1,5 @@
+//go:build bbootstrap
+
 package main
 
 // R2.9a DELTA — the WIRE tier of the minimum-requester floor (G-BB-11 / BB-15) and the

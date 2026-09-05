@@ -8,7 +8,81 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Fixed
+- **R2.9a — the preserved `firstSeenTick` writer is a WALL CLOCK, not a request counter; four texts
+  said the opposite and are corrected, and the residual they denied is now filed as
+  `R-BB-BOND-STAMP-TUPLE`.** A blind principal-engineer review measured this on two real bonded
+  validators. `core/node/bondaudit.go` stamps `uint64(n.clock.Now()) + 1`; the daemon builds its
+  node clock as `clk := walltime.New(loop)`; `adapters/walltime` returns `time.Now().UnixNano()`.
+  The claim that it was "the bond auditor's own request counter rather than a wall clock" was
+  inherited from a stale doc comment on `RecordBondChallenge` in `core/credit/credit.go`, which is
+  corrected at the source so it cannot be inherited a third time. The other three sites —
+  `core/credit/bbootstrap_off.go`, the `TestR29aBondChallengeStillStampsFirstSeenTick` doc block,
+  and the ratified `D-BB-BUILD-TAG` entry in `docs/decisions.md` — are corrected too; the ratified
+  entry keeps its original bullet and carries an **appended dated correction**, so the record shows
+  the error rather than hiding it. **The consequence, disclosed rather than rounded off:** the
+  writer fires on a `-validator` node for that node's own id and for every **bonded peer** that
+  answers a challenge, so an identity that is both a bonded peer and a fetcher still carries
+  `(identity, cumulative fetched bytes, first-seen wall-clock nanosecond)` in a **default** build.
+  The tag's claim therefore holds on the **serve path**, for the general requester population, and
+  not for bonded validator peers. The residual is narrow, predates R2.9a, and is **not closed
+  here** — `RecordBondChallenge`, `DecayStale` and standing retention are unchanged, and that
+  surface is research-gated. New gate `TestR29aBondAuditStampsAWallClockNanosecondNotACounter`
+  (`core/node`, untagged) drives two real audit sweeps an hour apart and requires the ticks to
+  differ by the elapsed hour rather than by 1, so a request counter — including a high-seeded one —
+  fails it; `TestR29aBondChallengeStillStampsFirstSeenTick` now uses a Unix-nanosecond-magnitude
+  tick instead of `77`, which had made the value look like a counter to every future reader.
+- **R2.9a — the guard against putting `-bbootstrap` back into a DEFAULT build now runs in the
+  DEFAULT build.** The assertion that `cmd/silt/daemon.go` declares no `-bbootstrap` lived in a file
+  carrying `//go:build bbootstrap`, i.e. the one build that cannot have the defect: the same review
+  added `fs.Bool("bbootstrap", …)` to the untagged `daemon.go`, and the resulting binary declared
+  and accepted the flag while the ordinary test job stayed green. That assertion moves into
+  `TestR29aDefaultBuildHasNoBBootstrapFlag` (untagged), and is strengthened on the way. It no longer
+  greps one literal in one file: it asks `go/build` for the **default build's own file set** — the
+  same constraint evaluation `go build` performs — and parses each file for any stdlib-`flag`
+  declaration whose name contains `bbootstrap`, under any flag type and in any file. Both
+  reintroductions redden it (measured: the reviewer's `daemon.go` `fs.Bool`, and a renamed
+  `fs.StringVar("bbootstrap-rows", …)` planted in a different untagged file).
+
 ### Changed
+- **R2.9a — the `B_bootstrap` instrument moves BEHIND A BUILD TAG, and inside a tagged build the
+  flag now gates the RECORDING as well as the publication (`D-BB-BUILD-TAG`, owner-ratified
+  2026-09-05).** A default `go build` produces a silt binary with **no histogram type, no census
+  reader, no age stamping and no `-bbootstrap` flag**; `silt daemon -bbootstrap` on it fails with
+  *"flag provided but not defined"*, because the mechanism is absent rather than disabled. Measured
+  on the linked binaries from this tree: `go tool nm` matches **0** `bbootstrap` symbols in the
+  default build and **10** under `-tags bbootstrap`; `daemon -help` mentions the flag **0** times
+  and **2** times respectively. **Why a tag and not a better runtime gate.** TENETS Part VI Don't #3
+  is a claim about what silt **builds** — *"silt builds no mechanism to observe or link
+  who-fetches-what… The refusal to build surveillance is absolute"* — not about who can read the
+  output today, and the shipped binary contained the mechanism and merely declined to print it.
+  Concretely: `cmd/silt/daemon.go` injected the observability clock **unconditionally**, with a
+  comment saying so deliberately, so every default-flags node recorded
+  `(identity, cumulative bytes, first-seen wall-clock nanosecond)` for every requester, in RAM, with
+  no flag to disable it — the `when` did not exist before R2.9a. Prior art agrees on the direction:
+  go-ethereum resolved the analogous question by **removing** the `personal` namespace from the
+  network-facing surface, not by authenticating it better. **The trade this reverses, stated
+  plainly:** unconditional injection bought the property that flipping the flag on found an
+  already-stamped population. That is gone on purpose — a tagged operator restarts **with** the flag
+  and waits for the population to re-stamp. It is affordable because G-BB-15 already requires
+  monotone uptime ≥ 2× the read bucket's upper edge, so the wait is the run's own precondition, and
+  because `BBootstrapRunPrecondition` **voids** a run carrying any unstamped account rather than
+  fitting a half-stamped one. **Rejected alternatives:** a token-gated endpoint (silt's status token
+  is a single unscoped secret that also authorises publishing and funding) and a bind check (the
+  guard reads a client-controlled `Host` header and never the connection's remote address, so a
+  reverse proxy defeats it — the loopback bind remains a sound deployment posture, not an
+  artifact-level claim). **Everything R2.9a already shipped still stands, inside the tag:** the
+  minimum-requester floor, the G-BB-11′ construct-from-the-instrument-class property, the BB-20
+  wire-equivalence gate, the two-clock cross-check and the package-scope export gate — all now run
+  ONLY under the tag, which is why CI compiles and tests the tagged variant and asserts twelve named
+  gates actually ran (measured: 41 top-level R2.9a tests tagged, 7 untagged). **What the tag does
+  NOT close:** with the tag and the flag on, every finding about the instrument's contents is live
+  and unchanged — the census is attacker-mintable for $0, and the object half of
+  who-fetches-what (`stats.bytesServed`, `durability.objects[].funded`) is published
+  unconditionally, predates R2.9a and is untouched here. `account.firstSeenTick`'s other writer, in
+  `RecordBondChallenge`, also predates R2.9a and is preserved exactly, with its own gate — see the
+  correction below for what that writer actually stamps, and for the residual it leaves open on a
+  validator node.
 - **R2.9a — the `B_bootstrap` block now has a MINIMUM-REQUESTER FLOOR: below `R_min` it publishes
   `suppressed: true` and no census count at all (G-BB-11).** The load-bearing fact is not that cells
   leak. `stats.bytesServed` and `durability.objects[].funded` are published **unconditionally** and

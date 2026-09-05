@@ -1,3 +1,5 @@
+//go:build bbootstrap
+
 package credit
 
 // R2.9a RE-CERT — M-2, closed at the package boundary.

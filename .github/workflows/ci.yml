@@ -1,10 +1,11 @@
 name: CI
 
 # Gates every push and pull request: the Go suite (with a coverage
-# floor), formatting, a race-detector build, a link-check plus
-# changelog/roadmap freshness for the website, and a docs-ship-with-code
-# check that a code change also touches the changelog. Branch protection
-# should require these before merging to main or staging.
+# floor), formatting, a race-detector build, the `bbootstrap` build-tag
+# variant (D-BB-BUILD-TAG), a link-check plus changelog/roadmap freshness
+# for the website, and a docs-ship-with-code check that a code change also
+# touches the changelog. Branch protection should require these before
+# merging to main or staging.
 on:
   push:
     branches: [main, staging]
@@ -63,6 +64,74 @@ jobs:
         # the coverage isn't worth the minutes; the dedicated e2e job runs
         # the full form.
         run: go test -race -short ./...
+
+  bbootstrap:
+    name: Go — the `bbootstrap` build tag (D-BB-BUILD-TAG)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+      # THE DEFAULT BINARY MUST CONTAIN NO PART OF THE INSTRUMENT. This is the half of
+      # D-BB-BUILD-TAG that no Go test can assert, because a test that can see the
+      # symbol is running in the build that has it. It reads the linked binary instead.
+      - name: A default silt binary carries no B_bootstrap mechanism
+        run: |
+          go build -o /tmp/silt-default ./cmd/silt
+          syms=$(go tool nm /tmp/silt-default | grep -i 'bbootstrap' || true)
+          if [ -n "$syms" ]; then
+            echo "::error::a DEFAULT silt binary contains B_bootstrap symbols. TENETS Part VI Don't #3 is a claim about what silt BUILDS; the instrument must compile only under -tags bbootstrap (D-BB-BUILD-TAG, docs/decisions.md)."
+            echo "$syms"; exit 1
+          fi
+          # And the flag must not exist. Not "default false" — absent.
+          if /tmp/silt-default daemon -help 2>&1 | grep -q 'bbootstrap'; then
+            echo "::error::a DEFAULT silt binary declares -bbootstrap. The mechanism must be absent, not disabled."; exit 1
+          fi
+          if ! /tmp/silt-default daemon -bbootstrap 2>&1 | grep -q 'flag provided but not defined: -bbootstrap'; then
+            echo "::error::a DEFAULT silt binary did not REJECT -bbootstrap as an unknown flag."; exit 1
+          fi
+          echo "OK — default binary: no symbols, no flag, rejects -bbootstrap"
+      - name: go vet -tags bbootstrap
+        run: go vet -tags bbootstrap ./...
+      # A BUILD TAG CI NEVER COMPILES IS CODE THAT ROTS. Everything R2.9a shipped — the
+      # minimum-requester floor, the G-BB-11' construct-from-the-instrument-class
+      # property, the BB-20 wire-equivalence gate, the two-clock cross-check and the
+      # package-scope export gate — now runs ONLY here. The `go` job above cannot see
+      # any of it.
+      - name: go test -tags bbootstrap -short ./...
+        run: go test -tags bbootstrap -short -count=1 ./...
+      # AND PROVE THE TAGGED TESTS ACTUALLY RAN. `go test -run` on a package with zero
+      # matches still exits 0, and a t.Skip is also a pass — so a green step above is
+      # not on its own evidence that the instrument's gates executed. This asserts named
+      # anchors, one per surviving gate family, and refuses any skip.
+      - name: the tagged gates really ran (not filtered out, not skipped)
+        run: |
+          out=$(go test -tags bbootstrap -short -count=1 -v ./core/credit/ ./core/node/ ./cmd/silt/ -run 'R29a' 2>&1)
+          echo "$out"
+          for tst in \
+            TestR29aTheFlagGatesTheRecordingNotJustThePublication \
+            TestR29aFlippingTheFlagOnDoesNotRecoverThePastIsTheACCEPTEDCOST \
+            TestR29aBB15FloorWithholdsEveryCensusCountBelowRMin \
+            TestR29aBB15FloorIsDerivedNotChosen \
+            TestR29aBB20BelowFloorBlockIsAFunctionOfTheClockAlone \
+            TestR29aBB20HasTeeth \
+            TestR29aBBootstrapHasOneExportedRoute \
+            TestR29aExportRouteGateHasTeeth \
+            TestR29aWallClockStepIsDetectedNotAbsorbed \
+            TestR29aOccupiedAgeBucketsNeverExceedUptime \
+            TestR29aBBootstrapSnapshotWritesNothing \
+            TestR29aDaemonInjectsBothClocksBeforeTheLedgerIsReachable ; do
+            echo "$out" | grep -q "^--- PASS: ${tst} " || {
+              echo "::error::${tst} did not PASS under -tags bbootstrap. Either it was renamed (fix this list), it was skipped, or the tagged build lost the gate."; exit 1; }
+          done
+          if echo "$out" | grep -q '^--- SKIP'; then
+            echo "::error::a tagged R2.9a gate SKIPPED. A skipped gate is a gate that rots."
+            echo "$out" | grep '^--- SKIP'; exit 1
+          fi
+          echo "OK — every named tagged gate ran and passed"
+
 
   e2e:
     name: Go — multi-process e2e (real TCP)
