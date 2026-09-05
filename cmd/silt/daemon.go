@@ -86,6 +86,7 @@ func cmdDaemon(args []string) error {
 	revokeRoot := fs.String("revoke", "", "as a validator, propose an on-chain takedown of this root hash once standing is earned and the root is committed (M0 F5: quorum-gated, existence-checked; honored only by nodes that -honor-chain-revocations)")
 	validator := fs.Bool("validator", false, "keep a chain replica and take part in consensus")
 	uiAddr := fs.String("ui", "", "serve the web UI at this address (e.g. 127.0.0.1:8081)")
+	privacyFlag := fs.String("privacy", privacyModeName(privacyDefaultWithheld), "on|off (D-UI-PRIVACY-FLAG). on: node-wide serve counters (stats, durability.balance, /api/economy/self revenue) and library link keys are withheld from readers that do not present the API token; the operator's own tokened reads are unchanged. off: publish them to any reader the guard admits — the node is then labelled as publishing PRE-RELEASE information on every response and on the dashboard. Any other value refuses to start")
 	debugAddr := fs.String("debug-addr", "", "serve Go pprof (heap/goroutine/profile) at this address (e.g. 127.0.0.1:6060) — diagnostic only, off by default. Used to attribute the MATURING consensus-node memory footprint (`go tool pprof http://addr/debug/pprof/heap`). Also dumps a heap profile to <store>/heap-<pid>.pprof on SIGUSR1 for cloud nodes without a reachable port.")
 	attesters := fs.String("attesters", "", "comma-separated validator IDs to gather attestations from")
 	anchorList := fs.String("anchors", "", "launch-window training wheels: comma-separated anchor validator IDs whose sign-off an immature-network commit also requires (empty = no training wheels)")
@@ -1276,6 +1277,10 @@ func cmdDaemon(args []string) error {
 		if rep, ok := store.(ports.CapacityReporter); ok {
 			capRep = rep
 		}
+		privacyOn, err := parsePrivacyFlag(*privacyFlag)
+		if err != nil {
+			return err
+		}
 		token, err := loadOrCreateUIToken(*storeDir)
 		if err != nil {
 			return err
@@ -1287,6 +1292,7 @@ func cmdDaemon(args []string) error {
 			peerCount:     func() int { return tr.PeerCount() },
 			carePublished: *carePublished,
 			token:         token,
+			privacy:       privacyOn,
 			addressCap: addressCapConfig{Mode: addrMode.String(), Width: *dhtAddressWidth,
 				CapDirect: *dhtDomainCap, CapRelay: *dhtRelayCap, Reserve: *dhtAddressReserve},
 		}
