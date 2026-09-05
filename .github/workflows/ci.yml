@@ -162,7 +162,17 @@ jobs:
             TestR29aDaemonInjectsBothClocksBeforeTheLedgerIsReachable \
             TestR29aByteBinMatchesTheClosedForm \
             TestR29aTopBinSaturatesThroughTheSnapshot \
-            TestR29aBB16PolledSeriesRevealsNoSingleIdentityTrajectory ; do
+            TestR29aBB16PolledSeriesRevealsNoSingleIdentityTrajectory \
+            TestR29aG12RoutableBindWithBBootstrapIsRefusedAtStartup \
+            TestR29aG12DaemonRefusesBeforeItBindsOrMintsAToken \
+            TestR29aG12ClientSubcommandWiresNoInstrument \
+            TestR29aG12ThreeWireStatesAreDistinctKeySets \
+            TestR29aG12QueryTokenDoesNotUnlockTheBlock \
+            TestR29aG12ProxyUpstreamHostAndLocalOriginReadWithheld \
+            TestR29aG12WithholdingDoesNotPoisonTheSharedCache \
+            TestR29aG12InsecureTokenFileIsRefusedAtStartup \
+            TestR29aG12ReaderViewIsTheOneCompositionPoint \
+            TestR29aG12TokenFileMustBeTheDaemonUsers ; do
             echo "$out" | grep -q "^--- PASS: ${tst} " || {
               echo "::error::${tst} did not PASS under -tags bbootstrap. Either it was renamed (fix this list), it was skipped, or the tagged build lost the gate."; exit 1; }
           done

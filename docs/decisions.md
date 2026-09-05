@@ -1614,6 +1614,18 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
 
 ---
 
+**Correction, appended 2026-09-05 (G-BB-12′ design review, blind PE ruling
+`RULING-R2.9a-G-BB-12-design-2026-09-05.md` S4; the ratified text above is unchanged).** The
+"token-gated endpoint … REJECTED" bullet above is scoped exactly as the bind-check bullet
+beside it already is: it rejected the token AS A SUBSTITUTE FOR THE ARTIFACT-LEVEL CLAIM (what
+silt builds), which the build tag settles. It did not reject the token as the reader-axis
+mechanism. Under G-BB-12′ the reader axis is the correct axis — the question there is *who may
+read a block a tagged, flag-on node publishes* — and the API token, presented in the
+`Authorization` header only, composed with the loopback-bind refusal, is the ratified
+mechanism (`D-R2.9a-RUN-CALLS` item 4 delegated the mechanism to that review). The F9 reason
+recorded above stands and is answered, not overridden: the bind refusal removes the token's
+reason to travel, and a header-only predicate keeps it out of URLs and logs.
+
 ## D-DONT3-READING — how the who-fetches-what bright line is read
 
 **Ratified 2026-09-05** by the owner: *"1 yes we can amend vision.md to include only what's

@@ -550,12 +550,64 @@ type statusInfo struct {
 func (s *uiServer) apiStatus(w http.ResponseWriter, r *http.Request) {
 	now := s.nowWall()
 	doc, takenAt := s.statusSnapshot(now)
-	out := *doc // shallow: only the scalar age and the durability pointer are rewritten
+	out := s.readerView(doc, r)
 	out.SnapshotAgeSec = int64(now.Sub(takenAt).Seconds())
-	if !s.validToken(r) {
-		out.Durability = withheldDurability(doc.Durability)
+	writeJSON(w, out)
+}
+
+// readerAuth is what the node can establish about the caller of one request. It is
+// computed once per request and handed to every withhold, so no clause re-derives it.
+type readerAuth struct {
+	// token: the API token arrived by ANY accepted route — Authorization header, ?token=
+	// query, or form field. This is what mutations require and what the F2 per-object
+	// durability withhold keys on.
+	token bool
+	// tokenHeader: the API token arrived in the Authorization header ONLY. A query or
+	// form token does not count. This is the operator predicate the B_bootstrap block
+	// keys on (G-BB-12′): a URL secret lands in access logs, proxy logs, Referer headers
+	// and browser history, so a credential that can ride the URL cannot be the thing
+	// that establishes "the reader is the operator" (Red-team F9 points 1–2; the cookie
+	// discipline of Tor's control port and Bitcoin Core's .cookie). The dashboard already
+	// sends the header (cmd/silt/ui/app.js), so nothing the operator uses loses access.
+	tokenHeader bool
+}
+
+// readerView is THE ONE COMPOSITION POINT for every serve-time withhold on GET /api/status.
+// It takes the cached FULL document and the request, copies the document, and applies
+// each withhold as one clause on the copy. Every withhold this surface will ever carry
+// belongs here as another clause — the F2 per-object detail (token), the R2.9a
+// B_bootstrap block (header token, tag-split), and D-UI-PRIVACY-FLAG's node-wide counters
+// (a process flag, build owed) when they land — so one document never grows N ad-hoc
+// rewrites with N marker conventions. The document's correctness argument everywhere is
+// "absent and empty are different objects"; keeping the withholds in one function is
+// what keeps that argument checkable.
+//
+// THE CACHE IS NEVER MUTATED. out is a shallow copy; every clause ASSIGNS a new value or
+// nil into the copy and never writes through a pointer the cached document also holds
+// (withheldDurability returns a new struct for exactly this reason). A clause that
+// cleared *doc.X in place would withhold it from the operator's next read too.
+func (s *uiServer) readerView(doc *statusInfo, r *http.Request) *statusInfo {
+	out := *doc
+	auth := readerAuth{token: s.validToken(r), tokenHeader: s.validTokenHeader(r)}
+	if !auth.token {
+		out.Durability = withheldDurability(doc.Durability) // red-team F2
 	}
-	writeJSON(w, &out)
+	withholdBBootstrap(&out.statusExtras, auth.tokenHeader) // G-BB-12′; a no-op in a default build
+	return &out
+}
+
+// validTokenHeader is validToken restricted to the Authorization header: no query
+// token, no form token. See readerAuth.tokenHeader for why the block needs the narrower
+// predicate. Same constant-time comparison, same refusal on a tokenless daemon.
+func (s *uiServer) validTokenHeader(r *http.Request) bool {
+	if s.token == "" {
+		return false
+	}
+	h := r.Header.Get("Authorization")
+	if !strings.HasPrefix(h, "Bearer ") {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(strings.TrimPrefix(h, "Bearer ")), []byte(s.token)) == 1
 }
 
 // statusSnapshot returns the cached document, recomputing it if it is older than

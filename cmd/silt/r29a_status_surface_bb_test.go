@@ -39,8 +39,18 @@ func TestR29aBB21StatusSnapshotIsCachedForOneInterval(t *testing.T) {
 	}
 	clk.now = ports.Time(3600 * 1e9)
 
+	// THE READS ARE THE OPERATOR'S (G-BB-12′): since 2026-09-05 the block is served only to
+	// a request carrying the token in the Authorization header, so an untokened reader
+	// sees the marker and no block at all. The cache property this gate pins is
+	// unchanged and reader-independent — ONE document, recomputed once per interval,
+	// copied per reader — and the untokened read below rides the same cache line, so the
+	// build-immutable #8 ground (the O(R) walk runs once per interval, not once per
+	// unauthenticated GET) is still exactly what is asserted.
 	base := s.started
-	first := statusAt(t, s, base, false)
+	first := statusAt(t, s, base, true)
+	if _, withheld := statusKeyPresent(t, statusAt(t, s, base, false), "bBootstrapWithheld"); !withheld {
+		t.Fatalf("an untokened GET inside the interval did not read bBootstrapWithheld — the unauthenticated reader must ride the same cached document and see the marker")
+	}
 
 	// The interleaved fetch: a brand-new identity, a byte count in a different bin.
 	// This is exactly the observation the trajectory attack needs, and it must not be
@@ -48,7 +58,7 @@ func TestR29aBB21StatusSnapshotIsCachedForOneInterval(t *testing.T) {
 	r29aFetch(led, 999, 1<<20)
 	clk.now = ports.Time(3600*1e9 + int64(statusSnapshotInterval/2))
 
-	second := statusAt(t, s, base.Add(statusSnapshotInterval-time.Millisecond), false)
+	second := statusAt(t, s, base.Add(statusSnapshotInterval-time.Millisecond), true)
 
 	fb, sb := statusKey(t, first, "bBootstrap"), statusKey(t, second, "bBootstrap")
 	if string(fb) != string(sb) {
@@ -56,7 +66,7 @@ func TestR29aBB21StatusSnapshotIsCachedForOneInterval(t *testing.T) {
 	}
 
 	// Past the interval the instrument is live again: the interleaved fetch appears.
-	third := statusAt(t, s, base.Add(statusSnapshotInterval+time.Second), false)
+	third := statusAt(t, s, base.Add(statusSnapshotInterval+time.Second), true)
 	if tb := statusKey(t, third, "bBootstrap"); string(tb) == string(fb) {
 		t.Fatalf("the block did not change a full interval after a new identity fetched — the cache never expires, which is not a snapshot, it is a freeze: %s", tb)
 	}
