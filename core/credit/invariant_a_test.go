@@ -66,6 +66,7 @@ var standingClassification = map[string]standingClass{
 	"SetFaucet":     neutral,
 	"GrantOwner":    neutral,
 	"FaucetStats":   neutral,
+	"Grant":         neutral, // reads the starter-grant constant; moves nothing
 	"ChargePublish": neutral,
 	"CanPublish":    neutral,
 	"Balance":       neutral,

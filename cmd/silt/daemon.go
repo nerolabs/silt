@@ -87,7 +87,7 @@ func cmdDaemon(args []string) error {
 	validator := fs.Bool("validator", false, "keep a chain replica and take part in consensus")
 	uiAddr := fs.String("ui", "", "serve the web UI at this address (e.g. 127.0.0.1:8081)")
 	grantCapacity := fs.Int64("grant-capacity", 0, "R2.12 faucet rate limit — bucket capacity in starter grants. 0 (default) = the faucet is UNLIMITED, exactly as before R2.12. Set together with -grant-per-hour: a fresh identity's 500,000 starter grant is then applied at its first SPEND (publish, token purchase, escrow funding) only if the bucket admits; otherwise it stays grant-pending and is retried at its next spend (never permanently denied). Metered per node, on the node's own monotonic clock — never on the chain epoch. A soft, disclosed deterrent on the RATE of fresh grants (dN/dt), not a bound on the total: a patient farm recovers every deferred grant. Start-up refuses a capacity whose worst-case guard occupancy exceeds a quarter of the paid-serial cap")
-	grantPerHour := fs.Int64("grant-per-hour", 0, "R2.12 faucet rate limit — sustained refill, in starter grants per hour, accrued continuously. 0 (default) = unlimited. The Economist's derived recommendation is 256/hour with capacity 256 (13.6x guard margin at the slowest observed block cadence); the value is an operator-set posture until the owner ratifies a shipped default")
+	grantPerHour := fs.Int64("grant-per-hour", 0, "R2.12 faucet rate limit — sustained refill, in starter grants per hour, accrued continuously. 0 (default) = unlimited. The rate is a SECURITY PARAMETER bounded by build-immutable #4 on both sides (Researcher certification R2.12-faucet-rate-tier-and-grant-ratio-composition-2026-09-05 §1.5): no value is recommended here, and a shipped default requires a research-certified admissible interval and an owner ratification; until then an operator who sets it owns the posture, and the start-up line prints what the value implies")
 	grantDenyFloor := fs.Int64("grant-deny-floor", 0, "R2.12 — what an identity receives when the faucet bucket is EMPTY: 0 (default) = nothing, it stays grant-pending and retries at its next spend; N > 0 = it receives N credits once instead (\"degrade\": one publish fee = 50000 keeps the honest onboarding floor structurally non-zero while cutting a farm's per-identity yield tenfold). Owner's call between two immutables; both shapes are built")
 	privacyFlag := fs.String("privacy", privacyModeName(privacyDefaultWithheld), "on|off (D-UI-PRIVACY-FLAG). on: node-wide serve counters (stats, durability.balance, /api/economy/self revenue) and library link keys are withheld from readers that do not present the API token; the operator's own tokened reads are unchanged. off: publish them to any reader the guard admits — the node is then labelled as publishing PRE-RELEASE information on every response and on the dashboard. Any other value refuses to start")
 	debugAddr := fs.String("debug-addr", "", "serve Go pprof (heap/goroutine/profile) at this address (e.g. 127.0.0.1:6060) — diagnostic only, off by default. Used to attribute the MATURING consensus-node memory footprint (`go tool pprof http://addr/debug/pprof/heap`). Also dumps a heap profile to <store>/heap-<pid>.pprof on SIGUSR1 for cloud nodes without a reachable port.")
@@ -660,10 +660,21 @@ func cmdDaemon(args []string) error {
 	ledger := credit.New(relaypay.ShippedAnchorFace, 500_000) // the ONE fee constant: publish fee == relay anchor face (R2.14 k_max derives from it); starter grant so a fresh publisher can pay token fees
 	// R2.12 — the faucet rate limit, configured only when BOTH flags are set (no shipped
 	// default: the number nobody can derive is refused-until-set, not invented — PE ruling
-	// S4). The bucket keys on Go's monotonic reading via time.Since, never the chain
+	// S4; the Researcher certified refuse-until-set as sufficient to defer the ratification,
+	// G-R212-1). The bucket keys on Go's monotonic reading via time.Since, never the chain
 	// epoch. The start-up assertion ties the four constants the guard's cliff depends on.
-	if err := faucetConfigure(ledger, *grantCapacity, *grantPerHour, *grantDenyFloor, 500_000, relaypay.ShippedAnchorFace); err != nil {
+	if err := faucetConfigure(ledger, *grantCapacity, *grantPerHour, *grantDenyFloor); err != nil {
 		return err
+	}
+	// G-R212-1's second half, structural rather than a default: a PRICED lane may not be
+	// enabled with the faucet unconfigured. The two lanes a fetcher pays on today are the
+	// delivery-receipt lane (-accept-delivery-receipts; a fetcher buys demand tokens through
+	// ChargePublish) and the relay's pay-as-you-go splice (-accept-relay-payments; anchors
+	// bought through ChargePublish); priced delivery (R2.9) adds its own flag here. The
+	// sequencing rule "R2.12 lands before priced delivery" is thereby enforced by the daemon,
+	// not remembered by an operator.
+	if (*acceptRelayPayments || *acceptReceipts) && !ledger.FaucetStats().Configured {
+		return fmt.Errorf("-accept-delivery-receipts / -accept-relay-payments refused: a priced lane may not be enabled with the faucet unlimited — set -grant-capacity and -grant-per-hour (R2.12, G-R212-1); every fetcher that pays on this ledger first receives a starter grant, and an unbounded grant rate under a priced lane is the guard-fill and subsidy surface the rate limit exists to bound")
 	}
 	// The node's OWN account is granted unmetered, before any other account exists: a node
 	// that denied itself could not publish or fund its own escrow (PE ruling S7).
@@ -2136,10 +2147,19 @@ func effectiveOperatorMargin(marginSet bool, explicit int, objectivePath bool) (
 // ADVISORY-R2.12-faucet-rate-limit-defaults-2026-09-05 §2.3: the assertion ties the faucet's
 // burst, the grant, the fee and the guard cap — four constants in three packages re-tuned
 // by three different processes — so raising any one past the guard's cliff refuses to start
-// instead of silently opening a hole). With both flags at 0 the ledger stays UNCONFIGURED
-// and behaves exactly as before R2.12. The assumption the derivation rests on is printed
-// beside the values so an operator reading one line knows what would move them.
-func faucetConfigure(l *credit.Ledger, capacity, perHour, denyFloor, grant, fee int64) error {
+// instead of silently opening a hole). IT IS A COHERENCE GATE, NOT A SECURITY BOUND: it
+// bounds the FLOW of fresh entitlement per bucket-fill, never the STOCK — balances never
+// expire and accounts are never deleted, so the accumulated entitlement is bounded only by
+// the ledger's ephemerality (Researcher certification
+// R2.12-faucet-rate-tier-and-grant-ratio-composition-2026-09-05 §3.3, G-R212-4). With both
+// flags at 0 the ledger stays UNCONFIGURED and behaves exactly as before R2.12; there is NO
+// shipped default, because the rate is a security parameter bounded by build-immutable #4
+// on both sides and its value may be set only by an owner ratification against a
+// research-certified admissible interval (same certification §1.5, G-R212-1). The
+// assumption the Economist's derivation rests on is printed beside the operator's values
+// so whoever reads one line knows what would move them.
+func faucetConfigure(l *credit.Ledger, capacity, perHour, denyFloor int64) error {
+	grant, fee := l.Grant(), l.Fee() // from the LEDGER, never a duplicated literal (PE BLK-3)
 	if capacity == 0 && perHour == 0 {
 		if denyFloor != 0 {
 			return fmt.Errorf("-grant-deny-floor %d refused: it has no effect without -grant-capacity and -grant-per-hour", denyFloor)
@@ -2165,7 +2185,7 @@ func faucetConfigure(l *credit.Ledger, capacity, perHour, denyFloor, grant, fee 
 	if denyFloor > 0 {
 		mode = fmt.Sprintf("degrade (%d credits once)", denyFloor)
 	}
-	fmt.Printf("faucet: rate-limited — capacity %d grants, %d/hour accrued continuously, empty bucket = %s; worst-case guard occupancy %d of %d (%.1f%%). ASSUMPTION carried: the rate was derived from a block cadence observed at 40–170 s on cloudtest and an honest first-spend arrival rate assumed far below it; re-derive on two consecutive hours of grants pending under honest load, never on one datapoint (R2.12, docs/thinking/2026-09-05-r2.12-faucet-rate-limit.md)\n",
+	fmt.Printf("faucet: rate-limited — capacity %d grants, %d/hour accrued continuously, empty bucket = %s; worst-case guard occupancy per bucket-fill %d of %d (%.1f%%; a flow bound, not a stock bound). This value is operator-set: the rate is a security parameter with no certified interval yet; watch faucet.grantsDenied (distinct identities refused) on /api/status — grantsPending counts registrations, not denials — and re-derive on two consecutive hours of denials under honest load, never on one datapoint (R2.12, docs/thinking/2026-09-05-r2.12-faucet-rate-limit.md)\n",
 		capacity, perHour, mode, occupancy, credit.MaxPaidSerial, 100*float64(occupancy)/float64(credit.MaxPaidSerial))
 	return nil
 }

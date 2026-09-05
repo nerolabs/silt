@@ -34,6 +34,18 @@ type account struct {
 	// grow-only map (the validatorsSeen trap); the account already exists, so this costs
 	// one bool and no new unbounded state.
 	grantPending bool
+	// grantAdvanced (R2.12): this pending identity has already received the deny FLOOR as
+	// an ADVANCE on its grant. It stays pending; when a token later admits it, it is topped
+	// up to the full grant (grant − floor), never granted twice (Researcher certification
+	// R2.12-faucet-rate-tier-and-grant-ratio-composition §4.4–4.5, G-R212-3: a floor that
+	// SETTLED the grant made the build-immutable #4 failure permanent).
+	grantAdvanced int64 // the amount advanced (0 = none); the top-up is grant − this, never grant − the current floor
+	// grantDenied (R2.12): this identity has been REFUSED at a spend gate at least once. Set
+	// on the first plain denial (empty bucket, no floor) and never cleared, so
+	// grantsDenied below counts DISTINCT identities that met an empty bucket — the
+	// Economist's grantsDeniedDistinctTotal — rather than registrations (every pure read
+	// registers) or retries.
+	grantDenied  bool
 	auditsPassed int
 	auditsFailed int
 	// Storage-bond standing — the Sybil cost. bondedBytes is the size of
@@ -130,13 +142,16 @@ type Ledger struct {
 	// pays for durability work (economist §3.2).
 	faucet *faucet
 	// faucetDenyFloor: what an identity receives when the bucket is EMPTY. 0 = deny (it
-	// receives nothing and stays pending); > 0 = degrade (it receives this much once — the
-	// PE recommends exactly one fee — and is no longer pending). Owner's call
-	// (RULING-R2.12-faucet-rate-limit-design-2026-09-05 §4); both shapes are built.
+	// receives nothing and stays pending); > 0 = an ADVANCE of this much — the PE recommends
+	// exactly one fee — while it STAYS pending and is topped up to the full grant when a
+	// token later admits it. Never a settlement: the Researcher measured that clearing the
+	// pending flag on a floor grant capped a degraded identity below the #4 cliff forever
+	// (G-R212-3). The remaining owner's call is deny vs floor-as-advance; both are built.
 	faucetDenyFloor int64
-	grantsIssued    int64 // full starter grants applied through the bucket or to the owner
-	grantsDegraded  int64 // floor grants applied on an empty bucket
-	grantsPending   int64 // identities currently grant-pending (distinct; a retry is not a new denial)
+	grantsIssued    int64 // full starter grants completed (through the bucket, or the owner); a topped-up advance counts once, here
+	grantsDegraded  int64 // floor ADVANCES applied on an empty bucket (the identity stays pending)
+	grantsDenied    int64 // DISTINCT identities refused at a spend gate at least once (never retries, never registrations)
+	grantsPending   int64 // accounts currently grant-pending — REGISTRATIONS awaiting a spend, most of which never spend; not a denial count
 	accounts        map[ports.NodeID]*account
 	order           []ports.NodeID // registration order: deterministic iteration
 	// rootOwner binds each bond root to the first identity that proved it, so
@@ -447,12 +462,18 @@ func (l *Ledger) SetFaucet(capacity, refill, intervalNanos, denyFloor int64, now
 // does nothing. On an unconfigured ledger it is a plain Register.
 func (l *Ledger) GrantOwner(n ports.NodeID) {
 	l.Register(n)
-	a := l.accounts[n]
+	l.completeGrant(l.accounts[n])
+}
+
+// completeGrant brings a pending account to the FULL grant — the whole grant, or the
+// remainder above an advance already applied — and retires the pending flag. The one
+// place the grant is completed, so an identity can never be granted twice.
+func (l *Ledger) completeGrant(a *account) {
 	if !a.grantPending {
 		return
 	}
-	a.grantPending = false
-	a.balance += l.grant
+	a.balance += l.grant - a.grantAdvanced // the remainder above whatever was advanced, or the whole grant
+	a.grantPending, a.grantAdvanced = false, 0
 	l.grantsPending--
 	l.grantsIssued++
 }
@@ -467,17 +488,21 @@ func (l *Ledger) applyGrant(a *account) {
 		return
 	}
 	if l.faucet.take() {
-		a.grantPending = false
-		a.balance += l.grant
-		l.grantsPending--
-		l.grantsIssued++
+		l.completeGrant(a)
 		return
 	}
-	if l.faucetDenyFloor > 0 {
-		a.grantPending = false
+	// Empty bucket. With a floor, ADVANCE it once and stay pending (G-R212-3): the
+	// identity can publish or buy anchors now and is topped up to the full grant when a
+	// token later admits it. Without a floor, a plain denial: nothing changes, retry later.
+	if l.faucetDenyFloor > 0 && a.grantAdvanced == 0 {
+		a.grantAdvanced = l.faucetDenyFloor
 		a.balance += l.faucetDenyFloor
-		l.grantsPending--
 		l.grantsDegraded++
+		return
+	}
+	if !a.grantDenied {
+		a.grantDenied = true
+		l.grantsDenied++
 	}
 }
 
@@ -496,8 +521,13 @@ type FaucetStats struct {
 	Level          int64
 	GrantsIssued   int64
 	GrantsDegraded int64
-	GrantsPending  int64
+	GrantsDenied   int64 // distinct identities refused at a spend gate at least once — the one counter that moves on a denial
+	GrantsPending  int64 // accounts registered and awaiting a spend; NOT denials (every pure read registers)
 }
+
+// Grant is the starter grant this ledger applies. Read-only; the start-up assertion in
+// cmd/silt reads it from HERE, never from a duplicated literal (PE code ruling BLK-3).
+func (l *Ledger) Grant() int64 { return l.grant }
 
 // FaucetStats reads the faucet telemetry. Reading moves nothing.
 func (l *Ledger) FaucetStats() FaucetStats {
@@ -507,7 +537,7 @@ func (l *Ledger) FaucetStats() FaucetStats {
 	return FaucetStats{
 		Configured: true, Capacity: l.faucet.capacity, Refill: l.faucet.refill,
 		IntervalNanos: l.faucet.interval, DenyFloor: l.faucetDenyFloor, Level: l.faucet.Level(),
-		GrantsIssued: l.grantsIssued, GrantsDegraded: l.grantsDegraded, GrantsPending: l.grantsPending,
+		GrantsIssued: l.grantsIssued, GrantsDegraded: l.grantsDegraded, GrantsDenied: l.grantsDenied, GrantsPending: l.grantsPending,
 	}
 }
 

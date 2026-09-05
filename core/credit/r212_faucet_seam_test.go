@@ -143,29 +143,53 @@ func TestR212NonSpendPathsConsumeNoToken(t *testing.T) {
 	}
 }
 
-// TestR212DenyFloorDegradesInsteadOfDenying: with a floor set, an identity that finds the
-// bucket empty receives the floor once, is no longer pending, and is counted as degraded;
-// the farm's per-identity yield drops from the grant to the floor while onboarding never
-// reaches zero (PE §4's "degrade" option, built beside "deny"; the owner picks).
-func TestR212DenyFloorDegradesInsteadOfDenying(t *testing.T) {
-	l, _ := r212Ledger(t, 1, 1, 1_000, 50_000)
+// TestR212DenyFloorIsAnAdvanceNotASettlement (G-R212-3): with a floor set, an identity that
+// finds the bucket empty receives the floor ONCE as an advance, STAYS pending, can publish
+// with it, and when a token later admits it is topped up to exactly the full grant — never
+// capped below the #4 cliff forever, never granted twice. Without a floor the same identity
+// is simply denied until a token accrues.
+func TestR212DenyFloorIsAnAdvanceNotASettlement(t *testing.T) {
+	l, now := r212Ledger(t, 1, 1, 1_000, 50_000)
 	l.CanPublish(r212ID(1)) // takes the one token
 	d := r212ID(2)
 	if !l.CanPublish(d) {
-		t.Fatalf("with a floor of one fee, a degraded identity must be able to publish once")
+		t.Fatalf("with a floor of one fee, an advanced identity must be able to publish once")
 	}
 	if l.Balance(d) != 50_000 {
-		t.Fatalf("degraded balance = %d, want the 50,000 floor", l.Balance(d))
+		t.Fatalf("advanced balance = %d, want the 50,000 floor", l.Balance(d))
 	}
 	st := l.FaucetStats()
-	if st.GrantsDegraded != 1 || st.GrantsPending != 0 || st.GrantsIssued != 1 || st.DenyFloor != 50_000 {
-		t.Fatalf("stats: %+v", st)
+	if st.GrantsDegraded != 1 || st.GrantsPending != 1 || st.GrantsIssued != 1 || st.DenyFloor != 50_000 {
+		t.Fatalf("stats after the advance: %+v — the identity must STILL be pending", st)
 	}
 	if err := l.ChargePublish(d); err != nil || l.Balance(d) != 0 {
-		t.Fatalf("the degraded identity's one publish: err %v balance %d", err, l.Balance(d))
+		t.Fatalf("the advanced identity's one publish: err %v balance %d", err, l.Balance(d))
 	}
 	if err := l.ChargePublish(d); err != ports.ErrInsufficientCredit {
-		t.Fatalf("a degraded identity was granted twice: %v", err)
+		t.Fatalf("a second advance was handed out on an empty bucket: %v", err)
+	}
+	if st := l.FaucetStats(); st.GrantsDegraded != 1 {
+		t.Fatalf("the advance was applied twice: %+v", st)
+	}
+	*now += 1_000 // one token accrues: the pending, advanced identity is topped up to the FULL grant
+	if err := l.ChargePublish(d); err != nil {
+		t.Fatalf("after refill the advanced identity was not completed: %v", err)
+	}
+	if got := l.Balance(d); got != 500_000-50_000-50_000 {
+		t.Fatalf("balance after top-up and two publishes = %d, want 400,000 (full grant 500,000 − advance already spent 50,000 − this publish 50,000; the top-up is grant − floor, never a second full grant)", got)
+	}
+	if st := l.FaucetStats(); st.GrantsPending != 0 || st.GrantsIssued != 2 || st.GrantsDegraded != 1 {
+		t.Fatalf("stats after completion: %+v", st)
+	}
+	// And GrantOwner on an advanced account tops up the remainder too, once.
+	l2, _ := r212Ledger(t, 1, 1, 1_000, 50_000)
+	l2.CanPublish(r212ID(1))
+	o := r212ID(3)
+	l2.CanPublish(o)
+	l2.GrantOwner(o)
+	l2.GrantOwner(o)
+	if l2.Balance(o) != 500_000 {
+		t.Fatalf("owner completion after an advance = %d, want exactly the full grant", l2.Balance(o))
 	}
 }
 
@@ -184,5 +208,59 @@ func TestR212UnconfiguredLedgerIsThePreR212Faucet(t *testing.T) {
 	l.SetFaucet(0, 10, 1_000, 0, func() int64 { return 0 })
 	if l.faucet != nil {
 		t.Fatalf("SetFaucet with capacity 0 built a bucket")
+	}
+}
+
+// TestR212GrantsDeniedCountsDistinctRefusedIdentitiesNotRegistrations (PE code ruling
+// MAJ-1): a sweep that registers thousands of identities through read-side paths moves
+// grantsPending and NOT grantsDenied; a real refusal at a spend gate moves grantsDenied
+// once per identity however many times it retries; an advance is not a denial.
+func TestR212GrantsDeniedCountsDistinctRefusedIdentitiesNotRegistrations(t *testing.T) {
+	l, now := r212Ledger(t, 1, 1, 1_000, 0)
+	for i := 10; i < 110; i++ {
+		_ = l.Balance(r212ID(byte(i))) // a hundred pure reads: a hundred registrations, zero denials
+	}
+	if st := l.FaucetStats(); st.GrantsPending != 100 || st.GrantsDenied != 0 {
+		t.Fatalf("after 100 reads: pending %d denied %d, want 100 / 0", st.GrantsPending, st.GrantsDenied)
+	}
+	l.CanPublish(r212ID(1)) // takes the one token
+	d := r212ID(2)
+	for i := 0; i < 5; i++ {
+		l.CanPublish(d) // five retries on an empty bucket
+	}
+	if st := l.FaucetStats(); st.GrantsDenied != 1 {
+		t.Fatalf("five retries by one identity counted %d denials, want 1", st.GrantsDenied)
+	}
+	l.CanPublish(r212ID(3))
+	if st := l.FaucetStats(); st.GrantsDenied != 2 {
+		t.Fatalf("a second refused identity did not count: %d", st.GrantsDenied)
+	}
+	*now += 1_000
+	l.CanPublish(d) // granted now; the denial count is a lifetime distinct total and does not fall
+	if st := l.FaucetStats(); st.GrantsDenied != 2 || st.GrantsIssued != 2 {
+		t.Fatalf("after the retry succeeds: %+v", st)
+	}
+	// With a floor, an advance is NOT a denial.
+	f, _ := r212Ledger(t, 1, 1, 1_000, 50_000)
+	f.CanPublish(r212ID(1))
+	f.CanPublish(r212ID(2))
+	if st := f.FaucetStats(); st.GrantsDenied != 0 || st.GrantsDegraded != 1 {
+		t.Fatalf("an advance was counted as a denial: %+v", st)
+	}
+}
+
+// TestR212TopUpIsGrantMinusTheAmountAdvanced (PE code ruling LOW-7): the completion tops up
+// by grant − the amount actually advanced, recorded on the account, never grant − the floor
+// in force at completion time.
+func TestR212TopUpIsGrantMinusTheAmountAdvanced(t *testing.T) {
+	l, now := r212Ledger(t, 1, 1, 1_000, 50_000)
+	l.CanPublish(r212ID(1))
+	d := r212ID(2)
+	l.CanPublish(d)       // advanced 50,000
+	l.faucetDenyFloor = 1 // the floor changes underneath (not reachable from cmd/silt; the record must not depend on it)
+	*now += 1_000
+	l.CanPublish(d)
+	if got := l.Balance(d); got != 500_000 {
+		t.Fatalf("balance after top-up = %d, want exactly the 500,000 grant", got)
 	}
 }

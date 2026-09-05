@@ -747,7 +747,8 @@ type faucetInfo struct {
 	Level          int64 `json:"level"`
 	GrantsIssued   int64 `json:"grantsIssued"`
 	GrantsDegraded int64 `json:"grantsDegraded"`
-	GrantsPending  int64 `json:"grantsPending"`
+	GrantsDenied   int64 `json:"grantsDenied"`  // distinct identities refused at a spend gate — the counter that moves on a denial
+	GrantsPending  int64 `json:"grantsPending"` // registrations awaiting a spend; NOT denials
 }
 
 // privacyInfo is the -privacy posture published on every GET /api/status response.
@@ -857,7 +858,7 @@ func (s *uiServer) computeStatus(now time.Time) *statusInfo {
 		out.Durability = s.durabilitySnapshot(uptime)
 		if fs := s.nd.FaucetStats(); fs.Configured {
 			out.Faucet = &faucetInfo{Configured: true, Capacity: fs.Capacity, PerInterval: fs.Refill, IntervalSec: fs.IntervalNanos / 1e9,
-				DenyFloor: fs.DenyFloor, Level: fs.Level, GrantsIssued: fs.GrantsIssued, GrantsDegraded: fs.GrantsDegraded, GrantsPending: fs.GrantsPending}
+				DenyFloor: fs.DenyFloor, Level: fs.Level, GrantsIssued: fs.GrantsIssued, GrantsDegraded: fs.GrantsDegraded, GrantsDenied: fs.GrantsDenied, GrantsPending: fs.GrantsPending}
 		} else {
 			out.Faucet = &faucetInfo{}
 		}

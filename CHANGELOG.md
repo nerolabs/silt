@@ -9,6 +9,27 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **R2.12 — the faucet rate limit (2026-09-05; owner calls of 2026-09-03 stand; blind PE design ruling STOP →
+  reconciled with the Economist's derivation, then built).** Three daemon flags. With `-grant-capacity` and
+  `-grant-per-hour` both set, a fresh identity's 500,000 starter grant is applied at its first SPEND
+  (`CanPublish` / `ChargePublish` / `FundEscrow`) only if a continuously-accruing token bucket on the node's own
+  monotonic clock admits; otherwise it stays grant-pending and retries at its next spend — never permanently
+  denied. Non-spend paths (a fetcher credited bytes, a bounty-paid repairer, a bond-challenged peer) take no
+  token, so the bond-audit sweep cannot drain the bucket; the node's own account is granted unmetered. Unset,
+  the faucet is UNLIMITED, byte-for-byte the pre-R2.12 behaviour — there is no shipped default, because the
+  refill interval's epoch-equivalent depends on a block cadence that is demand-driven and only bracketed
+  (40–170 s on cloudtest). `-grant-deny-floor` selects what an empty bucket hands out: nothing (deny) or N
+  credits once (degrade; the PE recommends one fee). A start-up assertion refuses a capacity whose worst-case
+  paid-serial guard occupancy `capacity × (grant/fee) × (W+1)` exceeds a quarter of the derived cap, tying
+  four constants in three packages. Telemetry (`faucet` on `GET /api/status`: capacity, rate, level,
+  grantsIssued, grantsDegraded, grantsPending) is withheld with the other counters under `-privacy`; it is NOT
+  the R2.9a arrival series. R2.12 bounds the RATE of fresh grants, never their total — a soft, disclosed
+  deterrent for the unbuilt structural cost of identity. **Researcher-certified the same day:** the rate is a
+  SECURITY PARAMETER (build-immutable #4 on both sides), so no default ships and none is recommended; the deny
+  floor is an ADVANCE topped up to the full grant, never a settlement; the daemon refuses
+  `-accept-delivery-receipts` / `-accept-relay-payments` with the faucet unconfigured; `grantsDenied` counts
+  distinct refused identities. Fifteen `TestR212*` gates. Deliberation:
+  `docs/thinking/2026-09-05-r2.12-faucet-rate-limit.md`.
 - **`-privacy` on the UI server (D-UI-PRIVACY-FLAG, owner-ratified 2026-09-05; blind PE design review
   `RULING-UI-PRIVACY-FLAG-design-2026-09-05.md` folded in).** `on` (the compiled default, every build): the
   node-wide serve counters — the whole `stats` block and `durability.balance` on `GET /api/status`; `revenue`,

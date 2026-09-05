@@ -21,37 +21,64 @@ import (
 func TestR212FaucetFlagsRefuseHalfAndUnsafeConfigurations(t *testing.T) {
 	const grant, fee = int64(500_000), int64(50_000)
 	fresh := func() *credit.Ledger { return credit.New(fee, grant) }
-	if err := faucetConfigure(fresh(), 0, 0, 0, grant, fee); err != nil {
+	if err := faucetConfigure(fresh(), 0, 0, 0); err != nil {
 		t.Fatalf("both flags at 0 (unlimited) refused: %v", err)
 	}
 	for _, c := range [][3]int64{{256, 0, 0}, {0, 256, 0}, {-1, 256, 0}, {256, -1, 0}, {0, 0, 50_000}, {256, 256, -1}, {256, 256, grant + 1}} {
-		if err := faucetConfigure(fresh(), c[0], c[1], c[2], grant, fee); err == nil {
+		if err := faucetConfigure(fresh(), c[0], c[1], c[2]); err == nil {
 			t.Fatalf("configuration %v was ACCEPTED", c)
 		}
 	}
 	// The guard assertion: capacity × (grant/fee) × (W+1) ≤ MaxPaidSerial/4.
 	// At grant/fee = 10 and W+1 = 5 the largest admissible capacity is MaxPaidSerial/200.
 	limitCap := int64(credit.MaxPaidSerial) / 4 / (grant / fee) / int64(credit.PaidSerialWindow+1)
-	if err := faucetConfigure(fresh(), limitCap, 1, 0, grant, fee); err != nil {
+	if err := faucetConfigure(fresh(), limitCap, 1, 0); err != nil {
 		t.Fatalf("capacity %d (exactly a quarter of the cap) refused: %v", limitCap, err)
 	}
-	err := faucetConfigure(fresh(), limitCap+1, 1, 0, grant, fee)
+	err := faucetConfigure(fresh(), limitCap+1, 1, 0)
 	if err == nil || !strings.Contains(err.Error(), "guard") {
 		t.Fatalf("capacity %d (over a quarter of the cap) accepted or refusal does not name the guard: %v", limitCap+1, err)
 	}
 	// The Economist's recommendation passes with headroom.
 	l := fresh()
-	if err := faucetConfigure(l, 256, 256, 0, grant, fee); err != nil {
+	if err := faucetConfigure(l, 256, 256, 0); err != nil {
 		t.Fatalf("256/256 refused: %v", err)
 	}
 	st := l.FaucetStats()
 	if !st.Configured || st.Capacity != 256 || st.Refill != 256 || st.IntervalNanos != 3_600_000_000_000 || st.Level != 256 {
 		t.Fatalf("configured stats: %+v", st)
 	}
+	// BLK-3: the assertion reads the LEDGER's grant. A ledger whose grant is 4.8e10 (the
+	// 64 GiB pin realised by raising g) must REFUSE even a capacity of 1: one grant is then
+	// 960,000 tokens, 73× the whole guard cap.
+	big := credit.New(fee, 48_000_000_000)
+	if err := faucetConfigure(big, 1, 1, 0); err == nil || !strings.Contains(err.Error(), "guard") {
+		t.Fatalf("a 48 GB grant with capacity 1 was ACCEPTED by the start-up assertion: %v — the assertion must read l.Grant(), not a literal", err)
+	}
 	// And the degrade shape.
 	l2 := fresh()
-	if err := faucetConfigure(l2, 256, 256, fee, grant, fee); err != nil || l2.FaucetStats().DenyFloor != fee {
+	if err := faucetConfigure(l2, 256, 256, fee); err != nil || l2.FaucetStats().DenyFloor != fee {
 		t.Fatalf("degrade configuration: err %v stats %+v", err, l2.FaucetStats())
+	}
+}
+
+// TestR212PricedLaneRequiresTheFaucet is a source gate for G-R212-1's second half: daemon.go
+// refuses -accept-relay-payments (today's one priced lane a fetcher pays on) when the faucet
+// is unconfigured, so "R2.12 lands before priced delivery" is enforced by the daemon rather
+// than remembered by an operator. RUNTIME GATE: TestR212FaucetFlagsRefuseHalfAndUnsafeConfigurations
+// observes the configure path; the refusal itself is exercised on a live binary in
+// docs/thinking/2026-09-05-r2.12-faucet-rate-limit.md; this gate adds only that the check
+// exists and sits after faucetConfigure.
+func TestR212PricedLaneRequiresTheFaucet(t *testing.T) {
+	src, err := os.ReadFile("daemon.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(src)
+	conf := strings.Index(s, "faucetConfigure(ledger, *grantCapacity, *grantPerHour, *grantDenyFloor")
+	guard := strings.Index(s, "(*acceptRelayPayments || *acceptReceipts) && !ledger.FaucetStats().Configured")
+	if conf < 0 || guard < 0 || guard < conf {
+		t.Fatalf("SOURCE GATE: daemon.go must refuse -accept-relay-payments with an unconfigured faucet, AFTER faucetConfigure (configure %d, guard %d)", conf, guard)
 	}
 }
 
