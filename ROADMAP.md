@@ -1107,7 +1107,11 @@ economy-off HEAD certifies a network nobody runs. Design:
   `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.10-F8-chain-anchored-epoch-RESEARCH-CERTIFICATION-2026-09-04.md`;
   `docs/thinking/2026-09-04-r2.10-f8-chain-anchored-epoch-design.md`; the ledger-durability ruling
   §2/§6; the composed cert §5.
-- **R2.11 · R0.4b-11 — no peer-submit path for an issuer-key registration.** An attest-only
+- **R2.11 · R0.4b-11 — no peer-submit path for an issuer-key registration — ✅ BUILT 2026-09-05 (branch
+  `builder/r2.11-issuer-key-peer-submit`; `MsgSubmitIssuerKeyReg` appended, arrival gate with the bonded clause,
+  drop-never-defer fold, FOLDABLE drain predicate, submitter in the sync tick; blind PE design ruling
+  `RULING-R2.11-issuer-key-peer-submit-design-2026-09-05.md` PROCEED-WITH-CHANGES, S1–S9 folded in; not
+  research-gated — no validity rule moves; blind PE CODE review MERGE-AFTER folded in: vacuous gate fixture rewritten, takeover branch counts issuer-key work, peer queue pruned every sweep; **S6 is NOT yet a measurement** — the unit fixture's "1 of 5" is a demonstration, and R3.4 still owes a carrier-fraction sim measurement vs validator count; residuals: no proposer-side packing budget on `b.IssuerKeys`, inherited per-sender rate-map growth).** Was: an attest-only
   validator's key is never committed. Fail-closed, liveness only. Source:
   `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R0.4b-C3-composed-close-bc062d0-RESEARCH-CERTIFICATION-2026-09-03.md`
   (Residuals → Open).

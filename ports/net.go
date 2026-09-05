@@ -170,6 +170,12 @@ const (
 	MsgDemandIssuerKeysReply // Data: CBOR demandKeysetWire (epoch → DER public key); OK=false if the peer issues no demand tokens
 	MsgDemandTokenRequest    // Data: a blinded demand-token serial to blind-sign under the CURRENT epoch key (fee charged to sender, or to an attached credit)
 	MsgDemandTokenReply      // Data: the blind signature; Height: the issuing epoch E (which key_E signed it); OK=false if refused
+	// R2.11 — APPENDED, never inserted: MsgKind is a positional uint8 and an old peer's kinds
+	// must keep their numbers (TestR211MsgKindNumbersArePinned). A validator that never wins a
+	// proposal slot submits its per-epoch demand-issuer key registration to its peers, and
+	// whoever proposes next folds it (the MsgSubmitBondReg shape, one keyspace over).
+	MsgSubmitIssuerKeyReg    // Data: a block-CBOR wrapper carrying exactly ONE chain.IssuerKeyReg, the sender's own
+	MsgSubmitIssuerKeyRegAck // OK: received (queued if valid for the receiver's head; every refusal is logged)
 )
 
 // StorageProof is a Merkle inclusion proof shipped alongside a chunk:
@@ -295,6 +301,7 @@ func (k MsgKind) String() string {
 		MsgGetIssuerKey: "GetIssuerKey", MsgIssuerKeyReply: "IssuerKeyReply",
 		MsgGetDemandIssuerKeys: "GetDemandIssuerKeys", MsgDemandIssuerKeysReply: "DemandIssuerKeysReply",
 		MsgDemandTokenRequest: "DemandTokenRequest", MsgDemandTokenReply: "DemandTokenReply",
+		MsgSubmitIssuerKeyReg: "SubmitIssuerKeyReg", MsgSubmitIssuerKeyRegAck: "SubmitIssuerKeyRegAck",
 		MsgBondChallenge: "BondChallenge", MsgBondReply: "BondReply",
 		MsgTokenRequest: "TokenRequest", MsgTokenReply: "TokenReply",
 		MsgRelayOpen: "RelayOpen", MsgRelayOpenAck: "RelayOpenAck",
@@ -309,7 +316,7 @@ func (k MsgKind) String() string {
 // IsReply reports whether this kind terminates a pending request.
 func (m Message) IsReply() bool {
 	switch m.Kind {
-	case MsgFindNodeReply, MsgGetProvidersReply, MsgAddProviderAck, MsgStoreChunkAck, MsgFetchChunkReply, MsgHasChunkReply, MsgChallengeReply, MsgAttestReply, MsgCommitAck, MsgChainReply, MsgChainHeadReply, MsgBondReply, MsgTokenReply, MsgIssuerKeyReply, MsgSubmitBondRegAck, MsgSubmitEntryAck, MsgRepairVote, MsgDeliveryReceiptAck, MsgCanonicalIssuersReply, MsgPrecommitReply, MsgRoundChangeAck, MsgRelayOpenAck, MsgRelayPayAck, MsgDemandIssuerKeysReply, MsgDemandTokenReply:
+	case MsgFindNodeReply, MsgGetProvidersReply, MsgAddProviderAck, MsgStoreChunkAck, MsgFetchChunkReply, MsgHasChunkReply, MsgChallengeReply, MsgAttestReply, MsgCommitAck, MsgChainReply, MsgChainHeadReply, MsgBondReply, MsgTokenReply, MsgIssuerKeyReply, MsgSubmitBondRegAck, MsgSubmitEntryAck, MsgRepairVote, MsgDeliveryReceiptAck, MsgCanonicalIssuersReply, MsgPrecommitReply, MsgRoundChangeAck, MsgRelayOpenAck, MsgRelayPayAck, MsgDemandIssuerKeysReply, MsgDemandTokenReply, MsgSubmitIssuerKeyRegAck:
 		return true
 	}
 	return false

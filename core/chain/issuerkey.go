@@ -170,6 +170,11 @@ func VerifyIssuerKeyReg(r IssuerKeyReg) bool {
 // are coupled by the design doc and by TestIssuerKeyPrePublishMatchesDemandWindow.
 const issuerKeyPrePublish = uint64(4)
 
+// IssuerKeyPrePublish exports the window READ-ONLY for core/node's R2.11 arrival gate, which
+// evaluates the same clause validateIssuerKeys will apply so a stale or too-far-ahead
+// peer-submitted registration never occupies a queue slot.
+const IssuerKeyPrePublish = issuerKeyPrePublish
+
 // blockEpoch is the consensus epoch index a block at height h falls in:
 // h / EpochBlocks. Deterministic and Byzantine-agreed — the same clock the relay
 // lane's seen-map eviction uses. With epochs disabled (EpochBlocks == 0) every

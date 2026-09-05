@@ -380,9 +380,13 @@ type Stats struct {
 	// per-node-local). RepairClaims: claims this node emitted after placing a
 	// rebuilt shard. BountiesReleased / FalseRepairSlashes: verdicts this node
 	// settled as a caretaker-judge (paid the holder / slashed a false claimant).
-	RepairClaims       int
-	BountiesReleased   int
-	FalseRepairSlashes int
+	RepairClaims int
+	// DrainProposalsArmed counts the times maybeProposeBondDrain passed its quiescence and
+	// designation gates and ARMED a proposal (R2.11 gate observable: a drain keyed on queue
+	// length rather than on FOLDABLE work would arm here and fail the empty-block check).
+	DrainProposalsArmed int
+	BountiesReleased    int
+	FalseRepairSlashes  int
 	// #277 dead-peer-envelope gauges (M1 baseline — the dial-storm is where trust
 	// either stays cheap or floods the network). HolderDialsSkipped: full-timeout
 	// holder dials AVOIDED because the target was in the dead-peer negative cache
@@ -599,6 +603,9 @@ type Node struct {
 	// sender per ChainSyncInterval window, charged BEFORE decode+verify (the
 	// Phase 1.2 CPU-DoS floor). See allowBondSubmit in bondaudit.go.
 	bondSubmitRate map[ports.NodeID]*challengerRate
+	// issuerKeySubmitRate is the R2.11 per-sender budget for MsgSubmitIssuerKeyReg (see
+	// allowIssuerKeySubmit): a refusal costs a map lookup, before decode or verify.
+	issuerKeySubmitRate map[ports.NodeID]*challengerRate
 	// entrySubmitRate is the SAME gate for MsgSubmitEntry (#183 red-team F-1):
 	// entry submits examined per sender per ChainSyncInterval window, charged
 	// BEFORE decode+ValidateEntry — which, under -require-tokens, runs an RSA
@@ -665,6 +672,15 @@ type Node struct {
 	// pendingIssuerKeys are signed key commitments staged for inclusion in this
 	// node's next v5 proposal (drained in chainrole.go's propose path).
 	pendingIssuerKeys []chain.IssuerKeyReg
+	// pendingPeerIssuerKeys (R2.11) are key commitments PEERS submitted
+	// (MsgSubmitIssuerKeyReg) that this node folds into the next v5 block it proposes —
+	// the non-proposer path for the demand-issuer keyspace, the same shape as
+	// pendingBondRegs for bond renewals. One slot per (issuer, epoch), latest wins,
+	// capped at maxMempool. Queued only when admissible at arrival (bonded, in-window,
+	// self-signed by the sender); DROPPED at fold if no longer admissible — never
+	// deferred, a peer has no C2 self-wedge story and deferral would be unbounded
+	// retention with no healing path.
+	pendingPeerIssuerKeys []chain.IssuerKeyReg
 
 	// PoD relay lane (§7.3, certified 2026-08-30). relayAccept gates whether this
 	// node accepts sender-funded PayWord chains (mirror of the demand-bank gate,
@@ -1160,36 +1176,37 @@ func (n *Node) hostShardLocally(id ports.ChunkID, data []byte, proof *ports.Stor
 
 func New(id ports.NodeID, cfg Config, clock ports.Clock, tr ports.Transport, store ports.ChunkStore) *Node {
 	n := &Node{
-		cfg:                cfg,
-		id:                 id,
-		clock:              clock,
-		tr:                 tr,
-		store:              store,
-		table:              dht.NewTable(id, cfg.K),
-		provs:              dht.NewProviders(),
-		pending:            make(map[uint64]*pending),
-		reachable:          make(map[ports.NodeID]ports.Time),
-		dead:               make(map[ports.NodeID]corpse),
-		repairConfirm:      make(map[stripeKey]int),
-		staticPeers:        make(map[ports.NodeID]bool),
-		reachProbes:        make(map[uint64]*reachProbe),
-		proofMeta:          make(map[ports.ChunkID]proofMeta),
-		proofs:             newMemProofs(), // default in-mem backing; daemon injects the bounded disk-backed store
-		peerDomains:        make(map[ports.NodeID]uint64),
-		peerBonds:          make(map[ports.NodeID]bondInfo),
-		peerBondRTT:        make(map[ports.NodeID]*latWindow),
-		bondChallengeRate:  make(map[ports.NodeID]*challengerRate),
-		bondSubmitRate:     make(map[ports.NodeID]*challengerRate),
-		entrySubmitRate:    make(map[ports.NodeID]*challengerRate),
-		slashedLocal:       make(map[ports.NodeID]bool),
-		slashQueued:        make(map[ports.NodeID]bool),
-		slashOverCapLogged: make(map[ports.NodeID]bool),
-		peerIssuerKeys:     make(map[ports.NodeID]*rsa.PublicKey),
-		peerDemandKeys:     make(map[ports.NodeID]*demand.Keyset), // R0.4b pinned per-epoch demand keysets
-		creditSpent:        make(map[string]bool),
-		tokenIssued:        make(map[string]tokenIssuedEntry),
-		serveLoad:          make(map[ports.ChunkID]int),
-		leases:             make(map[ports.ChunkID]ports.Time),
+		cfg:                 cfg,
+		id:                  id,
+		clock:               clock,
+		tr:                  tr,
+		store:               store,
+		table:               dht.NewTable(id, cfg.K),
+		provs:               dht.NewProviders(),
+		pending:             make(map[uint64]*pending),
+		reachable:           make(map[ports.NodeID]ports.Time),
+		dead:                make(map[ports.NodeID]corpse),
+		repairConfirm:       make(map[stripeKey]int),
+		staticPeers:         make(map[ports.NodeID]bool),
+		reachProbes:         make(map[uint64]*reachProbe),
+		proofMeta:           make(map[ports.ChunkID]proofMeta),
+		proofs:              newMemProofs(), // default in-mem backing; daemon injects the bounded disk-backed store
+		peerDomains:         make(map[ports.NodeID]uint64),
+		peerBonds:           make(map[ports.NodeID]bondInfo),
+		peerBondRTT:         make(map[ports.NodeID]*latWindow),
+		bondChallengeRate:   make(map[ports.NodeID]*challengerRate),
+		bondSubmitRate:      make(map[ports.NodeID]*challengerRate),
+		entrySubmitRate:     make(map[ports.NodeID]*challengerRate),
+		issuerKeySubmitRate: make(map[ports.NodeID]*challengerRate),
+		slashedLocal:        make(map[ports.NodeID]bool),
+		slashQueued:         make(map[ports.NodeID]bool),
+		slashOverCapLogged:  make(map[ports.NodeID]bool),
+		peerIssuerKeys:      make(map[ports.NodeID]*rsa.PublicKey),
+		peerDemandKeys:      make(map[ports.NodeID]*demand.Keyset), // R0.4b pinned per-epoch demand keysets
+		creditSpent:         make(map[string]bool),
+		tokenIssued:         make(map[string]tokenIssuedEntry),
+		serveLoad:           make(map[ports.ChunkID]int),
+		leases:              make(map[ports.ChunkID]ports.Time),
 	}
 	if cfg.Domain != "" {
 		n.domainID = domainHash(cfg.Domain)
