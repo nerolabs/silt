@@ -1727,7 +1727,7 @@ func (n *Node) chainSyncTick() {
 		// attest-only validator sustains its TTL-bound standing. No-op off the
 		// objective path or with no bond.
 		n.SubmitBondRenewal(peers)
-		n.prunePeerIssuerKeys() // R2.11 (F3): collect dead peer slots every sweep, proposer or not
+		n.prunePeerIssuerKeys() // R2.11 (F3): collect dead peer slots on every sweep that has peers, proposer or not
 		// R2.11: likewise submit our staged, still-uncommitted demand-issuer key
 		// registrations to the same validator set, so an attest-only validator's key is
 		// committed by whoever proposes next. Retried every sweep until committed.
@@ -1884,6 +1884,7 @@ func (n *Node) maybeProposeBondDrain() {
 		return // no qualified co-signer reachable; retry next sweep
 	}
 	b := &chain.Block{Version: chain.BlockVersion, Height: height, Prev: prevHead}
+	n.Stats.DrainProposalsArmed++
 	n.bondDrainInFlight = true
 	n.proposeBlock(b, attesters, peers, 0, func(err error) {
 		n.bondDrainInFlight = false

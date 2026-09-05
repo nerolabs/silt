@@ -380,9 +380,13 @@ type Stats struct {
 	// per-node-local). RepairClaims: claims this node emitted after placing a
 	// rebuilt shard. BountiesReleased / FalseRepairSlashes: verdicts this node
 	// settled as a caretaker-judge (paid the holder / slashed a false claimant).
-	RepairClaims       int
-	BountiesReleased   int
-	FalseRepairSlashes int
+	RepairClaims int
+	// DrainProposalsArmed counts the times maybeProposeBondDrain passed its quiescence and
+	// designation gates and ARMED a proposal (R2.11 gate observable: a drain keyed on queue
+	// length rather than on FOLDABLE work would arm here and fail the empty-block check).
+	DrainProposalsArmed int
+	BountiesReleased    int
+	FalseRepairSlashes  int
 	// #277 dead-peer-envelope gauges (M1 baseline — the dial-storm is where trust
 	// either stays cheap or floods the network). HolderDialsSkipped: full-timeout
 	// holder dials AVOIDED because the target was in the dead-peer negative cache

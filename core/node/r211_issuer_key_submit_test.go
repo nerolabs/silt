@@ -10,6 +10,8 @@ package node
 import (
 	"crypto/rand"
 	"crypto/rsa"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/nerolabs/silt/adapters/identity"
@@ -169,12 +171,28 @@ func TestR211NonFoldableQueueArmsNoProposal(t *testing.T) {
 	if proposer.issuerKeysFoldable() {
 		t.Fatalf("a queue of only inadmissible regs reads as FOLDABLE")
 	}
-	_, before := proposer.chain.Head()
+	armedBefore := proposer.Stats.DrainProposalsArmed
 	for i := 0; i < 6; i++ {
 		proposer.maybeProposeBondDrain()
 	}
-	if _, after := proposer.chain.Head(); after != before || proposer.bondDrainInFlight {
-		t.Fatalf("the drain armed on a non-foldable queue (head %d → %d, inflight %v)", before, after, proposer.bondDrainInFlight)
+	// The ARMING observable, not the head: a drain keyed on queue length would arm, build an
+	// IssuerKeys-empty block, fail the proposer's own empty-block check and leave the head
+	// unmoved and nothing in flight — byte-identical to quiescence on every other observable.
+	if got := proposer.Stats.DrainProposalsArmed - armedBefore; got != 0 {
+		t.Fatalf("the drain ARMED %d proposal(s) on a non-foldable queue — that is the empty-block spin (S3b)", got)
+	}
+	// Control: the same driver DOES arm when the queue holds a foldable reg (the bonded
+	// attester's), so the assertion above has teeth.
+	_, next2 := proposer.chain.Head()
+	proposer.pendingPeerIssuerKeys = append(proposer.pendingPeerIssuerKeys, r211Reg(identity.FromSeed(7701), proposer.chain.BlockEpoch(next2), 8))
+	if !proposer.issuerKeysFoldable() {
+		t.Fatalf("control: the bonded attester's reg must be foldable")
+	}
+	for i := 0; i < 8 && proposer.Stats.DrainProposalsArmed == armedBefore; i++ {
+		proposer.maybeProposeBondDrain()
+	}
+	if proposer.Stats.DrainProposalsArmed == armedBefore {
+		t.Fatalf("control: the drain never armed with a foldable reg pending")
 	}
 }
 
@@ -184,6 +202,26 @@ func TestR211NonFoldableQueueArmsNoProposal(t *testing.T) {
 // staggered takeover (F2: the takeover clause must count issuer-key work).
 func TestR211IdleChainCarriesTheKeyThroughTheRealDrainDriver(t *testing.T) {
 	proposer, attest, _, net, _ := r211Swarm(t)
+	// FORCE THE TAKEOVER PATH FIRST (PE frozen-head check): the designation is height-keyed
+	// (height % len(props)), so at some heights the proposer IS the designee and the
+	// `dist > 0` branch under test is never entered. Propose fillers — before any reg is
+	// staged, so nothing rides them — until the proposer is NOT the designee.
+	all := []ports.NodeID{proposer.id, attest.id}
+	for filler := 0; filler < 3; filler++ {
+		props := proposer.chain.EligibleProposers()
+		_, h := proposer.chain.Head()
+		if len(props) > 0 && props[int(h)%len(props)] != proposer.id {
+			break
+		}
+		if err := proposeOnce(t, proposer, net, all, "filler"+string(rune('0'+filler))); err != nil {
+			t.Fatalf("filler proposal: %v", err)
+		}
+	}
+	props := proposer.chain.EligibleProposers()
+	_, h0 := proposer.chain.Head()
+	if len(props) < 2 || props[int(h0)%len(props)] == proposer.id {
+		t.Fatalf("fixture: could not make the proposer NON-designated (props %d, height %d) — the takeover branch is what this gate must exercise", len(props), h0)
+	}
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		t.Fatal(err)
@@ -195,6 +233,12 @@ func TestR211IdleChainCarriesTheKeyThroughTheRealDrainDriver(t *testing.T) {
 	if len(proposer.pendingPeerIssuerKeys) != 1 {
 		t.Fatalf("setup: reg not queued")
 	}
+	// Nothing else is pending: no entries, no bond work, the attester (the designee) never
+	// proposes. Only a FOLDABLE issuer-key reg can arm the non-designated proposer's
+	// takeover after its 3+dist idle sweeps (F2).
+	if len(proposer.pendingEntries) != 0 || len(proposer.pendingBondRegs) != 0 {
+		t.Fatalf("fixture: other work pending (%d entries, %d regs) would mask the issuer-key term", len(proposer.pendingEntries), len(proposer.pendingBondRegs))
+	}
 	_, before := proposer.chain.Head()
 	committed := false
 	for sweep := 0; sweep < 12 && !committed; sweep++ {
@@ -204,10 +248,33 @@ func TestR211IdleChainCarriesTheKeyThroughTheRealDrainDriver(t *testing.T) {
 	}
 	if !committed {
 		_, after := proposer.chain.Head()
-		t.Fatalf("the real drain driver never carried a foldable peer registration on an idle chain (head %d → %d)", before, after)
+		t.Fatalf("the non-designated proposer never took over to carry a foldable peer registration on an idle chain (head %d → %d, drainWaitSweeps %d)", before, after, proposer.drainWaitSweeps)
 	}
 	if _, ok := attest.chain.IssuerKeyCommitment(attest.id, epoch); !ok {
 		t.Fatalf("committed on the proposer's replica only")
+	}
+}
+
+// TestR211PruneIsWiredToTheSweepAndTheEnqueue is a source gate for F3's two wiring lines:
+// prunePeerIssuerKeys is called from chainSyncTick (beside SubmitIssuerKeyRegs) and at the
+// top of queuePendingPeerIssuerKey. RUNTIME GATE: TestR211PeerQueueIsPrunedWithoutAProposal
+// holds the function body; this gate adds only that both call sites exist, since the sync
+// tick needs live peers no unit fixture provides.
+func TestR211PruneIsWiredToTheSweepAndTheEnqueue(t *testing.T) {
+	src, err := os.ReadFile("chainrole.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(src)
+	tick := strings.Index(s, "func (n *Node) chainSyncTick() {")
+	tickEnd := strings.Index(s[tick:], "\n}\n") + tick
+	if tick < 0 || !strings.Contains(s[tick:tickEnd], "n.prunePeerIssuerKeys()") {
+		t.Fatalf("SOURCE GATE: chainSyncTick does not call n.prunePeerIssuerKeys() — a bonded receiver that never proposes would accumulate dead peer slots to maxMempool (F3)")
+	}
+	q := strings.Index(s, "func (n *Node) queuePendingPeerIssuerKey(")
+	qEnd := strings.Index(s[q:], "\n}\n") + q
+	if q < 0 || !strings.Contains(s[q:qEnd], "n.prunePeerIssuerKeys()") {
+		t.Fatalf("SOURCE GATE: queuePendingPeerIssuerKey does not prune before enqueueing (F3)")
 	}
 }
 
