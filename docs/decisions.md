@@ -1891,6 +1891,27 @@ puts `g/r_relay` at 1.9 GiB, 23.4× BELOW the certified 44.7 GiB floor; lifted b
 population) or by a certified derivation that the #4 floor does not apply to a relayed fetch.
 The daemon now refuses to enable either priced lane with the faucet unconfigured (G-R212-1).
 
+**G-R212-2, CERTIFIED 2026-09-06 — no longer blocks era-4; a re-price is CERTIFIED and awaits the
+owner** (`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/G-R212-2-relay-lane-reprice-RESEARCH-CERTIFICATION-2026-09-06.md`).
+Route (b) holds: the #4 floor does not bind the relay price, because the free splice is
+unconditional (`D-POD-RELAY-COEXIST`) and no production path can open a paid session — a
+load-bearing condition; if a free/paid differential or a forced paid path ever opens, #4
+re-arms on `r_relay`. The gate's remedy (a) as first written was wrong: per-anchor yield is
+`min(f·B/c, MaxSessionBytes)` with the remainder BURNED, so raising the price alone caps the lane
+at 10 GiB and burns 95.6 % of every fetcher payment (`T-RELAY-GRAN`: a price change must move
+`RelayIncrementBytes` and `MaxSessionBytes` together). **Certified value for ratification (§8 of
+the certification, verbatim there): `RelayIncrementBytes = 524_288` (512 KiB), `RelayIncrementCredit
+= 1` unchanged ⇒ `g/r_relay` = 244.14 GiB; `MaxChainLength := ShippedAnchorFace /
+RelayIncrementCredit = 50,000` and `MaxSessionBytes := MaxChainLength × RelayIncrementBytes =
+24.414 GiB` become DERIVED; `MaxAnchorsPerSession` derives to 1; the relay adapter's shared
+free/paid per-splice cap takes the same value.** Bounded below by the 64 GiB pin read on the SUM
+of the prices a NAT'd fetcher pays and by Don't #7 (at 256 KiB the relay is forced to out-earn the
+server per byte); bounded above by T-AR (`B ≤ 1,048,576`). Face-neutral: `ShippedAnchorFace`
+does not move, so `g/f` and the guard bound are unchanged and ONE-FACE is not engaged.
+**Owner: ratify or amend the value; nine sites move in one PR (cert §4.1).** **G-R212-7 (NEW):**
+STRICT parity `p > λ·U` at `λ = 1 credit/byte` and the 64 GiB pin are two ratified decisions
+137,439× apart — R2.9 cannot set its price until the owner resolves which yields.
+
 ## D-UI-PRIVACY-FLAG — node-wide counters and the library link key go behind an operator flag; exposed in beta, withheld at release
 
 **Ratified 2026-09-05** by the owner, closing `R-BB-SIBLING-AGGREGATES` and the `/api/library`
