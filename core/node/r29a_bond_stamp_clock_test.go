@@ -83,7 +83,7 @@ func TestR29aBondAuditStampsAWallClockNanosecondNotACounter(t *testing.T) {
 		t.Fatalf("the auditor recorded %d bond challenges over two sweeps, want 2 — the fixture is not driving the self-record and every assertion below would be vacuous", len(rec.ticks))
 	}
 	if want := uint64(t0) + 1; rec.ticks[0] != want {
-		t.Fatalf("bond-audit tick = %d, want %d (uint64(clock.Now())+1). The stamp is DERIVED FROM THE CLOCK; four D-BB-BUILD-TAG texts once called it the auditor's request counter and were wrong (residual R-BB-BOND-STAMP-TUPLE)", rec.ticks[0], want)
+		t.Fatalf("bond-audit tick = %d, want %d (uint64(clock.Now())+1). The stamp is DERIVED FROM THE CLOCK; four D-BB-BUILD-TAG texts once called it the auditor's request counter and were wrong (residual R-BB-BOND-STAMP-TUPLE, since CLOSED under G-BB-28)", rec.ticks[0], want)
 	}
 	if rec.ticks[0] < 1_500_000_000_000_000_000 {
 		t.Fatalf("bond-audit tick = %d, below Unix-nanosecond magnitude on a wall-clock-valued clock — the daemon hands the node a walltime clock, so this stamp is a wall-clock instant and must read like one", rec.ticks[0])

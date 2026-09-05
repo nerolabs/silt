@@ -91,3 +91,49 @@ now says the ledger keeps that tick as `lastBondTick`.
   `:950`). The "four texts" in the repo were two `core/credit/bbootstrap.go` comments plus
   the ROADMAP G-BB-9 sentence and the dated PACE record; the researcher's three
   certifications are the rest and are not touched.
+
+---
+
+## 4. Round 2 — the blind review's two blockers and two stale claims (2026-09-05)
+
+**Input of record:**
+`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-R2.9a-four-residuals-2026-09-05.md`
+— MERGE WITH TWO FIXES; every finding is a sentence that claims more than the code does.
+
+### 4.1 Mechanisms, stated before the change
+
+| Item | The failure is … | because … | this change addresses it by … |
+|---|---|---|---|
+| Blocker 1 | three texts say the structural gate stops the stamp returning "under another name" | the predicate was `strings.Contains(lower(name), "firstseen")` — a name match; the reviewer's `bondSeenTick uint64` with the identical unset-guarded write kept `core/credit` and the anchor step green | the gate now whitelists the `account` type's TICK-TYPED field set (`uint64`, `ports.Time`, `ports.Duration`) as exactly `{firstFetchTick, lastBondTick}`, both present; the three sentences say that |
+| Blocker 2 | the owner block files `G-BB-13′` under "no longer owed" and omits `G-BB-12′` | the DONT3 cert §6 carries G-BB-13′ open, moot for the DEFAULT build only, and every `B_bootstrap` run is a TAGGED run; G-BB-12′ is required and unbuilt (`isLocalHost` reads the client-controlled `Host` header; the token gate covers `isMutating` only, `cmd/silt/ui.go`) | two OPEN lines, scoped: G-BB-13′ tagged-only; G-BB-12′ required-before-any-run, unbuilt, builder's |
+| Stale 1 | `ROADMAP.md` calls the tagged CI job advisory | true when written; the `main` ruleset (`Protect main and staging`, id 19729396) now requires five contexts and the `bbootstrap` job is the fifth — ruleset `updated_at` 2026-09-05T10:22:28Z, PR #736 `mergedAt` 10:22:12Z | the sentence says REQUIRED and since when, and why it matters (the reviewer's Ablation G: a non-literal flag name leaves 0 `nm` symbols and a green AST gate; only the `-help` grep catches it) |
+| Stale 2 | `bondaudit.go`'s `+1` says "so the first tick is never 0 (unset)" | at 9eaad7b (the bond ledger's first commit) the `+1`'s only consumer was `if a.firstSeenTick == 0 { a.firstSeenTick = tick }` — the guard this PR deleted; today `lastBondTick`'s sole reader is `DecayStale`, whose only test is `now − lastBondTick > maxAge`, and `bondedBytes > 0` is set only on the line that also sets `lastBondTick` | the comment names the dead consumer and says the `+1` serves no reader; the VALUE is untouched (retention; `TestR29aBondAuditStampsAWallClockNanosecondNotACounter` pins `t0+1`) |
+| Follow-on 6 | G-BB-29 is neither applied nor recorded | the DONT3 cert §1.5 / §3 issues it to the Builder as a doc-only narrowing: "recording SURPLUS is the break", because "recording per se" condemns `delivery.go`'s D-S7 `provKey` | applied: an appended (not substituted) correction on `D-BB-BUILD-TAG`, and the `core/credit/bbootstrap.go` header |
+
+### 4.2 Options weighed
+
+| Item | Options | Taken | Why |
+|---|---|---|---|
+| Blocker 1 | (a) narrow the three sentences to "the same field name cannot return"; (b) whitelist the `uint64` fields; (c) whitelist the ENTIRE field list of `account` | **(b)**, plus `ports.Time`/`ports.Duration` as tick types | (a) ships a weaker gate to match a weaker claim, the wrong direction for a struct that IS the per-identity record. (c) catches any field of any type but taxes every legitimate `account` change; not traceable to a failure today. On this struct every `uint64` is a clock reading and every byte/count is `int64`/`int`, so type is the discriminator; the two `ports` clock types cost two lines. Honest limit, stated in the gate: a `when` as a bare `int64` under a byte-shaped name is not seen. |
+| Blocker 2 | (a) one OPEN line for G-BB-13′ only; (b) both lines | **(b)** | G-BB-12′ gates the run; a "run preconditions" block that omits a required, unbuilt precondition is the same defect as the one it corrects. Marked as the builder's so the block stays honest about ownership. |
+| Stale 2 | (a) delete the `+1`; (b) keep it and re-state; (c) keep it and say it serves nothing | **(c)** | (a) moves the stored tick — retention is not this change's, and a test pins the value. (b) "kept so a tick is never confused with a zero clock" would be a NEW reason with no reader either — the exact comment family this PR exists to stop. |
+| Follow-ons 1–3 (behavioural) | build now / record open | **record open** in the R2.9a Rock | out of the brief; each is a CI/test hardening with a measured gap, and none changes the merge verdict. |
+
+### 4.3 Ablations (each RED with the field name in the message, then restored and green)
+
+| # | Revert | Result |
+|---|---|---|
+| F | `bondSeenTick uint64` + `if a.bondSeenTick == 0 { a.bondSeenTick = tick }` in `RecordBondChallenge` (the reviewer's) | `TestR29aBondChallengeStampsNoFirstTouch` **RED**: `account has a tick-typed field "bondSeenTick" (uint64) outside the closed set` |
+| F2 | `bondSeenAt ports.Time` with the same guarded write | **RED**: `"bondSeenAt" (ports.Time) outside the closed set` |
+| F3 | whitelist drift (`lastBondTick` → `lastBondTickX` in the gate's set only) | **RED** — the set and the struct disagree loudly in either direction; the whitelist cannot go vacuous by a quiet edit |
+
+### 4.4 What I believe is wrong or incomplete in the ruling
+
+- Nothing in the four findings. One scope note on §5's first coupling: the `+1` was not "half of
+  the same mechanism" left behind by THIS change — it predates the stamp's R2.9a history by a
+  month (9eaad7b, 2026-08-01) and its consumer was the ORIGINAL `firstSeenTick` guard from that
+  same commit. The ruling's conclusion (the reason outlived its mechanism) stands; the
+  attribution to this PR's deletion is right in effect and wrong in origin. Recorded so the
+  next reader does not go looking for a second deletion.
+- §3.1 calls the tagged job "advisory, not yet a required check" citing `ROADMAP.md:997`. The
+  ROADMAP was stale, not the ruleset; the job has been required since 10:22:28Z on 2026-09-05.

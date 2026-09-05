@@ -13,7 +13,6 @@ package credit
 
 import (
 	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/nerolabs/silt/ports"
@@ -58,9 +57,11 @@ func TestR29aDefaultBuildStampsNoFirstTouchOnRegister(t *testing.T) {
 	}
 }
 
-// bondTick is a real walltime.Now() reading plus the +1 the auditor adds so a first
-// tick is never mistaken for "unset" (core/node/bondaudit.go). The magnitude is the
-// point: the ledger has to be shown handling a Unix-nanosecond, not a small counter.
+// bondTick is a real walltime.Now() reading plus the +1 the auditor adds
+// (core/node/bondaudit.go; the +1 once kept the deleted first-seen stamp's unset
+// guard off zero and now serves no reader — see the comment there). The magnitude is
+// the point: the ledger has to be shown handling a Unix-nanosecond, not a small
+// counter.
 const bondTick = uint64(1_788_599_138_518_548_000) + 1
 
 // TestR29aBondChallengeStampsNoFirstTouch is the INVERSION of the gate that used to
@@ -100,14 +101,53 @@ func TestR29aBondChallengeStampsNoFirstTouch(t *testing.T) {
 	if a.firstFetchTick != 0 {
 		t.Fatalf("firstFetchTick = %d after a bond challenge, want 0. A bond challenge is not a fetch and must not place an identity on the census age axis (G-BB-24)", a.firstFetchTick)
 	}
-	// THE STRUCTURAL HALF. The field itself is gone, and this reads the type rather than
-	// the source so a later hand cannot put a first-seen stamp back under another name
-	// on the same path without failing here.
-	if f, ok := reflect.TypeOf(account{}).FieldByNameFunc(func(n string) bool { return strings.Contains(strings.ToLower(n), "firstseen") }); ok {
-		t.Fatalf("account has a field %q. The bond-path first-touch stamp was deleted under G-BB-28 (T-DONT3 prong (a): a `when` no decided function reads is surplus); a bond challenge writes lastBondTick and nothing else", f.Name)
-	}
+	// THE STRUCTURAL HALF. The field itself is gone, and this reads the TYPE rather
+	// than the source: the set of tick-typed fields on account is CLOSED, exactly
+	// {firstFetchTick, lastBondTick}, so a tick added under ANY name fails here with
+	// that name in the message. It is a whitelist on the field's type, not a match on
+	// its name. The earlier form of this check matched names containing "firstseen";
+	// the blind review re-added the stamp as `bondSeenTick` with the identical
+	// unset-guarded write and every gate stayed green (RULING-R2.9a-four-residuals,
+	// Blocker 1). Under this form that ablation is RED, as is `bondSeenAt ports.Time`.
+	//
+	// WHAT COUNTS AS A TICK TYPE, and the honest limit. Every uint64 on account is a
+	// clock reading and every byte or count is int64/int, so on this struct uint64 IS
+	// the tick discriminator; ports.Time and ports.Duration are added because they are
+	// the clock types a later hand would reach for. A `when` smuggled in as a bare
+	// int64 under a byte-count-shaped name is not caught by this gate.
+	assertAccountTickSetIsClosed(t)
 	if a.lastBondTick != bondTick {
 		t.Fatalf("lastBondTick = %d after a passing challenge at %d, want the tick verbatim — retention is the ONE thing a bond challenge stamps, and it must survive the deletion untouched", a.lastBondTick, bondTick)
+	}
+}
+
+// assertAccountTickSetIsClosed is the closed-set gate TestR29aBondChallengeStampsNoFirstTouch
+// relies on: every tick-typed field on account (uint64, ports.Time, ports.Duration) must be
+// one of firstFetchTick and lastBondTick, and both must be present so the whitelist
+// cannot go vacuous by a rename.
+func assertAccountTickSetIsClosed(t *testing.T) {
+	t.Helper()
+	wantTicks := map[string]bool{"firstFetchTick": true, "lastBondTick": true}
+	tickTypes := map[reflect.Type]bool{
+		reflect.TypeOf(ports.Time(0)):     true,
+		reflect.TypeOf(ports.Duration(0)): true,
+	}
+	at := reflect.TypeOf(account{})
+	seen := map[string]bool{}
+	for i := 0; i < at.NumField(); i++ {
+		f := at.Field(i)
+		if f.Type.Kind() != reflect.Uint64 && !tickTypes[f.Type] {
+			continue
+		}
+		if !wantTicks[f.Name] {
+			t.Fatalf("account has a tick-typed field %q (%s) outside the closed set {firstFetchTick, lastBondTick}. The bond-path first-touch stamp was deleted under G-BB-28 (T-DONT3 prong (a): a `when` no decided function reads is SURPLUS); a bond challenge writes lastBondTick and nothing else, and a new `when` under any name needs its reader named and the set here re-derived, not a quiet field", f.Name, f.Type)
+		}
+		seen[f.Name] = true
+	}
+	for name := range wantTicks {
+		if !seen[name] {
+			t.Fatalf("account has no tick-typed field %q — the closed set this gate asserts no longer matches the struct, so the whitelist is vacuous; re-derive it before trusting this gate", name)
+		}
 	}
 }
 

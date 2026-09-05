@@ -1588,14 +1588,29 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
     (`core/credit/credit.go`). `lastBondTick`, `DecayStale` and `BondMaxAge` are untouched.
   - **Gates:** `TestR29aBondChallengeStampsNoFirstTouch` (`core/credit`, untagged; the inversion of
     `TestR29aBondChallengeStillStampsFirstSeenTick`, which asserted the write as "something else's
-    mechanism" — there was no other mechanism) reads the `account` type by reflection so the stamp
-    cannot return under another name; `TestR29aRetentionReadsLastBondTickInNanoseconds`
+    mechanism" — there was no other mechanism) reads the `account` type by reflection and asserts
+    its set of tick-typed fields (`uint64`, `ports.Time`, `ports.Duration`) is CLOSED — exactly
+    `{firstFetchTick, lastBondTick}` — so a tick added under ANY name reddens it with that name in
+    the message. It was first shipped as a name match on `firstseen`; the blind review re-added the
+    stamp as `bondSeenTick` and every gate stayed green, so the gate was widened to a type whitelist
+    (`bondSeenTick uint64` and `bondSeenAt ports.Time` both measured RED). It does not see a `when`
+    declared as a bare `int64`. `TestR29aRetentionReadsLastBondTickInNanoseconds`
     (`core/credit`, untagged) is the ablation that proves the deletion was surgical — `lastBondTick`
     still advances on a passing challenge, `DecayStale` still retires a bond one nanosecond past
     `BondMaxAge = 300 * ports.Second`, and a counter-valued tick never lapses, which is why
     `lastBondTick` must NOT be re-denominated. `TestR29aBondAuditStampsAWallClockNanosecondNotACounter`
     (`core/node`) stays green unchanged: it measures the tick the auditor passes, not the stored field.
     Both `core/credit` gates are named anchors in the default-build CI job.
+- **CORRECTION — 2026-09-05, G-BB-29, appended not substituted.** The bullet "Why a tag rather than
+  a better runtime gate" above is narrowed, not withdrawn. As written its rule — the binary
+  "contained the mechanism and merely declined to print it", i.e. recording per se is the break —
+  condemns `core/credit/delivery.go`'s `provKey{server, requester, root}` and `core/credit/escrow.go`,
+  which are `D-S7` and are not going anywhere. The certification cited at the top of this entry's
+  `CLOSED` bullet (§1.5) refutes that generalised rule and keeps the OUTCOME: the instrument must not
+  be in a default binary because it records **SURPLUS** under T-DONT3 prong (a) — a per-requester
+  `when` that no decided function needs — and is kept for the purpose prong (c) names, relating a
+  fetcher to bytes over time. `core/credit/bbootstrap.go`'s header comment carries the same
+  narrowing. `D-DONT3-READING` is the ratified reading; this entry is read under it.
 
 ---
 
