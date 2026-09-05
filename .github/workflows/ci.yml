@@ -57,7 +57,7 @@ jobs:
       # same commit.
       - name: the untagged R2.9a gates really ran (not renamed away, not skipped)
         run: |
-          out=$(go test -short -count=1 -v ./core/credit/ ./core/node/ ./cmd/silt/ -run 'R29a' 2>&1)
+          out=$(go test -short -count=1 -v ./core/credit/ ./core/node/ ./cmd/silt/ -run 'R29a|Privacy' 2>&1)
           echo "$out"
           for tst in \
             TestR29aDefaultBuildStampsNoFirstTouchOnRegister \
