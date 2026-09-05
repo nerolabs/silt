@@ -20,6 +20,14 @@
 // docs/thinking/2026-08-28-era3-state-root-value-encoding.md and implemented by the
 // EncodeInt64/EncodeUint64/... helpers below. Widths and endianness are CONSENSUS
 // PARAMETERS (research cert Q6 flag 2): a change is a hard fork.
+//
+// DOMAIN SEPARATION (R3.1). Proof unforgeability against the committed root rests on
+// the library's node-type prefix bytes and the prefix-free disjointness of silt's
+// preimage classes — NOT on fixed widths — under seven scope invariants (non-sum trie,
+// default value hasher, no closest proof, NUL-terminated key tags, no externally-writeable
+// node store, no empty leaf value, the v1.0.0 pin). The argument, its gates, the two
+// latent defects closed on the fold surface, and the residuals are recorded in
+// docs/design/state-root-domain-separation.md.
 package statehash
 
 import (

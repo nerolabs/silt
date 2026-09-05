@@ -8,6 +8,26 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Fixed
+- **R3.1 — two latent defects on the floor box's state-root fold surface, closed behind gates (2026-09-06;
+  Researcher certification `R3.1-SMT-domain-separation-disjoint-preimage-RESEARCH-CERTIFICATION-2026-09-06.md`).**
+  (1) `FoldChangedPaths` seeded the SMT library's node store with witness-supplied `(Digest, Preimage)` delete
+  siblings without checking that the digest is the hash of the preimage; the library dispatches node type on
+  the first byte and trusts the lookup key as the digest, so a forged node cost zero hash work (the audit's
+  Issue #2 arriving on the verify side). Every sibling is now bound by the library's own rule — SHA-256 for
+  leaf/inner preimages, the expansion root for an extension preimage — and the fold stalls with
+  `ErrFoldSiblingUnbound` otherwise. (2) A proof whose `NonMembershipLeafData` does not begin with the leaf
+  prefix made the library PANIC in `checkPrefix` (no `recover()` in `core/`): a 33-byte remote crash; and — found
+  by the blind PE code review — an empty `SiblingData`, or a `0x02` `SiblingData` shorter than 35 bytes, panicked
+  the library's unbounded `hashPreimage` slicing (a 154-byte crash through `IngestBlockWitnesses`). `Resolve`,
+  `FoldChangedPaths` and `IngestBlockWitnesses` now refuse exactly the library's panic set before `VerifyProof`
+  (measured: zero over-refusals). Both defects were latent — the
+  floor box never Accepts yet. New gates: `TestR31UnboundDeleteSiblingStallsTheFold`,
+  `TestR31ForgedExtensionSiblingDoesNotBind`, `TestR31MalformedLeafPrefixIsRefusedNotPanicked` and
+  `TestR31MalformedSiblingDataIsRefusedNotPanicked` (their controls capture the raw library panics), plus the scope
+  pins `TestR31NoSumTrieAndEverySMTUsesSHA256`, `TestR31SMTModuleIsPinnedToTheCertifiedVersion`,
+  `TestR31EveryStateHashTagEndsInExactlyOneNUL`. Record: `docs/design/state-root-domain-separation.md`.
+
 ### Added
 - **R3.4 input — the IssuerKeys-carrier block fraction, measured (2026-09-06;
   `core/node/r34_issuer_key_carrier_fraction_test.go`, a logged measurement, not a gate).** The floor box marks

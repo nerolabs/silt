@@ -98,6 +98,22 @@ var (
 	// unverified change.
 	ErrFoldProofFailed = errors.New("statehash: fold — a changed key's pre-state proof does not verify against prevStateRoot")
 
+	// ErrFoldSiblingUnbound marks a delete's off-path sibling whose supplied Digest is not the
+	// SHA-256 of its supplied Preimage (G-R31-1). The fold seeds the library's node store from
+	// witness-provider bytes, and the library dispatches node type on data[0] while taking the
+	// digest from the LOOKUP KEY, never recomputing it (smt.go ImportSparseMerkleTrie path) —
+	// so an unbound (Digest, Preimage) pair is the audit's Issue #2 (a writeable prover store)
+	// arriving on the VERIFY side with zero hash work. Binding every entry by the library's own
+	// rule (spec.hashPreimage(Preimage) == Digest, the rule validateBasic applies to
+	// SiblingData) before seeding closes it; the fold stalls on the first unbound sibling.
+	ErrFoldSiblingUnbound = errors.New("statehash: fold — a delete sibling's digest is not the hash of its preimage")
+
+	// ErrFoldProofShape marks a proof whose bytes would make the library PANIC rather than
+	// return an error (G-R31-2): NonMembershipLeafData that does not begin with the leaf
+	// prefix 0x00 reaches checkPrefix, which panics, and no recover() exists in core/. The
+	// shape is refused BEFORE VerifyProof; the fold stalls.
+	ErrFoldProofShape = errors.New("statehash: fold — a changed key's proof has a shape the verifier cannot parse")
+
 	// ErrFoldApply marks a library Update/Delete or Commit failure while replaying the payload
 	// writes onto the seeded partial trie (e.g. a delete of a key the seed does not carry). The
 	// fold stalls rather than return an ambiguous root.
@@ -123,6 +139,9 @@ func FoldChangedPaths(prevStateRoot ports.Hash, ops []FoldOp) (ports.Hash, error
 		if op.Proof.proof == nil {
 			return ports.Hash{}, fmt.Errorf("%w: key %x (no proof)", ErrFoldProofFailed, op.Key)
 		}
+		if !proofShapeParsable(op.Proof.proof) {
+			return ports.Hash{}, fmt.Errorf("%w: key %x", ErrFoldProofShape, op.Key)
+		}
 		ok, err := smt.VerifyProof(op.Proof.proof, prevStateRoot[:], op.Key, op.OldValue, verifySpec())
 		if err != nil || !ok {
 			return ports.Hash{}, fmt.Errorf("%w: key %x", ErrFoldProofFailed, op.Key)
@@ -135,6 +154,14 @@ func FoldChangedPaths(prevStateRoot ports.Hash, ops []FoldOp) (ports.Hash, error
 		// then mismatches the caller's committed StateRoot (the final equality) ⇒ stall.
 		if op.NewValue == nil {
 			for _, sib := range op.DeleteSiblings {
+				// G-R31-1: BIND before seeding, by the library's own hashPreimage rule: SHA-256
+				// of the bytes for a leaf or inner preimage, the expansion root for an extension
+				// preimage (foldDigestMismatch). An unbound pair is a forged node, not a corrupt
+				// one — the caller-side root equality would catch a corrupt one; only this catches
+				// a node whose digest the store would trust without recomputing it.
+				if len(sib.Digest) != sha256.Size || foldDigestMismatch(sib.Digest, sib.Preimage) {
+					return ports.Hash{}, fmt.Errorf("%w: key %x digest %x", ErrFoldSiblingUnbound, op.Key, sib.Digest)
+				}
 				seed[string(sib.Digest)] = sib.Preimage
 			}
 		}
@@ -282,4 +309,75 @@ func (p *Prover) ProveWithSiblings(key []byte) (Witness, []FoldSibling, error) {
 		}
 	}
 	return NewWitness(proof), sibs, nil
+}
+
+// foldDigestMismatch reports whether digest != hashPreimage(preimage) under the library's own
+// rule (trie_spec.go hashSerialization): a leaf or inner preimage digests to SHA-256 of its
+// bytes; an EXTENSION preimage (prefix 0x02 ‖ bounds(2) ‖ path(32) ‖ childDigest(32)) digests
+// to the root of its EXPANSION — the chain of inner nodes the extension stands for, one per
+// path bit from bounds[1]-1 down to bounds[0], each with the on-path child on the path bit's
+// side and the placeholder on the other (extension_node.go expand + trie_spec.go digestNode).
+// Used by the G-R31-1 binding. A preimage of any other shape does not bind.
+func foldDigestMismatch(digest, preimage []byte) bool {
+	if len(preimage) == 0 {
+		return true
+	}
+	if preimage[0] != 0x02 {
+		sum := sha256.Sum256(preimage)
+		return !bytes.Equal(sum[:], digest)
+	}
+	// Extension: 1 + 2 + 32 + 32 bytes exactly.
+	if len(preimage) != 1+2+sha256.Size+sha256.Size {
+		return true
+	}
+	start, end := int(preimage[1]), int(preimage[2])
+	path := preimage[3 : 3+sha256.Size]
+	cur := append([]byte(nil), preimage[3+sha256.Size:]...)
+	if end < start || end > 8*sha256.Size {
+		return true
+	}
+	for i := end - 1; i >= start; i-- {
+		var pre []byte
+		if foldPathBit(path, i) == 0 {
+			pre = foldInnerPreimage(cur, foldPlaceholder)
+		} else {
+			pre = foldInnerPreimage(foldPlaceholder, cur)
+		}
+		cur = foldDigest(pre)
+	}
+	return !bytes.Equal(cur, digest)
+}
+
+// proofShapeParsable is the G-R31-2 pre-VerifyProof shape check, shared by Resolve and
+// FoldChangedPaths. The library's validateBasic bounds NonMembershipLeafData from below but
+// never checks its prefix byte; parseLeafNode then calls checkPrefix, which PANICS on anything
+// but 0x00 (node_encoders.go), and there is no recover() in non-test core/. A 33-byte proof —
+// NonMembershipLeafData = {0x01, 32 bytes}, no SiblingData, no SideNodes — offered for any
+// absence query would crash the process. Refuse the shape first; the caller maps the refusal
+// to NoWitness / a fold stall, never to a proven outcome.
+//
+// SIBLINGDATA IS THE SECOND ARM (PE code ruling RULING-R3.1-smt-domain-separation-code-8434591
+// S1, measured): validateBasic bounds SiblingData nowhere and calls hashPreimage(SiblingData)
+// whenever it is non-nil and SideNodes is non-empty; for a 0x02 (extension) prefix that is
+// parseExtNode slicing data[1:3] and data[3:35] unbounded, and for len == 0 it is
+// isExtNode's data[:1]. A 154-byte gob witness panicked IngestBlockWitnesses. The boundary,
+// pinned by sweep: any non-nil SiblingData panics at len == 0, or at [0] == 0x02 with
+// len < 35; len >= 35 is safe (childData = data[35:] may be empty). SideNodes need no arm:
+// the verifier copies each into a fresh 32-byte buffer.
+func proofShapeParsable(p *smt.SparseMerkleProof) bool {
+	if p == nil {
+		return false
+	}
+	if p.NonMembershipLeafData != nil && (len(p.NonMembershipLeafData) < 1 || p.NonMembershipLeafData[0] != 0x00) {
+		return false
+	}
+	if p.SiblingData != nil {
+		if len(p.SiblingData) == 0 {
+			return false
+		}
+		if p.SiblingData[0] == 0x02 && len(p.SiblingData) < 1+2+sha256.Size {
+			return false
+		}
+	}
+	return true
 }
