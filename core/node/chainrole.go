@@ -488,6 +488,43 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 			}
 		}
 		n.reply(from, msg, ports.Message{Kind: ports.MsgSubmitBondRegAck, OK: true})
+	case ports.MsgSubmitIssuerKeyReg:
+		// R2.11: a peer submitted its per-epoch demand-issuer key registration for us to
+		// fold when we next propose — the non-proposer path for the keyspace R0.4b
+		// committed (residual R0.4b-11: an attest-only validator's key was never
+		// committed). Same gate order as MsgSubmitBondReg, every refusal LOGGED (B5/#432):
+		// rate before decode; slashed sender; decode pinned to ONE reg; SENDER-BINDING
+		// (issuer == from, so a relayed reg is refused before the verify); signature; the
+		// epoch window validateIssuerKeys will apply, against OUR head; already committed
+		// (append-only); and the BONDED clause — the one that bounds DISTINCT senders,
+		// since a fresh keypair is a fresh budget. Inside Objective() only, as the bond
+		// gate is: objective ⇔ MinBond > 0 with a verifier, which is what makes the
+		// bonded bound real (R2.11 design ruling S2).
+		if n.chain != nil && n.chain.Objective() {
+			if !n.allowIssuerKeySubmit(from) {
+				n.logf(ports.LogInfo, "issuer-key submit REFUSED (rate)", "from", from, "budget", issuerKeySubmitBurst)
+			} else if n.chain.IsSlashed(from) {
+				n.logf(ports.LogInfo, "issuer-key submit REFUSED (evicted)", "from", from)
+			} else if reg, err := issuerKeyRegDecode(msg.Data); err != nil {
+				n.logf(ports.LogInfo, "issuer-key submit REFUSED (decode)", "from", from, "bytes", len(msg.Data), "err", err)
+			} else if iid := reg.IssuerID(); iid != from {
+				n.logf(ports.LogInfo, "issuer-key submit REFUSED (relay)", "from", from, "issuer", iid)
+			} else if !chain.VerifyIssuerKeyReg(reg) {
+				n.logf(ports.LogInfo, "issuer-key submit REFUSED (signature)", "from", from, "epoch", reg.Epoch)
+			} else if _, next := n.chain.Head(); reg.Epoch < n.chain.BlockEpoch(next) || reg.Epoch > n.chain.BlockEpoch(next)+chain.IssuerKeyPrePublish {
+				// TEMPORAL, usually: the submitter's epoch view leads or lags ours. It
+				// heals on the submitter's next-sweep resubmit; log our epoch so a field
+				// read can correlate refusal with skew.
+				n.logf(ports.LogInfo, "issuer-key submit REFUSED (epoch)", "from", from, "epoch", reg.Epoch, "our_next_epoch", n.chain.BlockEpoch(next), "window", chain.IssuerKeyPrePublish)
+			} else if _, committed := n.chain.IssuerKeyCommitment(iid, reg.Epoch); committed {
+				n.logf(ports.LogDebug, "issuer-key submit ignored (already committed)", "from", from, "epoch", reg.Epoch)
+			} else if !n.chain.IssuerKeyRegAdmissible(iid) {
+				n.logf(ports.LogInfo, "issuer-key submit REFUSED (unbonded)", "from", from, "epoch", reg.Epoch)
+			} else {
+				n.queuePendingPeerIssuerKey(reg)
+			}
+		}
+		n.reply(from, msg, ports.Message{Kind: ports.MsgSubmitIssuerKeyRegAck, OK: true})
 	case ports.MsgSubmitEntry:
 		// #441: a publisher submitted an entry for this node's next block to
 		// carry — entries are MEMPOOL CONTENT, never a second proposal stream.
@@ -924,6 +961,29 @@ func (n *Node) proposeBlock(b *chain.Block, attesters, broadcast []ports.NodeID,
 			still = append(still, r)
 		}
 		n.pendingIssuerKeys = still
+	}
+	// R2.11: fold PEER-submitted registrations, after our own, under the same v5 era
+	// gate. A peer reg RIDES AND STAYS QUEUED until the chain confirms its commitment
+	// (the carrier proposal may fail quorum), then drops; one that is no longer
+	// in-window, is slashed (#503 Q1(a), the arrival gate's race), or is no longer
+	// admissible is DROPPED — never deferred (design ruling S2(b): the defer above is for
+	// our OWN C2 self-wedge; a peer resubmits next sweep, and deferral would be unbounded
+	// retention). Proposer POLICY only: an attester's acceptance rule is untouched.
+	if len(n.pendingPeerIssuerKeys) > 0 && n.chain.MintVersion(b.Height) >= chain.BlockVersionWitnessable {
+		blockEpoch := n.chain.BlockEpoch(b.Height)
+		kept := n.pendingPeerIssuerKeys[:0:0]
+		for _, r := range n.pendingPeerIssuerKeys {
+			iid := r.IssuerID()
+			if _, committed := n.chain.IssuerKeyCommitment(iid, r.Epoch); committed {
+				continue
+			}
+			if r.Epoch < blockEpoch || r.Epoch > blockEpoch+chain.IssuerKeyPrePublish || n.chain.IsSlashed(iid) || !n.chain.IssuerKeyRegAdmissible(iid) {
+				continue // drop, never defer
+			}
+			b.IssuerKeys = append(b.IssuerKeys, r)
+			kept = append(kept, r)
+		}
+		n.pendingPeerIssuerKeys = kept
 	}
 	// Mint-flip (era-3 build step 2c, extended for era-4 step 4d): at/above the era-4
 	// activation boundary the chain mints v5 with populated committed roots (the era-3
@@ -1667,6 +1727,10 @@ func (n *Node) chainSyncTick() {
 		// attest-only validator sustains its TTL-bound standing. No-op off the
 		// objective path or with no bond.
 		n.SubmitBondRenewal(peers)
+		// R2.11: likewise submit our staged, still-uncommitted demand-issuer key
+		// registrations to the same validator set, so an attest-only validator's key is
+		// committed by whoever proposes next. Retried every sweep until committed.
+		n.SubmitIssuerKeyRegs(peers)
 	}
 	// #432: count non-progress sweeps and fire a round-change when the working
 	// height is stuck with pending work (the deterministic, quorum-observable
@@ -1714,7 +1778,14 @@ func (n *Node) maybeProposeBondDrain() {
 	// queue must fire this sweep too, or a publish on an idle chain would wait
 	// for unrelated renewal traffic to move it. B6 quiescence holds when truly
 	// idle: no regs, no entries, no own renewal due.
-	if len(n.pendingBondRegs) == 0 && len(n.pendingEntries) == 0 && !ownDue {
+	// R2.11: a FOLDABLE issuer-key registration (own or peer; v5 at the next height,
+	// in-window, uncommitted, admissible) is designee work too — an idle objective chain
+	// would otherwise never carry it, and since epoch = height/EpochBlocks the reg would
+	// never even expire (the #338 failure, one keyspace over). Keyed on FOLDABLE, never on
+	// queue length: a queue whose contents all drop at fold would arm a proposal with no
+	// content, which fails the proposer's own empty-block check and spins on the sign slot.
+	issuerKeysDue := n.issuerKeysFoldable()
+	if len(n.pendingBondRegs) == 0 && len(n.pendingEntries) == 0 && !ownDue && !issuerKeysDue {
 		n.drainWaitSweeps = 0
 		return // nothing pending — stay quiet (B6)
 	}
@@ -1735,9 +1806,9 @@ func (n *Node) maybeProposeBondDrain() {
 		// regs + a blocked slot, sweep after sweep, is the wedge signature —
 		// the one line that would have named the field stall on the first run.
 		// maybeAdvanceRound (same sweep cadence) is what unblocks it.
-		if len(n.pendingBondRegs) > 0 || len(n.pendingEntries) > 0 {
+		if len(n.pendingBondRegs) > 0 || len(n.pendingEntries) > 0 || issuerKeysDue {
 			n.logf(ports.LogInfo, "bond-reg drain blocked at own sign slot — awaiting round advance (#432)",
-				"height", height, "round", rs.Round, "mark_height", n.signMark.Height, "mark_round", n.signMark.Round, "pending", len(n.pendingBondRegs), "pending_entries", len(n.pendingEntries))
+				"height", height, "round", rs.Round, "mark_height", n.signMark.Height, "mark_round", n.signMark.Round, "pending", len(n.pendingBondRegs), "pending_entries", len(n.pendingEntries), "issuer_keys_due", issuerKeysDue)
 		}
 		return
 	}
@@ -1896,4 +1967,108 @@ func bondRegDecode(raw []byte) (chain.BondReg, error) {
 		return chain.BondReg{}, fmt.Errorf("bad bondreg payload")
 	}
 	return b.BondRegs[0], nil
+}
+
+// issuerKeyRegEncode / issuerKeyRegDecode (R2.11) ride the same block-CBOR wrapper. The
+// decoder pins the payload to exactly ONE registration BEFORE any verify: the per-sender
+// budget bounds messages, so an unbounded list would let one budget unit buy N ed25519
+// verifies on the consensus loop (design ruling S4; 8,192 regs pack into ~1.1 MB).
+func issuerKeyRegEncode(r chain.IssuerKeyReg) []byte {
+	b := chain.Block{Version: chain.BlockVersion, IssuerKeys: []chain.IssuerKeyReg{r}}
+	return chain.Encode(&b)
+}
+
+func issuerKeyRegDecode(raw []byte) (chain.IssuerKeyReg, error) {
+	b, err := chain.Decode(raw)
+	if err != nil || len(b.IssuerKeys) != 1 {
+		return chain.IssuerKeyReg{}, fmt.Errorf("bad issuer-key payload")
+	}
+	return b.IssuerKeys[0], nil
+}
+
+// queuePendingPeerIssuerKey queues a peer's registration: ONE slot per (issuer, epoch),
+// latest wins (append-only on the chain means a re-point is impossible, so "latest" is the
+// same binding resubmitted); capped at maxMempool as defense in depth — the arrival gate's
+// bonded clause is what actually bounds distinct submitters.
+func (n *Node) queuePendingPeerIssuerKey(reg chain.IssuerKeyReg) {
+	iid := reg.IssuerID()
+	for i := range n.pendingPeerIssuerKeys {
+		if n.pendingPeerIssuerKeys[i].IssuerID() == iid && n.pendingPeerIssuerKeys[i].Epoch == reg.Epoch {
+			n.pendingPeerIssuerKeys[i] = reg
+			return
+		}
+	}
+	if len(n.pendingPeerIssuerKeys) >= maxMempool {
+		n.logf(ports.LogDebug, "issuer-key mempool full: rejecting submission", "issuer", iid, "cap", maxMempool)
+		return
+	}
+	n.pendingPeerIssuerKeys = append(n.pendingPeerIssuerKeys, reg)
+}
+
+// issuerKeysFoldable reports whether the next block this node would propose could carry at
+// least one registration — own or peer — that is v5-mintable, in-window, uncommitted and
+// admissible. The drain driver keys on THIS, never on queue length (S3(b)).
+func (n *Node) issuerKeysFoldable() bool {
+	if n.chain == nil {
+		return false
+	}
+	_, next := n.chain.Head()
+	if n.chain.MintVersion(next) < chain.BlockVersionWitnessable {
+		return false
+	}
+	epoch := n.chain.BlockEpoch(next)
+	foldable := func(r chain.IssuerKeyReg) bool {
+		if r.Epoch < epoch || r.Epoch > epoch+chain.IssuerKeyPrePublish {
+			return false
+		}
+		if _, committed := n.chain.IssuerKeyCommitment(r.IssuerID(), r.Epoch); committed {
+			return false
+		}
+		return n.chain.IssuerKeyRegAdmissible(r.IssuerID()) && !n.chain.IsSlashed(r.IssuerID())
+	}
+	for _, r := range n.pendingIssuerKeys {
+		if foldable(r) {
+			return true
+		}
+	}
+	for _, r := range n.pendingPeerIssuerKeys {
+		if foldable(r) {
+			return true
+		}
+	}
+	return false
+}
+
+// SubmitIssuerKeyRegs (R2.11) sends each of this node's staged, still-uncommitted, in-window
+// demand-issuer key registrations to peers, so a validator that never wins a proposal slot
+// still gets its key committed by whoever proposes next. At most W+1 registrations per
+// sweep (the pre-published band); a receiver that refuses on epoch skew is healed by the
+// next sweep's resubmit, exactly as SubmitBondRenewal documents. No-op off the objective
+// path or with nothing staged.
+func (n *Node) SubmitIssuerKeyRegs(peers []ports.NodeID) {
+	if n.chain == nil || !n.chain.Objective() || len(n.pendingIssuerKeys) == 0 {
+		return
+	}
+	_, next := n.chain.Head()
+	epoch := n.chain.BlockEpoch(next)
+	sent := 0
+	for _, r := range n.pendingIssuerKeys {
+		if r.Epoch < epoch || r.Epoch > epoch+chain.IssuerKeyPrePublish {
+			continue
+		}
+		if _, committed := n.chain.IssuerKeyCommitment(r.IssuerID(), r.Epoch); committed {
+			continue
+		}
+		raw := issuerKeyRegEncode(r)
+		for _, p := range peers {
+			if p == n.id {
+				continue
+			}
+			n.request(p, ports.Message{Kind: ports.MsgSubmitIssuerKeyReg, Data: raw}, func(ports.Message, error) {})
+		}
+		sent++
+	}
+	if sent > 0 {
+		n.logf(ports.LogInfo, "issuer-key registrations submitted", "count", sent, "peers", len(peers), "next_epoch", epoch)
+	}
 }
