@@ -52,17 +52,43 @@ func TestR29aDefaultBuildStampsNoFirstTouchOnRegister(t *testing.T) {
 // TestR29aBondChallengeStillStampsFirstSeenTick is the OTHER HALF, and it is what keeps
 // the gate above from being read as "firstSeenTick is dead".
 //
-// RecordBondChallenge's write PREDATES R2.9a entirely. It is stamped from the bond
-// auditor's own request counter (core/node/bondaudit.go), not from a wall clock, and it
-// fires only for a validator answering a storage-bond challenge — never for a fetcher.
-// D-BB-BUILD-TAG does not touch it, and a future change that removes it is removing
-// something else's mechanism, not this one's.
+// RecordBondChallenge's write PREDATES R2.9a entirely and D-BB-BUILD-TAG does not touch
+// it, so a future change that removes it is removing something else's mechanism.
+//
+// IT IS A WALL-CLOCK STAMP. This gate used to pass tick = 77, which made the value LOOK
+// like a request counter — and the doc comment here said it was one, wrongly, along with
+// three other sites. The daemon's auditor passes uint64(n.clock.Now())+1 with a walltime
+// clock (core/node/bondaudit.go), so the tick below is a real Unix-nanosecond reading and
+// the assertion checks that magnitude survives into firstSeenTick. A reader who sees this
+// gate green now re-derives the truth, not the old error.
+//
+// THE RESIDUAL THIS MAKES VISIBLE: on a -validator node, an identity that is both a
+// bonded peer and a fetcher carries (identity, cumulative fetched bytes, first-seen
+// wall-clock nanosecond) in a DEFAULT build. Filed as R-BB-BOND-STAMP-TUPLE
+// (ROADMAP R2.9a), open, not closed by the build tag.
+//
+// RUNTIME GATE: core/node's TestR29aBondAuditStampsAWallClockNanosecondNotACounter
+// measures what the auditor actually passes; this gate covers what the ledger does with
+// it.
 func TestR29aBondChallengeStillStampsFirstSeenTick(t *testing.T) {
+	// A real walltime.Now() reading, plus the +1 the auditor adds so a first tick is
+	// never mistaken for "unset".
+	const tick = uint64(1_788_599_138_518_548_000) + 1
 	l := New(1_000, 500_000)
 	prover := ports.HashBytes([]byte("prover"))
-	l.RecordBondChallenge(prover, ports.Hash{1}, 1<<20, true, 77)
-	if got := l.accounts[prover].firstSeenTick; got != 77 {
-		t.Fatalf("firstSeenTick = %d after a bond challenge at tick 77, want 77 — RecordBondChallenge's stamp predates R2.9a and must survive the build tag untouched", got)
+	l.RecordBondChallenge(prover, ports.Hash{1}, 1<<20, true, tick)
+	got := l.accounts[prover].firstSeenTick
+	if got != tick {
+		t.Fatalf("firstSeenTick = %d after a bond challenge at tick %d, want the tick verbatim — RecordBondChallenge's stamp predates R2.9a and must survive the build tag untouched", got, tick)
+	}
+	if got < 1_500_000_000_000_000_000 {
+		t.Fatalf("firstSeenTick = %d, below Unix-nanosecond magnitude. The bond auditor's tick is a WALL CLOCK (uint64(clock.Now())+1 over adapters/walltime), not a request counter, and this gate must show that magnitude or the next reader inherits the error again (R-BB-BOND-STAMP-TUPLE)", got)
+	}
+	// A second challenge at a later instant must NOT move the stamp: it is a first-touch
+	// value, which is what makes it a `when` rather than a liveness reading.
+	l.RecordBondChallenge(prover, ports.Hash{1}, 1<<20, true, tick+uint64(3600*1e9))
+	if again := l.accounts[prover].firstSeenTick; again != tick {
+		t.Fatalf("firstSeenTick moved to %d on a later challenge, want %d — the stamp is FIRST touch", again, tick)
 	}
 }
 

@@ -1541,3 +1541,33 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
   `RecordBondChallenge`, predates R2.9a entirely, is stamped from the bond auditor's request counter
   rather than a wall clock, and fires only for a validator answering a storage-bond challenge. It is
   untouched, and it has its own gate so a later reader cannot mistake it for part of this mechanism.
+- **CORRECTION — 2026-09-05, appended not substituted.** The bullet immediately above is **false on
+  the fact**, and it is left standing so the record shows the correction rather than hiding it.
+  Source: the blind principal-engineer review
+  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-R2.9a-bbootstrap-build-tag-d5099fa-2026-09-05.md`
+  §6.2–6.3, which measured it on two real bonded validators.
+  - **What the entry said:** `RecordBondChallenge`'s tick "is stamped from the bond auditor's request
+    counter rather than a wall clock".
+  - **What is true:** it is a **wall clock**. `core/node/bondaudit.go` computes
+    `uint64(n.clock.Now()) + 1` (both at `bondAuditTick` and at `AuditBondsOnce`); the daemon builds
+    its node clock as `clk := walltime.New(loop)` and hands that same `clk` to `node.New`; and
+    `adapters/walltime` returns `time.Now().UnixNano()`. The cited DELTA certification had already
+    recorded this — the entry restated the certification's own fact backwards. The writer fires on a
+    `-validator` node (`StartBondAudit` is gated on `*validator`) for that node's own id and for
+    every **bonded** peer that answers a challenge; it never fires for an unbonded fetcher, and a
+    non-validator daemon never calls it.
+  - **What follows, and it is the reason this correction is not cosmetic:** an identity that is both
+    a bonded peer and a fetcher carries the full `(identity, cumulative fetched bytes, first-seen
+    wall-clock nanosecond)` tuple in a **default** build — the exact tuple this decision's texts said
+    was gone. The tuple's absence therefore holds on the **serve path**, for the general requester
+    population, which is what the tag and the flag actually changed; it does not hold for bonded
+    validator peers. Filed as open residual **R-BB-BOND-STAMP-TUPLE** (ROADMAP R2.9a), disclosed
+    rather than closed: the residual predates R2.9a and the retention surface it feeds (`DecayStale`,
+    `BondMaxAge`) is research-gated and routed separately.
+  - **Pinned by a test, not by this paragraph:** `TestR29aBondAuditStampsAWallClockNanosecondNotACounter`
+    (`core/node`, untagged) drives two real audit sweeps an hour apart and asserts the ticks differ
+    by the elapsed hour rather than by 1, so a request counter — including a high-seeded one — fails
+    it. `TestR29aBondChallengeStillStampsFirstSeenTick` now passes a Unix-nanosecond-magnitude tick
+    instead of `77`, so the gate itself shows the wall clock.
+  - **No behaviour changed.** `RecordBondChallenge`, `DecayStale` and standing retention are
+    untouched by this correction; only the texts and the gates moved.

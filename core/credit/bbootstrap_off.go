@@ -20,16 +20,30 @@ package credit
 //     pre-R2.9a self.
 //
 // WHAT IS PRESERVED, DELIBERATELY. account.firstSeenTick still exists and is still
-// written by RecordBondChallenge (credit.go). That writer PREDATES R2.9a entirely, is
-// stamped from the bond auditor's own request counter rather than from a wall clock, and
-// fires only for a validator answering a storage-bond challenge — never for a fetcher.
-// It is not part of this instrument and this decision does not touch it.
+// written by RecordBondChallenge (credit.go). That writer PREDATES R2.9a entirely and
+// this decision does not touch it.
 //
-// THE CONSEQUENCE, WHICH IS THE POINT. Before R2.9a the ledger held
-// (identity, cumulative bytes) for each requester. R2.9a added the WHEN. In a default
-// build the when is gone again: TestR29aDefaultBuildStampsNoFirstTouchOnRegister pins it
-// in BOTH builds, because it asserts on the un-injected state that is the only state a
-// default build can reach.
+// ITS TICK IS A WALL CLOCK. This comment said the opposite until 2026-09-05 — "the bond
+// auditor's own request counter rather than a wall clock" — and that was false in four
+// places at once. core/node/bondaudit.go stamps uint64(n.clock.Now())+1 and the daemon's
+// node clock is adapters/walltime, so the value is time.Now().UnixNano()+1. It fires on
+// a -validator node for that node's own id and for every BONDED peer that answers a
+// challenge; it never fires for an unbonded fetcher, and a non-validator daemon never
+// calls it at all. Measured by core/node's
+// TestR29aBondAuditStampsAWallClockNanosecondNotACounter.
+//
+// THE CONSEQUENCE, STATED HONESTLY. Before R2.9a the ledger held
+// (identity, cumulative bytes) for each requester. R2.9a added the WHEN on the SERVE
+// path, for every requester, unconditionally. In a default build that serve-path when is
+// gone: TestR29aDefaultBuildStampsNoFirstTouchOnRegister pins it in BOTH builds, because
+// it asserts on the un-injected state that is the only state a default build can reach.
+//
+// WHAT IS NOT GONE, and is filed rather than denied: on a -validator node an identity
+// that is both a bonded peer and a fetcher still carries
+// (identity, cumulative fetched bytes, first-seen WALL-CLOCK nanosecond) in a default
+// build, via the bond stamp. Open residual R-BB-BOND-STAMP-TUPLE (ROADMAP R2.9a). It is
+// narrow — bonded peers, not the fetcher population — it predates R2.9a, and it is NOT
+// closed here: the retention surface it feeds (DecayStale, BondMaxAge) is research-gated.
 
 // bbootstrapState is empty in a default build. See the tagged declaration in
 // bbootstrap.go for the two injected time sources it holds under the tag.

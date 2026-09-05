@@ -53,9 +53,21 @@ type account struct {
 	// IN A DEFAULT BUILD THAT BOND WRITER IS ITS ONLY WRITER. Register calls
 	// stampFirstTouch, which is a no-op declared in bbootstrap_off.go unless the
 	// binary was built with the `bbootstrap` tag AND the operator passed -bbootstrap
-	// (D-BB-BUILD-TAG, docs/decisions.md). So a default silt node records no
-	// first-touch wall-clock time for a fetcher at all: there is no
-	// (identity, bytes, when) tuple, because there is no `when`.
+	// (D-BB-BUILD-TAG, docs/decisions.md). So a default silt node stamps nothing on
+	// the SERVE path: no fetcher is given a first-touch time by having fetched.
+	//
+	// THE BOND WRITER IS A WALL CLOCK, AND THIS COMMENT SAID THE OPPOSITE UNTIL
+	// 2026-09-05. Corrected: core/node/bondaudit.go computes uint64(n.clock.Now())+1,
+	// and the clock the daemon hands the node is adapters/walltime, i.e.
+	// time.Now().UnixNano(). It fires on a -validator node only, for that node's own
+	// id and for every BONDED peer that answers a challenge — not for the general
+	// fetcher population. But an identity that is both a bonded peer and a fetcher
+	// carries the full (identity, cumulative bytes, first-seen WALL-CLOCK nanosecond)
+	// tuple in a default build. That is open residual R-BB-BOND-STAMP-TUPLE
+	// (ROADMAP R2.9a): narrow, predating R2.9a, disclosed rather than denied, and not
+	// closed here — the retention surface it feeds (DecayStale, BondMaxAge) is
+	// research-gated. Measured by core/node's
+	// TestR29aBondAuditStampsAWallClockNanosecondNotACounter.
 	//
 	// Under the tag and the flag, Register stamps it from the injected observability
 	// clock and the B_bootstrap histogram's age axis reads it — for OBSERVABILITY
@@ -408,8 +420,20 @@ func (l *Ledger) Audits(n ports.NodeID) (passed, failed int) {
 // provenBytes, or failed to. Passing sets the node's challenged-storage
 // standing — the large, unforgeable term Reputation is built on; failing
 // zeroes it (a bond you cannot answer buys nothing). tick is a monotonic
-// counter (the auditor's request clock, exactly like the PoR nonce in
-// por.go) so DecayStale can retire standing that stops being re-proven.
+// time reading, not a request counter: every caller in the daemon passes
+// uint64(clock.Now())+1 (core/node/bondaudit.go), and the daemon's node
+// clock is adapters/walltime, so in production this tick IS
+// time.Now().UnixNano()+1. DecayStale reads it to retire standing that
+// stops being re-proven, and it compares it against a `now` from the same
+// clock, which is why the unit has to be time and not a count.
+//
+// THE UNIT MATTERS BEYOND STALENESS, and calling it a counter here is where
+// that got lost: the first tick a prover is seen at is written verbatim into
+// account.firstSeenTick above, so on a validator this is a wall-clock
+// first-touch stamp for every bonded peer (residual R-BB-BOND-STAMP-TUPLE).
+// The claim that a default build records no `when` was inherited from this
+// comment; corrected 2026-09-05. cf. por.go's n.rid, which IS a counter —
+// they are not the same thing.
 //
 // NOTE: intentionally NOT (yet) on ports.CreditLedger. The bond auditor
 // reaches it through an optional interface (a type assertion) so this

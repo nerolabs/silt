@@ -141,6 +141,15 @@ func TestR29aStatusOmitsTheBlockUnlessAsked(t *testing.T) {
 // nothing about the clock. scripts/check_source_gates.py passed anyway: it requires a
 // NAMED cover, not a MATCHING one. The clock assertion now lives in its own gate below,
 // with the honest annotation.
+//
+// AND IT ASSERTS ONLY ABOUT THE TAGGED BUILD, which is the build it runs in. It used to
+// also assert that the UNTAGGED daemon.go declares no -bbootstrap — a guard against a
+// DEFAULT-build reintroduction, living in the one build that cannot have one. A blind
+// review put fs.Bool("bbootstrap", …) into daemon.go and shipped it green, because this
+// file compiles only under the tag. That assertion moved to
+// TestR29aDefaultBuildHasNoBBootstrapFlag in r29a_build_tag_absent_test.go, which runs in
+// the ordinary (untagged) test job, and it is stronger there: it walks the default
+// build's whole file set rather than one literal in one file.
 func TestR29aDaemonDefaultsTheInstrumentOff(t *testing.T) {
 	// THE FILE MOVED (D-BB-BUILD-TAG, 2026-09-05). The flag is declared in
 	// bbootstrap.go, which compiles only under the `bbootstrap` build tag, so a default
@@ -152,14 +161,6 @@ func TestR29aDaemonDefaultsTheInstrumentOff(t *testing.T) {
 	}
 	if !strings.Contains(string(src), "fs.Bool(\"bbootstrap\", false,") {
 		t.Fatalf("SOURCE GATE: cmd/silt/bbootstrap.go does not declare the -bbootstrap flag with a false default; the literal fs.Bool(\"bbootstrap\", false, is absent. GET /api/status needs no token, so the instrument must be OFF unless an operator asks for it")
-	}
-	// And daemon.go must not have grown a second, ungated declaration.
-	dsrc, err := os.ReadFile("daemon.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(dsrc), "fs.Bool(\"bbootstrap\"") {
-		t.Fatalf("SOURCE GATE: daemon.go declares -bbootstrap directly. It is an UNTAGGED file, so that would put the flag — and every reference it drags in — into a default silt binary, which is exactly what D-BB-BUILD-TAG removed")
 	}
 }
 

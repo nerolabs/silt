@@ -8,12 +8,20 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"go/ast"
+	"go/build"
+	"go/parser"
+	"go/token"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/nerolabs/silt/adapters/walltime"
 	"github.com/nerolabs/silt/ports"
 )
 
@@ -24,6 +32,21 @@ import (
 // The consequence for an operator is `silt daemon -bbootstrap` failing at flag parse
 // with "flag provided but not defined", which is the intended answer: the mechanism is
 // not disabled, it is absent, and there is nothing to enable.
+//
+// THE SECOND ARM IS THE ONE THAT MATTERS, and it exists because the first one is not
+// enough. Driving registerBBootstrapFlag on a synthetic FlagSet cannot see the daemon's
+// OWN flag set: a blind review put `fs.Bool("bbootstrap", false, …)` straight into the
+// untagged cmd/silt/daemon.go, and the default binary then declared and ACCEPTED
+// -bbootstrap while this test stayed green. cmdDaemon builds its FlagSet inline with
+// flag.ExitOnError, so no in-process test can parse it without exiting the test binary;
+// the closest observation available is the default build's OWN FILE SET, which is what
+// the scan below walks. It is the file set the linker sees, not a hand-written list —
+// go/build applies the same build constraints, so bbootstrap.go is excluded and
+// bbootstrap_off.go included, exactly as in `go build`.
+//
+// The CI containment step reads the linked binary itself (`daemon -bbootstrap` must be
+// rejected), which is the only complete form; this gate is the part that runs in the
+// ordinary test job.
 func TestR29aDefaultBuildHasNoBBootstrapFlag(t *testing.T) {
 	fs := flag.NewFlagSet("silt", flag.ContinueOnError)
 	fs.SetOutput(new(strings.Builder))
@@ -36,6 +59,131 @@ func TestR29aDefaultBuildHasNoBBootstrapFlag(t *testing.T) {
 	}
 	if err := fs.Parse([]string{"-bbootstrap"}); err == nil {
 		t.Fatalf("a default build ACCEPTED -bbootstrap. It must be rejected as an unknown flag")
+	}
+
+	// ARM 2: no file in the default build declares a flag whose name contains
+	// "bbootstrap", wherever it lives and whichever flag type it uses.
+	files, err := defaultBuildGoFiles(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) < 5 {
+		t.Fatalf("the default build file set has only %d files (%v) — the scan below would be vacuous", len(files), files)
+	}
+	sawDaemon := false
+	for _, f := range files {
+		if filepath.Base(f) == "daemon.go" {
+			sawDaemon = true
+		}
+		if filepath.Base(f) == "bbootstrap.go" {
+			t.Fatalf("SOURCE GATE: cmd/silt/bbootstrap.go is in the DEFAULT build file set. It carries //go:build bbootstrap and must compile only under the tag")
+		}
+		for _, decl := range flagNamesDeclaredIn(t, f) {
+			if strings.Contains(strings.ToLower(decl.name), "bbootstrap") {
+				t.Fatalf("SOURCE GATE: %s declares the flag %q (via %s) and compiles in a DEFAULT build. That puts -bbootstrap — and every reference the instrument drags in behind it — into every shipped silt binary, which is exactly what D-BB-BUILD-TAG removed. Declare it in a file carrying //go:build bbootstrap", filepath.Base(f), decl.name, decl.method)
+			}
+		}
+	}
+	if !sawDaemon {
+		t.Fatalf("SOURCE GATE: daemon.go is not in the default build file set (%v) — the flag scan must cover the file that builds the daemon's own FlagSet", files)
+	}
+}
+
+// defaultBuildGoFiles returns the non-test .go files go/build selects for dir with NO
+// build tags set — i.e. exactly the file set a plain `go build` compiles. This test file
+// is itself //go:build !bbootstrap, so it only runs in that build.
+func defaultBuildGoFiles(dir string) ([]string, error) {
+	ctx := build.Default
+	ctx.BuildTags = nil
+	pkg, err := ctx.ImportDir(dir, 0)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(pkg.GoFiles))
+	for _, f := range pkg.GoFiles {
+		out = append(out, filepath.Join(dir, f))
+	}
+	return out, nil
+}
+
+// flagDecl is one flag declaration found in the source: the name it registers and the
+// method that registered it, for the failure message.
+type flagDecl struct{ name, method string }
+
+// flagNamesDeclaredIn parses one Go file and returns every flag NAME it registers. It
+// matches on the shape of the stdlib flag API — x.Bool("name", …), x.StringVar(&v,
+// "name", …), flag.Duration("name", …) — so it catches a re-declaration under any flag
+// type and in any file, not just the one literal a string search would find.
+func flagNamesDeclaredIn(t *testing.T, path string) []flagDecl {
+	t.Helper()
+	// nameArg maps a flag-API method to the index of its flag-NAME argument. The Var
+	// forms take the destination pointer first.
+	nameArg := map[string]int{
+		"Bool": 0, "Int": 0, "Int64": 0, "Uint": 0, "Uint64": 0,
+		"String": 0, "Float64": 0, "Duration": 0, "Func": 0, "TextVar": 1,
+		"BoolVar": 1, "IntVar": 1, "Int64Var": 1, "UintVar": 1, "Uint64Var": 1,
+		"StringVar": 1, "Float64Var": 1, "DurationVar": 1, "Var": 1,
+	}
+	src, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := parser.ParseFile(token.NewFileSet(), path, src, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []flagDecl
+	ast.Inspect(file, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		i, ok := nameArg[sel.Sel.Name]
+		if !ok || i >= len(call.Args) {
+			return true
+		}
+		lit, ok := call.Args[i].(*ast.BasicLit)
+		if !ok || lit.Kind != token.STRING {
+			return true
+		}
+		out = append(out, flagDecl{name: strings.Trim(lit.Value, `"`), method: sel.Sel.Name})
+		return true
+	})
+	return out
+}
+
+// TestR29aDaemonHandsTheNodeAWallClock pins the fact the D-BB-BUILD-TAG texts got
+// BACKWARDS, and it is the reason residual R-BB-BOND-STAMP-TUPLE is filed rather than
+// denied. Four sites said account.firstSeenTick's surviving writer, RecordBondChallenge,
+// was "stamped from the bond auditor's own request counter rather than from a wall
+// clock". It is a wall clock: core/node/bondaudit.go computes uint64(n.clock.Now())+1,
+// and the clock the daemon hands the node is the walltime adapter, i.e.
+// time.Now().UnixNano().
+//
+// So on a -validator node, a DEFAULT silt build still holds
+// (identity, cumulative fetched bytes, first-seen wall-clock nanosecond) for any bonded
+// peer that also fetches. That is narrow and it predates R2.9a, but it is real, and the
+// claim that it is gone was false.
+//
+// This gate covers the one link no behavioural test can see — that the daemon's node
+// clock is the wall clock and not a sim clock — so it is a SOURCE gate and says so.
+//
+// RUNTIME GATE: TestR29aWalltimeAdapterIsAWallClock (below) runs the adapter this reads
+// the name of; core/node's TestR29aBondAuditStampsAWallClockNanosecondNotACounter
+// observes the stamp the auditor derives from it.
+func TestR29aDaemonHandsTheNodeAWallClock(t *testing.T) {
+	src, err := os.ReadFile("daemon.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, lit := range []string{"clk := walltime.New(loop)", "nd := node.New(id, cfg, clk,"} {
+		if !strings.Contains(string(src), lit) {
+			t.Fatalf("SOURCE GATE: daemon.go no longer contains the literal %q. This gate reads the daemon's clock wiring as text because no test in this repo boots the real daemon; if the wiring moved, re-anchor it here and re-check R-BB-BOND-STAMP-TUPLE, whose scope is 'the bond-audit stamp is a wall-clock nanosecond on a validator node'", lit)
+		}
 	}
 }
 
@@ -85,5 +233,18 @@ func TestR29aDefaultBuildStatusHasNoBBootstrapKey(t *testing.T) {
 	}
 	if _, ok := top["id"]; !ok {
 		t.Fatalf("status payload lost its id key — the embedded statusExtras seam broke the rest of the block: %s", body)
+	}
+}
+
+// TestR29aWalltimeAdapterIsAWallClock is the runtime half: the adapter named in the
+// source gate above genuinely reads the wall clock, at Unix-nanosecond magnitude. Without
+// this, that gate would be asserting a type name and nothing about time.
+func TestR29aWalltimeAdapterIsAWallClock(t *testing.T) {
+	got := int64(walltime.New(nil).Now())
+	if d := time.Now().UnixNano() - got; d < 0 || d > int64(10*time.Second) {
+		t.Fatalf("walltime.Clock.Now() = %d, which is %d ns from time.Now().UnixNano() — the adapter the daemon hands the node must be a wall clock", got, d)
+	}
+	if got < 1_500_000_000_000_000_000 {
+		t.Fatalf("walltime.Clock.Now() = %d, below Unix-nanosecond magnitude — a tick of this size would read as a counter, which is exactly the misreading that put a false fact in four D-BB-BUILD-TAG texts (R-BB-BOND-STAMP-TUPLE)", got)
 	}
 }
