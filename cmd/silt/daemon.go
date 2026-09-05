@@ -1260,6 +1260,14 @@ func cmdDaemon(args []string) error {
 	fmt.Printf("peer: %s@%s\n", id, tr.Addr())
 	fmt.Printf("store: %s\n", *storeDir)
 
+	// -privacy is parsed whether or not a UI is served: the help text promises a bad value
+	// refuses to start, and a refusal that depended on -ui being set would let
+	// `silt daemon -privacy=bogus` boot (blind PE code ruling
+	// RULING-UI-PRIVACY-FLAG-code-0c9e373-2026-09-05 B3).
+	privacyOn, err := parsePrivacyFlag(*privacyFlag)
+	if err != nil {
+		return err
+	}
 	if *uiAddr != "" {
 		// R2.9a, G-BB-13′ Part A (owner-ratified 2026-09-05): a tagged daemon with
 		// -bbootstrap set refuses to start unless -ui is a loopback bind. Checked
@@ -1276,10 +1284,6 @@ func cmdDaemon(args []string) error {
 		var capRep ports.CapacityReporter
 		if rep, ok := store.(ports.CapacityReporter); ok {
 			capRep = rep
-		}
-		privacyOn, err := parsePrivacyFlag(*privacyFlag)
-		if err != nil {
-			return err
 		}
 		token, err := loadOrCreateUIToken(*storeDir)
 		if err != nil {

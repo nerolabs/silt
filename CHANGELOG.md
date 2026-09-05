@@ -23,7 +23,9 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   moved to `ui/render.js` and a node-run gate proves a withheld document never aborts a render. `release.yml`
   asserts the compiled default on the built linux artifact. **Compatibility:** an OLDER observatory page
   pointed at a NEW `-privacy=on` daemon aborts its render (the old inline `stats` dereference) — upgrade the
-  observing daemon. Deliberation: `docs/thinking/2026-09-05-ui-privacy-flag.md`.
+  observing daemon. Blind PE code review (MERGE-AFTER) folded in: the library page renders "link withheld" instead
+  of a get button with an undefined link; a bad `-privacy` value refuses even with no `-ui`; the pointer-sharing
+  hazard on the cached document is gated. Deliberation: `docs/thinking/2026-09-05-ui-privacy-flag.md`.
 - **R2.9a — G-BB-12′ / G-BB-13′ Part A: the `B_bootstrap` block is served to the OPERATOR and to nobody
   else (2026-09-05; owner-ratified "refuse at startup", `D-R2.9a-RUN-CALLS` item 4; mechanism ruled by
   the blind PE, `RULING-R2.9a-G-BB-12-design-2026-09-05.md`).** Two startup refusals in a tagged

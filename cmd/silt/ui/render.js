@@ -74,5 +74,23 @@
     return withheld(s) ? '<span class="dim" title="' + WITHHELD_HINT + '">withheld</span>' : fmtB((stats(s) || {}).BytesServed || 0);
   }
 
-  return { fmtB, withheld, statusCards, prereleaseBanner, observatoryTotals, servedCell, WITHHELD_HINT };
+  // LINK_WITHHELD_HINT: the library page's recovery text. The link is a permanent
+  // decryption capability, so it is served only to a tab whose token arrived in the
+  // Authorization header (D-UI-PRIVACY-FLAG, the header-only predicate).
+  const LINK_WITHHELD_HINT = "link withheld — this node runs -privacy=on; open the UI from the URL the daemon printed (it carries your token), or run it with -privacy=off";
+
+  // libraryGetCell renders the action cell of one library row. Never emits a get button
+  // whose data-link is undefined: on a document with linksWithheld the row has no link,
+  // and the old markup sent /api/fetch?link=undefined (blind PE code ruling B2, measured).
+  function libraryGetCell(row, doc) {
+    if (doc && doc.linksWithheld) {
+      return '<span class="dim" title="' + LINK_WITHHELD_HINT + '">link withheld</span>';
+    }
+    if (!row || !row.link) {
+      return '<span class="dim">no link</span>';
+    }
+    return '<button class="get" data-link="' + row.link + '">get</button>';
+  }
+
+  return { fmtB, withheld, statusCards, prereleaseBanner, observatoryTotals, servedCell, libraryGetCell, WITHHELD_HINT, LINK_WITHHELD_HINT };
 });

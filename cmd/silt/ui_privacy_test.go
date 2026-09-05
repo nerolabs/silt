@@ -15,6 +15,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/nerolabs/silt/adapters/linkbook"
 )
@@ -218,9 +219,11 @@ func TestPrivacyFlagRefusesAnythingButOnOrOff(t *testing.T) {
 }
 
 // TestPrivacyBothSubcommandsParseTheFlagBeforeServing is a source gate: daemon.go and
-// client.go both declare -privacy through parsePrivacyFlag, and each refuses before
-// ui.serve. RUNTIME GATE: TestPrivacyFlagRefusesAnythingButOnOrOff observes the predicate;
-// this gate adds only that both call sites exist and precede the bind.
+// client.go both declare -privacy through parsePrivacyFlag, each refuses before ui.serve,
+// and in daemon.go the parse sits BEFORE the `if *uiAddr != ""` block — a parse inside it
+// let `silt daemon -privacy=bogus` (no -ui) boot while the help text promised a refusal
+// (PE code ruling B3). RUNTIME GATE: TestPrivacyFlagRefusesAnythingButOnOrOff observes the
+// predicate; this gate adds only that the call sites exist and where they sit.
 func TestPrivacyBothSubcommandsParseTheFlagBeforeServing(t *testing.T) {
 	for _, f := range []string{"daemon.go", "client.go"} {
 		src, err := os.ReadFile(f)
@@ -237,6 +240,45 @@ func TestPrivacyBothSubcommandsParseTheFlagBeforeServing(t *testing.T) {
 		if parse > serve {
 			t.Fatalf("SOURCE GATE: %s parses -privacy (byte %d) AFTER ui.serve (byte %d); a refused value must never leave a UI listening", f, parse, serve)
 		}
+		if f == "daemon.go" {
+			uiBlock := strings.Index(s, `if *uiAddr != "" {`)
+			if uiBlock < 0 || parse > uiBlock {
+				t.Fatalf("SOURCE GATE: daemon.go parses -privacy (byte %d) inside or after the `if *uiAddr != \"\"` block (byte %d); a daemon with no -ui must still refuse a bad value", parse, uiBlock)
+			}
+		}
+	}
+}
+
+// TestPrivacyWithholdDoesNotPoisonTheSharedCache is the one sharing hazard this change
+// creates, gated: Stats and durability.Balance are now POINTERS into the cached document,
+// so a privacy clause that wrote through them would zero the operator's next read. An
+// untokened privacy=on read, then the operator's read inside the same snapshot interval,
+// must show the operator the same balance and stats the cache holds (PE code ruling M1:
+// zeroing *out.Durability.Balance in the clause left every gate green).
+func TestPrivacyWithholdDoesNotPoisonTheSharedCache(t *testing.T) {
+	// A FUNDED fixture: the zero-grant fixture's balance is legitimately 0, which is the
+	// value a poisoning write would also produce. 5,000 makes the two distinguishable.
+	s, _, _, _ := economyServer(t, 5_000)
+	s.peerCount = func() int { return 0 }
+	s.privacy = true
+	fixed := s.started.Add(statusSnapshotInterval)
+	s.now = func() time.Time { return fixed } // one instant: every read below shares one snapshot
+	before := privacyGet(t, s, s.apiStatus, "/api/status", "Bearer tok", "")
+	privacyGet(t, s, s.apiStatus, "/api/status", "", "") // the untokened read that must not write
+	after := privacyGet(t, s, s.apiStatus, "/api/status", "Bearer tok", "")
+	for _, k := range []string{"stats", "durability"} {
+		if string(before[k]) != string(after[k]) {
+			t.Fatalf("operator's %s changed across an untokened read inside one interval — the privacy clause wrote through a shared pointer:\n%s\n%s", k, before[k], after[k])
+		}
+	}
+	if s.statusDoc == nil || s.statusDoc.Stats == nil || s.statusDoc.Durability == nil || s.statusDoc.Durability.Balance == nil {
+		t.Fatalf("the cached document lost a pointer the clause should only have dropped from the COPY")
+	}
+	var dur map[string]json.RawMessage
+	json.Unmarshal(after["durability"], &dur)
+	if string(dur["balance"]) != "5000" {
+		// The fixture grants 5,000; anything else — 0 above all — is the poisoning shape.
+		t.Fatalf("operator's balance reads %s after an untokened read, want 5000: %s", dur["balance"], after["durability"])
 	}
 }
 
@@ -299,6 +341,9 @@ out.cardsW = r.statusCards(withheld); out.cardsP = r.statusCards(published); out
 out.totals = r.observatoryTotals([{status: withheld}, {status: published}, {status: old}, {status: undefined}]);
 out.cellW = r.servedCell(withheld); out.cellP = r.servedCell(published);
 out.bannerP = r.prereleaseBanner(published); out.bannerW = r.prereleaseBanner(withheld); out.bannerO = r.prereleaseBanner(old);
+out.cellLinkW = r.libraryGetCell({root: "r"}, {linksWithheld: true});
+out.cellLinkP = r.libraryGetCell({root: "r", link: "silt:v1:a:b"}, {linksWithheld: false});
+out.cellLinkNone = r.libraryGetCell({root: "r"}, {});
 console.log(JSON.stringify(out));`
 	cmd := exec.Command(node, "-e", script, filepath.Join("ui", "render.js"))
 	raw, err := cmd.CombinedOutput()
@@ -310,9 +355,10 @@ console.log(JSON.stringify(out));`
 			Served, Servedsub string
 			Withheld          bool
 		}
-		Totals                    struct{ Served, Chunks, WithheldCount int64 }
-		CellW, CellP              string
-		BannerP, BannerW, BannerO string
+		Totals                             struct{ Served, Chunks, WithheldCount int64 }
+		CellW, CellP                       string
+		BannerP, BannerW, BannerO          string
+		CellLinkW, CellLinkP, CellLinkNone string
 	}
 	if err := json.Unmarshal(raw, &out); err != nil {
 		t.Fatalf("decode render output: %v\n%s", err, raw)
@@ -335,8 +381,21 @@ console.log(JSON.stringify(out));`
 	if !strings.HasPrefix(out.BannerP, "PRE-RELEASE") || out.BannerW != "" || out.BannerO != "" {
 		t.Fatalf("banners = %q / %q / %q: only a -privacy=off node is labelled", out.BannerP, out.BannerW, out.BannerO)
 	}
+	if !strings.Contains(out.CellLinkW, "link withheld") || strings.Contains(out.CellLinkW, "data-link") {
+		t.Fatalf("withheld library row = %q — must say withheld, never emit a get button with an undefined link (PE B2)", out.CellLinkW)
+	}
+	if !strings.Contains(out.CellLinkP, `data-link="silt:v1:a:b"`) || strings.Contains(out.CellLinkNone, "data-link") {
+		t.Fatalf("library cells = %q / %q", out.CellLinkP, out.CellLinkNone)
+	}
+	lib, err := os.ReadFile(filepath.Join("ui", "library.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(lib), `data-link="${f.link}"`) || !strings.Contains(string(lib), "siltRender.libraryGetCell(") {
+		t.Fatalf("SOURCE GATE: library.html still builds the get button inline from f.link; route through render.js so a withheld row cannot send link=undefined")
+	}
 	// And the pages actually use render.js: no bare stats dereference survives in either.
-	for _, page := range []string{"index.html", "observatory.html"} {
+	for _, page := range []string{"index.html", "observatory.html", "library.html"} {
 		html, err := os.ReadFile(filepath.Join("ui", page))
 		if err != nil {
 			t.Fatal(err)

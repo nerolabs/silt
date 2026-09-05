@@ -206,8 +206,12 @@ carries the argument and the sources. Two are LIVE BREAKS and come first.
       (`R-BB-SINGLETON-CELL`, G-BB-27) and the bin count is the ONLY lever that acts on this
       scale-invariant exposure. Don't #3 is on one side of the trade, so it is the owner's. Source:
       the same 2026-09-05 certification §3.3–3.4, §6.
-    - **RATIFIED 2026-09-05 · behind the `-privacy` flag (`D-UI-PRIVACY-FLAG`): exposed in the flixz beta, withheld
-      at release, `-privacy=off` explicit; build owed. Original statement kept below.** `R-BB-SIBLING-AGGREGATES`. On a one-root node every node-wide counter is that
+    - **CLOSED BY DEFAULT 2026-09-05 · behind the `-privacy` flag (`D-UI-PRIVACY-FLAG`, BUILT): withheld from
+      unauthenticated readers in every build; published only under `-privacy=off`, labelled. New residual
+      `R-PRIVACY-OPERATOR-TAB-TOKEN`: the operator's token is per-tab (`sessionStorage`) and reaches the browser only
+      via the one-shot `?token=` URL, so a fresh tab is an untokened operator — the pages render "withheld" with the
+      recovery, and a persistent token route is the UX follow-on before the default lands on real operators.
+      Original statement kept below.** `R-BB-SIBLING-AGGREGATES`. On a one-root node every node-wide counter is that
       root's counter. `stats.bytesServed` is published unauthenticated, rate-bounded by the
       snapshot cache to `⌊uptime/T⌋` distinct documents and NOT closed by it. Closing it means
       token-gating `stats.bytesServed`, which removes the observatory's bandwidth card and the

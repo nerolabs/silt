@@ -150,4 +150,21 @@ PROCEED-WITH-CHANGES). Three of my premises were FALSE on the tree and are corre
 - Predicate split (Q4): counters take any-route `token`; the link takes header-only
   `tokenHeader`. Rule recorded in the composition-point doc comment.
 
-**Status:** built; PE fold-in applied; to blind PE code review after CI.
+**Blind PE CODE ruling** (`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-UI-PRIVACY-FLAG-code-0c9e373-2026-09-05.md`,
+MERGE-AFTER; seven of eight controlled reverts RED; the wire claims measured on a live daemon
+and a live client). Folded in: **B1** the e2e F2 arm was RED at the first push (`go test -short
+./...` skips e2e — the whole e2e suite now runs locally before a push; the arm runs its daemon
+`-privacy=off` and a new live-daemon gate covers the default). **B2** `library.html` had no
+reader for `linksWithheld`: an untokened tab rendered `data-link="undefined"` and the get
+button sent `/api/fetch?link=undefined` — the action cell is rendered by `render.js`, the
+page shows the recovery, and the node gate covers it (my S2 miss, and the PE's: "both pages"
+should have been "every page that reads a withheld field"). **B3** `parsePrivacyFlag` sat
+inside the `-ui` block, so `silt daemon -privacy=bogus` with no UI booted; moved before it,
+source gate widened. **M1** the pointer-sharing hazard is gated (an untokened read followed by
+the operator's read in one interval). **M2** three texts still called
+`R-BB-SIBLING-AGGREGATES` open. **M3** the privacy gates are name-anchored in the untagged CI
+loop. **M4** `R-PRIVACY-OPERATOR-TAB-TOKEN` is on the ROADMAP. **Contingent, the PE's verdict
+and mine:** whether flixz reads `/api/library` cross-origin from a hosted resolver, which the
+default would break — asked in the handoff.
+
+**Status:** built; both PE rulings folded in; merged when CI is green.

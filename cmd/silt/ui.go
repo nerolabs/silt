@@ -874,7 +874,9 @@ func (s *uiServer) computeStatus(now time.Time) *statusInfo {
 // root. But "names no root" is a property of the SURFACE, not of a field: GET /api/roots
 // publishes every held root unauthenticated, so on a node holding ONE root every
 // node-wide counter — balance here, stats.BytesServed above, revenue.* on the sibling
-// endpoint — is that root's counter. That is R-BB-SIBLING-AGGREGATES, open, now bounded
+// endpoint — is that root's counter. That was R-BB-SIBLING-AGGREGATES; since D-UI-PRIVACY-FLAG
+// those counters are withheld from unauthenticated readers by default (readerView's privacy
+// clause) and published only under -privacy=off, labelled. Under -privacy=off it is bounded
 // to floor(uptime/T) observations by the shared snapshot and NOT closed by this gate.
 // Closing it means gating stats.BytesServed, which the cross-origin observatory reads
 // with no token by design; that trade is the owner's (docs/decisions.md,
@@ -1121,7 +1123,8 @@ func (s *uiServer) apiEconomySelf(w http.ResponseWriter, r *http.Request) {
 // What stays open: revenue (the node-wide balance and byte totals), margin and wash
 // (derived from them), the provenance stamps. These are the same node-wide aggregates
 // /api/status publishes and the observatory reads; on a node holding one root they are
-// that root's counters (R-BB-SIBLING-AGGREGATES, open — see withheldDurability).
+// that root's counters (R-BB-SIBLING-AGGREGATES — closed by default since D-UI-PRIVACY-FLAG:
+// withheld from unauthenticated readers unless the operator runs -privacy=off; see readerView).
 func withheldEconomySelf(full economySelf) economySelf {
 	return economySelf{
 		Tier:                full.Tier,
