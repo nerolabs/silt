@@ -196,12 +196,18 @@ const bbClockSkewToleranceNanos = int64(60 * 1e9)
 // earlier version of this paragraph said the residual was "bounded by the poll rate".
 // That was wrong as written and is corrected here: the poll rate is the READER's own
 // choice, and there is no rate limiter anywhere on the UI server. The bound is real only
-// because /api/status now serves a snapshot recomputed at most once per a fixed
+// because the UI server serves ONE snapshot recomputed at most once per a fixed
 // interval T and the cached copy in between (cmd/silt/ui.go, statusSnapshotInterval), so
 // an observer gets at most floor(uptime/T) distinct blocks however fast it asks and
-// every crossing inside one interval is unresolvable. T is a SECURITY PARAMETER: it is
-// derived, published on the wire beside the axis constants so an analyst can price this
-// residual, and provisional pending owner ratification.
+// every crossing inside one interval is unresolvable. THE BOUND COVERS EXACTLY THE TWO
+// ENDPOINTS SERVED OFF THAT SNAPSHOT, GET /api/status (this block, durability.balance,
+// stats.BytesServed) and GET /api/economy/self (revenue.*, the escrow sums). As first
+// written this paragraph said "/api/status now serves a snapshot", which was true of
+// the block and false of the sibling aggregates it names: /api/economy/self recomputed
+// per request, and a blind PE review extracted the escrow step from it at 330 ms. It
+// now reads the same snapshot. T is a SECURITY PARAMETER: it is derived, published on
+// the wire beside the axis constants so an analyst can price this residual, and
+// ratified by the owner (D-STATUS-SNAPSHOT-INTERVAL, with its appended correction).
 //
 // THE RULE THE FLOOR ENFORCES IS A PROPERTY, NOT A FIELD LIST (G-BB-11′). Partition
 // every published field of the block:

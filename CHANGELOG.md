@@ -9,6 +9,60 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Fixed
+- **R2.9a — the F2 gate on the status surface did not close F2: the pooled `selfFunding` sum and an
+  uncached sibling endpoint republished the withheld counter at the reader's own rate. Both are
+  closed, the ratified snapshot bound is corrected to say which endpoints it covers, and the
+  one-cache/two-views separation gets the gate it never had.** A blind principal-engineer review of
+  the branch measured this on two live daemons: the tokened `durability.objects[0].funded` and the
+  untokened `selfFunding.skimIn` on `/api/economy/self` were the same number (`skimIn` is
+  `Σ objects[].funded`, and a node caretaking one object — every node from its first published object
+  to its second — has one term); `/api/roots` named the root unauthenticated; and `/api/economy/self`
+  recomputed per request, so polling it at 250 ms across one real fetch recovered a 16,388-credit
+  step, 131,104 bytes of a named root, at 330 ms resolution instead of the 5 s the cache was
+  certified to bound. The gate written to prove the leak closed asserted the leaked number was
+  PRESENT: `selfFunding.skimIn == 1024` in a one-object fixture whose sibling assertion said 1024 must
+  be withheld, commented "names no root" — false in the presence of `/api/roots`. **The fixes.**
+  (1) `/api/economy/self` is served from the SAME snapshot as `/api/status`: one document, taken in
+  one loop pass, recomputed at most once per `T`, invalidated together after a token-gated mutation,
+  carrying the same `snapshotTakenAtUnix` / `snapshotAgeSec` / `snapshotIntervalSec` stamps. Not a
+  second cache (that doubles the recompute a flood can drive) and not a second interval (two
+  documents on different clocks can be diffed against each other). (2) `selfFunding.*` is
+  token-gated with `objects[]`, and the withholding is an ALLOW-LIST: `withheldEconomySelf`
+  constructs the open document from named fields, the shape `withheldDurability` already had, so a
+  field added to the SELF document later ships withheld until someone decides otherwise.
+  `objectsWithheld` becomes `detailWithheld` — one flag for one rule, the durability block's name.
+  (3) The false gate now asserts the property: `selfFunding` ABSENT untokened, present with the
+  number tokened. (4) A WHOLE-SURFACE gate walks the real route table — `apiRoutes`, which `serve`
+  registers, with an exact GET-route count so a new route fails until it has been examined — and
+  asserts that for a node with one cared object no unauthenticated response on any route carries
+  `objects[0].funded` under any name: every number in every body is scanned, no field name is
+  grepped, and a positive control first proves the number IS on both tokened documents. (5) The
+  copy at `apiStatus` gets its gate: the review replaced `out.Durability = …` with
+  `doc.Durability = …` and the suite stayed green in both builds while one anonymous GET stripped the
+  operator's own solvency panel for the rest of the interval; the gate reads tokened, untokened,
+  tokened inside one interval on BOTH documents and requires the third read byte-identical to the
+  first. **What is open, by decision and not by omission.** The node-wide aggregates —
+  `durability.balance`, `stats.BytesServed`, `revenue.*` — stay unauthenticated on both documents:
+  the cross-origin observatory (`cmd/silt/ui/observatory.html`) reads `stats.BytesServed` with no
+  token by design, and no cross-origin consumer reads `selfFunding.*` or `/api/economy/self` at all
+  (the observatory reads `/api/status`, `/api/roots`, `/api/registry`; nothing under
+  `-allow-web-origin` reads the SELF document; cloudtest and the e2e tier read `/api/status` with the
+  token), so the gate breaks no dashboard. On a node holding one root those totals are that root's
+  counters (`R-BB-SIBLING-AGGREGATES`): now rate-bounded to `⌊uptime/T⌋`, not closed, and the
+  whole-surface gate logs the 8x and 7x aliases so the residual is measured rather than assumed.
+  Gating them breaks the observatory's bytes-served panel; that trade is the owner's. **The
+  ratified text.** `D-STATUS-SNAPSHOT-INTERVAL` claimed `⌊uptime/T⌋` for "an observer" while the
+  sibling was uncached; the entry keeps its ratified text and carries an appended dated correction
+  naming exactly the two endpoints the bound covers, and the same sentence is corrected at
+  `cmd/silt/ui.go` (`statusSnapshotInterval`) and in the `core/credit/bbootstrap.go` disclosure.
+  Gates, each with a controlled-revert ablation recorded RED:
+  `TestR29aF2EconomySelfWithholdsPerObjectDetailWithoutAToken` (re-pointed),
+  `TestR29aF2NoUnauthenticatedResponseOnTheWholeSurfaceCarriesTheWithheldCounter`,
+  `TestR29aOneCacheTwoViewsAnAnonymousReadDoesNotStripTheOperatorsView`,
+  `TestR29aEconomySelfIsServedFromTheStatusSnapshot` (`cmd/silt`, untagged, run in both builds), and
+  a live-daemon arm in `TestEconomyEndToEndOnLiveDaemon` (`e2e`), the tier the review found it at.
+  `TestEconomySelfIsReadOnlyAndLocalExact` now makes the untokened request its comment described.
+  Source: `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/2026-09-05-RULING-r2.9a-status-surface-cache-stamp-and-f2-gate.md`.
 - **R2.9a — the preserved `firstSeenTick` writer is a WALL CLOCK, not a request counter; four texts
   said the opposite and are corrected, and the residual they denied is now filed as
   `R-BB-BOND-STAMP-TUPLE`.** A blind principal-engineer review measured this on two real bonded
@@ -96,7 +150,9 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   event loop, per unauthenticated GET** — build-immutable #8, *"an unbounded system on a small box is
   not inefficient, it is unsafe."* Caching makes the per-request cost `O(1)` and the per-interval cost
   `O(R)`, so a GET flood is amplified at most once per interval instead of at the attacker's request
-  rate, and an observer gets at most `⌊uptime/T⌋` distinct documents however fast it asks. **`T` is a
+  rate, and an observer gets at most `⌊uptime/T⌋` distinct documents however fast it asks — from
+  `/api/status` alone as first built; the sibling `/api/economy/self` was uncached, corrected in the
+  Fixed entry above. **`T` is a
   SECURITY PARAMETER and the value is PROVISIONAL pending owner ratification**, named once in code the
   way `SlashesBytesCap` is. It is derived, not picked: bounded from above by the fit (the narrowest
   positive-width age bucket is 60 s, so anything well inside it is over-sampled by orders of magnitude

@@ -228,3 +228,134 @@ touches neither what is stored nor what is computed — only what is published, 
 Each change ships one gate plus a controlled revert that turns it RED, recorded in the
 commit message and reported to the planner. No knob moved without a named mechanism above.
 PACE done before code, per the standing rule.
+
+---
+
+## 5. Round 2 — the blind PE ruling, folded in (2026-09-05)
+
+**Input of record:**
+`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/2026-09-05-RULING-r2.9a-status-surface-cache-stamp-and-f2-gate.md`
+— DO NOT MERGE AS IS. Changes 1, 2 and 4 verified with six ablations RED. Change 3, "the
+per-object leak is closed", **false as shipped**. Two blockers, one ungated property.
+
+### The mechanism, before the fix
+
+The failure is that an unauthenticated reader recovers `objects[0].funded` exactly, because
+§3's table above put the pooled `selfFunding.skimIn` in the "names no root" column, and that
+column was decided per FIELD when it is a property of the SURFACE: `skimIn = Σ objects[].funded`
+has one term on a one-object node, and `/api/roots` publishes the root with no token. The
+rate was the reader's own because `apiEconomySelf` recomputed per request; the cache was on the
+other endpoint. The reviewer measured both on live daemons: the same number tokened and
+untokened, and a 16,388 step recovered at 330 ms. The gate at `:288` asserted `skimIn == 1024`
+must survive — the leaked number, pinned as safe.
+
+The rule the branch stated and applied to exactly one twin: *gating one surface while leaving
+its twin open closes nothing.* The surface is three endpoints — `/api/roots` the name,
+`/api/economy/self` the quantity, `/api/status` the decomposition.
+
+### The options
+
+| | What | Cost |
+|---|---|---|
+| (a) | Token-gate `selfFunding.*` | Smallest change. Any cross-origin reader of those fields loses them. |
+| (b) | Snapshot `/api/economy/self` at the same `T` | Makes the ratified sentence true. Leaves the N = 1 leak open at 17,280 exact observations a day. |
+| (c) | Both | Closes it and makes the sentence true. |
+
+**Decision: (c).** (b) alone bounds a rate; the join needs one fetch per interval, which the
+decisions entry already concedes is routine. (a) alone leaves the ratified bound false and the
+revenue aggregates at the reader's rate.
+
+**One snapshot, not a second cache.** The `EconomySelf` reading is taken in the same loop pass
+as the durability block and stored on `statusInfo` in an unexported field (cached, never
+published on `/api/status`). A second cache doubles the recompute a flood can drive; a second
+interval lets the two documents be diffed against each other; the invalidation hook already
+covers both. The SELF document now carries the same three provenance stamps.
+
+**Allow-list, not a nil'd field.** `withheldEconomySelf` constructs the open document from named
+fields (the `withheldDurability` shape). The PE's follow-on 3 named this asymmetry as how the
+leak existed: `SelfFunding` was already there and nobody had to decide about it. Same line
+count as nil-ing two fields; the next field decides itself the safe way. `objectsWithheld`
+becomes `detailWithheld` — one flag, one rule, the durability block's name; nothing shipped
+reads the old name (PR unmerged; cloudtest and e2e read `/api/status`).
+
+### The cross-origin question, answered from the source
+
+- `cmd/silt/ui/observatory.html:70-72` reads `/api/status`, `/api/roots`, `/api/registry`. From
+  status it uses `id`, `validator`, `capUsed`, `capTotal`, `chunks`, `stats.BytesServed`,
+  `network`, `chain.height`. It never calls `/api/economy/self`.
+- `cmd/silt/ui/index.html` and `library.html` are same-origin and read `/api/status`,
+  `/api/roots`, `/api/library`. No page reads `selfFunding` or `durability` (the PE's grep,
+  re-run: zero matches).
+- `-allow-web-origin` (`cmd/silt/client.go:63`) exists so a hosted resolver can *draw content*
+  (`/api/fetch`); nothing in the tree under that path reads the SELF document.
+- `integration/cloudtest/scenarios.sh` reads `funded` with the bearer token and never reads
+  `/api/economy/self`; `e2e/economy_test.go` read `/api/status` only (it now reads both).
+
+**Verdict: gating `selfFunding.*` breaks no cross-origin consumer.** The observatory's read that
+IS in the same class — `stats.BytesServed`, node-wide — stays open, and that is the trade
+surfaced below, not decided.
+
+### Every GET route and field, examined by "what reconstructs the quantity"
+
+| Route | Fields | Verdict |
+|---|---|---|
+| `/api/status` | `durability.objects[]` | gated (unchanged) |
+| | `durability.balance`, `stats.BytesServed` | OPEN — node-wide; the observatory's read; on a one-root node it is that root's (R-BB-SIBLING-AGGREGATES) |
+| | `chunks`, `capUsed/Total`, `peers`, `network`, `chain`, `reachability`, `addressCap` | no ledger counter; no root |
+| | `bBootstrap` (tagged) | floor-gated; per-identity, never per-root |
+| `/api/economy/self` | `objects[]`, `selfFunding.{skimIn,bountyOut,net,bountyOn}` | **gated now** |
+| | `revenue.{balance, servedBytes, fetchedBytes, repairsDone, bountyEarned, serveRevenue}` | OPEN — the same node-wide class as `stats.BytesServed`; `servedBytes = 8 × funded` and `balance = 7 × funded` on the fixture |
+| | `margin`, `wash` | derived from the open node-wide figures and the reader's own `?cost` |
+| `/api/roots` | `root`, `shards` per held root | OPEN by design (observatory shard-spread, index page). The NAME half. `shards` moves on the node's own retain/repair, not on serve. |
+| `/api/registry` | `root`, `fileSize`, `manifestChunks` | static per entry; no counter |
+| `/api/chain` | `height`, `hash`, `entries`, `proposer`, `atts` | public consensus data; no counter |
+| `/api/library` | `root`, `link`, `label`, `added`, `onChain`, `fileSize`, `networkFiles`, `opaqueToYou` | no served-bytes counter. **Separate finding, pre-existing, not F2:** `link` is the full `silt:v1:` handle, which carries the link key. It is served unauthenticated on localhost / allow-listed origins under the #89 read-only ergonomics. A capability, not a counter; flagged for the owner, not acted on. |
+| `/api/fetch` | the content bytes | state-changing GET (the PE's follow-on 2); untouched here, named |
+
+The whole-surface gate scans every number in every unauthenticated body for `funded` (with a
+positive control that the number IS on both tokened documents) and requires an exact GET-route
+count, so a new route reddens it until examined. It logs the 8× and 7× aliases so the residual is
+measured rather than assumed.
+
+### The trade surfaced, not decided
+
+`R-BB-SIBLING-AGGREGATES` is now precisely: on a node whose `/api/roots` lists one root, every
+node-wide counter — `stats.BytesServed`, `durability.balance`, `revenue.*` — is that root's
+counter, rate-bounded to `⌊uptime/T⌋`, unauthenticated. Closing it means token-gating
+`stats.BytesServed`, which removes the observatory's "Serving bandwidth" card and per-daemon
+served column (cross-origin, no token by design) and the index page's served card in any tab
+without the token. Don't #3 outranks a dashboard; the owner decides whether to spend the
+dashboard. Filed in the decisions correction and the ROADMAP delta.
+
+### Blocker 2 — three sites, one precise sentence
+
+`floor(uptime/T)` now covers exactly `GET /api/status` and `GET /api/economy/self`, the two
+documents served off the one snapshot; `snapshotAgeSec` moves per serve by design; the other
+GET routes are not snapshotted and carry no ledger counter. Corrected at
+`cmd/silt/ui.go` (`statusSnapshotInterval`), `core/credit/bbootstrap.go` (the disclosure), and
+`docs/decisions.md` — the ratified text unchanged with an appended dated correction. The earlier
+CHANGELOG entry's sentence is scoped in place.
+
+### Ablations, each RED then restored
+
+| Ablation | Gate that fired |
+|---|---|
+| A — `doc.Durability = withheld…` after the copy | `OneCacheTwoViews…`, plus the F2 status gate and the whole-surface gate (the untokened reader gets the full pointer) |
+| A′ — withhold the cached doc BEFORE copying (the exact "avoid the copy" shape the PE ran; the reviewed suite stayed green) | `OneCacheTwoViews…` only, in both builds — the gate the review asked for |
+| B — `SelfFunding: full.SelfFunding` in the allow-list (the reviewed SHA's behaviour) | `F2EconomySelfWithholds…` and the whole-surface gate |
+| C — `computeStatus(now)` per request in `apiEconomySelf` (the uncached sibling) | `EconomySelfIsServedFromTheStatusSnapshot` |
+| D — drop `GET /api/library` from `apiRoutes` | the whole-surface gate's exact route count |
+
+The e2e arm ran on a live daemon: untokened `/api/economy/self` carries no `selfFunding`, no
+`objects`, no root, `detailWithheld: true`, and the snapshot stamps; tokened carries `skimIn ≥`
+the endowment.
+
+### What in the ruling I checked and found nothing wrong with
+
+Every measured claim I could re-derive from the source held: `:747-750` / `:821-824` /
+`:907-918` / `:288`, the `:520-526` copy, the zero-match grep of the shipped pages, the
+cloudtest token reads. One precision on the proposed property: "no unauthenticated response may
+carry `objects[0].funded`" is satisfiable while `revenue.servedBytes = 8 × funded` stays open.
+The ruling names `servedBytes` for an explicit decision rather than by omission, so this is
+consistent with it; the whole-surface gate asserts the literal property and logs the aliases,
+and the aliases are the owner's call above.

@@ -188,4 +188,60 @@ func TestEconomyEndToEndOnLiveDaemon(t *testing.T) {
 	if pubView.Durability.Balance != s1.Durability.Balance {
 		t.Fatalf("the node-wide balance changed with the token (%d vs %d) — this change publishes less, it never counts less", pubView.Durability.Balance, s1.Durability.Balance)
 	}
+
+	// THE SIBLING, on the same live daemon. The blind PE review found F2 still open
+	// here after the gate above: /api/economy/self withheld objects[] but published
+	// selfFunding.skimIn, the sum of objects[].funded, which on a one-object node IS
+	// the withheld counter — and it was recomputed per request, so the extraction ran
+	// at the reader's own rate. Untokened: no selfFunding key, no objects key, no root,
+	// and the same snapshot stamp as /api/status. Tokened: the operator's Panel 3 with
+	// the number.
+	pubSelf := getEconomySelfRaw(t, base, "")
+	if _, open := pubSelf["selfFunding"]; open {
+		t.Fatalf("unauthenticated /api/economy/self published selfFunding: %s — skimIn is the sum of the per-object funded counters and with one cared object it is that counter; /api/roots names the root", pubSelf["selfFunding"])
+	}
+	if _, open := pubSelf["objects"]; open {
+		t.Fatalf("unauthenticated /api/economy/self published objects: %s", pubSelf["objects"])
+	}
+	if string(pubSelf["detailWithheld"]) != "true" {
+		t.Fatalf("economy/self detail withheld but detailWithheld is %s", pubSelf["detailWithheld"])
+	}
+	for k, v := range pubSelf {
+		if strings.Contains(string(v), root) {
+			t.Fatalf("unauthenticated /api/economy/self names the cared root under %q: %s", k, v)
+		}
+	}
+	opSelf := getEconomySelfRaw(t, base, token)
+	var sf struct {
+		SkimIn int64 `json:"skimIn"`
+	}
+	if err := json.Unmarshal(opSelf["selfFunding"], &sf); err != nil || sf.SkimIn < endow {
+		t.Fatalf("the operator's Panel 3 is broken: selfFunding=%s err=%v, want skimIn >= the %d endowment", opSelf["selfFunding"], err, endow)
+	}
+	if string(opSelf["snapshotTakenAtUnix"]) == "" || string(pubSelf["snapshotIntervalSec"]) == "" {
+		t.Fatalf("economy/self carries no snapshot provenance — a cached number that cannot be told from a live one is the silent-loss shape: %v", pubSelf)
+	}
+}
+
+// getEconomySelfRaw reads GET /api/economy/self as a map of raw top-level keys, so an
+// ABSENT key (withheld) and a present-but-empty one stay distinguishable.
+func getEconomySelfRaw(t *testing.T, base, token string) map[string]json.RawMessage {
+	t.Helper()
+	req, err := http.NewRequest("GET", base+"/api/economy/self", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	if err != nil {
+		t.Fatalf("GET /api/economy/self: %v", err)
+	}
+	defer resp.Body.Close()
+	var out map[string]json.RawMessage
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode economy/self: %v", err)
+	}
+	return out
 }
