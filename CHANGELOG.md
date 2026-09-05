@@ -9,6 +9,24 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **R2.11 — a peer-submit path for a demand-issuer key registration (2026-09-05; closes residual
+  R0.4b-11).** A validator that never wins a proposal slot can now get its per-epoch demand-issuer key
+  committed: `MsgSubmitIssuerKeyReg` (APPENDED to the kind table, never inserted — `MsgKind` is positional)
+  carries one self-signed `IssuerKeyReg` to peers every sync sweep while uncommitted; the receiver's arrival
+  gate refuses, loudly and in order, a rate-exceeded sender, a slashed sender, a payload with ≠ 1 reg, a
+  relayed reg (issuer ≠ sender), a bad signature, an out-of-window epoch, an already-committed binding and
+  an UNBONDED issuer (the clause that bounds distinct senders); a queued reg is one slot per (issuer, epoch),
+  latest wins; the next proposer folds it into its v5 block after its own, DROPPING (never deferring) one
+  that is stale, slashed or no longer admissible; the drain driver arms on a FOLDABLE registration so an idle
+  chain carries it. No validity rule moves, so an attester's acceptance is untouched and a mixed-version
+  swarm cannot fork on it. Five `TestR211*` gates including the end-to-end property (the attest-only node's
+  key commits on both replicas without it ever proposing) and the message-kind number pins. Blind PE code review
+  (MERGE-AFTER) folded in: the arrival-gate fixture was vacuous and is rewritten against a bonded issuer; the
+  staggered-takeover branch now counts issuer-key work (a dead designee no longer stalls a foldable key); the peer
+  queue is pruned every sync sweep; `stats.DrainProposalsArmed` is a new node-wide counter on `GET /api/status`
+  (validator-role observability: how often the drain driver armed a proposal; withheld with the other counters
+  under `-privacy`). Not yet measured: the carrier-block fraction the R3.4 accept-flip needs (the
+  floor box stalls on any IssuerKeys-carrying block). Deliberation: `docs/thinking/2026-09-05-r2.11-issuer-key-peer-submit.md`.
 - **R2.12 — the faucet rate limit (2026-09-05; owner calls of 2026-09-03 stand; blind PE design ruling STOP →
   reconciled with the Economist's derivation, then built).** Three daemon flags. With `-grant-capacity` and
   `-grant-per-hour` both set, a fresh identity's 500,000 starter grant is applied at its first SPEND

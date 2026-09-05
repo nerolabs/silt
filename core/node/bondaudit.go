@@ -436,3 +436,40 @@ func (n *Node) answerBondChallenge(from ports.NodeID, msg ports.Message) ports.M
 	}
 	return reply
 }
+
+// issuerKeySubmitBurst (R2.11) caps the MsgSubmitIssuerKeyReg messages ONE sender may have
+// examined per sync window. DERIVED from the honest cadence, not copied from
+// bondSubmitBurst (which was sized for ONE renewal per sweep): an issuer pre-publishes its
+// whole band, W+1 = 5 registrations per sweep while any is uncommitted, and the bond path
+// documents a WAN-skew refusal that heals by resubmit, so the budget carries the band plus
+// ~5 retries — 32, the entrySubmitBurst precedent. A registration costs one ed25519 verify,
+// so the budget bounds cheap work; the BONDED clause at arrival is what bounds distinct
+// senders (a fresh keypair is a fresh budget here, exactly as for bond submits).
+const issuerKeySubmitBurst = 32
+
+// allowIssuerKeySubmit reports whether a MsgSubmitIssuerKeyReg from `from` may be examined
+// this window (R2.11). Same shape as allowBondSubmit, its own map and burst.
+func (n *Node) allowIssuerKeySubmit(from ports.NodeID) bool {
+	now := n.clock.Now()
+	window := n.cfg.ChainSyncInterval
+	if window <= 0 {
+		window = 30 * ports.Second
+	}
+	r := n.issuerKeySubmitRate[from]
+	if r == nil || ports.Duration(now-r.windowStart) >= window {
+		if r == nil && len(n.issuerKeySubmitRate) >= maxBondChallengers {
+			for id, e := range n.issuerKeySubmitRate {
+				if ports.Duration(now-e.windowStart) >= window {
+					delete(n.issuerKeySubmitRate, id)
+				}
+			}
+		}
+		n.issuerKeySubmitRate[from] = &challengerRate{windowStart: now, count: 1}
+		return true
+	}
+	if r.count >= issuerKeySubmitBurst {
+		return false
+	}
+	r.count++
+	return true
+}
