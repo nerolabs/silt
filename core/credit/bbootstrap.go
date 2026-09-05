@@ -108,8 +108,15 @@ const (
 	// total, never a cell; merging and rounding are large-census tools and were
 	// REFUTED as closers at this scale (necessity certification 2026-09-05 §3.3).
 	// The exposed count scales with the number of sparse tail bins, i.e. with this
-	// constant, so 4 → 1 cuts the axis 164 → 41 and the pinned-identity count by
-	// about the same factor (R-BB-SINGLETON-CELL, reduced not closed).
+	// constant, so 4 → 1 cuts the axis 164 → 41. The pinned-identity count falls by
+	// LESS than that, and by an amount that depends on R (blind PE ruling
+	// RULING-R2.9a-bin-count-d644b8b-2026-09-05, measured on a reconstruction of F4's
+	// population): about 1.4× at the census floor R = 10, 2× at R = 25, and 4× only at
+	// R ≳ 1,000. The analytic limit is model-free — as R falls toward the floor nearly
+	// every identity is alone on EITHER axis, so the factor → 1. The floor (G-BB-11′)
+	// and this constant are therefore weakest in the SAME band, R = 10–25, which is
+	// exactly the band the floor permits publication in. R-BB-SINGLETON-CELL is
+	// reduced, not closed, and least reduced where it is worst.
 	//
 	// THE PRECISION SIDE LOST ITS CONSUMER. The 19% residual mattered when the census
 	// was to pin grant/r, and both directions of that residual land on immutables
@@ -788,7 +795,7 @@ func bbootstrapAgeBucket(ageNanos int64) int {
 
 // BBootstrapSnapshot builds the histogram. ONE O(R) pass over the append-only order
 // slice, no sort, no hash, no allocation per requester — the only allocation is the one
-// fixed 10 KiB cell array, and only when the age axis is live.
+// fixed 2,624-byte cell array (8 × 41 × 8), and only when the age axis is live.
 //
 // IT WRITES NOTHING (Invariant A / BB-11). It indexes l.accounts directly and must never
 // call FetchedBytes or any other l.acct() reader: acct() goes through Register and

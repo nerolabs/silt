@@ -875,3 +875,33 @@ func TestR29aFirstFetchIsStampedOnceAtTheFirstFetch(t *testing.T) {
 		t.Fatalf("firstFetchTick = %d with no clock injected, want 0 — nil must stay the safe, behaviour-identical state", got)
 	}
 }
+
+// TestR29aTopBinSaturatesThroughTheSnapshot drives a saturating account through the REAL
+// snapshot path, not the bin function alone. The clamp inside bbootstrapByteBin is the
+// only guard between a cumulative fetched-byte total of 2^41 (2 TiB) or more and an
+// out-of-range write at Cells[bucket][bin]++, which would panic inside the /api/status
+// handler on the node's event loop. Under G-BB-5's gateway reading one identity carries
+// a whole node's fetched bytes, so 2 TiB is inside reach on a real deployment. Blind PE
+// ruling RULING-R2.9a-bin-count-d644b8b-2026-09-05 S4: removing the clamp failed no test
+// end-to-end; this is that test.
+func TestR29aTopBinSaturatesThroughTheSnapshot(t *testing.T) {
+	clk := &bbClock{now: 1_000}
+	l := New(50_000, 0)
+	l.SetObservabilityClock(clk, clk.monotonic)
+	fetched(l, id(1), reqID(0), int64(1)<<62) // far above the nominal 1 TiB top
+	fetched(l, id(1), reqID(1), int64(1)<<40) // exactly 1 TiB opens the top bin
+	fetched(l, id(1), reqID(2), (int64(1)<<40)-1)
+	clk.now = ports.Time(1_000 + bbHour)
+
+	h := l.bBootstrapSnapshot() // must not panic
+	if h.Requesters != 3 || h.Aged != 3 {
+		t.Fatalf("requesters/aged = %d/%d, want 3/3 — a saturating account is counted, never dropped", h.Requesters, h.Aged)
+	}
+	top := BBootstrapByteBins - 1
+	if got := h.Cells[4][top]; got != 2 {
+		t.Fatalf("top bin (%d) count = %d, want 2 (2^62 and 2^40 both saturate into the open-topped bin); row = %v", top, got, nonZero(h.Cells[4]))
+	}
+	if got := h.Cells[4][top-1]; got != 1 {
+		t.Fatalf("bin %d count = %d, want 1 (2^40 − 1 closes the last bounded bin); row = %v", top-1, got, nonZero(h.Cells[4]))
+	}
+}

@@ -1806,7 +1806,12 @@ bin count as the ONLY lever that acts on that exposure (merging and rounding ref
 scale). The price is resolution, 19% → 2× ("between 4 and 8 GiB" instead of "between 4.0 and
 4.75 GiB"), and under item 3 the precision side lost its consumer while Don't #3 stays on the
 other side. Builder task under the `bbootstrap` build tag; the residual disclosure in the
-code comment updates with it.
+code comment updates with it. *Correction appended 2026-09-05 (PR #742's blind PE review,
+S1): "the pinned-identity count falls by about the same factor" is true only at large R. The
+measured reduction is 1.4× at the census floor R = 10, 2× at R = 25 and 4× only at R ≳ 1,000,
+and the limit is 1 at the floor by construction. The ratification stands — 1 bin per doubling
+is weakly better than 4 at every R measured — but the floor and the bin count are weakest in
+the same band, R = 10–25, and are not independent containments.*
 
 **Builds this ratification creates (ROADMAP item 12):** the bin-count change; the startup
 refusal plus the G-BB-12′ PACE; the G-BB-19 sentence from the Researcher before the 32 GiB

@@ -19,7 +19,11 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   The 19% → 2× resolution cost has no consumer under the ratified run re-scope (`grant/r` is pinned
   structurally). `TestR29aByteBinMatchesTheClosedForm` pins the ratified value by name; BB-5's payload
   ceiling is 8 KiB; BB-16's fixture doubles per fetch so each poll crosses one edge on the coarser
-  axis. Deliberation: `docs/thinking/2026-09-05-r29a-bin-count.md`.
+  axis. **Blind PE fold-in (MERGE-AFTER):** the "about 4×" reduction claim was corrected to the measured
+  R-dependent factor (1.4× at the census floor, 2× at R = 25, 4× only at R ≳ 1,000; the floor and the
+  bin count are weakest in the same band), both touched gates were added to the tagged CI anchor list,
+  and `TestR29aTopBinSaturatesThroughTheSnapshot` covers the clamp end-to-end at 2^62 bytes.
+  Deliberation: `docs/thinking/2026-09-05-r29a-bin-count.md`.
 
 ### Fixed
 - **R2.9a — the four-residuals review fold-in (blind PE, 2026-09-05): the structural gate is a closed
