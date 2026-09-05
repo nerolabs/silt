@@ -1727,6 +1727,7 @@ func (n *Node) chainSyncTick() {
 		// attest-only validator sustains its TTL-bound standing. No-op off the
 		// objective path or with no bond.
 		n.SubmitBondRenewal(peers)
+		n.prunePeerIssuerKeys() // R2.11 (F3): collect dead peer slots every sweep, proposer or not
 		// R2.11: likewise submit our staged, still-uncommitted demand-issuer key
 		// registrations to the same validator set, so an attest-only validator's key is
 		// committed by whoever proposes next. Retried every sweep until committed.
@@ -1848,12 +1849,16 @@ func (n *Node) maybeProposeBondDrain() {
 		}
 	}
 	if dist > 0 {
-		if len(n.pendingBondRegs) == 0 && len(n.pendingEntries) == 0 {
+		if len(n.pendingBondRegs) == 0 && len(n.pendingEntries) == 0 && !issuerKeysDue {
 			// Own renewal only, and we are not the designated proposer: submit,
 			// never propose (Q2b-2). The reg reaches the chain via the
 			// designated proposer's queue; nothing to take over for. Pending
 			// ENTRIES count as takeover-worthy work (#441): a silent designee
-			// must not strand the mempool.
+			// must not strand the mempool. So does a FOLDABLE issuer-key
+			// registration (R2.11): the designation is height-keyed and the head is
+			// what a dead designee stalls, so without this term a foldable key on an
+			// idle chain waited forever — the exact condition R0.4b-11 names (PE code
+			// ruling F2, measured: 20 sweeps, head unmoved).
 			n.drainWaitSweeps = 0
 			return
 		}
@@ -1986,11 +1991,40 @@ func issuerKeyRegDecode(raw []byte) (chain.IssuerKeyReg, error) {
 	return b.IssuerKeys[0], nil
 }
 
+// prunePeerIssuerKeys drops peer registrations that can never ride: already committed, or
+// outside the window the next block's epoch will accept. The fold prunes too, but a bonded
+// receiver that is never proposer-eligible would otherwise accumulate one dead slot per
+// issuer per epoch turn until maxMempool and then refuse honest arrivals — the own queue's
+// exact hazard (demandkeys.go, build-immutable #8), one node over (PE code ruling F3).
+// Called on every sync tick and before every enqueue.
+func (n *Node) prunePeerIssuerKeys() {
+	if n.chain == nil || len(n.pendingPeerIssuerKeys) == 0 {
+		return
+	}
+	_, next := n.chain.Head()
+	epoch := n.chain.BlockEpoch(next)
+	live := n.pendingPeerIssuerKeys[:0]
+	for _, r := range n.pendingPeerIssuerKeys {
+		if r.Epoch < epoch || r.Epoch > epoch+chain.IssuerKeyPrePublish {
+			continue
+		}
+		if _, committed := n.chain.IssuerKeyCommitment(r.IssuerID(), r.Epoch); committed {
+			continue
+		}
+		live = append(live, r)
+	}
+	for i := len(live); i < len(n.pendingPeerIssuerKeys); i++ {
+		n.pendingPeerIssuerKeys[i] = chain.IssuerKeyReg{} // let the tail be collected
+	}
+	n.pendingPeerIssuerKeys = live
+}
+
 // queuePendingPeerIssuerKey queues a peer's registration: ONE slot per (issuer, epoch),
 // latest wins (append-only on the chain means a re-point is impossible, so "latest" is the
 // same binding resubmitted); capped at maxMempool as defense in depth — the arrival gate's
 // bonded clause is what actually bounds distinct submitters.
 func (n *Node) queuePendingPeerIssuerKey(reg chain.IssuerKeyReg) {
+	n.prunePeerIssuerKeys()
 	iid := reg.IssuerID()
 	for i := range n.pendingPeerIssuerKeys {
 		if n.pendingPeerIssuerKeys[i].IssuerID() == iid && n.pendingPeerIssuerKeys[i].Epoch == reg.Epoch {

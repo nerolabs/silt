@@ -20,9 +20,11 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   that is stale, slashed or no longer admissible; the drain driver arms on a FOLDABLE registration so an idle
   chain carries it. No validity rule moves, so an attester's acceptance is untouched and a mixed-version
   swarm cannot fork on it. Five `TestR211*` gates including the end-to-end property (the attest-only node's
-  key commits on both replicas without it ever proposing) and the message-kind number pins. Measured for the
-  R3.4 accept-flip: 1 of 5 blocks carried a registration in that scenario (the floor box stalls on any such
-  block). Deliberation: `docs/thinking/2026-09-05-r2.11-issuer-key-peer-submit.md`.
+  key commits on both replicas without it ever proposing) and the message-kind number pins. Blind PE code review
+  (MERGE-AFTER) folded in: the arrival-gate fixture was vacuous and is rewritten against a bonded issuer; the
+  staggered-takeover branch now counts issuer-key work (a dead designee no longer stalls a foldable key); the peer
+  queue is pruned every sync sweep. Not yet measured: the carrier-block fraction the R3.4 accept-flip needs (the
+  floor box stalls on any IssuerKeys-carrying block). Deliberation: `docs/thinking/2026-09-05-r2.11-issuer-key-peer-submit.md`.
 - **R2.12 — the faucet rate limit (2026-09-05; owner calls of 2026-09-03 stand; blind PE design ruling STOP →
   reconciled with the Economist's derivation, then built).** Three daemon flags. With `-grant-capacity` and
   `-grant-per-hour` both set, a fresh identity's 500,000 starter grant is applied at its first SPEND

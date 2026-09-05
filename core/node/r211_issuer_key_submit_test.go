@@ -13,6 +13,8 @@ import (
 	"testing"
 
 	"github.com/nerolabs/silt/adapters/identity"
+	"github.com/nerolabs/silt/adapters/memstore"
+	"github.com/nerolabs/silt/adapters/simclock"
 	"github.com/nerolabs/silt/adapters/simnet"
 	"github.com/nerolabs/silt/core/chain"
 	"github.com/nerolabs/silt/ports"
@@ -50,48 +52,181 @@ func TestR211MsgKindNumbersArePinned(t *testing.T) {
 	}
 }
 
-// TestR211ArrivalGateRefusesInOrderAndLoudly: on an objective chain with no bonded issuer,
-// every refusal class is exercised — decode (S4: two regs in one payload), relayed
-// (issuer ≠ sender), bad signature, epoch out of window, unbonded — and nothing is queued;
-// the rate budget refuses the (burst+1)th message from one sender before decode; a second
-// sender is unaffected.
+// TestR211ArrivalGateRefusesInOrderAndLoudly (F1): every refusal class is exercised against
+// an issuer that is BONDED at the receiver, so the bonded clause (last in the order) cannot
+// mask the clause under test — decode (S4: two regs in one payload), relayed (issuer ≠
+// sender), bad signature, epoch out of window, already committed after it lands, and the
+// unbonded clause with a stranger. Nothing inadmissible is queued; the good reg is. Then the
+// rate budget: burst+1 messages from one sender in one window; a second sender proceeds.
 func TestR211ArrivalGateRefusesInOrderAndLoudly(t *testing.T) {
-	nd, ch, _, _ := submitWorld(t)
-	_, next := ch.Head()
-	epoch := ch.BlockEpoch(next)
-	who := identity.FromSeed(9450)
-
-	// S4: two registrations in one payload are refused at decode, before any verify.
-	two := chain.Block{Version: chain.BlockVersion, IssuerKeys: []chain.IssuerKeyReg{r211Reg(who, epoch, 1), r211Reg(who, epoch+1, 2)}}
-	nd.handleChain(who.NodeID(), ports.Message{Kind: ports.MsgSubmitIssuerKeyReg, Data: chain.Encode(&two)})
-	// Relayed: a valid reg from A, submitted by B.
-	nd.handleChain(identity.FromSeed(9451).NodeID(), ports.Message{Kind: ports.MsgSubmitIssuerKeyReg, Data: issuerKeyRegEncode(r211Reg(who, epoch, 1))})
-	// Bad signature.
-	bad := r211Reg(who, epoch, 1)
+	proposer, attest, ids, _, _ := r211Swarm(t)
+	_, next := proposer.chain.Head()
+	epoch := proposer.chain.BlockEpoch(next)
+	me := ids[1] // the BONDED attest-only identity
+	good := r211Reg(me, epoch, 1)
+	send := func(from ports.NodeID, raw []byte) {
+		proposer.handleChain(from, ports.Message{Kind: ports.MsgSubmitIssuerKeyReg, Data: raw})
+	}
+	// S4: two registrations in one payload — refused at decode, before any verify.
+	two := chain.Block{Version: chain.BlockVersion, IssuerKeys: []chain.IssuerKeyReg{good, r211Reg(me, epoch+1, 2)}}
+	send(attest.id, chain.Encode(&two))
+	// Relayed: the bonded issuer's valid reg submitted by SOMEONE ELSE.
+	send(identity.FromSeed(9451).NodeID(), issuerKeyRegEncode(good))
+	// Bad signature, from the right sender.
+	bad := good
+	bad.Sig = append([]byte(nil), good.Sig...)
 	bad.Sig[0] ^= 0xff
-	nd.handleChain(who.NodeID(), ports.Message{Kind: ports.MsgSubmitIssuerKeyReg, Data: issuerKeyRegEncode(bad)})
-	// Too far ahead, and (if the epoch is > 0) backdated.
-	nd.handleChain(who.NodeID(), ports.Message{Kind: ports.MsgSubmitIssuerKeyReg, Data: issuerKeyRegEncode(r211Reg(who, epoch+chain.IssuerKeyPrePublish+1, 1))})
-	// Well-formed, in-window, self-signed — but UNBONDED under MinBond > 0: refused (S2a).
-	nd.handleChain(who.NodeID(), ports.Message{Kind: ports.MsgSubmitIssuerKeyReg, Data: issuerKeyRegEncode(r211Reg(who, epoch, 1))})
-	if len(nd.pendingPeerIssuerKeys) != 0 {
-		t.Fatalf("an inadmissible submission was queued: %d — unbonded identities are free, so an unbonded queue slot is a permanent liveness DoS on the mechanism", len(nd.pendingPeerIssuerKeys))
+	send(attest.id, issuerKeyRegEncode(bad))
+	// Too far ahead; and backdated when the epoch allows it.
+	send(attest.id, issuerKeyRegEncode(r211Reg(me, epoch+chain.IssuerKeyPrePublish+1, 1)))
+	if epoch > 0 {
+		send(attest.id, issuerKeyRegEncode(r211Reg(me, epoch-1, 1)))
+	}
+	// Unbonded stranger: well-formed, in-window, self-signed — refused (S2a).
+	stranger := identity.FromSeed(9450)
+	send(stranger.NodeID(), issuerKeyRegEncode(r211Reg(stranger, epoch, 1)))
+	if len(proposer.pendingPeerIssuerKeys) != 0 {
+		t.Fatalf("an inadmissible submission was queued: %d (%+v)", len(proposer.pendingPeerIssuerKeys), proposer.pendingPeerIssuerKeys)
+	}
+	// The good one: bonded issuer, own sender, valid, in-window — queued.
+	send(attest.id, issuerKeyRegEncode(good))
+	if len(proposer.pendingPeerIssuerKeys) != 1 {
+		t.Fatalf("the admissible registration was not queued (%d)", len(proposer.pendingPeerIssuerKeys))
 	}
 	// Rate: burst+1 messages from one sender in one window; the last is refused before
-	// decode (a garbage payload after the budget is spent leaves no decode log — we assert
-	// the budget map, the observable the gate keys on).
+	// decode. A different sender is unaffected.
 	flooder := identity.FromSeed(9452)
 	for i := 0; i <= issuerKeySubmitBurst; i++ {
-		nd.handleChain(flooder.NodeID(), ports.Message{Kind: ports.MsgSubmitIssuerKeyReg, Data: []byte("junk")})
+		send(flooder.NodeID(), []byte("junk"))
 	}
-	if r := nd.issuerKeySubmitRate[flooder.NodeID()]; r == nil || r.count != issuerKeySubmitBurst {
+	if r := proposer.issuerKeySubmitRate[flooder.NodeID()]; r == nil || r.count != issuerKeySubmitBurst {
 		t.Fatalf("rate budget for the flooder = %+v, want count pinned at the burst %d", r, issuerKeySubmitBurst)
 	}
-	if !nd.allowIssuerKeySubmit(identity.FromSeed(9453).NodeID()) {
+	if !proposer.allowIssuerKeySubmit(identity.FromSeed(9453).NodeID()) {
 		t.Fatalf("a different sender was refused while the flooder is capped")
 	}
-	if nd.allowIssuerKeySubmit(flooder.NodeID()) {
+	if proposer.allowIssuerKeySubmit(flooder.NodeID()) {
 		t.Fatalf("the flooder was admitted past its budget")
+	}
+}
+
+// TestR211UnbondedFloodThenHonestBondedSubmit (§7 gate 2): two hundred fresh unbonded
+// identities each submit a valid self-signed reg; none is queued; the honest bonded
+// submitter that follows is queued. The bonded clause, not the per-sender budget, is what
+// bounds distinct senders (a fresh keypair is a fresh budget).
+func TestR211UnbondedFloodThenHonestBondedSubmit(t *testing.T) {
+	proposer, attest, ids, _, _ := r211Swarm(t)
+	_, next := proposer.chain.Head()
+	epoch := proposer.chain.BlockEpoch(next)
+	for i := 0; i < 200; i++ {
+		who := identity.FromSeed(int64(20000 + i))
+		proposer.handleChain(who.NodeID(), ports.Message{Kind: ports.MsgSubmitIssuerKeyReg, Data: issuerKeyRegEncode(r211Reg(who, epoch, 1))})
+	}
+	if len(proposer.pendingPeerIssuerKeys) != 0 {
+		t.Fatalf("%d unbonded registrations were queued", len(proposer.pendingPeerIssuerKeys))
+	}
+	proposer.handleChain(attest.id, ports.Message{Kind: ports.MsgSubmitIssuerKeyReg, Data: issuerKeyRegEncode(r211Reg(ids[1], epoch, 1))})
+	if len(proposer.pendingPeerIssuerKeys) != 1 {
+		t.Fatalf("the honest bonded submit after the flood was not queued")
+	}
+}
+
+// TestR211ArrivalGateIsInertOffTheObjectivePath (S2a pin): the whole handler sits inside
+// Objective(), where IssuerKeyRegAdmissible is exactly bonded[issuer] > 0. Off that path the
+// admissibility clause is true for everyone, so the distinct-sender bound would evaporate;
+// therefore a non-objective chain queues NOTHING from a peer submit.
+func TestR211ArrivalGateIsInertOffTheObjectivePath(t *testing.T) {
+	sched := simclock.New()
+	net := simnet.New(sched, 5, simnet.DefaultConfig())
+	id := identity.FromSeed(9480)
+	g := &chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{mkEntry("g-legacy")}}
+	chain.Sign(g, id.Signer())
+	nd := New(id.NodeID(), DefaultConfig(), sched, net.Endpoint(id.NodeID()), memstore.New())
+	ch := chain.New(chain.Config{Quorum: 1}, func(ports.NodeID) int64 { return 1 << 30 }) // MinBond 0: NOT objective
+	if err := ch.AppendGenesis(*g); err != nil {
+		t.Fatal(err)
+	}
+	nd.EnableChain(ch, id.Signer())
+	if ch.Objective() {
+		t.Fatal("fixture: the chain must be non-objective")
+	}
+	who := identity.FromSeed(9481)
+	_, next := ch.Head()
+	nd.handleChain(who.NodeID(), ports.Message{Kind: ports.MsgSubmitIssuerKeyReg, Data: issuerKeyRegEncode(r211Reg(who, ch.BlockEpoch(next), 1))})
+	if len(nd.pendingPeerIssuerKeys) != 0 {
+		t.Fatalf("a non-objective chain queued a peer registration: the bonded bound is only real inside Objective()")
+	}
+}
+
+// TestR211NonFoldableQueueArmsNoProposal (§7 gate 5, S3b): a peer queue holding ONLY regs
+// that will drop at fold (an unbonded stranger's) is not FOLDABLE, so the drain driver stays
+// quiet — it never arms a proposal that would fail the empty-block check and spin.
+func TestR211NonFoldableQueueArmsNoProposal(t *testing.T) {
+	proposer, _, _, _, _ := r211Swarm(t)
+	_, next := proposer.chain.Head()
+	epoch := proposer.chain.BlockEpoch(next)
+	proposer.pendingPeerIssuerKeys = append(proposer.pendingPeerIssuerKeys, r211Reg(identity.FromSeed(9490), epoch, 7))
+	if proposer.issuerKeysFoldable() {
+		t.Fatalf("a queue of only inadmissible regs reads as FOLDABLE")
+	}
+	_, before := proposer.chain.Head()
+	for i := 0; i < 6; i++ {
+		proposer.maybeProposeBondDrain()
+	}
+	if _, after := proposer.chain.Head(); after != before || proposer.bondDrainInFlight {
+		t.Fatalf("the drain armed on a non-foldable queue (head %d → %d, inflight %v)", before, after, proposer.bondDrainInFlight)
+	}
+}
+
+// TestR211IdleChainCarriesTheKeyThroughTheRealDrainDriver (§7 gate 4, F2): with NO entries
+// and NO bond work pending, a foldable peer registration alone must move the head through
+// maybeProposeBondDrain — including when the proposer is not the height's designee, via the
+// staggered takeover (F2: the takeover clause must count issuer-key work).
+func TestR211IdleChainCarriesTheKeyThroughTheRealDrainDriver(t *testing.T) {
+	proposer, attest, _, net, _ := r211Swarm(t)
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	epoch := attest.DemandEpoch()
+	attest.SetDemandIssuerKey(rand.Reader, epoch, key)
+	attest.SubmitIssuerKeyRegs([]ports.NodeID{proposer.id})
+	drainHeld(t, net, fifo)
+	if len(proposer.pendingPeerIssuerKeys) != 1 {
+		t.Fatalf("setup: reg not queued")
+	}
+	_, before := proposer.chain.Head()
+	committed := false
+	for sweep := 0; sweep < 12 && !committed; sweep++ {
+		proposer.maybeProposeBondDrain()
+		drainHeld(t, net, fifo)
+		_, committed = proposer.chain.IssuerKeyCommitment(attest.id, epoch)
+	}
+	if !committed {
+		_, after := proposer.chain.Head()
+		t.Fatalf("the real drain driver never carried a foldable peer registration on an idle chain (head %d → %d)", before, after)
+	}
+	if _, ok := attest.chain.IssuerKeyCommitment(attest.id, epoch); !ok {
+		t.Fatalf("committed on the proposer's replica only")
+	}
+}
+
+// TestR211PeerQueueIsPrunedWithoutAProposal (F3): a receiver that never proposes still drops
+// out-of-window and committed peer slots on the sync-tick prune, so the queue cannot grow to
+// maxMempool by the clock and refuse honest arrivals.
+func TestR211PeerQueueIsPrunedWithoutAProposal(t *testing.T) {
+	proposer, _, _, _, _ := r211Swarm(t)
+	_, next := proposer.chain.Head()
+	epoch := proposer.chain.BlockEpoch(next)
+	// Plant regs that are already dead: backdated (if the epoch allows) and far ahead.
+	stale := r211Reg(identity.FromSeed(9495), epoch+chain.IssuerKeyPrePublish+3, 1)
+	proposer.pendingPeerIssuerKeys = append(proposer.pendingPeerIssuerKeys, stale)
+	if epoch > 0 {
+		proposer.pendingPeerIssuerKeys = append(proposer.pendingPeerIssuerKeys, r211Reg(identity.FromSeed(9496), epoch-1, 1))
+	}
+	proposer.prunePeerIssuerKeys()
+	if len(proposer.pendingPeerIssuerKeys) != 0 {
+		t.Fatalf("dead peer slots survived the prune: %d", len(proposer.pendingPeerIssuerKeys))
 	}
 }
 
