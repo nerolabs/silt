@@ -1571,3 +1571,51 @@ their own tracks (`design/m0.md`, ROADMAP, the "evolving" tenet tier):
     instead of `77`, so the gate itself shows the wall clock.
   - **No behaviour changed.** `RecordBondChallenge`, `DecayStale` and standing retention are
     untouched by this correction; only the texts and the gates moved.
+
+---
+
+## D-DONT3-READING — how the who-fetches-what bright line is read
+
+**Ratified 2026-09-05** by the owner: *"1 yes we can amend vision.md to include only what's
+needed and nothing leaves the node. 2 ratified."* Certification:
+`silt-reviews/research/research-outcome/R2.9a-DONT3-READING-AND-BOND-STAMP-TUPLE-RESEARCH-CERTIFICATION-2026-09-05.md`.
+
+**What was decided.** The recorded reading of `docs/TENETS.md` Part VI Don't #3 is the
+three-prong test **T-DONT3**. A record of who-fetched-what is inside the prohibition if any of:
+
+- **(a) SURPLUS** — it holds more than serving the request requires, or holds it longer;
+- **(b) REACH** — it leaves the node that produced it, by publication, persistence, or transfer;
+- **(c) PURPOSE** — it is kept in order to link a fetcher to content.
+
+The dimension of the record is not the test. A `(who, which object)` tuple can be outside the
+line, and a bare `when` can be inside it.
+
+**Two readings refuted, at opposite ends.** The 2026-09-04 rule *"publication is what makes a
+record a surveillance mechanism"* is WITHDRAWN: it licenses an unpublished who-fetched-what log,
+which is the exact mechanism the line names, and leaves the absolute half of the immutable doing
+no work. The generalised rule behind `D-BB-BUILD-TAG`, *"recording per se is the break"*, is
+REFUTED by silt's own default build: `core/credit/delivery.go` declares
+`provKey{server, requester, root}`, written on every object-aware serve, up to 8,192 live tuples
+in memory with no flag and no tag, and required by the D-S7 durability economy. The build tag's
+OUTCOME stands; only the generalised rule behind it fails.
+
+**Grounding.** The immutable's own text: *"a participating node sees the keys it routes and
+serves."* And the code: `core/credit/credit.go` discards the `ChunkID` at the parameter the
+port hands it — minimisation was already in force before this ruling named it.
+
+**The VISION amendment.** `docs/VISION.md` said *"no mechanism, anywhere in the design, that
+logs or links who-fetched-what."* Against `provKey` that was false as written, and it is a
+published claim. Reworded to what serving requires and nothing leaving the node. The purpose
+prong is carried here rather than in VISION.
+
+**Residuals, open.**
+- `R-DONT3-PROVLANE` — the provisional-lane tuple is outside the line only by necessity to
+  D-S7 and only because it never leaves the node. **The first PR that persists the ledger
+  engages prong (b) and moves it inside.** The FP-2 re-arm therefore carries a privacy trigger
+  as well as its economic ones.
+- `R-BB-BOND-STAMP-TUPLE` — GATED on G-BB-28, remedy cost zero: `DecayStale` reads
+  `lastBondTick`, `Reputation` reads neither, and once the fetch-only stamp lands the
+  first-seen stamp is written by the auditor and read by nobody. Delete the write; retention is
+  untouched. `lastBondTick` must NOT change: `DecayStale` compares against
+  `BondMaxAge = 300 * ports.Second`, so it needs nanoseconds, and a counter would silently
+  disable retention.
