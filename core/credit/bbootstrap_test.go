@@ -100,7 +100,7 @@ func TestR29aDeadClockPublishesNoAgeCells(t *testing.T) {
 		fetched(l, srv, reqID(i), 1<<20)
 	}
 
-	h := l.BBootstrapSnapshot()
+	h := l.bBootstrapSnapshot()
 	if h.ClockSource != "none" {
 		t.Fatalf("clockSource = %q with no clock injected, want %q — the payload must SELF-REPORT the dead axis", h.ClockSource, "none")
 	}
@@ -156,7 +156,7 @@ func TestR29aAgeAxisLivenessAndBoundaries(t *testing.T) {
 			fetched(l, id(1), reqID(0), 4096)
 			clk.now = ports.Time(1_000 + tc.adv)
 
-			h := l.BBootstrapSnapshot()
+			h := l.bBootstrapSnapshot()
 			if !h.AgeAxisLive || h.ClockSource != "injected" {
 				t.Fatalf("age axis not live with a clock injected: live=%v source=%q", h.AgeAxisLive, h.ClockSource)
 			}
@@ -211,7 +211,7 @@ func TestR29aCensusIsCompleteAndUncapped(t *testing.T) {
 	}
 	clk.now = ports.Time(1 + int64(R)*1e6 + bbDay)
 
-	h := l.BBootstrapSnapshot()
+	h := l.bBootstrapSnapshot()
 	if h.Requesters != R {
 		t.Fatalf("requesters = %d, want %d", h.Requesters, R)
 	}
@@ -255,7 +255,7 @@ func TestR29aYoungCellsAreExactUnderASkewedPopulation(t *testing.T) {
 	}
 	clk.now = ports.Time(1 + 3*bbDay + 30*1e9) // 30 s after the young cohort arrived
 
-	h := l.BBootstrapSnapshot()
+	h := l.bBootstrapSnapshot()
 	youngBucket := bbootstrapAgeBucket(30 * 1e9) // "under a minute"
 	oldBucket := bbootstrapAgeBucket(3*bbDay + 30*1e9)
 	if youngBucket == oldBucket {
@@ -295,7 +295,7 @@ func TestR29aSnapshotCostDoesNotGrowInR(t *testing.T) {
 		}
 		clk.now = ports.Time(1 + bbDay)
 		var sink BBootstrapHistogram
-		allocs = testing.AllocsPerRun(3, func() { sink = l.BBootstrapSnapshot() })
+		allocs = testing.AllocsPerRun(3, func() { sink = l.bBootstrapSnapshot() })
 		if sink.Requesters != R {
 			t.Fatalf("fixture: requesters = %d, want %d", sink.Requesters, R)
 		}
@@ -339,7 +339,7 @@ func TestR29aOccupiedAgeBucketsNeverExceedUptime(t *testing.T) {
 	fetched(l, id(1), reqID(0), 1<<20)
 	clk.now = ports.Time(boot + 3*bbHour)
 
-	h := l.BBootstrapSnapshot()
+	h := l.bBootstrapSnapshot()
 	if h.UptimeNanos != 3*bbHour {
 		t.Fatalf("uptimeNanos = %d, want %d", h.UptimeNanos, 3*bbHour)
 	}
@@ -355,7 +355,7 @@ func TestR29aOccupiedAgeBucketsNeverExceedUptime(t *testing.T) {
 	// now reported as 8 days old and lands in the top bucket, while the process has
 	// genuinely been alive for 3 hours, so an occupied bucket exceeds the bound.
 	clk.step(8 * bbDay)
-	stepped := l.BBootstrapSnapshot()
+	stepped := l.bBootstrapSnapshot()
 	if !stepped.AgeExceedsUptime {
 		t.Fatalf("ageExceedsUptime NOT set after an 8-day forward wall-clock step: max occupied edge %d, wall uptime %d, monotone uptime %d — the censoring assertion is comparing the wall clock against itself", stepped.MaxOccupiedAgeEdgeNanos, stepped.UptimeNanos, stepped.MonotonicUptimeNanos)
 	}
@@ -372,7 +372,7 @@ func TestR29aOccupiedAgeBucketsNeverExceedUptime(t *testing.T) {
 	// auditor's own clock. A tick of 1 against a wall-clock ledger makes the identity
 	// look ten days old on a three-hour-old process. The assertion must fire.
 	l.accounts[reqID(0)].firstSeenTick = 1
-	h = l.BBootstrapSnapshot()
+	h = l.bBootstrapSnapshot()
 	if h.ClockSuspect {
 		t.Fatalf("clockSuspect set with the wall clock restored — a foreign stamp is not a clock step and the two must stay distinguishable (skew %d)", h.ClockSkewNanos)
 	}
@@ -399,7 +399,7 @@ func TestR29aRestartIsVisibleNotSilent(t *testing.T) {
 		fetched(l, id(1), reqID(i), 1<<20)
 	}
 	clk.now = ports.Time(1 + 2*bbDay)
-	before := l.BBootstrapSnapshot()
+	before := l.bBootstrapSnapshot()
 	if before.Requesters != 100 || before.UptimeNanos != 2*bbDay {
 		t.Fatalf("fixture: requesters = %d uptime = %d", before.Requesters, before.UptimeNanos)
 	}
@@ -408,7 +408,7 @@ func TestR29aRestartIsVisibleNotSilent(t *testing.T) {
 	// carries over.
 	restarted := New(50_000, 0)
 	restarted.SetObservabilityClock(clk, clk.monotonic)
-	after := restarted.BBootstrapSnapshot()
+	after := restarted.bBootstrapSnapshot()
 	if after.Requesters != 0 || after.Aged != 0 || sumCells(after) != 0 {
 		t.Fatalf("after restart: requesters = %d aged = %d cells = %d, want 0/0/0", after.Requesters, after.Aged, sumCells(after))
 	}
@@ -445,8 +445,8 @@ func TestR29aBBootstrapSnapshotWritesNothing(t *testing.T) {
 	}
 	wantAccts, wantOrder := snapshotOf()
 
-	_ = l.BBootstrapSnapshot()
-	_ = l.BBootstrapSnapshot() // twice: a lazy one-shot write would show on the first
+	_ = l.bBootstrapSnapshot()
+	_ = l.bBootstrapSnapshot() // twice: a lazy one-shot write would show on the first
 
 	gotAccts, gotOrder := snapshotOf()
 	if !reflect.DeepEqual(wantAccts, gotAccts) {
@@ -478,12 +478,20 @@ func TestR29aBackwardClockStepClampsAndSaysSo(t *testing.T) {
 		fetched(l, id(1), reqID(0), 1<<20) // stamped two hours into the run
 		clk.step(-bbHour)                  // …then the WALL clock steps back one hour
 
-		h := l.BBootstrapSnapshot()
+		h := l.bBootstrapSnapshot()
 		if h.UptimeNanos != bbHour {
 			t.Fatalf("arm 1: uptimeNanos = %d, want %d — uptime is still positive here, so only the AGE can report the step", h.UptimeNanos, bbHour)
 		}
-		if !h.ClockStepBack {
-			t.Fatalf("arm 1: clockStepBack not reported when only the AGE went negative — the age was silently reshaped into bucket 0")
+		// THE SPLIT (RE-CERT 2026-09-05 §5.1), pinned by its discriminator. Only the
+		// AGE went negative, so this is the CENSUS arm: AgeClampedToZero fires and the
+		// instrument arm ClockStepBack — which compares the clock against the ledger's
+		// own start and reads no account — must stay DOWN. If they moved together the
+		// two arms would still be fused and a census bit would ride out below the floor.
+		if !h.AgeClampedToZero {
+			t.Fatalf("arm 1: ageClampedToZero not reported when only the AGE went negative — the age was silently reshaped into bucket 0")
+		}
+		if h.ClockStepBack {
+			t.Fatalf("arm 1: the INSTRUMENT arm clockStepBack fired on a per-account clamp. The two arms are fused again, so a census-derived bit survives the minimum-requester floor (G-BB-11′)")
 		}
 		if h.Aged != 1 || h.Cells[0][bbootstrapByteBin(1<<20)] != 1 {
 			t.Fatalf("arm 1: the stepped identity did not clamp into age bucket 0: aged = %d, row 0 = %v", h.Aged, nonZero(h.Cells[0]))
@@ -498,9 +506,12 @@ func TestR29aBackwardClockStepClampsAndSaysSo(t *testing.T) {
 	fetched(l, id(1), reqID(0), 1<<20)
 	clk.step(-bbDay)
 
-	h := l.BBootstrapSnapshot()
+	h := l.bBootstrapSnapshot()
 	if !h.ClockStepBack {
-		t.Fatalf("clockStepBack not reported after a backwards step — a silent reshaping is exactly what BB-13 forbids")
+		t.Fatalf("clockStepBack not reported after a backwards step past the LEDGER START — a silent reshaping is exactly what BB-13 forbids")
+	}
+	if !h.AgeClampedToZero {
+		t.Fatalf("ageClampedToZero not reported after a backwards step that also passed the stamp — the census arm must still fire when both do")
 	}
 	if h.Aged != 1 {
 		t.Fatalf("aged = %d, want 1 — a stepped clock must not lose the identity", h.Aged)
@@ -558,7 +569,7 @@ func TestR29aWallClockStepIsDetectedNotAbsorbed(t *testing.T) {
 	// ARM 1 — CLEAN. The two sources agree, every flag is down, and a W the process has
 	// actually covered is accepted.
 	clean, _ := build()
-	h := clean.BBootstrapSnapshot()
+	h := clean.bBootstrapSnapshot()
 	if h.MonotonicSource != "injected" {
 		t.Fatalf("monotonicSource = %q, want \"injected\" — with no second source the cross-check is a self-comparison", h.MonotonicSource)
 	}
@@ -576,7 +587,7 @@ func TestR29aWallClockStepIsDetectedNotAbsorbed(t *testing.T) {
 	// old and lands in the top bucket; real elapsed time is still 60 seconds.
 	fwdL, fwdClk := build()
 	fwdClk.step(8 * bbDay)
-	fwd := fwdL.BBootstrapSnapshot()
+	fwd := fwdL.bBootstrapSnapshot()
 	if fwd.Cells[BBootstrapAgeBuckets-1][bbootstrapByteBin(1<<20)] != 1 {
 		t.Fatalf("the forward step did not reshape the age axis, so this arm is not testing what it claims: row 7 = %v", nonZero(fwd.Cells[BBootstrapAgeBuckets-1]))
 	}
@@ -607,9 +618,9 @@ func TestR29aWallClockStepIsDetectedNotAbsorbed(t *testing.T) {
 	// no detector for at all.
 	backL, backClk := build()
 	backClk.now = ports.Time(boot + 3*bbHour) // let the identity reach three hours old
-	before := backL.BBootstrapSnapshot()
+	before := backL.bBootstrapSnapshot()
 	backClk.step(-(2*bbHour + 50*bbMinute))
-	back := backL.BBootstrapSnapshot()
+	back := backL.bBootstrapSnapshot()
 	if before.MaxOccupiedAgeEdgeNanos == back.MaxOccupiedAgeEdgeNanos {
 		t.Fatalf("the backward step did not reshape the age axis, so this arm is not testing what it claims: occupied edge %d before and after", back.MaxOccupiedAgeEdgeNanos)
 	}
@@ -674,7 +685,7 @@ func TestR29aRunPreconditionAcceptsOnlyAValidRun(t *testing.T) {
 			fetched(l, id(1), reqID(i), int64(4096*(i+1)))
 		}
 		clk.now = ports.Time(1 + uptime)
-		return l.BBootstrapSnapshot()
+		return l.bBootstrapSnapshot()
 	}
 
 	prev := build(bbHour, []int64{0, bbMinute})
@@ -726,7 +737,7 @@ func TestR29aRunPreconditionAcceptsOnlyAValidRun(t *testing.T) {
 		clk.now = ports.Time(1 + bbMinute)
 		fetched(l, id(1), reqID(1), 8192)
 		clk.now = ports.Time(1 + 6*bbHour)
-		return l.BBootstrapSnapshot()
+		return l.bBootstrapSnapshot()
 	}()
 	if noMono.MonotonicSource != "none" || noMono.CensoringBoundNanos() != noMono.UptimeNanos {
 		t.Fatalf("the no-monotone fixture is not what this arm claims: source %q, bound %d, wall uptime %d", noMono.MonotonicSource, noMono.CensoringBoundNanos(), noMono.UptimeNanos)
@@ -795,7 +806,7 @@ func TestR29aUnstampedRequestersAreCountedNotAged(t *testing.T) {
 	fetched(l, srv, reqID(1), 1<<20) // registered after injection: stamped
 	clk.now = ports.Time(bbDay + bbHour)
 
-	h := l.BBootstrapSnapshot()
+	h := l.bBootstrapSnapshot()
 	if h.Requesters != 2 {
 		t.Fatalf("requesters = %d, want 2", h.Requesters)
 	}

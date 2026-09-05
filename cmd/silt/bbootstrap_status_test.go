@@ -255,7 +255,7 @@ var r29aWireKeys = map[string]bool{
 	"clockSource": true, "ageAxisLive": true, "suppressed": true,
 	"requesters": true, "aged": true, "unstamped": true,
 	"uptimeNanos": true, "maxOccupiedAgeEdgeNanos": true,
-	"clockStepBack": true, "ageExceedsUptime": true,
+	"clockStepBack": true, "ageClampedToZero": true, "ageExceedsUptime": true,
 	"monotonicSource": true, "monotonicUptimeNanos": true,
 	"clockSkewNanos": true, "clockSuspect": true,
 	"ageEdgeNanos": true, "ageBuckets": true,

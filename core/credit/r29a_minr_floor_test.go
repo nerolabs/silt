@@ -50,7 +50,7 @@ func TestR29aBB15FloorWithholdsEveryCensusCountBelowRMin(t *testing.T) {
 
 	// Below the floor, by exactly one.
 	l, _, _ := bbFloorLedger(t, BBootstrapMinRequesters-1)
-	raw := l.BBootstrapSnapshot()
+	raw := l.bBootstrapSnapshot()
 	if raw.Requesters != BBootstrapMinRequesters-1 || raw.Cells == nil {
 		t.Fatalf("the LOCAL census is itself lossy: requesters = %d, cells nil = %v — the floor is a publication rule, not a recording rule, and the operator's own read must stay honest", raw.Requesters, raw.Cells == nil)
 	}
@@ -82,7 +82,7 @@ func TestR29aBB15FloorWithholdsEveryCensusCountBelowRMin(t *testing.T) {
 
 	// At the floor, everything publishes. The rule is `>= R_min`, not `> R_min`.
 	l2, _, _ := bbFloorLedger(t, BBootstrapMinRequesters)
-	at := l2.BBootstrapSnapshot().WithMinRequesterFloor()
+	at := l2.BBootstrapPublish()
 	if at.Suppressed {
 		t.Fatalf("suppressed at exactly R_min = %d requesters — the floor publishes AT the floor", BBootstrapMinRequesters)
 	}
@@ -184,7 +184,7 @@ func TestR29aBB19ServedBytesSelectsTheEmptySet(t *testing.T) {
 	if a := l.accounts[server]; a == nil || a.fetchedBytes != 0 {
 		t.Fatalf("the server's own account has fetchedBytes = %v — self-serving must earn no fetched bytes, or the server enters its own census", a)
 	}
-	h := l.BBootstrapSnapshot()
+	h := l.bBootstrapSnapshot()
 	if h.Requesters != R {
 		t.Fatalf("census = %d, want %d (the server must not be counted)", h.Requesters, R)
 	}

@@ -439,8 +439,26 @@ type bBootstrapInfo struct {
 	// is THE ANONYMITY-SET SIZE, and publishing it is what makes the UNCONDITIONALLY
 	// published stats.bytesServed and durability.objects[].funded deltas attributable to
 	// one identity. Suppressing cells while still publishing requesters would close
-	// nothing. What it does NOT close is the delta trajectory of a POLLED series
-	// (R-BB-DELTA-TRAJECTORY, open, bounded by poll rate).
+	// nothing.
+	//
+	// WHAT THE FLOOR IS NOT, corrected here because the first version of this comment
+	// implied the opposite (RE-CERTIFICATION 2026-09-05 §2.5). IT BOUNDS THE PUBLISHED
+	// CENSUS **COUNT**, NOT THE ANONYMITY **SET**. The census population is the set of
+	// identities that fetched, an identity is just a keypair, and the serve path has no
+	// admission control — so an observer that can FETCH lifts the floor for nine keypairs
+	// and one chunk each, permanently for the process's lifetime. The floor is a FIT
+	// PRECONDITION and a defence against a reader that CANNOT fetch. It is not a privacy
+	// mitigation against a capable adversary, and the Don't #3 question is not answered by
+	// it (R-BB-CENSUS-SYBIL-PAD, R-BB-ANONYMITY-SET-SIZE, both open). Nor does it close
+	// the delta trajectory of a POLLED series (R-BB-DELTA-TRAJECTORY, open, bounded by
+	// poll rate). And `suppressed: true` is itself a disclosure: a published upper bound
+	// of R_min − 1 on the anonymity set (R-BB-SUPPRESSED-IS-A-DISCLOSURE).
+	//
+	// THE RULE BEHIND WHICH KEYS ARE ABSENT IS A PROPERTY, NOT A LIST (G-BB-11′): below
+	// the floor this block is a function of the INSTRUMENT fields alone — the injected
+	// clock sources, their injection instants and the compiled axis constants — plus this
+	// one bit. Every key below that is a pointer is CENSUS class. BB-20 asserts the
+	// property on these exact bytes.
 	Suppressed bool `json:"suppressed"`
 
 	Requesters *int `json:"requesters,omitempty"` // the TRUE total: every account with fetched bytes > 0. ABSENT below the floor
@@ -449,8 +467,9 @@ type bBootstrapInfo struct {
 
 	UptimeNanos             int64  `json:"uptimeNanos"`                       // elapsed on the WALL clock; moves with an NTP step, so not a bound on its own
 	MaxOccupiedAgeEdgeNanos *int64 `json:"maxOccupiedAgeEdgeNanos,omitempty"` // lower edge of the highest occupied bucket. ABSENT below the floor: at a degenerate anonymity set it is a per-identity age
-	ClockStepBack           bool   `json:"clockStepBack"`                     // a subtraction crossed zero; ages clamped at 0. NOT the step detector — see clockSuspect
-	AgeExceedsUptime        bool   `json:"ageExceedsUptime"`                  // the G-BB-4 censoring assertion failed — the run is suspect. Survives suppression: it is a clock signal, not a count
+	ClockStepBack           bool   `json:"clockStepBack"`                     // the wall clock read earlier than the LEDGER START. Instrument class — it touches no account — so it survives suppression. NOT the step detector; see clockSuspect
+	AgeClampedToZero        *bool  `json:"ageClampedToZero,omitempty"`        // the clock read earlier than an account's own stamp, so that age was clamped. CENSUS class: ABSENT below the floor
+	AgeExceedsUptime        *bool  `json:"ageExceedsUptime,omitempty"`        // the G-BB-4 censoring assertion failed — the run is suspect. CENSUS class (a threshold on maxOccupiedAgeEdgeNanos, which the floor withholds): ABSENT below the floor
 
 	// The clock cross-check (G-BB-4 / BB-13). uptimeNanos and every age come off ONE
 	// wall clock, so a step moves both and cancels; monotonicUptimeNanos comes off a
@@ -488,7 +507,6 @@ func (s *uiServer) bBootstrapSnapshot() *bBootstrapInfo {
 		Suppressed:           h.Suppressed,
 		UptimeNanos:          h.UptimeNanos,
 		ClockStepBack:        h.ClockStepBack,
-		AgeExceedsUptime:     h.AgeExceedsUptime,
 		MonotonicSource:      h.MonotonicSource,
 		MonotonicUptimeNanos: h.MonotonicUptimeNanos,
 		ClockSkewNanos:       h.ClockSkewNanos,
@@ -507,6 +525,13 @@ func (s *uiServer) bBootstrapSnapshot() *bBootstrapInfo {
 		out.Aged = &h.Aged
 		out.Unstamped = &h.Unstamped
 		out.MaxOccupiedAgeEdgeNanos = &h.MaxOccupiedAgeEdgeNanos
+		// The two CENSUS-class corruption flags. They ride with the counts, not with
+		// the clock apparatus: ageExceedsUptime is a threshold on the withheld
+		// maxOccupiedAgeEdgeNanos, and ageClampedToZero can only fire if an account
+		// exists. An operator loses nothing below the floor — clockSuspect and the raw
+		// signed clockSkewNanos report the same corruption and read no account.
+		out.AgeClampedToZero = &h.AgeClampedToZero
+		out.AgeExceedsUptime = &h.AgeExceedsUptime
 	}
 	if h.Cells != nil {
 		out.Cells = make([][]int64, credit.BBootstrapAgeBuckets)

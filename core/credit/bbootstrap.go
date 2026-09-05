@@ -147,12 +147,59 @@ const bbClockSkewToleranceNanos = int64(60 * 1e9)
 // So suppressing cells while still publishing `requesters` would close NOTHING, and the
 // floor covers every census count, not just the grid.
 //
+// AND WHAT IT IS NOT — a correction, because the first version of this comment implied
+// the opposite and the implication is false (RE-CERTIFICATION 2026-09-05 §2.2, §2.5).
+// THE FLOOR BOUNDS THE PUBLISHED CENSUS **COUNT**. IT DOES NOT BOUND THE ANONYMITY
+// **SET**. The census population is the set of identities that fetched, and an identity
+// is a keypair (adapters/identity/identity.go:64-67 — "generating a keypair is
+// joining"); the serve path has no admission control beyond freeload and chunkDenied,
+// and Register mints an account for any unseen id. So an observer that can FETCH lifts
+// the floor for R_min − 1 keypairs and one chunk each — nine identities and about
+// 576 KiB — and because fetchedBytes never decreases and accounts are never deleted,
+// that purchase is ONE-TIME and PERMANENT for the process's lifetime. A minimum-count
+// threshold is disclosure control only over a population the adversary cannot write to,
+// and this population is free by design: the same freeness B_bootstrap exists to price.
+//
+// The floor is therefore a FIT PRECONDITION (below R_min no q-quantile at q >= 0.9 is
+// estimable at all — see the derivation below) and a defence against a reader that
+// CANNOT fetch: a monitoring network filtered from the swarm port, a passive scraper
+// that runs no silt node, an accidental exposure during a genuinely idle period. It is
+// NOT a privacy mitigation against a capable adversary, and the Don't #3 question is not
+// answered by it. Residuals: R-BB-CENSUS-SYBIL-PAD and R-BB-ANONYMITY-SET-SIZE, both
+// open, neither closable at this instrument.
+//
 // WHAT IT DOES NOT CLOSE. A polled series of cell deltas yields single-identity bin
 // trajectories at ANY R: one identity crossing a bin edge between two polls shows up as
-// -1 at one bin and +1 at another. The floor closes ATTRIBUTION (whose trajectory it is),
-// never EXTRACTION. That residual is R-BB-DELTA-TRAJECTORY, open, and bounded by the poll
-// rate and the number of bin crossings per interval — neither of which this instrument
-// controls. It is NOT claimed closed here.
+// -1 at one bin and +1 at another. The floor closes ATTRIBUTION (whose trajectory it is)
+// only against a reader that cannot pad the census; against a fetching reader it closes
+// neither attribution nor extraction. That residual is R-BB-DELTA-TRAJECTORY, open, and
+// bounded by the poll rate and the number of bin crossings per interval — neither of
+// which this instrument controls. It is NOT claimed closed here.
+//
+// THE RULE THE FLOOR ENFORCES IS A PROPERTY, NOT A FIELD LIST (G-BB-11′). Partition
+// every published field of the block:
+//
+//   - INSTRUMENT: the value is a function of the injected clock sources, their injection
+//     instants and the compiled axis constants ALONE.
+//   - CENSUS: the value depends on the contents of l.accounts or l.order.
+//
+// Below R_min the published block MUST be a function of the instrument fields alone,
+// with exactly ONE named exemption: Suppressed itself, whose information content is
+// precisely "the census is below R_min" — a published upper bound of R_min − 1 on the
+// anonymity set (R-BB-SUPPRESSED-IS-A-DISCLOSURE). It cannot be withheld without fusing
+// "below the floor" with "no clock injected", which is the absent-vs-empty distinction
+// this file enforces everywhere else, so it is disclosed in the owner's brief rather
+// than hidden.
+//
+// WHY A PROPERTY. A list failed three times in one pull request: the certification's
+// three fields missed two, the build's five missed two more (AgeExceedsUptime, and one
+// of ClockStepBack's two arms), and a source gate reading two literal paths claimed a
+// whole-tree property a reviewer ablated past. The form was the defect. So
+// WithMinRequesterFloor CONSTRUCTS the suppressed block out of the instrument class
+// rather than CLEARING a list of census fields: a field nobody has foreseen takes its
+// zero value, which is a compile-time constant and therefore trivially a function of the
+// instrument alone. The default flips from PUBLISHED to WITHHELD. BB-20
+// (cmd/silt/r29a_bb20_equivalence_test.go) runs the property at the wire.
 const (
 	// bbDerivedQuantileFloorPercent is NOT q. q is the owner's and is UNPINNED
 	// (G-BB-1). This is the LOWER EDGE OF THE RANGE OVER WHICH THE DERIVATION BELOW IS
@@ -202,12 +249,18 @@ type BBootstrapHistogram struct {
 	// are told apart by AgeAxisLive and Suppressed, which is why both are published.
 	AgeAxisLive bool
 
-	// Suppressed is the minimum-requester floor (G-BB-11), applied. TRUE means the
-	// census held fewer than BBootstrapMinRequesters requesters and EVERY
-	// census-derived quantity has been withheld: Requesters, Aged, Unstamped,
-	// MaxOccupiedAgeEdgeNanos and Cells. The clock self-reports, the uptimes, the skew
-	// and the axis description survive, because they describe the INSTRUMENT rather
-	// than the population.
+	// Suppressed is the minimum-requester floor (G-BB-11′), applied. TRUE means the
+	// census held fewer than BBootstrapMinRequesters requesters and the block is a
+	// function of the INSTRUMENT fields alone: the clock self-reports, the uptimes, the
+	// skew and the axis description, plus this bit. Every CENSUS-class field is
+	// withheld — not by a list, but because WithMinRequesterFloor builds the suppressed
+	// block out of the instrument class and everything else takes its zero value.
+	//
+	// This bit is the ONE named exemption to that rule, and it is itself a disclosure:
+	// its information content is exactly "the census is below R_min", a published upper
+	// bound of R_min − 1 on the anonymity set (R-BB-SUPPRESSED-IS-A-DISCLOSURE). It
+	// cannot be withheld, because a reader that sees no cells must be able to tell
+	// "below the floor" from "no clock injected".
 	//
 	// It is published rather than inferred. A reader that sees no cells must be able to
 	// tell "below the floor" from "no clock injected" without guessing, and a reader
@@ -263,15 +316,30 @@ type BBootstrapHistogram struct {
 	// MaxOccupiedAgeEdgeNanos is the lower edge of the highest age bucket that has any
 	// count. Zero when nothing is occupied.
 	MaxOccupiedAgeEdgeNanos int64
-	// ClockStepBack is set when the injected clock read EARLIER than a stamp (or than
-	// the ledger start), so a subtraction would have gone negative. The age is clamped
-	// to zero rather than underflowed, and this flag says so.
+	// ClockStepBack is set when the injected clock read EARLIER than THE LEDGER'S OWN
+	// START, so the wall delta would have gone negative. It is INSTRUMENT class: it
+	// compares two clock readings and touches no account, so it fires on an empty
+	// ledger and survives suppression.
+	//
+	// IT WAS SPLIT (RE-CERTIFICATION 2026-09-05 §5.1). The reviewed build fused this
+	// with the per-account clamp below under one name, and that second arm is CENSUS
+	// class — it can only fire if an account exists — so the fused flag was a census
+	// bit published below the floor. The split keeps the operator's whole signal and
+	// puts each arm in its own class, which is what the property (G-BB-11′) asks for.
 	//
 	// IT IS NOT THE CLOCK-STEP DETECTOR, and must not be read as one: it fires only when
 	// a step is large enough to cross zero. A backward step SMALLER than the accounts'
 	// ages — measured, 2 h 50 m against 3-hour-old identities — reshapes every bucket
 	// and never trips it. ClockSuspect is the detector (R-BB-WALLCLOCK-STEP).
 	ClockStepBack bool
+	// AgeClampedToZero is ClockStepBack's other arm: the injected clock read EARLIER
+	// than some account's first-touch stamp, so that account's age was clamped to zero
+	// rather than underflowed. CENSUS class — it is a statement about the accounts, and
+	// at a degenerate anonymity set it says "the one requester is stamped in the
+	// future" — so it is WITHHELD below the floor. The operator keeps ClockSuspect and
+	// the raw signed ClockSkewNanos, which report the same corruption and are
+	// census-free.
+	AgeClampedToZero bool
 	// AgeExceedsUptime is the G-BB-4 censoring assertion, evaluated at snapshot time:
 	// MaxOccupiedAgeEdgeNanos must be <= CensoringBoundNanos(). With a monotone source
 	// injected the two sides come from INDEPENDENT clocks, so this fires on the
@@ -280,6 +348,12 @@ type BBootstrapHistogram struct {
 	// clock against itself, invariant under every step, and can then only catch a stamp
 	// written from a foreign tick source. That degeneracy is why
 	// BBootstrapRunPrecondition refuses a run with no monotone source at all.
+	//
+	// CENSUS class, and this is the field the reviewed build got wrong: it is a
+	// THRESHOLD ON MaxOccupiedAgeEdgeNanos, the very field the floor withholds, so at a
+	// census of one it published a lower bound on that one identity's age. It is
+	// WITHHELD below the floor. Nothing is lost: ClockSuspect and ClockSkewNanos report
+	// the same corruption without reading an account.
 	AgeExceedsUptime bool
 
 	// The axes, published so the artifact is self-describing for a third party.
@@ -311,19 +385,35 @@ func (h BBootstrapHistogram) CensoringBoundNanos() int64 {
 	return h.UptimeNanos
 }
 
-// WithMinRequesterFloor applies the minimum-requester floor (G-BB-11) and returns the
-// PUBLISHABLE histogram. Below BBootstrapMinRequesters it withholds every census-derived
-// quantity and says so; at or above the floor it returns the receiver unchanged.
+// WithMinRequesterFloor applies the minimum-requester floor (G-BB-11′) and returns the
+// PUBLISHABLE histogram. At or above BBootstrapMinRequesters it returns the receiver
+// unchanged. Below it, it returns a block that is A FUNCTION OF THE INSTRUMENT FIELDS
+// ALONE plus the Suppressed bit.
 //
-// WHY IT IS A SEPARATE METHOD RATHER THAN PART OF BBootstrapSnapshot. The floor is about
+// IT CONSTRUCTS RATHER THAN CLEARS, AND THAT IS THE WHOLE POINT. The reviewed build
+// zeroed a list of five census fields and left everything else standing; two
+// census-derived fields were not on the list and rode out below the floor. Three
+// independent enumerations in one pull request each missed a field, so the FORM was
+// refuted: a list cannot cover a field nobody has foreseen. Here the suppressed block is
+// built from the instrument class and every other field — including one added tomorrow
+// by someone who never read this comment — takes its ZERO VALUE, which is a compile-time
+// constant and therefore trivially a function of the instrument alone. The default is
+// WITHHELD, and a new field is published below the floor only by a deliberate edit to
+// this literal.
+//
+// The cost of that default is stated rather than hidden: a new INSTRUMENT field is also
+// withheld until someone adds it here. That is a loss of operator signal, never a loss
+// of privacy, and it is the right way round.
+//
+// WHY IT IS A SEPARATE METHOD RATHER THAN PART OF THE SNAPSHOT. The floor is about
 // PUBLICATION, not about recording. The serving operator's own process already holds
 // fetchedBytes keyed by NodeID and every ChunkID it answered, so a node-local read gives
 // the operator nothing it does not already have; the leak exists only against a reader
-// who is not the operator. BBootstrapSnapshot therefore stays the honest local census —
-// BBootstrapRunPrecondition needs to see an empty one to refuse the run — and this method
-// is applied at the ONE seam where the histogram leaves the ledger for a consumer:
-// core/node's Node.BBootstrap. Nothing outside core/credit calls BBootstrapSnapshot, and
-// a source gate in core/node pins that.
+// who is not the operator. bBootstrapSnapshot therefore stays the honest local census,
+// and it is UNEXPORTED: BBootstrapPublish is the only way the histogram leaves this
+// package, and it floors. That is the type system enforcing "no unfloored census leaves
+// core/credit" — a compiler property, not a lint (see BBootstrapPublish for the exact
+// scope of that claim and its residual).
 //
 // It is a value method on a value receiver: it mutates nothing and allocates nothing on
 // the pass-through path.
@@ -331,18 +421,67 @@ func (h BBootstrapHistogram) WithMinRequesterFloor() BBootstrapHistogram {
 	if h.Requesters >= BBootstrapMinRequesters {
 		return h
 	}
-	h.Suppressed = true
-	h.Requesters = 0
-	h.Aged = 0
-	h.Unstamped = 0
-	// Census-derived, and at a degenerate anonymity set it is a per-identity age
-	// observation: "the one requester is at least this old". It goes with the counts.
-	h.MaxOccupiedAgeEdgeNanos = 0
-	h.Cells = nil
-	// AgeExceedsUptime, ClockStepBack, ClockSuspect and the two uptimes SURVIVE. They
-	// are clock-corruption signals about the instrument, they carry no count, and an
-	// operator needs them exactly when the census is too small to publish.
-	return h
+	// THE INSTRUMENT CLASS, enumerated ONCE, as a construction. Every field here is a
+	// function of the injected clock sources, their injection instants and the compiled
+	// axis constants alone. Nothing here reads l.accounts or l.order, directly or
+	// through a threshold. Adding a field to this literal is a privacy decision and must
+	// be argued as one; NOT adding it is the safe default.
+	return BBootstrapHistogram{
+		// The one named exemption: its content is exactly "the census is below R_min".
+		Suppressed: true,
+
+		ClockSource:          h.ClockSource,
+		AgeAxisLive:          h.AgeAxisLive,
+		UptimeNanos:          h.UptimeNanos,
+		MonotonicSource:      h.MonotonicSource,
+		MonotonicUptimeNanos: h.MonotonicUptimeNanos,
+		ClockSkewNanos:       h.ClockSkewNanos,
+		ClockSuspect:         h.ClockSuspect,
+		// The ledger-start arm only. The per-account clamp is AgeClampedToZero, which
+		// is census class and is NOT copied.
+		ClockStepBack: h.ClockStepBack,
+
+		AgeEdgeNanos:  h.AgeEdgeNanos,
+		BinsPerOctave: h.BinsPerOctave,
+		ByteBins:      h.ByteBins,
+		ByteBinRule:   h.ByteBinRule,
+	}
+}
+
+// BBootstrapPublish is THE ONLY ROUTE the B_bootstrap histogram takes out of this
+// package, and it applies the minimum-requester floor (G-BB-11′) on the way.
+//
+// M-2, CLOSED BY THE TYPE SYSTEM RATHER THAN BY A NAME GATE. The reviewed build kept the
+// raw snapshot exported and pinned "nothing outside core/credit calls it" with a test
+// that read two hard-coded file paths. A reviewer ablated past it in five lines by adding
+// a second unfloored export to a third file: build clean, gate green. Walking the whole
+// tree instead of two literals would not have closed it either, because the consuming
+// seam is DUCK-TYPED — core/node asserts an anonymous interface on the METHOD NAME — so a
+// name-based gate is blind to a second exported reader added INSIDE core/credit. The
+// close is therefore the compiler: bBootstrapSnapshot is unexported, so no package
+// outside this one can obtain the raw census histogram at all, whatever it names its
+// method.
+//
+// THE EXACT SCOPE OF THAT CLAIM, because an overstated gate is the defect this replaces:
+//
+//   - CLOSED by the compiler: no *unfloored BBootstrapHistogram* can leave core/credit.
+//     A duck-typed impostor can satisfy core/node's interface, but it can only supply its
+//     own data; it cannot reach this ledger's raw census.
+//   - CLOSED by a source gate over this WHOLE PACKAGE, not by a literal path list:
+//     TestR29aBBootstrapHasOneExportedRoute parses every non-test file in core/credit and
+//     requires that the only exported functions returning a BBootstrapHistogram are this
+//     one and WithMinRequesterFloor (which can only ever floor). That gate checks exactly
+//     the package it names.
+//   - NOT CLOSED, and stated rather than implied: this is a rule about the HISTOGRAM
+//     OBJECT, not about census data in general. FetchedBytes and ServedBytes are exported
+//     per-identity readers that predate this instrument and are unaffected. A future
+//     exported method returning census-derived SCALARS of some other type would not be
+//     caught by the type system, and would be caught by BB-20 only once it reached
+//     /api/status. Residual: R-BB-EXPORT-SCALAR-BYPASS, open, bounded by review.
+//
+// Loop-owned, like every other ledger read.
+func (l *Ledger) BBootstrapPublish() BBootstrapHistogram {
+	return l.bBootstrapSnapshot().WithMinRequesterFloor()
 }
 
 // BBootstrapByteBinRule is the byte axis, stated exactly. Published verbatim.
@@ -392,7 +531,10 @@ func BBootstrapRunPrecondition(prev, cur BBootstrapHistogram, windowNanos int64)
 		bad = append(bad, "no requesters: the census is empty")
 	}
 	if cur.ClockStepBack {
-		bad = append(bad, "clock stepped backwards past zero: ages were clamped and the run is suspect")
+		bad = append(bad, "clock stepped backwards past the ledger start: the wall delta went negative and the run is suspect")
+	}
+	if cur.AgeClampedToZero {
+		bad = append(bad, "clock read earlier than a first-touch stamp: at least one age was clamped to zero and the run is suspect")
 	}
 	if cur.ClockSuspect {
 		bad = append(bad, fmt.Sprintf("wall clock diverged from the monotone source by %d ns (tolerance %d): ages were reshaped by at least one bucket, %s", cur.ClockSkewNanos, bbClockSkewToleranceNanos, bbSkewDirection(cur.ClockSkewNanos)))
@@ -554,8 +696,12 @@ func bbootstrapAgeBucket(ageNanos int64) int {
 // therefore CREATES an account and hands out a 500,000 grant for any id it is passed. A
 // reader that mints is not a reader. TestR29aBBootstrapSnapshotWritesNothing pins it.
 //
+// IT IS UNEXPORTED. This is the RAW census, and the minimum-requester floor is the rule
+// that the raw census does not leave this package. BBootstrapPublish is the exported
+// route and it floors; making that structural is what the type system is for.
+//
 // Loop-owned, like every other ledger read: call it on the node's event loop.
-func (l *Ledger) BBootstrapSnapshot() BBootstrapHistogram {
+func (l *Ledger) bBootstrapSnapshot() BBootstrapHistogram {
 	out := BBootstrapHistogram{
 		ClockSource:     "none",
 		MonotonicSource: "none",
@@ -615,7 +761,10 @@ func (l *Ledger) BBootstrapSnapshot() BBootstrapHistogram {
 		age := now - (int64(a.firstSeenTick) - 1)
 		if age < 0 {
 			age = 0
-			out.ClockStepBack = true // clamped, never underflowed — and never silently
+			// CENSUS class: this arm can only fire if an account exists, so it is its
+			// own flag and is withheld below the floor. The ledger-start arm above is
+			// instrument class and keeps the ClockStepBack name.
+			out.AgeClampedToZero = true // clamped, never underflowed — and never silently
 		}
 		bucket := bbootstrapAgeBucket(age)
 		bin := bbootstrapByteBin(a.fetchedBytes)

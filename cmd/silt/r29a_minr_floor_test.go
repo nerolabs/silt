@@ -148,9 +148,15 @@ func bbTrajectorySteps(seq []map[[2]int]int64) [][2][2]int {
 // — but at a degenerate anonymity set it withholds the grid entirely, so the singleton's
 // trajectory is not published at all.
 //
-// THE POSITIVE CONTROL IS IN THE TEST. The same oracle is run over the UNFLOORED core
-// snapshots from the same fixture, where it must find the trajectory. Without that arm a
-// green result here would be indistinguishable from an oracle that can never fire.
+// THE POSITIVE CONTROL IS IN THE TEST, AND IT MOVED — it is now stronger and it is on
+// the wire. The raw census no longer leaves core/credit (M-2), so the control can no
+// longer be "the operator's unfloored local read". Instead the SAME fixture is run with
+// the census PADDED over the floor: nine extra identities, one fetch each, which is
+// exactly what an observer that can fetch buys for nine keypairs and about 576 KiB
+// (R-BB-CENSUS-SYBIL-PAD). With the floor lifted, the one moving identity's trajectory
+// is readable straight off the PUBLISHED series. That is the reviewer's measured
+// refutation, encoded: it proves the oracle can fire on this exact wire path, and it
+// records in a permanent gate that the floor is bought out by a fetching adversary.
 func TestR29aBB16PolledSeriesRevealsNoSingleIdentityTrajectory(t *testing.T) {
 	s, led, clk := r29aServer(t, true)
 	clk.now = ports.Time(2 * bbStatusHour) // a fixed instant: only the BYTES move
@@ -161,42 +167,40 @@ func TestR29aBB16PolledSeriesRevealsNoSingleIdentityTrajectory(t *testing.T) {
 	const requester = 7
 	steps := []int64{1 << 20, 1 << 20, 1 << 20, 1 << 20, 2 << 20, 2 << 20}
 
-	var wire []map[[2]int]int64
-	var local []map[[2]int]int64
-	var rawBlocks []string
-	var localBins []int
-	for _, add := range steps {
-		r29aFetch(led, requester, add)
-
-		block, present, raw := r29aBlock(t, s)
-		if !present {
-			t.Fatalf("bBootstrap absent")
-		}
-		wire = append(wire, bbCellGrid(block))
-		rawBlocks = append(rawBlocks, raw)
-
-		// The operator's own, unfloored read of the same instant. §2.4: the serving
-		// operator already holds fetchedBytes keyed by NodeID and every ChunkID it
-		// answered, so this read gives the operator nothing it does not have — which is
-		// why the floor is a publication rule and this arm is a legitimate control.
-		h := led.BBootstrapSnapshot()
-		g := map[[2]int]int64{}
-		for a := range h.Cells {
-			for b, n := range h.Cells[a] {
-				if n != 0 {
-					g[[2]int{a, b}] = n
-					localBins = append(localBins, b)
-				}
+	poll := func(s *uiServer, led *credit.Ledger, into *[]map[[2]int]int64, raws *[]string) {
+		t.Helper()
+		for _, add := range steps {
+			r29aFetch(led, requester, add)
+			block, present, raw := r29aBlock(t, s)
+			if !present {
+				t.Fatalf("bBootstrap absent")
 			}
+			*into = append(*into, bbCellGrid(block))
+			*raws = append(*raws, raw)
 		}
-		local = append(local, g)
 	}
 
-	// THE CONTROL, first: the oracle must fire on the unfloored series, or the assertion
-	// below proves nothing.
-	control := bbTrajectorySteps(local)
+	var wire []map[[2]int]int64
+	var rawBlocks []string
+	poll(s, led, &wire, &rawBlocks)
+
+	// THE CONTROL, on the wire: the SAME six fetches by the SAME single identity, on a
+	// node whose census has been PADDED over the floor. Nine keypairs and one fetch
+	// each is the whole price (R-BB-CENSUS-SYBIL-PAD), so the pad is a fixture in eight
+	// lines and an attack in seconds. The pads sit still, so every delta in the series
+	// belongs to the one moving identity and the oracle must find its trajectory.
+	padS, padLed, padClk := r29aServer(t, true)
+	padClk.now = ports.Time(2 * bbStatusHour)
+	for i := 0; i < credit.BBootstrapMinRequesters-1; i++ {
+		r29aFetch(padLed, 500+i, int64(1)<<uint(i+3))
+	}
+	var padded []map[[2]int]int64
+	var paddedRaw []string
+	poll(padS, padLed, &padded, &paddedRaw)
+
+	control := bbTrajectorySteps(padded)
 	if len(control) < 4 {
-		t.Fatalf("the trajectory oracle found only %d single-identity steps in the UNFLOORED series (bins %v). It must find the trajectory there, or its silence on the wire series means nothing", len(control), localBins)
+		t.Fatalf("the trajectory oracle found only %d single-identity steps in the PADDED, PUBLISHED series. It must find the trajectory there, or its silence on the unpadded wire series means nothing. Padded blocks: %v", len(control), paddedRaw)
 	}
 
 	// THE GATE: the published sequence discloses no step at all.
@@ -217,6 +221,6 @@ func TestR29aBB16PolledSeriesRevealsNoSingleIdentityTrajectory(t *testing.T) {
 	if probe["suppressed"] != true {
 		t.Fatalf("the block is not suppressed at one requester: %s", rawBlocks[0])
 	}
-	t.Logf("BB-16: the unfloored series discloses %d single-identity bin transitions (bins %v); the published series discloses 0 and is byte-identical across all six polls",
-		len(control), localBins)
+	t.Logf("BB-16: at one requester the published series discloses 0 single-identity bin transitions and is byte-identical across all six polls; with the census padded over the floor by %d identities the SAME published path discloses %d — the floor is bought out by an observer that can fetch (R-BB-CENSUS-SYBIL-PAD)",
+		credit.BBootstrapMinRequesters-1, len(control))
 }

@@ -7,8 +7,6 @@ package node
 // §1.3 and the Tester gates in its §6.
 
 import (
-	"os"
-	"strings"
 	"testing"
 
 	"github.com/nerolabs/silt/adapters/identity"
@@ -59,34 +57,22 @@ func TestR29aBB15NodeSeamAppliesTheFloor(t *testing.T) {
 	}
 }
 
-// TestR29aBB15TheFloorIsAppliedAtTheOnlySeam is the SOURCE GATE behind BB-15's
-// structural claim. The floor is worth its comment only if there is no second route from
-// the ledger to a consumer: core/node/bbootstrap.go must apply WithMinRequesterFloor,
-// and nothing outside core/credit may call BBootstrapSnapshot directly, or a future
-// publisher would bypass the floor without touching the line that enforces it.
+// THE "ONLY SEAM" SOURCE GATE IS GONE, DELETED RATHER THAN WIDENED.
 //
-// RUNTIME GATE: TestR29aBB15NodeSeamAppliesTheFloor observes the behaviour at this seam,
-// and cmd/silt's TestR29aBB15WirePayloadWithholdsTheCensusBelowTheFloor observes it on
-// the wire. This gate only closes the "is there another door" question, which no runtime
-// test can answer.
-func TestR29aBB15TheFloorIsAppliedAtTheOnlySeam(t *testing.T) {
-	src, err := os.ReadFile("bbootstrap.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(src), "BBootstrapSnapshot().WithMinRequesterFloor()") {
-		t.Fatalf("SOURCE GATE: core/node/bbootstrap.go does not contain the literal BBootstrapSnapshot().WithMinRequesterFloor() — the minimum-requester floor (G-BB-11) is applied at this seam and nowhere else, so without this call every consumer of the histogram receives the raw census")
-	}
-	for _, f := range []string{"../../cmd/silt/ui.go", "../../cmd/silt/daemon.go"} {
-		b, err := os.ReadFile(f)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if strings.Contains(string(b), "BBootstrapSnapshot(") {
-			t.Fatalf("SOURCE GATE: %s calls BBootstrapSnapshot( directly. That reader returns the UNFLOORED census; the only sanctioned route is Node.BBootstrap, which applies the minimum-requester floor", f)
-		}
-	}
-}
+// It read two hard-coded file paths and claimed a whole-tree property. A reviewer
+// ablated past it in five lines by adding a second unfloored export to a third file
+// (RULING 2026-09-05, M-2). Widening it to walk the tree would still not have
+// established the property, because the assertion in core/node/bbootstrap.go is
+// DUCK-TYPED on a method name and any such walk has to exclude core/credit — exactly
+// where a second exported reader would live.
+//
+// The close is the type system, one package over: credit.bBootstrapSnapshot is now
+// unexported, so this seam CANNOT obtain an unfloored census, and neither can any
+// future publisher in any file under any method name. The one hole the compiler
+// cannot cover — a second exported reader inside core/credit — is closed by
+// core/credit's TestR29aBBootstrapHasOneExportedRoute, a walk of that whole package.
+// The published property is run at the wire by cmd/silt's
+// TestR29aBB20BelowFloorBlockIsAFunctionOfTheClockAlone (BB-20).
 
 // --- BB-18: the census is a SUPERSET -------------------------------------------------
 
@@ -177,12 +163,28 @@ func TestR29aBB18TheCensusIsASupersetOfAnyPopulation(t *testing.T) {
 		t.Fatalf("the repair-path fetch did not complete: done %v, unfetched %v", repairDone, unfetched)
 	}
 
+	// Lift the census over the minimum-requester floor so the grid is PUBLISHED. The
+	// pad is deliberate and it is also the finding: R_min is bought for a handful of
+	// keypairs and one fetch each (R-BB-CENSUS-SYBIL-PAD), so a fixture can do in eight
+	// lines what an adversary does in seconds. Each pad fetches a byte total far from
+	// the two real fetches' 47 bytes, so no pad can land in the cell under test.
+	const padTo = credit.BBootstrapMinRequesters - 2
+	for i := 0; i < padTo; i++ {
+		s.ledger.RecordServe(s.srv.ID(), identity.FromSeed(int64(918000+i)).NodeID(), ports.Hash{}, int64(1)<<uint(20+i))
+	}
+
 	// Both are in the census, and the census cannot tell them apart: same age bucket,
 	// same byte bin, so they are ONE CELL WITH COUNT 2. There is no published quantity
-	// that distinguishes the repairer from the viewer.
-	h := s.ledger.BBootstrapSnapshot() // the RAW census: two requesters is below R_min
-	if h.Requesters != 2 || h.Aged != 2 {
-		t.Fatalf("census requesters/aged = %d/%d, want 2/2 — a repair-path fetch must be counted exactly like a viewer's", h.Requesters, h.Aged)
+	// that distinguishes the repairer from the viewer. Read through the PUBLISHED
+	// object — the raw census does not leave core/credit any more (M-2), so this gate
+	// now exercises the shipped path.
+	h := s.ledger.BBootstrapPublish()
+	if h.Suppressed {
+		t.Fatalf("the padded census is still below the floor of %d: the fixture cannot publish a grid and this gate would be vacuous", credit.BBootstrapMinRequesters)
+	}
+	if h.Requesters != credit.BBootstrapMinRequesters || h.Aged != credit.BBootstrapMinRequesters {
+		t.Fatalf("census requesters/aged = %d/%d, want %d/%d — the two real fetchers plus %d pads; a repair-path fetch must be counted exactly like a viewer's",
+			h.Requesters, h.Aged, credit.BBootstrapMinRequesters, credit.BBootstrapMinRequesters, padTo)
 	}
 	occupied := map[[2]int]int64{}
 	for a := range h.Cells {
@@ -192,13 +194,25 @@ func TestR29aBB18TheCensusIsASupersetOfAnyPopulation(t *testing.T) {
 			}
 		}
 	}
-	if len(occupied) != 1 {
-		t.Fatalf("the repairer and the viewer landed in %d different cells (%v): the instrument is separating them, which the certification says it cannot do — if this is intentional it is a new published attribute and a privacy question", len(occupied), occupied)
-	}
+	// Exactly one cell carries two identities, and it is the two REAL fetches: every
+	// pad has its own byte bin, so a cell of 2 can only be the viewer and the repairer
+	// together. If the instrument separated them there would be no cell of 2 at all.
+	shared := 0
 	for cell, n := range occupied {
-		if n != 2 {
-			t.Fatalf("cell %v carries %d, want 2", cell, n)
+		switch {
+		case n == 1: // a pad
+		case n == 2:
+			shared++
+			t.Logf("BB-18: the viewer and the repairer share cell %v", cell)
+		default:
+			t.Fatalf("cell %v carries %d: the pads must occupy distinct bins, one identity each", cell, n)
 		}
+	}
+	if shared != 1 {
+		t.Fatalf("found %d cells with two identities in them (%v), want exactly 1: the repairer and the viewer must land in the SAME cell, which the certification says the instrument cannot avoid — if they separated, that is a new published attribute and a privacy question", shared, occupied)
+	}
+	if len(occupied) != padTo+1 {
+		t.Fatalf("%d occupied cells (%v), want %d: one shared cell plus one per pad", len(occupied), occupied, padTo+1)
 	}
 	// And the bytes really moved on both paths, so the gate is not passing on two
 	// no-ops that both booked nothing.
@@ -208,7 +222,7 @@ func TestR29aBB18TheCensusIsASupersetOfAnyPopulation(t *testing.T) {
 	if _, err := s.repair.Store().Get(bg(), shard.ID); err != nil {
 		t.Fatalf("the repairer did not actually receive the shard: %v", err)
 	}
-	t.Logf("BB-18: viewer and repairer both land in cell %v with count 2 — the census is a SUPERSET of any population P, and P is unpinned (G-BB-9)", occupied)
+	t.Logf("BB-18: viewer and repairer land in ONE cell with count 2 among %d occupied cells — the census is a SUPERSET of any population P, and P is unpinned (G-BB-9)", len(occupied))
 }
 
 // --- BB-19: the dead discriminator, on the real serve path ---------------------------
@@ -252,10 +266,16 @@ func TestR29aBB19NoLedgerVisibleDiscriminatorOnTheServePath(t *testing.T) {
 	if own := s.ledger.ServedBytes(s.srv.ID()); own <= 0 {
 		t.Fatalf("the serving node's own servedBytes = %d, want > 0 — the fixture served nothing and this gate is vacuous", own)
 	}
-	// The one account the predicate selects is not a census member.
-	h := s.ledger.BBootstrapSnapshot()
-	if h.Requesters != 2 {
-		t.Fatalf("census = %d, want 2 (the two fetching peers, and NOT the server)", h.Requesters)
+	// The one account the predicate selects is not a census member. Read through the
+	// PUBLISHED object, so the pad is needed to get over the floor; if the server were
+	// counted the census would be one higher than the identities that actually fetched.
+	const padTo = credit.BBootstrapMinRequesters - 2
+	for i := 0; i < padTo; i++ {
+		s.ledger.RecordServe(s.srv.ID(), identity.FromSeed(int64(919000+i)).NodeID(), ports.Hash{}, int64(1)<<uint(20+i))
+	}
+	h := s.ledger.BBootstrapPublish()
+	if h.Requesters != credit.BBootstrapMinRequesters {
+		t.Fatalf("census = %d, want %d (the two fetching peers plus %d pads, and NOT the server)", h.Requesters, credit.BBootstrapMinRequesters, padTo)
 	}
 	t.Logf("BB-19 (serve path): servedBytes is 0 for both remote accounts and %d for the node's own, which is not in the census of %d",
 		s.ledger.ServedBytes(s.srv.ID()), h.Requesters)

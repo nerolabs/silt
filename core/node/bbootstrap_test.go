@@ -103,7 +103,7 @@ func TestR29aNodeSnapshotIsTheHistogramWithNoIdentity(t *testing.T) {
 	if got := h.Cells[4][39]; got != 9 {
 		t.Fatalf("the two-hour-old identities (1,000 bytes → bin 39) count = %d in bucket 4, want 9; row 4 = %v", got, h.Cells[4])
 	}
-	if h.MaxOccupiedAgeEdgeNanos > h.UptimeNanos || h.AgeExceedsUptime {
+	if h.MaxOccupiedAgeEdgeNanos > h.UptimeNanos || h.AgeExceedsUptime || h.AgeClampedToZero {
 		t.Fatalf("censoring invariant violated: max occupied edge %d, uptime %d", h.MaxOccupiedAgeEdgeNanos, h.UptimeNanos)
 	}
 
@@ -115,7 +115,8 @@ func TestR29aNodeSnapshotIsTheHistogramWithNoIdentity(t *testing.T) {
 	allowed := map[string]bool{
 		"ClockSource": true, "AgeAxisLive": true, "Requesters": true, "Aged": true,
 		"Unstamped": true, "UptimeNanos": true, "MaxOccupiedAgeEdgeNanos": true,
-		"ClockStepBack": true, "AgeExceedsUptime": true, "AgeEdgeNanos": true,
+		"ClockStepBack": true, "AgeClampedToZero": true, "AgeExceedsUptime": true,
+		"AgeEdgeNanos":  true,
 		"BinsPerOctave": true, "ByteBins": true, "ByteBinRule": true, "Cells": true,
 		"MonotonicSource": true, "MonotonicUptimeNanos": true,
 		"ClockSkewNanos": true, "ClockSuspect": true,

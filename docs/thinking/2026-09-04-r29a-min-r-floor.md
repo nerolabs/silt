@@ -150,3 +150,203 @@ gate's own claim — no requester total reaches the wire — false. The build th
 five, which is the rule the certification's **mechanism** implies rather than a widening of it. This
 is a strictly larger suppression than the words specify; it costs the fit nothing, because below the
 floor there is no fit.
+
+---
+
+# ROUND 2 — 2026-09-05: my five-field list was the third enumeration to miss a field
+
+The blind review of `3337e8b` and the re-certification that adjudicated it upheld two merge
+blockers and extended each by one. §7 above is the record of me catching the certification's
+three-field list and widening it to five. **The five missed two more.** That is the finding, and it
+is not a finding about which fields — it is a finding about the FORM.
+
+Three enumerations, one pull request, three misses:
+
+1. the certification's three fields (missed `unstamped`, `maxOccupiedAgeEdgeNanos`),
+2. my five (missed `ageExceedsUptime`, one arm of `clockStepBack`),
+3. the source gate's two literal file paths, which claimed a whole-tree property a reviewer
+   ablated past in five lines.
+
+I do not get to argue with that. §7's confidence — "the rule the certification's mechanism
+implies" — was correct about the mechanism and wrong about the method. A list cannot cover a field
+nobody foresaw, and I wrote a list.
+
+## 1. The property, and the one design decision in this round
+
+G-BB-11′ partitions the block: an INSTRUMENT field is a function of the injected clock sources,
+their injection instants and the compiled axis constants alone; a CENSUS field depends on
+`l.accounts` or `l.order`. Below `R_min` the block must be a function of the instrument fields
+alone, sole exemption `suppressed`.
+
+The whole design question is **how a rule like that gets enforced on a field written next year by
+someone who never reads this document.** Options considered:
+
+| Option | What it does | Why not / why |
+|---|---|---|
+| Widen the list to seven | Fixes today's two fields | This is what failed three times. Refused. |
+| Split the struct into an embedded `Instrument` and `Census` sub-struct | The compiler forces every new field into a class; the floor is a one-line copy | Genuinely the strongest form, and I nearly built it. It touches the reflection field-set audit, the wire renderer and every fixture. **The blast radius buys nothing BB-20 does not already cover**, because the leak only matters once a field reaches the wire, and BB-20 is at the wire. Deferred, not refused. |
+| **CONSTRUCT the suppressed block from the instrument class** | The floor returns a fresh `BBootstrapHistogram` carrying only instrument fields; everything else takes its ZERO VALUE | **Chosen.** ~15 lines, no refactor. |
+
+The reason construction is the answer and clearing is not: a zero value is a compile-time constant,
+and a constant is trivially a function of the instrument alone. So an unforeseen field satisfies the
+property *by default*. **The default flips from PUBLISHED to WITHHELD**, and a new field is
+published below the floor only by a deliberate edit to one literal — which is a privacy decision
+made in the one place the reasoning lives.
+
+The cost is real and I state it in the code rather than hiding it: a new INSTRUMENT field is also
+withheld until someone adds it there. That is a loss of operator signal, never a loss of privacy,
+and it is the right way round.
+
+**Measured, and this is the evidence that the form is fixed rather than the fields.** Ablation D
+adds a census field nobody had foreseen (`PeUnforeseenCensus`, set from `Requesters`), publishes it
+unconditionally on the wire, and does not touch the floor at all:
+
+- shipped construction → **BB-20 GREEN**, the field is withheld,
+- floor reverted to the clear-a-list form the review saw → **BB-20 RED**, `peUnforeseenCensus: 7`
+  on the wire below the floor.
+
+## 2. The two defects
+
+`ageExceedsUptime` is `MaxOccupiedAgeEdgeNanos > CensoringBoundNanos()` — a **threshold on the very
+field the floor withholds**. At a census of one, joined to the surviving `monotonicUptimeNanos`, it
+is a lower bound on that identity's age, published below the floor. Withheld. The operator loses
+nothing: `clockSuspect` and the raw signed `clockSkewNanos` report the same corruption and read no
+account.
+
+`clockStepBack` had two arms and the certification permits split or withhold. **Split**, because it
+keeps the operator's whole signal:
+
+- the ledger-start arm (the wall delta went negative) touches no account → INSTRUMENT, keeps the
+  name, survives suppression;
+- the per-account clamp (a stamp reads later than the clock) → CENSUS, becomes `ageClampedToZero`,
+  withheld below the floor, and it gained its own arm in `BBootstrapRunPrecondition` so the split
+  does not quietly drop a run-voiding signal.
+
+The split is pinned by its **discriminator**, not just by its own assertion: arm 1 of
+`TestR29aBackwardClockStepClampsAndSaysSo` now asserts `ageClampedToZero` fires AND `clockStepBack`
+stays DOWN. Fusing them again reddens it, and reddens BB-20's backward-step group too (ablation C).
+
+## 3. M-2 — why the reviewer's fix is insufficient, and what I built instead
+
+The reviewer proposed walking the tree instead of two literals. The re-certification refutes that on
+the artifact and I agree with the refutation after checking it myself:
+
+- `core/node/bbootstrap.go` obtained the export through an **anonymous interface assertion on a
+  method name**, so the seam is duck-typed and no name pins it;
+- a tree walk has to EXCLUDE `core/credit` — that is where the method lives — which is exactly where
+  a second exported reader would sit, invisible.
+
+So the close is the type system. `bBootstrapSnapshot` is unexported; `BBootstrapPublish`, which
+floors, is the only route out of the package. A duck-typed impostor can still satisfy `core/node`'s
+interface, but it can only supply its own data — it cannot reach this ledger's raw census.
+
+**The residual the compiler cannot reach, and what I did about it.** A second exported reader added
+*inside* `core/credit` is invisible to the compiler and to any gate in another package. I closed it
+with a gate that is package-scope and structural rather than literal:
+`TestR29aBBootstrapHasOneExportedRoute` reads the directory, parses **every** non-test `.go` file
+with `go/ast`, and requires that the only exported functions returning a `BBootstrapHistogram` are
+`BBootstrapPublish` and `WithMinRequesterFloor` (which can only ever floor). Its failure text names
+exactly the scope it checks — one package, every file in it — which is the discipline the deleted
+gate broke. It carries its own teeth test over a synthetic bypass (a value return and a pointer
+return must flag; an unexported method and an unrelated exported method must not), and it goes RED
+on the reviewer's exact ablation planted in a THIRD file inside the package, with the build clean.
+
+**The residual I could NOT close, stated plainly rather than papered over.** This is a rule about the
+histogram OBJECT, not about census data in general. `FetchedBytes` and `ServedBytes` are exported
+per-identity readers that predate the instrument. A future exported method returning census-derived
+**scalars of some other type** defeats both the compiler and this gate, and would be caught by BB-20
+only once it reached `/api/status`. Filed as **R-BB-EXPORT-SCALAR-BYPASS**, open, bounded by review.
+I would rather name it than ship a gate that reads as protection and is not.
+
+**The old source gate is DELETED, not widened.** A gate that re-checks a compiler-enforced fact is
+decoration, and decoration is what got ablated.
+
+## 4. BB-20 — RED first, and it found both defects on its own
+
+Built before the fix, run on `3337e8b`:
+
+```
+--- FAIL: .../forward-step
+    ageExceedsUptime differs: empty=false, one=true      <- M-1
+--- FAIL: .../backward-step-past-a-stamp
+    clockStepBack differs: empty=false, one=true         <- the certification's extension
+```
+
+Two groups red, one per defect, without either field being named anywhere in the gate. That is the
+whole argument for a property over a list, demonstrated rather than asserted.
+
+Three fixture rules, all from the reviewer's F-3, which is correct:
+
+- each group replays ONE clock script across every census arm, so clock state is equal **by
+  construction**. BB-16's byte-identity arm holds only because its fixture pins `clk.now`; that is
+  an accident and must not be cited as a production property.
+- `r29aServer` sets `uiServer.peerCount`, a nil func in the `economyServer` fixture.
+- the gate ships a **positive control** that drives the same scripts ABOVE the floor and requires the
+  blocks to DIFFER. Without it, byte-identity below the floor could be a property of a fixture that
+  varies nothing.
+
+## 5. BB-16's control had to move, and it got better
+
+The control was "the same oracle over the operator's unfloored local snapshots". After M-2 the raw
+census does not leave `core/credit`, so that arm is gone. The replacement is stronger and is on the
+wire: the SAME six fetches by the SAME single identity, on a node whose census has been **padded
+over the floor by nine identities**. The trajectory is then readable straight off the PUBLISHED
+series.
+
+That is the review's own measured refutation encoded as a permanent gate: nine keypairs and one
+fetch each is the entire price of lifting the floor (**R-BB-CENSUS-SYBIL-PAD**), and the fixture
+does in eight lines what an adversary does in seconds. The same pad lifts BB-18 and BB-19 over the
+floor, which also removes the reviewer's F-3 objection to those two — they now read through the
+SHIPPED `BBootstrapPublish` path instead of a raw reader that no longer exists.
+
+## 6. The claim, corrected in four texts
+
+`core/credit/bbootstrap.go`, `cmd/silt/ui.go`, `CHANGELOG.md`, `ROADMAP.md`. Each now says the floor
+bounds the census **count**, not the anonymity **set**; that an observer which can fetch buys the
+difference for nine keypairs; that the floor is a **fit precondition** and a defence against a reader
+that **cannot** fetch; and that `suppressed: true` is itself a disclosure of an upper bound of
+`R_min − 1`. The CHANGELOG's *"every corruption flag survives suppression — they describe the
+instrument rather than the population"* was flatly false for `ageExceedsUptime` and is gone.
+
+## 7. Round-2 ablations (each RED, each reverted)
+
+| # | Controlled revert | Went RED |
+|---|---|---|
+| A | the floor copies `AgeExceedsUptime` through again (the reviewer's M-1) | BB-20 `forward-step` |
+| B | the floor copies `AgeClampedToZero` through again | BB-20 `backward-step-past-a-stamp` |
+| C | un-split the arms: the per-account clamp writes `ClockStepBack` again | BB-20 `backward-step-past-a-stamp`, and arm 1 of the BB-13 clock test |
+| D1 | an UNFORESEEN census field, published unconditionally, floor untouched | **GREEN — withheld by default. This is the point of the round.** |
+| D2 | same field, floor reverted to the clear-a-list form | BB-20 `ages-and-bytes` + `forward-step`, `peUnforeseenCensus: 7` on the wire |
+| E | the reviewer's bypass export planted in a THIRD file inside `core/credit` | `TestR29aBBootstrapHasOneExportedRoute` — with `go build ./...` clean, which is the case a tree walk could never see |
+
+## 8. What I did NOT build, and why
+
+- **G-BB-12′ / G-BB-13′ Part A** — the `-ui` routable refusal or a token gate. That is the owner's
+  configuration call and Part B behind it is a VETO GATE on Don't #3. Not mine.
+- **`W`, `q`, `P`, `R_min` above the derived floor** — unpinned, the owner's (G-BB-1, G-BB-9).
+- **G-BB-17 … G-BB-19** — they bind the `grant/r` pin and the run, not this branch.
+- **BB-7's suppressed-block arm (F-1)** — BB-20 subsumes it: BB-7 pins the key set at `R = 40`, and
+  the below-floor key set is now pinned by byte-identity across varying censuses. Adding a second
+  gate on the same axis is decoration. If a reviewer disagrees, the arm is four lines.
+- **The embedded two-struct class split** — see §1. Strongest form, larger blast radius, and BB-20
+  covers the path that matters. Deferred with the reasoning recorded, not silently dropped.
+
+## 9. Where I think the certification is wrong, or at least imprecise
+
+Two small things, neither of which changes what I built.
+
+1. **§5.4's "the type system is the close" is not sufficient on its own, and the certification says
+   so only implicitly.** Unexporting the raw snapshot closes every OTHER package; it does nothing
+   about a second exported reader inside `core/credit`, which is the very hole §5.4 raises two
+   paragraphs earlier. The certification then recommends the type system without noting that it
+   leaves that hole open. I built the package-scope gate to cover it and I am flagging the gap in the
+   ruling rather than letting the phrase "enforced by the compiler, not by a lint" stand unqualified
+   — because the same phrase, taken at face value, is how the last overstated gate got written.
+2. **§5.3's table classes `suppressed` as "census (1 bit)" and then exempts it.** It is cleaner to
+   say it is neither: its value is a function of the census only through the single predicate
+   `Requesters < R_min`, which is the floor's own decision variable. The distinction matters for a
+   future reader deciding whether some other one-bit census predicate qualifies for the same
+   exemption — it does not, and calling `suppressed` "a census field we allow" invites exactly that
+   reading. The code comment says it the narrow way.
+
+Neither is a defect in the verdict. I record them because a certification is read later as law.
