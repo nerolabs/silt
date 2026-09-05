@@ -39,7 +39,13 @@ func TestR212FaucetFlagsRefuseHalfAndUnsafeConfigurations(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "guard") {
 		t.Fatalf("capacity %d (over a quarter of the cap) accepted or refusal does not name the guard: %v", limitCap+1, err)
 	}
-	// The Economist's recommendation passes with headroom.
+	// Overflow: an absurd capacity is refused before the multiply can wrap.
+	for _, huge := range []int64{369_000_000_000_000_000, 1_000_000_000_000_000_000, int64(credit.MaxPaidSerial) + 1} {
+		if err := faucetConfigure(fresh(), huge, 1, 0); err == nil {
+			t.Fatalf("capacity %d was ACCEPTED — the assertion's multiply wrapped", huge)
+		}
+	}
+	// A configuration with headroom passes.
 	l := fresh()
 	if err := faucetConfigure(l, 256, 256, 0); err != nil {
 		t.Fatalf("256/256 refused: %v", err)
