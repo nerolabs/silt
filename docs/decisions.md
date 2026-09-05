@@ -1852,6 +1852,22 @@ cheap fix: per-stripe), `R-GRANT-RATIO-NOT-A-CONSTANT` (blocking, G-BB-30),
 code from `erasure.DefaultParams`, with a refuse-below assertion on the eventual `g/λ` (the
 `-dht-address-reserve` shape) — an R2.9 build item, since `r` does not exist yet.
 
+**RATIFIED 2026-09-05 (later the same day) — `grant/r` = 64 GiB.** Owner: *"Ratify 64GiB."*
+G-BB-31 is CLOSED at the Researcher's input value, which clears the corrected floor
+(44.7 GiB = 30 GB × 1.6, `S_max · (N/K)` at `F_min = 1`) with margin to the next binary value.
+The G-BB-19 ratification sentence is the certification's §4 text VERBATIM, written for 64 GiB
+(`R2.9a-grant-over-r-32GiB-structural-pin-G-BB-19-RESEARCH-CERTIFICATION-2026-09-05.md`);
+its conditions bind: ephemeral ledger (any FP-2 re-arm reopens the pin and owes a
+grant-renewal path), R2.12 before priced delivery, `(K, N) = (10, 16)` and `F_min = 1`. It
+covers one object, never the cumulative draw; objects above `S_max` served from one host are
+not fetchable on the grant alone. **Still open and NOT closed by this ratification:** G-BB-30
+(the ratio is `g/λ` and a total rescale leaves it invariant — WHICH constant moves is a
+separate decision with its own tier consequences, taken when R2.9 gives `r` a value), G-BB-32
+(the "stripe floor 640 MiB" clause in item 1 above is wrong twice and stands corrected by
+this note: 128 MiB is the enforced maximum chunk, and that cliff was itself refuted).
+`R-PARITY-AMPLIFICATION` (the whole-object parity fetch that produced the 1.6×; cheap fix:
+per-stripe) is a build residual on the fetch path, not a pin condition.
+
 ## D-UI-PRIVACY-FLAG — node-wide counters and the library link key go behind an operator flag; exposed in beta, withheld at release
 
 **Ratified 2026-09-05** by the owner, closing `R-BB-SIBLING-AGGREGATES` and the `/api/library`
@@ -1893,6 +1909,12 @@ the default flip (a build tag as in `D-BB-BUILD-TAG`, or a default that flips on
 checklist), the wire form of the pre-release label, whether the observatory sends the token
 or requires `-privacy=off` on its targets, and the Red-team's F9 point that the token is an
 unscoped write credential (a read-scoped token is a separate follow-on, not a precondition).
+
+**RATIFIED 2026-09-05 (later the same day) — the no-flip default.** Owner: *"Agree with the
+privacy change."* The compiled default is WITHHELD in every build; the beta sentence above
+("default ON through the BETA") is superseded by this ratification, and the flixz beta nodes
+run `-privacy=off` explicitly, labelled PRE-RELEASE. The build note below stands as the record
+of how the change was reached.
 
 **One correction to the owner's rationale, recorded so it is not relied on.** The owner
 cited large archival nodes having *"access to the takedown list feature that can remove the
