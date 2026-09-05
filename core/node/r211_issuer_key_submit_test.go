@@ -267,13 +267,19 @@ func TestR211PruneIsWiredToTheSweepAndTheEnqueue(t *testing.T) {
 	}
 	s := string(src)
 	tick := strings.Index(s, "func (n *Node) chainSyncTick() {")
+	if tick < 0 {
+		t.Fatalf("SOURCE GATE: the literal func (n *Node) chainSyncTick() { is absent from chainrole.go")
+	}
 	tickEnd := strings.Index(s[tick:], "\n}\n") + tick
-	if tick < 0 || !strings.Contains(s[tick:tickEnd], "n.prunePeerIssuerKeys()") {
+	if !strings.Contains(s[tick:tickEnd], "n.prunePeerIssuerKeys()") {
 		t.Fatalf("SOURCE GATE: chainSyncTick does not call n.prunePeerIssuerKeys() — a bonded receiver that never proposes would accumulate dead peer slots to maxMempool (F3)")
 	}
 	q := strings.Index(s, "func (n *Node) queuePendingPeerIssuerKey(")
+	if q < 0 {
+		t.Fatalf("SOURCE GATE: the literal func (n *Node) queuePendingPeerIssuerKey( is absent from chainrole.go")
+	}
 	qEnd := strings.Index(s[q:], "\n}\n") + q
-	if q < 0 || !strings.Contains(s[q:qEnd], "n.prunePeerIssuerKeys()") {
+	if !strings.Contains(s[q:qEnd], "n.prunePeerIssuerKeys()") {
 		t.Fatalf("SOURCE GATE: queuePendingPeerIssuerKey does not prune before enqueueing (F3)")
 	}
 }

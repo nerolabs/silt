@@ -23,7 +23,9 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   key commits on both replicas without it ever proposing) and the message-kind number pins. Blind PE code review
   (MERGE-AFTER) folded in: the arrival-gate fixture was vacuous and is rewritten against a bonded issuer; the
   staggered-takeover branch now counts issuer-key work (a dead designee no longer stalls a foldable key); the peer
-  queue is pruned every sync sweep. Not yet measured: the carrier-block fraction the R3.4 accept-flip needs (the
+  queue is pruned every sync sweep; `stats.DrainProposalsArmed` is a new node-wide counter on `GET /api/status`
+  (validator-role observability: how often the drain driver armed a proposal; withheld with the other counters
+  under `-privacy`). Not yet measured: the carrier-block fraction the R3.4 accept-flip needs (the
   floor box stalls on any IssuerKeys-carrying block). Deliberation: `docs/thinking/2026-09-05-r2.11-issuer-key-peer-submit.md`.
 - **R2.12 — the faucet rate limit (2026-09-05; owner calls of 2026-09-03 stand; blind PE design ruling STOP →
   reconciled with the Economist's derivation, then built).** Three daemon flags. With `-grant-capacity` and
