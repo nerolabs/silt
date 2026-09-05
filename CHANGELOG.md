@@ -9,6 +9,13 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Added
+- **R3.4 input — the IssuerKeys-carrier block fraction, measured (2026-09-06;
+  `core/node/r34_issuer_key_carrier_fraction_test.go`, a logged measurement, not a gate).** The floor box marks
+  any block carrying a demand-issuer key registration Indeterminate, so the accept-flip's witness coverage
+  depends on how many blocks carry one. From a cold key schedule over 2V round-robin blocks: before R2.11 every
+  validator carried its own key on its own turn (V carriers, 50 % of blocks at V = 2, 4, 8); after R2.11 the
+  first proposer carries every pending key at once (ONE carrier: 25 % / 12 % / 6 %). R2.11 lowers the
+  Indeterminate fraction. One cold turn; the harness has no epoch turns.
 - **R2.11 — a peer-submit path for a demand-issuer key registration (2026-09-05; closes residual
   R0.4b-11).** A validator that never wins a proposal slot can now get its per-epoch demand-issuer key
   committed: `MsgSubmitIssuerKeyReg` (APPENDED to the kind table, never inserted — `MsgKind` is positional)
