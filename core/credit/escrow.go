@@ -129,7 +129,7 @@ func (l *Ledger) RecordServeToObject(server, requester ports.NodeID, root ports.
 	s := l.acct(server)
 	s.balance += bytes - skim // 1 byte served = 1 credit, less the durability skim
 	s.servedBytes += bytes
-	l.acct(requester).fetchedBytes += bytes
+	l.recordFetched(requester, bytes)
 	e := l.escrowFor(root)
 	e.balance += skim
 	e.funded += skim

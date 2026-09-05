@@ -189,9 +189,19 @@ const bbClockSkewToleranceNanos = int64(60 * 1e9)
 // trajectories at ANY R: one identity crossing a bin edge between two polls shows up as
 // -1 at one bin and +1 at another. The floor closes ATTRIBUTION (whose trajectory it is)
 // only against a reader that cannot pad the census; against a fetching reader it closes
-// neither attribution nor extraction. That residual is R-BB-DELTA-TRAJECTORY, open, and
-// bounded by the poll rate and the number of bin crossings per interval — neither of
-// which this instrument controls. It is NOT claimed closed here.
+// neither attribution nor extraction. That residual is R-BB-DELTA-TRAJECTORY, open. It
+// is NOT claimed closed here.
+//
+// THE OBSERVATION RATE IS BOUNDED BY THE PUBLISHER, NOT BY THE READER (G-BB-26). An
+// earlier version of this paragraph said the residual was "bounded by the poll rate".
+// That was wrong as written and is corrected here: the poll rate is the READER's own
+// choice, and there is no rate limiter anywhere on the UI server. The bound is real only
+// because /api/status now serves a snapshot recomputed at most once per a fixed
+// interval T and the cached copy in between (cmd/silt/ui.go, statusSnapshotInterval), so
+// an observer gets at most floor(uptime/T) distinct blocks however fast it asks and
+// every crossing inside one interval is unresolvable. T is a SECURITY PARAMETER: it is
+// derived, published on the wire beside the axis constants so an analyst can price this
+// residual, and provisional pending owner ratification.
 //
 // THE RULE THE FLOOR ENFORCES IS A PROPERTY, NOT A FIELD LIST (G-BB-11′). Partition
 // every published field of the block:
@@ -653,9 +663,9 @@ type bbootstrapState struct {
 // would read forever after as skew — which is the same class of defect (a check that
 // depends on an unenforced ordering) this method exists to close.
 //
-// It moves nothing. Its only effect is that Register begins stamping a first-touch tick
-// — a field no standing calculation reads (see the T-axis note on account.firstSeenTick)
-// and that reaches the wire only as a coarse bucket.
+// It moves nothing. Its only effect is that recordFetched begins stamping a first-FETCH
+// tick — a field no standing calculation reads (see the T-axis note on
+// account.firstFetchTick) and that reaches the wire only as a coarse bucket.
 //
 // Either argument may be nil, and nil is the safe state, not a silent downgrade: with no
 // clock the snapshot reports ClockSource "none" and publishes no cells; with no monotone
@@ -690,15 +700,38 @@ func (l *Ledger) obsNowNanos() int64 {
 	return int64(now)
 }
 
-// stampFirstTouch is called from Register — the ONE place an account is created, which
-// is what makes "written once at first touch" structural rather than a guarded
-// assignment at N call sites. The +1 follows the bond auditor's convention
-// (core/node/bondaudit.go): tick 0 means UNSET, so the first tick is never 0.
-func (l *Ledger) stampFirstTouch(a *account) {
-	if l.bb.obsClock == nil {
+// stampFirstFetch writes the first-fetch tick once. It is called from recordFetched
+// (credit.go), the ONE write path for account.fetchedBytes, which is what makes "an
+// account is stamped if and only if it is in the census" structural rather than a
+// guarded assignment at N call sites. The "already set" guard is what keeps the window
+// open at the FIRST fetch rather than the latest; Register's old
+// call-once-at-construction placement gave that for free and this does not. The +1
+// follows the bond auditor's convention (core/node/bondaudit.go): tick 0 means UNSET,
+// so the first tick is never 0.
+//
+// THE STAMP MOVED OFF Register (G-BB-24, R-BB-STAMP-BY-ANY-PATH). Register is reached
+// through acct() by every ledger path, including bond audit (core/node/bondaudit.go),
+// PoR grading (core/node/por.go), bounty payment (escrow.go PayBounty) and the
+// false-repair slash — so the age axis recorded first ledger touch by ANY path and
+// over-stated the age of every identity that is also a DHT participant, without bound
+// above by the ledger's uptime. The axis is specified as time since first FETCH (see
+// the header), and recordFetched is where a fetch is recorded.
+//
+// IT NEVER TOUCHES account.firstSeenTick. That field belongs to RecordBondChallenge and
+// records a DIFFERENT EVENT — the first bond challenge this identity answered. Both are
+// wall-clock nanoseconds off the same daemon clock (corrected 2026-09-05; the earlier
+// claim that the auditor's tick was a request counter was wrong), so the split is not
+// about units: one shared field guarded on "unset" would keep the CHALLENGE instant for
+// a peer the auditor reached first, and publish that as its fetch age.
+//
+// THIS FUNCTION IS THE INSTRUMENT'S ONLY WRITE, and it is the one call a build tag
+// cannot remove from an untagged function. bbootstrap_off.go declares an empty twin, so
+// a default build stamps nothing anywhere.
+func (l *Ledger) stampFirstFetch(a *account) {
+	if l.bb.obsClock == nil || a.firstFetchTick != 0 {
 		return
 	}
-	a.firstSeenTick = uint64(l.obsNowNanos()) + 1
+	a.firstFetchTick = uint64(l.obsNowNanos()) + 1
 }
 
 // bbootstrapByteBin returns the quarter-log2 bin of b, or -1 for b <= 0 (an account with
@@ -806,11 +839,11 @@ func (l *Ledger) bBootstrapSnapshot() BBootstrapHistogram {
 		if out.Cells == nil {
 			continue // no clock: counted in the census, never placed on the age axis
 		}
-		if a.firstSeenTick == 0 {
+		if a.firstFetchTick == 0 {
 			out.Unstamped++
 			continue
 		}
-		age := now - (int64(a.firstSeenTick) - 1)
+		age := now - (int64(a.firstFetchTick) - 1)
 		if age < 0 {
 			age = 0
 			// CENSUS class: this arm can only fire if an account exists, so it is its

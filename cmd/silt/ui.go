@@ -37,6 +37,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/nerolabs/silt/adapters/eventloop"
@@ -73,7 +74,79 @@ type uiServer struct {
 	// (D-BB-BUILD-TAG, docs/decisions.md). Untagged, statusExtras is an empty struct
 	// (bbootstrap_off.go) and this hook has no possible target.
 	statusExtra func(*statusExtras)
+
+	// The /api/status snapshot cache (R2.9a, G-BB-26). Guarded by its own mutex, not
+	// by the event loop: the whole point is that a request that hits a fresh cache
+	// never reaches the loop at all.
+	//
+	// THE CACHE ADDS NO CENSUS DEPENDENCY TO A DEFAULT BUILD. statusDoc holds the whole
+	// document, and the document's optional tail is the embedded statusExtras — which
+	// untagged is a zero-field struct, so a default binary caches no histogram, reaches
+	// no ledger account through this field, and cannot: statusExtra is nil, so
+	// computeStatus never calls it. The cache exists for the two reasons in
+	// statusSnapshotInterval, and the second of them (the O(R) + O(chunks) walk on the
+	// event loop per unauthenticated GET) is true in BOTH builds.
+	statusMu    sync.Mutex
+	statusDoc   *statusInfo // nil until the first request; the FULL document, including the tokened detail
+	statusTaken time.Time   // when statusDoc was computed
+	// now reads the wall clock the CACHE ages against. nil means time.Now, which is
+	// what the daemon uses. A test injects it so it can poll across an interval
+	// boundary without sleeping for statusSnapshotInterval — the alternative is a
+	// sleeping test, and a sleeping test is how a 5 s constant becomes a 5 s unit
+	// suite. It is not a second time source for anything measured: the B_bootstrap
+	// ages come off the ledger's own injected clock, never this.
+	now func() time.Time
 }
+
+func (s *uiServer) nowWall() time.Time {
+	if s.now != nil {
+		return s.now()
+	}
+	return time.Now()
+}
+
+// statusSnapshotInterval is T, the fixed interval at which GET /api/status recomputes.
+// Between recomputes every caller is served the same cached document.
+//
+// WHY A CACHE AT ALL, on two independent grounds (RESEARCH CERTIFICATION
+// R2.9a-instrument-necessity-geometry-bound-and-tail-merging, 2026-09-05, §3.5, which
+// rules it REQUIRED).
+//
+//  1. PRIVACY. The B_bootstrap block's R-BB-DELTA-TRAJECTORY residual was disclosed as
+//     "bounded by the poll rate". The poll rate is the READER's choice and nothing here
+//     limits it, so that was not a bound. With a fixed T an observer gets at most
+//     floor(uptime/T) distinct documents however fast it asks, and every bin crossing
+//     inside one interval is unresolvable. It also bounds — it does NOT close — the
+//     red-team's F2 join on durability.objects[].funded; the token gate below is what
+//     closes that.
+//  2. BUILD-IMMUTABLE #8. The handler walks the whole append-only, never-evicted
+//     account set (core/credit/bbootstrap.go) plus the whole chunk store, INSIDE the
+//     node's event loop, per unauthenticated GET. "An unbounded system on a small box is
+//     not inefficient, it is unsafe." Caching makes the per-request cost O(1) and the
+//     per-interval cost O(R), which caps the amplification of a GET flood at 1 per
+//     interval instead of at the attacker's request rate.
+//
+// PROVISIONAL VALUE — OWNER RATIFIES. T bounds a disclosure rate, so it is a security
+// parameter and not a tuning knob (docs/build-process.md: a durability knob has twice
+// also been a security parameter). Derived from shipped numbers, not taste, and bounded
+// on both sides:
+//
+//   - From above by the FIT: the narrowest positive-width age bucket is 60 s
+//     (bbAgeEdgeNanos[2]-[1]) and the candidate W values the edges bracket run from an
+//     hour to a week, so any T well inside 60 s is over-sampled by orders of magnitude
+//     and costs the estimate NOTHING.
+//   - From above by the OPERATOR: the shipped dashboard polls every 3,000 ms
+//     (cmd/silt/ui/index.html). Sitting just above that keeps the operator's view
+//     essentially live while making the recompute rate strictly lower than the request
+//     rate, so the amplification cap bites for the ordinary reader too.
+//   - From below by PRIVACY and COST: a larger T means fewer observations per identity
+//     and less loop work.
+//
+// 5 s is above the poll period and 12x inside the narrowest bucket. The trade the owner
+// owns: the privacy side wants T much LARGER — at 5 s an observer still gets 17,280
+// documents a day — and only the owner can spend the dashboard's liveness on that. One
+// named site changes it.
+const statusSnapshotInterval = 5 * time.Second
 
 // addressCapConfig is the -dht-address-cap configuration as /api/status reports it.
 type addressCapConfig struct {
@@ -242,6 +315,20 @@ func (s *uiServer) guard(h http.Handler) http.Handler {
 			return
 		}
 		h.ServeHTTP(w, r)
+		// 5. A state change the operator just made invalidates the /api/status
+		// snapshot, so the next read recomputes rather than serving a document taken
+		// before the write. Without this, POST /api/fund debits the balance and the
+		// dashboard shows the OLD balance for up to statusSnapshotInterval, which reads
+		// as "the action failed" — a silent-loss shape (Don't #4), and a worse one than
+		// ordinary polling staleness because the client knows it just wrote.
+		//
+		// IT DOES NOT REOPEN THE AMPLIFICATION THE CACHE CLOSES. This runs only after
+		// the token gate above, so an unauthenticated reader cannot reach it; the
+		// recompute rate an attacker controls is still one per interval. And the
+		// operator's own mutations are rare and already cost more than an O(R) walk.
+		if isMutating(r.Method) {
+			s.invalidateStatus()
+		}
 	})
 }
 
@@ -361,45 +448,115 @@ func httpError(w http.ResponseWriter, code int, err error) {
 	json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 }
 
-func (s *uiServer) apiStatus(w http.ResponseWriter, _ *http.Request) {
-	type chainInfo struct {
-		Height  int `json:"height"`
-		Entries int `json:"entries"`
+type chainInfo struct {
+	Height  int `json:"height"`
+	Entries int `json:"entries"`
+}
+
+// statusInfo is the GET /api/status document. It is a NAMED type because it is cached:
+// see statusSnapshotInterval for why, and computeStatus/apiStatus for how.
+type statusInfo struct {
+	ID           string           `json:"id"`
+	Peer         string           `json:"peer"`
+	UptimeSec    int64            `json:"uptimeSec"`
+	CapUsed      int64            `json:"capUsed"`
+	CapTotal     int64            `json:"capTotal"`
+	Chunks       int              `json:"chunks"`
+	Peers        int              `json:"peers"`
+	Stats        node.Stats       `json:"stats"`
+	Network      node.NetEstimate `json:"network"`
+	Validator    bool             `json:"validator"`
+	Reachability string           `json:"reachability"`
+	Chain        *chainInfo       `json:"chain,omitempty"`
+	Durability   *durabilityInfo  `json:"durability,omitempty"`
+	AddressCap   addressCapInfo   `json:"addressCap"` // R4.3b series A/B/E (shadow-run telemetry)
+	// statusExtras is EMPTY in a default build and contributes no key at all
+	// (measured: the emitted JSON is byte-identical to a build with no such field).
+	// Under the `bbootstrap` build tag it declares one optional pointer, `bBootstrap`,
+	// which is ABSENT unless -bbootstrap is set — absent and empty stay different
+	// objects, so a reader that sees no key knows the instrument is off and a reader
+	// that sees the key with zero requesters knows it is on and the ledger is idle.
+	//
+	// It is an EMBEDDED STRUCT rather than an `any` field so that a default binary
+	// contains no JSON key name for it either: encoding/json promotes an embedded
+	// unexported struct's exported fields, and an empty one promotes nothing.
+	//
+	// IT IS CACHED BY VALUE with the rest of the document, and apiStatus's shallow
+	// copy carries it verbatim: nothing below rewrites it, so two reads inside one
+	// interval return the same block, which is what BB-21 asserts. Untagged there is
+	// nothing to carry.
+	statusExtras
+
+	// THE SNAPSHOT IS NOT LIVE, AND SAYING SO IS PART OF THE MECHANISM (G-BB-26). A
+	// cache that quietly serves an old number is a silent-loss failure shape (Don't
+	// #4), so every response carries its own provenance.
+	//
+	// snapshotTakenAtUnix is FIXED for the life of one snapshot, which is what makes
+	// two reads inside one interval byte-identical everywhere it matters (Tester gate
+	// BB-21 reads the bBootstrap block). snapshotAgeSec is computed at SERVE time and
+	// is the one field that moves between two such reads — deliberately, because it is
+	// the field that stops a reader mistaking a cached value for a live one.
+	// snapshotIntervalSec publishes T itself, beside the axis constants, so an analyst
+	// can price R-BB-DELTA-TRAJECTORY without reading the source.
+	SnapshotTakenAtUnix int64 `json:"snapshotTakenAtUnix"`
+	SnapshotAgeSec      int64 `json:"snapshotAgeSec"`
+	SnapshotIntervalSec int64 `json:"snapshotIntervalSec"`
+}
+
+// apiStatus serves the status document from a snapshot recomputed at most once per
+// statusSnapshotInterval (G-BB-26), then strips the per-object durability detail for a
+// caller that presents no API token (red-team F2).
+//
+// ONE CACHE, NOT TWO. The cached document is the FULL one, and the withholding is
+// applied to a copy at serve time. Keying the cache on "did this caller authenticate"
+// would double the recompute rate and hand an unauthenticated attacker its own private
+// cache line to drive, which is the amplification the cache exists to cap.
+func (s *uiServer) apiStatus(w http.ResponseWriter, r *http.Request) {
+	now := s.nowWall()
+	doc, takenAt := s.statusSnapshot(now)
+	out := *doc // shallow: only the scalar age and the durability pointer are rewritten
+	out.SnapshotAgeSec = int64(now.Sub(takenAt).Seconds())
+	if !s.validToken(r) {
+		out.Durability = withheldDurability(doc.Durability)
 	}
-	var out struct {
-		ID           string           `json:"id"`
-		Peer         string           `json:"peer"`
-		UptimeSec    int64            `json:"uptimeSec"`
-		CapUsed      int64            `json:"capUsed"`
-		CapTotal     int64            `json:"capTotal"`
-		Chunks       int              `json:"chunks"`
-		Peers        int              `json:"peers"`
-		Stats        node.Stats       `json:"stats"`
-		Network      node.NetEstimate `json:"network"`
-		Validator    bool             `json:"validator"`
-		Reachability string           `json:"reachability"`
-		Chain        *chainInfo       `json:"chain,omitempty"`
-		Durability   *durabilityInfo  `json:"durability,omitempty"`
-		AddressCap   addressCapInfo   `json:"addressCap"` // R4.3b series A/B/E (shadow-run telemetry)
-		// statusExtras is EMPTY in a default build and contributes no key at all
-		// (measured: the emitted JSON is byte-identical to a build with no such
-		// field). Under the `bbootstrap` build tag it declares one optional pointer,
-		// `bBootstrap`, which is ABSENT unless -bbootstrap is set — absent and empty
-		// stay different objects, so a reader that sees no key knows the instrument is
-		// off and a reader that sees the key with zero requesters knows it is on and
-		// the ledger is idle.
-		//
-		// It is an EMBEDDED STRUCT rather than an `any` field so that a default binary
-		// contains no JSON key name for it either: encoding/json promotes an embedded
-		// unexported struct's exported fields, and an empty one promotes nothing.
-		statusExtras
+	writeJSON(w, &out)
+}
+
+// statusSnapshot returns the cached document, recomputing it if it is older than
+// statusSnapshotInterval. It returns the instant the document was taken so the caller
+// can publish its age.
+func (s *uiServer) statusSnapshot(now time.Time) (*statusInfo, time.Time) {
+	s.statusMu.Lock()
+	defer s.statusMu.Unlock()
+	if s.statusDoc != nil && now.Sub(s.statusTaken) < statusSnapshotInterval {
+		return s.statusDoc, s.statusTaken
 	}
+	s.statusDoc = s.computeStatus(now)
+	s.statusTaken = now
+	return s.statusDoc, s.statusTaken
+}
+
+// invalidateStatus drops the cached document so the next read recomputes. Called after
+// a token-gated mutation completes; see guard step 5.
+func (s *uiServer) invalidateStatus() {
+	s.statusMu.Lock()
+	s.statusDoc = nil
+	s.statusMu.Unlock()
+}
+
+// computeStatus does the O(R) + O(chunks) work: the whole account census, the whole
+// chunk store, the routing table. This is the body that used to run on the event loop
+// once per request.
+func (s *uiServer) computeStatus(now time.Time) *statusInfo {
+	out := &statusInfo{}
 	out.ID = s.nd.ID().String()
 	out.Peer = s.selfPeer
-	uptime := time.Since(s.started)
+	uptime := now.Sub(s.started)
 	out.UptimeSec = int64(uptime.Seconds())
 	out.Validator = s.validator
 	out.Peers = s.peerCount()
+	out.SnapshotTakenAtUnix = now.Unix()
+	out.SnapshotIntervalSec = int64(statusSnapshotInterval / time.Second)
 	s.onLoop(func() {
 		out.Reachability = s.nd.Reachability().String()
 		if s.capRep != nil {
@@ -419,7 +576,46 @@ func (s *uiServer) apiStatus(w http.ResponseWriter, _ *http.Request) {
 			s.statusExtra(&out.statusExtras)
 		}
 	})
-	writeJSON(w, out)
+	return out
+}
+
+// withheldDurability returns the durability block an UNAUTHENTICATED reader gets: the
+// aggregates, and no per-object array (red-team F2, owner-ratified 2026-09-05).
+//
+// THE LEAK, exactly. RecordServeToObject adds bytes*SkimNum/SkimDen to an object's
+// funded reserve (core/credit/escrow.go) and the skim is one eighth, so `delta funded x 8`
+// is the EXACT byte count served of a NAMED content root. Joined to the B_bootstrap
+// block's per-identity decomposition that is who-fetched-what verbatim, it needs no flag
+// and no token, and it predates R2.9a entirely. Don't #3 is a bright line.
+//
+// WHY A TOKEN AND NOT LESS PRECISION. Rounding a CUMULATIVE counter does not stop delta
+// extraction: an observer polling across the rounding boundary still recovers the
+// increments, and the increments are the leak. Same trap as adding noise per request to
+// a cumulative cell. The cache above bounds the extraction RATE and leaves the join
+// intact at low traffic, where one interval routinely holds one fetch.
+//
+// WHY THE TOKEN IS SOUND HERE, against the red-team's own F9 critique of tokens. F9's
+// objections all turn on the secret having to TRAVEL to a remote analyst: printed to
+// stdout, carried in a URL, doubling as a write capability. The consumer of this block
+// is the operator's OWN node — the embedded UI already attaches the bearer token to
+// every same-origin /api/ call (cmd/silt/ui/app.js) and cloudtest already reads `funded`
+// with an Authorization header — so the secret never travels and the holder already has
+// write control. F9's remaining point was that tokening the histogram would not close F2
+// because `funded` stayed open. This is that half.
+//
+// WITHHELD IS NOT EMPTY. objects is ABSENT, never []: an empty array means "this node
+// caretakes nothing", a missing key means "withheld". Same absent-vs-empty discipline as
+// the minimum-requester floor. The aggregates that stay open — bountyOn and the node's
+// own balance — name no root, which is the term the F2 join needs.
+func withheldDurability(di *durabilityInfo) *durabilityInfo {
+	if di == nil {
+		return nil
+	}
+	return &durabilityInfo{
+		BountyOn:       di.BountyOn,
+		Balance:        di.Balance,
+		DetailWithheld: true,
+	}
 }
 
 // durabilityInfo makes the built-but-previously-invisible S7 repair economy
@@ -430,9 +626,14 @@ func (s *uiServer) apiStatus(w http.ResponseWriter, _ *http.Request) {
 // reads very differently from one that is live. Standing is never in this block
 // (Invariant A: credits fund durability, never consensus weight).
 type durabilityInfo struct {
-	BountyOn bool            `json:"bountyOn"`
-	Balance  int64           `json:"balance"`
-	Objects  []objDurability `json:"objects"`
+	BountyOn bool  `json:"bountyOn"`
+	Balance  int64 `json:"balance"`
+	// Objects is TOKEN-GATED and ABSENT without one (red-team F2; see
+	// withheldDurability for the mechanism and the reasoning). detailWithheld tells the
+	// two absences apart: `objects: []` means this node caretakes nothing,
+	// `detailWithheld: true` with no objects key means the caller did not authenticate.
+	Objects        []objDurability `json:"objects,omitempty"`
+	DetailWithheld bool            `json:"detailWithheld"`
 }
 
 type objDurability struct {
@@ -613,6 +814,10 @@ func (s *uiServer) apiEconomySelf(w http.ResponseWriter, r *http.Request) {
 		},
 		Objects: objects,
 	}
+	if !s.validToken(r) {
+		out.Objects = nil
+		out.ObjectsWithheld = true
+	}
 	writeJSON(w, out)
 }
 
@@ -634,7 +839,12 @@ type economySelf struct {
 	Margin      economyMargin      `json:"margin"`
 	SelfFunding economySelfFunding `json:"selfFunding"`
 	Wash        economyWash        `json:"wash"`
-	Objects     []economyObject    `json:"objects"`
+	// Objects is TOKEN-GATED and ABSENT without one — this endpoint republishes the
+	// same per-root skimIn/bountyOut that /api/status withholds, and gating one surface
+	// while leaving its twin open would close nothing (red-team F2). The pooled
+	// SelfFunding figures above stay open: they name no root.
+	Objects         []economyObject `json:"objects,omitempty"`
+	ObjectsWithheld bool            `json:"objectsWithheld"`
 }
 
 type economyRevenue struct {

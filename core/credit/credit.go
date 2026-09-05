@@ -48,13 +48,8 @@ type account struct {
 	//
 	// firstSeenTick is the account's bond-challenge stamp (RecordBondChallenge,
 	// below), and it PREDATES the R2.9a instrument. Tick 0 means UNSET. No standing
-	// calculation reads it; the T-axis note above stands unchanged.
-	//
-	// IN A DEFAULT BUILD THAT BOND WRITER IS ITS ONLY WRITER. Register calls
-	// stampFirstTouch, which is a no-op declared in bbootstrap_off.go unless the
-	// binary was built with the `bbootstrap` tag AND the operator passed -bbootstrap
-	// (D-BB-BUILD-TAG, docs/decisions.md). So a default silt node stamps nothing on
-	// the SERVE path: no fetcher is given a first-touch time by having fetched.
+	// calculation reads it, and no part of the B_bootstrap instrument reads it either;
+	// the T-axis note above stands unchanged.
 	//
 	// THE BOND WRITER IS A WALL CLOCK, AND THIS COMMENT SAID THE OPPOSITE UNTIL
 	// 2026-09-05. Corrected: core/node/bondaudit.go computes uint64(n.clock.Now())+1,
@@ -69,13 +64,39 @@ type account struct {
 	// research-gated. Measured by core/node's
 	// TestR29aBondAuditStampsAWallClockNanosecondNotACounter.
 	//
-	// Under the tag and the flag, Register stamps it from the injected observability
-	// clock and the B_bootstrap histogram's age axis reads it — for OBSERVABILITY
-	// ONLY, reaching the wire as a coarse age bucket and never as a value.
-	bondedBytes   int64
-	bondFails     int
-	firstSeenTick uint64 // first touch; read by the B_bootstrap export ONLY, never by a standing calc
-	lastBondTick  uint64
+	// firstFetchTick is the account's FIRST-FETCH stamp (R2.9a; bbootstrap.go),
+	// written from the injected observability clock at the one place fetchedBytes is
+	// written. It is read for OBSERVABILITY ONLY — the B_bootstrap histogram's age
+	// axis — and by NO standing calculation: it is not an acquisition-age gate, and
+	// the T-axis note above stands unchanged. It reaches the wire only as a coarse
+	// age bucket, never as a value.
+	//
+	// IN A DEFAULT BUILD NOTHING WRITES IT AT ALL. recordFetched calls
+	// stampFirstFetch, which is a no-op declared in bbootstrap_off.go unless the
+	// binary was built with the `bbootstrap` tag AND the operator passed -bbootstrap
+	// (D-BB-BUILD-TAG, docs/decisions.md). So a default silt node stamps nothing on
+	// the SERVE path: no fetcher is given a first-fetch time by having fetched.
+	//
+	// THEY ARE TWO FIELDS ON PURPOSE, AND NOT FOR TIDINESS (G-BB-24,
+	// R-BB-STAMP-BY-ANY-PATH). The stamp used to live in Register, which every
+	// ledger path reaches through acct(), so it recorded first touch by ANY path —
+	// bond audit, PoR grading, bounty payment, false-repair slash — and the age axis
+	// over-stated the age of every identity that is also a DHT participant. Merging
+	// the two fields cannot fix that, because the two writers record DIFFERENT EVENTS
+	// on the same identity: a fetch stamp guarded on "unset" would never fire for a
+	// peer the bond auditor challenged first, so the census would read that peer's
+	// age from the CHALLENGE — which is the defect, preserved.
+	//
+	// CORRECTED 2026-09-05, and the correction does not weaken the split: an earlier
+	// version of this paragraph argued the two fields were needed because the writers
+	// keep time in DIFFERENT UNITS (a request counter versus nanoseconds). They do
+	// not — the bond tick is a wall-clock nanosecond too, see above. Same unit, same
+	// origin, different EVENT, and the different event is what the split is for.
+	bondedBytes    int64
+	bondFails      int
+	firstSeenTick  uint64 // the BOND AUDITOR's first-touch wall-clock tick; never read by the B_bootstrap export
+	firstFetchTick uint64 // first FETCH; read by the B_bootstrap export ONLY, never by a standing calc
+	lastBondTick   uint64
 	// equivocations counts PROVEN consensus double-signs (core/chain). It is
 	// the gravest offense — an attack on consensus itself — so it does not
 	// merely dent standing, it buries it below any threshold forever.
@@ -365,22 +386,23 @@ func (l *Ledger) advanceEpoch() {
 // Register creates the node's account and applies the starting grant.
 // Registering twice is a no-op (no double grants).
 //
-// This is FIRST TOUCH on this ledger, and the only place an account is constructed, so
-// it is where the R2.9a observability stamp would be written — once, structurally,
-// rather than by a guarded assignment at N call sites.
+// IT DOES NOT STAMP (G-BB-24). It used to: this is first touch on this ledger and the
+// only place an account is constructed, which made the stamp structural — but "first
+// touch" is not "first fetch", and every non-fetch path (bond audit, PoR grading,
+// bounty payment, false-repair slash) reaches here through acct(). The R2.9a stamp
+// now lives at recordFetched, the one place fetchedBytes is written, which is a
+// narrower structural claim and the correct one.
 //
-// stampFirstTouch is a NO-OP in a default build: it is declared empty in
-// bbootstrap_off.go and the instrument's real one compiles only under the `bbootstrap`
-// build tag, where it still writes nothing until -bbootstrap injects a clock
-// (D-BB-BUILD-TAG). Nothing is stamped and this is byte-for-byte the pre-R2.9a
-// behaviour.
+// So Register carries no instrument call at all, in EITHER build. The one call a build
+// tag could not remove moved with the stamp: recordFetched calls stampFirstFetch, which
+// is an empty body in a default build (bbootstrap_off.go) and, under the `bbootstrap`
+// tag, still writes nothing until -bbootstrap injects a clock (D-BB-BUILD-TAG).
+// Register is byte-for-byte its pre-R2.9a self.
 func (l *Ledger) Register(n ports.NodeID) {
 	if _, ok := l.accounts[n]; ok {
 		return
 	}
-	a := &account{balance: l.grant}
-	l.stampFirstTouch(a)
-	l.accounts[n] = a
+	l.accounts[n] = &account{balance: l.grant}
 	l.order = append(l.order, n)
 }
 
@@ -396,7 +418,26 @@ func (l *Ledger) RecordServe(server, requester ports.NodeID, _ ports.ChunkID, by
 	s := l.acct(server)
 	s.balance += bytes // 1 byte served = 1 credit
 	s.servedBytes += bytes
-	l.acct(requester).fetchedBytes += bytes
+	l.recordFetched(requester, bytes)
+}
+
+// recordFetched credits bytes to n's FETCHED total. It is the ONE write path for
+// account.fetchedBytes — RecordServe above and RecordServeToObject (escrow.go) are its
+// only callers — which is what makes the R2.9a age stamp below "written if and only if
+// this identity is in the census" structural, rather than a guarded assignment at N
+// call sites.
+//
+// IT IS UNTAGGED, AND THE STAMP IT CALLS IS NOT. Crediting fetched bytes is ordinary
+// ledger accounting and predates R2.9a; it must compile in every build. The `when` is
+// the instrument: stampFirstFetch has an empty untagged twin in bbootstrap_off.go, so a
+// default silt binary walks this path and writes no first-fetch time at all
+// (D-BB-BUILD-TAG, docs/decisions.md).
+func (l *Ledger) recordFetched(n ports.NodeID, bytes int64) {
+	a := l.acct(n)
+	a.fetchedBytes += bytes
+	if a.fetchedBytes > 0 {
+		l.stampFirstFetch(a)
+	}
 }
 
 func (l *Ledger) RecordAudit(prover ports.NodeID, _ ports.ChunkID, passed bool) {

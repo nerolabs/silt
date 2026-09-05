@@ -14,8 +14,8 @@ package credit
 // THE CLASSIFICATION ITSELF IS UNCHANGED. The instrument is a COUNT histogram over
 // (age × log2 bytes) and nothing reads it but an operator: no accounting rule, no
 // screen, no conservation rule, and certainly no standing calculation. The clock
-// setter's only effect is that Register stamps account.firstSeenTick — a field the
-// T-axis note has always said no standing calc reads, and that is still true; the
+// setter's only effect is that recordFetched stamps account.firstFetchTick — a field
+// the T-axis note has always said no standing calc reads, and that is still true; the
 // export reads it for observability only. The snapshot is a PURE reader and must stay
 // one: TestR29aBBootstrapSnapshotWritesNothing deep-compares the account map across it,
 // because the sibling defect in this family is a reader that goes through acct() →

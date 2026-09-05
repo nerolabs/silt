@@ -69,6 +69,12 @@ func getEconomySelf(t *testing.T, h http.Handler, query string) economySelf {
 		url += "?" + query
 	}
 	r := httptest.NewRequest("GET", url, nil)
+	// The OPERATOR's read. Panel 1 (my-solvency) is per-object and therefore
+	// token-gated (red-team F2: delta skimIn x 8 is the exact byte count served of a
+	// NAMED root), and the operator's own browser already attaches this header to every
+	// same-origin /api/ call. TestR29aF2EconomySelfWithholdsPerObjectDetailWithoutAToken
+	// covers the untokened read.
+	r.Header.Set("Authorization", "Bearer tok")
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
 	if w.Code != 200 {

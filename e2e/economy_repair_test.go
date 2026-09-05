@@ -332,7 +332,7 @@ func TestRepairBountyPaysOnTheWire(t *testing.T) {
 	var root string
 	for _, c := range caretakers {
 		for deadline := time.Now().Add(20 * time.Second); ; {
-			s := getStatus(t, c.base)
+			s := getStatus(t, c.base, c.token)
 			if s.Durability != nil && len(s.Durability.Objects) > 0 {
 				root = s.Durability.Objects[0].Root
 				break
@@ -628,7 +628,7 @@ func TestRepairBountyPaysOnTheWire(t *testing.T) {
 	deadline := time.Now().Add(180 * time.Second)
 	for paid == 0 && time.Now().Before(deadline) {
 		for _, c := range caretakers {
-			s := getStatus(t, c.base)
+			s := getStatus(t, c.base, c.token)
 			if s.Durability == nil {
 				continue
 			}

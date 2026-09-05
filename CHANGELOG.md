@@ -83,6 +83,75 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `RecordBondChallenge`, also predates R2.9a and is preserved exactly, with its own gate — see the
   correction below for what that writer actually stamps, and for the residual it leaves open on a
   validator node.
+- **R2.9a — `/api/status` now serves a snapshot recomputed at most once every 5 s, the `B_bootstrap`
+  age axis measures first FETCH rather than first ledger touch, and the per-object durability detail
+  requires the API token.** Three changes to what the status surface publishes; nothing counted,
+  stored or computed changes.
+  **(1) The cached fixed-interval snapshot (G-BB-26, certified REQUIRED on two independent
+  grounds).** The handler recomputed the whole document per request. The `B_bootstrap` block's
+  delta-trajectory residual was disclosed as *"bounded by the poll rate"* — but the poll rate is the
+  READER's own choice and there is no rate limiter anywhere on the UI server, so that was not a bound
+  and the disclosure is corrected in the same change. Independently, the recompute is an `O(R)` walk
+  over an append-only, never-evicted account set plus the whole chunk store, run **inside the node's
+  event loop, per unauthenticated GET** — build-immutable #8, *"an unbounded system on a small box is
+  not inefficient, it is unsafe."* Caching makes the per-request cost `O(1)` and the per-interval cost
+  `O(R)`, so a GET flood is amplified at most once per interval instead of at the attacker's request
+  rate, and an observer gets at most `⌊uptime/T⌋` distinct documents however fast it asks. **`T` is a
+  SECURITY PARAMETER and the value is PROVISIONAL pending owner ratification**, named once in code the
+  way `SlashesBytesCap` is. It is derived, not picked: bounded from above by the fit (the narrowest
+  positive-width age bucket is 60 s, so anything well inside it is over-sampled by orders of magnitude
+  and the cost to the estimate is **zero**) and by the operator (the shipped dashboard polls every
+  3,000 ms), and from below by privacy and loop cost. 5 s sits above the poll period and 12× inside
+  the narrowest bucket. **A stale document is identifiable as stale** (Don't #4): every response
+  carries `snapshotTakenAtUnix` (fixed for the life of one snapshot), `snapshotAgeSec` (computed at
+  serve time, so it moves) and `snapshotIntervalSec` (`T` itself, on the wire beside the axis
+  constants so an analyst can price the residual). **A token-gated mutation invalidates the
+  snapshot**: without that, `POST /api/fund` debited the balance and the very next
+  `/api/status` showed the old number for up to an interval, which reads as "the action
+  failed" — a worse silent-loss shape than polling staleness, because the client knows it
+  just wrote. The hook sits AFTER the token gate, so an unauthenticated reader still cannot
+  drive the recompute rate the cache exists to cap. It was found by
+  `TestEconomyEndToEndOnLiveDaemon`, not by reasoning.
+  **(2) The age axis is stamped on the FETCH path only (G-BB-24, residual
+  `R-BB-STAMP-BY-ANY-PATH`).** The stamp lived in `Register`, which every ledger path reaches through
+  `acct()`, so the axis recorded first ledger touch by **any** path — bond audit, PoR grading, bounty
+  payment, false-repair slash — and every identity that is also a DHT participant published an age
+  over-stated by however long it had been a peer before it first fetched, unbounded above by the
+  ledger's uptime, **on the input to a security parameter**. It now lives at the one place
+  `fetchedBytes` is written, which both fetch call sites are funnelled through. It is a **second
+  field**, not a re-pointed guard, and that is not tidiness: `RecordBondChallenge` keeps writing
+  `firstSeenTick` at a DIFFERENT EVENT — the first bond challenge the identity answered — so one
+  shared field guarded on "unset" could not be fixed by moving the write. A peer the auditor reached
+  first would keep the CHALLENGE instant and publish it as its fetch age, which is the defect. (The
+  first version of this entry argued the split on UNITS, saying the auditor's tick was a request
+  counter. It is a wall-clock nanosecond, as the entry above records; same unit, same clock,
+  different event. The correction does not weaken the split.) The stamp is the instrument, so it
+  compiles only under the `bbootstrap` tag: `stampFirstFetch` has an empty untagged twin, and a
+  default build walks the fetch path writing no `when` at all. The bond auditor's writer is
+  untouched.
+  **(3) The per-object durability detail is token-gated.** `durability.objects[]` published, with no
+  flag and no token, a per-content-root `funded` counter; the skim is one eighth and one served byte
+  is one credit, so **eight times the delta in `funded` is the EXACT byte count served of a NAMED
+  root** — the object half of who-fetches-what. It predates the `B_bootstrap` work entirely.
+  `/api/economy/self` republished the same per-root numbers, so both surfaces are gated together;
+  gating one alone would close nothing. **Reducing precision was refuted before it was tried**:
+  rounding a CUMULATIVE counter does not stop delta extraction, because an observer polling across
+  the rounding boundary still recovers the increments, and the increments are the leak. The cache in
+  (1) bounds the extraction RATE and closes sub-interval attribution; at this deployment's traffic an
+  interval still routinely holds one fetch, so it degrades the join rather than removing it. **The
+  aggregates stay open** — `bountyOn`, the node's own `balance`, `stats.bytesServed`, the pooled
+  `skimIn`/`bountyOut` — because they name no root, and the observatory reads them cross-origin where
+  a sibling's token by design never travels. **Withheld is not empty**: `objects` is ABSENT and
+  `detailWithheld: true` rides the block, so a reader can tell a withholding from a node that
+  caretakes nothing. **The operator's own solvency view is unchanged** — the durability horizon and
+  the cliff early-warning are a shipped feature, the embedded UI already attaches the bearer token to
+  every same-origin `/api/` call, and cloudtest already reads `funded` with an `Authorization`
+  header.
+  Gates, each with a controlled-revert ablation recorded RED: **BB-21** (two reads inside one
+  interval with a fetch interleaved return byte-identical `bBootstrap` blocks, and the block moves
+  again past the interval), the staleness-is-visible gate, **BB-22** (seven non-fetch ledger paths
+  leave no stamp; and a bond-challenged peer that fetches a day later is aged from the FETCH), and
+  the F2 gates at unit and e2e tiers on both endpoints.
 - **R2.9a — the `B_bootstrap` block now has a MINIMUM-REQUESTER FLOOR: below `R_min` it publishes
   `suppressed: true` and no census count at all (G-BB-11).** The load-bearing fact is not that cells
   leak. `stats.bytesServed` and `durability.objects[].funded` are published **unconditionally** and
@@ -337,7 +406,8 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   steps the clock back to after the ledger start but before the stamp);
   `TestR29aRunPreconditionAcceptsOnlyAValidRun` (BB-14);
   `TestR29aByteBinMatchesTheClosedForm`, `TestR29aUnstampedRequestersAreCountedNotAged`,
-  `TestR29aFirstTouchIsStampedOnceAtRegister`,
+  `TestR29aFirstFetchIsStampedOnceAtTheFirstFetch` (renamed with its subject when G-BB-24
+  moved the stamp off `Register`; see the Unreleased entry),
   `TestR29aNodeSnapshotIsTheHistogramWithNoIdentity`, `TestR29aNoLedgerYieldsNoExport` and
   `TestR29aEconomySelfFieldsAreUnchanged`. BB-12 is already covered by
   `TestCoreImportsNoAdaptersAndNoEffects` (`internal/depcheck`) and is not duplicated.
