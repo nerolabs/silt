@@ -212,6 +212,11 @@ func Resolve(root ports.Hash, key []byte, value []byte, w Witness) Result {
 		// No witness supplied. Expected missing-proof case → stall, never absent.
 		return Result{outcome: NoWitness}
 	}
+	if !proofShapeParsable(w.proof) {
+		// G-R31-2: a shape the library would PANIC on (checkPrefix) is an absent witness,
+		// refused before VerifyProof. Never ProvenAbsent.
+		return Result{outcome: NoWitness}
+	}
 
 	ok, err := smt.VerifyProof(w.proof, root[:], key, value, verifySpec())
 	if err != nil || !ok {
