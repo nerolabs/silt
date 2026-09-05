@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -58,9 +59,11 @@ func TestR29aG12RoutableBindWithBBootstrapIsRefusedAtStartup(t *testing.T) {
 
 // TestR29aG12DaemonRefusesBeforeItBindsOrMintsAToken is a source gate on daemon.go: the
 // refusal runs inside the -ui block, BEFORE loadOrCreateUIToken and BEFORE ui.serve, so a
-// refused combination binds no socket and leaves no token file behind. Order is the
-// property; a call that moved after the bind would refuse a daemon that is already
-// listening. The same order holds for the token-file refusal: it must run before
+// refused combination leaves no token file behind and never binds the UI socket. (The
+// P2P transport and the store directory already exist by then — the refusal sits after
+// node startup — so "leaves nothing behind" would be false; what it pins is the UI
+// bind and the token file.) Order is the property; a call that moved after ui.serve
+// would refuse a daemon whose UI is already listening. The same order holds for the token-file refusal: it must run before
 // loadOrCreateUIToken, so a bad mode is caught before the file is ever read.
 //
 // RUNTIME GATE: TestR29aG12RoutableBindWithBBootstrapIsRefusedAtStartup and
@@ -340,5 +343,57 @@ func TestR29aG12ReaderViewIsTheOneCompositionPoint(t *testing.T) {
 		if !strings.Contains(view, clause) {
 			t.Fatalf("SOURCE GATE: readerView lost the clause %q", clause)
 		}
+	}
+}
+
+// fakeOwnedFile is an os.FileInfo whose Sys() reports a chosen owner, so the ownership
+// clause can be exercised without root (a real chown to another uid is not available to
+// an unprivileged test).
+type fakeOwnedFile struct {
+	os.FileInfo
+	uid uint32
+}
+
+func (f fakeOwnedFile) Sys() any { return &syscall.Stat_t{Uid: f.uid} }
+
+// TestR29aG12TokenFileMustBeTheDaemonUsers is the ownership clause: a token file that is
+// 0600 but belongs to ANOTHER user — pre-planted in a shared or bind-mounted store — is
+// refused, because loadOrCreateUIToken would adopt its value and that user would then hold
+// the operator predicate (PE code ruling Finding 2, measured on a live daemon).
+func TestR29aG12TokenFileMustBeTheDaemonUsers(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "ui-token")
+	if err := os.WriteFile(path, []byte("tok"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if why := bbootstrapTokenFileIssue(fi, os.Geteuid()); why != "" {
+		t.Fatalf("the daemon user's own 0600 token was refused: %s", why)
+	}
+	other := fakeOwnedFile{FileInfo: fi, uid: uint32(os.Geteuid()) + 1}
+	why := bbootstrapTokenFileIssue(other, os.Geteuid())
+	if why == "" {
+		t.Fatalf("a 0600 token file owned by ANOTHER uid was accepted: whoever planted it holds the operator predicate (G-BB-12′)")
+	}
+	if !strings.Contains(why, "owned by uid") {
+		t.Fatalf("the ownership refusal does not say whose file it is: %s", why)
+	}
+	// Mode is checked first: a world-readable file names the mode, whoever owns it.
+	if err := os.Chmod(path, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fi, _ = os.Stat(path)
+	if why := bbootstrapTokenFileIssue(fakeOwnedFile{FileInfo: fi, uid: uint32(os.Geteuid()) + 1}, os.Geteuid()); !strings.Contains(why, "mode 0644") {
+		t.Fatalf("mode should be reported before ownership: %s", why)
+	}
+	// And the live refusal wraps the predicate with the fix on the same line.
+	if err := os.Chmod(path, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := bbootstrapRefuseInsecureTokenFile(dir, true); err != nil {
+		t.Fatalf("own 0600 file refused through the live path: %v", err)
 	}
 }

@@ -104,8 +104,10 @@ func TestR29aTheFlagGatesTheRecordingNotJustThePublication(t *testing.T) {
 	if h2.Cells == nil {
 		t.Fatalf("arm B: no cells with the age axis live")
 	}
-	if body := bbRawStatus(t, s2); !strings.Contains(body, "bBootstrap") {
-		t.Fatalf("arm B: GET /api/status carries no bBootstrap key with the flag set: %s", body)
+	// The BLOCK key, quoted and colon-terminated: "bBootstrap" alone is a substring of
+	// the withheld marker "bBootstrapWithheld" and would pass on a withheld document.
+	if body := bbRawStatus(t, s2); !strings.Contains(body, `"bBootstrap":`) {
+		t.Fatalf("arm B: GET /api/status carries no bBootstrap BLOCK with the flag set (the operator must see the block, not the marker): %s", body)
 	}
 }
 
@@ -149,7 +151,12 @@ func TestR29aFlippingTheFlagOnDoesNotRecoverThePastIsTheACCEPTEDCOST(t *testing.
 
 func bbRawStatus(t *testing.T, s *uiServer) string {
 	t.Helper()
+	// Reads AS THE OPERATOR (G-BB-12′): the block is served only to the Authorization-
+	// header token. Arm B below is the positive control that the block reaches the
+	// wire when the flag is on; read untokened it would observe the withheld marker and
+	// call it a pass (blind PE code ruling RULING-R2.9a-G-BB-12-code-32adf76 Finding 1).
 	r := httptest.NewRequest("GET", "http://127.0.0.1:8080/api/status", nil)
+	r.Header.Set("Authorization", "Bearer "+s.token)
 	w := httptest.NewRecorder()
 	s.guard(http.HandlerFunc(s.apiStatus)).ServeHTTP(w, r)
 	if w.Code != 200 {

@@ -118,8 +118,8 @@ A and ships in either case; the PE rules on whether (B) rides with it.
 - An operator who deliberately configures a proxy to inject the token has published the block
   themselves; silt refused the routable bind and the operator went around it. Disclosed, not
   closed — no mechanism distinguishes that from the operator's own `curl`.
-- F9 stands: the token is printed to stdout and rides the URL query (pre-existing operator UX
-  the dashboard depends on). A read-scoped token is the follow-on.
+- F9 stands: the token is printed to stdout and rides the URL query for form POSTs and download
+  links (the dashboard itself sends the header). A read-scoped token is the follow-on.
 - A co-tenant running AS the operator's OS user is the operator for every purpose silt can see.
 
 **What would change my mind:** the PE ruling that (B) must not ride (E) — then (A) ships alone
@@ -150,4 +150,23 @@ no content gate grew a "withheld is also acceptable" branch; S7 the three false 
 S8 the two residuals. Plus the coupling it named: ONE composition point, `uiServer.readerView`,
 where `D-UI-PRIVACY-FLAG`'s clauses will land.
 
-**Status:** built (both halves); PE fold-in applied; to blind PE code review after CI.
+**Blind PE CODE ruling** (`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-R2.9a-G-BB-12-code-32adf76-2026-09-05.md`,
+MERGE-AFTER one fix; all four wire claims measured on a live tagged daemon; six ablations RED).
+Folded in: **Finding 1 (HIGH)** — a second untokened test helper made a REQUIRED anchor's
+positive control pass on the marker (`"bBootstrap"` is a substring of `"bBootstrapWithheld"`);
+the helper reads as the operator and the assertion names the quoted, colon-terminated block
+key. **Finding 2 (MED, the PE's own miss in S5)** — the token-file check tested mode, not
+ownership; a pre-planted 0600 token owned by another user was adopted and served the block.
+An ownership clause (file uid = daemon euid) is added behind a pure predicate with a
+fake-owner test, since an unprivileged test cannot chown. Findings 5, 6, 9 (a wrong
+declaration count, a half-false comment, a self-contradiction here) corrected.
+**Named, not built:** `R-BB-TOKEN-MODE-STARTUP-ONLY` (Finding 7 — a `chmod 0644` after start
+reopens the file with no refusal; the check is startup-only by S5's own scope);
+`readerView` composes `/api/status` only, while `/api/economy/self` withholds outside it
+(Finding 4 — bites when `-privacy` lands; that build brings both documents under one
+composition point); `loadOrCreateUIToken` rewrites an empty existing file without changing its
+mode (Finding 8, untagged path, out of scope); a directory named `ui-token` fails safely but
+confusingly (Finding 10). The loopback predicate is a string check on the flag's name, not a
+resolution (Finding 3) — `localhost` is trusted by name, as the request guard already does.
+
+**Status:** built; both PE rulings folded in; merged when CI is green.

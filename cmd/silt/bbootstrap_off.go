@@ -11,9 +11,10 @@ package main
 // "flag provided but not defined: -bbootstrap". That is the intended answer. The
 // mechanism is not disabled, it is absent, and there is nothing to enable.
 //
-// WHY THESE SIX DECLARATIONS SURVIVE. A build tag cannot delete a struct field, a
+// WHY THESE SEVEN DECLARATIONS SURVIVE. A build tag cannot delete a struct field, a
 // composite-literal member or a call from an untagged function, so the untagged tree
-// keeps exactly six references — one type and five one-line calls, all inert:
+// keeps exactly seven references — one type and six one-line calls (five in daemon.go,
+// withholdBBootstrap in ui.go), all inert:
 //
 //   - statusExtras, embedded in the GET /api/status payload. Empty here, so
 //     encoding/json promotes nothing and the emitted bytes carry no extra key

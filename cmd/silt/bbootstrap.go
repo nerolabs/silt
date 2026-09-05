@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/nerolabs/silt/core/credit"
@@ -130,10 +131,30 @@ func bbootstrapRefuseInsecureTokenFile(storeDir string, on bool) error {
 		}
 		return fmt.Errorf("-bbootstrap: cannot stat %s: %w", path, err)
 	}
-	if mode := fi.Mode().Perm(); mode&0o077 != 0 {
-		return fmt.Errorf("-bbootstrap refused: %s is mode %04o, readable beyond its owner; the B_bootstrap block is served to whoever presents this token, so it must be owner-only — run `chmod 0600 %s` (G-BB-12′)", path, mode, path)
+	if why := bbootstrapTokenFileIssue(fi, os.Geteuid()); why != "" {
+		return fmt.Errorf("-bbootstrap refused: %s %s; the B_bootstrap block is served to whoever presents this token, so it must be the daemon user's and owner-only — run `chown $(id -u) %s && chmod 0600 %s` (G-BB-12′)", path, why, path, path)
 	}
 	return nil
+}
+
+// bbootstrapTokenFileIssue is the pure predicate behind bbootstrapRefuseInsecureTokenFile:
+// "" when the token file is the caller's and owner-only, otherwise the one-line reason.
+// Two clauses, because "the reader knows a secret in a 0600 file" is only "the reader is
+// the operator" when nobody else could have WRITTEN that file: (1) the mode grants no
+// group or other bit; (2) the file is owned by the daemon's effective user — a token
+// pre-planted by another user in a shared or bind-mounted store, 0600 to THEM, would
+// otherwise be adopted by loadOrCreateUIToken and hand that user the operator predicate
+// (blind PE code ruling RULING-R2.9a-G-BB-12-code-32adf76 Finding 2, measured). On a
+// platform whose FileInfo carries no owner the second clause is skipped, stated here so
+// the skip is a known gap and not a silent one.
+func bbootstrapTokenFileIssue(fi os.FileInfo, euid int) string {
+	if mode := fi.Mode().Perm(); mode&0o077 != 0 {
+		return fmt.Sprintf("is mode %04o, readable beyond its owner", mode)
+	}
+	if st, ok := fi.Sys().(*syscall.Stat_t); ok && uint64(st.Uid) != uint64(euid) {
+		return fmt.Sprintf("is owned by uid %d, not the daemon's uid %d", st.Uid, euid)
+	}
+	return ""
 }
 
 // bbootstrapInject wires the TWO observability time sources into the ledger — AND ONLY

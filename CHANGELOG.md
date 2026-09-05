@@ -19,8 +19,12 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   observatory or any localhost origin) gets the sibling marker `bBootstrapWithheld: true` and no block, so
   the three wire states stay distinct key sets. All withholds on `GET /api/status` now compose in ONE
   function, `uiServer.readerView` (the F2 per-object detail today; `D-UI-PRIVACY-FLAG`'s counters when
-  built). Default build untouched: the off twins refuse and withhold nothing. Nine tagged gates
-  (`TestR29aG12*`), all in the CI anchor list. Deliberation: `docs/thinking/2026-09-05-r29a-g12-reader-is-operator.md`.
+  built). Default build untouched: the off twins refuse and withhold nothing. **Blind PE code review
+  (MERGE-AFTER) folded in:** a second untokened test helper had let a REQUIRED anchor's positive control pass on
+  the marker (`"bBootstrap"` is a substring of `"bBootstrapWithheld"`) — it reads as the operator and asserts the
+  quoted block key; and the token-file check now also requires the file to be OWNED by the daemon's user (a
+  pre-planted 0600 token from another user was measured adopted and served). Ten tagged gates (`TestR29aG12*`),
+  all in the CI anchor list. Deliberation: `docs/thinking/2026-09-05-r29a-g12-reader-is-operator.md`.
 
 ### Changed
 - **R2.9a — the `B_bootstrap` byte axis is ONE bin per doubling (2026-09-05, G-BB-23, owner-ratified in
