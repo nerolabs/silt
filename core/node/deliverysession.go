@@ -432,6 +432,16 @@ func (n *Node) WitnessedIncrements(object ports.Hash) int64 {
 	return n.demandBank.WitnessedIncrements(object)
 }
 
+// DistinctBondedFetchers is the P3b surface for object: how many bond-distinct fetchers
+// have been credited on it (either lane). 0 when demand banking is off or the credential
+// is not required. Observability only, never standing.
+func (n *Node) DistinctBondedFetchers(object ports.Hash) int64 {
+	if n.demandBank == nil {
+		return 0
+	}
+	return n.demandBank.DistinctBondedFetchers(object)
+}
+
 // ---- the wire handlers (server side)
 
 func (n *Node) handleDeliveryOpen(from ports.NodeID, msg ports.Message) {

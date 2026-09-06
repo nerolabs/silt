@@ -81,6 +81,21 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   pins `TestR31NoSumTrieAndEverySMTUsesSHA256`, `TestR31SMTModuleIsPinnedToTheCertifiedVersion`,
   `TestR31EveryStateHashTagEndsInExactlyOneNUL`. Record: `docs/design/state-root-domain-separation.md`.
 
+### Removed
+- **B-9 — the flat delivery receipt (token spent at REDEEM) is retired from the node.** `MsgDeliveryReceipt` keeps
+  its kind number and is refused with a named reason (`handleDeliveryReceipt` parses, banks and pays nothing); the
+  fetcher-side `SubmitDeliveryReceipt` is deleted (`swarm receipt` moved to the session flow in R2.9). The
+  build-questions certification (2026-09-04 §2.2) requires it — a fetcher left on the flat path re-creates the
+  suppression break the anchored lane closed — and it closes `R-V2-V3-DEMAND-DILUTION` by construction (no second
+  surface for one face). The "delivery receipt paid NO credit" S5 marker re-homes to the session lane's refused
+  settlement. The `core/demand` primitive (`Bank.Redeem`, `SubmittedReceipt`, v2 `Ack`) stays as a leaf library
+  with its own unit tests, documented as having no production caller; it and the ledger's flat leg
+  (`RedeemDeliveryCreditReason`) retire together in one attended PR. Eight node gates and three sim tests are
+  re-homed to open-and-settle with their properties unchanged (restart replay → the same anchor cannot open twice;
+  the cross-server pump → an A-issued anchor is refused at B before the window is consulted, and the expired
+  anchor is refused at A; hardness at admission → measured on `MsgDeliveryOpen`; P3b → the distinct-bonded-fetcher
+  surface, `Node.DistinctBondedFetchers`). The v2 cost-to-wash sim retires in favour of its v3 twin.
+
 ### Changed
 - **R2.9: the delivery session's unsettled remainder is a DEPOSIT released at anchor expiry, not a burn
   (D-R2.9-NODE-HALF-CALLS call 1, amended 1′; certification

@@ -32,7 +32,6 @@ var ObservableContract = []ContractedString{
 	{"archive: ON", "cmd/silt/daemon.go", "e2e reArchive", "TestArchiveTierAnnouncesRetention"},
 	{"NOT banked", "cmd/silt/swarm.go", "e2e: the lane-off refusal must be legible to the caller (instances 2 and 3 of the scar)", "TestDeliveryReceiptRefusedWhenLaneOff"},
 	{"delivery receipt banked", "cmd/silt/swarm.go", "e2e parses credit=(\\d+) from the client line", ""},
-	{"delivery receipt banked", "core/node/demandrole.go", "e2e findInLog on the daemon log file", ""},
 	{"delivery receipt banked", "core/node/deliverysession.go", "R2.9: the session lane emits the SAME marker per settled receipt; e2e TestPaidDeliverySessionEndToEnd finds it", "TestPaidDeliverySessionEndToEnd"},
 	{"delivery session closed", "core/node/deliverysession.go", "R2.9: the close line (reason idle/exhausted/disabled, per-session numbers only — no identity, no object; M0 log audit)", "TestPaidDeliverySessionEndToEnd"},
 	{"delivery settlement: p=", "cmd/silt/numeraire.go", "R2.9 gate B-11: the S5 affordability line, every number computed from the constants", "TestAffordabilityLineIsAnnounced"},
@@ -59,7 +58,7 @@ var ObservableContract = []ContractedString{
 	{"proposed on-chain revocation of ", "cmd/silt/daemon.go", "e2e reRevoked", "TestChainRevocationCommitsOverTCP"},
 	{" proposal correctly REJECTED by ", "cmd/silt/daemon.go", "e2e proposal_reject (forge-block / lowbond-propose)", "TestForgedBlockRejectedOverTCP"},
 	{"ui: http://", "cmd/silt/daemon.go", "e2e publishflood parses the UI URL", "TestConcurrentUIPublishesAllSucceed"},
-	{"delivery receipt paid NO credit", "core/node/demandrole.go", "the only signal an operator gets when a banked receipt settles nothing", "TestBankedButUnpaidReceiptLogsTheWarnLine"},
+	{"delivery receipt paid NO credit", "core/node/deliverysession.go", "the only signal an operator gets when a receipt settles nothing (B-9: re-homed from the retired flat lane to the session lane's refused settlement)", "TestBankedButUnpaidReceiptLogsTheWarnLine"},
 	{"relay session settled", "core/node/relaytransport.go", "e2e TestPaidRelaySessionEndToEnd and the M0 log audit (TestRelaySettlementLogCarriesNoDurableField) find the settlement line by it", "TestPaidRelaySessionEndToEnd"},
 	{"anchored", "core/node/relaytransport.go", "R2.14: the settlement line's reason field says the paid session was anchored (min(count, Σ face) settled); the R0.7 interim's no-anchor value is retired — an unanchored open is refused and never settles", "TestRelayAnchorsAreBoughtOnTheRelaysOwnLedger"},
 }
