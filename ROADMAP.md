@@ -1727,12 +1727,12 @@ live in [`docs/thinking/2026-09-01-residual-defect-repro-recipes.md`](docs/think
   that crosses a format boundary:** (a) a migration path (read old store, upgrade proofs/chain), or
   (b) refuse to start with a clear message (safe default). Relates to #70 (proof migration) / #98
   (chain format).
-- **Silent-behavior observability — #235.** Three silent behaviors reduce field assertability:
-  (1) a healthy repair sweep emits no log line at any level ("is the caretaker working?" is
-  unanswerable until something breaks) — add `repair: sweep complete, all stripes healthy` and/or
-  per-repair counts; (2) `-revoke <bogus-root>` leaves the daemon silently inert — add `revoke:
-  root not yet committed, waiting` or an explicit refusal; (3) rolling upgrade across a format
-  boundary degrades with only a one-line stderr notice (ties to #237). Partly overlaps #237.
+- **Silent-behavior observability — #235 — (1) and (2) DONE on main (trued up 2026-09-06); (3) OPEN with #237.**
+  (1) every healthy sweep now logs `repair sweep complete` at info with shard/reachable counts and a `repair pass
+  complete` summary (`core/node/repair.go`, `finishSweep`); (2) `-revoke <root>` prints `revoke: target … waiting until it
+  is committed on-chain …`, then `… is committed — gathering a takedown quorum`, then `takedown: proposed …`
+  (`cmd/silt/daemon.go`, the `-revoke` block, which cites #235); (3) rolling upgrade across a format boundary still
+  degrades with a one-line stderr notice — carried under #237.
 
 **Test / harness debt:**
 - **Cited-test lint + the OWED ledger it opened — PR #708 (lint) and PR #707 (first two payments).**
