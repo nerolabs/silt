@@ -81,6 +81,35 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   pins `TestR31NoSumTrieAndEverySMTUsesSHA256`, `TestR31SMTModuleIsPinnedToTheCertifiedVersion`,
   `TestR31EveryStateHashTagEndsInExactlyOneNUL`. Record: `docs/design/state-root-domain-separation.md`.
 
+### Changed
+- **R2.9: the delivery session's unsettled remainder is a DEPOSIT released at anchor expiry, not a burn
+  (D-R2.9-NODE-HALF-CALLS call 1, amended 1′; certification
+  `silt-reviews/research/research-outcome/R2.9-session-remainder-refund-and-live-anchor-cap-RESEARCH-CERTIFICATION-2026-09-06.md`).**
+  `CloseDeliverySession(fetcher, remaining, maxAnchorEpoch)` books ONE pending record `{durable fetcher, amount,
+  releaseEpoch = maxAnchorEpoch + W + 1}` in the same ledger call that accounts the close; release rides the
+  existing at-most-once-per-epoch sweep against the WATERMARK (and `ReleaseDueRefunds` from the node's session
+  sweep), paying an account that ALREADY EXISTS on the ledger — never the registering lookup (M1: a bearer
+  anchor's presenter need not be its payer, and `acct()` would mint a grant); no account ⇒ burned and counted
+  (`R-REFUND-NEEDS-AN-ACCOUNT`, ≤ f per session). Release-AT-CLOSE and the per-identity live-anchor cap are
+  REFUTED and not built: a bearer anchor passed down fresh keypairs would fill the guard for zero net credits;
+  locking the deposit for the anchor's window bounds live occupancy by stock/f (T-DEPOSIT) and keeps R2.12's
+  start-up assertion exact. The pending table is bounded at the guard cap, refuse-never-evict. The session
+  carries `maxAnchorEpoch`; the guard entry and the durable store carry NO fetcher identity. A restart loses
+  pending deposits and live faces (the guard survives): `RestoredGuardEntries` — the guard entries restored at boot, both
+  lanes, an UPPER BOUND on lost deposits — is printed at boot and served on `/api/status` (`deliverySettlement`, token
+  holders only). The 64 GiB pin's
+  composed claim is now TRUE at every consumption ratio; `R-REAPER-FORFEIT` and `R-FACE-BURN-GRIEF` close on this
+  lane; `R-PIN-VACUOUS-UNDER-QUANTIZATION` closes; new `R-STOCK-RENEWABLE-OCCUPANCY`, `R-ANCHOR-BEARER-TRANSFER`.
+  `DeliverySettlementStats` gains `RefundedCredits`, `PendingRefundCredits`, `RefundsBurnedNoAccount`,
+  `RefundsBurnedAtCap`, `RestoredGuardEntries`; `BurnedCredits` counts genuine burns only. The S5 affordability
+  line says so. Gates G-6R-1…10: `TestRemainderIsConservedAcrossCloseAndRelease`, `TestReleaseNeverRegistersAnAccount`,
+  `TestRemainderIsNotSpendableUntilTheAnchorExpires`, `TestGuardOccupancyIsBoundedByTheCreditStock` (the
+  refutation encoded, written first), `TestZeroSettleSessionReturnsItsWholeFace`,
+  `TestPendingRefundTableIsBoundedAndRefusesNeverEvicts`, `TestR212AssertionStillBoundsOccupancyUnderTheRelease`,
+  `TestNoIdentityIsJoinedToAnAnchorSerialInTheDurableStore`, `TestRestartLosesTheRemainderAndCountsIt`, the
+  Invariant-A press; four ablations RED (release at close reddens four gates at once). B-6 and G-λ-8-6
+  re-expressed as `TestDeliveryRemainderIsNeverRoutedToEscrow` and `TestRemainderIsAccountedOnceAtCloseNotPerSettlement`.
+
 ### Fixed
 - **The repair-bounty geometry: a shard is a WHOLE ciphertext chunk, so the shipped 64 KiB default pays a
   base of 2 credits, not zero.** The G-R212-7 build stated shard = chunk/k and placed the publish warning's
@@ -148,8 +177,8 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `TestProvisionalLaneEqualsCreditedBalanceAndReversesPerIncrement` (B-2),
   `TestDeliverySettlementIsBoundedByAnchorFaceOnThePayingLedger` (B-3), `TestDeliveryFundTopUpSpendsFreshAnchorsOnce`
   (B-3b), `TestPaidSerialCapDominatesBothPopulations` (B-4, unit half; the field half — per-lane `guardFullRefusals == 0`
-  on a graded run, `T_b` and the resident cost measured — is owed to the Tester), `TestDeliveryRemainderIsBurnedNotEscrowed` (B-6),
-  `TestPaidSerialCapLiteralsMatchTheirSources`, `TestBurnIsCountedOnceAtCloseNotPerSettlement` (G-λ-8-6), and the
+  on a graded run, `T_b` and the resident cost measured — is owed to the Tester), `TestDeliveryRemainderIsNeverRoutedToEscrow` (B-6),
+  `TestPaidSerialCapLiteralsMatchTheirSources`, `TestRemainderIsAccountedOnceAtCloseNotPerSettlement` (G-λ-8-6), and the
   Invariant-A press (B-14); six ablations run RED (the blind PE ran ten). Blind PE MERGE-AFTER
   (`silt-reviews/principle-engineer/RULING-R2.9-ledger-half-45178ff-2026-09-06.md`) folded in: the cap text
   re-stated as the φ = 1 corner, the settlement godoc re-stated as settle-monotone, per-lane guard counters, the

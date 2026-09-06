@@ -114,8 +114,8 @@ func grantFundsThePinInWholeFaces(grant, fee, relayBytesPerCredit int64) (need, 
 func deliveryAffordabilityLine(grant, fee, relayBytesPerCredit int64, idle string) string {
 	dMax, kMax := deliverySessionCeiling(fee)
 	need, have, _ := grantFundsThePinInWholeFaces(grant, fee, relayBytesPerCredit)
-	return fmt.Sprintf("delivery settlement: p=%d credit per %d B (U/p=%d B/credit; self-mint Dλ=%d B/credit, PF %.2f); anchor face %d funds %d increments = %d B (%.2f GiB) per session, k_max=%d; one grant = %d faces, the 64 GiB pin needs %d faces across delivery+relay; idle window %s; remainder at close: BURNED (G-6 as ratified; refund is an open owner call, G-R212-8)",
+	return fmt.Sprintf("delivery settlement: p=%d credit per %d B (U/p=%d B/credit; self-mint Dλ=%d B/credit, PF %.2f); anchor face %d funds %d increments = %d B (%.2f GiB) per session, k_max=%d; one grant = %d faces, the 64 GiB pin needs %d faces across delivery+relay; idle window %s; unsettled remainder: a DEPOSIT returned to the fetcher's account when its anchor leaves the %d-epoch guard window (D-R2.9-NODE-HALF-CALLS 1′; the relay lane keeps the burn)",
 		int64(credit.DeliveryIncrementCredit), int64(credit.DeliveryIncrementBytes), int64(credit.DeliveryBytesPerCredit), int64(credit.ServeMintBytesPerCredit),
 		float64(credit.ServeMintBytesPerCredit)/float64(credit.DeliveryBytesPerCredit),
-		fee, dMax/credit.DeliveryIncrementBytes, dMax, float64(dMax)/float64(1<<30), kMax, have, need, idle)
+		fee, dMax/credit.DeliveryIncrementBytes, dMax, float64(dMax)/float64(1<<30), kMax, have, need, idle, credit.PaidSerialWindow+1)
 }

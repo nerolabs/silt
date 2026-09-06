@@ -31,6 +31,7 @@ import (
 	"github.com/nerolabs/silt/adapters/simclock"
 	"github.com/nerolabs/silt/adapters/simnet"
 	"github.com/nerolabs/silt/core/blindtoken"
+	"github.com/nerolabs/silt/core/chain"
 	"github.com/nerolabs/silt/core/credit"
 	"github.com/nerolabs/silt/core/demand"
 	"github.com/nerolabs/silt/ports"
@@ -292,8 +293,8 @@ func TestSessionReaperKeysOnIdleNotOnAdmit(t *testing.T) {
 		t.Fatal("a session silent for 4 idle windows was not reaped")
 	}
 	st := ledger.DeliverySettlementStats()
-	if st.SessionsClosed != 1 || st.BurnedCredits != 50_000 {
-		t.Fatalf("the silent session's remainder: closed %d, burned %d, want 1 and exactly its unsettled face (B-13: ≤ the faces spent)", st.SessionsClosed, st.BurnedCredits)
+	if st.SessionsClosed != 1 || st.PendingRefundCredits != 50_000 || st.BurnedCredits != 0 {
+		t.Fatalf("the silent session's remainder: closed %d, pending %d, burned %d — want 1, exactly its unsettled face booked as a deposit (B-13: the fetcher forfeits nothing but latency), 0 burned", st.SessionsClosed, st.PendingRefundCredits, st.BurnedCredits)
 	}
 	// The stamp is COARSE (cert §7): never finer than idle/4.
 	if g := ports.Time(r29Idle / deliveryStampDivisor); liveSess.lastSettle%g != 0 {
@@ -563,3 +564,127 @@ func TestSettlementIsNotGatedOnTheDemandObservable(t *testing.T) {
 		t.Fatalf("distinct %d / increments %d, want 1 / 16", server.demandBank.DistinctBondedFetchers(obj), server.WitnessedIncrements(obj))
 	}
 }
+
+// ---- the deposit's release epoch is the anchor's REAL epoch (blind PE item 1, 2026-09-07):
+// the whole M2 / T-DEPOSIT argument rests on the runtime value the node hands the ledger
+// at close. Ablation: `maxAnchorEpoch: maxEpoch(spend)` → 0 at open, or deleting the
+// fund-time raise ⇒ RED.
+
+// epochRecordingLedger records the maxAnchorEpoch the node hands CloseDeliverySession.
+type epochRecordingLedger struct {
+	*credit.Ledger
+	closes []uint64
+}
+
+func (l *epochRecordingLedger) CloseDeliverySession(f ports.NodeID, remaining int64, maxAnchorEpoch uint64) int64 {
+	l.closes = append(l.closes, maxAnchorEpoch)
+	return l.Ledger.CloseDeliverySession(f, remaining, maxAnchorEpoch)
+}
+
+// liveEpochServer builds a server whose chain is at epoch `epoch` (c3 fixture: real
+// EpochBlocks, blocks minted by another validator) with committed demand keys for epoch 0
+// and for `epoch`, so an anchor minted under key_epoch verifies at that epoch.
+func liveEpochServer(t *testing.T, epoch int) (*Node, *rsa.PrivateKey, *credit.Ledger, *settableEpoch) {
+	t.Helper()
+	nd, signer := c3Node(t, 7301)
+	key0, keyE := cachedRSAKey(t, 3), cachedRSAKey(t, 4)
+	c := c3Chain(t, 1, signer,
+		chain.SignIssuerKeyReg(signer, 0, demand.KeyFingerprint(&key0.PublicKey)),
+		chain.SignIssuerKeyReg(signer, uint64(epoch), demand.KeyFingerprint(&keyE.PublicKey)))
+	ledger := credit.New(50_000, 0)
+	src := &settableEpoch{}
+	ledger.SetEpochSource(src)
+	nd.SetLedger(ledger)
+	nd.EnableChain(c, signer)
+	nd.SetDemandIssuerKey(rand.Reader, 0, key0)
+	c3Advance(t, c, []ed25519.PrivateKey{signer}, epoch)
+	nd.SetDemandIssuerKey(rand.Reader, uint64(epoch), keyE)
+	if got := nd.chainEpoch(); got != uint64(epoch) {
+		t.Fatalf("fixture: chain epoch %d, want %d", got, epoch)
+	}
+	if ks := nd.DemandIssuerKeyset(nd.id); ks == nil || ks.Key(uint64(epoch)) == nil {
+		t.Fatalf("fixture: no committed key_%d — the genesis registration for a later epoch was not accepted", epoch)
+	}
+	src.e = uint64(epoch)
+	nd.EnableDemandBank(nd.id)
+	nd.EnableDeliverySessions(r29Idle)
+	return nd, keyE, ledger, src
+}
+
+func TestDepositReleaseEpochIsTheAnchorsRealEpoch(t *testing.T) {
+	const E = 3
+	nd, keyE, ledger, src := liveEpochServer(t, E)
+	rec := &epochRecordingLedger{Ledger: ledger}
+	nd.SetLedger(rec)
+	fID := identity.FromSeed(7302)
+	ledger.Register(fID.NodeID())
+	ledger.Register(nd.id)
+	// OPEN with an anchor issued at epoch 0 (still inside the window at epoch E = 3), then
+	// FUND with an anchor issued at epoch E: the session's release epoch must follow the
+	// NEWEST anchor (the raise at fund), so the value handed at close is E, not 0.
+	key0 := cachedRSAKey(t, 3)
+	s, err := nd.OpenDeliverySession(fID.NodeID(), demand.SignSessionOpen(fID.Signer(), nd.id, []demand.Token{mintDemandTokenUnder(t, key0, 0)}))
+	if err != nil {
+		t.Fatalf("open at epoch %d with an epoch-0 anchor: %v", E, err)
+	}
+	if s.maxAnchorEpoch != 0 {
+		t.Fatalf("session maxAnchorEpoch %d after an epoch-0 open, want 0", s.maxAnchorEpoch)
+	}
+	if _, err := nd.FundDeliverySession(fID.NodeID(), demand.SignSessionFund(fID.Signer(), nd.id, s.handle, []demand.Token{mintDemandTokenUnder(t, keyE, E)})); err != nil {
+		t.Fatalf("fund: %v", err)
+	}
+	if s.maxAnchorEpoch != E {
+		t.Fatalf("session maxAnchorEpoch %d after a fund at epoch %d, want the raise to %d", s.maxAnchorEpoch, E, E)
+	}
+	nd.closeDeliverySession(s.handle, "test")
+	// A second session OPENED with an epoch-E anchor and never funded: the open path alone
+	// must hand E (a constant 0 at open is indistinguishable on the epoch-0 arm above).
+	gID := identity.FromSeed(7303)
+	ledger.Register(gID.NodeID())
+	s2, err := nd.OpenDeliverySession(gID.NodeID(), demand.SignSessionOpen(gID.Signer(), nd.id, []demand.Token{mintDemandTokenUnder(t, keyE, E)}))
+	if err != nil {
+		t.Fatalf("second open: %v", err)
+	}
+	nd.closeDeliverySession(s2.handle, "test")
+	if len(rec.closes) != 2 || rec.closes[0] != E || rec.closes[1] != E {
+		t.Fatalf("the node handed the ledger maxAnchorEpoch %v at the two closes, want [%d %d] — a constant here re-creates release-at-close on any chain past epoch W+1", rec.closes, E, E)
+	}
+	// The observable: the deposit (two whole faces) is locked until E + W + 1 on the
+	// ledger's own clock, then returns whole.
+	for e := uint64(E); e <= E+uint64(credit.PaidSerialWindow); e++ {
+		src.e = e
+		ledger.ReleaseDueRefunds()
+		if ledger.Balance(fID.NodeID()) != 0 {
+			t.Fatalf("epoch %d: the deposit released before the anchor left the window (balance %d)", e, ledger.Balance(fID.NodeID()))
+		}
+	}
+	src.e = E + uint64(credit.PaidSerialWindow) + 1
+	ledger.ReleaseDueRefunds()
+	if ledger.Balance(fID.NodeID()) != 100_000 {
+		t.Fatalf("at E+W+1 the fetcher holds %d, want both faces (100,000) back", ledger.Balance(fID.NodeID()))
+	}
+}
+
+// TestSilentServerSweepReleasesDueDeposits — the refundReleaser wire in SweepDeliverySessions
+// (blind PE ablation 6): on a server with NO other guarded ledger activity, the periodic sweep
+// alone returns a due deposit. Ablation: delete the ReleaseDueRefunds call from the sweep.
+func TestSilentServerSweepReleasesDueDeposits(t *testing.T) {
+	fetcher, server, ledger, sched := deliveryPairForTest(t, nil)
+	src := &settableEpoch{}
+	ledger.SetEpochSource(src)
+	handle, _ := openOverWire(t, fetcher, server, sched, mintDemandTokensFor(t, server, 0, 1))
+	server.closeDeliverySession(handle, "test") // a deposit of one face, anchor epoch 0
+	before := ledger.Balance(fetcher.id)
+	src.e = uint64(credit.PaidSerialWindow) + 1 // the anchor has left the window; nothing else touches the ledger
+	server.SweepDeliverySessions()
+	if ledger.Balance(fetcher.id) != before+50_000 {
+		t.Fatalf("a silent server's sweep did not release the due deposit (balance %d → %d)", before, ledger.Balance(fetcher.id))
+	}
+}
+
+// settableEpoch is a ledger EpochSource a test steps by hand (the ledger's own clock; the
+// node's chain epoch is a separate clock in these fixtures — R2.10 / F8 wires them to one
+// source in production).
+type settableEpoch struct{ e uint64 }
+
+func (s *settableEpoch) Epoch() uint64 { return s.e }

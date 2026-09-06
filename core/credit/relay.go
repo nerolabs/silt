@@ -68,6 +68,13 @@ package credit
 //
 // NO RELAY SKIM in v1 (design §6): the conserved transfer now exists to skim
 // from; whether to is the owner's call before R2.4.
+//
+// THE RELAY LANE KEEPS THE BURN (R2.9 refund certification §5.1: its counterparty is
+// an ephemeral with no account, so a refund would be the RT-RELAY-1 phantom). One
+// call-graph coupling to know: SpendRelayAnchors' epoch advance runs the shared
+// once-per-epoch sweep, which also releases the DELIVERY lane's due deposits into
+// existing balances (deliveryanchor.go releaseDueRefunds). Balance-only, single-writer
+// event loop; the rule the relay lane inherits is nothing, the sweep it shares is one.
 
 import "github.com/nerolabs/silt/ports"
 

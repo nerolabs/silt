@@ -250,11 +250,11 @@ func TestPaidDeliverySessionEndToEnd(t *testing.T) {
 		t.Fatalf("close reason: %q", closed)
 	}
 	st := readStats()
-	if st.SessionsClosed != 1 || st.BurnedCredits != fee-value || st.SettledCredits != value {
-		t.Fatalf("stats %+v, want 1 closed, burned face − settled = %d, settled %d", st, fee-value, value)
+	if st.SessionsClosed != 1 || st.PendingRefundCredits != fee-value || st.BurnedCredits != 0 || st.SettledCredits != value {
+		t.Fatalf("stats %+v, want 1 closed, face − settled = %d booked as a deposit, 0 burned, settled %d", st, fee-value, value)
 	}
 	if delta := readTotal() - totalStart; delta != value-fee {
-		t.Fatalf("the close moved the ledger total (now %d) — the remainder must be accounted, not routed", delta)
+		t.Fatalf("the close moved the ledger total (now %d) — the remainder is a deposit until the anchor expires, not routed", delta)
 	}
 	// (e) the M0 log audit: the close line names no identity and no object.
 	for _, forbidden := range []string{dID.NodeID().String(), sID.NodeID().String(), object.String(), hex.EncodeToString(tok.Serial)} {

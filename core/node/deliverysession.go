@@ -64,7 +64,7 @@ func (e deliveryError) Error() string { return string(e) }
 
 const (
 	errDeliveryAcceptDisabled   = deliveryError("delivery: paid sessions not accepted (the delivery-receipt lane is off)")
-	errDeliveryIdleUnset        = deliveryError("delivery: idle window unset — refuse-until-set (T_b unmeasured; R-REAPER-FORFEIT)")
+	errDeliveryIdleUnset        = deliveryError("delivery: idle window unset — refuse-until-set (a liveness choice: how long an idle session holds one of the node's session slots and how long the fetcher's deposit stays locked past its anchor's expiry; no forfeiture — the remainder is a deposit)")
 	errDeliverySessionCap       = deliveryError("delivery: live session table at capacity (per-node cap; refuse, never evict)")
 	errDeliverySessionExists    = deliveryError("delivery: this fetcher already holds a live session here — fund it (MsgDeliveryFund) instead of opening another (one session per fetcher)")
 	errDeliveryNoAnchor         = deliveryError("delivery: session open carries no anchor (an unanchored session funds nothing)")
@@ -110,6 +110,11 @@ type DeliverySession struct {
 	settled    int64        // credits settled so far, gross; monotone; ≤ budget
 	count      uint64       // cumulative acknowledged increments; monotone
 	lastSettle ports.Time   // COARSE stamp of the last settlement (or the open)
+	// maxAnchorEpoch is the newest issue epoch among the session's anchors (open + funds):
+	// the unsettled remainder is a deposit released when that anchor leaves the guard
+	// window (M2, D-R2.9-NODE-HALF-CALLS 1′), so the epoch rides the session, never a new
+	// dimension on the guard entry (G-6R-8).
+	maxAnchorEpoch uint64
 }
 
 // Budget / Settled / Count are read-only views for tests and observability.
@@ -128,8 +133,9 @@ type deliverySettler interface {
 	SettleDelivery(server, fetcher ports.NodeID, root ports.Hash, count, budget, prior int64) (settled, paid int64, reason string)
 }
 type deliveryCloser interface {
-	CloseDeliverySession(remaining int64) int64
+	CloseDeliverySession(fetcher ports.NodeID, remaining int64, maxAnchorEpoch uint64) int64
 }
+type refundReleaser interface{ ReleaseDueRefunds() }
 
 // EnableDeliverySessions opts this node into paid delivery sessions with the given
 // idle window (C9). A non-positive window is REFUSED at the daemon (refuse-until-set);
@@ -151,7 +157,12 @@ func (n *Node) EnableDeliverySessions(idle ports.Duration) {
 
 // SweepDeliverySessions closes every session idle for at least the window, on the
 // node's clock, for a periodic caller. Loop-only (touches the session table).
-func (n *Node) SweepDeliverySessions() { n.sweepDeliverySessions(n.clock.Now()) }
+func (n *Node) SweepDeliverySessions() {
+	n.sweepDeliverySessions(n.clock.Now())
+	if r, ok := n.ledger.(refundReleaser); ok && n.ledger != nil {
+		r.ReleaseDueRefunds() // deposits whose anchors left the window return even on a silent server
+	}
+}
 
 // DisableDeliverySessions closes every live session (each remainder accounted once)
 // and turns the lane off. For tests and shutdown.
@@ -195,10 +206,10 @@ func (n *Node) sweepDeliverySessions(now ports.Time) {
 
 // closeDeliverySession removes the session FIRST (the SettleRelaySession delete-first
 // ordering: nothing can settle or fund it after this) and then accounts the remainder
-// ONCE through the ledger (G-λ-8-6). THIS IS THE G-6 SEAM: under the ratified rule the
-// remainder is burned (CloseDeliverySession); under the refund direction the owner may
-// ratify, this is where it would be credited to s.fetcher instead. The log line carries
-// per-session numbers and the reason only — no identity, no object (M0 audit).
+// ONCE through the ledger (G-λ-8-6), as a DEPOSIT released to the fetcher when the
+// session's anchors leave the guard window (M1 + M2, D-R2.9-NODE-HALF-CALLS 1′). The
+// log line carries per-session numbers and the reason only — no identity, no object
+// (M0 audit).
 func (n *Node) closeDeliverySession(handle uint64, why string) {
 	s, ok := n.deliverySessions[handle]
 	if !ok {
@@ -209,11 +220,11 @@ func (n *Node) closeDeliverySession(handle uint64, why string) {
 		delete(n.deliveryByFetcher, s.fetcher)
 	}
 	remaining := s.budget - s.settled
-	var burned int64
+	var pending int64
 	if c, ok := n.ledger.(deliveryCloser); ok && n.ledger != nil {
-		burned = c.CloseDeliverySession(remaining)
+		pending = c.CloseDeliverySession(s.fetcher, remaining, s.maxAnchorEpoch)
 	}
-	n.logf(ports.LogInfo, "delivery session closed", "reason", why, "increments", s.count, "settled", s.settled, "remainder", remaining, "burned", burned)
+	n.logf(ports.LogInfo, "delivery session closed", "reason", why, "increments", s.count, "settled", s.settled, "remainder", remaining, "deposit", pending)
 }
 
 // verifyDeliveryAnchors verifies each anchor under this node's OWN keyset in the
@@ -299,7 +310,8 @@ func (n *Node) OpenDeliverySession(from ports.NodeID, open demand.SessionOpen) (
 	}
 	n.deliverySessionSeq++
 	s := &DeliverySession{handle: n.deliverySessionSeq, fetcher: from, fetcherPub: append([]byte(nil), open.Fetcher...),
-		commitment: demand.SessionOpenCommitment(n.id, open.Anchors), budget: face, lastSettle: n.deliveryStamp(now)}
+		commitment: demand.SessionOpenCommitment(n.id, open.Anchors), budget: face, lastSettle: n.deliveryStamp(now),
+		maxAnchorEpoch: maxEpoch(spend)}
 	n.deliverySessions[s.handle] = s
 	n.deliveryByFetcher[from] = s.handle
 	return s, nil
@@ -330,7 +342,21 @@ func (n *Node) FundDeliverySession(from ports.NodeID, fund demand.SessionFund) (
 		return nil, err
 	}
 	s.budget += face
+	if e := maxEpoch(spend); e > s.maxAnchorEpoch {
+		s.maxAnchorEpoch = e
+	}
 	return s, nil
+}
+
+// maxEpoch is the newest issue epoch in a verified anchor batch.
+func maxEpoch(spend []ports.RelayAnchor) uint64 {
+	var m uint64
+	for _, a := range spend {
+		if a.Epoch > m {
+			m = a.Epoch
+		}
+	}
+	return m
 }
 
 // SettleDeliveryReceipt is the server side of MsgDeliverySettle (C4–C7). It returns
