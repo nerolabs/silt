@@ -1918,7 +1918,18 @@ does not move, so `g/f` and the guard bound are unchanged and ONE-FACE is not en
 **RATIFIED 2026-09-06 by the owner (*"2. ratified"*): the certified value verbatim — `RelayIncrementBytes = 524_288`,
 `RelayIncrementCredit = 1`, `MaxChainLength` and `MaxSessionBytes` DERIVED, `MaxAnchorsPerSession` derives
 to 1, the relay adapter's shared per-splice cap takes the same value; the nine sites move in ONE PR
-(cert §4.1).** **G-R212-7 (NEW):** STRICT parity `p > λ·U` at `λ = 1 credit/byte` and the 64 GiB pin
+(cert §4.1). BUILT 2026-09-06; blind PE code ruling MERGE-AFTER folded in
+(`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-G-R212-2-relay-reprice-code-2026-09-06.md`):
+the derivation collapsed the face into S_max, so the face is now held by INDEPENDENT literals
+(F-1) and the runtime budget `l.fee × k` is gated by a node-tier low-fee test (F-3); the shared cap
+has its own gate (F-2). **Scope delta recorded against cert §3.4 (PE N-5):** the `Serve` refusal of a
+per-splice cap below the protocol ceiling is UNCONDITIONAL, not scoped to `-accept-relay-payments` —
+a free-only relay operator can no longer cap a splice below 24.4 GiB; kept unconditional on the PE's
+recommendation (one cap, one constructor; a conditional refusal is a free/paid differential in
+waiting). **Residual `R-RELAY-ANON-SET′` (PE N-6, research-gated, not asserted):** the certification's
+"IMPROVED" reading is one-sided — `k_max = 1` dissolves the `k` partition, but guard (ii) rotates one
+ephemeral per session and the session ceiling rose 24.4×, so ephemeral rotation per relayed byte
+falls 24.4×.** **G-R212-7 (NEW):** STRICT parity `p > λ·U` at `λ = 1 credit/byte` and the 64 GiB pin
 are two ratified decisions 137,439× apart — R2.9 cannot set its price until the owner resolves which
 yields. 2026-09-06: the owner asked for context; the builder's brief recommends route (a), re-denominating
 `λ` (a self-mint scaling constant with no external consumer) strictly below `p/U` through a Researcher

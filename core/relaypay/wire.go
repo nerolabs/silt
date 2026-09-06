@@ -37,10 +37,11 @@ const ShippedAnchorFace = 50_000
 // never a bare number (cert §5): the fewest anchors whose summed face covers the
 // longest session a relay accepts, ⌈S_max × RelayIncrementCredit / face⌉. Since the
 // 2026-09-06 re-price S_max is itself ShippedAnchorFace / RelayIncrementCredit, so
-// this is exactly 1: one anchor funds the whole 24.4 GiB session (T-RELAY-GRAN; it was
-// 6 at the 4 KiB increment against a 1 GiB cap). A lower fee raises it (granularity /
-// liveness, never soundness); slack above the ceiling would only let an attacker pad
-// an open with garbage anchors that cost the relay a modexp each.
+// this is IDENTICALLY 1 for any face — one anchor funds the whole 24.4 GiB session
+// (T-RELAY-GRAN; it was 6 at the 4 KiB increment against a 1 GiB cap). The expression is
+// kept so a future de-coupling of S_max from the face re-derives k_max instead of
+// re-pinning it; slack above the ceiling would only let an attacker pad an open with
+// garbage anchors that cost the relay a modexp each.
 const MaxAnchorsPerSession = (MaxChainLength*RelayIncrementCredit + ShippedAnchorFace - 1) / ShippedAnchorFace
 
 // Anchor is one relay prepayment credential as presented at session open: the

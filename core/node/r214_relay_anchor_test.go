@@ -17,8 +17,12 @@ package node
 // AcquireRelayAnchors; the named S5 errors).
 //
 // ABLATIONS that must redden (cert §9): verify under peerDemandKeys instead of
-// self (T-3 two-relay); remove the all-or-nothing check (T-10); restore
-// budget := S × inc (T-4, T-9); touch acct(ephID) (T-1/T-5).
+// self (T-3 two-relay); remove the all-or-nothing check (core/credit
+// TestRelayCredentialIsSpentOncePerLedger — at k_max = 1 the node tier has nothing to
+// be partial about, blind PE N-1 2026-09-06); restore budget := S × inc, or drop the
+// min(count, budget) ceiling (TestRelayBudgetIsTheLedgerFaceNotTheChainLength — the
+// only node-tier gate that reaches the RUNTIME budget l.fee, blind PE F-3); touch
+// acct(ephID) (T-1/T-5).
 //
 // Every gate here is RED on main. Most fail at anchor mint ("R2.14 not built"),
 // which is "fails to reach the property"; T-1 (open half), T-11 and T-13 fail on
@@ -798,6 +802,51 @@ func TestRelayCeilingNeverExceedsBudget(t *testing.T) {
 	}
 }
 
+// ---- F-3 (blind PE, 2026-09-06) ------------------------------------------------
+
+// TestRelayBudgetIsTheLedgerFaceNotTheChainLength holds the RUNTIME budget seam the
+// re-price's compile-time pins cannot reach: the budget is Σ face from the LEDGER
+// (l.fee × k, SpendRelayAnchors), not ShippedAnchorFace and not S. With a ledger fee
+// strictly below the shipped face, one anchor funds FEWER increments than S_max, so a
+// full-length chain is longer than its funding again: AuthorizedBytes() must stay ≤
+// budget × B and the settle ≤ face. Ablations "restore budget := S × inc" and "drop
+// the min(count, budget) ceiling" redden here and nowhere else in this package.
+func TestRelayBudgetIsTheLedgerFaceNotTheChainLength(t *testing.T) {
+	const lowFee = int64(relaypay.ShippedAnchorFace * 4 / 5) // 40,000 < the shipped face
+	cl := newAnchorCluster(t, 9300, 1, 0, r214Grant, nil)
+	r := cl.relay()
+	r.ledger = credit.New(lowFee, r214Grant) // the relay's OWN ledger charges a lower fee
+	r.ledger.Register(r.id())
+	r.node.SetLedger(r.ledger)
+	const S = relaypay.MaxChainLength // admissible, and now longer than one anchor funds
+	if int64(S) <= lowFee {
+		t.Fatalf("setup: S %d must exceed the budget %d for this gate to discriminate", S, lowFee)
+	}
+	c := freshChain(t, "f3-low-fee", S)
+	sess, err := r.open(newEphemeral(9390), c.Root(), S, []relaypay.Anchor{r.mintAnchor(t, 0)})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	r.node.relaySessionSeq++
+	handle := r.node.relaySessionSeq
+	r.node.relaySessions[handle] = sess
+	_ = sess.PayTo(c.Preimage(S), S)
+	if sess.Count() == 0 {
+		t.Fatal("setup: nothing was authorized")
+	}
+	if got, max := sess.AuthorizedBytes(), lowFee*relaypay.RelayIncrementBytes; got > max {
+		t.Fatalf("AuthorizedBytes() = %d with count %d against a %d-credit anchor, want ≤ budget × B = %d — the ceiling follows S, not the ledger's face", got, sess.Count(), lowFee, max)
+	}
+	afterOpen := ledgerTotal(r.ledger)
+	paid := r.node.SettleRelaySession(handle)
+	if paid > lowFee || paid != minI64(int64(sess.Count())*relaypay.RelayIncrementCredit, lowFee) {
+		t.Fatalf("settled %d with count %d, want min(count, face = %d) — settlement is bounded by S or by the shipped face, not by the ledger's face", paid, sess.Count(), lowFee)
+	}
+	if got := ledgerTotal(r.ledger) - afterOpen; got != paid {
+		t.Fatalf("the settle moved the total by %d, want exactly settled = %d", got, paid)
+	}
+}
+
 // ---- T-10 --------------------------------------------------------------------
 
 // TestRelayOpenRefusalRecordsNoAnchor is T-10 (cert §2.2, §9): an open presenting
@@ -807,7 +856,9 @@ func TestRelayCeilingNeverExceedsBudget(t *testing.T) {
 // anchor alone); the refused open left no guard entry (anchor 1 opens), no durable
 // append (the store holds exactly the anchors of ADMITTED sessions), and no
 // seen-map entry (the refused ephemeral and root are admissible later). The
-// ablation "remove the all-or-nothing check" reddens here.
+// ablation "remove the all-or-nothing check" reddens at the CREDIT tier
+// (TestRelayCredentialIsSpentOncePerLedger), not here — at k_max = 1 this open has
+// nothing to be partial about (blind PE N-1).
 func TestRelayOpenRefusalRecordsNoAnchor(t *testing.T) {
 	store := &memPaidSerialStore{}
 	cl := newAnchorCluster(t, 9000, 1, 0, r214Grant, store)

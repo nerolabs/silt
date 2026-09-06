@@ -79,6 +79,12 @@ func TestRelayMaxAnchorsPerSessionCoversTheSessionCeiling(t *testing.T) {
 	if MaxSessionBytes != MaxChainLength*RelayIncrementBytes || sessionCredits != ShippedAnchorFace {
 		t.Fatalf("T-RELAY-GRAN broken: MaxSessionBytes %d vs S_max·B %d; S_max·credit %d vs face %d", MaxSessionBytes, MaxChainLength*RelayIncrementBytes, sessionCredits, ShippedAnchorFace)
 	}
+	// F-1 (blind PE, 2026-09-06): S_max and the session ceiling now DERIVE from the face, so
+	// the face's own drift detector has to be an INDEPENDENT literal — the derivation cannot
+	// catch the face moving. The three certified values, pinned as numbers (cert §8).
+	if ShippedAnchorFace != 50_000 || MaxChainLength != 50_000 || MaxSessionBytes != 26_214_400_000 {
+		t.Fatalf("face %d / S_max %d / MaxSessionBytes %d, want 50,000 / 50,000 / 26,214,400,000 — a moved face re-derives k_max, S_max, the session ceiling, the 64 GiB pin and the guard bound together; re-certify before re-pinning", ShippedAnchorFace, MaxChainLength, MaxSessionBytes)
+	}
 	if RelayIncrementBytes != 524_288 {
 		t.Fatalf("RelayIncrementBytes = %d, want 524,288 — the owner-ratified 2026-09-06 re-price; a different value re-opens G-R212-2 (the 64 GiB pin read on the summed prices, Don't #7 below, T-AR above)", RelayIncrementBytes)
 	}

@@ -61,7 +61,7 @@ const maxProvisional = 8192
 
 // The R0.4b paid-serial guard's DERIVED cap (economist advisory §3, residual
 // R-ECON-2). Since R2.14 the guard holds TWO populations — paid delivery serials AND
-// spent relay anchors (k ≤ 6 per relay session) — so "the honest live set" below is
+// spent relay anchors (k ≤ relaypay.MaxAnchorsPerSession per relay session, 1 since the 2026-09-06 re-price) — so "the honest live set" below is
 // serves + anchored sessions × k; the derivation was not re-priced for the second
 // population (R-GUARD-SHARED-FILL, ROADMAP R2.14: a faucet-funded flood of relay opens
 // can fill the shared guard for ≤ W+1 epochs and both lanes REFUSE, never evict —

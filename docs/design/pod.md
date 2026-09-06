@@ -257,7 +257,7 @@ Consult `PoD-neutral-lane-B3-close-CONSULT-2026-08-26.md`; certification
 > The mechanism shape is certified; do not re-derive it.
 >
 > **R2.14 BUILT (2026-09-04) — the relay-lane prepayment ANCHOR; the R0.7 interim
-> (pays 0, 2026-09-03) is retired.** The chain root is now anchored to k ≤ 6 blind-signed
+> (pays 0, 2026-09-03) is retired.** The chain root is now anchored to k ≤ k_max blind-signed (k_max = 6 then; 1 since the 2026-09-06 re-price)
 > prepayment credentials under the RELAY's own chain-committed per-epoch demand key
 > (a fourth FDH domain, `silt/blindrelay/fdh/v1`), bought by the fetcher's DURABLE identity
 > through the ordinary withdrawal (a refusable `ChargePublish` on the relay's ledger — the
@@ -266,7 +266,7 @@ Consult `PoD-neutral-lane-B3-close-CONSULT-2026-08-26.md`; certification
 > session budget = the ledger's own Σ face and settlement `min(count, Σ face)` into the
 > relay's balance. `settled ≤ Σ face` on the paying ledger (INV-RELAY-CONS); per session
 > `Δ Σ_L = settled − Σ face ≤ 0`, the unconsumed remainder BURNED (R-ANCHOR-STALL, ≤
-> 300,000 credits per 1 GiB session, an owner-accepted v1 residual; the certified follow-on
+> 300,000 credits per 1 GiB session then, ≤ one face = 50,000 per 24.4 GiB session since the 2026-09-06 re-price, an owner-accepted v1 residual; the certified follow-on
 > is a `MsgRelayFund` top-up with FRESH anchors). Collusion is a WASH at full consumption
 > (no v1 relay skim — an owner call before R2.4). **BUILT ≠ LIVE:** an anchor verifies only
 > under a v5 `IssuerKeyReg`, so the lane is DARK until era-4 activation; every open is
@@ -319,7 +319,7 @@ the stiff is bounded to one increment.
 
 **Increment / redeem flow:**
 
-1. **Withdraw the anchors (R2.14).** The fetcher's DURABLE identity buys k ≤ 6
+1. **Withdraw the anchors (R2.14).** The fetcher's DURABLE identity buys k ≤ k_max (1 since the 2026-09-06 re-price)
    prepayment anchors FROM THE RELAY it will pay: each is a blind signature under
    the relay's own chain-committed per-epoch demand key `key_E` in the
    relay-anchor FDH domain (`blindtoken.BlindRelayAnchor` over

@@ -63,7 +63,7 @@ const MaxChainLength = ShippedAnchorFace / RelayIncrementCredit
 // free/paid differential (D-POD-RELAY-COEXIST).
 //
 //	MaxSessionBytes = MaxChainLength × RelayIncrementBytes = 26,214,400,000 B (24.414 GiB)
-const MaxSessionBytes = MaxChainLength * RelayIncrementBytes
+const MaxSessionBytes int64 = MaxChainLength * RelayIncrementBytes
 
 // RelayIncrementCredit is the credit value one forwarded increment settles for —
 // the settlement unit. One increment = one credit, so a session's settled value is

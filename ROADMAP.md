@@ -1674,6 +1674,7 @@ issue number as an anchor only. Repro recipes for the field defects (#558/#535/#
 live in [`docs/thinking/2026-09-01-residual-defect-repro-recipes.md`](docs/thinking/2026-09-01-residual-defect-repro-recipes.md).
 
 **Security / data-safety residuals:**
+- **`R-RELAY-ANON-SET′` — the relay re-price moves the relay anonymity residual BOTH ways (blind PE N-6, 2026-09-06; research-gated).** `k_max = 1` dissolves the by-`k` partition of a relay's buyers, but guard (ii) rotates one ephemeral per session and the session ceiling rose 24.4× (1 GiB → 24.4 GiB), so ephemeral rotation per relayed byte falls 24.4×. The G-R212-2 certification's "IMPROVED" reading (§1.3/§6) is one-sided; the Researcher owes the two-sided statement before anything cites the residual as closed. Source: `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-G-R212-2-relay-reprice-code-2026-09-06.md`.
 - **Demand issuer-key proof-of-possession (DSKS) — R0.4b-PoP.** `validateIssuerKeys`
   (`core/chain/issuerkey.go`) requires a verifying ed25519 self-signature, an in-range epoch and
   a bond, but **no proof that the registrant holds the RSA private key** whose fingerprint it
