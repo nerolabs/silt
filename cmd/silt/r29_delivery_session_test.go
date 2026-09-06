@@ -80,8 +80,11 @@ func TestAffordabilityLineIsAnnounced(t *testing.T) {
 // where the RUNTIME value is read (blind PE item 2, the R2.12 source-gate shape): the
 // daemon must (i) refuse -accept-delivery-receipts below the idle-window floor on a line
 // naming the flag and the floor, and (ii) CALL grantFundsThePinInWholeFaces on the
-// ledger's own grant and fee (never a literal). The e2e half is
-// TestDeliveryIdleWindowIsRefuseUntilSet.
+// ledger's own grant and fee (never a literal). This gate sees STRINGS and ORDER only.
+// RUNTIME GATE: TestDeliveryIdleWindowIsRefuseUntilSet (e2e: the daemon exits with the
+// refusal naming the flag, unset and below the floor). The whole-face pin refusal's
+// runtime arm is UNGATED: R-G-LAMBDA-8-2-RUNTIME (it cannot fire at the shipped constants
+// — 9 of 10 faces fit — so no launch can reach it without moving a ratified price).
 func TestR29DaemonRefusalsAreWiredAtStartup_Source(t *testing.T) {
 	src, err := os.ReadFile("daemon.go")
 	if err != nil {
@@ -99,7 +102,7 @@ func TestR29DaemonRefusalsAreWiredAtStartup_Source(t *testing.T) {
 		t.Fatal("SOURCE GATE: daemon.go does not call grantFundsThePinInWholeFaces on the ledger's grant and fee — G-λ-8-2 is a pure function nobody reads at start-up")
 	}
 	if deliveryIdleFloor < time.Second {
-		t.Fatalf("deliveryIdleFloor %s below one second: the idle/2 ticker interval would round to zero (PE item 3)", deliveryIdleFloor)
+		t.Fatalf("SOURCE GATE: deliveryIdleFloor %s below one second — the idle/2 wall-clock ticker interval would round to zero and panic (PE item 3); the runtime cover is e2e TestDeliveryIdleWindowIsRefuseUntilSet", deliveryIdleFloor)
 	}
 }
 
