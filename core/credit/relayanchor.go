@@ -89,6 +89,15 @@ const (
 // relay's self keyset was pruned with in the same event-loop turn, so an anchor
 // that verified in-window upstream is never above the ledger's clock here.
 func (l *Ledger) SpendRelayAnchors(anchors []RelayAnchor) (face int64, reason string) {
+	return l.spendAnchors(ports.NodeID{}, anchors, laneRelay)
+}
+
+// spendAnchors is the one guard spend both anchored lanes share (R2.14 relay,
+// R2.9 delivery — deliveryanchor.go): verify-none, guard-check all, reserve k,
+// durable-append all, record all, return k × l.fee. server is recorded on the guard
+// entry for observability only (the delivery lane names the session's server; the
+// relay lane records none — its budget settles to the relay itself).
+func (l *Ledger) spendAnchors(server ports.NodeID, anchors []RelayAnchor, lane guardLane) (face int64, reason string) {
 	if len(anchors) == 0 {
 		return 0, ReasonNoAnchor
 	}
@@ -124,9 +133,14 @@ func (l *Ledger) SpendRelayAnchors(anchors []RelayAnchor) (face int64, reason st
 	}
 	// Reserve k slots. The guard REFUSES at a cap full of still-live entries, never
 	// evicts one (G-A2 — the self-financing eviction pump, closed by R0.4b, must
-	// not re-open on the relay lane).
+	// not re-open on either anchored lane).
 	if !l.reservePaidSerials(l.epochWatermark, len(anchors)) {
 		l.guardFullRefusals++
+		if lane == laneRelay {
+			l.guardFullRefusalsRelay++
+		} else {
+			l.guardFullRefusalsDelivery++
+		}
 		return 0, ReasonGuardFull
 	}
 	// RECORD DURABLY BEFORE THE SESSION IS ADMITTED (red-team re-break F2): the
@@ -134,7 +148,7 @@ func (l *Ledger) SpendRelayAnchors(anchors []RelayAnchor) (face int64, reason st
 	// a guard entry for a session that never forwarded — an under-pay — and never a
 	// session whose anchors a restart would re-open for a second spend.
 	for _, a := range anchors {
-		if err := l.addPaidSerial(a.Serial, ports.NodeID{}, a.Epoch); err != nil {
+		if err := l.addPaidSerial(a.Serial, server, a.Epoch, lane); err != nil {
 			return 0, ReasonGuardStore
 		}
 	}

@@ -198,6 +198,16 @@ type Ledger struct {
 	// front-drop never touches, so eviction stays amortized O(1) and never
 	// rewrites a survivor's index. Compaction rebuilds the slice and resets
 	// provHead to 0.
+	// R2.9 delivery-settlement telemetry (deliveryanchor.go): sessions settled, the
+	// credits they paid out of their anchor budgets, and the face remainder BURNED at
+	// settle — the number the Economist watches for the anchor-quantization residual.
+	// Node-wide aggregates, never joined to an identity axis (Don't #3).
+	deliverySettlements       int64
+	deliverySessionsClosed    int64
+	deliverySettledCredits    int64
+	deliveryBurnedCredits     int64
+	deliverySettledIncrements int64
+
 	provisional map[provKey]*provisionalServe
 	provOrder   []*provKey
 	provIndex   map[provKey]int
@@ -324,8 +334,10 @@ type Ledger struct {
 	// Nothing can expire twice within one epoch, so one sweep per epoch is exactly as
 	// effective and amortizes to O(1). Purely a cost fix: the set of entries swept is
 	// identical.
-	sweptEpoch        uint64
-	guardFullRefusals int64
+	sweptEpoch                uint64
+	guardFullRefusals         int64
+	guardFullRefusalsDelivery int64 // the per-lane split of guardFullRefusals (2026-09-04 cert §4.4)
+	guardFullRefusalsRelay    int64
 	// Serve-mint telemetry (G-R212-7, numeraire.go ServeMintStats).
 	serveBytes           int64
 	serveMintCredits     int64
