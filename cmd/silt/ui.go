@@ -679,12 +679,14 @@ func (s *uiServer) readerView(doc *statusInfo, r *http.Request) *statusInfo {
 		out.Durability = withheldDurability(doc.Durability) // red-team F2
 		out.ServeMint = nil                                 // F2: its skim sum reconstructs a lone object's funded figure
 		out.ServeMintWithheld = true
+		out.DeliverySettlement = nil // R2.9: token holders only, with the counters (the same F2 shape one lane over)
 	}
 	if auth.privacy && !auth.token {
 		// D-UI-PRIVACY-FLAG: the node-wide serve counters. Assign, never mutate — the
 		// Stats pointer and the Balance pointer are shared with the cached document.
 		out.Stats = nil
 		out.ServeMint = nil
+		out.DeliverySettlement = nil
 		out.Faucet = nil
 		out.Durability = privacyWithheldDurability(out.Durability)
 		out.CountersWithheld = true
