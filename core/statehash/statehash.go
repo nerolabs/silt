@@ -135,6 +135,9 @@ func Root(leaves []Leaf) (ports.Hash, error) {
 			return ports.Hash{}, &DuplicateKeyError{Key: append([]byte(nil), lf.Key...)}
 		}
 		seen[string(lf.Key)] = struct{}{}
+		if len(lf.Value) == 0 {
+			return ports.Hash{}, &EmptyValueError{Key: append([]byte(nil), lf.Key...)}
+		}
 		if err := trie.Update(lf.Key, lf.Value); err != nil {
 			return ports.Hash{}, err
 		}
@@ -148,6 +151,19 @@ func Root(leaves []Leaf) (ports.Hash, error) {
 	var h ports.Hash
 	copy(h[:], trie.Root())
 	return h, nil
+}
+
+// EmptyValueError reports a leaf with no value (G-R31-5, ratified 2026-09-06). No
+// committed field encodes to zero bytes — set members carry Present, scalars a
+// fixed-width encoding, set roots a 32-byte digest — so an empty value is a
+// marshalling bug, not a state. The SMT library treats an empty update as a
+// DELETE, so accepting it would silently drop the key from the root; refusing it
+// keeps the root a faithful image of the committed set. A validity-surface
+// tightening: no honest root ever carried one, so no root changes.
+type EmptyValueError struct{ Key []byte }
+
+func (e *EmptyValueError) Error() string {
+	return "statehash: empty leaf value for key: " + string(e.Key)
 }
 
 // DuplicateKeyError reports two leaves with the same key — a marshalling bug in the

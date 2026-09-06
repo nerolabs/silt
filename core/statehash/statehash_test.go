@@ -170,6 +170,33 @@ func TestRootRejectsDuplicateKey(t *testing.T) {
 	}
 }
 
+// TestRootRejectsEmptyLeafValue is G-R31-5 (ratified 2026-09-06): a leaf whose value is
+// empty is refused with *EmptyValueError. Positive control: the same key with a one-byte
+// value commits, and its root differs from the root WITHOUT the key — so an accepted
+// empty value would have been a silent delete (the library's empty-update semantics),
+// not a committed leaf.
+func TestRootRejectsEmptyLeafValue(t *testing.T) {
+	k := Key("bonded\x00", idBytes(ports.NodeID{7}))
+	other := Leaf{Key: Key("spent\x00", []byte("s")), Value: Present}
+	for _, v := range [][]byte{nil, {}} {
+		_, err := Root([]Leaf{other, {Key: k, Value: v}})
+		if err == nil {
+			t.Fatalf("Root accepted an empty leaf value (%#v) — the SMT would silently DELETE the key", v)
+		}
+		if _, ok := err.(*EmptyValueError); !ok {
+			t.Fatalf("want *EmptyValueError, got %T: %v", err, err)
+		}
+	}
+	with, err := Root([]Leaf{other, {Key: k, Value: []byte{1}}})
+	if err != nil {
+		t.Fatalf("positive control: %v", err)
+	}
+	without, _ := Root([]Leaf{other})
+	if with == without {
+		t.Fatal("positive control: a one-byte value did not change the root — the value is not committed")
+	}
+}
+
 // TestEmptyRootIsAFixedConstant pins that the empty committedSet commits a
 // DEFINITE, reproducible root (cert freeze condition 4: empty-vs-absent closed).
 func TestEmptyRootIsAFixedConstant(t *testing.T) {

@@ -24,7 +24,10 @@ func TestR212FaucetFlagsRefuseHalfAndUnsafeConfigurations(t *testing.T) {
 	if err := faucetConfigure(fresh(), 0, 0, 0); err != nil {
 		t.Fatalf("both flags at 0 (unlimited) refused: %v", err)
 	}
-	for _, c := range [][3]int64{{256, 0, 0}, {0, 256, 0}, {-1, 256, 0}, {256, -1, 0}, {0, 0, 50_000}, {256, 256, -1}, {256, 256, grant + 1}} {
+	if err := faucetConfigure(fresh(), 0, 0, grantDenyFloorOneFee); err != nil {
+		t.Fatalf("the DEFAULT floor sentinel with the faucet unconfigured refused: %v — a default binary must start", err)
+	}
+	for _, c := range [][3]int64{{256, 0, 0}, {0, 256, 0}, {-1, 256, 0}, {256, -1, 0}, {0, 0, 50_000}, {256, 256, -2}, {256, 256, grant + 1}} {
 		if err := faucetConfigure(fresh(), c[0], c[1], c[2]); err == nil {
 			t.Fatalf("configuration %v was ACCEPTED", c)
 		}
@@ -61,10 +64,19 @@ func TestR212FaucetFlagsRefuseHalfAndUnsafeConfigurations(t *testing.T) {
 	if err := faucetConfigure(big, 1, 1, 0); err == nil || !strings.Contains(err.Error(), "guard") {
 		t.Fatalf("a 48 GB grant with capacity 1 was ACCEPTED by the start-up assertion: %v — the assertion must read l.Grant(), not a literal", err)
 	}
-	// And the degrade shape.
+	// And the advance shape, explicit and by DEFAULT: the sentinel resolves to one fee read
+	// from the ledger (owner-ratified 2026-09-06, "advance"); 0 opts into deny.
 	l2 := fresh()
 	if err := faucetConfigure(l2, 256, 256, fee); err != nil || l2.FaucetStats().DenyFloor != fee {
-		t.Fatalf("degrade configuration: err %v stats %+v", err, l2.FaucetStats())
+		t.Fatalf("advance configuration: err %v stats %+v", err, l2.FaucetStats())
+	}
+	l3 := credit.New(fee+1, grant)
+	if err := faucetConfigure(l3, 256, 256, grantDenyFloorOneFee); err != nil || l3.FaucetStats().DenyFloor != fee+1 {
+		t.Fatalf("default floor: err %v stats %+v, want DenyFloor = the LEDGER's fee %d", err, l3.FaucetStats(), fee+1)
+	}
+	l4 := fresh()
+	if err := faucetConfigure(l4, 256, 256, 0); err != nil || l4.FaucetStats().DenyFloor != 0 {
+		t.Fatalf("explicit deny: err %v stats %+v", err, l4.FaucetStats())
 	}
 }
 
