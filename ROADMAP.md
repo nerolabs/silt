@@ -1863,7 +1863,13 @@ the load-bearing still-live items:
   ruling `RULING-parity-fetch-per-stripe-design-2026-09-06.md` chose (A′) over the record's (A) (6× over-fetch, 1.5×
   adversarial ceiling). **New residual `R-SPARSE-COLUMN-PROVIDER`:** `NetGetRetain` retainers become 1-of-T holders of
   parity columns; `probeShard` walks providers sequentially and corpse gating does not skip live nodes; #500 unchanged.
-  Gates G-PS-1…7; two counters `stats.ParityColumnLookups` / `stats.ParityShardsPulled`.
+  Gates G-PS-1…6 and G-PS-8 (there is no uncoded gate — `K == 0` is unreachable from any publish path); two counters
+  `stats.ParityColumnLookups` / `stats.ParityShardsPulled`. **Two residuals from the blind PE code review:**
+  `R-PS-PRESENCE-COST` — the verified presence check (Get + Verify per data shard, measured 46 ms per 64 MiB chunk
+  vs 2.5 µs for a stat; ~21 s at 30 GB) is taken for correctness; the pay-on-failure redesign (trust the stat, verify
+  only when the pipeline fails) is the cheaper shape, unbuilt. `R-PS-LOCAL-ROT-NOT-HEALED` — a bit-rotten local shard is
+  routed around every retrieval but never replaced (`fetchFrom`/`FetchChunk` stat-gate; the working-set snapshot
+  counts it as held), so the parity detour recurs on every NetGet of that object.
 - **Repair dial-storm to dead holders — #277.** The DHT walk re-dials dead holders every sweep
   (the `deadUntil` negative cache is consulted on the fetch/repair decision path but not on the
   walk's dials), so under heavy permanent loss a sweep can't finish though ≥k shards survive.

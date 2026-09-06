@@ -282,3 +282,42 @@ func TestPSAlreadyHeldParityIsNotCountedAsPulled(t *testing.T) {
 		t.Fatalf("pulled %d over %d lookups; an already-held parity shard must settle the deficit with no transfer", consumer.Stats.ParityShardsPulled, consumer.Stats.ParityColumnLookups)
 	}
 }
+
+// TestPSHeldParitySettlesOneOfTwoAndTheWalkContinues (G-PS-8; PE code ruling Open-1): a stripe
+// that lost TWO data shards and already holds one parity shard has its first deficit settled by
+// the held shard with nothing to ask column K for — `want` is empty while `remaining > 0` — and
+// the walk MUST advance to column K+1 for the second. Ablation: replacing that advance with a
+// finish leaves the stripe at 9 of 16 shards and the retrieval fails while every other gate
+// stays green. Asserts exactly one lookup (column K+1) and one transfer.
+func TestPSHeldParitySettlesOneOfTwoAndTheWalkContinues(t *testing.T) {
+	r := newNetgetRig(t)
+	consumer := psConsumer(t, r)
+	per := r.m.N - r.m.K
+	firstParityOfStripe0 := r.m.ParityIDs()[0*per+0]
+	seeded := false
+	for _, nd := range r.nodes {
+		if nd == consumer {
+			continue
+		}
+		if c, err := nd.Store().Get(bg(), firstParityOfStripe0); err == nil {
+			if err := consumer.Store().Put(bg(), c); err != nil {
+				t.Fatal(err)
+			}
+			seeded = true
+			break
+		}
+	}
+	if !seeded {
+		t.Fatalf("rig: no node holds the parity shard to pre-seed")
+	}
+	data := psDataOfStripe(r, 0)
+	psWithhold(t, r, data[1], data[7]) // deficit 2 on stripe 0
+	psRetain(t, r, consumer)
+	held := psParityHeld(r, consumer)
+	if len(held) != 1 || len(held[0]) != 2 {
+		t.Fatalf("parity held %v, want exactly two shards of stripe 0 (the pre-held one and one more)", held)
+	}
+	if consumer.Stats.ParityColumnLookups != 1 || consumer.Stats.ParityShardsPulled != 1 {
+		t.Fatalf("lookups=%d pulled=%d, want 1/1: column K is settled by the held shard with no lookup, column K+1 supplies the second", consumer.Stats.ParityColumnLookups, consumer.Stats.ParityShardsPulled)
+	}
+}

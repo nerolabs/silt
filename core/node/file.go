@@ -737,7 +737,15 @@ func (n *Node) netGetEntry(reg ports.Registry, entry ports.Entry, h link.Handle,
 		// PRESENCE IS VERIFIED, NOT STAT'ED (PE code ruling F-1): the disk store's Has is an
 		// os.Stat while Get verifies the bytes, so a bit-rotten local shard would count as
 		// present here and then fail in the pipeline — the old whole-column fetch masked that
-		// by accident. present() reads and verifies, exactly what pipeline.Get will do.
+		// by accident. present() reads the shard through Get, which re-verifies by contract
+		// (ports.ChunkStore.Get, honoured by diskstore and memstore), and keeps a belt
+		// Verify() because cachestore.Get does not re-verify. THE COST, MEASURED (PE code
+		// ruling Open-2, adapters/diskstore, 64 MiB chunk, warm cache, hardware SHA): Has
+		// 2.5 µs · Get 25.5 ms · Get+Verify 46.3 ms — retrieval now pays two reads and three
+		// hashes over the data instead of one read and one hash, ~21 s at S_max = 30 GB here
+		// and more on a pony without SHA acceleration. Taken knowingly: the alternative
+		// (trust Has, pay on pipeline failure) is the pay-on-failure redesign filed as
+		// R-PS-PRESENCE-COST; correctness first, the cheaper shape second.
 		cols := columnsOf(m)
 		present := func(id ports.ChunkID) bool {
 			c, err := n.store.Get(bg(), id)
