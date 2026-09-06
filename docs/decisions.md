@@ -261,13 +261,13 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
   `Credit` field over the wire, so the F4/D3 fee decoupling had only ever worked in the sim. ☐ timing-
   correlation (epoch-batching) deferred to the post-M0 H8 mixnet. The blind signature already hid the serial.
 
-- **R2.9 restatement — PROPOSED, ratification owed (2026-09-06).** On the anchored session lane the token is
+- **R2.9 restatement — ✅ RATIFIED 2026-09-06 (D-R2.9-NODE-HALF-CALLS call 2).** On the anchored session lane the token is
   spent at session OPEN and funds up to ⌊f/p⌋ acknowledged increments, so the token-level property above is
   FALSE there and is restated at the CREDIT level (P-SESSION): `demand_S(C)·p ≤ Σ credits settled at S on
   fetcher-signed acknowledgements naming C ≤ Σ face spent into S's guard`, and per fetcher over the ledger's
   life `Σ_C demand·p ≤ its grant`. Stronger in form (aggregate over all receipts and objects), weaker in level
   (one token buys 50,000 units). The counting rule is CERTIFIED (`demand += settled/p`, two surfaces, v2/v3 never
-  shared); the restatement of this decision's published property is the owner's to ratify. Certification:
+  shared); the restatement of this decision's published property is ratified. Certification:
   `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.9-witnessed-demand-observable-under-sessions-RESEARCH-CERTIFICATION-2026-09-06.md`.
 
 ## D-C2 — "no quiet capture" is held in tension, never closed (by theorem)
@@ -2018,6 +2018,31 @@ daemon start, so the built form is a loud judge-side settlement (`Stats.BountyBa
 journal line) plus a publish-time warning below `MinBountyChunkBytes`. The serve-mint telemetry
 (`serveMint` on `/api/status`) is served to the token holder only: its skim sum reconstructs a lone
 object's funded figure (red-team F2's shape).
+
+## D-R2.9-NODE-HALF-CALLS — the five R2.9 node-half calls, ratified 2026-09-06
+
+- **Status:** ✅ RATIFIED — 2026-09-06 (owner: *"I take all recommendations, proceed"*), on the brief given
+  in-session against the G-R212-8 certification
+  (`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.9-G-R212-8-delivery-anchor-quantization-RESEARCH-CERTIFICATION-2026-09-06.md`),
+  the witnessed-demand certification (`…/R2.9-witnessed-demand-observable-under-sessions-RESEARCH-CERTIFICATION-2026-09-06.md`),
+  the settlement-skim certification (`…/R2.9-settlement-skim-under-fetcher-chosen-deltas-RESEARCH-CERTIFICATION-2026-09-06.md`)
+  and the blind PE ruling `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-R2.9-node-half-e3eb273-2026-09-06.md`.
+- **(1) G-6, delivery lane — REFUND, not burn.** The unsettled session remainder is REFUNDED to the session's
+  durable fetcher at close, with a per-identity cap of ⌊g/f⌋ live anchors replacing the burn's role as the
+  paid-serial occupancy rate limiter. The MECHANISM owes its own certification before it is built; the code
+  BURNS until then (`core/credit/deliveryanchor.go` `CloseDeliverySession` is the one seam). The relay lane does
+  not copy it (its counterparty is an ephemeral). Amends D-R2.9-DIRECTION ruling 1's G-6 for this lane only.
+- **(2) P-SESSION — RATIFIED.** D-DEMAND's token-level property is restated at the credit level on the anchored
+  session lane (see D-DEMAND, now marked ratified). The price-level residual `R-DEMAND-PRICE-LEVEL` is a separate
+  item for the economy-on decision; the bonded-fetcher credential is its lever.
+- **(3) Scope — the node half SHIPS under G-6 pending call (1).** PR #760 merges although the G-R212-8 residual
+  table reads "still blocks R2.9's node half": the lane is dark until era-4, off by default, the seam is
+  isolated and the refutation disclosed. Recorded so a future reader finds the contradiction resolved here.
+- **(4) `R-DEFAULT-CHUNK-BOUNTY-ZERO` — raise `pipeline.DefaultChunkSize` to 262,144 B** in its own PR before any
+  economy-on flip, after the Economist confirms the census and dedup effects.
+- **(5) The delivery idle window stays REFUSE-UNTIL-SET.** The Tester measures the block interval `T_b` on the
+  next graded run; the window is then set as a small multiple of one epoch and recorded here. Ten minutes is the
+  value for dark-lane testing only. Decide the wall-clock-step exposure (`R-SESSION-WALLCLOCK-STEP`) with (1).
 
 ## D-UI-PRIVACY-FLAG — node-wide counters and the library link key go behind an operator flag; exposed in beta, withheld at release
 
