@@ -59,6 +59,13 @@ const (
 	privateAAD    = "github.com/nerolabs/silt/private/v1"
 )
 
+// Overhead is the ciphertext expansion per chunk in BOTH modes: the AES-GCM
+// authentication tag (16 bytes). A stored ciphertext chunk — and therefore every
+// erasure shard the repair judge measures (core/node/repairclaim.go: shardBytes =
+// len(survivor)) — is the plaintext frame plus this. Pinned against a real encryption
+// by TestCiphertextOverheadIsTheTag.
+const Overhead = 16
+
 // ConvergentEncrypt encrypts one plaintext chunk. The returned secret is
 // SHA-256(plaintext); key and nonce are both HKDF-derived from it. Using
 // a fixed nonce is normally fatal for GCM, but here it is safe by

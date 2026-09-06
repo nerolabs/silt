@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/nerolabs/silt/core/credit"
+	"github.com/nerolabs/silt/core/crypto"
+	"github.com/nerolabs/silt/core/erasure"
 )
 
 // grantOverSummedPriceBytes is how many bytes one starter grant buys when a NAT'd
@@ -22,28 +24,36 @@ func grantOverSummedPriceBytes(grant, deliveryBytesPerCredit, relayBytesPerCredi
 
 // warnBountyChunk names, at publish time, a chunk size whose stripe pays a ZERO repair
 // bounty under a repair economy (G-λ-8, G-R212-7): the base is priced in the witnessed
-// fetch price, so k·shardBytes below one credit of fetch rounds to nothing. The daemon
-// has no chunk geometry at start-up to refuse on, so the publisher is told here and the
-// judge names it again at settlement (core/node/repairclaim.go).
+// fetch price, so k × shardBytes below one credit of fetch rounds to nothing. A shard is a
+// whole ciphertext chunk (chunk + crypto.Overhead), so the threshold is
+// credit.MinBountyChunkBytesFor(erasure.DefaultParams.K, crypto.Overhead) ≈ 26 KB at
+// k = 10 — the shipped 64 KiB default pays a base of 2 and does NOT warn (the earlier
+// build placed the threshold at 262,144 on a shard = chunk/k model; the Economist's
+// 2026-09-06 advisory corrected it). The daemon has no chunk geometry at start-up to
+// refuse on, so the publisher is told here and the judge names it again at settlement.
 //
-// It fires only when the operator SET -chunk-size (below the minimum); the shipped default
-// (pipeline.DefaultChunkSize, 64 KiB) is itself below the minimum, and a warning on every
-// default publish is noise nobody reads (blind PE M6). Moving the default is a product
-// call the owner holds (R-DEFAULT-CHUNK-BOUNTY-ZERO, ROADMAP).
+// It fires only when the operator SET -chunk-size (below the minimum); a warning on every
+// default publish is noise nobody reads (blind PE M6).
 func warnBountyChunk(chunkBytes int, explicit bool) {
 	if msg := bountyChunkWarning(int64(chunkBytes), explicit); msg != "" {
 		fmt.Fprintln(os.Stderr, msg)
 	}
 }
 
+// minBountyChunkBytes is the publish-time threshold at the shipped erasure geometry.
+func minBountyChunkBytes() int64 {
+	return credit.MinBountyChunkBytesFor(erasure.DefaultParams.K, crypto.Overhead)
+}
+
 // bountyChunkWarning is the pure form of warnBountyChunk: the warning text, or "" when
-// nothing should be said.
+// nothing should be said. The decision is the judge's own arithmetic (RepairBountyBase on
+// a chunk-sized shard), never a duplicated threshold.
 func bountyChunkWarning(chunkBytes int64, explicit bool) string {
-	if !explicit || chunkBytes >= credit.MinBountyChunkBytes {
+	if !explicit || credit.RepairBountyBase(erasure.DefaultParams.K, chunkBytes+crypto.Overhead) > 0 {
 		return ""
 	}
-	return fmt.Sprintf("warning: -chunk-size %d is below %d bytes: under a repair economy (-economy) this object's repair bounty base is ZERO (k·shardBytes < one credit of fetch, G-λ-8) and a repair of it pays nothing; use -chunk-size >= %d",
-		chunkBytes, int64(credit.MinBountyChunkBytes), int64(credit.MinBountyChunkBytes))
+	return fmt.Sprintf("warning: -chunk-size %d is below %d bytes: under a repair economy (-economy) this object's repair bounty base is ZERO (k·shardBytes < one credit of fetch, G-λ-8; a shard is a whole ciphertext chunk) and a repair of it pays nothing; use -chunk-size >= %d",
+		chunkBytes, minBountyChunkBytes(), minBountyChunkBytes())
 }
 
 // flagWasSet reports whether the operator passed name on the command line.

@@ -91,14 +91,29 @@ func TestGLambda3DaemonRefusesPricedLaneBelowThePinSourceGate(t *testing.T) {
 // R-DEFAULT-CHUNK-BOUNTY-ZERO call, not a warning on every publish). SOURCE GATE below: both
 // publish paths call it. RUNTIME GATE: the pure function arms here.
 func TestGLambda8PublishWarningFiresOnlyForAnExplicitSmallChunk(t *testing.T) {
-	if msg := bountyChunkWarning(65_536, true); !strings.Contains(msg, "ZERO") || !strings.Contains(msg, "262144") {
-		t.Fatalf("explicit 64 KiB chunk: no warning (%q)", msg)
+	// The shipped 64 KiB default pays a base of 2 (a shard is a whole ciphertext chunk):
+	// NO warning, explicit or not. The earlier gate asserted a warning here on the
+	// shard = chunk/k model; the Economist's 2026-09-06 advisory corrected the geometry.
+	if msg := bountyChunkWarning(65_536, true); msg != "" {
+		t.Fatalf("explicit 64 KiB chunk warned although its stripe pays a base of 2: %q", msg)
 	}
 	if msg := bountyChunkWarning(65_536, false); msg != "" {
 		t.Fatalf("the shipped default fired the warning: %q", msg)
 	}
-	if msg := bountyChunkWarning(int64(credit.MinBountyChunkBytes), true); msg != "" {
+	// An explicit 16 KiB chunk (stripe 10 × 16,400 = 164,000 B < one credit) warns, naming
+	// the derived threshold; a chunk AT the threshold does not.
+	min := minBountyChunkBytes()
+	if min != 26_199 {
+		t.Fatalf("derived threshold %d, want 26,199 at k=10 with a 16-byte tag", min)
+	}
+	if msg := bountyChunkWarning(16_384, true); !strings.Contains(msg, "ZERO") || !strings.Contains(msg, "26199") {
+		t.Fatalf("explicit 16 KiB chunk: no warning naming the threshold (%q)", msg)
+	}
+	if msg := bountyChunkWarning(min, true); msg != "" {
 		t.Fatalf("a chunk AT the minimum warned: %q", msg)
+	}
+	if msg := bountyChunkWarning(min-1, true); msg == "" {
+		t.Fatal("a chunk one byte below the minimum did not warn")
 	}
 	for _, f := range []string{"main.go", "swarm.go"} {
 		src, err := os.ReadFile(f)

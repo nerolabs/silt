@@ -2039,7 +2039,27 @@ object's funded figure (red-team F2's shape).
   table reads "still blocks R2.9's node half": the lane is dark until era-4, off by default, the seam is
   isolated and the refutation disclosed. Recorded so a future reader finds the contradiction resolved here.
 - **(4) `R-DEFAULT-CHUNK-BOUNTY-ZERO` — raise `pipeline.DefaultChunkSize` to 262,144 B** in its own PR before any
-  economy-on flip, after the Economist confirms the census and dedup effects.
+  economy-on flip, after the Economist confirms the census and dedup effects. **Premise corrected 2026-09-07:**
+  the default pays a base of 2 (a shard is a whole ciphertext chunk), not zero — the real defect is a 20 %
+  truncation under-pay (`R-BOUNTY-TRUNCATION`). The move stands on the Economist's other grounds (the certified
+  D-S7 threshold of 36, one chunk = one delivery credit, exhaustive PoR audits) and carries a NEW call the owner
+  has not yet made: fold the manifest true-length framing (`R-MANIFEST-PADDING`: 87.6 % of the flixz store is
+  1.4 KB manifests padded to the chunk size; 3.9× store growth at 256 KiB otherwise) into the same
+  content-addressing break, or defer both. Not built until that call.
+- **(1′) AMENDED 2026-09-07 (owner: *"I'll take the recommendations for both"*), on the refund certification
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.9-session-remainder-refund-and-live-anchor-cap-RESEARCH-CERTIFICATION-2026-09-06.md`:
+  the PAYEE is an account that already exists on the server's ledger, never the registering lookup (M1: the anchor
+  is a bearer instrument, the presenting fetcher need not be the payer, and `acct()` conjures a grant); the
+  remainder is released at ANCHOR EXPIRY (`maxAnchorEpoch + W + 1`, the guard's own window), not at session close
+  (M2); the per-identity live-anchor cap is DROPPED as refuted (inapplicable: one bearer anchor passed down fresh
+  keypairs buys unlimited guard slots for zero credits; the R2.12 assertion goes vacuous under it and survives
+  verbatim only under M2). T-DEPOSIT: a fully refunded face is accounting-neutral and bounds concurrency, never
+  capacity; the 64 GiB pin becomes TRUE at every φ; `R-PIN-VACUOUS-UNDER-QUANTIZATION` closes. Ten gates (cert §7; the
+  guard-occupancy-is-bounded-by-the-credit-stock gate is written FIRST and proven RED against the refuted cap). New residuals
+  `R-STOCK-RENEWABLE-OCCUPANCY`, `R-ANCHOR-BEARER-TRANSFER` (owed a red-team pass), `R-REFUND-NEEDS-AN-ACCOUNT`.
+- **(4′) AMENDED 2026-09-07:** the chunk move to 262,144 B and true-length MANIFEST FRAMING (`R-MANIFEST-PADDING`)
+  land in ONE PR — one content-addressing break — before the economy-on flip; `R-BOUNTY-TRUNCATION` stays a
+  separate open residual.
 - **(5) The delivery idle window stays REFUSE-UNTIL-SET.** The Tester measures the block interval `T_b` on the
   next graded run; the window is then set as a small multiple of one epoch and recorded here. Ten minutes is the
   value for dark-lane testing only. Decide the wall-clock-step exposure (`R-SESSION-WALLCLOCK-STEP`) with (1).

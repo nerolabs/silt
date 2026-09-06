@@ -32,6 +32,7 @@ import (
 	"fmt"
 
 	"github.com/nerolabs/silt/core/credit"
+	"github.com/nerolabs/silt/core/crypto"
 	"github.com/nerolabs/silt/core/erasure"
 	"github.com/nerolabs/silt/core/link"
 	"github.com/nerolabs/silt/core/manifest"
@@ -216,7 +217,7 @@ func (n *Node) settleRepairVerdict(claimant ports.NodeID, claim repairproof.Repa
 			n.Stats.BountyBaseZero++
 			n.logf(ports.LogWarn, "repair bounty base is ZERO for this geometry", "root", claim.Root,
 				"k", p.K, "shardBytes", shardBytes, "bytesPerCredit", int64(credit.DeliveryBytesPerCredit),
-				"fix", "publish with -chunk-size >= "+fmt.Sprint(credit.MinBountyChunkBytes))
+				"fix", "publish with -chunk-size >= "+fmt.Sprint(credit.MinBountyChunkBytesFor(p.K, crypto.Overhead)))
 		}
 		bounty := credit.BountyFor(base, p.K, p.N, reachable)
 		paid := n.ledger.PayBounty(claim.Root, claim.Holder, bounty)
