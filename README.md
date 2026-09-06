@@ -165,6 +165,6 @@ network simulation deterministic and seed-replayable.
 ## Test
 
 ```sh
-go test ./...
+go test -timeout 40m ./...   # the full suite; core/chain carries a ~5-minute measurement test (CI runs -short)
 go test -bench . ./core/...
 ```
