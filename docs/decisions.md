@@ -1852,8 +1852,8 @@ value the code supports (placement "prefers", never vetoes, a fresh domain; the 
 concentrates); it flips only on a code change, never on fleet size. **OWNER CALL RE-OPENED —
 G-BB-31: re-ratify a value ≥ 44.7 GiB; the Researcher's input, not a pin, is 64 GiB.** The
 G-BB-19 sentence is DISCHARGED — written in the certification's §4 for 64 GiB and valid for
-any `V ≥ 44.7 GiB`. New residuals: `R-PARITY-AMPLIFICATION` (the whole-object parity fetch;
-cheap fix: per-stripe), `R-GRANT-RATIO-NOT-A-CONSTANT` (blocking, G-BB-30),
+any `V ≥ 44.7 GiB`. New residuals: `R-PARITY-AMPLIFICATION` (the parity fetch's 1.6×; whole-object at the time, a
+per-stripe deficit walk since 2026-09-06, the worst case surviving for a corrupting provider), `R-GRANT-RATIO-NOT-A-CONSTANT` (blocking, G-BB-30),
 `R-SMAX-PUBLISHER-CHOSEN`. What can ship before the value: the floor as a constant DERIVED in
 code from `erasure.DefaultParams`, with a refuse-below assertion on the eventual `g/λ` (the
 `-dht-address-reserve` shape) — an R2.9 build item, since `r` does not exist yet.
@@ -1872,8 +1872,9 @@ not fetchable on the grant alone. **Still open and NOT closed by this ratificati
 separate decision with its own tier consequences, taken when R2.9 gives `r` a value), G-BB-32
 (the "stripe floor 640 MiB" clause in item 1 above is wrong twice and stands corrected by
 this note: 128 MiB is the enforced maximum chunk, and that cliff was itself refuted).
-`R-PARITY-AMPLIFICATION` (the whole-object parity fetch that produced the 1.6×; cheap fix:
-per-stripe) is a build residual on the fetch path, not a pin condition.
+`R-PARITY-AMPLIFICATION` (the parity fetch that produced the 1.6× — whole-object until 2026-09-06, a
+per-stripe deficit walk since; the 1.6× survives as the CORRUPTING-provider worst case because
+bytes transfer before they verify) is a build residual on the fetch path, not a pin condition.
 
 **G-BB-19′ — the pin's R2.12 clause, RESTATED 2026-09-05 (Researcher,
 `R2.12-faucet-rate-tier-and-grant-ratio-composition-RESEARCH-CERTIFICATION-2026-09-05.md`

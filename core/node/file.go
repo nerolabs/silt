@@ -730,8 +730,19 @@ func (n *Node) netGetEntry(reg ports.Registry, entry ports.Entry, h link.Handle,
 		// still carries that N/K factor as the WORST case, because a provider that returns
 		// a CORRUPT shard has already transferred the bytes before fetchFrom's verify
 		// rejects it — this walk changes the honest and the withholding cases, not the
-		// corrupting one. Each column is one provider lookup.
+		// corrupting one. The floor's N/K factor (G-BB-19 sentence, G-BB-31 ratification,
+		// docs/decisions.md D-R2.9a-RUN-CALLS) is therefore untouched by this walk. Each
+		// column is one provider lookup.
+		//
+		// PRESENCE IS VERIFIED, NOT STAT'ED (PE code ruling F-1): the disk store's Has is an
+		// os.Stat while Get verifies the bytes, so a bit-rotten local shard would count as
+		// present here and then fail in the pipeline — the old whole-column fetch masked that
+		// by accident. present() reads and verifies, exactly what pipeline.Get will do.
 		cols := columnsOf(m)
+		present := func(id ports.ChunkID) bool {
+			c, err := n.store.Get(bg(), id)
+			return err == nil && c.Verify()
+		}
 		fetchCols := func(list []int, after func()) {
 			var next func(i int)
 			next = func(i int) {
@@ -751,7 +762,7 @@ func (n *Node) netGetEntry(reg ports.Registry, entry ports.Entry, h link.Handle,
 		deficit := func() []int {
 			d := make([]int, stripes)
 			for i, id := range dataIDs {
-				if ok, _ := n.store.Has(bg(), id); !ok {
+				if !present(id) {
 					d[i/m.K]++
 				}
 			}
@@ -779,16 +790,25 @@ func (n *Node) netGetEntry(reg ports.Registry, entry ports.Entry, h link.Handle,
 				}
 				// This parity column's shards for the stripes still in deficit. cols[j] is in
 				// stripe order (columnsOf), so cols[j][s] is stripe s's shard in column j.
+				// A parity shard this node already holds (verified) settles its stripe's deficit
+				// without a fetch and without counting as pulled (F-4: the counter is TRANSFERS).
 				var want []ports.ChunkID
 				stripeOf := map[ports.ChunkID]int{}
 				for s := 0; s < stripes && s < len(cols[j]); s++ {
-					if d[s] > 0 {
-						want = append(want, cols[j][s])
-						stripeOf[cols[j][s]] = s
+					if d[s] <= 0 {
+						continue
 					}
+					id := cols[j][s]
+					if present(id) {
+						d[s]--
+						remaining--
+						continue
+					}
+					want = append(want, id)
+					stripeOf[id] = s
 				}
 				if len(want) == 0 {
-					finish()
+					walk(j + 1) // nothing to ask this column for; the next may still be needed (F-6)
 					return
 				}
 				n.Stats.ParityColumnLookups++

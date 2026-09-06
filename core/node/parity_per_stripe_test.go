@@ -6,12 +6,18 @@ package node
 // holding ONE real data shard. Withholding = deleting a shard from every node's store. The
 // consumer uses NetGetRetain so the pulled parity ids are observable in its store afterwards.
 // These gates do NOT claim R-PARITY-AMPLIFICATION closed — that claim is research-gated; they
-// pin what the fetcher pulls.
+// pin what the fetcher pulls. There is no uncoded (K == 0) gate: K == 0 is unreachable from any
+// publish path (pipeline.Add always erasure-codes), so the dead helper's removal is safe by
+// unreachability, not by suite (PE code ruling F-3).
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"testing"
 
+	"github.com/nerolabs/silt/adapters/identity"
+	"github.com/nerolabs/silt/adapters/memstore"
 	"github.com/nerolabs/silt/ports"
 )
 
@@ -86,7 +92,9 @@ func psDataOfStripe(r *netgetRig, s int) []ports.ChunkID {
 }
 
 // TestPSHealthyObjectFetchesNoParity (G-PS-1): no data shard missing ⇒ zero parity shards pulled
-// and zero parity-column lookups. Ablation: revert to the whole-column fallback and this is RED.
+// and zero parity-column lookups. A REGRESSION PIN, not a discriminator: the old whole-column
+// fallback also fetched no parity on a healthy object (PE code ruling F-2), so this gate stays
+// green under that ablation and red only if a future change fetches parity unconditionally.
 func TestPSHealthyObjectFetchesNoParity(t *testing.T) {
 	r := newNetgetRig(t)
 	consumer := psConsumer(t, r)
@@ -178,5 +186,99 @@ func TestPSMissingParityShardFallsThroughToTheNextColumn(t *testing.T) {
 	}
 	if consumer.Stats.ParityColumnLookups != 2 || consumer.Stats.ParityColumnLookups > per {
 		t.Fatalf("parity-column lookups = %d, want 2 (first column's shard missing, second supplies it)", consumer.Stats.ParityColumnLookups)
+	}
+}
+
+// rotStore is a chunk store whose Has says a rotten id is present while Get fails on it — the
+// disk store's exact shape under bit rot (Has is an os.Stat, Get re-verifies and errors). It
+// wraps the rig's memstore for every other id.
+type rotStore struct {
+	ports.ChunkStore
+	rotten map[ports.ChunkID]bool
+}
+
+func (r *rotStore) Has(ctx context.Context, id ports.ChunkID) (bool, error) {
+	if r.rotten[id] {
+		return true, nil
+	}
+	return r.ChunkStore.Has(ctx, id)
+}
+
+func (r *rotStore) Get(ctx context.Context, id ports.ChunkID) (ports.Chunk, error) {
+	if r.rotten[id] {
+		return ports.Chunk{}, errors.New("rotStore: chunk data does not match its ID")
+	}
+	return r.ChunkStore.Get(ctx, id)
+}
+
+// TestPSBitRottenLocalShardCountsAsMissing (PE code ruling F-1): a data shard the consumer's
+// store REPORTS as present (Has) but cannot deliver verified (Get fails, as the disk store does
+// on bit rot) must count toward the stripe's deficit, so the walk fetches parity for it and the
+// retrieval is bit-perfect. Under a Has-based deficit the walk fetched nothing and the pipeline
+// failed on the rotten shard — the old whole-column fetch masked this by accident.
+func TestPSBitRottenLocalShardCountsAsMissing(t *testing.T) {
+	r := newNetgetRig(t)
+	// A fresh consumer on a rotStore, bootstrapped into the rig like the others.
+	id := identity.FromSeed(3999).NodeID()
+	rot := &rotStore{ChunkStore: memstore.New(), rotten: map[ports.ChunkID]bool{}}
+	consumer := New(id, r.nodes[0].cfg, r.sched, r.net.Endpoint(id), rot)
+	consumer.Bootstrap([]ports.NodeID{r.nodes[0].ID(), r.nodes[1].ID(), r.nodes[2].ID()}, func() {})
+	r.sched.Run()
+	// Pre-seed one manifest chunk (as the rig's other consumers do), copied from a holder.
+	entry, _, _ := r.reg.Lookup(bg(), r.h.Root)
+	preHeld := entry.ManifestChunks[0]
+	seeded := false
+	for _, nd := range r.nodes {
+		if c, err := nd.Store().Get(bg(), preHeld); err == nil {
+			if err := rot.Put(bg(), c); err != nil {
+				t.Fatal(err)
+			}
+			seeded = true
+			break
+		}
+	}
+	if !seeded {
+		t.Fatalf("rig: no node holds the manifest chunk to pre-seed")
+	}
+	victim := psDataOfStripe(r, 0)[5]
+	psWithhold(t, r, victim)  // no honest copy anywhere in the swarm...
+	rot.rotten[victim] = true // ...and the consumer's own copy is rotten
+	psRetain(t, r, consumer)
+	held := psParityHeld(r, consumer)
+	if len(held) != 1 || len(held[0]) != 1 {
+		t.Fatalf("a bit-rotten local shard was counted as present: parity held %v, want one shard of stripe 0", held)
+	}
+}
+
+// TestPSAlreadyHeldParityIsNotCountedAsPulled (PE code ruling F-4): a parity shard the consumer
+// already holds settles the deficit without a transfer and is not counted as pulled.
+func TestPSAlreadyHeldParityIsNotCountedAsPulled(t *testing.T) {
+	r := newNetgetRig(t)
+	consumer := psConsumer(t, r)
+	per := r.m.N - r.m.K
+	firstParityOfStripe0 := r.m.ParityIDs()[0*per+0]
+	// Pre-seed the consumer with the honest first parity shard of stripe 0, copied from whichever
+	// rig node holds it (parity shards register under column keys, not their own ids, so a
+	// by-id FetchChunk cannot find them).
+	var seeded bool
+	for _, nd := range r.nodes {
+		if nd == consumer {
+			continue
+		}
+		if c, err := nd.Store().Get(bg(), firstParityOfStripe0); err == nil {
+			if err := consumer.Store().Put(bg(), c); err != nil {
+				t.Fatal(err)
+			}
+			seeded = true
+			break
+		}
+	}
+	if !seeded {
+		t.Fatalf("rig: no node holds the parity shard to pre-seed")
+	}
+	psWithhold(t, r, psDataOfStripe(r, 0)[1])
+	psRetain(t, r, consumer)
+	if consumer.Stats.ParityShardsPulled != 0 || consumer.Stats.ParityColumnLookups != 0 {
+		t.Fatalf("pulled %d over %d lookups; an already-held parity shard must settle the deficit with no transfer", consumer.Stats.ParityShardsPulled, consumer.Stats.ParityColumnLookups)
 	}
 }

@@ -84,4 +84,20 @@ PROCEED-WITH-CHANGES — "direction right, option wrong"). Built as **(A′), no
   both, by design). Two node-wide counters added for the gates: `Stats.ParityColumnLookups`,
   `Stats.ParityShardsPulled` (withheld with the other counters under `-privacy`).
 
-**Status:** built; whole `core/node` suite (non-`-short`) and full e2e green locally; to blind PE code review.
+**Blind PE CODE ruling** (`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-parity-fetch-per-stripe-code-f443f84-2026-09-06.md`,
+MERGE-AFTER; the walk verified as exactly (A′), all four ablations RED, whole `core/node` and e2e green on
+the PE's own runs). Folded in: **F-1** presence is now READ-AND-VERIFIED, not stat'ed — the disk store's
+`Has` is an `os.Stat` while `Get` verifies, so a bit-rotten local shard counted as present and the
+pipeline then failed on it (the old whole-column fetch masked that by accident; the PE owned the miss in
+its design §3.3); gate `TestPSBitRottenLocalShardCountsAsMissing` on a store double with the disk store's
+shape. **F-4** an already-held (verified) parity shard settles its deficit without a transfer and is not
+counted as pulled (`ParityShardsPulled` counts TRANSFERS); gate `TestPSAlreadyHeldParityIsNotCountedAsPulled`.
+**F-2** G-PS-1 is a regression pin, not a discriminator (the whole-column fallback also fetched no parity
+on a healthy object) — its comment now says so. **F-3** there is no uncoded gate: `K == 0` is unreachable
+from any publish path, so the dead helper's removal is safe by unreachability, not by suite; "G-PS-1…7"
+was an overstatement. **F-5** two more ledger sentences that still described the whole-object fetch are
+corrected. **F-6** an empty `want` advances to the next column rather than finishing. **F-8** the code
+comment names the G-BB-19 sentence and the G-BB-31 ratification. No closure of `R-PARITY-AMPLIFICATION`
+is asserted anywhere.
+
+**Status:** built; PE fold-in applied; whole `core/node` suite (non-`-short`) and full e2e green locally.
