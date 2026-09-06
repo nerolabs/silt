@@ -1832,9 +1832,15 @@ ratio ships; the re-aimed handoff.
 **Research verdict on item 1, appended 2026-09-05 — GATED; the VALUE 32 GiB is REFUTED and
 may not ship; the METHOD is CERTIFIED and G-BB-17 is lifted.**
 `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.9a-grant-over-r-32GiB-structural-pin-G-BB-19-RESEARCH-CERTIFICATION-2026-09-05.md`.
-The decisive artifact is `core/node/file.go:750-760`: when ANY data chunk is missing the
-fetcher pulls EVERY parity column of the whole object, so the worst-case per-server draw at
-`F = 1` is `S_max · (N/K)` = 1.6 × 27.94 GiB = **44.7 GiB**, not 27.94. The corrected formula is
+The decisive artifact was `core/node/file.go`'s parity fallback (the `allData()` / whole-column
+`fetchCols(parityCols, …)` block at the time): when ANY data chunk was missing the fetcher pulled
+EVERY parity column of the whole object, so the worst-case per-server draw at `F = 1` is
+`S_max · (N/K)` = 1.6 × 27.94 GiB = **44.7 GiB**, not 27.94. *Citation corrected 2026-09-06:* that
+block is now a per-stripe DEFICIT walk (`docs/thinking/2026-09-06-parity-fetch-per-stripe.md`), so
+an honest or WITHHOLDING provider can no longer force the object-size term; the N/K factor SURVIVES
+as the worst case because `fetchFrom` transfers a shard's bytes before it verifies them — a
+CORRUPTING provider forces `S · N/K` under any fetch policy. The pin's value is untouched; whether
+`R-PARITY-AMPLIFICATION` is discharged is research-gated. The corrected formula is
 `grant/r ≥ S_max · (N/K) / F_min`; 32 GiB covers 71.6 % of its own floor. This corrects the
 Economist's §4.1 and the Researcher's own necessity cert §2.1. Two more corrections: the
 "stripe floor `K × chunkSize_max` = 640 MiB" clause above is wrong twice (128 MiB is the
@@ -1846,8 +1852,8 @@ value the code supports (placement "prefers", never vetoes, a fresh domain; the 
 concentrates); it flips only on a code change, never on fleet size. **OWNER CALL RE-OPENED —
 G-BB-31: re-ratify a value ≥ 44.7 GiB; the Researcher's input, not a pin, is 64 GiB.** The
 G-BB-19 sentence is DISCHARGED — written in the certification's §4 for 64 GiB and valid for
-any `V ≥ 44.7 GiB`. New residuals: `R-PARITY-AMPLIFICATION` (the whole-object parity fetch;
-cheap fix: per-stripe), `R-GRANT-RATIO-NOT-A-CONSTANT` (blocking, G-BB-30),
+any `V ≥ 44.7 GiB`. New residuals: `R-PARITY-AMPLIFICATION` (the parity fetch's 1.6×; whole-object at the time, a
+per-stripe deficit walk since 2026-09-06, the worst case surviving for a corrupting provider), `R-GRANT-RATIO-NOT-A-CONSTANT` (blocking, G-BB-30),
 `R-SMAX-PUBLISHER-CHOSEN`. What can ship before the value: the floor as a constant DERIVED in
 code from `erasure.DefaultParams`, with a refuse-below assertion on the eventual `g/λ` (the
 `-dht-address-reserve` shape) — an R2.9 build item, since `r` does not exist yet.
@@ -1866,8 +1872,9 @@ not fetchable on the grant alone. **Still open and NOT closed by this ratificati
 separate decision with its own tier consequences, taken when R2.9 gives `r` a value), G-BB-32
 (the "stripe floor 640 MiB" clause in item 1 above is wrong twice and stands corrected by
 this note: 128 MiB is the enforced maximum chunk, and that cliff was itself refuted).
-`R-PARITY-AMPLIFICATION` (the whole-object parity fetch that produced the 1.6×; cheap fix:
-per-stripe) is a build residual on the fetch path, not a pin condition.
+`R-PARITY-AMPLIFICATION` (the parity fetch that produced the 1.6× — whole-object until 2026-09-06, a
+per-stripe deficit walk since; the 1.6× survives as the CORRUPTING-provider worst case because
+bytes transfer before they verify) is a build residual on the fetch path, not a pin condition.
 
 **G-BB-19′ — the pin's R2.12 clause, RESTATED 2026-09-05 (Researcher,
 `R2.12-faucet-rate-tier-and-grant-ratio-composition-RESEARCH-CERTIFICATION-2026-09-05.md`

@@ -9,6 +9,20 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Fixed
+- **NetGet pulls parity per STRIPE, in deficit order, instead of every parity column of the whole object
+  (2026-09-06).** One withheld data chunk used to make the fetcher pull all N−K parity columns of the entire
+  file — a 1.6× draw on a single missing shard (`R-PARITY-AMPLIFICATION`). The fallback is now a deficit walk:
+  per stripe, shards missing = real data shards − present; each parity column is consulted in turn for the
+  stripes still in deficit and the walk stops at the first column that clears them — typically one lookup, and
+  never more parity than the damage (a short final stripe counts its real shards, never K). The dead
+  `parityForMissing` helper is removed. Not a closure claim: a provider that returns a CORRUPT shard has already
+  transferred the bytes before they are verified, so the 64 GiB `grant/r` pin's worst case is unchanged. Presence in
+  the deficit is READ-AND-VERIFIED (the disk store's existence check is a stat; its read verifies), so a bit-rotten
+  local shard counts as missing and is routed around — at a measured cost of two reads and three hashes over the data
+  per retrieval instead of one and one (~46 ms per 64 MiB chunk vs 2.5 µs; ~21 s at a 30 GB object), taken for
+  correctness with the pay-on-failure redesign filed as `R-PS-PRESENCE-COST`. Gates `TestPS*` (G-PS-1…6, G-PS-8) on the
+  80 KiB / 4 KiB rig; new counters `stats.ParityColumnLookups`, `stats.ParityShardsPulled`.
+  Deliberation: `docs/thinking/2026-09-06-parity-fetch-per-stripe.md`.
 - **R3.1 — two latent defects on the floor box's state-root fold surface, closed behind gates (2026-09-06;
   Researcher certification `R3.1-SMT-domain-separation-disjoint-preimage-RESEARCH-CERTIFICATION-2026-09-06.md`).**
   (1) `FoldChangedPaths` seeded the SMT library's node store with witness-supplied `(Digest, Preimage)` delete

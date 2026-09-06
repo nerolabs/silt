@@ -15,7 +15,6 @@ import (
 	"sort"
 
 	"github.com/nerolabs/silt/core/dht"
-	"github.com/nerolabs/silt/core/erasure"
 	"github.com/nerolabs/silt/core/link"
 	"github.com/nerolabs/silt/core/manifest"
 	"github.com/nerolabs/silt/core/pipeline"
@@ -713,17 +712,45 @@ func (n *Node) netGetEntry(reg ports.Registry, entry ports.Entry, h link.Handle,
 			settle(m, err, done)
 		}
 
-		if m.K == 0 { // uncoded: per-chunk, data then parity-on-demand
-			n.fetchAll(m.ChunkIDs(), func(missingData []ports.ChunkID) {
-				n.fetchAll(parityForMissing(m, missingData), func([]ports.ChunkID) { finish() })
-			})
+		if m.K == 0 { // uncoded: per-chunk; an uncoded file has no parity to fall back to
+			n.fetchAll(m.ChunkIDs(), func([]ports.ChunkID) { finish() })
 			return
 		}
 
-		// Erasure-coded: fetch by column. Pull the k data columns first;
-		// only if a data shard is missing do we pull the parity columns and
-		// let the pipeline reconstruct. Each column is one provider lookup.
+		// Erasure-coded: fetch by column. Pull the k data columns first. Only the
+		// STRIPES that lost a data shard need parity, and each needs exactly as many
+		// parity shards as it lost (the pipeline reconstructs any K of N per stripe). The
+		// parity fallback is therefore a DEFICIT WALK: per stripe, deficit = data shards
+		// of that stripe − data shards present; walk the parity columns in order, pull
+		// from each only the shards of stripes still in deficit, decrement as they land,
+		// and stop at the first column that clears every deficit — typically ONE parity
+		// column lookup, and never more parity than the damage. Before 2026-09-06 any
+		// missing data shard pulled EVERY parity column of the WHOLE object (a 1.6× draw
+		// on one withheld chunk, R-PARITY-AMPLIFICATION); the 64 GiB grant/r pin's floor
+		// still carries that N/K factor as the WORST case, because a provider that returns
+		// a CORRUPT shard has already transferred the bytes before fetchFrom's verify
+		// rejects it — this walk changes the honest and the withholding cases, not the
+		// corrupting one. The floor's N/K factor (G-BB-19 sentence, G-BB-31 ratification,
+		// docs/decisions.md D-R2.9a-RUN-CALLS) is therefore untouched by this walk. Each
+		// column is one provider lookup.
+		//
+		// PRESENCE IS VERIFIED, NOT STAT'ED (PE code ruling F-1): the disk store's Has is an
+		// os.Stat while Get verifies the bytes, so a bit-rotten local shard would count as
+		// present here and then fail in the pipeline — the old whole-column fetch masked that
+		// by accident. present() reads the shard through Get, which re-verifies by contract
+		// (ports.ChunkStore.Get, honoured by diskstore and memstore), and keeps a belt
+		// Verify() because cachestore.Get does not re-verify. THE COST, MEASURED (PE code
+		// ruling Open-2, adapters/diskstore, 64 MiB chunk, warm cache, hardware SHA): Has
+		// 2.5 µs · Get 25.5 ms · Get+Verify 46.3 ms — retrieval now pays two reads and three
+		// hashes over the data instead of one read and one hash, ~21 s at S_max = 30 GB here
+		// and more on a pony without SHA acceleration. Taken knowingly: the alternative
+		// (trust Has, pay on pipeline failure) is the pay-on-failure redesign filed as
+		// R-PS-PRESENCE-COST; correctness first, the cheaper shape second.
 		cols := columnsOf(m)
+		present := func(id ports.ChunkID) bool {
+			c, err := n.store.Get(bg(), id)
+			return err == nil && c.Verify()
+		}
 		fetchCols := func(list []int, after func()) {
 			var next func(i int)
 			next = func(i int) {
@@ -735,28 +762,83 @@ func (n *Node) netGetEntry(reg ports.Registry, entry ports.Entry, h link.Handle,
 			}
 			next(0)
 		}
-		allData := func() bool {
-			for _, id := range m.ChunkIDs() {
-				if ok, _ := n.store.Has(bg(), id); !ok {
-					return false
+		dataIDs := m.ChunkIDs()
+		stripes := (len(dataIDs) + m.K - 1) / m.K
+		// deficit[s] = data shards of stripe s NOT present after the data pass. A short final
+		// stripe has fewer real data shards; its deficit counts only those (K − present would
+		// over-fetch, never under-fetch — the fatal direction is under-fetch).
+		deficit := func() []int {
+			d := make([]int, stripes)
+			for i, id := range dataIDs {
+				if !present(id) {
+					d[i/m.K]++
 				}
 			}
-			return true
+			return d
 		}
 		dataCols := make([]int, m.K)
 		for j := range dataCols {
 			dataCols[j] = j
 		}
 		fetchCols(dataCols, func() {
-			if allData() {
+			d := deficit()
+			remaining := 0
+			for _, x := range d {
+				remaining += x
+			}
+			if remaining == 0 {
 				finish()
 				return
 			}
-			parityCols := make([]int, 0, m.N-m.K)
-			for j := m.K; j < m.N; j++ {
-				parityCols = append(parityCols, j)
+			var walk func(j int)
+			walk = func(j int) {
+				if remaining <= 0 || j >= m.N {
+					finish()
+					return
+				}
+				// This parity column's shards for the stripes still in deficit. cols[j] is in
+				// stripe order (columnsOf), so cols[j][s] is stripe s's shard in column j.
+				// A parity shard this node already holds (verified) settles its stripe's deficit
+				// without a fetch and without counting as pulled (F-4: the counter is TRANSFERS).
+				var want []ports.ChunkID
+				stripeOf := map[ports.ChunkID]int{}
+				for s := 0; s < stripes && s < len(cols[j]); s++ {
+					if d[s] <= 0 {
+						continue
+					}
+					id := cols[j][s]
+					if present(id) {
+						d[s]--
+						remaining--
+						continue
+					}
+					want = append(want, id)
+					stripeOf[id] = s
+				}
+				if len(want) == 0 {
+					walk(j + 1) // nothing to ask this column for; the next may still be needed (F-6)
+					return
+				}
+				n.Stats.ParityColumnLookups++
+				n.fetchColumn(h.Root, j, want, func(missing []ports.ChunkID) {
+					gone := make(map[ports.ChunkID]bool, len(missing))
+					for _, id := range missing {
+						gone[id] = true
+					}
+					for _, id := range want {
+						if gone[id] {
+							continue
+						}
+						n.Stats.ParityShardsPulled++
+						if s := stripeOf[id]; d[s] > 0 {
+							d[s]--
+							remaining--
+						}
+					}
+					walk(j + 1)
+				})
 			}
-			fetchCols(parityCols, finish)
+			walk(m.K)
 		})
 	})
 }
@@ -984,30 +1066,4 @@ func (n *Node) confirmColumnHolders(provs []ports.NodeID, shards []ports.ChunkID
 		nextShard(0)
 	}
 	nextProv(0)
-}
-
-// parityForMissing returns the parity shard IDs of every stripe that
-// lost data chunks — fetched only on demand, since a healthy stripe
-// never needs its parity.
-func parityForMissing(m *manifest.Manifest, missing []ports.ChunkID) []ports.ChunkID {
-	if m.K == 0 || len(missing) == 0 {
-		return nil
-	}
-	lost := make(map[ports.ChunkID]bool, len(missing))
-	for _, id := range missing {
-		lost[id] = true
-	}
-	p := erasure.Params{K: m.K, N: m.N}
-	dataIDs, parityIDs := m.ChunkIDs(), m.ParityIDs()
-	var need []ports.ChunkID
-	for j := 0; j < p.Stripes(len(dataIDs)); j++ {
-		lo, hi := j*p.K, min((j+1)*p.K, len(dataIDs))
-		for _, id := range dataIDs[lo:hi] {
-			if lost[id] {
-				need = append(need, parityIDs[j*p.ParityShards():(j+1)*p.ParityShards()]...)
-				break
-			}
-		}
-	}
-	return need
 }

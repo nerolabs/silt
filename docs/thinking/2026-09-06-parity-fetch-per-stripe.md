@@ -54,4 +54,50 @@ with every stripe damaged, the fetch equals the whole-column fetch; the uncoded 
 unchanged. Existing: `TestNetGet*` in `netget_retention_500_test.go`, the e2e swarm retrieval and the
 node-death e2e.
 
-**Status:** proposed — to blind PE review before code.
+**Blind PE ruling on this record**
+(`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-parity-fetch-per-stripe-design-2026-09-06.md`,
+PROCEED-WITH-CHANGES — "direction right, option wrong"). Built as **(A′), not (A)**:
+- The record rejected (B) on a false premise: `fetchCols` already walks parity columns SEQUENTIALLY,
+  one lookup each, and `fetchColumn`'s per-id `missing` list was thrown away. A DEFICIT COUNTER on that
+  same walk — per stripe, deficit = real data shards − present; pull from each parity column only the
+  shards of stripes still in deficit; decrement as they land; stop at the first column that clears every
+  deficit — costs at most the same N−K lookups, typically ONE, and zero extra round trips. Measured by
+  the PE: (A) over-fetches 6× per damaged stripe and leaves a 1.5× adversarial ceiling (withhold one
+  chunk per stripe); (A′) is 1.0× for every withholding strategy — the fetcher draws exactly K shards per
+  stripe by construction.
+- `parityForMissing` already existed — a verbatim (A) — wired only inside `if m.K == 0`, where it returns
+  nil: vacuous unconditionally. Deleted; the uncoded path is behaviourally unchanged (G-PS-7).
+- **The pin's citation moves with the code.** `D-R2.9a-RUN-CALLS` named `core/node/file.go:750-760` as
+  the decisive artifact for the 44.7 GiB floor's N/K factor; this build rewrites those lines. The floor's
+  factor SURVIVES by a mechanism the certification did not name: `fetchFrom` transfers the bytes and
+  verifies AFTER — a CORRUPTING provider forces `S·N/K` under any fetch policy including (A′). The
+  ledger's citation is corrected to say so; the pin's VALUE is untouched.
+- **Not claimed:** whether `R-PARITY-AMPLIFICATION` is DISCHARGED is research-gated, then the owner's. This
+  build changes what an honest or withholding provider can make the fetcher draw; it does not close the
+  corrupting case, and it does not touch the 64 GiB pin.
+- **Filed, not fixed:** `R-SPARSE-COLUMN-PROVIDER` — `NetGetRetain` is live, and per-stripe parity makes a
+  retainer a 1-of-T holder of a parity column; `probeShard` walks providers sequentially and corpse gating
+  does not skip live nodes. #500 is not changed here.
+- Gates G-PS-1…6 built on the existing 80 KiB / 4 KiB rig (21 chunks, 3 stripes, final stripe = 1 real data
+  shard); G-PS-7 is the unchanged uncoded suite. Ablation run in a scratch copy: reverting the walk to
+  whole-column parity turns four of the five behavioural gates RED (the healthy-object pin holds under
+  both, by design). Two node-wide counters added for the gates: `Stats.ParityColumnLookups`,
+  `Stats.ParityShardsPulled` (withheld with the other counters under `-privacy`).
+
+**Blind PE CODE ruling** (`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-parity-fetch-per-stripe-code-f443f84-2026-09-06.md`,
+MERGE-AFTER; the walk verified as exactly (A′), all four ablations RED, whole `core/node` and e2e green on
+the PE's own runs). Folded in: **F-1** presence is now READ-AND-VERIFIED, not stat'ed — the disk store's
+`Has` is an `os.Stat` while `Get` verifies, so a bit-rotten local shard counted as present and the
+pipeline then failed on it (the old whole-column fetch masked that by accident; the PE owned the miss in
+its design §3.3); gate `TestPSBitRottenLocalShardCountsAsMissing` on a store double with the disk store's
+shape. **F-4** an already-held (verified) parity shard settles its deficit without a transfer and is not
+counted as pulled (`ParityShardsPulled` counts TRANSFERS); gate `TestPSAlreadyHeldParityIsNotCountedAsPulled`.
+**F-2** G-PS-1 is a regression pin, not a discriminator (the whole-column fallback also fetched no parity
+on a healthy object) — its comment now says so. **F-3** there is no uncoded gate: `K == 0` is unreachable
+from any publish path, so the dead helper's removal is safe by unreachability, not by suite; "G-PS-1…7"
+was an overstatement. **F-5** two more ledger sentences that still described the whole-object fetch are
+corrected. **F-6** an empty `want` advances to the next column rather than finishing. **F-8** the code
+comment names the G-BB-19 sentence and the G-BB-31 ratification. No closure of `R-PARITY-AMPLIFICATION`
+is asserted anywhere.
+
+**Status:** built; PE fold-in applied; whole `core/node` suite (non-`-short`) and full e2e green locally.
