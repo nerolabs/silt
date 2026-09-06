@@ -37,8 +37,8 @@ package node
 //	    the one seam that changes.
 //	C10 a hard live-session cap (deliveryMaxLiveSessions): refuse at cap, never evict.
 //
-// The v2 flat path (MsgDeliveryReceipt: token spent at REDEEM) stays callable until
-// its retirement PR (gate B-9); the two lanes share no message kind and no state.
+// The v2 flat path (MsgDeliveryReceipt: token spent at REDEEM) is RETIRED (B-9): the
+// kind is refused with a named reason (demandrole.go handleDeliveryReceipt).
 //
 // M0 (cert §7): the session record adds no who-fetched-what capability the shipped
 // receipt does not already hand the server (Receipt.Fetcher is the durable key in the
@@ -479,7 +479,11 @@ func (n *Node) handleDeliverySettle(from ports.NodeID, msg ports.Message) {
 	}
 	settled, err := n.SettleDeliveryReceipt(from, r)
 	if err != nil {
-		n.logf(ports.LogDebug, "delivery receipt rejected", "reason", err.Error())
+		// "delivery receipt paid NO credit" is the announced S5 marker (observable_contract.go)
+		// — the one signal an operator gets when a receipt settles nothing. It named the flat
+		// lane's guard refusals; on the session lane it names the refused settlement.
+		n.logf(ports.LogWarn, "delivery receipt paid NO credit", "object", r.Object, "reason", err.Error(),
+			"serial_guard_refusals", guardFullRefusals(n.ledger))
 		deny(err)
 		return
 	}

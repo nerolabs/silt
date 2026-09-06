@@ -419,6 +419,14 @@ func (b *Bank) Redeem(keys *Keyset, current uint64, token Token, r DeliveryRecei
 // standing. Reading it moves nothing.
 func (b *Bank) Demand(object ports.Hash) int64 { return b.demand[object] }
 
+// RETIRED FROM THE NODE (B-9, 2026-09-07): SubmittedReceipt, Ack and Bank.Redeem — the v2
+// flat receipt, one token spent at REDEEM — have NO production caller since R2.9's
+// session lane (session.go; the token is spent at OPEN, deliveries are acknowledged by
+// SessionReceipt). core/node refuses MsgDeliveryReceipt with a named reason. The
+// primitive stays as a leaf library with its own unit tests until the ledger's flat leg
+// (core/credit RedeemDeliveryCreditReason) retires with it in one attended PR — the
+// ~25 tests that pin its properties are re-homed there, not dropped.
+//
 // SubmittedReceipt bundles a delivery receipt with the token that authorized it —
 // the pair a fetcher hands the server so the server can bank and redeem in one
 // message. Marshal to CBOR for the wire.

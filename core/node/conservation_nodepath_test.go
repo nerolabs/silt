@@ -88,6 +88,7 @@ func TestR05NodePathConservation(t *testing.T) {
 	nd.EnableChain(c, serverIdent.Signer())
 	nd.SetDemandIssuerKey(rand.Reader, 0, issuerPriv)
 	nd.EnableDemandBank(serverID)
+	nd.EnableDeliverySessions(10 * ports.Second) // B-9: deliveries are sessions
 	if ks := nd.DemandIssuerKeyset(serverID); ks == nil || ks.Key(0) == nil {
 		t.Fatal("setup: the committed issuer key was not pinned - the bank would reject every receipt")
 	}
@@ -164,6 +165,9 @@ func TestR05NodePathConservation(t *testing.T) {
 		for _, root := range escrowRoots {
 			total += ledger.EscrowBalance(root)
 		}
+		// B-9: the session's unsettled remainder is a pending DEPOSIT (released to the
+		// fetcher at anchor expiry) and is part of the conserved total.
+		total += ledger.DeliverySettlementStats().PendingRefundCredits
 		return total
 	}
 
@@ -252,20 +256,12 @@ func TestR05NodePathConservation(t *testing.T) {
 		t.Fatalf("demand.Unblind: %v", uerr)
 	}
 
-	// Ack signs over (serial, objRoot, serverID) with the fetcher's private key.
-	receipt := demand.Ack(fetcherIdent.Signer(), token, objRoot, serverID)
-	submitted := demand.SubmittedReceipt{Token: token, Receipt: receipt}
-	blob, mErr := submitted.Marshal()
-	if mErr != nil {
-		t.Fatalf("SubmittedReceipt.Marshal: %v", mErr)
+	// B-9: the token is the SESSION anchor. Open (spent into the guard), settle ONE
+	// increment for objRoot, close (the unsettled remainder becomes a pending deposit,
+	// part of the conserved total below).
+	if !sessionPresent(t, nd, fetcherIdent, token, objRoot) {
+		t.Fatal("the session delivery was not banked — the settlement path was never reached")
 	}
-
-	// Verify the demand bank will accept this receipt before submitting.
-	// (If the bank rejects, RedeemDeliveryCredit is never called — a different failure.)
-	preRedeemTotal := sumLedger()
-
-	// Submit via the node handler (demandrole.go:175 → RedeemDeliveryCredit at :201).
-	nd.handle(fetcherID, ports.Message{Kind: ports.MsgDeliveryReceipt, Data: blob, Ephemeral: true})
 
 	// ── Step 5: conservation assertion. ──
 	// Under the A4 fix (eviction reverses the lane-0 self-mint):
@@ -274,7 +270,7 @@ func TestR05NodePathConservation(t *testing.T) {
 	//   - bytes0                         (eviction reversal of lane-0 self-mint)
 	//   + nodFloodSize*floodBytes        (flood self-mints, all legitimately unwitnessed)
 	//   - fee                            (ChargePublish debit from fetcher)
-	//   + fee                            (conserved fee credited at redeem)
+	//   + 1 + (fee − 1)                  (one increment settled to server+escrow; the rest a pending deposit)
 	//   = initial + nodFloodSize*floodBytes
 	//
 	// Under the bug (no eviction reversal), bytes0 is NOT subtracted:

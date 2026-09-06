@@ -1749,7 +1749,7 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 	case ports.MsgRepairClaim:
 		n.handleRepairClaim(from, msg) // async: replies MsgRepairVote when the two legs settle (H7)
 	case ports.MsgDeliveryReceipt:
-		n.handleDeliveryReceipt(from, msg) // D-DEMAND: verify + bank a delivery receipt
+		n.handleDeliveryReceipt(from, msg) // RETIRED (B-9, R2.9): refused with a named reason; the session lane is MsgDeliveryOpen/Settle
 	case ports.MsgRelayOpen:
 		n.handleRelayOpen(from, msg) // PoD §7.3: open a paid relay session (M0 guards + S-clamp fire here)
 	case ports.MsgRelayPay:

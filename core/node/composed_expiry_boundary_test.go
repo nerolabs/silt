@@ -114,6 +114,7 @@ func newComposedFixture(t *testing.T) *composedFixture {
 		nd.SetLedger(ledger) // ONE ledger — the shared paidSerial guard set
 		nd.EnableChain(c, id.Signer())
 		nd.EnableDemandBank(aIdent.NodeID()) // both accept A-issued tokens
+		nd.EnableDeliverySessions(10 * ports.Second) // B-9: deliveries are sessions; A issues to itself, B has no self keyset
 		return nd
 	}
 	a, b := mk(aIdent), mk(bIdent)
@@ -154,6 +155,9 @@ func (f *composedFixture) sum() int64 {
 	for _, r := range f.roots {
 		total += f.ledger.EscrowBalance(r)
 	}
+	// B-9: the session's unsettled remainder is a pending DEPOSIT (released at anchor
+	// expiry), so it is part of the conserved total.
+	total += f.ledger.DeliverySettlementStats().PendingRefundCredits
 	return total
 }
 
@@ -210,18 +214,16 @@ func (f *composedFixture) mintTokenAt(t *testing.T, epoch uint64, priv *rsa.Priv
 	return tok
 }
 
-// present submits a receipt for token naming `server` and reports whether the server
-// banked it.
+// present presents token at `server` as a SESSION anchor (B-9: the flat receipt is
+// retired) and reports whether the server banked the delivery. Under sessions an
+// A-issued token verifies only under A's own key: server B — which holds no self keyset —
+// refuses at open, so the cross-server pump is structurally closed before the window is
+// even consulted; the window is then exercised at A with the expired token.
 func (f *composedFixture) present(t *testing.T, server *Node, token demand.Token) bool {
 	t.Helper()
-	r := demand.Ack(f.fetcher.Signer(), token, f.object, server.id)
-	blob, err := demand.SubmittedReceipt{Token: token, Receipt: r}.Marshal()
-	if err != nil {
-		t.Fatalf("marshal receipt: %v", err)
-	}
-	before := server.WitnessedDemand(f.object)
-	server.handle(f.fetcher.NodeID(), ports.Message{Kind: ports.MsgDeliveryReceipt, Data: blob, Ephemeral: true})
-	return server.WitnessedDemand(f.object) > before
+	before := server.WitnessedIncrements(f.object)
+	ok := sessionPresent(t, server, f.fetcher, token, f.object)
+	return ok && server.WitnessedIncrements(f.object) > before
 }
 
 // TestComposedExpiryBoundary_EvictedSerialIsRefusedUpstream is the R0.4b-8 gate.
@@ -258,6 +260,12 @@ func TestComposedExpiryBoundary_EvictedSerialIsRefusedUpstream(t *testing.T) {
 	// still refuse, at the demand window, before any credit path.
 	if f.present(t, f.b, token) {
 		t.Fatal("the pump: server B banked a token whose issuing epoch has left the window")
+	}
+	// And at the ISSUER itself, past the window: the keyset refuses the expired anchor at
+	// open (the demand window, upstream of any credit path); the ledger guard would
+	// refuse it as backdated even if it did not.
+	if f.present(t, f.a, token) {
+		t.Fatal("server A banked its own token after the issuing epoch left the window")
 	}
 	if got := f.sum(); got != paid {
 		t.Fatalf("a refused re-presentation must move nothing: Σ moved by %+d", got-paid)
