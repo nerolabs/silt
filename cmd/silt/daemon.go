@@ -2200,6 +2200,15 @@ func effectiveOperatorMargin(marginSet bool, explicit int, objectivePath bool) (
 // 2026-09-06 ("advance"): an empty bucket advances one fee; 0 opts into deny.
 const grantDenyFloorOneFee = -1
 
+// faucetConfigure applies the R2.12 faucet flags to the ledger (the doc above the constants).
+//
+// R2.9 (D-R2.9-NODE-HALF-CALLS 1′, 2026-09-07): under the delivery lane's DEPOSIT (the
+// unsettled remainder is released at ANCHOR EXPIRY, never at close) the (grant/fee) term
+// below is the exact CONCURRENCY of anchors one identity can hold live at once — the
+// assertion survives verbatim and becomes tight (refund certification §4.5, §6.3). What
+// weakens is the STOCK reading: under the burn a fixed stock filled the guard ONCE; under
+// the deposit the same stock can fill it every window (R-STOCK-RENEWABLE-OCCUPANCY, bounded
+// by Σ credits ever granted / f per window) — the honest price of a renewable honest budget.
 func faucetConfigure(l *credit.Ledger, capacity, perHour, denyFloor int64) error {
 	grant, fee := l.Grant(), l.Fee() // from the LEDGER, never a duplicated literal (PE BLK-3)
 	if capacity == 0 && perHour == 0 {

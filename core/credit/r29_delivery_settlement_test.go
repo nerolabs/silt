@@ -18,6 +18,8 @@ package credit
 // remainder → escrow (⇒ B-6); the burn counted per settlement (⇒ G-λ-8-6).
 
 import (
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/nerolabs/silt/ports"
@@ -551,5 +553,329 @@ func TestWitnessingNeverDefundsTheEscrow(t *testing.T) {
 	}
 	if _, live := l.ProvisionalLaneForTest(server, fetcher, root); live {
 		t.Fatal("the fully witnessed lane survived")
+	}
+}
+
+// ---- the deposit released at anchor expiry (G-6R-1…6, 8, 9, 10; certification
+// R2.9-session-remainder-refund-and-live-anchor-cap-2026-09-06 §7; D-R2.9-NODE-HALF-CALLS 1′).
+// Ablations: release at close (releaseEpoch := watermark) ⇒ G-6R-3, G-6R-4 RED; credit
+// through acct() ⇒ G-6R-2 RED; refund `budget` instead of `budget − settled` ⇒ G-6R-1 RED;
+// unbounded pending table ⇒ G-6R-6 RED.
+
+// TestRemainderIsConservedAcrossCloseAndRelease — G-6R-1. Withdrawal → open → serve → settle →
+// close → release: Σ_L returns to its pre-withdrawal value plus nothing but the
+// un-acknowledged tail mint; remainder = refunded + pending + burned at every point.
+func TestRemainderIsConservedAcrossCloseAndRelease(t *testing.T) {
+	const fee, grant = int64(50_000), int64(500_000)
+	l := New(fee, grant)
+	src := &mockEpochSource{}
+	l.SetEpochSource(src)
+	server, fetcher := id(1), id(2)
+	root := ports.HashBytes([]byte("g6r-1"))
+	l.Register(server)
+	l.Register(fetcher)
+	base := sumConserved(l)
+	budget := openDeliverySession(t, l, server, fetcher, 0, 0, 1)
+	const B = int64(40 * DeliveryIncrementBytes)
+	serveLane(l, server, fetcher, root, B, 512<<10)
+	settled, _, _ := l.SettleDelivery(server, fetcher, root, 32, budget, 0) // 32 of 40 increments acknowledged
+	remainder := budget - settled
+	tail := objNet(B-32*r29U) + objSkim(B-32*r29U) // the un-acknowledged 8 increments' self-mint stays (the bilateral fallback)
+	if booked := l.CloseDeliverySession(fetcher, remainder, 0); booked != remainder {
+		t.Fatalf("booked %d, want %d", booked, remainder)
+	}
+	check := func(when string) {
+		st := l.DeliverySettlementStats()
+		if st.RefundedCredits+st.PendingRefundCredits+st.BurnedCredits != remainder {
+			t.Fatalf("%s: refunded %d + pending %d + burned %d != remainder %d", when, st.RefundedCredits, st.PendingRefundCredits, st.BurnedCredits, remainder)
+		}
+	}
+	check("at close")
+	if d := sumConserved(l) - base; d != -remainder+tail {
+		t.Fatalf("Δ Σ_L at close %d, want −remainder + tail mint = %d", d, -remainder+tail)
+	}
+	src.e = uint64(PaidSerialWindow) + 1
+	l.ReleaseDueRefunds()
+	check("after release")
+	if d := sumConserved(l) - base; d != tail {
+		t.Fatalf("Δ Σ_L after release %d, want exactly the un-acknowledged tail mint %d — the face's legs cancel", d, tail)
+	}
+	if l.Balance(fetcher) != grant-fee+remainder {
+		t.Fatalf("fetcher %d, want grant − face + remainder = %d", l.Balance(fetcher), grant-fee+remainder)
+	}
+}
+
+// TestReleaseNeverRegistersAnAccount — G-6R-2 (M1). A deposit whose fetcher has no account
+// here is burned and counted; no account is registered, no grant minted.
+func TestReleaseNeverRegistersAnAccount(t *testing.T) {
+	l := New(50_000, 500_000)
+	src := &mockEpochSource{}
+	l.SetEpochSource(src)
+	server, stranger := id(1), id(9)
+	l.Register(server)
+	base := sumConserved(l)
+	accounts := len(l.Balances())
+	l.CloseDeliverySession(stranger, 12_345, 0)
+	src.e = uint64(PaidSerialWindow) + 1
+	l.ReleaseDueRefunds()
+	st := l.DeliverySettlementStats()
+	if len(l.Balances()) != accounts || sumConserved(l) != base {
+		t.Fatalf("release registered an account (%d → %d) or moved Σ_L by %d — acct() minted a grant (the RT-RELAY-1 phantom)", accounts, len(l.Balances()), sumConserved(l)-base)
+	}
+	if st.BurnedCredits != 12_345 || st.RefundsBurnedNoAccount != 1 || st.PendingRefundCredits != 0 || st.RefundedCredits != 0 {
+		t.Fatalf("telemetry %+v, want the remainder burned once as no-account", st)
+	}
+}
+
+// TestRemainderIsNotSpendableUntilTheAnchorExpires — G-6R-3 (M2). Close at epoch E with an
+// anchor issued at epoch A: at every watermark ≤ A + W the fetcher's balance is unchanged
+// and a withdrawal still refuses; at A + W + 1 the balance rises by exactly the remainder.
+func TestRemainderIsNotSpendableUntilTheAnchorExpires(t *testing.T) {
+	const fee = int64(50_000)
+	l := New(fee, 0)
+	src := &mockEpochSource{}
+	l.SetEpochSource(src)
+	server, fetcher := id(1), id(2)
+	l.Register(server)
+	l.Register(fetcher)
+	l.acct(fetcher).balance = fee // exactly one face: the whole balance goes into the anchor
+	src.e = 3
+	budget := openDeliverySession(t, l, server, fetcher, 3, 0, 1)
+	l.CloseDeliverySession(fetcher, budget, 3) // settled nothing: the whole face is the remainder
+	for e := uint64(3); e <= 3+uint64(PaidSerialWindow); e++ {
+		src.e = e
+		l.ReleaseDueRefunds()
+		if l.Balance(fetcher) != 0 || l.ChargePublish(fetcher) == nil {
+			t.Fatalf("epoch %d: the deposit was spendable before the anchor left the window (balance %d)", e, l.Balance(fetcher))
+		}
+	}
+	src.e = 3 + uint64(PaidSerialWindow) + 1
+	l.ReleaseDueRefunds()
+	if l.Balance(fetcher) != budget {
+		t.Fatalf("at A+W+1 the fetcher holds %d, want the whole face %d back", l.Balance(fetcher), budget)
+	}
+}
+
+// TestGuardOccupancyIsBoundedByTheCreditStock — G-6R-4, THE REFUTATION ENCODED (cert §4.2):
+// fresh identities pass bearer anchors down a chain, each opening, closing and re-withdrawing
+// inside one window. Live guard entries must never exceed ⌊stock/f⌋. Under release-at-close
+// the chain funds itself forever and fills the guard for zero net credits; under release-at-
+// anchor-expiry the second identity's deposit is locked and the chain stops at the stock.
+func TestGuardOccupancyIsBoundedByTheCreditStock(t *testing.T) {
+	const fee, grant = int64(50_000), int64(500_000)
+	l := New(fee, grant)
+	src := &mockEpochSource{}
+	l.SetEpochSource(src)
+	server := id(1)
+	l.Register(server)
+	stock := grant // one funded identity is the whole credit stock in this world
+	x1 := id(10)
+	l.Register(x1) // receives the grant
+	serial := 0
+	// X1 spends its whole stock on anchors and hands them, bearer, down a chain of fresh
+	// identities. Each recipient opens, closes at once, and — if its deposit is spendable —
+	// buys a new anchor for the next identity.
+	holders := []ports.NodeID{}
+	anchors := [][]RelayAnchor{}
+	for i := 0; i < int(stock/fee); i++ {
+		anchors = append(anchors, buyAnchors(t, l, x1, 0, serial, 1))
+		serial++
+	}
+	next := byte(20)
+	for round := 0; round < 200; round++ {
+		if len(anchors) == 0 {
+			break
+		}
+		a := anchors[0]
+		anchors = anchors[1:]
+		xk := id(next)
+		next++
+		l.Register(xk) // a fresh identity; the unconfigured faucet grants it — model the grant as NOT part of this stock
+		l.acct(xk).balance = 0
+		face, why := l.SpendDeliveryAnchors(server, a)
+		if face != fee {
+			t.Fatalf("round %d: open refused: %q", round, why)
+		}
+		holders = append(holders, xk)
+		l.CloseDeliverySession(xk, face, 0) // closes at once: the whole face is the remainder
+		if live := int64(len(l.paidSerial)); live > stock/fee {
+			t.Fatalf("round %d: %d live guard entries > ⌊stock/f⌋ = %d — a bearer-anchor chain filled the guard beyond the credit stock (release-at-close)", round, live, stock/fee)
+		}
+		// Can the recipient fund the next link? Only if its deposit was released.
+		if err := l.ChargePublish(xk); err == nil {
+			anchors = append(anchors, anchorsAt(0, serial, 1))
+			serial++
+		}
+	}
+	if live := int64(len(l.paidSerial)); live != stock/fee {
+		t.Fatalf("live entries %d, want exactly ⌊stock/f⌋ = %d", live, stock/fee)
+	}
+	// After the window the deposits release and the stock is whole again — in the holders'
+	// hands, not destroyed (T-DEPOSIT: the face bounds concurrency, never capacity).
+	src.e = uint64(PaidSerialWindow) + 1
+	l.ReleaseDueRefunds()
+	var held int64
+	for _, h := range holders {
+		held += l.Balance(h)
+	}
+	if held != stock {
+		t.Fatalf("after expiry the chain's holders hold %d, want the whole stock %d back", held, stock)
+	}
+}
+
+// TestZeroSettleSessionReturnsItsWholeFace — G-6R-5 (G-λ-8-10 lift (b), re-worded): a
+// session that settles nothing returns its WHOLE face at close or at anchor expiry, whichever
+// is later; nothing is burned. A close-only assertion must NOT pass a correct build.
+func TestZeroSettleSessionReturnsItsWholeFace(t *testing.T) {
+	const fee, grant = int64(50_000), int64(500_000)
+	l := New(fee, grant)
+	src := &mockEpochSource{}
+	l.SetEpochSource(src)
+	server, fetcher := id(1), id(2)
+	l.Register(server)
+	l.Register(fetcher)
+	budget := openDeliverySession(t, l, server, fetcher, 0, 0, 1)
+	l.CloseDeliverySession(fetcher, budget, 0)
+	if l.Balance(fetcher) != grant-fee {
+		t.Fatal("the face came back AT CLOSE — release-at-close is the refuted rule")
+	}
+	src.e = uint64(PaidSerialWindow) + 1
+	l.ReleaseDueRefunds()
+	if l.Balance(fetcher) != grant || l.DeliverySettlementStats().BurnedCredits != 0 {
+		t.Fatalf("after expiry: fetcher %d (want the whole grant back), burned %d (want 0)", l.Balance(fetcher), l.DeliverySettlementStats().BurnedCredits)
+	}
+	// "Whichever is LATER": a session whose anchor already expired at close releases at once.
+	src.e = 20
+	budget2 := openDeliverySession(t, l, server, fetcher, 20, 50, 1)
+	src.e = 20 + uint64(PaidSerialWindow) + 1
+	l.CloseDeliverySession(fetcher, budget2, 20)
+	if l.Balance(fetcher) != grant {
+		t.Fatalf("an already-expired anchor's deposit did not release at close: %d", l.Balance(fetcher))
+	}
+}
+
+// TestPendingRefundTableIsBoundedAndRefusesNeverEvicts — G-6R-6 (build-immutable #8). The
+// pending table is capped at the guard cap; at the cap the remainder is BURNED and counted,
+// never a live record dropped.
+func TestPendingRefundTableIsBoundedAndRefusesNeverEvicts(t *testing.T) {
+	l := New(50_000, 0)
+	src := &mockEpochSource{}
+	l.SetEpochSource(src)
+	server, fetcher := id(1), id(2)
+	l.Register(server)
+	l.Register(fetcher)
+	for i := 0; i < maxPaidSerial; i++ {
+		l.CloseDeliverySession(fetcher, 1, 100) // far-future anchors: nothing releases
+	}
+	if len(l.pendingRefunds) != maxPaidSerial || l.DeliverySettlementStats().PendingRefundCredits != int64(maxPaidSerial) {
+		t.Fatalf("pending table %d, want exactly the cap %d", len(l.pendingRefunds), maxPaidSerial)
+	}
+	l.CloseDeliverySession(fetcher, 7, 100)
+	st := l.DeliverySettlementStats()
+	if len(l.pendingRefunds) != maxPaidSerial || st.RefundsBurnedAtCap != 1 || st.BurnedCredits != 7 || st.PendingRefundCredits != int64(maxPaidSerial) {
+		t.Fatalf("at cap: table %d, %+v — the remainder must be burned and counted, never a live record evicted", len(l.pendingRefunds), st)
+	}
+	if l.pendingRefunds[0].amount != 1 {
+		t.Fatal("the oldest live record was evicted")
+	}
+}
+
+// TestNoIdentityIsJoinedToAnAnchorSerialInTheDurableStore — G-6R-8 (Don't #3, cert §6.2). The
+// guard entry and the durable store's record carry no FETCHER identity; a durable join
+// between a durable identity and an anchor serial is the refused shape.
+func TestNoIdentityIsJoinedToAnAnchorSerialInTheDurableStore(t *testing.T) {
+	for _, typ := range []reflect.Type{reflect.TypeOf(paidSerialEntry{}), reflect.TypeOf(ports.PaidSerial{})} {
+		for i := 0; i < typ.NumField(); i++ {
+			n := strings.ToLower(typ.Field(i).Name)
+			if strings.Contains(n, "fetcher") || strings.Contains(n, "requester") || strings.Contains(n, "buyer") || strings.Contains(n, "payer") {
+				t.Fatalf("%s.%s joins a fetcher identity to an anchor serial — retained W+1 epochs on disk, the refused shape", typ.Name(), typ.Field(i).Name)
+			}
+		}
+	}
+	if f, ok := reflect.TypeOf(pendingRefund{}).FieldByName("fetcher"); !ok || f.Type != reflect.TypeOf(ports.NodeID{}) {
+		t.Fatal("the pending record keys on the durable fetcher — that is the PERMITTED place (process memory, deleted at release)")
+	}
+}
+
+// TestRestartLosesTheRemainderAndCountsIt — G-6R-9. A restart (a fresh ledger loading the
+// durable guard) has no sessions and no pending deposits: the credits are gone, and the
+// restored guard entries — anchors with no session state — are counted so the loss is visible.
+func TestRestartLosesTheRemainderAndCountsIt(t *testing.T) {
+	store := &memPaidStore{}
+	l := New(50_000, 500_000)
+	l.SetPaidSerialStore(store)
+	if err := l.LoadPaidSerials(); err != nil {
+		t.Fatal(err)
+	}
+	server, fetcher := id(1), id(2)
+	l.Register(server)
+	l.Register(fetcher)
+	budget := openDeliverySession(t, l, server, fetcher, 0, 0, 1)
+	l.CloseDeliverySession(fetcher, budget, 0) // a pending deposit of one face
+	// RESTART: a fresh ledger over the same durable guard.
+	l2 := New(50_000, 500_000)
+	l2.SetPaidSerialStore(store)
+	if err := l2.LoadPaidSerials(); err != nil {
+		t.Fatal(err)
+	}
+	st := l2.DeliverySettlementStats()
+	if st.PendingRefundCredits != 0 || st.RestartOrphanedAnchors != 1 {
+		t.Fatalf("after restart: pending %d (want 0 — the deposit is gone), orphaned anchors %d (want 1: the guard entry survived with no session)", st.PendingRefundCredits, st.RestartOrphanedAnchors)
+	}
+	if _, spent := l2.paidSerial[paidKey(0, anchorSerial(0))]; !spent {
+		t.Fatal("the anchor's guard entry did not survive the restart — it could be re-spent")
+	}
+}
+
+// memPaidStore is an in-memory durable guard store for the restart gate.
+type memPaidStore struct{ entries []ports.PaidSerial }
+
+func (m *memPaidStore) Load() ([]ports.PaidSerial, error) {
+	return append([]ports.PaidSerial(nil), m.entries...), nil
+}
+func (m *memPaidStore) Append(p ports.PaidSerial) error { m.entries = append(m.entries, p); return nil }
+func (m *memPaidStore) Compact(live []ports.PaidSerial) error {
+	m.entries = append([]ports.PaidSerial(nil), live...)
+	return nil
+}
+
+// TestR212AssertionStillBoundsOccupancyUnderTheRelease — G-6R-7 (cert §6.3). At the largest
+// admissible faucet capacity (MaxPaidSerial/4 ÷ (g/f) ÷ (W+1) identities per bucket-fill)
+// every granted identity spends every face, closes at once and re-spends as fast as the
+// loop allows, inside one window. Live guard entries stay ≤ MaxPaidSerial/4 — gated on the
+// RUNTIME live count. Under release-at-close every identity re-spends its returned face
+// without bound and the assertion goes vacuous (RED).
+func TestR212AssertionStillBoundsOccupancyUnderTheRelease(t *testing.T) {
+	const fee, grant = int64(50_000), int64(500_000)
+	l := New(fee, grant)
+	src := &mockEpochSource{}
+	l.SetEpochSource(src)
+	server := id(1)
+	l.Register(server)
+	capacity := int64(MaxPaidSerial) / 4 / (grant / fee) / int64(PaidSerialWindow+1) // 327 at the shipped constants
+	serial := 0
+	ids := make([]ports.NodeID, 0, capacity)
+	for i := int64(0); i < capacity; i++ {
+		f := ports.HashBytes([]byte{byte(i), byte(i >> 8), 'r', '2', '1', '2'})
+		l.Register(f) // the grant lands
+		ids = append(ids, f)
+	}
+	for round := 0; round < 3; round++ { // "as fast as the loop allows": three passes inside the window
+		for _, f := range ids {
+			for l.ChargePublish(f) == nil { // spend every face the identity can
+				face, why := l.SpendDeliveryAnchors(server, anchorsAt(0, serial, 1))
+				serial++
+				if face != fee {
+					t.Fatalf("open refused: %q", why)
+				}
+				l.CloseDeliverySession(f, face, 0) // close at once
+			}
+		}
+		if live := len(l.paidSerial); live > MaxPaidSerial/4 {
+			t.Fatalf("round %d: %d live guard entries > MaxPaidSerial/4 = %d — the R2.12 assertion is vacuous (deposits re-spent inside the window)", round, live, MaxPaidSerial/4)
+		}
+	}
+	if live := int64(len(l.paidSerial)); live != capacity*(grant/fee) {
+		t.Fatalf("live entries %d, want exactly capacity × (g/f) = %d — (g/f) is the CONCURRENCY term", live, capacity*(grant/fee))
 	}
 }

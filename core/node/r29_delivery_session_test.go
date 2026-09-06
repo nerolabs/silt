@@ -292,8 +292,8 @@ func TestSessionReaperKeysOnIdleNotOnAdmit(t *testing.T) {
 		t.Fatal("a session silent for 4 idle windows was not reaped")
 	}
 	st := ledger.DeliverySettlementStats()
-	if st.SessionsClosed != 1 || st.BurnedCredits != 50_000 {
-		t.Fatalf("the silent session's remainder: closed %d, burned %d, want 1 and exactly its unsettled face (B-13: ≤ the faces spent)", st.SessionsClosed, st.BurnedCredits)
+	if st.SessionsClosed != 1 || st.PendingRefundCredits != 50_000 || st.BurnedCredits != 0 {
+		t.Fatalf("the silent session's remainder: closed %d, pending %d, burned %d — want 1, exactly its unsettled face booked as a deposit (B-13: the fetcher forfeits nothing but latency), 0 burned", st.SessionsClosed, st.PendingRefundCredits, st.BurnedCredits)
 	}
 	// The stamp is COARSE (cert §7): never finer than idle/4.
 	if g := ports.Time(r29Idle / deliveryStampDivisor); liveSess.lastSettle%g != 0 {

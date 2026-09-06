@@ -50,11 +50,10 @@ package credit
 // calls SettleDelivery with the DELTA count and the REMAINING budget, so this entry
 // point is per-settlement arithmetic and holds no session state. The remainder is
 // therefore accounted ONCE, at CloseDeliverySession, never here (gate
-// TestBurnIsCountedOnceAtCloseNotPerSettlement). Whether that remainder is burned (G-6
-// as ratified) or refunded to the durable fetcher (the certification's §5.1 direction)
-// is an OWNER CALL that owes its own certification; this file implements G-6 as it
-// stands. The flat leg stays callable until the node half retires the un-anchored
-// receipt (gate B-9).
+// TestRemainderIsAccountedOnceAtCloseNotPerSettlement) — as a DEPOSIT released to the
+// fetcher's existing account when the session's anchors leave the guard window
+// (D-R2.9-NODE-HALF-CALLS call 1 amended 1′, 2026-09-07; M1 + M2). The flat leg stays
+// callable until the node half retires the un-anchored receipt (gate B-9).
 //
 // NEVER STANDING: every method here moves the balance economy only. Classified
 // neutral in invariant_a_test.go and pressed against a bondless identity on an
