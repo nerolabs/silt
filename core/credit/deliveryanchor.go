@@ -83,17 +83,23 @@ const ReasonNoIncrement = "no-increment"
 // one all-or-nothing guard spend per top-up; a re-presented anchor is refused with
 // ReasonAlreadyPaid and the batch records nothing — gate B-3b).
 func (l *Ledger) SpendDeliveryAnchors(server ports.NodeID, anchors []RelayAnchor) (face int64, reason string) {
-	return l.spendAnchors(server, anchors)
+	return l.spendAnchors(server, anchors, laneDelivery)
 }
 
-// SettleDelivery settles one anchored delivery session ONCE: the fetcher acknowledged
-// count increments of DeliveryIncrementBytes on the lane (server, fetcher, root), and
-// budget is the ledger's own Σ face SpendDeliveryAnchors recorded at open (plus any
-// top-ups). It reverses the lane's provisional self-mint for min(count·U, B) bytes,
-// pays min(count·p, budget) less the durability skim into the server's balance, routes
-// the skim into the object's escrow, and burns the remainder. Returns the credits paid
-// to the server and the reason. An unanchored session (budget ≤ 0) pays 0 and leaves
-// the self-mint alone — the unwitnessed bilateral fallback (B-3, B-9).
+// SettleDelivery is ONE settlement step of an anchored delivery session (settle-
+// monotone, G-R212-8 cert §6.1 C5): the fetcher's cumulative receipt acknowledged
+// count NEW increments of DeliveryIncrementBytes since the last step (the node passes
+// the DELTA), and budget is what the session has NOT yet settled of its Σ face (the
+// node passes the REMAINING budget, and lowers it by the credits this returns plus the
+// skim). It reverses the provisional self-mint of the lane (server, fetcher, root)
+// for min(count·U, B) bytes, pays min(count·p, budget) — in WHOLE increments — less
+// the durability skim into the server's balance, and routes the skim into the object's
+// escrow. It returns the credits paid to the server and the reason. It burns NOTHING:
+// the unsettled remainder is accounted once, at CloseDeliverySession. An unanchored
+// session (budget ≤ 0) pays 0 and leaves the self-mint alone — the unwitnessed
+// bilateral fallback (B-3, B-9). A session settles as many times as it has deltas
+// (B-10 as REFUTED); the conserved property Σ settled ≤ Σ face is the node's monotone
+// counter, which this step cannot see and does not need to.
 //
 // The payout never reads l.fee: the budget is what was spent, on this ledger, at open
 // (cert G-3; the R2.14 lesson that a pin over the constants never holds a seam whose
@@ -108,11 +114,19 @@ func (l *Ledger) SettleDelivery(server, fetcher ports.NodeID, root ports.Hash, c
 	if count <= 0 {
 		return 0, ReasonNoIncrement
 	}
-	// value = min(count·p, budget), computed without overflowing on an attacker-sized
-	// count (the node bounds count by the session ceiling; the ledger does not trust it).
-	value := budget
-	if count < budget/DeliveryIncrementCredit {
-		value = count * DeliveryIncrementCredit
+	// value = min(count, ⌊budget/p⌋)·p — WHOLE increments only, so a budget that is not
+	// a multiple of p never over-pays the acknowledged count by a fraction of one (blind
+	// PE item 4, 2026-09-06: exact at p = 1, armed on the next re-price); the fractional
+	// tail stays in the remainder and is accounted at close. Computed without
+	// overflowing on an attacker-sized count (the node bounds count by the session
+	// ceiling; the ledger does not trust it).
+	whole := budget / DeliveryIncrementCredit
+	if count < whole {
+		whole = count
+	}
+	value := whole * DeliveryIncrementCredit
+	if value <= 0 {
+		return 0, ReasonNoIncrement // a budget below one increment funds nothing more
 	}
 
 	// Per-increment reversal of the provisional lane (B-2). If the lane was already

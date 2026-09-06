@@ -89,7 +89,7 @@ const (
 // relay's self keyset was pruned with in the same event-loop turn, so an anchor
 // that verified in-window upstream is never above the ledger's clock here.
 func (l *Ledger) SpendRelayAnchors(anchors []RelayAnchor) (face int64, reason string) {
-	return l.spendAnchors(ports.NodeID{}, anchors)
+	return l.spendAnchors(ports.NodeID{}, anchors, laneRelay)
 }
 
 // spendAnchors is the one guard spend both anchored lanes share (R2.14 relay,
@@ -97,7 +97,7 @@ func (l *Ledger) SpendRelayAnchors(anchors []RelayAnchor) (face int64, reason st
 // durable-append all, record all, return k × l.fee. server is recorded on the guard
 // entry for observability only (the delivery lane names the session's server; the
 // relay lane records none — its budget settles to the relay itself).
-func (l *Ledger) spendAnchors(server ports.NodeID, anchors []RelayAnchor) (face int64, reason string) {
+func (l *Ledger) spendAnchors(server ports.NodeID, anchors []RelayAnchor, lane guardLane) (face int64, reason string) {
 	if len(anchors) == 0 {
 		return 0, ReasonNoAnchor
 	}
@@ -136,6 +136,11 @@ func (l *Ledger) spendAnchors(server ports.NodeID, anchors []RelayAnchor) (face 
 	// not re-open on either anchored lane).
 	if !l.reservePaidSerials(l.epochWatermark, len(anchors)) {
 		l.guardFullRefusals++
+		if lane == laneRelay {
+			l.guardFullRefusalsRelay++
+		} else {
+			l.guardFullRefusalsDelivery++
+		}
 		return 0, ReasonGuardFull
 	}
 	// RECORD DURABLY BEFORE THE SESSION IS ADMITTED (red-team re-break F2): the
@@ -143,7 +148,7 @@ func (l *Ledger) spendAnchors(server ports.NodeID, anchors []RelayAnchor) (face 
 	// a guard entry for a session that never forwarded — an under-pay — and never a
 	// session whose anchors a restart would re-open for a second spend.
 	for _, a := range anchors {
-		if err := l.addPaidSerial(a.Serial, server, a.Epoch); err != nil {
+		if err := l.addPaidSerial(a.Serial, server, a.Epoch, lane); err != nil {
 			return 0, ReasonGuardStore
 		}
 	}

@@ -143,6 +143,8 @@ var standingClassification = map[string]standingClass{
 	"SpendDeliveryAnchors":    neutral,
 	"SettleDelivery":          neutral,
 	"CloseDeliverySession":    neutral, // counts the remainder burned at close; moves nothing
+	"GuardFullRefusalsByLane": neutral, // observability (the per-lane split of guardFullRefusals)
+	"LivePaidSerialsByLane":   neutral, // observability (live guard entries per lane)
 	"DeliverySettlementStats": neutral,
 }
 

@@ -334,8 +334,10 @@ type Ledger struct {
 	// Nothing can expire twice within one epoch, so one sweep per epoch is exactly as
 	// effective and amortizes to O(1). Purely a cost fix: the set of entries swept is
 	// identical.
-	sweptEpoch        uint64
-	guardFullRefusals int64
+	sweptEpoch                uint64
+	guardFullRefusals         int64
+	guardFullRefusalsDelivery int64 // the per-lane split of guardFullRefusals (2026-09-04 cert §4.4)
+	guardFullRefusalsRelay    int64
 	// Serve-mint telemetry (G-R212-7, numeraire.go ServeMintStats).
 	serveBytes           int64
 	serveMintCredits     int64

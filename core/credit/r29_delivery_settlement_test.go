@@ -12,10 +12,10 @@ package credit
 // against the fetcher's DURABLE identity holding the shipped grant. Σ_L = Σ balances +
 // Σ escrow (sumConserved) over a FIXED account set registered before the baseline.
 //
-// ABLATIONS that must redden (run and recorded in the PR): Dλ := U (parity tie ⇒ B-1
-// margin ≤ 0); whole-lane reversal on a partial ack (⇒ B-1 partial, B-2);
-// budget := j·p caller-supplied or the payout reading l.fee (⇒ B-3); the retired
-// "256 serves per block" unit (⇒ B-4); remainder → escrow (⇒ B-6).
+// ABLATIONS that must redden (six, run and recorded in the PR): Dλ := U (parity tie ⇒
+// B-1 margin ≤ 0); whole-lane reversal on a partial ack (⇒ B-1 partial, B-2); the
+// payout reading l.fee (⇒ B-3); the retired "256 serves per block" unit (⇒ B-4);
+// remainder → escrow (⇒ B-6); the burn counted per settlement (⇒ G-λ-8-6).
 
 import (
 	"testing"
@@ -287,11 +287,15 @@ func TestDeliveryFundTopUpSpendsFreshAnchorsOnce(t *testing.T) {
 	}
 }
 
-// TestPaidSerialCapDominatesBothPopulations — B-4 (G-4, unit half). The cap is DERIVED
-// from bytes per anchor for both populations, (W+1)·E, the target serve rate and a T_b
-// upper bound, floored at 65,536; the derived value is pinned by independent arithmetic
-// so the retired "256 serves per block" unit reddens it. A two-population fill refuses
-// at cap and never evicts; both lanes' refusals move the shared counter.
+// TestPaidSerialCapDominatesBothPopulations — B-4 (G-4, UNIT half; the field half —
+// guardFullRefusals == 0 per lane on a graded run, T_b and the resident cost measured —
+// is owed to the Tester). The cap is derived from bytes per anchor for both populations,
+// (W+1)·E, the target rate and a T_b upper bound, floored at 65,536; the derived φ = 1
+// corner is pinned by independent arithmetic so the retired "256 serves per block"
+// unit reddens it. It is a CORNER, not a dominance claim (T-QUANT: under spend-at-open
+// the binding bound is the session count, enforced at start-up by the R2.12 assertion
+// against the runtime faucet capacity). A two-population fill refuses at cap and never
+// evicts; each lane's refusal moves ITS counter and the live count per lane is exported.
 func TestPaidSerialCapDominatesBothPopulations(t *testing.T) {
 	// Independent arithmetic at the runtime fee, never the derivation's own symbols.
 	l := New(50_000, 0)
@@ -308,10 +312,10 @@ func TestPaidSerialCapDominatesBothPopulations(t *testing.T) {
 		t.Fatalf("derivation constants (%d, %d) disagree with the runtime fee's (%d, %d)", DeliveryBytesPerAnchor, RelayBytesPerAnchor, bytesPerDelivery, bytesPerRelay)
 	}
 	if live != 2_160 || derivedPaidSerialCap != 4*live {
-		t.Fatalf("honest live set %d (want 2,160 = 1,440 delivery + 720 relay at gigabit and T_b = 1 h); derived cap %d, want 4 × that — the cap is not derived from bytes per anchor", live, derivedPaidSerialCap)
+		t.Fatalf("φ = 1 corner %d (want 2,160 = 1,440 delivery + 720 relay at 125 MiB/s and T_b = 1 h); derived cap %d, want 4 × that — the corner is not derived from bytes per anchor", live, derivedPaidSerialCap)
 	}
 	if int64(MaxPaidSerial) < 4*live || MaxPaidSerial != 65_536 {
-		t.Fatalf("cap %d must be ≥ 4 × %d and is expected to be the 65,536 floor (it dominates by %.1f×)", MaxPaidSerial, live, float64(65_536)/float64(4*live))
+		t.Fatalf("cap %d must be ≥ 4 × the corner %d and is expected to be the 65,536 floor", MaxPaidSerial, live)
 	}
 	// Two-population fill at one epoch: interleaved delivery and relay anchors to cap.
 	server := id(1)
@@ -335,6 +339,12 @@ func TestPaidSerialCapDominatesBothPopulations(t *testing.T) {
 	}
 	if len(l.paidSerial) != maxPaidSerial || l.GuardFullRefusals() != 2 {
 		t.Fatalf("after two refusals: guard %d (want %d, nothing evicted), refusals %d (want 2)", len(l.paidSerial), maxPaidSerial, l.GuardFullRefusals())
+	}
+	if d, r := l.GuardFullRefusalsByLane(); d != 1 || r != 1 {
+		t.Fatalf("per-lane refusals (delivery %d, relay %d), want (1, 1) — the split the 2026-09-04 cert §4.4 requires", d, r)
+	}
+	if d, r := l.LivePaidSerialsByLane(); d != int64(half) || r != int64(half) {
+		t.Fatalf("live per lane (delivery %d, relay %d), want (%d, %d)", d, r, half, half)
 	}
 	for i := 0; i < maxPaidSerial; i++ { // every live entry still there — refuse-never-evict
 		if _, ok := l.paidSerial[paidKey(0, anchorSerial(i))]; !ok {
