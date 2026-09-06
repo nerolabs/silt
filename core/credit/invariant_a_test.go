@@ -136,6 +136,13 @@ var standingClassification = map[string]standingClass{
 	// and returns their face — the session budget. Guard map, durable store and
 	// counters only; no field Reputation reads.
 	"SpendRelayAnchors": neutral,
+	// R2.9: the delivery lane's anchor spend (the same guard press with the server
+	// recorded), the count-denominated settlement (pays out of an anchor budget into the
+	// server's BALANCE and the object's escrow, reverses the provisional lane per
+	// increment — balance economy only) and its telemetry reader.
+	"SpendDeliveryAnchors":    neutral,
+	"SettleDelivery":          neutral,
+	"DeliverySettlementStats": neutral,
 }
 
 // TestInvariantA_EveryLedgerMethodClassified is the reflection guard: every
@@ -207,6 +214,21 @@ func TestInvariantA_NoNonMintPressRaisesStanding(t *testing.T) {
 		if paid := l.RedeemRelayCredit(n, other, 1<<30, face); paid != face {
 			t.Fatalf("round %d: RedeemRelayCredit paid %d against budget %d — the relay press is vacuous", round, paid, face)
 		}
+		// R2.9 delivery settlement, pressed against an ANCHORED, paying session (B-14):
+		// buy one anchor through the real burn, spend it at open naming n as the
+		// server, serve a lane, settle the whole budget to n.
+		l.acct(other).balance += l.Fee()
+		if err := l.ChargePublish(other); err != nil {
+			t.Fatalf("round %d: delivery issuance burn: %v", round, err)
+		}
+		dface, dreason := l.SpendDeliveryAnchors(n, anchorsAt(uint64(round), 1000+round, 1))
+		if dface != l.Fee() || dreason != "" {
+			t.Fatalf("round %d: SpendDeliveryAnchors = (%d, %q), want (%d, \"\") — the delivery press would be vacuous", round, dface, dreason, l.Fee())
+		}
+		if paid, why := l.SettleDelivery(n, other, obj, 1<<20, dface); paid != dface-dface*SkimNum/SkimDen || why != ReasonPaid {
+			t.Fatalf("round %d: SettleDelivery paid (%d, %q) against budget %d — the delivery press is vacuous", round, paid, why, dface)
+		}
+		_ = l.DeliverySettlementStats()
 		_ = l.FundEscrow(obj, n, 1<<20) // prepay a durability reserve
 		l.PayBounty(obj, n, 1<<30)      // drain the reserve to this identity
 		l.DecayStale(uint64(round+1), 1)

@@ -81,6 +81,28 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `TestR31EveryStateHashTagEndsInExactlyOneNUL`. Record: `docs/design/state-root-domain-separation.md`.
 
 ### Added
+- **R2.9 ledger half — byte-denominated per-increment delivery settlement on the credit ledger
+  (`core/credit/deliveryanchor.go`; D-R2.9-DIRECTION, built at the ratified price `(U, p) = (262,144 B, 1
+  credit)`).** `SpendDeliveryAnchors` spends verified demand-domain anchors into the shared paid-serial guard at
+  session OPEN, all-or-nothing, and returns the session budget (Σ face); a top-up is the same call with fresh
+  anchors. `SettleDelivery(server, fetcher, root, count, budget)` pays `min(count·p, budget)` less the durability
+  skim into the server's balance, routes the skim to the object's escrow, BURNS the remainder, and reverses the
+  provisional self-mint PER INCREMENT (the acknowledged bytes leave the lane's accumulator; the un-acknowledged
+  tail keeps its bytes as the bilateral fallback) — the flat whole-lane supersede left a server strictly worse
+  off than suppression on every partial acknowledgement. At 64 MiB a server that banks the receipt now ends
+  +75 credits ahead of one that suppresses it (R-FLAT-FEE closed structurally). The paid-serial guard's cap is
+  re-derived from BYTES PER ANCHOR for both populations (12.21 GiB per delivery anchor, 24.4 GiB per relay
+  anchor) against a one-hour block-interval bound at gigabit: the 65,536 floor dominates the honest live set
+  by 7.6×, so the unmeasured `T_b` is no longer load-bearing for the cap; the "256 serves per block" unit is
+  retired. `DeliverySettlementStats` (settled, burned, increments) is the telemetry for the anchor-quantization
+  residual. Gates `TestDeliveryAcceptStrictlyDominatesSuppressionAtEverySize` (B-1),
+  `TestProvisionalLaneEqualsCreditedBalanceAndReversesPerIncrement` (B-2),
+  `TestDeliverySettlementIsBoundedByAnchorFaceOnThePayingLedger` (B-3), `TestDeliveryFundTopUpSpendsFreshAnchorsOnce`
+  (B-3b), `TestPaidSerialCapDominatesBothPopulations` (B-4), `TestDeliveryRemainderIsBurnedNotEscrowed` (B-6),
+  `TestPaidSerialCapLiteralsMatchTheirSources`, and the Invariant-A press (B-14); five ablations run RED. The
+  NODE half (session open message, receipt v3, settle-once by session, the reaper, the fetch-path integration,
+  the e2e) waits on the G-R212-8 anchor-quantization certification — see
+  `docs/thinking/2026-09-06-r2.9-delivery-settlement-quantization.md`.
 - **R3.4 input — the IssuerKeys-carrier block fraction, measured (2026-09-06;
   `core/node/r34_issuer_key_carrier_fraction_test.go`, a logged measurement, not a gate).** The floor box marks
   any block carrying a demand-issuer key registration Indeterminate, so the accept-flip's witness coverage

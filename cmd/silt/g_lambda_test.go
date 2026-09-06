@@ -110,3 +110,21 @@ func TestGLambda8PublishWarningFiresOnlyForAnExplicitSmallChunk(t *testing.T) {
 		}
 	}
 }
+
+// TestPaidSerialCapLiteralsMatchTheirSources — R2.9 B-4/B-5: the paid-serial guard's cap
+// is derived from the two anchor faces, which core/credit carries as duplicated literals
+// (it imports neither core/relaypay nor this package). Pinned here to their sources so a
+// re-price of either moves the cap derivation or reddens this, never drifts silently.
+func TestPaidSerialCapLiteralsMatchTheirSources(t *testing.T) {
+	if credit.CapAnchorFace != relaypay.ShippedAnchorFace {
+		t.Fatalf("credit.CapAnchorFace %d != relaypay.ShippedAnchorFace %d", credit.CapAnchorFace, relaypay.ShippedAnchorFace)
+	}
+	if credit.CapRelayBytesPerCredit != relaypay.RelayIncrementBytes/relaypay.RelayIncrementCredit {
+		t.Fatalf("credit.CapRelayBytesPerCredit %d != relay price %d", credit.CapRelayBytesPerCredit, relaypay.RelayIncrementBytes/relaypay.RelayIncrementCredit)
+	}
+	// The ledger the daemon builds charges the same face (the ONE fee constant,
+	// TestDaemonFeeIsTheRelayAnchorFace), so the runtime bytes-per-anchor equal the const.
+	if got := int64(credit.New(relaypay.ShippedAnchorFace, 0).Fee()/credit.DeliveryIncrementCredit) * credit.DeliveryIncrementBytes; got != credit.DeliveryBytesPerAnchor {
+		t.Fatalf("runtime bytes per delivery anchor %d != credit.DeliveryBytesPerAnchor %d", got, credit.DeliveryBytesPerAnchor)
+	}
+}

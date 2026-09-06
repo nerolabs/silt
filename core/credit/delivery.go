@@ -61,26 +61,42 @@ import (
 const maxProvisional = 8192
 
 // The R0.4b paid-serial guard's DERIVED cap (economist advisory §3, residual
-// R-ECON-2). Since R2.14 the guard holds TWO populations — paid delivery serials AND
-// spent relay anchors (k ≤ relaypay.MaxAnchorsPerSession per relay session, 1 since the 2026-09-06 re-price) — so "the honest live set" below is
-// serves + anchored sessions × k; the derivation was not re-priced for the second
-// population (R-GUARD-SHARED-FILL, ROADMAP R2.14: a faucet-funded flood of relay opens
-// can fill the shared guard for ≤ W+1 epochs and both lanes REFUSE, never evict —
-// liveness only). R2.12 RE-PRICES it, it does not close it: occupancy is the product
-// `A · (g/f) · (W+1)` of the fresh-identity arrival rate the faucet bounds and the tokens
-// per grant it does not, so the residual closes only under the composed relation
-// `C ≤ maxPaidSerial · (f/r) / ((W+1) · B_floor)` (Researcher certification
-// R2.12-faucet-rate-tier-and-grant-ratio-composition-2026-09-05 §3.2). The cap must DOMINATE the honest live set so that
-// EXPIRY — not the cap — does the eviction work. A live paid serial is one whose issuing epoch is still
-// in the validity window, so the live set is bounded by what this server can itself
-// serve in that time: serveRate x W x EpochBlocks. Keeping a bare 8192 alongside a
-// 4-epoch window is the ONE combination to avoid: the cap would then evict a
-// still-in-window (still-redeemable) lane, which is exactly the refuted design.
+// R-ECON-2; re-derived for R2.9, Researcher certification
+// R2.9-build-questions-domain-rescale-guard-2026-09-04 §4.2). The guard holds TWO
+// populations, both spent at session OPEN since R2.14 / R2.9: one delivery anchor per
+// ⌊f/p⌋·U bytes served and one relay anchor per f·(RelayIncrementBytes/RelayIncrementCredit)
+// bytes relayed. The cap must DOMINATE the honest live set so that EXPIRY — not the
+// cap — does the eviction work: a live entry is one whose issuing epoch is still in
+// the validity window, so the live set is bounded by what this node can itself serve
+// or relay in (W+1) epochs of E blocks of T_b seconds at a serve rate R:
 //
-// At ~90 B/serial the 65,536 floor is ~5.6 MB — three orders of magnitude inside the
+//	live_honest = (W+1)·E·T_b·R · (1/DeliveryBytesPerAnchor + 1/RelayBytesPerAnchor)
+//	cap         = max(floor, headroom × live_honest)
+//
+// T_b, the block interval, is UNMEASURED and not a constant: blocks are proposed on
+// demand (publishes, revocations, rounds, bond drains — core/node/chainrole.go), never
+// on a clock, so it is a property of a running topology (owed to the Tester with
+// R-REAPER-FORFEIT). The derivation therefore takes an UPPER BOUND on T_b and must
+// dominate for every interval at or below it. At gigabit and a one-HOUR interval the
+// two populations sum to 2,160 live entries and 4× headroom is 8,640, so the 65,536
+// floor dominates by 7.6× and the measurement is not load-bearing for the cap
+// (TestPaidSerialCapDominatesBothPopulations pins the arithmetic; the retired unit —
+// "256 object-aware serves per block", a COUNT that the 2026-09-04 certification
+// showed could not be made to dominate at 48 KiB per anchor — reddens it).
+//
+// At ~90 B/entry the 65,536 floor is ~5.6 MB — three orders of magnitude inside the
 // 2 GB floor box, so the cap is sized to NEVER deny an honest lane rather than to
 // save bytes that do not need saving (build-immutable #8 is satisfied by the BOUND,
-// not by making it small).
+// not by making it small). Keeping a bare 8192 alongside a 4-epoch window is the ONE
+// combination to avoid: the cap would then evict a still-in-window (still-redeemable)
+// entry, which is exactly the refuted design.
+//
+// R-GUARD-SHARED-FILL (liveness only): a faucet-funded flood of opens can fill the
+// shared guard for ≤ W+1 epochs and both lanes REFUSE, never evict. R2.12 re-prices
+// it — occupancy is `A · (g/f) · (W+1)` of the fresh-identity arrival rate the faucet
+// bounds — and the composed relation `C ≤ maxPaidSerial · (f/r) / ((W+1) · B_floor)`
+// (Researcher certification R2.12-faucet-rate-tier-and-grant-ratio-composition §3.2)
+// is what closes it.
 const (
 	// paidSerialWindow is W in epochs — the demand-token validity window. It MUST
 	// equal demand.DefaultWindow: if this one is SMALLER the guard sweeps a serial the
@@ -95,17 +111,48 @@ const (
 	// paidSerialEpochBlocks is the epoch cadence the cap is derived against
 	// (DerivedEpochBlocks).
 	paidSerialEpochBlocks = 8
-	// maxServeTrackedPerBlock is the per-block object-aware serve rate the cap is
-	// sized for.
-	maxServeTrackedPerBlock = 256
 	// maxPaidSerialFloor is the generous minimum the derived cap is floored at.
 	maxPaidSerialFloor = 65_536
+
+	// The two anchor faces the populations are quantized in. CapAnchorFace is the
+	// shipped fee (relaypay.ShippedAnchorFace: face = Fee(), an identity with the burn)
+	// and CapRelayBytesPerCredit the relay lane's price
+	// (relaypay.RelayIncrementBytes/RelayIncrementCredit). Both are duplicated literals —
+	// core/credit imports neither core/relaypay nor cmd/silt — pinned to their sources
+	// by TestPaidSerialCapLiteralsMatchTheirSources in cmd/silt, the one package that
+	// can import all three.
+	CapAnchorFace          = 50_000
+	CapRelayBytesPerCredit = 524_288
+	// capServeRateBytesPerSec is the target serve rate the cap is sized for: 1 Gbit/s.
+	capServeRateBytesPerSec = 125 << 20
+	// capBlockIntervalBoundSec is the T_b upper bound the derivation must dominate
+	// under (one hour). Not a measurement — a bound the gate proves generous.
+	capBlockIntervalBoundSec = 3600
+	// capHeadroom is the multiple of the honest live set the cap must clear (cert §4.2: ≥ 4).
+	capHeadroom = 4
 )
 
-// maxPaidSerial is the derived cap: W x EpochBlocks x maxServeTrackedPerBlock,
-// floored at maxPaidSerialFloor. Derived, never a bare constant — see above.
-const maxPaidSerial = max(maxPaidSerialFloor,
-	int(paidSerialWindow)*paidSerialEpochBlocks*maxServeTrackedPerBlock)
+// DeliveryBytesPerAnchor is ⌊f/p⌋·U: the bytes ONE delivery anchor funds at one server
+// (12.21 GiB at the ratified price). RelayBytesPerAnchor is the relay twin, f × the
+// relay price (24.4 GiB). Both exported read-only for the session ceilings in core/node.
+const (
+	DeliveryBytesPerAnchor = int64(CapAnchorFace/DeliveryIncrementCredit) * DeliveryIncrementBytes
+	RelayBytesPerAnchor    = int64(CapAnchorFace) * CapRelayBytesPerCredit
+)
+
+// capWindowSeconds is the guard entry's lifetime in seconds at the T_b bound; the two
+// derived populations are that many seconds of serving / relaying at the target rate,
+// quantized by their anchors.
+const (
+	capWindowSeconds      = int64(paidSerialWindow+1) * paidSerialEpochBlocks * capBlockIntervalBoundSec
+	capLiveHonestDelivery = capWindowSeconds * capServeRateBytesPerSec / DeliveryBytesPerAnchor
+	capLiveHonestRelay    = capWindowSeconds * capServeRateBytesPerSec / RelayBytesPerAnchor
+	derivedPaidSerialCap  = capHeadroom * (capLiveHonestDelivery + capLiveHonestRelay)
+)
+
+// maxPaidSerial is the derived cap, floored at maxPaidSerialFloor. Derived, never a
+// bare constant — see above.
+const maxPaidSerial = int(max(maxPaidSerialFloor, derivedPaidSerialCap))
 
 // MaxPaidSerial and PaidSerialWindow are exported READ-ONLY for the R2.12 start-up
 // assertion in cmd/silt: `capacity × (grant/fee) × (W+1) ≤ MaxPaidSerial/4` ties the
@@ -161,17 +208,25 @@ type provisionalServe struct {
 	skim   int64 // credits skimmed to the escrow so far = ⌊bytes/(8·Dλ)⌋
 }
 
-// reverseProvisional undoes a lane's eager self-mint: it debits the server's
-// balance by p.net and reduces the object's escrow by p.skim, floored at what
-// the reserve still holds (a bounty paid out between serve and reversal is real
-// durability work, never recoverable — build-immutable #2). It is the single
-// reversal used by BOTH terminal-reversal sites: redeem-in-window and eviction.
-// Keeping one implementation is what makes the escrow floor identical at both.
+// reverseProvisional undoes a lane's eager self-mint in full: it debits the server's
+// balance by p.net and reduces the object's escrow by p.skim, floored at what the
+// reserve still holds. It is the whole-lane form used by BOTH terminal-reversal sites:
+// the flat redeem-in-window and eviction. The R2.9 settlement reverses PER INCREMENT
+// through reverseLane directly (deliveryanchor.go). Keeping one implementation is
+// what makes the escrow floor identical at every site.
 func (l *Ledger) reverseProvisional(server ports.NodeID, root ports.Hash, p *provisionalServe) {
-	l.serveReversedCredits += p.net + p.skim
-	l.acct(server).balance -= p.net
+	l.reverseLane(server, root, p.net, p.skim)
+}
+
+// reverseLane debits net from the server's balance and claws skim back from the
+// object's escrow, floored at what the reserve still holds (a bounty paid out between
+// serve and reversal is real durability work, never recoverable — build-immutable #2).
+// Purely subtractive: the worst case on any path through it is an UNDER-pay.
+func (l *Ledger) reverseLane(server ports.NodeID, root ports.Hash, net, skim int64) {
+	l.serveReversedCredits += net + skim
+	l.acct(server).balance -= net
 	if e, eok := l.escrow[root]; eok {
-		r := p.skim
+		r := skim
 		if r > e.balance {
 			r = e.balance
 		}

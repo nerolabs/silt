@@ -198,6 +198,15 @@ type Ledger struct {
 	// front-drop never touches, so eviction stays amortized O(1) and never
 	// rewrites a survivor's index. Compaction rebuilds the slice and resets
 	// provHead to 0.
+	// R2.9 delivery-settlement telemetry (deliveryanchor.go): sessions settled, the
+	// credits they paid out of their anchor budgets, and the face remainder BURNED at
+	// settle — the number the Economist watches for the anchor-quantization residual.
+	// Node-wide aggregates, never joined to an identity axis (Don't #3).
+	deliverySettlements       int64
+	deliverySettledCredits    int64
+	deliveryBurnedCredits     int64
+	deliverySettledIncrements int64
+
 	provisional map[provKey]*provisionalServe
 	provOrder   []*provKey
 	provIndex   map[provKey]int
