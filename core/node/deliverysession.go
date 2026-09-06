@@ -64,7 +64,7 @@ func (e deliveryError) Error() string { return string(e) }
 
 const (
 	errDeliveryAcceptDisabled   = deliveryError("delivery: paid sessions not accepted (the delivery-receipt lane is off)")
-	errDeliveryIdleUnset        = deliveryError("delivery: idle window unset — refuse-until-set (T_b unmeasured; R-REAPER-FORFEIT)")
+	errDeliveryIdleUnset        = deliveryError("delivery: idle window unset — refuse-until-set (a liveness choice: how long an idle session holds one of the node's session slots and how long the fetcher's deposit stays locked past its anchor's expiry; no forfeiture — the remainder is a deposit)")
 	errDeliverySessionCap       = deliveryError("delivery: live session table at capacity (per-node cap; refuse, never evict)")
 	errDeliverySessionExists    = deliveryError("delivery: this fetcher already holds a live session here — fund it (MsgDeliveryFund) instead of opening another (one session per fetcher)")
 	errDeliveryNoAnchor         = deliveryError("delivery: session open carries no anchor (an unanchored session funds nothing)")

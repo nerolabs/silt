@@ -199,8 +199,9 @@ type Ledger struct {
 	// rewrites a survivor's index. Compaction rebuilds the slice and resets
 	// provHead to 0.
 	// R2.9 delivery-settlement telemetry (deliveryanchor.go): sessions settled, the
-	// credits they paid out of their anchor budgets, and the face remainder BURNED at
-	// settle — the number the Economist watches for the anchor-quantization residual.
+	// credits they paid out of their anchor budgets, and the unsettled remainder's three
+	// destinations at CLOSE (deposit released / pending / genuinely burned) — the numbers
+	// the Economist watches for the anchor-quantization residual.
 	// Node-wide aggregates, never joined to an identity axis (Don't #3).
 	deliverySettlements    int64
 	deliverySessionsClosed int64

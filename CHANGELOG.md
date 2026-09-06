@@ -95,11 +95,13 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   locking the deposit for the anchor's window bounds live occupancy by stock/f (T-DEPOSIT) and keeps R2.12's
   start-up assertion exact. The pending table is bounded at the guard cap, refuse-never-evict. The session
   carries `maxAnchorEpoch`; the guard entry and the durable store carry NO fetcher identity. A restart loses
-  pending deposits and live faces (the guard survives): `RestartOrphanedAnchors` counts it. The 64 GiB pin's
+  pending deposits and live faces (the guard survives): `RestoredGuardEntries` — the guard entries restored at boot, both
+  lanes, an UPPER BOUND on lost deposits — is printed at boot and served on `/api/status` (`deliverySettlement`, token
+  holders only). The 64 GiB pin's
   composed claim is now TRUE at every consumption ratio; `R-REAPER-FORFEIT` and `R-FACE-BURN-GRIEF` close on this
   lane; `R-PIN-VACUOUS-UNDER-QUANTIZATION` closes; new `R-STOCK-RENEWABLE-OCCUPANCY`, `R-ANCHOR-BEARER-TRANSFER`.
   `DeliverySettlementStats` gains `RefundedCredits`, `PendingRefundCredits`, `RefundsBurnedNoAccount`,
-  `RefundsBurnedAtCap`, `RestartOrphanedAnchors`; `BurnedCredits` counts genuine burns only. The S5 affordability
+  `RefundsBurnedAtCap`, `RestoredGuardEntries`; `BurnedCredits` counts genuine burns only. The S5 affordability
   line says so. Gates G-6R-1…10: `TestRemainderIsConservedAcrossCloseAndRelease`, `TestReleaseNeverRegistersAnAccount`,
   `TestRemainderIsNotSpendableUntilTheAnchorExpires`, `TestGuardOccupancyIsBoundedByTheCreditStock` (the
   refutation encoded, written first), `TestZeroSettleSessionReturnsItsWholeFace`,

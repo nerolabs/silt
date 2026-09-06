@@ -533,6 +533,11 @@ type statusInfo struct {
 	// one-object node IS that object's per-object figure (red-team F2's reconstruction
 	// shape), so it rides with the per-object detail, never the unauthenticated wire.
 	ServeMintWithheld bool `json:"serveMintWithheld,omitempty"`
+	// DeliverySettlement is the R2.9 session-lane telemetry: settlements, the remainder's
+	// three destinations (deposit released / pending / genuinely burned) and the guard
+	// entries restored at the last boot (an upper bound on deposits lost to a restart).
+	// Node-wide aggregates, no identity axis; withheld with the counters like ServeMint.
+	DeliverySettlement *deliverySettlementInfo `json:"deliverySettlement,omitempty"`
 	// CountersWithheld is the privacy clause's marker on THIS document. It covers exactly
 	// four absences: the whole `stats` block above, `durability.balance`, the whole
 	// `faucet` block, and the `serveMint` block (which additionally carries its own
@@ -752,6 +757,19 @@ func (s *uiServer) libraryView(doc libraryDoc, auth readerAuth) libraryDoc {
 // faucet is unlimited and every counter is zero and meaningless; the block is present so
 // "unlimited" and "withheld" stay different objects on the wire.
 // serveMintInfo mirrors credit.ServeMintStats on the wire (G-R212-7).
+type deliverySettlementInfo struct {
+	Settlements            int64 `json:"settlements"`
+	SettledCredits         int64 `json:"settledCredits"`
+	SettledIncrements      int64 `json:"settledIncrements"`
+	SessionsClosed         int64 `json:"sessionsClosed"`
+	RefundedCredits        int64 `json:"refundedCredits"`
+	PendingRefundCredits   int64 `json:"pendingRefundCredits"`
+	BurnedCredits          int64 `json:"burnedCredits"`
+	RefundsBurnedNoAccount int64 `json:"refundsBurnedNoAccount"`
+	RefundsBurnedAtCap     int64 `json:"refundsBurnedAtCap"`
+	RestoredGuardEntries   int64 `json:"restoredGuardEntries"`
+}
+
 type serveMintInfo struct {
 	BytesPerCredit          int64 `json:"bytesPerCredit"`
 	ServedBytes             int64 `json:"servedBytes"`
@@ -891,6 +909,10 @@ func (s *uiServer) computeStatus(now time.Time) *statusInfo {
 		out.ServeMint = &serveMintInfo{BytesPerCredit: sm.BytesPerCredit, ServedBytes: sm.ServedBytes, MintedCredits: sm.MintedCredits,
 			SkimmedCredits: sm.SkimmedCredits, ReversedCredits: sm.ReversedCredits, ZeroMintServes: sm.ZeroMintServes,
 			RemainderBytesServerLeg: sm.RemainderBytesServerLeg, RemainderBytesEscrowLeg: sm.RemainderBytesEscrowLeg}
+		ds := s.nd.DeliverySettlementStats()
+		out.DeliverySettlement = &deliverySettlementInfo{Settlements: ds.Settlements, SettledCredits: ds.SettledCredits, SettledIncrements: ds.SettledIncrements,
+			SessionsClosed: ds.SessionsClosed, RefundedCredits: ds.RefundedCredits, PendingRefundCredits: ds.PendingRefundCredits, BurnedCredits: ds.BurnedCredits,
+			RefundsBurnedNoAccount: ds.RefundsBurnedNoAccount, RefundsBurnedAtCap: ds.RefundsBurnedAtCap, RestoredGuardEntries: ds.RestoredGuardEntries}
 		out.economy = s.nd.EconomySelf()
 		out.AddressCap = s.addressCapSnapshot()
 		if s.statusExtra != nil {

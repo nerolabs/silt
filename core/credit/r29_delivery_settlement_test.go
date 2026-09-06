@@ -704,8 +704,12 @@ func TestGuardOccupancyIsBoundedByTheCreditStock(t *testing.T) {
 	// buys a new anchor for the next identity.
 	holders := []ports.NodeID{}
 	anchors := [][]RelayAnchor{}
+	// A LIVE epoch (3), not 0: with the watermark at 0 and anchors at 0 the gate would
+	// only prove W+1 > 0 (blind PE §2). The close passes the anchor's REAL epoch.
+	const anchorEpoch = uint64(3)
+	src.e = anchorEpoch
 	for i := 0; i < int(stock/fee); i++ {
-		anchors = append(anchors, buyAnchors(t, l, x1, 0, serial, 1))
+		anchors = append(anchors, buyAnchors(t, l, x1, anchorEpoch, serial, 1))
 		serial++
 	}
 	next := byte(20)
@@ -724,13 +728,13 @@ func TestGuardOccupancyIsBoundedByTheCreditStock(t *testing.T) {
 			t.Fatalf("round %d: open refused: %q", round, why)
 		}
 		holders = append(holders, xk)
-		l.CloseDeliverySession(xk, face, 0) // closes at once: the whole face is the remainder
+		l.CloseDeliverySession(xk, face, anchorEpoch) // closes at once: the whole face is the remainder
 		if live := int64(len(l.paidSerial)); live > stock/fee {
 			t.Fatalf("round %d: %d live guard entries > ⌊stock/f⌋ = %d — a bearer-anchor chain filled the guard beyond the credit stock (release-at-close)", round, live, stock/fee)
 		}
 		// Can the recipient fund the next link? Only if its deposit was released.
 		if err := l.ChargePublish(xk); err == nil {
-			anchors = append(anchors, anchorsAt(0, serial, 1))
+			anchors = append(anchors, anchorsAt(anchorEpoch, serial, 1))
 			serial++
 		}
 	}
@@ -739,7 +743,7 @@ func TestGuardOccupancyIsBoundedByTheCreditStock(t *testing.T) {
 	}
 	// After the window the deposits release and the stock is whole again — in the holders'
 	// hands, not destroyed (T-DEPOSIT: the face bounds concurrency, never capacity).
-	src.e = uint64(PaidSerialWindow) + 1
+	src.e = anchorEpoch + uint64(PaidSerialWindow) + 1
 	l.ReleaseDueRefunds()
 	var held int64
 	for _, h := range holders {
@@ -811,12 +815,15 @@ func TestPendingRefundTableIsBoundedAndRefusesNeverEvicts(t *testing.T) {
 // guard entry and the durable store's record carry no FETCHER identity; a durable join
 // between a durable identity and an anchor serial is the refused shape.
 func TestNoIdentityIsJoinedToAnAnchorSerialInTheDurableStore(t *testing.T) {
+	// The EXACT field sets (blind PE item 6: a substring check lets an `Opener` through).
+	want := map[string][]string{"paidSerialEntry": {"server", "epoch", "lane"}, "PaidSerial": {"Serial", "Server", "Epoch"}}
 	for _, typ := range []reflect.Type{reflect.TypeOf(paidSerialEntry{}), reflect.TypeOf(ports.PaidSerial{})} {
+		var got []string
 		for i := 0; i < typ.NumField(); i++ {
-			n := strings.ToLower(typ.Field(i).Name)
-			if strings.Contains(n, "fetcher") || strings.Contains(n, "requester") || strings.Contains(n, "buyer") || strings.Contains(n, "payer") {
-				t.Fatalf("%s.%s joins a fetcher identity to an anchor serial — retained W+1 epochs on disk, the refused shape", typ.Name(), typ.Field(i).Name)
-			}
+			got = append(got, typ.Field(i).Name)
+		}
+		if strings.Join(got, ",") != strings.Join(want[typ.Name()], ",") {
+			t.Fatalf("%s fields %v, want exactly %v — any new field on the guard entry or the durable record is a candidate durable join between an identity and an anchor serial (Don't #3)", typ.Name(), got, want[typ.Name()])
 		}
 	}
 	if f, ok := reflect.TypeOf(pendingRefund{}).FieldByName("fetcher"); !ok || f.Type != reflect.TypeOf(ports.NodeID{}) {
@@ -838,7 +845,21 @@ func TestRestartLosesTheRemainderAndCountsIt(t *testing.T) {
 	l.Register(server)
 	l.Register(fetcher)
 	budget := openDeliverySession(t, l, server, fetcher, 0, 0, 1)
-	l.CloseDeliverySession(fetcher, budget, 0) // a pending deposit of one face
+	l.CloseDeliverySession(fetcher, budget, 0) // a pending deposit of one face — the one genuine loss
+	// Two more live guard entries that lose NOTHING: a relay anchor (the relay lane keeps the
+	// burn) and a fully settled delivery session (remaining 0). Past N = 1 the entry count and
+	// the lost-deposit count differ, so the counter's honest meaning is pinned: entries, both
+	// lanes, an UPPER BOUND on lost deposits (blind PE item 2).
+	if face, why := l.SpendRelayAnchors(anchorsAt(0, 7, 1)); face != 50_000 {
+		t.Fatalf("relay anchor: %q", why)
+	}
+	b2 := openDeliverySession(t, l, server, fetcher, 0, 8, 1)
+	l.SettleDelivery(server, fetcher, ports.HashBytes([]byte("settled")), b2, b2, 0)
+	l.CloseDeliverySession(fetcher, 0, 0)
+	lost := l.DeliverySettlementStats().PendingRefundCredits
+	if lost != budget {
+		t.Fatalf("setup: pending %d, want one face", lost)
+	}
 	// RESTART: a fresh ledger over the same durable guard.
 	l2 := New(50_000, 500_000)
 	l2.SetPaidSerialStore(store)
@@ -846,8 +867,8 @@ func TestRestartLosesTheRemainderAndCountsIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	st := l2.DeliverySettlementStats()
-	if st.PendingRefundCredits != 0 || st.RestartOrphanedAnchors != 1 {
-		t.Fatalf("after restart: pending %d (want 0 — the deposit is gone), orphaned anchors %d (want 1: the guard entry survived with no session)", st.PendingRefundCredits, st.RestartOrphanedAnchors)
+	if st.PendingRefundCredits != 0 || st.RestoredGuardEntries != 3 {
+		t.Fatalf("after restart: pending %d (want 0 — the deposit is gone), restored guard entries %d (want 3: every live entry, both lanes — an upper bound on the 1 lost deposit, never a claim to count credits)", st.PendingRefundCredits, st.RestoredGuardEntries)
 	}
 	if _, spent := l2.paidSerial[paidKey(0, anchorSerial(0))]; !spent {
 		t.Fatal("the anchor's guard entry did not survive the restart — it could be re-spent")

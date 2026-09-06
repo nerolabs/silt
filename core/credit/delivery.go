@@ -841,10 +841,12 @@ func (l *Ledger) LoadPaidSerials() error {
 			len(fresh), maxPaidSerial)
 	}
 	l.paidSerial = fresh
-	// R2.9 (G-6R-9): every restored entry is an anchor (or paid serial) whose session state
-	// did not survive the restart — a live session's unsettled face and any pending deposit
-	// are gone (D-FP2-SCOPE: sessions and deposits are ephemeral; the guard is durable so
-	// nothing is re-spent). Counted so the loss is operator-visible, never silent.
+	// R2.9 (G-6R-9): the restored entries are the guard's WHOLE population — both lanes
+	// (the store carries no lane; every entry is re-labelled laneDelivery here:
+	// R-GUARD-RESTORE-LANE-UNKNOWN, pre-existing) — and no session state survived with them
+	// (D-FP2-SCOPE: sessions and deposits are ephemeral; the guard is durable so nothing is
+	// re-spent). The count is an UPPER BOUND on lost deposits, surfaced at boot and on
+	// /api/status so the loss is operator-visible, never silent.
 	l.deliveryRestartOrphans = int64(len(fresh))
 	l.guardLoaded = true
 	return nil

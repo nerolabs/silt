@@ -172,7 +172,8 @@ func (l *Ledger) SettleDelivery(server, fetcher ports.NodeID, root ports.Hash, c
 	}
 
 	// Conservation: pay out of the budget the fetcher already burned in, less the
-	// skim; the remainder is burned (G-6) — no account and no escrow receives it.
+	// skim; the unsettled remainder is NOT touched here — it becomes the session's deposit
+	// at CloseDeliverySession (no account and no escrow receives it at settlement).
 	// acct() REGISTERS an unknown account (and hands it the grant), so it is taken
 	// here at the payment and not above: a refusal must not conjure an account.
 	if prior < 0 {
@@ -228,9 +229,12 @@ func (l *Ledger) CloseDeliverySession(fetcher ports.NodeID, remaining int64, max
 		l.deliveryRefundsBurnedAtCap++
 		return 0
 	}
-	l.pendingRefunds = append(l.pendingRefunds, pendingRefund{fetcher: fetcher, amount: remaining, releaseEpoch: maxAnchorEpoch + paidSerialWindow + 1})
+	rel := maxAnchorEpoch + paidSerialWindow + 1
+	l.pendingRefunds = append(l.pendingRefunds, pendingRefund{fetcher: fetcher, amount: remaining, releaseEpoch: rel})
 	l.deliveryPendingCredits += remaining
-	l.releaseDueRefunds() // an anchor already outside the window releases immediately
+	if rel <= l.epochWatermark {
+		l.releaseDueRefunds() // "whichever is LATER": an anchor already outside the window releases now (blind PE item 6: scan only when something is due)
+	}
 	return remaining
 }
 
@@ -290,7 +294,12 @@ type DeliverySettlementStats struct {
 	BurnedCredits          int64 // GENUINE burns only: no account at release (M1), or the pending table at its cap
 	RefundsBurnedNoAccount int64 // releases that found no account (R-REFUND-NEEDS-AN-ACCOUNT)
 	RefundsBurnedAtCap     int64 // remainders burned at the pending-table cap (refuse-never-evict)
-	RestartOrphanedAnchors int64 // guard entries restored from disk with no session state — their remainders are gone (R-DELIVERY-SESSION-EPHEMERAL, G-6R-9)
+	// RestoredGuardEntries counts the paid-serial guard entries restored from disk at the
+	// last LoadPaidSerials: entries, not credits, and BOTH lanes (the durable store carries
+	// no lane — R-GUARD-RESTORE-LANE-UNKNOWN), so it is an UPPER BOUND on the delivery
+	// sessions whose unsettled face or pending deposit did not survive the restart
+	// (R-DELIVERY-SESSION-EPHEMERAL, G-6R-9). Zero means no deposit can have been lost.
+	RestoredGuardEntries int64
 }
 
 // DeliverySettlementStats reads the settlement telemetry. Reading moves nothing.
@@ -299,7 +308,7 @@ func (l *Ledger) DeliverySettlementStats() DeliverySettlementStats {
 		SessionsClosed: l.deliverySessionsClosed, SettledIncrements: l.deliverySettledIncrements,
 		RefundedCredits: l.deliveryRefundedCredits, PendingRefundCredits: l.deliveryPendingCredits, BurnedCredits: l.deliveryBurnedCredits,
 		RefundsBurnedNoAccount: l.deliveryRefundsBurnedNoAccount, RefundsBurnedAtCap: l.deliveryRefundsBurnedAtCap,
-		RestartOrphanedAnchors: l.deliveryRestartOrphans}
+		RestoredGuardEntries: l.deliveryRestartOrphans}
 }
 
 // ProvisionalLaneForTest reports whether a provisional lane is live and its byte

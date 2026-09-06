@@ -939,6 +939,16 @@ func (n *Node) ServeMintStats() credit.ServeMintStats {
 	return credit.ServeMintStats{}
 }
 
+// DeliverySettlementStats reads the R2.9 delivery-settlement telemetry (settlements,
+// deposits released / pending / burned, guard entries restored at the last boot).
+// Node-wide aggregates, no identity axis (Don't #3). Zero-valued without a ledger.
+func (n *Node) DeliverySettlementStats() credit.DeliverySettlementStats {
+	if l, ok := n.ledger.(*credit.Ledger); ok && l != nil {
+		return l.DeliverySettlementStats()
+	}
+	return credit.DeliverySettlementStats{}
+}
+
 // EconomySelf snapshots THIS node's own local-exact economy accounting — the
 // numbers the economy-observability SELF panels read (Boulder 2, R2.1 slice 6a):
 // balance, lifetime served/fetched bytes, and repair-work (count + credits earned
