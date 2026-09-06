@@ -36,7 +36,6 @@ package sim
 // refuses it and the second settlement is 0).
 
 import (
-	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/rsa"
 	"testing"
@@ -53,7 +52,11 @@ func TestPaidDeliveryLaneThreeCallComposition(t *testing.T) {
 	const seed = 20260903
 	const fee = int64(50_000) // the shipped daemon's fee (cmd/silt/daemon.go)
 	cl := NewCluster(seed, 8, simnet.DefaultConfig(), node.DefaultConfig())
-	fetcher := cl.Nodes[1]
+	// R2.9: the session open is signed by the fetcher's DURABLE signer and the server
+	// checks sha256(Fetcher) == the authenticated sender, so the fetcher must be a node
+	// whose ID IS its signer's key hash (identityNode), not a cluster node with a random
+	// signer bolted on.
+	fetcher, fetcherSigner := identityNode(cl, 2026090302)
 
 	// The bilateral issuer==server shape the certification's settlement answer covers,
 	// and the shape the e2e daemon ran: one node issues the tokens it later banks.
@@ -66,9 +69,6 @@ func TestPaidDeliveryLaneThreeCallComposition(t *testing.T) {
 	}
 	server.EnableTokenIssuer(rand.Reader, issuerKey)
 
-	_, fetcherSigner, _ := ed25519.GenerateKey(rand.Reader)
-	fetcher.SetSigner(fetcherSigner)
-
 	// A REAL v5 chain committing this issuer's key_0 binding. Both sides read it; the
 	// fetcher's pin has something genuine to resolve against.
 	sc := chain.New(chain.Config{Quorum: 1}, func(ports.NodeID) int64 { return 1 << 30 })
@@ -79,72 +79,71 @@ func TestPaidDeliveryLaneThreeCallComposition(t *testing.T) {
 	server.EnableChain(sc, serverSigner)
 	server.EnableDemandBank(server.ID())
 	fetcher.EnableChain(sc, fetcherSigner)
+	server.EnableDeliverySessions(10 * ports.Second)
 
 	ledger.Register(server.ID())
 	ledger.Register(fetcher.ID())
 
-	// One delivery, exactly as `silt swarm receipt` performs it: three node calls, in
-	// order, each completing before the next begins.
-	deliver := func(t *testing.T, arm string, object ports.Hash) int64 {
+	// R2.9: the delivery is a SESSION. The four node calls, in the order
+	// `silt swarm receipt` makes them: pin the keys, withdraw the token (= the anchor),
+	// open the session with it (the token is spent at OPEN), then settle one or more
+	// cumulative-count receipts on it — here for TWO objects on ONE session (C7).
+	var pinned int
+	var keyErr error
+	fetcher.FetchDemandIssuerKeys(server.ID(), func(n int, err error) { pinned, keyErr = n, err })
+	cl.Sched.Run()
+	if keyErr != nil || pinned == 0 {
+		t.Fatalf("call 1 FetchDemandIssuerKeys: pinned %d err %v — the fetcher would refuse to withdraw and the lane is dark", pinned, keyErr)
+	}
+	var tok demand.Token
+	var tokErr error
+	fetcher.AcquireDemandTokenInWindow(rand.Reader, server.ID(), func(tk demand.Token, _ uint64, err error) { tok, tokErr = tk, err })
+	cl.Sched.Run()
+	if tokErr != nil {
+		t.Fatalf("call 2 AcquireDemandTokenInWindow: %v", tokErr)
+	}
+	if got := ledger.Balance(fetcher.ID()); got != 100*fee-fee {
+		t.Fatalf("the withdrawal charged %d, want one fee", 100*fee-got)
+	}
+	var handle uint64
+	var commitment []byte
+	var openErr error
+	fetcher.OpenDeliverySessionRemote(server.ID(), []demand.Token{tok}, func(h uint64, m []byte, err error) { handle, commitment, openErr = h, m, err })
+	cl.Sched.Run()
+	if openErr != nil || handle == 0 {
+		t.Fatalf("call 3 OpenDeliverySessionRemote: handle %d err %v", handle, openErr)
+	}
+
+	settle := func(t *testing.T, arm string, object ports.Hash, count uint64) int64 {
 		t.Helper()
-
-		// CALL 1 — resolve the issuer's per-epoch keys against the committed binding.
-		var pinned int
-		var keyErr error
-		fetcher.FetchDemandIssuerKeys(server.ID(), func(n int, err error) { pinned, keyErr = n, err })
-		cl.Sched.Run()
-		if keyErr != nil {
-			t.Fatalf("%s: call 1 FetchDemandIssuerKeys: %v", arm, keyErr)
-		}
-		if pinned == 0 {
-			t.Fatalf("%s: call 1 pinned no key against a chain that COMMITS the binding — "+
-				"the client would refuse to withdraw and the lane is dark", arm)
-		}
-
-		// CALL 2 — a real blind withdrawal against the pinned key, naming the epoch.
-		var tok demand.Token
-		var tokErr error
-		fetcher.AcquireDemandTokenInWindow(rand.Reader, server.ID(), func(tk demand.Token, _ uint64, err error) {
-			tok, tokErr = tk, err
-		})
-		cl.Sched.Run()
-		if tokErr != nil {
-			t.Fatalf("%s: call 2 AcquireDemandTokenInWindow: %v", arm, tokErr)
-		}
-
-		// CALL 3 — sign and submit the receipt into the real wire handler.
 		before := ledger.Balance(server.ID())
-		var credited, done bool
+		var settled int64
 		var subErr error
-		fetcher.SubmitDeliveryReceipt(server.ID(), tok, object, func(c bool, err error) {
-			credited, subErr, done = c, err, true
-		})
+		done := false
+		fetcher.SubmitDeliverySettle(server.ID(), handle, commitment, object, count, func(s int64, err error) { settled, subErr, done = s, err, true })
 		cl.Sched.Run()
-		if subErr != nil {
-			t.Fatalf("%s: call 3 SubmitDeliveryReceipt: %v", arm, subErr)
+		if !done || subErr != nil {
+			t.Fatalf("%s: call 4 SubmitDeliverySettle: done=%v err=%v", arm, done, subErr)
 		}
-		if !done || !credited {
-			t.Fatalf("%s: the server did not bank the receipt (done=%v credited=%v)", arm, done, credited)
-		}
+		_ = settled
 		return ledger.Balance(server.ID()) - before
 	}
 
-	// ARM 1 — the first genuine delivery must SETTLE POSITIVE CREDIT. A banked receipt
-	// that pays 0 is the silent no-op the e2e `credit=` assertion existed to catch.
-	skim := fee * credit.SkimNum / credit.SkimDen
-	first := deliver(t, "first delivery", ports.HashBytes([]byte("composition-object-1")))
-	if first != fee-skim {
-		t.Fatalf("the first delivery settled %d, want fee−skim = %d — the lane banked a "+
-			"neutral observable and paid nothing", first, fee-skim)
+	// ARM 1 — the first object's receipt must SETTLE POSITIVE CREDIT: 16 increments pay
+	// 16·p − skim = 14. A banked receipt that pays 0 is the silent no-op the e2e
+	// `credit=` assertion existed to catch.
+	const j = 16
+	want := int64(j)*credit.DeliveryIncrementCredit - int64(j)*credit.DeliveryIncrementCredit*credit.SkimNum/credit.SkimDen
+	if first := settle(t, "first object", ports.HashBytes([]byte("composition-object-1")), j); first != want {
+		t.Fatalf("the first object settled %d, want count·p − skim = %d", first, want)
 	}
-
-	// ARM 2 — a SECOND genuine delivery on the same lane, with a FRESH token, must also
-	// bank and settle. One delivery is not a lane: the guard has to refuse a replayed
-	// serial without refusing the next honest customer.
-	second := deliver(t, "second delivery", ports.HashBytes([]byte("composition-object-2")))
-	if second != fee-skim {
-		t.Fatalf("the second genuine delivery settled %d, want fee−skim = %d — a fresh "+
-			"token on the same lane must pay, or the double-spend guard is refusing "+
-			"honest deliveries", second, fee-skim)
+	// ARM 2 — a SECOND object on the SAME session (the session spans objects, C7): the
+	// cumulative count advances by another 16 and pays again. One delivery is not a lane.
+	if second := settle(t, "second object", ports.HashBytes([]byte("composition-object-2")), 2*j); second != want {
+		t.Fatalf("the second object on the same session settled %d, want %d — the session did not span objects", second, want)
+	}
+	// ARM 3 — a replayed count on either object pays nothing: settle-monotone.
+	if replay := settle(t, "replay", ports.HashBytes([]byte("composition-object-1")), 2*j); replay != 0 {
+		t.Fatalf("a replayed cumulative count paid %d", replay)
 	}
 }

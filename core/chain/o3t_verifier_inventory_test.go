@@ -48,14 +48,15 @@ import (
 type o3tVerifyClass string
 
 const (
-	o3tClassAttestation       o3tVerifyClass = "attestation"           // MUST be verifyAtt or signedBlock
-	o3tClassProposerSig       o3tVerifyClass = "proposer-sig"          // bare hash IS the proposer scheme
-	o3tClassBondRegSig        o3tVerifyClass = "bondreg-sig"           // r.signingBytes(nonce)
-	o3tClassIssuerKeySig      o3tVerifyClass = "issuerkey-sig"         // issuerKeyRegMsg(...)
-	o3tClassRoundChangeSig    o3tVerifyClass = "roundchange-sig"       // core/node: the view-change envelope, rc.sigBytes()
-	o3tClassRelayOpenSig      o3tVerifyClass = "relay-open-sig"        // core/node: the R2.14 relay-open commitment
-	o3tClassAttestationBare   o3tVerifyClass = "attestation-bare-hash" // the #558 defect class
-	o3tMustBeDeletedByTMarker                = "MUST-BE-DELETED-BY-T"
+	o3tClassAttestation        o3tVerifyClass = "attestation"           // MUST be verifyAtt or signedBlock
+	o3tClassProposerSig        o3tVerifyClass = "proposer-sig"          // bare hash IS the proposer scheme
+	o3tClassBondRegSig         o3tVerifyClass = "bondreg-sig"           // r.signingBytes(nonce)
+	o3tClassIssuerKeySig       o3tVerifyClass = "issuerkey-sig"         // issuerKeyRegMsg(...)
+	o3tClassRoundChangeSig     o3tVerifyClass = "roundchange-sig"       // core/node: the view-change envelope, rc.sigBytes()
+	o3tClassRelayOpenSig       o3tVerifyClass = "relay-open-sig"        // core/node: the R2.14 relay-open commitment
+	o3tClassDeliverySessionSig o3tVerifyClass = "delivery-session-sig"  // R2.9: the durable fetcher's signature over the delivery session open/fund commitment
+	o3tClassAttestationBare    o3tVerifyClass = "attestation-bare-hash" // the #558 defect class
+	o3tMustBeDeletedByTMarker                 = "MUST-BE-DELETED-BY-T"
 )
 
 // o3tVerifyPackages is the set of packages the walk covers, keyed by the package clause the walk
@@ -106,6 +107,10 @@ var o3tVerifyAllowlist = map[o3tVerifySite]o3tVerifyRow{
 	// core/node — neither site verifies an attestation.
 	{"node", "rounds.go", "verifyRoundChange"}: {Count: 1, Classes: []o3tVerifyClass{o3tClassRoundChangeSig},
 		Why: "the round-change ENVELOPE signature over rc.sigBytes() = roundChangeSigDomain || height || newRound || lockRound || H(lockBlock) — a domain-separated view-change message, not a block certificate. The lock QC the envelope carries is verified by chain.VerifyPrepareQC -> collectQuorumSigs -> verifyAtt (chain.go:2967), i.e. through the one era-aware verifier."},
+	{"node", "deliverysession.go", "OpenDeliverySession"}: {Count: 1, Classes: []o3tVerifyClass{o3tClassDeliverySessionSig},
+		Why: "R2.9: the DURABLE fetcher's signature over demand.SessionOpenCommitment(serverID, anchors) — the delivery session's open binding (G-R212-8 cert §3.1 C2); a payment-lane message with its own domain (silt/delivery/open/v1), not consensus."},
+	{"node", "deliverysession.go", "FundDeliverySession"}: {Count: 1, Classes: []o3tVerifyClass{o3tClassDeliverySessionSig},
+		Why: "R2.9: the same fetcher's signature over demand.SessionFundCommitment(serverID, handle, anchors) — a top-up bound to its session (C8); same lane, own domain (silt/delivery/fund/v1), not consensus."},
 	{"node", "relayrole.go", "OpenRelaySession"}: {Count: 1, Classes: []o3tVerifyClass{o3tClassRelayOpenSig},
 		Why: "the fetcher ephemeral's commitment over relayOpenCommitment(relayID, root, S, anchors) — the R2.14 relay prepayment anchor's session-open binding (cert step 5); a payment-lane message with its own domain, not consensus."},
 	// THE TOMBSTONE. Present on main at 59509b1 (chain.go:3997). The walk FAILS while it exists.

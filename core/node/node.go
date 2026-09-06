@@ -726,6 +726,17 @@ type Node struct {
 	relaySessions   map[uint64]*RelaySession
 	relaySessionSeq uint64
 
+	// R2.9 — the paid delivery session lane (deliverysession.go). deliveryAccept gates
+	// it (EnableDeliverySessions, behind -accept-delivery-receipts with a set idle
+	// window); deliverySessions is the live table keyed by handle, deliveryByFetcher
+	// the one-session-per-fetcher index (C1); deliveryIdle the reaper window on the
+	// node's clock (swept lazily on activity and by SweepDeliverySessions).
+	deliveryAccept     bool
+	deliveryIdle       ports.Duration
+	deliverySessions   map[uint64]*DeliverySession
+	deliveryByFetcher  map[ports.NodeID]uint64
+	deliverySessionSeq uint64
+
 	// failure-domain gossip: domainID is this node's own domain hash
 	// (0 = unset); peerDomains accumulates peers' domains from gossip, so
 	// placement can spread columns across distinct domains.
@@ -1733,6 +1744,12 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 		n.handleRelayOpen(from, msg) // PoD §7.3: open a paid relay session (M0 guards + S-clamp fire here)
 	case ports.MsgRelayPay:
 		n.handleRelayPay(from, msg) // PoD §7.3: a preimage reveal authorizes the next increment(s)
+	case ports.MsgDeliveryOpen:
+		n.handleDeliveryOpen(from, msg) // R2.9: open a paid delivery session (anchor spent at open)
+	case ports.MsgDeliveryFund:
+		n.handleDeliveryFund(from, msg) // R2.9: top up a session with a fresh anchor
+	case ports.MsgDeliverySettle:
+		n.handleDeliverySettle(from, msg) // R2.9: settle a cumulative-count receipt (v3)
 	case ports.MsgBondChallenge:
 		n.reply(from, msg, n.answerBondChallenge(from, msg))
 	case ports.MsgTokenRequest:
