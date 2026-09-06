@@ -472,6 +472,33 @@ func TestRemainderIsAccountedOnceAtCloseNotPerSettlement(t *testing.T) {
 	}
 }
 
+// TestAckReversalUsesTheBudgetCappedCount — G-DEM-8 (R-ACK-USES-UNTRUSTED-COUNT). Settling
+// count = 50,000 against budget = 1 on a lane holding 12 MiB: the reversal is at most one
+// increment's worth (whole·U), never the raw count's, so the server is not left worse off
+// than suppression. The pre-fix code IS the ablation (reversed from the raw count).
+func TestAckReversalUsesTheBudgetCappedCount(t *testing.T) {
+	l := New(50_000, 0)
+	server, fetcher := id(1), id(2)
+	root := ports.HashBytes([]byte("g-dem-8"))
+	const B = int64(12 << 20)
+	serveLane(l, server, fetcher, root, B, 512<<10)
+	minted := l.Balance(server)
+	if minted <= 0 {
+		t.Fatal("setup: nothing minted")
+	}
+	settled, paid, why := l.SettleDelivery(server, fetcher, root, 50_000, 1, 0)
+	if why != ReasonPaid || settled != 1 || paid != 1 {
+		t.Fatalf("(%d, %d, %q), want one increment settled", settled, paid, why)
+	}
+	bytes, live := l.ProvisionalLaneForTest(server, fetcher, root)
+	if !live || bytes != B-r29U {
+		t.Fatalf("lane holds %d bytes (live %v), want B − one increment = %d — the reversal used the raw count", bytes, live, B-r29U)
+	}
+	if got := minted + paid - l.Balance(server); got != objNet(B)-objNet(B-r29U) {
+		t.Fatalf("reversed %d, want exactly the one-increment floor difference %d", got, objNet(B)-objNet(B-r29U))
+	}
+}
+
 // ---- the settlement skim under fetcher-chosen deltas (G-SKIM-1, -2, -5; certification
 // R2.9-settlement-skim-under-fetcher-chosen-deltas-2026-09-06 §7). Ablation for all three:
 // restore `skim := value*SkimNum/SkimDen` (the per-settlement floor).
