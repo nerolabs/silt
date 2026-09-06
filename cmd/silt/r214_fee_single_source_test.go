@@ -26,4 +26,10 @@ func TestDaemonFeeIsTheRelayAnchorFace(t *testing.T) {
 	if relaypay.ShippedAnchorFace <= 0 || relaypay.MaxAnchorsPerSession != (relaypay.MaxChainLength*relaypay.RelayIncrementCredit+relaypay.ShippedAnchorFace-1)/relaypay.ShippedAnchorFace {
 		t.Fatalf("SOURCE GATE: k_max %d is not derived from the face %d", relaypay.MaxAnchorsPerSession, relaypay.ShippedAnchorFace)
 	}
+	// Since the 2026-09-06 re-price S_max itself derives from the face, so the line above
+	// is an identity for ANY face (blind PE F-1). The face is held by an independent
+	// literal: the shipped --fee the flag help and the 64 GiB grant/r pin were derived on.
+	if relaypay.ShippedAnchorFace != 50_000 {
+		t.Fatalf("SOURCE GATE: the shipped face is %d, not 50,000 — the publish fee moved; the grant/r pin, the guard bound and the relay ceilings were all derived on 50,000 and must be re-certified", relaypay.ShippedAnchorFace)
+	}
 }

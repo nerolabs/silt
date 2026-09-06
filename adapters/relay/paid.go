@@ -2,7 +2,8 @@ package relay
 
 // PoD §7.3 transport Batch 2 — the paid forwarding pump (step 4, design §2).
 //
-// A paid relay session forwards a ≤1 GiB object toward a fetcher as-it-goes: the
+// A paid relay session forwards an object of up to relaypay.MaxSessionBytes (24.4 GiB
+// since the 2026-09-06 re-price) toward a fetcher as-it-goes: the
 // relay forwards increment k only after the fetcher authorizes it (a preimage
 // reveal on the out-of-band payment channel, which the NODE verifies and turns
 // into a rising authorized-byte ceiling — design §2 Option A: the node drives, the
@@ -50,7 +51,7 @@ type authorizer interface {
 
 // paidPump forwards bytes from src (the origin) to dst (the fetcher), never
 // exceeding the authorizer's current ceiling and never exceeding maxBytes (the
-// hard 1 GiB session cap that bounds S — design §3). It returns the total bytes
+// hard session cap, relaypay.MaxSessionBytes, that bounds S — design §3). It returns the total bytes
 // forwarded (the settlement basis) when src reaches EOF, the cap is hit, or a
 // write fails. It does NOT close either conn — the caller owns conn lifetimes so a
 // reverse EOF cannot tear down this forward stream.
@@ -61,7 +62,7 @@ type authorizer interface {
 // only up to what the fetcher has paid for. The stiff is bounded to one buffered
 // chunk (≤ one increment on a well-sized read).
 func paidPump(dst io.Writer, src io.Reader, auth authorizer, maxBytes int64) int64 {
-	const chunk = 4096 // one increment; the pump releases at increment granularity
+	const chunk = 4096 // a sub-increment read buffer: the pump releases at authorized-BYTE granularity, so the stiff is bounded to this 4 KiB, far under one 512 KiB increment
 	buf := make([]byte, chunk)
 	var forwarded int64
 	for forwarded < maxBytes {

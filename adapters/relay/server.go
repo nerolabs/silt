@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/nerolabs/silt/adapters/identity"
+	"github.com/nerolabs/silt/core/relaypay"
 	"github.com/nerolabs/silt/internal/safe"
 	"github.com/nerolabs/silt/ports"
 )
@@ -20,7 +21,7 @@ import (
 type Config struct {
 	MaxSessions     int   // concurrent splices across all peers (default 128)
 	PerPeerSessions int   // concurrent splices per registered target (default 16)
-	MaxSessionBytes int64 // per-direction byte cap per splice (default 1 GiB)
+	MaxSessionBytes int64 // per-direction byte cap per splice, free AND paid (default relaypay.MaxSessionBytes; Serve refuses a lower cap)
 }
 
 func (c Config) withDefaults() Config {
@@ -37,7 +38,9 @@ func (c Config) withDefaults() Config {
 		c.PerPeerSessions = 16
 	}
 	if c.MaxSessionBytes == 0 {
-		c.MaxSessionBytes = 1 << 30
+		// The protocol session ceiling: exactly what a full-length paid chain
+		// authorizes (T-RELAY-GRAN), shared by free and paid splices.
+		c.MaxSessionBytes = relaypay.MaxSessionBytes
 	}
 	return c
 }
@@ -127,6 +130,13 @@ type pendingSplice struct {
 
 // Serve starts a relay listener at addr with ident's TLS certificate.
 func Serve(addr string, ident *identity.Identity, cfg Config, lg ports.Logger) (*Server, error) {
+	// Coherence refusal (G-R212-2 cert §4.1 item 6): a per-splice cap below the protocol
+	// session ceiling would BURN what a fetcher paid for past the cap (T-RELAY-GRAN), and
+	// capping only one of free/paid would be the free/paid differential
+	// D-POD-RELAY-COEXIST refuses. One cap, never below the ceiling.
+	if cfg.MaxSessionBytes != 0 && cfg.MaxSessionBytes < relaypay.MaxSessionBytes {
+		return nil, fmt.Errorf("relay: MaxSessionBytes %d refused: below the protocol session ceiling relaypay.MaxSessionBytes = %d (a paid session would burn the bytes a fetcher paid for past the cap; T-RELAY-GRAN)", cfg.MaxSessionBytes, int64(relaypay.MaxSessionBytes))
+	}
 	cert, err := ident.Certificate()
 	if err != nil {
 		return nil, fmt.Errorf("relay: %w", err)

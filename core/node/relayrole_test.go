@@ -125,7 +125,7 @@ func TestRelayGuardII_EphemeralReuseRejected(t *testing.T) {
 
 // TestOpenRelaySessionClampsChainLength is the #644 open-side clamp, failing-first:
 // a fetcher cannot open a session claiming a chain LONGER than the relay will ever
-// forward (S > S_max = MaxSessionBytes / RelayIncrementBytes = 262,144). S is
+// forward (S > S_max = relaypay.MaxChainLength; 50,000 since the 2026-09-06 re-price). S is
 // derived relay-side from the relay's own config and the protocol increment, never
 // trusted from the fetcher. Rejecting an oversized S at open is what bounds the
 // stored S the AdvanceTo walk is clamped against.

@@ -39,9 +39,10 @@ const (
 	r214Fee   = int64(50_000)  // the shipped --fee; face = Fee() (cert §2.1)
 	r214Grant = int64(500_000) // the shipped faucet grant (cmd/silt/daemon.go) — the durable buyer's honest source
 	// r214SMax is relaypay.MaxChainLength × RelayIncrementCredit: the value of a
-	// FULLY paid maximum-length session (262,144). A literal so this package does
-	// not import core/relaypay for one number.
-	r214SMax = int64(262_144)
+	// FULLY paid maximum-length session — exactly one face (50,000) since the
+	// 2026-09-06 re-price (262,144 at the 4 KiB increment). A literal so this package
+	// does not import core/relaypay for one number.
+	r214SMax = int64(50_000)
 )
 
 // anchorSerial is a deterministic 32-byte serial (blindtoken.SerialSize) for anchor i.
@@ -376,7 +377,7 @@ func TestRelaySettlementNeverLeavesAnAccountNegative(t *testing.T) {
 		anchors := buyAnchors(t, l, buyer, 0, 0, k)
 		buyerAfterBurn := l.Balance(buyer)
 		if buyerAfterBurn != r214Grant-k*r214Fee {
-			t.Fatalf("buyer balance after 6 burns is %d, want %d", buyerAfterBurn, r214Grant-k*r214Fee)
+			t.Fatalf("buyer balance after k burns is %d, want %d", buyerAfterBurn, r214Grant-k*r214Fee)
 		}
 		face, _ := l.SpendRelayAnchors(anchors)
 		relayBefore := l.Balance(relay)

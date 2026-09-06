@@ -1186,9 +1186,9 @@ economy-off HEAD certifies a network nobody runs. Design:
 - **R2.14 · Relay-lane prepayment ANCHOR — BUILT 2026-09-04 (branch `builder/r2.14-relay-prepayment-anchor`, PR pending); a PREREQUISITE of R2.9; the fix for R0.7; construction CERTIFIED; owner "let's do both" taken as the build go.**
   **What shipped:** the fourth FDH domain `silt/blindrelay/fdh/v1` over `uint64BE(E) ‖ serial` under
   the relay's own committed `key_E` (`blindtoken.BlindRelayAnchor` / `VerifyRelayAnchor`;
-  `demand.Keyset.VerifyAnchorInWindow`); `RelayOpen` v2 = `{Root, S, Funding, Anchors[k≤6], Fetcher,
+  `demand.Keyset.VerifyAnchorInWindow`); `RelayOpen` v2 = `{Root, S, Funding, Anchors[k≤k_max], Fetcher,
   Sig}` with `Sig` over `sha256("silt/relay/open/v1" ‖ relayID ‖ Root ‖ uint32BE(S) ‖ uint32BE(k) ‖
-  serials)` and decode bounds; `MaxAnchorsPerSession = ⌈S_max/fee⌉ = 6` DERIVED; `OpenRelaySession` in
+  serials)` and decode bounds; `MaxAnchorsPerSession = ⌈S_max/fee⌉` DERIVED (6 at the 4 KiB increment; 1 since the 2026-09-06 re-price, `RelayIncrementBytes = 524_288`, G-R212-2 RATIFIED and BUILT); `OpenRelaySession` in
   the certified order (free guards → k bounds → sha256(Fetcher)==from → ed25519 → RSA under the SELF
   keyset newest-first, stop at first failure → `SpendRelayAnchors` all-or-nothing → budget = Σ face);
   `credit.SpendRelayAnchors` into the SHARED R0.4b paid-serial guard (cap / expiry sweep / durable
@@ -1674,6 +1674,7 @@ issue number as an anchor only. Repro recipes for the field defects (#558/#535/#
 live in [`docs/thinking/2026-09-01-residual-defect-repro-recipes.md`](docs/thinking/2026-09-01-residual-defect-repro-recipes.md).
 
 **Security / data-safety residuals:**
+- **`R-RELAY-ANON-SET′` — the relay re-price moves the relay anonymity residual BOTH ways (blind PE N-6, 2026-09-06; research-gated).** `k_max = 1` dissolves the by-`k` partition of a relay's buyers, but guard (ii) rotates one ephemeral per session and the session ceiling rose 24.4× (1 GiB → 24.4 GiB), so ephemeral rotation per relayed byte falls 24.4×. The G-R212-2 certification's "IMPROVED" reading (§1.3/§6) is one-sided; the Researcher owes the two-sided statement before anything cites the residual as closed. Source: `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-G-R212-2-relay-reprice-code-2026-09-06.md`.
 - **Demand issuer-key proof-of-possession (DSKS) — R0.4b-PoP.** `validateIssuerKeys`
   (`core/chain/issuerkey.go`) requires a verifying ed25519 self-signature, an in-range epoch and
   a bond, but **no proof that the registrant holds the RSA private key** whose fingerprint it

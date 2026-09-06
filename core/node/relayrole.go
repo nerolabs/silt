@@ -93,7 +93,7 @@ const (
 	errRelayDurableFunding = relayError("relay: chain root funded by a durable account rejected (M0 guard (i): funding must be an ephemeral blind credit)")
 	errRelayEphemeralReuse = relayError("relay: ephemeral identity reused across sessions rejected (M0 guard (ii): one ephemeral identity per session)")
 	errRelayChainReuse     = relayError("relay: chain root reused across sessions rejected (M0 guard (ii): one chain per session)")
-	errRelayChainTooLong   = relayError("relay: committed chain length S exceeds S_max = MaxSessionBytes / RelayIncrementBytes (#644 DoS clamp: bound the AdvanceTo walk)")
+	errRelayChainTooLong   = relayError("relay: committed chain length S exceeds S_max = MaxChainLength (#644 DoS clamp: bound the AdvanceTo walk)")
 	errRelayBadRoot        = relayError("relay: chain root must be exactly one hash wide")
 
 	// The R2.14 anchor refusals — named S5 reasons, each surfaced in the open ack.
@@ -389,8 +389,9 @@ func (n *Node) OpenRelaySession(ephID ports.NodeID, root []byte, S int, funding 
 		return nil, relayError("relay: chain length S must be positive")
 	}
 	// #644 open-side clamp: reject a chain longer than the relay will ever forward.
-	// S_max is derived RELAY-SIDE (relaypay.MaxChainLength = MaxSessionBytes /
-	// RelayIncrementBytes = 262,144), never trusted from the fetcher.
+	// S_max is derived RELAY-SIDE (relaypay.MaxChainLength = ShippedAnchorFace /
+	// RelayIncrementCredit = 50,000 since the 2026-09-06 re-price), never trusted from
+	// the fetcher.
 	if S > relaypay.MaxChainLength {
 		return nil, errRelayChainTooLong
 	}
