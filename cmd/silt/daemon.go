@@ -88,7 +88,7 @@ func cmdDaemon(args []string) error {
 	uiAddr := fs.String("ui", "", "serve the web UI at this address (e.g. 127.0.0.1:8081)")
 	grantCapacity := fs.Int64("grant-capacity", 0, "R2.12 faucet rate limit — bucket capacity in starter grants. 0 (default) = the faucet is UNLIMITED, exactly as before R2.12. Set together with -grant-per-hour: a fresh identity's 500,000 starter grant is then applied at its first SPEND (publish, token purchase, escrow funding) only if the bucket admits; otherwise it stays grant-pending and is retried at its next spend (never permanently denied). Metered per node, on the node's own monotonic clock — never on the chain epoch. A soft, disclosed deterrent on the RATE of fresh grants (dN/dt), not a bound on the total: a patient farm recovers every deferred grant. Start-up refuses a capacity whose worst-case guard occupancy exceeds a quarter of the paid-serial cap")
 	grantPerHour := fs.Int64("grant-per-hour", 0, "R2.12 faucet rate limit — sustained refill, in starter grants per hour, accrued continuously. 0 (default) = unlimited. The rate is a SECURITY PARAMETER bounded by build-immutable #4 on both sides (Researcher certification R2.12-faucet-rate-tier-and-grant-ratio-composition-2026-09-05 §1.5): no value is recommended here, and a shipped default requires a research-certified admissible interval and an owner ratification; until then an operator who sets it owns the posture, and the start-up line prints what the value implies")
-	grantDenyFloor := fs.Int64("grant-deny-floor", 0, "R2.12 — what an identity receives when the faucet bucket is EMPTY: 0 (default) = nothing, it stays grant-pending and retries at its next spend; N > 0 = it receives N credits now as an ADVANCE on its grant, stays grant-pending, and is topped up to the full grant when a token later admits it (a floor of one publish fee = 50000 keeps the honest onboarding floor structurally non-zero while cutting a farm's per-identity yield tenfold; it is never a settlement — a settled floor would cap an honest identity below the affordability cliff forever). Owner's call: deny or advance; both are built")
+	grantDenyFloor := fs.Int64("grant-deny-floor", grantDenyFloorOneFee, "R2.12 — what an identity receives when the faucet bucket is EMPTY: -1 (default) = an ADVANCE of ONE publish fee (owner-ratified 2026-09-06: the honest onboarding floor stays structurally non-zero while a farm's per-identity yield is cut tenfold); 0 = nothing, it stays grant-pending and retries at its next spend (deny); N > 0 = an advance of N credits. An advance is never a settlement — the identity stays grant-pending and is topped up to the full grant when a token later admits it; a settled floor would cap an honest identity below the affordability cliff forever. Only meaningful with -grant-capacity/-grant-per-hour set")
 	privacyFlag := fs.String("privacy", privacyModeName(privacyDefaultWithheld), "on|off (D-UI-PRIVACY-FLAG). on: node-wide serve counters (stats, durability.balance, /api/economy/self revenue) and library link keys are withheld from readers that do not present the API token; the operator's own tokened reads are unchanged. off: publish them to any reader the guard admits — the node is then labelled as publishing PRE-RELEASE information on every response and on the dashboard. Any other value refuses to start")
 	debugAddr := fs.String("debug-addr", "", "serve Go pprof (heap/goroutine/profile) at this address (e.g. 127.0.0.1:6060) — diagnostic only, off by default. Used to attribute the MATURING consensus-node memory footprint (`go tool pprof http://addr/debug/pprof/heap`). Also dumps a heap profile to <store>/heap-<pid>.pprof on SIGUSR1 for cloud nodes without a reachable port.")
 	attesters := fs.String("attesters", "", "comma-separated validator IDs to gather attestations from")
@@ -2158,10 +2158,15 @@ func effectiveOperatorMargin(marginSet bool, explicit int, objectivePath bool) (
 // research-certified admissible interval (same certification §1.5, G-R212-1). The
 // assumption the Economist's derivation rests on is printed beside the operator's values
 // so whoever reads one line knows what would move them.
+// grantDenyFloorOneFee is the -grant-deny-floor default: the sentinel resolves to ONE
+// publish fee read from the ledger (never a duplicated literal, PE BLK-3). Owner-ratified
+// 2026-09-06 ("advance"): an empty bucket advances one fee; 0 opts into deny.
+const grantDenyFloorOneFee = -1
+
 func faucetConfigure(l *credit.Ledger, capacity, perHour, denyFloor int64) error {
 	grant, fee := l.Grant(), l.Fee() // from the LEDGER, never a duplicated literal (PE BLK-3)
 	if capacity == 0 && perHour == 0 {
-		if denyFloor != 0 {
+		if denyFloor != grantDenyFloorOneFee && denyFloor != 0 {
 			return fmt.Errorf("-grant-deny-floor %d refused: it has no effect without -grant-capacity and -grant-per-hour", denyFloor)
 		}
 		return nil
@@ -2169,8 +2174,11 @@ func faucetConfigure(l *credit.Ledger, capacity, perHour, denyFloor int64) error
 	if capacity <= 0 || perHour <= 0 {
 		return fmt.Errorf("-grant-capacity %d / -grant-per-hour %d refused: set BOTH to positive values to rate-limit the faucet, or neither to leave it unlimited", capacity, perHour)
 	}
+	if denyFloor == grantDenyFloorOneFee {
+		denyFloor = fee
+	}
 	if denyFloor < 0 {
-		return fmt.Errorf("-grant-deny-floor %d refused: 0 (deny) or a positive credit amount (degrade)", denyFloor)
+		return fmt.Errorf("-grant-deny-floor %d refused: -1 (one fee, the default), 0 (deny) or a positive credit amount (advance)", denyFloor)
 	}
 	if denyFloor > grant {
 		return fmt.Errorf("-grant-deny-floor %d refused: the floor cannot exceed the %d starter grant it degrades", denyFloor, grant)

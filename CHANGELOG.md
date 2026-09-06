@@ -9,6 +9,13 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Fixed
+- **`statehash.Root` refuses an empty leaf value (G-R31-5, owner-ratified 2026-09-06).** The SMT library
+  treats an empty update as a delete, so an empty value would have silently dropped its key from the
+  state root. Every committed field encodes non-empty, so no honest root changes. `EmptyValueError`;
+  gate `TestRootRejectsEmptyLeafValue`. R3.1 closes as an owned residual.
+- **`-grant-deny-floor` defaults to an ADVANCE of one publish fee (R2.12, owner-ratified 2026-09-06).**
+  The default `-1` resolves to the ledger's fee; `0` opts into deny; the sentinel is inert while the
+  faucet is unconfigured. `grantDenyFloorOneFee`; gate `TestR212FaucetFlagsRefuseHalfAndUnsafeConfigurations`.
 - **NetGet pulls parity per STRIPE, in deficit order, instead of every parity column of the whole object
   (2026-09-06).** One withheld data chunk used to make the fetcher pull all N−K parity columns of the entire
   file — a 1.6× draw on a single missing shard (`R-PARITY-AMPLIFICATION`). The fallback is now a deficit walk:

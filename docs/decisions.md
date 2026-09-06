@@ -1915,9 +1915,14 @@ free/paid per-splice cap takes the same value.** Bounded below by the 64 GiB pin
 of the prices a NAT'd fetcher pays and by Don't #7 (at 256 KiB the relay is forced to out-earn the
 server per byte); bounded above by T-AR (`B ≤ 1,048,576`). Face-neutral: `ShippedAnchorFace`
 does not move, so `g/f` and the guard bound are unchanged and ONE-FACE is not engaged.
-**Owner: ratify or amend the value; nine sites move in one PR (cert §4.1).** **G-R212-7 (NEW):**
-STRICT parity `p > λ·U` at `λ = 1 credit/byte` and the 64 GiB pin are two ratified decisions
-137,439× apart — R2.9 cannot set its price until the owner resolves which yields.
+**RATIFIED 2026-09-06 by the owner (*"2. ratified"*): the certified value verbatim — `RelayIncrementBytes = 524_288`,
+`RelayIncrementCredit = 1`, `MaxChainLength` and `MaxSessionBytes` DERIVED, `MaxAnchorsPerSession` derives
+to 1, the relay adapter's shared per-splice cap takes the same value; the nine sites move in ONE PR
+(cert §4.1).** **G-R212-7 (NEW):** STRICT parity `p > λ·U` at `λ = 1 credit/byte` and the 64 GiB pin
+are two ratified decisions 137,439× apart — R2.9 cannot set its price until the owner resolves which
+yields. 2026-09-06: the owner asked for context; the builder's brief recommends route (a), re-denominating
+`λ` (a self-mint scaling constant with no external consumer) strictly below `p/U` through a Researcher
+certification, over re-opening ruling 3; the call stays OPEN until the owner chooses.
 
 ## D-UI-PRIVACY-FLAG — node-wide counters and the library link key go behind an operator flag; exposed in beta, withheld at release
 
@@ -1996,3 +2001,27 @@ pre-release label is a banner on the dashboard and the observatory when `privacy
 `off`, plus `privacy.{mode,default}` on every status response. (6) Compatibility: an OLDER
 observatory page pointed at a NEW `privacy=on` daemon aborts its render (the old inline
 dereference); upgrade the observing daemon.
+
+## D-R2.12-EMPTY-BUCKET — an empty faucet bucket ADVANCES one publish fee; deny is opt-in
+
+**Ratified 2026-09-06** by the owner (*"4. advance"*), closing the one R2.12 owner call. When the
+token bucket is empty at an identity's first spend, the identity receives ONE publish fee now as an
+ADVANCE on its starter grant, stays grant-pending, and is topped up to the full grant when a token
+later admits it (`completeGrant`, G-R212-3). The advance is never a settlement: a settled floor would
+cap an honest identity below the build-immutable #4 affordability cliff forever. Rationale (PE and
+Researcher, both recommending the advance): the honest onboarding floor stays structurally non-zero
+while a farm's per-identity yield under an exhausted bucket falls tenfold (one fee vs the grant).
+Mechanics: `-grant-deny-floor` defaults to `-1`, a sentinel that resolves to the LEDGER's fee (never a
+duplicated literal); `0` opts into deny; a positive value is an explicit advance; the default is inert
+while the faucet is unconfigured (refuse-until-set stands, the rate is still a security parameter with
+no shipped default). Gate: `TestR212FaucetFlagsRefuseHalfAndUnsafeConfigurations`.
+
+## D-R3.1-EMPTY-LEAF — `statehash.Root` refuses an empty leaf value
+
+**Ratified 2026-09-06** by the owner (*"1/ ratified"*), closing G-R31-5 and with it R3.1 as an owned
+residual. `Root` returns `EmptyValueError` for a leaf whose value is empty. The SMT library treats an
+empty update as a DELETE, so an accepted empty value would silently drop the key from the root; every
+committed field encodes to a non-empty value (the `Present` marker, a fixed-width scalar encoding, or a
+32-byte set digest, `core/chain/statehash.go`), so no honest root changes and this is a validity-surface
+tightening, not a consensus change. Gate: `TestRootRejectsEmptyLeafValue` (with a positive control
+showing the one-byte value IS committed).
