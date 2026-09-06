@@ -68,7 +68,7 @@ func TestAffordabilityLineIsAnnounced(t *testing.T) {
 	for _, want := range []string{
 		"delivery settlement: p=1 credit per 262144 B", "U/p=262144 B/credit", "Dλ=393216 B/credit", "PF 1.50",
 		"anchor face 50000 funds 50000 increments = 13107200000 B (12.21 GiB) per session, k_max=1",
-		"one grant = 10 faces, the 64 GiB pin needs 9 faces", "idle window 1h0m0s", "BURNED (G-6 as ratified",
+		"one grant = 10 faces, the 64 GiB pin needs 9 faces", "idle window 1h0m0s", "DEPOSIT returned to the fetcher", "5-epoch guard window",
 	} {
 		if !strings.Contains(line, want) {
 			t.Fatalf("affordability line lacks %q:\n%s", want, line)

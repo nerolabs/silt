@@ -202,11 +202,19 @@ type Ledger struct {
 	// credits they paid out of their anchor budgets, and the face remainder BURNED at
 	// settle — the number the Economist watches for the anchor-quantization residual.
 	// Node-wide aggregates, never joined to an identity axis (Don't #3).
-	deliverySettlements       int64
-	deliverySessionsClosed    int64
-	deliverySettledCredits    int64
-	deliveryBurnedCredits     int64
-	deliverySettledIncrements int64
+	deliverySettlements    int64
+	deliverySessionsClosed int64
+	deliverySettledCredits int64
+	deliveryBurnedCredits  int64
+	// R2.9 refund-at-anchor-expiry (D-R2.9-NODE-HALF-CALLS 1′; deliveryanchor.go): the
+	// bounded pending-refund table and its counters. remainder = refunded + pending + burned.
+	pendingRefunds                 []pendingRefund
+	deliveryRefundedCredits        int64
+	deliveryPendingCredits         int64
+	deliveryRefundsBurnedNoAccount int64 // releases whose fetcher had no account here (M1: never acct())
+	deliveryRefundsBurnedAtCap     int64 // remainders burned because the pending table was at the guard cap
+	deliveryRestartOrphans         int64 // guard entries restored from disk with no session state (their remainders are gone)
+	deliverySettledIncrements      int64
 
 	provisional map[provKey]*provisionalServe
 	provOrder   []*provKey

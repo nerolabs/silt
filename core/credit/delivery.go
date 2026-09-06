@@ -751,6 +751,7 @@ func (l *Ledger) sweepIfEpochAdvanced(current uint64) {
 		l.sweptEpoch = current
 		l.sweeps++
 		l.sweepExpiredSerials(current)
+		l.releaseDueRefunds() // R2.9 M2: deposits whose anchors just left the window return now
 	}
 }
 
@@ -840,6 +841,11 @@ func (l *Ledger) LoadPaidSerials() error {
 			len(fresh), maxPaidSerial)
 	}
 	l.paidSerial = fresh
+	// R2.9 (G-6R-9): every restored entry is an anchor (or paid serial) whose session state
+	// did not survive the restart — a live session's unsettled face and any pending deposit
+	// are gone (D-FP2-SCOPE: sessions and deposits are ephemeral; the guard is durable so
+	// nothing is re-spent). Counted so the loss is operator-visible, never silent.
+	l.deliveryRestartOrphans = int64(len(fresh))
 	l.guardLoaded = true
 	return nil
 }

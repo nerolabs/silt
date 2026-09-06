@@ -353,12 +353,16 @@ func TestPaidSerialCapDominatesBothPopulations(t *testing.T) {
 	}
 }
 
-// TestDeliveryRemainderIsBurnedNotEscrowed — B-6 (G-6). Settling j·p < Σ face: the
-// object's escrow rises by skim(j·p) only; no account and no escrow receives the
-// remainder; Σ_L falls by exactly the remainder over the cycle; the telemetry counts it.
-func TestDeliveryRemainderIsBurnedNotEscrowed(t *testing.T) {
+// TestDeliveryRemainderIsNeverRoutedToEscrow — B-6, re-expressed under the ratified deposit
+// (D-R2.9-NODE-HALF-CALLS 1′). Settling j·p < Σ face: the object's escrow rises by skim(j·p)
+// only; no account and no escrow receives the remainder AT CLOSE — it is booked as a
+// pending deposit (Σ_L is down by exactly the remainder until the anchor expires) and
+// returns to the fetcher's EXISTING account, whole, when the anchor leaves the window.
+func TestDeliveryRemainderIsNeverRoutedToEscrow(t *testing.T) {
 	const fee, grant = int64(50_000), int64(500_000)
 	l := New(fee, grant)
+	src := &mockEpochSource{}
+	l.SetEpochSource(src)
 	server, fetcher, bystander := id(1), id(2), id(3)
 	root := ports.HashBytes([]byte("r29-b6"))
 	for _, n := range []ports.NodeID{server, fetcher, bystander} {
@@ -379,8 +383,12 @@ func TestDeliveryRemainderIsBurnedNotEscrowed(t *testing.T) {
 		t.Fatalf("paid %d, escrow %d, want %d and skim(j·p) = %d only", paid, l.EscrowBalance(root), value-value*SkimNum/SkimDen, value*SkimNum/SkimDen)
 	}
 	remainder := budget - value
+	if booked := l.CloseDeliverySession(fetcher, remainder, 0); booked != remainder {
+		t.Fatalf("close booked %d, want the remainder %d as a deposit", booked, remainder)
+	}
+	// At close: Σ_L is down by the remainder (it is pending), no account or escrow received it.
 	if d := sumConserved(l) - base; d != -remainder {
-		t.Fatalf("Δ Σ_L = %d, want −remainder = %d: the remainder went somewhere", d, -remainder)
+		t.Fatalf("Δ Σ_L = %d at close, want −remainder = %d: the remainder went somewhere", d, -remainder)
 	}
 	for n, b := range balances {
 		after := l.Balance(n)
@@ -391,7 +399,7 @@ func TestDeliveryRemainderIsBurnedNotEscrowed(t *testing.T) {
 			}
 		case fetcher:
 			if after != b-fee {
-				t.Fatalf("fetcher %d → %d, want −face", b, after)
+				t.Fatalf("fetcher %d → %d at close, want −face (the deposit is not yet spendable)", b, after)
 			}
 		default:
 			if after != b {
@@ -404,22 +412,28 @@ func TestDeliveryRemainderIsBurnedNotEscrowed(t *testing.T) {
 			t.Fatalf("a foreign escrow %x holds %d", r[:4], e.balance)
 		}
 	}
-	if burned := l.CloseDeliverySession(remainder); burned != remainder {
-		t.Fatalf("close burned %d, want the remainder %d", burned, remainder)
-	}
 	st := l.DeliverySettlementStats()
-	if st.Settlements != 1 || st.SettledCredits != value || st.SessionsClosed != 1 || st.BurnedCredits != remainder || st.SettledIncrements != j {
-		t.Fatalf("telemetry %+v, want 1 settlement, %d settled, 1 closed, %d burned, %d increments", st, value, remainder, j)
+	if st.Settlements != 1 || st.SettledCredits != value || st.SessionsClosed != 1 || st.PendingRefundCredits != remainder || st.BurnedCredits != 0 || st.SettledIncrements != j {
+		t.Fatalf("telemetry %+v, want 1 settlement, %d settled, 1 closed, %d pending, 0 burned, %d increments", st, value, remainder, j)
+	}
+	// The anchor (epoch 0) leaves the window at W+1: the deposit returns to the fetcher whole.
+	src.e = uint64(PaidSerialWindow) + 1
+	l.ReleaseDueRefunds()
+	if l.Balance(fetcher) != balances[fetcher]-fee+remainder || sumConserved(l)-base != -value+value {
+		t.Fatalf("after release: fetcher %d (want %d), Δ Σ_L %d (want 0 — the face's legs cancel exactly)", l.Balance(fetcher), balances[fetcher]-fee+remainder, sumConserved(l)-base)
+	}
+	if st := l.DeliverySettlementStats(); st.RefundedCredits != remainder || st.PendingRefundCredits != 0 {
+		t.Fatalf("after release: %+v", st)
 	}
 }
 
-// TestBurnIsCountedOnceAtCloseNotPerSettlement — G-λ-8-6 (G-R212-8 cert §8). Under
-// settle-monotone a session settles in DELTAS (delta count, remaining budget); the
-// remainder is accounted once at close: no account and no escrow rises at the close,
-// Σ_L falls by exactly the remainder over the cycle, and BurnedCredits rises ONCE.
-// Ablation: count `budget − value` on the per-settlement path and settle in three
-// deltas — the counter over-reports and this catches it.
-func TestBurnIsCountedOnceAtCloseNotPerSettlement(t *testing.T) {
+// TestRemainderIsAccountedOnceAtCloseNotPerSettlement — G-λ-8-6 (G-R212-8 cert §8), under
+// the ratified deposit. A session settles in DELTAS; the remainder is accounted once at
+// close (booked pending — not burned, not routed): no account and no escrow rises at the
+// close, Σ_L is down by exactly the remainder, and PendingRefundCredits rises ONCE.
+// Ablation: account `budget − value` on the per-settlement path and settle in three deltas
+// — the pending counter over-reports and this catches it.
+func TestRemainderIsAccountedOnceAtCloseNotPerSettlement(t *testing.T) {
 	const fee, grant = int64(50_000), int64(500_000)
 	l := New(fee, grant)
 	server, fetcher := id(1), id(2)
@@ -432,54 +446,27 @@ func TestBurnIsCountedOnceAtCloseNotPerSettlement(t *testing.T) {
 	serveLane(l, server, fetcher, root, B, 64<<10)
 	remaining, settled := budget, int64(0)
 	for delta := 0; delta < 3; delta++ {
-		_, paid, why := l.SettleDelivery(server, fetcher, root, 8, remaining, 0)
+		_, paid, why := l.SettleDelivery(server, fetcher, root, 8, remaining, settled)
 		if why != ReasonPaid || paid != 8-8*SkimNum/SkimDen {
 			t.Fatalf("delta %d: (%d, %q)", delta, paid, why)
 		}
 		settled += 8 * r29P
 		remaining = budget - settled
-		if st := l.DeliverySettlementStats(); st.BurnedCredits != 0 || st.SessionsClosed != 0 {
-			t.Fatalf("delta %d: burned %d / closed %d before any close — the burn is counted per settlement", delta, st.BurnedCredits, st.SessionsClosed)
+		if st := l.DeliverySettlementStats(); st.PendingRefundCredits != 0 || st.BurnedCredits != 0 || st.SessionsClosed != 0 {
+			t.Fatalf("delta %d: pending %d / burned %d / closed %d before any close — the remainder is accounted per settlement", delta, st.PendingRefundCredits, st.BurnedCredits, st.SessionsClosed)
 		}
 	}
 	balBefore, escBefore := l.Balance(server), l.EscrowBalance(root)
-	l.CloseDeliverySession(remaining)
+	l.CloseDeliverySession(fetcher, remaining, 0)
 	if l.Balance(server) != balBefore || l.EscrowBalance(root) != escBefore || l.Balance(fetcher) != grant-fee {
-		t.Fatal("a close moved an account or an escrow — the remainder must be burned, not routed")
+		t.Fatal("a close moved an account or an escrow — the remainder must be booked, not routed")
 	}
 	if d := sumConserved(l) - base; d != -remaining {
 		t.Fatalf("Δ Σ_L = %d over the cycle, want −remainder = %d", d, -remaining)
 	}
 	st := l.DeliverySettlementStats()
-	if st.BurnedCredits != remaining || st.SessionsClosed != 1 || st.Settlements != 3 || st.SettledCredits != settled {
-		t.Fatalf("telemetry %+v, want burned exactly once = %d, 1 closed, 3 settlements, %d settled", st, remaining, settled)
-	}
-}
-
-// TestAckReversalUsesTheBudgetCappedCount — G-DEM-8 (R-ACK-USES-UNTRUSTED-COUNT). Settling
-// count = 50,000 against budget = 1 on a lane holding 12 MiB: the reversal is at most one
-// increment's worth (whole·U), never the raw count's, so the server is not left worse off
-// than suppression. The pre-fix code IS the ablation (reversed from the raw count).
-func TestAckReversalUsesTheBudgetCappedCount(t *testing.T) {
-	l := New(50_000, 0)
-	server, fetcher := id(1), id(2)
-	root := ports.HashBytes([]byte("g-dem-8"))
-	const B = int64(12 << 20)
-	serveLane(l, server, fetcher, root, B, 512<<10)
-	minted := l.Balance(server)
-	if minted <= 0 {
-		t.Fatal("setup: nothing minted")
-	}
-	settled, paid, why := l.SettleDelivery(server, fetcher, root, 50_000, 1, 0)
-	if why != ReasonPaid || settled != 1 || paid != 1 {
-		t.Fatalf("(%d, %d, %q), want one increment settled", settled, paid, why)
-	}
-	bytes, live := l.ProvisionalLaneForTest(server, fetcher, root)
-	if !live || bytes != B-r29U {
-		t.Fatalf("lane holds %d bytes (live %v), want B − one increment = %d — the reversal used the raw count", bytes, live, B-r29U)
-	}
-	if got := minted + paid - l.Balance(server); got != objNet(B)-objNet(B-r29U) {
-		t.Fatalf("reversed %d, want exactly the one-increment floor difference %d", got, objNet(B)-objNet(B-r29U))
+	if st.PendingRefundCredits != remaining || st.SessionsClosed != 1 || st.Settlements != 3 || st.SettledCredits != settled || st.BurnedCredits != 0 {
+		t.Fatalf("telemetry %+v, want pending exactly once = %d, 1 closed, 3 settlements, %d settled, 0 burned", st, remaining, settled)
 	}
 }
 

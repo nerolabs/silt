@@ -190,21 +190,91 @@ func (l *Ledger) SettleDelivery(server, fetcher ports.NodeID, root ports.Hash, c
 	return value, value - skim, ReasonPaid
 }
 
-// CloseDeliverySession accounts the close of one anchored delivery session: remaining
-// is the budget the session never settled (Σ face − settled, ≤ one face under top-up
-// discipline). Under G-6 as ratified the remainder is BURNED — no account and no
-// escrow receives it, so the only ledger effect is the telemetry — and it is counted
-// exactly ONCE here, never per settlement (a session settled in m deltas would
-// otherwise over-report the burn m − 1 times; G-R212-8 cert §6.1). The caller deletes
-// the session before calling, so a second close of the same session cannot happen
-// (the SettleRelaySession delete-first ordering). Returns the credits burned.
-func (l *Ledger) CloseDeliverySession(remaining int64) int64 {
+// pendingRefund is one session's unsettled remainder, a DEPOSIT waiting for its anchor
+// to leave the guard window (M2). {durable fetcher, amount, release epoch} is inside
+// Don't #3 on all three prongs (cert §6.2): every field is read by the release, the
+// record dies when it fires, and it is server-local process memory. The fetcher identity
+// is NEVER joined to the anchor serial and never persisted (G-6R-8).
+type pendingRefund struct {
+	fetcher      ports.NodeID
+	amount       int64
+	releaseEpoch uint64
+}
+
+// CloseDeliverySession accounts the close of one anchored delivery session
+// (D-R2.9-NODE-HALF-CALLS call 1, amended 1′; certification
+// silt-reviews/research/research-outcome/R2.9-session-remainder-refund-and-live-anchor-cap-RESEARCH-CERTIFICATION-2026-09-06.md
+// §3.3, §3.6, §4.5). remaining is the budget the session never settled (Σ face −
+// settled). It is a DEPOSIT, not a burn: booked here as one pending record released to
+// the fetcher when the session's anchors leave the guard window — releaseEpoch =
+// maxAnchorEpoch + W + 1 — or now, if that epoch has already passed at close
+// ("whichever is LATER", M2). Release-at-close alone is REFUTED: a bearer anchor passed
+// down a chain of fresh keypairs would buy unlimited guard slots for zero net credits;
+// locking the deposit for the anchor's lifetime bounds live occupancy by stock/f, the
+// same bound the burn gave (T-DEPOSIT), and keeps R2.12's start-up assertion exact.
+//
+// Booking and accounting are ONE ledger call (cert §3.3): the pending table is bounded at
+// the guard cap and REFUSES-never-evicts — at the cap the remainder is BURNED and counted,
+// never a live record dropped (build-immutable #8, G-6R-6). The caller deletes the
+// session before calling, so a second close of the same session cannot happen.
+// Returns the credits booked as pending (0 when nothing remained or the cap burned it).
+func (l *Ledger) CloseDeliverySession(fetcher ports.NodeID, remaining int64, maxAnchorEpoch uint64) int64 {
 	if remaining <= 0 {
 		return 0
 	}
 	l.deliverySessionsClosed++
-	l.deliveryBurnedCredits += remaining
+	l.advanceEpoch() // read the source once; the band advance sweeps and releases what is due
+	if len(l.pendingRefunds) >= maxPaidSerial {
+		l.deliveryBurnedCredits += remaining
+		l.deliveryRefundsBurnedAtCap++
+		return 0
+	}
+	l.pendingRefunds = append(l.pendingRefunds, pendingRefund{fetcher: fetcher, amount: remaining, releaseEpoch: maxAnchorEpoch + paidSerialWindow + 1})
+	l.deliveryPendingCredits += remaining
+	l.releaseDueRefunds() // an anchor already outside the window releases immediately
 	return remaining
+}
+
+// releaseDueRefunds pays every pending record whose release epoch the WATERMARK has
+// reached (never the raw source — R-F8-LATCH), in booking order (B2: no map iteration).
+// M1, the payee rule: the amount is credited iff the fetcher's account ALREADY EXISTS on
+// this ledger — never through acct(), which would register a fresh identity and, on an
+// unconfigured faucet, hand it the whole grant (the RT-RELAY-1 phantom). The honest
+// fetcher always has an account here: it bought its anchor through ChargePublish on this
+// ledger. A fetcher with none forfeits the remainder (burned, counted:
+// R-REFUND-NEEDS-AN-ACCOUNT, ≤ f per session).
+func (l *Ledger) releaseDueRefunds() {
+	if len(l.pendingRefunds) == 0 {
+		return
+	}
+	keep := l.pendingRefunds[:0]
+	for _, p := range l.pendingRefunds {
+		if p.releaseEpoch > l.epochWatermark {
+			keep = append(keep, p)
+			continue
+		}
+		l.deliveryPendingCredits -= p.amount
+		if a, ok := l.accounts[p.fetcher]; ok {
+			a.balance += p.amount
+			l.deliveryRefundedCredits += p.amount
+		} else {
+			l.deliveryBurnedCredits += p.amount
+			l.deliveryRefundsBurnedNoAccount++
+		}
+	}
+	for i := len(keep); i < len(l.pendingRefunds); i++ {
+		l.pendingRefunds[i] = pendingRefund{}
+	}
+	l.pendingRefunds = keep
+}
+
+// ReleaseDueRefunds advances the ledger's epoch watermark from its source and releases
+// every deposit whose anchor has left the window. The node's session sweep calls it so a
+// silent server still returns deposits on time; every guarded ledger operation releases
+// on the same band advance anyway.
+func (l *Ledger) ReleaseDueRefunds() {
+	l.advanceEpoch()
+	l.releaseDueRefunds()
 }
 
 // DeliverySettlementStats is the R2.9 settlement telemetry: node-wide aggregates of
@@ -214,14 +284,23 @@ type DeliverySettlementStats struct {
 	Settlements       int64 // settlements (deltas) that paid a non-zero amount out of an anchor budget
 	SettledCredits    int64 // credits paid out of anchor budgets, gross of the skim
 	SessionsClosed    int64 // sessions closed with an unsettled remainder
-	BurnedCredits     int64 // face remainder burned at CLOSE, counted once per session (the anchor-quantization residual, G-R212-8)
 	SettledIncrements int64 // increments of DeliveryIncrementBytes those credits acknowledged
+	// The remainder's three destinations (remainder = Refunded + Pending + Burned):
+	RefundedCredits        int64 // deposits released to the fetcher's existing account after the anchor expired (M1 + M2)
+	PendingRefundCredits   int64 // deposits booked, anchors still inside the guard window
+	BurnedCredits          int64 // GENUINE burns only: no account at release (M1), or the pending table at its cap
+	RefundsBurnedNoAccount int64 // releases that found no account (R-REFUND-NEEDS-AN-ACCOUNT)
+	RefundsBurnedAtCap     int64 // remainders burned at the pending-table cap (refuse-never-evict)
+	RestartOrphanedAnchors int64 // guard entries restored from disk with no session state — their remainders are gone (R-DELIVERY-SESSION-EPHEMERAL, G-6R-9)
 }
 
 // DeliverySettlementStats reads the settlement telemetry. Reading moves nothing.
 func (l *Ledger) DeliverySettlementStats() DeliverySettlementStats {
 	return DeliverySettlementStats{Settlements: l.deliverySettlements, SettledCredits: l.deliverySettledCredits,
-		SessionsClosed: l.deliverySessionsClosed, BurnedCredits: l.deliveryBurnedCredits, SettledIncrements: l.deliverySettledIncrements}
+		SessionsClosed: l.deliverySessionsClosed, SettledIncrements: l.deliverySettledIncrements,
+		RefundedCredits: l.deliveryRefundedCredits, PendingRefundCredits: l.deliveryPendingCredits, BurnedCredits: l.deliveryBurnedCredits,
+		RefundsBurnedNoAccount: l.deliveryRefundsBurnedNoAccount, RefundsBurnedAtCap: l.deliveryRefundsBurnedAtCap,
+		RestartOrphanedAnchors: l.deliveryRestartOrphans}
 }
 
 // ProvisionalLaneForTest reports whether a provisional lane is live and its byte
