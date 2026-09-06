@@ -456,6 +456,9 @@ func TestR29aF2NoUnauthenticatedResponseOnTheWholeSurfaceCarriesTheWithheldCount
 				t.Fatalf("%s carries %d on the UNAUTHENTICATED wire. That is objects[0].funded — one eighth of every byte served of a root /api/roots names — under whatever key this route calls it. Gating durability.objects on one route while a sibling republishes the same quantity closes nothing (red-team F2, PE ruling 2026-09-05):\n%s", pattern, n, body)
 			}
 		}
+		if path == "/api/status" && !strings.Contains(body, `"serveMintWithheld":true`) {
+			t.Fatalf("the unauthenticated /api/status withholds the serveMint block but carries no \"serveMintWithheld\":true marker — absent would read as \"no data\" (the #744 marker lesson):\n%s", body)
+		}
 		if path != "/api/roots" && strings.Contains(body, root.String()) {
 			t.Fatalf("%s names the cared root %s unauthenticated. /api/roots is the ONE route that publishes held roots (the observatory's shard-spread view); every other route must not supply the name half of the join:\n%s", pattern, root.String(), body)
 		}

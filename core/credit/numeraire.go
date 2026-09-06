@@ -68,25 +68,34 @@ const GrantOverRPinBytes int64 = 64 << 30
 type ServeMintStats struct {
 	BytesPerCredit int64 // Dλ, so a reader can compute the realized λ
 	ServedBytes    int64 // bytes served through both serve paths, lifetime
-	MintedCredits  int64 // credits minted to servers by both paths (net of the skim on the object path)
-	SkimmedCredits int64 // credits skimmed into escrows by the object path
-	ZeroMintServes int64 // serve calls that minted nothing (their bytes are in a remainder)
-	RemainderBytes int64 // bytes currently waiting below a mint boundary, across accounts and live lanes
+	// MintedCredits / SkimmedCredits are GROSS of reversal: a witnessed redeem or a lane
+	// eviction reverses a lane's mint after the fact and is counted in ReversedCredits, so
+	// the realized balance effect of the unwitnessed lane is Minted + Skimmed − Reversed.
+	MintedCredits   int64 // credits minted to servers by both paths (net of the skim on the object path), gross of reversal
+	SkimmedCredits  int64 // credits skimmed into escrows by the object path, gross of reversal
+	ReversedCredits int64 // credits (net + skim) later reversed by a witnessed supersede or a lane eviction
+	ZeroMintServes  int64 // serve calls that minted nothing (their bytes are in a remainder)
+	// The two legs of the object path floor the same accumulator at different boundaries
+	// (8·Dλ/7 for the server, 8·Dλ for the escrow), so each carries its own remainder; the
+	// plain path's account remainder is reported on the server leg.
+	RemainderBytesServerLeg int64 // bytes waiting below the next SERVER credit, across accounts and live lanes
+	RemainderBytesEscrowLeg int64 // bytes waiting below the next ESCROW credit, across live lanes (the leg that funds D-S7)
 }
 
 // ServeMintStats reads the serve-mint telemetry. Reading moves nothing; the remainder
 // walk is bounded by the account map and the live-lane map (the same walk Gini makes).
 func (l *Ledger) ServeMintStats() ServeMintStats {
 	st := ServeMintStats{BytesPerCredit: ServeMintBytesPerCredit, ServedBytes: l.serveBytes, MintedCredits: l.serveMintCredits,
-		SkimmedCredits: l.serveSkimCredits, ZeroMintServes: l.serveMintZero}
+		SkimmedCredits: l.serveSkimCredits, ReversedCredits: l.serveReversedCredits, ZeroMintServes: l.serveMintZero}
 	for _, a := range l.accounts {
-		st.RemainderBytes += a.serveRemainder
+		st.RemainderBytesServerLeg += a.serveRemainder
 	}
 	for _, p := range l.provisional {
-		// Two floors off one accumulator: the server's leg waits for 8·Dλ/7 bytes, the
-		// escrow's for 8·Dλ; report the server-leg remainder, the larger of the two
-		// legs' minted shares.
-		st.RemainderBytes += p.bytes - p.net*8*ServeMintBytesPerCredit/7
+		// Two floors off one accumulator: the server's leg has minted ⌊7b/(8Dλ)⌋, so the
+		// bytes not yet covered by a server credit are b − net·8Dλ/7; the escrow's leg has
+		// minted ⌊b/(8Dλ)⌋, leaving b − skim·8Dλ.
+		st.RemainderBytesServerLeg += p.bytes - p.net*SkimDen*ServeMintBytesPerCredit/(SkimDen-SkimNum)
+		st.RemainderBytesEscrowLeg += p.bytes - p.skim*SkimDen*ServeMintBytesPerCredit/SkimNum
 	}
 	return st
 }

@@ -148,7 +148,21 @@ func TestGLambdaServeMintTelemetry(t *testing.T) {
 	if st.BytesPerCredit != ServeMintBytesPerCredit || st.ServedBytes != 100+2*ServeMintBytesPerCredit+mintUnit || st.MintedCredits != 9 || st.SkimmedCredits != 1 || st.ZeroMintServes != 1 {
 		t.Fatalf("telemetry %+v", st)
 	}
-	if st.RemainderBytes != 100 {
-		t.Fatalf("remainder %d, want 100 (the lane is exactly on a unit boundary)", st.RemainderBytes)
+	if st.RemainderBytesServerLeg != 100 || st.RemainderBytesEscrowLeg != 0 {
+		t.Fatalf("remainders server %d escrow %d, want 100 / 0 (the lane is exactly on a unit boundary)", st.RemainderBytesServerLeg, st.RemainderBytesEscrowLeg)
+	}
+	// Both legs report their own waiting bytes (PE M3): one Dλ on a fresh lane mints
+	// nothing on either leg, so both legs wait on all of it.
+	l.RecordServeToObject(server, req, ports.HashBytes([]byte("tel-obj-2")), ports.ChunkID{4}, ServeMintBytesPerCredit)
+	st = l.ServeMintStats()
+	if st.RemainderBytesServerLeg != 100+ServeMintBytesPerCredit || st.RemainderBytesEscrowLeg != ServeMintBytesPerCredit {
+		t.Fatalf("remainders server %d escrow %d after a sub-boundary lane serve", st.RemainderBytesServerLeg, st.RemainderBytesEscrowLeg)
+	}
+	// The mint counters are GROSS of reversal; a witnessed redeem reverses the lane and
+	// lands in ReversedCredits instead of decrementing them.
+	l.RedeemDeliveryCredit(server, req, obj, nil, 0)
+	st = l.ServeMintStats()
+	if st.MintedCredits != 9 || st.SkimmedCredits != 1 || st.ReversedCredits != 8 {
+		t.Fatalf("after a reversing redeem: minted %d skimmed %d reversed %d, want 9 / 1 / 8", st.MintedCredits, st.SkimmedCredits, st.ReversedCredits)
 	}
 }

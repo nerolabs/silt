@@ -151,7 +151,7 @@ func cmdAdd(args []string) error {
 		return err
 	}
 
-	warnBountyChunk(*chunkSize)
+	warnBountyChunk(*chunkSize, flagWasSet(fs, "chunk-size"))
 	h, err := pipeline.Add(context.Background(), store, reg, f, pipeline.Options{
 		ChunkSize: *chunkSize,
 		Mode:      m,

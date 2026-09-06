@@ -23,6 +23,10 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `TestGLambdaServeMintTelemetry`; the pre-numéraire conservation gates re-expressed in mint units. The `silt sim run
   economy` defaults move to 4 MiB single-chunk objects and a SIM-SCALE fee of 8 credits (a production token is
   20.93 GiB of unwitnessed serving; the freeloader demonstration needs a fee a host can earn inside the run).
+  Blind PE MERGE-AFTER folded in: `silt sim run economy -fee` defaults to `0` (= the scenario default) so the CLI
+  demonstrates what the test does; the `serveMintWithheld` marker is gated; `serveMint` reports both remainder legs
+  and a `reversedCredits` counter (the mint counters are gross of reversal); `durability.bountyBaseZero` surfaces
+  zero-base releases; the publish warning fires only for an EXPLICIT `-chunk-size` below 262,144.
 - **`-economy` flag help states the economy's status in one sentence** (built and running in shadow; payout is
   opt-in until the delivery price lands, ROADMAP R2.4). The README carries the same sentence (2026-09-06).
 - **Relay lane re-priced: `RelayIncrementBytes` 4,096 → 524,288 (512 KiB); `MaxChainLength` and

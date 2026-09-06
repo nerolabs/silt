@@ -1,7 +1,7 @@
 // The economy scenario — M5's observatory. Every node gets a starting
 // grant worth exactly one publish. Everyone publishes once (the grant's
 // worth). Then traffic happens: every node retrieves the content files,
-// and the nodes hosting chunks earn a credit per byte served —
+// and the nodes hosting chunks earn a credit per 393,216 bytes served (G-R212-7) —
 // freeloaders fetch like everyone else but refuse to store or serve
 // anything. Finally everyone tries to publish a second file: nodes that
 // served can afford it, the freeloaders discover they cannot. The

@@ -534,8 +534,9 @@ type statusInfo struct {
 	// shape), so it rides with the per-object detail, never the unauthenticated wire.
 	ServeMintWithheld bool `json:"serveMintWithheld,omitempty"`
 	// CountersWithheld is the privacy clause's marker on THIS document. It covers exactly
-	// three absences: the whole `stats` block above, `durability.balance`, and the whole
-	// `faucet` block. A marker that named less than it covers would be a false fact in the
+	// four absences: the whole `stats` block above, `durability.balance`, the whole
+	// `faucet` block, and the `serveMint` block (which additionally carries its own
+	// F2 marker). A marker that named less than it covers would be a false fact in the
 	// other direction, so the set is enumerated here and the name is the set (S7).
 	CountersWithheld bool `json:"countersWithheld,omitempty"`
 	// Privacy reports the -privacy posture on every response, tokened or not: mode is the
@@ -752,12 +753,14 @@ func (s *uiServer) libraryView(doc libraryDoc, auth readerAuth) libraryDoc {
 // "unlimited" and "withheld" stay different objects on the wire.
 // serveMintInfo mirrors credit.ServeMintStats on the wire (G-R212-7).
 type serveMintInfo struct {
-	BytesPerCredit int64 `json:"bytesPerCredit"`
-	ServedBytes    int64 `json:"servedBytes"`
-	MintedCredits  int64 `json:"mintedCredits"`
-	SkimmedCredits int64 `json:"skimmedCredits"`
-	ZeroMintServes int64 `json:"zeroMintServes"`
-	RemainderBytes int64 `json:"remainderBytes"`
+	BytesPerCredit          int64 `json:"bytesPerCredit"`
+	ServedBytes             int64 `json:"servedBytes"`
+	MintedCredits           int64 `json:"mintedCredits"`  // gross of reversal
+	SkimmedCredits          int64 `json:"skimmedCredits"` // gross of reversal
+	ReversedCredits         int64 `json:"reversedCredits"`
+	ZeroMintServes          int64 `json:"zeroMintServes"`
+	RemainderBytesServerLeg int64 `json:"remainderBytesServerLeg"`
+	RemainderBytesEscrowLeg int64 `json:"remainderBytesEscrowLeg"`
 }
 
 type faucetInfo struct {
@@ -886,7 +889,8 @@ func (s *uiServer) computeStatus(now time.Time) *statusInfo {
 		}
 		sm := s.nd.ServeMintStats()
 		out.ServeMint = &serveMintInfo{BytesPerCredit: sm.BytesPerCredit, ServedBytes: sm.ServedBytes, MintedCredits: sm.MintedCredits,
-			SkimmedCredits: sm.SkimmedCredits, ZeroMintServes: sm.ZeroMintServes, RemainderBytes: sm.RemainderBytes}
+			SkimmedCredits: sm.SkimmedCredits, ReversedCredits: sm.ReversedCredits, ZeroMintServes: sm.ZeroMintServes,
+			RemainderBytesServerLeg: sm.RemainderBytesServerLeg, RemainderBytesEscrowLeg: sm.RemainderBytesEscrowLeg}
 		out.economy = s.nd.EconomySelf()
 		out.AddressCap = s.addressCapSnapshot()
 		if s.statusExtra != nil {
@@ -899,9 +903,13 @@ func (s *uiServer) computeStatus(now time.Time) *statusInfo {
 // withheldDurability returns the durability block an UNAUTHENTICATED reader gets: the
 // aggregates, and no per-object array (red-team F2, owner-ratified 2026-09-05).
 //
-// THE LEAK, exactly. RecordServeToObject adds bytes*SkimNum/SkimDen to an object's
-// funded reserve (core/credit/escrow.go) and the skim is one eighth, so `delta funded x 8`
-// is the EXACT byte count served of a NAMED content root. Joined to the B_bootstrap
+// THE LEAK. RecordServeToObject adds ⌊Σbytes/(SkimDen·Dλ)⌋ to an object's funded reserve
+// (core/credit/escrow.go; since G-R212-7 the skim is one credit per 8·Dλ = 3,145,728
+// bytes served on a lane, and before it one credit per 8 bytes), so `delta funded × 8 × Dλ`
+// recovers the byte count served of a NAMED content root to within 3.1 MiB — the leak the
+// old arithmetic exposed exactly is now coarsened 3,145,728×, but a delta of one is still
+// "≥ 3 MiB of this root went to someone", and the per-object join is the harm, not the
+// resolution. Joined to the B_bootstrap
 // block's per-identity decomposition that is who-fetched-what verbatim, it needs no flag
 // and no token, and it predates R2.9a entirely. Don't #3 is a bright line.
 //
@@ -941,6 +949,7 @@ func withheldDurability(di *durabilityInfo) *durabilityInfo {
 	}
 	return &durabilityInfo{
 		BountyOn:       di.BountyOn,
+		BountyBaseZero: di.BountyBaseZero,
 		Balance:        di.Balance,
 		DetailWithheld: true,
 	}
@@ -955,6 +964,11 @@ func withheldDurability(di *durabilityInfo) *durabilityInfo {
 // (Invariant A: credits fund durability, never consensus weight).
 type durabilityInfo struct {
 	BountyOn bool `json:"bountyOn"`
+	// BountyBaseZero counts repair releases whose bounty base was ZERO for the object's
+	// geometry (k·shardBytes below one credit of fetch, G-R212-7 / G-λ-8) — a bounty
+	// silently OFF, surfaced where the -economy operator looks. A node-wide count that
+	// names no root; withheld with the counters under the privacy clause.
+	BountyBaseZero int `json:"bountyBaseZero"`
 	// Balance is a POINTER so the privacy clause can omit it: an int64 with omitempty
 	// would omit a legitimate zero balance, which is a false absence (S7). Present, it
 	// may legitimately be 0.
@@ -991,9 +1005,10 @@ type objDurability struct {
 func (s *uiServer) durabilitySnapshot(uptime time.Duration) *durabilityInfo {
 	cared := s.nd.CaredDurability()
 	di := &durabilityInfo{
-		BountyOn: s.nd.RepairBountyEnabled(),
-		Balance:  new(int64),
-		Objects:  make([]objDurability, 0, len(cared)),
+		BountyOn:       s.nd.RepairBountyEnabled(),
+		BountyBaseZero: s.nd.Stats.BountyBaseZero,
+		Balance:        new(int64),
+		Objects:        make([]objDurability, 0, len(cared)),
 	}
 	*di.Balance = s.nd.CreditBalance()
 	for _, rd := range cared {

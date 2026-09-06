@@ -48,7 +48,7 @@ Invariant A) and this spec does not touch it.
 |---|---|---|
 | Receipt engine: blind withdraw → PoR-bound ack → bank → redeem | `core/demand/demand.go` | Built (#181), **LIVE** — production caller `cmd/silt/daemon.go:810` (behind `--accept-receipts`); redeem wired `core/node/demandrole.go:190` → `core/credit/delivery.go:89` |
 | Wire messages `MsgDeliveryReceipt`/`Ack` | `ports/net.go:149`, dispatched `core/node/node.go:1567` | Wired |
-| Per-byte serve credit (1 credit/byte, 1/8 skim to the object's escrow) | `core/node/node.go:1543-1545`, `core/credit/escrow.go:117-135` | Live — but **self-recorded**, per-node ledger |
+| Serve credit (1 credit per 393,216 bytes served since G-R212-7, was 1/byte; 1/8 of the mint to the object's escrow) | `core/node/node.go:1543-1545`, `core/credit/escrow.go:117-135` | Live — but **self-recorded**, per-node ledger |
 | Self-serve guard | `core/credit/credit.go:169` (`server == requester` earns nothing) | Live |
 | Cost-to-wash levers: fee at withdrawal (P3a), bonded-fetcher credential (P3b) | `demand.go:82-87`, `Bank.RequireBondedFetcher` | Built |
 
@@ -92,8 +92,9 @@ consumer and its invariant.
    `TestPaidBountyIsNotRecoverableBySupersede`.
 
 5. **[CERT] The supersede rule (load-bearing, required before the firewall
-   test means anything).** The serve path already self-mints 1 credit/byte
-   with no debit anywhere (`RecordServe`, `credit.go:168`) — an
+   test means anything).** The serve path already self-mints one credit per
+   Dλ = 393,216 bytes (G-R212-7; it was 1 credit/byte when this was written)
+   with no debit anywhere (`RecordServe`, `core/credit/credit.go`) — an
    unfunded mint that is precisely the banned per-receipt subsidy once a
    witnessed receipt pays for the same bytes. Certified rule: **a delivery
    paid by a redeemed receipt is never also self-credited**, deduped by the

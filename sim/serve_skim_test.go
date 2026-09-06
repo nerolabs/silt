@@ -36,13 +36,15 @@ func TestServeAutoSkimFundsObjectEscrow(t *testing.T) {
 	}
 
 	publisher, retriever := cl.Nodes[0], cl.Nodes[len(cl.Nodes)-1]
-	// 32 MiB in ONE chunk: each column holder serves a 3.2 MiB shard on its lane, above the
-	// 8·Dλ = 3 MiB a lane needs before its first skim credit (G-R212-7 numéraire); at the old
+	// 32 MiB in 512 KiB chunks: a column holder serves ~64 shards of 52 KiB to the retriever
+	// on ONE lane, so the lane's byte accumulator (G-R212-7) crosses the 8·Dλ = 3 MiB
+	// escrow boundary across many calls — the seam this sim is the only integration cover
+	// for (blind PE M4: a single 32 MiB chunk made the accumulator a no-op). At the old
 	// 256 KiB / 4 KiB geometry every lane would now skim zero.
 	data := make([]byte, 32<<20)
 	cl.rng.Read(data)
 	h, err := pipeline.Add(bgCtx, publisher.Store(), cl.Registry, bytes.NewReader(data),
-		pipeline.Options{ChunkSize: 32 << 20, Mode: crypto.Convergent, Erasure: erasure.DefaultParams})
+		pipeline.Options{ChunkSize: 512 << 10, Mode: crypto.Convergent, Erasure: erasure.DefaultParams})
 	if err != nil {
 		t.Fatalf("add: %v", err)
 	}

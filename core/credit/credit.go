@@ -1,7 +1,8 @@
 // Package credit is the v1 ledger. It runs TWO economies that earlier
 // versions conflated — and the conflation was the wash-serving hole:
 //
-//   - BALANCES (RecordServe → 1 byte served = 1 credit, minus a publish
+//   - BALANCES (RecordServe → 1 credit per ServeMintBytesPerCredit = 393,216 bytes
+//     served, numeraire.go, minus a publish
 //     fee). Still self-reported and DELIBERATELY GAMEABLE: two colluding
 //     nodes can ping-pong a chunk to mint credit and nothing here
 //     notices. That is fine — balances fund the anti-spam publish fee and
@@ -326,11 +327,12 @@ type Ledger struct {
 	sweptEpoch        uint64
 	guardFullRefusals int64
 	// Serve-mint telemetry (G-R212-7, numeraire.go ServeMintStats).
-	serveBytes       int64
-	serveMintCredits int64
-	serveSkimCredits int64
-	serveMintZero    int64
-	sweeps           int64
+	serveBytes           int64
+	serveMintCredits     int64
+	serveSkimCredits     int64
+	serveMintZero        int64
+	serveReversedCredits int64 // net + skim reversed by supersede or eviction (telemetry, gross-of-reversal counters above)
+	sweeps               int64
 	// compactFailures / lastCompactErr record a durable-store Compact that returned an
 	// error at the sweep (R2.13). Observability, never a refusal: see
 	// sweepExpiredSerials for the two-class rule.
@@ -360,6 +362,10 @@ func New(fee, grant int64) *Ledger {
 		provisional: make(map[provKey]*provisionalServe),
 		provIndex:   make(map[provKey]int),
 		paidSerial:  make(map[string]paidSerialEntry),
+		// Left at 1,000 / 25,000 by owner call 5 of G-R212-7 (2026-09-06), with the
+		// disclosure that one passed audit is now worth ~375 MiB of gross unwitnessed
+		// serving at Dλ = 393,216 (R-AUDIT-REWARD-DOMINATES): the audit lane is the
+		// cheapest credit source. Re-denominate together with λ if that inverts an incentive.
 		AuditReward: 1_000,
 		AuditSlash:  25_000,
 	}

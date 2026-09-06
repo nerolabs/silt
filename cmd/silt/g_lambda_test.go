@@ -31,17 +31,18 @@ func TestGLambda1StrictParityHoldsByConstruction(t *testing.T) {
 
 // TestGLambda2DontSevenCeilingAgainstTheRelayPrice: Dλ ≤ the relay lane's bytes per
 // credit under BOTH readings of Don't #7 — gross (the skim counts as reward to the
-// content lane) and net (the server's 7/8 take-home) — or a relay that stores nothing
-// out-earns the node that served the bytes (G-λ-2). The ceil in the derivation rounds
-// TOWARD this bound, so it is asserted, not assumed. Ablation: Dλ = 524,289 ⇒ RED.
+// content lane, the reading the owner ratified) — or a relay that stores nothing out-earns
+// the node that served the bytes (G-λ-2). The ceil in the derivation rounds TOWARD this
+// bound, so it is asserted, not assumed. Ablation: Dλ = 524,289 ⇒ RED.
 func TestGLambda2DontSevenCeilingAgainstTheRelayPrice(t *testing.T) {
 	relay := int64(relaypay.RelayIncrementBytes / relaypay.RelayIncrementCredit)
 	if credit.ServeMintBytesPerCredit > relay {
 		t.Fatalf("Dλ %d > relay bytes/credit %d — Don't #7 (gross reading): the relay out-earns the server per byte", credit.ServeMintBytesPerCredit, relay)
 	}
-	if net := relay * (credit.SkimDen - credit.SkimNum) / credit.SkimDen; credit.ServeMintBytesPerCredit > net {
-		t.Fatalf("Dλ %d > %d — Don't #7 (net reading): the server's take-home per byte falls below the relay's", credit.ServeMintBytesPerCredit, net)
-	}
+	// The NET reading (the server's 7/8 take-home, Dλ ≤ 458,752) is NOT asserted: the owner
+	// ratified the GROSS reading (call 4, 2026-09-06). The certified value clears both; a
+	// future re-tune the gross reading admits and the net one refuses is the owner's call,
+	// not this gate's (blind PE N2).
 }
 
 // TestGLambda3GrantOverSummedPriceHoldsThePin: one starter grant buys ≥ 64 GiB across
@@ -81,5 +82,31 @@ func TestGLambda3DaemonRefusesPricedLaneBelowThePinSourceGate(t *testing.T) {
 	}
 	if !strings.Contains(string(src), "grantOverSummedPriceBytes(ledger.Grant(), credit.DeliveryBytesPerCredit, relaypay.RelayIncrementBytes/relaypay.RelayIncrementCredit); got < credit.GrantOverRPinBytes") {
 		t.Fatal("SOURCE GATE: daemon.go no longer contains the priced-lane refusal below the grant/r pin (G-λ-3) — the string is gone")
+	}
+}
+
+// TestGLambda8PublishWarningFiresOnlyForAnExplicitSmallChunk (blind PE M6): the publish-time
+// warning speaks for an operator-set -chunk-size below the bounty minimum, is silent at or
+// above it, and is silent for the shipped default (which is below the minimum — the owner's
+// R-DEFAULT-CHUNK-BOUNTY-ZERO call, not a warning on every publish). SOURCE GATE below: both
+// publish paths call it. RUNTIME GATE: the pure function arms here.
+func TestGLambda8PublishWarningFiresOnlyForAnExplicitSmallChunk(t *testing.T) {
+	if msg := bountyChunkWarning(65_536, true); !strings.Contains(msg, "ZERO") || !strings.Contains(msg, "262144") {
+		t.Fatalf("explicit 64 KiB chunk: no warning (%q)", msg)
+	}
+	if msg := bountyChunkWarning(65_536, false); msg != "" {
+		t.Fatalf("the shipped default fired the warning: %q", msg)
+	}
+	if msg := bountyChunkWarning(int64(credit.MinBountyChunkBytes), true); msg != "" {
+		t.Fatalf("a chunk AT the minimum warned: %q", msg)
+	}
+	for _, f := range []string{"main.go", "swarm.go"} {
+		src, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(src), `warnBountyChunk(*chunkSize, flagWasSet(fs, "chunk-size"))`) {
+			t.Fatalf("SOURCE GATE: %s no longer calls warnBountyChunk with the explicit-flag check — the string is gone", f)
+		}
 	}
 }

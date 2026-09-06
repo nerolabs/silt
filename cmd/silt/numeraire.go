@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 
@@ -23,9 +24,34 @@ func grantOverSummedPriceBytes(grant, deliveryBytesPerCredit, relayBytesPerCredi
 // fetch price, so k·shardBytes below one credit of fetch rounds to nothing. The daemon
 // has no chunk geometry at start-up to refuse on, so the publisher is told here and the
 // judge names it again at settlement (core/node/repairclaim.go).
-func warnBountyChunk(chunkBytes int) {
-	if int64(chunkBytes) < credit.MinBountyChunkBytes {
-		fmt.Fprintf(os.Stderr, "warning: -chunk-size %d is below %d bytes: under a repair economy (-economy) this object's repair bounty base is ZERO (k·shardBytes < one credit of fetch, G-λ-8) and a repair of it pays nothing; use -chunk-size >= %d\n",
-			chunkBytes, int64(credit.MinBountyChunkBytes), int64(credit.MinBountyChunkBytes))
+//
+// It fires only when the operator SET -chunk-size (below the minimum); the shipped default
+// (pipeline.DefaultChunkSize, 64 KiB) is itself below the minimum, and a warning on every
+// default publish is noise nobody reads (blind PE M6). Moving the default is a product
+// call the owner holds (R-DEFAULT-CHUNK-BOUNTY-ZERO, ROADMAP).
+func warnBountyChunk(chunkBytes int, explicit bool) {
+	if msg := bountyChunkWarning(int64(chunkBytes), explicit); msg != "" {
+		fmt.Fprintln(os.Stderr, msg)
 	}
+}
+
+// bountyChunkWarning is the pure form of warnBountyChunk: the warning text, or "" when
+// nothing should be said.
+func bountyChunkWarning(chunkBytes int64, explicit bool) string {
+	if !explicit || chunkBytes >= credit.MinBountyChunkBytes {
+		return ""
+	}
+	return fmt.Sprintf("warning: -chunk-size %d is below %d bytes: under a repair economy (-economy) this object's repair bounty base is ZERO (k·shardBytes < one credit of fetch, G-λ-8) and a repair of it pays nothing; use -chunk-size >= %d",
+		chunkBytes, int64(credit.MinBountyChunkBytes), int64(credit.MinBountyChunkBytes))
+}
+
+// flagWasSet reports whether the operator passed name on the command line.
+func flagWasSet(fs *flag.FlagSet, name string) bool {
+	set := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == name {
+			set = true
+		}
+	})
+	return set
 }

@@ -57,3 +57,17 @@ chunks now skims zero on every lane; it publishes 32 MiB in one chunk so each co
 3.2 MiB shard), and the repair bounty (4 KiB chunks pay a zero base; 256 KiB chunks at the same 128-chunk
 stripe count). None of these is a mechanism change; each is the scenario reaching the boundary the
 numéraire moved.
+
+## Blind PE code ruling (MERGE-AFTER, six items) and what it corrected
+
+Ruling: `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-G-R212-7-lambda-numeraire-code-2026-09-06.md`.
+The arithmetic held under 2,000 randomized trials and eleven of twelve certified ablations reddened a
+named gate. The misses were at the edges: the `silt sim run economy` CLI kept the production fee
+default and demonstrated the opposite of its claim (fixed: `-fee 0` = scenario default); the
+`serveMintWithheld` marker was ungated (gated); the telemetry reported the server leg only and was
+silently gross of reversal (both legs + `reversedCredits`, documented); the serve-skim sim had been
+rescaled into the one geometry where the accumulator is a no-op (now 512 KiB chunks, the ablation
+reddens); eight stale text sites incl. the red-team F2 leak argument (rewritten: coarsened
+3,145,728×, the per-object join is still the harm); the publish warning fired on every default
+publish (now only for an explicit small `-chunk-size`, tested). Two residuals filed:
+`R-DEFAULT-CHUNK-BOUNTY-ZERO` (owner call) and `R-LAMBDA-DUST′` (research-gated: 24 GiB vs 3 GiB).
