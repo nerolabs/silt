@@ -114,7 +114,9 @@ economics observable, not secure; see `core/credit`.)
   the seed and you get a different (but equally reproducible) universe.
   That's the payoff of the no-goroutines event-loop architecture: any
   weird run is perfectly replayable.
-- `go test ./...` runs the whole suite (~5s).
+- `go test -short ./...` runs the fast suite (what CI runs); `go test -timeout 40m ./...` runs everything,
+  including `core/chain`'s ~5-minute recompute measurement, which puts a bare `go test ./...` past Go's
+  10-minute default package timeout — the `-timeout` is the margin, not a change to the measurement.
   `go test -bench . -run XXX ./core/...` prints the fun throughput
   numbers (Reed-Solomon encode ~9 GB/s, convergent encryption
   ~1.7 GB/s, full pipeline ~350 MB/s).

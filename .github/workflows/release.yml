@@ -22,7 +22,7 @@ jobs:
           go-version: "1.26"
           cache: true
       - name: Sanity check
-        run: go vet ./... && go test ./...
+        run: go vet ./... && go test -timeout 40m ./...
       - name: Build binaries (mac/windows/linux)
         run: ./build.sh "${GITHUB_REF_NAME}"
       # THE COMPILED PRIVACY DEFAULT IS ASSERTED ON THE ARTIFACT, not on the source

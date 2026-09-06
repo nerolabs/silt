@@ -1770,7 +1770,10 @@ live in [`docs/thinking/2026-09-01-residual-defect-repro-recipes.md`](docs/think
   the single failure exit), so there is no branch left to regress into — but the property is
   UNGATED at runtime and says so in the gate's own failure text. Source: PE ruling H-2,
   `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-R0.4b-C3-close-271ab81-final-2026-09-03.md`.
-- **A bare `go test ./...` has no margin against the default package timeout.**
+- **A bare `go test ./...` has no margin against the default package timeout — ✅ DONE 2026-09-06 (branch
+  `docs/full-suite-timeout-margin`): `go test -timeout 40m ./...` is the documented full-suite command (README,
+  CONTRIBUTING, `docs/v1-test.md`) and `release.yml`'s sanity step carries the same `-timeout`; the measurement is
+  untouched; the blind PE re-measured the package at 601 s on 2026-09-06 (killed at Go's 10-minute default).**
   `core/chain TestMeasureRecomputeMatureNowStreamingWin` is a long MEASUREMENT test, and it
   puts the whole `core/chain` package close to Go's 10-minute default. Measured 2026-09-03 on
   this branch's tree: the single test **309 s**, the package **530 s** with an explicit

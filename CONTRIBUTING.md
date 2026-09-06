@@ -23,7 +23,8 @@ gets in.
 
 ```sh
 go build ./...
-go test ./...                 # the whole suite, incl. deterministic sims
+go test -timeout 40m ./...    # the whole suite, incl. deterministic sims; -timeout: core/chain has a ~5-min measurement test
+go test -short ./...          # what CI runs (the measurement tests are skipped under -short)
 go vet ./... && gofmt -l .     # must be clean
 go test -bench . ./core/...    # throughput numbers, if you touched hot paths
 ```
