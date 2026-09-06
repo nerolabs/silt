@@ -203,6 +203,7 @@ type Ledger struct {
 	// settle — the number the Economist watches for the anchor-quantization residual.
 	// Node-wide aggregates, never joined to an identity axis (Don't #3).
 	deliverySettlements       int64
+	deliverySessionsClosed    int64
 	deliverySettledCredits    int64
 	deliveryBurnedCredits     int64
 	deliverySettledIncrements int64

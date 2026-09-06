@@ -94,14 +94,17 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   re-derived from BYTES PER ANCHOR for both populations (12.21 GiB per delivery anchor, 24.4 GiB per relay
   anchor) against a one-hour block-interval bound at gigabit: the 65,536 floor dominates the honest live set
   by 7.6×, so the unmeasured `T_b` is no longer load-bearing for the cap; the "256 serves per block" unit is
-  retired. `DeliverySettlementStats` (settled, burned, increments) is the telemetry for the anchor-quantization
-  residual. Gates `TestDeliveryAcceptStrictlyDominatesSuppressionAtEverySize` (B-1),
+  retired. `DeliverySettlementStats` (settlements, settled, sessions closed, burned, increments) is the telemetry for the
+  anchor-quantization residual; the remainder is accounted ONCE at `CloseDeliverySession`, never per settlement,
+  because the G-R212-8 certification (2026-09-06) replaces settle-once with settle-monotone (a session settles in
+  deltas and spans objects). Gates `TestDeliveryAcceptStrictlyDominatesSuppressionAtEverySize` (B-1),
   `TestProvisionalLaneEqualsCreditedBalanceAndReversesPerIncrement` (B-2),
   `TestDeliverySettlementIsBoundedByAnchorFaceOnThePayingLedger` (B-3), `TestDeliveryFundTopUpSpendsFreshAnchorsOnce`
   (B-3b), `TestPaidSerialCapDominatesBothPopulations` (B-4), `TestDeliveryRemainderIsBurnedNotEscrowed` (B-6),
-  `TestPaidSerialCapLiteralsMatchTheirSources`, and the Invariant-A press (B-14); five ablations run RED. The
-  NODE half (session open message, receipt v3, settle-once by session, the reaper, the fetch-path integration,
-  the e2e) waits on the G-R212-8 anchor-quantization certification — see
+  `TestPaidSerialCapLiteralsMatchTheirSources`, `TestBurnIsCountedOnceAtCloseNotPerSettlement` (G-λ-8-6), and the
+  Invariant-A press (B-14); six ablations run RED. The NODE half (session open, receipt v3 with a cumulative
+  count, the idle reaper, the fetch-path integration, the e2e) is GATED on an owner call: the certification
+  refutes the composed 64 GiB pin claim under G-6 (remainder burned) and names the refund direction — see
   `docs/thinking/2026-09-06-r2.9-delivery-settlement-quantization.md`.
 - **R3.4 input — the IssuerKeys-carrier block fraction, measured (2026-09-06;
   `core/node/r34_issuer_key_carrier_fraction_test.go`, a logged measurement, not a gate).** The floor box marks

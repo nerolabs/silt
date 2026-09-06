@@ -41,14 +41,20 @@ package credit
 // the un-acknowledged part only).
 //
 // WHAT THIS FILE DOES NOT DECIDE. What a session is keyed on, when it closes, whether
-// it outlives one object, and what the receipt binds are the node's (core/node) —
-// research-gated under G-R212-8 (the anchor quantization at 12.21 GiB per face on a
-// multi-provider fetch path) and built after that verdict. Settle-once is BY SESSION
-// and is the node's property exactly as on the relay lane (the handle is deleted
-// before this is called; TestNoDoubleSettleReaperAndPump's twin): this entry point
-// pays whatever budget it is handed and cannot know a session was already settled.
-// The flat leg stays callable until the node half retires the un-anchored receipt
-// (gate B-9).
+// it outlives one object, and what the receipt binds are the node's (core/node). The
+// G-R212-8 certification
+// (silt-reviews/research/research-outcome/R2.9-G-R212-8-delivery-anchor-quantization-RESEARCH-CERTIFICATION-2026-09-06.md
+// §3) fixes the shape the node half must build: a session keyed on (server, durable
+// fetcher), one anchor, a byte ceiling DERIVED from the face, spanning objects, settled
+// INCREMENTALLY against a monotone counter (settle-once is REFUTED, §6.1): the node
+// calls SettleDelivery with the DELTA count and the REMAINING budget, so this entry
+// point is per-settlement arithmetic and holds no session state. The remainder is
+// therefore accounted ONCE, at CloseDeliverySession, never here (gate
+// TestBurnIsCountedOnceAtCloseNotPerSettlement). Whether that remainder is burned (G-6
+// as ratified) or refunded to the durable fetcher (the certification's §5.1 direction)
+// is an OWNER CALL that owes its own certification; this file implements G-6 as it
+// stands. The flat leg stays callable until the node half retires the un-anchored
+// receipt (gate B-9).
 //
 // NEVER STANDING: every method here moves the balance economy only. Classified
 // neutral in invariant_a_test.go and pressed against a bondless identity on an
@@ -147,23 +153,40 @@ func (l *Ledger) SettleDelivery(server, fetcher ports.NodeID, root ports.Hash, c
 	e.funded += skim
 	l.deliverySettlements++
 	l.deliverySettledCredits += value
-	l.deliveryBurnedCredits += budget - value
 	l.deliverySettledIncrements += value / DeliveryIncrementCredit
 	return value - skim, ReasonPaid
+}
+
+// CloseDeliverySession accounts the close of one anchored delivery session: remaining
+// is the budget the session never settled (Σ face − settled, ≤ one face under top-up
+// discipline). Under G-6 as ratified the remainder is BURNED — no account and no
+// escrow receives it, so the only ledger effect is the telemetry — and it is counted
+// exactly ONCE here, never per settlement (a session settled in m deltas would
+// otherwise over-report the burn m − 1 times; G-R212-8 cert §6.1). The caller deletes
+// the session before calling, so a second close of the same session cannot happen
+// (the SettleRelaySession delete-first ordering). Returns the credits burned.
+func (l *Ledger) CloseDeliverySession(remaining int64) int64 {
+	if remaining <= 0 {
+		return 0
+	}
+	l.deliverySessionsClosed++
+	l.deliveryBurnedCredits += remaining
+	return remaining
 }
 
 // DeliverySettlementStats is the R2.9 settlement telemetry: node-wide aggregates of
 // what anchored delivery sessions paid and burned. Instrument-class; never joined to
 // an identity axis (Don't #3).
 type DeliverySettlementStats struct {
-	Settlements       int64 // anchored sessions settled with a non-zero budget and count
+	Settlements       int64 // settlements (deltas) that paid a non-zero amount out of an anchor budget
 	SettledCredits    int64 // credits paid out of anchor budgets, gross of the skim
-	BurnedCredits     int64 // face remainder burned at settle (the anchor-quantization residual, G-R212-8)
+	SessionsClosed    int64 // sessions closed with an unsettled remainder
+	BurnedCredits     int64 // face remainder burned at CLOSE, counted once per session (the anchor-quantization residual, G-R212-8)
 	SettledIncrements int64 // increments of DeliveryIncrementBytes those credits acknowledged
 }
 
 // DeliverySettlementStats reads the settlement telemetry. Reading moves nothing.
 func (l *Ledger) DeliverySettlementStats() DeliverySettlementStats {
 	return DeliverySettlementStats{Settlements: l.deliverySettlements, SettledCredits: l.deliverySettledCredits,
-		BurnedCredits: l.deliveryBurnedCredits, SettledIncrements: l.deliverySettledIncrements}
+		SessionsClosed: l.deliverySessionsClosed, BurnedCredits: l.deliveryBurnedCredits, SettledIncrements: l.deliverySettledIncrements}
 }

@@ -394,8 +394,54 @@ func TestDeliveryRemainderIsBurnedNotEscrowed(t *testing.T) {
 			t.Fatalf("a foreign escrow %x holds %d", r[:4], e.balance)
 		}
 	}
+	if burned := l.CloseDeliverySession(remainder); burned != remainder {
+		t.Fatalf("close burned %d, want the remainder %d", burned, remainder)
+	}
 	st := l.DeliverySettlementStats()
-	if st.Settlements != 1 || st.SettledCredits != value || st.BurnedCredits != remainder || st.SettledIncrements != j {
-		t.Fatalf("telemetry %+v, want 1 settlement, %d settled, %d burned, %d increments", st, value, remainder, j)
+	if st.Settlements != 1 || st.SettledCredits != value || st.SessionsClosed != 1 || st.BurnedCredits != remainder || st.SettledIncrements != j {
+		t.Fatalf("telemetry %+v, want 1 settlement, %d settled, 1 closed, %d burned, %d increments", st, value, remainder, j)
+	}
+}
+
+// TestBurnIsCountedOnceAtCloseNotPerSettlement — G-λ-8-6 (G-R212-8 cert §8). Under
+// settle-monotone a session settles in DELTAS (delta count, remaining budget); the
+// remainder is accounted once at close: no account and no escrow rises at the close,
+// Σ_L falls by exactly the remainder over the cycle, and BurnedCredits rises ONCE.
+// Ablation: count `budget − value` on the per-settlement path and settle in three
+// deltas — the counter over-reports and this catches it.
+func TestBurnIsCountedOnceAtCloseNotPerSettlement(t *testing.T) {
+	const fee, grant = int64(50_000), int64(500_000)
+	l := New(fee, grant)
+	server, fetcher := id(1), id(2)
+	root := ports.HashBytes([]byte("r29-g8-6"))
+	l.Register(server)
+	l.Register(fetcher)
+	base := sumConserved(l)
+	budget := openDeliverySession(t, l, server, fetcher, 0, 0, 1)
+	const B = int64(3 * 8 * DeliveryIncrementBytes) // 6 MiB served, settled in three deltas of 8 increments
+	serveLane(l, server, fetcher, root, B, 64<<10)
+	remaining, settled := budget, int64(0)
+	for delta := 0; delta < 3; delta++ {
+		paid, why := l.SettleDelivery(server, fetcher, root, 8, remaining)
+		if why != ReasonPaid || paid != 8-8*SkimNum/SkimDen {
+			t.Fatalf("delta %d: (%d, %q)", delta, paid, why)
+		}
+		settled += 8 * r29P
+		remaining = budget - settled
+		if st := l.DeliverySettlementStats(); st.BurnedCredits != 0 || st.SessionsClosed != 0 {
+			t.Fatalf("delta %d: burned %d / closed %d before any close — the burn is counted per settlement", delta, st.BurnedCredits, st.SessionsClosed)
+		}
+	}
+	balBefore, escBefore := l.Balance(server), l.EscrowBalance(root)
+	l.CloseDeliverySession(remaining)
+	if l.Balance(server) != balBefore || l.EscrowBalance(root) != escBefore || l.Balance(fetcher) != grant-fee {
+		t.Fatal("a close moved an account or an escrow — the remainder must be burned, not routed")
+	}
+	if d := sumConserved(l) - base; d != -remaining {
+		t.Fatalf("Δ Σ_L = %d over the cycle, want −remainder = %d", d, -remaining)
+	}
+	st := l.DeliverySettlementStats()
+	if st.BurnedCredits != remaining || st.SessionsClosed != 1 || st.Settlements != 3 || st.SettledCredits != settled {
+		t.Fatalf("telemetry %+v, want burned exactly once = %d, 1 closed, 3 settlements, %d settled", st, remaining, settled)
 	}
 }

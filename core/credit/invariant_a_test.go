@@ -142,6 +142,7 @@ var standingClassification = map[string]standingClass{
 	// increment — balance economy only) and its telemetry reader.
 	"SpendDeliveryAnchors":    neutral,
 	"SettleDelivery":          neutral,
+	"CloseDeliverySession":    neutral, // counts the remainder burned at close; moves nothing
 	"DeliverySettlementStats": neutral,
 }
 
@@ -228,6 +229,7 @@ func TestInvariantA_NoNonMintPressRaisesStanding(t *testing.T) {
 		if paid, why := l.SettleDelivery(n, other, obj, 1<<20, dface); paid != dface-dface*SkimNum/SkimDen || why != ReasonPaid {
 			t.Fatalf("round %d: SettleDelivery paid (%d, %q) against budget %d — the delivery press is vacuous", round, paid, why, dface)
 		}
+		l.CloseDeliverySession(1) // a remainder burned at close: telemetry only
 		_ = l.DeliverySettlementStats()
 		_ = l.FundEscrow(obj, n, 1<<20) // prepay a durability reserve
 		l.PayBounty(obj, n, 1<<30)      // drain the reserve to this identity
