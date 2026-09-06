@@ -126,7 +126,12 @@ func TestF8_NoPortMethodCarriesAnEpoch(t *testing.T) {
 		{"../core/credit/delivery.go", "Ledger", "", "RedeemDeliveryCredit", 5, "issuedEpoch"},
 		{"../core/credit/delivery.go", "Ledger", "", "RedeemDeliveryCreditReason", 5, "issuedEpoch"},
 		{"../core/credit/relayanchor.go", "Ledger", "", "SpendRelayAnchors", 1, "anchors"},
-		{"../core/node/demandrole.go", "", "deliveryReasoner", "RedeemDeliveryCreditReason", 5, "issuedEpoch"},
+		// B-9 (2026-09-07): the flat receipt's deliveryReasoner seam is retired; the session
+		// lane's optional ledger seams take no caller-supplied epoch either — the ledger
+		// reads its own EpochSource at open, settle and close.
+		{"../core/node/deliverysession.go", "", "deliveryAnchorSpender", "SpendDeliveryAnchors", 2, "anchors"},
+		{"../core/node/deliverysession.go", "", "deliverySettler", "SettleDelivery", 6, "prior"},
+		{"../core/node/deliverysession.go", "", "deliveryCloser", "CloseDeliverySession", 3, "maxAnchorEpoch"},
 	}
 	for _, s := range sites {
 		ps := f8MethodParams(t, s.path, s.recv, s.iface, s.name)
