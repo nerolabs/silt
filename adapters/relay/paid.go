@@ -61,7 +61,7 @@ type authorizer interface {
 // only up to what the fetcher has paid for. The stiff is bounded to one buffered
 // chunk (≤ one increment on a well-sized read).
 func paidPump(dst io.Writer, src io.Reader, auth authorizer, maxBytes int64) int64 {
-	const chunk = 4096 // one increment; the pump releases at increment granularity
+	const chunk = 4096 // a sub-increment read buffer: the pump releases at authorized-BYTE granularity, so the stiff is bounded to this 4 KiB, far under one 512 KiB increment
 	buf := make([]byte, chunk)
 	var forwarded int64
 	for forwarded < maxBytes {

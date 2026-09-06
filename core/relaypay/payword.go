@@ -27,36 +27,43 @@ import (
 // RelayIncrementBytes is the payload size, in bytes, of one PayWord increment —
 // the amount of forwarded payload one revealed preimage authorizes.
 //
-// B = 4,096 bytes (4 KiB), derived analytically from the floor-box-equivalent
-// measurement (docs/thinking/2026-08-30-pod-7.3-relay-compensation-design.md
-// §5); no billable run was needed. The binding constraint is (b), the chain-
-// state memory bound: MaxSessionBytes = 1 GiB (adapters/relay/server.go:40) is
-// objectSize_max, so S = 1 GiB / 4 KiB = 262,144 increments and the FETCHER's
-// committed chain state = S · 32 B = 8 MB (MB-scale, holds). The relay holds
-// only one 32-B preimage; the 8 MB is fetcher-side. Constraint (a), verify
-// overhead, is slack: one SHA-256 (order ~100 ns on arm64) is <<1% of the time
-// to forward 4 KiB at any real relay speed. 4 KiB is the smallest power-of-two
-// ≥ 3.20 KiB on a sub-chunk boundary (64 KiB / 16).
-const RelayIncrementBytes = 4096
-
-// MaxSessionBytes is the per-session payload ceiling the relay will ever forward,
-// in bytes. It is the protocol floor mirrored by the relay adapter's own config
-// default (adapters/relay/server.go:40, 1 GiB); the adapter may lower its own cap,
-// but the accepted chain length is clamped against THIS protocol constant so the
-// clamp does not depend on an adapter value core/node cannot import. 1 GiB is the
-// objectSize_max the increment size B was derived against (§5 constraint (b)).
-const MaxSessionBytes = 1 << 30
+// B = 524,288 bytes (512 KiB): the CERTIFIED re-price of 2026-09-06, owner-ratified the
+// same day (G-R212-2; silt-reviews/research/research-outcome/G-R212-2-relay-lane-reprice-
+// RESEARCH-CERTIFICATION-2026-09-06.md §8; docs/decisions.md D-R2.9a-RUN-CALLS). The relay
+// lane's price is RelayIncrementCredit/RelayIncrementBytes credits per byte. At the
+// original 4 KiB (the 2026-08-30 floor-box derivation) the 500,000-credit starter grant
+// bought 1.9 GiB of relayed fetch, 23.4× below the 44.7 GiB structural floor; at 512 KiB
+// one grant buys 244 GiB. Bounded below by the 64 GiB grant/r pin read on the SUM of the
+// prices a NAT'd fetcher pays and by Don't #7 (at 256 KiB the relay would out-earn the
+// server per byte); bounded above by T-AR (B ≤ 1,048,576). The original constraint (b),
+// fetcher-side chain-state memory, still holds: S_max · 32 B = 1.6 MB.
+//
+// T-RELAY-GRAN (cert §4.1): a price change MUST move MaxSessionBytes with it. Per-anchor
+// yield is min(face · B / RelayIncrementCredit, MaxSessionBytes) and the remainder is
+// BURNED, so raising B against the old fixed 1 GiB cap would have burned 95.6 % of every
+// payment. MaxChainLength and MaxSessionBytes are therefore DERIVED below, never pinned.
+const RelayIncrementBytes = 524_288
 
 // MaxChainLength is S_max: the largest committed chain length a relay accepts,
-// derived RELAY-SIDE from the relay's own byte ceiling and the protocol increment
-// — never trusted from the fetcher. A fetcher cannot open a session claiming a
-// chain longer than the relay will ever forward.
+// derived RELAY-SIDE and never trusted from the fetcher. Since R2.14 a session's
+// budget is the face of its anchors, and one anchor's face funds
 //
-//	S_max = MaxSessionBytes / RelayIncrementBytes = (1 GiB) / (4 KiB) = 262,144
+//	S_max = ShippedAnchorFace / RelayIncrementCredit = 50,000
 //
-// This bounds the worst-case AdvanceTo walk to ~262K SHA-256 (~23 ms) instead of
-// the attacker-chosen millions the unbounded path allowed (#644).
-const MaxChainLength = MaxSessionBytes / RelayIncrementBytes
+// increments, so MaxAnchorsPerSession derives to 1 and the longest chain one anchor
+// funds IS the ceiling. This bounds the worst-case AdvanceTo walk to 50K SHA-256
+// (~5 ms) instead of the attacker-chosen millions the unbounded path allowed (#644).
+const MaxChainLength = ShippedAnchorFace / RelayIncrementCredit
+
+// MaxSessionBytes is the per-session payload ceiling the relay will ever forward, in
+// bytes: exactly what a full-length chain authorizes, so nothing a fetcher paid for is
+// left unforwardable (T-RELAY-GRAN). The relay adapter's per-splice cap defaults to
+// THIS constant and Serve refuses a lower explicit cap (adapters/relay/server.go) —
+// ONE shared cap for free and paid splices, a coherence refusal and never a
+// free/paid differential (D-POD-RELAY-COEXIST).
+//
+//	MaxSessionBytes = MaxChainLength × RelayIncrementBytes = 26,214,400,000 B (24.414 GiB)
+const MaxSessionBytes = MaxChainLength * RelayIncrementBytes
 
 // RelayIncrementCredit is the credit value one forwarded increment settles for —
 // the settlement unit. One increment = one credit, so a session's settled value is
@@ -155,7 +162,7 @@ var ErrWalkBudgetExhausted = errors.New("relaypay: session walk budget exhausted
 // NewVerifier starts a relay-side session from the committed root x_0 with the
 // committed chain length S. The relay then advances one preimage per forwarded
 // increment, and never past S. S must be the relay-clamped chain length (the
-// caller clamps S <= S_max = MaxSessionBytes / RelayIncrementBytes before opening
+// caller clamps S <= S_max = MaxChainLength before opening
 // the session — never a value trusted from the fetcher). See OpenRelaySession.
 func NewVerifier(root []byte, S int) *Verifier {
 	held := make([]byte, len(root))
@@ -212,7 +219,7 @@ func (v *Verifier) Advance(preimage []byte) error {
 // THE #644 CLAMP: claimedCount > S (the committed chain length carried at
 // NewVerifier) is REJECTED BEFORE the walk. The walk is therefore bounded to at
 // most (S - count) <= S hashes, and S is itself relay-clamped to
-// S_max = MaxSessionBytes / RelayIncrementBytes at OpenRelaySession. claimedCount
+// S_max = MaxChainLength at OpenRelaySession. claimedCount
 // is an attacker int in a bogus MsgRelayPay, but it can no longer drive work past
 // S hashes per message. Without this clamp a single bogus preimage with a large
 // claimedCount spins the relay for that many hashes (the PE measured ~5M hashes /

@@ -10,7 +10,8 @@ package credit
 // pass for the wrong reason once R2.12 lands"). Red-team artifact:
 // RED-TEAM-relay-lane-session-grant-and-byte-price-2026-09-03.md RT-RELAY-1
 // ("Reproduced" section: credit.New(50_000, 500_000), a fresh ephemeral
-// fetcher this ledger has never seen, S=MaxChainLength=262,144).
+// fetcher this ledger has never seen, S = MaxChainLength — 262,144 at the time of the
+// finding, 50,000 since the 2026-09-06 re-price).
 //
 // This is a NARROWING (under-pay only per the certification), so it does not
 // need its own economic certification — the design doc
@@ -25,7 +26,7 @@ import "testing"
 // mandates a FRESH EPHEMERAL identity per session, so this ledger has never
 // seen it before). Drives the exact RT-RELAY-1 mint shape the red-team
 // measured: the shipped grant (500,000), a fresh ephemeral fetcher, and a
-// full-length session (S = MaxChainLength = 262,144, chainValue == budget).
+// full-length session (S = MaxChainLength as it stood at the finding, chainValue == budget).
 //
 // TODAY (main, no anchor type exists anywhere in the wire/ledger path):
 // relay != fetcher, chainValue > 0, chainValue <= budget, so

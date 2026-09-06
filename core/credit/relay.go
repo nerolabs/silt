@@ -22,7 +22,8 @@ package credit
 //     Register the ephemeral with the faucet grant, the phantom balance the
 //     RT-RELAY-1 mint was drawn from.
 //  3. The unconsumed remainder budget − paid is BURNED (R-ANCHOR-STALL ≡
-//     R-ANCHOR-GRANULARITY, cert §7: ≤ 300,000 credits per 1 GiB session; the
+//     R-ANCHOR-GRANULARITY, cert §7: ≤ one face = 50,000 credits per 24.4 GiB
+//     session since the 2026-09-06 re-price, 300,000 per 1 GiB before it; the
 //     relay gains nothing from a stall; an owner-accepted v1 residual; the
 //     certified follow-on is a MsgRelayFund top-up with FRESH anchors — "present
 //     k, spend lazily" is REFUTED on guard (ii)).

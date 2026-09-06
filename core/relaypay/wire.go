@@ -35,11 +35,12 @@ const ShippedAnchorFace = 50_000
 
 // MaxAnchorsPerSession is the decode/DoS bound on anchors per RelayOpen — DERIVED,
 // never a bare number (cert §5): the fewest anchors whose summed face covers the
-// longest session a relay accepts, ⌈S_max × RelayIncrementCredit / face⌉ = 6 at the
-// shipped fee. One anchor funds 195.3 MiB of forwarding; six cover the 1 GiB
-// MaxSessionBytes. A lower fee raises it (granularity / liveness, never soundness);
-// slack above the ceiling would only let an attacker pad an open with garbage
-// anchors that cost the relay a modexp each.
+// longest session a relay accepts, ⌈S_max × RelayIncrementCredit / face⌉. Since the
+// 2026-09-06 re-price S_max is itself ShippedAnchorFace / RelayIncrementCredit, so
+// this is exactly 1: one anchor funds the whole 24.4 GiB session (T-RELAY-GRAN; it was
+// 6 at the 4 KiB increment against a 1 GiB cap). A lower fee raises it (granularity /
+// liveness, never soundness); slack above the ceiling would only let an attacker pad
+// an open with garbage anchors that cost the relay a modexp each.
 const MaxAnchorsPerSession = (MaxChainLength*RelayIncrementCredit + ShippedAnchorFace - 1) / ShippedAnchorFace
 
 // Anchor is one relay prepayment credential as presented at session open: the

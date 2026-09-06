@@ -69,9 +69,18 @@ func mustCBOR(t *testing.T, v any) []byte {
 // the bound is the ceiling, not a guess with slack. A lower fee raises k_max
 // (granularity/liveness, never soundness).
 func TestRelayMaxAnchorsPerSessionCoversTheSessionCeiling(t *testing.T) {
-	const sessionCredits = MaxChainLength * RelayIncrementCredit // 262,144
-	if got := MaxAnchorsPerSession; got != 6 {
-		t.Fatalf("MaxAnchorsPerSession = %d, want 6 = ⌈%d / %d⌉ (the derived DoS/decode bound, cert §5)", got, sessionCredits, shippedFee)
+	const sessionCredits = MaxChainLength * RelayIncrementCredit // 50,000 since the 2026-09-06 re-price (262,144 at 4 KiB)
+	if got := MaxAnchorsPerSession; got != 1 {
+		t.Fatalf("MaxAnchorsPerSession = %d, want 1 = ⌈%d / %d⌉ (the derived DoS/decode bound, cert §5; one anchor funds the whole session since the re-price, T-RELAY-GRAN)", got, sessionCredits, shippedFee)
+	}
+	// T-RELAY-GRAN pin (G-R212-2 cert §4.1): the session ceiling is EXACTLY what a
+	// full-length chain authorizes, and S_max is exactly one face — nothing a fetcher
+	// pays for is unforwardable, and the derivation is face-neutral.
+	if MaxSessionBytes != MaxChainLength*RelayIncrementBytes || sessionCredits != ShippedAnchorFace {
+		t.Fatalf("T-RELAY-GRAN broken: MaxSessionBytes %d vs S_max·B %d; S_max·credit %d vs face %d", MaxSessionBytes, MaxChainLength*RelayIncrementBytes, sessionCredits, ShippedAnchorFace)
+	}
+	if RelayIncrementBytes != 524_288 {
+		t.Fatalf("RelayIncrementBytes = %d, want 524,288 — the owner-ratified 2026-09-06 re-price; a different value re-opens G-R212-2 (the 64 GiB pin read on the summed prices, Don't #7 below, T-AR above)", RelayIncrementBytes)
 	}
 	if MaxAnchorsPerSession*shippedFee < sessionCredits {
 		t.Fatalf("%d anchors × %d face = %d < S_max session value %d — the wire bound does not cover a full session at the shipped fee",
@@ -93,8 +102,8 @@ func TestRelayOpenDecodeBoundsRefuseOversizedAnchors(t *testing.T) {
 		name string
 		mut  func(*relayOpenV2ForTest)
 	}{
-		{"k=7 exceeds MaxAnchorsPerSession", func(o *relayOpenV2ForTest) {
-			for len(o.Anchors) < 7 {
+		{"k = MaxAnchorsPerSession+1 exceeds the bound", func(o *relayOpenV2ForTest) {
+			for len(o.Anchors) < MaxAnchorsPerSession+1 {
 				o.Anchors = append(o.Anchors, anchorForTest{Serial: make([]byte, 32), Sig: make([]byte, 256)})
 			}
 		}},
@@ -107,7 +116,7 @@ func TestRelayOpenDecodeBoundsRefuseOversizedAnchors(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			o := wellFormedV2(6)
+			o := wellFormedV2(MaxAnchorsPerSession)
 			tc.mut(&o)
 			if _, err := UnmarshalRelayOpen(mustCBOR(t, o)); err == nil {
 				t.Fatalf("UnmarshalRelayOpen ACCEPTED a RelayOpen with %s — the decode bound is missing; an attacker-sized field reaches the map/modexp path", tc.name)
@@ -116,8 +125,8 @@ func TestRelayOpenDecodeBoundsRefuseOversizedAnchors(t *testing.T) {
 	}
 
 	t.Run("well-formed v2 decodes", func(t *testing.T) {
-		if _, err := UnmarshalRelayOpen(mustCBOR(t, wellFormedV2(6))); err != nil {
-			t.Fatalf("a well-formed v2 RelayOpen (k=6, 32-B serials, 256-B sigs, 32-B Fetcher, 64-B Sig) failed to decode: %v", err)
+		if _, err := UnmarshalRelayOpen(mustCBOR(t, wellFormedV2(MaxAnchorsPerSession))); err != nil {
+			t.Fatalf("a well-formed v2 RelayOpen (k = k_max, 32-B serials, 256-B sigs, 32-B Fetcher, 64-B Sig) failed to decode: %v", err)
 		}
 	})
 	t.Run("v1 payload still decodes (skew fails safe at the node, not the codec)", func(t *testing.T) {

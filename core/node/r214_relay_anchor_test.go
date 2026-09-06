@@ -50,9 +50,9 @@ import (
 const (
 	r214Fee   = int64(50_000)
 	r214Grant = int64(500_000)
-	// r214KMax is MaxAnchorsPerSession at the shipped fee (⌈262,144 / 50,000⌉ = 6);
-	// a literal because relaypay.MaxAnchorsPerSession does not exist yet.
-	r214KMax = 6
+	// r214KMax is MaxAnchorsPerSession at the shipped fee: 1 since the 2026-09-06
+	// re-price (⌈50,000 / 50,000⌉; it was ⌈262,144 / 50,000⌉ = 6 at the 4 KiB increment).
+	r214KMax = relaypay.MaxAnchorsPerSession
 	// relayOpenCommitmentDomain is the domain of the ed25519 commitment M
 	// (advisory §1.3): sha256(domain ‖ relayID ‖ Root ‖ uint32BE(S) ‖ uint32BE(k) ‖
 	// serial_1 ‖ … ‖ serial_k). The Tester's reading of the widths (uint32BE) —
@@ -306,8 +306,8 @@ func TestRelayOpenRefusesUnanchoredSession(t *testing.T) {
 // k·fee ≤ 0; E is never registered; and the S5 line carries reason=anchored
 // (the recorded goalpost move from the interim's no-anchor; cert §1.6).
 func TestRelayAnchorsAreBoughtOnTheRelaysOwnLedger(t *testing.T) {
-	const k = 2
-	const S = 6 // c = S × inc = 6 ≪ k·fee: partial consumption, Δ < 0
+	const k = r214KMax // 1 since the 2026-09-06 re-price (was 2 of a k_max of 6)
+	const S = 6        // c = S × inc = 6 ≪ k·fee: partial consumption, Δ < 0
 	log := &capturingLogger{}
 	cl := newAnchorCluster(t, 8200, 1, 0, r214Grant, nil)
 	r := cl.relay()
@@ -449,10 +449,17 @@ func TestRelayCredentialIsSpentOncePerLedger(t *testing.T) {
 // TestRelaySettlementIgnoresForwardedBytesIsBoundedByAnchor is T-4 at the node
 // tier: Count() = S (the WHOLE chain revealed), forwarded = 0 (nothing was ever
 // pumped), one anchor ⇒ settled ≤ face; the ledger total moves at settle by
-// exactly settled. S is chosen ABOVE face so the S × inc budget the fix deletes
-// would over-pay; the ablation "restore budget := S × inc" reddens here.
+// exactly settled. Before the 2026-09-06 re-price S was chosen ABOVE face so the
+// S × inc budget the fix deleted would over-pay and the ablation reddened here; since
+// the re-price S_max × credit == face BY DERIVATION (T-RELAY-GRAN), so no chain can
+// exceed one face and the over-pay is closed STRUCTURALLY — pinned first — and this
+// gate keeps the node-tier settlement identity at the ceiling: a full chain, zero bytes
+// forwarded, settles exactly min(count, face) = face.
 func TestRelaySettlementIgnoresForwardedBytesIsBoundedByAnchor(t *testing.T) {
-	const S = int(r214Fee) + 4_096 // 54,096 increments > one face
+	if relaypay.MaxChainLength*relaypay.RelayIncrementCredit != int(r214Fee) {
+		t.Fatalf("S_max·credit = %d != face %d — the structural close of the S × inc over-pay is gone (T-RELAY-GRAN)", relaypay.MaxChainLength*relaypay.RelayIncrementCredit, r214Fee)
+	}
+	const S = relaypay.MaxChainLength // the longest chain a relay admits: exactly one face
 	cl := newAnchorCluster(t, 8400, 1, 0, r214Grant, nil)
 	r := cl.relay()
 	anchor := r.mintAnchor(t, 0)
@@ -492,14 +499,14 @@ func TestRelaySettlementIgnoresForwardedBytesIsBoundedByAnchor(t *testing.T) {
 // ---- T-5 ---------------------------------------------------------------------
 
 // TestRelaySettlementNeverLeavesAnAccountNegative is T-5 at the node tier: after
-// an over-long chain settles against a k=6 budget, no account on L is below 0,
+// a full-length chain settles against a k = k_max budget, no account on L is below 0,
 // the buyer's post-burn balance is untouched by the settle, and the ephemeral is
 // never registered. A zero-balance buyer cannot acquire (the burn refuses; the
 // relay issues nothing): Balances stay ≥ 0.
 func TestRelaySettlementNeverLeavesAnAccountNegative(t *testing.T) {
-	t.Run("over_long_chain_against_k6", func(t *testing.T) {
-		const k = 6
-		const S = 320_000 / 4 // 80,000 increments... keep S ≤ S_max
+	t.Run("full_chain_against_k_max", func(t *testing.T) {
+		const k = r214KMax
+		const S = relaypay.MaxChainLength // the longest chain a relay admits (≤ S_max)
 		cl := newAnchorCluster(t, 8500, 1, 0, r214Grant, nil)
 		r := cl.relay()
 		buyer := identity.FromSeed(8590).NodeID()
@@ -514,7 +521,7 @@ func TestRelaySettlementNeverLeavesAnAccountNegative(t *testing.T) {
 		c := freshChain(t, "t5-overlong", S)
 		sess, err := r.open(newEphemeral(8591), c.Root(), S, anchors)
 		if err != nil {
-			t.Fatalf("open k=6: %v", err)
+			t.Fatalf("open k=%d: %v", k, err)
 		}
 		r.node.relaySessionSeq++
 		handle := r.node.relaySessionSeq
@@ -609,8 +616,8 @@ func TestRelayAnchorDomainIsNotADemandToken(t *testing.T) {
 // TestRelayOpenRefusesCheaplyBeforeRSA is T-7 (cert §9, §5 verify cost; advisory
 // §1.4 order and §4.9): the RSA verify counter (the ValidatePubHardnessRuns idiom)
 // shows a guard-(ii)-refused open runs 0 modexps; a k > k_max open runs 0; a
-// k = 6 GARBAGE open runs ≥ 1 and ≤ W+1 (newest-first, stop at the first failure —
-// the counter must move, or it is not wired); an honest k = 6 open runs ≥ 6 and
+// k = k_max GARBAGE open runs ≥ 1 and ≤ W+1 (newest-first, stop at the first failure —
+// the counter must move, or it is not wired); an honest k = k_max open runs ≥ k_max and
 // ≤ 6·(W+1).
 func TestRelayOpenRefusesCheaplyBeforeRSA(t *testing.T) {
 	const wPlus1 = int(demand.DefaultWindow) + 1
@@ -622,17 +629,17 @@ func TestRelayOpenRefusesCheaplyBeforeRSA(t *testing.T) {
 		return int(blindtoken.RelayAnchorVerifyRuns() - before)
 	}
 
-	// Honest k = 6.
+	// Honest k = k_max.
 	honest := r.mintAnchors(t, 0, r214KMax)
 	c1 := freshChain(t, "t7-honest", 8)
 	e1 := newEphemeral(8790)
 	var err error
 	n := runs(func() { _, err = r.open(e1, c1.Root(), 8, honest) })
 	if err != nil {
-		t.Fatalf("honest k=6 open: %v", err)
+		t.Fatalf("honest k=%d open: %v", r214KMax, err)
 	}
 	if n < r214KMax || n > r214KMax*wPlus1 {
-		t.Fatalf("honest k=6 open ran %d RSA verifies, want %d ≤ n ≤ %d (one per anchor, newest-first)", n, r214KMax, r214KMax*wPlus1)
+		t.Fatalf("honest k=k_max open ran %d RSA verifies, want %d ≤ n ≤ %d (one per anchor, newest-first)", n, r214KMax, r214KMax*wPlus1)
 	}
 
 	// Guard (ii): the SAME ephemeral again, fresh root, fresh anchors: 0 modexps.
@@ -656,17 +663,17 @@ func TestRelayOpenRefusesCheaplyBeforeRSA(t *testing.T) {
 		t.Fatalf("a k > k_max open ran %d RSA verifies, want 0", n)
 	}
 
-	// k = 6 garbage: stop at the first bad anchor, ≤ W+1 modexps, ≥ 1.
+	// k = k_max garbage: stop at the first bad anchor, ≤ W+1 modexps, ≥ 1.
 	c4 := freshChain(t, "t7-garbage", 8)
 	n = runs(func() { _, err = r.open(newEphemeral(8792), c4.Root(), 8, garbageAnchors(r214KMax)) })
 	if !errors.Is(err, errRelayAnchorInvalid) {
-		t.Fatalf("garbage k=6 open: err=%v, want errRelayAnchorInvalid", err)
+		t.Fatalf("garbage k=k_max open: err=%v, want errRelayAnchorInvalid", err)
 	}
 	if n < 1 {
 		t.Fatal("a garbage open ran 0 RSA verifies — the verify counter is not wired to VerifyRelayAnchor (the T-7 hook is missing)")
 	}
 	if n > wPlus1 {
-		t.Fatalf("a garbage k=6 open ran %d RSA verifies, want ≤ W+1 = %d (stop at the first failure)", n, wPlus1)
+		t.Fatalf("a garbage k=k_max open ran %d RSA verifies, want ≤ W+1 = %d (stop at the first failure)", n, wPlus1)
 	}
 }
 
@@ -749,13 +756,19 @@ func (m *memPaidSerialStore) Compact(live []ports.PaidSerial) error {
 // ---- T-9 ---------------------------------------------------------------------
 
 // TestRelayCeilingNeverExceedsBudget is T-9 (cert §9; advisory §1.5): with k = 1
-// (budget = face = 50,000 increments) and a chain longer than the budget, paying
-// to count > budget leaves AuthorizedBytes() ≤ budget × RelayIncrementBytes —
-// the pump never forwards past the funded budget. Below the budget the ceiling
-// tracks the count (liveness).
+// (budget = face = 50,000 increments) AuthorizedBytes() never exceeds
+// budget × RelayIncrementBytes — the pump never forwards past the funded budget —
+// and below the budget the ceiling tracks the count (liveness). Since the 2026-09-06
+// re-price S_max == budget by derivation (T-RELAY-GRAN), so a chain LONGER than the
+// budget cannot be opened at all (the #644 clamp refuses it, pinned below); the
+// over-budget arm is closed structurally and the gate holds the ceiling at the
+// exact boundary: a chain of S_max fully paid authorizes exactly budget × B.
 func TestRelayCeilingNeverExceedsBudget(t *testing.T) {
 	const budget = r214Fee // one anchor, in increments (RelayIncrementCredit = 1)
-	const S = int(budget) + 2
+	if relaypay.MaxChainLength != int(budget) {
+		t.Fatalf("S_max %d != one-anchor budget %d — a chain longer than its funding is openable again (T-RELAY-GRAN)", relaypay.MaxChainLength, budget)
+	}
+	const S = int(budget)
 	cl := newAnchorCluster(t, 8900, 1, 0, r214Grant, nil)
 	r := cl.relay()
 	anchor := r.mintAnchor(t, 0)
@@ -770,11 +783,15 @@ func TestRelayCeilingNeverExceedsBudget(t *testing.T) {
 	if got := sess.AuthorizedBytes(); got != 100*relaypay.RelayIncrementBytes {
 		t.Fatalf("ceiling %d after 100 paid increments below budget, want %d", got, 100*relaypay.RelayIncrementBytes)
 	}
-	// Past the budget: the fix may refuse the claim or clamp the ceiling ("either
-	// form"); the ceiling bound holds either way.
+	// A chain one past the budget is refused at open (S > S_max), never clamped later.
+	over := freshChain(t, "t9-over", S+1)
+	if _, err := r.open(newEphemeral(8991), over.Root(), S+1, []relaypay.Anchor{r.mintAnchor(t, 0)}); !errors.Is(err, errRelayChainTooLong) {
+		t.Fatalf("a chain of budget+1 opened (err=%v), want errRelayChainTooLong — the relay would admit a chain it cannot be paid for", err)
+	}
+	// To the boundary: the whole chain paid authorizes exactly budget × B, never more.
 	_ = sess.PayTo(c.Preimage(S), S)
 	if got, max := sess.AuthorizedBytes(), budget*relaypay.RelayIncrementBytes; got > max {
-		t.Fatalf("AuthorizedBytes() = %d after paying to count %d > budget %d, want ≤ budget × B = %d — the relay forwards bytes it will never be paid for, and the funding cap is invisible on the wire", got, S, budget, max)
+		t.Fatalf("AuthorizedBytes() = %d after paying to count %d, want ≤ budget × B = %d — the relay forwards bytes it will never be paid for, and the funding cap is invisible on the wire", got, S, max)
 	}
 	if got, want := sess.AuthorizedBytes(), minI64(int64(sess.Count()), budget)*relaypay.RelayIncrementBytes; got != want {
 		t.Fatalf("AuthorizedBytes() = %d, want min(count = %d, budget = %d) × B = %d", got, sess.Count(), budget, want)
@@ -783,9 +800,11 @@ func TestRelayCeilingNeverExceedsBudget(t *testing.T) {
 
 // ---- T-10 --------------------------------------------------------------------
 
-// TestRelayOpenRefusalRecordsNoAnchor is T-10 (cert §2.2, §9): k = 2 where anchor
-// 2 is already spent ⇒ the open is refused AND anchor 1 is still spendable in a
-// later open; the refused open left no guard entry (anchor 1 opens), no durable
+// TestRelayOpenRefusalRecordsNoAnchor is T-10 (cert §2.2, §9): an open presenting
+// an already-spent anchor is refused AND an unrelated anchor 1 is still spendable in
+// a later open (at the pre-re-price k_max of 6 both rode in ONE open and the
+// all-or-nothing reserve was the property; at k_max = 1 the open carries the spent
+// anchor alone); the refused open left no guard entry (anchor 1 opens), no durable
 // append (the store holds exactly the anchors of ADMITTED sessions), and no
 // seen-map entry (the refused ephemeral and root are admissible later). The
 // ablation "remove the all-or-nothing check" reddens here.
@@ -806,7 +825,7 @@ func TestRelayOpenRefusalRecordsNoAnchor(t *testing.T) {
 
 	e2 := newEphemeral(9091)
 	c2 := freshChain(t, "t10-refused", 8)
-	sess, err := r.open(e2, c2.Root(), 8, []relaypay.Anchor{a1, a2})
+	sess, err := r.open(e2, c2.Root(), 8, []relaypay.Anchor{a2})
 	if !errors.Is(err, errRelayAnchorSpent) {
 		t.Fatalf("an open carrying a spent anchor returned (sess=%v, err=%v), want errRelayAnchorSpent", sess != nil, err)
 	}
@@ -844,7 +863,8 @@ func TestRelayOpenCommitmentBindsRelayRootAndSerials(t *testing.T) {
 	cl := newAnchorCluster(t, 9100, 2, 0, r214Grant, nil)
 	a, b := cl.relays[0], cl.relays[1]
 	const S = 8
-	anchors := garbageAnchors(2)
+	anchors := garbageAnchors(r214KMax) // within the k bound, so the commitment check is reached
+	two := garbageAnchors(2)            // for the k case: signed over 2, presented 1
 	root := freshChain(t, "t11-root", S).Root()
 	root2 := freshChain(t, "t11-root-2", S).Root()
 
@@ -870,12 +890,12 @@ func TestRelayOpenCommitmentBindsRelayRootAndSerials(t *testing.T) {
 			return a.node.OpenRelaySession(e.id, root, S+1, FundingEphemeralBlind, anchors, e.pub, sig)
 		}, errRelayOpenSigInvalid},
 		{"k: signed over 2 serials, presented 1", func(e ephemeral) (*RelaySession, error) {
-			sig := signFor(e, a.id(), root, S, anchors)
-			return a.node.OpenRelaySession(e.id, root, S, FundingEphemeralBlind, anchors[:1], e.pub, sig)
+			sig := signFor(e, a.id(), root, S, two)
+			return a.node.OpenRelaySession(e.id, root, S, FundingEphemeralBlind, two[:1], e.pub, sig)
 		}, errRelayOpenSigInvalid},
 		{"serial: one byte flipped in a presented anchor", func(e ephemeral) (*RelaySession, error) {
 			sig := signFor(e, a.id(), root, S, anchors)
-			flipped := []relaypay.Anchor{{Serial: append([]byte(nil), anchors[0].Serial...), Sig: anchors[0].Sig}, anchors[1]}
+			flipped := []relaypay.Anchor{{Serial: append([]byte(nil), anchors[0].Serial...), Sig: anchors[0].Sig}}
 			flipped[0].Serial[0] ^= 0x01
 			return a.node.OpenRelaySession(e.id, root, S, FundingEphemeralBlind, flipped, e.pub, sig)
 		}, errRelayOpenSigInvalid},

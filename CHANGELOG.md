@@ -8,6 +8,17 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Changed
+- **Relay lane re-priced: `RelayIncrementBytes` 4,096 → 524,288 (512 KiB); `MaxChainLength` and
+  `MaxSessionBytes` DERIVED from the anchor face (G-R212-2, certified 2026-09-06, owner-ratified the same
+  day).** At 4 KiB the starter grant bought 1.9 GiB of relayed fetch, 23.4× below the 44.7 GiB structural
+  floor; at 512 KiB it buys 244 GiB. T-RELAY-GRAN: `MaxSessionBytes = MaxChainLength × RelayIncrementBytes`
+  (24.4 GiB) so nothing a fetcher pays for is burned past the cap; `MaxAnchorsPerSession` derives to 1; the
+  relay adapter's shared free/paid per-splice cap defaults to the protocol ceiling and `Serve` refuses a
+  lower cap (a coherence refusal, never a free/paid differential). Face-neutral: `ShippedAnchorFace` is
+  unchanged. Nine sites moved in one PR; gates `TestRelayMaxAnchorsPerSessionCoversTheSessionCeiling`
+  (now also the T-RELAY-GRAN pin), `TestRelaySettlementIgnoresForwardedBytesIsBoundedByAnchor`.
+
 ### Fixed
 - **`statehash.Root` refuses an empty leaf value (G-R31-5, owner-ratified 2026-09-06).** The SMT library
   treats an empty update as a delete, so an empty value would have silently dropped its key from the

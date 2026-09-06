@@ -1186,9 +1186,9 @@ economy-off HEAD certifies a network nobody runs. Design:
 - **R2.14 · Relay-lane prepayment ANCHOR — BUILT 2026-09-04 (branch `builder/r2.14-relay-prepayment-anchor`, PR pending); a PREREQUISITE of R2.9; the fix for R0.7; construction CERTIFIED; owner "let's do both" taken as the build go.**
   **What shipped:** the fourth FDH domain `silt/blindrelay/fdh/v1` over `uint64BE(E) ‖ serial` under
   the relay's own committed `key_E` (`blindtoken.BlindRelayAnchor` / `VerifyRelayAnchor`;
-  `demand.Keyset.VerifyAnchorInWindow`); `RelayOpen` v2 = `{Root, S, Funding, Anchors[k≤6], Fetcher,
+  `demand.Keyset.VerifyAnchorInWindow`); `RelayOpen` v2 = `{Root, S, Funding, Anchors[k≤k_max], Fetcher,
   Sig}` with `Sig` over `sha256("silt/relay/open/v1" ‖ relayID ‖ Root ‖ uint32BE(S) ‖ uint32BE(k) ‖
-  serials)` and decode bounds; `MaxAnchorsPerSession = ⌈S_max/fee⌉ = 6` DERIVED; `OpenRelaySession` in
+  serials)` and decode bounds; `MaxAnchorsPerSession = ⌈S_max/fee⌉` DERIVED (6 at the 4 KiB increment; 1 since the 2026-09-06 re-price, `RelayIncrementBytes = 524_288`, G-R212-2 RATIFIED and BUILT); `OpenRelaySession` in
   the certified order (free guards → k bounds → sha256(Fetcher)==from → ed25519 → RSA under the SELF
   keyset newest-first, stop at first failure → `SpendRelayAnchors` all-or-nothing → budget = Σ face);
   `credit.SpendRelayAnchors` into the SHARED R0.4b paid-serial guard (cap / expiry sweep / durable
