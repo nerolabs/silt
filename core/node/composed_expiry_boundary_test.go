@@ -113,7 +113,7 @@ func newComposedFixture(t *testing.T) *composedFixture {
 		nd.SetSigner(id.Signer())
 		nd.SetLedger(ledger) // ONE ledger — the shared paidSerial guard set
 		nd.EnableChain(c, id.Signer())
-		nd.EnableDemandBank(aIdent.NodeID()) // both accept A-issued tokens
+		nd.EnableDemandBank(aIdent.NodeID())         // both accept A-issued tokens
 		nd.EnableDeliverySessions(10 * ports.Second) // B-9: deliveries are sessions; A issues to itself, B has no self keyset
 		return nd
 	}

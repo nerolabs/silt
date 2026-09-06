@@ -6,7 +6,7 @@ package node
 // The mechanism, verbatim from the finding and re-derived here:
 //
 //	handleDeliveryReceipt (demandrole.go) calls DemandIssuerKeyset as its FIRST real
-//	action on any inbound MsgDeliveryReceipt — before UnmarshalSubmittedReceipt, before
+//	action on any inbound MsgDeliveryOpen — before UnmarshalSubmittedReceipt, before
 //	the `sub.Receipt.Server != n.id` screen, with no authentication and no rate limit.
 //	DemandIssuerKeyset re-pins every held epoch on every read (`for e, iss := range
 //	n.demandIssuers { pinDemandIssuerKey(...) }`), and Keyset.Put ran the full
@@ -87,6 +87,7 @@ func c3HeldBandNode(t testing.TB, epochs int) (*Node, ports.NodeID) {
 		nd.SetDemandIssuerKey(rand.Reader, uint64(e), keys[e])
 	}
 	nd.EnableDemandBank(ident.NodeID())
+	nd.EnableDeliverySessions(10 * ports.Second) // B-9: the priced inbound path is MsgDeliveryOpen
 
 	// Deliberately NOT calling DemandIssuerKeyset here: the band's first admission is
 	// what the gate measures, and a warm-up in the fixture would hide it.
@@ -110,7 +111,7 @@ func TestC3_InboundReceiptsCostOHardnessChecksNotOPerMessage(t *testing.T) {
 	// Warm: the band's first admission. This is the O(distinct keys) cost the design
 	// allows — hardness AT ADMISSION.
 	before := blindtoken.ValidatePubHardnessRuns()
-	nd.handleDeliveryReceipt(peer, ports.Message{Kind: ports.MsgDeliveryReceipt, Data: []byte{0x00}})
+	nd.handleDeliveryOpen(peer, c3GarbageOpen(nd.id))
 	admission := blindtoken.ValidatePubHardnessRuns() - before
 	// NON-VACUITY, and it is the load-bearing half of this gate: the first message must
 	// pay EXACTLY one hardness run per band key. If it paid zero the fixture would not
@@ -129,9 +130,9 @@ func TestC3_InboundReceiptsCostOHardnessChecksNotOPerMessage(t *testing.T) {
 	base := blindtoken.ValidatePubHardnessRuns()
 	start := time.Now()
 	for i := 0; i < messages; i++ {
-		nd.handleDeliveryReceipt(peer, ports.Message{Kind: ports.MsgDeliveryReceipt, Data: []byte{0x00}})
+		nd.handleDeliveryOpen(peer, c3GarbageOpen(nd.id))
 		if got := blindtoken.ValidatePubHardnessRuns() - base; got != 0 {
-			t.Fatalf("message %d: %d hardness runs on an inbound MsgDeliveryReceipt. "+
+			t.Fatalf("message %d: %d hardness runs on an inbound MsgDeliveryOpen. "+
 				"ValidatePub's hardness half (~3.3 ms) must run at ADMISSION only. An "+
 				"unauthenticated peer that can drive it per-message owns the node loop: "+
 				"at a %d-epoch band that is %d x 3.3 ms per one-byte frame (crypto "+
@@ -154,7 +155,7 @@ func TestC3_InboundReceiptsCostOHardnessChecksNotOPerMessage(t *testing.T) {
 	// cost is still LOGGED under both builds so a human reads it.
 	const budget = 100 * time.Microsecond
 	if perMsg > budget && !raceEnabled {
-		t.Fatalf("inbound MsgDeliveryReceipt cost %v/message over %d messages (budget %v). "+
+		t.Fatalf("inbound MsgDeliveryOpen cost %v/message over %d messages (budget %v). "+
 			"The C-3 design puts hardness at admission and SHAPE ONLY on this path.",
 			perMsg, messages, budget)
 	}
@@ -213,10 +214,22 @@ func TestC3_ADifferentCommittedKeyStillPaysFullAdmission(t *testing.T) {
 // 28.6 ms before the memo.
 func BenchmarkC3InboundDeliveryReceipt(b *testing.B) {
 	nd, peer := c3HeldBandNode(b, 5)
-	msg := ports.Message{Kind: ports.MsgDeliveryReceipt, Data: []byte{0x00}}
-	nd.handleDeliveryReceipt(peer, msg) // admit the band
+	msg := c3GarbageOpen(nd.id)
+	nd.handleDeliveryOpen(peer, msg) // admit the band
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		nd.handleDeliveryReceipt(peer, msg)
+		nd.handleDeliveryOpen(peer, msg)
 	}
+}
+
+// c3GarbageOpen is a WELL-FORMED session open from the fixture peer carrying one anchor
+// whose blind signature is garbage: it decodes, its ed25519 commitment verifies, the
+// server reaches its keyset (the admission the gate measures) and the RSA verify fails.
+// The shape the retired one-byte MsgDeliveryReceipt frame stood in for (B-9).
+func c3GarbageOpen(server ports.NodeID) ports.Message {
+	peer := identity.FromSeed(9402)
+	serial := make([]byte, 32)
+	open := demand.SignSessionOpen(peer.Signer(), server, []demand.Token{{Serial: serial, Sig: make([]byte, 256)}})
+	blob, _ := open.Marshal()
+	return ports.Message{Kind: ports.MsgDeliveryOpen, Data: blob}
 }

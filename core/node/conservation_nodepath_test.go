@@ -284,18 +284,15 @@ func TestR05NodePathConservation(t *testing.T) {
 			"  Σbalances+Σescrow = %d\n"+
 			"  want              = %d\n"+
 			"  delta             = %+d\n"+
-			"  preRedeemTotal=%d initial=%d fee=%d bytes0=%d skim0=%d\n"+
-			"  If delta == +%d: evicted lane's self-mint NOT reversed — A4 claw-back missing.\n"+
-			"  If delta is 0 but preRedeemTotal == wantTotal+fee: redeem did not fire (bank rejected receipt).",
+			"  If delta == +%d: evicted lane's self-mint NOT reversed — A4 claw-back missing.\n",
 			gotTotal, wantTotal, delta,
-			preRedeemTotal, initial, int64(fee), int64(bytes0), skim0,
 			int64(bytes0))
 	}
 
 	// Additional guard: if the bank rejected the receipt, conservation can still look
 	// correct (ChargePublish debit not recovered), but witnessed demand stays at 0.
 	// Verify the bank actually accepted the receipt (demand > 0).
-	if got := nd.WitnessedDemand(objRoot); got == 0 {
+	if got := nd.WitnessedIncrements(objRoot); got == 0 {
 		t.Errorf("demand bank did not bank the receipt (WitnessedDemand=0) — " +
 			"RedeemDeliveryCredit at demandrole.go:201 may not have been called. " +
 			"Check that the receipt's Fetcher key hashes correctly to fetcherID.")
