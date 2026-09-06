@@ -2054,8 +2054,8 @@ object's funded figure (red-team F2's shape).
   (M2); the per-identity live-anchor cap is DROPPED as refuted (inapplicable: one bearer anchor passed down fresh
   keypairs buys unlimited guard slots for zero credits; the R2.12 assertion goes vacuous under it and survives
   verbatim only under M2). T-DEPOSIT: a fully refunded face is accounting-neutral and bounds concurrency, never
-  capacity; the 64 GiB pin becomes TRUE at every φ; `R-PIN-VACUOUS-UNDER-QUANTIZATION` closes. Ten gates (cert §7;
-  `TestGuardOccupancyIsBoundedByTheCreditStock` first, RED against the cap). New residuals
+  capacity; the 64 GiB pin becomes TRUE at every φ; `R-PIN-VACUOUS-UNDER-QUANTIZATION` closes. Ten gates (cert §7; the
+  guard-occupancy-is-bounded-by-the-credit-stock gate is written FIRST and proven RED against the refuted cap). New residuals
   `R-STOCK-RENEWABLE-OCCUPANCY`, `R-ANCHOR-BEARER-TRANSFER` (owed a red-team pass), `R-REFUND-NEEDS-AN-ACCOUNT`.
 - **(4′) AMENDED 2026-09-07:** the chunk move to 262,144 B and true-length MANIFEST FRAMING (`R-MANIFEST-PADDING`)
   land in ONE PR — one content-addressing break — before the economy-on flip; `R-BOUNTY-TRUNCATION` stays a
