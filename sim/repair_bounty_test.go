@@ -44,10 +44,10 @@ func TestRepairBountyPaysHolderWithoutMovingStanding(t *testing.T) {
 	caretakers := cl.Nodes[1:4] // one will repair, the others judge
 	eras := erasure.DefaultParams
 
-	data := make([]byte, 512<<10)
+	data := make([]byte, 32<<20) // 128 chunks of 256 KiB = the original 12.8 stripes at a chunk whose k·shardBytes reaches one credit of fetch (G-R212-7: 4 KiB chunks now pay a zero bounty)
 	cl.rng.Read(data)
 	h, err := pipeline.Add(bgCtx, publisher.Store(), cl.Registry, bytes.NewReader(data),
-		pipeline.Options{ChunkSize: 4 << 10, Mode: crypto.Convergent, Erasure: eras})
+		pipeline.Options{ChunkSize: 256 << 10, Mode: crypto.Convergent, Erasure: eras})
 	if err != nil {
 		t.Fatalf("add: %v", err)
 	}

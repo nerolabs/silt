@@ -1960,6 +1960,54 @@ denominator · whether Don't #7 reads GROSS or NET · `AuditReward`/`AuditSlash`
 (held in tension), `R-BOUNTY-BASE-DENOMINATION` (blocking), `R-AUDIT-REWARD-DOMINATES`, `R-LAMBDA-WASH-MINT`,
 `R-LAMBDA-DUST` (quantified, closable by build); `R-GRANT-RATIO-NOT-A-CONSTANT` / G-BB-30 CLOSED.
 
+**RATIFIED 2026-09-06 by the owner (*"ratify first option in all, proceed"*) — all five calls at the
+Researcher's first option. The certification's §11 sentence, verbatim:**
+
+> **RATIFIED — the serve-mint denomination `λ`, and the delivery price it derives from.**
+> `ServeMintBytesPerCredit Dλ = 393_216` — **λ = 1 credit per 384 KiB served** — derived as
+> `Dλ = ⌈3·U/(2·p)⌉` from `DeliveryIncrementBytes U = 262_144` and `DeliveryIncrementCredit p = 1`
+> (R2.9), never pinned independently. `RepairBountyBase` becomes `c·k·shardBytes/(U/p)`.
+> `f = 50,000` and `g = 500,000` **do not move** (ONE FACE; G-BB-30′): the pin is realized in the
+> **price**, and `λ` and the bounty base follow the price.
+>
+> **Bounded BELOW** by STRICT parity (`D-R2.9-DIRECTION` ruling 3, ratified): `Dλ > U/p`, giving an
+> accept margin `PF = 1.5×` under R2.9's per-increment settlement. **Bounded ABOVE** by **Don't #7 —
+> reward tracks value** (Tenet tier) read against the **ratified relay price**:
+> `Dλ ≤ RelayIncrementBytes/RelayIncrementCredit = 524,288`, or a relay that stores nothing
+> and bonds nothing out-earns the node that served the bytes. **`U/p` is bounded below** by the
+> 64 GiB `grant/r` pin read on the SUM of the prices a NAT'd fetcher pays at once (G-R212-6):
+> `U/p ≥ 186,268`; at 262,144 the grant buys **81.38 GiB**, 27 % above the pin.
+>
+> **A per-lane BYTE-REMAINDER ACCUMULATOR is REQUIRED, not optional**: at the shipped 64 KiB chunk
+> a per-call floor mints **zero on 100 % of serves**. The remainder lives on the **provisional
+> lane**, never on the account, or the supersede opens a double-pay; the skim derives from the same
+> byte accumulator, never from the minted credits.
+>
+> **What this costs, stated plainly:** D-S7's self-funding threshold moves from the certified 24 to
+> **36** object-retrievals per shard-repair; edge serve-to-fetch entitlement is **0.583**; one
+> publish token costs **20.93 GiB** of unwitnessed serving instead of 57.1 KiB. **What it buys:**
+> R-FLAT-FEE's incentive break flips (+58.7 M → −43,601 credits at 64 MiB) *before* R2.9;
+> the wash-mint absolute rate falls **393,216×**; and D-S7's prepay lane becomes usable for the
+> first time (one grant prepays **195** shard-repairs where today it prepays **0.00075**).
+>
+> **Tier: Evolving** for the VALUE. **The derivation shape is not a parameter**: `Dλ` from `(U, p)`,
+> and the bounty base from `(U, p)`, are a build invariant.
+>
+> **What this does NOT decide:** `PF` above 1 is not derivable from any ratified sentence — its floor
+> is set by the unmeasured operator cost of running the receipt lane (**G-λ-11**). And R2.9 still
+> owes **G-R212-8**: an object fetch must be able to span multiple anchor sessions.
+
+Also ratified at the first option: the bounty denominator `c·k·shardBytes/(U/p)`; Don't #7 read
+GROSS (`Dλ ≤ 524,288`; the certified value clears the NET reading too); `AuditReward`/`AuditSlash`
+LEFT at 1,000/25,000 with the disclosure that one passed audit is now worth ~375 MiB of gross
+unwitnessed serving (`R-AUDIT-REWARD-DOMINATES`). **BUILT 2026-09-06** (`core/credit/numeraire.go`;
+the certified first step: `λ` + `RepairBountyBase` + the lane accumulator, BEFORE R2.9). One gate
+took a different shape than certified: G-λ-8's "start-up refusal" has no chunk geometry to read at
+daemon start, so the built form is a loud judge-side settlement (`Stats.BountyBaseZero` + a WARN
+journal line) plus a publish-time warning below `MinBountyChunkBytes`. The serve-mint telemetry
+(`serveMint` on `/api/status`) is served to the token holder only: its skim sum reconstructs a lone
+object's funded figure (red-team F2's shape).
+
 ## D-UI-PRIVACY-FLAG — node-wide counters and the library link key go behind an operator flag; exposed in beta, withheld at release
 
 **Ratified 2026-09-05** by the owner, closing `R-BB-SIBLING-AGGREGATES` and the `/api/library`

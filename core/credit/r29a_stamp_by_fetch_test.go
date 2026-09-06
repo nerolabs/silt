@@ -49,7 +49,7 @@ func TestR29aBB22NonFetchLedgerTouchesLeaveNoStamp(t *testing.T) {
 		}},
 		{"PayBounty", ports.NodeID{0x04}, func(l *Ledger, n ports.NodeID) {
 			funder := ports.NodeID{0xFE}
-			l.RecordServe(funder, ports.NodeID{0xFF}, ports.ChunkID{0xFF}, 10_000)
+			l.RecordServe(funder, ports.NodeID{0xFF}, ports.ChunkID{0xFF}, 10_000*ServeMintBytesPerCredit) // 10,000 credits
 			if err := l.FundEscrow(root, funder, 5_000); err != nil {
 				t.Fatalf("FundEscrow: %v", err)
 			}

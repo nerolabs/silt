@@ -11,7 +11,8 @@ package credit
 // the token and redeems F − skim, a strict loss of F·SkimNum/SkimDen per loop.
 //
 // SUPERSEDE: a delivery paid by a redeemed receipt is never ALSO self-credited.
-// The serve path self-records 1 credit/byte as it serves (RecordServeToObject)
+// The serve path self-records one credit per Dλ bytes as it serves (RecordServeToObject,
+// two floors over the lane's byte accumulator since G-R212-7)
 // — an unfunded self-mint that predates PoD and is exactly the "per-receipt
 // subsidy" conservation bans, if it stacked with the receipt credit. So every
 // object-aware serve is tracked as PROVISIONAL per (requester, root), and a
@@ -35,7 +36,7 @@ package credit
 // verified by TestProvOrderStaysBoundedAcrossRedeems /
 // TestRedeemDoesNotLeaveDuplicateOrderEntry). Eviction
 // REVERSES the evicted lane's eager self-mint before forgetting it (A4 fix,
-// Boulder 0, R0.4a — trackProvisional below), so an evicted lane is left in the
+// Boulder 0, R0.4a — laneFor below), so an evicted lane is left in the
 // same accounting state as "never served". A receipt redeemed after its lane was
 // evicted therefore pays the conserved leg ONLY and mints nothing — no
 // double-pay. The give is the unwitnessed bilateral fallback: an evicted,
@@ -155,8 +156,9 @@ type provKey struct {
 // credited at serve time.
 type provisionalServe struct {
 	server ports.NodeID
-	net    int64
-	skim   int64
+	bytes  int64 // the lane's byte accumulator (G-R212-7): every serve on this lane, lifetime of the lane
+	net    int64 // credits minted to the server so far = ⌊7·bytes/(8·Dλ)⌋ (reversed exactly on supersede/eviction)
+	skim   int64 // credits skimmed to the escrow so far = ⌊bytes/(8·Dλ)⌋
 }
 
 // reverseProvisional undoes a lane's eager self-mint: it debits the server's
@@ -166,6 +168,7 @@ type provisionalServe struct {
 // reversal used by BOTH terminal-reversal sites: redeem-in-window and eviction.
 // Keeping one implementation is what makes the escrow floor identical at both.
 func (l *Ledger) reverseProvisional(server ports.NodeID, root ports.Hash, p *provisionalServe) {
+	l.serveReversedCredits += p.net + p.skim
 	l.acct(server).balance -= p.net
 	if e, eok := l.escrow[root]; eok {
 		r := p.skim
@@ -180,8 +183,9 @@ func (l *Ledger) reverseProvisional(server ports.NodeID, root ports.Hash, p *pro
 	}
 }
 
-// trackProvisional records an object-aware serve's self-credit for later
-// supersession. Called by RecordServeToObject only.
+// laneFor returns the provisional lane for an object-aware serve, creating it (and
+// FIFO-evicting the oldest live lane when the map is at cap) on first touch. Called by
+// RecordServeToObject only, which then floors the lane's byte accumulator into credits.
 //
 // EVICTION REVERSAL (A4 money-pump fix, Boulder 0, R0.4a): when the map is at
 // cap and the oldest lane is FIFO-evicted, its eager self-mint is REVERSED
@@ -194,7 +198,7 @@ func (l *Ledger) reverseProvisional(server ports.NodeID, root ports.Hash, p *pro
 // >maxProvisional tail, never an over-pay, never a denial. Verified by
 // TestA4MoneyPumpConservation. Design:
 // docs/thinking/2026-09-01-a4-provisional-eviction-fix-design.md.
-func (l *Ledger) trackProvisional(server, requester ports.NodeID, root ports.Hash, net, skim int64) {
+func (l *Ledger) laneFor(server, requester ports.NodeID, root ports.Hash) *provisionalServe {
 	k := provKey{server: server, requester: requester, root: root}
 	p, ok := l.provisional[k]
 	if !ok {
@@ -232,8 +236,7 @@ func (l *Ledger) trackProvisional(server, requester ports.NodeID, root ports.Has
 		l.provIndex[k] = len(l.provOrder) - 1
 		l.compactProvOrder()
 	}
-	p.net += net
-	p.skim += skim
+	return p
 }
 
 // removeFromProvOrder drops a lane's FIFO entry in O(1) by tombstoning its slot
@@ -390,23 +393,23 @@ func (l *Ledger) RedeemDeliveryCreditReason(server, fetcher ports.NodeID, root p
 	//
 	// Only ReasonAlreadyPaid and ReasonSelfDelivery return above the supersede. Every
 	// OTHER refusal returns below it, so a refused receipt pays 0 AND gives up the
-	// eager 1-credit/byte self-mint RecordServeToObject took at serve time.
+	// eager self-mint RecordServeToObject took at serve time.
 	//
 	// WHY. The conserved leg is FLAT (fee − skim = 43,750 at the shipped fee) and the
-	// self-mint is BYTE-PROPORTIONAL (0.875·B). B IS THE WHOLE ACCUMULATED LANE, not
-	// one chunk (PE ruling §6, 2026-09-03): trackProvisional does `p.net += net` on an
-	// existing lane, and the serve call site fires PER CHUNK (core/node/node.go), so B
-	// is the total bytes this server has served for this (server, requester, root) —
-	// the whole object. Above B = 50,000 bytes a refusal was therefore worth MORE than
-	// being paid, so EVERY object above 50 KB was already past break-even; a 64 MiB
-	// object is 1,342× past it. (The production chunk is 64 KiB —
-	// pipeline.DefaultChunkSize — but the chunk size is not the relevant number, and
-	// naming it understated the exposure.) The operator can trigger a refusal itself
+	// self-mint is BYTE-PROPORTIONAL (⌊7·B/(8·Dλ)⌋ since G-R212-7; 0.875·B before it).
+	// B IS THE WHOLE ACCUMULATED LANE, not one chunk (PE ruling §6, 2026-09-03): laneFor
+	// returns the existing lane and the serve floors its cumulative bytes, and the serve
+	// call site fires PER CHUNK (core/node/node.go), so B is the total bytes this server
+	// has served for this (server, requester, root) — the whole object. At λ = 1 a refusal
+	// was worth MORE than being paid above B = 50,000 bytes, a 64 MiB object 1,342× past
+	// break-even; at Dλ = 393,216 the 64 MiB self-mint is 149 credits and the refusal
+	// nets −43,601 against the paid leg (R-FLAT-FEE flipped), but the reversal below is
+	// what keeps a refusal from EVER paying. The operator can trigger a refusal itself
 	// by filling its own guard
 	// with junk serials (Receipt.Object is attacker-chosen, so distinct roots are
 	// free). Keeping the mint on a refusal was a profitable, operator-triggerable
 	// supersede-disable on the whole of Boulder 0's conservation rule: RecordServe's
-	// 1-credit/byte is an UNFUNDED SELF-MINT — the banned per-receipt subsidy — so a
+	// self-mint is an UNFUNDED SELF-MINT — the banned per-receipt subsidy — so a
 	// witnessed receipt must REVERSE it. The root cause is the flat fee against a
 	// byte-proportional mint (residual R-FLAT-FEE); re-pricing is a D-POD-KNOBS
 	// change needing its own certification. This closes the lever, not the cause.

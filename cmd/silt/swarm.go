@@ -245,6 +245,7 @@ func swarmAdd(args []string) error {
 	}
 
 	var h link.Handle
+	warnBountyChunk(*chunkSize, flagWasSet(fs, "chunk-size"))
 	var placed int
 	err = nil
 	if rerr := run(func(done func()) {

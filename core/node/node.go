@@ -103,7 +103,8 @@ type Config struct {
 	// RepairEconomy is the S7 repair-bounty PARTICIPATION switch (PE ruling
 	// 2026-08-19, Q1): opt-in, DEFAULT OFF. When on, a verified repair pays the
 	// new holder of the rebuilt shard out of the object's own escrow, priced by
-	// credit.RepairBountyBase(k, shardBytes) × BountyFor's rarest-shard multiplier
+	// credit.RepairBountyBase(k, shardBytes) = c·k·shardBytes/(U/p) credits (the witnessed
+	// fetch price of the survivors, G-R212-7) × BountyFor's rarest-shard multiplier
 	// — a protocol price, never an operator-set amount (an operator-set base is a
 	// lottery, not a price, and undefines S7's equilibrium). Off: repair still
 	// runs and escrows still fill via the serve auto-skim, but no bounty disburses
@@ -391,8 +392,12 @@ type Stats struct {
 	// not the object; gates assert them.
 	ParityColumnLookups int
 	ParityShardsPulled  int
-	BountiesReleased    int
-	FalseRepairSlashes  int
+	// BountyBaseZero (G-λ-8, G-R212-7): repair releases whose bounty base was ZERO for
+	// the object's geometry (k·shardBytes below one credit of fetch) — a bounty silently
+	// OFF, named loudly here and in the journal instead.
+	BountyBaseZero     int
+	BountiesReleased   int
+	FalseRepairSlashes int
 	// #277 dead-peer-envelope gauges (M1 baseline — the dial-storm is where trust
 	// either stays cheap or floods the network). HolderDialsSkipped: full-timeout
 	// holder dials AVOIDED because the target was in the dead-peer negative cache
@@ -911,6 +916,16 @@ func (n *Node) FaucetStats() credit.FaucetStats {
 		return l.FaucetStats()
 	}
 	return credit.FaucetStats{}
+}
+
+// ServeMintStats is the G-R212-7 serve-mint telemetry read off this node's own ledger
+// (credit.ServeMintStats). Observability only; reading moves nothing. Zero-valued with
+// no ledger wired or a ledger that is not the concrete type.
+func (n *Node) ServeMintStats() credit.ServeMintStats {
+	if l, ok := n.ledger.(*credit.Ledger); ok && l != nil {
+		return l.ServeMintStats()
+	}
+	return credit.ServeMintStats{}
 }
 
 // EconomySelf snapshots THIS node's own local-exact economy accounting — the

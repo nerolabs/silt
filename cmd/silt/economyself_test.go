@@ -122,11 +122,11 @@ func TestEconomySelfMarginAndRevenueSplit(t *testing.T) {
 	other := ports.NodeID{0xC3}
 	root := ports.Hash{0x0A}
 
-	// Serve 1000 bytes to `other` (earns balance, less the 1/8 skim → 875 net) and
+	// Serve 125 mint units to `other` (earns 875 net, 125 skimmed — the two-floor split) and
 	// earn a repair bounty of 500 on an escrow funded by `other`.
 	led.Register(other)
 	s.onLoop(func() {
-		led.RecordServeToObject(self, other, root, ports.ChunkID{0x1}, 1000)
+		led.RecordServeToObject(self, other, root, ports.ChunkID{0x1}, 125*econMintUnit) // 125 units → 875 net, 125 skim (G-R212-7)
 	})
 	// Fund the escrow from `other` and pay `self` a repair bounty.
 	if err := driveFund(s, led, root, other, 5_000); err != nil {
@@ -177,7 +177,7 @@ func TestEconomySelfSelfFunding(t *testing.T) {
 	// Serving skims into the escrow (skim-in); a bounty pays out (bounty-out). Make
 	// bounty-out exceed skim-in to exercise the drain signal.
 	s.onLoop(func() {
-		led.RecordServeToObject(self, other, root, ports.ChunkID{0x1}, 800) // skim 100 in
+		led.RecordServeToObject(self, other, root, ports.ChunkID{0x1}, 100*econMintUnit) // 100 units → skim 100 in
 	})
 	if err := driveFund(s, led, root, other, 5_000); err != nil {
 		t.Fatal(err)
@@ -211,8 +211,8 @@ func TestEconomySelfWashSelfCheckIsShapeNotDetection(t *testing.T) {
 	// here; instead use FundEscrow to move the earned balance into a reserve,
 	// leaving the node at zero — the churn-nets-to-nothing signature.
 	s.onLoop(func() {
-		led.RecordServe(self, partner, ports.ChunkID{0x1}, 1000) // self serves 1000
-		led.RecordServe(partner, self, ports.ChunkID{0x2}, 1000) // self fetches 1000
+		led.RecordServe(self, partner, ports.ChunkID{0x1}, 1000*credit.ServeMintBytesPerCredit) // self serves 1000
+		led.RecordServe(partner, self, ports.ChunkID{0x2}, 1000*credit.ServeMintBytesPerCredit) // self fetches 1000
 	})
 	// self earned 1000 from serving; move it ALL into an escrow so balance returns
 	// to 0 (the churn-nets-to-nothing signature). Fund from self's OWN earned
@@ -245,8 +245,8 @@ func TestEconomySelfWashSelfCheckIsShapeNotDetection(t *testing.T) {
 	buyer := ports.NodeID{0xE5}
 	led2.Register(buyer)
 	s2.onLoop(func() {
-		led2.RecordServe(self2, buyer, ports.ChunkID{0x1}, 10_000) // serves a lot
-		led2.RecordServe(buyer, self2, ports.ChunkID{0x2}, 10)     // fetches almost nothing
+		led2.RecordServe(self2, buyer, ports.ChunkID{0x1}, 10_000*credit.ServeMintBytesPerCredit) // serves a lot
+		led2.RecordServe(buyer, self2, ports.ChunkID{0x2}, 10*credit.ServeMintBytesPerCredit)     // fetches almost nothing
 	})
 	out2 := getEconomySelf(t, h2, "")
 	if out2.Wash.Suspected {
@@ -262,8 +262,8 @@ func TestEconomySelfWashSelfCheckIsShapeNotDetection(t *testing.T) {
 	peer := ports.NodeID{0xF6}
 	led3.Register(peer)
 	s3.onLoop(func() {
-		led3.RecordServe(self3, peer, ports.ChunkID{0x1}, 1000) // serves 1000 (earns, balance +1000)
-		led3.RecordServe(peer, self3, ports.ChunkID{0x2}, 1000) // fetches 1000 (symmetric)
+		led3.RecordServe(self3, peer, ports.ChunkID{0x1}, 1000*credit.ServeMintBytesPerCredit) // serves 1000 (earns, balance +1000)
+		led3.RecordServe(peer, self3, ports.ChunkID{0x2}, 1000*credit.ServeMintBytesPerCredit) // fetches 1000 (symmetric)
 	})
 	out3 := getEconomySelf(t, h3, "")
 	if out3.Wash.Symmetry < 0.99 {
@@ -335,7 +335,7 @@ func TestEconomySelfSolvencyCliff(t *testing.T) {
 func driveFund(s *uiServer, led *credit.Ledger, root ports.Hash, funder ports.NodeID, amount int64) error {
 	var err error
 	s.onLoop(func() {
-		led.RecordServe(funder, ports.NodeID{0xFF}, ports.ChunkID{0xFF}, amount) // faucet
+		led.RecordServe(funder, ports.NodeID{0xFF}, ports.ChunkID{0xFF}, amount*credit.ServeMintBytesPerCredit) // faucet: Dλ bytes per credit (G-R212-7)
 		err = led.FundEscrow(root, funder, amount)
 	})
 	return err

@@ -72,16 +72,17 @@ func TestA4MoneyPumpConservation(t *testing.T) {
 	initial := sumLedger() // == grant
 
 	// ── Step 2: serve lane 0 (the lane that will be evicted). ──
-	const bytes0 = 1 << 10 // 1024 bytes
-	skim0 := int64(bytes0) * SkimNum / SkimDen
-	// After this serve: server.balance += bytes0 - skim0; escrow[obj] += skim0.
-	// Total increases by bytes0 (the legitimate self-mint for an unwitnessed serve).
+	const bytes0 = mintUnit // one mint unit: 7 net + 1 skim = 8 credits (G-R212-7)
+	const mint0 = bytes0 / ServeMintBytesPerCredit
+	// After this serve: server.balance += 7; escrow[obj] += 1.
+	// Total increases by mint0 (the legitimate self-mint for an unwitnessed serve).
 	l.RecordServeToObject(server, fetcher, obj, chunk, bytes0)
 
 	// ── Step 3: flood distinct lanes past maxProvisional to evict lane 0. ──
-	// Each flood serve uses 8 bytes to a distinct (requester, object) pair.
+	// Each flood serve is one mint unit to a distinct (requester, object) pair.
 	// These are all legitimate self-mints — they stay on the books.
-	const floodBytes = 8
+	const floodBytes = mintUnit
+	const floodMint = floodBytes / ServeMintBytesPerCredit
 	for i := 0; i < maxProvisional; i++ {
 		req := ports.NodeID(ports.HashBytes([]byte{'r', byte(i), byte(i >> 8), byte(i >> 16)}))
 		floodObj := ports.HashBytes([]byte{byte(i), byte(i >> 8), byte(i >> 16)})
@@ -131,8 +132,8 @@ func TestA4MoneyPumpConservation(t *testing.T) {
 	//
 	// Under the bug (no eviction reversal), bytes0 is never subtracted:
 	//   gotTotal = initial + bytes0 + maxProvisional*floodBytes
-	//   gotTotal - wantTotal = bytes0 = 1024 — the leaked mint.
-	wantTotal := initial + int64(maxProvisional)*floodBytes
+	//   gotTotal - wantTotal = mint0 = 8 — the leaked mint.
+	wantTotal := initial + int64(maxProvisional)*floodMint
 	gotTotal := sumLedger()
 	if gotTotal != wantTotal {
 		delta := gotTotal - wantTotal
@@ -141,12 +142,12 @@ func TestA4MoneyPumpConservation(t *testing.T) {
 			"  want              = %d\n"+
 			"  delta             = %+d (= %+d bytes minted without a counterparty debit)\n"+
 			"  preRedeemTotal=%d initial=%d fee=%d bytes0=%d skim0=%d paid=%d\n"+
-			"  The evicted lane's self-mint (%d credits = bytes0−skim0) was retained\n"+
+			"  The evicted lane's self-mint (%d credits = the lane's net floor) was retained\n"+
 			"  through eviction and the conserved leg (%d credits) was added on top.\n"+
 			"  One delivery paid twice. Fix: reverse the mint at eviction (delivery.go:67-71).",
 			gotTotal, wantTotal, delta, delta,
-			preRedeemTotal, initial, int64(fee), int64(bytes0), skim0, paid,
-			int64(bytes0)-skim0, paid)
+			preRedeemTotal, initial, int64(fee), int64(bytes0), objSkim(bytes0), paid,
+			objNet(bytes0), paid)
 	}
 }
 
@@ -204,12 +205,13 @@ func TestA4SharedLedgerServerCollisionConservation(t *testing.T) {
 	// ── Both servers serve the SAME (fetcher, obj). Distinct sizes so a
 	// wrong-account/combined reversal cannot cancel to the correct total by
 	// coincidence. Both are legitimate unwitnessed self-mints at this point. ──
-	const bytesA = 1 << 10 // 1024
-	const bytesB = 3 << 10 // 3072
+	const bytesA = 1 * mintUnit // 8 credits across both legs
+	const bytesB = 3 * mintUnit // 24 credits
+	const mintA, mintB = bytesA / ServeMintBytesPerCredit, bytesB / ServeMintBytesPerCredit
 	l.RecordServeToObject(serverA, fetcher, obj, chunk, bytesA)
 	l.RecordServeToObject(serverB, fetcher, obj, chunk, bytesB)
-	if got := sumLedger(); got != initial+bytesA+bytesB {
-		t.Fatalf("setup: after two serves Σ=%d, want %d", got, initial+bytesA+bytesB)
+	if got := sumLedger(); got != initial+mintA+mintB {
+		t.Fatalf("setup: after two serves Σ=%d, want %d", got, initial+mintA+mintB)
 	}
 
 	// ── The fetcher pays the withdrawal fee, then serverB's delivery redeems. ──
@@ -223,25 +225,25 @@ func TestA4SharedLedgerServerCollisionConservation(t *testing.T) {
 
 	// ── Conservation assertion, anchored to the OPERATIONS (not the ledger). ──
 	// Correct (fix) bookkeeping, step by step from initial:
-	//   + bytesA          serverA self-mint (unwitnessed, kept)
-	//   + bytesB          serverB self-mint
+	//   + mintA           serverA self-mint (unwitnessed, kept; credits = the lane's two floors)
+	//   + mintB           serverB self-mint
 	//   − fee             ChargePublish debit
-	//   − bytesB          redeem reverses serverB's OWN lane (net+skim = bytesB)
+	//   − mintB           redeem reverses serverB's OWN lane (net+skim = mintB)
 	//   + fee             conserved fee paid at redeem (fee-skim to serverB, skim to escrow)
-	//   = initial + bytesA
+	//   = initial + mintA
 	// serverA's self-mint stands (never witnessed); serverB's was superseded and
 	// replaced by the conserved fee, which nets out against the ChargePublish debit.
 	//
 	// Under the bug, redeem reverses the COMBINED (bytesA+bytesB) off serverB
 	// instead of bytesB, so the total is initial + bytesA − bytesA = initial:
 	// short by exactly bytesA (serverA's leaked/double-reversed mint).
-	wantTotal := initial + bytesA
+	wantTotal := initial + mintA // serverA's self-mint, in credits (G-R212-7)
 	gotTotal := sumLedger()
 	if gotTotal != wantTotal {
 		delta := gotTotal - wantTotal
 		t.Errorf("RT-DELIV-3 shared-ledger conservation VIOLATED:\n"+
 			"  Σbalances+Σescrow = %d\n"+
-			"  want (initial+bytesA) = %d\n"+
+			"  want (initial+mintA) = %d\n"+
 			"  delta = %+d (bytesA=%d)\n"+
 			"  serverA.bal=%d serverB.bal=%d escrow[obj]=%d fetcher.bal=%d paid=%d\n"+
 			"  Two distinct servers served the same (fetcher,obj) into one ledger.\n"+

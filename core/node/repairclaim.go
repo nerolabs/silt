@@ -209,6 +209,15 @@ func (n *Node) settleRepairVerdict(claimant ports.NodeID, claim repairproof.Repa
 		// Protocol price, relative to the erasure geometry (PE Q1/Q3): a repair is
 		// worth c·k·shardBytes, scaled up by BountyFor's rarest-shard multiplier.
 		base := credit.RepairBountyBase(p.K, shardBytes)
+		if base == 0 {
+			// G-λ-8 (G-R212-7): the geometry is below one credit of fetch, so the bounty
+			// is OFF for this object. A bounty silently off reads as a lost claim; name it
+			// and count it — the daemon has no chunk geometry at start-up to refuse on.
+			n.Stats.BountyBaseZero++
+			n.logf(ports.LogWarn, "repair bounty base is ZERO for this geometry", "root", claim.Root,
+				"k", p.K, "shardBytes", shardBytes, "bytesPerCredit", int64(credit.DeliveryBytesPerCredit),
+				"fix", "publish with -chunk-size >= "+fmt.Sprint(credit.MinBountyChunkBytes))
+		}
 		bounty := credit.BountyFor(base, p.K, p.N, reachable)
 		paid := n.ledger.PayBounty(claim.Root, claim.Holder, bounty)
 		if paid == 0 {

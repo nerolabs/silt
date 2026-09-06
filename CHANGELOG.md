@@ -9,6 +9,24 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Changed
+- **The credit numéraire (G-R212-7, certified and owner-ratified 2026-09-06): the unwitnessed serve
+  mints ONE credit per 393,216 bytes served (was one per byte), the repair-bounty base is priced in the
+  witnessed fetch price (`c·k·shardBytes/262,144` credits), and R2.9's delivery price pair
+  `(U, p) = (262,144 B, 1 credit)` is pinned.** `core/credit/numeraire.go` derives `Dλ = ⌈3U/(2p)⌉` so STRICT
+  parity holds by construction below and Don't #7 against the relay price holds above (T-NUMERAIRE); minting
+  is a floor over a per-lane byte accumulator (remainder on the provisional LANE, never the account — a
+  witnessed supersede would otherwise double-pay), with two floors on the object path so the escrow skim
+  accumulates across serves. A geometry whose `k·shardBytes` is below one credit of fetch pays a ZERO bounty:
+  the judge counts it (`Stats.BountyBaseZero`) and journals it, and `silt add` / `swarm publish` warn below
+  `-chunk-size 262144`. `serveMint` telemetry on `/api/status` (token holders only). Byte observables
+  (`ServedBytes`/`FetchedBytes`) are unchanged. Gates `TestGLambda1…9`, `TestGLambda8ZeroBountyBaseIsNamedNotSilent`,
+  `TestGLambdaServeMintTelemetry`; the pre-numéraire conservation gates re-expressed in mint units. The `silt sim run
+  economy` defaults move to 4 MiB single-chunk objects and a SIM-SCALE fee of 8 credits (a production token is
+  20.93 GiB of unwitnessed serving; the freeloader demonstration needs a fee a host can earn inside the run).
+  Blind PE MERGE-AFTER folded in: `silt sim run economy -fee` defaults to `0` (= the scenario default) so the CLI
+  demonstrates what the test does; the `serveMintWithheld` marker is gated; `serveMint` reports both remainder legs
+  and a `reversedCredits` counter (the mint counters are gross of reversal); `durability.bountyBaseZero` surfaces
+  zero-base releases; the publish warning fires only for an EXPLICIT `-chunk-size` below 262,144.
 - **`-economy` flag help states the economy's status in one sentence** (built and running in shadow; payout is
   opt-in until the delivery price lands, ROADMAP R2.4). The README carries the same sentence (2026-09-06).
 - **Relay lane re-priced: `RelayIncrementBytes` 4,096 → 524,288 (512 KiB); `MaxChainLength` and

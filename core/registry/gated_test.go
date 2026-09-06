@@ -23,7 +23,7 @@ func TestGatedPublish(t *testing.T) {
 	rich, poor := ports.HashBytes([]byte("rich")), ports.HashBytes([]byte("poor"))
 	ledger.Register(rich)
 	ledger.Register(poor)
-	ledger.RecordServe(rich, poor, ports.HashBytes([]byte("c")), 250)
+	ledger.RecordServe(rich, poor, ports.HashBytes([]byte("c")), 250*credit.ServeMintBytesPerCredit) // 250 credits (G-R212-7: one per Dλ bytes)
 
 	if err := g.Publish(ctx, entry(1, 100)); !errors.Is(err, ports.ErrPublisherRequired) {
 		t.Fatalf("anonymous publish: want ErrPublisherRequired, got %v", err)

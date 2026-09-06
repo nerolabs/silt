@@ -29,7 +29,7 @@ func cmdSim(args []string) error {
 	waves := fs.Int("waves", 2, "churn: number of kill waves")
 	caretakers := fs.Int("caretakers", 3, "churn: nodes running the repair loop")
 	freeloaders := fs.Int("freeloaders", 6, "economy: nodes that fetch but never store or serve")
-	fee := fs.Int64("fee", 50_000, "economy: publish fee in credits (1 credit = 1 byte served)")
+	fee := fs.Int64("fee", 0, "economy: publish fee in credits (0 = the scenario's sim-scale default of 8; credits mint at one per 393,216 bytes served since G-R212-7, so the production fee of 50,000 is ~20 GiB of serving per token and no sim earns it)")
 	liars := fs.Int("liars", 6, "audit: nodes that keep proofs but throw away chunk data")
 	latMin := fs.Int("lat-min", 5, "min link latency, ms")
 	latMax := fs.Int("lat-max", 50, "max link latency, ms")
@@ -101,7 +101,9 @@ func cmdSim(args []string) error {
 		o := sim.DefaultEconomyOpts()
 		o.Net = netCfg
 		o.Freeloaders = *freeloaders
-		o.Fee = *fee
+		if *fee > 0 {
+			o.Fee = *fee
+		}
 		if *nodes > 0 {
 			o.Nodes = *nodes
 		}
