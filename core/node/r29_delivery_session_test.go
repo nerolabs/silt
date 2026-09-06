@@ -6,8 +6,10 @@ package node
 // silt-reviews/research/research-outcome/R2.9-G-R212-8-delivery-anchor-quantization-RESEARCH-CERTIFICATION-2026-09-06.md —
 // and the 2026-09-04 build-questions certification §5 (B-7, B-8, B-9, B-13).
 // G-λ-8-1 / G-λ-8-2 live in cmd/silt (they need core/relaypay); G-λ-8-6 and G-λ-8-8 in
-// core/credit; G-λ-8-10 is OPEN (named residual: both of its lifts are the G-6 owner
-// call in disguise).
+// core/credit; G-λ-8-10 is OPEN (named residual): its lift (b), returning the face at
+// close, IS the G-6 owner call; its lift (a), recording the face only at the first
+// verified increment, is REFUTED by G-λ-8-9 (durable-before-admission closes the restart
+// double-spend) — so it is not buildable now on either ground.
 //
 // ABLATIONS that must redden (run and recorded in the PR): drop the `count·p ≤ budget`
 // ceiling or make the counter non-monotone (G-λ-8-3); delete the handle on the first
@@ -193,8 +195,12 @@ func TestSessionSpansObjectsAndIsNotClosedByASettlement(t *testing.T) {
 	if s.Settled() != 15 || s.Budget() != 50_000 {
 		t.Fatalf("after two objects: settled %d budget %d", s.Settled(), s.Budget())
 	}
-	if ledger.EscrowBalance(a) != 1 || ledger.EscrowBalance(b) != 0 {
-		t.Fatalf("skims per object (a %d, b %d), want ⌊10/8⌋ = 1 and ⌊5/8⌋ = 0 — the lane reversal and skim stay per OBJECT (C6)", ledger.EscrowBalance(a), ledger.EscrowBalance(b))
+	// The skim routes to the OBJECT of each receipt (C6). How it is accumulated across
+	// fetcher-chosen deltas — a 5-increment settlement floors ⌊5/8⌋ to zero on its own —
+	// is the blind PE's blocker on this build, research-gated; the gate that pins the
+	// remedy replaces this comment. Nothing here asserts a zero skim as correct.
+	if ledger.EscrowBalance(a)+ledger.EscrowBalance(b) > 15*credit.SkimNum/credit.SkimDen+1 {
+		t.Fatalf("escrows (a %d, b %d) exceed the skim of 15 settled credits", ledger.EscrowBalance(a), ledger.EscrowBalance(b))
 	}
 }
 

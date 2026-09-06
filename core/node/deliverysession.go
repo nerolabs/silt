@@ -27,7 +27,9 @@ package node
 //	C8  top-up = MsgDeliveryFund with a fresh anchor: one all-or-nothing guard spend,
 //	    budget += face.
 //	C9  close on exhaustion, or on IDLE measured from the last settlement on the node's
-//	    injected monotonic clock (never the admit epoch, never the chain — cert §6.2).
+//	    INJECTED clock (never the admit epoch, never the chain — cert §6.2; wall time in
+//	    production, so a forward clock step reaps every live session at once —
+//	    R-SESSION-WALLCLOCK-STEP).
 //	    The idle window is REFUSE-UNTIL-SET (the S4 precedent) until T_b is measured.
 //	    The remainder budget − settled is accounted ONCE at close through the ledger's
 //	    CloseDeliverySession — under G-6 as ratified, a BURN. Whether it is instead

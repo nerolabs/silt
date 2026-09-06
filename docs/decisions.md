@@ -2004,7 +2004,9 @@ Researcher's first option. The certification's §11 sentence, verbatim:**
 >
 > **What this does NOT decide:** `PF` above 1 is not derivable from any ratified sentence — its floor
 > is set by the unmeasured operator cost of running the receipt lane (**G-λ-11**). And R2.9 still
-> owes **G-R212-8**: an object fetch must be able to span multiple anchor sessions.
+> owes **G-R212-8** — restated 2026-09-06 by its own certification (the per-object face count was the wrong
+> estimand): the binding quantum is the SESSION, one indivisible face per (fetcher, server); the composed pin
+> is REFUTED while G-6 burns the remainder (T-QUANT), and the ruling that must move is G-6 — an owner call.
 
 Also ratified at the first option: the bounty denominator `c·k·shardBytes/(U/p)`; Don't #7 read
 GROSS (`Dλ ≤ 524,288`; the certified value clears the NET reading too); `AuditReward`/`AuditSlash`

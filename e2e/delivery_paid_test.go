@@ -263,3 +263,50 @@ func TestPaidDeliverySessionEndToEnd(t *testing.T) {
 		}
 	}
 }
+
+// TestDeliveryIdleWindowIsRefuseUntilSet — the runtime half of the C9 refuse-until-set
+// (blind PE item 2): a daemon with -accept-delivery-receipts and no -delivery-idle-window
+// exits with a refusal naming the flag, and never becomes a peer; a sub-second window is
+// refused the same way (item 3: the idle/2 ticker must never see a zero interval).
+func TestDeliveryIdleWindowIsRefuseUntilSet(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e spawns processes; skipped under -short")
+	}
+	for _, arm := range []struct {
+		name, seed string
+		extra      []string
+	}{
+		{"unset", "4830", nil},
+		{"below-floor", "4831", []string{"-delivery-idle-window", "1ns"}},
+	} {
+		arm := arm
+		t.Run(arm.name, func(t *testing.T) {
+			args := append([]string{
+				"-listen", "127.0.0.1:0", "-store", t.TempDir(),
+				"-serve-registry", "127.0.0.1:0", "-validator",
+				"-accept-delivery-receipts", "-epoch-blocks", "8",
+				"-grant-capacity", "256", "-grant-per-hour", "256",
+				"-objective=false", "-min-rep", "100", "-quorum", "1",
+				"-bond", "8M", "-min-bond-floor", "0",
+				"-capacity", "1G", "-mdns=false", "-id-seed", arm.seed}, arm.extra...)
+			d := startDaemon(t, "r29-idle-"+arm.name, args...)
+			line := d.waitFor(t, reRefuseLine, 20*time.Second)[0]
+			if !strings.Contains(line, "-delivery-idle-window") {
+				t.Fatalf("the refusal does not name -delivery-idle-window:\n\t%s", line)
+			}
+			done := make(chan error, 1)
+			go func() { done <- d.cmd.Wait() }()
+			select {
+			case err := <-done:
+				if err == nil {
+					t.Fatalf("the daemon exited 0 after a refusal\n--- output ---\n%s", d.out.dump())
+				}
+			case <-time.After(20 * time.Second):
+				t.Fatalf("the daemon printed the refusal but did not exit\n--- output ---\n%s", d.out.dump())
+			}
+			if m := d.out.find(rePeer); m != nil {
+				t.Fatalf("a refused daemon became a peer first: %q", m[0])
+			}
+		})
+	}
+}

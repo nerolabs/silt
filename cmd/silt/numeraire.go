@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/nerolabs/silt/core/credit"
 )
@@ -57,6 +58,13 @@ func flagWasSet(fs *flag.FlagSet, name string) bool {
 }
 
 // ---- R2.9 delivery session: the derived ceiling, the quantized pin, the S5 line.
+
+// deliveryIdleFloor is the smallest -delivery-idle-window the daemon accepts: the reaper
+// ticks at idle/2 on a wall-clock ticker, and a sub-second window would make that ticker
+// interval round to zero (time.NewTicker panics on a non-positive interval — blind PE
+// item 3). The floor is an engineering bound, not the certified VALUE, which is still
+// refuse-until-set above it.
+const deliveryIdleFloor = time.Second
 
 // deliverySessionCeiling is C3 (G-R212-8 cert §3.1): D_max = ⌊f/p⌋·U bytes per anchor
 // and k_max_delivery = ⌈D_max·p/(U·f)⌉ = 1 anchor per open, DERIVED from the face this

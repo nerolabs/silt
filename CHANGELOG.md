@@ -88,7 +88,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   (`MsgDeliveryFund`), and settles INCREMENTALLY with cumulative-count receipts (receipt v3, `MsgDeliverySettle`:
   a lower or replayed count pays 0 by arithmetic; settle-once is REFUTED). The session spans objects (per-object
   lane reversal and skim stay the ledger's), holds no object-keyed collection (Don't #3), and closes on exhaustion
-  or on IDLENESS measured from its last settlement on the node's monotonic clock (coarse stamp; lazy sweep on
+  or on IDLENESS measured from its last settlement on the node's injected clock (coarse stamp; wall time in production — R-SESSION-WALLCLOCK-STEP; lazy sweep on
   activity plus `SweepDeliverySessions` on the daemon's ticker); the byte ceiling and `k_max = 1` are DERIVED from
   the face. `-delivery-idle-window` is REFUSE-UNTIL-SET (the block interval `T_b` is unmeasured); the daemon prints
   the S5 affordability line (B-11) and refuses a priced lane whose 64 GiB pin does not fit in WHOLE faces
@@ -100,7 +100,8 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   close over TCP. The v2 flat receipt path (`MsgDeliveryReceipt`) stays callable until its retirement PR (B-9).
   Gates G-λ-8-1/2/3/4/5/7/9, B-7, B-8, B-13 (reap forfeiture), G-DEM-1…8 (`TestAckReversalUsesTheBudgetCappedCount`
   closes `R-ACK-USES-UNTRUSTED-COUNT`); eight node ablations run RED. OPEN: G-λ-8-10 (a zero-settle session spends
-  no face — both lifts are the G-6 owner call), the idle-window VALUE, the flat-path retirement.
+  no face — lift (b) is the G-6 owner call, lift (a) is refuted by G-λ-8-9), the idle-window VALUE, the flat-path
+  retirement, and — the blind PE's blocker — the settlement skim under fetcher-chosen deltas (research-gated).
 - **R2.9 ledger half — byte-denominated per-increment delivery settlement on the credit ledger
   (`core/credit/deliveryanchor.go`; D-R2.9-DIRECTION, built at the ratified price `(U, p) = (262,144 B, 1
   credit)`).** `SpendDeliveryAnchors` spends verified demand-domain anchors into the shared paid-serial guard at

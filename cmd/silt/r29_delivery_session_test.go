@@ -1,8 +1,10 @@
 package main
 
 import (
+	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/nerolabs/silt/core/credit"
 	"github.com/nerolabs/silt/core/demand"
@@ -72,4 +74,44 @@ func TestAffordabilityLineIsAnnounced(t *testing.T) {
 			t.Fatalf("affordability line lacks %q:\n%s", want, line)
 		}
 	}
+}
+
+// TestR29DaemonRefusalsAreWiredAtStartup_Source — the two R2.9 start-up refusals, gated
+// where the RUNTIME value is read (blind PE item 2, the R2.12 source-gate shape): the
+// daemon must (i) refuse -accept-delivery-receipts below the idle-window floor on a line
+// naming the flag and the floor, and (ii) CALL grantFundsThePinInWholeFaces on the
+// ledger's own grant and fee (never a literal). The e2e half is
+// TestDeliveryIdleWindowIsRefuseUntilSet.
+func TestR29DaemonRefusalsAreWiredAtStartup_Source(t *testing.T) {
+	src, err := os.ReadFile("daemon.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := stripLineComments(string(src))
+	if !strings.Contains(body, "*deliveryIdle < deliveryIdleFloor") {
+		t.Fatal("SOURCE GATE: daemon.go no longer compares -delivery-idle-window against deliveryIdleFloor before enabling the lane — the refuse-until-set (C9) is gone")
+	}
+	line := lineContaining(body, "-accept-delivery-receipts: refusing to start — set -delivery-idle-window")
+	if line == "" {
+		t.Fatal("SOURCE GATE: the idle-window refusal line (naming the flag and 'refusing to start') is gone from daemon.go")
+	}
+	if !strings.Contains(body, "grantFundsThePinInWholeFaces(ledger.Grant(), ledger.Fee(), relaypay.RelayIncrementBytes/relaypay.RelayIncrementCredit)") {
+		t.Fatal("SOURCE GATE: daemon.go does not call grantFundsThePinInWholeFaces on the ledger's grant and fee — G-λ-8-2 is a pure function nobody reads at start-up")
+	}
+	if deliveryIdleFloor < time.Second {
+		t.Fatalf("deliveryIdleFloor %s below one second: the idle/2 ticker interval would round to zero (PE item 3)", deliveryIdleFloor)
+	}
+}
+
+func lineContaining(body, needle string) string {
+	i := strings.Index(body, needle)
+	if i < 0 {
+		return ""
+	}
+	lo := strings.LastIndex(body[:i], "\n") + 1
+	hi := strings.Index(body[i:], "\n")
+	if hi < 0 {
+		return body[lo:]
+	}
+	return body[lo : i+hi]
 }
