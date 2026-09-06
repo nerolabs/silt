@@ -94,7 +94,9 @@ func (l *Ledger) SpendDeliveryAnchors(server ports.NodeID, anchors []RelayAnchor
 // skim). It reverses the provisional self-mint of the lane (server, fetcher, root)
 // for min(count·U, B) bytes, pays min(count·p, budget) — in WHOLE increments — less
 // the durability skim into the server's balance, and routes the skim into the object's
-// escrow. It returns the credits paid to the server and the reason. It burns NOTHING:
+// escrow. It returns the GROSS credits settled out of the budget (what the node
+// subtracts from the session's remaining budget — read from the ledger, never
+// recomputed), the credits paid to the server, and the reason. It burns NOTHING:
 // the unsettled remainder is accounted once, at CloseDeliverySession. An unanchored
 // session (budget ≤ 0) pays 0 and leaves the self-mint alone — the unwitnessed
 // bilateral fallback (B-3, B-9). A session settles as many times as it has deltas
@@ -104,15 +106,15 @@ func (l *Ledger) SpendDeliveryAnchors(server ports.NodeID, anchors []RelayAnchor
 // The payout never reads l.fee: the budget is what was spent, on this ledger, at open
 // (cert G-3; the R2.14 lesson that a pin over the constants never holds a seam whose
 // runtime value is read elsewhere).
-func (l *Ledger) SettleDelivery(server, fetcher ports.NodeID, root ports.Hash, count, budget int64) (paid int64, reason string) {
+func (l *Ledger) SettleDelivery(server, fetcher ports.NodeID, root ports.Hash, count, budget int64) (settled, paid int64, reason string) {
 	if server == fetcher {
-		return 0, ReasonSelfDelivery // self-delivery earns nothing (the cheapest gaming, blocked)
+		return 0, 0, ReasonSelfDelivery // self-delivery earns nothing (the cheapest gaming, blocked)
 	}
 	if budget <= 0 {
-		return 0, ReasonNoAnchor // nothing was spent into this session: touch no account
+		return 0, 0, ReasonNoAnchor // nothing was spent into this session: touch no account
 	}
 	if count <= 0 {
-		return 0, ReasonNoIncrement
+		return 0, 0, ReasonNoIncrement
 	}
 	// value = min(count, ⌊budget/p⌋)·p — WHOLE increments only, so a budget that is not
 	// a multiple of p never over-pays the acknowledged count by a fraction of one (blind
@@ -126,7 +128,7 @@ func (l *Ledger) SettleDelivery(server, fetcher ports.NodeID, root ports.Hash, c
 	}
 	value := whole * DeliveryIncrementCredit
 	if value <= 0 {
-		return 0, ReasonNoIncrement // a budget below one increment funds nothing more
+		return 0, 0, ReasonNoIncrement // a budget below one increment funds nothing more
 	}
 
 	// Per-increment reversal of the provisional lane (B-2). If the lane was already
@@ -134,9 +136,15 @@ func (l *Ledger) SettleDelivery(server, fetcher ports.NodeID, root ports.Hash, c
 	// the settlement pays the conserved leg only (rule (b), one delivery one payment).
 	k := provKey{server: server, requester: fetcher, root: root}
 	if p, ok := l.provisional[k]; ok {
-		ack := p.bytes // saturate: a count whose bytes overflow acknowledges the whole lane
-		if count <= math.MaxInt64/DeliveryIncrementBytes && count*DeliveryIncrementBytes < p.bytes {
-			ack = count * DeliveryIncrementBytes
+		// The reversal is denominated in the SAME budget-capped whole increments the
+		// payment is (G-DEM-8, R-ACK-USES-UNTRUSTED-COUNT closed): a count the budget
+		// cannot fund must not extinguish more of the server's mint than it pays for —
+		// that would be the "server strictly worse off than suppression" shape G-1
+		// exists to prevent. Saturating: a whole whose bytes overflow acknowledges the
+		// whole lane.
+		ack := p.bytes
+		if whole <= math.MaxInt64/DeliveryIncrementBytes && whole*DeliveryIncrementBytes < p.bytes {
+			ack = whole * DeliveryIncrementBytes
 		}
 		if ack >= p.bytes {
 			// Fully acknowledged: the whole lane, exactly as the flat supersede does.
@@ -168,7 +176,7 @@ func (l *Ledger) SettleDelivery(server, fetcher ports.NodeID, root ports.Hash, c
 	l.deliverySettlements++
 	l.deliverySettledCredits += value
 	l.deliverySettledIncrements += value / DeliveryIncrementCredit
-	return value - skim, ReasonPaid
+	return value, value - skim, ReasonPaid
 }
 
 // CloseDeliverySession accounts the close of one anchored delivery session: remaining
@@ -204,3 +212,17 @@ func (l *Ledger) DeliverySettlementStats() DeliverySettlementStats {
 	return DeliverySettlementStats{Settlements: l.deliverySettlements, SettledCredits: l.deliverySettledCredits,
 		SessionsClosed: l.deliverySessionsClosed, BurnedCredits: l.deliveryBurnedCredits, SettledIncrements: l.deliverySettledIncrements}
 }
+
+// ProvisionalLaneForTest reports whether a provisional lane is live and its byte
+// accumulator. Test seam for the node tier; reading moves nothing.
+func (l *Ledger) ProvisionalLaneForTest(server, requester ports.NodeID, root ports.Hash) (bytes int64, live bool) {
+	p, ok := l.provisional[provKey{server: server, requester: requester, root: root}]
+	if !ok {
+		return 0, false
+	}
+	return p.bytes, true
+}
+
+// LivePaidSerialsRaw exports the guard's live entries (the durable store's view). Test
+// seam; reading moves nothing.
+func (l *Ledger) LivePaidSerialsRaw() []ports.PaidSerial { return l.livePaidSerials() }

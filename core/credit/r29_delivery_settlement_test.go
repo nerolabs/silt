@@ -81,7 +81,7 @@ func TestDeliveryAcceptStrictlyDominatesSuppressionAtEverySize(t *testing.T) {
 			paid := int64(0)
 			if count >= 0 {
 				var why string
-				paid, why = l.SettleDelivery(server, fetcher, root, count, budget)
+				_, paid, why = l.SettleDelivery(server, fetcher, root, count, budget)
 				if why != ReasonPaid {
 					t.Fatalf("B=%d count=%d: reason %q", B, count, why)
 				}
@@ -150,7 +150,7 @@ func TestProvisionalLaneEqualsCreditedBalanceAndReversesPerIncrement(t *testing.
 	const j = int64(100) // 25 MiB acknowledged of 64 MiB
 	balBefore, escBefore := l.Balance(server), l.EscrowBalance(root)
 	value := j * r29P
-	paid, why := l.SettleDelivery(server, fetcher, root, j, 1<<40)
+	_, paid, why := l.SettleDelivery(server, fetcher, root, j, 1<<40)
 	if why != ReasonPaid || paid != value-value*SkimNum/SkimDen {
 		t.Fatalf("settle: (%d, %q)", paid, why)
 	}
@@ -169,7 +169,7 @@ func TestProvisionalLaneEqualsCreditedBalanceAndReversesPerIncrement(t *testing.
 	// Never more than served: a count past the tail reverses exactly the tail's floors
 	// and deletes the lane.
 	balBefore = l.Balance(server)
-	paid2, _ := l.SettleDelivery(server, fetcher, root, 1<<30, 1<<40)
+	_, paid2, _ := l.SettleDelivery(server, fetcher, root, 1<<30, 1<<40)
 	if got := balBefore + paid2 - l.Balance(server); got != objNet(tail) {
 		t.Fatalf("over-acknowledged settle reversed %d, want the tail's %d and not one credit more", got, objNet(tail))
 	}
@@ -213,7 +213,7 @@ func TestDeliverySettlementIsBoundedByAnchorFaceOnThePayingLedger(t *testing.T) 
 		t.Fatalf("budget %d, want 2 × face", budget)
 	}
 	serveLane(l, server, fetcher, root, 4*mintUnit, mintUnit)
-	paid, why := l.SettleDelivery(server, fetcher, root, budget/r29P+1_000, budget)
+	_, paid, why := l.SettleDelivery(server, fetcher, root, budget/r29P+1_000, budget)
 	if why != ReasonPaid || paid != budget-budget*SkimNum/SkimDen {
 		t.Fatalf("over-budget settle paid (%d, %q), want Σ face − skim = %d", paid, why, budget-budget*SkimNum/SkimDen)
 	}
@@ -233,20 +233,20 @@ func TestDeliverySettlementIsBoundedByAnchorFaceOnThePayingLedger(t *testing.T) 
 	l = newL()
 	serveLane(l, server, fetcher, root, 4*mintUnit, mintUnit)
 	before := l.Balance(server)
-	if p, why := l.SettleDelivery(server, fetcher, root, 1<<20, 0); p != 0 || why != ReasonNoAnchor || l.Balance(server) != before {
+	if _, p, why := l.SettleDelivery(server, fetcher, root, 1<<20, 0); p != 0 || why != ReasonNoAnchor || l.Balance(server) != before {
 		t.Fatalf("unanchored settle (%d, %q), balance %d→%d — must pay 0 and leave the bilateral fallback", p, why, before, l.Balance(server))
 	}
-	if p, why := l.SettleDelivery(server, fetcher, root, 0, fee); p != 0 || why != ReasonNoIncrement || l.Balance(server) != before {
+	if _, p, why := l.SettleDelivery(server, fetcher, root, 0, fee); p != 0 || why != ReasonNoIncrement || l.Balance(server) != before {
 		t.Fatalf("zero-count settle (%d, %q), balance %d→%d", p, why, before, l.Balance(server))
 	}
 	// (d) The payout tracks the budget it is handed — a budget that is no multiple of the
 	// fee pays exactly itself; the fee is never read on the payout path.
 	l = newL()
 	const odd = int64(12_345)
-	if p, _ := l.SettleDelivery(server, fetcher, root, 1<<20, odd); p != odd-odd*SkimNum/SkimDen {
+	if _, p, _ := l.SettleDelivery(server, fetcher, root, 1<<20, odd); p != odd-odd*SkimNum/SkimDen {
 		t.Fatalf("odd budget %d paid %d, want %d — the payout read something other than the budget", odd, p, odd-odd*SkimNum/SkimDen)
 	}
-	if p, _ := l.SettleDelivery(server, fetcher, root, 3, 1<<40); p != 3*r29P-3*r29P*SkimNum/SkimDen {
+	if _, p, _ := l.SettleDelivery(server, fetcher, root, 3, 1<<40); p != 3*r29P-3*r29P*SkimNum/SkimDen {
 		t.Fatalf("count 3 under a huge budget paid %d, want j·p − skim = %d", p, 3*r29P-3*r29P*SkimNum/SkimDen)
 	}
 }
@@ -373,7 +373,7 @@ func TestDeliveryRemainderIsBurnedNotEscrowed(t *testing.T) {
 		t.Fatalf("setup: 2 MiB minted (%d, %d), want (%d, %d)", l.Balance(server)-grant, l.EscrowBalance(root), objNet(B), objSkim(B))
 	}
 	j := B / r29U
-	paid, _ := l.SettleDelivery(server, fetcher, root, j, budget)
+	_, paid, _ := l.SettleDelivery(server, fetcher, root, j, budget)
 	value := j * r29P
 	if paid != value-value*SkimNum/SkimDen || l.EscrowBalance(root) != value*SkimNum/SkimDen {
 		t.Fatalf("paid %d, escrow %d, want %d and skim(j·p) = %d only", paid, l.EscrowBalance(root), value-value*SkimNum/SkimDen, value*SkimNum/SkimDen)
@@ -432,7 +432,7 @@ func TestBurnIsCountedOnceAtCloseNotPerSettlement(t *testing.T) {
 	serveLane(l, server, fetcher, root, B, 64<<10)
 	remaining, settled := budget, int64(0)
 	for delta := 0; delta < 3; delta++ {
-		paid, why := l.SettleDelivery(server, fetcher, root, 8, remaining)
+		_, paid, why := l.SettleDelivery(server, fetcher, root, 8, remaining)
 		if why != ReasonPaid || paid != 8-8*SkimNum/SkimDen {
 			t.Fatalf("delta %d: (%d, %q)", delta, paid, why)
 		}
@@ -453,5 +453,32 @@ func TestBurnIsCountedOnceAtCloseNotPerSettlement(t *testing.T) {
 	st := l.DeliverySettlementStats()
 	if st.BurnedCredits != remaining || st.SessionsClosed != 1 || st.Settlements != 3 || st.SettledCredits != settled {
 		t.Fatalf("telemetry %+v, want burned exactly once = %d, 1 closed, 3 settlements, %d settled", st, remaining, settled)
+	}
+}
+
+// TestAckReversalUsesTheBudgetCappedCount — G-DEM-8 (R-ACK-USES-UNTRUSTED-COUNT). Settling
+// count = 50,000 against budget = 1 on a lane holding 12 MiB: the reversal is at most one
+// increment's worth (whole·U), never the raw count's, so the server is not left worse off
+// than suppression. The pre-fix code IS the ablation (reversed from the raw count).
+func TestAckReversalUsesTheBudgetCappedCount(t *testing.T) {
+	l := New(50_000, 0)
+	server, fetcher := id(1), id(2)
+	root := ports.HashBytes([]byte("g-dem-8"))
+	const B = int64(12 << 20)
+	serveLane(l, server, fetcher, root, B, 512<<10)
+	minted := l.Balance(server)
+	if minted <= 0 {
+		t.Fatal("setup: nothing minted")
+	}
+	settled, paid, why := l.SettleDelivery(server, fetcher, root, 50_000, 1)
+	if why != ReasonPaid || settled != 1 || paid != 1 {
+		t.Fatalf("(%d, %d, %q), want one increment settled", settled, paid, why)
+	}
+	bytes, live := l.ProvisionalLaneForTest(server, fetcher, root)
+	if !live || bytes != B-r29U {
+		t.Fatalf("lane holds %d bytes (live %v), want B − one increment = %d — the reversal used the raw count", bytes, live, B-r29U)
+	}
+	if got := minted + paid - l.Balance(server); got != objNet(B)-objNet(B-r29U) {
+		t.Fatalf("reversed %d, want exactly the one-increment floor difference %d", got, objNet(B)-objNet(B-r29U))
 	}
 }

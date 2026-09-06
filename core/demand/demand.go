@@ -8,6 +8,15 @@
 //	object C than there were issued tokens spent on a fetcher-signed delivery ack
 //	of C. #receipts(C) ≤ #issued-tokens-spent-on-a-signed-C-delivery-ack.
 //
+//	R2.9 (2026-09-06) — ON THE ANCHORED SESSION LANE (session.go) that property is
+//	restated at the CREDIT level, P-SESSION: one token (face f) is spent at session
+//	OPEN and funds up to ⌊f/p⌋ acknowledged increments, so
+//	demand_S(C)·p ≤ Σ credits settled at S on fetcher-signed acks naming C ≤ Σ face
+//	spent into S's guard, and per fetcher Σ_C demand·p ≤ its grant (T-QUANT). The v2
+//	token-level form above stays true on its own (retiring) lane. Certification:
+//	silt-reviews/research/research-outcome/R2.9-witnessed-demand-observable-under-sessions-RESEARCH-CERTIFICATION-2026-09-06.md;
+//	ratification of the restatement is the owner's (D-DEMAND's doc-truth rule).
+//
 // THE RECEIPT CARRIES NO PoR PROOF (certified 2026-08-26, the PoD neutral-lane
 // certification, Q2). The earlier P0 shape bound a Shacham–Waters proof over the
 // delivered bytes, but its per-object key seed was public, so the proof was
@@ -226,6 +235,10 @@ type Bank struct {
 	// fetchers per object via credited[object][slot].
 	bonded   BondCheck
 	credited map[ports.Hash]map[string]bool
+	// increments (R2.9, the v3 surface): witnessed increments of DeliveryIncrementBytes per
+	// object, settled on session receipts — NEVER shared with demand[] (one token per
+	// unit there; up to 50,000 units per token here). Bounded by maxDemandObjects.
+	increments map[ports.Hash]int64
 }
 
 // The bank's bounds. maxSpentTokens is DERIVED the same way core/credit derives its
@@ -246,9 +259,10 @@ const (
 // NewBank returns an empty demand ledger.
 func NewBank() *Bank {
 	return &Bank{
-		spent:    map[string]uint64{},
-		demand:   map[ports.Hash]int64{},
-		credited: map[ports.Hash]map[string]bool{},
+		spent:      map[string]uint64{},
+		demand:     map[ports.Hash]int64{},
+		increments: map[ports.Hash]int64{},
+		credited:   map[ports.Hash]map[string]bool{},
 	}
 }
 

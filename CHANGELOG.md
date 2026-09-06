@@ -81,6 +81,26 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `TestR31EveryStateHashTagEndsInExactlyOneNUL`. Record: `docs/design/state-root-domain-separation.md`.
 
 ### Added
+- **R2.9 node half — the paid DELIVERY SESSION (`core/node/deliverysession.go`, `core/demand/session.go`;
+  G-R212-8 certification 2026-09-06 §3.1, built under G-6 as ratified with the burn-vs-refund seam isolated).**
+  A durable fetcher opens one session per server with ONE demand-domain anchor (the demand token it bought
+  there, now spent into the shared paid-serial guard at OPEN — `MsgDeliveryOpen`), tops it up with fresh anchors
+  (`MsgDeliveryFund`), and settles INCREMENTALLY with cumulative-count receipts (receipt v3, `MsgDeliverySettle`:
+  a lower or replayed count pays 0 by arithmetic; settle-once is REFUTED). The session spans objects (per-object
+  lane reversal and skim stay the ledger's), holds no object-keyed collection (Don't #3), and closes on exhaustion
+  or on IDLENESS measured from its last settlement on the node's monotonic clock (coarse stamp; lazy sweep on
+  activity plus `SweepDeliverySessions` on the daemon's ticker); the byte ceiling and `k_max = 1` are DERIVED from
+  the face. `-delivery-idle-window` is REFUSE-UNTIL-SET (the block interval `T_b` is unmeasured); the daemon prints
+  the S5 affordability line (B-11) and refuses a priced lane whose 64 GiB pin does not fit in WHOLE faces
+  (G-λ-8-2: 9 of 10 today). Witnessed demand on this lane is DENOMINATED IN SETTLED INCREMENTS (`Bank.Witness`,
+  `WitnessedIncrements`; the P3b distinct-bonded-fetcher count is its own surface; the v2 token counter is never
+  shared) — the certified restatement P-SESSION of D-DEMAND's token-level property, whose ratification is the
+  owner's. `silt swarm receipt` drives the session flow (`-increments`); the sim positive arm settles two
+  objects on one session; e2e `TestPaidDeliverySessionEndToEnd` runs the real withdrawal, open, settle and idle
+  close over TCP. The v2 flat receipt path (`MsgDeliveryReceipt`) stays callable until its retirement PR (B-9).
+  Gates G-λ-8-1/2/3/4/5/7/9, B-7, B-8, B-13 (reap forfeiture), G-DEM-1…8 (`TestAckReversalUsesTheBudgetCappedCount`
+  closes `R-ACK-USES-UNTRUSTED-COUNT`); eight node ablations run RED. OPEN: G-λ-8-10 (a zero-settle session spends
+  no face — both lifts are the G-6 owner call), the idle-window VALUE, the flat-path retirement.
 - **R2.9 ledger half — byte-denominated per-increment delivery settlement on the credit ledger
   (`core/credit/deliveryanchor.go`; D-R2.9-DIRECTION, built at the ratified price `(U, p) = (262,144 B, 1
   credit)`).** `SpendDeliveryAnchors` spends verified demand-domain anchors into the shared paid-serial guard at

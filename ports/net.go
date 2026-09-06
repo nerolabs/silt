@@ -176,6 +176,16 @@ const (
 	// whoever proposes next folds it (the MsgSubmitBondReg shape, one keyspace over).
 	MsgSubmitIssuerKeyReg    // Data: a block-CBOR wrapper carrying exactly ONE chain.IssuerKeyReg, the sender's own
 	MsgSubmitIssuerKeyRegAck // OK: received (queued if valid for the receiver's head; every refusal is logged)
+	// R2.9 — the paid DELIVERY session (APPENDED). A durable fetcher opens one session per
+	// server with a demand-domain anchor spent at OPEN, tops it up with fresh anchors, and
+	// settles incrementally with cumulative-count receipts (receipt v3). Certification:
+	// silt-reviews/research/research-outcome/R2.9-G-R212-8-delivery-anchor-quantization-RESEARCH-CERTIFICATION-2026-09-06.md §3.
+	MsgDeliveryOpen      // Data: a CBOR demand.SessionOpen — k = 1 demand-domain anchor + the durable fetcher's signature over the open commitment
+	MsgDeliveryOpenAck   // OK + Height: the session handle. OK=false + Data: the refusal reason (named, never silent)
+	MsgDeliveryFund      // Data: a CBOR demand.SessionFund — a top-up of an admitted session with a fresh anchor
+	MsgDeliveryFundAck   // OK + Height: the session's budget after the top-up (credits). OK=false + Data: the refusal reason
+	MsgDeliverySettle    // Data: a CBOR demand.SessionReceipt (receipt v3) — the fetcher's CUMULATIVE acknowledged increment count for one object
+	MsgDeliverySettleAck // OK + Height: the credits this receipt settled (gross of the skim; 0 for a non-advancing count). OK=false + Data: the refusal reason
 )
 
 // StorageProof is a Merkle inclusion proof shipped alongside a chunk:
@@ -306,6 +316,9 @@ func (k MsgKind) String() string {
 		MsgTokenRequest: "TokenRequest", MsgTokenReply: "TokenReply",
 		MsgRelayOpen: "RelayOpen", MsgRelayOpenAck: "RelayOpenAck",
 		MsgRelayPay: "RelayPay", MsgRelayPayAck: "RelayPayAck",
+		MsgDeliveryOpen: "DeliveryOpen", MsgDeliveryOpenAck: "DeliveryOpenAck",
+		MsgDeliveryFund: "DeliveryFund", MsgDeliveryFundAck: "DeliveryFundAck",
+		MsgDeliverySettle: "DeliverySettle", MsgDeliverySettleAck: "DeliverySettleAck",
 	}
 	if int(k) < len(names) && names[k] != "" {
 		return names[k]
@@ -316,7 +329,7 @@ func (k MsgKind) String() string {
 // IsReply reports whether this kind terminates a pending request.
 func (m Message) IsReply() bool {
 	switch m.Kind {
-	case MsgFindNodeReply, MsgGetProvidersReply, MsgAddProviderAck, MsgStoreChunkAck, MsgFetchChunkReply, MsgHasChunkReply, MsgChallengeReply, MsgAttestReply, MsgCommitAck, MsgChainReply, MsgChainHeadReply, MsgBondReply, MsgTokenReply, MsgIssuerKeyReply, MsgSubmitBondRegAck, MsgSubmitEntryAck, MsgRepairVote, MsgDeliveryReceiptAck, MsgCanonicalIssuersReply, MsgPrecommitReply, MsgRoundChangeAck, MsgRelayOpenAck, MsgRelayPayAck, MsgDemandIssuerKeysReply, MsgDemandTokenReply, MsgSubmitIssuerKeyRegAck:
+	case MsgFindNodeReply, MsgGetProvidersReply, MsgAddProviderAck, MsgStoreChunkAck, MsgFetchChunkReply, MsgHasChunkReply, MsgChallengeReply, MsgAttestReply, MsgCommitAck, MsgChainReply, MsgChainHeadReply, MsgBondReply, MsgTokenReply, MsgIssuerKeyReply, MsgSubmitBondRegAck, MsgSubmitEntryAck, MsgRepairVote, MsgDeliveryReceiptAck, MsgCanonicalIssuersReply, MsgPrecommitReply, MsgRoundChangeAck, MsgRelayOpenAck, MsgRelayPayAck, MsgDemandIssuerKeysReply, MsgDemandTokenReply, MsgSubmitIssuerKeyRegAck, MsgDeliveryOpenAck, MsgDeliveryFundAck, MsgDeliverySettleAck:
 		return true
 	}
 	return false

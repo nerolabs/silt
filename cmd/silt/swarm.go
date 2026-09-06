@@ -425,9 +425,13 @@ func swarmGet(args []string) error {
 func swarmReceipt(args []string) error {
 	fs := flag.NewFlagSet("swarm receipt", flag.ExitOnError)
 	peers := fs.String("peers", "", "the serving peer, which also issues its retrieval tokens: ID@HOST:PORT (required)")
+	increments := fs.Int64("increments", 1, "R2.9: how many 256 KiB increments of <root-hash> this client received and content-verified from the peer — the cumulative count the session receipt acknowledges (one credit each; the face funds up to 50,000)")
 	pos := parseFlexible(fs, args)
 	if len(pos) != 1 || *peers == "" {
-		return fmt.Errorf("usage: silt swarm receipt <root-hash> -peers ID@ADDR")
+		return fmt.Errorf("usage: silt swarm receipt <root-hash> -peers ID@ADDR [-increments N]")
+	}
+	if *increments <= 0 {
+		return fmt.Errorf("-increments %d: must be positive", *increments)
 	}
 	root, err := ports.ParseHash(pos[0])
 	if err != nil {
@@ -467,6 +471,13 @@ func swarmReceipt(args []string) error {
 		return err
 	}
 
+	// R2.9: the demand token IS the session anchor, spent at session OPEN (not at
+	// redeem). This command is STATELESS, so every invocation opens a fresh session
+	// with one fresh anchor and settles one receipt on it; the session then closes on
+	// the server's idle window with its unsettled remainder accounted (burned under G-6
+	// as ratified). A second invocation inside the window from the same identity is
+	// refused by the server's one-session-per-fetcher rule — the sim and the e2e drive
+	// the multi-receipt, multi-object session through the node API.
 	var tok demand.Token
 	var tokErr error
 	if rerr := run(func(done func()) {
@@ -481,38 +492,39 @@ func swarmReceipt(args []string) error {
 		return fmt.Errorf("acquire retrieval token: %w", tokErr)
 	}
 
-	var credited bool
+	var handle uint64
+	var commitment []byte
+	var openErr error
+	if rerr := run(func(done func()) {
+		e.nd.OpenDeliverySessionRemote(server, []demand.Token{tok}, func(h uint64, m []byte, err error) {
+			handle, commitment, openErr = h, m, err
+			done()
+		})
+	}); rerr != nil {
+		return rerr
+	}
+	if openErr != nil {
+		// The anchor is spent only on an ADMITTED open; a refused open records nothing
+		// (T-10), so the token is still the caller's to present again.
+		return fmt.Errorf("%s %s: session open refused: %v", notBankedMarker, server, openErr)
+	}
+
+	var settled int64
 	var subErr error
 	if rerr := run(func(done func()) {
-		e.nd.SubmitDeliveryReceipt(server, tok, root, func(c bool, err error) {
-			credited, subErr = c, err
+		e.nd.SubmitDeliverySettle(server, handle, commitment, root, uint64(*increments), func(s int64, err error) {
+			settled, subErr = s, err
 			done()
 		})
 	}); rerr != nil {
 		return rerr
 	}
 	if subErr != nil {
-		return fmt.Errorf("submit delivery receipt: %w", subErr)
+		// The session is open and its face spent; a refused receipt settles nothing and
+		// the remainder is accounted at the server's idle close.
+		return fmt.Errorf("%s %s: %v (the session's face is spent regardless; check that the server runs -accept-delivery-receipts)", notBankedMarker, server, subErr)
 	}
-	if !credited {
-		// Not an error the caller can fix by retrying: the token is spent either
-		// way (a consumed token is never replayable), so say so plainly.
-		//
-		// REACHABILITY (residual R-SWARM-NOTBANKED-DEAD, closed by this argument
-		// rather than by deletion). This branch is NOT dead, and it is not the
-		// lane-off case: a lane-off peer never gets this far, because it serves no
-		// issuer key and the resolution above refuses first. What reaches here is a
-		// peer that DID serve a committed key — so the withdrawal succeeded — whose
-		// bank then declined the receipt: a spent serial, a backdated issue epoch, a
-		// full paid-serial guard, or a store write failure (core/credit/delivery.go
-		// ReasonAlreadyPaid / ReasonBackdated / ReasonGuardFull / ReasonGuardStore).
-		// Every one of those needs an era-4/v5 chain to be reachable at all, which is
-		// the same gate the whole positive lane sits behind (R-E2E-ERA4-FIXTURE), so
-		// it is unreachable-today for the same reason the success path is — not
-		// because no code path leads here.
-		return fmt.Errorf("%s %s (the token is spent regardless; check that the server runs -accept-delivery-receipts)", notBankedMarker, server)
-	}
-	fmt.Printf("delivery receipt banked by %s for %s\n", server, root)
+	fmt.Printf("delivery receipt banked by %s for %s: session %d settled credit=%d for %d increments\n", server, root, handle, settled, *increments)
 	return nil
 }
 

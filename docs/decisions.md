@@ -261,6 +261,15 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
   `Credit` field over the wire, so the F4/D3 fee decoupling had only ever worked in the sim. ☐ timing-
   correlation (epoch-batching) deferred to the post-M0 H8 mixnet. The blind signature already hid the serial.
 
+- **R2.9 restatement — PROPOSED, ratification owed (2026-09-06).** On the anchored session lane the token is
+  spent at session OPEN and funds up to ⌊f/p⌋ acknowledged increments, so the token-level property above is
+  FALSE there and is restated at the CREDIT level (P-SESSION): `demand_S(C)·p ≤ Σ credits settled at S on
+  fetcher-signed acknowledgements naming C ≤ Σ face spent into S's guard`, and per fetcher over the ledger's
+  life `Σ_C demand·p ≤ its grant`. Stronger in form (aggregate over all receipts and objects), weaker in level
+  (one token buys 50,000 units). The counting rule is CERTIFIED (`demand += settled/p`, two surfaces, v2/v3 never
+  shared); the restatement of this decision's published property is the owner's to ratify. Certification:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/R2.9-witnessed-demand-observable-under-sessions-RESEARCH-CERTIFICATION-2026-09-06.md`.
+
 ## D-C2 — "no quiet capture" is held in tension, never closed (by theorem)
 
 - **Status:** ▶ DIRECTION DECIDED (held-not-closed) — 2026-08-06; **METRIC WIRED (#185,

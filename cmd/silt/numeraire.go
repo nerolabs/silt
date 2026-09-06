@@ -55,3 +55,49 @@ func flagWasSet(fs *flag.FlagSet, name string) bool {
 	})
 	return set
 }
+
+// ---- R2.9 delivery session: the derived ceiling, the quantized pin, the S5 line.
+
+// deliverySessionCeiling is C3 (G-R212-8 cert §3.1): D_max = ⌊f/p⌋·U bytes per anchor
+// and k_max_delivery = ⌈D_max·p/(U·f)⌉ = 1 anchor per open, DERIVED from the face this
+// ledger charges (the ONE fee constant), never pinned. A ceiling pinned independently of
+// f re-creates the burn the relay re-price removed (T-RELAY-GRAN; gate G-λ-8-1).
+func deliverySessionCeiling(fee int64) (dMax int64, kMax int) {
+	if fee <= 0 {
+		return 0, 0
+	}
+	dMax = (fee / credit.DeliveryIncrementCredit) * credit.DeliveryIncrementBytes
+	kMax = int((dMax*credit.DeliveryIncrementCredit + credit.DeliveryIncrementBytes*fee - 1) / (credit.DeliveryIncrementBytes * fee))
+	return dMax, kMax
+}
+
+// grantFundsThePinInWholeFaces is G-λ-8-2, the QUANTIZED form of the grant/r pin: a
+// face is indivisible and spent at one server, so the pin is funded iff the faces the
+// pin needs on BOTH lanes fit in one grant: ⌈B_pin/D_max⌉ + ⌈B_pin/relayBytesPerAnchor⌉
+// ≤ ⌊g/f⌋. Today 6 + 3 = 9 ≤ 10 — one face of margin (cert §8). This is the φ = 1
+// reading (every face fully consumed); the certified refutation of the COMPOSED claim
+// (φ ≪ 1 on the real path while G-6 burns the remainder) is the owner's call, not this
+// gate's — the gate holds the arithmetic that must survive either way.
+func grantFundsThePinInWholeFaces(grant, fee, relayBytesPerCredit int64) (need, have int64, ok bool) {
+	if fee <= 0 || relayBytesPerCredit <= 0 {
+		return 0, 0, false
+	}
+	dMax, _ := deliverySessionCeiling(fee)
+	relayPerAnchor := fee * relayBytesPerCredit
+	pin := credit.GrantOverRPinBytes
+	need = (pin+dMax-1)/dMax + (pin+relayPerAnchor-1)/relayPerAnchor
+	have = grant / fee
+	return need, have, need <= have
+}
+
+// deliveryAffordabilityLine is the S5 disclosure (R2.9 gate B-11): one announced line,
+// every number COMPUTED from the constants and the ledger, never typed. Registered in
+// observable_contract.go with TestAffordabilityLineIsAnnounced as its asserter.
+func deliveryAffordabilityLine(grant, fee, relayBytesPerCredit int64, idle string) string {
+	dMax, kMax := deliverySessionCeiling(fee)
+	need, have, _ := grantFundsThePinInWholeFaces(grant, fee, relayBytesPerCredit)
+	return fmt.Sprintf("delivery settlement: p=%d credit per %d B (U/p=%d B/credit; self-mint Dλ=%d B/credit, PF %.2f); anchor face %d funds %d increments = %d B (%.2f GiB) per session, k_max=%d; one grant = %d faces, the 64 GiB pin needs %d faces across delivery+relay; idle window %s; remainder at close: BURNED (G-6 as ratified; refund is an open owner call, G-R212-8)",
+		int64(credit.DeliveryIncrementCredit), int64(credit.DeliveryIncrementBytes), int64(credit.DeliveryBytesPerCredit), int64(credit.ServeMintBytesPerCredit),
+		float64(credit.ServeMintBytesPerCredit)/float64(credit.DeliveryBytesPerCredit),
+		fee, dMax/credit.DeliveryIncrementBytes, dMax, float64(dMax)/float64(1<<30), kMax, have, need, idle)
+}
