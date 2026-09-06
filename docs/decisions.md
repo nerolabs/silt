@@ -1937,7 +1937,28 @@ certification, over re-opening ruling 3. **Owner chose route (a) on 2026-09-06 (
 recommended"*).** Consult chain opened the same day: Economist advisory on what re-denominating `λ` does
 to the D-S7 escrow auto-skim (the unwitnessed serve feeds it) → Researcher certification of the
 admissible `λ` interval strictly below `p/U` with `R-LAMBDA-DUST` disclosed → owner ratifies the value.
-Nothing is built until the value is ratified.
+Nothing is built until the value is ratified. **CERTIFIED with corrections, 2026-09-06** (`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/G-R212-7-lambda-redenomination-RESEARCH-CERTIFICATION-2026-09-06.md`;
+Economist advisory `/Users/andrewedmond/Claude/claude/silt-reviews/economist/ADVISORY-G-R212-7-lambda-redenomination-2026-09-06.md`). Composed claim: re-denominating `λ` to 1 credit per `Dλ` bytes, jointly with a
+per-lane byte-remainder accumulator and a re-denominated `RepairBountyBase`, satisfies STRICT parity, the 64 GiB
+pin, Don't #7, T-AR, D-S7 and #4 **iff `U/p < Dλ ≤ 524,288` with `U/p ≥ 186,268`** (T-NUMERAIRE: parity bounds
+`Dλ` from below; Don't #7 read against the already-ratified relay price bounds it from above). The Economist's
+numéraire finding is CERTIFIED (λ alone moves D-S7's self-funding threshold 24 → 12,582,912 retrievals per
+shard-repair; `RepairBountyBase` is implicitly 1 credit/byte) and its coupled set CORRECTED (`RelayIncrementBytes`
+is the fourth coupled constant, already moved). `(U, p) = (262,144, 1)` CERTIFIED (81.38 GiB, 27 % pin margin);
+the provisional `(4,096, 4,097)` REFUTED outright; "integer `PF ≥ 2`" REFUTED (`PF = 2` is the CEILING at
+`U = 262,144` under the gross Don't #7 reading, inadmissible under the net one); the accumulator CERTIFIED with the
+binding condition that the remainder lives on the provisional LANE, never the account (a supersede would double-pay);
+the dust regime is 100 % at the shipped 64 KiB chunk, so the accumulator is REQUIRED. Sequencing: "all in ONE PR"
+REFUTED — the certified minimal first step is **`λ` + `RepairBountyBase` + accumulator BEFORE R2.9** (parity is
+vacuous today; four strict improvements incl. R-FLAT-FEE flipping +58.7 M → −43,601 credits). **NEW G-R212-8
+(blocks R2.9):** one token face funds 12.21 GiB and `B_floor` needs 3.66×, so an object fetch must span ≥ 4 anchor
+sessions with no face remainder burned. Eleven gates G-λ-1…11 (cert §8.1). **Certified for ratification (cert §11,
+verbatim there): `ServeMintBytesPerCredit Dλ = 393_216` (λ = 1 credit per 384 KiB, `PF = 1.5`) derived as
+`⌈3·U/(2·p)⌉` from `DeliveryIncrementBytes U = 262_144`, `DeliveryIncrementCredit p = 1`; `RepairBountyBase =
+c·k·shardBytes/(U/p)`; `f` and `g` do not move.** FIVE OWNER CALLS OPEN (cert §8.2): `Dλ` · `(U, p)` · the bounty
+denominator · whether Don't #7 reads GROSS or NET · `AuditReward`/`AuditSlash`. Residuals: `R-NUMERAIRE-SANDWICH`
+(held in tension), `R-BOUNTY-BASE-DENOMINATION` (blocking), `R-AUDIT-REWARD-DOMINATES`, `R-LAMBDA-WASH-MINT`,
+`R-LAMBDA-DUST` (quantified, closable by build); `R-GRANT-RATIO-NOT-A-CONSTANT` / G-BB-30 CLOSED.
 
 ## D-UI-PRIVACY-FLAG — node-wide counters and the library link key go behind an operator flag; exposed in beta, withheld at release
 
