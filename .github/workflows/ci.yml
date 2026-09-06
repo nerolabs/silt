@@ -319,6 +319,8 @@ jobs:
         run: python3 scripts/check_source_gates.py
       - name: Scar-lint — no unresolved merge-conflict marker may reach a branch (scar:conflict-markers-shipped-in-ci-yml-2026-09-03)
         run: python3 scripts/check_conflict_markers.py
+      - name: Scar-lint — every residual named in ROADMAP.md has a register row with a bucket and a closer (scar:residual-backlog-unbucketed-2026-09-06)
+        run: python3 scripts/check_residual_register.py
 
   docs-shipped:
     name: Docs ship with code

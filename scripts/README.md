@@ -24,12 +24,13 @@ generated page is stale.
 | `check_tenet_qualifiers.py` | the TENETS.md Sybil composition drops its design-target qualifier | `scar:sybil-design-target-overclaim-2026-09-01` |
 | `check_status_headers.py` | a doc's not-built Status header contradicts a built/shipped body | `scar:status-header-vs-body-contradiction-2026-09-01` |
 | `check_cited_tests.py` | a Go comment or doc cites a `TestXxx` that has no `func TestXxx(` anywhere | `scar:cited-test-does-not-exist-2026-09-02` |
+| `check_residual_register.py` | a residual name (`R-…`) appears in `ROADMAP.md` without a Residual-register row carrying a bucket, a closer and a source | `scar:residual-backlog-unbucketed-2026-09-06` |
 
 Each check exits `0` on pass and `1` on failure, and prints its findings to
 stderr. Run them all with:
 
 ```sh
-for c in links claims tenet_qualifiers status_headers cited_tests; do
+for c in links claims tenet_qualifiers status_headers cited_tests source_gates residual_register; do
   python3 "scripts/check_$c.py" || echo "FAILED: $c"
 done
 ```

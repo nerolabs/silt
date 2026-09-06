@@ -1668,6 +1668,149 @@ verdict is rendered by the external red-team + the field test, together.
 
 ## Residual backlog (tracked here, not on the Boulder critical path)
 
+> **Residual filing rule (2026-09-07).** The backlog grew from 7 named residuals on 2026-09-01 to 127 on
+> 2026-09-06 with no bucket and no closer on most of them, so disclosed trades and bounded numbers sat in the
+> same list as work. A residual name is any token of the form `R-<UPPER>[-<UPPER|DIGIT>…]` (a trailing `′`
+> marks a re-priced restatement and is the same name). A new residual name may be introduced anywhere in this
+> file ONLY if the same PR adds one row for it to the **Residual register** below with all five columns filled:
+> `Name` · `Bucket` (exactly one of `ACTIONABLE`, `HELD-IN-TENSION`, `CLOSED-BY-BOUND`, `UNCLEAR`) · `Closer`
+> (ACTIONABLE: the PR / measurement / owner call and the Boulder or Rock it belongs to; other buckets: the
+> sentence or source that states the classification) · `Source` (a `ROADMAP.md` line anchor `L123` at filing
+> time, or a `silt-reviews/…` path) · `Duplicate-of` (`—` or the canonical name). An `UNCLEAR` row carries
+> `since:YYYY-MM-DD` and may stay so for at most one merged PR. A closed or merged residual KEEPS its row
+> (bucket `CLOSED-BY-BOUND`, `Duplicate-of` filled); rows are never deleted, so the register is also the audit
+> trail. As-built rules are not residuals. Enforced by `scripts/check_residual_register.py`
+> (`scar:residual-backlog-unbucketed-2026-09-06`). Only the ACTIONABLE bucket is work.
+>
+> Triage of record (2026-09-06, 115 names): ACTIONABLE 45 · HELD-IN-TENSION 14 · CLOSED-BY-BOUND 51 · UNCLEAR 4;
+> nine duplicates merged. ACTIONABLE items by closer: the structure-build PR (13, incl. the three `HeadRef`
+> items), pre-freeze owner ratifications (5), the stamp-raise release (6), the G-6 refund certification + build
+> (3), the B-9 flat-path retirement PR (1), the `T_b` measurement (2), Researcher-owed (5), economy owner calls
+> (4), small LOW PRs (7), backlog (1). Line anchors in `Source` are the lines at filing time and drift with edits;
+> the name is the key.
+
+### Residual register
+
+| Name | Bucket | Closer | Source | Duplicate-of |
+|---|---|---|---|---|
+| `R-BOUNTY-TRUNCATION` | ACTIONABLE | the 20 % integer-truncation under-pay of the repair bounty at the 64 KiB default (exact 2.5006 → 2), borne by the repairing pony; closes with the ratified 262,144 B default-chunk + manifest-framing PR (D-R2.9-NODE-HALF-CALLS 4′, Boulder 2 / R2.4 pre-flip) | L1818, silt-reviews/economist/ADVISORY-default-chunk-size-256KiB-2026-09-06.md | — |
+| `R-MANIFEST-PADDING` | ACTIONABLE | `chunk.Split` pads every frame to the chunk size and manifests carry no parity (87.6 % of the flixz store is 1.4 KB manifests padded to 65,536 B); closes with the same PR as the 262,144 B default — one content-addressing break (D-R2.9-NODE-HALF-CALLS 4′, Boulder 2) | L1818, silt-reviews/economist/ADVISORY-default-chunk-size-256KiB-2026-09-06.md | — |
+| `R-BOX-ATTESTS` | CLOSED-BY-BOUND | L650: "O1 and O2 are OWNER-RATIFIED; O4 is RATIFIED; O3 is RATIFIED (Direction T, built in PR #722)"; the carrier is merged (L652). The one live fragment, "R-BOX-ATTESTS invariant II / G-F" (an S7 clause), is carried inside row 9. [note: Umbrella; its fragments are rows 6–8, 23–35.] | L73, L650–683, silt-reviews/research/research-outcome/R-BOX-ATTESTS-scoping-CONVERGED-RESEARCH-VERDICT-2026-09-02.md | — |
+| `R-FOLD-LIVE-STATE-READS` | CLOSED-BY-BOUND | L540: "Direction A landed (PR #706)"; L543–544: the remaining obligation is a standing discipline (every new recompute gate runs in the cold-box tier), which row 3 encodes. [note: Generalized into row 3.] | L533–544, silt-reviews/research/research-outcome/floorbox-R-FOLD-LIVE-STATE-READS-RESEARCH-CERTIFICATION-2026-09-02.md | — |
+| `R-COLD-BOX-HARNESS` | CLOSED-BY-BOUND | L578: "CLOSED as a permanent tier (`core/chain/floorbox_recompute_coldbox_v5_test.go`)". | L578–582 | — |
+| `R-STRUCTURE-REDERIVATION` | ACTIONABLE | L603: "RATIFIED 2026-09-03; BUILD OPEN, after R-STATEVIEW-ENUMERATION." Closer: the structure build PR (Boulder 1, own session). | L548, L603–611, PE/RULING-floorbox-predicate-rederivation-structure-2026-09-03.md | — |
+| `R-STATEVIEW-ENUMERATION` | CLOSED-BY-BOUND | L612: "CLOSED 2026-09-03 (closure GATED G-1…G-5; freeze scope CERTIFIED: ZERO leaves for safety)." Note: the L109 owner sentence (freeze scope ≤ one leaf `tagRevLogSize`) carries no ✅; it now lives on the R3.4 carry-list (L1295, "owner ratifies"). | L109, L549, L612–634, silt-reviews/research/research-outcome/R-STATEVIEW-ENUMERATION-closure-and-freeze-scope-RESEARCH-CERTIFICATION-2026-09-03.md | — |
+| `R-CARRIER-PARENT-BINDING` | ACTIONABLE | L684: "DEFINED (CERTIFIED direction; flip-gated; ZERO format change)"; L692: "No `HeadRef` symbol exists on any tree yet." Closer: `HeadRef` lands in the structure build (row 4). Boulder 1 flip precondition. [note: Same closer as rows 7, 8.] | L551, L684–695 | — |
+| `R-CARRIER-PARENTPROPOSER` | ACTIONABLE | L696: "RE-PRICED: NOT a leaf, NOT pre-freeze … Remains a flip precondition." Closer: row 4's `HeadRef`. | L553, L696–701 | — |
+| `R-LOGROOT-FORMAT-SCOPE` | ACTIONABLE | L802: "a flip-gated SAFETY item; closes with ZERO format change" — verify-not-recompute with `parentLogRoot` in the head record. Closer: row 4; liveness half needs `tagRevLogSize` (R3.4, L1295). | L688, L802–809 | — |
+| `R-BOXENTRY-RESIDUALS` | ACTIONABLE | L635: "OPEN (box-entry round A, HELD unmerged; the HOLD is RATIFIED)"; "Live findings owed with it". Closer: the structure build (part B). [note: Contains rows 10–16 and the G-F clause.] | L554, L635–648, silt-reviews/research/research-outcome/floorbox-box-entry-round-A-fee43ba-DELTA-CERTIFICATION-2026-09-03.md | — |
+| `R-SUPPORT-SLASHED-SCREEN` | ACTIONABLE | Closer: structure build — the build-plan cert deletes `BoxQuorumSupport` (`RO/FLOORBOX-STRUCTURE-BUILD-PLAN-CERTIFICATION-2026-09-03.md` residual table). | L643 | — |
+| `R-MALFORMED-DIVERGENCE` | ACTIONABLE | Build-plan cert: "CLOSED — `BoxQuorumSupport` is deleted, not fenced" — in the PLAN; ROADMAP L643 still lists it open. Closer: row 4. | L643 | — |
+| `R-PIN-LABEL-ESCAPE` | ACTIONABLE | Closer: row 4 (driver-supplied inputs become box-owned). | L644 | — |
+| `R-PIN-REANCHOR-POSITION` | ACTIONABLE | Closer: row 4. | L644 | — |
+| `R-PIN-BUDGET-ESCAPE` | ACTIONABLE | Build-plan cert: "RE-PRICED — now buildable (`s.budget` is box-owned). Not owed this round." Closer: row 4. | L644 | — |
+| `R-FENCE-TABLE-DRIFT` | ACTIONABLE | Build-plan cert: "CLOSED by NG-5 + the one-door surface" (plan). Closer: row 4. [note: Instance of row 17 (L911: "mirrored by R-FENCE-TABLE-DRIFT").] | L644, L911 | — |
+| `R-BOUNDARY-PREDICATE-COVERAGE` | ACTIONABLE | Build-plan cert: "CLOSED — the composition names Q1–Q4 explicitly" (plan). Closer: row 4. | L645, silt-reviews/research/research-outcome/floorbox-predicate-rederivation-STRUCTURE-RESEARCH-VIEW-2026-09-03.md | — |
+| `R-INVENTORY-HAND-LIST` | ACTIONABLE | L908: "OPEN (Tester)". Closer: derive the surface from code — lands with row 4's one-door surface; Tester owns the gate rewrite. [note: Canonical for row 15.] | L908–913 | — |
+| `R-membership` | ACTIONABLE | L498: "GATED, 7 gates; owner ratification owed; PRE-FREEZE"; L510: owner sentence (retire `slashedRoot`/`validatorsSeenRoot`, D-V5-WHOLESET-ROOTS five → three; G-1 blocks until the `objective()` guard lands). Closer: owner ratification + the pre-freeze digest-set PR (Boulder 1 → R3.4). | L128, L498–515, silt-reviews/research/research-outcome/R-membership-unbounded-sets-and-recovery-boundary-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md | — |
+| `R-A-membership-source` | CLOSED-BY-BOUND | Built rule, cited at L785 as semantics ("in a mature epoch the class-A screen reads the frozen `epochSet`"). Register as a RULE, not a residual. | L785, silt-reviews/research/research-outcome/floorbox-recompute-classA-classP-wholeset-RESEARCH-CERTIFICATION-2026-08-31.md | — |
+| `R-CARRIER-REFLECTION` | CLOSED-BY-BOUND | L570: "DONE (PR #705, 2026-09-02, test-only)". | L570–577 | — |
+| `R-VERIFYBOND-WIRING` | CLOSED-BY-BOUND | L583: "CLOSED." | L583–585 | — |
+| `R-ROTATE-EPOCH-LAST` | CLOSED-BY-BOUND | L586: "DONE (PR #703, test-only)". | L586–597 | — |
+| `R-CARRIER-BYTES` | ACTIONABLE | L702: "principle + formula CERTIFIED, VALUE GATED on a pony measurement; owner ratifies"; L711: "A pony-class measurement does not exist yet." Closer: Tester pony-class measurement → owner ratifies the value → validity-rule PR pre-freeze (R3.4). | L286, L372–383, L553 | — |
+| `R-CARRIER-GENESIS-DISPOSAL` | ACTIONABLE | L723: "✅ BOTH HALVES SHIPPED". Still owed (L732): "**O-2** … red-team probe owed" (a "pruned" genesis with an attacker-chosen body). Closer: the red-team O-2 probe with the PE's composition (Boulder 1). | L723–734 | — |
+| `R-CARRIER-CREDIT-DENIAL` | ACTIONABLE | L735: "GATED (window); minimum REFUTED; vector REFUTED"; L742: "Only dated item: a doc fix." Closer: owner call #4 (L112–115, un-ticked) + the doc fix. [note: Spawns row 26.] | L115, L735–743 | — |
+| `R-CARRIER-VECTOR-CAP` | CLOSED-BY-BOUND | Declined by default — L115: "decline the vector cap unless the M0 claim is re-opened." Re-opens only with an M0 re-certification. | L741 | — |
+| `R-CARRIER-DOUBLESIGN-SLOT` | ACTIONABLE | L744: "NOT a consensus-rule change; severity LOW"; build-spec given, couples to row 23; Tester traps named. Build-plan cert: "OPEN, correctly Rocks". Closer: a small evidence-producer PR + the two Tester traps (Boulder 1, LOW). | L744–754 | — |
+| `R-DOUBLESIGN-TIP-BLIND` | CLOSED-BY-BOUND | Source: "open, LOW", bounded; no action named. | L754 | — |
+| `R-CARRIER-BOXSPLIT` | CLOSED-BY-BOUND | L755: "CLOSED 2026-09-03" — one shared `validateCarrier`, three callers; RED gates on warm and cold tiers. | L755–764 | — |
+| `R-CARRIER-SIG-COMPOSITION` | CLOSED-BY-BOUND | merged 2026-09-07 into `R-CARRIER-BOXSPLIT` (triage §3: same fact, one closer) | L763–770 | `R-CARRIER-BOXSPLIT` |
+| `R-CARRIER-PREFIX-ONLY` | HELD-IN-TENSION | L771: "held-in-tension, no action owed (cert §5)"; L777: "Comments corrected; no build owed." | L771–777 | — |
+| `R-CARRIER-ORDER-ORACLE` | ACTIONABLE | L778: "OPEN, LOW (gate quality)." Closer: Tester rewrites the gate on the behavioural oracle in the PRE-MATURITY branch (Boulder 1 gate quality). | L778–790 | — |
+| `R-CARRIER-ROLLOUT-SIGNAL` | ACTIONABLE | L791: "CERTIFIED minimum; no part is a consensus rule; the override is LATENT"; L795: "Release-runbook precondition: any future `Era4ActivationHeight` flag lands with the named-upgrade check." Closer: the stamp-raising release (R3.4). | L677, L791–798 | — |
+| `R-CARRIER-MODELCHECK` | ACTIONABLE | L799: "GATED, owed BEFORE the stamp raise." Closer: model-check PR before the stamp raise (Boulder 3 carry-list). | L799–801, L1295 | — |
+| `R-CARRIER-PRUNED-HASH` | ACTIONABLE | L714: "OPEN, owed BEFORE the stamp raise (not a flip gate)." Closer: the two proofs/tests before the stamp raise (Boulder 3 carry-list). | L714–722, L1295 | — |
+| `R-HASH-LITERAL-PIN` | CLOSED-BY-BOUND | L810: "✅ ENCODED ON MAIN 2026-09-04". | L810–818 | — |
+| `R-V5-TAGSET-EQUALITY` | CLOSED-BY-BOUND | L810: same sentence. | L810–818 | — |
+| `R-FORKCHOICE-WEIGHT` | CLOSED-BY-BOUND | L821: "✅ MERGED-pending-PR 2026-09-04" (PR #722 per L650). | L297, L821–845 | — |
+| `R-558-VERIFIER-INVENTORY` | CLOSED-BY-BOUND | L846: "✅ DONE 2026-09-04". | L846–856 | — |
+| `R-INTERLOCK-GATE` | CLOSED-BY-BOUND | L857: "✅ DONE 2026-09-04". | L857–866 | — |
+| `R-FORKCHOICE-RAMP-GUARD` | CLOSED-BY-BOUND | L867: "✅ DONE 2026-09-04 (both sites)". | L867–875 | — |
+| `R-I5-TEXT-AND-CLAIMS-LEDGER` | CLOSED-BY-BOUND | L876: "✅ DONE 2026-09-04". | L876–887 | — |
+| `R-O4-CANON-HASH-COVERAGE` | CLOSED-BY-BOUND | L888: "✅ DONE; NUMBERING RATIFIED 2026-09-04". Leftover text at L895: "The #632 *frozen-and-retired-unrun* note is NOT landed" — a doc note; attach to row 33's stamp-raise runbook. | L888–901 | — |
+| `R-AST-PIN-GLOB` | CLOSED-BY-BOUND | L904: "✅ DONE 2026-09-03". | L904–907 | — |
+| `R-S5-STRING-REGISTRY` | CLOSED-BY-BOUND | L914: "✅ DONE 2026-09-03 … the third-time rule FIRED". | L839, L914–928 | — |
+| `R-SWARM-NOTBANKED-DEAD` | ACTIONABLE | L929: "OPEN, LOW." Closer: a small Builder PR — reachability argument or removal. | L929–933 | — |
+| `R-E2E-ERA4-FIXTURE` | ACTIONABLE | L934: "NOT independently schedulable; a deliverable OF the stamp raise"; L939: "Owner: accept the e2e cost increase at the stamp raise" (L127, un-ticked). Closer: owner call + fixture upgrade in the stamp-raising release (R3.4). | L127, L934–941, L1295 | — |
+| `R-ISSUERKEY-POP` | ACTIONABLE | L942: "RE-DIRECTED … reserve the format slot at the stamp raise"; L948: "Owner: build the slot now vs reserve-only. Until then, correct the two comments." Closer: owner call #8 (L125, un-ticked) + research-gated D-DEMAND change + slot at R3.4. [note: Canonical for the L1680 entry "R0.4b-PoP" (same DSKS fact, older statement).] | L125, L942–950, L1295 | — |
+| `FP-1` | CLOSED-BY-BOUND | L951: "OPEN and INERT under `D-FP2-SCOPE`; re-armed with FP-2 by the same three triggers. Still a flip precondition." Scope-closed; re-arm pinned by G-FP2-0 (shipped, PR #732). [note: FP-2 carry-list.] | L555, L951–961 | — |
+| `FP-2` | CLOSED-BY-BOUND | L962: "✅ CLOSED BY SCOPE 2026-09-04 (owner: 'scope close it is')"; re-armed by the FIRST of three named triggers; G-FP2-0 pins it. [note: Canonical for the carry-list (rows 49, 51, 52, 80, 99, 108, 109, 105-inert half).] | L120–122, L962–990 | — |
+| `R-F8-RESTART-REWIND` | CLOSED-BY-BOUND | L1104: "open-inert … on FP-2's carry-list with its close R-F8-RESTORE." | L121, L974, L1103–1106 | — |
+| `R-F8-RESTORE` | CLOSED-BY-BOUND | merged 2026-09-07 into `R-F8-RESTART-REWIND` (triage §3: same fact, one closer) | L985, L1106 | `R-F8-RESTART-REWIND` |
+| `R-F8-SOURCE` | CLOSED-BY-BOUND | Not a residual — an as-built rule name inside R2.10 (CLOSED). Register as RULE or drop the `R-` prefix. | L1084–1091 | — |
+| `R-F8-LATCH` | CLOSED-BY-BOUND | Same as row 53. | L983, L1089–1092 | — |
+| `R-F8-DISABLED` | CLOSED-BY-BOUND | Same as row 53. | L1093–1098 | — |
+| `R-LATE-REVEAL` | ACTIONABLE | L1295: the (d-3) two-level block hash is "the ONLY close for the cap's completeness face and for R-LATE-REVEAL; free while v5 is dark". Closer: (d-3) designed once with the carrier's `Hash()` pin at the R3.4 freeze. | L1295, silt-reviews/research/research-outcome/I5-cross-height-pruned-slash-forgery-FIX-DIRECTION-…-2026-09-03.md | — |
+| `R-AAXIS-TAG-RESERVE` | ACTIONABLE | L1295: on the R3.4 pre-freeze carry-list ("one line"). Closer: the R3.4 freeze PR. | L1295, L1319, silt-reviews/research/research-outcome/R4.2-A-axis-…-2026-09-03.md | — |
+| `R-FETCHER-INCOME` | HELD-IN-TENSION | L167: "`R-FETCHER-INCOME` is PERMANENT under per-node ledgers, not a bootstrap-phase residual". Structural; it is why the estimand is the lifetime draw. | L167–168, L1068, silt-reviews/research/research-outcome/R2.9a-Bbootstrap-instrument-sufficiency-…-2026-09-04.md | — |
+| `R-BB-ESTIMAND-MISSPECIFIED` | ACTIONABLE | L1263: "NOT built and carried forward: G-BB-21 (re-specify the estimand … this BLOCKS THE RUN)". Closer: G-BB-21 restatement in the `B_bootstrap` run/handoff record (Researcher/Planner; R2.9a). | L171 | — |
+| `R-BB-W-GATE-TENSION` | CLOSED-BY-BOUND | L172: "CLOSED by restatement" (G-BB-1′ pins `q` only). | L172–175 | — |
+| `R-BB-TIER-ASYMMETRY` | HELD-IN-TENSION | L175: "held in tension, discharges into G-BB-19"; L178: it "does NOT license 'read the high end'". | L175–185 | — |
+| `R-BB-CENSUS-MIXTURE` | CLOSED-BY-BOUND | L192: "DISSOLVED 2026-09-05 by the `P` = all-honest-fetchers ratification (`C = 0`)". The handoff still carries `C_max` (G-BB-10′). | L193–201 | — |
+| `R-BB-SINGLETON-CELL` | HELD-IN-TENSION | L207–208: "the bin count is the ONLY lever … Don't #3 is on one side of the trade, so it is the owner's" — lever pulled (1 bin/doubling RATIFIED, PR #742); L1076: "REDUCED, not closed … 1.39× at R = 10". Residual exposure accepted by the ratification. | L207, L1076 | — |
+| `R-PRIVACY-OPERATOR-TAB-TOKEN` | ACTIONABLE | L214: "a persistent token route is the UX follow-on before the default lands on real operators." Closer: Builder UX PR before `-privacy` default reaches real operators (R2.9a / D-UI-PRIVACY-FLAG). | L212–214 | — |
+| `R-BB-SIBLING-AGGREGATES` | CLOSED-BY-BOUND | L210: "CLOSED BY DEFAULT 2026-09-05 · behind the `-privacy` flag … withheld from unauthenticated readers in every build; published only under `-privacy=off`, labelled." L1263's "Still open and NAMED, the owner's trade" is the earlier text; L210 supersedes it. | L215–222, L1263 | — |
+| `R-BB-BOND-STAMP-TUPLE` | CLOSED-BY-BOUND | L258: "CLOSED (G-BB-28, 2026-09-05: the bond-path first-seen stamp is deleted; nothing read it)." | L258, L1082 | — |
+| `R-BB-DELTA-TRAJECTORY` | CLOSED-BY-BOUND | L1263: G-BB-26 snapshot cache bounds it ("caps the amplification at 1 per interval"); `T` = 5 s RATIFIED (L255, `D-STATUS-SNAPSHOT-INTERVAL`); L1076: improves with the bin count. | L1070, L1076, L1263 | — |
+| `R-BB-CENSUS-SYBIL-PAD` | HELD-IN-TENSION | L1074: "under the tag with the flag on, the census is still attacker-mintable for $0"; disclosed to the ratification via G-BB-18/19 (the run reports an adversarial-pad screen). | L1072 | — |
+| `R-BB-ANONYMITY-SET-SIZE` | CLOSED-BY-BOUND | L1078: "closed as the RE-CERT §3.3 wrote it ('Closed by G-BB-12′') for every reader that is not the operator." | L1070, L1072, L1078 | — |
+| `R-BB-SUPPRESSED-IS-A-DISCLOSURE` | HELD-IN-TENSION | Source: "held-in-tension, structurally unremovable" — cannot be withheld without fusing "below the floor" with "no clock". [note: Sibling of row 74.] | L1072 | — |
+| `R-BB-EXPORT-SCALAR-BYPASS` | UNCLEAR | since:2026-09-06 — ROADMAP carries no sentence and no closer; the RECERT's unexported-snapshot + package-scope export gate (L1072) looks like its close but no source says so. Needs the Researcher to state closed-or-open. | L1072, docs/thinking/2026-09-04-r29a-min-r-floor.md | — |
+| `R-BB-ESTIMAND-STEERABLE` | CLOSED-BY-BOUND | Proposed: superseded — `grant/r` is now pinned by an adversary-independent STRUCTURAL derivation (L145: "METHOD CERTIFIED, G-BB-17 LIFTED"; L144: 64 GiB RATIFIED); the census is falsification input only (L151–152). No source states this closure; the Researcher should. | L1072 | — |
+| `R-BB-STAMP-BY-ANY-PATH` | CLOSED-BY-BOUND | L1263 (b): "G-BB-24 … It moved to the one place `fetchedBytes` is written" — BUILT. | L1263 | — |
+| `R-BB-WITHHELD-IS-A-DISCLOSURE` | HELD-IN-TENSION | L1078: "reopens G-BB-13′ Part B only if the loopback refusal is ever relaxed" — disclosed, revisit trigger named. [note: Sibling of row 70.] | L1078 | — |
+| `R-BB-TOKEN-MODE-STARTUP-ONLY` | UNCLEAR | since:2026-09-06 — No disposition or closer stated anywhere. Owner/Tester call: accept as operator posture, or add a periodic re-check gate. | L1078, docs/thinking/2026-09-05-r29a-g12-reader-is-operator.md | — |
+| `R-DELIVERY-BURN-PRICES-THE-GUARD` | ACTIONABLE | `docs/decisions.md` D-R2.9-NODE-HALF-CALLS (1): REFUND ratified with the ⌊g/f⌋ cap; "The MECHANISM owes its own certification before it is built; the code BURNS until then." Closer: the G-6 refund certification + build at `CloseDeliverySession` (R2.9). | L1048, silt-reviews/research/research-outcome/R2.9-G-R212-8-…-2026-09-06.md | — |
+| `R-DELIVERY-SKIM-COLLAPSE` | CLOSED-BY-BOUND | merged 2026-09-07 into `R-DEMAND-PRICE-LEVEL` (triage §3: same fact, one closer) | L1048 | `R-DEMAND-PRICE-LEVEL` |
+| `R-DEMAND-PRICE-LEVEL` | ACTIONABLE | `docs/decisions.md` D-R2.9-NODE-HALF-CALLS (2): "a separate item for the economy-on decision; the bonded-fetcher credential is its lever." Closer: owner decision at R2.4 (Boulder 2). [note: Canonical for row 77.] | L1048 | — |
+| `R-DELIVERY-PIN-GROUND` | HELD-IN-TENSION | Source: "held-in-tension. Pin NOT re-opened; enforced by `G-λ-3` today". | L1048 | — |
+| `R-DELIVERY-SESSION-EPHEMERAL` | CLOSED-BY-BOUND | Source: "open, bounded not eliminated … Closes with FP-2 or with §5.1" — inert under D-FP2-SCOPE. [note: FP-2 carry-list (row 50).] | L1048 | — |
+| `R-FACE-BURN-GRIEF` | ACTIONABLE | Source: "open, priced, gated. G-λ-8-10"; L1048: "8-10 (OPEN, owner call)". Closer: the G-λ-8-10 owner call (zero-settle session spends no face) built with the G-6 refund (R2.9). | L1048 | — |
+| `R-EDGE-PREMIUM-REMOVED` | HELD-IN-TENSION | Source: "adopted, held-in-tension … Don't #7-correct, ratio-negative; ratify knowingly" — the R2.9 direction is ratified (L1048). | L1048 | — |
+| `R-SETTLEMENT-SKIM-DELTA` | CLOSED-BY-BOUND | L1048: "REMEDY CERTIFIED AND BUILT the same day … gates G-SKIM-1…6 RED under the per-settlement floor". | L1048 | — |
+| `R-SKIM-OBJECT-ATTRIBUTION` | HELD-IN-TENSION | Source: "held-in-tension, bounded, FORCED"; L1048: "FORCED by Don't #3". | L1048 | — |
+| `R-SKIM-SESSION-FRACTION` | CLOSED-BY-BOUND | Source: "closed by bound. Worth `< 262,144 B` of fetch price". | L1048 | — |
+| `R-V2-V3-DEMAND-DILUTION` | ACTIONABLE | L1048: "closed by B-9's retirement PR, where `SubmitDeliveryReceipt` now has zero production callers". Closer: the B-9 flat-path retirement PR (R2.9). | L1048 | — |
+| `R-SESSION-WALLCLOCK-STEP` | ACTIONABLE | `docs/decisions.md` :2045: "Decide the wall-clock-step exposure (`R-SESSION-WALLCLOCK-STEP`) with (1)" — i.e. with the G-6 refund certification; the idle window itself waits on `T_b` (call 5). Closer: G-6 refund cert (+ `T_b`). | L1048 | — |
+| `R-BOUNTY-BASE-DENOMINATION` | CLOSED-BY-BOUND | Built — L1118: "`RepairBountyBase = c·k·shardBytes/(U/p)`" (PR #758, ratified call 3). L1678's "BLOCKING" is stale text; true it up. | L1678 | — |
+| `R-NUMERAIRE-SANDWICH` | HELD-IN-TENSION | L1678: "not separable; held in tension." | L1678 | — |
+| `R-AUDIT-REWARD-DOMINATES` | HELD-IN-TENSION | `docs/decisions.md` :2011–2013: "`AuditReward`/`AuditSlash` LEFT at 1,000/25,000 with the disclosure" — ratified at option 1. L1678: "not a Sybil surface". | L1678 | — |
+| `R-LAMBDA-WASH-MINT` | HELD-IN-TENSION | L1678 states the structural fact; the wash is bounded by the skim and the wash self-check panel (R2.1), not by `λ`. | L1678 | — |
+| `R-DEFAULT-CHUNK-BOUNTY-ZERO` | ACTIONABLE | L1677: "RATIFIED 2026-09-06 (D-R2.9-NODE-HALF-CALLS call 4): raise the default to 262,144 B in its own PR after the Economist's census/dedup advisory (routed)." Closer: Economist advisory → `DefaultChunkSize` PR, before any economy-on flip (R2.4 precondition). | L1677 | — |
+| `R-LAMBDA-DUST′` | ACTIONABLE | L1677: "RESEARCH-GATED … the Researcher owes the correction." Closer: Researcher correction to `RO/G-R212-7-lambda-redenomination-RESEARCH-CERTIFICATION-2026-09-06.md` §6.2. [note: One row with `R-LAMBDA-DUST` (decisions.md :1970, unprimed).] | L1677 | — |
+| `R-RELAY-ANON-SET′` | CLOSED-BY-BOUND | merged 2026-09-07 into `R-RELAY-ANON-SET` (triage §3: same fact, one closer) | L1679 | `R-RELAY-ANON-SET` |
+| `R-ANCHOR-STALL` | ACTIONABLE | L106: "Two owner calls carried, BOTH OPEN … (1) R-ANCHOR-STALL for v1, proposed as a disclosed residual"; L1255: "Owner sentence still unsaid". Closer: the owner sentence at the re-priced numbers + follow-on R2.14b `MsgRelayFund` (R2.14). [note: Canonical for row 97.] | L106–107, L1210–1212, L1255, silt-reviews/research/research-outcome/G-R212-2-relay-lane-reprice-…-2026-09-06.md | — |
+| `R-ANCHOR-GRANULARITY` | CLOSED-BY-BOUND | merged 2026-09-07 into `R-ANCHOR-STALL` (triage §3: same fact, one closer) | L1210 | `R-ANCHOR-STALL` |
+| `R-RELAY-WASH-ZERO-LOSS` | ACTIONABLE | L1214: "DECIDED 2026-09-04 with R2.9 sentence 6: NO relay skim in v1; re-opens with R2.12"; R2.12 is BUILT (L1118), so the re-open trigger fired; L108: "(2) a relay skim before R2.4 — OPEN." Closer: owner call before R2.4. | L1048, L1214 | — |
+| `R-FEE-CONSTANCY` | CLOSED-BY-BOUND | L1178: "inert; a NOTE on the FP-2 carry-list, not freeze-timed; no inert fee slot in `IssuerKeyReg`". [note: FP-2 carry-list (row 50).] | L1177–1178, L1216 | — |
+| `R-ANCHOR-REPRESENT-LINK` | CLOSED-BY-BOUND | Source: "bounded (a refused open carried no traffic)"; carried unchanged in the as-built delta cert :161. | L1216 | — |
+| `R-DARK-UNTIL-ERA4` | CLOSED-BY-BOUND | Generalized into the stamp raise (R3.4); no separate action. [note: R3.4.] | L108, L1216 | — |
+| `R-RELAY-MINT` | CLOSED-BY-BOUND | L1243: "Researcher delta cert CERTIFIED (closes R-RELAY-MINT)". | L1243 | — |
+| `R-GUARD-SHARED-FILL` | CLOSED-BY-BOUND | L1247: "closes with R2.12"; R2.12 BUILT (L1118: start-up assertion `capacity × (grant/fee) × (W+1) ≤ MaxPaidSerial/4`); L1048: the guard cap derivation re-based and "held by the R2.12 start-up assertion". | L1247 | — |
+| `R-REAPER-FORFEIT` | ACTIONABLE | L1249: "Tester must MEASURE whether a maximum session settles inside one epoch before the flag is ever enabled" — needs `T_b`. Closer: the `T_b` block-interval measurement on the next graded run (Tester). | L1248–1250 | — |
+| `R-REFUSE-AND-SELF-SPEND` | ACTIONABLE | L1253: "inert while relay balance is private bookkeeping, load-bearing at FP-2/R2.10 — on that carry-list; direction (serial bound to root, or accept-and-gate) research-gated before R2.9." The research direction is not recorded anywhere, and R2.9's ledger and node halves have since shipped (L1048). Closer: the Researcher's direction; owner to confirm whether the FP-2 inert posture covers it. [note: Inert half → FP-2 carry-list.] | L1250–1254 | — |
+| `R-CREDITSPENT-UNBOUNDED` | ACTIONABLE | L1181: "Owner call (PE recommends accept): the cap is an OPERATOR-MANAGED ceiling … until R-CREDITSPENT-UNBOUNDED (… a credit-format change …; research-gated) lands." Closer: owner accepts the interim posture; research-gated credit-format change (a stamp-raise-class item). | L1169, L1181–1185 | — |
+| `R-COMPACT-ORPHAN` | ACTIONABLE | L1128: "✅ MERGED 2026-09-03 (PR #717)". OWED-AFTER (L1147–1150): "the BENIGN compaction-failure class has no daemon WARN line — surface `CompactFailures`/`LastCompactError` on the banked/status path". Closer: small Builder PR. | L1128–1152 | — |
+| `R-FAUCET-ACCOUNT-MAP-UNBOUNDED` | CLOSED-BY-BOUND | merged 2026-09-07 into `FP-2` (triage §3: same fact, one closer) | L1118, docs/thinking/2026-09-05-r2.12-faucet-rate-limit.md | `FP-2` |
+| `R-FAUCET-RESTART-REGRANT-HERD` | CLOSED-BY-BOUND | Inert under D-FP2-SCOPE. [note: FP-2 carry-list.] | L1118 | — |
+| `R-FAUCET-BUCKET-PROBEABLE` | HELD-IN-TENSION | Same structural fact as row 68 (identities are free); disclosed, no closer named by the source. [note: Coupled to row 68.] | L1118 | — |
+| `R-PARITY-AMPLIFICATION` | ACTIONABLE | L1864: per-stripe BUILT, "NOT claimed discharged (research-gated; a corrupting provider still forces `S·N/K` because `fetchFrom` transfers before it verifies)". Closer: a Researcher discharge certification (or an explicit acceptance of the worst case under the 64 GiB pin). | L1864, docs/decisions.md | — |
+| `R-SPARSE-COLUMN-PROVIDER` | UNCLEAR | since:2026-09-06 — "Filed, not fixed" (`docs/thinking/2026-09-06-parity-fetch-per-stripe.md` :78); no closer named. Belongs with the #500/#501/#502 repair-sweep family (L1879). | L1867–1868 | — |
+| `R-PS-PRESENCE-COST` | ACTIONABLE | Closer named by the source: the pay-on-failure redesign (Builder; residual backlog, no Boulder gate). | L1871–1873 | — |
+| `R-PS-LOCAL-ROT-NOT-HEALED` | UNCLEAR | since:2026-09-06 — No closer named. Candidate home: the repair-sweep family (#277/#500). | L1873–1875 | — |
+| `R-LANEOFF-ROTATION-RUNTIME` | ACTIONABLE | L1772: "Low: the fix is structural … but the property is UNGATED at runtime". The source describes the runtime test (unwritable issuer dir + epoch crossing). Closer: Tester runtime observer (test debt, low). | L1767–1775 | — |
+
+
 These are the off-critical-path residuals migrated from the (retiring) GitHub issue tracker.
 They do NOT gate the Boulder spine; they are the honest tail. Each carries its provenance
 issue number as an anchor only. Repro recipes for the field defects (#558/#535/#530/#574/#586/#277)
