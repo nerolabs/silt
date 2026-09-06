@@ -1933,7 +1933,11 @@ falls 24.4×.** **G-R212-7 (NEW):** STRICT parity `p > λ·U` at `λ = 1 credit/
 are two ratified decisions 137,439× apart — R2.9 cannot set its price until the owner resolves which
 yields. 2026-09-06: the owner asked for context; the builder's brief recommends route (a), re-denominating
 `λ` (a self-mint scaling constant with no external consumer) strictly below `p/U` through a Researcher
-certification, over re-opening ruling 3; the call stays OPEN until the owner chooses.
+certification, over re-opening ruling 3. **Owner chose route (a) on 2026-09-06 (*"take route 1 as
+recommended"*).** Consult chain opened the same day: Economist advisory on what re-denominating `λ` does
+to the D-S7 escrow auto-skim (the unwitnessed serve feeds it) → Researcher certification of the
+admissible `λ` interval strictly below `p/U` with `R-LAMBDA-DUST` disclosed → owner ratifies the value.
+Nothing is built until the value is ratified.
 
 ## D-UI-PRIVACY-FLAG — node-wide counters and the library link key go behind an operator flag; exposed in beta, withheld at release
 

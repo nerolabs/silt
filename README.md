@@ -66,6 +66,13 @@ single source of truth for the task order. The resolver layer that maps
 meaning onto opaque identifiers is a deliberately separate product:
 [`docs/aslan-boundary.md`](docs/aslan-boundary.md).
 
+**Economy status, in one sentence:** the economy is built and running in shadow; payout is
+opt-in until the delivery price lands. `-economy` defaults OFF, so every node fills object
+escrows from serve revenue but disburses no bounty until its operator opts in, and the
+dashboard reports `bountyOn: false` until then. The default flip is R2.4 in `ROADMAP.md`,
+sequenced after the delivery lane (R2.14 → R2.9) is priced, because paying the flat lane
+today would read to an edge node as a ~99.9% pay cut on a 64 MiB object.
+
 ## Try it
 
 The guided version of everything below — with what to look for at each

@@ -9,6 +9,8 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Changed
+- **`-economy` flag help states the economy's status in one sentence** (built and running in shadow; payout is
+  opt-in until the delivery price lands, ROADMAP R2.4). The README carries the same sentence (2026-09-06).
 - **Relay lane re-priced: `RelayIncrementBytes` 4,096 → 524,288 (512 KiB); `MaxChainLength` and
   `MaxSessionBytes` DERIVED from the anchor face (G-R212-2, certified 2026-09-06, owner-ratified the same
   day).** At 4 KiB the starter grant bought 1.9 GiB of relayed fetch, 23.4× below the 44.7 GiB structural
