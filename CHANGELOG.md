@@ -17,8 +17,9 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   is a floor over a per-lane byte accumulator (remainder on the provisional LANE, never the account — a
   witnessed supersede would otherwise double-pay), with two floors on the object path so the escrow skim
   accumulates across serves. A geometry whose `k·shardBytes` is below one credit of fetch pays a ZERO bounty:
-  the judge counts it (`Stats.BountyBaseZero`) and journals it, and `silt add` / `swarm publish` warn below
-  `-chunk-size 262144`. `serveMint` telemetry on `/api/status` (token holders only). Byte observables
+  the judge counts it (`Stats.BountyBaseZero`) and journals it, and `silt add` / `swarm publish` warn below it
+  (corrected 2026-09-07 to the real geometry — a shard is a whole ciphertext chunk, threshold ≈ 26 KB at k = 10;
+  the 64 KiB default pays 2 — see Fixed above). `serveMint` telemetry on `/api/status` (token holders only). Byte observables
   (`ServedBytes`/`FetchedBytes`) are unchanged. Gates `TestGLambda1…9`, `TestGLambda8ZeroBountyBaseIsNamedNotSilent`,
   `TestGLambdaServeMintTelemetry`; the pre-numéraire conservation gates re-expressed in mint units. The `silt sim run
   economy` defaults move to 4 MiB single-chunk objects and a SIM-SCALE fee of 8 credits (a production token is
@@ -79,6 +80,19 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `TestR31MalformedSiblingDataIsRefusedNotPanicked` (their controls capture the raw library panics), plus the scope
   pins `TestR31NoSumTrieAndEverySMTUsesSHA256`, `TestR31SMTModuleIsPinnedToTheCertifiedVersion`,
   `TestR31EveryStateHashTagEndsInExactlyOneNUL`. Record: `docs/design/state-root-domain-separation.md`.
+
+### Fixed
+- **The repair-bounty geometry: a shard is a WHOLE ciphertext chunk, so the shipped 64 KiB default pays a
+  base of 2 credits, not zero.** The G-R212-7 build stated shard = chunk/k and placed the publish warning's
+  threshold at 262,144 B (it fired 10× too eagerly, and its blind PE filed `R-DEFAULT-CHUNK-BOUNTY-ZERO` on the same
+  model); the Economist's default-chunk advisory (2026-09-06) caught it and it is verified at the erasure stage
+  and the judge. `credit.MinBountyChunkBytes` (262,144) is replaced by `MinBountyStripeBytes` (the stripe must
+  reach one credit of fetch) and `MinBountyChunkBytesFor(k, crypto.Overhead)` ≈ 26,199 B at k = 10; `silt add` /
+  `swarm publish` warn only below THAT, by the judge's own arithmetic; the judge's fix text derives the same
+  number; `crypto.Overhead` (the 16-byte tag) is pinned against a real encryption. What the default actually does
+  is a 20 % integer-truncation under-pay (`R-BOUNTY-TRUNCATION`, exact 2.5006 → 2). Gates
+  `TestRepairBountyBaseAtTheShippedDefaultIsTwoNotZero`, `TestCiphertextOverheadIsTheTag`; the G-λ-8 warning gate
+  re-expressed on the real geometry.
 
 ### Added
 - **R2.9 node half — the paid DELIVERY SESSION (`core/node/deliverysession.go`, `core/demand/session.go`;

@@ -83,8 +83,9 @@ const (
 // the old absolute Config.RepairBountyBase so re-tuning k/shardBytes (Evolving-tier)
 // re-prices repair automatically (PE Q3). 0 for a degenerate shard/stripe AND for a
 // geometry whose k × shardBytes is below one credit's worth of fetch (k·shardBytes <
-// DeliveryBytesPerCredit — e.g. the 64 KiB sim chunk); the caller's base<=0 guard
-// means "off", and the judge names a zero base loudly (G-λ-8, core/node/repairclaim.go).
+// DeliveryBytesPerCredit — a chunk below ~26 KB at k = 10; the 64 KiB default pays 2);
+// the caller's base<=0 guard means "off", and the judge names a zero base loudly
+// (G-λ-8, core/node/repairclaim.go).
 func RepairBountyBase(k int, shardBytes int64) int64 {
 	if k <= 0 || shardBytes <= 0 {
 		return 0
@@ -92,10 +93,32 @@ func RepairBountyBase(k int, shardBytes int64) int64 {
 	return int64(k) * shardBytes * RepairBountyCoeffNum / RepairBountyCoeffDen / DeliveryBytesPerCredit
 }
 
-// MinBountyChunkBytes is the smallest chunk whose stripe pays a non-zero repair
-// bounty: k × shardBytes ≈ chunkBytes must reach one credit of fetch. A publisher
-// choosing a smaller chunk under a repair economy is warned at publish time.
-const MinBountyChunkBytes = DeliveryBytesPerCredit
+// MinBountyStripeBytes is the smallest STRIPE (k × shardBytes) that pays a non-zero
+// repair bounty: one credit of fetch. A SHARD IS A WHOLE CIPHERTEXT CHUNK — the erasure
+// stage takes k ciphertext chunks as the data shards and emits chunk-sized parity
+// (core/pipeline/pipeline.go), and the judge reads a survivor's full length
+// (core/node/repairclaim.go) — so at the shipped 64 KiB default the stripe is
+// 10 × 65,552 = 655,520 B and the base is 2 credits, NOT zero. (The G-R212-7 build and its
+// blind PE stated the geometry as shard = chunk/k and filed R-DEFAULT-CHUNK-BOUNTY-ZERO on
+// it; the Economist's 2026-09-06 advisory on the default chunk size caught the error.
+// What the default actually pays is a 20 % integer-truncation UNDER-pay, exact 2.5006 → 2:
+// R-BOUNTY-TRUNCATION.)
+const MinBountyStripeBytes = DeliveryBytesPerCredit
+
+// MinBountyChunkBytesFor is the smallest plaintext CHUNK whose stripe of k chunk-sized
+// shards (each chunk + overhead bytes of ciphertext expansion) pays a non-zero base:
+// ⌈MinBountyStripeBytes / (k·c)⌉ − overhead. The publish warning and the judge's fix text
+// derive their number from it, never type one.
+func MinBountyChunkBytesFor(k int, overhead int64) int64 {
+	if k <= 0 {
+		return 0
+	}
+	perShard := (MinBountyStripeBytes*RepairBountyCoeffDen + int64(k)*RepairBountyCoeffNum - 1) / (int64(k) * RepairBountyCoeffNum)
+	if perShard <= overhead {
+		return 1
+	}
+	return perShard - overhead
+}
 
 // escrowFor returns the object's reserve, creating an empty one on first touch.
 func (l *Ledger) escrowFor(root ports.Hash) *objectEscrow {

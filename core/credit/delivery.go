@@ -89,10 +89,14 @@ const maxProvisional = 8192
 //     fresh-identity arrival rate A the faucet bounds (R2.12). That relation is
 //     enforced at start-up — `capacity × (grant/fee) × (W+1) ≤ MaxPaidSerial/4`,
 //     cmd/silt/daemon.go, gated by cmd/silt/r212_faucet_test.go — against the
-//     RUNTIME faucet capacity, which no compile-time constant here can see. Under a
-//     REFUND of the remainder (the G-R212-8 §5.1 direction, an owner call) the (g/f)
-//     term dies and a per-identity live-anchor cap must replace it
-//     (R-DELIVERY-BURN-PRICES-THE-GUARD).
+//     RUNTIME faucet capacity, which no compile-time constant here can see. Under the
+//     RATIFIED refund of the delivery remainder (D-R2.9-NODE-HALF-CALLS 1′, 2026-09-07)
+//     the refund is released at ANCHOR EXPIRY — the same window this guard sweeps on —
+//     so a face is accounting-neutral and the (g/f) term keeps bounding CONCURRENCY:
+//     the R2.12 assertion survives verbatim (T-DEPOSIT, refund certification §3–4). The
+//     per-identity live-anchor cap once proposed here is REFUTED (a bearer anchor passed
+//     down fresh keypairs evades it for zero credits) and is NOT built
+//     (R-DELIVERY-BURN-PRICES-THE-GUARD re-priced, R-STOCK-RENEWABLE-OCCUPANCY open).
 //
 // So: the cap is max(the 65,536 floor, headroom × the φ = 1 corner) in code, and the
 // floor is what binds today; dominance under quantization is re-derived with the node
