@@ -82,10 +82,10 @@ func TestWitnessedReceiptSupersedesServeSelfRecord(t *testing.T) {
 	server, fetcher := id(1), id(2)
 	obj, chunk := id(7), id(9)
 
-	// The serve happens first: the server self-records bytes − skim.
-	const bytes = 1 << 20
+	// The serve happens first: the server self-records the net floor of the lane's bytes.
+	const bytes = 8 * mintUnit
 	l.RecordServeToObject(server, fetcher, obj, chunk, bytes)
-	if got := l.Balance(server); got != bytes-bytes*SkimNum/SkimDen {
+	if got := l.Balance(server); got != objNet(bytes) {
 		t.Fatalf("setup: self-record balance %d", got)
 	}
 
@@ -150,9 +150,9 @@ func TestUnwitnessedServeKeepsSelfRecord(t *testing.T) {
 	server, fetcher := id(1), id(2)
 	obj, chunk := id(7), id(9)
 
-	const bytes = 1 << 20
+	const bytes = 8 * mintUnit
 	l.RecordServeToObject(server, fetcher, obj, chunk, bytes)
-	want := int64(bytes) - int64(bytes)*SkimNum/SkimDen
+	want := objNet(bytes)
 	if got := l.Balance(server); got != want {
 		t.Fatalf("unwitnessed serve balance %d, want %d", got, want)
 	}
@@ -173,9 +173,9 @@ func TestPaidBountyIsNotRecoverableBySupersede(t *testing.T) {
 	obj, chunk := id(7), id(9)
 
 	// A serve routes its skim into the object's reserve…
-	const bytes = 1 << 20
+	const bytes = 8 * mintUnit
 	l.RecordServeToObject(server, fetcher, obj, chunk, bytes)
-	serveSkim := int64(bytes) * SkimNum / SkimDen
+	serveSkim := objSkim(bytes)
 	if got := l.EscrowBalance(obj); got != serveSkim {
 		t.Fatalf("setup: escrow %d, want %d", got, serveSkim)
 	}
@@ -220,9 +220,9 @@ func TestPaidBountyIsNotRecoverableByEviction(t *testing.T) {
 
 	// Lane 0 serves and routes its skim into the object's reserve…
 	first := ports.NodeID(ports.HashBytes([]byte("first-requester")))
-	const bytes = 1 << 20
+	const bytes = 8 * mintUnit
 	l.RecordServeToObject(server, first, obj, chunk, bytes)
-	serveSkim := int64(bytes) * SkimNum / SkimDen
+	serveSkim := objSkim(bytes)
 	if got := l.EscrowBalance(obj); got != serveSkim {
 		t.Fatalf("setup: escrow %d, want %d", got, serveSkim)
 	}
@@ -273,9 +273,8 @@ func TestProvisionalCapIsBoundedAndDeterministic(t *testing.T) {
 
 	// Lane 0 — the one that will be evicted.
 	first := ports.NodeID(ports.HashBytes([]byte("first-requester")))
-	const bytes = 1 << 10
-	skim := int64(bytes) * SkimNum / SkimDen
-	net := int64(bytes) - skim // the eager self-mint lane 0 recorded
+	const bytes = mintUnit
+	net := objNet(bytes) // the eager self-mint lane 0 recorded (7 credits at one unit)
 
 	l.RecordServeToObject(server, first, obj, chunk, bytes)
 	if got := l.Balance(server); got != net {

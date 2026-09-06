@@ -36,10 +36,13 @@ func TestServeAutoSkimFundsObjectEscrow(t *testing.T) {
 	}
 
 	publisher, retriever := cl.Nodes[0], cl.Nodes[len(cl.Nodes)-1]
-	data := make([]byte, 256<<10)
+	// 32 MiB in ONE chunk: each column holder serves a 3.2 MiB shard on its lane, above the
+	// 8·Dλ = 3 MiB a lane needs before its first skim credit (G-R212-7 numéraire); at the old
+	// 256 KiB / 4 KiB geometry every lane would now skim zero.
+	data := make([]byte, 32<<20)
 	cl.rng.Read(data)
 	h, err := pipeline.Add(bgCtx, publisher.Store(), cl.Registry, bytes.NewReader(data),
-		pipeline.Options{ChunkSize: 4 << 10, Mode: crypto.Convergent, Erasure: erasure.DefaultParams})
+		pipeline.Options{ChunkSize: 32 << 20, Mode: crypto.Convergent, Erasure: erasure.DefaultParams})
 	if err != nil {
 		t.Fatalf("add: %v", err)
 	}

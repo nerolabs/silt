@@ -83,7 +83,8 @@ func runCompactionFuzz(t *testing.T, seed int64, ops, poolSize int) {
 	t.Helper()
 	const (
 		fee       = 50_000
-		serveSize = 256 // bytes per serve
+		serveSize = SkimDen * ServeMintBytesPerCredit   // bytes per serve: one mint unit, so every serve mints exactly serveMint credits (G-R212-7)
+		serveMint = serveSize / ServeMintBytesPerCredit // credits per serve across both legs (net + skim)
 		// fuzzEpochEvery: steps per demand epoch. Chosen so the guard's live set —
 		// the redeems of the last paidSerialWindow+1 epochs — stays two orders of
 		// magnitude under maxPaidSerial (65,536), which keeps every honest serial
@@ -204,8 +205,8 @@ func runCompactionFuzz(t *testing.T, seed int64, ops, poolSize int) {
 		switch {
 		case action < 5:
 			// SERVE.
-			skim := int64(serveSize) * SkimNum / SkimDen
-			net := int64(serveSize) - skim
+			skim := int64(serveMint) * SkimNum / SkimDen
+			net := int64(serveMint) - skim
 
 			// Determine the lane that will be FIFO-evicted (if cap is hit).
 			var evictedPoolIdx *int
@@ -239,7 +240,7 @@ func runCompactionFuzz(t *testing.T, seed int64, ops, poolSize int) {
 			} else {
 				liveMints[idx] = &mintEntry{net: net, skim: skim}
 			}
-			expectedTotal += int64(serveSize)
+			expectedTotal += int64(serveMint)
 
 			l.RecordServeToObject(server, ln.req, ln.obj, chunk, serveSize)
 
@@ -252,8 +253,8 @@ func runCompactionFuzz(t *testing.T, seed int64, ops, poolSize int) {
 				// so expectedTotal subtracts the evicted lane's reversed
 				// self-mint; omitting it under-counts by the reversed mint (the
 				// eviction-dominant conservation gap the desync fix uncovered).
-				skim := int64(serveSize) * SkimNum / SkimDen
-				net := int64(serveSize) - skim
+				skim := int64(serveMint) * SkimNum / SkimDen
+				net := int64(serveMint) - skim
 				var evictedPoolIdx *int
 				if _, alreadyLive := l.provisional[k]; !alreadyLive && len(l.provisional) >= maxProvisional {
 					for _, kp := range l.provOrder {
@@ -283,7 +284,7 @@ func runCompactionFuzz(t *testing.T, seed int64, ops, poolSize int) {
 				} else {
 					liveMints[idx] = &mintEntry{net: net, skim: skim}
 				}
-				expectedTotal += int64(serveSize)
+				expectedTotal += int64(serveMint)
 				l.RecordServeToObject(server, ln.req, ln.obj, chunk, serveSize)
 				break
 			}
@@ -326,8 +327,8 @@ func runCompactionFuzz(t *testing.T, seed int64, ops, poolSize int) {
 
 		default:
 			// FORCE-SERVE (always serve this lane regardless of state).
-			skim := int64(serveSize) * SkimNum / SkimDen
-			net := int64(serveSize) - skim
+			skim := int64(serveMint) * SkimNum / SkimDen
+			net := int64(serveMint) - skim
 			var evictedPoolIdx *int
 			if _, alreadyLive := l.provisional[k]; !alreadyLive && len(l.provisional) >= maxProvisional {
 				for _, kp := range l.provOrder {
@@ -357,7 +358,7 @@ func runCompactionFuzz(t *testing.T, seed int64, ops, poolSize int) {
 			} else {
 				liveMints[idx] = &mintEntry{net: net, skim: skim}
 			}
-			expectedTotal += int64(serveSize)
+			expectedTotal += int64(serveMint)
 			l.RecordServeToObject(server, ln.req, ln.obj, chunk, serveSize)
 		}
 

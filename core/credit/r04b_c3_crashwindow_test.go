@@ -32,7 +32,7 @@ import (
 func TestFP2_CrashBetweenTheGuardAppendAndThePayBurnsTheReceipt(t *testing.T) {
 	const fee = 50_000
 	const b = int64(64 << 20)
-	const wantMint = b - b/8     // 58,720,256 — the eager RecordServe self-mint
+	const wantMint = 149         // ⌊7·64 MiB/(8·Dλ)⌋ — the eager self-mint since G-R212-7 (was 58,720,256 at λ = 1)
 	const wantPaid = fee - fee/8 // 43,750 — the conserved leg
 
 	store := &memStore{}

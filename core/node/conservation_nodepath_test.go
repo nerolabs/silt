@@ -40,7 +40,8 @@ import (
 //   - the eviction claw-back (reverseProvisional at eviction) is absent
 func TestR05NodePathConservation(t *testing.T) {
 	const fee = 50_000
-	const bytes0 = 1024 // lane-0 serve size
+	const bytes0 = credit.SkimDen * credit.ServeMintBytesPerCredit // lane-0 serve size: one mint unit → 7 net + 1 skim (G-R212-7)
+	const mint0 = bytes0 / credit.ServeMintBytesPerCredit
 
 	// nodFloodSize is the flood size. Must be >= maxProvisional (8192) to trigger
 	// eviction of lane 0. We use 8192 directly to avoid coupling to the unexported
@@ -206,9 +207,9 @@ func TestR05NodePathConservation(t *testing.T) {
 	nd.handle(fetcherID, ports.Message{Kind: ports.MsgFetchChunk, ChunkID: chunkID, Ephemeral: true})
 
 	// Verify the serve self-mint landed (proves node.go:1576 ran RecordServeToObject).
-	skim0 := int64(bytes0) * credit.SkimNum / credit.SkimDen
-	net0 := int64(bytes0) - skim0
-	wantServerAfterLane0 := int64(fee) + net0 // server started at fee (grant)
+	skim0 := int64(mint0) * credit.SkimNum / credit.SkimDen // 1
+	net0 := int64(mint0) - skim0                            // 7
+	wantServerAfterLane0 := int64(fee) + net0               // server started at fee (grant)
 	if got := ledger.Balance(serverID); got != wantServerAfterLane0 {
 		t.Fatalf("after lane-0 serve via node handler: server balance %d, want %d\n"+
 			"RecordServeToObject may not have fired at node.go:1576 (check that proofMeta is set and root is non-zero)",
@@ -223,7 +224,8 @@ func TestR05NodePathConservation(t *testing.T) {
 	// Using the ledger directly (not the node handler) keeps the flood fast and
 	// avoids complex simnet reply plumbing for 8192 distinct fetchers. The WIRING
 	// under test is the lane-0 serve (step 1) and the redeem (step 3).
-	const floodBytes = 8
+	const floodBytes = credit.SkimDen * credit.ServeMintBytesPerCredit // one mint unit per flood lane
+	const floodMint = floodBytes / credit.ServeMintBytesPerCredit
 	floodChunk := ports.HashBytes([]byte("r05-flood-chunk-base"))
 	for i := 0; i < nodFloodSize; i++ {
 		ledger.RecordServeToObject(serverID, floodFetchers[i], floodRoots[i], floodChunk, floodBytes)
@@ -277,8 +279,8 @@ func TestR05NodePathConservation(t *testing.T) {
 	//
 	// Under the bug (no eviction reversal), bytes0 is NOT subtracted:
 	//   gotTotal = initial + bytes0 + nodFloodSize*floodBytes
-	//   delta    = +bytes0 = +1024 — the leaked mint.
-	wantTotal := initial + int64(nodFloodSize)*floodBytes
+	//   delta    = +mint0 = +8 — the leaked mint.
+	wantTotal := initial + int64(nodFloodSize)*floodMint
 	gotTotal := sumLedger()
 	if gotTotal != wantTotal {
 		delta := gotTotal - wantTotal

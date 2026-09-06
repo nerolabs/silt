@@ -62,7 +62,10 @@ const (
 // nothing pushes it above 1; it is g-neutral (a constant scale factor cancels in
 // the cost-trend); and it is the smallest floor-honest value, so it least shortens
 // the funded horizon. Solvency is a (c, skim) PAIR — `base × m̄ × R ≤ V × skim` ⇒
-// self-funding above ~24 retrievals/repair at c=1, m̄≈3 — which holds for HOT data;
+// self-funding above ~24 retrievals/repair at c=1, m̄≈3 with base and skim in the
+// SAME denomination; since G-R212-7 (2026-09-06) the base is priced in the witnessed
+// fetch price U/p and the skim in the serve-mint Dλ = 1.5·U/p, so the certified
+// threshold is 24·PF = 36 retrievals/repair on the unwitnessed lane — which holds for HOT data;
 // cold data stays prepay-dependent (D-S7 finite horizon), the mechanism's honest
 // scope. Evolving-tier: re-tune only on field g. Cert:
 // silt-reviews/research/research-outcome/repair-bounty-coefficient-c-RESEARCH-CERTIFICATION-2026-08-19.md.
@@ -71,16 +74,28 @@ const (
 	RepairBountyCoeffDen = 1
 )
 
-// RepairBountyBase derives the per-object base bounty from the erasure geometry:
-// c × (k × shardBytes). This replaces the old absolute Config.RepairBountyBase so
-// re-tuning k/shardBytes (Evolving-tier) re-prices repair automatically (PE Q3).
-// 0 for a degenerate shard/stripe, so the caller's base<=0 guard still means "off".
+// RepairBountyBase derives the per-object base bounty from the erasure geometry,
+// in CREDITS: c × (k × shardBytes) / (U/p) — the fetch price of the k survivor shards
+// a repair must pull, denominated in the witnessed delivery price (G-R212-7,
+// T-NUMERAIRE; before 2026-09-06 the base was implicitly 1 credit per byte, which
+// would have moved D-S7's self-funding threshold from 24 to 12.6 million retrievals
+// per shard-repair the moment λ moved — R-BOUNTY-BASE-DENOMINATION). This replaces
+// the old absolute Config.RepairBountyBase so re-tuning k/shardBytes (Evolving-tier)
+// re-prices repair automatically (PE Q3). 0 for a degenerate shard/stripe AND for a
+// geometry whose k × shardBytes is below one credit's worth of fetch (k·shardBytes <
+// DeliveryBytesPerCredit — e.g. the 64 KiB sim chunk); the caller's base<=0 guard
+// means "off", and the judge names a zero base loudly (G-λ-8, core/node/repairclaim.go).
 func RepairBountyBase(k int, shardBytes int64) int64 {
 	if k <= 0 || shardBytes <= 0 {
 		return 0
 	}
-	return int64(k) * shardBytes * RepairBountyCoeffNum / RepairBountyCoeffDen
+	return int64(k) * shardBytes * RepairBountyCoeffNum / RepairBountyCoeffDen / DeliveryBytesPerCredit
 }
+
+// MinBountyChunkBytes is the smallest chunk whose stripe pays a non-zero repair
+// bounty: k × shardBytes ≈ chunkBytes must reach one credit of fetch. A publisher
+// choosing a smaller chunk under a repair economy is warned at publish time.
+const MinBountyChunkBytes = DeliveryBytesPerCredit
 
 // escrowFor returns the object's reserve, creating an empty one on first touch.
 func (l *Ledger) escrowFor(root ports.Hash) *objectEscrow {
@@ -128,18 +143,30 @@ func (l *Ledger) RecordServeToObject(server, requester ports.NodeID, root ports.
 	if bytes <= 0 || server == requester {
 		return 0
 	}
-	skim := bytes * SkimNum / SkimDen
+	// The self-credit is PROVISIONAL against a later witnessed receipt for this same
+	// delivery lane, which supersedes it (delivery.go — the PoD conservation rule). An
+	// unwitnessed serve keeps it: the bilateral fallback. G-R212-7: the mint is TWO
+	// FLOORS off the lane's byte accumulator — ⌊(SkimDen−SkimNum)·acc/(SkimDen·Dλ)⌋ to
+	// the server and ⌊SkimNum·acc/(SkimDen·Dλ)⌋ to the escrow — each leg an under-pay
+	// with its own remainder, so the skim accumulates across serves instead of
+	// flooring to zero per call (G-λ-7), and both recorded amounts stay exact for
+	// reverseProvisional. The remainder lives on the LANE and dies with it at both
+	// terminal sites (redeem, eviction): a remainder on the account would survive a
+	// witnessed supersede and later mint for bytes the receipt already paid (G-λ-5).
+	p := l.laneFor(server, requester, root)
+	p.bytes += bytes
+	netTotal := p.bytes * (SkimDen - SkimNum) / (SkimDen * ServeMintBytesPerCredit)
+	skimTotal := p.bytes * SkimNum / (SkimDen * ServeMintBytesPerCredit)
+	net, skim := netTotal-p.net, skimTotal-p.skim
+	p.net, p.skim = netTotal, skimTotal
 	s := l.acct(server)
-	s.balance += bytes - skim // 1 byte served = 1 credit, less the durability skim
-	s.servedBytes += bytes
+	s.balance += net
+	s.servedBytes += bytes // the byte observables stay BYTES (G-λ-9)
 	l.recordFetched(requester, bytes)
 	e := l.escrowFor(root)
 	e.balance += skim
 	e.funded += skim
-	// The self-credit above is PROVISIONAL against a later witnessed receipt
-	// for this same delivery lane, which supersedes it (delivery.go — the PoD
-	// conservation rule). An unwitnessed serve keeps it: the bilateral fallback.
-	l.trackProvisional(server, requester, root, bytes-skim, skim)
+	l.noteServeMint(bytes, net, skim)
 	return skim
 }
 

@@ -139,7 +139,7 @@ func TestR29aBB21OperatorsOwnWriteIsNotHiddenByTheCache(t *testing.T) {
 	// request through guard so the invalidation hook runs.
 	funder := ports.NodeID{0xAB}
 	s.onLoop(func() {
-		led.RecordServe(funder, ports.NodeID{0xFF}, ports.ChunkID{0xFF}, 9_000)
+		led.RecordServe(funder, ports.NodeID{0xFF}, ports.ChunkID{0xFF}, 9_000*credit.ServeMintBytesPerCredit)
 		if err := led.FundEscrow(root, funder, 5_000); err != nil {
 			t.Errorf("FundEscrow: %v", err)
 		}
@@ -176,7 +176,7 @@ func r29aCaredObject(t *testing.T, s *uiServer, led *credit.Ledger) ports.Hash {
 		// THIS node is the server, so the node-wide balance moves too: the aggregate
 		// that stays open and the per-object entry that does not both come off the
 		// same serve, which is the pair the gate has to tell apart.
-		led.RecordServeToObject(s.nd.ID(), fetcher, root, ports.ChunkID{0x1}, 8192)
+		led.RecordServeToObject(s.nd.ID(), fetcher, root, ports.ChunkID{0x1}, 1024*econMintUnit) // 1024 units → skim 1024 (G-R212-7)
 	})
 	return root
 }
@@ -359,7 +359,7 @@ func TestR29aF2EconomySelfWithholdsPerObjectDetailWithoutAToken(t *testing.T) {
 
 // r29aWholeSurfaceBytes is chosen so that funded (= bytes/8) is a value nothing else on
 // the surface holds by coincidence: not a bucket edge, not a capacity, not a port.
-const r29aWholeSurfaceBytes = 8 * 1_234_567
+const r29aWholeSurfaceBytes = 1_234_567 * econMintUnit // 1,234,567 mint units → funded (skim) = 1,234,567 (G-R212-7)
 
 // jsonNumbers returns every number in a JSON document, at any depth. It refuses a body
 // that is not JSON: a route that answered in some other shape would otherwise pass the
@@ -417,7 +417,7 @@ func TestR29aF2NoUnauthenticatedResponseOnTheWholeSurfaceCarriesTheWithheldCount
 		s.nd.Care(emptyRegistry{}, link.CareHandle{Root: root})
 		led.RecordServeToObject(s.nd.ID(), fetcher, root, ports.ChunkID{0x1}, r29aWholeSurfaceBytes)
 	})
-	const funded = int64(r29aWholeSurfaceBytes * credit.SkimNum / credit.SkimDen)
+	const funded = int64(r29aWholeSurfaceBytes / econMintUnit) // one skim credit per mint unit (G-R212-7)
 	at := s.started
 
 	// POSITIVE CONTROL FIRST. The number must be on the TOKENED wire of both gated
@@ -549,7 +549,7 @@ func TestR29aEconomySelfIsServedFromTheStatusSnapshot(t *testing.T) {
 
 	// The interleaved serve: exactly the observation the delta extraction needs.
 	s.onLoop(func() {
-		led.RecordServeToObject(s.nd.ID(), ports.NodeID{0xC4}, root, ports.ChunkID{0x2}, 16384)
+		led.RecordServeToObject(s.nd.ID(), ports.NodeID{0xC4}, root, ports.ChunkID{0x2}, 2048*econMintUnit) // +2048 skim (G-R212-7)
 	})
 	second := decodeEconomySelfView(t, economySelfAt(t, s, base.Add(statusSnapshotInterval-time.Millisecond), true))
 	if second.SelfFunding.SkimIn != 1024 {

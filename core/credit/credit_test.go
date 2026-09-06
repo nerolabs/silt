@@ -19,11 +19,12 @@ func TestEarnAndSpend(t *testing.T) {
 	if l.CanPublish(server) {
 		t.Fatal("zero-grant node should not afford the fee")
 	}
-	l.RecordServe(server, requester, ports.HashBytes([]byte("c")), 250)
+	const served = 250 * ServeMintBytesPerCredit // 250 credits' worth of bytes (G-R212-7: one credit per Dλ bytes)
+	l.RecordServe(server, requester, ports.HashBytes([]byte("c")), served)
 	if got := l.Balance(server); got != 250 {
-		t.Fatalf("balance %d, want 250 (1 byte = 1 credit)", got)
+		t.Fatalf("balance %d, want 250 (Dλ bytes = 1 credit)", got)
 	}
-	if l.FetchedBytes(requester) != 250 || l.ServedBytes(server) != 250 {
+	if l.FetchedBytes(requester) != served || l.ServedBytes(server) != served {
 		t.Fatal("served/fetched accounting wrong")
 	}
 	if err := l.ChargePublish(server); err != nil {

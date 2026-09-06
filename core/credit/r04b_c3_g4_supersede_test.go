@@ -48,8 +48,8 @@ func fullGuardLedger(t *testing.T, fee int64) *Ledger {
 // was worth +58,676,506 over being paid.
 func TestG4_RefusedReceiptDoesNotKeepTheSelfMint(t *testing.T) {
 	const fee = 50_000
-	const paidLeg = fee - fee*SkimNum/SkimDen // 43,750, the conserved payout
-	for _, bytesServed := range []int64{1_000, 64 << 10, 64 << 20} {
+	const paidLeg = fee - fee*SkimNum/SkimDen                               // 43,750, the conserved payout
+	for _, bytesServed := range []int64{mintUnit, 8 * mintUnit, 64 << 20} { // sizes that mint (G-R212-7: below 8·Dλ/7 the lane mints nothing yet)
 		l := fullGuardLedger(t, fee)
 		srv, fetcher, obj := id(11), id(12), id(13)
 		l.Register(srv)
@@ -97,11 +97,11 @@ func TestG4_RefusedReceiptDoesNotKeepTheSelfMint(t *testing.T) {
 func TestG4_TheEconomistsNumber(t *testing.T) {
 	const fee = 50_000
 	const b = int64(64 << 20)
-	const wantMint = b - b/8                 // 58,720,256
+	const wantMint = 149                     // ⌊7·b/(8·Dλ)⌋ at Dλ = 393,216 (G-R212-7; 58,720,256 at λ = 1)
 	const wantPaid = fee - fee/8             // 43,750
-	const wantOldLever = wantMint - wantPaid // 58,676,506
+	const wantOldLever = wantMint - wantPaid // −43,601: NEGATIVE since G-R212-7 — banking beats suppressing (R-FLAT-FEE flips), was +58,676,506
 
-	if wantMint != 58_720_256 || wantPaid != 43_750 || wantOldLever != 58_676_506 {
+	if wantMint != objNet(b) || wantMint != 149 || wantPaid != 43_750 || wantOldLever != -43_601 {
 		t.Fatalf("the pricing moved: mint=%d paid=%d lever=%d. Re-derive the G-4 "+
 			"argument against the new numbers before touching this gate.",
 			wantMint, wantPaid, wantOldLever)

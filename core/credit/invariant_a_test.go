@@ -63,20 +63,21 @@ var standingClassification = map[string]standingClass{
 	// configures the bucket, GrantOwner applies the node's own starter grant, FaucetStats is
 	// telemetry. The grant itself was always balance (Register minted it); R2.12 only meters
 	// WHEN it lands. Standing is bond-only (Invariant A) in both builds and both postures.
-	"SetFaucet":     neutral,
-	"GrantOwner":    neutral,
-	"FaucetStats":   neutral,
-	"Grant":         neutral, // reads the starter-grant constant; moves nothing
-	"ChargePublish": neutral,
-	"CanPublish":    neutral,
-	"Balance":       neutral,
-	"Balances":      neutral,
-	"ServedBytes":   neutral,
-	"FetchedBytes":  neutral,
-	"Audits":        neutral,
-	"Fee":           neutral,
-	"Gini":          neutral,
-	"Reputation":    neutral, // the reader itself
+	"SetFaucet":      neutral,
+	"GrantOwner":     neutral,
+	"FaucetStats":    neutral,
+	"ServeMintStats": neutral, // G-R212-7 serve-mint telemetry; reads, moves nothing
+	"Grant":          neutral, // reads the starter-grant constant; moves nothing
+	"ChargePublish":  neutral,
+	"CanPublish":     neutral,
+	"Balance":        neutral,
+	"Balances":       neutral,
+	"ServedBytes":    neutral,
+	"FetchedBytes":   neutral,
+	"Audits":         neutral,
+	"Fee":            neutral,
+	"Gini":           neutral,
+	"Reputation":     neutral, // the reader itself
 
 	// H7/S7 durability escrow (escrow.go). The durability budget is part of the
 	// BALANCE economy — it moves the credit unit between balances and object

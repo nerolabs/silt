@@ -524,6 +524,15 @@ type statusInfo struct {
 	// privacy clause. It is NOT the R2.9a arrival series (it counts spenders, not
 	// fetchers) and must not be read as one.
 	Faucet *faucetInfo `json:"faucet,omitempty"`
+	// ServeMint is the G-R212-7 serve-mint telemetry: node-wide aggregates of what the
+	// unwitnessed lane minted against what it served (Economist §6, certified as
+	// instrument-class). Withheld with the counters under the privacy clause, like Stats.
+	ServeMint *serveMintInfo `json:"serveMint,omitempty"`
+	// ServeMintWithheld is the marker for the block above: it is served to the TOKEN
+	// holder only. Its skim counter is the sum of every object's funded skim, which on a
+	// one-object node IS that object's per-object figure (red-team F2's reconstruction
+	// shape), so it rides with the per-object detail, never the unauthenticated wire.
+	ServeMintWithheld bool `json:"serveMintWithheld,omitempty"`
 	// CountersWithheld is the privacy clause's marker on THIS document. It covers exactly
 	// three absences: the whole `stats` block above, `durability.balance`, and the whole
 	// `faucet` block. A marker that named less than it covers would be a false fact in the
@@ -662,11 +671,14 @@ func (s *uiServer) readerView(doc *statusInfo, r *http.Request) *statusInfo {
 	auth := s.readerAuthFor(r)
 	if !auth.token {
 		out.Durability = withheldDurability(doc.Durability) // red-team F2
+		out.ServeMint = nil                                 // F2: its skim sum reconstructs a lone object's funded figure
+		out.ServeMintWithheld = true
 	}
 	if auth.privacy && !auth.token {
 		// D-UI-PRIVACY-FLAG: the node-wide serve counters. Assign, never mutate — the
 		// Stats pointer and the Balance pointer are shared with the cached document.
 		out.Stats = nil
+		out.ServeMint = nil
 		out.Faucet = nil
 		out.Durability = privacyWithheldDurability(out.Durability)
 		out.CountersWithheld = true
@@ -738,6 +750,16 @@ func (s *uiServer) libraryView(doc libraryDoc, auth readerAuth) libraryDoc {
 // faucetInfo is the wire form of credit.FaucetStats (R2.12). Configured false means the
 // faucet is unlimited and every counter is zero and meaningless; the block is present so
 // "unlimited" and "withheld" stay different objects on the wire.
+// serveMintInfo mirrors credit.ServeMintStats on the wire (G-R212-7).
+type serveMintInfo struct {
+	BytesPerCredit int64 `json:"bytesPerCredit"`
+	ServedBytes    int64 `json:"servedBytes"`
+	MintedCredits  int64 `json:"mintedCredits"`
+	SkimmedCredits int64 `json:"skimmedCredits"`
+	ZeroMintServes int64 `json:"zeroMintServes"`
+	RemainderBytes int64 `json:"remainderBytes"`
+}
+
 type faucetInfo struct {
 	Configured     bool  `json:"configured"`
 	Capacity       int64 `json:"capacity,omitempty"`
@@ -862,6 +884,9 @@ func (s *uiServer) computeStatus(now time.Time) *statusInfo {
 		} else {
 			out.Faucet = &faucetInfo{}
 		}
+		sm := s.nd.ServeMintStats()
+		out.ServeMint = &serveMintInfo{BytesPerCredit: sm.BytesPerCredit, ServedBytes: sm.ServedBytes, MintedCredits: sm.MintedCredits,
+			SkimmedCredits: sm.SkimmedCredits, ZeroMintServes: sm.ZeroMintServes, RemainderBytes: sm.RemainderBytes}
 		out.economy = s.nd.EconomySelf()
 		out.AddressCap = s.addressCapSnapshot()
 		if s.statusExtra != nil {

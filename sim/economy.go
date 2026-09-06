@@ -44,9 +44,9 @@ func DefaultEconomyOpts() EconomyOpts {
 		Nodes:            36,
 		Freeloaders:      6,
 		ContentFiles:     3,
-		ContentSize:      64 << 10,
-		ChunkSize:        4 << 10,
-		Fee:              50_000,
+		ContentSize:      4 << 20, // 4 MiB single-chunk objects: one fetch is one lane of 4 MiB, above the 8·Dλ/7 ≈ 3.5 MiB a lane needs before its first net credit (G-R212-7)
+		ChunkSize:        4 << 20,
+		Fee:              8, // a SIM-SCALE publish fee (≈ 3 MiB of serving); the production fee of 50,000 is 20.93 GiB of unwitnessed serving per token
 		FreeloaderRounds: 1,
 		Net:              simnet.DefaultConfig(),
 		NodeCfg:          node.DefaultConfig(),

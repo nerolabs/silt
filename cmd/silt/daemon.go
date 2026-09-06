@@ -676,6 +676,16 @@ func cmdDaemon(args []string) error {
 	if (*acceptRelayPayments || *acceptReceipts) && !ledger.FaucetStats().Configured {
 		return fmt.Errorf("-accept-delivery-receipts / -accept-relay-payments refused: a priced lane may not be enabled with the faucet unlimited — set -grant-capacity and -grant-per-hour (R2.12, G-R212-1); every fetcher that pays on this ledger first receives a starter grant, and an unbounded grant rate under a priced lane is the guard-fill and subsidy surface the rate limit exists to bound")
 	}
+	// G-λ-3 (G-R212-7): a priced lane may not open unless one starter grant still buys the
+	// ratified 64 GiB across the SUM of the prices a NAT'd fetcher pays at once (delivery +
+	// relay). The pin is read from the ledger's grant and the two price constants, never
+	// transcribed; the -dht-address-reserve refusal shape.
+	if *acceptRelayPayments || *acceptReceipts {
+		if got := grantOverSummedPriceBytes(ledger.Grant(), credit.DeliveryBytesPerCredit, relaypay.RelayIncrementBytes/relaypay.RelayIncrementCredit); got < credit.GrantOverRPinBytes {
+			return fmt.Errorf("priced lane refused: one starter grant (%d credits) buys %d bytes across the summed delivery (%d B/credit) + relay (%d B/credit) prices, below the ratified grant/r pin of %d bytes (64 GiB) — re-derive the prices before enabling a priced lane (G-λ-3, G-R212-7)",
+				ledger.Grant(), got, int64(credit.DeliveryBytesPerCredit), int64(relaypay.RelayIncrementBytes/relaypay.RelayIncrementCredit), credit.GrantOverRPinBytes)
+		}
+	}
 	// The node's OWN account is granted unmetered, before any other account exists: a node
 	// that denied itself could not publish or fund its own escrow (PE ruling S7).
 	ledger.GrantOwner(id)

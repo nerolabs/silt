@@ -155,8 +155,9 @@ type provKey struct {
 // credited at serve time.
 type provisionalServe struct {
 	server ports.NodeID
-	net    int64
-	skim   int64
+	bytes  int64 // the lane's byte accumulator (G-R212-7): every serve on this lane, lifetime of the lane
+	net    int64 // credits minted to the server so far = ⌊7·bytes/(8·Dλ)⌋ (reversed exactly on supersede/eviction)
+	skim   int64 // credits skimmed to the escrow so far = ⌊bytes/(8·Dλ)⌋
 }
 
 // reverseProvisional undoes a lane's eager self-mint: it debits the server's
@@ -180,8 +181,9 @@ func (l *Ledger) reverseProvisional(server ports.NodeID, root ports.Hash, p *pro
 	}
 }
 
-// trackProvisional records an object-aware serve's self-credit for later
-// supersession. Called by RecordServeToObject only.
+// laneFor returns the provisional lane for an object-aware serve, creating it (and
+// FIFO-evicting the oldest live lane when the map is at cap) on first touch. Called by
+// RecordServeToObject only, which then floors the lane's byte accumulator into credits.
 //
 // EVICTION REVERSAL (A4 money-pump fix, Boulder 0, R0.4a): when the map is at
 // cap and the oldest lane is FIFO-evicted, its eager self-mint is REVERSED
@@ -194,7 +196,7 @@ func (l *Ledger) reverseProvisional(server ports.NodeID, root ports.Hash, p *pro
 // >maxProvisional tail, never an over-pay, never a denial. Verified by
 // TestA4MoneyPumpConservation. Design:
 // docs/thinking/2026-09-01-a4-provisional-eviction-fix-design.md.
-func (l *Ledger) trackProvisional(server, requester ports.NodeID, root ports.Hash, net, skim int64) {
+func (l *Ledger) laneFor(server, requester ports.NodeID, root ports.Hash) *provisionalServe {
 	k := provKey{server: server, requester: requester, root: root}
 	p, ok := l.provisional[k]
 	if !ok {
@@ -232,8 +234,7 @@ func (l *Ledger) trackProvisional(server, requester ports.NodeID, root ports.Has
 		l.provIndex[k] = len(l.provOrder) - 1
 		l.compactProvOrder()
 	}
-	p.net += net
-	p.skim += skim
+	return p
 }
 
 // removeFromProvOrder drops a lane's FIFO entry in O(1) by tombstoning its slot

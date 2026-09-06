@@ -73,12 +73,12 @@ func newRepairAdv(t *testing.T, seed int64) *repairAdv {
 	}
 	sched.Run()
 
-	data := make([]byte, 256<<10)
+	data := make([]byte, 10*(512<<10)) // exactly one k=10 stripe of 512 KiB chunks: k·shardBytes = 524,290 ≥ one credit of fetch, so the bounty base is 2, not 0 (G-R212-7 / G-λ-8; 4 KiB chunks paid 0)
 	for i := range data {
 		data[i] = byte(i*7 + 3)
 	}
 	h, err := pipeline.Add(bg(), nodes[0].Store(), reg, bytes.NewReader(data),
-		pipeline.Options{ChunkSize: 4 << 10, Mode: crypto.Convergent, Erasure: erasure.DefaultParams})
+		pipeline.Options{ChunkSize: 512 << 10, Mode: crypto.Convergent, Erasure: erasure.DefaultParams})
 	if err != nil {
 		t.Fatalf("add: %v", err)
 	}

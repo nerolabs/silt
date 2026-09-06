@@ -77,15 +77,15 @@ func TestRecordServeToObject_AutoSkim(t *testing.T) {
 	server, requester := id(1), id(2)
 	root := objRoot("obj-A")
 
-	const bytes = 80_000
-	wantSkim := int64(bytes) * SkimNum / SkimDen // 80_000 / 8 = 10_000
+	const bytes = 10 * mintUnit
+	wantSkim := objSkim(bytes) // 10 units → 10 credits skimmed, 70 net (G-R212-7 two-floor split)
 	skim := l.RecordServeToObject(server, requester, root, id(9), bytes)
 
-	if skim != wantSkim {
-		t.Fatalf("skim = %d, want %d", skim, wantSkim)
+	if skim != wantSkim || wantSkim != 10 {
+		t.Fatalf("skim = %d, want %d (= 10)", skim, wantSkim)
 	}
-	if got := l.Balance(server); got != bytes-wantSkim {
-		t.Fatalf("server balance = %d, want %d (net of skim)", got, bytes-wantSkim)
+	if got := l.Balance(server); got != objNet(bytes) || got != 70 {
+		t.Fatalf("server balance = %d, want %d (net of skim, = 70)", got, objNet(bytes))
 	}
 	if got := l.EscrowBalance(root); got != wantSkim {
 		t.Fatalf("escrow balance = %d, want %d", got, wantSkim)

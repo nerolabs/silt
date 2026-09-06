@@ -417,7 +417,7 @@ func TestPrivacyWithheldDocumentsCarryOnlyAllowedKeys(t *testing.T) {
 	status := privacyGet(t, s, s.apiStatus, "/api/status", "", "")
 	allowedStatus := map[string]bool{"id": true, "peer": true, "uptimeSec": true, "capUsed": true, "capTotal": true,
 		"chunks": true, "peers": true, "network": true, "validator": true, "reachability": true, "chain": true,
-		"durability": true, "addressCap": true, "countersWithheld": true, "privacy": true,
+		"durability": true, "addressCap": true, "countersWithheld": true, "privacy": true, "serveMintWithheld": true,
 		"snapshotTakenAtUnix": true, "snapshotAgeSec": true, "snapshotIntervalSec": true}
 	for k := range status {
 		if !allowedStatus[k] {
@@ -426,6 +426,9 @@ func TestPrivacyWithheldDocumentsCarryOnlyAllowedKeys(t *testing.T) {
 	}
 	if _, has := status["faucet"]; has {
 		t.Fatalf("privacy=on untokened /api/status carries the R2.12 faucet block — its counters are arrival-adjacent and belong under countersWithheld")
+	}
+	if _, has := status["serveMint"]; has {
+		t.Fatalf("privacy=on untokened /api/status carries the G-R212-7 serveMint block — token holders only")
 	}
 	// The Go type says the same thing: every statusInfo field either is in the allow-list
 	// by its JSON name, or is one of the two withheld fields (stats, and balance inside
@@ -436,7 +439,7 @@ func TestPrivacyWithheldDocumentsCarryOnlyAllowedKeys(t *testing.T) {
 		if name == "" || name == "-" {
 			continue
 		}
-		if !allowedStatus[name] && name != "stats" && name != "faucet" {
+		if !allowedStatus[name] && name != "stats" && name != "faucet" && name != "serveMint" {
 			t.Fatalf("statusInfo field %s (json %q) is neither allowed on the privacy view nor declared withheld — classify it", f.Name, name)
 		}
 	}

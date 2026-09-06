@@ -52,8 +52,8 @@ func TestSettleRepairVerdict_ReleasePaysHolderNeverStanding(t *testing.T) {
 	root[0] = 0xC0
 	funder := identity.FromSeed(12).NodeID()
 	l.Register(funder)
-	// Fund well above the relative bounty (base = 6×4096 = 24576, ×3 multiplier =
-	// 73728) so the full amount pays and the reserve isn't the binding cap here.
+	// Fund well above the relative bounty (base = 6×1 MiB/262,144 = 24, ×3 multiplier =
+	// 72) so the full amount pays and the reserve isn't the binding cap here.
 	if err := l.FundEscrow(root, funder, 500_000); err != nil {
 		t.Fatalf("fund escrow: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestSettleRepairVerdict_ReleasePaysHolderNeverStanding(t *testing.T) {
 
 	// A healthy stripe (8 of 10 reachable → lost 2 → 3× multiplier).
 	p := erasure.Params{K: 6, N: 10}
-	const shardBytes = 4096
+	const shardBytes = 1 << 20 // 6 × 1 MiB / 262,144 = 24 credits base (G-R212-7: the base is priced in the fetch price; 4096-byte shards would pay 0)
 	claim := repairproof.RepairClaim{Root: root, Stripe: 0, ShardPos: 7, Holder: holder}
 	nd.settleRepairVerdict(claimant, claim, p, shardBytes, 8, repairproof.Decision{Release: true})
 
