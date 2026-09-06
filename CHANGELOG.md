@@ -101,7 +101,16 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   Gates G-λ-8-1/2/3/4/5/7/9, B-7, B-8, B-13 (reap forfeiture), G-DEM-1…8 (`TestAckReversalUsesTheBudgetCappedCount`
   closes `R-ACK-USES-UNTRUSTED-COUNT`); eight node ablations run RED. OPEN: G-λ-8-10 (a zero-settle session spends
   no face — lift (b) is the G-6 owner call, lift (a) is refuted by G-λ-8-9), the idle-window VALUE, the flat-path
-  retirement, and — the blind PE's blocker — the settlement skim under fetcher-chosen deltas (research-gated).
+  retirement. The blind PE's blocker — under settle-monotone the payer chooses the delta and a per-settlement
+  skim floor ⌊value/8⌋ let a face settled in deltas ≤ 7 fund the object escrow with NOTHING while the serve-time
+  skim was clawed back (net −21 at 64 MiB) — is closed as certified
+  (`silt-reviews/research/research-outcome/R2.9-settlement-skim-under-fetcher-chosen-deltas-RESEARCH-CERTIFICATION-2026-09-06.md`):
+  the skim floors on the SESSION's cumulative settled value, `⌊(prior+value)/8⌋ − ⌊prior/8⌋`, with `prior` the
+  session's own counter passed to `SettleDelivery`; no remainder is stored; the ratified 1/8 does not move (the
+  G-λ-7 discipline applied to the witnessed leg). Gates G-SKIM-1…6 (`TestSkimIsExactOverTheSessionNotPerSettlement`,
+  `TestSettlementSkimNeverExceedsItsOwnValue`, `TestSessionSkimIsPartitionIndependent`,
+  `TestWashPayerPaysTheSkimAtEveryGranularity`, `TestWitnessingNeverDefundsTheEscrow`,
+  `TestSkimAggregatesExactlyAcrossObjectsInOneSession`), all RED under the per-settlement floor.
 - **R2.9 ledger half — byte-denominated per-increment delivery settlement on the credit ledger
   (`core/credit/deliveryanchor.go`; D-R2.9-DIRECTION, built at the ratified price `(U, p) = (262,144 B, 1
   credit)`).** `SpendDeliveryAnchors` spends verified demand-domain anchors into the shared paid-serial guard at

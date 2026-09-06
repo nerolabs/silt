@@ -125,7 +125,7 @@ type deliveryAnchorSpender interface {
 	SpendDeliveryAnchors(server ports.NodeID, anchors []ports.RelayAnchor) (face int64, reason string)
 }
 type deliverySettler interface {
-	SettleDelivery(server, fetcher ports.NodeID, root ports.Hash, count, budget int64) (settled, paid int64, reason string)
+	SettleDelivery(server, fetcher ports.NodeID, root ports.Hash, count, budget, prior int64) (settled, paid int64, reason string)
 }
 type deliveryCloser interface {
 	CloseDeliverySession(remaining int64) int64
@@ -371,7 +371,7 @@ func (n *Node) SettleDeliveryReceipt(from ports.NodeID, r demand.SessionReceipt)
 		return 0, errDeliveryNoLedger
 	}
 	delta := int64(r.Count - s.count)
-	settled, paid, why := st.SettleDelivery(n.id, from, r.Object, delta, s.budget-s.settled)
+	settled, paid, why := st.SettleDelivery(n.id, from, r.Object, delta, s.budget-s.settled, s.settled) // prior = the session's cumulative settled: the skim floors on the SESSION (G-SKIM)
 	if why != credit.ReasonPaid {
 		return 0, fmt.Errorf("%w: %s", errDeliverySettleRefused, why)
 	}

@@ -230,7 +230,7 @@ func TestInvariantA_NoNonMintPressRaisesStanding(t *testing.T) {
 		if dface != l.Fee() || dreason != "" {
 			t.Fatalf("round %d: SpendDeliveryAnchors = (%d, %q), want (%d, \"\") — the delivery press would be vacuous", round, dface, dreason, l.Fee())
 		}
-		if _, paid, why := l.SettleDelivery(n, other, obj, 1<<20, dface); paid != dface-dface*SkimNum/SkimDen || why != ReasonPaid {
+		if _, paid, why := l.SettleDelivery(n, other, obj, 1<<20, dface, 0); paid != dface-dface*SkimNum/SkimDen || why != ReasonPaid {
 			t.Fatalf("round %d: SettleDelivery paid (%d, %q) against budget %d — the delivery press is vacuous", round, paid, why, dface)
 		}
 		l.CloseDeliverySession(1) // a remainder burned at close: telemetry only

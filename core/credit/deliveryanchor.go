@@ -94,9 +94,17 @@ func (l *Ledger) SpendDeliveryAnchors(server ports.NodeID, anchors []RelayAnchor
 // skim). It reverses the provisional self-mint of the lane (server, fetcher, root)
 // for min(count·U, B) bytes, pays min(count·p, budget) — in WHOLE increments — less
 // the durability skim into the server's balance, and routes the skim into the object's
-// escrow. It returns the GROSS credits settled out of the budget (what the node
-// subtracts from the session's remaining budget — read from the ledger, never
-// recomputed), the credits paid to the server, and the reason. It burns NOTHING:
+// escrow. prior is the session's credits settled BEFORE this step (the node's own
+// monotone counter): the skim is the CUMULATIVE floor ⌊(prior+value)/8⌋ − ⌊prior/8⌋,
+// never ⌊value/8⌋ of one step — under settle-monotone the fetcher chooses the step, and a
+// per-step floor let a face settled in deltas ≤ 7 fund the escrow with NOTHING while the
+// serve-time skim was clawed back (net negative; certification
+// silt-reviews/research/research-outcome/R2.9-settlement-skim-under-fetcher-chosen-deltas-RESEARCH-CERTIFICATION-2026-09-06.md
+// §3–4: the G-λ-7 discipline applied to the witnessed leg; no remainder is stored — it is
+// implicit in settled mod 8 and dies with the session; the ratified 1/8 does not move).
+// It returns the GROSS credits settled out of the budget (what the node subtracts from
+// the session's remaining budget — read from the ledger, never recomputed), the credits
+// paid to the server, and the reason. It burns NOTHING:
 // the unsettled remainder is accounted once, at CloseDeliverySession. An unanchored
 // session (budget ≤ 0) pays 0 and leaves the self-mint alone — the unwitnessed
 // bilateral fallback (B-3, B-9). A session settles as many times as it has deltas
@@ -106,7 +114,7 @@ func (l *Ledger) SpendDeliveryAnchors(server ports.NodeID, anchors []RelayAnchor
 // The payout never reads l.fee: the budget is what was spent, on this ledger, at open
 // (cert G-3; the R2.14 lesson that a pin over the constants never holds a seam whose
 // runtime value is read elsewhere).
-func (l *Ledger) SettleDelivery(server, fetcher ports.NodeID, root ports.Hash, count, budget int64) (settled, paid int64, reason string) {
+func (l *Ledger) SettleDelivery(server, fetcher ports.NodeID, root ports.Hash, count, budget, prior int64) (settled, paid int64, reason string) {
 	if server == fetcher {
 		return 0, 0, ReasonSelfDelivery // self-delivery earns nothing (the cheapest gaming, blocked)
 	}
@@ -168,7 +176,10 @@ func (l *Ledger) SettleDelivery(server, fetcher ports.NodeID, root ports.Hash, c
 	// skim; the remainder is burned (G-6) — no account and no escrow receives it.
 	// acct() REGISTERS an unknown account (and hands it the grant), so it is taken
 	// here at the payment and not above: a refusal must not conjure an account.
-	skim := value * SkimNum / SkimDen
+	if prior < 0 {
+		prior = 0
+	}
+	skim := (prior+value)*SkimNum/SkimDen - prior*SkimNum/SkimDen // 0 ≤ skim ≤ value (G-SKIM-2)
 	l.acct(server).balance += value - skim
 	e := l.escrowFor(root)
 	e.balance += skim

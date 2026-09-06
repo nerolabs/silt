@@ -81,7 +81,7 @@ func TestDeliveryAcceptStrictlyDominatesSuppressionAtEverySize(t *testing.T) {
 			paid := int64(0)
 			if count >= 0 {
 				var why string
-				_, paid, why = l.SettleDelivery(server, fetcher, root, count, budget)
+				_, paid, why = l.SettleDelivery(server, fetcher, root, count, budget, 0)
 				if why != ReasonPaid {
 					t.Fatalf("B=%d count=%d: reason %q", B, count, why)
 				}
@@ -150,7 +150,7 @@ func TestProvisionalLaneEqualsCreditedBalanceAndReversesPerIncrement(t *testing.
 	const j = int64(100) // 25 MiB acknowledged of 64 MiB
 	balBefore, escBefore := l.Balance(server), l.EscrowBalance(root)
 	value := j * r29P
-	_, paid, why := l.SettleDelivery(server, fetcher, root, j, 1<<40)
+	_, paid, why := l.SettleDelivery(server, fetcher, root, j, 1<<40, 0)
 	if why != ReasonPaid || paid != value-value*SkimNum/SkimDen {
 		t.Fatalf("settle: (%d, %q)", paid, why)
 	}
@@ -169,7 +169,7 @@ func TestProvisionalLaneEqualsCreditedBalanceAndReversesPerIncrement(t *testing.
 	// Never more than served: a count past the tail reverses exactly the tail's floors
 	// and deletes the lane.
 	balBefore = l.Balance(server)
-	_, paid2, _ := l.SettleDelivery(server, fetcher, root, 1<<30, 1<<40)
+	_, paid2, _ := l.SettleDelivery(server, fetcher, root, 1<<30, 1<<40, 0)
 	if got := balBefore + paid2 - l.Balance(server); got != objNet(tail) {
 		t.Fatalf("over-acknowledged settle reversed %d, want the tail's %d and not one credit more", got, objNet(tail))
 	}
@@ -184,7 +184,7 @@ func TestProvisionalLaneEqualsCreditedBalanceAndReversesPerIncrement(t *testing.
 	}
 	// The reserve is empty: the claw-back of the lane's 16 takes 0 (never negative), and
 	// the settlement's own skim(8) = 1 lands on top.
-	l2.SettleDelivery(server, fetcher, root, 1<<30, 8)
+	l2.SettleDelivery(server, fetcher, root, 1<<30, 8, 0)
 	if l2.EscrowBalance(root) != 1 || l2.escrow[root].funded != 17 {
 		t.Fatalf("escrow after a floored claw-back: balance %d funded %d, want 1 / 17 (the paid-out 16 is real durability work, never recovered)", l2.EscrowBalance(root), l2.escrow[root].funded)
 	}
@@ -213,7 +213,7 @@ func TestDeliverySettlementIsBoundedByAnchorFaceOnThePayingLedger(t *testing.T) 
 		t.Fatalf("budget %d, want 2 × face", budget)
 	}
 	serveLane(l, server, fetcher, root, 4*mintUnit, mintUnit)
-	_, paid, why := l.SettleDelivery(server, fetcher, root, budget/r29P+1_000, budget)
+	_, paid, why := l.SettleDelivery(server, fetcher, root, budget/r29P+1_000, budget, 0)
 	if why != ReasonPaid || paid != budget-budget*SkimNum/SkimDen {
 		t.Fatalf("over-budget settle paid (%d, %q), want Σ face − skim = %d", paid, why, budget-budget*SkimNum/SkimDen)
 	}
@@ -225,7 +225,7 @@ func TestDeliverySettlementIsBoundedByAnchorFaceOnThePayingLedger(t *testing.T) 
 	base = sumConserved(l)
 	budget = openDeliverySession(t, l, server, fetcher, 0, 10, 1)
 	serveLane(l, server, fetcher, root, 4*mintUnit, mintUnit)
-	l.SettleDelivery(server, fetcher, root, 4*mintUnit/r29U, budget) // fully acknowledged
+	l.SettleDelivery(server, fetcher, root, 4*mintUnit/r29U, budget, 0) // fully acknowledged
 	if d := sumConserved(l) - base; d != 4*mintUnit/r29U*r29P-budget || d >= 0 {
 		t.Fatalf("Δ Σ_L = %d, want j·p − Σ face = %d < 0", d, 4*mintUnit/r29U*r29P-budget)
 	}
@@ -233,20 +233,20 @@ func TestDeliverySettlementIsBoundedByAnchorFaceOnThePayingLedger(t *testing.T) 
 	l = newL()
 	serveLane(l, server, fetcher, root, 4*mintUnit, mintUnit)
 	before := l.Balance(server)
-	if _, p, why := l.SettleDelivery(server, fetcher, root, 1<<20, 0); p != 0 || why != ReasonNoAnchor || l.Balance(server) != before {
+	if _, p, why := l.SettleDelivery(server, fetcher, root, 1<<20, 0, 0); p != 0 || why != ReasonNoAnchor || l.Balance(server) != before {
 		t.Fatalf("unanchored settle (%d, %q), balance %d→%d — must pay 0 and leave the bilateral fallback", p, why, before, l.Balance(server))
 	}
-	if _, p, why := l.SettleDelivery(server, fetcher, root, 0, fee); p != 0 || why != ReasonNoIncrement || l.Balance(server) != before {
+	if _, p, why := l.SettleDelivery(server, fetcher, root, 0, fee, 0); p != 0 || why != ReasonNoIncrement || l.Balance(server) != before {
 		t.Fatalf("zero-count settle (%d, %q), balance %d→%d", p, why, before, l.Balance(server))
 	}
 	// (d) The payout tracks the budget it is handed — a budget that is no multiple of the
 	// fee pays exactly itself; the fee is never read on the payout path.
 	l = newL()
 	const odd = int64(12_345)
-	if _, p, _ := l.SettleDelivery(server, fetcher, root, 1<<20, odd); p != odd-odd*SkimNum/SkimDen {
+	if _, p, _ := l.SettleDelivery(server, fetcher, root, 1<<20, odd, 0); p != odd-odd*SkimNum/SkimDen {
 		t.Fatalf("odd budget %d paid %d, want %d — the payout read something other than the budget", odd, p, odd-odd*SkimNum/SkimDen)
 	}
-	if _, p, _ := l.SettleDelivery(server, fetcher, root, 3, 1<<40); p != 3*r29P-3*r29P*SkimNum/SkimDen {
+	if _, p, _ := l.SettleDelivery(server, fetcher, root, 3, 1<<40, 0); p != 3*r29P-3*r29P*SkimNum/SkimDen {
 		t.Fatalf("count 3 under a huge budget paid %d, want j·p − skim = %d", p, 3*r29P-3*r29P*SkimNum/SkimDen)
 	}
 }
@@ -373,7 +373,7 @@ func TestDeliveryRemainderIsBurnedNotEscrowed(t *testing.T) {
 		t.Fatalf("setup: 2 MiB minted (%d, %d), want (%d, %d)", l.Balance(server)-grant, l.EscrowBalance(root), objNet(B), objSkim(B))
 	}
 	j := B / r29U
-	_, paid, _ := l.SettleDelivery(server, fetcher, root, j, budget)
+	_, paid, _ := l.SettleDelivery(server, fetcher, root, j, budget, 0)
 	value := j * r29P
 	if paid != value-value*SkimNum/SkimDen || l.EscrowBalance(root) != value*SkimNum/SkimDen {
 		t.Fatalf("paid %d, escrow %d, want %d and skim(j·p) = %d only", paid, l.EscrowBalance(root), value-value*SkimNum/SkimDen, value*SkimNum/SkimDen)
@@ -432,7 +432,7 @@ func TestBurnIsCountedOnceAtCloseNotPerSettlement(t *testing.T) {
 	serveLane(l, server, fetcher, root, B, 64<<10)
 	remaining, settled := budget, int64(0)
 	for delta := 0; delta < 3; delta++ {
-		_, paid, why := l.SettleDelivery(server, fetcher, root, 8, remaining)
+		_, paid, why := l.SettleDelivery(server, fetcher, root, 8, remaining, 0)
 		if why != ReasonPaid || paid != 8-8*SkimNum/SkimDen {
 			t.Fatalf("delta %d: (%d, %q)", delta, paid, why)
 		}
@@ -470,7 +470,7 @@ func TestAckReversalUsesTheBudgetCappedCount(t *testing.T) {
 	if minted <= 0 {
 		t.Fatal("setup: nothing minted")
 	}
-	settled, paid, why := l.SettleDelivery(server, fetcher, root, 50_000, 1)
+	settled, paid, why := l.SettleDelivery(server, fetcher, root, 50_000, 1, 0)
 	if why != ReasonPaid || settled != 1 || paid != 1 {
 		t.Fatalf("(%d, %d, %q), want one increment settled", settled, paid, why)
 	}
@@ -480,5 +480,89 @@ func TestAckReversalUsesTheBudgetCappedCount(t *testing.T) {
 	}
 	if got := minted + paid - l.Balance(server); got != objNet(B)-objNet(B-r29U) {
 		t.Fatalf("reversed %d, want exactly the one-increment floor difference %d", got, objNet(B)-objNet(B-r29U))
+	}
+}
+
+// ---- the settlement skim under fetcher-chosen deltas (G-SKIM-1, -2, -5; certification
+// R2.9-settlement-skim-under-fetcher-chosen-deltas-2026-09-06 §7). Ablation for all three:
+// restore `skim := value*SkimNum/SkimDen` (the per-settlement floor).
+
+// settleSession drives one face to exhaustion at a fixed delta, passing the cumulative
+// settled as prior exactly as the node does.
+func settleSession(t *testing.T, l *Ledger, server, fetcher ports.NodeID, root ports.Hash, budget, delta int64) {
+	t.Helper()
+	var settled int64
+	for settled < budget {
+		s, _, why := l.SettleDelivery(server, fetcher, root, delta, budget-settled, settled)
+		if why != ReasonPaid {
+			t.Fatalf("delta %d at settled %d: %q", delta, settled, why)
+		}
+		settled += s
+	}
+}
+
+// TestSkimIsExactOverTheSessionNotPerSettlement — G-SKIM-1: the PE's measured table as a
+// permanent gate. One whole face at deltas 1, 7, 8, 5,000 and 50,000: escrow 6,250 and
+// server 43,750 in every arm.
+func TestSkimIsExactOverTheSessionNotPerSettlement(t *testing.T) {
+	for _, delta := range []int64{1, 7, 8, 5_000, 50_000} {
+		l := New(50_000, 0)
+		server, fetcher := id(1), id(2)
+		root := ports.HashBytes([]byte("g-skim-1"))
+		l.Register(server)
+		settleSession(t, l, server, fetcher, root, 50_000, delta)
+		if l.EscrowBalance(root) != 6_250 || l.Balance(server) != 43_750 {
+			t.Fatalf("delta %d: escrow %d, server %d — want 6,250 / 43,750 at EVERY granularity (a payer-chosen delta must not move the split)", delta, l.EscrowBalance(root), l.Balance(server))
+		}
+	}
+}
+
+// TestSettlementSkimNeverExceedsItsOwnValue — G-SKIM-2: 0 ≤ skim_i ≤ value_i, so the payout
+// is never negative. The binding case: prior 7, value 1 ⇒ skim 1, paid 0.
+func TestSettlementSkimNeverExceedsItsOwnValue(t *testing.T) {
+	l := New(50_000, 0)
+	server, fetcher := id(1), id(2)
+	root := ports.HashBytes([]byte("g-skim-2"))
+	l.Register(server)
+	base := sumConserved(l)
+	settled, paid, why := l.SettleDelivery(server, fetcher, root, 1, 1<<20, 7)
+	if why != ReasonPaid || settled != 1 || paid != 0 || l.EscrowBalance(root) != 1 || l.Balance(server) != 0 {
+		t.Fatalf("(settled %d, paid %d, %q), escrow %d, server %d — want the boundary credit to go whole to the escrow and the server paid 0, never negative", settled, paid, why, l.EscrowBalance(root), l.Balance(server))
+	}
+	if sumConserved(l)-base != 1 {
+		t.Fatalf("Σ_L moved by %d, want exactly the settled credit", sumConserved(l)-base)
+	}
+	for prior := int64(0); prior < 64; prior++ {
+		for value := int64(1); value < 20; value++ {
+			skim := (prior+value)*SkimNum/SkimDen - prior*SkimNum/SkimDen
+			if skim < 0 || skim > value {
+				t.Fatalf("prior %d value %d: skim %d outside [0, value]", prior, value, skim)
+			}
+		}
+	}
+}
+
+// TestWitnessingNeverDefundsTheEscrow — G-SKIM-5, the composed claim: serve 64 MiB (the
+// unwitnessed leg deposits its skim), then witness 256 increments in deltas of 1. The
+// escrow ends STRICTLY higher than after the serve alone, and the witnessed deposit is at
+// least PF × the unwitnessed one (32 vs 21). Ablation: the per-settlement floor ⇒ the
+// serve-time skim is clawed back and nothing replaces it — the escrow ends at 0, net −21.
+func TestWitnessingNeverDefundsTheEscrow(t *testing.T) {
+	l := New(50_000, 0)
+	server, fetcher := id(1), id(2)
+	root := ports.HashBytes([]byte("g-skim-5"))
+	l.Register(server)
+	const B = int64(64 << 20)
+	serveLane(l, server, fetcher, root, B, 512<<10)
+	afterServe := l.EscrowBalance(root)
+	if afterServe != objSkim(B) || afterServe != 21 {
+		t.Fatalf("setup: the unwitnessed leg deposited %d, want 21", afterServe)
+	}
+	settleSession(t, l, server, fetcher, root, 256, 1) // 256 increments of 256 KiB = the 64 MiB, one at a time
+	if got := l.EscrowBalance(root); got <= afterServe || got != 256*SkimNum/SkimDen {
+		t.Fatalf("escrow after witnessing %d (after serve alone %d) — witnessing must ADD funding (want 32 = ⌊256/8⌋), never claw it back and replace it with nothing", got, afterServe)
+	}
+	if _, live := l.ProvisionalLaneForTest(server, fetcher, root); live {
+		t.Fatal("the fully witnessed lane survived")
 	}
 }

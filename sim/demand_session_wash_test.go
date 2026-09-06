@@ -19,6 +19,7 @@ package sim
 import (
 	"crypto/rand"
 	"crypto/rsa"
+	"fmt"
 	"testing"
 
 	"github.com/nerolabs/silt/adapters/simnet"
@@ -30,6 +31,20 @@ import (
 )
 
 func TestSessionDemandWashPaysThePricePerIncrement(t *testing.T) {
+	for _, step := range []uint64{8, 7, 1} {
+		t.Run(fmt.Sprintf("step-%d", step), func(t *testing.T) { sessionWashAtStep(t, step) })
+	}
+}
+
+// TestWashPayerPaysTheSkimAtEveryGranularity is G-SKIM-4's name for the same property; it
+// runs the three arms above.
+func TestWashPayerPaysTheSkimAtEveryGranularity(t *testing.T) {
+	for _, step := range []uint64{7, 1} {
+		t.Run(fmt.Sprintf("step-%d", step), func(t *testing.T) { sessionWashAtStep(t, step) })
+	}
+}
+
+func sessionWashAtStep(t *testing.T, washStep uint64) {
 	const seed = 20260906
 	const fee = int64(50_000)
 	cl := NewCluster(seed, 8, simnet.DefaultConfig(), node.DefaultConfig())
@@ -84,12 +99,18 @@ func TestSessionDemandWashPaysThePricePerIncrement(t *testing.T) {
 		t.Fatal("open refused")
 	}
 
-	// Wash N units of demand on a self-dealt object in five receipts (a self-fetch IS a
-	// real paid delivery — no receipt can tell otherwise).
+	// Wash N units of demand on a self-dealt object (a self-fetch IS a real paid delivery —
+	// no receipt can tell otherwise) at the payer's chosen GRANULARITY: the skim below must
+	// hold at every step size, not only at the divisor's (G-SKIM-4; the per-settlement
+	// floor passed at 8 by coincidence and paid zero skim at 7 and at 1).
 	const N = uint64(40)
 	var settledSum int64
-	for c := uint64(8); c <= N; c += 8 {
+	for c := uint64(washStep); c <= N; c += washStep {
 		fetcher.SubmitDeliverySettle(server.ID(), handle, commitment, object, c, func(s int64, _ error) { settledSum += s })
+		cl.Sched.Run()
+	}
+	if N%washStep != 0 { // the tail
+		fetcher.SubmitDeliverySettle(server.ID(), handle, commitment, object, N, func(s int64, _ error) { settledSum += s })
 		cl.Sched.Run()
 	}
 	// PARITY: the registered units are exactly the settled increments — one credit gross

@@ -195,12 +195,65 @@ func TestSessionSpansObjectsAndIsNotClosedByASettlement(t *testing.T) {
 	if s.Settled() != 15 || s.Budget() != 50_000 {
 		t.Fatalf("after two objects: settled %d budget %d", s.Settled(), s.Budget())
 	}
-	// The skim routes to the OBJECT of each receipt (C6). How it is accumulated across
-	// fetcher-chosen deltas — a 5-increment settlement floors ⌊5/8⌋ to zero on its own —
-	// is the blind PE's blocker on this build, research-gated; the gate that pins the
-	// remedy replaces this comment. Nothing here asserts a zero skim as correct.
-	if ledger.EscrowBalance(a)+ledger.EscrowBalance(b) > 15*credit.SkimNum/credit.SkimDen+1 {
-		t.Fatalf("escrows (a %d, b %d) exceed the skim of 15 settled credits", ledger.EscrowBalance(a), ledger.EscrowBalance(b))
+	// The skim routes to the OBJECT of each receipt (C6) and floors on the SESSION's
+	// cumulative settled value (G-SKIM): a = ⌊10/8⌋ − ⌊0/8⌋ = 1, b = ⌊15/8⌋ − ⌊10/8⌋ = 0 —
+	// the CUMULATIVE rule; the aggregate ⌊15/8⌋ = 1 is exact. (A per-settlement floor gives
+	// the same two numbers by coincidence; the third object below is what distinguishes
+	// the rules — G-SKIM-6.)
+	if ledger.EscrowBalance(a) != 1 || ledger.EscrowBalance(b) != 0 {
+		t.Fatalf("skims per object (a %d, b %d), want (1, 0) under the cumulative rule", ledger.EscrowBalance(a), ledger.EscrowBalance(b))
+	}
+}
+
+// TestSkimAggregatesExactlyAcrossObjectsInOneSession — G-SKIM-6. Three objects at deltas
+// 10, 5, 5 (cumulative 10, 15, 20): the per-object split is (1, 0, 1) and the aggregate is
+// ⌊20/8⌋ = 2. Ablation: a per-settlement floor ⇒ (1, 0, 0), aggregate 1; routing the
+// boundary credit to the FIRST object moves the split.
+func TestSkimAggregatesExactlyAcrossObjectsInOneSession(t *testing.T) {
+	fetcher, server, ledger, sched := deliveryPairForTest(t, nil)
+	handle, m := openOverWire(t, fetcher, server, sched, mintDemandTokensFor(t, server, 0, 1))
+	a, b, c := ports.HashBytes([]byte("skim-a")), ports.HashBytes([]byte("skim-b")), ports.HashBytes([]byte("skim-c"))
+	for _, step := range []struct {
+		obj   ports.Hash
+		count uint64
+	}{{a, 10}, {b, 15}, {c, 20}} {
+		if _, err := settleOverWire(t, fetcher, server, sched, handle, m, step.obj, step.count); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ea, eb, ec := ledger.EscrowBalance(a), ledger.EscrowBalance(b), ledger.EscrowBalance(c)
+	if ea != 1 || eb != 0 || ec != 1 || ea+eb+ec != 20*credit.SkimNum/credit.SkimDen {
+		t.Fatalf("per-object skims (%d, %d, %d), aggregate %d — want (1, 0, 1) and ⌊20/8⌋ = 2: the skim floors on the session's cumulative value, attributed to the object whose settlement crosses the boundary", ea, eb, ec, ea+eb+ec)
+	}
+}
+
+// TestSessionSkimIsPartitionIndependent — G-SKIM-3, the attack named. Two sessions at two
+// servers settle the same 40 increments: one in 5 deltas of 8, one in 40 deltas of 1. The
+// two escrow totals are EQUAL and both ⌊40/8⌋ = 5. Ablation: a per-settlement floor ⇒ 5 vs 0.
+func TestSessionSkimIsPartitionIndependent(t *testing.T) {
+	run := func(deltas []uint64) int64 {
+		fetcher, server, ledger, sched := deliveryPairForTest(t, nil)
+		handle, m := openOverWire(t, fetcher, server, sched, mintDemandTokensFor(t, server, 0, 1))
+		obj := ports.HashBytes([]byte("partition"))
+		var cum uint64
+		for _, d := range deltas {
+			cum += d
+			if _, err := settleOverWire(t, fetcher, server, sched, handle, m, obj, cum); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return ledger.EscrowBalance(obj)
+	}
+	eights := make([]uint64, 5)
+	for i := range eights {
+		eights[i] = 8
+	}
+	ones := make([]uint64, 40)
+	for i := range ones {
+		ones[i] = 1
+	}
+	if a, b := run(eights), run(ones); a != b || a != 5 {
+		t.Fatalf("escrow after 40 increments: in eights %d, in ones %d — want both ⌊40/8⌋ = 5 (a payer-chosen partition must not move the skim)", a, b)
 	}
 }
 
@@ -413,11 +466,11 @@ type shortSettleLedger struct {
 	cap int64
 }
 
-func (l *shortSettleLedger) SettleDelivery(server, fetcher ports.NodeID, root ports.Hash, count, budget int64) (settled, paid int64, reason string) {
+func (l *shortSettleLedger) SettleDelivery(server, fetcher ports.NodeID, root ports.Hash, count, budget, prior int64) (settled, paid int64, reason string) {
 	if count > l.cap {
 		count = l.cap
 	}
-	return l.Ledger.SettleDelivery(server, fetcher, root, count, budget)
+	return l.Ledger.SettleDelivery(server, fetcher, root, count, budget, prior)
 }
 
 // TestWitnessedDemandReadsTheLedgersSettledNotTheReceiptCount — G-DEM-2. Ablation: bump
