@@ -614,6 +614,7 @@ type Node struct {
 	// sender per ChainSyncInterval window, charged BEFORE decode+verify (the
 	// Phase 1.2 CPU-DoS floor). See allowBondSubmit in bondaudit.go.
 	bondSubmitRate map[ports.NodeID]*challengerRate
+	roundCertRate  map[ports.NodeID]*challengerRate // h43 G-H43-12: MsgRoundCert per-sender window budget
 	// issuerKeySubmitRate is the R2.11 per-sender budget for MsgSubmitIssuerKeyReg (see
 	// allowIssuerKeySubmit): a refusal costs a map lookup, before decode or verify.
 	issuerKeySubmitRate map[ports.NodeID]*challengerRate
@@ -1238,6 +1239,7 @@ func New(id ports.NodeID, cfg Config, clock ports.Clock, tr ports.Transport, sto
 		peerBondRTT:         make(map[ports.NodeID]*latWindow),
 		bondChallengeRate:   make(map[ports.NodeID]*challengerRate),
 		bondSubmitRate:      make(map[ports.NodeID]*challengerRate),
+		roundCertRate:       make(map[ports.NodeID]*challengerRate),
 		entrySubmitRate:     make(map[ports.NodeID]*challengerRate),
 		issuerKeySubmitRate: make(map[ports.NodeID]*challengerRate),
 		slashedLocal:        make(map[ports.NodeID]bool),

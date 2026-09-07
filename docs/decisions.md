@@ -2294,3 +2294,31 @@ showing the one-byte value IS committed).
   residual is censorship over a controlled link, already inside the liveness model. The crypto choice is
   research-gated when it is scheduled (`docs/network-durability.md` first, build-immutable #5).
 - **What this does NOT decide:** Boulder 5's internal order and its Rocks — defined when the RC ships.
+
+## D-H43-WORKLESS-DESIGNEE — the restated liveness bound, the entry-forward cap, and the null proposal routed to era 5
+
+- **Status:** ✅ RATIFIED — 2026-09-07 (owner: *"1/ ratify, 2 ratify 3/ ratify. please proceed"*), on the blind delta
+  certification `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/CONSENSUS-LIVENESS-h43-ABC-ASBUILT-workless-designee-RESEARCH-CERTIFICATION-2026-09-07.md`
+  and the composed-diff re-certification `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/CONSENSUS-LIVENESS-h43-COMPOSED-DIFF-c2a476a-RESEARCH-CERTIFICATION-2026-09-07.md`,
+  with the blind PE ruling `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-h43-consensus-arming-c2a476a-2026-09-07.md`.
+  ROADMAP owner calls 21, 22 and 23; built and merged as PR #772 (`builder/h43-consensus-arming`).
+- **The mechanism this amends `D-CONSENSUS-ARMING` for:** `R-H43-WORKLESS-DESIGNEE` (M4) — a round whose designee is LIVE but
+  holds none of the height's pending work is wasted exactly like a round on a down designee, because the empty-block refusal
+  is a validity rule and the rotation is blind to who holds work. Present at f = 0; masked by M1 until (A) unmasked it. The
+  designee has PRIORITY at its round, never exclusivity (the #338 takeover fires at any round; this corrects the #441
+  certification's published shape). Closers built: pending ENTRIES are forwarded to the round's designee on round entry
+  (registrations stay owner-submitted — forwarding them is REFUTED, the relay refusal is the #424 closer), the takeover walk is
+  keyed to the round's designee and kept monotone, the designee attempts once per (h, r).
+- **(21) The published bound (published-claim change, amends `D-CONSENSUS-ARMING` (19)):** silt publishes liveness after GST
+  as **≤ f′+1 rounds, where f′ counts governing-set seats that are DOWN or that hold none of the height's pending work at the
+  round they are designated.** With the entry forward landing, f′ = f and the number stays **190 s at f = 1, N = 12**; a lost
+  forward is bounded by the re-keyed takeover at ≤ (N+2)·ChainSyncInterval + G = 430 s at N = 12. The cloudtest FT tiers
+  (190 / 380 s, #771) and the delivery idle-window call (owner call 4) ride on this number.
+- **(22) The entry-forward cap (security parameter):** `h43ForwardEntries` = **4** — its own named constant, never the client's
+  `entrySubmitBurst` (32): up to N−1 forwarders fire at ONE seat on every round entry, and the designee needs one entry to make
+  a non-empty block.
+- **(23) `R-H43-NULL-PROPOSAL` (scope):** PBFT §4.4's null request — the literature's answer to a workless leader — is a
+  verifier-posture change inside the frozen era surface (`ValidateProposal` and `ValidateCommit` refuse an empty block); routed
+  to **era 5, outside the RC**, with its own certification and activation height.
+- **What this does NOT decide:** the certificate's byte ceiling and eliding `LockBlock` from a round-change
+  (`R-H43-CERT-CARRIES-BLOCKS`, an era item); #380 (`R-380-LIVENESS-FACE`, its own gated item).

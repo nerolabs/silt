@@ -79,6 +79,21 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   (now also the T-RELAY-GRAN pin), `TestRelaySettlementIgnoresForwardedBytesIsBoundedByAnchor`.
 
 ### Fixed
+- **Consensus liveness — the h43 round-ladder desync (`R-H43-ROUND-LADDER-DESYNC`, `D-CONSENSUS-ARMING`; Lane A1).**
+  Run `c450985-deep` committed height 43 996 s (22.6 × `T_b`) after one validator stopped, because the round clock
+  armed on LOCAL mempool content (`core/node/rounds.go`) — 10 of 13 seats never ran the pacemaker. Now: (A) the clock
+  arms on a REPLICATED condition (pending work OR any verified consensus message for the working height) and the sweep
+  counter is held, never zeroed, when disarmed; (B) a declared round is a suffix claim in the catch-up predicate and
+  the assembled round certificate is a transferable wire object (`MsgRoundCert`, appended kind) sent to the round's
+  designee plus the peers absent from it, verified once per round, budgeted per sender and capped at the governing
+  set; (C) the designee proposes at the certificate's round instead of a re-derived local one; (D) — the mechanism the
+  model-check exposed once (A)(B)(C) existed, `R-H43-WORKLESS-DESIGNEE`, certified by the delta certification — a
+  work-holder forwards its pending ENTRIES (cap 4) to the round's designee on round entry, the #338 takeover is keyed
+  to the round's designee (the designee has priority, never exclusivity), and a designee attempts once per (h, r) with
+  the empty check before the era roots. Deterministic homes: `core/node/modelcheck_h43_*_test.go` (G-H43-1 was RED on
+  main — the first round-liveness oracle with a non-uniform arming distribution, now arming below the catch-up threshold so only (A) can move the quiescent seats — G-H43-2…6, 9, 10, 10a, 11–15, and the round-0 refusal G-H43-14 for `R-H43-CERT-ROUND-ZERO-UNVERIFIED`, a `MsgRoundCert` at round 0 that verified nothing). Published
+  bound restated (owner call 21 owed): f′+1 rounds after GST, f′ counting seats down or workless at their round; 190 s
+  at f = 1 with the forward landing, ≤ 430 s via the takeover backstop at N = 12.
 - **`statehash.Root` refuses an empty leaf value (G-R31-5, owner-ratified 2026-09-06).** The SMT library
   treats an empty update as a delete, so an empty value would have silently dropped its key from the
   state root. Every committed field encodes non-empty, so no honest root changes. `EmptyValueError`;

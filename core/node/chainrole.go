@@ -266,6 +266,7 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 		}
 		rs := n.roundsFor()
 		if b.Height == rs.Height {
+			rs.Armed = true // h43 (A): a verified proposal for the working height arms the round clock
 			// A round > 0 needs its new-view certificate, and the certificate
 			// FORCES the proposer's value: re-propose the highest carried lock
 			// or (only if none was carried) fresh. A proposer that ignores the
@@ -343,6 +344,7 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 		}
 		rs := n.roundsFor()
 		if b.Height == rs.Height {
+			rs.Armed = true // h43 (A): a verified prepare-QC for the working height arms the round clock
 			if !n.adoptLock(rs, b, env.Round, env.QC, env.Raw) {
 				n.reply(from, msg, ports.Message{Kind: ports.MsgPrecommitReply, OK: false})
 				return true
@@ -385,6 +387,34 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 		// full local timeout while the frontier moves on.
 		n.maybeCatchUpRound(rs)
 		n.reply(from, msg, ports.Message{Kind: ports.MsgRoundChangeAck, OK: true})
+	case ports.MsgRoundCert:
+		// The transferable round certificate (h43, D-CONSENSUS-ARMING (B)):
+		// validated by exactly the rule an attester applies to a
+		// proposal-carried certificate, then recorded envelope by envelope —
+		// which arms this node, advances the declared rounds, enters the
+		// round if above ours and fires the designee's proposal if that is us.
+		// G-H43-12: the per-sender window budget runs FIRST (the #424 shape) —
+		// a refusal costs a map lookup; acceptRoundCert then bounds the
+		// envelope count and skips a round already held BEFORE any signature.
+		if !n.allowRoundCert(from) {
+			n.logf(ports.LogInfo, "round-cert: REFUSED (rate)", "from", from, "budget", roundCertBurst)
+			n.reply(from, msg, ports.Message{Kind: ports.MsgRoundCertAck, OK: false})
+			return true
+		}
+		var env roundCertEnv
+		if cbor.Unmarshal(msg.Data, &env) != nil {
+			n.reply(from, msg, ports.Message{Kind: ports.MsgRoundCertAck, OK: false})
+			return true
+		}
+		rs := n.roundsFor()
+		if err := n.acceptRoundCert(rs, &env); err != nil {
+			n.logf(ports.LogDebug, "round-cert: REFUSED", "from", from, "height", env.Height, "round", env.Round, "reason", err)
+			n.reply(from, msg, ports.Message{Kind: ports.MsgRoundCertAck, OK: false})
+			return true
+		}
+		n.logf(ports.LogInfo, "round-cert: recorded (h43 transferable certificate)", "from", from, "height", env.Height, "round", env.Round, "envelopes", len(env.Raws), "our_round", rs.Round)
+		n.maybeCatchUpRound(rs)
+		n.reply(from, msg, ports.Message{Kind: ports.MsgRoundCertAck, OK: true})
 	case ports.MsgCommitBlock:
 		b, err := chain.Decode(msg.Data)
 		ok := err == nil && n.chain.Append(*b) == nil
@@ -485,6 +515,7 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 				n.logf(ports.LogInfo, "bond-reg submit REFUSED", "from", from, "validator", reg.ValidatorID(), "size", reg.Size, "next_height", next, "err", verr)
 			} else {
 				n.queuePendingBondReg(reg)
+				n.maybeProposeAtRound() // h43 (D): a designee that already holds its round certificate proposes now
 			}
 		}
 		n.reply(from, msg, ports.Message{Kind: ports.MsgSubmitBondRegAck, OK: true})
@@ -554,6 +585,7 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 		} else {
 			n.queuePendingEntry(e)
 			n.reply(from, msg, ports.Message{Kind: ports.MsgSubmitEntryAck, OK: true})
+			n.maybeProposeAtRound() // h43 (D): a designee that already holds its round certificate proposes now
 		}
 	default:
 		return false
@@ -777,8 +809,27 @@ func (n *Node) ProposeRevocation(roots []ports.Hash, attesters, broadcast []port
 }
 
 // proposeBlock signs b, gathers attestations to quorum, commits locally,
-// and broadcasts — shared by entry and revocation proposals.
+// and broadcasts — shared by entry and revocation proposals. The round and
+// its new-view certificate are derived from this node's round state.
 func (n *Node) proposeBlock(b *chain.Block, attesters, broadcast []ports.NodeID, quorum int, done func(error)) {
+	n.proposeBlockAt(b, attesters, broadcast, quorum, nil, done)
+}
+
+// viewAt is a caller-supplied (round, new-view certificate) for a proposal —
+// the designee's certificate from recordRoundChange (h43, D-CONSENSUS-ARMING
+// (C)). When supplied it is used VERBATIM: proposeBlockAt no longer re-derives
+// the round from rs.Round, which on run c450985-deep made the (43, r1)
+// designee — holding a quorum-grade r1 certificate with rs.Round == 3 —
+// assemble Changes[3] instead, fail "new-view certificate not ready" four
+// times in 20 ms, and never reach the wire (M2; G-H43-2).
+type viewAt struct {
+	Round   uint64
+	NewView [][]byte
+}
+
+// proposeBlockAt is proposeBlock with an optional caller-supplied view (nil ⇒
+// derive from the round state, exactly as before).
+func (n *Node) proposeBlockAt(b *chain.Block, attesters, broadcast []ports.NodeID, quorum int, view *viewAt, done func(error)) {
 	// Gather at least what ValidateCommit will demand: with Byzantine quorum sizing
 	// (H4) the chain requires 2f+1 over the qualified set, which can exceed the
 	// caller's floor. Under-gathering would just fail our own Append; raise it here.
@@ -995,6 +1046,15 @@ func (n *Node) proposeBlock(b *chain.Block, attesters, broadcast []ports.NodeID,
 	// cover the block as it will actually commit (post-apply state). era-4 is checked first
 	// (MintVersion returns v5 only where v4 also holds, H_era4 >= H_era3). Below both
 	// boundaries the path is byte-for-byte the old v2 behavior.
+	// G-H43-13 (`R-H43-PROPOSE-SPIN`): the empty-block rule is ValidateProposal's, but
+	// checking it here — after every fold, BEFORE the era root population (the floor-box
+	// SMT path) and the signature — makes a workless attempt cost nothing; the as-built
+	// first cut paid PopulateEra4Roots + Sign ~40 times in one round on a designee whose
+	// forward had not landed. Same predicate as chain.go "chain: empty block".
+	if len(b.Entries) == 0 && len(b.Revocations) == 0 && len(b.Unrevocations) == 0 && len(b.BondRegs) == 0 && len(b.Slashes) == 0 && len(b.IssuerKeys) == 0 {
+		done(fmt.Errorf("propose: nothing to carry (empty block; h43 — waiting for forwarded or submitted work)"))
+		return
+	}
 	if mv := n.chain.MintVersion(b.Height); mv >= chain.BlockVersionWitnessable {
 		// era-4 (v5) ATTESTATION CARRIER (R-BOX-ATTESTS, owner call O1, ratified 2026-09-03).
 		// Attach the PARENT's precommits BEFORE populating the roots: the carrier is folded into
@@ -1035,28 +1095,33 @@ func (n *Node) proposeBlock(b *chain.Block, attesters, broadcast []ports.NodeID,
 		return
 	}
 	// The round this proposal runs at, with its new-view certificate for any
-	// round > 0 (assembled by recordRoundChange; a proposer cannot invent a
-	// round — attesters verify the certificate).
+	// round > 0: the caller's certificate when supplied (the designee's, h43
+	// (C)), else this node's round state (assembled by recordRoundChange; a
+	// proposer cannot invent a round — attesters verify the certificate).
 	rs := n.roundsFor()
 	round := uint64(0)
 	var newView [][]byte
-	if b.Height == rs.Height {
+	if view != nil {
+		round, newView = view.Round, view.NewView
+	} else if b.Height == rs.Height {
 		round = rs.Round
 		if round > 0 {
 			for _, r := range rs.Changes[round] {
 				newView = append(newView, r)
 			}
-			// The forced-value rule binds US too: if the certificate carries a
-			// lock for a different value, this fresh proposal must yield (the
-			// caller's work stays pending; the locked value is re-proposed by
-			// proposeAtNewView).
-			if forced, err := n.newViewFor(b.Height, round, newView); err != nil {
-				done(fmt.Errorf("propose height %d round %d: new-view certificate not ready: %w", b.Height, round, err))
-				return
-			} else if forced != nil && forced.Hash != b.Hash() {
-				done(fmt.Errorf("propose height %d round %d: the new-view carries a lock for a different value — re-propose that (#432)", b.Height, round))
-				return
-			}
+		}
+	}
+	if round > 0 {
+		// The forced-value rule binds US too: if the certificate carries a
+		// lock for a different value, this fresh proposal must yield (the
+		// caller's work stays pending; the locked value is re-proposed by
+		// proposeAtNewView).
+		if forced, err := n.newViewFor(b.Height, round, newView); err != nil {
+			done(fmt.Errorf("propose height %d round %d: new-view certificate not ready: %w", b.Height, round, err))
+			return
+		} else if forced != nil && forced.Hash != b.Hash() {
+			done(fmt.Errorf("propose height %d round %d: the new-view carries a lock for a different value — re-propose that (#432)", b.Height, round))
+			return
 		}
 	}
 	n.gatherTwoPhase(b, attesters, broadcast, quorum, round, newView, nil, done)
@@ -1299,9 +1364,9 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 // straight into the two-phase gather) if any; otherwise a fresh drain proposal
 // for the pending queue via proposeBlock. Attesters re-verify the same
 // certificate, so an equivocating designated proposer gains nothing.
-func (n *Node) proposeAtNewView(rs *heightRounds, round uint64, newView [][]byte, forced *nodeLock) {
+func (n *Node) proposeAtNewView(rs *heightRounds, round uint64, newView [][]byte, forced *nodeLock) bool {
 	if n.bondDrainInFlight {
-		return // one proposal in flight at a time; the next sweep retries
+		return false // one proposal in flight at a time; the next arrival or sweep retries
 	}
 	peers := n.syncTargets()
 	attesters := make([]ports.NodeID, 0, len(peers))
@@ -1311,7 +1376,7 @@ func (n *Node) proposeAtNewView(rs *heightRounds, round uint64, newView [][]byte
 		}
 	}
 	if len(attesters) == 0 {
-		return
+		return false
 	}
 	n.bondDrainInFlight = true
 	fin := func(err error) {
@@ -1325,17 +1390,21 @@ func (n *Node) proposeAtNewView(rs *heightRounds, round uint64, newView [][]byte
 		lb, err := chain.Decode(forced.Block)
 		if err != nil {
 			fin(err)
-			return
+			return true
 		}
 		n.gatherTwoPhase(lb, attesters, peers, 0, round, newView, forced.QC, fin)
-		return
+		return true
 	}
 	prevHead, height := n.chain.Head()
 	if height != rs.Height {
 		fin(nil)
-		return
+		return false
 	}
-	n.proposeBlock(&chain.Block{Version: chain.BlockVersionRounds, Height: height, Prev: prevHead}, attesters, peers, 0, fin)
+	// h43 (C): the fresh proposal runs at the CERTIFICATE's round with the
+	// certificate we were handed — never at a round re-derived from local
+	// state (the forced leg above already passed them through).
+	n.proposeBlockAt(&chain.Block{Version: chain.BlockVersionRounds, Height: height, Prev: prevHead}, attesters, peers, 0, &viewAt{Round: round, NewView: newView}, fin)
+	return true
 }
 
 func (n *Node) broadcastCommit(b *chain.Block, validators []ports.NodeID, i int, done func()) {
@@ -1844,7 +1913,16 @@ func (n *Node) maybeProposeBondDrain() {
 			}
 		}
 		if self >= 0 {
-			d := int(height) % len(props)
+			// h43 (D3, certified): rank distance is measured from the ROUND's
+			// designee, props[(height+round) mod N] — the seat the round
+			// actually blames — not from the height's. Before this the walk
+			// was height-keyed, so at a round > 0 whose designee held no work
+			// the escape was a rank walk from the wrong seat (bounded at
+			// (N+2)·ChainSyncInterval, the certified backstop, but not at the
+			// published ≤ f+1 rounds). The accumulated wait is NOT reset on
+			// round entry (see advanceToRound): the walk stays monotone.
+			rs := n.roundsFor()
+			d := int((height + rs.Round) % uint64(len(props)))
 			dist = (self - d + len(props)) % len(props)
 		}
 	}

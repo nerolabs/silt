@@ -1717,6 +1717,18 @@ func (c *Chain) RequiredQuorum() int {
 // qualifiedCount only when epochs are explicitly disabled (trusted/demo). A
 // bootstrap 4-anchor network gets bftThreshold(4)=2, matching the "2 attestations"
 // the field logs show.
+// GoverningSetCap is a cheap UPPER bound on the number of distinct identities
+// that can pass AttesterEligible at the working height on the OBJECTIVE path
+// (every round path gates on Objective) — anchors ∪ bonded ∪ the frozen epoch
+// set, counted without dedup. Legacy mode's reputation-qualified attesters are
+// not counted (PE F-6): no round machinery runs there. A DoS bound for wire objects that
+// carry one envelope per member (the h43 round certificate, G-H43-12), never a
+// quorum term: a certificate with more envelopes than this is malformed by
+// construction and is refused before any signature is examined.
+func (c *Chain) GoverningSetCap() int {
+	return len(c.cfg.Anchors) + len(c.bonded) + len(c.epochSet)
+}
+
 func (c *Chain) validatorSetSize() int {
 	if c.objective() && !c.handedOff() && len(c.cfg.Anchors) > 0 {
 		return len(c.cfg.Anchors)

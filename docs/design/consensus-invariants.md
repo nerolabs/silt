@@ -149,6 +149,38 @@ The set is closed and small. Everything hit so far is a corollary of I1 + I3 + I
   `consensus-model-check.md`: per-node round-advance skew is a first-class adversarial
   schedule dimension (the 4th recurrence of the lockstep blind spot).
 
+- **h43 (the UNIFORMLY-ARMED-CLOCK face — 2026-09-07; `R-H43-ROUND-LADDER-DESYNC`, mechanism
+  SHIPPED under `D-CONSENSUS-ARMING`).** The graded run `c450985-deep` committed height 43 996 s
+  (22.6 × `T_b`) after one validator stopped — not the #451 smear: the round clock was armed on
+  LOCAL mempool content (`rounds.go:306-310`), so 10 of 13 seats never ran the pacemaker and the
+  #451 bound was proved over a population that did not exist on the wire; the disarmed branch
+  zeroed the sweep counter; the designee re-derived its round from local state and refused the
+  certificate it held; and a point-semantics round-change pinned the catch-up target to the
+  LOWEST quorum-bearing round. Present at f = 0. The invariant-map line it adds: **round-based
+  liveness = locking + a synchronizer + a UNIFORMLY ARMED CLOCK; a pacemaker armed by
+  unreplicated local state has no bound, because the bound quantifies over a population the
+  arming rule silently shrinks** (a corollary of I4, not a sixth invariant). **Shipped
+  (certified; PBFT request-arms-the-timer restored to network uniformity, Tendermint L21, PBFT
+  §4.5.2 suffix catch-up, the DiemBFT TC as a transferable object):** (A) the clock arms on a
+  REPLICATED condition — pending work OR any verified consensus message for the working height
+  — and the counter is held, never zeroed, when disarmed; (B) a declared round is a suffix
+  claim in the catch-up predicate and the assembled round certificate is a relayable wire
+  object (`MsgRoundCert`) any node broadcasts once and any node enters on; (C) the designee
+  proposes at the certificate's round; (D) on entering a round a work-holder forwards its pending
+  ENTRIES to the round's designee (PBFT's client multicast, leader-directed; registrations stay
+  owner-submitted), and the #338 takeover walk is keyed to the round's designee. I1 holds via
+  `slotCompare`'s round term and the lock rule, never via the arming rule or by who proposed:
+  **the round designee has PRIORITY, never exclusivity** — a work-holding non-designee proposes
+  after its takeover window at any round and every attester admits it (this corrects the #441
+  entry above, which read as exclusivity). Published bound (restated by the delta certification,
+  owner ratification owed): **f′+1 rounds after GST, where f′ counts governing-set seats that are
+  DOWN or hold none of the height's work at the round they are designated**; with the entry
+  forward landing f′ = f and the number is 190 s at f = 1; the takeover backstop bounds a lost
+  forward at ≤ (N+2)·ChainSyncInterval + G = 430 s at N = 12.
+  Deterministic homes: `core/node/modelcheck_h43_*_test.go` (G-H43-1…6; G-H43-1 was RED on
+  main, the first oracle in the family with a non-uniform arming distribution). Certification:
+  `silt-reviews/research/research-outcome/CONSENSUS-LIVENESS-h43-round-ladder-desync-441-380-RESEARCH-CERTIFICATION-2026-09-07.md`.
+
 **Assert (test):** a 2-2 non-intersecting fork is **resolved by fork-choice** (loser reorgs — allowed, it was never final), never wedges; a connected network never suffers a *permanent* non-final stall (**the chain-liveness half — asserted by `TestModelCheck_I4_WedgedHeightMustRecover`, GREEN with the #432 rounds+locking mechanism**); **no legitimately submitted operation is permanently starved** (**the operation-liveness half — asserted by `TestModelCheck_441_PublishStarvedAcrossRounds` + the §6 siblings in `core/node/modelcheck_441_siblings_test.go`, all RED under the recorded fold+arming revert, GREEN with the entry mempool**); a publish link is issued only after finality.
 
 **Literature (B8):** Gasper — LMD-GHOST advances the head optimistically, Casper FFG finalizes at ⅔ behind it. The commit/final separation is the norm, not a silt invention. The entry mempool is the leader-carries-the-mempool shape of every BFT SMR — a leader's one block carries the transaction pool; there is no separate per-transaction proposal that can lose a race.
@@ -201,6 +233,7 @@ Every consensus defect silt has hit is a corollary of the above:
 | #432 wedged-height permanent stall | I4 (liveness half: height-only watermark, no rounds) — the safety rulings covered I4's safety face only |
 | R-BOX-ATTESTS uncovered-certificate transition | I5 (transition read a non-hash-covered field) + I4 (operation-liveness: intermittent stall) |
 | dead fork-choice weight (#558, third site) | I5 (Statement named a term the Assert forbids; the term was inert on every real certificate) |
+| h43 round-ladder desync (`R-H43-ROUND-LADDER-DESYNC`) | I4 (liveness bound: the pacemaker armed on unreplicated local state; the #441 arming clause was the same line) |
 
 If a fifth consensus surprise appears that is **not** a corollary of I1–I5, that is real signal the set is incomplete — add it here, with its scar and code site. Absent that, **the set is closed**, and the way to stop the tail-chasing is to assert all five under adversarial scheduling (`consensus-model-check.md`) *before* spending a field run — not to keep discovering them one region at a time.
 

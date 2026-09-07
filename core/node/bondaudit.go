@@ -296,6 +296,14 @@ type challengerRate struct {
 // Per-sender (not global) so a flooder cannot starve honest submitters.
 const bondSubmitBurst = 8
 
+// roundCertBurst caps the MsgRoundCert messages ONE sender may have examined
+// per ChainSyncInterval window (h43, G-H43-12 — `R-H43-CERT-UNBUDGETED-VERIFY`,
+// the #424 remote-CPU class, third recurrence). An honest assembler sends at
+// most ONE certificate per round it assembles, rounds are ≥ 2 sweeps apart,
+// and a receiver skips a round it already holds — so 4 per window is generous
+// for the honest path and bounds a flooder at four bounded verifications.
+const roundCertBurst = 4
+
 // entrySubmitBurst caps the MsgSubmitEntry messages ONE sender may have
 // examined per ChainSyncInterval window (#183 red-team F-1). Under
 // -require-tokens, ValidateEntry runs an RSA verify per token signature, and
@@ -350,24 +358,37 @@ func (n *Node) allowEntrySubmit(from ports.NodeID) bool {
 // (the honest submit cadence clock); a refused honest submit heals by the
 // existing resubmit-next-sweep retry, exactly like a WAN-skew refusal.
 func (n *Node) allowBondSubmit(from ports.NodeID) bool {
+	return n.allowWindowed(n.bondSubmitRate, from, bondSubmitBurst)
+}
+
+// allowRoundCert is allowBondSubmit's twin for MsgRoundCert (G-H43-12): the
+// cheap gate in FRONT of the certificate's envelope verification.
+func (n *Node) allowRoundCert(from ports.NodeID) bool {
+	return n.allowWindowed(n.roundCertRate, from, roundCertBurst)
+}
+
+// allowWindowed charges one unit of `from`'s per-ChainSyncInterval budget in
+// `rate`, refusing once `burst` is spent; the table is bounded at
+// maxBondChallengers with expired windows evicted on demand.
+func (n *Node) allowWindowed(rate map[ports.NodeID]*challengerRate, from ports.NodeID, burst int) bool {
 	now := n.clock.Now()
 	window := n.cfg.ChainSyncInterval
 	if window <= 0 {
 		window = 30 * ports.Second
 	}
-	r := n.bondSubmitRate[from]
+	r := rate[from]
 	if r == nil || ports.Duration(now-r.windowStart) >= window {
-		if r == nil && len(n.bondSubmitRate) >= maxBondChallengers {
-			for id, e := range n.bondSubmitRate {
+		if r == nil && len(rate) >= maxBondChallengers {
+			for id, e := range rate {
 				if ports.Duration(now-e.windowStart) >= window {
-					delete(n.bondSubmitRate, id)
+					delete(rate, id)
 				}
 			}
 		}
-		n.bondSubmitRate[from] = &challengerRate{windowStart: now, count: 1}
+		rate[from] = &challengerRate{windowStart: now, count: 1}
 		return true
 	}
-	if r.count >= bondSubmitBurst {
+	if r.count >= burst {
 		return false // budget spent this window — refuse before decode/verify
 	}
 	r.count++

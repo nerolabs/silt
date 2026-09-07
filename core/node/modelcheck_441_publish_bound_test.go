@@ -149,6 +149,27 @@ func TestModelCheck_441_MatureSteadyState_AcceptedEntryRidesNextBlock(t *testing
 // window: waited heights × the field per-height bound (220s) dwarfs the 180s
 // single-shot poll, so the client's periodic re-submit is load-bearing, not
 // optional.
+//
+// THIS TEST IS ALSO G-H43-16 (the composed-diff certification's own
+// attribution): it is the pin for the MONOTONE `drainWaitSweeps` walk
+// (chainrole.go's `maybeProposeBondDrain` — the accumulated wait is never
+// reset on round entry, only when a node's OWN rank distance from the
+// current designee reaches 0). A rank-`k` takeover needs `3 + k` accumulated
+// sweeps regardless of how many rounds have elapsed since the wait began;
+// this test's ROTATION BOUND (≤ heightBudget) is only correct under that
+// monotonicity — a PER-ROUND reset would instead need the wait to
+// re-accumulate `3 + k` sweeps freshly inside EACH round's own (increasing)
+// duration, and rounds 0-3 last only 2, 3, 5, 8 sweeps respectively
+// (`sweepsForRound`, rounds.go) — too few to ever clear a rank distance
+// anywhere past the low single digits before the round itself advances out
+// from under it, wedging exactly the rotation this oracle measures as
+// bounded. This test therefore GOES RED under a per-round reset — VERIFIED
+// this session via a controlled revert (n.drainWaitSweeps = 0 added at
+// advanceToRound's round-entry, rounds.go, in a scratch worktree, discarded
+// after the run): "h17 never resolved within 8 sweeps" (this test's own
+// STARVED failure, fired by the reset with no other change). No second,
+// dedicated gate is needed for this regression — that failure already
+// covers it.
 func TestModelCheck_441_DroppedSubmitBroadcast_RotationWaitBounded(t *testing.T) {
 	nodes, all, net, refill, honestSlashed := mcPublishWorld(t)
 	holdSubmits := func(m simnet.HeldMsg) bool { return m.Kind == ports.MsgSubmitEntry }
