@@ -64,15 +64,6 @@ func TestModelCheck_H43_DesigneeMustProposeAtCertificateRound(t *testing.T) {
 	for i := range ids {
 		all[i] = ids[i].NodeID()
 	}
-	for _, nd := range nodes {
-		seed := make([]ports.NodeID, 0, len(all)-1)
-		for _, id := range all {
-			if id != nd.id {
-				seed = append(seed, id)
-			}
-		}
-		nd.chainSyncSeed = seed
-	}
 	byID := map[ports.NodeID]*Node{}
 	for _, nd := range nodes {
 		byID[nd.id] = nd
@@ -106,6 +97,29 @@ func TestModelCheck_H43_DesigneeMustProposeAtCertificateRound(t *testing.T) {
 	}
 
 	net.Kill(killed.id)
+
+	// Route everyone's OUTBOUND sync targets around the killed seat — a dead
+	// peer still answers `Send` with a silent drop (nil error, no callback),
+	// so a REQUEST addressed to it (broadcastCommit's own sequential
+	// validators[i]/i+1 recursion, chainrole.go:1410-1420) never resolves
+	// under this test's frozen sim clock (no real timeout ever fires without
+	// sched.Step, which this test never calls — drainHeld completes purely
+	// by delivered replies). Excluding the killed seat from chainSyncSeed
+	// keeps this a topology choice this test controls, not a claim about the
+	// quorum math itself (RequiredQuorum/the #402 anchor majority are pure
+	// functions of the chain's Anchors config, never of chainSyncSeed).
+	for _, nd := range nodes {
+		if nd.id == killed.id {
+			continue
+		}
+		seed := make([]ports.NodeID, 0, len(all)-2)
+		for _, id := range all {
+			if id != nd.id && id != killed.id {
+				seed = append(seed, id)
+			}
+		}
+		nd.chainSyncSeed = seed
+	}
 
 	// A real, valid pending bond registration for a 5th non-anchor identity —
 	// the "pending work" that arms maybeAdvanceRound, matching s1s2World's
@@ -205,24 +219,26 @@ func TestModelCheck_H43_DesigneeMustProposeAtCertificateRound(t *testing.T) {
 	// trigger while rs.Round == 3.
 	designee.handleChain(livers[1].id, ports.Message{Kind: ports.MsgRoundChange, Data: raw2})
 
-	// Fully quiesce whatever this delivery queued (the designee's own
-	// broadcasts, any stray traffic from the livers' independent
-	// advanceToRound calls above, and — once fixed — the real gather this
-	// triggers) before reading bondDrainInFlight: under the fix the
-	// triggered propose attempt is genuinely IN FLIGHT (gatherTwoPhase sent
-	// real prepare requests, awaiting replies), not resolved synchronously
-	// the way the HEAD bug's early error return was.
-	drainHeld(t, net, fifo)
-	if designee.bondDrainInFlight {
-		t.Fatalf("premise: designee.bondDrainInFlight is still true after the network fully quiesced — the triggered propose attempt neither completed nor cleanly failed")
-	}
-
-	// ── Ablation arm: pin the HEAD failure signature ───────────────────────
-	// Reproduce, with a callback this test controls, EXACTLY the call
-	// proposeAtNewView's forced == nil leg makes (chainrole.go:1338) in this
-	// same rs state (Round == 3, Changes[3] empty) — attributing the RED
-	// reason to M2 by name, not by assumption.
-	arm(designee) // re-arm: the natural trigger above may have embedded/consumed the queued reg
+	// ── Ablation arm: pin the HEAD failure signature, SYNCHRONOUSLY ────────
+	// recordRoundChange (via checkRoundQuorum/fireDesignee) runs entirely on
+	// this test's own call stack inside the handleChain call above — no
+	// network delivery is needed to trigger it — so the moment
+	// designee.handleChain(...) RETURNS, the natural trigger has ALREADY
+	// fired (queuing real prepare requests in `net`, not yet delivered) and
+	// critically has NOT touched rs.Round: checkRoundQuorum's
+	// `rs.Round < round` branch (rounds.go) is false (3 < 1), so it falls
+	// straight to fireDesignee without re-entering advanceToRound. rs.Round
+	// is therefore STILL 3 and Changes[3] STILL empty at this exact point —
+	// this test's manual SECOND call below (reproducing exactly the call
+	// proposeAtNewView's forced == nil leg makes, chainrole.go) hits the
+	// identical round-check path regardless of the natural trigger's
+	// in-flight gather, since that guard is not gated on bondDrainInFlight.
+	// This MUST run before draining the network below: once the real gather
+	// completes, the height commits and rs.Round == 3 no longer exists (a
+	// fresh height's rs.Round starts at 0) — the ablation's premise is
+	// specifically about the STALE state M2 left behind, not about anything
+	// true after a successful commit.
+	arm(designee) // re-arm: the natural trigger's fold may have embedded/consumed the queued reg
 	prevHead, h := designee.chain.Head()
 	peers := designee.syncTargets()
 	attesters := make([]ports.NodeID, 0, len(peers))
@@ -236,10 +252,21 @@ func TestModelCheck_H43_DesigneeMustProposeAtCertificateRound(t *testing.T) {
 		attesters, peers, 0, func(err error) { ablationErr = err })
 	wantSig := fmt.Sprintf("propose height %d round %d: new-view certificate not ready", h, uint64(3))
 	if ablationErr == nil || !strings.Contains(ablationErr.Error(), wantSig) {
-		t.Fatalf("G-H43-2 ablation: expected the HEAD failure signature %q (chainrole.go:1054, M2), got %v — "+
+		t.Fatalf("G-H43-2 ablation: expected the HEAD failure signature %q (chainrole.go:1120, M2), got %v — "+
 			"this test's RED reason is not attributed to M2; re-derive the premise before trusting the main assertion below", wantSig, ablationErr)
 	}
 	t.Logf("G-H43-2 ablation: HEAD failure signature confirmed — %v", ablationErr)
+
+	// Fully quiesce whatever the natural trigger queued (the designee's own
+	// prepare/precommit/commit broadcasts and their replies) before reading
+	// bondDrainInFlight: under the fix the triggered propose attempt is
+	// genuinely IN FLIGHT (gatherTwoPhase sent real prepare requests,
+	// awaiting replies), not resolved synchronously the way the HEAD bug's
+	// early error return was.
+	drainHeld(t, net, fifo)
+	if designee.bondDrainInFlight {
+		t.Fatalf("premise: designee.bondDrainInFlight is still true after the network fully quiesced — the triggered propose attempt neither completed nor cleanly failed")
+	}
 
 	// ── The oracle ──────────────────────────────────────────────────────────
 	if !sawPropose || capturedRound != 1 {
