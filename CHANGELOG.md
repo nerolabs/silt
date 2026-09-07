@@ -79,6 +79,16 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   (now also the T-RELAY-GRAN pin), `TestRelaySettlementIgnoresForwardedBytesIsBoundedByAnchor`.
 
 ### Fixed
+- **Crash-safety — a torn `chain.cbor` no longer restarts the validator from genesis (#558, Lane B8, scope call S3).**
+  `chainstore.Save` now writes a temp file, fsyncs it, renames it over `chain.cbor` and fsyncs the directory (the
+  markstore pattern), so a power loss or OOM-kill mid-write cannot leave a truncated store. At boot the daemon replays
+  through `chainstore.Recover`: a replay that would DISCARD finalized history — a torn file, or a block failing
+  structural verification — REFUSES TO START (exit 3) and names the loss, the kept prefix and the recovery
+  (`-ws-checkpoint` below the prune horizon); the new `-accept-chain-loss` flag is the operator's explicit way past,
+  keeping the longest valid prefix. Before this the failure was printed and the node continued — from genesis when the
+  file was torn (run `a434494-deep`: h83, 87 MiB of finalized history discarded). Gates (RED under ablation):
+  `adapters/chainstore` `TestRecoverRefusesATornTail`, `TestRecoverRefusesACorruptSuffixKeepsPrefixOnlyWhenAccepted`,
+  `TestSaveLeavesNoTempAndDecodes`.
 - **Consensus liveness — the h43 round-ladder desync (`R-H43-ROUND-LADDER-DESYNC`, `D-CONSENSUS-ARMING`; Lane A1).**
   Run `c450985-deep` committed height 43 996 s (22.6 × `T_b`) after one validator stopped, because the round clock
   armed on LOCAL mempool content (`core/node/rounds.go`) — 10 of 13 seats never ran the pacemaker. Now: (A) the clock

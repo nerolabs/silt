@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"math/rand"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -127,5 +128,112 @@ func TestReplayStillDetectsCorruption(t *testing.T) {
 		t.Fatal("replay accepted a tampered block; corruption must be rejected")
 	} else if !errors.Is(err, chain.ErrBadSignature) {
 		t.Fatalf("want ErrBadSignature on tamper, got %v", err)
+	}
+}
+
+// TestSaveLeavesNoTempAndDecodes pins the durable-write shape (#558 / B8): a
+// Save leaves exactly chain.cbor (no temp file), and what it wrote decodes to
+// the same blocks — the atomic-replace half of crash safety, observed on disk.
+func TestSaveLeavesNoTempAndDecodes(t *testing.T) {
+	fullRep := map[ports.NodeID]int64{}
+	for i := int64(1); i <= 5; i++ {
+		fullRep[idOf(testKey(i))] = 1000
+	}
+	c := committedChain(t, func(n ports.NodeID) int64 { return fullRep[n] })
+	dir := t.TempDir()
+	path := filepath.Join(dir, "chain.cbor")
+	if err := Save(path, c.Blocks(0)); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "chain.cbor" {
+		names := []string{}
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		t.Fatalf("Save must leave exactly chain.cbor, got %v", names)
+	}
+	got, err := Load(path)
+	if err != nil || len(got) != 2 {
+		t.Fatalf("load after save: n=%d err=%v", len(got), err)
+	}
+}
+
+// TestRecoverRefusesATornTail is the #558 gate (Lane B8, scope call S3): a
+// chain.cbor whose tail is torn (the file truncated mid-array, the shape a
+// power loss or OOM-kill leaves) must REFUSE to start — Recover returns a
+// LossError with no prefix — unless the operator accepts the loss explicitly.
+// Before this rule the daemon printed the failure and started from genesis,
+// silently discarding finalized history (run a434494-deep, h83, 87 MiB).
+func TestRecoverRefusesATornTail(t *testing.T) {
+	fullRep := map[ports.NodeID]int64{}
+	for i := int64(1); i <= 5; i++ {
+		fullRep[idOf(testKey(i))] = 1000
+	}
+	c := committedChain(t, func(n ports.NodeID) int64 { return fullRep[n] })
+	path := filepath.Join(t.TempDir(), "chain.cbor")
+	if err := Save(path, c.Blocks(0)); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Tear the tail: keep the first two thirds of the bytes.
+	if err := os.WriteFile(path, raw[:len(raw)*2/3], 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	fresh := chain.New(chain.DefaultConfig(), func(ports.NodeID) int64 { return 0 })
+	n, loss, refused := Recover(path, fresh, false)
+	if refused == nil {
+		t.Fatalf("#558: a torn chain.cbor must REFUSE to start; Recover returned restored=%d loss=%v refused=nil", n, loss)
+	}
+	var le *LossError
+	if !errors.As(refused, &le) || le.Restored != 0 {
+		t.Fatalf("want a LossError with no valid prefix, got %v", refused)
+	}
+	if _, h := fresh.Head(); h != 0 {
+		t.Fatalf("a refused replay must leave the chain empty (next height 0), got next=%d", h)
+	}
+
+	// The operator's explicit acceptance is the ONLY way past: the loss is still
+	// reported, the refusal is lifted, and the node starts from the (empty) prefix.
+	fresh2 := chain.New(chain.DefaultConfig(), func(ports.NodeID) int64 { return 0 })
+	n2, loss2, refused2 := Recover(path, fresh2, true)
+	if refused2 != nil || loss2 == nil || n2 != 0 {
+		t.Fatalf("with acceptLoss the refusal lifts and the loss stays reported: n=%d loss=%v refused=%v", n2, loss2, refused2)
+	}
+}
+
+// TestRecoverRefusesACorruptSuffixKeepsPrefixOnlyWhenAccepted: a block that
+// fails structural verification mid-file is the other loss shape — the valid
+// prefix exists, the suffix is lost. Refuse unless accepted; with acceptance
+// the prefix is what the node restarts on (the pre-existing longest-valid-
+// prefix behaviour, now behind the operator's word).
+func TestRecoverRefusesACorruptSuffixKeepsPrefixOnlyWhenAccepted(t *testing.T) {
+	fullRep := map[ports.NodeID]int64{}
+	for i := int64(1); i <= 5; i++ {
+		fullRep[idOf(testKey(i))] = 1000
+	}
+	c := committedChain(t, func(n ports.NodeID) int64 { return fullRep[n] })
+	blocks := c.Blocks(0)
+	blocks[1].Entries[0].FileSize = 999999 // breaks the proposer signature
+	path := filepath.Join(t.TempDir(), "chain.cbor")
+	if err := Save(path, blocks); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	fresh := chain.New(chain.DefaultConfig(), func(ports.NodeID) int64 { return 0 })
+	n, _, refused := Recover(path, fresh, false)
+	if refused == nil || n != 1 {
+		t.Fatalf("a corrupt suffix must refuse (prefix 1): n=%d refused=%v", n, refused)
+	}
+	fresh2 := chain.New(chain.DefaultConfig(), func(ports.NodeID) int64 { return 0 })
+	n2, loss2, refused2 := Recover(path, fresh2, true)
+	if refused2 != nil || n2 != 1 || loss2 == nil || !errors.Is(loss2, chain.ErrBadSignature) {
+		t.Fatalf("accepted loss keeps the 1-block prefix and names the cause: n=%d loss=%v refused=%v", n2, loss2, refused2)
 	}
 }
