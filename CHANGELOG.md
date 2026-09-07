@@ -8,6 +8,21 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Graded
+- **Cloud field test `c450985-deep` (2026-09-07, main `c450985`; owner go): REVIEW — 29 pass / 2 gap / 0 fail /
+  2 skip** (`integration/cloudtest/report-c450985-deep.md`, results/rss/console/flow-evidence force-added). The
+  first fleet carrying R2.9 (delivery sessions, the numéraire), B-9 and 4′ (256 KiB default, NEW genesis). Publish
+  → fetch bit-perfect at the new geometry; the S7 economy closed on the wire under the numéraire (`11-economy-repair`
+  paid 170 credits over 7 repairs; `11b-economy-skim` PASS — a GAP on the prior deep run — +2 credits of pure skim;
+  the 170 is owed a reconciliation against the certified bounty geometry in the true-up); the maturing handoff,
+  stall and capture drills, WS cold-sync, the deep drive (**`T_b` = 44 s/height**, h64→h128 in 2877 s — recorded
+  under D-R2.9-NODE-HALF-CALLS call 5), prune and converge all PASS; memory envelope peak 1.58 GiB; no OOM or
+  crash-loop. GAPs: `184-low-bond` (the known #350 timing gap) and **`6-fault-tolerance`: a 17-minute liveness
+  stall at height 43 with one validator down — the round ladders desynchronized across validators and re-aligned
+  only eventually (`R-H43-ROUND-LADDER-DESYNC`, evidence in `integration/cloudtest/h43-stall-evidence-c450985-deep/`;
+  model-check must reproduce it before any fix).** The sheet had NO delivery-session flow (added after the launch,
+  #766) — R2.9's wire proof this run is the local e2e only.
+
 ### Added
 - **Cloud field test: the R2.9 paid delivery lane is on the graded sheet (`flow_delivery_lane`, rows
   `13-delivery-lane` / `13b-delivery-settlement`).** `topology.py` arms `-accept-delivery-receipts
