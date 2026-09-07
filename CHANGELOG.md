@@ -91,7 +91,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   work-holder forwards its pending ENTRIES (cap 4) to the round's designee on round entry, the #338 takeover is keyed
   to the round's designee (the designee has priority, never exclusivity), and a designee attempts once per (h, r) with
   the empty check before the era roots. Deterministic homes: `core/node/modelcheck_h43_*_test.go` (G-H43-1 was RED on
-  main — the first round-liveness oracle with a non-uniform arming distribution — and G-H43-2…6, 9–13). Published
+  main — the first round-liveness oracle with a non-uniform arming distribution, now arming below the catch-up threshold so only (A) can move the quiescent seats — G-H43-2…6, 9, 10, 10a, 11–15, and the round-0 refusal G-H43-14 for `R-H43-CERT-ROUND-ZERO-UNVERIFIED`, a `MsgRoundCert` at round 0 that verified nothing). Published
   bound restated (owner call 21 owed): f′+1 rounds after GST, f′ counting seats down or workless at their round; 190 s
   at f = 1 with the forward landing, ≤ 430 s via the takeover backstop at N = 12.
 - **`statehash.Root` refuses an empty leaf value (G-R31-5, owner-ratified 2026-09-06).** The SMT library
