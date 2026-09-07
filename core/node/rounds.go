@@ -417,10 +417,11 @@ func (n *Node) advanceToRound(rs *heightRounds, next uint64, via string) {
 	}
 	// ENTER the round first (the timer resets on entry — DiemBFT Fig. 1), THEN
 	// record our own round-change (we are part of our own quorum): recording
-	// may complete the certificate for `next`, and recordRoundChange decides
-	// whether to enter a round by reading rs.Round — it must see us already
-	// there, or it would re-enter here (h43 (B)). Then broadcast to every
-	// sync target.
+	// may complete the certificate for `next`, and checkRoundQuorum decides
+	// whether to enter a round by reading rs.Round — with the round already
+	// entered it takes the designee branch directly instead of recursing
+	// through advanceToRound's `next <= rs.Round` guard (a tidy-up, not a
+	// necessity — PE F-10). Then broadcast to every sync target.
 	rs.Round = next
 	rs.Sweeps = 0
 	// h43 (D3): the #338 takeover walk is keyed on (height + round) in the
@@ -562,6 +563,9 @@ func (n *Node) checkRoundQuorum(rs *heightRounds, round uint64) {
 		return // round 0 needs no certificate and newViewFor verifies nothing there (C-2)
 	}
 	if c := rs.Certs[round]; c != nil {
+		if round < rs.Round {
+			return // a stale arrival for a round we have left never re-fires a proposal (PE F-8)
+		}
 		n.fireDesignee(rs, round, c)
 		return
 	}
@@ -613,6 +617,11 @@ func (n *Node) fireDesignee(rs *heightRounds, round uint64, c *roundCert) {
 // mempoolSig is a cheap signature of this node's foldable work — the queue
 // lengths and the issuer-key foldability — so a designee re-attempts a round
 // only when something it could carry has changed.
+//
+// Packing (PE F-11): the queues are each capped at maxMempool (entries and
+// regs; slashes are bounded by the culprit set), far below the 2^20 field
+// width, so the fields cannot collide; if a queue cap ever exceeds 2^20 the
+// shifts must widen with it.
 func (n *Node) mempoolSig() uint64 {
 	sig := uint64(len(n.pendingEntries))<<40 | uint64(len(n.pendingBondRegs))<<20 | uint64(len(n.pendingSlashes))<<8
 	if n.issuerKeysFoldable() {
@@ -646,7 +655,10 @@ func (n *Node) broadcastRoundCert(height, round uint64, raws [][]byte, present m
 	designee := n.designatedProposer(height, round)
 	sent := 0
 	for _, p := range n.syncTargets() {
-		if p == n.id || (p != designee && present[p] != nil) {
+		// The GOVERNING set only (PE F-5, build-immutables #4/#8): syncTargets
+		// is seed ∪ static ∪ every peer that ever advertised a bond root — up
+		// to maxPeerInfo storage-tier peers that can never use a certificate.
+		if p == n.id || !n.chain.AttesterEligibleAt(p, height) || (p != designee && present[p] != nil) {
 			continue
 		}
 		n.request(p, ports.Message{Kind: ports.MsgRoundCert, Data: data}, func(ports.Message, error) {})
@@ -659,10 +671,12 @@ func (n *Node) broadcastRoundCert(height, round uint64, raws [][]byte, present m
 // (B)): validate it with exactly the rule an attester applies to a
 // proposal-carried certificate (newViewFor — every envelope signed by a
 // qualified sender for this height and round, distinct senders, the same
-// support quorum a commit needs), then record its envelopes as if each had
-// arrived directly, which arms this node, advances the declared rounds,
-// enters the round if above ours, and fires the designee's proposal if that
-// is us. Returns false if the certificate is for another height or invalid.
+// support quorum a commit needs), cache it, record its envelopes as if each
+// had arrived directly (arming this node and advancing the declared rounds),
+// ENTER the round if it is above ours, and fire the designee's proposal if
+// that is us. The entry is made HERE (PE F-9), not left to the handler's
+// following maybeCatchUpRound. Returns an error if the certificate is for
+// another height, for round 0, empty, over the governing-set cap, or invalid.
 func (n *Node) acceptRoundCert(rs *heightRounds, env *roundCertEnv) error {
 	if env.Height != rs.Height {
 		return fmt.Errorf("round-cert for height %d, want %d", env.Height, rs.Height)
@@ -702,6 +716,10 @@ func (n *Node) acceptRoundCert(rs *heightRounds, env *roundCertEnv) error {
 			continue // newViewFor decoded and verified every envelope above
 		}
 		n.storeRoundChange(rs, rc.NewRound, rc.senderID(), raw)
+	}
+	if rs.Round < env.Round {
+		n.advanceToRound(rs, env.Round, "round-cert") // records our own envelope and fires the designee branch
+		return nil
 	}
 	n.checkRoundQuorum(rs, env.Round)
 	return nil
