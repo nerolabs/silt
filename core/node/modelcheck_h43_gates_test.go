@@ -1,0 +1,694 @@
+package node
+
+import (
+	"crypto/ed25519"
+	"fmt"
+	"sort"
+	"strings"
+	"testing"
+
+	"github.com/fxamacker/cbor/v2"
+	"github.com/nerolabs/silt/adapters/identity"
+	"github.com/nerolabs/silt/adapters/simnet"
+	"github.com/nerolabs/silt/core/chain"
+	"github.com/nerolabs/silt/ports"
+)
+
+// G-H43-2, G-H43-3, G-H43-4, G-H43-5 — the remaining RED-first gates from
+// silt-reviews/research/research-outcome/
+// CONSENSUS-LIVENESS-h43-round-ladder-desync-441-380-RESEARCH-CERTIFICATION-2026-09-07.md
+// §4.2, encoded per this session's task (G-H43-1 and G-H43-6 already live in
+// modelcheck_h43_arming_test.go on this branch).
+
+// ── G-H43-2 ─────────────────────────────────────────────────────────────────
+//
+// TestModelCheck_H43_DesigneeMustProposeAtCertificateRound is G-H43-2 (the M2
+// gate): "Drive a designee into val-b's exact state — designee for (h, 1),
+// local rs.Round == 3, Changes[1] at quorum, Changes[3] below it — and assert
+// a proposal reaches the wire at round 1."
+//
+// THE SCHEDULE, real wire delivery over held-delivery, per the field timeline
+// (certification §2/§3 M2): a 4-anchor launch network (tier2AnchorNet — the
+// #402 strict-anchor-majority regime the field ran under). One anchor (the
+// field's val-d) is killed. The other two non-designee anchors (val-a, val-c)
+// each independently sweep their OWN round to 1 on their own local timeouts
+// (maybeAdvanceRound), broadcasting real signed round-change(1) envelopes —
+// exactly as val-a/val-c laddered alone in the field. Their envelopes to the
+// designee (val-b) are parked (drainHeldExcept) rather than delivered
+// immediately, so the test controls the exact moment the SECOND
+// (quorum-completing) one arrives. The designee's own round is then driven to
+// 3 directly — the field's val-b independently laddered ahead on its own
+// clock while the quorum-completing envelope was still in flight (§2:
+// val-b's r1/r2/r3 timestamps, each on its own local timer, all before the
+// 08:55:26 catch-up jump) — and only THEN is the second envelope delivered
+// through the real MsgRoundChange handler, completing the round-1 quorum
+// while rs.Round == 3. That is val-b's exact recorded state.
+//
+// THE OBSERVATION: every live peer's transport is wrapped to record the
+// Round field of any MsgProposeBlock envelope it receives, so the assertion
+// reads the WIRE, never source text.
+//
+// RED at HEAD (M2, chainrole.go:1040-1054): recordRoundChange's automatic
+// designee trigger (rounds.go:365-387) fires proposeAtNewView(rs, 1, raws,
+// nil) — forced == nil on every h43 round-change, since none carried a lock
+// — which falls through to proposeBlock (chainrole.go:1338), and
+// proposeBlock RE-DERIVES the round from rs.Round (chainrole.go:1040-1047)
+// instead of using the 1 it was handed. rs.Changes[3] holds nothing (no
+// round-3 round-change was ever recorded), so the re-derived round-3
+// new-view certificate is immediately below quorum and the proposal never
+// reaches gatherTwoPhase — no MsgProposeBlock is ever sent, at round 1 or any
+// round. GREEN only once fix direction (C) ships (proposeAtNewView passes
+// (round, newView) through to the gather on the forced == nil leg exactly as
+// it already does on the forced != nil leg).
+func TestModelCheck_H43_DesigneeMustProposeAtCertificateRound(t *testing.T) {
+	nodes, ids, net, g, _ := tier2AnchorNet(t, 4)
+	all := make([]ports.NodeID, len(ids))
+	for i := range ids {
+		all[i] = ids[i].NodeID()
+	}
+	for _, nd := range nodes {
+		seed := make([]ports.NodeID, 0, len(all)-1)
+		for _, id := range all {
+			if id != nd.id {
+				seed = append(seed, id)
+			}
+		}
+		nd.chainSyncSeed = seed
+	}
+	byID := map[ports.NodeID]*Node{}
+	for _, nd := range nodes {
+		byID[nd.id] = nd
+	}
+
+	_, height := nodes[0].chain.Head()
+	if height != 1 {
+		t.Fatalf("premise: want the working height to be 1 (right after genesis), got %d", height)
+	}
+
+	designeeID := nodes[0].designatedProposer(height, 1)
+	designee, ok := byID[designeeID]
+	if !ok {
+		t.Fatalf("premise: designatedProposer(%d, 1) returned an unknown id", height)
+	}
+	var killed *Node
+	for _, nd := range nodes {
+		if nd.id != designeeID {
+			killed = nd
+			break
+		}
+	}
+	var livers []*Node
+	for _, nd := range nodes {
+		if nd.id != designeeID && nd.id != killed.id {
+			livers = append(livers, nd)
+		}
+	}
+	if len(livers) != 2 {
+		t.Fatalf("premise: want exactly 2 live non-designee anchors, got %d", len(livers))
+	}
+
+	net.Kill(killed.id)
+
+	// A real, valid pending bond registration for a 5th non-anchor identity —
+	// the "pending work" that arms maybeAdvanceRound, matching s1s2World's
+	// convention.
+	reg5 := identity.FromSeed(890010)
+	regPub := append([]byte(nil), reg5.Signer().Public().(ed25519.PublicKey)...)
+	reg := chain.NewBondReg(reg5.Signer(), ports.HashBytes(regPub), 2<<20, []byte("stub"), g.Hash(), 0)
+	arm := func(nd *Node) { nd.pendingBondRegs = []pendingBondReg{{R: reg}} }
+	arm(designee)
+	for _, nd := range livers {
+		arm(nd)
+	}
+
+	// Wrap the live peers' transports to observe the Round field of any
+	// MsgProposeBlock they receive — the wire, not source text.
+	var sawPropose bool
+	var capturedRound uint64
+	wrap := func(nd *Node) {
+		ep := net.Endpoint(nd.id)
+		orig := nd.handle
+		ep.SetHandler(func(from ports.NodeID, msg ports.Message) {
+			if msg.Kind == ports.MsgProposeBlock {
+				var env proposeEnv
+				if cbor.Unmarshal(msg.Data, &env) == nil && len(env.Raw) > 0 {
+					sawPropose = true
+					capturedRound = env.Round
+				} else {
+					sawPropose = true
+					capturedRound = 0 // legacy bare-block payload = round 0
+				}
+			}
+			orig(from, msg)
+		})
+	}
+	for _, nd := range livers {
+		wrap(nd)
+	}
+
+	holdToDesignee := func(m simnet.HeldMsg) bool {
+		return m.To == designee.id && m.Kind == ports.MsgRoundChange
+	}
+
+	// Each liver independently sweeps its OWN round to 1 (sweepsForRound(0) ==
+	// 2 sweeps), on its own local timeout — no coordination between them,
+	// matching the field's independent per-node ladders. Deliver everything
+	// EXCEPT the round-change(1) copy addressed to the designee, which stays
+	// parked for the driver to release in a controlled order below.
+	for _, nd := range livers {
+		for i := 0; i < 2; i++ {
+			nd.maybeAdvanceRound()
+		}
+		if r := nd.roundsFor().Round; r != 1 {
+			t.Fatalf("premise: liver %s did not reach round 1 after 2 sweeps (got %d)", nd.id, r)
+		}
+		drainHeldExcept(t, net, holdToDesignee)
+	}
+
+	var parkedIDs []int
+	for _, m := range net.Pending() {
+		if holdToDesignee(m) {
+			parkedIDs = append(parkedIDs, m.ID)
+		}
+	}
+	sort.Ints(parkedIDs)
+	if len(parkedIDs) != 2 {
+		t.Fatalf("premise: want exactly 2 parked round-change(1) envelopes addressed to the designee, got %d (%v)", len(parkedIDs), parkedIDs)
+	}
+
+	// Deliver the FIRST envelope: sub-quorum (1 non-proposer anchor <
+	// RequiredQuorum(2)) — recordRoundChange must not fire the designee
+	// trigger yet.
+	if !net.Deliver(parkedIDs[0]) {
+		t.Fatalf("premise: first parked round-change(1) envelope failed to deliver")
+	}
+	rs := designee.roundsFor()
+	if got := len(rs.Changes[1]); got != 1 {
+		t.Fatalf("premise: after the first round-change(1) delivery, designee should hold exactly 1 recorded round-1 sender, got %d", got)
+	}
+	if sawPropose {
+		t.Fatalf("premise: a MsgProposeBlock was observed after only a SUB-quorum round-change(1) delivery — the quorum gate is not engaged; this test is not exercising M2")
+	}
+
+	// Drive the designee's own round to 3 DIRECTLY — the field's val-b
+	// independently laddered ahead on its own local timeouts while this
+	// quorum-completing envelope was still in flight (certification §2/§3);
+	// only the resulting STATE (rs.Round == 3, Changes[3] empty) is what M2
+	// depends on, so it is set here rather than re-derived through additional
+	// sweep-timeout machinery this test does not otherwise need.
+	rs.Round = 3
+	if got := len(rs.Changes[3]); got != 0 {
+		t.Fatalf("premise: designee's Changes[3] must be empty (no round-3 round-change was ever recorded), got %d entries", got)
+	}
+
+	// Deliver the SECOND (quorum-completing) envelope through the REAL
+	// MsgRoundChange handler — this is the exact moment the certification
+	// names: recordRoundChange now sees 2 non-proposer anchors + the designee
+	// (an anchor) itself = 3 of 4 anchors, meeting both RequiredQuorum(2) and
+	// the #402 strict anchor majority (3 of 4), and fires the designee
+	// trigger while rs.Round == 3.
+	if !net.Deliver(parkedIDs[1]) {
+		t.Fatalf("premise: second parked round-change(1) envelope failed to deliver")
+	}
+	if designee.bondDrainInFlight {
+		t.Fatalf("premise: designee.bondDrainInFlight is still true after the triggered propose attempt returned — proposeAtNewView's fin() should have reset it")
+	}
+	drainHeld(t, net, fifo)
+
+	// ── Ablation arm: pin the HEAD failure signature ───────────────────────
+	// Reproduce, with a callback this test controls, EXACTLY the call
+	// proposeAtNewView's forced == nil leg makes (chainrole.go:1338) in this
+	// same rs state (Round == 3, Changes[3] empty) — attributing the RED
+	// reason to M2 by name, not by assumption.
+	arm(designee) // re-arm: the natural trigger above may have embedded/consumed the queued reg
+	prevHead, h := designee.chain.Head()
+	peers := designee.syncTargets()
+	attesters := make([]ports.NodeID, 0, len(peers))
+	for _, p := range peers {
+		if designee.chain.AttesterEligibleAt(p, h) {
+			attesters = append(attesters, p)
+		}
+	}
+	var ablationErr error
+	designee.proposeBlock(&chain.Block{Version: chain.BlockVersionRounds, Height: h, Prev: prevHead},
+		attesters, peers, 0, func(err error) { ablationErr = err })
+	wantSig := fmt.Sprintf("propose height %d round %d: new-view certificate not ready", h, uint64(3))
+	if ablationErr == nil || !strings.Contains(ablationErr.Error(), wantSig) {
+		t.Fatalf("G-H43-2 ablation: expected the HEAD failure signature %q (chainrole.go:1054, M2), got %v — "+
+			"this test's RED reason is not attributed to M2; re-derive the premise before trusting the main assertion below", wantSig, ablationErr)
+	}
+	t.Logf("G-H43-2 ablation: HEAD failure signature confirmed — %v", ablationErr)
+
+	// ── The oracle ──────────────────────────────────────────────────────────
+	if !sawPropose || capturedRound != 1 {
+		t.Fatalf("G-H43-2 REPRODUCED: designee %s held rs.Round=3 with a quorum-grade round-1 certificate "+
+			"(2 non-proposer anchors + itself), but no MsgProposeBlock reached the wire at round 1 "+
+			"(sawPropose=%v capturedRound=%d) — proposeBlock re-derives the round from local state instead of "+
+			"the certificate's round (M2, chainrole.go:1040-1047/1338). Consensus-adjacent, research-gated "+
+			"(build-immutable #6); fix direction (C) in the certification.", designee.id, sawPropose, capturedRound)
+	}
+	t.Logf("G-H43-2: designee %s proposed at round %d — M2 is fixed on this branch.", designee.id, capturedRound)
+}
+
+// ── G-H43-3 ─────────────────────────────────────────────────────────────────
+//
+// TestModelCheck_H43_CatchUpTargetMustReachTheSuffixProvenFrontier is
+// G-H43-3 (the M3 gate): "With a quorum-weight population at r_low and a
+// sub-threshold population at r_high > r_low, the network converges on ONE
+// round within one round duration, and never on a round below one where a
+// quorum already sits."
+//
+// THE MINIMAL REPRODUCTION of M3's structural defect (certification §3.1,
+// "the catch-up target is pinned to the LOWEST quorum-bearing round, and can
+// only ever be" — rs.Changes[r] is a POINT-IN-TIME record, not a SUFFIX
+// claim): 8 anchors (f=2, RoundCatchupMet threshold = f+1 = 3). Four of them
+// (the "D" group) all broadcast a round-change for r_low = 1 — a genuine
+// quorum-weight population AT that one round (4 ≥ 3). Three OTHERS (the "A/B/
+// C" group) are each, independently, genuinely past round 3 — but their
+// round-change broadcasts for rounds 4, 5, and 6 respectively land in THREE
+// DIFFERENT Changes buckets on the observer, one sender each. This is exactly
+// the field shape: three real honest members (val-a, val-b, val-c) each
+// individually ahead of round 3, no single round bucket ever holding all
+// three at once. In AGGREGATE — under a SUFFIX reading ("declared round ≥
+// r") — the three are unambiguous proof an honest quorum sits at round ≥ 4
+// (3 ≥ the threshold); under the shipped POINT reading, no single bucket
+// {4}, {5}, or {6} ever reaches 3, so no round above 1 can ever indvidually
+// qualify, and the observer's catch-up target is structurally pinned to
+// round 1 — the certification's "can only ever be the LOWEST quorum-bearing
+// round".
+//
+// The test drives real, individually-verified round-change envelopes (via
+// advanceToRound, the same call maybeAdvanceRound's timeout path makes) at
+// the real observer, then calls the REAL maybeCatchUpRound and reads its
+// effect on rs.Round — never source text.
+//
+// RED at HEAD (M3, rounds.go:415-439's per-round RoundCatchupMet scan):
+// maybeCatchUpRound never crosses round 1, even though 3 real, distinct,
+// honest-quorum-weight senders are all genuinely at round ≥ 4. GREEN only
+// once fix direction (B)'s suffix semantics ship ("the highest r such that
+// the senders with declared round ≥ r meet RoundCatchupMet").
+func TestModelCheck_H43_CatchUpTargetMustReachTheSuffixProvenFrontier(t *testing.T) {
+	const nAnchors = 8
+	nodes, ids, net, _, _ := tier2AnchorNet(t, nAnchors)
+	all := make([]ports.NodeID, len(ids))
+	for i := range ids {
+		all[i] = ids[i].NodeID()
+	}
+	for _, nd := range nodes {
+		seed := make([]ports.NodeID, 0, len(all)-1)
+		for _, id := range all {
+			if id != nd.id {
+				seed = append(seed, id)
+			}
+		}
+		nd.chainSyncSeed = seed
+	}
+
+	lowSenders := nodes[0:4]  // the "D" group — a real quorum-weight population, all AT round 1
+	highSenders := nodes[4:7] // "A", "B", "C" — each genuinely past round 3, one per bucket
+	highRounds := []uint64{4, 5, 6}
+	observer := nodes[7]
+
+	for _, nd := range lowSenders {
+		nd.advanceToRound(nd.roundsFor(), 1, "test")
+	}
+	drainHeld(t, net, fifo)
+	for i, nd := range highSenders {
+		nd.advanceToRound(nd.roundsFor(), highRounds[i], "test")
+	}
+	drainHeld(t, net, fifo)
+
+	rs := observer.roundsFor()
+	// >= 4, not == 4: round 1 is a GENUINE quorum-weight round, so as soon as
+	// the D group's broadcasts land, every other node's OWN maybeCatchUpRound
+	// (fired automatically inside the real MsgRoundChange handler,
+	// chainrole.go:358-387) legitimately catches itself up to round 1 too —
+	// #451 ingredient (b) working correctly — and its own resulting
+	// round-change(1) broadcast adds a further entry. That cascade is real,
+	// intended behavior at round 1 (never the defect under test); it does not
+	// touch Changes[4..6], which is what this oracle reads.
+	if got := len(rs.Changes[1]); got < 4 {
+		t.Fatalf("premise: observer should hold at least 4 recorded round-1 senders (the D group, "+
+			"cascaded catch-up may add more), got %d", got)
+	}
+	for _, nd := range lowSenders {
+		if _, ok := rs.Changes[1][nd.id]; !ok {
+			t.Fatalf("premise: D-group sender %s missing from observer's Changes[1]", nd.id)
+		}
+	}
+	for i, r := range highRounds {
+		if got := len(rs.Changes[r]); got != 1 {
+			t.Fatalf("premise: observer should hold exactly 1 recorded sender at round %d, got %d — "+
+				"the per-bucket sub-threshold premise is broken", r, got)
+		}
+		if _, ok := rs.Changes[r][highSenders[i].id]; !ok {
+			t.Fatalf("premise: expected round %d's sole recorded sender to be %s, it was not present", r, highSenders[i].id)
+		}
+	}
+
+	lowIDs := map[ports.NodeID]bool{}
+	for _, nd := range lowSenders {
+		lowIDs[nd.id] = true
+	}
+	if !observer.chain.RoundCatchupMet(lowIDs) {
+		t.Fatalf("premise: the r_low (D) population (4 anchors) should meet RoundCatchupMet — this test's low group is not quorum-weight")
+	}
+	suffixIDs := map[ports.NodeID]bool{}
+	for _, nd := range highSenders {
+		suffixIDs[nd.id] = true
+	}
+	if !observer.chain.RoundCatchupMet(suffixIDs) {
+		t.Fatalf("premise: the r_high (A/B/C) population (3 anchors), taken TOGETHER, should meet RoundCatchupMet — " +
+			"this test's high group is not quorum-weight in aggregate, so a suffix-based target could never legitimately reach it either")
+	}
+	for _, r := range highRounds {
+		senders := map[ports.NodeID]bool{}
+		for id := range rs.Changes[r] {
+			senders[id] = true
+		}
+		if observer.chain.RoundCatchupMet(senders) {
+			t.Fatalf("premise: round %d individually (1 sender) should NOT meet RoundCatchupMet on its own — "+
+				"the sub-threshold-PER-BUCKET premise (the defect's precondition) is broken", r)
+		}
+	}
+
+	// ── The oracle ──────────────────────────────────────────────────────────
+	observer.maybeCatchUpRound(rs)
+
+	if rs.Round == 0 {
+		t.Fatalf("G-H43-3: maybeCatchUpRound did not even reach round 1, where a genuine quorum-weight population (4 of 8 anchors) already sits — regression below an existing quorum round")
+	}
+	if rs.Round < 4 {
+		t.Fatalf("G-H43-3 REPRODUCED: 3 real, distinct, honest-quorum-weight anchors are genuinely at round >= 4 "+
+			"(declared rounds 4, 5, 6 respectively — a suffix reading proves round >= 4 with 3 of 8 anchors, meeting "+
+			"the f+1=3 threshold), but maybeCatchUpRound only advanced the observer to round %d — the catch-up target "+
+			"is pinned to the lowest quorum-bearing round (M3, rounds.go:415-439: rs.Changes[r] is scanned as a "+
+			"POINT-IN-TIME record, never as a suffix), exactly the field's \"ten low seats jumped to round=1 while "+
+			"the frontier sat at r4/r5\" (certification §2/§3.1). Consensus-adjacent, research-gated (build-immutable "+
+			"#6); fix direction (B) — suffix semantics — in the certification.", rs.Round)
+	}
+	t.Logf("G-H43-3: observer caught up to round %d — M3 is fixed on this branch.", rs.Round)
+}
+
+// ── G-H43-4 ─────────────────────────────────────────────────────────────────
+//
+// TestModelCheck_H43_DroppedDirectRoundChangeMustStillRelay is G-H43-4: "A
+// node that never receives a peer's round-change directly still learns the
+// round via a relayed certificate within one hop."
+//
+// THE DROP PRIMITIVE: adapters/simnet's held-delivery model-check mode
+// exposes exactly the per-target drop this gate needs —
+// (*simnet.Network).DropPending(id), "the model-check's message-loss
+// control" (simnet.go:250-257) — removes one specific parked message WITHOUT
+// delivering it, distinct from net.Partition (which would drop EVERY message
+// between a pair, not one delivery) or Config.Loss (stochastic, not
+// targeted). No new harness primitive was needed.
+//
+// THE SCHEDULE: 7 anchors (f=2, RoundCatchupMet threshold = f+1 = 3).
+// Y1, Y2, Y3 each broadcast a real, individually-verified round-change(1) —
+// together a genuine quorum-weight population for round 1. X's copy of
+// EXACTLY Y1's broadcast is dropped (DropPending) — X receives Y2 and Y3
+// directly (2 senders, sub-threshold on its own) but never Y1. Every OTHER
+// node (Z among them) receives all three directly and so genuinely ASSEMBLES
+// a quorum-grade round-1 certificate (3 senders, meets threshold) — the
+// precondition a relay would need a source for. The network is then drained
+// to full quiescence: nothing further is ever delivered.
+//
+// RED at HEAD (R-H43-ONESHOT-RC, rounds.go:353-358; R-H43-POINT-SEMANTICS):
+// a round-change broadcast is one-shot, unacked, and never relayed — Z's
+// having assembled the certificate does nothing for X, since Z (and every
+// other node) only ever forwards a round-change it ITSELF originates via its
+// own advanceToRound, never one it received. No wire object carries "I have
+// a quorum for round 1" between peers — ports.MsgRoundCert does not exist in
+// the port enum (grepped this session: zero occurrences repo-wide). X's
+// Changes[1] stays at 2 forever, below the 3-anchor threshold, and X's round
+// never leaves 0. GREEN only once fix direction (B)'s transferable round
+// certificate ships (a node that assembles a quorum broadcasts it once per
+// (h, r); a receiver validates it exactly like a proposal-carried
+// certificate and enters r).
+func TestModelCheck_H43_DroppedDirectRoundChangeMustStillRelay(t *testing.T) {
+	const nAnchors = 7
+	nodes, ids, net, _, _ := tier2AnchorNet(t, nAnchors)
+	all := make([]ports.NodeID, len(ids))
+	for i := range ids {
+		all[i] = ids[i].NodeID()
+	}
+
+	y1, y2, y3 := nodes[0], nodes[1], nodes[2]
+	x := nodes[3]
+	z := nodes[4] // the witness: a node that genuinely assembles the full round-1 certificate
+
+	// Topology (NOT full mesh — the field's real gossip graph is not a complete
+	// graph either): Y1/Y2/Y3 and every OTHER anchor talk to everyone,
+	// including X. But X talks to, and is talked to by, ONLY Y1/Y2/Y3 — no
+	// other anchor (Z included) has X in its own sync set. This is what makes
+	// X's isolation from the dropped Y1 message genuine: without it, a FULL
+	// MESH lets any node that independently catches up (Z, having directly
+	// heard all three) accidentally "relay" by re-broadcasting its OWN fresh
+	// round-change(1) to X, which reaches the threshold through indirect
+	// diffusion — an artifact of the test's connectivity, not the certified
+	// transferable-certificate mechanism this gate targets. Restricting X's
+	// peer set to exactly the three direct senders removes that artifact.
+	only := func(id ports.NodeID, except ...ports.NodeID) []ports.NodeID {
+		skip := map[ports.NodeID]bool{id: true}
+		for _, e := range except {
+			skip[e] = true
+		}
+		out := make([]ports.NodeID, 0, len(all))
+		for _, other := range all {
+			if !skip[other] {
+				out = append(out, other)
+			}
+		}
+		return out
+	}
+	for _, nd := range nodes {
+		switch nd.id {
+		case x.id:
+			nd.chainSyncSeed = []ports.NodeID{y1.id, y2.id, y3.id}
+		case y1.id, y2.id, y3.id:
+			nd.chainSyncSeed = only(nd.id) // reach everyone, including X
+		default:
+			nd.chainSyncSeed = only(nd.id, x.id) // reach everyone EXCEPT X
+		}
+	}
+
+	// Y1 broadcasts; drop EXACTLY its copy to X, deliver every other copy
+	// (Y2, Y3, Z, and the remaining anchors all receive Y1 directly).
+	y1.advanceToRound(y1.roundsFor(), 1, "test")
+	dropID := -1
+	for _, m := range net.Pending() {
+		if m.To == x.id && m.From == y1.id && m.Kind == ports.MsgRoundChange {
+			dropID = m.ID
+		}
+	}
+	if dropID < 0 {
+		t.Fatalf("premise: no parked round-change(1) message from Y1 to X found to drop")
+	}
+	if !net.DropPending(dropID) {
+		t.Fatalf("premise: DropPending(%d) (Y1's message to X) failed", dropID)
+	}
+	drainHeld(t, net, fifo)
+
+	// Y2 and Y3 broadcast normally — X receives both of these directly.
+	y2.advanceToRound(y2.roundsFor(), 1, "test")
+	drainHeld(t, net, fifo)
+	y3.advanceToRound(y3.roundsFor(), 1, "test")
+	drainHeld(t, net, fifo)
+
+	// Premise (the drop landed, and only on X): X holds Y2+Y3 but not Y1.
+	xrs := x.roundsFor()
+	if _, ok := xrs.Changes[1][y1.id]; ok {
+		t.Fatalf("premise: X recorded Y1's round-change(1) despite the drop — DropPending did not take")
+	}
+	for _, sender := range []*Node{y2, y3} {
+		if _, ok := xrs.Changes[1][sender.id]; !ok {
+			t.Fatalf("premise: X is missing %s's direct round-change(1) — it should have received this one undropped", sender.id)
+		}
+	}
+	if got := len(xrs.Changes[1]); got != 2 {
+		t.Fatalf("premise: X should hold exactly 2 recorded round-1 senders (Y2, Y3), got %d", got)
+	}
+
+	// Premise (a real certificate WAS genuinely assembled elsewhere): Z
+	// received all three directly, meets the threshold, and — via the
+	// EXISTING #451 ingredient (b) — has already caught its own round up to
+	// 1. This is the source a relay would need; it exists.
+	zrs := z.roundsFor()
+	for _, sender := range []*Node{y1, y2, y3} {
+		if _, ok := zrs.Changes[1][sender.id]; !ok {
+			t.Fatalf("premise: witness Z is missing %s's round-change(1) — Z should have assembled the full certificate", sender.id)
+		}
+	}
+	zSenders := map[ports.NodeID]bool{y1.id: true, y2.id: true, y3.id: true}
+	if !z.chain.RoundCatchupMet(zSenders) {
+		t.Fatalf("premise: Z's 3-sender set does not meet RoundCatchupMet — this test's quorum-weight premise is broken")
+	}
+	if zrs.Round < 1 {
+		t.Fatalf("premise: witness Z did not catch its own round up to 1 despite assembling the full quorum — Z has not genuinely ASSEMBLED a certificate the field would consider ready to relay")
+	}
+
+	// Fully quiesce the network: nothing further is ever delivered from here.
+	drainHeld(t, net, fifo)
+
+	// ── The oracle ──────────────────────────────────────────────────────────
+	if xrs.Round < 1 {
+		t.Fatalf("G-H43-4 REPRODUCED: X never directly received Y1's round-change(1) (dropped), and although Z "+
+			"(and every other live anchor) genuinely assembled a quorum-grade round-1 certificate (Y1+Y2+Y3, "+
+			"meeting the f+1=3 threshold) and has itself already entered round 1, X's round never advances — "+
+			"X.roundsFor().Round=%d. Round-changes are one-shot, unacked, and never relayed (R-H43-ONESHOT-RC, "+
+			"rounds.go:353-358): no node forwards a round-change it received, only ones it originates itself, and "+
+			"no wire object (ports.MsgRoundCert does not exist) carries an assembled certificate between peers. "+
+			"Consensus-adjacent, research-gated (build-immutable #6); fix direction (B) — the transferable round "+
+			"certificate — in the certification.", xrs.Round)
+	}
+	t.Logf("G-H43-4: X caught up to round %d via a relayed certificate — the transferable round certificate is fixed on this branch.", xrs.Round)
+}
+
+// ── G-H43-5 ─────────────────────────────────────────────────────────────────
+//
+// G-H43-5 is I1 non-regression (certification §4.2, §4.1(3)): "the S1/S2
+// mature oracles and TestModelCheck_I4_WedgedHeightMustRecover stay GREEN;
+// plus a new oracle — a delayed lower-round prepare-QC arriving at a node
+// that already prepared at a higher round never yields a second commit at
+// the height." THIS GATE IS GREEN AT HEAD BY DESIGN — it is a
+// non-regression pin, not a reproduction of a defect; none of the h43
+// mechanisms (M1/M2/M3) touch the watermark this oracle exercises.
+//
+// (i) CONFIRMED GREEN on this branch, this session (`go test -count=1 -v
+// -run '...' ./core/node/`, full output captured in this session's report):
+//
+//	--- PASS: TestModelCheck_451_SilentAuthorLockedValueMustStillCommit (0.57s)
+//	--- PASS: TestModelCheck_I4_WedgedHeightMustRecover (0.01s)
+//	--- PASS: TestModelCheck_S1_Mature_DelayedWeightQuorumIsCarriedForward (0.11s)
+//	--- PASS: TestModelCheck_S2_Mature_ForgedLockMisreportCannotForkTheHeight (0.12s)
+//	--- PASS: TestModelCheck_S1_DelayedLowerRoundQuorumIsCarriedForward (0.01s)
+//	--- PASS: TestModelCheck_S2_ForgedLockMisreportCannotForkTheHeight (0.02s)
+//	PASS  ok  	github.com/nerolabs/silt/core/node	1.356s
+//
+// (ii) TestModelCheck_H43_DelayedLowerRoundPrepareQCNeverForcesASecondCommit,
+// below — the NEW oracle, expressing certification §4.1(3) ("a late
+// lower-round quorum cannot complete at a node that has moved up and
+// signed... slotCompare orders round before phase... the watermark itself
+// is the enforcement") as a real, driven test over the actual node loop,
+// plus an ablation pinning the round term's necessity.
+func TestModelCheck_H43_DelayedLowerRoundPrepareQCNeverForcesASecondCommit(t *testing.T) {
+	nodes, ids, net, g, _ := tier2AnchorNet(t, 4)
+	all := make([]ports.NodeID, len(ids))
+	for i := range ids {
+		all[i] = ids[i].NodeID()
+	}
+	for _, nd := range nodes {
+		seed := make([]ports.NodeID, 0, len(all)-1)
+		for _, id := range all {
+			if id != nd.id {
+				seed = append(seed, id)
+			}
+		}
+		nd.chainSyncSeed = seed
+	}
+	n0, n1, n2, n3 := nodes[0], nodes[1], nodes[2], nodes[3]
+
+	// n0 already prepared at a HIGHER round (2) for a block A this test never
+	// otherwise constructs — durably recorded via the same call the real
+	// gather path uses (chainrole.go:104), so the mark is genuine, not
+	// fabricated bytes.
+	hashA := ports.HashBytes([]byte("blockA-round2"))
+	if !n0.recordSign(1, 2, chain.PhasePrepare, hashA) {
+		t.Fatalf("premise: n0.recordSign(1, 2, Prepare, hashA) failed to persist")
+	}
+
+	// A REAL, independently-gathered prepare-QC for a DIFFERENT block B at
+	// round 0 — n1 proposes, n2+n3 attest, entirely excluding n0 (neither an
+	// attester nor a broadcast target), so n0 never hears about this round
+	// through any channel except the one delayed message delivered below.
+	var captured []byte
+	ep2 := net.Endpoint(n2.id)
+	origN2 := n2.handle
+	ep2.SetHandler(func(from ports.NodeID, msg ports.Message) {
+		if msg.Kind == ports.MsgPrepareQC && captured == nil {
+			captured = append([]byte(nil), msg.Data...)
+		}
+		origN2(from, msg)
+	})
+	blockB := &chain.Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("blockB-round0")}}
+	var done bool
+	var proposeErr error
+	n1.proposeBlock(blockB, []ports.NodeID{n2.id, n3.id}, []ports.NodeID{n2.id, n3.id}, 2,
+		func(err error) { done, proposeErr = true, err })
+	drainHeld(t, net, fifo)
+	if !done || proposeErr != nil {
+		t.Fatalf("premise: the independent round-0 gather among n1/n2/n3 must commit cleanly: done=%v err=%v", done, proposeErr)
+	}
+	if captured == nil {
+		t.Fatalf("premise: never captured a MsgPrepareQC en route to n2 — the independent gather did not reach the precommit phase")
+	}
+	if _, h := n0.chain.Head(); h != 1 {
+		t.Fatalf("premise: n0 must NOT have heard about the independent round-0 gather by any other channel (head=%d, want 1)", h)
+	}
+
+	// THE DELAYED DELIVERY: the exact bytes a real round-0 attester received,
+	// handed directly to n0 through its real message handler — a genuine,
+	// verifiable prepare-QC for a LOWER round (0) than n0's already-recorded
+	// mark (2).
+	n0.handle(n1.id, ports.Message{Kind: ports.MsgPrepareQC, Data: captured})
+	drainHeld(t, net, fifo)
+
+	// ── The oracle (GREEN at HEAD — non-regression) ─────────────────────────
+	if n0.signMark.Round != 2 || n0.signMark.Phase != chain.PhasePrepare || n0.signMark.Hash != hashA {
+		t.Fatalf("G-H43-5 VIOLATION: n0's watermark moved in response to a delayed LOWER-round prepare-QC — "+
+			"mark is now (height=%d round=%d phase=%d hash=%x), want the untouched (1, 2, Prepare, %x); "+
+			"a delayed lower-round quorum must never force a signature past the watermark (certification §4.1(3))",
+			n0.signMark.Height, n0.signMark.Round, n0.signMark.Phase, n0.signMark.Hash, hashA)
+	}
+	if rs := n0.roundsFor(); rs.Lock != nil {
+		t.Fatalf("G-H43-5 VIOLATION: n0 adopted a lock (round %d, hash %x) from the delayed lower-round prepare-QC", rs.Lock.Round, rs.Lock.Hash)
+	}
+	if _, h := n0.chain.Head(); h != 1 {
+		t.Fatalf("G-H43-5 VIOLATION: n0's head advanced (h=%d) — the delayed lower-round QC must never yield a second commit at the height", h)
+	}
+	t.Log("G-H43-5: n0's watermark refused the delayed lower-round prepare-QC — the round term in slotCompare enforced it, exactly as certified. GREEN at HEAD (non-regression).")
+
+	// ── Ablation: pin the round term's necessity ────────────────────────────
+	// The real slotCompare, on these exact recorded inputs, must refuse
+	// (c < 0).
+	if c := slotCompare(1, 0, chain.PhasePrecommit, n0.signMark); c >= 0 {
+		t.Fatalf("G-H43-5 ablation premise: slotCompare(1, 0, Precommit, mark) should be < 0 (refuse), got %d", c)
+	}
+	// A test-only reimplementation of slotCompare with the ROUND CASE
+	// REMOVED, applied to the SAME inputs — this test may not edit
+	// chainrole.go, so the "deliberately reverted round term" is expressed as
+	// a parallel predicate rather than a source edit (per this session's
+	// instructions). If this ablated comparator does NOT flip to "allow" on
+	// these inputs, the ablation fails to demonstrate the round term's
+	// necessity, and the GREEN result above would be unattributed.
+	if c := slotCompareNoRoundAblation(1, chain.PhasePrecommit, n0.signMark); c <= 0 {
+		t.Fatalf("G-H43-5 ablation: the round-blind predicate should ALLOW (c > 0) on n0's exact recorded inputs "+
+			"(the round case is skipped, so height ties and PhasePrecommit(2) > PhasePrepare(1) decides it alone), got %d — "+
+			"this ablation does not demonstrate the round term's necessity", c)
+	}
+	t.Log("G-H43-5 ablation: with the round case removed, the SAME inputs that slotCompare correctly refuses would " +
+		"instead be ALLOWED — the round term is load-bearing, confirming the GREEN result above is attributed to it, not incidental.")
+}
+
+// slotCompareNoRoundAblation is chainrole.go's slotCompare (chainrole.go:75)
+// with the ROUND case deleted — the "deliberately reverted round term"
+// ablation for G-H43-5, expressed as a parallel test-only predicate since
+// this session may only add _test.go files. Orders purely by (height, phase),
+// exactly as #397's pre-#432 height-only watermark did.
+func slotCompareNoRoundAblation(height uint64, phase uint8, m ports.SignMark) int {
+	switch {
+	case height != m.Height:
+		if height > m.Height {
+			return 1
+		}
+		return -1
+	case phase != m.Phase:
+		if phase > m.Phase {
+			return 1
+		}
+		return -1
+	default:
+		return 0
+	}
+}
