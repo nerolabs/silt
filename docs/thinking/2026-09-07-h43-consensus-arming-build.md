@@ -82,3 +82,56 @@ non-regression pin, ablated against a reverted `slotCompare` round term). G-H43-
 pin, on the branch). The whole `core/node` and `core/chain` suites, then the model-check tier, then
 `integration/sim`, before the PR is opened; the blind PE reviews the diff and the Researcher re-certifies the
 composed change before merge, per the ratification.
+
+## Second pass — what the model-check found once (A)(B)(C) were built, and the delta certification
+
+**The evidence.** With (A)(B)(C) built, G-H43-1 stayed RED. A probe with a log sink over the same schedule
+(`h43-probe-evidence.txt`, scratch) showed every seat armed, the certificate assembled and relayed, all
+twelve at round 1 within seconds — and the round-1 designee failing every attempt with `chain: empty
+block`. The height committed at 292 s (virtual), at round 3, by a node that was NOT the round-3 designee.
+
+**The ruling** (blind delta certification,
+`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/CONSENSUS-LIVENESS-h43-ABC-ASBUILT-workless-designee-RESEARCH-CERTIFICATION-2026-09-07.md`):
+
+- **M4 `R-H43-WORKLESS-DESIGNEE` — CERTIFIED as a fourth mechanism.** A round whose designee is live but
+  holds none of the height's work is wasted like a round on a down designee, because the empty-block
+  refusal is a validity rule and the rotation is blind to who holds work. Present at f = 0. M1 masked it;
+  (A) unmasks it. Bites only before the height's first prepare-QC (after a lock exists the forced leg
+  re-proposes). The field's entry lane can exhibit it (`SubmitEntry` reaches only the client's peers).
+- **"Only the designee may propose at a round > 0" — REFUTED.** The designee has PRIORITY, never
+  exclusivity: the height-keyed #338 takeover already fires at any round and every attester admits it.
+  That is what committed the probe at round 3. This corrects the #441 certification's published shape
+  (`R-441-DESIGNEE-EXCLUSIVITY-CLAIM`, restated in `consensus-invariants.md` I4).
+- **The published bound — REFUTED under (A)(B)(C) alone.** Correct: ≤ (N+2)·Δ + G = 430 s at N = 12,
+  independent of f, via the takeover walk. Restated claim (D4): **f′+1 rounds, where f′ counts seats that
+  are down OR workless at the round they are designated**; with the entry forward landing, W ≈ 0 and the
+  number is again 190 s at f = 1. **Owner call (i): ratify the restated bound** (it amends
+  `D-CONSENSUS-ARMING` (19)).
+- **Closers:** (D1) forward pending work to the round's designee — SPLIT: **entries CERTIFIED** (capped at
+  its own constant, **owner call (ii): ratify 4**), **registrations REFUTED** (the owner-only relay
+  refusal is the #424 CPU-DoS closer; a forwarded reg is dropped 100 % of the time after ~1.5 MB and
+  after burning the forwarder's own submit budget; and `SubmitBondRenewal` already broadcasts a due reg
+  to every peer). (D2) an empty-yield signal — REFUTED. (D3) the takeover at rounds > 0 — CERTIFIED, it
+  already exists; re-key its rank distance to the round's designee. (D5) PBFT's null request — sound, the
+  long-run answer, GATED on the era surface: **owner call (iii): route `R-H43-NULL-PROPOSAL` to era 5.**
+- **(A) CERTIFIED. (B) CERTIFIED on the round-exact-certificate / suffix-catch-up split** (it is PBFT's
+  own: §4.4 `V` is view-exact, §4.5.2 is the suffix rule) **and GATED on cost** — three gates, all built
+  here: G-H43-11 the certificate is O(N · block) once locks are carried (a round-change carries its full
+  `LockBlock`), so it goes to the round's designee plus the peers absent from it, never to every peer;
+  G-H43-12 `MsgRoundCert` gets a per-sender window budget (`roundCertBurst` = 4), an envelope cap at
+  `GoverningSetCap()`, and an unverified early return for a round already held; G-H43-13 the designee's
+  attempt is deduped per (h, r) on a mempool signature and the empty check runs before the era roots and
+  the signature. **(C) CERTIFIED.**
+
+**One correction to the ruling, with evidence.** §3.3 asked for `drainWaitSweeps` to be reset on round
+entry. Built that way, `TestModelCheck_441_DroppedSubmitBroadcast_RotationWaitBounded` went RED: a rank-k
+walk needs 3+k sweeps, rounds 0–3 last 2/3/5/8 sweeps, so a per-round reset can never reach a far rank
+until the ladder outgrows it — the ruling's own §2.4 arithmetic. The walk is therefore re-keyed but kept
+MONOTONE; the price is the pre-existing #397 Q2b-1 residue (a near-rank taker may race the designee at one
+(h, r); the watermark bounds it). Measured on the final code: entry-lane shape commits at 104 s (round 2 in
+the probe only because the probe fixture re-strips the designee's queue; G-H43-9 asserts round ≤ f);
+registration-lane shape commits at 232 s via the takeover, inside the 430 s backstop.
+
+**Gates now owed (Tester):** G-H43-9 (the entry-lane arm of G-H43-1 with `commitRound ≤ f` and proposer ==
+designee), G-H43-10 (the forward: entries land; NO reg is ever forwarded), G-H43-10a (the cap is its own
+constant), G-H43-11/12/13 (the certificate's cost gates), plus the re-encoded premises of G-H43-2/3/4.

@@ -166,8 +166,17 @@ The set is closed and small. Everything hit so far is a corollary of I1 + I3 + I
   — and the counter is held, never zeroed, when disarmed; (B) a declared round is a suffix
   claim in the catch-up predicate and the assembled round certificate is a relayable wire
   object (`MsgRoundCert`) any node broadcasts once and any node enters on; (C) the designee
-  proposes at the certificate's round. I1 holds via `slotCompare`'s round term and the lock
-  rule, never via the arming rule. Published bound: ≤ f+1 rounds after GST (190 s at f = 1).
+  proposes at the certificate's round; (D) on entering a round a work-holder forwards its pending
+  ENTRIES to the round's designee (PBFT's client multicast, leader-directed; registrations stay
+  owner-submitted), and the #338 takeover walk is keyed to the round's designee. I1 holds via
+  `slotCompare`'s round term and the lock rule, never via the arming rule or by who proposed:
+  **the round designee has PRIORITY, never exclusivity** — a work-holding non-designee proposes
+  after its takeover window at any round and every attester admits it (this corrects the #441
+  entry above, which read as exclusivity). Published bound (restated by the delta certification,
+  owner ratification owed): **f′+1 rounds after GST, where f′ counts governing-set seats that are
+  DOWN or hold none of the height's work at the round they are designated**; with the entry
+  forward landing f′ = f and the number is 190 s at f = 1; the takeover backstop bounds a lost
+  forward at ≤ (N+2)·ChainSyncInterval + G = 430 s at N = 12.
   Deterministic homes: `core/node/modelcheck_h43_*_test.go` (G-H43-1…6; G-H43-1 was RED on
   main, the first oracle in the family with a non-uniform arming distribution). Certification:
   `silt-reviews/research/research-outcome/CONSENSUS-LIVENESS-h43-round-ladder-desync-441-380-RESEARCH-CERTIFICATION-2026-09-07.md`.
