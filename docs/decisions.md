@@ -2184,3 +2184,43 @@ committed field encodes to a non-empty value (the `Present` marker, a fixed-widt
 32-byte set digest, `core/chain/statehash.go`), so no honest root changes and this is a validity-surface
 tightening, not a consensus change. Gate: `TestRootRejectsEmptyLeafValue` (with a positive control
 showing the one-byte value IS committed).
+
+## D-CONSENSUS-ARMING — the round clock arms on a replicated condition; a relayable round certificate; the published f+1 liveness bound
+
+- **Status:** ✅ RATIFIED — 2026-09-07 (owner: *"agreed with all (ratify)"*), on the certification
+  `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/CONSENSUS-LIVENESS-h43-round-ladder-desync-441-380-RESEARCH-CERTIFICATION-2026-09-07.md`
+  and the RED gate G-H43-1 (`core/node/modelcheck_h43_arming_test.go`, Tester branch
+  `tester/h43-round-ladder-desync-modelcheck` @ `8b1e1ef`). ROADMAP owner calls 18, 19 and 20.
+- **The defect (attributed):** `core/node/rounds.go:306-310` arms the round clock on LOCAL mempool content, so the
+  round number is a function of unreplicated private state; the quiescent branch zeroes `rs.Sweeps`; `proposeBlock`
+  re-derives the round from `rs.Round`; `Changes[r]` is a point record. Field shape: run `c450985-deep`, block 43
+  committed 17 min 20 s after block 42 under f=1 down. #441 (publish starvation) is the same arming clause.
+- **(18) The rule, a consensus-rule change (I4; I1 preserved by `slotCompare`'s round term, never by the arming
+  rule):** (A) arm the round clock on a REPLICATED condition — pending work OR any consensus message for the working
+  height (PBFT arming restored to uniformity; Tendermint L21); (B) suffix-semantics round-changes plus a relayable
+  round certificate (the DiemBFT timeout-certificate schema); (C) the designee proposes at the certificate's round.
+  Built ONLY against the RED gates G-H43-1…8 (Tester, RED-first), in one PR, with the Researcher re-certifying the
+  composed change before merge. No graded cloud run until G-H43-1 is GREEN on the fix.
+- **(19) The published bound and the harness:** silt publishes liveness under f=1 down as **≤ f+1 rounds**
+  (190 s ≈ 4.3 × the measured 44 s block interval); the cloudtest `6-fault-tolerance` tiers are re-priced to
+  190 / 380 s and the `ft_publish` empty-string defect (`scenarios.sh:526-541`, which made the 1445 s cap unmeasured)
+  is fixed with G-H43-7; graded validators run `-log debug`.
+- **(20) #380:** in objective mode `ValidateCommit` ignores the local `Config.Quorum` floor and defers to
+  `bftThreshold`; `Quorum` stays a proposer-side gather target only. A separate GATED item (I1) behind G-H43-8.
+- **What this does NOT decide:** the delivery idle-window default (owner call 4) — set only after the fix lands and
+  the bound is field-confirmed, since the reaper is wall-clock and a stall reaps live sessions.
+
+## D-RC-SCOPE-S1 — the Release Candidate ships with the economy default-OFF; the flip is a `0.9.x` release before `1.0.0`
+
+- **Status:** ✅ RATIFIED — 2026-09-07 (owner: *"agreed with all (ratify)"*), on the Economist's scope advice
+  `/Users/andrewedmond/Claude/claude/silt-reviews/economist/ADVISORY-boulder2-telemetry-spec-R2.4-checklist-and-RC-scope-2026-09-07.md` §4 (option b) and the planner's recommendation in `ROADMAP.md` (scope call S1).
+- **The decision:** the RC (`0.9.0`, the era-4/v5 stamp-raising release, format frozen, floor box never-Accept)
+  ships with `-economy` DEFAULT-OFF and every paid lane BUILT, gated and dark. The external B8 pass attacks the
+  frozen consensus AND the economy under `-economy` ON in the harness. The default flip (R2.4) is a `0.9.x`
+  release inside the RC line, after R2.7's adversarial-solvency verdict is clean and before `1.0.0`.
+- **Why (b):** under (a) flip-before-RC a pony eats silent restart loss on the ephemeral ledger (`D-FP2-SCOPE`) and
+  the T-AR baseline is lost forever; under (c) flip-after-1.0.0 the edge carries durability's cost for a whole
+  major version with the reward half dark — a T-AR violation; under (b) it defers ~33 % of revenue for one release.
+  The flip re-arms FP-2 / FP-1 / `R-F8-RESTART-REWIND`; freezing the format does not depend on it.
+- **What this does NOT decide:** S2 (the operational floor), S3 (`#558`), S4 (`#437`) — still open.
+
