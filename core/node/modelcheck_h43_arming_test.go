@@ -11,8 +11,7 @@ import (
 // silt-reviews/research/research-outcome/CONSENSUS-LIVENESS-h43-round-ladder-desync-441-380-RESEARCH-CERTIFICATION-2026-09-07.md
 // §4.2: "matureWorld12 variant with heterogeneous arming: exactly 3 of 12
 // seats hold pending work, one heavy seat killed, staggered sweep phases,
-// timed delivery on the sim clock. The height commits within
-// Σ_{r≤f} sweepsForRound(r)·ChainSyncInterval + skew + G."
+// timed delivery on the sim clock."
 //
 // THE ROOT (M1, certified): core/node/rounds.go:306-310 arms the round clock
 // on LOCAL mempool content — `maybeAdvanceRound` quiesces
@@ -25,32 +24,71 @@ import (
 // ever exercise this branch. This test is the first in the family that
 // does not.
 //
+// THIS IS THE REG LANE, PLAIN STATEMENT (delta certification
+// CONSENSUS-LIVENESS-h43-ABC-ASBUILT-workless-designee-RESEARCH-CERTIFICATION-2026-09-07.md
+// §3.1/§7): a bond registration is NEVER forwarded to a round's designee —
+// the receiver decisively refuses any reg it does not own
+// ("bond-reg submit REFUSED (relay)", chainrole.go; R-H43-FORWARD-REG-RELAY-REFUSED,
+// gated by G-H43-10(b)) — so THIS lane gets no D1-entry rescue and its
+// certified bound is the D4 BACKSTOP `(N+2)·ChainSyncInterval + G`, never
+// the tighter `f+1` ladder bound (that bound is the ENTRY lane's,
+// G-H43-9). What THIS gate pins, once M1 no longer masks it, is D3: the
+// #338 rank-staggered takeover's walk is re-keyed from the ROUND's own
+// designee `props[(height+round) % N]` (chainrole.go's
+// `maybeProposeBondDrain`), not from the height's `props[height % N]`
+// (the pre-D3 walk, still what `462478d` computes).
+//
 // THE SCHEDULE: nodes[0..3] are the four heavy (64 MiB) anchors — the
-// field's val-a..d. nodes[0,1,2] are ARMED (continuously re-fed a pending
-// bond reg, matching the field's val-a/b/c holding entries+regs);
-// nodes[3] is KILLED at the contested height's start (the field's val-d,
-// stopped) and RESTARTED at downDuration=540s (~9 min, the field's val-d
-// return) — the coordinator's requested "down then back mid-ladder" shape,
-// layered onto the cert's "one heavy seat killed". nodes[4..11] (4
-// maturers + 4 sybils) are left QUIESCENT — pendingBondRegs/pendingEntries
-// forced empty and never touched — the 8 seats the field's rotation held
-// silent throughout (`sybil-3.log`/`maturer-2.log`: "recording ... and
-// never advancing").
+// field's val-a..d. ARMED = nodes[2, 4, 9] (one anchor, one maturer, one
+// sybil — deliberately NOT the contiguous val-a/b/c trio this gate used
+// before the re-shape); nodes[3] is KILLED at the contested height's start
+// (the field's val-d, stopped) and RESTARTED at downDuration=540s (~9 min,
+// after the backstop has already decided the RED/GREEN run — the "down
+// then back mid-ladder" shape, layered onto the cert's "one heavy seat
+// killed"). The rest of nodes[4..11] are left QUIESCENT — pendingBondRegs
+// forced empty and never touched (setup-only strip — see
+// stripQuiescentRegsOnly) — the field's silent rotation seats.
 //
-// THE BOUND (Q4b, certified): Σ_{r≤f} sweepsForRound(r)·ChainSyncInterval
-// + skew + G, at f=1 (one heavy seat down, 2f+1=3 of 4 anchors live):
-// (sweepsForRound(0)+sweepsForRound(1))·30s + 30s(skew, the #549 derived
-// cross-node bound) + 10s(G, the #555-measured intrinsic gather latency at
-// 12-seat WAN) = 5·30 + 30 + 10 = 190s. Measured from the KILL instant (the
-// field's own accounting: "996s after the kill" — Q4b/§2), not from the
-// return.
+// THE SEARCH FOR A WINNER-NAME DIVERGENCE, AND WHY THIS FIXTURE CANNOT
+// SHOW ONE — reported with the arithmetic, per instruction, rather than
+// shipping a seat assignment that only coincidentally passes. props :=
+// EligibleProposers() is fixed for this fixture (hash-sorted, deterministic
+// identity seeds). The height's own designee (round 0) sits at
+// props-position 9 (node 3 — killed). This run settles at round 2, whose
+// OWN designee sits at position 11 (node 7, confirmed workless below).
+// rank-distance is `dist(p, d) = (p - d + N) mod N`, walked FORWARD. Fix
+// d_new = d_old + r (mod N): for ANY candidate p with dist(p, d_old) >= r,
+// dist(p, d_new) = dist(p, d_old) - r — a CONSTANT SHIFT, which preserves
+// the RELATIVE ORDER of every such candidate. The only candidates that
+// could REORDER are those with dist(p, d_old) < r — i.e., the positions the
+// round ladder sweeps THROUGH on its way from d_old to d_new. At r = 2
+// those are positions 9 and 10 (node 3 — killed — and node 6). But arming
+// EITHER of those two seats does not produce a comparison at round 2 at
+// all: node 6 sits exactly at position 10, round 1's own designee, so
+// arming it makes round 1 a DIRECT proposal (verified this session — armed
+// sets containing node 6 commit at round 1, by node 6, before round 2 is
+// ever reached) — a violation of "the round's designee itself confirmed
+// workless", not a reachable comparison. So for this fixture, at the round
+// this schedule actually settles at, NO seat assignment can both (a) keep
+// round 2's designee workless and (b) make the height-keyed and
+// round-keyed walks name different winners — the shift is order-preserving
+// over exactly the candidates that remain eligible to compare. Verified
+// directly: armed=[2, 4, 9] names the SAME winner (node 9) under both the
+// height-keyed formula (dist 4 from position 9) and the round-keyed one
+// (dist 4 from position 11) — see the logged arithmetic below.
 //
-// RED at HEAD: the 8 quiescent seats never run maybeAdvanceRound's
-// non-quiescent branch at all (M1), so the network's pacemaker runs on 3 of
-// 12 seats — well under any weight/count quorum threshold the certificate
-// path requires — and no round converges within the bound. GREEN only
-// after fix direction (A) (arm on a replicated condition, hold Sweeps
-// rather than zero it on the disarmed branch) ships.
+// WHAT THIS GATE STILL PROVES, given that: (1) the pin reads the ACTUAL
+// committing proposer against the CORRECT (round-keyed) rank formula, live
+// — the formula this fix's chainrole.go now runs, cited by file:line, not
+// merely a value that happens to coincide; (2) RED is carried by
+// CONVERGENCE, not by winner identity — armed=[2, 4, 9] does not commit
+// within the D4 backstop at `462478d` at all (verified in a scratch
+// worktree, this session), so the pin cannot even be reached pre-fix. A
+// future seat/height choice that DOES separate the two walks (this
+// fixture's height is fixed by matureWorld12's own build sequence; a
+// different h43 fixture at a height further from its own round-0
+// designee's position, giving r >= 3 room without an intervening armed
+// direct-hit, could) is a genuine follow-up, not attempted here.
 func TestModelCheck_H43_HeterogeneousArmingMustCommitWithinFPlus1Rounds(t *testing.T) {
 	nodes, ids, net, sched, refill := matureWorld12(t)
 	all := make([]ports.NodeID, len(ids))
@@ -69,11 +107,43 @@ func TestModelCheck_H43_HeterogeneousArmingMustCommitWithinFPlus1Rounds(t *testi
 
 	_, contested := nodes[0].chain.Head()
 
-	// ARM exactly nodes[0,1,2] (the field's val-a/b/c); KILL nodes[3] (val-d);
-	// force nodes[4..11] QUIESCENT — the heterogeneous-arming premise G-H43-6
-	// checks the harness CAN express.
-	armed := []int{0, 1, 2}
+	// ARM nodes[2, 4, 9] (one anchor, one maturer, one sybil — the docstring's
+	// arithmetic explains why THIS fixture cannot separate the height-keyed
+	// and round-keyed walks by winner NAME; convergence carries RED instead);
+	// KILL nodes[3] (val-d); force the rest of nodes[4..11] QUIESCENT — the
+	// heterogeneous-arming premise G-H43-6 checks the harness CAN express.
+	armed := []int{2, 4, 9}
 	killedIdx := 3
+
+	// props is the SAME EligibleProposers() ordering both the takeover
+	// (chainrole.go's maybeProposeBondDrain) and this test's pin read — a
+	// pure function of committed state, fixed for the whole run.
+	props := nodes[0].chain.EligibleProposers()
+	if len(props) != 12 {
+		t.Fatalf("premise: want a 12-member epoch, got %d eligible proposers", len(props))
+	}
+	posOf := map[ports.NodeID]int{}
+	for i, p := range props {
+		posOf[p] = i
+	}
+	// rankFrom mirrors chainrole.go's takeover rank formula exactly:
+	// dist = (self - d + N) % N, walking FORWARD from d. Returns the armed
+	// candidate with the smallest such distance from position `from`.
+	rankFrom := func(from int) (winnerIdx, winnerDist int) {
+		winnerDist = -1
+		for _, c := range armed {
+			d := (posOf[nodes[c].id] - from + len(props)) % len(props)
+			if winnerDist < 0 || d < winnerDist {
+				winnerDist, winnerIdx = d, c
+			}
+		}
+		return
+	}
+	dHeight := int(contested % uint64(len(props)))
+	heightKeyedWinner, heightKeyedDist := rankFrom(dHeight)
+	t.Logf("G-H43-1 premise: props fixed (N=%d); height %d's OWN designee sits at position %d; the OLD "+
+		"height-keyed takeover walk (pre-D3) would favor node %d (dist %d) among the armed set %v",
+		len(props), contested, dHeight, heightKeyedWinner, heightKeyedDist, armed)
 	// stripQuiescent (h43-ABC-asbuilt certification §1.3, R-H43-FIXTURE-STRIPS-REG-LANE):
 	// SETUP-ONLY on the entries lane. Run once, to establish the
 	// heterogeneous-arming premise (nodes 4-11 start with none of the
@@ -118,8 +188,12 @@ func TestModelCheck_H43_HeterogeneousArmingMustCommitWithinFPlus1Rounds(t *testi
 		}
 	}
 	arm()
+	armedIdxSet := map[int]bool{}
+	for _, i := range armed {
+		armedIdxSet[i] = true
+	}
 	for i, nd := range nodes {
-		isArmed := i == 0 || i == 1 || i == 2
+		isArmed := armedIdxSet[i]
 		isKilled := i == killedIdx
 		hasWork := len(nd.pendingBondRegs) > 0 || len(nd.pendingEntries) > 0
 		if isArmed && !hasWork {
@@ -149,11 +223,12 @@ func TestModelCheck_H43_HeterogeneousArmingMustCommitWithinFPlus1Rounds(t *testi
 	}
 
 	// The field's val-d: down then back mid-ladder (coordinator's requested
-	// shape, layered onto the cert's "one heavy seat killed"). 190s < 540s,
-	// so the bound below is decided before this fires in the RED run; it
-	// exists in the schedule so a future GREEN run (and any resolution of
-	// R-H43-RECOVERY-UNATTRIBUTED, §3.2/§9 of the certification) also covers
-	// the return dynamic, not just the permanently-down case.
+	// shape, layered onto the cert's "one heavy seat killed"). 430s < 540s,
+	// so the restated D4 backstop below is decided before this fires in the
+	// RED run; it exists in the schedule so a future GREEN run (and any
+	// resolution of R-H43-RECOVERY-UNATTRIBUTED, §3.2/§9 of the parent
+	// certification) also covers the return dynamic, not just the
+	// permanently-down case.
 	const downDuration = 9 * 60 * ports.Second
 	sched.AfterFunc(downDuration, func() {
 		net.Restart(nodes[killedIdx].id)
@@ -169,15 +244,14 @@ func TestModelCheck_H43_HeterogeneousArmingMustCommitWithinFPlus1Rounds(t *testi
 		return false
 	}
 
-	// THE BOUND, at f=1 (Q4b): Σ_{r≤f} sweepsForRound(r)·ChainSyncInterval + skew + G.
-	const f = uint64(1)
-	var sweepSum uint64
-	for r := uint64(0); r <= f; r++ {
-		sweepSum += uint64(sweepsForRound(r))
-	}
-	const skew = 30 * ports.Second    // the #549-derived cross-node skew bound (< ChainSyncInterval)
+	// THE RESTATED BOUND (D4, delta certification §2.2/§3.4): the reg lane
+	// gets no forward-based rescue (D1-entry does not apply to it, by design
+	// — G-H43-10(b)), so its worst case is the #338 takeover walk, never the
+	// f+1 ladder escape (that bound belongs to the entry lane, G-H43-9):
+	// `(N + 2) · ChainSyncInterval + G`.
 	const gatherG = 10 * ports.Second // the #555-measured intrinsic gather latency at 12-seat WAN
-	bound := ports.Duration(sweepSum)*interval + skew + gatherG
+	const nGoverning = 12
+	bound := ports.Duration(nGoverning+2)*interval + gatherG
 	deadline := sched.Now().Add(bound)
 
 	steps := 0
@@ -208,23 +282,79 @@ func TestModelCheck_H43_HeterogeneousArmingMustCommitWithinFPlus1Rounds(t *testi
 		for i, nd := range nodes {
 			rounds[i] = nd.roundsFor().Round
 		}
-		t.Fatalf("G-H43-1 REPRODUCED: with 3 of 12 seats armed (nodes 0,1,2), 8 quiescent (nodes 4-11), "+
-			"one heavy seat killed (node 3, restart scheduled at %v uncalled by the bound), height %d "+
-			"did not commit within the certified f=1 bound %v of the kill (deadline %v; per-seat rounds "+
-			"reached: %v) — the round clock is armed on unreplicated local mempool state (rounds.go:306-310), "+
-			"so 8 of 12 seats never ran the pacemaker (M1, certified). Consensus-adjacent, research-gated "+
-			"(build-immutable #6); fix direction (A)/(B)/(C) in the certification.",
-			downDuration, contested, bound, deadline, rounds)
+		t.Fatalf("G-H43-1 REPRODUCED: with armed=%v, 8 quiescent, one heavy seat killed (node 3, restart "+
+			"scheduled at %v uncalled by the backstop), height %d did not commit within the restated D4 "+
+			"reg-lane backstop (N+2)*Delta+G = %v of the kill (deadline %v; per-seat rounds reached: %v). The "+
+			"reg lane has no forward-based rescue by design (R-H43-FORWARD-REG-RELAY-REFUSED, deleted at "+
+			"8368196), so its only rescue is the #338 takeover — which does not converge within the backstop "+
+			"at all on this seat assignment before this fix (D3's re-key, verified against this fix: converges "+
+			"at round 2, proposer node 9, the nearest work-holder from round 2's own workless designee at "+
+			"props-position 11; the height-keyed formula (props-position %d) predicts the SAME winner (node %d, "+
+			"dist %d) in THIS specific fixture — this fixture's own arithmetic, docstring above, proves no seat "+
+			"assignment here can separate the two walks by winner NAME while keeping the round's designee "+
+			"workless, so this RED is carried by convergence, not by a different name). Consensus-adjacent, "+
+			"research-gated (build-immutable #6); fix direction (A) (M1) + D3 (the re-key) in the certification.",
+			armed, downDuration, contested, bound, deadline, rounds, dHeight, heightKeyedWinner, heightKeyedDist)
 	}
 	var commitRound uint64
+	var proposerID ports.NodeID
 	for _, nd := range nodes {
 		if b := nd.Chain().Blocks(contested); len(b) > 0 {
 			commitRound = b[0].CommitRound
+			proposerID = b[0].ProposerID()
 			break
 		}
 	}
-	t.Logf("G-H43-1: h%d committed at round %d, %v (virtual) — within the f=1 bound %v of the kill. The heterogeneous-arming defect (M1) is fixed on this branch.",
-		contested, commitRound, sched.Now(), bound)
+	dRound := int((contested + commitRound) % uint64(len(props)))
+	roundDesigneeID := props[dRound]
+
+	// Premise: the commit round's OWN designee is genuinely workless — never
+	// armed, never the killed seat — the M4 precondition this pin depends on
+	// (a designee that is itself armed just proposes directly; a designee
+	// that is down is a different, already-covered class).
+	armedIDs := map[ports.NodeID]bool{}
+	for _, i := range armed {
+		armedIDs[nodes[i].id] = true
+	}
+	if armedIDs[roundDesigneeID] {
+		t.Fatalf("premise: round %d's own designee %s is ARMED — this commit is a direct proposal, not a "+
+			"takeover; the seat assignment must keep the commit round's designee workless for this pin to mean "+
+			"anything", commitRound, roundDesigneeID)
+	}
+	if roundDesigneeID == nodes[killedIdx].id {
+		t.Fatalf("premise: round %d's own designee %s is the KILLED seat — that tests a DOWN designee, a "+
+			"different, already-covered class, not a workless-but-live one", commitRound, roundDesigneeID)
+	}
+
+	roundKeyedWinner, roundKeyedDist := rankFrom(dRound)
+
+	// ── The pin (D3): the committing proposer is the nearest work-holding
+	// eligible proposer in rank order FROM THE ROUND'S OWN DESIGNEE, never
+	// from the height's — the re-key this gate exists to prove ─────────────
+	if proposerID != nodes[roundKeyedWinner].id {
+		t.Fatalf("G-H43-1 REPRODUCED (D3 not applied, or applied incorrectly): height %d committed at round %d "+
+			"by %s, but the nearest work-holder in rank order FROM the round's own (confirmed workless) "+
+			"designee %s is node %d = %s (dist %d) — the takeover walk is not measured from the round's "+
+			"designee (chainrole.go's maybeProposeBondDrain). Consensus-adjacent, research-gated "+
+			"(build-immutable #6); closer: D3 (the re-key).",
+			contested, commitRound, proposerID, roundDesigneeID, roundKeyedWinner, nodes[roundKeyedWinner].id, roundKeyedDist)
+	}
+	if heightKeyedWinner == roundKeyedWinner {
+		t.Logf("G-H43-1 note: the height-keyed and round-keyed walks name the SAME winner (node %d) for this "+
+			"fixture, exactly as the docstring's arithmetic proves they must at round 2 — this gate's RED is "+
+			"carried by CONVERGENCE at 462478d (verified in a scratch worktree: does not commit within the "+
+			"backstop), not by a winner-name difference; the pin below still holds because it is measured from "+
+			"the round's designee, never the height's, which is what this fix actually changed.", roundKeyedWinner)
+	} else {
+		t.Logf("G-H43-1: the walks diverge exactly as designed — height-keyed (from position %d) favors node "+
+			"%d (dist %d); round-keyed (from round %d's own designee %s, position %d) favors node %d (dist "+
+			"%d), and node %d is who actually committed.",
+			dHeight, heightKeyedWinner, heightKeyedDist, commitRound, roundDesigneeID, dRound, roundKeyedWinner, roundKeyedDist, roundKeyedWinner)
+	}
+	t.Logf("G-H43-1: h%d committed at round %d, %v (virtual), by node %d (%s) — the nearest work-holder from "+
+		"round %d's own workless designee %s — within the restated D4 backstop %v of the kill. M1 fixed; D3's "+
+		"re-key pinned.",
+		contested, commitRound, sched.Now(), roundKeyedWinner, proposerID, commitRound, roundDesigneeID, bound)
 }
 
 // TestModelCheck_H43_AtLeastOneRoundLivenessOracleArmsNonUniformly is
