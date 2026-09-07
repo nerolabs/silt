@@ -9,6 +9,22 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 ## [Unreleased]
 
 ### Graded
+- **Cloud field test `2633a11-deep` (2026-09-07, main `2633a11`; owner go on the ratified order, Lane A3): REVIEW — 30 pass /
+  2 gap / 0 fail / 3 skip** (`integration/cloudtest/report-2633a11-deep.md`, results/rss/console/flow-evidence force-added).
+  The first fleet carrying the h43 consensus fix (#772) and the G-H43-7 harness (#771). **The fix is field-confirmed:** the
+  deep drive ran h74→h129 at **39 s/height** (44 s/height on `c450985-deep`, 2877 s → 2172 s); at every contested height the
+  survivors' debug logs show the replicated arming, the round certificate sent and recorded, and the pending entries forwarded
+  to the round's designee — at h29 val-a forwarded to val-b, which proposed 1.3 s later and committed the block carrying the
+  entry, 40 s after val-d was stopped; with val-d down the chain advanced h30→h40 at ~50 s/height. **`6-fault-tolerance`
+  GAPped on a harness artifact, attributed from the captured evidence and fixed in #774:** `ft_wait_new_block` polled the boot
+  node's own `committed block` banner, which the daemon prints only when it commits a block itself; val-a received every
+  post-kill block through chain-sync catch-up (no banner, 4 s after the commit) because the proposer's sequential commit
+  broadcast reaches it only after the dead peer's request timeout, so the 380 s wait failed while the chain was live. The wait
+  and the fingerprint now read the node's HEAD. The other gap is the known `184-low-bond` (#350). Handoff, stall and capture
+  drills, WS cold-sync, partition→heal, the economy trio (190 credits over 6 repairs; +2 skim), takedown, cross-NAT, prune
+  and converge all PASS; worst RSS peak 1.48 GiB (1.58 on the prior run); no OOM or crash-loop. Side finding for the register:
+  four 1 MiB-bond seats had renewals refused at h31 and their round-changes rejected as unqualified senders (the #350 timing
+  class). Not the RC field grade (E5 waits on the freeze, Lane D); it is the A3 confirmation the ratification required.
 - **Cloud field test `c450985-deep` (2026-09-07, main `c450985`; owner go): REVIEW — 29 pass / 2 gap / 0 fail /
   2 skip** (`integration/cloudtest/report-c450985-deep.md`, results/rss/console/flow-evidence force-added). The
   first fleet carrying R2.9 (delivery sessions, the numéraire), B-9 and 4′ (256 KiB default, NEW genesis). Publish
