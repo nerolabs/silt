@@ -83,7 +83,7 @@ const (
 // the old absolute Config.RepairBountyBase so re-tuning k/shardBytes (Evolving-tier)
 // re-prices repair automatically (PE Q3). 0 for a degenerate shard/stripe AND for a
 // geometry whose k × shardBytes is below one credit's worth of fetch (k·shardBytes <
-// DeliveryBytesPerCredit — a chunk below ~26 KB at k = 10; the 64 KiB default pays 2);
+// DeliveryBytesPerCredit — a chunk below ~26 KB at k = 10; the 64 KiB FORMER default paid 2, the 256 KiB default pays 10);
 // the caller's base<=0 guard means "off", and the judge names a zero base loudly
 // (G-λ-8, core/node/repairclaim.go).
 func RepairBountyBase(k int, shardBytes int64) int64 {
@@ -97,7 +97,7 @@ func RepairBountyBase(k int, shardBytes int64) int64 {
 // repair bounty: one credit of fetch. A SHARD IS A WHOLE CIPHERTEXT CHUNK — the erasure
 // stage takes k ciphertext chunks as the data shards and emits chunk-sized parity
 // (core/pipeline/pipeline.go), and the judge reads a survivor's full length
-// (core/node/repairclaim.go) — so at the shipped 64 KiB default the stripe is
+// (core/node/repairclaim.go) — so at the former 64 KiB default the stripe was
 // 10 × 65,552 = 655,520 B and the base is 2 credits, NOT zero. (The G-R212-7 build and its
 // blind PE stated the geometry as shard = chunk/k and filed R-DEFAULT-CHUNK-BOUNTY-ZERO on
 // it; the Economist's 2026-09-06 advisory on the default chunk size caught the error.

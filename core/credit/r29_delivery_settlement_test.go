@@ -67,7 +67,7 @@ func ceilDiv(a, b int64) int64 { return (a + b - 1) / b }
 // for the acknowledged part and keeps the tail's bytes on the lane.
 func TestDeliveryAcceptStrictlyDominatesSuppressionAtEverySize(t *testing.T) {
 	const fee, grant = int64(50_000), int64(500_000)
-	const chunk = int64(64 << 10) // the shipped default publish geometry
+	const chunk = int64(64 << 10) // the FORMER default publish geometry (256 KiB since 4′); kept so the ratios below are unchanged
 	sizes := []int64{1 << 10, 4 << 10, 64 << 10, 1 << 20, 6_710_886, 64 << 20}
 	server, fetcher := id(1), id(2)
 	root := ports.HashBytes([]byte("r29-b1"))

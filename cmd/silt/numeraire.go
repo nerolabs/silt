@@ -27,9 +27,10 @@ func grantOverSummedPriceBytes(grant, deliveryBytesPerCredit, relayBytesPerCredi
 // fetch price, so k × shardBytes below one credit of fetch rounds to nothing. A shard is a
 // whole ciphertext chunk (chunk + crypto.Overhead), so the threshold is
 // credit.MinBountyChunkBytesFor(erasure.DefaultParams.K, crypto.Overhead) ≈ 26 KB at
-// k = 10 — the shipped 64 KiB default pays a base of 2 and does NOT warn (the earlier
-// build placed the threshold at 262,144 on a shard = chunk/k model; the Economist's
-// 2026-09-06 advisory corrected it). The daemon has no chunk geometry at start-up to
+// k = 10 — the shipped 256 KiB default pays a base of 10 (exact 10.0006; the 64 KiB former
+// default paid 2 of an exact 2.5) and does NOT warn (the earlier build placed the
+// threshold at 262,144 on a shard = chunk/k model; the Economist's 2026-09-06 advisory
+// corrected it). The daemon has no chunk geometry at start-up to
 // refuse on, so the publisher is told here and the judge names it again at settlement.
 //
 // It fires only when the operator SET -chunk-size (below the minimum); a warning on every

@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/nerolabs/silt/core/credit"
+	"github.com/nerolabs/silt/core/pipeline"
 	"github.com/nerolabs/silt/ports"
 )
 
@@ -231,7 +232,15 @@ func bbootstrapWireUI(s *uiServer, on bool) {
 // and the measurement needs exactly one deployment.
 type bBootstrapInfo struct {
 	ClockSource string `json:"clockSource"` // "injected" | "none" — the age axis self-report (H-1)
-	AgeAxisLive bool   `json:"ageAxisLive"` // false ⇒ cells is null; NEVER an all-zero age column
+	// PublishDefaultChunkSize is this binary's compiled publish default (pipeline.DefaultChunkSize),
+	// the geometry the byte axis is padded to. INSTRUMENT class: a compile-time constant, a function
+	// of nothing the ledger holds. The census is a time series and the 4′ change moved its byte
+	// axis (64 KiB → 256 KiB), so a future analyst must be able to tell a bin shift that is traffic
+	// from one that is geometry (Economist advisory 2026-09-06 §3, the one ask). Content published
+	// with an explicit -chunk-size is not distinguished here (that per-publish counter is the
+	// advisory's §5 item 5, not built).
+	PublishDefaultChunkSize int  `json:"publishDefaultChunkSize"`
+	AgeAxisLive             bool `json:"ageAxisLive"` // false ⇒ cells is null; NEVER an all-zero age column
 
 	// THE MINIMUM-REQUESTER FLOOR (G-BB-11). suppressed is true when the census held
 	// fewer than credit.BBootstrapMinRequesters requesters, and then every census count
@@ -311,20 +320,21 @@ func (s *uiServer) bBootstrapSnapshot() *bBootstrapInfo {
 		return nil
 	}
 	out := &bBootstrapInfo{
-		ClockSource:          h.ClockSource,
-		AgeAxisLive:          h.AgeAxisLive,
-		Suppressed:           h.Suppressed,
-		UptimeNanos:          h.UptimeNanos,
-		ClockStepBack:        h.ClockStepBack,
-		MonotonicSource:      h.MonotonicSource,
-		MonotonicUptimeNanos: h.MonotonicUptimeNanos,
-		ClockSkewNanos:       h.ClockSkewNanos,
-		ClockSuspect:         h.ClockSuspect,
-		AgeEdgeNanos:         h.AgeEdgeNanos[:],
-		AgeBuckets:           credit.BBootstrapAgeBuckets,
-		BinsPerOctave:        h.BinsPerOctave,
-		ByteBins:             h.ByteBins,
-		ByteBinRule:          h.ByteBinRule,
+		ClockSource:             h.ClockSource,
+		PublishDefaultChunkSize: pipeline.DefaultChunkSize,
+		AgeAxisLive:             h.AgeAxisLive,
+		Suppressed:              h.Suppressed,
+		UptimeNanos:             h.UptimeNanos,
+		ClockStepBack:           h.ClockStepBack,
+		MonotonicSource:         h.MonotonicSource,
+		MonotonicUptimeNanos:    h.MonotonicUptimeNanos,
+		ClockSkewNanos:          h.ClockSkewNanos,
+		ClockSuspect:            h.ClockSuspect,
+		AgeEdgeNanos:            h.AgeEdgeNanos[:],
+		AgeBuckets:              credit.BBootstrapAgeBuckets,
+		BinsPerOctave:           h.BinsPerOctave,
+		ByteBins:                h.ByteBins,
+		ByteBinRule:             h.ByteBinRule,
 	}
 	if !h.Suppressed {
 		// Above the floor the census counts are published, INCLUDING legitimate zeros:

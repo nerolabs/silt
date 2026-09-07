@@ -30,16 +30,17 @@ const Version = 1
 // referenceable rather than a buried magic number.
 const (
 	// MaxChunkSize bounds a declared per-chunk frame size. A chunk is one
-	// frame of one file; 128 MiB gives 2x headroom over the 64 MiB *minimum*
-	// production chunk (see pipeline.DefaultChunkSize). It is the single
+	// frame of one file; 128 MiB is 512× the 256 KiB publish default
+	// (pipeline.DefaultChunkSize — there is no production MINIMUM; the old
+	// "64 MiB minimum" was unenforced folklore). It is the single
 	// source of truth for how big a chunk may be: the transport frame cap
 	// (adapters/tcpnet maxFrame) derives from it plus envelope overhead, so
 	// the wire can always carry a chunk the manifest layer accepts (#104).
 	MaxChunkSize = 128 << 20
 
 	// MaxChunks bounds the declared data-chunk count (and, independently,
-	// the parity-shard count). At the 64 MiB production chunk size this is
-	// a ~64 TiB file — far beyond any V1 need — while capping manifest-
+	// the parity-shard count). At the 256 KiB publish default this is a
+	// 256 GiB file — beyond any V1 need — while capping manifest-
 	// decode allocation to a few hundred MB in the worst case instead of
 	// letting a declared count drive it unbounded (S1/S3, B7, #14).
 	MaxChunks = 1 << 20

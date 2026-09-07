@@ -307,7 +307,8 @@ func TestR29aPayloadIsBoundedInTheRequesterCount(t *testing.T) {
 // rows across snapshots and reconstruct "first touch ≈ now − age".
 var r29aWireKeys = map[string]bool{
 	"clockSource": true, "ageAxisLive": true, "suppressed": true,
-	"requesters": true, "aged": true, "unstamped": true,
+	"publishDefaultChunkSize": true, // a compile-time constant (instrument class): no identity content
+	"requesters":              true, "aged": true, "unstamped": true,
 	"uptimeNanos": true, "maxOccupiedAgeEdgeNanos": true,
 	"clockStepBack": true, "ageClampedToZero": true, "ageExceedsUptime": true,
 	"monotonicSource": true, "monotonicUptimeNanos": true,

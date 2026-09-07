@@ -100,6 +100,20 @@ func buildOrphanWorld(t *testing.T) (store *memstore.Store, proofs *memproofs.St
 		if i <= 1 {
 			continue
 		}
+		// Never kill a manifest holder: the rig's subject is the orphaned DATA working
+		// set, and a caretaker that cannot reassemble the manifest never opens the crash
+		// window at all ("repair sweep waiting: manifest not yet reassembled"). Which node
+		// holds the manifest is a function of its content hash — it moved when manifests
+		// were framed at true length (2026-09-07) and landed on the kill candidate.
+		holdsManifest := false
+		for _, id := range entry.ManifestChunks {
+			if ok, _ := nd.Store().Has(bg(), id); ok {
+				holdsManifest = true
+			}
+		}
+		if holdsManifest {
+			continue
+		}
 		c := 0
 		for _, id := range leaves {
 			if ok, _ := nd.Store().Has(bg(), id); ok {

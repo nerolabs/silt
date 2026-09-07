@@ -50,8 +50,19 @@ func ID() ports.NodeID {
 	return sha256.Sum256(Key().Public().(ed25519.PublicKey))
 }
 
-// Options pins every parameter that affects the bytes, so the genesis
-// file is reproducible regardless of what the pipeline defaults become.
+// Options pins the parameters that affect the bytes — chunk size, mode,
+// erasure geometry, publisher — so the genesis file is reproducible
+// regardless of what the pipeline defaults become. The manifest FRAME is
+// not pinned: it follows the pipeline's derivation (true length since 4′),
+// and because the genesis block hashes its entry — manifest chunk IDs
+// included — that derivation is part of height-0 identity. The 4′ change
+// therefore MOVED the genesis hash (7becf754…32ce → f428d0a8…0951); the
+// owner accepted the new genesis on 2026-09-07 (no live network exists to
+// fork). TestGenesisBlockHashIsPinned holds the current hash as a literal,
+// so from here it moves only by an explicit, recorded decision. Whether
+// height-0 identity sits inside the era-3/4 freeze surface is filed for
+// R3.4 (R-GENESIS-HASH-FREEZE-SURFACE). To reproduce the pre-4′ genesis,
+// set ManifestFrameBytes: 64 << 10.
 func Options() pipeline.Options {
 	return pipeline.Options{
 		ChunkSize: 64 << 10,

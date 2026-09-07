@@ -46,8 +46,9 @@ const DeliveryBytesPerCredit = DeliveryIncrementBytes / DeliveryIncrementCredit
 // direction or Don't #7 in the other on the next move.
 //
 // Minting is a FLOOR over a per-lane byte accumulator (RecordServe / RecordServeToObject):
-// ⌊acc/Dλ⌋, an under-pay, never a mint, remainder < Dλ. At the shipped 64 KiB chunk a
-// per-call floor would mint zero on 100 % of serves (R-LAMBDA-DUST), so the accumulator
+// ⌊acc/Dλ⌋, an under-pay, never a mint, remainder < Dλ. At a 64 KiB chunk (the former
+// default; the 256 KiB default is still below Dλ) a per-call floor would mint zero on
+// 100 % of serves (R-LAMBDA-DUST), so the accumulator
 // is REQUIRED; the remainder lives on the provisional LANE for object-aware serves (a
 // witnessed redeem deletes the lane, and a remainder that survived on the account would
 // later mint for bytes the witnessed leg already paid — the one double-pay path) and on

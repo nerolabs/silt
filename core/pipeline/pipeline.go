@@ -25,10 +25,24 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// DefaultChunkSize is 64 KiB for the sim; 64 MiB is the minimum production
-// chunk size (small chunks keep tests and demos fast). The manifest layer
-// bounds the maximum at manifest.MaxChunkSize.
-const DefaultChunkSize = 64 << 10
+// DefaultChunkSize is the publish default: 256 KiB (D-R2.9-NODE-HALF-CALLS call 4,
+// amended 4′, ratified 2026-09-07; Economist advisory
+// silt-reviews/economist/ADVISORY-default-chunk-size-256KiB-2026-09-06.md). One chunk is
+// one delivery credit (credit.DeliveryIncrementBytes, pinned in cmd/silt), a k = 10 stripe
+// pays a repair-bounty base of exactly 10 (the certified D-S7 threshold of 36
+// stripe-retrievals per repair; the 64 KiB former default paid 2 of an exact 2.5 — a 20 %
+// truncation under-pay), and 256 KiB is the largest power of two at which a PoR audit
+// still samples every block (p = 1.0; at 64 MiB p = 0.0076). The old comment's "64 MiB
+// production minimum" was unenforced folklore: it would cut edge participation per 1 GiB
+// object from 6,557 holders to 29. The manifest layer bounds the maximum at
+// manifest.MaxChunkSize. Every frame of a file is padded to this size (erasure shards must
+// be equal-length within a stripe), so a small FILE pays the padding; a small MANIFEST does
+// not (Stage frames it at true length). Changing this changes the root every NEW publish of
+// the same bytes produces (convergent dedup does not span the boundary); core/genesis keeps
+// its own 64 KiB chunk, and its manifest frame follows this derivation, so the height-0
+// block hash — which covers the entry's manifest chunk IDs — MOVED with 4′ (owner-accepted
+// 2026-09-07, no live network; core/genesis TestGenesisBlockHashIsPinned holds the literal).
+const DefaultChunkSize = 256 << 10
 
 type Options struct {
 	ChunkSize int
@@ -46,6 +60,14 @@ type Options struct {
 	// (node.AcquireToken) before calling Add and pass it here; the entry then
 	// carries the token instead of a publisher.
 	Token *ports.PublishToken
+	// ManifestFrameBytes fixes the frame size the sealed manifest is split at. 0 (the
+	// default) DERIVES it — ManifestFrameSize(len(blob), ChunkSize): one true-length frame
+	// when the manifest fits in one chunk. A non-zero value pins it: the pre-4′ padded
+	// framing is ManifestFrameBytes == ChunkSize (the dup-publish gate reproduces it that
+	// way). The frame reaches the genesis block — entry.ManifestChunks is inside what
+	// chain.Block.Hash covers — so changing the derivation moves height-0 identity (blind
+	// PE on 4′, 2026-09-07; the owner accepted that move, core/genesis holds the literal).
+	ManifestFrameBytes int
 }
 
 // Add ingests r and returns the file's silt link: the Merkle root
@@ -176,7 +198,11 @@ func Stage(ctx context.Context, store ports.ChunkStore, r io.Reader, opts Option
 	if err != nil {
 		return link.Handle{}, ports.Entry{}, fmt.Errorf("add: sealing manifest: %w", err)
 	}
-	mframes, err := chunk.Split(bytes.NewReader(blob), opts.ChunkSize)
+	frame := opts.ManifestFrameBytes
+	if frame <= 0 {
+		frame = ManifestFrameSize(len(blob), opts.ChunkSize)
+	}
+	mframes, err := chunk.Split(bytes.NewReader(blob), frame)
 	if err != nil {
 		return link.Handle{}, ports.Entry{}, fmt.Errorf("add: chunking manifest: %w", err)
 	}
@@ -288,6 +314,20 @@ func Get(ctx context.Context, store ports.ChunkStore, reg ports.Registry, h link
 		return fmt.Errorf("get: reassembled %d bytes, manifest says %d", counter.n, m.FileSize)
 	}
 	return nil
+}
+
+// ManifestFrameSize is the frame size a sealed manifest blob of blobLen bytes is split
+// at: the blob's own length plus the frame header when it fits in one chunk, else the
+// data chunk size. Manifests carry no parity, so padding them to the data chunk size
+// bought nothing — on the first production store 87.6 % of objects were 1.4 KB manifests
+// padded to 65,536 B (R-MANIFEST-PADDING, Economist advisory 2026-09-06); at a 256 KiB
+// default that store would have grown 3.9× for no content. chunk.Join accepts frames of
+// any size ≥ chunk.MinChunkSize, so a true-length single frame round-trips unchanged.
+func ManifestFrameSize(blobLen, chunkSize int) int {
+	if fs := blobLen + chunk.HeaderSize; fs < chunkSize {
+		return fs
+	}
+	return chunkSize
 }
 
 // LoadBlob fetches, verifies, and joins the sealed manifest blob
