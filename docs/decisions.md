@@ -2222,5 +2222,75 @@ showing the one-byte value IS committed).
   the T-AR baseline is lost forever; under (c) flip-after-1.0.0 the edge carries durability's cost for a whole
   major version with the reward half dark — a T-AR violation; under (b) it defers ~33 % of revenue for one release.
   The flip re-arms FP-2 / FP-1 / `R-F8-RESTART-REWIND`; freezing the format does not depend on it.
-- **What this does NOT decide:** S2 (the operational floor), S3 (`#558`), S4 (`#437`) — still open.
+- **What this does NOT decide:** S2 (the operational floor), S3 (`#558`), S4 (`#437`) — decided the same day, `D-RC-SCOPE-S2-S4` below.
 
+## D-TRUE-UP-CALLS-2026-09-07 — the fifteen true-up owner calls, ratified 2026-09-07
+
+- **Status:** ✅ RATIFIED — 2026-09-07 (owner: *"1 ratify 2 ratify 3 decline, doc fix only, 4 accept recommendation
+  5 accept 6 accept 7 accept 8 SKIP 9 ratify all nine 10 owed after the run, 11 ratify 12 owed at D3 13 accept
+  recommendation, 14 accept recommendation 15 leave 19 accept recommendation 20 main only first"*), on the owner-call
+  list in `ROADMAP.md` as worded by the 2026-09-07 true-up (PR #768) and the certifications and rulings each call
+  cites there. Calls 18–20 were ratified earlier the same day (`D-CONSENSUS-ARMING`); the owner's "19" and "20"
+  therefore read positionally as calls 17 and 16 (the file lists 18, 19, 20, 17, 16 after 15), and "main only
+  first" is call 16's recommendation verbatim. Calls 10 and 12 stay OWED (after the R4.3b shadow run; at D3).
+- **(1) `R-membership` (Lane B2):** retire `slashedRoot` and `validatorsSeenRoot` from the v5 committed digest
+  set (D-V5-WHOLESET-ROOTS five → three) rather than cap seated identities; a hard fork at activation, free while
+  era-4 is dark; not certified until the `objective()` guard (G-1, covering `MinBond` too) lands. PRE-FREEZE.
+- **(2) The recovery boundary (Lane B3):** the floor box is a COLD AUDITOR — unconditional loud stall,
+  `RecoveryDirective.Heights` and `LiveFollower` deleted, pruned blocks refused, `trustFloor` off the contract
+  surface, recovery by a fresh `-ws-checkpoint`-class anchor at H+1, irrecoverable if unreachable.
+- **(3) `R-CARRIER-CREDIT-DENIAL` (Lane B6):** DECLINED — no multi-block inclusion window in v1 (the carrier
+  already narrows the denial to one proposer; the window is a format change). A doc fix is all that ships.
+- **(4) The delivery idle window (Lane C2):** stays REFUSE-UNTIL-SET. The reaper is wall-clock
+  (`core/node/deliverysession.go:29-31`), so a chain stall reaps live sessions; the default is set only after Lane
+  A1's fix lands and the ≤ f+1 bound (190 s at f=1) is field-confirmed on a graded run, and then ABOVE that
+  bound (today's arithmetic: ≥ 4 epochs ≈ 24 min at `T_b` = 44 s).
+- **(5) `R-SESSION-WALLCLOCK-STEP` (Lane C2):** ACCEPTED as a disclosed v1 residual — a forward wall-clock step
+  (or a stall) reaps every live session; the deposit returns at anchor expiry; only latency is lost.
+- **(6) `R-CREDITSPENT-UNBOUNDED` (Lane C2):** ACCEPTED — the 65,536 cap is an OPERATOR-MANAGED ceiling (rotate
+  the publish key AND clear `creditspent.log` together) until the epoch-bind lands; the epoch-bind is not a
+  consensus-format item (freeze manifest item 12) and stays research-gated.
+- **(7) `R-ANCHOR-STALL` (Lane C2):** ACCEPTED as a disclosed v1 residual — ≤ 300,000 credits per 1 GiB relay
+  session; R2.14b `MsgRelayFund` is the follow-on.
+- **(8) Cloud row 13b (Lane C2):** SKIP, not GAP, while era-4 is dark, behind the era probe.
+- **(9) The freeze manifest §8 (Lane D1), all nine sentences:** buy `tagRevLogSize` (a SAFETY leaf, since a
+  witness-supplied `m` is a wrong-accept); buy (d-3) `AnswerDigest`; reserve the PoP slot; the `IssuerKeys` cap at
+  COUNT 4,096 with its proposer packing budget and `(issuer, epoch)` distinctness clause; `SerialSize` 32;
+  refuse-to-start across a format boundary (#237); the genesis hash is network identity, outside the era surface;
+  the readiness tally stays behind `everMature`; no activation mechanism beyond the tally. This ratifies the
+  manifest's CONTENT. The freeze ACT (D3) is still the owner's, at the RC, after D1 + D2 + B1–B4 + B8.
+- **(11) R4.2 the A-axis (Lane E2):** re-scoped to measure / publish / hand to B8 as-is; A3 is NOT wired. The
+  bonded-adversary domain-collision finding goes in the R4.4 brief.
+- **(13) `R-DEMAND-PRICE-LEVEL` and `R-RELAY-WASH-ZERO-LOSS` (Lane C5):** the Economist's position is adopted as
+  the standing one carried into the R2.4 flip — `(U, p)` unmoved, `RequireBondedFetchers = false`, no relay skim
+  in v1 (`RelaySkim = 0/1`, a disclosed residual). It is re-opened at the flip only if C7's adversarial-solvency
+  verdict contradicts it.
+- **(14) `R-ISSUERKEY-POP` and `R-E2E-ERA4-FIXTURE` (Lanes D1/D2):** the PoP slot is RESERVED inert at the stamp
+  raise (not built); the e2e cost of the objective + bonded + epoch-enabled fixture is accepted.
+- **(15) The `-grant-capacity` help note:** left as is.
+- **(16) Structure Round 1B (Lane B1):** main-only FIRST — Round 1A is the main-only spine per the PE's 12-step
+  brief; the five box-entry-dependent closers wait for Round 1B after the HELD `builder/floorbox-structure`
+  branch is re-applied file-by-file. Round A is NOT merged first.
+- **(17) `R-PS-LOCAL-ROT-NOT-HEALED` (Lane TAIL):** take it — evict a verified-rotten shard the node still hosts
+  and announces so the fetch path replaces it, trading one operator's hosting count and D-S7 revenue for truthful
+  durability. Research-gated if the fix reaches bounty or escrow.
+- **What this does NOT decide:** call 10 (R4.3b `on`: R = 4, `cap_relay` = 4 — owed after the shadow run reports
+  series A < 5 % and series B < 20 %); call 12 (commissioning the external B8 seat — owed at D3); the delivery
+  idle-window VALUE (owed after A3); the `R-CARRIER-BYTES` value (B4, owed on the Tester's measurement).
+
+## D-RC-SCOPE-S2-S4 — the operational floor is post-RC (Boulder 5); `#558` is RC-blocking; `#437` is post-RC
+
+- **Status:** ✅ RATIFIED — 2026-09-07 (owner: *"S2 - accept recommendation S3 accept recommendation S4 accept
+  recommendation"*), on the planner's recommendations in `ROADMAP.md` (scope calls S2–S4) and, for S2, the flixz
+  handoff's post-RC placement of packaging. Completes the four scope calls with `D-RC-SCOPE-S1`.
+- **S2 — the operational floor:** packaging, signed installers and R4 self-update are POST-RC and define
+  **Boulder 5**. The two S6 scaling kills — O(delta) maturation and reprovide dirty-tracking — are `1.0.0` GATES
+  (on the E6 path, not the RC), because O(store) cold-start and O(held) reprovide price out the honest operator
+  (build-immutables #4 / #8).
+- **S3 — `#558` torn `chain.cbor` → silent genesis fallback:** RC-BLOCKING (a real silent-loss residual against
+  the no-silent-loss floor). One builder PR, no research gate: an atomic chain-store write plus refuse-to-start on
+  a torn tail, with the Tester's torn-tail fixture RED first. Homed as Lane B8, independent of B1–B7.
+- **S4 — `#437` transport authentication (TLS / Noise):** POST-RC (`1.x`). Certified NOT a safety break; the
+  residual is censorship over a controlled link, already inside the liveness model. The crypto choice is
+  research-gated when it is scheduled (`docs/network-durability.md` first, build-immutable #5).
+- **What this does NOT decide:** Boulder 5's internal order and its Rocks — defined when the RC ships.
