@@ -159,3 +159,36 @@ reverted to uniform arming; the property is pinned by G-H43-1's own setup fatal)
 "a quiescent eligible proposer was observed at round-0 entry" record that G-H43-6 asserts non-empty.
 G-H43-14 (round-0 refusal), G-H43-15 (the re-key `(height + round) % N`), G-H43-16 (the monotone walk's
 attribution in the #441 rotation oracle's docstring), G-H43-10a/11/12/13 (the cost gates) are owed.
+
+## Fourth pass — the blind PE ruling, and one sequencing call
+
+`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-h43-consensus-arming-c2a476a-2026-09-07.md`
+— NOT MERGEABLE at `c2a476a`, on the evidence layer: the mechanism work was traced faithful to both
+certifications and the I1 argument holds under the PE's own trace; (C), (B)'s suffix predicate and the
+entry forward were each confirmed gated by ablation.
+
+- **F-3 (HIGH) — the registration-lane G-H43-1 cannot see (A).** With the root fix reverted the fixture
+  commits in the same 232 s, because its three armed heavy anchors carry more than ⅓ of the frozen weight
+  and the pre-existing catch-up moves the quiescent nine regardless of arming. In the field the ten low seats
+  never moved because the smear kept every single round below ⅓ (M3). Closer (Tester): arm BELOW the
+  catch-up threshold (two anchors) so only (A) can put the quiescent majority into the pacemaker, and assert
+  on the per-seat round map that they run it — RED at `462478d`, GREEN on the fix.
+- **F-5 (HIGH) — the certificate went to `syncTargets()`**, which holds every peer that ever advertised a bond
+  root (storage tier, up to 4096), so the "narrowing" removed at most N of thousands. Fixed at `c710776`:
+  recipients are filtered to `AttesterEligibleAt` — the governing set only.
+- **F-4 (HIGH) — five mechanisms shipped ungated** (the re-key, the attempt dedup, the certificate budget, the
+  cap, the narrowing): G-H43-10a/11/12/13/15 with the Tester. **F-8/F-9/F-10/F-11** fixed at `c710776`
+  (a stale arrival never re-fires; `acceptRoundCert` enters the round itself; two comments). **F-6** (a byte
+  ceiling on the certificate; dedup-before-verify) filed as owned residuals — dedup-before-verify would change
+  what an attester admits as a carried certificate and the Researcher rejected that class as an era-surface
+  change; a byte ceiling needs a researched number (`network-durability.md` first).
+
+**The sequencing call (mine, recorded).** The PE recommends splitting the D-family into its own PR so a RED
+gate names its mechanism. Taken instead: ONE PR with a gate per mechanism — G-H43-1 pins (A) by construction
+(arming below the catch-up threshold), G-H43-3 pins (B)'s predicate, G-H43-4 the relay, G-H43-2 pins (C),
+G-H43-9/10 pin D1, G-H43-15 pins D3, G-H43-11/12/13 the certificate's cost — so every ablation is RED on
+exactly one gate and the attribution the PE wants comes from the gate set, not from the PR boundary. Reason:
+the ratification asked for one PR; the D-family's certification arrived mid-build and its code is interleaved
+with (B)'s cost gates; and a second PR would re-run every RED/GREEN proof on two bases. **The PR is opened
+and NOT merged by a seat: owner calls 21 (the restated bound), 22 (the forward cap = 4, a security
+parameter) and 23 (`R-H43-NULL-PROPOSAL` to era 5) are research verdicts the owner ratifies first.**
