@@ -30,3 +30,28 @@ rate-limited there (256 grants / 256 per hour), which the economy flows never dr
 
 **What this does NOT claim.** Row 13b is a gap until the stamp raise. The billable run that
 follows the true-up session grades row 13 for real and shows row 13b as the owed seam.
+
+## Blind PE fold-in (2026-09-07)
+
+**Ruling:** `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-cloudtest-delivery-lane-flow-34114c4-2026-09-07.md`
+— **BLOCK**, eleven items, the two decisive ones measured: (1) the boot banner was read through the
+harness's 800-line journal window on the fleet's noisiest node (~27 journald lines per block, 79 % TLS
+handshake noise), so a mid-sheet position would have missed a line printed once at boot and scored FAIL;
+(2) every server-side marker (`delivery receipt banked`, `delivery session closed`) is an `n.logf` line that
+lives in `$STORE/debug.log` and never reaches journald — the "server banked nothing" conjunct was vacuous
+and the live arm could never have passed. The PE also booted the exact argv (it starts; the seven start
+gates clear) and drove the CLI against an armed and an unarmed daemon (both classification greps hold on
+the wire) — the part that had to be right was right; the READING of the result was wrong.
+
+**Folded:** the banner is read over the whole unit journal and the arming over the unit's `ExecStart`;
+every server-side read is `debug.log` after a per-flow line baseline, and an unreadable/empty `debug.log`
+GAPs the row (no darkness pass); `require_live` + a retried client call so substrate noise GAPs rather than
+FAILs; row 13b is a SKIP behind the era probe (the PE's recommendation on the one call that was mine — a
+permanent GAP would have made the green RC gate unreachable until R3.4), with the skip text naming what is
+untested; the faucet bucket is 64 (5× below the daemon's derived cap; 256 sat at 78 %); the "only peer"
+overclaim is rewritten (holders serve via the DHT — the receipt's server is the fetcher's own claim, which
+is the R2.9 shape); 13b is recorded on every exit; the fetch's error text reaches the console; the README
+row moved out of the "no topology change" table. **New local proof:** `TestPaidDeliveryLaneArmsInTheHarness
+Posture` boots one objective validator with the harness's verbatim flags (epoch clock DERIVED, no explicit
+`-epoch-blocks`), waits for the banner and the affordability line, drives the real CLI, and requires the
+committed-binding refusal with nothing banked in `debug.log` — the posture no other test covered.

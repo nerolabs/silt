@@ -374,7 +374,12 @@ def main():
                 # lane ARMS but no E->key binding can commit, so a client is refused at the
                 # withdrawal and nothing is spent — the flow grades that contract and flips to
                 # the positive settlement automatically once the binding commits.
-                a += " -accept-delivery-receipts -delivery-idle-window 90s -grant-capacity 256 -grant-per-hour 256"
+                # The faucet bucket is 64 (not the e2e's 256): the daemon refuses to start above
+                # a DERIVED capacity cap (~327 at today's inputs, cmd/silt/daemon.go), and 256
+                # sat at 78 % of it — a moved input would have refused the boot validator and
+                # lost the whole sheet (blind PE 2026-09-07 item 6). 64 covers every identity a
+                # sheet registers on it with 5x margin below the cap.
+                a += " -accept-delivery-receipts -delivery-idle-window 90s -grant-capacity 64 -grant-per-hour 64"
             else:
                 a += f" -bootstrap {bootstrap}"
             return a

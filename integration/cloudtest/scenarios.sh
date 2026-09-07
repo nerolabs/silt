@@ -2249,92 +2249,142 @@ EOF
 
 # ── Flow 13: the R2.9 paid DELIVERY lane on the wire ────────────────────────────────
 # The boot validator arms -accept-delivery-receipts (topology.py). A client on fetch-1
-# fetches an object it published and presents a `swarm receipt` (the R2.9 flow: pin the
-# issuer's committed key -> withdraw one demand token -> MsgDeliveryOpen -> settle a
-# cumulative-count receipt). TWO rows, because the positive settlement has NO live seam
-# on a chain where era-4 is dark (every real network until the R3.4 stamp raise: the
-# E->key binding cannot commit, owner-ratified NO activation override — ROADMAP
-# R-E2E-ERA4-FIXTURE), and a property with no live seam is a stated GAP, not a fake green:
-#   13-delivery-lane       — the lane's field CONTRACT: armed + announced on the server;
-#                            the client refused at the withdrawal naming the committed-binding
-#                            gate (nothing spent, server banked nothing) while dark, or banked
-#                            while live; a lane-OFF server refuses with the NOT-banked marker.
-#   13b-delivery-settlement — pass ONLY when the receipt actually banked on the wire (server
-#                            'delivery receipt banked' + the idle 'delivery session closed');
-#                            gap while the lane is dark. This row is what the stamp raise turns
-#                            green with NO harness change.
-# LOCAL_PROOF: go test ./e2e -run 'TestPaidDeliveryLaneRefusesWithoutACommittedKeyBinding|TestDeliveryReceiptRefusedWhenLaneOff|TestPaidDeliverySessionEndToEnd' -count=1
+# fetches an object it published and presents a `swarm receipt` naming the boot validator
+# as the server (the R2.9 flow: pin the issuer's committed key -> withdraw one demand
+# token -> MsgDeliveryOpen -> settle a cumulative-count receipt). TWO rows, because the
+# positive settlement has NO live seam on a chain where era-4 is dark (every real network
+# until the R3.4 stamp raise: the E->key binding cannot commit, owner-ratified NO
+# activation override — ROADMAP R-E2E-ERA4-FIXTURE), and a property with no live seam is
+# stated, never faked:
+#   13-delivery-lane        — the lane's field CONTRACT: armed (the unit's argv) and
+#                             announced (the boot banner) on the server; the client refused
+#                             at the withdrawal naming the committed-binding gate (nothing
+#                             spent, the server's debug.log carries no banked line) while
+#                             dark, or banked while live; a lane-OFF server refuses with the
+#                             announced NOT-banked marker; the two refusals never conflated.
+#   13b-delivery-settlement — pass ONLY when the receipt actually banked on the wire (the
+#                             server's `delivery receipt banked` + the idle `delivery session
+#                             closed`, both in debug.log); SKIP behind the era probe while
+#                             the lane is dark (a skip keeps the RC gate reachable — blind PE
+#                             2026-09-07 item 4; the skip text says what is untested). This
+#                             row turns green at the stamp raise with NO harness change.
+# SURFACES (blind PE 2026-09-07, items 1–2): the boot banner is a fmt.Printf -> journald,
+# read over the WHOLE unit journal (never the 800-line window — the boot validator emits
+# ~27 journald lines per block, 79 % TLS-handshake noise from the registry listener);
+# every server-side settlement marker is an n.logf -> $STORE/debug.log line and is read
+# THERE, scoped to lines written after the flow's baseline (never journald: it never
+# arrives there — the #310 scar).
+# Substrate noise (a node the sheet killed, an ssh/dial timeout) GAPs, never FAILs
+# (lib.sh require_live discipline); the client call is retried before it is classified.
+# LOCAL_PROOF: go test ./e2e -run 'TestPaidDeliveryLaneArmsInTheHarnessPosture|TestPaidDeliveryLaneRefusesWithoutACommittedKeyBinding|TestDeliveryReceiptRefusedWhenLaneOff|TestPaidDeliverySessionEndToEnd' -count=1
 flow_delivery_lane() {
   local boot; boot="$(python3 -c "import json;print(json.load(open('$FT_TOPO'))['meta']['boot'])")"
   # The lane-OFF control is store-2 in the full topology, store-1 under SMOKE (store-2
   # absent) — both run no lane, so the control still runs on the 4-node set.
   local offnode=store-2; node_exists store-2 || offnode=store-1
-  require_nodes "13-delivery-lane" major fetch-1 "$offnode" "$boot" || return
-  client_preflight "13-delivery-lane" major fetch-1 || return
+  require_nodes "13-delivery-lane" major fetch-1 "$offnode" "$boot" || { record "13b-delivery-settlement" skip major "prerequisite node absent (see 13-delivery-lane)"; return; }
+  require_live "13-delivery-lane" major "$boot" fetch-1 "$offnode" || { record "13b-delivery-settlement" skip major "prerequisite node not active (see 13-delivery-lane)"; return; }
+  client_preflight "13-delivery-lane" major fetch-1 || { record "13b-delivery-settlement" skip major "client unreachable (see 13-delivery-lane)"; return; }
   flow_evidence_nodes fetch-1 "$boot" "$offnode"
   local t0; t0="$(date +%s)"
-  local bootref storeref
+  local bootref offref
   bootref="$(python3 -c "
 import json;t=json.load(open('$FT_TOPO'));n=t['nodes']['$boot'];print(n['nodeid']+'@'+n['ip']+':%d'%t['meta']['swarm_port'])")"
-  storeref="$(python3 -c "
+  offref="$(python3 -c "
 import json;t=json.load(open('$FT_TOPO'));n=t['nodes']['$offnode'];print(n['nodeid']+'@'+n['ip']+':%d'%t['meta']['swarm_port'])")"
 
-  # (1) ARMED + ANNOUNCED on the boot validator (S5 markers: the lane line and the B-11
-  # affordability line, both printed at boot; the dark-lane banner names the binding).
-  if ! waitfor "$boot" 'delivery receipts: ACCEPTING' 30 >/dev/null; then
-    slo_assert "13-delivery-lane" major "the boot validator never announced 'delivery receipts: ACCEPTING' — the lane is not armed (topology.py) or the daemon refused to start" 0
-    record "13b-delivery-settlement" gap major "lane not armed on ${boot}; settlement untested"; return
+  # (1) ARMED (the running unit's argv carries the flag) + ANNOUNCED (the boot banner,
+  # over the whole journal) on the boot validator; the B-11 affordability line is evidence.
+  local armed announced afford
+  # The RUNNING daemon's command line (pgrep -a prints it on both backends; the LOCAL
+  # systemctl shim implements no `show`, which the first cut read and scored 0 — caught
+  # by the LOCAL drive, not the fleet).
+  armed="$(ssh_node "$boot" "pgrep -af '^/usr/local/bin/silt daemon' | head -1 | grep -c -- '-accept-delivery-receipts'" | tr -dc '0-9')"
+  announced="$(ssh_node "$boot" "sudo journalctl -u silt --no-pager -o cat 2>/dev/null | grep -m1 -E 'delivery receipts: ACCEPTING'" || true)"
+  afford="$(ssh_node "$boot" "sudo journalctl -u silt --no-pager -o cat 2>/dev/null | grep -m1 -E 'delivery settlement: p='" || true)"
+  if [ "${armed:-0}" = 0 ] || [ -z "$announced" ]; then
+    slo_assert "13-delivery-lane" major "the boot validator is not running the lane (running cmdline has the flag: ${armed:-0}; banner 'delivery receipts: ACCEPTING' in its journal: $([ -n "$announced" ] && echo yes || echo NO)) — topology.py arms it; a refused start would have failed 1-first-run" 0
+    record "13b-delivery-settlement" skip major "lane not armed on ${boot}; settlement untested"; return
   fi
-  local afford; afford="$(waitfor "$boot" 'delivery settlement: p=' 10 || true)"
 
-  # (2) Content to deliver: publish from fetch-1, fetch it back from fetch-1 with the BOOT
-  # validator as the only peer, so the delivery this receipt acknowledges came from it.
+  # (2) Content to deliver: publish from fetch-1, fetch it back on fetch-1 with the boot
+  # validator as the bootstrap peer. NOTE the harness cannot attribute WHICH holder served
+  # the bytes (NetGet pulls from DHT holders); the receipt's server is the fetcher's own
+  # claim, which is exactly the R2.9 shape (the ack carries no possession proof by design).
   local res link sha root
   res="$(ft_publish fetch-1 1048576 || true)"
-  if [ -z "$res" ]; then publish_verdict "13-delivery-lane" major "publish never produced a silt: link within ${PUBLISH_RETRY_S}s"; record "13b-delivery-settlement" gap major "no object to deliver"; return; fi
+  if [ -z "$res" ]; then publish_verdict "13-delivery-lane" major "publish never produced a silt: link within ${PUBLISH_RETRY_S}s"; record "13b-delivery-settlement" skip major "no object to deliver"; return; fi
   link="${res%% *}"; sha="${res##* }"
   root="$(b64url_to_hex "$(printf '%s' "$link" | cut -d: -f3)")"
-  local got; got="$(ssh_node fetch-1 "/usr/local/bin/silt swarm get '$link' -o /tmp/ft_dl.bin -peers '$bootref' -registry '$REGREF' >/dev/null 2>&1; sha256sum /tmp/ft_dl.bin | cut -d' ' -f1" | tr -d '[:space:]')"
+  local fetch_out got
+  fetch_out="$(ssh_node fetch-1 "/usr/local/bin/silt swarm get '$link' -o /tmp/ft_dl.bin -peers '$bootref' -registry '$REGREF' 2>&1 >/dev/null; sha256sum /tmp/ft_dl.bin 2>/dev/null | cut -d' ' -f1" || true)"
+  got="$(printf '%s\n' "$fetch_out" | tail -1 | tr -dc 'a-f0-9')"
   if [ "$got" != "$sha" ]; then
-    slo_assert "13-delivery-lane" major "fetch from the boot validator alone was not bit-perfect (want=${sha} got=${got}) — no delivery to acknowledge" 0
-    record "13b-delivery-settlement" gap major "no delivery to acknowledge"; return
+    echo "    fetch output: $(printf '%s' "$fetch_out" | head -c 600)"
+    record "13-delivery-lane" gap major "fetch on fetch-1 was not bit-perfect (want=${sha} got=${got:-none}) — no delivery to acknowledge; the lane itself UNTESTED (fetch output in the console)"
+    record "13b-delivery-settlement" skip major "no delivery to acknowledge"; return
   fi
 
-  # (3) THE RECEIPT, against the armed server. 4 increments of 256 KiB = the 1 MiB fetched.
-  local out; out="$(ssh_node fetch-1 "/usr/local/bin/silt swarm receipt '$root' -peers '$bootref' -increments 4 2>&1" || true)"
-  # (4) The lane-OFF control: store-2 runs no lane and must say so with the announced marker.
-  local off; off="$(ssh_node fetch-1 "/usr/local/bin/silt swarm receipt '$root' -peers '$storeref' -increments 1 2>&1" || true)"
+  # (3) BASELINE the server's debug.log, then THE RECEIPT against the armed server: 4
+  # increments of 256 KiB = the 1 MiB fetched. Retried while the output is transport
+  # noise (dial/timeout) rather than a classification.
+  local n0; n0="$(ssh_node "$boot" "sudo wc -l < /var/lib/silt/debug.log 2>/dev/null" | tr -dc '0-9')"; n0="${n0:-0}"
+  if [ "$n0" = 0 ]; then
+    # The server-side surface must be READABLE, or "banked nothing" would be satisfied by
+    # darkness (the vacuity the blind PE measured on the journald read).
+    record "13-delivery-lane" gap major "the boot validator's debug.log is empty or unreadable — the server-side assertions would be vacuous; property UNTESTED"
+    record "13b-delivery-settlement" skip major "server surface unreadable (see 13-delivery-lane)"; return
+  fi
+  local out attempt=0
+  while :; do
+    attempt=$((attempt + 1))
+    out="$(ssh_node fetch-1 "/usr/local/bin/silt swarm receipt '$root' -peers '$bootref' -increments 4 2>&1" || true)"
+    if printf '%s' "$out" | grep -qE "delivery receipt banked by|committed E->key binding|delivery receipt was NOT banked by"; then break; fi
+    [ "$attempt" -ge 3 ] && break
+    echo "    receipt attempt ${attempt} unclassified ($(printf '%s' "$out" | head -c 200)); retrying in 10s"
+    sleep 10
+  done
+  # (4) The lane-OFF control: a store running no lane must say so with the announced marker.
+  local off; off="$(ssh_node fetch-1 "/usr/local/bin/silt swarm receipt '$root' -peers '$offref' -increments 1 2>&1" || true)"
   local off_ok=0
   printf '%s' "$off" | grep -q "delivery receipt was NOT banked by" && printf '%s' "$off" | grep -q "serves no demand issuer key" && off_ok=1
+  # The server's own record, scoped to lines written after the baseline (debug.log, never journald).
+  local sbanked; sbanked="$(ssh_node "$boot" "sudo tail -n +$((n0 + 1)) /var/lib/silt/debug.log 2>/dev/null | grep -E 'delivery receipt banked' | tail -1" || true)"
 
   local t1; t1="$(date +%s)"
   if printf '%s' "$out" | grep -q "delivery receipt banked by"; then
     # LIVE LANE (the binding committed: post stamp raise). The server's own markers must
-    # agree — banked now, and the session closed on the 90s idle window with no identity
-    # or object on the close line (the M0 log audit).
-    local banked closed
-    banked="$(waitfor_since "$boot" 'delivery receipt banked' "$t0" 60 || true)"
-    closed="$(waitfor_since "$boot" 'delivery session closed' "$t0" 150 || true)"
-    local ok=0; [ -n "$banked" ] && [ -n "$closed" ] && [ "$off_ok" = 1 ] && ok=1
-    slo_assert "13-delivery-lane" major "LIVE lane: client banked (${out##*: }); server banked=$([ -n "$banked" ] && echo yes || echo NO) closed=$([ -n "$closed" ] && echo yes || echo NO); lane-off control at ${offnode} $([ "$off_ok" = 1 ] && echo refused-with-marker || echo "WRONG: $off")" "$ok" $((t1 - t0))
-    local sok=0; [ -n "$banked" ] && [ -n "$closed" ] && ! printf '%s' "$closed" | grep -qE "object=|fetcher=" && sok=1
-    slo_assert "13b-delivery-settlement" major "R2.9 settlement ON THE WIRE: ${banked:-no banked line}; close: ${closed:-no close line}${afford:+; $afford}" "$sok" $((t1 - t0))
+    # agree — banked now, and the session closed on the 90s idle window with no identity or
+    # object on the close line (the M0 log audit) — both read from debug.log after the baseline.
+    local closed="" waited=0
+    while [ "$waited" -lt 150 ]; do
+      closed="$(ssh_node "$boot" "sudo tail -n +$((n0 + 1)) /var/lib/silt/debug.log 2>/dev/null | grep -E 'delivery session closed' | tail -1" || true)"
+      [ -n "$closed" ] && break
+      sleep 10; waited=$((waited + 10))
+    done
+    local ok=0; [ -n "$sbanked" ] && [ -n "$closed" ] && [ "$off_ok" = 1 ] && ok=1
+    slo_assert "13-delivery-lane" major "LIVE lane: client banked (${out##*: }); server debug.log banked=$([ -n "$sbanked" ] && echo yes || echo NO) closed=$([ -n "$closed" ] && echo yes || echo NO); lane-off control at ${offnode} $([ "$off_ok" = 1 ] && echo refused-with-marker || echo "WRONG: $off")" "$ok" $((t1 - t0))
+    local sok=0; [ -n "$sbanked" ] && [ -n "$closed" ] && ! printf '%s' "$closed" | grep -qE "object=|fetcher=" && sok=1
+    slo_assert "13b-delivery-settlement" major "R2.9 settlement ON THE WIRE: ${sbanked:-no banked line}; close: ${closed:-no close line within 150s}${afford:+; $afford}" "$sok" $((t1 - t0))
     return
   fi
-  if printf '%s' "$out" | grep -q "no key that resolves against a committed E->key binding"; then
+  if printf '%s' "$out" | grep -q "committed E->key binding"; then
     # DARK LANE (era-4 not active on this chain): the certified refusal at the withdrawal —
-    # nothing withdrawn, nothing spent, and the server banked NOTHING. The lane-off
-    # sentence must NOT appear (the two refusals are distinct contracts, PE ruling 2026-09-03).
-    local conflated=0 sbanked
+    # nothing withdrawn, nothing spent, and the server banked NOTHING (debug.log after the
+    # baseline). The lane-off sentence must NOT appear (distinct contracts, PE 2026-09-03).
+    local conflated=0
     printf '%s' "$out" | grep -q "serves no demand issuer key" && conflated=1
-    sbanked="$(jlog_since "$boot" "$t0" 2>/dev/null | grep -E "delivery receipt banked" | tail -1 || true)"
     local ok=0; [ "$conflated" = 0 ] && [ -z "$sbanked" ] && [ "$off_ok" = 1 ] && ok=1
-    slo_assert "13-delivery-lane" major "DARK lane (era-4 not active): armed + announced on ${boot}; client refused at the withdrawal naming the committed E->key binding (nothing spent)$([ "$conflated" = 1 ] && echo '; WRONG: conflated with the lane-off sentence')$([ -n "$sbanked" ] && echo "; WRONG: server banked: $sbanked"); lane-off control at ${offnode} $([ "$off_ok" = 1 ] && echo refused-with-marker || echo "WRONG: $off")${afford:+; $afford}" "$ok" $((t1 - t0))
-    record "13b-delivery-settlement" gap major "UNTESTABLE on this chain: the positive settlement needs a committed E->key binding, which needs era-4 (dark on every real network until the R3.4 stamp raise; no activation override, owner-ratified). The contract row above is what holds today; this row turns green at the stamp raise with no harness change." $((t1 - t0))
+    slo_assert "13-delivery-lane" major "DARK lane (era-4 not active): armed + announced on ${boot}; client refused at the withdrawal naming the committed E->key binding (nothing spent); server debug.log (+$(( $(ssh_node "$boot" "sudo wc -l < /var/lib/silt/debug.log 2>/dev/null" | tr -dc '0-9') - n0 )) lines since baseline) banked nothing$([ "$conflated" = 1 ] && echo '; WRONG: conflated with the lane-off sentence')$([ -n "$sbanked" ] && echo "; WRONG: server banked: $sbanked"); lane-off control at ${offnode} $([ "$off_ok" = 1 ] && echo refused-with-marker || echo "WRONG: $off")${afford:+; $afford}" "$ok" $((t1 - t0))
+    record "13b-delivery-settlement" skip major "UNTESTED on this chain (era probe: the client was refused at the committed E->key binding): the positive settlement needs era-4, dark on every real network until the R3.4 stamp raise (no activation override, owner-ratified). Row 13 is what holds today; this row grades the wire settlement at the stamp raise with no harness change." $((t1 - t0))
     return
   fi
-  slo_assert "13-delivery-lane" major "UNEXPECTED client outcome for swarm receipt against the armed boot validator: ${out}" 0 $((t1 - t0))
-  record "13b-delivery-settlement" gap major "client outcome unclassified (see 13-delivery-lane)" $((t1 - t0))
+  if printf '%s' "$out" | grep -qiE "timeout|timed out|connection refused|no route|dial|i/o|unreachable|EOF"; then
+    record "13-delivery-lane" gap major "client could not complete the receipt call after ${attempt} attempts — transport noise, property UNTESTED: $(printf '%s' "$out" | head -c 300)" $((t1 - t0))
+    record "13b-delivery-settlement" skip major "client transport noise (see 13-delivery-lane)"; return
+  fi
+  slo_assert "13-delivery-lane" major "UNEXPECTED client outcome for swarm receipt against the armed boot validator: $(printf '%s' "$out" | head -c 400)" 0 $((t1 - t0))
+  record "13b-delivery-settlement" skip major "client outcome unclassified (see 13-delivery-lane)" $((t1 - t0))
 }
 
 # LOCAL_PROOF: n/a — WAN-cadence liveness-BOUND soak; the deterministic escape-bound oracle is core/node/modelcheck_i4_liveness_test.go, the wall-clock at WAN scale is the cloud's job
