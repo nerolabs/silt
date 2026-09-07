@@ -751,3 +751,390 @@ func slotCompareNoRoundAblation(height uint64, phase uint8, m ports.SignMark) in
 		return 0
 	}
 }
+
+// ── G-H43-9 ─────────────────────────────────────────────────────────────────
+//
+// TestModelCheck_H43_EntryLaneWorklessDesigneeMustCommitWithinFPlus1Rounds is
+// G-H43-9 (decisive, the M4 gate), per the delta certification
+// CONSENSUS-LIVENESS-h43-ABC-ASBUILT-workless-designee-RESEARCH-CERTIFICATION-2026-09-07.md
+// §3.7/§7: "The G-H43-1 schedule, unchanged, with two additional assertions:
+// commitRound <= f, and the committing block's ProposerID() equals
+// designatedProposer(contested, commitRound)."
+//
+// ENTRY LANE, not reg lane (§1.3, R-H43-FIXTURE-STRIPS-REG-LANE: "keep the
+// reg-lane oracle as is [G-H43-1]; add the entry-lane arm, where the
+// asymmetry is real"). A bond reg already reaches every peer directly from
+// its own validator every renewal sweep (objectivechain.go), so a
+// reg-workless designee is transient in the field; MsgSubmitEntry
+// (entrypool.go) broadcasts to the CALLER's peers only and is never
+// re-gossiped by the receiver, so an entry-workless designee is a real,
+// permanent field asymmetry — the field's actual h43 shape (parent cert §2:
+// "pending_entries=2,3,5" on val-a/b/c's advancing lines).
+//
+// THE SCHEDULE: identical to G-H43-1 (matureWorld12, nodes[0,1,2] armed,
+// node[3] killed then restarted, nodes[4..11] quiescent, staggered sweep
+// phases, timed delivery) except the 3 armed seats hold a PENDING ENTRY,
+// never a pending bond reg. Quiescent-strip is SETUP-ONLY (never re-run
+// during the timed loop — G-H43-1's own certified fix, since D1-entry
+// legitimately forwards pending entries to the round's designee and a
+// periodic strip would delete that forwarded work).
+//
+// RED at 462478d (before ANY of A/B/C/D): M1 alone keeps the height from
+// converging within the bound at all — evidence below. GREEN at 8368196:
+// D1-entry (capped at h43ForwardEntries) forwards the designee's missing
+// entry, D3 (re-keyed to the round's own designee) backstops a lost
+// forward, and D4 restates the bound — the certification's own measurement
+// on this SHA: the entry lane commits at 104 s, inside the 190 s f=1 bound.
+//
+// NOT independently RED at a3e4e72, evidence-checked this session, and
+// reported rather than papered over (build-immutable #7): a3e4e72 already
+// carries forwardPendingWorkToDesignee (labelled WIP in its own commit
+// message, uncapped and un-deduped) wired into advanceToRound. In THIS
+// full-mesh, short-latency (5-50ms), 12-seat timed schedule, the SAME event
+// that lets an armed seat's round-change contribute to a round's quorum
+// (entering the round via advanceToRound) is what fires that seat's forward
+// to that round's designee, in the same function call — so by the time
+// enough round-changes accumulate to complete round r's quorum, the
+// workless designee has, in this topology, already-near-certainly received
+// a forward for it. Verified directly: running this exact construction
+// (round-0 AND round-1 designees confirmed quiescent — logged below) at
+// a3e4e72 committed cleanly at round 1 by its own designee, the GREEN
+// shape, not the M4 RED shape the certification's own field probe records.
+// The probe's h43-probe-evidence.txt:38/108/236/398 observation is real and
+// is not in question — it is a different topology/timing (WAN-realistic,
+// not this fixture's full mesh) than this in-process schedule reproduces at
+// a3e4e72, so 462478d, not a3e4e72, is this gate's honest RED baseline.
+func TestModelCheck_H43_EntryLaneWorklessDesigneeMustCommitWithinFPlus1Rounds(t *testing.T) {
+	nodes, _, net, sched, _ := matureWorld12(t)
+	for i, nd := range nodes {
+		if !nd.chain.EverMature() {
+			t.Fatalf("premise: node %d not latched", i)
+		}
+	}
+	var honestSlashed bool
+	for _, nd := range nodes {
+		nd.OnSlash(func(ports.NodeID, uint64) { honestSlashed = true })
+	}
+
+	_, contested := nodes[0].chain.Head()
+
+	// WHICH 3 seats get armed and which gets killed is chosen so that ROUND
+	// 0's designee is a QUIESCENT seat — otherwise, on this fixture's fixed
+	// (deterministic) designatedProposer rotation, M4 can go entirely
+	// unexercised by luck alone (the round-0 designee happens to already be
+	// armed, so no round is ever wasted, and the gate is VACUOUS regardless
+	// of which commit is under test — caught by running this same
+	// construction against a3e4e72 first and finding it PASSED there,
+	// which a decisive M4 gate must not). Pick round 0's and round 1's
+	// designee indices first, then choose 3 armed seats and 1 killed seat
+	// from the REMAINING 10, guaranteeing at least round 0 starts on a
+	// live, workless designee.
+	indexOf := map[ports.NodeID]int{}
+	for i, nd := range nodes {
+		indexOf[nd.id] = i
+	}
+	d0idx := indexOf[nodes[0].designatedProposer(contested, 0)]
+	d1idx := indexOf[nodes[0].designatedProposer(contested, 1)]
+	excluded := map[int]bool{d0idx: true, d1idx: true}
+	var pool []int
+	for i := 0; i < len(nodes); i++ {
+		if !excluded[i] {
+			pool = append(pool, i)
+		}
+	}
+	if len(pool) < 4 {
+		t.Fatalf("premise: not enough non-designee seats to pick 3 armed + 1 killed from (pool=%v)", pool)
+	}
+	killedIdx := pool[0]
+	armed := append([]int{}, pool[1:4]...)
+	armedSet := map[int]bool{}
+	for _, i := range armed {
+		armedSet[i] = true
+	}
+	if armedSet[d0idx] || armedSet[d1idx] || killedIdx == d0idx || killedIdx == d1idx {
+		t.Fatalf("premise: round 0/1's designee (idx %d/%d) must be neither armed nor the killed seat (armed=%v killed=%d)", d0idx, d1idx, armed, killedIdx)
+	}
+	t.Logf("G-H43-9 premise: round-0 designee is seat %d (quiescent), round-1 designee is seat %d (quiescent), armed=%v, killed=%d", d0idx, d1idx, armed, killedIdx)
+	for i, nd := range nodes {
+		if i == killedIdx {
+			continue
+		}
+		nd.pendingBondRegs = nil // this oracle is the entry lane, never the reg lane
+		if armedSet[i] {
+			nd.pendingEntries = []pendingEntry{{E: mkEntry(fmt.Sprintf("h43-9-entry-%d", i)), At: contested}}
+		} else {
+			nd.pendingEntries = nil
+		}
+	}
+	for i, nd := range nodes {
+		isArmed := armedSet[i]
+		isKilled := i == killedIdx
+		hasWork := len(nd.pendingBondRegs) > 0 || len(nd.pendingEntries) > 0
+		if isArmed && !hasWork {
+			t.Fatalf("premise: armed seat %d has no pending entry after setup", i)
+		}
+		if !isArmed && !isKilled && hasWork {
+			t.Fatalf("premise: quiescent seat %d has pending work after setup — heterogeneous arming not established", i)
+		}
+	}
+
+	net.Kill(nodes[killedIdx].id)
+	net.DisableHeldDelivery()
+
+	interval := DefaultConfig().ChainSyncInterval
+	live := make([]*Node, 0, 11)
+	for i, nd := range nodes {
+		if i == killedIdx {
+			continue
+		}
+		nd := nd
+		idx := len(live)
+		live = append(live, nd)
+		phase := ports.Duration(idx) * (interval / 11)
+		sched.AfterFunc(phase, func() { nd.StartChainSync(nd.chainSyncSeed, nil) })
+	}
+
+	const downDuration = 9 * 60 * ports.Second
+	sched.AfterFunc(downDuration, func() {
+		net.Restart(nodes[killedIdx].id)
+		nodes[killedIdx].StartChainSync(nodes[killedIdx].chainSyncSeed, nil)
+	})
+
+	committed := func() bool {
+		for _, nd := range nodes {
+			if _, h := nd.chain.Head(); h > contested {
+				return true
+			}
+		}
+		return false
+	}
+
+	// THE BOUND, at f=1 (unchanged from G-H43-1 — the restated D4 bound
+	// collapses to this once D1-entry lands, since a live round's designee
+	// then holds the work: W ~= 0).
+	const f = uint64(1)
+	var sweepSum uint64
+	for r := uint64(0); r <= f; r++ {
+		sweepSum += uint64(sweepsForRound(r))
+	}
+	const skew = 30 * ports.Second
+	const gatherG = 10 * ports.Second
+	bound := ports.Duration(sweepSum)*interval + skew + gatherG
+	deadline := sched.Now().Add(bound)
+
+	steps := 0
+	for sched.Now() < deadline && !committed() {
+		if !sched.Step() {
+			break
+		}
+		steps++
+	}
+
+	if honestSlashed {
+		t.Fatal("I5 VIOLATION: an honest validator was slashed under the entry-lane workless-designee schedule")
+	}
+	if !committed() {
+		rounds := map[int]uint64{}
+		for i, nd := range nodes {
+			rounds[i] = nd.roundsFor().Round
+		}
+		t.Fatalf("G-H43-9: height %d did not commit within the f=1 bound %v of the kill (per-seat rounds "+
+			"reached: %v) — even on the entry lane, with D1-entry landing", contested, bound, rounds)
+	}
+
+	var commitRound uint64
+	var proposerID ports.NodeID
+	for _, nd := range nodes {
+		if b := nd.Chain().Blocks(contested); len(b) > 0 {
+			commitRound = b[0].CommitRound
+			proposerID = b[0].ProposerID()
+			break
+		}
+	}
+	wantProposer := nodes[0].designatedProposer(contested, commitRound)
+
+	// ── The oracle (M4, decisive; both halves — neither alone is sufficient,
+	// per the certification: "the first without the second reads as a
+	// stall, the second without the first reads as a healthy takeover") ────
+	if commitRound > f {
+		t.Fatalf("G-H43-9 REPRODUCED: h%d committed at round %d, above the certified f=%d bound — a live, "+
+			"armed designee-rotation seat at some round <= f held none of the height's pending work and "+
+			"could not produce a valid block (M4, the empty-block validity rule), wasting round(s) at timer "+
+			"speed before the #338 takeover recovered the height. Consensus-adjacent, research-gated "+
+			"(build-immutable #6); closers D1-entry(capped)+D3(re-keyed)+D4(restated bound) in the "+
+			"workless-designee certification.", contested, commitRound, f)
+	}
+	if proposerID != wantProposer {
+		t.Fatalf("G-H43-9 REPRODUCED: h%d committed at round %d by proposer %s, but designatedProposer(%d, %d) "+
+			"= %s — the height committed via the #338 rank-staggered takeover, a NON-designee work-holder, "+
+			"not the round's own designee (M4, the designee rotation is work-blind: rounds.go "+
+			"designatedProposer). Matches h43-probe-evidence.txt:398 (n2 commits h9 r3) against :4 "+
+			"(designee(h9, r3) = n5).", contested, commitRound, proposerID, contested, commitRound, wantProposer)
+	}
+	t.Logf("G-H43-9: h%d committed at round %d by its own designee %s — M4 is fixed on this branch.", contested, commitRound, proposerID)
+}
+
+// ── G-H43-10 ────────────────────────────────────────────────────────────────
+//
+// TestModelCheck_H43_ForwardCommitsEntriesNeverRegs is G-H43-10 (the forward,
+// both lanes), per the delta certification §3.7/§7: "One work-holder, a
+// workless designee at round 1. Assert (a) the designee's round-1 block is
+// non-empty and the height commits at round 1; (b) the reg lane is asserted
+// absent — no MsgSubmitBondReg is sent to a designee that is not the reg's
+// validator."
+//
+// THE SCHEDULE: 4 anchors (tier2AnchorNet — the #402 strict-anchor-majority
+// regime). D is round 1's designee, holding NOTHING. W (a different anchor)
+// holds ONE pending entry (mkEntry) AND one pending THIRD-PARTY bond
+// registration (owned by neither W nor D — a synthetic 5th identity), so
+// this one schedule exercises both lanes' forward decision at once. W and
+// one other live anchor (O1) each independently reach round 1 via
+// advanceToRound (a real local timeout), delivered over the REAL network
+// (net, not direct handleChain) so forwardPendingWorkToDesignee's own
+// MsgSubmitEntry/MsgSubmitBondReg sends are genuinely observed on the wire —
+// this gate is specifically about what DOES and does NOT cross that wire.
+//
+// RED at a3e4e72 on (b) (D1 was WIP, both lanes still forwarded there):
+// `forwardPendingWorkToDesignee` forwards the third-party reg to D, and D's
+// own MsgSubmitBondReg handler refuses it decisively — "bond-reg submit
+// REFUSED (relay)" (chainrole.go) — observed via net.Stats.Kinds
+// [MsgSubmitBondReg] > 0 AND D's own reply is OK: false. GREEN at 8368196:
+// the reg loop in forwardPendingWorkToDesignee is deleted outright (§3.1,
+// "REGISTRATIONS ARE NOT FORWARDED"), so net.Stats.Kinds[MsgSubmitBondReg]
+// stays exactly 0 for the whole schedule — the absence is asserted on the
+// wire, not by re-deriving it from the refusal (a MsgSubmitBondReg that is
+// never SENT is a stronger claim than one that is sent-and-refused).
+func TestModelCheck_H43_ForwardCommitsEntriesNeverRegs(t *testing.T) {
+	nodes, ids, net, g, _ := tier2AnchorNet(t, 4)
+	all := make([]ports.NodeID, len(ids))
+	for i := range ids {
+		all[i] = ids[i].NodeID()
+	}
+	for _, nd := range nodes {
+		seed := make([]ports.NodeID, 0, len(all)-1)
+		for _, id := range all {
+			if id != nd.id {
+				seed = append(seed, id)
+			}
+		}
+		nd.chainSyncSeed = seed
+	}
+	byID := map[ports.NodeID]*Node{}
+	for _, nd := range nodes {
+		byID[nd.id] = nd
+	}
+
+	_, height := nodes[0].chain.Head()
+	if height != 1 {
+		t.Fatalf("premise: want the working height to be 1 (right after genesis), got %d", height)
+	}
+	designeeID := nodes[0].designatedProposer(height, 1)
+	d, ok := byID[designeeID]
+	if !ok {
+		t.Fatalf("premise: designatedProposer(%d, 1) returned an unknown id", height)
+	}
+	var w *Node
+	var others []*Node
+	for _, nd := range nodes {
+		if nd.id == designeeID {
+			continue
+		}
+		if w == nil {
+			w = nd
+			continue
+		}
+		others = append(others, nd)
+	}
+	if w == nil || len(others) != 2 {
+		t.Fatalf("premise: expected 1 work-holder + 2 other live anchors, got w=%v others=%d", w != nil, len(others))
+	}
+	o1 := others[0]
+
+	// D is genuinely workless: no entries, no regs, ever.
+	d.pendingEntries = nil
+	d.pendingBondRegs = nil
+
+	// W holds ONE entry and ONE THIRD-PARTY reg (owned by neither W nor D) —
+	// both lanes' forward decision exercised in one schedule.
+	w.pendingEntries = []pendingEntry{{E: mkEntry("h43-10-entry"), At: height}}
+	thirdParty := identity.FromSeed(890099)
+	tpPub := append([]byte(nil), thirdParty.Signer().Public().(ed25519.PublicKey)...)
+	thirdPartyReg := chain.NewBondReg(thirdParty.Signer(), ports.HashBytes(tpPub), 2<<20, []byte("stub"), g.Hash(), 0)
+	w.pendingBondRegs = []pendingBondReg{{R: thirdPartyReg}}
+
+	// Wrap D's transport to observe every MsgSubmitBondReg it receives and
+	// whether it accepted or refused each one — the wire-level proof for (b).
+	var regsReceived int
+	var regsAccepted int
+	ep := net.Endpoint(d.id)
+	origHandle := d.handle
+	ep.SetHandler(func(from ports.NodeID, msg ports.Message) {
+		if msg.Kind == ports.MsgSubmitBondReg {
+			regsReceived++
+		}
+		origHandle(from, msg)
+		if msg.Kind == ports.MsgSubmitBondReg {
+			// Peek at whether it was queued (accepted) by re-checking D's own
+			// pending set membership after the handler ran.
+			for _, pr := range d.pendingBondRegs {
+				if pr.R.ValidatorID() == thirdPartyReg.ValidatorID() {
+					regsAccepted++
+					break
+				}
+			}
+		}
+	})
+
+	// W and O1 each independently reach round 1 over the REAL network — this
+	// is what fires the real forwardPendingWorkToDesignee sends.
+	w.advanceToRound(w.roundsFor(), 1, "test")
+	drainHeld(t, net, fifo)
+	o1.advanceToRound(o1.roundsFor(), 1, "test")
+	drainHeld(t, net, fifo)
+
+	// ── (b) the reg lane is asserted ABSENT, on the wire — the certification's
+	// exact assertion is that no MsgSubmitBondReg is EVER SENT to a designee
+	// that is not the reg's validator, not merely that a sent one is refused
+	// (a sent-and-refused reg still pays the ~1.5 MB egress and burns the
+	// forwarder's own submit budget at the designee, per §3.1) ────────────
+	if regsReceived != 0 {
+		t.Fatalf("G-H43-10 REPRODUCED (part b): D received %d MsgSubmitBondReg for a THIRD-PARTY registration "+
+			"(validator %s, neither W's nor D's own) — %d of them were queued. The reg lane must never forward a "+
+			"relayed registration in the first place (R-H43-FORWARD-REG-RELAY-REFUSED): forwardPendingWorkToDesignee "+
+			"still contains the reg loop, paying ~1.5 MB of egress and the forwarder's own allowBondSubmit budget "+
+			"for a submission the receiver decisively refuses ('bond-reg submit REFUSED (relay)', chainrole.go) 100%% "+
+			"of the time. Consensus-adjacent, research-gated (build-immutable #6); closer: delete the reg loop.",
+			regsReceived, thirdPartyReg.ValidatorID(), regsAccepted)
+	}
+	t.Logf("G-H43-10 (part b): D received ZERO MsgSubmitBondReg for the whole schedule — the reg forward loop is gone.")
+
+	// ── (a) the designee's round-1 block is non-empty and the height
+	// commits at round 1 ─────────────────────────────────────────────────
+	var commitRound uint64
+	var committedHash ports.Hash
+	var entriesInBlock int
+	committed := false
+	for _, nd := range nodes {
+		if b := nd.Chain().Blocks(height); len(b) > 0 {
+			committed = true
+			commitRound = b[0].CommitRound
+			committedHash = b[0].Hash()
+			entriesInBlock = len(b[0].Entries)
+			break
+		}
+	}
+	if !committed {
+		t.Fatalf("G-H43-10 REPRODUCED (part a): height %d never committed — the workless designee D could not "+
+			"produce a valid (non-empty) block and no forward/takeover rescued it within this schedule "+
+			"(M4, R-H43-WORKLESS-DESIGNEE). Consensus-adjacent, research-gated (build-immutable #6).", height)
+	}
+	if commitRound != 1 {
+		t.Fatalf("G-H43-10 REPRODUCED (part a): height %d committed at round %d, not round 1 — the forward did "+
+			"not land in time for D's own round-1 attempt (hash %x)", height, commitRound, committedHash)
+	}
+	if entriesInBlock == 0 {
+		t.Fatalf("G-H43-10 REPRODUCED (part a): height %d committed at round 1 but the block carries ZERO entries — "+
+			"D proposed EMPTY despite W's forwarded entry existing on the wire", height)
+	}
+	t.Logf("G-H43-10 (part a): h%d committed at round %d with %d entries (D's own round-1 block, forwarded from W) — M4's entry lane is fixed on this branch.", height, commitRound, entriesInBlock)
+}
