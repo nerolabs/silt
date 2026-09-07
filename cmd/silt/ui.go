@@ -770,6 +770,7 @@ type deliverySettlementInfo struct {
 	RefundsBurnedNoAccount int64 `json:"refundsBurnedNoAccount"`
 	RefundsBurnedAtCap     int64 `json:"refundsBurnedAtCap"`
 	RestoredGuardEntries   int64 `json:"restoredGuardEntries"`
+	GuardFullRefusals      int64 `json:"guardFullRefusals"` // delivery-lane opens/funds refused at a guard full of live entries
 }
 
 type serveMintInfo struct {
@@ -914,7 +915,8 @@ func (s *uiServer) computeStatus(now time.Time) *statusInfo {
 		ds := s.nd.DeliverySettlementStats()
 		out.DeliverySettlement = &deliverySettlementInfo{Settlements: ds.Settlements, SettledCredits: ds.SettledCredits, SettledIncrements: ds.SettledIncrements,
 			SessionsClosed: ds.SessionsClosed, RefundedCredits: ds.RefundedCredits, PendingRefundCredits: ds.PendingRefundCredits, BurnedCredits: ds.BurnedCredits,
-			RefundsBurnedNoAccount: ds.RefundsBurnedNoAccount, RefundsBurnedAtCap: ds.RefundsBurnedAtCap, RestoredGuardEntries: ds.RestoredGuardEntries}
+			RefundsBurnedNoAccount: ds.RefundsBurnedNoAccount, RefundsBurnedAtCap: ds.RefundsBurnedAtCap, RestoredGuardEntries: ds.RestoredGuardEntries,
+			GuardFullRefusals: ds.GuardFullRefusals}
 		out.economy = s.nd.EconomySelf()
 		out.AddressCap = s.addressCapSnapshot()
 		if s.statusExtra != nil {

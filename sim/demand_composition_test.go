@@ -26,8 +26,8 @@ package sim
 //
 // The chain is a REAL v5 chain with a REAL committed IssuerKeyReg (issuerKeyGenesis),
 // so the pin resolves against genuine consensus state; the withdrawal is a real blind
-// RSA withdrawal over the wire; the receipt goes through the real MsgDeliveryReceipt
-// handler; and the assertion is POSITIVE SETTLED CREDIT, which is what the e2e
+// RSA withdrawal over the wire; the delivery goes through the real MsgDeliveryOpen and
+// MsgDeliverySettle handlers (B-9); and the assertion is POSITIVE SETTLED CREDIT, which is what the e2e
 // `credit=` non-zero assertion measured.
 //
 // ABLATION that must redden it: drop the FetchDemandIssuerKeys call in step 1 (the

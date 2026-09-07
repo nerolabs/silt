@@ -81,6 +81,32 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   pins `TestR31NoSumTrieAndEverySMTUsesSHA256`, `TestR31SMTModuleIsPinnedToTheCertifiedVersion`,
   `TestR31EveryStateHashTagEndsInExactlyOneNUL`. Record: `docs/design/state-root-domain-separation.md`.
 
+### Removed
+- **B-9 — the flat delivery receipt (token spent at REDEEM) is retired from the node.** `MsgDeliveryReceipt` keeps
+  its kind number and is refused with a named reason (`handleDeliveryReceipt` parses, banks and pays nothing); the
+  fetcher-side `SubmitDeliveryReceipt` is deleted (`swarm receipt` moved to the session flow in R2.9). The
+  build-questions certification (2026-09-04 §2.2) requires it — a fetcher left on the flat path re-creates the
+  suppression break the anchored lane closed — and it closes `R-V2-V3-DEMAND-DILUTION` by construction (no second
+  surface for one face). The "delivery receipt paid NO credit" S5 marker re-homes to the session lane's refused
+  settlement. The `core/demand` primitive (`Bank.Redeem`, `SubmittedReceipt`, v2 `Ack`) stays as a leaf library
+  with its own unit tests, documented as having no production caller; it and the ledger's flat leg
+  (`RedeemDeliveryCreditReason`) retire together in one attended PR. Eight node gates and three sim tests are
+  re-homed to open-and-settle (restart replay → the same anchor cannot open twice; hardness at admission → measured
+  on `MsgDeliveryOpen`, wall-clock budget re-derived from T-7 for the new driver; P3b → the distinct-bonded-fetcher
+  surface, `Node.DistinctBondedFetchers`). The v2 cost-to-wash sim retires in favour of its v3 twin. **Where the
+  cross-server pump closes MOVED with the re-home** (blind PE ruling, 2026-09-07): a session anchor verifies under
+  the server's OWN committed key only (the own-key rule, now gated — a fully operational server B with a foreign
+  issuer's keys pinned refuses a FRESH foreign anchor; ablation RED), so the composed window claim is exercised at
+  the ISSUER (A's own expired token refused at A's keyset, the refusal REASON read so the guard's watermark cannot
+  stand in for the window; the re-dating pump is a same-server pump under sessions and is gated at A). The
+  retirement itself is gated (a well-formed, otherwise-valid v2 receipt → OK=false with the named reason, no
+  credit motion, both demand observables unchanged, the token still opens a session). The guard-full operator
+  signal is re-homed to where it arises — open/fund (`delivery anchor refused: guard full`, WARN, with
+  `serial_guard_refusals`; the counter also on `/api/status` `deliverySettlement.guardFullRefusals`); the settle
+  WARN fires only for post-authentication refusals (pre-auth classes stay at Debug — one attacker message is no
+  longer one WARN line). G4's positive arm asserts the exact post-settlement balance (the full reversal), not
+  merely "moved". `Node.WitnessedDemand` is documented as retired with the primitive (permanently zero).
+
 ### Changed
 - **R2.9: the delivery session's unsettled remainder is a DEPOSIT released at anchor expiry, not a burn
   (D-R2.9-NODE-HALF-CALLS call 1, amended 1′; certification

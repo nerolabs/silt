@@ -14,11 +14,12 @@ package node
 // dropping either field, or folding it back into the banked line all break the
 // operator's only signal — so all three go RED here.
 //
-// The reason value under test is ReasonNoFee because it is the one non-paying path a
-// unit test can reach in milliseconds; the operator-actionable ReasonGuardFull value
-// is gated at the ledger tier (core/credit TestCapFullRefusalIsObservable) and
-// composed at core/node TestComposedExpiryBoundary_EvictionIsClosedAtBothLayers.
-// What is under test HERE is the LINE, not which reason produced it.
+// The reason value under test is the budget ceiling (errDeliveryCountAboveBudget), the
+// one POST-AUTHENTICATION non-paying path a unit test reaches in milliseconds. The
+// operator-actionable guard-full condition cannot arise at settle on the session lane —
+// it arises at open/fund and has its own marker, "delivery anchor refused: guard full"
+// (TestGuardFullOpenLogsTheWarnMarker). Pre-authentication refusals (no session, not the
+// owner, bad signature) must NOT produce this line: TestPreAuthSettleRefusalIsNotAWarn.
 
 import (
 	"crypto/rand"
@@ -80,9 +81,9 @@ func TestBankedButUnpaidReceiptLogsTheWarnLine(t *testing.T) {
 	serverID := serverIdent.NodeID()
 	nd := New(serverID, DefaultConfig(), sched, simNet.Endpoint(serverID), memstore.New())
 
-	// fee = 0 is the cheap non-paying path: the receipt banks, the redeem reaches the
-	// settlement block and returns (0, ReasonNoFee).
-	ledger := credit.New(0, 0)
+	// B-9: the flat receipt is retired; the non-paying path on the SESSION lane is a
+	// refused settlement (here: a cumulative count the budget cannot fund).
+	ledger := credit.New(50_000, 0)
 	nd.SetLedger(ledger)
 	nd.SetSigner(serverIdent.Signer())
 
@@ -105,6 +106,8 @@ func TestBankedButUnpaidReceiptLogsTheWarnLine(t *testing.T) {
 	nd.EnableChain(c, serverIdent.Signer())
 	nd.SetDemandIssuerKey(rand.Reader, 0, issuerPriv)
 	nd.EnableDemandBank(serverID)
+	nd.EnableDeliverySessions(10 * ports.Second)
+	ledger.Register(serverID)
 	if ks := nd.DemandIssuerKeyset(serverID); ks == nil || ks.Key(0) == nil {
 		t.Fatal("setup: the committed issuer key was not pinned — the bank would reject every receipt")
 	}
@@ -126,24 +129,23 @@ func TestBankedButUnpaidReceiptLogsTheWarnLine(t *testing.T) {
 		t.Fatalf("demand.Unblind: %v", uerr)
 	}
 	objRoot := ports.HashBytes([]byte("warnline-object-root"))
-	submitted := demand.SubmittedReceipt{
-		Token:   token,
-		Receipt: demand.Ack(fetcherIdent.Signer(), token, objRoot, serverID),
+	ledger.Register(fetcherIdent.NodeID())
+	// The token is the session anchor. A first settlement BANKS (the success line); a
+	// second, whose cumulative count the budget cannot fund, settles NOTHING and must say so.
+	sess, oerr := nd.OpenDeliverySession(fetcherIdent.NodeID(), demand.SignSessionOpen(fetcherIdent.Signer(), serverID, []demand.Token{token}))
+	if oerr != nil {
+		t.Fatalf("setup: open: %v", oerr)
 	}
-	blob, mErr := submitted.Marshal()
-	if mErr != nil {
-		t.Fatalf("SubmittedReceipt.Marshal: %v", mErr)
+	if settled, serr := nd.SettleDeliveryReceipt(fetcherIdent.NodeID(), demand.AckSession(fetcherIdent.Signer(), sess.handle, sess.commitment, objRoot, serverID, 1)); serr != nil || settled != 1 {
+		t.Fatalf("setup: the paying settlement failed (%d, %v)", settled, serr)
 	}
+	nd.handle(fetcherIdent.NodeID(), ports.Message{Kind: ports.MsgDeliverySettle, Ephemeral: true,
+		Data: mustMarshal(t, demand.AckSession(fetcherIdent.Signer(), sess.handle, sess.commitment, objRoot, serverID, 1_000_000))})
 
-	nd.handle(fetcherIdent.NodeID(), ports.Message{Kind: ports.MsgDeliveryReceipt, Data: blob, Ephemeral: true})
-
-	// The receipt must actually have BANKED — otherwise this test would pass
-	// vacuously against a node that rejected it outright.
-	if nd.WitnessedDemand(objRoot) == 0 {
-		t.Fatal("setup: the bank rejected the receipt, so the unpaid-settlement path was never reached")
-	}
-	if paid := ledger.Balance(serverID); paid != 0 {
-		t.Fatalf("setup: the redeem paid %d — this fixture must reach the NON-paying path", paid)
+	// The receipt must actually have been REFUSED — otherwise this test would pass
+	// vacuously against a node that paid it.
+	if nd.WitnessedIncrements(objRoot) != 1 {
+		t.Fatalf("setup: witnessed increments %d, want exactly the one paying settlement", nd.WitnessedIncrements(objRoot))
 	}
 
 	// THE CONTRACT. Event string verbatim, level WARN, both fields present.
@@ -154,9 +156,9 @@ func TestBankedButUnpaidReceiptLogsTheWarnLine(t *testing.T) {
 			"operator signal is the `delivery receipt banked … credit=0` success line "+
 			"(observable-log-contract scar, instance 2)\nlines seen: %v", event, lg.events)
 	}
-	if got, present := kv["reason"]; !present || got != credit.ReasonNoFee {
-		t.Fatalf("%q: reason=%v (present=%v), want %q — the typed reason is what makes the "+
-			"refusal diagnosable", event, got, ok, credit.ReasonNoFee)
+	if got, present := kv["reason"]; !present || got != errDeliveryCountAboveBudget.Error() {
+		t.Fatalf("%q: reason=%v (present=%v), want exactly %q — the typed reason is what makes the "+
+			"refusal diagnosable", event, got, present, errDeliveryCountAboveBudget.Error())
 	}
 	if got, present := kv["serial_guard_refusals"]; !present || got != ledger.GuardFullRefusals() {
 		t.Fatalf("%q: serial_guard_refusals=%v (present=%v), want the ledger's counter %d — it is "+
@@ -173,4 +175,13 @@ func TestBankedButUnpaidReceiptLogsTheWarnLine(t *testing.T) {
 		t.Fatal("the `delivery receipt banked` line disappeared — it is an announced observable " +
 			"other tiers watch; the WARN line is additional, not a replacement")
 	}
+}
+
+func mustMarshal(t *testing.T, r demand.SessionReceipt) []byte {
+	t.Helper()
+	b, err := r.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
 }

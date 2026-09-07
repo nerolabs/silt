@@ -6,14 +6,14 @@ package node
 // bare credit.Ledger. Exercises:
 //   - node.go:1576: RecordServeToObject called from the MsgFetchChunk handler
 //     when n.ledger != nil and n.proofMeta[chunkID].Root != zero hash
-//   - demandrole.go:201: RedeemDeliveryCredit called from handleDeliveryReceipt
-//     when a valid, bank-accepted delivery receipt arrives
+//   - deliverysession.go: SettleDelivery called from SettleDeliveryReceipt when an
+//     authenticated receipt on a live, anchored session advances the count (B-9)
 //
 // Scenario:
 //   1. Serve lane-0 VIA THE NODE HANDLER (proves node.go:1576 fires).
 //   2. Flood maxProvisional-1 additional lanes DIRECTLY ON THE LEDGER (setup
 //      only — does not re-test the node-handler wiring, keeps conservation simple).
-//   3. Submit a delivery receipt VIA THE NODE HANDLER (proves demandrole.go:201 fires).
+//   3. Open a session and settle a receipt VIA THE NODE PATH (proves SettleDelivery fires).
 //   4. Assert conservation end-to-end.
 
 import (
@@ -36,7 +36,7 @@ import (
 // TestR05NodePathConservation is the R0.5 gate: the A4 fix must be wired on the
 // real node path. It fails if:
 //   - node.go:1576 does not call RecordServeToObject (the lane-0 serve assertion)
-//   - demandrole.go:201 does not call RedeemDeliveryCredit with conservation
+//   - SettleDeliveryReceipt does not call SettleDelivery with conservation
 //   - the eviction claw-back (reverseProvisional at eviction) is absent
 func TestR05NodePathConservation(t *testing.T) {
 	const fee = 50_000
@@ -88,6 +88,7 @@ func TestR05NodePathConservation(t *testing.T) {
 	nd.EnableChain(c, serverIdent.Signer())
 	nd.SetDemandIssuerKey(rand.Reader, 0, issuerPriv)
 	nd.EnableDemandBank(serverID)
+	nd.EnableDeliverySessions(10 * ports.Second) // B-9: deliveries are sessions
 	if ks := nd.DemandIssuerKeyset(serverID); ks == nil || ks.Key(0) == nil {
 		t.Fatal("setup: the committed issuer key was not pinned - the bank would reject every receipt")
 	}
@@ -164,6 +165,9 @@ func TestR05NodePathConservation(t *testing.T) {
 		for _, root := range escrowRoots {
 			total += ledger.EscrowBalance(root)
 		}
+		// B-9: the session's unsettled remainder is a pending DEPOSIT (released to the
+		// fetcher at anchor expiry) and is part of the conserved total.
+		total += ledger.DeliverySettlementStats().PendingRefundCredits
 		return total
 	}
 
@@ -236,8 +240,8 @@ func TestR05NodePathConservation(t *testing.T) {
 		t.Fatalf("ChargePublish: %v", err)
 	}
 
-	// ── Step 4: issue a valid demand token and submit receipt via the node handler. ──
-	// This proves RedeemDeliveryCredit fires at demandrole.go:201.
+	// ── Step 4: issue a valid demand token and settle it through the session lane. ──
+	// This proves SettleDelivery fires from SettleDeliveryReceipt.
 	serial := make([]byte, 32)
 	if _, err := rand.Read(serial); err != nil {
 		t.Fatalf("rand.Read serial: %v", err)
@@ -252,20 +256,12 @@ func TestR05NodePathConservation(t *testing.T) {
 		t.Fatalf("demand.Unblind: %v", uerr)
 	}
 
-	// Ack signs over (serial, objRoot, serverID) with the fetcher's private key.
-	receipt := demand.Ack(fetcherIdent.Signer(), token, objRoot, serverID)
-	submitted := demand.SubmittedReceipt{Token: token, Receipt: receipt}
-	blob, mErr := submitted.Marshal()
-	if mErr != nil {
-		t.Fatalf("SubmittedReceipt.Marshal: %v", mErr)
+	// B-9: the token is the SESSION anchor. Open (spent into the guard), settle ONE
+	// increment for objRoot, close (the unsettled remainder becomes a pending deposit,
+	// part of the conserved total below).
+	if !sessionPresent(t, nd, fetcherIdent, token, objRoot) {
+		t.Fatal("the session delivery was not banked — the settlement path was never reached")
 	}
-
-	// Verify the demand bank will accept this receipt before submitting.
-	// (If the bank rejects, RedeemDeliveryCredit is never called — a different failure.)
-	preRedeemTotal := sumLedger()
-
-	// Submit via the node handler (demandrole.go:175 → RedeemDeliveryCredit at :201).
-	nd.handle(fetcherID, ports.Message{Kind: ports.MsgDeliveryReceipt, Data: blob, Ephemeral: true})
 
 	// ── Step 5: conservation assertion. ──
 	// Under the A4 fix (eviction reverses the lane-0 self-mint):
@@ -274,7 +270,7 @@ func TestR05NodePathConservation(t *testing.T) {
 	//   - bytes0                         (eviction reversal of lane-0 self-mint)
 	//   + nodFloodSize*floodBytes        (flood self-mints, all legitimately unwitnessed)
 	//   - fee                            (ChargePublish debit from fetcher)
-	//   + fee                            (conserved fee credited at redeem)
+	//   + 1 + (fee − 1)                  (one increment settled to server+escrow; the rest a pending deposit)
 	//   = initial + nodFloodSize*floodBytes
 	//
 	// Under the bug (no eviction reversal), bytes0 is NOT subtracted:
@@ -288,20 +284,17 @@ func TestR05NodePathConservation(t *testing.T) {
 			"  Σbalances+Σescrow = %d\n"+
 			"  want              = %d\n"+
 			"  delta             = %+d\n"+
-			"  preRedeemTotal=%d initial=%d fee=%d bytes0=%d skim0=%d\n"+
-			"  If delta == +%d: evicted lane's self-mint NOT reversed — A4 claw-back missing.\n"+
-			"  If delta is 0 but preRedeemTotal == wantTotal+fee: redeem did not fire (bank rejected receipt).",
+			"  If delta == +%d: evicted lane's self-mint NOT reversed — A4 claw-back missing.\n",
 			gotTotal, wantTotal, delta,
-			preRedeemTotal, initial, int64(fee), int64(bytes0), skim0,
-			int64(bytes0))
+			int64(mint0)) // the lane-0 mint in CREDITS (8 = 7 net + 1 skim), not its bytes
 	}
 
 	// Additional guard: if the bank rejected the receipt, conservation can still look
 	// correct (ChargePublish debit not recovered), but witnessed demand stays at 0.
 	// Verify the bank actually accepted the receipt (demand > 0).
-	if got := nd.WitnessedDemand(objRoot); got == 0 {
-		t.Errorf("demand bank did not bank the receipt (WitnessedDemand=0) — " +
-			"RedeemDeliveryCredit at demandrole.go:201 may not have been called. " +
-			"Check that the receipt's Fetcher key hashes correctly to fetcherID.")
+	if got := nd.WitnessedIncrements(objRoot); got == 0 {
+		t.Errorf("the settlement was not witnessed (WitnessedIncrements=0) — " +
+			"SettleDelivery may not have been called from SettleDeliveryReceipt. " +
+			"Check that the open's Fetcher key hashes correctly to fetcherID.")
 	}
 }

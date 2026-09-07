@@ -153,7 +153,8 @@ func TestRTC3_RestartDoesNotRePayTheSameWireReceipt(t *testing.T) {
 		nd.SetLedger(ledger)
 		nd.EnableChain(c, srvIdent.Signer())
 		nd.SetDemandIssuerKey(rand.Reader, 0, key)
-		nd.EnableDemandBank(nd.ID()) // issuer == server, the shipped wiring
+		nd.EnableDemandBank(nd.ID())                 // issuer == server, the shipped wiring
+		nd.EnableDeliverySessions(10 * ports.Second) // B-9: the token is the session anchor
 		return nd
 	}
 
@@ -170,34 +171,30 @@ func TestRTC3_RestartDoesNotRePayTheSameWireReceipt(t *testing.T) {
 		t.Fatal(uerr)
 	}
 	obj := ports.HashBytes([]byte("rt-c3b-object"))
-	r := demand.Ack(fetcherIdent.Signer(), tok, obj, srv.ID())
-	blob, err := demand.SubmittedReceipt{Token: tok, Receipt: r}.Marshal()
-	if err != nil {
-		t.Fatal(err)
-	}
-	wire := ports.Message{Kind: ports.MsgDeliveryReceipt, Data: blob}
+	srv.ledger.(*credit.Ledger).Register(fetcherIdent.NodeID())
 
 	before := srv.ledger.Balance(srv.ID())
-	srv.handleDeliveryReceipt(fetcherIdent.NodeID(), wire)
+	if !sessionPresent(t, srv, fetcherIdent, tok, obj) {
+		t.Fatal("setup: the first presentation must open and pay")
+	}
 	firstPay := srv.ledger.Balance(srv.ID()) - before
 	if firstPay <= 0 {
 		t.Fatalf("setup: the first submission must pay, moved %+d", firstPay)
 	}
 	mid := srv.ledger.Balance(srv.ID())
-	srv.handleDeliveryReceipt(fetcherIdent.NodeID(), wire)
-	if srv.ledger.Balance(srv.ID()) != mid {
-		t.Fatalf("setup: the in-process guard must refuse the replay")
+	if sessionPresent(t, srv, fetcherIdent, tok, obj) || srv.ledger.Balance(srv.ID()) != mid {
+		t.Fatalf("setup: the in-process guard must refuse the replay (the same anchor cannot open twice)")
 	}
 
 	// RESTART.
 	srv2 := boot()
+	srv2.ledger.(*credit.Ledger).Register(fetcherIdent.NodeID())
 	before2 := srv2.ledger.Balance(srv2.ID())
-	srv2.handleDeliveryReceipt(fetcherIdent.NodeID(), wire)
+	if sessionPresent(t, srv2, fetcherIdent, tok, obj) {
+		t.Fatal("BREAK RT-C3B-17 REOPENED: the identical anchor opened a session AGAIN after a restart. A restart is an eviction of EVERY guarded token, in-window or not, which is the one eviction mode the design forbids.")
+	}
 	if secondPay := srv2.ledger.Balance(srv2.ID()) - before2; secondPay != 0 {
-		t.Fatalf("BREAK RT-C3B-17 REOPENED: the identical MsgDeliveryReceipt paid %d, then "+
-			"paid %d AGAIN after a restart. A restart is an eviction of EVERY guarded token, "+
-			"in-window or not — the one eviction mode the R0.4b coupling condition forbids.",
-			firstPay, secondPay)
+		t.Fatalf("after the restart the re-presented anchor paid %d, want 0", secondPay)
 	}
 }
 
@@ -210,8 +207,8 @@ func TestRTC3_RestartDoesNotRePayTheSameWireReceipt(t *testing.T) {
 // reverse anything — the self-mint stays until a valid receipt arrives, which is the
 // legitimate unwitnessed bilateral fallback (RecordServeToObject's 1 credit/byte).
 //
-// The property is structural: demandBank.Redeem returns credited=false, so
-// handleDeliveryReceipt never calls the ledger at all. This gate holds it in place,
+// The property is structural: a forged anchor fails verifyDeliveryAnchors, so the open
+// never reaches the ledger at all (B-9: the session lane). This gate holds it in place,
 // because "reverse on every refusal" is one careless hoist away from "reverse on
 // anything that arrives on the wire" — which would let an unauthenticated peer erase
 // a server's earnings for free.
@@ -236,6 +233,7 @@ func TestG4_UnwitnessedReceiptLeavesTheSelfMintAlone(t *testing.T) {
 	srv.EnableChain(c, srvIdent.Signer())
 	srv.SetDemandIssuerKey(rand.Reader, 0, key)
 	srv.EnableDemandBank(srv.ID())
+	srv.EnableDeliverySessions(10 * ports.Second)
 
 	obj := ports.HashBytes([]byte("g4-unwitnessed-object"))
 	const served = int64(64 << 20)
@@ -248,25 +246,22 @@ func TestG4_UnwitnessedReceiptLeavesTheSelfMintAlone(t *testing.T) {
 		t.Fatalf("setup: the serve produced no self-mint (%+d)", selfMint)
 	}
 
-	// A receipt whose blind signature is garbage: correctly shaped, correctly
-	// addressed to this server, and NOT witnessed by the issuer.
+	// An anchor whose blind signature is garbage: correctly shaped, addressed to this
+	// server, and NOT witnessed by the issuer. It must not open, and nothing may reverse.
 	serial, err := blindtoken.NewSerial(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
 	forged := demand.Token{Serial: serial, Sig: make([]byte, 256)}
-	r := demand.Ack(fetcherIdent.Signer(), forged, obj, srv.ID())
-	blob, err := demand.SubmittedReceipt{Token: forged, Receipt: r}.Marshal()
-	if err != nil {
-		t.Fatal(err)
-	}
 	for i := 0; i < 3; i++ {
-		srv.handleDeliveryReceipt(fetcherIdent.NodeID(), ports.Message{Kind: ports.MsgDeliveryReceipt, Data: blob})
+		if sessionPresent(t, srv, fetcherIdent, forged, obj) {
+			t.Fatal("a forged anchor opened a session")
+		}
 	}
 	if got := ledger.Balance(srv.ID()) - before; got != selfMint {
-		t.Fatalf("an UNWITNESSED receipt moved the server's balance to %+d off pre-serve, "+
-			"want the intact self-mint %+d. The supersede reverses only for a receipt the "+
-			"bank verified; an unauthenticated peer must not be able to erase a serve.",
+		t.Fatalf("an UNWITNESSED anchor moved the server's balance to %+d off pre-serve, "+
+			"want the intact self-mint %+d. The supersede reverses only for a settlement on an "+
+			"admitted session; an unauthenticated peer must not be able to erase a serve.",
 			got, selfMint)
 	}
 
@@ -280,15 +275,24 @@ func TestG4_UnwitnessedReceiptLeavesTheSelfMintAlone(t *testing.T) {
 	if uerr != nil {
 		t.Fatal(uerr)
 	}
-	real := demand.Ack(fetcherIdent.Signer(), tok, obj, srv.ID())
-	realBlob, err := demand.SubmittedReceipt{Token: tok, Receipt: real}.Marshal()
-	if err != nil {
-		t.Fatal(err)
+	// Acknowledge the WHOLE lane (256 increments of 256 KiB = the 64 MiB served), so the
+	// expected balance is EXACT: the self-mint is reversed in full and the server holds the
+	// settlement's net (gross − skim) and nothing else. Asserting `!= selfMint` alone passes
+	// on a lane that reverses nothing, because the settlement always pays something
+	// (blind PE, 2026-09-07).
+	sess, oerr := srv.OpenDeliverySession(fetcherIdent.NodeID(), demand.SignSessionOpen(fetcherIdent.Signer(), srv.id, []demand.Token{tok}))
+	if oerr != nil {
+		t.Fatalf("the WITNESSED anchor did not open: %v", oerr)
 	}
-	srv.handleDeliveryReceipt(fetcherIdent.NodeID(), ports.Message{Kind: ports.MsgDeliveryReceipt, Data: realBlob})
-	if got := ledger.Balance(srv.ID()) - before; got == selfMint {
-		t.Fatalf("the WITNESSED receipt did not supersede the self-mint (still %+d) — "+
-			"the negative leg above proves nothing on a fixture that never reaches the ledger",
-			got)
+	settled, serr := srv.SettleDeliveryReceipt(fetcherIdent.NodeID(), demand.AckSession(fetcherIdent.Signer(), sess.handle, sess.commitment, obj, srv.id, uint64(served/credit.DeliveryIncrementBytes)))
+	if serr != nil || settled == 0 {
+		t.Fatalf("the WITNESSED settlement failed (%d, %v)", settled, serr)
+	}
+	wantNet := settled - settled*credit.SkimNum/credit.SkimDen // prior = 0: the skim floors on the gross alone
+	if got := ledger.Balance(srv.ID()) - before; got != wantNet {
+		t.Fatalf("after the WITNESSED whole-lane settlement the server holds %+d off pre-serve, "+
+			"want exactly the settlement's net %+d (self-mint %+d reversed in FULL, gross %d less the skim) — "+
+			"a partial or absent reversal is the G-4 double-pay the negative leg above is the boundary of",
+			got, wantNet, selfMint, settled)
 	}
 }

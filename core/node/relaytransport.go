@@ -2,7 +2,7 @@ package node
 
 // PoD §7.3 transport Batch 2 — the wire handlers + settle-at-close (step 3,
 // design §1). Three request/reply message kinds mirror the delivery-receipt lane
-// (handleDeliveryReceipt): MsgRelayOpen (open a paid session), MsgRelayPay (a
+// (the delivery session lane, deliverysession.go): MsgRelayOpen (open a paid session), MsgRelayPay (a
 // preimage reveal), and their acks. Settlement is LOCAL at close — no wire message
 // (design §1, §5): the relay redeems its highest held preimage via
 // credit.RedeemRelayCredit, bounded by the anchors spent at open (R2.14).
@@ -275,7 +275,7 @@ func (n *Node) AcquireRelayAnchors(rng io.Reader, relay ports.NodeID, k int, don
 // SubmitRelayPay is the fetcher side of MsgRelayPay: reveal x_count to authorize the
 // relay to advance to increment count on the named session. done reports the count
 // the relay confirmed authorized (or an error / a refusal). Mirrors
-// SubmitDeliveryReceipt.
+// SubmitDeliverySettle.
 func (n *Node) SubmitRelayPay(relay ports.NodeID, handle uint64, preimage []byte, count int, done func(authorized int, err error)) {
 	pay := relaypay.RelayPay{Handle: handle, Preimage: preimage, Count: count}
 	blob, err := pay.Marshal()

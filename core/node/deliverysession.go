@@ -37,8 +37,8 @@ package node
 //	    the one seam that changes.
 //	C10 a hard live-session cap (deliveryMaxLiveSessions): refuse at cap, never evict.
 //
-// The v2 flat path (MsgDeliveryReceipt: token spent at REDEEM) stays callable until
-// its retirement PR (gate B-9); the two lanes share no message kind and no state.
+// The v2 flat path (MsgDeliveryReceipt: token spent at REDEEM) is RETIRED (B-9): the
+// kind is refused with a named reason (demandrole.go handleDeliveryReceipt).
 //
 // M0 (cert §7): the session record adds no who-fetched-what capability the shipped
 // receipt does not already hand the server (Receipt.Fetcher is the durable key in the
@@ -51,6 +51,7 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 
 	"github.com/nerolabs/silt/core/credit"
@@ -432,6 +433,16 @@ func (n *Node) WitnessedIncrements(object ports.Hash) int64 {
 	return n.demandBank.WitnessedIncrements(object)
 }
 
+// DistinctBondedFetchers is the P3b surface for object: how many bond-distinct fetchers
+// have been credited on it (either lane). 0 when demand banking is off or the credential
+// is not required. Observability only, never standing.
+func (n *Node) DistinctBondedFetchers(object ports.Hash) int64 {
+	if n.demandBank == nil {
+		return 0
+	}
+	return n.demandBank.DistinctBondedFetchers(object)
+}
+
 // ---- the wire handlers (server side)
 
 func (n *Node) handleDeliveryOpen(from ports.NodeID, msg ports.Message) {
@@ -445,6 +456,7 @@ func (n *Node) handleDeliveryOpen(from ports.NodeID, msg ports.Message) {
 	}
 	s, err := n.OpenDeliverySession(from, open)
 	if err != nil {
+		n.logDeliveryAdmissionRefusal("open", err)
 		deny(err) // named, never silent
 		return
 	}
@@ -462,6 +474,7 @@ func (n *Node) handleDeliveryFund(from ports.NodeID, msg ports.Message) {
 	}
 	s, err := n.FundDeliverySession(from, fund)
 	if err != nil {
+		n.logDeliveryAdmissionRefusal("fund", err)
 		deny(err)
 		return
 	}
@@ -479,11 +492,46 @@ func (n *Node) handleDeliverySettle(from ports.NodeID, msg ports.Message) {
 	}
 	settled, err := n.SettleDeliveryReceipt(from, r)
 	if err != nil {
-		n.logf(ports.LogDebug, "delivery receipt rejected", "reason", err.Error())
+		if deliveryPostAuth(err) {
+			// "delivery receipt paid NO credit" is the announced S5 marker (observable_contract.go)
+			// — the one signal an operator gets when an AUTHENTICATED receipt on a live session
+			// settles nothing. Post-auth only: the owner, commitment and signature checks passed.
+			n.logf(ports.LogWarn, "delivery receipt paid NO credit", "object", r.Object, "reason", err.Error(),
+				"serial_guard_refusals", guardFullRefusals(n.ledger))
+		} else {
+			// Pre-auth refusals (no session, not the owner, bad signature, lane off) are one
+			// unauthenticated message per line with no rate limit on logf: Debug, never WARN
+			// (blind PE, 2026-09-07).
+			n.logf(ports.LogDebug, "delivery settle refused", "reason", err.Error())
+		}
 		deny(err)
 		return
 	}
 	n.reply(from, msg, ports.Message{Kind: ports.MsgDeliverySettleAck, OK: true, Height: uint64(settled)})
+}
+
+// deliveryPostAuth reports whether a settle refusal arose AFTER the session's owner,
+// commitment and signature checks passed — the refusals worth an operator's WARN. The
+// pre-auth classes are reachable by any peer and stay at Debug.
+func deliveryPostAuth(err error) bool {
+	return errors.Is(err, errDeliveryCountAboveBudget) || errors.Is(err, errDeliverySettleRefused) ||
+		errors.Is(err, errDeliveryNoLedger)
+}
+
+// logDeliveryAdmissionRefusal is the operator signal for a refused open or fund. The
+// paid-serial guard filling with LIVE entries — a serve rate above the bound the cap was
+// derived against — arises ONLY here (spendDeliveryAnchors is called from open and fund and
+// nowhere else; Ledger.SettleDelivery has no guard-full path), so the announced
+// "delivery anchor refused: guard full" marker (observable_contract.go) is emitted here at
+// WARN with the ledger's monotone counter. Every other admission refusal is reachable by
+// an unauthenticated peer at one message per line and stays at Debug.
+func (n *Node) logDeliveryAdmissionRefusal(step string, err error) {
+	if errors.Is(err, errDeliveryGuardFull) {
+		n.logf(ports.LogWarn, "delivery anchor refused: guard full", "step", step,
+			"serial_guard_refusals", guardFullRefusals(n.ledger))
+		return
+	}
+	n.logf(ports.LogDebug, "delivery admission refused", "step", step, "reason", err.Error())
 }
 
 // ---- the fetcher side

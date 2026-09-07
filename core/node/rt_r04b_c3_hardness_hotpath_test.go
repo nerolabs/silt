@@ -5,9 +5,12 @@ package node
 //
 // The mechanism, verbatim from the finding and re-derived here:
 //
-//	handleDeliveryReceipt (demandrole.go) calls DemandIssuerKeyset as its FIRST real
-//	action on any inbound MsgDeliveryReceipt — before UnmarshalSubmittedReceipt, before
-//	the `sub.Receipt.Server != n.id` screen, with no authentication and no rate limit.
+//	(As found, on the flat lane:) handleDeliveryReceipt called DemandIssuerKeyset as its
+//	FIRST real action on any inbound frame — before the parse, before the server screen,
+//	with no authentication and no rate limit. (Today, on the session lane — B-9:)
+//	handleDeliveryOpen → OpenDeliverySession → verifyDeliveryAnchors reaches it after the
+//	parse, the sha256(Fetcher)==sender screen and one ed25519 verify, still with no rate
+//	limit — a self-signed open is the whole price of admission.
 //	DemandIssuerKeyset re-pins every held epoch on every read (`for e, iss := range
 //	n.demandIssuers { pinDemandIssuerKey(...) }`), and Keyset.Put ran the full
 //	ValidatePub — hardness included, ~3.3 ms — unconditionally. Re-Put is unavoidable
@@ -87,6 +90,7 @@ func c3HeldBandNode(t testing.TB, epochs int) (*Node, ports.NodeID) {
 		nd.SetDemandIssuerKey(rand.Reader, uint64(e), keys[e])
 	}
 	nd.EnableDemandBank(ident.NodeID())
+	nd.EnableDeliverySessions(10 * ports.Second) // B-9: the priced inbound path is MsgDeliveryOpen
 
 	// Deliberately NOT calling DemandIssuerKeyset here: the band's first admission is
 	// what the gate measures, and a warm-up in the fixture would hide it.
@@ -110,7 +114,7 @@ func TestC3_InboundReceiptsCostOHardnessChecksNotOPerMessage(t *testing.T) {
 	// Warm: the band's first admission. This is the O(distinct keys) cost the design
 	// allows — hardness AT ADMISSION.
 	before := blindtoken.ValidatePubHardnessRuns()
-	nd.handleDeliveryReceipt(peer, ports.Message{Kind: ports.MsgDeliveryReceipt, Data: []byte{0x00}})
+	nd.handleDeliveryOpen(peer, c3GarbageOpen(nd.id))
 	admission := blindtoken.ValidatePubHardnessRuns() - before
 	// NON-VACUITY, and it is the load-bearing half of this gate: the first message must
 	// pay EXACTLY one hardness run per band key. If it paid zero the fixture would not
@@ -129,9 +133,9 @@ func TestC3_InboundReceiptsCostOHardnessChecksNotOPerMessage(t *testing.T) {
 	base := blindtoken.ValidatePubHardnessRuns()
 	start := time.Now()
 	for i := 0; i < messages; i++ {
-		nd.handleDeliveryReceipt(peer, ports.Message{Kind: ports.MsgDeliveryReceipt, Data: []byte{0x00}})
+		nd.handleDeliveryOpen(peer, c3GarbageOpen(nd.id))
 		if got := blindtoken.ValidatePubHardnessRuns() - base; got != 0 {
-			t.Fatalf("message %d: %d hardness runs on an inbound MsgDeliveryReceipt. "+
+			t.Fatalf("message %d: %d hardness runs on an inbound MsgDeliveryOpen. "+
 				"ValidatePub's hardness half (~3.3 ms) must run at ADMISSION only. An "+
 				"unauthenticated peer that can drive it per-message owns the node loop: "+
 				"at a %d-epoch band that is %d x 3.3 ms per one-byte frame (crypto "+
@@ -152,10 +156,17 @@ func TestC3_InboundReceiptsCostOHardnessChecksNotOPerMessage(t *testing.T) {
 	// number measures the detector, not the path —
 	// the same reason `TestC3_ValidatePubCostBudget` sits behind `//go:build !race`. The
 	// cost is still LOGGED under both builds so a human reads it.
-	const budget = 100 * time.Microsecond
+	// B-9 re-derivation: the stand-in is a WELL-FORMED open with a garbage anchor, and the
+	// certified per-open cost of that is one ed25519 verify plus at most W+1 RSA verifies
+	// (T-7, "≤ W+1 modexps for a garbage open" — cheap refusals BEFORE RSA, RSA under the
+	// SELF keyset only). At ~30 µs per RSA-2048 verify and ~60 µs for ed25519 that is well
+	// under a millisecond; the retired one-byte frame's 100 µs budget measured decode-only
+	// shape and is not this path's number. Hardness (~3.3 ms per run) would still blow this
+	// by 3× per band key, so the budget keeps its teeth against the property it guards.
+	budget := time.Duration(band+1)*60*time.Microsecond + 400*time.Microsecond
 	if perMsg > budget && !raceEnabled {
-		t.Fatalf("inbound MsgDeliveryReceipt cost %v/message over %d messages (budget %v). "+
-			"The C-3 design puts hardness at admission and SHAPE ONLY on this path.",
+		t.Fatalf("inbound MsgDeliveryOpen cost %v/message over %d messages (budget %v = T-7's ≤ W+1 RSA verifies + one ed25519). "+
+			"The C-3 design puts hardness at admission and SHAPE + T-7 ONLY on this path.",
 			perMsg, messages, budget)
 	}
 	t.Logf("R1 CLOSED: %d-epoch band. Hardness runs = %d at the band's first admission, "+
@@ -213,10 +224,22 @@ func TestC3_ADifferentCommittedKeyStillPaysFullAdmission(t *testing.T) {
 // 28.6 ms before the memo.
 func BenchmarkC3InboundDeliveryReceipt(b *testing.B) {
 	nd, peer := c3HeldBandNode(b, 5)
-	msg := ports.Message{Kind: ports.MsgDeliveryReceipt, Data: []byte{0x00}}
-	nd.handleDeliveryReceipt(peer, msg) // admit the band
+	msg := c3GarbageOpen(nd.id)
+	nd.handleDeliveryOpen(peer, msg) // admit the band
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		nd.handleDeliveryReceipt(peer, msg)
+		nd.handleDeliveryOpen(peer, msg)
 	}
+}
+
+// c3GarbageOpen is a WELL-FORMED session open from the fixture peer carrying one anchor
+// whose blind signature is garbage: it decodes, its ed25519 commitment verifies, the
+// server reaches its keyset (the admission the gate measures) and the RSA verify fails.
+// The shape the retired one-byte MsgDeliveryReceipt frame stood in for (B-9).
+func c3GarbageOpen(server ports.NodeID) ports.Message {
+	peer := identity.FromSeed(9402)
+	serial := make([]byte, 32)
+	open := demand.SignSessionOpen(peer.Signer(), server, []demand.Token{{Serial: serial, Sig: make([]byte, 256)}})
+	blob, _ := open.Marshal()
+	return ports.Message{Kind: ports.MsgDeliveryOpen, Data: blob}
 }

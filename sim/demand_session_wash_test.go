@@ -1,6 +1,6 @@
 package sim
 
-// R2.9 — the v3 twin of TestDemandWashCostsRealFees (the certification
+// R2.9 — the v3 twin of the retired v2 cost-to-wash sim (the certification
 // R2.9-witnessed-demand-observable-under-sessions-2026-09-06 §4.3 parity, owed alongside
 // G-DEM-1…8). On the session lane the washer — one operator running the server AND a
 // bonded fetcher — cannot prove or disprove demand authenticity any more than before;
