@@ -881,19 +881,24 @@ func cmdDaemon(args []string) error {
 		// #558 / Lane B8 (scope call S3, ratified 2026-09-07): a replay that would
 		// discard finalized history REFUSES TO START unless the operator accepts
 		// the loss with -accept-chain-loss. Before this the daemon printed the
-		// failure and continued on the valid prefix — from genesis when the file
-		// was torn — and re-entered consensus with a history it did not have
-		// (run a434494-deep: h83, 87 MiB discarded). The store's write is now
-		// fsync'd + atomic (chainstore.Save), so a torn file means external
-		// damage, which is exactly the case a human must look at.
+		// failure and continued on the valid prefix — from genesis when nothing
+		// decoded — and re-entered consensus holding its frozen-epoch seat with
+		// a history it did not have (the a434494-deep shape: an intact file an
+		// era-2 replay bug rejected, restarted at genesis, #559/#560). The
+		// replay is therefore a START-BLOCKING surface: a rejected file may be
+		// byte-perfect and merely unreadable by THIS binary, so acceptance
+		// PRESERVES it as chain.cbor.rejected-<unix> before anything is saved.
 		n, loss, refused := chainstore.Recover(chainPath, ch, *acceptChainLoss)
 		if refused != nil {
-			fmt.Fprintf(os.Stderr, "chain replay: REFUSING TO START — %v. The %d-block valid prefix would be kept and the suffix re-synced from peers, which is IMPOSSIBLE below the swarm's prune horizon without a fresh -ws-checkpoint (#558/#559). Inspect %s (silt chain-status -store); if the loss is understood, restart with -accept-chain-loss.\n", refused, n, chainPath)
+			fmt.Fprintf(os.Stderr, "chain replay: REFUSING TO START — %v. %s is UNTOUCHED. Inspect it (silt chain-status -store, or run the binary that wrote it); a %d-block valid prefix would be kept and the suffix re-synced from peers, which is IMPOSSIBLE below the swarm's prune horizon without a fresh -ws-checkpoint (#558/#559). If the loss is understood, restart with -accept-chain-loss: the original is preserved as %s.rejected-<unix>, never overwritten.\n", refused, chainPath, n, chainPath)
+			if lg != nil {
+				lg.Close() // the loudest event in the daemon's life must reach debug.log
+			}
 			os.Exit(3)
 		}
 		if loss != nil {
 			// The operator accepted the loss: still NEVER quiet (#558).
-			fmt.Fprintf(os.Stderr, "chain replay: FAILED at block %d: %v — -accept-chain-loss set: continuing with the %d-block valid prefix; the suffix must re-sync from peers, which is IMPOSSIBLE below the swarm's prune horizon without a fresh -ws-checkpoint (#558/#559)\n", n, loss.Cause, n)
+			fmt.Fprintf(os.Stderr, "chain replay: FAILED at block %d: %v — -accept-chain-loss set: the original %s is PRESERVED untouched as %s; continuing with the %d-block valid prefix; the suffix must re-sync from peers, which is IMPOSSIBLE below the swarm's prune horizon without a fresh -ws-checkpoint (#558/#559)\n", n, loss.Cause, chainPath, loss.Preserved, n)
 		} else if n > 0 {
 			// The regime line is LOAD-BEARING diagnostics (#572): 474718e-deep's
 			// val-d restored 32 blocks whose live application had latched

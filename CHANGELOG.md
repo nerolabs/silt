@@ -85,10 +85,20 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   through `chainstore.Recover`: a replay that would DISCARD finalized history — a torn file, or a block failing
   structural verification — REFUSES TO START (exit 3) and names the loss, the kept prefix and the recovery
   (`-ws-checkpoint` below the prune horizon); the new `-accept-chain-loss` flag is the operator's explicit way past,
-  keeping the longest valid prefix. Before this the failure was printed and the node continued — from genesis when the
-  file was torn (run `a434494-deep`: h83, 87 MiB of finalized history discarded). Gates (RED under ablation):
-  `adapters/chainstore` `TestRecoverRefusesATornTail`, `TestRecoverRefusesACorruptSuffixKeepsPrefixOnlyWhenAccepted`,
-  `TestSaveLeavesNoTempAndDecodes`.
+  keeping the longest valid prefix and first MOVING the original, untouched, to `chain.cbor.rejected-<unix>` (a rejected
+  file may be byte-perfect and merely unreadable by this binary — a downgrade, the #572 no-verifier guard — so acceptance
+  never destroys it). Before this the failure was printed and the node continued — from genesis when nothing decoded —
+  and re-entered consensus holding its frozen-epoch seat with a history it did not have (the `a434494-deep` shape: an
+  INTACT file an era-2 replay bug rejected, restarted at genesis; the replay bug itself was fixed earlier under #558).
+  Gates (RED under the always-accept ablation): `adapters/chainstore` `TestRecoverRefusesATornTail`,
+  `TestRecoverRefusesACorruptSuffixKeepsPrefixOnlyWhenAccepted`, `TestRecoverAcceptedLossPreservesTheOriginal`, and the
+  daemon-level `e2e` `TestDaemonRefusesToStartOnAnUnreplayableChain` (exit 3, file untouched) and
+  `TestDaemonAcceptedChainLossPreservesTheOriginal`. `TestSaveLeavesNoTempAndDecodes` is a shape pin only; the fsync
+  has no runtime oracle. Blind PE ruling:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-b8-558-chainstore-refuse-to-start-2026-09-07.md`.
+  Note for the owner: the rule refuses on ANY structural-verification failure at replay, not only a torn tail — a
+  strictly larger surface than S3's sentence (kept, per the PE: a stale-prefix restart holding a frozen seat is a
+  safety problem, #560); the reload path is now start-blocking, which matters at the Lane D stamp raise.
 - **Consensus liveness — the h43 round-ladder desync (`R-H43-ROUND-LADDER-DESYNC`, `D-CONSENSUS-ARMING`; Lane A1).**
   Run `c450985-deep` committed height 43 996 s (22.6 × `T_b`) after one validator stopped, because the round clock
   armed on LOCAL mempool content (`core/node/rounds.go`) — 10 of 13 seats never ran the pacemaker. Now: (A) the clock

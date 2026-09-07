@@ -131,9 +131,10 @@ func TestReplayStillDetectsCorruption(t *testing.T) {
 	}
 }
 
-// TestSaveLeavesNoTempAndDecodes pins the durable-write shape (#558 / B8): a
-// Save leaves exactly chain.cbor (no temp file), and what it wrote decodes to
-// the same blocks — the atomic-replace half of crash safety, observed on disk.
+// TestSaveLeavesNoTempAndDecodes pins the atomic-replace SHAPE (#558 / B8): a
+// Save leaves exactly chain.cbor (no temp file) and it decodes. It is a shape
+// pin, NOT a gate on the fsync — the pre-PR tmp+rename Save satisfies it too
+// (PE ruling, B8); durability under a real power loss has no runtime oracle.
 func TestSaveLeavesNoTempAndDecodes(t *testing.T) {
 	fullRep := map[ports.NodeID]int64{}
 	for i := int64(1); i <= 5; i++ {
@@ -235,5 +236,41 @@ func TestRecoverRefusesACorruptSuffixKeepsPrefixOnlyWhenAccepted(t *testing.T) {
 	n2, loss2, refused2 := Recover(path, fresh2, true)
 	if refused2 != nil || n2 != 1 || loss2 == nil || !errors.Is(loss2, chain.ErrBadSignature) {
 		t.Fatalf("accepted loss keeps the 1-block prefix and names the cause: n=%d loss=%v refused=%v", n2, loss2, refused2)
+	}
+}
+
+// TestRecoverAcceptedLossPreservesTheOriginal is the PE ruling's blocker 1 (B8):
+// -accept-chain-loss must never destroy the file it rejects — a rejected
+// chain.cbor may be byte-perfect and merely unreadable by THIS binary. With
+// acceptance, the original is moved untouched to chain.cbor.rejected-<unix>,
+// so the daemon's next Save cannot overwrite it; the LossError names it.
+func TestRecoverAcceptedLossPreservesTheOriginal(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "chain.cbor")
+	garbage := []byte("not a chain")
+	if err := os.WriteFile(path, garbage, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fresh := chain.New(chain.DefaultConfig(), func(ports.NodeID) int64 { return 0 })
+	_, loss, refused := Recover(path, fresh, true)
+	if refused != nil || loss == nil || loss.Preserved == "" {
+		t.Fatalf("accepted loss must lift the refusal and name the preserved file: loss=%v refused=%v", loss, refused)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("the rejected chain.cbor must have been MOVED out of the daemon's save path, stat err=%v", err)
+	}
+	kept, err := os.ReadFile(loss.Preserved)
+	if err != nil || string(kept) != string(garbage) {
+		t.Fatalf("the preserved original must be byte-identical: err=%v got %q", err, kept)
+	}
+	// And a refusal leaves the file exactly where it was.
+	if err := os.WriteFile(path, garbage, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, refused := Recover(path, chain.New(chain.DefaultConfig(), func(ports.NodeID) int64 { return 0 }), false); refused == nil {
+		t.Fatal("refusal expected")
+	}
+	if b, err := os.ReadFile(path); err != nil || string(b) != string(garbage) {
+		t.Fatalf("a refusal must leave chain.cbor untouched: err=%v", err)
 	}
 }
