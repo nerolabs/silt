@@ -1,0 +1,112 @@
+2026-09-07T08:16:43.731Z info gather/prepare: REFUSED — locked on a different value the new-view does not supersede (#432) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 height=20 round=0 lock_round=0
+2026-09-07T08:29:18.215Z info round-change: recorded (#432 view-change) from=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 height=41 round=1 carries_lock=false
+2026-09-07T08:29:34.783Z info round-change: recorded (#432 view-change) from=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 height=41 round=1 carries_lock=false
+2026-09-07T08:29:38.850Z info round-change: advancing (#432 view-change) height=41 round=1 via=timeout locked=false pending=3 pending_entries=0
+2026-09-07T08:29:40.394Z info round-change: recorded (#432 view-change) from=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a height=41 round=1 carries_lock=false
+2026-09-07T08:29:40.394Z info round-change: recorded (#432 view-change) from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 height=41 round=1 carries_lock=false
+2026-09-07T08:29:40.394Z info round-change: recorded (#432 view-change) from=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 height=41 round=1 carries_lock=false
+2026-09-07T08:29:40.395Z info round-change: recorded (#432 view-change) from=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 height=41 round=1 carries_lock=false
+2026-09-07T08:29:40.395Z info round-change: recorded (#432 view-change) from=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 height=41 round=1 carries_lock=false
+2026-09-07T08:29:40.395Z info round-change: recorded (#432 view-change) from=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b height=41 round=1 carries_lock=false
+2026-09-07T08:29:40.395Z info round-change: recorded (#432 view-change) from=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 height=41 round=1 carries_lock=false
+2026-09-07T08:29:40.397Z info round-change: recorded (#432 view-change) from=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 height=41 round=1 carries_lock=false
+2026-09-07T08:29:40.435Z info round-change: recorded (#432 view-change) from=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda height=41 round=1 carries_lock=false
+2026-09-07T08:29:40.460Z info round-change: recorded (#432 view-change) from=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 height=41 round=1 carries_lock=false
+2026-09-07T08:29:42.242Z info round-change: recorded (#432 view-change) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 height=41 round=1 carries_lock=false
+2026-09-07T08:30:41.643Z info round-change: recorded (#432 view-change) from=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 height=41 round=2 carries_lock=false
+2026-09-07T08:30:41.750Z info round-change: recorded (#432 view-change) from=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 height=41 round=2 carries_lock=false
+2026-09-07T08:30:41.821Z info round-change: recorded (#432 view-change) from=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b height=41 round=2 carries_lock=false
+2026-09-07T08:30:42.109Z info round-change: recorded (#432 view-change) from=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a height=41 round=2 carries_lock=false
+2026-09-07T08:30:42.109Z info round-change: advancing (#432 view-change) height=41 round=2 via=catch-up locked=false pending=3 pending_entries=0
+2026-09-07T08:30:42.110Z info round-change: recorded (#432 view-change) from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 height=41 round=2 carries_lock=false
+2026-09-07T08:30:42.215Z info round-change: recorded (#432 view-change) from=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 height=41 round=2 carries_lock=false
+2026-09-07T08:30:42.216Z info round-change: recorded (#432 view-change) from=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 height=41 round=2 carries_lock=false
+2026-09-07T08:30:42.217Z info round-change: recorded (#432 view-change) from=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 height=41 round=2 carries_lock=false
+2026-09-07T08:30:42.247Z info round-change: recorded (#432 view-change) from=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 height=41 round=2 carries_lock=false
+2026-09-07T08:30:42.248Z info round-change: recorded (#432 view-change) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 height=41 round=2 carries_lock=false
+2026-09-07T08:30:42.248Z info round-change: recorded (#432 view-change) from=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda height=41 round=2 carries_lock=false
+2026-09-07T08:30:42.300Z info round-change: recorded (#432 view-change) from=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 height=41 round=2 carries_lock=false
+2026-09-07T08:31:54.475Z info block committed height=41 entries=1 regs=0 attestations=9 via=broadcast
+2026-09-07T08:32:19.043Z info round-change: recorded (#432 view-change) from=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 height=42 round=1 carries_lock=false
+2026-09-07T08:32:27.733Z info round-change: recorded (#432 view-change) from=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 height=42 round=1 carries_lock=false
+2026-09-07T08:32:38.855Z info round-change: advancing (#432 view-change) height=42 round=1 via=timeout locked=false pending=3 pending_entries=1
+2026-09-07T08:32:41.650Z info round-change: recorded (#432 view-change) from=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 height=42 round=1 carries_lock=false
+2026-09-07T08:33:49.053Z info round-change: recorded (#432 view-change) from=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 height=42 round=2 carries_lock=false
+2026-09-07T08:33:57.749Z info round-change: recorded (#432 view-change) from=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 height=42 round=2 carries_lock=false
+2026-09-07T08:34:11.656Z info round-change: recorded (#432 view-change) from=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 height=42 round=2 carries_lock=false
+2026-09-07T08:36:19.067Z info round-change: recorded (#432 view-change) from=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 height=42 round=3 carries_lock=false
+2026-09-07T08:36:41.665Z info round-change: recorded (#432 view-change) from=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 height=42 round=3 carries_lock=false
+2026-09-07T08:43:10.588Z info round-change: recorded (#432 view-change) from=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 height=42 round=1 carries_lock=false
+2026-09-07T08:43:10.588Z info round-change: recorded (#432 view-change) from=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda height=42 round=1 carries_lock=false
+2026-09-07T08:43:10.589Z info round-change: recorded (#432 view-change) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 height=42 round=1 carries_lock=false
+2026-09-07T08:43:10.589Z info round-change: recorded (#432 view-change) from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 height=42 round=1 carries_lock=false
+2026-09-07T08:43:10.589Z info round-change: recorded (#432 view-change) from=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a height=42 round=1 carries_lock=false
+2026-09-07T08:43:10.595Z info round-change: recorded (#432 view-change) from=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b height=42 round=1 carries_lock=false
+2026-09-07T08:43:10.606Z info round-change: recorded (#432 view-change) from=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 height=42 round=1 carries_lock=false
+2026-09-07T08:43:10.606Z info round-change: recorded (#432 view-change) from=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 height=42 round=1 carries_lock=false
+2026-09-07T08:43:10.684Z info round-change: recorded (#432 view-change) from=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 height=42 round=1 carries_lock=false
+2026-09-07T08:43:38.898Z info round-change: advancing (#432 view-change) height=42 round=2 via=timeout locked=false pending=0 pending_entries=1
+2026-09-07T08:44:14.098Z info round-change: recorded (#432 view-change) from=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda height=42 round=2 carries_lock=false
+2026-09-07T08:44:14.098Z info round-change: recorded (#432 view-change) from=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 height=42 round=2 carries_lock=false
+2026-09-07T08:44:14.098Z info round-change: recorded (#432 view-change) from=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a height=42 round=2 carries_lock=false
+2026-09-07T08:44:14.099Z info round-change: recorded (#432 view-change) from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 height=42 round=2 carries_lock=false
+2026-09-07T08:44:14.101Z info round-change: recorded (#432 view-change) from=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 height=42 round=2 carries_lock=false
+2026-09-07T08:44:14.105Z info round-change: recorded (#432 view-change) from=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b height=42 round=2 carries_lock=false
+2026-09-07T08:44:14.113Z info round-change: recorded (#432 view-change) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 height=42 round=2 carries_lock=false
+2026-09-07T08:44:14.125Z info round-change: recorded (#432 view-change) from=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 height=42 round=2 carries_lock=false
+2026-09-07T08:44:14.130Z info round-change: recorded (#432 view-change) from=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 height=42 round=2 carries_lock=false
+2026-09-07T08:44:22.823Z info block committed height=42 entries=2 regs=0 attestations=10 via=broadcast
+2026-09-07T08:45:08.901Z info round-change: advancing (#432 view-change) height=43 round=1 via=timeout locked=false pending=0 pending_entries=2
+2026-09-07T08:45:10.589Z info round-change: recorded (#432 view-change) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 height=43 round=1 carries_lock=false
+2026-09-07T08:46:27.769Z info round-change: recorded (#432 view-change) from=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 height=43 round=1 carries_lock=false
+2026-09-07T08:46:38.902Z info round-change: advancing (#432 view-change) height=43 round=2 via=timeout locked=false pending=0 pending_entries=3
+2026-09-07T08:46:40.582Z info round-change: recorded (#432 view-change) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 height=43 round=2 carries_lock=false
+2026-09-07T08:47:57.774Z info round-change: recorded (#432 view-change) from=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 height=43 round=2 carries_lock=false
+2026-09-07T08:49:08.906Z info round-change: advancing (#432 view-change) height=43 round=3 via=timeout locked=false pending=0 pending_entries=5
+2026-09-07T08:49:10.595Z info round-change: recorded (#432 view-change) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 height=43 round=3 carries_lock=false
+2026-09-07T08:50:27.779Z info round-change: recorded (#432 view-change) from=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 height=43 round=3 carries_lock=false
+2026-09-07T08:53:08.913Z info round-change: advancing (#432 view-change) height=43 round=4 via=timeout locked=false pending=0 pending_entries=4
+2026-09-07T08:53:10.595Z info round-change: recorded (#432 view-change) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 height=43 round=4 carries_lock=false
+2026-09-07T08:55:26.843Z info round-change: recorded (#432 view-change) from=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda height=43 round=1 carries_lock=false
+2026-09-07T08:55:26.855Z info round-change: recorded (#432 view-change) from=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 height=43 round=1 carries_lock=false
+2026-09-07T08:55:26.855Z info round-change: recorded (#432 view-change) from=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 height=43 round=1 carries_lock=false
+2026-09-07T08:55:26.855Z info round-change: recorded (#432 view-change) from=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a height=43 round=1 carries_lock=false
+2026-09-07T08:55:26.855Z info round-change: recorded (#432 view-change) from=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 height=43 round=1 carries_lock=false
+2026-09-07T08:55:26.855Z info round-change: recorded (#432 view-change) from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 height=43 round=1 carries_lock=false
+2026-09-07T08:55:26.855Z info round-change: recorded (#432 view-change) from=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b height=43 round=1 carries_lock=false
+2026-09-07T08:55:26.869Z info round-change: recorded (#432 view-change) from=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 height=43 round=1 carries_lock=false
+2026-09-07T08:55:26.872Z info round-change: recorded (#432 view-change) from=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 height=43 round=1 carries_lock=false
+2026-09-07T08:55:26.875Z info round-change: recorded (#432 view-change) from=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 height=43 round=1 carries_lock=false
+2026-09-07T08:56:56.848Z info round-change: recorded (#432 view-change) from=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda height=43 round=2 carries_lock=false
+2026-09-07T08:56:56.858Z info round-change: recorded (#432 view-change) from=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 height=43 round=2 carries_lock=false
+2026-09-07T08:56:56.858Z info round-change: recorded (#432 view-change) from=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 height=43 round=2 carries_lock=false
+2026-09-07T08:56:56.859Z info round-change: recorded (#432 view-change) from=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 height=43 round=2 carries_lock=false
+2026-09-07T08:56:56.859Z info round-change: recorded (#432 view-change) from=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a height=43 round=2 carries_lock=false
+2026-09-07T08:56:56.859Z info round-change: recorded (#432 view-change) from=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b height=43 round=2 carries_lock=false
+2026-09-07T08:56:56.859Z info round-change: recorded (#432 view-change) from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 height=43 round=2 carries_lock=false
+2026-09-07T08:56:56.874Z info round-change: recorded (#432 view-change) from=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 height=43 round=2 carries_lock=false
+2026-09-07T08:56:56.876Z info round-change: recorded (#432 view-change) from=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 height=43 round=2 carries_lock=false
+2026-09-07T08:56:56.878Z info round-change: recorded (#432 view-change) from=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 height=43 round=2 carries_lock=false
+2026-09-07T08:59:08.921Z info round-change: advancing (#432 view-change) height=43 round=5 via=timeout locked=false pending=0 pending_entries=1
+2026-09-07T08:59:26.853Z info round-change: recorded (#432 view-change) from=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda height=43 round=3 carries_lock=false
+2026-09-07T08:59:26.855Z info round-change: recorded (#432 view-change) from=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 height=43 round=3 carries_lock=false
+2026-09-07T08:59:26.855Z info round-change: recorded (#432 view-change) from=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 height=43 round=3 carries_lock=false
+2026-09-07T08:59:26.866Z info round-change: recorded (#432 view-change) from=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 height=43 round=3 carries_lock=false
+2026-09-07T08:59:26.866Z info round-change: recorded (#432 view-change) from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 height=43 round=3 carries_lock=false
+2026-09-07T08:59:26.866Z info round-change: recorded (#432 view-change) from=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b height=43 round=3 carries_lock=false
+2026-09-07T08:59:26.866Z info round-change: recorded (#432 view-change) from=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a height=43 round=3 carries_lock=false
+2026-09-07T08:59:26.880Z info round-change: recorded (#432 view-change) from=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 height=43 round=3 carries_lock=false
+2026-09-07T08:59:26.881Z info round-change: recorded (#432 view-change) from=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 height=43 round=3 carries_lock=false
+2026-09-07T08:59:26.884Z info round-change: recorded (#432 view-change) from=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 height=43 round=3 carries_lock=false
+--- journal
+Sep 07 08:06:37 silt-ft-val-c-c450985-deep systemd[1]: Started silt.service - silt field-test node (val-c).
+Sep 07 08:07:16 silt-ft-val-c-c450985-deep silt[1098]: chain: caught up 1 block(s) from peers
+Sep 07 08:12:43 silt-ft-val-c-c450985-deep silt[1098]: chain: caught up 1 block(s) from peers
+Sep 07 08:19:35 silt-ft-val-c-c450985-deep systemd[1]: Stopped silt.service - silt field-test node (val-c).
+Sep 07 08:19:35 silt-ft-val-c-c450985-deep systemd[1]: Started silt.service - silt field-test node (val-c).
+Sep 07 08:25:07 silt-ft-val-c-c450985-deep systemd[1]: Stopped silt.service - silt field-test node (val-c).
+Sep 07 08:25:07 silt-ft-val-c-c450985-deep systemd[1]: Started silt.service - silt field-test node (val-c).
+Sep 07 08:25:12 silt-ft-val-c-c450985-deep silt[1768]: chain: caught up 8 block(s) from peers
+Sep 07 08:25:41 silt-ft-val-c-c450985-deep silt[1768]: chain: caught up 1 block(s) from peers
+Sep 07 08:31:54 silt-ft-val-c-c450985-deep silt[1768]: chain: committed block 41 (1 entries, 0 bond-regs, 9 attestations)
+Sep 07 08:44:22 silt-ft-val-c-c450985-deep silt[1768]: chain: committed block 42 (2 entries, 0 bond-regs, 10 attestations)

@@ -2073,6 +2073,14 @@ object's funded figure (red-team F2's shape).
 - **(5) The delivery idle window stays REFUSE-UNTIL-SET.** The Tester measures the block interval `T_b` on the
   next graded run; the window is then set as a small multiple of one epoch and recorded here. Ten minutes is the
   value for dark-lane testing only. Decide the wall-clock-step exposure (`R-SESSION-WALLCLOCK-STEP`) with (1).
+  **`T_b` MEASURED 2026-09-07 (run `c450985-deep`, `integration/cloudtest/report-c450985-deep.md`):** the deep
+  drive h64→h128 took 2877 s on the 12-seat rotation with the organic renewal treadmill running — **44 s/height**
+  (the harness's own figure; 34 s/height over the 09:27–09:51 sub-window; the prior deep run measured 48 s). One
+  derived epoch is 8 blocks ≈ **5.9 min**. The idle window is NOT set by this measurement — it is the owner's call
+  (a small multiple of one epoch; 2–3 epochs ≈ 12–18 min is the arithmetic) and the guard cap's
+  `capBlockIntervalBoundSec = 3600` bound stands at 82× the measured interval. Caveat: the same run also carried a
+  17-minute liveness stall at h43 under f=1 down (`R-H43-ROUND-LADDER-DESYNC`), so the steady-state figure is not
+  the worst case.
 
 ## D-UI-PRIVACY-FLAG — node-wide counters and the library link key go behind an operator flag; exposed in beta, withheld at release
 
