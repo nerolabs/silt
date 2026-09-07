@@ -178,3 +178,183 @@ comment-free bodies of `ValidateProposal`, `ValidateCommit`, `requireQuorumStack
 Owed to the planner (not this seat's file): a CHANGELOG line for the `core/chain` change; register
 rows for `R-PTABLE-DRIFT`, `R-COMPOSITION-LEGACY-LEG` (closes with M-1 shipped here),
 `R-BOX-STALLS-ON-TAKEDOWN`; the `R-STATEROOT-EQUIVALENCE-SEAM` rename the certification asks for.
+
+---
+
+# Part 2 (steps 6–12, G-D9, G-D11) — build record
+
+Date: 2026-09-08 · Seat: BUILDER · Branch: `builder/floorbox-structure-1a` on `5e830c3`.
+PACE-BEFORE-CODE record, written before the first `.go` edit of this pass. Same governing
+documents as Part 1; binding "Do NOT build / carry / touch" list unchanged (no `AdoptPin`,
+`PinAdoptionInput`, `BoxQuorumSupport`, `BoundaryQuorumVerdict`, no box-entry round-A file).
+
+## 7. Options weighed, per step
+
+### Step 6 — P1 ahead of the carrier leg; the witness parent-proposer deleted
+
+Mechanism (RT2-CARRIER-13 + R-CARRIER-PARENTPROPOSER, ADD direction): the box's recompute entry
+took `(b, parentStateRoot, witness)` and had no position of its own, so (a) the carrier was
+verified over whatever `b.Prev` the block's author chose, and (b) the ONE class-A input that is
+not a committed leaf — the parent's proposer id — was read from the witness, anchored only by "some
+key signed b.Prev", which a fresh keypair satisfies (`carrier.go` doc, both directions).
+
+- (a) Keep the witness fields and add a HeadRef cross-check. REJECTED: two sources for one fact is
+  the seam class this round exists to close; the cross-check would be a third body.
+- (b) The parent proposer comes from the view's OWN head record (`HeadRef.ProposerID`, class 3,
+  M-3) and is THREADED into the recompute as a parameter the box door supplies. The witness fields
+  and both `carrier.go` functions are deleted; the type has no slot for a driver to fill. CHOSEN.
+  This is the donor's shape (`recomputeStateRootEntriesRevocations(…, parentProposer)`).
+- Where (0a) goes. The composition's P12 calls `validateCarrier` AFTER P1–P4; the recompute's own
+  (0a) call stays, because 21 files drive the recompute directly and the 2026-09-03 PE ruling's
+  merge-condition 1 ("the box reproduces it by CALLING validateCarrier") is a condition on the
+  recompute. Consequence: a block validated through the box door pays `validateCarrier` twice
+  (P12 and (0a)); both are O(|LastCommit|) verifies and the door's budget now bounds the frame.
+  Recorded as a cost, not hidden. The brief's "done when" — (0a) no longer PRECEDES P1–P4 — holds:
+  the door reaches the recompute only through P13, after P1–P12.
+- The box door. The brief's step 8 requires `NewBox`; no `Box` exists on main. Shape chosen:
+  `NewBox(ch *Chain, parent Block, src WitnessSource, d RecoveryDirective) (*Box, error)` — the
+  head record is DERIVED from a parent BLOCK the box holds (BG-2's premise, the HeadRef half the
+  delta certification names deliverable in 1A), never declared as a bare hash. The N2/N3/N6/N7
+  residual closures (pin adoption, held height, lineage) stay 1B. The door is
+  `(*Box).Validate(b, w)`: budget (frame + witness bytes) → cold-auditor recovery decision → pruned
+  refusal → `ValidateCommitV5(provenView, b)` with the P13a predicate wired to the recompute →
+  the R1.8 downgrade (an Accept is returned as `IndeterminateTrustlessly` / `ErrRecomputeGated`,
+  one line, so the flip is one line to remove and reviewed on its own).
+- The existing `(c *Chain) WitnessValidateV5(b, parentStateRoot, d)` stays as-is (the delta
+  certification §6 lists it three-parameter under 1A). It is one of the two exported doors.
+
+### Step 7 — N1, the author screen in the standalone weight recompute
+
+`recomputeEpochWeightQuorum` credits `proposer` with no screen because the NODE's
+`requireEpochWeightQuorum` has none — `proposerQualifiedAt` (P4) refused a slashed author before the
+tally. A direct caller of the standalone recompute has no P4, so it reproduces the tail alone: N1.
+Fix: `EpochSetWitness.AuthorSlashedProof` — the box Resolves `slashed[proposer]` against the
+committed root; proven ABSENT ⇒ credit; proven PRESENT ⇒ `(false, ErrRecomputeAuthorSlashed)`;
+anything else ⇒ stall. The comment is rewritten to name `proposerQualifiedAt` as the screening
+stage. The composition's `v5RequireEpochWeightQuorum` mirror is NOT changed: there P4 precedes it,
+which is the node's own order and the structural closure of N1.
+
+### Step 8 — BG-3 finished: box-owned, config-derived, witness bytes counted
+
+- `Config.FloorBoxBudgetBytes int` (operator config, class 3). `NewBox` derives `ByteBudget` from it
+  and REFUSES construction when it is unset (≤ 0). No constructor takes a Budget parameter.
+- `FrameBudget`/`MaxFrameBytes` are renamed `ByteBudget`/`MaxBytes`: the ceiling now covers frame +
+  witness, and the name must not claim less. Part 1 is unmerged, so no compatibility is owed.
+- The witness is measured structurally (a reflection walk summing byte slices, hashes and ids over
+  the exported carrier fields; `statehash.Witness` reports its own proof bytes) — not by re-encoding
+  a possibly-huge witness. The measurement is O(witness) and allocation-free.
+- The door checks `frame + witness > MaxBytes` BEFORE the composition, which then re-checks the
+  frame alone at 0b (redundant on the box, load-bearing on any other caller of the composition).
+
+### Step 9 — the exported-door sweep
+
+Unexported: `recomputeStateRootEntriesRevocations`, `recomputeEpochWeightQuorum`,
+`recomputeMatureNow`, `recomputeMatureNowStreaming`, `recomputeQualifiedCount`,
+`recomputeDeMatureSuperQuorum`, `recoveryBoundaryDecision`, plus the exported witness helper
+deleted in step 6. Kept: `WitnessValidateV5` (the pre-structure door, never-Accept) and
+`WitnessReadSetV5` (fenced: legacy mode ⇒ nil; documented as a producer that expresses no verdict).
+Gate G-6 derives the inventory by AST over `floorbox_*.go` + `readset_v5.go`.
+
+### Step 10 — NG-2, honest twins
+
+Carrier gates: `assertHonestTwinAgrees` on every gate (1, 1b, 1c×3, 1d, 12). Structure gates: an
+`assertHonestTwinAccepts` helper (the composition over liveView Accepts the fixture's honest block)
+called from every gate in `redteam_floorbox_structure_gate_test.go` and the three stage-cover arms.
+A meta-gate counts twin call sites against `Test*` declarations in those files by AST.
+
+### Step 11 — NG-4 tail
+
+`foldFileGlob = "floorbox_*.go"`, floor raised to the measured file count (12 on main + the new
+box file = 13); the gate asserts the glob matches every non-test `floorbox_*.go`. The new box file
+is deliberately INSIDE the pin: its `*Chain` reads go through `liveView`/self-dispatch, never a
+bare `c.<map>`.
+
+### Step 12 — `chain.go` comment correction + G-D11
+
+Comment-only hunk inside `Hash()`: ADDING carrier entries is exactly as free as DROPPING them
+(harvest the parent's published `Atts`; `Hash()` returns `Pruned` unchanged); the descendant's
+hash-covered `StateRoot` is the ONLY defence; the consequence under the longest-valid-prefix
+contract is a SILENT head truncation at the first non-pruned descendant. G-D11 drives exactly that
+through `Reload` and asserts both sides; `TestPrunedBlockHashDoesNotCoverCarrierOrStateRoot`'s
+clause (4) is corrected in place (it asserted the refuted claim).
+
+### G-D9 — the `m = 1` right-spine control
+
+A red-team-style CONTROL, labelled as such: with a witness-supplied `m = 1`, a forged
+`b.LogRoot = nodeHash(L_p, leafHash(leaf))` PASSES `VerifyConsistency` + the inclusion leg; with
+`m` authenticated as the true size, the same input is REFUSED. Built over `core/translog` directly
+with the chain's `RevocationLeaf`; the interior-node hash is re-derived in the test and pinned
+against `translog.MTH` of a two-element list.
+
+## 8. Gates in this pass (each RED-first; the record is in §9)
+
+G-3 (RT2-CARRIER-13 through the door), G-A (the class-A exclusion is box-owned), N1, G-7 (the
+witness leg), G-6 (door inventory + the read-set fence), G-4 (twins; the meta-count), NG-4, G-D11,
+G-D9.
+
+## 9. What landed (part 2), and the RED/GREEN record
+
+Two commits on `builder/floorbox-structure-1a` after `5e830c3`: steps 6–10 (the box door, the
+witness parent-proposer deletion, N1, BG-3, the door sweep, the twins), then steps 11–13 (the glob,
+the `chain.go` comment + G-D11, G-D9). `git diff main -- core/chain/chain.go` is the two dispatch
+hunks plus ONE comment-only hunk inside `Hash()`; zero code lines changed there.
+
+Files (new): `core/chain/floorbox_box_v5.go` (`BoxConfig`, `Box`, `NewBox`, `(*Box).Validate`,
+`witnessBytes`), `core/chain/floorbox_box_v5_test.go` (the head-derived recompute drivers,
+`proverSource`, the door gates), `core/chain/floorbox_door_inventory_v5_test.go` (G-6, the read-set
+fence cover, G-4), `core/chain/redteam_revlog_size_control_v5_test.go` (G-D9).
+Files (changed): `carrier.go` (two functions deleted), `floorbox_recompute_stateroot_v5.go`
+(fields deleted; `recomputeStateRootEntriesRevocations` + `assembleStateRootRecomputeOps` take
+`parentProposer`), `floorbox_recompute_stateroot_atts_v5.go` (id threaded, pub/sig gone),
+`floorbox_recompute_v5.go` (N1 screen, `AuthorSlashedProof`), `stateview_v5.go` (`ByteBudget`,
+`MaxBytes`, `Budget.Check`), `validate_v5.go` (0b through `Check`), `readset_v5.go` (fence + doc),
+`floorbox_v5.go` / `floorbox_recompute_{maturity,qualifiedCount,dematureQuorum,stateroot_maturitylatch}_v5.go`
+(unexported), `core/statehash/witness.go` (`Witness.Bytes`), 30 test files (re-homed drivers, the
+twins, the inventory row, the `FrameBudget` rename), `pruned_block_test.go` (clause 4 corrected,
+G-D11), `chain.go` (the comment).
+
+| Gate | Ablation (one line) | RED line |
+|---|---|---|
+| G-3 (RT2-CARRIER-13 through the door) | derive `v.head.Hash/NextHeight` from `b.Prev/b.Height` in `Validate` | `RT2-CARRIER-13: the box must refuse a stale-but-valid replay on the PARENT BINDING, by name; got INDETERMINATE_TRUSTLESSLY / … stall: ancestors(8)` (the verdict no longer names P1) |
+| G-A (exclusion box-owned) | `parentProposer = ports.NodeID{}` at the top of the class-A write-set | `--- FAIL: TestClassA_ParentProposerExclusionIsBoxOwned` (the box-owned arm no longer agrees with the node's root) |
+| N1 | delete the (1b) author screen | `N1 VIOLATED: a slashed-but-frozen author must NOT be credited … got met=true / <nil>` |
+| G-7 (witness leg) | charge the frame alone at the door | `G-7 VIOLATED: frame + witness above the box's ceiling must STALL on the budget before any crypto; got REJECT / chain: bad signature: proposer` |
+| G-6 | declare `func (c *Chain) TenthDoor()` in `floorbox_v5.go` | `SOURCE GATE: G-6 — the box files declare exported *Chain methods [TenthDoor WitnessReadSetV5 WitnessValidateV5]; exactly [WitnessReadSetV5 WitnessValidateV5] are permitted` |
+| G-4a (twins, carrier + door) | `assembleStateRootRecomputeOps` returns `ErrRecomputeBoxWiring` unconditionally | every carrier gate (1, 1b, 1c×3, 1d, 12) and every door gate RED: `NON-VACUITY BROKEN (warm tier): the box stalls on the HONEST twin …` |
+| G-4b (twins, structure) | `v5CheckBudget` returns `ErrWitnessBudgetUnset` unconditionally | all 11 structure/stage-cover gates RED: `NON-VACUITY BROKEN: the node refuses the honest twin (… witness budget is unset …)` |
+| G-4c (the meta-count) | delete the twin call in `TestGD12` | `SOURCE GATE: G-4 — TestGD12_BothNodeEntryPointsDispatchToTheComposition … carries NO honest twin` |
+| NG-4 | `foldFileGlob = "floorbox_*_v5.go"` | `PIN VACUOUS: only 12 fold files matched "floorbox_*_v5.go" (floor 13)` and `SOURCE GATE: NG-4 — foldFileGlob … covers 12 of 13 non-test floorbox_*.go files` |
+| G-D11 | delete `validateEra3Roots` from `appendStructural` | `G-D11 (ii): the rewritten pruned ancestor must be ACCEPTED and the first non-pruned descendant REFUSED … got n=5 err=<nil>` (the forgery survives whole) |
+| G-D9 | (built in) authenticate `m = 3` on the same forged input | arm (2) asserts REFUSED; arm (1) asserts the witness-supplied `m = 1` PASSES both legs |
+| door twin | `Validate` stalls unconditionally | `NON-VACUITY BROKEN: the honest block must run the composition through the door to the R1.8 downgrade … got … pruned-block leg … stall` |
+
+Every ablation restored and re-run GREEN. Suites: `go test -short ./core/chain/` green after ONE
+classification the round owed — the verifier-inventory pin (`TestO3T_VerifierInventoryPin`) saw the
+new `ed25519.Verify` in `NewBox` (the parent block's own proposer signature at construction) and it
+is classified `proposer-sig`, the class of the node site it mirrors; `core/statehash`, `core/translog`
+green; `go vet ./...`, gofmt clean; `check_cited_tests.py`, `check_source_gates.py`,
+`check_residual_register.py` exit 0.
+
+## 10. Deviations from the brief (part 2), with reasons
+
+1. **`BoxConfig`, not a `Config` field, carries the budget.** Step 8 says "derived from `Config`".
+   `Config` lives in `chain.go`, and this pass is allowed exactly ONE further `chain.go` hunk, which
+   is the step-12 comment. `BoxConfig{BudgetBytes, Recovery}` is box-owned operator config in the
+   same sense as `Config` (set at construction, never per block), `NewBox` refuses an unset value,
+   and no type can express ∞. Whether the field should migrate into `Config` in a later pass is the
+   planner's call; it costs one `chain.go` line.
+2. **`validateCarrier` runs twice on the door path** (§7 step 6). Recorded, bounded by the budget.
+3. **The recompute's 5th parameter is threaded through test helpers** (`recomputeViaHead`,
+   `assembleOpsViaHead`, `coldRecompute(warm, …)`) rather than editing 134 call lines; every driver
+   still exercises the real unexported entry, and the parent proposer comes from the stand-in head.
+4. **The class-A "foreign id diverges" arm hands the witness the spurious seat's own proofs**, so the
+   arm ends in a proven `ErrRecomputeStateRootMismatch` rather than a missing-witness stall — a
+   stronger demonstration than the brief's minimum.
+5. **`requireV5Fixture` counts as the stage-cover arms' twin** in G-4's meta-count: arm D IS the
+   twin (it calls `assertHonestTwinAccepts`), and renaming it would churn the certified gate.
+
+Owed to the planner: a CHANGELOG line for `core/chain` + `core/statehash`; register rows already
+owed from part 1 stand; NO new `R-` name was minted in this pass (`R-CARRIER-PRUNED-HASH`,
+`R-CARRIER-PARENTPROPOSER`, `R-CARRIER-BYTES` are cited, all pre-existing). The
+`R-CARRIER-PARENTPROPOSER` row can be re-dispositioned: the witness slot is gone, the ADD direction
+is unrepresentable in 1A; what remains is the 1B pin question (which parent the box holds).

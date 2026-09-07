@@ -86,8 +86,16 @@ var foldLiveStateSiteAllowed = map[string]string{
 // foldFileGlob is the set of non-test floor-box files the pin covers. Widened 2026-09-03
 // (R-AST-PIN-GLOB): the earlier `floorbox_recompute_*_v5.go` missed `floorbox_recompute_v5.go`
 // and four others — the files three of five box defeats lived in — so an AST gate failed by
-// scope. Every `floorbox_*_v5.go` is now in.
-const foldFileGlob = "floorbox_*_v5.go"
+// scope. Widened AGAIN 2026-09-08 (NG-4 tail, floor-box structure round 1A step 11):
+// `floorbox_*_v5.go` still missed `floorbox_v5.go` — the file the pre-structure door lives in.
+// Every non-test `floorbox_*.go` is now in, and TestNG4_FoldFileGlobCoversEveryFloorboxFile
+// asserts the glob and the directory listing agree.
+const foldFileGlob = "floorbox_*.go"
+
+// foldFileFloor is the vacuity floor: the number of non-test floorbox_*.go files measured when the
+// glob was last widened (13 on 2026-09-08). A count below it means the glob drifted from the
+// naming, not that files were deleted — a deletion must lower this number in the same commit.
+const foldFileFloor = 13
 
 // TestFoldFilesReadNoLiveBoxState is the pin. Any `c.<sel>` in a fold file that is neither
 // allowlisted nor a self-dispatch method declared in a fold file reddens it.
@@ -121,9 +129,9 @@ func TestFoldFilesReadNoLiveBoxState(t *testing.T) {
 			foldFiles = append(foldFiles, f)
 		}
 	}
-	if len(foldFiles) < 8 {
-		t.Fatalf("PIN VACUOUS: only %d fold files matched %q — the glob has drifted from the file naming",
-			len(foldFiles), foldFileGlob)
+	if len(foldFiles) < foldFileFloor {
+		t.Fatalf("PIN VACUOUS: only %d fold files matched %q (floor %d) — the glob has drifted from the file naming",
+			len(foldFiles), foldFileGlob, foldFileFloor)
 	}
 
 	fset := token.NewFileSet()
@@ -317,4 +325,45 @@ func itoa(n int) string {
 		n /= 10
 	}
 	return string(b[i:])
+}
+
+// TestNG4_FoldFileGlobCoversEveryFloorboxFile (NG-4 tail, step 11). MEASURED twice on the donor
+// branch and once here: a `floorbox_recompute_*_v5.go` glob covered 10 of 15 files and missed
+// floorbox_recompute_v5.go (where F1, G-I and N1 live); `floorbox_*_v5.go` covered 12 of 13 and
+// missed floorbox_v5.go (the pre-structure door). The gate built to be a defect family's recurrence
+// teeth did not read the file the family lives in. This asserts the glob matches EVERY non-test
+// floorbox_*.go in the package and that the floor equals the count.
+// SOURCE GATE: a directory listing compared with a glob. RUNTIME GATE: TestFoldFilesReadNoLiveBoxState
+// (the pin itself, over the widened set). Ablation (NG-4): revert the glob to floorbox_*_v5.go ⇒ RED.
+func TestNG4_FoldFileGlobCoversEveryFloorboxFile(t *testing.T) {
+	all, err := filepath.Glob("floorbox_*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var want []string
+	for _, f := range all {
+		if !strings.HasSuffix(f, "_test.go") {
+			want = append(want, f)
+		}
+	}
+	got, err := filepath.Glob(filepath.Join(".", foldFileGlob))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var covered []string
+	for _, f := range got {
+		if !strings.HasSuffix(f, "_test.go") {
+			covered = append(covered, f)
+		}
+	}
+	sort.Strings(want)
+	sort.Strings(covered)
+	if strings.Join(want, ",") != strings.Join(covered, ",") {
+		t.Fatalf("SOURCE GATE: NG-4 — foldFileGlob %q covers %d of %d non-test floorbox_*.go files.\n  covered: %v\n  all:     %v",
+			foldFileGlob, len(covered), len(want), covered, want)
+	}
+	if len(want) != foldFileFloor {
+		t.Fatalf("SOURCE GATE: NG-4 — %d non-test floorbox_*.go files, foldFileFloor is %d; move the floor with the file set in the same commit",
+			len(want), foldFileFloor)
+	}
 }

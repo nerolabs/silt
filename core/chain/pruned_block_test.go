@@ -3,6 +3,7 @@ package chain
 import (
 	"bytes"
 	"crypto/ed25519"
+	"errors"
 	"testing"
 
 	"github.com/nerolabs/silt/ports"
@@ -194,11 +195,110 @@ func TestPrunedBlockHashDoesNotCoverCarrierOrStateRoot(t *testing.T) {
 		}
 	}
 
-	// (4) The live containment: the carrier's own validity rule still runs on a pruned block and
-	// still binds to b.Prev, so a FABRICATED entry is refused without a real key.
+	// (4) The carrier's own validity rule still runs on a pruned block and still binds to b.Prev,
+	// so a ZERO-SIGNATURE entry is refused. That is ALL it refuses: an entry harvested from the
+	// parent's published Atts is a genuine precommit over b.Prev and is ACCEPTED — adding is as
+	// free as dropping (RT2-CARRIER-14). An earlier version of this clause read the refusal below
+	// as "fabricating an entry needs a real key"; it does not. See TestGD11_… for both sides.
 	if err := validateCarrier(&forged); err == nil {
-		t.Fatal("CONTAINMENT LOST: validateCarrier accepted a fabricated carrier entry on a pruned " +
-			"block. The reload path (appendStructural) relies on this: pruning must not make " +
-			"carrier entries forgeable, only droppable.")
+		t.Fatal("PROPERTY CHANGED: validateCarrier accepted a ZERO-signature carrier entry on a pruned block")
+	}
+}
+
+// TestGD11_PrunedCarrierRewriteIsCaughtOnlyByTheDescendant is the TWO-SIDED pruned-carrier gate
+// (P-table delta certification §5.2 / G-D11; floor-box structure round 1A step 12).
+//
+// THE CLAIM IT PINS AS FALSE: "fabricating a carrier entry still needs a real key; only dropping
+// is free" (chain.go, Hash(), three times). validateCarrier accepts an entry iff it is a genuine
+// PhasePrecommit over b.Prev — the PARENT's hash — and the parent's own published Atts are exactly
+// that, on every replica's disk. So an attacker rewrites a PRUNED block's LastCommit with entries
+// harvested from the parent's Atts, recomputes its (uncovered) StateRoot with the real apply(),
+// and every signature still verifies because Hash() returns b.Pruned unchanged. No key material.
+//
+// Side (i): validateCarrier ACCEPTS the harvested-Atts rewrite.
+// Side (ii): a node replaying the rewritten history (Reload → appendStructural) accepts the pruned
+// block, applies the forged seating, and refuses the FIRST NON-PRUNED DESCENDANT on its hash-
+// covered StateRoot — the only catch — leaving its head SILENTLY TRUNCATED at the rewritten block
+// with the forged seat live in validatorsSeen.
+// Ablation (G-D11): remove validateEra3Roots from appendStructural ⇒ the forgery survives ⇒ RED.
+// R-CARRIER-PRUNED-HASH stays OPEN; this gate bounds it, it does not close it.
+func TestGD11_PrunedCarrierRewriteIsCaughtOnlyByTheDescendant(t *testing.T) {
+	// A ValidateCommit-driven era-4 world: heights 1 and 2 commit with EMPTY carriers and the
+	// victim (bonded, qualified, never seated) signs every certificate — so the parent's published
+	// Atts carry the victim's genuine precommit, which is the harvest.
+	w := rtGateWorldWith(t, 0, 1, 68000)
+	victim := idOf(w.victims[0])
+	h3 := w.mintEmptyCarrier(t) // the block the attacker will prune and rewrite
+	mustAppend(t, w.c, h3)
+	h4 := w.mintEmptyCarrier(t) // the first non-pruned descendant: its StateRoot is hash-covered
+	mustAppend(t, w.c, h4)
+	if w.c.validatorsSeen[victim] {
+		t.Fatal("fixture VACUOUS: the victim is already seated; a forged seat would be idempotent")
+	}
+	honest := w.c.Blocks(0)
+	if len(honest) != 5 {
+		t.Fatalf("fixture: want genesis..h4, got %d blocks", len(honest))
+	}
+	parent := honest[2] // h2, the parent of h3
+
+	// THE ATTACK. Prune h3, harvest the parent's real precommits into its carrier, recompute its
+	// (now uncovered) StateRoot with the real apply() over the honest h2 state.
+	pruned := honest[3].Prune()
+	var harvested []Attestation
+	for _, a := range parent.Atts {
+		if a.Phase == PhasePrecommit && a.AttesterID() == victim {
+			harvested = append(harvested, a)
+		}
+	}
+	if len(harvested) != 1 {
+		t.Fatalf("fixture: the parent's Atts must carry the victim's precommit, got %d", len(harvested))
+	}
+	rewritten := pruned
+	rewritten.LastCommit = harvested
+	at2 := New(w.cfg, func(ports.NodeID) int64 { return 0 })
+	at2.SetBondVerifier(objectiveVerify)
+	if n, err := at2.Reload(honest[:3]); err != nil || n != 3 {
+		t.Fatalf("fixture: replay to h2: %d %v", n, err)
+	}
+	forgedState, forgedLog, err := at2.postApplyRoots(rewritten)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rewritten.StateRoot, rewritten.LogRoot = &forgedState, &forgedLog
+	if *rewritten.StateRoot == *honest[3].StateRoot {
+		t.Fatal("fixture VACUOUS: the harvested carrier did not move the committed root (the victim was not seated)")
+	}
+	if rewritten.Hash() != honest[3].Hash() {
+		t.Fatal("PROPERTY CHANGED: a mutated pruned block's Hash() moved — RT-CARRIER-2 is closed; rewrite this gate")
+	}
+
+	// SIDE (i): the carrier rule ACCEPTS the harvested rewrite. No key material was used.
+	if err := validateCarrier(&rewritten); err != nil {
+		t.Fatalf("G-D11 (i): validateCarrier must ACCEPT a carrier harvested from the parent's real Atts — "+
+			"that is what makes adding as free as dropping; got %v", err)
+	}
+
+	// SIDE (ii): a node replaying [g, h1, h2, rewritten h3, h4] accepts the rewrite and is caught
+	// ONLY at h4 — on the hash-covered StateRoot — with its head silently truncated at h3 and the
+	// forged seat live.
+	replay := New(w.cfg, func(ports.NodeID) int64 { return 0 })
+	replay.SetBondVerifier(objectiveVerify)
+	history := append(append([]Block{}, honest[:3]...), rewritten, honest[4])
+	n, err := replay.Reload(history)
+	if n != 4 || !errors.Is(err, ErrEra3StateRootMismatch) {
+		t.Fatalf("G-D11 (ii): the rewritten pruned ancestor must be ACCEPTED and the first non-pruned descendant "+
+			"REFUSED on its committed StateRoot (want n=4, ErrEra3StateRootMismatch); got n=%d err=%v", n, err)
+	}
+	if _, next := replay.Head(); next != 4 {
+		t.Fatalf("G-D11 (ii): the head must be SILENTLY TRUNCATED at the rewritten block (next height 4); got %d", next)
+	}
+	if !replay.validatorsSeen[victim] {
+		t.Fatal("G-D11 (ii): the forged seat must be LIVE in the replayed state — the descendant catch does not undo it")
+	}
+	// The honest history replays whole: the truncation is the forgery's, not the fixture's.
+	clean := New(w.cfg, func(ports.NodeID) int64 { return 0 })
+	clean.SetBondVerifier(objectiveVerify)
+	if n, err := clean.Reload(honest); err != nil || n != 5 {
+		t.Fatalf("control: the honest history must replay whole; got n=%d err=%v", n, err)
 	}
 }

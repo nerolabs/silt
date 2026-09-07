@@ -730,12 +730,26 @@ func (b *Block) Hash() ports.Hash {
 	// (i) the recompute chain to the first NON-pruned descendant — whose signed StateRoot IS
 	// hash-covered and is recomputed over the (possibly rewritten) ancestor state — and
 	// (ii) trustFloor, below which alone a pruned block is trusted (Reconcile). CONSEQUENTLY:
-	// NO CONSENSUS DECISION MAY DEPEND ON RE-READING THE BODY OF A PRUNED BLOCK. The
-	// carrier is the best-protected member of the set — validateCarrier runs on both
-	// disk-write paths with no IsPruned skip and verifies over b.Prev, which pruning does not
-	// touch, so FABRICATING an entry still needs a real key; only DROPPING entries is free.
-	// The property is documented by TestPrunedBlockHashDoesNotCoverCarrierOrStateRoot
-	// (pruned_block_test.go), a PRE-FREEZE / pre-stamp-raise checklist item — not a fix here.
+	// NO CONSENSUS DECISION MAY DEPEND ON RE-READING THE BODY OF A PRUNED BLOCK.
+	//
+	// THE CARRIER IS NOT PROTECTED BY ITS SIGNATURES (RT2-CARRIER-14; P-table delta
+	// certification §5.2 — the third time this comment has shipped a false safety claim).
+	// validateCarrier accepts an entry iff it is a genuine PhasePrecommit signature over
+	// b.Prev, with no round constraint and no qualification screen. b.Prev is the PARENT's
+	// hash, and collectQuorumSigs verified the parent's own published Atts at PhasePrecommit
+	// over exactly that hash — so EVERY entry of the parent's Atts is a valid carrier entry
+	// for the child, byte for byte, on every replica's disk and served by MsgGetChain.
+	// ADDING carrier entries to a pruned block is therefore exactly as free as DROPPING
+	// them: harvest the parent's Atts, rewrite LastCommit and StateRoot, and Hash() returns
+	// b.Pruned unchanged, so every signature still verifies and validateCarrier ACCEPTS.
+	// No key is needed. The DESCENDANT CATCH (i) is the ONLY defence, and its consequence is
+	// not a rejection of the history: under Reload's longest-valid-prefix contract a node
+	// fed a rewritten pruned ancestor accepts it, applies the forged seating, and then
+	// refuses the first non-pruned descendant on its hash-covered StateRoot — a SILENT HEAD
+	// TRUNCATION at that descendant, with the forged seat live in the replayed state
+	// (validatorsSeen, the maturity input). TestGD11_PrunedCarrierRewriteIsCaughtOnlyBy-
+	// TheDescendant (pruned_block_test.go) drives both sides; the underlying property is
+	// R-CARRIER-PRUNED-HASH, OPEN, bounded not eliminated, deadline the stamp raise.
 	if b.IsPruned() {
 		return b.Pruned
 	}
