@@ -246,9 +246,25 @@ publish_verdict() { # publish_verdict FLOW SEVERITY "detail"
 # A stale 'chain: committed block N' already in the journal must NOT satisfy a
 # "the publish committed" gate — capture the height BEFORE the action and require
 # a STRICTLY HIGHER one after, so only a genuinely NEW commit counts.
-ft_commit_height() { # ft_commit_height NODE — max committed-block height in the journal (0 if none)
-  local h; h="$(jlog "$1" 800 | grep -oE 'chain: committed block [0-9]+' | grep -oE '[0-9]+$' | sort -n | tail -1)"
-  printf '%s' "${h:-0}"
+# ft_head_from_journal — the max HEAD height a journal excerpt proves: the
+# `chain: committed block N` banner (printed only when THIS node commits — its own
+# proposal or a commit broadcast it applied) OR the `chain: saved N block(s) [...]
+# head=H:` line (printed on EVERY save, including catch-up). Run 2633a11-deep's
+# 6-fault-tolerance GAP was a harness artifact of reading the banner alone: with a
+# dead validator ahead of the boot node in the proposer's sequential commit
+# broadcast, chain-sync catch-up delivered every post-kill block to val-a ~4 s after
+# it committed elsewhere ("caught up 1 block(s) from peers … head=29"), the broadcast
+# then found the block already applied and printed nothing, and the 380 s wait
+# failed while the chain advanced h30→h40 at ~50 s/height with val-d down. A liveness
+# oracle must read the node's HEAD, never a print that depends on WHO committed.
+ft_commit_height() { # ft_commit_height NODE — max HEAD height the journal proves (0 if none)
+  local j a b
+  j="$(jlog "$1" 800)"
+  a="$(printf '%s' "$j" | grep -oE 'chain: committed block [0-9]+' | grep -oE '[0-9]+$' | sort -n | tail -1)"
+  b="$(printf '%s' "$j" | grep -oE 'head=[0-9]+:' | grep -oE '[0-9]+' | sort -n | tail -1)"
+  a="${a:-0}"; b="${b:-0}"
+  [ "$b" -gt "$a" ] 2>/dev/null && a="$b"
+  printf '%s' "$a"
 }
 ft_wait_new_block() { # ft_wait_new_block NODE H0 TIMEOUT_S -> 0 if a block > H0 committed
   local node="$1" h0="${2:-0}" timeout="${3:-90}" deadline
@@ -296,6 +312,9 @@ ft_escape_progress() {
     if [ -n "$(printf '%s' "$jout" | tr -d '[:space:]')" ]; then
       h_read=1
       cur="$(printf '%s' "$jout" | grep -oE 'chain: committed block [0-9]+' | grep -oE '[0-9]+$' | sort -n | tail -1)"
+      [ "${cur:-0}" -gt "$h" ] 2>/dev/null && h="$cur"
+      # The head= save line counts too (catch-up prints no banner — see ft_commit_height).
+      cur="$(printf '%s' "$jout" | grep -oE 'head=[0-9]+:' | grep -oE '[0-9]+' | sort -n | tail -1)"
       [ "${cur:-0}" -gt "$h" ] 2>/dev/null && h="$cur"
     fi
     # Round-changes from debug.log (dlog), filtered to timestamps ≥ the kill ISO.
