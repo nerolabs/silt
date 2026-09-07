@@ -15,6 +15,8 @@ Every recipe below was read from the live issue via `gh issue view <n>` on 2026-
 
 ## Crash-safety — torn `chain.cbor` → silent genesis fallback (#558)
 
+> **Correction (2026-09-07, Lane B8 / PE ruling):** the a434494-deep event was NOT a torn write — `chainstore.Save` was already tmp+rename atomic and the file was intact at h83; an era-2 replay bug (`core/chain/reload_era2_558_test.go`) rejected it and the daemon silently restarted from genesis. The torn-write premise below is stale. What B8 shipped: the fsync'd write (hardening) and the refuse-to-start rule with `-accept-chain-loss` preserving the original.
+
 **The mechanism (journal-attributed, run `a434494-deep`).** A validator was kernel-OOM-killed
 (SIGKILL) mid-drive at h83. On the systemd restart the daemon logged `chain replay: chain:
 bad signature: attester d4f5ec0d…` and **silently started from genesis** (working height 1).

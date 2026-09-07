@@ -143,6 +143,7 @@ func cmdDaemon(args []string) error {
 	liar := fs.Bool("liar", false, "RED-TEAM / TEST-HARNESS ONLY: run this storage node as a PoR LIAR — it keeps its storage-proof tags but silently drops the shard bytes (\"keep the receipt, ditch the goods\"). It still answers a MsgChallenge, but with a proof that fails the auditor's verify-without-fetch check, so an -audit auditor CATCHES it and slashes its standing (#232). Never honest")
 	goodPropose := fs.String("goodpropose", "", "TEST-HARNESS ONLY: POSITIVE CONTROL for -forge-block/-lowbond-propose. As a properly-bonded proposer, send a WELL-FORMED block to this peer ID and prove the honest target ACCEPTS it — so a target that refuses EVERY proposal (a broken/wedged node) cannot make the forged/low-bond REJECT tests false-pass ('reject the good one too' would otherwise look identical to 'reject the bad one', audit #303). Retries until its bond earns standing. Logs 'goodpropose proposal ACCEPTED by <id>' on accept, 'goodpropose proposal UNEXPECTEDLY REJECTED by <id>' after giving up")
 	wsCheckpoint := fs.String("ws-checkpoint", "", "weak-subjectivity checkpoint HEIGHT:HASH (M0 F-1): a recent trusted committed block this node REFUSES to reorg at or before, regardless of fork weight — the long-range-attack defense that makes the objective maturity latch safe for a fresh/long-offline node. Obtain it out-of-band (the daemon prints `checkpoint: HEIGHT:HASH` for its committed head; cross-check several independent nodes). It must be recent — within ~the bond-TTL window. Empty = genesis-trusting (safe only at launch, on a trusted swarm, or before the network matures)")
+	acceptChainLoss := fs.Bool("accept-chain-loss", false, "#558 (Lane B8): START even if replaying chain.cbor would DISCARD finalized history — a torn file (power loss / OOM-kill mid-write, now prevented by the fsync'd atomic write) or a block that fails structural verification. Default OFF: the daemon REFUSES TO START and names the loss, because a validator that silently restarts from genesis (or a stale prefix) re-enters consensus holding its frozen-epoch seat with a history it does not have, and below the swarm's prune horizon the suffix can never be re-synced without a fresh -ws-checkpoint (#559). Set it ONLY after reading the refusal: the node keeps the longest valid prefix and re-syncs the rest from peers")
 	livenessRecoveryHeight := fs.Uint64("liveness-recovery-height", 0, "#535 OPERATOR-DIRECTED liveness-floor recovery (weak-subjectivity trust class, like -ws-checkpoint): an epoch-boundary height at which mature-epoch validation re-bases the finality quorum and validator qualification against the LIVE qualified bonded set instead of the frozen epoch snapshot — for ONE boundary only, after which the normal rotation governs. Use it ONLY when members holding > 1/3 of the frozen epoch's weight have genuinely left (bonds lapsed, not returning) and the chain is stalled at an epoch boundary (chain-status names the state): that loss is outside the BFT liveness model, so the stall is deliberate safety and recovery REQUIRES a human judgment the protocol cannot make. CONFIRM OUT-OF-BAND that the loss is a real outage — not a partition or an attack (a wrongly-invoked recovery can fork; that risk is the accepted weak-subjectivity residual) — and COORDINATE: every honest operator must set the SAME height, or replicas diverge. Must be a multiple of the epoch cadence (-epoch-blocks). 0 = off (default): a bled boundary stalls, which is the certified-correct behavior")
 	debug := fs.Bool("debug", false, "shorthand for -log debug (the full firehose)")
 	logLevel := fs.String("log", "", "write events at or above this level to <store>/debug.log (error|warn|info|debug); info narrates the normal path (placements, commits, repairs) to validate behavior in the field without the debug firehose")
@@ -877,13 +878,31 @@ func cmdDaemon(args []string) error {
 		// regime pairs). Reload now also REFUSES an objective-config replay
 		// with no verifier, so this ordering can never regress silently.
 		ch.SetBondVerifier(node.SpaceTimeBondVerifier(cfg.BondVDFDelay, cfg.BondLabelSamples))
-		if n, err := chainstore.Replay(chainPath, ch); err != nil {
-			// NEVER quiet (#558): a replay failure discards finalized history.
-			// Reload keeps the longest valid prefix; name the loss and the
-			// consequence loudly — behind the swarm's prune horizon a
-			// genesis-stranded validator cannot re-sync without an operator
-			// -ws-checkpoint (#559).
-			fmt.Fprintf(os.Stderr, "chain replay: FAILED at block %d: %v — continuing with the %d-block valid prefix; the suffix must re-sync from peers, which is IMPOSSIBLE below the swarm's prune horizon without a fresh -ws-checkpoint (#558/#559)\n", n, err, n)
+		// #558 / Lane B8 (scope call S3, ratified 2026-09-07): a replay that would
+		// discard finalized history REFUSES TO START unless the operator accepts
+		// the loss with -accept-chain-loss. Before this the daemon printed the
+		// failure and continued on the valid prefix — from genesis when nothing
+		// decoded — and re-entered consensus holding its frozen-epoch seat with
+		// a history it did not have (the a434494-deep shape: an intact file an
+		// era-2 replay bug rejected, restarted at genesis, #559/#560). The
+		// replay is therefore a START-BLOCKING surface: a rejected file may be
+		// byte-perfect and merely unreadable by THIS binary, so acceptance
+		// PRESERVES it as chain.cbor.rejected-<unix> before anything is saved.
+		n, loss, refused := chainstore.Recover(chainPath, ch, *acceptChainLoss)
+		if refused != nil {
+			fmt.Fprintf(os.Stderr, "chain replay: REFUSING TO START — %v. %s is UNTOUCHED. Inspect it (silt chain-status -store, or run the binary that wrote it); a %d-block valid prefix would be kept and the suffix re-synced from peers, which is IMPOSSIBLE below the swarm's prune horizon without a fresh -ws-checkpoint (#558/#559). If the loss is understood, restart with -accept-chain-loss: the original is preserved as %s.rejected-<unix>, never overwritten.\n", refused, chainPath, n, chainPath)
+			if lg != nil {
+				// The loudest event in the daemon's life must reach debug.log: the
+				// sink is unbuffered, so it is the LOG call — not Close — that
+				// lands it there (PE re-ruling R-1); LogError survives -log error.
+				lg.Log(ports.LogError, "chain replay REFUSED — daemon exiting 3", "path", chainPath, "restored", n, "err", refused.Error())
+				lg.Close()
+			}
+			os.Exit(3)
+		}
+		if loss != nil {
+			// The operator accepted the loss: still NEVER quiet (#558).
+			fmt.Fprintf(os.Stderr, "chain replay: FAILED at block %d: %v — -accept-chain-loss set: the original %s is PRESERVED untouched as %s; continuing with the %d-block valid prefix; the suffix must re-sync from peers, which is IMPOSSIBLE below the swarm's prune horizon without a fresh -ws-checkpoint (#558/#559)\n", n, loss.Cause, chainPath, loss.Preserved, n)
 		} else if n > 0 {
 			// The regime line is LOAD-BEARING diagnostics (#572): 474718e-deep's
 			// val-d restored 32 blocks whose live application had latched
