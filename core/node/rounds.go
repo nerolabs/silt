@@ -107,6 +107,28 @@ type heightRounds struct {
 	// has already broadcast or received — a certificate travels one hop from
 	// its assembler (G-H43-4), never floods.
 	CertSent map[uint64]bool
+	// Certs (h43, G-H43-12): the quorum-grade certificate this node holds per
+	// round, VERIFIED ONCE when first assembled or received. Later arrivals for
+	// a round already held cost no signature work — the verification budget is
+	// O(N) per round per node, not O(N³) (the as-built first cut re-ran
+	// newViewFor on every arrival and on every envelope of every received
+	// certificate; the delta certification priced that at ~1,000–1,700
+	// verifies per round per node at N = 12).
+	Certs map[uint64]*roundCert
+	// Attempted (h43, G-H43-13): the mempool signature at this node's last
+	// designee proposal attempt per round. A designee proposes at most once per
+	// (h, r) unless its mempool changed — the as-built first cut re-fired on
+	// every certificate envelope (~40 attempts in one round, each paying the
+	// fold + era roots + Sign before the empty-block check).
+	Attempted map[uint64]uint64
+}
+
+// roundCert is a held quorum-grade round certificate: the envelopes it was
+// assembled or received with (round-exact — every NewRound == Round) and the
+// forced value newViewFor derived from them (nil ⇒ fresh proposal allowed).
+type roundCert struct {
+	Raws   [][]byte
+	Forced *nodeLock
 }
 
 // roundsFor returns the round state for the CURRENT working height (head+1),
@@ -116,7 +138,8 @@ type heightRounds struct {
 func (n *Node) roundsFor() *heightRounds {
 	_, next := n.chain.Head()
 	if n.rounds == nil || n.rounds.Height != next {
-		rs := &heightRounds{Height: next, Changes: map[uint64]map[ports.NodeID][]byte{}, CertSent: map[uint64]bool{}}
+		rs := &heightRounds{Height: next, Changes: map[uint64]map[ports.NodeID][]byte{}, CertSent: map[uint64]bool{},
+			Certs: map[uint64]*roundCert{}, Attempted: map[uint64]uint64{}}
 		// Restart continuity (certification §5.3): if the persisted mark is for
 		// this height, resume at ITS round and re-hydrate the lock from the
 		// persisted prepare-QC — a restarted validator re-presents the same
@@ -392,6 +415,16 @@ func (n *Node) advanceToRound(rs *heightRounds, next uint64, via string) {
 	// sync target.
 	rs.Round = next
 	rs.Sweeps = 0
+	// h43 (D3): the #338 takeover walk is keyed on (height + round) in the
+	// drain path, so its rank distance tracks THIS round's designee. The
+	// accumulated wait is deliberately NOT reset here: rounds 0–3 last 2/3/5/8
+	// sweeps while a rank-k walk needs 3+k, so a per-round reset could never
+	// reach a far rank until the ladder outgrew it (the #441 rotation-wait
+	// oracle went RED on exactly that) — monotone accumulation keeps the
+	// certified ≤ (N+2)·ChainSyncInterval backstop for a designee whose
+	// forwarded work was lost, at the price of the pre-existing #397 Q2b-1
+	// residue (a near-rank taker may race the designee at one (h, r); the
+	// watermark bounds it to one value per attester per slot).
 	n.recordRoundChange(rs, next, n.id, raw)
 	for _, p := range n.syncTargets() {
 		if p == n.id {
@@ -402,42 +435,57 @@ func (n *Node) advanceToRound(rs *heightRounds, next uint64, via string) {
 	n.forwardPendingWorkToDesignee(rs.Height, next)
 }
 
-// forwardPendingWorkToDesignee (h43 (D), the mechanism the model-check
-// exposed once (A)(B)(C) were built — G-H43-1 probe, 2026-09-07): a round
-// whose designee is LIVE but holds none of the pending work is wasted exactly
-// like a round on a DOWN designee — silt refuses an empty block and only the
-// designee may propose at a round > 0 — so the ≤ f+1 bound is only as good
-// as the designee's mempool. The literature never has this problem because
-// the request reaches every replica (PBFT §4.4: the client multicasts to all;
-// Tendermint gossips the mempool), whereas silt's submit lanes reach only the
-// peers the CLIENT knew. So, on entering round r, a work-holder forwards its
-// queue to the designee of r over the same submit lanes a client uses
-// (validated and deduped on arrival, budgeted per sender per sweep window by
-// allowBondSubmit / allowEntrySubmit — the forward is capped at those bursts,
-// FIFO, so a long queue drains over rounds with seniority intact). Leader-
-// directed mempool gossip: O(queue) messages per round-change, to ONE peer.
+// h43ForwardEntries caps the ENTRIES one work-holder forwards to a round's
+// designee on entering the round (h43 (D1), G-H43-10a; a security parameter,
+// owner call owed). Its OWN constant, never entrySubmitBurst: that budget was
+// derived for one CLIENT's honest cadence, whereas here up to N−1 forwarders
+// fire at ONE seat on every round entry — at N = 12 inheriting 32 would land
+// 352 ValidateEntry calls (an RSA verify each under -require-tokens) on the
+// designee inside one window. The designee needs ONE entry to make a
+// non-empty block; 4 is headroom over one and far under the client burst, so
+// a genuine client submit in the same window is never starved. FIFO, so a
+// longer queue drains over rounds with seniority intact.
+const h43ForwardEntries = 4
+
+// forwardPendingWorkToDesignee (h43 (D1), certified on the ENTRY lane —
+// `R-H43-WORKLESS-DESIGNEE`, M4): a round whose designee is LIVE but holds
+// none of the height's pending work is wasted like a round on a DOWN
+// designee — silt refuses an empty block (a validity rule, chain.go
+// "chain: empty block") and the designee has priority at its round — so the
+// ≤ f+1 bound is only as good as the designee's mempool. The literature never
+// has this problem because the request reaches every replica (PBFT §4.4: the
+// client multicasts to all; Tendermint gossips the mempool), whereas silt's
+// entry lane reaches only the peers the CLIENT knew and a receiver never
+// re-gossips. So, on entering round r, a work-holder forwards its queued
+// ENTRIES to the designee of r over the same submit lane a client uses —
+// an entry is self-validating (root, token, serial), re-validated on arrival
+// and again at fold, so a forwarded entry is indistinguishable from a client
+// submit. Leader-directed mempool gossip: ≤ h43ForwardEntries messages per
+// round entry, to ONE peer.
+//
+// REGISTRATIONS ARE NOT FORWARDED (REFUTED by the delta certification):
+// the reg lane is sender-bound — a receiver refuses any reg not submitted by
+// its own validator BEFORE the ~ms space-time verify ("submit REFUSED
+// (relay)", the #424 CPU-DoS closer) — so a forwarded reg is dropped 100 % of
+// the time after ~1.5 MB of egress and after burning the forwarder's own
+// per-window submit budget at the designee. And it is redundant: an owner's
+// SubmitBondRenewal already broadcasts its due reg to every peer it syncs
+// with, so in the field every eligible proposer already holds it.
 func (n *Node) forwardPendingWorkToDesignee(height, round uint64) {
 	d := n.designatedProposer(height, round)
 	if d == (ports.NodeID{}) || d == n.id {
 		return
 	}
-	entries, regs := 0, 0
+	entries := 0
 	for i := range n.pendingEntries {
-		if entries >= entrySubmitBurst {
+		if entries >= h43ForwardEntries {
 			break
 		}
 		n.request(d, ports.Message{Kind: ports.MsgSubmitEntry, Data: entryEncode(n.pendingEntries[i].E)}, func(ports.Message, error) {})
 		entries++
 	}
-	for i := range n.pendingBondRegs {
-		if regs >= bondSubmitBurst {
-			break
-		}
-		n.request(d, ports.Message{Kind: ports.MsgSubmitBondReg, Data: bondRegEncode(n.pendingBondRegs[i].R)}, func(ports.Message, error) {})
-		regs++
-	}
-	if entries+regs > 0 {
-		n.logf(ports.LogInfo, "round-change: pending work forwarded to the round's designee (h43)", "height", height, "round", round, "designee", d, "entries", entries, "regs", regs)
+	if entries > 0 {
+		n.logf(ports.LogInfo, "round-change: pending entries forwarded to the round's designee (h43)", "height", height, "round", round, "designee", d, "entries", entries)
 	}
 }
 
@@ -450,19 +498,14 @@ func (n *Node) maybeProposeAtRound() {
 		return
 	}
 	rs := n.roundsFor()
-	if rs.Round == 0 || n.designatedProposer(rs.Height, rs.Round) != n.id {
+	if rs.Round == 0 {
 		return
 	}
-	m := rs.Changes[rs.Round]
-	raws := make([][]byte, 0, len(m))
-	for _, r := range m {
-		raws = append(raws, r)
+	c := rs.Certs[rs.Round]
+	if c == nil {
+		return // no certificate yet — checkRoundQuorum fires when it completes
 	}
-	forced, err := n.newViewFor(rs.Height, rs.Round, raws)
-	if err != nil {
-		return // no certificate yet — recordRoundChange fires when it completes
-	}
-	n.proposeAtNewView(rs, rs.Round, raws, forced)
+	n.fireDesignee(rs, rs.Round, c)
 }
 
 // recordRoundChange stores a verified round-change (arming this node — h43
@@ -475,11 +518,22 @@ func (n *Node) maybeProposeAtRound() {
 // designated proposer for (height, newRound), fires the proposal at THAT
 // round (re-proposing the forced value if the certificate carries one).
 //
-// Cost: newViewFor re-verifies every envelope at every arrival — O(N) ed25519
-// verifies per arrival, O(N²) per round per node (~150 at 12 seats, a few ms
-// on the floor box). The re-verification is what makes the broadcast
-// certificate exactly as trustworthy as a proposal-carried one.
+// Cost (re-derived after the delta certification's `R-H43-VERIFY-COST-
+// UNDERSTATED`): every envelope stored here was verified ONCE by its wire
+// handler; newViewFor re-verifies the stored set on each arrival until the
+// round's quorum forms, then the certificate is CACHED (rs.Certs) and no
+// later arrival for that round costs a signature — O(N) verifies per arrival
+// before quorum, so ≤ O(N²) per round per node in the worst case and O(N) once
+// the certificate is held; a received certificate costs one newViewFor over
+// its envelopes, and is refused unverified when the round is already held or
+// the envelope count exceeds the governing set (G-H43-12).
 func (n *Node) recordRoundChange(rs *heightRounds, newRound uint64, from ports.NodeID, raw []byte) {
+	n.storeRoundChange(rs, newRound, from, raw)
+	n.checkRoundQuorum(rs, newRound)
+}
+
+// storeRoundChange records one verified envelope and arms this node (h43 (A)).
+func (n *Node) storeRoundChange(rs *heightRounds, newRound uint64, from ports.NodeID, raw []byte) {
 	m := rs.Changes[newRound]
 	if m == nil {
 		m = map[ports.NodeID][]byte{}
@@ -487,50 +541,107 @@ func (n *Node) recordRoundChange(rs *heightRounds, newRound uint64, from ports.N
 	}
 	m[from] = raw
 	rs.Armed = true
+}
+
+// checkRoundQuorum acts on the recorded envelopes for `round`: if this node
+// already holds the round's certificate, only the (deduped) designee fire is
+// re-evaluated — no signature work; otherwise newViewFor verifies the stored
+// set ONCE, and on quorum the certificate is cached, sent (narrowed — see
+// broadcastRoundCert), entered if above our round, and proposed at if we are
+// its designee.
+func (n *Node) checkRoundQuorum(rs *heightRounds, round uint64) {
+	if c := rs.Certs[round]; c != nil {
+		n.fireDesignee(rs, round, c)
+		return
+	}
+	m := rs.Changes[round]
 	raws := make([][]byte, 0, len(m))
 	for _, r := range m {
 		raws = append(raws, r)
 	}
-	forced, err := n.newViewFor(rs.Height, newRound, raws)
+	forced, err := n.newViewFor(rs.Height, round, raws)
 	if err != nil {
 		return // below quorum (or a bad envelope excluded) — wait for more
 	}
-	if !rs.CertSent[newRound] {
-		rs.CertSent[newRound] = true
-		n.broadcastRoundCert(rs.Height, newRound, raws)
+	c := &roundCert{Raws: raws, Forced: forced}
+	rs.Certs[round] = c
+	if !rs.CertSent[round] {
+		rs.CertSent[round] = true
+		n.broadcastRoundCert(rs.Height, round, raws, m)
 	}
-	if rs.Round < newRound {
+	if rs.Round < round {
 		// A quorum-grade certificate for a round above ours is proof the
 		// network is there: enter it. advanceToRound records our own envelope,
-		// which re-enters here at rs.Round == newRound and takes the designee
+		// which re-enters here at rs.Round == round and fires the designee
 		// branch below if it is ours.
-		n.advanceToRound(rs, newRound, "round-cert")
+		n.advanceToRound(rs, round, "round-cert")
 		return
 	}
-	if n.designatedProposer(rs.Height, newRound) != n.id {
+	n.fireDesignee(rs, round, c)
+}
+
+// fireDesignee proposes at `round` if this node is its designee, at most once
+// per (h, r) unless the mempool changed since the last attempt (h43,
+// G-H43-13). The designee has PRIORITY, never exclusivity: the #338 takeover
+// (re-keyed to the round, D3) lets another work-holder propose at the same
+// round after its window, and every attester admits either — I1 rests on the
+// watermark and the forced value, never on who proposed.
+func (n *Node) fireDesignee(rs *heightRounds, round uint64, c *roundCert) {
+	if n.designatedProposer(rs.Height, round) != n.id {
 		return
 	}
-	n.proposeAtNewView(rs, newRound, raws, forced)
+	sig := n.mempoolSig()
+	if last, tried := rs.Attempted[round]; tried && last == sig {
+		return
+	}
+	if n.proposeAtNewView(rs, round, c.Raws, c.Forced) {
+		rs.Attempted[round] = sig
+	}
+}
+
+// mempoolSig is a cheap signature of this node's foldable work — the queue
+// lengths and the issuer-key foldability — so a designee re-attempts a round
+// only when something it could carry has changed.
+func (n *Node) mempoolSig() uint64 {
+	sig := uint64(len(n.pendingEntries))<<40 | uint64(len(n.pendingBondRegs))<<20 | uint64(len(n.pendingSlashes))<<8
+	if n.issuerKeysFoldable() {
+		sig |= 1
+	}
+	if n.bond != nil && n.chain.BondRenewalDue(n.id) {
+		sig |= 2
+	}
+	return sig
 }
 
 // broadcastRoundCert sends the assembled round certificate for (height,
-// round) to every sync target, once (h43 (B); G-H43-4: a node whose only copy
-// of a peer's round-change was dropped still learns the round within one hop
-// of whoever assembled the quorum). Fire-and-forget like a round-change: the
+// round) ONCE, to the round's DESIGNEE (DiemBFT: "sends the TC to L_{r+1}")
+// plus the peers whose envelopes are ABSENT from it — the ones that evidently
+// have not declared the round and so may never have seen the round-changes
+// that formed it (G-H43-4: a node whose only copy of a peer's round-change
+// was dropped still learns the round within one hop of whoever assembled the
+// quorum). NEVER to every peer: a round-change carries the sender's full
+// locked block (sigBytes commits HashBytes(LockBlock)), so a certificate is
+// O(N · block) once locks are carried, and up to N nodes can assemble one
+// independently before any hears another's — an all-peers broadcast was
+// priced at ~1.2 GB per contested round at N = 12 (G-H43-11,
+// `R-H43-CERT-CARRIES-BLOCKS`). Fire-and-forget like a round-change: the
 // certificate is idempotent evidence, and every jump it causes gossips a
 // fresh round-change of its own.
-func (n *Node) broadcastRoundCert(height, round uint64, raws [][]byte) {
+func (n *Node) broadcastRoundCert(height, round uint64, raws [][]byte, present map[ports.NodeID][]byte) {
 	data, err := cbor.Marshal(roundCertEnv{Height: height, Round: round, Raws: raws})
 	if err != nil {
 		return
 	}
-	n.logf(ports.LogInfo, "round-cert: broadcasting (h43 transferable certificate)", "height", height, "round", round, "envelopes", len(raws))
+	designee := n.designatedProposer(height, round)
+	sent := 0
 	for _, p := range n.syncTargets() {
-		if p == n.id {
+		if p == n.id || (p != designee && present[p] != nil) {
 			continue
 		}
 		n.request(p, ports.Message{Kind: ports.MsgRoundCert, Data: data}, func(ports.Message, error) {})
+		sent++
 	}
+	n.logf(ports.LogInfo, "round-cert: sent (h43 transferable certificate)", "height", height, "round", round, "envelopes", len(raws), "to", sent, "designee", designee)
 }
 
 // acceptRoundCert is the receive side of the transferable certificate (h43
@@ -545,17 +656,29 @@ func (n *Node) acceptRoundCert(rs *heightRounds, env *roundCertEnv) error {
 	if env.Height != rs.Height {
 		return fmt.Errorf("round-cert for height %d, want %d", env.Height, rs.Height)
 	}
-	if _, err := n.newViewFor(env.Height, env.Round, env.Raws); err != nil {
+	if rs.Certs[env.Round] != nil {
+		return nil // already held: no signature work (G-H43-12)
+	}
+	// G-H43-12 (`R-H43-CERT-UNBUDGETED-VERIFY`, the #424 class): bound the work
+	// BEFORE any signature — a certificate can carry at most one envelope per
+	// governing-set member, so anything larger is malformed by construction.
+	if cap := n.chain.GoverningSetCap(); len(env.Raws) > cap {
+		return fmt.Errorf("round-cert carries %d envelopes, governing set is %d", len(env.Raws), cap)
+	}
+	forced, err := n.newViewFor(env.Height, env.Round, env.Raws)
+	if err != nil {
 		return err
 	}
 	rs.CertSent[env.Round] = true // received, not assembled: one hop, no re-broadcast
+	rs.Certs[env.Round] = &roundCert{Raws: env.Raws, Forced: forced}
 	for _, raw := range env.Raws {
 		var rc roundChangeEnv
 		if cbor.Unmarshal(raw, &rc) != nil {
 			continue // newViewFor decoded and verified every envelope above
 		}
-		n.recordRoundChange(rs, rc.NewRound, rc.senderID(), raw)
+		n.storeRoundChange(rs, rc.NewRound, rc.senderID(), raw)
 	}
+	n.checkRoundQuorum(rs, env.Round)
 	return nil
 }
 

@@ -393,6 +393,14 @@ func (n *Node) handleChain(from ports.NodeID, msg ports.Message) bool {
 		// proposal-carried certificate, then recorded envelope by envelope —
 		// which arms this node, advances the declared rounds, enters the
 		// round if above ours and fires the designee's proposal if that is us.
+		// G-H43-12: the per-sender window budget runs FIRST (the #424 shape) —
+		// a refusal costs a map lookup; acceptRoundCert then bounds the
+		// envelope count and skips a round already held BEFORE any signature.
+		if !n.allowRoundCert(from) {
+			n.logf(ports.LogInfo, "round-cert: REFUSED (rate)", "from", from, "budget", roundCertBurst)
+			n.reply(from, msg, ports.Message{Kind: ports.MsgRoundCertAck, OK: false})
+			return true
+		}
 		var env roundCertEnv
 		if cbor.Unmarshal(msg.Data, &env) != nil {
 			n.reply(from, msg, ports.Message{Kind: ports.MsgRoundCertAck, OK: false})
@@ -1038,6 +1046,15 @@ func (n *Node) proposeBlockAt(b *chain.Block, attesters, broadcast []ports.NodeI
 	// cover the block as it will actually commit (post-apply state). era-4 is checked first
 	// (MintVersion returns v5 only where v4 also holds, H_era4 >= H_era3). Below both
 	// boundaries the path is byte-for-byte the old v2 behavior.
+	// G-H43-13 (`R-H43-PROPOSE-SPIN`): the empty-block rule is ValidateProposal's, but
+	// checking it here — after every fold, BEFORE the era root population (the floor-box
+	// SMT path) and the signature — makes a workless attempt cost nothing; the as-built
+	// first cut paid PopulateEra4Roots + Sign ~40 times in one round on a designee whose
+	// forward had not landed. Same predicate as chain.go "chain: empty block".
+	if len(b.Entries) == 0 && len(b.Revocations) == 0 && len(b.Unrevocations) == 0 && len(b.BondRegs) == 0 && len(b.Slashes) == 0 && len(b.IssuerKeys) == 0 {
+		done(fmt.Errorf("propose: nothing to carry (empty block; h43 — waiting for forwarded or submitted work)"))
+		return
+	}
 	if mv := n.chain.MintVersion(b.Height); mv >= chain.BlockVersionWitnessable {
 		// era-4 (v5) ATTESTATION CARRIER (R-BOX-ATTESTS, owner call O1, ratified 2026-09-03).
 		// Attach the PARENT's precommits BEFORE populating the roots: the carrier is folded into
@@ -1347,9 +1364,9 @@ func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeI
 // straight into the two-phase gather) if any; otherwise a fresh drain proposal
 // for the pending queue via proposeBlock. Attesters re-verify the same
 // certificate, so an equivocating designated proposer gains nothing.
-func (n *Node) proposeAtNewView(rs *heightRounds, round uint64, newView [][]byte, forced *nodeLock) {
+func (n *Node) proposeAtNewView(rs *heightRounds, round uint64, newView [][]byte, forced *nodeLock) bool {
 	if n.bondDrainInFlight {
-		return // one proposal in flight at a time; the next sweep retries
+		return false // one proposal in flight at a time; the next arrival or sweep retries
 	}
 	peers := n.syncTargets()
 	attesters := make([]ports.NodeID, 0, len(peers))
@@ -1359,7 +1376,7 @@ func (n *Node) proposeAtNewView(rs *heightRounds, round uint64, newView [][]byte
 		}
 	}
 	if len(attesters) == 0 {
-		return
+		return false
 	}
 	n.bondDrainInFlight = true
 	fin := func(err error) {
@@ -1373,20 +1390,21 @@ func (n *Node) proposeAtNewView(rs *heightRounds, round uint64, newView [][]byte
 		lb, err := chain.Decode(forced.Block)
 		if err != nil {
 			fin(err)
-			return
+			return true
 		}
 		n.gatherTwoPhase(lb, attesters, peers, 0, round, newView, forced.QC, fin)
-		return
+		return true
 	}
 	prevHead, height := n.chain.Head()
 	if height != rs.Height {
 		fin(nil)
-		return
+		return false
 	}
 	// h43 (C): the fresh proposal runs at the CERTIFICATE's round with the
 	// certificate we were handed — never at a round re-derived from local
 	// state (the forced leg above already passed them through).
 	n.proposeBlockAt(&chain.Block{Version: chain.BlockVersionRounds, Height: height, Prev: prevHead}, attesters, peers, 0, &viewAt{Round: round, NewView: newView}, fin)
+	return true
 }
 
 func (n *Node) broadcastCommit(b *chain.Block, validators []ports.NodeID, i int, done func()) {
@@ -1895,7 +1913,16 @@ func (n *Node) maybeProposeBondDrain() {
 			}
 		}
 		if self >= 0 {
-			d := int(height) % len(props)
+			// h43 (D3, certified): rank distance is measured from the ROUND's
+			// designee, props[(height+round) mod N] — the seat the round
+			// actually blames — not from the height's. Before this the walk
+			// was height-keyed, so at a round > 0 whose designee held no work
+			// the escape was a rank walk from the wrong seat (bounded at
+			// (N+2)·ChainSyncInterval, the certified backstop, but not at the
+			// published ≤ f+1 rounds). The accumulated wait is NOT reset on
+			// round entry (see advanceToRound): the walk stays monotone.
+			rs := n.roundsFor()
+			d := int((height + rs.Round) % uint64(len(props)))
 			dist = (self - d + len(props)) % len(props)
 		}
 	}
