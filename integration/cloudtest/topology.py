@@ -35,6 +35,15 @@ BOND_MODE = os.environ.get("BOND_MODE", "fast")
 # path (#327) and the handshake attribution (#332: concurrent count + elapsed) — the signal
 # that root-causes a #286 stall if one recurs (docs/network-durability.md §8).
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "info")
+# VALIDATOR_LOG_LEVEL: the -log level for VALIDATORS only. Default "debug" (h43 /
+# D-CONSENSUS-ARMING, owner call 19, 2026-09-07): the lines that attribute a consensus
+# stall — "new-view proposal not committed", "gather/prepare: REFUSED", the gather
+# start — are LogDebug, and run c450985-deep's h43 (17 min, one validator down) ran at
+# info, so the decisive line was suppressed and the designee's failure could only be
+# INFERRED (certification §3.1, M2 GATED). A graded run is a confirmation, and a
+# confirmation that cannot name the failing seat is not one. Non-validators keep
+# LOG_LEVEL. Set VALIDATOR_LOG_LEVEL=info to fall back.
+VALIDATOR_LOG_LEVEL = os.environ.get("VALIDATOR_LOG_LEVEL", "debug")
 # LOOP_BUDGET=1 adds -loop-budget so every node emits its per-window event-loop
 # goroutine-budget decomposition at INFO — names the handler that eats the single
 # thread (or, via the always-on queue-wait/slow/hang lines, one that starves/hangs
@@ -342,6 +351,8 @@ def main():
     # path. Uniform across all roles so a config mismatch can't perturb objective quorum
     # math on a fresh network. holder-fetch keeps its own tighter deadline (#277).
     common = f"-listen 0.0.0.0:{SWARM_PORT} -store {STORE} -mdns=false -log {LOG_LEVEL} -request-timeout 8s{LOOP_BUDGET}{DIAG}"
+    # Validators log at VALIDATOR_LOG_LEVEL (debug by default — see the constant above).
+    common_validator = common.replace(f"-log {LOG_LEVEL}", f"-log {VALIDATOR_LOG_LEVEL}", 1)
 
     def argv(name):
         n = nodes[name]
@@ -356,7 +367,7 @@ def main():
             # proposer-initiated quorum can form on a fresh multi-region net.
             persistent = ",".join(f'{nodes[v]["nodeid"]}@{nodes[v]["ip"]}:{SWARM_PORT}'
                                   for v in validators if v != name)
-            a = (f"daemon -id-seed {n['seed']} {common} -advertise {ip}:{SWARM_PORT} -validator -objective "
+            a = (f"daemon -id-seed {n['seed']} {common_validator} -advertise {ip}:{SWARM_PORT} -validator -objective "
                  f"-min-bond {min_bond} -min-bond-floor {min_floor} -mature-validators {mature_bar}{margin_flag} "
                  f"-anchors {anchors} -attesters {attesters} -quorum {quorum} "
                  f"-persistent-peers {persistent} "
