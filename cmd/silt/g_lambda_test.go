@@ -6,7 +6,9 @@ import (
 	"testing"
 
 	"github.com/nerolabs/silt/core/credit"
+	"github.com/nerolabs/silt/core/crypto"
 	"github.com/nerolabs/silt/core/erasure"
+	"github.com/nerolabs/silt/core/pipeline"
 	"github.com/nerolabs/silt/core/relaypay"
 )
 
@@ -141,5 +143,21 @@ func TestPaidSerialCapLiteralsMatchTheirSources(t *testing.T) {
 	// TestDaemonFeeIsTheRelayAnchorFace), so the runtime bytes-per-anchor equal the const.
 	if got := int64(credit.New(relaypay.ShippedAnchorFace, 0).Fee()/credit.DeliveryIncrementCredit) * credit.DeliveryIncrementBytes; got != credit.DeliveryBytesPerAnchor {
 		t.Fatalf("runtime bytes per delivery anchor %d != credit.DeliveryBytesPerAnchor %d", got, credit.DeliveryBytesPerAnchor)
+	}
+}
+
+// TestDefaultChunkIsOneDeliveryCredit — D-R2.9-NODE-HALF-CALLS 4′: the publish default is
+// exactly the delivery increment (one chunk = one witnessed credit), and a k = 10 stripe of
+// it pays a repair-bounty base of 10 with a truncation under 0.01 %. Ablation: move either
+// constant alone ⇒ RED.
+func TestDefaultChunkIsOneDeliveryCredit(t *testing.T) {
+	if int64(pipeline.DefaultChunkSize) != credit.DeliveryBytesPerCredit {
+		t.Fatalf("pipeline.DefaultChunkSize %d != credit.DeliveryBytesPerCredit %d — one chunk must be one delivery credit", pipeline.DefaultChunkSize, credit.DeliveryBytesPerCredit)
+	}
+	if got := credit.RepairBountyBase(erasure.DefaultParams.K, int64(pipeline.DefaultChunkSize)+crypto.Overhead); got != 10 {
+		t.Fatalf("the default geometry pays a base of %d, want 10 (the certified D-S7 threshold of 36 retrievals per repair holds exactly)", got)
+	}
+	if msg := bountyChunkWarning(int64(pipeline.DefaultChunkSize), true); msg != "" {
+		t.Fatalf("the shipped default warned: %q", msg)
 	}
 }

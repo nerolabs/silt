@@ -101,15 +101,17 @@ func TestGLambda6RepairBountyBaseIsPricedInTheFetchPrice(t *testing.T) {
 	}
 }
 
-// TestRepairBountyBaseAtTheShippedDefaultIsTwoNotZero — the geometry correction (Economist
-// advisory 2026-09-06): a shard is a WHOLE ciphertext chunk, so the 64 KiB default's stripe is
-// 10 × 65,552 = 655,520 B and pays a base of 2 — not the zero the G-R212-7 build and its blind
-// PE stated on a shard = chunk/k model. The 20 % truncation (exact 2.5006 → 2) is
-// R-BOUNTY-TRUNCATION. The publish threshold derives from the same arithmetic: ~26 KB at k = 10.
-func TestRepairBountyBaseAtTheShippedDefaultIsTwoNotZero(t *testing.T) {
+// TestRepairBountyBaseAtTheFormerDefaultIsTwoNotZero — the geometry correction (Economist
+// advisory 2026-09-06): a shard is a WHOLE ciphertext chunk, so the 64 KiB FORMER default's
+// stripe is 10 × 65,552 = 655,520 B and paid a base of 2 — not the zero the G-R212-7 build
+// and its blind PE stated on a shard = chunk/k model — with a 20 % truncation (exact 2.5006
+// → 2, R-BOUNTY-TRUNCATION), which is one reason the default moved to 256 KiB (a base of
+// exactly 10; D-R2.9-NODE-HALF-CALLS 4′). The publish threshold derives from the same
+// arithmetic: ~26 KB at k = 10.
+func TestRepairBountyBaseAtTheFormerDefaultIsTwoNotZero(t *testing.T) {
 	const overhead = 16 // crypto.Overhead, duplicated: core/credit imports no cipher
 	if got := RepairBountyBase(10, 65_536+overhead); got != 2 {
-		t.Fatalf("64 KiB default, k=10: base %d, want 2 (655,520 / 262,144 = 2.5006 truncated)", got)
+		t.Fatalf("64 KiB former default, k=10: base %d, want 2 (655,520 / 262,144 = 2.5006 truncated)", got)
 	}
 	if got := RepairBountyBase(10, 262_144+overhead); got != 10 {
 		t.Fatalf("256 KiB chunk, k=10: base %d, want 10", got)
