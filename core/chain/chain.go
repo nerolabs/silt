@@ -2690,6 +2690,21 @@ func (c *Chain) Blocks(from uint64) []Block {
 // signing: ancestry, proposer signature and reputation, and that every
 // entry is well-formed and new.
 func (c *Chain) ValidateProposal(b *Block) error {
+	// era-4 (v5) — THE ONE ACCEPT COMPOSITION, proposal entry (BG-1: v5-ONLY; M-2: BOTH node
+	// entry points dispatch, so the attester signs under the rule the committer accepts under).
+	// The era-1/era-2 body below is BYTE-UNTOUCHED. Both non-Accept outcomes REFUSE:
+	// IndeterminateTrustlessly is unreachable under liveView (G-5) and is mapped to an error
+	// anyway, so a bug in the live adapter costs a refusal, never an acceptance.
+	if b.Version >= BlockVersionWitnessable {
+		out, err := ValidateProposalV5(liveView{c}, b)
+		if out == Accept {
+			return nil
+		}
+		if err == nil {
+			err = fmt.Errorf("chain: v5 proposal composition returned %s with no reason", out)
+		}
+		return err
+	}
 	prev, height := c.Head()
 	if b.Height != height || b.Prev != prev {
 		return fmt.Errorf("%w: got height %d prev %s, want height %d prev %s",
@@ -2880,6 +2895,19 @@ func (c *Chain) validateTakedowns(b *Block) error {
 // round is REFUSED (never coerced) — that refusal is what excludes the S1
 // delayed-quorum and S2 equivocate-then-misreport schedules.
 func (c *Chain) ValidateCommit(b *Block) error {
+	// era-4 (v5) — THE ONE ACCEPT COMPOSITION, commit entry (BG-1: v5-ONLY). ValidateCommitV5 is
+	// ValidateProposalV5 then C1..C5 over liveView; the era-1/era-2 legs below are BYTE-UNTOUCHED.
+	// Both non-Accept outcomes REFUSE (see ValidateProposal).
+	if b.Version >= BlockVersionWitnessable {
+		out, err := ValidateCommitV5(liveView{c}, b)
+		if out == Accept {
+			return nil
+		}
+		if err == nil {
+			err = fmt.Errorf("chain: v5 accept composition returned %s with no reason", out)
+		}
+		return err
+	}
 	if err := c.ValidateProposal(b); err != nil {
 		return err // the era-3 (v4) root predicate (step 2b) rides in here, via ValidateProposal
 	}

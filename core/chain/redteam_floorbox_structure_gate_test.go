@@ -2,6 +2,12 @@ package chain
 
 import (
 	"crypto/ed25519"
+	"errors"
+	"go/ast"
+	"go/parser"
+	"go/printer"
+	"go/token"
+	"strings"
 	"testing"
 
 	"github.com/nerolabs/silt/ports"
@@ -111,5 +117,445 @@ func TestGD1_FixtureCommitsAWitnessableBlock(t *testing.T) {
 	}
 	if err := f.c.ValidateCommit(&b); err != nil {
 		t.Fatalf("ORACLE BROKEN: the node must accept its own certified v5 block; got %v", err)
+	}
+}
+
+// =============================================================================
+// G-D12 — BOTH node entry points dispatch to the composition (M-2)
+// =============================================================================
+
+// TestGD12_BothNodeEntryPointsDispatchToTheComposition pins the structural claim of M-2: the
+// node's v5 accept path IS the composition at BOTH doors. A node that kept its own copy in
+// ValidateProposal would leave the attester signing under a rule the committer does not accept
+// under — the #402 one-function-two-callers trap inside the node.
+// Ablation (G-D12): revert the ValidateProposal dispatch hunk ⇒ RED.
+// SOURCE GATE: reads chain.go and asserts the FIRST statement of each root is the guarded dispatch.
+// RUNTIME GATE: TestGD6_LegacyModeParity drives ValidateCommit and the composition on one block.
+func TestGD12_BothNodeEntryPointsDispatchToTheComposition(t *testing.T) {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "chain.go", nil, 0)
+	if err != nil {
+		t.Fatalf("SOURCE GATE: parse chain.go: %v", err)
+	}
+	for root, entry := range map[string]string{"ValidateProposal": "ValidateProposalV5", "ValidateCommit": "ValidateCommitV5"} {
+		var body *ast.BlockStmt
+		ast.Inspect(file, func(n ast.Node) bool {
+			fd, ok := n.(*ast.FuncDecl)
+			if ok && fd.Name.Name == root && fd.Recv != nil && chainReceiver(fd.Recv.List[0].Type) {
+				body = fd.Body
+			}
+			return body == nil
+		})
+		if body == nil {
+			t.Fatalf("SOURCE GATE: %s not found in chain.go", root)
+		}
+		first, ok := body.List[0].(*ast.IfStmt)
+		if !ok {
+			t.Fatalf("SOURCE GATE: G-D12 — %s's FIRST statement must be the v5 dispatch (BG-1: anything before it runs "+
+				"on the era-1/era-2 path too, which the extraction must not touch); got %T", root, body.List[0])
+		}
+		var src strings.Builder
+		if err := printer.Fprint(&src, fset, first); err != nil {
+			t.Fatal(err)
+		}
+		for _, needle := range []string{"BlockVersionWitnessable", entry, "liveView"} {
+			if !strings.Contains(src.String(), needle) {
+				t.Fatalf("SOURCE GATE: G-D12 — %s's v5 dispatch must be guarded by BlockVersionWitnessable and call %s over "+
+					"liveView; %q is missing from:\n%s", root, entry, needle, src.String())
+			}
+		}
+	}
+}
+
+// =============================================================================
+// G-5 — NoWitness is the zero of Availability; liveView never answers it; provenView with no
+// source answers nothing else
+// =============================================================================
+
+// TestG5_LiveViewNeverAnswersNoWitness. IndeterminateTrustlessly is unreachable under liveView
+// because a full node holds the whole state — a DIAGNOSTIC, never a premise: the dispatch maps it
+// to a refusal anyway, so an adapter bug costs a refusal and never an acceptance. This gate is what
+// tells us the adapter is not silently stalling. Ablation (G-5): return NoWitness from one liveView
+// accessor ⇒ RED.
+func TestG5_LiveViewNeverAnswersNoWitness(t *testing.T) {
+	if Availability(0) != NoWitness {
+		t.Fatal("G-5: NoWitness must be the ZERO of Availability — a forgotten field must read as a stall, never as absent")
+	}
+	f := buildStructFixture(t)
+	b := f.mkBlock(t, nil)
+	v := liveView{f.c}
+	if !v.WitnessBudget().Unlimited() {
+		t.Fatal("G-5: liveView must return UnlimitedBudget() — a ceiling on the node is a new validity rule")
+	}
+	if h := v.Head(); h.Empty || h.StateRoot == nil || h.LogRoot == nil || h.NextHeight != b.Height || h.Hash != b.Prev {
+		t.Fatalf("G-5: liveView.Head() must reproduce Chain.Head() with the parent's roots present: %+v", h)
+	}
+
+	id := b.ProposerID()
+	type check struct {
+		name string
+		av   Availability
+	}
+	var checks []check
+	rec := func(n string, av Availability) { checks = append(checks, check{n, av}) }
+	_, av := v.EpochSet()
+	rec("EpochSet", av)
+	_, av = v.Qualified()
+	rec("Qualified", av)
+	_, av = v.Bonded()
+	rec("Bonded", av)
+	_, av = v.ValidatorsSeen()
+	rec("ValidatorsSeen", av)
+	_, av = v.SlashedSet()
+	rec("SlashedSet", av)
+	_, av = v.Slashed(id)
+	rec("Slashed", av)
+	_, av = v.BondedOf(id)
+	rec("BondedOf", av)
+	_, av = v.ByRoot(b.Entries[0].Root)
+	rec("ByRoot", av)
+	_, av = v.Spent([]byte("any"))
+	rec("Spent", av)
+	_, av = v.Revoked(b.Entries[0].Root)
+	rec("Revoked", av)
+	_, av = v.BondRootOwner(ports.Hash{})
+	rec("BondRootOwner", av)
+	_, av = v.BondRegHeight(id)
+	rec("BondRegHeight", av)
+	_, av = v.BondDomain(id)
+	rec("BondDomain", av)
+	_, av = v.Ancestors(8)
+	rec("Ancestors", av)
+	_, av = v.Rep(id)
+	rec("Rep", av)
+	for _, tag := range []string{tagEverMature, tagMatureEpoch, tagGateLockedIn, tagGateHeight,
+		tagEra3LockedIn, tagEra3Height, tagEra4LockedIn, tagEra4Height, tagEpochStart} {
+		_, av := v.Scalar(tag)
+		rec("Scalar("+strings.TrimSuffix(tag, "\x00")+")", av)
+	}
+	for _, ck := range checks {
+		if ck.av == NoWitness {
+			t.Errorf("G-5: liveView.%s answered NO WITNESS. A full node holds the whole state; this is an adapter bug. "+
+				"It costs a REFUSAL (never an acceptance) because the dispatch maps Indeterminate to an error — but it is still a bug.", ck.name)
+		}
+	}
+	// End to end: the node's own accept path must not stall on its own block, at either door.
+	if out, err := ValidateProposalV5(v, &b); out != Accept {
+		t.Fatalf("liveView must reach Accept in ValidateProposalV5 on a node-accepted block; got %s / %v", out, err)
+	}
+	if out, err := ValidateCommitV5(v, &b); out != Accept {
+		t.Fatalf("liveView must reach Accept in ValidateCommitV5 on a node-accepted block; got %s / %v", out, err)
+	}
+
+	// The proven twin: with NO witness source every class-2 read and Rep answer NoWitness — the
+	// safe zero — and never "absent".
+	pv := f.provenViewOver(t, nil)
+	_, av = pv.Rep(id)
+	if av != NoWitness {
+		t.Fatalf("G-5: provenView.Rep must answer NoWitness (legacy rep is not a committed leaf); got %s", av)
+	}
+	for name, get := range map[string]func() Availability{
+		"Slashed":        func() Availability { _, av := pv.Slashed(id); return av },
+		"BondedOf":       func() Availability { _, av := pv.BondedOf(id); return av },
+		"ByRoot":         func() Availability { _, av := pv.ByRoot(b.Entries[0].Root); return av },
+		"EpochSet":       func() Availability { _, av := pv.EpochSet(); return av },
+		"Qualified":      func() Availability { _, av := pv.Qualified(); return av },
+		"Bonded":         func() Availability { _, av := pv.Bonded(); return av },
+		"ValidatorsSeen": func() Availability { _, av := pv.ValidatorsSeen(); return av },
+		"Scalar":         func() Availability { _, av := pv.Scalar(tagEverMature); return av },
+		"Ancestors":      func() Availability { _, av := pv.Ancestors(8); return av },
+	} {
+		if av := get(); av != NoWitness {
+			t.Errorf("G-5: provenView.%s with no source answered %s, want NO_WITNESS — a sourceless box must stall, never see absence", name, av)
+		}
+	}
+}
+
+// provenViewOver builds a provenView over the fixture chain's OWN head record (the box derives its
+// head from a pinned block in part 2; here the node's record stands in) with the given source and a
+// positive frame budget. No P13a predicate is wired: the substituted step's StateRoot leg stalls.
+func (f structFixture) provenViewOver(t *testing.T, src WitnessSource) provenView {
+	t.Helper()
+	bud, err := FrameBudget(1 << 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return provenView{
+		params:     liveView{f.c}.Params(),
+		objective:  true,
+		verifyBond: objectiveVerify,
+		budget:     bud,
+		head:       liveView{f.c}.Head(),
+		src:        src,
+	}
+}
+
+// =============================================================================
+// G-D10 — the zero Budget STALLS; only UnlimitedBudget() is unlimited (M-4)
+// =============================================================================
+
+// TestGD10_ZeroBudgetStallsAndOnlyLiveViewIsUnlimited. Ablation (G-D10): make v5CheckBudget treat
+// the zero Budget as unlimited ⇒ the zero-budget view proceeds past step 0b ⇒ RED.
+func TestGD10_ZeroBudgetStallsAndOnlyLiveViewIsUnlimited(t *testing.T) {
+	if !(Budget{}).IsZero() || (Budget{}).Unlimited() {
+		t.Fatal("G-D10: the zero Budget must be IsZero and NOT Unlimited")
+	}
+	if _, err := FrameBudget(0); !errors.Is(err, ErrBudgetNotPositive) {
+		t.Fatalf("G-D10: FrameBudget(0) must REFUSE; got %v", err)
+	}
+	if _, err := FrameBudget(-1); !errors.Is(err, ErrBudgetNotPositive) {
+		t.Fatalf("G-D10: FrameBudget(-1) must REFUSE; got %v", err)
+	}
+	f := buildStructFixture(t)
+	b := f.mkBlock(t, nil)
+	if err := f.c.ValidateCommit(&b); err != nil {
+		t.Fatalf("oracle: %v", err)
+	}
+	// A view constructed with the zero Budget stalls at step 0b, BY NAME, before any other read.
+	pv := f.provenViewOver(t, nil)
+	pv.budget = Budget{}
+	out, err := ValidateCommitV5(pv, &b)
+	if out != IndeterminateTrustlessly || !errors.Is(err, ErrWitnessBudgetUnset) {
+		t.Fatalf("G-D10 VIOLATED: the zero Budget must STALL at step 0b with ErrWitnessBudgetUnset; got %s / %v", out, err)
+	}
+	// A positive frame budget below the block's frame stalls on the budget, before any signature
+	// work: the discriminator is a GARBAGE proposer signature that would otherwise fail P3.
+	garbage := b
+	garbage.hashMemoSet = false
+	garbage.ProposerSig = make([]byte, ed25519.SignatureSize)
+	tight, _ := FrameBudget(1)
+	pv.budget = tight
+	out, err = ValidateCommitV5(pv, &garbage)
+	if out != IndeterminateTrustlessly || !errors.Is(err, ErrWitnessBudgetExceeded) {
+		t.Fatalf("G-D10: an over-budget frame must stall on the BUDGET before any crypto; got %s / %v", out, err)
+	}
+	// Within budget the same block fails on its garbage signature — proving the budget check is
+	// what fired above and that it sits ahead of the crypto.
+	pv.budget, _ = FrameBudget(len(Encode(&garbage)) + 1)
+	out, err = ValidateCommitV5(pv, &garbage)
+	if !errors.Is(err, ErrBadSignature) {
+		t.Fatalf("G-D10 ablation arm: within budget the garbage signature must fail P3; got %s / %v", out, err)
+	}
+	if !(liveView{f.c}).WitnessBudget().Unlimited() {
+		t.Fatal("G-D10: liveView must be the one view that returns UnlimitedBudget()")
+	}
+}
+
+// =============================================================================
+// G-D5 — an IssuerKeys-only v5 block: accepted; a bad issuer key: refused by name (M-5)
+// =============================================================================
+
+// TestGD5_IssuerKeysOnlyBlockParity. The two halves of the PE's finding (a), driven:
+//   - a block whose ONLY payload is a valid issuer-key registration is NOT "empty" (the sixth P5
+//     clause). Ablation: drop len(b.IssuerKeys)==0 from the composition's P5 ⇒ RED.
+//   - a block carrying an UNBONDED issuer's registration is refused by P8b, by name. Ablation:
+//     drop the v5ValidateIssuerKeys call ⇒ RED.
+//
+// Both are asserted at BOTH node doors and on the composition directly.
+func TestGD5_IssuerKeysOnlyBlockParity(t *testing.T) {
+	f := buildStructFixture(t)
+	fp := ports.HashBytes([]byte("issuer key fingerprint"))
+	good := f.mkBlock(t, func(b *Block) {
+		b.Entries = nil
+		b.IssuerKeys = []IssuerKeyReg{SignIssuerKeyReg(f.keys[1], 0, fp)} // keys[1] is bonded at genesis
+	})
+	if len(good.Entries) != 0 || len(good.IssuerKeys) != 1 {
+		t.Fatal("fixture: the block must carry ONLY an issuer-key registration")
+	}
+	if err := f.c.ValidateProposal(&good); err != nil {
+		t.Fatalf("G-D5 VIOLATED (P5): ValidateProposal refused an IssuerKeys-only v5 block: %v", err)
+	}
+	if err := f.c.ValidateCommit(&good); err != nil {
+		t.Fatalf("G-D5 VIOLATED (P5): ValidateCommit refused an IssuerKeys-only v5 block: %v", err)
+	}
+	if out, err := ValidateCommitV5(liveView{f.c}, &good); out != Accept {
+		t.Fatalf("G-D5 VIOLATED (P5): the composition refused an IssuerKeys-only v5 block: %s / %v", out, err)
+	}
+
+	unbonded := key(99001)
+	bad := f.mkBlock(t, func(b *Block) {
+		b.Entries = nil
+		b.IssuerKeys = []IssuerKeyReg{SignIssuerKeyReg(unbonded, 0, fp)}
+	})
+	for name, err := range map[string]error{
+		"ValidateProposal": f.c.ValidateProposal(&bad),
+		"ValidateCommit":   f.c.ValidateCommit(&bad),
+	} {
+		if !errors.Is(err, ErrIssuerKeyUnbonded) {
+			t.Fatalf("G-D5 VIOLATED (P8b): %s must refuse an UNBONDED issuer's registration by name (ErrIssuerKeyUnbonded); got %v", name, err)
+		}
+	}
+	if out, err := ValidateProposalV5(liveView{f.c}, &bad); out != Reject || !errors.Is(err, ErrIssuerKeyUnbonded) {
+		t.Fatalf("G-D5 VIOLATED (P8b): the composition must refuse an unbonded issuer by name; got %s / %v", out, err)
+	}
+}
+
+// =============================================================================
+// G-D6 — LEGACY-MODE PARITY (M-1)
+// =============================================================================
+
+// legacyFixture is a chain in the LEGACY (non-objective) regime — MinBond == 0, qualification by the
+// local reputation view — which is operator-reachable in production (cmd/silt/daemon.go
+// useObjective := *objective && *minRep > 0). The composition dispatches on VERSION, not on mode,
+// so it must take this branch faithfully.
+type legacyFixture struct {
+	c    *Chain
+	reps map[ports.NodeID]int64
+	prop ed25519.PrivateKey
+	vals []ed25519.PrivateKey
+}
+
+func buildLegacyFixture(t *testing.T) legacyFixture {
+	t.Helper()
+	lf := legacyFixture{reps: map[ports.NodeID]int64{}, prop: key(88001)}
+	for i := int64(2); i <= 4; i++ {
+		lf.vals = append(lf.vals, key(88000+i))
+	}
+	lf.c = New(Config{MinProposerRep: 100, MinAttesterRep: 100, Quorum: 2}, func(id ports.NodeID) int64 { return lf.reps[id] })
+	lf.reps[idOf(lf.prop)] = 1000
+	for _, v := range lf.vals {
+		lf.reps[idOf(v)] = 1000
+	}
+	if lf.c.objective() {
+		t.Fatal("fixture: the legacy chain must NOT be objective (MinBond == 0)")
+	}
+	g := &Block{Version: 1, Height: 0, Entries: []ports.Entry{entry(0)}}
+	Sign(g, lf.prop)
+	if err := lf.c.AppendGenesis(*g); err != nil {
+		t.Fatalf("genesis: %v", err)
+	}
+	return lf
+}
+
+// mkBlock builds a certified v5 block on the legacy chain's head.
+func (lf legacyFixture) mkBlock(t *testing.T) Block {
+	t.Helper()
+	prev, h := lf.c.Head()
+	b := &Block{Version: BlockVersionWitnessable, Height: h, Prev: prev, Entries: []ports.Entry{entry(byte(h + 60))}}
+	state, log, err := lf.c.postApplyRoots(*b)
+	if err != nil {
+		t.Fatalf("postApplyRoots: %v", err)
+	}
+	b.StateRoot, b.LogRoot = &state, &log
+	Sign(b, lf.prop)
+	b.PrepareQC = append(b.PrepareQC, AttestAt(b, lf.prop, 0, PhasePrepare)) // C1: the author's own prepare
+	for _, v := range lf.vals {
+		b.PrepareQC = append(b.PrepareQC, AttestAt(b, v, 0, PhasePrepare))
+		b.Atts = append(b.Atts, AttestAt(b, v, 0, PhasePrecommit))
+	}
+	return *b
+}
+
+// TestGD6_LegacyModeParity. A v5 block on a MinBond == 0 chain gets the SAME verdict from
+// ValidateCommit and from ValidateCommitV5(liveView{c}, b): an accept, and a MinProposerRep refusal
+// rendered the node's way. Ablation (G-D6): make liveView.Rep answer NoWitness ⇒ the accept case
+// stalls ⇒ RED (never a skip: the fixture asserts it is legacy).
+func TestGD6_LegacyModeParity(t *testing.T) {
+	lf := buildLegacyFixture(t)
+	b := lf.mkBlock(t)
+
+	nodeErr := lf.c.ValidateCommit(&b)
+	out, compErr := ValidateCommitV5(liveView{lf.c}, &b)
+	if nodeErr != nil {
+		t.Fatalf("G-D6 VIOLATED (accept): a legacy node must accept a certified v5 block through the composition; got %v", nodeErr)
+	}
+	if out != Accept || compErr != nil {
+		t.Fatalf("G-D6 VIOLATED (accept): the composition over liveView must Accept on the legacy chain; got %s / %v", out, compErr)
+	}
+	if err := lf.c.Append(b); err != nil {
+		t.Fatalf("G-D6: the legacy chain must COMMIT the v5 block: %v", err)
+	}
+
+	// The MinProposerRep refusal: drop the proposer's reputation below the bar.
+	b2 := lf.mkBlock(t)
+	lf.reps[idOf(lf.prop)] = 10
+	nodeErr = lf.c.ValidateCommit(&b2)
+	out, compErr = ValidateCommitV5(liveView{lf.c}, &b2)
+	if !errors.Is(nodeErr, ErrLowReputation) {
+		t.Fatalf("G-D6 VIOLATED (refusal): the node must refuse on MinProposerRep; got %v", nodeErr)
+	}
+	if out != Reject || !errors.Is(compErr, ErrLowReputation) {
+		t.Fatalf("G-D6 VIOLATED (refusal): the composition must refuse on MinProposerRep; got %s / %v", out, compErr)
+	}
+	want := "proposer " + idOf(lf.prop).String() + " has 10, needs 100"
+	if nodeErr.Error() != compErr.Error() || !strings.Contains(nodeErr.Error(), want) {
+		t.Fatalf("G-D6 VIOLATED (attribution): the legacy refusal must render the node's way (%q) at both doors:\n  node: %v\n  comp: %v",
+			want, nodeErr, compErr)
+	}
+	// And the attester leg: an attester below MinAttesterRep is dropped from the quorum, so with
+	// Quorum: 2 and one of three attesters demoted the block still commits; with two demoted it
+	// does not — through the composition, on the legacy chain.
+	lf.reps[idOf(lf.prop)] = 1000
+	lf.reps[idOf(lf.vals[0])] = 10
+	b3 := lf.mkBlock(t)
+	if err := lf.c.ValidateCommit(&b3); err != nil {
+		t.Fatalf("G-D6 (attester leg): one demoted attester of three must still meet Quorum: 2; got %v", err)
+	}
+	lf.reps[idOf(lf.vals[1])] = 10
+	if err := lf.c.ValidateCommit(&b3); !errors.Is(err, ErrNoQuorum) {
+		t.Fatalf("G-D6 (attester leg): two demoted attesters of three must miss Quorum: 2 (ErrNoQuorum); got %v", err)
+	}
+}
+
+// =============================================================================
+// G-D7 / G-D8 — the P13b LogRoot conjunct on BOTH views
+// =============================================================================
+
+// TestGD7_ForgedLogRootIsRefusedOnBothViews. A revocation-free v5 block with a mutated b.LogRoot is
+// REFUSED by the composition on liveView (the node's recompute) AND by the proven view's k = 0
+// equality against the head's LogRoot. Ablation (G-D7): delete the k == 0 equality in
+// provenView.CommittedRoots ⇒ the mutant passes P13b ⇒ RED.
+func TestGD7_ForgedLogRootIsRefusedOnBothViews(t *testing.T) {
+	f := buildStructFixture(t)
+	honest := f.mkBlock(t, nil)
+	forged := f.mkBlock(t, nil)
+	bad := ports.HashBytes([]byte("a forged revocation-log root"))
+	forged.LogRoot = &bad
+	forged.hashMemoSet = false
+	Sign(&forged, f.keys[0])
+	forged.PrepareQC, forged.Atts = nil, nil
+	for _, k := range f.keys {
+		forged.PrepareQC = append(forged.PrepareQC, AttestAt(&forged, k, 0, PhasePrepare))
+		forged.Atts = append(forged.Atts, AttestAt(&forged, k, 0, PhasePrecommit))
+	}
+	if len(forged.Revocations)+len(forged.Unrevocations) != 0 {
+		t.Fatal("fixture: the forged block must be revocation-free (k = 0)")
+	}
+	// liveView: the node's own recompute names the LogRoot.
+	if err := f.c.ValidateCommit(&forged); !errors.Is(err, ErrEra3LogRootMismatch) {
+		t.Fatalf("G-D7 VIOLATED (liveView): a forged LogRoot must be refused by name; got %v", err)
+	}
+	// provenView: the k = 0 equality against the head's LogRoot, with NO witness at all.
+	pv := f.provenViewOver(t, nil)
+	if out, err := pv.CommittedRoots(&forged); out != Reject || !errors.Is(err, ErrEra3LogRootMismatch) {
+		t.Fatalf("G-D7 VIOLATED (provenView): the k = 0 LogRoot equality must REJECT a forged LogRoot; got %s / %v", out, err)
+	}
+	// The honest twin: the same view passes P13b on the honest block and reaches P13a, which
+	// stalls (no recompute wired here) — a stall, never a Reject.
+	if out, err := pv.CommittedRoots(&honest); out != IndeterminateTrustlessly || !errors.Is(err, ErrRecomputeGated) {
+		t.Fatalf("G-D7 twin: the honest block must pass P13b and stall at the unwired P13a; got %s / %v", out, err)
+	}
+}
+
+// TestGD8_RevocationBearingBlockStallsOnTheProvenView. A revocation-bearing v5 block returns
+// IndeterminateTrustlessly with the named sentinel on provenView (k ≥ 1: the parent log size is
+// not authenticated until tagRevLogSize ships), and the node's verdict on liveView is unchanged
+// (it accepts its own certified block). Ablation (G-D8): delete the k > 0 stall ⇒ the block falls
+// to the k = 0 equality and is REJECTED (its LogRoot moved) ⇒ RED — the stall must never render as
+// a disproof, and never as an accept.
+func TestGD8_RevocationBearingBlockStallsOnTheProvenView(t *testing.T) {
+	f := buildStructFixture(t)
+	committed := f.c.Blocks(1)[0].Entries[0].Root // entry(1), committed at h1
+	b := f.mkBlock(t, func(b *Block) {
+		b.Entries = nil
+		b.Revocations = []ports.Hash{committed}
+	})
+	if err := f.c.ValidateCommit(&b); err != nil {
+		t.Fatalf("G-D8 (liveView): the node must accept its own certified revocation block; got %v", err)
+	}
+	pv := f.provenViewOver(t, nil)
+	out, err := pv.CommittedRoots(&b)
+	if out != IndeterminateTrustlessly || !errors.Is(err, ErrRevLogSizeUnauthenticated) {
+		t.Fatalf("G-D8 VIOLATED: a revocation-bearing block must STALL on the proven view with ErrRevLogSizeUnauthenticated; got %s / %v", out, err)
 	}
 }
