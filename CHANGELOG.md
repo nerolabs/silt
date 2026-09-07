@@ -8,6 +8,29 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Added
+- **Cloud field test: the R2.9 paid delivery lane is on the graded sheet (`flow_delivery_lane`, rows
+  `13-delivery-lane` / `13b-delivery-settlement`).** `topology.py` arms `-accept-delivery-receipts
+  -delivery-idle-window 90s -grant-capacity 64 -grant-per-hour 64` on the boot validator (the token
+  issuer; the faucet bucket sits 5× below the daemon's derived capacity cap, not at 78 % of it); the flow
+  publishes from fetch-1, fetches back, and presents `swarm receipt` against the boot validator and against a
+  lane-off store. It is ERA-AWARE and honest: on every real network until the R3.4 stamp raise era-4 is dark, so
+  no E→key binding can commit and the positive settlement has no live seam — row 13 grades the lane's field
+  contract (armed by the unit's argv + announced by the boot banner read over the WHOLE journal; the client
+  refused at the withdrawal naming the committed binding, nothing spent, the server's `debug.log` carrying no
+  banked line after the flow's baseline; the lane-off server answering with the NOT-banked marker; the two
+  refusals never conflated), and row 13b is a SKIP behind that era probe (the RC gate stays reachable) that
+  grades the wire settlement at the stamp raise with no harness change (`delivery receipt banked` + the idle
+  `delivery session closed`, both `debug.log` lines — `n.logf` output never reaches journald). Substrate noise
+  GAPs, never FAILs; the client call is retried before it is classified. Blind PE ruling
+  `silt-reviews/principle-engineer/RULING-cloudtest-delivery-lane-flow-34114c4-2026-09-07.md` (BLOCK on the
+  first cut: the banner read through the 800-line journal window and every server-side marker read from the
+  wrong surface) folded in full. LOCAL proof: the new e2e `TestPaidDeliveryLaneArmsInTheHarnessPosture` (the
+  harness's exact objective-path argv, epoch clock DERIVED, the real CLI, the refusal named, nothing banked)
+  plus `TestPaidDeliveryLaneRefusesWithoutACommittedKeyBinding`, `TestDeliveryReceiptRefusedWhenLaneOff`,
+  `TestPaidDeliverySessionEndToEnd`, and a `LOCAL=1` docker drive of the flow. Owner ask 2026-09-07: "create
+  the necessary cloud tests before the next billable run".
+
 ### Changed
 - **The credit numéraire (G-R212-7, certified and owner-ratified 2026-09-06): the unwitnessed serve
   mints ONE credit per 393,216 bytes served (was one per byte), the repair-bounty base is priced in the

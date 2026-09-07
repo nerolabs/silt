@@ -334,6 +334,15 @@ func TestDeliveryReceiptRefusedWhenLaneOff(t *testing.T) {
 	if !strings.Contains(out, "NOT banked") {
 		t.Fatalf("the refusal must be legible to the caller, got: %s", out)
 	}
+	// The lane-OFF sentence is an announced observable (observable_contract.go): the cloud
+	// sheet's lane-off control grades on it, and it must stay DISTINCT from the
+	// committed-binding refusal a lane-ON server gives on a dark chain.
+	if !strings.Contains(out, "serves no demand issuer key") {
+		t.Fatalf("the lane-off refusal must say the server serves no demand issuer key, got: %s", out)
+	}
+	if strings.Contains(out, "committed E->key binding") {
+		t.Fatalf("the lane-off refusal is conflated with the committed-binding refusal: %s", out)
+	}
 }
 
 // TestArchiveTierAnnouncesRetention (D-TIERING §3): an archival node announces

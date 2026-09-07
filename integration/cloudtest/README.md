@@ -47,6 +47,16 @@ onto the existing 13-node topology with **no topology change**:
 | `flow_web_ui_guard` | `client` (#4) | the web-UI guard holds on a real VM (no-token→401, DNS-rebinding→403, read→200) |
 | `flow_c2_no_capture` | `sybil` (#5) | **opt-in** (`SYBILS=8`): a bonded non-anchor Sybil cohort cannot advance the chain with the anchors down, and it resumes when they return |
 
+**The R2.9 paid delivery lane** (`flow_delivery_lane`, ONE topology change: the boot validator arms
+`-accept-delivery-receipts -delivery-idle-window 90s -grant-capacity 64 -grant-per-hour 64`) grades a
+`swarm receipt` from fetch-1 on two rows. `13-delivery-lane` is the lane's field contract: armed (the unit's
+argv) and announced (the boot banner, whole-journal read); while era-4 is dark the client is refused at the
+withdrawal naming the committed E→key binding, nothing is spent and the server's `debug.log` carries no banked
+line; while live the receipt banks; a lane-off server refuses with the NOT-banked marker. `13b-delivery-settlement`
+passes only on a wire-banked receipt plus the idle `delivery session closed` (both `debug.log` lines) and is a
+**skip** behind the era probe until the R3.4 stamp raise commits the binding — then it grades with no harness
+change. Server-side markers are `n.logf` lines and live in `$STORE/debug.log`, never journald.
+
 **C2-Sybil (#5) — opt-in, `SYBILS=8 ./cloudtest.sh`.** The local `integration/sybil`
 suite can only reach the **standing gate** (a laptop's fresh Sybils can't *bank*
 bonds — a young network's bond-registration needs anchor-proposed blocks). The
