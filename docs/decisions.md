@@ -1961,7 +1961,7 @@ the dust regime is 100 % at the shipped 64 KiB chunk, so the accumulator is REQU
 REFUTED — the certified minimal first step is **`λ` + `RepairBountyBase` + accumulator BEFORE R2.9** (parity is
 vacuous today; four strict improvements incl. R-FLAT-FEE flipping +58.7 M → −43,601 credits). **NEW G-R212-8
 (blocks R2.9):** one token face funds 12.21 GiB and `B_floor` needs 3.66×, so an object fetch must span ≥ 4 anchor
-sessions with no face remainder burned. Eleven gates G-λ-1…11 (cert §8.1). **Certified for ratification (cert §11,
+sessions with no face remainder burned. *[STRUCK 2026-09-07: the "≥ 4 anchor sessions" wording is the wrong estimand and would ship a vacuous gate if marked met; G-R212-8 is DISCHARGED as restated — the surviving form is the concurrency arithmetic `6 + 3 = 9 ≤ 10` gated at `cmd/silt/numeraire.go`; `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/BOULDER2-residual-closures-bounty-truncation-lambda-dust-relay-anon-refuse-self-spend-parity-estimand-RESEARCH-CERTIFICATION-2026-09-07.md` §8.4.]* Eleven gates G-λ-1…11 (cert §8.1). **Certified for ratification (cert §11,
 verbatim there): `ServeMintBytesPerCredit Dλ = 393_216` (λ = 1 credit per 384 KiB, `PF = 1.5`) derived as
 `⌈3·U/(2·p)⌉` from `DeliveryIncrementBytes U = 262_144`, `DeliveryIncrementCredit p = 1`; `RepairBountyBase =
 c·k·shardBytes/(U/p)`; `f` and `g` do not move.** FIVE OWNER CALLS OPEN (cert §8.2): `Dλ` · `(U, p)` · the bounty
@@ -2007,6 +2007,7 @@ Researcher's first option. The certification's §11 sentence, verbatim:**
 > owes **G-R212-8** — restated 2026-09-06 by its own certification (the per-object face count was the wrong
 > estimand): the binding quantum is the SESSION, one indivisible face per (fetcher, server); the composed pin
 > is REFUTED while G-6 burns the remainder (T-QUANT), and the ruling that must move is G-6 — an owner call.
+> *[Appended 2026-09-07: G-6 moved (the deposit released at anchor expiry, #763; T-DEPOSIT makes the pin TRUE at every φ), and G-R212-8 is DISCHARGED as restated — see the strike above; nothing further is owed under this name.]*
 
 Also ratified at the first option: the bounty denominator `c·k·shardBytes/(U/p)`; Don't #7 read
 GROSS (`Dλ ≤ 524,288`; the certified value clears the NET reading too); `AuditReward`/`AuditSlash`
