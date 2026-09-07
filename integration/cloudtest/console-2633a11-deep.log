@@ -1,0 +1,108 @@
+  peers=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480@10.20.0.11:4001,62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24@10.22.0.12:4001,e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb@10.21.0.13:4001,3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda@10.20.0.14:4001
+  registry=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480@https://10.20.0.11:8443
+  warming the network (≤600s): retrying a throwaway publish from val-a until the chain commits…
+    network warm after 37s (first publish committed)
+  warming publisher fetch-1 (≤240s): a fresh non-validator must discover the canonical issuer set + issuer keys before it can gather a publish token (#344)…
+    publisher fetch-1 warm after 39s
+  [32m✓ PASS[0m  1-first-run — all silt nodes report service active
+  ⇒ RANDOMIZED flow order (seed='2633a11-deep'; set RANDOMIZE=0 for fixed order, SEED=2633a11-deep to replay):
+     flow_economy_repair flow_convergence flow_delivery_lane flow_fault_tolerance flow_equivocation_island flow_c2_no_capture flow_become_validator flow_publish_fetch flow_takedown flow_cross_nat adv_proposal_reject flow_publisher_unlinkability flow_care_link flow_chaos_crash adv_equivocation flow_web_ui_guard adv_partition flow_restart_survival flow_durability_turnover
+  warming publisher fetch-1 (≤240s): a fresh non-validator must discover the canonical issuer set + issuer keys before it can gather a publish token (#344)…
+    publisher fetch-1 warm after 28s
+    economy object link:     silt:v1:oM0xtDJlftUP3ohqbNzbHWokv8dynzYxFFyWagBVwdU:eRND-4duCNq-hPZCSwE58tm10CwcrKIMN2YzyprS9H0
+    economy care link:       siltcare:v1:oM0xtDJlftUP3ohqbNzbHWokv8dynzYxFFyWagBVwdU:a2co3oMDLRZuWWkd7cFaVuESR-Wyit7lDkoey6PwjCA
+      publish| scattered 30 chunk replicas into the swarm; client keeps nothing
+      publish| care link (repair rights, no decryption): siltcare:v1:oM0xtDJlftUP3ohqbNzbHWokv8dynzYxFFyWagBVwdU:a2co3oMDLRZuWWkd7cFaVuESR-Wyit7lDkoey6PwjCA
+      publish| note: no caretaker is running for this content yet — its redundancy will
+      publish| decay as nodes churn. Run a daemon with -care <careLink> to repair it
+      publish| (publishing via a daemon's UI caretakes your content automatically).
+      publish| silt:v1:oM0xtDJlftUP3ohqbNzbHWokv8dynzYxFFyWagBVwdU:eRND-4duCNq-hPZCSwE58tm10CwcrKIMN2YzyprS9H0
+      holders| column 0: b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54
+      holders| column 1: f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689
+      holders| column 2: 4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b
+      holders| column 3: cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1
+      holders| column 4: 62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24
+      holders| column 5: 2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053
+      holders| column 6: 62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24
+      holders| column 7: fee015202a5d80277b67feda18000aef92f29d3e7f748ef7a42d85d2e929f55c
+      holders| column 8: 4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b
+      holders| column 9: 1da6eb42d8e2342700f7986bfa38af0d51386b4318c0a8aedea4edac85be2f32
+      holders| column 10: fee015202a5d80277b67feda18000aef92f29d3e7f748ef7a42d85d2e929f55c
+      holders| column 11: cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1
+      holders| column 12: d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480
+      holders| column 13: 1b697e1a4ead743a31082b5a0c63586180d8ef3faeafc5ec9f6905b4d0375b4a
+      holders| column 14: ed98d06e147aa9282145b579ea52dcaa816e29c3c69f317f18c7da7fb2a5d4de
+      holders| column 15: 4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b
+    killing shard-holders of 3 columns to force reconstruction:adversary maturer-1 sybil-4 
+  [32m✓ PASS[0m  11-economy-repair — the S7 repair economy CLOSED on the wire: killed 3 columns' holders → the caretaker RECONSTRUCTED from parity → a verified-repair bounty drew the object's reserve down (paid=190 credits over 6 repair(s)) — durability paid for itself on a real network, standing untouched (Invariant A). Post-kill cycle: store-2 last-sweep=20/29 stripes-repaired=2; relay last-sweep=20/29 stripes-repaired=2
+  [32m✓ PASS[0m  11c-economy-horizon — g-instrumentation sample (S7 finite-but-renewable): paid=190 over 6 repair(s), reserve-after=8, horizonSec=11303053 (−1 = no burn window yet). One row per graded run — the g trend needs the series, not this sample
+  [32m✓ PASS[0m  11b-economy-skim — the SKIM leg closed on the wire: serve traffic (reconstruction reads + driven fetches) routed revenue into the object's durability reserve on the serving holder's ledger (funded 400000 → 400002 on store-2: +2 pure skim above the prepay baseline) — the object pays for its own repair (S7)
+  [32m✓ PASS[0m  5-convergence — all validators within 2 of tip=26 AND every tip-height validator shares head hash bbebc0e04811… (heights: val-a=26:bbebc0e04811 val-b=26:bbebc0e04811 val-c=26:bbebc0e04811 val-d=26:bbebc0e04811); DURABLE (val-a head 26->26 over 20s, no regression)
+  [32m✓ PASS[0m  13-delivery-lane — DARK lane (era-4 not active): armed + announced on val-a; client refused at the withdrawal naming the committed E->key binding (nothing spent); server debug.log (+40 lines since baseline) banked nothing; lane-off control at store-2 refused-with-marker; delivery settlement: p=1 credit per 262144 B (U/p=262144 B/credit; self-mint Dλ=393216 B/credit, PF 1.50); anchor face 50000 funds 50000 increments = 13107200000 B (12.21 GiB) per session, k_max=1; one grant = 10 faces, the 64 GiB pin needs 9 faces across delivery+relay; idle window 1m30s; unsettled remainder: a DEPOSIT returned to the fetcher's account when its anchor leaves the 5-epoch guard window (D-R2.9-NODE-HALF-CALLS 1′; the relay lane keeps the burn)
+  [90m- SKIP[0m  13b-delivery-settlement — UNTESTED on this chain: the client was refused at the withdrawal because the issuer served no key that resolves against a COMMITTED E->key binding — on today's networks because era-4 is dark (no binding can commit until the R3.4 stamp raise; no activation override, owner-ratified), though the same sentence would also cover off-commitment keys (no era surface exists to tell them apart: R-CLOUD-ERA-PROBE). Row 13 is what holds today; this row grades the wire settlement once the binding commits, with no harness change.
+    6-fault-tolerance: f=1 down seat(s) — tiers computed 190s expected / 380s hard cap (≤ f+1 rounds, D-CONSENSUS-ARMING; the #525 seat-count rungs are struck)
+    6-fault-tolerance: no commit in 190s (escape fingerprint: rc=130 h=0) — extending to the computed r≤2 cap 380s (#509)
+  [33m~ GAP [0m  6-fault-tolerance — no new commit within the computed 380s (≤ f+1 rounds, f=1) hard cap with val-d down (fingerprint rc=130 h=0 → rc=198 h=40: ladder advancing but uncommitted — OUT OF MODEL) — read the captured client error (publish-diag / .ft_publish_lasterr) and survivor journals before attributing (#509/#7)
+    (evidence captured → flow-evidence-2633a11-deep.log)
+  [32m✓ PASS[0m  184-equivocation-island — accountability FIRED on the wire: a contained island anchor double-signed and an honest anchor SLASHED it (slashed equivocator 6c5f111568172664ae5c47077f59620f93cf8a352e0ab8d1877c730972f3b701 (double-signed at height 1)) — proven equivocation → permanent eviction (F2), zero blast radius to the main sheet (separate consensus universe)
+  [90m- SKIP[0m  5-sybil-no-capture — MATURING=1 topology sheds the anchors by design — the anchor-gate premise doesn't exist here; the post-shed capture property is certified by 10-maturing-handoff's B2 drills (run without MATURING for flow 5)
+  [32m✓ PASS[0m  4-become-validator — non-anchor validators earn their OWN standing on the objective path
+  [32m✓ PASS[0m  2-publish-fetch — fetched from store-2 bit-perfect
+  [32m✓ PASS[0m  8-takedown — store-1 enforces the operator denylist ([1953]: denylist: honoring 1 denied root(s)) while store-2 still serves BIT-PERFECT (no global switch)
+  [32m✓ PASS[0m  9-cross-nat — natted nodes exchanged a file through the relay/hole-punch
+  [32m✓ PASS[0m  184-forged-block — forged-signature proposal rejected (adversary logged 'correctly REJECTED by val-a')
+  [33m~ GAP [0m  184-low-bond — adversary holds a qualifying 64M bond and was CORRECTLY accepted as a proposer — an under-bond REJECTION test needs a dedicated sub-min-bond identity (#350); the property is certified in-process (#204)
+    (evidence captured → flow-evidence-2633a11-deep.log)
+  [32m✓ PASS[0m  priv-unlinkability — default chain REFUSED a durable file→publisher link (refuse-to-surveil)
+  [32m✓ PASS[0m  3-care-link — publish exposes a siltcare: link (repair/audit without the key)
+  [32m✓ PASS[0m  chaos-reprovide — SIGKILLed storage node re-announced its held chunks (#69) after a hard crash (54s to re-announce; latency scales with held-chunk count, #402/M1)
+  [32m✓ PASS[0m  chaos-fetch — content fetchable BIT-PERFECT after a hard-crash (SIGKILL) + restart of a storage node
+  [90m- SKIP[0m  184-equivocation — runs on the contained equivocation ISLAND every sheet (flow_equivocation_island — a separate consensus universe; its slash never taxes main-sheet fault tolerance, PE 2026-08-17). This row is the historical pointer; the island row is the graded verdict.
+  [32m✓ PASS[0m  web-ui-guard — web-UI guard held on a real VM: no-token POST=401 (want 401), DNS-rebinding Host=403 (want 403), token-free read=200 (want 200)
+  [32m✓ PASS[0m  184-partition — minority val-c STALLED at h46 through the partition (a < ⅓ island cannot commit) then CAUGHT UP to the heal-time majority head h50 (now at h50) on heal — BFT partition→heal reconverged over the real wire (a catch-up, NOT a reorg — a minority never committed a conflicting fork)
+  [32m✓ PASS[0m  7-restart-standing — val-b standing returned after restart without re-bonding
+  [32m✓ PASS[0m  7-restart-content — content still fetchable BIT-PERFECT after a storage-node restart
+  [32m✓ PASS[0m  durability-turnover — content survived a PERMANENT storage-node departure — fetched bit-perfect from a survivor
+    latch tripped at commit height 25: [1011]:   C2: nakamoto 2 bonds → 2 operators (margin ×1) → 2 domains of 6 distinct | cost-to-corrupt 108 MiB of 324 MiB bonded across 9 | concentration HHI 0.20 Gini 0.43 top 20% uniformity 57% | wheels shed permanently (network matured — F-1 one-way latch)
+    drain curve (val-a C2 lines — 64MiB jumps = maturer bonds, 1MiB = sybil):
+      committed block 28
+      nakamoto 2 bonds → 2 operators (margin ×1) → 2 domains of 5 distinct | cost-to-corrupt 85 MiB of 257 MiB bonded across 5
+      committed block 42
+      nakamoto 2 bonds → 2 operators (margin ×1) → 2 domains of 6 distinct | cost-to-corrupt 108 MiB of 324 MiB bonded across 9
+      committed block 43
+      nakamoto 2 bonds → 2 operators (margin ×1) → 2 domains of 6 distinct | cost-to-corrupt 108 MiB of 324 MiB bonded across 9
+      committed block 46
+      nakamoto 2 bonds → 2 operators (margin ×1) → 2 domains of 6 distinct | cost-to-corrupt 108 MiB of 324 MiB bonded across 9
+      committed block 47
+      nakamoto 2 bonds → 2 operators (margin ×1) → 2 domains of 6 distinct | cost-to-corrupt 108 MiB of 324 MiB bonded across 9
+      committed block 48
+      nakamoto 2 bonds → 2 operators (margin ×1) → 2 domains of 6 distinct | cost-to-corrupt 108 MiB of 324 MiB bonded across 9
+      committed block 49
+      nakamoto 2 bonds → 2 operators (margin ×1) → 2 domains of 6 distinct | cost-to-corrupt 108 MiB of 324 MiB bonded across 9
+      committed block 52
+      nakamoto 2 bonds → 2 operators (margin ×1) → 2 domains of 6 distinct | cost-to-corrupt 108 MiB of 324 MiB bonded across 9
+      committed block 53
+      nakamoto 2 bonds → 2 operators (margin ×1) → 2 domains of 6 distinct | cost-to-corrupt 108 MiB of 324 MiB bonded across 9
+      committed block 55
+      nakamoto 2 bonds → 2 operators (margin ×1) → 2 domains of 6 distinct | cost-to-corrupt 108 MiB of 324 MiB bonded across 9
+      committed block 57
+      nakamoto 2 bonds → 2 operators (margin ×1) → 2 domains of 6 distinct | cost-to-corrupt 108 MiB of 324 MiB bonded across 9
+      committed block 58
+      nakamoto 2 bonds → 2 operators (margin ×1) → 2 domains of 6 distinct | cost-to-corrupt 108 MiB of 324 MiB bonded across 9
+    driving commits across the epoch boundary: h58 → h65 (bound 5490s = 9 × 610s/height over the 12-seat rotation)…
+  [32m✓ PASS[0m  10-maturing-handoff — young→mature HANDOFF: latch tripped on the wire; drive reached h65 (target h65) within 5490s
+    stall drill: stopping the 4-member cohort (declining to attest)…
+  [32m✓ PASS[0m  10a-stall-drill — B2 stall drill: with the 4 cheap epoch members DECLINING to attest, the honest >⅔-weight coalition still commits on the wire within the computed 430s bound (head-counted quorum left this exact network born-unable-to-commit at 4×MinBond)
+    capture drill: stopping the honest validators (val-a val-b val-c val-d maturer-1 maturer-2 maturer-3 maturer-4) — the cheap cohort alone attempts to advance (ceiling h70)…
+    restoring the honest validators — chain must resume…
+  [32m✓ PASS[0m  10b-capture-drill — B2 capture drill: the 4 MinBond epoch members alone could NOT advance the mature chain past the honest ceiling h70 (cohort head →71, fresh cohort commit: 1), and it resumed past h70 once honest weight returned — post-shed capture is weight-priced, not head-priced
+    ws cold-sync: restarting val-b pinned to -ws-checkpoint 71:6103ee2cc3cf14be9395ded3bf63774e8383bc81af12b263eb5d2fa27b26055b…
+  [32m✓ PASS[0m  10c-ws-cold-sync — WS cold-sync under the latch: val-b restarted pinned to checkpoint 71:6103ee2cc3cf14be9395ded3bf63774e8383bc81af12b263eb5d2fa27b26055b, caught up to h71 (sync=1) and came back with the wheels STILL shed (latch_held=1 — a restart must never re-arm the anchors, F-1)
+    deep drive: #549 Q4 stabilization barrier — waiting for post-drill steady state (converged head + one clean commit) before grading, bound 1220s…
+    deep drive: stabilized in 96s (converged head + clean commit) — grading from a steady-state network
+    deep drive: h74 → h128 (wall 7200s; per-height freeze bound 610s over the 12-seat rotation; organic renewal treadmill + publish top-up)…
+  [32m✓ PASS[0m  12-deep-heights — DEEP drive (Phase 3 exit gate): honest ceiling reached h129 (target h128, from h74) within 2172s of the 7200s wall (~39s/height measured)
+  [32m✓ PASS[0m  12b-deep-prune — retention prune ENGAGED on every validator at depth (horizon ≈ h64 = epoch-floored h_end−2·TTL): val-a=52pruned/85MiB val-b=57pruned/80MiB val-c=57pruned/80MiB val-d=57pruned/81MiB — payload-stripped counts read from persisted chain.cbor via chain-status, on-disk bytes carried as the weight evidence
+  [32m✓ PASS[0m  12c-deep-converge — convergence at depth on the pruned chain: all validators within 2 of tip=h130 and tip-height validators share head hash cbdd84ce4297… (val-a=h130:cbdd84ce4297 val-b=h130:cbdd84ce4297 val-c=h130:cbdd84ce4297 val-d=h131:a1e128967bed)
+  [32m✓ PASS[0m  infra-node-memory — RSS envelope measured (cgroup MemoryCurrent, every 30s → rss-2633a11-deep.jsonl): worst peak 1.48GiB across the cohort. adversary peak=1.44GiB final=1.20GiB n=40; fetch-1 peak=0.02GiB final=0.01GiB n=42; island-a peak=0.34GiB final=0.29GiB n=42; island-b peak=0.33GiB final=0.29GiB n=42; island-c peak=0.32GiB final=0.29GiB n=42; island-d peak=0.32GiB final=0.28GiB n=42; maturer-1 peak=1.42GiB final=1.41GiB n=39; maturer-2 peak=1.48GiB final=1.36GiB n=41; maturer-3 peak=1.42GiB final=1.33GiB n=41; maturer-4 peak=1.31GiB final=1.22GiB n=41; nat-1 peak=0.02GiB final=0.02GiB n=42; nat-2 peak=0.02GiB final=0.02GiB n=42; registry peak=0.00GiB final=0.00GiB n=42; relay peak=0.02GiB final=0.02GiB n=42; store-1 peak=0.01GiB final=0.01GiB n=42; store-2 peak=0.03GiB final=0.01GiB n=41; store-3 peak=0.02GiB final=0.02GiB n=41; store-4 peak=0.02GiB final=0.02GiB n=41; sybil-1 peak=1.30GiB final=0.88GiB n=39; sybil-2 peak=1.29GiB final=0.95GiB n=39; sybil-3 peak=1.32GiB final=1.22GiB n=39; sybil-4 peak=1.41GiB final=0.91GiB n=38; val-a peak=1.43GiB final=1.28GiB n=40; val-b peak=1.34GiB final=1.33GiB n=40; val-c peak=1.40GiB final=1.17GiB n=40; val-d peak=1.38GiB final=1.19GiB n=36
+  [32m✓ PASS[0m  infra-node-liveness — node-liveness precondition HELD — no OOM-kill or crash-loop across the cohort, so the sheet was graded on a HEALTHY network
