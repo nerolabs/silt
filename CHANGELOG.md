@@ -123,14 +123,17 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   moves 640 KiB → 2.5 MiB (Economist advisory §4); the short-final-stripe fix is filed as `R-SHORT-FINAL-STRIPE`
   (ACTIONABLE, Builder). Already-published
   roots are unchanged; a NEW publish of already-published bytes produces a different root on either side of the
-  boundary (convergent dedup does not span it). **`core/genesis` pins BOTH its 64 KiB chunk and its 64 KiB manifest
-  frame** (`pipeline.Options.ManifestFrameBytes`, new; 0 derives the true-length frame), so the height-0 block hash is
-  UNCHANGED: `chain.Block.Hash` covers `entry.ManifestChunks`, and in the reviewed build the framing change alone
-  moved the genesis hash from `7becf754…32ce` to `f428d0a8…0951` — a fresh node and a node with a persisted chain
-  would have disagreed at height 0 with no refusal and no log line (blind PE ruling
+  boundary (convergent dedup does not span it). **The GENESIS block hash moves with this change — accepted by the owner (2026-09-07: no live
+  network exists to fork).** `chain.Block.Hash` covers `entry.ManifestChunks`, so the framing alone moves the height-0
+  hash from `7becf754…32ce` to `f428d0a8…0951` — a fresh node and a node with a persisted pre-4′ chain disagree at
+  height 0 with no refusal and no log line (blind PE ruling
   `silt-reviews/principle-engineer/RULING-default-chunk-256k-manifest-framing-b365f10-2026-09-07.md`, item 1,
-  measured). `TestGenesisBlockHashIsPinned` holds the hash, the root and the manifest chunk ID as literals. Whether
-  height-0 identity sits inside the freeze surface is routed to the Researcher (`R-GENESIS-HASH-FREEZE-SURFACE`).
+  measured; the PE recommended pinning the old frame, the owner chose the new genesis). Every development chain
+  built before this commit is stale: wipe stores/chains on upgrade. `TestGenesisBlockHashIsPinned` holds the new
+  hash, the root and the manifest chunk ID as literals, so from here height-0 identity moves only by an explicit,
+  recorded decision; `pipeline.Options.ManifestFrameBytes` (new; 0 derives, non-zero pins) reproduces the pre-4′
+  framing on demand. Whether height-0 identity sits inside the R3.4 freeze surface is filed
+  (`R-GENESIS-HASH-FREEZE-SURFACE`).
   **A second break class, named (item 2):** the framing moves `entry.ManifestChunks` under an UNCHANGED root
   (`manifest.Root` covers data + parity IDs only), and `registry.Publish` answers `ErrDupPublish` for exactly that
   shape — a re-publish of pre-change content at the same explicit chunk size collides at the registry after the

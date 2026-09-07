@@ -38,17 +38,19 @@ func TestGenesisIsDeterministic(t *testing.T) {
 
 // TestGenesisBlockHashIsPinned holds height-0 IDENTITY across binaries, which
 // TestGenesisIsDeterministic cannot see (it compares two builds in one process). The
-// literals are the values every binary before the 4′ framing change produced; the
-// manifest chunk ID is pinned separately because it is the seam that moved — the root
-// covers data + parity IDs only, so a framing change moves the entry and the block hash
-// while leaving the root alone (blind PE, 2026-09-07, measured: f428d0a8…0951 under the
-// derived frame). ABLATION: drop ManifestFrameBytes from genesis.Options → RED on the
-// manifest chunk ID and on the block hash, GREEN on the root.
+// literals are the values the 4′ true-length manifest framing produces, ACCEPTED as the
+// new genesis by the owner on 2026-09-07 (no live network exists; the pre-4′ values were
+// hash 7becf754…32ce / manifest chunk 8063c7a3…4610). The manifest chunk ID is pinned
+// separately because it is the seam that moves — the root covers data + parity IDs only,
+// so a framing change moves the entry and the block hash while leaving the root alone
+// (blind PE, 2026-09-07, measured). From here the genesis hash moves ONLY by an explicit,
+// recorded decision: any drift turns this RED. ABLATION: set ManifestFrameBytes: 64 << 10
+// in genesis.Options → RED on the manifest chunk ID and on the block hash, GREEN on the root.
 func TestGenesisBlockHashIsPinned(t *testing.T) {
 	const (
-		wantHash  = "7becf75427252270fcf83faff01719c2686ddf6e837b6b6c7470ed161c8732ce"
+		wantHash  = "f428d0a8c43cdbf559f9f486473df0605b17dccfa369b72c8917aa5ab5880951"
 		wantRoot  = "fce9eeeb23ac0051972d99e67e9423821fedc9607cbbb48c52a4030171e320d6"
-		wantChunk = "8063c7a3071be25d364d29da07b3fd9292adf32b3783fa61314898ecaca44610"
+		wantChunk = "5478750c791c4a680d68d21f4a0c12894b04354d449b0f8d2eaa7f99959cd107"
 	)
 	b, h, entry, err := genesis.Build(memstore.New())
 	if err != nil {

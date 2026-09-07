@@ -2063,9 +2063,11 @@ object's funded figure (red-team F2's shape).
   `docs/thinking/2026-09-07-default-chunk-256k-manifest-framing.md`); the MERGE is held for the owner's go — it changes the
   root every NEW publish of already-published bytes produces. **Blind PE fold-in 2026-09-07**
   (`silt-reviews/principle-engineer/RULING-default-chunk-256k-manifest-framing-b365f10-2026-09-07.md`): the framing
-  change alone had moved the GENESIS block hash (the entry's manifest chunk IDs are inside the hashed block) — `core/genesis`
-  now pins the padded 64 KiB manifest frame (`pipeline.Options.ManifestFrameBytes`) so height-0 identity is unchanged, gated
-  on the literal; the freeze-surface question is the Researcher's (`R-GENESIS-HASH-FREEZE-SURFACE`); the second break class
+  change alone had moved the GENESIS block hash (the entry's manifest chunk IDs are inside the hashed block) — the PE
+  recommended pinning the padded frame; **the OWNER RULED 2026-09-07: accept the new genesis** (`f428d0a8…0951`; no live
+  network exists, every development chain is wiped on upgrade), gated on the literal in `TestGenesisBlockHashIsPinned`;
+  `pipeline.Options.ManifestFrameBytes` reproduces the old framing on demand; the freeze-surface question is filed for
+  R3.4 (`R-GENESIS-HASH-FREEZE-SURFACE`); the second break class
   (re-framed manifest under an unchanged root → `ErrDupPublish`) is named and gated; `R-BOUNTY-TRUNCATION` stays OPEN and
   the ROADMAP row is reconciled to this sentence.
 - **(5) The delivery idle window stays REFUSE-UNTIL-SET.** The Tester measures the block interval `T_b` on the

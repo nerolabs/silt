@@ -38,10 +38,10 @@ import (
 // manifest.MaxChunkSize. Every frame of a file is padded to this size (erasure shards must
 // be equal-length within a stripe), so a small FILE pays the padding; a small MANIFEST does
 // not (Stage frames it at true length). Changing this changes the root every NEW publish of
-// the same bytes produces (convergent dedup does not span the boundary); core/genesis pins
-// its own 64 KiB chunk AND its 64 KiB manifest frame (Options.ManifestFrameBytes), so the
-// height-0 block hash — which covers the entry's manifest chunk IDs — is unchanged
-// (core/genesis TestGenesisBlockHashIsPinned; blind PE, 2026-09-07).
+// the same bytes produces (convergent dedup does not span the boundary); core/genesis keeps
+// its own 64 KiB chunk, and its manifest frame follows this derivation, so the height-0
+// block hash — which covers the entry's manifest chunk IDs — MOVED with 4′ (owner-accepted
+// 2026-09-07, no live network; core/genesis TestGenesisBlockHashIsPinned holds the literal).
 const DefaultChunkSize = 256 << 10
 
 type Options struct {
@@ -62,12 +62,11 @@ type Options struct {
 	Token *ports.PublishToken
 	// ManifestFrameBytes fixes the frame size the sealed manifest is split at. 0 (the
 	// default) DERIVES it — ManifestFrameSize(len(blob), ChunkSize): one true-length frame
-	// when the manifest fits in one chunk. A non-zero value pins it. core/genesis pins
-	// ChunkSize here so every byte that reaches the genesis block — entry.ManifestChunks
-	// included, which chain.Block.Hash covers — is fixed by Options and not by what this
-	// package derives (blind PE on the 4′ framing change, 2026-09-07: the derivation alone
-	// moved the height-0 hash, and a fresh node and a node with a persisted chain would
-	// have disagreed at height 0 with no refusal and no log line).
+	// when the manifest fits in one chunk. A non-zero value pins it: the pre-4′ padded
+	// framing is ManifestFrameBytes == ChunkSize (the dup-publish gate reproduces it that
+	// way). The frame reaches the genesis block — entry.ManifestChunks is inside what
+	// chain.Block.Hash covers — so changing the derivation moves height-0 identity (blind
+	// PE on 4′, 2026-09-07; the owner accepted that move, core/genesis holds the literal).
 	ManifestFrameBytes int
 }
 

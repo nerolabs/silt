@@ -63,3 +63,10 @@ export header carries `publishDefaultChunkSize`; six stale "64 KiB default / 64 
 including the surviving folklore pointer in `core/manifest/manifest.go`; the small-file padding is priced
 (+300 % at 1 KB; erasure floor 640 KiB → 2.5 MiB) and the short-final-stripe rider filed
 (`R-SHORT-FINAL-STRIPE`).
+
+**Owner ruling (2026-09-07, morning):** accept the NEW genesis. There is no live network and no public node — every
+chain is a development chain wiped on upgrade — so the compatibility cost the PE weighed is zero today, and the
+pin bought one 64 KiB frame per node forever. The pin is removed; `TestGenesisBlockHashIsPinned` now holds
+`f428d0a8…0951` (the PE's measured value), so the hash cannot drift again unannounced. `Options.ManifestFrameBytes`
+stays as the explicit knob (it reproduces the pre-4′ framing for the dup-publish gate). The freeze-surface question
+stays filed for R3.4, where height-0 identity is stamped for real.
