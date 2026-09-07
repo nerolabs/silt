@@ -242,6 +242,14 @@ func (n *Node) verifyRoundChange(rc *roundChangeEnv, height uint64) error {
 	if rc.Height != height {
 		return fmt.Errorf("round-change for height %d, want %d", rc.Height, height)
 	}
+	if rc.NewRound == 0 {
+		// `R-H43-CERT-ROUND-ZERO-UNVERIFIED` (C-3): a round-change for round 0
+		// cannot exist — advanceToRound only ever produces next ≥ 1 — and
+		// newViewFor's round-0 short-circuit verifies NOTHING, so letting one
+		// in would let checkRoundQuorum cache and broadcast an unverified
+		// round-0 "certificate".
+		return fmt.Errorf("round-change for round 0 is meaningless")
+	}
 	if len(rc.Sender) != ed25519.PublicKeySize ||
 		!ed25519.Verify(ed25519.PublicKey(rc.Sender), rc.sigBytes(), rc.Sig) {
 		return fmt.Errorf("round-change signature invalid")
@@ -550,6 +558,9 @@ func (n *Node) storeRoundChange(rs *heightRounds, newRound uint64, from ports.No
 // broadcastRoundCert), entered if above our round, and proposed at if we are
 // its designee.
 func (n *Node) checkRoundQuorum(rs *heightRounds, round uint64) {
+	if round == 0 {
+		return // round 0 needs no certificate and newViewFor verifies nothing there (C-2)
+	}
 	if c := rs.Certs[round]; c != nil {
 		n.fireDesignee(rs, round, c)
 		return
@@ -655,6 +666,20 @@ func (n *Node) broadcastRoundCert(height, round uint64, raws [][]byte, present m
 func (n *Node) acceptRoundCert(rs *heightRounds, env *roundCertEnv) error {
 	if env.Height != rs.Height {
 		return fmt.Errorf("round-cert for height %d, want %d", env.Height, rs.Height)
+	}
+	if env.Round == 0 || len(env.Raws) == 0 {
+		// `R-H43-CERT-ROUND-ZERO-UNVERIFIED` (C-1, the composed-diff
+		// certification's merge blocker): newViewFor returns (nil, nil) at
+		// round 0 — the SAME shape as "verified, distinct senders, at quorum"
+		// — without decoding a byte, so a round-0 "certificate" would let any
+		// peer, with no signature and no eligibility, write attacker-chosen
+		// envelopes under attacker-chosen sender IDs at attacker-chosen rounds
+		// into rs.Changes: a forced jump to any round, permanent per-round
+		// certificate poisoning (newViewFor hard-fails a set on its first bad
+		// envelope), and amplification through the round-0 designee's
+		// proposal. Refuse before anything else; every write into rs.Changes
+		// is then preceded by a verification (#424 class, fourth recurrence).
+		return fmt.Errorf("round-cert for round %d with %d envelopes is meaningless", env.Round, len(env.Raws))
 	}
 	if rs.Certs[env.Round] != nil {
 		return nil // already held: no signature work (G-H43-12)
