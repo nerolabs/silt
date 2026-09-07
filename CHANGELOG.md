@@ -108,6 +108,20 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   merely "moved". `Node.WitnessedDemand` is documented as retired with the primitive (permanently zero).
 
 ### Changed
+- **The publish default moves from 64 KiB to 256 KiB, and manifests are framed at TRUE length — one
+  content-addressing break (D-R2.9-NODE-HALF-CALLS call 4′, ratified 2026-09-07).** `pipeline.DefaultChunkSize
+  = 262,144`: one chunk is one delivery credit (`credit.DeliveryBytesPerCredit`, pinned in `cmd/silt`), a k = 10
+  stripe pays a repair-bounty base of exactly 10 (the certified D-S7 threshold of 36 retrievals per repair; the
+  64 KiB former default paid 2 of an exact 2.5 — `R-BOUNTY-TRUNCATION`, closed), and 256 KiB is the largest power
+  of two at which a PoR audit samples every block. `pipeline.ManifestFrameSize`: a sealed manifest that fits in
+  one chunk is framed as ONE frame of its own length + 8 (manifests carry no parity, so padding them to the
+  chunk size bought nothing — 87.6 % of the first production store was 1.4 KB manifests padded to 65,536 B,
+  `R-MANIFEST-PADDING`, closed); larger manifests keep the chunk size. Data frames stay padded to the chunk size
+  (erasure shards are equal-length within a stripe), so a small FILE pays the padding — disclosed. Already-published
+  roots are unchanged; a NEW publish of already-published bytes produces a different root on either side of the
+  boundary (convergent dedup does not span it); `core/genesis` keeps its own 64 KiB. Gates
+  `TestManifestIsFramedAtTrueLength`, `TestDefaultChunkSizeIs256KiB`, `TestDefaultChunkIsOneDeliveryCredit`.
+  Deliberation: `docs/thinking/2026-09-07-default-chunk-256k-manifest-framing.md`.
 - **R2.9: the delivery session's unsettled remainder is a DEPOSIT released at anchor expiry, not a burn
   (D-R2.9-NODE-HALF-CALLS call 1, amended 1′; certification
   `silt-reviews/research/research-outcome/R2.9-session-remainder-refund-and-live-anchor-cap-RESEARCH-CERTIFICATION-2026-09-06.md`).**
@@ -146,7 +160,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `swarm publish` warn only below THAT, by the judge's own arithmetic; the judge's fix text derives the same
   number; `crypto.Overhead` (the 16-byte tag) is pinned against a real encryption. What the default actually does
   is a 20 % integer-truncation under-pay (`R-BOUNTY-TRUNCATION`, exact 2.5006 → 2). Gates
-  `TestRepairBountyBaseAtTheShippedDefaultIsTwoNotZero`, `TestCiphertextOverheadIsTheTag`; the G-λ-8 warning gate
+  `TestRepairBountyBaseAtTheFormerDefaultIsTwoNotZero`, `TestCiphertextOverheadIsTheTag`; the G-λ-8 warning gate
   re-expressed on the real geometry.
 
 ### Added

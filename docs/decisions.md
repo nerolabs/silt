@@ -2059,7 +2059,9 @@ object's funded figure (red-team F2's shape).
   `R-STOCK-RENEWABLE-OCCUPANCY`, `R-ANCHOR-BEARER-TRANSFER` (owed a red-team pass), `R-REFUND-NEEDS-AN-ACCOUNT`.
 - **(4′) AMENDED 2026-09-07:** the chunk move to 262,144 B and true-length MANIFEST FRAMING (`R-MANIFEST-PADDING`)
   land in ONE PR — one content-addressing break — before the economy-on flip; `R-BOUNTY-TRUNCATION` stays a
-  separate open residual.
+  separate open residual. **BUILT 2026-09-07** (`pipeline.DefaultChunkSize = 262,144`, `pipeline.ManifestFrameSize`; deliberation
+  `docs/thinking/2026-09-07-default-chunk-256k-manifest-framing.md`); the MERGE is held for the owner's go — it changes the
+  root every NEW publish of already-published bytes produces.
 - **(5) The delivery idle window stays REFUSE-UNTIL-SET.** The Tester measures the block interval `T_b` on the
   next graded run; the window is then set as a small multiple of one epoch and recorded here. Ten minutes is the
   value for dark-lane testing only. Decide the wall-clock-step exposure (`R-SESSION-WALLCLOCK-STEP`) with (1).
