@@ -1713,3 +1713,119 @@ func TestModelCheck_H43_ProposeSpinDedupedPerRound(t *testing.T) {
 		t.Logf("G-H43-13 (part b): the redundant arrival did NOT add another attempt (%d occurrences of %q) — deduped.", afterThird, attemptEvent)
 	})
 }
+
+// ── G-H43-14 ────────────────────────────────────────────────────────────────
+//
+// TestModelCheck_H43_RoundZeroCertificateRefusedUnverified is G-H43-14
+// (`R-H43-CERT-ROUND-ZERO-UNVERIFIED`, C-1/C-2/C-3), per the composed-diff
+// re-certification CONSENSUS-LIVENESS-h43-COMPOSED-DIFF-c2a476a-RESEARCH-CERTIFICATION-2026-09-07.md
+// §1.3/§5: the merge blocker. `newViewFor` short-circuits at round 0
+// (`if round == 0 { return nil, nil }`) — the SAME shape as "verified,
+// distinct senders, at quorum" — without decoding or verifying a single
+// byte. Before the fix, `acceptRoundCert` had no round-0 guard, so ANY
+// peer — no signature, no eligibility, not even a registered identity —
+// could send a `MsgRoundCert{Round: 0}` carrying attacker-chosen envelopes
+// under attacker-chosen sender IDs claiming attacker-chosen target rounds,
+// and every one would be written straight into `rs.Changes` unverified.
+//
+// THE ATTACK: a victim (one live anchor in a 4-anchor network) receives ONE
+// `MsgRoundCert{Height: rs.Height, Round: 0, Raws: [env]}` from a NON-
+// validator, non-registered peer identity — `env` is a well-formed
+// (CBOR-valid) `roundChangeEnv` claiming `NewRound: 5` under a fabricated
+// sender key and a garbage signature, chosen so it WOULD populate
+// rs.Changes[5] if it were ever stored, distinguishing "refused before
+// storage" from "stored but otherwise harmless".
+//
+// FOUR ASSERTIONS, all RED at c2a476a: (1) rs.Changes gains no entry at all
+// (not even under the fabricated NewRound); (2) rs.Certs[0] stays nil (no
+// unverified "certificate" is cached); (3) the victim's own round does not
+// move; (4) a LATER, GENUINE round-1 certificate — from real, registered,
+// signing anchors — still assembles normally afterward (the refusal must
+// not poison or wedge the round state for the real synchronizer that
+// follows it).
+func TestModelCheck_H43_RoundZeroCertificateRefusedUnverified(t *testing.T) {
+	nodes, ids, _, _, _ := tier2AnchorNet(t, 4)
+	all := make([]ports.NodeID, len(ids))
+	for i := range ids {
+		all[i] = ids[i].NodeID()
+	}
+	for _, nd := range nodes {
+		seed := make([]ports.NodeID, 0, len(all)-1)
+		for _, id := range all {
+			if id != nd.id {
+				seed = append(seed, id)
+			}
+		}
+		nd.chainSyncSeed = seed
+	}
+	victim, s1, s2 := nodes[0], nodes[1], nodes[2]
+	_, h := victim.chain.Head()
+
+	// A NON-VALIDATOR, non-registered attacker identity — never bonded,
+	// never an anchor, never even constructed as a *Node in this fixture.
+	attacker := identity.FromSeed(9990011)
+
+	// A well-formed (CBOR-valid) round-change envelope, unsigned by anyone
+	// real, claiming an ARBITRARY target round (5) under a fabricated
+	// sender key — this is what WOULD land in rs.Changes[5] if the round-0
+	// guard did not refuse it first.
+	fakeSender := make([]byte, ed25519.PublicKeySize)
+	for i := range fakeSender {
+		fakeSender[i] = byte(i + 1)
+	}
+	forged := roundChangeEnv{Height: h, NewRound: 5, Sender: fakeSender, Sig: []byte("not-a-real-signature-at-all")}
+	forgedRaw, err := cbor.Marshal(forged)
+	if err != nil {
+		t.Fatalf("premise: marshal the forged roundChangeEnv: %v", err)
+	}
+	attack := roundCertEnv{Height: h, Round: 0, Raws: [][]byte{forgedRaw}}
+	attackData, err := cbor.Marshal(attack)
+	if err != nil {
+		t.Fatalf("premise: marshal the round-0 attack envelope: %v", err)
+	}
+
+	victim.handle(attacker.NodeID(), ports.Message{Kind: ports.MsgRoundCert, Data: attackData})
+
+	rs := victim.roundsFor()
+
+	// (1) no entry in rs.Changes at all — not even under the fabricated NewRound.
+	if got := len(rs.Changes[5]); got != 0 {
+		t.Fatalf("G-H43-14 REPRODUCED (1/4): the forged round-0 certificate wrote %d unverified entry(ies) "+
+			"into rs.Changes[5] — an attacker-chosen (fabricated sender, forged signature, never verified) "+
+			"round-change claim was stored. R-H43-CERT-ROUND-ZERO-UNVERIFIED.", got)
+	}
+	for r, m := range rs.Changes {
+		if len(m) != 0 {
+			t.Fatalf("G-H43-14 REPRODUCED (1/4): the forged round-0 certificate wrote an unverified entry into "+
+				"rs.Changes[%d] — R-H43-CERT-ROUND-ZERO-UNVERIFIED.", r)
+		}
+	}
+	// (2) no cached "certificate" at round 0.
+	if c := rs.Certs[0]; c != nil {
+		t.Fatalf("G-H43-14 REPRODUCED (2/4): rs.Certs[0] was populated (%d envelopes cached) from an unverified "+
+			"round-0 certificate — R-H43-CERT-ROUND-ZERO-UNVERIFIED.", len(c.Raws))
+	}
+	// (3) the victim's round did not move.
+	if rs.Round != 0 {
+		t.Fatalf("G-H43-14 REPRODUCED (3/4): the victim's round moved to %d from an unverified round-0 "+
+			"certificate — R-H43-CERT-ROUND-ZERO-UNVERIFIED.", rs.Round)
+	}
+
+	// (4) a LATER, GENUINE round-1 certificate still assembles normally —
+	// the refusal must not poison the round state for the real
+	// synchronizer that follows.
+	for _, s := range []*Node{s1, s2} {
+		s.advanceToRound(s.roundsFor(), 1, "test")
+		raw := s.roundsFor().Changes[1][s.id]
+		if raw == nil {
+			t.Fatalf("premise: %s did not record its own round-change(1) envelope", s.id)
+		}
+		victim.handleChain(s.id, ports.Message{Kind: ports.MsgRoundChange, Data: raw})
+	}
+	if got := len(rs.Changes[1]); got < 2 {
+		t.Fatalf("G-H43-14 REPRODUCED (4/4): after the round-0 attack, a LATER genuine round-1 certificate did "+
+			"not assemble (rs.Changes[1] holds %d senders, want >= 2) — the refusal poisoned or wedged the "+
+			"round state for the real synchronizer. R-H43-CERT-ROUND-ZERO-UNVERIFIED.", got)
+	}
+	t.Logf("G-H43-14: the forged round-0 certificate was refused with zero effect on rs.Changes/rs.Certs/rs.Round, and a later genuine round-1 certificate still assembles (%d senders) — the round-0 hole is closed.", len(rs.Changes[1]))
+}
