@@ -54,8 +54,25 @@ import (
 // after the backstop has already decided the RED/GREEN run — the "down
 // then back mid-ladder" shape, layered onto the cert's "one heavy seat
 // killed"). The rest of nodes[4..11] are left QUIESCENT — pendingBondRegs
-// forced empty and never touched (setup-only strip — see
-// stripQuiescentRegsOnly) — the field's silent rotation seats.
+// AND pendingEntries forced empty and re-stripped every top-up (both
+// lanes, PE ruling F-7 — see below) — the field's silent rotation seats.
+//
+// THE ARMING ASSERTION IS WHAT MAKES THE BOUND NON-VACUOUS (PE ruling
+// RULING-h43-consensus-arming-c2a476a-2026-09-07.md, F-1..F-4): the ORIGINAL
+// armed set, three real 64 MiB anchors (192 MiB), MEETS RoundCatchupMet's
+// >1/3-of-516-MiB bar (172 MiB) on its own weight — the PRE-EXISTING
+// maybeCatchUpRound (called unconditionally in every message handler,
+// regardless of (A)'s arming fix) would then move the quiescent seats
+// REGARDLESS of whether (A) shipped, so a schedule using that set proves
+// nothing about (A) — it would commit at the SAME 232 s with (A) reverted
+// (the PE's own measurement). armed=[2, 4, 9] (129 MiB) is BELOW the bar —
+// verified against chain.RoundCatchupMet itself, not hand arithmetic, in
+// the premise check below — so ONLY (A) can arm the quiescent 8. The BOUND
+// alone (commits within the D4 backstop) is therefore not sufficient
+// evidence (A) did the work; the SEPARATE per-seat assertion below it
+// (every quiescent seat reaches round >= 1 and records its OWN round-change
+// envelope — never merely observed via someone else's) is what makes this
+// gate decisive for (A) specifically, and the two are read TOGETHER.
 //
 // THE SEARCH FOR A WINNER-NAME DIVERGENCE, AND WHY THIS FIXTURE CANNOT
 // SHOW ONE — reported with the arithmetic, per instruction, rather than
@@ -152,24 +169,15 @@ func TestModelCheck_H43_HeterogeneousArmingMustCommitWithinFPlus1Rounds(t *testi
 	t.Logf("G-H43-1 premise: props fixed (N=%d); height %d's OWN designee sits at position %d; the OLD "+
 		"height-keyed takeover walk (pre-D3) would favor node %d (dist %d) among the armed set %v",
 		len(props), contested, dHeight, heightKeyedWinner, heightKeyedDist, armed)
-	// stripQuiescent (h43-ABC-asbuilt certification §1.3, R-H43-FIXTURE-STRIPS-REG-LANE):
-	// SETUP-ONLY on the entries lane. Run once, to establish the
-	// heterogeneous-arming premise (nodes 4-11 start with none of the
-	// height's pending work — the field's 8 silent rotation seats), on BOTH
-	// lanes. It must not zero pendingEntries again after setup: the fix's
-	// part (D) legitimately FORWARDS pending entries to a round's designee
-	// (forwardPendingWorkToDesignee, rounds.go), and a periodic strip of
-	// every quiescent seat's ENTRY queue would delete that forwarded work
-	// before the designee ever gets to fold it — an artifact of this
-	// fixture, not a property of the mechanism under test. The reg lane is
-	// different: the certification's own ruling (delta cert §3.1) is that a
-	// forwarded THIRD-PARTY reg is, and must stay, REFUSED at the receiver
-	// ("bond-reg submit REFUSED (relay)", chainrole.go) — so a quiescent
-	// seat's pendingBondRegs can never legitimately grow from a forward
-	// either way, and this oracle keeps re-stripping it every top-up purely
-	// to cancel refill()'s own uniform reseed (below), never because a real
-	// forward could have landed one.
-	stripQuiescentRegsOnly := func() {
+	// PE ruling F-7 (RULING-h43-consensus-arming-c2a476a-2026-09-07.md): the
+	// earlier setup-only-entries relaxation bought nothing on THIS (reg)
+	// lane — refill() seeds pendingBondRegs only, regs are never forwarded
+	// (R-H43-FORWARD-REG-RELAY-REFUSED), and the entry-lane arm this
+	// relaxation was written for (D1-entry, forwardPendingWorkToDesignee)
+	// lives in a DIFFERENT file (G-H43-9, modelcheck_h43_gates_test.go), not
+	// this one — so restore the FULL periodic strip on BOTH lanes every
+	// top-up, per F-7's instruction.
+	stripQuiescentBoth := func() {
 		armedSet := map[int]bool{}
 		for _, i := range armed {
 			armedSet[i] = true
@@ -179,23 +187,33 @@ func TestModelCheck_H43_HeterogeneousArmingMustCommitWithinFPlus1Rounds(t *testi
 				continue
 			}
 			nd.pendingBondRegs = nil
+			nd.pendingEntries = nil
 		}
 	}
 	arm := func() {
 		refill() // seeds pendingBondRegs on EVERY node (the shared, uniform helper)
-		stripQuiescentRegsOnly()
-		armedSet := map[int]bool{}
-		for _, i := range armed {
-			armedSet[i] = true
-		}
-		for i, nd := range nodes {
-			if i == killedIdx || armedSet[i] {
-				continue
-			}
-			nd.pendingEntries = nil // setup only — the caller below never repeats this
-		}
+		stripQuiescentBoth()
 	}
 	arm()
+
+	// PE ruling F-1..F-4: verify the armed set's WEIGHT is below the >1/3
+	// RoundCatchupMet bar against the REAL function, not hand arithmetic —
+	// otherwise the pre-existing, unconditional maybeCatchUpRound would move
+	// the quiescent seats regardless of arming (A), and this test would be
+	// VACUOUS for what it claims to prove (measured: with the ORIGINAL
+	// 3-anchor armed set [0,1,2] = 192 MiB > the 172 MiB bar,
+	// RoundCatchupMet returns true; this armed set, verified below, does not).
+	{
+		armedIDs := map[ports.NodeID]bool{}
+		for _, i := range armed {
+			armedIDs[nodes[i].id] = true
+		}
+		if nodes[0].chain.RoundCatchupMet(armedIDs) {
+			t.Fatalf("premise: the armed set %v MEETS RoundCatchupMet on its own weight — the pre-existing "+
+				"catch-up mechanism (unconditional in every message handler) would move the quiescent seats "+
+				"regardless of arming (A), making this schedule VACUOUS for testing it (PE ruling F-1/F-4)", armed)
+		}
+	}
 	armedIdxSet := map[int]bool{}
 	for _, i := range armed {
 		armedIdxSet[i] = true
@@ -263,6 +281,7 @@ func TestModelCheck_H43_HeterogeneousArmingMustCommitWithinFPlus1Rounds(t *testi
 	deadline := sched.Now().Add(bound)
 
 	steps := 0
+	var commitTime ports.Time
 	for sched.Now() < deadline && !committed() {
 		if !sched.Step() {
 			break // scheduler drained before the bound — report state below, do not loop forever
@@ -270,15 +289,23 @@ func TestModelCheck_H43_HeterogeneousArmingMustCommitWithinFPlus1Rounds(t *testi
 		steps++
 		if steps%64 == 0 {
 			// Top up the 3 armed seats' pendingBondRegs (refill() reseeds ALL 12
-			// uniformly, so immediately re-strip the reg lane on the quiescent 8
-			// — that lane can never legitimately hold forwarded work, certified
-			// above). Deliberately do NOT touch pendingEntries here: a legitimate
-			// (D) forward may have landed real pending entries on a quiescent
-			// seat since the last top-up, and wiping them would delete work the
-			// fix forwards, not model a genuine silent seat (certification
-			// §1.3/§7 item 7, R-H43-FIXTURE-STRIPS-REG-LANE).
-			refill()
-			stripQuiescentRegsOnly()
+			// uniformly), then re-strip BOTH lanes on the quiescent seats —
+			// F-7: this test never arms entries and no entry-lane forward test
+			// lives in this file, so there is nothing to preserve.
+			arm()
+		}
+	}
+	commitTime = sched.Now() // the ACTUAL commit instant — captured BEFORE any extra stepping below
+	// Keep stepping to the FULL deadline (never past it) even after the
+	// first commit: the arming assertion below reads EVERY quiescent seat's
+	// OWN round state, and a straggler's round-change or relayed certificate
+	// may still be in flight when the height FIRST commits (some node's head
+	// advanced) — that does not mean every OTHER node has yet heard about it
+	// or acted on its own pacemaker. Bounded by the SAME deadline the
+	// commit-latency measurement above used.
+	for sched.Now() < deadline {
+		if !sched.Step() {
+			break
 		}
 	}
 
@@ -304,6 +331,36 @@ func TestModelCheck_H43_HeterogeneousArmingMustCommitWithinFPlus1Rounds(t *testi
 			"research-gated (build-immutable #6); fix direction (A) (M1) + D3 (the re-key) in the certification.",
 			armed, downDuration, contested, bound, deadline, rounds, dHeight, heightKeyedWinner, heightKeyedDist)
 	}
+
+	// PE ruling (F-1..F-4): the arming assertion — quiescent seats RUN THEIR
+	// OWN PACEMAKER (reach round >= 1 AND emit their own round-change) — is
+	// what makes the backstop above non-vacuous for (A). Below the catch-up
+	// weight bar (verified above), nothing but (A) can move these seats.
+	for i, nd := range nodes {
+		if i == killedIdx || armedIdxSet[i] {
+			continue
+		}
+		rs := nd.roundsFor()
+		if rs.Round < 1 {
+			t.Fatalf("G-H43-1 REPRODUCED (arming): quiescent seat %d never left round 0 (M1: the round clock "+
+				"is armed on unreplicated local mempool state) — armed set %v is below the catch-up weight bar, "+
+				"so only replicated arming (A) could have moved it. Consensus-adjacent, research-gated "+
+				"(build-immutable #6).", i, armed)
+		}
+		selfAuthored := false
+		for r := uint64(1); r <= rs.Round; r++ {
+			if _, ok := rs.Changes[r][nd.id]; ok {
+				selfAuthored = true
+				break
+			}
+		}
+		if !selfAuthored {
+			t.Fatalf("G-H43-1 REPRODUCED (arming): quiescent seat %d reached round %d but never recorded its "+
+				"OWN round-change envelope at any round <= its current one — it never ran its own pacemaker "+
+				"(maybeAdvanceRound), only observed others'.", i, rs.Round)
+		}
+	}
+
 	var commitRound uint64
 	var proposerID ports.NodeID
 	for _, nd := range nodes {
@@ -366,7 +423,7 @@ func TestModelCheck_H43_HeterogeneousArmingMustCommitWithinFPlus1Rounds(t *testi
 	t.Logf("G-H43-1: h%d committed at round %d, %v (virtual), by node %d (%s) — the nearest work-holder from "+
 		"round %d's own workless designee %s — within the restated D4 backstop %v of the kill. M1 fixed; D3's "+
 		"re-key pinned.",
-		contested, commitRound, sched.Now(), roundKeyedWinner, proposerID, commitRound, roundDesigneeID, bound)
+		contested, commitRound, commitTime, roundKeyedWinner, proposerID, commitRound, roundDesigneeID, bound)
 }
 
 // TestModelCheck_H43_AtLeastOneRoundLivenessOracleArmsNonUniformly is

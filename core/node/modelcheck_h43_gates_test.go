@@ -874,8 +874,60 @@ func TestModelCheck_H43_EntryLaneWorklessDesigneeMustCommitWithinFPlus1Rounds(t 
 	if len(pool) < 4 {
 		t.Fatalf("premise: not enough non-designee seats to pick 3 armed + 1 killed from (pool=%v)", pool)
 	}
-	killedIdx := pool[0]
-	armed := append([]int{}, pool[1:4]...)
+	// PE ruling (RULING-h43-consensus-arming-c2a476a-2026-09-07.md, F-1..F-4):
+	// arming 3 HEAVY (64 MiB anchor/maturer) seats carries > 1/3 of the 516
+	// MiB frozen epoch weight (192 > 172), so the PRE-EXISTING
+	// maybeCatchUpRound (called unconditionally from every message handler,
+	// regardless of arming) would move the quiescent seats on its own —
+	// masking whether (A)'s replicated-arming fix is what's actually doing
+	// the work. Prefer SYBIL seats (nodes[8..11], 1 MiB each) for `armed`,
+	// so the armed set's total weight stays FAR under the 1/3 catch-up bar —
+	// verified below against chain.RoundCatchupMet, the real function, not
+	// hand arithmetic. `killedIdx` prefers a HEAVY seat (keeps "one heavy
+	// seat killed" — the field's val-d shape).
+	var sybils, heavies []int
+	for _, i := range pool {
+		if i >= 8 {
+			sybils = append(sybils, i)
+		} else {
+			heavies = append(heavies, i)
+		}
+	}
+	var killedIdx int
+	if len(heavies) > 0 {
+		killedIdx = heavies[0]
+		heavies = heavies[1:]
+	} else {
+		killedIdx = sybils[0]
+		sybils = sybils[1:]
+	}
+	var armed []int
+	for _, i := range sybils {
+		if len(armed) == 3 {
+			break
+		}
+		armed = append(armed, i)
+	}
+	for _, i := range heavies {
+		if len(armed) == 3 {
+			break
+		}
+		armed = append(armed, i)
+	}
+	if len(armed) != 3 {
+		t.Fatalf("premise: could not assemble 3 armed seats from the pool (sybils=%v heavies=%v)", sybils, heavies)
+	}
+	{
+		armedIDs := map[ports.NodeID]bool{}
+		for _, i := range armed {
+			armedIDs[nodes[i].id] = true
+		}
+		if nodes[0].chain.RoundCatchupMet(armedIDs) {
+			t.Fatalf("premise: the armed set %v MEETS RoundCatchupMet on its own weight — the pre-existing "+
+				"catch-up mechanism (unconditional in every message handler) would move the quiescent seats "+
+				"regardless of arming (A), making this schedule VACUOUS for testing it (PE ruling F-1/F-4)", armed)
+		}
+	}
 	armedSet := map[int]bool{}
 	for _, i := range armed {
 		armedSet[i] = true
@@ -963,6 +1015,19 @@ func TestModelCheck_H43_EntryLaneWorklessDesigneeMustCommitWithinFPlus1Rounds(t 
 		}
 		steps++
 	}
+	// Keep stepping to the FULL deadline (never past it) even after the
+	// first commit: the PE ruling's arming assertion below reads EVERY
+	// quiescent seat's OWN round state, and a straggler's round-change or
+	// relayed certificate may still be in flight — the height committing
+	// (some node's head advanced) does not mean every OTHER node has yet
+	// heard about it or acted on its own pacemaker. Bounded by the SAME
+	// deadline the commit-latency measurement above used, so this changes
+	// nothing about what "within the bound" means.
+	for sched.Now() < deadline {
+		if !sched.Step() {
+			break
+		}
+	}
 
 	if honestSlashed {
 		t.Fatal("I5 VIOLATION: an honest validator was slashed under the entry-lane workless-designee schedule")
@@ -974,6 +1039,41 @@ func TestModelCheck_H43_EntryLaneWorklessDesigneeMustCommitWithinFPlus1Rounds(t 
 		}
 		t.Fatalf("G-H43-9: height %d did not commit within the f=1 bound %v of the kill (per-seat rounds "+
 			"reached: %v) — even on the entry lane, with D1-entry landing", contested, bound, rounds)
+	}
+
+	// PE ruling (F-1..F-4): the arming assertion — quiescent seats RUN THEIR
+	// OWN PACEMAKER (reach round >= 1 AND emit their own round-change) — is
+	// what makes the bound above non-vacuous for (A). Below the catch-up
+	// weight bar (verified above), nothing but (A) can move these seats.
+	for i, nd := range nodes {
+		if i == killedIdx || armedSet[i] {
+			continue
+		}
+		rs := nd.roundsFor()
+		if rs.Round < 1 {
+			t.Fatalf("G-H43-9 REPRODUCED (arming): quiescent seat %d never left round 0 (M1: the round clock "+
+				"is armed on unreplicated local mempool state) — armed set %v is below the catch-up weight bar, "+
+				"so only replicated arming (A) could have moved it. Consensus-adjacent, research-gated "+
+				"(build-immutable #6).", i, armed)
+		}
+		if _, ok := rs.Changes[rs.Round][nd.id]; !ok {
+			// The seat's round may have been entered via a relayed
+			// certificate (acceptRoundCert enters the round itself, c710776)
+			// rather than its OWN advanceToRound broadcast — check every
+			// round up to its current one for a self-authored entry.
+			selfAuthored := false
+			for r := uint64(1); r <= rs.Round; r++ {
+				if _, ok := rs.Changes[r][nd.id]; ok {
+					selfAuthored = true
+					break
+				}
+			}
+			if !selfAuthored {
+				t.Fatalf("G-H43-9 REPRODUCED (arming): quiescent seat %d reached round %d but never recorded "+
+					"its OWN round-change envelope at any round <= its current one — it never ran its own "+
+					"pacemaker (maybeAdvanceRound), only observed others'.", i, rs.Round)
+			}
+		}
 	}
 
 	var commitRound uint64
