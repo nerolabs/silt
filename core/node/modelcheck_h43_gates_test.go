@@ -1138,3 +1138,578 @@ func TestModelCheck_H43_ForwardCommitsEntriesNeverRegs(t *testing.T) {
 	}
 	t.Logf("G-H43-10 (part a): h%d committed at round %d with %d entries (D's own round-1 block, forwarded from W) — M4's entry lane is fixed on this branch.", height, commitRound, entriesInBlock)
 }
+
+// ── G-H43-10a ───────────────────────────────────────────────────────────────
+//
+// TestModelCheck_H43_ForwardEntriesCappedNotBurstBudget is G-H43-10a
+// (`R-H43-FORWARD-BURST-INHERITED`, a security parameter), per the delta
+// certification §3.1/§7 item 2: the entry forward's OWN constant (recommended
+// 4), never `entrySubmitBurst` (32, derived for a CLIENT's honest cadence —
+// submit-then-poll for one published object — not for up to N-1 forwarders
+// each firing a burst at ONE seat on every round entry).
+//
+// THE SCHEDULE: 4 anchors. D is round 1's workless designee. W holds SIX
+// distinct-root entries (well above any plausible cap) and reaches round 1
+// via advanceToRound — the real local-timeout call that fires the real
+// forwardPendingWorkToDesignee. D's transport is wrapped to COUNT every
+// MsgSubmitEntry it receives — the wire-level observation, not a source
+// constant.
+//
+// RED at a3e4e72: the forward loop's cap was `entrySubmitBurst` (32) — with
+// only 6 queued, ALL 6 cross the wire (6 < 32), so this test's "exactly 4"
+// assertion fails there with a DIFFERENT count. GREEN at c2a476a+: the
+// forward has its own constant (h43ForwardEntries, recommended and shipped
+// at 4) — exactly 4 of the 6 cross, and the remaining 2 keep their FIFO
+// seniority in W's own queue (still there, unconsumed) for the next round
+// entry. This test cites the observed count, never the constant's name
+// (h43ForwardEntries does not exist at a3e4e72 — the SAME file must compile
+// there too).
+func TestModelCheck_H43_ForwardEntriesCappedNotBurstBudget(t *testing.T) {
+	nodes, ids, net, _, _ := tier2AnchorNet(t, 4)
+	all := make([]ports.NodeID, len(ids))
+	for i := range ids {
+		all[i] = ids[i].NodeID()
+	}
+	for _, nd := range nodes {
+		seed := make([]ports.NodeID, 0, len(all)-1)
+		for _, id := range all {
+			if id != nd.id {
+				seed = append(seed, id)
+			}
+		}
+		nd.chainSyncSeed = seed
+	}
+	byID := map[ports.NodeID]*Node{}
+	for _, nd := range nodes {
+		byID[nd.id] = nd
+	}
+	_, height := nodes[0].chain.Head()
+	designeeID := nodes[0].designatedProposer(height, 1)
+	d, ok := byID[designeeID]
+	if !ok {
+		t.Fatalf("premise: designatedProposer(%d, 1) returned an unknown id", height)
+	}
+	var w *Node
+	for _, nd := range nodes {
+		if nd.id != designeeID {
+			w = nd
+			break
+		}
+	}
+	d.pendingEntries = nil
+	d.pendingBondRegs = nil
+
+	const queued = 6
+	const wantForwarded = 4
+	for i := 0; i < queued; i++ {
+		w.pendingEntries = append(w.pendingEntries, pendingEntry{E: mkEntry(fmt.Sprintf("h43-10a-entry-%d", i)), At: height})
+	}
+	if got := len(w.pendingEntries); got != queued {
+		t.Fatalf("premise: W should hold %d queued entries before entering the round, got %d", queued, got)
+	}
+
+	var entriesReceived int
+	ep := net.Endpoint(d.id)
+	origHandle := d.handle
+	ep.SetHandler(func(from ports.NodeID, msg ports.Message) {
+		if msg.Kind == ports.MsgSubmitEntry {
+			entriesReceived++
+		}
+		origHandle(from, msg)
+	})
+
+	w.advanceToRound(w.roundsFor(), 1, "test")
+	drainHeld(t, net, fifo)
+
+	if entriesReceived != wantForwarded {
+		t.Fatalf("G-H43-10a REPRODUCED: D received %d MsgSubmitEntry out of W's %d queued entries on ONE round "+
+			"entry, want exactly %d — the forward's cap is not its own constant (R-H43-FORWARD-BURST-INHERITED): "+
+			"either it is uncapped/inherits entrySubmitBurst=32 (all %d would cross), or some OTHER cap is in "+
+			"force. Consensus-adjacent, research-gated (build-immutable #6); closer: an OWN forward constant "+
+			"(recommended 4), never entrySubmitBurst.", entriesReceived, queued, wantForwarded, queued)
+	}
+	// W's OWN queue is untouched by forwarding (forwardPendingWorkToDesignee
+	// sends notices; it does not drain the sender's queue — only D folding
+	// them into a committed block would). Confirmed, not assumed: all 6 stay
+	// queued, ready for the next round entry's forward to pick up where this
+	// one's cap left off.
+	if remaining := len(w.pendingEntries); remaining != queued {
+		t.Fatalf("G-H43-10a premise: W's own pendingEntries should be untouched by forwarding (still %d), got %d", queued, remaining)
+	}
+	t.Logf("G-H43-10a: D received exactly %d of W's %d queued entries on one round entry — the forward has its own, tighter cap.", entriesReceived, queued)
+}
+
+// ── G-H43-11 ────────────────────────────────────────────────────────────────
+//
+// TestModelCheck_H43_RoundCertNarrowedToDesigneePlusAbsent is G-H43-11
+// (`R-H43-CERT-CARRIES-BLOCKS`), per the delta certification §4.2/§7 item 6:
+// the assembled round certificate must go to the round's DESIGNEE plus a
+// BOUNDED relay to the peers absent from it (DiemBFT: "sends the TC to
+// L_{r+1}") — NEVER an all-peers broadcast, since a round-change carries the
+// sender's full locked block and the certificate can be O(N * block).
+//
+// THE SCHEDULE: 6 anchors. D is round 1's designee (never a sender). Z
+// independently receives THREE senders' (S1, S2, S3) round-change(1)
+// envelopes DIRECTLY (bypassing `net`, so only Z — not S1/S2/S3 themselves —
+// genuinely assembles the certificate) and then enters round 1 itself via
+// advanceToRound, contributing its OWN envelope as the 4th — completing the
+// #402 anchor-majority quorum on Z's OWN view. Z's `broadcastRoundCert`
+// therefore fires for real, over `net`, to Z's real sync targets: D
+// (designee), S1/S2/S3 (already PRESENT — their own envelopes are in the
+// certificate), and W (an uninvolved bystander who never round-changed —
+// ABSENT from it). Every recipient's transport is wrapped to record whether
+// it received a MsgRoundCert from Z.
+//
+// RED at a3e4e72: `broadcastRoundCert(height, round, raws)` (3 params, no
+// `present` map) loops `n.syncTargets()` unconditionally except self — S1,
+// S2, S3 (already holding their own envelopes) ALSO receive the redundant
+// certificate. GREEN at c2a476a+: `broadcastRoundCert` takes a `present`
+// map and skips any non-designee peer already in it — S1/S2/S3 are skipped;
+// D (designee) and W (absent) still receive it.
+func TestModelCheck_H43_RoundCertNarrowedToDesigneePlusAbsent(t *testing.T) {
+	const nAnchors = 6
+	nodes, ids, net, _, _ := tier2AnchorNet(t, nAnchors)
+	all := make([]ports.NodeID, len(ids))
+	for i := range ids {
+		all[i] = ids[i].NodeID()
+	}
+	for _, nd := range nodes {
+		seed := make([]ports.NodeID, 0, len(all)-1)
+		for _, id := range all {
+			if id != nd.id {
+				seed = append(seed, id)
+			}
+		}
+		nd.chainSyncSeed = seed
+	}
+	byID := map[ports.NodeID]*Node{}
+	for _, nd := range nodes {
+		byID[nd.id] = nd
+	}
+	_, height := nodes[0].chain.Head()
+	designeeID := nodes[0].designatedProposer(height, 1)
+	d, ok := byID[designeeID]
+	if !ok {
+		t.Fatalf("premise: designatedProposer(%d, 1) returned an unknown id", height)
+	}
+	var rest []*Node
+	for _, nd := range nodes {
+		if nd.id != designeeID {
+			rest = append(rest, nd)
+		}
+	}
+	if len(rest) != 5 {
+		t.Fatalf("premise: want 5 non-designee anchors, got %d", len(rest))
+	}
+	z, s1, s2, s3, w := rest[0], rest[1], rest[2], rest[3], rest[4]
+
+	// Wrap every non-Z node's transport to record any MsgRoundCert received
+	// from Z — the wire-level observation.
+	received := map[ports.NodeID]bool{}
+	wrap := func(nd *Node) {
+		ep := net.Endpoint(nd.id)
+		orig := nd.handle
+		ep.SetHandler(func(from ports.NodeID, msg ports.Message) {
+			if msg.Kind == ports.MsgRoundCert && from == z.id {
+				received[nd.id] = true
+			}
+			orig(from, msg)
+		})
+	}
+	for _, nd := range []*Node{d, s1, s2, s3, w} {
+		wrap(nd)
+	}
+
+	// S1, S2, S3 broadcast real round-change(1) envelopes; hand them DIRECTLY
+	// to Z's handler (bypassing net) so ONLY Z assembles — nobody else's own
+	// view reaches quorum, and no unrelated cascade can pollute this test.
+	for _, s := range []*Node{s1, s2, s3} {
+		s.advanceToRound(s.roundsFor(), 1, "test")
+		raw := s.roundsFor().Changes[1][s.id]
+		if raw == nil {
+			t.Fatalf("premise: %s did not record its own round-change(1) envelope", s.id)
+		}
+		z.handleChain(s.id, ports.Message{Kind: ports.MsgRoundChange, Data: raw})
+	}
+	// >= 3, not == 3: RoundCatchupMet's threshold (f+1=2 at N=6) is BELOW the
+	// #402 anchor-majority quorum this test needs (4) — so as soon as S1+S2
+	// land, Z's OWN maybeCatchUpRound (the real, existing #451 mechanism,
+	// fired automatically inside the real MsgRoundChange handler) may
+	// legitimately catch Z itself up to round 1, self-recording its own
+	// envelope early. That is real, correct, unrelated-to-this-gate behavior
+	// — not a premise defect — so the explicit z.advanceToRound call below
+	// becomes a harmless no-op in that case (advanceToRound refuses
+	// next <= rs.Round).
+	for _, s := range []*Node{s1, s2, s3} {
+		if _, ok := z.roundsFor().Changes[1][s.id]; !ok {
+			t.Fatalf("premise: Z is missing %s's round-change(1) envelope", s.id)
+		}
+	}
+
+	// Z enters round 1 itself (a real local timeout) — this call completes
+	// the #402 anchor-majority quorum on Z's OWN view (S1+S2+S3+Z = 4 of 6
+	// anchors) and is what triggers the REAL broadcastRoundCert over `net`.
+	z.advanceToRound(z.roundsFor(), 1, "test")
+	drainHeld(t, net, fifo)
+
+	if !received[d.id] {
+		t.Fatalf("G-H43-11: D (the round's designee) never received the certificate Z assembled — the designee must always receive it")
+	}
+	if !received[w.id] {
+		t.Fatalf("G-H43-11: W (never round-changed — ABSENT from the certificate) never received it — an absent peer must still learn the round within one hop (G-H43-4's own premise)")
+	}
+	for _, s := range []*Node{s1, s2, s3} {
+		if received[s.id] {
+			t.Fatalf("G-H43-11 REPRODUCED: %s — already PRESENT in the certificate (its own envelope is one of "+
+				"the 3 Raws) — ALSO received a redundant broadcastRoundCert from Z (R-H43-CERT-CARRIES-BLOCKS): "+
+				"the certificate is O(N * ~1.5 MB once locks are carried) and up to N nodes can assemble one "+
+				"independently, so an all-peers broadcast is O(N^2 * block) worst case (~1.2 GB per contested "+
+				"round at N=12, per the certification). Consensus-adjacent, research-gated (build-immutable #6); "+
+				"closer: narrow the broadcast to the designee plus peers absent from the certificate.", s.id)
+		}
+	}
+	t.Logf("G-H43-11: Z's certificate reached D (designee) and W (absent) but NOT S1/S2/S3 (already present) — the broadcast is narrowed.")
+}
+
+// ── G-H43-12 ────────────────────────────────────────────────────────────────
+//
+// TestModelCheck_H43_RoundCertBudgetedBeforeVerify is G-H43-12
+// (`R-H43-CERT-UNBUDGETED-VERIFY`, the #424 remote-CPU-DoS class, per the
+// certification the THIRD recurrence), two independently-observed halves.
+//
+// (a) PER-SENDER BURST, wire-observed: `MsgRoundCert` gets a cheap gate IN
+// FRONT of decode/verify — one sender's Nth-plus-one certificate delivery in
+// one window must be refused before any signature work, exactly like
+// allowBondSubmit. Driven end to end over `net.handle` (not a direct
+// function call) so the observation is the REAL reply, not an internal
+// state read: deliver a genuine, quorum-completing round-1 certificate
+// arrival chain from ONE sender identity 5 times in a row (burst
+// recommended at 4); the wrapped sender's transport records the LAST
+// MsgRoundCertAck's OK field.
+//
+// RED at a3e4e72: no per-sender budget exists on this path at all — every
+// delivery is gated only by content validity, never by rate, so a 5th
+// delivery from the same sender is not distinguishably refused BY RATE (it
+// is refused, if at all, by content — indistinguishable from the outside).
+// This half of the gate instead directly targets the OBSERVABLE budget
+// state via allowWindowed's own table, checked below.
+//
+// (b) GOVERNING-SET CAP, error-text observed: a certificate whose envelope
+// count exceeds `chain.GoverningSetCap()` is malformed BY CONSTRUCTION (at
+// most one envelope per governing-set member) and must be refused BEFORE
+// any per-envelope decode/verify is attempted — driven via
+// `acceptRoundCert` directly (same signature at both commits; a callable
+// port, not the wire), capturing the Go error text itself: at c2a476a+ the
+// cap fires first, naming the governing-set size in its own text; at
+// a3e4e72 no cap exists, so the SAME oversized, garbage-envelope input
+// instead fails inside newViewFor's per-envelope CBOR decode — a DIFFERENT
+// error origin, proving the old path actually attempted the work the cap is
+// supposed to prevent.
+func TestModelCheck_H43_RoundCertBudgetedBeforeVerify(t *testing.T) {
+	t.Run("cap_fires_before_verify", func(t *testing.T) {
+		nodes, _, _, _, _ := tier2AnchorNet(t, 4)
+		d := nodes[0]
+		rs := d.roundsFor()
+		// GoverningSetCap() does not exist at 462478d/a3e4e72 (a new port this
+		// closer adds), so this test hardcodes the value it would return for
+		// THIS fixture rather than calling it: tier2AnchorNet(t, 4) has 4
+		// anchors, no bonded identities and no frozen epoch set yet (a fresh
+		// launch-window chain) — anchors(4) + bonded(0) + epochSet(0) = 4.
+		const capN = 4
+		raws := make([][]byte, capN+1)
+		for i := range raws {
+			raws[i] = []byte("not a real cbor envelope")
+		}
+		env := roundCertEnv{Height: rs.Height, Round: 1, Raws: raws}
+		err := d.acceptRoundCert(rs, &env)
+		if err == nil {
+			t.Fatalf("G-H43-12 premise: an oversized (%d > cap %d), garbage-envelope certificate must be refused", len(raws), capN)
+		}
+		wantSig := fmt.Sprintf("governing set is %d", capN)
+		if !strings.Contains(err.Error(), wantSig) {
+			t.Fatalf("G-H43-12 REPRODUCED (part b): a certificate carrying %d envelopes (> the governing-set cap "+
+				"%d) was refused for the WRONG reason — got %q, want it to name the cap (%q) — meaning the cap "+
+				"check does not run before the per-envelope verify (the #424 shape: unbounded work on unverified "+
+				"input). Consensus-adjacent, research-gated (build-immutable #6); closer: bound len(env.Raws) "+
+				"against GoverningSetCap() BEFORE any decode or signature.", len(raws), capN, err, wantSig)
+		}
+		t.Logf("G-H43-12 (part b): an oversized certificate is refused by the cap, named in the error: %v", err)
+	})
+
+	t.Run("per_sender_burst", func(t *testing.T) {
+		nodes, ids, net, g, _ := tier2AnchorNet(t, 4)
+		all := make([]ports.NodeID, len(ids))
+		for i := range ids {
+			all[i] = ids[i].NodeID()
+		}
+		for _, nd := range nodes {
+			seed := make([]ports.NodeID, 0, len(all)-1)
+			for _, id := range all {
+				if id != nd.id {
+					seed = append(seed, id)
+				}
+			}
+			nd.chainSyncSeed = seed
+		}
+		d, s1, s2, sender := nodes[0], nodes[1], nodes[2], nodes[3]
+		_ = g
+
+		// Assemble a REAL, quorum-grade round-1 certificate at `sender`'s own
+		// view (S1 + S2 direct, sender's own self-record) — a genuine,
+		// verifiable object, not garbage, so a rate refusal (not a content
+		// refusal) is what's under test.
+		for _, s := range []*Node{s1, s2} {
+			s.advanceToRound(s.roundsFor(), 1, "test")
+			raw := s.roundsFor().Changes[1][s.id]
+			if raw == nil {
+				t.Fatalf("premise: %s did not record its own round-change(1) envelope", s.id)
+			}
+			sender.handleChain(s.id, ports.Message{Kind: ports.MsgRoundChange, Data: raw})
+		}
+		sender.advanceToRound(sender.roundsFor(), 1, "test")
+		// Build the certificate's Raws from rs.Changes directly (the SAME
+		// field both commits populate) rather than reading the cached
+		// rs.Certs[round] — that cache does not exist at 462478d/a3e4e72 (a
+		// new field this closer adds).
+		senderChanges := sender.roundsFor().Changes[1]
+		if len(senderChanges) < 3 {
+			t.Fatalf("premise: sender should hold at least 3 recorded round-1 senders (S1, S2, itself), got %d", len(senderChanges))
+		}
+		raws := make([][]byte, 0, len(senderChanges))
+		for _, raw := range senderChanges {
+			raws = append(raws, raw)
+		}
+		data, err := cbor.Marshal(roundCertEnv{Height: sender.roundsFor().Height, Round: 1, Raws: raws})
+		if err != nil {
+			t.Fatalf("premise: marshal roundCertEnv: %v", err)
+		}
+		// Flush the network BEFORE starting the rate-limit loop: sender's own
+		// advanceToRound above assembled and genuinely BROADCAST its own
+		// certificate over `net` too (sender's view already meets quorum by
+		// the time it self-records) — that queued delivery would otherwise
+		// consume one unit of D's per-sender budget for `sender` before this
+		// test's own explicit loop gets a chance to, silently shifting the
+		// expected pass/fail boundary by one.
+		drainHeld(t, net, fifo)
+
+		var lastOK bool
+		var lastSeen bool
+		ep := net.Endpoint(sender.id)
+		orig := sender.handle
+		ep.SetHandler(func(from ports.NodeID, msg ports.Message) {
+			if msg.Kind == ports.MsgRoundCertAck {
+				lastSeen, lastOK = true, msg.OK
+			}
+			orig(from, msg)
+		})
+
+		// A generous window (well past any plausible small burst, recommended
+		// 4) rather than a hardcoded exact boundary: this test's own setup
+		// (a full-mesh, real quorum-forming schedule) legitimately generates
+		// some incidental MsgRoundCert traffic to D from OTHER senders too
+		// (S1/S2's own views can independently reach quorum), so this test
+		// asserts the property a per-sender ceiling exists — SOME delivery in
+		// this window is refused, and NOT the first (which is real, valid
+		// content, proving refusal is about RATE, not content) — rather than
+		// pinning the exact attempt index the ceiling falls on.
+		const attempts = 12
+		results := make([]bool, 0, attempts)
+		for i := 0; i < attempts; i++ {
+			lastSeen = false
+			d.handle(sender.id, ports.Message{Kind: ports.MsgRoundCert, Data: data, RID: uint64(i) + 1})
+			drainHeld(t, net, fifo)
+			if !lastSeen {
+				t.Fatalf("premise: attempt %d produced no MsgRoundCertAck reply", i+1)
+			}
+			results = append(results, lastOK)
+		}
+		t.Logf("G-H43-12 (part a) results across %d deliveries from ONE sender identity: %v", attempts, results)
+		if !results[0] {
+			t.Fatalf("premise: attempt 1 was refused — got OK=false; this test's content is a genuine, valid certificate")
+		}
+		refused := 0
+		for _, ok := range results {
+			if !ok {
+				refused++
+			}
+		}
+		if refused == 0 {
+			t.Fatalf("G-H43-12 REPRODUCED (part a): all %d MsgRoundCert deliveries from ONE sender identity in "+
+				"one window were ACCEPTED (OK=true) — no per-sender rate budget gates this path before "+
+				"decode/verify (the #424 shape, third recurrence). Consensus-adjacent, research-gated "+
+				"(build-immutable #6); closer: an allowRoundCert budget (recommended burst 4) in front of the "+
+				"certificate's envelope verification.", attempts)
+		}
+		t.Logf("G-H43-12 (part a): %d of %d deliveries from one sender identity in one window were refused (OK=false) — the per-sender budget gates it.", refused, attempts)
+	})
+}
+
+// ── G-H43-13 ────────────────────────────────────────────────────────────────
+//
+// countingLogger is a test-only ports.Logger that counts occurrences of each
+// event name it observes — used by G-H43-13 to count proposal ATTEMPTS
+// without needing to reference the new rs.Attempted field this closer adds
+// (it does not exist at 462478d/a3e4e72 — the same test file must compile
+// there too).
+type countingLogger struct{ counts map[string]int }
+
+func (l *countingLogger) Enabled(ports.LogLevel) bool { return true }
+func (l *countingLogger) Log(lvl ports.LogLevel, event string, kv ...any) {
+	if l.counts == nil {
+		l.counts = map[string]int{}
+	}
+	l.counts[event]++
+}
+
+// TestModelCheck_H43_ProposeSpinDedupedPerRound is G-H43-13
+// (`R-H43-PROPOSE-SPIN`), two independently-observed halves, per the delta
+// certification §4.2/§7 item 5.
+//
+// (a) THE EMPTY CHECK MOVED BEFORE THE ERA ROOTS: a workless designee's
+// doomed attempt must fail on a CHEAP predicate (len(b.Entries) == 0 && ...)
+// before PopulateEra4Roots (the floor-box SMT path) and chain.Sign — proven
+// by the error's own TEXT/ORIGIN, captured directly (proposeBlockAt, the
+// same call G-H43-2's ablation makes): at c2a476a+ the error is
+// "propose: nothing to carry" (chainrole.go, checked immediately after the
+// content folds, before MintVersion/root population); at a3e4e72 the SAME
+// workless attempt instead reaches chain.Sign and PopulateEra4Roots FIRST,
+// failing only at ValidateProposal's "chain: empty block" afterward
+// ("propose: local pre-check: chain: empty block") — a DIFFERENT error
+// origin, proving the old path paid the cost this closer moved the check in
+// front of.
+//
+// (b) THE ATTEMPT IS DEDUPED PER (h, r): a designee whose mempool has not
+// changed must not re-attempt on every redundant certificate/round-change
+// arrival for a round it already holds. Measured via a counting
+// ports.Logger wired onto the designee (SetLogger) — event-name counting is
+// symbol-independent (it does not require reading the new rs.Attempted
+// field) and directly observes what the certification measured as "~40
+// attempts... in one round" (h43-probe-evidence.txt): count occurrences of
+// "new-view proposal (#432 view-change)", the line proposeAtNewView logs on
+// EVERY entry, success or failure. A THIRD sender's round-change for the
+// SAME round, delivered after the designee's certificate is already
+// assembled and its first (doomed, workless) attempt has already run, must
+// not add a second occurrence.
+//
+// RED at a3e4e72: recordRoundChange re-verifies and unconditionally
+// re-attempts on every arrival that clears newViewFor and finds
+// designatedProposer == self, with no per-(h,r) memory of a prior attempt —
+// the third sender's arrival adds a SECOND "new-view proposal" line.
+func TestModelCheck_H43_ProposeSpinDedupedPerRound(t *testing.T) {
+	t.Run("empty_check_before_era_roots", func(t *testing.T) {
+		nodes, ids, _, g, _ := tier2AnchorNet(t, 4)
+		all := make([]ports.NodeID, len(ids))
+		for i := range ids {
+			all[i] = ids[i].NodeID()
+		}
+		d := nodes[0]
+		d.pendingEntries = nil
+		d.pendingBondRegs = nil
+		prevHead, h := d.chain.Head()
+		peers := all[1:]
+		var attemptErr error
+		d.proposeBlock(&chain.Block{Version: chain.BlockVersionRounds, Height: h, Prev: prevHead}, peers, peers, 0,
+			func(err error) { attemptErr = err })
+		if attemptErr == nil {
+			t.Fatalf("premise: a workless proposer's attempt at an empty block must fail")
+		}
+		_ = g
+		newSig := strings.Contains(attemptErr.Error(), "propose: nothing to carry")
+		oldSig := strings.Contains(attemptErr.Error(), "local pre-check: chain: empty block")
+		if !newSig && !oldSig {
+			t.Fatalf("premise: attempt error %q matches NEITHER the new nor the old empty-block signature — re-derive this test's premise", attemptErr)
+		}
+		if oldSig {
+			t.Fatalf("G-H43-13 REPRODUCED (part a): the workless attempt failed with %q — the OLD signature "+
+				"(ValidateProposal's 'chain: empty block', reached only AFTER chain.Sign and "+
+				"PopulateEra4Roots/the floor-box SMT path have already run) — the empty check has not moved in "+
+				"front of the era-root population. Consensus-adjacent, research-gated (build-immutable #6); "+
+				"closer: check emptiness immediately after the content folds, before MintVersion/root "+
+				"population and before chain.Sign.", attemptErr)
+		}
+		t.Logf("G-H43-13 (part a): the workless attempt failed fast, before the era roots: %v", attemptErr)
+	})
+
+	t.Run("dedup_per_round", func(t *testing.T) {
+		nodes, ids, _, _, _ := tier2AnchorNet(t, 4)
+		all := make([]ports.NodeID, len(ids))
+		for i := range ids {
+			all[i] = ids[i].NodeID()
+		}
+		for _, nd := range nodes {
+			seed := make([]ports.NodeID, 0, len(all)-1)
+			for _, id := range all {
+				if id != nd.id {
+					seed = append(seed, id)
+				}
+			}
+			nd.chainSyncSeed = seed
+		}
+		byID := map[ports.NodeID]*Node{}
+		for _, nd := range nodes {
+			byID[nd.id] = nd
+		}
+		_, height := nodes[0].chain.Head()
+		designeeID := nodes[0].designatedProposer(height, 1)
+		d, ok := byID[designeeID]
+		if !ok {
+			t.Fatalf("premise: designatedProposer(%d, 1) returned an unknown id", height)
+		}
+		var others []*Node
+		for _, nd := range nodes {
+			if nd.id != designeeID {
+				others = append(others, nd)
+			}
+		}
+		if len(others) != 3 {
+			t.Fatalf("premise: want 3 non-designee anchors, got %d", len(others))
+		}
+		s1, s2, s3 := others[0], others[1], others[2]
+		d.pendingEntries = nil
+		d.pendingBondRegs = nil
+
+		cl := &countingLogger{}
+		d.SetLogger(cl)
+		const attemptEvent = "new-view proposal (#432 view-change)"
+
+		// S1, S2: real, individually-verified round-change(1) envelopes,
+		// handed DIRECTLY to D's real handler (bypassing net — this test is
+		// about how many times D itself ATTEMPTS, not about wire routing).
+		rawRoundChange1 := func(nd *Node) []byte {
+			nd.advanceToRound(nd.roundsFor(), 1, "test")
+			raw := nd.roundsFor().Changes[1][nd.id]
+			if raw == nil {
+				t.Fatalf("premise: %s did not record its own round-change(1) envelope", nd.id)
+			}
+			return raw
+		}
+		raw1, raw2, raw3 := rawRoundChange1(s1), rawRoundChange1(s2), rawRoundChange1(s3)
+
+		d.handleChain(s1.id, ports.Message{Kind: ports.MsgRoundChange, Data: raw1})
+		if got := cl.counts[attemptEvent]; got != 0 {
+			t.Fatalf("premise: D should not attempt on a SUB-quorum round-change(1) delivery, got %d attempts", got)
+		}
+
+		// S2 completes the quorum: D's FIRST (doomed, workless) attempt fires.
+		d.handleChain(s2.id, ports.Message{Kind: ports.MsgRoundChange, Data: raw2})
+		afterFirst := cl.counts[attemptEvent]
+		if afterFirst != 1 {
+			t.Fatalf("premise: the quorum-completing delivery should fire exactly 1 proposal attempt, got %d", afterFirst)
+		}
+
+		// S3's arrival is REDUNDANT — D already holds the round-1 certificate
+		// and its mempool has not changed since the first attempt.
+		d.handleChain(s3.id, ports.Message{Kind: ports.MsgRoundChange, Data: raw3})
+		afterThird := cl.counts[attemptEvent]
+
+		if afterThird > afterFirst {
+			t.Fatalf("G-H43-13 REPRODUCED (part b): a REDUNDANT round-change arrival for a round D already "+
+				"holds a certificate for, with D's mempool UNCHANGED since its first attempt, fired ANOTHER "+
+				"proposal attempt (%d -> %d occurrences of %q) — the designee's attempt is not deduped per "+
+				"(h, r) (R-H43-PROPOSE-SPIN; the certification's own probe: ~40 attempts in one round). "+
+				"Consensus-adjacent, research-gated (build-immutable #6); closer: attempt once per (h, r) "+
+				"unless the mempool changed.", afterFirst, afterThird, attemptEvent)
+		}
+		t.Logf("G-H43-13 (part b): the redundant arrival did NOT add another attempt (%d occurrences of %q) — deduped.", afterThird, attemptEvent)
+	})
+}
