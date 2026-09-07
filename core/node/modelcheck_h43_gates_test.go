@@ -3,13 +3,11 @@ package node
 import (
 	"crypto/ed25519"
 	"fmt"
-	"sort"
 	"strings"
 	"testing"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/nerolabs/silt/adapters/identity"
-	"github.com/nerolabs/silt/adapters/simnet"
 	"github.com/nerolabs/silt/core/chain"
 	"github.com/nerolabs/silt/ports"
 )
@@ -146,42 +144,40 @@ func TestModelCheck_H43_DesigneeMustProposeAtCertificateRound(t *testing.T) {
 		wrap(nd)
 	}
 
-	holdToDesignee := func(m simnet.HeldMsg) bool {
-		return m.To == designee.id && m.Kind == ports.MsgRoundChange
-	}
-
-	// Each liver independently sweeps its OWN round to 1 (sweepsForRound(0) ==
-	// 2 sweeps), on its own local timeout — no coordination between them,
-	// matching the field's independent per-node ladders. Deliver everything
-	// EXCEPT the round-change(1) copy addressed to the designee, which stays
-	// parked for the driver to release in a controlled order below.
-	for _, nd := range livers {
-		for i := 0; i < 2; i++ {
-			nd.maybeAdvanceRound()
+	// Each liver independently produces a real, individually-verified
+	// round-change(1) envelope — advanceToRound, the same call
+	// maybeAdvanceRound's timeout path makes, on its own round state (a
+	// simulated local timeout, not a network delivery). This test then hands
+	// each one directly to the designee's REAL MsgRoundChange handler, in a
+	// controlled order, rather than relying on simnet delivery ordering:
+	// under the fix, ANY node whose OWN view of Changes[1] reaches the
+	// certificate threshold broadcasts a MsgRoundCert (rounds.go
+	// recordRoundChange/broadcastRoundCert) — a SECOND wire path this test's
+	// held-delivery hold predicate (MsgRoundChange only) does not see, so
+	// holding just the direct round-change copies no longer controls when
+	// the designee's quorum completes (a certificate can arrive first and
+	// carry the same envelope). Delivering the identical, real bytes
+	// straight to designee.handleChain — exactly the call the wire handler
+	// makes on delivery (chainrole.go, case ports.MsgRoundChange) —
+	// reproduces the identical effect without depending on which of the two
+	// wire kinds happens to arrive first, and without touching `net` at all
+	// for this construction (so nothing else on the simulated network can
+	// race in and contaminate the designee's state before this test is
+	// ready).
+	rawRoundChange1 := func(nd *Node) []byte {
+		nd.advanceToRound(nd.roundsFor(), 1, "test")
+		raw := nd.roundsFor().Changes[1][nd.id]
+		if raw == nil {
+			t.Fatalf("premise: %s did not record its own round-change(1) envelope", nd.id)
 		}
-		if r := nd.roundsFor().Round; r != 1 {
-			t.Fatalf("premise: liver %s did not reach round 1 after 2 sweeps (got %d)", nd.id, r)
-		}
-		drainHeldExcept(t, net, holdToDesignee)
+		return raw
 	}
+	raw1, raw2 := rawRoundChange1(livers[0]), rawRoundChange1(livers[1])
 
-	var parkedIDs []int
-	for _, m := range net.Pending() {
-		if holdToDesignee(m) {
-			parkedIDs = append(parkedIDs, m.ID)
-		}
-	}
-	sort.Ints(parkedIDs)
-	if len(parkedIDs) != 2 {
-		t.Fatalf("premise: want exactly 2 parked round-change(1) envelopes addressed to the designee, got %d (%v)", len(parkedIDs), parkedIDs)
-	}
-
-	// Deliver the FIRST envelope: sub-quorum (1 non-proposer anchor <
-	// RequiredQuorum(2)) — recordRoundChange must not fire the designee
-	// trigger yet.
-	if !net.Deliver(parkedIDs[0]) {
-		t.Fatalf("premise: first parked round-change(1) envelope failed to deliver")
-	}
+	// Deliver the FIRST envelope: sub-quorum (1 non-proposer anchor < the
+	// #402 strict anchor majority of 3) — recordRoundChange must not fire
+	// the designee trigger yet.
+	designee.handleChain(livers[0].id, ports.Message{Kind: ports.MsgRoundChange, Data: raw1})
 	rs := designee.roundsFor()
 	if got := len(rs.Changes[1]); got != 1 {
 		t.Fatalf("premise: after the first round-change(1) delivery, designee should hold exactly 1 recorded round-1 sender, got %d", got)
@@ -207,13 +203,19 @@ func TestModelCheck_H43_DesigneeMustProposeAtCertificateRound(t *testing.T) {
 	// (an anchor) itself = 3 of 4 anchors, meeting both RequiredQuorum(2) and
 	// the #402 strict anchor majority (3 of 4), and fires the designee
 	// trigger while rs.Round == 3.
-	if !net.Deliver(parkedIDs[1]) {
-		t.Fatalf("premise: second parked round-change(1) envelope failed to deliver")
-	}
-	if designee.bondDrainInFlight {
-		t.Fatalf("premise: designee.bondDrainInFlight is still true after the triggered propose attempt returned — proposeAtNewView's fin() should have reset it")
-	}
+	designee.handleChain(livers[1].id, ports.Message{Kind: ports.MsgRoundChange, Data: raw2})
+
+	// Fully quiesce whatever this delivery queued (the designee's own
+	// broadcasts, any stray traffic from the livers' independent
+	// advanceToRound calls above, and — once fixed — the real gather this
+	// triggers) before reading bondDrainInFlight: under the fix the
+	// triggered propose attempt is genuinely IN FLIGHT (gatherTwoPhase sent
+	// real prepare requests, awaiting replies), not resolved synchronously
+	// the way the HEAD bug's early error return was.
 	drainHeld(t, net, fifo)
+	if designee.bondDrainInFlight {
+		t.Fatalf("premise: designee.bondDrainInFlight is still true after the network fully quiesced — the triggered propose attempt neither completed nor cleanly failed")
+	}
 
 	// ── Ablation arm: pin the HEAD failure signature ───────────────────────
 	// Reproduce, with a callback this test controls, EXACTLY the call
@@ -289,7 +291,7 @@ func TestModelCheck_H43_DesigneeMustProposeAtCertificateRound(t *testing.T) {
 // the senders with declared round ≥ r meet RoundCatchupMet").
 func TestModelCheck_H43_CatchUpTargetMustReachTheSuffixProvenFrontier(t *testing.T) {
 	const nAnchors = 8
-	nodes, ids, net, _, _ := tier2AnchorNet(t, nAnchors)
+	nodes, ids, _, _, _ := tier2AnchorNet(t, nAnchors)
 	all := make([]ports.NodeID, len(ids))
 	for i := range ids {
 		all[i] = ids[i].NodeID()
@@ -309,43 +311,18 @@ func TestModelCheck_H43_CatchUpTargetMustReachTheSuffixProvenFrontier(t *testing
 	highRounds := []uint64{4, 5, 6}
 	observer := nodes[7]
 
-	for _, nd := range lowSenders {
-		nd.advanceToRound(nd.roundsFor(), 1, "test")
-	}
-	drainHeld(t, net, fifo)
-	for i, nd := range highSenders {
-		nd.advanceToRound(nd.roundsFor(), highRounds[i], "test")
-	}
-	drainHeld(t, net, fifo)
-
-	rs := observer.roundsFor()
-	// >= 4, not == 4: round 1 is a GENUINE quorum-weight round, so as soon as
-	// the D group's broadcasts land, every other node's OWN maybeCatchUpRound
-	// (fired automatically inside the real MsgRoundChange handler,
-	// chainrole.go:358-387) legitimately catches itself up to round 1 too —
-	// #451 ingredient (b) working correctly — and its own resulting
-	// round-change(1) broadcast adds a further entry. That cascade is real,
-	// intended behavior at round 1 (never the defect under test); it does not
-	// touch Changes[4..6], which is what this oracle reads.
-	if got := len(rs.Changes[1]); got < 4 {
-		t.Fatalf("premise: observer should hold at least 4 recorded round-1 senders (the D group, "+
-			"cascaded catch-up may add more), got %d", got)
-	}
-	for _, nd := range lowSenders {
-		if _, ok := rs.Changes[1][nd.id]; !ok {
-			t.Fatalf("premise: D-group sender %s missing from observer's Changes[1]", nd.id)
-		}
-	}
-	for i, r := range highRounds {
-		if got := len(rs.Changes[r]); got != 1 {
-			t.Fatalf("premise: observer should hold exactly 1 recorded sender at round %d, got %d — "+
-				"the per-bucket sub-threshold premise is broken", r, got)
-		}
-		if _, ok := rs.Changes[r][highSenders[i].id]; !ok {
-			t.Fatalf("premise: expected round %d's sole recorded sender to be %s, it was not present", r, highSenders[i].id)
-		}
-	}
-
+	// The threshold checks are asserted on the CONSTRUCTED sender sets
+	// themselves — timing-independent, since RoundCatchupMet is a pure
+	// function of chain config, never of round state — rather than by
+	// re-reading rs.Changes[r] after delivery. Under the fix, delivering the
+	// LAST of the three high-round envelopes can itself complete the suffix
+	// threshold and cause the observer to legitimately self-record into
+	// whichever round it targets (maybeCatchUpRound fires automatically
+	// inside the real MsgRoundChange handler on every delivery, exactly like
+	// the round-1 cascade below) — that is the property this gate exists to
+	// prove, not a premise violation, so a post-delivery exact-count read of
+	// that specific bucket is not a reliable signal once the fix's legitimate
+	// self-recording is active.
 	lowIDs := map[ports.NodeID]bool{}
 	for _, nd := range lowSenders {
 		lowIDs[nd.id] = true
@@ -361,14 +338,60 @@ func TestModelCheck_H43_CatchUpTargetMustReachTheSuffixProvenFrontier(t *testing
 		t.Fatalf("premise: the r_high (A/B/C) population (3 anchors), taken TOGETHER, should meet RoundCatchupMet — " +
 			"this test's high group is not quorum-weight in aggregate, so a suffix-based target could never legitimately reach it either")
 	}
-	for _, r := range highRounds {
-		senders := map[ports.NodeID]bool{}
-		for id := range rs.Changes[r] {
-			senders[id] = true
+	for _, nd := range highSenders {
+		single := map[ports.NodeID]bool{nd.id: true}
+		if observer.chain.RoundCatchupMet(single) {
+			t.Fatalf("premise: sender %s ALONE should not meet RoundCatchupMet — the per-round sub-threshold premise is broken", nd.id)
 		}
-		if observer.chain.RoundCatchupMet(senders) {
-			t.Fatalf("premise: round %d individually (1 sender) should NOT meet RoundCatchupMet on its own — "+
-				"the sub-threshold-PER-BUCKET premise (the defect's precondition) is broken", r)
+	}
+
+	// Deliver every envelope DIRECTLY to the observer's real MsgRoundChange
+	// handler — never through `net` — so nothing but this test's own 7
+	// constructed deliveries can ever write to the observer's Changes map.
+	// Under the fix, delivering through `net` lets ANY OTHER node (not just
+	// the observer) independently accumulate the same suffix-qualifying set
+	// via its own full-mesh connectivity, catch up to round 4 itself, and
+	// re-broadcast its OWN round-change(4) — which then also reaches the
+	// observer and inflates rs.Changes[4] far past the 1 external sender
+	// this test constructs (observed: 6, not 1, when routed through `net`).
+	// Bypassing `net` for construction removes that cross-talk entirely; the
+	// observer's own legitimate self-recording (once IT independently
+	// catches up, exactly the property under test) is the only thing that
+	// can still grow a bucket, and only the one it targets.
+	deliverDirect := func(sender *Node, round uint64) {
+		sender.advanceToRound(sender.roundsFor(), round, "test")
+		raw := sender.roundsFor().Changes[round][sender.id]
+		if raw == nil {
+			t.Fatalf("premise: %s did not record its own round-change(%d) envelope", sender.id, round)
+		}
+		observer.handleChain(sender.id, ports.Message{Kind: ports.MsgRoundChange, Data: raw})
+	}
+	for _, nd := range lowSenders {
+		deliverDirect(nd, 1)
+	}
+	for i, nd := range highSenders {
+		deliverDirect(nd, highRounds[i])
+	}
+
+	rs := observer.roundsFor()
+	// >= 4, not == 4: round 1 is a GENUINE quorum-weight round, so the
+	// observer's OWN maybeCatchUpRound (fired automatically inside the real
+	// MsgRoundChange handler on each of the deliverDirect calls above)
+	// legitimately catches itself up to round 1 too — #451 ingredient (b)
+	// working correctly — and its own resulting round-change(1) self-record
+	// adds a further entry.
+	if got := len(rs.Changes[1]); got < 4 {
+		t.Fatalf("premise: observer should hold at least 4 recorded round-1 senders (the D group, "+
+			"its own legitimate self-record may add one more), got %d", got)
+	}
+	for _, nd := range lowSenders {
+		if _, ok := rs.Changes[1][nd.id]; !ok {
+			t.Fatalf("premise: D-group sender %s missing from observer's Changes[1]", nd.id)
+		}
+	}
+	for i, r := range highRounds {
+		if _, ok := rs.Changes[r][highSenders[i].id]; !ok {
+			t.Fatalf("premise: expected round %d to include sender %s, it was not present", r, highSenders[i].id)
 		}
 	}
 
@@ -474,7 +497,16 @@ func TestModelCheck_H43_DroppedDirectRoundChangeMustStillRelay(t *testing.T) {
 	}
 
 	// Y1 broadcasts; drop EXACTLY its copy to X, deliver every other copy
-	// (Y2, Y3, Z, and the remaining anchors all receive Y1 directly).
+	// (Y2, Y3, Z, and the remaining anchors all receive Y1 directly). The
+	// drop's success is proven on the WIRE — the simnet delivery record
+	// (net.Stats.Dropped) — never by later re-reading X's Changes map: under
+	// the fix, X legitimately ends up holding Y1's envelope too, RECORDED BY
+	// acceptRoundCert once a relayed certificate reaches it (that is this
+	// gate's whole point — see the oracle below), so "does X's Changes map
+	// contain Y1" cannot distinguish "the direct delivery was never dropped"
+	// from "the relay correctly repaired the drop". Only the wire-level
+	// record of the drop itself proves the drop took.
+	dropsBefore := net.Stats.Dropped
 	y1.advanceToRound(y1.roundsFor(), 1, "test")
 	dropID := -1
 	for _, m := range net.Pending() {
@@ -488,6 +520,9 @@ func TestModelCheck_H43_DroppedDirectRoundChangeMustStillRelay(t *testing.T) {
 	if !net.DropPending(dropID) {
 		t.Fatalf("premise: DropPending(%d) (Y1's message to X) failed", dropID)
 	}
+	if net.Stats.Dropped != dropsBefore+1 {
+		t.Fatalf("premise: the simnet delivery record does not show exactly one new drop after DropPending — got Dropped=%d, want %d (the wire-level proof the drop took)", net.Stats.Dropped, dropsBefore+1)
+	}
 	drainHeld(t, net, fifo)
 
 	// Y2 and Y3 broadcast normally — X receives both of these directly.
@@ -496,18 +531,15 @@ func TestModelCheck_H43_DroppedDirectRoundChangeMustStillRelay(t *testing.T) {
 	y3.advanceToRound(y3.roundsFor(), 1, "test")
 	drainHeld(t, net, fifo)
 
-	// Premise (the drop landed, and only on X): X holds Y2+Y3 but not Y1.
+	// Premise: X holds (at least) Y2 and Y3's direct envelopes — a subset
+	// check, not an exact count, since a relayed certificate may ALSO have
+	// reached X by this point (carrying Y1's envelope too, or re-presenting
+	// Y2/Y3's) — that is the fix legitimately working, not a premise defect.
 	xrs := x.roundsFor()
-	if _, ok := xrs.Changes[1][y1.id]; ok {
-		t.Fatalf("premise: X recorded Y1's round-change(1) despite the drop — DropPending did not take")
-	}
 	for _, sender := range []*Node{y2, y3} {
 		if _, ok := xrs.Changes[1][sender.id]; !ok {
 			t.Fatalf("premise: X is missing %s's direct round-change(1) — it should have received this one undropped", sender.id)
 		}
-	}
-	if got := len(xrs.Changes[1]); got != 2 {
-		t.Fatalf("premise: X should hold exactly 2 recorded round-1 senders (Y2, Y3), got %d", got)
 	}
 
 	// Premise (a real certificate WAS genuinely assembled elsewhere): Z

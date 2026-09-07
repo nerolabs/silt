@@ -74,8 +74,24 @@ func TestModelCheck_H43_HeterogeneousArmingMustCommitWithinFPlus1Rounds(t *testi
 	// checks the harness CAN express.
 	armed := []int{0, 1, 2}
 	killedIdx := 3
-	arm := func() {
-		refill() // seeds pendingBondRegs on EVERY node (the shared, uniform helper)
+	// stripQuiescent (h43-ABC-asbuilt certification §1.3, R-H43-FIXTURE-STRIPS-REG-LANE):
+	// SETUP-ONLY on the entries lane. Run once, to establish the
+	// heterogeneous-arming premise (nodes 4-11 start with none of the
+	// height's pending work — the field's 8 silent rotation seats), on BOTH
+	// lanes. It must not zero pendingEntries again after setup: the fix's
+	// part (D) legitimately FORWARDS pending entries to a round's designee
+	// (forwardPendingWorkToDesignee, rounds.go), and a periodic strip of
+	// every quiescent seat's ENTRY queue would delete that forwarded work
+	// before the designee ever gets to fold it — an artifact of this
+	// fixture, not a property of the mechanism under test. The reg lane is
+	// different: the certification's own ruling (delta cert §3.1) is that a
+	// forwarded THIRD-PARTY reg is, and must stay, REFUSED at the receiver
+	// ("bond-reg submit REFUSED (relay)", chainrole.go) — so a quiescent
+	// seat's pendingBondRegs can never legitimately grow from a forward
+	// either way, and this oracle keeps re-stripping it every top-up purely
+	// to cancel refill()'s own uniform reseed (below), never because a real
+	// forward could have landed one.
+	stripQuiescentRegsOnly := func() {
 		armedSet := map[int]bool{}
 		for _, i := range armed {
 			armedSet[i] = true
@@ -84,10 +100,21 @@ func TestModelCheck_H43_HeterogeneousArmingMustCommitWithinFPlus1Rounds(t *testi
 			if i == killedIdx || armedSet[i] {
 				continue
 			}
-			// QUIESCENT: strip what refill() just seeded — this seat never
-			// holds pending work, matching the field's 8 silent rotation seats.
 			nd.pendingBondRegs = nil
-			nd.pendingEntries = nil
+		}
+	}
+	arm := func() {
+		refill() // seeds pendingBondRegs on EVERY node (the shared, uniform helper)
+		stripQuiescentRegsOnly()
+		armedSet := map[int]bool{}
+		for _, i := range armed {
+			armedSet[i] = true
+		}
+		for i, nd := range nodes {
+			if i == killedIdx || armedSet[i] {
+				continue
+			}
+			nd.pendingEntries = nil // setup only — the caller below never repeats this
 		}
 	}
 	arm()
@@ -160,7 +187,16 @@ func TestModelCheck_H43_HeterogeneousArmingMustCommitWithinFPlus1Rounds(t *testi
 		}
 		steps++
 		if steps%64 == 0 {
-			arm() // keep the 3 armed seats' queues topped up; re-strip the quiescent 8
+			// Top up the 3 armed seats' pendingBondRegs (refill() reseeds ALL 12
+			// uniformly, so immediately re-strip the reg lane on the quiescent 8
+			// — that lane can never legitimately hold forwarded work, certified
+			// above). Deliberately do NOT touch pendingEntries here: a legitimate
+			// (D) forward may have landed real pending entries on a quiescent
+			// seat since the last top-up, and wiping them would delete work the
+			// fix forwards, not model a genuine silent seat (certification
+			// §1.3/§7 item 7, R-H43-FIXTURE-STRIPS-REG-LANE).
+			refill()
+			stripQuiescentRegsOnly()
 		}
 	}
 
