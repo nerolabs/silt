@@ -30,6 +30,7 @@ type ContractedString struct {
 var ObservableContract = []ContractedString{
 	{"freeload: ON", "cmd/silt/daemon.go", "e2e reFreeload; the role announcement (instance 1 of the scar)", "TestFreeloadRoleSeparation"},
 	{"archive: ON", "cmd/silt/daemon.go", "e2e reArchive", "TestArchiveTierAnnouncesRetention"},
+	{"serves no demand issuer key", "cmd/silt/swarm.go", "the lane-OFF refusal's distinguishing sentence (a server running no -accept-delivery-receipts), DISTINCT from the committed-binding refusal; the cloud sheet's flow_delivery_lane grades its lane-off control on it (blind PE re-review 2026-09-07)", "TestDeliveryReceiptRefusedWhenLaneOff"},
 	{"NOT banked", "cmd/silt/swarm.go", "e2e: the lane-off refusal must be legible to the caller (instances 2 and 3 of the scar)", "TestDeliveryReceiptRefusedWhenLaneOff"},
 	{"delivery receipt banked", "cmd/silt/swarm.go", "e2e parses credit=(\\d+) from the client line", ""},
 	{"delivery receipt banked", "core/node/deliverysession.go", "R2.9: the session lane emits the SAME marker per settled receipt; e2e TestPaidDeliverySessionEndToEnd finds it", "TestPaidDeliverySessionEndToEnd"},

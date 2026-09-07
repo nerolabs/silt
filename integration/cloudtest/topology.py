@@ -378,7 +378,10 @@ def main():
                 # a DERIVED capacity cap (~327 at today's inputs, cmd/silt/daemon.go), and 256
                 # sat at 78 % of it — a moved input would have refused the boot validator and
                 # lost the whole sheet (blind PE 2026-09-07 item 6). 64 covers every identity a
-                # sheet registers on it with 5x margin below the cap.
+                # sheet registers on it with 5x margin below the cap. The other side of that
+                # trade (blind PE re-review): 64/hour is the boot validator's publish-mint
+                # headroom once the lane is LIVE (17 ft_publish sites x retries); safe today by
+                # the faucet's one-fee advance floor — re-measure at the stamp raise.
                 a += " -accept-delivery-receipts -delivery-idle-window 90s -grant-capacity 64 -grant-per-hour 64"
             else:
                 a += f" -bootstrap {bootstrap}"

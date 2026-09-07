@@ -2264,10 +2264,11 @@ EOF
 #                             announced NOT-banked marker; the two refusals never conflated.
 #   13b-delivery-settlement — pass ONLY when the receipt actually banked on the wire (the
 #                             server's `delivery receipt banked` + the idle `delivery session
-#                             closed`, both in debug.log); SKIP behind the era probe while
-#                             the lane is dark (a skip keeps the RC gate reachable — blind PE
-#                             2026-09-07 item 4; the skip text says what is untested). This
-#                             row turns green at the stamp raise with NO harness change.
+#                             closed`, both in debug.log); SKIP behind the binding probe while
+#                             the lane is dark (a skip keeps the RC gate reachable — the PE's
+#                             recommendation; OWNER RATIFICATION of skip-vs-gap is owed and
+#                             recorded in the PR; the skip text says what is untested). This
+#                             row turns green once the binding commits, with NO harness change.
 # SURFACES (blind PE 2026-09-07, items 1–2): the boot banner is a fmt.Printf -> journald,
 # read over the WHOLE unit journal (never the 800-line window — the boot validator emits
 # ~27 journald lines per block, 79 % TLS-handshake noise from the registry listener);
@@ -2298,8 +2299,28 @@ import json;t=json.load(open('$FT_TOPO'));n=t['nodes']['$offnode'];print(n['node
   local armed announced afford
   # The RUNNING daemon's command line (pgrep -a prints it on both backends; the LOCAL
   # systemctl shim implements no `show`, which the first cut read and scored 0 — caught
-  # by the LOCAL drive, not the fleet).
-  armed="$(ssh_node "$boot" "pgrep -af '^/usr/local/bin/silt daemon' | head -1 | grep -c -- '-accept-delivery-receipts'" | tr -dc '0-9')"
+  # by the LOCAL drive, not the fleet). Every read here is a substrate read: it is
+  # retried, and a read that never ANSWERS (empty ssh) GAPs — only an answered read that
+  # says "no flag" or "no banner" is the property failing (blind PE re-review item 3).
+  local rd_try cmdline=""
+  for rd_try in 1 2 3; do
+    cmdline="$(ssh_node "$boot" "pgrep -af '^/usr/local/bin/silt daemon' | head -1" || true)"
+    [ -n "$cmdline" ] && break; sleep 5
+  done
+  if [ -z "$cmdline" ]; then
+    record "13-delivery-lane" gap major "could not read the boot validator's daemon command line in 3 attempts (empty ssh reply) — substrate, property UNTESTED"
+    record "13b-delivery-settlement" skip major "substrate (see 13-delivery-lane)"; return
+  fi
+  armed="$(printf '%s' "$cmdline" | grep -c -- '-accept-delivery-receipts' | tr -dc '0-9')"
+  local journal=""
+  for rd_try in 1 2 3; do
+    journal="$(ssh_node "$boot" "sudo journalctl -u silt --no-pager -o cat 2>/dev/null | grep -m1 -E 'delivery receipts: ACCEPTING|delivery settlement: p=|^silt: |Started silt' | head -3" || true)"
+    [ -n "$journal" ] && break; sleep 5
+  done
+  if [ -z "$journal" ]; then
+    record "13-delivery-lane" gap major "could not read the boot validator's journal in 3 attempts (empty ssh reply) — substrate, property UNTESTED"
+    record "13b-delivery-settlement" skip major "substrate (see 13-delivery-lane)"; return
+  fi
   announced="$(ssh_node "$boot" "sudo journalctl -u silt --no-pager -o cat 2>/dev/null | grep -m1 -E 'delivery receipts: ACCEPTING'" || true)"
   afford="$(ssh_node "$boot" "sudo journalctl -u silt --no-pager -o cat 2>/dev/null | grep -m1 -E 'delivery settlement: p='" || true)"
   if [ "${armed:-0}" = 0 ] || [ -z "$announced" ]; then
@@ -2345,9 +2366,15 @@ import json;t=json.load(open('$FT_TOPO'));n=t['nodes']['$offnode'];print(n['node
     sleep 10
   done
   # (4) The lane-OFF control: a store running no lane must say so with the announced marker.
-  local off; off="$(ssh_node fetch-1 "/usr/local/bin/silt swarm receipt '$root' -peers '$offref' -increments 1 2>&1" || true)"
-  local off_ok=0
+  local off="" off_try
+  for off_try in 1 2 3; do
+    off="$(ssh_node fetch-1 "/usr/local/bin/silt swarm receipt '$root' -peers '$offref' -increments 1 2>&1" || true)"
+    printf '%s' "$off" | grep -qE "NOT banked|banked by" && break
+    sleep 10
+  done
+  local off_ok=0 off_noise=0
   printf '%s' "$off" | grep -q "delivery receipt was NOT banked by" && printf '%s' "$off" | grep -q "serves no demand issuer key" && off_ok=1
+  if [ "$off_ok" = 0 ] && { [ -z "$off" ] || printf '%s' "$off" | grep -qiE "timeout|timed out|connection refused|no route|dial|i/o|unreachable|EOF"; }; then off_noise=1; fi
   # The server's own record, scoped to lines written after the baseline (debug.log, never journald).
   local sbanked; sbanked="$(ssh_node "$boot" "sudo tail -n +$((n0 + 1)) /var/lib/silt/debug.log 2>/dev/null | grep -E 'delivery receipt banked' | tail -1" || true)"
 
@@ -2362,8 +2389,11 @@ import json;t=json.load(open('$FT_TOPO'));n=t['nodes']['$offnode'];print(n['node
       [ -n "$closed" ] && break
       sleep 10; waited=$((waited + 10))
     done
+    if [ "$off_noise" = 1 ]; then
+      record "13-delivery-lane" gap major "LIVE lane: client banked, but the lane-off control at ${offnode} could not be driven (transport noise after 3 attempts: $(printf '%s' "$off" | head -c 200)) — property UNTESTED"
+    fi
     local ok=0; [ -n "$sbanked" ] && [ -n "$closed" ] && [ "$off_ok" = 1 ] && ok=1
-    slo_assert "13-delivery-lane" major "LIVE lane: client banked (${out##*: }); server debug.log banked=$([ -n "$sbanked" ] && echo yes || echo NO) closed=$([ -n "$closed" ] && echo yes || echo NO); lane-off control at ${offnode} $([ "$off_ok" = 1 ] && echo refused-with-marker || echo "WRONG: $off")" "$ok" $((t1 - t0))
+    [ "$off_noise" = 1 ] || slo_assert "13-delivery-lane" major "LIVE lane: client banked (${out##*: }); server debug.log banked=$([ -n "$sbanked" ] && echo yes || echo NO) closed=$([ -n "$closed" ] && echo yes || echo NO); lane-off control at ${offnode} $([ "$off_ok" = 1 ] && echo refused-with-marker || echo "WRONG: $off")" "$ok" $((t1 - t0))
     local sok=0; [ -n "$sbanked" ] && [ -n "$closed" ] && ! printf '%s' "$closed" | grep -qE "object=|fetcher=" && sok=1
     slo_assert "13b-delivery-settlement" major "R2.9 settlement ON THE WIRE: ${sbanked:-no banked line}; close: ${closed:-no close line within 150s}${afford:+; $afford}" "$sok" $((t1 - t0))
     return
@@ -2374,12 +2404,22 @@ import json;t=json.load(open('$FT_TOPO'));n=t['nodes']['$offnode'];print(n['node
     # baseline). The lane-off sentence must NOT appear (distinct contracts, PE 2026-09-03).
     local conflated=0
     printf '%s' "$out" | grep -q "serves no demand issuer key" && conflated=1
+    if [ "$off_noise" = 1 ]; then
+      record "13-delivery-lane" gap major "DARK lane: the armed server refused as expected, but the lane-off control at ${offnode} could not be driven (transport noise after 3 attempts: $(printf '%s' "$off" | head -c 200)) — property UNTESTED"
+      record "13b-delivery-settlement" skip major "UNTESTED on this chain (see 13-delivery-lane; era-4 dark until the R3.4 stamp raise)"; return
+    fi
     local ok=0; [ "$conflated" = 0 ] && [ -z "$sbanked" ] && [ "$off_ok" = 1 ] && ok=1
     slo_assert "13-delivery-lane" major "DARK lane (era-4 not active): armed + announced on ${boot}; client refused at the withdrawal naming the committed E->key binding (nothing spent); server debug.log (+$(( $(ssh_node "$boot" "sudo wc -l < /var/lib/silt/debug.log 2>/dev/null" | tr -dc '0-9') - n0 )) lines since baseline) banked nothing$([ "$conflated" = 1 ] && echo '; WRONG: conflated with the lane-off sentence')$([ -n "$sbanked" ] && echo "; WRONG: server banked: $sbanked"); lane-off control at ${offnode} $([ "$off_ok" = 1 ] && echo refused-with-marker || echo "WRONG: $off")${afford:+; $afford}" "$ok" $((t1 - t0))
-    record "13b-delivery-settlement" skip major "UNTESTED on this chain (era probe: the client was refused at the committed E->key binding): the positive settlement needs era-4, dark on every real network until the R3.4 stamp raise (no activation override, owner-ratified). Row 13 is what holds today; this row grades the wire settlement at the stamp raise with no harness change." $((t1 - t0))
+    # THE PROBE IS A BINDING PROBE, NOT AN ERA PROBE (blind PE re-review): the client's
+    # sentence covers two causes — the issuer committed no binding (era-4 dark) OR the keys
+    # it served are off-commitment — and no era surface exists on the CLI or the status
+    # route to tell them apart (R-CLOUD-ERA-PROBE). Until the stamp raise adds one, a broken
+    # commit path on a live era-4 chain would read here as this same SKIP; the skip text
+    # names both causes so an operator reads it as "untested", never as "green".
+    record "13b-delivery-settlement" skip major "UNTESTED on this chain: the client was refused at the withdrawal because the issuer served no key that resolves against a COMMITTED E->key binding — on today's networks because era-4 is dark (no binding can commit until the R3.4 stamp raise; no activation override, owner-ratified), though the same sentence would also cover off-commitment keys (no era surface exists to tell them apart: R-CLOUD-ERA-PROBE). Row 13 is what holds today; this row grades the wire settlement once the binding commits, with no harness change." $((t1 - t0))
     return
   fi
-  if printf '%s' "$out" | grep -qiE "timeout|timed out|connection refused|no route|dial|i/o|unreachable|EOF"; then
+  if [ -z "$out" ] || printf '%s' "$out" | grep -qiE "timeout|timed out|connection refused|no route|dial|i/o|unreachable|EOF"; then
     record "13-delivery-lane" gap major "client could not complete the receipt call after ${attempt} attempts — transport noise, property UNTESTED: $(printf '%s' "$out" | head -c 300)" $((t1 - t0))
     record "13b-delivery-settlement" skip major "client transport noise (see 13-delivery-lane)"; return
   fi
