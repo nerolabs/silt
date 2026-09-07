@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/fxamacker/cbor/v2"
@@ -11,6 +12,34 @@ import (
 	"github.com/nerolabs/silt/core/chain"
 	"github.com/nerolabs/silt/ports"
 )
+
+// h43QuiescentDesigneeObserved is the G-H43-6 "teeth" fix (the composed-diff
+// re-certification's own ruling: G-H43-6 as it stood was VACUOUS for its
+// stated purpose — it can only verify the HARNESS's capability and the
+// shared refill() helper's uniformity, never whether any REAL oracle in the
+// package actually EXERCISED a non-uniform arming in a load-bearing way, so
+// it could never catch G-H43-1's fixture silently reverting to uniform
+// arming). Any test that confirms — at RUNTIME, on live Node state, not by
+// trusting its own construction — that a round's designee is a LIVE,
+// ELIGIBLE proposer holding none of the height's pending work (the M4
+// workless-designee shape this whole arc is about) calls
+// recordH43QuiescentDesigneeObserved to leave that evidence here.
+// G-H43-6 asserts this is non-empty AT THE END of the package run — package
+// tests within one file run in declaration order and files are compiled in
+// filename order, so any test earlier in file order (or in an earlier file)
+// has already run and recorded by the time G-H43-6 checks; running G-H43-6
+// in isolation (a -run filter that excludes the recorders) will correctly
+// and informatively fail, per its own message.
+var (
+	h43QuiescentDesigneeMu       sync.Mutex
+	h43QuiescentDesigneeObserved []string
+)
+
+func recordH43QuiescentDesigneeObserved(gate string, designee ports.NodeID) {
+	h43QuiescentDesigneeMu.Lock()
+	defer h43QuiescentDesigneeMu.Unlock()
+	h43QuiescentDesigneeObserved = append(h43QuiescentDesigneeObserved, fmt.Sprintf("%s: designee %s confirmed live+eligible+workless", gate, designee))
+}
 
 // G-H43-2, G-H43-3, G-H43-4, G-H43-5 — the remaining RED-first gates from
 // silt-reviews/research/research-outcome/
@@ -855,6 +884,11 @@ func TestModelCheck_H43_EntryLaneWorklessDesigneeMustCommitWithinFPlus1Rounds(t 
 		t.Fatalf("premise: round 0/1's designee (idx %d/%d) must be neither armed nor the killed seat (armed=%v killed=%d)", d0idx, d1idx, armed, killedIdx)
 	}
 	t.Logf("G-H43-9 premise: round-0 designee is seat %d (quiescent), round-1 designee is seat %d (quiescent), armed=%v, killed=%d", d0idx, d1idx, armed, killedIdx)
+	// G-H43-6 teeth: seat d0idx is confirmed live+eligible (chosen from the
+	// pool, not armed, not killed) and will be stripped to hold none of the
+	// height's pending work by setup below — this IS a runtime-confirmed
+	// quiescent eligible proposer at round-0 entry.
+	recordH43QuiescentDesigneeObserved("G-H43-9", nodes[d0idx].id)
 	for i, nd := range nodes {
 		if i == killedIdx {
 			continue

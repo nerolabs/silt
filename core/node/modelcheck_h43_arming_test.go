@@ -13,6 +13,14 @@ import (
 // seats hold pending work, one heavy seat killed, staggered sweep phases,
 // timed delivery on the sim clock."
 //
+// THIS TEST IS ALSO G-H43-15 (the delta certification's own instruction:
+// "pin the takeover re-key `(height + rs.Round) % N` — this is the same pin
+// as the reg-lane G-H43-1 re-shape; one gate is enough if it names both").
+// The "── The pin (D3) ──" block below reads chainrole.go's
+// `maybeProposeBondDrain`'s `d := int((height + rs.Round) % uint64(len(props)))`
+// live, against the ACTUAL committing proposer — that IS the re-key pin;
+// no second gate duplicates it.
+//
 // THE ROOT (M1, certified): core/node/rounds.go:306-310 arms the round clock
 // on LOCAL mempool content — `maybeAdvanceRound` quiesces
 // (`rs.Sweeps = 0`) whenever a node's OWN pendingBondRegs/pendingEntries/
@@ -325,6 +333,10 @@ func TestModelCheck_H43_HeterogeneousArmingMustCommitWithinFPlus1Rounds(t *testi
 		t.Fatalf("premise: round %d's own designee %s is the KILLED seat — that tests a DOWN designee, a "+
 			"different, already-covered class, not a workless-but-live one", commitRound, roundDesigneeID)
 	}
+	// G-H43-6 teeth: this IS the runtime-confirmed, load-bearing observation
+	// of a live+eligible+workless designee the fix (a vacuous G-H43-6
+	// otherwise) needs evidence of.
+	recordH43QuiescentDesigneeObserved("G-H43-1", roundDesigneeID)
 
 	roundKeyedWinner, roundKeyedDist := rankFrom(dRound)
 
@@ -456,4 +468,29 @@ func TestModelCheck_H43_AtLeastOneRoundLivenessOracleArmsNonUniformly(t *testing
 		"(the shared refill() helper arms all %d nodes uniformly — the exact trap the certification names). "+
 		"TestModelCheck_H43_HeterogeneousArmingMustCommitWithinFPlus1Rounds is, as of this commit, the first "+
 		"oracle in the family that does not rely on refill() alone.", len(nodes))
+
+	// HALF 3 — LOAD-BEARING EXERCISE (the composed-diff re-certification's
+	// fix for G-H43-6's own VACUOUS ruling): halves 1 and 2 above prove only
+	// that the HARNESS permits non-uniform arming and that refill() is
+	// uniform — neither can catch G-H43-1's (or G-H43-9's) fixture silently
+	// reverting to plain refill(), because neither reads whether any REAL
+	// oracle actually exercised the capability. h43QuiescentDesigneeObserved
+	// is written, at runtime, by any test that confirms a LIVE, ELIGIBLE
+	// designee held none of the height's pending work — the M4 shape this
+	// whole arc targets. Package tests within one file run in declaration
+	// order, and `go test` compiles a package's files in filename order
+	// ("modelcheck_h43_arming_test.go" precedes "modelcheck_h43_gates_test.go"),
+	// so G-H43-1 (declared earlier in THIS file) has already run and
+	// recorded by the time this check runs.
+	h43QuiescentDesigneeMu.Lock()
+	observed := append([]string(nil), h43QuiescentDesigneeObserved...)
+	h43QuiescentDesigneeMu.Unlock()
+	if len(observed) == 0 {
+		t.Fatal("G-H43-6 REPRODUCED (load-bearing-exercise check): h43QuiescentDesigneeObserved is EMPTY — no " +
+			"test in this package run has confirmed, at runtime, a live+eligible+workless designee. Either " +
+			"this test ran in isolation (a -run filter that excludes the recorders — G-H43-1/G-H43-9 must run " +
+			"first; this failure is then expected and uninformative, not a regression) or G-H43-1's fixture has " +
+			"silently reverted to a uniform refill() (the exact regression capability+teeth above cannot catch).")
+	}
+	t.Logf("G-H43-6 (load-bearing-exercise): %d real observation(s) recorded this package run: %v", len(observed), observed)
 }
