@@ -135,3 +135,27 @@ registration-lane shape commits at 232 s via the takeover, inside the 430 s back
 **Gates now owed (Tester):** G-H43-9 (the entry-lane arm of G-H43-1 with `commitRound ≤ f` and proposer ==
 designee), G-H43-10 (the forward: entries land; NO reg is ever forwarded), G-H43-10a (the cap is its own
 constant), G-H43-11/12/13 (the certificate's cost gates), plus the re-encoded premises of G-H43-2/3/4.
+
+## Third pass — the composed-diff re-certification
+
+`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/CONSENSUS-LIVENESS-h43-COMPOSED-DIFF-c2a476a-RESEARCH-CERTIFICATION-2026-09-07.md`:
+(A)(B)(C)(D1)(D3) built as certified; the monotone takeover walk CERTIFIED (bound ≤ 11 sweeps = 330 s at
+N = 12 — the Researcher's own reset recommendation refuted on the arithmetic: a reset walk needs ≈ 45
+sweeps); I1/I2/I3/I5 CERTIFIED; the 190 s bound at f = 1 confirmed with a round-0 clause (round 0 is never
+"entered", so it is protected by the pre-existing client and renewal broadcasts, not by the forward).
+
+**One merge blocker, fixed before the PR — `R-H43-CERT-ROUND-ZERO-UNVERIFIED`.** `newViewFor` returns
+`(nil, nil)` at round 0 — the same shape as "verified, at quorum" — and the two new callers
+(`acceptRoundCert`, `checkRoundQuorum`) read it as such, so a `MsgRoundCert` with round 0 from any peer,
+no signature, no eligibility, wrote attacker-chosen envelopes into `rs.Changes` (a forced jump to any round;
+permanent per-round certificate poisoning, since `newViewFor` hard-fails a set on its first bad envelope;
+amplification through the round-0 designee). Safety held throughout; liveness/DoS of the #424 class, fourth
+recurrence. Closers as ruled: C-1 `acceptRoundCert` refuses round 0 (and an empty set); C-2
+`checkRoundQuorum` returns at round 0; C-3 `verifyRoundChange` rejects round 0. The alternative — making
+`newViewFor` skip a bad envelope — was rejected by the Researcher as an era-surface change. Gate G-H43-14.
+
+**Gates ruled vacuous or owed:** G-H43-6 is VACUOUS for its stated purpose (it cannot catch a fixture
+reverted to uniform arming; the property is pinned by G-H43-1's own setup fatal) — closer: a package-level
+"a quiescent eligible proposer was observed at round-0 entry" record that G-H43-6 asserts non-empty.
+G-H43-14 (round-0 refusal), G-H43-15 (the re-key `(height + round) % N`), G-H43-16 (the monotone walk's
+attribution in the #441 rotation oracle's docstring), G-H43-10a/11/12/13 (the cost gates) are owed.
