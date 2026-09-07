@@ -54,3 +54,29 @@ one accidental test drop of this session already happened. The primitive and the
 `TestDemandWashCostsRealFees` (v2 cost-to-wash artifact) is retired in favour of the v3 twin that ships. The
 e2e refusal tests (`TestPaidDeliveryLaneRefusesWithoutACommittedKeyBinding`, `TestDeliveryReceiptRefusedWhenLaneOff`)
 already drive `swarm receipt`, which is v3.
+
+## Blind PE fold-in (2026-09-07)
+
+**Ruling:** `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-B9-flat-receipt-retirement-7f2ac97-2026-09-07.md`
+(MERGE-AFTER: four blockers, three fixes, a text batch).
+
+**What the blind seat measured that the build missed.** (1) The retirement had no gate: a banking body restored in
+`handleDeliveryReceipt` left every package green. (2) The composed pump gates were vacuous: under sessions a server
+verifies anchors under its OWN key, and the fixture's server B had no keyset, so B refused a live token and an
+expired one with the identical "no self keyset" error — three arms across two tests measured darkness, and the
+file's stated FDH-epoch ablation was false. (3) The C3 wall-clock budget was calibrated on the retired one-byte
+driver (fixed in `75e8989` before the ruling was read). (4) The guard-full WARN sat at settle, where guard-full
+cannot occur on the session lane; it fired at WARN on every unauthenticated settle refusal instead.
+
+**What was built.** The retirement gate drives a well-formed, otherwise-valid v2 receipt (the primitive banks it
+on a scratch bank — the premise) and asserts the refusal, no credit motion, both observables unchanged, and that
+the token still opens a session. B holds its own committed key; the own-key rule has its own gate (a FRESH
+foreign anchor refused at B, then banked at A); the window arm and the re-dating arm are at the ISSUER and read
+the refusal REASON — the guard's epoch watermark would otherwise refuse the backdated spend downstream and
+stand in for the window (ablation (i) measured `token-backdated`). The guard-full signal moved to open/fund
+(`delivery anchor refused: guard full`, with the counter also on `/api/status`); the settle WARN is post-auth
+only. G4 asserts the exact post-settlement balance. Six ablations, six RED, recorded in the gates' headers.
+
+**Lesson (scars 5–6 in the gate discipline):** "not banked" cannot tell which layer refused — read the reason;
+a fixture server with no keyset satisfies every refusal by darkness — give it a key. And when a re-home moves
+WHERE a property closes (window → own-key rule), the new seam needs its own gate.
