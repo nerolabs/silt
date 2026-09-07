@@ -314,13 +314,7 @@ func v5VersionPartition(b *Block) (FloorBoxOutcome, error) {
 // because distinct carrier ids are free (carrier.go), so a count bounds nothing.
 func v5CheckBudget(bud Budget, b *Block) error {
 	if bud.Unlimited() {
-		return nil
+		return nil // no encode on the node
 	}
-	if bud.IsZero() {
-		return ErrWitnessBudgetUnset
-	}
-	if n := len(Encode(b)); n > bud.MaxFrameBytes() {
-		return fmt.Errorf("%w: frame %d bytes (budget %d)", ErrWitnessBudgetExceeded, n, bud.MaxFrameBytes())
-	}
-	return nil
+	return bud.Check(len(Encode(b)), "frame")
 }

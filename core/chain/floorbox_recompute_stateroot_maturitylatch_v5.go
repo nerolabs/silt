@@ -28,20 +28,20 @@ import (
 //
 // THE RECONSTRUCTION. post_everMature = pre_everMature || matureNow(thisBlock). matureNow reads
 // the POST-apply bonded/seen set, so it verifies against committedStateRoot (the post-apply root),
-// NOT prevStateRoot. The box reuses RecomputeMatureNow (#668, floorbox_recompute_maturity_v5.go)
+// NOT prevStateRoot. The box reuses recomputeMatureNow (#668, floorbox_recompute_maturity_v5.go)
 // — NOT a rebuild — over the class-M SeenSet witness. A forged maturity witness cannot verify
-// against the committed root ⇒ RecomputeMatureNow stalls ⇒ the box stalls (never wrongly latches,
+// against the committed root ⇒ recomputeMatureNow stalls ⇒ the box stalls (never wrongly latches,
 // never wrongly skips). When pre_everMature is already true there is no crossing: M emits nothing
 // and requires no maturity witness.
 //
-// OBJECTIVE-BRANCH ONLY (same discipline as the other classes). RecomputeMatureNow reproduces the
+// OBJECTIVE-BRANCH ONLY (same discipline as the other classes). recomputeMatureNow reproduces the
 // OBJECTIVE branch of matureNow (MatureValidators>0). In the non-objective launch phase everMature
 // latches at genesis, so pre_everMature is already true for any post-genesis block and M is inert.
 
 // StateRootMaturityWitness is the class-M witness AND the box's carrier for the committed
 // young→mature HANDOFF pre-state. It carries the two handoff scalar leaf proofs (everMature and
 // matureEpoch, both against prevStateRoot) plus the SeenSet maturity witness (against
-// committedStateRoot) the box feeds RecomputeMatureNow to decide the latch.
+// committedStateRoot) the box feeds recomputeMatureNow to decide the latch.
 //
 // It is the SINGLE source of the tagEverMature reconstruction — both class M (the write) and class P
 // (the freeze gate) consume the SAME post-latch verdict the entry computes from this witness — and,
@@ -73,7 +73,7 @@ type StateRootMaturityWitness struct {
 	// passing.
 	MatureEpoch StateRootRotateScalar
 	// SeenSet is the maturity witness (validatorsSeen id-list + per-member bonded/domain/slashed proofs
-	// + the validatorsSeenRoot digest proof) RecomputeMatureNow verifies against committedStateRoot.
+	// + the validatorsSeenRoot digest proof) recomputeMatureNow verifies against committedStateRoot.
 	// REQUIRED only when the pre-latch everMature is FALSE (the box must reconstruct matureNow to know
 	// whether this block is the crossing); a pre-latched block supplies no SeenSet and never reads it.
 	SeenSet SeenSetWitness
@@ -85,7 +85,7 @@ type StateRootMaturityWitness struct {
 // a stall reason.
 //
 // When the pre-latch everMature is already true, the block cannot cross maturity: no op, post=true,
-// no witness read. When it is false, the box reconstructs matureNow(thisBlock) via RecomputeMatureNow
+// no witness read. When it is false, the box reconstructs matureNow(thisBlock) via recomputeMatureNow
 // over committedStateRoot; if mature it emits the tagEverMature false→true FoldOp and reports
 // post=true. A missing/forged maturity witness stalls (never-Accept preserved).
 func (c *Chain) maturityLatchOps(
@@ -104,8 +104,8 @@ func (c *Chain) maturityLatchOps(
 		return nil, true, nil
 	}
 	// Unlatched: reconstruct matureNow over the POST-apply committed state. A forged witness cannot
-	// verify against committedStateRoot ⇒ RecomputeMatureNow stalls ⇒ the box stalls.
-	matureNow, mErr := c.RecomputeMatureNow(committedStateRoot, mw.SeenSet)
+	// verify against committedStateRoot ⇒ recomputeMatureNow stalls ⇒ the box stalls.
+	matureNow, mErr := c.recomputeMatureNow(committedStateRoot, mw.SeenSet)
 	if mErr != nil {
 		return nil, false, fmt.Errorf("%w: maturity recompute for the latch decision: %v", ErrRecomputeStateRootMaturity, mErr)
 	}

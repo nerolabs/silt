@@ -1981,7 +1981,7 @@ var probeUncovered = map[string]string{
 		"anchored, the honest seen-set is the only set that reconstructs, so the committed digest cannot " +
 		"be inflated. Driven by the class-M cross-class gate (forges the screen AND the committed root).",
 	"A3-classM-inherits-inflated-set": "STAGE A3 (class-M inheritance). class-M's " +
-		"RecomputeMatureNow(committedStateRoot) reconstructs the SAME inflated set and can latch " +
+		"recomputeMatureNow(committedStateRoot) reconstructs the SAME inflated set and can latch " +
 		"everMature early. CLOSED at source by A1: TestAdversarialRoot_ClassM_PoisonedBySpuriousAtt drives " +
 		"the poison through the full entry and asserts the class-A anchor STALLS before the spurious ADD " +
 		"can inflate the seen-set class-M inherits. This is the PE Q2 REQUIRED cross-class pin.",

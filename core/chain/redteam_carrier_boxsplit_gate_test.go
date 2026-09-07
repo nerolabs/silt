@@ -250,7 +250,6 @@ func (w *rtGateWorld) witnessFor(t *testing.T, b Block) StateRootWitness {
 	}
 	preSeen := idSet(w.preSeenIDs())
 	screens := map[ports.NodeID]StateRootAttScreen{}
-	wit.ParentProposer, wit.ParentProposerSig = w.c.CarrierParentProposerWitness()
 	parentProposer, _ := w.c.headProposerID()
 	for i := range b.LastCommit {
 		id := b.LastCommit[i].AttesterID()
@@ -264,7 +263,7 @@ func (w *rtGateWorld) witnessFor(t *testing.T, b Block) StateRootWitness {
 		wit.AttScreens = append(wit.AttScreens, w.screen(id))
 	}
 	aWrites, _, err := w.c.stateRootAttWriteSet(w.prevRoot, b, preSeen, screens,
-		livePreForProbe(w.c), wit.ParentProposer, wit.ParentProposerSig)
+		livePreForProbe(w.c), parentProposer)
 	if err != nil {
 		// The box's own derivation refuses this block outright (e.g. a forged parent-proposer
 		// anchor). No class-A write-set exists, so there is nothing to witness; the box will stall.
@@ -307,7 +306,7 @@ func (w *rtGateWorld) applied(b Block) *Chain {
 	return clone
 }
 
-// seenWitnessPost is the honest post-apply SeenSet witness RecomputeMatureNow verifies against the
+// seenWitnessPost is the honest post-apply SeenSet witness recomputeMatureNow verifies against the
 // block's committed root.
 func (w *rtGateWorld) seenWitnessPost(t *testing.T, applied *Chain) SeenSetWitness {
 	t.Helper()
@@ -340,9 +339,9 @@ func (w *rtGateWorld) seenWitnessPost(t *testing.T, applied *Chain) SeenSetWitne
 func (w *rtGateWorld) eachTier(t *testing.T, b Block, wit StateRootWitness, fn func(t *testing.T, tier string, boxErr error)) {
 	t.Helper()
 	committed := *b.StateRoot
-	warm := w.c.RecomputeStateRootEntriesRevocations(w.prevRoot, committed, b, wit)
+	warm := recomputeViaHead(w.c, w.prevRoot, committed, b, wit)
 	t.Run("warm", func(t *testing.T) { fn(t, "warm", warm) })
-	cold := coldRecompute(t, w.cfg, w.prevRoot, committed, b, wit)
+	cold := coldRecompute(t, w.c, w.prevRoot, committed, b, wit)
 	t.Run("cold", func(t *testing.T) { fn(t, "cold", cold) })
 }
 
@@ -408,6 +407,12 @@ func TestRTGateCarrier1_BoxNeverAgreesWithACarrierTheNodeRejects(t *testing.T) {
 // GATE RT-CARRIER-1b — the bound is the frame, not one seat: one block steals every qualified id.
 func TestRTGateCarrier1b_BoxNeverAgreesAtScale(t *testing.T) {
 	w := rtGateWorldWith(t, 0, 4, 62000)
+	// NON-VACUITY: the same four seats carried GENUINELY commit, and the box agrees.
+	var genuine []Attestation
+	for _, vk := range w.victims {
+		genuine = append(genuine, w.genuineCarry(t, vk))
+	}
+	w.assertHonestTwinAgrees(t, w.blockWithCarrier(t, genuine))
 	var carrier []Attestation
 	for _, vk := range w.victims {
 		carrier = append(carrier, rtForgedEntry(pubOf(vk), 0))
@@ -428,12 +433,14 @@ func TestRTGateCarrier1b_BoxNeverAgreesAtScale(t *testing.T) {
 func TestRTGateCarrier1c_BoxNeverAgreesOnPhaseForeignHashOrDuplicateID(t *testing.T) {
 	t.Run("wrong-phase", func(t *testing.T) {
 		w := rtGateWorldWith(t, 0, 1, 63000)
+		w.assertHonestTwinAgrees(t, w.blockWithCarrier(t, []Attestation{w.genuineCarry(t, w.victims[0])}))
 		head, _ := w.c.headBlock()
 		b := w.blockWithCarrier(t, []Attestation{AttestAt(&head, w.victims[0], 0, PhasePrepare)})
 		w.assertBoxImpliesNode(t, "genuine PhasePrepare signature in the carrier", b)
 	})
 	t.Run("foreign-hash", func(t *testing.T) {
 		w := rtGateWorldWith(t, 0, 1, 64000)
+		w.assertHonestTwinAgrees(t, w.blockWithCarrier(t, []Attestation{w.genuineCarry(t, w.victims[0])}))
 		other := Block{Version: BlockVersionWitnessable, Height: 999, Entries: []ports.Entry{entry(99)}}
 		b := w.blockWithCarrier(t, []Attestation{AttestAt(&other, w.victims[0], 0, PhasePrecommit)})
 		w.assertBoxImpliesNode(t, "genuine precommit over a FOREIGN block hash", b)
@@ -441,6 +448,7 @@ func TestRTGateCarrier1c_BoxNeverAgreesOnPhaseForeignHashOrDuplicateID(t *testin
 	t.Run("duplicate-ids", func(t *testing.T) {
 		w := rtGateWorldWith(t, 0, 1, 65000)
 		a := w.genuineCarry(t, w.victims[0])
+		w.assertHonestTwinAgrees(t, w.blockWithCarrier(t, []Attestation{a}))
 		b := w.blockWithCarrier(t, []Attestation{a, a})
 		w.assertBoxImpliesNode(t, "duplicate carrier ids", b)
 	})
@@ -475,6 +483,8 @@ func TestRTGateCarrier1d_BoxNeverAgreesOnAHeightOneCarrier(t *testing.T) {
 	if h != 1 {
 		t.Fatalf("gate setup: next height must be 1, got %d", h)
 	}
+	// NON-VACUITY: the EMPTY carrier is the honest height-1 block, and the box agrees on it.
+	w.assertHonestTwinAgrees(t, *w.mintEmptyCarrier(t))
 	b := w.blockWithCarrier(t, []Attestation{w.genuineCarry(t, keys[1])})
 	if !w.applied(b).validatorsSeen[idOf(keys[1])] {
 		t.Fatalf("fixture: the height-1 carrier does not seat anyone — nothing to attack")
@@ -487,7 +497,7 @@ func TestRTGateCarrier1d_BoxNeverAgreesOnAHeightOneCarrier(t *testing.T) {
 // -----------------------------------------------------------------------------
 //
 // validatorsSeen is the sole input to C2Metric -> MatureCoefficient -> matureNow -> the ONE-WAY
-// everMature latch, and to the box's own RecomputeMatureNow, which class M consumes. So the
+// everMature latch, and to the box's own recomputeMatureNow, which class M consumes. So the
 // RT-CARRIER-1 hole does not merely seat ids: it forges the MEASURED decentralisation quantity
 // TENETS Part 0's maturity shed and C1's arrival count both read.
 //
@@ -502,6 +512,19 @@ func TestRTGateCarrier12_ForgedCarrierCannotFlipTheMaturityLatchPastTheBox(t *te
 	if got := w.c.MatureCoefficient(); got != 0 {
 		t.Fatalf("gate setup: MatureCoefficient must start at 0 (anchors are skipped by C2Metric), got %d", got)
 	}
+
+	// NON-VACUITY: the same six seats carried GENUINELY flip the latch honestly, and the box agrees
+	// — the crossing witness is served and folded, so the forged arm below is not passing on a
+	// class-M stall.
+	var genuine []Attestation
+	for _, vk := range w.victims {
+		genuine = append(genuine, w.genuineCarry(t, vk))
+	}
+	honest := w.blockWithCarrier(t, genuine)
+	if !w.applied(honest).everMature {
+		t.Fatal("fixture: the honest carry does not flip everMature — the twin would not exercise class M")
+	}
+	w.assertHonestTwinAgrees(t, honest)
 
 	var carrier []Attestation
 	for _, vk := range w.victims {

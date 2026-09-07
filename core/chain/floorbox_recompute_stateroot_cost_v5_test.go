@@ -105,7 +105,7 @@ func measureRecomputeWitness(t *testing.T, padTo int) recomputeCost {
 		cost.sidenodes += cl.Proof.SideNodeCount()
 	}
 	cost.sidenodes += w.DueBucketProof.SideNodeCount()
-	cost.agreed = f.c.RecomputeStateRootEntriesRevocations(prevRoot, committed, b, w) == nil
+	cost.agreed = recomputeViaHead(f.c, prevRoot, committed, b, w) == nil
 	return cost
 }
 

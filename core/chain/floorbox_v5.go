@@ -170,7 +170,7 @@ func (c *Chain) isAmbiguousRecoveryBoundary(h uint64) bool {
 		c.epochsEnabled() && c.cfg.EpochBlocks != 0 && h%c.cfg.EpochBlocks == 0
 }
 
-// RecoveryBoundaryDecision is the #535 policy unit: whether the box may proceed to trustless
+// recoveryBoundaryDecision is the #535 policy unit: whether the box may proceed to trustless
 // validation at height h, or must emit IndeterminateTrustlessly. It is a PURE function of the
 // height, the chain's public recovery config, and the box's LOCAL directive — it reads NOTHING
 // from the proposer or the block. Separated out so it is unit-testable in isolation and so
@@ -184,7 +184,7 @@ func (c *Chain) isAmbiguousRecoveryBoundary(h uint64) bool {
 //     IndeterminateTrustlessly (ErrRecoveryDirectiveAbsent). Never trust the proposer.
 //   - ambiguous boundary WITHOUT a directive, live-follower (opt-in) ⇒ proceed on the weak-
 //     subjectivity residual.
-func (c *Chain) RecoveryBoundaryDecision(h uint64, d RecoveryDirective) (proceed bool, reason error) {
+func (c *Chain) recoveryBoundaryDecision(h uint64, d RecoveryDirective) (proceed bool, reason error) {
 	if !c.isAmbiguousRecoveryBoundary(h) {
 		return true, nil // no ambiguity: the qualification set is the frozen, witnessable epochSet.
 	}
@@ -229,7 +229,7 @@ func (c *Chain) WitnessValidateV5(b Block, parentStateRoot [32]byte, d RecoveryD
 	// (2) #535 recovery-boundary decision, FIRST. A cold-auditor box with no directive at an
 	// ambiguous boundary stalls loudly here, never trusting the proposer, never reaching the
 	// recompute seam.
-	if proceed, reason := c.RecoveryBoundaryDecision(b.Height, d); !proceed {
+	if proceed, reason := c.recoveryBoundaryDecision(b.Height, d); !proceed {
 		return IndeterminateTrustlessly, reason
 	}
 

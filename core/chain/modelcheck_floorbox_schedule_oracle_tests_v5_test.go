@@ -35,7 +35,7 @@ func TestScheduleOracle_HonestBaselineAgrees(t *testing.T) {
 	b := signBoundary(t, c, prop, 52, nil)
 	honest := committedRoot(t, c, b)
 	w := boundaryWitnessFor(t, c, prover, b)
-	if err := c.RecomputeStateRootEntriesRevocations(prevRoot, honest, b, w); err != nil {
+	if err := recomputeViaHead(c, prevRoot, honest, b, w); err != nil {
 		t.Fatalf("honest witness must AGREE with apply(): %v", err)
 	}
 }
@@ -64,7 +64,7 @@ func TestScheduleOracle_OpenBreak_A_ForgedLockInOldValueSuppression(t *testing.T
 	if decodeBoolLeaf(hw.Rotate.GateLockedIn.OldValue) {
 		t.Fatalf("fixture: honest GateLockedIn.OldValue must be false (tally unfired pre-boundary)")
 	}
-	if err := c.RecomputeStateRootEntriesRevocations(prevRoot, honest, b, hw); err != nil {
+	if err := recomputeViaHead(c, prevRoot, honest, b, hw); err != nil {
 		t.Fatalf("baseline: honest witness must AGREE: %v", err)
 	}
 
@@ -80,7 +80,7 @@ func TestScheduleOracle_OpenBreak_A_ForgedLockInOldValueSuppression(t *testing.T
 		t.Fatalf("GATE VACUOUS: forged suppressed root == honest root (the lock-in did not move the root)")
 	}
 
-	err := c.RecomputeStateRootEntriesRevocations(prevRoot, forgedRoot, b, fw)
+	err := recomputeViaHead(c, prevRoot, forgedRoot, b, fw)
 	if err == nil {
 		t.Fatalf("ANCHOR REGRESSED (a): box WRONG-ACCEPTS a forged LockedIn.OldValue=true suppression.\n"+
 			"  Direction A (rotateTallyOps → anchorRotateScalar) must Resolve each lock-in OldValue present\n"+
@@ -172,7 +172,7 @@ func TestScheduleOracle_OpenBreak_B_InBlockRegVersionTallyDivergence(t *testing.
 
 	// LIVENESS: the box now AGREES with apply() on the honest root (it counts the in-block regVersion
 	// and locks in), where the pre-fix box false-stalled.
-	if herr := c.RecomputeStateRootEntriesRevocations(prevRoot, honest, b2, w); herr != nil {
+	if herr := recomputeViaHead(c, prevRoot, honest, b2, w); herr != nil {
 		t.Fatalf("DIRECTION B LIVENESS REGRESSED: the box false-stalls on the honest in-block-bond boundary "+
 			"(%v). The in-block regVersion cross-check (regVerWrites → anchorRotateMember) must let the box "+
 			"count the in-block bond and AGREE with apply().", herr)
@@ -191,7 +191,7 @@ func TestScheduleOracle_OpenBreak_B_InBlockRegVersionTallyDivergence(t *testing.
 		t.Fatalf("GATE VACUOUS: suppressed root == honest root")
 	}
 
-	rerr := c.RecomputeStateRootEntriesRevocations(prevRoot, forgedRoot, b2, w)
+	rerr := recomputeViaHead(c, prevRoot, forgedRoot, b2, w)
 	if rerr == nil {
 		t.Fatalf("ANCHOR REGRESSED (b): box WRONG-ACCEPTS a suppressed-lock-in root on an in-block-bond "+
 			"boundary. Direction B must count the in-block regVersion so the box's tally locks in and STALLS\n"+
@@ -236,7 +236,7 @@ type oracleDelivery struct {
 }
 
 func (d oracleDelivery) verdict() error {
-	return d.box.c.RecomputeStateRootEntriesRevocations(d.box.prev, d.committed, d.block, d.witness)
+	return recomputeViaHead(d.box.c, d.box.prev, d.committed, d.block, d.witness)
 }
 
 // TestScheduleOracle_I1_DisjointBoxesNoConflictingAccept builds a set of disjoint boxes that all
@@ -317,7 +317,7 @@ func TestScheduleOracle_I1_DisjointBoxesNoConflictingAccept(t *testing.T) {
 	// fork is UNREACHABLE via the forged witness (the closed-break side of the earlier diagnostic).
 	forgedC := New(c.cfg, func(ports.NodeID) int64 { return 0 })
 	forgedC.SetBondVerifier(objectiveVerify)
-	forkErr := forgedC.RecomputeStateRootEntriesRevocations(prevRoot, conflicting, b, forgedSuppressionWitness(t, c, prover, b))
+	forkErr := recomputeViaHead(forgedC, prevRoot, conflicting, b, forgedSuppressionWitness(t, c, prover, b))
 	if forkErr == nil {
 		t.Fatalf("I1 FORK REACHABLE (anchor regressed): a FORGED suppression witness made box-C Accept the "+
 			"CONFLICTING root %x while the honest quorum Accepts %x — Direction A must STALL it "+
@@ -485,15 +485,15 @@ func TestScheduleOracle_ForgedWitnessDoesNotPoisonNextPrevRoot(t *testing.T) {
 	boxH2.c.SetBondVerifier(objectiveVerify)
 
 	// h+1's HONEST Accept, WITHOUT any prior delivery.
-	baseline := boxH2.c.RecomputeStateRootEntriesRevocations(boxH2.prev, honestH2, bH2, wH2)
+	baseline := recomputeViaHead(boxH2.c, boxH2.prev, honestH2, bH2, wH2)
 	if baseline != nil {
 		t.Fatalf("baseline: honest h+1 boundary must Accept; got %v", baseline)
 	}
 
 	// Now deliver the FORGED h-witness to boxH FIRST (the adversary tries to poison the next
 	// read-set), then re-run h+1's honest Accept on boxH2.
-	_ = boxH.c.RecomputeStateRootEntriesRevocations(boxH.prev, forgedRootH, bH, forgedWH)
-	after := boxH2.c.RecomputeStateRootEntriesRevocations(boxH2.prev, honestH2, bH2, wH2)
+	_ = recomputeViaHead(boxH.c, boxH.prev, forgedRootH, bH, forgedWH)
+	after := recomputeViaHead(boxH2.c, boxH2.prev, honestH2, bH2, wH2)
 	if (baseline == nil) != (after == nil) {
 		t.Fatalf("POISON: a forged h-delivery changed h+1's honest verdict (baseline=%v after=%v) — "+
 			"prevStateRoot for h+1 must be independent of any h-delivery (I3-adjacent).", baseline, after)

@@ -70,9 +70,10 @@ import (
 //	SCREEN — the per-signer qualification inputs (slashed / epochSet / bonded) are anchored by their
 //	         own point proofs against prevStateRoot, and the write is fold-caught. That is the claim
 //	         this paragraph always supported.
-//	RESIDUAL — one class-A input is still anchored only PARTIALLY: the parent-proposer exclusion
-//	         (R-CARRIER-PARENTPROPOSER, ADD direction). See the ParentProposer field doc in
-//	         floorbox_recompute_stateroot_v5.go. It is a named flip precondition, not covered here.
+//	EXCLUSION — the parent-proposer id is BOX-OWNED (HeadRef.ProposerID): the door derives it
+//	         from the parent block it holds, after P1 binds b.Prev to that parent. It used to be
+//	         a witness field anchored by "some key signed b.Prev", which a fresh keypair
+//	         satisfies (R-CARRIER-PARENTPROPOSER, ADD direction); that slot no longer exists.
 //
 // The box's verdict remains a STALL-or-agree: box.Accept ⇒ node.Accept, never the biconditional
 // (PE ruling O-2). The box is permitted to stall where the node accepts; it must never agree where
@@ -145,7 +146,7 @@ func (c *Chain) stateRootAttWriteSet(
 	preValidatorsSeen map[ports.NodeID]struct{},
 	screens map[ports.NodeID]StateRootAttScreen,
 	pre stateRootHandoffPre,
-	parentProposerPub, parentProposerSig []byte,
+	parentProposer ports.NodeID,
 ) ([]stateRootWrite, map[ports.NodeID]struct{}, error) {
 	// R-A-legacy: the legacy branch falls to rep(id), which is NOT a committed leaf, so the box
 	// cannot reproduce it from committed state. A v5 block is objective by construction, but assert
@@ -163,16 +164,12 @@ func (c *Chain) stateRootAttWriteSet(
 			ErrRecomputeStateRootScopeStall, b.Version)
 	}
 	// The excluded id is the PARENT's proposer (the carrier republishes precommits over b.Prev,
-	// so the block being attested is the parent). Anchored against the hash-covered b.Prev by the
-	// parent's own proposer signature; a missing/forged pair stalls.
-	var parentProposer ports.NodeID
-	if len(b.LastCommit) > 0 {
-		var pErr error
-		parentProposer, pErr = carrierParentProposerFromWitness(b.Prev, parentProposerPub, parentProposerSig)
-		if pErr != nil {
-			return nil, nil, pErr
-		}
-	}
+	// so the block being attested is the parent). It is BOX-OWNED (HeadRef.ProposerID, class 3 —
+	// M-3): the box door derives it from the parent block it holds, after P1 has bound b.Prev to
+	// that parent's hash. It is NEVER a witness field: the earlier witness-supplied anchor ("some
+	// key signed b.Prev") was satisfiable by a freshly minted keypair, which un-excluded the true
+	// parent proposer and let it self-seat (R-CARRIER-PARENTPROPOSER, the ADD direction). There
+	// is no slot in StateRootWitness for it any more, so there is nothing to forge.
 	postSeen := cloneIDSet(preValidatorsSeen)
 	seen := map[ports.NodeID]struct{}{} // dedup: a block may repeat an attester id
 	var writes []stateRootWrite
@@ -317,7 +314,7 @@ func stateRootAttDigestOp(
 // from the validatorsSeenRoot digest witness, screens each carried signer (own-cfg over the
 // per-attester witnesses), derives the write-set + post-set, and reconstructs the touched digest.
 // It returns the digest FoldOps and the per-member write-set the caller folds together.
-func (c *Chain) attOps(prevStateRoot ports.Hash, b Block, w StateRootWitness, pre stateRootHandoffPre) ([]statehash.FoldOp, []stateRootWrite, error) {
+func (c *Chain) attOps(prevStateRoot ports.Hash, b Block, w StateRootWitness, pre stateRootHandoffPre, parentProposer ports.NodeID) ([]statehash.FoldOp, []stateRootWrite, error) {
 	byTag := make(map[string]*StateRootDigestWitness, len(w.DigestPreSets))
 	for i := range w.DigestPreSets {
 		byTag[w.DigestPreSets[i].Tag] = &w.DigestPreSets[i]
@@ -330,7 +327,7 @@ func (c *Chain) attOps(prevStateRoot ports.Hash, b Block, w StateRootWitness, pr
 	for _, sc := range w.AttScreens {
 		screens[sc.Attester] = sc
 	}
-	writes, postSeen, err := c.stateRootAttWriteSet(prevStateRoot, b, preSeen, screens, pre, w.ParentProposer, w.ParentProposerSig)
+	writes, postSeen, err := c.stateRootAttWriteSet(prevStateRoot, b, preSeen, screens, pre, parentProposer)
 	if err != nil {
 		return nil, nil, err
 	}

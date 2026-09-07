@@ -183,7 +183,7 @@ func TestRecomputeQualifiedCount_MatchesFullNode(t *testing.T) {
 	f := buildQualifiedCountFixture(t, minBond, mixedQCBonds())
 	w := f.witnessFor(t)
 
-	got, reason := f.c.RecomputeQualifiedCount(f.root, w)
+	got, reason := f.c.recomputeQualifiedCount(f.root, w)
 	if reason != nil {
 		t.Fatalf("recompute stalled unexpectedly: %v", reason)
 	}
@@ -205,7 +205,7 @@ func TestRecomputeQualifiedCount_ForgedBondedWeightRejects(t *testing.T) {
 	const minBond = int64(1) << 20
 	f := buildQualifiedCountFixture(t, minBond, mixedQCBonds())
 	w := f.witnessFor(t)
-	if _, reason := f.c.RecomputeQualifiedCount(f.root, w); reason != nil {
+	if _, reason := f.c.recomputeQualifiedCount(f.root, w); reason != nil {
 		t.Fatalf("baseline should reach a verdict with no stall; reason=%v", reason)
 	}
 
@@ -218,7 +218,7 @@ func TestRecomputeQualifiedCount_ForgedBondedWeightRejects(t *testing.T) {
 	mw.Bonded = 8 << 20 // forged up past MinBond
 	forged.Members[victim] = mw
 
-	got, reason := f.c.RecomputeQualifiedCount(f.root, forged)
+	got, reason := f.c.recomputeQualifiedCount(f.root, forged)
 	if reason == nil {
 		t.Fatalf("C-1 VIOLATION: a forged per-member bonded weight was accepted (N=%d) — the count is forgeable", got)
 	}
@@ -235,7 +235,7 @@ func TestRecomputeQualifiedCount_DroppedSlashRejects(t *testing.T) {
 	const minBond = int64(1) << 20
 	f := buildQualifiedCountFixture(t, minBond, mixedQCBonds())
 	w := f.witnessFor(t)
-	if _, reason := f.c.RecomputeQualifiedCount(f.root, w); reason != nil {
+	if _, reason := f.c.recomputeQualifiedCount(f.root, w); reason != nil {
 		t.Fatalf("baseline should reach a verdict with no stall; reason=%v", reason)
 	}
 
@@ -248,7 +248,7 @@ func TestRecomputeQualifiedCount_DroppedSlashRejects(t *testing.T) {
 	mw.Slashed = false // claim unslashed (the inflation attack)
 	forged.Members[victim] = mw
 
-	got, reason := f.c.RecomputeQualifiedCount(f.root, forged)
+	got, reason := f.c.recomputeQualifiedCount(f.root, forged)
 	if reason == nil {
 		t.Fatalf("C-1 VIOLATION: a dropped slash (claimed-unslashed committed-slashed member) was accepted (N=%d) — N is inflatable", got)
 	}
@@ -274,7 +274,7 @@ func TestRecomputeQualifiedCount_InjectedSlashRejects(t *testing.T) {
 	mw.Slashed = true // claim slashed (the deflation attack)
 	forged.Members[victim] = mw
 
-	got, reason := f.c.RecomputeQualifiedCount(f.root, forged)
+	got, reason := f.c.recomputeQualifiedCount(f.root, forged)
 	if reason == nil {
 		t.Fatalf("C-1 VIOLATION: an injected slash (claimed-slashed unslashed member) was accepted (N=%d) — N is deflatable", got)
 	}
@@ -290,7 +290,7 @@ func TestRecomputeQualifiedCount_OmittedMemberRejects(t *testing.T) {
 	const minBond = int64(1) << 20
 	f := buildQualifiedCountFixture(t, minBond, mixedQCBonds())
 	w := f.witnessFor(t)
-	if _, reason := f.c.RecomputeQualifiedCount(f.root, w); reason != nil {
+	if _, reason := f.c.recomputeQualifiedCount(f.root, w); reason != nil {
 		t.Fatalf("baseline should reach a verdict with no stall; reason=%v", reason)
 	}
 
@@ -307,7 +307,7 @@ func TestRecomputeQualifiedCount_OmittedMemberRejects(t *testing.T) {
 	forged.IDs = shortIDs
 	delete(forged.Members, dropped)
 
-	got, reason := f.c.RecomputeQualifiedCount(f.root, forged)
+	got, reason := f.c.recomputeQualifiedCount(f.root, forged)
 	if reason == nil {
 		t.Fatalf("SET-COMPLETENESS VIOLATION: a witness missing a bonded member was accepted (N=%d)", got)
 	}
@@ -329,7 +329,7 @@ func TestRecomputeQualifiedCount_InjectedMemberRejects(t *testing.T) {
 	forged.IDs = append(forged.IDs, extra)
 	forged.Members[extra] = forged.Members[idOf(key(70))] // bogus witness; completeness fails first
 
-	got, reason := f.c.RecomputeQualifiedCount(f.root, forged)
+	got, reason := f.c.recomputeQualifiedCount(f.root, forged)
 	if reason == nil {
 		t.Fatalf("SET-COMPLETENESS VIOLATION: a witness with an injected extra member was accepted (N=%d)", got)
 	}
@@ -355,7 +355,7 @@ func TestRecomputeQualifiedCount_MinBondFromConfig(t *testing.T) {
 	w := f.witnessFor(t)
 
 	// PRODUCTION (own MinBond): N=3 (the sub-MinBond member key(74) is screened out).
-	got, reason := f.c.RecomputeQualifiedCount(f.root, w)
+	got, reason := f.c.recomputeQualifiedCount(f.root, w)
 	if reason != nil {
 		t.Fatalf("recompute stalled unexpectedly: %v", reason)
 	}
@@ -376,7 +376,7 @@ func TestRecomputeQualifiedCount_MinBondFromConfig(t *testing.T) {
 }
 
 // recomputeQualifiedCountMinBondFromWitness is the NEGATIVE-CONTROL injected variant for the C-6
-// ablation: it reproduces RecomputeQualifiedCount's set-completeness + per-member verification
+// ablation: it reproduces recomputeQualifiedCount's set-completeness + per-member verification
 // EXACTLY, but reads the MinBond eligibility screen from a CALLER-supplied parameter (a stand-in for
 // a witness-carried screen) instead of own config. It exists ONLY in the test to demonstrate that a
 // MinBond-from-witness count inflates N past the own-config count. TEST-ONLY; it touches no
@@ -426,7 +426,7 @@ func TestRecomputeQualifiedCount_UnprovenBondedRootStalls(t *testing.T) {
 	forged.BondedRootValue = append([]byte(nil), w.BondedRootValue...)
 	forged.BondedRootValue[0] ^= 0xff
 
-	got, reason := f.c.RecomputeQualifiedCount(f.root, forged)
+	got, reason := f.c.recomputeQualifiedCount(f.root, forged)
 	if reason == nil {
 		t.Fatalf("a corrupted bondedRoot value must not reach a count (N=%d)", got)
 	}
@@ -445,7 +445,7 @@ func TestRecomputeQualifiedCount_MissingMemberWitnessStalls(t *testing.T) {
 	w := f.witnessFor(t)
 	delete(w.Members, idOf(key(70))) // keep IDs complete (digest matches) but drop a witness
 
-	got, reason := f.c.RecomputeQualifiedCount(f.root, w)
+	got, reason := f.c.recomputeQualifiedCount(f.root, w)
 	if reason == nil {
 		t.Fatalf("a member with no witness must stall the count (N=%d), not be counted/skipped", got)
 	}

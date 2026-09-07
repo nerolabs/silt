@@ -6,7 +6,7 @@ package chain
 // and inform the R-membership flip precondition. Measure-first; pin NO value at desk.
 //
 // WHAT IS MEASURED:
-//   RecomputeMatureNow (floorbox_recompute_maturity_v5.go) folds the WHOLE validatorsSeen
+//   recomputeMatureNow (floorbox_recompute_maturity_v5.go) folds the WHOLE validatorsSeen
 //   set on every mature block: ~3 SMT inclusion/exclusion-proof verifies per member
 //   (bonded / slashed / bondDomain). The cost scales with |validatorsSeen| on a FULL v5
 //   committed StateRoot — the full 18 era-3 leaves plus the v5 maintenance-spine
@@ -21,7 +21,7 @@ package chain
 // TWO PHASES, SEPARATELY MEASURED:
 //   Setup (provider-side):  build the full v5 committed SMT + issue N×3+1 proofs.
 //                           This runs on the witness-provider node, NOT the floor box.
-//   Fold  (box-side):       RecomputeMatureNow() against the committed root.
+//   Fold  (box-side):       recomputeMatureNow() against the committed root.
 //                           This is what the floor box pays on every mature block.
 //
 // CONCURRENT REPAIR PRESSURE:
@@ -63,7 +63,7 @@ type foldCostRow struct {
 	proofDepth    int           // SMT sidenode depth of ONE member proof (log₂ of leaf count)
 
 	// Box-side (the actual floor-box cost paid on every mature block).
-	foldDuration     time.Duration // wall time for one RecomputeMatureNow call
+	foldDuration     time.Duration // wall time for one recomputeMatureNow call
 	foldAllocMB      float64       // cumulative heap allocated during fold (TotalAlloc delta)
 	foldLiveHeap     float64       // live heap after fold GC (HeapInuse delta)
 	perMemberNs      float64       // fold ns per validatorsSeen member
@@ -75,7 +75,7 @@ type foldCostRow struct {
 }
 
 // TestMeasureRecomputeMatureNowFoldCost measures the box-side cost (fold time and RSS) of
-// RecomputeMatureNow as a function of |validatorsSeen| at N ∈ {10k, 100k, 1M}.
+// recomputeMatureNow as a function of |validatorsSeen| at N ∈ {10k, 100k, 1M}.
 //
 // The fixture injects N members directly into a Chain's committed maps (white-box, same
 // package) rather than running full consensus, so the measurement covers what matters —
@@ -105,7 +105,7 @@ func TestMeasureRecomputeMatureNowFoldCost(t *testing.T) {
 
 	// Print the measurement table.
 	t.Logf("")
-	t.Logf("MEASUREMENT: RecomputeMatureNow fold cost as a function of |validatorsSeen|")
+	t.Logf("MEASUREMENT: recomputeMatureNow fold cost as a function of |validatorsSeen|")
 	t.Logf("")
 	t.Logf("BOX-SIDE FOLD (what the floor box pays on every mature block):")
 	t.Logf("┌──────────┬───────────────┬──────────────┬────────────────┬────────────────────┬─────────────┐")
@@ -303,7 +303,7 @@ func measureFoldCost(t *testing.T, N int) foldCostRow {
 
 	// Verify the witness round-trips (ablation: the fixture is honest, so this must PASS).
 	{
-		mature, reason := c.RecomputeMatureNow(committedRoot, w)
+		mature, reason := c.recomputeMatureNow(committedRoot, w)
 		if reason != nil {
 			t.Fatalf("N=%d: fixture witness should reach a verdict without stall; reason=%v", N, reason)
 		}
@@ -317,7 +317,7 @@ func measureFoldCost(t *testing.T, N int) foldCostRow {
 	runtime.ReadMemStats(&ms0)
 	foldStart := time.Now()
 
-	mature, stall := c.RecomputeMatureNow(committedRoot, w)
+	mature, stall := c.recomputeMatureNow(committedRoot, w)
 
 	foldDuration := time.Since(foldStart)
 	runtime.GC()
@@ -335,7 +335,7 @@ func measureFoldCost(t *testing.T, N int) foldCostRow {
 	runtime.GC() // force GC to run with the sink live, establishing the competing footprint
 
 	pressureStart := time.Now()
-	c.RecomputeMatureNow(committedRoot, w) //nolint:errcheck // timing only; verdict verified above
+	c.recomputeMatureNow(committedRoot, w) //nolint:errcheck // timing only; verdict verified above
 	foldWithPressure := time.Since(pressureStart)
 
 	runtime.KeepAlive(pressureSink) // hold the sink alive through the fold
@@ -449,7 +449,7 @@ func TestMeasureRecomputeMatureNowFoldCost_Structural(t *testing.T) {
 	}
 	w := SeenSetWitness{IDs: ids, SeenRootWitness: seenRootProof, SeenRootValue: seenRootVal, Members: members}
 
-	mature, reason := c.RecomputeMatureNow(committedRoot, w)
+	mature, reason := c.recomputeMatureNow(committedRoot, w)
 	if reason != nil {
 		t.Fatalf("fold stalled: %v", reason)
 	}
@@ -495,7 +495,7 @@ func TestMeasureRecomputeMatureNowFoldCostN500k(t *testing.T) {
 // --- STREAMING RE-MEASUREMENT (the load-bearing output for the M_seen cap value) ---
 //
 // The resident-map fold holds ALL N members' proofs resident in SeenSetWitness.Members
-// (~20 KB/member) before the fold runs. RecomputeMatureNowStreaming pulls one member's proof at
+// (~20 KB/member) before the fold runs. recomputeMatureNowStreaming pulls one member's proof at
 // a time and lets it be freed before the next, so peak resident witness is O(depth), not O(N·depth).
 //
 // WHY THE ORIGINAL BENCH UNDER-READS THE WIN: measureFoldCost pre-materializes the whole Members
@@ -503,8 +503,8 @@ func TestMeasureRecomputeMatureNowFoldCostN500k(t *testing.T) {
 // cost lives in setupLiveHeap (the map), which the fold does not re-allocate. The peak the pony
 // actually pays is that resident map. This re-measurement captures it directly:
 //   - residentPeakMiB: HeapInuse with the whole Members map materialized (what the box must hold
-//     for the resident-map RecomputeMatureNow) — the resident witness peak.
-//   - streamPeakMiB:   HeapInuse sampled at mid-fold of RecomputeMatureNowStreaming, where each
+//     for the resident-map recomputeMatureNow) — the resident witness peak.
+//   - streamPeakMiB:   HeapInuse sampled at mid-fold of recomputeMatureNowStreaming, where each
 //     member's proof is issued on demand from the prover and dropped after the fold consumes it —
 //     the O(depth) streaming witness peak.
 // Both fold verdicts are asserted equal (equivalence under measurement).
@@ -609,7 +609,7 @@ func TestMeasureRecomputeMatureNowStreamingWin_Structural(t *testing.T) {
 
 // measureStreamingWin builds the full v5 committed SMT at N members, then measures the BOX-SIDE
 // witness cost of each fold path (net of the provider-side prover, which a floor box never holds):
-//   - residentWitnessMiB: the whole Members map the resident-map RecomputeMatureNow requires, measured
+//   - residentWitnessMiB: the whole Members map the resident-map recomputeMatureNow requires, measured
 //     as HeapInuse WITH the map minus HeapInuse without it (the prover baseline subtracted out).
 //   - streamWitnessKiB: the id-list plus ONE in-flight member's three proofs — what the streaming box
 //     holds at peak. Measured analytically from the proof sidenode depth (depth×32 B ×3 proofs) plus
@@ -699,7 +699,7 @@ func measureStreamingWin(t *testing.T, N int) streamCostRow {
 
 	residentW := SeenSetWitness{IDs: ids, SeenRootWitness: seenRootProof, SeenRootValue: seenRootVal, Members: residentMembers}
 	rStart := time.Now()
-	residentMature, rErr := c.RecomputeMatureNow(committedRoot, residentW)
+	residentMature, rErr := c.recomputeMatureNow(committedRoot, residentW)
 	residentFold := time.Since(rStart)
 	if rErr != nil {
 		t.Fatalf("N=%d: resident fold stalled: %v", N, rErr)
@@ -728,7 +728,7 @@ func measureStreamingWin(t *testing.T, N int) streamCostRow {
 		},
 	}
 	sStart := time.Now()
-	streamMature, sErr := c.RecomputeMatureNowStreaming(committedRoot, streamW)
+	streamMature, sErr := c.recomputeMatureNowStreaming(committedRoot, streamW)
 	streamFold := time.Since(sStart)
 	if sErr != nil {
 		t.Fatalf("N=%d: streaming fold stalled: %v", N, sErr)

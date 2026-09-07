@@ -38,7 +38,7 @@ type tierVerdicts struct {
 func eachTier(t *testing.T, f rotateFixture, b Block, committed ports.Hash) tierVerdicts {
 	t.Helper()
 	var v tierVerdicts
-	v.box = f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, f.witnessForBoundary(t, b))
+	v.box = recomputeViaHead(f.c, f.prevRoot, committed, b, f.witnessForBoundary(t, b))
 	live := f.c.cloneForDryRun()
 	blk := b
 	v.fullNode = live.validateEra3Roots(&blk)

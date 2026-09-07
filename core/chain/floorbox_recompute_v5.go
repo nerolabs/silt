@@ -30,7 +30,7 @@ import (
 //	  ∪ per-member value proof (Resolve epochSet[id] against the committed root ⇒ the weights)
 //	  ∪ genesis config from OWN cfg, never the witness (C-6 ⇒ threshold un-shiftable)
 //
-// THE THREE-PART PROOF (RecomputeEpochWeightQuorum):
+// THE THREE-PART PROOF (recomputeEpochWeightQuorum):
 //  1. SET-COMPLETENESS: reconstruct nodeSetMTH(witnessedIDs); require it equals the committed
 //     epochSetRoot leaf (proven present against the StateRoot by an SMT inclusion proof). One
 //     omitted frozen member ⇒ a different MTH ⇒ mismatch ⇒ stall. This is the F1 epochSetRoot
@@ -68,6 +68,15 @@ var (
 	// witness). This is the C-1 closure: a forged weight cannot verify, so it stalls the fold
 	// rather than letting a forgeable tally through.
 	ErrRecomputeMemberWeightUnproven = errors.New("chain: floor-box recompute — a per-member epochSet weight leaf not proven present against the committed StateRoot (C-1: the weight is forged or missing)")
+
+	// ErrRecomputeAuthorSlashed is the N1 refusal: the block's AUTHOR is proven slashed in the
+	// committed state. The node refuses such a block at proposerQualifiedAt (P4, chain.go) BEFORE
+	// its weight tally ever runs; a standalone reproduction of the tally must refuse it too, or it
+	// credits an author the node never lets in.
+	ErrRecomputeAuthorSlashed = errors.New("chain: floor-box recompute — the block's author is slashed in the committed state (proposerQualifiedAt refuses it before the weight tally) — refused")
+	// ErrRecomputeAuthorUnscreened is the N1 stall: the author's slashed[id] read could not be
+	// anchored against the committed StateRoot (no/failed proof). A stall, never a credit.
+	ErrRecomputeAuthorUnscreened = errors.New("chain: floor-box recompute — the author's slashed[id] pre-state is not proven either way against the committed StateRoot — stall")
 )
 
 // EpochSetWitness is the witnessed input a floor box supplies to reproduce
@@ -97,6 +106,14 @@ type EpochSetWitness struct {
 	// committed StateRoot: a forged weight fails verification and stalls (C-1). Every id in IDs
 	// MUST have an entry, else the recompute cannot verify that member's weight and stalls.
 	MemberWeights map[ports.NodeID]MemberWeightWitness
+
+	// AuthorSlashedProof anchors the AUTHOR's slashed[proposer] pre-state against the committed
+	// StateRoot: a non-membership proof (the honest case — the author is credited) or an inclusion
+	// proof of slashed||proposer → Present (the author is refused, ErrRecomputeAuthorSlashed). A
+	// nil or failed proof STALLS (ErrRecomputeAuthorUnscreened) — never a credit by default.
+	// This is the N1 screen; see recomputeEpochWeightQuorum for why the tally needs it here and
+	// the node's tally does not.
+	AuthorSlashedProof statehash.Witness
 }
 
 // MemberWeightWitness is one member's claimed epochSet weight plus the SMT inclusion proof of
@@ -113,7 +130,7 @@ type MemberWeightWitness struct {
 	Proof statehash.Witness
 }
 
-// RecomputeEpochWeightQuorum reproduces requireEpochWeightQuorum (the mature-phase >⅔
+// recomputeEpochWeightQuorum reproduces requireEpochWeightQuorum (the mature-phase >⅔
 // frozen-WEIGHT super-quorum, chain.go:2845) TRUSTLESSLY, from the committed StateRoot + the
 // witness alone. It returns (met, nil) where met is the quorum verdict a full node's
 // requireEpochWeightQuorum would produce (met == the err==nil case), or (false, reason) when
@@ -123,9 +140,18 @@ type MemberWeightWitness struct {
 // NON-boundary epochSet fold; the #535 recovery boundary is the ratified carve-out (cert C-2)
 // governed by floorbox_v5.go's policy, out of scope here.
 //
-// This does NOT flip WitnessValidateV5 to Accept (the STOP boundary): it reproduces ONE
-// predicate. The accept flip (#657) waits until ALL predicates are reproduced.
-func (c *Chain) RecomputeEpochWeightQuorum(
+// N1 — THE AUTHOR SCREEN, and why it is HERE and not in the node's tally. The node's
+// requireEpochWeightQuorum credits `set[proposer]` with NO screen, and that is correct on the
+// node, because proposerQualifiedAt (P4, chain.go) has already refused a slashed author before
+// the tally runs. A standalone reproduction of the tally has no P4 in front of it, so it must
+// screen the author itself — on the ANCHORED committed slashed[proposer] leaf — or it credits an
+// author the node never lets in (N1: a live wrong-accept with every witness proof passing). The
+// composition (validate_v5.go) does not need this: there P4 precedes the tally, in the node's
+// own order.
+//
+// Unexported (round 1A, step 9): the box's door is (*Box).Validate; a direct caller of a single
+// predicate is a second door with no P1–P4 in front of it.
+func (c *Chain) recomputeEpochWeightQuorum(
 	committedStateRoot ports.Hash,
 	proposer ports.NodeID,
 	seen map[ports.NodeID]bool,
@@ -145,6 +171,21 @@ func (c *Chain) RecomputeEpochWeightQuorum(
 			ErrRecomputeSetIncomplete, reconstructed, w.DigestRootValue)
 	}
 
+	// (1b) THE AUTHOR SCREEN (N1). Anchor slashed[proposer] against the committed StateRoot
+	// BEFORE anything is credited. Proven absent ⇒ the author is credited below, exactly as the
+	// node's tally does after proposerQualifiedAt admitted it. Proven present ⇒ REFUSE by name:
+	// the node refuses this block at proposerQualifiedAt (chain.go), the stage that screens, and
+	// a slashed-but-frozen author is precisely the case where the tally alone gets it wrong (the
+	// author stays in the frozen epochSet, so its weight is still in `set`). Anything else ⇒ stall.
+	authorKey := statehash.Key(tagSlashed, proposer[:])
+	authorRes := statehash.Resolve(committedStateRoot, authorKey, nil, w.AuthorSlashedProof)
+	if !authorRes.IsProvenAbsent() {
+		if statehash.Resolve(committedStateRoot, authorKey, statehash.Present, w.AuthorSlashedProof).IsProvenPresent() {
+			return false, fmt.Errorf("%w: author %x", ErrRecomputeAuthorSlashed, proposer[:])
+		}
+		return false, fmt.Errorf("%w: author %x", ErrRecomputeAuthorUnscreened, proposer[:])
+	}
+
 	// (2) PER-MEMBER WEIGHT (C-1) + (4) THE FOLD. For every id in the now-completeness-verified
 	// set, Resolve its epochSet[id] weight leaf against the committed StateRoot (a forged weight
 	// fails verification ⇒ stall), then fold exactly as chain.go:2850-2864: total = Σ verified
@@ -152,7 +193,9 @@ func (c *Chain) RecomputeEpochWeightQuorum(
 	// epochSet members by MinBond in this fold — MinBond screened them at FREEZE time
 	// (liveQualifiedSet, chain.go:1352), so every epochSet member already cleared it and
 	// contributes its full weight. Re-screening here would DIVERGE from the full node, so the
-	// recompute must NOT. See the C-6 note below for how this increment still reads own config.
+	// recompute must NOT. The ONE screen the tally carries is the author's, above, and it exists
+	// because proposerQualifiedAt is the stage that screens on the node and is not in front of
+	// this function. See the C-6 note below for how this increment still reads own config.
 	var total, support int64
 	for _, id := range w.IDs {
 		mw, ok := w.MemberWeights[id]

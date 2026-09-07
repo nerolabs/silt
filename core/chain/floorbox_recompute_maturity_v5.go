@@ -15,7 +15,7 @@ import (
 // This file reproduces a SECOND validity predicate — the MATURITY LATCH metric matureNow
 // (chain.go:2178) via C2Metric (chain.go:2300-2382) — trustlessly, from the committed
 // StateRoot + witnesses ALONE. It replicates increment 1's structure
-// (floorbox_recompute_v5.go, RecomputeEpochWeightQuorum) and, crucially, it is the FIRST
+// (floorbox_recompute_v5.go, recomputeEpochWeightQuorum) and, crucially, it is the FIRST
 // predicate whose fold READS GENESIS CONFIG, so it is where the C-6 obligation finally has
 // TEETH (see the C-6 note below and the ablation in the test).
 //
@@ -42,7 +42,7 @@ import (
 //   - c.cfg.OperatorMargin (operatorMargin) — OWN genesis config (coefficient divisor) — C-6;
 //   - c.cfg.MatureValidators — OWN genesis config (the threshold) — C-6.
 //
-// THE THREE-PART PROOF (RecomputeMatureNow):
+// THE THREE-PART PROOF (recomputeMatureNow):
 //  1. SET-COMPLETENESS: reconstruct nodeSetMTH(witnessedIDs); require it equals the committed
 //     validatorsSeenRoot leaf (proven present against the StateRoot). One omitted (or injected)
 //     member ⇒ a different MTH ⇒ mismatch ⇒ stall. This is the F1 validatorsSeenRoot digest
@@ -182,7 +182,7 @@ type SeenSetStreamWitness struct {
 	Member func(ports.NodeID) (MemberStateWitness, bool)
 }
 
-// RecomputeMatureNow reproduces matureNow (the maturity-latch metric, chain.go:2178) TRUSTLESSLY,
+// recomputeMatureNow reproduces matureNow (the maturity-latch metric, chain.go:2178) TRUSTLESSLY,
 // from the committed StateRoot + the witness alone, for the OBJECTIVE phase. It returns (mature,
 // nil) where mature == matureNow()'s verdict a full node would produce, or (false, reason) when
 // the box cannot verify the witness and must stall — NEVER folding an unverified set/value.
@@ -194,10 +194,10 @@ type SeenSetStreamWitness struct {
 // This does NOT flip WitnessValidateV5 to Accept (the STOP boundary): it reproduces ONE predicate.
 //
 // This is the RESIDENT-MAP adapter over the streaming core: it wraps w.Members in a pull provider and
-// delegates to RecomputeMatureNowStreaming, so the fold logic lives in ONE place and the resident and
+// delegates to recomputeMatureNowStreaming, so the fold logic lives in ONE place and the resident and
 // streaming paths cannot drift. The verdict is byte-identical to the streaming path.
-func (c *Chain) RecomputeMatureNow(committedStateRoot ports.Hash, w SeenSetWitness) (mature bool, reason error) {
-	return c.RecomputeMatureNowStreaming(committedStateRoot, SeenSetStreamWitness{
+func (c *Chain) recomputeMatureNow(committedStateRoot ports.Hash, w SeenSetWitness) (mature bool, reason error) {
+	return c.recomputeMatureNowStreaming(committedStateRoot, SeenSetStreamWitness{
 		IDs:             w.IDs,
 		SeenRootWitness: w.SeenRootWitness,
 		SeenRootValue:   w.SeenRootValue,
@@ -208,8 +208,8 @@ func (c *Chain) RecomputeMatureNow(committedStateRoot ports.Hash, w SeenSetWitne
 	})
 }
 
-// RecomputeMatureNowStreaming is the streaming core of the class-M maturity recompute. It reproduces
-// the SAME predicate as RecomputeMatureNow with the SAME anchoring against committedStateRoot, but it
+// recomputeMatureNowStreaming is the streaming core of the class-M maturity recompute. It reproduces
+// the SAME predicate as recomputeMatureNow with the SAME anchoring against committedStateRoot, but it
 // pulls each member's proof witness on demand (w.Member) and lets that member's proof heap be freed
 // before the next member is verified. Resident witness is O(depth), not O(N·depth).
 //
@@ -217,7 +217,7 @@ func (c *Chain) RecomputeMatureNow(committedStateRoot ports.Hash, w SeenSetWitne
 // same committedStateRoot; the completeness MTH still consumes the FULL id-list (line-identical); the
 // fold accumulates the same order-independent scalars. Freeing a member's proof heap after its Resolve
 // returns cannot change any verdict (VerifyProof is a pure function of (proof, root, key, value)).
-func (c *Chain) RecomputeMatureNowStreaming(committedStateRoot ports.Hash, w SeenSetStreamWitness) (mature bool, reason error) {
+func (c *Chain) recomputeMatureNowStreaming(committedStateRoot ports.Hash, w SeenSetStreamWitness) (mature bool, reason error) {
 	// (1) SET-COMPLETENESS. Prove the committed validatorsSeenRoot leaf present against the committed
 	// StateRoot, then require the reconstructed MTH over the witnessed id-list equals it. One omitted
 	// (or injected) member yields a different MTH ⇒ mismatch ⇒ stall.

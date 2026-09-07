@@ -18,7 +18,7 @@ import (
 // R3 (execution-derived drift guard, MANDATORY): the box's rotate reconstruction is checked against
 // the REAL apply() + StateRootForVersion(5), ablated RED on a stale (pre-delta) freeze, a flipped
 // regVersion tally, a short qualified-set witness, and a missing rotate scalar. Each ablation drives
-// the REAL RecomputeStateRootEntriesRevocations.
+// the REAL recomputeStateRootEntriesRevocations.
 
 type rotateFixture struct {
 	c        *Chain
@@ -351,7 +351,7 @@ func TestRecomputeStateRootRotateAgreesWithApply(t *testing.T) {
 	committed := f.applyAndCommittedRoot(t, b)
 	w := f.witnessForBoundary(t, b)
 
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err != nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, committed, b, w); err != nil {
 		t.Fatalf("P recompute should AGREE with real apply() but stalled: %v", err)
 	}
 }
@@ -366,7 +366,7 @@ func TestRecomputeStateRootRotateWithBondRegAgreesWithApply(t *testing.T) {
 	committed := f.applyAndCommittedRoot(t, b)
 	w := f.witnessForBoundary(t, b)
 
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err != nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, committed, b, w); err != nil {
 		t.Fatalf("P+bondreg recompute should AGREE with real apply() but stalled: %v", err)
 	}
 	// Confirm the just-bonded validator IS in the reconstructed frozen set (else the ablation is vacuous).
@@ -437,7 +437,7 @@ func TestRecomputeStateRootRotateAblationStaleFreeze(t *testing.T) {
 	}
 	w.Rotate.Members = kept
 
-	err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w)
+	err := recomputeViaHead(f.c, f.prevRoot, committed, b, w)
 	if err == nil {
 		t.Fatalf("ABLATION FAILED: a stale (pre-delta) freeze must stall, got nil")
 	}
@@ -462,7 +462,7 @@ func TestRecomputeStateRootRotateAblationShortQualifiedSet(t *testing.T) {
 		}
 	}
 
-	err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w)
+	err := recomputeViaHead(f.c, f.prevRoot, committed, b, w)
 	if err == nil {
 		t.Fatalf("ABLATION FAILED: a short qualified pre-set must stall, got nil")
 	}
@@ -494,7 +494,7 @@ func TestRecomputeStateRootRotateAblationForgedFreezeWeight(t *testing.T) {
 	}
 	w.Rotate.Members[0].Weight = w.Rotate.Members[0].Weight + 1
 
-	err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w)
+	err := recomputeViaHead(f.c, f.prevRoot, committed, b, w)
 	if err == nil {
 		t.Fatalf("ABLATION FAILED: a forged freeze weight must stall, got nil")
 	}
@@ -561,7 +561,7 @@ func TestRecomputeStateRootRotateAblationLiveTallyForgedRegVersion(t *testing.T)
 	w := f.witnessForBoundary(t, rb)
 
 	// AGREE first (honest regVersion) — the box must lock era4 and match.
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, rb, w); err != nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, committed, rb, w); err != nil {
 		t.Fatalf("honest live-tally boundary should AGREE, got %v", err)
 	}
 
@@ -574,7 +574,7 @@ func TestRecomputeStateRootRotateAblationLiveTallyForgedRegVersion(t *testing.T)
 			w.Rotate.Members[i].RegVersion = 4
 		}
 	}
-	err = f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, rb, w)
+	err = recomputeViaHead(f.c, f.prevRoot, committed, rb, w)
 	if err == nil {
 		t.Fatalf("ABLATION FAILED: a forged (lowered) regVersion on a live tally must stall, got nil")
 	}
@@ -609,7 +609,7 @@ func TestRecomputeStateRootRotateAblationMissingScalar(t *testing.T) {
 	}
 
 	w := f.witnessForBoundary(t, b)
-	err = f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, buggyCommitted, b, w)
+	err = recomputeViaHead(f.c, f.prevRoot, buggyCommitted, b, w)
 	if err == nil {
 		t.Fatalf("ABLATION FAILED: a committed root reflecting a stale epochStart must stall the honest recompute, got nil")
 	}
@@ -778,7 +778,7 @@ func (f handoffFixture) sortedIDs(m map[ports.NodeID]int64) []ports.NodeID {
 	return sortIDs(out)
 }
 
-// seenWitnessPost builds the SeenSetWitness the box feeds RecomputeMatureNow for the handoff decision.
+// seenWitnessPost builds the SeenSetWitness the box feeds recomputeMatureNow for the handoff decision.
 // It witnesses the POST-apply validatorsSeen set against the POST-apply committed root (the maturity
 // latch reads the post-block seen/bonded set), so it is built from a prover over the applied clone.
 func (f handoffFixture) seenWitnessPost(t *testing.T, applied *Chain) SeenSetWitness {
@@ -843,7 +843,6 @@ func (f handoffFixture) witnessForHandoff(t *testing.T, b Block) StateRootWitnes
 	// from the fixture's committed pre-state.
 	preSeen := idSet(f.sortedSeenIDs())
 	screens := map[ports.NodeID]StateRootAttScreen{}
-	w.ParentProposer, w.ParentProposerSig = f.c.CarrierParentProposerWitness()
 	parentProposer, _ := f.c.headProposerID()
 	for i := range b.LastCommit {
 		id := b.LastCommit[i].AttesterID()
@@ -862,7 +861,7 @@ func (f handoffFixture) witnessForHandoff(t *testing.T, b Block) StateRootWitnes
 		screens[id] = sc
 		w.AttScreens = append(w.AttScreens, sc)
 	}
-	aWrites, _, err := f.c.stateRootAttWriteSet(f.prevRoot, b, preSeen, screens, livePreForProbe(f.c), w.ParentProposer, w.ParentProposerSig)
+	aWrites, _, err := f.c.stateRootAttWriteSet(f.prevRoot, b, preSeen, screens, livePreForProbe(f.c), parentProposer)
 	if err != nil {
 		t.Fatalf("stateRootAttWriteSet: %v", err)
 	}
@@ -974,7 +973,7 @@ func TestRecomputeStateRootRotateHandoffAgreesWithApply(t *testing.T) {
 	committed := f.committedRoot(t, b)
 	w := f.witnessForHandoff(t, b)
 
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err != nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, committed, b, w); err != nil {
 		t.Fatalf("handoff recompute should AGREE with real apply() but stalled: %v", err)
 	}
 }
@@ -993,7 +992,7 @@ func TestRecomputeStateRootRotateMatureEpochOldValueSuppressionStalls(t *testing
 	// Baseline: the honest witness (MatureEpoch.OldValue=false, the real flip) AGREES with apply().
 	committed := f.committedRoot(t, b)
 	w := f.witnessForHandoff(t, b)
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err != nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, committed, b, w); err != nil {
 		t.Fatalf("baseline must agree: %v", err)
 	}
 
@@ -1014,7 +1013,7 @@ func TestRecomputeStateRootRotateMatureEpochOldValueSuppressionStalls(t *testing
 		t.Fatalf("GATE VACUOUS: forged suppressed root == honest committed root")
 	}
 
-	if rerr := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, forgedRoot, b, fw); rerr == nil {
+	if rerr := recomputeViaHead(f.c, f.prevRoot, forgedRoot, b, fw); rerr == nil {
 		t.Fatalf("ANCHOR REGRESSED: box WRONG-ACCEPTS a forged MatureEpoch.OldValue=true suppression.\n"+
 			"  Direction A (anchorRotateScalar(tagMatureEpoch)) must STALL a forged pre-latch value.\n"+
 			"  forgedRoot=%x honest=%x", forgedRoot, committed)
@@ -1054,7 +1053,7 @@ func TestRecomputeStateRootRotateHandoffAblationPreEverMature(t *testing.T) {
 	}
 
 	// And the FIXED path AGREES (post-latch) — the RED→GREEN pair on the same fixture.
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err != nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, committed, b, w); err != nil {
 		t.Fatalf("the fixed (post-latch) recompute should AGREE, got %v", err)
 	}
 }
@@ -1070,7 +1069,7 @@ func (f handoffFixture) nonRotateOps(t *testing.T, b Block, w StateRootWitness) 
 	}
 	var ops []statehash.FoldOp
 	// Class A digest ops + per-member writes.
-	aOps, aWrites, err := f.c.attOps(f.prevRoot, b, w, livePreForProbe(f.c))
+	aOps, aWrites, err := f.c.attOps(f.prevRoot, b, w, livePreForProbe(f.c), headProposerOrZero(f.c))
 	if err != nil {
 		t.Fatalf("attOps: %v", err)
 	}

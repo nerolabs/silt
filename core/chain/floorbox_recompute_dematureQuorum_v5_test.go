@@ -11,7 +11,7 @@ import (
 // Tests for the trustless floor-box RECOMPUTE increment 3 (floorbox_recompute_dematureQuorum_v5.go):
 // the root-only reproduction of requireDeMatureSuperQuorum (the F-1 de-mature super-quorum over the
 // WHOLE bonded map), replicating increments 1/2's C-1 pattern AND gating on the reproduced maturity
-// state (increment 2's RecomputeMatureNow).
+// state (increment 2's recomputeMatureNow).
 //
 // The HARD ABLATIONS (C-5, red-before-green), each injected and watched to flip the verdict, so a
 // green here is not decoration:
@@ -217,7 +217,7 @@ func TestRecomputeDeMatureSuperQuorum_MatchesFullNode(t *testing.T) {
 		proposer := idOf(key(60))
 		seen := map[ports.NodeID]bool{idOf(key(61)): true, idOf(key(62)): true, idOf(key(63)): true}
 
-		got, reason := f.c.RecomputeDeMatureSuperQuorum(f.root, proposer, seen, seenW, bondedW)
+		got, reason := f.c.recomputeDeMatureSuperQuorum(f.root, proposer, seen, seenW, bondedW)
 		if reason != nil {
 			t.Fatalf("recompute stalled unexpectedly: %v", reason)
 		}
@@ -239,7 +239,7 @@ func TestRecomputeDeMatureSuperQuorum_MatchesFullNode(t *testing.T) {
 		proposer := idOf(key(64))
 		seen := map[ports.NodeID]bool{idOf(key(63)): true}
 
-		got, reason := f.c.RecomputeDeMatureSuperQuorum(f.root, proposer, seen, seenW, bondedW)
+		got, reason := f.c.recomputeDeMatureSuperQuorum(f.root, proposer, seen, seenW, bondedW)
 		if reason != nil {
 			t.Fatalf("recompute stalled unexpectedly: %v", reason)
 		}
@@ -272,7 +272,7 @@ func TestRecomputeDeMatureSuperQuorum_MatureIsNoOp(t *testing.T) {
 
 	// A coalition that would MISS the super-quorum if the gate ran (proposer = 2M member, no seen).
 	proposer := idOf(key(64))
-	got, reason := f.c.RecomputeDeMatureSuperQuorum(f.root, proposer, nil, seenW, bondedW)
+	got, reason := f.c.recomputeDeMatureSuperQuorum(f.root, proposer, nil, seenW, bondedW)
 	if reason != nil {
 		t.Fatalf("recompute stalled unexpectedly: %v", reason)
 	}
@@ -293,7 +293,7 @@ func TestRecomputeDeMatureSuperQuorum_ForgedBondedWeightRejects(t *testing.T) {
 	bondedW := f.bondedWitnessFor(t)
 	proposer := idOf(key(60))
 	seen := map[ports.NodeID]bool{idOf(key(61)): true, idOf(key(62)): true, idOf(key(63)): true}
-	if _, reason := f.c.RecomputeDeMatureSuperQuorum(f.root, proposer, seen, seenW, bondedW); reason != nil {
+	if _, reason := f.c.recomputeDeMatureSuperQuorum(f.root, proposer, seen, seenW, bondedW); reason != nil {
 		t.Fatalf("baseline should reach a verdict with no stall; reason=%v", reason)
 	}
 
@@ -306,7 +306,7 @@ func TestRecomputeDeMatureSuperQuorum_ForgedBondedWeightRejects(t *testing.T) {
 	mw.Weight += 100 << 20
 	forged.MemberWeights[victim] = mw
 
-	got, reason := f.c.RecomputeDeMatureSuperQuorum(f.root, proposer, seen, seenW, forged)
+	got, reason := f.c.recomputeDeMatureSuperQuorum(f.root, proposer, seen, seenW, forged)
 	if got {
 		t.Fatal("C-1 VIOLATION: a forged per-member bonded weight was accepted — the super-quorum tally is forgeable")
 	}
@@ -325,7 +325,7 @@ func TestRecomputeDeMatureSuperQuorum_OmittedMemberRejects(t *testing.T) {
 	bondedW := f.bondedWitnessFor(t)
 	proposer := idOf(key(60))
 	seen := map[ports.NodeID]bool{idOf(key(61)): true, idOf(key(62)): true, idOf(key(63)): true}
-	if _, reason := f.c.RecomputeDeMatureSuperQuorum(f.root, proposer, seen, seenW, bondedW); reason != nil {
+	if _, reason := f.c.recomputeDeMatureSuperQuorum(f.root, proposer, seen, seenW, bondedW); reason != nil {
 		t.Fatalf("baseline should reach a verdict with no stall; reason=%v", reason)
 	}
 
@@ -342,7 +342,7 @@ func TestRecomputeDeMatureSuperQuorum_OmittedMemberRejects(t *testing.T) {
 	forged.IDs = shortIDs
 	delete(forged.MemberWeights, dropped)
 
-	got, reason := f.c.RecomputeDeMatureSuperQuorum(f.root, proposer, seen, seenW, forged)
+	got, reason := f.c.recomputeDeMatureSuperQuorum(f.root, proposer, seen, seenW, forged)
 	if got {
 		t.Fatal("SET-COMPLETENESS VIOLATION: a witness missing a bonded member was accepted")
 	}
@@ -366,7 +366,7 @@ func TestRecomputeDeMatureSuperQuorum_InjectedMemberRejects(t *testing.T) {
 	forged.IDs = append(forged.IDs, extra)
 	forged.MemberWeights[extra] = forged.MemberWeights[f.members[0]] // bogus witness; completeness fails first
 
-	got, reason := f.c.RecomputeDeMatureSuperQuorum(f.root, proposer, seen, seenW, forged)
+	got, reason := f.c.recomputeDeMatureSuperQuorum(f.root, proposer, seen, seenW, forged)
 	if got {
 		t.Fatal("SET-COMPLETENESS VIOLATION: a witness with an injected extra member was accepted")
 	}
@@ -397,7 +397,7 @@ func TestRecomputeDeMatureSuperQuorum_ThresholdFromConstant(t *testing.T) {
 	seen := map[ports.NodeID]bool{idOf(key(63)): true}
 
 	// PRODUCTION (fixed ⅔ constant): rejects.
-	got, reason := f.c.RecomputeDeMatureSuperQuorum(f.root, proposer, seen, seenW, bondedW)
+	got, reason := f.c.recomputeDeMatureSuperQuorum(f.root, proposer, seen, seenW, bondedW)
 	if reason != nil {
 		t.Fatalf("recompute stalled unexpectedly: %v", reason)
 	}
@@ -422,7 +422,7 @@ func TestRecomputeDeMatureSuperQuorum_ThresholdFromConstant(t *testing.T) {
 }
 
 // recomputeDeMatureThresholdFromWitness is the NEGATIVE-CONTROL injected variant for the C-6
-// ablation: it reproduces RecomputeDeMatureSuperQuorum's set-completeness + per-member verification
+// ablation: it reproduces recomputeDeMatureSuperQuorum's set-completeness + per-member verification
 // EXACTLY, but reads the super-quorum threshold ratio (num/den) from CALLER-supplied parameters (a
 // stand-in for a witness-carried threshold) instead of the fixed ⅔ constant. It exists ONLY in the
 // test to demonstrate that a config-from-witness fold ACCEPTS a coalition the fixed-constant fold
@@ -485,7 +485,7 @@ func TestRecomputeDeMatureSuperQuorum_UnprovenBondedRootStalls(t *testing.T) {
 	forged.BondedRootValue = append([]byte(nil), bondedW.BondedRootValue...)
 	forged.BondedRootValue[0] ^= 0xff
 
-	got, reason := f.c.RecomputeDeMatureSuperQuorum(f.root, proposer, nil, seenW, forged)
+	got, reason := f.c.recomputeDeMatureSuperQuorum(f.root, proposer, nil, seenW, forged)
 	if got {
 		t.Fatal("a corrupted bondedRoot value must not reach a met verdict")
 	}
@@ -507,7 +507,7 @@ func TestRecomputeDeMatureSuperQuorum_MissingMemberWeightStalls(t *testing.T) {
 	proposer := idOf(key(60))
 	delete(bondedW.MemberWeights, f.members[0]) // keep IDs complete (digest matches) but drop a weight witness
 
-	got, reason := f.c.RecomputeDeMatureSuperQuorum(f.root, proposer, nil, seenW, bondedW)
+	got, reason := f.c.recomputeDeMatureSuperQuorum(f.root, proposer, nil, seenW, bondedW)
 	if got {
 		t.Fatal("a member with no weight witness must stall the fold, not be folded as zero")
 	}

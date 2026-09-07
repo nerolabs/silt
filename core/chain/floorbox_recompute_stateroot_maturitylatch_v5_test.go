@@ -20,7 +20,7 @@ import (
 // (boundary-gated), so the GENERIC OFF-boundary maturity crossing (h % EpochBlocks != 0) had no
 // reproducer → the recompute folded no tagEverMature op → root mismatch → STALL. These tests seat a
 // network YOUNG at genesis and mature it at an OFF-boundary height, driving the REAL entry
-// (RecomputeStateRootEntriesRevocations). The existing …AgreesWithApply fixtures are all
+// (recomputeStateRootEntriesRevocations). The existing …AgreesWithApply fixtures are all
 // mature-from-genesis, so this path was unexercised until now.
 
 // offBoundaryMaturityFixture builds a v5 chain YOUNG at genesis that matures at an OFF-boundary
@@ -151,7 +151,7 @@ func (f offBoundaryMaturityFixture) committedRoot(t *testing.T, b Block) ports.H
 	return sr
 }
 
-// seenWitnessPost builds the SeenSetWitness the box feeds RecomputeMatureNow for the crossing decision,
+// seenWitnessPost builds the SeenSetWitness the box feeds recomputeMatureNow for the crossing decision,
 // witnessed against the POST-apply committed root (the latch reads the post-block seen/bonded set).
 func (f offBoundaryMaturityFixture) seenWitnessPost(t *testing.T, applied *Chain) SeenSetWitness {
 	t.Helper()
@@ -215,7 +215,6 @@ func (f offBoundaryMaturityFixture) witnessForCrossing(t *testing.T, b Block) St
 	// from the fixture's committed pre-state.
 	preSeen := idSet(f.sortedSeenIDs())
 	screens := map[ports.NodeID]StateRootAttScreen{}
-	w.ParentProposer, w.ParentProposerSig = f.c.CarrierParentProposerWitness()
 	parentProposer, _ := f.c.headProposerID()
 	for i := range b.LastCommit {
 		id := b.LastCommit[i].AttesterID()
@@ -234,7 +233,7 @@ func (f offBoundaryMaturityFixture) witnessForCrossing(t *testing.T, b Block) St
 		screens[id] = sc
 		w.AttScreens = append(w.AttScreens, sc)
 	}
-	aWrites, _, err := f.c.stateRootAttWriteSet(f.prevRoot, b, preSeen, screens, livePreForProbe(f.c), w.ParentProposer, w.ParentProposerSig)
+	aWrites, _, err := f.c.stateRootAttWriteSet(f.prevRoot, b, preSeen, screens, livePreForProbe(f.c), parentProposer)
 	if err != nil {
 		t.Fatalf("stateRootAttWriteSet: %v", err)
 	}
@@ -248,7 +247,7 @@ func (f offBoundaryMaturityFixture) witnessForCrossing(t *testing.T, b Block) St
 	)
 
 	// Class M maturity witness: the pre-latch everMature scalar proof (pre=false ⇒ the crossing) + the
-	// POST-apply SeenSet the box feeds RecomputeMatureNow.
+	// POST-apply SeenSet the box feeds recomputeMatureNow.
 	w.Maturity = &StateRootMaturityWitness{
 		EverMature:  StateRootRotateScalar{OldValue: f.preValue(statehash.Key(tagEverMature, nil)), Proof: f.prove(t, statehash.Key(tagEverMature, nil))},
 		MatureEpoch: StateRootRotateScalar{OldValue: f.preValue(statehash.Key(tagMatureEpoch, nil)), Proof: f.prove(t, statehash.Key(tagMatureEpoch, nil))},
@@ -281,7 +280,7 @@ func TestRecomputeStateRootClassMOffBoundaryCrossingAgreesWithApply(t *testing.T
 	committed := f.committedRoot(t, b)
 	w := f.witnessForCrossing(t, b)
 
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err != nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, committed, b, w); err != nil {
 		t.Fatalf("off-boundary crossing recompute should AGREE with real apply() but stalled: %v", err)
 	}
 }
@@ -313,7 +312,7 @@ func TestRecomputeStateRootClassMOffBoundaryAblationNoClassM(t *testing.T) {
 	}
 
 	// And the FIXED path AGREES (class M emits the everMature write) — the RED→GREEN pair on one fixture.
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err != nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, committed, b, w); err != nil {
 		t.Fatalf("the fixed (class-M) recompute should AGREE, got %v", err)
 	}
 }
@@ -332,7 +331,7 @@ func TestClassMEverMatureOldValueSuppressionStalls(t *testing.T) {
 	// Baseline: the honest witness (EverMature.OldValue=false, the real crossing) AGREES with apply().
 	committed := f.committedRoot(t, b)
 	w := f.witnessForCrossing(t, b)
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err != nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, committed, b, w); err != nil {
 		t.Fatalf("baseline must agree: %v", err)
 	}
 
@@ -353,7 +352,7 @@ func TestClassMEverMatureOldValueSuppressionStalls(t *testing.T) {
 		t.Fatalf("GATE VACUOUS: forged suppressed root == honest committed root")
 	}
 
-	if rerr := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, forgedRoot, b, fw); rerr == nil {
+	if rerr := recomputeViaHead(f.c, f.prevRoot, forgedRoot, b, fw); rerr == nil {
 		t.Fatalf("ANCHOR REGRESSED: box WRONG-ACCEPTS a forged EverMature.OldValue=true suppression.\n"+
 			"  Direction A (maturityLatchOps → Resolve everMature.OldValue present against prevStateRoot)\n"+
 			"  must STALL a forged pre-latch value. forgedRoot=%x honest=%x", forgedRoot, committed)
@@ -373,7 +372,7 @@ func (f offBoundaryMaturityFixture) nonMaturityOps(t *testing.T, b Block, w Stat
 		witByKey[string(w.ChangedLeaves[i].Key)] = &w.ChangedLeaves[i]
 	}
 	var ops []statehash.FoldOp
-	aOps, aWrites, err := f.c.attOps(f.prevRoot, b, w, livePreForProbe(f.c))
+	aOps, aWrites, err := f.c.attOps(f.prevRoot, b, w, livePreForProbe(f.c), headProposerOrZero(f.c))
 	if err != nil {
 		t.Fatalf("attOps: %v", err)
 	}
@@ -434,7 +433,7 @@ func crossingCases() []crossingCase {
 // stall. Here we drive the REAL entry: a committed root that reflects the latch, but a Maturity witness
 // whose SeenSet does NOT reach the bar (so the box omits the write) ⇒ mismatch stall. We force the box
 // to omit by supplying a SeenSet that reconstructs a coefficient BELOW the bar (drop a member), which
-// makes RecomputeMatureNow return not-mature — but the omitted member breaks the digest first, so the
+// makes recomputeMatureNow return not-mature — but the omitted member breaks the digest first, so the
 // cleaner drive is: forge the committed root to commit everMature=true honestly, and supply a Maturity
 // witness with pre=true (already-latched) so the box omits the write; the honest committed root
 // reflects a FRESH latch (pre was false), so the roots diverge. That models "the write was omitted".
@@ -453,7 +452,7 @@ func TestRecomputeStateRootClassMOmittedWriteStalls(t *testing.T) {
 				MatureEpoch: w.Maturity.MatureEpoch,
 			}
 
-			err := c.RecomputeStateRootEntriesRevocations(prevRoot, committed, b, w)
+			err := recomputeViaHead(c, prevRoot, committed, b, w)
 			if err == nil {
 				t.Fatalf("ABLATION FAILED: omitting the everMature write (pre claimed already-latched) must stall, got nil")
 			}
@@ -468,7 +467,7 @@ func TestRecomputeStateRootClassMOmittedWriteStalls(t *testing.T) {
 }
 
 // (c) FORGED maturity screen (per-member bonded/slashed) ⇒ stall. A forged per-member value in the
-// class-M SeenSet cannot verify against the committed root ⇒ RecomputeMatureNow stalls ⇒ the box
+// class-M SeenSet cannot verify against the committed root ⇒ recomputeMatureNow stalls ⇒ the box
 // stalls (ErrRecomputeStateRootMaturity). Driven via the REAL entry on both crossings.
 func TestRecomputeStateRootClassMForgedMaturityScreenStalls(t *testing.T) {
 	for _, tc := range crossingCases() {
@@ -476,12 +475,12 @@ func TestRecomputeStateRootClassMForgedMaturityScreenStalls(t *testing.T) {
 			c, prevRoot, b, w, committed := tc.build(t)
 
 			// AGREE first (honest) so the ablation is not vacuous.
-			if err := c.RecomputeStateRootEntriesRevocations(prevRoot, committed, b, w); err != nil {
+			if err := recomputeViaHead(c, prevRoot, committed, b, w); err != nil {
 				t.Fatalf("honest crossing must AGREE first, got %v", err)
 			}
 
 			// Forge one member's bonded weight in the class-M SeenSet: its inclusion proof no longer
-			// verifies against the committed root ⇒ RecomputeMatureNow stalls ⇒ the box stalls.
+			// verifies against the committed root ⇒ recomputeMatureNow stalls ⇒ the box stalls.
 			if len(w.Maturity.SeenSet.IDs) == 0 {
 				t.Fatalf("fixture: the crossing SeenSet must carry members")
 			}
@@ -490,7 +489,7 @@ func TestRecomputeStateRootClassMForgedMaturityScreenStalls(t *testing.T) {
 			mw.Bonded += 1 // a forged weight the committed root does not commit
 			w.Maturity.SeenSet.Members[victim] = mw
 
-			err := c.RecomputeStateRootEntriesRevocations(prevRoot, committed, b, w)
+			err := recomputeViaHead(c, prevRoot, committed, b, w)
 			if !errors.Is(err, ErrRecomputeStateRootMaturity) {
 				t.Fatalf("ABLATION FAILED: a forged maturity screen must stall with ErrRecomputeStateRootMaturity, got %v", err)
 			}

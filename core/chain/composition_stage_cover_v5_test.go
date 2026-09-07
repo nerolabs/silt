@@ -228,10 +228,7 @@ func requireV5Fixture(t *testing.T) {
 	if len(committed) == 0 || committed[len(committed)-1].Version != BlockVersionWitnessable {
 		t.Fatalf("SOURCE GATE: arm D — the fixture did not commit a v%d block; arms A–C would be vacuous", BlockVersionWitnessable)
 	}
-	b := f.mkBlock(t, nil)
-	if out, err := ValidateCommitV5(liveView{f.c}, &b); out != Accept {
-		t.Fatalf("SOURCE GATE: arm D — the fixture's block does not reach Accept in the composition (%s / %v); arms A–C would be vacuous", out, err)
-	}
+	assertHonestTwinAccepts(t, f.c, f.mkBlock(t, nil)) // arm D is the honest twin (NG-2)
 }
 
 // ---------------------------------------------------------------------------

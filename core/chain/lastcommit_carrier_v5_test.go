@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/nerolabs/silt/core/statehash"
 	"github.com/nerolabs/silt/ports"
 )
 
@@ -232,61 +233,64 @@ func carrierEntry(c *Chain, k ed25519.PrivateKey) Attestation {
 }
 
 // =============================================================================
-// R-CARRIER-PARENTPROPOSER — the two driven FIX gates for the parent-proposer anchor
+// R-CARRIER-PARENTPROPOSER — the exclusion is BOX-OWNED (floor-box structure round 1A, step 6)
 // =============================================================================
 //
-// The carrier transition excludes id == parent.ProposerID(). The box holds no parent block and
-// the parent's proposer identity is not a committed leaf, so the witness carries it and the box
-// ANCHORS it against the hash-covered b.Prev with the parent's own proposer signature
-// (carrierParentProposerFromWitness). These are the driven gates the coverage table's two FIX
-// rows name. Both are ADVERSARIAL-ROOT gates: the attacker also controls the committed root, so
-// "the fold happens to mismatch" is not the defence — the STALL is.
-
-// TestAdversarialRoot_ClassA_ForgedParentProposer: a ParentProposer naming a key that did NOT
-// sign b.Prev must STALL. Without the anchor the box would skip whichever id the witness named
-// (dropping a real seat) or, naming nobody, seat the parent's proposer — a one-seat forgery in
-// either direction against an attacker-chosen root.
-func TestAdversarialRoot_ClassA_ForgedParentProposer(t *testing.T) {
+// The carrier transition excludes id == parent.ProposerID(). That id is not a committed leaf, and
+// it used to be a WITNESS field anchored by "some key signed b.Prev" — which a freshly minted
+// keypair satisfies, so a witness could un-exclude the true parent proposer and let it self-seat
+// (the ADD direction, research certification 2026-09-03 §6.2). The slot is gone: the recompute
+// takes the parent proposer as a parameter the box door derives from the parent block it holds
+// (HeadRef.ProposerID, class 3), AFTER P1 has bound b.Prev to that parent's hash.
+//
+// TestClassA_ParentProposerExclusionIsBoxOwned drives the exclusion both ways on one block whose
+// carrier includes the parent proposer's OWN precommit: with the box-owned id the fold agrees with
+// the node's root (the proposer is not seated off its own block); with any other id — the state a
+// fresh-key witness used to reach — the fold seats the proposer and DISAGREES with the node's
+// root, which is exactly the wrong-accept the old anchor permitted against an attacker root.
+// Ablation: pass the zero id from the door ⇒ the "agrees" arm fails.
+func TestClassA_ParentProposerExclusionIsBoxOwned(t *testing.T) {
 	f := buildAttFixture(t)
 	b := f.attBlock()
+	parentProposer, ok := f.c.headProposerID()
+	if !ok {
+		t.Fatal("fixture: no head block")
+	}
+	// The carrier must carry the parent proposer's own precommit, or the exclusion is vacuous.
+	carried := false
+	for i := range b.LastCommit {
+		if b.LastCommit[i].AttesterID() == parentProposer {
+			carried = true
+		}
+	}
+	if !carried {
+		b.LastCommit = append(b.LastCommit, carrierEntry(f.c, f.proposer))
+		b.hashMemoSet = false
+		if b.LastCommit[len(b.LastCommit)-1].AttesterID() != parentProposer {
+			t.Fatal("fixture: the fixture proposer is not the head's proposer")
+		}
+	}
+	if f.c.validatorsSeen[parentProposer] {
+		t.Fatal("fixture VACUOUS: the parent proposer is already seated, so an un-excluded ADD would be idempotent")
+	}
 	committed := f.applyAndCommittedRoot(t, b)
 	w := f.witnessForAtt(t, b)
 
-	// A key that never signed b.Prev, with a signature it did make over its own message.
-	forged := key(54999)
-	w.ParentProposer = pubOf(forged)
-	w.ParentProposerSig = ed25519.Sign(forged, []byte("not the parent hash"))
-
-	err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w)
-	if err == nil {
-		t.Fatal("GATE FAILED (ForgedParentProposer): the box accepted a parent-proposer witness whose " +
-			"signature does not verify over b.Prev — the carrier's exclusion is then witness-chosen")
+	// Box-owned id: the fold reproduces apply()'s exclusion and agrees with the node's root.
+	if err := f.c.recomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w, parentProposer); err != nil {
+		t.Fatalf("GATE FAILED: with the box-owned parent proposer the recompute must agree with the node's root; got %v", err)
 	}
-	if !errors.Is(err, ErrRecomputeStateRootDigest) {
-		t.Fatalf("want ErrRecomputeStateRootDigest, got %v", err)
+	// Any other id (what a fresh-key witness used to buy): the proposer self-seats and the fold
+	// DIVERGES from the node's root. The witness is given everything the spurious seat needs (its
+	// screen and its leaf proof), so the arm ends in a proven MISMATCH, not a missing-witness stall.
+	w.AttScreens = append(w.AttScreens, f.attScreen(parentProposer))
+	w.ChangedLeaves = append(w.ChangedLeaves, f.leafWitness(t, stateRootWrite{
+		key: statehash.Key(tagValidatorsSeen, parentProposer[:]), newValue: statehash.Present}))
+	err := f.c.recomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w, ports.NodeID{})
+	if !errors.Is(err, ErrRecomputeStateRootMismatch) {
+		t.Fatalf("GATE FAILED: an un-excluded parent proposer seats itself off its own block; the fold must diverge from the node's root by name (ErrRecomputeStateRootMismatch); got %v", err)
 	}
-	t.Logf("GATE GREEN: forged ParentProposer STALLS: %v", err)
-}
-
-// TestAdversarialRoot_ClassA_MissingParentProposerSig: an omitted signature must STALL, never
-// fall through to "no exclusion" (the C-7 §104 banned move — a missing proof is never read as a
-// false/absent value).
-func TestAdversarialRoot_ClassA_MissingParentProposerSig(t *testing.T) {
-	f := buildAttFixture(t)
-	b := f.attBlock()
-	committed := f.applyAndCommittedRoot(t, b)
-	w := f.witnessForAtt(t, b)
-	w.ParentProposerSig = nil
-
-	err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w)
-	if err == nil {
-		t.Fatal("GATE FAILED (MissingParentProposerSig): the box folded class A with an UNANCHORED " +
-			"parent-proposer claim")
-	}
-	if !errors.Is(err, ErrRecomputeStateRootDigest) {
-		t.Fatalf("want ErrRecomputeStateRootDigest, got %v", err)
-	}
-	t.Logf("GATE GREEN: missing ParentProposerSig STALLS: %v", err)
+	t.Logf("GATE GREEN: box-owned exclusion agrees; a foreign id diverges: %v", err)
 }
 
 // TestG8_BoxIsBlindToTheBlocksOwnAtts is GATE G8's second arm (cold box): a served copy of the
@@ -299,7 +303,7 @@ func TestG8_BoxIsBlindToTheBlocksOwnAtts(t *testing.T) {
 	b := f.attBlock()
 	committed := f.applyAndCommittedRoot(t, b)
 	w := f.witnessForAtt(t, b)
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err != nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, committed, b, w); err != nil {
 		t.Fatalf("baseline: %v", err)
 	}
 
@@ -309,7 +313,7 @@ func TestG8_BoxIsBlindToTheBlocksOwnAtts(t *testing.T) {
 	if variant.Hash() != b.Hash() {
 		t.Fatal("the Atts slot must not be hash-covered — the S5 variant is the same block")
 	}
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, variant, w); err != nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, committed, variant, w); err != nil {
 		t.Fatalf("G8 RED: a same-hash served variant with a different certificate moved the box verdict: %v", err)
 	}
 }

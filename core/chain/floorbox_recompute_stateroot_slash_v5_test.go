@@ -241,7 +241,7 @@ func TestRecomputeStateRootSlashAgreesWithApply(t *testing.T) {
 	committed := f.applyAndCommittedRoot(t, b)
 	w := f.witnessForSlash(t, b)
 
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err != nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, committed, b, w); err != nil {
 		t.Fatalf("S recompute should AGREE with real apply() but stalled: %v", err)
 	}
 }
@@ -294,7 +294,7 @@ func TestRecomputeStateRootSlashAblationForgedQualifiedScreen(t *testing.T) {
 		}
 	}
 
-	err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w)
+	err := recomputeViaHead(f.c, f.prevRoot, committed, b, w)
 	if err == nil {
 		t.Fatalf("ABLATION FAILED: a forged qualified pre-set (culprit dropped) must stall, got nil")
 	}
@@ -306,7 +306,7 @@ func TestRecomputeStateRootSlashAblationForgedQualifiedScreen(t *testing.T) {
 }
 
 // --- Ablation 3: mis-derived delta — the slash does NOT delete bonded. This ablation drives the
-// REAL RecomputeStateRootEntriesRevocations path (session-7 scar: a hand-built root comparison that
+// REAL recomputeStateRootEntriesRevocations path (session-7 scar: a hand-built root comparison that
 // never touches the production fold is DECORATION — it stays green even if the box's bonded delete
 // regresses). We forge a committed StateRoot that reflects the BUGGY post-state (culprit STILL
 // bonded post-slash) and hand the box an HONEST witness. The box derives the CORRECT S delta (it
@@ -350,7 +350,7 @@ func TestRecomputeStateRootSlashAblationBondedNotDeleted(t *testing.T) {
 	// Drive the REAL path with an HONEST witness against the BUGGY committed root. The box's honest
 	// bonded delete makes its recomputed root diverge from the buggy committed root ⇒ terminal stall.
 	w := f.witnessForSlash(t, b)
-	err = f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, buggyCommitted, b, w)
+	err = recomputeViaHead(f.c, f.prevRoot, buggyCommitted, b, w)
 	if err == nil {
 		t.Fatalf("ABLATION FAILED: a committed root reflecting bonded-not-deleted must stall the honest " +
 			"recompute, got nil (the box's bonded delete is not load-bearing)")
@@ -377,7 +377,7 @@ func TestRecomputeStateRootSlashAblationWrongCulprit(t *testing.T) {
 	prev, _ := f.c.Head()
 	bWrong.Slashes = []Equivocation{slashProof(other, prev, 0x51, 0x52)}
 
-	err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, honestCommitted, bWrong, w)
+	err := recomputeViaHead(f.c, f.prevRoot, honestCommitted, bWrong, w)
 	if err == nil {
 		t.Fatalf("ABLATION FAILED: a block naming a different culprit than the committed root reflects must stall, got nil")
 	}
@@ -406,7 +406,7 @@ func TestRecomputeStateRootSlashAblationOmittedDigest(t *testing.T) {
 	}
 	w.DigestPreSets = kept
 
-	err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w)
+	err := recomputeViaHead(f.c, f.prevRoot, committed, b, w)
 	if !errors.Is(err, ErrRecomputeStateRootDigest) {
 		t.Fatalf("ABLATION FAILED: an omitted touched-digest witness must stall with ErrRecomputeStateRootDigest, got %v", err)
 	}
@@ -450,7 +450,7 @@ func TestRecomputeStateRootSlashAblationCircularAnchor(t *testing.T) {
 		d.Proof = replace(d.Tag, d.PreIDs)
 	}
 
-	err = f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w)
+	err = recomputeViaHead(f.c, f.prevRoot, committed, b, w)
 	if !errors.Is(err, ErrRecomputeStateRootFold) {
 		t.Fatalf("ABLATION FAILED: a StateRoot-anchored (circular) digest proof must fail the fold's "+
 			"prevStateRoot verify, got %v", err)
@@ -467,7 +467,7 @@ func TestRecomputeStateRootSlashAblationCompoundOutOfScope(t *testing.T) {
 	committed := f.applyAndCommittedRoot(t, b)
 	w := f.witnessForSlash(t, b)
 
-	err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w)
+	err := recomputeViaHead(f.c, f.prevRoot, committed, b, w)
 	if err == nil {
 		t.Fatalf("ABLATION FAILED: a slash+unwitnessed-att compound must stall, got nil")
 	}

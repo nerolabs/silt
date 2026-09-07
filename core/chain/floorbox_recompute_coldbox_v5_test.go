@@ -17,7 +17,7 @@ import (
 //
 // WHY THIS TIER EXISTS. Every recompute gate in this package runs the recompute ON THE CHAIN THAT
 // APPLIED THE HISTORY — the fixtures build `c`, `c.apply(...)` the blocks, and then call
-// `c.RecomputeStateRootEntriesRevocations(...)`. The 29 `cloneForDryRun()` clones copy `matureEpoch`
+// `recomputeViaHead(c, ...)`. The 29 `cloneForDryRun()` clones copy `matureEpoch`
 // by value (era3validity.go). So every existing gate ran against a box whose live latch fields
 // happened to match the committed pre-state. The test tier SHARED THE PRODUCER'S BLIND SPOT.
 //
@@ -68,9 +68,14 @@ func coldBox(t *testing.T, cfg Config) *Chain {
 // coldRecompute drives the REAL recompute entry on a cold box carrying only `cfg` — the exact
 // trustless contract: the verdict must be a function of (prevStateRoot, committedStateRoot, b, w,
 // own-cfg) and NOTHING else. Any gate that passes warm but not cold was passing on live state.
-func coldRecompute(t *testing.T, cfg Config, prevStateRoot, committedStateRoot ports.Hash, b Block, w StateRootWitness) error {
+//
+// `warm` supplies ONLY two box-owned inputs: its cfg (C-6) and its head's proposer id — the
+// stand-in for the box's own HeadRef.ProposerID (the parent block a real box holds). Nothing else
+// of the warm chain reaches the cold box.
+func coldRecompute(t *testing.T, warm *Chain, prevStateRoot, committedStateRoot ports.Hash, b Block, w StateRootWitness) error {
 	t.Helper()
-	return coldBox(t, cfg).RecomputeStateRootEntriesRevocations(prevStateRoot, committedStateRoot, b, w)
+	parentProposer, _ := warm.headProposerID()
+	return coldBox(t, warm.cfg).recomputeStateRootEntriesRevocations(prevStateRoot, committedStateRoot, b, w, parentProposer)
 }
 
 // livePreForProbe builds a stateRootHandoffPre from a chain's LIVE latch state. It exists ONLY for
@@ -92,7 +97,7 @@ func livePreForProbe(c *Chain) stateRootHandoffPre {
 // builder returns the cfg the box is built from plus the exact trustless inputs.
 type coldCase struct {
 	name  string
-	build func(t *testing.T) (cfg Config, prevRoot, committed ports.Hash, b Block, w StateRootWitness)
+	build func(t *testing.T) (warm *Chain, prevRoot, committed ports.Hash, b Block, w StateRootWitness)
 }
 
 func coldCases() []coldCase {
@@ -103,19 +108,19 @@ func coldCases() []coldCase {
 			// the attester is ALSO bonded ≥ MinBond, so the verdict coincides and this case stays GREEN.
 			// It is in the tier to prove the tier does not spuriously redden.
 			name: "classA/qualified-att",
-			build: func(t *testing.T) (Config, ports.Hash, ports.Hash, Block, StateRootWitness) {
+			build: func(t *testing.T) (*Chain, ports.Hash, ports.Hash, Block, StateRootWitness) {
 				f := buildAttFixture(t)
 				b := f.attBlock()
-				return f.c.cfg, f.prevRoot, f.applyAndCommittedRoot(t, b), b, f.witnessForAtt(t, b)
+				return f.c, f.prevRoot, f.applyAndCommittedRoot(t, b), b, f.witnessForAtt(t, b)
 			},
 		},
 		{
 			// Class M: the OFF-boundary everMature crossing (pre-latch everMature=false).
 			name: "classM/off-boundary-crossing",
-			build: func(t *testing.T) (Config, ports.Hash, ports.Hash, Block, StateRootWitness) {
+			build: func(t *testing.T) (*Chain, ports.Hash, ports.Hash, Block, StateRootWitness) {
 				f := buildOffBoundaryMaturityFixture(t)
 				b := f.crossingBlock()
-				return f.c.cfg, f.prevRoot, f.committedRoot(t, b), b, f.witnessForCrossing(t, b)
+				return f.c, f.prevRoot, f.committedRoot(t, b), b, f.witnessForCrossing(t, b)
 			},
 		},
 		{
@@ -124,19 +129,19 @@ func coldCases() []coldCase {
 			// value (rotate-LAST), and a box reading a post-handoff live field would screen them under
 			// the post value.
 			name: "classM+P/on-boundary-handoff",
-			build: func(t *testing.T) (Config, ports.Hash, ports.Hash, Block, StateRootWitness) {
+			build: func(t *testing.T) (*Chain, ports.Hash, ports.Hash, Block, StateRootWitness) {
 				f := buildHandoffFixture(t)
 				b := f.handoffBoundaryBlock()
-				return f.c.cfg, f.prevRoot, f.committedRoot(t, b), b, f.witnessForHandoff(t, b)
+				return f.c, f.prevRoot, f.committedRoot(t, b), b, f.witnessForHandoff(t, b)
 			},
 		},
 		{
 			// Class P: a mature-epoch boundary rotation (freeze + tallies + rotate scalars).
 			name: "classP/boundary-rotation",
-			build: func(t *testing.T) (Config, ports.Hash, ports.Hash, Block, StateRootWitness) {
+			build: func(t *testing.T) (*Chain, ports.Hash, ports.Hash, Block, StateRootWitness) {
 				f := buildRotateFixture(t)
 				b := f.boundaryBlock(nil)
-				return f.c.cfg, f.prevRoot, f.applyAndCommittedRoot(t, b), b, f.witnessForBoundary(t, b)
+				return f.c, f.prevRoot, f.applyAndCommittedRoot(t, b), b, f.witnessForBoundary(t, b)
 			},
 		},
 	}
@@ -148,8 +153,8 @@ func coldCases() []coldCase {
 func TestColdBox_ExistingGatesAgreeCold(t *testing.T) {
 	for _, tc := range coldCases() {
 		t.Run(tc.name, func(t *testing.T) {
-			cfg, prevRoot, committed, b, w := tc.build(t)
-			if err := coldRecompute(t, cfg, prevRoot, committed, b, w); err != nil {
+			warm, prevRoot, committed, b, w := tc.build(t)
+			if err := coldRecompute(t, warm, prevRoot, committed, b, w); err != nil {
 				t.Fatalf("COLD-BOX RED: the recompute AGREES warm but STALLS on a cold box: %v\n"+
 					"  A cold box is the deployment target (no apply(), no registry). A verdict that differs\n"+
 					"  warm-vs-cold means the recompute read live box state, not the certified inputs.", err)
@@ -164,10 +169,10 @@ func TestColdBox_ExistingGatesAgreeCold(t *testing.T) {
 func TestColdBox_ExistingAdversarialGatesStallCold(t *testing.T) {
 	for _, tc := range coldCases() {
 		t.Run(tc.name+"/tampered-committed-root", func(t *testing.T) {
-			cfg, prevRoot, committed, b, w := tc.build(t)
+			warm, prevRoot, committed, b, w := tc.build(t)
 			tampered := committed
 			tampered[0] ^= 0xff
-			err := coldRecompute(t, cfg, prevRoot, tampered, b, w)
+			err := coldRecompute(t, warm, prevRoot, tampered, b, w)
 			if err == nil {
 				t.Fatalf("COLD-BOX WRONG-ACCEPT: a tampered committed StateRoot was accepted cold")
 			}
@@ -355,7 +360,6 @@ func (f attScenario) witness(t *testing.T, seatZ bool) StateRootWitness {
 		EpochSetProof: mustProve(f.prover, statehash.Key(tagEpochSet, f.zID[:])),
 		BondedProof:   mustProve(f.prover, statehash.Key(tagBonded, f.zID[:])),
 	}}
-	w.ParentProposer, w.ParentProposerSig = f.c.CarrierParentProposerWitness()
 	var preSeen []ports.NodeID
 	for id := range f.c.validatorsSeen {
 		preSeen = append(preSeen, id)
@@ -401,7 +405,7 @@ func (f attScenario) honestRoot(t *testing.T) ports.Hash {
 // screened Z under the pre-maturity rule would prove `bonded[Z] ≥ MinBond` against prevStateRoot —
 // a TRUE committed fact — emit the ADD, fold, and match the attacker's root: WRONG-ACCEPT, with
 // every Resolve passing. The spurious validatorsSeen member is then the class-M poisoning entry that
-// mis-sizes RecomputeMatureNow's C2Metric.
+// mis-sizes recomputeMatureNow's C2Metric.
 //
 // RED BEFORE THE FIX: at e7a8aa4 this returns nil (wrong-accept).
 func TestColdBox_D1_MidEpochJoinerAdversarialRootStalls(t *testing.T) {
@@ -413,7 +417,7 @@ func TestColdBox_D1_MidEpochJoinerAdversarialRootStalls(t *testing.T) {
 	if forged == f.honestRoot(t) {
 		t.Fatalf("GATE VACUOUS: the spuriously-seated root equals the honest root")
 	}
-	err := coldRecompute(t, f.cfg, f.prevRoot, forged, f.b, f.witness(t, true))
+	err := coldRecompute(t, f.c, f.prevRoot, forged, f.b, f.witness(t, true))
 	if err == nil {
 		t.Fatalf("COLD-BOX WRONG-ACCEPT (D1 safety): the box ACCEPTED a root seating a mid-epoch joiner\n"+
 			"  that a full node REJECTS. Z=%x is bonded >= MinBond but NOT in the frozen epochSet (I3).\n"+
@@ -432,7 +436,7 @@ func TestColdBox_D1_MidEpochJoinerAdversarialRootStalls(t *testing.T) {
 // RED BEFORE THE FIX: at e7a8aa4 this stalls with ErrRecomputeStateRootMismatch.
 func TestColdBox_D1_MidEpochJoinerHonestBlockAgrees(t *testing.T) {
 	f := buildMidEpochJoiner(t)
-	if err := coldRecompute(t, f.cfg, f.prevRoot, f.honestRoot(t), f.b, f.witness(t, false)); err != nil {
+	if err := coldRecompute(t, f.c, f.prevRoot, f.honestRoot(t), f.b, f.witness(t, false)); err != nil {
 		t.Fatalf("COLD-BOX FALSE STALL (D1 liveness): the box stalled on an HONEST block carrying a\n"+
 			"  mid-epoch joiner's attestation (Z=%x). apply() ignores an unqualified att and commits a\n"+
 			"  root without it; the box must reach the same verdict. Got: %v", f.zID[:4], err)
@@ -460,7 +464,7 @@ func TestColdBox_D1_ForgedMatureEpochOldValueStalls(t *testing.T) {
 			t.Fatalf("GATE VACUOUS: this fixture must commit matureEpoch=true for the forge to be a forge")
 		}
 		w.Maturity.MatureEpoch.OldValue = statehash.EncodeBool(false)
-		assertForgedMatureEpochStalls(t, coldRecompute(t, f.cfg, f.prevRoot, f.honestRoot(t), f.b, w), false)
+		assertForgedMatureEpochStalls(t, coldRecompute(t, f.c, f.prevRoot, f.honestRoot(t), f.b, w), false)
 	})
 	t.Run("forged-true/honest-pre-is-false", func(t *testing.T) {
 		// The Condition-B window: everMature=true, matureEpoch=false. everMature=true committed means
@@ -477,7 +481,7 @@ func TestColdBox_D1_ForgedMatureEpochOldValueStalls(t *testing.T) {
 			t.Fatalf("GATE VACUOUS: the oracle must SEAT Z under the pre-maturity rule, or forging the branch changes nothing")
 		}
 		w.Maturity.MatureEpoch.OldValue = statehash.EncodeBool(true)
-		assertForgedMatureEpochStalls(t, coldRecompute(t, f.cfg, f.prevRoot, f.honestRoot(t), f.b, w), true)
+		assertForgedMatureEpochStalls(t, coldRecompute(t, f.c, f.prevRoot, f.honestRoot(t), f.b, w), true)
 	})
 
 	// The COMPLEMENT of the window forge: with the HONEST pre-state the same block must AGREE. This is
@@ -485,7 +489,7 @@ func TestColdBox_D1_ForgedMatureEpochOldValueStalls(t *testing.T) {
 	// would drop every attester and stall on every honest block in the window.
 	t.Run("window/honest-pre-agrees", func(t *testing.T) {
 		f := buildHandoffWindow(t)
-		if err := coldRecompute(t, f.cfg, f.prevRoot, f.honestRoot(t), f.b, f.witness(t, true)); err != nil {
+		if err := coldRecompute(t, f.c, f.prevRoot, f.honestRoot(t), f.b, f.witness(t, true)); err != nil {
 			t.Fatalf("COLD-BOX FALSE STALL: an honest Condition-B window block (everMature latched, epochSet\n"+
 				"  still empty) must AGREE with apply(). Got: %v", err)
 		}
@@ -535,7 +539,7 @@ func TestColdBox_D1_Direction2_LiveFollowerPreHandoffBlockAgrees(t *testing.T) {
 		t.Fatalf("GATE VACUOUS: the follower box must report handedOff()=true")
 	}
 
-	if err := ahead.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err != nil {
+	if err := recomputeViaHead(ahead, f.prevRoot, committed, b, w); err != nil {
 		t.Fatalf("DIRECTION-2 FALSE STALL: a follower ahead of the handoff stalled re-auditing a\n"+
 			"  PRE-handoff block. apply() screens the att loop BEFORE rotateEpoch (rotate-LAST), so the\n"+
 			"  box must screen against the COMMITTED pre-value, not its own advanced latch. Got: %v", err)
@@ -550,7 +554,7 @@ func TestColdBox_D1_Direction2_LiveFollowerPreHandoffBlockAgrees(t *testing.T) {
 func TestColdBox_UnwiredBondVerifierStallsAtEntry(t *testing.T) {
 	f := buildMidEpochJoiner(t)
 	unwired := New(f.cfg, func(ports.NodeID) int64 { return 0 }) // NO SetBondVerifier — the #572 shape
-	err := unwired.RecomputeStateRootEntriesRevocations(f.prevRoot, f.honestRoot(t), f.b, f.witness(t, false))
+	err := recomputeViaHead(unwired, f.prevRoot, f.honestRoot(t), f.b, f.witness(t, false))
 	if !errors.Is(err, ErrRecomputeBoxWiring) {
 		t.Fatalf("expected the LOUD entry wiring stall (ErrRecomputeBoxWiring), got %v", err)
 	}
@@ -566,7 +570,7 @@ func TestColdBox_MatureEpochWithoutEverMaturePreStateStalls(t *testing.T) {
 	w := f.witness(t, false)
 	w.Maturity.EverMature.OldValue = statehash.EncodeBool(false)
 	w.Maturity.MatureEpoch.OldValue = statehash.EncodeBool(true)
-	err := coldRecompute(t, f.cfg, f.prevRoot, f.honestRoot(t), f.b, w)
+	err := coldRecompute(t, f.c, f.prevRoot, f.honestRoot(t), f.b, w)
 	if !errors.Is(err, ErrRecomputeStateRootMaturity) {
 		t.Fatalf("expected a class-M maturity stall for an impossible pre-state, got %v", err)
 	}

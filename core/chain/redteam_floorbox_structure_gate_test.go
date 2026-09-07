@@ -93,6 +93,20 @@ func (f structFixture) mkBlock(t *testing.T, mutate func(*Block)) Block {
 	return *b
 }
 
+// assertHonestTwinAccepts is the NON-VACUITY control every structure gate carries (NG-2): the
+// fixture's honest block is accepted by the node's own door AND reaches Accept in the composition
+// over liveView. A gate whose refusal arm is green while this fails is refusing for the wrong
+// reason. It is a fixture-health check, not a contract assertion.
+func assertHonestTwinAccepts(t *testing.T, c *Chain, b Block) {
+	t.Helper()
+	if err := c.ValidateCommit(&b); err != nil {
+		t.Fatalf("NON-VACUITY BROKEN: the node refuses the honest twin (%v)", err)
+	}
+	if out, err := ValidateCommitV5(liveView{c}, &b); out != Accept {
+		t.Fatalf("NON-VACUITY BROKEN: the composition over liveView does not Accept the honest twin (%s / %v)", out, err)
+	}
+}
+
 // =============================================================================
 // G-D1 / arm D — the fixture reaches the v5 path (NON-VACUITY, runs first)
 // =============================================================================
@@ -115,9 +129,7 @@ func TestGD1_FixtureCommitsAWitnessableBlock(t *testing.T) {
 	if b.Version != BlockVersionWitnessable {
 		t.Fatalf("FIXTURE VACUOUS: mkBlock mints v%d, want v%d", b.Version, BlockVersionWitnessable)
 	}
-	if err := f.c.ValidateCommit(&b); err != nil {
-		t.Fatalf("ORACLE BROKEN: the node must accept its own certified v5 block; got %v", err)
-	}
+	assertHonestTwinAccepts(t, f.c, b)
 }
 
 // =============================================================================
@@ -132,6 +144,8 @@ func TestGD1_FixtureCommitsAWitnessableBlock(t *testing.T) {
 // SOURCE GATE: reads chain.go and asserts the FIRST statement of each root is the guarded dispatch.
 // RUNTIME GATE: TestGD6_LegacyModeParity drives ValidateCommit and the composition on one block.
 func TestGD12_BothNodeEntryPointsDispatchToTheComposition(t *testing.T) {
+	f := buildStructFixture(t)
+	assertHonestTwinAccepts(t, f.c, f.mkBlock(t, nil))
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, "chain.go", nil, 0)
 	if err != nil {
@@ -183,6 +197,7 @@ func TestG5_LiveViewNeverAnswersNoWitness(t *testing.T) {
 	}
 	f := buildStructFixture(t)
 	b := f.mkBlock(t, nil)
+	assertHonestTwinAccepts(t, f.c, b)
 	v := liveView{f.c}
 	if !v.WitnessBudget().Unlimited() {
 		t.Fatal("G-5: liveView must return UnlimitedBudget() — a ceiling on the node is a new validity rule")
@@ -276,7 +291,7 @@ func TestG5_LiveViewNeverAnswersNoWitness(t *testing.T) {
 // positive frame budget. No P13a predicate is wired: the substituted step's StateRoot leg stalls.
 func (f structFixture) provenViewOver(t *testing.T, src WitnessSource) provenView {
 	t.Helper()
-	bud, err := FrameBudget(1 << 20)
+	bud, err := ByteBudget(1 << 20)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -300,17 +315,15 @@ func TestGD10_ZeroBudgetStallsAndOnlyLiveViewIsUnlimited(t *testing.T) {
 	if !(Budget{}).IsZero() || (Budget{}).Unlimited() {
 		t.Fatal("G-D10: the zero Budget must be IsZero and NOT Unlimited")
 	}
-	if _, err := FrameBudget(0); !errors.Is(err, ErrBudgetNotPositive) {
-		t.Fatalf("G-D10: FrameBudget(0) must REFUSE; got %v", err)
+	if _, err := ByteBudget(0); !errors.Is(err, ErrBudgetNotPositive) {
+		t.Fatalf("G-D10: ByteBudget(0) must REFUSE; got %v", err)
 	}
-	if _, err := FrameBudget(-1); !errors.Is(err, ErrBudgetNotPositive) {
-		t.Fatalf("G-D10: FrameBudget(-1) must REFUSE; got %v", err)
+	if _, err := ByteBudget(-1); !errors.Is(err, ErrBudgetNotPositive) {
+		t.Fatalf("G-D10: ByteBudget(-1) must REFUSE; got %v", err)
 	}
 	f := buildStructFixture(t)
 	b := f.mkBlock(t, nil)
-	if err := f.c.ValidateCommit(&b); err != nil {
-		t.Fatalf("oracle: %v", err)
-	}
+	assertHonestTwinAccepts(t, f.c, b)
 	// A view constructed with the zero Budget stalls at step 0b, BY NAME, before any other read.
 	pv := f.provenViewOver(t, nil)
 	pv.budget = Budget{}
@@ -323,7 +336,7 @@ func TestGD10_ZeroBudgetStallsAndOnlyLiveViewIsUnlimited(t *testing.T) {
 	garbage := b
 	garbage.hashMemoSet = false
 	garbage.ProposerSig = make([]byte, ed25519.SignatureSize)
-	tight, _ := FrameBudget(1)
+	tight, _ := ByteBudget(1)
 	pv.budget = tight
 	out, err = ValidateCommitV5(pv, &garbage)
 	if out != IndeterminateTrustlessly || !errors.Is(err, ErrWitnessBudgetExceeded) {
@@ -331,7 +344,7 @@ func TestGD10_ZeroBudgetStallsAndOnlyLiveViewIsUnlimited(t *testing.T) {
 	}
 	// Within budget the same block fails on its garbage signature — proving the budget check is
 	// what fired above and that it sits ahead of the crypto.
-	pv.budget, _ = FrameBudget(len(Encode(&garbage)) + 1)
+	pv.budget, _ = ByteBudget(len(Encode(&garbage)) + 1)
 	out, err = ValidateCommitV5(pv, &garbage)
 	if !errors.Is(err, ErrBadSignature) {
 		t.Fatalf("G-D10 ablation arm: within budget the garbage signature must fail P3; got %s / %v", out, err)
@@ -362,6 +375,7 @@ func TestGD5_IssuerKeysOnlyBlockParity(t *testing.T) {
 	if len(good.Entries) != 0 || len(good.IssuerKeys) != 1 {
 		t.Fatal("fixture: the block must carry ONLY an issuer-key registration")
 	}
+	assertHonestTwinAccepts(t, f.c, f.mkBlock(t, nil))
 	if err := f.c.ValidateProposal(&good); err != nil {
 		t.Fatalf("G-D5 VIOLATED (P5): ValidateProposal refused an IssuerKeys-only v5 block: %v", err)
 	}
@@ -453,6 +467,7 @@ func (lf legacyFixture) mkBlock(t *testing.T) Block {
 func TestGD6_LegacyModeParity(t *testing.T) {
 	lf := buildLegacyFixture(t)
 	b := lf.mkBlock(t)
+	assertHonestTwinAccepts(t, lf.c, b)
 
 	nodeErr := lf.c.ValidateCommit(&b)
 	out, compErr := ValidateCommitV5(liveView{lf.c}, &b)
@@ -508,6 +523,7 @@ func TestGD6_LegacyModeParity(t *testing.T) {
 func TestGD7_ForgedLogRootIsRefusedOnBothViews(t *testing.T) {
 	f := buildStructFixture(t)
 	honest := f.mkBlock(t, nil)
+	assertHonestTwinAccepts(t, f.c, honest)
 	forged := f.mkBlock(t, nil)
 	bad := ports.HashBytes([]byte("a forged revocation-log root"))
 	forged.LogRoot = &bad
@@ -550,9 +566,7 @@ func TestGD8_RevocationBearingBlockStallsOnTheProvenView(t *testing.T) {
 		b.Entries = nil
 		b.Revocations = []ports.Hash{committed}
 	})
-	if err := f.c.ValidateCommit(&b); err != nil {
-		t.Fatalf("G-D8 (liveView): the node must accept its own certified revocation block; got %v", err)
-	}
+	assertHonestTwinAccepts(t, f.c, b) // the node and the composition accept the revocation block
 	pv := f.provenViewOver(t, nil)
 	out, err := pv.CommittedRoots(&b)
 	if out != IndeterminateTrustlessly || !errors.Is(err, ErrRevLogSizeUnauthenticated) {

@@ -273,7 +273,7 @@ func adversarialCommittedRoot(
 	forgedWit StateRootWitness,
 ) (forgedRoot, honestRoot ports.Hash) {
 	t.Helper()
-	ops, err := c.assembleStateRootRecomputeOps(prevRoot, honestCommitted, b, forgedWit)
+	ops, err := assembleOpsViaHead(c, prevRoot, honestCommitted, b, forgedWit)
 	if err != nil {
 		t.Fatalf("adversarialCommittedRoot: assembleStateRootRecomputeOps failed for the forged witness: %v\n"+
 			"  The forged field must not also break a proof that assembleStateRootRecomputeOps verifies.\n"+
@@ -334,7 +334,7 @@ func TestAdversarialRoot_ClassP_ForgedFrozenWeight(t *testing.T) {
 
 	// R1.2: the box MUST STALL. The Weight anchor requires the frozen Weight proven present in
 	// qualified||id under prevStateRoot; the forged Weight cannot be, so the class-P member anchor stalls.
-	err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, forgedRoot, b, w)
+	err := recomputeViaHead(f.c, f.prevRoot, forgedRoot, b, w)
 	if err == nil {
 		t.Fatalf("GATE FAILED (ForgedFrozenWeight): box WRONG-ACCEPTED a forged frozen Weight.\n"+
 			"  Expected a stall (R1.2 anchors Weight against qualified||id). Got nil.\n"+
@@ -470,7 +470,6 @@ func TestAdversarialRoot_ClassA_ForgedInEpochSet(t *testing.T) {
 		w.ChangedLeaves = append(w.ChangedLeaves, leafWit(wr.key))
 	}
 	w.AttScreens = []StateRootAttScreen{honestScreen}
-	w.ParentProposer, w.ParentProposerSig = c.CarrierParentProposerWitness()
 	// No A writes (newAtt not qualified) → no validatorsSeenRoot change.
 	preSeenIDs := sortIDs(func() []ports.NodeID {
 		var out []ports.NodeID
@@ -487,7 +486,7 @@ func TestAdversarialRoot_ClassA_ForgedInEpochSet(t *testing.T) {
 	w.Maturity = latchedMaturityWitness(t, prover, preValue)
 
 	// Confirm honest witness agrees.
-	if checkErr := c.RecomputeStateRootEntriesRevocations(prevRoot, honestCommitted, bTest, w); checkErr != nil {
+	if checkErr := recomputeViaHead(c, prevRoot, honestCommitted, bTest, w); checkErr != nil {
 		t.Fatalf("honest witness must AGREE with apply(): %v", checkErr)
 	}
 
@@ -509,7 +508,6 @@ func TestAdversarialRoot_ClassA_ForgedInEpochSet(t *testing.T) {
 	}
 	forgedW.Maturity = w.Maturity
 	forgedW.AttScreens = []StateRootAttScreen{forgedScreen}
-	forgedW.ParentProposer, forgedW.ParentProposerSig = c.CarrierParentProposerWitness()
 	// The spurious A write-set the ATTACKER folds into forgedRoot: validatorsSeen||newAtt ADD + the
 	// updated validatorsSeenRoot digest. (Built directly — the box's own assembler now ANCHORS and
 	// would stall, so the attacker computes the inflated committed root itself.)
@@ -531,7 +529,7 @@ func TestAdversarialRoot_ClassA_ForgedInEpochSet(t *testing.T) {
 
 	// R1.2: the box MUST STALL against forgedRoot — the forged InEpochSet=true cannot be proven present
 	// against prevStateRoot, so attesterQualifiedFromScreen refuses to seat newAtt.
-	err = c.RecomputeStateRootEntriesRevocations(prevRoot, forgedRoot, bTest, forgedW)
+	err = recomputeViaHead(c, prevRoot, forgedRoot, bTest, forgedW)
 	if err == nil {
 		t.Fatalf("GATE FAILED (ForgedInEpochSet): box WRONG-ACCEPTED a forged InEpochSet screen.\n"+
 			"  Expected a stall (R1.2 anchors InEpochSet against epochSet||id). Got nil.\n"+
@@ -571,20 +569,20 @@ func spuriousSeatedRoot(t *testing.T, base *Chain, b Block, id ports.NodeID) por
 // root into class-M; fixing class-A is the correct fix (not class-M).
 //
 // THE REACHABLE PATH (PE ruling Q2, verified). The class-M poison ENTERS at the class-A screen and
-// RIDES the committed validatorsSeenRoot into class-M's RecomputeMatureNow (maturitylatch_v5.go:87,
+// RIDES the committed validatorsSeenRoot into class-M's recomputeMatureNow (maturitylatch_v5.go:87,
 // over committedStateRoot). A forged class-A screen that seats a bonded-but-unqualified attester adds
 // a spurious validatorsSeen||id, inflating the seen set class-M then folds — wrong-latching everMature
-// early. RecomputeMatureNow in ISOLATION cannot detect the spurious seating (seating is class A's job);
+// early. recomputeMatureNow in ISOLATION cannot detect the spurious seating (seating is class A's job);
 // the DEFENSE is the class-A screen anchor (R1.2). So this gate drives the poison through the FULL
-// entry RecomputeStateRootEntriesRevocations — the reachable path — and asserts the box STALLS at the
+// entry recomputeStateRootEntriesRevocations — the reachable path — and asserts the box STALLS at the
 // class-A anchor before the spurious ADD can inflate the seen set class-M inherits.
 //
 // Fixture: a mature-epoch chain (MatureValidators=0 ⇒ everMature latched at genesis, epochSet frozen).
 // `third` bonds AFTER the genesis freeze, so it is bonded but NOT in the frozen epochSet — honest
 // apply() does NOT seat it (R-A-membership-source). At the test block `third` attests. A forged
 // InEpochSet=true would seat it into validatorsSeen, inflating the validatorsSeenRoot that class-M's
-// RecomputeMatureNow reads over the committed root (the PE Q2 inheritance). The box must STALL at the
-// class-A anchor — closing the class-M inheritance AT SOURCE, so RecomputeMatureNow never sees the
+// recomputeMatureNow reads over the committed root (the PE Q2 inheritance). The box must STALL at the
+// class-A anchor — closing the class-M inheritance AT SOURCE, so recomputeMatureNow never sees the
 // spuriously-seated member.
 //
 // NOTE ON THE ARCHITECTURAL CONSTRAINT (verified): an end-to-end everMature CROSSING via a spurious
@@ -693,12 +691,11 @@ func TestAdversarialRoot_ClassM_PoisonedBySpuriousAtt(t *testing.T) {
 		w.ChangedLeaves = append(w.ChangedLeaves, leafWit(wr.key))
 	}
 	w.AttScreens = []StateRootAttScreen{honestScreen}
-	w.ParentProposer, w.ParentProposerSig = c.CarrierParentProposerWitness()
 	w.DigestPreSets = []StateRootDigestWitness{{Tag: tagValidatorsSeenRoot, PreIDs: preSeenIDs, Proof: seenRootWit}}
 	// everMature latched at genesis (MatureValidators=0) → class M is pre-latched, emits nothing, reads
 	// no SeenSet. The latched maturity witness supplies just the everMature pre-state scalar proof.
 	w.Maturity = latchedMaturityWitness(t, prover, preValue)
-	if checkErr := c.RecomputeStateRootEntriesRevocations(prevRoot, honestCommitted, bTest, w); checkErr != nil {
+	if checkErr := recomputeViaHead(c, prevRoot, honestCommitted, bTest, w); checkErr != nil {
 		t.Fatalf("honest witness (InEpochSet=false) must AGREE with apply(): %v", checkErr)
 	}
 
@@ -716,14 +713,13 @@ func TestAdversarialRoot_ClassM_PoisonedBySpuriousAtt(t *testing.T) {
 
 	forgedW := w
 	forgedW.AttScreens = []StateRootAttScreen{forgedScreen}
-	forgedW.ParentProposer, forgedW.ParentProposerSig = c.CarrierParentProposerWitness()
 	forgedW.ChangedLeaves = append(append([]StateRootChangedLeafWitness(nil), w.ChangedLeaves...),
 		leafWit(statehash.Key(tagValidatorsSeen, thirdID[:])))
 
 	// R1.2: the box MUST STALL at the class-A anchor — the forged InEpochSet=true cannot prove present,
 	// so third is never seated, the spurious validatorsSeen ADD is never emitted, and class-M never
 	// inherits an inflated seen set. This is the PE Q2 corollary made testable end-to-end.
-	err = c.RecomputeStateRootEntriesRevocations(prevRoot, forgedRoot, bTest, forgedW)
+	err = recomputeViaHead(c, prevRoot, forgedRoot, bTest, forgedW)
 	if err == nil {
 		t.Fatalf("GATE FAILED (class-M poison via class-A): box WRONG-ACCEPTED a forged class-A seating\n"+
 			"  that would inflate validatorsSeenRoot and cross everMature early.\n"+
@@ -822,7 +818,7 @@ func TestAdversarialRoot_ClassP_ForgedRegVersion(t *testing.T) {
 	w := f.witnessForBoundary(t, rb)
 
 	// Baseline: honest witness agrees with apply().
-	if checkErr := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, honestCommitted, rb, w); checkErr != nil {
+	if checkErr := recomputeViaHead(f.c, f.prevRoot, honestCommitted, rb, w); checkErr != nil {
 		t.Fatalf("honest boundary witness must agree with apply(): %v", checkErr)
 	}
 
@@ -851,7 +847,7 @@ func TestAdversarialRoot_ClassP_ForgedRegVersion(t *testing.T) {
 	// R1.2: the box MUST STALL — the forged RegVersion=4 requires a MEMBERSHIP proof of regVersion||big
 	// at EncodeUint8(4), but the honest witness carries a membership proof of the TRUE value 5, so
 	// IsProvenPresent at 4 fails ⇒ stall at the class-P member anchor.
-	err = f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, forgedRoot, rb, w)
+	err = recomputeViaHead(f.c, f.prevRoot, forgedRoot, rb, w)
 	if err == nil {
 		t.Fatalf("GATE FAILED (ForgedRegVersion): box WRONG-ACCEPTED a forged RegVersion 5→4.\n"+
 			"  Expected a stall (R1.2 anchors RegVersion against regVersion||id). Got nil. bigID=%x originalRV=%d",
@@ -942,7 +938,7 @@ func TestAdversarialRoot_ClassP_ForgedRegVersionKnown(t *testing.T) {
 	}
 	w := f.witnessForBoundary(t, rb)
 
-	if checkErr := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, honestCommitted, rb, w); checkErr != nil {
+	if checkErr := recomputeViaHead(f.c, f.prevRoot, honestCommitted, rb, w); checkErr != nil {
 		t.Fatalf("honest boundary witness must agree with apply(): %v", checkErr)
 	}
 
@@ -972,7 +968,7 @@ func TestAdversarialRoot_ClassP_ForgedRegVersionKnown(t *testing.T) {
 	// R1.2: the box MUST STALL — the forged RegVersionKnown=false requires a NON-MEMBERSHIP proof of
 	// regVersion||big, but the honest witness carries a MEMBERSHIP proof (big's regVersion=5 leaf is
 	// present), so IsProvenAbsent fails ⇒ stall at the class-P member anchor.
-	err = f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, forgedRoot, rb, w)
+	err = recomputeViaHead(f.c, f.prevRoot, forgedRoot, rb, w)
 	if err == nil {
 		t.Fatalf("GATE FAILED (ForgedRegVersionKnown): box WRONG-ACCEPTED a forged RegVersionKnown=false.\n"+
 			"  Expected a stall (R1.2 anchors RegVersion against regVersion||id). Got nil. bigID=%x", bigID[:4])
@@ -1114,12 +1110,11 @@ func TestAdversarialRoot_ClassA_ForgedSlashed(t *testing.T) {
 		w.ChangedLeaves = append(w.ChangedLeaves, leafWit(wr.key))
 	}
 	w.AttScreens = []StateRootAttScreen{honestScreen}
-	w.ParentProposer, w.ParentProposerSig = c.CarrierParentProposerWitness()
 	w.DigestPreSets = []StateRootDigestWitness{{Tag: tagValidatorsSeenRoot, PreIDs: preSeenIDs, Proof: seenRootWit}}
 	// everMature=true post-genesis → latchedMaturityWitness gives preEverMature=true → no SeenSet needed.
 	w.Maturity = latchedMaturityWitness(t, prover, preValue)
 
-	if checkErr := c.RecomputeStateRootEntriesRevocations(prevRoot, honestCommitted, bTest, w); checkErr != nil {
+	if checkErr := recomputeViaHead(c, prevRoot, honestCommitted, bTest, w); checkErr != nil {
 		t.Fatalf("honest witness (Slashed=true) must agree with apply(): %v", checkErr)
 	}
 
@@ -1139,7 +1134,6 @@ func TestAdversarialRoot_ClassA_ForgedSlashed(t *testing.T) {
 
 	forgedW := w
 	forgedW.AttScreens = []StateRootAttScreen{forgedScreen}
-	forgedW.ParentProposer, forgedW.ParentProposerSig = c.CarrierParentProposerWitness()
 	forgedW.ChangedLeaves = append(append([]StateRootChangedLeafWitness(nil), w.ChangedLeaves...),
 		leafWit(statehash.Key(tagValidatorsSeen, culpritID[:])))
 
@@ -1147,7 +1141,7 @@ func TestAdversarialRoot_ClassA_ForgedSlashed(t *testing.T) {
 		t.Fatalf("GATE VACUOUS: forgedRoot == honestCommitted after forging Slashed true→false. culpritID=%x", culpritID[:4])
 	}
 
-	err = c.RecomputeStateRootEntriesRevocations(prevRoot, forgedRoot, bTest, forgedW)
+	err = recomputeViaHead(c, prevRoot, forgedRoot, bTest, forgedW)
 	if err == nil {
 		t.Fatalf("GATE FAILED (ForgedSlashed): box WRONG-ACCEPTED a forged Slashed=false for a slashed culprit.\n"+
 			"  Expected a stall (R1.2 anchors Slashed against slashed||id). Got nil. culpritID=%x", culpritID[:4])
@@ -1282,12 +1276,11 @@ func TestAdversarialRoot_ClassA_ForgedBondedSize(t *testing.T) {
 		w.ChangedLeaves = append(w.ChangedLeaves, leafWit(wr.key))
 	}
 	w.AttScreens = []StateRootAttScreen{honestScreen}
-	w.ParentProposer, w.ParentProposerSig = c.CarrierParentProposerWitness()
 	w.DigestPreSets = []StateRootDigestWitness{{Tag: tagValidatorsSeenRoot, PreIDs: preSeenIDs, Proof: seenRootWit}}
 	// everMature=true → latchedMaturityWitness gives preEverMature=true → no SeenSet needed.
 	w.Maturity = latchedMaturityWitness(t, prover, preValue)
 
-	if checkErr := c.RecomputeStateRootEntriesRevocations(prevRoot, honestCommitted, bTest, w); checkErr != nil {
+	if checkErr := recomputeViaHead(c, prevRoot, honestCommitted, bTest, w); checkErr != nil {
 		t.Fatalf("honest witness (BondedSize below MinBond) must agree with apply(): %v", checkErr)
 	}
 
@@ -1302,7 +1295,6 @@ func TestAdversarialRoot_ClassA_ForgedBondedSize(t *testing.T) {
 
 	forgedW := w
 	forgedW.AttScreens = []StateRootAttScreen{forgedScreen}
-	forgedW.ParentProposer, forgedW.ParentProposerSig = c.CarrierParentProposerWitness()
 	forgedW.ChangedLeaves = append(append([]StateRootChangedLeafWitness(nil), w.ChangedLeaves...),
 		leafWit(statehash.Key(tagValidatorsSeen, underBondedID[:])))
 
@@ -1310,7 +1302,7 @@ func TestAdversarialRoot_ClassA_ForgedBondedSize(t *testing.T) {
 		t.Fatalf("GATE VACUOUS: forgedRoot == honestCommitted after forging BondedSize %d→%d.", ubBonded, forgedBondedSize)
 	}
 
-	err = c.RecomputeStateRootEntriesRevocations(prevRoot, forgedRoot, bTest, forgedW)
+	err = recomputeViaHead(c, prevRoot, forgedRoot, bTest, forgedW)
 	if err == nil {
 		t.Fatalf("GATE FAILED (ForgedBondedSize): box WRONG-ACCEPTED a forged BondedSize %d→%d.\n"+
 			"  Expected a stall (R1.2 anchors BondedSize against bonded||id). Got nil. underBondedID=%x",
@@ -1433,11 +1425,10 @@ func TestAdversarialRoot_ClassA_ForgedBondedPresent(t *testing.T) {
 		w.ChangedLeaves = append(w.ChangedLeaves, leafWit(wr.key))
 	}
 	w.AttScreens = []StateRootAttScreen{honestScreen}
-	w.ParentProposer, w.ParentProposerSig = c.CarrierParentProposerWitness()
 	w.DigestPreSets = []StateRootDigestWitness{{Tag: tagValidatorsSeenRoot, PreIDs: preSeenIDs, Proof: seenRootWit}}
 	w.Maturity = latchedMaturityWitness(t, prover, preValue)
 
-	if checkErr := c.RecomputeStateRootEntriesRevocations(prevRoot, honestCommitted, bTest, w); checkErr != nil {
+	if checkErr := recomputeViaHead(c, prevRoot, honestCommitted, bTest, w); checkErr != nil {
 		t.Fatalf("honest witness (BondedPresent=false) must agree with apply(): %v", checkErr)
 	}
 
@@ -1451,7 +1442,6 @@ func TestAdversarialRoot_ClassA_ForgedBondedPresent(t *testing.T) {
 
 	forgedW := w
 	forgedW.AttScreens = []StateRootAttScreen{forgedScreen}
-	forgedW.ParentProposer, forgedW.ParentProposerSig = c.CarrierParentProposerWitness()
 	forgedW.ChangedLeaves = append(append([]StateRootChangedLeafWitness(nil), w.ChangedLeaves...),
 		leafWit(statehash.Key(tagValidatorsSeen, notBondedID[:])))
 
@@ -1459,7 +1449,7 @@ func TestAdversarialRoot_ClassA_ForgedBondedPresent(t *testing.T) {
 		t.Fatalf("GATE VACUOUS: forgedRoot == honestCommitted after forging BondedPresent false→true.")
 	}
 
-	err = c.RecomputeStateRootEntriesRevocations(prevRoot, forgedRoot, bTest, forgedW)
+	err = recomputeViaHead(c, prevRoot, forgedRoot, bTest, forgedW)
 	if err == nil {
 		t.Fatalf("GATE FAILED (ForgedBondedPresent): box WRONG-ACCEPTED a forged BondedPresent false→true.\n"+
 			"  Expected a stall (R1.2 anchors BondedPresent against bonded||id). Got nil. notBondedID=%x", notBondedID[:4])
@@ -1506,7 +1496,7 @@ func TestAdversarialRoot_ClassB_ForgedPriorOwner(t *testing.T) {
 	w := f.bondWitness(t, b, []uint64{newDue})
 
 	// Honest witness agrees with apply().
-	if checkErr := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, honestCommitted, b, w); checkErr != nil {
+	if checkErr := recomputeViaHead(f.c, f.prevRoot, honestCommitted, b, w); checkErr != nil {
 		t.Fatalf("honest witness (displacement) must agree with apply(): %v", checkErr)
 	}
 
@@ -1531,7 +1521,7 @@ func TestAdversarialRoot_ClassB_ForgedPriorOwner(t *testing.T) {
 	// R1.2: the box MUST STALL — the forged PriorOwner=honestID requires a MEMBERSHIP proof of
 	// bondRootOwner||sharedRoot at EncodeID(honestID), but the honest OwnerProof proves the TRUE owner
 	// (the squatter), so IsProvenPresent at the forged owner fails ⇒ class-B stall.
-	err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, forgedRoot, b, w)
+	err := recomputeViaHead(f.c, f.prevRoot, forgedRoot, b, w)
 	if err == nil {
 		t.Fatalf("GATE FAILED (ForgedPriorOwner): box WRONG-ACCEPTED a forged PriorOwner (=honestID → no displacement).\n"+
 			"  Expected a stall (R1.2 anchors PriorOwner against bondRootOwner||root). Got nil. sqID=%x honestID=%x",
@@ -1597,7 +1587,7 @@ func TestAdversarialRoot_ClassB_ForgedClaimed(t *testing.T) {
 	newDue := h + f.c.cfg.BondTTLBlocks + 1
 	w := f.bondWitness(t, b, []uint64{newDue})
 
-	if checkErr := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, honestCommitted, b, w); checkErr != nil {
+	if checkErr := recomputeViaHead(f.c, f.prevRoot, honestCommitted, b, w); checkErr != nil {
 		t.Fatalf("honest witness must agree with apply(): %v", checkErr)
 	}
 
@@ -1620,7 +1610,7 @@ func TestAdversarialRoot_ClassB_ForgedClaimed(t *testing.T) {
 	// R1.2: the box MUST STALL — the forged Claimed=false requires a NON-MEMBERSHIP proof of
 	// bondRootOwner||sharedRoot, but the honest OwnerProof proves it PRESENT (the squatter owns it), so
 	// IsProvenAbsent fails ⇒ class-B stall.
-	err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, forgedRoot, b, w)
+	err := recomputeViaHead(f.c, f.prevRoot, forgedRoot, b, w)
 	if err == nil {
 		t.Fatalf("GATE FAILED (ForgedClaimed): box WRONG-ACCEPTED a forged Claimed true→false (displacement skipped).\n"+
 			"  Expected a stall (R1.2 anchors Claimed against bondRootOwner||root). Got nil. sqID=%x", sqID[:4])
@@ -1675,7 +1665,7 @@ func TestAdversarialRoot_ClassB_ForgedPriorProven(t *testing.T) {
 	newDue := h + f.c.cfg.BondTTLBlocks + 1
 	w := f.bondWitness(t, b, []uint64{newDue})
 
-	if checkErr := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, honestCommitted, b, w); checkErr != nil {
+	if checkErr := recomputeViaHead(f.c, f.prevRoot, honestCommitted, b, w); checkErr != nil {
 		t.Fatalf("honest witness must agree with apply(): %v", checkErr)
 	}
 
@@ -1703,7 +1693,7 @@ func TestAdversarialRoot_ClassB_ForgedPriorProven(t *testing.T) {
 	// R1.2: the box MUST STALL — the forged PriorProven=true requires a MEMBERSHIP proof of
 	// bondRootProven||sharedRoot at EncodeBool(true), but the squatter's root is UNPROVEN (no proven
 	// leaf), so the honest ProvenProof proves ABSENT and IsProvenPresent fails ⇒ class-B stall.
-	err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, forgedRoot, b, w)
+	err := recomputeViaHead(f.c, f.prevRoot, forgedRoot, b, w)
 	if err == nil {
 		t.Fatalf("GATE FAILED (ForgedPriorProven): box WRONG-ACCEPTED a forged PriorProven false→true (honest reg rejected).\n"+
 			"  Expected a stall (R1.2 anchors PriorProven against bondRootProven||root). Got nil. sqID=%x honestID=%x",

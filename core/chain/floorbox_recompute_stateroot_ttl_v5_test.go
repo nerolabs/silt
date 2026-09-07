@@ -223,7 +223,7 @@ func TestRecomputeStateRootTTLAgreesWithApply(t *testing.T) {
 	committed := f.applyAndCommittedRoot(t, b)
 	w := f.ttlSweepWitness(t, b, expired)
 
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err != nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, committed, b, w); err != nil {
 		t.Fatalf("T recompute should AGREE with real apply() but stalled: %v", err)
 	}
 }
@@ -276,7 +276,7 @@ func TestRecomputeStateRootTTLAblationForgedExpiredSet(t *testing.T) {
 	bogus := ports.HashBytes(pubOf(key(71099)))
 	w.TTLSweep.Members = []ports.NodeID{bogus}
 
-	err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w)
+	err := recomputeViaHead(f.c, f.prevRoot, committed, b, w)
 	if err == nil {
 		t.Fatalf("ABLATION FAILED: a forged expired set must stall, got nil")
 	}
@@ -312,7 +312,7 @@ func TestRecomputeStateRootTTLAblationBondedNotDeleted(t *testing.T) {
 	}
 
 	w := f.ttlSweepWitness(t, b, expired)
-	err = f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, buggyCommitted, b, w)
+	err = recomputeViaHead(f.c, f.prevRoot, buggyCommitted, b, w)
 	if err == nil {
 		t.Fatalf("ABLATION FAILED: a committed root reflecting bonded-not-deleted must stall, got nil")
 	}
@@ -338,7 +338,7 @@ func TestRecomputeStateRootTTLAblationOmittedDigest(t *testing.T) {
 	}
 	w.DigestPreSets = kept
 
-	err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w)
+	err := recomputeViaHead(f.c, f.prevRoot, committed, b, w)
 	if !errors.Is(err, ErrRecomputeStateRootDigest) {
 		t.Fatalf("ABLATION FAILED: an omitted touched-digest witness must stall with ErrRecomputeStateRootDigest, got %v", err)
 	}
@@ -415,7 +415,7 @@ func recomputeSweepAt(t *testing.T, c *Chain, prop ed25519.PrivateKey, b Block) 
 	expired = sortIDs(expired)
 	committed := f.applyAndCommittedRoot(t, b)
 	w := f.ttlSweepWitness(t, b, expired)
-	return c.RecomputeStateRootEntriesRevocations(prevRoot, committed, b, w)
+	return recomputeViaHead(c, prevRoot, committed, b, w)
 }
 
 // TestRecomputeStateRootTTLMultiBlockScheduleAgreesWithApply is the POSITIVE 7f test: two consecutive
@@ -504,7 +504,7 @@ func TestRecomputeStateRootTTLAblationCompoundOutOfScope(t *testing.T) {
 	committed := f.applyAndCommittedRoot(t, b)
 	w := f.ttlSweepWitness(t, b, expired)
 
-	err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w)
+	err := recomputeViaHead(f.c, f.prevRoot, committed, b, w)
 	if err == nil {
 		t.Fatalf("ABLATION FAILED: a sweep+unwitnessed-att compound must stall, got nil")
 	}

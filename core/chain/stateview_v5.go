@@ -100,14 +100,18 @@ type HeadRef struct {
 	Empty bool
 }
 
-// Budget is the view's OWN witness/frame BYTE budget (BG-3). The composition checks it at step 0b,
-// BEFORE any per-entry crypto and before any witness is looked at.
+// Budget is the view's OWN witness/frame BYTE budget (BG-3): ONE ceiling over the block's
+// canonical frame PLUS the witness bundle the box is asked to look at. The composition checks the
+// frame against it at step 0b, BEFORE any per-entry crypto; the box door checks frame + witness
+// against the same ceiling before the composition runs (floorbox_box_v5.go).
 //
 // THE ZERO VALUE STALLS (M-4). Mirrors NoWitness being the zero of Availability: a forgotten
 // budget, an un-populated struct and a driver that "forgot" to set one all read as "this view will
 // pay for nothing" — never as "unlimited". Two constructors exist and there is no third way to make
 // one: UnlimitedBudget() (what liveView returns — a node holds the whole state and pays no witness
-// amplification) and FrameBudget(maxBytes), which refuses a non-positive ceiling.
+// amplification) and ByteBudget(maxBytes), which refuses a non-positive ceiling. A box derives its
+// ByteBudget from its own BoxConfig at construction (NewBox refuses an unset one); no call takes a
+// Budget as a parameter, so there is no way to hand a box ∞ per block.
 //
 // WHY BYTES AND NOT A COUNT (PE ruling §4(c) defect 1). validateCarrier applies no qualification
 // screen, so distinct ids are free (carrier.go: "distinctness does NOT bound the carrier … there is
@@ -118,8 +122,9 @@ type HeadRef struct {
 // above its own budget.
 //
 // What step 0b measures is the FRAME — the block's canonical encoded size — because no witness
-// exists yet at 0b. The witness-side bytes are measured where the witness is looked at (the box
-// entry). Three properties make the budget sound without its own certification:
+// exists yet at 0b. The witness-side bytes are measured where the witness is looked at — the box
+// door, which charges frame + witness against this same ceiling (witnessBytes, floorbox_box_v5.go).
+// Three properties make the budget sound without its own certification:
 //  1. STALL-ADDING ONLY. It can never turn a node-Reject into a box-Accept.
 //  2. BOX-OWNED, never a parameter of the block. A driver-supplied ∞ REMOVES a check.
 //  3. It restores O(1) time-to-stall for an out-of-scope block (RT2-CARRIER-15).
@@ -127,34 +132,50 @@ type HeadRef struct {
 // The number a box should use is NOT fixed here — the pony measurement is owed (build-plan cert
 // §6.3) and this round does not invent one.
 type Budget struct {
-	maxFrameBytes int
-	unlimited     bool
+	maxBytes  int
+	unlimited bool
 }
 
-// ErrBudgetNotPositive is FrameBudget's refusal of a zero or negative ceiling. A zero ceiling is
+// ErrBudgetNotPositive is ByteBudget's refusal of a zero or negative ceiling. A zero ceiling is
 // not "unlimited" and not "nothing" — it is the zero Budget, which stalls (M-4).
-var ErrBudgetNotPositive = errors.New("chain: floor-box frame budget must be a positive byte count (the zero Budget stalls; use UnlimitedBudget() for a node's view)")
+var ErrBudgetNotPositive = errors.New("chain: floor-box byte budget must be a positive byte count (the zero Budget stalls; use UnlimitedBudget() for a node's view)")
 
 // UnlimitedBudget is the node's budget: it holds the whole state, so a ceiling would be a new
 // node-side validity rule. It is the ONLY unlimited Budget, and only liveView returns it (G-D10).
 func UnlimitedBudget() Budget { return Budget{unlimited: true} }
 
-// FrameBudget is a box-owned ceiling on the block's canonical encoded size. Refuses maxBytes <= 0.
-func FrameBudget(maxBytes int) (Budget, error) {
+// ByteBudget is a box-owned ceiling on frame + witness bytes. Refuses maxBytes <= 0.
+func ByteBudget(maxBytes int) (Budget, error) {
 	if maxBytes <= 0 {
 		return Budget{}, fmt.Errorf("%w: got %d", ErrBudgetNotPositive, maxBytes)
 	}
-	return Budget{maxFrameBytes: maxBytes}, nil
+	return Budget{maxBytes: maxBytes}, nil
 }
 
 // Unlimited reports whether this budget imposes no ceiling at all — true ONLY for UnlimitedBudget().
 func (b Budget) Unlimited() bool { return b.unlimited }
 
 // IsZero reports the zero Budget — the one that stalls.
-func (b Budget) IsZero() bool { return !b.unlimited && b.maxFrameBytes == 0 }
+func (b Budget) IsZero() bool { return !b.unlimited && b.maxBytes == 0 }
 
-// MaxFrameBytes is the frame ceiling (0 for the zero and the unlimited budgets; check Unlimited()).
-func (b Budget) MaxFrameBytes() int { return b.maxFrameBytes }
+// MaxBytes is the ceiling (0 for the zero and the unlimited budgets; check Unlimited()).
+func (b Budget) MaxBytes() int { return b.maxBytes }
+
+// Check is THE ONE budget comparison: the zero Budget STALLS by name (M-4), the unlimited budget
+// admits everything, a byte budget refuses n above its ceiling. `what` names the measured quantity
+// in the refusal so the stall is attributable ("frame", "frame+witness").
+func (b Budget) Check(n int, what string) error {
+	if b.unlimited {
+		return nil
+	}
+	if b.IsZero() {
+		return ErrWitnessBudgetUnset
+	}
+	if n > b.maxBytes {
+		return fmt.Errorf("%w: %s %d bytes (budget %d)", ErrWitnessBudgetExceeded, what, n, b.maxBytes)
+	}
+	return nil
+}
 
 // Params is the view's OWN consensus configuration (class 3, C-6). It is NEVER witnessed and
 // NEVER a parameter of the block: an attacker who could shift MinBond or Quorum could move a

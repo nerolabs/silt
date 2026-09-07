@@ -397,10 +397,10 @@ func TestLeafDiffGuardCompleteness(t *testing.T) {
 
 			// The recompute's folded change-set (assembled via the real op pipeline). It must also AGREE
 			// (fold to the committed root) — a guard over an already-stalling recompute would be vacuous.
-			if err := pre.RecomputeStateRootEntriesRevocations(sc.prevRoot, committed, sc.b, sc.w); err != nil {
+			if err := recomputeViaHead(pre, sc.prevRoot, committed, sc.b, sc.w); err != nil {
 				t.Fatalf("recompute must AGREE for the guard to be meaningful, got %v", err)
 			}
-			ops, err := pre.assembleStateRootRecomputeOps(sc.prevRoot, committed, sc.b, sc.w)
+			ops, err := assembleOpsViaHead(pre, sc.prevRoot, committed, sc.b, sc.w)
 			if err != nil {
 				t.Fatalf("assembleStateRootRecomputeOps: %v", err)
 			}
@@ -451,7 +451,7 @@ func TestLeafDiffGuardAblationClassMRemoved(t *testing.T) {
 	}
 
 	// And with class M IN (the real pipeline), the same block is GREEN — the RED→GREEN pair.
-	ops, err := pre.assembleStateRootRecomputeOps(f.prevRoot, committed, b, w)
+	ops, err := assembleOpsViaHead(pre, f.prevRoot, committed, b, w)
 	if err != nil {
 		t.Fatalf("assembleStateRootRecomputeOps (fixed): %v", err)
 	}
@@ -623,10 +623,10 @@ func TestLeafDiffNamingPathPerClassSBT(t *testing.T) {
 
 			// The REAL folded set from the production op pipeline. It must AGREE (fold to committed) and
 			// the honest folded==diff, so the PRODUCTION assertion stays GREEN (does NOT fatal).
-			if err := tc.pre.RecomputeStateRootEntriesRevocations(tc.prevRoot, committed, tc.b, tc.w); err != nil {
+			if err := recomputeViaHead(tc.pre, tc.prevRoot, committed, tc.b, tc.w); err != nil {
 				t.Fatalf("recompute must AGREE for the ablation to be meaningful, got %v", err)
 			}
-			ops, err := tc.pre.assembleStateRootRecomputeOps(tc.prevRoot, committed, tc.b, tc.w)
+			ops, err := assembleOpsViaHead(tc.pre, tc.prevRoot, committed, tc.b, tc.w)
 			if err != nil {
 				t.Fatalf("assembleStateRootRecomputeOps: %v", err)
 			}
