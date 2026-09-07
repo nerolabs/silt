@@ -363,6 +363,18 @@ def main():
                  f"-bond {bond} -bond-audit 30s -capacity 5G")
             if name == boot:
                 a += f" -serve-registry 0.0.0.0:{REGISTRY_PORT}"   # boot validator issues tokens
+                # R2.9 paid DELIVERY lane, armed on the boot validator only (it is the token
+                # issuer, -validator implies the role): the flow_delivery_lane grade drives
+                # `swarm receipt` against it. The three companion flags are the daemon's own
+                # start preconditions: the idle window is refuse-until-set (D-R2.9 call 5;
+                # 90s here so an idle close is observable inside one flow), and a priced lane
+                # refuses to start with the faucet unlimited (R2.12, G-R212-1). The epoch clock
+                # the guard needs is DERIVED on the objective path (DerivedEpochBlocks). On a
+                # chain where era-4 is dark (every real network until the R3.4 stamp raise) the
+                # lane ARMS but no E->key binding can commit, so a client is refused at the
+                # withdrawal and nothing is spent — the flow grades that contract and flips to
+                # the positive settlement automatically once the binding commits.
+                a += " -accept-delivery-receipts -delivery-idle-window 90s -grant-capacity 256 -grant-per-hour 256"
             else:
                 a += f" -bootstrap {bootstrap}"
             return a

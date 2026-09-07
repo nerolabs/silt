@@ -46,6 +46,7 @@ onto the existing 13-node topology with **no topology change**:
 | `flow_chaos_crash` | `chaos` (#7) | a **SIGKILL**ed storage node re-announces its chunks (#69) and content stays fetchable |
 | `flow_web_ui_guard` | `client` (#4) | the web-UI guard holds on a real VM (no-token→401, DNS-rebinding→403, read→200) |
 | `flow_c2_no_capture` | `sybil` (#5) | **opt-in** (`SYBILS=8`): a bonded non-anchor Sybil cohort cannot advance the chain with the anchors down, and it resumes when they return |
+| `flow_delivery_lane` | `e2e` R2.9 (paid delivery session) | the boot validator arms `-accept-delivery-receipts`; a `swarm receipt` from fetch-1 is graded on TWO rows: `13-delivery-lane` (the lane's field contract — armed + announced; the client refused at the withdrawal naming the committed E→key binding while era-4 is dark, banked while live; a lane-off server refuses with the NOT-banked marker) and `13b-delivery-settlement` (pass only on a wire-banked receipt + idle close; a stated **gap** until the R3.4 stamp raise commits the binding — no harness change needed then) |
 
 **C2-Sybil (#5) — opt-in, `SYBILS=8 ./cloudtest.sh`.** The local `integration/sybil`
 suite can only reach the **standing gate** (a laptop's fresh Sybils can't *bank*

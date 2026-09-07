@@ -2247,6 +2247,96 @@ EOF
   econ_restore
 }
 
+# ── Flow 13: the R2.9 paid DELIVERY lane on the wire ────────────────────────────────
+# The boot validator arms -accept-delivery-receipts (topology.py). A client on fetch-1
+# fetches an object it published and presents a `swarm receipt` (the R2.9 flow: pin the
+# issuer's committed key -> withdraw one demand token -> MsgDeliveryOpen -> settle a
+# cumulative-count receipt). TWO rows, because the positive settlement has NO live seam
+# on a chain where era-4 is dark (every real network until the R3.4 stamp raise: the
+# E->key binding cannot commit, owner-ratified NO activation override — ROADMAP
+# R-E2E-ERA4-FIXTURE), and a property with no live seam is a stated GAP, not a fake green:
+#   13-delivery-lane       — the lane's field CONTRACT: armed + announced on the server;
+#                            the client refused at the withdrawal naming the committed-binding
+#                            gate (nothing spent, server banked nothing) while dark, or banked
+#                            while live; a lane-OFF server refuses with the NOT-banked marker.
+#   13b-delivery-settlement — pass ONLY when the receipt actually banked on the wire (server
+#                            'delivery receipt banked' + the idle 'delivery session closed');
+#                            gap while the lane is dark. This row is what the stamp raise turns
+#                            green with NO harness change.
+# LOCAL_PROOF: go test ./e2e -run 'TestPaidDeliveryLaneRefusesWithoutACommittedKeyBinding|TestDeliveryReceiptRefusedWhenLaneOff|TestPaidDeliverySessionEndToEnd' -count=1
+flow_delivery_lane() {
+  local boot; boot="$(python3 -c "import json;print(json.load(open('$FT_TOPO'))['meta']['boot'])")"
+  # The lane-OFF control is store-2 in the full topology, store-1 under SMOKE (store-2
+  # absent) — both run no lane, so the control still runs on the 4-node set.
+  local offnode=store-2; node_exists store-2 || offnode=store-1
+  require_nodes "13-delivery-lane" major fetch-1 "$offnode" "$boot" || return
+  client_preflight "13-delivery-lane" major fetch-1 || return
+  flow_evidence_nodes fetch-1 "$boot" "$offnode"
+  local t0; t0="$(date +%s)"
+  local bootref storeref
+  bootref="$(python3 -c "
+import json;t=json.load(open('$FT_TOPO'));n=t['nodes']['$boot'];print(n['nodeid']+'@'+n['ip']+':%d'%t['meta']['swarm_port'])")"
+  storeref="$(python3 -c "
+import json;t=json.load(open('$FT_TOPO'));n=t['nodes']['$offnode'];print(n['nodeid']+'@'+n['ip']+':%d'%t['meta']['swarm_port'])")"
+
+  # (1) ARMED + ANNOUNCED on the boot validator (S5 markers: the lane line and the B-11
+  # affordability line, both printed at boot; the dark-lane banner names the binding).
+  if ! waitfor "$boot" 'delivery receipts: ACCEPTING' 30 >/dev/null; then
+    slo_assert "13-delivery-lane" major "the boot validator never announced 'delivery receipts: ACCEPTING' — the lane is not armed (topology.py) or the daemon refused to start" 0
+    record "13b-delivery-settlement" gap major "lane not armed on ${boot}; settlement untested"; return
+  fi
+  local afford; afford="$(waitfor "$boot" 'delivery settlement: p=' 10 || true)"
+
+  # (2) Content to deliver: publish from fetch-1, fetch it back from fetch-1 with the BOOT
+  # validator as the only peer, so the delivery this receipt acknowledges came from it.
+  local res link sha root
+  res="$(ft_publish fetch-1 1048576 || true)"
+  if [ -z "$res" ]; then publish_verdict "13-delivery-lane" major "publish never produced a silt: link within ${PUBLISH_RETRY_S}s"; record "13b-delivery-settlement" gap major "no object to deliver"; return; fi
+  link="${res%% *}"; sha="${res##* }"
+  root="$(b64url_to_hex "$(printf '%s' "$link" | cut -d: -f3)")"
+  local got; got="$(ssh_node fetch-1 "/usr/local/bin/silt swarm get '$link' -o /tmp/ft_dl.bin -peers '$bootref' -registry '$REGREF' >/dev/null 2>&1; sha256sum /tmp/ft_dl.bin | cut -d' ' -f1" | tr -d '[:space:]')"
+  if [ "$got" != "$sha" ]; then
+    slo_assert "13-delivery-lane" major "fetch from the boot validator alone was not bit-perfect (want=${sha} got=${got}) — no delivery to acknowledge" 0
+    record "13b-delivery-settlement" gap major "no delivery to acknowledge"; return
+  fi
+
+  # (3) THE RECEIPT, against the armed server. 4 increments of 256 KiB = the 1 MiB fetched.
+  local out; out="$(ssh_node fetch-1 "/usr/local/bin/silt swarm receipt '$root' -peers '$bootref' -increments 4 2>&1" || true)"
+  # (4) The lane-OFF control: store-2 runs no lane and must say so with the announced marker.
+  local off; off="$(ssh_node fetch-1 "/usr/local/bin/silt swarm receipt '$root' -peers '$storeref' -increments 1 2>&1" || true)"
+  local off_ok=0
+  printf '%s' "$off" | grep -q "delivery receipt was NOT banked by" && printf '%s' "$off" | grep -q "serves no demand issuer key" && off_ok=1
+
+  local t1; t1="$(date +%s)"
+  if printf '%s' "$out" | grep -q "delivery receipt banked by"; then
+    # LIVE LANE (the binding committed: post stamp raise). The server's own markers must
+    # agree — banked now, and the session closed on the 90s idle window with no identity
+    # or object on the close line (the M0 log audit).
+    local banked closed
+    banked="$(waitfor_since "$boot" 'delivery receipt banked' "$t0" 60 || true)"
+    closed="$(waitfor_since "$boot" 'delivery session closed' "$t0" 150 || true)"
+    local ok=0; [ -n "$banked" ] && [ -n "$closed" ] && [ "$off_ok" = 1 ] && ok=1
+    slo_assert "13-delivery-lane" major "LIVE lane: client banked (${out##*: }); server banked=$([ -n "$banked" ] && echo yes || echo NO) closed=$([ -n "$closed" ] && echo yes || echo NO); lane-off control at ${offnode} $([ "$off_ok" = 1 ] && echo refused-with-marker || echo "WRONG: $off")" "$ok" $((t1 - t0))
+    local sok=0; [ -n "$banked" ] && [ -n "$closed" ] && ! printf '%s' "$closed" | grep -qE "object=|fetcher=" && sok=1
+    slo_assert "13b-delivery-settlement" major "R2.9 settlement ON THE WIRE: ${banked:-no banked line}; close: ${closed:-no close line}${afford:+; $afford}" "$sok" $((t1 - t0))
+    return
+  fi
+  if printf '%s' "$out" | grep -q "no key that resolves against a committed E->key binding"; then
+    # DARK LANE (era-4 not active on this chain): the certified refusal at the withdrawal —
+    # nothing withdrawn, nothing spent, and the server banked NOTHING. The lane-off
+    # sentence must NOT appear (the two refusals are distinct contracts, PE ruling 2026-09-03).
+    local conflated=0 sbanked
+    printf '%s' "$out" | grep -q "serves no demand issuer key" && conflated=1
+    sbanked="$(jlog_since "$boot" "$t0" 2>/dev/null | grep -E "delivery receipt banked" | tail -1 || true)"
+    local ok=0; [ "$conflated" = 0 ] && [ -z "$sbanked" ] && [ "$off_ok" = 1 ] && ok=1
+    slo_assert "13-delivery-lane" major "DARK lane (era-4 not active): armed + announced on ${boot}; client refused at the withdrawal naming the committed E->key binding (nothing spent)$([ "$conflated" = 1 ] && echo '; WRONG: conflated with the lane-off sentence')$([ -n "$sbanked" ] && echo "; WRONG: server banked: $sbanked"); lane-off control at ${offnode} $([ "$off_ok" = 1 ] && echo refused-with-marker || echo "WRONG: $off")${afford:+; $afford}" "$ok" $((t1 - t0))
+    record "13b-delivery-settlement" gap major "UNTESTABLE on this chain: the positive settlement needs a committed E->key binding, which needs era-4 (dark on every real network until the R3.4 stamp raise; no activation override, owner-ratified). The contract row above is what holds today; this row turns green at the stamp raise with no harness change." $((t1 - t0))
+    return
+  fi
+  slo_assert "13-delivery-lane" major "UNEXPECTED client outcome for swarm receipt against the armed boot validator: ${out}" 0 $((t1 - t0))
+  record "13b-delivery-settlement" gap major "client outcome unclassified (see 13-delivery-lane)" $((t1 - t0))
+}
+
 # LOCAL_PROOF: n/a — WAN-cadence liveness-BOUND soak; the deterministic escape-bound oracle is core/node/modelcheck_i4_liveness_test.go, the wall-clock at WAN scale is the cloud's job
 flow_soak_publish_drain() {
   [ "${SOAK:-0}" = 1 ] || return 0
@@ -2356,7 +2446,7 @@ run_all_scenarios() {
     flow_fault_tolerance flow_restart_survival flow_takedown flow_cross_nat
     adv_equivocation flow_equivocation_island adv_partition adv_proposal_reject
     flow_publisher_unlinkability flow_durability_turnover flow_chaos_crash
-    flow_web_ui_guard flow_c2_no_capture flow_economy_repair
+    flow_web_ui_guard flow_c2_no_capture flow_economy_repair flow_delivery_lane
   )
   if [ "${RANDOMIZE:-1}" = 1 ]; then
     local seed="${SEED:-$RUN_ID}"

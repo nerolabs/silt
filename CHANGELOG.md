@@ -8,6 +8,22 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Added
+- **Cloud field test: the R2.9 paid delivery lane is on the graded sheet (`flow_delivery_lane`, rows
+  `13-delivery-lane` / `13b-delivery-settlement`).** `topology.py` arms `-accept-delivery-receipts
+  -delivery-idle-window 90s -grant-capacity 256 -grant-per-hour 256` on the boot validator (the token
+  issuer); the flow publishes from fetch-1, fetches back with the boot validator as the only peer, and
+  presents `swarm receipt` against it and against a lane-off store. It is ERA-AWARE and honest: on every
+  real network until the R3.4 stamp raise era-4 is dark, so no E→key binding can commit and the positive
+  settlement has no live seam — row 13 grades the lane's field contract (armed + announced; the client
+  refused at the withdrawal naming the committed binding, nothing spent, the server banked nothing; the
+  lane-off server answers with the NOT-banked marker), and row 13b is a stated GAP that turns green at the
+  stamp raise with no harness change (server `delivery receipt banked` + the idle `delivery session closed`
+  with no identity on the close line). LOCAL proof: the three e2e tests
+  (`TestPaidDeliveryLaneRefusesWithoutACommittedKeyBinding`, `TestDeliveryReceiptRefusedWhenLaneOff`,
+  `TestPaidDeliverySessionEndToEnd`) plus a `LOCAL=1` drive of the flow. Owner ask 2026-09-07: "create the
+  necessary cloud tests before the next billable run".
+
 ### Changed
 - **The credit numéraire (G-R212-7, certified and owner-ratified 2026-09-06): the unwitnessed serve
   mints ONE credit per 393,216 bytes served (was one per byte), the repair-bounty base is priced in the
