@@ -39,7 +39,9 @@ import (
 // be equal-length within a stripe), so a small FILE pays the padding; a small MANIFEST does
 // not (Stage frames it at true length). Changing this changes the root every NEW publish of
 // the same bytes produces (convergent dedup does not span the boundary); core/genesis pins
-// its own 64 KiB for reproducibility.
+// its own 64 KiB chunk AND its 64 KiB manifest frame (Options.ManifestFrameBytes), so the
+// height-0 block hash — which covers the entry's manifest chunk IDs — is unchanged
+// (core/genesis TestGenesisBlockHashIsPinned; blind PE, 2026-09-07).
 const DefaultChunkSize = 256 << 10
 
 type Options struct {
@@ -58,6 +60,15 @@ type Options struct {
 	// (node.AcquireToken) before calling Add and pass it here; the entry then
 	// carries the token instead of a publisher.
 	Token *ports.PublishToken
+	// ManifestFrameBytes fixes the frame size the sealed manifest is split at. 0 (the
+	// default) DERIVES it — ManifestFrameSize(len(blob), ChunkSize): one true-length frame
+	// when the manifest fits in one chunk. A non-zero value pins it. core/genesis pins
+	// ChunkSize here so every byte that reaches the genesis block — entry.ManifestChunks
+	// included, which chain.Block.Hash covers — is fixed by Options and not by what this
+	// package derives (blind PE on the 4′ framing change, 2026-09-07: the derivation alone
+	// moved the height-0 hash, and a fresh node and a node with a persisted chain would
+	// have disagreed at height 0 with no refusal and no log line).
+	ManifestFrameBytes int
 }
 
 // Add ingests r and returns the file's silt link: the Merkle root
@@ -188,7 +199,11 @@ func Stage(ctx context.Context, store ports.ChunkStore, r io.Reader, opts Option
 	if err != nil {
 		return link.Handle{}, ports.Entry{}, fmt.Errorf("add: sealing manifest: %w", err)
 	}
-	mframes, err := chunk.Split(bytes.NewReader(blob), ManifestFrameSize(len(blob), opts.ChunkSize))
+	frame := opts.ManifestFrameBytes
+	if frame <= 0 {
+		frame = ManifestFrameSize(len(blob), opts.ChunkSize)
+	}
+	mframes, err := chunk.Split(bytes.NewReader(blob), frame)
 	if err != nil {
 		return link.Handle{}, ports.Entry{}, fmt.Errorf("add: chunking manifest: %w", err)
 	}

@@ -112,15 +112,33 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   content-addressing break (D-R2.9-NODE-HALF-CALLS call 4′, ratified 2026-09-07).** `pipeline.DefaultChunkSize
   = 262,144`: one chunk is one delivery credit (`credit.DeliveryBytesPerCredit`, pinned in `cmd/silt`), a k = 10
   stripe pays a repair-bounty base of exactly 10 (the certified D-S7 threshold of 36 retrievals per repair; the
-  64 KiB former default paid 2 of an exact 2.5 — `R-BOUNTY-TRUNCATION`, closed), and 256 KiB is the largest power
+  64 KiB former default paid 2 of an exact 2.5 — `R-BOUNTY-TRUNCATION` STAYS OPEN, reopened on the blind PE's
+  item 3: the floor mechanism is unfixed and `-chunk-size 65536` still under-pays 20 % unwarned), and 256 KiB is the largest power
   of two at which a PoR audit samples every block. `pipeline.ManifestFrameSize`: a sealed manifest that fits in
   one chunk is framed as ONE frame of its own length + 8 (manifests carry no parity, so padding them to the
   chunk size bought nothing — 87.6 % of the first production store was 1.4 KB manifests padded to 65,536 B,
   `R-MANIFEST-PADDING`, closed); larger manifests keep the chunk size. Data frames stay padded to the chunk size
-  (erasure shards are equal-length within a stripe), so a small FILE pays the padding — disclosed. Already-published
+  (erasure shards are equal-length within a stripe), so a small FILE pays the padding — PRICED: a 1 KB object
+  stores 2,097,264 B, +300 % over the 524,400 B it stored at 64 KiB, and the erasure-efficiency floor K × chunkSize
+  moves 640 KiB → 2.5 MiB (Economist advisory §4); the short-final-stripe fix is filed as `R-SHORT-FINAL-STRIPE`
+  (ACTIONABLE, Builder). Already-published
   roots are unchanged; a NEW publish of already-published bytes produces a different root on either side of the
-  boundary (convergent dedup does not span it); `core/genesis` keeps its own 64 KiB. Gates
-  `TestManifestIsFramedAtTrueLength`, `TestDefaultChunkSizeIs256KiB`, `TestDefaultChunkIsOneDeliveryCredit`.
+  boundary (convergent dedup does not span it). **`core/genesis` pins BOTH its 64 KiB chunk and its 64 KiB manifest
+  frame** (`pipeline.Options.ManifestFrameBytes`, new; 0 derives the true-length frame), so the height-0 block hash is
+  UNCHANGED: `chain.Block.Hash` covers `entry.ManifestChunks`, and in the reviewed build the framing change alone
+  moved the genesis hash from `7becf754…32ce` to `f428d0a8…0951` — a fresh node and a node with a persisted chain
+  would have disagreed at height 0 with no refusal and no log line (blind PE ruling
+  `silt-reviews/principle-engineer/RULING-default-chunk-256k-manifest-framing-b365f10-2026-09-07.md`, item 1,
+  measured). `TestGenesisBlockHashIsPinned` holds the hash, the root and the manifest chunk ID as literals. Whether
+  height-0 identity sits inside the freeze surface is routed to the Researcher (`R-GENESIS-HASH-FREEZE-SURFACE`).
+  **A second break class, named (item 2):** the framing moves `entry.ManifestChunks` under an UNCHANGED root
+  (`manifest.Root` covers data + parity IDs only), and `registry.Publish` answers `ErrDupPublish` for exactly that
+  shape — a re-publish of pre-change content at the same explicit chunk size collides at the registry after the
+  scatter has shipped the bytes (`TestReframedManifestUnderAnUnchangedRootIsADupPublish`). The B_bootstrap census
+  export header now carries `publishDefaultChunkSize` (instrument class, a compiled constant) so a future analyst can
+  tell a bin shift that is traffic from one that is geometry (the Economist's one census ask). Gates
+  `TestManifestIsFramedAtTrueLength`, `TestDefaultChunkSizeIs256KiB`, `TestDefaultChunkIsOneDeliveryCredit`,
+  `TestGenesisBlockHashIsPinned`, `TestReframedManifestUnderAnUnchangedRootIsADupPublish`.
   Deliberation: `docs/thinking/2026-09-07-default-chunk-256k-manifest-framing.md`.
 - **R2.9: the delivery session's unsettled remainder is a DEPOSIT released at anchor expiry, not a burn
   (D-R2.9-NODE-HALF-CALLS call 1, amended 1′; certification

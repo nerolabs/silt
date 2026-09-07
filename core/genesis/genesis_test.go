@@ -3,6 +3,7 @@ package genesis_test
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"testing"
 
 	"github.com/nerolabs/silt/adapters/memstore"
@@ -32,6 +33,39 @@ func TestGenesisIsDeterministic(t *testing.T) {
 	}
 	if b1.Height != 0 {
 		t.Fatalf("genesis height %d, want 0", b1.Height)
+	}
+}
+
+// TestGenesisBlockHashIsPinned holds height-0 IDENTITY across binaries, which
+// TestGenesisIsDeterministic cannot see (it compares two builds in one process). The
+// literals are the values every binary before the 4′ framing change produced; the
+// manifest chunk ID is pinned separately because it is the seam that moved — the root
+// covers data + parity IDs only, so a framing change moves the entry and the block hash
+// while leaving the root alone (blind PE, 2026-09-07, measured: f428d0a8…0951 under the
+// derived frame). ABLATION: drop ManifestFrameBytes from genesis.Options → RED on the
+// manifest chunk ID and on the block hash, GREEN on the root.
+func TestGenesisBlockHashIsPinned(t *testing.T) {
+	const (
+		wantHash  = "7becf75427252270fcf83faff01719c2686ddf6e837b6b6c7470ed161c8732ce"
+		wantRoot  = "fce9eeeb23ac0051972d99e67e9423821fedc9607cbbb48c52a4030171e320d6"
+		wantChunk = "8063c7a3071be25d364d29da07b3fd9292adf32b3783fa61314898ecaca44610"
+	)
+	b, h, entry, err := genesis.Build(memstore.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := hex.EncodeToString(h.Root[:]); got != wantRoot {
+		t.Fatalf("genesis root %s, want %s — the manifesto's chunking or erasure geometry moved", got, wantRoot)
+	}
+	if len(entry.ManifestChunks) != 1 {
+		t.Fatalf("genesis manifest is %d chunks, want exactly 1 (one padded 64 KiB frame)", len(entry.ManifestChunks))
+	}
+	if got := hex.EncodeToString(entry.ManifestChunks[0][:]); got != wantChunk {
+		t.Fatalf("genesis manifest chunk %s, want %s — the manifest FRAME moved (the root did not), and with it the block hash", got, wantChunk)
+	}
+	hh := b.Hash()
+	if got := hex.EncodeToString(hh[:]); got != wantHash {
+		t.Fatalf("genesis block hash %s, want %s — a fresh node and a node with a persisted chain now disagree at height 0", got, wantHash)
 	}
 }
 

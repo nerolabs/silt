@@ -51,13 +51,22 @@ func ID() ports.NodeID {
 }
 
 // Options pins every parameter that affects the bytes, so the genesis
-// file is reproducible regardless of what the pipeline defaults become.
+// file is reproducible regardless of what the pipeline defaults become —
+// INCLUDING the manifest frame size. The genesis block hashes its entry,
+// and the entry carries the manifest chunk IDs, so the frame size is part of
+// height-0 identity: it is pinned to the padded 64 KiB frame every binary
+// built before the 4′ true-length framing produced (blind PE, 2026-09-07),
+// and TestGenesisBlockHashIsPinned holds the resulting hash as a literal.
+// Whether height-0 identity sits inside the era-3/4 freeze surface is the
+// Researcher's question (R-GENESIS-HASH-FREEZE-SURFACE); until it is
+// answered the hash does not move.
 func Options() pipeline.Options {
 	return pipeline.Options{
-		ChunkSize: 64 << 10,
-		Mode:      crypto.Convergent,
-		Erasure:   erasure.Params{K: 10, N: 16},
-		Publisher: ID(),
+		ChunkSize:          64 << 10,
+		ManifestFrameBytes: 64 << 10, // the pre-4′ padded frame: one 65,536-byte manifest chunk
+		Mode:               crypto.Convergent,
+		Erasure:            erasure.Params{K: 10, N: 16},
+		Publisher:          ID(),
 	}
 }
 

@@ -33,3 +33,33 @@ pinned to the delivery increment in `cmd/silt` (`TestDefaultChunkIsOneDeliveryCr
 the boundary; `R-MANIFEST-PADDING` and `R-BOUNTY-TRUNCATION` close (the truncation at the new default is 0.006 %).
 The first production user's re-publish and link behaviour across the boundary is an outward-facing consequence:
 the PR is built and reviewed, and merged only on the owner's go.
+
+## Blind PE fold-in (2026-09-07)
+
+**Ruling:** `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-default-chunk-256k-manifest-framing-b365f10-2026-09-07.md`
+(MERGE-AFTER, six items; item 1 a blocker).
+
+**What the blind seat measured that the build missed:** the manifest frame is not in the root, but it IS in the
+genesis block. `manifest.Root` covers data + parity IDs; `entry.ManifestChunks` sits inside the height-0 block
+that `chain.Block.Hash` covers; every daemon with an empty chain builds genesis locally, a daemon with a restored
+chain does not. So true-length framing alone moved the genesis hash (7becf754…32ce → f428d0a8…0951) and a fresh
+node and an upgraded node with persisted state would have disagreed at height 0 with no refusal, no log line and
+no gate — `TestGenesisIsDeterministic` compares two builds in one process and structurally cannot see a
+cross-binary change. Three sentences in the PR asserted the opposite.
+
+**The owner's call, and what was built pending it.** Pin genesis to the padded frame (the PE's recommendation)
+or accept a genesis-hash change. The pin is the conservative side — it changes nothing about chain identity —
+so it is BUILT here: `pipeline.Options.ManifestFrameBytes` (0 derives; non-zero pins), `genesis.Options()` pins
+64 KiB, and `TestGenesisBlockHashIsPinned` holds hash, root and manifest chunk ID as literals (ablation: drop
+the pin → RED on the chunk ID and the hash, GREEN on the root). Whether height-0 identity is inside the era-3/4
+freeze surface is research-gated and filed (`R-GENESIS-HASH-FREEZE-SURFACE`). Accepting the new genesis
+instead would be a veto-gate decision and is not taken by this seat.
+
+**The second break class,** named: a re-framed manifest under an UNCHANGED root is exactly the shape
+`registry.Publish` refuses as `ErrDupPublish`, after the scatter has shipped the bytes
+(`TestReframedManifestUnderAnUnchangedRootIsADupPublish`). **Items 3–6:** `R-BOUNTY-TRUNCATION` reopened
+(Researcher-owned; the floor mechanism is unfixed, `-chunk-size 65536` still under-pays unwarned); the census
+export header carries `publishDefaultChunkSize`; six stale "64 KiB default / 64 MiB minimum" sites corrected,
+including the surviving folklore pointer in `core/manifest/manifest.go`; the small-file padding is priced
+(+300 % at 1 KB; erasure floor 640 KiB → 2.5 MiB) and the short-final-stripe rider filed
+(`R-SHORT-FINAL-STRIPE`).
