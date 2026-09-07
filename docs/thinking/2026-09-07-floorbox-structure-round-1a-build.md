@@ -143,3 +143,38 @@ G-D10 (`Budget{}` stalls; `FrameBudget(0)` refuses), and G-D7/G-D8 where they fa
 Steps 6–12: P1-ahead-of-carrier in the box's recompute entry and the `CarrierParentProposerWitness`
 deletion; N1; `NewBox` / the config-derived budget; the unexport sweep; the honest twins; the
 glob widening; the `chain.go:736` comment correction and its two-sided gate (G-D11).
+
+## 6. What landed (part 1), and the RED/GREEN record
+
+Commits on `builder/floorbox-structure-1a`: `21aeaad` (step 1 + this record), `c7df16b` (steps 2–5 +
+gates). `git diff main -- core/chain/chain.go` is exactly the two dispatch hunks, 28 insertions,
+zero deletions; every `errors.Is` sentinel and every #572 attribution branch is byte-untouched.
+
+| Gate | Ablation (one line) | RED line |
+|---|---|---|
+| G-D1 | `mkBlock` mints `BlockVersionRounds` | `FIXTURE VACUOUS: the committed block is v2, want v5`; arms A–C: `arm D — the fixture did not commit a v5 block` |
+| G-D2 | delete the `v5ValidateTakedowns` arm | `arm A COVER — node stage P6 (validateTakedowns) is not carried` |
+| G-D3 | `&& true` on the P5 chain in `chain.go` | `arm B — … hash to 4d26a58a…, pinned 42b27dc5…` |
+| G-D4 | call an invented `v5ValidateInvented` | `arm C — the composition calls v5ValidateInvented, which is neither a stage mirror … nor a listed helper` |
+| G-D5a | drop `len(b.IssuerKeys) == 0` from P5 | `G-D5 VIOLATED (P5): ValidateProposal refused an IssuerKeys-only v5 block: chain: empty block` |
+| G-D5b | drop the `v5ValidateIssuerKeys` call | `G-D5 VIOLATED (P8b): … must refuse an UNBONDED issuer's registration by name; got <nil>` |
+| G-D6 | `liveView.Rep` → `NoWitness` | `G-D6 VIOLATED (accept): … got … no witness for a required committed read — stall: rep[…] (legacy mode)` |
+| G-D12 | revert the `ValidateProposal` dispatch | `G-D12 — ValidateProposal's FIRST statement must be the v5 dispatch` |
+| G-5 | `liveView.Slashed` → `NoWitness` | the FIXTURE reddened: `fixture h1 must COMMIT … stall: slashed[proposer]` — a liveView stall costs the node a refusal, never an acceptance, exactly as the dispatch promises |
+| G-D10 | zero `Budget` treated as unlimited | `G-D10 VIOLATED: the zero Budget must STALL at step 0b with ErrWitnessBudgetUnset; got … no witness` (the view proceeded past 0b) |
+| G-D7 | delete the k = 0 LogRoot equality | `G-D7 VIOLATED (provenView): … got INDETERMINATE_TRUSTLESSLY / … recompute is research-gated` (the forged root passed P13b) |
+| G-D8 | delete the k ≥ 1 stall | `G-D8 VIOLATED: … got REJECT / … LogRoot does not equal` (a stall rendered as a disproof) |
+
+Every ablation was restored and re-run GREEN. Suites: `go test -short ./core/chain/` green after the
+one classification the round owed — the verifier-inventory pin (`TestO3T_VerifierInventoryPin`)
+enumerates every `ed25519.Verify` site, and the two mirrored sites (P3 in `ValidateProposalV5`,
+`v5ValidateBondReg`) are classified `proposer-sig` / `bondreg-sig`, the classes of the node
+functions they mirror. No attestation verifier was added: the composition's attestation verifies
+route through `verifyAtt`.
+
+Arm B digest pinned: `42b27dc5d6485dca09653d6df8969aa2e5df2e9c241a3c7bdc01bdea4172319a` over the
+comment-free bodies of `ValidateProposal`, `ValidateCommit`, `requireQuorumStack` at `c7df16b`.
+
+Owed to the planner (not this seat's file): a CHANGELOG line for the `core/chain` change; register
+rows for `R-PTABLE-DRIFT`, `R-COMPOSITION-LEGACY-LEG` (closes with M-1 shipped here),
+`R-BOX-STALLS-ON-TAKEDOWN`; the `R-STATEROOT-EQUIVALENCE-SEAM` rename the certification asks for.
