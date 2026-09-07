@@ -42,8 +42,8 @@ package demand
 // issuer A's public-key fingerprint for epoch E (A's public key is served publicly);
 // a redeemer resolving against B then pins A's key, and a token A signed verifies
 // under B's keyset. That is Duplicate-Signature Key Selection (Blake-Wilson & Menezes
-// 1999). It is NOT live today — the session open (core/node/deliverysession.go) resolves ONE configured issuer — its own
-// and ledgers are per-node — so it is latent, and the close (an issuer-key
+// 1999). It is NOT live today — a session open (core/node/deliverysession.go) verifies an
+// anchor under the server's OWN committed key only, and ledgers are per-node — so it is latent, and the close (an issuer-key
 // proof-of-possession, and/or binding keyFingerprint into demandMsg) is a VALIDITY-RULE
 // change: research-gated, owner-ratified, tracked as a ROADMAP Rock before the stamp
 // raise. Not built here.
@@ -166,8 +166,10 @@ func (k *Keyset) Put(epoch uint64, pub *rsa.PublicKey) {
 	// THE ADMISSION MEMO (crypto advisory R1, 2026-09-03). ValidatePub's hardness half
 	// costs ~3.3 ms, and this door is driven from a HOT, UNAUTHENTICATED path:
 	// Node.DemandIssuerKeyset re-pins every held epoch on every read, and
-	// the delivery session open calls it on any inbound
-	// MsgDeliveryOpen (the retired MsgDeliveryReceipt handler no longer reaches it) — before the parse and before the sender screen. With the
+	// the delivery session open calls it on any inbound MsgDeliveryOpen that decodes and
+	// whose commitment self-signature verifies (the retired MsgDeliveryReceipt handler no
+	// longer reaches it) — one ed25519 signature is the whole price of admission, with no
+	// rate limit (core/node/deliverysession.go). With the
 	// issuer's staged band 9 epochs deep that was 9 x 3.3 ms = ~28.6 ms of RSA work
 	// per one-byte message on the single-threaded node loop: the exact CPU amplifier
 	// the C-3 shape/hardness split exists to prevent, re-entered through another door.

@@ -6,14 +6,14 @@ package node
 // bare credit.Ledger. Exercises:
 //   - node.go:1576: RecordServeToObject called from the MsgFetchChunk handler
 //     when n.ledger != nil and n.proofMeta[chunkID].Root != zero hash
-//   - demandrole.go:201: RedeemDeliveryCredit called from handleDeliveryReceipt
-//     when a valid, bank-accepted delivery receipt arrives
+//   - deliverysession.go: SettleDelivery called from SettleDeliveryReceipt when an
+//     authenticated receipt on a live, anchored session advances the count (B-9)
 //
 // Scenario:
 //   1. Serve lane-0 VIA THE NODE HANDLER (proves node.go:1576 fires).
 //   2. Flood maxProvisional-1 additional lanes DIRECTLY ON THE LEDGER (setup
 //      only — does not re-test the node-handler wiring, keeps conservation simple).
-//   3. Submit a delivery receipt VIA THE NODE HANDLER (proves demandrole.go:201 fires).
+//   3. Open a session and settle a receipt VIA THE NODE PATH (proves SettleDelivery fires).
 //   4. Assert conservation end-to-end.
 
 import (
@@ -36,7 +36,7 @@ import (
 // TestR05NodePathConservation is the R0.5 gate: the A4 fix must be wired on the
 // real node path. It fails if:
 //   - node.go:1576 does not call RecordServeToObject (the lane-0 serve assertion)
-//   - demandrole.go:201 does not call RedeemDeliveryCredit with conservation
+//   - SettleDeliveryReceipt does not call SettleDelivery with conservation
 //   - the eviction claw-back (reverseProvisional at eviction) is absent
 func TestR05NodePathConservation(t *testing.T) {
 	const fee = 50_000
@@ -240,8 +240,8 @@ func TestR05NodePathConservation(t *testing.T) {
 		t.Fatalf("ChargePublish: %v", err)
 	}
 
-	// ── Step 4: issue a valid demand token and submit receipt via the node handler. ──
-	// This proves RedeemDeliveryCredit fires at demandrole.go:201.
+	// ── Step 4: issue a valid demand token and settle it through the session lane. ──
+	// This proves SettleDelivery fires from SettleDeliveryReceipt.
 	serial := make([]byte, 32)
 	if _, err := rand.Read(serial); err != nil {
 		t.Fatalf("rand.Read serial: %v", err)
@@ -286,15 +286,15 @@ func TestR05NodePathConservation(t *testing.T) {
 			"  delta             = %+d\n"+
 			"  If delta == +%d: evicted lane's self-mint NOT reversed — A4 claw-back missing.\n",
 			gotTotal, wantTotal, delta,
-			int64(bytes0))
+			int64(mint0)) // the lane-0 mint in CREDITS (8 = 7 net + 1 skim), not its bytes
 	}
 
 	// Additional guard: if the bank rejected the receipt, conservation can still look
 	// correct (ChargePublish debit not recovered), but witnessed demand stays at 0.
 	// Verify the bank actually accepted the receipt (demand > 0).
 	if got := nd.WitnessedIncrements(objRoot); got == 0 {
-		t.Errorf("demand bank did not bank the receipt (WitnessedDemand=0) — " +
-			"RedeemDeliveryCredit at demandrole.go:201 may not have been called. " +
-			"Check that the receipt's Fetcher key hashes correctly to fetcherID.")
+		t.Errorf("the settlement was not witnessed (WitnessedIncrements=0) — " +
+			"SettleDelivery may not have been called from SettleDeliveryReceipt. " +
+			"Check that the open's Fetcher key hashes correctly to fetcherID.")
 	}
 }

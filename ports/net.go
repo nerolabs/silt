@@ -146,8 +146,8 @@ const (
 	MsgSubmitBondRegAck      // OK: the renewal was received (queued if valid for the current head)
 	MsgRepairClaim           // Data: a CBOR repairproof.RepairClaim — "I placed a correct rebuilt shard on Holder; verify and pay the bounty" (H7)
 	MsgRepairVote            // OK: the caretaker independently verified correctness+retrievability and settled the verdict on its own ledger (H7)
-	MsgDeliveryReceipt       // Data: a CBOR demand.SubmittedReceipt — a fetcher's PoR-bound, token-spending ack that a server delivered an object (D-DEMAND #181)
-	MsgDeliveryReceiptAck    // OK: the server banked the receipt (witnessed-demand credited)
+	MsgDeliveryReceipt       // RETIRED (B-9, R2.9): the v2 flat receipt. Kind number kept; a server answers OK=false with the named retirement (core/node handleDeliveryReceipt). Deliveries are sessions: MsgDeliveryOpen/Fund/Settle below
+	MsgDeliveryReceiptAck    // OK is always false since B-9; Data names the retirement
 	MsgGetCanonicalIssuers   // ask a chain-holder for the deterministic canonical issuer set (top-k by committed bond) — publisher privacy (R-3)
 	MsgCanonicalIssuersReply // Data: concatenated 32-byte NodeIDs, heaviest-bond first; OK=false if no chain
 	MsgGetChainHead          // cheap chain-sync head probe (#382): "what is your head?" — no payload

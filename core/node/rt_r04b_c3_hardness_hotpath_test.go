@@ -5,9 +5,12 @@ package node
 //
 // The mechanism, verbatim from the finding and re-derived here:
 //
-//	handleDeliveryReceipt (demandrole.go) calls DemandIssuerKeyset as its FIRST real
-//	action on any inbound MsgDeliveryOpen — before UnmarshalSubmittedReceipt, before
-//	the `sub.Receipt.Server != n.id` screen, with no authentication and no rate limit.
+//	(As found, on the flat lane:) handleDeliveryReceipt called DemandIssuerKeyset as its
+//	FIRST real action on any inbound frame — before the parse, before the server screen,
+//	with no authentication and no rate limit. (Today, on the session lane — B-9:)
+//	handleDeliveryOpen → OpenDeliverySession → verifyDeliveryAnchors reaches it after the
+//	parse, the sha256(Fetcher)==sender screen and one ed25519 verify, still with no rate
+//	limit — a self-signed open is the whole price of admission.
 //	DemandIssuerKeyset re-pins every held epoch on every read (`for e, iss := range
 //	n.demandIssuers { pinDemandIssuerKey(...) }`), and Keyset.Put ran the full
 //	ValidatePub — hardness included, ~3.3 ms — unconditionally. Re-Put is unavoidable

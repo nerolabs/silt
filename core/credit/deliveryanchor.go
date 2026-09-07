@@ -300,6 +300,11 @@ type DeliverySettlementStats struct {
 	// sessions whose unsettled face or pending deposit did not survive the restart
 	// (R-DELIVERY-SESSION-EPHEMERAL, G-6R-9). Zero means no deposit can have been lost.
 	RestoredGuardEntries int64
+	// GuardFullRefusals is the delivery lane's share of GuardFullRefusalsByLane: opens and
+	// funds refused because the paid-serial guard was full of LIVE entries — the operator's
+	// one number for a serve rate above the bound the cap was derived against (blind PE,
+	// 2026-09-07: the marker alone is not a surface). Monotone.
+	GuardFullRefusals int64
 }
 
 // DeliverySettlementStats reads the settlement telemetry. Reading moves nothing.
@@ -308,7 +313,7 @@ func (l *Ledger) DeliverySettlementStats() DeliverySettlementStats {
 		SessionsClosed: l.deliverySessionsClosed, SettledIncrements: l.deliverySettledIncrements,
 		RefundedCredits: l.deliveryRefundedCredits, PendingRefundCredits: l.deliveryPendingCredits, BurnedCredits: l.deliveryBurnedCredits,
 		RefundsBurnedNoAccount: l.deliveryRefundsBurnedNoAccount, RefundsBurnedAtCap: l.deliveryRefundsBurnedAtCap,
-		RestoredGuardEntries: l.deliveryRestartOrphans}
+		RestoredGuardEntries: l.deliveryRestartOrphans, GuardFullRefusals: l.guardFullRefusalsDelivery}
 }
 
 // ProvisionalLaneForTest reports whether a provisional lane is live and its byte

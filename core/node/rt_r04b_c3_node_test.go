@@ -207,8 +207,8 @@ func TestRTC3_RestartDoesNotRePayTheSameWireReceipt(t *testing.T) {
 // reverse anything — the self-mint stays until a valid receipt arrives, which is the
 // legitimate unwitnessed bilateral fallback (RecordServeToObject's 1 credit/byte).
 //
-// The property is structural: demandBank.Redeem returns credited=false, so
-// handleDeliveryReceipt never calls the ledger at all. This gate holds it in place,
+// The property is structural: a forged anchor fails verifyDeliveryAnchors, so the open
+// never reaches the ledger at all (B-9: the session lane). This gate holds it in place,
 // because "reverse on every refusal" is one careless hoist away from "reverse on
 // anything that arrives on the wire" — which would let an unauthenticated peer erase
 // a server's earnings for free.
@@ -275,19 +275,24 @@ func TestG4_UnwitnessedReceiptLeavesTheSelfMintAlone(t *testing.T) {
 	if uerr != nil {
 		t.Fatal(uerr)
 	}
-	// Acknowledge the WHOLE lane (256 increments of 256 KiB = the 64 MiB served): a
-	// one-increment settlement pays one credit and reverses one, a net zero that would
-	// hide the supersede.
+	// Acknowledge the WHOLE lane (256 increments of 256 KiB = the 64 MiB served), so the
+	// expected balance is EXACT: the self-mint is reversed in full and the server holds the
+	// settlement's net (gross − skim) and nothing else. Asserting `!= selfMint` alone passes
+	// on a lane that reverses nothing, because the settlement always pays something
+	// (blind PE, 2026-09-07).
 	sess, oerr := srv.OpenDeliverySession(fetcherIdent.NodeID(), demand.SignSessionOpen(fetcherIdent.Signer(), srv.id, []demand.Token{tok}))
 	if oerr != nil {
 		t.Fatalf("the WITNESSED anchor did not open: %v", oerr)
 	}
-	if settled, serr := srv.SettleDeliveryReceipt(fetcherIdent.NodeID(), demand.AckSession(fetcherIdent.Signer(), sess.handle, sess.commitment, obj, srv.id, uint64(served/credit.DeliveryIncrementBytes))); serr != nil || settled == 0 {
+	settled, serr := srv.SettleDeliveryReceipt(fetcherIdent.NodeID(), demand.AckSession(fetcherIdent.Signer(), sess.handle, sess.commitment, obj, srv.id, uint64(served/credit.DeliveryIncrementBytes)))
+	if serr != nil || settled == 0 {
 		t.Fatalf("the WITNESSED settlement failed (%d, %v)", settled, serr)
 	}
-	if got := ledger.Balance(srv.ID()) - before; got == selfMint {
-		t.Fatalf("the WITNESSED settlement did not supersede the self-mint (still %+d) — "+
-			"the negative leg above proves nothing on a fixture that never reaches the ledger",
-			got)
+	wantNet := settled - settled*credit.SkimNum/credit.SkimDen // prior = 0: the skim floors on the gross alone
+	if got := ledger.Balance(srv.ID()) - before; got != wantNet {
+		t.Fatalf("after the WITNESSED whole-lane settlement the server holds %+d off pre-serve, "+
+			"want exactly the settlement's net %+d (self-mint %+d reversed in FULL, gross %d less the skim) — "+
+			"a partial or absent reversal is the G-4 double-pay the negative leg above is the boundary of",
+			got, wantNet, selfMint, settled)
 	}
 }

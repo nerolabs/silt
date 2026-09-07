@@ -51,6 +51,7 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 
 	"github.com/nerolabs/silt/core/credit"
@@ -455,6 +456,7 @@ func (n *Node) handleDeliveryOpen(from ports.NodeID, msg ports.Message) {
 	}
 	s, err := n.OpenDeliverySession(from, open)
 	if err != nil {
+		n.logDeliveryAdmissionRefusal("open", err)
 		deny(err) // named, never silent
 		return
 	}
@@ -472,6 +474,7 @@ func (n *Node) handleDeliveryFund(from ports.NodeID, msg ports.Message) {
 	}
 	s, err := n.FundDeliverySession(from, fund)
 	if err != nil {
+		n.logDeliveryAdmissionRefusal("fund", err)
 		deny(err)
 		return
 	}
@@ -489,15 +492,46 @@ func (n *Node) handleDeliverySettle(from ports.NodeID, msg ports.Message) {
 	}
 	settled, err := n.SettleDeliveryReceipt(from, r)
 	if err != nil {
-		// "delivery receipt paid NO credit" is the announced S5 marker (observable_contract.go)
-		// — the one signal an operator gets when a receipt settles nothing. It named the flat
-		// lane's guard refusals; on the session lane it names the refused settlement.
-		n.logf(ports.LogWarn, "delivery receipt paid NO credit", "object", r.Object, "reason", err.Error(),
-			"serial_guard_refusals", guardFullRefusals(n.ledger))
+		if deliveryPostAuth(err) {
+			// "delivery receipt paid NO credit" is the announced S5 marker (observable_contract.go)
+			// — the one signal an operator gets when an AUTHENTICATED receipt on a live session
+			// settles nothing. Post-auth only: the owner, commitment and signature checks passed.
+			n.logf(ports.LogWarn, "delivery receipt paid NO credit", "object", r.Object, "reason", err.Error(),
+				"serial_guard_refusals", guardFullRefusals(n.ledger))
+		} else {
+			// Pre-auth refusals (no session, not the owner, bad signature, lane off) are one
+			// unauthenticated message per line with no rate limit on logf: Debug, never WARN
+			// (blind PE, 2026-09-07).
+			n.logf(ports.LogDebug, "delivery settle refused", "reason", err.Error())
+		}
 		deny(err)
 		return
 	}
 	n.reply(from, msg, ports.Message{Kind: ports.MsgDeliverySettleAck, OK: true, Height: uint64(settled)})
+}
+
+// deliveryPostAuth reports whether a settle refusal arose AFTER the session's owner,
+// commitment and signature checks passed — the refusals worth an operator's WARN. The
+// pre-auth classes are reachable by any peer and stay at Debug.
+func deliveryPostAuth(err error) bool {
+	return errors.Is(err, errDeliveryCountAboveBudget) || errors.Is(err, errDeliverySettleRefused) ||
+		errors.Is(err, errDeliveryNoLedger)
+}
+
+// logDeliveryAdmissionRefusal is the operator signal for a refused open or fund. The
+// paid-serial guard filling with LIVE entries — a serve rate above the bound the cap was
+// derived against — arises ONLY here (spendDeliveryAnchors is called from open and fund and
+// nowhere else; Ledger.SettleDelivery has no guard-full path), so the announced
+// "delivery anchor refused: guard full" marker (observable_contract.go) is emitted here at
+// WARN with the ledger's monotone counter. Every other admission refusal is reachable by
+// an unauthenticated peer at one message per line and stays at Debug.
+func (n *Node) logDeliveryAdmissionRefusal(step string, err error) {
+	if errors.Is(err, errDeliveryGuardFull) {
+		n.logf(ports.LogWarn, "delivery anchor refused: guard full", "step", step,
+			"serial_guard_refusals", guardFullRefusals(n.ledger))
+		return
+	}
+	n.logf(ports.LogDebug, "delivery admission refused", "step", step, "reason", err.Error())
 }
 
 // ---- the fetcher side

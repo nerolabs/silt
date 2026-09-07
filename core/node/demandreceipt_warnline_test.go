@@ -14,11 +14,12 @@ package node
 // dropping either field, or folding it back into the banked line all break the
 // operator's only signal — so all three go RED here.
 //
-// The reason value under test is ReasonNoFee because it is the one non-paying path a
-// unit test can reach in milliseconds; the operator-actionable ReasonGuardFull value
-// is gated at the ledger tier (core/credit TestCapFullRefusalIsObservable) and
-// composed at core/node TestComposedExpiryBoundary_EvictionIsClosedAtBothLayers.
-// What is under test HERE is the LINE, not which reason produced it.
+// The reason value under test is the budget ceiling (errDeliveryCountAboveBudget), the
+// one POST-AUTHENTICATION non-paying path a unit test reaches in milliseconds. The
+// operator-actionable guard-full condition cannot arise at settle on the session lane —
+// it arises at open/fund and has its own marker, "delivery anchor refused: guard full"
+// (TestGuardFullOpenLogsTheWarnMarker). Pre-authentication refusals (no session, not the
+// owner, bad signature) must NOT produce this line: TestPreAuthSettleRefusalIsNotAWarn.
 
 import (
 	"crypto/rand"
@@ -155,9 +156,9 @@ func TestBankedButUnpaidReceiptLogsTheWarnLine(t *testing.T) {
 			"operator signal is the `delivery receipt banked … credit=0` success line "+
 			"(observable-log-contract scar, instance 2)\nlines seen: %v", event, lg.events)
 	}
-	if got, present := kv["reason"]; !present || got == "" {
-		t.Fatalf("%q: reason=%v (present=%v), want the named refusal — the typed reason is what makes the "+
-			"refusal diagnosable", event, got, present)
+	if got, present := kv["reason"]; !present || got != errDeliveryCountAboveBudget.Error() {
+		t.Fatalf("%q: reason=%v (present=%v), want exactly %q — the typed reason is what makes the "+
+			"refusal diagnosable", event, got, present, errDeliveryCountAboveBudget.Error())
 	}
 	if got, present := kv["serial_guard_refusals"]; !present || got != ledger.GuardFullRefusals() {
 		t.Fatalf("%q: serial_guard_refusals=%v (present=%v), want the ledger's counter %d — it is "+

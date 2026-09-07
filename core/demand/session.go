@@ -269,8 +269,9 @@ func UnmarshalSessionReceipt(b []byte) (SessionReceipt, error) {
 //  4. P3b keeps its ADMISSION role — an unbonded fetcher contributes nothing to either
 //     surface — and loses its dedup role on the increment counter.
 //  5. COEXISTENCE: the v2 lane's demand[] (one unit per redeemed token) is NEVER written
-//     here; a unit differs by up to 50,000× between the lanes. demand[] dies with the v2
-//     path at B-9.
+//     here; a unit differs by up to 50,000× between the lanes. demand[] is retired with
+//     the v2 path (B-9) — kept in the primitive (demand.go, the SubmittedReceipt note) and
+//     permanently zero in production until the attended retirement PR removes both.
 //  6. Bounds inherited: maxDemandObjects, refuse-at-cap.
 //
 // The published claim this restates (P-SESSION, cert §3.4): demand_S(C)·p ≤ Σ credits

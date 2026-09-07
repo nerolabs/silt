@@ -8,10 +8,11 @@ package node
 //
 //	1. a malicious issuer returns a garbage blind signature;
 //	2. nothing at withdrawal detects it, and the fetcher is charged the fee;
-//	3. the fetch happens, the fetcher signs the receipt, the server banks it;
-//	4. Bank.Redeem fails at VerifyInWindow and returns credited = false;
-//	5. handleDeliveryReceipt takes the else branch and NEVER CALLS THE LEDGER —
-//	   so the serve's eager unwitnessed self-mint is never reversed.
+//	3. the fetch happens, the fetcher presents the token as a session anchor;
+//	4. verifyDeliveryAnchors fails the RSA verify and the open is refused;
+//	5. the server NEVER CALLS THE LEDGER for that delivery — so the serve's eager
+//	   unwitnessed self-mint is never reversed (B-9: the session lane; the flat
+//	   Bank.Redeem → handleDeliveryReceipt path this was found on is retired).
 //
 // An issuer handing out duds drove its whole cohort onto the self-mint path at no cost
 // to itself and with no detection. RFC 9474 §4.4 Finalize closes the entry at step 2.
@@ -100,8 +101,8 @@ func TestC1_AnIssuerThatReturnsADudIsRefusedAtWithdrawal(t *testing.T) {
 	}
 	if gotErr == nil {
 		t.Fatal("BREAK C-1: the withdrawal ACCEPTED a token whose signature does not verify " +
-			"under the committed key. The fetcher pays the fee, fetches, signs a receipt, " +
-			"and the server's Bank.Redeem then refuses it — so handleDeliveryReceipt never " +
+			"under the committed key. The fetcher pays the fee, fetches, presents the token " +
+			"as a session anchor, and the server's open refuses it — so the server never " +
 			"reaches the ledger and the serve's eager self-mint is NEVER REVERSED. An " +
 			"issuer that hands out duds drives its whole cohort onto the self-mint path " +
 			"at no cost to itself.")

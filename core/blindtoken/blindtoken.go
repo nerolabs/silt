@@ -402,10 +402,9 @@ func canonicalRep(b []byte, n *big.Int) (*big.Int, error) {
 // raise an invalid signature error and stop", so the client learns at WITHDRAWAL that
 // the issuer misbehaved rather than at redemption. The composition that makes this
 // more than conformance is in silt's own credit economics: a malicious issuer that
-// returns a garbage blind signature charges the withdrawal fee, the fetch happens, the
-// receipt is banked — and then Bank.Redeem fails at VerifyInWindow, so
-// handleDeliveryReceipt never calls the ledger and the serve's eager unwitnessed
-// self-mint is NEVER REVERSED. An issuer handing out duds drove its whole cohort onto
+// returns a garbage blind signature charges the withdrawal fee, the fetch happens — and
+// then the anchor fails verifyDeliveryAnchors at the session open, so the server never
+// reaches the ledger and the serve's eager unwitnessed self-mint is NEVER REVERSED. An issuer handing out duds drove its whole cohort onto
 // the self-mint path at no cost to itself and with no detection. This closes the entry.
 func Unblind(pub *rsa.PublicKey, serial, blindSig, secret []byte) ([]byte, error) {
 	return unblindD(pub, serial, blindSig, secret, fdhDomain)

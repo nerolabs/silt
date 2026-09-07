@@ -17,15 +17,36 @@ package node
 // of the COMPOSITION: neither layer's own test can see it.
 //
 // SHAPE. Two servers on one shared ledger and one shared chain with `EpochBlocks > 0`.
-// Server A issues, banks a receipt at epoch E and is paid. The chain advances past
-// E + W. The same token is then presented to server B — whose own `spent` set is
-// empty, which is exactly the cross-server pump — and must be refused UPSTREAM, at the
+// Server A issues, banks a delivery at epoch E and is paid. The chain advances past
+// E + W. The same token is then presented again — and must be refused UPSTREAM, at the
 // demand window, before any credit path.
 //
-// ABLATION. Removing the demand-layer window in `core/demand/keyset.go` (a no-op
-// `Prune` plus an unbounded `VerifyInWindow` scan) turns the first gate below RED on
-// exactly the "server B banked it" line. That is the demonstration that this file
-// measures the window and not the weather.
+// B-9 (2026-09-07) MOVED WHERE THE PUMP CLOSES. Deliveries are SESSIONS, and a session
+// anchor verifies under the server's OWN committed key only (`verifyDeliveryAnchors`:
+// `n.DemandIssuerKeyset(n.id)`, the own-key rule). So the cross-server pump — A's token
+// re-presented at B, whose spent set is empty — is closed STRUCTURALLY, whatever the
+// window says: B refuses an A-issued anchor fresh or expired, with the same reason. The
+// composed WINDOW claim (forgotten ⇒ un-redeemable) is therefore exercised at the ISSUER
+// itself: A's own expired token, whose serial the shared guard has swept, must be
+// refused at A's keyset before any credit path. B here is a fully operational server —
+// it holds its OWN committed issuer key and A's pinned key — so its refusal is the
+// own-key rule and never darkness (blind PE on 7f2ac97 measured the earlier B arms
+// satisfied by "no self keyset"; that is what this fixture closes).
+//
+// ABLATIONS (all re-run 2026-09-07 after the B-9 re-home, results recorded per gate):
+//   (i)   the demand-layer window in `core/demand/keyset.go` (a no-op `Prune` plus an
+//         unbounded `VerifyInWindow` scan) → the first gate RED on "A refused the expired
+//         anchor DOWNSTREAM of the window (… token-backdated)": the shared guard's epoch
+//         watermark catches the backdated spend, so the arm reads the refusal REASON to
+//         tell the window from the guard;
+//   (ii)  the own-key rule (`n.DemandIssuerKeyset(n.id)` → `(n.demandIssuer)`) →
+//         `TestComposedSessions_ForeignIssuersFreshAnchorIsRefused` RED on "server B
+//         banked a FRESH A-issued anchor". The B arms inside gates 1 and 3 stay GREEN
+//         under (ii) — with A's keys resolved, B's window refuses the EXPIRED foreign
+//         token too — so those arms are defence in depth; the fresh-anchor gate is the
+//         one that holds the rule;
+//   (iii) the epoch dropped from the demand FDH input (core/blindtoken demandMsg) → the
+//         re-dating gate RED on "server A re-dated its own epoch-0 token".
 //
 // `TestComposedExpiryBoundary_EvictionIsClosedAtBothLayers` then drives the red-team's
 // eviction pump across the boundary with the demand window BYPASSED, and shows the
@@ -36,6 +57,7 @@ package node
 import (
 	"crypto/rand"
 	"crypto/rsa"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -50,15 +72,17 @@ import (
 )
 
 // composedFixture is two servers sharing ONE ledger and ONE chain whose epoch clock
-// actually advances. A is the demand issuer; B accepts A-issued tokens, which is the
-// colluding-second-server shape.
+// actually advances. A is the demand issuer whose tokens the tests mint; B resolves
+// A's keys (the colluding-second-server shape) AND is an issuer in its own right, so a
+// refusal at B is the own-key rule, never a missing keyset.
 type composedFixture struct {
 	a, b           *Node
 	aIdent, bIdent *identity.Identity
 	fetcher        *identity.Identity
 	ledger         *credit.Ledger
 	chain          *chain.Chain
-	issuerPriv     *rsa.PrivateKey
+	issuerPriv     *rsa.PrivateKey // A's
+	bIssuerPriv    *rsa.PrivateKey // B's own
 	object         ports.Hash
 	knownIDs       []ports.NodeID
 	roots          []ports.Hash
@@ -82,6 +106,10 @@ func newComposedFixture(t *testing.T) *composedFixture {
 	if err != nil {
 		t.Fatalf("issuer key: %v", err)
 	}
+	bIssuerPriv, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("B's issuer key: %v", err)
+	}
 	sched := simclock.New()
 	net := simnet.New(sched, 3, simnet.DefaultConfig())
 
@@ -100,6 +128,7 @@ func newComposedFixture(t *testing.T) *composedFixture {
 		Entries: []ports.Entry{{Root: ports.HashBytes([]byte("composed-genesis"))}},
 		IssuerKeys: []chain.IssuerKeyReg{
 			chain.SignIssuerKeyReg(aIdent.Signer(), 0, demand.KeyFingerprint(&issuerPriv.PublicKey)),
+			chain.SignIssuerKeyReg(bIdent.Signer(), 0, demand.KeyFingerprint(&bIssuerPriv.PublicKey)),
 		},
 	}
 	chain.Sign(&g, aIdent.Signer())
@@ -113,13 +142,17 @@ func newComposedFixture(t *testing.T) *composedFixture {
 		nd.SetSigner(id.Signer())
 		nd.SetLedger(ledger) // ONE ledger — the shared paidSerial guard set
 		nd.EnableChain(c, id.Signer())
-		nd.EnableDemandBank(aIdent.NodeID())         // both accept A-issued tokens
-		nd.EnableDeliverySessions(10 * ports.Second) // B-9: deliveries are sessions; A issues to itself, B has no self keyset
+		nd.EnableDemandBank(aIdent.NodeID())         // both RESOLVE A's keys (B's pinned foreign keyset is the pump's premise)
+		nd.EnableDeliverySessions(10 * ports.Second) // B-9: deliveries are sessions; each server accepts only its OWN anchors
 		return nd
 	}
 	a, b := mk(aIdent), mk(bIdent)
 	ledger.SetEpochSource(f8EpochFunc(a.chainEpoch)) // R2.10 / F8: a and b share c, so one clock
 	a.SetDemandIssuerKey(rand.Reader, 0, issuerPriv)
+	b.SetDemandIssuerKey(rand.Reader, 0, bIssuerPriv)
+	if ks := b.DemandIssuerKeyset(bIdent.NodeID()); ks == nil || ks.Key(0) == nil {
+		t.Fatal("setup: B must hold its OWN committed key_0 — otherwise its refusals are darkness, not the own-key rule")
+	}
 
 	// B pins A's key_0 through the real cross-check while epoch 0 is still in A's
 	// served window. Nothing later in this test re-fetches: the point is that a key
@@ -134,7 +167,7 @@ func newComposedFixture(t *testing.T) *composedFixture {
 
 	f := &composedFixture{
 		a: a, b: b, aIdent: aIdent, bIdent: bIdent, fetcher: fetcher,
-		ledger: ledger, chain: c, issuerPriv: issuerPriv,
+		ledger: ledger, chain: c, issuerPriv: issuerPriv, bIssuerPriv: bIssuerPriv,
 		object: ports.HashBytes([]byte("composed-object-root")),
 	}
 	f.knownIDs = []ports.NodeID{aIdent.NodeID(), bIdent.NodeID(), fetcher.NodeID()}
@@ -215,15 +248,60 @@ func (f *composedFixture) mintTokenAt(t *testing.T, epoch uint64, priv *rsa.Priv
 }
 
 // present presents token at `server` as a SESSION anchor (B-9: the flat receipt is
-// retired) and reports whether the server banked the delivery. Under sessions an
-// A-issued token verifies only under A's own key: server B — which holds no self keyset —
-// refuses at open, so the cross-server pump is structurally closed before the window is
-// even consulted; the window is then exercised at A with the expired token.
+// retired) and reports whether the server banked the delivery.
 func (f *composedFixture) present(t *testing.T, server *Node, token demand.Token) bool {
 	t.Helper()
 	before := server.WitnessedIncrements(f.object)
 	ok := sessionPresent(t, server, f.fetcher, token, f.object)
 	return ok && server.WitnessedIncrements(f.object) > before
+}
+
+// openRefusal opens a session at server with token and returns the open's refusal (nil
+// if it was admitted; the session is then closed so the fetcher may present again). The
+// tests read WHICH rule refused: the own-key rule at B is errDeliveryAnchorInvalid, and
+// so is the window at A — the arms are told apart by the SERVER, and the header explains
+// why that is the property.
+func (f *composedFixture) openRefusal(t *testing.T, server *Node, token demand.Token) error {
+	t.Helper()
+	s, err := server.OpenDeliverySession(f.fetcher.NodeID(), demand.SignSessionOpen(f.fetcher.Signer(), server.id, []demand.Token{token}))
+	if err == nil {
+		server.closeDeliverySession(s.handle, "test")
+	}
+	return err
+}
+
+// TestComposedSessions_ForeignIssuersFreshAnchorIsRefused is the gate on the own-key rule
+// itself — the seam that, under sessions, closes the cross-server pump (blind PE fix 6,
+// 2026-09-07: changing `n.DemandIssuerKeyset(n.id)` to `(n.demandIssuer)` left every
+// package green). B has A's key_0 PINNED (its resolved foreign issuer) and its own key; a
+// FRESH, in-window A-issued anchor must be refused at B naming the own-key rule, move
+// nothing, and then be banked at A — so the refusal is the rule and not the token.
+//
+// ABLATION (ii) → RED on "server B banked a FRESH A-issued anchor".
+func TestComposedSessions_ForeignIssuersFreshAnchorIsRefused(t *testing.T) {
+	f := newComposedFixture(t)
+	if ks := f.b.DemandIssuerKeyset(f.aIdent.NodeID()); ks == nil || ks.Key(0) == nil {
+		t.Fatal("setup: B must hold A's pinned key_0 — the pump's premise is a redeemer that CAN verify the foreign token")
+	}
+	token := f.mintToken(t)
+	base := f.sum()
+	err := f.openRefusal(t, f.b, token)
+	if err == nil || f.present(t, f.b, token) {
+		t.Fatalf("server B banked a FRESH A-issued anchor (open err=%v): the own-key rule is gone and the cross-server pump is open", err)
+	}
+	if !errors.Is(err, errDeliveryAnchorInvalid) {
+		t.Fatalf("B refused with %q, want the own-key rule %q (a missing keyset is darkness, not the rule)", err, errDeliveryAnchorInvalid)
+	}
+	if got := f.sum(); got != base {
+		t.Fatalf("a refused foreign anchor must move nothing: Σ moved by %+d", got-base)
+	}
+	if f.b.WitnessedIncrements(f.object) != 0 {
+		t.Fatal("B's demand observable moved on a refused anchor")
+	}
+	// The premise: the same token is good — its issuer banks it.
+	if !f.present(t, f.a, token) {
+		t.Fatal("server A must bank its own fresh token")
+	}
 }
 
 // TestComposedExpiryBoundary_EvictedSerialIsRefusedUpstream is the R0.4b-8 gate.
@@ -255,17 +333,28 @@ func TestComposedExpiryBoundary_EvictedSerialIsRefusedUpstream(t *testing.T) {
 	// Proven by the ledger's own boundary, exercised through the public API in the
 	// ablation test below (a forgotten serial is one that would pay again).
 
-	// (b) Every honest redeemer REJECTS it upstream. B holds a legitimately pinned
-	// key_0 and an EMPTY spent set — the cross-server pump's whole premise — and must
-	// still refuse, at the demand window, before any credit path.
-	if f.present(t, f.b, token) {
-		t.Fatal("the pump: server B banked a token whose issuing epoch has left the window")
+	// (b) Every honest redeemer REJECTS it upstream. At B — which holds A's pinned key_0,
+	// its own key, and an EMPTY spent set, the cross-server pump's whole premise — the
+	// refusal is the own-key rule (B-9), before the window is consulted.
+	if berr := f.openRefusal(t, f.b, token); berr == nil || !errors.Is(berr, errDeliveryAnchorInvalid) || f.present(t, f.b, token) {
+		t.Fatalf("the pump: server B banked (or refused for the wrong reason: %v) a token whose issuing epoch has left the window", berr)
 	}
-	// And at the ISSUER itself, past the window: the keyset refuses the expired anchor at
-	// open (the demand window, upstream of any credit path); the ledger guard would
-	// refuse it as backdated even if it did not.
-	if f.present(t, f.a, token) {
+	// THE WINDOW ARM, at the ISSUER itself: A's keyset has pruned key_0, so the expired
+	// anchor fails at open — the demand window, upstream of any credit path — while the
+	// shared guard has already swept its serial (that is "forgotten ⇒ un-redeemable").
+	// The REASON is read: the shared guard's epoch watermark (R0.4b-5) would refuse the
+	// backdated spend downstream even with the window gone, so "not banked" alone cannot
+	// tell the window from the guard. ABLATION (i) → RED on the reason line.
+	aerr := f.openRefusal(t, f.a, token)
+	if aerr == nil || f.present(t, f.a, token) {
 		t.Fatal("server A banked its own token after the issuing epoch left the window")
+	}
+	if !errors.Is(aerr, errDeliveryAnchorInvalid) {
+		t.Fatalf("A refused the expired anchor DOWNSTREAM of the window (%v): the keyset did not refuse it — "+
+			"the composed claim rests on the window firing first, before any credit path", aerr)
+	}
+	if ks := f.a.DemandIssuerKeyset(f.aIdent.NodeID()); ks == nil || ks.Key(0) != nil {
+		t.Fatal("the expired key must be pruned from A's OWN keyset at the current epoch")
 	}
 	if got := f.sum(); got != paid {
 		t.Fatalf("a refused re-presentation must move nothing: Σ moved by %+d", got-paid)
@@ -440,8 +529,13 @@ func (f *composedFixture) commitIssuerKeyAt(t *testing.T, epoch uint64, priv *rs
 // refutation is driven too: a FRESH same-fingerprint registration at 2W+1, after the
 // epoch-0 commitment has been pruned out of the band, must not revive it either.
 //
-// ABLATION: drop the epoch from the demand FDH input (core/blindtoken demandMsg) →
-// RED on "server B banked", with Σ up by fee−skim.
+// UNDER SESSIONS (B-9) the re-dating pump is a SAME-SERVER pump: A itself holds key_3 and
+// has pruned key_0, and A's spent set (the shared guard) has swept the epoch-0 serial. So
+// the arm that measures the epoch binding is A re-presented with its own epoch-0 token;
+// the B arm measures the own-key rule (B refuses the foreign anchor whatever its epoch).
+//
+// ABLATION (iii): drop the epoch from the demand FDH input (core/blindtoken demandMsg) →
+// RED on "server A re-dated its own epoch-0 token", with Σ up by fee−skim.
 func TestComposedBoundary_SameFingerprintAtTwoEpochsDoesNotRedateTokens(t *testing.T) {
 	f := newComposedFixture(t)
 	token := f.mintToken(t) // withdrawn for issue epoch 0, under key_0
@@ -481,12 +575,23 @@ func TestComposedBoundary_SameFingerprintAtTwoEpochsDoesNotRedateTokens(t *testi
 		t.Fatal("setup: B must hold the RE-REGISTERED key_3 and no longer key_0 — that is " +
 			"the exact configuration in which a token can be re-dated")
 	}
-	if f.present(t, f.b, token) {
-		t.Fatal("THE PUMP: server B banked an epoch-0 token at epoch " +
-			fmt.Sprint(f.b.chainEpoch()) + ". The same key is committed for a later epoch, so " +
+	if ks := f.a.DemandIssuerKeyset(f.aIdent.NodeID()); ks == nil || ks.Key(3) == nil || ks.Key(0) != nil {
+		t.Fatal("setup: A must hold its OWN re-registered key_3 and no longer key_0 — the " +
+			"same-server re-dating configuration")
+	}
+	aerr := f.openRefusal(t, f.a, token)
+	if aerr == nil || f.present(t, f.a, token) {
+		t.Fatal("THE PUMP: server A re-dated its own epoch-0 token at epoch " +
+			fmt.Sprint(f.a.chainEpoch()) + ". The same key is committed for a later epoch, so " +
 			"without the issue epoch inside the signed message the token is re-dated to that " +
 			"epoch while the credit guard has already swept its entry — a second full payout " +
 			"off one withdrawal fee.")
+	}
+	if !errors.Is(aerr, errDeliveryAnchorInvalid) {
+		t.Fatalf("A refused the epoch-0 token downstream of the keyset (%v): the epoch binding did not refuse it", aerr)
+	}
+	if berr := f.openRefusal(t, f.b, token); berr == nil || !errors.Is(berr, errDeliveryAnchorInvalid) || f.present(t, f.b, token) {
+		t.Fatalf("server B banked (or refused for the wrong reason: %v) an epoch-0 A-issued token — the own-key rule is gone", berr)
 	}
 	if got := f.sum(); got != paid {
 		t.Fatalf("a refused re-presentation must move nothing: Σ moved by %+d", got-paid)
@@ -512,9 +617,12 @@ func TestComposedBoundary_SameFingerprintAtTwoEpochsDoesNotRedateTokens(t *testi
 	}
 	f.b.FetchDemandIssuerKeys(f.aIdent.NodeID(), func(int, error) {})
 	f.a.clock.(interface{ Run() }).Run()
+	if f.present(t, f.a, token) {
+		t.Fatalf("at epoch %d a fresh same-fingerprint registration revived an epoch-0 token at its "+
+			"own issuer — the pump's period merely lengthened to 2W+1", cur)
+	}
 	if f.present(t, f.b, token) {
-		t.Fatalf("at epoch %d a fresh same-fingerprint registration revived an epoch-0 token — "+
-			"the pump's period merely lengthened to 2W+1", cur)
+		t.Fatalf("at epoch %d server B banked a foreign epoch-0 token — the own-key rule is gone", cur)
 	}
 	if got := f.sum(); got != paid {
 		t.Fatalf("Σ moved by %+d at the 2W+1 replay", got-paid)

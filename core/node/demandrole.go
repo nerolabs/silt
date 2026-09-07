@@ -65,14 +65,18 @@ func (n *Node) AcquireDemandTokenWithCredit(rng io.Reader, issuer ports.NodeID, 
 	})
 }
 
-// EnableDemandBank makes this node BANK delivery receipts: on a MsgDeliveryReceipt
-// it verifies the receipt against the per-epoch key WINDOW of the retrieval-token
-// issuer it trusts and, if valid + IN-WINDOW + first-seen + a correct delivery to
-// THIS server, credits the object's witnessed-demand counter. Demand is a neutral
-// observable — never standing.
+// EnableDemandBank gives this node a demand bank: the witnessed-demand observable that
+// a SETTLED delivery-session increment bumps (SettleDeliveryReceipt → Bank.Witness, in
+// the ledger's settled increments) and the bonded-fetcher credential
+// (RequireBondedFetchers) read. Demand is a neutral observable — never standing.
 //
-// R0.4b: issuer is a NodeID, not an RSA key. The bank verifies against
-// {key_E : current−W <= E <= current}, and a key enters that window ONLY after its
+// issuer is the retrieval-token issuer this node RESOLVES keys for (FetchDemandIssuerKeys
+// pins its committed key_E). It is NOT the issuer whose anchors this node accepts: a
+// session anchor verifies under this server's OWN committed key only (verifyDeliveryAnchors,
+// the own-key rule — gated by TestComposedSessions_ForeignIssuersFreshAnchorIsRefused).
+// The v2 flat receipt this bank once banked (MsgDeliveryReceipt) is retired (B-9).
+//
+// R0.4b: issuer is a NodeID, not an RSA key. A key enters a keyset ONLY after its
 // fingerprint matched the consensus-attested commitment (pinDemandIssuerKey). Taking
 // a raw key here would be exactly the architecture the R0.4b certification refuses:
 // a redeemer with nothing consensus-attested to resolve key_E against.
@@ -107,8 +111,13 @@ func (n *Node) RequireBondedFetchers() {
 	})
 }
 
-// WitnessedDemand is the neutral count of correctly-delivered, token-backed
-// retrievals banked for object. 0 when demand banking is off. Observability only.
+// WitnessedDemand is the v2 flat lane's per-TOKEN demand counter (Bank.Demand). It is
+// RETIRED with the flat receipt (B-9): nothing in production writes it any more — only
+// Bank.Redeem did, and MsgDeliveryReceipt no longer reaches it — so it returns 0 on every
+// live node. The session lane's observable is WitnessedIncrements (settled increments of
+// DeliveryIncrementBytes). This accessor leaves with the core/demand v2 primitive in the
+// attended retirement PR (core/demand/demand.go, the SubmittedReceipt note); it stays
+// only so that PR is the one that removes the primitive and its readers together.
 func (n *Node) WitnessedDemand(object ports.Hash) int64 {
 	if n.demandBank == nil {
 		return 0

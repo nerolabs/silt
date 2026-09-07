@@ -248,7 +248,8 @@ func waitForInLog(t *testing.T, path string, re *regexp.Regexp, timeout time.Dur
 //
 // WHAT COVERS THE POSITIVE ARM MEANWHILE. sim TestPaidDeliveryLaneThreeCallComposition
 // drives the three shipped client calls in the order cmd/silt/swarm.go makes them —
-// FetchDemandIssuerKeys -> AcquireDemandTokenInWindow -> SubmitDeliveryReceipt — on an
+// FetchDemandIssuerKeys -> AcquireDemandTokenInWindow -> OpenDeliverySessionRemote /
+// SubmitDeliverySettle (B-9: the flat SubmitDeliveryReceipt is deleted) — on an
 // in-process v5 chain with a real committed binding, through the real wire handlers,
 // TWICE, asserting positive settled credit both times. core/node
 // TestRTC3_RestartDoesNotRePayTheSameWireReceipt covers the same positive settlement
