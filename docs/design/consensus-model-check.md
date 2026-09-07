@@ -123,3 +123,22 @@ the 500ms sim timeout), GREEN under the certified concurrent gather (0 simulated
 collection completes on the quorum predicate at the speed of the slowest NEEDED
 replier). This is where build-immutable #5 (build for the adverse internet) lands
 INSIDE the verifier.
+
+## Amendment (2026-09-07, h43): the arming DISTRIBUTION is a first-class adversarial dimension
+
+The h43 certification's method fix, after the SIXTH recurrence of one blind spot (#357 drain
+timing; the I5 benign-call; #441 entry-liveness; #451 round-advance skew; #456 dead-peer cost;
+h43 uniform arming): **every oracle in the round-liveness family armed every node** — the shared
+`refill()` helper seeds pending work on all 12 seats, and `matureWorld12`'s own constructor calls
+it — so no oracle could ever take the disarmed branch of `maybeAdvanceRound`, and the #560 GREEN
+was an artifact of the fixture, not a property of the mechanism. A round-liveness property is
+meaningless under uniform arming for the same reason it is meaningless under lockstep sweeps:
+the schedule must choose WHICH seats hold work, which are quiescent, and which are down, and the
+oracle must assert the bound over the whole governing set. The reference schedule is
+`TestModelCheck_H43_HeterogeneousArmingMustCommitWithinFPlus1Rounds` (3 of 12 armed, 8
+quiescent, one heavy seat killed and returned mid-ladder, staggered sweep phases, timed
+delivery) — RED at main `c51b97f`, GREEN with the replicated arming rule; the pin
+`TestModelCheck_H43_AtLeastOneRoundLivenessOracleArmsNonUniformly` keeps at least one
+non-uniform oracle in the family. The invariant-map line it enforces: **round-based liveness =
+locking + a synchronizer + a UNIFORMLY ARMED CLOCK; a bound is only as wide as the population the
+arming rule lets into the pacemaker.**

@@ -186,6 +186,14 @@ const (
 	MsgDeliveryFundAck   // OK + Height: the session's budget after the top-up (credits). OK=false + Data: the refusal reason
 	MsgDeliverySettle    // Data: a CBOR demand.SessionReceipt (receipt v3) — the fetcher's CUMULATIVE acknowledged increment count for one object
 	MsgDeliverySettleAck // OK + Height: the credits this receipt settled (gross of the skim; 0 for a non-advancing count). OK=false + Data: the refusal reason
+	// h43 / D-CONSENSUS-ARMING (APPENDED, never inserted): the TRANSFERABLE round
+	// certificate — the DiemBFT timeout-certificate shape, gossiped to every peer as
+	// Tendermint does. A node that assembles a quorum of round-changes for (h, r)
+	// broadcasts it ONCE; a receiver validates it with the same rule an attester
+	// applies to a proposal-carried certificate and enters r. A wire object only —
+	// never a block field, never a transition or fork-choice input (I5).
+	MsgRoundCert    // Data: CBOR roundCertEnv {Height, Round, Raws}: the signed round-change envelopes for exactly Round
+	MsgRoundCertAck // OK: the certificate verified and was recorded; OK=false: wrong height or below quorum
 )
 
 // StorageProof is a Merkle inclusion proof shipped alongside a chunk:
@@ -319,6 +327,7 @@ func (k MsgKind) String() string {
 		MsgDeliveryOpen: "DeliveryOpen", MsgDeliveryOpenAck: "DeliveryOpenAck",
 		MsgDeliveryFund: "DeliveryFund", MsgDeliveryFundAck: "DeliveryFundAck",
 		MsgDeliverySettle: "DeliverySettle", MsgDeliverySettleAck: "DeliverySettleAck",
+		MsgRoundCert: "RoundCert", MsgRoundCertAck: "RoundCertAck",
 	}
 	if int(k) < len(names) && names[k] != "" {
 		return names[k]
@@ -329,7 +338,7 @@ func (k MsgKind) String() string {
 // IsReply reports whether this kind terminates a pending request.
 func (m Message) IsReply() bool {
 	switch m.Kind {
-	case MsgFindNodeReply, MsgGetProvidersReply, MsgAddProviderAck, MsgStoreChunkAck, MsgFetchChunkReply, MsgHasChunkReply, MsgChallengeReply, MsgAttestReply, MsgCommitAck, MsgChainReply, MsgChainHeadReply, MsgBondReply, MsgTokenReply, MsgIssuerKeyReply, MsgSubmitBondRegAck, MsgSubmitEntryAck, MsgRepairVote, MsgDeliveryReceiptAck, MsgCanonicalIssuersReply, MsgPrecommitReply, MsgRoundChangeAck, MsgRelayOpenAck, MsgRelayPayAck, MsgDemandIssuerKeysReply, MsgDemandTokenReply, MsgSubmitIssuerKeyRegAck, MsgDeliveryOpenAck, MsgDeliveryFundAck, MsgDeliverySettleAck:
+	case MsgFindNodeReply, MsgGetProvidersReply, MsgAddProviderAck, MsgStoreChunkAck, MsgFetchChunkReply, MsgHasChunkReply, MsgChallengeReply, MsgAttestReply, MsgCommitAck, MsgChainReply, MsgChainHeadReply, MsgBondReply, MsgTokenReply, MsgIssuerKeyReply, MsgSubmitBondRegAck, MsgSubmitEntryAck, MsgRepairVote, MsgDeliveryReceiptAck, MsgCanonicalIssuersReply, MsgPrecommitReply, MsgRoundChangeAck, MsgRelayOpenAck, MsgRelayPayAck, MsgDemandIssuerKeysReply, MsgDemandTokenReply, MsgSubmitIssuerKeyRegAck, MsgDeliveryOpenAck, MsgDeliveryFundAck, MsgDeliverySettleAck, MsgRoundCertAck:
 		return true
 	}
 	return false

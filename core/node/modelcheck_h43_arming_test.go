@@ -148,7 +148,7 @@ func TestModelCheck_H43_HeterogeneousArmingMustCommitWithinFPlus1Rounds(t *testi
 	for r := uint64(0); r <= f; r++ {
 		sweepSum += uint64(sweepsForRound(r))
 	}
-	const skew = 30 * ports.Second   // the #549-derived cross-node skew bound (< ChainSyncInterval)
+	const skew = 30 * ports.Second    // the #549-derived cross-node skew bound (< ChainSyncInterval)
 	const gatherG = 10 * ports.Second // the #555-measured intrinsic gather latency at 12-seat WAN
 	bound := ports.Duration(sweepSum)*interval + skew + gatherG
 	deadline := sched.Now().Add(bound)

@@ -91,6 +91,22 @@ type heightRounds struct {
 	// the raw signed envelope (kept raw so a new-view certificate re-presents
 	// exactly what was signed).
 	Changes map[uint64]map[ports.NodeID][]byte
+	// Armed (h43, D-CONSENSUS-ARMING (A)): this node has VERIFIED at least one
+	// consensus message for this height — a proposal, a prepare-QC, a
+	// round-change or a round certificate — so the round clock runs here
+	// whether or not this node holds pending work of its own. The arming
+	// condition is REPLICATED (one member's first round-change arms every
+	// recipient within one hop), which is the precondition every published
+	// liveness bound silently assumes: all correct members are in the
+	// pacemaker (PBFT §4.4 request-arms-the-timer, restored to network
+	// uniformity; Tendermint L21). Recreated with the height, so a commit
+	// disarms every seat — B6 quiescence is exactly today's when nothing is
+	// in flight anywhere.
+	Armed bool
+	// CertSent (h43 (B)): the rounds whose transferable certificate this node
+	// has already broadcast or received — a certificate travels one hop from
+	// its assembler (G-H43-4), never floods.
+	CertSent map[uint64]bool
 }
 
 // roundsFor returns the round state for the CURRENT working height (head+1),
@@ -100,7 +116,7 @@ type heightRounds struct {
 func (n *Node) roundsFor() *heightRounds {
 	_, next := n.chain.Head()
 	if n.rounds == nil || n.rounds.Height != next {
-		rs := &heightRounds{Height: next, Changes: map[uint64]map[ports.NodeID][]byte{}}
+		rs := &heightRounds{Height: next, Changes: map[uint64]map[ports.NodeID][]byte{}, CertSent: map[uint64]bool{}}
 		// Restart continuity (certification §5.3): if the persisted mark is for
 		// this height, resume at ITS round and re-hydrate the lock from the
 		// persisted prepare-QC — a restarted validator re-presents the same
@@ -160,6 +176,20 @@ type roundChangeEnv struct {
 }
 
 const roundChangeSigDomain = "silt/roundchange/v1\x00"
+
+// roundCertEnv is the TRANSFERABLE round certificate (h43, D-CONSENSUS-ARMING
+// (B); the DiemBFT/Jolteon TC schema, generalised to all peers as Tendermint's
+// gossip does): the quorum of signed round-change envelopes for exactly
+// (Height, Round). Carries no signature of its own — every envelope inside is
+// individually signed and re-verified by the receiver (newViewFor), so the
+// object is exactly as trustworthy as a proposal-carried new-view certificate
+// and a relay cannot forge one. Wire object only: never a block field, never a
+// transition or fork-choice input (I5).
+type roundCertEnv struct {
+	Height uint64   `cbor:"1,keyasint"`
+	Round  uint64   `cbor:"2,keyasint"`
+	Raws   [][]byte `cbor:"3,keyasint"`
+}
 
 func (rc *roundChangeEnv) sigBytes() []byte {
 	buf := make([]byte, 0, len(roundChangeSigDomain)+8*3+32)
@@ -296,19 +326,28 @@ func (n *Node) maybeAdvanceRound() {
 	if n.chain == nil || !n.chain.Objective() || n.signer == nil {
 		return
 	}
-	// #441 (the launch-face fix, certification §2.4): pending ENTRIES arm the
-	// escape exactly like pending regs. Before this, the escape's arming was
-	// drain-only — a height whose r0 prepare slots were consumed by a crossed
-	// publish race, on a network with momentarily-empty renewal queues, had NO
-	// escape driver and stalled until the next renewal arrived (soak run
-	// 9453325-7258: 361s > the 160s computed bound). B6 quiescence is preserved
-	// when truly idle (no regs, no entries, nothing in flight).
-	if len(n.pendingBondRegs) == 0 && len(n.pendingEntries) == 0 && !n.bondDrainInFlight {
-		rs := n.roundsFor()
-		rs.Sweeps = 0
-		return // nothing stuck — quiesce (B6)
-	}
+	// h43 / D-CONSENSUS-ARMING (A) — the arming rule is REPLICATED: the clock
+	// runs while this node holds pending work (regs — #338; entries — #441
+	// §2.4; a drain in flight) OR it has verified any consensus message for
+	// the working height (rs.Armed). Before this, the guard read only LOCAL
+	// mempool content, so the round number was a function of unreplicated
+	// private state: on run c450985-deep a 13-seat network ran its pacemaker
+	// on the 3 seats holding entries while 10 sat at r0 for ten minutes, and
+	// the certified #451 bound was proved over a population that did not
+	// exist on the wire (M1; G-H43-1). B6 quiescence is preserved when TRULY
+	// idle — no work here, nothing seen for this height — which is exactly
+	// today's idle behaviour; the price is ≤ N round timers per CONTESTED
+	// height, driven off the existing sweep, no new timer source.
+	//
+	// M1b: when disarmed, HOLD the sweep counter — never zero it. Zeroing
+	// discarded accumulated progress on every momentarily-empty sweep, which
+	// is why the field's val-b (a work-holding validator) stopped laddering
+	// after r3. Reset-on-quiescence is not reset-on-entry (DiemBFT Fig. 1
+	// resets the timer on ENTERING a round — advanceToRound does that).
 	rs := n.roundsFor()
+	if len(n.pendingBondRegs) == 0 && len(n.pendingEntries) == 0 && !n.bondDrainInFlight && !rs.Armed {
+		return // truly idle — quiesce (B6), counter held
+	}
 	rs.Sweeps++
 	if rs.Sweeps < sweepsForRound(rs.Round) {
 		return
@@ -345,23 +384,101 @@ func (n *Node) advanceToRound(rs *heightRounds, next uint64, via string) {
 		n.logf(ports.LogWarn, "stalled-at-boundary: live-qualified weight is at or below the frozen 2/3 bar — no live coalition can commit this epoch boundary (#535); if the weight loss is a CONFIRMED real outage (not a partition or attack), a coordinated -liveness-recovery-height at this height is the recovery",
 			"height", rs.Height, "round", next)
 	}
-	// Record our own round-change (we are part of our own quorum), then
-	// broadcast to every sync target.
-	n.recordRoundChange(rs, next, n.id, raw)
+	// ENTER the round first (the timer resets on entry — DiemBFT Fig. 1), THEN
+	// record our own round-change (we are part of our own quorum): recording
+	// may complete the certificate for `next`, and recordRoundChange decides
+	// whether to enter a round by reading rs.Round — it must see us already
+	// there, or it would re-enter here (h43 (B)). Then broadcast to every
+	// sync target.
 	rs.Round = next
 	rs.Sweeps = 0
+	n.recordRoundChange(rs, next, n.id, raw)
 	for _, p := range n.syncTargets() {
 		if p == n.id {
 			continue
 		}
 		n.request(p, ports.Message{Kind: ports.MsgRoundChange, Data: raw}, func(ports.Message, error) {})
 	}
+	n.forwardPendingWorkToDesignee(rs.Height, next)
 }
 
-// recordRoundChange stores a verified round-change and, if this node is the
-// designated proposer for (height, newRound) and the quorum is now met, fires
-// the drain proposal at that round (re-proposing the forced value if the
-// certificate carries one).
+// forwardPendingWorkToDesignee (h43 (D), the mechanism the model-check
+// exposed once (A)(B)(C) were built — G-H43-1 probe, 2026-09-07): a round
+// whose designee is LIVE but holds none of the pending work is wasted exactly
+// like a round on a DOWN designee — silt refuses an empty block and only the
+// designee may propose at a round > 0 — so the ≤ f+1 bound is only as good
+// as the designee's mempool. The literature never has this problem because
+// the request reaches every replica (PBFT §4.4: the client multicasts to all;
+// Tendermint gossips the mempool), whereas silt's submit lanes reach only the
+// peers the CLIENT knew. So, on entering round r, a work-holder forwards its
+// queue to the designee of r over the same submit lanes a client uses
+// (validated and deduped on arrival, budgeted per sender per sweep window by
+// allowBondSubmit / allowEntrySubmit — the forward is capped at those bursts,
+// FIFO, so a long queue drains over rounds with seniority intact). Leader-
+// directed mempool gossip: O(queue) messages per round-change, to ONE peer.
+func (n *Node) forwardPendingWorkToDesignee(height, round uint64) {
+	d := n.designatedProposer(height, round)
+	if d == (ports.NodeID{}) || d == n.id {
+		return
+	}
+	entries, regs := 0, 0
+	for i := range n.pendingEntries {
+		if entries >= entrySubmitBurst {
+			break
+		}
+		n.request(d, ports.Message{Kind: ports.MsgSubmitEntry, Data: entryEncode(n.pendingEntries[i].E)}, func(ports.Message, error) {})
+		entries++
+	}
+	for i := range n.pendingBondRegs {
+		if regs >= bondSubmitBurst {
+			break
+		}
+		n.request(d, ports.Message{Kind: ports.MsgSubmitBondReg, Data: bondRegEncode(n.pendingBondRegs[i].R)}, func(ports.Message, error) {})
+		regs++
+	}
+	if entries+regs > 0 {
+		n.logf(ports.LogInfo, "round-change: pending work forwarded to the round's designee (h43)", "height", height, "round", round, "designee", d, "entries", entries, "regs", regs)
+	}
+}
+
+// maybeProposeAtRound (h43 (D)): work that reaches the designee AFTER its
+// round certificate assembled must not wait for the next sweep — if this node
+// is the designee for its current round > 0 and already holds the quorum
+// certificate, propose now. Called on every queued submission.
+func (n *Node) maybeProposeAtRound() {
+	if n.chain == nil || !n.chain.Objective() || n.signer == nil || n.bondDrainInFlight {
+		return
+	}
+	rs := n.roundsFor()
+	if rs.Round == 0 || n.designatedProposer(rs.Height, rs.Round) != n.id {
+		return
+	}
+	m := rs.Changes[rs.Round]
+	raws := make([][]byte, 0, len(m))
+	for _, r := range m {
+		raws = append(raws, r)
+	}
+	forced, err := n.newViewFor(rs.Height, rs.Round, raws)
+	if err != nil {
+		return // no certificate yet — recordRoundChange fires when it completes
+	}
+	n.proposeAtNewView(rs, rs.Round, raws, forced)
+}
+
+// recordRoundChange stores a verified round-change (arming this node — h43
+// (A)) and, once the round-EXACT quorum for newRound is met at THIS node: (i)
+// broadcasts the certificate once as a transferable object (h43 (B), the
+// DiemBFT TC — before this, only the designee ever assembled it, and a
+// round-change was one-shot, unacked and un-relayed, so a dropped one was
+// lost forever); (ii) enters newRound if above ours (the same entry rule a
+// proposal-carried certificate already triggers); (iii) if this node is the
+// designated proposer for (height, newRound), fires the proposal at THAT
+// round (re-proposing the forced value if the certificate carries one).
+//
+// Cost: newViewFor re-verifies every envelope at every arrival — O(N) ed25519
+// verifies per arrival, O(N²) per round per node (~150 at 12 seats, a few ms
+// on the floor box). The re-verification is what makes the broadcast
+// certificate exactly as trustworthy as a proposal-carried one.
 func (n *Node) recordRoundChange(rs *heightRounds, newRound uint64, from ports.NodeID, raw []byte) {
 	m := rs.Changes[newRound]
 	if m == nil {
@@ -369,9 +486,7 @@ func (n *Node) recordRoundChange(rs *heightRounds, newRound uint64, from ports.N
 		rs.Changes[newRound] = m
 	}
 	m[from] = raw
-	if n.designatedProposer(rs.Height, newRound) != n.id {
-		return
-	}
+	rs.Armed = true
 	raws := make([][]byte, 0, len(m))
 	for _, r := range m {
 		raws = append(raws, r)
@@ -380,10 +495,68 @@ func (n *Node) recordRoundChange(rs *heightRounds, newRound uint64, from ports.N
 	if err != nil {
 		return // below quorum (or a bad envelope excluded) — wait for more
 	}
+	if !rs.CertSent[newRound] {
+		rs.CertSent[newRound] = true
+		n.broadcastRoundCert(rs.Height, newRound, raws)
+	}
 	if rs.Round < newRound {
-		rs.Round = newRound
+		// A quorum-grade certificate for a round above ours is proof the
+		// network is there: enter it. advanceToRound records our own envelope,
+		// which re-enters here at rs.Round == newRound and takes the designee
+		// branch below if it is ours.
+		n.advanceToRound(rs, newRound, "round-cert")
+		return
+	}
+	if n.designatedProposer(rs.Height, newRound) != n.id {
+		return
 	}
 	n.proposeAtNewView(rs, newRound, raws, forced)
+}
+
+// broadcastRoundCert sends the assembled round certificate for (height,
+// round) to every sync target, once (h43 (B); G-H43-4: a node whose only copy
+// of a peer's round-change was dropped still learns the round within one hop
+// of whoever assembled the quorum). Fire-and-forget like a round-change: the
+// certificate is idempotent evidence, and every jump it causes gossips a
+// fresh round-change of its own.
+func (n *Node) broadcastRoundCert(height, round uint64, raws [][]byte) {
+	data, err := cbor.Marshal(roundCertEnv{Height: height, Round: round, Raws: raws})
+	if err != nil {
+		return
+	}
+	n.logf(ports.LogInfo, "round-cert: broadcasting (h43 transferable certificate)", "height", height, "round", round, "envelopes", len(raws))
+	for _, p := range n.syncTargets() {
+		if p == n.id {
+			continue
+		}
+		n.request(p, ports.Message{Kind: ports.MsgRoundCert, Data: data}, func(ports.Message, error) {})
+	}
+}
+
+// acceptRoundCert is the receive side of the transferable certificate (h43
+// (B)): validate it with exactly the rule an attester applies to a
+// proposal-carried certificate (newViewFor — every envelope signed by a
+// qualified sender for this height and round, distinct senders, the same
+// support quorum a commit needs), then record its envelopes as if each had
+// arrived directly, which arms this node, advances the declared rounds,
+// enters the round if above ours, and fires the designee's proposal if that
+// is us. Returns false if the certificate is for another height or invalid.
+func (n *Node) acceptRoundCert(rs *heightRounds, env *roundCertEnv) error {
+	if env.Height != rs.Height {
+		return fmt.Errorf("round-cert for height %d, want %d", env.Height, rs.Height)
+	}
+	if _, err := n.newViewFor(env.Height, env.Round, env.Raws); err != nil {
+		return err
+	}
+	rs.CertSent[env.Round] = true // received, not assembled: one hop, no re-broadcast
+	for _, raw := range env.Raws {
+		var rc roundChangeEnv
+		if cbor.Unmarshal(raw, &rc) != nil {
+			continue // newViewFor decoded and verified every envelope above
+		}
+		n.recordRoundChange(rs, rc.NewRound, rc.senderID(), raw)
+	}
+	return nil
 }
 
 // maybeCatchUpRound is the #451 synchronizer's responsive ingredient (b),
@@ -412,22 +585,32 @@ func (n *Node) recordRoundChange(rs *heightRounds, newRound uint64, from ports.N
 // member genuinely there (Byzantine < ⅓ cannot fabricate it), so the jump never
 // overshoots past all honest — the same anti-overshoot PBFT's rule sought,
 // evaluated per round rather than on the union. I1/locking untouched.
+//
+// SUFFIX SEMANTICS (h43, D-CONSENSUS-ARMING (B), 2026-09-07). A round-change
+// for r is the claim "I am at round ≥ r" (PBFT §4.5.2), so the per-round
+// membership is {senders whose DECLARED round ≥ r} — each sender's highest
+// recorded round (declaredRounds) — not the point-in-time Changes[r]. The #549 target rule is unchanged — still the
+// highest individually-qualifying round — but evaluated over a suffix, which
+// is monotone-decreasing in r and therefore well-defined. Under point
+// semantics a node at r4 was invisible at r2 and r3, so the high rounds an
+// armed minority climbed could never self-prove and the catch-up target was
+// structurally the LOWEST quorum-bearing round (the field's ten seats jumping
+// to r1 while the frontier sat at r4/r5 — M3, G-H43-3).
 func (n *Node) maybeCatchUpRound(rs *heightRounds) {
 	if n.signer == nil || n.chain == nil {
 		return
 	}
 	var target uint64
-	for r, m := range rs.Changes {
-		if r <= rs.Round {
-			continue
+	declared := rs.declaredRounds()
+	for _, r := range distinctRoundsAbove(declared, rs.Round) {
+		senders := make(map[ports.NodeID]bool, len(declared))
+		for id, d := range declared {
+			if d >= r {
+				senders[id] = true
+			}
 		}
-		senders := make(map[ports.NodeID]bool, len(m))
-		for id := range m {
-			senders[id] = true
-		}
-		// Per-round threshold: this round INDIVIDUALLY proves an honest member
-		// there. Keep the highest such round so the ladder climbs, not the
-		// smallest of a cross-round union that no single round can commit.
+		// Per-round threshold over the SUFFIX: round r proves an honest member
+		// at or beyond it. Keep the highest such round so the ladder climbs.
 		if n.chain.RoundCatchupMet(senders) && r > target {
 			target = r
 		}
@@ -436,4 +619,35 @@ func (n *Node) maybeCatchUpRound(rs *heightRounds) {
 		return
 	}
 	n.advanceToRound(rs, target, "catch-up")
+}
+
+// declaredRounds derives each sender's DECLARED round — the highest round it
+// has a recorded round-change for — from the recorded envelopes (h43 (B),
+// suffix semantics). Derived, never a second store: whatever populates
+// Changes (the wire handler, a received certificate, our own advance)
+// populates this.
+func (rs *heightRounds) declaredRounds() map[ports.NodeID]uint64 {
+	declared := map[ports.NodeID]uint64{}
+	for r, m := range rs.Changes {
+		for id := range m {
+			if declared[id] < r {
+				declared[id] = r
+			}
+		}
+	}
+	return declared
+}
+
+// distinctRoundsAbove lists the distinct declared rounds strictly above
+// `above` — the candidate catch-up targets (h43 (B)).
+func distinctRoundsAbove(declared map[ports.NodeID]uint64, above uint64) []uint64 {
+	seen := map[uint64]bool{}
+	var out []uint64
+	for _, d := range declared {
+		if d > above && !seen[d] {
+			seen[d] = true
+			out = append(out, d)
+		}
+	}
+	return out
 }
