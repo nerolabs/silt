@@ -128,6 +128,13 @@ func Recover(path string, c *chain.Chain, acceptLoss bool) (restored int, loss *
 		return n, loss, loss
 	}
 	kept := rejectedName(path, time.Now().Unix())
+	for i := 1; ; i++ {
+		// Never clobber an earlier preserved copy (second-granular names).
+		if _, serr := os.Stat(kept); os.IsNotExist(serr) {
+			break
+		}
+		kept = fmt.Sprintf("%s.%d", rejectedName(path, time.Now().Unix()), i)
+	}
 	if rerr := os.Rename(path, kept); rerr != nil {
 		// Cannot preserve the original ⇒ cannot safely accept the loss.
 		loss.Cause = fmt.Errorf("%w; and the original could not be preserved as %s: %v", err, kept, rerr)

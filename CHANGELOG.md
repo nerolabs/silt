@@ -90,11 +90,13 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   never destroys it). Before this the failure was printed and the node continued — from genesis when nothing decoded —
   and re-entered consensus holding its frozen-epoch seat with a history it did not have (the `a434494-deep` shape: an
   INTACT file an era-2 replay bug rejected, restarted at genesis; the replay bug itself was fixed earlier under #558).
-  Gates (RED under the always-accept ablation): `adapters/chainstore` `TestRecoverRefusesATornTail`,
-  `TestRecoverRefusesACorruptSuffixKeepsPrefixOnlyWhenAccepted`, `TestRecoverAcceptedLossPreservesTheOriginal`, and the
-  daemon-level `e2e` `TestDaemonRefusesToStartOnAnUnreplayableChain` (exit 3, file untouched) and
-  `TestDaemonAcceptedChainLossPreservesTheOriginal`. `TestSaveLeavesNoTempAndDecodes` is a shape pin only; the fsync
-  has no runtime oracle. Blind PE ruling:
+  Gates: RED under the always-accept ablation — `adapters/chainstore` `TestRecoverRefusesATornTail`,
+  `TestRecoverRefusesACorruptSuffixKeepsPrefixOnlyWhenAccepted` and the daemon-level `e2e`
+  `TestDaemonRefusesToStartOnAnUnreplayableChain` (exit 3, file untouched); RED under the drop-the-move ablation —
+  `TestRecoverAcceptedLossPreservesTheOriginal` and `TestDaemonAcceptedChainLossPreservesTheOriginal` (the preserved
+  copy holds the original bytes). `TestSaveLeavesNoTempAndDecodes` is a shape pin only; the fsync has no runtime
+  oracle. The two e2e gates skip under `-short`, and the multi-process e2e CI job is NOT a required check — making it
+  required is an admin action owed (PE re-ruling residual). Blind PE ruling:
   `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-b8-558-chainstore-refuse-to-start-2026-09-07.md`.
   Note for the owner: the rule refuses on ANY structural-verification failure at replay, not only a torn tail — a
   strictly larger surface than S3's sentence (kept, per the PE: a stale-prefix restart holding a frozen seat is a

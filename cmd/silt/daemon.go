@@ -892,7 +892,11 @@ func cmdDaemon(args []string) error {
 		if refused != nil {
 			fmt.Fprintf(os.Stderr, "chain replay: REFUSING TO START — %v. %s is UNTOUCHED. Inspect it (silt chain-status -store, or run the binary that wrote it); a %d-block valid prefix would be kept and the suffix re-synced from peers, which is IMPOSSIBLE below the swarm's prune horizon without a fresh -ws-checkpoint (#558/#559). If the loss is understood, restart with -accept-chain-loss: the original is preserved as %s.rejected-<unix>, never overwritten.\n", refused, chainPath, n, chainPath)
 			if lg != nil {
-				lg.Close() // the loudest event in the daemon's life must reach debug.log
+				// The loudest event in the daemon's life must reach debug.log: the
+				// sink is unbuffered, so it is the LOG call — not Close — that
+				// lands it there (PE re-ruling R-1); LogError survives -log error.
+				lg.Log(ports.LogError, "chain replay REFUSED — daemon exiting 3", "path", chainPath, "restored", n, "err", refused.Error())
+				lg.Close()
 			}
 			os.Exit(3)
 		}

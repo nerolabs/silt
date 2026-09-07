@@ -31,7 +31,7 @@ func chainRefuseArgs(store string, seed string, extra ...string) []string {
 		"-serve-registry", "127.0.0.1:0", "-validator",
 		"-objective=false", "-min-rep", "100", "-quorum", "1",
 		"-bond", "8M", "-min-bond-floor", "0",
-		"-capacity", "1G", "-mdns=false", "-id-seed", seed,
+		"-capacity", "1G", "-mdns=false", "-id-seed", seed, // seeds 4821/4822: unique across e2e (4801–4811 taken)
 	}
 	return append(args, extra...)
 }
@@ -46,7 +46,7 @@ func TestDaemonRefusesToStartOnAnUnreplayableChain(t *testing.T) {
 	if err := os.WriteFile(chainPath, garbage, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	a := startDaemon(t, "refuse-558", chainRefuseArgs(store, "4804")...)
+	a := startDaemon(t, "refuse-558", chainRefuseArgs(store, "4821")...)
 	line := a.waitFor(t, regexp.MustCompile(`chain replay: REFUSING TO START — .*`), 30*time.Second)
 	if !strings.Contains(line[0], chainPath) || !strings.Contains(line[0], "-accept-chain-loss") {
 		t.Fatalf("the refusal must name the file and the flag: %q", line[0])
@@ -75,7 +75,7 @@ func TestDaemonAcceptedChainLossPreservesTheOriginal(t *testing.T) {
 	if err := os.WriteFile(chainPath, garbage, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	a := startDaemon(t, "accept-558", chainRefuseArgs(store, "4805", "-accept-chain-loss")...)
+	a := startDaemon(t, "accept-558", chainRefuseArgs(store, "4822", "-accept-chain-loss")...)
 	line := a.waitFor(t, regexp.MustCompile(`chain replay: FAILED at block 0: .*-accept-chain-loss set: the original (\S+) is PRESERVED untouched as (\S+);`), 30*time.Second)
 	if line[1] != chainPath || !strings.HasPrefix(line[2], chainPath+".rejected-") {
 		t.Fatalf("the accepted-loss line must name the original and its preserved copy: %q", line[0])
@@ -86,9 +86,11 @@ func TestDaemonAcceptedChainLossPreservesTheOriginal(t *testing.T) {
 	if err != nil || string(kept) != string(garbage) {
 		t.Fatalf("the preserved original must be byte-identical: err=%v", err)
 	}
-	// The daemon has since written a FRESH chain.cbor (genesis) — the original was moved, not overwritten.
-	fresh, err := os.ReadFile(chainPath)
-	if err == nil && string(fresh) == string(garbage) {
-		t.Fatal("chain.cbor still holds the rejected bytes — the daemon neither preserved-by-move nor wrote a fresh store")
+	// chain.cbor is no longer the rejected file: either absent (moved, nothing
+	// saved yet) or a fresh store — what this measures is only that the
+	// rejected bytes are not at the save path (the preservation itself is
+	// asserted above on the moved copy).
+	if fresh, err := os.ReadFile(chainPath); err == nil && string(fresh) == string(garbage) {
+		t.Fatal("chain.cbor still holds the rejected bytes at the save path — the original was not moved")
 	}
 }
