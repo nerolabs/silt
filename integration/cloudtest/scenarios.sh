@@ -482,46 +482,31 @@ flow_fault_tolerance() {
   local killt0; killt0="$(date +%s)"   # scopes the escape-fingerprint reads to the escape under test (#525)
   svc val-d stop || true
   sleep 5
-  # FT_DOWN_COMMIT_S is COMPUTED (PE §4), not the generic COMMIT_SLO_S: under the
-  # #441 certified design every publish rides the designee rotation, and a height
-  # whose (h, r0) designee is the DOWN validator pays the round escape before a
-  # live designee carries the entry — the 220s 2-round escape bound under the
-  # #451 increasing durations (see H_ESCAPE_S) + one gather-leg margin ≈ 260.
-  # #509: the 260s bound models a 2-round escape FROM IDLE; seed f35a0f9-76780
-  # showed an escape that STARTED under load (heights already at r1 pre-kill,
-  # sweeps stretched by the economy triple) advancing healthily PAST it — a
-  # load artifact graded as a GAP. The bound is now two-tier, both computed
-  # from the #451 arithmetic (dur(r) = 2 + r(r+1)/2 sweeps × 30s): the 260s
-  # expected tier stays the first check, and a miss EXTENDS — while the ladder
-  # demonstrably advances — to the r≤3 hard cap dur(0..3)=2+3+5+8=18 sweeps
-  # = 540s + ~34s gather ≈ 575. The grade sharpens both ways: a commit inside
-  # the cap is a PASS with the slow escape narrated; a FROZEN escape
-  # fingerprint across the extension is the wedge signature and now a FAIL
-  # (it was an unattributed GAP); only advancing-but-uncommitted-at-cap
-  # remains a GAP (out of model — attribute before re-running, #7).
+  # h43 / D-CONSENSUS-ARMING (2026-09-07, owner call 19; G-H43-7): the two tiers are
+  # COMPUTED FROM f — the number of DOWN seats — never from the seat count. The
+  # certified bound (CONSENSUS-LIVENESS-h43 certification §6.3): after GST, with f
+  # seats down, a height commits within f+1 rounds, because designatedProposer
+  # steps the rotation one seat per round so at most f consecutive rounds land on
+  # a down designee. Wall-clock: Σ_{r=0}^{f} sweepsForRound(r)·ChainSyncInterval +
+  # skew + G, with sweepsForRound(r) = 2 + r(r+1)/2, ChainSyncInterval = 30 s, skew
+  # < 30 s (#549 Q3), G ≈ 10 s (#555 measured 12-seat WAN gather). This flow stops
+  # ONE validator, so f = 1: (2+3)·30 + 30 + 10 = 190 s expected (PASS); the hard
+  # cap is 2× = 380 s (sweep-phase + request-timeout noise). Against the measured
+  # T_b = 44 s/height (report-c450985-deep.md) that is 4.3 × / 8.6 × block-times.
   #
-  # #525: both tiers are TOPOLOGY-AWARE. The 260/575 figures price the 4-anchor
-  # base rotation; pre-epoch the (h+r) mod N rotation spans EVERY bonded seat
-  # (EligibleProposers = anchors + bonded), so a MATURING sheet rotates over 12
-  # seats — 8 of them loaded maturers/min-bond sybils — and run 94ef1e8-36901's
-  # h38-at-r3-uncommitted was plausibly in-mechanism for N=12 while out of the
-  # N=4 model. Policy: ONE extra escape rung per 4 rotation seats beyond the
-  # base, each rung priced by the same #451 arithmetic and ADDED to the base
-  # constants — so an N=4 sheet keeps the certified 260/575 exactly, and N=12
-  # computes 650/1445. Seat count = anchors + the opt-in bonded cohorts from
-  # the topology meta (the base sheet's fixed extras, e.g. the adversary seat,
-  # are absorbed in the base constants).
-  local ftseats ftextra ftrcap ftaddc=0 ftaddh=0 ftr
-  ftseats="$(python3 -c "
-import json;t=json.load(open('$FT_TOPO'));m=t['meta']
-anch=sum(1 for n in t['nodes'].values() if n['role']=='validator')
-print(anch + int(m.get('n_mat',0) or 0) + int(m.get('n_syb',0) or 0))" 2>/dev/null || echo 4)"
-  ftextra=$(( ftseats > 4 ? (ftseats - 4 + 3) / 4 : 0 )); ftrcap=$(( 3 + ftextra ))
-  for (( ftr=2; ftr<2+ftextra; ftr++ )); do ftaddc=$(( ftaddc + (2 + ftr*(ftr+1)/2) * 30 )); done
-  for (( ftr=4; ftr<4+ftextra; ftr++ )); do ftaddh=$(( ftaddh + (2 + ftr*(ftr+1)/2) * 30 )); done
-  : "${FT_DOWN_COMMIT_S:=$(( 260 + ftaddc ))}"
-  : "${FT_DOWN_HARD_S:=$(( 575 + ftaddh ))}"
-  [ "$ftextra" -gt 0 ] && echo "    6-fault-tolerance: rotation spans ${ftseats} bonded seats — tiers computed ${FT_DOWN_COMMIT_S}s/${FT_DOWN_HARD_S}s (+${ftextra} escape rung(s) over the 4-seat base, #525)"
+  # STRUCK: the 260/575 base tiers and the #525 "one extra escape rung per 4
+  # rotation seats" policy (650/1445 at N=12). Both priced the DEFECT, not the
+  # mechanism — they modelled one node climbing a private ladder to r=5, which is
+  # exactly what run c450985-deep's h43 did for 996 s (22.6 × T_b) while the
+  # certification refuted the seat-count rung scaling outright: rounds burned
+  # scale with f, not with N. A cap derived from the defect can never fail on it.
+  # The frozen-vs-advancing fingerprint discrimination below (#509/#536) stands.
+  local ftdown=${FT_DOWN_SEATS:-1} ftr ftsum=0
+  for (( ftr=0; ftr<=ftdown; ftr++ )); do ftsum=$(( ftsum + (2 + ftr*(ftr+1)/2) * 30 )); done
+  : "${FT_DOWN_COMMIT_S:=$(( ftsum + 30 + 10 ))}"
+  : "${FT_DOWN_HARD_S:=$(( 2 * (ftsum + 30 + 10) ))}"
+  local ftrcap=$(( ftdown + 1 ))
+  echo "    6-fault-tolerance: f=${ftdown} down seat(s) — tiers computed ${FT_DOWN_COMMIT_S}s expected / ${FT_DOWN_HARD_S}s hard cap (≤ f+1 rounds, D-CONSENSUS-ARMING; the #525 seat-count rungs are struck)"
   local res ok=0 fp0="" fp1=""
   res="$(ft_publish fetch-1 262144 || true)"
   if [ -n "$res" ]; then
@@ -543,14 +528,23 @@ print(anch + int(m.get('n_mat',0) or 0) + int(m.get('n_syb',0) or 0))" 2>/dev/nu
     slo_assert "6-fault-tolerance" major "publish still committed with one validator (val-d) down (within the computed ${FT_DOWN_COMMIT_S}s down-designee escape bound)" 1
   elif [ "$ok" = 2 ]; then
     slo_assert "6-fault-tolerance" major "publish committed with val-d down BEYOND the expected ${FT_DOWN_COMMIT_S}s but inside the computed r≤${ftrcap} hard cap (${FT_DOWN_HARD_S}s) — a slow escape that started under load, mechanism healthy (#509; escape fingerprint at first bound: ${fp0})" 1
-  elif [ -n "$res" ] && [ -n "$fp1" ] && [ "$fp1" = "$fp0" ] && [ "${fp0#*\?}" = "$fp0" ]; then
+  elif [ -z "$res" ]; then
+    # G-H43-7 HONESTY RULE (h43 certification §6.2; #536's lesson on the res-empty
+    # path): the two-tier wait above runs ONLY inside `if [ -n "$res" ]`, so when the
+    # publish never returned a link NEITHER tier was entered — fp0/fp1 are EMPTY
+    # strings, and the old record manufactured "ladder advancing but uncommitted —
+    # OUT OF MODEL" from `grep -q '?'` over two empty strings, then printed a cap it
+    # never measured (run c450985-deep: "(fingerprint → n/a: …)" with the 1445 s cap
+    # named as if timed). Say exactly what was observed and nothing more.
+    record "6-fault-tolerance" gap major "publish never returned a link within PUBLISH_RETRY_S=${PUBLISH_RETRY_S}s with val-d down — the ${FT_DOWN_COMMIT_S}s/${FT_DOWN_HARD_S}s escape tiers were NOT entered and NO cap was measured (fingerprint not read); read the captured client error (publish-diag / .ft_publish_lasterr) and the survivor journals (validators run -log debug: the 'new-view proposal not committed' line names the failing designee) before attributing (#7)"
+  elif [ -n "$fp1" ] && [ "$fp1" = "$fp0" ] && [ "${fp0#*\?}" = "$fp0" ]; then
     # WEDGE only on a READABLE, frozen fingerprint (#536): fp must contain no `?`
     # (an UNKNOWN source is not evidence of a frozen ladder). A frozen READABLE
     # fingerprint with round-changes present but stuck IS the wedge; rc advancing
     # would have made fp1 != fp0 and routed to the OUT-OF-MODEL gap below.
     record "6-fault-tolerance" fail major "WEDGE SIGNATURE: no commit AND a frozen, readable escape fingerprint (${fp0}) across the ${FT_DOWN_COMMIT_S}s→${FT_DOWN_HARD_S}s extension with val-d down — the round ladder is NOT advancing; attribute from the captured survivor journals (#509 upgraded this from an unattributable GAP)"
   else
-    record "6-fault-tolerance" gap major "no new commit within the computed ${FT_DOWN_HARD_S}s r≤${ftrcap} hard cap with val-d down (fingerprint ${fp0} → ${fp1:-n/a}$(printf '%s' "${fp0}${fp1}" | grep -q '?' && echo '; a fingerprint source was UNREADABLE — cannot claim a frozen ladder (#536)' || echo ': ladder advancing but uncommitted — OUT OF MODEL')) — read the captured client error (publish-diag / .ft_publish_lasterr) and survivor journals before attributing (#509/#7)"
+    record "6-fault-tolerance" gap major "no new commit within the computed ${FT_DOWN_HARD_S}s (≤ f+1 rounds, f=${ftdown}) hard cap with val-d down (fingerprint ${fp0} → ${fp1:-n/a}$(printf '%s' "${fp0}${fp1}" | grep -q '?' && echo '; a fingerprint source was UNREADABLE — cannot claim a frozen ladder (#536)' || echo ': ladder advancing but uncommitted — OUT OF MODEL')) — read the captured client error (publish-diag / .ft_publish_lasterr) and survivor journals before attributing (#509/#7)"
   fi
   svc val-d start || true
 }
@@ -1393,6 +1387,11 @@ flow_maturing_handoff() {
   #    at-or-after the latch. Drive commits across the next boundary + 1 so the
   #    frozen mature snapshot demonstrably GOVERNS, then assert the post-shed
   #    commit: chain advances with NO anchor-required refusal after the latch.
+  # h43 NOTE (2026-09-07): the #525 seat-count rung policy below is REFUTED by the
+  # h43 certification §6.2 (rounds burned scale with f, the number of DOWN seats,
+  # never with N) and is struck from flow 6 (owner call 19). This flow's per-height
+  # figure is left as priced until the h43 fix is field-confirmed on a graded run;
+  # re-pricing it under the certified ≤ f+1-round formula is the owed follow-up.
   # Per-height worst case, TOPOLOGY-AWARE (#525, same policy as flow 6): the
   # base 220s prices the 2-round escape on the 4-seat rotation; this sheet's
   # rotation spans every bonded seat (anchors + maturers + sybils), so add one
