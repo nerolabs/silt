@@ -153,10 +153,17 @@ func TestC3_InboundReceiptsCostOHardnessChecksNotOPerMessage(t *testing.T) {
 	// number measures the detector, not the path —
 	// the same reason `TestC3_ValidatePubCostBudget` sits behind `//go:build !race`. The
 	// cost is still LOGGED under both builds so a human reads it.
-	const budget = 100 * time.Microsecond
+	// B-9 re-derivation: the stand-in is a WELL-FORMED open with a garbage anchor, and the
+	// certified per-open cost of that is one ed25519 verify plus at most W+1 RSA verifies
+	// (T-7, "≤ W+1 modexps for a garbage open" — cheap refusals BEFORE RSA, RSA under the
+	// SELF keyset only). At ~30 µs per RSA-2048 verify and ~60 µs for ed25519 that is well
+	// under a millisecond; the retired one-byte frame's 100 µs budget measured decode-only
+	// shape and is not this path's number. Hardness (~3.3 ms per run) would still blow this
+	// by 3× per band key, so the budget keeps its teeth against the property it guards.
+	budget := time.Duration(band+1)*60*time.Microsecond + 400*time.Microsecond
 	if perMsg > budget && !raceEnabled {
-		t.Fatalf("inbound MsgDeliveryOpen cost %v/message over %d messages (budget %v). "+
-			"The C-3 design puts hardness at admission and SHAPE ONLY on this path.",
+		t.Fatalf("inbound MsgDeliveryOpen cost %v/message over %d messages (budget %v = T-7's ≤ W+1 RSA verifies + one ed25519). "+
+			"The C-3 design puts hardness at admission and SHAPE + T-7 ONLY on this path.",
 			perMsg, messages, budget)
 	}
 	t.Logf("R1 CLOSED: %d-epoch band. Hardness runs = %d at the band's first admission, "+
