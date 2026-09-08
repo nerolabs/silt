@@ -57,7 +57,9 @@ type fixedCapacity struct{ used, total int64 }
 
 func (f fixedCapacity) Capacity() (int64, int64) { return f.used, f.total }
 
-// TestR22M1WorkCountersAreGossipedOnlyWhenTheOperatorPublishesThem.
+// TestR22M1WorkCountersAreGossipedOnlyWhenTheOperatorPublishesThem is the BEHAVIOURAL half
+// of merge condition M-1; adapters/tcpnet's TestR22WorkGossipIsAdditiveForAnOldPeer is the
+// WIRE half and states the composition from its side.
 //
 // THE HALF THIS GATE CLOSES, and the half its sibling closes. Here: with the withholding
 // posture, send stamps EXACTLY ZERO into both fields even though the ledger holds work.
@@ -112,6 +114,29 @@ func TestR22M3SelfsWorkTermsStayOutOfTheSampleOnTheWithholdingPosture(t *testing
 	}
 	if s.ServeWorkTotal != 4_000_000 || s.ServeSampleSize != 4 {
 		t.Fatalf("serve series = %d nodes totalling %d, want 4 and 4,000,000 (the four reporting peers, self excluded). Self's %d withheld bytes are in the aggregate", s.ServeSampleSize, s.ServeWorkTotal, secret)
+	}
+}
+
+// TestR22GossipSampleIsExactlyGiniOverSampledValues is what lets cmd/silt's reconstruction
+// gate build its sample BY HAND and still be a gate about the real thing: it pins that
+// EconomySample publishes exactly credit.Gini over the values it sampled, with no smoothing,
+// rounding or reweighting in between. If a later edit puts anything between the sampled
+// values and the published figure, the hand-built fixture over there stops corresponding to
+// what a node produces and its solve would be testing arithmetic nobody ships — so this is
+// the joint, and it reddens rather than letting that drift go unnoticed.
+func TestR22GossipSampleIsExactlyGiniOverSampledValues(t *testing.T) {
+	n := r22Node(t)
+	vals := []int64{1_000_000, 1_000_000, 1_000_000, 1_000_000, 987_654_321}
+	for i, v := range vals {
+		gossip(n, i, 32<<30, v, 0)
+	}
+	s := n.EconomySample()
+	if s.ServeSampleSize != len(vals) {
+		t.Fatalf("serve series = %d, want %d", s.ServeSampleSize, len(vals))
+	}
+	if s.ServeGini != credit.Gini(vals) {
+		t.Fatalf("EconomySample published serveGini %.15f but credit.Gini over the same values is %.15f. Something now sits between the sampled values and the published figure; cmd/silt's reconstruction gate builds its fixture from credit.Gini directly and would stop corresponding to a real node",
+			s.ServeGini, credit.Gini(vals))
 	}
 }
 

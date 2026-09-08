@@ -20,9 +20,10 @@ package main
 // itself these routes were safe.
 //
 // WHERE THE FIXTURE COMES FROM. The sample is built here with the REAL credit.Gini over the
-// same value set the node would produce; core/node's TestR22GossipSampleIsExactlyGiniOverThe
-// SampledValues pins that EconomySample computes exactly that, and the red-team PoC drove it
-// end to end through Node.handle. It is assembled here because memstore is not a
+// same value set the node would produce. core/node's
+// TestR22GossipSampleIsExactlyGiniOverSampledValues pins that EconomySample computes exactly
+// that — the joint between the two — and the red-team PoC drove it end to end through
+// Node.handle. It is assembled here because memstore is not a
 // CapacityReporter, so a cmd/silt fixture's node can never put self in its own sample.
 
 import (

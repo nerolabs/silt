@@ -90,6 +90,11 @@ Exactly two, as row 10 requires.
   skips keys it does not know, and a gate encodes a frame with the new keys and decodes it
   with a struct that predates them.
 
+> **SUPERSEDED 2026-09-09 (the gossip half).** The Researcher ruled this GATED: the two
+> fields are gossiped only under `-privacy=off`, non-reporting reads as unknown rather than
+> zero, and the owner must ratify before it merges. See
+> `docs/thinking/2026-09-09-c3-review-foldin.md` §3.
+
 **Privacy, stated rather than buried.** Both are node-wide totals with no object axis and no
 fetcher axis, so neither carries the `(fetcher x object)` access record Don't #3 forbids.
 They are the same class of self-reported advisory figure as the capacity pledge already
@@ -123,6 +128,12 @@ does the majority of it.
 I did NOT build the Tester's three assertions. They are the Tester's, RED-first, after this.
 
 ## 5. What each panel renders when it has nothing
+
+> **AMENDED 2026-09-09.** Two renderings were added by the review round: the two work Ginis
+> render "withheld by this node's privacy setting" on the shipped `-privacy` default, and a
+> Gini whose sample reported no work renders "no work reported" rather than `0.0000`. See the
+> fold-in doc §2 and §5.
+
 
 The honesty rule (§0) allows exactly three renderings of a number we do not have: **absent
 with a named reason**, **sample too small**, **not yet measurable**. A zero is none of them.
@@ -158,6 +169,16 @@ unauthenticated wire (§7). The repair series carries the floor against its OWN 
 not the sample's — a 20-node sample routinely holds a 2-node capable subset.
 
 ## 7. The whole-surface route constant: 7 → 11, and why each route is safe
+
+> **SUPERSEDED 2026-09-09 — the argument below for leaving `/api/economy/concentration` and
+> `/api/economy/network` OPEN is FALSE and was refuted by measurement, twice and
+> independently.** A published Gini plus its sample size is one equation, and
+> `minGossipSample` bounds the sample SIZE, not the number of terms the reader does not
+> already know; an adversary with free identities supplies n−1 of them and solves for the
+> last. It is kept here unedited because the fold-in doc reasons about the error itself. The
+> correction, the shape chosen and why, and the gate that pins it:
+> `docs/thinking/2026-09-09-c3-review-foldin.md`.
+
 
 Adding a GET route reddens BOTH whole-surface scans, which is the gate working. Each new
 route was examined against each scan's property before the count moved; the examination is
