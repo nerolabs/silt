@@ -99,6 +99,9 @@ var standingClassification = map[string]standingClass{
 	// A4-3 (R2.7): a node-wide count of bounties released to a prior fetcher. Reads
 	// account state, writes two counters, touches no bond and no balance.
 	"BountyToPriorFetcher": neutral, // observability (wash SHAPE; never a slashing input)
+	// R2.7 §1.3: records a refusal a caller already decided. Registers the account (acct
+	// does) and moves two counters; touches no bond, no balance, no standing.
+	"NoteSpendRefused": neutral, // observability (the affordability floor's third gate)
 
 	// PoD neutral lane. The witnessed delivery credit is a CONSERVED balance transfer
 	// (the fetcher's burned anchor face, less skim) that supersedes the serve

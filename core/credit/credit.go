@@ -168,8 +168,15 @@ type Ledger struct {
 	// in this ledger measures a flow that HAPPENED; these two measure the flow that was
 	// REFUSED at the affordability floor, which is the failure R2.7 is most likely to
 	// miss — an economy that reads solvent because nobody could afford to transact.
-	// Counted at BOTH spend gates that can refuse for want of credit (ChargePublish and
-	// FundEscrow), so the two stay symmetric.
+	// THREE refusal decisions are counted, one per spend gate (blind PE ruling
+	// RULING-c4-r27-blocking-telemetry-93deb56-2026-09-08 B2; Economist as-built §4(d)):
+	// ChargePublish and FundEscrow count at their own refusal branch, and CanPublish —
+	// which is a PREDICATE and must not count, because the sim calls it for display
+	// (sim/economy.go) and a counter that moves when a dashboard reads it is worse than a
+	// missing one — is counted at the one place that turns a false into a refusal,
+	// registry.Gated.Publish, through the exported NoteSpendRefused below. Miss any one
+	// and the floor under-reads, which matters because ROADMAP C6 makes any rise in
+	// spendRefusersDistinct a HARD canary abort.
 	//
 	// HONEST LIMIT, and it bounds the use: an adversary can inflate this at will by
 	// presenting underfunded identities. It is safe as a FLOOR DETECTOR ONLY — a
@@ -627,6 +634,18 @@ type FaucetStats struct {
 // Grant is the starter grant this ledger applies. Read-only; the start-up assertion in
 // cmd/silt reads it from HERE, never from a duplicated literal (PE code ruling BLK-3).
 func (l *Ledger) Grant() int64 { return l.grant }
+
+// NoteSpendRefused records one refusal at a spend gate whose REFUSAL DECISION is made by
+// a caller rather than here (R2.7 §1.3; PE ruling B2). The only such gate is CanPublish,
+// a predicate: registry.Gated.Publish turns its false into ports.ErrInsufficientCredit
+// and calls this. It is exported for that one caller and reached through an optional
+// interface, so ports.CreditLedger stays the consensus-relevant surface.
+//
+// It does NOT decide, refuse, or move credit — it records a refusal the caller already
+// made. Calling it on an identity that has not been through the gate would register that
+// identity (acct does), so call it only where a refusal has just been decided; every
+// caller of CanPublish has already registered the account through it.
+func (l *Ledger) NoteSpendRefused(n ports.NodeID) { l.noteSpendRefused(l.acct(n)) }
 
 // FaucetStats reads the faucet telemetry. Reading moves nothing.
 func (l *Ledger) FaucetStats() FaucetStats {
