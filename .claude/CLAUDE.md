@@ -52,6 +52,41 @@ The seats build under silt's existing rules. They are not overridden by anything
 6. **Scars survive pruning.** The Tester owns scar-counting and the third-time rule; a
    lesson is encoded as a gate/test before context is cleared.
 
+## Simplicity rules — owner direction via the PE (standing, 2026-09-08)
+
+The owner asked which team we are: the one that takes a complicated thing and makes it simple, or the
+one that takes a simple thing and makes it complicated. The measured answer for the trust plane's
+last three weeks was the second (`docs/decisions.md` `D-RECOMPUTE-FREEZE`; the note:
+`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/NOTE-to-silt-team-simplicity-and-roadmap-reorder-2026-09-08.md`).
+These ten rules bind every seat from now on:
+
+1. **The B8 gate, at every design decision.** Before any seat proposes a mechanism, it names the
+   settled corner it is buying — or states why none fits. "Novel" is a cost, not a feature, on
+   anything outside M0. The planner does not dispatch a build that cannot name its corner.
+2. **The PE seat's mandate widens: correctness AND simplicity of approach.** The PE's first question
+   on any consult is *"is this the simplest approach the tenets permit?"* — before severity, before
+   sequencing. This is the check the PE failed to run on the recompute keystone and now owns.
+3. **Cap the bookkeeping ratio.** Bookkeeping commits (structure / register / residual / re-ruling /
+   canon) may not exceed the count of `fix(` + `feat(` commits in any week. When they do, the loop
+   stops registering and starts closing.
+4. **A residual must be actionable or it does not exist.** A new `R-*` row requires an owner, a
+   closer, and a Boulder. Otherwise it is a sentence in `docs/design/m0.md` §10 or nothing. No new
+   prefixes (`R-BB-`, `G-`, …) without an owner ratification.
+5. **Owner calls are batched and bounded.** At most five per true-up. If a true-up needs more than
+   five, the loop is deciding by escalation instead of by design — stop and simplify the question.
+6. **No new era without a ratified reason that is not "the recompute needs it."** A block-format
+   change is the most expensive edit in the system; era 5 is not pre-approved.
+7. **"A green gate with no demonstrated red is decoration" is a RULE, not an observation.** A field
+   classified "safe" in any coverage table must be a DRIVEN probe (forge it, commit the divergent
+   root, assert a stall). The completeness meta-test fails on an un-driven "safe" row, not only a
+   missing one.
+8. **Structure rounds are frozen on the keystone.** No refactor adds concepts to a component slated
+   for re-scope. Rigor applied to accidental complexity produces more of it, beautifully certified.
+9. **A cert per consensus-rule change — and only per consensus-rule change.** Not per probe, not per
+   register row, not per re-ruling.
+10. **Step back to TENETS + VISION once a week, as the planner.** No seat holds that vantage in the
+    loop; the planner schedules it.
+
 ## Load discipline — this box is shared (standing rule, owner, 2026-09-08)
 
 The Mac that runs the seats is Andrew's working machine. Every seat, every session:
