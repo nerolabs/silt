@@ -33,10 +33,33 @@ import "github.com/nerolabs/silt/ports"
 // observatory. None of these is ever read by Reputation.
 type objectEscrow struct {
 	balance int64 // credits available now to pay repair bounties
-	funded  int64 // lifetime credits deposited (prepay + auto-skim)
-	paid    int64 // lifetime bounties paid out to repairers
-	repairs int64 // count of bounty payments — the denominator of cost-per-repair (instrument g)
+	// The two funding legs (R2.7 detector A4-1, Economist advisory §1.2). Lifetime
+	// credits deposited, SPLIT by where they came from, because the wash loop's
+	// recoverable money is the skim and not the prepay: with one combined `funded`
+	// there is no denominator for "escrow recovered by self-repair" and the S5
+	// qualifier cannot be evaluated at all.
+	//
+	// fundedPrepay is what an operator deposited through FundEscrow. It is NEVER
+	// clawed back: a reversal only ever undoes a serve's own auto-skim.
+	fundedPrepay int64
+	// fundedSkim is what the serve auto-skim routed in (RecordServeToObject,
+	// SettleDelivery). reverseLane subtracts from THIS leg only, floored at zero.
+	fundedSkim int64
+	paid       int64 // lifetime bounties paid out to repairers
+	repairs    int64 // count of bounty payments — the denominator of cost-per-repair (instrument g)
 }
+
+// funded is the lifetime credits deposited (prepay + auto-skim) — the number
+// EscrowFunded and DurabilitySnapshot have always published, unchanged. It is DERIVED
+// from the two legs and stored nowhere: a third accumulator kept in step with two write
+// paths is exactly the drift the A4-1 split exists to remove.
+//
+// The published figure does not move. The old combined counter's floor-at-zero sat on
+// the total, so had it ever fired it would have eaten PREPAY; it cannot fire, because a
+// reversal's claw-back is bounded by the lane's own recorded skim and therefore never
+// exceeds the outstanding skim leg. The split makes "a reversal never touches a
+// prepay" structural instead of incidental.
+func (e *objectEscrow) funded() int64 { return e.fundedPrepay + e.fundedSkim }
 
 // Skim is the protocol-fixed fraction of an object's serving revenue that routes
 // back into that object's durability escrow, expressed as SkimNum/SkimDen. This
@@ -144,12 +167,13 @@ func (l *Ledger) FundEscrow(root ports.Hash, funder ports.NodeID, amount int64) 
 		l.applyGrant(a) // R2.12: FundEscrow is the third SPEND GATE
 	}
 	if a.balance < amount {
+		l.noteSpendRefused(a) // R2.7 §1.3: symmetric with ChargePublish's refusal
 		return ports.ErrInsufficientCredit
 	}
 	a.balance -= amount
 	e := l.escrowFor(root)
 	e.balance += amount
-	e.funded += amount
+	e.fundedPrepay += amount // A4-1: the PREPAY leg — never clawed back by a reversal
 	return nil
 }
 
@@ -178,6 +202,7 @@ func (l *Ledger) RecordServeToObject(server, requester ports.NodeID, root ports.
 	// witnessed supersede and later mint for bytes the receipt already paid (G-λ-5).
 	p := l.laneFor(server, requester, root)
 	p.bytes += bytes
+	l.serveBytesObjectAware += bytes // A2: the witnessable denominator (credit.go)
 	netTotal := p.bytes * (SkimDen - SkimNum) / (SkimDen * ServeMintBytesPerCredit)
 	skimTotal := p.bytes * SkimNum / (SkimDen * ServeMintBytesPerCredit)
 	net, skim := netTotal-p.net, skimTotal-p.skim
@@ -188,7 +213,7 @@ func (l *Ledger) RecordServeToObject(server, requester ports.NodeID, root ports.
 	l.recordFetched(requester, bytes)
 	e := l.escrowFor(root)
 	e.balance += skim
-	e.funded += skim
+	e.fundedSkim += skim // A4-1: the auto-SKIM leg — the only leg a reversal claws back
 	l.noteServeMint(bytes, net, skim)
 	return skim
 }
@@ -229,7 +254,26 @@ func (l *Ledger) PayBounty(root ports.Hash, repairer ports.NodeID, amount int64)
 	// alone (Reputation), so this cannot re-open the γ→1/N firewall.
 	r.repairsDone++
 	r.bountyEarned += amount
+	if r.fetchedBytes > 0 {
+		// A4-3 (credit.go): the repairer had already fetched from this node when the
+		// bounty was released. A SHAPE, never a detection — the payment above is
+		// unchanged, and nothing downstream may refuse or slash on this.
+		l.bountyToPriorFetcherPayments++
+		l.bountyToPriorFetcherCredits += amount
+	}
 	return amount
+}
+
+// BountyToPriorFetcher reports the A4-3 wash SHAPE: how many repair bounties this
+// ledger released to a repairer that had already fetched bytes from this node, and
+// the credits those payments carried. Node-wide; it names no repairer and no object.
+//
+// One-sided-informative ONLY. A repairer may legitimately have fetched survivor
+// shards from this judge, so a non-zero reading is not evidence of a wash — read it
+// beside the wash symmetry, and never as a slashing or disbursement input.
+// Observability; reading moves nothing.
+func (l *Ledger) BountyToPriorFetcher() (payments, credits int64) {
+	return l.bountyToPriorFetcherPayments, l.bountyToPriorFetcherCredits
 }
 
 // BountyFor is the rarest-shard bounty multiplier: the credits owed to repair one
@@ -271,7 +315,7 @@ func (l *Ledger) EscrowBalance(root ports.Hash) int64 {
 // (prepay plus auto-skim) — the numerator the horizon math draws on.
 func (l *Ledger) EscrowFunded(root ports.Hash) int64 {
 	if e, ok := l.escrow[root]; ok {
-		return e.funded
+		return e.funded()
 	}
 	return 0
 }
@@ -303,9 +347,11 @@ func (l *Ledger) DurabilitySnapshot(root ports.Hash) ports.DurabilitySnapshot {
 		return ports.DurabilitySnapshot{}
 	}
 	return ports.DurabilitySnapshot{
-		Balance: e.balance,
-		Funded:  e.funded,
-		Paid:    e.paid,
-		Repairs: e.repairs,
+		Balance:      e.balance,
+		Funded:       e.funded(),
+		FundedPrepay: e.fundedPrepay,
+		FundedSkim:   e.fundedSkim,
+		Paid:         e.paid,
+		Repairs:      e.repairs,
 	}
 }

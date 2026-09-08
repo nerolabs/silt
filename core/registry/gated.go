@@ -46,6 +46,14 @@ func (g *Gated) Publish(ctx context.Context, e ports.Entry) error {
 		return nil
 	}
 	if !g.ledger.CanPublish(e.Publisher) {
+		// THE REFUSAL DECISION for the CanPublish gate (R2.7 §1.3, PE ruling B2). It is
+		// counted here and not inside CanPublish, which is a predicate the sim also calls
+		// for display — a counter that moved when a dashboard read it would be worse than
+		// a missing one. Reached through an optional interface so this package keeps
+		// importing ports alone; a ledger without the method simply records nothing.
+		if r, ok := g.ledger.(interface{ NoteSpendRefused(ports.NodeID) }); ok {
+			r.NoteSpendRefused(e.Publisher)
+		}
 		return ports.ErrInsufficientCredit
 	}
 	if err := g.log.Publish(ctx, e); err != nil {

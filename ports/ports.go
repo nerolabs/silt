@@ -310,9 +310,14 @@ type CreditLedger interface {
 // is earned) live in core/credit and take snapshots taken over time.
 type DurabilitySnapshot struct {
 	Balance int64 // credits available now to pay repair bounties (the reserve)
-	Funded  int64 // lifetime credits deposited: prepay + serve auto-skim
-	Paid    int64 // lifetime bounties paid out of the reserve
-	Repairs int64 // count of bounty payments (shard-repairs the reserve funded)
+	Funded  int64 // lifetime credits deposited: prepay + serve auto-skim (= FundedPrepay + FundedSkim)
+	// The two legs of Funded (R2.7 detector A4-1). The wash loop's recoverable money is
+	// the SKIM, not the prepay, so "escrow recovered by self-repair" has no denominator
+	// without this split. A reversal claws back FundedSkim only.
+	FundedPrepay int64 // deposited by an operator through FundEscrow
+	FundedSkim   int64 // routed in by the serve auto-skim
+	Paid         int64 // lifetime bounties paid out of the reserve
+	Repairs      int64 // count of bounty payments (shard-repairs the reserve funded)
 }
 
 // SignMark is a validator's monotonic last-signed watermark: the height,

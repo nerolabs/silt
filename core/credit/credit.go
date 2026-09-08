@@ -50,7 +50,14 @@ type account struct {
 	// grantsDenied below counts DISTINCT identities that met an empty bucket — the
 	// Economist's grantsDeniedDistinctTotal — rather than registrations (every pure read
 	// registers) or retries.
-	grantDenied  bool
+	grantDenied bool
+	// spendRefused (R2.7 §1.3, the build-immutable #4 affordability floor): this
+	// identity has been refused at a SPEND GATE for insufficient credit at least once.
+	// Set on the first refusal and never cleared, so spendRefusersDistinct below counts
+	// DISTINCT identities rather than retries. ONE BOOL ON THE ACCOUNT, never a side
+	// set: a side set of refused identities would be a grow-only map (the validatorsSeen
+	// trap), and the account already exists by the time a refusal is decided.
+	spendRefused bool
 	auditsPassed int
 	auditsFailed int
 	// Storage-bond standing — the Sybil cost. bondedBytes is the size of
@@ -157,8 +164,29 @@ type Ledger struct {
 	grantsDegraded  int64 // floor ADVANCES applied on an empty bucket (the identity stays pending)
 	grantsDenied    int64 // DISTINCT identities refused at a spend gate at least once (never retries, never registrations)
 	grantsPending   int64 // accounts currently grant-pending — REGISTRATIONS awaiting a spend, most of which never spend; not a denial count
-	accounts        map[ports.NodeID]*account
-	order           []ports.NodeID // registration order: deterministic iteration
+	// The affordability floor (R2.7 §1.3, Economist advisory §1.3). Every other counter
+	// in this ledger measures a flow that HAPPENED; these two measure the flow that was
+	// REFUSED at the affordability floor, which is the failure R2.7 is most likely to
+	// miss — an economy that reads solvent because nobody could afford to transact.
+	// THREE refusal decisions are counted, one per spend gate (blind PE ruling
+	// RULING-c4-r27-blocking-telemetry-93deb56-2026-09-08 B2; Economist as-built §4(d)):
+	// ChargePublish and FundEscrow count at their own refusal branch, and CanPublish —
+	// which is a PREDICATE and must not count, because the sim calls it for display
+	// (sim/economy.go) and a counter that moves when a dashboard reads it is worse than a
+	// missing one — is counted at the one place that turns a false into a refusal,
+	// registry.Gated.Publish, through the exported NoteSpendRefused below. Miss any one
+	// and the floor under-reads, which matters because ROADMAP C6 makes any rise in
+	// spendRefusersDistinct a HARD canary abort.
+	//
+	// HONEST LIMIT, and it bounds the use: an adversary can inflate this at will by
+	// presenting underfunded identities. It is safe as a FLOOR DETECTOR ONLY — a
+	// non-zero value proves honest demand is being refused somewhere and can abort a
+	// canary; a zero value certifies NOTHING and must never be read as "the lane is
+	// affordable".
+	spendRefusedInsufficientCredit int64 // every refusal, retries included
+	spendRefusersDistinct          int64 // identities refused at least once
+	accounts                       map[ports.NodeID]*account
+	order                          []ports.NodeID // registration order: deterministic iteration
 	// rootOwner binds each bond root to the first identity that proved it, so
 	// a bond root builds standing for AT MOST ONE identity. A colluding
 	// operator pointing N identities at one shared plot therefore earns one
@@ -352,7 +380,40 @@ type Ledger struct {
 	serveSkimCredits     int64
 	serveMintZero        int64
 	serveReversedCredits int64 // net + skim reversed by supersede or eviction (telemetry, gross-of-reversal counters above)
-	sweeps               int64
+	// A2 supersede-suppression telemetry (R2.7 blocking telemetry, Economist advisory
+	// ADVISORY-boulder2-telemetry-spec-R2.4-checklist-and-RC-scope-2026-09-07 §1.1).
+	// Node-wide int64 aggregates with NO identity axis and no object axis: this is
+	// deliberately not a (fetcher × object) join, which is the access record Don't #3
+	// forbids. Together with the live lanes they satisfy an exact conservation identity
+	// (ServeMintStats, numeraire.go), and that identity is the unit test.
+	//
+	// serveBytesObjectAware is the WITNESSABLE DENOMINATOR: bytes that entered a
+	// provisional lane and could therefore be acknowledged by a delivery receipt. Bytes
+	// served on the plain path (RecordServe — a manifest chunk has no proof-anchored
+	// root) never enter a lane and can never be witnessed, so measuring coverage against
+	// total served bytes would penalise a node for serving manifests. It does not.
+	serveBytesObjectAware int64
+	// serveBytesWitnessed is the acknowledged bytes banked by SettleDelivery. Counted
+	// once per settlement, on the acknowledged amount, and NOT when the lane is already
+	// gone: an evicted lane's bytes were already counted forfeited below.
+	serveBytesWitnessed int64
+	// serveBytesLaneEvicted is bytes served for ZERO pay because the maxProvisional lane
+	// cap FIFO-confiscated the accumulator (delivery.go laneFor). A direct T-AR wage
+	// measurement; nothing else on main sees it.
+	serveBytesLaneEvicted int64
+	// A4-3 (R2.7 detector A4, Economist advisory §1.2): repair bounties this ledger paid
+	// to a repairer that had ALREADY FETCHED bytes from this node at payment time — the
+	// round-trip shape of the escrow wash. Read off account state that already exists
+	// (fetchedBytes); adds no map and no identity×object join (Don't #3).
+	//
+	// HONEST LIMIT, and it bounds the use: a repairer may legitimately have fetched
+	// survivor shards from this judge, so this is a SHAPE, not a detection (Douceur;
+	// authenticityKnowable false, the convention /api/economy/self already uses). It is
+	// one-sided-informative — a high ratio alongside high wash.symmetry is the
+	// signature — and it is NEVER a slashing or disbursement input.
+	bountyToPriorFetcherPayments int64
+	bountyToPriorFetcherCredits  int64
+	sweeps                       int64
 	// compactFailures / lastCompactErr record a durable-store Compact that returned an
 	// error at the sweep (R2.13). Observability, never a refusal: see
 	// sweepExpiredSerials for the two-class rule.
@@ -558,21 +619,64 @@ type FaucetStats struct {
 	GrantsDegraded int64
 	GrantsDenied   int64 // distinct identities refused at a spend gate at least once — the one counter that moves on a denial
 	GrantsPending  int64 // accounts registered and awaiting a spend; NOT denials (every pure read registers)
+	// The affordability floor (R2.7 §1.3). UNLIKE every other field here these two are
+	// NOT faucet counters and are meaningful whether or not a bucket is configured: they
+	// count refusals at the spend gates for want of CREDIT, not for want of a token. So
+	// FaucetStats reports them on both branches; a configured-false block still carries
+	// them, because dropping a real refusal count would be a silent loss (Don't #4).
+	//
+	// FLOOR DETECTOR ONLY: non-zero proves honest demand is being refused somewhere;
+	// zero certifies nothing. An adversary inflates it at will with underfunded ids.
+	SpendRefusedInsufficientCredit int64
+	SpendRefusersDistinct          int64
 }
 
 // Grant is the starter grant this ledger applies. Read-only; the start-up assertion in
 // cmd/silt reads it from HERE, never from a duplicated literal (PE code ruling BLK-3).
 func (l *Ledger) Grant() int64 { return l.grant }
 
+// NoteSpendRefused records one refusal at a spend gate whose REFUSAL DECISION is made by
+// a caller rather than here (R2.7 §1.3; PE ruling B2). The only such gate is CanPublish,
+// a predicate: registry.Gated.Publish turns its false into ports.ErrInsufficientCredit
+// and calls this. It is exported for that one caller and reached through an optional
+// interface, so ports.CreditLedger stays the consensus-relevant surface.
+//
+// It does NOT decide, refuse, or move credit — it records a refusal the caller already
+// made. It is NOT free of side effects on an unknown identity: acct registers, and on a
+// ledger with no faucet configured registration mints the full starter grant onto that
+// balance. Unreachable today — CanPublish registers first, so every identity reaching
+// this call already has an account — but it is why this must be called only where a
+// refusal has just been decided, never speculatively and never on a bare identity.
+func (l *Ledger) NoteSpendRefused(n ports.NodeID) { l.noteSpendRefused(l.acct(n)) }
+
 // FaucetStats reads the faucet telemetry. Reading moves nothing.
 func (l *Ledger) FaucetStats() FaucetStats {
 	if l.faucet == nil {
-		return FaucetStats{}
+		// No bucket: every faucet field is zero and meaningless, but the two spend-gate
+		// refusal counters are real and are reported (see FaucetStats' doc).
+		return FaucetStats{
+			SpendRefusedInsufficientCredit: l.spendRefusedInsufficientCredit,
+			SpendRefusersDistinct:          l.spendRefusersDistinct,
+		}
 	}
 	return FaucetStats{
 		Configured: true, Capacity: l.faucet.capacity, Refill: l.faucet.refill,
 		IntervalNanos: l.faucet.interval, DenyFloor: l.faucetDenyFloor, Level: l.faucet.Level(),
 		GrantsIssued: l.grantsIssued, GrantsDegraded: l.grantsDegraded, GrantsDenied: l.grantsDenied, GrantsPending: l.grantsPending,
+		SpendRefusedInsufficientCredit: l.spendRefusedInsufficientCredit,
+		SpendRefusersDistinct:          l.spendRefusersDistinct,
+	}
+}
+
+// noteSpendRefused records one refusal at a spend gate for insufficient credit
+// (R2.7 §1.3). Every refusal moves the total; the first refusal by an identity also
+// moves the distinct count, through ONE BOOL on the account — never a side set, which
+// would be a grow-only map. Nothing here refuses, decides, or moves credit.
+func (l *Ledger) noteSpendRefused(a *account) {
+	l.spendRefusedInsufficientCredit++
+	if !a.spendRefused {
+		a.spendRefused = true
+		l.spendRefusersDistinct++
 	}
 }
 
@@ -821,6 +925,7 @@ func (l *Ledger) ChargePublish(n ports.NodeID) error {
 		l.applyGrant(a)
 	}
 	if a.balance < l.fee {
+		l.noteSpendRefused(a) // R2.7 §1.3: the affordability floor, counted at both spend gates
 		return ports.ErrInsufficientCredit
 	}
 	a.balance -= l.fee

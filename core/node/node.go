@@ -398,6 +398,17 @@ type Stats struct {
 	BountyBaseZero     int
 	BountiesReleased   int
 	FalseRepairSlashes int
+	// A4-2 (R2.7 detector A4, Economist advisory §1.2): repair bounties this judge paid
+	// to ITSELF, count and credits. claim.Holder is a field of an inbound,
+	// attacker-declared MsgRepairClaim and nothing refuses a claim naming the judge as
+	// the holder, so this is reachable, not a vacuous gate. An honest judge never pays
+	// itself: ANY non-zero value is the A4 self-dealing shape (canary abort C-7, HARD).
+	//
+	// It lives on the NODE, not the ledger: the Ledger does not know its own node id,
+	// and coupling the ledger to identity for a pure observability read would drag the
+	// Invariant-A classification surface with it. The judge already holds both values.
+	BountyPaidToSelf        int
+	BountyCreditsPaidToSelf int64
 	// #277 dead-peer-envelope gauges (M1 baseline — the dial-storm is where trust
 	// either stays cheap or floods the network). HolderDialsSkipped: full-timeout
 	// holder dials AVOIDED because the target was in the dead-peer negative cache
@@ -909,6 +920,14 @@ type RootDurability struct {
 // disburses nothing (repairclaim.go), so the loop is half-open. Observability.
 func (n *Node) RepairBountyEnabled() bool { return n.cfg.RepairEconomy }
 
+// DeliveryLaneOn reports whether this node ACCEPTS paid delivery sessions
+// (-accept-delivery-receipts with a set idle window, EnableDeliverySessions). It is the
+// disambiguator for receiptCoverage: with the lane off SettleDelivery is never called, so
+// coverage is 0 BY CONFIGURATION while the node behaves perfectly — indistinguishable on
+// the wire from total suppression, and the RC ships default-OFF. Same shape and same
+// reason as RepairBountyEnabled above. Loop-owned; call it on the event loop.
+func (n *Node) DeliveryLaneOn() bool { return n.deliveryAccept }
+
 // CreditBalance reports THIS node's own credit balance — what serving has earned
 // (RecordServe) that it could spend to FundDurability. 0 with no ledger. Standing
 // is untouched by this number (Invariant A: credits never confer standing).
@@ -978,6 +997,11 @@ func (n *Node) EconomySelf() EconomySelf {
 		es.RepairsDone = r.RepairsDone(n.id)
 		es.BountyEarned = r.BountyEarned(n.id)
 	}
+	// A4-3 (R2.7): the node-wide wash SHAPE, through its own optional interface for the
+	// same reason — it is not on the ports.CreditLedger consensus surface.
+	if r, ok := n.ledger.(interface{ BountyToPriorFetcher() (int64, int64) }); ok {
+		es.BountyToPriorFetcherPayments, es.BountyToPriorFetcherCredits = r.BountyToPriorFetcher()
+	}
 	return es
 }
 
@@ -988,6 +1012,11 @@ type EconomySelf struct {
 	FetchedBytes int64 // lifetime bytes this node fetched (the wash-symmetry denominator)
 	RepairsDone  int64 // shard-repairs this node was paid a bounty for (repair-work count)
 	BountyEarned int64 // lifetime credits earned as a repairer (repair revenue, split from serve)
+	// A4-3 (R2.7): bounties this node released to a repairer that had already fetched
+	// from it. A wash SHAPE, one-sided-informative, never a slashing input — see
+	// credit.Ledger.BountyToPriorFetcher for the honest limit.
+	BountyToPriorFetcherPayments int64
+	BountyToPriorFetcherCredits  int64
 }
 
 // CaredDurability snapshots the durability accounting of every object this node

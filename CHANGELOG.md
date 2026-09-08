@@ -112,6 +112,100 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   #766) — R2.9's wire proof this run is the local e2e only.
 
 ### Added
+- **R2.7 blocking telemetry — the affordability floor (Lane C4, Economist advisory
+  `ADVISORY-boulder2-telemetry-spec-R2.4-checklist-and-RC-scope-2026-09-07` §1.3).**
+  `spendRefusedInsufficientCredit` (every refusal) and `spendRefusersDistinct` (identities refused at least
+  once) on `credit.Ledger`. The ledger has THREE spend gates and all three refusal DECISIONS are counted:
+  `ChargePublish` and `FundEscrow` count at their own refusal branch, and `CanPublish` — which is a
+  PREDICATE and must not count, because `sim/economy.go` calls it for display and a counter that moves when
+  a dashboard reads it is worse than a missing one — is counted at the one place that turns its false into
+  a refusal, `registry.Gated.Publish`, through the exported `Ledger.NoteSpendRefused` reached by an optional
+  interface so `ports.CreditLedger` stays the consensus-relevant surface. Missing that third decision made
+  the floor under-read beneath a HARD canary abort (ROADMAP C6 aborts on any rise in
+  `spendRefusersDistinct`), and `sim/economy.go` grades `FreeloadersRejected` off exactly those refusals —
+  so the floor would have read zero beside a non-zero rejection count in the tier R2.7's adversarial
+  workload runs in. Distinct identities are counted the way
+  `grantDenied` already does: ONE BOOL on the account, never a side set, so it cannot become a grow-only map.
+  Every other counter in the ledger measures a flow that happened; this is the only one that measures the
+  flow that was REFUSED at the affordability floor, which is build-immutable #4's exact failure mode and the
+  failure R2.7 is most likely to miss — an economy reads solvent when nobody can afford to transact. Surfaced
+  in the `faucet` block on `GET /api/status` beside `grantsDenied`. It ships on BOTH branches of that block,
+  configured faucet or not: these are refusals for want of CREDIT, not for want of a token, and dropping them
+  on the unconfigured branch would be a silent loss (Don't #4) on exactly the default posture. `spendRefusalNote`
+  ships beside the numbers so no reader can quote them without the caveat — this is a FLOOR detector: a
+  non-zero value proves honest demand is being refused somewhere and can abort a canary; a zero value
+  certifies NOTHING, because an adversary inflates the number at will with underfunded identities. Gates,
+  each run RED under a controlled revert: `TestSpendRefusalsCountDistinctIdentitiesNotRetries` (five retries
+  by one identity count five and one; a later success decrements neither),
+  `TestAffordabilityFloorReachesTheStatusSurface` (the wire half, on the unconfigured-faucet branch) and
+  `TestGatedPublishRefusalMovesTheAffordabilityFloor` (the third gate, with an arm asserting that three
+  pure `CanPublish` READS move nothing).
+- **R2.7 blocking telemetry, detector A4 — escrow laundering by self-repair (Lane C4, Economist advisory
+  `ADVISORY-boulder2-telemetry-spec-R2.4-checklist-and-RC-scope-2026-09-07` §1.2).** The advisory's
+  `bountyPaidToEscrowFunder` is DEGENERATE — every credit entering an escrow on a silt ledger is placed there
+  by that node itself, so "the payee also funded this escrow" reduces to "the payee is this node" — and it is
+  replaced by three parts, none of which needs a `(fetcher × object)` join (that join is the access record
+  Don't #3 forbids). **A4-1:** `objectEscrow.funded` splits into `fundedPrepay` (`FundEscrow`) and
+  `fundedSkim` (`RecordServeToObject`, `SettleDelivery`); `reverseLane` claws back the SKIM leg only, because
+  a reversal only ever undoes a serve's own auto-skim. The published `funded` is now DERIVED from the two
+  legs rather than a third accumulator, and its value does not move. The wash loop's recoverable money is the
+  skim, so without this split "escrow recovered by self-repair" has no denominator and the S5 qualifier
+  cannot be evaluated at all. **A4-2:** `Stats.BountyPaidToSelf` and `Stats.BountyCreditsPaidToSelf` on the
+  NODE (the ledger does not know its own id), fired in `settleRepairVerdict` where the bounty pays and both
+  `n.id` and `claim.Holder` are in hand. `claim.Holder` is attacker-declared on an inbound `MsgRepairClaim`
+  and nothing refuses a claim naming the judge itself, so this is reachable; an honest judge never pays
+  itself, so any non-zero value is the self-dealing shape. **A4-3:** `BountyToPriorFetcher()` on
+  `credit.Ledger` — bounties released to a repairer with `fetchedBytes > 0` at payment time, read off account
+  state that already exists, adding no map. It is a SHAPE, not a detection: a repairer may legitimately have
+  fetched survivor shards from this judge, so it ships with its honest limit on the wire and is never a
+  slashing or disbursement input. Surfaces: A4-1 on `durability.objects[]` (`fundedPrepay` / `fundedSkim`) and
+  on `/api/economy/self` as `prepayIn` / `autoSkimIn` beside the combined `skimIn`, both already token-gated;
+  A4-2 on the `stats` block; A4-3 on `economyRevenue`, which is REBUILT rather than passed through in
+  `withheldEconomySelf` — the allow-list sits at the `economySelf` field level, so a field added inside
+  `economyRevenue` would otherwise ship open, and a bounty-out figure on a one-root node is that root's
+  withheld `objects[].bountyOut`. Gates, each run RED under a controlled revert:
+  `TestEscrowFundedSplitsPrepayFromSkim`, `TestBountyPaidToSelfCountsTheJudgeAsHolder` (its third-party arm
+  is the ablation), `TestBountyToAPriorFetcherIsFlaggedNotBlocked` (both payments settle identically —
+  flagged is never blocked), and `TestR27A4PriorFetcherCreditsAreTokenGatedOnTheWholeSurface`, the wire
+  gate on the token gate itself: a fixture that pays a real bounty to a prior fetcher, a TOKENED positive
+  control first, then the untokened `0 / 0` plus the named withhold, then a scan of every number in every
+  untokened GET body on the real `apiRoutes` table. It is a SIBLING of the existing whole-surface F2 scan
+  rather than an edit to it: that scan's strength is that at `paid == 0` the per-object `reserve`, `net`
+  and `skimIn` are all aliases of `funded`, so four aliases ride one scan — and paying a bounty in its
+  fixture would destroy three of the four. The two share one `r29aWholeSurfaceGETRoutes` constant, so
+  adding a GET route reddens both until it has been examined against each scan's property.
+- **R2.7 blocking telemetry, detector A2 — supersede suppression (Lane C4, Economist advisory
+  `ADVISORY-boulder2-telemetry-spec-R2.4-checklist-and-RC-scope-2026-09-07` §1.1).** Three node-wide `int64`
+  counters on `credit.Ledger` — `serveBytesObjectAware` (`RecordServeToObject`), `serveBytesWitnessed`
+  (`SettleDelivery`, on the clamped `ack`, before the full/partial branch) and `serveBytesLaneEvicted`
+  (`laneFor`, the FIFO confiscation at the `maxProvisional` cap) — plus the live-lane sum taken on the walk
+  `ServeMintStats` already makes. They satisfy an exact conservation identity, `objectAware == witnessed +
+  laneEvicted + inFlight`, and that identity is the test. `servedBytesUnwitnessed`,
+  `servedBytesUnwitnessable` and `receiptCoverage` are DERIVED at the read and stored nowhere: a second
+  accumulator for a residual invites drift between two write paths. Coverage's denominator is object-aware
+  bytes, never total served bytes, so a node serving manifest chunks (no root, never witnessable) is not
+  penalised. The Economist's spec named a fourth counter, `serveBytesSupersededFlat`, on the flat leg's
+  supersede block and said in the same sentence that it "is deleted with the leg" — Lane C1 deleted the leg,
+  so the identity has three terminal terms and no permanently-zero counter ships. All seven fields ride the
+  existing `serveMintWithheld` + `countersWithheld` markers on `GET /api/status`; no new marker, no new
+  withhold clause, and no identity or object axis anywhere (Don't #3). Gates:
+  `TestServedByteSplitIsExactAcrossEveryTerminalState`, `TestEvictedLaneBytesAreCountedForfeitedNotWitnessed`,
+  `TestSuppressionShowsAsCoverageBelowOne` (the RED-first proof that the two arms do not read the same), each
+  run RED under a controlled revert of its increment site. `serveMint.laneOn` ships beside the coverage
+  figure: a zero coverage means one of THREE things, and the third is the DEFAULT posture — a node that does
+  not run `-accept-delivery-receipts` never calls `SettleDelivery`, so it prints `receiptCoverage: 0` beside
+  a large `serveBytesObjectAware` while behaving perfectly. ROADMAP C6 makes coverage below 0.75 a
+  machine-read canary abort and the RC ships default-OFF, so without the lane state every honest RC-default
+  node would trip it. Same shape and same reason as `economySelfFunding.bountyOn` for `-economy`; gated by
+  `TestCoverageZeroIsDistinguishableFromTheLaneBeingOff`, whose two arms differ only in the lane flag.
+  Coverage is documented as a LOWER BOUND, not a rate: in-flight and evicted bytes sit in the denominator
+  and never the numerator, so the honest reading is the band `[witnessed, witnessed+inFlight] /
+  objectAware` — both ends published — and an abort belongs on the upper end. The formula is deliberately
+  not re-based on terminal bytes only, because a single re-based number would hide the band's width from
+  the grader whose rule is the band. `TestServedByteSplitIsExactAcrossEveryTerminalState` now also drives
+  the PLAIN path, which is the clause that justifies the object-aware denominator and had no test: a
+  manifest serve must move `servedBytesUnwitnessable` and leave a fully-witnessed node's coverage at
+  exactly 1.0 — under a denominator of total served bytes it falls to 0.727 on a node doing honest work.
 - **Floor box — the STRUCTURE round, Round 1A (`R-STRUCTURE-REDERIVATION`, owner-ratified 2026-09-03; call 16 main-only).**
   ONE accept composition over a three-valued `StateView`: `ValidateProposalV5` (P1…P13) and `ValidateCommitV5` (= the
   proposal then C1…C5), dispatched from BOTH `ValidateProposal` and `ValidateCommit` on version — `chain.go` changes by

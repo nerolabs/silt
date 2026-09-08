@@ -263,9 +263,12 @@ func (l *Ledger) reverseLane(server ports.NodeID, root ports.Hash, net, skim int
 			r = e.balance
 		}
 		e.balance -= r
-		e.funded -= r
-		if e.funded < 0 {
-			e.funded = 0
+		// A4-1: a reversal only ever claws back the object's own auto-SKIM, never an
+		// operator's prepay. Floored at zero defensively; r is already bounded by the
+		// lane's recorded skim and by the reserve.
+		e.fundedSkim -= r
+		if e.fundedSkim < 0 {
+			e.fundedSkim = 0
 		}
 	}
 }
@@ -312,6 +315,7 @@ func (l *Ledger) laneFor(server, requester ports.NodeID, root ports.Hash) *provi
 			l.provHead++
 			delete(l.provIndex, old)
 			if evicted, eok := l.provisional[old]; eok {
+				l.serveBytesLaneEvicted += evicted.bytes // A2: the confiscated wage (credit.go)
 				l.reverseProvisional(evicted.server, old.root, evicted)
 				delete(l.provisional, old)
 			}

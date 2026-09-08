@@ -230,6 +230,12 @@ func (n *Node) settleRepairVerdict(claimant ports.NodeID, claim repairproof.Repa
 		}
 		if paid > 0 {
 			n.Stats.BountiesReleased++
+			if claim.Holder == n.id {
+				// A4-2: this judge just paid a bounty to itself. Counted where `paid`
+				// returns and both ids are in hand. An honest judge never gets here.
+				n.Stats.BountyPaidToSelf++
+				n.Stats.BountyCreditsPaidToSelf += paid
+			}
 			// Narrate the funded horizon and the realised cost-per-repair (the g
 			// input) so an operator watches the finite-but-renewable reserve draw
 			// down, not just an opaque payment (D-S7; acceptance F7-style).

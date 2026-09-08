@@ -782,6 +782,38 @@ type serveMintInfo struct {
 	ZeroMintServes          int64 `json:"zeroMintServes"`
 	RemainderBytesServerLeg int64 `json:"remainderBytesServerLeg"`
 	RemainderBytesEscrowLeg int64 `json:"remainderBytesEscrowLeg"`
+	// A2 supersede-suppression (R2.7). Three stored counters, one live-lane sum and
+	// three DERIVED numbers, all node-wide with no identity axis. They ride the block's
+	// existing serveMintWithheld + countersWithheld markers rather than adding a
+	// fourth: on a one-root node these are that root's served bytes split by whether a
+	// fetch was paid, which is the red-team's F2 join with a payment axis added.
+	ServeBytesObjectAware  int64 `json:"serveBytesObjectAware"`
+	ServeBytesWitnessed    int64 `json:"serveBytesWitnessed"`
+	ServeBytesLaneEvicted  int64 `json:"serveBytesLaneEvicted"` // the pony's wage confiscated at the lane cap
+	ServeBytesInFlight     int64 `json:"serveBytesInFlight"`
+	ServedBytesUnwitnessed int64 `json:"servedBytesUnwitnessed"`
+	// ServedBytesUnwitnessable is the plain-path floor (manifest chunks have no root),
+	// never a suppression signal.
+	ServedBytesUnwitnessable int64 `json:"servedBytesUnwitnessable"`
+	// LaneOn is whether this node ACCEPTS paid delivery sessions
+	// (-accept-delivery-receipts). It is the third disambiguator of a zero coverage and
+	// the most common one: with the lane off SettleDelivery is never called, so an
+	// entirely honest node prints receiptCoverage 0 beside a large serveBytesObjectAware,
+	// and the RC ships default-OFF. Same shape and same reason as
+	// economySelfFunding.bountyOn does for the -economy flag.
+	LaneOn bool `json:"laneOn"`
+	// ReceiptCoverage is witnessed / object-aware. A zero means one of THREE things and
+	// the block carries all three disambiguators: laneOn false (not accepting receipts at
+	// all), serveBytesObjectAware zero (nothing witnessable served yet), or a real
+	// suppression. Read it beside both.
+	//
+	// IT IS A LOWER BOUND, NOT A RATE. In-flight and evicted bytes sit in the denominator
+	// and never in the numerator, so a node with open unsettled sessions — or one losing
+	// lanes at the cap — reads below 1 with zero suppression. Read the BAND
+	// [witnessed, witnessed+inFlight] / objectAware, both ends computable from fields
+	// published right here, and fire a coverage abort only on the UPPER end. Between the
+	// ends the window is too short, not the network too poor.
+	ReceiptCoverage float64 `json:"receiptCoverage"`
 }
 
 type faucetInfo struct {
@@ -795,7 +827,20 @@ type faucetInfo struct {
 	GrantsDegraded int64 `json:"grantsDegraded"`
 	GrantsDenied   int64 `json:"grantsDenied"`  // distinct identities refused at a spend gate — the counter that moves on a denial
 	GrantsPending  int64 `json:"grantsPending"` // registrations awaiting a spend; NOT denials
+	// The affordability floor (R2.7 §1.3, build-immutable #4). Refusals at the spend
+	// gates for want of CREDIT — not for want of a faucet token — so they are reported
+	// whether or not a bucket is configured. FLOOR DETECTOR ONLY: a non-zero value
+	// proves honest demand is being refused somewhere and can abort a canary; a zero
+	// value certifies nothing, because an adversary inflates the number at will with
+	// underfunded identities. The note ships beside the numbers so no reader can quote
+	// them without the caveat.
+	SpendRefusedInsufficientCredit int64  `json:"spendRefusedInsufficientCredit"`
+	SpendRefusersDistinct          int64  `json:"spendRefusersDistinct"`
+	SpendRefusalNote               string `json:"spendRefusalNote"`
 }
+
+// spendRefusalNote is the honest limit that ships with the affordability floor.
+const spendRefusalNote = "FLOOR detector only: non-zero proves honest demand is being refused somewhere; zero certifies NOTHING (an adversary inflates this at will with underfunded identities)"
 
 // privacyInfo is the -privacy posture published on every GET /api/status response.
 type privacyInfo struct {
@@ -904,14 +949,22 @@ func (s *uiServer) computeStatus(now time.Time) *statusInfo {
 		out.Durability = s.durabilitySnapshot(uptime)
 		if fs := s.nd.FaucetStats(); fs.Configured {
 			out.Faucet = &faucetInfo{Configured: true, Capacity: fs.Capacity, PerInterval: fs.Refill, IntervalSec: fs.IntervalNanos / 1e9,
-				DenyFloor: fs.DenyFloor, Level: fs.Level, GrantsIssued: fs.GrantsIssued, GrantsDegraded: fs.GrantsDegraded, GrantsDenied: fs.GrantsDenied, GrantsPending: fs.GrantsPending}
+				DenyFloor: fs.DenyFloor, Level: fs.Level, GrantsIssued: fs.GrantsIssued, GrantsDegraded: fs.GrantsDegraded, GrantsDenied: fs.GrantsDenied, GrantsPending: fs.GrantsPending,
+				SpendRefusedInsufficientCredit: fs.SpendRefusedInsufficientCredit, SpendRefusersDistinct: fs.SpendRefusersDistinct, SpendRefusalNote: spendRefusalNote}
 		} else {
-			out.Faucet = &faucetInfo{}
+			// Unlimited faucet: every faucet number is meaningless, but a spend gate can
+			// still refuse for want of credit, so the floor counters ship here too.
+			out.Faucet = &faucetInfo{SpendRefusedInsufficientCredit: fs.SpendRefusedInsufficientCredit,
+				SpendRefusersDistinct: fs.SpendRefusersDistinct, SpendRefusalNote: spendRefusalNote}
 		}
 		sm := s.nd.ServeMintStats()
 		out.ServeMint = &serveMintInfo{BytesPerCredit: sm.BytesPerCredit, ServedBytes: sm.ServedBytes, MintedCredits: sm.MintedCredits,
 			SkimmedCredits: sm.SkimmedCredits, ReversedCredits: sm.ReversedCredits, ZeroMintServes: sm.ZeroMintServes,
-			RemainderBytesServerLeg: sm.RemainderBytesServerLeg, RemainderBytesEscrowLeg: sm.RemainderBytesEscrowLeg}
+			RemainderBytesServerLeg: sm.RemainderBytesServerLeg, RemainderBytesEscrowLeg: sm.RemainderBytesEscrowLeg,
+			ServeBytesObjectAware: sm.ObjectAwareBytes, ServeBytesWitnessed: sm.WitnessedBytes,
+			ServeBytesLaneEvicted: sm.LaneEvictedBytes, ServeBytesInFlight: sm.InFlightBytes,
+			ServedBytesUnwitnessed: sm.UnwitnessedBytes, ServedBytesUnwitnessable: sm.UnwitnessableBytes,
+			LaneOn: s.nd.DeliveryLaneOn(), ReceiptCoverage: sm.ReceiptCoverage}
 		ds := s.nd.DeliverySettlementStats()
 		out.DeliverySettlement = &deliverySettlementInfo{Settlements: ds.Settlements, SettledCredits: ds.SettledCredits, SettledIncrements: ds.SettledIncrements,
 			SessionsClosed: ds.SessionsClosed, RefundedCredits: ds.RefundedCredits, PendingRefundCredits: ds.PendingRefundCredits, BurnedCredits: ds.BurnedCredits,
@@ -1008,12 +1061,17 @@ type durabilityInfo struct {
 }
 
 type objDurability struct {
-	Root       string `json:"root"`
-	Reserve    int64  `json:"reserve"`
-	Funded     int64  `json:"funded"`
-	Paid       int64  `json:"paid"`
-	Repairs    int64  `json:"repairs"`
-	HorizonSec int64  `json:"horizonSec"` // -1 = not yet measurable (no burn observed); >=0 = projected
+	Root    string `json:"root"`
+	Reserve int64  `json:"reserve"`
+	Funded  int64  `json:"funded"`
+	// A4-1 (R2.7): the two legs of Funded. The wash loop's recoverable money is the
+	// SKIM; a combined figure leaves "escrow recovered by self-repair" with no
+	// denominator. Rides this block's existing token gate + detailWithheld (F2).
+	FundedPrepay int64 `json:"fundedPrepay"`
+	FundedSkim   int64 `json:"fundedSkim"`
+	Paid         int64 `json:"paid"`
+	Repairs      int64 `json:"repairs"`
+	HorizonSec   int64 `json:"horizonSec"` // -1 = not yet measurable (no burn observed); >=0 = projected
 	// Finite is credit.Horizon's own second return: true only when a real burn has
 	// been observed (Paid>0) so the horizon is measurable. false renders as "horizon
 	// not yet measurable", NEVER as "perpetual" (instruments.go:47-49) — never fake
@@ -1052,14 +1110,16 @@ func (s *uiServer) durabilitySnapshot(uptime time.Duration) *durabilityInfo {
 			cliff = h <= horizonWarningWindow
 		}
 		di.Objects = append(di.Objects, objDurability{
-			Root:       rd.Root.String(),
-			Reserve:    rd.Snapshot.Balance,
-			Funded:     rd.Snapshot.Funded,
-			Paid:       rd.Snapshot.Paid,
-			Repairs:    rd.Snapshot.Repairs,
-			HorizonSec: hs,
-			Finite:     finite,
-			Cliff:      cliff,
+			Root:         rd.Root.String(),
+			Reserve:      rd.Snapshot.Balance,
+			Funded:       rd.Snapshot.Funded,
+			FundedPrepay: rd.Snapshot.FundedPrepay,
+			FundedSkim:   rd.Snapshot.FundedSkim,
+			Paid:         rd.Snapshot.Paid,
+			Repairs:      rd.Snapshot.Repairs,
+			HorizonSec:   hs,
+			Finite:       finite,
+			Cliff:        cliff,
 		})
 	}
 	return di
@@ -1121,15 +1181,19 @@ func (s *uiServer) apiEconomySelf(w http.ResponseWriter, r *http.Request) {
 	// Panel 3 (is durability self-funding): skim-in vs bounty-out. funded is the
 	// lifetime skim-in (prepay + auto-skim); paid is the lifetime bounty-out. A
 	// persistent paid>funded is the drain signal. Pooled + per-object.
-	var poolFunded, poolPaid int64
+	var poolFunded, poolPrepay, poolSkim, poolPaid int64
 	objects := make([]economyObject, 0, len(di.Objects))
 	for _, o := range di.Objects {
 		poolFunded += o.Funded
+		poolPrepay += o.FundedPrepay
+		poolSkim += o.FundedSkim
 		poolPaid += o.Paid
 		objects = append(objects, economyObject{
 			Root:       o.Root,
 			Reserve:    o.Reserve,
 			SkimIn:     o.Funded,
+			PrepayIn:   o.FundedPrepay,
+			AutoSkimIn: o.FundedSkim,
 			BountyOut:  o.Paid,
 			Net:        o.Funded - o.Paid,
 			Repairs:    o.Repairs,
@@ -1174,6 +1238,11 @@ func (s *uiServer) apiEconomySelf(w http.ResponseWriter, r *http.Request) {
 			// negative if the node has spent (funded escrows, publish fees) more than
 			// it earned serving — that is real and honestly shown.
 			ServeRevenue: self.Balance - self.BountyEarned,
+			// A4-3: the wash SHAPE, carried with its honest limit on the wire so no
+			// reader can quote the number without the caveat.
+			BountyPaidToPriorFetcherPayments: self.BountyToPriorFetcherPayments,
+			BountyPaidToPriorFetcherCredits:  self.BountyToPriorFetcherCredits,
+			BountyPaidToPriorFetcherNote:     "SHAPE only: a repairer may legitimately have fetched survivor shards from this judge. Read beside wash.symmetry; never a slashing or disbursement input",
 		},
 		Margin: &economyMargin{
 			CostGiven: costGiven,
@@ -1182,10 +1251,12 @@ func (s *uiServer) apiEconomySelf(w http.ResponseWriter, r *http.Request) {
 			Note:      "revenue is local-exact; cost is operator-supplied (?cost=N), so margin is exact GIVEN your cost number",
 		},
 		SelfFunding: &economySelfFunding{
-			SkimIn:    poolFunded,
-			BountyOut: poolPaid,
-			Net:       poolFunded - poolPaid,
-			BountyOn:  di.BountyOn,
+			SkimIn:     poolFunded,
+			PrepayIn:   poolPrepay,
+			AutoSkimIn: poolSkim,
+			BountyOut:  poolPaid,
+			Net:        poolFunded - poolPaid,
+			BountyOn:   di.BountyOn,
 		},
 		Wash: &economyWash{
 			Symmetry:             symmetry,
@@ -1220,10 +1291,32 @@ func (s *uiServer) apiEconomySelf(w http.ResponseWriter, r *http.Request) {
 // /api/status publishes and the observatory reads; on a node holding one root they are
 // that root's counters (R-BB-SIBLING-AGGREGATES — closed by default since D-UI-PRIVACY-FLAG:
 // withheld from unauthenticated readers unless the operator runs -privacy=off; see readerView).
+//
+// REVENUE IS REBUILT, not passed through (A4-3, R2.7). The allow-list is at the
+// economySelf field level, so a field added to economyRevenue would ship OPEN — the
+// exact shape this comment warns about, one level down. bountyPaidToPriorFetcher* is a
+// bounty-out figure: on a node caretaking ONE root it IS that root's withheld
+// objects[].bountyOut while /api/roots names the root (red-team F2). So the withheld
+// document carries a fresh economyRevenue with those two fields dropped and the note
+// replaced.
+//
+// It COPIES rather than writing through the pointer, and the reason is not the cache:
+// apiEconomySelf allocates a fresh &economyRevenue per request off a value copy of the
+// snapshot, so there is no shared Revenue to corrupt today. The copy is here so that
+// stays true if a caller ever hands this function a shared block — a withhold clause
+// that mutates its input is one caller away from withholding a field from the operator's
+// next read too (the readerView rule, stated there against a cache that DOES exist).
 func withheldEconomySelf(full economySelf) economySelf {
+	rev := full.Revenue
+	if rev != nil {
+		open := *rev
+		open.BountyPaidToPriorFetcherPayments, open.BountyPaidToPriorFetcherCredits = 0, 0
+		open.BountyPaidToPriorFetcherNote = "withheld: token-gated (F2)"
+		rev = &open
+	}
 	return economySelf{
 		Tier:                full.Tier,
-		Revenue:             full.Revenue,
+		Revenue:             rev,
 		Margin:              full.Margin,
 		Wash:                full.Wash,
 		DetailWithheld:      true,
@@ -1280,6 +1373,14 @@ type economyRevenue struct {
 	RepairsDone  int64 `json:"repairsDone"`
 	BountyEarned int64 `json:"bountyEarned"`
 	ServeRevenue int64 `json:"serveRevenue"` // balance − bountyEarned (derived split)
+	// A4-3 (R2.7): bounties this node RELEASED to a repairer that had already fetched
+	// bytes from it. A SHAPE, not a detection — a repairer may legitimately have
+	// fetched survivor shards from this judge. One-sided-informative: a high ratio of
+	// these to bountyOut alongside a high wash.symmetry is the round-trip signature.
+	// Never a slashing or disbursement input (authenticityKnowable is false, as on wash).
+	BountyPaidToPriorFetcherPayments int64  `json:"bountyPaidToPriorFetcherPayments"`
+	BountyPaidToPriorFetcherCredits  int64  `json:"bountyPaidToPriorFetcherCredits"`
+	BountyPaidToPriorFetcherNote     string `json:"bountyPaidToPriorFetcherNote"`
 }
 
 type economyMargin struct {
@@ -1290,10 +1391,12 @@ type economyMargin struct {
 }
 
 type economySelfFunding struct {
-	SkimIn    int64 `json:"skimIn"`    // pooled lifetime funded (prepay + auto-skim)
-	BountyOut int64 `json:"bountyOut"` // pooled lifetime paid (repair bounties)
-	Net       int64 `json:"net"`       // skimIn − bountyOut; persistently negative = drain
-	BountyOn  bool  `json:"bountyOn"`  // does repair actually disburse on this node (-economy)
+	SkimIn     int64 `json:"skimIn"`     // pooled lifetime funded (prepay + auto-skim) = prepayIn + autoSkimIn
+	PrepayIn   int64 `json:"prepayIn"`   // A4-1: the pooled operator-deposited leg (never clawed back)
+	AutoSkimIn int64 `json:"autoSkimIn"` // A4-1: the pooled serve auto-skim leg (the leg a reversal claws back)
+	BountyOut  int64 `json:"bountyOut"`  // pooled lifetime paid (repair bounties)
+	Net        int64 `json:"net"`        // skimIn − bountyOut; persistently negative = drain
+	BountyOn   bool  `json:"bountyOn"`   // does repair actually disburse on this node (-economy)
 }
 
 type economyWash struct {
@@ -1305,15 +1408,20 @@ type economyWash struct {
 }
 
 type economyObject struct {
-	Root       string `json:"root"`
-	Reserve    int64  `json:"reserve"`
-	SkimIn     int64  `json:"skimIn"`
-	BountyOut  int64  `json:"bountyOut"`
-	Net        int64  `json:"net"`
-	Repairs    int64  `json:"repairs"`
-	HorizonSec int64  `json:"horizonSec"`
-	Finite     bool   `json:"finite"`
-	Cliff      bool   `json:"cliff"`
+	Root    string `json:"root"`
+	Reserve int64  `json:"reserve"`
+	// SkimIn is the COMBINED lifetime inflow (prepay + auto-skim) — the name it has
+	// always had on this surface. PrepayIn and AutoSkimIn are its two legs (A4-1);
+	// SkimIn == PrepayIn + AutoSkimIn.
+	SkimIn     int64 `json:"skimIn"`
+	PrepayIn   int64 `json:"prepayIn"`
+	AutoSkimIn int64 `json:"autoSkimIn"`
+	BountyOut  int64 `json:"bountyOut"`
+	Net        int64 `json:"net"`
+	Repairs    int64 `json:"repairs"`
+	HorizonSec int64 `json:"horizonSec"`
+	Finite     bool  `json:"finite"`
+	Cliff      bool  `json:"cliff"`
 }
 
 const (

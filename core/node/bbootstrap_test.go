@@ -148,11 +148,26 @@ func TestR29aNoLedgerYieldsNoExport(t *testing.T) {
 	}
 }
 
-// TestR29aEconomySelfFieldsAreUnchanged: R2.9a adds an instrument, it does not touch the
-// existing SELF panel. Pin EconomySelf's exported field set so a later edit to the
-// economy surface cannot silently drop or rename one.
+// TestR29aEconomySelfFieldsAreUnchanged: pin EconomySelf's exported field set, in order,
+// so an edit to the economy surface cannot silently drop, rename or ADD one. R2.9a added
+// an instrument without touching this panel; the pin outlived that round because the same
+// question applies to every later edit — as the sibling gate above puts it, a new field on
+// a published instrument is a privacy question, not a formatting one.
+//
+// AUDITED 2026-09-08 (Lane C4, R2.7 detector A4-3): BountyToPriorFetcherPayments and
+// BountyToPriorFetcherCredits are appended. Both are node-wide aggregates with no identity
+// and no object axis — they never carry the (fetcher × object) join Don't #3 forbids. They
+// are NOT free to publish, and this gate is not the one that holds that: on a node
+// caretaking one root, a bounty-out figure IS that root's withheld objects[].bountyOut
+// while /api/roots supplies the name half (red-team F2). Their withholding on the
+// unauthenticated wire is held by cmd/silt's whole-surface scans — see
+// TestR27A4PriorFetcherCreditsAreTokenGatedOnTheWholeSurface. Appending a field here
+// without that gate re-opens the join.
 func TestR29aEconomySelfFieldsAreUnchanged(t *testing.T) {
-	want := []string{"Balance", "ServedBytes", "FetchedBytes", "RepairsDone", "BountyEarned"}
+	want := []string{
+		"Balance", "ServedBytes", "FetchedBytes", "RepairsDone", "BountyEarned",
+		"BountyToPriorFetcherPayments", "BountyToPriorFetcherCredits",
+	}
 	rt := reflect.TypeOf(EconomySelf{})
 	if rt.NumField() != len(want) {
 		t.Fatalf("EconomySelf has %d fields, want %d (%v)", rt.NumField(), len(want), want)

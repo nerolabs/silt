@@ -81,6 +81,51 @@ type ServeMintStats struct {
 	// plain path's account remainder is reported on the server leg.
 	RemainderBytesServerLeg int64 // bytes waiting below the next SERVER credit, across accounts and live lanes
 	RemainderBytesEscrowLeg int64 // bytes waiting below the next ESCROW credit, across live lanes (the leg that funds D-S7)
+
+	// A2 supersede-suppression (R2.7). ObjectAwareBytes / WitnessedBytes /
+	// LaneEvictedBytes are the three stored node-wide counters (credit.go);
+	// InFlightBytes is the live-lane sum taken by the walk this reader already makes.
+	// They satisfy an exact conservation identity, asserted by
+	// TestServedByteSplitIsExactAcrossEveryTerminalState:
+	//
+	//	ObjectAwareBytes == WitnessedBytes + LaneEvictedBytes + InFlightBytes
+	//
+	// The identity has THREE terminal terms, not four. The Economist's spec named a
+	// fourth, serveBytesSupersededFlat, on the flat delivery leg's supersede block and
+	// said in the same sentence that it "is deleted with the leg". Lane C1 deleted the
+	// leg (RedeemDeliveryCreditReason and the core/demand v2 primitive are gone), so
+	// there is no site left to count and a fourth counter would be a permanent zero.
+	ObjectAwareBytes int64
+	WitnessedBytes   int64
+	LaneEvictedBytes int64
+	InFlightBytes    int64
+
+	// The three DERIVED read-side numbers. They are computed here on every read and
+	// stored nowhere: a second accumulator for a residual invites drift between two
+	// write paths, and the states above are the things that actually happen.
+	UnwitnessedBytes int64 // ServedBytes − WitnessedBytes: the headline an operator wants
+	// UnwitnessableBytes is ServedBytes − ObjectAwareBytes: the plain-path floor (a
+	// manifest chunk has no root and can never be witnessed). It is NEVER a suppression
+	// signal — a node serving manifests is doing honest work.
+	UnwitnessableBytes int64
+	// ReceiptCoverage is the A2 number: WitnessedBytes / ObjectAwareBytes. The
+	// denominator is object-aware bytes, NOT total served bytes.
+	//
+	// A ZERO MEANS ONE OF THREE THINGS and the ledger can only tell two of them apart.
+	// (1) Nothing witnessable has been served: ObjectAwareBytes is 0. (2) Real
+	// suppression. (3) This node does not accept paid delivery sessions at all, so
+	// SettleDelivery is never called — the DEFAULT posture, on which an entirely honest
+	// node reads 0 beside a large ObjectAwareBytes. The ledger has no lane flag, so (3)
+	// is disambiguated at the surface by serveMint.laneOn (cmd/silt/ui.go), and a
+	// machine-read abort on coverage MUST read that field first.
+	//
+	// AND IT IS A LOWER BOUND. InFlightBytes and LaneEvictedBytes are in the denominator
+	// and never in the numerator, so an honest node with open unsettled sessions reads
+	// below 1. The honest reading is the BAND [Witnessed, Witnessed+InFlight] /
+	// ObjectAware, both ends computable from the fields above; an abort belongs on the
+	// upper end. The formula is deliberately NOT re-based on terminal bytes only: the
+	// grader's rule is the band, and a single re-based number would hide the width.
+	ReceiptCoverage float64
 }
 
 // ServeMintStats reads the serve-mint telemetry. Reading moves nothing; the remainder
@@ -97,6 +142,15 @@ func (l *Ledger) ServeMintStats() ServeMintStats {
 		// minted ⌊b/(8Dλ)⌋, leaving b − skim·8Dλ.
 		st.RemainderBytesServerLeg += p.bytes - p.net*SkimDen*ServeMintBytesPerCredit/(SkimDen-SkimNum)
 		st.RemainderBytesEscrowLeg += p.bytes - p.skim*SkimDen*ServeMintBytesPerCredit/SkimNum
+		st.InFlightBytes += p.bytes // A2: the live term of the conservation identity, on the walk already made
+	}
+	st.ObjectAwareBytes = l.serveBytesObjectAware
+	st.WitnessedBytes = l.serveBytesWitnessed
+	st.LaneEvictedBytes = l.serveBytesLaneEvicted
+	st.UnwitnessedBytes = st.ServedBytes - st.WitnessedBytes
+	st.UnwitnessableBytes = st.ServedBytes - st.ObjectAwareBytes
+	if st.ObjectAwareBytes > 0 {
+		st.ReceiptCoverage = float64(st.WitnessedBytes) / float64(st.ObjectAwareBytes)
 	}
 	return st
 }
