@@ -830,9 +830,21 @@ type viewAt struct {
 // proposeBlockAt is proposeBlock with an optional caller-supplied view (nil ⇒
 // derive from the round state, exactly as before).
 func (n *Node) proposeBlockAt(b *chain.Block, attesters, broadcast []ports.NodeID, quorum int, view *viewAt, done func(error)) {
-	// Gather at least what ValidateCommit will demand: with Byzantine quorum sizing
-	// (H4) the chain requires 2f+1 over the qualified set, which can exceed the
-	// caller's floor. Under-gathering would just fail our own Append; raise it here.
+	// The gather target is max(caller's floor, Config.Quorum, RequiredQuorum()) on
+	// EVERY proposal path — the ratified "Quorum stays a proposer-side gather
+	// target" (#380, D-CONSENSUS-ARMING (20)). Config.Quorum: the operator's floor;
+	// the client-publish path passes it as `quorum` (chainhost → ProposeEntry) but
+	// the h43 round/new-view re-proposal (proposeAtNewView) and the bond-reg drain
+	// (maybeProposeBondDrain) pass 0, and before direction (1) they picked it up
+	// through RequiredQuorum()'s max — with the local floor out of the validity
+	// rule, raising here keeps the target path-independent (an un-upgraded
+	// -quorum 3 peer still computes max(3, bft) and would refuse a 2-attestation
+	// block: the #338 strand via version skew; PE ruling on d0067fd, C1).
+	// RequiredQuorum(): what ValidateCommit will demand — under-gathering would
+	// just fail our own Append.
+	if q := n.chain.ConfigQuorum(); q > quorum {
+		quorum = q
+	}
 	if req := n.chain.RequiredQuorum(); req > quorum {
 		quorum = req
 	}

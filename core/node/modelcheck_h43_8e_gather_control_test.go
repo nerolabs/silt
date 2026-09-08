@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/nerolabs/silt/adapters/identity"
+	"github.com/nerolabs/silt/adapters/markstore"
 	"github.com/nerolabs/silt/adapters/memstore"
 	"github.com/nerolabs/silt/adapters/simclock"
 	"github.com/nerolabs/silt/adapters/simnet"
@@ -45,7 +46,20 @@ import (
 // Half 2 (ABOVE the derived bar): a uniform swarm with `Quorum: 3` (already
 // above `bftThreshold(4) = 2`) must still gather exactly 3 attestations — the
 // operator's chosen breadth survives in a uniform swarm, which is what keeps
-// direction (1) a no-op there.
+// direction (1) a no-op there. THREE proposal paths reach proposeBlockAt and
+// all three must gather the same target (PE ruling on d0067fd, C1): the
+// client-publish path passes the caller's -quorum (chainhost.go →
+// ProposeEntry, the sub-case "above_derived_bar_still_gathers_cfg.Quorum"),
+// while the h43 round/new-view re-proposal (chainrole.go proposeAtNewView)
+// and the bond-reg drain (chainrole.go maybeProposeBondDrain) pass 0. With
+// the local floor removed from RequiredQuorum(), a raise to RequiredQuorum()
+// ALONE made those two paths gather bftThreshold (2) while publish gathered
+// 3 — a path-dependent gather target, and an un-upgraded -quorum 3 peer
+// (old rule: max(3, 2) = 3) refuses a 2-attestation block: the #338 strand
+// via version skew. proposeBlockAt therefore raises to cfg.Quorum as well
+// (the operator's floor), so every path gathers max(cfg.Quorum,
+// RequiredQuorum()). The two path sub-cases were RED before that raise
+// (committed block carried 2, cfg.Quorum 3) and GREEN after.
 func TestG_H43_8e_GatherTargetSurvivesTheDerivedFloor(t *testing.T) {
 	t.Run("below_derived_bar_gathers_RequiredQuorum_not_cfg.Quorum", func(t *testing.T) {
 		nodes, ids, net, g, cfg := tier2AnchorNet(t, 4)
@@ -85,40 +99,10 @@ func TestG_H43_8e_GatherTargetSurvivesTheDerivedFloor(t *testing.T) {
 	})
 
 	t.Run("above_derived_bar_still_gathers_cfg.Quorum", func(t *testing.T) {
-		sched := simclock.New()
-		net := simnet.New(sched, 1, simnet.DefaultConfig())
-		net.EnableHeldDelivery()
-
-		ids := make([]*identity.Identity, 4)
-		anchors := map[ports.NodeID]bool{}
-		for i := range ids {
-			ids[i] = identity.FromSeed(int64(8700 + i))
-			anchors[ids[i].NodeID()] = true
-		}
-		g := &chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{mkEntry("g-h43-8e-above")}}
-		chain.Sign(g, ids[0].Signer())
-		cfg := chain.Config{Quorum: 3, MinBond: 1 << 20, ByzantineQuorum: true, Anchors: anchors, MatureValidators: 99}
-
-		nodes := make([]*Node, 4)
-		for i, id := range ids {
-			nd := New(id.NodeID(), DefaultConfig(), sched, net.Endpoint(id.NodeID()), memstore.New())
-			ch := chain.New(cfg, func(ports.NodeID) int64 { return 0 })
-			ch.SetBondVerifier(mcStubVerify)
-			if err := ch.AppendGenesis(*g); err != nil {
-				t.Fatalf("genesis: %v", err)
-			}
-			nd.EnableChain(ch, id.Signer())
-			nodes[i] = nd
-		}
+		nodes, ids, net, g, cfg := uniformQuorum3Net(t, 8700, "g-h43-8e-above")
 		// Under direction (1) RequiredQuorum() is the derived bftThreshold(4)=2
-		// and IGNORES cfg.Quorum; the caller's own gather-target argument
-		// (cfg.Quorum=3) must therefore be the binding term inside proposeBlockAt,
-		// which only ever RAISES to RequiredQuorum(), never lowers.
-		if got := nodes[0].chain.RequiredQuorum(); got >= cfg.Quorum {
-			t.Fatalf("premise: this half needs RequiredQuorum() (%d) STRICTLY BELOW cfg.Quorum (%d) so cfg.Quorum "+
-				"is the binding gather term; the derived bar for 4 anchors should be bftThreshold(4)=2", got, cfg.Quorum)
-		}
-
+		// and IGNORES cfg.Quorum (the helper checks it); the caller's own
+		// gather-target argument (cfg.Quorum=3) is the binding term here.
 		ids0 := ids[0].NodeID()
 		attesters := []ports.NodeID{ids[1].NodeID(), ids[2].NodeID(), ids[3].NodeID()}
 		all := []ports.NodeID{ids0, ids[1].NodeID(), ids[2].NodeID(), ids[3].NodeID()}
@@ -141,6 +125,132 @@ func TestG_H43_8e_GatherTargetSurvivesTheDerivedFloor(t *testing.T) {
 		}
 		t.Logf("G-H43-8 arm 8e half 2 confirmed: committed block carries exactly cfg.Quorum=%d non-proposer attestations", got)
 	})
+
+	// The h43 round / new-view re-proposal path (chainrole.go proposeAtNewView →
+	// proposeBlockAt with quorum 0): two peers declare round 1, the round-1
+	// designee (holding work) assembles the certificate, fires, and gathers.
+	t.Run("new_view_path_gathers_cfg.Quorum", func(t *testing.T) {
+		nodes, _, net, _, cfg := uniformQuorum3Net(t, 8710, "g-h43-8e-newview")
+		_, height := nodes[0].chain.Head()
+		designeeID := nodes[0].designatedProposer(height, 1)
+		var designee *Node
+		var others []*Node
+		for _, nd := range nodes {
+			if nd.id == designeeID {
+				designee = nd
+			} else {
+				others = append(others, nd)
+			}
+		}
+		if designee == nil || len(others) != 3 {
+			t.Fatalf("premise: designatedProposer(%d, 1) is not one of the four anchors", height)
+		}
+		designee.pendingEntries = []pendingEntry{{E: mkEntry("g-h43-8e-newview-work"), At: height}}
+		rawRoundChange1 := func(nd *Node) []byte {
+			nd.advanceToRound(nd.roundsFor(), 1, "test")
+			raw := nd.roundsFor().Changes[1][nd.id]
+			if raw == nil {
+				t.Fatalf("premise: %s did not record its own round-change(1) envelope", nd.id)
+			}
+			return raw
+		}
+		raw1, raw2 := rawRoundChange1(others[0]), rawRoundChange1(others[1])
+		designee.handleChain(others[0].id, ports.Message{Kind: ports.MsgRoundChange, Data: raw1})
+		designee.handleChain(others[1].id, ports.Message{Kind: ports.MsgRoundChange, Data: raw2})
+		drainHeld(t, net, fifo)
+		if _, h := designee.chain.Head(); h <= height {
+			t.Fatalf("premise: the new-view proposal never committed (head %d) — the path under test did not run", h)
+		}
+		blk := designee.Chain().Blocks(1)[0]
+		if got := nonProposerAttCount(&blk); got != cfg.Quorum {
+			t.Fatalf("G-H43-8 arm 8e CONTROL VIOLATION (new-view path): the round-1 re-proposal committed with %d "+
+				"non-proposer attestations, want cfg.Quorum = %d — proposeAtNewView passes quorum 0, so the gather "+
+				"target is whatever proposeBlockAt raises it to; it must be max(cfg.Quorum, RequiredQuorum()=%d) on "+
+				"EVERY path, or an un-upgraded -quorum %d peer refuses this block (the #338 strand via version skew)",
+				got, cfg.Quorum, designee.chain.RequiredQuorum(), cfg.Quorum)
+		}
+		t.Logf("G-H43-8 arm 8e new-view path confirmed: committed block carries exactly cfg.Quorum=%d non-proposer attestations", cfg.Quorum)
+	})
+
+	// The bond-reg drain path (chainrole.go maybeProposeBondDrain → proposeBlock
+	// with quorum 0): the height's designee holds pending work and sweeps.
+	t.Run("bond_drain_path_gathers_cfg.Quorum", func(t *testing.T) {
+		nodes, _, net, _, cfg := uniformQuorum3Net(t, 8720, "g-h43-8e-drain")
+		_, height := nodes[0].chain.Head()
+		designeeID := nodes[0].designatedProposer(height, 0)
+		var designee *Node
+		for _, nd := range nodes {
+			if nd.id == designeeID {
+				designee = nd
+			}
+		}
+		if designee == nil {
+			t.Fatalf("premise: designatedProposer(%d, 0) is not one of the four anchors", height)
+		}
+		designee.pendingEntries = []pendingEntry{{E: mkEntry("g-h43-8e-drain-work"), At: height}}
+		designee.maybeProposeBondDrain()
+		drainHeld(t, net, fifo)
+		if _, h := designee.chain.Head(); h <= height {
+			t.Fatalf("premise: the drain proposal never committed (head %d) — the path under test did not run", h)
+		}
+		blk := designee.Chain().Blocks(1)[0]
+		if got := nonProposerAttCount(&blk); got != cfg.Quorum {
+			t.Fatalf("G-H43-8 arm 8e CONTROL VIOLATION (bond-drain path): the drain proposal committed with %d "+
+				"non-proposer attestations, want cfg.Quorum = %d — maybeProposeBondDrain passes quorum 0, so the gather "+
+				"target is whatever proposeBlockAt raises it to; it must be max(cfg.Quorum, RequiredQuorum()=%d) on "+
+				"EVERY path, or an un-upgraded -quorum %d peer refuses this block (the #338 strand via version skew)",
+				got, cfg.Quorum, designee.chain.RequiredQuorum(), cfg.Quorum)
+		}
+		t.Logf("G-H43-8 arm 8e bond-drain path confirmed: committed block carries exactly cfg.Quorum=%d non-proposer attestations", cfg.Quorum)
+	})
+}
+
+// uniformQuorum3Net is the arm-8e "above the derived bar" world: four live
+// anchors on a held-delivery simnet, every node at Quorum: 3 (above
+// bftThreshold(4) = 2), each node's sync targets the other three (so the
+// round and drain paths' attester set is the other three anchors), each with
+// a sign-mark store (the round path persists its lock).
+func uniformQuorum3Net(t *testing.T, seedBase int64, genesisTag string) ([]*Node, []*identity.Identity, *simnet.Network, *chain.Block, chain.Config) {
+	t.Helper()
+	sched := simclock.New()
+	net := simnet.New(sched, 1, simnet.DefaultConfig())
+	net.EnableHeldDelivery()
+
+	ids := make([]*identity.Identity, 4)
+	anchors := map[ports.NodeID]bool{}
+	for i := range ids {
+		ids[i] = identity.FromSeed(seedBase + int64(i))
+		anchors[ids[i].NodeID()] = true
+	}
+	g := &chain.Block{Version: 1, Height: 0, Entries: []ports.Entry{mkEntry(genesisTag)}}
+	chain.Sign(g, ids[0].Signer())
+	cfg := chain.Config{Quorum: 3, MinBond: 1 << 20, ByzantineQuorum: true, Anchors: anchors, MatureValidators: 99}
+
+	nodes := make([]*Node, 4)
+	for i, id := range ids {
+		nd := New(id.NodeID(), DefaultConfig(), sched, net.Endpoint(id.NodeID()), memstore.New())
+		ch := chain.New(cfg, func(ports.NodeID) int64 { return 0 })
+		ch.SetBondVerifier(mcStubVerify)
+		if err := ch.AppendGenesis(*g); err != nil {
+			t.Fatalf("genesis: %v", err)
+		}
+		nd.EnableChain(ch, id.Signer())
+		if err := nd.SetSignMarkStore(markstore.NewMem()); err != nil {
+			t.Fatalf("sign-mark store: %v", err)
+		}
+		nodes[i] = nd
+	}
+	for i, nd := range nodes {
+		for j, other := range nodes {
+			if i != j {
+				nd.chainSyncSeed = append(nd.chainSyncSeed, other.id)
+			}
+		}
+	}
+	if got := nodes[0].chain.RequiredQuorum(); got >= cfg.Quorum {
+		t.Fatalf("premise: RequiredQuorum() (%d) must be STRICTLY BELOW cfg.Quorum (%d) so cfg.Quorum is the binding gather term", got, cfg.Quorum)
+	}
+	return nodes, ids, net, g, cfg
 }
 
 // nonProposerAttCount counts the DISTINCT non-proposer attesters in a

@@ -80,27 +80,24 @@ import (
 // default `Quorum: 1`, have `RequiredQuorum() = max(1, 2) = 2` — the exact
 // divergence the row names, reached without touching epoch machinery.
 //
-// THE FOURTH ANCHOR is never instantiated as a `*Node` at all — only its
-// `ports.NodeID` sits in `cfg.Anchors`, which is all `EligibleProposers`,
-// `RequiredQuorum`'s N (`validatorSetSize`, chain.go:1746-1751, pre-handoff:
-// `len(c.cfg.Anchors)`), and the #402 strict anchor-majority gate
-// (`requiredLaunchAnchors`, chain.go:1798) read. This is the functional
-// equivalent of "one heavy seat killed" (the certification's phrase, and
-// modelcheck_h43_gates_test.go's G-H43-2 construction) without the net.Kill
-// dance: a Node that is never built can never send a round-change or answer
-// a dial, and every live node's `chainSyncSeed` below never names it.
-//
-// THE PREMISE, made explicit rather than assumed: with the fourth anchor
-// silent, exactly 2 non-proposer round-change(1) envelopes are the MOST any
-// schedule here can ever produce — and 2 is EXACTLY what the peers' own floor
-// (`RequiredQuorum() = 2`) already calls quorum, and (with the proposer
-// itself counted as an anchor) EXACTLY enough anchors to also clear the #402
-// majority (2 non-proposer + 1 anchor-proposer = 3 of 4,
-// chain.go:1798-1806) — so the ONLY thing standing between this certificate
-// and acceptance, at every layer this test can reach, is the designee's OWN
-// raised floor. If a future fixture change lets a 3rd envelope reach the
-// designee, this test's premise (RequiredQuorum(2) < 3) still holds, but the
-// "already quorum for the network" framing above would need re-checking.
+// THE FOURTH ANCHOR is live but SILENT on round-changes: it never advances a
+// round on its own (nothing here drives its sweep), so exactly 2
+// non-proposer round-change(1) envelopes reach the designee before it fires —
+// and 2 is EXACTLY what the peers' own floor (`RequiredQuorum() = 2`) already
+// calls quorum, and (with the proposer itself counted as an anchor) EXACTLY
+// enough anchors to also clear the #402 majority (2 non-proposer + 1
+// anchor-proposer = 3 of 4, chain.go:1798-1806) — so the ONLY thing standing
+// between this certificate and acceptance is the designee's OWN raised floor.
+// It IS in the designee's sync targets, so it is asked to ATTEST: the
+// designee's proposal gathers its own operator floor (`Quorum: 3`, the
+// ratified "proposer-side gather target", raised in proposeBlockAt on every
+// path — arm 8e), which three live peers can satisfy. Without it the
+// certificate validates but the designee's own gather target (3) is
+// unsatisfiable by two peers — the certification's §4.5 (-quorum above the
+// live peer count is the operator's call, not a validity fact), not this
+// arm's subject. The round-cert broadcast may reach the fourth anchor after
+// the designee has fired; a late third envelope changes nothing the
+// assertions below read.
 //
 // RED at HEAD (both assertions): (1) `newViewFor` called directly, with
 // EXACTLY the 2 envelopes the network already considers quorum, returns the
@@ -162,10 +159,9 @@ func TestModelCheck_H43_8_DivergentQuorumFloorMustNotBlockNewViewCertificate(t *
 	if len(liverIdx) != 3 {
 		t.Fatalf("premise: want 3 non-designee anchor slots, got %d", len(liverIdx))
 	}
-	// Only 2 of the 3 non-designee anchors are ever instantiated — the third
-	// (liverIdx[2]) stays a bare ID in cfg.Anchors, never a live Node (see
-	// the doc comment above: the "one heavy seat killed" equivalent).
-	liverIdx = liverIdx[:2]
+	// Only the first 2 non-designee anchors ever DECLARE round 1; the third
+	// (liverIdx[2]) is live and attests, but is never driven to a round-change
+	// (see the doc comment above).
 
 	highCfg := baseCfg
 	highCfg.Quorum = 3 // the divergent floor: RequiredQuorum = max(3, bftThreshold(4)=2) = 3 (chain.go:1710-1719)
@@ -188,13 +184,13 @@ func TestModelCheck_H43_8_DivergentQuorumFloorMustNotBlockNewViewCertificate(t *
 	designee := mk(ids[designeeIdx], highCfg)
 	liver1 := mk(ids[liverIdx[0]], baseCfg)
 	liver2 := mk(ids[liverIdx[1]], baseCfg)
+	silent := mk(ids[liverIdx[2]], baseCfg) // attests; never declares a round
 
-	// Each live node's sync targets are exactly the OTHER two live nodes —
-	// the never-instantiated fourth anchor is named nowhere, so nothing here
-	// ever dials it or waits on it.
-	designee.chainSyncSeed = []ports.NodeID{liver1.id, liver2.id}
-	liver1.chainSyncSeed = []ports.NodeID{designee.id, liver2.id}
-	liver2.chainSyncSeed = []ports.NodeID{designee.id, liver1.id}
+	// Each live node's sync targets are the OTHER three live nodes.
+	designee.chainSyncSeed = []ports.NodeID{liver1.id, liver2.id, silent.id}
+	liver1.chainSyncSeed = []ports.NodeID{designee.id, liver2.id, silent.id}
+	liver2.chainSyncSeed = []ports.NodeID{designee.id, liver1.id, silent.id}
+	silent.chainSyncSeed = []ports.NodeID{designee.id, liver1.id, liver2.id}
 
 	_, height := designee.chain.Head()
 	if height != 1 {
@@ -272,8 +268,8 @@ func TestModelCheck_H43_8_DivergentQuorumFloorMustNotBlockNewViewCertificate(t *
 	if got := rs.Certs[1]; got == nil {
 		t.Fatalf("G-H43-8: the designee never cached a round-1 certificate from the 2 envelopes the direct " +
 			"newViewFor call above accepted — checkRoundQuorum and newViewFor disagree; re-derive before trusting either")
-	} else if len(got.Raws) != 2 {
-		t.Fatalf("G-H43-8: the cached round-1 certificate carries %d envelopes, want exactly the 2 delivered", len(got.Raws))
+	} else if len(got.Raws) < 2 {
+		t.Fatalf("G-H43-8: the cached round-1 certificate carries %d envelopes, want at least the 2 delivered", len(got.Raws))
 	}
 	_, h := designee.chain.Head()
 	if h <= height {
@@ -283,5 +279,11 @@ func TestModelCheck_H43_8_DivergentQuorumFloorMustNotBlockNewViewCertificate(t *
 			"floor per D-CONSENSUS-ARMING (20) — this designee is a permanently dead round at this height, "+
 			"exactly as the certification's §5.2 describes", h, highCfg.Quorum, 2, baseCfg.Quorum)
 	}
-	t.Logf("G-H43-8: height %d committed at the high-floor designee's own round-1 new-view certificate.", h)
+	blk := designee.Chain().Blocks(1)[0]
+	got := nonProposerAttCount(&blk)
+	if got < highCfg.Quorum {
+		t.Fatalf("G-H43-8: the designee's round-1 block carries %d non-proposer attestations, below its own gather "+
+			"target cfg.Quorum=%d — the proposer-side gather target did not survive on the new-view path (arm 8e)", got, highCfg.Quorum)
+	}
+	t.Logf("G-H43-8: height %d committed at the high-floor designee's own round-1 new-view certificate, gathered to its own floor (%d attestations).", h, got)
 }

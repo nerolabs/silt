@@ -2707,6 +2707,13 @@ func (c *Chain) Head() (ports.Hash, uint64) {
 // epoch-tied seen-map eviction. See core/node/relayrole.go.
 func (c *Chain) EpochBlocks() uint64 { return c.cfg.EpochBlocks }
 
+// ConfigQuorum returns the operator's Config.Quorum — the proposer-side GATHER
+// target (#380 direction (1), D-CONSENSUS-ARMING (20)), NOT a validity term in
+// objective mode with Byzantine sizing (see RequiredQuorum). Read-only getter of
+// a config value; it changes no rule. proposeBlockAt reads it so every proposal
+// path gathers max(ConfigQuorum, RequiredQuorum) whatever floor its caller passed.
+func (c *Chain) ConfigQuorum() int { return c.cfg.Quorum }
+
 func (c *Chain) Len() int { return len(c.blocks) }
 
 // FinalizedHeight is the height this node treats as irreversibly final — the anchor a
