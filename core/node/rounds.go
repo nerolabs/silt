@@ -10,6 +10,7 @@ package node
 import (
 	"crypto/ed25519"
 	"encoding/binary"
+	"errors"
 	"fmt"
 
 	"github.com/fxamacker/cbor/v2"
@@ -271,6 +272,15 @@ func (n *Node) verifyRoundChange(rc *roundChangeEnv, height uint64) error {
 	}
 	return nil
 }
+
+// errEmptyNewView refuses a new-view certificate that carries no round-change
+// envelope (#380 M-380-2). With the mature-epoch count floor at 0,
+// SupportMeetsQuorum over an empty attester set reduces to the weight rule over
+// the designee alone, so a > 2/3-weight designee could otherwise validate a
+// zero-envelope certificate and propose fresh, dropping any carried lock. A
+// genuine view change always has >= 1 sender; the same short-circuit class as
+// the acceptRoundCert Round == 0 guard. Node-side (liveness), not a validity rule.
+var errEmptyNewView = errors.New("new-view certificate carries no round-change envelopes")
 
 // newViewFor validates a new-view certificate (the raw signed round-change
 // envelopes carried by a round->0 proposal): every envelope verifies for
