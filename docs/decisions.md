@@ -2216,6 +2216,20 @@ showing the one-byte value IS committed).
   is fixed with G-H43-7; graded validators run `-log debug`.
 - **(20) #380:** in objective mode `ValidateCommit` ignores the local `Config.Quorum` floor and defers to
   `bftThreshold`; `Quorum` stays a proposer-side gather target only. A separate GATED item (I1) behind G-H43-8.
+  - **AMENDED 2026-09-08 (G-380-B; the owner ratifies this sentence at the merge of the A2 PR):** the ratified
+    sentence reads, in full, *"in objective mode `ValidateCommit` ignores the local `Config.Quorum` floor and defers
+    to the DERIVED Byzantine rule: `bftThreshold(N)` in the launch window and with epochs off, and a count floor of
+    0 in a mature epoch, where the >⅔ frozen-weight rule is the bar (research certification
+    `CONSENSUS-380-quorum-floor-direction-1-PREDICATE-AND-CERTIFICATION-2026-09-08.md` §1)"*. That certification
+    is the ONE certification for the change (rule 9:
+    `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/CONSENSUS-380-quorum-floor-direction-1-PREDICATE-AND-CERTIFICATION-2026-09-08.md`,
+    §1 the predicate, §6 the composed diff). Head-counting the epoch set stays REFUTED (B2); the trusted opt-out (`-byzantine-quorum=false`) and legacy mode keep `cfg.Quorum`
+    unchanged; `cfg.Quorum` stays the gather target on EVERY proposal path (so a uniform swarm's blocks carry the
+    same attestation count as before — the change adds accepts only). Three merge conditions rode with it: Reload
+    counts the same predicate; `newViewFor` refuses a certificate with no round-change from anyone but the
+    designee; `RequiredQuorum` is pinned by G-D13. Owner calls surfaced, batched: the `-quorum 3` default (f = 0 at
+    four validators — a derived default on the untrusted objective path) and whether a single-anchor objective
+    launch stays supported (at A = 1 no count gate holds anything; the PE recommends requiring ≥ 2).
 - **What this does NOT decide:** the delivery idle-window default (owner call 4) — set only after the fix lands and
   the bound is field-confirmed, since the reaper is wall-clock and a stall reaps live sessions.
 
