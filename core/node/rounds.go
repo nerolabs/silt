@@ -317,6 +317,9 @@ func (n *Node) newViewFor(height, round uint64, raws [][]byte) (forced *nodeLock
 			best = &nodeLock{Round: rc.LockRound, Hash: lb.Hash(), QC: rc.LockQC, Block: rc.LockBlock}
 		}
 	}
+	if len(ids) == 0 {
+		return nil, errEmptyNewView // M-380-2: floor 0 must never validate an empty certificate
+	}
 	designated := n.designatedProposer(height, round)
 	if !n.chain.SupportMeetsQuorum(designated, ids, height) {
 		return nil, fmt.Errorf("new-view certificate below quorum (%d round-changes)", len(ids))
