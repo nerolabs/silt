@@ -52,6 +52,20 @@ The seats build under silt's existing rules. They are not overridden by anything
 6. **Scars survive pruning.** The Tester owns scar-counting and the third-time rule; a
    lesson is encoded as a gate/test before context is cleared.
 
+## Load discipline — this box is shared (standing rule, owner, 2026-09-08)
+
+The Mac that runs the seats is Andrew's working machine. Every seat, every session:
+
+- **Every heavy command is throttled:** `taskpolicy -c background nice -n 19 go test …` (the same
+  prefix for `go build`, `go vet`, `go run`, long scripts). On macOS `nice` alone does not throttle;
+  the background QoS class does (measured: 90 % → 14 % CPU on a running test). A PreToolUse hook
+  blocks an un-throttled heavy `go` command; `GOFLAGS=-p=1` and `GOMAXPROCS=2` are set in the
+  session env. Use `-short` locally; the full suites are CI's job unless a ruling names one.
+- **One heavy process at a time.** A PE or Researcher that runs ablations counts as heavy; a
+  Builder never runs beside one. Read-only reviewers may overlap. Check `uptime` before spawning.
+- **Retro-fit anything already running:** `taskpolicy -b -p PID`.
+- Cloud-run orchestrators launch under the same prefix (inside the detached `nohup`).
+
 ## Research gate — what a seat may NOT decide alone (silt-specific)
 
 Route to the Researcher for certification; do not build or assert on these:
