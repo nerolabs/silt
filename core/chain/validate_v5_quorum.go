@@ -529,29 +529,21 @@ func v5MatureNow(v StateView) (bool, FloorBoxOutcome, error) {
 	if total == 0 {
 		return 0 >= p.MatureValidators, Accept, nil
 	}
-	threshold := total / 3
 	margin := p.OperatorMargin
 	if margin < 1 {
 		margin = 1
 	}
-	nakamoto := func(weights []int64) int {
-		sort.Slice(weights, func(i, j int) bool { return weights[i] > weights[j] })
-		var cum int64
-		for i, w := range weights {
-			cum += w
-			if cum > threshold {
-				return i + 1
-			}
-		}
-		return len(weights)
-	}
-	bondsK := nakamoto(append([]int64(nil), sizes...))
+	// ONE body for the coefficient arithmetic (M-1A-1): nakamotoCoefficient is the receiverless
+	// fold the box's maturity recompute already uses (floorbox_recompute_maturity_v5.go), pinned
+	// byte-for-byte to C2Metric. A third inline copy here was the drift surface the round exists
+	// to close; TestM1A1_V5MatureNowEqualsNodeMatureNow reddens on a divergent coefficient.
+	bondsK := nakamotoCoefficient(sizes, total)
 	groups := make([]int64, 0, len(domainWeight)+len(zeroDomainWeights))
 	for _, w := range domainWeight {
 		groups = append(groups, w)
 	}
 	groups = append(groups, zeroDomainWeights...)
-	domainsK := nakamoto(groups)
+	domainsK := nakamotoCoefficient(groups, total)
 	k := bondsK / margin
 	if domainsK < k {
 		k = domainsK
