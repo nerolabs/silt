@@ -8,6 +8,22 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Changed
+- **The proposer's gather target is DERIVED on the untrusted objective path, and a single-anchor objective launch is refused
+  (`D-DELEGATED-CALLS-2026-09-09`, two owner calls delegated 2026-09-08).** Since #380 the local `-quorum` is not a validity
+  term on that path, but it is still a floor on the gather, so the shipped literal 3 asked every peer of a four-anchor launch
+  to attest — the swarm tolerated **f = 0** while the published liveness bound is stated at f = 1, and only the field
+  topology's own override hid it. `effectiveQuorum` now derives to `chain.ByzantineThreshold` over the launch set when the
+  operator sets none (2 at four anchors), mirroring the bond-floor / TTL / Byzantine / margin derivations — except downward.
+  It can only LOWER the ask: `gatherTwoPhase` already gathers `max(caller floor, ConfigQuorum(), RequiredQuorum())`, so the
+  derived Byzantine bar sits underneath it, and an explicit `-quorum` always wins. `chain.ByzantineThreshold` is the single
+  export of that arithmetic, so the daemon never re-derives `f` locally. Separately, `MinObjectiveAnchors = 2`: at one anchor
+  `bftThreshold(1) = 0`, the #402 anchor majority is self-satisfied by the proposer, and `finalityQuorumActive` is true at
+  0 >= 0 — the sole anchor commits alone with zero attestations and those blocks read as final, so the cold-start scaffold now
+  refuses that posture. Gates `TestDerivedGatherTargetTracksTheByzantineBar` and the new single-anchor arm of
+  `TestInvariantB_S6_ColdStartScaffoldRefusedByDefault`, both ablated RED on their mechanism. Every harness in the tree
+  already launches with three or four anchors.
+
 ### Removed
 - **The `core/demand` v2 flat primitive (C1, the B-9 tail).** B-9 (#764) retired the flat receipt at the
   node; the primitive behind it stayed callable because ~25 unit tests pinned properties on it. Those

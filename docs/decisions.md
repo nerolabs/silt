@@ -2394,3 +2394,54 @@ showing the one-byte value IS committed).
 - **Fact check recorded at the reorder:** the note's "close the cross-server double-redeem (fix `fcbab7e`)" is already
   closed on main by R0.4b (`2ad9bd5`, per-epoch issuer-key expiry; open-break gate PR #700); `fcbab7e` (the per-serial
   delivery guard, option b) is an unmerged alternative on a worktree branch and is not owed.
+
+## D-DELEGATED-CALLS-2026-09-09 — four small calls the owner delegated, and what was decided under each
+
+- **Status:** ✅ DECIDED 2026-09-09 by delegation. The owner delegated all four explicitly before an
+  overnight run ("which of these owed calls may I decide myself" → all four), with the recommendation
+  on each stated at the time. This entry records what was actually decided and why, so the delegation
+  is auditable rather than remembered. Simplicity rule 5 caps owner calls at five per true-up; these
+  four were retired here so the owner's queue holds only calls 10 and 12.
+
+- **(1) The `#558` chain-store refusal surface — KEEP THE BROAD REFUSAL.** The shipped rule refuses to
+  start on ANY structural-verification failure of `chain.cbor`, which is a larger surface than scope
+  call S3's "torn tail". Narrowing it needs a classifier that separates "torn" from "corrupt in some
+  other way", and that classifier is exactly the thing that can be wrong — a misclassification
+  silently discards finalized history, which is the build-immutable the fix exists to hold. A refusal
+  is recoverable by the operator (`-accept-chain-loss` preserves the original as
+  `chain.cbor.rejected-<unix>`); a wrong classification is not. The broad surface stands as built
+  (PR #772-era work, ruling `RULING-b8-558-chainstore-refuse-to-start-2026-09-07.md`).
+
+- **(2) The `-quorum` default — DERIVE IT on the untrusted objective path.** Built here. Since #380
+  (`D-CONSENSUS-ARMING` (20)) `-quorum` is not a validity term on that path, but it is still a floor
+  on the proposer's gather, so the shipped literal 3 asked every peer of a four-anchor launch to
+  attest and the swarm tolerated **f = 0** — against a published liveness bound stated at **f = 1**
+  (`D-CONSENSUS-ARMING` (19), amended (21)). The field topology had already overridden it to 2, which
+  is how the published number and the shipped default came apart unnoticed. `effectiveQuorum` now
+  derives to `chain.ByzantineThreshold(<launch set>)` when the operator sets none, mirroring the
+  bond-floor / TTL / Byzantine / operator-margin derivations — except this one derives DOWNWARD. It
+  can only lower the ask: `gatherTwoPhase` gathers `max(caller floor, ConfigQuorum(), RequiredQuorum())`,
+  so the derived Byzantine bar sits underneath it whatever the operator sets, and safety is untouched
+  because validity reads `RequiredQuorum`, not this. An explicit `-quorum` always wins, including one
+  raised above the bar. `chain.ByzantineThreshold` is the single export of that arithmetic — a daemon
+  that re-derived `f = ⌊(n-1)/3⌋` locally would be a duplicated consensus literal, and duplicated
+  copies drift (the gather target went path-dependent exactly once already, on this same review).
+
+- **(3) The single-anchor objective launch — REQUIRE TWO (`MinObjectiveAnchors = 2`).** Built here. At
+  A = 1 every consensus gate on the launch path is self-satisfied: `bftThreshold(1) = 0`, so the sole
+  anchor commits on its own signature with zero attestations; `requiredLaunchAnchors` is ⌊1/2⌋+1 = 1
+  and `countAnchorSupport` credits the proposer itself, so the #402 anchor gate never bites; and
+  `finalityQuorumActive` is true at 0 >= 0, so those zero-attestation blocks are treated as final.
+  What holds at A = 1 is f = 0 plus "one qualified proposer never signs twice at a height" (#397) — a
+  property of there being nobody else, not a quorum. Two anchors is the smallest set where the launch
+  gate is a gate. This REFUSES a configuration that previously started; that is the intent, because it
+  was starting into a posture where the gates were decoration. Every harness in the tree already uses
+  three or four anchors, checked before the change.
+
+- **(4) The CHANGELOG truncation lint — NOT YET; wait for a third occurrence.** A blank line inside an
+  entry terminates the entry in `scripts/gen_changelog.py`, silently dropping everything after it from
+  the published page while the source reads correctly. Two occurrences to date (the Lane C1 guard-store
+  compatibility warning, caught by the blind PE; and one older entry in released history, left as
+  history). The third-time rule fires at three, and Simplicity rule 3 caps bookkeeping against build —
+  so the lesson is carried in the C4 and C3 build briefs instead, and the lint becomes mandatory on a
+  third sighting. Recording the count here IS the tripwire: a future seat that hits it makes three.

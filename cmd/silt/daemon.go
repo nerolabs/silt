@@ -346,7 +346,7 @@ func cmdDaemon(args []string) error {
 	// NOT the transport -request-timeout — build-immutable #3/#4), else it can be
 	// released and recomputed just-in-time. At bond.PlotSealThroughput (~270 MB/s)
 	// and the ~2s compute window that is ~540 MiB, so the default carries ~2x margin.
-	floorSet, ttlSet, byzSet, marginSet, epochSet := false, false, false, false, false
+	floorSet, ttlSet, byzSet, marginSet, epochSet, quorumSet := false, false, false, false, false, false
 	fs.Visit(func(f *flag.Flag) {
 		switch f.Name {
 		case "min-bond-floor":
@@ -355,6 +355,8 @@ func cmdDaemon(args []string) error {
 			ttlSet = true
 		case "byzantine-quorum":
 			byzSet = true
+		case "quorum":
+			quorumSet = true
 		case "operator-margin":
 			marginSet = true
 		case "epoch-blocks":
@@ -798,6 +800,20 @@ func cmdDaemon(args []string) error {
 		// need it, so it auto-disables there rather than forcing anchor config on a
 		// single trusted box.
 		useObjective := *objective && *minRep > 0
+		// The proposer-side GATHER TARGET gets the same safe-by-default treatment as the
+		// bond floor, the TTL, the Byzantine sizing and the operator margin — except this
+		// one derives DOWNWARD. Since #380 the shipped literal 3 is no longer a validity
+		// term on the objective path, but it is still a floor on the gather, so a
+		// four-anchor launch asked for all three peers and tolerated f = 0 while the
+		// project publishes its liveness bound at f = 1. Assigned through the pointer so
+		// every consumer (the chain config, the registry line, the revocation proposer)
+		// reads ONE value — a second copy is how the gather target went path-dependent
+		// once already (#380, the PE's C1 finding).
+		if q, quorumDefaulted := effectiveQuorum(quorumSet, *quorum, useObjective, len(anchorSet)); quorumDefaulted {
+			fmt.Printf("consensus: gather target derived to %d for this untrusted (objective) launch of %d anchor(s) — the shipped default %d would have asked every peer to attest, tolerating NO fault while the published liveness bound is stated at f=1 (#380). It never sits below the derived Byzantine bar the commit already demands; set -quorum explicitly to override\n",
+				q, len(anchorSet), *quorum)
+			*quorum = q
+		}
 		var minBondBytes int64
 		if useObjective {
 			mb, perr := parseSize(*minBond)
@@ -2071,6 +2087,22 @@ const AntiReleaseComputeWindow = 2 * time.Second
 // measured seal rate bond.PlotSealThroughput: 2s × ~270 MB/s ≈ 540 MiB × 2 ≈ 1 GiB.
 const DerivedBondFloor = int64(2) * (int64(AntiReleaseComputeWindow/time.Second) * bond.PlotSealThroughput)
 
+// MinObjectiveAnchors is the smallest launch set an untrusted objective validator may
+// start from (owner call, delegated 2026-09-08; blind PE finding on the #380 review).
+//
+// At A = 1 no count gate holds anything. bftThreshold(1) = 0, so the sole anchor commits
+// on its own signature with zero attestations; requiredLaunchAnchors is ⌊1/2⌋+1 = 1 and
+// countAnchorSupport credits the proposer itself, so the #402 anchor gate is
+// self-satisfied; and finalityQuorumActive is true (0 >= 0), so those zero-attestation
+// blocks are treated as final. What actually holds at A = 1 is f = 0 plus the fact that
+// one qualified proposer never signs twice at a height (#397) — a property of there being
+// nobody else, not a quorum. Two anchors is the smallest set where the launch gate is a
+// gate: the majority is 2, so a commit needs the other anchor's signature.
+//
+// This refuses a config that used to start. That is the point: it was starting into a
+// posture where the consensus gates were decorative.
+const MinObjectiveAnchors = 2
+
 // coldStartScaffoldOK reports whether an untrusted objective validator has the
 // cold-start scaffolding it needs to be safe from genesis (red-team seam-2 /
 // Invariant B S6). Either satisfies it: the anchor LAUNCH set (anchors +
@@ -2084,9 +2116,45 @@ func coldStartScaffoldOK(useObjective bool, anchorCount, matureValidators int, w
 	if !useObjective {
 		return true
 	}
-	hasLaunchSet := anchorCount > 0 && matureValidators > 0
+	hasLaunchSet := anchorCount >= MinObjectiveAnchors && matureValidators > 0
 	hasCheckpoint := wsCheckpoint != ""
 	return hasLaunchSet || hasCheckpoint
+}
+
+// effectiveQuorum decides the proposer-side GATHER TARGET, mirroring the bond-floor,
+// TTL, Byzantine and operator-margin derivations: an explicit -quorum always wins, and
+// the untrusted objective path DERIVES one when the operator sets none.
+//
+// Why a derived default at all (owner call, delegated 2026-09-08; blind PE finding on
+// the #380 review). The shipped literal is 3. Since #380 (D-CONSENSUS-ARMING (20))
+// -quorum is no longer a validity term on the objective path — ValidateCommit reads the
+// DERIVED bar — but it is still a FLOOR on the gather, so at a four-anchor launch the
+// literal asks for all three peers and the swarm tolerates f = 0. The published liveness
+// bound (≤ f′+1 rounds after GST) is stated at f = 1, so the shipped default contradicted
+// the number the project publishes. Deriving it to chain.ByzantineThreshold over the
+// launch set gives 2 at four anchors: exactly the bar validity already demands, so the
+// gather stops asking for more than the commit needs, and f = 1 is tolerated.
+//
+// It can only ever LOWER the ask, never raise it: gatherTwoPhase gathers
+// max(caller floor, ConfigQuorum(), RequiredQuorum()), so the derived Byzantine bar is a
+// floor underneath this whatever the operator sets. Safety is untouched — it is not a
+// validity term here — and a trusted or one-box swarm still sets -quorum explicitly.
+//
+// Sized over the LAUNCH SET (the anchors), which is what validatorSetSize itself uses
+// while the network is young; once the network hands off, RequiredQuorum re-sizes over
+// the frozen epoch set at runtime and this default stops mattering.
+func effectiveQuorum(quorumSet bool, explicit int, objectivePath bool, anchorCount int) (q int, defaulted bool) {
+	if quorumSet {
+		return explicit, false // an explicit choice always wins, including a raised one
+	}
+	if !objectivePath || anchorCount < 2 {
+		return explicit, false
+	}
+	derived := chain.ByzantineThreshold(anchorCount)
+	if derived < 1 {
+		return explicit, false // never derive a self-commit; keep the shipped literal
+	}
+	return derived, true
 }
 
 // effectiveBondFloor decides the anti-release floor (M0 retest G4-residual).
