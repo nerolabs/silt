@@ -1709,9 +1709,16 @@ func bftThreshold(n int) int {
 //	    Config.Quorum no longer raises it. A local, unreplicated term inside a
 //	    validity rule that objective mode promises is replica-identical never
 //	    contributed intersection, only a higher bar — the #338 sync-strand, and
-//	    the permanently dead new-view round of a higher-floor designee. Corner:
-//	    bftThreshold(1) = 0, so a single-anchor launch commits on the proposer
-//	    alone; I1 holds there through requiredLaunchAnchors (⌊A/2⌋+1 = 1).
+//	    the permanently dead new-view round of a higher-floor designee. Corner,
+//	    A = 1: bftThreshold(1) = 0, so a single-anchor launch commits on the
+//	    proposer's own signature with ZERO attestations, and no count gate holds
+//	    anything there — requiredLaunchAnchors = 1 is self-satisfied because
+//	    countAnchorSupport credits the proposer-if-anchor, and
+//	    finalityQuorumActive is true (0 >= 0). What holds is that the sole anchor
+//	    is the only qualified proposer and never signs twice at a height (#397):
+//	    a one-anchor objective network is a single-trusted-operator chain (f = 0),
+//	    full stop. Whether -anchors <single> stays a supported launch posture is
+//	    an owner's call (PE ruling on d0067fd, B3).
 //	(b) objective && ByzantineQuorum && a mature epoch: 0. The Byzantine bar is
 //	    the >⅔ FROZEN-WEIGHT rule (requireEpochWeightQuorum; research
 //	    certification 2026-08-13 B2) — Tendermint/Casper count stake, never
@@ -1721,7 +1728,11 @@ func bftThreshold(n int) int {
 //	    the weight rule already implies ≥ 1 non-proposer head in every epoch
 //	    where no single identity holds >⅔, and where one does, a floor of 1 is
 //	    defeated for one MinBond identity already in the snapshot — exactly the
-//	    per-head defence B2 refuted.
+//	    per-head defence B2 refuted. Degenerate corner: with an EMPTY governing
+//	    set the weight rule's total <= 0 branch also passes, so every quorum leg
+//	    is a no-op — the block is still refused, because proposerQualifiedAt
+//	    (ValidateProposal, before the quorum stack) admits nobody from an empty
+//	    set: a stall, with safety there resting on the proposer filter alone.
 //	(c) objective && !ByzantineQuorum (the explicit -byzantine-quorum=false
 //	    trusted opt-out): Config.Quorum, unchanged. There is no derived rule to
 //	    defer to, and raising it to bftThreshold would flip finalityQuorumActive
