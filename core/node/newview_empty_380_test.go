@@ -27,8 +27,16 @@ import (
 // THE FIXTURE is the smallest world that reaches the state: one bonded
 // identity (the whale) is the whole frozen epoch set, so it is the round-1
 // designee AND holds 100% of the frozen weight; RequiredQuorum() is 0.
-// RED-FIRST (predicate landed, guard absent): newViewFor(1, 1, nil) returns
-// (nil, nil). GREEN with the guard: errEmptyNewView, by name.
+// Two arms, both refused by name (errEmptyNewView):
+//
+//	(i)  ZERO envelopes — RED-FIRST with the guard absent: newViewFor(1, 1, nil)
+//	     returned (nil, nil).
+//	(ii) ONLY the designee's OWN envelope (PE ruling B1 on d0067fd, measured):
+//	     SupportMeetsQuorum skips `id == proposer` (chain.go), so a guard on
+//	     len(ids) == 0 passes with one self-envelope while `seen` is empty and
+//	     the weight rule over the designee alone validates it. The guard must
+//	     count senders OTHER than the designee — the population
+//	     SupportMeetsQuorum counts. RED-FIRST with the len(ids) guard.
 func TestM380_2_NewViewRefusesEmptyRoundChangeSet(t *testing.T) {
 	sched := simclock.New()
 	net := simnet.New(sched, 1, simnet.DefaultConfig())
@@ -64,12 +72,32 @@ func TestM380_2_NewViewRefusesEmptyRoundChangeSet(t *testing.T) {
 
 	forced, err := nd.newViewFor(height, round, nil)
 	if err == nil {
-		t.Fatalf("M-380-2 REPRODUCED: newViewFor(h=%d, r=%d, ZERO envelopes) validated (forced=%v) — a zero-envelope "+
+		t.Fatalf("M-380-2 REPRODUCED (i): newViewFor(h=%d, r=%d, ZERO envelopes) validated (forced=%v) — a zero-envelope "+
 			"new-view certificate frees a > 2/3-weight designee from its lock; newViewFor must refuse an empty "+
 			"round-change set", height, round, forced != nil)
 	}
 	if !errors.Is(err, errEmptyNewView) {
-		t.Fatalf("M-380-2: refused for the WRONG reason (%v), want errEmptyNewView by name", err)
+		t.Fatalf("M-380-2 (i): refused for the WRONG reason (%v), want errEmptyNewView by name", err)
 	}
-	t.Logf("M-380-2: empty new-view certificate refused by name: %v", err)
+	t.Logf("M-380-2 (i): empty new-view certificate refused by name: %v", err)
+
+	// (ii) the designee's OWN round-change envelope, alone — a real, verified
+	// envelope produced by the node's own advanceToRound, so the only thing
+	// this certificate lacks is a sender other than the designee.
+	nd.advanceToRound(nd.roundsFor(), round, "test")
+	self := nd.roundsFor().Changes[round][nd.id]
+	if self == nil {
+		t.Fatalf("premise: the designee did not record its own round-change(%d) envelope", round)
+	}
+	forced, err = nd.newViewFor(height, round, [][]byte{self})
+	if err == nil {
+		t.Fatalf("M-380-2 REPRODUCED (ii): newViewFor(h=%d, r=%d, ONLY the designee's own envelope) validated "+
+			"(forced=%v) — SupportMeetsQuorum skips the proposer, so `seen` is empty and the > 2/3-weight designee "+
+			"validates its own one-envelope certificate; the guard must count senders OTHER than the designee",
+			height, round, forced != nil)
+	}
+	if !errors.Is(err, errEmptyNewView) {
+		t.Fatalf("M-380-2 (ii): refused for the WRONG reason (%v), want errEmptyNewView by name", err)
+	}
+	t.Logf("M-380-2 (ii): designee-only new-view certificate refused by name: %v", err)
 }
