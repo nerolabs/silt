@@ -59,25 +59,43 @@ const (
 	maxFlowRings = 4096
 )
 
-// flowTotals is the pair of lifetime escrow counters one sample holds for one scope.
+// flowTotals is the pair of cumulative escrow counters one sample holds for one scope.
+// It is DERIVED from a ports.DurabilitySnapshot, never stored beside one: the ring used
+// to keep both a flowTotals map and a snapshot map per sample, which stored Funded and
+// Paid twice per root per sample and doubled the ring's resident cost for nothing.
 type flowTotals struct {
 	SkimIn    int64 `json:"skimIn"`
 	BountyOut int64 `json:"bountyOut"`
 	Net       int64 `json:"net"`
 }
 
+func totalsOf(s ports.DurabilitySnapshot) flowTotals {
+	return flowTotals{SkimIn: s.Funded, BountyOut: s.Paid, Net: s.Funded - s.Paid}
+}
+
+// totalsOf2 sums one sample's per-root rows into the pooled figure.
+func totalsOf2(fs flowSample) flowTotals {
+	var out flowTotals
+	for _, sn := range fs.obj {
+		out.SkimIn += sn.Funded
+		out.BountyOut += sn.Paid
+	}
+	out.Net = out.SkimIn - out.BountyOut
+	return out
+}
+
 func (t flowTotals) sub(o flowTotals) flowTotals {
 	return flowTotals{SkimIn: t.SkimIn - o.SkimIn, BountyOut: t.BountyOut - o.BountyOut, Net: (t.SkimIn - o.SkimIn) - (t.BountyOut - o.BountyOut)}
 }
 
-// flowSample is one instant of the escrow accounting: the pooled lifetime totals plus
-// the per-root ones, and the snapshots the g endpoint differences.
+// flowSample is one instant of the escrow accounting: ONE map, root -> snapshot, which
+// serves both endpoints (flows differences its Funded/Paid, g differences the whole
+// snapshot). The pooled figure is NOT stored: it is the sum of the per-root rows, and
+// storing it separately is what let the two disagree (see windowRows).
 type flowSample struct {
-	at     time.Time
-	pooled flowTotals
-	obj    map[string]flowTotals
-	snap   map[string]ports.DurabilitySnapshot
-	trunc  bool
+	at    time.Time
+	obj   map[string]ports.DurabilitySnapshot
+	trunc bool
 }
 
 // noteFlowSample appends one sample if the interval has elapsed. Called from
@@ -88,7 +106,7 @@ func (s *uiServer) noteFlowSample(now time.Time, doc *statusInfo) {
 	if n := len(s.flowRing); n > 0 && now.Sub(s.flowRing[n-1].at) < flowSampleInterval {
 		return
 	}
-	fs := flowSample{at: now, obj: map[string]flowTotals{}, snap: map[string]ports.DurabilitySnapshot{}}
+	fs := flowSample{at: now, obj: map[string]ports.DurabilitySnapshot{}}
 	if doc.Durability != nil {
 		objs := append([]objDurability(nil), doc.Durability.Objects...)
 		// Sorted so a truncation at the cap keeps the SAME roots sample to sample; an
@@ -98,12 +116,8 @@ func (s *uiServer) noteFlowSample(now time.Time, doc *statusInfo) {
 			objs, fs.trunc = objs[:maxFlowRings], true
 		}
 		for _, o := range objs {
-			fs.obj[o.Root] = flowTotals{SkimIn: o.Funded, BountyOut: o.Paid, Net: o.Funded - o.Paid}
-			fs.snap[o.Root] = ports.DurabilitySnapshot{Balance: o.Reserve, Funded: o.Funded, Paid: o.Paid, Repairs: o.Repairs}
-			fs.pooled.SkimIn += o.Funded
-			fs.pooled.BountyOut += o.Paid
+			fs.obj[o.Root] = ports.DurabilitySnapshot{Balance: o.Reserve, Funded: o.Funded, Paid: o.Paid, Repairs: o.Repairs}
 		}
-		fs.pooled.Net = fs.pooled.SkimIn - fs.pooled.BountyOut
 	}
 	s.flowRing = append(s.flowRing, fs)
 	if len(s.flowRing) > flowRingDepth {
@@ -192,9 +206,9 @@ func (s *uiServer) apiEconomyFlows(w http.ResponseWriter, r *http.Request) {
 		out.ObjectsTruncated = last.trunc
 		pooledSteps := make([]int64, 0, len(ring)-1)
 		for i := 1; i < len(ring); i++ {
-			pooledSteps = append(pooledSteps, ring[i].pooled.sub(ring[i-1].pooled).Net)
+			pooledSteps = append(pooledSteps, totalsOf2(ring[i]).sub(totalsOf2(ring[i-1])).Net)
 		}
-		pooled := economyFlowRow{flowTotals: last.pooled.sub(first.pooled), ConsecutiveNegative: drainRun(pooledSteps)}
+		pooled := economyFlowRow{flowTotals: totalsOf2(last).sub(totalsOf2(first)), ConsecutiveNegative: drainRun(pooledSteps)}
 		pooled.Draining = pooled.ConsecutiveNegative >= flowDrainSamples
 		out.Pooled = &pooled
 		roots := make([]string, 0, len(last.obj))
@@ -210,10 +224,11 @@ func (s *uiServer) apiEconomyFlows(w http.ResponseWriter, r *http.Request) {
 			base, steps := flowTotals{}, []int64{}
 			var prev *flowTotals
 			for _, fs := range ring {
-				t, ok := fs.obj[root]
+				sn, ok := fs.obj[root]
 				if !ok {
 					continue
 				}
+				t := totalsOf(sn)
 				if prev == nil {
 					base = t
 				} else {
@@ -222,7 +237,7 @@ func (s *uiServer) apiEconomyFlows(w http.ResponseWriter, r *http.Request) {
 				cp := t
 				prev = &cp
 			}
-			row := economyFlowRow{Root: root, flowTotals: last.obj[root].sub(base), ConsecutiveNegative: drainRun(steps)}
+			row := economyFlowRow{Root: root, flowTotals: totalsOf(last.obj[root]).sub(base), ConsecutiveNegative: drainRun(steps)}
 			row.Draining = row.ConsecutiveNegative >= flowDrainSamples
 			out.Objects = append(out.Objects, row)
 		}
@@ -264,7 +279,6 @@ type economyG struct {
 	Threshold            string        `json:"threshold"`
 	WindowSec            int64         `json:"windowSec,omitempty"`
 	Objects              []economyGRow `json:"objects,omitempty"`
-	Network              *economyGNet  `json:"network,omitempty"`
 	NetworkNotKnowable   string        `json:"networkNotKnowable,omitempty"`
 	WindowNotYetMeasured bool          `json:"windowNotYetMeasured,omitempty"`
 	DetailWithheld       bool          `json:"detailWithheld"`
@@ -272,14 +286,6 @@ type economyG struct {
 	SnapshotTakenAtUnix int64 `json:"snapshotTakenAtUnix"`
 	SnapshotAgeSec      int64 `json:"snapshotAgeSec"`
 	SnapshotIntervalSec int64 `json:"snapshotIntervalSec"`
-}
-
-// economyGNet exists so the ABSENCE of a network g has a typed shape rather than being
-// a missing key nobody documented. Nothing constructs it today — see
-// networkGNotKnowable.
-type economyGNet struct {
-	G          float64 `json:"g"`
-	SampleSize int     `json:"sampleSize"`
 }
 
 type economyGRow struct {
@@ -326,15 +332,15 @@ func (s *uiServer) apiEconomyG(w http.ResponseWriter, r *http.Request) {
 	} else {
 		first, last := ring[0], ring[len(ring)-1]
 		out.WindowSec = int64(last.at.Sub(first.at).Seconds())
-		roots := make([]string, 0, len(last.snap))
-		for root := range last.snap {
+		roots := make([]string, 0, len(last.obj))
+		for root := range last.obj {
 			roots = append(roots, root)
 		}
 		sort.Strings(roots)
 		for _, root := range roots {
-			newSnap := last.snap[root]
+			newSnap := last.obj[root]
 			row := economyGRow{Root: root, CostPerRepair: credit.CostPerRepair(newSnap), Repairs: newSnap.Repairs}
-			oldSnap, ok := first.snap[root]
+			oldSnap, ok := first.obj[root]
 			dt := ports.Duration(last.at.Sub(first.at))
 			switch {
 			case !ok:
