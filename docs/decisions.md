@@ -1000,6 +1000,15 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
      `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/floorbox-recompute-P1a-Opayload-multileaf-RESEARCH-CERTIFICATION-2026-08-31.md`
      and
      `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-floorbox-recompute-P1a-Opayload-multileaf-2026-08-31.md`.
+  4. **CORRECTED 2026-09-08 (`D-RECOMPUTE-FREEZE`, owner direction via the PE).** The sentence
+     "O(payload), not O(whole-state)" does not describe the code as built. The digest-class
+     recompute files state the honest cost themselves — *"COST — HONEST … NOT O(payload) …
+     ≈ O(registry) per touched digest"* (`core/chain/floorbox_recompute_stateroot_slash_v5.go:46`,
+     `…_ttl_v5.go:47`, `…_bondreg_v5.go:51`) — and the measurement puts the provider-side SMT
+     build at ~980 MB live heap at N = 1M
+     (`docs/thinking/2026-08-31-floorbox-wholeset-witness-size-measurement.md`). Item 1 of the
+     2026-09-07 true-up (five digests → three) is still O(registry). The ratification above stands
+     as history; the track it ratified is FROZEN (below).
 
 ---
 
@@ -2322,3 +2331,48 @@ showing the one-byte value IS committed).
   to **era 5, outside the RC**, with its own certification and activation height.
 - **What this does NOT decide:** the certificate's byte ceiling and eliding `LockBlock` from a round-change
   (`R-H43-CERT-CARRIES-BLOCKS`, an era item); #380 (`R-380-LIVENESS-FACE`, its own gated item).
+
+## D-RECOMPUTE-FREEZE — the trustless-recompute track is frozen; the ROADMAP is reordered to the simplicity spine; ten simplicity rules are standing
+
+- **Status:** ✅ DIRECTED by the owner via the PE seat, 2026-09-08 — read as direction, not a consult. The note:
+  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/NOTE-to-silt-team-simplicity-and-roadmap-reorder-2026-09-08.md`.
+- **The verdict the direction rests on.** The trust-plane CORE (I1–I5 consensus and the model-check, PoST bonds, blind
+  tokens, the γ→1/N firewall, the economy — what existed at the 2026-08-19 audit) is ESSENTIAL complexity; nothing in
+  the 08-19 KEEP ruling is reversed. The floor-box trustless changed-path recompute keystone and its apparatus (era-4/5
+  churn, the R1.x ladder, the residual register as a growth medium, the structure rounds) is ACCIDENTAL complexity: it
+  chose the research-frontier answer (stateless validation of unbounded state — Ethereum's unshipped stateless-client
+  program) to a problem with three settled corners, which B8 says to buy. Evidence: `core/chain` non-test LOC 3,025 →
+  13,093 in 20 days (the floor box alone 41 files, ~18K LOC); 109 of the last 255 commits bookkeeping against 26
+  `feat(`; 275 distinct `R-*` names; 23 owner calls in one true-up; a sixth block format scheduled inside three weeks;
+  the keystone's own code contradicting its ratification's O(payload) claim (the correction above); a classification
+  the R1.6 design doc itself called decoration shipped as safe and driven wrong-accept 200/200 by the PE's PoC.
+- **The decision.**
+  1. **FREEZE the trustless-recompute track now:** no new floor-box classes, no Structure Round 1B, no more R1.x rungs,
+     no structure rounds on the keystone, no era whose reason is "the recompute needs it" (era 5 is not pre-approved).
+     Every existing gate stays GREEN and is not weakened. The state-root commitment (three v5 digest leaves) stays.
+  2. **Reorder the ROADMAP to the note's §5 spine:** Boulder 0 (done) → Lane A consensus liveness (essential, first) →
+     Boulder 2 the economy (promoted to the RC's substance) → Boulder 3 the freeze = the RC, its dependency on the
+     recompute spine CUT (the RC's only floor-box requirement is owner call 2's cold auditor: never-Accept,
+     unconditional loud stall, one DRIVEN suite) → Boulder 4 the external B8 pass on the frozen artifact → Boulder 5
+     the operational floor (post-RC, ahead of the recompute) → Boulder 1 re-scoped to "the cheap validator", post-RC,
+     toward `1.0.0`: a short design consult (PE + crypto-specialist + researcher) choosing among (a) bound the state,
+     (b) optimistic + fraud proofs, (c) tiered validation — expected (a)+(c) — against B8; R1.8 the accept-flip only
+     after the simpler design proves out, and only if still needed.
+  3. **Freeze-manifest deltas** (the Researcher is told in one line; unchanged items are not re-certified): the digest
+     set freezes at three leaves and that is the last format touch; the box witness/frame byte ceiling leaves the
+     manifest for the design consult; the `proof.Unmarshal` decoder bound's deadline moves from the frozen flip to the
+     stamp-raise train.
+  4. **The residual register is pruned to ACTIONABLE rows** with an owner, a closer and a lane (25 rows from 125);
+     held-in-tension and owner-disclosed residuals are folded into `docs/design/m0.md` §10.1; closed rows are deleted
+     (verbatim in `/archive/roadmap-reorder-2026-09-08.md`). The 23-item owner-call block is archived; owner calls are
+     not a standing section of the roadmap.
+  5. **Ten simplicity rules are standing** in `silt/.claude/CLAUDE.md` (the B8 gate at every design decision; the PE's
+     mandate widened to correctness AND simplicity; the bookkeeping ratio capped at 1:1; a residual must be actionable
+     or it does not exist; at most five owner calls per true-up; no new era without a ratified non-recompute reason;
+     a green gate with no demonstrated red is decoration — a RULE; structure rounds frozen on the keystone; one cert
+     per consensus-rule change and only per consensus-rule change; the planner steps back to TENETS + VISION weekly).
+- **What this does NOT decide:** the pony's validation model itself — that is the design consult's output, owner-ratified;
+  whether R1.8 ever lands. The A1 h43 fix (`D-CONSENSUS-ARMING`, `D-H43-WORKLESS-DESIGNEE`) is untouched — core, live, real.
+- **Fact check recorded at the reorder:** the note's "close the cross-server double-redeem (fix `fcbab7e`)" is already
+  closed on main by R0.4b (`2ad9bd5`, per-epoch issuer-key expiry; open-break gate PR #700); `fcbab7e` (the per-serial
+  delivery guard, option b) is an unmerged alternative on a worktree branch and is not owed.

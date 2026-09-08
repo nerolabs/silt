@@ -8,6 +8,17 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Docs
+- **The 2026-09-08 ROADMAP reorder — simplicity, by owner direction via the PE (`D-RECOMPUTE-FREEZE`).** The
+  trustless-recompute track (the floor-box keystone, Structure Round 1B, the R1.x ladder, any era whose reason is
+  "the recompute needs it") is FROZEN; `ROADMAP.md` is reordered to Lane A → Boulder 2 (the economy, the RC's
+  substance) → Boulder 3 (the freeze = the RC, its dependency on the recompute spine cut: the only floor-box
+  requirement is the cold auditor, never-Accept, one driven suite) → Boulder 4 (B8 external) → Boulder 5 → Boulder 1
+  re-scoped to "the cheap validator" post-RC; the 23-item owner-call block archived; the residual register pruned
+  from 125 rows to 25 actionable rows (held-in-tension residuals folded into `docs/design/m0.md` §10.1; closed rows
+  verbatim in `/archive/roadmap-reorder-2026-09-08.md`); `decisions.md`'s O(payload) recompute ratification corrected
+  to the as-built O(registry) cost; ten simplicity rules standing in `.claude/CLAUDE.md`.
+
 ### Graded
 - **Cloud field test `2633a11-deep` (2026-09-07, main `2633a11`; owner go on the ratified order, Lane A3): REVIEW — 30 pass /
   2 gap / 0 fail / 3 skip** (`integration/cloudtest/report-2633a11-deep.md`, results/rss/console/flow-evidence force-added).
