@@ -5,11 +5,19 @@ package main
 //
 // WHY THIS IS A SIBLING AND NOT AN EDIT TO THE EXISTING WHOLE-SURFACE SCAN.
 // TestR29aF2NoUnauthenticatedResponseOnTheWholeSurfaceCarriesTheWithheldCounter scans
-// for ONE value, objects[0].funded, and its stated strength is that at `paid == 0` the
-// per-object `reserve`, `net` and `skimIn` are all ALIASES of that same value — four
-// aliases covered by one scan. Paying a bounty in that fixture destroys three of the
-// four. So driving A4-3 non-zero there would have traded an existing gate's coverage for
-// this one's. This fixture pays a bounty precisely because that one cannot.
+// for ONE value, objects[0].funded, and its strength is that at `paid == 0` the
+// per-object `reserve`, `net` and `skimIn` are ALIASES of that same value — four
+// quantities covered by one scan.
+//
+// Do not read the split as forced; it is a CHOICE, and the blind PE measured the
+// arithmetic this comment first got wrong. Paying a bounty into that fixture destroys
+// TWO of the four aliases, not three: `skimIn` is an alias unconditionally, because
+// economyObject.SkimIn is assigned o.Funded and never subtracts `paid`. And a
+// single-scan fix WAS available — A4-3 is node-wide while the per-object walk covers
+// cared roots only, so paying from an UNCARED root drives this field non-zero with all
+// four aliases intact. Two properties in two fixtures is simply the more robust shape:
+// each fixture stays legible, and r29aWholeSurfaceGETRoutes couples them so a new GET
+// route reddens both until it has been examined against each one's property.
 //
 // WHAT IT PROVES. The scan generalises the same way its sibling does: it walks the real
 // apiRoutes table and asks "what reconstructs the quantity", not "where is the field

@@ -642,9 +642,11 @@ func (l *Ledger) Grant() int64 { return l.grant }
 // interface, so ports.CreditLedger stays the consensus-relevant surface.
 //
 // It does NOT decide, refuse, or move credit — it records a refusal the caller already
-// made. Calling it on an identity that has not been through the gate would register that
-// identity (acct does), so call it only where a refusal has just been decided; every
-// caller of CanPublish has already registered the account through it.
+// made. It is NOT free of side effects on an unknown identity: acct registers, and on a
+// ledger with no faucet configured registration mints the full starter grant onto that
+// balance. Unreachable today — CanPublish registers first, so every identity reaching
+// this call already has an account — but it is why this must be called only where a
+// refusal has just been decided, never speculatively and never on a bare identity.
 func (l *Ledger) NoteSpendRefused(n ports.NodeID) { l.noteSpendRefused(l.acct(n)) }
 
 // FaucetStats reads the faucet telemetry. Reading moves nothing.

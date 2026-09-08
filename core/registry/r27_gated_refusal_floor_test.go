@@ -59,7 +59,7 @@ func TestGatedPublishRefusalMovesTheAffordabilityFloor(t *testing.T) {
 	}
 	fs := ledger.FaucetStats()
 	if fs.SpendRefusedInsufficientCredit != 3 || fs.SpendRefusersDistinct != 2 {
-		t.Fatalf("after three Gated.Publish credit refusals by two identities: refused %d distinct %d, want 3 and 2 — the CanPublish gate's refusal decision is uncounted, so the floor under-reads beneath a HARD canary abort (ROADMAP C6)",
+		t.Fatalf("after three Gated.Publish credit refusals by two identities: refused %d distinct %d, want 3 and 2 — the CanPublish gate's refusal decision is miscounted (0 = uncounted, so the floor under-reads beneath a HARD canary abort; more than 3 = counted twice, which trips that abort on honest traffic) (ROADMAP C6)",
 			fs.SpendRefusedInsufficientCredit, fs.SpendRefusersDistinct)
 	}
 
