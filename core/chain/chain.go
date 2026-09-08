@@ -1741,7 +1741,10 @@ func bftThreshold(n int) int {
 //
 // In every regime the value is ≤ the old max(Quorum, bftThreshold(N)): the
 // change only ADDS accepts. Config.Quorum survives as the proposer-side gather
-// target (proposeBlockAt raises it to this value, never lowers it). Exposed so
+// target: gatherTwoPhase gathers max(caller floor, ConfigQuorum(), RequiredQuorum())
+// on every proposal path, so a uniform swarm's blocks carry the same attestation
+// count as before this change (the local floor is a gather target, never a
+// validity rule). Exposed so
 // a proposer gathers what ValidateCommit will demand; validateStructural reads
 // it too, so Reload accepts what ValidateCommit accepted. The v5 mirror is
 // v5RequiredQuorum, pinned by G-D13.
@@ -2710,7 +2713,7 @@ func (c *Chain) EpochBlocks() uint64 { return c.cfg.EpochBlocks }
 // ConfigQuorum returns the operator's Config.Quorum — the proposer-side GATHER
 // target (#380 direction (1), D-CONSENSUS-ARMING (20)), NOT a validity term in
 // objective mode with Byzantine sizing (see RequiredQuorum). Read-only getter of
-// a config value; it changes no rule. proposeBlockAt reads it so every proposal
+// a config value; it changes no rule. gatherTwoPhase reads it so every proposal
 // path gathers max(ConfigQuorum, RequiredQuorum) whatever floor its caller passed.
 func (c *Chain) ConfigQuorum() int { return c.cfg.Quorum }
 

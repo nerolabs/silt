@@ -172,6 +172,87 @@ func TestG_H43_8e_GatherTargetSurvivesTheDerivedFloor(t *testing.T) {
 		t.Logf("G-H43-8 arm 8e new-view path confirmed: committed block carries exactly cfg.Quorum=%d non-proposer attestations", cfg.Quorum)
 	})
 
+	// The h43 new-view FORCED leg (chainrole.go proposeAtNewView → gatherTwoPhase
+	// DIRECTLY with quorum 0, never through proposeBlockAt; research
+	// certification §6.12 G-380-A): two peers LOCKED on a block X by a third
+	// node declare round 1 carrying that lock, so the round-1 designee's
+	// certificate forces X and it RE-PROPOSES the locked value. The lock is a
+	// synthetic prepare-QC (author + two peers, verified by VerifyPrepareQC as
+	// a premise) adopted through the node's own adoptLock — the same object a
+	// real prepare phase would have persisted.
+	t.Run("new_view_forced_leg_gathers_cfg.Quorum", func(t *testing.T) {
+		nodes, ids, net, g, cfg := uniformQuorum3Net(t, 8730, "g-h43-8e-forced")
+		signerOf := map[ports.NodeID]*identity.Identity{}
+		for _, id := range ids {
+			signerOf[id.NodeID()] = id
+		}
+		_, height := nodes[0].chain.Head()
+		designeeID := nodes[0].designatedProposer(height, 1)
+		var designee *Node
+		var others []*Node
+		for _, nd := range nodes {
+			if nd.id == designeeID {
+				designee = nd
+			} else {
+				others = append(others, nd)
+			}
+		}
+		if designee == nil || len(others) != 3 {
+			t.Fatalf("premise: designatedProposer(%d, 1) is not one of the four anchors", height)
+		}
+		author, s1, s2 := others[0], others[1], others[2]
+
+		// X: authored by `author`, with a round-0 prepare-QC from the author + s1 + s2.
+		x := &chain.Block{Version: chain.BlockVersion, Height: height, Prev: g.Hash(), Entries: []ports.Entry{mkEntry("g-h43-8e-forced-X")}}
+		chain.Sign(x, signerOf[author.id].Signer())
+		qc := []chain.Attestation{
+			chain.AttestAt(x, signerOf[author.id].Signer(), 0, chain.PhasePrepare),
+			chain.AttestAt(x, signerOf[s1.id].Signer(), 0, chain.PhasePrepare),
+			chain.AttestAt(x, signerOf[s2.id].Signer(), 0, chain.PhasePrepare),
+		}
+		if err := designee.chain.VerifyPrepareQC(x, qc, 0); err != nil {
+			t.Fatalf("premise: the synthetic round-0 prepare-QC for X must verify: %v", err)
+		}
+		rawX := chain.Encode(x)
+		for _, s := range []*Node{s1, s2} {
+			if !s.adoptLock(s.roundsFor(), x, 0, qc, rawX) {
+				t.Fatalf("premise: %s could not adopt the X lock", s.id)
+			}
+		}
+		rawRoundChange1 := func(nd *Node) []byte {
+			nd.advanceToRound(nd.roundsFor(), 1, "test")
+			raw := nd.roundsFor().Changes[1][nd.id]
+			if raw == nil {
+				t.Fatalf("premise: %s did not record its own round-change(1) envelope", nd.id)
+			}
+			return raw
+		}
+		raw1, raw2 := rawRoundChange1(s1), rawRoundChange1(s2)
+		forced, err := designee.newViewFor(height, 1, [][]byte{raw1, raw2})
+		if err != nil || forced == nil || forced.Hash != x.Hash() {
+			t.Fatalf("premise: the 2-envelope certificate must FORCE X (forced=%v err=%v) — otherwise the fresh leg runs, not the forced one", forced != nil, err)
+		}
+
+		designee.handleChain(s1.id, ports.Message{Kind: ports.MsgRoundChange, Data: raw1})
+		designee.handleChain(s2.id, ports.Message{Kind: ports.MsgRoundChange, Data: raw2})
+		drainHeld(t, net, fifo)
+		if _, h := designee.chain.Head(); h <= height {
+			t.Fatalf("premise: the forced re-proposal never committed (head %d) — the path under test did not run", h)
+		}
+		blk := designee.Chain().Blocks(1)[0]
+		if blk.Hash() != x.Hash() {
+			t.Fatalf("premise: the committed block is not the LOCKED value X — the fresh leg ran, not the forced one")
+		}
+		if got := nonProposerAttCount(&blk); got != cfg.Quorum {
+			t.Fatalf("G-H43-8 arm 8e CONTROL VIOLATION (new-view FORCED leg, G-380-A): the locked re-proposal committed with %d "+
+				"non-proposer attestations, want cfg.Quorum = %d — proposeAtNewView's forced leg calls gatherTwoPhase with "+
+				"quorum 0 and never reaches proposeBlockAt; the raise to max(cfg.Quorum, RequiredQuorum()=%d) must live in "+
+				"gatherTwoPhase, the choke point every path shares, or an un-upgraded -quorum %d peer refuses this block",
+				got, cfg.Quorum, designee.chain.RequiredQuorum(), cfg.Quorum)
+		}
+		t.Logf("G-H43-8 arm 8e new-view FORCED leg confirmed: the locked value X was re-proposed and committed with exactly cfg.Quorum=%d non-proposer attestations", cfg.Quorum)
+	})
+
 	// The bond-reg drain path (chainrole.go maybeProposeBondDrain → proposeBlock
 	// with quorum 0): the height's designee holds pending work and sweeps.
 	t.Run("bond_drain_path_gathers_cfg.Quorum", func(t *testing.T) {
