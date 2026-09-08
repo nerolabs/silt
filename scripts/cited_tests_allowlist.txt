@@ -111,3 +111,11 @@ TestSelfDealOneBondedIdentityCapsDemand
 TestAbortLeavesTokenReusable
 TestRedeemRejectsExpiredTokenBeforeCrediting
 TestRedeemWithNoKeysetRefuses
+
+# (H) C1 part 2, 2026-09-08 — the credit ledger's flat leg retirement. Both names below
+# were tests of the flat leg's UNGUARDED (serial-less) path, which the anchored session
+# lane does not have; the citations are the "what this replaces" line in the test that
+# replaced them (TestSerialGuard_MalformedSerialIsRefusedAndUnrecorded,
+# TestEpochWatermark_InWindowAnchorIsUnaffected).
+TestSerialGuard_EmptySerialUnguarded
+TestEpochWatermark_UnguardedRedeemIsUnaffected

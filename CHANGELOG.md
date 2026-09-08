@@ -22,6 +22,24 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   paid-serial guard and nothing else. Every re-homed property keeps a driven ablation or names the existing
   test that pins it — see the commit message for the full old-test → new-test → ablation ledger.
 
+- **The credit ledger's FLAT delivery leg (C1).** `Ledger.RedeemDeliveryCredit`,
+  `Ledger.RedeemDeliveryCreditReason` and the `ports.CreditLedger.RedeemDeliveryCredit` port method are DELETED.
+  They had no production caller after B-9 (#764); the paying surface is `SpendDeliveryAnchors` →
+  `SettleDelivery` → `CloseDeliverySession`, where the anchor is spent at session OPEN into the shared
+  paid-serial guard. The guard, the epoch watermark, the provisional-lane supersede and the eviction reversal
+  all stay — only the flat ENTRY POINT goes. ~22 test files re-homed onto the lane (`settleOnLane` /
+  `paidOnLane`, which open a one-anchor session and settle its budget), and every red-team scar re-derived
+  RED under a controlled revert on the lane, at its historical broken value where it had one (the
+  cross-server pump still reports `(K−1)·fee` when the guard's already-paid screen is removed).
+  Two flat-leg-only properties do NOT re-home and are replaced by strictly stronger ones, each stated in
+  the test that replaces it: the UNGUARDED serial-less redeem (the lane has no unguarded path — a mis-sized
+  serial is refused with `ReasonAnchorMalformed`, recording nothing), and the flat leg's internal ORDERING
+  rule that a refused receipt gives up its self-mint (on the lane a refused OPEN admits no session, so the
+  server is on the certified unwitnessed fallback; the economic question "can not-being-paid beat being
+  paid" is asserted directly by `TestG4_NotBeingPaidIsNeverBetterThanBeingPaid` at every size, and from the
+  other direction by `TestDeliveryAcceptStrictlyDominatesSuppressionAtEverySize`, both pinning the same
+  +75 margin at 64 MiB).
+
 ### Fixed
 - **The paid-serial guard's durable record carries its LANE (`R-GUARD-RESTORE-LANE-UNKNOWN`).** The guard holds
   two populations on one map — delivery anchors and relay anchors — and the on-disk record carried neither, so

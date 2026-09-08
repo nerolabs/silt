@@ -54,28 +54,32 @@ func TestRTC3_RestartDoesNotEvictTheGuard(t *testing.T) {
 	s := testSerial(1)
 	store := &memStore{}
 
-	// Boot 1.
+	// Boot 1. The ledger reads its own epoch (R2.10 / F8), and an anchor above that
+	// clock is refused as future-dated — so the clock has to be at the anchor's epoch,
+	// exactly as the daemon's chainEpoch is.
 	l1 := New(fee, 500_000)
+	l1.SetEpochSource(&mockEpochSource{e: 3})
 	l1.SetPaidSerialStore(store)
 	if err := l1.LoadPaidSerials(); err != nil {
 		t.Fatal(err)
 	}
-	if got := l1.RedeemDeliveryCredit(srv, fetcher, obj, s, 3); got != wantPay {
+	if got := paidOnLane(l1, srv, fetcher, obj, s, 3); got != wantPay {
 		t.Fatalf("setup: first redeem must pay %d, got %d", wantPay, got)
 	}
-	if got := l1.RedeemDeliveryCredit(srv, fetcher, obj, s, 3); got != 0 {
+	if got := paidOnLane(l1, srv, fetcher, obj, s, 3); got != 0 {
 		t.Fatalf("setup: the in-process guard must refuse the second redeem, got %d", got)
 	}
 
 	// RESTART: a byte-identical fresh ledger over the SAME durable store — what the
 	// daemon does at boot (cmd/silt/daemon.go).
 	l2 := New(fee, 500_000)
+	l2.SetEpochSource(&mockEpochSource{e: 3})
 	l2.SetPaidSerialStore(store)
 	if err := l2.LoadPaidSerials(); err != nil {
 		t.Fatal(err)
 	}
 	before := sumConserved(l2)
-	paid, why := l2.RedeemDeliveryCreditReason(srv, fetcher, obj, s, 3)
+	paid, why := settleOnLane(l2, srv, fetcher, obj, s, 3)
 	if paid != 0 || why != ReasonAlreadyPaid {
 		t.Fatalf("BREAK RT-C3B-1 REOPENED: after a restart the same serial paid %d (%s). "+
 			"Σ conserved moved %+d with no second withdrawal fee behind it.",
@@ -89,15 +93,17 @@ func TestRTC3_RestartDoesNotEvictTheGuard(t *testing.T) {
 func TestRTC3_RedeemBeforeLoadIsRefusedNotPaid(t *testing.T) {
 	store := &memStore{}
 	l0 := New(50_000, 500_000)
+	l0.SetEpochSource(&mockEpochSource{e: 1})
 	l0.SetPaidSerialStore(store)
 	if err := l0.LoadPaidSerials(); err != nil {
 		t.Fatal(err)
 	}
-	l0.RedeemDeliveryCredit(id(1), id(2), id(7), testSerial(4), 1)
+	paidOnLane(l0, id(1), id(2), id(7), testSerial(4), 1)
 
 	l := New(50_000, 500_000)
+	l.SetEpochSource(&mockEpochSource{e: 1})
 	l.SetPaidSerialStore(store) // attached, NOT loaded
-	paid, why := l.RedeemDeliveryCreditReason(id(1), id(2), id(7), testSerial(4), 1)
+	paid, why := settleOnLane(l, id(1), id(2), id(7), testSerial(4), 1)
 	if paid != 0 || why != ReasonGuardUnloaded {
 		t.Fatalf("a redeem before the guard is loaded paid %d (%s) — it must be refused, "+
 			"not paid: the ledger does not yet know what it already paid", paid, why)
@@ -105,7 +111,7 @@ func TestRTC3_RedeemBeforeLoadIsRefusedNotPaid(t *testing.T) {
 	if err := l.LoadPaidSerials(); err != nil {
 		t.Fatal(err)
 	}
-	if paid, why := l.RedeemDeliveryCreditReason(id(1), id(2), id(7), testSerial(4), 1); paid != 0 || why != ReasonAlreadyPaid {
+	if paid, why := settleOnLane(l, id(1), id(2), id(7), testSerial(4), 1); paid != 0 || why != ReasonAlreadyPaid {
 		t.Fatalf("after the load the guard must remember the serial, got %d (%s)", paid, why)
 	}
 }
@@ -124,7 +130,7 @@ func TestRTC3_GuardEntryIsDurableBeforeTheCreditMoves(t *testing.T) {
 	l.Register(id(1))
 	l.Register(id(2))
 	before := sumConserved(l)
-	paid, why := l.RedeemDeliveryCreditReason(id(1), id(2), id(7), testSerial(5), 0)
+	paid, why := settleOnLane(l, id(1), id(2), id(7), testSerial(5), 0)
 	if paid != 0 || why != ReasonGuardStore {
 		t.Fatalf("a redeem whose guard entry could not be persisted paid %d (%s)", paid, why)
 	}
@@ -148,13 +154,14 @@ func TestRTC3_GuardEntryExpiresOnItsOwnIssueEpoch(t *testing.T) {
 	s := testSerial(9)
 
 	l := New(fee, 0)
+	l.SetEpochSource(&mockEpochSource{e: 4}) // the redeemer's clock: both tokens are in window at 4
 	// Token A, issued epoch 0, redeemed at epoch 4 (in window, W=4).
-	if got := l.RedeemDeliveryCredit(srvA, fetcher, obj, s, 0); got != wantPay {
+	if got := paidOnLane(l, srvA, fetcher, obj, s, 0); got != wantPay {
 		t.Fatalf("setup: token A must pay, got %d", got)
 	}
 	// Token B: the SAME serial, issued epoch 4 — a DIFFERENT token, funded by its own
 	// withdrawal fee. Keyed by the token it is its own entry, so it pays once.
-	if got := l.RedeemDeliveryCredit(srvB, fetcher, obj, s, 4); got != wantPay {
+	if got := paidOnLane(l, srvB, fetcher, obj, s, 4); got != wantPay {
 		t.Fatalf("token B (same serial, epoch 4) must pay its own conserved leg, got %d — "+
 			"it has its own withdrawal fee behind it", got)
 	}
@@ -173,7 +180,7 @@ func TestRTC3_GuardEntryExpiresOnItsOwnIssueEpoch(t *testing.T) {
 	// inside its window.
 	for cur := uint64(5); cur <= 8; cur++ {
 		l.sweepExpiredSerials(cur)
-		if paid, why := l.RedeemDeliveryCreditReason(srvC, fetcher, obj, s, 4); paid != 0 {
+		if paid, why := settleOnLane(l, srvC, fetcher, obj, s, 4); paid != 0 {
 			t.Fatalf("epoch %d: server C re-collected %d (%s) off token B", cur, paid, why)
 		}
 	}
@@ -184,11 +191,15 @@ func TestRTC3_GuardEntryExpiresOnItsOwnIssueEpoch(t *testing.T) {
 // still be in window at the epoch it was removed.
 func TestRTC3_EveryEvictedEntryIsExpired(t *testing.T) {
 	l := New(50_000, 0)
+	src := &mockEpochSource{}
+	l.SetEpochSource(src)
 	s := testSerial(11)
 	// One serial, a token at every epoch in 0..8 — the shape the old MIN-epoch keying
-	// collapsed into a single entry.
+	// collapsed into a single entry. The clock walks with them: an anchor above the
+	// ledger's own epoch is future-dated, and one below it by more than W is backdated.
 	for e := uint64(0); e <= 8; e++ {
-		l.RedeemDeliveryCredit(id(byte(e)+20), id(2), id(7), s, e)
+		src.e = e
+		paidOnLane(l, id(byte(e)+20), id(2), id(7), s, e)
 	}
 	for cur := uint64(0); cur <= 20; cur++ {
 		before := map[string]paidSerialEntry{}
@@ -218,6 +229,7 @@ func TestRTC3_SameSerialTwoEpochsIsStillConserved(t *testing.T) {
 	srvA, srvB, fetcher, obj := id(1), id(2), id(3), id(7)
 	s := testSerial(9)
 	l := New(fee, 0)
+	l.SetEpochSource(&mockEpochSource{e: 4}) // both tokens in window at the redeemer's clock
 	l.Register(fetcher)
 	l.accounts[fetcher].balance = 1 << 40
 
@@ -228,9 +240,9 @@ func TestRTC3_SameSerialTwoEpochsIsStillConserved(t *testing.T) {
 	if err := l.ChargePublish(fetcher); err != nil {
 		t.Fatal(err)
 	}
-	l.RedeemDeliveryCredit(srvA, fetcher, obj, s, 0)
+	paidOnLane(l, srvA, fetcher, obj, s, 0)
 	l.sweepExpiredSerials(5)
-	l.RedeemDeliveryCredit(srvB, fetcher, obj, s, 4)
+	paidOnLane(l, srvB, fetcher, obj, s, 4)
 	if after := sumConserved(l); after != before {
 		t.Fatalf("MINT: Σ conserved moved %+d across two fees and two payouts", after-before)
 	}
@@ -258,7 +270,7 @@ func TestRTC3_CapGriefCostsExactlyTheSkim(t *testing.T) {
 		if err := l.ChargePublish(fetcher); err != nil {
 			t.Fatalf("fee %d: %v", i, err)
 		}
-		if paid := l.RedeemDeliveryCredit(griefer, fetcher, grieferRoot, testSerial(i), 0); paid == 0 {
+		if paid := paidOnLane(l, griefer, fetcher, grieferRoot, testSerial(i), 0); paid == 0 {
 			t.Fatalf("grief fill stalled at %d", i)
 		}
 	}
@@ -270,7 +282,7 @@ func TestRTC3_CapGriefCostsExactlyTheSkim(t *testing.T) {
 		t.Fatalf("the disclosed grief economics changed: net cost %d (was 0 — the skim "+
 			"lands in the escrow of the griefer's OWN root). Re-read the disclosure.", netCost)
 	}
-	paid, why := l.RedeemDeliveryCreditReason(victim, fetcher, victimRoot, testSerial(999999), 0)
+	paid, why := settleOnLane(l, victim, fetcher, victimRoot, testSerial(999999), 0)
 	if paid != 0 || why != ReasonGuardFull {
 		t.Fatalf("at the cap an honest redeem must be REFUSED (never a live eviction), "+
 			"got %d (%s)", paid, why)

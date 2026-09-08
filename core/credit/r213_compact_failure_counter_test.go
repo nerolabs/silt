@@ -29,11 +29,11 @@ func TestR213_BenignCompactionFailureIsRecordedNotDiscarded(t *testing.T) {
 	if l.CompactFailures() != 0 || l.LastCompactError() != nil {
 		t.Fatalf("fresh ledger must report no compaction failures")
 	}
-	if paid := l.RedeemDeliveryCredit(srv, fetcher, obj, testSerial(1), 0); paid == 0 {
+	if paid := paidOnLane(l, srv, fetcher, obj, testSerial(1), 0); paid == 0 {
 		t.Fatal("setup: epoch-0 redeem did not pay")
 	}
 	src.e = paidSerialWindow + 1 // the band advance (R2.10 / F8: the ledger reads it)
-	paid, reason := l.RedeemDeliveryCreditReason(srv, fetcher, obj, testSerial(2),
+	paid, reason := settleOnLane(l, srv, fetcher, obj, testSerial(2),
 		paidSerialWindow+1)
 
 	if paid == 0 || reason != ReasonPaid {

@@ -97,24 +97,24 @@ var standingClassification = map[string]standingClass{
 	"RepairsDone":         neutral, // observability (per-node repair-work count; no standing)
 	"BountyEarned":        neutral, // observability (repair revenue split; no standing)
 
-	// PoD neutral lane (delivery.go, certified 2026-08-26). The witnessed
-	// delivery credit is a CONSERVED balance transfer (the fetcher's withdrawal
-	// fee, less skim) that supersedes the serve self-record — pure balance
-	// economy. It must never move standing: a receipt is mintable with zero
-	// object bytes by certified design, so the entire soundness story rests on
-	// this press staying neutral (delivery_test.go pins it against a heavy
-	// deliverer, the direct §7.1 firewall test).
-	"RedeemDeliveryCredit": neutral,
-	// R0.4b C3 close: the same press with its refusal reason returned, plus the two
-	// observability counters behind it. The reason and the counters are read by logs
-	// and tests only — no accounting rule and no standing press reads them.
-	"RedeemDeliveryCreditReason": neutral,
-	"GuardFullRefusals":          neutral, // observability (paid-serial guard cap hits)
-	"SerialSweeps":               neutral, // observability (expiry sweep count, RT-E bound)
-	"CompactFailures":            neutral, // observability (R2.13: durable-store Compact errors, counted never refused)
-	"LastCompactError":           neutral, // observability (R2.13: the most recent such error)
-	"SetPaidSerialStore":         neutral, // attaches the durable guard store; moves nothing
-	"SetEpochSource":             neutral, // R2.10 / F8: injects the ledger's epoch clock; moves nothing
+	// PoD neutral lane. The witnessed delivery credit is a CONSERVED balance transfer
+	// (the fetcher's burned anchor face, less skim) that supersedes the serve
+	// self-record — pure balance economy. It must never move standing: a receipt is
+	// mintable with zero object bytes by certified design, so the entire soundness
+	// story rests on this press staying neutral (delivery_test.go pins it against a
+	// heavy deliverer, the direct §7.1 firewall test). Its entry points are
+	// SpendDeliveryAnchors / SettleDelivery / CloseDeliverySession, classified in
+	// deliveryanchor.go's block below; the flat leg's RedeemDeliveryCredit and
+	// RedeemDeliveryCreditReason retired with it (C1, 2026-09-08).
+	//
+	// The observability counters behind the guard: read by logs and tests only — no
+	// accounting rule and no standing press reads them.
+	"GuardFullRefusals":  neutral, // observability (paid-serial guard cap hits)
+	"SerialSweeps":       neutral, // observability (expiry sweep count, RT-E bound)
+	"CompactFailures":    neutral, // observability (R2.13: durable-store Compact errors, counted never refused)
+	"LastCompactError":   neutral, // observability (R2.13: the most recent such error)
+	"SetPaidSerialStore": neutral, // attaches the durable guard store; moves nothing
+	"SetEpochSource":     neutral, // R2.10 / F8: injects the ledger's epoch clock; moves nothing
 	// R2.9a B_bootstrap: SetObservabilityClock and BBootstrapPublish are classified in
 	// invariant_a_bbootstrap_test.go, which compiles only under the `bbootstrap` build
 	// tag — the two methods do not exist in a default build (D-BB-BUILD-TAG). This map
@@ -205,7 +205,7 @@ func TestInvariantA_NoNonMintPressRaisesStanding(t *testing.T) {
 		l.RecordServe(n, other, id(9), 1<<40)              // terabytes of self-reported serving
 		l.RecordAudit(n, id(9), true)                      // passed PoR audits fund balance only
 		l.RecordServeToObject(n, other, obj, id(9), 1<<40) // object-aware serve + auto-skim
-		l.RedeemDeliveryCredit(n, other, obj, nil, 0)      // witnessed delivery credit (PoD neutral lane)
+		paidOnLane(l, n, other, obj, testSerial(531), 0)   // witnessed delivery credit (PoD neutral lane)
 		// PayWord relay credit (PoD relay lane), pressed against an ANCHORED session
 		// so the settle body actually pays (cert §3): buy one anchor through the
 		// real burn, spend it, settle the whole budget to n.

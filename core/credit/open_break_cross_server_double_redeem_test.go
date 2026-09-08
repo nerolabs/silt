@@ -151,10 +151,10 @@ func TestOpenBreak_CrossServerDoubleRedeemMoneyPump(t *testing.T) {
 			// fires unconditionally every time.
 			// THE SHARED SERIAL is what makes this the cross-server attack: the K
 			// colluders hold ONE token, so all K receipts name the same serial.
-			sharedSerial := []byte("one-token-K-colluding-servers")
+			sharedSerial := testSerial(777) // ONE token: the K colluding servers all present this
 			paid := make([]int64, tc.k)
 			for i, srv := range servers {
-				paid[i] = l.RedeemDeliveryCredit(id(srv), fetcher, obj, sharedSerial, 0)
+				paid[i] = paidOnLane(l, id(srv), fetcher, obj, sharedSerial, 0)
 			}
 
 			gotTotal := sumLedger()

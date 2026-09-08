@@ -48,7 +48,7 @@ func TestF8_FallingSourceLowersNothingAndReadmitsNothing_Delivery(t *testing.T) 
 
 	// Setup: S issued at 5 is in-window at source 9 (5 + W = 9) and pays.
 	S := testSerial(1)
-	if got := l.RedeemDeliveryCredit(server, fetcher, obj, S, 5); got != wantPay {
+	if got := paidOnLane(l, server, fetcher, obj, S, 5); got != wantPay {
 		t.Fatalf("setup: at source 9 a serial issued at 5 is in-window and must pay %d, got %d", wantPay, got)
 	}
 	if _, ok := l.paidSerial[paidKey(5, S)]; !ok {
@@ -60,7 +60,7 @@ func TestF8_FallingSourceLowersNothingAndReadmitsNothing_Delivery(t *testing.T) 
 
 	// Source → 10: the band advance sweeps floor 6, so S (epoch 5) leaves the map.
 	src.e = 10
-	if got := l.RedeemDeliveryCredit(server, fetcher, obj, testSerial(2), 10); got != wantPay {
+	if got := paidOnLane(l, server, fetcher, obj, testSerial(2), 10); got != wantPay {
 		t.Fatalf("setup: the epoch-10 redeem must pay %d, got %d", wantPay, got)
 	}
 	if l.epochWatermark != 10 {
@@ -75,7 +75,7 @@ func TestF8_FallingSourceLowersNothingAndReadmitsNothing_Delivery(t *testing.T) 
 	before := sumConserved(l)
 
 	// (i) the watermark stays at 10.
-	paid, why := l.RedeemDeliveryCreditReason(server, fetcher, obj, S, 5)
+	paid, why := settleOnLane(l, server, fetcher, obj, S, 5)
 	if l.epochWatermark != 10 {
 		t.Fatalf("(i) a source that fell 10 → 6 lowered the watermark to %d, want 10 (R-F8-LATCH: "+
 			"epochWatermark = max(epochWatermark, source.Epoch()))", l.epochWatermark)
@@ -93,7 +93,7 @@ func TestF8_FallingSourceLowersNothingAndReadmitsNothing_Delivery(t *testing.T) 
 		t.Fatalf("(ii) a refused backdated redeem must move nothing: Σ moved by %+d", after-before)
 	}
 	// (iii) a fresh serial issued at 7 is in-window AT THE WATERMARK (7 + 4 ≥ 10) and pays.
-	paid, why = l.RedeemDeliveryCreditReason(server, fetcher, obj, testSerial(3), 7)
+	paid, why = settleOnLane(l, server, fetcher, obj, testSerial(3), 7)
 	if paid != wantPay || why != ReasonPaid {
 		t.Fatalf("(iii) a serial issued at 7 with the source at 6 and the watermark at 10 returned (%d, %q), "+
 			"want (%d, %q) — the screens must run against the watermark, not the raw source",
@@ -170,7 +170,7 @@ func TestF8_NilSourceReadsAsEpochZero(t *testing.T) {
 	if got := l.Epoch(); got != 0 {
 		t.Fatalf("a ledger with no source must read epoch 0, got %d", got)
 	}
-	if got := l.RedeemDeliveryCredit(id(1), id(3), id(7), testSerial(1), 0); got != wantPay {
+	if got := paidOnLane(l, id(1), id(3), id(7), testSerial(1), 0); got != wantPay {
 		t.Fatalf("an epoch-0 redeem on a source-less ledger must pay %d, got %d", wantPay, got)
 	}
 	if l.epochWatermark != 0 {

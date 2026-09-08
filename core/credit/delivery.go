@@ -366,28 +366,6 @@ func (l *Ledger) compactProvOrder() {
 	l.provHead = 0
 }
 
-// RedeemDeliveryCredit settles a WITNESSED delivery (a banked, verified
-// receipt): it supersedes the provisional self-record for (fetcher, root), then
-// pays the server the conserved credit — the withdrawal fee less the durability
-// skim, with the skim routed to the object's escrow (DECIDED 2026-08-26,
-// D-POD-KNOBS: escrow over burn, for the cross-tier funding loop — edge
-// delivery skim funds that content's durability on the persistent tier;
-// safety rests on the reversal floor below). Returns the credits paid to the
-// server. Self-delivery pays nothing, same guard as RecordServe. It never
-// touches standing.
-// serial is the redeemed receipt's token serial and issuedEpoch is the epoch whose
-// issuer key signed that token (discovered at demand.Bank.Redeem — it rides no field
-// on the token), measured against the ledger's own consensus epoch (its injected
-// EpochSource — R2.10 / F8; no caller supplies one). Together they close
-// the CROSS-SERVER DOUBLE-REDEEM: one demand token (one blind withdrawal, one serial,
-// one fee) funds exactly ONE conserved payout, so K colluding servers sharing one
-// token can no longer mint (K−1)·fee. See the paidSerial note in credit.go.
-func (l *Ledger) RedeemDeliveryCredit(server, fetcher ports.NodeID, root ports.Hash,
-	serial []byte, issuedEpoch uint64) int64 {
-	paid, _ := l.RedeemDeliveryCreditReason(server, fetcher, root, serial, issuedEpoch)
-	return paid
-}
-
 // The REASON a delivery redeem paid nothing. Every non-paying path used to return a
 // bare 0, so an operator could not tell "this server exceeded the serve rate the
 // guard was sized for" from the ordinary no-pay cases — and the node logged the
@@ -475,175 +453,6 @@ func (l *Ledger) SerialSweeps() int64 { return l.sweeps }
 func (l *Ledger) CompactFailures() int64  { return l.compactFailures }
 func (l *Ledger) LastCompactError() error { return l.lastCompactErr }
 
-// RedeemDeliveryCreditReason is RedeemDeliveryCredit plus the reason it paid
-// nothing. See the Reason* constants.
-func (l *Ledger) RedeemDeliveryCreditReason(server, fetcher ports.NodeID, root ports.Hash,
-	serial []byte, issuedEpoch uint64) (int64, string) {
-	if server == fetcher {
-		return 0, ReasonSelfDelivery // self-delivery earns nothing (the cheapest gaming, blocked)
-	}
-
-	// R0.4b cross-server double-redeem guard. The FIRST completed redeem of a serial
-	// pays; any later redeem of the SAME serial — by ANY server on this ledger,
-	// including a second colluding server holding its own self-named receipt — mints
-	// nothing.
-	//
-	// THE ORDERING INVARIANT (research certification 2026-09-03, gates G-4 and G-E):
-	//
-	//	EACH PROVISIONAL LANE INSTANCE IS REVERSED AT MOST ONCE, SO REVERSALS NEVER
-	//	EXCEED SERVES. A RECEIPT REVERSES AT MOST ONCE PER LANE INSTANCE.
-	//
-	// The supersede deletes the lane, so a re-presentation with no intervening serve
-	// moves nothing. A receipt that was REFUSED (and therefore never recorded in the
-	// guard) can reverse again after a fresh serve of the same lane — that is the
-	// accepted, purely-subtractive revenue grief, not a second payout. A receipt that
-	// was PAID is recorded, so ReasonAlreadyPaid returns above the supersede and it can
-	// never reverse again. What is bounded is the LANE INSTANCE, not the receipt.
-	//
-	// Only ReasonAlreadyPaid and ReasonSelfDelivery return above the supersede. Every
-	// OTHER refusal returns below it, so a refused receipt pays 0 AND gives up the
-	// eager self-mint RecordServeToObject took at serve time.
-	//
-	// WHY. The conserved leg is FLAT (fee − skim = 43,750 at the shipped fee) and the
-	// self-mint is BYTE-PROPORTIONAL (⌊7·B/(8·Dλ)⌋ since G-R212-7; 0.875·B before it).
-	// B IS THE WHOLE ACCUMULATED LANE, not one chunk (PE ruling §6, 2026-09-03): laneFor
-	// returns the existing lane and the serve floors its cumulative bytes, and the serve
-	// call site fires PER CHUNK (core/node/node.go), so B is the total bytes this server
-	// has served for this (server, requester, root) — the whole object. At λ = 1 a refusal
-	// was worth MORE than being paid above B = 50,000 bytes, a 64 MiB object 1,342× past
-	// break-even; at Dλ = 393,216 the 64 MiB self-mint is 149 credits and the refusal
-	// nets −43,601 against the paid leg (R-FLAT-FEE flipped), but the reversal below is
-	// what keeps a refusal from EVER paying. The operator can trigger a refusal itself
-	// by filling its own guard
-	// with junk serials (Receipt.Object is attacker-chosen, so distinct roots are
-	// free). Keeping the mint on a refusal was a profitable, operator-triggerable
-	// supersede-disable on the whole of Boulder 0's conservation rule: RecordServe's
-	// self-mint is an UNFUNDED SELF-MINT — the banned per-receipt subsidy — so a
-	// witnessed receipt must REVERSE it. The root cause is the flat fee against a
-	// byte-proportional mint (residual R-FLAT-FEE); re-pricing is a D-POD-KNOBS
-	// change needing its own certification. This closes the lever, not the cause.
-	//
-	// WHY ReasonAlreadyPaid STAYS ABOVE IT. The lane key is (server, requester, root)
-	// — a LANE, not a delivery — and a receipt names (serial, object, server), so it
-	// cannot say which serve it acknowledges. The guard's own record is what stops a
-	// re-presented receipt from reversing a RE-SERVED lane's fresh self-mint
-	// (RT-DELIV-1/1b/2). Hoisting the supersede above the AlreadyPaid screen would
-	// remove that bound. Below it, the reversal is bounded by the lane deletion: a
-	// second presentation with no intervening serve finds no lane and moves nothing.
-	// (Ungated branch, owed as R-REFUSED-RESERVE-REVERSAL: serve → refusal → serve
-	// again → the same receipt reverses the SECOND lane's fresh mint, exactly once.)
-	//
-	// The reversal itself is PURELY SUBTRACTIVE (reverseProvisional only debits, and
-	// floors the escrow claw-back at what the reserve still holds), so the worst case
-	// on any refusal path is an UNDER-pay, never a mint.
-	//
-	// An UNWITNESSED or malformed receipt never reaches here at all: the bank rejects
-	// it and core/node/demandrole.go never calls the ledger, so the self-mint STAYS
-	// until a valid receipt arrives — the legitimate unwitnessed bilateral fallback,
-	// unchanged (core/node TestG4_UnwitnessedReceiptLeavesTheSelfMintAlone).
-	//
-	// Legit abort-retry survives: an aborted server delivers nothing, banks nothing,
-	// and never reaches here, so the honest completion at the retry server is the
-	// FIRST redeem of that serial and pays (core/demand TestAbortLeavesAnchorReusable).
-	// The distinguisher is completed server-distinct redeems off ONE serial, not "was
-	// the token reused".
-	//
-	// A missing serial (len == 0) is unguarded: no production caller redeems without
-	// the receipt serial (core/node/demandrole.go), and this keeps the legacy /
-	// unwitnessed test paths that never carried one working while the witnessed path
-	// — the only pump surface — stays fully gated.
-	if len(serial) > 0 {
-		// R0.4b-5 / R2.10: read the ledger's OWN clock once, raise the monotone
-		// watermark, sweep on a band advance, then run the whole guard against the
-		// WATERMARK (R-F8-LATCH). A source that lags or falls — a mock, an embedder —
-		// must not be able to un-sweep or re-admit what this ledger already retired.
-		l.advanceEpoch()
-		if _, paid := l.paidSerial[paidKey(issuedEpoch, serial)]; paid {
-			return 0, ReasonAlreadyPaid // this TOKEN already funded one conserved payout — mint 0
-		}
-	}
-
-	// Supersede: reverse this delivery's provisional self-credit, then forget the
-	// lane. The reversal (escrow floored at what the reserve still holds — a bounty
-	// paid out between serve and redeem is real durability work, not recoverable)
-	// is shared verbatim with the eviction site. If the lane was already evicted,
-	// its mint was reversed at eviction, so there is nothing here to reverse: the
-	// redeem pays the conserved leg only (rule (b), one delivery one payment).
-	//
-	// This runs BEFORE every refusal below it — see the ordering invariant above.
-	k := provKey{server: server, requester: fetcher, root: root}
-	if p, ok := l.provisional[k]; ok {
-		l.reverseProvisional(server, root, p)
-		delete(l.provisional, k)
-		l.removeFromProvOrder(k) // keep provOrder in sync (RT-DELIV-1/1b/2 fix)
-	}
-
-	// The remaining guard refusals. Each pays 0; none keeps the self-mint, because
-	// the supersede above already reversed it.
-	if len(serial) > 0 {
-		if l.paidStore != nil && !l.guardLoaded {
-			// A durable store is attached but not yet loaded, so this ledger does not
-			// know what it already paid. Refuse rather than pay — this is exactly the
-			// restart window the store exists to close (red-team re-break F2).
-			return 0, ReasonGuardUnloaded
-		}
-		// Backdated redeem: the issuing epoch has left the window measured at the
-		// watermark, so some redeemer on this ledger is already past it and the
-		// serial may have been swept. Refuse rather than pay a second time. Under-pay
-		// only — an honest in-window redeem is unaffected because the watermark equals
-		// its own current epoch.
-		if issuedEpoch+paidSerialWindow < l.epochWatermark {
-			return 0, ReasonBackdated
-		}
-		if !l.reservePaidSerial(l.epochWatermark) {
-			// The guard set is full of STILL-LIVE (in-window, still-redeemable)
-			// serials. Forgetting one to make room is exactly the refuted FIFO
-			// design — it would re-open the self-financing eviction pump. Refuse to
-			// pay instead: an UNDER-pay, never an over-pay and never a mint, and it
-			// self-heals as the window advances. Reaching here requires a serve rate
-			// above the modeled bound the cap was derived against, and the counter
-			// plus the typed reason are what make that visible to an operator instead
-			// of surfacing as an unexplained credit=0.
-			l.guardFullRefusals++
-			l.guardFullRefusalsDelivery++
-			return 0, ReasonGuardFull
-		}
-	}
-
-	// Conservation: pay the fee the fetcher already paid in, less the skim.
-	fee := l.fee
-	if fee <= 0 {
-		return 0, ReasonNoFee
-	}
-
-	// RECORD THE GUARD ENTRY, DURABLY, BEFORE ANY CREDIT MOVES (red-team re-break F2).
-	// The ordering is the whole property, and it is SignMarkStore's: a crash between
-	// the two leaves a guard entry for a payout that never happened (an under-pay,
-	// self-healing when the window advances), never a payout with no guard entry —
-	// which a restart would let a second server collect all over again. A store that
-	// cannot write refuses the payout for the same reason.
-	//
-	// Like every refusal below the supersede, this one leaves the lane having already
-	// given up its unwitnessed self-credit. That direction is safe: the supersede is
-	// purely subtractive (it reverses a self-mint), so the outcome is an under-pay —
-	// never an over-pay, and never a mint.
-	if len(serial) > 0 {
-		if err := l.addPaidSerial(serial, server, issuedEpoch, laneDelivery); err != nil {
-			return 0, ReasonGuardStore
-		}
-	}
-
-	// acct() REGISTERS an unknown account (and hands it the grant), so it is taken
-	// here at the payment and not above: a refusal must not conjure an account.
-	skim := fee * SkimNum / SkimDen
-	l.acct(server).balance += fee - skim
-	e := l.escrowFor(root)
-	e.balance += skim
-	e.funded += skim
-
-	return fee - skim, ReasonPaid
-}
-
 // sweepExpiredSerials drops every guarded serial whose issuing epoch has left the
 // validity window at current. THIS IS THE ONLY EVICTION PATH, and that is the whole
 // R0.4b fix.
@@ -687,9 +496,8 @@ func (l *Ledger) sweepExpiredSerials(current uint64) {
 	// log a superset of the live set — which only ever refuses more — OR failing every
 	// Append. So a Compact error is recorded here (the WARN; this package has no
 	// logger, counters are its observability surface) and never refuses a payout by
-	// itself. A store that is actually broken reports it the one way the redeem path
-	// already refuses on: Append fails, and RedeemDeliveryCreditReason returns
-	// ReasonGuardStore. Refusing on every Compact error instead was REFUSED by the
+	// itself. A store that is actually broken reports it the one way the anchor spend
+	// already refuses on: Append fails, and spendAnchors returns ReasonGuardStore. Refusing on every Compact error instead was REFUSED by the
 	// ruling: it is a self-inflicted liveness break at exactly the load where a benign
 	// compaction fails. Gates: G-CO-2 (benign failure still pays) and G-CO-3 (broken
 	// store pays 0).
@@ -720,7 +528,7 @@ func (l *Ledger) livePaidSerials() []ports.PaidSerial {
 // reservePaidSerial makes room for one more guarded serial, or reports that it
 // cannot. It sweeps expired entries first and only then checks the cap; it NEVER
 // evicts a live entry. false means "the cap is full of still-redeemable serials",
-// which the caller turns into a refusal to pay (see RedeemDeliveryCredit).
+// which the caller turns into a refusal to open a session (see spendAnchors).
 func (l *Ledger) reservePaidSerial(current uint64) bool {
 	return l.reservePaidSerials(current, 1)
 }

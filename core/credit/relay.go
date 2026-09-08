@@ -1,8 +1,8 @@
 package credit
 
 // PoD relay lane — the relay/gateway bandwidth-compensation settlement
-// (docs/design/pod.md §7.3). It is the sibling of RedeemDeliveryCredit
-// (delivery.go).
+// (docs/design/pod.md §7.3). It is the sibling of the delivery session lane
+// (deliveryanchor.go); both spend anchors into the one guard in delivery.go.
 //
 // STATUS — R2.14 BUILT (2026-09-04), the relay-lane prepayment ANCHOR. The
 // R0.7 interim (pays 0, 2026-09-03) is retired by it. The certified facts:

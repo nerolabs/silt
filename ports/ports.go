@@ -230,20 +230,6 @@ type CreditLedger interface {
 	// escrow, so popular data self-funds its own repair. Returns the credits
 	// skimmed. Standing is untouched — serving funds the balance economy only.
 	RecordServeToObject(server, requester NodeID, root Hash, id ChunkID, bytes int64) int64
-	// RedeemDeliveryCredit settles a WITNESSED delivery (a verified, banked
-	// delivery receipt — the PoD neutral lane): it supersedes the delivery's
-	// provisional serve self-credit and pays the server the conserved credit
-	// (the fetcher's withdrawal fee, less the durability skim). Returns the
-	// credits paid. Balance economy only — never standing.
-	//
-	// serial is the redeemed receipt's token serial; it gates the cross-server
-	// double-redeem so one token funds exactly one conserved payout (K colluding
-	// servers sharing one token cannot mint (K−1)·fee). issuedEpoch is the epoch
-	// whose issuer key signed that token; measured against the ledger's OWN
-	// consensus epoch (EpochSource — R2.10 / F8, no caller supplies one) it lets the
-	// guard set evict BY EXPIRY, so a forgotten serial is always one no in-window
-	// issuer key can still validate (R0.4b).
-	RedeemDeliveryCredit(server, fetcher NodeID, root Hash, serial []byte, issuedEpoch uint64) int64
 	// RedeemRelayCredit settles a PayWord relay chain at session close (PoD §7.3).
 	// R2.14 (2026-09-04): pays min(chainValue, budget) into the RELAY's balance only,
 	// where budget is the Σ face of the anchors SpendRelayAnchors recorded for this

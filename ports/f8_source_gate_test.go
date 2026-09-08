@@ -108,10 +108,10 @@ func f8Names(ps [][2]string) string {
 	return "(" + strings.Join(s, ", ") + ")"
 }
 
-// TestF8_NoPortMethodCarriesAnEpoch is G-F8-1. RED on main: all four signatures end
-// in an epoch parameter the CALLER supplies (ports.go:221 currentEpoch, :241 current;
-// delivery.go:280/:353 currentEpoch; relayanchor.go:89 current; demandrole.go:148
-// currentEpoch).
+// TestF8_NoPortMethodCarriesAnEpoch is G-F8-1. RED when it was written: all four
+// signatures ended in an epoch parameter the CALLER supplies (ports.go currentEpoch /
+// current; delivery.go currentEpoch; relayanchor.go current; demandrole.go
+// currentEpoch). The sites move as lanes retire; the RULE does not.
 //
 // RUNTIME GATE: core/credit TestF8_FallingSourceLowersNothingAndReadmitsNothing_Delivery.
 func TestF8_NoPortMethodCarriesAnEpoch(t *testing.T) {
@@ -121,11 +121,15 @@ func TestF8_NoPortMethodCarriesAnEpoch(t *testing.T) {
 		lastName                string // the LAST parameter the port keeps ("" = none required)
 	}
 	sites := []site{
-		{"ports.go", "", "CreditLedger", "RedeemDeliveryCredit", 5, "issuedEpoch"},
 		{"ports.go", "", "CreditLedger", "SpendRelayAnchors", 1, "anchors"},
-		{"../core/credit/delivery.go", "Ledger", "", "RedeemDeliveryCredit", 5, "issuedEpoch"},
-		{"../core/credit/delivery.go", "Ledger", "", "RedeemDeliveryCreditReason", 5, "issuedEpoch"},
 		{"../core/credit/relayanchor.go", "Ledger", "", "SpendRelayAnchors", 1, "anchors"},
+		// C1 (2026-09-08): RedeemDeliveryCredit / RedeemDeliveryCreditReason were the
+		// flat lane's entry points and are DELETED, on the port and on the Ledger. The
+		// paying surface is the three session seams below, none of which takes a
+		// caller-supplied epoch.
+		{"../core/credit/deliveryanchor.go", "Ledger", "", "SpendDeliveryAnchors", 2, "anchors"},
+		{"../core/credit/deliveryanchor.go", "Ledger", "", "SettleDelivery", 6, "prior"},
+		{"../core/credit/deliveryanchor.go", "Ledger", "", "CloseDeliverySession", 3, "maxAnchorEpoch"},
 		// B-9 (2026-09-07): the flat receipt's deliveryReasoner seam is retired; the session
 		// lane's optional ledger seams take no caller-supplied epoch either — the ledger
 		// reads its own EpochSource at open, settle and close.
