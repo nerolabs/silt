@@ -1480,13 +1480,14 @@ func TestEpochWeightBytesAreLoadBearing(t *testing.T) {
 // is invariant under the flatten and the ONLY discriminator left is the ⅔-weight rule.
 //
 // THE ONE SEAM THAT DIFFERS FROM weightBytesWorld — the count floor. In a mature EPOCH
-// RequiredQuorum() returns just Quorum (chain.go:1218), so a small heavy coalition can be
-// a weight-majority but a HEAD-minority — which is what lets the flatten flip. In the
-// de-mature NON-epoch objective regime with ByzantineQuorum, RequiredQuorum() escalates to
-// bftThreshold(qualifiedCount) (chain.go:1220), forcing the coalition to ~⅔ of HEADS — and
-// a head-⅔ coalition ALSO clears a FLATTENED weight-⅔, so the count floor would mask the
-// weight rule. Fix (the analogue of the mature-epoch bypass): ByzantineQuorum=false, so
-// RequiredQuorum()=Quorum=1. The de-mature branch (chain.go:2471) fires regardless of
+// RequiredQuorum() returns 0 (#380 regime (b); it was the bare Quorum before direction
+// (1)), so a small heavy coalition can be a weight-majority but a HEAD-minority — which is
+// what lets the flatten flip. In the de-mature NON-epoch objective regime with
+// ByzantineQuorum, RequiredQuorum() is bftThreshold(qualifiedCount) (regime (a)), forcing
+// the coalition to ~⅔ of HEADS — and a head-⅔ coalition ALSO clears a FLATTENED weight-⅔,
+// so the count floor would mask the weight rule. Fix (the analogue of the mature-epoch
+// bypass): ByzantineQuorum=false (regime (c)), so RequiredQuorum()=Quorum=1. The de-mature
+// branch (chain.go:2471) fires regardless of
 // ByzantineQuorum — it depends only on everMature && objective() && !matureNow() — so the
 // weight rule under test is untouched. A proposer + one attester (5+5 MiB of 12 MiB) is a
 // weight-majority, head-minority coalition.

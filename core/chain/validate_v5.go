@@ -32,9 +32,11 @@ import (
 //
 // WHAT IT DOES NOT COVER — state it, do not let it be inferred. ValidateCommit is the accept path
 // for a COMMITTED block (MsgCommitBlock → Append → ValidateCommit). It is not every disk-write
-// path: appendStructural runs validateStructural, whose quorum leg is a bare cfg.Quorum count over
-// b.Atts — weaker and different, Reload only; AppendGenesis is height 0, which has no parent to
-// bind. Both are OUTSIDE this guarantee.
+// path: appendStructural runs validateStructural, whose quorum leg is a RequiredQuorum() count over
+// b.Atts with no qualification filter, anchor leg or weight leg — weaker and different, Reload
+// only (#380 M-380-1 moved its floor from the bare cfg.Quorum to RequiredQuorum so a replay accepts
+// what the commit path accepted); AppendGenesis is height 0, which has no parent to bind. Both are
+// OUTSIDE this guarantee.
 //
 // BG-1 — THIS EXTRACTION IS v5-ONLY. The node dispatches here only for
 // b.Version >= BlockVersionWitnessable; the era-1 and era-2 legs are byte-untouched. The proposer

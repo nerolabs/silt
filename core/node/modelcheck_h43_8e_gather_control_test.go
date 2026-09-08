@@ -37,7 +37,7 @@ import (
 //
 // Half 1 (BELOW the derived bar): `tier2AnchorNet(t, 4)`'s own config —
 // `Quorum: 1, ByzantineQuorum: true`, 4 anchors — has `RequiredQuorum() =
-// max(1, bftThreshold(4)=2) = 2` TODAY, already above `cfg.Quorum`. A
+// bftThreshold(4) = 2` (regime (a)), above `cfg.Quorum`. A
 // proposal offered 3 non-proposer anchors must commit with >= 2
 // attestations (the DERIVED bar), not the bare `cfg.Quorum = 1` the caller
 // passed as its own gather-target argument.
@@ -110,10 +110,13 @@ func TestG_H43_8e_GatherTargetSurvivesTheDerivedFloor(t *testing.T) {
 			nd.EnableChain(ch, id.Signer())
 			nodes[i] = nd
 		}
-		if got := nodes[0].chain.RequiredQuorum(); got != cfg.Quorum {
-			t.Fatalf("premise: this half needs RequiredQuorum() == cfg.Quorum (both %d) — cfg.Quorum must "+
-				"already be the binding term (above bftThreshold(4)=2); got RequiredQuorum()=%d cfg.Quorum=%d",
-				cfg.Quorum, got, cfg.Quorum)
+		// Under direction (1) RequiredQuorum() is the derived bftThreshold(4)=2
+		// and IGNORES cfg.Quorum; the caller's own gather-target argument
+		// (cfg.Quorum=3) must therefore be the binding term inside proposeBlockAt,
+		// which only ever RAISES to RequiredQuorum(), never lowers.
+		if got := nodes[0].chain.RequiredQuorum(); got >= cfg.Quorum {
+			t.Fatalf("premise: this half needs RequiredQuorum() (%d) STRICTLY BELOW cfg.Quorum (%d) so cfg.Quorum "+
+				"is the binding gather term; the derived bar for 4 anchors should be bftThreshold(4)=2", got, cfg.Quorum)
 		}
 
 		ids0 := ids[0].NodeID()

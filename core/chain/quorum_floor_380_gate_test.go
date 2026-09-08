@@ -35,20 +35,19 @@ import (
 // confirmed again below, since that equality is what makes this arm's HEAD
 // behaviour ErrNoQuorum rather than something else).
 //
-// (i) RED at HEAD: a block proposed by the WHALE (>⅔ of frozen weight alone)
-// with ZERO attestations fails today's count floor (`RequiredQuorum() =
-// cfg.Quorum = 1 > len(seen) = 0`) with `ErrNoQuorum` — chain.go:3038-3039 —
-// before `requireEpochWeightQuorum` (which WOULD accept it) is ever reached.
-// It must ACCEPT once regime (b) returns 0.
+// (i) RED-FIRST (at e443548, before direction (1) landed): a block proposed by
+// the WHALE (>⅔ of frozen weight alone) with ZERO attestations failed the old
+// count floor (`RequiredQuorum() = cfg.Quorum = 1 > len(seen) = 0`) with
+// `ErrNoQuorum` before `requireEpochWeightQuorum` (which accepts it) was ever
+// reached. GREEN once regime (b) returns 0: the commit is ACCEPTED. Ablation:
+// restore `return q` (the old regime-(b) leg) in RequiredQuorum ⇒ RED here,
+// by name (ErrNoQuorum), and the premise below reddens first.
 //
-// (ii) CONTROL, GREEN today and after: a block proposed by a SMALL validator
+// (ii) CONTROL, GREEN before and after: a block proposed by a SMALL validator
 // with one small-validator attester (support well under ⅔ of frozen weight)
-// clears the count floor either way (1 today, 0 after) and is refused BY
+// clears the count floor either way (1 before, 0 after) and is refused BY
 // NAME — `ErrNoQuorumWeight` (chain.go:3116-3117) — proving floor 0 does not
-// delete the weight bar. Ablation for (i) (not built — HEAD already IS the
-// ablated state, since `return q` in regime (b) is what chain.go does today):
-// restoring `return q` is exactly what makes (i) RED, which is the current
-// production code.
+// delete the weight bar.
 func TestG_H43_8c_MatureEpochWeightAloneAdmitsZeroAttestationCommit(t *testing.T) {
 	whale, v1, v2 := key(4801), key(4802), key(4803)
 	const (
@@ -70,14 +69,17 @@ func TestG_H43_8c_MatureEpochWeightAloneAdmitsZeroAttestationCommit(t *testing.T
 	}
 
 	// Premise: the epoch is mature at genesis (no Anchors configured,
-	// MatureValidators: 0), and TODAY RequiredQuorum() returns cfg.Quorum
-	// verbatim in this regime — the exact fact that routes (i) to ErrNoQuorum
-	// rather than straight through to the weight check.
+	// MatureValidators: 0), and RequiredQuorum() is 0 in this regime while the
+	// local cfg.Quorum (1) is HIGHER — so a pass below is attributable to the
+	// derived floor, not to a config that already asked for nothing.
 	if !c.matureEpoch {
 		t.Fatalf("premise: expected c.matureEpoch == true at genesis (MatureValidators: 0, no Anchors)")
 	}
-	if got := c.RequiredQuorum(); got != cfg.Quorum {
-		t.Fatalf("premise: TODAY's RequiredQuorum() in the mature regime must be cfg.Quorum verbatim, got %d want %d", got, cfg.Quorum)
+	if got := c.RequiredQuorum(); got != 0 {
+		t.Fatalf("premise: RequiredQuorum() in the mature regime must be 0 (#380 regime (b)), got %d (cfg.Quorum=%d)", got, cfg.Quorum)
+	}
+	if cfg.Quorum <= 0 {
+		t.Fatalf("premise: cfg.Quorum (%d) must exceed the derived floor 0, or this arm cannot tell the two apart", cfg.Quorum)
 	}
 	total := whaleWeight + 2*smallWeight
 	if 3*whaleWeight <= 2*total {
@@ -90,23 +92,20 @@ func TestG_H43_8c_MatureEpochWeightAloneAdmitsZeroAttestationCommit(t *testing.T
 	Sign(whaleBlock, whale)
 	// No Atts at all — the coalition is {whale} alone.
 	err := c.Append(*whaleBlock)
-	// The healthy assertion (post-predicate-fix): this commit must be ACCEPTED.
-	if err == nil {
-		t.Fatalf("G-H43-8 arm 8c(i): a zero-attestation, >2/3-weight commit was unexpectedly ACCEPTED at HEAD — " +
-			"has RequiredQuorum's mature-regime value already changed to 0? if so this gate's premise needs " +
-			"re-deriving as a non-regression form, not left as RED-first")
+	// The healthy assertion: this commit is ACCEPTED. A RED here by name
+	// (ErrNoQuorum) is the count floor shadowing the weight rule again — the
+	// old regime-(b) leg restored.
+	if err != nil {
+		t.Fatalf("G-H43-8 arm 8c(i) REGRESSED: a commit whose sole proposer (the whale) alone carries %d of "+
+			"%d frozen weight (%.1f%%, > 2/3) was REFUSED (%v) instead of accepted — RequiredQuorum() must "+
+			"return 0 in the mature regime (predicate certification §1 row (b)) so a local, "+
+			"non-replicated count floor never shadows the weight rule that carries the Byzantine bar",
+			whaleWeight, total, 100*float64(whaleWeight)/float64(total), err)
 	}
-	if !errors.Is(err, ErrNoQuorum) {
-		t.Fatalf("G-H43-8 arm 8c(i) mechanism pin FAILED: got %v, want ErrNoQuorum (chain.go:3038-3039) — "+
-			"this RED is not attributable to the count-floor-0 predicate", err)
+	if _, h := c.Head(); h != 2 {
+		t.Fatalf("G-H43-8 arm 8c(i): the whale block was accepted but the head is %d, want 2", h)
 	}
-	t.Logf("G-H43-8 arm 8c(i) mechanism pin confirmed (chain.go:3038-3039, RequiredQuorum() still cfg.Quorum "+
-		"verbatim in the mature regime): %v", err)
-	t.Fatalf("G-H43-8 arm 8c(i) REPRODUCED: a commit whose sole proposer (the whale) alone carries %d of "+
-		"%d frozen weight (%.1f%%, > 2/3) was REFUSED (%v) instead of accepted — RequiredQuorum() must "+
-		"return 0 in the mature regime (predicate certification §1 row (b)) so the redundant, "+
-		"non-replicated count floor stops shadowing the weight rule that already carries the Byzantine bar",
-		whaleWeight, total, 100*float64(whaleWeight)/float64(total), err)
+	t.Logf("G-H43-8 arm 8c(i): zero-attestation, >2/3-frozen-weight commit ACCEPTED in the mature regime (RequiredQuorum()=0, cfg.Quorum=%d)", cfg.Quorum)
 }
 
 // TestG_H43_8c_ControlBelowWeightBarStillRefusedByName is arm 8c's CONTROL

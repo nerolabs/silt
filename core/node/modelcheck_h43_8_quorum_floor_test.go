@@ -200,6 +200,12 @@ func TestModelCheck_H43_8_DivergentQuorumFloorMustNotBlockNewViewCertificate(t *
 	if height != 1 {
 		t.Fatalf("premise: want the working height to be 1 (right after genesis), got %d", height)
 	}
+	// The designee must hold WORK to carry: under D-H43-WORKLESS-DESIGNEE a
+	// designee with nothing to carry declines to propose an empty block
+	// ("propose: nothing to carry", chainrole.go), which is a different,
+	// ratified refusal from the quorum floor this arm pins. One pending entry
+	// is the minimum that makes the end-to-end half attributable.
+	designee.pendingEntries = []pendingEntry{{E: mkEntry("g-h43-8-work"), At: height}}
 	if got := designee.designatedProposer(height, 1); got != designee.id {
 		t.Fatalf("premise: designatedProposer(%d, 1) did not return the constructed high-floor node", height)
 	}
@@ -218,22 +224,34 @@ func TestModelCheck_H43_8_DivergentQuorumFloorMustNotBlockNewViewCertificate(t *
 	}
 	raw1, raw2 := rawRoundChange1(liver1), rawRoundChange1(liver2)
 
+	// ── Premise (re-derived for direction (1)): the designee's local floor
+	// (3) exceeds the derived bar (bftThreshold(4)=2), and RequiredQuorum()
+	// now IGNORES it — so a pass below is attributable to the derived rule,
+	// not to a fixture whose config already asked for 2.
+	if got := designee.chain.RequiredQuorum(); got != 2 || highCfg.Quorum <= got {
+		t.Fatalf("premise: the designee's RequiredQuorum() must be the derived bftThreshold(4)=2 with its local "+
+			"cfg.Quorum (%d) strictly above it; got RequiredQuorum()=%d", highCfg.Quorum, got)
+	}
+
 	// ── Mechanism pin ────────────────────────────────────────────────────
 	// Call newViewFor directly with EXACTLY the 2 envelopes the network
 	// already treats as quorum, bypassing the wire entirely, so a RED here
 	// is attributed to the quorum-floor line and not to any fixture defect
-	// (delivery order, attester eligibility, a dropped envelope).
-	if _, err := designee.newViewFor(height, 1, [][]byte{raw1, raw2}); err == nil {
-		t.Fatalf("G-H43-8: newViewFor(2 round-changes) unexpectedly SUCCEEDED at HEAD — has " +
-			"RequiredQuorum's handling of a raised local Quorum changed? if so this gate's premise " +
-			"needs re-deriving, not its assertion")
-	} else if !strings.Contains(err.Error(), "new-view certificate below quorum") {
-		t.Fatalf("G-H43-8 mechanism pin FAILED: newViewFor errored for the WRONG reason (%v) — "+
-			"want the quorum-floor signature \"new-view certificate below quorum\" (rounds.go:312); "+
-			"this RED is not attributable to G-H43-8", err)
-	} else {
-		t.Logf("G-H43-8 mechanism pin confirmed (rounds.go:311-312, chain.go:3176-3182): %v", err)
+	// (delivery order, attester eligibility, a dropped envelope). RED-FIRST
+	// at e443548 with "new-view certificate below quorum (2 round-changes)";
+	// GREEN under direction (1). Ablation: restore max(cfg.Quorum, bft) in
+	// RequiredQuorum's regime (a) ⇒ that error returns here.
+	if _, err := designee.newViewFor(height, 1, [][]byte{raw1, raw2}); err != nil {
+		if strings.Contains(err.Error(), "new-view certificate below quorum") {
+			t.Fatalf("G-H43-8 REGRESSED (rounds.go newViewFor → SupportMeetsQuorum → RequiredQuorum): the designee's "+
+				"raised local -quorum floor (%d) rejected a certificate carrying exactly the %d round-changes its peers "+
+				"(floor %d) already consider quorum — the local floor is back inside the validity rule: %v",
+				highCfg.Quorum, 2, baseCfg.Quorum, err)
+		}
+		t.Fatalf("G-H43-8: newViewFor(2 round-changes) failed for a reason OTHER than the quorum floor (%v) — "+
+			"a fixture defect, not G-H43-8", err)
 	}
+	t.Logf("G-H43-8 mechanism pin: newViewFor accepted the 2-round-change certificate at the high-floor designee")
 
 	// ── End-to-end: the natural trigger must still commit the height ──────
 	// Deliver the SAME 2 envelopes through the real MsgRoundChange handler:
@@ -250,18 +268,18 @@ func TestModelCheck_H43_8_DivergentQuorumFloorMustNotBlockNewViewCertificate(t *
 	designee.handleChain(liver2.id, ports.Message{Kind: ports.MsgRoundChange, Data: raw2})
 	drainHeld(t, net, fifo)
 
-	if got := rs.Certs[1]; got != nil {
-		t.Fatalf("G-H43-8: designee cached a round-1 certificate despite the mechanism pin above showing "+
-			"newViewFor rejects the identical 2 envelopes — the two assertions disagree; re-derive before "+
-			"trusting either (raws=%d)", len(got.Raws))
+	if got := rs.Certs[1]; got == nil {
+		t.Fatalf("G-H43-8: the designee never cached a round-1 certificate from the 2 envelopes the direct " +
+			"newViewFor call above accepted — checkRoundQuorum and newViewFor disagree; re-derive before trusting either")
+	} else if len(got.Raws) != 2 {
+		t.Fatalf("G-H43-8: the cached round-1 certificate carries %d envelopes, want exactly the 2 delivered", len(got.Raws))
 	}
 	_, h := designee.chain.Head()
 	if h <= height {
-		t.Fatalf("G-H43-8 REPRODUCED: height %d never committed — the designee's raised local -quorum "+
+		t.Fatalf("G-H43-8 REGRESSED: height %d never committed — the designee's raised local -quorum "+
 			"floor (%d) rejected a new-view certificate carrying exactly the %d round-changes its own "+
-			"peers (floor %d) already consider quorum (RequiredQuorum = max(Quorum, bftThreshold(N)), "+
-			"chain.go:1710-1719); SupportMeetsQuorum/newViewFor must ignore the LOCAL floor per "+
-			"D-CONSENSUS-ARMING (20) — this designee is now a permanently dead round at this height, "+
+			"peers (floor %d) already consider quorum; SupportMeetsQuorum/newViewFor must ignore the LOCAL "+
+			"floor per D-CONSENSUS-ARMING (20) — this designee is a permanently dead round at this height, "+
 			"exactly as the certification's §5.2 describes", h, highCfg.Quorum, 2, baseCfg.Quorum)
 	}
 	t.Logf("G-H43-8: height %d committed at the high-floor designee's own round-1 new-view certificate.", h)

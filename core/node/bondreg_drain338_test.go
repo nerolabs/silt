@@ -206,8 +206,9 @@ func TestNonAttesterSyncsViaStaticPeerOnly338(t *testing.T) {
 
 // TestDivergentQuorumFloorStrandsSyncingNode338 pins the CLOUD root cause of the
 // SYBILS=8 C2 GAP: the sybil ran -quorum 5 (a "self-majority") while the anchors
-// committed at quorum 2. Config.Quorum is a hard FLOOR on ValidateCommit
-// (max(Quorum, bftThreshold)), so when the sybil re-validates the anchors'
+// committed at quorum 2. Config.Quorum WAS a hard FLOOR on ValidateCommit
+// (max(Quorum, bftThreshold)) in every objective regime until #380 direction
+// (1); it remains one ONLY in regime (c), this fixture's, so when the sybil re-validates the anchors'
 // honestly-committed 2-attestation blocks inside Reconcile under its own floor of
 // 5, every block fails ErrNoQuorum, the whole fork is rejected, and it is stranded
 // at genesis (head 0) forever — even though its transport, static peers, and sync
@@ -315,15 +316,15 @@ func TestDivergentQuorumFloorStrandsSyncingNode338(t *testing.T) {
 // `Quorum: 3` no longer raises its own validity bar above what the anchors'
 // blocks already clear, and it must sync.
 //
-// RED at HEAD: `RequiredQuorum()` (chain.go:1710-1721) still computes
+// RED-FIRST at e443548: `RequiredQuorum()` still computed
 // `max(c.cfg.Quorum, bftThreshold(N))` in this regime — the OLD predicate,
-// where the certification's §1 table lives in the "Today" column — so the
-// high-floor node's own `RequiredQuorum() = max(3, 1) = 3` still exceeds the
-// 1-attestation blocks the anchors (`RequiredQuorum() = max(1, 1) = 1`)
-// actually produce, `ValidateCommit`/`Reconcile` still refuses with
-// `ErrNoQuorum`, and the node stays stranded — the SAME mechanism as the
-// regime-(c) control above, reached this time through the regime the fix
-// actually changes.
+// the certification's "Today" column — so the high-floor node's own
+// `RequiredQuorum() = max(3, 1) = 3` exceeded the 1-attestation blocks the
+// anchors (`RequiredQuorum() = max(1, 1) = 1`) actually produce,
+// `ValidateCommit`/`Reconcile` refused with `ErrNoQuorum`, and the node
+// stayed stranded — the SAME mechanism as the regime-(c) control above,
+// reached through the regime the fix changes. GREEN under direction (1):
+// both sides compute bftThreshold(2) = 1. Ablation: restore the max ⇒ RED.
 func TestG_H43_8a_DivergentQuorumFloorSyncsUnderDerivedFloor(t *testing.T) {
 	const bondSize = int64(2) << 20
 	sched := simclock.New()
@@ -363,7 +364,7 @@ func TestG_H43_8a_DivergentQuorumFloorSyncsUnderDerivedFloor(t *testing.T) {
 	// real function, not hand arithmetic, so a drift in bftThreshold's own
 	// formula would fail HERE rather than silently invalidating the fixture.
 	if got := a1.Chain().RequiredQuorum(); got != 1 {
-		t.Fatalf("premise: today's RequiredQuorum() for the anchors is max(cfg.Quorum=1, bftThreshold(2)=1) = %d, want 1", got)
+		t.Fatalf("premise: the anchors' RequiredQuorum() is bftThreshold(2)=1 (regime (a)), got %d", got)
 	}
 
 	a2.Bootstrap([]ports.NodeID{a1id.NodeID()}, func() {})
@@ -385,12 +386,12 @@ func TestG_H43_8a_DivergentQuorumFloorSyncsUnderDerivedFloor(t *testing.T) {
 	_, sh := sHigh.Chain().Head()
 	// G-H43-8 arm 8a (owner call 20): in regime (a), a divergent local
 	// -quorum floor must not stop a node from syncing the anchors'
-	// derived-bar-clearing blocks. RED at HEAD: RequiredQuorum() still takes
+	// derived-bar-clearing blocks. RED-FIRST at e443548: RequiredQuorum() took
 	// the max with the local floor, so the high-floor node's own bar (3)
-	// exceeds what the anchors' blocks actually carry (1), and Reconcile
-	// refuses every one of them with ErrNoQuorum.
+	// exceeded what the anchors' blocks actually carry (1), and Reconcile
+	// refused every one of them with ErrNoQuorum.
 	if sh != ah {
-		t.Fatalf("G-H43-8 arm 8a REPRODUCED: the divergent-floor node did NOT sync in regime (a) "+
+		t.Fatalf("G-H43-8 arm 8a REGRESSED: the divergent-floor node did NOT sync in regime (a) "+
 			"(head %d, anchors at %d) — its own raised local -quorum floor (RequiredQuorum()=max(3,"+
 			"bftThreshold(2)=1)=3) still exceeds the anchors' derived-bar-clearing 1-attestation blocks, "+
 			"so Reconcile refuses them with ErrNoQuorum and the node stays stranded. RequiredQuorum() must "+

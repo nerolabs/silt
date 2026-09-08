@@ -1691,33 +1691,51 @@ func bftThreshold(n int) int {
 }
 
 // RequiredQuorum is the number of distinct qualified non-proposer attestations a
-// commit needs. It is Config.Quorum by default, but with ByzantineQuorum set in
-// objective mode it rises to the Byzantine threshold 2f+1 over the qualified set —
-// max(Quorum, bftThreshold(N)) — so quorum-intersection safety is preserved as the
-// validator set grows. Exposed so a proposer gathers enough attestations to match
-// what ValidateCommit will demand.
+// commit needs — the COUNT leg of requireQuorumStack (Q1). In objective mode
+// with Byzantine sizing it is DERIVED from the chain, so every replica computes
+// it identically; Config.Quorum is read only where there is no derived rule to
+// defer to. Four regimes (#380 direction (1), ratified as D-CONSENSUS-ARMING
+// (20) in docs/decisions.md; the predicate is specified exactly by the research
+// certification CONSENSUS-380-quorum-floor-direction-1-PREDICATE-AND-CERTIFICATION-2026-09-08.md §1):
 //
-// MATURE EPOCH: the Byzantine escalation is WEIGHT-counted, not head-counted
-// (requireEpochWeightQuorum; research certification 2026-08-13 B2). Counting
-// members here let every MinBond identity in the epoch snapshot raise the bar
-// one head — so a cohort of cheap bonds could push bftThreshold(len(epochSet))
-// beyond what the honest validators could ever attest (stall at 8×MinBond), and
-// one head past that, commit ALONE with zero honest attestation (capture) — a
-// C1-discount + C2-quiet-capture break, since control priced per-head at MinBond
-// never has to pay real weight. In a mature epoch this returns only the
-// Config.Quorum count floor; the super-majority that makes a commit final is
-// the >⅔ FROZEN-WEIGHT rule (Tendermint/Casper count stake, never heads — B8).
+//	(a) objective && ByzantineQuorum, NOT a mature epoch (the launch window, or
+//	    epochs off): bftThreshold(validatorSetSize()) — the whole Byzantine bar.
+//	    Config.Quorum no longer raises it. A local, unreplicated term inside a
+//	    validity rule that objective mode promises is replica-identical never
+//	    contributed intersection, only a higher bar — the #338 sync-strand, and
+//	    the permanently dead new-view round of a higher-floor designee. Corner:
+//	    bftThreshold(1) = 0, so a single-anchor launch commits on the proposer
+//	    alone; I1 holds there through requiredLaunchAnchors (⌊A/2⌋+1 = 1).
+//	(b) objective && ByzantineQuorum && a mature epoch: 0. The Byzantine bar is
+//	    the >⅔ FROZEN-WEIGHT rule (requireEpochWeightQuorum; research
+//	    certification 2026-08-13 B2) — Tendermint/Casper count stake, never
+//	    heads. Head-counting the epoch set let every MinBond identity in the
+//	    snapshot raise the bar one head (stall at 8×MinBond; one head past that,
+//	    capture with zero honest attestation). A floor of 1 buys nothing either:
+//	    the weight rule already implies ≥ 1 non-proposer head in every epoch
+//	    where no single identity holds >⅔, and where one does, a floor of 1 is
+//	    defeated for one MinBond identity already in the snapshot — exactly the
+//	    per-head defence B2 refuted.
+//	(c) objective && !ByzantineQuorum (the explicit -byzantine-quorum=false
+//	    trusted opt-out): Config.Quorum, unchanged. There is no derived rule to
+//	    defer to, and raising it to bftThreshold would flip finalityQuorumActive
+//	    and kill the trusted-weak-config escape of the §3 finality gate.
+//	(d) !objective (legacy): Config.Quorum, unchanged.
+//
+// In every regime the value is ≤ the old max(Quorum, bftThreshold(N)): the
+// change only ADDS accepts. Config.Quorum survives as the proposer-side gather
+// target (proposeBlockAt raises it to this value, never lowers it). Exposed so
+// a proposer gathers what ValidateCommit will demand; validateStructural reads
+// it too, so Reload accepts what ValidateCommit accepted. The v5 mirror is
+// v5RequiredQuorum, pinned by G-D13.
 func (c *Chain) RequiredQuorum() int {
-	q := c.cfg.Quorum
-	if c.cfg.ByzantineQuorum && c.objective() {
-		if c.epochsEnabled() && c.matureEpoch {
-			return q // weight rule carries the Byzantine bar (ValidateCommit)
-		}
-		if bq := bftThreshold(c.validatorSetSize()); bq > q {
-			q = bq
-		}
+	if !c.cfg.ByzantineQuorum || !c.objective() {
+		return c.cfg.Quorum // (c) trusted opt-out, (d) legacy — no derived rule to defer to
 	}
-	return q
+	if c.epochsEnabled() && c.matureEpoch {
+		return 0 // (b) the >⅔ frozen-WEIGHT rule IS the Byzantine bar (B2)
+	}
+	return bftThreshold(c.validatorSetSize()) // (a)
 }
 
 // validatorSetSize is N, the set the Byzantine quorum is sized against (#357 §2).
@@ -3385,8 +3403,17 @@ func (c *Chain) validateStructural(b *Block) error {
 		seen[id] = true
 		valid++
 	}
-	if valid < c.cfg.Quorum {
-		return fmt.Errorf("%w: %d valid, need %d", ErrNoQuorum, valid, c.cfg.Quorum)
+	// The count leg is RequiredQuorum(), the same predicate ValidateCommit applied
+	// when this node committed the block (#380 M-380-1) — a bare cfg.Quorum here
+	// was a second, local floor: a node whose -quorum exceeds the derived bar
+	// accepted and persisted a peer block live, then refused its own replay, and
+	// since D-RC-SCOPE-S3 a failed replay refuses to start the daemon. The
+	// count leg drifting from the commit path is the #558 shape at this function.
+	// objective() holds on replay because Reload refuses to run without the bond
+	// verifier wired (the #572 guard above), so the derived value equals the one
+	// the commit path computed; in legacy mode this is cfg.Quorum verbatim.
+	if need := c.RequiredQuorum(); valid < need {
+		return fmt.Errorf("%w: %d valid, need %d", ErrNoQuorum, valid, need)
 	}
 	return nil
 }

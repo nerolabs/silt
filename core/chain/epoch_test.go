@@ -46,13 +46,15 @@ func TestEpochQuorumFrozenAcrossMidEpochJoin(t *testing.T) {
 
 	// The genesis boundary (height 0) snapshots the founding set of 4. The
 	// Byzantine bar in a mature epoch is the >⅔ frozen-WEIGHT super-majority
-	// (B2, research certification 2026-08-13) — RequiredQuorum returns only the
-	// Config.Quorum count floor, and the weight rule carries the escalation.
+	// (B2, research certification 2026-08-13) — RequiredQuorum returns 0 (#380
+	// direction (1), regime (b): no count floor at all; the local Config.Quorum
+	// is a proposer-side gather target, not a validity term), and the weight
+	// rule carries the escalation.
 	if n := c.validatorSetSize(); n != 4 {
 		t.Fatalf("epoch snapshot at genesis: validatorSetSize = %d, want 4", n)
 	}
-	if rq := c.RequiredQuorum(); rq != 1 {
-		t.Fatalf("RequiredQuorum in a mature epoch is the count floor: got %d, want Quorum=1 (the Byzantine bar is weight-counted)", rq)
+	if rq := c.RequiredQuorum(); rq != 0 {
+		t.Fatalf("RequiredQuorum in a mature epoch is 0 (#380 regime (b)): got %d (the Byzantine bar is weight-counted, never a local count floor)", rq)
 	}
 
 	// Block 1 (mid-epoch): a NEW validator registers a bond. Condition A: the join
@@ -293,8 +295,8 @@ func TestSlashDisqualifiesMidEpochWithFrozenN(t *testing.T) {
 	if err := c.AppendGenesis(*g); err != nil {
 		t.Fatalf("append genesis: %v", err)
 	}
-	if n, rq := c.validatorSetSize(), c.RequiredQuorum(); n != 5 || rq != 1 {
-		t.Fatalf("setup: founding epoch set N=%d (want 5), RequiredQuorum=%d (want the Quorum=1 count floor; the Byzantine bar is weight-counted, B2)", n, rq)
+	if n, rq := c.validatorSetSize(), c.RequiredQuorum(); n != 5 || rq != 0 {
+		t.Fatalf("setup: founding epoch set N=%d (want 5), RequiredQuorum=%d (want 0 — #380 regime (b): no count floor in a mature epoch; the Byzantine bar is weight-counted, B2)", n, rq)
 	}
 
 	// v4 provably double-signs (two different blocks at the same height); block 1
