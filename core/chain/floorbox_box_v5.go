@@ -33,10 +33,15 @@ import (
 // this round does not take; what this round closes is that everything downstream of the parent is
 // bound to it by the box, not by the driver.
 //
-// THE DOOR NEVER RETURNS Accept. Structurally: a nil source stalls at the first class-2 read.
-// Explicitly: an Accept is downgraded to IndeterminateTrustlessly / ErrRecomputeGated in ONE line,
-// because flipping the box to Accept is R1.8 — a consensus-rule change (I1), owner-ratified and
-// research-gated — and it is not this round. One line, so the flip is one line to remove.
+// THE DOOR NEVER RETURNS Accept — AND THAT IS A PROPERTY OF (*Box).Validate, NOT OF THE
+// COMPOSITION. ValidateCommitV5 over provenView DOES return Accept for an honest block with
+// genuine witnesses (TestBoxDoor_HonestBlockReachesTheDowngrade drives it there); the one-line
+// downgrade in Validate — Accept ⇒ IndeterminateTrustlessly / ErrRecomputeGated — is the ONLY
+// thing between the door and Accept, because flipping the box to Accept is R1.8, a consensus-rule
+// change (I1), owner-ratified and research-gated, and not this round. One line, so the flip is one
+// line to remove and reviewed on its own. Belt: a nil source stalls at the first class-2 read.
+// What keeps the composition from being a SECOND door around this downgrade is that StateView is
+// SEALED (stateview_v5.go): only liveView and provenView can drive ValidateCommitV5.
 
 var (
 	// ErrBoxLegacyMode is NewBox's refusal of a chain in the LEGACY (non-objective) regime, or one

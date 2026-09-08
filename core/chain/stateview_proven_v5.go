@@ -76,6 +76,7 @@ type provenView struct {
 
 var _ StateView = provenView{}
 
+func (provenView) sealedStateView()  {}
 func (v provenView) Params() Params  { return v.params }
 func (v provenView) Objective() bool { return v.objective }
 

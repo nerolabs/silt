@@ -19,6 +19,8 @@ type liveView struct{ c *Chain }
 
 var _ StateView = liveView{}
 
+func (liveView) sealedStateView() {}
+
 // ---- class 3: own config / capability ----
 
 func (v liveView) Params() Params {
