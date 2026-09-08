@@ -15,6 +15,8 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   to attest — the swarm tolerated **f = 0** while the published liveness bound is stated at f = 1, and only the field
   topology's own override hid it. `effectiveQuorum` now derives to `chain.ByzantineThreshold` over the launch set when the
   operator sets none (2 at four anchors), mirroring the bond-floor / TTL / Byzantine / margin derivations — except downward.
+  It applies only where Byzantine sizing is ON — with `-byzantine-quorum=false` the local floor IS the validity bar, so deriving
+  it there would widen what the node accepts, the boundary #380's ratification already drew (caught by the blind PE pre-merge).
   It can only LOWER the ask: `gatherTwoPhase` already gathers `max(caller floor, ConfigQuorum(), RequiredQuorum())`, so the
   derived Byzantine bar sits underneath it, and an explicit `-quorum` always wins. `chain.ByzantineThreshold` is the single
   export of that arithmetic, so the daemon never re-derives `f` locally. Separately, `MinObjectiveAnchors = 2`: at one anchor

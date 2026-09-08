@@ -2423,7 +2423,20 @@ showing the one-byte value IS committed).
   can only lower the ask: `gatherTwoPhase` gathers `max(caller floor, ConfigQuorum(), RequiredQuorum())`,
   so the derived Byzantine bar sits underneath it whatever the operator sets, and safety is untouched
   because validity reads `RequiredQuorum`, not this. An explicit `-quorum` always wins, including one
-  raised above the bar. `chain.ByzantineThreshold` is the single export of that arithmetic — a daemon
+  raised above the bar. **The derivation applies ONLY where Byzantine sizing is on**, and the first cut
+  of this change got that wrong: with `-byzantine-quorum=false` `RequiredQuorum` returns `cfg.Quorum`
+  verbatim, so the local floor IS the validity bar there and deriving it downward would have made the
+  node ACCEPT a 2-attestation block it previously refused, on three accept-side predicates. That is
+  precisely the boundary #380's own ratification drew — *"the trusted opt-out (`-byzantine-quorum=false`)
+  and legacy mode keep `cfg.Quorum` unchanged"* — and the regime is live in-tree
+  (`integration/sybil/docker-compose.yml`, safe there only incidentally because it also passes an
+  explicit `-quorum`). Caught by the blind PE before merge; the fix moves the change back INSIDE the
+  existing certification's predicate, so no new research certification is owed. The two calls are also
+  COUPLED, which the consult missed and the review caught: `MinObjectiveAnchors = 2` is what makes
+  `effectiveQuorum`'s `anchorCount < 2` guard dead code today (`ByzantineThreshold(n) < 1` exactly when
+  `n < 2`), so narrowing the anchor refusal later silently makes that guard load-bearing again — it is
+  kept and commented rather than removed.
+  `chain.ByzantineThreshold` is the single export of that arithmetic — a daemon
   that re-derived `f = ⌊(n-1)/3⌋` locally would be a duplicated consensus literal, and duplicated
   copies drift (the gather target went path-dependent exactly once already, on this same review).
 

@@ -809,7 +809,7 @@ func cmdDaemon(args []string) error {
 		// every consumer (the chain config, the registry line, the revocation proposer)
 		// reads ONE value — a second copy is how the gather target went path-dependent
 		// once already (#380, the PE's C1 finding).
-		if q, quorumDefaulted := effectiveQuorum(quorumSet, *quorum, useObjective, len(anchorSet)); quorumDefaulted {
+		if q, quorumDefaulted := effectiveQuorum(quorumSet, *quorum, useObjective, effByz, len(anchorSet)); quorumDefaulted {
 			fmt.Printf("consensus: gather target derived to %d for this untrusted (objective) launch of %d anchor(s) — the shipped default %d would have asked every peer to attest, tolerating NO fault while the published liveness bound is stated at f=1 (#380). It never sits below the derived Byzantine bar the commit already demands; set -quorum explicitly to override\n",
 				q, len(anchorSet), *quorum)
 			*quorum = q
@@ -2135,6 +2135,10 @@ func coldStartScaffoldOK(useObjective bool, anchorCount, matureValidators int, w
 // launch set gives 2 at four anchors: exactly the bar validity already demands, so the
 // gather stops asking for more than the commit needs, and f = 1 is tolerated.
 //
+// It applies ONLY where Byzantine sizing is on, because that is the only regime where
+// validity reads a DERIVED bar; with -byzantine-quorum=false the local floor is itself the
+// validity term and lowering it would widen what the node accepts.
+//
 // It can only ever LOWER the ask, never raise it: gatherTwoPhase gathers
 // max(caller floor, ConfigQuorum(), RequiredQuorum()), so the derived Byzantine bar is a
 // floor underneath this whatever the operator sets. Safety is untouched — it is not a
@@ -2143,11 +2147,24 @@ func coldStartScaffoldOK(useObjective bool, anchorCount, matureValidators int, w
 // Sized over the LAUNCH SET (the anchors), which is what validatorSetSize itself uses
 // while the network is young; once the network hands off, RequiredQuorum re-sizes over
 // the frozen epoch set at runtime and this default stops mattering.
-func effectiveQuorum(quorumSet bool, explicit int, objectivePath bool, anchorCount int) (q int, defaulted bool) {
+func effectiveQuorum(quorumSet bool, explicit int, objectivePath, byzantineSizing bool, anchorCount int) (q int, defaulted bool) {
 	if quorumSet {
 		return explicit, false // an explicit choice always wins, including a raised one
 	}
-	if !objectivePath || anchorCount < 2 {
+	// byzantineSizing is NOT optional here, and its absence was a real defect caught in
+	// review. With -byzantine-quorum=false, RequiredQuorum returns cfg.Quorum VERBATIM
+	// (chain.go leg (c)) — the local floor IS the validity bar in that regime, so deriving
+	// it downward would make the node ACCEPT a block it previously refused. That is exactly
+	// the boundary #380's ratification drew: "the trusted opt-out (-byzantine-quorum=false)
+	// and legacy mode keep cfg.Quorum unchanged" (D-CONSENSUS-ARMING (20), as amended).
+	// The derivation is sound ONLY where the bar is derived elsewhere.
+	if !objectivePath || !byzantineSizing {
+		return explicit, false
+	}
+	if anchorCount < 2 {
+		// Dead today because MinObjectiveAnchors = 2 refuses a smaller launch set, and
+		// bftThreshold(n) < 1 exactly when n < 2. Kept, and kept explicit: narrow that
+		// refusal later and this guard silently becomes load-bearing again.
 		return explicit, false
 	}
 	derived := chain.ByzantineThreshold(anchorCount)
