@@ -49,7 +49,6 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   bumps its on-disk format to version 2 (an 8-byte magic + version header, a 74-byte record with the lane byte
   last), and `RestoredGuardEntries` now counts DELIVERY-lane entries only — the honest upper bound on deposits a
   restart lost, since a relay anchor keeps its burn and never had a deposit.
-
   **Compatibility — read this before clearing a guard file.** A store written by a pre-bump build that holds at
   least one record is a refuse-to-start error (`guardstore.ErrLegacyFormat`) naming the file, not a silent
   migration: a version-1 record has no lane, and the only guess available is the very mis-count this closes. A
@@ -63,7 +62,6 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
     credit it signed stays spendable and an empty guard re-opens each held credit for a second spend. Rotate the
     publish key AND clear `creditspent.log` **together**, in one stop (`R-CREDITSPENT-UNBOUNDED`, owner call 6,
     `D-TRUE-UP-CALLS-2026-09-07`). The refusal never rewrites the file, so that remedy stays available.
-
   `guardstore.ErrLegacyFormat` therefore states the condition and names no remedy; `cmd/silt` attaches the
   per-file remedy at each open site. Gates: `TestRestoredGuardEntriesKeepTheirLane` (core/credit, the
   mixed-population restart), `TestRecordCarriesTheLane`, `TestPreLaneFormatIsRefusedNotSilentlyReframed`,
