@@ -24,6 +24,21 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   #766) — R2.9's wire proof this run is the local e2e only.
 
 ### Added
+- **Floor box — the STRUCTURE round, Round 1A (`R-STRUCTURE-REDERIVATION`, owner-ratified 2026-09-03; call 16 main-only).**
+  ONE accept composition over a three-valued `StateView`: `ValidateProposalV5` (P1…P13) and `ValidateCommitV5` (= the
+  proposal then C1…C5), dispatched from BOTH `ValidateProposal` and `ValidateCommit` on version — `chain.go` changes by
+  exactly two dispatch hunks and one comment; era-1/era-2 legs untouched. `StateView` is sealed; `HeadRef` carries
+  `{Hash, NextHeight, ProposerID, *StateRoot, *LogRoot, Empty}`; P13 is two conjuncts (StateRoot; LogRoot equality at
+  k = 0, a named STALL at k ≥ 1 until `tagRevLogSize`); the legacy leg is a real leg (`Rep` on the view); the box owns a
+  byte budget whose zero value stalls (`UnlimitedBudget()` for the live view only); eight of nine box doors unexported and
+  the package surface inventoried by AST with reasons; the recompute screens a slashed author; the witness parent-proposer
+  slot deleted (the id is `HeadRef.ProposerID`). Gates, every one RED under a named ablation: the stage-cover gate (fixture
+  non-vacuity, derived call cover, three-body digest, reverse cover), G-D13 per-row node-body digests (28), the nine-regime
+  v4/v5 PARITY ORACLE (verdict + sentinel parity per mirrored stage), honest twins on all 26 gates, the two-sided
+  pruned-carrier gate, the `m = 1` right-spine control. Blind PE ruling (a 245-case differential against the pre-change
+  node, 13 ablations): `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-floorbox-structure-round-1a-869399e-2026-09-08.md`;
+  Researcher CERTIFIED: `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/FLOORBOX-STRUCTURE-ROUND-1A-COMPOSED-DIFF-869399e-RESEARCH-CERTIFICATION-2026-09-08.md`.
+  Build record: `docs/thinking/2026-09-07-floorbox-structure-round-1a-build.md`. Round 1B (the box-entry closers) follows.
 - **Cloud field test: the R2.9 paid delivery lane is on the graded sheet (`flow_delivery_lane`, rows
   `13-delivery-lane` / `13b-delivery-settlement`).** `topology.py` arms `-accept-delivery-receipts
   -delivery-idle-window 90s -grant-capacity 64 -grant-per-hour 64` on the boot validator (the token
