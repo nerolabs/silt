@@ -40,7 +40,7 @@ import (
 //
 // SOURCE GATE — all of A, B, C read the project's own .go source (parsed comment-free: a
 // `c.<x>` in prose is not a call). They see names, order and text, never behaviour.
-// RUNTIME GATE: TestGD5_IssuerKeysOnlyBlockParity and TestGD6_LegacyModeParity
+// RUNTIME GATE: TestGD5_IssuerKeysOnlyBlockParity and TestGD6_LegacyRepLegOracle
 // (redteam_floorbox_structure_gate_test.go) drive the stages the drift actually hit.
 
 // nodeStageFiles are the files the node's stage list is derived over (certification §4 arm A
@@ -463,7 +463,7 @@ func nodeBodyDigest(t *testing.T, idx funcIndex, names ...string) string {
 // TestStageCover_ArmC_ReverseCover: every error-returning call the composition makes, transitively
 // from ValidateCommitV5, is a stage mirror in nodeStages, a listed helper mirror of a node function
 // that exists, or the proposal entry. Ablation (G-D4): add an invented stage call ⇒ RED.
-// RUNTIME GATE: TestGD6_LegacyModeParity (an invented stage that refuses would break parity).
+// RUNTIME GATE: TestGD6_LegacyRepLegOracle (an invented stage that refuses would break parity).
 func TestStageCover_ArmC_ReverseCover(t *testing.T) {
 	requireV5Fixture(t)
 	node := parseIndex(t, nodeStageFiles)

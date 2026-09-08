@@ -142,7 +142,7 @@ func TestGD1_FixtureCommitsAWitnessableBlock(t *testing.T) {
 // under — the #402 one-function-two-callers trap inside the node.
 // Ablation (G-D12): revert the ValidateProposal dispatch hunk ⇒ RED.
 // SOURCE GATE: reads chain.go and asserts the FIRST statement of each root is the guarded dispatch.
-// RUNTIME GATE: TestGD6_LegacyModeParity drives ValidateCommit and the composition on one block.
+// RUNTIME GATE: TestGD6_LegacyRepLegOracle drives ValidateCommit (the dispatch) on one block.
 func TestGD12_BothNodeEntryPointsDispatchToTheComposition(t *testing.T) {
 	f := buildStructFixture(t)
 	assertHonestTwinAccepts(t, f.c, f.mkBlock(t, nil))
@@ -460,22 +460,26 @@ func (lf legacyFixture) mkBlock(t *testing.T) Block {
 	return *b
 }
 
-// TestGD6_LegacyModeParity. A v5 block on a MinBond == 0 chain gets the SAME verdict from
-// ValidateCommit and from ValidateCommitV5(liveView{c}, b): an accept, and a MinProposerRep refusal
-// rendered the node's way. Ablation (G-D6): make liveView.Rep answer NoWitness ⇒ the accept case
-// stalls ⇒ RED (never a skip: the fixture asserts it is legacy).
-func TestGD6_LegacyModeParity(t *testing.T) {
+// TestGD6_LegacyRepLegOracle pins M-1: the composition's LEGACY leg reads the local reputation
+// view through StateView.Rep, and liveView answers it PRESENT — so a MinBond == 0 node accepts a
+// certified v5 block, refuses a low-reputation proposer by name (ErrLowReputation) with the node's
+// own rendering ("has 10, needs 100"), and drops a low-reputation attester from the quorum.
+//
+// This is an ORACLE with absolute assertions, not a differential. Under M-2 the node's
+// ValidateCommit IS ValidateCommitV5(liveView{c}, b) for a v5 block, so comparing the two would
+// compare one function with itself (the certification's own G-D6 spec was self-defeating; M-1A-4
+// struck the clause). The v4/v5 differential for the legacy leg lives in the parity oracle
+// (parity_oracle_v4v5_test.go, the legacy regime).
+//
+// Ablation (G-D6): make liveView.Rep answer NoWitness ⇒ the accept case stalls ⇒ RED (never a
+// skip: the fixture asserts it is legacy).
+func TestGD6_LegacyRepLegOracle(t *testing.T) {
 	lf := buildLegacyFixture(t)
 	b := lf.mkBlock(t)
 	assertHonestTwinAccepts(t, lf.c, b)
 
-	nodeErr := lf.c.ValidateCommit(&b)
-	out, compErr := ValidateCommitV5(liveView{lf.c}, &b)
-	if nodeErr != nil {
-		t.Fatalf("G-D6 VIOLATED (accept): a legacy node must accept a certified v5 block through the composition; got %v", nodeErr)
-	}
-	if out != Accept || compErr != nil {
-		t.Fatalf("G-D6 VIOLATED (accept): the composition over liveView must Accept on the legacy chain; got %s / %v", out, compErr)
+	if err := lf.c.ValidateCommit(&b); err != nil {
+		t.Fatalf("G-D6 VIOLATED (accept): a legacy node must accept a certified v5 block — the legacy leg's Rep read must be PRESENT on liveView; got %v", err)
 	}
 	if err := lf.c.Append(b); err != nil {
 		t.Fatalf("G-D6: the legacy chain must COMMIT the v5 block: %v", err)
@@ -484,18 +488,13 @@ func TestGD6_LegacyModeParity(t *testing.T) {
 	// The MinProposerRep refusal: drop the proposer's reputation below the bar.
 	b2 := lf.mkBlock(t)
 	lf.reps[idOf(lf.prop)] = 10
-	nodeErr = lf.c.ValidateCommit(&b2)
-	out, compErr = ValidateCommitV5(liveView{lf.c}, &b2)
-	if !errors.Is(nodeErr, ErrLowReputation) {
-		t.Fatalf("G-D6 VIOLATED (refusal): the node must refuse on MinProposerRep; got %v", nodeErr)
-	}
-	if out != Reject || !errors.Is(compErr, ErrLowReputation) {
-		t.Fatalf("G-D6 VIOLATED (refusal): the composition must refuse on MinProposerRep; got %s / %v", out, compErr)
+	err := lf.c.ValidateCommit(&b2)
+	if !errors.Is(err, ErrLowReputation) {
+		t.Fatalf("G-D6 VIOLATED (refusal): the legacy leg must refuse on MinProposerRep by name (ErrLowReputation); got %v", err)
 	}
 	want := "proposer " + idOf(lf.prop).String() + " has 10, needs 100"
-	if nodeErr.Error() != compErr.Error() || !strings.Contains(nodeErr.Error(), want) {
-		t.Fatalf("G-D6 VIOLATED (attribution): the legacy refusal must render the node's way (%q) at both doors:\n  node: %v\n  comp: %v",
-			want, nodeErr, compErr)
+	if !strings.Contains(err.Error(), want) {
+		t.Fatalf("G-D6 VIOLATED (attribution): the legacy refusal must render the node's way (%q); got %v", want, err)
 	}
 	// And the attester leg: an attester below MinAttesterRep is dropped from the quorum, so with
 	// Quorum: 2 and one of three attesters demoted the block still commits; with two demoted it
