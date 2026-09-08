@@ -308,8 +308,36 @@ func TestG6b_ExportedPackageSurfaceInventory(t *testing.T) {
 							}
 						}
 					case *ast.ValueSpec:
-						if d.Tok != token.CONST {
-							continue // exported vars are Err* sentinels: values, not doors
+						if d.Tok == token.VAR {
+							// Exported vars are permitted ONLY as Err* sentinels (values with no
+							// behaviour). A var of any other type — say `var DefaultNodeView
+							// StateView = liveView{…}` — would be a door the inventory must see
+							// (PE re-ruling 2026-09-08): it is listed under "var" and must be
+							// allow-listed by name with a reason like every other entry.
+							for i, n := range sp.Names {
+								if !ast.IsExported(n.Name) {
+									continue
+								}
+								isErr := strings.HasPrefix(n.Name, "Err")
+								if t, ok := sp.Type.(*ast.Ident); ok && t.Name == "error" {
+									isErr = true
+								}
+								if sp.Type == nil && i < len(sp.Values) {
+									if call, ok := sp.Values[i].(*ast.CallExpr); ok {
+										if fn, ok := call.Fun.(*ast.SelectorExpr); ok && (fn.Sel.Name == "New" || fn.Sel.Name == "Errorf") {
+											isErr = isErr && true
+										} else {
+											isErr = false
+										}
+									} else {
+										isErr = false
+									}
+								}
+								if !isErr {
+									got["var "+n.Name] = f
+								}
+							}
+							continue
 						}
 						for _, n := range sp.Names {
 							if ast.IsExported(n.Name) {

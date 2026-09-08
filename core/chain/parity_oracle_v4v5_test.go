@@ -11,6 +11,12 @@ import (
 )
 
 // =============================================================================
+// SCOPE, stated plainly (PE re-ruling 2026-09-08): the v4 twin is minted in TWO passes, because
+// era-3 `apply` seats validatorsSeen from the block's non-hash-covered Atts while the attestations
+// sign the hash that covers the root (R-BOX-ATTESTS / O1–O2, retired unrun on main). That procedure
+// is one a real proposer cannot execute, so this oracle proves parity of the era-3 validity BODIES
+// between the node and the mirrors — not that a v4 block is mintable on the real path.
+//
 // M-1A-3 — THE v4/v5 PARITY ORACLE (research certification
 // FLOORBOX-STRUCTURE-ROUND-1A-COMPOSED-DIFF-869399e §7.3; PE ruling §1.2, the seven regimes)
 // =============================================================================
