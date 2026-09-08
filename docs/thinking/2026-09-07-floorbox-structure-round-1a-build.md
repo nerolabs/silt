@@ -356,5 +356,123 @@ green; `go vet ./...`, gofmt clean; `check_cited_tests.py`, `check_source_gates.
 Owed to the planner: a CHANGELOG line for `core/chain` + `core/statehash`; register rows already
 owed from part 1 stand; NO new `R-` name was minted in this pass (`R-CARRIER-PRUNED-HASH`,
 `R-CARRIER-PARENTPROPOSER`, `R-CARRIER-BYTES` are cited, all pre-existing). The
-`R-CARRIER-PARENTPROPOSER` row can be re-dispositioned: the witness slot is gone, the ADD direction
-is unrepresentable in 1A; what remains is the 1B pin question (which parent the box holds).
+`R-CARRIER-PARENTPROPOSER` row can be re-dispositioned: the witness slot is gone. (CORRECTED by the
+PE ruling §3, see §12 below: the ADD direction is NOT "unrepresentable in 1A" — it is representable
+at `NewBox`'s `parent Block` parameter and inert only by the R1.8 downgrade plus the absence of a
+non-test caller; it folds into `R-DRIVER-ASSERTED-BOXSTATE` and closes with the 1B pin.)
+
+
+---
+
+# Review fixes (the two blind rulings on `869399e`) — build record
+
+Date: 2026-09-08 · Seat: BUILDER · Branch: `builder/floorbox-structure-1a`, seven commits on `869399e`.
+Rulings folded in, both blind on the same commit:
+
+- PE: `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-floorbox-structure-round-1a-869399e-2026-09-08.md`
+  (F-1, F-2 merge-blocking; F-3, F-5, F-6, F-7, F-8 record/hygiene; §3 the `R-CARRIER-PARENTPROPOSER` coupling).
+- Researcher: `/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/FLOORBOX-STRUCTURE-ROUND-1A-COMPOSED-DIFF-869399e-RESEARCH-CERTIFICATION-2026-09-08.md`
+  (M-1A-1…M-1A-5; §3.1 G-D13; §7.2 the eight undriven mirrors; §7.3 the parity oracle).
+
+## 11. The items, each its own commit, each with its ablation
+
+| # | Item | Files | Ablation | RED line | GREEN |
+|---|---|---|---|---|---|
+| 1 | **M-1A-1** `v5MatureNow` calls the receiverless `nakamotoCoefficient`; the inline closure and its `threshold` deleted | `validate_v5_quorum.go`; new `validate_v5_maturity_gate_test.go` (`TestM1A1_V5MatureNowEqualsNodeMatureNow`, twelve committed worlds: degenerate total, equal bonds, whale, shared domain, operator margin, the anchor / slashed / below-MinBond exclusions) | a divergent inline coefficient (`cum >= total/3`) | `M-1A-1 VIOLATED (three equal bonds, MatureValidators 2): the node's matureNow answers true, the composition's v5MatureNow answers false` | `ok` |
+| 2 | **M-1A-2** the `WitnessValidateV5` comment rewritten | `floorbox_v5.go` | comment-only; no gate | — | the door named is `(*Box).Validate`; the parameter-taking shape is stated as RT2-CARRIER-13, with "do NOT build the recompute here" |
+| 3 | **M-1A-4** G-D6 relabelled `TestGD6_LegacyRepLegOracle`; the `nodeErr.Error() != compErr.Error()` clause struck | `redteam_floorbox_structure_gate_test.go`; the two citations in `composition_stage_cover_v5_test.go` | `liveView.Rep` → `NoWitness` | `NON-VACUITY BROKEN: the node refuses the honest twin (… stall: rep[proposer] (legacy mode))` | `ok` |
+| 4 | **PE F-1** the fold-pin matcher widened to TYPE reachability: a Chain method's receiver, a `*Chain` parameter, a receiver-field alias (`s.c`) resolved from the fold files' own struct declarations, a local `x := s.c`; the classifier (`foldPinIndex.liveReads`) shared with the teeth test, which re-injects all four shapes; `(*Box).view`'s `s.c.verifyBond` given a site-scoped entry with its reason; the site map now carries a reason per site | `floorbox_recompute_foldlivestate_pin_v5_test.go` | (a) the ruling's `func (s *Box) ablationLiveRead() (bool, int) { return s.c.matureEpoch, len(s.c.epochSet) }`; (b) the `view` site entry removed | (a) `FOLD FILES READ LIVE BOX STATE (2 site(s)): floorbox_box_v5.go:229 s.c.epochSet (in ablationLiveRead) … s.c.matureEpoch (in ablationLiveRead)`; (b) `floorbox_box_v5.go:133 s.c.verifyBond (in view)` — the pre-existing read the old matcher never saw | `ok` |
+| 5 | **PE F-2** `StateView` SEALED (`sealedStateView()`, implemented by `liveView` and `provenView` only); **G-6b** `TestG6b_ExportedPackageSurfaceInventory` derives every exported func / method-on-exported-receiver / type / const over `floorbox_*.go` + `validate_v5*.go` + `stateview*_v5.go` + `readset_v5.go` and holds it to `exportedPackageSurface` (a reason per entry; `Err*` vars excluded by rule) and asserts the seal; the never-Accept sentence in `floorbox_box_v5.go` names `(*Box).Validate` as the property's owner; **F-7** the dead `twins != gates` check deleted | `stateview_v5.go`, `stateview_live_v5.go`, `stateview_proven_v5.go`, `floorbox_box_v5.go`, `floorbox_door_inventory_v5_test.go` | (a) `func ExportedAblationDoor() {}` in `validate_v5.go`; (b) the seal deleted from the interface and both views | (a) `G-6b — … NEW (not listed): [func ExportedAblationDoor (validate_v5.go)]`; (b) `G-6b — StateView must carry the unexported seal method sealedStateView …` — and an out-of-package `fake` implementing all 24 methods **compiled and drove `ValidateCommitV5`** with the seal gone; with the seal present it fails to compile: `fake does not implement chain.StateView (missing method sealedStateView)` | `ok` |
+| 6 | **M-1A-3** the v4/v5 PARITY ORACLE `TestM1A3_V4V5ParityOracle` (§13) | new `parity_oracle_v4v5_test.go`; `floorbox_door_inventory_v5_test.go` (the oracle and the maturity gate join `twinGateFiles`) | seven single-clause deletions, one per mirror (§13.3) | each RED names the regime and the case (§13.3) | `ok`, all nine regimes, eight mirrors recorded |
+| 7 | **M-1A-5 / G-D13** `TestGD13_PerRowNodeBodyDigests`: sha256 of the comment-free body of all 28 node functions that `nodeStages` (transitively) or `compositionHelpers` name, pinned in `nodeBodyDigests`; a red names the function and every row/helper that mirrors it; floor 24; a pin with no mirroring row reddens; **F-5** the two accelerator substitutions named in `nodeStages`' doc with the drift guard | `composition_stage_cover_v5_test.go`, `validate_v5.go` (doc only) | `&& true` inside `validateBondRegs` | `G-D13 — a node body the composition MIRRORS changed (or is unpinned): validateBondRegs: body CHANGED — hashes to 40586a06544b095d, pinned ec0fdfd68d488ca5; mirrored by [P7 (v5ValidateBondRegs)]` | `ok` |
+
+Every ablation restored; `git status` clean of everything but the commits.
+
+## 12. Record corrections the PE ordered (F-3, F-6, F-8, §3)
+
+- **F-3, the v6 delta, stated plainly.** For an in-process v6 block the pre-round node ACCEPTED (no
+  upper version bound; the era-2 body plus `validateEra3Roots` ran); the composition REJECTS it
+  (`ErrAboveCurrentEraVersion`, step 0). Refuse-more, wire-unreachable (`Decode` refuses `> 5`), and
+  the delta certification's §2.2 row 0 "node: no-op" is therefore not exact. The code stays.
+- **F-6, the second Q3 implementation.** `v5RequireEpochWeightQuorum` (no author screen; P4 runs
+  first) and the standalone `recomputeEpochWeightQuorum` (the N1 screen; no production caller,
+  reached from three fold files) are two live reproductions of Q3 with different screen sets.
+  `R-SHARED-RULE-BLINDSPOT` grows in that second direction; the closer is deleting the standalone
+  when its direct drivers migrate to the door (the same event the certification §3.6 names for the
+  (0a) `validateCarrier` call).
+- **§3, the `R-CARRIER-PARENTPROPOSER` ADD direction.** Struck from §10 in place: it is representable
+  at `NewBox`'s `parent Block`; inert by the R1.8 downgrade and the absence of a non-test caller, not
+  by the type. It folds into `R-DRIVER-ASSERTED-BOXSTATE` and closes with the 1B pin. This round is
+  not to be credited with closing it.
+- **F-8, the evidence line.** The merge evidence for `core/chain` is `go test -timeout 40m ./core/chain/`
+  (the default 600 s fails inside `TestMeasureRecomputeMatureNowFoldCost` at N = 10⁶). **Not run in
+  this pass**: the owner's load rule for this run is `-short` only. What is held: `go test -short
+  ./core/chain/` `ok` (27.3 s), `go vet ./core/... ./cmd/...` clean, `go build ./...` clean, the
+  three lints exit 0. The `-timeout 40m` run is owed at the merge commit.
+
+## 13. The parity oracle — construction, what each regime proves, and the ablation record
+
+### 13.1 Shape
+
+`parityWorld.pair` mints the SAME content at `BlockVersionStateRoot` and `BlockVersionWitnessable`
+on the same committed head; `assertParity` runs both through `ValidateCommit` (the v4 twin takes the
+node's era-3 bodies verbatim; the v5 twin dispatches to the composition) and asserts the same
+verdict, the same sentinel (`errors.Is`) and the same rendering. The ONE permitted text departure is
+`rootsRendered` (P13 renders version-specific roots). Committed history is v5 with the `LastCommit`
+carrier harvested from the parent's precommits, so seating goes through the carrier, never Atts.
+
+**A trap the fixture principle hid:** a v4 twin's StateRoot depends on WHO attests — apply seats
+`validatorsSeen` from `b.Atts` for a sub-v5 block, the era-3 non-hash-covered transition input —
+while the attestations sign the hash that covers the root. `mint` therefore runs two passes (attach
+the attester set provisionally → roots → sign → re-issue). The era-3 fixtures never hit this because
+they mint v4 blocks with no attesters. For the v5 twin the second pass changes no root, which is the
+property era-4 was built for, observed.
+
+### 13.2 Regimes and evidence (each also carries the honest twin, NG-2)
+
+| Regime | World | Accept | Refusals by name | Mirrors recorded |
+|---|---|---|---|---|
+| `objective-noepochs` | 4 anchors, epochs off, handed off at genesis | honest | P6 `ErrRevokeUnknownRoot`, C1 `ErrProposerPrepare`, Q1 `ErrNoQuorum`, P1 `ErrWrongParent`, P13a `ErrEra3StateRootMismatch` (roots rendered); **P7 pruned leg, both arms**: at/above the reader's floor `ErrPrunedAboveHorizon`; below it (`trustFloorOverride`, the receiver's anchor a Reconcile replay threads) Answer-less regs ACCEPTED and a smuggled Answer `ErrMalformedPruned` | `v5ValidateBondRegs` (pruned arm) |
+| `launch-window` | MatureValidators 2 unmet, two bonded non-anchors | anchor proposes with anchor majority | P4 anchor-only arm `ErrLowReputation`; Q2 `ErrAnchorRequired` (Q1 met by 3 qualified) | — (Q2 / `v5HandedOff`) |
+| `mature-epoch` | EpochBlocks 2, frozen at genesis (4 anchors, 8 MiB); a newcomer bonded mid-epoch | full frozen weight | Q3 `ErrNoQuorumWeight` at 4 of 8 MiB; P4 frozen arm `… not in the frozen epoch set governing height 2`; the attester frozen arm drops the newcomer → `ErrNoQuorum` | `v5RequireEpochWeightQuorum`, `v5RequireProposerQualified` (+ `v5AttesterQualifiedAt`'s frozen arm) |
+| `reggate-active` | as above + TTL 32 (R = 10), gate from h > 1 | a fresh identity's first reg; a LAPSED frozen member re-proving its own root inside R (the shipped #535 fix-(4) surgery, `delete(c.bonded, member)`) | `ErrRegGate` twice-in-one-block; `ErrRegGate … re-registered 2 blocks after its last reg (R=10)` for a member with LIVE standing | `v5RegGateActive` (active arm), `v5RestoresHeldStanding` (both values) |
+| `recovery-boundary` | EpochBlocks 2, LivenessRecoveryHeight 2, a 16 MiB joiner bonded at h1 (not frozen); a twin world with the directive OFF | ON: anchors + joiner; the joiner ALONE carries the weight quorum; the joiner PROPOSES | OFF: the same blocks → `ErrNoQuorum` (joiner dropped), `ErrLowReputation` (frozen arm) | `v5EffectiveEpochSet` (recovery arm, load-bearing), `v5RequireEpochWeightQuorum` (live set) |
+| `demature` | MatureValidators 2; three 2 MiB validators seated at h2 via the carrier (latch), a 32 MiB whale seated at h3 | mature-and-decentralized (Q4 skipped); de-matured with the whale in the coalition | de-matured, whale absent: `ErrDeMatureQuorum … 14 MiB of 46 MiB bonded (need ≥31 MiB)` | `v5MatureNow` (true then false, on the accept path), `v5RequireDeMatureSuperQuorum` |
+| `legacy` | `buildLegacyFixture` (MinBond 0) | honest | `ErrLowReputation` (proposer rep 10); `ErrNoQuorum` (two attesters demoted) | — (the G-D6 differential) |
+| `era3-active` | Era3ActivationHeight 1 | both twins satisfy P10 | — | — |
+| `era4-active` | Era3 1, Era4 2 | v5 accepted | **expected by-rule divergence**: the v4 twin `ErrEra4VersionRequired` | — |
+
+The closing check asserts all eight names in `uncoveredMirrors` were recorded AND are real
+composition functions (a renamed mirror reddens).
+
+### 13.3 Ablations (one mirrored clause deleted each; all restored)
+
+| Mirror ablated | RED line (regime / case) |
+|---|---|
+| `v5ValidateBondRegs`: the `seenReg[id]` twice-in-one-block check | `PARITY VIOLATED (reggate-active / the same identity registered twice in one block (P7 gate arm)): both twins must be REFUSED with … ErrRegGate` |
+| `v5RestoresHeldStanding` returns false | `PARITY VIOLATED (reggate-active / a LAPSED frozen member re-proves its own root inside R …): both twins must be ACCEPTED` |
+| `v5EffectiveEpochSet`: the recovery arm | `PARITY VIOLATED (recovery-boundary/on / the non-frozen joiner's attestation carries the weight quorum (recovery arm)): both twins must be ACCEPTED` |
+| `v5RequireEpochWeightQuorum`: `2*total` → `total` | `PARITY VIOLATED (mature-epoch / coalition holds half the frozen weight (Q3)): both twins must be REFUSED` |
+| `v5RequireDeMatureSuperQuorum`: `need` → 0 | `PARITY VIOLATED (demature / de-matured, the whale absent (Q4: 14 of 46 MiB)): both twins must be REFUSED` |
+| `v5MatureNow`: `k+1 >=` | same de-mature case (Q4 skipped on the v5 side) |
+| `v5RequireProposerQualified`: the frozen-set membership test | `PARITY VIOLATED (mature-epoch / mid-epoch newcomer proposes (P4 frozen arm))` and `(recovery-boundary/off / the joiner proposes with the directive OFF …)` |
+
+## 14. Deviations from the fix brief, with reasons
+
+1. **The G-D13 digests live in the TEST file** (`nodeBodyDigests`, keyed by node function), not as
+   a `NodeDigest` field on the production `nodeStages` rows. The production table carries no test
+   pins (arm B's digest already lives in the test file), and the attribution the certification asked
+   for is preserved: a red names the function and every row/helper that mirrors it.
+2. **`StateView` is sealed** — one unexported method — beyond the PE's "inventory + doc" fix. The
+   inventory documents the surface; the seal turns the never-Accept claim into a compile-time fact
+   (an out-of-package fake fails to compile). One line, structural, reviewed under G-6b.
+3. **G-D6 keeps only the node's door** (`ValidateCommit`), not a second call to `ValidateCommitV5`:
+   under M-2 they are one function.
+4. **P7's pruned leg is driven on both arms**, the below-floor arm through `trustFloorOverride`. The
+   box's `provenView.TrustFloor` answers 0 always (its door stalls on a pruned block first), so on
+   the box the leg is unreachable; on the node it is the Reconcile-replay path's rule.
+
+No new `R-` name minted. Cited from the certification: `R-SECOND-DOOR-COMMENT` (closed by M-1A-2),
+`R-QUALIFIED-ACCELERATOR-SAFETY` (named in `nodeStages`' doc), `R-MIRROR-COVERAGE-REGIME` (closed by
+M-1A-3), `R-PTABLE-DRIFT` (re-scoped; bounded by G-D13). Owed to the planner: the CHANGELOG line;
+the register rows above; the `-timeout 40m` run at the merge commit.
