@@ -136,8 +136,14 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   (M-380-3); the v4/v5 parity oracle gains the mature-epoch whale regime. Gates: G-H43-8 arms 8a–8e
   (`core/node/bondreg_drain338_test.go`, `core/node/modelcheck_h43_8_quorum_floor_test.go`,
   `core/chain/quorum_floor_380_gate_test.go`, `core/node/modelcheck_h43_8e_gather_control_test.go`) and
-  `core/node/newview_empty_380_test.go`, all RED-first. Owner's call, unchanged here: the shipped default `-quorum 3`
-  caps a default 4-validator swarm's gather at f = 0 (certification §4.5).
+  `core/node/newview_empty_380_test.go`, all RED-first. The proposer-side gather target is path-independent:
+  `proposeBlockAt` raises every proposal path (client publish, the h43 new-view re-proposal, the bond-reg drain) to
+  `max(Config.Quorum, RequiredQuorum())` (PE ruling C1; arm 8e drives all three). **Rollout order: upgrade FIRST.** The
+  change only ADDS accepts, so an upgraded node accepts every block a trailing node produces; a trailing node with
+  `-quorum` above `bftThreshold(N)` still validates at the old `max(Quorum, bft)` and would refuse a block gathered
+  below it — hence the gather target keeps `Config.Quorum`, and mixed fleets must keep `-quorum` uniform until every
+  node is upgraded. Owner's call, unchanged here: the shipped default `-quorum 3` caps a default 4-validator swarm's
+  gather at f = 0 (certification §4.5).
 - **Crash-safety — a torn `chain.cbor` no longer restarts the validator from genesis (#558, Lane B8, scope call S3).**
   `chainstore.Save` now writes a temp file, fsyncs it, renames it over `chain.cbor` and fsyncs the directory (the
   markstore pattern), so a power loss or OOM-kill mid-write cannot leave a truncated store. At boot the daemon replays

@@ -44,7 +44,7 @@ import (
 // the #535 recovery boundary (v5EffectiveEpochSet's recovery arm), de-maturation (v5MatureNow and
 // Q4), the pruned leg of P7, the legacy leg, and the era-3 / era-4 version rules. Each regime
 // asserts one accept and at least one refusal per mirrored stage, and records — right after the
-// by-name assertion that proves it ran — which of the eight uncovered mirrors it drove. The
+// by-name assertion that proves it ran — which of the uncovered mirrors it drove. The
 // closing assertion holds the record to the certification's list.
 //
 // Ablation (M-1A-3): delete one mirrored clause — e.g. the `seenReg[id]` twice-in-one-block check
@@ -52,7 +52,7 @@ import (
 // the regime and the case.
 
 // uncoveredMirrors are the eight mirrors the certification found with ZERO driven coverage before
-// this oracle (§7.2). The oracle must drive every one; a renamed mirror reddens the closing check.
+// this oracle (§7.2), plus v5RequiredQuorum's mature leg (#380 direction (1), regime (b)). The oracle must drive every one; a renamed mirror reddens the closing check.
 var uncoveredMirrors = []string{
 	"v5RequireEpochWeightQuorum",   // Q3
 	"v5RequireDeMatureSuperQuorum", // Q4
@@ -535,7 +535,7 @@ func TestM1A3_V4V5ParityOracle(t *testing.T) {
 		}
 	}
 	if len(missing) > 0 {
-		t.Fatalf("M-1A-3 INCOMPLETE: the parity oracle did not drive %v (certification §7.2 lists eight mirrors with zero driven coverage)", missing)
+		t.Fatalf("M-1A-3 INCOMPLETE: the parity oracle did not drive %v (certification §7.2 lists eight mirrors with zero driven coverage; #380 added v5RequiredQuorum)", missing)
 	}
 	var record []string
 	for m, ev := range drove {
