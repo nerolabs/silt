@@ -218,7 +218,8 @@
       return { text: "no work reported", unknown: true, sub: gini.reason || "the sample reported no work at all" };
     }
     return { text: Number(gini.value || 0).toFixed(4), known: true,
-      sub: "gossip-estimated over " + sample.size + " nodes" + (sample.selfIncluded ? " (this node included)" : "") };
+      sub: "gossip-estimated over " + sample.size + " nodes" + (sample.selfIncluded ? " (this node included)" : "") +
+        (gini.epoch ? " · " + gini.epoch : "") };
   }
 
   return { fmtB, fmtDur, withheld, statusCards, prereleaseBanner, observatoryTotals, servedCell, libraryGetCell,

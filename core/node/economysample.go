@@ -211,7 +211,9 @@ func (n *Node) EconomySample() EconomySample {
 	return es
 }
 
-// selfWork reads THIS node's two gossiped work counters off its own ledger. It uses
+// selfWork reads THIS node's two gossiped work counters off its own ledger. SINCE THE
+// PROCESS STARTED, not lifetime: the ledger is ephemeral through the RC (D-FP2-SCOPE), so
+// both reset at every restart. See ports.Message.ServedBytes for what that costs. It uses
 // credit.Ledger.WorkSample through an optional interface — the NON-registering read —
 // because this runs on the outbound-message path and a read that registers an account
 // would move faucet accounting as a side effect of sending a FindNode (see

@@ -272,6 +272,12 @@ func TestR22GossipEstimatedFieldsNeverRenderWithoutTheirSample(t *testing.T) {
 	if conc.RepairGini == nil || conc.RepairGini.SampleSize != 4 {
 		t.Fatalf("repairGini = %+v: the repair series must carry the CAPABLE SUBSET's size (4), not the sample's (8) — the wrong sibling on the wrong number", conc.RepairGini)
 	}
+	// B4: every published work figure carries what its counters are measured over.
+	for name, gv := range map[string]*giniValue{"serveGini": conc.ServeGini, "repairGini": conc.RepairGini} {
+		if !strings.Contains(gv.Epoch, "NOT lifetime") {
+			t.Fatalf("%s carries epoch %q. The counters behind it reset at every restart (D-FP2-SCOPE), so it is not a lifetime figure and a concentration measure over it partly reflects uptime — publishing the number without that is the same error as publishing a gossip figure without its sample size", name, gv.Epoch)
+		}
+	}
 	if !strings.Contains(conc.RepairGini.Scope, "REPAIR-CAPABLE") {
 		t.Fatalf("repairGini scope = %q: a repair Gini without its scope is unreadable — the network-wide one is ~0.99 on a healthy network", conc.RepairGini.Scope)
 	}

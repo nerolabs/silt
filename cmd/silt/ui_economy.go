@@ -536,7 +536,10 @@ type giniValue struct {
 	SampleSize int     `json:"sampleSize"`
 	Tier       string  `json:"tier"`
 	Scope      string  `json:"scope"`
-	Reason     string  `json:"reason,omitempty"`
+	// Epoch is what the counters behind this figure are measured over. It is not
+	// decoration: they reset at every restart, so the figure is not a lifetime one.
+	Epoch  string `json:"epoch"`
+	Reason string `json:"reason,omitempty"`
 }
 
 // The two scope strings. They are on the wire because each series is over a DIFFERENT and
@@ -548,11 +551,19 @@ const (
 	repairGiniScope = "the REPAIR-CAPABLE nodes (horse + archival by capacity band) that REPORTED repair work. A network-wide repair Gini is ~0.99 by construction under D-TIERING, where transient ponies do no durability work, so it carries no signal. Same reporting-subset rule as the serve series"
 )
 
+// workCounterEpoch is the ephemerality stamp both work series carry. The counters behind
+// them reset at every restart (D-FP2-SCOPE keeps the credit ledger in memory through the
+// RC), so a node up for a week and a node up for an hour differ by their UPTIME as much as
+// by their behaviour, and neither figure is a lifetime total. Publishing the number without
+// this is the same class of error as publishing a gossip figure without its sample size:
+// the caveat is not commentary, it is part of what the number means.
+const workCounterEpoch = "since each node's process started, NOT lifetime: the credit ledger is ephemeral through the RC (D-FP2-SCOPE), so these counters reset at every restart and this measure partly reflects uptime. It becomes a lifetime figure when the ledger persists, and must be re-read then"
+
 // noWorkReported is the rendering of a Gini whose sample summed to zero.
 const noWorkReported = "no work reported by this sample: every sampled node reported zero. That is not an even distribution — it is an absent measurement, and the two are different facts"
 
 func giniOver(value float64, total int64, size int, tier, scope string) *giniValue {
-	gv := &giniValue{SampleSize: size, Tier: tier, Scope: scope}
+	gv := &giniValue{SampleSize: size, Tier: tier, Scope: scope, Epoch: workCounterEpoch}
 	if total <= 0 {
 		gv.Reason = noWorkReported
 		return gv

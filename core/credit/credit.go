@@ -970,7 +970,8 @@ func Gini(values []int64) float64 {
 }
 
 // WorkSample reads the two node-wide work counters the capacity gossip carries for
-// node n — lifetime served bytes and lifetime repairs done — WITHOUT REGISTERING an
+// node n — served bytes and repairs done SINCE THIS PROCESS STARTED, because the ledger is
+// ephemeral through the RC (D-FP2-SCOPE) — WITHOUT REGISTERING an
 // account. That is the whole reason it exists beside ServedBytes/RepairsDone: those
 // go through acct(), which calls Register, which CREATES an account (and, on an
 // R2.12 faucet-configured ledger, increments grantsPending). The gossip stamp runs

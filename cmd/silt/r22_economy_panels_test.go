@@ -56,7 +56,7 @@ out.washWithheld = r.washCard({ countersWithheld: true });
 const bigSample = { sample: { size: 9, minSize: 3, tooSmall: false, selfIncluded: true } };
 out.gossipSmall = r.gossipCell({ sample: { size: 2, minSize: 3, tooSmall: true } }, undefined);
 out.gossipAbsent = r.gossipCell(bigSample, undefined);
-out.gossipValue = r.gossipCell(bigSample, { known: true, value: 0.1234, sampleSize: 9 });
+out.gossipValue = r.gossipCell(bigSample, { known: true, value: 0.1234, sampleSize: 9, epoch: "since each node's process started, NOT lifetime" });
 // B2 (blind PE): a sample that summed to zero. The wire sends known:false and NO value, so
 // the cell is driven exactly as the endpoint would send it — and, separately, with an
 // explicit 0 present, because a consumer must branch on known and never on the number
@@ -158,6 +158,12 @@ console.log(JSON.stringify(out));`
 	}
 	if out.GossipValue.Text != "0.1234" || !strings.Contains(out.GossipValue.Sub, "over 9 nodes") {
 		t.Fatalf("a published gossip figure = %+v; it must carry its sample size in the same cell", out.GossipValue)
+	}
+	// B4: and its EPOCH. The counters reset at every restart (D-FP2-SCOPE), so a
+	// concentration figure over them partly measures uptime. That caveat is part of what
+	// the number means, so it travels with it to the operator, not only on the wire.
+	if !strings.Contains(out.GossipValue.Sub, "NOT lifetime") {
+		t.Fatalf("the published gossip cell does not carry the epoch: %q. These counters reset at every restart, so a node up for a week and one up for an hour differ by uptime as much as by behaviour", out.GossipValue.Sub)
 	}
 	// B2. An unknown Gini must never render as a number, in either wire form.
 	for name, got := range map[string]cell{"no value sent": out.GossipNoWork, "an explicit 0 sent": out.GossipZeroValue} {

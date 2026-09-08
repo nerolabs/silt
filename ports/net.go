@@ -257,8 +257,21 @@ type Message struct {
 	// the network's storage for the M9 capacity estimate.
 	CapUsed  int64
 	CapTotal int64
-	// Work gossip (R2.2 rows 8-9): the sender's own lifetime served bytes and
-	// repairs done, riding the same messages as the capacity pledge so a node can
+	// Work gossip (R2.2 rows 8-9): the sender's own served bytes and repairs done
+	// SINCE ITS PROCESS STARTED — not lifetime. D-FP2-SCOPE keeps the credit ledger
+	// ephemeral through the RC (core/credit's account map is in memory and only paid
+	// serials are restored at boot), so both counters reset on every restart. A
+	// concentration measure over them therefore partly measures UPTIME: a node up for a
+	// week and one up for an hour differ by how long they have been running, not by how
+	// they behave. Every consumer must carry that caveat; the concentration document
+	// stamps it (cmd/silt/ui_economy.go, workCounterEpoch).
+	//
+	// It is not a mitigation either. The reset hands an observer a KNOWN ZERO BASELINE,
+	// which removes the differencing step rather than adding one, and because both fields
+	// are omitempty it makes every restart an unforgeable beacon to every peer. It must be
+	// re-priced at the R2.4 economy-ON flip that D-FP2-SCOPE names as a re-arm trigger.
+	//
+	// They ride the same messages as the capacity pledge so a node can
 	// compute the serve-work and repair-work Gini over its local peer sample
 	// without an aggregator. EXACTLY TWO FIELDS, and the tier class is NOT a third:
 	// it is derived from CapTotal with published bands (core/node/tiers.go), because
