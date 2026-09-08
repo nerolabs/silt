@@ -712,7 +712,7 @@ func (l *Ledger) livePaidSerials() []ports.PaidSerial {
 	out := make([]ports.PaidSerial, 0, len(keys))
 	for _, k := range keys {
 		e := l.paidSerial[k]
-		out = append(out, ports.PaidSerial{Serial: serialOfPaidKey(k), Server: e.server, Epoch: e.epoch})
+		out = append(out, ports.PaidSerial{Serial: serialOfPaidKey(k), Server: e.server, Epoch: e.epoch, Relay: e.lane == laneRelay})
 	}
 	return out
 }
@@ -798,7 +798,7 @@ func (l *Ledger) addPaidSerial(serial []byte, server ports.NodeID, issuedEpoch u
 		return nil // already recorded (the guard above already refused a re-redeem)
 	}
 	if l.paidStore != nil {
-		if err := l.paidStore.Append(ports.PaidSerial{Serial: serial, Server: server, Epoch: issuedEpoch}); err != nil {
+		if err := l.paidStore.Append(ports.PaidSerial{Serial: serial, Server: server, Epoch: issuedEpoch, Relay: lane == laneRelay}); err != nil {
 			return err
 		}
 	}
@@ -830,24 +830,32 @@ func (l *Ledger) LoadPaidSerials() error {
 		return err
 	}
 	fresh := make(map[string]paidSerialEntry, len(entries))
+	var deliveryEntries int64
 	for _, e := range entries {
 		if len(e.Serial) == 0 {
 			continue
 		}
-		fresh[paidKey(e.Epoch, e.Serial)] = paidSerialEntry{server: e.Server, epoch: e.Epoch}
+		lane := laneDelivery
+		if e.Relay {
+			lane = laneRelay
+		} else {
+			deliveryEntries++
+		}
+		fresh[paidKey(e.Epoch, e.Serial)] = paidSerialEntry{server: e.Server, epoch: e.Epoch, lane: lane}
 	}
 	if len(fresh) > maxPaidSerial {
 		return fmt.Errorf("credit: persisted paid-serial guard holds %d entries, cap is %d",
 			len(fresh), maxPaidSerial)
 	}
 	l.paidSerial = fresh
-	// R2.9 (G-6R-9): the restored entries are the guard's WHOLE population — both lanes
-	// (the store carries no lane; every entry is re-labelled laneDelivery here:
-	// R-GUARD-RESTORE-LANE-UNKNOWN, pre-existing) — and no session state survived with them
-	// (D-FP2-SCOPE: sessions and deposits are ephemeral; the guard is durable so nothing is
-	// re-spent). The count is an UPPER BOUND on lost deposits, surfaced at boot and on
-	// /api/status so the loss is operator-visible, never silent.
-	l.deliveryRestartOrphans = int64(len(fresh))
+	// R2.9 (G-6R-9): each restored DELIVERY entry is an anchor whose session state did not
+	// survive the restart (D-FP2-SCOPE: sessions and deposits are ephemeral; the guard is
+	// durable so nothing is re-spent), so the count is an upper bound on lost deposits —
+	// surfaced at boot and on /api/status so the loss is operator-visible, never silent.
+	// Relay anchors are EXCLUDED: they keep the burn and never had a deposit, and the
+	// durable record now carries the lane that says which is which
+	// (R-GUARD-RESTORE-LANE-UNKNOWN closed; the pre-bump restore counted both).
+	l.deliveryRestartOrphans = deliveryEntries
 	l.guardLoaded = true
 	return nil
 }

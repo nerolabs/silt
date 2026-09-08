@@ -8,6 +8,21 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Fixed
+- **The paid-serial guard's durable record carries its LANE (`R-GUARD-RESTORE-LANE-UNKNOWN`).** The guard holds
+  two populations on one map — delivery anchors and relay anchors — and the on-disk record carried neither, so
+  `LoadPaidSerials` rebuilt every restored entry as a delivery entry: `LivePaidSerialsByLane` and
+  `RestoredGuardEntries` conflated the two after every restart (measured by the blind PE, 2026-09-07: lanes
+  `(2, 1)` before a restart, `(3, 0)` after). `ports.PaidSerial` gains a `Relay` flag, `adapters/guardstore`
+  bumps its on-disk format to version 2 (an 8-byte magic + version header, a 74-byte record with the lane byte
+  last), and `RestoredGuardEntries` now counts DELIVERY-lane entries only — the honest upper bound on deposits a
+  restart lost, since a relay anchor keeps its burn and never had a deposit. **Compatibility:** a store written
+  by a pre-bump build is a refuse-to-start error (`guardstore.ErrLegacyFormat`) naming the file, not a silent
+  migration — a version-1 record has no lane, and the only guess available is the very mis-count this closes.
+  Gates: `TestRestoredGuardEntriesKeepTheirLane` (core/credit, the mixed-population restart),
+  `TestRecordCarriesTheLane`, `TestPreLaneFormatIsRefusedNotSilentlyReframed`, `TestFreshStoreWritesItsHeader`
+  (adapters/guardstore); three controlled reverts, three RED.
+
 ### Docs
 - **The 2026-09-08 ROADMAP reorder — simplicity, by owner direction via the PE (`D-RECOMPUTE-FREEZE`).** The
   trustless-recompute track (the floor-box keystone, Structure Round 1B, the R1.x ladder, any era whose reason is

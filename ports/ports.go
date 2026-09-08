@@ -370,6 +370,14 @@ type PaidSerial struct {
 	Serial []byte
 	Server NodeID
 	Epoch  uint64
+	// Relay marks the population the entry belongs to: true = a relay prepayment
+	// anchor (R2.14), false = a delivery anchor. OBSERVABILITY ONLY — no accounting
+	// rule reads it; the guard treats both populations identically. It is persisted
+	// because a restart otherwise rebuilds every entry as delivery and the per-lane
+	// live counts conflate the two populations (R-GUARD-RESTORE-LANE-UNKNOWN). A bool
+	// and not a lane code: there are exactly two populations, so there is no byte
+	// value a store can hand back that this cannot interpret.
+	Relay bool
 }
 
 // RelayAnchor is one relay prepayment anchor as the ledger guards it: the (issue

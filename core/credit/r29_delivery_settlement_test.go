@@ -816,7 +816,10 @@ func TestPendingRefundTableIsBoundedAndRefusesNeverEvicts(t *testing.T) {
 // between a durable identity and an anchor serial is the refused shape.
 func TestNoIdentityIsJoinedToAnAnchorSerialInTheDurableStore(t *testing.T) {
 	// The EXACT field sets (blind PE item 6: a substring check lets an `Opener` through).
-	want := map[string][]string{"paidSerialEntry": {"server", "epoch", "lane"}, "PaidSerial": {"Serial", "Server", "Epoch"}}
+	// `lane`/`Relay` name the POPULATION an entry belongs to (delivery or relay), not
+	// a party: it is derivable from the call that spent the anchor and joins nothing to
+	// an identity. It is on the whitelist for that reason and no other.
+	want := map[string][]string{"paidSerialEntry": {"server", "epoch", "lane"}, "PaidSerial": {"Serial", "Server", "Epoch", "Relay"}}
 	for _, typ := range []reflect.Type{reflect.TypeOf(paidSerialEntry{}), reflect.TypeOf(ports.PaidSerial{})} {
 		var got []string
 		for i := 0; i < typ.NumField(); i++ {
@@ -848,8 +851,10 @@ func TestRestartLosesTheRemainderAndCountsIt(t *testing.T) {
 	l.CloseDeliverySession(fetcher, budget, 0) // a pending deposit of one face — the one genuine loss
 	// Two more live guard entries that lose NOTHING: a relay anchor (the relay lane keeps the
 	// burn) and a fully settled delivery session (remaining 0). Past N = 1 the entry count and
-	// the lost-deposit count differ, so the counter's honest meaning is pinned: entries, both
-	// lanes, an UPPER BOUND on lost deposits (blind PE item 2).
+	// the lost-deposit count differ, so the counter's honest meaning is pinned: DELIVERY-lane
+	// entries, an UPPER BOUND on lost deposits (blind PE item 2). The relay anchor is excluded
+	// because the durable record now carries its lane (R-GUARD-RESTORE-LANE-UNKNOWN); before
+	// that it was restored as delivery and inflated the count to 3.
 	if face, why := l.SpendRelayAnchors(anchorsAt(0, 7, 1)); face != 50_000 {
 		t.Fatalf("relay anchor: %q", why)
 	}
@@ -867,8 +872,11 @@ func TestRestartLosesTheRemainderAndCountsIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	st := l2.DeliverySettlementStats()
-	if st.PendingRefundCredits != 0 || st.RestoredGuardEntries != 3 {
-		t.Fatalf("after restart: pending %d (want 0 — the deposit is gone), restored guard entries %d (want 3: every live entry, both lanes — an upper bound on the 1 lost deposit, never a claim to count credits)", st.PendingRefundCredits, st.RestoredGuardEntries)
+	if st.PendingRefundCredits != 0 || st.RestoredGuardEntries != 2 {
+		t.Fatalf("after restart: pending %d (want 0 — the deposit is gone), restored guard entries %d (want 2: the two DELIVERY entries — an upper bound on the 1 lost deposit, never a claim to count credits, and never the relay anchor that lost nothing)", st.PendingRefundCredits, st.RestoredGuardEntries)
+	}
+	if d, r := l2.LivePaidSerialsByLane(); d != 2 || r != 1 {
+		t.Fatalf("after restart the lanes are (%d, %d), want (2, 1) — the restore must not re-label the relay anchor as delivery (R-GUARD-RESTORE-LANE-UNKNOWN)", d, r)
 	}
 	if _, spent := l2.paidSerial[paidKey(0, anchorSerial(0))]; !spent {
 		t.Fatal("the anchor's guard entry did not survive the restart — it could be re-spent")

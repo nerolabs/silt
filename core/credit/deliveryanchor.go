@@ -294,11 +294,14 @@ type DeliverySettlementStats struct {
 	BurnedCredits          int64 // GENUINE burns only: no account at release (M1), or the pending table at its cap
 	RefundsBurnedNoAccount int64 // releases that found no account (R-REFUND-NEEDS-AN-ACCOUNT)
 	RefundsBurnedAtCap     int64 // remainders burned at the pending-table cap (refuse-never-evict)
-	// RestoredGuardEntries counts the paid-serial guard entries restored from disk at the
-	// last LoadPaidSerials: entries, not credits, and BOTH lanes (the durable store carries
-	// no lane — R-GUARD-RESTORE-LANE-UNKNOWN), so it is an UPPER BOUND on the delivery
-	// sessions whose unsettled face or pending deposit did not survive the restart
-	// (R-DELIVERY-SESSION-EPHEMERAL, G-6R-9). Zero means no deposit can have been lost.
+	// RestoredGuardEntries counts the DELIVERY-lane paid-serial guard entries restored
+	// from disk at the last LoadPaidSerials: entries, not credits, and delivery only —
+	// the durable record carries the lane, so a relay anchor (which keeps the burn and
+	// never had a deposit) no longer inflates it (R-GUARD-RESTORE-LANE-UNKNOWN closed).
+	// It is an UPPER BOUND on the delivery sessions whose unsettled face or pending
+	// deposit did not survive the restart (R-DELIVERY-SESSION-EPHEMERAL, G-6R-9): a
+	// session that closed with remaining == 0 lost nothing. Zero means no deposit can
+	// have been lost.
 	RestoredGuardEntries int64
 	// GuardFullRefusals is the delivery lane's share of GuardFullRefusalsByLane: opens and
 	// funds refused because the paid-serial guard was full of LIVE entries — the operator's
