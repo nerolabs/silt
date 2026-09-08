@@ -806,6 +806,13 @@ type serveMintInfo struct {
 	// the block carries all three disambiguators: laneOn false (not accepting receipts at
 	// all), serveBytesObjectAware zero (nothing witnessable served yet), or a real
 	// suppression. Read it beside both.
+	//
+	// IT IS A LOWER BOUND, NOT A RATE. In-flight and evicted bytes sit in the denominator
+	// and never in the numerator, so a node with open unsettled sessions — or one losing
+	// lanes at the cap — reads below 1 with zero suppression. Read the BAND
+	// [witnessed, witnessed+inFlight] / objectAware, both ends computable from fields
+	// published right here, and fire a coverage abort only on the UPPER end. Between the
+	// ends the window is too short, not the network too poor.
 	ReceiptCoverage float64 `json:"receiptCoverage"`
 }
 
@@ -1291,7 +1298,14 @@ func (s *uiServer) apiEconomySelf(w http.ResponseWriter, r *http.Request) {
 // bounty-out figure: on a node caretaking ONE root it IS that root's withheld
 // objects[].bountyOut while /api/roots names the root (red-team F2). So the withheld
 // document carries a fresh economyRevenue with those two fields dropped and the note
-// kept, and the cached document's Revenue pointer is never written through.
+// replaced.
+//
+// It COPIES rather than writing through the pointer, and the reason is not the cache:
+// apiEconomySelf allocates a fresh &economyRevenue per request off a value copy of the
+// snapshot, so there is no shared Revenue to corrupt today. The copy is here so that
+// stays true if a caller ever hands this function a shared block — a withhold clause
+// that mutates its input is one caller away from withholding a field from the operator's
+// next read too (the readerView rule, stated there against a cache that DOES exist).
 func withheldEconomySelf(full economySelf) economySelf {
 	rev := full.Revenue
 	if rev != nil {

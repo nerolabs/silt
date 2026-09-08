@@ -198,6 +198,14 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   machine-read canary abort and the RC ships default-OFF, so without the lane state every honest RC-default
   node would trip it. Same shape and same reason as `economySelfFunding.bountyOn` for `-economy`; gated by
   `TestCoverageZeroIsDistinguishableFromTheLaneBeingOff`, whose two arms differ only in the lane flag.
+  Coverage is documented as a LOWER BOUND, not a rate: in-flight and evicted bytes sit in the denominator
+  and never the numerator, so the honest reading is the band `[witnessed, witnessed+inFlight] /
+  objectAware` — both ends published — and an abort belongs on the upper end. The formula is deliberately
+  not re-based on terminal bytes only, because a single re-based number would hide the band's width from
+  the grader whose rule is the band. `TestServedByteSplitIsExactAcrossEveryTerminalState` now also drives
+  the PLAIN path, which is the clause that justifies the object-aware denominator and had no test: a
+  manifest serve must move `servedBytesUnwitnessable` and leave a fully-witnessed node's coverage at
+  exactly 1.0 — under a denominator of total served bytes it falls to 0.727 on a node doing honest work.
 - **Floor box — the STRUCTURE round, Round 1A (`R-STRUCTURE-REDERIVATION`, owner-ratified 2026-09-03; call 16 main-only).**
   ONE accept composition over a three-valued `StateView`: `ValidateProposalV5` (P1…P13) and `ValidateCommitV5` (= the
   proposal then C1…C5), dispatched from BOTH `ValidateProposal` and `ValidateCommit` on version — `chain.go` changes by

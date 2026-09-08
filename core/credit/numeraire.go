@@ -118,6 +118,13 @@ type ServeMintStats struct {
 	// node reads 0 beside a large ObjectAwareBytes. The ledger has no lane flag, so (3)
 	// is disambiguated at the surface by serveMint.laneOn (cmd/silt/ui.go), and a
 	// machine-read abort on coverage MUST read that field first.
+	//
+	// AND IT IS A LOWER BOUND. InFlightBytes and LaneEvictedBytes are in the denominator
+	// and never in the numerator, so an honest node with open unsettled sessions reads
+	// below 1. The honest reading is the BAND [Witnessed, Witnessed+InFlight] /
+	// ObjectAware, both ends computable from the fields above; an abort belongs on the
+	// upper end. The formula is deliberately NOT re-based on terminal bytes only: the
+	// grader's rule is the band, and a single re-based number would hide the width.
 	ReceiptCoverage float64
 }
 

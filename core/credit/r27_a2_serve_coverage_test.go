@@ -87,6 +87,26 @@ func TestServedByteSplitIsExactAcrossEveryTerminalState(t *testing.T) {
 	if _, live := l.provisional[provKey{server: server, requester: fetcher, root: root}]; live {
 		t.Fatal("a fully acknowledged lane survived the settlement")
 	}
+
+	// THE JUSTIFYING CLAUSE, driven (blind PE ruling 93deb56, N1). The whole reason
+	// coverage's denominator is object-aware bytes rather than total served bytes is that
+	// a node serving MANIFEST chunks — no proof-anchored root, no lane, never witnessable
+	// (core/node chooses RecordServe for them) — must not be scored as if it were
+	// suppressing. Until now no test drove the plain path, so the clause was the untested
+	// half of the design. A plain serve must move the unwitnessable floor and leave a
+	// perfectly-witnessed node's coverage at exactly 1.0.
+	plain := 3 * U
+	l.RecordServe(server, fetcher, ports.ChunkID{0xFF}, plain)
+	st = assertServeSplit(t, l, "after a plain-path serve")
+	if st.UnwitnessableBytes != plain {
+		t.Fatalf("after serving %d plain-path bytes: unwitnessable %d, want %d — bytes that can never be witnessed are not landing in the published floor", plain, st.UnwitnessableBytes, plain)
+	}
+	if st.ObjectAwareBytes != 8*U {
+		t.Fatalf("a plain-path serve moved the witnessable denominator to %d, want %d unchanged — coverage would fall on a node doing honest manifest work", st.ObjectAwareBytes, 8*U)
+	}
+	if st.ReceiptCoverage != 1.0 {
+		t.Fatalf("coverage fell to %v after a plain-path serve, want 1.0 — the object-aware denominator exists precisely so serving manifests cannot read as suppression", st.ReceiptCoverage)
+	}
 }
 
 // TestEvictedLaneBytesAreCountedForfeitedNotWitnessed fills the lane map past the cap so
