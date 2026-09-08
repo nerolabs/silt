@@ -69,17 +69,10 @@ func TestG_H43_8c_MatureEpochWeightAloneAdmitsZeroAttestationCommit(t *testing.T
 	}
 
 	// Premise: the epoch is mature at genesis (no Anchors configured,
-	// MatureValidators: 0), and RequiredQuorum() is 0 in this regime while the
-	// local cfg.Quorum (1) is HIGHER — so a pass below is attributable to the
-	// derived floor, not to a config that already asked for nothing.
+	// MatureValidators: 0). The RequiredQuorum()/cfg.Quorum premise is checked
+	// AFTER the accept below, so an ablation reddens on the mechanism first.
 	if !c.matureEpoch {
 		t.Fatalf("premise: expected c.matureEpoch == true at genesis (MatureValidators: 0, no Anchors)")
-	}
-	if got := c.RequiredQuorum(); got != 0 {
-		t.Fatalf("premise: RequiredQuorum() in the mature regime must be 0 (#380 regime (b)), got %d (cfg.Quorum=%d)", got, cfg.Quorum)
-	}
-	if cfg.Quorum <= 0 {
-		t.Fatalf("premise: cfg.Quorum (%d) must exceed the derived floor 0, or this arm cannot tell the two apart", cfg.Quorum)
 	}
 	total := whaleWeight + 2*smallWeight
 	if 3*whaleWeight <= 2*total {
@@ -104,6 +97,12 @@ func TestG_H43_8c_MatureEpochWeightAloneAdmitsZeroAttestationCommit(t *testing.T
 	}
 	if _, h := c.Head(); h != 2 {
 		t.Fatalf("G-H43-8 arm 8c(i): the whale block was accepted but the head is %d, want 2", h)
+	}
+	// Premise, after the fact: RequiredQuorum() is 0 in this regime while the
+	// local cfg.Quorum is HIGHER — so the accept above is attributable to the
+	// derived floor, not to a config that already asked for nothing.
+	if got := c.RequiredQuorum(); got != 0 || cfg.Quorum <= 0 {
+		t.Fatalf("premise: RequiredQuorum() in the mature regime must be 0 (#380 regime (b)) with cfg.Quorum (%d) above it; got %d", cfg.Quorum, got)
 	}
 	t.Logf("G-H43-8 arm 8c(i): zero-attestation, >2/3-frozen-weight commit ACCEPTED in the mature regime (RequiredQuorum()=0, cfg.Quorum=%d)", cfg.Quorum)
 }
@@ -226,8 +225,8 @@ func TestG_H43_8d_ReloadMustAcceptWhatTheDerivedFloorAccepted(t *testing.T) {
 			t.Fatalf("G-H43-8 arm 8d mechanism pin FAILED: got %v, want ErrNoQuorum (chain.go:3388-3389) — "+
 				"this RED is not attributable to the validateStructural/RequiredQuorum split", err)
 		}
-		t.Logf("G-H43-8 arm 8d mechanism pin confirmed (chain.go:3388-3389, validateStructural still reads "+
-			"bare cfg.Quorum, never RequiredQuorum()): %v", err)
+		t.Logf("G-H43-8 arm 8d mechanism pin confirmed (validateStructural's count leg refused by name — either it "+
+			"still reads the bare cfg.Quorum, or RequiredQuorum() is not 0 in the mature regime): %v", err)
 		t.Fatalf("G-H43-8 arm 8d REPRODUCED (M-380-1): Reload refused a block shaped exactly as the FIXED "+
 			"ValidateCommit would accept (mature epoch, whale proposer alone >2/3 frozen weight, 0 "+
 			"attestations) — got %v after replaying %d/%d blocks. validateStructural (chain.go:3388) must "+
