@@ -50,7 +50,14 @@ type account struct {
 	// grantsDenied below counts DISTINCT identities that met an empty bucket — the
 	// Economist's grantsDeniedDistinctTotal — rather than registrations (every pure read
 	// registers) or retries.
-	grantDenied  bool
+	grantDenied bool
+	// spendRefused (R2.7 §1.3, the build-immutable #4 affordability floor): this
+	// identity has been refused at a SPEND GATE for insufficient credit at least once.
+	// Set on the first refusal and never cleared, so spendRefusersDistinct below counts
+	// DISTINCT identities rather than retries. ONE BOOL ON THE ACCOUNT, never a side
+	// set: a side set of refused identities would be a grow-only map (the validatorsSeen
+	// trap), and the account already exists by the time a refusal is decided.
+	spendRefused bool
 	auditsPassed int
 	auditsFailed int
 	// Storage-bond standing — the Sybil cost. bondedBytes is the size of
@@ -157,8 +164,22 @@ type Ledger struct {
 	grantsDegraded  int64 // floor ADVANCES applied on an empty bucket (the identity stays pending)
 	grantsDenied    int64 // DISTINCT identities refused at a spend gate at least once (never retries, never registrations)
 	grantsPending   int64 // accounts currently grant-pending — REGISTRATIONS awaiting a spend, most of which never spend; not a denial count
-	accounts        map[ports.NodeID]*account
-	order           []ports.NodeID // registration order: deterministic iteration
+	// The affordability floor (R2.7 §1.3, Economist advisory §1.3). Every other counter
+	// in this ledger measures a flow that HAPPENED; these two measure the flow that was
+	// REFUSED at the affordability floor, which is the failure R2.7 is most likely to
+	// miss — an economy that reads solvent because nobody could afford to transact.
+	// Counted at BOTH spend gates that can refuse for want of credit (ChargePublish and
+	// FundEscrow), so the two stay symmetric.
+	//
+	// HONEST LIMIT, and it bounds the use: an adversary can inflate this at will by
+	// presenting underfunded identities. It is safe as a FLOOR DETECTOR ONLY — a
+	// non-zero value proves honest demand is being refused somewhere and can abort a
+	// canary; a zero value certifies NOTHING and must never be read as "the lane is
+	// affordable".
+	spendRefusedInsufficientCredit int64 // every refusal, retries included
+	spendRefusersDistinct          int64 // identities refused at least once
+	accounts                       map[ports.NodeID]*account
+	order                          []ports.NodeID // registration order: deterministic iteration
 	// rootOwner binds each bond root to the first identity that proved it, so
 	// a bond root builds standing for AT MOST ONE identity. A colluding
 	// operator pointing N identities at one shared plot therefore earns one
@@ -591,6 +612,16 @@ type FaucetStats struct {
 	GrantsDegraded int64
 	GrantsDenied   int64 // distinct identities refused at a spend gate at least once — the one counter that moves on a denial
 	GrantsPending  int64 // accounts registered and awaiting a spend; NOT denials (every pure read registers)
+	// The affordability floor (R2.7 §1.3). UNLIKE every other field here these two are
+	// NOT faucet counters and are meaningful whether or not a bucket is configured: they
+	// count refusals at the spend gates for want of CREDIT, not for want of a token. So
+	// FaucetStats reports them on both branches; a configured-false block still carries
+	// them, because dropping a real refusal count would be a silent loss (Don't #4).
+	//
+	// FLOOR DETECTOR ONLY: non-zero proves honest demand is being refused somewhere;
+	// zero certifies nothing. An adversary inflates it at will with underfunded ids.
+	SpendRefusedInsufficientCredit int64
+	SpendRefusersDistinct          int64
 }
 
 // Grant is the starter grant this ledger applies. Read-only; the start-up assertion in
@@ -600,12 +631,31 @@ func (l *Ledger) Grant() int64 { return l.grant }
 // FaucetStats reads the faucet telemetry. Reading moves nothing.
 func (l *Ledger) FaucetStats() FaucetStats {
 	if l.faucet == nil {
-		return FaucetStats{}
+		// No bucket: every faucet field is zero and meaningless, but the two spend-gate
+		// refusal counters are real and are reported (see FaucetStats' doc).
+		return FaucetStats{
+			SpendRefusedInsufficientCredit: l.spendRefusedInsufficientCredit,
+			SpendRefusersDistinct:          l.spendRefusersDistinct,
+		}
 	}
 	return FaucetStats{
 		Configured: true, Capacity: l.faucet.capacity, Refill: l.faucet.refill,
 		IntervalNanos: l.faucet.interval, DenyFloor: l.faucetDenyFloor, Level: l.faucet.Level(),
 		GrantsIssued: l.grantsIssued, GrantsDegraded: l.grantsDegraded, GrantsDenied: l.grantsDenied, GrantsPending: l.grantsPending,
+		SpendRefusedInsufficientCredit: l.spendRefusedInsufficientCredit,
+		SpendRefusersDistinct:          l.spendRefusersDistinct,
+	}
+}
+
+// noteSpendRefused records one refusal at a spend gate for insufficient credit
+// (R2.7 §1.3). Every refusal moves the total; the first refusal by an identity also
+// moves the distinct count, through ONE BOOL on the account — never a side set, which
+// would be a grow-only map. Nothing here refuses, decides, or moves credit.
+func (l *Ledger) noteSpendRefused(a *account) {
+	l.spendRefusedInsufficientCredit++
+	if !a.spendRefused {
+		a.spendRefused = true
+		l.spendRefusersDistinct++
 	}
 }
 
@@ -854,6 +904,7 @@ func (l *Ledger) ChargePublish(n ports.NodeID) error {
 		l.applyGrant(a)
 	}
 	if a.balance < l.fee {
+		l.noteSpendRefused(a) // R2.7 §1.3: the affordability floor, counted at both spend gates
 		return ports.ErrInsufficientCredit
 	}
 	a.balance -= l.fee

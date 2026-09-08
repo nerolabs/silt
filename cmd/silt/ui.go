@@ -811,7 +811,20 @@ type faucetInfo struct {
 	GrantsDegraded int64 `json:"grantsDegraded"`
 	GrantsDenied   int64 `json:"grantsDenied"`  // distinct identities refused at a spend gate — the counter that moves on a denial
 	GrantsPending  int64 `json:"grantsPending"` // registrations awaiting a spend; NOT denials
+	// The affordability floor (R2.7 §1.3, build-immutable #4). Refusals at the spend
+	// gates for want of CREDIT — not for want of a faucet token — so they are reported
+	// whether or not a bucket is configured. FLOOR DETECTOR ONLY: a non-zero value
+	// proves honest demand is being refused somewhere and can abort a canary; a zero
+	// value certifies nothing, because an adversary inflates the number at will with
+	// underfunded identities. The note ships beside the numbers so no reader can quote
+	// them without the caveat.
+	SpendRefusedInsufficientCredit int64  `json:"spendRefusedInsufficientCredit"`
+	SpendRefusersDistinct          int64  `json:"spendRefusersDistinct"`
+	SpendRefusalNote               string `json:"spendRefusalNote"`
 }
+
+// spendRefusalNote is the honest limit that ships with the affordability floor.
+const spendRefusalNote = "FLOOR detector only: non-zero proves honest demand is being refused somewhere; zero certifies NOTHING (an adversary inflates this at will with underfunded identities)"
 
 // privacyInfo is the -privacy posture published on every GET /api/status response.
 type privacyInfo struct {
@@ -920,9 +933,13 @@ func (s *uiServer) computeStatus(now time.Time) *statusInfo {
 		out.Durability = s.durabilitySnapshot(uptime)
 		if fs := s.nd.FaucetStats(); fs.Configured {
 			out.Faucet = &faucetInfo{Configured: true, Capacity: fs.Capacity, PerInterval: fs.Refill, IntervalSec: fs.IntervalNanos / 1e9,
-				DenyFloor: fs.DenyFloor, Level: fs.Level, GrantsIssued: fs.GrantsIssued, GrantsDegraded: fs.GrantsDegraded, GrantsDenied: fs.GrantsDenied, GrantsPending: fs.GrantsPending}
+				DenyFloor: fs.DenyFloor, Level: fs.Level, GrantsIssued: fs.GrantsIssued, GrantsDegraded: fs.GrantsDegraded, GrantsDenied: fs.GrantsDenied, GrantsPending: fs.GrantsPending,
+				SpendRefusedInsufficientCredit: fs.SpendRefusedInsufficientCredit, SpendRefusersDistinct: fs.SpendRefusersDistinct, SpendRefusalNote: spendRefusalNote}
 		} else {
-			out.Faucet = &faucetInfo{}
+			// Unlimited faucet: every faucet number is meaningless, but a spend gate can
+			// still refuse for want of credit, so the floor counters ship here too.
+			out.Faucet = &faucetInfo{SpendRefusedInsufficientCredit: fs.SpendRefusedInsufficientCredit,
+				SpendRefusersDistinct: fs.SpendRefusersDistinct, SpendRefusalNote: spendRefusalNote}
 		}
 		sm := s.nd.ServeMintStats()
 		out.ServeMint = &serveMintInfo{BytesPerCredit: sm.BytesPerCredit, ServedBytes: sm.ServedBytes, MintedCredits: sm.MintedCredits,

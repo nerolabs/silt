@@ -112,6 +112,24 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   #766) — R2.9's wire proof this run is the local e2e only.
 
 ### Added
+- **R2.7 blocking telemetry — the affordability floor (Lane C4, Economist advisory
+  `ADVISORY-boulder2-telemetry-spec-R2.4-checklist-and-RC-scope-2026-09-07` §1.3).**
+  `spendRefusedInsufficientCredit` (every refusal) and `spendRefusersDistinct` (identities refused at least
+  once) on `credit.Ledger`, counted at BOTH spend gates that can refuse for want of credit —
+  `ChargePublish` and `FundEscrow` — so the two stay symmetric. Distinct identities are counted the way
+  `grantDenied` already does: ONE BOOL on the account, never a side set, so it cannot become a grow-only map.
+  Every other counter in the ledger measures a flow that happened; this is the only one that measures the
+  flow that was REFUSED at the affordability floor, which is build-immutable #4's exact failure mode and the
+  failure R2.7 is most likely to miss — an economy reads solvent when nobody can afford to transact. Surfaced
+  in the `faucet` block on `GET /api/status` beside `grantsDenied`. It ships on BOTH branches of that block,
+  configured faucet or not: these are refusals for want of CREDIT, not for want of a token, and dropping them
+  on the unconfigured branch would be a silent loss (Don't #4) on exactly the default posture. `spendRefusalNote`
+  ships beside the numbers so no reader can quote them without the caveat — this is a FLOOR detector: a
+  non-zero value proves honest demand is being refused somewhere and can abort a canary; a zero value
+  certifies NOTHING, because an adversary inflates the number at will with underfunded identities. Gates,
+  each run RED under a controlled revert: `TestSpendRefusalsCountDistinctIdentitiesNotRetries` (five retries
+  by one identity count five and one; a later success decrements neither) and
+  `TestAffordabilityFloorReachesTheStatusSurface` (the wire half, on the unconfigured-faucet branch).
 - **R2.7 blocking telemetry, detector A4 — escrow laundering by self-repair (Lane C4, Economist advisory
   `ADVISORY-boulder2-telemetry-spec-R2.4-checklist-and-RC-scope-2026-09-07` §1.2).** The advisory's
   `bountyPaidToEscrowFunder` is DEGENERATE — every credit entering an escrow on a silt ledger is placed there
