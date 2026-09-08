@@ -72,15 +72,26 @@ var foldLiveStateDenied = map[string]string{
 	"verifyBond":     "a fold file must not BRANCH on the injected verifier — it is asserted once, at the entry (see foldLiveStateSiteAllowed)",
 }
 
-// foldLiveStateSiteAllowed is the narrow, SITE-SCOPED exception list: selector → the single
-// enclosing function where that read is permitted. It exists for exactly one read.
+// foldLiveStateSiteAllowed is the narrow, SITE-SCOPED exception list: selector → the enclosing
+// functions where that read is permitted, each with the reason. It exists for exactly one selector.
 //
-// `c.verifyBond` is the injected-wiring read the cert requires be asserted LOUDLY at the box entry
+// `verifyBond` is the injected-wiring read the cert requires be asserted LOUDLY at the box entry
 // (R-VERIFYBOND-WIRING, Q4 row 3: the #572 replay shape — objective()/epochsEnabled() silently take
 // the legacy branch on an unwired box). Asserting it there is the fix; BRANCHING on it anywhere else
-// in a fold file is the defect. Scoping the allowance to the one entry function keeps both true.
-var foldLiveStateSiteAllowed = map[string]string{
-	"verifyBond": "assembleStateRootRecomputeOps",
+// in a fold file is the defect. Two sites read it, neither branches on it:
+//   - assembleStateRootRecomputeOps: the recompute entry's loud non-nil assertion (ErrRecomputeBoxWiring);
+//   - (*Box).view (floorbox_box_v5.go): THREADS the verifier into provenView as its class-3
+//     VerifyBond capability. NewBox already refused a chain whose verifier is unwired (objective()
+//     requires verifyBond != nil, ErrBoxLegacyMode), so the value is asserted non-nil at
+//     construction and view() only carries it; the composition calls it through StateView.
+//
+// Every listed site must still perform its read (the stale-site check below), so a deleted entry
+// assertion reddens rather than silently going missing.
+var foldLiveStateSiteAllowed = map[string]map[string]string{
+	"verifyBond": {
+		"assembleStateRootRecomputeOps": "the recompute entry asserts the injected verifier is wired (R-VERIFYBOND-WIRING)",
+		"view":                          "(*Box).view threads the verifier, asserted wired by NewBox, into provenView.VerifyBond (class 3); no branch",
+	},
 }
 
 // foldFileGlob is the set of non-test floor-box files the pin covers. Widened 2026-09-03
@@ -107,9 +118,14 @@ func TestFoldFilesReadNoLiveBoxState(t *testing.T) {
 				"  correction the research cert made to the PE ruling's proposed allowlist.", name, why)
 		}
 	}
-	for name := range foldLiveStateSiteAllowed {
+	for name, sites := range foldLiveStateSiteAllowed {
 		if _, bad := foldLiveStateAllowed[name]; bad {
 			t.Fatalf("PIN CORRUPTED: %q is BOTH blanket-allowed and site-scoped — the site scope is then vacuous", name)
+		}
+		for site, why := range sites {
+			if why == "" {
+				t.Fatalf("PIN CORRUPTED: the site-scoped allowance %s.%s carries no reason", site, name)
+			}
 		}
 	}
 	for _, denied := range []string{"matureEpoch", "everMature", "launchAnchor", "handedOff"} {
@@ -136,72 +152,53 @@ func TestFoldFilesReadNoLiveBoxState(t *testing.T) {
 
 	fset := token.NewFileSet()
 	parsed := make([]*ast.File, 0, len(foldFiles))
-	selfMethods := map[string]struct{}{}
 	for _, f := range foldFiles {
 		af, pErr := parser.ParseFile(fset, f, nil, 0) // no comments: a c.<x> in prose is not a read
 		if pErr != nil {
 			t.Fatalf("parse %s: %v", f, pErr)
 		}
 		parsed = append(parsed, af)
-		for _, decl := range af.Decls {
-			fd, ok := decl.(*ast.FuncDecl)
-			if !ok || fd.Recv == nil || len(fd.Recv.List) == 0 {
-				continue
-			}
-			if chainReceiver(fd.Recv.List[0].Type) {
-				selfMethods[fd.Name.Name] = struct{}{}
-			}
-		}
 	}
-
+	idx := newFoldPinIndex(parsed)
 	var violations []string
-	siteHits := map[string]int{}
+	siteHits := map[string]map[string]int{}
 	for i, af := range parsed {
 		file := foldFiles[i]
-		for _, decl := range af.Decls {
-			fd, ok := decl.(*ast.FuncDecl)
-			if !ok {
+		for _, hit := range idx.liveReads(af) {
+			name, enclosing := hit.sel, hit.enclosing
+			if _, ok := foldLiveStateAllowed[name]; ok {
 				continue
 			}
-			enclosing := fd.Name.Name
-			ast.Inspect(fd, func(n ast.Node) bool {
-				sel, ok := n.(*ast.SelectorExpr)
-				if !ok {
-					return true
+			if sites, scoped := foldLiveStateSiteAllowed[name]; scoped {
+				if _, ok := sites[enclosing]; ok {
+					if siteHits[name] == nil {
+						siteHits[name] = map[string]int{}
+					}
+					siteHits[name][enclosing]++
+					continue
 				}
-				ident, ok := sel.X.(*ast.Ident)
-				if !ok || ident.Name != "c" {
-					return true
-				}
-				name := sel.Sel.Name
-				if _, ok := foldLiveStateAllowed[name]; ok {
-					return true
-				}
-				if site, scoped := foldLiveStateSiteAllowed[name]; scoped && site == enclosing {
-					siteHits[name]++
-					return true
-				}
-				if _, ok := selfMethods[name]; ok {
-					return true
-				}
-				pos := fset.Position(sel.Pos())
-				why := foldLiveStateDenied[name]
-				if why == "" {
-					why = "not classified — an unrecognised box-own read"
-				}
-				violations = append(violations, "  "+filepath.Base(file)+":"+itoa(pos.Line)+"  c."+name+
-					"  (in "+enclosing+")  — "+why)
-				return true
-			})
+			}
+			if _, ok := idx.selfMethods[name]; ok {
+				continue
+			}
+			pos := fset.Position(hit.pos)
+			why := foldLiveStateDenied[name]
+			if why == "" {
+				why = "not classified — an unrecognised box-own read"
+			}
+			violations = append(violations, "  "+filepath.Base(file)+":"+itoa(pos.Line)+"  "+hit.path+"."+name+
+				"  (in "+enclosing+")  — "+why)
 		}
 	}
 	// A site-scoped allowance whose read has DISAPPEARED means the entry assertion was deleted or
 	// moved. That is the R-VERIFYBOND-WIRING gate going silently missing, so it reddens too.
-	for name, site := range foldLiveStateSiteAllowed {
-		if siteHits[name] == 0 {
-			t.Fatalf("SITE ALLOWANCE STALE: c.%s is scoped to %s but no such read exists any more.\n"+
-				"  If the entry assertion moved, move the scope with it; if it was deleted, the\n"+
-				"  R-VERIFYBOND-WIRING gate is gone and must be restored.", name, site)
+	for name, sites := range foldLiveStateSiteAllowed {
+		for site := range sites {
+			if siteHits[name][site] == 0 {
+				t.Fatalf("SITE ALLOWANCE STALE: %s is scoped to %s but no such read exists any more.\n"+
+					"  If the entry assertion moved, move the scope with it; if it was deleted, the\n"+
+					"  R-VERIFYBOND-WIRING gate is gone and must be restored.", name, site)
+			}
 		}
 	}
 	if len(violations) > 0 {
@@ -252,12 +249,21 @@ func TestLaunchAnchorGivenReadsNoLiveState(t *testing.T) {
 	})
 }
 
-// TestFoldLiveStatePinHasTeeth proves the walk bites. It runs the SAME classification over a
-// synthetic fold file that re-injects the exact defect (a `c.matureEpoch` branch selector) and
-// asserts it is flagged. Without this, a walk that silently matched nothing would look green
-// forever — the decoration-green trap.
+// TestFoldLiveStatePinHasTeeth proves the walk bites. It runs the SAME classifier
+// (foldPinIndex.liveReads) over a synthetic fold file that re-injects the exact defect in every
+// shape the pin must see — a `c.matureEpoch` branch selector on a *Chain method, a `s.c.epochSet`
+// read through a RECEIVER-FIELD ALIAS on a box-owned struct (PE ruling F-1, 2026-09-08: the
+// matcher keyed on the identifier `c`, so a Box method reading s.c.<map> was invisible), a `ch.<map>`
+// read through a *Chain PARAMETER, and a read through a local `x := s.c` — and asserts each is
+// flagged. Without this, a walk that silently matched nothing would look green forever — the
+// decoration-green trap.
 func TestFoldLiveStatePinHasTeeth(t *testing.T) {
 	const injected = `package chain
+
+type injectedBox struct {
+	c    *Chain
+	head HeadRef
+}
 
 func (c *Chain) reInjectedScreen(sc StateRootAttScreen) bool {
 	if c.epochsEnabled() && c.matureEpoch { // the defect, re-injected
@@ -265,44 +271,183 @@ func (c *Chain) reInjectedScreen(sc StateRootAttScreen) bool {
 	}
 	return sc.BondedSize >= c.cfg.MinBond || c.launchAnchor(sc.Attester)
 }
+
+func (s *injectedBox) reInjectedAliasRead() (bool, int) { return s.c.everMature, len(s.c.epochSet) }
+
+func reInjectedParamRead(ch *Chain) int { return len(ch.bonded) }
+
+func (s *injectedBox) reInjectedLocalRead() bool {
+	x := s.c
+	return x.handedOff()
+}
 `
 	fset := token.NewFileSet()
 	af, err := parser.ParseFile(fset, "injected_fold_v5.go", injected, 0)
 	if err != nil {
 		t.Fatalf("parse synthetic: %v", err)
 	}
-	selfMethods := map[string]struct{}{"reInjectedScreen": {}}
+	idx := newFoldPinIndex([]*ast.File{af})
 	var flagged []string
-	ast.Inspect(af, func(n ast.Node) bool {
-		sel, ok := n.(*ast.SelectorExpr)
-		if !ok {
-			return true
+	for _, hit := range idx.liveReads(af) {
+		if _, ok := foldLiveStateAllowed[hit.sel]; ok {
+			continue
 		}
-		ident, ok := sel.X.(*ast.Ident)
-		if !ok || ident.Name != "c" {
-			return true
+		if _, ok := idx.selfMethods[hit.sel]; ok {
+			continue
 		}
-		name := sel.Sel.Name
-		if _, ok := foldLiveStateAllowed[name]; ok {
-			return true
-		}
-		if _, ok := selfMethods[name]; ok {
-			return true
-		}
-		flagged = append(flagged, name)
-		return true
-	})
+		flagged = append(flagged, hit.enclosing+":"+hit.path+"."+hit.sel)
+	}
 	sort.Strings(flagged)
-	want := []string{"launchAnchor", "matureEpoch"}
-	if len(flagged) != len(want) {
-		t.Fatalf("PIN HAS NO TEETH: re-injecting c.matureEpoch + c.launchAnchor into a fold file flagged %v, want %v",
+	want := []string{
+		"reInjectedAliasRead:s.c.epochSet",
+		"reInjectedAliasRead:s.c.everMature",
+		"reInjectedLocalRead:x.handedOff",
+		"reInjectedParamRead:ch.bonded",
+		"reInjectedScreen:c.launchAnchor",
+		"reInjectedScreen:c.matureEpoch",
+	}
+	if strings.Join(flagged, ",") != strings.Join(want, ",") {
+		t.Fatalf("PIN HAS NO TEETH: re-injecting live reads in four shapes into a fold file flagged\n  %v\nwant\n  %v",
 			flagged, want)
 	}
-	for i := range want {
-		if flagged[i] != want[i] {
-			t.Fatalf("PIN HAS NO TEETH: flagged %v, want %v", flagged, want)
+}
+
+// foldPinIndex is what the pin knows about the fold files as a set: the *Chain methods they declare
+// (self-dispatch, permitted) and, for every struct type they declare, the fields typed *Chain — the
+// receiver-field aliases a method may reach live state through (Box.c).
+type foldPinIndex struct {
+	selfMethods map[string]struct{}
+	chainFields map[string]map[string]bool // struct type name → field names typed Chain / *Chain
+}
+
+func newFoldPinIndex(files []*ast.File) foldPinIndex {
+	idx := foldPinIndex{selfMethods: map[string]struct{}{}, chainFields: map[string]map[string]bool{}}
+	for _, af := range files {
+		for _, decl := range af.Decls {
+			switch d := decl.(type) {
+			case *ast.FuncDecl:
+				if d.Recv != nil && len(d.Recv.List) > 0 && chainReceiver(d.Recv.List[0].Type) {
+					idx.selfMethods[d.Name.Name] = struct{}{}
+				}
+			case *ast.GenDecl:
+				for _, spec := range d.Specs {
+					ts, ok := spec.(*ast.TypeSpec)
+					if !ok {
+						continue
+					}
+					st, ok := ts.Type.(*ast.StructType)
+					if !ok {
+						continue
+					}
+					for _, fld := range st.Fields.List {
+						if !chainReceiver(fld.Type) {
+							continue
+						}
+						if idx.chainFields[ts.Name.Name] == nil {
+							idx.chainFields[ts.Name.Name] = map[string]bool{}
+						}
+						for _, n := range fld.Names {
+							idx.chainFields[ts.Name.Name][n.Name] = true
+						}
+					}
+				}
+			}
 		}
 	}
+	return idx
+}
+
+// liveRead is one selector that reaches a *Chain: `path.sel` inside `enclosing`.
+type liveRead struct {
+	enclosing string
+	path      string // the chain-reaching expression as written: c, s.c, ch, x
+	sel       string
+	pos       token.Pos
+}
+
+// liveReads walks every FuncDecl in af and returns each `<chain>.<sel>` where <chain> is an
+// expression that reaches a *Chain: the receiver of a *Chain method; a parameter typed *Chain or
+// Chain; `recv.<field>` where recv is the receiver of a method on a fold-file struct and <field> is
+// one of that struct's *Chain fields; or a local defined as `x := <one of the above>`. The name
+// matters nowhere — the TYPE reachability does. A read through a shape this walk does not resolve
+// (a chain returned from a call, a chain stored in a map) is outside the pin; keep the shapes here
+// in step with what the fold files actually write.
+func (idx foldPinIndex) liveReads(af *ast.File) []liveRead {
+	var out []liveRead
+	for _, decl := range af.Decls {
+		fd, ok := decl.(*ast.FuncDecl)
+		if !ok || fd.Body == nil {
+			continue
+		}
+		// The chain-reaching roots of this function: name → true for bare idents; the
+		// receiver-field aliases are (receiver name, field name) pairs.
+		roots := map[string]bool{}
+		aliases := map[string]map[string]bool{}
+		if fd.Recv != nil && len(fd.Recv.List) > 0 && len(fd.Recv.List[0].Names) > 0 {
+			recv := fd.Recv.List[0].Names[0].Name
+			rt := fd.Recv.List[0].Type
+			if star, ok := rt.(*ast.StarExpr); ok {
+				rt = star.X
+			}
+			if chainReceiver(rt) {
+				roots[recv] = true
+			} else if id, ok := rt.(*ast.Ident); ok {
+				if fields := idx.chainFields[id.Name]; len(fields) > 0 {
+					aliases[recv] = fields
+				}
+			}
+		}
+		for _, p := range fd.Type.Params.List {
+			if chainReceiver(p.Type) {
+				for _, n := range p.Names {
+					roots[n.Name] = true
+				}
+			}
+		}
+		// reaches reports whether e is a chain-reaching expression, and how it is written.
+		var reaches func(e ast.Expr) (string, bool)
+		reaches = func(e ast.Expr) (string, bool) {
+			switch x := e.(type) {
+			case *ast.Ident:
+				if roots[x.Name] {
+					return x.Name, true
+				}
+			case *ast.SelectorExpr:
+				if base, ok := x.X.(*ast.Ident); ok && aliases[base.Name][x.Sel.Name] {
+					return base.Name + "." + x.Sel.Name, true
+				}
+			case *ast.ParenExpr:
+				return reaches(x.X)
+			}
+			return "", false
+		}
+		// Locals defined from a chain-reaching expression become roots (x := s.c).
+		ast.Inspect(fd.Body, func(n ast.Node) bool {
+			as, ok := n.(*ast.AssignStmt)
+			if !ok || as.Tok != token.DEFINE || len(as.Lhs) != len(as.Rhs) {
+				return true
+			}
+			for i := range as.Lhs {
+				if _, ok := reaches(as.Rhs[i]); ok {
+					if id, ok := as.Lhs[i].(*ast.Ident); ok {
+						roots[id.Name] = true
+					}
+				}
+			}
+			return true
+		})
+		ast.Inspect(fd.Body, func(n ast.Node) bool {
+			sel, ok := n.(*ast.SelectorExpr)
+			if !ok {
+				return true
+			}
+			if path, ok := reaches(sel.X); ok {
+				out = append(out, liveRead{enclosing: fd.Name.Name, path: path, sel: sel.Sel.Name, pos: sel.Pos()})
+			}
+			return true
+		})
+	}
+	return out
 }
 
 func chainReceiver(t ast.Expr) bool {
