@@ -57,12 +57,18 @@ type Config struct {
 	// of size N (f = ⌊(N-1)/3⌋), so any two support sets intersect in ≥ f+1 ≥ 1
 	// honest validator — the classic quorum-intersection safety, which a FIXED
 	// Quorum loses as the set grows (a fixed 3 among 30 validators no longer
-	// guarantees two quorums share an honest node). Config.Quorum stays a floor (for
-	// tiny trusted deployments); the effective attestation requirement is
-	// max(Quorum, N−f−1). It only ever RAISES the bar, so it is safe to leave off
-	// for legacy/trusted configs (default) and default-on for an untrusted objective
-	// validator. See RequiredQuorum. No effect in legacy (reputation) mode, where the
-	// qualified set size is a local, divergent view.
+	// guarantees two quorums share an honest node). With it on, the attestation
+	// requirement is DERIVED from the chain and Config.Quorum is NOT a validity term
+	// (#380 direction (1), D-CONSENSUS-ARMING (20)): bftThreshold(N) = N−f−1 in the
+	// launch window / epochs off, and 0 in a mature epoch, where the >⅔ frozen-weight
+	// rule is the bar. Config.Quorum survives as the proposer-side GATHER target
+	// (proposeBlockAt gathers max(Quorum, derived)). This is not a strict raise: with
+	// Quorum above bftThreshold(N) the VALIDITY bar goes down (3 → 2 at four anchors),
+	// which is the point — every replica computes the same bar, so a -quorum skew can
+	// no longer strand a node (#338). Defaulted on for an untrusted objective validator;
+	// off (explicit opt-out, or legacy/trusted) keeps Config.Quorum as the count floor.
+	// See RequiredQuorum. No effect in legacy (reputation) mode, where the qualified set
+	// size is a local, divergent view.
 	ByzantineQuorum bool
 	// Launch-window "training wheels" (risk 15): while the network is immature —
 	// its NAKAMOTO COEFFICIENT over non-anchor bonded weight is below
