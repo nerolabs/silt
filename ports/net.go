@@ -257,6 +257,19 @@ type Message struct {
 	// the network's storage for the M9 capacity estimate.
 	CapUsed  int64
 	CapTotal int64
+	// Work gossip (R2.2 rows 8-9): the sender's own lifetime served bytes and
+	// repairs done, riding the same messages as the capacity pledge so a node can
+	// compute the serve-work and repair-work Gini over its local peer sample
+	// without an aggregator. EXACTLY TWO FIELDS, and the tier class is NOT a third:
+	// it is derived from CapTotal with published bands (core/node/tiers.go), because
+	// all three are self-reported and a self-declared label buys nothing but surface.
+	//
+	// SELF-REPORTED, like the capacity pledge beside them: advisory sampling, never a
+	// consensus input, never a standing input, never a disbursement input. Both are
+	// NODE-WIDE totals with no object axis and no fetcher axis, so neither carries the
+	// (fetcher x object) access record Don't #3 forbids.
+	ServedBytes int64
+	RepairsDone int64
 	// Domain is a hash of the operator's failure-domain label (AS / rack /
 	// geo / operator), gossiped so placement can spread a file's columns
 	// across distinct domains, not just node IDs. 0 means "unset" — treated

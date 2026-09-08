@@ -395,7 +395,10 @@ console.log(JSON.stringify(out));`
 		t.Fatalf("SOURCE GATE: library.html still builds the get button inline from f.link; route through render.js so a withheld row cannot send link=undefined")
 	}
 	// And the pages actually use render.js: no bare stats dereference survives in either.
-	for _, page := range []string{"index.html", "observatory.html", "library.html"} {
+	// economy.html joined the list with R2.2 (Lane C3): it renders /api/economy/self's
+	// revenue/margin/wash blocks, which the privacy clause OMITS entirely — the same
+	// absent-block-deref shape this gate was written for, one document over.
+	for _, page := range []string{"index.html", "observatory.html", "library.html", "economy.html"} {
 		html, err := os.ReadFile(filepath.Join("ui", page))
 		if err != nil {
 			t.Fatal(err)

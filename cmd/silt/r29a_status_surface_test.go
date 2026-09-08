@@ -361,7 +361,36 @@ func TestR29aF2EconomySelfWithholdsPerObjectDetailWithoutAToken(t *testing.T) {
 // on purpose, and SHARED by every scan that walks apiRoutes (this file's F2 counter scan
 // and the A4-3 scan in r27_a4_wire_gate_test.go), so adding a route reddens every one of
 // them until the route has been examined against each scan's property.
-const r29aWholeSurfaceGETRoutes = 7
+const r29aWholeSurfaceGETRoutes = 11
+
+// RAISED 7 -> 11 on 2026-09-08 (Lane C3, R2.2). The four new GET routes, each examined
+// against BOTH scans' properties before the count moved — that examination is what the
+// count is for, so it is written down rather than asserted:
+//
+//   - GET /api/economy/flows and GET /api/economy/g. Every figure on either is an
+//     escrow delta of a NAMED cared root: objects[].skimIn is the delta of exactly the
+//     counter this scan protects (durability.objects[].funded) and g's costPerRepair is
+//     Paid/Repairs of one root. So both are TOKEN-GATED IN FULL — allow-lists
+//     (withheldEconomyFlows, withheldEconomyG) that keep the tier label, the cadence
+//     constants, the threshold prose and the snapshot stamps, and drop every number and
+//     every root. The POOLED row goes with the array, not open beside it: on a
+//     one-object node the pooled window delta IS that object's delta, which is the
+//     mistake the selfFunding figures shipped with (withheldEconomySelf).
+//     THESE TWO ARE VACUOUS IN THIS FIXTURE and knowing that is the point: it pins one
+//     instant, so the ring holds one sample and both routes answer
+//     windowNotYetMeasured whatever the token. TestR22FlowsAndGAreTokenGatedAcrossAMeasuredWindow
+//     is the non-vacuous gate — it drives a real multi-sample window and then walks the
+//     untokened surface for the delta.
+//   - GET /api/economy/concentration and GET /api/economy/network. Neither carries a
+//     root, a per-object figure, or a per-peer figure: the Ginis, the tier histogram
+//     and the C2 block are all aggregates over >= minGossipSample nodes, and BELOW that
+//     floor no estimate is published at all (a Gini over two values inverts to those
+//     two values' ratio, so the floor is a privacy floor as much as an honesty one).
+//     Self's own servedBytes is inside the serve-Gini sample, which is why the floor,
+//     not the aggregation, is what makes them safe unauthenticated. The C2 block is
+//     committed-global — every node holds that chain — and the crowd estimate is the
+//     same number /api/status already publishes in `network`. So both stay OPEN, as
+//     /api/status's network block is.
 
 // r29aWholeSurfaceBytes is chosen so that funded (= bytes/8) is a value nothing else on
 // the surface holds by coincidence: not a bucket edge, not a capacity, not a port.

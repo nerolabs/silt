@@ -968,3 +968,23 @@ func Gini(values []int64) float64 {
 	}
 	return float64(weighted) / (float64(n) * float64(sum))
 }
+
+// WorkSample reads the two node-wide work counters the capacity gossip carries for
+// node n — lifetime served bytes and lifetime repairs done — WITHOUT REGISTERING an
+// account. That is the whole reason it exists beside ServedBytes/RepairsDone: those
+// go through acct(), which calls Register, which CREATES an account (and, on an
+// R2.12 faucet-configured ledger, increments grantsPending). The gossip stamp runs
+// on every outbound message, so a read that registers would mint an account —
+// and move faucet accounting — as a side effect of sending a FindNode. A reader
+// must not write.
+//
+// ok is false when n has no account: "this node has done no work yet" and "this node
+// is unknown to my ledger" are different facts, and only the caller can decide which
+// renders. Pure observability: it moves no credit and confers no standing.
+func (l *Ledger) WorkSample(n ports.NodeID) (served, repairs int64, ok bool) {
+	a, ok := l.accounts[n]
+	if !ok {
+		return 0, 0, false
+	}
+	return a.servedBytes, a.repairsDone, true
+}

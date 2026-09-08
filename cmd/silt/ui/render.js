@@ -92,5 +92,116 @@
     return '<button class="get" data-link="' + row.link + '">get</button>';
   }
 
-  return { fmtB, withheld, statusCards, prereleaseBanner, observatoryTotals, servedCell, libraryGetCell, WITHHELD_HINT, LINK_WITHHELD_HINT };
+  // ---- the economy panels (Boulder 2, R2.2 rows 14-17) --------------------------------
+  //
+  // Same contract as everything above: PURE, DOM-free, and never a bare dereference of a
+  // block a withheld document does not carry. They also carry the four honesty rules the
+  // endpoints publish, because a rule enforced only on the wire is one render away from
+  // being broken on the page:
+  //   Panel 1  finite === false renders "not yet measurable" — NEVER "perpetual".
+  //   Panel 2  the cost is an operator INPUT; absent, the panel shows revenue only.
+  //   Panel 3  the window needs two samples; before that it is "not yet measured", not 0.
+  //   Panel 4  the word is "suspected"; the panel never claims a detection. The gate on
+  //            it is a literal string scan, so the copy avoids the word entirely rather
+  //            than writing "not detected" and forcing the gate to parse a negation.
+
+  function fmtDur(sec) {
+    sec = Number(sec) || 0;
+    const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60);
+    if (d > 0) return d + "d " + h + "h";
+    if (h > 0) return h + "h " + m + "m";
+    return m + "m";
+  }
+
+  // PANEL 1 — my solvency. One cared object's funded-horizon cell.
+  // "not yet measurable" is the instrument's own contract (credit.Horizon returns
+  // finite=false when it has observed no burn) and it is NOT an all-clear: an unmeasured
+  // burn is not a proven-safe one, which is why it is neither "perpetual" nor green.
+  function solvencyCell(o) {
+    if (!o) return { text: "—", state: "unknown" };
+    if (o.finite === false) {
+      return { text: "not yet measurable", state: "unknown",
+        title: "no repair has been funded yet, so there is no observed burn to project. This is not a guarantee of permanence" };
+    }
+    return { text: fmtDur(o.horizonSec), state: o.cliff ? "cliff" : "ok",
+      title: o.cliff ? "within the re-endowment warning window — top this reserve up" : "" };
+  }
+
+  // PANEL 1/3 — the whole document may be token-gated. detailWithheld says which absence
+  // this is: withheld from THIS reader, versus this node caretakes nothing.
+  function economyObjects(self) {
+    if (!self) return { rows: [], note: "no document" };
+    if (self.detailWithheld) return { rows: [], note: WITHHELD_HINT, withheld: true };
+    const rows = self.objects || [];
+    return { rows, note: rows.length ? "" : "this node caretakes no objects yet" };
+  }
+
+  // PANEL 2 — am I profitable. The cost is an operator input (?cost=N), never a persisted
+  // flag, so with no cost supplied the panel shows revenue and says so rather than
+  // printing the balance as if it were a margin.
+  function marginCard(self) {
+    if (!self || self.countersWithheld || !self.revenue) {
+      return { margin: "withheld", sub: WITHHELD_HINT, withheld: true };
+    }
+    const m = self.margin || {};
+    if (!m.costGiven) {
+      return { margin: fmtB(self.revenue.servedBytes) + " served", withheld: false,
+        sub: "cost not supplied — add ?cost=N (credits) to see a margin. Your operating cost is off-ledger and this node never stores it" };
+    }
+    return { margin: (Number(m.margin) || 0) + " credits", withheld: false,
+      sub: "exact GIVEN your cost number (" + (Number(m.cost) || 0) + "): revenue is local-exact, cost is yours" };
+  }
+
+  // PANEL 3 — is durability self-funding. Reads the ROLLING window (/api/economy/flows),
+  // not the lifetime totals: a node that was healthy for a year and is draining today has
+  // a positive lifetime net and a negative window.
+  function selfFundingCard(flows) {
+    if (!flows) return { net: "—", sub: "no document" };
+    if (flows.detailWithheld) return { net: "withheld", sub: WITHHELD_HINT, withheld: true };
+    if (flows.windowNotYetMeasured || !flows.pooled) {
+      return { net: "not yet measured", withheld: false,
+        sub: "a delta needs two samples, taken " + fmtDur(flows.sampleIntervalSec) + " apart. This is not a zero net" };
+    }
+    const p = flows.pooled;
+    return { net: (Number(p.net) || 0) + " credits", withheld: false, draining: !!p.draining,
+      sub: (p.draining ? "DRAINING: " + p.consecutiveNegative + " consecutive negative samples — " : "") +
+        "skim in " + (Number(p.skimIn) || 0) + " vs bounty out " + (Number(p.bountyOut) || 0) + " over " + fmtDur(flows.windowSec) };
+  }
+
+  // PANEL 4 — the wash SELF-check. It exists so an HONEST operator can see their own
+  // shape and show they are not the cluster. Authenticity is not-knowable (Douceur), so
+  // the word is "suspected"; this is never a detection and never a slashing input.
+  function washCard(self) {
+    if (!self || self.countersWithheld || !self.wash) {
+      return { light: "withheld", sub: WITHHELD_HINT, withheld: true };
+    }
+    const w = self.wash;
+    const pct = (Number(w.symmetry) || 0).toFixed(2);
+    if (w.suspected) {
+      return { light: "shape suspected", state: "warn", withheld: false,
+        sub: "serve:fetch symmetry " + pct + " with a non-positive balance is the shape a wash pair leaves. SUSPECTED — a shape, never a finding: a node cannot prove another identity is a Sybil, and nothing here feeds slashing" };
+    }
+    return { light: "no wash shape", state: "ok", withheld: false,
+      sub: "serve:fetch symmetry " + pct + ". Shape only: authenticity is not knowable from one node" };
+  }
+
+  // The gossip-estimated panels. A gossip figure NEVER renders without its sample size,
+  // and below the floor it does not render at all — "sample too small" is a legitimate
+  // rendering and a guess is not.
+  function gossipCell(block, value) {
+    const sample = (block && block.sample) || null;
+    if (!sample) return { text: "—", sub: "no sample" };
+    if (sample.tooSmall) {
+      return { text: "sample too small", tooSmall: true,
+        sub: sample.size + " of " + sample.minSize + " nodes — a Gini over two values is those two values' ratio, so nothing is published" };
+    }
+    if (value === undefined || value === null) {
+      return { text: "not published", sub: "this figure is absent on the wire, which is not a zero" };
+    }
+    return { text: Number(value).toFixed(4), sub: "gossip-estimated over " + sample.size + " nodes" + (sample.selfIncluded ? " (this node included)" : "") };
+  }
+
+  return { fmtB, fmtDur, withheld, statusCards, prereleaseBanner, observatoryTotals, servedCell, libraryGetCell,
+    solvencyCell, economyObjects, marginCard, selfFundingCard, washCard, gossipCell,
+    WITHHELD_HINT, LINK_WITHHELD_HINT };
 });

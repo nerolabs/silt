@@ -97,6 +97,10 @@ type uiServer struct {
 	statusMu    sync.Mutex
 	statusDoc   *statusInfo // nil until the first request; the FULL document, including the tokened detail
 	statusTaken time.Time   // when statusDoc was computed
+	// flowRing is the R2.2 escrow-delta ring (ui_economy.go), appended from
+	// statusSnapshot under statusMu and read by /api/economy/flows and
+	// /api/economy/g. Bounded at flowRingDepth samples x maxFlowRings roots.
+	flowRing []flowSample
 	// now reads the wall clock the CACHE ages against. nil means time.Now, which is
 	// what the daemon uses. A test injects it so it can poll across an interval
 	// boundary without sleeping for statusSnapshotInterval — the alternative is a
@@ -273,17 +277,21 @@ func (s *uiServer) onLoop(fn func()) {
 // embedded pages, never ledger state.
 func (s *uiServer) apiRoutes() map[string]http.HandlerFunc {
 	return map[string]http.HandlerFunc{
-		"GET /api/status":          s.apiStatus,
-		"GET /api/economy/self":    s.apiEconomySelf,
-		"GET /api/roots":           s.apiRoots,
-		"GET /api/registry":        s.apiRegistry,
-		"GET /api/chain":           s.apiChain,
-		"POST /api/publish":        s.apiPublish,
-		"POST /api/fund":           s.apiFund,
-		"GET /api/fetch":           s.apiFetch,
-		"GET /api/library":         s.apiLibrary,
-		"POST /api/library/add":    s.apiLibraryAdd,
-		"POST /api/library/remove": s.apiLibraryRemove,
+		"GET /api/status":                s.apiStatus,
+		"GET /api/economy/self":          s.apiEconomySelf,
+		"GET /api/economy/flows":         s.apiEconomyFlows,
+		"GET /api/economy/g":             s.apiEconomyG,
+		"GET /api/economy/concentration": s.apiEconomyConcentration,
+		"GET /api/economy/network":       s.apiEconomyNetwork,
+		"GET /api/roots":                 s.apiRoots,
+		"GET /api/registry":              s.apiRegistry,
+		"GET /api/chain":                 s.apiChain,
+		"POST /api/publish":              s.apiPublish,
+		"POST /api/fund":                 s.apiFund,
+		"GET /api/fetch":                 s.apiFetch,
+		"GET /api/library":               s.apiLibrary,
+		"POST /api/library/add":          s.apiLibraryAdd,
+		"POST /api/library/remove":       s.apiLibraryRemove,
 	}
 }
 
@@ -907,6 +915,11 @@ func (s *uiServer) statusSnapshot(now time.Time) (*statusInfo, time.Time) {
 	}
 	s.statusDoc = s.computeStatus(now)
 	s.statusTaken = now
+	// The R2.2 flow ring rides THIS recompute (ui_economy.go): one sample lands per
+	// flowSampleInterval, off the document just computed, so /api/economy/flows and
+	// /api/economy/g difference the same accounting /api/status published rather than
+	// a second read of the ledger taken at a different instant. No timer, no goroutine.
+	s.noteFlowSample(now, s.statusDoc)
 	return s.statusDoc, s.statusTaken
 }
 

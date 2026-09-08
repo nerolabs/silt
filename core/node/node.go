@@ -538,6 +538,9 @@ type Node struct {
 
 	// ledger, when set, is credited for every chunk this node serves.
 	ledger ports.CreditLedger
+	// workRep is ledger's optional non-registering work-counter reader, resolved once
+	// in SetLedger so the per-message gossip stamp does not type-assert (R2.2 row 8-9).
+	workRep workReporter
 	// freeload makes the node a pure consumer: it refuses to store
 	// pushed chunks and refuses to serve fetches, while still fetching
 	// and using DHT routing. Exists so the economy scenario can watch
@@ -864,10 +867,23 @@ type Node struct {
 	lg ports.Logger
 }
 
-type capInfo struct{ used, total int64 }
+// capInfo is what one peer has gossiped about itself: its capacity pledge (M9) and,
+// since R2.2, its two work counters. All four are SELF-REPORTED and advisory — the
+// sample they feed estimates the crowd's shape for a dashboard, never a consensus,
+// standing or disbursement decision.
+type capInfo struct{ used, total, served, repairs int64 }
 
 // SetLedger wires credit accounting; nil disables it.
-func (n *Node) SetLedger(l ports.CreditLedger) { n.ledger = l }
+// SetLedger wires the credit ledger. It ALSO resolves the optional work-counter reader
+// the capacity gossip stamps its two R2.2 work fields from (workReporter): resolving it
+// once here rather than type-asserting per outbound message keeps send's cost where it
+// was. A ledger that does not implement it (a test double, a bare ports.CreditLedger)
+// leaves workRep nil and this node gossips zeros — the honest reading of "I cannot see
+// my own work counters", not a guess.
+func (n *Node) SetLedger(l ports.CreditLedger) {
+	n.ledger = l
+	n.workRep, _ = l.(workReporter)
+}
 
 // ErrNoLedger is returned by the durability-funding API when the node has no
 // credit ledger wired (SetLedger was never called).
@@ -1308,6 +1324,12 @@ func (n *Node) send(to ports.NodeID, msg ports.Message) error {
 	}
 	if n.capRep != nil {
 		msg.CapUsed, msg.CapTotal = n.capRep.Capacity()
+		// R2.2 rows 8-9: the work counters ride WITH the capacity pledge, never
+		// without it. A receiver files them under CapTotal > 0 (handle), and the
+		// tier band that classifies the sample is derived from CapTotal, so a work
+		// figure arriving with no pledge could not be classified and would be
+		// dropped anyway. Same gossip, one condition.
+		msg.ServedBytes, msg.RepairsDone = n.selfWork()
 	}
 	msg.Domain = n.domainID
 	msg.Ephemeral = n.ephemeral
@@ -1627,7 +1649,11 @@ func (n *Node) handle(from ports.NodeID, msg ports.Message) {
 	}
 	if msg.CapTotal > 0 {
 		evictPeerInfoIfFull(n.peerCaps, from)
-		n.peerCaps[from] = capInfo{used: msg.CapUsed, total: msg.CapTotal}
+		// The two R2.2 work fields land in the SAME bounded map under the SAME
+		// eviction, so rows 8-9 add no new unbounded peer-keyed state: the bound is
+		// maxPeerInfo, proved by peerinfo_bound_test.go, and two int64s per entry is
+		// the whole cost.
+		n.peerCaps[from] = capInfo{used: msg.CapUsed, total: msg.CapTotal, served: msg.ServedBytes, repairs: msg.RepairsDone}
 	}
 	if msg.BondRoot != (ports.Hash{}) && !msg.Ephemeral {
 		evictPeerInfoIfFull(n.peerBonds, from)
