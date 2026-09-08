@@ -771,6 +771,11 @@ type deliverySettlementInfo struct {
 	RefundsBurnedAtCap     int64 `json:"refundsBurnedAtCap"`
 	RestoredGuardEntries   int64 `json:"restoredGuardEntries"`
 	GuardFullRefusals      int64 `json:"guardFullRefusals"` // delivery-lane opens/funds refused at a guard full of live entries
+	// R2.13 (R-COMPACT-ORPHAN): expiry sweeps whose durable-store compaction failed — benign
+	// for accounting, but the guard file has stopped shrinking. Pairs with the daemon's
+	// "paid-serial guard compaction failed" WARN line. Both lanes share the guard.
+	CompactFailures  int64  `json:"compactFailures"`
+	LastCompactError string `json:"lastCompactError,omitempty"`
 }
 
 type serveMintInfo struct {
@@ -916,7 +921,7 @@ func (s *uiServer) computeStatus(now time.Time) *statusInfo {
 		out.DeliverySettlement = &deliverySettlementInfo{Settlements: ds.Settlements, SettledCredits: ds.SettledCredits, SettledIncrements: ds.SettledIncrements,
 			SessionsClosed: ds.SessionsClosed, RefundedCredits: ds.RefundedCredits, PendingRefundCredits: ds.PendingRefundCredits, BurnedCredits: ds.BurnedCredits,
 			RefundsBurnedNoAccount: ds.RefundsBurnedNoAccount, RefundsBurnedAtCap: ds.RefundsBurnedAtCap, RestoredGuardEntries: ds.RestoredGuardEntries,
-			GuardFullRefusals: ds.GuardFullRefusals}
+			GuardFullRefusals: ds.GuardFullRefusals, CompactFailures: ds.CompactFailures, LastCompactError: ds.LastCompactError}
 		out.economy = s.nd.EconomySelf()
 		out.AddressCap = s.addressCapSnapshot()
 		if s.statusExtra != nil {

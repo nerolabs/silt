@@ -138,6 +138,46 @@ type deliveryCloser interface {
 }
 type refundReleaser interface{ ReleaseDueRefunds() }
 
+// compactFailureCounter is the ledger's R2.13 compaction telemetry (core/credit
+// CompactFailures / LastCompactError), optional on ports.CreditLedger the way
+// guardFullRefusalCounter is (demandrole.go).
+type compactFailureCounter interface {
+	CompactFailures() int64
+	LastCompactError() error
+}
+
+// logCompactFailures emits the operator's WARN for the BENIGN compaction-failure
+// class (R2.13, R-COMPACT-ORPHAN owed-after): the durable paid-serial store refused
+// to compact on an expiry sweep. The ledger only counts it — the sweep runs inside
+// the guarded ledger calls (anchor spend, settle, the deposit release) and core/credit
+// has no logger — so the node reads the counter after every path that can run the
+// sweep (the delivery open/fund/settle handlers, the relay open, and the periodic
+// SweepDeliverySessions) and logs ONCE PER NEW FAILURE, keyed on the monotone count.
+// A repeated read with no new failure logs nothing, so a silent or busy server gets
+// at most one line per failed sweep (sweeps are at most once per epoch). Accounting
+// is untouched: a failed compaction never refuses a payout (G-CO-2); a store that is
+// actually broken refuses Append and surfaces as ReasonGuardStore instead.
+func (n *Node) logCompactFailures() {
+	if n.ledger == nil {
+		return
+	}
+	c, ok := n.ledger.(compactFailureCounter)
+	if !ok {
+		return
+	}
+	cnt := c.CompactFailures()
+	if cnt <= n.compactFailuresSeen {
+		return
+	}
+	n.compactFailuresSeen = cnt
+	reason := ""
+	if err := c.LastCompactError(); err != nil {
+		reason = err.Error()
+	}
+	// "paid-serial guard compaction failed" is an announced S5 marker (observable_contract.go).
+	n.logf(ports.LogWarn, "paid-serial guard compaction failed", "compact_failures", cnt, "error", reason)
+}
+
 // EnableDeliverySessions opts this node into paid delivery sessions with the given
 // idle window (C9). A non-positive window is REFUSED at the daemon (refuse-until-set);
 // here it leaves the lane off so a misuse cannot admit a session the reaper would
@@ -163,6 +203,7 @@ func (n *Node) SweepDeliverySessions() {
 	if r, ok := n.ledger.(refundReleaser); ok && n.ledger != nil {
 		r.ReleaseDueRefunds() // deposits whose anchors left the window return even on a silent server
 	}
+	n.logCompactFailures() // the release above advances the ledger's epoch band, which is where the sweep compacts
 }
 
 // DisableDeliverySessions closes every live session (each remainder accounted once)
@@ -455,6 +496,7 @@ func (n *Node) handleDeliveryOpen(from ports.NodeID, msg ports.Message) {
 		return
 	}
 	s, err := n.OpenDeliverySession(from, open)
+	n.logCompactFailures() // the anchor spend advances the epoch band (a sweep may have compacted), refused or not
 	if err != nil {
 		n.logDeliveryAdmissionRefusal("open", err)
 		deny(err) // named, never silent
@@ -473,6 +515,7 @@ func (n *Node) handleDeliveryFund(from ports.NodeID, msg ports.Message) {
 		return
 	}
 	s, err := n.FundDeliverySession(from, fund)
+	n.logCompactFailures()
 	if err != nil {
 		n.logDeliveryAdmissionRefusal("fund", err)
 		deny(err)
@@ -491,6 +534,7 @@ func (n *Node) handleDeliverySettle(from ports.NodeID, msg ports.Message) {
 		return
 	}
 	settled, err := n.SettleDeliveryReceipt(from, r)
+	n.logCompactFailures()
 	if err != nil {
 		if deliveryPostAuth(err) {
 			// "delivery receipt paid NO credit" is the announced S5 marker (observable_contract.go)

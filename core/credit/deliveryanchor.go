@@ -305,15 +305,29 @@ type DeliverySettlementStats struct {
 	// one number for a serve rate above the bound the cap was derived against (blind PE,
 	// 2026-09-07: the marker alone is not a surface). Monotone.
 	GuardFullRefusals int64
+	// CompactFailures / LastCompactError mirror the ledger's CompactFailures() and
+	// LastCompactError() (R2.13, R-COMPACT-ORPHAN): expiry sweeps that ended with the
+	// durable paid-serial store refusing to compact. BENIGN for accounting (the log stays
+	// a superset of the live set) but the file has stopped shrinking, so the operator
+	// sees it here and on the "paid-serial guard compaction failed" WARN line the node
+	// emits once per new failure (core/node logCompactFailures). Both lanes share the
+	// guard; the counter is not split by lane. LastCompactError is "" when none.
+	CompactFailures  int64
+	LastCompactError string
 }
 
 // DeliverySettlementStats reads the settlement telemetry. Reading moves nothing.
 func (l *Ledger) DeliverySettlementStats() DeliverySettlementStats {
+	lastCompact := ""
+	if l.lastCompactErr != nil {
+		lastCompact = l.lastCompactErr.Error()
+	}
 	return DeliverySettlementStats{Settlements: l.deliverySettlements, SettledCredits: l.deliverySettledCredits,
 		SessionsClosed: l.deliverySessionsClosed, SettledIncrements: l.deliverySettledIncrements,
 		RefundedCredits: l.deliveryRefundedCredits, PendingRefundCredits: l.deliveryPendingCredits, BurnedCredits: l.deliveryBurnedCredits,
 		RefundsBurnedNoAccount: l.deliveryRefundsBurnedNoAccount, RefundsBurnedAtCap: l.deliveryRefundsBurnedAtCap,
-		RestoredGuardEntries: l.deliveryRestartOrphans, GuardFullRefusals: l.guardFullRefusalsDelivery}
+		RestoredGuardEntries: l.deliveryRestartOrphans, GuardFullRefusals: l.guardFullRefusalsDelivery,
+		CompactFailures: l.compactFailures, LastCompactError: lastCompact}
 }
 
 // ProvisionalLaneForTest reports whether a provisional lane is live and its byte

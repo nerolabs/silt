@@ -47,6 +47,7 @@ func (n *Node) handleRelayOpen(from ports.NodeID, msg ports.Message) {
 	// that actually opened the conn.
 	funding := FundingSource(open.Funding)
 	sess, err := n.OpenRelaySession(from, open.Root, open.S, funding, open.Anchors, open.Fetcher, open.Sig)
+	n.logCompactFailures() // the anchor spend runs the shared guard's epoch sweep (R2.13 WARN, one lane over)
 	if err != nil {
 		deny(err.Error()) // M0 guard / S-clamp refusal — surfaced, never silent
 		return

@@ -727,6 +727,11 @@ type Node struct {
 	relaySessions   map[uint64]*RelaySession
 	relaySessionSeq uint64
 
+	// compactFailuresSeen is the ledger's CompactFailures() value the last time the node
+	// looked (logCompactFailures, deliverysession.go): the WARN fires once per NEW
+	// failure, never once per banked receipt or sweep.
+	compactFailuresSeen int64
+
 	// R2.9 — the paid delivery session lane (deliverysession.go). deliveryAccept gates
 	// it (EnableDeliverySessions, behind -accept-delivery-receipts with a set idle
 	// window); deliverySessions is the live table keyed by handle, deliveryByFetcher
