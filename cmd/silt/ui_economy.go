@@ -444,13 +444,74 @@ func newGossipSample(size int, selfIncluded bool) gossipSample {
 	return gs
 }
 
+// ---- the privacy clause on the two gossip-estimated routes ---------------------------
+//
+// THE BREAK THIS CLOSES (blind PE ruling B3 and red-team REDTEAM-c3-gossip-disclosure-
+// f03ab50-2026-09-09 F1, both measured, independently). The first cut of these two routes
+// was OPEN, on the argument — written into r29a_status_surface_test.go and the build doc —
+// that self's own bytes being one term inside the sample made the aggregate safe. That
+// argument is FALSE and both seats produced a working solve.
+//
+// A published Gini plus its sample size is ONE EQUATION. minGossipSample bounds the sample
+// SIZE; it does not bound the number of terms the READER does not already know. Identity
+// is free (M0), so an adversary furnishes n-1 of the n terms with sybils gossiping chosen
+// ServedBytes and a classifiable CapTotal, and solves for the one term left. Measured
+// end-to-end on the real Node.EconomySample() and the real credit.Gini: 4 sybils declaring
+// 1,000,000 recovered a planted secret of 7,777,777 EXACTLY.
+//
+// The recovered quantity is the node-wide serve counter that -privacy — the compiled
+// default, privacyDefaultWithheld — nils for precisely this reader in readerView, and drops
+// with the whole economyRevenue block in privacyWithheldEconomySelf. So an open route was
+// handing an unauthenticated reader the number the privacy default exists to withhold.
+//
+// THREE AMPLIFICATIONS that decide the shape of the fix:
+//  1. THE RECOVERED TERM NEED NOT BE SELF. Any node with an open route is an ORACLE for its
+//     PEERS' withheld counters: a web client that never peers with V reads V's counter
+//     through A. So "drop self from the sample" is not a fix — it moves the target.
+//  2. The counters are MONOTONE CUMULATIVE, so re-solving over time yields a per-node
+//     serve/repair RATE. An activity timeline, not a snapshot.
+//  3. RepairGini fingerprints the few load-bearing repairers, which is eclipse-targeting
+//     material.
+//
+// THE SHAPE, and why it is the minimal one. These two documents now honour the SAME privacy
+// clause as the rest of the read surface — `auth.privacy && !auth.token`, byte for byte the
+// predicate readerView uses for the node-wide counters — and the marker is the SAME
+// countersWithheld, because this is the same covered set one derivation removed. Tighter
+// (withhold unconditionally) would withhold a derivation of numbers a -privacy=off node
+// publishes raw two routes over, which closes nothing and invites someone to open the wrong
+// one later. Looser (withhold only the Ginis) leaves the mix, which publishes the sample
+// SIZE — half of the equation. Narrower still (drop self) is refuted by amplification 1.
+//
+// OWNER RULING 2026-09-09: the privacy default wins — empty panels on the shipped default
+// are preferred over the disclosure. The cost, stated: a cross-origin observatory can no
+// longer read these two panels from a -privacy=on node. The operator's own dashboard is
+// unaffected, because cmd/silt/ui/app.js attaches the bearer token to every same-origin
+// /api/ call.
+//
+// WHAT STAYS OPEN, and why each is not a withhold in name only:
+//   - the published BANDS and the target ratio: constants, no measurement;
+//   - estimatedNodes: the SAME number /api/status already publishes in `network`, which the
+//     privacy clause does not touch. Pinned by a gate so the claim cannot rot;
+//   - C2: chain-derived and committed-global — every node holds that chain — and named an
+//     honest negative by the red-team pass. It is not a gossip figure at all.
+func gossipWithheld(auth readerAuth) bool { return auth.privacy && !auth.token }
+
+const gossipWithholdNote = "withheld by this node's privacy setting (-privacy=on, the default): a published Gini plus its sample size is one equation, and a reader that supplies the other terms with free identities solves it for a node-wide work counter this node withholds elsewhere. Present the API token for your own node's view, or run it with -privacy=off"
+
 // ---- GET /api/economy/concentration (rows 6, 7, 12) ----------------------------------
 
 type economyConcentration struct {
-	Tier       string       `json:"tier"`
-	Sample     gossipSample `json:"sample"`
-	ServeGini  *giniValue   `json:"serveGini,omitempty"`
-	RepairGini *giniValue   `json:"repairGini,omitempty"`
+	Tier string `json:"tier"`
+	// Sample and the two Ginis are the GOSSIP-ESTIMATED half and they move together:
+	// present or absent as one set, named by CountersWithheld. Sample is a POINTER so its
+	// absence is an absence — a zeroed block would publish size 0 and read as "this node
+	// knows no peers", which is a different fact from "you may not see this".
+	Sample     *gossipSample `json:"sample,omitempty"`
+	ServeGini  *giniValue    `json:"serveGini,omitempty"`
+	RepairGini *giniValue    `json:"repairGini,omitempty"`
+	// CountersWithheld is the SAME marker readerView uses for the node-wide serve
+	// counters, because this is the same covered set one derivation removed.
+	CountersWithheld bool `json:"countersWithheld,omitempty"`
 	// C2 is the committed-global standing concentration, on a different tier from the
 	// two Ginis beside it and labelled so. Absent (not zeroed) with no chain.
 	C2       *c2Info `json:"c2,omitempty"`
@@ -477,6 +538,15 @@ type giniValue struct {
 	Scope      string  `json:"scope"`
 	Reason     string  `json:"reason,omitempty"`
 }
+
+// The two scope strings. They are on the wire because each series is over a DIFFERENT and
+// non-obvious population, and a concentration figure whose population a reader has to guess
+// is unreadable — the network-wide repair Gini is ~0.99 on a healthy network, so getting the
+// population wrong inverts the reading.
+const (
+	serveGiniScope  = "the nodes that REPORTED serve work, of every tier — every tier serves. A node that reported nothing is excluded rather than counted as a zero: both wire fields are omitempty, so a peer withholding its counters and an idle peer are identical bytes, and counting the absence as a zero would drag this toward 1.0 and read as total capture. Excluding UNDERSTATES inequality, which is the safe direction for a capture alarm. Self-reported and Sybil-settable; never an input to anything"
+	repairGiniScope = "the REPAIR-CAPABLE nodes (horse + archival by capacity band) that REPORTED repair work. A network-wide repair Gini is ~0.99 by construction under D-TIERING, where transient ponies do no durability work, so it carries no signal. Same reporting-subset rule as the serve series"
+)
 
 // noWorkReported is the rendering of a Gini whose sample summed to zero.
 const noWorkReported = "no work reported by this sample: every sampled node reported zero. That is not an even distribution — it is an absent measurement, and the two are different facts"
@@ -521,7 +591,7 @@ func (s *uiServer) apiEconomyConcentration(w http.ResponseWriter, r *http.Reques
 			c2 = &m
 		}
 	})
-	out := economyConcentrationDoc(sample, c2)
+	out := economyConcentrationDoc(sample, c2, s.readerAuthFor(r))
 	out.SnapshotTakenAtUnix = doc.SnapshotTakenAtUnix
 	out.SnapshotAgeSec = int64(now.Sub(takenAt).Seconds())
 	out.SnapshotIntervalSec = doc.SnapshotIntervalSec
@@ -533,23 +603,10 @@ func (s *uiServer) apiEconomyConcentration(w http.ResponseWriter, r *http.Reques
 // estimate below the sample floor, the repair Gini scoped to the capable subset, C2
 // absent rather than zeroed — are decisions about a VALUE, and a decision about a value
 // should be testable without a node, a chain and an event loop behind it.
-func economyConcentrationDoc(sample node.EconomySample, c2 *chain.C2) economyConcentration {
+func economyConcentrationDoc(sample node.EconomySample, c2 *chain.C2, auth readerAuth) economyConcentration {
 	out := economyConcentration{
-		Tier:   "gossip-estimated + committed-global",
-		Sample: newGossipSample(sample.Size, sample.SelfIncluded),
-		Note:   "serve-work and repair-work are SEPARATE series on purpose: a balance Gini conflates them, and repair concentrating on the persistent tier while serving federates is exactly the drift a single number hides",
-	}
-	if !out.Sample.TooSmall {
-		out.ServeGini = giniOver(sample.ServeGini, sample.ServeWorkTotal, sample.Size, "gossip-estimated",
-			"the whole sample: every tier serves")
-		// The repair series carries its OWN floor, against its OWN subset size. The
-		// capable subset is a fraction of the sample, so a sample that clears the floor
-		// routinely holds a capable subset that does not — and publishing the sample's
-		// size beside the subset's Gini would be the wrong sibling on the wrong number.
-		if sample.RepairSampleSize >= minGossipSample {
-			out.RepairGini = giniOver(sample.RepairGini, sample.RepairWorkTotal, sample.RepairSampleSize, "gossip-estimated",
-				"the REPAIR-CAPABLE subset only (horse + archival by capacity band). A network-wide repair Gini is ~0.99 by construction under D-TIERING, where transient ponies do no durability work, so it carries no signal")
-		}
+		Tier: "gossip-estimated + committed-global",
+		Note: "serve-work and repair-work are SEPARATE series on purpose: a balance Gini conflates them, and repair concentrating on the persistent tier while serving federates is exactly the drift a single number hides",
 	}
 	if c2 == nil {
 		out.C2Absent = "no chain on this node: C2 is committed-global and needs the chain every validator holds"
@@ -559,14 +616,39 @@ func economyConcentrationDoc(sample node.EconomySample, c2 *chain.C2) economyCon
 			TopShare: c2.TopShare, HHI: c2.HHI, Gini: c2.Gini, WeightUniformity: c2.WeightUniformity,
 			Note: "exact as of my head — every node holds this chain. Standing concentration, a different quantity from the two work Ginis beside it"}
 	}
+	if gossipWithheld(auth) {
+		out.CountersWithheld = true
+		out.Note = gossipWithholdNote
+		return out
+	}
+	gs := newGossipSample(sample.Size, sample.SelfIncluded)
+	out.Sample = &gs
+	if !out.Sample.TooSmall {
+		// Each series carries its OWN size against its OWN floor. The serve series is the
+		// subset that REPORTED work, which is smaller than the sample and routinely below
+		// the floor when the sample is not — and publishing the sample's size beside the
+		// series' Gini would be the wrong sibling on the wrong number.
+		if sample.ServeSampleSize >= minGossipSample {
+			out.ServeGini = giniOver(sample.ServeGini, sample.ServeWorkTotal, sample.ServeSampleSize, "gossip-estimated",
+				serveGiniScope)
+		}
+		// The repair series carries its OWN floor, against its OWN subset size. The
+		// capable subset is a fraction of the sample, so a sample that clears the floor
+		// routinely holds a capable subset that does not — and publishing the sample's
+		// size beside the subset's Gini would be the wrong sibling on the wrong number.
+		if sample.RepairSampleSize >= minGossipSample {
+			out.RepairGini = giniOver(sample.RepairGini, sample.RepairWorkTotal, sample.RepairSampleSize, "gossip-estimated",
+				repairGiniScope)
+		}
+	}
 	return out
 }
 
 // ---- GET /api/economy/network (rows 10, 11, 13) --------------------------------------
 
 type economyNetwork struct {
-	Tier   string       `json:"tier"`
-	Sample gossipSample `json:"sample"`
+	Tier   string        `json:"tier"`
+	Sample *gossipSample `json:"sample,omitempty"`
 	// EstimatedNodes is the DHT crowd estimate. It is published even below the sample
 	// floor because it is the SAME number /api/status already carries in network — but
 	// it is stamped with its own tier so nobody reads it as a census.
@@ -579,7 +661,11 @@ type economyNetwork struct {
 	// is not a large number, it is an unknown one.
 	ObservedRatio       []tierMixRow `json:"observedRatio,omitempty"`
 	ObservedRatioAbsent string       `json:"observedRatioAbsent,omitempty"`
-	Note                string       `json:"note"`
+	// CountersWithheld: see economyConcentration. The mix is withheld with the Ginis
+	// because it publishes the sample SIZE, which is half of the equation the Ginis are
+	// the other half of.
+	CountersWithheld bool   `json:"countersWithheld,omitempty"`
+	Note             string `json:"note"`
 
 	SnapshotTakenAtUnix int64 `json:"snapshotTakenAtUnix"`
 	SnapshotAgeSec      int64 `json:"snapshotAgeSec"`
@@ -624,7 +710,7 @@ func (s *uiServer) apiEconomyNetwork(w http.ResponseWriter, r *http.Request) {
 	doc, takenAt := s.statusSnapshot(now)
 	var sample node.EconomySample
 	s.onLoop(func() { sample = s.nd.EconomySample() })
-	out := economyNetworkDoc(sample)
+	out := economyNetworkDoc(sample, s.readerAuthFor(r))
 	out.SnapshotTakenAtUnix = doc.SnapshotTakenAtUnix
 	out.SnapshotAgeSec = int64(now.Sub(takenAt).Seconds())
 	out.SnapshotIntervalSec = doc.SnapshotIntervalSec
@@ -633,15 +719,21 @@ func (s *uiServer) apiEconomyNetwork(w http.ResponseWriter, r *http.Request) {
 
 // economyNetworkDoc is the PURE rendering of one sample — same split, same reason, as
 // economyConcentrationDoc.
-func economyNetworkDoc(sample node.EconomySample) economyNetwork {
+func economyNetworkDoc(sample node.EconomySample, auth readerAuth) economyNetwork {
 	out := economyNetwork{
 		Tier:           "gossip-estimated",
-		Sample:         newGossipSample(sample.Size, sample.SelfIncluded),
 		EstimatedNodes: sample.EstimatedNodes,
 		Bands:          publishedTierBands(),
 		TargetRatio:    targetTierRatio(),
 		Note:           "the tier class is DERIVED from the capacity pledge each peer already gossips, against the published bands below — it is not a third gossip field and not a self-declared label. Every figure is self-reported and advisory",
 	}
+	if gossipWithheld(auth) {
+		out.CountersWithheld = true
+		out.Note = gossipWithholdNote
+		return out
+	}
+	gs := newGossipSample(sample.Size, sample.SelfIncluded)
+	out.Sample = &gs
 	if out.Sample.TooSmall {
 		return out
 	}

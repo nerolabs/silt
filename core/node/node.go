@@ -29,6 +29,25 @@ import (
 )
 
 type Config struct {
+	// PublishWorkCounters lets this node gossip its own ServedBytes / RepairsDone on the
+	// two work fields (R2.2 rows 8-9). FALSE BY DEFAULT, AND THE ZERO VALUE IS THE SAFE
+	// ONE ON PURPOSE: a caller that forgets this field withholds, it does not leak.
+	//
+	// It is the wire half of -privacy (RESEARCH CERTIFICATION C3-GOSSIP-DISCLOSURE-vs-
+	// D-UI-PRIVACY-FLAG-2026-09-09, alternative A, condition M-1, owner ratification
+	// pending). The two gossiped integers are BIT-IDENTICAL to two of the three
+	// quantities D-UI-PRIVACY-FLAG withholds from an HTTP reader — same account fields,
+	// same numbers — and they go to a wider audience over a more public port: -ui is
+	// empty by default, so a hobbyist daemon serves no HTTP surface at all and would
+	// still have published these to every DHT peer. Worse, D-STATUS-SNAPSHOT-INTERVAL
+	// ratified the 5 s snapshot as a SECURITY parameter precisely because "the poll rate
+	// is the reader's choice, so that was never a bound" — and a counter stamped on every
+	// reply hands the observer its own rate back, voiding that bound for these two.
+	//
+	// So the flag that governs the reader governs the wire. cmd/silt sets this from
+	// -privacy; every other caller (tests, sim) gets the withholding default.
+	PublishWorkCounters bool
+
 	K              int            // Kademlia bucket size
 	Alpha          int            // lookup parallelism
 	RequestTimeout ports.Duration // per-attempt deadline; exceeded => this attempt failed
@@ -1329,7 +1348,14 @@ func (n *Node) send(to ports.NodeID, msg ports.Message) error {
 		// tier band that classifies the sample is derived from CapTotal, so a work
 		// figure arriving with no pledge could not be classified and would be
 		// dropped anyway. Same gossip, one condition.
-		msg.ServedBytes, msg.RepairsDone = n.selfWork()
+		//
+		// AND ONLY WHEN THE OPERATOR PUBLISHES THEM (M-1). With the compiled default
+		// -privacy=on this leaves both at 0, and because both wire fields are omitempty
+		// a zero emits NO CBOR key at all — the frame is byte-identical to a pre-R2.2
+		// node's. See Config.PublishWorkCounters.
+		if n.cfg.PublishWorkCounters {
+			msg.ServedBytes, msg.RepairsDone = n.selfWork()
+		}
 	}
 	msg.Domain = n.domainID
 	msg.Ephemeral = n.ephemeral

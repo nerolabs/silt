@@ -192,6 +192,16 @@
   // `gossipCell(doc, doc.serveGini && doc.serveGini.value)`, and a value of 0 is falsy —
   // which is exactly the case that must not render as a measurement.
   function gossipCell(block, gini) {
+    // The privacy clause, first: a published Gini plus its sample size is one equation, and
+    // a reader that supplies the other terms with free identities solves it for a node-wide
+    // work counter this node withholds elsewhere. So on the shipped -privacy default the
+    // two Gini figures are a NAMED ABSENCE — never a zero, never a blank that reads as a
+    // measurement. Everything else on those panels (the C2 block, the tier mix, the bands,
+    // the target ratio) is unaffected and still renders.
+    if (block && block.countersWithheld) {
+      return { text: "withheld by this node's privacy setting", withheld: true,
+        sub: block.note || WITHHELD_HINT };
+    }
     const sample = (block && block.sample) || null;
     if (!sample) return { text: "—", sub: "no sample" };
     if (sample.tooSmall) {

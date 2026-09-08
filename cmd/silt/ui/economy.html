@@ -112,10 +112,13 @@ async function refresh() {
   const rows = (net && net.mix) || [];
   const ratio = {};
   if (net && net.observedRatio) for (const r of net.observedRatio) ratio[r.class] = r.ratio;
+  const mixEmpty = net && net.countersWithheld
+    ? "withheld by this node's privacy setting"
+    : ((net && net.sample && net.sample.note) || "no sample");
   document.querySelector("#mix tbody").innerHTML = rows.map(r =>
     `<tr><td>${r.class}</td><td>${r.sampled}</td><td>${(Number(r.share) * 100).toFixed(1)}%</td>` +
     `<td>${ratio[r.class] !== undefined ? Number(ratio[r.class]).toFixed(1) : "—"}</td></tr>`).join("")
-    || `<tr><td colspan=4 class="dim">${(net && net.sample && net.sample.note) || "no sample"}</td></tr>`;
+    || `<tr><td colspan=4 class="dim">${mixEmpty}</td></tr>`;
   mixNote.textContent = (net && net.observedRatioAbsent) || (net ? net.note : "");
 }
 refresh(); setInterval(refresh, 5000);

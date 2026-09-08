@@ -306,11 +306,22 @@ func cmdDaemon(args []string) error {
 		used, total := capped.Capacity()
 		fmt.Printf("pledge: %d / %d bytes used\n", used, total)
 	}
+	// -privacy is parsed HERE, before the node config, because it now governs the wire as
+	// well as the HTTP surface (R2.2 / research certification C3-GOSSIP-DISCLOSURE-vs-
+	// D-UI-PRIVACY-FLAG-2026-09-09, condition M-1). It is parsed whether or not a UI is
+	// served: the help text promises a bad value refuses to start, and a refusal that
+	// depended on -ui being set would let `silt daemon -privacy=bogus` boot (blind PE code
+	// ruling RULING-UI-PRIVACY-FLAG-code-0c9e373-2026-09-05 B3).
+	privacyOn, err := parsePrivacyFlag(*privacyFlag)
+	if err != nil {
+		return err
+	}
 	// Base on DefaultConfig so new fields are inherited, not silently
 	// dropped to their zero value (#71 — this is how demand-dispersion was
 	// off in the daemon and the #65 fetch-retry shipped inert). Override
 	// only what the daemon genuinely needs to differ on.
 	cfg := node.DefaultConfig()
+	cfg.PublishWorkCounters = !privacyOn
 	cfg.RequestTimeout = ports.Duration(2 * time.Second) // patient vs the 500ms default (real WAN)
 	cfg.BondAuditInterval = ports.Duration(*bondAudit)
 	cfg.RepairInterval = ports.Duration(*repairInterval)
@@ -1346,14 +1357,6 @@ func cmdDaemon(args []string) error {
 	fmt.Printf("peer: %s@%s\n", id, tr.Addr())
 	fmt.Printf("store: %s\n", *storeDir)
 
-	// -privacy is parsed whether or not a UI is served: the help text promises a bad value
-	// refuses to start, and a refusal that depended on -ui being set would let
-	// `silt daemon -privacy=bogus` boot (blind PE code ruling
-	// RULING-UI-PRIVACY-FLAG-code-0c9e373-2026-09-05 B3).
-	privacyOn, err := parsePrivacyFlag(*privacyFlag)
-	if err != nil {
-		return err
-	}
 	if *uiAddr != "" {
 		// R2.9a, G-BB-13′ Part A (owner-ratified 2026-09-05): a tagged daemon with
 		// -bbootstrap set refuses to start unless -ui is a loopback bind. Checked

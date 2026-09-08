@@ -96,9 +96,27 @@ type EconomySample struct {
 	// A class with no members is absent from the map, never a zero: "no archival node
 	// in my sample" and "zero archival nodes exist" are different facts.
 	Mix map[string]int
-	// ServeGini is Gini over the sampled served-byte totals — the whole sample, because
-	// every tier serves. RepairGini is Gini over the sampled repairs-done totals WITHIN
-	// THE REPAIR-CAPABLE SUBSET ONLY, and RepairSampleSize is that subset's size.
+	// ServeGini is Gini over the served-byte totals of the peers that REPORTED one, and
+	// ServeSampleSize is how many that is. RepairGini is the same over the repairs-done
+	// totals of the REPAIR-CAPABLE peers that reported one, and RepairSampleSize is that
+	// subset's size. Each series carries its OWN size because each is over its own
+	// population, and a size is only a useful sibling to the number it sized.
+	//
+	// WHY A NON-REPORTING PEER IS EXCLUDED RATHER THAN COUNTED AS ZERO (research
+	// certification C3-GOSSIP-DISCLOSURE-vs-D-UI-PRIVACY-FLAG-2026-09-09, condition M-2).
+	// Both wire fields are `omitempty`, so a peer WITHHOLDING its counters and a peer that
+	// has done nothing are THE SAME BYTES, and under the certified gossip gate withholding
+	// is the DEFAULT posture. Counting those absences as zeros would fill the series with
+	// zeros and drive the serve Gini toward 1.0 — a FALSE READING OF TOTAL CAPTURE on the
+	// shipped default, on a network where nothing is captured at all.
+	//
+	// THE DISCRIMINATOR IS THE PAIR, NOT THE FIELD, and that is what keeps the alarm alive.
+	// A peer that serves but has never repaired emits key 29 and not key 30; a withholding
+	// peer emits neither. So any peer with a positive term is a REPORTING peer and its zero
+	// in the other field is a genuine measured zero that COUNTS — which is why "repair
+	// concentrated on one of six capable nodes" still reddens the repair Gini instead of
+	// collapsing to a one-element series. Only the all-zero peer is truly ambiguous, and it
+	// is excluded.
 	//
 	// WHY THE SUBSET (advisory §2.1, and it is a correction to this track's own design
 	// doc). Under D-TIERING transient ponies serve and relay but do not do durability
@@ -108,6 +126,7 @@ type EconomySample struct {
 	// and one above it passes on total capture: the network-wide series carries no
 	// signal at all. Within the capable subset it does.
 	ServeGini        float64
+	ServeSampleSize  int
 	RepairGini       float64
 	RepairSampleSize int
 	// ServeWorkTotal and RepairWorkTotal are the SUMS the two Ginis were taken over, and
@@ -134,8 +153,23 @@ func (n *Node) EconomySample() EconomySample {
 		if tier == "" {
 			return
 		}
+		// Size and Mix count every CLASSIFIABLE peer: they are answers about the crowd's
+		// SHAPE, derived from the capacity pledge, and a peer that withholds its work
+		// counters still pledged capacity. The two work series below are narrower.
 		es.Size++
 		es.Mix[tier]++
+		// M-2: a peer that reported NOTHING AT ALL is excluded from both work series.
+		// The discriminator is the PAIR, not the field: both wire fields are omitempty,
+		// so a withholding peer emits NEITHER key while a peer that serves but has never
+		// repaired emits key 29 and not key 30. So a peer with any positive term is a
+		// REPORTING peer, and its zero in the other field is a genuine measured zero that
+		// counts. Only the all-zero peer is ambiguous, and there "withholding" and "has
+		// done nothing yet" really are the same bytes — excluding it is the honest move
+		// and it is the safe direction, because counting it as a zero inflates the Gini
+		// toward the capture reading.
+		if srv <= 0 && rep <= 0 {
+			return
+		}
 		served = append(served, srv)
 		if repairCapable(tier) {
 			repairs = append(repairs, rep)
@@ -146,7 +180,16 @@ func (n *Node) EconomySample() EconomySample {
 	}
 	if n.capRep != nil {
 		_, total := n.capRep.Capacity()
-		srv, rep := n.selfWork()
+		// SELF FOLLOWS THE SAME RULE AS EVERY PEER (M-3, second leg). A node that does
+		// not publish its work counters on the wire does not put them into its own
+		// published aggregate either: the route clause in cmd/silt is what closes M-3,
+		// and this is the belt to its braces — under the withholding default self's terms
+		// never enter the series at all, so there is nothing for a future open route to
+		// republish. Self stays in Size and Mix, which are capacity answers.
+		var srv, rep int64
+		if n.cfg.PublishWorkCounters {
+			srv, rep = n.selfWork()
+		}
 		if capacityTier(total) != "" {
 			es.SelfIncluded = true
 			add(total, srv, rep)
@@ -156,6 +199,7 @@ func (n *Node) EconomySample() EconomySample {
 	// the two surfaces cannot drift onto different crowd estimates.
 	es.EstimatedNodes = n.EstimateNetwork().EstimatedNodes
 	es.ServeGini = credit.Gini(served)
+	es.ServeSampleSize = len(served)
 	es.RepairGini = credit.Gini(repairs)
 	es.RepairSampleSize = len(repairs)
 	for _, v := range served {

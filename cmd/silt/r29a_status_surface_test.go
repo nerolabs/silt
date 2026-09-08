@@ -363,34 +363,49 @@ func TestR29aF2EconomySelfWithholdsPerObjectDetailWithoutAToken(t *testing.T) {
 // them until the route has been examined against each scan's property.
 const r29aWholeSurfaceGETRoutes = 11
 
-// RAISED 7 -> 11 on 2026-09-08 (Lane C3, R2.2). The four new GET routes, each examined
-// against BOTH scans' properties before the count moved — that examination is what the
-// count is for, so it is written down rather than asserted:
+// RAISED 7 -> 11 on 2026-09-08 (Lane C3, R2.2), and the examination was REWRITTEN on
+// 2026-09-09 after a blind PE ruling and an independent blind red-team pass both REFUTED
+// its first version by measurement. The original text is preserved in the git history and
+// in docs/thinking/2026-09-08-c3-r22-observability-build.md §7; it argued that self's own
+// bytes being one term inside the sample made the two gossip-estimated routes safe to leave
+// OPEN. That was false. Keeping the refutation here rather than quietly replacing the
+// sentence is the point of a comment that a count is anchored to.
 //
-//   - GET /api/economy/flows and GET /api/economy/g. Every figure on either is an
-//     escrow delta of a NAMED cared root: objects[].skimIn is the delta of exactly the
-//     counter this scan protects (durability.objects[].funded) and g's costPerRepair is
-//     Paid/Repairs of one root. So both are TOKEN-GATED IN FULL — allow-lists
-//     (withheldEconomyFlows, withheldEconomyG) that keep the tier label, the cadence
-//     constants, the threshold prose and the snapshot stamps, and drop every number and
-//     every root. The POOLED row goes with the array, not open beside it: on a
-//     one-object node the pooled window delta IS that object's delta, which is the
-//     mistake the selfFunding figures shipped with (withheldEconomySelf).
+//   - GET /api/economy/flows and GET /api/economy/g — TOKEN-GATED IN FULL. Every figure on
+//     either is an escrow delta of a NAMED cared root: objects[].skimIn is the delta of
+//     exactly the counter this scan protects (durability.objects[].funded) and g's
+//     costPerRepair is Paid/Repairs of one root. Allow-lists (withheldEconomyFlows,
+//     withheldEconomyG) keep the tier label, the cadence constants, the threshold prose and
+//     the snapshot stamps, and drop every number and every root. The POOLED row goes with
+//     the array: on a one-object node the pooled window delta IS that object's delta, which
+//     is the mistake selfFunding shipped with.
 //     THESE TWO ARE VACUOUS IN THIS FIXTURE and knowing that is the point: it pins one
-//     instant, so the ring holds one sample and both routes answer
-//     windowNotYetMeasured whatever the token. TestR22FlowsAndGAreTokenGatedAcrossAMeasuredWindow
-//     is the non-vacuous gate — it drives a real multi-sample window and then walks the
-//     untokened surface for the delta.
-//   - GET /api/economy/concentration and GET /api/economy/network. Neither carries a
-//     root, a per-object figure, or a per-peer figure: the Ginis, the tier histogram
-//     and the C2 block are all aggregates over >= minGossipSample nodes, and BELOW that
-//     floor no estimate is published at all (a Gini over two values inverts to those
-//     two values' ratio, so the floor is a privacy floor as much as an honesty one).
-//     Self's own servedBytes is inside the serve-Gini sample, which is why the floor,
-//     not the aggregation, is what makes them safe unauthenticated. The C2 block is
-//     committed-global — every node holds that chain — and the crowd estimate is the
-//     same number /api/status already publishes in `network`. So both stay OPEN, as
-//     /api/status's network block is.
+//     instant, so the ring holds one sample and both routes answer windowNotYetMeasured
+//     whatever the token. TestR22FlowsAndGAreTokenGatedAcrossAMeasuredWindow is the
+//     non-vacuous gate — it drives a real four-sample window, then walks this surface.
+//
+//   - GET /api/economy/concentration and GET /api/economy/network — they now HONOUR THE
+//     PRIVACY CLAUSE, the same `auth.privacy && !auth.token` predicate readerView uses for
+//     the node-wide serve counters, under the same countersWithheld marker.
+//     WHY THE FLOOR WAS NOT ENOUGH, measured twice independently: minGossipSample bounds the
+//     sample SIZE, not the number of terms the READER does not already know. Identity is
+//     free, so an adversary furnishes n-1 of the n terms with sybils gossiping chosen values
+//     and a classifiable CapTotal, and the published (Gini, size) is one equation in one
+//     unknown. The red-team recovered a planted 7,777,777 exactly through the real
+//     Node.EconomySample(); the PE recovered 987,654,321 with error 0. The recovered
+//     quantity is the counter -privacy nils for that very reader. And the recovered term
+//     NEED NOT BE SELF: any node with an open route is an oracle for its PEERS' withheld
+//     counters, so "drop self from the sample" is not a fix.
+//     THIS FIXTURE DOES NOT COVER THAT PREDICATE. statusServer leaves s.privacy false, so
+//     both scans below run on the -privacy=off posture where the Ginis legitimately
+//     publish. The privacy clause is gated by
+//     TestR22APublishedGiniNeverReconstructsAPrivacyWithheldCounter (which asserts the
+//     RECOVERY fails, not that a named field is absent) and
+//     TestR22TheTwoGossipRoutesHonourThePrivacyClauseOverHTTP.
+//     What stays open on both postures: the published bands and the target ratio
+//     (constants), estimatedNodes (the SAME number /api/status publishes in `network`,
+//     pinned by TestR22TheOpenCrowdEstimateIsTheOneStatusAlreadyPublishes), and the C2
+//     block (chain-derived, committed-global, unforgeable via gossip).
 
 // r29aWholeSurfaceBytes is chosen so that funded (= bytes/8) is a value nothing else on
 // the surface holds by coincidence: not a bucket edge, not a capacity, not a port.

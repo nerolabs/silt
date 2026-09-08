@@ -64,6 +64,10 @@ out.gossipValue = r.gossipCell(bigSample, { known: true, value: 0.1234, sampleSi
 out.gossipNoWork = r.gossipCell(bigSample, { known: false, sampleSize: 9, reason: "no work reported by this sample" });
 out.gossipZeroValue = r.gossipCell(bigSample, { known: false, value: 0, sampleSize: 9, reason: "no work reported by this sample" });
 out.gossipMeasuredZero = r.gossipCell(bigSample, { known: true, value: 0, sampleSize: 9 });
+// B3 / the owner's ruling: on the shipped -privacy default the two Gini figures are a
+// NAMED absence. The block still carries its note, and the cell must not fall through to
+// "no sample", which would read as a node that knows nobody.
+out.gossipPrivacy = r.gossipCell({ countersWithheld: true, note: "withheld by this node's privacy setting (-privacy=on, the default)" }, undefined);
 // And the shapes a real withheld/absent document actually has: nothing may throw.
 out.nulls = [r.solvencyCell(null).text, r.marginCard(null).margin, r.selfFundingCard(null).net,
              r.washCard(null).light, r.gossipCell(null, null).text, r.economyObjects(null).rows.length];
@@ -86,6 +90,7 @@ console.log(JSON.stringify(out));`
 		WashSuspected, WashClear, WashWithheld            cell
 		GossipSmall, GossipAbsent, GossipValue            cell
 		GossipNoWork, GossipZeroValue, GossipMeasuredZero cell
+		GossipPrivacy                                     cell
 		Nulls                                             []json.RawMessage
 	}
 	if err := json.Unmarshal(raw, &out); err != nil {
@@ -164,6 +169,13 @@ console.log(JSON.stringify(out));`
 	// number, or the branch above is just a blanket refusal to publish zeros.
 	if out.GossipMeasuredZero.Text != "0.0000" || !out.GossipMeasuredZero.Known {
 		t.Fatalf("a MEASURED equality renders %q; known:true with value 0 is a real result and must still publish", out.GossipMeasuredZero.Text)
+	}
+
+	if !out.GossipPrivacy.Withheld || !strings.Contains(out.GossipPrivacy.Text, "withheld") {
+		t.Fatalf("a privacy-withheld gossip block renders %+v. It must say so plainly — never a zero, and never a blank that reads as a measurement or as a node with no peers", out.GossipPrivacy)
+	}
+	if !strings.Contains(strings.ToLower(out.GossipPrivacy.Sub), "privacy") {
+		t.Fatalf("the withheld cell does not name the setting responsible: %q", out.GossipPrivacy.Sub)
 	}
 
 	// SOURCE GATE: the page must go through render.js, like every other page.
