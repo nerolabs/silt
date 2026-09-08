@@ -544,7 +544,13 @@ the named field defects (#535/#530/#574/#586/#277) live in
   baseline-subtracted `HeapObjects`, so it catches allocation-shaped depth blow-ups but NOT
   CPU-time-shaped ones (the #528 per-height CPU burn). Needed: a companion wall-time slope-vs-depth
   gate — with its own **noise study first** (measure run-to-run variance, derive the bound from the
-  measurement, prove it goes RED on an injected CPU-time O(depth) defect). PE ruling
+  measurement, prove it goes RED on an injected CPU-time O(depth) defect). **A second member of this family,
+  measured 2026-09-08 (Lane C4):** `core/node TestC3_InboundReceiptsCostOHardnessChecksNotOPerMessage` (`rt_r04b_c3_hardness_hotpath_test.go`) asserts a WALL-CLOCK per-message budget of 760 µs and reds under load. Matched
+  control taken at the time: clean `main` reds it WORSE than the branch under review (10.63 ms vs 1.07 ms per message), so
+  it is load-sensitive and pre-existing, not a regression — but a gate that grades the box rather than the code cannot
+  attribute a real regression when one lands. Same closer as #616: a noise study first, then a bound derived from the
+  measurement (or a re-basing onto an allocation/operation count, which is load-free), proven RED on an injected defect.
+  Tester; Lane TAIL. PE ruling
   `RULING-613-odepth-ci-gate-2026-08-28.md` §B; deliberation `docs/thinking/2026-08-27-o-depth-ci-gate.md`.
 - **cloudtest infra-liveness-FAIL journal-capture gap — #504.** The `infra-node-liveness` row's FAIL
   path has NO capture step (run `fa501cc-56689` named `island-c×3` crashes then let the EXIT-trap
