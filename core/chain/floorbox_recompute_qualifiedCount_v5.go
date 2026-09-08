@@ -34,7 +34,7 @@ import (
 // count floor a commit must clear (readset_v5_quorum_wholeset_test.go:108-138, the oracle world
 // countFloorPoisedWorld proves the flip).
 //
-// THE FOUR-PART PROOF (RecomputeQualifiedCount):
+// THE FOUR-PART PROOF (recomputeQualifiedCount):
 //  1. SET-COMPLETENESS over BONDED: reconstruct nodeSetMTH(witnessedIDs) over the whole-bonded
 //     id-list; require it equals the committed bondedRoot leaf (proven present against the
 //     StateRoot). One omitted (or injected) member ⇒ a different MTH ⇒ mismatch ⇒ stall. This
@@ -141,7 +141,7 @@ type QualifiedCountWitness struct {
 	Members map[ports.NodeID]QualifiedMemberWitness
 }
 
-// RecomputeQualifiedCount reproduces qualifiedCount (the distinct-qualified validator COUNT N,
+// recomputeQualifiedCount reproduces qualifiedCount (the distinct-qualified validator COUNT N,
 // chain.go:1479) TRUSTLESSLY, from the committed StateRoot + the witness alone. It returns (n, nil)
 // where n == qualifiedCount()'s value a full node would produce over the committed bonded/slashed
 // maps, or (0, reason) when the box cannot verify a witness and must stall — NEVER counting an
@@ -152,7 +152,7 @@ type QualifiedCountWitness struct {
 // and slashed bit proven per-member against the committed StateRoot.
 //
 // This does NOT flip WitnessValidateV5 to Accept (the STOP boundary): it reproduces ONE predicate.
-func (c *Chain) RecomputeQualifiedCount(
+func (c *Chain) recomputeQualifiedCount(
 	committedStateRoot ports.Hash,
 	w QualifiedCountWitness,
 ) (n int, reason error) {

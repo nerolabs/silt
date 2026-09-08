@@ -14,7 +14,7 @@ import (
 // This file reproduces a THIRD validity predicate — the F-1 DE-MATURE SUPER-QUORUM
 // requireDeMatureSuperQuorum (chain.go:2947) — trustlessly, from the committed StateRoot +
 // witnesses ALONE. It replicates increment 1's C-1 pattern (floorbox_recompute_v5.go,
-// RecomputeEpochWeightQuorum) over a DIFFERENT keyspace: the WHOLE bonded map (the R-membership
+// recomputeEpochWeightQuorum) over a DIFFERENT keyspace: the WHOLE bonded map (the R-membership
 // budget path), rather than the frozen epochSet.
 //
 // It is ADDITIVE: it calls no full-node accept path, mutates nothing, and changes NO
@@ -31,14 +31,14 @@ import (
 //
 // THE MATURITY GATE (the increment-3-specific piece). requireDeMatureSuperQuorum fires ONLY
 // when !matureNow(). So the trustless reproduction gates on the REPRODUCED maturity state:
-// RecomputeDeMatureSuperQuorum calls RecomputeMatureNow (increment 2) first and folds the
+// recomputeDeMatureSuperQuorum calls recomputeMatureNow (increment 2) first and folds the
 // super-quorum ONLY when the maturity recompute returns mature == false. When mature == true
 // the full node does not run this predicate, so the recompute returns (met=true, nil) — a
 // no-op that matches the full node's skip. The maturity state is itself PROVEN from the
 // committed root (increment 2), so a producer cannot trick the box into enforcing (or skipping)
 // the de-mature bar in the wrong maturity state.
 //
-// THE THREE-PART PROOF (RecomputeDeMatureSuperQuorum, the super-quorum fold):
+// THE THREE-PART PROOF (recomputeDeMatureSuperQuorum, the super-quorum fold):
 //  1. SET-COMPLETENESS: reconstruct nodeSetMTH(witnessedIDs) over the whole-bonded id-list;
 //     require it equals the committed bondedRoot leaf (proven present against the StateRoot).
 //     One omitted (or injected) member ⇒ a different MTH ⇒ mismatch ⇒ stall. This is the F1
@@ -110,7 +110,7 @@ type BondedSetWitness struct {
 	MemberWeights map[ports.NodeID]MemberWeightWitness
 }
 
-// RecomputeDeMatureSuperQuorum reproduces requireDeMatureSuperQuorum (the F-1 de-mature
+// recomputeDeMatureSuperQuorum reproduces requireDeMatureSuperQuorum (the F-1 de-mature
 // super-quorum, chain.go:2947) TRUSTLESSLY, from the committed StateRoot + the witnesses alone.
 // It returns (met, nil) where met is the verdict a full node's ValidateCommit would produce for
 // the de-mature gate at this state (met == the err==nil case), or (false, reason) when the box
@@ -130,16 +130,16 @@ type BondedSetWitness struct {
 //
 // ⚠ PARTIAL GATE — the accept-flip assembler (#657) MUST re-add everMature && objective().
 // The full-node caller gate is `everMature && objective() && !matureNow()` (chain.go:2827). This
-// recompute reproduces ONLY the `!matureNow()` condition (via RecomputeMatureNow, increment 2); it
+// recompute reproduces ONLY the `!matureNow()` condition (via recomputeMatureNow, increment 2); it
 // does NOT reproduce `everMature` or `objective()`. That deferral is legitimate under this
 // increment's STOP boundary (the box still never-Accepts, so folding the bar in a state a full
 // node would skip is inert TODAY). But it is a LATENT TRAP for #657: in the reachable state
 // `!everMature && !matureNow()` (a young chain below the bar), a full node does NOT run this
-// predicate, yet RecomputeDeMatureSuperQuorum WOULD fold the de-mature bar. The accept-flip
+// predicate, yet recomputeDeMatureSuperQuorum WOULD fold the de-mature bar. The accept-flip
 // assembler MUST gate this call on everMature && objective() before flipping to Accept, or it
 // would wrongly fold the de-mature bar on a not-yet-matured chain. The everMature leaf
 // (tagEverMature) is already in the v5 read-set (readset_v5.go), so the witness is available.
-func (c *Chain) RecomputeDeMatureSuperQuorum(
+func (c *Chain) recomputeDeMatureSuperQuorum(
 	committedStateRoot ports.Hash,
 	proposer ports.NodeID,
 	seen map[ports.NodeID]bool,
@@ -150,7 +150,7 @@ func (c *Chain) RecomputeDeMatureSuperQuorum(
 	// Reproduce matureNow trustlessly; if the box cannot verify the maturity witness, stall. If the
 	// chain is mature, the full node does NOT run the de-mature predicate — return met=true (the
 	// gate is vacuous), matching the full node's skip.
-	mature, mReason := c.RecomputeMatureNow(committedStateRoot, seenW)
+	mature, mReason := c.recomputeMatureNow(committedStateRoot, seenW)
 	if mReason != nil {
 		return false, mReason
 	}

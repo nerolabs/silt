@@ -19,7 +19,7 @@ import (
 // path because WitnessValidateV5 short-circuits at (IndeterminateTrustlessly,
 // ErrRecomputeGated) BEFORE the recompute (floorbox_v5.go:244 — the never-Accept STOP
 // boundary certified in R1.4-Q5). This oracle exercises the recompute DIRECTLY, calling
-// RecomputeStateRootEntriesRevocations (the box's Resolve function) and bypassing the
+// recomputeStateRootEntriesRevocations (the box's Resolve function) and bypassing the
 // never-Accept gate. It runs PRE-FLIP: it tests the recompute itself, not the wired box.
 //
 // "ACCEPT" in this oracle = the recompute returns nil (it AGREES the committed root is the

@@ -232,7 +232,7 @@ func TestRecomputeMatureNow_MatchesFullNode(t *testing.T) {
 	t.Run("mature: low MatureValidators bar is cleared (matches full node)", func(t *testing.T) {
 		f := buildMaturityFixture(t, 2, 1, diverseBonds()) // 5 diverse bonds, coefficient >= 2
 		w := f.witnessFor(t)
-		got, reason := f.c.RecomputeMatureNow(f.root, w)
+		got, reason := f.c.recomputeMatureNow(f.root, w)
 		if reason != nil {
 			t.Fatalf("recompute stalled unexpectedly: %v", reason)
 		}
@@ -247,7 +247,7 @@ func TestRecomputeMatureNow_MatchesFullNode(t *testing.T) {
 	t.Run("immature: high MatureValidators bar is missed (matches full node)", func(t *testing.T) {
 		f := buildMaturityFixture(t, 6, 1, diverseBonds()) // bar 6 > 5 members, never mature
 		w := f.witnessFor(t)
-		got, reason := f.c.RecomputeMatureNow(f.root, w)
+		got, reason := f.c.recomputeMatureNow(f.root, w)
 		if reason != nil {
 			t.Fatalf("recompute stalled unexpectedly: %v", reason)
 		}
@@ -289,7 +289,7 @@ func TestRecomputeMatureNow_MatchesFullNode_SlashedMember(t *testing.T) {
 			t.Fatal("fixture precondition: the slash victim must be committed slashed")
 		}
 		w := f.witnessFor(t)
-		got, reason := f.c.RecomputeMatureNow(f.root, w)
+		got, reason := f.c.recomputeMatureNow(f.root, w)
 		if reason != nil {
 			t.Fatalf("recompute stalled unexpectedly: %v", reason)
 		}
@@ -304,7 +304,7 @@ func TestRecomputeMatureNow_MatchesFullNode_SlashedMember(t *testing.T) {
 	t.Run("immature: high bar missed, slashed member skipped (matches full node)", func(t *testing.T) {
 		f := buildMaturityFixtureSlashing(t, 6, 1, slashedBonds, []ed25519.PrivateKey{slashVictim})
 		w := f.witnessFor(t)
-		got, reason := f.c.RecomputeMatureNow(f.root, w)
+		got, reason := f.c.recomputeMatureNow(f.root, w)
 		if reason != nil {
 			t.Fatalf("recompute stalled unexpectedly: %v", reason)
 		}
@@ -333,7 +333,7 @@ func TestRecomputeMatureNow_ForgedSlashedRejects(t *testing.T) {
 	// NON-inclusion proof. Forging one to claim Slashed=true keeps that non-inclusion proof.
 	f := buildMaturityFixture(t, 2, 1, diverseBonds())
 	w := f.witnessFor(t)
-	if _, reason := f.c.RecomputeMatureNow(f.root, w); reason != nil {
+	if _, reason := f.c.recomputeMatureNow(f.root, w); reason != nil {
 		t.Fatalf("baseline should reach a verdict with no stall; reason=%v", reason)
 	}
 
@@ -350,7 +350,7 @@ func TestRecomputeMatureNow_ForgedSlashedRejects(t *testing.T) {
 	mw.Slashed = true
 	forged.Members[victim] = mw
 
-	got, reason := f.c.RecomputeMatureNow(f.root, forged)
+	got, reason := f.c.recomputeMatureNow(f.root, forged)
 	if got {
 		t.Fatal("C-1 VIOLATION: a forged slashed bit was accepted — a prover can flip slashed to reshape the tally")
 	}
@@ -369,7 +369,7 @@ func TestRecomputeMatureNow_MatchesFullNode_UnsetDomain(t *testing.T) {
 	t.Run("mature: low bar cleared with unset-domain members (matches full node)", func(t *testing.T) {
 		f := buildMaturityFixture(t, 2, 1, mixedDomainBonds())
 		w := f.witnessFor(t)
-		got, reason := f.c.RecomputeMatureNow(f.root, w)
+		got, reason := f.c.recomputeMatureNow(f.root, w)
 		if reason != nil {
 			t.Fatalf("recompute stalled unexpectedly: %v", reason)
 		}
@@ -384,7 +384,7 @@ func TestRecomputeMatureNow_MatchesFullNode_UnsetDomain(t *testing.T) {
 	t.Run("immature: high bar missed with unset-domain members (matches full node)", func(t *testing.T) {
 		f := buildMaturityFixture(t, 6, 1, mixedDomainBonds())
 		w := f.witnessFor(t)
-		got, reason := f.c.RecomputeMatureNow(f.root, w)
+		got, reason := f.c.recomputeMatureNow(f.root, w)
 		if reason != nil {
 			t.Fatalf("recompute stalled unexpectedly: %v", reason)
 		}
@@ -406,7 +406,7 @@ func TestRecomputeMatureNow_MatchesFullNode_UnsetDomain(t *testing.T) {
 func TestRecomputeMatureNow_ForgedBondedWeightRejects(t *testing.T) {
 	f := buildMaturityFixture(t, 2, 1, diverseBonds())
 	w := f.witnessFor(t)
-	if _, reason := f.c.RecomputeMatureNow(f.root, w); reason != nil {
+	if _, reason := f.c.recomputeMatureNow(f.root, w); reason != nil {
 		t.Fatalf("baseline should reach a verdict with no stall; reason=%v", reason)
 	}
 
@@ -419,7 +419,7 @@ func TestRecomputeMatureNow_ForgedBondedWeightRejects(t *testing.T) {
 	mw.Bonded += 100 << 20
 	forged.Members[victim] = mw
 
-	got, reason := f.c.RecomputeMatureNow(f.root, forged)
+	got, reason := f.c.recomputeMatureNow(f.root, forged)
 	if got {
 		t.Fatal("C-1 VIOLATION: a forged per-member bonded weight was accepted — the coefficient is forgeable")
 	}
@@ -435,7 +435,7 @@ func TestRecomputeMatureNow_ForgedBondedWeightRejects(t *testing.T) {
 func TestRecomputeMatureNow_ForgedDomainRejects(t *testing.T) {
 	f := buildMaturityFixture(t, 2, 1, diverseBonds())
 	w := f.witnessFor(t)
-	if _, reason := f.c.RecomputeMatureNow(f.root, w); reason != nil {
+	if _, reason := f.c.recomputeMatureNow(f.root, w); reason != nil {
 		t.Fatalf("baseline should reach a verdict with no stall; reason=%v", reason)
 	}
 
@@ -446,7 +446,7 @@ func TestRecomputeMatureNow_ForgedDomainRejects(t *testing.T) {
 	mw.Domain += 0xFFFF // a domain value the committed root does not commit for this member
 	forged.Members[victim] = mw
 
-	got, reason := f.c.RecomputeMatureNow(f.root, forged)
+	got, reason := f.c.recomputeMatureNow(f.root, forged)
 	if got {
 		t.Fatal("C-1 VIOLATION: a forged per-member bondDomain was accepted — the address-diverse coefficient is forgeable")
 	}
@@ -462,7 +462,7 @@ func TestRecomputeMatureNow_ForgedDomainRejects(t *testing.T) {
 func TestRecomputeMatureNow_OmittedMemberRejects(t *testing.T) {
 	f := buildMaturityFixture(t, 2, 1, diverseBonds())
 	w := f.witnessFor(t)
-	if _, reason := f.c.RecomputeMatureNow(f.root, w); reason != nil {
+	if _, reason := f.c.recomputeMatureNow(f.root, w); reason != nil {
 		t.Fatalf("baseline should reach a verdict with no stall; reason=%v", reason)
 	}
 
@@ -479,7 +479,7 @@ func TestRecomputeMatureNow_OmittedMemberRejects(t *testing.T) {
 	forged.IDs = shortIDs
 	delete(forged.Members, dropped)
 
-	got, reason := f.c.RecomputeMatureNow(f.root, forged)
+	got, reason := f.c.recomputeMatureNow(f.root, forged)
 	if got {
 		t.Fatal("SET-COMPLETENESS VIOLATION: a witness missing a seated member was accepted")
 	}
@@ -500,7 +500,7 @@ func TestRecomputeMatureNow_InjectedMemberRejects(t *testing.T) {
 	// Give the extra a bogus member witness so the code reaches the completeness check first.
 	forged.Members[extra] = forged.Members[f.members[0]]
 
-	got, reason := f.c.RecomputeMatureNow(f.root, forged)
+	got, reason := f.c.recomputeMatureNow(f.root, forged)
 	if got {
 		t.Fatal("SET-COMPLETENESS VIOLATION: a witness with an injected extra member was accepted")
 	}
@@ -535,8 +535,8 @@ func TestRecomputeMatureNow_ConfigFromOwnConfig(t *testing.T) {
 	matureBox := ref.c
 	immatureBox := buildBoxWithConfig(t, 3, 1)
 
-	metMature, rMature := matureBox.RecomputeMatureNow(ref.root, w)
-	metImmature, rImmature := immatureBox.RecomputeMatureNow(ref.root, w)
+	metMature, rMature := matureBox.recomputeMatureNow(ref.root, w)
+	metImmature, rImmature := immatureBox.recomputeMatureNow(ref.root, w)
 	if rMature != nil || rImmature != nil {
 		t.Fatalf("neither box should stall; rMature=%v rImmature=%v", rMature, rImmature)
 	}
@@ -591,7 +591,7 @@ func buildBoxWithConfig(t *testing.T, matureValidators, operatorMargin int) *Cha
 }
 
 // recomputeMatureNowConfigFromWitness is the NEGATIVE-CONTROL injected variant for the C-6 ablation:
-// it reproduces RecomputeMatureNow's set-completeness + per-member verification EXACTLY, but reads
+// it reproduces recomputeMatureNow's set-completeness + per-member verification EXACTLY, but reads
 // the maturity threshold (and margin / MinBond screen) from the WITNESS-carried parameters instead
 // of own config. It exists ONLY in the test to demonstrate that a config-from-witness fold makes
 // boxes with different own config AGREE (the C-6 bug), which the real own-config fold does not.
@@ -667,7 +667,7 @@ func TestRecomputeMatureNow_UnprovenRootStalls(t *testing.T) {
 	w := f.witnessFor(t)
 	var wrongRoot ports.Hash
 	wrongRoot[0] = 0xff
-	got, reason := f.c.RecomputeMatureNow(wrongRoot, w)
+	got, reason := f.c.recomputeMatureNow(wrongRoot, w)
 	if got {
 		t.Fatal("a witness verified against the wrong root must not reach a mature verdict")
 	}
@@ -684,7 +684,7 @@ func TestRecomputeMatureNow_MissingMemberWitnessStalls(t *testing.T) {
 	w := f.witnessFor(t)
 	delete(w.Members, f.members[0]) // keep IDs complete (digest matches) but drop a member witness
 
-	got, reason := f.c.RecomputeMatureNow(f.root, w)
+	got, reason := f.c.recomputeMatureNow(f.root, w)
 	if got {
 		t.Fatal("a member with no state witness must stall the fold, not be folded as skipped")
 	}

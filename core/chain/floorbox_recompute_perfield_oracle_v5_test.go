@@ -60,13 +60,13 @@ func TestPerField_AttScreen_SlashedProof(t *testing.T) {
 	b := f.attBlock()
 	committed := f.applyAndCommittedRoot(t, b)
 	w := f.witnessForAtt(t, b)
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err != nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, committed, b, w); err != nil {
 		t.Fatalf("baseline must agree: %v", err)
 	}
 	// Forge SlashedProof: a valid proof for the WRONG key. Resolve(slashed||id) fails ⇒ NoWitness ⇒ stall.
 	aid := ports.HashBytes(pubOf(f.att))
 	w.AttScreens[0].SlashedProof = mustProve(f.prover, statehash.Key(tagBonded, aid[:]))
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err == nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, committed, b, w); err == nil {
 		t.Fatalf("PROBE FAILED: forged SlashedProof wrong-accepted; expected a stall (Slashed Resolve anchor).")
 	}
 }
@@ -79,12 +79,12 @@ func TestPerField_AttScreen_EpochSetProof(t *testing.T) {
 	b := f.attBlock()
 	committed := f.applyAndCommittedRoot(t, b)
 	w := f.witnessForAtt(t, b)
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err != nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, committed, b, w); err != nil {
 		t.Fatalf("baseline must agree: %v", err)
 	}
 	aid := ports.HashBytes(pubOf(f.att))
 	w.AttScreens[0].EpochSetProof = mustProve(f.prover, statehash.Key(tagBonded, aid[:]))
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err == nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, committed, b, w); err == nil {
 		t.Fatalf("PROBE FAILED: forged EpochSetProof wrong-accepted; expected a stall (InEpochSet Resolve anchor).")
 	}
 }
@@ -97,12 +97,12 @@ func TestPerField_AttScreen_EpochSetValue(t *testing.T) {
 	b := f.attBlock()
 	committed := f.applyAndCommittedRoot(t, b)
 	w := f.witnessForAtt(t, b)
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err != nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, committed, b, w); err != nil {
 		t.Fatalf("baseline must agree: %v", err)
 	}
 	// The attester is in the epochSet, so EpochSetValue is the committed weight. Forge it.
 	w.AttScreens[0].EpochSetValue = statehash.EncodeInt64(1234567)
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err == nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, committed, b, w); err == nil {
 		t.Fatalf("PROBE FAILED: forged EpochSetValue wrong-accepted; expected a stall (Resolve binds the value).")
 	}
 }
@@ -168,16 +168,15 @@ func TestPerField_AttScreen_BondedProof(t *testing.T) {
 	}
 	w.ChangedLeaves = append(w.ChangedLeaves, leafWit(statehash.Key(tagValidatorsSeen, attID[:])))
 	w.AttScreens = []StateRootAttScreen{honestScreen}
-	w.ParentProposer, w.ParentProposerSig = c.CarrierParentProposerWitness()
 	w.DigestPreSets = []StateRootDigestWitness{{Tag: tagValidatorsSeenRoot,
 		PreIDs: sortIDs(nil), Proof: mustProve(prover, statehash.Key(tagValidatorsSeenRoot, nil))}}
 	w.Maturity = latchedMaturityWitness(t, prover, preValue)
-	if err := c.RecomputeStateRootEntriesRevocations(prevRoot, committed, bTest, w); err != nil {
+	if err := recomputeViaHead(c, prevRoot, committed, bTest, w); err != nil {
 		t.Fatalf("baseline must agree: %v", err)
 	}
 	// Forge BondedProof: wrong-key proof ⇒ Resolve(bonded||id) NoWitness ⇒ stall.
 	w.AttScreens[0].BondedProof = mustProve(prover, statehash.Key(tagSlashed, attID[:]))
-	if err := c.RecomputeStateRootEntriesRevocations(prevRoot, committed, bTest, w); err == nil {
+	if err := recomputeViaHead(c, prevRoot, committed, bTest, w); err == nil {
 		t.Fatalf("PROBE FAILED: forged BondedProof wrong-accepted; expected a stall (Bonded Resolve anchor).")
 	}
 }
@@ -200,7 +199,7 @@ func TestPerField_BondRegScreen_OwnerProof(t *testing.T) {
 	committed := f.applyAndCommittedRoot(t, b)
 	newDue := h + f.c.cfg.BondTTLBlocks + 1
 	w := f.bondWitness(t, b, []uint64{newDue})
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err != nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, committed, b, w); err != nil {
 		t.Fatalf("baseline must agree: %v", err)
 	}
 	for i := range w.BondRegScreens {
@@ -208,7 +207,7 @@ func TestPerField_BondRegScreen_OwnerProof(t *testing.T) {
 			w.BondRegScreens[i].OwnerProof = mustProve(f.prover, statehash.Key(tagBondRootProven, f.sharedRoot[:]))
 		}
 	}
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err == nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, committed, b, w); err == nil {
 		t.Fatalf("PROBE FAILED: forged OwnerProof wrong-accepted; expected a stall (PriorOwner/Claimed Resolve anchor).")
 	}
 }
@@ -225,7 +224,7 @@ func TestPerField_BondRegScreen_ProvenProof(t *testing.T) {
 	committed := f.applyAndCommittedRoot(t, b)
 	newDue := h + f.c.cfg.BondTTLBlocks + 1
 	w := f.bondWitness(t, b, []uint64{newDue})
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err != nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, committed, b, w); err != nil {
 		t.Fatalf("baseline must agree: %v", err)
 	}
 	for i := range w.BondRegScreens {
@@ -233,7 +232,7 @@ func TestPerField_BondRegScreen_ProvenProof(t *testing.T) {
 			w.BondRegScreens[i].ProvenProof = mustProve(f.prover, statehash.Key(tagBondRootOwner, f.sharedRoot[:]))
 		}
 	}
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err == nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, committed, b, w); err == nil {
 		t.Fatalf("PROBE FAILED: forged ProvenProof wrong-accepted; expected a stall (PriorProven Resolve anchor).")
 	}
 }
@@ -248,14 +247,14 @@ func TestPerField_RotateMember_EpochSetOldValue(t *testing.T) {
 	b := f.boundaryBlock(nil)
 	committed := f.applyAndCommittedRoot(t, b)
 	w := f.witnessForBoundary(t, b)
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err != nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, committed, b, w); err != nil {
 		t.Fatalf("baseline must agree: %v", err)
 	}
 	if len(w.Rotate.Members) == 0 {
 		t.Fatalf("fixture: expected frozen members")
 	}
 	w.Rotate.Members[0].EpochSetOldValue = statehash.EncodeInt64(987654)
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err == nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, committed, b, w); err == nil {
 		t.Fatalf("PROBE FAILED: forged EpochSetOldValue wrong-accepted; expected a fold stall (OldValue vs prevStateRoot).")
 	}
 }
@@ -268,12 +267,12 @@ func TestPerField_RotateMember_EpochSetProof(t *testing.T) {
 	b := f.boundaryBlock(nil)
 	committed := f.applyAndCommittedRoot(t, b)
 	w := f.witnessForBoundary(t, b)
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err != nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, committed, b, w); err != nil {
 		t.Fatalf("baseline must agree: %v", err)
 	}
 	id := w.Rotate.Members[0].ID
 	w.Rotate.Members[0].EpochSetProof = mustProve(f.prover, statehash.Key(tagQualified, id[:]))
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err == nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, committed, b, w); err == nil {
 		t.Fatalf("PROBE FAILED: forged EpochSetProof wrong-accepted; expected a fold stall.")
 	}
 }
@@ -289,13 +288,13 @@ func TestPerField_RotateMember_PriorEpochSetOldValue(t *testing.T) {
 	if len(w.Rotate.PriorEpochSet) == 0 {
 		t.Fatalf("fixture: expected a dropped prior-epochSet member")
 	}
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err != nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, committed, b, w); err != nil {
 		t.Fatalf("baseline must agree: %v", err)
 	}
 	// Forge the dropped member's committed prior epochSet value. The DELETE's OldValue no longer matches
 	// prevStateRoot ⇒ the fold's VerifyProof fails ⇒ stall.
 	w.Rotate.PriorEpochSet[0].EpochSetOldValue = statehash.EncodeInt64(31337)
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err == nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, committed, b, w); err == nil {
 		t.Fatalf("PROBE FAILED: forged PriorEpochSet OldValue wrong-accepted; expected a fold stall (DELETE OldValue vs prevStateRoot).")
 	}
 }
@@ -364,11 +363,11 @@ func TestPerField_RotateScalar_EpochStart_Anchored(t *testing.T) {
 	b := f.boundaryBlock(nil)
 	committed := f.applyAndCommittedRoot(t, b)
 	w := f.witnessForBoundary(t, b)
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err != nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, committed, b, w); err != nil {
 		t.Fatalf("baseline must agree: %v", err)
 	}
 	w.Rotate.EpochStart.OldValue = statehash.EncodeUint64(424242)
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err == nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, committed, b, w); err == nil {
 		t.Fatalf("PROBE FAILED: forged EpochStart.OldValue wrong-accepted; expected a fold stall (op always emitted).")
 	}
 }
@@ -392,7 +391,7 @@ func TestPerFieldProbeBites(t *testing.T) {
 	b := f.boundaryBlock(nil)
 	honest := f.applyAndCommittedRoot(t, b)
 	w := f.witnessForBoundary(t, b)
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, honest, b, w); err != nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, honest, b, w); err != nil {
 		t.Fatalf("baseline must agree: %v", err)
 	}
 
@@ -414,7 +413,7 @@ func TestPerFieldProbeBites(t *testing.T) {
 	// Forge the member's Weight AND its EpochSetOldValue is unchanged; the epochSet leaf NewValue is
 	// EncodeInt64(Weight). The Weight anchor (qualified||id Resolve) catches this; assert the stall.
 	w.Rotate.Members[0].Weight = forgedWeight
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, forgedRoot, b, w); err == nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, forgedRoot, b, w); err == nil {
 		t.Fatalf("BITE FAILED: box wrong-accepted the forged-weight forgedRoot; the Weight anchor is not load-bearing here.")
 	}
 	t.Logf("BITE CONFIRMED: forgedRoot != honestRoot and the box STALLS — the anchor is the difference between stall and wrong-accept.")
@@ -515,7 +514,7 @@ func forgedRootSuppressLock(t *testing.T, base *Chain, b Block, which string) po
 func runLockPredicateAnchorStall(t *testing.T, which string, forge func(*StateRootRotateWitness)) {
 	f, rb, honestCommitted := allThreeLockFixture(t)
 	w := f.witnessForBoundary(t, rb)
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, honestCommitted, rb, w); err != nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, honestCommitted, rb, w); err != nil {
 		t.Fatalf("baseline must agree: %v", err)
 	}
 	forge(w.Rotate)
@@ -523,7 +522,7 @@ func runLockPredicateAnchorStall(t *testing.T, which string, forge func(*StateRo
 	if forgedRoot == honestCommitted {
 		t.Fatalf("[%s] GATE VACUOUS: forgedRoot == honestCommitted", which)
 	}
-	err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, forgedRoot, rb, w)
+	err := recomputeViaHead(f.c, f.prevRoot, forgedRoot, rb, w)
 	if err == nil {
 		t.Fatalf("[%s] ANCHOR REGRESSED: box WRONG-ACCEPTS a forged LockedIn.OldValue=true predicate.\n"+
 			"  Direction A (rotateTallyOps → anchorRotateScalar) must Resolve the lock-in OldValue present\n"+

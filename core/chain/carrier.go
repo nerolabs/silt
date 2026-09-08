@@ -1,7 +1,6 @@
 package chain
 
 import (
-	"crypto/ed25519"
 	"errors"
 	"fmt"
 
@@ -253,77 +252,4 @@ func (c *Chain) headBlock() (Block, bool) {
 		return Block{}, false
 	}
 	return c.blocks[len(c.blocks)-1], true
-}
-
-// carrierParentProposerFromWitness resolves the parent block's proposer id for the trustless
-// floor box, which — unlike the chain — holds no parent block: WitnessValidateV5 receives only
-// (b, parentStateRoot). The parent's proposer identity is NOT a committed leaf, so it cannot be
-// Resolved against prevStateRoot the way every other class-A screen input is.
-//
-// THE ANCHOR AND ITS EXACT BOUND (R-CARRIER-PARENTPROPOSER, design record §3.3). The witness
-// carries the parent's own Proposer public key and ProposerSig, and the box requires
-// ed25519.Verify(pub, b.Prev[:], sig) — the SAME bare-hash proposer-signature arithmetic the
-// chain uses (ValidateProposal / validateStructural / appendStructural). b.Prev is hash-covered,
-// so the challenge is fixed by the block.
-//
-// This proves "the named key signed b.Prev". It does NOT prove "this key is THE parent's
-// proposer" — any key can sign any hash. The residual has TWO directions, not one. An earlier
-// version of this comment stated only the first and called the residual bounded; the research
-// certification LASTCOMMIT-CARRIER-round-A-5d3fda0-RESEARCH-CERTIFICATION-2026-09-03 §6.2
-// REFUTED that bound. Both directions, stated honestly:
-//
-//	(1) DROP. If the witness names a key K that IS a carrier signer, K's seat is skipped.
-//	    This requires the attacker to hold K. Downward-only, and genuinely bounded to the
-//	    forger's OWN seat — the discretion O1 already discloses for the proposer. The two
-//	    driven FIX gates cover this direction.
-//	(2) ADD — NOT BOUNDED BY KEY OWNERSHIP. If the witness names a freshly minted keypair,
-//	    the pair verifies, the derived id matches NO carrier entry, so NOTHING is skipped and
-//	    the parent's TRUE proposer P self-seats. This needs no key of P's at all; it costs one
-//	    ed25519.Sign. It seats at most ONE extra id per block — but that id is precisely the
-//	    one the exclusion exists to remove (the anti-self-declaration property validatorsSeen
-//	    is built on). It is a WRONG-ACCEPT direction: the attacker authors a block whose
-//	    StateRoot has P seated, supplies the fresh-key witness, and this fold reproduces that
-//	    root while every full node computes without P and rejects the block.
-//
-// A missing or MALFORMED parent-proposer witness STALLS. That stall does NOT close direction (2):
-// a well-formed, genuinely verifying witness from a fresh keypair reaches the identical
-// "no exclusion" state, and an attacker has no reason to supply a malformed pair. The claim that
-// the anchor "never falls through to no-exclusion" is WITHDRAWN.
-//
-// INERT TODAY: WitnessValidateV5 returns IndeterminateTrustlessly with ErrRecomputeGated (never-Accept),
-// so there is no live exposure. This is therefore a FLIP PRECONDITION (FP-1), not a live defect —
-// tracked as R-CARRIER-PARENTPROPOSER in ROADMAP.md under Boulder 1.
-//
-// CERTIFIED FIX DIRECTION (cert §6.2, recommended option (b); NOT built here): bind the parent
-// proposer to COMMITTED content with a v5 committed scalar leaf — a `tagLastProposer` written by
-// apply() to b.ProposerID() and Resolved by the box against prevStateRoot like every other class-A
-// input. It is the shape the class-M/class-P scalars already use (statehash.go), it costs one leaf,
-// and it makes this input Resolve-anchored instead of self-signed. It is an ADDITIVE
-// committed-format change on the OPEN era, so it needs its own certification and it must land
-// BEFORE the era-4 freeze; after the freeze it is a new era.
-func carrierParentProposerFromWitness(prev ports.Hash, pub, sig []byte) (ports.NodeID, error) {
-	if len(pub) != ed25519.PublicKeySize || len(sig) != ed25519.SignatureSize {
-		return ports.NodeID{}, fmt.Errorf("%w: parent-proposer witness is missing or malformed (pub %d bytes, sig %d bytes)",
-			ErrRecomputeStateRootDigest, len(pub), len(sig))
-	}
-	if !ed25519.Verify(ed25519.PublicKey(pub), prev[:], sig) {
-		return ports.NodeID{}, fmt.Errorf("%w: parent-proposer signature does not verify over b.Prev %s",
-			ErrRecomputeStateRootDigest, prev)
-	}
-	return blockProposerID(pub), nil
-}
-
-// blockProposerID is the id derivation Block.ProposerID uses, over a raw public key.
-func blockProposerID(pub []byte) ports.NodeID { return (&Block{Proposer: pub}).ProposerID() }
-
-// CarrierParentProposerWitness returns the (public key, signature) pair a witness server attaches
-// to StateRootWitness.ParentProposer/ParentProposerSig so a root-only floor box can anchor the
-// carrier fold's parent-proposer exclusion: this chain's head block IS the parent of the block the
-// box is validating, and its ProposerSig is over its own hash — which is that block's b.Prev.
-func (c *Chain) CarrierParentProposerWitness() (pub, sig []byte) {
-	head, ok := c.headBlock()
-	if !ok {
-		return nil, nil
-	}
-	return head.Proposer, head.ProposerSig
 }

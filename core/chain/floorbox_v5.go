@@ -170,7 +170,7 @@ func (c *Chain) isAmbiguousRecoveryBoundary(h uint64) bool {
 		c.epochsEnabled() && c.cfg.EpochBlocks != 0 && h%c.cfg.EpochBlocks == 0
 }
 
-// RecoveryBoundaryDecision is the #535 policy unit: whether the box may proceed to trustless
+// recoveryBoundaryDecision is the #535 policy unit: whether the box may proceed to trustless
 // validation at height h, or must emit IndeterminateTrustlessly. It is a PURE function of the
 // height, the chain's public recovery config, and the box's LOCAL directive — it reads NOTHING
 // from the proposer or the block. Separated out so it is unit-testable in isolation and so
@@ -184,7 +184,7 @@ func (c *Chain) isAmbiguousRecoveryBoundary(h uint64) bool {
 //     IndeterminateTrustlessly (ErrRecoveryDirectiveAbsent). Never trust the proposer.
 //   - ambiguous boundary WITHOUT a directive, live-follower (opt-in) ⇒ proceed on the weak-
 //     subjectivity residual.
-func (c *Chain) RecoveryBoundaryDecision(h uint64, d RecoveryDirective) (proceed bool, reason error) {
+func (c *Chain) recoveryBoundaryDecision(h uint64, d RecoveryDirective) (proceed bool, reason error) {
 	if !c.isAmbiguousRecoveryBoundary(h) {
 		return true, nil // no ambiguity: the qualification set is the frozen, witnessable epochSet.
 	}
@@ -198,28 +198,25 @@ func (c *Chain) RecoveryBoundaryDecision(h uint64, d RecoveryDirective) (proceed
 	return false, ErrRecoveryDirectiveAbsent
 }
 
-// WitnessValidateV5 is the additive trustless floor-box validation entry point for a v5 block.
-// Given the block, the parent committed StateRoot the box holds (parentStateRoot — the state
-// the block's witnesses are proven against), and the box-LOCAL recovery directive, it returns
-// a three-valued FloorBoxOutcome and, for a non-Accept, the reason.
+// WitnessValidateV5 is the PRE-STRUCTURE floor-box scaffold, retained under Round 1A (P-table delta
+// certification §6 lists it three-parameter). It NEVER returns Accept and it reaches NO recompute:
+// after the version gate and the #535 recovery decision it returns IndeterminateTrustlessly /
+// ErrRecomputeGated unconditionally.
 //
-// It is ADDITIVE: it calls no full-node accept path and mutates nothing. It reads the chain's
-// public config (immutable during validation) to locate the recovery boundary; it does not
-// touch live committed state.
+// THE DOOR IS (*Box).Validate (floorbox_box_v5.go), NOT this function. Do NOT build the trustless
+// recompute here. This signature — a bare parentStateRoot PARAMETER and no head record of its own
+// — is the RT2-CARRIER-13 shape: a recompute entry with no position lets the block's author choose
+// the parent everything downstream is verified against (the carrier over b.Prev, the class-A
+// fold's excluded proposer). Round 1A closed that by deriving the head from a parent BLOCK the box
+// holds (NewBox → HeadRef) and binding (b.Prev, b.Height) to it at P1 before any other read; the
+// recompute is reached only through P13 of the ONE composition (ValidateCommitV5 over provenView).
+// A caller that wants a trustless verdict constructs a Box.
 //
-// ORDER (load-bearing):
-//  1. Version gate: a sub-v5 block is Reject (ErrNotWitnessableVersion) — the mode is v5-only.
-//  2. #535 recovery-boundary decision FIRST: an ambiguous boundary with no box-local directive
-//     (cold-auditor) short-circuits to IndeterminateTrustlessly BEFORE any recompute would run
-//     — the box will not even attempt a trustless verdict it cannot ground.
-//  3. The trustless recompute seam: this is where the bounded witnessable recompute would
-//     verify parentStateRoot + witnesses ⇒ b.StateRoot and return Accept/Reject. It is
-//     RESEARCH-GATED and not yet built, so this increment returns IndeterminateTrustlessly
-//     with ErrRecomputeGated. It NEVER returns Accept — refusing to guess the soundness-
-//     critical recompute is the safe, certified behavior (C-7 §104).
-//
-// parentStateRoot is accepted now (not deferred to B2) so the signature is stable across the
-// gated seam: when the recompute lands it consumes parentStateRoot + the witness bundle here.
+// What stays here, and why: the version gate (a sub-v5 block is Reject, ErrNotWitnessableVersion)
+// and the #535 recovery-boundary decision (a cold-auditor box with no directive stalls loudly
+// rather than trust the proposer) — both of which the door also performs, in the same order.
+// parentStateRoot is accepted and ignored so the exported signature stays stable for its callers;
+// it is NOT a seam for the recompute (M-1A-2, R-SECOND-DOOR-COMMENT).
 func (c *Chain) WitnessValidateV5(b Block, parentStateRoot [32]byte, d RecoveryDirective) (FloorBoxOutcome, error) {
 	// (1) Version gate — v5-only mode.
 	if b.Version < BlockVersionWitnessable {
@@ -229,17 +226,13 @@ func (c *Chain) WitnessValidateV5(b Block, parentStateRoot [32]byte, d RecoveryD
 	// (2) #535 recovery-boundary decision, FIRST. A cold-auditor box with no directive at an
 	// ambiguous boundary stalls loudly here, never trusting the proposer, never reaching the
 	// recompute seam.
-	if proceed, reason := c.RecoveryBoundaryDecision(b.Height, d); !proceed {
+	if proceed, reason := c.recoveryBoundaryDecision(b.Height, d); !proceed {
 		return IndeterminateTrustlessly, reason
 	}
 
-	// (3) The trustless witnessable-recompute seam — RESEARCH-GATED, not yet built.
-	//
-	// When the certified bounded recompute lands (lane-1 Part B core), it goes HERE: verify
-	// every read-set witness against parentStateRoot (IngestBlockWitnesses, #634), recompute
-	// the v5 post-state root over the witnessed reads WITHOUT scanning O(registry) state, and
-	// return Accept iff it equals b.StateRoot (== what a full node would accept), else Reject.
-	// Until then the box does NOT accept: the safe default holds.
-	_ = parentStateRoot // consumed by the gated recompute; wired now for a stable signature.
+	// (3) NO recompute here. The recompute runs behind P1 in the ONE composition, reached only
+	// through (*Box).Validate — a function with a bare parent-root parameter has no position
+	// of its own and must not verify anything against it (the doc comment above). Never Accept.
+	_ = parentStateRoot // ignored; kept so the exported signature is stable. Not a seam.
 	return IndeterminateTrustlessly, ErrRecomputeGated
 }

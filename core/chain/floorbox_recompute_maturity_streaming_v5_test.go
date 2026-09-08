@@ -7,7 +7,7 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// Tests for the STREAMING class-M maturity recompute (RecomputeMatureNowStreaming,
+// Tests for the STREAMING class-M maturity recompute (recomputeMatureNowStreaming,
 // floorbox_recompute_maturity_v5.go). The streaming path pulls each member's proof witness on
 // demand (SeenSetStreamWitness.Member) and lets that member's proof heap be freed before the next
 // member is verified, cutting resident witness from O(N·depth) to O(depth). It is CERTIFIED
@@ -44,7 +44,7 @@ func streamWitnessFor(w SeenSetWitness) SeenSetStreamWitness {
 
 // TestRecomputeMatureNowStreaming_MatchesResidentAndFullNode is the equivalence anchor for the
 // streaming path: over the SAME committed state, the streamed verdict equals BOTH the resident-map
-// RecomputeMatureNow verdict AND the full-node matureNow() verdict — for a mature config (low bar)
+// recomputeMatureNow verdict AND the full-node matureNow() verdict — for a mature config (low bar)
 // and an immature config (high bar), and across the diverse / mixed-domain / slashed fixtures. This
 // proves the streaming refactor reproduces the predicate byte-for-byte, not merely that it runs.
 func TestRecomputeMatureNowStreaming_MatchesResidentAndFullNode(t *testing.T) {
@@ -66,15 +66,15 @@ func TestRecomputeMatureNowStreaming_MatchesResidentAndFullNode(t *testing.T) {
 			w := f.witnessFor(t)
 
 			// Resident path.
-			resident, rErr := f.c.RecomputeMatureNow(f.root, w)
+			resident, rErr := f.c.recomputeMatureNow(f.root, w)
 			if rErr != nil {
-				t.Fatalf("resident RecomputeMatureNow stalled: %v", rErr)
+				t.Fatalf("resident recomputeMatureNow stalled: %v", rErr)
 			}
 
 			// Streaming path.
-			streamed, sErr := f.c.RecomputeMatureNowStreaming(f.root, streamWitnessFor(w))
+			streamed, sErr := f.c.recomputeMatureNowStreaming(f.root, streamWitnessFor(w))
 			if sErr != nil {
-				t.Fatalf("streaming RecomputeMatureNowStreaming stalled: %v", sErr)
+				t.Fatalf("streaming recomputeMatureNowStreaming stalled: %v", sErr)
 			}
 
 			// Full node.
@@ -113,7 +113,7 @@ func TestRecomputeMatureNowStreaming_ShortIDListStalls(t *testing.T) {
 
 	// Sanity: the FULL streamed id-list reaches a verdict (no stall). This is the "before" of the
 	// red-before-green: the ablation is the ONLY change that flips it.
-	if _, err := f.c.RecomputeMatureNowStreaming(f.root, sw); err != nil {
+	if _, err := f.c.recomputeMatureNowStreaming(f.root, sw); err != nil {
 		t.Fatalf("precondition: full streamed id-list should reach a verdict, got stall: %v", err)
 	}
 
@@ -124,7 +124,7 @@ func TestRecomputeMatureNowStreaming_ShortIDListStalls(t *testing.T) {
 	copy(shortIDs, sw.IDs[:len(sw.IDs)-1])
 	sw.IDs = shortIDs
 
-	mature, err := f.c.RecomputeMatureNowStreaming(f.root, sw)
+	mature, err := f.c.recomputeMatureNowStreaming(f.root, sw)
 	if err == nil {
 		t.Fatalf("short id-list must STALL (R-M-STREAM-COMPLETENESS), got mature=%v nil error", mature)
 	}
@@ -165,7 +165,7 @@ func TestRecomputeMatureNowStreaming_ForgedMemberValueStalls(t *testing.T) {
 		},
 	}
 
-	mature, err := f.c.RecomputeMatureNowStreaming(f.root, sw)
+	mature, err := f.c.recomputeMatureNowStreaming(f.root, sw)
 	if err == nil {
 		t.Fatalf("forged bonded weight must STALL, got mature=%v nil error", mature)
 	}
@@ -199,7 +199,7 @@ func TestRecomputeMatureNowStreaming_MissingMemberStalls(t *testing.T) {
 		},
 	}
 
-	mature, err := f.c.RecomputeMatureNowStreaming(f.root, sw)
+	mature, err := f.c.recomputeMatureNowStreaming(f.root, sw)
 	if err == nil {
 		t.Fatalf("undeliverable member must STALL, got mature=%v nil error", mature)
 	}
@@ -226,7 +226,7 @@ func TestRecomputeMatureNowStreaming_NilProviderStalls(t *testing.T) {
 		Member:          nil, // no provider
 	}
 
-	mature, err := f.c.RecomputeMatureNowStreaming(f.root, sw)
+	mature, err := f.c.recomputeMatureNowStreaming(f.root, sw)
 	if err == nil {
 		t.Fatalf("nil Member provider must STALL, got mature=%v nil error", mature)
 	}

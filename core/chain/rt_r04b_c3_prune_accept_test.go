@@ -45,7 +45,7 @@ func TestRTC3_ForgedPrunedRootIsRefusedByTheBox(t *testing.T) {
 	}
 
 	w := f.witnessForBoundary(t, b)
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, forged, b, w); err == nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, forged, b, w); err == nil {
 		t.Fatalf("BREAK-D REOPENED (WRONG-ACCEPT): the floor-box recompute AGREED with a "+
 			"committed StateRoot %x that a full node rejects", forged[:8])
 	}

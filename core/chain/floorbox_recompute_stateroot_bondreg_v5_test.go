@@ -253,7 +253,7 @@ func TestRecomputeStateRootBondRegFreshAgreesWithApply(t *testing.T) {
 	committed := f.applyAndCommittedRoot(t, b)
 	w := f.bondWitness(t, b, []uint64{newDue})
 
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err != nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, committed, b, w); err != nil {
 		t.Fatalf("FRESH B recompute should AGREE with real apply() but stalled: %v", err)
 	}
 }
@@ -275,7 +275,7 @@ func TestRecomputeStateRootBondRegRenewAgreesWithApply(t *testing.T) {
 	committed := f.applyAndCommittedRoot(t, b)
 	w := f.bondWitness(t, b, uniqueU64(oldDue, newDue))
 
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err != nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, committed, b, w); err != nil {
 		t.Fatalf("RENEW B recompute should AGREE with real apply() but stalled: %v", err)
 	}
 }
@@ -300,7 +300,7 @@ func TestRecomputeStateRootBondRegDisplacementAgreesWithApply(t *testing.T) {
 	committed := f.applyAndCommittedRoot(t, b)
 	w := f.bondWitness(t, b, []uint64{newDue})
 
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err != nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, committed, b, w); err != nil {
 		t.Fatalf("DISPLACEMENT B recompute should AGREE with real apply() but stalled: %v", err)
 	}
 }
@@ -333,7 +333,7 @@ func TestRecomputeStateRootBondRegAblationDisplacementNotApplied(t *testing.T) {
 
 	newDue := h + f.c.cfg.BondTTLBlocks + 1
 	w := f.bondWitness(t, b, []uint64{newDue})
-	err = f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, buggyCommitted, b, w)
+	err = recomputeViaHead(f.c, f.prevRoot, buggyCommitted, b, w)
 	if err == nil {
 		t.Fatalf("ABLATION FAILED: a committed root reflecting displacement-not-applied must stall, got nil")
 	}
@@ -364,7 +364,7 @@ func TestRecomputeStateRootBondRegAblationForgedScreen(t *testing.T) {
 		}
 	}
 
-	err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w)
+	err := recomputeViaHead(f.c, f.prevRoot, committed, b, w)
 	if err == nil {
 		t.Fatalf("ABLATION FAILED: a forged (unclaimed) screen must stall, got nil")
 	}
@@ -411,7 +411,7 @@ func TestRecomputeStateRootBondRegAblationBoundaryOutOfScope(t *testing.T) {
 	}()
 
 	var w StateRootWitness
-	err := c.RecomputeStateRootEntriesRevocations(prevRoot, committed, b, w)
+	err := recomputeViaHead(c, prevRoot, committed, b, w)
 	if err == nil {
 		t.Fatalf("ABLATION FAILED: a boundary bond-reg block with an empty witness must stall, got nil")
 	}
@@ -495,7 +495,7 @@ func TestRecomputeStateRootBondRegBelowMinBondAgreesWithApply(t *testing.T) {
 	committed := f.applyAndCommittedRoot(t, b)
 	w := f.bondWitness(t, b, []uint64{newDue})
 
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err != nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, committed, b, w); err != nil {
 		t.Fatalf("below-MinBond B recompute should AGREE with real apply() but stalled: %v", err)
 	}
 }
@@ -534,7 +534,7 @@ func TestRecomputeStateRootBondRegBelowMinBondAblationForgedQualification(t *tes
 
 	newDue := h + f.c.cfg.BondTTLBlocks + 1
 	w := f.bondWitness(t, b, []uint64{newDue})
-	err = f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, buggyCommitted, b, w)
+	err = recomputeViaHead(f.c, f.prevRoot, buggyCommitted, b, w)
 	if err == nil {
 		t.Fatalf("ABLATION FAILED: a committed root that forged qualification for a below-MinBond id must stall, got nil")
 	}

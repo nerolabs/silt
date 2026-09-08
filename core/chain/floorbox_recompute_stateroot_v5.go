@@ -78,7 +78,7 @@ var (
 
 	// ErrRecomputeStateRootMaturity marks a stall in the class-M everMature latch reconstruction: the
 	// class-M maturity witness is missing (so the box cannot rule out an everMature crossing), or the
-	// maturity recompute (RecomputeMatureNow) could not verify the SeenSet witness against the committed
+	// maturity recompute (recomputeMatureNow) could not verify the SeenSet witness against the committed
 	// root. The box will not fold — or omit — the tagEverMature write on an unverified maturity verdict;
 	// it stalls (never-Accept preserved).
 	ErrRecomputeStateRootMaturity = errors.New("chain: floor-box state-root recompute — the class-M everMature latch could not be reconstructed (no maturity witness, or the maturity recompute could not verify the SeenSet against the committed root)")
@@ -114,7 +114,7 @@ var (
 	// (applyCarrier does not verify either — by design, because validateCarrier already did), and
 	// publish: every full node REJECTS, and the box AGREED with the attacker's root. Cost to the
 	// attacker: no key material, bounded only by the frame. The escalation is RT-CARRIER-12 — the
-	// same forged carrier flips the one-way everMature latch and the box's own RecomputeMatureNow,
+	// same forged carrier flips the one-way everMature latch and the box's own recomputeMatureNow,
 	// i.e. it forges the MEASURED decentralisation quantity the maturity shed gates on.
 	//
 	// The fix is the shared call, not a box-side counterpart: one function, three callers.
@@ -122,7 +122,7 @@ var (
 )
 
 // StateRootChangedLeafWitness is the pre-state proof for ONE payload-changed leaf, supplied to the
-// O(payload) box by an any-of-N provider. It is UNTRUSTED: RecomputeStateRootEntriesRevocations
+// O(payload) box by an any-of-N provider. It is UNTRUSTED: recomputeStateRootEntriesRevocations
 // verifies each proof against prevStateRoot (via the R-fold) before folding it, so a forged /
 // omitted / mis-valued proof stalls.
 type StateRootChangedLeafWitness struct {
@@ -183,27 +183,6 @@ type StateRootWitness struct {
 	// with non-proposer atts (P1-e). The box computes qualification itself from own-cfg over these,
 	// then reconstructs the validatorsSeenRoot digest. See floorbox_recompute_stateroot_atts_v5.go.
 	AttScreens []StateRootAttScreen
-	// ParentProposer / ParentProposerSig carry the PARENT block's proposer public key and its
-	// proposer signature — the one class-A input that is NOT committed state. The era-4 carrier
-	// transition excludes id == parent.ProposerID() (R-BOX-ATTESTS O1), and the box holds no
-	// parent block (WitnessValidateV5 receives only b + parentStateRoot), so the identity must
-	// be witnessed. It is ANCHORED, not trusted: the box requires
-	// ed25519.Verify(ParentProposer, b.Prev[:], ParentProposerSig) — the same bare-hash
-	// proposer-signature arithmetic the chain uses — and b.Prev is hash-covered. Required
-	// whenever b.LastCommit is non-empty; a missing or MALFORMED pair STALLS.
-	//
-	// THE ANCHOR IS PARTIAL, IN A NAMED DIRECTION. It proves "the named key signed b.Prev", not
-	// "this key IS the parent's proposer". Dropping the forger's OWN seat needs that key (bounded,
-	// downward-only); but naming a FRESHLY MINTED keypair also verifies, matches no carrier entry,
-	// so nothing is skipped and the parent's TRUE proposer self-seats — one extra id per block, in
-	// the WRONG-ACCEPT direction, with no key of that proposer's required. The earlier claim here
-	// that the stall means the box "never falls through to no-exclusion" is WITHDRAWN: a
-	// well-formed fresh-key witness reaches exactly that state. See carrierParentProposerFromWitness
-	// (carrier.go) for both directions in full, and R-CARRIER-PARENTPROPOSER in ROADMAP.md — a FLIP
-	// PRECONDITION (inert while the box never-Accepts), whose certified fix direction is a
-	// `tagLastProposer` committed scalar landed before the era-4 freeze.
-	ParentProposer    []byte
-	ParentProposerSig []byte
 	// Rotate carries the class-P epoch-boundary witness: the pre-qualified id-set (the freeze source),
 	// the per-frozen-member regVersion (the activation tallies), the prior epochSet, and the rotate
 	// scalar pre-values (epochStart / matureEpoch / the three lock-in scalars). Present only for an
@@ -222,7 +201,7 @@ type StateRootWitness struct {
 	Maturity *StateRootMaturityWitness
 }
 
-// RecomputeStateRootEntriesRevocations reproduces validateEra3Roots' StateRoot equality check
+// recomputeStateRootEntriesRevocations reproduces validateEra3Roots' StateRoot equality check
 // TRUSTLESSLY for a v5 block whose committed-state effect is its entries and revocations/
 // un-revocations (classes E + R) and/or its on-chain equivocation slashes (class S, P1-b). It
 // returns nil iff the block's committed StateRoot equals the SMT over the post-apply committed leaf
@@ -234,20 +213,26 @@ type StateRootWitness struct {
 // is a whole-list MTH fold, NOT O(payload) (R-cost-wholeset). See the P1-b file doc-comment.
 //
 // prevStateRoot is the previous block's committed StateRoot (the pre-state the changed-leaf proofs
-// verify against). committedStateRoot is b.StateRoot. The box holds both roots (attester-signed)
-// and the O(payload) witness bundle; it holds NO registry and replays NO apply().
+// verify against). committedStateRoot is b.StateRoot. parentProposer is the PARENT's proposer id
+// — BOX-OWNED (HeadRef.ProposerID), threaded from the door, never a witness field — the one id the
+// class-A carrier fold excludes. The box holds both roots (attester-signed) and the O(payload)
+// witness bundle; it holds NO registry and replays NO apply().
+//
+// Unexported (round 1A, step 9): the box's door is (*Box).Validate, which reaches this through the
+// composition's P13a. A direct caller would be a second door with no P1 in front of it.
 //
 // It reads EpochBlocks / epochsEnabled / BondTTLBlocks from the box's OWN cfg (C-6) for the scope
 // gate — never from the witness. This does NOT flip WitnessValidateV5 to Accept (the STOP boundary).
-func (c *Chain) RecomputeStateRootEntriesRevocations(
+func (c *Chain) recomputeStateRootEntriesRevocations(
 	prevStateRoot ports.Hash,
 	committedStateRoot ports.Hash,
 	b Block,
 	w StateRootWitness,
+	parentProposer ports.NodeID,
 ) (reason error) {
 	// (1-3) Assemble the fold ops for every reproduced transition class (the write-set → FoldOp
 	// pipeline, including the scope gate). A stall here is a never-Accept.
-	ops, err := c.assembleStateRootRecomputeOps(prevStateRoot, committedStateRoot, b, w)
+	ops, err := c.assembleStateRootRecomputeOps(prevStateRoot, committedStateRoot, b, w, parentProposer)
 	if err != nil {
 		return err
 	}
@@ -275,7 +260,7 @@ func (c *Chain) RecomputeStateRootEntriesRevocations(
 // assembleStateRootRecomputeOps runs the scope gate, derives the per-class write-set, and matches
 // each derived write to its pre-state witness — returning the complete FoldOp set the recompute
 // folds for block b (or a stall reason). It is the op-assembly half of
-// RecomputeStateRootEntriesRevocations, split out so the emission-keyed completeness guard
+// recomputeStateRootEntriesRevocations, split out so the emission-keyed completeness guard
 // (floorbox_recompute_leafdiff_v5_test.go) can compare the FOLDED key-set against the ground-truth
 // committed-leaf diff a real apply() produces — the property that ends the one-at-a-time discovery of
 // unreproduced writes. The returned ops carry the folded keys; the caller folds them and checks the
@@ -285,6 +270,7 @@ func (c *Chain) assembleStateRootRecomputeOps(
 	committedStateRoot ports.Hash,
 	b Block,
 	w StateRootWitness,
+	parentProposer ports.NodeID,
 ) ([]statehash.FoldOp, error) {
 	// (0) WIRING ASSERTION — LOUD, at the box entry (R-VERIFYBOND-WIRING). objective() and
 	// epochsEnabled() are read as branch predicates by the class-A screen and the isBoundary scope
@@ -298,6 +284,14 @@ func (c *Chain) assembleStateRootRecomputeOps(
 	// (0a) THE SHARED CARRIER VALIDITY RULE — the same validateCarrier the full node runs on both
 	// disk-write paths (chain.go ValidateProposal / appendStructural), called here BEFORE any class
 	// dispatches, so no carrier id can enter the class-A write-set from a block the node refuses.
+	//
+	// ORDER RELATIVE TO THE PARENT BINDING (floor-box structure round 1A, step 6). This call no
+	// longer precedes P1–P4: the box door ((*Box).Validate) reaches this recompute only through
+	// the composition's P13a, after P1 has bound (b.Prev, b.Height) to the box's OWN head and P12
+	// has already run validateCarrier once. This second call is kept because the recompute is also
+	// driven directly (the cold-box tier, the leaf-diff guard) and the 2026-09-03 ruling's
+	// merge-condition 1 binds it to the recompute; its cost is a second O(|LastCommit|) verify
+	// pass on the door path, bounded by the door's byte budget.
 	// ONE FUNCTION, THREE CALLERS (PE ruling RULING-floorbox-predicate-rederivation-structure-2026-09-03.md
 	// §6(a): "the box must reproduce it — by CALLING validateCarrier, not by writing a counterpart";
 	// §7 merge-condition 1). It is the first instance of that structure, not an exception to it.
@@ -390,7 +384,7 @@ func (c *Chain) assembleStateRootRecomputeOps(
 	// own-cfg over the per-attester witnesses, derive the validatorsSeen ADDs, reconstruct
 	// validatorsSeenRoot. The source is the HASH-COVERED carrier (R-BOX-ATTESTS O1), not b.Atts.
 	if hasCarrierSigners(b) {
-		aOps, aWrites, aErr := c.attOps(prevStateRoot, b, w, pre)
+		aOps, aWrites, aErr := c.attOps(prevStateRoot, b, w, pre, parentProposer)
 		if aErr != nil {
 			return nil, aErr
 		}
@@ -400,7 +394,7 @@ func (c *Chain) assembleStateRootRecomputeOps(
 	// Class M (everMature maturity latch): the BOUNDARY-INDEPENDENT single owner of the tagEverMature
 	// write. apply() latches everMature false→true on ANY block where !everMature && Mature()
 	// (chain.go:3303-3305), BEFORE the boundary gate — so M dispatches every block, not only at a
-	// boundary. It reuses RecomputeMatureNow over committedStateRoot (#668, not a rebuild), emits the
+	// boundary. It reuses recomputeMatureNow over committedStateRoot (#668, not a rebuild), emits the
 	// tagEverMature op on the crossing, and reports the POST-latch everMature the block commits. The
 	// post value is threaded into class P (below) so P can gate its freeze on it WITHOUT re-emitting
 	// (single owner — no double-emit at a boundary-coincident crossing). See

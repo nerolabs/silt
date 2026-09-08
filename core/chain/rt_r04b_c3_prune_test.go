@@ -150,7 +150,7 @@ func TestRTC3_BoundaryRecomputeAgreesWithAndWithoutAPriorRegistration(t *testing
 			b := f.boundaryBlock(nil)
 			committed := f.applyAndCommittedRoot(t, b)
 			w := f.witnessForBoundary(t, b)
-			if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err != nil {
+			if err := recomputeViaHead(f.c, f.prevRoot, committed, b, w); err != nil {
 				t.Fatalf("BREAK-B REOPENED: the boundary recompute of an honest block with 0 "+
 					"IssuerKeys did not agree: %v", err)
 			}
@@ -169,7 +169,7 @@ func TestRTC3_LeafDiffMinusFoldIsEmptyAtThePruneBoundary(t *testing.T) {
 	post.apply(b)
 	diff := committedLeafDiff(f.c, post)
 
-	ops, err := f.c.assembleStateRootRecomputeOps(f.prevRoot, f.applyAndCommittedRoot(t, b), b, f.witnessForBoundary(t, b))
+	ops, err := assembleOpsViaHead(f.c, f.prevRoot, f.applyAndCommittedRoot(t, b), b, f.witnessForBoundary(t, b))
 	if err != nil {
 		t.Fatalf("op assembly stalled on an in-scope block: %v", err)
 	}

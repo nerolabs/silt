@@ -205,13 +205,12 @@ func TestAdversarialRoot_ClassA_ForgedSlashed_StillBonded(t *testing.T) {
 	forgedW.ChangedLeaves = append(forgedW.ChangedLeaves,
 		leafWit(statehash.Key(tagValidatorsSeen, culpritID[:])))
 	forgedW.AttScreens = []StateRootAttScreen{forgedScreen}
-	forgedW.ParentProposer, forgedW.ParentProposerSig = c.CarrierParentProposerWitness()
 	forgedW.DigestPreSets = []StateRootDigestWitness{{Tag: tagValidatorsSeenRoot, PreIDs: preSeenIDs, Proof: seenRootWit}}
 	forgedW.Maturity = latchedMaturityWitness(t, prover, preValue)
 
 	// R1.2: box MUST STALL. Forged Slashed=false requires absent-proof of slashed||culprit,
 	// but culprit IS in slashed (presence proven) -> IsProvenAbsent fails at atts_v5.go:169.
-	err = c.RecomputeStateRootEntriesRevocations(prevRoot, forgedRoot, bTest, forgedW)
+	err = recomputeViaHead(c, prevRoot, forgedRoot, bTest, forgedW)
 	if err == nil {
 		t.Fatalf("GATE FAILED (ForgedSlashed_StillBonded): box WRONG-ACCEPTED a forged Slashed=false "+
 			"for a slashed culprit that is ALSO in the bonded map.\n"+
@@ -501,7 +500,7 @@ func TestAdversarialRoot_ClassB_ForgedPreBondRegHeight(t *testing.T) {
 	w := f.bondWitness(t, renewBlock, uniqueU64(oldDue, newDue))
 
 	// Baseline: honest witness must agree with apply().
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, honestCommitted, renewBlock, w); err != nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, honestCommitted, renewBlock, w); err != nil {
 		t.Fatalf("honest renew witness must AGREE with apply(): %v", err)
 	}
 
@@ -537,7 +536,7 @@ func TestAdversarialRoot_ClassB_ForgedPreBondRegHeight(t *testing.T) {
 	// delta mismatches the honest committed root -> stall (fold-catch shape).
 	forgedRoot := honestCommitted
 
-	err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, forgedRoot, renewBlock, forgedW)
+	err := recomputeViaHead(f.c, f.prevRoot, forgedRoot, renewBlock, forgedW)
 	if err == nil {
 		t.Fatalf("GATE FAILED (ForgedPreBondRegHeight): box WRONG-ACCEPTED a forged preBondRegHeight.\n"+
 			"  Expected a stall (fold mismatch: wrong old-bucket delete causes postRoot != StateRoot).\n"+

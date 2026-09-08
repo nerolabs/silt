@@ -87,8 +87,20 @@ import (
 // Bounded by construction: ordinary/TTL-firing blocks are O(payload); the boundary is
 // O(boundary-delta). No branch here ranges a whole committed map keyed by registry
 // size — the TTL completeness is one dueBucket[h] leaf, not a bondRegHeight scan.
+//
+// IT EXPRESSES NO VERDICT (floor-box structure round 1A, step 9). This is the witness-SERVER's
+// producer: it names the keys a box will ask for. It is not a validity predicate, it decides
+// nothing about b, and a caller must never read a non-empty read-set as "this block is
+// acceptable". It is one of exactly two exported box-adjacent `*Chain` surfaces (with
+// WitnessValidateV5; G-6 pins the inventory), and the only one that is not a door. It carries
+// the S2 mode fence all the same: a read-set produced under legacy rules names keys that mean
+// nothing to a box — in legacy mode qualification is rep(id), which has no committed leaf.
 func (c *Chain) WitnessReadSetV5(b Block) []statehash.ReadEntry {
 	if b.Version < BlockVersionWitnessable {
+		return nil
+	}
+	// S2 MODE FENCE — the same condition as the box door (NewBox refuses a legacy chain).
+	if !c.objective() {
 		return nil
 	}
 	acc := newReadSetAcc()

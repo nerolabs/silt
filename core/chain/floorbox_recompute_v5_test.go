@@ -123,10 +123,78 @@ func (f recomputeFixture) witnessFor(t *testing.T) EpochSetWitness {
 		mw[id] = MemberWeightWitness{Weight: f.weights[id], Proof: p}
 	}
 	return EpochSetWitness{
-		IDs:               append([]ports.NodeID(nil), f.members...),
-		DigestRootWitness: dProof,
-		DigestRootValue:   digestVal,
-		MemberWeights:     mw,
+		IDs:                append([]ports.NodeID(nil), f.members...),
+		DigestRootWitness:  dProof,
+		DigestRootValue:    digestVal,
+		MemberWeights:      mw,
+		AuthorSlashedProof: mustProve(f.prover, statehash.Key(tagSlashed, f.proposer[:])),
+	}
+}
+
+// resnapshot re-anchors the fixture's root and prover after a committed-state mutation.
+func (f *recomputeFixture) resnapshot(t *testing.T) {
+	t.Helper()
+	prover, err := statehash.NewProver(f.c.stateRootLeavesV5())
+	if err != nil {
+		t.Fatalf("NewProver: %v", err)
+	}
+	f.prover, f.root = prover, prover.Root()
+}
+
+// TestN1_SlashedButFrozenAuthorFlipsTheVerdict is the N1 gate (floor-box structure round 1A,
+// step 7). The node's weight tally credits the proposer with NO screen because proposerQualifiedAt
+// (P4) refused a slashed author before the tally ran. A standalone reproduction of the tally has
+// no P4 in front of it: with the author slashed AFTER the epoch froze — so its weight is still in
+// the frozen set — the tally alone says MET while the node refuses the block. The recompute must
+// screen the author on the anchored slashed[proposer] leaf and refuse BY NAME; a missing proof
+// must stall, never credit. Ablation (N1): delete the (1b) author screen ⇒ met = true ⇒ RED.
+func TestN1_SlashedButFrozenAuthorFlipsTheVerdict(t *testing.T) {
+	f := buildRecomputeFixture(t)
+	// A coalition where the AUTHOR's weight is decisive: {6, 5} of 27 with the author's 8 is
+	// 19 > 18 (met); without it 11 (not met).
+	seen := map[ports.NodeID]bool{}
+	for id, w := range f.weights {
+		if w == 6<<20 || w == 5<<20 {
+			seen[id] = true
+		}
+	}
+	if len(seen) != 2 {
+		t.Fatalf("fixture: want the 6 MiB and 5 MiB members, got %d", len(seen))
+	}
+	if err := f.c.requireEpochWeightQuorum(f.proposer, seen, 0); err != nil {
+		t.Fatalf("fixture: the coalition WITH the author must meet the node's tally; got %v", err)
+	}
+	if met, reason := f.c.recomputeEpochWeightQuorum(f.root, f.proposer, seen, f.witnessFor(t)); !met || reason != nil {
+		t.Fatalf("control: the unslashed author is credited (met=%v, %v)", met, reason)
+	}
+
+	// Slash the author in the COMMITTED state after the freeze (apply()'s slash effect: slashed
+	// set, bond removed, qualified maintained — the frozen epochSet is untouched).
+	f.c.slashed[f.proposer] = true
+	delete(f.c.bonded, f.proposer)
+	f.c.qualifiedMaintain(f.proposer)
+	f.resnapshot(t)
+	if _, frozen := f.c.epochSet[f.proposer]; !frozen {
+		t.Fatal("fixture: the slashed author must STAY in the frozen epochSet, or the tally could not be fooled")
+	}
+	// The node: the TALLY still says met; the STAGE THAT SCREENS (proposerQualifiedAt) refuses.
+	if err := f.c.requireEpochWeightQuorum(f.proposer, seen, 0); err != nil {
+		t.Fatalf("ORACLE: the node's tally alone still says MET for a slashed-but-frozen author (P4 is what refuses); got %v", err)
+	}
+	if f.c.proposerQualifiedAt(f.proposer, 1) {
+		t.Fatal("ORACLE: proposerQualifiedAt must refuse a slashed author (F2)")
+	}
+	// The box: the author screen flips the verdict, by name.
+	met, reason := f.c.recomputeEpochWeightQuorum(f.root, f.proposer, seen, f.witnessFor(t))
+	if met || !errors.Is(reason, ErrRecomputeAuthorSlashed) {
+		t.Fatalf("N1 VIOLATED: a slashed-but-frozen author must NOT be credited; the recompute must refuse by name "+
+			"(ErrRecomputeAuthorSlashed); got met=%v / %v", met, reason)
+	}
+	// No proof ⇒ stall, never a credit (C-7 §104).
+	w := f.witnessFor(t)
+	w.AuthorSlashedProof = statehash.Witness{}
+	if met, reason := f.c.recomputeEpochWeightQuorum(f.root, f.proposer, seen, w); met || !errors.Is(reason, ErrRecomputeAuthorUnscreened) {
+		t.Fatalf("N1: an unanchored author screen must STALL (ErrRecomputeAuthorUnscreened); got met=%v / %v", met, reason)
 	}
 }
 
@@ -152,7 +220,7 @@ func TestRecomputeEpochWeightQuorum_MatchesFullNode(t *testing.T) {
 	t.Run("full coalition -> quorum met (matches full node)", func(t *testing.T) {
 		seen := f.seenAll()
 		w := f.witnessFor(t)
-		met, reason := f.c.RecomputeEpochWeightQuorum(f.root, f.proposer, seen, w)
+		met, reason := f.c.recomputeEpochWeightQuorum(f.root, f.proposer, seen, w)
 		if reason != nil {
 			t.Fatalf("recompute stalled unexpectedly: %v", reason)
 		}
@@ -168,7 +236,7 @@ func TestRecomputeEpochWeightQuorum_MatchesFullNode(t *testing.T) {
 	t.Run("proposer alone -> quorum NOT met (matches full node)", func(t *testing.T) {
 		seen := map[ports.NodeID]bool{} // proposer alone: its weight is < ⅔ of the total
 		w := f.witnessFor(t)
-		met, reason := f.c.RecomputeEpochWeightQuorum(f.root, f.proposer, seen, w)
+		met, reason := f.c.recomputeEpochWeightQuorum(f.root, f.proposer, seen, w)
 		if reason != nil {
 			t.Fatalf("recompute stalled unexpectedly: %v", reason)
 		}
@@ -195,7 +263,7 @@ func TestRecomputeEpochWeightQuorum_ForgedWeightRejects(t *testing.T) {
 
 	// Baseline: the honest witness meets the quorum (the green this ablation reddens).
 	w := f.witnessFor(t)
-	if met, reason := f.c.RecomputeEpochWeightQuorum(f.root, f.proposer, seen, w); !met || reason != nil {
+	if met, reason := f.c.recomputeEpochWeightQuorum(f.root, f.proposer, seen, w); !met || reason != nil {
 		t.Fatalf("baseline should meet quorum with no stall; met=%v reason=%v", met, reason)
 	}
 
@@ -211,7 +279,7 @@ func TestRecomputeEpochWeightQuorum_ForgedWeightRejects(t *testing.T) {
 	orig := forged.MemberWeights[victim]
 	forged.MemberWeights[victim] = MemberWeightWitness{Weight: orig.Weight + (100 << 20), Proof: orig.Proof}
 
-	met, reason := f.c.RecomputeEpochWeightQuorum(f.root, f.proposer, seen, forged)
+	met, reason := f.c.recomputeEpochWeightQuorum(f.root, f.proposer, seen, forged)
 	if met {
 		t.Fatal("C-1 VIOLATION: a forged per-member weight was accepted — the tally is forgeable (the digest bound membership but not the weights)")
 	}
@@ -230,7 +298,7 @@ func TestRecomputeEpochWeightQuorum_OmittedMemberRejects(t *testing.T) {
 	f := buildRecomputeFixture(t)
 	seen := f.seenAll()
 
-	if met, reason := f.c.RecomputeEpochWeightQuorum(f.root, f.proposer, seen, f.witnessFor(t)); !met || reason != nil {
+	if met, reason := f.c.recomputeEpochWeightQuorum(f.root, f.proposer, seen, f.witnessFor(t)); !met || reason != nil {
 		t.Fatalf("baseline should meet quorum with no stall; met=%v reason=%v", met, reason)
 	}
 
@@ -248,7 +316,7 @@ func TestRecomputeEpochWeightQuorum_OmittedMemberRejects(t *testing.T) {
 	w.IDs = shortIDs
 	delete(w.MemberWeights, dropped)
 
-	met, reason := f.c.RecomputeEpochWeightQuorum(f.root, f.proposer, seen, w)
+	met, reason := f.c.recomputeEpochWeightQuorum(f.root, f.proposer, seen, w)
 	if met {
 		t.Fatal("SET-COMPLETENESS VIOLATION: a witness missing a frozen member was accepted — the tally denominator was shrunk undetected")
 	}
@@ -272,7 +340,7 @@ func TestRecomputeEpochWeightQuorum_InjectedMemberRejects(t *testing.T) {
 	// fires first.
 	w.MemberWeights[extra] = MemberWeightWitness{Weight: 1 << 20, Proof: w.MemberWeights[f.members[0]].Proof}
 
-	met, reason := f.c.RecomputeEpochWeightQuorum(f.root, f.proposer, seen, w)
+	met, reason := f.c.recomputeEpochWeightQuorum(f.root, f.proposer, seen, w)
 	if met {
 		t.Fatal("SET-COMPLETENESS VIOLATION: a witness with an injected extra member was accepted")
 	}
@@ -321,8 +389,8 @@ func TestRecomputeEpochWeightQuorum_GenesisConfigFromOwnConfig(t *testing.T) {
 		func(ports.NodeID) int64 { return 0 })
 	highBox.SetBondVerifier(objectiveVerify)
 
-	metLow, rLow := lowBox.RecomputeEpochWeightQuorum(f.root, f.proposer, seen, w)
-	metHigh, rHigh := highBox.RecomputeEpochWeightQuorum(f.root, f.proposer, seen, w)
+	metLow, rLow := lowBox.recomputeEpochWeightQuorum(f.root, f.proposer, seen, w)
+	metHigh, rHigh := highBox.recomputeEpochWeightQuorum(f.root, f.proposer, seen, w)
 	if rLow != nil || rHigh != nil {
 		t.Fatalf("neither box should stall; rLow=%v rHigh=%v", rLow, rHigh)
 	}
@@ -358,7 +426,7 @@ func TestRecomputeEpochWeightQuorum_UnprovenDigestStalls(t *testing.T) {
 	// Verify the honest witness against a WRONG root: every proof fails, starting with the digest.
 	var wrongRoot ports.Hash
 	wrongRoot[0] = 0xff
-	met, reason := f.c.RecomputeEpochWeightQuorum(wrongRoot, f.proposer, seen, w)
+	met, reason := f.c.recomputeEpochWeightQuorum(wrongRoot, f.proposer, seen, w)
 	if met {
 		t.Fatal("a witness verified against the wrong root must not meet the quorum")
 	}
@@ -377,7 +445,7 @@ func TestRecomputeEpochWeightQuorum_MissingMemberWeightWitnessStalls(t *testing.
 	w := f.witnessFor(t)
 	delete(w.MemberWeights, f.members[0]) // keep IDs complete (digest matches) but drop a weight
 
-	met, reason := f.c.RecomputeEpochWeightQuorum(f.root, f.proposer, seen, w)
+	met, reason := f.c.recomputeEpochWeightQuorum(f.root, f.proposer, seen, w)
 	if met {
 		t.Fatal("a member with no weight witness must stall the fold, not be folded as zero")
 	}

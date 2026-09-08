@@ -18,7 +18,7 @@ import (
 // R3 (execution-derived drift guard, MANDATORY): the box's derived A write-set + validatorsSeenRoot
 // reconstruction is checked against the REAL apply() + StateRootForVersion(5), and ablated RED on a
 // forged qualification screen, a legacy-mode block, and an omitted validatorsSeenRoot. Each ablation
-// drives the REAL RecomputeStateRootEntriesRevocations (a hand-built mirror shares the producer's
+// drives the REAL recomputeStateRootEntriesRevocations (a hand-built mirror shares the producer's
 // blind spot — the session-7 scar).
 
 type attFixture struct {
@@ -161,7 +161,6 @@ func (f attFixture) witnessForAtt(t *testing.T, b Block) StateRootWitness {
 	// The A per-member write-set (validatorsSeen ADDs): build with the same pre-set the box derives.
 	preSeen := idSet(f.preIDsValidatorsSeen())
 	screens := map[ports.NodeID]StateRootAttScreen{}
-	w.ParentProposer, w.ParentProposerSig = f.c.CarrierParentProposerWitness()
 	parentProposer, _ := f.c.headProposerID()
 	for i := range b.LastCommit {
 		id := b.LastCommit[i].AttesterID()
@@ -171,7 +170,7 @@ func (f attFixture) witnessForAtt(t *testing.T, b Block) StateRootWitness {
 		screens[id] = f.attScreen(id)
 		w.AttScreens = append(w.AttScreens, f.attScreen(id))
 	}
-	aWrites, _, err := f.c.stateRootAttWriteSet(f.prevRoot, b, preSeen, screens, livePreForProbe(f.c), w.ParentProposer, w.ParentProposerSig)
+	aWrites, _, err := f.c.stateRootAttWriteSet(f.prevRoot, b, preSeen, screens, livePreForProbe(f.c), parentProposer)
 	if err != nil {
 		t.Fatalf("stateRootAttWriteSet: %v", err)
 	}
@@ -213,7 +212,7 @@ func TestRecomputeStateRootAttAgreesWithApply(t *testing.T) {
 	committed := f.applyAndCommittedRoot(t, b)
 	w := f.witnessForAtt(t, b)
 
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err != nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, committed, b, w); err != nil {
 		t.Fatalf("A recompute should AGREE with real apply() but stalled: %v", err)
 	}
 }
@@ -225,7 +224,7 @@ func TestRecomputeStateRootAttDigestByteExact(t *testing.T) {
 	clone := f.c.cloneForDryRun()
 	clone.apply(b)
 
-	ops, _, err := f.c.attOps(f.prevRoot, b, f.witnessForAtt(t, b), livePreForProbe(f.c))
+	ops, _, err := f.c.attOps(f.prevRoot, b, f.witnessForAtt(t, b), livePreForProbe(f.c), headProposerOrZero(f.c))
 	if err != nil {
 		t.Fatalf("attOps: %v", err)
 	}
@@ -263,7 +262,7 @@ func TestRecomputeStateRootAttAblationForgedScreen(t *testing.T) {
 	// R1.2: the forged InEpochSet=false requires a NON-MEMBERSHIP proof of epochSet||aid, but the honest
 	// EpochSetProof proves PRESENT (the attester IS in the frozen set), so the class-A anchor stalls
 	// (ErrRecomputeStateRootDigest) — a STRONGER, earlier catch than the pre-R1.2 fold mismatch.
-	err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w)
+	err := recomputeViaHead(f.c, f.prevRoot, committed, b, w)
 	if err == nil {
 		t.Fatalf("ABLATION FAILED: a forged (not-in-epochSet) screen must stall, got nil")
 	}
@@ -294,11 +293,11 @@ func TestRecomputeStateRootAttAblationLegacyMode(t *testing.T) {
 	head, _ := c.headBlock()
 	b := Block{Version: BlockVersionWitnessable, Height: h, Prev: prev}
 	b.LastCommit = append(b.LastCommit, AttestAt(&head, att, 0, PhasePrecommit))
-	pub, sig := c.CarrierParentProposerWitness()
+	parentProposer, _ := c.headProposerID()
 
 	// The legacy assertion lives in stateRootAttWriteSet (reached by the A dispatch). It must stall
 	// with a scope stall — the box refuses to reproduce rep(id) qualification from committed state.
-	_, _, wsErr := c.stateRootAttWriteSet(ports.Hash{}, b, map[ports.NodeID]struct{}{}, map[ports.NodeID]StateRootAttScreen{}, livePreForProbe(c), pub, sig)
+	_, _, wsErr := c.stateRootAttWriteSet(ports.Hash{}, b, map[ports.NodeID]struct{}{}, map[ports.NodeID]StateRootAttScreen{}, livePreForProbe(c), parentProposer)
 	if !errors.Is(wsErr, ErrRecomputeStateRootScopeStall) {
 		t.Fatalf("ABLATION FAILED: a legacy-mode A screen must stall with a scope stall, got %v", wsErr)
 	}
@@ -315,7 +314,7 @@ func TestRecomputeStateRootAttAblationOmittedDigest(t *testing.T) {
 	// Drop the validatorsSeenRoot digest witness.
 	w.DigestPreSets = nil
 
-	err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w)
+	err := recomputeViaHead(f.c, f.prevRoot, committed, b, w)
 	if !errors.Is(err, ErrRecomputeStateRootDigest) {
 		t.Fatalf("ABLATION FAILED: an omitted validatorsSeenRoot witness must stall with ErrRecomputeStateRootDigest, got %v", err)
 	}
@@ -343,7 +342,7 @@ func TestRecomputeStateRootAttProposerOnlyNoWrite(t *testing.T) {
 		w.DueBucketProof = dp
 	}
 	w.Maturity = latchedMaturityWitness(t, f.prover, f.preValue)
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err != nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, committed, b, w); err != nil {
 		t.Fatalf("a proposer-only att block is E/R-only and should AGREE, got %v", err)
 	}
 }

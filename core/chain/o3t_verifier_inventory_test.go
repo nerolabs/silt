@@ -102,8 +102,16 @@ var o3tVerifyAllowlist = map[o3tVerifySite]o3tVerifyRow{
 		Why: "BondReg signature over r.signingBytes(nonce)"},
 	{"chain", "issuerkey.go", "VerifyIssuerKeyReg"}: {Count: 1, Classes: []o3tVerifyClass{o3tClassIssuerKeySig},
 		Why: "IssuerKey registration signature over issuerKeyRegMsg(id, epoch, fp)"},
-	{"chain", "carrier.go", "carrierParentProposerFromWitness"}: {Count: 1, Classes: []o3tVerifyClass{o3tClassProposerSig},
-		Why: "the parent-proposer witness: the PARENT's bare-hash ProposerSig re-verified over b.Prev (PR #720 LastCommit carrier; same proposer arithmetic as ValidateProposal, over the parent's hash)"},
+	// The era-4 (v5) accept composition MIRRORS the node's proposer-signature and bond-reg-signature
+	// checks over StateView (floor-box structure round 1A, validate_v5.go). Same schemes, same
+	// classes as the node sites they mirror; every ATTESTATION verify in the composition routes
+	// through verifyAtt (v5CollectQuorumSigs, v5RequireProposerPrepare, validateCarrier).
+	{"chain", "validate_v5.go", "ValidateProposalV5"}: {Count: 1, Classes: []o3tVerifyClass{o3tClassProposerSig},
+		Why: "bare hash is the proposer scheme (P3 of the v5 composition — the mirror of ValidateProposal's proposer check)"},
+	{"chain", "validate_v5_quorum.go", "v5ValidateBondReg"}: {Count: 1, Classes: []o3tVerifyClass{o3tClassBondRegSig},
+		Why: "BondReg signature over r.signingBytes(nonce) (the v5 composition's mirror of validateBondReg)"},
+	{"chain", "floorbox_box_v5.go", "NewBox"}: {Count: 1, Classes: []o3tVerifyClass{o3tClassProposerSig},
+		Why: "the box's PARENT block's bare-hash ProposerSig over its own hash, checked once at construction (floor-box structure round 1A step 6: the head record is DERIVED from that parent; same proposer arithmetic as ValidateProposal, over the parent's hash). Not an attestation verify."},
 	// core/node — neither site verifies an attestation.
 	{"node", "rounds.go", "verifyRoundChange"}: {Count: 1, Classes: []o3tVerifyClass{o3tClassRoundChangeSig},
 		Why: "the round-change ENVELOPE signature over rc.sigBytes() = roundChangeSigDomain || height || newRound || lockRound || H(lockBlock) — a domain-separated view-change message, not a block certificate. The lock QC the envelope carries is verified by chain.VerifyPrepareQC -> collectQuorumSigs -> verifyAtt (chain.go:2967), i.e. through the one era-aware verifier."},

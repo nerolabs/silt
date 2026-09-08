@@ -154,6 +154,19 @@ func NewWitness(proof *smt.SparseMerkleProof) Witness { return Witness{proof: pr
 // library proof.
 func (w Witness) IsNil() bool { return w.proof == nil }
 
+// Bytes is the proof's size in bytes — the sum of its side nodes and leaf data. It is what a
+// byte-denominated witness budget measures, without re-encoding the proof.
+func (w Witness) Bytes() int {
+	if w.proof == nil {
+		return 0
+	}
+	n := len(w.proof.NonMembershipLeafData) + len(w.proof.SiblingData)
+	for _, sn := range w.proof.SideNodes {
+		n += len(sn)
+	}
+	return n
+}
+
 // SideNodeCount returns the number of sidenodes in the wrapped proof (0 for a nil
 // witness). It is the O(payload) cost measure: a witness's fetch cost scales with its
 // sidenode count, which grows with log(state size), not total state.

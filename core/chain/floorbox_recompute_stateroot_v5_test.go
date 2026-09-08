@@ -214,7 +214,7 @@ func TestRecomputeStateRootAgreesWithApply(t *testing.T) {
 	committed := f.applyAndCommittedRoot(t, b)
 	w := f.witnessForBlock(t, b)
 
-	if err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w); err != nil {
+	if err := recomputeViaHead(f.c, f.prevRoot, committed, b, w); err != nil {
 		t.Fatalf("recompute should AGREE with real apply() but stalled: %v", err)
 	}
 }
@@ -227,7 +227,7 @@ func TestRecomputeStateRootAblationTamperedRoot(t *testing.T) {
 	committed[0] ^= 0xff // TAMPER
 	w := f.witnessForBlock(t, b)
 
-	err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w)
+	err := recomputeViaHead(f.c, f.prevRoot, committed, b, w)
 	if !errors.Is(err, ErrRecomputeStateRootMismatch) {
 		t.Fatalf("ABLATION FAILED: a tampered committed StateRoot must stall with mismatch, got %v", err)
 	}
@@ -253,7 +253,7 @@ func TestRecomputeStateRootAblationOmittedWrite(t *testing.T) {
 	}
 	w := f.witnessForBlock(t, b)
 
-	rerr := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, forged, b, w)
+	rerr := recomputeViaHead(f.c, f.prevRoot, forged, b, w)
 	if !errors.Is(rerr, ErrRecomputeStateRootMismatch) {
 		t.Fatalf("ABLATION FAILED: an un-named extra committed write must stall with mismatch, got %v", rerr)
 	}
@@ -281,7 +281,7 @@ func TestRecomputeStateRootAblationForgedProof(t *testing.T) {
 		w.ChangedLeaves[0].Proof = statehash.NewWitness(nil)
 	}
 
-	err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w)
+	err := recomputeViaHead(f.c, f.prevRoot, committed, b, w)
 	if !errors.Is(err, ErrRecomputeStateRootFold) {
 		t.Fatalf("ABLATION FAILED: a forged changed-leaf proof must stall in the fold, got %v", err)
 	}
@@ -297,7 +297,7 @@ func TestRecomputeStateRootAblationOmittedProof(t *testing.T) {
 	// Drop the last changed-leaf witness.
 	w.ChangedLeaves = w.ChangedLeaves[:len(w.ChangedLeaves)-1]
 
-	err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w)
+	err := recomputeViaHead(f.c, f.prevRoot, committed, b, w)
 	if !errors.Is(err, ErrRecomputeStateRootFold) {
 		t.Fatalf("ABLATION FAILED: a missing witness for a derived changed key must stall, got %v", err)
 	}
@@ -315,7 +315,7 @@ func TestRecomputeStateRootAttIncompleteWitnessStalls(t *testing.T) {
 	committed := f.applyAndCommittedRoot(t, b)
 	w := f.witnessForBlock(t, b)
 
-	err := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w)
+	err := recomputeViaHead(f.c, f.prevRoot, committed, b, w)
 	if err == nil {
 		t.Fatalf("ABLATION FAILED: a class-A block with an incomplete (E/R-only) witness must stall, got nil")
 	}
@@ -348,7 +348,7 @@ func TestRecomputeStateRootTTLScopeGateStalls(t *testing.T) {
 	}
 	w.DueBucketProof = mp
 
-	rerr := f.c.RecomputeStateRootEntriesRevocations(f.prevRoot, committed, b, w)
+	rerr := recomputeViaHead(f.c, f.prevRoot, committed, b, w)
 	if !errors.Is(rerr, ErrRecomputeStateRootTTLWitness) {
 		t.Fatalf("ABLATION FAILED: a non-absent dueBucket witness must stall the TTL scope gate, got %v", rerr)
 	}
