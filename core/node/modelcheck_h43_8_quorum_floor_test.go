@@ -224,15 +224,6 @@ func TestModelCheck_H43_8_DivergentQuorumFloorMustNotBlockNewViewCertificate(t *
 	}
 	raw1, raw2 := rawRoundChange1(liver1), rawRoundChange1(liver2)
 
-	// ── Premise (re-derived for direction (1)): the designee's local floor
-	// (3) exceeds the derived bar (bftThreshold(4)=2), and RequiredQuorum()
-	// now IGNORES it — so a pass below is attributable to the derived rule,
-	// not to a fixture whose config already asked for 2.
-	if got := designee.chain.RequiredQuorum(); got != 2 || highCfg.Quorum <= got {
-		t.Fatalf("premise: the designee's RequiredQuorum() must be the derived bftThreshold(4)=2 with its local "+
-			"cfg.Quorum (%d) strictly above it; got RequiredQuorum()=%d", highCfg.Quorum, got)
-	}
-
 	// ── Mechanism pin ────────────────────────────────────────────────────
 	// Call newViewFor directly with EXACTLY the 2 envelopes the network
 	// already treats as quorum, bypassing the wire entirely, so a RED here
@@ -252,6 +243,16 @@ func TestModelCheck_H43_8_DivergentQuorumFloorMustNotBlockNewViewCertificate(t *
 			"a fixture defect, not G-H43-8", err)
 	}
 	t.Logf("G-H43-8 mechanism pin: newViewFor accepted the 2-round-change certificate at the high-floor designee")
+
+	// ── Premise (re-derived for direction (1)), checked AFTER the mechanism
+	// pin so an ablation reddens on the mechanism first: the designee's local
+	// floor (3) exceeds the derived bar (bftThreshold(4)=2), and
+	// RequiredQuorum() IGNORES it — so the pass above is attributable to the
+	// derived rule, not to a fixture whose config already asked for 2.
+	if got := designee.chain.RequiredQuorum(); got != 2 || highCfg.Quorum <= got {
+		t.Fatalf("premise: the designee's RequiredQuorum() must be the derived bftThreshold(4)=2 with its local "+
+			"cfg.Quorum (%d) strictly above it; got RequiredQuorum()=%d", highCfg.Quorum, got)
+	}
 
 	// ── End-to-end: the natural trigger must still commit the height ──────
 	// Deliver the SAME 2 envelopes through the real MsgRoundChange handler:
