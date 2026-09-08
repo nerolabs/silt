@@ -178,6 +178,7 @@ func (l *Ledger) RecordServeToObject(server, requester ports.NodeID, root ports.
 	// witnessed supersede and later mint for bytes the receipt already paid (G-λ-5).
 	p := l.laneFor(server, requester, root)
 	p.bytes += bytes
+	l.serveBytesObjectAware += bytes // A2: the witnessable denominator (credit.go)
 	netTotal := p.bytes * (SkimDen - SkimNum) / (SkimDen * ServeMintBytesPerCredit)
 	skimTotal := p.bytes * SkimNum / (SkimDen * ServeMintBytesPerCredit)
 	net, skim := netTotal-p.net, skimTotal-p.skim

@@ -352,7 +352,28 @@ type Ledger struct {
 	serveSkimCredits     int64
 	serveMintZero        int64
 	serveReversedCredits int64 // net + skim reversed by supersede or eviction (telemetry, gross-of-reversal counters above)
-	sweeps               int64
+	// A2 supersede-suppression telemetry (R2.7 blocking telemetry, Economist advisory
+	// ADVISORY-boulder2-telemetry-spec-R2.4-checklist-and-RC-scope-2026-09-07 §1.1).
+	// Node-wide int64 aggregates with NO identity axis and no object axis: this is
+	// deliberately not a (fetcher × object) join, which is the access record Don't #3
+	// forbids. Together with the live lanes they satisfy an exact conservation identity
+	// (ServeMintStats, numeraire.go), and that identity is the unit test.
+	//
+	// serveBytesObjectAware is the WITNESSABLE DENOMINATOR: bytes that entered a
+	// provisional lane and could therefore be acknowledged by a delivery receipt. Bytes
+	// served on the plain path (RecordServe — a manifest chunk has no proof-anchored
+	// root) never enter a lane and can never be witnessed, so measuring coverage against
+	// total served bytes would penalise a node for serving manifests. It does not.
+	serveBytesObjectAware int64
+	// serveBytesWitnessed is the acknowledged bytes banked by SettleDelivery. Counted
+	// once per settlement, on the acknowledged amount, and NOT when the lane is already
+	// gone: an evicted lane's bytes were already counted forfeited below.
+	serveBytesWitnessed int64
+	// serveBytesLaneEvicted is bytes served for ZERO pay because the maxProvisional lane
+	// cap FIFO-confiscated the accumulator (delivery.go laneFor). A direct T-AR wage
+	// measurement; nothing else on main sees it.
+	serveBytesLaneEvicted int64
+	sweeps                int64
 	// compactFailures / lastCompactErr record a durable-store Compact that returned an
 	// error at the sweep (R2.13). Observability, never a refusal: see
 	// sweepExpiredSerials for the two-class rule.

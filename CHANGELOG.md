@@ -112,6 +112,24 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   #766) — R2.9's wire proof this run is the local e2e only.
 
 ### Added
+- **R2.7 blocking telemetry, detector A2 — supersede suppression (Lane C4, Economist advisory
+  `ADVISORY-boulder2-telemetry-spec-R2.4-checklist-and-RC-scope-2026-09-07` §1.1).** Three node-wide `int64`
+  counters on `credit.Ledger` — `serveBytesObjectAware` (`RecordServeToObject`), `serveBytesWitnessed`
+  (`SettleDelivery`, on the clamped `ack`, before the full/partial branch) and `serveBytesLaneEvicted`
+  (`laneFor`, the FIFO confiscation at the `maxProvisional` cap) — plus the live-lane sum taken on the walk
+  `ServeMintStats` already makes. They satisfy an exact conservation identity, `objectAware == witnessed +
+  laneEvicted + inFlight`, and that identity is the test. `servedBytesUnwitnessed`,
+  `servedBytesUnwitnessable` and `receiptCoverage` are DERIVED at the read and stored nowhere: a second
+  accumulator for a residual invites drift between two write paths. Coverage's denominator is object-aware
+  bytes, never total served bytes, so a node serving manifest chunks (no root, never witnessable) is not
+  penalised. The Economist's spec named a fourth counter, `serveBytesSupersededFlat`, on the flat leg's
+  supersede block and said in the same sentence that it "is deleted with the leg" — Lane C1 deleted the leg,
+  so the identity has three terminal terms and no permanently-zero counter ships. All seven fields ride the
+  existing `serveMintWithheld` + `countersWithheld` markers on `GET /api/status`; no new marker, no new
+  withhold clause, and no identity or object axis anywhere (Don't #3). Gates:
+  `TestServedByteSplitIsExactAcrossEveryTerminalState`, `TestEvictedLaneBytesAreCountedForfeitedNotWitnessed`,
+  `TestSuppressionShowsAsCoverageBelowOne` (the RED-first proof that the two arms do not read the same), each
+  run RED under a controlled revert of its increment site.
 - **Floor box — the STRUCTURE round, Round 1A (`R-STRUCTURE-REDERIVATION`, owner-ratified 2026-09-03; call 16 main-only).**
   ONE accept composition over a three-valued `StateView`: `ValidateProposalV5` (P1…P13) and `ValidateCommitV5` (= the
   proposal then C1…C5), dispatched from BOTH `ValidateProposal` and `ValidateCommit` on version — `chain.go` changes by

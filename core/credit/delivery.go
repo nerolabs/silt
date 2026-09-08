@@ -312,6 +312,7 @@ func (l *Ledger) laneFor(server, requester ports.NodeID, root ports.Hash) *provi
 			l.provHead++
 			delete(l.provIndex, old)
 			if evicted, eok := l.provisional[old]; eok {
+				l.serveBytesLaneEvicted += evicted.bytes // A2: the confiscated wage (credit.go)
 				l.reverseProvisional(evicted.server, old.root, evicted)
 				delete(l.provisional, old)
 			}

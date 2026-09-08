@@ -154,6 +154,12 @@ func (l *Ledger) SettleDelivery(server, fetcher ports.NodeID, root ports.Hash, c
 		if whole <= math.MaxInt64/DeliveryIncrementBytes && whole*DeliveryIncrementBytes < p.bytes {
 			ack = whole * DeliveryIncrementBytes
 		}
+		// A2 (R2.7): count the acknowledged bytes ONCE, here — after the clamp and
+		// before the full/partial branch. ack <= p.bytes always, and ack == p.bytes in
+		// the full branch, so one line covers both. It is deliberately inside the
+		// "lane still live" block: when the lane was already evicted there is no served
+		// byte being acknowledged and those bytes are already in serveBytesLaneEvicted.
+		l.serveBytesWitnessed += ack
 		if ack >= p.bytes {
 			// Fully acknowledged: the whole lane, exactly as the flat supersede does.
 			l.reverseProvisional(server, root, p)

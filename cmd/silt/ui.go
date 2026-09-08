@@ -782,6 +782,22 @@ type serveMintInfo struct {
 	ZeroMintServes          int64 `json:"zeroMintServes"`
 	RemainderBytesServerLeg int64 `json:"remainderBytesServerLeg"`
 	RemainderBytesEscrowLeg int64 `json:"remainderBytesEscrowLeg"`
+	// A2 supersede-suppression (R2.7). Three stored counters, one live-lane sum and
+	// three DERIVED numbers, all node-wide with no identity axis. They ride the block's
+	// existing serveMintWithheld + countersWithheld markers rather than adding a
+	// fourth: on a one-root node these are that root's served bytes split by whether a
+	// fetch was paid, which is the red-team's F2 join with a payment axis added.
+	ServeBytesObjectAware  int64 `json:"serveBytesObjectAware"`
+	ServeBytesWitnessed    int64 `json:"serveBytesWitnessed"`
+	ServeBytesLaneEvicted  int64 `json:"serveBytesLaneEvicted"` // the pony's wage confiscated at the lane cap
+	ServeBytesInFlight     int64 `json:"serveBytesInFlight"`
+	ServedBytesUnwitnessed int64 `json:"servedBytesUnwitnessed"`
+	// ServedBytesUnwitnessable is the plain-path floor (manifest chunks have no root),
+	// never a suppression signal.
+	ServedBytesUnwitnessable int64 `json:"servedBytesUnwitnessable"`
+	// ReceiptCoverage is witnessed / object-aware. Read it beside serveBytesObjectAware:
+	// a zero denominator and total suppression both print 0.
+	ReceiptCoverage float64 `json:"receiptCoverage"`
 }
 
 type faucetInfo struct {
@@ -911,7 +927,11 @@ func (s *uiServer) computeStatus(now time.Time) *statusInfo {
 		sm := s.nd.ServeMintStats()
 		out.ServeMint = &serveMintInfo{BytesPerCredit: sm.BytesPerCredit, ServedBytes: sm.ServedBytes, MintedCredits: sm.MintedCredits,
 			SkimmedCredits: sm.SkimmedCredits, ReversedCredits: sm.ReversedCredits, ZeroMintServes: sm.ZeroMintServes,
-			RemainderBytesServerLeg: sm.RemainderBytesServerLeg, RemainderBytesEscrowLeg: sm.RemainderBytesEscrowLeg}
+			RemainderBytesServerLeg: sm.RemainderBytesServerLeg, RemainderBytesEscrowLeg: sm.RemainderBytesEscrowLeg,
+			ServeBytesObjectAware: sm.ObjectAwareBytes, ServeBytesWitnessed: sm.WitnessedBytes,
+			ServeBytesLaneEvicted: sm.LaneEvictedBytes, ServeBytesInFlight: sm.InFlightBytes,
+			ServedBytesUnwitnessed: sm.UnwitnessedBytes, ServedBytesUnwitnessable: sm.UnwitnessableBytes,
+			ReceiptCoverage: sm.ReceiptCoverage}
 		ds := s.nd.DeliverySettlementStats()
 		out.DeliverySettlement = &deliverySettlementInfo{Settlements: ds.Settlements, SettledCredits: ds.SettledCredits, SettledIncrements: ds.SettledIncrements,
 			SessionsClosed: ds.SessionsClosed, RefundedCredits: ds.RefundedCredits, PendingRefundCredits: ds.PendingRefundCredits, BurnedCredits: ds.BurnedCredits,
