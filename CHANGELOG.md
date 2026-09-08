@@ -121,6 +121,31 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   (now also the T-RELAY-GRAN pin), `TestRelaySettlementIgnoresForwardedBytesIsBoundedByAnchor`.
 
 ### Fixed
+- **Consensus — the local `-quorum` floor is out of the objective-mode validity rule (`#380` direction (1), Lane A2; I1,
+  ratified `D-CONSENSUS-ARMING` (20); research certification
+  `CONSENSUS-380-quorum-floor-direction-1-PREDICATE-AND-CERTIFICATION-2026-09-08.md`).** `Chain.RequiredQuorum` is now
+  DERIVED in objective mode with Byzantine sizing: `bftThreshold(N)` in the launch window / epochs-off (the `max` with
+  `Config.Quorum` is gone), and `0` in a mature epoch (the >⅔ frozen-weight rule is the whole bar, B2); the trusted
+  opt-out (`-byzantine-quorum=false`) and legacy regimes read `Config.Quorum` unchanged. `Config.Quorum` survives as the
+  proposer-side gather target only. Closes the `#338` sync-strand (a node with a raised local floor refused the swarm's
+  honestly-committed blocks forever) and the dead new-view round of a higher-floor designee (`R-380-LIVENESS-FACE`).
+  Same commit, per the certification's merge conditions: `validateStructural`'s Reload count leg tracks
+  `RequiredQuorum()` so a replay accepts what the commit path accepted (M-380-1); `newViewFor` refuses an EMPTY
+  round-change set so floor 0 never validates a zero-envelope certificate (M-380-2); the v5 mirror `v5RequiredQuorum`
+  returns the node's value per regime and `RequiredQuorum` is pinned by G-D13 through a `compositionHelpers` row
+  (M-380-3); the v4/v5 parity oracle gains the mature-epoch whale regime. Gates: G-H43-8 arms 8a–8e
+  (`core/node/bondreg_drain338_test.go`, `core/node/modelcheck_h43_8_quorum_floor_test.go`,
+  `core/chain/quorum_floor_380_gate_test.go`, `core/node/modelcheck_h43_8e_gather_control_test.go`) and
+  `core/node/newview_empty_380_test.go`, all RED-first. The proposer-side gather target is path-independent:
+  `gatherTwoPhase` — the one choke point all four proposal paths share (client publish, the bond-reg drain, the h43
+  new-view re-proposal's fresh leg AND its forced leg, the re-proposal of a locked value) — raises the gather target to
+  `max(Config.Quorum, RequiredQuorum())` (PE ruling C1; research certification §6.12 G-380-A for the forced leg, which
+  never reached the earlier `proposeBlockAt` raise; arm 8e drives all four). **Rollout order: upgrade FIRST.** The
+  change only ADDS accepts, so an upgraded node accepts every block a trailing node produces; a trailing node with
+  `-quorum` above `bftThreshold(N)` still validates at the old `max(Quorum, bft)` and would refuse a block gathered
+  below it — hence the gather target keeps `Config.Quorum`, and mixed fleets must keep `-quorum` uniform until every
+  node is upgraded. Owner's call, unchanged here: the shipped default `-quorum 3` caps a default 4-validator swarm's
+  gather at f = 0 (certification §4.5).
 - **Crash-safety — a torn `chain.cbor` no longer restarts the validator from genesis (#558, Lane B8, scope call S3).**
   `chainstore.Save` now writes a temp file, fsyncs it, renames it over `chain.cbor` and fsyncs the directory (the
   markstore pattern), so a power loss or OOM-kill mid-write cannot leave a truncated store. At boot the daemon replays

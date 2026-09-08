@@ -830,12 +830,9 @@ type viewAt struct {
 // proposeBlockAt is proposeBlock with an optional caller-supplied view (nil ⇒
 // derive from the round state, exactly as before).
 func (n *Node) proposeBlockAt(b *chain.Block, attesters, broadcast []ports.NodeID, quorum int, view *viewAt, done func(error)) {
-	// Gather at least what ValidateCommit will demand: with Byzantine quorum sizing
-	// (H4) the chain requires 2f+1 over the qualified set, which can exceed the
-	// caller's floor. Under-gathering would just fail our own Append; raise it here.
-	if req := n.chain.RequiredQuorum(); req > quorum {
-		quorum = req
-	}
+	// `quorum` is the caller's floor only; the gather target is raised to
+	// max(caller's floor, Config.Quorum, RequiredQuorum()) inside gatherTwoPhase,
+	// the one choke point every proposal path shares (#380; G-380-A).
 	// Objective fork-choice (F6): a proposer attaches its own live bond
 	// registration, so proposing IS registering — an anchor bootstrapping the
 	// network records its real bond in its first block, and every validator
@@ -1142,6 +1139,30 @@ func (n *Node) proposeBlockAt(b *chain.Block, attesters, broadcast []ports.NodeI
 // its lower round (the hash excludes the round; the author is exempt from the
 // round-exactness rule).
 func (n *Node) gatherTwoPhase(b *chain.Block, attesters, broadcast []ports.NodeID, quorum int, round uint64, newView [][]byte, carried []chain.Attestation, done func(error)) {
+	// THE GATHER TARGET, raised HERE and nowhere else: max(caller's floor,
+	// Config.Quorum, RequiredQuorum()) on EVERY proposal path — the ratified
+	// "Quorum stays a proposer-side gather target" (#380, D-CONSENSUS-ARMING
+	// (20)). Four paths reach this function: client publish (chainhost →
+	// ProposeEntry → proposeBlockAt, passing the operator's -quorum), the
+	// bond-reg drain (maybeProposeBondDrain → proposeBlock, 0), the new-view
+	// FRESH leg (proposeAtNewView → proposeBlockAt, 0) and the new-view FORCED
+	// leg (proposeAtNewView → here directly, 0 — the re-proposal of a locked
+	// value, the path a view change exists for). Before direction (1) the
+	// 0-passers picked Config.Quorum up through RequiredQuorum()'s max; with the
+	// local floor out of the validity rule the raise must live at the choke point
+	// all four share, or the target is path-dependent and an un-upgraded
+	// -quorum 3 peer (old rule: max(3, bft) = 3) refuses a 2-attestation block —
+	// the #338 strand via version skew (PE ruling on d0067fd C1; research
+	// certification §6.12 G-380-A, the forced leg). RequiredQuorum(): what
+	// ValidateCommit will demand — under-gathering would just fail our own
+	// Append; redundant for validity (supportMet enforces it) but it keeps the
+	// NO-QUORUM error and the gather logs truthful.
+	if q := n.chain.ConfigQuorum(); q > quorum {
+		quorum = q
+	}
+	if req := n.chain.RequiredQuorum(); req > quorum {
+		quorum = req
+	}
 	// Never sign twice in a slot (#397, round-scoped per #432): our PREPARE
 	// enters the same never-sign-twice ledger as any attestation, durable
 	// BEFORE anything is released — whether or not it ever commits. A

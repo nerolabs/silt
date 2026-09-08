@@ -299,8 +299,10 @@ def main():
     n_mat = len(maturers)
     # syb_quorum retained for the meta/report only. NOTE (#338 cloud GAP root cause):
     # the Sybil role must run the SAME -quorum FLOOR as the rest of the swarm, NOT a
-    # self-majority. -quorum is a hard floor on ValidateCommit (max(Quorum,
-    # bftThreshold)); a Sybil set to n_syb//2+1 (=5 at SYBILS=8) then re-validates the
+    # self-majority. -quorum WAS a hard floor on ValidateCommit (max(Quorum,
+    # bftThreshold)) until #380 direction (1) made the objective-mode bar derived and
+    # -quorum a proposer-side gather target only; keep the uniform value regardless (it
+    # is the gather target). Under the old rule a Sybil set to n_syb//2+1 (=5 at SYBILS=8) re-validated the
     # anchors' honestly-committed blocks (2 attestations) under ITS floor of 5, rejects
     # the whole chain in Reconcile, and stays stranded at genesis — exactly the field
     # GAP "sybil-1 never synced a committed chain (head 0)". In OBJECTIVE mode the

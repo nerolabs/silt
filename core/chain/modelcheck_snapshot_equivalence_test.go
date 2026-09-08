@@ -262,14 +262,19 @@ func probes(revokedRoot ports.Hash, keys []ed25519.PrivateKey, prev ports.Hash) 
 // + two attesters, well clear of any count or weight floor).
 //
 // The flip on omission is carried by FROZEN-SET MEMBERSHIP, not the ⅔-weight
-// predicate. Omitting epochSet restores an EMPTY frozen set, so the attesters fail
-// effectiveEpochSet membership in attesterQualifiedAt, seen collapses to 0, and the
-// COUNT floor rejects: ErrNoQuorum. The weight predicate requireEpochWeightQuorum
-// never fires — with epochSet empty its `total <= 0` branch short-circuits to nil
-// (chain.go:2452), so if membership were not the discriminator the block would not
-// flip at all. This probe proves epochSet MEMBERSHIP is load-bearing; the per-member
-// WEIGHT bytes are a separate claim, owed as its own probe (issue #603, the era-3
-// format-freeze gate).
+// predicate. Omitting epochSet restores an EMPTY frozen set, so the PROPOSER fails
+// effectiveEpochSet membership in proposerQualifiedAt — the node's first gate
+// (ValidateProposal, before the quorum stack) — and the block is rejected. Before
+// #380 direction (1) the same membership loss surfaced one stage later: the
+// attesters failed attesterQualifiedAt, seen collapsed to 0, and the COUNT floor
+// (Config.Quorum) rejected with ErrNoQuorum. In a mature epoch that floor is now 0
+// (regime (b)), and the weight predicate requireEpochWeightQuorum never fires — with
+// epochSet empty its `total <= 0` branch short-circuits to nil — so the quorum stack
+// ALONE no longer discriminates; the probe asks admissionVerdict (proposer gate, then
+// the quorum stack, the node's order), and membership is still the sole
+// discriminator. This probe proves epochSet MEMBERSHIP is load-bearing; the
+// per-member WEIGHT bytes are a separate claim, owed as its own probe (issue #603,
+// the era-3 format-freeze gate).
 func weightWorld(t *testing.T) (*Chain, *Block) {
 	t.Helper()
 	keys := make([]ed25519.PrivateKey, 4)
@@ -290,9 +295,9 @@ func weightWorld(t *testing.T) (*Chain, *Block) {
 	}
 
 	// A commit at height 1 the FULL frozen set accepts: proposer keys[0] + two
-	// attesters, well clear of both the count floor and the ⅔-weight predicate.
-	// Omitting epochSet empties frozen membership → attesters disqualified →
-	// ErrNoQuorum (count floor), not the weight predicate. See the doc comment.
+	// attesters, well clear of the ⅔-weight predicate. Omitting epochSet empties
+	// frozen membership → the proposer is disqualified (proposerQualifiedAt), not
+	// the weight predicate. See the doc comment.
 	b := &Block{Version: 1, Height: 1, Prev: g.Hash(), Entries: []ports.Entry{entry(30)}}
 	Sign(b, keys[0])
 	b.Atts = []Attestation{Attest(b, keys[1]), Attest(b, keys[2])}
@@ -307,7 +312,10 @@ func weightWorld(t *testing.T) (*Chain, *Block) {
 // quorum is carried by bonded non-proposers. Omitting bonded disqualifies the
 // proposer (and drops the attesters from seen), so the same block is REJECTED — the
 // bonded flip. This changes which identities are ADMITTED as qualified, not how any
-// weight/count is summed (the #402 seam is untouched).
+// weight/count is summed (the #402 seam is untouched). Since #380 direction (1) the
+// count floor here is bftThreshold(qualifiedCount) with no Config.Quorum term, and it
+// collapses to 0 together with the set, so the quorum stack alone no longer flips;
+// the probe asks admissionVerdict (the proposer gate first, the node's order).
 func bondedWorld(t *testing.T) (*Chain, *Block) {
 	t.Helper()
 	keys := make([]ed25519.PrivateKey, 4)
@@ -437,20 +445,33 @@ func quorumVerdict(c *Chain, b *Block) string {
 	return verdict(c.requireQuorumStack(b, seen))
 }
 
+// admissionVerdict is quorumVerdict preceded by the node's proposer gate
+// (proposerQualifiedAt, the first check of ValidateProposal, chain.go) — the order the
+// node actually runs. The two MEMBERSHIP probes need it: since #380 direction (1) the
+// count floor is derived (0 in a mature epoch; bftThreshold(N) elsewhere, which is 0
+// when the set is emptied), so an emptied membership set no longer trips the quorum
+// stack on its own — the disqualified PROPOSER is where the loss surfaces first.
+func admissionVerdict(c *Chain, b *Block) string {
+	if !c.proposerQualifiedAt(b.ProposerID(), b.Height) {
+		return "reject"
+	}
+	return quorumVerdict(c, b)
+}
+
 // weightProbes are the two consensus-weight probes, each bound to the world where
 // its field flips a verdict. block is prebuilt by the world; the probe asks the
-// qualification+quorum verdict, so the field's omission (via snapshotBoot) is the
-// ONLY variable.
+// admission (proposer gate) + quorum verdict, so the field's omission (via
+// snapshotBoot) is the ONLY variable.
 func weightProbes(epochSetBlock, bondedBlock *Block) ([]probe, []probe) {
 	epochSetProbe := probe{
-		name:   "a mature-epoch commit by frozen members must be accepted; a snapshot that lost epochSet empties frozen membership and rejects it (ErrNoQuorum)",
+		name:   "a mature-epoch commit by frozen members must be accepted; a snapshot that lost epochSet empties frozen membership and rejects it (the proposer fails proposerQualifiedAt; the count floor is 0 since #380)",
 		detect: []string{"epochSet"},
-		ask:    func(c *Chain) string { return quorumVerdict(c, epochSetBlock) },
+		ask:    func(c *Chain) string { return admissionVerdict(c, epochSetBlock) },
 	}
 	bondedProbe := probe{
-		name:   "an objective commit by bonded validators must be accepted; a snapshot that lost bonded rejects it",
+		name:   "an objective commit by bonded validators must be accepted; a snapshot that lost bonded rejects it (the proposer fails proposerQualifiedAt)",
 		detect: []string{"bonded"},
-		ask:    func(c *Chain) string { return quorumVerdict(c, bondedBlock) },
+		ask:    func(c *Chain) string { return admissionVerdict(c, bondedBlock) },
 	}
 	return []probe{epochSetProbe}, []probe{bondedProbe}
 }
@@ -1480,13 +1501,14 @@ func TestEpochWeightBytesAreLoadBearing(t *testing.T) {
 // is invariant under the flatten and the ONLY discriminator left is the ⅔-weight rule.
 //
 // THE ONE SEAM THAT DIFFERS FROM weightBytesWorld — the count floor. In a mature EPOCH
-// RequiredQuorum() returns just Quorum (chain.go:1218), so a small heavy coalition can be
-// a weight-majority but a HEAD-minority — which is what lets the flatten flip. In the
-// de-mature NON-epoch objective regime with ByzantineQuorum, RequiredQuorum() escalates to
-// bftThreshold(qualifiedCount) (chain.go:1220), forcing the coalition to ~⅔ of HEADS — and
-// a head-⅔ coalition ALSO clears a FLATTENED weight-⅔, so the count floor would mask the
-// weight rule. Fix (the analogue of the mature-epoch bypass): ByzantineQuorum=false, so
-// RequiredQuorum()=Quorum=1. The de-mature branch (chain.go:2471) fires regardless of
+// RequiredQuorum() returns 0 (#380 regime (b); it was the bare Quorum before direction
+// (1)), so a small heavy coalition can be a weight-majority but a HEAD-minority — which is
+// what lets the flatten flip. In the de-mature NON-epoch objective regime with
+// ByzantineQuorum, RequiredQuorum() is bftThreshold(qualifiedCount) (regime (a)), forcing
+// the coalition to ~⅔ of HEADS — and a head-⅔ coalition ALSO clears a FLATTENED weight-⅔,
+// so the count floor would mask the weight rule. Fix (the analogue of the mature-epoch
+// bypass): ByzantineQuorum=false (regime (c)), so RequiredQuorum()=Quorum=1. The de-mature
+// branch (chain.go:2471) fires regardless of
 // ByzantineQuorum — it depends only on everMature && objective() && !matureNow() — so the
 // weight rule under test is untouched. A proposer + one attester (5+5 MiB of 12 MiB) is a
 // weight-majority, head-minority coalition.

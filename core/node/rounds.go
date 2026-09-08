@@ -10,6 +10,7 @@ package node
 import (
 	"crypto/ed25519"
 	"encoding/binary"
+	"errors"
 	"fmt"
 
 	"github.com/fxamacker/cbor/v2"
@@ -272,6 +273,18 @@ func (n *Node) verifyRoundChange(rc *roundChangeEnv, height uint64) error {
 	return nil
 }
 
+// errEmptyNewView refuses a new-view certificate that carries no round-change
+// envelope from a sender OTHER than the round's designee (#380 M-380-2). With
+// the mature-epoch count floor at 0, SupportMeetsQuorum — which skips
+// `id == proposer` — over a set with no non-designee sender reduces to the
+// weight rule over the designee alone, so a > 2/3-weight designee could
+// otherwise validate a zero-envelope certificate, or one carrying only its own
+// envelope (PE ruling on d0067fd, B1), and propose fresh, dropping any carried
+// lock. A genuine view change always has >= 1 other sender; the same
+// short-circuit class as the acceptRoundCert Round == 0 guard. Node-side
+// (liveness), not a validity rule.
+var errEmptyNewView = errors.New("new-view certificate carries no round-change envelope from a sender other than the designee")
+
 // newViewFor validates a new-view certificate (the raw signed round-change
 // envelopes carried by a round->0 proposal): every envelope verifies for
 // (height, round), senders are distinct, and together they meet the SAME
@@ -282,8 +295,10 @@ func (n *Node) newViewFor(height, round uint64, raws [][]byte) (forced *nodeLock
 	if round == 0 {
 		return nil, nil // round 0 needs no certificate
 	}
+	designated := n.designatedProposer(height, round)
 	seen := map[ports.NodeID]bool{}
 	ids := make([]ports.NodeID, 0, len(raws))
+	others := 0 // senders other than the designee — the population SupportMeetsQuorum counts
 	var best *nodeLock
 	for _, raw := range raws {
 		var rc roundChangeEnv
@@ -302,12 +317,17 @@ func (n *Node) newViewFor(height, round uint64, raws [][]byte) (forced *nodeLock
 		}
 		seen[id] = true
 		ids = append(ids, id)
+		if id != designated {
+			others++
+		}
 		if len(rc.LockQC) > 0 && (best == nil || rc.LockRound > best.Round) {
 			lb, _ := chain.Decode(rc.LockBlock) // verified above
 			best = &nodeLock{Round: rc.LockRound, Hash: lb.Hash(), QC: rc.LockQC, Block: rc.LockBlock}
 		}
 	}
-	designated := n.designatedProposer(height, round)
+	if others == 0 {
+		return nil, errEmptyNewView // M-380-2: floor 0 must never validate a certificate with no other sender
+	}
 	if !n.chain.SupportMeetsQuorum(designated, ids, height) {
 		return nil, fmt.Errorf("new-view certificate below quorum (%d round-changes)", len(ids))
 	}

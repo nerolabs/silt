@@ -44,7 +44,7 @@ import (
 // the #535 recovery boundary (v5EffectiveEpochSet's recovery arm), de-maturation (v5MatureNow and
 // Q4), the pruned leg of P7, the legacy leg, and the era-3 / era-4 version rules. Each regime
 // asserts one accept and at least one refusal per mirrored stage, and records — right after the
-// by-name assertion that proves it ran — which of the eight uncovered mirrors it drove. The
+// by-name assertion that proves it ran — which of the uncovered mirrors it drove. The
 // closing assertion holds the record to the certification's list.
 //
 // Ablation (M-1A-3): delete one mirrored clause — e.g. the `seenReg[id]` twice-in-one-block check
@@ -52,7 +52,7 @@ import (
 // the regime and the case.
 
 // uncoveredMirrors are the eight mirrors the certification found with ZERO driven coverage before
-// this oracle (§7.2). The oracle must drive every one; a renamed mirror reddens the closing check.
+// this oracle (§7.2), plus v5RequiredQuorum's mature leg (#380 direction (1), regime (b)). The oracle must drive every one; a renamed mirror reddens the closing check.
 var uncoveredMirrors = []string{
 	"v5RequireEpochWeightQuorum",   // Q3
 	"v5RequireDeMatureSuperQuorum", // Q4
@@ -62,6 +62,7 @@ var uncoveredMirrors = []string{
 	"v5RegGateActive",              // the active arm
 	"v5ValidateBondRegs",           // P7's pruned arm
 	"v5RequireProposerQualified",   // the mature-epoch (frozen-set) arm, and v5AttesterQualifiedAt's
+	"v5RequiredQuorum",             // Q1's regime (b) — the mature-epoch floor 0 (#380 direction (1))
 }
 
 // parityWorld is one committed chain plus the signers that can mint on it.
@@ -321,8 +322,39 @@ func TestM1A3_V4V5ParityOracle(t *testing.T) {
 		v4, v5 = w.pair(newcomer, a[1:], nil)
 		w.assertParity(parityCase{name: "mid-epoch newcomer proposes (P4 frozen arm)", v4: v4, v5: v5, want: ErrLowReputation})
 		w.driven("v5RequireProposerQualified", "the frozen-set refusal by name, '… not in the frozen epoch set governing height …'")
+		// The attester frozen arm drops the newcomer, leaving the proposer alone. Q1's floor is 0
+		// in a mature epoch (#380 regime (b)), so the refusal is Q3's, by name — a mirror that
+		// still floored at Params.Quorum would say ErrNoQuorum here and break parity.
 		v4, v5 = w.pair(a[0], []ed25519.PrivateKey{newcomer}, nil)
-		w.assertParity(parityCase{name: "only the newcomer attests (attester frozen arm drops it → Q1)", v4: v4, v5: v5, want: ErrNoQuorum})
+		w.assertParity(parityCase{name: "only the newcomer attests (attester frozen arm drops it → Q1 floor 0 → Q3)", v4: v4, v5: v5, want: ErrNoQuorumWeight})
+		w.driven("v5RequiredQuorum", "regime (b): the proposer alone passes Q1 (floor 0) and is refused by Q3, ErrNoQuorumWeight, node rendering")
+	})
+
+	// ---------------------------------------------------------------------------------------
+	// Regime 3b — the MATURE EPOCH with a WHALE: one frozen member holds > 2/3 of the frozen
+	// weight, so the node ACCEPTS a commit with ZERO non-proposer attestations (#380 regime (b),
+	// gate arm 8c(i)). This is the only world where Q1's floor 0 is observable as an accept.
+	// ---------------------------------------------------------------------------------------
+	t.Run("mature-epoch-whale", func(t *testing.T) {
+		whale := key(93500)
+		extra := []BondReg{bondReg(whale, 20<<20, ports.Hash{})} // 20 of 28 MiB frozen: > 2/3 alone
+		w := newParityWorld(t, "mature-epoch-whale", 93600, Config{Quorum: 1, MinBond: 1 << 20, ByzantineQuorum: true, MatureValidators: 0, EpochBlocks: 2}, extra, drove)
+		a := w.anchors
+		if !w.c.matureEpoch || len(w.c.epochSet) != 5 {
+			t.Fatalf("world: the genesis rotation must freeze the four anchors and the whale; matureEpoch=%v |epochSet|=%d", w.c.matureEpoch, len(w.c.epochSet))
+		}
+		if rq := w.c.RequiredQuorum(); rq != 0 || w.c.cfg.Quorum <= 0 {
+			t.Fatalf("world: RequiredQuorum() must be 0 in the mature epoch with cfg.Quorum (%d) above it; got %d", w.c.cfg.Quorum, rq)
+		}
+		honest4, honest5 := w.pair(whale, nil, nil)
+		assertHonestTwinAccepts(t, w.c, honest5)
+		w.assertParity(parityCase{name: "the whale alone, ZERO attestations (Q1 floor 0, Q3 by weight)", v4: honest4, v5: honest5})
+		w.driven("v5RequiredQuorum", "regime (b): a zero-attestation > 2/3-weight commit ACCEPTED by both twins")
+		v4, v5 := w.pair(a[0], nil, nil)
+		w.assertParity(parityCase{name: "an anchor alone, ZERO attestations (Q1 floor 0 clears, Q3 refuses by name)", v4: v4, v5: v5, want: ErrNoQuorumWeight})
+		w.driven("v5RequiredQuorum", "regime (b): the count floor never fires; the weight rule refuses, ErrNoQuorumWeight, node rendering")
+		v4, v5 = w.pair(a[0], a[1:], nil)
+		w.assertParity(parityCase{name: "the four anchors without the whale (8 of 28 MiB, Q3)", v4: v4, v5: v5, want: ErrNoQuorumWeight})
 	})
 
 	// ---------------------------------------------------------------------------------------
@@ -393,8 +425,10 @@ func TestM1A3_V4V5ParityOracle(t *testing.T) {
 		on.assertParity(parityCase{name: "the non-frozen joiner's attestation carries the weight quorum (recovery arm)", v4: v4, v5: v5})
 		on.driven("v5EffectiveEpochSet", "recovery arm: a non-frozen live-qualified attester counts at LivenessRecoveryHeight")
 		on.driven("v5RequireEpochWeightQuorum", "weight summed over the LIVE set at the recovery boundary (accept)")
+		// With the directive OFF the joiner is dropped and the proposer stands alone; Q1's floor is
+		// 0 in a mature epoch (#380 regime (b)), so the refusal is Q3's (2 of 8 MiB), by name.
 		v4, v5 = off.pair(off.anchors[0], []ed25519.PrivateKey{fresh}, nil)
-		off.assertParity(parityCase{name: "the same block with the directive OFF: the joiner is dropped (Q1)", v4: v4, v5: v5, want: ErrNoQuorum})
+		off.assertParity(parityCase{name: "the same block with the directive OFF: the joiner is dropped (Q1 floor 0 → Q3)", v4: v4, v5: v5, want: ErrNoQuorumWeight})
 		v4, v5 = on.pair(fresh, a[1:], nil)
 		on.assertParity(parityCase{name: "the non-frozen joiner PROPOSES at the recovery boundary (P4 recovery re-base)", v4: v4, v5: v5})
 		v4, v5 = off.pair(fresh, off.anchors[1:], nil)
@@ -501,7 +535,7 @@ func TestM1A3_V4V5ParityOracle(t *testing.T) {
 		}
 	}
 	if len(missing) > 0 {
-		t.Fatalf("M-1A-3 INCOMPLETE: the parity oracle did not drive %v (certification §7.2 lists eight mirrors with zero driven coverage)", missing)
+		t.Fatalf("M-1A-3 INCOMPLETE: the parity oracle did not drive %v (certification §7.2 lists eight mirrors with zero driven coverage; #380 added v5RequiredQuorum)", missing)
 	}
 	var record []string
 	for m, ev := range drove {
