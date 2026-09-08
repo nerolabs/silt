@@ -24,7 +24,7 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   0 >= 0 — the sole anchor commits alone with zero attestations and those blocks read as final, so the cold-start scaffold now
   refuses that posture. Gates `TestDerivedGatherTargetTracksTheByzantineBar` and the new single-anchor arm of
   `TestInvariantB_S6_ColdStartScaffoldRefusedByDefault`, both ablated RED on their mechanism. Every harness in the tree
-  already launches with three or four anchors.
+  already launches with three or four anchors, checked before the change.
 
 ### Removed
 - **The `core/demand` v2 flat primitive (C1, the B-9 tail).** B-9 (#764) retired the flat receipt at the
