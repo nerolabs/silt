@@ -24,9 +24,12 @@ package demand
 //     paid-serial guard (cert §6.3).
 //
 // Receipts are not committed to the chain, so the v3 bump has no era or freeze
-// coupling (the R2.14 argument). The v2 flat path (one token spent at redeem)
-// stays callable until its retirement PR (gate B-9); the two never share a message
-// kind.
+// coupling (the R2.14 argument). The v2 flat path (one token spent at redeem) is
+// RETIRED — the node refused it at B-9 and C1 (2026-09-08) deleted the primitive
+// behind it — so the session lane is the only delivery path this package holds.
+// ports.MsgDeliveryReceipt keeps its kind number and is answered OK=false with a named
+// retirement (core/node handleDeliveryReceipt): a retired kind is never re-used, so no
+// two paths ever share a message kind.
 
 import (
 	"crypto/ed25519"

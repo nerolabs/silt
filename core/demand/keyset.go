@@ -9,7 +9,7 @@ package demand
 // (key_E, E).
 //
 // THE EPOCH IS NOT A TOKEN FIELD AND NOT A RECEIPT FIELD — Token{Serial,Sig} and the
-// signed receiptMsg are byte-identical to the pre-R0.4b shape, so the change adds
+// signed receipt message are byte-identical to the pre-R0.4b shape, so the change adds
 // ZERO new receipt quasi-identifier (cert Verdict 3; the epoch is a CONSENSUS epoch
 // index, not wall-clock, so the R0.4 Q1 refutation of a wall-clock stamp does not
 // reach it). At redemption the epoch is DISCOVERED by trying the held (key_e, e)

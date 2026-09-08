@@ -17,6 +17,7 @@ package guardstore
 //     contents (the F2 shape the realign comment already names).
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"os"
@@ -133,5 +134,80 @@ func TestFreshStoreWritesItsHeader(t *testing.T) {
 	// And it re-opens.
 	if _, err := Open(p); err != nil {
 		t.Fatalf("a store this build wrote does not re-open: %v", err)
+	}
+}
+
+// TestEmptyPreBumpStoreUpgradesButAWrittenOneRefuses is the BLAST RADIUS of the format
+// bump, measured (blind PE ruling
+// RULING-c1-demand-v2-and-flat-leg-retirement-a290bff-2026-09-08.md §2): which operators
+// are actually stopped by it, and which are not.
+//
+// A pre-bump build wrote no header, so a node that armed a paid lane and never paid left
+// a 0-BYTE file. That file is upgraded in place, not refused, and that is the correct
+// call: a header is not a record, no Append ever returned for anything in the file, so
+// there is nothing to mis-frame and nothing to lose. Refusing it would stop the LARGE
+// population — every operator who armed the lane — to protect a state that does not
+// exist.
+//
+// A store carrying at least one written record is refused, and the file is left BYTE-FOR-
+// BYTE intact: the operator's remedy (cmd/silt remedyPaidSerials / remedyCreditSpent, one
+// of which is "rotate the publish key AND clear the log together") is only available if
+// the refusal did not already clear it.
+func TestEmptyPreBumpStoreUpgradesButAWrittenOneRefuses(t *testing.T) {
+	dir := t.TempDir()
+
+	// Arm 1 — the 0-byte pre-bump file: silent in-place upgrade.
+	empty := filepath.Join(dir, "empty.log")
+	if err := os.WriteFile(empty, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	d, err := Open(empty)
+	if err != nil {
+		t.Fatalf("a 0-byte pre-bump store was refused (%v). It holds no record, so refusing it "+
+			"stops every operator who armed a paid lane and never paid, to protect nothing", err)
+	}
+	st, err := os.Stat(empty)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Size() != headerSize {
+		t.Fatalf("after Open the 0-byte store is %d bytes, want %d (the header, written in place)", st.Size(), headerSize)
+	}
+	// And it is a working store, not merely one that opened.
+	if err := d.Append(entry(1, 1)); err != nil {
+		t.Fatal(err)
+	}
+	got, err := d.Load()
+	if err != nil || len(got) != 1 {
+		t.Fatalf("the upgraded store loaded %d records (err %v), want 1", len(got), err)
+	}
+	d.Close()
+
+	// Arm 2 — one written pre-bump record: refused, and the bytes survive the refusal.
+	const legacyRecSize = 1 + maxSerialBytes + 32 + 8
+	written := filepath.Join(dir, "written.log")
+	blob := make([]byte, legacyRecSize)
+	blob[0], blob[1], blob[2] = 2, 's', 1
+	if err := os.WriteFile(written, blob, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	d2, err := Open(written)
+	if err == nil {
+		d2.Close()
+		t.Fatal("a pre-bump store holding ONE record opened cleanly — its 73-byte record is re-framed " +
+			"at the new 74-byte width (the F2 mis-framing)")
+	}
+	if !errors.Is(err, ErrLegacyFormat) {
+		t.Fatalf("Open returned %v, want ErrLegacyFormat", err)
+	}
+	after, rerr := os.ReadFile(written)
+	if rerr != nil {
+		t.Fatal(rerr)
+	}
+	if !bytes.Equal(after, blob) {
+		t.Fatalf("the refusal rewrote the file (%d bytes, was %d). A refusal that clears the store "+
+			"destroys the state the operator's remedy needs — on creditspent.log the ratified remedy "+
+			"is to rotate the publish key AND clear the log together, which is not available once the "+
+			"adapter has cleared it unilaterally", len(after), len(blob))
 	}
 }

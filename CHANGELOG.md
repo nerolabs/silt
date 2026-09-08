@@ -48,12 +48,28 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   `(2, 1)` before a restart, `(3, 0)` after). `ports.PaidSerial` gains a `Relay` flag, `adapters/guardstore`
   bumps its on-disk format to version 2 (an 8-byte magic + version header, a 74-byte record with the lane byte
   last), and `RestoredGuardEntries` now counts DELIVERY-lane entries only — the honest upper bound on deposits a
-  restart lost, since a relay anchor keeps its burn and never had a deposit. **Compatibility:** a store written
-  by a pre-bump build is a refuse-to-start error (`guardstore.ErrLegacyFormat`) naming the file, not a silent
-  migration — a version-1 record has no lane, and the only guess available is the very mis-count this closes.
-  Gates: `TestRestoredGuardEntriesKeepTheirLane` (core/credit, the mixed-population restart),
-  `TestRecordCarriesTheLane`, `TestPreLaneFormatIsRefusedNotSilentlyReframed`, `TestFreshStoreWritesItsHeader`
-  (adapters/guardstore); three controlled reverts, three RED.
+  restart lost, since a relay anchor keeps its burn and never had a deposit.
+
+  **Compatibility — read this before clearing a guard file.** A store written by a pre-bump build that holds at
+  least one record is a refuse-to-start error (`guardstore.ErrLegacyFormat`) naming the file, not a silent
+  migration: a version-1 record has no lane, and the only guess available is the very mis-count this closes. A
+  **0-byte** pre-bump file (a node that armed a paid lane and never paid) is upgraded in place, not refused —
+  it holds no record, so there is nothing to mis-frame. The daemon opens this adapter on **two** files, and
+  their remedies are opposite:
+  - `<store>/paidserials.log` — stop the daemon, remove the file, restart. Through the RC the credit ledger is
+    ephemeral (`D-FP2-SCOPE`): balances reset at the same restart, so the guard protects payouts whose credits
+    no longer exist and clearing it costs nothing.
+  - `<store>/creditspent.log` — **do NOT clear this file on its own.** The publish issuer key persists, so every
+    credit it signed stays spendable and an empty guard re-opens each held credit for a second spend. Rotate the
+    publish key AND clear `creditspent.log` **together**, in one stop (`R-CREDITSPENT-UNBOUNDED`, owner call 6,
+    `D-TRUE-UP-CALLS-2026-09-07`). The refusal never rewrites the file, so that remedy stays available.
+
+  `guardstore.ErrLegacyFormat` therefore states the condition and names no remedy; `cmd/silt` attaches the
+  per-file remedy at each open site. Gates: `TestRestoredGuardEntriesKeepTheirLane` (core/credit, the
+  mixed-population restart), `TestRecordCarriesTheLane`, `TestPreLaneFormatIsRefusedNotSilentlyReframed`,
+  `TestFreshStoreWritesItsHeader`, `TestEmptyPreBumpStoreUpgradesButAWrittenOneRefuses` (adapters/guardstore),
+  `TestGuardStoreRemedyTextIsSafePerStore`, `TestDaemonPairsEachGuardStoreWithItsOwnRemedy` (cmd/silt); seven
+  controlled reverts, seven RED.
 
 ### Docs
 - **The 2026-09-08 ROADMAP reorder — simplicity, by owner direction via the PE (`D-RECOMPUTE-FREEZE`).** The

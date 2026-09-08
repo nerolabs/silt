@@ -27,8 +27,8 @@ import (
 //     redeemable receipt. It is domain-separated from the SessionReceipt signature
 //     so a server cannot convert "the fetcher engaged" into a fake
 //     completed delivery. The unforgeability bound (#receipts(C) ≤ #completed
-//     paid deliveries) survives the abort path: only Ack's receipt-domain
-//     signature redeems.
+//     paid deliveries) survives the abort path: only a SessionReceipt signed under
+//     receiptDomainV3, settled on an admitted session, credits the server.
 //
 // WHAT IS GATED (the dispute-RESOLUTION half, deliberately not built): converting a
 // server-held commitment into a TTP-affidavit receipt on a fetcher default requires

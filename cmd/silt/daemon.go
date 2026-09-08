@@ -758,11 +758,11 @@ func cmdDaemon(args []string) error {
 	}
 	if *acceptReceipts || *acceptRelayPayments {
 		if gs, gerr := guardstore.Open(filepath.Join(*storeDir, "paidserials.log")); gerr != nil {
-			return fmt.Errorf("delivery-credit guard store: %w", gerr)
+			return fmt.Errorf("delivery-credit guard store: %w\n%s", gerr, remedyPaidSerials)
 		} else {
 			ledger.SetPaidSerialStore(gs)
 			if lerr := ledger.LoadPaidSerials(); lerr != nil {
-				return fmt.Errorf("delivery-credit guard store: %w", lerr)
+				return fmt.Errorf("delivery-credit guard store: %w\n%s", lerr, remedyPaidSerials)
 			}
 			// R2.9 (G-6R-9): sessions and deposits are ephemeral; the guard is durable. Every
 			// restored entry is an anchor whose session (and any deposit) did not survive, so
@@ -1012,11 +1012,11 @@ func cmdDaemon(args []string) error {
 			// silently starting with an empty guard IS the eviction. Never the
 			// paid-serial file: its Compact keeps only the ledger's live set.
 			if cs, cerr := guardstore.Open(filepath.Join(*storeDir, "creditspent.log")); cerr != nil {
-				return fmt.Errorf("publish-credit guard store: %w", cerr)
+				return fmt.Errorf("publish-credit guard store: %w\n%s", cerr, remedyCreditSpent)
 			} else {
 				nd.SetCreditSpentStore(cs)
 				if lerr := nd.LoadCreditSpent(); lerr != nil {
-					return fmt.Errorf("publish-credit guard store: %w", lerr)
+					return fmt.Errorf("publish-credit guard store: %w\n%s", lerr, remedyCreditSpent)
 				}
 			}
 			// R2.14 (advisory finding E): the per-epoch demand-key schedule runs under

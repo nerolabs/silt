@@ -84,6 +84,8 @@ var ErrCorrupt = errors.New("guardstore: paid-serial store is corrupt")
 // Compact fails with it, so the ledger refuses the payout (ReasonGuardStore) instead
 // of paying against a guard entry a restart would never see. Loud beats silent here:
 // the silent form of this state is R-COMPACT-ORPHAN, an over-pay.
+var ErrStoreBroken = errors.New("guardstore: paid-serial store is broken (append handle no longer trusted; restart to recover)")
+
 // ErrLegacyFormat marks a store written by a build from before the record carried its
 // lane byte (format version 1: headerless, 73-byte records). It is a REFUSE-TO-START
 // error, and that is the compatibility rule for this bump.
@@ -94,13 +96,24 @@ var ErrCorrupt = errors.New("guardstore: paid-serial store is corrupt")
 // durable file at the next compaction. Refusing states it at the one moment an operator
 // can still act on it.
 //
-// WHAT AN OPERATOR DOES. Through the RC the credit ledger is ephemeral (D-FP2-SCOPE):
-// balances reset at the same restart, so a version-1 file guards payouts whose credits
-// no longer exist and removing it costs nothing. That stops being true the moment the
-// ledger persists, which is why this is the operator's call and not the adapter's.
-var ErrLegacyFormat = errors.New("guardstore: paid-serial store predates the lane byte (format 1); it carries no lane and this build will not guess one")
-
-var ErrStoreBroken = errors.New("guardstore: paid-serial store is broken (append handle no longer trusted; restart to recover)")
+// IT NAMES NO REMEDY, AND THAT IS DELIBERATE. This adapter is opened on TWO files whose
+// remedies are OPPOSITE (cmd/silt/daemon.go). On paidserials.log the credit ledger is
+// ephemeral through the RC (D-FP2-SCOPE), so the file guards payouts whose credits reset
+// at the same restart and removing it costs nothing. On creditspent.log the publish
+// issuer key PERSISTS, so a credit it signed stays spendable: clearing that guard alone
+// re-opens every held credit for a second spend (the F-4 pump,
+// core/node/r213b_creditspent_test.go), and the ratified rule is to rotate the publish
+// key AND clear the log together (R-CREDITSPENT-UNBOUNDED, owner call 6,
+// D-TRUE-UP-CALLS-2026-09-07). One remedy in this sentinel would be wrong on one of the
+// two files, so the sentinel states the CONDITION and the caller attaches the remedy for
+// the file it opened (cmd/silt remedyPaidSerials / remedyCreditSpent, gated by
+// TestGuardStoreRemedyTextIsSafePerStore).
+//
+// A 0-byte pre-bump file is NOT refused: prepareHeader upgrades it in place, because no
+// record was ever appended past a header that does not exist — there is nothing to
+// mis-frame and nothing to lose. Only a store carrying at least one written record
+// refuses. TestEmptyPreBumpStoreUpgradesButAWrittenOneRefuses pins both arms.
+var ErrLegacyFormat = errors.New("guardstore: this store predates the lane byte (format 1); its records carry no lane and this build will not guess one")
 
 // openAppend is the OS hook used to open the append handle, both in Open and on the
 // temp file inside Compact. Indirected ONLY so a test can force that open to fail
