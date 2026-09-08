@@ -83,6 +83,7 @@ var compositionHelpers = []struct{ helper, node, why string }{
 	{"v5RegGateActive", "regGateActive", "the #506 gate activation"},
 	{"v5RestoresHeldStanding", "restoresHeldStanding", "the #506 R-interval exemption"},
 	{"v5ValidatorSetSize", "validatorSetSize", "N for the Byzantine threshold"},
+	{"v5RequiredQuorum", "RequiredQuorum", "Q1's count floor by regime (#380 M-380-3: the row Q1 carries Node \"\" because RequiredQuorum returns int, not error, so arm A cannot derive it; this row is what makes G-D13 pin its body)"},
 	{"v5MatureNow", "matureNow", "the objective maturity metric"},
 }
 
@@ -523,6 +524,7 @@ func TestStageCover_ArmC_ReverseCover(t *testing.T) {
 // preserved because the gate names the rows.
 var nodeBodyDigests = map[string]string{
 	"ValidateEntry":              "f6844363fb7212b625f60ca726f3d361b7b3eaca7f4af22efb33703c2f5bf3e5",
+	"RequiredQuorum":             "c3a413ba707abae6cfdd40806fe5c195a79a2c4a7e4fa2939d8ee1cb92257454",
 	"ValidateProposal":           "6d873361520430de96ae22073a77d9e1c13455df6940950c925641621446449f",
 	"attesterQualifiedAt":        "fd5de208dcecba70d1fcaf32172ef185c20b12020413ba7fff0ddd04fef3723f",
 	"collectQuorumSigs":          "9f48ce5d93ade7351cf817212e823e420c5480f542f4d9bd4c3dd732c86ecbb8",

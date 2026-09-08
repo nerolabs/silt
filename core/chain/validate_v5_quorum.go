@@ -334,28 +334,29 @@ func v5RequireQuorumStack(v StateView, b *Block, seen map[ports.NodeID]bool) (Fl
 	return Accept, nil
 }
 
-// v5RequiredQuorum mirrors Chain.RequiredQuorum.
+// v5RequiredQuorum mirrors Chain.RequiredQuorum EXACTLY, regime by regime (#380 direction (1),
+// research certification CONSENSUS-380-quorum-floor-direction-1-PREDICATE-AND-CERTIFICATION
+// §3): (c)/(d) the config's Quorum; (b) mature epoch: 0, the >2/3 frozen-WEIGHT rule is the bar;
+// (a) bftThreshold(N). Params.Quorum is a threshold input on the legacy / opt-out leg ONLY.
+// Pinned by G-D13 through the compositionHelpers row; driven by the parity oracle's mature
+// regimes (the whale world, where the node accepts a zero-attestation commit).
 func v5RequiredQuorum(v StateView) (int, FloorBoxOutcome, error) {
 	p := v.Params()
-	q := p.Quorum
 	if !p.ByzantineQuorum || !v.Objective() {
-		return q, Accept, nil
+		return p.Quorum, Accept, nil // (c) trusted opt-out, (d) legacy
 	}
 	mature, out, err := v5MatureEpochRegime(v)
 	if out != Accept {
 		return 0, out, err
 	}
 	if mature {
-		return q, Accept, nil // the >2/3 weight rule carries the Byzantine bar
+		return 0, Accept, nil // (b) the >2/3 frozen-weight rule IS the Byzantine bar (B2)
 	}
 	n, out, err := v5ValidatorSetSize(v)
 	if out != Accept {
 		return 0, out, err
 	}
-	if bq := bftThreshold(n); bq > q {
-		q = bq
-	}
-	return q, Accept, nil
+	return bftThreshold(n), Accept, nil // (a)
 }
 
 // v5ValidatorSetSize mirrors Chain.validatorSetSize.
