@@ -3,6 +3,7 @@ package chain
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/printer"
@@ -498,5 +499,125 @@ func TestStageCover_ArmC_ReverseCover(t *testing.T) {
 				"helper (compositionHelpers). An INVENTED stage would make the box refuse where the node accepts — legal by the "+
 				"implication, but it is not the node's rule and it is not in the certified table. Name it or remove it.", name)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// G-D13 — PER-ROW NODE-BODY DIGESTS (M-1A-5; research certification
+// FLOORBOX-STRUCTURE-ROUND-1A-COMPOSED-DIFF-869399e §3.1, option (2))
+// ---------------------------------------------------------------------------
+
+// nodeBodyDigests pins the sha256 of the comment-free body of EVERY node function that nodeStages
+// (validate_v5.go) or compositionHelpers names as mirrored by the composition — the ~34 bodies
+// arm B's three-function scope does not see. One digest per node function; the failure names
+// every table row that mirrors it, so a red says exactly which mirror to re-derive.
+//
+// THE SAME-COMMIT RULE. A change inside any of these bodies is an accept-path change for a v5
+// block that the composition does NOT carry until its mirror is re-derived. The correct action on
+// a red is: re-derive the named mirror against the new body line by line, then update the digest
+// in the SAME commit. Updating the digest alone is the era-keyed consensus-rule split this gate
+// exists to catch (R-PTABLE-DRIFT, re-scoped 2026-09-08 to "~34 bodies covered by nothing").
+//
+// The table lives here, beside arm B's digest, not in the production nodeStages table: a
+// production table carries no test pins, and the attribution the certification asked for is
+// preserved because the gate names the rows.
+var nodeBodyDigests = map[string]string{
+	"ValidateEntry":              "f6844363fb7212b625f60ca726f3d361b7b3eaca7f4af22efb33703c2f5bf3e5",
+	"ValidateProposal":           "6d873361520430de96ae22073a77d9e1c13455df6940950c925641621446449f",
+	"attesterQualifiedAt":        "fd5de208dcecba70d1fcaf32172ef185c20b12020413ba7fff0ddd04fef3723f",
+	"collectQuorumSigs":          "9f48ce5d93ade7351cf817212e823e420c5480f542f4d9bd4c3dd732c86ecbb8",
+	"effectiveEpochSet":          "8da6023fc1b8b0e5482b8f8c275ad9d93a7db8edf304750fdd15e6bfca4d292a",
+	"epochsEnabled":              "d60a5734d37abe1722fcc7f4dc6f42a510eaa6bd04d56b0ab4975fa48ed50f18",
+	"era3Active":                 "883666c754351a281949e98123de50205e93d7114e02ea4226e56448cc8206d2",
+	"handedOff":                  "07e38df939a4eadebcb2decd5d90589fe3b8d409502125fb677a17aea77a53b1",
+	"matureNow":                  "1ae3776705326b6589ed476873070414d3f733d9df6f9480098e7bfda1d8a41e",
+	"postApplyRoots":             "cf7fec5d6d0ec420f664095e1352cf3b1700998284b23b3cae8137874ba2d531",
+	"recentBondRegNonces":        "ba7a00623b0f6c0d94b95b73921a0e91f66b983d2f4d42e29cd779a46d42454d",
+	"regGateActive":              "4d369be6273149966e31991f923749eef5d1b2162b0d865f78a10ed4a0a5ee72",
+	"requireDeMatureSuperQuorum": "0470237c9c4760af6a9059e9da5fdd526855d7dc0ad1fa658c4789bb22a001e1",
+	"requireEpochWeightQuorum":   "11ea038dd07b4b1a3bf05f9b744b6e4dbddebdf199d2617f552abcb5bb5c7982",
+	"requireProposerPrepare":     "886222aad2d479ea066e28f8a91a0b0a1698b2785d887cc16b699ee71936d0a4",
+	"requireQuorumStack":         "b5553c3f61494bdd91506782f56bd25ddb778a7bf522eee10dd6af7932633138",
+	"restoresHeldStanding":       "1dd120f427f6eb4c3f93103afa61770b4bf2f03153c5bfc97596d04e1263d499",
+	"validateBondReg":            "595b695e1d665885b4de70585fe94ed4b09654ce956b6b08fe712665b80f3bf6",
+	"validateBondRegWindow":      "cceaf238101c9a751ebba1bfcb406ce01c90387d03fc62fdd8015b5e98ad7745",
+	"validateBondRegs":           "ec0fdfd68d488ca5faa1d72462be6e9af04485217cd296f55ad08b88e8516042",
+	"validateCarrier":            "fb137538622a06a27dea8039ddc0438889c94230d729cd3cae8e74ea13a7508a",
+	"validateEra3Roots":          "a7ec421d2ea91224cec48dc7cfe34f935908fdf0bc46d8e3dcbd8addf6823b92",
+	"validateEra3Version":        "1ff98cdc43e91fb10dc080c41a0c788beb6b8ddc06a87461a7fceea55fe4dc0b",
+	"validateEra4Version":        "9a1a52aa6d4d5182afddeae6b3b3da3fb6b1b93e1a517b6b026c687afd33edac",
+	"validateIssuerKeys":         "801f04536b8794a5fca36adb65e76c58589c677da378e42da613fed6af75f324",
+	"validateSlashes":            "d974467343b1839b528ac15f77ff34531b21758395fa140e59602d6e6d28c0e0",
+	"validateTakedowns":          "4250eff489a8869f843815a411c1351ff9ba616c31c4c0a3a7f5d7637e1d52aa",
+	"validatorSetSize":           "393c775422214e528015d9833602d1ee7b6a58e4e5da45c2f339d604f4aae919",
+}
+
+// TestGD13_PerRowNodeBodyDigests: every node function named by a nodeStages row (transitively) or
+// by a compositionHelpers entry has a pinned digest, the digest matches, and there are at least 24
+// of them (so nobody empties the table). Ablation (G-D13): add `&& true` to a clause inside
+// validateBondRegs ⇒ RED naming P7 / v5ValidateBondRegs.
+// SOURCE GATE: a body digest is a CHANGE DETECTOR, not a cover proof. RUNTIME GATE:
+// TestM1A3_V4V5ParityOracle (the v4 bodies against the v5 mirrors across the regimes).
+func TestGD13_PerRowNodeBodyDigests(t *testing.T) {
+	requireV5Fixture(t)
+	node := parseIndex(t, nodeStageFiles)
+
+	// node function → the rows / helpers that mirror it.
+	mirroredBy := map[string][]string{}
+	var collect func(rows []nodeStage, path string)
+	collect = func(rows []nodeStage, path string) {
+		for _, row := range rows {
+			label := path + row.ID
+			if row.ID == "" {
+				label = path + "nested:" + row.Node
+			}
+			if row.Node != "" {
+				what := row.Mirror
+				if row.Substituted != "" {
+					what = "substituted → StateView.CommittedRoots"
+				}
+				mirroredBy[row.Node] = append(mirroredBy[row.Node], label+" ("+what+")")
+			}
+			collect(row.Nested, label+"/")
+		}
+	}
+	collect(nodeStages, "")
+	for _, h := range compositionHelpers {
+		if h.node != "" {
+			mirroredBy[h.node] = append(mirroredBy[h.node], "helper "+h.helper)
+		}
+	}
+
+	var names []string
+	for n := range mirroredBy {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	if len(names) < 24 {
+		t.Fatalf("SOURCE GATE: G-D13 VACUOUS — only %d mirrored node functions derived from nodeStages + compositionHelpers (floor 24)", len(names))
+	}
+	var problems []string
+	for _, n := range names {
+		got := nodeBodyDigest(t, node, n)
+		want, pinned := nodeBodyDigests[n]
+		switch {
+		case !pinned:
+			problems = append(problems, fmt.Sprintf("  %s: NOT PINNED — mirrored by %v; add\n      %q: %q,", n, mirroredBy[n], n, got))
+		case got != want:
+			problems = append(problems, fmt.Sprintf("  %s: body CHANGED — hashes to %s, pinned %s; mirrored by %v", n, got[:16], want[:16], mirroredBy[n]))
+		}
+	}
+	for n := range nodeBodyDigests {
+		if _, ok := mirroredBy[n]; !ok {
+			problems = append(problems, fmt.Sprintf("  %s: pinned but no nodeStages row or compositionHelpers entry mirrors it — delete the pin or restore the row", n))
+		}
+	}
+	if len(problems) > 0 {
+		sort.Strings(problems)
+		t.Fatalf("SOURCE GATE: G-D13 — a node body the composition MIRRORS changed (or is unpinned):\n%s\n\n"+
+			"  Re-derive the named mirror(s) against the new body line by line (P-table delta certification §1;\n"+
+			"  composed-diff certification §3.1), then update nodeBodyDigests in the SAME commit. Updating the\n"+
+			"  digest alone splits the v5 accept path from the v2/v4 path — the era-keyed consensus-rule split\n"+
+			"  R-PTABLE-DRIFT names.", strings.Join(problems, "\n"))
 	}
 }

@@ -112,6 +112,18 @@ type nodeStage struct {
 // ValidateProposal / ValidateCommit / requireQuorumStack by AST walk and asserts this table equals
 // the derivation, element for element, including order; then asserts every row is carried by the
 // composition. Do not hand-edit this table without the gate: it drifted once in four days.
+//
+// TWO ACCELERATOR SUBSTITUTIONS THIS TABLE DOES NOT SHOW (PE ruling F-5, 2026-09-08). The one
+// SUBSTITUTED row is validateEra3Roots. Two node helpers that return no error — and so are not
+// rows — are also not mirrored but replaced by the era-4 committed accelerator: qualifiedCount()
+// (chain.go, a live filter over bonded/slashed/MinBond) is read as len(Qualified()) in
+// v5ValidatorSetSize, and liveQualifiedSet() is read as Qualified() in v5EffectiveEpochSet's
+// recovery arm. Equal iff the era-4 maintenance invariant qualified == filter(bonded, slashed,
+// MinBond) holds at the five apply() sites; the guard is TestQualifiedMaintenanceDriftGuard
+// (modelcheck_era4_maintenance_test.go), which must not be weakened — for a v5 block
+// len(qualified) is now an input to RequiredQuorum, a safety quantity
+// (R-QUALIFIED-ACCELERATOR-SAFETY). The v4/v5 parity oracle drives both reads against the node's
+// live filters (the recovery-boundary and de-mature regimes).
 var nodeStages = []nodeStage{
 	// ---- ValidateProposal (chain.go) ----
 	{ID: "P1", Node: "", Mirror: ""},                           // parent binding: (b.Height, b.Prev) vs v.Head()
