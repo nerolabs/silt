@@ -112,6 +112,33 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   #766) — R2.9's wire proof this run is the local e2e only.
 
 ### Added
+- **R2.7 blocking telemetry, detector A4 — escrow laundering by self-repair (Lane C4, Economist advisory
+  `ADVISORY-boulder2-telemetry-spec-R2.4-checklist-and-RC-scope-2026-09-07` §1.2).** The advisory's
+  `bountyPaidToEscrowFunder` is DEGENERATE — every credit entering an escrow on a silt ledger is placed there
+  by that node itself, so "the payee also funded this escrow" reduces to "the payee is this node" — and it is
+  replaced by three parts, none of which needs a `(fetcher × object)` join (that join is the access record
+  Don't #3 forbids). **A4-1:** `objectEscrow.funded` splits into `fundedPrepay` (`FundEscrow`) and
+  `fundedSkim` (`RecordServeToObject`, `SettleDelivery`); `reverseLane` claws back the SKIM leg only, because
+  a reversal only ever undoes a serve's own auto-skim. The published `funded` is now DERIVED from the two
+  legs rather than a third accumulator, and its value does not move. The wash loop's recoverable money is the
+  skim, so without this split "escrow recovered by self-repair" has no denominator and the S5 qualifier
+  cannot be evaluated at all. **A4-2:** `Stats.BountyPaidToSelf` and `Stats.BountyCreditsPaidToSelf` on the
+  NODE (the ledger does not know its own id), fired in `settleRepairVerdict` where the bounty pays and both
+  `n.id` and `claim.Holder` are in hand. `claim.Holder` is attacker-declared on an inbound `MsgRepairClaim`
+  and nothing refuses a claim naming the judge itself, so this is reachable; an honest judge never pays
+  itself, so any non-zero value is the self-dealing shape. **A4-3:** `BountyToPriorFetcher()` on
+  `credit.Ledger` — bounties released to a repairer with `fetchedBytes > 0` at payment time, read off account
+  state that already exists, adding no map. It is a SHAPE, not a detection: a repairer may legitimately have
+  fetched survivor shards from this judge, so it ships with its honest limit on the wire and is never a
+  slashing or disbursement input. Surfaces: A4-1 on `durability.objects[]` (`fundedPrepay` / `fundedSkim`) and
+  on `/api/economy/self` as `prepayIn` / `autoSkimIn` beside the combined `skimIn`, both already token-gated;
+  A4-2 on the `stats` block; A4-3 on `economyRevenue`, which is REBUILT rather than passed through in
+  `withheldEconomySelf` — the allow-list sits at the `economySelf` field level, so a field added inside
+  `economyRevenue` would otherwise ship open, and a bounty-out figure on a one-root node is that root's
+  withheld `objects[].bountyOut`. Gates, each run RED under a controlled revert:
+  `TestEscrowFundedSplitsPrepayFromSkim`, `TestBountyPaidToSelfCountsTheJudgeAsHolder` (its third-party arm
+  is the ablation), `TestBountyToAPriorFetcherIsFlaggedNotBlocked` (both payments settle identically —
+  flagged is never blocked).
 - **R2.7 blocking telemetry, detector A2 — supersede suppression (Lane C4, Economist advisory
   `ADVISORY-boulder2-telemetry-spec-R2.4-checklist-and-RC-scope-2026-09-07` §1.1).** Three node-wide `int64`
   counters on `credit.Ledger` — `serveBytesObjectAware` (`RecordServeToObject`), `serveBytesWitnessed`

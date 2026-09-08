@@ -96,6 +96,9 @@ var standingClassification = map[string]standingClass{
 	"DurabilitySnapshot":  neutral, // observability (finite-but-renewable instrument input)
 	"RepairsDone":         neutral, // observability (per-node repair-work count; no standing)
 	"BountyEarned":        neutral, // observability (repair revenue split; no standing)
+	// A4-3 (R2.7): a node-wide count of bounties released to a prior fetcher. Reads
+	// account state, writes two counters, touches no bond and no balance.
+	"BountyToPriorFetcher": neutral, // observability (wash SHAPE; never a slashing input)
 
 	// PoD neutral lane. The witnessed delivery credit is a CONSERVED balance transfer
 	// (the fetcher's burned anchor face, less skim) that supersedes the serve

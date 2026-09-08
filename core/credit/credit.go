@@ -373,7 +373,19 @@ type Ledger struct {
 	// cap FIFO-confiscated the accumulator (delivery.go laneFor). A direct T-AR wage
 	// measurement; nothing else on main sees it.
 	serveBytesLaneEvicted int64
-	sweeps                int64
+	// A4-3 (R2.7 detector A4, Economist advisory §1.2): repair bounties this ledger paid
+	// to a repairer that had ALREADY FETCHED bytes from this node at payment time — the
+	// round-trip shape of the escrow wash. Read off account state that already exists
+	// (fetchedBytes); adds no map and no identity×object join (Don't #3).
+	//
+	// HONEST LIMIT, and it bounds the use: a repairer may legitimately have fetched
+	// survivor shards from this judge, so this is a SHAPE, not a detection (Douceur;
+	// authenticityKnowable false, the convention /api/economy/self already uses). It is
+	// one-sided-informative — a high ratio alongside high wash.symmetry is the
+	// signature — and it is NEVER a slashing or disbursement input.
+	bountyToPriorFetcherPayments int64
+	bountyToPriorFetcherCredits  int64
+	sweeps                       int64
 	// compactFailures / lastCompactErr record a durable-store Compact that returned an
 	// error at the sweep (R2.13). Observability, never a refusal: see
 	// sweepExpiredSerials for the two-class rule.

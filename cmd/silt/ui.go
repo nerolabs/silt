@@ -1028,12 +1028,17 @@ type durabilityInfo struct {
 }
 
 type objDurability struct {
-	Root       string `json:"root"`
-	Reserve    int64  `json:"reserve"`
-	Funded     int64  `json:"funded"`
-	Paid       int64  `json:"paid"`
-	Repairs    int64  `json:"repairs"`
-	HorizonSec int64  `json:"horizonSec"` // -1 = not yet measurable (no burn observed); >=0 = projected
+	Root    string `json:"root"`
+	Reserve int64  `json:"reserve"`
+	Funded  int64  `json:"funded"`
+	// A4-1 (R2.7): the two legs of Funded. The wash loop's recoverable money is the
+	// SKIM; a combined figure leaves "escrow recovered by self-repair" with no
+	// denominator. Rides this block's existing token gate + detailWithheld (F2).
+	FundedPrepay int64 `json:"fundedPrepay"`
+	FundedSkim   int64 `json:"fundedSkim"`
+	Paid         int64 `json:"paid"`
+	Repairs      int64 `json:"repairs"`
+	HorizonSec   int64 `json:"horizonSec"` // -1 = not yet measurable (no burn observed); >=0 = projected
 	// Finite is credit.Horizon's own second return: true only when a real burn has
 	// been observed (Paid>0) so the horizon is measurable. false renders as "horizon
 	// not yet measurable", NEVER as "perpetual" (instruments.go:47-49) — never fake
@@ -1072,14 +1077,16 @@ func (s *uiServer) durabilitySnapshot(uptime time.Duration) *durabilityInfo {
 			cliff = h <= horizonWarningWindow
 		}
 		di.Objects = append(di.Objects, objDurability{
-			Root:       rd.Root.String(),
-			Reserve:    rd.Snapshot.Balance,
-			Funded:     rd.Snapshot.Funded,
-			Paid:       rd.Snapshot.Paid,
-			Repairs:    rd.Snapshot.Repairs,
-			HorizonSec: hs,
-			Finite:     finite,
-			Cliff:      cliff,
+			Root:         rd.Root.String(),
+			Reserve:      rd.Snapshot.Balance,
+			Funded:       rd.Snapshot.Funded,
+			FundedPrepay: rd.Snapshot.FundedPrepay,
+			FundedSkim:   rd.Snapshot.FundedSkim,
+			Paid:         rd.Snapshot.Paid,
+			Repairs:      rd.Snapshot.Repairs,
+			HorizonSec:   hs,
+			Finite:       finite,
+			Cliff:        cliff,
 		})
 	}
 	return di
@@ -1141,15 +1148,19 @@ func (s *uiServer) apiEconomySelf(w http.ResponseWriter, r *http.Request) {
 	// Panel 3 (is durability self-funding): skim-in vs bounty-out. funded is the
 	// lifetime skim-in (prepay + auto-skim); paid is the lifetime bounty-out. A
 	// persistent paid>funded is the drain signal. Pooled + per-object.
-	var poolFunded, poolPaid int64
+	var poolFunded, poolPrepay, poolSkim, poolPaid int64
 	objects := make([]economyObject, 0, len(di.Objects))
 	for _, o := range di.Objects {
 		poolFunded += o.Funded
+		poolPrepay += o.FundedPrepay
+		poolSkim += o.FundedSkim
 		poolPaid += o.Paid
 		objects = append(objects, economyObject{
 			Root:       o.Root,
 			Reserve:    o.Reserve,
 			SkimIn:     o.Funded,
+			PrepayIn:   o.FundedPrepay,
+			AutoSkimIn: o.FundedSkim,
 			BountyOut:  o.Paid,
 			Net:        o.Funded - o.Paid,
 			Repairs:    o.Repairs,
@@ -1194,6 +1205,11 @@ func (s *uiServer) apiEconomySelf(w http.ResponseWriter, r *http.Request) {
 			// negative if the node has spent (funded escrows, publish fees) more than
 			// it earned serving — that is real and honestly shown.
 			ServeRevenue: self.Balance - self.BountyEarned,
+			// A4-3: the wash SHAPE, carried with its honest limit on the wire so no
+			// reader can quote the number without the caveat.
+			BountyPaidToPriorFetcherPayments: self.BountyToPriorFetcherPayments,
+			BountyPaidToPriorFetcherCredits:  self.BountyToPriorFetcherCredits,
+			BountyPaidToPriorFetcherNote:     "SHAPE only: a repairer may legitimately have fetched survivor shards from this judge. Read beside wash.symmetry; never a slashing or disbursement input",
 		},
 		Margin: &economyMargin{
 			CostGiven: costGiven,
@@ -1202,10 +1218,12 @@ func (s *uiServer) apiEconomySelf(w http.ResponseWriter, r *http.Request) {
 			Note:      "revenue is local-exact; cost is operator-supplied (?cost=N), so margin is exact GIVEN your cost number",
 		},
 		SelfFunding: &economySelfFunding{
-			SkimIn:    poolFunded,
-			BountyOut: poolPaid,
-			Net:       poolFunded - poolPaid,
-			BountyOn:  di.BountyOn,
+			SkimIn:     poolFunded,
+			PrepayIn:   poolPrepay,
+			AutoSkimIn: poolSkim,
+			BountyOut:  poolPaid,
+			Net:        poolFunded - poolPaid,
+			BountyOn:   di.BountyOn,
 		},
 		Wash: &economyWash{
 			Symmetry:             symmetry,
@@ -1240,10 +1258,25 @@ func (s *uiServer) apiEconomySelf(w http.ResponseWriter, r *http.Request) {
 // /api/status publishes and the observatory reads; on a node holding one root they are
 // that root's counters (R-BB-SIBLING-AGGREGATES — closed by default since D-UI-PRIVACY-FLAG:
 // withheld from unauthenticated readers unless the operator runs -privacy=off; see readerView).
+//
+// REVENUE IS REBUILT, not passed through (A4-3, R2.7). The allow-list is at the
+// economySelf field level, so a field added to economyRevenue would ship OPEN — the
+// exact shape this comment warns about, one level down. bountyPaidToPriorFetcher* is a
+// bounty-out figure: on a node caretaking ONE root it IS that root's withheld
+// objects[].bountyOut while /api/roots names the root (red-team F2). So the withheld
+// document carries a fresh economyRevenue with those two fields dropped and the note
+// kept, and the cached document's Revenue pointer is never written through.
 func withheldEconomySelf(full economySelf) economySelf {
+	rev := full.Revenue
+	if rev != nil {
+		open := *rev
+		open.BountyPaidToPriorFetcherPayments, open.BountyPaidToPriorFetcherCredits = 0, 0
+		open.BountyPaidToPriorFetcherNote = "withheld: token-gated (F2)"
+		rev = &open
+	}
 	return economySelf{
 		Tier:                full.Tier,
-		Revenue:             full.Revenue,
+		Revenue:             rev,
 		Margin:              full.Margin,
 		Wash:                full.Wash,
 		DetailWithheld:      true,
@@ -1300,6 +1333,14 @@ type economyRevenue struct {
 	RepairsDone  int64 `json:"repairsDone"`
 	BountyEarned int64 `json:"bountyEarned"`
 	ServeRevenue int64 `json:"serveRevenue"` // balance − bountyEarned (derived split)
+	// A4-3 (R2.7): bounties this node RELEASED to a repairer that had already fetched
+	// bytes from it. A SHAPE, not a detection — a repairer may legitimately have
+	// fetched survivor shards from this judge. One-sided-informative: a high ratio of
+	// these to bountyOut alongside a high wash.symmetry is the round-trip signature.
+	// Never a slashing or disbursement input (authenticityKnowable is false, as on wash).
+	BountyPaidToPriorFetcherPayments int64  `json:"bountyPaidToPriorFetcherPayments"`
+	BountyPaidToPriorFetcherCredits  int64  `json:"bountyPaidToPriorFetcherCredits"`
+	BountyPaidToPriorFetcherNote     string `json:"bountyPaidToPriorFetcherNote"`
 }
 
 type economyMargin struct {
@@ -1310,10 +1351,12 @@ type economyMargin struct {
 }
 
 type economySelfFunding struct {
-	SkimIn    int64 `json:"skimIn"`    // pooled lifetime funded (prepay + auto-skim)
-	BountyOut int64 `json:"bountyOut"` // pooled lifetime paid (repair bounties)
-	Net       int64 `json:"net"`       // skimIn − bountyOut; persistently negative = drain
-	BountyOn  bool  `json:"bountyOn"`  // does repair actually disburse on this node (-economy)
+	SkimIn     int64 `json:"skimIn"`     // pooled lifetime funded (prepay + auto-skim) = prepayIn + autoSkimIn
+	PrepayIn   int64 `json:"prepayIn"`   // A4-1: the pooled operator-deposited leg (never clawed back)
+	AutoSkimIn int64 `json:"autoSkimIn"` // A4-1: the pooled serve auto-skim leg (the leg a reversal claws back)
+	BountyOut  int64 `json:"bountyOut"`  // pooled lifetime paid (repair bounties)
+	Net        int64 `json:"net"`        // skimIn − bountyOut; persistently negative = drain
+	BountyOn   bool  `json:"bountyOn"`   // does repair actually disburse on this node (-economy)
 }
 
 type economyWash struct {
@@ -1325,15 +1368,20 @@ type economyWash struct {
 }
 
 type economyObject struct {
-	Root       string `json:"root"`
-	Reserve    int64  `json:"reserve"`
-	SkimIn     int64  `json:"skimIn"`
-	BountyOut  int64  `json:"bountyOut"`
-	Net        int64  `json:"net"`
-	Repairs    int64  `json:"repairs"`
-	HorizonSec int64  `json:"horizonSec"`
-	Finite     bool   `json:"finite"`
-	Cliff      bool   `json:"cliff"`
+	Root    string `json:"root"`
+	Reserve int64  `json:"reserve"`
+	// SkimIn is the COMBINED lifetime inflow (prepay + auto-skim) — the name it has
+	// always had on this surface. PrepayIn and AutoSkimIn are its two legs (A4-1);
+	// SkimIn == PrepayIn + AutoSkimIn.
+	SkimIn     int64 `json:"skimIn"`
+	PrepayIn   int64 `json:"prepayIn"`
+	AutoSkimIn int64 `json:"autoSkimIn"`
+	BountyOut  int64 `json:"bountyOut"`
+	Net        int64 `json:"net"`
+	Repairs    int64 `json:"repairs"`
+	HorizonSec int64 `json:"horizonSec"`
+	Finite     bool  `json:"finite"`
+	Cliff      bool  `json:"cliff"`
 }
 
 const (

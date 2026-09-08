@@ -187,8 +187,8 @@ func TestProvisionalLaneEqualsCreditedBalanceAndReversesPerIncrement(t *testing.
 	// The reserve is empty: the claw-back of the lane's 16 takes 0 (never negative), and
 	// the settlement's own skim(8) = 1 lands on top.
 	l2.SettleDelivery(server, fetcher, root, 1<<30, 8, 0)
-	if l2.EscrowBalance(root) != 1 || l2.escrow[root].funded != 17 {
-		t.Fatalf("escrow after a floored claw-back: balance %d funded %d, want 1 / 17 (the paid-out 16 is real durability work, never recovered)", l2.EscrowBalance(root), l2.escrow[root].funded)
+	if l2.EscrowBalance(root) != 1 || l2.escrow[root].funded() != 17 {
+		t.Fatalf("escrow after a floored claw-back: balance %d funded %d, want 1 / 17 (the paid-out 16 is real durability work, never recovered)", l2.EscrowBalance(root), l2.escrow[root].funded())
 	}
 }
 

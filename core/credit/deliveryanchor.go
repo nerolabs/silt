@@ -190,7 +190,7 @@ func (l *Ledger) SettleDelivery(server, fetcher ports.NodeID, root ports.Hash, c
 	l.acct(server).balance += value - skim
 	e := l.escrowFor(root)
 	e.balance += skim
-	e.funded += skim
+	e.fundedSkim += skim // A4-1: the settlement's skim is an auto-SKIM leg deposit
 	l.deliverySettlements++
 	l.deliverySettledCredits += value
 	l.deliverySettledIncrements += value / DeliveryIncrementCredit
