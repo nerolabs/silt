@@ -156,7 +156,14 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   withheld `objects[].bountyOut`. Gates, each run RED under a controlled revert:
   `TestEscrowFundedSplitsPrepayFromSkim`, `TestBountyPaidToSelfCountsTheJudgeAsHolder` (its third-party arm
   is the ablation), `TestBountyToAPriorFetcherIsFlaggedNotBlocked` (both payments settle identically —
-  flagged is never blocked).
+  flagged is never blocked), and `TestR27A4PriorFetcherCreditsAreTokenGatedOnTheWholeSurface`, the wire
+  gate on the token gate itself: a fixture that pays a real bounty to a prior fetcher, a TOKENED positive
+  control first, then the untokened `0 / 0` plus the named withhold, then a scan of every number in every
+  untokened GET body on the real `apiRoutes` table. It is a SIBLING of the existing whole-surface F2 scan
+  rather than an edit to it: that scan's strength is that at `paid == 0` the per-object `reserve`, `net`
+  and `skimIn` are all aliases of `funded`, so four aliases ride one scan — and paying a bounty in its
+  fixture would destroy three of the four. The two share one `r29aWholeSurfaceGETRoutes` constant, so
+  adding a GET route reddens both until it has been examined against each scan's property.
 - **R2.7 blocking telemetry, detector A2 — supersede suppression (Lane C4, Economist advisory
   `ADVISORY-boulder2-telemetry-spec-R2.4-checklist-and-RC-scope-2026-09-07` §1.1).** Three node-wide `int64`
   counters on `credit.Ledger` — `serveBytesObjectAware` (`RecordServeToObject`), `serveBytesWitnessed`

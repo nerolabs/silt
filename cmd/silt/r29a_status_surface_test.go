@@ -357,6 +357,12 @@ func TestR29aF2EconomySelfWithholdsPerObjectDetailWithoutAToken(t *testing.T) {
 
 // --- the whole surface, not one endpoint ---------------------------------------------
 
+// r29aWholeSurfaceGETRoutes is how many GET routes the whole-surface scans walk. EXACT
+// on purpose, and SHARED by every scan that walks apiRoutes (this file's F2 counter scan
+// and the A4-3 scan in r27_a4_wire_gate_test.go), so adding a route reddens every one of
+// them until the route has been examined against each scan's property.
+const r29aWholeSurfaceGETRoutes = 7
+
 // r29aWholeSurfaceBytes is chosen so that funded (= bytes/8) is a value nothing else on
 // the surface holds by coincidence: not a bucket edge, not a capacity, not a port.
 const r29aWholeSurfaceBytes = 1_234_567 * econMintUnit // 1,234,567 mint units → funded (skim) = 1,234,567 (G-R212-7)
@@ -466,7 +472,7 @@ func TestR29aF2NoUnauthenticatedResponseOnTheWholeSurfaceCarriesTheWithheldCount
 	// EXACT, on purpose: adding a GET route must fail here until the route has been
 	// examined for what it republishes and this count raised. That is the whole point
 	// of walking the real table.
-	const want = 7
+	const want = r29aWholeSurfaceGETRoutes
 	if walked != want {
 		t.Fatalf("walked %d GET routes, expected exactly %d — a route was added or removed; examine it against this gate's property, then update the count", walked, want)
 	}
