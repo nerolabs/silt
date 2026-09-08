@@ -1,77 +1,97 @@
 package demand
 
+// The optimistic fair-exchange floor (P2), ON THE ANCHORED SESSION LANE.
+//
+// C1 (2026-09-08) retired Bank.Redeem / DeliveryReceipt / Ack, so each property below
+// is asserted through the surface that survived: a serial is spent at session OPEN (the
+// credit ledger's shared paid-serial guard), and a delivery is acknowledged by a
+// session-domain SessionReceipt.
+
 import (
 	"testing"
 
 	"github.com/nerolabs/silt/ports"
 )
 
-// TestAbortLeavesTokenReusable is the fetcher-side fair-exchange floor (P2): an
-// aborted exchange never consumes the fetcher's token. The fetcher commits and the
-// server then vanishes (delivers nothing, banks nothing) — so the serial is never
-// spent, and the SAME token still redeems a real, correct delivery at another server.
-// A non-delivering server cannot rob the fetcher of the paid token.
-func TestAbortLeavesTokenReusable(t *testing.T) {
+// TestAbortLeavesAnchorReusable (was TestAbortLeavesTokenReusable) is the fetcher-side
+// floor: an aborted exchange never consumes the fetcher's token. The fetcher commits
+// and the server then vanishes — delivering nothing, opening nothing — so the anchor
+// was never spent into any guard, and the SAME token opens a real session at another
+// server.
+//
+// What moved with the lane: on the flat path the serial was spent at REDEEM, so "the
+// abort did not burn it" was a statement about the bank. Under R2.9 the anchor is spent
+// at OPEN, which makes the statement stronger and simpler — a server that never opened a
+// session cannot have spent anything. The ledger half (the same anchor spends exactly
+// once, and only where a session was opened) is core/credit
+// TestDeliveryFundTopUpSpendsFreshAnchorsOnce.
+func TestAbortLeavesAnchorReusable(t *testing.T) {
 	s := newScene(t, "obj-C")
 	tok := s.token(t)
 
 	// Optimistic phase begins: the fetcher signs a pre-release commitment to serverA…
-	serverA := ports.HashBytes([]byte("server-A"))
+	serverA := ports.HashBytes([]byte("server-A-aborts"))
 	c := Commit(s.fetcher, tok, s.object, serverA)
 	if !VerifyCommitment(c) {
 		t.Fatal("a well-formed pre-release commitment must verify")
 	}
-	// …then serverA aborts: no bytes delivered, nothing banked. The token was NOT
-	// consumed (only a completed Redeem spends a serial).
+	// …then serverA aborts: no bytes delivered, no session opened. Only an OPEN spends
+	// an anchor, and the commitment is not one.
 
-	// The fetcher retries at serverB (s.server) and completes a genuine delivery. The
-	// same token redeems — proving the abort did not burn it.
-	r := Ack(s.fetcher, tok, s.object, s.server)
-	if ok, _, reason := NewBank().Redeem(s.keys(), 0, tok, r); !ok {
-		t.Fatalf("an aborted exchange must leave the token reusable, but redeem failed: %s", reason)
+	// The fetcher retries at serverB (s.server) and opens a genuine session on the same
+	// anchor — proving the abort did not burn it.
+	handle, m := s.openSession(t, tok)
+	if !AckSession(s.fetcher, handle, m, s.object, s.server, 1).VerifySig() {
+		t.Fatal("an aborted exchange must leave the anchor reusable, but the retry session did not carry a settlement")
 	}
 }
 
-// TestPreReleaseCommitmentIsNotAReceipt is the server-side fair-exchange floor (P2): a
-// fetcher's pre-release commitment cannot be turned into demand credit. A malicious
-// server holding a valid ExchangeCommitment (the fetcher engaged) cannot bank it —
-// the commitment is domain-separated from the receipt signature, so lifting it onto
-// a receipt fails verification. Only a completed delivery redeems (#receipts ≤ completed
-// deliveries survives the abort path).
+// TestPreReleaseCommitmentIsNotAReceipt is the server-side floor: a fetcher's
+// pre-release commitment cannot be turned into a settlement. A malicious server holding
+// a valid ExchangeCommitment (the fetcher engaged) cannot lift its signature onto a
+// SessionReceipt — the two sit in different domains, so the receipt fails VerifySig and
+// the ledger is never asked to settle.
 func TestPreReleaseCommitmentIsNotAReceipt(t *testing.T) {
 	s := newScene(t, "obj-C")
 	tok := s.token(t)
+	handle, m := s.openSession(t, tok)
 	c := Commit(s.fetcher, tok, s.object, s.server)
 	if !VerifyCommitment(c) {
 		t.Fatal("setup: commitment should verify")
 	}
 
-	// The server tries to pass the commitment off as a delivery receipt: it copies the
-	// commitment's fields and its signature into a DeliveryReceipt — but the sig sits
-	// in the commitment domain, not the receipt domain.
-	forged := DeliveryReceipt{
-		Serial:  append([]byte(nil), c.Serial...),
-		Object:  c.Object,
-		Server:  c.Server,
-		Fetcher: append([]byte(nil), c.Fetcher...),
-		Sig:     append([]byte(nil), c.Sig...), // a commitment sig, over the wrong domain
+	// The server copies the commitment's fields and its signature into a receipt on the
+	// session it really did open — but the sig sits in the commitment domain.
+	forged := SessionReceipt{
+		Handle:     handle,
+		Commitment: append([]byte(nil), m...),
+		Object:     c.Object,
+		Server:     c.Server,
+		Fetcher:    append([]byte(nil), c.Fetcher...),
+		Count:      1,
+		Sig:        append([]byte(nil), c.Sig...), // a commitment sig, over the wrong domain
 	}
-	if ok, _, reason := NewBank().Redeem(s.keys(), 0, tok, forged); ok {
-		t.Fatalf("a pre-release commitment must not redeem as demand (got credited, reason=%q)", reason)
+	if forged.VerifySig() {
+		t.Fatal("a pre-release commitment verified as a session settlement — the domains are not separated")
+	}
+	// The control: the honest receipt over the same tuple DOES verify, so the refusal is
+	// the domain and not a malformed fixture.
+	if !AckSession(s.fetcher, handle, m, c.Object, c.Server, 1).VerifySig() {
+		t.Fatal("the control receipt does not verify — the arm above measures darkness")
 	}
 }
 
-// TestCommitmentDomainSeparation pins the crypto behind the server-side floor: a
-// signature good as a commitment is NOT good as a receipt, and vice versa — the two
-// share the (serial‖object‖server‖fetcher) binding but sit in distinct domains.
+// TestCommitmentDomainSeparation pins the crypto behind the server-side floor in the
+// other direction: a signature good as a session receipt is NOT good as a commitment.
 func TestCommitmentDomainSeparation(t *testing.T) {
 	s := newScene(t, "obj-C")
 	tok := s.token(t)
-	good := Ack(s.fetcher, tok, s.object, s.server)
-	// The real receipt's signature must NOT verify as a commitment over the same tuple.
-	asCommit := ExchangeCommitment{Serial: good.Serial, Object: good.Object, Server: good.Server, Fetcher: good.Fetcher, Sig: good.Sig}
+	handle, m := s.openSession(t, tok)
+	good := AckSession(s.fetcher, handle, m, s.object, s.server, 1)
+	asCommit := ExchangeCommitment{Serial: tok.Serial, Object: good.Object, Server: good.Server,
+		Fetcher: good.Fetcher, Sig: good.Sig}
 	if VerifyCommitment(asCommit) {
-		t.Fatal("a delivery-receipt signature must not verify as an exchange commitment (domains not separated)")
+		t.Fatal("a session-receipt signature must not verify as an exchange commitment (domains not separated)")
 	}
 	// A tampered-key commitment must fail.
 	c := Commit(s.fetcher, tok, s.object, s.server)
@@ -82,18 +102,22 @@ func TestCommitmentDomainSeparation(t *testing.T) {
 }
 
 // TestOptimisticPathStillCredits: committing first does not disturb the happy path —
-// after a pre-release commitment, a genuine delivery still redeems and credits demand
-// exactly once.
+// after a pre-release commitment, a genuine session settlement still credits the
+// witnessed-demand observable exactly once.
 func TestOptimisticPathStillCredits(t *testing.T) {
 	s := newScene(t, "obj-C")
 	tok := s.token(t)
 	_ = Commit(s.fetcher, tok, s.object, s.server) // optimistic phase
-	r := Ack(s.fetcher, tok, s.object, s.server)
+	handle, m := s.openSession(t, tok)
+	r := AckSession(s.fetcher, handle, m, s.object, s.server, 1)
+	if !r.VerifySig() {
+		t.Fatal("optimistic completion should produce a verifying receipt")
+	}
 	bank := NewBank()
-	if ok, _, reason := bank.Redeem(s.keys(), 0, tok, r); !ok {
+	if ok, reason := bank.Witness(s.object, r.Fetcher, 1); !ok {
 		t.Fatalf("optimistic completion should credit: %s", reason)
 	}
-	if got := bank.Demand(s.object); got != 1 {
-		t.Fatalf("demand = %d, want 1", got)
+	if got := bank.WitnessedIncrements(s.object); got != 1 {
+		t.Fatalf("witnessed increments = %d, want 1", got)
 	}
 }

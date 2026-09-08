@@ -46,8 +46,8 @@ Invariant A) and this spec does not touch it.
 
 | Piece | Where | State |
 |---|---|---|
-| Receipt engine: blind withdraw → PoR-bound ack → bank → redeem | `core/demand/demand.go` | Built (#181), **LIVE** — production caller `cmd/silt/daemon.go:810` (behind `--accept-receipts`); redeem wired `core/node/demandrole.go:190` → `core/credit/delivery.go:89` |
-| Wire messages `MsgDeliveryReceipt`/`Ack` | `ports/net.go:149`, dispatched `core/node/node.go:1567` | Wired |
+| Receipt engine: blind withdraw → session open → cumulative ack → settle | `core/demand/demand.go`, `core/demand/session.go` | Built (#181), **LIVE** on the R2.9 anchored session lane. The v2 FLAT path (token spent at redeem) was retired at the node by B-9 (#764) and the primitive itself by C1 (2026-09-08): `Bank.Redeem`, `DeliveryReceipt`, `Ack`, `SubmittedReceipt` and the bank's own spent set are deleted. The anchor is spent at OPEN into the credit ledger's shared paid-serial guard. |
+| Wire messages `MsgDeliveryOpen` / `MsgDeliveryFund` / `MsgDeliverySettle` | `ports/net.go`, dispatched `core/node/node.go` | Wired. `MsgDeliveryReceipt` keeps its kind NUMBER (appended kinds are pinned) and is refused with a named reason. |
 | Serve credit (1 credit per 393,216 bytes served since G-R212-7, was 1/byte; 1/8 of the mint to the object's escrow) | `core/node/node.go:1543-1545`, `core/credit/escrow.go:117-135` | Live — but **self-recorded**, per-node ledger |
 | Self-serve guard | `core/credit/credit.go:169` (`server == requester` earns nothing) | Live |
 | Cost-to-wash levers: fee at withdrawal (P3a), bonded-fetcher credential (P3b) | `demand.go:82-87`, `Bank.RequireBondedFetcher` | Built |

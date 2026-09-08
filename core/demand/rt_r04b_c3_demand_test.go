@@ -132,146 +132,72 @@ func TestRTC3_DegenerateKeysAreRefusedEverywhere(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// RT-C3B-9 CLOSED. Bank.spent is BOUNDED (build-immutable #8) and its eviction is
-// expiry-only. The probe measured "3000 entries after the window advanced 1000 epochs
-// past every token — no cap, no sweep and no eviction path".
+// RT-C3B-9 / F3 RE-HOMED (C1, 2026-09-08). The bank's own spent set retired with the
+// v2 flat lane: under R2.9 an anchor is spent at session OPEN, into the credit ledger's
+// SHARED paid-serial guard, so there is exactly one double-spend set left and it is the
+// one the probes attacked. The two properties this file used to assert here are pinned
+// on that guard, unchanged in substance:
+//
+//   - bounded, refuse-never-evict, expiry-only eviction (RT-C3B-9) — core/credit
+//     TestSerialGuard_SetIsBounded, TestSerialGuard_ExpiryFreesTheCap,
+//     TestSerialGuard_EvictThenReRedeemMintsZero and
+//     TestSerialGuard_EvictionPumpIsNotSelfFinancing (the triple no FIFO-alone design
+//     can satisfy).
+//   - keyed by the TOKEN, not the serial, so an entry expires on its OWN issue epoch
+//     (F3) — core/credit TestRTC3_GuardEntryExpiresOnItsOwnIssueEpoch.
+//
 // ---------------------------------------------------------------------------
-func TestRTC3_BankSpentSetIsBoundedAndExpirySwept(t *testing.T) {
-	if maxSpentTokens < 1 {
-		t.Fatalf("maxSpentTokens must be positive")
-	}
-	k := rtKey(t)
-	ks := NewKeyset(DefaultWindow)
-	ks.Put(0, &k.PublicKey)
-	b := NewBank()
-
-	// Fill past the cap directly — minting 65k real blind signatures would take
-	// minutes and the property under test is the guard's bookkeeping, not the crypto.
-	for i := 0; i < maxSpentTokens; i++ {
-		b.spent[spentKey(0, []byte{byte(i), byte(i >> 8), byte(i >> 16)})] = 0
-	}
-	if len(b.spent) != maxSpentTokens {
-		t.Fatalf("fill: %d entries, want %d", len(b.spent), maxSpentTokens)
-	}
-	// At the cap with nothing expired, the bank REFUSES rather than evicting a live
-	// entry (the refuted FIFO design is self-financing for the flooder).
-	if b.reserveSpent(0, DefaultWindow) {
-		t.Fatalf("the guard admitted an entry past its cap with nothing expired")
-	}
-	if len(b.spent) > maxSpentTokens {
-		t.Fatalf("BREAK RT-C3B-9 REOPENED: b.spent grew to %d, past the %d cap",
-			len(b.spent), maxSpentTokens)
-	}
-	// Once the window has moved past every entry, the sweep frees them — and only
-	// then. Eviction is expiry-only.
-	if !b.reserveSpent(DefaultWindow+1, DefaultWindow) {
-		t.Fatalf("the sweep did not free the expired entries")
-	}
-	if len(b.spent) != 0 {
-		t.Fatalf("the sweep left %d expired entries", len(b.spent))
-	}
-
-	// And a live entry is never swept: an in-window token stays guarded.
-	serial, _ := blindtoken.NewSerial(rand.Reader)
-	tok := rtMint(t, k, 0, serial)
-	fpriv := ed25519.NewKeyFromSeed(make([]byte, 32))
-	r := DeliveryReceipt{Serial: serial, Object: ports.HashBytes([]byte{7}),
-		Server: ports.HashBytes([]byte{9}), Fetcher: fpriv.Public().(ed25519.PublicKey)}
-	r.Sig = ed25519.Sign(fpriv, r.receiptMsg())
-	if ok, _, why := b.Redeem(ks, 0, tok, r); !ok {
-		t.Fatalf("honest receipt: %s", why)
-	}
-	b.sweepExpiredSpent(DefaultWindow, DefaultWindow)
-	if _, live := b.spent[spentKey(0, serial)]; !live {
-		t.Fatalf("the sweep evicted a token still inside its window — evicted ⇒ expired is false")
-	}
-	b.sweepExpiredSpent(DefaultWindow+1, DefaultWindow)
-	if _, live := b.spent[spentKey(0, serial)]; live {
-		t.Fatalf("the sweep kept a token past its window")
-	}
-}
-
-// TestRTC3_SpentIsKeyedByTheTokenNotTheSerial: the demand layer's own double-spend set
-// carries the same per-token expiry key the credit guard does, so its eviction is
-// sound for the same reason (F3, at this tier).
-func TestRTC3_SpentIsKeyedByTheTokenNotTheSerial(t *testing.T) {
-	k := rtKey(t)
-	ks := NewKeyset(DefaultWindow)
-	ks.Put(0, &k.PublicKey)
-	ks.Put(4, &k.PublicKey)
-	fpriv := ed25519.NewKeyFromSeed(make([]byte, 32))
-	fpub := fpriv.Public().(ed25519.PublicKey)
-	obj, server := ports.HashBytes([]byte{7}), ports.HashBytes([]byte{9})
-	serial, _ := blindtoken.NewSerial(rand.Reader)
-
-	b := NewBank()
-	for _, e := range []uint64{0, 4} {
-		tok := rtMint(t, k, e, serial)
-		r := DeliveryReceipt{Serial: serial, Object: obj, Server: server, Fetcher: fpub}
-		r.Sig = ed25519.Sign(fpriv, r.receiptMsg())
-		ok, got, why := b.Redeem(ks, 4, tok, r)
-		if !ok || got != e {
-			t.Fatalf("token at epoch %d: ok=%v issuedEpoch=%d (%s)", e, ok, got, why)
-		}
-		// The SAME token twice is always a double-spend.
-		if ok, _, _ := b.Redeem(ks, 4, tok, r); ok {
-			t.Fatalf("the same token was redeemed twice at epoch %d", e)
-		}
-	}
-	b.sweepExpiredSpent(5, DefaultWindow)
-	if _, live := b.spent[spentKey(4, serial)]; !live {
-		t.Fatalf("the epoch-4 entry was swept at epoch 5 while still in window — the set is " +
-			"keyed by the serial again, so its expiry is the MINIMUM epoch over the tokens " +
-			"sharing it")
-	}
-}
-
+// RT-C3B-10 CLOSED, on the session wire. Neither guard bounded the serial's SIZE, and
+// the payload rides a 132 MiB frame. The probe pinned a 1 MiB serial as a map key. The
+// bound now sits at the session decode (UnmarshalSessionOpen / boundAnchors) and again
+// at the ledger, which refuses a mis-sized anchor serial with ReasonAnchorMalformed
+// before it can become a guard key (core/credit spendAnchors).
 // ---------------------------------------------------------------------------
-// RT-C3B-10 CLOSED. Neither guard bounded the serial's SIZE, and a SubmittedReceipt
-// rides a 132 MiB frame. The probe pinned a 1 MiB serial as a map key in Bank.spent.
-// ---------------------------------------------------------------------------
-func TestRTC3_OversizedSerialIsRefusedAtTheWireAndAtTheBank(t *testing.T) {
+func TestRTC3_OversizedSerialIsRefusedAtTheSessionWire(t *testing.T) {
 	k := rtKey(t)
-	ks := NewKeyset(DefaultWindow)
-	ks.Put(0, &k.PublicKey)
 	fpriv := ed25519.NewKeyFromSeed(make([]byte, 32))
-	fpub := fpriv.Public().(ed25519.PublicKey)
-	obj, server := ports.HashBytes([]byte{7}), ports.HashBytes([]byte{9})
+	server := ports.HashBytes([]byte{9})
 
 	const oversized = 1 << 20 // 1 MiB; the wire frame allows ~132x this
 	serial := make([]byte, oversized)
 	serial[0] = 0xAB
 	tok := rtMint(t, k, 0, serial)
-	r := DeliveryReceipt{Serial: serial, Object: obj, Server: server, Fetcher: fpub}
-	r.Sig = ed25519.Sign(fpriv, r.receiptMsg())
 
-	// (1) The wire decode refuses it, before anything can store, count or hash it.
-	blob, err := SubmittedReceipt{Token: tok, Receipt: r}.Marshal()
+	// (1) The open decode refuses it, before anything can store, count or hash it.
+	blob, err := SignSessionOpen(fpriv, server, []Token{tok}).Marshal()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, derr := UnmarshalSubmittedReceipt(blob); !errors.Is(derr, ErrOversizedReceipt) {
-		t.Fatalf("BREAK RT-C3B-10 REOPENED: the wire decode accepted a %d-byte serial (err=%v)",
+	if _, derr := UnmarshalSessionOpen(blob); !errors.Is(derr, ErrSessionBounds) {
+		t.Fatalf("BREAK RT-C3B-10 REOPENED: the session decode accepted a %d-byte anchor serial (err=%v)",
 			oversized, derr)
 	}
-	// (2) And the bank refuses it too, so a non-wire caller cannot pin the bytes either.
-	b := NewBank()
-	if ok, _, why := b.Redeem(ks, 0, tok, r); ok {
-		t.Fatalf("the bank accepted a %d-byte serial (%s)", oversized, why)
-	}
-	if len(b.spent) != 0 {
-		t.Fatalf("a refused oversized serial was still pinned as a map key")
-	}
-	// An honest serial still round-trips.
-	honest, _ := blindtoken.NewSerial(rand.Reader)
-	ht := rtMint(t, k, 0, honest)
-	hr := DeliveryReceipt{Serial: honest, Object: obj, Server: server, Fetcher: fpub}
-	hr.Sig = ed25519.Sign(fpriv, hr.receiptMsg())
-	hb, err := SubmittedReceipt{Token: ht, Receipt: hr}.Marshal()
+	// (2) So does the top-up decode: a session admitted on honest anchors must not be
+	// the door for an oversized one.
+	fblob, err := SignSessionFund(fpriv, server, 7, []Token{tok}).Marshal()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, derr := UnmarshalSubmittedReceipt(hb); derr != nil {
-		t.Fatalf("an honest receipt was refused by the size bounds: %v", derr)
+	if _, derr := UnmarshalSessionFund(fblob); !errors.Is(derr, ErrSessionBounds) {
+		t.Fatalf("the fund decode accepted a %d-byte anchor serial (err=%v)", oversized, derr)
+	}
+	// (3) An oversized SIGNATURE is refused on the same path — the other attacker-chosen
+	// variable-length field on an anchor.
+	fat := Token{Serial: make([]byte, blindtoken.SerialSize), Sig: make([]byte, maxTokenSigBytes+1)}
+	fatBlob, err := SignSessionOpen(fpriv, server, []Token{fat}).Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, derr := UnmarshalSessionOpen(fatBlob); !errors.Is(derr, ErrSessionBounds) {
+		t.Fatalf("the session decode accepted a %d-byte anchor signature (err=%v)", len(fat.Sig), derr)
+	}
+	// An honest anchor still round-trips: the bound is not a denial of the real lane.
+	honest, _ := blindtoken.NewSerial(rand.Reader)
+	hblob, err := SignSessionOpen(fpriv, server, []Token{rtMint(t, k, 0, honest)}).Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o, derr := UnmarshalSessionOpen(hblob); derr != nil || len(o.Anchors) != 1 {
+		t.Fatalf("an honest open was refused by the size bounds: %v", derr)
 	}
 }

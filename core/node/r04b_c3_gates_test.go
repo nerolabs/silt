@@ -457,7 +457,9 @@ func TestDemandLaneOutlivesTheWindowAndARestart(t *testing.T) {
 	// same two calls cmd/silt/daemon.go makes at boot.
 	boot := func() *Node {
 		nd, _ := c3Node(t, 7421)
-		nd.SetLedger(credit.New(50_000, 5_000_000))
+		l := credit.New(50_000, 5_000_000)
+		nd.SetLedger(l)
+		l.SetEpochSource(f8EpochFunc(nd.chainEpoch)) // R2.10 / F8: the daemon's wiring (cmd/silt/ledger_epoch.go) — one clock for the keyset and the guard
 		nd.EnableChain(c, signer)
 		install := func(e uint64, k *rsa.PrivateKey) { nd.SetDemandIssuerKey(rand.Reader, e, k) }
 		if err := es.RotateWindow(rand.Reader, nd.DemandEpoch(), demand.DefaultWindow, install); err != nil {
@@ -493,8 +495,13 @@ func TestDemandLaneOutlivesTheWindowAndARestart(t *testing.T) {
 	fetcherIdent := identity.FromSeed(7424)
 	obj := ports.HashBytes([]byte("c3-object"))
 
-	// cycle: withdraw at the current epoch on the demand lane, ack, redeem. Returns
-	// the credit paid.
+	// cycle: withdraw at the current epoch on the demand lane, OPEN a session on the
+	// anchor, and settle one increment. Returns the credit settled.
+	//
+	// C1 (2026-09-08): the cycle was withdraw → ack → Bank.Redeem → RedeemDeliveryCredit
+	// on the retired flat lane. The property is unchanged — the lane must keep issuing
+	// AND paying past the boot band and across a restart — but it is now driven on the
+	// anchored session lane, which is the only lane that pays.
 	cycle := func(nd *Node, label string) int64 {
 		cur := nd.DemandEpoch()
 		iss := nd.demandIssuers[cur]
@@ -525,12 +532,21 @@ func TestDemandLaneOutlivesTheWindowAndARestart(t *testing.T) {
 		if uerr != nil {
 			t.Fatalf("%s: unblind: %v", label, uerr)
 		}
-		rcpt := demand.Ack(fetcherIdent.Signer(), tok, obj, nd.ID())
-		credited, ep, why := nd.demandBank.Redeem(ks, cur, tok, rcpt)
-		if !credited {
-			t.Fatalf("%s: the bank refused a token it had just issued at epoch %d: %s", label, cur, why)
+		ep, ok := ks.VerifyInWindow(cur, tok)
+		if !ok {
+			t.Fatalf("%s: the keyset refused a token it had just issued at epoch %d", label, cur)
 		}
-		return nd.ledger.RedeemDeliveryCredit(nd.ID(), ports.HashBytes(rcpt.Fetcher), obj, rcpt.Serial, ep)
+		fetcherID := fetcherIdent.NodeID()
+		l := nd.ledger.(*credit.Ledger)
+		face, why := l.SpendDeliveryAnchors(nd.ID(), []ports.RelayAnchor{{Epoch: ep, Serial: tok.Serial}})
+		if face == 0 {
+			t.Fatalf("%s: the ledger refused to open a session on a token it had just issued at epoch %d: %s", label, cur, why)
+		}
+		settled, _, sw := l.SettleDelivery(nd.ID(), fetcherID, obj, 1, face, 0)
+		if settled == 0 {
+			t.Fatalf("%s: the settlement paid nothing at epoch %d: %s", label, cur, sw)
+		}
+		return settled
 	}
 	if paid := cycle(nd, "epoch 0"); paid == 0 {
 		t.Fatal("epoch 0: nothing paid")

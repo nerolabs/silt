@@ -8,6 +8,20 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Removed
+- **The `core/demand` v2 flat primitive (C1, the B-9 tail).** B-9 (#764) retired the flat receipt at the
+  node; the primitive behind it stayed callable because ~25 unit tests pinned properties on it. Those
+  properties are now re-homed onto the anchored session lane and the primitive is DELETED: `Bank.Redeem`,
+  `Bank.Demand`, `DeliveryReceipt`, `receiptMsg`, `Ack`, `SubmittedReceipt` / `UnmarshalSubmittedReceipt` /
+  `ErrOversizedReceipt`, the bank's own spent set (`spentKey`, `sweepExpiredSpent`, `reserveSpent`,
+  `sweepIfEpochAdvanced`, `maxSpentTokens`) and `Node.WitnessedDemand`. Zero production callers before the
+  deletion (shown by grep in the commit). What stays: `Token`, `Withdraw`/`SignWithdrawal`/`Unblind`/
+  `VerifyToken`, `Keyset`, `BondCheck`, `RequireBondedFetcher`, the whole session lane. The bank now holds
+  ONE per-object counter (`WitnessedIncrements`), pinned structurally by
+  `TestTheBankHoldsExactlyOnePerObjectCount`; the double-spend guard is the credit ledger's shared
+  paid-serial guard and nothing else. Every re-homed property keeps a driven ablation or names the existing
+  test that pins it — see the commit message for the full old-test → new-test → ablation ledger.
+
 ### Fixed
 - **The paid-serial guard's durable record carries its LANE (`R-GUARD-RESTORE-LANE-UNKNOWN`).** The guard holds
   two populations on one map — delivery anchors and relay anchors — and the on-disk record carried neither, so

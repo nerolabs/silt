@@ -167,7 +167,7 @@ func (k *Keyset) Put(epoch uint64, pub *rsa.PublicKey) {
 	// costs ~3.3 ms, and this door is driven from a HOT, UNAUTHENTICATED path:
 	// Node.DemandIssuerKeyset re-pins every held epoch on every read, and
 	// the delivery session open calls it on any inbound MsgDeliveryOpen that decodes and
-	// whose commitment self-signature verifies (the retired MsgDeliveryReceipt handler no
+	// whose commitment self-signature verifies (the retired v2 receipt handler no
 	// longer reaches it) — one ed25519 signature is the whole price of admission, with no
 	// rate limit (core/node/deliverysession.go). With the
 	// issuer's staged band 9 epochs deep that was 9 x 3.3 ms = ~28.6 ms of RSA work
@@ -251,7 +251,8 @@ func (k *Keyset) Prune(current uint64) {
 // A token whose issuing epoch has left the window has NO held key that verifies it,
 // so this returns ok=false and the caller rejects it as "token expired or not
 // issued" — the rejection happens BEFORE any credit path, which is what makes the
-// close purely subtractive (nothing is minted; see Bank.Redeem).
+// close purely subtractive (nothing is minted; the anchor spend at open only ever
+// refuses).
 func (k *Keyset) VerifyInWindow(current uint64, t Token) (epoch uint64, ok bool) {
 	if len(t.Serial) == 0 {
 		return 0, false

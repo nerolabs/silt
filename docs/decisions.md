@@ -222,12 +222,16 @@ subset). Superseded per-finding history: [`/archive/`](../archive/).
   `AcquireDemandToken` over the shared token-request wire is deleted: the publish key never
   enters the demand keyset), then `SubmitDeliveryReceipt` (a `MsgDeliveryReceipt` carrying
   the token + PoR-bound ack) to the server, which banks it into a **neutral witnessed-demand
-  observable** (`WitnessedDemand`) — never standing; replays and forged/mis-issued tokens are rejected
-  over the wire. **◑ P2 optimistic fair exchange — the abort-SAFETY floor is built + regression-locked
+  observable** — never standing; replays and forged/mis-issued tokens are rejected
+  over the wire. *(SUPERSEDED 2026-09-08 by R2.9's anchored session lane: the token is spent at
+  session OPEN, deliveries are acknowledged by cumulative-count `SessionReceipt`, and the observable
+  is `WitnessedIncrements`. B-9 (#764) retired the flat path at the node; C1 deleted the primitive —
+  `Bank.Redeem`, `SubmitDeliveryReceipt`, `DeliveryReceipt`, `WitnessedDemand`. The property is
+  unchanged and restated at credit level as P-SESSION.)* **◑ P2 optimistic fair exchange — the abort-SAFETY floor is built + regression-locked
   (`core/demand/fairexchange.go`); the dispute-RESOLUTION half is gated on threshold crypto silt does
   not ship.** Built: the ASW optimistic phase (`ExchangeCommitment` — a fetcher's pre-release,
   non-repudiable promise) + both abort-safety properties, which hold structurally today — (1)
-  fetcher-side: an aborted exchange never CONSUMES the token (spent only by a completed Redeem), so a
+  fetcher-side: an aborted exchange never CONSUMES the token (spent only at a completed session open), so a
   non-delivering server leaves the paid token reusable elsewhere; (2) server-side: a pre-release
   commitment is domain-separated from the receipt and carries no PoR, so it can NEVER redeem as demand
   — `#receipts(C) ≤ #completed correct deliveries` survives the abort path. GATED: converting a

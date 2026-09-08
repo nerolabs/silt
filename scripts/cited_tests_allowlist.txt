@@ -97,3 +97,17 @@ TestRedteamF6_LegacyWeightDivergesAcrossReplicas
 # TestR29aBondChallengeStampsNoFirstTouch. The old name survives in the dated
 # CHANGELOG entries and the D-BB-BUILD-TAG decision record, which say so.
 TestR29aBondChallengeStillStampsFirstSeenTick
+
+# (H) C1, 2026-09-08 — the v2 flat primitive retirement. Each name below is a test
+# DELETED or RENAMED when core/demand's Bank.Redeem / DeliveryReceipt / Ack went away.
+# The citations are provenance ("was X"), so a reader can find the property's old form
+# in git history; the property itself is asserted by the test doing the citing, or by a
+# named surviving test in the same comment. Re-homing ledger:
+# docs/thinking/2026-09-07-b9-flat-path-retirement.md.
+TestHonestDeliveryCreditsDemand
+TestForgedTokenRejected
+TestReceiptCarriesNoPossessionClaim
+TestSelfDealOneBondedIdentityCapsDemand
+TestAbortLeavesTokenReusable
+TestRedeemRejectsExpiredTokenBeforeCrediting
+TestRedeemWithNoKeysetRefuses

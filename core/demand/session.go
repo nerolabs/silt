@@ -24,7 +24,7 @@ package demand
 //     paid-serial guard (cert §6.3).
 //
 // Receipts are not committed to the chain, so the v3 bump has no era or freeze
-// coupling (the R2.14 argument). The v2 flat path (SubmittedReceipt, Bank.Redeem)
+// coupling (the R2.14 argument). The v2 flat path (one token spent at redeem)
 // stays callable until its retirement PR (gate B-9); the two never share a message
 // kind.
 
@@ -175,7 +175,7 @@ func (r SessionReceipt) VerifySig() bool {
 }
 
 // Marshal / Unmarshal — every variable-length field is BOUNDED at decode, before any
-// map write or modexp (the F5 amplifier shape, UnmarshalSubmittedReceipt).
+// map write or modexp (the F5 amplifier shape, red-team re-break 2026-09-03).
 func (o SessionOpen) Marshal() ([]byte, error)    { return cbor.Marshal(o) }
 func (f SessionFund) Marshal() ([]byte, error)    { return cbor.Marshal(f) }
 func (r SessionReceipt) Marshal() ([]byte, error) { return cbor.Marshal(r) }
@@ -268,10 +268,10 @@ func UnmarshalSessionReceipt(b []byte) (SessionReceipt, error) {
 //     read by DistinctBondedFetchers). A consumer reads exactly one.
 //  4. P3b keeps its ADMISSION role — an unbonded fetcher contributes nothing to either
 //     surface — and loses its dedup role on the increment counter.
-//  5. COEXISTENCE: the v2 lane's demand[] (one unit per redeemed token) is NEVER written
-//     here; a unit differs by up to 50,000× between the lanes. demand[] is retired with
-//     the v2 path (B-9) — kept in the primitive (demand.go, the SubmittedReceipt note) and
-//     permanently zero in production until the attended retirement PR removes both.
+//  5. ONE COUNTER, ONE DENOMINATION: the v2 lane's demand[] (one unit per redeemed
+//     token, a unit differing by up to 50,000x from this one) is GONE — it retired with
+//     the flat lane in C1, 2026-09-08, so there is no second surface to confuse with
+//     this one.
 //  6. Bounds inherited: maxDemandObjects, refuse-at-cap.
 //
 // The published claim this restates (P-SESSION, cert §3.4): demand_S(C)·p ≤ Σ credits

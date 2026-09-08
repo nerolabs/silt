@@ -3,7 +3,7 @@ package demand
 // G-DEM-1, G-DEM-5 (bank half), G-DEM-6, G-DEM-7 — the witnessed-demand observable under
 // R2.9 sessions (certification R2.9-witnessed-demand-observable-under-sessions-2026-09-06
 // §7). Ablations that must redden: `b.increments[object]++` (G-DEM-1 batched arm); write
-// v3 units into demand[] (G-DEM-6); a map[Hash]map[NodeID]… field on Bank (G-DEM-7).
+// a SECOND map[Hash]int64 on Bank (G-DEM-6); a map[Hash]map[NodeID]… field (G-DEM-7).
 
 import (
 	"crypto/ed25519"
@@ -57,17 +57,35 @@ func TestBondedDistinctCountIsItsOwnSurface(t *testing.T) {
 	}
 }
 
-func TestV2AndV3DoNotShareACounter(t *testing.T) {
+// TestTheBankHoldsExactlyOnePerObjectCount is G-DEM-6 after C1. The v2 counter it used
+// to be measured against (demand[], one unit per redeemed token, up to 50,000x the v3
+// unit) is DELETED, so the property is now structural: the bank may hold exactly ONE
+// per-object count, and a second one — of any denomination — cannot reappear without
+// this failing. A field, not a call: the defect the original gate caught was two
+// counters in one struct, which no call-level assertion can see.
+//
+// Ablation (run RED 2026-09-08): add `demand map[ports.Hash]int64` back to Bank →
+// "Bank holds 2 per-object count fields ([increments demand])".
+func TestTheBankHoldsExactlyOnePerObjectCount(t *testing.T) {
 	obj := ports.HashBytes([]byte("g-dem-6"))
 	pub, _, _ := ed25519.GenerateKey(rand.Reader)
 	b := NewBank()
 	b.Witness(obj, pub, 40)
-	if b.Demand(obj) != 0 {
-		t.Fatalf("a v3 settlement moved the v2 demand counter to %d — a mixed-denomination map is meaningless (rule 6)", b.Demand(obj))
+	if b.WitnessedIncrements(obj) != 40 {
+		t.Fatalf("increments %d, want 40", b.WitnessedIncrements(obj))
 	}
-	b.demand[obj]++ // a v2 redeem's bump, in its own unit
-	if b.WitnessedIncrements(obj) != 40 || b.Demand(obj) != 1 {
-		t.Fatalf("v3 %d / v2 %d after one bump each side, want 40 / 1", b.WitnessedIncrements(obj), b.Demand(obj))
+	typ := reflect.TypeOf(Bank{})
+	hashT := reflect.TypeOf(ports.Hash{})
+	var counts []string
+	for i := 0; i < typ.NumField(); i++ {
+		f := typ.Field(i)
+		if f.Type.Kind() == reflect.Map && f.Type.Key() == hashT && f.Type.Elem().Kind() == reflect.Int64 {
+			counts = append(counts, f.Name)
+		}
+	}
+	if len(counts) != 1 || counts[0] != "increments" {
+		t.Fatalf("Bank holds %d per-object count fields (%v), want exactly one named increments — "+
+			"a mixed-denomination pair of counters is meaningless to any consumer (rule 6, the v2 demand[] defect)", len(counts), counts)
 	}
 }
 

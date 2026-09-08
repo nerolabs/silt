@@ -17,14 +17,14 @@ import (
 // its two abort-SAFETY properties, which hold structurally today.
 //
 //  1. FETCHER-SIDE abort safety: an aborted exchange never CONSUMES the fetcher's
-//     token. A serial is spent only by a completed Bank.Redeem (a valid PoR-bound
+//     token. A serial is spent only at a completed session OPEN (a valid anchor
 //     receipt), so a server that takes the commitment and then vanishes — or delivers
 //     nothing — leaves the paid token UNSPENT and reusable at another server. The
 //     fetcher cannot be robbed of its token by a non-delivering server.
 //
 //  2. SERVER-SIDE abort safety: a fetcher's pre-release ExchangeCommitment — a signed
 //     promise made BEFORE content release, carrying NO proof of possession — is NOT a
-//     redeemable receipt. It is domain-separated from the DeliveryReceipt signature
+//     redeemable receipt. It is domain-separated from the SessionReceipt signature
 //     so a server cannot convert "the fetcher engaged" into a fake
 //     completed delivery. The unforgeability bound (#receipts(C) ≤ #completed
 //     paid deliveries) survives the abort path: only Ack's receipt-domain
@@ -48,7 +48,7 @@ import (
 // the future resolver consumes.
 
 // commitDomain separates a pre-release exchange promise from a delivery receipt: a
-// commitment signature can never be lifted onto a DeliveryReceipt (different domain,
+// commitment signature can never be lifted onto a SessionReceipt (different domain,
 // different message), so it cannot masquerade as proof of a completed delivery.
 const commitDomain = "silt/demand/exchange-commit/v1"
 
@@ -56,7 +56,7 @@ const commitDomain = "silt/demand/exchange-commit/v1"
 // exchange for (serial, object, server): the ASW artifact a server would present to
 // the quorum-TTP on a fetcher default. It deliberately carries NO possession proof, so
 // it is evidence of ENGAGEMENT, never of DELIVERY — the bank never credits demand from
-// it; only a receipt-domain-signed DeliveryReceipt (Ack → Redeem) does.
+// it; only a receipt-domain-signed SessionReceipt (AckSession → SettleDelivery) does.
 type ExchangeCommitment struct {
 	Serial  []byte       // the token about to be spent
 	Object  ports.Hash   // C — the object to be delivered
@@ -96,8 +96,8 @@ func Commit(fetcher ed25519.PrivateKey, token Token, object ports.Hash, server p
 
 // VerifyCommitment reports whether c is a well-formed, correctly-signed pre-release
 // commitment. A true result is evidence the fetcher ENGAGED this exchange — NOT that a
-// delivery completed. No bank path credits demand from a commitment; redeeming demand
-// still requires the PoR-bound DeliveryReceipt.
+// delivery completed. No bank path credits demand from a commitment; settling demand
+// still requires a session-domain-signed SessionReceipt.
 func VerifyCommitment(c ExchangeCommitment) bool {
 	if len(c.Fetcher) != ed25519.PublicKeySize {
 		return false

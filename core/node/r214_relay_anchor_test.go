@@ -601,17 +601,25 @@ func TestRelayAnchorDomainIsNotADemandToken(t *testing.T) {
 		t.Fatalf("ledger moved %d → %d on a refused cross-lane open", before, got)
 	}
 
-	// (b) a real anchor under key_0, offered to the delivery bank.
+	// (b) a real RELAY anchor under key_0, offered to the DELIVERY lane. It must fail
+	// the demand-domain verify — the refusal comes from the DOMAIN, not from a later
+	// check — so it never reaches the guard as a delivery anchor.
+	//
+	// C1 (2026-09-08): asserted through the keyset the delivery open reads
+	// (verifyDeliveryAnchors), not through the retired Bank.Redeem. Same predicate,
+	// same failure mode.
 	anchor := r.mintAnchor(t, 0)
 	keys := r.node.DemandIssuerKeyset(r.id())
-	fetcher := identity.FromSeed(8691)
-	receipt := demand.Ack(fetcher.Signer(), demand.Token{Serial: anchor.Serial, Sig: anchor.Sig}, ports.HashBytes([]byte("t6-object")), r.id())
-	credited, _, reason := demand.NewBank().Redeem(keys, 0, demand.Token{Serial: anchor.Serial, Sig: anchor.Sig}, receipt)
-	if credited {
-		t.Fatal("a relay ANCHOR was credited by demand.Bank.Redeem as a delivery token — one fee paid two lanes")
+	if keys == nil {
+		t.Fatal("setup: the node holds no delivery-side keyset, so the refusal below would be darkness")
 	}
-	if reason != "token expired or not issued" {
-		t.Fatalf("Bank.Redeem refused the anchor for %q, want the verify failure \"token expired or not issued\" — the refusal must come from the domain, not a later check", reason)
+	if e, ok := keys.VerifyInWindow(0, demand.Token{Serial: anchor.Serial, Sig: anchor.Sig}); ok {
+		t.Fatalf("a relay ANCHOR verified as a delivery token at epoch %d — one fee would pay two lanes", e)
+	}
+	// The control: a real DELIVERY token under the same keyset does verify, so the arm
+	// above measures the domain separation and not an empty keyset.
+	if _, ok := keys.VerifyInWindow(0, blindTokenUnderAt(t, r.key, 0)); !ok {
+		t.Fatal("the control delivery token does not verify under the node's own keyset — the arm above measures darkness")
 	}
 }
 

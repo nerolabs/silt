@@ -13,8 +13,7 @@ package sim
 // U/p and P3b, not by the counter. And nothing here moves standing.
 //
 // ABLATION that must redden it: count one unit per receipt (`b.increments[object]++`) —
-// the washer then registers N units for N/… credits; or write the units into the v2
-// demand[] map — WitnessedDemand moves.
+// the washer then registers N units for N/… credits.
 
 import (
 	"crypto/rand"
@@ -115,8 +114,8 @@ func sessionWashAtStep(t *testing.T, washStep uint64) {
 	}
 	// PARITY: the registered units are exactly the settled increments — one credit gross
 	// each, the honest fetcher's price for the same unit; the v2 counter is untouched.
-	if server.WitnessedIncrements(object) != int64(N) || settledSum != int64(N)*credit.DeliveryIncrementCredit || server.WitnessedDemand(object) != 0 {
-		t.Fatalf("witnessed increments %d / settled %d / v2 demand %d, want %d / %d / 0", server.WitnessedIncrements(object), settledSum, server.WitnessedDemand(object), N, N)
+	if server.WitnessedIncrements(object) != int64(N) || settledSum != int64(N)*credit.DeliveryIncrementCredit {
+		t.Fatalf("witnessed increments %d / settled %d, want %d / %d", server.WitnessedIncrements(object), settledSum, N, N*credit.DeliveryIncrementCredit)
 	}
 	// The face was BURNED at withdrawal; the washer's server side got back N − skim, so
 	// the washer's net cost for N units is fee − (N − skim) — the whole face consumed

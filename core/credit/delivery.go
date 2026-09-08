@@ -544,7 +544,7 @@ func (l *Ledger) RedeemDeliveryCreditReason(server, fetcher ports.NodeID, root p
 	//
 	// Legit abort-retry survives: an aborted server delivers nothing, banks nothing,
 	// and never reaches here, so the honest completion at the retry server is the
-	// FIRST redeem of that serial and pays (core/demand TestAbortLeavesTokenReusable).
+	// FIRST redeem of that serial and pays (core/demand TestAbortLeavesAnchorReusable).
 	// The distinguisher is completed server-distinct redeems off ONE serial, not "was
 	// the token reused".
 	//

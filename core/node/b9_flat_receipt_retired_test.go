@@ -9,17 +9,30 @@ package node
 // in September) says the retirement is gated on its RUNTIME effect, not on the presence
 // of the constant.
 //
-// Non-vacuity: the receipt driven here is WELL-FORMED and OTHERWISE VALID — the v2
-// primitive banks it on a scratch bank against the same committed key. So a handler that
-// still banked would bank THIS receipt, and the three assertions below would go RED.
+// Non-vacuity: the payload driven here is the EXACT wire bundle a pre-B-9 fetcher sent —
+// a real blind-withdrawn token under this server's committed key, and a receipt signed
+// over the retired v2 message, CBOR-encoded with the retired field names (v2Bundle
+// below, byte-identical to demand.SubmittedReceipt before C1 deleted it). So a handler
+// that still parsed and banked would bank THIS bundle, and the assertions below would go
+// RED.
 //
-// ABLATION (run 2026-09-07): restore the pre-B-9 body of handleDeliveryReceipt → RED on
-// "the retired lane ANSWERED OK".
+// C1 (2026-09-08) removed the primitive itself, so there is no longer a type in
+// production that can decode this payload. The wire shape is kept HERE, in the gate,
+// because the retirement's claim is about what arrives on the wire from an old peer —
+// not about what this build can construct.
+//
+// ABLATIONS (each run RED once): restore the pre-B-9 body of handleDeliveryReceipt →
+// "the retired lane ANSWERED OK" (2026-09-07); reply OK with an empty body → the same
+// line (2026-09-08).
 
 import (
+	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"testing"
+
+	"github.com/fxamacker/cbor/v2"
 
 	"github.com/nerolabs/silt/adapters/identity"
 	"github.com/nerolabs/silt/adapters/memstore"
@@ -72,14 +85,19 @@ func TestFlatReceiptIsRefusedAndMovesNothing(t *testing.T) {
 		t.Fatal(uerr)
 	}
 	obj := ports.HashBytes([]byte("b9-retired-flat-object"))
-	receipt := demand.Ack(fetcherIdent.Signer(), token, obj, serverID)
+	receipt := v2Ack(fetcherIdent.Signer(), token, obj, serverID)
 
-	// THE PREMISE: this exact receipt is one the v2 primitive BANKS. Without this leg the
-	// refusal below could be the receipt's own malformation, not the retirement.
-	if credited, _, why := demand.NewBank().Redeem(ks, 0, token, receipt); !credited {
-		t.Fatalf("setup: the v2 primitive refused the receipt this gate drives (%s) — the gate would be vacuous", why)
+	// THE PREMISE: the anchor inside this bundle is one this server's OWN committed
+	// keyset verifies, and the receipt signature is a real one over the retired v2
+	// message. Without this leg the refusal below could be the payload's own
+	// malformation rather than the retirement.
+	if e, ok := ks.VerifyInWindow(0, token); !ok || e != 0 {
+		t.Fatalf("setup: the anchor inside the bundle does not verify under the committed key (epoch %d, ok %v) — the gate would be vacuous", e, ok)
 	}
-	blob, err := demand.SubmittedReceipt{Token: token, Receipt: receipt}.Marshal()
+	if !ed25519.Verify(receipt.Fetcher, receipt.msg(), receipt.Sig) {
+		t.Fatal("setup: the v2 receipt signature does not verify — the gate would be vacuous")
+	}
+	blob, err := cbor.Marshal(v2Bundle{Token: token, Receipt: receipt})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,14 +123,57 @@ func TestFlatReceiptIsRefusedAndMovesNothing(t *testing.T) {
 	if got := sum(); got != before {
 		t.Fatalf("the retired lane moved credit: Σ moved by %+d", got-before)
 	}
-	// 3. Neither demand observable moved.
-	if nd.WitnessedDemand(obj) != 0 || nd.WitnessedIncrements(obj) != 0 {
-		t.Fatalf("the retired lane bumped a demand observable (demand=%d increments=%d)",
-			nd.WitnessedDemand(obj), nd.WitnessedIncrements(obj))
+	// 3. The demand observable did not move.
+	if nd.WitnessedIncrements(obj) != 0 {
+		t.Fatalf("the retired lane bumped the demand observable (increments=%d)", nd.WitnessedIncrements(obj))
 	}
 	// And the token was NOT consumed by the refusal: it still opens a session, which is the
 	// only lane that pays now.
 	if !sessionPresent(t, nd, fetcherIdent, token, obj) {
 		t.Fatal("the token did not open a session after the refused flat presentation — the refusal must consume nothing")
 	}
+}
+
+// ---------------------------------------------------------------------------
+// The RETIRED v2 wire shape, kept here and nowhere else.
+//
+// These three declarations are byte-for-byte what core/demand exported until C1
+// (2026-09-08): the same CBOR field names (no keyasint tags, so the map keys are the
+// Go field names) and the same signed message under the "silt/demand/receipt/v2"
+// domain. They exist so this gate can drive what an OLD PEER actually sends, which is
+// the only input the retirement makes a claim about. Nothing in production reads them.
+// ---------------------------------------------------------------------------
+
+type v2Receipt struct {
+	Serial  []byte
+	Object  ports.Hash
+	Server  ports.NodeID
+	Fetcher ed25519.PublicKey
+	Sig     []byte
+}
+
+type v2Bundle struct {
+	Token   demand.Token
+	Receipt v2Receipt
+}
+
+func (r v2Receipt) msg() []byte {
+	h := sha256.New()
+	h.Write([]byte("silt/demand/receipt/v2"))
+	h.Write(r.Serial)
+	h.Write(r.Object[:])
+	h.Write(r.Server[:])
+	h.Write(r.Fetcher)
+	return h.Sum(nil)
+}
+
+func v2Ack(fetcher ed25519.PrivateKey, token demand.Token, object ports.Hash, server ports.NodeID) v2Receipt {
+	r := v2Receipt{
+		Serial:  append([]byte(nil), token.Serial...),
+		Object:  object,
+		Server:  server,
+		Fetcher: append(ed25519.PublicKey(nil), fetcher.Public().(ed25519.PublicKey)...),
+	}
+	r.Sig = ed25519.Sign(fetcher, r.msg())
+	return r
 }
