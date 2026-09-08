@@ -191,7 +191,13 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   withhold clause, and no identity or object axis anywhere (Don't #3). Gates:
   `TestServedByteSplitIsExactAcrossEveryTerminalState`, `TestEvictedLaneBytesAreCountedForfeitedNotWitnessed`,
   `TestSuppressionShowsAsCoverageBelowOne` (the RED-first proof that the two arms do not read the same), each
-  run RED under a controlled revert of its increment site.
+  run RED under a controlled revert of its increment site. `serveMint.laneOn` ships beside the coverage
+  figure: a zero coverage means one of THREE things, and the third is the DEFAULT posture — a node that does
+  not run `-accept-delivery-receipts` never calls `SettleDelivery`, so it prints `receiptCoverage: 0` beside
+  a large `serveBytesObjectAware` while behaving perfectly. ROADMAP C6 makes coverage below 0.75 a
+  machine-read canary abort and the RC ships default-OFF, so without the lane state every honest RC-default
+  node would trip it. Same shape and same reason as `economySelfFunding.bountyOn` for `-economy`; gated by
+  `TestCoverageZeroIsDistinguishableFromTheLaneBeingOff`, whose two arms differ only in the lane flag.
 - **Floor box — the STRUCTURE round, Round 1A (`R-STRUCTURE-REDERIVATION`, owner-ratified 2026-09-03; call 16 main-only).**
   ONE accept composition over a three-valued `StateView`: `ValidateProposalV5` (P1…P13) and `ValidateCommitV5` (= the
   proposal then C1…C5), dispatched from BOTH `ValidateProposal` and `ValidateCommit` on version — `chain.go` changes by

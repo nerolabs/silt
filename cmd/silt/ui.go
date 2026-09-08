@@ -795,8 +795,17 @@ type serveMintInfo struct {
 	// ServedBytesUnwitnessable is the plain-path floor (manifest chunks have no root),
 	// never a suppression signal.
 	ServedBytesUnwitnessable int64 `json:"servedBytesUnwitnessable"`
-	// ReceiptCoverage is witnessed / object-aware. Read it beside serveBytesObjectAware:
-	// a zero denominator and total suppression both print 0.
+	// LaneOn is whether this node ACCEPTS paid delivery sessions
+	// (-accept-delivery-receipts). It is the third disambiguator of a zero coverage and
+	// the most common one: with the lane off SettleDelivery is never called, so an
+	// entirely honest node prints receiptCoverage 0 beside a large serveBytesObjectAware,
+	// and the RC ships default-OFF. Same shape and same reason as
+	// economySelfFunding.bountyOn does for the -economy flag.
+	LaneOn bool `json:"laneOn"`
+	// ReceiptCoverage is witnessed / object-aware. A zero means one of THREE things and
+	// the block carries all three disambiguators: laneOn false (not accepting receipts at
+	// all), serveBytesObjectAware zero (nothing witnessable served yet), or a real
+	// suppression. Read it beside both.
 	ReceiptCoverage float64 `json:"receiptCoverage"`
 }
 
@@ -948,7 +957,7 @@ func (s *uiServer) computeStatus(now time.Time) *statusInfo {
 			ServeBytesObjectAware: sm.ObjectAwareBytes, ServeBytesWitnessed: sm.WitnessedBytes,
 			ServeBytesLaneEvicted: sm.LaneEvictedBytes, ServeBytesInFlight: sm.InFlightBytes,
 			ServedBytesUnwitnessed: sm.UnwitnessedBytes, ServedBytesUnwitnessable: sm.UnwitnessableBytes,
-			ReceiptCoverage: sm.ReceiptCoverage}
+			LaneOn: s.nd.DeliveryLaneOn(), ReceiptCoverage: sm.ReceiptCoverage}
 		ds := s.nd.DeliverySettlementStats()
 		out.DeliverySettlement = &deliverySettlementInfo{Settlements: ds.Settlements, SettledCredits: ds.SettledCredits, SettledIncrements: ds.SettledIncrements,
 			SessionsClosed: ds.SessionsClosed, RefundedCredits: ds.RefundedCredits, PendingRefundCredits: ds.PendingRefundCredits, BurnedCredits: ds.BurnedCredits,

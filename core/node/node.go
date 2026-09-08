@@ -920,6 +920,14 @@ type RootDurability struct {
 // disburses nothing (repairclaim.go), so the loop is half-open. Observability.
 func (n *Node) RepairBountyEnabled() bool { return n.cfg.RepairEconomy }
 
+// DeliveryLaneOn reports whether this node ACCEPTS paid delivery sessions
+// (-accept-delivery-receipts with a set idle window, EnableDeliverySessions). It is the
+// disambiguator for receiptCoverage: with the lane off SettleDelivery is never called, so
+// coverage is 0 BY CONFIGURATION while the node behaves perfectly — indistinguishable on
+// the wire from total suppression, and the RC ships default-OFF. Same shape and same
+// reason as RepairBountyEnabled above. Loop-owned; call it on the event loop.
+func (n *Node) DeliveryLaneOn() bool { return n.deliveryAccept }
+
 // CreditBalance reports THIS node's own credit balance — what serving has earned
 // (RecordServe) that it could spend to FundDurability. 0 with no ledger. Standing
 // is untouched by this number (Invariant A: credits never confer standing).

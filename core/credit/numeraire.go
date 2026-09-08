@@ -109,9 +109,15 @@ type ServeMintStats struct {
 	// signal — a node serving manifests is doing honest work.
 	UnwitnessableBytes int64
 	// ReceiptCoverage is the A2 number: WitnessedBytes / ObjectAwareBytes. The
-	// denominator is object-aware bytes, NOT total served bytes. It is 0 when nothing
-	// witnessable has been served yet — read it beside ObjectAwareBytes, because a zero
-	// denominator and total suppression print the same number.
+	// denominator is object-aware bytes, NOT total served bytes.
+	//
+	// A ZERO MEANS ONE OF THREE THINGS and the ledger can only tell two of them apart.
+	// (1) Nothing witnessable has been served: ObjectAwareBytes is 0. (2) Real
+	// suppression. (3) This node does not accept paid delivery sessions at all, so
+	// SettleDelivery is never called — the DEFAULT posture, on which an entirely honest
+	// node reads 0 beside a large ObjectAwareBytes. The ledger has no lane flag, so (3)
+	// is disambiguated at the surface by serveMint.laneOn (cmd/silt/ui.go), and a
+	// machine-read abort on coverage MUST read that field first.
 	ReceiptCoverage float64
 }
 
