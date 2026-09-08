@@ -462,11 +462,33 @@ type economyConcentration struct {
 	SnapshotIntervalSec int64 `json:"snapshotIntervalSec"`
 }
 
+// giniValue carries Known for the same reason economyGRow does: the underlying function
+// returns 0 for two different facts. credit.Gini is 0 when every sampled value is
+// identical AND when they sum to zero, and the second is not a measurement — it is a
+// sample in which nobody reported any work. Rendering it as 0.0000 tells a reader that
+// work is perfectly evenly spread across N nodes when the truth is that N nodes said
+// nothing. Known false ships the reason and NO value (Value is omitempty and left at 0,
+// which is why Known is what a consumer must branch on, never the number).
 type giniValue struct {
-	Value      float64 `json:"value"`
+	Known      bool    `json:"known"`
+	Value      float64 `json:"value,omitempty"`
 	SampleSize int     `json:"sampleSize"`
 	Tier       string  `json:"tier"`
 	Scope      string  `json:"scope"`
+	Reason     string  `json:"reason,omitempty"`
+}
+
+// noWorkReported is the rendering of a Gini whose sample summed to zero.
+const noWorkReported = "no work reported by this sample: every sampled node reported zero. That is not an even distribution — it is an absent measurement, and the two are different facts"
+
+func giniOver(value float64, total int64, size int, tier, scope string) *giniValue {
+	gv := &giniValue{SampleSize: size, Tier: tier, Scope: scope}
+	if total <= 0 {
+		gv.Reason = noWorkReported
+		return gv
+	}
+	gv.Known, gv.Value = true, value
+	return gv
 }
 
 type c2Info struct {
@@ -518,15 +540,15 @@ func economyConcentrationDoc(sample node.EconomySample, c2 *chain.C2) economyCon
 		Note:   "serve-work and repair-work are SEPARATE series on purpose: a balance Gini conflates them, and repair concentrating on the persistent tier while serving federates is exactly the drift a single number hides",
 	}
 	if !out.Sample.TooSmall {
-		out.ServeGini = &giniValue{Value: sample.ServeGini, SampleSize: sample.Size, Tier: "gossip-estimated",
-			Scope: "the whole sample: every tier serves"}
+		out.ServeGini = giniOver(sample.ServeGini, sample.ServeWorkTotal, sample.Size, "gossip-estimated",
+			"the whole sample: every tier serves")
 		// The repair series carries its OWN floor, against its OWN subset size. The
 		// capable subset is a fraction of the sample, so a sample that clears the floor
 		// routinely holds a capable subset that does not — and publishing the sample's
 		// size beside the subset's Gini would be the wrong sibling on the wrong number.
 		if sample.RepairSampleSize >= minGossipSample {
-			out.RepairGini = &giniValue{Value: sample.RepairGini, SampleSize: sample.RepairSampleSize, Tier: "gossip-estimated",
-				Scope: "the REPAIR-CAPABLE subset only (horse + archival by capacity band). A network-wide repair Gini is ~0.99 by construction under D-TIERING, where transient ponies do no durability work, so it carries no signal"}
+			out.RepairGini = giniOver(sample.RepairGini, sample.RepairWorkTotal, sample.RepairSampleSize, "gossip-estimated",
+				"the REPAIR-CAPABLE subset only (horse + archival by capacity band). A network-wide repair Gini is ~0.99 by construction under D-TIERING, where transient ponies do no durability work, so it carries no signal")
 		}
 	}
 	if c2 == nil {

@@ -257,10 +257,11 @@ func TestR22GossipEstimatedFieldsNeverRenderWithoutTheirSample(t *testing.T) {
 
 	// At the floor the estimate renders, WITH its sample size beside it.
 	sample := node.EconomySample{Size: 8, SelfIncluded: true, ServeGini: 0.11, RepairGini: 0.33, RepairSampleSize: 4,
-		EstimatedNodes: 40, Mix: map[string]int{node.TierPony: 5, node.TierHorse: 2, node.TierArchival: 1}}
+		ServeWorkTotal: 9_000, RepairWorkTotal: 12, EstimatedNodes: 40,
+		Mix: map[string]int{node.TierPony: 5, node.TierHorse: 2, node.TierArchival: 1}}
 	conc := economyConcentrationDoc(sample, nil)
-	if conc.ServeGini == nil || conc.ServeGini.SampleSize != 8 || conc.ServeGini.Value != 0.11 {
-		t.Fatalf("serveGini = %+v, want value 0.11 over 8", conc.ServeGini)
+	if conc.ServeGini == nil || !conc.ServeGini.Known || conc.ServeGini.SampleSize != 8 || conc.ServeGini.Value != 0.11 {
+		t.Fatalf("serveGini = %+v, want a KNOWN value 0.11 over 8", conc.ServeGini)
 	}
 	if conc.RepairGini == nil || conc.RepairGini.SampleSize != 4 {
 		t.Fatalf("repairGini = %+v: the repair series must carry the CAPABLE SUBSET's size (4), not the sample's (8) — the wrong sibling on the wrong number", conc.RepairGini)
@@ -273,7 +274,8 @@ func TestR22GossipEstimatedFieldsNeverRenderWithoutTheirSample(t *testing.T) {
 	}
 	// The repair subset carries its own floor: a big sample with a tiny capable subset
 	// must still withhold the repair series.
-	thin := economyConcentrationDoc(node.EconomySample{Size: 20, RepairGini: 0.9, RepairSampleSize: minGossipSample - 1}, nil)
+	thin := economyConcentrationDoc(node.EconomySample{Size: 20, ServeWorkTotal: 5, RepairGini: 0.9,
+		RepairSampleSize: minGossipSample - 1, RepairWorkTotal: 9}, nil)
 	if thin.ServeGini == nil || thin.RepairGini != nil {
 		t.Fatalf("a 20-node sample with a %d-node capable subset published the repair Gini: %+v", minGossipSample-1, thin.RepairGini)
 	}
@@ -292,6 +294,57 @@ func TestR22GossipEstimatedFieldsNeverRenderWithoutTheirSample(t *testing.T) {
 	}
 	if len(noArch.Mix) != 1 {
 		t.Fatalf("mix = %+v: a class with no members is ABSENT, never a zero row — 'none in my sample' is not 'none exist'", noArch.Mix)
+	}
+}
+
+// TestR22AnAllZeroWorkSampleIsNotAMeasuredEquality is blocker B2 (blind PE, measured).
+//
+// credit.Gini returns 0 when the values sum to zero — "universal poverty is technically
+// equality" in its own comment. Nothing downstream told that from a measured equality, so
+// eight peers that had all reported nothing published serveGini {value:0, sampleSize:8},
+// which the dashboard rendered as "0.0000 — gossip-estimated over 8 nodes". A reader saw
+// perfect equality of work across eight nodes. The truth was that no node reported any.
+//
+// It is live in three states, not hypothetical: a fresh network; a node whose ledger does
+// not implement workReporter (workRep stays nil and selfWork gossips 0); and the mixed case
+// where "cannot see my counters" and "served nothing" are summed into one distribution.
+//
+// ABLATION E2: delete giniOver's `total <= 0` branch and both arms redden.
+func TestR22AnAllZeroWorkSampleIsNotAMeasuredEquality(t *testing.T) {
+	// The PE's fixture: eight peers, all reporting zero work.
+	zero := economyConcentrationDoc(node.EconomySample{Size: 8, ServeGini: 0, RepairGini: 0,
+		RepairSampleSize: 8, ServeWorkTotal: 0, RepairWorkTotal: 0}, nil)
+	for name, gv := range map[string]*giniValue{"serveGini": zero.ServeGini, "repairGini": zero.RepairGini} {
+		if gv == nil {
+			t.Fatalf("%s is absent; B2 is about what it SAYS, so an absent block means the fixture changed", name)
+		}
+		if gv.Known {
+			t.Fatalf("%s = %+v over a sample that reported no work at all. A 0 here reads as perfect equality across %d nodes; the truth is that %d nodes said nothing (blind PE B2)", name, gv, gv.SampleSize, gv.SampleSize)
+		}
+		if gv.Value != 0 || gv.Reason == "" {
+			t.Fatalf("%s = %+v: an unknown Gini must carry no value and a reason", name, gv)
+		}
+		if gv.SampleSize != 8 {
+			t.Fatalf("%s dropped its sample size (%d): the absence still needs its sibling", name, gv.SampleSize)
+		}
+	}
+
+	// A MEASURED equality is a real result and must still publish, or the fix above is a
+	// blanket refusal to publish zeros rather than a distinction between two facts.
+	equal := economyConcentrationDoc(node.EconomySample{Size: 8, ServeGini: 0, ServeWorkTotal: 8_000,
+		RepairGini: 0, RepairSampleSize: 8, RepairWorkTotal: 40}, nil)
+	if equal.ServeGini == nil || !equal.ServeGini.Known || equal.ServeGini.Value != 0 {
+		t.Fatalf("eight nodes that each served the same real number of bytes publish %+v; that IS a measured equality and 0 is its answer", equal.ServeGini)
+	}
+	if equal.RepairGini == nil || !equal.RepairGini.Known {
+		t.Fatalf("a measured repair equality was suppressed: %+v", equal.RepairGini)
+	}
+
+	// And the two series are independent: serving reported, repair not.
+	mixed := economyConcentrationDoc(node.EconomySample{Size: 8, ServeGini: 0.2, ServeWorkTotal: 9_000,
+		RepairGini: 0, RepairSampleSize: 8, RepairWorkTotal: 0}, nil)
+	if mixed.ServeGini == nil || !mixed.ServeGini.Known || mixed.RepairGini == nil || mixed.RepairGini.Known {
+		t.Fatalf("a sample that served but never repaired = serve %+v repair %+v; the two sums are separate questions", mixed.ServeGini, mixed.RepairGini)
 	}
 }
 
@@ -325,7 +378,7 @@ func TestR22PublishedBandsMatchTheClassifierIsUsing(t *testing.T) {
 func TestR22ConcentrationCarriesC2WhenAChainExists(t *testing.T) {
 	m := chain.C2{NakamotoBonds: 4, NakamotoOperators: 4, NakamotoDomains: 3, Participants: 9,
 		DistinctDomains: 3, HHI: 0.2, Gini: 0.3, TopShare: 0.4, WeightUniformity: 0.99}
-	doc := economyConcentrationDoc(node.EconomySample{Size: 5}, &m)
+	doc := economyConcentrationDoc(node.EconomySample{Size: 5, ServeWorkTotal: 1}, &m)
 	if doc.C2 == nil || doc.C2Absent != "" {
 		t.Fatalf("C2 missing with a chain present: %+v", doc)
 	}

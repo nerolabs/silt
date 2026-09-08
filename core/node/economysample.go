@@ -110,6 +110,16 @@ type EconomySample struct {
 	ServeGini        float64
 	RepairGini       float64
 	RepairSampleSize int
+	// ServeWorkTotal and RepairWorkTotal are the SUMS the two Ginis were taken over, and
+	// they are the only thing that tells a measured equality from no measurement at all:
+	// credit.Gini returns 0 both when every value is identical and when the values sum to
+	// zero ("universal poverty is technically equality", core/credit/credit.go). A sample
+	// in which nobody has reported any work is the second case, and it is live on a fresh
+	// network, on a node whose ledger does not implement workReporter, and on the mixed
+	// case where "cannot see my counters" is summed with "served nothing". The consumer
+	// renders that as a named absence, never as 0 (blind PE ruling B2).
+	ServeWorkTotal  int64
+	RepairWorkTotal int64
 }
 
 // EconomySample computes this node's gossip-estimated view of the crowd's economy.
@@ -148,6 +158,12 @@ func (n *Node) EconomySample() EconomySample {
 	es.ServeGini = credit.Gini(served)
 	es.RepairGini = credit.Gini(repairs)
 	es.RepairSampleSize = len(repairs)
+	for _, v := range served {
+		es.ServeWorkTotal += v
+	}
+	for _, v := range repairs {
+		es.RepairWorkTotal += v
+	}
 	return es
 }
 

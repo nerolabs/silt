@@ -82,10 +82,10 @@ async function refresh() {
   document.getElementById("wash").textContent = w.light;
   document.getElementById("washsub").textContent = w.sub;
 
-  const sg = siltRender.gossipCell(conc, conc && conc.serveGini && conc.serveGini.value);
+  const sg = siltRender.gossipCell(conc, conc && conc.serveGini);
   document.getElementById("servegini").textContent = sg.text;
   document.getElementById("serveginisub").textContent = sg.sub;
-  const rg = siltRender.gossipCell(conc, conc && conc.repairGini && conc.repairGini.value);
+  const rg = siltRender.gossipCell(conc, conc && conc.repairGini);
   document.getElementById("repairgini").textContent = rg.text;
   document.getElementById("repairginisub").textContent =
     rg.sub + ((conc && conc.repairGini) ? " · " + conc.repairGini.scope : " · the repair-capable subset alone carries signal");

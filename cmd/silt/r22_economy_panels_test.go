@@ -53,9 +53,17 @@ out.washSuspected = r.washCard({ wash: { symmetry: 0.98, balanceNonPositive: tru
 out.washClear = r.washCard({ wash: { symmetry: 0.1, suspected: false } });
 out.washWithheld = r.washCard({ countersWithheld: true });
 // Row 13.
+const bigSample = { sample: { size: 9, minSize: 3, tooSmall: false, selfIncluded: true } };
 out.gossipSmall = r.gossipCell({ sample: { size: 2, minSize: 3, tooSmall: true } }, undefined);
-out.gossipAbsent = r.gossipCell({ sample: { size: 9, minSize: 3, tooSmall: false, selfIncluded: true } }, undefined);
-out.gossipValue = r.gossipCell({ sample: { size: 9, minSize: 3, tooSmall: false, selfIncluded: true } }, 0.1234);
+out.gossipAbsent = r.gossipCell(bigSample, undefined);
+out.gossipValue = r.gossipCell(bigSample, { known: true, value: 0.1234, sampleSize: 9 });
+// B2 (blind PE): a sample that summed to zero. The wire sends known:false and NO value, so
+// the cell is driven exactly as the endpoint would send it — and, separately, with an
+// explicit 0 present, because a consumer must branch on known and never on the number
+// (a value of 0 is falsy, which is how the old bare-number signature shipped this).
+out.gossipNoWork = r.gossipCell(bigSample, { known: false, sampleSize: 9, reason: "no work reported by this sample" });
+out.gossipZeroValue = r.gossipCell(bigSample, { known: false, value: 0, sampleSize: 9, reason: "no work reported by this sample" });
+out.gossipMeasuredZero = r.gossipCell(bigSample, { known: true, value: 0, sampleSize: 9 });
 // And the shapes a real withheld/absent document actually has: nothing may throw.
 out.nulls = [r.solvencyCell(null).text, r.marginCard(null).margin, r.selfFundingCard(null).net,
              r.washCard(null).light, r.gossipCell(null, null).text, r.economyObjects(null).rows.length];
@@ -67,8 +75,8 @@ console.log(JSON.stringify(out));`
 		t.Fatalf("render.js THREW on the economy fixtures (the abort-the-page shape): %v\n%s", err, raw)
 	}
 	type cell struct {
-		Text, Sub, State, Title, Margin, Net, Light string
-		Withheld, TooSmall, Draining                bool
+		Text, Sub, State, Title, Margin, Net, Light  string
+		Withheld, TooSmall, Draining, Unknown, Known bool
 	}
 	var out struct {
 		HorizonUnmeasured, HorizonCliff, HorizonOk        cell
@@ -77,6 +85,7 @@ console.log(JSON.stringify(out));`
 		FundingNoWindow, FundingDraining, FundingWithheld cell
 		WashSuspected, WashClear, WashWithheld            cell
 		GossipSmall, GossipAbsent, GossipValue            cell
+		GossipNoWork, GossipZeroValue, GossipMeasuredZero cell
 		Nulls                                             []json.RawMessage
 	}
 	if err := json.Unmarshal(raw, &out); err != nil {
@@ -144,6 +153,17 @@ console.log(JSON.stringify(out));`
 	}
 	if out.GossipValue.Text != "0.1234" || !strings.Contains(out.GossipValue.Sub, "over 9 nodes") {
 		t.Fatalf("a published gossip figure = %+v; it must carry its sample size in the same cell", out.GossipValue)
+	}
+	// B2. An unknown Gini must never render as a number, in either wire form.
+	for name, got := range map[string]cell{"no value sent": out.GossipNoWork, "an explicit 0 sent": out.GossipZeroValue} {
+		if got.Text != "no work reported" || !got.Unknown {
+			t.Fatalf("a sample that reported no work (%s) renders %q. credit.Gini returns 0 for BOTH a measured equality and a zero sum; rendering the second as 0.0000 tells the operator that work is perfectly evenly spread across 9 nodes when 9 nodes said nothing", name, got.Text)
+		}
+	}
+	// ...and a REAL measured 0 (nine nodes that all did identical work) still renders as a
+	// number, or the branch above is just a blanket refusal to publish zeros.
+	if out.GossipMeasuredZero.Text != "0.0000" || !out.GossipMeasuredZero.Known {
+		t.Fatalf("a MEASURED equality renders %q; known:true with value 0 is a real result and must still publish", out.GossipMeasuredZero.Text)
 	}
 
 	// SOURCE GATE: the page must go through render.js, like every other page.

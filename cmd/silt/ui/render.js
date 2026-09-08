@@ -188,17 +188,27 @@
   // The gossip-estimated panels. A gossip figure NEVER renders without its sample size,
   // and below the floor it does not render at all — "sample too small" is a legitimate
   // rendering and a guess is not.
-  function gossipCell(block, value) {
+  // It takes the whole gini BLOCK, never a bare number: the old signature was called as
+  // `gossipCell(doc, doc.serveGini && doc.serveGini.value)`, and a value of 0 is falsy —
+  // which is exactly the case that must not render as a measurement.
+  function gossipCell(block, gini) {
     const sample = (block && block.sample) || null;
     if (!sample) return { text: "—", sub: "no sample" };
     if (sample.tooSmall) {
       return { text: "sample too small", tooSmall: true,
         sub: sample.size + " of " + sample.minSize + " nodes — a Gini over two values is those two values' ratio, so nothing is published" };
     }
-    if (value === undefined || value === null) {
+    if (!gini) {
       return { text: "not published", sub: "this figure is absent on the wire, which is not a zero" };
     }
-    return { text: Number(value).toFixed(4), sub: "gossip-estimated over " + sample.size + " nodes" + (sample.selfIncluded ? " (this node included)" : "") };
+    // known === false means the sample summed to zero: nobody reported any work. Rendering
+    // that as 0.0000 would say work is perfectly evenly spread across N nodes when the truth
+    // is that N nodes said nothing.
+    if (gini.known === false) {
+      return { text: "no work reported", unknown: true, sub: gini.reason || "the sample reported no work at all" };
+    }
+    return { text: Number(gini.value || 0).toFixed(4), known: true,
+      sub: "gossip-estimated over " + sample.size + " nodes" + (sample.selfIncluded ? " (this node included)" : "") };
   }
 
   return { fmtB, fmtDur, withheld, statusCards, prereleaseBanner, observatoryTotals, servedCell, libraryGetCell,
