@@ -73,17 +73,6 @@ func totalsOf(s ports.DurabilitySnapshot) flowTotals {
 	return flowTotals{SkimIn: s.Funded, BountyOut: s.Paid, Net: s.Funded - s.Paid}
 }
 
-// totalsOf2 sums one sample's per-root rows into the pooled figure.
-func totalsOf2(fs flowSample) flowTotals {
-	var out flowTotals
-	for _, sn := range fs.obj {
-		out.SkimIn += sn.Funded
-		out.BountyOut += sn.Paid
-	}
-	out.Net = out.SkimIn - out.BountyOut
-	return out
-}
-
 func (t flowTotals) sub(o flowTotals) flowTotals {
 	return flowTotals{SkimIn: t.SkimIn - o.SkimIn, BountyOut: t.BountyOut - o.BountyOut, Net: (t.SkimIn - o.SkimIn) - (t.BountyOut - o.BountyOut)}
 }
@@ -183,6 +172,80 @@ func drainRun(steps []int64) int {
 	return run
 }
 
+// flowWindowRows turns a ring into the pooled row and the per-object rows. PURE, and
+// split out for the reason economyConcentrationDoc is: the rule it enforces is a decision
+// about a VALUE, and a value decision should be testable without a node behind it — the
+// node has no uncare API, so the departure direction can only be driven here.
+//
+// THE RULE, WHICH IS ONE RULE AND NOT TWO (blind PE ruling B1, measured). A root's window
+// starts where the root FIRST APPEARS in the ring, because differencing against a zero it
+// never held would report its whole pre-window lifetime inflow as one window's. The
+// per-object path always did this. The pooled path did not: it differenced two whole-sample
+// totals, so a root cared for mid-window added its entire lifetime `funded` to the pooled
+// delta while its own row correctly reported 0. Measured on the real fixture before the fix:
+//
+//	"pooled":{"skimIn":5000,"bountyOut":0,"net":5000}
+//	"objects":[{"root":"0100…","net":0},{"root":"0200…","net":0}]
+//
+// That is not cosmetic. The pooled STEPS drive Draining, Panel 3's headline alarm: caring
+// for one new object injects a large positive step and MASKS a real drain for
+// flowDrainSamples samples, and dropping care on one injects a large negative step and
+// LATCHES a false drain.
+//
+// The fix is to stop having two rules. Pooled is now the SUM OF THE PER-OBJECT ROWS, both
+// for the window total and step by step, so the two can no longer disagree by construction
+// — a pooled figure that is not the sum of the rows printed beneath it is a lie whatever
+// the arithmetic behind it. A step contributes only where the root is present at BOTH ends
+// of that step, which is the same first-appearance rule applied per interval and is what
+// makes a departure contribute nothing rather than a phantom negative.
+func flowWindowRows(ring []flowSample) (economyFlowRow, []economyFlowRow, bool) {
+	last := ring[len(ring)-1]
+	roots := make([]string, 0, len(last.obj))
+	for root := range last.obj {
+		roots = append(roots, root)
+	}
+	sort.Strings(roots)
+
+	pooledSteps := make([]int64, len(ring)-1)
+	objects := make([]economyFlowRow, 0, len(roots))
+	var pooled economyFlowRow
+	for _, root := range roots {
+		base, steps := flowTotals{}, make([]int64, 0, len(ring)-1)
+		var prev *flowTotals
+		for k, fs := range ring {
+			sn, ok := fs.obj[root]
+			if !ok {
+				continue
+			}
+			t := totalsOf(sn)
+			if prev == nil {
+				base = t
+			} else {
+				steps = append(steps, t.sub(*prev).Net)
+			}
+			// The pooled step for interval k-1 -> k takes this root's term only when
+			// the root is in BOTH samples. An entry contributes nothing to the step it
+			// appears in; a departure contributes nothing to the step it vanishes in.
+			if k > 0 {
+				if p, ok := ring[k-1].obj[root]; ok {
+					pooledSteps[k-1] += t.sub(totalsOf(p)).Net
+				}
+			}
+			cp := t
+			prev = &cp
+		}
+		row := economyFlowRow{Root: root, flowTotals: totalsOf(last.obj[root]).sub(base), ConsecutiveNegative: drainRun(steps)}
+		row.Draining = row.ConsecutiveNegative >= flowDrainSamples
+		objects = append(objects, row)
+		pooled.SkimIn += row.SkimIn
+		pooled.BountyOut += row.BountyOut
+	}
+	pooled.Net = pooled.SkimIn - pooled.BountyOut
+	pooled.ConsecutiveNegative = drainRun(pooledSteps)
+	pooled.Draining = pooled.ConsecutiveNegative >= flowDrainSamples
+	return pooled, objects, last.trunc
+}
+
 func (s *uiServer) apiEconomyFlows(w http.ResponseWriter, r *http.Request) {
 	now := s.nowWall()
 	ring, doc, takenAt := s.flowWindow(now)
@@ -200,47 +263,12 @@ func (s *uiServer) apiEconomyFlows(w http.ResponseWriter, r *http.Request) {
 		out.WindowNotYetMeasured = true
 		out.Note = "window not yet measured: a delta needs two samples and the ring holds " + itoa(len(ring)) + ". This is NOT a zero net"
 	} else {
-		first, last := ring[0], ring[len(ring)-1]
+		pooled, objects, trunc := flowWindowRows(ring)
 		out.Samples = len(ring)
-		out.WindowSec = int64(last.at.Sub(first.at).Seconds())
-		out.ObjectsTruncated = last.trunc
-		pooledSteps := make([]int64, 0, len(ring)-1)
-		for i := 1; i < len(ring); i++ {
-			pooledSteps = append(pooledSteps, totalsOf2(ring[i]).sub(totalsOf2(ring[i-1])).Net)
-		}
-		pooled := economyFlowRow{flowTotals: totalsOf2(last).sub(totalsOf2(first)), ConsecutiveNegative: drainRun(pooledSteps)}
-		pooled.Draining = pooled.ConsecutiveNegative >= flowDrainSamples
+		out.WindowSec = int64(ring[len(ring)-1].at.Sub(ring[0].at).Seconds())
+		out.ObjectsTruncated = trunc
 		out.Pooled = &pooled
-		roots := make([]string, 0, len(last.obj))
-		for root := range last.obj {
-			roots = append(roots, root)
-		}
-		sort.Strings(roots)
-		out.Objects = make([]economyFlowRow, 0, len(roots))
-		for _, root := range roots {
-			// An object added mid-window has no term in the earliest samples. Its
-			// window starts where it FIRST appears — differencing against a zero it
-			// never held would report its whole lifetime inflow as one window's.
-			base, steps := flowTotals{}, []int64{}
-			var prev *flowTotals
-			for _, fs := range ring {
-				sn, ok := fs.obj[root]
-				if !ok {
-					continue
-				}
-				t := totalsOf(sn)
-				if prev == nil {
-					base = t
-				} else {
-					steps = append(steps, t.sub(*prev).Net)
-				}
-				cp := t
-				prev = &cp
-			}
-			row := economyFlowRow{Root: root, flowTotals: totalsOf(last.obj[root]).sub(base), ConsecutiveNegative: drainRun(steps)}
-			row.Draining = row.ConsecutiveNegative >= flowDrainSamples
-			out.Objects = append(out.Objects, row)
-		}
+		out.Objects = objects
 	}
 	writeJSON(w, withheldEconomyFlows(out, s.readerAuthFor(r)))
 }
