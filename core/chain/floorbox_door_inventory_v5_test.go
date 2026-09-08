@@ -102,6 +102,8 @@ var twinGateFiles = []string{
 	"redteam_floorbox_structure_gate_test.go",
 	"composition_stage_cover_v5_test.go",
 	"floorbox_box_v5_test.go",
+	"parity_oracle_v4v5_test.go",
+	"validate_v5_maturity_gate_test.go",
 }
 
 // TestG4_EveryGateCarriesAnHonestTwin counts, per Test* declaration in twinGateFiles, the direct
