@@ -80,3 +80,38 @@ only. G4 asserts the exact post-settlement balance. Six ablations, six RED, reco
 **Lesson (scars 5–6 in the gate discipline):** "not banked" cannot tell which layer refused — read the reason;
 a fixture server with no keyset satisfies every refusal by darkness — give it a key. And when a re-home moves
 WHERE a property closes (window → own-key rule), the new seam needs its own gate.
+
+## Build fold-in (2026-09-08) — where this record drifted from the code
+
+The attended PR (Lane C1) built decision (B)'s second half: the `core/demand` v2 primitive AND the
+ledger's flat leg, retired together, plus the guard record's lane byte. Six lines of the record above
+did not survive contact with the tree. They are corrected here rather than edited in place, so the
+deliberation stays readable as what was believed on 2026-09-07.
+
+- **"~15 credit test files drive the guard through it" (the decision paragraph).** Measured at build
+  time: **22** files — 19 in `core/credit`, 2 in `core/node`, 1 in `ports`.
+- **`TestBankedButUnpaidReceiptLogsTheWarnLine` is listed as retired.** It is live
+  (`core/node/demandreceipt_warnline_test.go`) and is the cited backing for the WARN marker in
+  `cmd/silt/observable_contract.go`. Only its driver moved.
+- **`TestRTC3_RestartDoesNotEvictTheGuard` is listed as a retired test to re-home.** It is a
+  `core/credit` test that survives the retirement; it needed an `EpochSource`, not a new home.
+- **"the oversized serial is refused at `UnmarshalSessionOpen` and at the ledger"** is true of the
+  code, but no test asserted either half — the record reads as though the new home already existed.
+  The PR builds it.
+- **"the paid-serial guard ALREADY pins bounded / expiry-swept / keyed-by-token"** — the tests named
+  there drove the flat leg, so they were part of the retirement, not an independent surviving home.
+  The properties are re-asserted on the lane.
+- **`TestAbortLeavesTokenReusable` re-homes to "B-13's certified rewrite".** No B-13 session work
+  exists in the tree; the property re-homed inside `core/demand` against the anchor instead.
+
+Three things the record did not anticipate at all: the per-object demand counter
+(`Bank.Demand` / `Node.WitnessedDemand`) and the test pinning that v2 and v3 never shared it; the G-4
+supersede family, which was the hardest item because it pinned an ORDERING INSIDE the flat call that
+cannot exist on the lane; and two lane screens (a future-dated anchor, the 32-byte serial bound) that
+every re-homed test had to satisfy.
+
+**The lesson, in the shape the earlier fold-in used.** A re-homing table written from the retiring
+side lists what dies; it cannot see what the destination lacks. Both times this doc was wrong, it was
+wrong in the same direction — asserting a home exists. Before the next retirement: open the
+destination test file and name the assertion the property will land on, or write "home does not exist
+yet, build it" in the table.

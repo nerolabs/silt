@@ -65,7 +65,7 @@ func TestGLambda5SupersedeLeavesNoRemainder(t *testing.T) {
 	if l.Balance(server) != 0 {
 		t.Fatalf("setup: %d minted below the boundary", l.Balance(server))
 	}
-	paid := l.RedeemDeliveryCredit(server, fetcher, obj, nil, 0)
+	paid := paidOnLane(l, server, fetcher, obj, testSerial(501), 0)
 	if paid <= 0 {
 		t.Fatalf("setup: redeem paid %d", paid)
 	}
@@ -184,7 +184,7 @@ func TestGLambdaServeMintTelemetry(t *testing.T) {
 	}
 	// The mint counters are GROSS of reversal; a witnessed redeem reverses the lane and
 	// lands in ReversedCredits instead of decrementing them.
-	l.RedeemDeliveryCredit(server, req, obj, nil, 0)
+	paidOnLane(l, server, req, obj, testSerial(502), 0)
 	st = l.ServeMintStats()
 	if st.MintedCredits != 9 || st.SkimmedCredits != 1 || st.ReversedCredits != 8 {
 		t.Fatalf("after a reversing redeem: minted %d skimmed %d reversed %d, want 9 / 1 / 8", st.MintedCredits, st.SkimmedCredits, st.ReversedCredits)

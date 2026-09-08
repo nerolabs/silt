@@ -7,8 +7,8 @@ package relaypay
 // (a preimage reveal that authorizes the next increment(s)), and their acks.
 // Settlement needs NO wire message — the relay settles LOCALLY at close by
 // redeeming its highest held preimage (design §1, §5). These are the CBOR payloads
-// that ride ports.Message Data, exactly as demand.SubmittedReceipt rides
-// MsgDeliveryReceipt.
+// that ride ports.Message Data, exactly as demand.SessionOpen rides
+// MsgDeliveryOpen.
 //
 // R2.14 (2026-09-04) makes RelayOpen v2: the chain root is ANCHORED to k blind-signed
 // prepayment credentials the fetcher's durable identity bought from this relay, and

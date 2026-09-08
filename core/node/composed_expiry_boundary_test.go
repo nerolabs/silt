@@ -405,7 +405,7 @@ func TestComposedExpiryBoundary_EvictionIsClosedAtBothLayers(t *testing.T) {
 	// with no help from the window. This shows what follows measures EXPIRY, not
 	// merely the absence of a guard.
 	cur := f.a.chainEpoch()
-	if got := f.ledger.RedeemDeliveryCredit(f.b.id, f.fetcher.NodeID(), f.object,
+	if got := nodePaidOnLane(f.ledger, f.b.id, f.fetcher.NodeID(), f.object,
 		token.Serial, 0); got != 0 {
 		t.Fatalf("in-window: the serial guard must refuse a second payout, paid %d", got)
 	}
@@ -427,7 +427,7 @@ func TestComposedExpiryBoundary_EvictionIsClosedAtBothLayers(t *testing.T) {
 	serial := make([]byte, 32)
 	fill := func(i int, epoch uint64) int64 {
 		serial[0], serial[1], serial[2] = byte(i), byte(i>>8), byte(i>>16)
-		return f.ledger.RedeemDeliveryCredit(filler, fillFetcher, fillRoot,
+		return nodePaidOnLane(f.ledger, filler, fillFetcher, fillRoot,
 			append([]byte(nil), serial...), epoch)
 
 	}
@@ -452,7 +452,7 @@ func TestComposedExpiryBoundary_EvictionIsClosedAtBothLayers(t *testing.T) {
 	// THE GATE: on the live ledger the evicted serial is refused anyway. The epoch
 	// watermark (R0.4b-5) has moved past issuedEpoch + W, so a backdated redeem cannot
 	// collect a second payout even with the demand window bypassed.
-	if got := f.ledger.RedeemDeliveryCredit(f.b.id, f.fetcher.NodeID(), f.object,
+	if got := nodePaidOnLane(f.ledger, f.b.id, f.fetcher.NodeID(), f.object,
 		token.Serial, 0); got != 0 {
 		t.Fatalf("the eviction pump re-opened: an evicted, expired serial paid %d", got)
 	}
@@ -627,4 +627,20 @@ func TestComposedBoundary_SameFingerprintAtTwoEpochsDoesNotRedateTokens(t *testi
 	if got := f.sum(); got != paid {
 		t.Fatalf("Σ moved by %+d at the 2W+1 replay", got-paid)
 	}
+}
+
+// nodePaidOnLane is the node-tier twin of core/credit's settleOnLane: the SESSION-LANE
+// walk that replaced the retired flat leg (credit.RedeemDeliveryCredit, deleted in C1
+// 2026-09-08). Open a one-anchor delivery session on (issuedEpoch, serial) at server,
+// settle its whole budget for fetcher on root, and return the credits PAID.
+//
+// A refusal at the OPEN pays nothing and records nothing — which is the property these
+// boundary tests measure, so the two-call shape is the mechanism and not a wrapper.
+func nodePaidOnLane(l *credit.Ledger, server, fetcher ports.NodeID, root ports.Hash, serial []byte, issuedEpoch uint64) int64 {
+	face, _ := l.SpendDeliveryAnchors(server, []ports.RelayAnchor{{Epoch: issuedEpoch, Serial: serial}})
+	if face == 0 {
+		return 0
+	}
+	_, paid, _ := l.SettleDelivery(server, fetcher, root, face/credit.DeliveryIncrementCredit, face, 0)
+	return paid
 }

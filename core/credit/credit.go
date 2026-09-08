@@ -225,9 +225,8 @@ type Ledger struct {
 	// paidSerial is the R0.4b CROSS-SERVER double-redeem guard. It records every
 	// demand-token SERIAL that has already had a completed, paid delivery redeem on
 	// this ledger, together with the server that collected it and the token's ISSUING
-	// EPOCH. The conserved leg of RedeemDeliveryCredit pays ONLY the first completed
-	// redeem of a serial; any later redeem of the SAME serial — by ANY server on this
-	// ledger — mints nothing. One fee (one blind withdrawal, one serial) funds exactly
+	// EPOCH. An anchor funds ONLY the first session opened on it; any later open of the
+	// SAME token — by ANY server on this ledger — is refused and funds nothing. One fee (one blind withdrawal, one serial) funds exactly
 	// one conserved payout, so K colluding servers sharing one token can no longer
 	// mint (K−1)·fee.
 	//
@@ -242,8 +241,8 @@ type Ledger struct {
 	//
 	// BOUNDED (build-immutable #8): capped at maxPaidSerial, a DERIVED cap sized to
 	// dominate the honest live set (delivery.go). If the cap is ever reached with
-	// nothing expired, RedeemDeliveryCredit REFUSES TO PAY rather than forget a live
-	// serial — an under-pay, never an over-pay and never a mint.
+	// nothing expired, the anchor spend REFUSES rather than forget a live serial — an
+	// under-pay, never an over-pay and never a mint.
 	//
 	// SCOPE: this closes the SHARED-ledger case only. K truly distinct-owner ledgers
 	// do not see each other's paidSerial, so the cross-owner-ledger variant remains
@@ -422,8 +421,8 @@ func (l *Ledger) Epoch() uint64 {
 }
 
 // advanceEpoch is the ONE read of the source per guarded operation (R-F8-LATCH):
-// called at the entry of RedeemDeliveryCreditReason's guarded path and of
-// SpendRelayAnchors, before the sweep and before every screen. It raises the
+// called at the entry of spendAnchors (both anchored lanes) and of
+// CloseDeliverySession, before the sweep and before every screen. It raises the
 // watermark by max and, on a band advance, runs the expiry sweep against the
 // watermark — never against the raw source, which a mock or embedder may lower.
 func (l *Ledger) advanceEpoch() {

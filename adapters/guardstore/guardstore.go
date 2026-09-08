@@ -32,6 +32,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -39,11 +40,37 @@ import (
 )
 
 // The on-disk record: serial length, the serial (right-padded), the collecting
-// server's NodeID, and the token's issue epoch, big-endian — the same epoch wire form
-// the FDH message and the issuerKeyCommit leaf use.
+// server's NodeID, the token's issue epoch (big-endian — the same epoch wire form the
+// FDH message and the issuerKeyCommit leaf use), and the LANE byte.
+//
+// THE LANE BYTE (R-GUARD-RESTORE-LANE-UNKNOWN, 2026-09-08). The guard holds two
+// populations on one map — delivery anchors and relay anchors — and the record used to
+// carry neither, so LoadPaidSerials rebuilt every restored entry as delivery and the
+// per-lane counts conflated them after every restart (measured: lanes (2, 1) before,
+// (3, 0) after). The lane is observability only, which is exactly why nothing else
+// went red. 0 = delivery, 1 = relay; any other value is a corrupt record.
 const (
 	maxSerialBytes = 32 // blindtoken.SerialSize; a longer serial is not a serial
-	recSize        = 1 + maxSerialBytes + 32 + 8
+	recSize        = 1 + maxSerialBytes + 32 + 8 + 1
+	laneByteOffset = 1 + maxSerialBytes + 32 + 8
+
+	laneDeliveryByte = 0
+	laneRelayByte    = 1
+)
+
+// The file header: magic then format version, big-endian, written once at creation and
+// rewritten by every compaction. It exists to make "written before the lane byte" an
+// EXACT test rather than a size heuristic — 73-byte records are a whole number of
+// 74-byte records whenever the count is a multiple of 74, and a mis-framed load is the
+// F2 double-pay (see realign).
+//
+// magic's first byte is 0x50 = 80, which is larger than maxSerialBytes, so it is
+// impossible as a pre-bump record's serial-length byte. A pre-bump file therefore can
+// never match this header. TestFreshStoreWritesItsHeader pins that.
+const (
+	magic      = 0x50534744 // "PSGD" — paid-serial guard, disk
+	version    = 2          // 1 = the pre-bump, headerless, laneless format
+	headerSize = 4 + 4
 )
 
 // ErrCorrupt marks a store whose contents are not a whole number of well-formed
@@ -58,6 +85,35 @@ var ErrCorrupt = errors.New("guardstore: paid-serial store is corrupt")
 // of paying against a guard entry a restart would never see. Loud beats silent here:
 // the silent form of this state is R-COMPACT-ORPHAN, an over-pay.
 var ErrStoreBroken = errors.New("guardstore: paid-serial store is broken (append handle no longer trusted; restart to recover)")
+
+// ErrLegacyFormat marks a store written by a build from before the record carried its
+// lane byte (format version 1: headerless, 73-byte records). It is a REFUSE-TO-START
+// error, and that is the compatibility rule for this bump.
+//
+// WHY NOT MIGRATE. A version-1 record has no lane, so a migration would have to guess
+// one, and the only guess available — delivery, the zero value — is precisely the
+// mis-count this bump closes. Guessing would move that mis-count from one boot into the
+// durable file at the next compaction. Refusing states it at the one moment an operator
+// can still act on it.
+//
+// IT NAMES NO REMEDY, AND THAT IS DELIBERATE. This adapter is opened on TWO files whose
+// remedies are OPPOSITE (cmd/silt/daemon.go). On paidserials.log the credit ledger is
+// ephemeral through the RC (D-FP2-SCOPE), so the file guards payouts whose credits reset
+// at the same restart and removing it costs nothing. On creditspent.log the publish
+// issuer key PERSISTS, so a credit it signed stays spendable: clearing that guard alone
+// re-opens every held credit for a second spend (the F-4 pump,
+// core/node/r213b_creditspent_test.go), and the ratified rule is to rotate the publish
+// key AND clear the log together (R-CREDITSPENT-UNBOUNDED, owner call 6,
+// D-TRUE-UP-CALLS-2026-09-07). One remedy in this sentinel would be wrong on one of the
+// two files, so the sentinel states the CONDITION and the caller attaches the remedy for
+// the file it opened (cmd/silt remedyPaidSerials / remedyCreditSpent, gated by
+// TestGuardStoreRemedyTextIsSafePerStore).
+//
+// A 0-byte pre-bump file is NOT refused: prepareHeader upgrades it in place, because no
+// record was ever appended past a header that does not exist — there is nothing to
+// mis-frame and nothing to lose. Only a store carrying at least one written record
+// refuses. TestEmptyPreBumpStoreUpgradesButAWrittenOneRefuses pins both arms.
+var ErrLegacyFormat = errors.New("guardstore: this store predates the lane byte (format 1); its records carry no lane and this build will not guess one")
 
 // openAppend is the OS hook used to open the append handle, both in Open and on the
 // temp file inside Compact. Indirected ONLY so a test can force that open to fail
@@ -82,6 +138,9 @@ func Open(path string) (*Disk, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, fmt.Errorf("guardstore: %w", err)
 	}
+	if err := prepareHeader(path); err != nil {
+		return nil, err
+	}
 	if err := realign(path); err != nil {
 		return nil, fmt.Errorf("guardstore: %w", err)
 	}
@@ -90,6 +149,64 @@ func Open(path string) (*Disk, error) {
 		return nil, fmt.Errorf("guardstore: %w", err)
 	}
 	return &Disk{path: path, f: f}, nil
+}
+
+// prepareHeader establishes the format header before any handle exists: it writes one
+// on a store that has no complete header yet, and REFUSES a store whose header is not
+// this build's (ErrLegacyFormat).
+//
+// A file shorter than the header holds no complete record either — records start after
+// it — so Append never returned for anything in it and truncating back to a fresh
+// header is safe by this store's own torn-tail argument. A file at or beyond the header
+// length whose first eight bytes are not the magic and version is a store some other
+// build wrote; the pre-bump build is the one that exists, and it is refused by name.
+func prepareHeader(path string) error {
+	st, err := os.Stat(path)
+	switch {
+	case os.IsNotExist(err):
+	case err != nil:
+		return fmt.Errorf("guardstore: %w", err)
+	case st.Size() >= headerSize:
+		f, err := os.Open(path)
+		if err != nil {
+			return fmt.Errorf("guardstore: %w", err)
+		}
+		var hdr [headerSize]byte
+		_, rerr := io.ReadFull(f, hdr[:])
+		f.Close()
+		if rerr != nil {
+			return fmt.Errorf("guardstore: %w", rerr)
+		}
+		if binary.BigEndian.Uint32(hdr[0:]) == magic && binary.BigEndian.Uint32(hdr[4:]) == version {
+			return nil // already this build's format
+		}
+		return fmt.Errorf("%w: %s", ErrLegacyFormat, path)
+	}
+	// Absent, or shorter than a header: (re)create it, durably, before any record can
+	// be appended past it.
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return fmt.Errorf("guardstore: %w", err)
+	}
+	defer f.Close()
+	if err := f.Truncate(0); err != nil {
+		return fmt.Errorf("guardstore: %w", err)
+	}
+	if _, err := f.Write(header()); err != nil {
+		return fmt.Errorf("guardstore: %w", err)
+	}
+	if err := f.Sync(); err != nil {
+		return fmt.Errorf("guardstore: %w", err)
+	}
+	return nil
+}
+
+// header is the eight bytes every store this build writes begins with.
+func header() []byte {
+	var h [headerSize]byte
+	binary.BigEndian.PutUint32(h[0:], magic)
+	binary.BigEndian.PutUint32(h[4:], version)
+	return h[:]
 }
 
 // realign truncates the file back to its last COMPLETE record boundary and fsyncs,
@@ -122,7 +239,7 @@ func realign(path string) error {
 	if err != nil {
 		return err
 	}
-	rem := st.Size() % recSize
+	rem := (st.Size() - headerSize) % recSize
 	if rem == 0 {
 		return nil
 	}
@@ -144,6 +261,10 @@ func encode(p ports.PaidSerial) ([recSize]byte, error) {
 	copy(rec[1:], p.Serial)
 	copy(rec[1+maxSerialBytes:], p.Server[:])
 	binary.BigEndian.PutUint64(rec[1+maxSerialBytes+32:], p.Epoch)
+	rec[laneByteOffset] = laneDeliveryByte
+	if p.Relay {
+		rec[laneByteOffset] = laneRelayByte
+	}
 	return rec, nil
 }
 
@@ -159,18 +280,30 @@ func (d *Disk) Load() ([]ports.PaidSerial, error) {
 		}
 		return nil, err
 	}
-	whole := len(blob) / recSize
+	if len(blob) < headerSize {
+		return nil, nil // header not yet written: no record can be past it
+	}
+	if binary.BigEndian.Uint32(blob[0:]) != magic || binary.BigEndian.Uint32(blob[4:]) != version {
+		return nil, fmt.Errorf("%w: %s", ErrLegacyFormat, d.path)
+	}
+	body := blob[headerSize:]
+	whole := len(body) / recSize
 	out := make([]ports.PaidSerial, 0, whole)
 	for i := 0; i < whole; i++ {
-		rec := blob[i*recSize : (i+1)*recSize]
+		rec := body[i*recSize : (i+1)*recSize]
 		n := int(rec[0])
 		if n == 0 || n > maxSerialBytes {
 			return nil, fmt.Errorf("%w: record %d declares a %d-byte serial", ErrCorrupt, i, n)
+		}
+		lane := rec[laneByteOffset]
+		if lane != laneDeliveryByte && lane != laneRelayByte {
+			return nil, fmt.Errorf("%w: record %d declares lane %d", ErrCorrupt, i, lane)
 		}
 		var p ports.PaidSerial
 		p.Serial = append([]byte(nil), rec[1:1+n]...)
 		copy(p.Server[:], rec[1+maxSerialBytes:1+maxSerialBytes+32])
 		p.Epoch = binary.BigEndian.Uint64(rec[1+maxSerialBytes+32:])
+		p.Relay = lane == laneRelayByte
 		out = append(out, p)
 	}
 	return out, nil
@@ -236,7 +369,8 @@ func (d *Disk) Compact(live []ports.PaidSerial) error {
 		tmp.Close()
 		return err
 	}
-	buf := make([]byte, 0, len(live)*recSize)
+	buf := make([]byte, 0, headerSize+len(live)*recSize)
+	buf = append(buf, header()...)
 	for _, p := range live {
 		rec, err := encode(p)
 		if err != nil {

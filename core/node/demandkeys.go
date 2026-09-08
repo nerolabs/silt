@@ -402,7 +402,7 @@ func (n *Node) withdrawBlind(rng io.Reader, issuer ports.NodeID, pub *rsa.Public
 		// RFC 9474 §4.4 Finalize (advisory C-1): verify the unblinded signature under
 		// key_epoch BEFORE handing the caller a token. A malicious issuer that returns
 		// a dud used to charge the withdrawal fee and hand back something that only
-		// failed at redemption — and a receipt that fails Bank.Redeem never reaches
+		// failed at the session open — and an anchor the keyset refuses never reaches
 		// the ledger, so the serve's eager self-mint is never reversed. Refuse here.
 		sig, uerr := unblind(pub, epoch, serial, resp.Data, secret)
 		if uerr != nil {

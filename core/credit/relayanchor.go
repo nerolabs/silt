@@ -83,9 +83,8 @@ const (
 // nothing.
 //
 // The epoch is the ledger's OWN (R2.10 / F8): it reads its injected EpochSource
-// once at entry and advances the monotone watermark exactly as
-// RedeemDeliveryCreditReason does (R0.4b-5), so the two lanes share one clock on
-// one guard. In production that source is the node's chainEpoch(), the value the
+// once at entry and advances the monotone watermark, and BOTH anchored lanes enter
+// through this one function (R0.4b-5), so they share one clock on one guard. In production that source is the node's chainEpoch(), the value the
 // relay's self keyset was pruned with in the same event-loop turn, so an anchor
 // that verified in-window upstream is never above the ledger's clock here.
 func (l *Ledger) SpendRelayAnchors(anchors []RelayAnchor) (face int64, reason string) {

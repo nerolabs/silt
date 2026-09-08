@@ -452,8 +452,8 @@ func TestReceiptBindsSessionAnchorsAndCount(t *testing.T) {
 	if _, err := server.SettleDeliveryReceipt(fetcher.id, stray); !errors.Is(err, errDeliveryNoSession) {
 		t.Fatalf("a receipt naming no live session: %v", err)
 	}
-	if server.WitnessedIncrements(obj) != 3 || server.WitnessedDemand(obj) != 0 {
-		t.Fatalf("witnessed increments %d (want the 3 the honest receipt settled), v2 demand %d (want 0 — the lanes share no counter)", server.WitnessedIncrements(obj), server.WitnessedDemand(obj))
+	if server.WitnessedIncrements(obj) != 3 {
+		t.Fatalf("witnessed increments %d, want the 3 the honest receipt settled (the tampered ones must move nothing)", server.WitnessedIncrements(obj))
 	}
 }
 

@@ -84,7 +84,7 @@ func TestG_CO2_BenignCompactionFailureDoesNotRefusePayouts(t *testing.T) {
 
 	// An epoch-0 serial so the later band advance has something to sweep, which is
 	// what drives sweepExpiredSerials into calling Compact.
-	if paid := l.RedeemDeliveryCredit(srv, fetcher, obj, testSerial(1), 0); paid != wantPay {
+	if paid := paidOnLane(l, srv, fetcher, obj, testSerial(1), 0); paid != wantPay {
 		t.Fatalf("setup: epoch-0 redeem must pay %d, got %d", wantPay, paid)
 	}
 
@@ -92,7 +92,7 @@ func TestG_CO2_BenignCompactionFailureDoesNotRefusePayouts(t *testing.T) {
 	// entry and calls Compact, which this store fails BENIGNLY. The redeem driving
 	// that advance must still pay.
 	src.e = paidSerialWindow + 1
-	paid, reason := l.RedeemDeliveryCreditReason(srv, fetcher, obj, testSerial(2),
+	paid, reason := settleOnLane(l, srv, fetcher, obj, testSerial(2),
 		paidSerialWindow+1)
 
 	if paid != wantPay || reason != ReasonPaid {
@@ -185,7 +185,7 @@ func TestG_CO3_BrokenStoreMustBeObservableByTheLedger(t *testing.T) {
 	// An epoch-0 serial so the band advance below has something to sweep, driving
 	// Compact — which orphans the store's append handle (durable already holds this
 	// entry's replacement snapshot post-sweep, i.e. none — it expires).
-	if paid := l.RedeemDeliveryCredit(srv, fetcher, obj, testSerial(1), 0); paid == 0 {
+	if paid := paidOnLane(l, srv, fetcher, obj, testSerial(1), 0); paid == 0 {
 		t.Fatalf("setup: epoch-0 redeem did not pay")
 	}
 
@@ -194,7 +194,7 @@ func TestG_CO3_BrokenStoreMustBeObservableByTheLedger(t *testing.T) {
 	// on the now-orphaned handle.
 	current := paidSerialWindow + 1
 	src.e = current
-	paid, reason := l.RedeemDeliveryCreditReason(srv, fetcher, obj, testSerial(2), current)
+	paid, reason := settleOnLane(l, srv, fetcher, obj, testSerial(2), current)
 	if !store.orphaned {
 		t.Fatalf("vacuous gate: the band advance never reached Compact, so the store was "+
 			"never orphaned (store.durable=%d)", len(store.durable))

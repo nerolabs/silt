@@ -51,7 +51,7 @@ func TestEpochWatermark_LaggardRedeemerCannotRePay(t *testing.T) {
 	// honest and must pay.
 	control := New(fee, 0)
 	control.SetEpochSource(&mockEpochSource{e: laggardNow})
-	if got := control.RedeemDeliveryCredit(serverB, fetcher, obj, testSerial(1), issued); got != wantPay {
+	if got := paidOnLane(control, serverB, fetcher, obj, testSerial(1), issued); got != wantPay {
 		t.Fatalf("CONTROL IS INERT: without skew the laggard's redeem must pay %d, got %d — "+
 			"the gate below would then be refusing for some other reason", wantPay, got)
 	}
@@ -63,12 +63,12 @@ func TestEpochWatermark_LaggardRedeemerCannotRePay(t *testing.T) {
 	src := &mockEpochSource{e: aheadNow}
 	l := New(fee, 0)
 	l.SetEpochSource(src)
-	if got := l.RedeemDeliveryCredit(serverA, fetcher, obj, testSerial(2), aheadNow); got != wantPay {
+	if got := paidOnLane(l, serverA, fetcher, obj, testSerial(2), aheadNow); got != wantPay {
 		t.Fatalf("setup: the further-ahead redeem must pay %d, got %d", wantPay, got)
 	}
 	src.e = laggardNow
 	before := sumConserved(l)
-	if got := l.RedeemDeliveryCredit(serverB, fetcher, obj, testSerial(1), issued); got != 0 {
+	if got := paidOnLane(l, serverB, fetcher, obj, testSerial(1), issued); got != 0 {
 		t.Fatalf("epoch-skew re-pay: a backdated redeem past the ledger watermark paid %d, want 0 — "+
 			"two servers straddling a boundary can mint off one token", got)
 	}
@@ -90,28 +90,37 @@ func TestEpochWatermark_IsMonotone(t *testing.T) {
 	l := New(fee, 0)
 	l.SetEpochSource(src)
 	// Ahead: watermark → 10.
-	if got := l.RedeemDeliveryCredit(serverA, fetcher, obj, testSerial(10), 10); got != wantPay {
+	if got := paidOnLane(l, serverA, fetcher, obj, testSerial(10), 10); got != wantPay {
 		t.Fatalf("setup: the epoch-10 redeem must pay, got %d", got)
 	}
 	// The source falls to 8. A behind redeem that is itself in-window at the watermark:
 	// allowed, and it must NOT drag the watermark back down.
 	src.e = 8
-	if got := l.RedeemDeliveryCredit(serverB, fetcher, obj, testSerial(11), 7); got != wantPay {
+	if got := paidOnLane(l, serverB, fetcher, obj, testSerial(11), 7); got != wantPay {
 		t.Fatalf("an in-window backdated redeem (7 + W >= 10) must still pay, got %d", got)
 	}
 	if l.epochWatermark != 10 {
 		t.Fatalf("the watermark must be monotone: got %d after a redeem at epoch 8, want 10", l.epochWatermark)
 	}
 	// And the out-of-window one is still refused after that.
-	if got := l.RedeemDeliveryCredit(serverB, fetcher, obj, testSerial(12), 5); got != 0 {
+	if got := paidOnLane(l, serverB, fetcher, obj, testSerial(12), 5); got != 0 {
 		t.Fatalf("after a laggard redeem the watermark still governs: paid %d, want 0", got)
 	}
 }
 
-// TestEpochWatermark_UnguardedRedeemIsUnaffected pins the scope. The legacy /
-// unwitnessed path carries no serial, is outside the guard by construction, and must
-// not acquire a new refusal — the close is additive to the guarded path only.
-func TestEpochWatermark_UnguardedRedeemIsUnaffected(t *testing.T) {
+// TestEpochWatermark_InWindowAnchorIsUnaffected pins the SCOPE of the watermark close:
+// it must refuse only what has left the window, never an in-window anchor at a server
+// that happens to be behind.
+//
+// C1 (2026-09-08) re-home. This test was TestEpochWatermark_UnguardedRedeemIsUnaffected
+// and its subject was the flat leg's serial-less path — "outside the guard by
+// construction, and it must not acquire a new refusal". The anchored lane has no
+// serial-less path (a session's budget exists only because an anchor was spent into the
+// guard; a mis-sized serial is refused, see
+// TestSerialGuard_MalformedSerialIsRefusedAndUnrecorded). The surviving statement of the
+// same concern — the close is a NARROWING that must not catch honest traffic — is
+// asserted on the guarded path itself.
+func TestEpochWatermark_InWindowAnchorIsUnaffected(t *testing.T) {
 	const fee = 50_000
 	skim := int64(fee) * SkimNum / SkimDen
 	wantPay := int64(fee) - skim
@@ -119,8 +128,17 @@ func TestEpochWatermark_UnguardedRedeemIsUnaffected(t *testing.T) {
 
 	l := New(fee, 0)
 	l.SetEpochSource(&mockEpochSource{e: 10})
-	l.RedeemDeliveryCredit(serverA, fetcher, obj, testSerial(20), 10)
-	if got := l.RedeemDeliveryCredit(serverB, fetcher, obj, nil, 0); got != wantPay {
-		t.Fatalf("an unguarded (serial-less) redeem must be untouched by the watermark: paid %d, want %d", got, wantPay)
+	// A redeem at epoch 10 raises the watermark to 10.
+	if got := paidOnLane(l, serverA, fetcher, obj, testSerial(20), 10); got != wantPay {
+		t.Fatalf("setup: the epoch-10 anchor paid %d, want %d", got, wantPay)
+	}
+	// An anchor issued at epoch 10 − W is still INSIDE the window at the raised
+	// watermark, so it must pay in full.
+	if got := paidOnLane(l, serverB, fetcher, obj, testSerial(21), 10-paidSerialWindow); got != wantPay {
+		t.Fatalf("an in-window anchor was refused after the watermark rose: paid %d, want %d — the close must narrow, not deny", got, wantPay)
+	}
+	// One epoch older is OUTSIDE it, and that one is refused: the boundary is real.
+	if got, why := settleOnLane(l, serverB, fetcher, obj, testSerial(22), 10-paidSerialWindow-1); got != 0 || why != ReasonBackdated {
+		t.Fatalf("the anchor one epoch past the window paid %d (%s), want 0 / %s", got, why, ReasonBackdated)
 	}
 }

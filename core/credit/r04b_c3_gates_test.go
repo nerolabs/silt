@@ -10,7 +10,6 @@ package credit
 //   —       TestCapFullRefusalIsObservable               (Tester FINDING: not observable)
 
 import (
-	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/rsa"
 	"testing"
@@ -100,19 +99,26 @@ func TestSharedKeyRotationDoesNotReopenThePump(t *testing.T) {
 
 	const n = 32
 	s.rotate(0)
-	toks := make([]demand.Token, n)
+	toks := make([]RelayAnchor, n)
+	wire := make([]demand.Token, n)
 	for i := range toks {
-		toks[i] = s.withdraw(t, 0)
-		ep, ok := s.ks.VerifyInWindow(0, toks[i])
+		tok := s.withdraw(t, 0)
+		ep, ok := s.ks.VerifyInWindow(0, tok)
 		if !ok || ep != 0 {
 			t.Fatalf("epoch-0 token: ok=%v epoch=%d", ok, ep)
 		}
 		if err := l.ChargePublish(fetcher); err != nil {
 			t.Fatal(err)
 		}
-		if paid := l.RedeemDeliveryCredit(srvA, fetcher, obj, toks[i].Serial, ep); paid == 0 {
-			t.Fatalf("token %d: the honest first redeem must pay", i)
+		toks[i] = RelayAnchor{Epoch: ep, Serial: tok.Serial}
+		anchor := tok // the wire form server B will re-present
+		if face, why := l.SpendDeliveryAnchors(srvA, []RelayAnchor{toks[i]}); face != fee || why != "" {
+			t.Fatalf("token %d: the honest first open must spend (face %d, %q)", i, face, why)
 		}
+		if settled, _, why := l.SettleDelivery(srvA, fetcher, obj, 1, fee, 0); settled == 0 {
+			t.Fatalf("token %d: the honest settlement must pay (%s)", i, why)
+		}
+		wire[i] = anchor
 	}
 	injected := sum()
 
@@ -125,34 +131,43 @@ func TestSharedKeyRotationDoesNotReopenThePump(t *testing.T) {
 			"test would pass for the wrong reason (the guard, not expiry, refusing)")
 	}
 
-	// Server B re-presents every one of them through its OWN bank — a fresh
-	// spent-set, which is exactly what makes this the cross-server pump and not a
-	// double-spend. The bank is the gate: the credit layer must never be reached.
-	bankB := demand.NewBank()
-	fetcherKey := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))
+	// Server B re-presents every one of them. Its OWN session table and its own
+	// keyset are fresh — which is exactly what makes this the cross-server pump and not
+	// a double-spend. The DEMAND WINDOW is the gate: the credit layer must never be
+	// reached.
+	src := &mockEpochSource{e: cur}
+	l.SetEpochSource(src)
 	var reMinted int64
-	for i, tok := range toks {
-		rcpt := demand.Ack(fetcherKey, tok, [32]byte(obj), srvB)
-		credited, ep, why := bankB.Redeem(s.ks, cur, tok, rcpt)
+	for i, anchor := range wire {
+		ep, credited := s.ks.VerifyInWindow(cur, anchor)
 		if credited {
-			t.Fatalf("token %d withdrawn at epoch 0 was BANKED at epoch %d (reported "+
+			t.Fatalf("anchor %d withdrawn at epoch 0 still VERIFIED at epoch %d (reported "+
 				"issuedEpoch %d) under a key bound to every epoch. The issue epoch is not "+
 				"bound into the signed message, so guard entries expire while tokens do not "+
 				"— the cross-server double-redeem pump is open.", i, cur, ep)
 		}
-		if why != "token expired or not issued" {
-			t.Fatalf("token %d refused for the wrong reason %q — this gate must measure "+
-				"EXPIRY, not some other rejection", i, why)
-		}
-		// The honest server settles only on a credited receipt, so the ledger is
-		// never reached. Assert that by settling exactly as core/node does.
+		// The honest server opens a session only on a verified anchor, so the ledger is
+		// never reached. Assert that by opening exactly as core/node does.
 		if credited {
-			reMinted += l.RedeemDeliveryCredit(srvB, fetcher, [32]byte(obj), tok.Serial, ep)
+			face, _ := l.SpendDeliveryAnchors(srvB, []RelayAnchor{{Epoch: ep, Serial: anchor.Serial}})
+			settled, _, _ := l.SettleDelivery(srvB, fetcher, obj, 1, face, 0)
+			reMinted += settled
 		}
 	}
 	if delta := sum() - injected; delta != 0 || reMinted != 0 {
 		t.Fatalf("server B re-collected %d credits off epoch-0 serials; Σ moved by %+d, want 0",
 			reMinted, delta)
+	}
+
+	// THE SECOND LAYER, driven not asserted (the vacuous-gate rule): even if a server
+	// ignored its keyset entirely and handed the epoch-0 anchor straight to the ledger,
+	// the guard refuses it as backdated and records nothing.
+	if face, why := l.SpendDeliveryAnchors(srvB, []RelayAnchor{toks[0]}); face != 0 || why != ReasonBackdated {
+		t.Fatalf("the ledger accepted an epoch-0 anchor at epoch %d: (face %d, %q), want (0, %q)",
+			cur, face, why, ReasonBackdated)
+	}
+	if delta := sum() - injected; delta != 0 {
+		t.Fatalf("the refused ledger-side open moved Σ by %+d", delta)
 	}
 }
 
@@ -167,6 +182,8 @@ func TestSharedKeyRotationDoesNotReopenThePump(t *testing.T) {
 func TestGuardHealsUnderASharedKey(t *testing.T) {
 	s := newSharedKeyScene(t)
 	l := New(50_000, 0)
+	src := &mockEpochSource{} // R2.10 / F8: the ledger's own clock walks with the keyset's
+	l.SetEpochSource(src)
 	srv, fetcher := id(1), id(2)
 	obj := id(7)
 	l.Register(fetcher)
@@ -176,6 +193,7 @@ func TestGuardHealsUnderASharedKey(t *testing.T) {
 	const perEpoch = 8
 	for cur := uint64(0); cur < demand.DefaultWindow+2; cur++ {
 		s.rotate(cur)
+		src.e = cur
 		for i := 0; i < perEpoch; i++ {
 			tok := s.withdraw(t, cur)
 			ep, ok := s.ks.VerifyInWindow(cur, tok)
@@ -186,7 +204,7 @@ func TestGuardHealsUnderASharedKey(t *testing.T) {
 				t.Fatalf("epoch %d: token reported issuedEpoch %d — the guard would tag it "+
 					"with the wrong expiry and never free the slot", cur, ep)
 			}
-			if paid := l.RedeemDeliveryCredit(srv, fetcher, obj, tok.Serial, ep); paid == 0 {
+			if paid := paidOnLane(l, srv, fetcher, obj, tok.Serial, ep); paid == 0 {
 				t.Fatalf("epoch %d: honest redeem paid nothing", cur)
 			}
 		}
@@ -214,7 +232,7 @@ func TestSweepRunsAtMostOncePerEpoch(t *testing.T) {
 	src := &mockEpochSource{e: epoch} // R2.10 / F8: the ledger reads its clock; the test moves it
 	l.SetEpochSource(src)
 	for i := 0; i < maxPaidSerial; i++ {
-		l.RedeemDeliveryCredit(srv, fetcher, obj, testSerial(i), epoch)
+		paidOnLane(l, srv, fetcher, obj, testSerial(i), epoch)
 	}
 	if len(l.paidSerial) != maxPaidSerial {
 		t.Fatalf("setup: guard holds %d, want the cap %d", len(l.paidSerial), maxPaidSerial)
@@ -222,7 +240,7 @@ func TestSweepRunsAtMostOncePerEpoch(t *testing.T) {
 	base := l.SerialSweeps()
 	const refusals = 500
 	for i := 0; i < refusals; i++ {
-		if paid := l.RedeemDeliveryCredit(srv, fetcher, obj, testSerial(1_000_000+i), epoch); paid != 0 {
+		if paid := paidOnLane(l, srv, fetcher, obj, testSerial(1_000_000+i), epoch); paid != 0 {
 			t.Fatal("a redeem paid at a full LIVE cap — the guard must refuse, never evict a live entry")
 		}
 	}
@@ -237,7 +255,7 @@ func TestSweepRunsAtMostOncePerEpoch(t *testing.T) {
 	// A new epoch buys exactly one more sweep, not none: the guard must still heal.
 	base = l.SerialSweeps()
 	src.e = epoch + 1
-	l.RedeemDeliveryCredit(srv, fetcher, obj, testSerial(2_000_000), epoch+1)
+	paidOnLane(l, srv, fetcher, obj, testSerial(2_000_000), epoch+1)
 	if got := l.SerialSweeps() - base; got != 1 {
 		t.Fatalf("a new epoch ran %d sweeps, want exactly 1 — the once-per-epoch latch must "+
 			"not stop the guard healing", got)
@@ -254,28 +272,28 @@ func TestCapFullRefusalIsObservable(t *testing.T) {
 	l.SetEpochSource(src)
 	srv, fetcher := id(1), id(2)
 	obj := id(7)
-	if _, why := l.RedeemDeliveryCreditReason(srv, srv, obj, testSerial(1), 0); why != ReasonSelfDelivery {
+	if _, why := settleOnLane(l, srv, srv, obj, testSerial(1), 0); why != ReasonSelfDelivery {
 		t.Fatalf("self-delivery reason = %q", why)
 	}
-	if paid, why := l.RedeemDeliveryCreditReason(srv, fetcher, obj, testSerial(2), 0); paid == 0 || why != ReasonPaid {
+	if paid, why := settleOnLane(l, srv, fetcher, obj, testSerial(2), 0); paid == 0 || why != ReasonPaid {
 		t.Fatalf("an honest redeem: paid=%d reason=%q", paid, why)
 	}
-	if _, why := l.RedeemDeliveryCreditReason(srv, fetcher, obj, testSerial(2), 0); why != ReasonAlreadyPaid {
+	if _, why := settleOnLane(l, srv, fetcher, obj, testSerial(2), 0); why != ReasonAlreadyPaid {
 		t.Fatalf("re-redeem reason = %q", why)
 	}
 	src.e = 2*demand.DefaultWindow + 2
-	if _, why := l.RedeemDeliveryCreditReason(srv, fetcher, obj, testSerial(3), 0); why != ReasonBackdated {
+	if _, why := settleOnLane(l, srv, fetcher, obj, testSerial(3), 0); why != ReasonBackdated {
 		t.Fatalf("backdated reason = %q", why)
 	}
-	if _, why := New(0, 0).RedeemDeliveryCreditReason(srv, fetcher, obj, testSerial(4), 0); why != ReasonNoFee {
+	if _, why := settleOnLane(New(0, 0), srv, fetcher, obj, testSerial(4), 0); why != ReasonNoFee {
 		t.Fatalf("zero-fee reason = %q", why)
 	}
 
 	full := New(50_000, 0)
 	for i := 0; i < maxPaidSerial; i++ {
-		full.RedeemDeliveryCredit(srv, fetcher, obj, testSerial(i), 100)
+		paidOnLane(full, srv, fetcher, obj, testSerial(i), 0)
 	}
-	paid, why := full.RedeemDeliveryCreditReason(srv, fetcher, obj, testSerial(9_000_001), 100)
+	paid, why := settleOnLane(full, srv, fetcher, obj, testSerial(9_000_001), 0)
 	if paid != 0 || why != ReasonGuardFull {
 		t.Fatalf("cap-full refusal: paid=%d reason=%q, want 0 / %q — an operator cannot tell "+
 			"'the serve rate exceeded the modeled bound' from an ordinary no-pay otherwise",
@@ -319,7 +337,7 @@ func TestRefusedRedeemLeavesOnlyTheBilateralFallback(t *testing.T) {
 		if err := l.ChargePublish(fetcher); err != nil {
 			t.Fatal(err)
 		}
-		if paid := l.RedeemDeliveryCredit(srvA, fetcher, obj, serial, 0); paid == 0 {
+		if paid := paidOnLane(l, srvA, fetcher, obj, serial, 0); paid == 0 {
 			t.Fatal("the honest first redeem must pay")
 		}
 
@@ -328,7 +346,7 @@ func TestRefusedRedeemLeavesOnlyTheBilateralFallback(t *testing.T) {
 		before := sum()
 		l.RecordServeToObject(srvB, fetcher, obj, ports.ChunkID(id(11)), bytesServed)
 		afterServe := sum()
-		paid, why := l.RedeemDeliveryCreditReason(srvB, fetcher, obj, serial, 0)
+		paid, why := settleOnLane(l, srvB, fetcher, obj, serial, 0)
 		if paid != 0 || why != ReasonAlreadyPaid {
 			t.Fatalf("bytes=%d: the second server was paid %d (%q) off one serial", bytesServed, paid, why)
 		}

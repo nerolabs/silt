@@ -183,46 +183,55 @@ func TestKeyFingerprintBindsTheKey(t *testing.T) {
 	}
 }
 
-// TestRedeemRejectsExpiredTokenBeforeCrediting is the end-to-end subtractive
-// property: an expired token credits ZERO demand and is not even marked spent, so
-// expiry can only ever REJECT - it never mints and never consumes.
-func TestRedeemRejectsExpiredTokenBeforeCrediting(t *testing.T) {
+// TestExpiredTokenVerifiesNowhereSoNothingIsConsumed (was
+// TestRedeemRejectsExpiredTokenBeforeCrediting) is the end-to-end SUBTRACTIVE property:
+// an expired token has no held key that verifies it, so the anchor never reaches the
+// credit ledger's guard and nothing is consumed by the attempt — expiry can only ever
+// REJECT, it never mints and never burns an honest fetcher's token on a clock
+// disagreement.
+//
+// C1 re-home: the v2 twin asserted "credited 0 and not marked spent" through
+// Bank.Redeem and the bank's own spent set. Both are retired. The surviving statement of
+// the same property is in two halves: the keyset refuses (here), and the guard the
+// anchor would have entered records nothing on a refusal — core/credit
+// TestF8_FallingSourceLowersNothingAndReadmitsNothing_Delivery (the ReasonBackdated
+// arm) and core/node TestComposedExpiryBoundary_EvictionIsClosedAtBothLayers.
+func TestExpiredTokenVerifiesNowhereSoNothingIsConsumed(t *testing.T) {
 	const W = 4
 	const current = 10
 	const stale = current - W - 1
-	es := newEpochScene(t, stale)
-	ks := es.keyset(W, stale)
-
-	s := newScene(t, "expired-object")
+	es := newEpochScene(t, stale, current)
+	ks := es.keyset(W, stale, current)
 	tok := es.withdraw(t, stale)
-	r := Ack(s.fetcher, tok, s.object, s.server)
 
-	bank := NewBank()
-	credited, _, reason := bank.Redeem(ks, current, tok, r)
-	if credited {
-		t.Fatal("an expired token credited demand")
+	if e, ok := ks.VerifyInWindow(current, tok); ok {
+		t.Fatalf("an expired token verified at epoch %d — the anchor would be spent into the guard", e)
 	}
-	if reason != "token expired or not issued" {
-		t.Fatalf("reason %q, want the expiry rejection", reason)
-	}
-	if bank.Demand(s.object) != 0 {
-		t.Fatalf("demand moved to %d on an expired token", bank.Demand(s.object))
-	}
-	if len(bank.spent) != 0 {
-		t.Fatal("an expired token was marked spent - expiry must reject BEFORE consuming, " +
-			"or a clock disagreement would burn an honest fetcher's token")
+	// Not "no key at all": the SAME keyset still verifies a fresh token, so the refusal
+	// above is the WINDOW and not an empty fixture (the vacuous-gate scar, 2026-09-07).
+	if e, ok := ks.VerifyInWindow(current, es.withdraw(t, current)); !ok || e != current {
+		t.Fatalf("the control token did not verify (epoch %d, ok %v) — the expiry arm above measures darkness", e, ok)
 	}
 }
 
-// TestRedeemWithNoKeysetRefuses: a bank with no resolved keyset accepts nothing. A
-// redeemer that could not resolve key_E against the committed binding has no
-// anti-fingerprinting anchor, and the certification is explicit that running without
-// it is unsafe - so the safe default is refuse, not accept.
-func TestRedeemWithNoKeysetRefuses(t *testing.T) {
-	s := newScene(t, "no-keyset-object")
-	tok := s.token(t)
-	r := Ack(s.fetcher, tok, s.object, s.server)
-	if ok, _, reason := NewBank().Redeem(nil, 0, tok, r); ok || reason != "no issuer keyset" {
-		t.Fatalf("redeem with no keyset: ok=%v reason=%q, want refused", ok, reason)
+// TestNoKeysetRefusesEveryAnchor (was TestRedeemWithNoKeysetRefuses): a server that
+// could not resolve key_E against the committed binding has no anti-fingerprinting
+// anchor, and the certification is explicit that running without it is unsafe — so the
+// safe default is refuse, not accept. A keyset holding nothing verifies nothing.
+//
+// The NODE half of the same rule — a server with no pinned issuer key refuses the open
+// with errDeliveryNoIssuerKey rather than opening an unguarded session — is
+// core/node TestOpenWithNoResolvedIssuerKeyRefuses.
+func TestNoKeysetRefusesEveryAnchor(t *testing.T) {
+	es := newEpochScene(t, 0)
+	tok := es.withdraw(t, 0)
+	empty := NewKeyset(DefaultWindow)
+	if _, ok := empty.VerifyInWindow(0, tok); ok {
+		t.Fatal("a keyset holding no key verified an anchor")
+	}
+	// The control: the same token under the resolved keyset verifies, so the refusal is
+	// the missing key and not a malformed token.
+	if _, ok := es.keyset(DefaultWindow, 0).VerifyInWindow(0, tok); !ok {
+		t.Fatal("the control token does not verify under its own keyset — the arm above measures darkness")
 	}
 }

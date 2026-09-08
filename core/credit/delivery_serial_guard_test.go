@@ -19,14 +19,48 @@ package credit
 // verifies under no in-window issuer key.
 
 import (
-	"fmt"
+	"encoding/binary"
 	"testing"
+
+	"github.com/nerolabs/silt/ports"
 )
 
-// testSerial builds a distinct, non-empty token serial. A distinct serial per
-// delivery is the real shape (one blind withdrawal = one serial).
+// testSerial builds a distinct anchor serial. A distinct serial per session is the real
+// shape (one blind withdrawal = one serial), and it is exactly relayAnchorSerialSize
+// bytes wide because that is what the anchored lanes accept — a serial of any other
+// length is refused with ReasonAnchorMalformed before it can become a guard key.
 func testSerial(n int) []byte {
-	return []byte{'s', byte(n), byte(n >> 8), byte(n >> 16), byte(n >> 24)}
+	s := make([]byte, relayAnchorSerialSize)
+	copy(s, "silt-test-anchor-serial")
+	binary.BigEndian.PutUint32(s[relayAnchorSerialSize-4:], uint32(n))
+	return s
+}
+
+// settleOnLane is the SESSION-LANE walk that replaced the retired flat leg
+// (RedeemDeliveryCredit, deleted in C1 2026-09-08): open a one-anchor delivery session
+// on the token (issuedEpoch, serial) at server, then settle its whole budget for
+// fetcher on root. It returns the credits PAID to the server and the reason, so a test
+// written against the flat leg's (paid, reason) pair reads the same way.
+//
+// The two calls are the mechanism, not a convenience: on the flat lane one call
+// guarded the serial AND paid; under R2.9 the anchor is spent at OPEN (before any
+// service) and the payment is a separate, per-increment settlement out of the budget
+// that spend created. A refusal at the OPEN therefore pays nothing and records
+// nothing, which is why the reason it returns is the open's.
+func settleOnLane(l *Ledger, server, fetcher ports.NodeID, root ports.Hash, serial []byte, issuedEpoch uint64) (paid int64, reason string) {
+	face, why := l.SpendDeliveryAnchors(server, []RelayAnchor{{Epoch: issuedEpoch, Serial: serial}})
+	if face == 0 {
+		return 0, why
+	}
+	_, paid, why = l.SettleDelivery(server, fetcher, root, face/DeliveryIncrementCredit, face, 0)
+	return paid, why
+}
+
+// paidOnLane is settleOnLane discarding the reason — the shape the retired
+// RedeemDeliveryCredit had.
+func paidOnLane(l *Ledger, server, fetcher ports.NodeID, root ports.Hash, serial []byte, issuedEpoch uint64) int64 {
+	paid, _ := settleOnLane(l, server, fetcher, root, serial, issuedEpoch)
+	return paid
 }
 
 // sumConserved is Sigma(balances)+Sigma(escrow), the closed-system conservation
@@ -50,15 +84,15 @@ func TestSerialGuard_SecondServerSameSerialMintsZero(t *testing.T) {
 	l := New(fee, 0)
 	serverA, serverB, fetcher := id(1), id(2), id(3)
 	obj := id(7)
-	serial := []byte("shared-token-serial")
+	serial := testSerial(101)
 
 	skim := int64(fee) * SkimNum / SkimDen
 	wantPay := int64(fee) - skim
 
-	if paid := l.RedeemDeliveryCredit(serverA, fetcher, obj, serial, 0); paid != wantPay {
+	if paid := paidOnLane(l, serverA, fetcher, obj, serial, 0); paid != wantPay {
 		t.Fatalf("first redeem paid %d, want fee-skim=%d", paid, wantPay)
 	}
-	if paid := l.RedeemDeliveryCredit(serverB, fetcher, obj, serial, 0); paid != 0 {
+	if paid := paidOnLane(l, serverB, fetcher, obj, serial, 0); paid != 0 {
 		t.Fatalf("second server on the same serial paid %d, want 0 - the cross-server pump is open", paid)
 	}
 	if got := l.Balance(serverB); got != 0 {
@@ -84,7 +118,7 @@ func TestSerialGuard_DistinctSerialsEachPay(t *testing.T) {
 
 	const n = 100
 	for i := 0; i < n; i++ {
-		if paid := l.RedeemDeliveryCredit(server, fetcher, obj, testSerial(i), 0); paid != wantPay {
+		if paid := paidOnLane(l, server, fetcher, obj, testSerial(i), 0); paid != wantPay {
 			t.Fatalf("distinct-serial redeem %d paid %d, want fee-skim=%d - the guard blocked a legit delivery", i, paid, wantPay)
 		}
 	}
@@ -100,15 +134,15 @@ func TestSerialGuard_SameServerSameSerialIsIdempotent(t *testing.T) {
 	l := New(fee, 0)
 	server, fetcher := id(1), id(2)
 	obj := id(7)
-	serial := []byte("one-delivery-serial")
+	serial := testSerial(102)
 
 	skim := int64(fee) * SkimNum / SkimDen
 	wantPay := int64(fee) - skim
 
-	if paid := l.RedeemDeliveryCredit(server, fetcher, obj, serial, 0); paid != wantPay {
+	if paid := paidOnLane(l, server, fetcher, obj, serial, 0); paid != wantPay {
 		t.Fatalf("first redeem paid %d, want %d", paid, wantPay)
 	}
-	if paid := l.RedeemDeliveryCredit(server, fetcher, obj, serial, 0); paid != 0 {
+	if paid := paidOnLane(l, server, fetcher, obj, serial, 0); paid != 0 {
 		t.Fatalf("re-submit of the same (serial, server) paid %d, want 0", paid)
 	}
 	if got := l.Balance(server); got != wantPay {
@@ -133,7 +167,7 @@ func TestSerialGuard_SetIsBounded(t *testing.T) {
 	cycles := maxPaidSerial * 3
 	var lastReason string
 	for i := 0; i < cycles; i++ {
-		_, lastReason = l.RedeemDeliveryCreditReason(server, fetcher, obj, testSerial(i), 0)
+		_, lastReason = settleOnLane(l, server, fetcher, obj, testSerial(i), 0)
 	}
 	if got := len(l.paidSerial); got > maxPaidSerial {
 		t.Fatalf("paidSerial map grew to %d after %d distinct serials, cap is %d - unbounded state on the floor box (build-immutable #8)",
@@ -173,14 +207,14 @@ func TestSerialGuard_ExpiryFreesTheCap(t *testing.T) {
 
 	// Fill the guard set at epoch 0.
 	for i := 0; i < maxPaidSerial; i++ {
-		l.RedeemDeliveryCredit(server, fetcher, obj, testSerial(i), 0)
+		paidOnLane(l, server, fetcher, obj, testSerial(i), 0)
 	}
 	if got := len(l.paidSerial); got != maxPaidSerial {
 		t.Fatalf("guard set holds %d after filling to cap, want %d", got, maxPaidSerial)
 	}
 	// Still at epoch 0: every entry is in-window, so a fresh delivery must be
 	// REFUSED rather than evict a live entry.
-	if paid := l.RedeemDeliveryCredit(server, fetcher, obj, testSerial(-1), 0); paid != 0 {
+	if paid := paidOnLane(l, server, fetcher, obj, testSerial(-1), 0); paid != 0 {
 		t.Fatalf("at a cap full of LIVE serials the redeem paid %d, want 0 - "+
 			"evicting a still-redeemable serial re-opens the eviction pump", paid)
 	}
@@ -188,7 +222,7 @@ func TestSerialGuard_ExpiryFreesTheCap(t *testing.T) {
 	// un-redeemable upstream, so its slot is safe to reclaim.
 	future := paidSerialWindow + 1
 	src.e = future
-	if paid := l.RedeemDeliveryCredit(server, fetcher, obj, testSerial(-2), future); paid != wantPay {
+	if paid := paidOnLane(l, server, fetcher, obj, testSerial(-2), future); paid != wantPay {
 		t.Fatalf("after the window advanced, a fresh delivery paid %d, want fee-skim=%d - "+
 			"expiry must free the cap or the guard becomes a permanent denial", paid, wantPay)
 	}
@@ -197,27 +231,50 @@ func TestSerialGuard_ExpiryFreesTheCap(t *testing.T) {
 	}
 }
 
-// TestSerialGuard_EmptySerialUnguarded pins the legacy/unwitnessed path: a redeem
-// with no serial is not recorded and not blocked (no production caller redeems
-// without the receipt serial). This path is outside the witnessed pump surface by
-// construction.
-func TestSerialGuard_EmptySerialUnguarded(t *testing.T) {
+// TestSerialGuard_MalformedSerialIsRefusedAndUnrecorded replaces
+// TestSerialGuard_EmptySerialUnguarded (retired with the flat leg, C1 2026-09-08).
+//
+// WHAT CHANGED, AND WHY IT IS STRICTLY STRONGER. The flat leg had an UNGUARDED path:
+// a redeem with no serial was neither recorded nor blocked, on the reasoning that no
+// production caller redeemed without one and the legacy test paths needed it. The
+// anchored lane has no such path — a session's budget exists only because an anchor
+// was spent into the guard — so an absent or mis-sized serial is not "unguarded", it
+// is REFUSED, pays nothing, and leaves no session to settle against.
+//
+// ABLATION (run RED 2026-09-08): drop the length check in spendAnchors → the
+// zero-length arm opens a session and pays.
+func TestSerialGuard_MalformedSerialIsRefusedAndUnrecorded(t *testing.T) {
 	const fee = 50_000
-	l := New(fee, 0)
 	server, fetcher := id(1), id(2)
 	obj := id(7)
 
-	skim := int64(fee) * SkimNum / SkimDen
-	wantPay := int64(fee) - skim
-
-	if paid := l.RedeemDeliveryCredit(server, fetcher, obj, nil, 0); paid != wantPay {
-		t.Fatalf("empty-serial redeem 1 paid %d, want %d", paid, wantPay)
+	for _, tc := range []struct {
+		name   string
+		serial []byte
+	}{
+		{"absent", nil},
+		{"empty", []byte{}},
+		{"short", []byte("too-short")},
+		{"long", make([]byte, relayAnchorSerialSize+1)},
+	} {
+		l := New(fee, 0)
+		before := sumConserved(l)
+		paid, why := settleOnLane(l, server, fetcher, obj, tc.serial, 0)
+		if paid != 0 || why != ReasonAnchorMalformed {
+			t.Fatalf("%s serial: paid %d reason %q, want 0 / %q", tc.name, paid, why, ReasonAnchorMalformed)
+		}
+		if got := len(l.paidSerial); got != 0 {
+			t.Fatalf("%s serial: %d guard entries after a refused open, want 0", tc.name, got)
+		}
+		if got := sumConserved(l); got != before {
+			t.Fatalf("%s serial: Σ moved %+d on a refused open", tc.name, got-before)
+		}
 	}
-	if paid := l.RedeemDeliveryCredit(server, fetcher, obj, nil, 0); paid != wantPay {
-		t.Fatalf("empty-serial redeem 2 paid %d, want %d - empty serial must stay unguarded", paid, wantPay)
-	}
-	if got := len(l.paidSerial); got != 0 {
-		t.Fatalf("empty serials leaked into the guard set (%d entries), want 0", got)
+	// The control: a well-formed serial of exactly the right width DOES open and pay,
+	// so the four arms above measure the LENGTH rule and not a dead fixture.
+	l := New(fee, 0)
+	if paid, why := settleOnLane(l, server, fetcher, obj, testSerial(1), 0); paid == 0 || why != ReasonPaid {
+		t.Fatalf("the control open paid %d (%s) — the refusals above measure darkness", paid, why)
 	}
 }
 
@@ -236,19 +293,19 @@ func TestSerialGuard_EvictThenReRedeemMintsZero(t *testing.T) {
 
 	serverA, serverB, fetcher := id(1), id(2), id(3)
 	obj := id(7)
-	target := []byte("target-serial")
+	target := testSerial(103)
 
-	if paid := l.RedeemDeliveryCredit(serverA, fetcher, obj, target, 0); paid != wantPay {
+	if paid := paidOnLane(l, serverA, fetcher, obj, target, 0); paid != wantPay {
 		t.Fatalf("setup: honest first redeem paid %d, want %d", paid, wantPay)
 	}
 
 	// Flood maxPaidSerial fresh distinct serials to try to push `target` out.
 	for i := 0; i < maxPaidSerial; i++ {
-		l.RedeemDeliveryCredit(serverB, fetcher, obj, testSerial(1_000_000+i), 0)
+		paidOnLane(l, serverB, fetcher, obj, testSerial(1_000_000+i), 0)
 	}
 
 	// Re-redeem the flooded-against, already-paid target on the second server.
-	reMint := l.RedeemDeliveryCredit(serverB, fetcher, obj, target, 0)
+	reMint := paidOnLane(l, serverB, fetcher, obj, target, 0)
 	if reMint != 0 {
 		t.Fatalf("EVICTION PUMP: re-redeem of an evicted, already-paid serial minted %d, want 0 - "+
 			"the cross-server double-redeem guard forgot a STILL-REDEEMABLE serial, re-opening the pump",
@@ -278,23 +335,23 @@ func TestSerialGuard_EvictionPumpIsNotSelfFinancing(t *testing.T) {
 	// Victims: serverA honestly redeems a full window of distinct serials.
 	victims := make([][]byte, W)
 	for i := 0; i < W; i++ {
-		victims[i] = []byte(fmt.Sprintf("victim-%d", i))
+		victims[i] = testSerial(200_000 + i)
 		if err := l.ChargePublish(fetcher); err != nil {
 			t.Fatalf("victim charge %d: %v", i, err)
 		}
-		l.RedeemDeliveryCredit(serverA, fetcher, obj, victims[i], 0)
+		paidOnLane(l, serverA, fetcher, obj, victims[i], 0)
 	}
 	// Flood a fresh window on serverB to try to evict the victim window.
 	for i := 0; i < W; i++ {
 		if err := l.ChargePublish(fetcher); err != nil {
 			t.Fatalf("flood charge %d: %v", i, err)
 		}
-		l.RedeemDeliveryCredit(serverB, fetcher, obj, testSerial(2_000_000+i), 0)
+		paidOnLane(l, serverB, fetcher, obj, testSerial(2_000_000+i), 0)
 	}
 	// Re-collect every victim on serverB.
 	var reMinted int64
 	for i := 0; i < W; i++ {
-		reMinted += l.RedeemDeliveryCredit(serverB, fetcher, obj, victims[i], 0)
+		reMinted += paidOnLane(l, serverB, fetcher, obj, victims[i], 0)
 	}
 
 	final := sumConserved(l)

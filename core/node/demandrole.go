@@ -74,7 +74,8 @@ func (n *Node) AcquireDemandTokenWithCredit(rng io.Reader, issuer ports.NodeID, 
 // pins its committed key_E). It is NOT the issuer whose anchors this node accepts: a
 // session anchor verifies under this server's OWN committed key only (verifyDeliveryAnchors,
 // the own-key rule — gated by TestComposedSessions_ForeignIssuersFreshAnchorIsRefused).
-// The v2 flat receipt this bank once banked (MsgDeliveryReceipt) is retired (B-9).
+// The v2 flat receipt this bank once banked (MsgDeliveryReceipt) is retired (B-9), and
+// the primitive behind it is gone (C1): the bank's only counter is WitnessedIncrements.
 //
 // R0.4b: issuer is a NodeID, not an RSA key. A key enters a keyset ONLY after its
 // fingerprint matched the consensus-attested commitment (pinDemandIssuerKey). Taking
@@ -109,20 +110,6 @@ func (n *Node) RequireBondedFetchers() {
 		}
 		return string(id[:]), true
 	})
-}
-
-// WitnessedDemand is the v2 flat lane's per-TOKEN demand counter (Bank.Demand). It is
-// RETIRED with the flat receipt (B-9): nothing in production writes it any more — only
-// Bank.Redeem did, and MsgDeliveryReceipt no longer reaches it — so it returns 0 on every
-// live node. The session lane's observable is WitnessedIncrements (settled increments of
-// DeliveryIncrementBytes). This accessor leaves with the core/demand v2 primitive in the
-// attended retirement PR (core/demand/demand.go, the SubmittedReceipt note); it stays
-// only so that PR is the one that removes the primitive and its readers together.
-func (n *Node) WitnessedDemand(object ports.Hash) int64 {
-	if n.demandBank == nil {
-		return 0
-	}
-	return n.demandBank.Demand(object)
 }
 
 // guardFullRefusalCounter is the monotone count of redeems refused for a full

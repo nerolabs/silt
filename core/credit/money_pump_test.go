@@ -118,7 +118,7 @@ func TestA4MoneyPumpConservation(t *testing.T) {
 	// conserved on top. Net change from redeem: +fee. Combined with ChargePublish
 	// (-fee): net = 0. But the lane-0 self-mint (bytes0) was NEVER reversed, so
 	// the total exceeds the expected sum by bytes0.
-	paid := l.RedeemDeliveryCredit(server, fetcher, obj, nil, 0)
+	paid := paidOnLane(l, server, fetcher, obj, testSerial(501), 0)
 
 	// ── Step 7: conservation assertion. ──
 	// Expected total under rule (b) — the only correct sum:
@@ -221,7 +221,7 @@ func TestA4SharedLedgerServerCollisionConservation(t *testing.T) {
 	if err := l.ChargePublish(fetcher); err != nil {
 		t.Fatalf("ChargePublish: %v", err)
 	}
-	paid := l.RedeemDeliveryCredit(serverB, fetcher, obj, nil, 0)
+	paid := paidOnLane(l, serverB, fetcher, obj, testSerial(502), 0)
 
 	// ── Conservation assertion, anchored to the OPERATIONS (not the ledger). ──
 	// Correct (fix) bookkeeping, step by step from initial:

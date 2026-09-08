@@ -301,7 +301,7 @@ func runCompactionFuzz(t *testing.T, seed int64, ops, poolSize int) {
 				epoch := uint64(step / fuzzEpochEvery)
 				clock.e = epoch // the ledger's clock advances with the scenario (F1)
 				serial := mintFuzzSerial(rng)
-				paid, reason := l.RedeemDeliveryCreditReason(server, ln.req, ln.obj, serial, epoch)
+				paid, reason := settleOnLane(l, server, ln.req, ln.obj, serial, epoch)
 				if paid <= 0 {
 					t.Fatalf("seed=%#x step=%d: an HONEST unique in-window serial was REFUSED "+
 						"(paid=%d reason=%q, epoch=%d, guard holds %d of %d). The paid-serial "+
@@ -411,7 +411,7 @@ func runCompactionFuzz(t *testing.T, seed int64, ops, poolSize int) {
 		t.Fatalf("seed=%#x: no redeem ever paid — the guard assertions below are vacuous", seed)
 	}
 	clock.e = uint64(ops / fuzzEpochEvery) // the final re-presentation runs at the last epoch (F1)
-	paid, reason := l.RedeemDeliveryCreditReason(server, lastPaid.req, lastPaid.obj,
+	paid, reason := settleOnLane(l, server, lastPaid.req, lastPaid.obj,
 		lastPaid.serial, lastPaid.epoch)
 
 	if paid != 0 || reason != ReasonAlreadyPaid {

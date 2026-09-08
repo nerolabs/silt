@@ -109,7 +109,7 @@ func TestCorruptRecordIsAHardError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	blob[0] = 0xFF // an impossible serial length
+	blob[headerSize] = 0xFF // an impossible serial length, in the first RECORD (past the header)
 	if err := os.WriteFile(p, blob, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -265,7 +265,7 @@ func TestTornTailIsRealignedBeforeTheNextAppend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.Size()%recSize != 0 {
-		t.Fatalf("the log is %d bytes, not a whole number of %d-byte records", st.Size(), recSize)
+	if (st.Size()-headerSize)%recSize != 0 {
+		t.Fatalf("the log is %d bytes, not a header plus a whole number of %d-byte records", st.Size(), recSize)
 	}
 }

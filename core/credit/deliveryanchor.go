@@ -30,8 +30,8 @@ package credit
 // On a fully acknowledged delivery it is 0 and the lane is exactly conserved when the
 // budget is consumed. The remainder budget − min(j·p, budget) is BURNED (G-6).
 //
-// PARTIAL REVERSAL IS LOAD-BEARING (cert §2.5, gate B-2). The flat leg reverses the
-// WHOLE lane (RedeemDeliveryCreditReason). Kept here while paying j·p, a fetcher
+// PARTIAL REVERSAL IS LOAD-BEARING (cert §2.5, gate B-2). The retired flat leg
+// reversed the WHOLE lane. Kept here while paying j·p, a fetcher
 // acknowledging fewer increments than it fetched would leave the server strictly
 // worse off than suppression, and "accept strictly dominates at every size" (G-1)
 // would be false for every partial ack. So the reversal is denominated per increment:
@@ -52,8 +52,9 @@ package credit
 // therefore accounted ONCE, at CloseDeliverySession, never here (gate
 // TestRemainderIsAccountedOnceAtCloseNotPerSettlement) — as a DEPOSIT released to the
 // fetcher's existing account when the session's anchors leave the guard window
-// (D-R2.9-NODE-HALF-CALLS call 1 amended 1′, 2026-09-07; M1 + M2). The flat leg stays
-// callable until the node half retires the un-anchored receipt (gate B-9).
+// (D-R2.9-NODE-HALF-CALLS call 1 amended 1′, 2026-09-07; M1 + M2). The flat leg was
+// retired at the node by B-9 and deleted from this package by C1 (2026-09-08): this
+// file, relayanchor.go and the shared guard are the whole paying surface.
 //
 // NEVER STANDING: every method here moves the balance economy only. Classified
 // neutral in invariant_a_test.go and pressed against a bondless identity on an
@@ -294,11 +295,14 @@ type DeliverySettlementStats struct {
 	BurnedCredits          int64 // GENUINE burns only: no account at release (M1), or the pending table at its cap
 	RefundsBurnedNoAccount int64 // releases that found no account (R-REFUND-NEEDS-AN-ACCOUNT)
 	RefundsBurnedAtCap     int64 // remainders burned at the pending-table cap (refuse-never-evict)
-	// RestoredGuardEntries counts the paid-serial guard entries restored from disk at the
-	// last LoadPaidSerials: entries, not credits, and BOTH lanes (the durable store carries
-	// no lane — R-GUARD-RESTORE-LANE-UNKNOWN), so it is an UPPER BOUND on the delivery
-	// sessions whose unsettled face or pending deposit did not survive the restart
-	// (R-DELIVERY-SESSION-EPHEMERAL, G-6R-9). Zero means no deposit can have been lost.
+	// RestoredGuardEntries counts the DELIVERY-lane paid-serial guard entries restored
+	// from disk at the last LoadPaidSerials: entries, not credits, and delivery only —
+	// the durable record carries the lane, so a relay anchor (which keeps the burn and
+	// never had a deposit) no longer inflates it (R-GUARD-RESTORE-LANE-UNKNOWN closed).
+	// It is an UPPER BOUND on the delivery sessions whose unsettled face or pending
+	// deposit did not survive the restart (R-DELIVERY-SESSION-EPHEMERAL, G-6R-9): a
+	// session that closed with remaining == 0 lost nothing. Zero means no deposit can
+	// have been lost.
 	RestoredGuardEntries int64
 	// GuardFullRefusals is the delivery lane's share of GuardFullRefusalsByLane: opens and
 	// funds refused because the paid-serial guard was full of LIVE entries — the operator's
