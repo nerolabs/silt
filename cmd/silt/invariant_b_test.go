@@ -183,6 +183,16 @@ func TestInvariantB_S6_ColdStartScaffoldRefusedByDefault(t *testing.T) {
 	if coldStartScaffoldOK(true, 2, 0, "") {
 		t.Fatal("anchors without mature-validators>0 must NOT satisfy cold-start (the anchor gate never engages)")
 	}
+	// A SINGLE anchor does NOT satisfy it (MinObjectiveAnchors, delegated owner call
+	// 2026-09-08). At A = 1 every consensus gate on the launch path is self-satisfied:
+	// bftThreshold(1) = 0 so the sole anchor commits on its own signature with zero
+	// attestations, requiredLaunchAnchors is 1 and countAnchorSupport credits the proposer
+	// itself, and finalityQuorumActive is true at 0 >= 0 so those blocks are final. The
+	// scaffold's whole job is to refuse a posture where the gates are decoration.
+	// ABLATION: restore `anchorCount > 0` in coldStartScaffoldOK and this arm goes RED.
+	if coldStartScaffoldOK(true, 1, 2, "") {
+		t.Fatal("a SINGLE-anchor objective launch must be refused: bftThreshold(1)=0, the #402 anchor majority is self-satisfied by the proposer, and finalityQuorumActive is true — the sole anchor commits alone with zero attestations and those blocks read as final")
+	}
 	// A weak-subjectivity checkpoint (the join path) satisfies it.
 	if !coldStartScaffoldOK(true, 0, 0, "100:deadbeef") {
 		t.Fatal("a weak-subjectivity checkpoint must satisfy cold-start (safely joining a matured network)")
