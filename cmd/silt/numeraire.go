@@ -103,10 +103,21 @@ func publishShardBytes(chunkBytes, objectBytes int64) int64 {
 //
 // THE RULE, with its complement: warn iff this publish's real repair-bounty base is below
 // the base the shipped default pays on a full frame. It is silent in exactly one case —
-// a base at or above that — which is why a default publish of a full-frame object never
-// warns and no "did the operator set the flag" test is needed: an unset -chunk-size IS
-// DefaultChunkSize, so it can only reach the silent side. TestGLambda8PublishWarning
-// FiresOnlyWhenThePublishShortPaysTheRepairer drives both sides and both causes.
+// a base at or above that.
+//
+// WHAT AN UNSET -chunk-size DOES, precisely, because the first version of this comment
+// overstated it (blind PE R-1, 2026-09-09). An unset flag IS DefaultChunkSize, so the
+// GEOMETRY cause can never fire without one; the OBJECT cause can, and is meant to.
+// Measured at the shipped default with no flag set: 1,024 B fires (ZERO), 100,000 B fires
+// (TRUNCATES 21.4 %), 262,119 B fires (TRUNCATES 10.0 %), and 262,120 B is the first
+// silent size. So a default publish is silent for a FULL-FRAME object and speaks for a
+// short-framed one — every object of 262,119 B or less warns.
+//
+// That is a deliberate TRADE against the earlier "don't warn on every default publish"
+// finding (blind PE M6), not a way of satisfying it: after R-SHORT-FINAL-STRIPE the object
+// is what pays, and a publisher who is told nothing has no other way to learn that this
+// object's repairs pay nothing. TestGLambda8PublishWarningFiresOnlyWhenThePublishShort
+// PaysTheRepairer drives both sides and both causes, including the first silent size.
 func bountyPriceWarning(chunkBytes, objectBytes int64) string {
 	k := erasure.DefaultParams.K
 	shardBytes := publishShardBytes(chunkBytes, objectBytes)

@@ -349,6 +349,14 @@ func Get(ctx context.Context, store ports.ChunkStore, reg ports.Registry, h link
 // price a publish before staging it (the repair bounty is computed on the shard that gets
 // stored, not on the chunk size that was asked for).
 func DataFrameSize(objectBytes, chunkSize int) int {
+	if objectBytes <= 0 {
+		// An empty object has no frames at all (chunk.Split returns none), so it stores
+		// no chunk and no shard and Stage keeps the asked-for geometry. Returning
+		// HeaderSize here described a 8-byte frame that is never written, and cmd/silt
+		// priced a repair of it — `silt add` on an empty file warned about a 24-byte
+		// shard that does not exist (blind PE, 2026-09-09).
+		return chunkSize
+	}
 	if fs := objectBytes + chunk.HeaderSize; fs < chunkSize {
 		return fs
 	}

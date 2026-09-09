@@ -141,7 +141,7 @@ func TestDataFrameSizeIsWhatStageCommits(t *testing.T) {
 	// independent statement of the rule and both the helper and Stage are checked
 	// against it. cs − HeaderSize = 4088 is the largest object that fills one frame.
 	for _, c := range []struct{ size, wantFrame int }{
-		{0, cs},      // no frames at all; Stage keeps the asked-for geometry
+		{0, cs},      // no frames at all: no chunk, no shard, the asked-for geometry
 		{1, 9},       // the minimum frame
 		{9, 17},      //
 		{1000, 1008}, //
@@ -166,10 +166,10 @@ func TestDataFrameSizeIsWhatStageCommits(t *testing.T) {
 		if m.ChunkSize != int64(c.wantFrame) {
 			t.Fatalf("size %d: Stage committed ChunkSize %d, want %d", c.size, m.ChunkSize, c.wantFrame)
 		}
-		if c.size > 0 {
-			if got := pipeline.DataFrameSize(c.size, cs); got != c.wantFrame {
-				t.Fatalf("size %d: DataFrameSize says %d, Stage commits %d — the length rule and the stream rule disagree", c.size, got, c.wantFrame)
-			}
+		// No excused row: size 0 is checked here too. Carving it out is exactly how the
+		// helper came to disagree with Stage at 0 while this gate stayed green.
+		if got := pipeline.DataFrameSize(c.size, cs); got != c.wantFrame {
+			t.Fatalf("size %d: DataFrameSize says %d, Stage commits %d — the length rule and the stream rule disagree", c.size, got, c.wantFrame)
 		}
 	}
 	if pipeline.DataFrameSize(1, cs) != chunk.MinChunkSize {

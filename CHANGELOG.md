@@ -35,9 +35,12 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   now lift a ZERO-base geometry to a non-zero payment — which is why the G-λ-8 zero-signal still reads the UNMULTIPLIED base, and
   both arms are driven. **G-BT-1:** the publish warning now prices the PUBLISH, not the flag. Its rule has a closed complement —
   warn iff this publish's real repair-bounty base is below the base the shipped default pays on a full frame, which is
-  `RepairBountyBase(K, DefaultChunkSize + Overhead)` and never a typed number — so a default publish of a full-frame object is
-  silent by construction and the "did the operator set the flag" test is gone with it (an unset `-chunk-size` IS the default, so it
-  can only reach the silent side). It names two causes, because a publisher can act on neither once the object is stored: a chunk
+  `RepairBountyBase(K, DefaultChunkSize + Overhead)` and never a typed number — and the "did the operator set the flag" test is gone
+  with it, because an unset `-chunk-size` IS the default and so the GEOMETRY cause cannot fire without a flag. The OBJECT cause can
+  and is meant to: measured at the default with no flag set, 1,024 B fires, 100,000 B fires, 262,119 B fires, and 262,120 B is the
+  first silent size, so **every object of 262,119 B or less now warns on a default publish**. That TRADES the earlier "don't warn on
+  every default publish" finding rather than satisfying it, deliberately, because after `R-SHORT-FINAL-STRIPE` the object is what
+  pays. It names two causes, because a publisher can act on neither once the object is stored: a chunk
   size the operator chose (`-chunk-size 52412` said nothing before and now reports a 52,428-byte shard worth `1.99996` credits paid
   as `1`, `50.0 %` short), and the OBJECT — at the shipped default every object of 26,190 B or less pays a base of ZERO and every
   object of 262,119 B or less pays less than 10, which the geometry arm can never see because the shard IS the object. Every printed

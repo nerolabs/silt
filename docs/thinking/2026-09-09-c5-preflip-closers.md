@@ -52,9 +52,29 @@ so the two causes are:
 
 Extending it *simplified* the rule rather than complicating it: the `explicit` flag-was-set parameter is now
 DEAD and is deleted, along with `flagWasSet`. An unset `-chunk-size` is `DefaultChunkSize` by construction, so
-it can only land on the silent side — which is the M6 "don't warn on every default publish" concern satisfied
-structurally instead of by a flag. A source gate pins that the flag's default really is `DefaultChunkSize`,
-because that is what the complement rests on. Both sides and both causes are driven in
+the GEOMETRY cause cannot fire without a flag — and that is the whole of what "unset" buys. The first version
+of this paragraph went on to conclude that the M6 "don't warn on every default publish" concern was therefore
+"satisfied structurally", one line below a table that says otherwise. It is **not satisfied. It is TRADED**,
+deliberately and on the PE's own B-3, because after half 2 the object is what pays. Measured at the default
+with no flag set:
+
+| object | verdict |
+|---|---|
+| 1,024 B | FIRES (ZERO) |
+| 26,190 B | FIRES (ZERO) |
+| 100,000 B | FIRES (TRUNCATES 21.4 %) |
+| 262,119 B | FIRES (TRUNCATES 10.0 %) |
+| **262,120 B** | **first SILENT size** |
+| 1,500,000 B | SILENT |
+
+**Every object of 262,119 B or less warns on a default publish.** That is the intended behaviour and it has an
+operational cost worth stating: several integration harnesses publish 32–65 KB fixtures at the default and now
+emit a line they did not (verified non-verdict-changing — the PE matched all 125 `grep` patterns in
+`integration/` and `e2e/` against all ten warning strings; four matched, none in a verdict path).
+
+A source gate pins that the flag's default really is `DefaultChunkSize`, because the runtime table passes the
+constant as a literal and never reads the flag, so the source string is the only thing connecting the two.
+Both sides and both causes are driven in
 `TestGLambda8PublishWarningFiresOnlyWhenThePublishShortPaysTheRepairer`.
 
 **The printed figures are integer arithmetic.** `credit.RepairBountyTruncation` returns the exact price floored
@@ -193,6 +213,7 @@ would read it.
 | The prepay-only consequence | `core/credit/g_bt2_test.go` `TestSubFrameObjectDurabilityIsPrepayOnly` | Skim on a per-account rather than per-lane accumulator ⇒ the 250-fetcher spread stops reading 0 |
 | The re-addressing boundary | `core/pipeline/short_final_stripe_test.go` `TestDataFrameSizeIsWhatStageCommits` | Shift the rule one byte (`fs+1 < chunkSize`) ⇒ "size 4087: Stage committed ChunkSize 4096, want 4095" |
 | The dedup/salt finding | `core/pipeline/short_final_stripe_test.go` `TestConvergentDedupNowSpansTheChunkSize` | Restore the padded frame ⇒ three chunk sizes give three roots, which is the measurement that the salt WAS there |
+| The empty object | both gates above | Restore `DataFrameSize(0) = HeaderSize` ⇒ "size 0: DataFrameSize says 8, Stage commits 4096", and at the CLI seam an empty file warns about a 24-byte shard that does not exist |
 
 **One note on how the boundary is gated, because it is not gated the way it looks.** `fs < chunkSize` and
 `fs <= chunkSize` are the SAME function: at `fs == chunkSize` both branches return `chunkSize`. So the rule has
@@ -212,3 +233,35 @@ and the fix is to run it.
 - `R-ANCHOR-BEARER-TRANSFER`, the third C5 item — a red-team pass, not a build.
 - The corrected `pod.md:417-421` / `relayrole.go:34-38` relay-anonymity sentence the same certification owes
   (§4). It belongs to `R-RELAY-ANON-SET`, not to either closer here.
+
+---
+
+## Through-line — the same defect, twice, and what it says about where to look
+
+Both review rounds on this branch found the same thing, and neither found it in the code.
+
+| round | the code | the published sentence |
+|---|---|---|
+| B-1 | correct. `fs < chunkSize` and `fs <= chunkSize` are the same function, so the mutation is a genuine no-op and the off-by-one could not live here | wrong: "`≤ chunkSize − 8`" |
+| R-1 | correct. An unset flag really does close the geometry cause | wrong: "so it can only reach the silent side", contradicted by the table one line above it and by the branch's own gate |
+
+Every gate was green through both. That is the signal, not the exception: **a gate checks the code, and
+nothing checks the sentence.** The sentence is what the owner reads to accept a content-addressing break, so
+on this branch it was the higher-risk artifact of the two.
+
+Three working rules come out of it, and they generalise past this change:
+
+1. **A claim about a boundary is a measurement.** Do not derive it from reading the comparison — publish the
+   endpoints you actually ran. Both errors were one step of arithmetic away from the truth and both survived
+   re-reading.
+2. **Where the code cannot carry the error, the gate must carry the sentence.** A boundary that is a fixed
+   point has no mutation to ablate, so the gate is a table of literal expected values (4087 → 4095,
+   4088 → 4096, 0 → 4096) that both the helper and the real path are checked against. Never
+   `want := TheFunctionUnderTest(...)`.
+3. **An excused row is where the hole hides.** `if c.size > 0` skipped the one input on which the helper and
+   `Stage` disagreed, and the gate stayed green over a live defect — `silt add` on an empty file priced a
+   24-byte shard that is never stored. The row is now driven, not excused. (The same lesson as the previous
+   branch's meta-test excuse row, one tier down.)
+
+The related trap this branch also hit, from the same family: a *counter-argument* is a claim too. "Sub-frame
+objects are funded by the serve economy instead" was a sentence nobody ran, and running it returned zero.

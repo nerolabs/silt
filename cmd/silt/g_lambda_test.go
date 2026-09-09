@@ -104,10 +104,11 @@ func TestGLambda8PublishWarningFiresOnlyWhenThePublishShortPaysTheRepairer(t *te
 	if got := shippedBountyBase(); got != 10 {
 		t.Fatalf("the shipped default pays a base of %d, want 10 — the warning's threshold moved with it; re-read G-BT-1 before re-pinning", got)
 	}
-	// SILENT, and it is the only silent case: a base at or above the default's. That
-	// covers every full-frame object at the default and everything larger. An UNSET
-	// -chunk-size is DefaultChunkSize (pinned by the source gate below), so it can only
-	// land here — which is why no explicit-flag test is needed any more.
+	// SILENT, and it is the only silent case: a base at or above the default's. An UNSET
+	// -chunk-size is DefaultChunkSize (pinned by the source gate below), so the GEOMETRY
+	// cause cannot fire without a flag — but the OBJECT cause can and does, so this table
+	// is NOT "everything published at the default". 262,120 B is the first silent size;
+	// the firing side below drives 262,119 (blind PE R-1).
 	for _, c := range []struct {
 		chunk  int64
 		object int64
@@ -115,7 +116,9 @@ func TestGLambda8PublishWarningFiresOnlyWhenThePublishShortPaysTheRepairer(t *te
 		{int64(pipeline.DefaultChunkSize), objectSizeUnknown},
 		{int64(pipeline.DefaultChunkSize), 1_500_000},
 		{int64(pipeline.DefaultChunkSize), 262_136}, // exactly one FULL frame: unchanged
-		{int64(pipeline.DefaultChunkSize), 262_120}, // the largest short frame that still pays 10
+		{int64(pipeline.DefaultChunkSize), 262_135}, // the largest object that re-addresses
+		{int64(pipeline.DefaultChunkSize), 262_120}, // the FIRST silent size
+		{int64(pipeline.DefaultChunkSize), 0},       // an EMPTY file stores no shard at all
 		{1 << 20, objectSizeUnknown},
 		{1 << 20, 1 << 22},
 	} {
@@ -138,7 +141,7 @@ func TestGLambda8PublishWarningFiresOnlyWhenThePublishShortPaysTheRepairer(t *te
 	// 52,412-byte chunk is a 52,428-byte shard: k·shardBytes = 524,280 B, an exact price
 	// of 1.99996 credits paid as 1. Every figure must be in the sentence.
 	msg := bountyPriceWarning(52_412, objectSizeUnknown)
-	for _, want := range []string{"TRUNCATES", "52412", "52428", "1.99996", " 1 ", "50.0%"} {
+	for _, want := range []string{"TRUNCATES", "52412", "52428", "1.99996", "but pays 1 ", "50.0%"} {
 		if !strings.Contains(msg, want) {
 			t.Fatalf("the 52,412-byte truncation warning does not name %q: %q", want, msg)
 		}
@@ -172,13 +175,14 @@ func TestGLambda8PublishWarningFiresOnlyWhenThePublishShortPaysTheRepairer(t *te
 	if m := bountyPriceWarning(int64(pipeline.DefaultChunkSize), 26_191); strings.Contains(m, "ZERO") {
 		t.Fatalf("26,191 B is one byte above the zero band and was still called ZERO: %q", m)
 	}
-	if m := bountyPriceWarning(int64(pipeline.DefaultChunkSize), 262_119); !strings.Contains(m, "TRUNCATES") {
-		t.Fatalf("the largest short-paying object (262,119 B) did not warn: %q", m)
+	if m := bountyPriceWarning(int64(pipeline.DefaultChunkSize), 262_119); !strings.Contains(m, "TRUNCATES") || !strings.Contains(m, "10.0%") {
+		t.Fatalf("the largest short-paying object (262,119 B, a 10.0 %% cut) did not warn: %q", m)
 	}
-	// SOURCE GATE — labelled, and its runtime cover is the silent-side table above: the
-	// rule's complement is closed over an UNSET -chunk-size only because the flag's
-	// default IS pipeline.DefaultChunkSize, and only because both publish paths hand the
-	// warning the object's size rather than the geometry alone.
+	// SOURCE GATE — labelled. Its runtime cover is the silent-side table above, which
+	// passes pipeline.DefaultChunkSize as a LITERAL and never reads the flag: the source
+	// string is therefore the only thing connecting "the flag's default" to "the GEOMETRY
+	// cause cannot fire on an unset -chunk-size". Move the flag default and no runtime
+	// gate would see it. The second string is what makes the OBJECT cause reachable at all.
 	for _, f := range []string{"main.go", "swarm.go"} {
 		src, err := os.ReadFile(f)
 		if err != nil {
@@ -188,7 +192,7 @@ func TestGLambda8PublishWarningFiresOnlyWhenThePublishShortPaysTheRepairer(t *te
 			t.Fatalf("SOURCE GATE: %s no longer prices the publish with the object's size — the string is gone (cover: the CAUSE 2 rows of this test)", f)
 		}
 		if !strings.Contains(string(src), `fs.Int("chunk-size", pipeline.DefaultChunkSize,`) {
-			t.Fatalf("SOURCE GATE: %s no longer defaults -chunk-size to pipeline.DefaultChunkSize, so an UNSET flag can now reach the warning's firing side (cover: the silent-side table of this test)", f)
+			t.Fatalf("SOURCE GATE: %s no longer defaults -chunk-size to pipeline.DefaultChunkSize, so the GEOMETRY cause can now fire on an UNSET flag — every publish would warn on its chunk size, not just on its object (cover: the silent-side table of this test)", f)
 		}
 	}
 }
