@@ -204,14 +204,46 @@ items trains the reader to skim, and then a real call gets waved through. Work w
 earned is tracked as ordinary lane work below, and the call re-appears when the evidence lands.
 Nothing else in this file is owed to the owner.
 
-**ONE call is open.**
+**TWO calls are open.**
 
-1. **D3 — the freeze act itself** (row D3). The RC gate, after D0 (DONE) + D1 + D2. It is accompanied
+1. **`SlashesBytesCap`'s ROUTE — close it in this release, or re-ratify the value as is.** Surfaced
+   by the pre-freeze derivation-route audit
+   (`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-derivation-route-audit-pre-freeze-2026-09-09.md`;
+   commissioned by `D-C2-IDLE-WINDOW-VALUE`). **The value is 16 MiB and does not move.** The route
+   does: a CONSENSUS VALIDITY rule enforced on every validator
+   (`core/chain/validate_v5_predicates.go:285`) derives its ceiling from the DEFAULTS of two flags
+   that are **proposer-side only** — every non-test read is `core/node/chainrole.go:890` and
+   `core/node/entrypool.go:116` — and whose shipped help documents `0 = unbounded`
+   (`cmd/silt/daemon.go:117-118`). The stated invariant is `SlashesBytesCap ≥ 2 × (honest block) +
+   header` (`core/chain/chain.go:412`), so it breaks at a per-block bond-reg budget of ~7.9 MiB, and
+   past that a REAL double-signer's evidence is rejected by the cap and **the equivocator keeps its
+   seat**. That is face F1: derived from the modal default where the purpose requires the worst the
+   configuration admits. **Tier, corrected against the audit's own partition:** this is manifest item
+   10, a *validity* rule, so its deadline is the STAMP RAISE, not the freeze — a miss costs a
+   coordinated fleet fork, not an era. The urgency survives the correction, because RAISING a cap is
+   a WIDENING rule and therefore is NOT covered by the narrowing exemption that makes post-freeze
+   rule changes cheap. **Recommendation: close the route** — one `New()`-time assertion binding the
+   cap to the configured budgets, on the `IssuerKeys`-cap precedent, in the stamp-raising train.
+2. **D3 — the freeze act itself** (row D3). The RC gate, after D0 (DONE) + D1 + D2. It is accompanied
    by ONE page in plain English — *what is frozen, and what can never change without a new era*, the
    doors that close, not the 22-item manifest — which D1 owes the owner to read BEFORE signing
    (`D-RC-POSTURE-2026-09-09` (7)). Call 12 (commissioning the external B8 seat) is RATIFIED at the
    same moment; its procurement is already in flight (below), so what the owner signs at D3 is the
    engagement, not the search.
+
+**The audit's other three suspects are lane work, not owner calls** (their evidence exists but the
+disposition is a seat's): `relayRetentionEpochs` = 1 (`core/node/relayrole.go:148`) — derived purely
+as a seen-map MEMORY bound and later welded on as the relay lane's PAYMENT DEADLINE at `:233-237`,
+with the comment at `:229-231` asserting a reaped session "forfeits no owed credit" which the C2 gate
+measures FALSE; this is **the third occurrence of silt's own scar — a durability/memory knob that is
+also a security or economic parameter** (`docs/build-process.md` records the first two), so the
+third-time rule fires and the Tester owns the gate. It also sharpens **row C11**: the relay payment
+deadline was never designed as one. Then the cloudtest FT hard cap of 380 s versus the 430 s envelope
+(`integration/cloudtest/scenarios.sh:512`), and `DerivedBondFloor` (`cmd/silt/daemon.go:2104`, weak —
+mitigated by `Seal` being sequential). Eight parameters were CLEARED as documented and driven and are
+not to be re-opened: `RegCap` 256, the `IssuerKeys` cap 4,096, `SProofMax`, `DefaultChunkSize`,
+`h43ForwardEntries` 4, `capBlockIntervalBoundSec` 3600, `DerivedEpochBlocks` 8, and R = 4 /
+`cap_relay` = 4.
 
 **Decided 2026-09-09 and recorded — do not re-open** (`docs/decisions.md`):
 

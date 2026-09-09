@@ -45,6 +45,19 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   190 s modal tier, the shipped value is a duration against the 430 s envelope — so the owner commissioned a blind audit
   of silt's derived parameters for the same defect shape, partitioned by whether a parameter FREEZES at D3.
 
+### Fixed
+- **A FALSE field-confirmation claim in `cmd/silt/numeraire.go`, found by the pre-freeze
+  derivation-route audit.** The comment asserted that both the 190 s modal tier and the 430 s envelope
+  were field-confirmed on `97e3101-deep`. The 190 s tier is (row `6-fault-tolerance`). **The 430 s
+  figure is not.** Row `10a-stall-drill` also computes 430, but from an unrelated formula —
+  `(3+n_syb)*30 + 220` at `n_syb = 4`, the staggered-takeover ladder for DECLINING ATTESTERS — which
+  merely collides numerically with `(N+2)*30 + G = 430` at `N = 12`. A coincident total is not a
+  measurement: 10a never exercises a lost entry forward. The comment now states the field status
+  precisely, marks the 430 s figure as a ratified-model envelope rather than a confirmed quantity, and
+  records that call (4)'s stated release precondition named the 190 s bound and does not cover this
+  one. Driving the lost-forward path is owed at E5. This is the session-24 scar recurring — *a claim
+  about a gate is itself a claim* — and it was caught by re-deriving the citation rather than reading it.
+
 ### Documentation
 - **A release-checklist RULE replaces per-lane honesty calls: every lane that has never run in the field is labelled**
   *"built, sim-proven, never exercised on a real network"* wherever the release claims it — README, website, release notes

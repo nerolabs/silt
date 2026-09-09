@@ -2600,12 +2600,32 @@ showing the one-byte value IS committed).
   tier; the shipped value is a DURATION against the 430 s re-keyed-takeover envelope. The owner asked
   whether the original derivation was wrong and, if so, *"what else was derived the same way — right
   answer by the wrong route once is fine; twice is a pattern I want found now, not at the freeze."*
-  A blind PE audit of silt's derived parameters is commissioned against three faces: **F1** sized
+  A blind PE audit of silt's derived parameters was commissioned against three faces: **F1** sized
   against a modal or published bound where the purpose requires the worst bound the model admits;
   **F2** a quantization/flooring step between the knob and the guarantee that the derivation did not
-  carry through; **F3** resting on a coupling premise no driven test ever exercised. Suspects are
-  partitioned by **whether the parameter freezes at D3**, because after the freeze a wrong value costs
-  a new era. The audit's findings are an input to D1's content.
+  carry through; **F3** resting on a coupling premise no driven test ever exercised. **It RETURNED
+  2026-09-09:** `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-derivation-route-audit-pre-freeze-2026-09-09.md`.
+  The exemplar failed all three faces, and the route's output — `4 × EpochBlocks × T_b` — contains a
+  term (`T_b`) the guarantee does not, so **it emits a violating value for any block interval below
+  17.92 s/height**; the measurement landed at 44 s, a 2.5× accident. The same route applied at an
+  unreviewed site produced the graded harness's 90 s window (a 67.5 s guarantee). Eight parameters
+  were cleared as documented and driven; four are named as suspects, and the one owner call is
+  `SlashesBytesCap`.
+- **A false claim in this row's own supporting code, corrected the same day.** `cmd/silt/numeraire.go`
+  asserted that BOTH the 190 s tier and the 430 s bound were field-confirmed on `97e3101-deep`. The
+  190 s tier is (row `6-fault-tolerance`). **The 430 s figure is NOT.** Row `10a-stall-drill` also
+  computes 430, but from an unrelated formula — `(3+n_syb)*30 + 220` at `n_syb = 4`, the
+  staggered-takeover ladder for DECLINING ATTESTERS — which merely collides numerically with
+  `(N+2)*30 + G = 430` at `N = 12`. A coincident total is not a measurement: 10a never exercises a
+  lost entry forward. Call (4)'s stated release precondition named the 190 s bound and IS met; it does
+  not cover the number the shipped floor actually derives from, which rests on the ratified MODEL and
+  is a conservative envelope, not a confirmed quantity. **This is the session-24 scar recurring**
+  (*a claim about a gate is itself a claim; "this defeats X" is a measurement against X and you do not
+  have it until you have run X*). Driving the lost-forward path in the field is owed at E5.
+- **The "cost is ZERO" finding is `T_b`-conditional.** The deposit release epoch binds first at the
+  measured cohort's block interval; at `T_b` = 20 s the idle window would bind instead. The
+  ratification stands on the measured network; the conditionality is disclosed here rather than
+  carried as an unqualified sentence.
 - **What this does NOT decide:** the RELAY half of `R-REAPER-FORFEIT` (see `D-RELAY-EDGE-UNFIT`); the
   disposition of any parameter the audit names — each is its own call at its own tier.
 
