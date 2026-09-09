@@ -72,12 +72,21 @@ func capacityTier(capTotal int64) string {
 	}
 }
 
-// repairCapable reports whether a tier class is one the durability economy expects to
+// RepairCapable reports whether a tier class is one the durability economy expects to
 // do repair work. D-TIERING's coupling (b): durability is guaranteed by the PERSISTENT
 // tiers, never by the transient edge. So the repair-work Gini is computed within the
 // horse+archival subset only — see EconomySample.RepairGini for why the network-wide
 // version is worthless.
-func repairCapable(tier string) bool { return tier == TierHorse || tier == TierArchival }
+//
+// EXPORTED because cmd/silt must decide the same question about the same classes when it
+// renders a per-tier repair share: the repair series' denominator is the capable subset,
+// so a share published for a class OUTSIDE that subset would be a ratio over a population
+// it is not a member of. The renderer asks this predicate rather than re-listing the two
+// class names. TestR22PerTierTotalsFollowTheExclusionRuleAndNameTheirAbsences pins that
+// RepairsByTier is keyed on exactly it, and
+// TestGateC3_3e_CapableSizeClosesTheCrossDocumentRepairCoverageJoin drives the same rule
+// through the rendered wire.
+func RepairCapable(tier string) bool { return tier == TierHorse || tier == TierArchival }
 
 // EconomySample is one node's gossip-estimated view of the reachable crowd's ECONOMY:
 // the tier mix (rows 10-11) and the two work Ginis (rows 6-7), each with the sample
@@ -154,13 +163,89 @@ type EconomySample struct {
 	// renders that as a named absence, never as 0 (blind PE ruling B2).
 	ServeWorkTotal  int64
 	RepairWorkTotal int64
+
+	// ---- the per-tier work totals (Economist ADVISORY-c3-concentration-gate-thresholds-
+	// redderived-2026-09-09 §3a, Builder item 1) --------------------------------------
+	//
+	// WHY THEY EXIST. T-AR is a TIER-SHARE statement -- "the edge tier that does the
+	// MAJORITY of the work must remain a net-positive place to do it" (docs/TENETS.md
+	// Part IX). Nothing above carries a per-tier quantity, so the tenet had no source: the
+	// two Ginis are per-NODE dispersion statistics, and on a network whose ratified tier
+	// design spans a 500:1 capacity dispersion an elevated Gini is not a violation of
+	// anything silt ratified. Measured on one fixture, the two statistics disagree in
+	// opposite directions -- the serve Gini reads CONCENTRATED at G_adj 0.1726 while the
+	// pony tier serves 0.8184 of the bytes, far above the tenet floor. Only one of them is
+	// the tenet, and it is the tier share.
+	//
+	// THE SUBSTITUTION TRAP THESE CLOSE, and it is measured, not feared. economyNetwork's
+	// mix[].share LOOKS like the missing number and is a share of NODE COUNT: under the
+	// ratified vision ratio the pony share of nodes is ~0.99 BY CONSTRUCTION, so a gate
+	// reading it for the T-AR floor passes on every distribution. Measured 0.9891 where the
+	// true pony share of served bytes was 0.1998 (cmd/silt,
+	// TestGateC3_1b_TierMixShareIsNodeCountNotServedBytes).
+	//
+	// NO NEW GOSSIP FIELD. The tier class is DERIVED from the CapTotal every sampled peer
+	// already gossips, through the same capacityTier that shapes Mix. R2.2 row 10 forbids a
+	// third gossip field and these totals do not need one.
+	//
+	// THE SAME M-2 EXCLUSION RULE AS THE TWO SERIES, and it is what makes the shares
+	// legible rather than a second copy of the hole. Only REPORTING peers -- a peer with a
+	// positive term in either counter -- contribute to any of these maps. A peer that
+	// reported nothing is out of both the numerator and the denominator, exactly as it is
+	// out of the Ginis. That is why ReportersByTier ships beside them: it is the per-tier
+	// coverage, the denominator's population, and the discriminator a consumer branches on.
+	//
+	// ABSENT IS NOT ZERO, and here the distinction is load-bearing twice over. A tier with
+	// NO reporting peer is ABSENT from every map below -- never a 0 entry -- because "no
+	// pony in my sample reported" and "the ponies in my sample served nothing" are
+	// different facts and both render as 0.0. A tier WITH reporting peers that summed to
+	// zero IS present with a 0 value, and that zero is a measurement. ReportersByTier is
+	// the only field that tells the two apart, so a consumer that reads a byte total
+	// without reading it beside ReportersByTier is reading an absence as a measurement.
+	//
+	// SHARES ON THE WIRE, NOT THESE TOTALS (advisory §3a). A per-tier absolute total plus
+	// n-1 sybil-supplied terms recovers the n-th in one subtraction -- strictly easier than
+	// the Gini inversion the reconstruction gate already closes. The cmd/silt renderer
+	// publishes ratios only, and behind the SAME gossipWithheld marker as the Ginis,
+	// because this is the same covered set one derivation removed.
+
+	// ServeBytesByTier is the sum of reported servedBytes, keyed by tier class, over the
+	// REPORTING peers of that tier. Absent for a tier with no reporting peer.
+	ServeBytesByTier map[string]int64
+	// RepairsByTier is the sum of reported repairsDone over the REPORTING peers of that
+	// tier, keyed only for the repair-CAPABLE classes. A pony's repairs are outside the
+	// repair series' population by construction (RepairCapable, D-TIERING coupling (b)),
+	// so keying them here would publish a share whose denominator is not the population
+	// the number claims to describe. Absent for a capable tier with no reporting peer, and
+	// absent for the pony class always.
+	RepairsByTier map[string]int64
+	// PledgedBytesByTier is the sum of CapTotal over the REPORTING peers of that tier: the
+	// NULL's denominator, which is what makes an observed share comparable to an expected
+	// one without an assumed weighting table. It is over the reporting peers and not the
+	// whole sample on purpose -- an expectation computed over a different population from
+	// the observation is not a null, it is two numbers.
+	PledgedBytesByTier map[string]int64
+	// ReportersByTier is how many peers of that tier are in the work series at all. THE
+	// REQUIRED SIBLING of the three totals above, for the same reason Size is the required
+	// sibling of a Gini: a tier's share is a figure over that tier's reporters, and a share
+	// whose coverage a reader has to guess is unreadable.
+	ReportersByTier map[string]int
+	// CapableSize is how many CLASSIFIABLE peers of this sample are repair-capable --
+	// Mix[horse] + Mix[archival], reporting or not. It is the repair series' POPULATION,
+	// and it ships here so a consumer can compute that series' reporting coverage from ONE
+	// snapshot. Before it existed the only source was the tier mix on a sibling route, so
+	// the coverage ratio was a join across two independent EconomySample() calls: in a
+	// fixture they agree, on a live node peerCaps moves between them and the ratio can
+	// exceed 1 (advisory §1, Builder item 3).
+	CapableSize int
 }
 
 // EconomySample computes this node's gossip-estimated view of the crowd's economy.
 // Loop-owned (it reads peerCaps and the ledger); call it on the event loop, as
 // EstimateNetwork is called. Reading moves nothing.
 func (n *Node) EconomySample() EconomySample {
-	es := EconomySample{Mix: map[string]int{}}
+	es := EconomySample{Mix: map[string]int{}, ServeBytesByTier: map[string]int64{},
+		RepairsByTier: map[string]int64{}, PledgedBytesByTier: map[string]int64{}, ReportersByTier: map[string]int{}}
 	served := make([]int64, 0, len(n.peerCaps)+1)
 	repairs := make([]int64, 0, len(n.peerCaps)+1)
 	add := func(capTotal, srv, rep int64) {
@@ -186,8 +271,22 @@ func (n *Node) EconomySample() EconomySample {
 			return
 		}
 		served = append(served, srv)
-		if repairCapable(tier) {
+		// THE PER-TIER TOTALS accumulate HERE and nowhere else, which is what keeps them
+		// on the SAME population as the two series: past the M-2 return, so a peer that
+		// reported nothing contributes to no numerator and no denominator, and the map key
+		// is written only for a REPORTING peer, so a tier with no reporter stays ABSENT
+		// rather than acquiring a 0 that reads as a measured zero. A tier whose reporters
+		// summed to nothing DOES get a 0 here, and that zero is a measurement -- the pair
+		// (total, ReportersByTier) is what tells the two apart.
+		es.ReportersByTier[tier]++
+		es.ServeBytesByTier[tier] += srv
+		es.PledgedBytesByTier[tier] += capTotal
+		if RepairCapable(tier) {
 			repairs = append(repairs, rep)
+			// Keyed for the CAPABLE classes only, matching the repairs series above
+			// through the same predicate: a pony's repairs are outside the population the
+			// repair share claims to describe.
+			es.RepairsByTier[tier] += rep
 		}
 	}
 	for _, c := range n.peerCaps {
@@ -222,6 +321,14 @@ func (n *Node) EconomySample() EconomySample {
 	}
 	for _, v := range repairs {
 		es.RepairWorkTotal += v
+	}
+	// CapableSize walks Mix through the SAME RepairCapable predicate the repairs series
+	// uses, rather than naming horse and archival again: the two cannot drift onto
+	// different populations, and a future change to the capable set moves both at once.
+	for tier, n := range es.Mix {
+		if RepairCapable(tier) {
+			es.CapableSize += n
+		}
 	}
 	return es
 }

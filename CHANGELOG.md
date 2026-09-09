@@ -25,6 +25,33 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   itself is certified in-process. No OOM-kill and no crash-loop across the cohort, so the sheet was graded on a healthy network.
   Teardown verified: 40 resources destroyed, no instance left running.
 ### Changed
+- **Per-tier work totals: the edge-majority tenet has a source, and the concentration thresholds two seats withdrew are
+  re-founded (Economist `ADVISORY-c3-concentration-gate-thresholds-redderived-2026-09-09` §3a; deliberation
+  `docs/thinking/2026-09-09-per-tier-work-totals.md`).** T-AR is a TIER SHARE — "the edge tier that does the majority of the
+  work" — and nothing published carried a per-tier work quantity, so the tenet had no source and the two Ginis beside it
+  answer a different question. `node.EconomySample` now carries `ServeBytesByTier`, `RepairsByTier`, `PledgedBytesByTier`,
+  `ReportersByTier` and `CapableSize`; `/api/economy/network` mix rows carry a `work` block (`serveShare`, `repairShare`,
+  `pledgedShare`, `reporting`, `coverage`) and `/api/economy/concentration` carries `ponyShareOfServedBytes` and
+  `capableSize`. No third gossip field: the tier class stays DERIVED from the `CapTotal` every peer already gossips. Shares
+  only, never absolute per-tier byte totals, behind the SAME `gossipWithheld` marker as the Ginis — a per-tier total plus
+  n−1 sybil-supplied terms recovers the n-th in one subtraction, which is easier than the Gini inversion already closed.
+  **The substitution trap is now measured off the product on BOTH sides:** on the concentrated fixture `mix[pony].share` reads
+  0.9891 and PASSES a 0.50 floor while `ponyShareOfServedBytes` reads 0.1998 and VIOLATES it — a 4.95× inversion, so anything
+  wired to the node-count share passes total serve capture. **Absent is never zero, twice over:** a tier with no reporting peer
+  is omitted from every map and renders `not reported` with its reason, because under the certified non-reporting exclusion a
+  silent tier's share computes to a well-formed 0.0 that reads as "this tier does none of the work"; a tier whose reporters
+  summed to zero IS present with a measured 0. On the shipped `-privacy` default no node gossips work counters at all, so every
+  one of these figures is a named absence in production — expected and ratified under `D-WORK-VISIBILITY`, which grades
+  decentralization in the harness. **The cross-document coverage join is closed:** the repair series' population now ships on
+  the concentration document itself, so its coverage no longer joins two independent `EconomySample()` calls that a live node
+  can move between. **The withdrawn `repairGini ≤ 0.40` has a replacement that separates:** on a repair distribution built
+  exactly proportional to holdings the observed-minus-expected excess is 0.0000 while the published repair Gini is 0.7740 —
+  the absolute constant reads that healthy network as captured — and routing every repair to one horse gives an excess of
+  +0.8649. **One advisory correction, measured:** the validity condition `min(0.50, 0.8 × null)` reduces to the flat 0.50 floor
+  at n = 1,011 classifiable nodes (where the disk-weighted null reaches 0.625), NOT at n ≈ 562; n ≈ 562 is where the null
+  crosses 0.50, which is a different boundary — below it a BARE 0.50 floor false-fires on an honest network, measured at
+  n = 554 (observed 0.499089, conditioned floor 0.3993). The margin ships as the ratio 4/5 rather than the literal 0.80 so the
+  n = 1,011 fixed point is exact instead of decided by a rounding.
 - **Lane C5 pre-flip closers: the repair bounty stops short-paying, and a single-frame object stops storing a full chunk of zeros
   (`R-BOUNTY-TRUNCATION` G-BT-1/G-BT-2, `R-SHORT-FINAL-STRIPE`; deliberation `docs/thinking/2026-09-09-c5-preflip-closers.md`).**
   **G-BT-2:** the repair price now divides into credits ONCE, at the end — `⌊c·k·shardBytes·(lost+1)/(U/p)⌋` instead of

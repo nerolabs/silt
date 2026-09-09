@@ -509,6 +509,28 @@ type economyConcentration struct {
 	Sample     *gossipSample `json:"sample,omitempty"`
 	ServeGini  *giniValue    `json:"serveGini,omitempty"`
 	RepairGini *giniValue    `json:"repairGini,omitempty"`
+	// PonyShareOfServedBytes is the T-AR tenet stated LITERALLY -- "the edge tier that does
+	// the MAJORITY of the work must remain a net-positive place to do it" (docs/TENETS.md
+	// Part IX). It is a POINTER for the same reason Sample is: absence is an absence.
+	//
+	// WHY IT IS HERE AND NOT ONLY ON THE MIX. The Gini beside it is a per-NODE dispersion
+	// statistic and the tenet is a TIER SHARE. The two answer different questions and were
+	// measured disagreeing on one sample -- the serve Gini reading CONCENTRATED at 0.1726
+	// while the pony tier served 0.8184 of the bytes. Publishing the tenet's own number
+	// beside the Gini is what stops the Gini being read as the tenet.
+	//
+	// NO THRESHOLD IS PUBLISHED WITH IT, deliberately. D-WORK-VISIBILITY (ratified
+	// 2026-09-09) grades decentralization in the HARNESS for the RC and claims no
+	// production concentration alarm, because none can fire on a default fleet. So this
+	// route publishes the MEASUREMENT and the harness holds the floor.
+	PonyShareOfServedBytes *tenetShare `json:"ponyShareOfServedBytes,omitempty"`
+	// CapableSize is the repair series' POPULATION -- how many classifiable peers of this
+	// sample are repair-capable, reporting or not. It ships HERE so the repair series'
+	// reporting coverage is computable from ONE snapshot. Before it existed the only source
+	// was the tier mix on /api/economy/network, so the coverage ratio joined two
+	// independent EconomySample() calls: in a fixture they agree, on a live node peerCaps
+	// moves between them and the ratio can exceed 1.
+	CapableSize *int `json:"capableSize,omitempty"`
 	// CountersWithheld is the SAME marker readerView uses for the node-wide serve
 	// counters, because this is the same covered set one derivation removed.
 	CountersWithheld bool `json:"countersWithheld,omitempty"`
@@ -570,6 +592,42 @@ func giniOver(value float64, total int64, size int, tier, scope string) *giniVal
 	}
 	gv.Known, gv.Value = true, value
 	return gv
+}
+
+// tenetShare is a tier's share of a work total, published because a TENET is stated over
+// it rather than because it is one of the mix's columns. Same Known discipline as
+// giniValue and tierShare: Value is omitempty and Known is what a consumer branches on.
+type tenetShare struct {
+	Known bool    `json:"known"`
+	Value float64 `json:"value,omitempty"`
+	// Reporting and Population are the required siblings, and on THIS figure they are more
+	// than provenance -- see ponyServeShare for the direction the coverage biases it.
+	Reporting  int     `json:"reporting"`
+	Population int     `json:"population"`
+	Coverage   float64 `json:"coverage"`
+	Tier       string  `json:"tier"`
+	Scope      string  `json:"scope"`
+	Epoch      string  `json:"epoch"`
+	Reason     string  `json:"reason,omitempty"`
+}
+
+const ponyServeShareScope = "the pony (edge) tier's share of the served bytes reported by ALL reporting peers of any tier. THIS IS THE TENET'S OWN NUMBER: T-AR says the edge tier does the MAJORITY of the work. It is NOT the tier mix's `share`, which is a share of NODE COUNT and reads ~0.99 by construction under the ratified 10000:100:1 vision ratio. THE COVERAGE BIASES IT IN THE SAFE DIRECTION, measured: a silent pony removes its bytes from this numerator AND from the denominator, so (P-d)/(P+O-d) < P/(P+O) whenever another tier reported. Under-reporting by the edge tier therefore DEPRESSES the edge tier's own share -- the failure mode is a false alarm that names itself in `coverage`, never a false clean bill. Self-reported and Sybil-settable in either direction; never an input to anything"
+
+// ponyServeShare derives the tenet figure from the sample's per-tier serve totals.
+//
+// The population is the pony count in the MIX (every classifiable pony, reporting or not)
+// while Reporting is the pony count in the work SERIES, because the gap between them is
+// exactly what the exclusion rule hid and it is the reader's only handle on it.
+func ponyServeShare(sample node.EconomySample) tenetShare {
+	reporting, population := sample.ReportersByTier[node.TierPony], sample.Mix[node.TierPony]
+	ts := tenetShare{Reporting: reporting, Population: population, Tier: "gossip-estimated",
+		Scope: ponyServeShareScope, Epoch: workCounterEpoch}
+	if population > 0 {
+		ts.Coverage = float64(reporting) / float64(population)
+	}
+	sh := tierShareOf(sample.ServeBytesByTier[node.TierPony], sample.ServeWorkTotal, reporting, noWorkAnywhere)
+	ts.Known, ts.Value, ts.Reason = sh.Known, sh.Value, sh.Reason
+	return ts
 }
 
 type c2Info struct {
@@ -651,6 +709,20 @@ func economyConcentrationDoc(sample node.EconomySample, c2 *chain.C2, auth reade
 			out.RepairGini = giniOver(sample.RepairGini, sample.RepairWorkTotal, sample.RepairSampleSize, "gossip-estimated",
 				repairGiniScope)
 		}
+		// The tenet's own figure and the repair series' population. Both are inside the
+		// sample floor and inside the privacy clause above, because both are derived from
+		// the same covered set: a share plus a population is the same kind of equation a
+		// Gini plus its sample size is.
+		//
+		// NO minGossipSample CHECK OF THEIR OWN, and that is not an oversight. The floor
+		// exists because a Gini over two values IS the ratio of those two values; a TIER
+		// share over the whole sample resolves to no individual peer's counter, and the
+		// sample-wide floor already gates the block. What the reader gets instead of a
+		// second floor is `reporting` and `coverage`, on the figure itself.
+		ps := ponyServeShare(sample)
+		out.PonyShareOfServedBytes = &ps
+		capable := sample.CapableSize
+		out.CapableSize = &capable
 	}
 	return out
 }
@@ -695,7 +767,90 @@ type tierMixRow struct {
 	Sampled int     `json:"sampled,omitempty"`
 	Share   float64 `json:"share,omitempty"`
 	Ratio   float64 `json:"ratio,omitempty"`
+	// Work is the per-tier WORK block, and Share above is NOT it. Share is a share of
+	// NODE COUNT: under the ratified vision ratio the pony share of nodes is ~0.99 by
+	// construction, so a consumer reading Share for "does the edge tier do the majority of
+	// the work" reads ~0.99 on every distribution including total capture. Measured 0.9891
+	// where the true pony share of served bytes was 0.1998
+	// (TestGateC3_1b_TierMixShareIsNodeCountNotServedBytes). Work.ServeShare is the byte
+	// share. They are adjacent on purpose: the trap is the resemblance.
+	Work *tierWork `json:"work,omitempty"`
 }
+
+// tierShare is ONE derived ratio on this surface, and it carries Known for the same
+// reason giniValue does: the three ratios below are all 0.0 for facts that are not each
+// other. Known false ships a REASON and no value, and Value is omitempty, so a consumer
+// that branches on the number instead of on Known reads an absence as a measurement.
+type tierShare struct {
+	Known  bool    `json:"known"`
+	Value  float64 `json:"value,omitempty"`
+	Reason string  `json:"reason,omitempty"`
+}
+
+// The three ways a per-tier ratio is not a number, named separately because each implies a
+// different operator action.
+const (
+	// noTierReporters is the one that matters most and it is the exclusion hole one level
+	// down. Under the certified M-2 rule a peer that reported neither counter is excluded
+	// from the work series, so a tier all of whose peers are silent contributes 0 to every
+	// numerator. Rendering that 0 as a measured share says "this tier does none of the
+	// work" when the truth is "no peer of this tier told me anything".
+	noTierReporters = "no peer of this tier reported any work, so this tier is absent from the series entirely. Under the certified non-reporting exclusion a silent peer is out of the numerator AND the denominator, so a 0 here would be a false absence rather than a measured zero. On the shipped -privacy default NO node gossips its work counters at all (D-WORK-VISIBILITY), so this is the expected reading in production and decentralization is graded in the harness instead"
+	// noWorkAnywhere is the empty-denominator shape: this tier reported, and so did
+	// others, but every one of them reported zero of THIS kind of work. Undefined, not 1.0
+	// and not 0.0 -- the general form of the rule giniOver already follows.
+	noWorkAnywhere = "the denominator is zero: every reporting peer in this series reported no work of this kind. A ratio with an empty denominator is UNDEFINED, not 0.0 and not 1.0"
+	// notInThePopulation is a scope statement, not a gap in the data. The repair series is
+	// scoped to the repair-CAPABLE classes because under D-TIERING coupling (b) durability
+	// is guaranteed by the persistent tiers and never by the transient edge, so a pony's
+	// repair share has no population to be a share OF.
+	notInThePopulation = "this tier is not repair-CAPABLE (D-TIERING coupling (b): durability is the persistent tiers' work, never the transient edge), so it is outside the repair series' population by construction. Not a missing measurement -- an undefined quantity"
+)
+
+// tierShareOf is the ONE constructor for every per-tier ratio, and the ORDER of its two
+// refusals is the whole rule rather than defensive plumbing.
+//
+// REPORTERS ARE CHECKED FIRST. A tier with no reporting peer has a numerator of 0, so with
+// a positive denominator the arithmetic yields a perfectly well-formed 0.0 -- the exact
+// false absence the exclusion rule creates. Checking the denominator first would let that
+// 0.0 through on every network where some OTHER tier reported. Ablation
+// G-PT-2 drives it.
+func tierShareOf(num, den int64, reporters int, emptyDen string) tierShare {
+	if reporters <= 0 {
+		return tierShare{Reason: noTierReporters}
+	}
+	if den <= 0 {
+		return tierShare{Reason: emptyDen}
+	}
+	return tierShare{Known: true, Value: float64(num) / float64(den)}
+}
+
+// tierWork is one tier's slice of the reported work (Economist advisory
+// ADVISORY-c3-concentration-gate-thresholds-redderived-2026-09-09 SS3a). It publishes
+// SHARES and never the absolute byte totals behind them: a per-tier total plus n-1
+// sybil-supplied terms recovers the n-th in one subtraction, which is strictly easier than
+// the Gini inversion r22_gini_reconstruction_test.go already closes. The whole block rides
+// the EXISTING gossipWithheld marker with no new marker and no new clause, because it is
+// the same covered set one derivation removed.
+type tierWork struct {
+	// Reporting is how many peers of this tier are in the work series, against Sampled on
+	// the row beside it. THE REQUIRED SIBLING of the three shares: a tier share is a figure
+	// over that tier's reporters, and silence in one tier depresses that tier's own share.
+	Reporting int     `json:"reporting"`
+	Coverage  float64 `json:"coverage"`
+	// The three shares. Their DENOMINATORS DIFFER and Denominators says so on the wire --
+	// serveShare is over every reporting peer of any tier, repairShare is over the
+	// repair-capable reporters only, and pledgedShare is over every reporting peer of any
+	// tier. So serveShare and pledgedShare sum to 1 across the mix while repairShare sums
+	// to 1 across the capable classes alone.
+	ServeShare   tierShare `json:"serveShare"`
+	RepairShare  tierShare `json:"repairShare"`
+	PledgedShare tierShare `json:"pledgedShare"`
+	Denominators string    `json:"denominators"`
+	Epoch        string    `json:"epoch"`
+}
+
+const tierWorkDenominators = "serveShare: of the served bytes reported by ALL reporting peers of any tier. repairShare: of the repairs reported by the repair-CAPABLE reporting peers only, so it sums to 1 over horse+archival and is undefined for pony. pledgedShare: of the CapTotal pledged by ALL reporting peers of any tier -- the null a repair or serve share is compared AGAINST, since repair opportunity scales with holdings. All three are self-reported and Sybil-settable in either direction; never an input to anything"
 
 // publishedTierBands is the wire form of core/node's capacity bands, published so an
 // operator can see WHERE the classification cut and check it against the table it came
@@ -754,7 +909,8 @@ func economyNetworkDoc(sample node.EconomySample, auth readerAuth) economyNetwor
 		if n == 0 {
 			continue // absent, never a zero row: "none in my sample" is not "none exist"
 		}
-		out.Mix = append(out.Mix, tierMixRow{Class: class, Sampled: n, Share: float64(n) / float64(sample.Size)})
+		out.Mix = append(out.Mix, tierMixRow{Class: class, Sampled: n, Share: float64(n) / float64(sample.Size),
+			Work: tierWorkFor(sample, class, n)})
 	}
 	if arch := sample.Mix[node.TierArchival]; arch == 0 {
 		out.ObservedRatioAbsent = "no archival node in this sample, so the ratio has no denominator. That is an UNKNOWN ratio, not an infinite one"
@@ -764,6 +920,45 @@ func economyNetworkDoc(sample node.EconomySample, auth readerAuth) economyNetwor
 		}
 	}
 	return out
+}
+
+// tierWorkFor derives one tier's work block from the sample's per-tier totals. Pure
+// arithmetic over node.EconomySample; no second snapshot, no join across routes.
+//
+// population is the row's own Sampled count, passed in rather than re-read so the block's
+// coverage and the row's count cannot disagree.
+func tierWorkFor(sample node.EconomySample, class string, population int) *tierWork {
+	reporting := sample.ReportersByTier[class]
+	tw := &tierWork{Reporting: reporting, Denominators: tierWorkDenominators, Epoch: workCounterEpoch,
+		ServeShare:   tierShareOf(sample.ServeBytesByTier[class], sample.ServeWorkTotal, reporting, noWorkAnywhere),
+		PledgedShare: tierShareOf(sample.PledgedBytesByTier[class], pledgedByReporters(sample), reporting, noWorkAnywhere),
+	}
+	if population > 0 {
+		tw.Coverage = float64(reporting) / float64(population)
+	}
+	// The repair share is defined only INSIDE the repair series' own population, and the
+	// membership test asks node.RepairCapable rather than reading whether core/node
+	// happened to key the map: a class outside that subset has no population to be a share
+	// of, and the two packages must answer that question with one predicate. It is checked
+	// BEFORE the reporting test because "pony" is undefined here even when every pony
+	// reported -- a scope statement, not a gap in the data.
+	if !node.RepairCapable(class) {
+		tw.RepairShare = tierShare{Reason: notInThePopulation}
+		return tw
+	}
+	tw.RepairShare = tierShareOf(sample.RepairsByTier[class], sample.RepairWorkTotal, reporting, noWorkAnywhere)
+	return tw
+}
+
+// pledgedByReporters is the pledged-capacity denominator: the sum over every REPORTING
+// peer of any tier. It is summed from the per-tier map rather than carried as its own
+// field so it cannot drift from the numerators it divides.
+func pledgedByReporters(sample node.EconomySample) int64 {
+	var total int64
+	for _, v := range sample.PledgedBytesByTier {
+		total += v
+	}
+	return total
 }
 
 // itoa keeps the notes above free of a fmt import for one integer.

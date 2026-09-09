@@ -37,6 +37,8 @@
       <div class="big" id="servegini">—</div><div class="sub" id="serveginisub"></div></div>
     <div class="card"><h2>Repair-work Gini <span class="pill">gossip-estimated</span></h2>
       <div class="big" id="repairgini">—</div><div class="sub" id="repairginisub"></div></div>
+    <div class="card"><h2>Edge share of serve work <span class="pill">gossip-estimated</span></h2>
+      <div class="big" id="edgeshare">—</div><div class="sub" id="edgesharesub"></div></div>
     <div class="card"><h2>Standing concentration <span class="pill">committed-global</span></h2>
       <div class="big" id="c2">—</div><div class="sub" id="c2sub"></div></div>
   </div>
@@ -54,7 +56,14 @@
     Tier classes are derived from the storage pledge each peer already gossips, against published bands — a peer
     does not declare its class. Everything here is self-reported and advisory; none of it is a consensus,
     standing, or payment input.</p>
-  <table id="mix"><thead><tr><th>class</th><th>sampled</th><th>share</th><th>vs 10000:100:1</th></tr></thead><tbody></tbody></table>
+  <p class="dim" style="margin-bottom:0.6rem;font-size:0.85rem">
+    <b>share</b> is a share of NODE COUNT and is <b>not</b> a share of the work: under the 10000:100:1 target the
+    edge tier is ~99 % of the nodes whatever the work looks like. <b>serve</b> and <b>repair</b> are the shares of
+    the reported WORK. A tier whose peers reported nothing reads <span class="mono">not reported</span> — never
+    0 %, which would say the tier does none of the work. On the shipped <span class="mono">-privacy</span> default
+    no node gossips its work counters, so those two columns are a named absence on a live network by design.</p>
+  <table id="mix"><thead><tr><th>class</th><th>sampled</th><th>share of nodes</th><th>serve</th><th>repair</th>
+    <th>reporting</th><th>vs 10000:100:1</th></tr></thead><tbody></tbody></table>
   <p class="note" id="mixnote"></p>
 </main>
 <script>
@@ -90,6 +99,11 @@ async function refresh() {
   document.getElementById("repairginisub").textContent =
     rg.sub + ((conc && conc.repairGini) ? " · " + conc.repairGini.scope : " · the repair-capable subset alone carries signal");
 
+  const es = siltRender.edgeShareCell(conc);
+  document.getElementById("edgeshare").textContent = es.text;
+  document.getElementById("edgesharesub").textContent =
+    es.sub + ((conc && conc.ponyShareOfServedBytes && es.known) ? " · " + conc.ponyShareOfServedBytes.scope : "");
+
   const c2 = conc && conc.c2;
   document.getElementById("c2").textContent = c2 ? "k̂ " + c2.nakamotoBonds : "—";
   document.getElementById("c2sub").textContent = c2
@@ -115,10 +129,17 @@ async function refresh() {
   const mixEmpty = net && net.countersWithheld
     ? "withheld by this node's privacy setting"
     : ((net && net.sample && net.sample.note) || "no sample");
-  document.querySelector("#mix tbody").innerHTML = rows.map(r =>
-    `<tr><td>${r.class}</td><td>${r.sampled}</td><td>${(Number(r.share) * 100).toFixed(1)}%</td>` +
-    `<td>${ratio[r.class] !== undefined ? Number(ratio[r.class]).toFixed(1) : "—"}</td></tr>`).join("")
-    || `<tr><td colspan=4 class="dim">${mixEmpty}</td></tr>`;
+  document.querySelector("#mix tbody").innerHTML = rows.map(r => {
+    const w = r.work || null;
+    const sv = siltRender.tierShareCell(w && w.serveShare);
+    const rp = siltRender.tierShareCell(w && w.repairShare);
+    return `<tr><td>${r.class}</td><td>${r.sampled}</td><td>${(Number(r.share) * 100).toFixed(1)}%</td>` +
+      `<td title="${sv.title || ""}" class="${sv.known ? "" : "dim"}">${sv.text}</td>` +
+      `<td title="${rp.title || ""}" class="${rp.known ? "" : "dim"}">${rp.text}</td>` +
+      `<td>${w ? w.reporting + " of " + r.sampled : "—"}</td>` +
+      `<td>${ratio[r.class] !== undefined ? Number(ratio[r.class]).toFixed(1) : "—"}</td></tr>`;
+  }).join("")
+    || `<tr><td colspan=7 class="dim">${mixEmpty}</td></tr>`;
   mixNote.textContent = (net && net.observedRatioAbsent) || (net ? net.note : "");
 }
 refresh(); setInterval(refresh, 5000);
