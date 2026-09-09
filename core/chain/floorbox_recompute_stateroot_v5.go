@@ -99,7 +99,7 @@ var (
 	// the same mis-wiring silently flips the class-A screen branch and the isBoundary scope gate. It is
 	// stall-only either way, but a fold mismatch three classes later is the WRONG place to learn it —
 	// the entry asserts it so the failure is LOUD and names the cause.
-	ErrRecomputeBoxWiring = errors.New("chain: floor-box state-root recompute — the box has no bond verifier wired (SetBondVerifier), so objective()/epochsEnabled() would silently take the legacy branch; the box stalls at the entry rather than screening under the wrong rule (#572 replay shape)")
+	ErrRecomputeBoxWiring = errors.New("chain: floor-box state-root recompute — the box is not in OBJECTIVE mode (objective() = cfg.MinBond > 0 && verifyBond != nil; either arm being unset is enough), so objective()/epochsEnabled() would silently take the legacy branch and the box would return a legacy verdict where a full node at the same config returns an objective one; the box stalls at the entry rather than screening under the wrong rule (#572 replay shape; both arms asserted since G-1)")
 
 	// ErrRecomputeCarrierInvalid marks a stall at the BOX ENTRY because the block's LastCommit
 	// carrier fails the SHARED O1 validity rule (validateCarrier, carrier.go) — the same function,
@@ -272,12 +272,21 @@ func (c *Chain) assembleStateRootRecomputeOps(
 	w StateRootWitness,
 	parentProposer ports.NodeID,
 ) ([]statehash.FoldOp, error) {
-	// (0) WIRING ASSERTION — LOUD, at the box entry (R-VERIFYBOND-WIRING). objective() and
+	// (0) WIRING ASSERTION — LOUD, at the box entry (R-VERIFYBOND-WIRING; widened to BOTH arms
+	// 2026-09-10 by G-1, the certified precondition on freeze-manifest item 2). objective() and
 	// epochsEnabled() are read as branch predicates by the class-A screen and the isBoundary scope
 	// gate; both depend on the INJECTED verifyBond, not on committed state or genesis cfg. An unwired
 	// box takes the legacy branch everywhere and fails later as an opaque fold mismatch. Assert once,
 	// here, so the #572 replay shape fails at the entry naming its cause.
-	if c.verifyBond == nil {
+	//
+	// IT ASSERTS objective(), NOT verifyBond != nil. objective() = MinBond > 0 && verifyBond != nil,
+	// so the narrower check covered ONE arm: a box with a WIRED verifier and cfg.MinBond == 0 passed
+	// the entry, and the maturity recompute then reproduced the OBJECTIVE branch unconditionally
+	// (floorbox_recompute_maturity_v5.go documents that assumption in its header) while a full node
+	// at the SAME config took matureNow's LEGACY branch — counting non-anchor validatorsSeen against
+	// MatureValidators instead of MatureCoefficient(). One config, two verdicts, silently: exactly
+	// what this assertion exists to prevent. Driven by G-1.
+	if !c.objective() {
 		return nil, ErrRecomputeBoxWiring
 	}
 
