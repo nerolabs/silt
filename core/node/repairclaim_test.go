@@ -71,7 +71,7 @@ func TestSettleRepairVerdict_ReleasePaysHolderNeverStanding(t *testing.T) {
 	claim := repairproof.RepairClaim{Root: root, Stripe: 0, ShardPos: 7, Holder: holder}
 	nd.settleRepairVerdict(claimant, claim, p, shardBytes, 8, repairproof.Decision{Release: true})
 
-	wantBounty := credit.BountyFor(credit.RepairBountyBase(p.K, shardBytes), p.K, p.N, 8)
+	wantBounty := credit.RepairBounty(p.K, p.N, 8, shardBytes)
 	if wantBounty <= 0 {
 		t.Fatal("test setup: bounty should be positive")
 	}

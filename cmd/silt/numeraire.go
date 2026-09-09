@@ -9,6 +9,7 @@ import (
 	"github.com/nerolabs/silt/core/credit"
 	"github.com/nerolabs/silt/core/crypto"
 	"github.com/nerolabs/silt/core/erasure"
+	"github.com/nerolabs/silt/core/pipeline"
 )
 
 // grantOverSummedPriceBytes is how many bytes one starter grant buys when a NAT'd
@@ -22,39 +23,76 @@ func grantOverSummedPriceBytes(grant, deliveryBytesPerCredit, relayBytesPerCredi
 	return grant * deliveryBytesPerCredit * relayBytesPerCredit / (deliveryBytesPerCredit + relayBytesPerCredit)
 }
 
-// warnBountyChunk names, at publish time, a chunk size whose stripe pays a ZERO repair
-// bounty under a repair economy (G-λ-8, G-R212-7): the base is priced in the witnessed
-// fetch price, so k × shardBytes below one credit of fetch rounds to nothing. A shard is a
-// whole ciphertext chunk (chunk + crypto.Overhead), so the threshold is
-// credit.MinBountyChunkBytesFor(erasure.DefaultParams.K, crypto.Overhead) ≈ 26 KB at
-// k = 10 — the shipped 256 KiB default pays a base of 10 (exact 10.0006; the 64 KiB former
-// default paid 2 of an exact 2.5) and does NOT warn (the earlier build placed the
-// threshold at 262,144 on a shard = chunk/k model; the Economist's 2026-09-06 advisory
-// corrected it). The daemon has no chunk geometry at start-up to
-// refuse on, so the publisher is told here and the judge names it again at settlement.
+// warnBountyChunk names, at publish time, a chunk size whose stripe SHORT-PAYS the
+// repair bounty: the base is an integer floor of the witnessed fetch price, so
+// k × shardBytes below one credit of fetch rounds to nothing (G-λ-8, G-R212-7) and
+// k × shardBytes just above it rounds away up to half the repairer's wage
+// (R-BOUNTY-TRUNCATION, G-BT-1). A shard is a whole ciphertext chunk (chunk +
+// crypto.Overhead). The daemon has no chunk geometry at start-up to refuse on, so the
+// publisher is told here and the judge names a zero again at settlement.
 //
-// It fires only when the operator SET -chunk-size (below the minimum); a warning on every
-// default publish is noise nobody reads (blind PE M6).
+// It fires only when the operator SET -chunk-size; a warning on every default publish
+// is noise nobody reads (blind PE M6), and the shipped default is the silent case by
+// construction — see bountyChunkWarning.
 func warnBountyChunk(chunkBytes int, explicit bool) {
 	if msg := bountyChunkWarning(int64(chunkBytes), explicit); msg != "" {
 		fmt.Fprintln(os.Stderr, msg)
 	}
 }
 
-// minBountyChunkBytes is the publish-time threshold at the shipped erasure geometry.
+// minBountyChunkBytes is the publish-time ZERO threshold at the shipped erasure geometry.
 func minBountyChunkBytes() int64 {
 	return credit.MinBountyChunkBytesFor(erasure.DefaultParams.K, crypto.Overhead)
 }
 
+// shippedBountyBase is the repair-bounty base the SHIPPED publish default pays: the
+// warning's threshold, DERIVED from the two shipped constants and never typed. It is 10
+// today (a 262,160-byte shard, exact 10.00061), which is what makes the rule below have a
+// closed complement: warn iff the operator's geometry pays a smaller base than the
+// default's, so the default is silent by construction rather than by a hand-kept number.
+func shippedBountyBase() int64 {
+	return credit.RepairBountyBase(erasure.DefaultParams.K, int64(pipeline.DefaultChunkSize)+crypto.Overhead)
+}
+
 // bountyChunkWarning is the pure form of warnBountyChunk: the warning text, or "" when
-// nothing should be said. The decision is the judge's own arithmetic (RepairBountyBase on
-// a chunk-sized shard), never a duplicated threshold.
+// nothing should be said. Every number is the judge's own arithmetic on the runtime
+// geometry (credit.RepairBountyBase / credit.RepairBountyTruncation), never a duplicated
+// threshold.
+//
+// THE RULE, with its complement: the warning fires iff the operator SET -chunk-size AND
+// that geometry's base is below the base the shipped default pays. It is silent in
+// exactly two cases — an unset -chunk-size, or a base at or above the default's — and
+// TestGLambda8PublishWarningFiresOnlyForAnExplicitSmallChunk drives both sides.
 func bountyChunkWarning(chunkBytes int64, explicit bool) string {
-	if !explicit || credit.RepairBountyBase(erasure.DefaultParams.K, chunkBytes+crypto.Overhead) > 0 {
+	if !explicit {
 		return ""
 	}
-	return fmt.Sprintf("warning: -chunk-size %d is below %d bytes: under a repair economy (-economy) this object's repair bounty base is ZERO (k·shardBytes < one credit of fetch, G-λ-8; a shard is a whole ciphertext chunk) and a repair of it pays nothing; use -chunk-size >= %d",
-		chunkBytes, minBountyChunkBytes(), minBountyChunkBytes())
+	k := erasure.DefaultParams.K
+	shardBytes := chunkBytes + crypto.Overhead
+	base := credit.RepairBountyBase(k, shardBytes)
+	if base >= shippedBountyBase() {
+		return ""
+	}
+	if base == 0 {
+		return fmt.Sprintf("warning: -chunk-size %d is below %d bytes: under a repair economy (-economy) this object's repair bounty base is ZERO (k·shardBytes = %d < one credit of fetch = %d, G-λ-8; a shard is a whole ciphertext chunk) and a repair of it pays nothing; use -chunk-size >= %d",
+			chunkBytes, minBountyChunkBytes(), int64(k)*shardBytes, int64(credit.DeliveryBytesPerCredit), minBountyChunkBytes())
+	}
+	exactE5, lossTenths := credit.RepairBountyTruncation(k, shardBytes)
+	_, dLossTenths := credit.RepairBountyTruncation(k, int64(pipeline.DefaultChunkSize)+crypto.Overhead)
+	return fmt.Sprintf("warning: -chunk-size %d TRUNCATES the repair bounty: a k=%d stripe of %d-byte shards is worth %s credits and pays %d, so a repair of this object short-pays the repairer by %s%% of the price (R-BOUNTY-TRUNCATION, G-BT-1); the shipped default -chunk-size %d pays %d and short-pays %s%%",
+		chunkBytes, k, shardBytes, creditsE5(exactE5), base, tenthsPct(lossTenths),
+		pipeline.DefaultChunkSize, shippedBountyBase(), tenthsPct(dLossTenths))
+}
+
+// creditsE5 renders a price that credit.RepairBountyTruncation floored at 1e-5 credits:
+// 199_996 reads "1.99996". Integer formatting, so the printed figure is the computed one.
+func creditsE5(e5 int64) string {
+	return fmt.Sprintf("%d.%05d", e5/100_000, e5%100_000)
+}
+
+// tenthsPct renders tenths of one percent: 500 reads "50.0".
+func tenthsPct(t int64) string {
+	return fmt.Sprintf("%d.%d", t/10, t%10)
 }
 
 // flagWasSet reports whether the operator passed name on the command line.

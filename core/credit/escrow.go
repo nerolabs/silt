@@ -110,10 +110,72 @@ const (
 // the caller's base<=0 guard means "off", and the judge names a zero base loudly
 // (G-λ-8, core/node/repairclaim.go).
 func RepairBountyBase(k int, shardBytes int64) int64 {
-	if k <= 0 || shardBytes <= 0 {
+	return repairBountyCredits(k, shardBytes, 1)
+}
+
+// repairBountyCredits is the ONE place a repair price is divided into credits:
+// ⌊c·k·shardBytes·mult / (U/p)⌋, with mult the rarest-shard multiplier (1 for the
+// base). Every price the ledger pays flows through here, so the floor is applied
+// exactly once, at the END — G-BT-2 (BOULDER2 residual-closures certification,
+// 2026-09-07, §2.6). Flooring the base FIRST and multiplying after threw away
+// mult × frac(x) instead of frac(x·mult): for integer mult ≥ 1 and real a ≥ 0,
+// ⌊a⌋·mult ≤ ⌊a·mult⌋ ≤ a·mult, so dividing last is never an over-pay and recovers
+// up to (n−k+1)−1 credits — most on the stripe nearest data loss, which is exactly
+// the stripe the multiplier exists to prioritise.
+func repairBountyCredits(k int, shardBytes int64, mult int) int64 {
+	if k <= 0 || shardBytes <= 0 || mult <= 0 {
 		return 0
 	}
-	return int64(k) * shardBytes * RepairBountyCoeffNum / RepairBountyCoeffDen / DeliveryBytesPerCredit
+	return int64(k) * shardBytes * int64(mult) * RepairBountyCoeffNum / RepairBountyCoeffDen / DeliveryBytesPerCredit
+}
+
+// RepairBountyTruncation prices what the floor in repairBountyCredits COSTS the
+// repairer at one geometry, in integers — the money path does no floating point.
+// It returns the exact price scaled by 1e5 and FLOORED (never over-stated, the same
+// direction as the payment itself) and the under-pay as a fraction of the exact
+// price in tenths of one percent, rounded to nearest. At k = 10 and a 52,428-byte
+// shard (the -chunk-size 52412 geometry) that is 199,996 and 500: an exact price of
+// 1.99996 credits paid as 1, a 50.0 % wage cut. It is what the publish warning
+// (G-BT-1) says out loud; nothing disburses on it.
+func RepairBountyTruncation(k int, shardBytes int64) (exactE5, underpayTenthsPct int64) {
+	if k <= 0 || shardBytes <= 0 {
+		return 0, 0
+	}
+	num := int64(k) * shardBytes * RepairBountyCoeffNum         // the exact price's numerator
+	den := int64(DeliveryBytesPerCredit) * RepairBountyCoeffDen // ... over this
+	exactE5 = num * 100_000 / den
+	rem := num - repairBountyCredits(k, shardBytes, 1)*den
+	underpayTenthsPct = (rem*1_000 + num/2) / num
+	return exactE5, underpayTenthsPct
+}
+
+// RarestShardMultiplier is how many base units one shard-repair of a stripe with
+// `reachable` of its `n` shards alive is worth: every shard already lost adds one,
+// so repairing the last spare before unrecoverable data loss is worth (n−k+1)× a
+// top-up on a healthy stripe. That is what steers scarce repair effort at the
+// stripes nearest the cliff first. A stripe at or below the k-floor is already
+// clamped at the maximum; a degenerate stripe (k <= 0, n < k) is worth 0.
+func RarestShardMultiplier(k, n, reachable int) int {
+	if k <= 0 || n < k {
+		return 0
+	}
+	lost := n - reachable
+	if lost < 0 {
+		lost = 0 // a stripe reporting more than n reachable pays the base
+	}
+	if maxLost := n - k; lost > maxLost {
+		lost = maxLost // past the k-floor the multiplier is already maxed
+	}
+	return lost + 1
+}
+
+// RepairBounty is the credits one shard-repair earns: the whole price
+// c·k·shardBytes·(lost+1) divided into credits ONCE, at the end (G-BT-2). It is the
+// only pricing entry point the judge calls; RepairBountyBase exists beside it for
+// the zero-signal, which must read the UNMULTIPLIED base so a stripe near the cliff
+// cannot mask a geometry that pays nothing on a healthy stripe (G-λ-8).
+func RepairBounty(k, n, reachable int, shardBytes int64) int64 {
+	return repairBountyCredits(k, shardBytes, RarestShardMultiplier(k, n, reachable))
 }
 
 // MinBountyStripeBytes is the smallest STRIPE (k × shardBytes) that pays a non-zero
@@ -274,31 +336,6 @@ func (l *Ledger) PayBounty(root ports.Hash, repairer ports.NodeID, amount int64)
 // Observability; reading moves nothing.
 func (l *Ledger) BountyToPriorFetcher() (payments, credits int64) {
 	return l.bountyToPriorFetcherPayments, l.bountyToPriorFetcherCredits
-}
-
-// BountyFor is the rarest-shard bounty multiplier: the credits owed to repair one
-// shard of a stripe that currently has `reachable` of its `n` shards alive, given
-// a base bounty. The multiplier rises with how under-replicated the stripe is —
-// every shard already lost adds one base unit, so repairing the last spare before
-// unrecoverable data loss is worth (n-k+1)× a top-up on a healthy stripe. This is
-// what steers scarce repair effort at the stripes nearest the cliff first.
-//
-// Formally: lost = n - reachable, and bounty = base * (lost + 1), clamped so a
-// stripe at or below the k-floor (already unrecoverable-adjacent) pays the
-// maximum (n-k+1)× rather than running past it. base<=0 or a degenerate stripe
-// (k<=0, n<k) yields 0.
-func BountyFor(base int64, k, n, reachable int) int64 {
-	if base <= 0 || k <= 0 || n < k {
-		return 0
-	}
-	lost := n - reachable
-	if lost < 0 {
-		lost = 0 // a stripe reporting more than n reachable pays the base
-	}
-	if maxLost := n - k; lost > maxLost {
-		lost = maxLost // past the k-floor the multiplier is already maxed
-	}
-	return base * int64(lost+1)
 }
 
 // EscrowBalance is the credit currently available to pay repair bounties for

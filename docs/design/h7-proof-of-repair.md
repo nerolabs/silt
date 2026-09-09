@@ -9,7 +9,7 @@
 > slice 2 (issue
 > [#95](https://github.com/nerolabs/silt/issues/95)), the verification half of the
 > durability story. Slice 1 (the escrow/bounty *primitives* — `FundEscrow`,
-> `RecordServeToObject` auto-skim, `BountyFor`, `PayBounty`) has shipped in
+> `RecordServeToObject` auto-skim, `RepairBounty`, `PayBounty`) has shipped in
 > `core/credit/escrow.go`. This slice builds the gate those primitives hang off:
 > *a bounty releases only against a proof that the repair was real and correct.*
 > Decision basis: [`decisions.md`](../decisions.md) **D-S7**; spec: [`m0.md`](m0.md).
@@ -368,7 +368,7 @@ release iff:
   correctnessOK  := homomorphic check of §4 passes for C_j        (each voter)
   retrievabOK    := por.Verify under repairer-bound seed passes    (each voter)
   quorumOK       := |{ voters : correctnessOK ∧ retrievabOK }| ≥ τ
-  ⇒ ledger.PayBounty(root, repairerID, BountyFor(base, k, n, reachable))
+  ⇒ ledger.PayBounty(root, repairerID, RepairBounty(k, n, reachable, shardBytes))
 ```
 
 - **Attributable fraud → slash.** A claim where `quorumOK` fails on the correctness
@@ -382,7 +382,7 @@ release iff:
   re-challengeable, identity-bound replica (§5). (b) It cannot double-count an
   existing replica (identity-bound seed). (c) It cannot fabricate `C_j` — the
   homomorphic relation pins it to the survivors' committed values. (d) The bounty is
-  drawn from the *object's* reserve, capped by `BountyFor`, so a self-dealer at best
+  drawn from the *object's* reserve, capped by `RepairBounty`, so a self-dealer at best
   churns its own prepaid credit, and only by doing genuine, verifiable repair work.
 
 - **Why BOTH legs are needed even though silt content-addresses every shard**

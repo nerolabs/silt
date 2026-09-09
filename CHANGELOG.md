@@ -25,6 +25,43 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   itself is certified in-process. No OOM-kill and no crash-loop across the cohort, so the sheet was graded on a healthy network.
   Teardown verified: 40 resources destroyed, no instance left running.
 ### Changed
+- **Lane C5 pre-flip closers: the repair bounty stops short-paying, and a single-frame object stops storing a full chunk of zeros
+  (`R-BOUNTY-TRUNCATION` G-BT-1/G-BT-2, `R-SHORT-FINAL-STRIPE`; deliberation `docs/thinking/2026-09-09-c5-preflip-closers.md`).**
+  **G-BT-2:** the repair price now divides into credits ONCE, at the end — `⌊c·k·shardBytes·(lost+1)/(U/p)⌋` instead of
+  `⌊c·k·shardBytes/(U/p)⌋·(lost+1)`. Since `⌊a⌋·m ≤ ⌊a·m⌋ ≤ a·m` it is never an over-pay and it recovers up to `N−K+1 = 7×` of the
+  truncation, most on the stripe nearest data loss, which is exactly the stripe the multiplier exists to prioritise: at
+  `-chunk-size 52412` with three shards lost the repairer is paid 7 credits where it was paid 4. `credit.BountyFor` is RETIRED in
+  favour of `credit.RepairBounty` so there is one way to price a repair, not two. Because the division is last, the multiplier can
+  now lift a ZERO-base geometry to a non-zero payment — which is why the G-λ-8 zero-signal still reads the UNMULTIPLIED base, and
+  both arms are driven. **G-BT-1:** the publish warning gained a truncation arm. Its rule has a closed complement — warn iff the
+  operator SET `-chunk-size` AND that geometry pays a smaller base than the shipped default's, which is `RepairBountyBase(K,
+  DefaultChunkSize + Overhead)` and never a typed number — so the default is silent by construction. `-chunk-size 52412` said
+  nothing before and now names the geometry, the exact price, the paid base and the loss: a 52,428-byte shard worth `1.99996`
+  credits paid as `1`, `50.0 %` short. Every printed figure is `int64` arithmetic (`credit.RepairBountyTruncation`); the money path
+  does no floating point. The accumulator alternative stays REFUTED on build-immutable #8. **`R-SHORT-FINAL-STRIPE`:** an object
+  whose whole content fits in ONE frame is alone in its erasure stripe, so nothing forces it to full length — it and its six parity
+  shards are now computed at the frame's true length. A 1 KB object at the 256 KiB default stored 1,835,465 B and now stores
+  7,681 B (239×); a 100 KB object 1,835,465 → 700,517 B. The frame size travels in the existing `manifest.ChunkSize`, so the PoR
+  auditor keeps fixing the sample space from committed data and red-team F4 stays closed; there is NO manifest format change and no
+  new field. **This is a content-addressing break, the second in this window.** Every object of two or more frames is
+  byte-identical (they share a stripe, the tail stays padded) — the 1.5 MB modal object is unchanged at 3,146,439 B. Every object at
+  or below `chunkSize − 8` (262,136 B at the default) re-addresses: new chunk IDs, new root, new link key. An existing store keeps
+  working, because nothing on the read path consults `DefaultChunkSize` — readers take the geometry from the manifest — but a
+  re-publish of the same bytes yields a new root, so dedup does not span the boundary. **The genesis MOVES again**, and this time
+  the root moves with it (4′ re-framed only the manifest, which the root does not cover): root `fce9eeeb…20d6` → `31768fb4…7dd1`,
+  manifest chunk `5478750c…d107` → `f761f80b…fcf6`, block hash `f428d0a8…0951` → `e44344ea…72c0`, on the same ground the owner
+  accepted for 4′ — no live network exists and every development chain is wiped on upgrade — and owed the same explicit acceptance.
+  Two consequences the certification and the advisory did not price are recorded in the deliberation: a sub-frame object's repair
+  bounty base is now ZERO (the honest price of a ~10 KB repair, named loudly at settlement by `Stats.BountyBaseZero`, not silent),
+  and threat F3's already-unmitigated size fingerprinting gets slightly worse for sub-frame objects, whose exact length is now
+  visible where the padding had blurred it to one chunk. Also corrected: the stale `cmd/silt/swarm.go` comment that still called the
+  unsettled delivery remainder burned under G-6 — it has been a DEPOSIT released at anchor expiry since call 1′ (#763). Gates:
+  `TestGLambda8PublishWarningFiresOnlyForAnExplicitSmallChunk`, `TestRepairBountyDividesAfterTheMultiplier`,
+  `TestRepairBountyIsDominantAndNeverOverPays`, `TestZeroSignalReadsTheUnmultipliedBase`,
+  `TestRepairBountyTruncationIsExactIntegerArithmetic`, `TestJudgePaysTheUndividedRepairPrice`,
+  `TestGLambda8ZeroBountyBaseIsNamedNotSilent`, `TestSingleFrameObjectIsFramedAtItsTrueLength`,
+  `TestMultiFrameObjectsKeepThePaddedTail`, `TestAuditorAndHonestProverAgreeOnEveryShardLength`,
+  `TestGenesisBlockHashIsPinned`; each ablated RED once.
 - **The proposer's gather target is DERIVED on the untrusted objective path, and a single-anchor objective launch is refused
   (`D-DELEGATED-CALLS-2026-09-09`, two owner calls delegated 2026-09-08).** Since #380 the local `-quorum` is not a validity
   term on that path, but it is still a floor on the gather, so the shipped literal 3 asked every peer of a four-anchor launch

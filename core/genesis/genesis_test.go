@@ -38,19 +38,27 @@ func TestGenesisIsDeterministic(t *testing.T) {
 
 // TestGenesisBlockHashIsPinned holds height-0 IDENTITY across binaries, which
 // TestGenesisIsDeterministic cannot see (it compares two builds in one process). The
-// literals are the values the 4′ true-length manifest framing produces, ACCEPTED as the
-// new genesis by the owner on 2026-09-07 (no live network exists; the pre-4′ values were
-// hash 7becf754…32ce / manifest chunk 8063c7a3…4610). The manifest chunk ID is pinned
-// separately because it is the seam that moves — the root covers data + parity IDs only,
-// so a framing change moves the entry and the block hash while leaving the root alone
-// (blind PE, 2026-09-07, measured). From here the genesis hash moves ONLY by an explicit,
-// recorded decision: any drift turns this RED. ABLATION: set ManifestFrameBytes: 64 << 10
-// in genesis.Options → RED on the manifest chunk ID and on the block hash, GREEN on the root.
+// literals are the values R-SHORT-FINAL-STRIPE produces, the SECOND accepted genesis move
+// in this window and on the same ground as the first: no live network exists and every
+// development chain is wiped on upgrade.
+//
+//	pre-4′ (padded manifest frame)   hash 7becf754…32ce · manifest chunk 8063c7a3…4610
+//	4′     (true-length manifest)    hash f428d0a8…0951 · manifest chunk 5478750c…d107 · root fce9eeeb…20d6
+//	now    (true-length DATA frame)  hash e44344ea…72c0 · manifest chunk f761f80b…fcf6 · root 31768fb4…7dd1
+//
+// The ROOT moves this time and did not before, and that difference is the whole point of
+// pinning three literals rather than one: 4′ re-framed the manifest, which the root does
+// not cover, so only the entry and the block hash moved. R-SHORT-FINAL-STRIPE re-frames
+// the manifesto's own 2,042 bytes — a single-frame object — so its data and parity chunk
+// IDs move, and the root is built out of exactly those. From here the genesis hash moves
+// ONLY by an explicit, recorded decision: any drift turns this RED. ABLATION: set
+// ManifestFrameBytes: 64 << 10 in genesis.Options → RED on the manifest chunk ID and on
+// the block hash, GREEN on the root.
 func TestGenesisBlockHashIsPinned(t *testing.T) {
 	const (
-		wantHash  = "f428d0a8c43cdbf559f9f486473df0605b17dccfa369b72c8917aa5ab5880951"
-		wantRoot  = "fce9eeeb23ac0051972d99e67e9423821fedc9607cbbb48c52a4030171e320d6"
-		wantChunk = "5478750c791c4a680d68d21f4a0c12894b04354d449b0f8d2eaa7f99959cd107"
+		wantHash  = "e44344eafa258c64904d88337e72ad7a904bd3c16a3058abb8d58557740272c0"
+		wantRoot  = "31768fb45fcf6e7fbf5568f916c790ea905d85220d20717bfe91442934867dd1"
+		wantChunk = "f761f80bdc29952ef1a25c2136a35fb34e4feaf1b6873f7e03dc8a1fce67fcf6"
 	)
 	b, h, entry, err := genesis.Build(memstore.New())
 	if err != nil {
@@ -60,7 +68,7 @@ func TestGenesisBlockHashIsPinned(t *testing.T) {
 		t.Fatalf("genesis root %s, want %s — the manifesto's chunking or erasure geometry moved", got, wantRoot)
 	}
 	if len(entry.ManifestChunks) != 1 {
-		t.Fatalf("genesis manifest is %d chunks, want exactly 1 (one padded 64 KiB frame)", len(entry.ManifestChunks))
+		t.Fatalf("genesis manifest is %d chunks, want exactly 1 (one true-length frame)", len(entry.ManifestChunks))
 	}
 	if got := hex.EncodeToString(entry.ManifestChunks[0][:]); got != wantChunk {
 		t.Fatalf("genesis manifest chunk %s, want %s — the manifest FRAME moved (the root did not), and with it the block hash", got, wantChunk)

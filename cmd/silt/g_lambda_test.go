@@ -87,35 +87,63 @@ func TestGLambda3DaemonRefusesPricedLaneBelowThePinSourceGate(t *testing.T) {
 	}
 }
 
-// TestGLambda8PublishWarningFiresOnlyForAnExplicitSmallChunk (blind PE M6): the publish-time
-// warning speaks for an operator-set -chunk-size below the bounty minimum, is silent at or
-// above it, and is silent for the shipped default (which is below the minimum — the owner's
-// R-DEFAULT-CHUNK-BOUNTY-ZERO call, not a warning on every publish). SOURCE GATE below: both
-// publish paths call it. RUNTIME GATE: the pure function arms here.
+// TestGLambda8PublishWarningFiresOnlyForAnExplicitSmallChunk drives BOTH sides of the
+// publish warning's rule and its complement (G-λ-8 for the zero arm, G-BT-1 for the
+// truncation arm — BOULDER2 residual-closures certification 2026-09-07 §2.6). The rule:
+// warn iff the operator SET -chunk-size AND that geometry pays a smaller repair-bounty
+// base than the shipped default does. Both sides are RUN here rather than described;
+// SOURCE GATE below: both publish paths call it.
+//
+// Ablation that must go RED (the certification's own): on the pre-G-BT-1 build
+// bountyChunkWarning(52_412, true) returned "" — a 50 % silent wage cut.
 func TestGLambda8PublishWarningFiresOnlyForAnExplicitSmallChunk(t *testing.T) {
-	// The shipped 64 KiB default pays a base of 2 (a shard is a whole ciphertext chunk):
-	// NO warning, explicit or not. The earlier gate asserted a warning here on the
-	// shard = chunk/k model; the Economist's 2026-09-06 advisory corrected the geometry.
-	if msg := bountyChunkWarning(65_536, true); msg != "" {
-		t.Fatalf("explicit 64 KiB chunk warned although its stripe pays a base of 2: %q", msg)
+	// The threshold is DERIVED from the shipped default, not typed: the default pays 10.
+	if got := shippedBountyBase(); got != 10 {
+		t.Fatalf("the shipped default pays a base of %d, want 10 — the warning's threshold moved with it; re-read G-BT-1 before re-pinning", got)
 	}
-	if msg := bountyChunkWarning(65_536, false); msg != "" {
-		t.Fatalf("the shipped default fired the warning: %q", msg)
+	// SILENT side 1: an unset -chunk-size never warns, at any geometry.
+	for _, cs := range []int64{16_384, 52_412, 65_536, int64(pipeline.DefaultChunkSize)} {
+		if msg := bountyChunkWarning(cs, false); msg != "" {
+			t.Fatalf("an UNSET -chunk-size %d warned: %q", cs, msg)
+		}
 	}
-	// An explicit 16 KiB chunk (stripe 10 × 16,400 = 164,000 B < one credit) warns, naming
-	// the derived threshold; a chunk AT the threshold does not.
+	// SILENT side 2: a geometry whose base is at or above the default's says nothing —
+	// the shipped default itself, and everything larger.
+	for _, cs := range []int64{int64(pipeline.DefaultChunkSize), 1 << 20} {
+		if msg := bountyChunkWarning(cs, true); msg != "" {
+			t.Fatalf("-chunk-size %d (base %d ≥ the default's %d) warned: %q", cs, credit.RepairBountyBase(erasure.DefaultParams.K, cs+crypto.Overhead), shippedBountyBase(), msg)
+		}
+	}
+	// FIRING side, the ZERO arm: below the derived minimum the bounty is off entirely.
 	min := minBountyChunkBytes()
 	if min != 26_199 {
 		t.Fatalf("derived threshold %d, want 26,199 at k=10 with a 16-byte tag", min)
 	}
 	if msg := bountyChunkWarning(16_384, true); !strings.Contains(msg, "ZERO") || !strings.Contains(msg, "26199") {
-		t.Fatalf("explicit 16 KiB chunk: no warning naming the threshold (%q)", msg)
+		t.Fatalf("explicit 16 KiB chunk: no ZERO warning naming the threshold (%q)", msg)
 	}
-	if msg := bountyChunkWarning(min, true); msg != "" {
-		t.Fatalf("a chunk AT the minimum warned: %q", msg)
+	if msg := bountyChunkWarning(min-1, true); !strings.Contains(msg, "ZERO") {
+		t.Fatalf("a chunk one byte below the minimum did not warn ZERO: %q", msg)
 	}
-	if msg := bountyChunkWarning(min-1, true); msg == "" {
-		t.Fatal("a chunk one byte below the minimum did not warn")
+	// FIRING side, the TRUNCATION arm — the certification's worst un-warned case. A
+	// 52,412-byte chunk is a 52,428-byte shard: k·shardBytes = 524,280 B, an exact price
+	// of 1.99996 credits paid as 1. Every figure must be in the sentence.
+	msg := bountyChunkWarning(52_412, true)
+	for _, want := range []string{"TRUNCATES", "52412", "52428", "1.99996", " 1,", "50.0%"} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("the 52,412-byte truncation warning does not name %q: %q", want, msg)
+		}
+	}
+	if strings.Contains(msg, "ZERO") {
+		t.Fatalf("a geometry paying a base of 1 was called ZERO: %q", msg)
+	}
+	// The boundary between the two arms is the zero threshold itself, and the truncation
+	// arm covers the whole band from there up to the default.
+	if m := bountyChunkWarning(min, true); !strings.Contains(m, "TRUNCATES") {
+		t.Fatalf("a chunk AT the zero minimum (base 1) did not take the truncation arm: %q", m)
+	}
+	if m := bountyChunkWarning(65_536, true); !strings.Contains(m, "TRUNCATES") || !strings.Contains(m, "20.0%") {
+		t.Fatalf("the former 64 KiB default (base 2 of an exact 2.5006) did not warn at 20.0%%: %q", m)
 	}
 	for _, f := range []string{"main.go", "swarm.go"} {
 		src, err := os.ReadFile(f)

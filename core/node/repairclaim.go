@@ -214,12 +214,18 @@ func (n *Node) settleRepairVerdict(claimant ports.NodeID, claim repairproof.Repa
 			// G-λ-8 (G-R212-7): the geometry is below one credit of fetch, so the bounty
 			// is OFF for this object. A bounty silently off reads as a lost claim; name it
 			// and count it — the daemon has no chunk geometry at start-up to refuse on.
+			// The zero is read on the UNMULTIPLIED base, never on the price paid, so a
+			// stripe near the cliff (whose multiplier can lift the price above zero) can
+			// never mask a geometry that pays nothing on a healthy stripe (G-BT-2).
 			n.Stats.BountyBaseZero++
 			n.logf(ports.LogWarn, "repair bounty base is ZERO for this geometry", "root", claim.Root,
 				"k", p.K, "shardBytes", shardBytes, "bytesPerCredit", int64(credit.DeliveryBytesPerCredit),
 				"fix", "publish with -chunk-size >= "+fmt.Sprint(credit.MinBountyChunkBytesFor(p.K, crypto.Overhead)))
 		}
-		bounty := credit.BountyFor(base, p.K, p.N, reachable)
+		// The whole price in ONE division: ⌊c·k·shardBytes·(lost+1)/(U/p)⌋, not
+		// ⌊c·k·shardBytes/(U/p)⌋·(lost+1) (G-BT-2). Flooring before the multiplier threw
+		// away up to (n−k+1)−1 credits of the repairer's wage on every rare-stripe repair.
+		bounty := credit.RepairBounty(p.K, p.N, reachable, shardBytes)
 		paid := n.ledger.PayBounty(claim.Root, claim.Holder, bounty)
 		if paid == 0 {
 			// A release that pays NOTHING is an empty escrow on THIS judge's

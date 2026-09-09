@@ -28,7 +28,7 @@ import (
 func TestBountyPaidToSelfCountsTheJudgeAsHolder(t *testing.T) {
 	p := erasure.Params{K: 6, N: 10}
 	const shardBytes = 1 << 20
-	wantBounty := credit.BountyFor(credit.RepairBountyBase(p.K, shardBytes), p.K, p.N, 8)
+	wantBounty := credit.RepairBounty(p.K, p.N, 8, shardBytes)
 	if wantBounty <= 0 {
 		t.Fatal("test setup: bounty should be positive")
 	}
