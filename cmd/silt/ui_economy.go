@@ -807,14 +807,23 @@ const (
 	notInThePopulation = "this tier is not repair-CAPABLE (D-TIERING coupling (b): durability is the persistent tiers' work, never the transient edge), so it is outside the repair series' population by construction. Not a missing measurement -- an undefined quantity"
 )
 
-// tierShareOf is the ONE constructor for every per-tier ratio, and the ORDER of its two
-// refusals is the whole rule rather than defensive plumbing.
+// tierShareOf is the ONE constructor for every per-tier ratio. It has two refusals and they
+// are load-bearing in DIFFERENT ways, which is worth stating exactly because the first draft
+// of this comment got it wrong and the ablation caught it.
 //
-// REPORTERS ARE CHECKED FIRST. A tier with no reporting peer has a numerator of 0, so with
-// a positive denominator the arithmetic yields a perfectly well-formed 0.0 -- the exact
-// false absence the exclusion rule creates. Checking the denominator first would let that
-// 0.0 through on every network where some OTHER tier reported. Ablation
-// G-PT-2 drives it.
+// THE REPORTERS TEST IS THE LOAD-BEARING ONE, AND IT IS ITS EXISTENCE, NOT ITS POSITION. A
+// tier with no reporting peer has a numerator of 0, so with a positive denominator the
+// arithmetic yields a perfectly well-formed 0.0 -- the exact false absence the exclusion rule
+// creates. DELETE this test and the silent tier publishes known:true, value 0.0 on every
+// network where some other tier reported: measured, ablation G-PT-2.
+//
+// THE ORDER DECIDES ONLY WHICH REASON A DOUBLY-UNKNOWN TIER GETS, and swapping the two is a
+// NO-OP for every known/unknown verdict -- measured, the same ablation run with the order
+// swapped instead of the test deleted came back GREEN on the first fixture. It still matters,
+// because when NOBODY on the network reported, "no peer of this tier told me anything" is the
+// fact an operator can act on and "the denominator was zero" is a restatement of the same
+// silence one level out. That ordering is driven by the wholly-silent arm of
+// TestGateC3_3a_ATierWithNoReportingPeerIsANamedAbsenceNeverAZero.
 func tierShareOf(num, den int64, reporters int, emptyDen string) tierShare {
 	if reporters <= 0 {
 		return tierShare{Reason: noTierReporters}

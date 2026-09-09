@@ -70,10 +70,15 @@ denominator up, so its share computes to a perfectly well-formed 0.0.** That num
 none of the work". The truth is "no peer of this tier told me anything". On the shipped `-privacy`
 default that is every tier, every time.
 
-So `tierShareOf` checks REPORTERS before it checks the denominator, and the order is the rule rather than
-defensive plumbing — with the denominator checked first, the false 0.0 is emitted on every network where
-some other tier reported. `ReportersByTier` is the field that tells a named absence from a measured zero,
-and both cases are driven:
+So `tierShareOf` has a REPORTERS test, and its EXISTENCE is the rule. **The first draft of this
+paragraph said the ORDER was the rule, and running the ablation refuted that in one command:** swapping
+the reporters test behind the empty-denominator test came back GREEN, because with a positive denominator
+the swapped code still reaches the reporters test and still refuses. Deleting the reporters test is what
+publishes the false `known:true, value 0.0000`, and that is the ablation the gate is written against.
+The ORDER is observable on exactly one input — a wholly silent network, where both refusals are live —
+and there it decides which reason an operator reads. That input is the shipped `-privacy` default's own
+shape, so it has its own arm (G-PT-2b). `ReportersByTier` is the field that tells a named absence from a
+measured zero, and both cases are driven:
 
 - a tier with no reporter is ABSENT from all four maps and renders `known:false` with its reason;
 - a capable tier that reported and has never repaired IS present with a `0`, and that zero publishes.
@@ -109,6 +114,10 @@ either side, and never `want := theFunctionUnderTest(...)`.
 
 The disagreement is also driven through the real routes: an honest 554-node disk-weighted sample
 publishes `0.499089` — below the bare floor, above the conditioned floor `0.3993`.
+
+**Two things in this section were caught by running rather than by reading, and both were mine.** The
+advisory's `n ≈ 560` claim above is the first. The second is the ordering claim in §1. Every gate was
+green through both drafts, which is the signal: a gate checks the code and nothing checks the sentence.
 
 ### 3. Which direction the figure errs, derived rather than asserted
 

@@ -250,8 +250,13 @@ func ptConcentratedPeers() []c3Peer {
 // fixture — that is the trap, measured off the product on both sides rather than described.
 // The WITHHELD arm asserts the whole block rides the existing privacy marker.
 //
-// CONTROLLED REVERT (G-PT-1): point ponyServeShare's numerator at the node count —
-// `sample.Mix[node.TierPony]` over `sample.Size` — and the concentrated arm PASSES.
+// CONTROLLED REVERT (G-PT-1): point ponyServeShare at the node count —
+// `sample.Mix[node.TierPony]` over `sample.Size`. MEASURED at both reddening points, because
+// "the concentrated arm passes" is a claim and only the run says so: the gate stops FIRST on
+// the healthy arm's literal check (published 0.989119683, want 0.914076782), and with that
+// one literal muted it reaches the concentrated arm and reports
+// `CONCENTRATED ARM PASS: ... the edge tier serves 0.9891` — total serve capture read as a
+// PASS, which is the substitution this whole file is about.
 func TestGateC3_3_EdgeMajorityOfServeWorkIsTheTenetNotTheNodeShare(t *testing.T) {
 	// --- HEALTHY: the ratified vision ratio, CPU-weighted, everybody reporting.
 	concH, nwH := c3Fixture(t, 41, c3HealthyPeers())
@@ -338,9 +343,15 @@ func TestGateC3_3_EdgeMajorityOfServeWorkIsTheTenetNotTheNodeShare(t *testing.T)
 // number says "this tier does none of the work". The truth is "no peer of this tier told me
 // anything". On the shipped -privacy default that is EVERY tier, every time.
 //
-// CONTROLLED REVERT (G-PT-2): swap the two refusals in tierShareOf so the empty-denominator
-// test runs first. The silent tier then renders known:true, value absent (omitempty on an
-// exact 0.0), and this gate reddens on the Known assertion.
+// CONTROLLED REVERT (G-PT-2): DELETE the reporters test from tierShareOf. The silent tier
+// then renders known:true with value 0.0000 and this gate reddens on the Known assertion.
+//
+// AND THE REVERT THIS SEAT TRIED FIRST CAME BACK GREEN, which is why the last arm exists.
+// Swapping the two refusals instead of deleting one changes nothing on this fixture: with the
+// denominator positive the swapped code still reaches the reporters test and still refuses.
+// The order is only observable when BOTH are unknown, so the wholly-silent arm at the end
+// drives it (G-PT-2b). The first draft of tierShareOf's comment claimed the ORDER was the
+// rule; running it refuted that in one command.
 func TestGateC3_3a_ATierWithNoReportingPeerIsANamedAbsenceNeverAZero(t *testing.T) {
 	// Ponies pledge capacity — so they are classifiable, counted in Size and in the mix —
 	// and report NOTHING. The other two tiers report, so every denominator is positive.
@@ -407,6 +418,36 @@ func TestGateC3_3a_ATierWithNoReportingPeerIsANamedAbsenceNeverAZero(t *testing.
 		t.Fatalf("a network where the whole edge tier is silent reads %s (%s). It must be INDETERMINATE: reporting a dark surface as a tenet VIOLATION is the defect this verdict split exists to prevent, and on the shipped -privacy default darkness is the normal state.", r.Verdict, r.Why)
 	}
 	t.Logf("silent edge: %s — %s", r.Verdict, r.Why)
+
+	// THE ORDERING ARM (G-PT-2b). Now nobody at all reports, so BOTH refusals in tierShareOf
+	// are live: the tier has no reporter AND the denominator is zero. This is the ONLY input
+	// on which the order of the two tests is observable, and it is the shipped -privacy
+	// default's own shape (D-WORK-VISIBILITY: no node gossips its counters, so every peer is
+	// excluded and both work series are empty). The reason must be the one an operator can
+	// act on.
+	allSilent := []c3Peer{
+		{capTotal: c3PonyCap, served: 0, repairs: 0, n: 100},
+		{capTotal: c3HorseCap, served: 0, repairs: 0, n: 10},
+		{capTotal: c3ArchivalCap, served: 0, repairs: 0, n: 1},
+	}
+	concQ, nwQ := c3Fixture(t, 51, allSilent)
+	if concQ.ServeGini != nil {
+		t.Fatalf("a wholly silent sample published a serve Gini (%+v); the denominator is not zero and this arm has no subject", concQ.ServeGini)
+	}
+	var ponyQ *c3TierWorkWire
+	for _, row := range nwQ.Mix {
+		if row.Class == node.TierPony {
+			ponyQ = row.Work
+		}
+	}
+	if ponyQ == nil || ponyQ.ServeShare == nil || ponyQ.ServeShare.Known {
+		t.Fatalf("the wholly-silent pony row is %+v; it must be present and unknown", ponyQ)
+	}
+	if ponyQ.ServeShare.Reason != noTierReporters {
+		t.Fatalf("on a wholly SILENT network the pony serve share gives the empty-denominator reason: %q. Both refusals are live here, so this is the input the ORDER decides, and the reporters reason is the one an operator can act on — the denominator being zero is a restatement of the same silence one level out.",
+			ponyQ.ServeShare.Reason)
+	}
+	t.Logf("wholly silent (the shipped -privacy default's own shape): every tier unknown, and the reason is the no-reporters one, not the empty-denominator one")
 }
 
 // TestGateC3_3b_EdgeSilenceDepressesTheEdgesOwnShare measures the ONE claim about this
@@ -422,9 +463,11 @@ func TestGateC3_3a_ATierWithNoReportingPeerIsANamedAbsenceNeverAZero(t *testing.
 // share is not a bound on the truth in general. The coverage clause is what stands in for
 // the bound the Gini gets from its identity.
 //
-// CONTROLLED REVERT (G-PT-3): divide the pony bytes by the tier's REPORTING count and
-// multiply by its sampled count — the obvious "correct for coverage" edit — and arm B's
-// share stops falling, the strict inequality fails and the gate reddens.
+// CONTROLLED REVERT (G-PT-3): scale the pony numerator by population/reporting — the obvious
+// "correct for coverage" edit. MEASURED: arm B's share goes to 0.694444444 against the built
+// 0.347222222, so the extrapolation makes edge silence RAISE the edge's share. That is the
+// false-clean-bill direction, and it is why this figure is published raw with its coverage
+// beside it rather than extrapolated.
 func TestGateC3_3b_EdgeSilenceDepressesTheEdgesOwnShare(t *testing.T) {
 	full := []c3Peer{
 		{capTotal: c3PonyCap, served: 1 * c3Unit, repairs: 0, n: 100},
@@ -514,9 +557,11 @@ func TestGateC3_3b_EdgeSilenceDepressesTheEdgesOwnShare(t *testing.T) {
 // THE DRIVEN ARM: a real 556-node disk-weighted sample through the real routes, where the
 // bare floor and the conditioned floor DISAGREE, so the correction is not only arithmetic.
 //
-// CONTROLLED REVERT (G-PT-4): change ptDiskWeightArchival from 50 to 49 and the k=10 row
-// stops being a fixed point — the table assertion reddens on literal values, which is the
-// only teeth a fixed point can have (there is no mutation to ablate at the boundary itself).
+// CONTROLLED REVERT (G-PT-4): change ptDiskWeightArchival from 50 to 49. MEASURED, the table
+// reddens on its FIRST row — `k=4 (n=405, 400:4:1): null 0.430108 floor 0.344086, want
+// 0.425532 / 0.340426` — and the k=10 fixed point moves with it. Literal expected values are
+// the only teeth a fixed point can have: there is no mutation to ablate at the boundary
+// itself, so the gate must BE the table and never `want := theFunctionUnderTest(...)`.
 func TestGateC3_3c_TheValidityBoundaryIsMeasuredNotDerivedFromTheComparison(t *testing.T) {
 	type row struct {
 		k                   int
