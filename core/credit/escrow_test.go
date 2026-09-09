@@ -193,11 +193,17 @@ func TestPayBounty_UnknownOrNonPositiveIsZero(t *testing.T) {
 	}
 }
 
-// TestBountyFor_RarestShardMultiplier: the bounty rises monotonically as a stripe
-// loses shards — repairing the last spare before data loss pays the most.
-func TestBountyFor_RarestShardMultiplier(t *testing.T) {
-	const base = 1_000
+// TestRepairBounty_RarestShardMultiplier: the bounty rises monotonically as a stripe
+// loses shards — repairing the last spare before data loss pays the most. The geometry
+// is chosen so c·k·shardBytes/(U/p) is exactly 1,000 credits with no remainder, which
+// isolates the multiplier from G-BT-2's single division.
+func TestRepairBounty_RarestShardMultiplier(t *testing.T) {
 	const k, n = 4, 10 // 6 parity shards of slack
+	const shardBytes = 1_000 * DeliveryBytesPerCredit / k
+	const base = 1_000
+	if got := RepairBountyBase(k, shardBytes); got != base {
+		t.Fatalf("fixture: RepairBountyBase(%d, %d) = %d, want an exact %d", k, shardBytes, got, base)
+	}
 
 	// A fully-healthy stripe pays the base; each loss adds one base unit.
 	cases := []struct {
@@ -211,16 +217,16 @@ func TestBountyFor_RarestShardMultiplier(t *testing.T) {
 		{4, 7_000},  // 6 lost (at the k-floor) → (n-k+1)=7×, the max
 	}
 	for _, c := range cases {
-		if got := BountyFor(base, k, n, c.reachable); got != c.want {
-			t.Fatalf("BountyFor(base=%d,k=%d,n=%d,reachable=%d) = %d, want %d",
-				base, k, n, c.reachable, got, c.want)
+		if got := RepairBounty(k, n, c.reachable, shardBytes); got != c.want {
+			t.Fatalf("RepairBounty(k=%d,n=%d,reachable=%d,shardBytes=%d) = %d, want %d",
+				k, n, c.reachable, shardBytes, got, c.want)
 		}
 	}
 
 	// Strict monotonicity: fewer reachable ⇒ never a smaller bounty.
 	prev := int64(-1)
 	for reachable := n; reachable >= 0; reachable-- {
-		got := BountyFor(base, k, n, reachable)
+		got := RepairBounty(k, n, reachable, shardBytes)
 		if got < prev {
 			t.Fatalf("bounty decreased as the stripe got rarer: reachable=%d gave %d < previous %d",
 				reachable, got, prev)
@@ -229,37 +235,38 @@ func TestBountyFor_RarestShardMultiplier(t *testing.T) {
 	}
 }
 
-// TestBountyFor_ClampAndDegenerate: past the k-floor the multiplier is already
+// TestRepairBounty_ClampAndDegenerate: past the k-floor the multiplier is already
 // maxed (an unrecoverable-adjacent stripe cannot pay more), an over-full stripe
 // pays the base, and degenerate parameters yield 0.
-func TestBountyFor_ClampAndDegenerate(t *testing.T) {
-	const base = 1_000
+func TestRepairBounty_ClampAndDegenerate(t *testing.T) {
 	const k, n = 4, 10
+	const shardBytes = 1_000 * DeliveryBytesPerCredit / k
+	const base = 1_000
 	maxBounty := int64(base * (n - k + 1)) // 7_000
 
 	// Below the k-floor (data already at/near loss) stays clamped at the max.
 	for _, reachable := range []int{4, 3, 0, -5} {
-		if got := BountyFor(base, k, n, reachable); got != maxBounty {
-			t.Fatalf("BountyFor at/below k-floor (reachable=%d) = %d, want clamp %d",
+		if got := RepairBounty(k, n, reachable, shardBytes); got != maxBounty {
+			t.Fatalf("RepairBounty at/below k-floor (reachable=%d) = %d, want clamp %d",
 				reachable, got, maxBounty)
 		}
 	}
 	// More reachable than n (shouldn't happen, but be defensive) pays the base.
-	if got := BountyFor(base, k, n, n+3); got != base {
+	if got := RepairBounty(k, n, n+3, shardBytes); got != base {
 		t.Fatalf("over-full stripe bounty = %d, want base %d", got, base)
 	}
 	// Degenerate inputs yield 0 rather than a bogus payout.
 	for _, c := range []struct {
-		base int64
-		k, n int
+		shardBytes int64
+		k, n       int
 	}{
-		{0, 4, 10},     // no base
-		{-5, 4, 10},    // negative base
-		{1_000, 0, 10}, // k<=0
-		{1_000, 4, 3},  // n<k
+		{0, 4, 10},          // no shard
+		{-5, 4, 10},         // negative shard
+		{shardBytes, 0, 10}, // k<=0
+		{shardBytes, 4, 3},  // n<k
 	} {
-		if got := BountyFor(c.base, c.k, c.n, c.k); got != 0 {
-			t.Fatalf("BountyFor(base=%d,k=%d,n=%d) = %d, want 0", c.base, c.k, c.n, got)
+		if got := RepairBounty(c.k, c.n, c.k, c.shardBytes); got != 0 {
+			t.Fatalf("RepairBounty(k=%d,n=%d,shardBytes=%d) = %d, want 0", c.k, c.n, c.shardBytes, got)
 		}
 	}
 }
@@ -294,8 +301,8 @@ func TestEscrow_AutoSkimKeepsColdObjectSolventAcrossRepairs(t *testing.T) {
 		skimmed += l.RecordServeToObject(publisher, r, root, id(9), 64<<10)
 	}
 	// Repairs draw it down over time (rarest-shard priced).
-	paid := l.PayBounty(root, repairer, BountyFor(1_000, 4, 10, 7)) // a 3-lost stripe
-	paid += l.PayBounty(root, repairer, BountyFor(1_000, 4, 10, 9)) // a 1-lost stripe
+	paid := l.PayBounty(root, repairer, RepairBounty(4, 10, 7, 1_000*DeliveryBytesPerCredit/4)) // a 3-lost stripe
+	paid += l.PayBounty(root, repairer, RepairBounty(4, 10, 9, 1_000*DeliveryBytesPerCredit/4)) // a 1-lost stripe
 
 	wantBalance := 1_000_000 + skimmed - paid
 	if got := l.EscrowBalance(root); got != wantBalance {

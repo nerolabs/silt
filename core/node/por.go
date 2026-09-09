@@ -241,15 +241,19 @@ func (n *Node) auditEntry(entry ports.Entry, ch link.CareHandle, done func(Audit
 		leaves := m.Leaves()
 		root := m.Root()
 		dataN := len(m.Chunks)
-		// EVERY stored shard is full-size: chunk.Split zero-pads the last frame
-		// up to ChunkSize (the true payload length rides in the 8-byte frame
-		// header), and erasure pads short stripes, so on the wire there is no
-		// short tail. The auditor therefore demands the SAME full block count
-		// for every leaf — ChunkSize+GCM ciphertext bytes — and a prover cannot
-		// shrink the challenge by under-reporting its block count (red-team F4:
-		// the old tail-leniency branch accepted any 1..wantFull for the last
-		// leaf, which is actually full-size, letting a liar report PorBlocks=1
-		// and pass while holding one block).
+		// EVERY stored shard of one object is the SAME size, and that size is
+		// COMMITTED: chunk.Split zero-pads a frame that shares a stripe, erasure
+		// pads short stripes, and a single-frame object is framed at its true
+		// length (R-SHORT-FINAL-STRIPE) — in all three cases m.ChunkSize is the
+		// frame that was used, so on the wire there is no short tail WITHIN an
+		// object. The auditor therefore demands the same block count for every
+		// leaf — m.ChunkSize+GCM ciphertext bytes — and a prover cannot shrink
+		// the challenge by under-reporting its block count (red-team F4: the old
+		// tail-leniency branch accepted any 1..wantFull for the last leaf, which
+		// is actually full-size, letting a liar report PorBlocks=1 and pass while
+		// holding one block). What keeps F4 closed is that the AUDITOR fixes the
+		// number from committed data, not that the number is large; a sub-frame
+		// object's shard is one block, which is fully sampled.
 		want := por.DefaultParams.Blocks(int(m.ChunkSize) + ctOverhead)
 		var nextLeaf func(i int)
 		nextLeaf = func(i int) {
@@ -271,8 +275,9 @@ func (n *Node) auditEntry(entry ports.Entry, ch link.CareHandle, done func(Audit
 
 // blocksOK cross-checks a prover's reported block count against the count the
 // auditor RECOMPUTED for the shard — exactly, for every leaf (red-team F4).
-// Every stored shard is full-size (chunk.Split pads the tail), so the count is
-// the same wantFull for all leaves. Letting any leaf report 1..wantFull let a
+// Every stored shard of one object is the same size and that size is committed
+// in m.ChunkSize, so the count is the same want for all of its leaves
+// (TestAuditorAndHonestProverAgreeOnEveryShardLength drives both regimes). Letting any leaf report 1..wantFull let a
 // liar advertise PorBlocks=1 and be challenged on block 0 alone, passing while
 // holding a sliver of the shard. The auditor, not the prover, fixes the sample
 // space.

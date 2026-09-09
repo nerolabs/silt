@@ -245,7 +245,10 @@ func swarmAdd(args []string) error {
 	}
 
 	var h link.Handle
-	warnBountyChunk(*chunkSize, flagWasSet(fs, "chunk-size"))
+	// Price the publish before it is staged: the shard a repair will pull is the object's
+	// own bytes when it fits in one frame, so the SIZE is part of the price (blind PE B-3).
+	// A file that cannot be stat'd prices the geometry alone.
+	warnBountyPrice(*chunkSize, fileSizeOrUnknown(f), os.Stderr)
 	var placed int
 	err = nil
 	if rerr := run(func(done func()) {
@@ -474,8 +477,10 @@ func swarmReceipt(args []string) error {
 	// R2.9: the demand token IS the session anchor, spent at session OPEN (not at
 	// redeem). This command is STATELESS, so every invocation opens a fresh session
 	// with one fresh anchor and settles one receipt on it; the session then closes on
-	// the server's idle window with its unsettled remainder accounted (burned under G-6
-	// as ratified). A second invocation inside the window from the same identity is
+	// the server's idle window and its unsettled remainder becomes a DEPOSIT, released
+	// to the fetcher's existing account when the anchor leaves the guard window
+	// (D-R2.9-NODE-HALF-CALLS call 1', PR #763 — it is NOT burned on this lane; the
+	// relay lane keeps the burn). A second invocation inside the window from the same identity is
 	// refused by the server's one-session-per-fetcher rule — the sim and the e2e drive
 	// the multi-receipt, multi-object session through the node API.
 	var tok demand.Token

@@ -52,17 +52,25 @@ func ID() ports.NodeID {
 
 // Options pins the parameters that affect the bytes — chunk size, mode,
 // erasure geometry, publisher — so the genesis file is reproducible
-// regardless of what the pipeline defaults become. The manifest FRAME is
-// not pinned: it follows the pipeline's derivation (true length since 4′),
-// and because the genesis block hashes its entry — manifest chunk IDs
-// included — that derivation is part of height-0 identity. The 4′ change
-// therefore MOVED the genesis hash (7becf754…32ce → f428d0a8…0951); the
-// owner accepted the new genesis on 2026-09-07 (no live network exists to
-// fork). TestGenesisBlockHashIsPinned holds the current hash as a literal,
-// so from here it moves only by an explicit, recorded decision. Whether
-// height-0 identity sits inside the era-3/4 freeze surface is filed for
-// R3.4 (R-GENESIS-HASH-FREEZE-SURFACE). To reproduce the pre-4′ genesis,
-// set ManifestFrameBytes: 64 << 10.
+// regardless of what the pipeline defaults become. Neither FRAME size is
+// pinned: both follow the pipeline's derivation, and because the genesis
+// block hashes its entry — manifest chunk IDs included — and the root is
+// built from the data and parity chunk IDs, both derivations are part of
+// height-0 identity. Two changes have moved it, each owner-accepted on the
+// ground that no live network exists to fork:
+//
+//	4′ 2026-09-07, the true-length MANIFEST frame:
+//	  hash 7becf754…32ce → f428d0a8…0951, root unchanged.
+//	R-SHORT-FINAL-STRIPE, the true-length DATA frame (the 2,042-byte
+//	  manifesto is a single-frame object):
+//	  hash f428d0a8…0951 → e44344ea…72c0, and the ROOT moves with it.
+//
+// TestGenesisBlockHashIsPinned holds all three current literals, so from
+// here they move only by an explicit, recorded decision. Whether height-0
+// identity sits inside the era-3/4 freeze surface is filed for R3.4
+// (R-GENESIS-HASH-FREEZE-SURFACE). ManifestFrameBytes: 64 << 10 still
+// reproduces the pre-4′ MANIFEST framing; the pre-short-stripe data
+// framing has no knob, because nothing but archaeology wants it.
 func Options() pipeline.Options {
 	return pipeline.Options{
 		ChunkSize: 64 << 10,

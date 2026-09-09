@@ -25,6 +25,63 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   itself is certified in-process. No OOM-kill and no crash-loop across the cohort, so the sheet was graded on a healthy network.
   Teardown verified: 40 resources destroyed, no instance left running.
 ### Changed
+- **Lane C5 pre-flip closers: the repair bounty stops short-paying, and a single-frame object stops storing a full chunk of zeros
+  (`R-BOUNTY-TRUNCATION` G-BT-1/G-BT-2, `R-SHORT-FINAL-STRIPE`; deliberation `docs/thinking/2026-09-09-c5-preflip-closers.md`).**
+  **G-BT-2:** the repair price now divides into credits ONCE, at the end — `⌊c·k·shardBytes·(lost+1)/(U/p)⌋` instead of
+  `⌊c·k·shardBytes/(U/p)⌋·(lost+1)`. Since `⌊a⌋·m ≤ ⌊a·m⌋ ≤ a·m` it is never an over-pay and it recovers up to `N−K+1 = 7×` of the
+  truncation, most on the stripe nearest data loss, which is exactly the stripe the multiplier exists to prioritise: at
+  `-chunk-size 52412` with three shards lost the repairer is paid 7 credits where it was paid 4. `credit.BountyFor` is RETIRED in
+  favour of `credit.RepairBounty` so there is one way to price a repair, not two. Because the division is last, the multiplier can
+  now lift a ZERO-base geometry to a non-zero payment — which is why the G-λ-8 zero-signal still reads the UNMULTIPLIED base, and
+  both arms are driven. **G-BT-1:** the publish warning now prices the PUBLISH, not the flag. Its rule has a closed complement —
+  warn iff this publish's real repair-bounty base is below the base the shipped default pays on a full frame, which is
+  `RepairBountyBase(K, DefaultChunkSize + Overhead)` and never a typed number — and the "did the operator set the flag" test is gone
+  with it, because an unset `-chunk-size` IS the default and so the GEOMETRY cause cannot fire without a flag. The OBJECT cause can
+  and is meant to: measured at the default with no flag set, 1,024 B fires, 100,000 B fires, 262,119 B fires, and 262,120 B is the
+  first silent size, so **every object of 262,119 B or less now warns on a default publish**. That TRADES the earlier "don't warn on
+  every default publish" finding rather than satisfying it, deliberately, because after `R-SHORT-FINAL-STRIPE` the object is what
+  pays. It names two causes, because a publisher can act on neither once the object is stored: a chunk
+  size the operator chose (`-chunk-size 52412` said nothing before and now reports a 52,428-byte shard worth `1.99996` credits paid
+  as `1`, `50.0 %` short), and the OBJECT — at the shipped default every object of 26,190 B or less pays a base of ZERO and every
+  object of 262,119 B or less pays less than 10, which the geometry arm can never see because the shard IS the object. Every printed
+  figure is `int64` arithmetic (`credit.RepairBountyTruncation`); the money path does no floating point. The accumulator alternative
+  stays REFUTED on build-immutable #8. **`R-SHORT-FINAL-STRIPE`:** an object whose whole content fits in ONE frame is alone in its
+  erasure stripe, so nothing forces it to full length — it and its six parity shards are now computed at the frame's true length,
+  the one rule `pipeline.DataFrameSize`. A 1,024-byte object at the 256 KiB default stored 1,835,465 B and now stores 7,681 B
+  (239×); a 100,000-byte object 1,835,465 → 700,517 B. The frame size travels in the existing `manifest.ChunkSize`, so the PoR
+  auditor keeps fixing the sample space from committed data and red-team F4 stays closed; there is NO manifest format change and no
+  new field. **This is a content-addressing break, the second in this window.** Every object of two or more frames is
+  byte-identical (they share a stripe, the tail stays padded) — the 1,500,000-byte modal object is unchanged at 3,146,439 B. Every
+  object **at or below `chunkSize − 9`** (262,135 B at the default) re-addresses: new chunk IDs, new root, new link key. An object of
+  exactly `chunkSize − 8` FILLS its frame and does not move. An existing store keeps working, because nothing on the read path
+  consults `DefaultChunkSize` — readers take the geometry from the manifest — but a re-publish of the same bytes yields a new root,
+  so dedup does not span the boundary. **The genesis MOVES again**, and this time the root moves with it (4′ re-framed only the
+  manifest, which the root does not cover): root `fce9eeeb…20d6` → `31768fb4…7dd1`, manifest chunk `5478750c…d107` →
+  `f761f80b…fcf6`, block hash `f428d0a8…0951` → `e44344ea…72c0`, on the same ground the owner accepted for 4′ — no live network
+  exists and every development chain is wiped on upgrade. **Three consequences, all measured, none of them mitigated here.**
+  (1) A sub-frame object's durability becomes **prepay-only**. Its bounty base is zero, and the serve auto-skim does not take over:
+  the skim accumulates per `(server, requester, root)` lane, so 5,000 serves spread over 250 distinct fetchers yield 250 escrow
+  credits at a 262,160-byte shard and **0** at a 1,048-byte shard, and the first credit on one lane costs 3,002 serves instead of 12.
+  The old inflow was itself dishonest — it billed for moving padding — so the change is not wrong, but the object class moves to
+  publisher prepay and the repair lane's own mitigation (an accumulator) is REFUTED on build-immutable #8; the sub-frame durability
+  economy is research-gated as a precondition of the economy-ON flip, not of this change, since `-economy` is off by default.
+  (2) Threat **F3** gains an exact byte-length oracle for every object at or below `chunkSize − 9`, readable by any holder from the
+  stored shard length and by any caretaker from the layout. (3) Convergent dedup for sub-frame objects now spans `-chunk-size`: the
+  same 4,096-byte payload yields ONE root at 64 KiB, 256 KiB and 1 MiB, where padding used to make the root depend on the geometry.
+  Dedup improves and the F6 confirmation attack gets cheaper by the same step — chunk size was an accidental salt and is not one any
+  more. (2) and (3) are recorded in `docs/threat-catalog.md` under F3 as a catalog update; silt asserts no size hiding anywhere, and
+  no salt is invented here because a red-team pass is owed on that surface. Also corrected: the stale `cmd/silt/swarm.go` comment
+  that still called the unsettled delivery remainder burned under G-6 — it has been a DEPOSIT released at anchor expiry since call 1′
+  (#763) — and the `core/node/por.go` F4 rationale, `core/node/node.go`'s `RepairEconomy` price and `docs/design/m0.md`'s
+  `R-POR-SAMPLE-REGIME` row, each of which described a shard length that is no longer universal. Gates:
+  `TestGLambda8PublishWarningFiresOnlyWhenThePublishShortPaysTheRepairer`, `TestRepairBountyDividesAfterTheMultiplier`,
+  `TestRepairBountyIsDominantAndNeverOverPays`, `TestZeroSignalReadsTheUnmultipliedBase`,
+  `TestRepairBountyTruncationIsExactIntegerArithmetic`, `TestSubFrameObjectDurabilityIsPrepayOnly`,
+  `TestJudgePaysTheUndividedRepairPrice`, `TestGLambda8ZeroBountyBaseIsNamedNotSilent`,
+  `TestSingleFrameObjectIsFramedAtItsTrueLength`, `TestMultiFrameObjectsKeepThePaddedTail`,
+  `TestDataFrameSizeIsWhatStageCommits`, `TestConvergentDedupNowSpansTheChunkSize`,
+  `TestAuditorAndHonestProverAgreeOnEveryShardLength`, `TestGenesisBlockHashIsPinned`; each ablated RED once.
+
 - **The proposer's gather target is DERIVED on the untrusted objective path, and a single-anchor objective launch is refused
   (`D-DELEGATED-CALLS-2026-09-09`, two owner calls delegated 2026-09-08).** Since #380 the local `-quorum` is not a validity
   term on that path, but it is still a floor on the gather, so the shipped literal 3 asked every peer of a four-anchor launch

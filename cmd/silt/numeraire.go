@@ -1,14 +1,15 @@
 package main
 
 import (
-	"flag"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
 	"github.com/nerolabs/silt/core/credit"
 	"github.com/nerolabs/silt/core/crypto"
 	"github.com/nerolabs/silt/core/erasure"
+	"github.com/nerolabs/silt/core/pipeline"
 )
 
 // grantOverSummedPriceBytes is how many bytes one starter grant buys when a NAT'd
@@ -22,50 +23,134 @@ func grantOverSummedPriceBytes(grant, deliveryBytesPerCredit, relayBytesPerCredi
 	return grant * deliveryBytesPerCredit * relayBytesPerCredit / (deliveryBytesPerCredit + relayBytesPerCredit)
 }
 
-// warnBountyChunk names, at publish time, a chunk size whose stripe pays a ZERO repair
-// bounty under a repair economy (G-λ-8, G-R212-7): the base is priced in the witnessed
-// fetch price, so k × shardBytes below one credit of fetch rounds to nothing. A shard is a
-// whole ciphertext chunk (chunk + crypto.Overhead), so the threshold is
-// credit.MinBountyChunkBytesFor(erasure.DefaultParams.K, crypto.Overhead) ≈ 26 KB at
-// k = 10 — the shipped 256 KiB default pays a base of 10 (exact 10.0006; the 64 KiB former
-// default paid 2 of an exact 2.5) and does NOT warn (the earlier build placed the
-// threshold at 262,144 on a shard = chunk/k model; the Economist's 2026-09-06 advisory
-// corrected it). The daemon has no chunk geometry at start-up to
-// refuse on, so the publisher is told here and the judge names it again at settlement.
+// objectSizeUnknown is the objectBytes a caller passes when it cannot cheaply learn the
+// length it is about to publish (a pipe, a stream). The warning then prices the GEOMETRY
+// alone, which is the only thing it can honestly say about such a publish.
+const objectSizeUnknown = int64(-1)
+
+// fileSizeOrUnknown is the length of an already-open publish source, or objectSizeUnknown
+// when it has none a Stat can report (a pipe, a device). It never fails the publish: a
+// missing size costs the object arm of the warning, nothing else.
+func fileSizeOrUnknown(f *os.File) int64 {
+	if f == nil {
+		return objectSizeUnknown
+	}
+	fi, err := f.Stat()
+	if err != nil || !fi.Mode().IsRegular() {
+		return objectSizeUnknown
+	}
+	return fi.Size()
+}
+
+// warnBountyPrice names, at publish time, a publish whose stripe SHORT-PAYS the repair
+// bounty. The base is an integer floor of the witnessed fetch price, so k × shardBytes
+// below one credit of fetch rounds to nothing (G-λ-8, G-R212-7) and k × shardBytes just
+// above it rounds away up to half the repairer's wage (R-BOUNTY-TRUNCATION, G-BT-1).
 //
-// It fires only when the operator SET -chunk-size (below the minimum); a warning on every
-// default publish is noise nobody reads (blind PE M6).
-func warnBountyChunk(chunkBytes int, explicit bool) {
-	if msg := bountyChunkWarning(int64(chunkBytes), explicit); msg != "" {
-		fmt.Fprintln(os.Stderr, msg)
+// TWO things can put a publish there, and both are named because a publisher can act on
+// neither once the object is stored. (1) A chunk size the operator chose. (2) The OBJECT:
+// since R-SHORT-FINAL-STRIPE a single-frame object is stored at its true length, so ITS
+// shard is its own bytes and no chunk size changes that — at the shipped default every
+// object of 26,190 B or less pays a base of ZERO. Case (2) is created by this same
+// change, so leaving it silent would ship a warning that misses the class it invented
+// (blind PE B-3, 2026-09-09).
+//
+// The daemon has no publish geometry at start-up to refuse on, and the judge that names a
+// zero at settlement is a caretaker the publisher neither runs nor sees, so this is the
+// one place the publisher is told.
+func warnBountyPrice(chunkBytes int, objectBytes int64, w io.Writer) {
+	if msg := bountyPriceWarning(int64(chunkBytes), objectBytes); msg != "" {
+		fmt.Fprintln(w, msg)
 	}
 }
 
-// minBountyChunkBytes is the publish-time threshold at the shipped erasure geometry.
+// minBountyChunkBytes is the publish-time ZERO threshold at the shipped erasure geometry.
 func minBountyChunkBytes() int64 {
 	return credit.MinBountyChunkBytesFor(erasure.DefaultParams.K, crypto.Overhead)
 }
 
-// bountyChunkWarning is the pure form of warnBountyChunk: the warning text, or "" when
-// nothing should be said. The decision is the judge's own arithmetic (RepairBountyBase on
-// a chunk-sized shard), never a duplicated threshold.
-func bountyChunkWarning(chunkBytes int64, explicit bool) string {
-	if !explicit || credit.RepairBountyBase(erasure.DefaultParams.K, chunkBytes+crypto.Overhead) > 0 {
-		return ""
-	}
-	return fmt.Sprintf("warning: -chunk-size %d is below %d bytes: under a repair economy (-economy) this object's repair bounty base is ZERO (k·shardBytes < one credit of fetch, G-λ-8; a shard is a whole ciphertext chunk) and a repair of it pays nothing; use -chunk-size >= %d",
-		chunkBytes, minBountyChunkBytes(), minBountyChunkBytes())
+// shippedBountyBase is the repair-bounty base the SHIPPED publish default pays on a
+// full-frame object: the warning's threshold, DERIVED from the two shipped constants and
+// never typed. It is 10 today (a 262,160-byte shard, exact 10.00061), which is what makes
+// the rule below have a closed complement — warn iff this publish pays a smaller base
+// than the shipped default's — so a default publish of a full-frame object is silent by
+// construction rather than by a hand-kept number.
+//
+// The coupling to watch: if DefaultChunkSize ever dropped below minBountyChunkBytes this
+// would be 0 and the whole warning, ZERO arm included, would go permanently silent. The
+// tripwire is in the gate, which asserts this is 10 and says to re-read G-BT-1 on any
+// move of the default (blind PE N-7).
+func shippedBountyBase() int64 {
+	return credit.RepairBountyBase(erasure.DefaultParams.K, int64(pipeline.DefaultChunkSize)+crypto.Overhead)
 }
 
-// flagWasSet reports whether the operator passed name on the command line.
-func flagWasSet(fs *flag.FlagSet, name string) bool {
-	set := false
-	fs.Visit(func(f *flag.Flag) {
-		if f.Name == name {
-			set = true
-		}
-	})
-	return set
+// publishShardBytes is the ciphertext shard a repair of this publish will actually pull:
+// pipeline.DataFrameSize decides the frame — the SAME rule pipeline.splitFile implements,
+// read from the same two inputs rather than restated — plus the GCM tag. An unknown
+// object length prices the chunk geometry alone.
+func publishShardBytes(chunkBytes, objectBytes int64) int64 {
+	frame := int(chunkBytes)
+	if objectBytes >= 0 {
+		frame = pipeline.DataFrameSize(int(objectBytes), int(chunkBytes))
+	}
+	return int64(frame) + crypto.Overhead
+}
+
+// bountyPriceWarning is the pure form of warnBountyPrice: the warning text, or "" when
+// nothing should be said. Every number is the judge's own arithmetic on the shard this
+// publish will really store (credit.RepairBountyBase / credit.RepairBountyTruncation),
+// never a duplicated threshold.
+//
+// THE RULE, with its complement: warn iff this publish's real repair-bounty base is below
+// the base the shipped default pays on a full frame. It is silent in exactly one case —
+// a base at or above that.
+//
+// WHAT AN UNSET -chunk-size DOES, precisely, because the first version of this comment
+// overstated it (blind PE R-1, 2026-09-09). An unset flag IS DefaultChunkSize, so the
+// GEOMETRY cause can never fire without one; the OBJECT cause can, and is meant to.
+// Measured at the shipped default with no flag set: 1,024 B fires (ZERO), 100,000 B fires
+// (TRUNCATES 21.4 %), 262,119 B fires (TRUNCATES 10.0 %), and 262,120 B is the first
+// silent size. So a default publish is silent for a FULL-FRAME object and speaks for a
+// short-framed one — every object of 262,119 B or less warns.
+//
+// That is a deliberate TRADE against the earlier "don't warn on every default publish"
+// finding (blind PE M6), not a way of satisfying it: after R-SHORT-FINAL-STRIPE the object
+// is what pays, and a publisher who is told nothing has no other way to learn that this
+// object's repairs pay nothing. TestGLambda8PublishWarningFiresOnlyWhenThePublishShort
+// PaysTheRepairer drives both sides and both causes, including the first silent size.
+func bountyPriceWarning(chunkBytes, objectBytes int64) string {
+	k := erasure.DefaultParams.K
+	shardBytes := publishShardBytes(chunkBytes, objectBytes)
+	base := credit.RepairBountyBase(k, shardBytes)
+	if base >= shippedBountyBase() {
+		return ""
+	}
+	// WHICH cause, and therefore which fix. A short frame means the shard IS the object.
+	shortFrame := objectBytes >= 0 && shardBytes < chunkBytes+crypto.Overhead
+	cause := fmt.Sprintf("-chunk-size %d gives a %d-byte shard", chunkBytes, shardBytes)
+	fix := fmt.Sprintf("use -chunk-size >= %d for a non-zero bounty; the shipped default %d pays %d", minBountyChunkBytes(), pipeline.DefaultChunkSize, shippedBountyBase())
+	if shortFrame {
+		cause = fmt.Sprintf("this object is %d B, which fits in ONE frame, so it is stored at its true length and its shard is %d B (R-SHORT-FINAL-STRIPE)", objectBytes, shardBytes)
+		fix = "NO chunk size changes this — the shard IS the object; under a repair economy this object's durability is prepay-only (fund its escrow), because its serves are also too small to skim a credit"
+	}
+	if base == 0 {
+		return fmt.Sprintf("warning: this publish pays a ZERO repair bounty: %s, and a k=%d stripe of those is %d B — below one credit of fetch (%d B), so under a repair economy (-economy) a repair of it pays NOTHING (G-λ-8); %s",
+			cause, k, int64(k)*shardBytes, int64(credit.DeliveryBytesPerCredit), fix)
+	}
+	exactE5, lossTenths := credit.RepairBountyTruncation(k, shardBytes)
+	return fmt.Sprintf("warning: this publish TRUNCATES the repair bounty: %s, and a k=%d stripe of those is worth %s credits but pays %d — a repair of this object short-pays the repairer by %s%% of the price (R-BOUNTY-TRUNCATION, G-BT-1); %s",
+		cause, k, creditsE5(exactE5), base, tenthsPct(lossTenths), fix)
+}
+
+// creditsE5 renders a price that credit.RepairBountyTruncation floored at 1e-5 credits:
+// 199_996 reads "1.99996". Integer formatting, so the printed figure is the computed one.
+func creditsE5(e5 int64) string {
+	return fmt.Sprintf("%d.%05d", e5/100_000, e5%100_000)
+}
+
+// tenthsPct renders tenths of one percent: 500 reads "50.0".
+func tenthsPct(t int64) string {
+	return fmt.Sprintf("%d.%d", t/10, t%10)
 }
 
 // ---- R2.9 delivery session: the derived ceiling, the quantized pin, the S5 line.
