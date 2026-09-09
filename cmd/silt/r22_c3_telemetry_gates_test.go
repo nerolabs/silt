@@ -23,20 +23,44 @@ package main
 // Nothing here recomputes a concentration figure beside the product's. A gate that
 // computes its own number proves nothing about what an operator sees.
 //
-// THE GATE IS A COMPOSITE, AND THE THIRD CLAUSE IS A TESTER ADDITION. The advisory
-// specifies a bare threshold. A bare threshold does not hold, and the measurement that
-// forced the extra clause is in TestGateC3_1_ServeWorkFederationOnTheOperatorPanel's
-// ablation A3: under the certified M-2 exclusion rule a peer that reported NOTHING is
-// dropped from the series rather than counted as a zero, so a network where five nodes do
-// ALL the serving and every other node is silent publishes serveGini 0.0000 with
-// known:true — total capture rendered as perfect equality. The reporting-coverage clause
-// closes it, and its floor is DERIVED, not chosen: for a series in which a fraction c of
-// the sample reports and the rest are truly at zero, the excluded truth is Gini = 1 - c,
-// so the error the exclusion rule can introduce is bounded by (1 - c). Requiring that
-// error to stay inside the gate's own tolerance gives 1 - c <= 0.15, i.e. c >= 0.85 for
-// the serve series and c >= 0.60 for the repair series at its 0.40 tolerance. Both floors
-// are built ONLY from fields the panel already publishes (serveGini.sampleSize,
-// repairGini.sampleSize, sample.size, and the tier mix), so no product change is needed.
+// THE GATE IS ONE ADJUSTED STATISTIC, NOT A THRESHOLD ON THE PUBLISHED NUMBER.
+//
+// The published Gini is computed over a SELF-SELECTED sample: under the certified M-2 rule
+// (core/node/economysample.go) a peer that reported nothing is excluded rather than counted
+// as a zero, and the entity a capture alarm points at is exactly the entity that decides
+// whether it appears. Measured on the real route, ablation A3: a sample of 1011 in which
+// five nodes serve 100 % of the bytes and 1006 are silent publishes
+//
+//	serveGini 0.0000  known:true  sampleSize 5
+//
+// Total capture rendered as perfect equality, and flagged as a measurement. A bare
+// `serveGini <= 0.15` PASSES it.
+//
+// THE FIX, and it is an identity rather than a taste call. For a population split into a
+// reporting fraction c holding all the work and a silent fraction (1-c) truly at zero, the
+// mean-absolute-difference form of the Gini gives
+//
+//	G_adj = (1 - c) + c * G_pub
+//
+// so the error is (1 - c)(1 - G_pub) and the truth is bounded below by (1 - c). Both terms
+// come from fields the panel already publishes (serveGini.sampleSize and sample.size; for
+// repair, the capable count off the sibling route), so NO PRODUCT CHANGE is needed.
+//
+// The two gates assert G_adj against the tolerance. They do NOT carry a separate coverage
+// clause, and the reason is arithmetic: a coverage floor is NECESSARY but not SUFFICIENT.
+// A composite of `coverage >= 0.85` AND `G_pub <= 0.15` admits a true Gini of
+// (1-0.85) + 0.85*0.15 = 0.2775; the repair pair admits 0.6400, which is inside the region
+// the spec called capture. Gating on G_adj dominates the floor and re-derives it as a
+// theorem: G_adj <= T implies c >= 1 - T. The floors are therefore DEFINED as 1 - T in the
+// const block below and pinned by TestGateC3_IndeterminacyBoundaryIsATheoremOfTheTolerance.
+// What they are is the INDETERMINACY BOUNDARY — below it the verdict is "I cannot see",
+// never "this is captured" — not a gate clause.
+//
+// ONE-SIDEDNESS, so nobody over-reads these gates. The adjustment assumes silence means
+// idle. Both terms of G_adj are Sybil-steerable in BOTH directions: a peer can go silent to
+// deflate c, and 20 repairs-only sybils were measured to move a perfectly even network's
+// serveGini from 0.0000 to 0.8696 (core/node/economysample.go, the M-2 comment). These gates
+// may ABORT a canary. They may never CERTIFY federation.
 
 import (
 	"encoding/json"
@@ -53,28 +77,50 @@ import (
 	"github.com/nerolabs/silt/ports"
 )
 
-// ---- the thresholds, with their provenance ------------------------------------------
+// ---- the constants, and what they actually are --------------------------------------
 //
-// EVOLVING-TIER PARAMETERS (docs/TENETS.md Part IX). They are recorded here beside the
-// gate, as the advisory requires, so a future re-derivation reads the reason and not just
-// the number.
+// THESE ARE FIXTURE CONSTANTS FOR NAMED SYNTHETIC DISTRIBUTIONS. They are NOT honest
+// bands and they are NOT field thresholds. Both of their original provenances were
+// withdrawn by the Economist after this file's first round measured against them:
+// /Users/andrewedmond/Claude/claude/silt-reviews/economist/ADVISORY-c3-concentration-gate-thresholds-redderived-2026-09-09.md
+//
+// WITHDRAWN, and the sentence is struck rather than softened: "the vision-ratio band is
+// 0.058-0.121, so 0.15 clears the widest honest weighting". The 0.1209 corner is the DISK
+// weighting (0.1/1/50 TB), which is a storage-share model applied to a serve-work series —
+// serve bytes are bandwidth- and demand-bound, not holdings-bound. It is also a
+// 10,101-node figure against a maxPeerInfo bound of 4,096. See
+// TestGateC3_1_ServeGiniHonestNullIsMixDependentNotSampleSizeDependent.
+//
+// WITHDRAWN OUTRIGHT as a field threshold: `repairGiniWithinCapableSample <= 0.40` and its
+// "midpoint of 0.019 (even) -> 0.751 (top-5-does-80 %)" provenance. Repair IS holdings-
+// bound, and under a holdings-proportional null both endpoints of that span are HEALTHY
+// shapes: measured, the honest null is 0.7424 at 11 capable nodes -- indistinguishable from
+// the 0.7505 the spec labelled CAPTURE -- and 0.6282 at the canary minimum. A midpoint
+// between two healthy shapes carries no economic content, and as a Phase-3 abort it would
+// have killed the first honest canary silt ever ran. See
+// TestGateC3_2_RepairNullIsHoldingsProportionalSoTheConstantIsNotAFieldThreshold.
+//
+// WHAT THEY ARE FOR. Each constant separates its own fixture from that fixture's ablations,
+// measurably, and that is the whole claim. These are REGRESSION gates: they catch a change
+// to EconomySample, credit.Gini, giniOver or the two route documents. They do not grade a
+// network. The field alarms that replace them are mix-conditioned (serve) and
+// relative-to-holdings (repair), and neither is buildable until the per-tier work totals
+// land -- Builder item, advisory §3a.
 const (
-	// c3ServeGiniMax: the advisory's federated-serve baseline. Provenance: the honest
-	// vision-ratio band is 0.0575 (CPU-weighted 1/7/24) to 0.1209 (disk-weighted
-	// 0.1/1/50 TB), so 0.15 clears the widest honest weighting. READ
-	// TestGateC3_1_ThresholdProvenanceIsUnreachableUnderDiskWeighting before trusting
-	// that sentence: the 0.1209 corner is measured on a 10,101-node distribution and a
-	// node's peerCaps sample is bounded at maxPeerInfo = 4096.
+	// c3ServeGiniMax is the tolerance the serve gate asserts G_adj against. Fixture
+	// constant for the CPU-weighted (1/7/24) vision shape with every node reporting,
+	// where the honest reading is 0.0752 and the concentrated ablation is 0.7941.
 	c3ServeGiniMax = 0.15
-	// c3RepairGiniMax: the midpoint of the measured span 0.0192 (repair even across 100
-	// horses + 1 archival) to 0.7505 (top 5 of 101 do 80 %). Crossing it means a handful
-	// of the persistent tier is doing most of the repair.
+	// c3RepairGiniMax is the same for the UNIFORM-REPAIR fixture (see c3HealthyPeers,
+	// which is where the assumption doing all the work behind this number lives).
 	c3RepairGiniMax = 0.40
-	// c3ServeReportingMin / c3RepairReportingMin: DERIVED from the two above, see the
-	// file header. The exclusion rule's worst-case error is (1 - coverage); holding that
-	// error inside the series' own tolerance gives 1 - 0.15 and 1 - 0.40.
-	c3ServeReportingMin  = 0.85
-	c3RepairReportingMin = 0.60
+	// The INDETERMINACY BOUNDARY, per series. NOT a gate clause and NOT an independent
+	// parameter: G_adj <= T implies c >= 1 - T, so these are DEFINED as the theorem and
+	// pinned as such. Below the boundary the verdict is c3Indeterminate -- "I cannot see"
+	// -- and never c3Concentrated, because a figure over a minority of its own population
+	// is not a measurement of that population.
+	c3ServeReportingMin  = 1 - c3ServeGiniMax  // 0.85
+	c3RepairReportingMin = 1 - c3RepairGiniMax // 0.60
 )
 
 // ---- the wire shapes the gate reads --------------------------------------------------
@@ -134,68 +180,134 @@ func (n c3NetworkWire) capable() int {
 //
 // Written ONCE and exercised by every arm below, healthy and ablated alike. That is what
 // makes each ablation a proof about THE GATE rather than about a hand-copied inequality:
-// an ablation arm asserts that this exact function refuses, and names which clause.
+// an ablation arm asserts that this exact function refuses, and names which state.
 
-// c3ServeGate is assertion 1 of the advisory, as a predicate over the served document.
-func c3ServeGate(c c3ConcentrationWire) (ok bool, why string) {
-	if c.CountersWithheld {
-		return false, "serveGini withheld: the reader cannot see the figure at all"
+// c3Verdict separates the two ways a concentration alarm can refuse. They are different
+// facts with different operator actions, and collapsing them is how a dark panel gets read
+// as a healthy one -- or, worse, how "I cannot see" gets reported as "you are captured".
+type c3Verdict int
+
+const (
+	// c3Pass: enough of the population reported for G_adj to be a measurement of that
+	// population, and it is inside the tolerance.
+	c3Pass c3Verdict = iota
+	// c3Indeterminate: the series is dark (absent, or known:false), or its reporting
+	// fraction is below the indeterminacy boundary. G_adj is still computed and is a
+	// LOWER bound on the truth, but it is dominated by what was not seen.
+	c3Indeterminate
+	// c3Concentrated: measured, and over tolerance.
+	c3Concentrated
+)
+
+func (v c3Verdict) String() string {
+	switch v {
+	case c3Pass:
+		return "PASS"
+	case c3Indeterminate:
+		return "INDETERMINATE"
+	default:
+		return "CONCENTRATED"
 	}
-	if c.Sample == nil {
-		return false, "no sample block: the required sibling of every gossip-estimated number is absent"
-	}
-	if c.ServeGini == nil {
-		return false, fmt.Sprintf("no serveGini published at all over a sample of %d (the series is below minGossipSample=%d, or the route dropped it)", c.Sample.Size, minGossipSample)
-	}
-	// CLAUSE 1 — KNOWN-NESS, NOT THE VALUE. credit.Gini returns 0 both for a measured
-	// equality and for a sample that summed to zero, and giniOver renders the second as
-	// known:false with no value. A gate that read the number would score an absent
-	// measurement as a perfect pass.
-	if !c.ServeGini.Known {
-		return false, "serveGini is UNKNOWN (" + c.ServeGini.Reason + "): an absent measurement is not a passing 0"
-	}
-	// CLAUSE 3 first, because it decides whether clause 2's number means anything.
-	cov := float64(c.ServeGini.SampleSize) / float64(c.Sample.Size)
-	if cov < c3ServeReportingMin {
-		return false, fmt.Sprintf("serve reporting coverage %.4f (%d of %d sampled nodes reported serve work) is below %.2f: the M-2 exclusion rule drops the silent majority from the series, so the published %.4f understates the true concentration by as much as %.4f",
-			cov, c.ServeGini.SampleSize, c.Sample.Size, c3ServeReportingMin, c.ServeGini.val(), 1-cov)
-	}
-	// CLAUSE 2 — the advisory's threshold.
-	if v := c.ServeGini.val(); v > c3ServeGiniMax {
-		return false, fmt.Sprintf("serveGini %.4f over %d reporting nodes exceeds %.2f: serve work is concentrating off the edge tier", v, c.ServeGini.SampleSize, c3ServeGiniMax)
-	}
-	return true, ""
 }
 
-// c3RepairGate is assertion 2 of the advisory. Its coverage denominator is the CAPABLE
-// subset, read off the tier mix on the sibling route — the same node.EconomySample, one
-// derivation apart.
-func c3RepairGate(c c3ConcentrationWire, nw c3NetworkWire) (ok bool, why string) {
+// c3Reading is one series' decomposition, which is the form the panel should lead with:
+// `unseen` is what the exclusion rule hid, `seen` is what was measured, and their sum is
+// the concentration counting silence as idle.
+type c3Reading struct {
+	Verdict    c3Verdict
+	Why        string
+	Coverage   float64 // c = series size / the population it claims to describe
+	Published  float64 // G_pub, the number on the wire
+	Unseen     float64 // 1 - c
+	Seen       float64 // c * G_pub
+	Adjusted   float64 // G_adj = Unseen + Seen
+	Population int
+	Reporting  int
+}
+
+// c3Adjust computes the decomposition and applies the tolerance. One function for both
+// series: they differ only in their population and their tolerance.
+func c3Adjust(series *c3GiniWire, population int, tol float64) c3Reading {
+	r := c3Reading{Population: population, Reporting: series.SampleSize, Published: series.val()}
+	if population <= 0 {
+		r.Verdict, r.Why = c3Indeterminate, "the series claims a population of zero"
+		return r
+	}
+	r.Coverage = float64(series.SampleSize) / float64(population)
+	r.Unseen = 1 - r.Coverage
+	r.Seen = r.Coverage * r.Published
+	r.Adjusted = r.Unseen + r.Seen
+	// The boundary is checked FIRST and it decides the LABEL, not the refusal: because
+	// the boundary is defined as 1 - tol, anything below it necessarily has G_adj > tol
+	// too. What this ordering buys is that a figure over a minority of its population is
+	// never reported as measured capture.
+	if r.Coverage < 1-tol {
+		r.Verdict = c3Indeterminate
+		r.Why = fmt.Sprintf("reporting fraction %.4f (%d of %d) is below the indeterminacy boundary %.2f: the published %.4f is a figure over a minority of its own population, and G_adj = (1-c) + c*G_pub = %.4f + %.4f = %.4f is a LOWER bound on the truth, not a reading of it",
+			r.Coverage, r.Reporting, r.Population, 1-tol, r.Published, r.Unseen, r.Seen, r.Adjusted)
+		return r
+	}
+	if r.Adjusted > tol {
+		r.Verdict = c3Concentrated
+		r.Why = fmt.Sprintf("G_adj %.4f exceeds %.2f (published %.4f over %d of %d reporting; unseen %.4f + seen %.4f): work is concentrating, measured",
+			r.Adjusted, tol, r.Published, r.Reporting, r.Population, r.Unseen, r.Seen)
+		return r
+	}
+	r.Verdict = c3Pass
+	return r
+}
+
+// c3ServeGate is advisory assertion 1 over the served document. Population = the whole
+// classifiable sample, because every tier serves.
+func c3ServeGate(c c3ConcentrationWire) c3Reading {
 	if c.CountersWithheld {
-		return false, "repairGini withheld: the reader cannot see the figure at all"
+		return c3Reading{Verdict: c3Indeterminate, Why: "serveGini withheld: the reader cannot see the figure at all"}
 	}
 	if c.Sample == nil {
-		return false, "no sample block"
+		return c3Reading{Verdict: c3Indeterminate, Why: "no sample block: the required sibling of every gossip-estimated number is absent"}
+	}
+	if c.ServeGini == nil {
+		return c3Reading{Verdict: c3Indeterminate, Population: c.Sample.Size,
+			Why: fmt.Sprintf("no serveGini published at all over a sample of %d: the reporting series is below minGossipSample=%d, so the panel is DARK", c.Sample.Size, minGossipSample)}
+	}
+	// KNOWN-NESS, NOT THE VALUE. credit.Gini returns 0 both for a measured equality and
+	// for a series that summed to zero, and giniOver renders the second as known:false
+	// with no value. A gate that read the number would score an absent measurement as a
+	// perfect pass -- and would then feed that 0 into G_adj as if it were seen.
+	if !c.ServeGini.Known {
+		return c3Reading{Verdict: c3Indeterminate, Population: c.Sample.Size, Reporting: c.ServeGini.SampleSize,
+			Why: "serveGini is UNKNOWN (" + c.ServeGini.Reason + "): an absent measurement is not a passing 0"}
+	}
+	return c3Adjust(c.ServeGini, c.Sample.Size, c3ServeGiniMax)
+}
+
+// c3RepairGate is advisory assertion 2. Population = the repair-CAPABLE subset, because
+// the series is scoped to it.
+//
+// KNOWN BUILD DEFECT this reads across (advisory §1, Builder item 3): the capable count
+// comes from /api/economy/network while the numerator comes from /api/economy/concentration
+// -- two separate s.nd.EconomySample() calls, two snapshots. The fixture reads both at one
+// instant so they agree; on a live node peerCaps moves between them and the coverage ratio
+// can exceed 1. economyConcentration must carry CapableSize itself.
+func c3RepairGate(c c3ConcentrationWire, nw c3NetworkWire) c3Reading {
+	if c.CountersWithheld {
+		return c3Reading{Verdict: c3Indeterminate, Why: "repairGini withheld: the reader cannot see the figure at all"}
+	}
+	if c.Sample == nil {
+		return c3Reading{Verdict: c3Indeterminate, Why: "no sample block"}
 	}
 	if c.RepairGini == nil {
-		return false, fmt.Sprintf("no repairGini published at all: the repair-capable reporting subset is below minGossipSample=%d, so the whole durability-concentration alarm is dark on a sample of %d", minGossipSample, c.Sample.Size)
+		return c3Reading{Verdict: c3Indeterminate, Population: nw.capable(),
+			Why: fmt.Sprintf("no repairGini published at all: the repair-capable reporting subset is below minGossipSample=%d, so the whole durability-concentration alarm is DARK on a sample of %d", minGossipSample, c.Sample.Size)}
 	}
 	if !c.RepairGini.Known {
-		return false, "repairGini is UNKNOWN (" + c.RepairGini.Reason + "): an absent measurement is not a passing 0"
+		return c3Reading{Verdict: c3Indeterminate, Population: nw.capable(), Reporting: c.RepairGini.SampleSize,
+			Why: "repairGini is UNKNOWN (" + c.RepairGini.Reason + "): an absent measurement is not a passing 0"}
 	}
-	capable := nw.capable()
-	if capable == 0 {
-		return false, "the tier mix reports NO repair-capable node in the sample, yet a repair Gini was published over it"
+	if nw.capable() == 0 {
+		return c3Reading{Verdict: c3Indeterminate, Why: "the tier mix reports NO repair-capable node in the sample, yet a repair Gini was published over it"}
 	}
-	cov := float64(c.RepairGini.SampleSize) / float64(capable)
-	if cov < c3RepairReportingMin {
-		return false, fmt.Sprintf("repair reporting coverage %.4f (%d of %d repair-capable nodes reported) is below %.2f: the published %.4f is a statement about a minority of the persistent tier",
-			cov, c.RepairGini.SampleSize, capable, c3RepairReportingMin, c.RepairGini.val())
-	}
-	if v := c.RepairGini.val(); v > c3RepairGiniMax {
-		return false, fmt.Sprintf("repairGini within the capable subset %.4f over %d reporting nodes exceeds %.2f: a handful of the persistent tier is doing most of the repair", v, c.RepairGini.SampleSize, c3RepairGiniMax)
-	}
-	return true, ""
+	return c3Adjust(c.RepairGini, nw.capable(), c3RepairGiniMax)
 }
 
 // ---- the fixture: a real node, real inbound gossip, the real routes -------------------
@@ -291,9 +403,19 @@ func c3Fixture(t *testing.T, seed int64, peers []c3Peer) (c3ConcentrationWire, c
 // ---- the shapes ----------------------------------------------------------------------
 //
 // THE HEALTHY SHAPE is the ratified vision ratio (D-TIERING, "ponies : horses : archival
-// ~ 10000 : 100 : 1") at the largest instance that fits maxPeerInfo, weighted CPU-wise
-// 1 : 7 : 24 — one of the two honest weightings the advisory names. Every peer reports,
-// ponies do no durability work, and repair is spread evenly across the capable tier.
+// ~ 10000 : 100 : 1") at an instance that fits maxPeerInfo, with serve work weighted
+// CPU-wise 1 : 7 : 24. Every peer reports, ponies do no durability work.
+//
+// THE REPAIR LEG CARRIES AN ASSUMPTION, AND IT IS THE ONE DOING ALL THE WORK BEHIND
+// c3RepairGiniMax. This fixture gives a 64 GiB horse and a 4 TiB archival node TEN REPAIRS
+// EACH -- repair UNIFORM PER NODE. Repair is in fact holdings-bound: a node repairs shards
+// for the roots it holds, so repair opportunity scales with stored bytes. Under a
+// holdings-proportional null at this very mix (10 horses @ 1 TB + 1 archival @ 50 TB) the
+// honest repair Gini is 0.7424, not 0.0000 -- above the 0.40 constant, and numerically
+// indistinguishable from the 0.7505 the original spec labelled CAPTURE. That is why 0.40
+// is a fixture constant here and was withdrawn as a field threshold. See
+// TestGateC3_2_RepairNullIsHoldingsProportionalSoTheConstantIsNotAFieldThreshold, which
+// drives the holdings-proportional shape through the same route.
 func c3HealthyPeers() []c3Peer {
 	return []c3Peer{
 		{capTotal: c3PonyCap, served: 1 * c3Unit, repairs: 0, n: 1000},
@@ -304,30 +426,38 @@ func c3HealthyPeers() []c3Peer {
 
 // ---- GATE 1 ---------------------------------------------------------------------------
 
-// TestGateC3_1_ServeWorkFederationOnTheOperatorPanel is advisory assertion 1.
+// TestGateC3_1_ServeWorkFederationOnTheOperatorPanel is advisory assertion 1, re-pointed.
 //
-// GATE: c3ServeGate over GET /api/economy/concentration — serveGini KNOWN, reporting
-// coverage >= 0.85, value <= 0.15.
+// GATE: c3ServeGate over GET /api/economy/concentration. Asserts, in order, that the serve
+// series is PRESENT, that it is KNOWN, and that the ADJUSTED concentration
+// G_adj = (1-c) + c*G_pub is within c3ServeGiniMax. There is no separate coverage clause;
+// the indeterminacy boundary is a theorem of the tolerance, pinned by
+// TestGateC3_IndeterminacyBoundaryIsATheoremOfTheTolerance.
 //
-// FOUR ARMS. The healthy arm must PASS; the three ablations must each make the SAME
-// predicate refuse, and each must refuse on a DIFFERENT clause. An ablation that reddens
-// the clause a different ablation already covered proves nothing new.
+// FIVE ARMS AND FOUR OUTCOMES. The healthy arm must PASS. A1a (series absent) and A1b
+// (series known:false) must be INDETERMINATE-because-dark. A3 (capture behind silence) must
+// be INDETERMINATE-because-below-the-boundary. Only A2 (capture in the open) may be
+// CONCENTRATED. Each arm asserts WHICH state, not merely that the gate refused — an
+// ablation that reddens the state a different ablation already covered proves nothing new,
+// and reporting "I cannot see" as "you are captured" is its own defect.
 func TestGateC3_1_ServeWorkFederationOnTheOperatorPanel(t *testing.T) {
 	// --- HEALTHY: the vision ratio, CPU-weighted, everybody reporting.
 	conc, _ := c3Fixture(t, 1, c3HealthyPeers())
-	ok, why := c3ServeGate(conc)
-	if !ok {
-		t.Fatalf("HEALTHY ARM RED: %s\n  The federated baseline must PASS on the ratified vision shape or the gate is unusable: it would fire on a network where nothing is wrong.", why)
+	r := c3ServeGate(conc)
+	if r.Verdict != c3Pass {
+		t.Fatalf("HEALTHY ARM %s: %s\n  The fixture the constant was cut for must PASS, or the regression gate fires on its own null.", r.Verdict, r.Why)
 	}
-	t.Logf("healthy vision shape: serveGini %.4f known=%v over %d of %d sampled nodes (coverage %.4f)",
-		conc.ServeGini.val(), conc.ServeGini.Known, conc.ServeGini.SampleSize, conc.Sample.Size,
-		float64(conc.ServeGini.SampleSize)/float64(conc.Sample.Size))
+	t.Logf("healthy: %s  G_adj %.4f = unseen %.4f + seen %.4f  (published %.4f, %d of %d reporting)",
+		r.Verdict, r.Adjusted, r.Unseen, r.Seen, r.Published, r.Reporting, r.Population)
+	if r.Adjusted != r.Published {
+		t.Fatalf("HEALTHY ARM: G_adj %.4f != published %.4f at full coverage — the adjustment must be the identity when c = 1, or it is not the same statistic", r.Adjusted, r.Published)
+	}
 
 	// --- ABLATION A1a — NOBODY REPORTS ANYTHING. Every peer pledges capacity and emits
 	// neither work key, so the M-2 rule excludes all of them and the serve series is
 	// EMPTY. economyConcentrationDoc's own floor then omits serveGini entirely. The gate
-	// must refuse the ABSENCE: a consumer that reads a missing field as "nothing to alarm
-	// about" is blind on a network that has reported no work at all.
+	// must return INDETERMINATE: a consumer that reads a missing field as "nothing to
+	// alarm about" is blind on a network that has reported no work at all.
 	silent := []c3Peer{
 		{capTotal: c3PonyCap, served: 0, repairs: 0, n: 60},
 		{capTotal: c3HorseCap, served: 0, repairs: 0, n: 6},
@@ -336,11 +466,11 @@ func TestGateC3_1_ServeWorkFederationOnTheOperatorPanel(t *testing.T) {
 	if concA1a.ServeGini != nil {
 		t.Fatalf("ABLATION A1a: serveGini was published over a wholly silent sample (%+v). Re-derive this arm — it exists to prove the gate refuses an ABSENT figure.", concA1a.ServeGini)
 	}
-	okA1a, whyA1a := c3ServeGate(concA1a)
-	if okA1a {
-		t.Fatalf("ABLATION A1a STAYED GREEN: no serveGini is published at all and the gate passed. Absence is being read as health.")
+	rA1a := c3ServeGate(concA1a)
+	if rA1a.Verdict != c3Indeterminate {
+		t.Fatalf("ABLATION A1a: verdict %s, want INDETERMINATE. No serveGini is published at all; absence is being read as %s.", rA1a.Verdict, rA1a.Verdict)
 	}
-	t.Logf("ABLATION A1a RED (as required): %s", whyA1a)
+	t.Logf("ABLATION A1a %s (as required): %s", rA1a.Verdict, rA1a.Why)
 
 	// --- ABLATION A1b — THE KNOWN-NESS CLAUSE, and reaching it takes a specific shape.
 	// giniOver renders known:false when the series SUMMED TO ZERO, but the route only
@@ -349,8 +479,8 @@ func TestGateC3_1_ServeWorkFederationOnTheOperatorPanel(t *testing.T) {
 	// peers DO report (so they are in the series) but report zero SERVE work: the M-2
 	// discriminator is the PAIR, so a peer emitting repairs and no serve is a reporting
 	// peer whose serve zero counts. credit.Gini over [0,0,...] returns 0 ("universal
-	// poverty is technically equality") and a gate that read the VALUE would score it as
-	// perfect federation.
+	// poverty is technically equality") and a gate that read the VALUE — or fed it into
+	// G_adj as if it were seen — would score it as perfect federation at full coverage.
 	repairOnly := []c3Peer{
 		{capTotal: c3HorseCap, served: 0, repairs: 10, n: 8},
 		{capTotal: c3ArchivalCap, served: 0, repairs: 10, n: 1},
@@ -362,49 +492,44 @@ func TestGateC3_1_ServeWorkFederationOnTheOperatorPanel(t *testing.T) {
 	if concA1b.ServeGini.Known {
 		t.Fatalf("ABLATION A1b: serveGini came back known:true over a series that summed to zero (value %.4f) — giniOver's total<=0 branch is not firing, and an absent measurement is being published as a measured equality", concA1b.ServeGini.val())
 	}
-	if concA1b.ServeGini.val() > c3ServeGiniMax {
-		t.Fatalf("ABLATION A1b: the bare value is %.4f, so a value-only gate would already redden here and this arm would not prove the known-ness clause. Rebuild the fixture.", concA1b.ServeGini.val())
+	// The trap this arm closes: coverage here is 1.0 (all 9 peers are in the series), so
+	// G_adj would compute to 0.0000 and PASS if known-ness were not checked first.
+	if cov := float64(concA1b.ServeGini.SampleSize) / float64(concA1b.Sample.Size); cov < 1 {
+		t.Fatalf("ABLATION A1b: reporting fraction %.4f < 1. This arm must have FULL coverage, or it reddens on the boundary and the known-ness check is unproven.", cov)
 	}
-	okA1b, whyA1b := c3ServeGate(concA1b)
-	if okA1b {
-		t.Fatalf("ABLATION A1b STAYED GREEN: serveGini is UNKNOWN (%q) with a rendered value of %.4f, and the gate passed. An absent measurement is being scored as a perfect pass — this is the exact defect giniOver.Known exists to expose.",
-			concA1b.ServeGini.Reason, concA1b.ServeGini.val())
+	rA1b := c3ServeGate(concA1b)
+	if rA1b.Verdict != c3Indeterminate {
+		t.Fatalf("ABLATION A1b: verdict %s, want INDETERMINATE. serveGini is UNKNOWN (%q) at full coverage, so G_adj would read 0.0000 — an absent measurement scored as perfect federation.",
+			rA1b.Verdict, concA1b.ServeGini.Reason)
 	}
-	t.Logf("ABLATION A1b RED (as required): %s", whyA1b)
+	t.Logf("ABLATION A1b %s (as required): %s", rA1b.Verdict, rA1b.Why)
 
-	// --- ABLATION A2 — the advisory's own ablation: a CONCENTRATED distribution where the
-	// top 5 nodes serve 80 % of the bytes. Every node still reports, so coverage is 1.0
-	// and this arm isolates the threshold clause.
+	// --- ABLATION A2 — the spec's own ablation: a CONCENTRATED distribution where the top
+	// 5 nodes serve 80 % of the bytes. Every node still reports, so coverage is 1.0, G_adj
+	// is the identity on G_pub, and this arm isolates measured concentration.
 	const a2Ponies = 1000
 	concentrated := []c3Peer{
-		// the top 5: 80 % of 1,000,000 units, split evenly
 		{capTotal: c3HorseCap, served: 160_000 * c3Unit, repairs: 10, n: 5},
-		// everyone else shares the remaining 20 %
 		{capTotal: c3PonyCap, served: (200_000 / a2Ponies) * c3Unit, repairs: 0, n: a2Ponies},
 		{capTotal: c3HorseCap, served: (200_000 / a2Ponies) * c3Unit, repairs: 10, n: 5},
 		{capTotal: c3ArchivalCap, served: (200_000 / a2Ponies) * c3Unit, repairs: 10, n: 1},
 	}
 	concA2, _ := c3Fixture(t, 3, concentrated)
-	okA2, whyA2 := c3ServeGate(concA2)
-	if okA2 {
-		t.Fatalf("ABLATION A2 STAYED GREEN: the top 5 of %d nodes serve 80 %% of the bytes and the serve gate passed. serveGini=%.4f known=%v coverage=%.4f — the advisory's assertion 1 is decoration.",
-			concA2.Sample.Size, concA2.ServeGini.val(), concA2.ServeGini.Known,
-			float64(concA2.ServeGini.SampleSize)/float64(concA2.Sample.Size))
+	rA2 := c3ServeGate(concA2)
+	if rA2.Verdict != c3Concentrated {
+		t.Fatalf("ABLATION A2: verdict %s, want CONCENTRATED. The top 5 of %d nodes serve 80 %% of the bytes. G_adj %.4f, coverage %.4f, published %.4f — the spec's assertion 1 is decoration.",
+			rA2.Verdict, concA2.Sample.Size, rA2.Adjusted, rA2.Coverage, rA2.Published)
 	}
-	if cov := float64(concA2.ServeGini.SampleSize) / float64(concA2.Sample.Size); cov < c3ServeReportingMin {
-		t.Fatalf("ABLATION A2 reddened on the COVERAGE clause (%.4f), not on the threshold clause. That makes it a duplicate of A3 and leaves the advisory's own ablation unproven — the fixture must have every node reporting.", cov)
+	if rA2.Coverage < 1 {
+		t.Fatalf("ABLATION A2 has coverage %.4f, so it could redden as INDETERMINATE and duplicate A3. Every node must report here.", rA2.Coverage)
 	}
-	if concA2.ServeGini.val() <= c3ServeGiniMax {
-		t.Fatalf("ABLATION A2: serveGini %.4f is at or under the %.2f threshold on a top-5-serve-80%% distribution — the threshold does not separate concentration from health", concA2.ServeGini.val(), c3ServeGiniMax)
-	}
-	t.Logf("ABLATION A2 RED (as required): %s", whyA2)
+	t.Logf("ABLATION A2 %s (as required): %s", rA2.Verdict, rA2.Why)
 
-	// --- ABLATION A3 — THE ONE THE ADVISORY DID NOT SPECIFY, and the reason the gate has
-	// a third clause. Same total capture as A2, but the losing majority reports NOTHING
-	// rather than a little. Under the certified M-2 rule those peers are EXCLUDED from the
-	// series rather than counted as zeros, so the published figure is a Gini over the five
-	// capturing nodes alone — and because they capture EQUALLY it is 0.0000 with
-	// known:true. A bare `serveGini <= 0.15` gate passes total capture.
+	// --- ABLATION A3 — THE ONE THE SPEC DID NOT HAVE, and the reason the gate is an
+	// adjusted statistic. Same total capture as A2, but the losing majority reports NOTHING
+	// rather than a little. Under M-2 those peers are EXCLUDED, so the published figure is
+	// a Gini over the five capturing nodes alone — and because they capture EQUALLY it is
+	// 0.0000 with known:true. A bare `serveGini <= 0.15` gate passes total capture.
 	capturedAndSilent := []c3Peer{
 		{capTotal: c3HorseCap, served: 200_000 * c3Unit, repairs: 10, n: 5},
 		{capTotal: c3PonyCap, served: 0, repairs: 0, n: 1000},
@@ -414,69 +539,122 @@ func TestGateC3_1_ServeWorkFederationOnTheOperatorPanel(t *testing.T) {
 	concA3, _ := c3Fixture(t, 4, capturedAndSilent)
 	// First RECORD the defeat, so the finding is a measurement and not a claim.
 	if concA3.ServeGini == nil || !concA3.ServeGini.Known {
-		t.Fatalf("ABLATION A3: expected a KNOWN serveGini over the five capturing nodes; got %+v. The exclusion rule changed — re-derive c3ServeReportingMin.", concA3.ServeGini)
+		t.Fatalf("ABLATION A3: expected a KNOWN serveGini over the five capturing nodes; got %+v. The exclusion rule changed — re-derive the adjustment.", concA3.ServeGini)
 	}
 	if concA3.ServeGini.val() > c3ServeGiniMax {
-		t.Fatalf("ABLATION A3: the BARE threshold now reddens on total-capture-plus-silence (serveGini %.4f > %.2f). That is better than when this gate was written, and it means the M-2 exclusion rule changed — re-derive the coverage clause rather than deleting it.", concA3.ServeGini.val(), c3ServeGiniMax)
+		t.Fatalf("ABLATION A3: the BARE published figure now exceeds %.2f (%.4f). When this arm was written the panel published 0.0000 known:true on total capture. The M-2 exclusion rule changed — re-derive the adjustment rather than deleting it.", c3ServeGiniMax, concA3.ServeGini.val())
 	}
-	okA3, whyA3 := c3ServeGate(concA3)
-	if okA3 {
-		t.Fatalf("ABLATION A3 STAYED GREEN: %d of %d sampled nodes are silent while 5 nodes serve 100 %% of the bytes, and the gate passed with serveGini %.4f known:true. Total capture is rendering as perfect equality.",
-			concA3.Sample.Size-concA3.ServeGini.SampleSize, concA3.Sample.Size, concA3.ServeGini.val())
+	rA3 := c3ServeGate(concA3)
+	if rA3.Verdict != c3Indeterminate {
+		t.Fatalf("ABLATION A3: verdict %s, want INDETERMINATE. %d of %d sampled nodes are silent while 5 serve 100 %% of the bytes; the published figure is %.4f known:true. Total capture must not be reported as measured — below the boundary the honest answer is 'I cannot see'.",
+			rA3.Verdict, rA3.Population-rA3.Reporting, rA3.Population, rA3.Published)
 	}
-	t.Logf("ABLATION A3 RED (as required): %s", whyA3)
-	t.Logf("ABLATION A3 measurement: the panel publishes serveGini %.4f known:true over %d of %d sampled nodes while five nodes serve 100 %% of the bytes. The advisory's bare `serveGini <= %.2f` PASSES this. The coverage clause is what refuses it.",
-		concA3.ServeGini.val(), concA3.ServeGini.SampleSize, concA3.Sample.Size, c3ServeGiniMax)
+	// THE ADJUSTMENT IS EXACT ON THIS FIXTURE, not merely conservative: the true Gini of a
+	// population where 5 of 1011 hold everything equally is 1 - 5/1011.
+	wantAdj := 1 - float64(rA3.Reporting)/float64(rA3.Population)
+	if diff := rA3.Adjusted - wantAdj; diff > 1e-9 || diff < -1e-9 {
+		t.Fatalf("ABLATION A3: G_adj %.6f, want the exact true Gini %.6f (= 1 - %d/%d). The identity G_adj = (1-c) + c*G_pub is not being computed.", rA3.Adjusted, wantAdj, rA3.Reporting, rA3.Population)
+	}
+	t.Logf("ABLATION A3 %s (as required): %s", rA3.Verdict, rA3.Why)
+	t.Logf("ABLATION A3 measurement: the panel publishes serveGini %.4f known:true over %d of %d sampled nodes while five nodes serve 100 %% of the bytes. A bare `serveGini <= %.2f` PASSES this. G_adj = %.4f, which is EXACTLY the true Gini 1 - %d/%d = %.4f.",
+		rA3.Published, rA3.Reporting, rA3.Population, c3ServeGiniMax, rA3.Adjusted, rA3.Reporting, rA3.Population, wantAdj)
+}
+
+// TestGateC3_IndeterminacyBoundaryIsATheoremOfTheTolerance pins the reason the gates carry
+// no separate coverage clause.
+//
+// A coverage floor is NECESSARY but not SUFFICIENT: a composite of `coverage >= 0.85` AND
+// `G_pub <= 0.15` admits a true Gini of (1-0.85) + 0.85*0.15 = 0.2775, and the repair pair
+// admits 0.6400 — inside the region the original spec called capture. Gating on G_adj
+// dominates the floor, because G_adj <= T implies c >= 1 - T. This test asserts that
+// implication numerically over the whole tolerance range, so the constants can never drift
+// into being two independent parameters again.
+func TestGateC3_IndeterminacyBoundaryIsATheoremOfTheTolerance(t *testing.T) {
+	if c3ServeReportingMin != 1-c3ServeGiniMax || c3RepairReportingMin != 1-c3RepairGiniMax {
+		t.Fatalf("the boundaries are no longer defined as 1 - tolerance (serve %.4f vs %.4f, repair %.4f vs %.4f) — they have become independent parameters, which is the structure this file exists to refuse",
+			c3ServeReportingMin, 1-c3ServeGiniMax, c3RepairReportingMin, 1-c3RepairGiniMax)
+	}
+	// G_adj <= T  =>  c >= 1 - T, for every reachable (c, G_pub).
+	for _, tol := range []float64{c3ServeGiniMax, c3RepairGiniMax} {
+		for ci := 1; ci <= 1000; ci++ {
+			c := float64(ci) / 1000
+			for gi := 0; gi <= 100; gi++ {
+				gpub := float64(gi) / 100
+				adj := (1 - c) + c*gpub
+				if adj <= tol && c < 1-tol-1e-12 {
+					t.Fatalf("counterexample at tol=%.2f: c=%.3f G_pub=%.2f gives G_adj=%.4f <= tol while c < %.2f. The boundary is NOT implied and must be reinstated as a separate clause.", tol, c, gpub, adj, 1-tol)
+				}
+			}
+		}
+	}
+	// And the separate-clause composite really does admit what the ruling says it admits.
+	for _, tc := range []struct {
+		name     string
+		cov, tol float64
+		want     float64
+	}{
+		{"serve", c3ServeReportingMin, c3ServeGiniMax, 0.2775},
+		{"repair", c3RepairReportingMin, c3RepairGiniMax, 0.6400},
+	} {
+		got := (1 - tc.cov) + tc.cov*tc.tol
+		if diff := got - tc.want; diff > 1e-9 || diff < -1e-9 {
+			t.Fatalf("%s: the separate-clause composite admits a true Gini of %.4f, not the %.4f this file's header claims. Correct the header.", tc.name, got, tc.want)
+		}
+		t.Logf("%s: a SEPARATE coverage clause at %.2f with a published tolerance of %.2f would admit a true Gini of %.4f — which is why the gate folds them into one statistic",
+			tc.name, tc.cov, tc.tol, got)
+	}
 }
 
 // ---- GATE 2 ---------------------------------------------------------------------------
 
-// TestGateC3_2_RepairWorkWithinTheCapableSubsetOnTheOperatorPanel is advisory assertion 2.
+// TestGateC3_2_RepairWorkWithinTheCapableSubsetOnTheOperatorPanel is advisory assertion 2,
+// re-pointed — and note that its constant is withdrawn as a FIELD alarm, so what this test
+// is, exactly, is a REGRESSION gate over a named synthetic fixture.
 //
-// GATE: c3RepairGate over GET /api/economy/concentration and GET /api/economy/network —
-// repairGini PRESENT and KNOWN, reporting coverage over the CAPABLE subset >= 0.60,
-// value <= 0.40.
+// GATE: c3RepairGate over GET /api/economy/concentration and GET /api/economy/network.
+// Same structure as gate 1 — PRESENT, then KNOWN, then G_adj within c3RepairGiniMax — with
+// the population being the repair-CAPABLE subset, because the series is scoped to it.
+//
+// FOUR ARMS, FOUR OUTCOMES: healthy PASS, B1 CONCENTRATED (capture in the open), B2
+// INDETERMINATE (capture behind silence), B3 INDETERMINATE (panel dark).
 func TestGateC3_2_RepairWorkWithinTheCapableSubsetOnTheOperatorPanel(t *testing.T) {
 	// --- HEALTHY: repair spread evenly over 10 horses + 1 archival, 1000 ponies serving
 	// and doing none of it. This is the shape whose NETWORK-WIDE repair Gini is ~0.99.
+	// READ c3HealthyPeers's comment first: "evenly" is UNIFORM PER NODE, which is an
+	// assumption, and it is the assumption c3RepairGiniMax rests on.
 	conc, nw := c3Fixture(t, 11, c3HealthyPeers())
-	ok, why := c3RepairGate(conc, nw)
-	if !ok {
-		t.Fatalf("HEALTHY ARM RED: %s\n  Repair spread PERFECTLY EVENLY across the whole persistent tier must pass, or the gate fires on the vision shape itself.", why)
+	r := c3RepairGate(conc, nw)
+	if r.Verdict != c3Pass {
+		t.Fatalf("HEALTHY ARM %s: %s\n  Uniform repair across the whole persistent tier must pass, or the regression gate fires on its own fixture.", r.Verdict, r.Why)
 	}
 	if got, want := conc.RepairGini.SampleSize, 11; got != want {
-		t.Fatalf("the repair series covered %d nodes, want %d (the capable subset only). If the 1000 ponies are in it the figure is ~0.99 by construction and carries no signal — this is the advisory's §2.1 correction.", got, want)
+		t.Fatalf("the repair series covered %d nodes, want %d (the capable subset only). If the 1000 ponies are in it the figure is ~0.99 by construction and carries no signal — this is the §2.1 scoping correction.", got, want)
 	}
-	t.Logf("healthy vision shape: repairGini(capable subset) %.4f known=%v over %d of %d capable nodes",
-		conc.RepairGini.val(), conc.RepairGini.Known, conc.RepairGini.SampleSize, nw.capable())
+	t.Logf("healthy: %s  G_adj %.4f = unseen %.4f + seen %.4f  (published %.4f, %d of %d capable reporting)",
+		r.Verdict, r.Adjusted, r.Unseen, r.Seen, r.Published, r.Reporting, r.Population)
 
-	// --- ABLATION B1 — the advisory's ablation: route EVERY repair to one node. The other
+	// --- ABLATION B1 — the spec's ablation: route EVERY repair to one node. The other
 	// capable nodes still serve, so they still report and their zero is a genuine measured
-	// zero that counts. This isolates the threshold clause.
+	// zero that counts. Coverage is 1.0, so this arm isolates measured concentration.
 	oneRepairer := []c3Peer{
 		{capTotal: c3PonyCap, served: 1 * c3Unit, repairs: 0, n: 1000},
 		{capTotal: c3HorseCap, served: 7 * c3Unit, repairs: 0, n: 10},
 		{capTotal: c3ArchivalCap, served: 24 * c3Unit, repairs: 500, n: 1},
 	}
 	concB1, nwB1 := c3Fixture(t, 12, oneRepairer)
-	okB1, whyB1 := c3RepairGate(concB1, nwB1)
-	if okB1 {
-		t.Fatalf("ABLATION B1 STAYED GREEN: every repair on ONE of %d capable nodes and the gate passed. repairGini=%.4f — the scoped series does not redden on total durability capture, so it is decoration.", nwB1.capable(), concB1.RepairGini.val())
+	rB1 := c3RepairGate(concB1, nwB1)
+	if rB1.Verdict != c3Concentrated {
+		t.Fatalf("ABLATION B1: verdict %s, want CONCENTRATED. Every repair on ONE of %d capable nodes, G_adj %.4f, coverage %.4f — the scoped series does not redden on total durability capture, so it is decoration.",
+			rB1.Verdict, nwB1.capable(), rB1.Adjusted, rB1.Coverage)
 	}
-	if concB1.RepairGini == nil || !concB1.RepairGini.Known {
-		t.Fatalf("ABLATION B1 reddened on the KNOWN clause, not the threshold clause: %+v. The fixture must keep every capable node REPORTING so its zero counts.", concB1.RepairGini)
+	if rB1.Coverage < 1 {
+		t.Fatalf("ABLATION B1 has coverage %.4f, so it could redden as INDETERMINATE and duplicate B2. Every capable node must keep REPORTING so its zero counts.", rB1.Coverage)
 	}
-	if cov := float64(concB1.RepairGini.SampleSize) / float64(nwB1.capable()); cov < c3RepairReportingMin {
-		t.Fatalf("ABLATION B1 reddened on the COVERAGE clause (%.4f), duplicating B2 and leaving the advisory's own ablation unproven", cov)
-	}
-	if concB1.RepairGini.val() <= c3RepairGiniMax {
-		t.Fatalf("ABLATION B1: repairGini %.4f is at or under %.2f with every repair on one node — the threshold does not separate capture from health", concB1.RepairGini.val(), c3RepairGiniMax)
-	}
-	t.Logf("ABLATION B1 RED (as required): %s", whyB1)
+	t.Logf("ABLATION B1 %s (as required): %s", rB1.Verdict, rB1.Why)
 
 	// --- ABLATION B2 — the repair analogue of A3. Four capable nodes repair equally; the
 	// other seven report NOTHING AT ALL and are excluded. The published repairGini is
-	// 0.0000 known:true over a minority of the persistent tier. Coverage refuses it.
+	// 0.0000 known:true over a minority of the persistent tier, and G_adj recovers 0.6364.
 	minorityReports := []c3Peer{
 		{capTotal: c3PonyCap, served: 1 * c3Unit, repairs: 0, n: 1000},
 		{capTotal: c3HorseCap, served: 7 * c3Unit, repairs: 10, n: 4},
@@ -484,20 +662,24 @@ func TestGateC3_2_RepairWorkWithinTheCapableSubsetOnTheOperatorPanel(t *testing.
 		{capTotal: c3ArchivalCap, served: 0, repairs: 0, n: 1},
 	}
 	concB2, nwB2 := c3Fixture(t, 13, minorityReports)
-	okB2, whyB2 := c3RepairGate(concB2, nwB2)
-	if okB2 {
-		t.Fatalf("ABLATION B2 STAYED GREEN: %d of %d repair-capable nodes are silent and the gate passed on a repairGini of %.4f over the remaining %d.",
-			nwB2.capable()-concB2.RepairGini.SampleSize, nwB2.capable(), concB2.RepairGini.val(), concB2.RepairGini.SampleSize)
+	rB2 := c3RepairGate(concB2, nwB2)
+	if rB2.Verdict != c3Indeterminate {
+		t.Fatalf("ABLATION B2: verdict %s, want INDETERMINATE. %d of %d repair-capable nodes are silent and the published figure is %.4f over the remaining %d.",
+			rB2.Verdict, rB2.Population-rB2.Reporting, rB2.Population, rB2.Published, rB2.Reporting)
 	}
 	if concB2.RepairGini == nil || !concB2.RepairGini.Known || concB2.RepairGini.val() > c3RepairGiniMax {
-		t.Fatalf("ABLATION B2 reddened on a clause other than coverage (%+v); it then duplicates B1/B3 and the coverage clause is unproven", concB2.RepairGini)
+		t.Fatalf("ABLATION B2 reddened for a reason other than the boundary (%+v); it then duplicates B1/B3 and the adjustment is unproven", concB2.RepairGini)
 	}
-	t.Logf("ABLATION B2 RED (as required): %s", whyB2)
+	wantB2 := 1 - float64(rB2.Reporting)/float64(rB2.Population)
+	if diff := rB2.Adjusted - wantB2; diff > 1e-9 || diff < -1e-9 {
+		t.Fatalf("ABLATION B2: G_adj %.6f, want the exact true Gini %.6f (= 1 - %d/%d)", rB2.Adjusted, wantB2, rB2.Reporting, rB2.Population)
+	}
+	t.Logf("ABLATION B2 %s (as required): %s", rB2.Verdict, rB2.Why)
 
 	// --- ABLATION B3 — the DARK-PANEL ablation. Only two capable nodes report, which is
 	// below minGossipSample, so economyConcentrationDoc omits repairGini ENTIRELY. A
 	// consumer that treats an absent field as "nothing to alarm about" reads a captured
-	// durability tier as healthy. The gate must refuse ABSENCE, not just a bad value.
+	// durability tier as healthy. The gate must return INDETERMINATE on ABSENCE.
 	belowFloor := []c3Peer{
 		{capTotal: c3PonyCap, served: 1 * c3Unit, repairs: 0, n: 1000},
 		{capTotal: c3HorseCap, served: 7 * c3Unit, repairs: 10, n: 2},
@@ -508,64 +690,179 @@ func TestGateC3_2_RepairWorkWithinTheCapableSubsetOnTheOperatorPanel(t *testing.
 	if concB3.RepairGini != nil {
 		t.Fatalf("ABLATION B3: repairGini was published over %d reporting capable nodes, below minGossipSample=%d. Re-derive this arm: it exists to prove the gate refuses an ABSENT figure.", concB3.RepairGini.SampleSize, minGossipSample)
 	}
-	okB3, whyB3 := c3RepairGate(concB3, nwB3)
-	if okB3 {
-		t.Fatalf("ABLATION B3 STAYED GREEN: the repair panel is DARK (repairGini absent) and the gate passed. Absence is being read as health.")
+	rB3 := c3RepairGate(concB3, nwB3)
+	if rB3.Verdict != c3Indeterminate {
+		t.Fatalf("ABLATION B3: verdict %s, want INDETERMINATE. The repair panel is DARK (repairGini absent).", rB3.Verdict)
 	}
-	t.Logf("ABLATION B3 RED (as required): %s", whyB3)
+	t.Logf("ABLATION B3 %s (as required): %s", rB3.Verdict, rB3.Why)
 }
 
-// ---- the provenance pin ----------------------------------------------------------------
-
-// TestGateC3_1_ThresholdProvenanceIsUnreachableUnderDiskWeighting records a MEASURED
-// limit on assertion 1's threshold, so the number is not carried forward on the strength
-// of its own footnote.
+// TestGateC3_2_RepairNullIsHoldingsProportionalSoTheConstantIsNotAFieldThreshold is the
+// repair provenance pin, and it is the reason c3RepairGiniMax was withdrawn as a field
+// threshold rather than merely re-labelled.
 //
-// THE ADVISORY'S SENTENCE: "the vision-ratio band is 0.058-0.121, so 0.15 clears the
-// widest honest weighting". The 0.1209 corner is the DISK weighting (0.1 / 1 / 50 TB) at
-// the vision ratio 10000 : 100 : 1 — a distribution of 10,101 nodes. A node's peerCaps
-// sample is bounded at node.maxPeerInfo, and the disk-weighted honest Gini does not fall
-// to 0.15 until the sample passes ~5,600 nodes. So on EVERY sample a silt node can
-// actually hold, the disk-weighted honest shape reads ABOVE the threshold.
+// THE WITHDRAWN SENTENCE: 0.40 was "the midpoint of the measured span 0.019 (even) to
+// 0.7505 (top 5 of 101 do 80 %)". That span runs between two HEALTHY shapes, not between a
+// healthy one and a captured one. Repair is holdings-bound — a node repairs shards for the
+// roots it holds, so repair opportunity scales with stored bytes — and under that null:
 //
-// Measured (core/credit.Gini, vision proportions np : np/100 : 1, weights 0.1/1/50 TB):
+//	capable n=3   0.6282   <- the spec's own Phase-3 canary minimum (>= 2 caretaker-judges)
+//	capable n=4   0.6934
+//	capable n=6   0.7424
+//	capable n=11  0.7424   <- the shipped healthy fixture's mix
+//	capable n=21  0.6667
+//	capable n=101 0.3234   <- the FIRST size that clears 0.40 is n ~= 81
 //
-//	n =  1,011  gini 0.3671      n =  4,096  gini 0.1726   <- the observable ceiling
-//	n =  2,021  gini 0.2507      n =  5,051  gini 0.1574
-//	n =  3,031  gini 0.2016      n =  6,061  gini 0.1455   <- first pass, unobservable
-//	n =  4,041  gini 0.1745      n = 10,101  gini 0.1209   <- the advisory's corner
+// So a 0.40 abort would have fired on the first honest canary silt ever ran, and 0.7424 is
+// numerically indistinguishable from the 0.7505 the spec labelled capture.
 //
-// WHAT THIS DOES NOT SAY. It does not say the gate is wrong. Gate 1's healthy arm uses the
-// CPU weighting (1 / 7 / 24), which clears 0.15 at every observable size, and the
-// concentrated ablation reads 0.72-0.80 at every size, so the gate separates. It says the
-// threshold's stated provenance covers one of the two honest weightings on any sample this
-// code can observe, and that a disk-heavy real network may sit above 0.15 with nothing
-// wrong. That is an owner/Economist re-derivation, not a number a tester may tune.
+// THIS TEST DRIVES THE HOLDINGS-PROPORTIONAL SHAPE THROUGH THE REAL ROUTE, so the claim is
+// about the shipped surface and not about arithmetic in a comment. Both arms are HONEST
+// topologies. Both must be reported CONCENTRATED by the shipped gate. That is the pin: the
+// gate's constant does not distinguish an honest holdings-proportional durability tier from
+// a captured one, which is exactly why it may not be used as a field alarm.
 //
-// This test drives the REAL route so the claim is about the shipped surface. It reddens if
-// the disk-weighted honest shape ever passes at the observable ceiling — which is the
-// event that would discharge the finding.
-func TestGateC3_1_ThresholdProvenanceIsUnreachableUnderDiskWeighting(t *testing.T) {
-	if testing.Short() {
-		t.Skip("drives a 4,096-peer sample; -short runs the two gates only")
+// DISCHARGE CONDITION: this pin clears when the repair alarm is RELATIVE TO HOLDINGS —
+// alarm when observedRepairShare(tier) - expectedRepairShare(tier) > margin, both terms
+// measured from the sample's own CapTotal — not when a Gini drops below a constant. That
+// needs the per-tier work totals (Builder item, advisory §3a).
+func TestGateC3_2_RepairNullIsHoldingsProportionalSoTheConstantIsNotAFieldThreshold(t *testing.T) {
+	// Repairs proportional to pledged bytes: a 1 TB-class horse does 1, a 50 TB-class
+	// archival node does 50. Everyone reports, so coverage is 1.0 and G_adj is the
+	// identity — this pin is about the NULL, not about the adjustment.
+	holdingsNull := func(horses int) []c3Peer {
+		return []c3Peer{
+			{capTotal: c3PonyCap, served: 1 * c3Unit, repairs: 0, n: 60},
+			{capTotal: c3HorseCap, served: 7 * c3Unit, repairs: 1, n: horses},
+			{capTotal: c3ArchivalCap, served: 24 * c3Unit, repairs: 50, n: 1},
+		}
 	}
-	// The observable ceiling: node.maxPeerInfo peers at the vision proportions, weighted
-	// by the disk table. 4055 : 40 : 1 = 4,096 = the bound.
-	diskWeighted := []c3Peer{
+	for _, tc := range []struct {
+		name    string
+		horses  int
+		wantMin float64 // the measured null, asserted as a floor so this cannot silently drift
+	}{
+		{"the Phase-3 canary MINIMUM (2 caretaker-judges + 1 archival)", 2, 0.62},
+		{"the shipped healthy fixture's own mix (10 horses + 1 archival)", 10, 0.74},
+	} {
+		conc, nw := c3Fixture(t, int64(41+tc.horses), holdingsNull(tc.horses))
+		r := c3RepairGate(conc, nw)
+		if r.Coverage < 1 {
+			t.Fatalf("%s: coverage %.4f, want 1.0 — this pin must isolate the NULL, not the adjustment", tc.name, r.Coverage)
+		}
+		if r.Published < tc.wantMin {
+			t.Fatalf("%s: the holdings-proportional honest null now reads %.4f, below the measured %.2f this pin was cut against. The shape moved — re-derive before trusting the withdrawal.", tc.name, r.Published, tc.wantMin)
+		}
+		if r.Verdict != c3Concentrated {
+			t.Fatalf("PIN DISCHARGED (or the gate moved): %s reads %s at G_adj %.4f against a constant of %.2f. When this pin was written the shipped gate reported CONCENTRATED on an HONEST holdings-proportional topology, which is why %0.2f was withdrawn as a field threshold. Re-read the finding before deleting this test.",
+				tc.name, r.Verdict, r.Adjusted, c3RepairGiniMax, c3RepairGiniMax)
+		}
+		t.Logf("%s: HONEST holdings-proportional repair reads %s at G_adj %.4f against the %.2f constant. An honest canary would abort.",
+			tc.name, r.Verdict, r.Adjusted, c3RepairGiniMax)
+	}
+}
+
+// ---- the serve provenance pin ---------------------------------------------------------
+
+// TestGateC3_1_ServeGiniHonestNullIsMixDependentNotSampleSizeDependent records the MEASURED
+// reason c3ServeGiniMax is a fixture constant and not a field threshold.
+//
+// RENAMED. The 2026-09-07 advisory cites this pin as
+// TestGateC3_1_ThresholdProvenanceIsUnreachableUnderDiskWeighting. That name states the
+// SYMPTOM I first measured — the honest disk-weighted Gini falls as n grows and does not
+// reach 0.15 until ~5,600 nodes, above the maxPeerInfo bound of 4,096 — and the Economist's
+// re-derivation showed the diagnosis was wrong. A test whose name does not name the axis it
+// measures is a defect this repo has been bitten by more than twice, so the name moved with
+// the assertion. The finding is NOT discharged; it is re-founded.
+//
+// THE CAUSE. Remove the single archival node and the disk-weighted honest Gini is
+// SCALE-INVARIANT:
+//
+//	n =    101 (100 ponies + 1 horse)        0.0810
+//	n =  1,010 (1000 ponies + 10 horses)     0.0810
+//	n =  4,095 (4055 ponies + 40 horses)     0.0800
+//	n = 10,100 (10000 ponies + 100 horses)   0.0810
+//
+// The entire falling curve is one artifact: below 10,101 nodes the vision ratio
+// 10000 : 100 : 1 cannot be held with an INTEGER archival node, so forcing exactly one
+// over-weights the 50 TB tier by 10101/n — 2.47x at n=4,096, 9.99x at n=1,011, 99x at
+// n=102. Sample size was a proxy for the real variable, the sampled COMPOSITION, and it is
+// a proxy that fails: two samples of the same honest network at the SAME size, differing by
+// one node, read 0.1726 and 0.0800 — a factor of 2.16.
+//
+// SO THE FIELD ALARM MUST BE MIX-AWARE, NOT SIZE-AWARE. The panel already publishes the
+// mix; the null should be recomputed from it on every reading rather than compared to a
+// constant.
+//
+// SECOND, AND SEPARATE: the disk weighting (0.1/1/50 TB) is a STORAGE-SHARE model applied
+// to a SERVE-work series. Serve bytes are bandwidth- and demand-bound, not holdings-bound.
+// That is why the withdrawn provenance sentence cited the wrong corner of the wrong band.
+//
+// AND THE GINI CANNOT CARRY T-AR AT ALL. T-AR is a TIER-SHARE statement; the Gini is a
+// per-node DISPERSION statistic. On a network whose ratified tier design spans a 500:1
+// capacity dispersion the two disagree by construction: at the ceiling sample below, the
+// Gini reads 0.1726 (over the constant) while the pony tier still does 81.8 % of the bytes
+// (far above the tenet floor). This test asserts that disagreement, because it is the whole
+// argument for moving the T-AR gate to the tier share (TestGateC3_1b_TierMixShareIsNodeCountNotServedBytes, and the Builder's
+// per-tier work totals).
+//
+// DISCHARGE CONDITION: this pin clears when the serve series' honest weighting is MEASURED
+// (per-tier serve bytes on the wire) and the alarm is computed against a mix-conditioned
+// null — never when a Gini happens to fall below a constant.
+func TestGateC3_1_ServeGiniHonestNullIsMixDependentNotSampleSizeDependent(t *testing.T) {
+	if testing.Short() {
+		t.Skip("drives two 4,096-peer samples; -short runs the two gates only")
+	}
+	// The observable ceiling, disk-weighted, vision proportions. maxPeerInfo is 4,096.
+	// ARM 1 forces the single archival node in; ARM 2 is the SAME honest network at the
+	// SAME sample size with the archival node not drawn. A uniform 4,096-of-10,101 draw
+	// contains it only 40.5 % of the time, so ARM 2 is the more typical sample and ARM 1
+	// is the worst case.
+	withArchival := []c3Peer{
 		{capTotal: c3PonyCap, served: 100 * c3Unit, repairs: 0, n: 4055},     // 0.1 TB
 		{capTotal: c3HorseCap, served: 1000 * c3Unit, repairs: 10, n: 40},    // 1 TB
 		{capTotal: c3ArchivalCap, served: 50000 * c3Unit, repairs: 10, n: 1}, // 50 TB
 	}
-	conc, _ := c3Fixture(t, 21, diskWeighted)
-	if conc.ServeGini == nil || !conc.ServeGini.Known {
-		t.Fatalf("provenance pin: no known serveGini over the ceiling sample: %+v", conc.ServeGini)
+	withoutArchival := []c3Peer{
+		{capTotal: c3PonyCap, served: 100 * c3Unit, repairs: 0, n: 4056},
+		{capTotal: c3HorseCap, served: 1000 * c3Unit, repairs: 10, n: 40},
 	}
-	v := conc.ServeGini.val()
-	t.Logf("disk-weighted honest vision shape at the observable ceiling (%d peers = maxPeerInfo): serveGini %.4f, threshold %.2f",
-		conc.Sample.Size, v, c3ServeGiniMax)
-	if v <= c3ServeGiniMax {
-		t.Fatalf("PROVENANCE PIN DISCHARGED (or the shape moved): the disk-weighted honest vision shape now reads %.4f <= %.2f at the largest observable sample. When this test was written it read 0.1726 and the threshold's stated provenance (0.1209) was only reachable at 10,101 nodes, above maxPeerInfo. Re-read the finding before deleting this test.", v, c3ServeGiniMax)
+	concA, _ := c3Fixture(t, 21, withArchival)
+	concB, _ := c3Fixture(t, 22, withoutArchival)
+	rA, rB := c3ServeGate(concA), c3ServeGate(concB)
+	if rA.Coverage < 1 || rB.Coverage < 1 {
+		t.Fatalf("both arms must have full coverage (got %.4f, %.4f) — this pin is about the NULL, not the adjustment", rA.Coverage, rB.Coverage)
 	}
+	if concA.Sample.Size != concB.Sample.Size {
+		t.Fatalf("the two arms must be the SAME sample size for the comparison to isolate the mix; got %d and %d", concA.Sample.Size, concB.Sample.Size)
+	}
+	t.Logf("SAME honest network, SAME sample size %d, differing by ONE node: with archival G_adj %.4f (%s) | without archival G_adj %.4f (%s) | ratio %.2fx",
+		concA.Sample.Size, rA.Adjusted, rA.Verdict, rB.Adjusted, rB.Verdict, rA.Adjusted/rB.Adjusted)
+
+	// THE PIN, part 1 — the mix moves the honest null across the constant. One node.
+	if rA.Verdict != c3Concentrated {
+		t.Fatalf("PIN DISCHARGED (or the shape moved): the disk-weighted honest vision shape with one archival node now reads %s at G_adj %.4f against the %.2f constant. When this pin was written it read 0.1726 and CONCENTRATED — an honest topology reported as capture. Re-read the finding before deleting this test.",
+			rA.Verdict, rA.Adjusted, c3ServeGiniMax)
+	}
+	if rB.Verdict != c3Pass {
+		t.Fatalf("the SAME honest network without the archival node reads %s at G_adj %.4f. This pin needs the two arms to STRADDLE the constant; if they no longer do, the mix-dependence claim must be re-measured.", rB.Verdict, rB.Adjusted)
+	}
+	if ratio := rA.Adjusted / rB.Adjusted; ratio < 2.0 {
+		t.Fatalf("one node moves the honest null by only %.2fx (%.4f vs %.4f). The mix-dependence this pin records has weakened — re-derive before relying on a size-based alarm.", ratio, rA.Adjusted, rB.Adjusted)
+	}
+
+	// THE PIN, part 2 — the Gini and T-AR disagree on the SAME sample. The Gini calls
+	// ARM 1 concentrated; the pony tier serves 81.8 % of its bytes, far above the tenet
+	// floor of 0.50. The tier share is computed from the fixture because no product
+	// surface publishes it (see TestGateC3_1b_TierMixShareIsNodeCountNotServedBytes) — that absence is the build item.
+	ponyBytes := float64(4055 * 100)
+	totalBytes := float64(4055*100 + 40*1000 + 1*50000)
+	ponyServeShare := ponyBytes / totalBytes
+	if ponyServeShare < 0.50 {
+		t.Fatalf("fixture defect: the disk-weighted ceiling shape gives the pony tier %.4f of served bytes, so the two statistics do not disagree here and the pin has no subject", ponyServeShare)
+	}
+	t.Logf("THE TWO STATISTICS DISAGREE on one sample: the Gini reports %s (G_adj %.4f > %.2f) while the pony tier serves %.4f of the bytes — far above the T-AR floor of 0.50. The Gini is per-node dispersion; T-AR is a tier share. Only one of them is the tenet.",
+		rA.Verdict, rA.Adjusted, c3ServeGiniMax, ponyServeShare)
 }
 
 // ---- the anti-substitution pin ---------------------------------------------------------
