@@ -75,6 +75,12 @@ turns the economy on over a live mint (Boulder 0 is DONE); a graded field run is
 model-check tier covering its regime — a field run confirms, it never discovers
 (`docs/build-process.md`).
 
+**Where the critical path stands (2026-09-09).** Lane A is CLOSED and field-confirmed. Boulder 2's
+RC-relevant work is merged — the flat delivery path retired, the R2.7 detectors, the observability set
+with per-tier work totals, the pre-flip code closers, and the idle window. **Boulder 3 is now the whole
+remaining critical path: D1 → D2 → D3 (the owner's freeze), then E4 (the external pass) and E5 (the
+field grade).** Nothing in Boulder 2 blocks the freeze; C6 the flip is a `0.9.x` release AFTER it.
+
 **The order of active work:** Lane A (consensus liveness) → Boulder 2 / Lane C (the economy — the
 RC's substance) → Boulder 3 / Lane D (the freeze = the RC) → Boulder 4 / Lane E (B8 on the frozen
 artifact + the M0 endgame) → Boulder 5 (the operational floor, post-RC) → Boulder 1 re-scoped ("the
@@ -189,12 +195,59 @@ trustlessly recomputes state roots.
   I5 pruned-slash forgery, `#558`, Structure Round 1A — PRs #701–#732, #772–#776): the archive file
   and `docs/thinking/2026-09-01-floorbox-witness-soundness-fix-design.md`.
 
-**Owner calls.** At most five per true-up (simplicity rule 5). Owed today: **10** (R4.3b `on`, after
-the shadow run), **12** (commission the external B8 seat, at D3), the `#558` refusal-surface
-ratify-or-narrow, the `-quorum` derived default and the single-anchor launch posture (both A2) (the rule refuses on ANY structural-verification failure, a larger surface than
-scope call S3's "torn tail" — kept per the PE). The 23-call block of 2026-09-07 is decided and
-archived; its decisions live in `docs/decisions.md` (`D-TRUE-UP-CALLS-2026-09-07`,
-`D-CONSENSUS-ARMING`, `D-H43-WORKLESS-DESIGNEE`).
+### ▶ OPEN QUESTIONS FOR THE OWNER — the authoritative list
+
+Simplicity rule 5 caps owner calls at five per true-up. This is the standing list; everything here has
+its evidence attached, and nothing else in this file is owed to the owner. Three calls that appeared
+here on 2026-09-08 are GONE because the owner delegated them and they are decided and recorded in
+`docs/decisions.md` `D-DELEGATED-CALLS-2026-09-09` (the `#558` refusal surface, the `-quorum` derived
+default, the single-anchor launch posture, and the CHANGELOG truncation lint).
+
+**READY TO DECIDE — both have their evidence and cost measured.**
+
+1. **The delivery idle-window VALUE: ratify 24m** (row C2). `docs/decisions.md` reserved the value as
+   owed after the graded run; the precondition is met. The reasoning CHANGED even though the magnitude
+   did not: ratified call (4) argued in EPOCHS against the 190 s bound, and this ships a DURATION
+   against the 430 s takeover bound, because a defensive window must dominate the worst case the model
+   admits, and because the last-settle stamp is floored into quarter-window buckets so guaranteed
+   survival is 0.75 × the window. The blind PE re-derived it and recommends ratifying; it verified the
+   cost is **zero**, since the deposit release epoch (30m35s) binds first at either candidate window.
+2. **Should `-accept-relay-payments` be enabled at the edge tiers at all in v1?** Measured 2026-09-09
+   (`R-REAPER-FORFEIT`): a relay session reaped by the epoch sweep settles **ZERO**, not a fraction —
+   100 % of earned credit forfeit with the fetcher's face already spent at open. Session lifetime is
+   9–16 blocks (413–734 s at the measured `T_b`), so settling one 24.4 GiB face inside it needs
+   **508 / 286 Mbit/s sustained on a single session**; at a 100 Mbit/s edge uplink a node moves 4.81 of
+   24.41 GiB and is paid nothing. The reap is lazy with one production caller and there is no periodic
+   relay sweep, where the delivery lane has one plus a daemon ticker. The Tester's verdict is that it
+   should not be enabled at edge tiers on these numbers. A periodic sweep or incremental relay
+   settlement is a DESIGN change and is routed, not built.
+
+**AN HONESTY CALL, not a decision about code.**
+
+3. **What does the RC claim about the paid delivery lane?** No delivery session has ever settled on a
+   real network. The graded sheet's settlement row is SKIP ("UNTESTED on this chain", era-4 dark) and
+   the lane row grades a DARK lane. `97e3101-deep` field-confirmed the **consensus** bound; it has
+   confirmed nothing about the lane that bound is now applied to, so every C2 number is sim-driven.
+   Decide deliberately what the RC says about the lane rather than letting omission decide it — the
+   options are to grade it at the stamp raise (E5, after D3, when era-4 activates), to ship the RC
+   stating the lane is unexercised in the field, or to scope the paid lane out of the RC's claims.
+
+**GATED ON WORK THAT HAS NOT HAPPENED — owed, but not actionable today.**
+
+4. **Owner call 10 — R4.3b `on`** (row E1): ratify R = 4 and `cap_relay` = 4 with the printed floor.
+   **Not ready:** E1 still owes one builder session for preconditions (1)–(6) + (8), and the shadow run
+   rides the NEXT graded run. The call means nothing until the run reports series A < 5 % and B < 20 %.
+5. **Owner call 12 — commission the external B8 seat** (row E4), at D3.
+6. **D3 — the freeze act itself**, after D0 (DONE) + D1 + D2. This is the RC gate.
+
+**SCHEDULING CALLS on work already filed** (not blocking, but the owner's to sequence): whether the
+repair statistic's normalisation and node-level granularity (both filed 2026-09-09, see the C3 row and
+`R-SUBFRAME-*` rows) are built BEFORE the economy flip; and when the red team takes the sub-frame
+privacy surface (`R-SUBFRAME-SIZE-ORACLE`), which now carries both an exact byte-length oracle and the
+loss of chunk size as a salt against the confirmation attack.
+
+The 23-call block of 2026-09-07 is decided and archived; its decisions live in `docs/decisions.md`
+(`D-TRUE-UP-CALLS-2026-09-07`, `D-CONSENSUS-ARMING`, `D-H43-WORKLESS-DESIGNEE`).
 
 **Scope calls — all four DECIDED 2026-09-07** (`D-RC-SCOPE-S1`, `D-RC-SCOPE-S2-S4`): S1 the RC ships
 economy default-OFF with every lane built, the flip is a `0.9.x` release before `1.0.0`; S2 the
@@ -223,17 +276,24 @@ forgery (#714; `SlashesBytesCap` 16 MiB); R0.7 relay-lane mint (interim #718 →
   R2.9a `B_bootstrap` (#734–#745; `grant/r` = 64 GiB) · R2.10 F8 (#727) · R2.11 (#747) · R2.12 the
   faucet (#746, #754, #755, #758, #761) · R2.13 (#717) · R2.13b (#724) · R2.14 (#721) · the
   per-stripe parity fetch (#751).
-- **OPEN (Lane C):** C1 the v2 primitive deletion · C2 the idle-window default after A3 · C3 R2.2 ·
-  C4 the R2.7 telemetry · C5 the pre-flip closers · C6 R2.4 · C7 R2.7 · C8 R2.8 · C9 measurements ·
-  C10 small PRs.
+- **DONE 2026-09-08/09:** C1 the v2 flat primitive + the ledger's flat leg retired (#780) · C3 R2.2 the
+  observability set (#784) with the per-tier work totals that re-found the withdrawn thresholds (#788) ·
+  C4 the R2.7 blocking detectors (#781) · C5's two CODE closers (#787, with `D-GENESIS-MOVE-2` ratified) ·
+  C2 the delivery idle window (#789, value ratification owed).
+- **OPEN (Lane C):** C5's bearer-anchor red-team pass · C6 R2.4 (two of its aborts re-pointed at the
+  harness by `D-WORK-VISIBILITY`) · C7 R2.7 (scoped down: A4-2/A4-3 are floor detectors, A5 is
+  half-instrumented, A6 has no instrument and is scoped OUT until C3's successors land) · C8 R2.8 ·
+  C9 measurements · C10 three small PRs.
 - Design records: [`docs/thinking/2026-09-01-economy-observability-design.md`](docs/thinking/2026-09-01-economy-observability-design.md)
   and the dated R2.x deliberations in `docs/thinking/`.
 
 #### Boulder 3 — The freeze (era-4/v5) · the RC release
 - **DONE:** R3.1 the SMT domain-separation residual (#731, #749, #754) · R3.3 (doc-only; re-derive
   only if #299 moves) · `#558` the chain-store refusal (2026-09-07).
-- **OPEN (Lane D):** D0 the cold auditor · D1 the freeze manifest (three digest leaves, the last
-  format touch) · D2 the stamp-raise test deliverables · D3 the freeze act.
+- **DONE 2026-09-09:** D0 the cold auditor (#786) — **the RC's only floor-box requirement, closed.**
+- **OPEN (Lane D) — this is now the WHOLE remaining critical path to the RC:** D1 the freeze manifest
+  (the FORMAT items in one train; the digest set drops to three leaves and that is the LAST format
+  touch) · D2 the four stamp-raise test deliverables · D3 the freeze act (**OWNER**).
 
 #### Boulder 4 — B8 on the frozen artifact + the M0 endgame
 - **DONE:** R4.3a (#715) · R4.3b shadow mode (#725).
