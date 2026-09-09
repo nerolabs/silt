@@ -46,6 +46,31 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   of silt's derived parameters for the same defect shape, partitioned by whether a parameter FREEZES at D3.
 
 ### Fixed
+- **`SlashesBytesCap` keeps its value and loses its route: a configuration can no longer defeat slash evidence
+  (`D-SLASHCAP-ROUTE`; owner call 2026-09-09, "CLOSE THE ROUTE. Not a re-ratification."; gates G-SLASHCAP-1..4).**
+  The constant is unchanged at 16 MiB. What changed is that its derivation is now true by CONSTRUCTION. The cap is a
+  consensus validity rule every validator enforces (`core/chain/validate_v5_predicates.go`), and its invariant
+  `cap ≥ 2 × (honest block) + overhead` was computed from the DEFAULTS of `-max-bondreg-bytes-per-block` and
+  `-max-entry-bytes-per-block` — two flags that are **proposer-side only** (every non-test read is
+  `core/node/chainrole.go` `foldPendingBondRegs` and `core/node/entrypool.go` `foldPendingEntries`) and whose help
+  documented `0 = unbounded`. Nothing held the running configuration to the derivation, so an operator could raise its
+  own bond-reg budget past ~7.9 MiB and thereby make its OWN equivocation unprovable: an evidence proof carries two
+  FULL block bodies since `F2-EVIDENCE-RECOMPUTE`, so the pair exceeds the cap, the cap rejects it **before**
+  `CheckEquivocation` ever runs, and the double-signer **keeps its seat**. Slashing defeated by making the evidence too
+  big; accountability is a Part-0 corner. `core/node.CheckSlashEvidenceHeadroom` now expresses the invariant on the
+  values IN FORCE and `cmd/silt` refuses to start on a violation, naming the rule, the flag, the admissible ceiling and
+  what is lost. `0` and negative budgets are refused rather than clamped (the proposer's guard is `budget > 0`, so both
+  read as unbounded), because clamping would silently re-interpret an explicit operator request. Nothing in-tree set
+  either flag, so no topology changes. **The owner's framing is the durable lesson: this is the #380 class** — a
+  consensus quantity that is a function of LOCAL CONFIG rather than of the chain, the second instance inside one week
+  after `RequiredQuorum()` returned the local `cfg.Quorum` — *"two instances of one class isn't a coincidence, it's an
+  unguarded seam."* Timing: a VALIDITY rule (freeze manifest item 10), so the deadline was the stamp raise rather than
+  the freeze, and not deferrable past it, because RAISING a cap later is a WIDENING rule change and sits outside the
+  narrowing exemption. **Scope, so it is not over-read:** this closes the CONFIGURATION route only. The cap's disclosed
+  second face — a ≥⅓ coalition making every evidence pair over-cap with its own valid renewals — is untouched and no
+  admissible cap value closes it; only the v5 two-level block hash (d-3) removes it. The single-reg overflow
+  (`core/node/chainrole.go` embeds the first fresh reg unconditionally, and silt has no per-reg byte cap) is FILED as
+  `R-BONDREG-SINGLE-OVERSIZE` rather than folded in — it needs a validity rule of its own.
 - **A FALSE field-confirmation claim in `cmd/silt/numeraire.go`, found by the pre-freeze
   derivation-route audit.** The comment asserted that both the 190 s modal tier and the 430 s envelope
   were field-confirmed on `97e3101-deep`. The 190 s tier is (row `6-fault-tolerance`). **The 430 s

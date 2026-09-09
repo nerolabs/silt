@@ -2677,3 +2677,41 @@ showing the one-byte value IS committed).
 - **What this does NOT decide:** the relay successor's MECHANISM (periodic sweep vs incremental
   settlement — the Researcher certifies, the owner ratifies); which external party takes the B8
   engagement; the freeze act itself (D3).
+
+## D-SLASHCAP-ROUTE — `SlashesBytesCap` keeps its value and loses its route; a consensus rule may not be a function of local config
+
+- **Status:** ✅ DECIDED — 2026-09-09 (owner: *"The SlashesBytesCap call: CLOSE THE ROUTE. Not a
+  re-ratification. The value stays 16 MiB. The route goes."*), on the pre-freeze derivation-route audit
+  `/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-derivation-route-audit-pre-freeze-2026-09-09.md`.
+  Deliberation: [`thinking/2026-09-10-slashcap-route-close-design.md`](thinking/2026-09-10-slashcap-route-close-design.md).
+- **The value is unchanged.** `chain.SlashesBytesCap` stays 16 MiB. Nothing about the constant moved.
+- **The defect.** The cap is a consensus validity rule enforced on every validator
+  (`core/chain/validate_v5_predicates.go:285`), and its invariant `cap ≥ 2 × (honest block) + overhead`
+  was computed from the DEFAULTS of `-max-bondreg-bytes-per-block` and `-max-entry-bytes-per-block`.
+  Both flags are **proposer-side only** (every non-test read: `core/node/chainrole.go:890`,
+  `core/node/entrypool.go:116`) and documented `0 = unbounded`. So an operator could raise its own
+  budget past ~7.9 MiB and make its OWN equivocation unprovable — the evidence pair exceeds the cap,
+  the cap rejects it before `CheckEquivocation` runs, and the double-signer **keeps its seat**.
+- **The owner's three reasons, in his order of weight.** (1) *"It's the same class as #380, which we
+  just paid for.* `RequiredQuorum()` *read the local* `cfg.Quorum` *and produced an I1 divergence.
+  A consensus rule must be a function of the chain, never of local config. Two instances of one class
+  inside a week isn't a coincidence, it's an unguarded seam."* (2) The accountability face is the real
+  severity: *"that's slashing defeated by making the evidence too big. Accountability is a Part-0
+  corner."* (3) Timing is decisive and the tier correction is accepted — this is a VALIDITY rule
+  (freeze manifest item 10), so the deadline is the STAMP RAISE, not the freeze; but *"raising a cap
+  later is a widening rule change, outside the narrowing exemption. 'Fix it cheaply later' isn't on
+  the menu. It's now, or it's a coordinated fleet fork."*
+- **The fix.** `core/node.CheckSlashEvidenceHeadroom(cfg)` expresses the invariant on the values IN
+  FORCE; `cmd/silt` refuses to start on a non-nil return. `0` and negative budgets are refused (the
+  proposer's guard is `budget > 0`, so both read as unbounded), rather than clamped — clamping would
+  silently re-interpret an explicit operator request. Driven by G-SLASHCAP-1..4, ablation red first.
+  No consensus rule, block format or published claim changes; this binds a configuration to an
+  already-ratified derivation.
+- **Scope, so it is not over-read.** This closes the CONFIGURATION route only. The cap's disclosed
+  SECOND FACE — a ≥⅓ coalition making every evidence pair over-cap with its own valid renewals, so
+  accountable safety degrades to plain safety for fat coalitions — is UNTOUCHED, and no admissible cap
+  value closes it; only the v5 two-level block hash (d-3, a FORMAT item in the D1 train) removes it.
+- **What this does NOT decide:** the single-reg overflow (`R-BONDREG-SINGLE-OVERSIZE`) — silt has no
+  per-reg byte cap and `core/node/chainrole.go:902` embeds the first fresh reg unconditionally, so one
+  oversized registration can still exceed the configured budget. That needs a validity rule of its own
+  and is filed, not folded in.
