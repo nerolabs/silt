@@ -21,16 +21,23 @@ import (
 // v5ValidateBondRegs mirrors Chain.validateBondRegs: the legacy early return (a legacy chain
 // ignores BondRegs entirely — M-1), the Q2 pruned-tolerance gate keyed on the reader's OWN trust
 // floor, the v5 RegCap, the #506 R-rule past the gate, the unconditional per-root dedup, and the
-// nonce-window per-registration check. The pruned leg is the NODE's rule (v.TrustFloor()); a box
-// stalls on a pruned block at its entry before the composition runs.
+// nonce-window per-registration check. The pruned leg is the NODE's rule (v.PrunedTolerated); a box
+// stalls on a pruned block at its entry before the composition runs, and stalls here too if it ever
+// reached this leg — the view answers NoWitness, never a floor (H-4).
 func v5ValidateBondRegs(v StateView, b *Block) (FloorBoxOutcome, error) {
 	if !v.Objective() {
 		return Accept, nil
 	}
 	p := v.Params()
 	if b.IsPruned() {
-		if floor := v.TrustFloor(); b.Height >= floor {
-			return Reject, fmt.Errorf("%w: pruned block at height %d, floor %d", ErrPrunedAboveHorizon, b.Height, floor)
+		tolerated, av := v.PrunedTolerated(b.Height)
+		if av != Present {
+			// No view of the pruned-tolerance rule: STALL. A view that cannot answer must not have
+			// the answer invented for it — that is the floor-shaped hole H-4 closed.
+			return IndeterminateTrustlessly, fmt.Errorf("%w: pruned block at height %d, no view of the pruned-tolerance rule", ErrViewNoWitness, b.Height)
+		}
+		if !tolerated {
+			return Reject, fmt.Errorf("%w: pruned block at height %d", ErrPrunedAboveHorizon, b.Height)
 		}
 		for _, r := range b.BondRegs {
 			if r.Answer != nil {

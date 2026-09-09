@@ -459,7 +459,7 @@ func TestRecomputeQualifiedCount_MissingMemberWitnessStalls(t *testing.T) {
 func TestRecomputeQualifiedCount_NeverFlipsWitnessValidateAccept(t *testing.T) {
 	const minBond = int64(1) << 20
 	f := buildQualifiedCountFixture(t, minBond, mixedQCBonds())
-	got, _ := f.c.WitnessValidateV5(v5Block(3), f.root, RecoveryDirective{})
+	got, _ := f.c.WitnessValidateV5(v5Block(3), f.root)
 	if got == Accept {
 		t.Fatal("STOP boundary violated: WitnessValidateV5 returned ACCEPT — the accept flip (#657) must wait until ALL predicates are reproduced")
 	}

@@ -520,7 +520,7 @@ func TestRecomputeDeMatureSuperQuorum_MissingMemberWeightStalls(t *testing.T) {
 // increment reproduces ONE predicate; it must NOT have flipped WitnessValidateV5 to Accept.
 func TestRecomputeDeMatureSuperQuorum_NeverFlipsWitnessValidateAccept(t *testing.T) {
 	f := buildDematureFixture(t, 6, diverseBondsBig())
-	got, _ := f.c.WitnessValidateV5(v5Block(3), f.root, RecoveryDirective{})
+	got, _ := f.c.WitnessValidateV5(v5Block(3), f.root)
 	if got == Accept {
 		t.Fatal("STOP boundary violated: WitnessValidateV5 returned ACCEPT — the accept flip (#657) must wait until ALL predicates are reproduced")
 	}

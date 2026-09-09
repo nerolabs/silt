@@ -460,7 +460,7 @@ func TestRecomputeEpochWeightQuorum_MissingMemberWeightWitnessStalls(t *testing.
 // so the box STILL never-Accepts.
 func TestRecomputeEpochWeightQuorum_NeverFlipsWitnessValidateAccept(t *testing.T) {
 	f := buildRecomputeFixture(t)
-	got, _ := f.c.WitnessValidateV5(v5Block(3), f.root, RecoveryDirective{})
+	got, _ := f.c.WitnessValidateV5(v5Block(3), f.root)
 	if got == Accept {
 		t.Fatal("STOP boundary violated: WitnessValidateV5 returned ACCEPT — the accept flip (#657) must wait until ALL predicates are reproduced")
 	}

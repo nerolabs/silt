@@ -211,8 +211,20 @@ type StateView interface {
 	Objective() bool
 	VerifyBond(pub []byte, root ports.Hash, size int64, nonce uint64, answer []byte) bool
 	WitnessBudget() Budget
-	// TrustFloor is this view's own finalized/checkpoint anchor (retention.go trustFloor).
-	TrustFloor() uint64
+	// PrunedTolerated answers the Q2 pruned-tolerance QUESTION for height h — "may a payload-pruned
+	// block at h be trusted without re-verifying its space-time proofs?" — and never the floor it is
+	// derived from. That is deliberate, and it is D0's fourth deliverable (owner call 2; the
+	// certification's H-4, which REFUTED its own first draft to get here).
+	//
+	// A floor is not a benign contract parameter. chain.go's pruned leg SKIPS the space-time
+	// re-verify for a block strictly below the floor, so a caller who supplies a RAISED floor makes
+	// the reader skip proof verification for everything under it — i.e. accept forged bonded
+	// standing. A floor VALUE on this interface is a wrong-accept vector; the question is not.
+	//
+	// The node's liveView answers (h < c.trustFloor(), Present) — its own rule, unchanged. The box's
+	// provenView answers (false, NoWitness) and the composition STALLS: a box cannot audit history
+	// below any node's prune floor, which is a held liveness residual, not a defect.
+	PrunedTolerated(h uint64) (bool, Availability)
 
 	// ---- class 3: position. No Availability — a view WITHOUT a head cannot be constructed. ----
 	Head() HeadRef

@@ -1990,7 +1990,14 @@ func (c *Chain) validateBondRegs(b *Block) error {
 	// present) falls through to full verification at any height, unchanged.
 	if b.IsPruned() {
 		if b.Height >= c.trustFloor() {
-			return fmt.Errorf("%w: pruned block at height %d, floor %d", ErrPrunedAboveHorizon, b.Height, c.trustFloor())
+			// The floor VALUE is deliberately not rendered. Its v5 mirror (v5ValidateBondRegs) reads
+			// the pruned-tolerance rule through StateView.PrunedTolerated, which answers the question
+			// and never the scalar (D0 / H-4: a floor on that interface is a wrong-accept vector), so
+			// the mirror structurally cannot know the number. The v4/v5 parity oracle requires the two
+			// renderings to be IDENTICAL — the #572 attribution contract — and a value on one side only
+			// is exactly the drift it exists to catch. The floor is node-local and queryable; the
+			// sentinel and the height carry what an operator acts on.
+			return fmt.Errorf("%w: pruned block at height %d", ErrPrunedAboveHorizon, b.Height)
 		}
 		// Below the anchor: skip the space-time re-verify. Belt (decode-invariant): a
 		// pruned block must not also carry an Answer — a full block cannot smuggle a

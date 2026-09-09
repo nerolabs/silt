@@ -43,6 +43,34 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   already launches with three or four anchors, checked before the change.
 
 ### Removed
+- **The floor box's recovery knob — `RecoveryDirective`, its `Heights` set and its `LiveFollower`
+  opt-in (D0, the cold auditor; owner call 2 of `D-TRUE-UP-CALLS-2026-09-07`, ratified 2026-09-07 on
+  direction (a′) of the recovery-boundary certification).** At an ambiguous `#535` recovery
+  boundary the floor box now stalls UNCONDITIONALLY and loudly: the three paths past it —
+  a box-local directive for the height, the live-follower opt-in, and the un-gated fall-through —
+  are gone from the type system, so `BoxConfig` carries only its byte ceiling and
+  `WitnessValidateV5` lost its third parameter. The stall is TERMINAL, not per-block: the box would
+  need a verified state root for H+1 and its only source is the height it just declined to
+  reproduce. Recovery is the operator's, out of band — a fresh `-ws-checkpoint H+1:HASH` on which
+  the box discards its derived state and cold-starts — and **an unreachable pin is a critical and
+  irrecoverable failure, never a silent degrade to indeterminate-and-keep-going**: the four-clause
+  re-anchor contract is written down at `docs/design/owned-residuals.md` E2a, on the box door, and
+  in the `-liveness-recovery-height` help an operator reads before invoking a recovery. Also removed:
+  `StateView.TrustFloor() uint64`, replaced by `PrunedTolerated(h) (bool, Availability)` — the
+  question, never the scalar, because a caller-supplied floor makes the reader SKIP space-time
+  re-verification for every block under it, which is a wrong-accept vector rather than a contract
+  parameter (the certification refuted its own first draft to get here). The node's `liveView`
+  answers its own rule unchanged; the box's `provenView` answers `NoWitness` and the composition
+  stalls. One user-visible consequence: the `ErrPrunedAboveHorizon` message no longer renders the
+  floor VALUE on either the era-3 path or its v5 mirror, because the mirror structurally cannot know
+  it and the v4/v5 parity oracle requires the two renderings to be identical. Driven by
+  `TestColdAuditor_NeverAcceptsAnyV5BlockClass` (every v5 block class forged with a divergent
+  committed root, re-signed and re-certified, asserted never-Accept),
+  `TestColdAuditor_ClassCoverageIsComplete` (reflection over `Block`, so a new payload field reddens
+  rather than escaping), `TestColdAuditor_StallsUnconditionallyAtARecoveryBoundary`,
+  `TestColdAuditor_RefusesPrunedBlocks`, `TestColdAuditor_NoTrustFloorOnTheContractSurface` and
+  `TestColdAuditor_TheKnobIsGoneFromTheTypeSystem`; every arm run RED once against its own ablation.
+  Deliberation: `docs/thinking/2026-09-09-d0-cold-auditor.md`.
 - **The `core/demand` v2 flat primitive (C1, the B-9 tail).** B-9 (#764) retired the flat receipt at the
   node; the primitive behind it stayed callable because ~25 unit tests pinned properties on it. Those
   properties are now re-homed onto the anchored session lane and the primitive is DELETED: `Bank.Redeem`,

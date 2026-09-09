@@ -92,10 +92,11 @@ func (v provenView) VerifyBond(pub []byte, root ports.Hash, size int64, nonce ui
 func (v provenView) WitnessBudget() Budget { return v.budget }
 func (v provenView) Head() HeadRef         { return v.head }
 
-// TrustFloor is 0 for a proven view: the box entry refuses a pruned block before the composition
-// runs, because a box-owned floor the node does not share is the wrong direction (build-plan
-// certification §1.4 item 5).
-func (v provenView) TrustFloor() uint64 { return 0 }
+// PrunedTolerated is NoWitness for a proven view: the box has no floor, cannot be given one, and
+// does not reconstruct the node's. Both box entries refuse a pruned block before this is reached
+// (H-3); this is the belt, and it stalls rather than answering, so no value the box invents can
+// stand in for the node's rule (H-4).
+func (v provenView) PrunedTolerated(uint64) (bool, Availability) { return false, NoWitness }
 
 // Rep is the LEGACY reputation view, which is not a committed leaf: the box has no witness for
 // it and the composition stalls on the legacy branch (M-1). This is the S2 mode fence expressed as

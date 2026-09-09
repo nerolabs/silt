@@ -18,8 +18,8 @@ import (
 // had nine; eight were second doors — a caller could reach one reproduced predicate with none of
 // P1–P4 in front of it (N1 is exactly that shape). The box's door is (*Box).Validate, which is not
 // a *Chain method and runs the ONE composition. The two that stay:
-//   - WitnessValidateV5: the pre-structure never-Accept scaffold (three-parameter under 1A, delta
-//     certification §6);
+//   - WitnessValidateV5: the pre-structure never-Accept scaffold (delta certification §6; D0 took
+//     its RecoveryDirective parameter away with the knob);
 //   - WitnessReadSetV5: the read-set PRODUCER, which expresses no verdict (readset_v5.go).
 var exportedBoxDoors = []string{"WitnessReadSetV5", "WitnessValidateV5"}
 
@@ -92,7 +92,7 @@ func TestWitnessReadSetV5_LegacyFence(t *testing.T) {
 var twinHelpers = map[string]string{
 	"assertHonestTwinAgrees":       "the carrier gates: the box agrees with the node on the honest block, warm and cold",
 	"assertHonestTwinAccepts":      "the structure gates: the node and the composition over liveView Accept the honest block",
-	"assertBoxReachesTheDowngrade": "the door gates: the honest block runs the composition through the box to the R1.8 downgrade",
+	"assertBoxReachesTheDowngrade": "the door gates and the D0 cold-auditor arms: the honest block runs the composition through the box to the R1.8 downgrade",
 	"requireV5Fixture":             "the stage-cover arms: arm D, which calls assertHonestTwinAccepts",
 }
 
@@ -102,6 +102,7 @@ var twinGateFiles = []string{
 	"redteam_floorbox_structure_gate_test.go",
 	"composition_stage_cover_v5_test.go",
 	"floorbox_box_v5_test.go",
+	"floorbox_coldauditor_v5_test.go",
 	"parity_oracle_v4v5_test.go",
 	"validate_v5_maturity_gate_test.go",
 }
@@ -190,7 +191,7 @@ var exportedPackageSurface = map[string]string{
 	"func ByteBudget":         "the only bounded Budget constructor; refuses a non-positive ceiling (M-4)",
 	"func UnlimitedBudget":    "the node's Budget; only liveView returns it (G-D10)",
 	// ---- methods on exported receivers ----
-	"method Box.Validate":            "THE DOOR: budget → recovery → pruned stall → ValidateCommitV5(provenView) → the one-line R1.8 downgrade",
+	"method Box.Validate":            "THE DOOR: budget → the unconditional #535 recovery stall → pruned stall → ValidateCommitV5(provenView) → the one-line R1.8 downgrade",
 	"method Box.Head":                "the box's own head record, read-only",
 	"method Budget.Check":            "the ONE budget comparison; the zero Budget stalls by name",
 	"method Budget.Unlimited":        "accessor",
@@ -198,19 +199,18 @@ var exportedPackageSurface = map[string]string{
 	"method Budget.MaxBytes":         "accessor",
 	"method FloorBoxOutcome.String":  "rendering",
 	"method Availability.String":     "rendering",
-	"method Chain.WitnessValidateV5": "the pre-structure never-Accept scaffold (G-6; delta certification §6, three-parameter under 1A)",
+	"method Chain.WitnessValidateV5": "the pre-structure never-Accept scaffold (G-6; delta certification §6). D0 dropped its third parameter with the RecoveryDirective",
 	"method Chain.WitnessReadSetV5":  "the read-set PRODUCER, fenced to objective mode; expresses no verdict (G-6)",
 	// ---- types ----
-	"type Box":               "the box: config-bearing chain, derived head, derived budget, delivery seam",
-	"type BoxConfig":         "box-owned operator config: the byte ceiling and the #535 directive",
-	"type StateView":         "the composition's read interface — SEALED by an unexported method, so only liveView/provenView implement it",
-	"type WitnessSource":     "the witness DELIVERY seam a witness server implements; it returns leaves, never a verdict",
-	"type HeadRef":           "the view's own position (M-3)",
-	"type Budget":            "the BG-3 byte ceiling; unexported fields, two constructors",
-	"type Params":            "the view's own consensus configuration (class 3)",
-	"type Availability":      "the three-valued read result; NoWitness is the zero",
-	"type FloorBoxOutcome":   "the three-valued verdict",
-	"type RecoveryDirective": "the box-local #535 recovery directive",
+	"type Box":             "the box: config-bearing chain, derived head, derived budget, delivery seam",
+	"type BoxConfig":       "box-owned operator config: the byte ceiling. D0 deleted its Recovery field and the RecoveryDirective type with it — the #535 stall is unconditional, so there is nothing left to configure",
+	"type StateView":       "the composition's read interface — SEALED by an unexported method, so only liveView/provenView implement it",
+	"type WitnessSource":   "the witness DELIVERY seam a witness server implements; it returns leaves, never a verdict",
+	"type HeadRef":         "the view's own position (M-3)",
+	"type Budget":          "the BG-3 byte ceiling; unexported fields, two constructors",
+	"type Params":          "the view's own consensus configuration (class 3)",
+	"type Availability":    "the three-valued read result; NoWitness is the zero",
+	"type FloorBoxOutcome": "the three-valued verdict",
 	// witness carriers: data the box is HANDED, measured by witnessBytes; none expresses a verdict
 	"type StateRootWitness":            "witness carrier",
 	"type StateRootChangedLeafWitness": "witness carrier",
