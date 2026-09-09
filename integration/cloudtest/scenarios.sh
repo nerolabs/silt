@@ -2419,7 +2419,11 @@ import json;t=json.load(open('$FT_TOPO'));n=t['nodes']['$offnode'];print(n['node
     fi
     local ok=0; [ -n "$sbanked" ] && [ "$off_ok" = 1 ] && ok=1
     [ "$off_noise" = 1 ] || slo_assert "13-delivery-lane" major "LIVE lane: client banked (${out##*: }); server debug.log banked=$([ -n "$sbanked" ] && echo yes || echo NO) closed=$([ -n "$closed" ] && echo yes || echo NO); lane-off control at ${offnode} $([ "$off_ok" = 1 ] && echo refused-with-marker || echo "WRONG: $off")" "$ok" $((t1 - t0))
-    local sok=0; [ -n "$sbanked" ] && ! printf '%s' "$closed" | grep -qE "object=|fetcher=" && sok=1
+    # The row grades ONE thing: the banked line. The M0 log audit still runs, but only
+    # when a close line exists — on empty input the grep is vacuously true, and an absent
+    # line must not read as a passed audit (blind PE non-blocking finding 2).
+    local sok=0; [ -n "$sbanked" ] && sok=1
+    if [ -n "$closed" ] && printf '%s' "$closed" | grep -qE "object=|fetcher="; then sok=0; fi
     slo_assert "13b-delivery-settlement" major "R2.9 settlement ON THE WIRE: ${sbanked:-no banked line}; close: ${closed:-not observable at the shipped 24m idle window (graded at the e2e tier)}${afford:+; $afford}" "$sok" $((t1 - t0))
     return
   fi

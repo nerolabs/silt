@@ -162,7 +162,14 @@ func tenthsPct(t int64) string {
 // so the window must dominate the worst stall the published liveness model admits. All
 // three constants below are DERIVED from that one sentence; none is chosen.
 
-// deliveryIdleBound is the worst stall the model admits: a LOST entry forward is bounded
+// deliveryIdleBound is a CONSERVATIVE ENVELOPE, not a mechanism the reaper is racing. Its
+// status changed on 2026-09-09: the window was originally sized on the sentence "a chain
+// stall reaps every live session", and that sentence is refuted (`R-SESSION-WALLCLOCK-STEP`
+// in docs/design/m0.md — nothing in the settle or fetch path reads the chain, driven). With
+// the causal path withdrawn, this number is adopted because ratified call 4 of
+// `D-TRUE-UP-CALLS-2026-09-07` instructs a window ABOVE the bound, and because it is a safe
+// envelope on how long an honest fetcher may be gapped for reasons of its own. It is the
+// worst stall the model admits: a LOST entry forward is bounded
 // by the re-keyed takeover at ≤ (N+2)·ChainSyncInterval + G = 14·30 + 10 s at N = 12
 // (docs/decisions.md D-H43-WORKLESS-DESIGNEE (21), ratified 2026-09-07). It DOMINATES the
 // 190 s modal tier of D-CONSENSUS-ARMING (19), which is why a defensive window is sized
@@ -215,9 +222,18 @@ const deliveryIdleFieldStall = 1040 * time.Second
 // is the binding term at this window on the measured cohort.
 const deliveryIdleDefault = 24 * time.Minute
 
-// Compile-time proof of the three sentences above, in the same arithmetic the reaper runs.
+// Compile-time proof of the four sentences above, in the same arithmetic the reaper runs.
 // A future edit to the bound, the divisor or the default that breaks one of them fails to
-// BUILD: a negative constant does not convert to uint.
+// BUILD: a negative constant does not convert to uint (measured: `deliveryIdleDefault =
+// 23m` gives "constant -5000000000 overflows uint").
+//
+// HOW TO FALSIFY THE GATES BESIDE THESE: a guard PRE-EMPTS its twin test, so an ablation
+// that trips a guard never reaches the test and proves nothing about it. To show
+// TestC2AcceptedIdleFloorClearsTheLivenessBound and TestC2ShippedFloorIsDerivedFromTheBound
+// are not decoration, LIFT the guard first (delete the matching line below), THEN ablate
+// the constant; both go RED. The guards cover the axis more strongly than the tests do —
+// unbuildable beats red, and it cannot be skipped or -shorted away — but they carry no
+// property statement, which is what the tests are for.
 const (
 	_ = uint(deliveryIdleFloor - deliveryIdleFloor/deliveryIdleStampDivisor - deliveryIdleBound)          // the floor's guaranteed survival clears the bound
 	_ = uint(deliveryIdleDefault - deliveryIdleFloor)                                                     // the default is at or above the floor

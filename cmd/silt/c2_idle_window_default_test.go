@@ -160,7 +160,10 @@ func TestC2DeliveryIdleWindowDefaultIsSet(t *testing.T) {
 // paid lane under a window the liveness model can break is grading the wrong thing.
 func TestC2CloudtestIdleWindowClearsTheLivenessBound(t *testing.T) {
 	re := regexp.MustCompile(`-delivery-idle-window\s+([0-9]+[a-z]+)`)
-	found := map[string]string{}
+	// EVERY match in every file, not the last one per file (blind PE finding 7): a harness
+	// file that sets one compliant and one non-compliant window would otherwise grade on
+	// whichever came last.
+	found := map[string][]string{}
 	for _, f := range []string{
 		"../../integration/cloudtest/scenarios.sh",
 		"../../integration/cloudtest/README.md",
@@ -171,7 +174,7 @@ func TestC2CloudtestIdleWindowClearsTheLivenessBound(t *testing.T) {
 			continue
 		}
 		for _, m := range re.FindAllSubmatch(src, -1) {
-			found[f] = string(m[1])
+			found[f] = append(found[f], string(m[1]))
 		}
 	}
 	if len(found) == 0 {
@@ -183,21 +186,24 @@ func TestC2CloudtestIdleWindowClearsTheLivenessBound(t *testing.T) {
 		files = append(files, f)
 	}
 	sort.Strings(files)
-	bad := 0
+	bad, sites := 0, 0
 	for _, f := range files {
-		d, err := time.ParseDuration(found[f])
-		if err != nil {
-			t.Fatalf("%s: -delivery-idle-window %q does not parse: %v", f, found[f], err)
-		}
-		if !c2ClearsBound(d) {
-			bad++
-			t.Errorf("%s sets -delivery-idle-window %v: guaranteed survival %v, against a worst admitted stall of %v "+
-				"(and a 190 s modal tier the SAME run confirms). Derived floor %v.",
-				f, d, d-d/c2StampDivisor, c2GoverningBound, want)
+		for _, raw := range found[f] {
+			sites++
+			d, err := time.ParseDuration(raw)
+			if err != nil {
+				t.Fatalf("%s: -delivery-idle-window %q does not parse: %v", f, raw, err)
+			}
+			if !c2ClearsBound(d) {
+				bad++
+				t.Errorf("%s sets -delivery-idle-window %v: guaranteed survival %v, against a worst admitted stall of %v "+
+					"(and a 190 s modal tier the SAME run confirms). Derived floor %v.",
+					f, d, d-d/c2StampDivisor, c2GoverningBound, want)
+			}
 		}
 	}
 	if bad > 0 {
-		t.Fatalf("%d of %d cloudtest sites set a -delivery-idle-window below the derived floor %v", bad, len(files), want)
+		t.Fatalf("%d of %d cloudtest sites set a -delivery-idle-window below the derived floor %v", bad, sites, want)
 	}
 }
 

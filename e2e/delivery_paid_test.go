@@ -272,7 +272,8 @@ func TestPaidDeliverySessionEndToEnd(t *testing.T) {
 // honest fetcher gapped by a stall the liveness model admits, and is refused.
 //
 // Both polarities, at the endpoints of the floor rather than at a token value: one second
-// UNDER the derived floor refuses, and the shipped DEFAULT (no flag at all) boots to a peer.
+// UNDER the derived floor refuses, and the shipped DEFAULT (no flag at all) boots and
+// announces the window the reaper actually installed.
 // The old "unset refuses" arm is gone because the behaviour it asserted is what shipped.
 func TestDeliveryIdleWindowFloorIsEnforcedAtStartUp(t *testing.T) {
 	if testing.Short() {
@@ -285,11 +286,12 @@ func TestDeliveryIdleWindowFloorIsEnforcedAtStartUp(t *testing.T) {
 		// 1ns: the original floor's job (item 3 — the idle/2 ticker must never see a
 		// zero interval). Still refused, now by the bound-derived floor above it.
 		{"sub-second", "4831", []string{"-delivery-idle-window", "1ns"}},
-		// One second under the derived floor of 9m33.333333333s = bound × 4/3. This is
-		// the arm that fails if the floor is ever quietly lowered back toward the bound
-		// itself: 9m32s clears 430 s naively and is still refused, because the stamp
-		// coarsening spends a quarter of it.
-		{"one-second-under-the-derived-floor", "4832", []string{"-delivery-idle-window", "9m32s"}},
+		// Under the derived floor of 9m33.333333333s = bound × 4/3, by the smallest
+		// amount the flag can be written in whole seconds (1.333 s). This is the arm that
+		// fails if the floor is ever quietly lowered back toward the bound itself: 9m32s
+		// clears 430 s naively and is still refused, because the stamp coarsening spends
+		// a quarter of it.
+		{"just-under-the-derived-floor", "4832", []string{"-delivery-idle-window", "9m32s"}},
 	} {
 		arm := arm
 		t.Run(arm.name, func(t *testing.T) {

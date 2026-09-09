@@ -34,7 +34,9 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   survival since a real settlement — measured at 0.751× on a 1000 s window, at every stamp phase — which puts the floor at
   `bound × 4/3`, not at the bound. `deliveryIdleFloor` rises from 1 s (an engineering minimum that kept the `idle/2` ticker
   positive and enforced nothing) to the derived floor, so a daemon refuses a hand-set window that would reap an honest
-  fetcher gapped by a stall; the constants carry compile-time proofs of their own three inequalities. 24m over the tighter
+  fetcher gapped by a stall the liveness MODEL admits — the field's own 1040 s stall is 2.4× that, and only the
+  shipped default clears it, not every window the floor accepts; the constants carry compile-time proofs of their
+  own four inequalities (measured: `deliveryIdleDefault = 23m` fails to build). 24m over the tighter
   10m for two measured reasons: 10m's margin is 4.7 %, inside the measurement error of the block interval the bound's
   inputs are quoted at, and 10m does not survive a repeat of the 1040 s stall the field produced on `c450985-deep`
   (driven both candidates, both directions). It ships as a DURATION: the bound is denominated in `ChainSyncInterval` and
@@ -47,15 +49,34 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   §10) said a chain stall "reaps every live session" — with the chain frozen for 1040 s the lane admitted a session,
   settled 104 receipts, took a top-up and the session lived, because nothing in `SettleDeliveryReceipt` →
   `credit.SettleDelivery` reads the chain and `MsgFetchChunk` has no chain gate. The clause is withdrawn; the forward
-  wall-clock STEP half stands and is now driven (a session that settled one second before the step is reaped, and the cost
-  is a deposit, never bytes); the derived number survives the correction, since 430 s is still the right envelope for how
-  long an honest fetcher may be gapped. Gates: `TestC2ShippedFloorIsDerivedFromTheBound`,
+  wall-clock STEP half stands and what is driven is the mechanism behind it — the reaper is keyed on the injected clock
+  with no monotonic guard, so a whole-window advance reaps even a session that settled one second earlier, and the cost is
+  a deposit, never bytes. **The number survives the correction; its STATUS does not.** With the causal path withdrawn,
+  430 s is a conservative ENVELOPE adopted because ratified call 4 instructs a window above the bound — not a bound the
+  reaper is racing. Call (5)'s disposition is unchanged; call (4)'s "stays REFUSE-UNTIL-SET" is released under call (4)'s
+  own conditional, and **the VALUE itself is reserved to the owner** (`docs/decisions.md`: "the delivery idle-window VALUE
+  (owed after A3)"). Call (4)'s arithmetic was epoch-denominated against the 190 s tier; this ships a duration against
+  430 s — the same magnitude on different reasoning. Gates: `TestC2ShippedFloorIsDerivedFromTheBound`,
   `TestC2ShippedDefaultClearsTheFloorAndTheObservedFieldStall`,
   `TestC2ForwardWallClockStepReapsEveryLiveSession`, `TestC2ForwardStepDoesNotSpareTheBusiestSession`, e2e
   `TestDeliveryIdleWindowFloorIsEnforcedAtStartUp` (one second under the derived floor refuses) and
   `TestDeliveryIdleWindowDefaultBootsThePaidLane` (the argv that used to refuse now boots and announces 24m), on the
   Tester's RED-first derivation suite (`core/node/c2_idle_window_gates_test.go`,
-  `cmd/silt/c2_idle_window_default_test.go`). **Not fixed here, and re-priced worse:** the relay lane settles once at
+  `cmd/silt/c2_idle_window_default_test.go`). **Blind PE fold-in** (`RULING-c2-idle-window-09a3da4-2026-09-09`, which
+  re-derived the arithmetic independently and confirmed it, including that the floor is tight to the nanosecond):
+  the ruling found two ablations that COMPILED and left every gate green, and both are closed. (1) The daemon read
+  `*deliveryIdle` twice — once for the floor check, once to install it in the reaper — so it could refuse a
+  non-compliant window, install a different one and announce a third; a hardcoded `90 * time.Second` at the install
+  site passed the whole `cmd/silt` suite. The daemon now reads the window BACK OUT of the reaper
+  (`node.DeliveryIdleWindow()`) for both the sweep cadence and the banner, so an install that diverges is ANNOUNCED as
+  what it is and the e2e boot arm reddens with `idle window 1m30s`; a source gate pins the identifier at both
+  consumers. (2) `deliveryIdleFieldStall` — the 1040 s datum that is the entire justification for 24m over 10m — was
+  pinned to nothing and could be zeroed green; it is now pinned to its value with the evidence path, to the job it
+  does (it must reject the 10m candidate), and to its twin literal in `core/node`. Also folded: the harness gate kept
+  only the LAST `-delivery-idle-window` match per file, so a file with one good and one bad site graded green;
+  row 13b's M0 log audit was vacuously true on an absent close line; and the daemon's periodic sweep ticker is now
+  gated on its arithmetic and filed as `R-DELIVERY-SWEEP-TICKER-UNFIRED` — observed at no tier, and at a
+  correctly-sized window no graded flow can observe it again. **Not fixed here, and re-priced worse:** the relay lane settles once at
   close and its epoch sweep drops a session at `admitEpoch+2` unsettled, so an over-running relay session forfeits 100 %
   of what it earned — not a fraction — while the fetcher's face was spent at open; settling one face inside a 413–734 s
   lifetime needs 508 / 286 Mbit/s sustained on ONE session, so at a 100 Mbit/s edge uplink a node moves 4.81 of 24.41 GiB
