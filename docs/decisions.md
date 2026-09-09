@@ -2711,7 +2711,30 @@ showing the one-byte value IS committed).
   SECOND FACE — a ≥⅓ coalition making every evidence pair over-cap with its own valid renewals, so
   accountable safety degrades to plain safety for fat coalitions — is UNTOUCHED, and no admissible cap
   value closes it; only the v5 two-level block hash (d-3, a FORMAT item in the D1 train) removes it.
+- **CORRECTION, 2026-09-10, by the blind PE review of the close itself — the stronger claim is
+  REFUTED and the owner must see this.** The first version of this entry and of the code comment said
+  the derivation was now "bound by construction". **It is not, and it cannot be.** `Equivocation`
+  carries two FULL `Block`s (`core/chain/equivocation.go:26-27`) and a `Block` carries its own
+  `Slashes` field (`core/chain/chain.go:518`), bounded only by the cap being defended. So
+  `cap ≥ 2 × body + overhead` with `body ⊇ Slashes ≤ cap` **has no positive solution at any cap** — a
+  fixed point, not a tuning error. Measured on signature-valid fixtures at the SHIPPED defaults, with
+  **no coalition and no misconfiguration**: a block committing two ordinary 4.14 MiB proofs is VALID
+  (8.28 MiB of `Slashes` under the 16 MiB cap), and a LEGITIMATE proof about that block is
+  **17,373,935 B — 596 KB over cap**. The equivocator keeps its seat.
+- **So the cap has a THIRD face: `R-NESTED-EVIDENCE-OVERCAP`.** The two faces already disclosed on the
+  constant need a ≥⅓ coalition or (as of this entry) a misconfiguration; this one needs **neither** and
+  is reachable on the honest path at shipped defaults. What `D-SLASHCAP-ROUTE` buys is therefore
+  stated exactly: it closes the OPERATOR MISCONFIGURATION route — a validator can no longer make its
+  own equivocation unprovable by editing a local flag — and it makes the configurable half of the
+  derivation true instead of assumed. It is **necessary, not sufficient**. Whether a validity rule
+  bounding the encoded block body closes the rest (it would bind PEERS, which no start-up check can),
+  or whether fixed-size evidence (d-3) is the only close, is **RESEARCH-GATED and in flight**; the
+  verdict may partly refute the R0.6 value certification, and the owner ratifies that.
 - **What this does NOT decide:** the single-reg overflow (`R-BONDREG-SINGLE-OVERSIZE`) — silt has no
   per-reg byte cap and `core/node/chainrole.go:902` embeds the first fresh reg unconditionally, so one
   oversized registration can still exceed the configured budget. That needs a validity rule of its own
-  and is filed, not folded in.
+  and is filed, not folded in. Nor the nested-evidence face above. Nor **the one call the PE routed to
+  the owner: retiring the documented `0 = unbounded` posture on two shipped flags pre-RC.** The blast
+  radius is empty in-tree (verified: no script, CI workflow, integration topology, cloudtest launcher
+  or deploy file sets either flag) and the PE recommends taking it; it ships in this change and the
+  owner may reverse it.

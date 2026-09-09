@@ -8,16 +8,22 @@ import (
 	"github.com/nerolabs/silt/core/node"
 )
 
-// TestG_SLASHCAP_3_DaemonRefusesBudgetsThatDefeatSlashEvidence is the runtime cover named
-// by the SOURCE GATE in daemon.go. It drives the daemon's OWN flag defaults through the
-// predicate (core/node G-SLASHCAP-1 drives the boundary; this pins that what cmd/silt
-// actually ships is inside it) and drives the refusal an operator would hit.
-func TestG_SLASHCAP_3_DaemonRefusesBudgetsThatDefeatSlashEvidence(t *testing.T) {
+// TestG_SLASHCAP_3 drives the daemon's OWN flag default CONSTANTS through the predicate, so
+// that changing a default in daemon.go changes this result. It does NOT boot the daemon:
+// the wiring and order are covered by the source gate below, and core/node G-SLASHCAP-1
+// drives the boundary itself. Named for what it checks — the shipped defaults and the
+// operator-facing refusal text — rather than for a daemon run it does not perform.
+func TestG_SLASHCAP_3_ShippedFlagDefaultsAndTheRefusalText(t *testing.T) {
 	const mib = 1 << 20
 
-	// What cmd/silt ships today, read from the flag defaults themselves rather than
-	// restated: -max-bondreg-bytes-per-block 2 MiB, -max-entry-bytes-per-block 64 KiB.
-	shipped := node.Config{MaxBondRegBytesPerBlock: 2 << 20, MaxEntryBytesPerBlock: 64 << 10}
+	// The daemon's ACTUAL flag defaults, by the same constants cmdDaemon passes to
+	// fs.Int64 — not a literal restated here. Moving a default in daemon.go therefore moves
+	// this assertion, instead of leaving a green test beside a binary that will not start
+	// (PE ruling B-4, ablation A5).
+	shipped := node.Config{
+		MaxBondRegBytesPerBlock: defaultMaxBondRegBytesPerBlock,
+		MaxEntryBytesPerBlock:   defaultMaxEntryBytesPerBlock,
+	}
 	if err := node.CheckSlashEvidenceHeadroom(shipped); err != nil {
 		t.Fatalf("the SHIPPED flag defaults are refused by the gate wired into daemon.go — the daemon cannot start: %v", err)
 	}
@@ -47,7 +53,7 @@ func TestG_SLASHCAP_3_DaemonRefusesBudgetsThatDefeatSlashEvidence(t *testing.T) 
 // their ORDER — that the call exists, that it sits after the two cfg assignments it
 // validates, and that it returns rather than warns. It observes no behaviour.
 //
-// RUNTIME GATE: TestG_SLASHCAP_3_DaemonRefusesBudgetsThatDefeatSlashEvidence (above)
+// RUNTIME GATE: TestG_SLASHCAP_3_ShippedFlagDefaultsAndTheRefusalText (above)
 // observes the refusal itself, and core/node TestG_SLASHCAP_1_ConfigCannotDefeatSlashEvidence
 // drives the boundary both ways. What this source gate adds is the WIRING and the ORDER:
 // a check placed before the assignments would validate a zero value and be vacuous, and a

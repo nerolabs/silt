@@ -87,3 +87,61 @@ A validity rule, not a format item — freeze manifest item 10 — so its deadli
 raise**, not the freeze. Not deferrable past it: raising a cap later is a *widening* rule change
 and is outside the narrowing exemption that makes post-freeze rule changes cheap
 (`docs/era4-freeze-what-closes.md`). It is now, or it is a coordinated fleet fork.
+
+---
+
+## POST-BUILD CORRECTION — the blind PE refuted the strong claim, and it matters more than the fix
+
+The review of this change (`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-slashcap-config-route-close-CODE-2026-09-10.md`)
+returned MERGEABLE-WITH-CHANGES and, in doing so, found something larger than the defect this
+branch set out to close.
+
+**The invariant is an unsatisfiable fixed point.** `Equivocation` carries two FULL `Block`s, and a
+`Block` carries its own `Slashes` field, bounded only by the cap being defended. So
+
+    cap ≥ 2 × body + overhead     with     body ⊇ Slashes ≤ cap
+
+has no positive solution, for any cap. Measured on signature-valid fixtures at the **shipped
+defaults**, with no coalition and no misconfiguration: a block committing two ordinary 4.14 MiB
+proofs is valid (8.28 MiB of `Slashes` under a 16 MiB cap), and a legitimate proof about that block
+is **17,373,935 B — 596 KB over cap**.
+
+That refutes the sentence this branch first shipped in `chain.go` ("THE DERIVATION IS BOUND BY
+CONSTRUCTION"), on a research-certified consensus constant. The comment is corrected; the claim is
+withdrawn rather than softened.
+
+**Option D was still the right build.** Nothing above makes the configuration route acceptable — a
+validator being able to make its own equivocation unprovable by editing a local flag is a real and
+separately-reachable break, and it is closed. What changes is the *claim*: this is a **necessary**
+condition on the configurable terms, not a sufficient one, and the option table above should be read
+as choosing among ways to close **one of three faces**.
+
+**The lesson is the session's own, turned on me.** The route-close was built to fix a parameter whose
+justification nobody had re-derived. Its own justifying sentence was then shipped un-re-derived, and
+a blind seat measured it false inside an hour. *A claim about a gate is itself a claim* — including a
+claim made in the commit that fixes claims.
+
+## What the correction changed in the build
+
+- `slashEvidenceHeaderSlack` 64 KiB → **1 MiB**. The constant stands in for a quantity that scales at
+  639 B per validator per evidence pair; at 64 KiB the gate blessed a configuration whose legitimate
+  proof went over cap at N ≥ 205. 1 MiB covers N ≈ 1600 and still admits ~6.9 MiB of registrations
+  against a 2 MiB default.
+- The "boundary is admitted" test row no longer asserts a **safety** property. It pins where the
+  gate's line is, with the measured margin, because the safety reading is false above that N and
+  false at any N for the nested-evidence face.
+- The daemon's flag defaults are now **named constants** that both the flag and the gate read. The
+  PE's ablation A5 — move the shipped default to 8 MiB — left every test green while the built binary
+  refused to start with no flags at all, because the test restated `2 << 20` under a comment claiming
+  it read the default. A5 now goes red.
+- The advisory ceiling clamps at zero and switches the remedy to the entry budget, rather than
+  telling an operator to lower a budget to a negative number.
+
+## What is now open, and routed
+
+`R-NESTED-EVIDENCE-OVERCAP`. The research question, shaped by the PE and not answered by it: is there
+any (cap, body-bound) pair that makes a legitimate proof always admissible, or is fixed-size evidence
+(d-3) the only close? A body bound is the candidate because it binds **peers**, which no start-up
+check can — today nothing bounds a peer's block body on the live path. Whether that rule is narrowing
+or widening relative to the freeze is part of the question, and the answer decides whether the close
+rides D1 or follows it.

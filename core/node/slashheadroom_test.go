@@ -41,9 +41,14 @@ func TestG_SLASHCAP_1_ConfigCannotDefeatSlashEvidence(t *testing.T) {
 			because:    "2*(2 MiB + 64 KiB + slack) is ~4.25 MiB against a 16 MiB cap — the derivation's own arithmetic",
 		},
 		{
-			name: "the boundary itself is admitted", bondRegs: maxHonestBondRegBytes(64 << 10), entries: 64 << 10,
+			// NOT a safety claim. This row pins WHERE THE GATE'S LINE IS, nothing more. At this
+			// budget a legitimate proof still goes over cap once the validator set is large
+			// enough — the slack is a constant standing in for 639 B per validator per pair —
+			// and it is over cap at ANY N for the nested-evidence face. The gate enforces a
+			// NECESSARY condition on the configurable terms; see slashheadroom.go THE FIXED POINT.
+			name: "the gate's line: the largest budget it admits", bondRegs: maxHonestBondRegBytes(64 << 10), entries: 64 << 10,
 			wantRefuse: false,
-			because:    "the largest budget the invariant admits must PASS, or the gate is stricter than the rule it protects",
+			because:    "the gate must not be stricter than the condition it enforces; at 1 MiB slack this covers N ~ 1600 on the measured per-validator cost, and above that the predicate is necessary but not sufficient",
 		},
 		{
 			name: "one byte past the boundary is refused", bondRegs: maxHonestBondRegBytes(64<<10) + 1, entries: 64 << 10,
