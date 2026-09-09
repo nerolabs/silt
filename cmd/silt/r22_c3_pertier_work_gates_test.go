@@ -316,6 +316,9 @@ func TestGateC3_3_EdgeMajorityOfServeWorkIsTheTenetNotTheNodeShare(t *testing.T)
 	}
 
 	// --- THE WITHHELD ARM. No new marker, no new clause: the block rides gossipWithheld.
+	// CONTROLLED REVERT (G-PT-9): set PonyShareOfServedBytes and CapableSize BEFORE the
+	// gossipWithheld early return. Measured, the unauthenticated document then ships
+	// `Known:true Value:1 Reporting:100 Population:100` at the shipped -privacy default.
 	withheld := economyConcentrationDoc(node.EconomySample{Size: 100, ServeSampleSize: 100, ServeWorkTotal: 5,
 		Mix: map[string]int{node.TierPony: 100}, ServeBytesByTier: map[string]int64{node.TierPony: 5},
 		ReportersByTier: map[string]int{node.TierPony: 100}}, nil, readerAuth{privacy: privacyDefaultWithheld})
@@ -806,8 +809,19 @@ func ptWorstRepairExcess(t *testing.T, nw c3NetworkWire) (float64, string) {
 // repairs is still OUTSIDE the repair series' population — and its repair share is an
 // undefined quantity rather than a small number.
 //
-// CONTROLLED REVERT (G-PT-6): delete `out.CapableSize = &capable` from
-// economyConcentrationDoc and the join assertion reddens on a nil field.
+// THREE CONTROLLED REVERTS, each ISOLATED so each names one condition:
+//
+//	G-PT-6  delete `out.CapableSize = &capable` from economyConcentrationDoc -> the join
+//	        assertion reddens on `CapableSize:<nil>`.
+//	G-PT-7a delete the node.RepairCapable test from tierWorkFor ONLY -> the reporting pony
+//	        tier renders `&{Known:true Value:<nil>}` (a measured 0.0 repair share over a
+//	        denominator it is not in). TestGateC3_3a_ATierWithNoReportingPeerIsANamedAbsenceNeverAZero
+//	        reddens too, because the pony's repair refusal collapses into the
+//	        no-reporters reason.
+//	G-PT-7b key RepairsByTier for EVERY tier in core/node ONLY -> this gate stays GREEN,
+//	        correctly: the renderer's own predicate still defends. core/node's
+//	        TestR22PerTierTotalsFollowTheExclusionRuleAndNameTheirAbsences is what reddens.
+//	        Two guards, and the isolated runs show each covers a different tier.
 func TestGateC3_3e_CapableSizeClosesTheCrossDocumentRepairCoverageJoin(t *testing.T) {
 	// A pony that reports repairs. It must never acquire a repair share: under D-TIERING
 	// coupling (b) durability is the persistent tiers' work, so the repair series'

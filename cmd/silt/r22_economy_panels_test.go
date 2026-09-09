@@ -205,6 +205,13 @@ console.log(JSON.stringify(out));`
 	// and it has a second edge here: a tier's share of the work is 0.0 both when the tier
 	// did nothing and when the tier SAID nothing, and on the shipped -privacy default it is
 	// always the second.
+	//
+	// TWO CONTROLLED REVERTS. G-PT-8: make tierShareCell format an UNKNOWN share as a
+	// percentage — measured, the silent tier renders "0.0%%". G-PT-8b: stop edgeShareCell
+	// delegating to gossipCell — measured, a privacy-withheld document renders
+	// `{Text:— Sub:no sample Withheld:false}`, which reads as a node that knows no peers
+	// rather than as a withhold, and that is the shape that made the delegation the design
+	// rather than a duplicated branch.
 	if out.TierAbsent.Text != "—" {
 		t.Fatalf("an absent per-tier share renders %q; a missing block is not a zero", out.TierAbsent.Text)
 	}
