@@ -771,7 +771,7 @@ func economyConcentrationDoc(sample node.EconomySample, c2 *chain.C2, auth reade
 		// sample.Size, every CLASSIFIABLE peer, while these figures are over the REPORTING
 		// subset -- the same distinction stated 20 lines above for the serve series. The
 		// floor now lives in tierShareOf, on the tier's own reporter count, and
-		// TestGateC3_3h drives the inversion it stops.
+		// TestGateC3_3h_ATierShareWithOneReporterIsThatPeersCounter drives the inversion it stops.
 		ps := ponyServeShare(sample)
 		out.PonyShareOfServedBytes = &ps
 		out.WorstTierCoverage = worstTierCoverage(sample)
@@ -908,7 +908,7 @@ func tierShareOf(num, den int64, reporters int, emptyDen string) tierShare {
 		// so there is no ordering between them to get wrong. What IS an ordering claim is
 		// that BOTH precede the denominator test -- a tier below the floor publishes
 		// nothing whatever the denominator is, so the floor is the fact to report. The
-		// wholly-silent arm of TestGateC3_3a drives the case where both are live.
+		// wholly-silent arm of TestGateC3_3a_ATierWithNoReportingPeerIsANamedAbsenceNeverAZero drives the case where both are live.
 		if reporters <= 0 {
 			return tierShare{Reason: noTierReporters}
 		}

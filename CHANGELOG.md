@@ -50,8 +50,22 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   +0.8649. **One advisory correction, measured:** the validity condition `min(0.50, 0.8 × null)` reduces to the flat 0.50 floor
   at n = 1,011 classifiable nodes (where the disk-weighted null reaches 0.625), NOT at n ≈ 562; n ≈ 562 is where the null
   crosses 0.50, which is a different boundary — below it a BARE 0.50 floor false-fires on an honest network, measured at
-  n = 554 (observed 0.499089, conditioned floor 0.3993). The margin ships as the ratio 4/5 rather than the literal 0.80 so the
-  n = 1,011 fixed point is exact instead of decided by a rounding.
+  n = 554 (observed 0.499089, conditioned floor 0.3993). The margin is spelled as the ratio 4/5 because `E*4` is exact and the
+  single division that follows is correctly rounded; an earlier version of this entry claimed the n = 1,011 fixed point would
+  otherwise be "decided by a rounding", and that is FALSE and struck — `0.625 × fl(0.8) = 0.5 + 2⁻⁵⁵` is a quarter ulp and rounds
+  to exactly 0.5, so both spellings give the same bits there.
+  **TWO SILENCE FLOORS, each derived rather than chosen, and neither implies the other.** A per-tier COVERAGE refusal, because the
+  sample-wide reporting fraction is count-weighted and the ratified 10000:100:1 target makes the non-edge tiers ~1 % of the nodes:
+  measured, silencing the five horses that serve 80 % of the bytes — 0.49 % of the sample — turned a measured EDGE-MINORITY of
+  0.1998 into a PASS of 0.9940 while that fraction stayed at 0.9951. The gate is now an interval, `φ·s ≤ s_true ≤ s/φ` under a
+  named assumption, with three exhaustive verdicts, and the coverage floor falls out as a theorem (a PASS needs `φ ≥ F`, endpoints
+  run at 4/5/6 of ten horses). And a per-tier REPORTERS floor, because a tier share over one reporter IS that peer's counter:
+  measured, a document whose `serveGini` was suppressed for being over two peers published a tier share of 0.230769231 that
+  inverts in ONE DIVISION to the withheld counter, 300. The floor is `minGossipSample` unchanged, reaching a population it had not
+  been applied to; it buys parity with the Gini beside it, not closure. **The 0.20 repair margin is WITHDRAWN** as an additive
+  margin (tier-incomparable: ceilings 0.8649 and 0.1351 in one sample), surviving only as the constant a two-arm fixture straddle
+  is asserted against, and the statistic's limits are recorded where a later seat will read them — total archival capture cannot
+  fire it, a one-capable-tier sample reads identically zero, and intra-tier capture is invisible at full coverage.
 - **Lane C5 pre-flip closers: the repair bounty stops short-paying, and a single-frame object stops storing a full chunk of zeros
   (`R-BOUNTY-TRUNCATION` G-BT-1/G-BT-2, `R-SHORT-FINAL-STRIPE`; deliberation `docs/thinking/2026-09-09-c5-preflip-closers.md`).**
   **G-BT-2:** the repair price now divides into credits ONCE, at the end — `⌊c·k·shardBytes·(lost+1)/(U/p)⌋` instead of

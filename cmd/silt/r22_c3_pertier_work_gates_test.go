@@ -349,7 +349,7 @@ func TestGateC3_3_EdgeMajorityOfServeWorkIsTheTenetNotTheNodeShare(t *testing.T)
 		t.Fatalf("the two arms must share a floor (%.6f vs %.6f) for the comparison to isolate the WORK: they were built with the same mix on purpose", rC.Floor, rH.Floor)
 	}
 	if rC.WorstTierCoverage != 1 {
-		t.Fatalf("CONCENTRATED ARM: worst-tier coverage %.4f, want 1.0000 — a graded arm short of full coverage is a fixture defect, and the silence case has its own gate (TestGateC3_3g)", rC.WorstTierCoverage)
+		t.Fatalf("CONCENTRATED ARM: worst-tier coverage %.4f, want 1.0000 — a graded arm short of full coverage is a fixture defect, and the silence case has its own gate (TestGateC3_3g_TheConcentratingTierCannotBuyAPassBySayingNothing)", rC.WorstTierCoverage)
 	}
 	// The fixture's OWN assigned share: 1000 ponies x 200 units of
 	// 5*160000 + 1000*200 + 5*200 + 200 = 1,001,200.
@@ -537,7 +537,7 @@ func TestGateC3_3a_ATierWithNoReportingPeerIsANamedAbsenceNeverAZero(t *testing.
 // share is not a bound on the truth in general. The coverage clause is what stands in for
 // the bound the Gini gets from its identity.
 //
-// CONTROLLED REVERT (G-PT-10, shared with TestGateC3_3f and TestGateC3_3g): gate the raw
+// CONTROLLED REVERT (G-PT-10, shared with TestGateC3_3f_ThePerTierCoverageFloorIsATheoremOfTheTenetFloor and TestGateC3_3g_TheConcentratingTierCannotBuyAPassBySayingNothing): gate the raw
 // observation instead of the interval's lower bound. MEASURED: arm B goes to PASS at 0.8449.
 //
 // CONTROLLED REVERT (G-PT-3): scale the pony numerator by population/reporting — the obvious
@@ -549,7 +549,7 @@ func TestGateC3_3b_EdgeSilenceDepressesTheEdgesOwnShare(t *testing.T) {
 	// THE MIX IS THE VISION FAMILY AT k = 11, DELIBERATELY (Economist addendum Part 1 §5):
 	// at k >= 11 the min() clamp is strictly active, so the conditioned floor IS the flat
 	// 0.50 tenet floor and no arm here depends on the conditioned branch. That branch belongs
-	// to TestGateC3_3c, which is where a boundary belongs. An earlier draft used a
+	// to TestGateC3_3c_TheValidityBoundaryIsMeasuredNotDerivedFromTheComparison, which is where a boundary belongs. An earlier draft used a
 	// 100 : 10 : 1 mix, where the honest disk-weighted null is 0.1429 and the conditioned
 	// floor drops to 0.1143 -- and arm B then read PASS, correctly against THAT floor, which
 	// told the reader nothing about edge silence.
@@ -1233,7 +1233,7 @@ func ptConcentratedPeersTop5Silent() []c3Peer {
 //	5   0.5    0.5                 0.50   PASS          <- the boundary; 5/10 is exact in binary
 //	6   0.6    0.6                 0.50   PASS
 //
-// CONTROLLED REVERT (G-PT-10, shared with TestGateC3_3g and TestGateC3_3b): change the PASS
+// CONTROLLED REVERT (G-PT-10, shared with TestGateC3_3g_TheConcentratingTierCannotBuyAPassBySayingNothing and TestGateC3_3b_EdgeSilenceDepressesTheEdgesOwnShare): change the PASS
 // test in ptEdgeMajorityGate from `r.Lower >= r.Floor` to `r.Observed >= r.Floor`, dropping
 // the interval and gating the raw observation. MEASURED, the m = 4 row then PASSES.
 func TestGateC3_3f_ThePerTierCoverageFloorIsATheoremOfTheTenetFloor(t *testing.T) {
@@ -1298,7 +1298,7 @@ func TestGateC3_3f_ThePerTierCoverageFloorIsATheoremOfTheTenetFloor(t *testing.T
 // whose silence matters are structurally invisible to a count-weighted measure, and the
 // target ratio is what makes it so.
 //
-// CONTROLLED REVERT (G-PT-10): see TestGateC3_3f.
+// CONTROLLED REVERT (G-PT-10): see TestGateC3_3f_ThePerTierCoverageFloorIsATheoremOfTheTenetFloor.
 func TestGateC3_3g_TheConcentratingTierCannotBuyAPassBySayingNothing(t *testing.T) {
 	concC, nwC := c3Fixture(t, 52, ptConcentratedPeers())
 	rC := ptEdgeMajorityGate(concC, nwC)

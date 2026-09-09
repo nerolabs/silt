@@ -106,18 +106,41 @@ vision-ratio family (100k ponies : k horses : 1 archival, disk-weighted 0.1/1/50
 below which a BARE 0.50 floor false-fires on an honest network. `n = 1,011` is the point at which the
 CONDITIONED floor becomes the flat 0.50. The advisory named the first and used it for the second.
 
-And the fixed point is real: `0.625 × 4/5 = 2.5/5 = 0.5` exactly. That is why the margin ships as the
-ratio `4/5` and not the literal `0.80` — 0.8 is not representable in binary, so with the literal, the
-k = 10 row of that table is decided by a rounding mode rather than by the economics. A fixed point has no
-mutation to ablate, so the gate is the table of literal values, checked at the endpoints and one step
-either side, and never `want := theFunctionUnderTest(...)`.
+The fixed point is real: `0.625 × 4/5 = 2.5/5 = 0.5` exactly. **The reason I first gave for spelling the
+margin as `4/5` rather than the literal `0.80` was FALSE, and it is the fourth false sentence on this
+branch** — see the through-line below. The struck claim was that with the literal, the k = 10 row would be
+"decided by a rounding mode". Measured, by the Economist and the blind PE independently and then by me:
+`fl(0.8) = 0x3fe999999999999a`, the exact product `0.625 · fl(0.8)` is `0.5 + 2⁻⁵⁵` — a *quarter* ulp,
+where half an ulp is `2⁻⁵³` — so it rounds to exactly 0.5 under round-to-nearest, which Go mandates and
+exposes no mode for. Both forms give bits `0x3fe0000000000000` at k = 10 and substituting the literal
+leaves every arm in the file green.
+
+The true reason to keep `4/5` is a preference, not a hazard: `E*4` is exact (a power-of-two scaling) and
+the single division that follows is correctly rounded, so `E*4/5` **is** the correctly-rounded `4E/5`
+while `E*0.8` carries two roundings. They do differ, by one ulp, *off* the fixed point — measured over
+240,000 mixes of this family, 83,512 of them (34.8 %), including the k = 4 row of the table above, where
+`min()` differs too. Nothing depends on it: the `min()` clamp absorbs an upward ulp at 0.50 and a downward
+ulp only loosens the floor, which is the false-PASS direction and never a false RED.
+
+A fixed point has no mutation to ablate, so the gate is the table of literal values, checked at the
+endpoints and one step either side, and never `want := theFunctionUnderTest(...)`. The exactness
+assertion is re-pointed at what it *does* pin: that k = 10 is a true fixed point rather than a near-miss
+inside the table's tolerance — and it reddens when the tenet floor moves (0.50 → 0.51 reddens it and the
+k = 11 row).
 
 The disagreement is also driven through the real routes: an honest 554-node disk-weighted sample
 publishes `0.499089` — below the bare floor, above the conditioned floor `0.3993`.
 
-**Two things in this section were caught by running rather than by reading, and both were mine.** The
-advisory's `n ≈ 560` claim above is the first. The second is the ordering claim in §1. Every gate was
-green through both drafts, which is the signal: a gate checks the code and nothing checks the sentence.
+**Four sentences on this branch were false, every one of them found by EXECUTING the claim, and three of
+the four were mine.** The advisory's `n ≈ 560`; my ordering claim in §1; my three revert descriptions
+naming a reddening point they had not been run at; and my `4/5` rounding-mode rationale, which two blind
+seats caught before I re-ran it. Every gate was green through every draft, which is the signal rather
+than the exception: **a gate checks the code and nothing checks the sentence.**
+
+The fourth is the instructive one, because I had already written that rule into this document and then
+shipped another instance of it three sections later. The defence is not care, it is a habit: if a sentence
+names a number, a boundary, or a reddening point, run it before publishing it — and if an ablation comes
+back GREEN, the sentence is wrong, not the ablation.
 
 ### 3. Which direction the figure errs, derived rather than asserted
 
@@ -131,9 +154,87 @@ so **edge silence depresses the edge's own share** — a false alarm that names 
 false clean bill. Measured: 100/194 = 0.5155 with the edge fully reporting, 50/144 = 0.3472 with half of it
 silent, on the same underlying network. The gate reports that second arm INDETERMINATE, not a violation.
 
-Because the identity does not exist, the coverage clause stands in for the bound. It REUSES
-`c3ServeReportingMin` (= 1 − `c3ServeGiniMax` = 0.85) and introduces no new parameter: it is the same serve
-series over the same population, so it inherits that series' own indeterminacy boundary.
+Because the identity does not exist, a coverage clause has to stand in for the bound. **The first form of
+that clause was the sample-wide reporting fraction against 0.85, and it is structurally unable to do the
+job** — the Economist priced it on this file's own concentrated fixture and it is the sharpest finding of
+the round. See §4.
+
+---
+
+## 4. Two silence floors, both derived, and neither implies the other
+
+### 4a. Per-tier COVERAGE — the concentrating tier cannot buy a pass by saying nothing
+
+`[MEASURED]` on this file's own `ptConcentratedPeers()` fixture (1000 : 10 : 1, top-5 horses serve 80 %):
+
+| arm | silenced | sample-wide fraction | edge share | verdict |
+|---|---|---|---|---|
+| all report | — | 1.0000 | 0.1998 | EDGE-MINORITY (correct) |
+| top-5 horses withhold | **5 nodes, 0.49 % of the sample** | 0.9951 | **0.9940** | **PASS** |
+
+The attack costs nothing: withholding is the compiled default. And the sample-wide clause is
+**structurally** unable to reach it, not merely mis-tuned — its floor needs 15 % of the sample silent, and
+under the ratified 10000:100:1 target the non-edge tiers *are* the sample's one percent (1.088 % at
+1000:10:1, 0.9999 % at 10000:100:1). **The target ratio the gate defends is what makes the tiers whose
+silence matters invisible to a count-weighted coverage measure.**
+
+The fix makes the gate an **interval**. Under a named assumption — within a tier, silence is uncorrelated
+with work rate, the analogue of the Gini's "silence means idle" — with `φ` the least coverage among the
+tiers present:
+
+```
+R_t ≤ R_t/c_t ≤ R_t/φ   for every tier
+⇒   φ · s_obs  ≤  s_true  ≤  s_obs / φ
+```
+
+PASS iff the lower end clears the floor, EDGE-MINORITY iff the upper end is below it, INDETERMINATE iff it
+straddles. Three cases, exhaustive, no fourth. **And the coverage floor is a theorem, not a parameter:**
+`s_obs ≤ 1`, so a PASS requires `φ ≥ φ·s_obs ≥ F` — the minimum per-tier coverage is the tenet floor
+itself, exactly as the Gini's `1 − T` boundary is a theorem of `T`. Endpoints run at 4 / 5 / 6 of ten
+reporting horses, where the boundary sits at `φ = F = 0.50` exactly.
+
+The sample-wide clause is **removed rather than kept as a belt**: it is dominated, and where the two
+disagree it is wrong — every tier at coverage 0.6 with `s_obs = 0.95` gives a lower bound of 0.57, a sound
+PASS, which the 0.85 fraction refuses.
+
+### 4b. Per-tier REPORTERS — a share over one reporter is that peer's counter
+
+A different quantity, found by the blind PE, and neither floor implies the other: a tier of one node fully
+reporting has coverage 1.0 and one reporter; a tier of 1,000 with 999 silent has one reporter too.
+
+`[MEASURED]` at `Size: 100, ServeSampleSize: 2` — one honest pony at 300 GiB, one Sybil horse at 1000:
+
+```
+serveGini published?     false      <- suppressed by ITS OWN floor, on the same document
+ponyShareOfServedBytes:  known=true value=0.230769231 reporting=1
+INVERSION: 1000/(1−share) = 1300  ->  the single honest pony served exactly 300
+```
+
+One division. Strictly easier than the two-term Gini inversion `minGossipSample` exists to stop, reaching
+the same reader that floor still defends. My own comment asserted the opposite of what the code did — "a
+tier share resolves to no individual peer's counter" — while the field itself published `reporting: 1`.
+
+**The floor is `minGossipSample` unchanged.** Its derivation is about how many terms a reader does not
+already know: at n = 1 the aggregate *is* the value, at n = 2 it resolves to two named peers, 3 is the
+smallest where neither holds. Applied to a tier's *reporter count* the same three cases give the same
+answer — the same constant reaching a population it had not been applied to, not a second parameter.
+
+**It buys parity, not closure.** At three reporters an adversary holding two sybils in that band still
+recovers the third, exactly as four sybils recover the Gini's secret. Reconstruction is closed by
+`gossipWithheld`. What this closes is the *asymmetry* of one document suppressing `serveGini` at two
+reporters while publishing a figure that inverts to one.
+
+**A consequence worth stating rather than hiding:** at the vision ratio the archival tier is one node, so
+it never clears a three-reporter floor inside `maxPeerInfo = 4,096`. **The repair alarm is therefore
+structurally dark on a vision-ratio sample.** It grades a harness topology, which is what
+`D-WORK-VISIBILITY` asks of it.
+
+### The rule both are instances of
+
+The Economist states it once so it is not rediscovered a third time, and it is worth carrying:
+
+> Every concentration statistic carries a coverage refusal at its **own granularity**, and is never
+> aggregated above the granularity at which capture can occur.
 
 ---
 
@@ -143,12 +244,55 @@ series over the same population, so it inherits that series' own indeterminacy b
 |---|---|---|
 | `ponyShareOfServedBytes ≥ 0.50` (RETAINED but unbuildable) | `concentration.ponyShareOfServedBytes`, gated by `TestGateC3_3_EdgeMajorityOfServeWorkIsTheTenetNotTheNodeShare` | **BUILT.** The primary T-AR gate. |
 | `serveGini ≤ 0.15` as a field alarm | mix-conditioned null (`ptExpectedPonyShareDiskWeighted`) | the null is built; the Gini's mix-conditioned alarm is the Tester's to point |
-| `repairGini ≤ 0.40` as a field alarm | `repairShare` vs `pledgedShare`, gated by `TestGateC3_3d_RepairShareIsRelativeToHoldingsWhichIsWhatTheWithdrawnConstantCouldNotBe` | **BUILT** and it separates: 0.0000 on the holdings-proportional honest shape (where the published Gini is 0.7740 and the withdrawn constant fires), +0.8649 on capture |
+| `repairGini ≤ 0.40` as a field alarm | `repairShare` vs `pledgedShare`, gated by `TestGateC3_3d_RepairShareIsRelativeToHoldingsWhichIsWhatTheWithdrawnConstantCouldNotBe` | **BUILT** and it separates on two hand fixtures — 0.0000 on the holdings-proportional honest shape (where the published Gini is 0.7197 and the withdrawn constant fires), +0.9505 on capture — **but see §6: it is sound as shipped and vacuous as generalised, and the Economist has since withdrawn both the 0.20 and the claim that it answers the recentralization question** |
 | the cross-document repair coverage join | `concentration.capableSize` | **FIXED**, gated by `TestGateC3_3e_CapableSizeClosesTheCrossDocumentRepairCoverageJoin` |
 | `caretakerSetSize ≥ 3` | — | withdrawn from this lane by the advisory; not built, and must not be published on a gossip route (Don't #3) |
 
-The `0.20` repair margin stays the advisory's `[ASSUMPTION]`, labelled as such in the gate and owed a
-re-derivation on the first field data. It is not this seat's number.
+The `0.20` is no longer an assumption to be re-derived — it is **WITHDRAWN outright**, and what replaces
+it is not a number. See §6.
+
+---
+
+## 6. What the repair statistic does not catch, and what is OWED rather than done
+
+The Economist re-priced this after the blind PE bounded it, and I am recording the outcome rather than
+building it: **the coding job on this branch was the two PE blockers and the edge-share coverage refusal.**
+
+**Withdrawn here, and it is the Economist's own substitution being withdrawn:**
+
+| Withdrawn | Why |
+|---|---|
+| `margin = 0.20` on `observed − expected`, **outright, not re-priced downward** | an additive excess is tier-incomparable. The ceiling is `1 − expected(tier)`, so on one 1000:10:1 sample the ceilings are 0.8649 (horse) and **0.1351** (archival) — a 6.40× spread. **No value works**, and any value low enough to catch archival capture is inside the horse tier's unmeasured honest excursion. |
+| "one tunable margin, no sample-size dependence" | false: the excess is **identically 0.0000** on a sample with exactly one capable tier, for every possible repair distribution — ~59.5 % of honest 4,096-node draws, since a uniform 4,096-of-10,101 draw contains the single archival node only 40.5 % of the time |
+| that the excess answers the **recentralization** question | it conditions on holdings, so recentralization living **in the holdings** is invisible to it by construction. On this file's own honest fixture one tier holds 0.9505 of the repair-capable bytes before a single repair is routed, and nothing in this lane gates that. The raw Gini asked *"is repair piling onto the few?"*; the excess asks *"is repair allocated other than by holdings?"* — the second was adopted for having a convenient null of 0. |
+
+**Measured on this branch, and driven rather than asserted:**
+
+- the ceiling on this file's fixture is **+0.0495** for the archival tier — total capture, undetectable, any distribution;
+- routing the whole horse tier's repairs onto **one** horse reads **+0.0000 at the tier**, at coverage 1.0, so no coverage refusal can see it. A tier statistic replacing a node statistic loses within-tier concentration.
+
+**What ships now** is the doc block on `ptWorstRepairExcess` recording all four limits, and the constant
+renamed `ptWithdrawnMargin` so its name refuses the promotion the Economist warns about: a later seat
+reads a passing test and adds an "archival capture" arm to it.
+
+**OWED, filed, not built here:**
+
+1. **The normalisation** `N = (observed − expected)/(1 − expected)`, which reads exactly 1.0 for total
+   capture in *every* tier and 0.0 for exactly-holdings, so **any margin below 1.0 is non-vacuous** — and
+   that needs no data. `known:false` when `expected = 1` (the one-capable-tier regime).
+2. **Node granularity in the harness** — `max over capable nodes of Nᵢ`. The **field keeps the tier form**,
+   deliberately: a per-node work figure joined to a node identity on a gossip surface is the
+   `(peer × object)`-adjacent access record the Economist has refused twice. Node-level is available
+   precisely and only where publication is not happening.
+3. **Capable-set pledged concentration published beside the excess** — the condition next to the
+   conditional. `pledgedShare` is already on the wire from this build, so it needs no new field. **No
+   threshold**, the Economist having no honest null for a pledged distribution.
+4. **The discharge for any future margin:** measure the honest `N` distribution across a *family* —
+   repair drivers (uniform / holdings-proportional / heat-skewed cold-tail), mixes sweeping `k` and the
+   archival count 0/1/2 because the honest distribution is bimodal, seeded churn — and set the margin to
+   the **widest honest excursion plus the sampling spread, never a midpoint**, which is exactly how the
+   0.40 died. None of it needs a live network; repair is loss- and placement-driven and the harness
+   controls both. Interim, parameter-free: gate on total capture only, `N ≥ 1 − ε`, and record the rest.
 
 ---
 
