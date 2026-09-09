@@ -435,13 +435,35 @@ const RegCap = 256
 //
 // PROVISIONAL VALUE — OWNER RATIFIES on immutable-#8 grounds (G-3 measurement pending;
 // TestSlashesBytesCapWorstCaseCost reports the resident/decode/validate cost at the cap).
-// Derivation from shipped bounds, not taste: an honest block is at most the default
-// per-block budgets (2 MiB of BondRegs + 64 KiB of entries, cmd/silt/daemon.go
+// Derivation from shipped bounds, not taste: an honest block is at most the CONFIGURED
+// per-block budgets (defaults 2 MiB of BondRegs + 64 KiB of entries, cmd/silt/daemon.go
 // -max-bondreg-bytes-per-block / -max-entry-bytes-per-block) plus a small header, so one
 // legitimate evidence pair is ≤ ~4.2 MiB; 16 MiB admits three such fat proofs, or
 // ~18,000 header-only proofs, per block, and is 1/8 of the 128 MiB transport frame
 // (adapters/tcpnet) that already bounds a block non-uniformly. A larger legitimate
 // backlog drains over successive blocks (liveness, not safety).
+//
+// THE DERIVATION IS BOUND BY CONSTRUCTION (2026-09-09, owner call: "CLOSE THE ROUTE. Not a
+// re-ratification. The value stays 16 MiB. The route goes."). Until then this comment read
+// "the DEFAULT per-block budgets" and nothing held the RUNNING configuration to it. The two
+// flags are PROPOSER-SIDE ONLY — every non-test read is core/node/chainrole.go
+// (foldPendingBondRegs) and core/node/entrypool.go (foldPendingEntries) — and the shipped
+// help documented "0 = unbounded", so an operator could raise its own budget past ~7.9 MiB
+// and thereby make its OWN equivocation unprovable: the evidence pair exceeds this cap, the
+// cap rejects it before CheckEquivocation ever runs, and the double-signer keeps its seat.
+// Slashing defeated by making the evidence too big; accountability is a Part-0 corner.
+//
+// That is the #380 class — a consensus quantity that is a function of LOCAL CONFIG rather
+// than of the chain — which silt paid for once already in the same week (RequiredQuorum()
+// returning the local cfg.Quorum, an I1 divergence). It is closed by
+// core/node.CheckSlashEvidenceHeadroom, which cmd/silt refuses to start on, and driven by
+// G-SLASHCAP-1..4. Deadline was the STAMP RAISE, not the freeze (validity rule, freeze
+// manifest item 10) — and not deferrable past it, because RAISING a cap is a WIDENING rule
+// change, outside the narrowing exemption.
+//
+// SCOPE: this closes the CONFIGURATION route only. The second face above — a ≥⅓ coalition
+// making every evidence pair over-cap with its own valid renewals — is UNTOUCHED, and no
+// admissible cap value closes it; only the v5 two-level block hash (d-3) removes it.
 const SlashesBytesCap = 16 << 20
 
 // Consensus signature phases (#432 two-phase gather, research-certified).

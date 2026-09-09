@@ -204,27 +204,9 @@ items trains the reader to skim, and then a real call gets waved through. Work w
 earned is tracked as ordinary lane work below, and the call re-appears when the evidence lands.
 Nothing else in this file is owed to the owner.
 
-**TWO calls are open.**
+**ONE call is open.**
 
-1. **`SlashesBytesCap`'s ROUTE — close it in this release, or re-ratify the value as is.** Surfaced
-   by the pre-freeze derivation-route audit
-   (`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-derivation-route-audit-pre-freeze-2026-09-09.md`;
-   commissioned by `D-C2-IDLE-WINDOW-VALUE`). **The value is 16 MiB and does not move.** The route
-   does: a CONSENSUS VALIDITY rule enforced on every validator
-   (`core/chain/validate_v5_predicates.go:285`) derives its ceiling from the DEFAULTS of two flags
-   that are **proposer-side only** — every non-test read is `core/node/chainrole.go:890` and
-   `core/node/entrypool.go:116` — and whose shipped help documents `0 = unbounded`
-   (`cmd/silt/daemon.go:117-118`). The stated invariant is `SlashesBytesCap ≥ 2 × (honest block) +
-   header` (`core/chain/chain.go:412`), so it breaks at a per-block bond-reg budget of ~7.9 MiB, and
-   past that a REAL double-signer's evidence is rejected by the cap and **the equivocator keeps its
-   seat**. That is face F1: derived from the modal default where the purpose requires the worst the
-   configuration admits. **Tier, corrected against the audit's own partition:** this is manifest item
-   10, a *validity* rule, so its deadline is the STAMP RAISE, not the freeze — a miss costs a
-   coordinated fleet fork, not an era. The urgency survives the correction, because RAISING a cap is
-   a WIDENING rule and therefore is NOT covered by the narrowing exemption that makes post-freeze
-   rule changes cheap. **Recommendation: close the route** — one `New()`-time assertion binding the
-   cap to the configured budgets, on the `IssuerKeys`-cap precedent, in the stamp-raising train.
-2. **D3 — the freeze act itself** (row D3). The RC gate, after D0 (DONE) + D1 + D2. It is accompanied
+1. **D3 — the freeze act itself** (row D3). The RC gate, after D0 (DONE) + D1 + D2. It is accompanied
    by ONE page in plain English — *what is frozen, and what can never change without a new era*, the
    doors that close, not the 22-item manifest — which D1 owes the owner to read BEFORE signing
    (`D-RC-POSTURE-2026-09-09` (7)). Call 12 (commissioning the external B8 seat) is RATIFIED at the
@@ -261,6 +243,16 @@ not to be re-opened: `RegCap` 256, the `IssuerKeys` cap 4,096, `SProofMax`, `Def
   a per-lane judgment (`D-RC-POSTURE-2026-09-09` (3), in
   [`docs/release-checklist.md`](docs/release-checklist.md)). Open at the RC: the paid delivery lane,
   graded at E5 after the stamp raise.
+- **`SlashesBytesCap` keeps its value (16 MiB) and LOSES its route** (`D-SLASHCAP-ROUTE`, owner:
+  *"CLOSE THE ROUTE. Not a re-ratification."*). A consensus validity rule whose invariant was computed
+  from the DEFAULTS of two proposer-side-only flags is now bound to the values IN FORCE:
+  `core/node.CheckSlashEvidenceHeadroom` and a `cmd/silt` refuse-to-start, driven by G-SLASHCAP-1..4
+  with the ablation red first. The owner's weighting: it is the **#380 class** — a consensus quantity
+  that is a function of local config rather than of the chain, the second instance in one week — and
+  the severity is the **accountability** face, since past the boundary a real double-signer's evidence
+  is rejected by the cap and the equivocator keeps its seat. Deadline was the STAMP RAISE (a validity
+  rule, manifest item 10), not deferrable past it because RAISING a cap is a WIDENING change outside
+  the narrowing exemption. Residual filed, not folded in: `R-BONDREG-SINGLE-OVERSIZE`.
 - **Delegation excludes the format surface.** Green-and-reviewed merges proceed without the owner
   EXCEPT on D1's FORMAT items, which come to him individually (`D-RC-POSTURE-2026-09-09` (6)).
 - **Sequencing, owner-directed:** the sub-frame privacy surface (`R-SUBFRAME-SIZE-ORACLE`) is
@@ -549,6 +541,7 @@ verdict is rendered by the external red-team + the field test, together.
 | `R-SUBFRAME-PREPAY-ONLY` | ACTIONABLE | Lane C7 (research-gated, a precondition of the C6 flip, NOT of the C5 merge — the economy ships default-OFF) · MEASURED by the blind PE and encoded on the branch: serve revenue accumulates per `(server, requester, root)` lane (`core/credit/escrow.go:265`), so 5,000 serves over 250 distinct fetchers skim **250 credits at a 262,160 B shard and 0 at a 1,048 B shard** — the first credit on one lane costs 3,002 serves against 12. Sub-frame objects therefore do NOT become serve-funded when their bounty base falls to zero; they become **prepay-only** for durability. The coupling that produced it: C5's storage half pushes an object class into precisely the integer-truncation regime its pricing half warns about, where the accumulator mitigation is already REFUTED on build-immutable #8. Closer: the Researcher prices sub-frame durability before the flip | silt-reviews/principle-engineer/RULING-c5-preflip-closers-399f842-2026-09-09.md | — |
 | `R-SUBFRAME-SIZE-ORACLE` | ACTIONABLE | **Lane E3 (red-team) — SCHEDULED AHEAD OF THE C6 FLIP by the owner, 2026-09-09** (`D-RC-POSTURE-2026-09-09` (8)): privacy is a Part-0 corner, an immutable rather than a tunable, and the fix window NARROWS once the format freezes, so this pass runs before the economy flip and before D3 wherever a fix would touch format. (The repair statistic's normalisation and node-level granularity WAIT, by the same call — a measurement does not hold a corner.) · TWO privacy reductions in the same direction from one change, both measured and both recorded in `docs/threat-catalog.md` under the existing F3 entry as a CATALOG UPDATE, explicitly not a mitigation: (i) padding previously blurred a sub-frame object's size to "somewhere in one chunk" and its exact byte length is now an oracle to any caretaker (layout) and any holder (stored shard length) over the whole class ≤ `chunkSize − 9`; (ii) convergent dedup for sub-frame objects now SPANS `-chunk-size` — the same payload yields ONE root at 64 KiB / 256 KiB / 1 MiB (a multi-frame object still yields two, which bounds it), so chunk size was an accidental salt against the confirmation attack and no longer is. Closer: a red-team pass on this surface before the flip; inventing a salt without one is the unreviewed novelty B8 forbids | silt-reviews/principle-engineer/RULING-c5-preflip-closers-399f842-2026-09-09.md | — |
 | `R-ANCHOR-BEARER-TRANSFER` | ACTIONABLE | Lane C5 · red-team: a demand anchor is a bearer instrument — its presenter need not be its payer (the refund therefore pays only an existing account); one pass on the transfer surface before R2.4 | silt-reviews/research/research-outcome/R2.9-session-remainder-refund-and-live-anchor-cap-RESEARCH-CERTIFICATION-2026-09-06.md | — |
+| `R-BONDREG-SINGLE-OVERSIZE` | ACTIONABLE | Lane D2 (stamp raise) · Builder → Researcher: silt has NO per-reg byte cap, and `core/node/chainrole.go:902` embeds the FIRST fresh registration unconditionally when the block carries no regs yet ("never stall the queue on a single oversized proof"), so one arbitrarily large registration exceeds the configured budget and re-opens the gap `D-SLASHCAP-ROUTE` closed for the budget itself — the headroom check bounds the BUDGET, not this overflow. Closer: a per-reg byte ceiling, which is a validity rule of its own and rides the stamp-raise train (a WIDENING change later is outside the narrowing exemption) | silt-reviews/principle-engineer/RULING-derivation-route-audit-pre-freeze-2026-09-09.md | — |
 | `R-COMPACT-ORPHAN` | ACTIONABLE | Lane C10 · Builder: the BENIGN compaction-failure class has no daemon WARN line — surface `CompactFailures` / `LastCompactError` on the banked/status path (WIP `builder/c10-compact-orphan-warn` @ `49eb5d1`: the line + both ablations RED; suites not run) | silt-reviews/principle-engineer/RULING-residual-register-true-up-e963034-2026-09-07.md | — |
 | `R-PRIVACY-OPERATOR-TAB-TOKEN` | ACTIONABLE | Lane C10 · Builder: a persistent operator-token route is the UX follow-on before the `-privacy` default reaches real operators (`D-UI-PRIVACY-FLAG`) | silt-reviews/principle-engineer/RULING-residual-register-true-up-e963034-2026-09-07.md | — |
 | `R-membership` | ACTIONABLE | Lane D1 · Builder: retire `slashedRoot` and `validatorsSeenRoot` from the v5 digest set (D-V5-WHOLESET-ROOTS five → three; owner call 1 RATIFIED 2026-09-07) in one pre-freeze PR with the explicit `objective()` guard that also covers `MinBond` (G-1 is NOT satisfied on main — the box-entry assert covers `verifyBond` only); a hard fork at activation, free while era-4 is dark; the LAST format touch | silt-reviews/research/research-outcome/R-membership-unbounded-sets-and-recovery-boundary-DIRECTION-RESEARCH-CERTIFICATION-2026-09-03.md | — |
