@@ -6,8 +6,13 @@ import (
 	"github.com/nerolabs/silt/core/chain"
 )
 
-// The SlashesBytesCap route-close (owner call 2026-09-09: "CLOSE THE ROUTE. Not a
+// The SlashesBytesCap CONFIG route-close (owner call 2026-09-09: "CLOSE THE ROUTE. Not a
 // re-ratification. The value stays 16 MiB. The route goes.").
+//
+// WHAT THIS ENFORCES, STATED EXACTLY. A NECESSARY condition on the CONFIGURABLE terms of
+// the honest-block size — nothing more. It is NOT sufficient, and the derivation is NOT
+// "bound by construction": see THE FIXED POINT below, which no value of this predicate can
+// repair.
 //
 // chain.SlashesBytesCap is a CONSENSUS VALIDITY rule enforced on every validator
 // (core/chain/validate_v5_predicates.go). Its documented invariant is
@@ -44,11 +49,43 @@ import (
 // two-level block hash (d-3, fixed-size evidence) removes that face. See the second-face
 // paragraph on chain.SlashesBytesCap.
 
-// slashEvidenceHeaderSlack is the per-block allowance for everything outside the two
-// packed budgets: the header, the attestation set, LastCommit, and cbor framing. It is
-// deliberately generous, because being wrong in this direction is an accountability break
-// rather than a resource overrun.
-const slashEvidenceHeaderSlack = 64 << 10
+// THE FIXED POINT — why a start-up check cannot close the accountability face (measured by
+// the blind PE, 2026-09-10, on signature-valid fixtures at the SHIPPED defaults).
+//
+// chain.Equivocation carries two FULL chain.Blocks (equivocation.go:26-27), and a Block
+// carries its own Slashes field (chain.go:518), bounded only by the cap being defended. So
+//
+//	cap >= 2*(body) + overhead   with   body includes Slashes <= cap
+//
+// has NO positive solution. It is a fixed point, not a tuning error. Concretely, with no
+// coalition and no misconfiguration: a block committing two ordinary 4.14 MiB proofs is
+// VALID (8.28 MiB of Slashes against a 16 MiB cap), and a LEGITIMATE equivocation proof
+// about that block measures 17,373,935 B — 596 KB over cap. The equivocator keeps its seat.
+//
+// So the cap has a THIRD face beside the two on chain.SlashesBytesCap: the NESTED-EVIDENCE
+// face, reachable at shipped defaults with no adversary, where the first two need a >=1/3
+// coalition or a misconfiguration. Like them it routes to the v5 two-level block hash
+// (d-3, fixed-size evidence), which is the only close any of the three has; the question of
+// whether a body bound could close it instead is RESEARCH-GATED and open, because a rule
+// bounding the encoded body binds PEERS, which no start-up check can.
+//
+// WHAT THIS FILE THEREFORE BUYS, honestly: it closes the OPERATOR MISCONFIGURATION route —
+// a validator can no longer make its own equivocation unprovable by editing a local flag —
+// and it makes the configurable half of the derivation true instead of assumed. It does not
+// make a legitimate proof always admissible, and nothing here should be read as claiming so.
+
+// slashEvidenceHeaderSlack is the per-block allowance for everything outside the two packed
+// budgets: the header, the attestation set, LastCommit, and cbor framing.
+//
+// IT STANDS IN FOR A QUANTITY THAT SCALES WITH THE VALIDATOR SET, and that is a disclosed
+// limit of this predicate rather than a hidden one. Era-2 evidence REQUIRES the culprit's
+// signature inside PrepareQC/Atts and v5 adds a hash-folded LastCommit, which the blind PE
+// measured at 639 B per validator per evidence pair. At the previous 64 KiB the gate blessed
+// a configuration whose legitimate proof went over cap at N >= 205. 1 MiB covers N ~ 1600 on
+// that measurement and still admits ~6.9 MiB of registrations against a 2 MiB default, so it
+// costs no realistic operator anything. Above that N the predicate is again necessary but
+// not sufficient — as it already is for the nested-evidence face above.
+const slashEvidenceHeaderSlack = 1 << 20
 
 // maxHonestBondRegBytes reports the largest -max-bondreg-bytes-per-block that still
 // satisfies the invariant, at a given entry budget. It is a function of the RUNTIME entry
@@ -86,16 +123,31 @@ func CheckSlashEvidenceHeadroom(cfg Config) error {
 	// The invariant itself, on the values in force.
 	pair := 2 * (regs + entries + slashEvidenceHeaderSlack)
 	if pair > int64(chain.SlashesBytesCap) {
+		remedy := "lower -max-entry-bytes-per-block (the entry budget alone exhausts the headroom, so no " +
+			"positive -max-bondreg-bytes-per-block can satisfy the invariant)"
+		if ceiling, ok := advisoryRegCeiling(entries); ok {
+			remedy = fmt.Sprintf("lower -max-bondreg-bytes-per-block to at most %d bytes, or lower -max-entry-bytes-per-block", ceiling)
+		}
 		return fmt.Errorf("the configured per-block budgets defeat slash evidence: "+
 			"2 x (bondregs %d + entries %d + %d overhead) = %d bytes exceeds SlashesBytesCap (%d). "+
 			"An equivocation proof carries two FULL block bodies, so at these budgets a REAL double-signer's "+
 			"evidence is rejected by the cap before CheckEquivocation runs and the equivocator KEEPS ITS SEAT "+
-			"(accountability is a Part-0 corner). Lower -max-bondreg-bytes-per-block to at most %d bytes, "+
-			"or lower -max-entry-bytes-per-block",
-			regs, entries, int64(slashEvidenceHeaderSlack), pair, int64(chain.SlashesBytesCap),
-			maxHonestBondRegBytes(entries))
+			"(accountability is a Part-0 corner). To fix: %s",
+			regs, entries, int64(slashEvidenceHeaderSlack), pair, int64(chain.SlashesBytesCap), remedy)
 	}
 	return nil
+}
+
+// advisoryRegCeiling is the "lower -max-bondreg-bytes-per-block to at most N" figure. When the
+// entry budget alone already exhausts the headroom the reg ceiling is non-positive, and telling
+// an operator to lower a budget to a negative number is not an actionable instruction — so it
+// clamps at zero and the caller points at the entry budget instead (PE ruling S-6).
+func advisoryRegCeiling(entryBudget int64) (ceiling int64, regsCanFix bool) {
+	c := maxHonestBondRegBytes(entryBudget)
+	if c <= 0 {
+		return 0, false
+	}
+	return c, true
 }
 
 // defaultedEntryBudget keeps the advisory ceiling in the unbounded-regs message useful

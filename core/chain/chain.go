@@ -409,7 +409,8 @@ const RegCap = 256
 // never admits a forged slash (CheckEquivocation is the only thing that convicts) and
 // lowering it never convicts an honest validator; on I5's COMPLETENESS axis it is the
 // evidence size above which a double-signer keeps its seat (below). NOT RegCap's class.
-// Invariant the value must satisfy: SlashesBytesCap ≥ 2 × (default honest block) +
+// Invariant the value ASPIRES to (unsatisfiable as stated — see THE FIXED POINT below):
+// SlashesBytesCap ≥ 2 × (configured honest block) +
 // overhead — 16 MiB against ~4.2 MiB. It is needed because F2-EVIDENCE-RECOMPUTE makes FULL bodies the only
 // admissible evidence and Prune() never recurses into Slashes, so every admitted proof
 // pins two full block bodies — BondReg.Answer included — permanently resident on every
@@ -443,27 +444,36 @@ const RegCap = 256
 // (adapters/tcpnet) that already bounds a block non-uniformly. A larger legitimate
 // backlog drains over successive blocks (liveness, not safety).
 //
-// THE DERIVATION IS BOUND BY CONSTRUCTION (2026-09-09, owner call: "CLOSE THE ROUTE. Not a
-// re-ratification. The value stays 16 MiB. The route goes."). Until then this comment read
-// "the DEFAULT per-block budgets" and nothing held the RUNNING configuration to it. The two
-// flags are PROPOSER-SIDE ONLY — every non-test read is core/node/chainrole.go
-// (foldPendingBondRegs) and core/node/entrypool.go (foldPendingEntries) — and the shipped
-// help documented "0 = unbounded", so an operator could raise its own budget past ~7.9 MiB
-// and thereby make its OWN equivocation unprovable: the evidence pair exceeds this cap, the
-// cap rejects it before CheckEquivocation ever runs, and the double-signer keeps its seat.
-// Slashing defeated by making the evidence too big; accountability is a Part-0 corner.
+// THE CONFIGURATION ROUTE IS CLOSED — AND THE INVARIANT ABOVE IS NOT SATISFIABLE
+// (2026-09-09 owner call: "CLOSE THE ROUTE. Not a re-ratification. The value stays 16 MiB.
+// The route goes."; corrected 2026-09-10 by the blind PE review of the close itself, which
+// REFUTED the stronger claim this comment first carried).
 //
-// That is the #380 class — a consensus quantity that is a function of LOCAL CONFIG rather
-// than of the chain — which silt paid for once already in the same week (RequiredQuorum()
-// returning the local cfg.Quorum, an I1 divergence). It is closed by
-// core/node.CheckSlashEvidenceHeadroom, which cmd/silt refuses to start on, and driven by
-// G-SLASHCAP-1..4. Deadline was the STAMP RAISE, not the freeze (validity rule, freeze
-// manifest item 10) — and not deferrable past it, because RAISING a cap is a WIDENING rule
-// change, outside the narrowing exemption.
+// What was wrong. The invariant three paragraphs up read "2 × (DEFAULT honest block)", and
+// nothing held the RUNNING configuration to it. The two budgets are PROPOSER-SIDE ONLY —
+// every non-test read is core/node/chainrole.go (foldPendingBondRegs) and
+// core/node/entrypool.go (foldPendingEntries) — and their help documented "0 = unbounded",
+// so an operator could raise its own budget past ~7.9 MiB and make its OWN equivocation
+// unprovable: the pair exceeds this cap, the cap rejects it before CheckEquivocation runs,
+// and the double-signer keeps its seat. That is the #380 class — a consensus quantity that
+// is a function of LOCAL CONFIG rather than of the chain. It is closed by
+// core/node.CheckSlashEvidenceHeadroom, which cmd/silt refuses to start on (G-SLASHCAP-1..4).
 //
-// SCOPE: this closes the CONFIGURATION route only. The second face above — a ≥⅓ coalition
-// making every evidence pair over-cap with its own valid renewals — is UNTOUCHED, and no
-// admissible cap value closes it; only the v5 two-level block hash (d-3) removes it.
+// THE FIXED POINT — and this is why that close is NECESSARY BUT NOT SUFFICIENT. Equivocation
+// carries two FULL Blocks (equivocation.go), and a Block carries its own Slashes field
+// (below), bounded only by this cap. So "cap ≥ 2 × body + overhead" with "body ⊇ Slashes ≤
+// cap" has NO positive solution, for any cap. Measured at the SHIPPED defaults, with no
+// coalition and no misconfiguration: a block committing two ordinary 4.14 MiB proofs is
+// VALID (8.28 MiB of Slashes under a 16 MiB cap), and a LEGITIMATE proof about that block is
+// 17,373,935 B — 596 KB over cap. The equivocator keeps its seat.
+//
+// So this constant has a THIRD face beside the two above: the NESTED-EVIDENCE face. Unlike
+// the coalition face it needs no coalition, and unlike the configuration route it needs no
+// misconfiguration — it is reachable on the honest path at shipped defaults. Like the other
+// two it routes to the v5 two-level block hash (d-3, fixed-size evidence), which is the only
+// close any of the three has. Whether a validity rule bounding the ENCODED BLOCK BODY could
+// close it instead — binding PEERS, which no start-up check can — is RESEARCH-GATED and open;
+// nothing in the config route-close improved that answer, and this comment does not claim it.
 const SlashesBytesCap = 16 << 20
 
 // Consensus signature phases (#432 two-phase gather, research-certified).

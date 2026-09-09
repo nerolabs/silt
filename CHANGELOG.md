@@ -61,7 +61,17 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   values IN FORCE and `cmd/silt` refuses to start on a violation, naming the rule, the flag, the admissible ceiling and
   what is lost. `0` and negative budgets are refused rather than clamped (the proposer's guard is `budget > 0`, so both
   read as unbounded), because clamping would silently re-interpret an explicit operator request. Nothing in-tree set
-  either flag, so no topology changes. **The owner's framing is the durable lesson: this is the #380 class** — a
+  either flag, so no topology changes. **CORRECTED BEFORE MERGE by the blind PE review of this very
+  change:** the first draft of this entry and of the code comment claimed the derivation was now "bound by
+  construction". It is not, and it cannot be. `Equivocation` carries two FULL `Block`s and a `Block` carries its
+  own `Slashes`, bounded only by the cap being defended, so `cap ≥ 2 × body + overhead` has **no positive
+  solution at any cap** — a fixed point, not a tuning error. Measured on signature-valid fixtures at the SHIPPED
+  defaults, with no coalition and no misconfiguration: a block committing two ordinary 4.14 MiB proofs is valid,
+  and a LEGITIMATE proof about that block is **17,373,935 B, 596 KB over cap**. So the cap has a THIRD face,
+  `R-NESTED-EVIDENCE-OVERCAP`, and it is the only one reachable on the honest path. What this change buys,
+  stated exactly: it closes the OPERATOR MISCONFIGURATION route and makes the configurable half of the
+  derivation true instead of assumed — **necessary, not sufficient**. The close for the rest is research-gated
+  and in flight. **The owner's framing remains the durable lesson: this is the #380 class** — a
   consensus quantity that is a function of LOCAL CONFIG rather than of the chain, the second instance inside one week
   after `RequiredQuorum()` returned the local `cfg.Quorum` — *"two instances of one class isn't a coincidence, it's an
   unguarded seam."* Timing: a VALIDITY rule (freeze manifest item 10), so the deadline was the stamp raise rather than
