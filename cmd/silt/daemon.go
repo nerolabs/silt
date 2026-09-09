@@ -61,7 +61,7 @@ import (
 // over HTTP so separate processes (and machines) can share it.
 // The shipped per-block packing budgets. NAMED, not inline, so the flag default and the
 // start-up headroom gate that validates it read ONE value: changing the default here moves
-// what cmd/silt TestG_SLASHCAP_3 asserts, instead of leaving a test that restates a literal
+// what cmd/silt TestG_SLASHCAP_3_ShippedFlagDefaultsAndTheRefusalText asserts, instead of leaving a test that restates a literal
 // and stays green while the shipped binary refuses to start (PE ruling B-4, ablation A5).
 const (
 	defaultMaxBondRegBytesPerBlock = 2 << 20

@@ -8,7 +8,7 @@ import (
 	"github.com/nerolabs/silt/core/node"
 )
 
-// TestG_SLASHCAP_3 drives the daemon's OWN flag default CONSTANTS through the predicate, so
+// TestG_SLASHCAP_3_ShippedFlagDefaultsAndTheRefusalText drives the daemon's OWN flag default CONSTANTS through the predicate, so
 // that changing a default in daemon.go changes this result. It does NOT boot the daemon:
 // the wiring and order are covered by the source gate below, and core/node G-SLASHCAP-1
 // drives the boundary itself. Named for what it checks — the shipped defaults and the
