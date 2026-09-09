@@ -33,14 +33,29 @@ tree: `bountyChunkWarning(52_412, true) == ""` before this change.
 
 **Decision: (B), both gates.**
 
-**The threshold is derived, and the rule has a closed complement.** The certification asked for a threshold
-"derived from the arithmetic, never typed". `shippedBountyBase()` is `RepairBountyBase(K, DefaultChunkSize + Overhead)`
-— the base the shipped default pays, 10 today. The rule is then: **warn iff the operator SET `-chunk-size` AND
-that geometry pays a smaller base than the default's.** Its complement is closed and both sides are driven in
-`TestGLambda8PublishWarningFiresOnlyForAnExplicitSmallChunk`: silent for an unset flag at any geometry, silent
-at and above the default, ZERO arm below `MinBountyChunkBytesFor`, truncation arm in the band between. The
-default is silent *by construction* rather than by a hand-kept number, so a moved default cannot leave the
-warning stranded — it moves the threshold with it.
+**The threshold is derived, and the rule has a closed complement — over the PUBLISH, not the flag.** The
+certification asked for a threshold "derived from the arithmetic, never typed". `shippedBountyBase()` is
+`RepairBountyBase(K, DefaultChunkSize + Overhead)` — the base the shipped default pays on a full frame, 10
+today. The rule is then: **warn iff this publish's real repair-bounty base is below that.**
+
+The first cut of this scoped the rule to the chunk size and claimed the complement was closed. It was closed
+over *geometry* and open over *objects*, and the blind PE caught it (B-3): after half 2 a 1 KB and a 10 KB
+object at the shipped default both pay a real base of ZERO and the warning said nothing — the diff's own second
+half created an object class its first half could not see. The rule now prices the shard the publish will
+really store, via `pipeline.DataFrameSize` (the same rule `splitFile` implements, read rather than restated),
+so the two causes are:
+
+| cause | the operator can act on it by | at the shipped default |
+|---|---|---|
+| the chunk size they chose | raising `-chunk-size` | anything below 262,128 B truncates; below 26,199 B pays zero |
+| the OBJECT's own size | nothing — the shard IS the object | every object ≤ 26,190 B pays ZERO; ≤ 262,119 B pays under 10 |
+
+Extending it *simplified* the rule rather than complicating it: the `explicit` flag-was-set parameter is now
+DEAD and is deleted, along with `flagWasSet`. An unset `-chunk-size` is `DefaultChunkSize` by construction, so
+it can only land on the silent side — which is the M6 "don't warn on every default publish" concern satisfied
+structurally instead of by a flag. A source gate pins that the flag's default really is `DefaultChunkSize`,
+because that is what the complement rests on. Both sides and both causes are driven in
+`TestGLambda8PublishWarningFiresOnlyWhenThePublishShortPaysTheRepairer`.
 
 **The printed figures are integer arithmetic.** `credit.RepairBountyTruncation` returns the exact price floored
 at 1e-5 credits and the under-pay in tenths of one percent, both computed in `int64`. The money path does no
@@ -103,7 +118,7 @@ single frame is framed at its true length — and `Stage` reads the geometry off
 
 | | |
 |---|---|
-| **Re-addresses** | Every object whose content fits in one frame: `size ≤ chunkSize − 8` (262,136 B at the default). Its data and parity chunk IDs, root, link key and manifest all change. |
+| **Re-addresses** | Every object whose content fits in one frame: **`size ≤ chunkSize − 9`** (262,135 B at the default). Its data and parity chunk IDs, root, link key and manifest all change. The first statement of this said `− 8` and was wrong by one byte (blind PE B-1, measured at `chunkSize = 4096`: size 4088 is byte-identical, 4087 moves) — an object of exactly `chunkSize − 8` FILLS the first frame, so `io.ReadFull` returns a nil error and `splitFile` takes the pass-through branch. Both sides are now driven by `TestDataFrameSizeIsWhatStageCommits`. |
 | **Byte-identical** | Every object with two or more frames — they share a stripe, the tail stays padded, `chunk.Split` does the whole job. Gated by `TestMultiFrameObjectsKeepThePaddedTail` and measured on the 1.5 MB modal object. |
 | **Manifest format** | UNCHANGED. No new field, no new CBOR key. The frame length rides in the existing `ChunkSize`. |
 | **Erasure geometry** | UNCHANGED for every object. Only the shard LENGTH of a single-frame stripe moves. |
@@ -114,23 +129,59 @@ The genesis move is the **second** in this window and rests on the same ground t
 (4′, 2026-09-07): no live network exists and every development chain is wiped on upgrade. It is owed the same
 explicit acceptance; `TestGenesisBlockHashIsPinned` holds all three literals so it cannot drift unannounced.
 
-### Two consequences the certification and the advisory did not price
+### Four consequences the certification and the advisory did not price
 
-1. **A sub-frame object's repair bounty base becomes ZERO.** Its shard is now ~1 KB, so `k·shardBytes` is far
-   below one credit of fetch. The direction is the one Don't #7 asks for — repairing a 1 KB object really does
-   cost about 10 KB of fetch, and the old 10-credit payment was a ~250× over-pay funded from that object's own
-   escrow — but the integer floor lands it at zero, so sub-frame objects are kept alive by the serve economy
-   rather than by bounties. It is **not silent**: the judge counts `Stats.BountyBaseZero` and journals a WARN
-   on every such settlement, which is G-λ-8 doing exactly its job, now on a geometry a real publish produces
-   (the old fixture's 6,553-byte shard was synthetic — the Economist's `R-SHARD-IS-CHUNK` note; the fixture is
-   re-grounded on a real 1 KB object here).
-2. **Threat F3 gets slightly worse for sub-frame objects.** `docs/threat-catalog.md` already records
-   timing/size fingerprinting as unmitigated ("chunk sizes + timing fingerprint files even encrypted (no
-   padding)"), and silt claims no size hiding. Still, the padding *did* blur a sub-frame object's true size to
-   "somewhere in one chunk", and after this change its exact byte length is visible to any caretaker (in the
-   layout's `ChunkSize`) and to any holder (in the stored shard length). Recorded here rather than decided: it
-   is a degradation inside an already-open, already-disclosed threat, and the seat that owns F3 may want to say
-   so out loud before the flip.
+**1. A sub-frame object's durability becomes PREPAY-ONLY. This is the correction that matters most.**
+Its repair bounty base is now zero — its shard is ~1 KB, so `k·shardBytes` is far below one credit of fetch.
+The first version of this document said such objects are "kept alive by the serve economy rather than by
+bounties". That is **measured false** and the blind PE caught it (B-2). `RecordServeToObject` accumulates the
+skim on a per-`(server, requester, root)` LANE (`core/credit/escrow.go`), and a published small object is
+served once each to many *different* fetchers, so no lane ever reaches a credit:
+
+| shard | same-lane serves to the first escrow credit | escrow after 5,000 serves over 250 distinct fetchers |
+|---|---|---|
+| 262,160 B (padded, before) | 12 | **250** |
+| 1,048 B (short frame, after) | 3,002 | **0** |
+
+Measured on the shipped ledger and now driven by `TestSubFrameObjectDurabilityIsPrepayOnly`, so the sentence
+cannot rot back. Zero bounty *and* zero skim: a sub-frame object's durability is funded by publisher prepay
+alone. The direction is still defensible — the old inflow billed for moving padding, and repairing a 1 KB
+object really does cost about 10 KB of fetch, so the old 10-credit bounty was a ~250× over-pay — but the honest
+statement is "prepay-only", not "serve-funded", and it is the statement the owner reads when accepting the
+break.
+
+It is **not silent**: the judge counts `Stats.BountyBaseZero` and journals a WARN on every such settlement, and
+since B-3 the publisher is told at publish time too, which matters because the judge is a caretaker the
+publisher neither runs nor sees.
+
+**And this is the coupling neither the certification nor I saw: half 2 of this diff pushes a whole object class
+into exactly the integer-truncation regime half 1 exists to warn about, and on the repair lane the mitigation —
+an accumulator — is already REFUTED on build-immutable #8.** That framing, not the storage saving, is what the
+Researcher has to price. It gates the economy-ON flip (C6), not this change, because `-economy` is off by
+default.
+
+**2. Threat F3 gains an exact byte-length oracle for sub-frame objects.** `docs/threat-catalog.md` already
+records timing/size fingerprinting as unmitigated and silt claims no size hiding anywhere. Still, the padding
+*did* blur a sub-frame object's true size to "somewhere in one chunk"; now any holder reads its exact length
+from the stored shard and any caretaker from the layout's `ChunkSize`. Characterising this as "slight" in the
+first cut was wrong: it is an exact oracle over the whole class ≤ `chunkSize − 9`.
+
+**3. Convergent dedup for sub-frame objects now spans `-chunk-size`, and chunk size stops being an accidental
+salt.** Measured: the same 4,096-byte payload staged in convergent mode at 64 KiB, 256 KiB and 1 MiB now yields
+ONE root; before, the padded ciphertext made the chunk ID — and so the root and the link key — depend on the
+publisher's geometry. Dedup improves, and the F6 confirmation attack that `cmd/silt` already warns about gets
+cheaper by exactly the same step: a guesser needs the plaintext alone rather than the plaintext AND the
+geometry. Bounded to sub-frame objects — a 100,000-byte multi-frame object still yields different roots at
+different chunk sizes, and `TestConvergentDedupNowSpansTheChunkSize` drives both sides.
+
+**Disposition of 2 and 3: recorded, not mitigated.** Both are written into `docs/threat-catalog.md` under the
+existing F3 entry as a catalog update. No mitigation is attempted and none should be attempted here — a
+red-team pass is owed on this surface, and inventing a salt without one would be exactly the unreviewed novelty
+B8 forbids.
+
+**4. `manifest.ChunkSize` can now legitimately be as small as 9** (a 1-byte object). Any future consumer that
+divides by the field or assumes a floor inherits that; said in `splitFile`'s comment where such a consumer
+would read it.
 
 ---
 
@@ -138,7 +189,18 @@ explicit acceptance; `TestGenesisBlockHashIsPinned` holds all three literals so 
 
 | Gate | Where | Ablation that must go RED |
 |---|---|---|
-| G-BT-1, both sides of the rule | `cmd/silt/g_lambda_test.go` `TestGLambda8PublishWarningFiresOnlyForAnExplicitSmallChunk` | Restore the zero-only rule ⇒ `bountyChunkWarning(52_412, true)` returns `""` |
+| G-BT-1, both sides and both causes | `cmd/silt/g_lambda_test.go` `TestGLambda8PublishWarningFiresOnlyWhenThePublishShortPaysTheRepairer` | (a) Restore the zero-only rule ⇒ `bountyPriceWarning(52_412, unknown)` returns `""`; (b) price on the chunk size alone ⇒ a 1 KB object at the default says nothing while paying zero |
+| The prepay-only consequence | `core/credit/g_bt2_test.go` `TestSubFrameObjectDurabilityIsPrepayOnly` | Skim on a per-account rather than per-lane accumulator ⇒ the 250-fetcher spread stops reading 0 |
+| The re-addressing boundary | `core/pipeline/short_final_stripe_test.go` `TestDataFrameSizeIsWhatStageCommits` | Shift the rule one byte (`fs+1 < chunkSize`) ⇒ "size 4087: Stage committed ChunkSize 4096, want 4095" |
+| The dedup/salt finding | `core/pipeline/short_final_stripe_test.go` `TestConvergentDedupNowSpansTheChunkSize` | Restore the padded frame ⇒ three chunk sizes give three roots, which is the measurement that the salt WAS there |
+
+**One note on how the boundary is gated, because it is not gated the way it looks.** `fs < chunkSize` and
+`fs <= chunkSize` are the SAME function: at `fs == chunkSize` both branches return `chunkSize`. So the rule has
+no off-by-one to mutate at its own boundary — the error was never in the code, it was in the sentence, which
+nothing executed. The gate is therefore a table of LITERAL expected frame sizes (4087 → 4095, 4088 → 4096) that
+both `Stage` and `DataFrameSize` are checked against, rather than the test calling the function under test and
+agreeing with itself. That is the standing lesson applied one level up: a published sentence is an assertion,
+and the fix is to run it.
 | G-BT-2, the arithmetic | `core/credit/g_bt2_test.go` | Divide before the multiplier ⇒ 4 instead of 7; and the zero-signal case collapses to 0 |
 | G-BT-2, at the judge | `core/node/g_bt2_judge_test.go` | Settle with the floor-first price ⇒ the judge pays 4, not 7 |
 | The short frame | `core/pipeline/short_final_stripe_test.go` | Split at `opts.ChunkSize` again ⇒ the 1 KB object commits a 262,144-byte geometry |

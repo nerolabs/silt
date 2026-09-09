@@ -337,6 +337,24 @@ func Get(ctx context.Context, store ports.ChunkStore, reg ports.Registry, h link
 	return nil
 }
 
+// DataFrameSize is the frame size an object of objectBytes is split at, and it is THE
+// rule: its own length plus the frame header when the whole object fits in one frame,
+// else the chunk size. The boundary is therefore objectBytes <= chunkSize − HeaderSize − 1
+// (262,135 B at the 256 KiB default); an object of exactly chunkSize − HeaderSize FILLS
+// the first frame and is unchanged. Same shape as ManifestFrameSize, and deliberately so.
+//
+// splitFile implements this over a STREAM, which cannot know the length ahead, so the two
+// must be driven against each other rather than trusted to agree —
+// TestDataFrameSizeIsWhatStageCommits does that over the boundary. cmd/silt reads it to
+// price a publish before staging it (the repair bounty is computed on the shard that gets
+// stored, not on the chunk size that was asked for).
+func DataFrameSize(objectBytes, chunkSize int) int {
+	if fs := objectBytes + chunk.HeaderSize; fs < chunkSize {
+		return fs
+	}
+	return chunkSize
+}
+
 // splitFile frames the file's own bytes. It is chunk.Split with ONE exception: an object
 // whose entire content fits in a single frame is framed at its TRUE length instead of
 // being padded up to chunkSize (R-SHORT-FINAL-STRIPE, Economist advisory 2026-09-06 §4
@@ -348,10 +366,12 @@ func Get(ctx context.Context, store ports.ChunkStore, reg ports.Registry, h link
 // Every OTHER object is byte-identical to before: two or more frames share a stripe with
 // each other, so the tail stays padded and chunk.Split does the whole job. The frame size
 // travels in manifest.ChunkSize, so the audit, the repair judge and the reader all read
-// the geometry that was used rather than the one that was asked for.
+// the geometry that was used rather than the one that was asked for. It can legitimately
+// be as small as chunk.MinChunkSize (a 1-byte object commits ChunkSize = 9), so a
+// consumer that divides by the field or assumes a floor must say so.
 //
-// This changes the chunk IDs — and therefore the root — of every object below one frame.
-// See DefaultChunkSize on what that costs and what it does not.
+// This changes the chunk IDs — and therefore the root — of every object at or below
+// chunkSize − 9. See DefaultChunkSize on what that costs and what it does not.
 func splitFile(r io.Reader, chunkSize int) ([][]byte, error) {
 	if chunkSize < chunk.MinChunkSize {
 		return chunk.Split(r, chunkSize) // one place reports a bad chunk size
@@ -362,7 +382,8 @@ func splitFile(r io.Reader, chunkSize int) ([][]byte, error) {
 	case err == io.EOF:
 		return nil, nil // empty input yields zero frames, exactly as chunk.Split does
 	case err == io.ErrUnexpectedEOF:
-		return chunk.Split(bytes.NewReader(head[:n]), n+chunk.HeaderSize)
+		// The whole object arrived inside one frame, so its length is known now.
+		return chunk.Split(bytes.NewReader(head[:n]), DataFrameSize(n, chunkSize))
 	case err != nil:
 		return nil, err
 	}

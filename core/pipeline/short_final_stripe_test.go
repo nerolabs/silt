@@ -126,3 +126,96 @@ func (r memRegistry) Lookup(_ context.Context, root ports.Hash) (ports.Entry, bo
 	}
 	return ports.Entry{}, false, nil
 }
+
+// TestDataFrameSizeIsWhatStageCommits drives the two halves of ONE rule against each
+// other: DataFrameSize decides from a LENGTH, splitFile decides from a STREAM that cannot
+// know the length ahead, and the committed manifest.ChunkSize must be what the first says
+// for every object. It also fixes the re-addressing boundary, which the first published
+// statement of this change got wrong by one byte (blind PE B-1, 2026-09-09): an object of
+// exactly chunkSize − HeaderSize FILLS the first frame and is unchanged; the largest
+// object that re-addresses is chunkSize − HeaderSize − 1.
+func TestDataFrameSizeIsWhatStageCommits(t *testing.T) {
+	ctx := context.Background()
+	const cs = 4096
+	// LITERAL expectations, not DataFrameSize applied to itself: the table is the
+	// independent statement of the rule and both the helper and Stage are checked
+	// against it. cs − HeaderSize = 4088 is the largest object that fills one frame.
+	for _, c := range []struct{ size, wantFrame int }{
+		{0, cs},      // no frames at all; Stage keeps the asked-for geometry
+		{1, 9},       // the minimum frame
+		{9, 17},      //
+		{1000, 1008}, //
+		{4086, 4094}, //
+		{4087, 4095}, // the LARGEST object that re-addresses: cs − HeaderSize − 1
+		{4088, cs},   // fills the first frame exactly — unchanged
+		{4089, cs},   // two frames
+		{cs, cs},     //
+		{2 * cs, cs},
+		{3*cs + 17, cs},
+	} {
+		store := memstore.New()
+		h, entry, err := pipeline.Stage(ctx, store, bytes.NewReader(bytes.Repeat([]byte{0x3c}, c.size)),
+			pipeline.Options{ChunkSize: cs, Mode: crypto.Convergent})
+		if err != nil {
+			t.Fatalf("size %d: stage: %v", c.size, err)
+		}
+		m, err := pipeline.LoadFull(ctx, store, entry, h)
+		if err != nil {
+			t.Fatalf("size %d: load: %v", c.size, err)
+		}
+		if m.ChunkSize != int64(c.wantFrame) {
+			t.Fatalf("size %d: Stage committed ChunkSize %d, want %d", c.size, m.ChunkSize, c.wantFrame)
+		}
+		if c.size > 0 {
+			if got := pipeline.DataFrameSize(c.size, cs); got != c.wantFrame {
+				t.Fatalf("size %d: DataFrameSize says %d, Stage commits %d — the length rule and the stream rule disagree", c.size, got, c.wantFrame)
+			}
+		}
+	}
+	if pipeline.DataFrameSize(1, cs) != chunk.MinChunkSize {
+		t.Fatalf("a 1-byte object does not frame at the minimum %d — manifest.ChunkSize can legitimately be that small", chunk.MinChunkSize)
+	}
+}
+
+// TestConvergentDedupNowSpansTheChunkSize records a PRIVACY consequence of the short final
+// stripe that no source named until the blind PE found it (N-1, 2026-09-09), and records
+// it as a measurement so it cannot be argued away later. Padding used to make a sub-frame
+// object's ciphertext — and so its chunk ID, root and link key — depend on the publisher's
+// -chunk-size. At true length it does not: the same bytes published at 64 KiB, 256 KiB and
+// 1 MiB now yield ONE root.
+//
+// Dedup improves. So does the confirmation attack that cmd/silt already warns about for
+// convergent mode: chunk size was an accidental salt and is no longer one, so a guesser
+// needs the plaintext alone rather than the plaintext AND the geometry. silt claims no
+// size hiding (docs/threat-catalog.md F3) and this is NOT a mitigation — inventing a salt
+// here would be exactly the unreviewed novelty B8 forbids. A red-team pass is owed.
+func TestConvergentDedupNowSpansTheChunkSize(t *testing.T) {
+	ctx := context.Background()
+	roots := map[string]int{}
+	for _, cs := range []int{64 << 10, 256 << 10, 1 << 20} {
+		store := memstore.New()
+		h, _, err := pipeline.Stage(ctx, store, bytes.NewReader(bytes.Repeat([]byte{0x7e}, 4096)),
+			pipeline.Options{ChunkSize: cs, Mode: crypto.Convergent})
+		if err != nil {
+			t.Fatalf("chunk size %d: %v", cs, err)
+		}
+		roots[string(h.Root[:])]++
+	}
+	if len(roots) != 1 {
+		t.Fatalf("the same 4,096-byte payload produced %d distinct roots across three chunk sizes; the short final stripe means it must produce ONE — if this is RED the salt is back and the F3 note needs re-reading", len(roots))
+	}
+	// A multi-frame object still depends on the geometry, which bounds the finding.
+	multi := map[string]int{}
+	for _, cs := range []int{4096, 8192} {
+		store := memstore.New()
+		h, _, err := pipeline.Stage(ctx, store, bytes.NewReader(bytes.Repeat([]byte{0x7e}, 100_000)),
+			pipeline.Options{ChunkSize: cs, Mode: crypto.Convergent})
+		if err != nil {
+			t.Fatalf("chunk size %d: %v", cs, err)
+		}
+		multi[string(h.Root[:])]++
+	}
+	if len(multi) != 2 {
+		t.Fatalf("a 100,000-byte multi-frame object collapsed to %d root(s) across two chunk sizes, want 2 — the finding is scoped to SUB-FRAME objects", len(multi))
+	}
+}

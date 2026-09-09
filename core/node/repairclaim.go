@@ -208,7 +208,8 @@ func (n *Node) settleRepairVerdict(claimant ports.NodeID, claim repairproof.Repa
 	}
 	{
 		// Protocol price, relative to the erasure geometry (PE Q1/Q3): a repair is
-		// worth c·k·shardBytes, scaled up by BountyFor's rarest-shard multiplier.
+		// worth c·k·shardBytes scaled by the rarest-shard multiplier, and
+		// credit.RepairBounty divides that whole product into credits once.
 		base := credit.RepairBountyBase(p.K, shardBytes)
 		if base == 0 {
 			// G-λ-8 (G-R212-7): the geometry is below one credit of fetch, so the bounty

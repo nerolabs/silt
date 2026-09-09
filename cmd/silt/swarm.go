@@ -245,7 +245,10 @@ func swarmAdd(args []string) error {
 	}
 
 	var h link.Handle
-	warnBountyChunk(*chunkSize, flagWasSet(fs, "chunk-size"))
+	// Price the publish before it is staged: the shard a repair will pull is the object's
+	// own bytes when it fits in one frame, so the SIZE is part of the price (blind PE B-3).
+	// A file that cannot be stat'd prices the geometry alone.
+	warnBountyPrice(*chunkSize, fileSizeOrUnknown(f), os.Stderr)
 	var placed int
 	err = nil
 	if rerr := run(func(done func()) {

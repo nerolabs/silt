@@ -88,3 +88,57 @@ func TestRepairBountyTruncationIsExactIntegerArithmetic(t *testing.T) {
 		}
 	}
 }
+
+// TestSubFrameObjectDurabilityIsPrepayOnly RUNS the consequence the C5 deliberation first
+// stated the wrong way round (blind PE B-2, 2026-09-09). The claim was that a sub-frame
+// object, whose repair bounty base is now ZERO, is "kept alive by the serve economy
+// instead". Measured, it is not: the auto-skim accumulates on a per-(server, requester,
+// root) LANE, so a small object served once each to many DIFFERENT fetchers never reaches
+// one credit on any lane. Its durability is prepay-only.
+//
+// The band is the point, not the endpoints: it takes 3,002 serves of the same object TO
+// THE SAME FETCHER to fund the first escrow credit at a 1,048-byte shard, against 12 at
+// the padded 262,160-byte shard.
+func TestSubFrameObjectDurabilityIsPrepayOnly(t *testing.T) {
+	const (
+		paddedShard = 262_160 // a full 256 KiB frame + the GCM tag, as it was
+		shortShard  = 1_048   // a 1 KB object's own bytes + header + tag, as it is
+		serves      = 5_000
+		fetchers    = 250
+	)
+	spread := func(shardBytes int64) int64 {
+		l := New(50_000, 1_000_000)
+		server, payee := id(251), id(252) // fetchers are bytes 0..249, so no id collides
+		root := objRoot("sub-frame")
+		for i := 0; i < serves; i++ {
+			l.RecordServeToObject(server, id(byte(i%fetchers)), root, payee, shardBytes)
+		}
+		return l.EscrowBalance(root)
+	}
+	sameLane := func(shardBytes int64) int {
+		l := New(50_000, 1_000_000)
+		server, requester, payee := id(251), id(0), id(252)
+		root := objRoot("one-lane")
+		for i := 1; ; i++ {
+			l.RecordServeToObject(server, requester, root, payee, shardBytes)
+			if l.EscrowBalance(root) > 0 {
+				return i
+			}
+			if i > 10_000 {
+				t.Fatalf("no escrow credit after %d serves of %d B", i, shardBytes)
+			}
+		}
+	}
+	if got := spread(paddedShard); got != 250 {
+		t.Fatalf("padded shard: %d serves over %d fetchers skimmed %d credits, want 250", serves, fetchers, got)
+	}
+	if got := spread(shortShard); got != 0 {
+		t.Fatalf("short shard: %d serves over %d fetchers skimmed %d credits, want 0 — a sub-frame object earns NO skim in the many-fetchers pattern, so its durability is prepay-only", serves, fetchers, got)
+	}
+	if got := sameLane(paddedShard); got != 12 {
+		t.Fatalf("padded shard: first escrow credit after %d same-lane serves, want 12", got)
+	}
+	if got := sameLane(shortShard); got != 3_002 {
+		t.Fatalf("short shard: first escrow credit after %d same-lane serves, want 3,002", got)
+	}
+}
