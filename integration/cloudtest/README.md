@@ -48,7 +48,7 @@ onto the existing 13-node topology with **no topology change**:
 | `flow_c2_no_capture` | `sybil` (#5) | **opt-in** (`SYBILS=8`): a bonded non-anchor Sybil cohort cannot advance the chain with the anchors down, and it resumes when they return |
 
 **The R2.9 paid delivery lane** (`flow_delivery_lane`, ONE topology change: the boot validator arms
-`-accept-delivery-receipts -delivery-idle-window 90s -grant-capacity 64 -grant-per-hour 64`) grades a
+`-accept-delivery-receipts -delivery-idle-window 24m -grant-capacity 64 -grant-per-hour 64`) grades a
 `swarm receipt` from fetch-1 on two rows. `13-delivery-lane` is the lane's field contract: armed (the unit's
 argv) and announced (the boot banner, whole-journal read); while era-4 is dark the client is refused at the
 withdrawal naming the committed E→key binding, nothing is spent and the server's `debug.log` carries no banked

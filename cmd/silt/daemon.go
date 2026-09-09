@@ -74,7 +74,7 @@ func cmdDaemon(args []string) error {
 	freeload := fs.Bool("freeload", false, "role separation (#47): serve the registry/relay/routing role but REFUSE to store or serve content — for public-infrastructure operators who run a rendezvous registry without being conscripted into hosting arbitrary content. The node still carries DHT routing; it just holds and serves no chunks")
 	serveContent := fs.Bool("serve-content", true, "D-TIERING capability axis: hold and serve content shards (the edge tier's core contribution, bounded by -capacity). ON by default — this is what an ordinary node does. The explicit form exists so a tier profile composes positively (`-serve-content -archive=false -validator=false` is the transient edge box) rather than as a double negative. `-serve-content=false` is the same refusal as -freeload; passing both with opposite senses is refused rather than silently resolved")
 	acceptReceipts := fs.Bool("accept-delivery-receipts", false, "PoD neutral lane (docs/design/pod.md, certified 2026-08-26): BANK delivery receipts from fetchers this node served, and settle the conserved delivery credit — the fetcher's retrieval fee less the durability skim, which routes to the delivered object's repair escrow. Requires the token-issuer role (implied by -validator), because a receipt is verified against the issuer key that signed its retrieval token; the bilateral issuer==server shape is what the certification's per-node settlement answer covers. Delivery credit is BALANCE ONLY and can never become consensus standing (the γ→1/N firewall) — a receipt is mintable with zero object bytes by design, and conservation, not possession, is what makes forging it unprofitable. Off by default")
-	deliveryIdle := fs.Duration("delivery-idle-window", 0, "R2.9 paid delivery sessions (G-R212-8 certification 2026-09-06): close a session idle for this long since its LAST settlement, measured on this node's injected clock (wall time in production; a forward clock step reaps every live session at once — R-SESSION-WALLCLOCK-STEP), and book its unsettled face remainder ONCE as a DEPOSIT returned to the fetcher when the anchor leaves the guard window (D-R2.9-NODE-HALF-CALLS 1′; nothing is burned). REFUSE-UNTIL-SET: no shipped default — the window is a LIVENESS choice (how long an idle session holds a session slot; how long a deposit stays locked past its anchor's expiry) with no certified value yet; a daemon with -accept-delivery-receipts must set it. A session is one durable fetcher's prepayment at this server (one demand-domain anchor = 50,000 credits = 12.21 GiB of delivery), spans objects, settles incrementally on cumulative-count receipts, and is topped up with fresh anchors")
+	deliveryIdle := fs.Duration("delivery-idle-window", deliveryIdleDefault, "R2.9 paid delivery sessions (G-R212-8 certification 2026-09-06): close a session idle for this long since its LAST settlement, measured on this node's injected clock (wall time in production; a forward clock STEP reaps every live session at once — R-SESSION-WALLCLOCK-STEP; a chain stall does NOT, the settle path reads no chain), and book its unsettled face remainder ONCE as a DEPOSIT returned to the fetcher when the anchor leaves the guard window (D-R2.9-NODE-HALF-CALLS 1′; nothing is burned). The window is a LIVENESS choice and the default is DERIVED, not chosen: the stamp is coarsened to window/4, so a window guarantees only 3/4 of itself since a real settlement, and 24m is the value whose guarantee (18m) dominates both the 430 s worst stall the liveness model admits (D-H43-WORKLESS-DESIGNEE (21)) and the 1040 s stall the field produced. The 430 s figure is a CONSERVATIVE ENVELOPE adopted because owner call 4 instructs a window above the bound, not a mechanism the reaper is racing — the chain-stall path it was originally sized on is refuted (R-SESSION-WALLCLOCK-STEP). Below the derived floor the daemon refuses. A session is one durable fetcher's prepayment at this server (one demand-domain anchor = 50,000 credits = 12.21 GiB of delivery), spans objects, settles incrementally on cumulative-count receipts, and is topped up with fresh anchors")
 	acceptRelayPayments := fs.Bool("accept-relay-payments", false, "PoD relay lane (docs/design/pod.md §7.3): ACCEPT sender-funded PayWord payment chains for forwarding content-blind bytes as a relay/gateway, ANCHORED (R2.14, 2026-09-04) to prepayment credentials this node blind-signs under its own per-epoch demand key and sells for the retrieval fee — a fetcher's durable identity buys k ≤ k_max anchors (k_max = 1 since the 2026-09-06 re-price; one anchor funds a whole 24.4 GiB session) here, a fresh ephemeral spends them at session open, and settlement pays min(paid increments, Σ face) into this node's operator BALANCE, burning the unconsumed remainder (settled ≤ Σ face, on this ledger). BUILT, NOT LIVE: an anchor verifies only under a chain-committed key (an era-4/v5 IssuerKeyReg — this node must be a bonded validator with the demand-key schedule, which this flag now turns on), so until era-4 activation every session open is REFUSED with a named reason and nothing is paid. What holds throughout: a fetcher commits a chain root once under a FRESH EPHEMERAL identity (M0 guard (i): the credential is blind, so the burn cannot be linked to the session) and reveals one preimage per forwarded increment; this node verifies each with one SHA-256 under a per-session walk budget; a fresh identity and chain are required PER SESSION (M0 guard (ii)); nothing here ever touches standing (the γ→1/N firewall). Off by default")
 	archive := fs.Bool("archive", false, "D-TIERING ARCHIVAL tier: retain every block's heavy space-time bond proof to genesis instead of shedding it below the rolling retention horizon, so this node can serve the deep history a pruning swarm has already dropped (what a node stranded past the prune horizon needs — #559's true-loss residual, ErrNeedCheckpoint). RETENTION ONLY, never validity: an archival node validates by exactly the same rules as a pruning one, so the tiers cannot fork against each other. Costs O(all history) resident payload — build-immutable #8 forbids it on the 1 vCPU / 2 GB box, which is the whole reason the tier model exists. Off by default")
 	registryOnly := fs.Bool("registry-only", false, "the LEANEST public-registry role (#47): serve a file-backed registry over HTTPS and construct NO storage node at all — no DHT, chunk store, chain, or caretaker. Unlike -freeload (a full routing node that refuses to host content), this builds nothing but the registry server, so a public-infrastructure operator runs a rendezvous registry at minimal cost. Needs -serve-registry <addr>")
@@ -696,11 +696,15 @@ func cmdDaemon(args []string) error {
 	// relay). The pin is read from the ledger's grant and the two price constants, never
 	// transcribed; the -dht-address-reserve refusal shape.
 	if *acceptReceipts {
-		// R2.9 (C9): the idle window is refuse-until-set — the S4 precedent
-		// (-grant-capacity / -grant-per-hour): the number nobody can derive yet is
-		// refused, not invented.
+		// R2.9 (C9), Lane C2: the idle window now SHIPS a derived default
+		// (deliveryIdleDefault) and the floor is what makes an operator override safe.
+		// The floor is not an engineering minimum any more: it is the smallest window
+		// whose GUARANTEED survival (window − window/4, the stamp coarsening) clears the
+		// worst stall the liveness model admits, so a hand-set window that would reap an
+		// honest fetcher gapped by a stall is refused rather than accepted quietly.
 		if *deliveryIdle < deliveryIdleFloor {
-			return fmt.Errorf("-accept-delivery-receipts: refusing to start — set -delivery-idle-window to at least %s (R2.9 paid delivery sessions close on idleness measured from the last settlement; the window is a liveness choice with no certified value yet — refuse-until-set, not defaulted; the remainder is a deposit, nothing is forfeited; got %s)", deliveryIdleFloor, *deliveryIdle)
+			return fmt.Errorf("-accept-delivery-receipts: refusing to start — set -delivery-idle-window to at least %s (R2.9 paid delivery sessions close on idleness measured from the last settlement; the stamp is coarsened to window/%d, so %s only guarantees %s of survival against the %s worst stall the liveness model admits — D-H43-WORKLESS-DESIGNEE (21); the shipped default is %s; the remainder is a deposit, nothing is forfeited; got %s)",
+				deliveryIdleFloor, deliveryIdleStampDivisor, *deliveryIdle, *deliveryIdle-*deliveryIdle/deliveryIdleStampDivisor, deliveryIdleBound, deliveryIdleDefault, *deliveryIdle)
 		}
 		// G-λ-8-2: the grant/r pin in WHOLE FACES — a face is indivisible and spent at one
 		// server, so ⌈B_pin/D_max⌉ + ⌈B_pin/relayBytesPerAnchor⌉ must fit in ⌊g/f⌋.
@@ -1156,15 +1160,24 @@ func cmdDaemon(args []string) error {
 						// reaper sweeps lazily on activity and here on a wall-clock ticker at
 						// idle/2 so a silent server still closes idle sessions.
 						nd.EnableDeliverySessions(ports.Duration(*deliveryIdle))
+						// Every consumer below reads the window BACK OUT of the reaper
+						// (nd.DeliveryIdleWindow()), never the flag a second time. The
+						// floor check above and this install are two reads of one
+						// variable and only the check is gated, so an install that
+						// diverges from the checked value would otherwise be silent:
+						// reading back makes the daemon ANNOUNCE what it installed, and
+						// e2e TestDeliveryIdleWindowDefaultBootsThePaidLane asserts the
+						// announced window. G-C2-18 pins the identifier at both sites.
+						installedIdle := time.Duration(nd.DeliveryIdleWindow())
 						go func() {
-							t := time.NewTicker(*deliveryIdle / 2)
+							t := time.NewTicker(deliverySweepInterval(installedIdle))
 							defer t.Stop()
 							for range t.C {
 								loop.Post("delivery-sweep", nd.SweepDeliverySessions)
 							}
 						}()
 						fmt.Println("delivery receipts: ACCEPTING — banking witnessed deliveries and settling the conserved delivery credit (balance only, never standing)")
-						fmt.Println(deliveryAffordabilityLine(ledger.Grant(), ledger.Fee(), relaypay.RelayIncrementBytes/relaypay.RelayIncrementCredit, deliveryIdle.String()))
+						fmt.Println(deliveryAffordabilityLine(ledger.Grant(), ledger.Fee(), relaypay.RelayIncrementBytes/relaypay.RelayIncrementCredit, installedIdle.String()))
 					}
 					fmt.Printf("demand keys: token validity window = %d epochs; per-epoch demand keys pre-published to epoch %d; key_E is resolved against the committed E→key binding (needs an era-4/v5 chain)\n",
 						demand.DefaultWindow, demandEpoch+demand.DefaultWindow)
