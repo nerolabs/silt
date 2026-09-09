@@ -35,6 +35,23 @@ import (
 // attacker owns the payload, the root, the proposer signature and the whole quorum. The box owns
 // its parent block and its own config, and that is what it stalls on.
 //
+// HOW FAR EACH ARM ACTUALLY GETS, measured, because the headline over-reads on six of seven arms.
+// structWitnessFor builds a witness for the entries/revocations write-set plus the maturity latch
+// and nothing else, so only the ENTRIES arm reaches the point where a root is compared: honest root
+// ⇒ the composition Accepts and the downgrade catches it, divergent root ⇒ Reject on the recompute
+// mismatch. The other six stall EARLIER, on witness starvation, and their divergent-root leg is
+// therefore byte-identical to their honest leg. Those six are not testing root forgery; they are
+// testing that a block of that class reaches the door, is refused, and is refused BY ITS OWN NAME
+// rather than falling through to somebody else's. Both legs are kept: the divergent leg costs one
+// call and would become live the moment a class gains a complete witness.
+//
+// WHAT THIS SUITE THEREFORE DOES NOT COVER, recorded so nobody reads it as covering it: because six
+// classes never receive a complete witness, the composition is never exercised PAST the class-S
+// digest reconstruction for bond regs, slashes or the carrier. Whether the recompute would
+// mis-accept a forged root for those classes is not tested here. D-RECOMPUTE-FREEZE scopes that to
+// the frozen adversarial-root ladder (floorbox_recompute_adversarialroot_v5_test.go), which drives
+// it per field across classes P/A/B/M and is green.
+//
 // WHAT THIS FILE IS NOT. It does not forge WITNESSES. That is the recompute's adversarial-root
 // ladder (floorbox_recompute_adversarialroot_v5_test.go — driven per field across classes P/A/B/M
 // with its own completeness meta-test), which D-RECOMPUTE-FREEZE froze. Re-deriving it at the door
@@ -501,13 +518,33 @@ func TestColdAuditor_RefusesPrunedBlocks(t *testing.T) {
 // contract parameter; it is a wrong-accept vector, which is why it is not parameterized but
 // REMOVED, and why StateView answers the pruned-tolerance QUESTION instead of exposing the scalar.
 //
-// ABLATION: re-add `TrustFloor() uint64` (or any method or parameter whose name carries "floor")
-// to StateView or to the composition ⇒ RED naming it.
-// SOURCE GATE: none — this reads the StateView TYPE and the ValidateCommitV5 FUNC VALUE by
-// reflection, so it sees method names, parameter types and arity, and nothing about behaviour.
-// RUNTIME GATE: TestColdAuditor_RefusesPrunedBlocks, which drives an actual pruned block through
-// the composition over the box's view and watches it not Accept, and the node-side pruned tests
-// (prune_test.go), which keep liveView's answer equal to the node's own rule.
+// WHAT EACH CLAUSE ACTUALLY CHECKS, stated exactly, because the first version of this comment
+// promised more than the code delivered. It claimed "any method or parameter whose NAME carries
+// 'floor' ⇒ RED", and the blind PE disproved it in one arm: adding `Anchor() uint64` AND
+// `TrustFloor() (uint64, Availability)` to StateView, implemented on both views, left the whole
+// suite GREEN. A gate that matches on spelling is not a gate — an adversary of this property is a
+// future contributor picking a different word, which is the easiest possible evasion.
+//
+//   - Clause (1) is a SHAPE check on the composition's signature: no *Chain parameter, no bare
+//     uint64 parameter. This is H-4's literal text.
+//   - Clause (2) is a SHAPE check on the view, and it is now NAME-INDEPENDENT: no StateView method
+//     may return a bare uint64 as its ONLY result. Every class-2 read on this interface answers
+//     (value, Availability) and no method returns a lone scalar today, so the rule is exact rather
+//     than a heuristic — and it catches `Anchor() uint64`, the case that slipped the old spelling
+//     check. It is a tripwire against re-opening the hole, not the proof of the property.
+//   - Clause (3) is the REAL GATE, and it is a VALUE check: provenView must answer
+//     (false, NoWitness). Forcing it to (true, Present) is RED. That is the one that proves the box
+//     cannot be handed, or invent, a floor.
+//
+// ABLATION: force provenView.PrunedTolerated to (true, Present) ⇒ RED on clause (3); re-add
+// `TrustFloor() uint64` or `Anchor() uint64` to StateView ⇒ RED on clause (2); give
+// ValidateCommitV5 a uint64 parameter ⇒ RED on clause (1).
+// SOURCE GATE: clauses (1) and (2) only — they read the StateView TYPE and the ValidateCommitV5
+// FUNC VALUE by reflection, so they see result and parameter TYPES and arity, and nothing about
+// behaviour or intent. Clause (3) is a runtime call, not a source read.
+// RUNTIME GATE: clause (3) above; TestColdAuditor_RefusesPrunedBlocks, which drives an actual
+// pruned block through the composition over the box's view and watches it not Accept; and the
+// node-side pruned tests (prune_test.go), which keep liveView's answer equal to the node's own rule.
 func TestColdAuditor_NoTrustFloorOnTheContractSurface(t *testing.T) {
 	f := buildStructFixture(t)
 	src := newProverSource(t, f.c)
@@ -533,18 +570,19 @@ func TestColdAuditor_NoTrustFloorOnTheContractSurface(t *testing.T) {
 		}
 	}
 
-	// (2) No method on the box's contract surface exposes a floor VALUE. A method whose name
-	// carries "floor" and whose only result is a scalar is the shape that was removed.
+	// (2) No method on the box's contract surface hands back an UNQUALIFIED scalar. Name-independent
+	// by construction: every committed read on this interface answers (value, Availability), so a
+	// method whose only result is a bare uint64 is by shape a scalar the box is expected to trust
+	// without being able to say it has no witness for it. That is the floor's shape whatever it is
+	// called.
 	svt := reflect.TypeOf((*StateView)(nil)).Elem()
 	for i := 0; i < svt.NumMethod(); i++ {
 		m := svt.Method(i)
-		if !strings.Contains(strings.ToLower(m.Name), "floor") {
-			continue
-		}
 		if m.Type.NumOut() == 1 && m.Type.Out(0).Kind() == reflect.Uint64 {
-			t.Fatalf("H-4: StateView.%s returns a bare floor value. A raised floor makes the reader "+
-				"SKIP space-time re-verification for every block under it (chain.go's pruned leg), so "+
-				"the floor must not be expressible on this interface — ask the question, not the scalar.", m.Name)
+			t.Fatalf("H-4: StateView.%s returns a bare uint64 as its only result. A raised floor makes "+
+				"the reader SKIP space-time re-verification for every block under it (chain.go's pruned "+
+				"leg), so no unqualified scalar belongs on this interface whatever it is named — ask the "+
+				"question and answer it three-valued, as every other committed read here does.", m.Name)
 		}
 	}
 

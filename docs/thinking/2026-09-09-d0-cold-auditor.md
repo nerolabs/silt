@@ -31,12 +31,18 @@ early; none Accepted:
 |---|---|---|---|
 | entries (E) | accepts | INDETERMINATE | `ErrRecomputeGated` — reached the R1.8 downgrade |
 | revocations (R) | accepts | INDETERMINATE | `tagRevLogSize` parent-log-size stall |
-| un-revocations (R) | rejects | REJECT | same reason the node gives |
+| un-revocations (R) | accepts | INDETERMINATE | `tagRevLogSize` parent-log-size stall |
 | bond regs (B) | accepts | INDETERMINATE | no digest witness for touched `bondedRoot` |
 | slashes (S) | accepts | INDETERMINATE | no digest witness for touched `slashedRoot` |
 | issuer keys | accepts | INDETERMINATE | out-of-P1-a-scope, `issuerKeyCommit` named |
 | carrier (`LastCommit`, A) | accepts | INDETERMINATE | no digest witness for `validatorsSeenRoot` |
 | pruned | — | INDETERMINATE | `ErrPrunedBlockUnreproducible` |
+
+(The un-revocations row is the CORRECTED one. The first probe named a root nothing had revoked, so
+the node refused the block and the arm was measuring a malformed block rather than the class. The
+shipped fixture commits a revocation at h2 first, and the per-arm node ORACLE — which asserts the
+node's own verdict before the door is driven — is what forces that: an arm whose block the node
+rejects cannot quietly stand in for the class it claims.)
 
 That table is the reason the suite is worth writing and the reason it is cheap: the classes are
 already distinguishable at the door, so a table-driven suite over them is not decoration — each
@@ -91,7 +97,10 @@ Two copies of one consensus-adjacent predicate exist:
 
 ### (3) H-4 — `trustFloor` off the contract surface
 
-The certification REFUTED its own first draft here. `chain.go:1801-1815`: a pruned block *below*
+The certification REFUTED its own first draft here. The decisive artifact is the pruned leg of
+`validateBondRegs`, `core/chain/chain.go:1991-2001` (the certification cites it as `1801-1815`, which
+is where it sat in the tree that certification read; at this SHA that range is `finalityQuorumActive`
+— verified, and re-cited to the live lines rather than carried forward): a pruned block *below*
 the floor skips the space-time re-verify, so a caller who supplies a RAISED floor makes the box
 skip proof verification for everything under it. The floor is not a benign contract parameter; it
 is itself a wrong-accept vector.
