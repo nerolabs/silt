@@ -164,6 +164,24 @@ var coldAuditorUndriven = map[string]string{
 	"LogRoot":     "forged alongside StateRoot by the same helper on every arm",
 }
 
+// stateViewClass3 is the written allow-list H-4's clause (2) partitions against: the StateView
+// methods that may answer with a bare value because the value is the view's OWN — its config, its
+// capability, its position — and is never witnessed. Everything else must end in Availability so a
+// view that cannot vouch for a value can say NoWitness instead of inventing one.
+//
+// This list is the REVIEWED half of the gate. Adding a method here is the deliberate act; the
+// reason column is required and asserted non-empty, because an allow-list of names with no reasons
+// is exactly the prose-excuse failure the Height row was rewritten to close.
+var stateViewClass3 = map[string]string{
+	"Params":          "the view's own consensus configuration; class 3 by definition",
+	"Objective":       "the view's own mode; a node-local fact, not a committed leaf",
+	"VerifyBond":      "the view's own injected capability, not a read at all",
+	"WitnessBudget":   "the box's own BG-3 ceiling; NewBox refuses an unset one and ∞ is not expressible",
+	"Head":            "the view's own position (M-3), derived from the parent block the box holds",
+	"CommittedRoots":  "a VERDICT (FloorBoxOutcome, error), not a read — three-valued in its own vocabulary",
+	"sealedStateView": "the unexported seal; no results, no reads",
+}
+
 // coldAuditorFixture is the struct fixture with one extra committed block, so the pre-state holds a
 // revoked root (the un-revocation class needs one) and the box's parent is a real post-apply state.
 // The box holds the fixture head as its parent; the block under test sits one above it.
@@ -525,18 +543,35 @@ func TestColdAuditor_RefusesPrunedBlocks(t *testing.T) {
 //
 //   - Clause (1) is a SHAPE check on the composition's signature: no *Chain parameter, no bare
 //     uint64 parameter. This is H-4's literal text.
-//   - Clause (2) is a SHAPE check on the view, and it is now NAME-INDEPENDENT: no StateView method
-//     may return a bare uint64 as its ONLY result. Every class-2 read on this interface answers
-//     (value, Availability) and no method returns a lone scalar today, so the rule is exact rather
-//     than a heuristic — and it catches `Anchor() uint64`, the case that slipped the old spelling
-//     check. It is a tripwire against re-opening the hole, not the proof of the property.
+//
+//   - Clause (2) is a SHAPE check on the view, and it is a PARTITION of the surface rather than a
+//     pattern match: every StateView method either appears on the written class-3 allow-list below,
+//     or its result list ENDS IN Availability. Nothing else is expressible. That is what makes it
+//     exact — not the observation that no method returns a lone scalar today, which was the earlier
+//     claim here and was a fact about the surface mistaken for a property of the rule.
+//
+//     Its first two forms were both escapable and both were escaped, by the blind PE, in one arm
+//     each. Form one matched on the NAME containing "floor": `Anchor() uint64` walked past it. Form
+//     two matched the SHAPE `NumOut()==1 && Kind()==Uint64`: `AnchorInt() int64` and
+//     `AnchorErr() (uint64, error)` walked past THAT, with the sole consumer rewired to read the
+//     scalar, and the suite stayed green. A rule with an open complement has unbounded
+//     re-spellings; a rule with a closed one has none.
+//
+//     A three-valued `TrustFloor() (uint64, Availability)` is PERMITTED, deliberately and not by
+//     oversight. A view that must answer Availability can say NoWitness, and a floor the box can
+//     decline to answer is not the wrong-accept vector §2.5 refutes — the vector is a floor the box
+//     is handed or invents. What that costs is stated in clause (3).
+//
 //   - Clause (3) is the REAL GATE, and it is a VALUE check: provenView must answer
 //     (false, NoWitness). Forcing it to (true, Present) is RED. That is the one that proves the box
-//     cannot be handed, or invent, a floor.
+//     cannot be handed, or invent, a floor — and it pins ONE NAMED METHOD, PrunedTolerated. So a
+//     future three-valued scalar added under clause (2) would carry no value pin of its own until
+//     someone adds one. That is the residual, and it is why clause (2) is a partition: the allow-list
+//     forces a new class-3 method to be a reviewed line rather than a quiet addition.
 //
-// ABLATION: force provenView.PrunedTolerated to (true, Present) ⇒ RED on clause (3); re-add
-// `TrustFloor() uint64` or `Anchor() uint64` to StateView ⇒ RED on clause (2); give
-// ValidateCommitV5 a uint64 parameter ⇒ RED on clause (1).
+// ABLATION: force provenView.PrunedTolerated to (true, Present) ⇒ RED on clause (3); add
+// `Anchor() uint64`, `AnchorInt() int64` or `AnchorErr() (uint64, error)` to StateView ⇒ RED on
+// clause (2); give ValidateCommitV5 a uint64 parameter ⇒ RED on clause (1).
 // SOURCE GATE: clauses (1) and (2) only — they read the StateView TYPE and the ValidateCommitV5
 // FUNC VALUE by reflection, so they see result and parameter TYPES and arity, and nothing about
 // behaviour or intent. Clause (3) is a runtime call, not a source read.
@@ -568,19 +603,28 @@ func TestColdAuditor_NoTrustFloorOnTheContractSurface(t *testing.T) {
 		}
 	}
 
-	// (2) No method on the box's contract surface hands back an UNQUALIFIED scalar. Name-independent
-	// by construction: every committed read on this interface answers (value, Availability), so a
-	// method whose only result is a bare uint64 is by shape a scalar the box is expected to trust
-	// without being able to say it has no witness for it. That is the floor's shape whatever it is
-	// called.
+	// (2) EVERY StateView method is either a listed class-3 read or answers three-valued. A method
+	// outside both is, by shape, a value the composition must take on faith with no way for the view
+	// to say it has no witness for it — which is the floor's shape whatever it is named.
+	avType := reflect.TypeOf(Availability(0))
 	svt := reflect.TypeOf((*StateView)(nil)).Elem()
 	for i := 0; i < svt.NumMethod(); i++ {
 		m := svt.Method(i)
-		if m.Type.NumOut() == 1 && m.Type.Out(0).Kind() == reflect.Uint64 {
-			t.Fatalf("H-4: StateView.%s returns a bare uint64 as its only result. A raised floor makes "+
-				"the reader SKIP space-time re-verification for every block under it (chain.go's pruned "+
-				"leg), so no unqualified scalar belongs on this interface whatever it is named — ask the "+
-				"question and answer it three-valued, as every other committed read here does.", m.Name)
+		if why, listed := stateViewClass3[m.Name]; listed {
+			if why == "" {
+				t.Fatalf("H-4: stateViewClass3[%q] has no reason. The allow-list is the reviewed half of "+
+					"this gate; an entry without a written reason is the excuse row all over again.", m.Name)
+			}
+			continue
+		}
+		n := m.Type.NumOut()
+		if n == 0 || m.Type.Out(n-1) != avType {
+			t.Fatalf("H-4: StateView.%s is neither on the class-3 allow-list nor three-valued (its result "+
+				"list does not end in Availability). A raised floor makes the reader SKIP space-time "+
+				"re-verification for every block under it (chain.go's pruned leg), so a view must always be "+
+				"able to answer NoWitness rather than hand back a value it cannot vouch for. Either answer "+
+				"the question three-valued, or add %s to stateViewClass3 with the reason it is the box's "+
+				"OWN and never witnessed.", m.Name, m.Name)
 		}
 	}
 
