@@ -2498,3 +2498,48 @@ showing the one-byte value IS committed).
   history). The third-time rule fires at three, and Simplicity rule 3 caps bookkeeping against build —
   so the lesson is carried in the C4 and C3 build briefs instead, and the lint becomes mandatory on a
   third sighting. Recording the count here IS the tripwire: a future seat that hits it makes three.
+
+## D-WORK-VISIBILITY — decentralization is graded in the HARNESS for the RC; the committed-ledger route is deferred to as late as possible before the cut
+
+- **Status:** ✅ RATIFIED 2026-09-09 by the owner. Deliberation with all five alternatives priced:
+  [`docs/thinking/2026-09-09-work-visibility-on-the-default-posture.md`](thinking/2026-09-09-work-visibility-on-the-default-posture.md).
+  Follows directly from `D-UI-PRIVACY-FLAG`'s extension to the wire, ratified the same day.
+
+- **The fact this decides.** `cmd/silt/daemon.go` welds `PublishWorkCounters` to `-privacy`, which is the
+  compiled default, so on the shipped posture no node gossips `ServedBytes` or `RepairsDone`; the certified
+  non-reporting exclusion then drops every peer, and both concentration series are structurally EMPTY.
+  **silt can see who is PRESENT and never who does the WORK.** Five seats established this independently,
+  four of them blind to each other: the PE and the red-team measured the reconstruction break that forced
+  the wire containment, the Researcher gated the disclosure and refuted every coarsened form, the Economist
+  flagged the consequence as dominating every number in its own advisory, and the Tester found every
+  concentration gate returns INDETERMINATE by construction on that posture.
+
+- **The decision.** Decentralization is graded **in the harness** — the deterministic tiers and the graded
+  cloud runs, where the topology is known and every node is instrumented by the operator. No production
+  concentration alarm is claimed, because none can fire on a default fleet. The R2.4 canary's
+  concentration-based aborts are re-pointed at the harness accordingly; they must stop implying a
+  production abort that cannot fire (`ROADMAP.md` row C6).
+
+- **The committed-ledger route is DEFERRED to as late as possible before the RC is cut** — deliberately,
+  and the reasoning is the owner's, recorded because it is a sequencing principle and not only a
+  scheduling preference: computing work concentration from committed state instead of gossip is the
+  strongest long-term answer (it removes the disclosure AND the self-reporting at once, and repairs the
+  `m0.md` §7 seam-1 objection that a gossip numerator is Sybil-settable) — but it is **research
+  territory**, it may spin, and it depends on establishing that the committed ledger even carries a
+  per-node work quantity at the needed granularity. Owner, verbatim: *"I fear we will get back to research
+  territory trap where we spin for a long time. I'm okay with that at the end, but not when so much other
+  well defined, well researched work exists that we can execute on now."* So: execute the defined work
+  first; open the committed-ledger question when the defined work is done and the cut is close.
+
+- **What this does NOT defer.** The per-tier work totals build item stands and is NOT
+  committed-ledger-dependent: the harness sets the counters directly, so a per-tier serve-byte total on
+  `EconomySample` is exactly what a harness gate needs to assert the edge-majority tenet. Today nothing
+  carries it, and the tier mix's `share` — a share of NODE COUNT — is the substitution trap, pinned:
+  measured 0.9891 where the true byte share was 0.1998, so wiring it to the tenet floor would pass total
+  serve capture.
+
+- **What was refuted and must not be re-proposed as a compromise:** untying the publish flag from
+  `-privacy` (it undoes the wire containment using the evidence that produced it), a coarsened band or
+  rate (a band still yields a monotone step sequence under probing; a rate publishes the derivative the
+  attack must compute), and opt-in telemetry (a self-selected sample is biased in the dangerous direction,
+  since an operator running a capture would not opt in).
