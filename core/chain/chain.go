@@ -1676,6 +1676,14 @@ func (c *Chain) qualifiedCount() int {
 	return n
 }
 
+// ByzantineThreshold exposes bftThreshold for a caller OUTSIDE the package that must
+// size something against the same arithmetic the commit path uses — today the daemon's
+// derived -quorum gather target (#380, D-CONSENSUS-ARMING (20)). It is the one export of
+// this number: a caller that re-derives f = ⌊(n-1)/3⌋ locally is a duplicated consensus
+// literal, and the two copies drift. It sizes a GATHER TARGET, never a validity term —
+// validity reads RequiredQuorum, which is derived here and is not the operator's to set.
+func ByzantineThreshold(n int) int { return bftThreshold(n) }
+
 // bftThreshold is the number of NON-PROPOSER attestations a commit needs for
 // Byzantine quorum-intersection safety over n validators. The tolerated fault
 // count is f = ⌊(n-1)/3⌋, and the total support set (the proposer, always a

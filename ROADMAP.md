@@ -540,6 +540,16 @@ the named field defects (#535/#530/#574/#586/#277) live in
   arming (#586).** Standing-tail harness defects; repro recipes + fix directions in the repro doc.
   #530's first step is instrumentation (`-log debug`, one full client transcript), not a fix
   (build-immutable #7).
+- **A runtime cover for the derived `-quorum` wiring — owed on the next visit to `cmd/silt/daemon.go`.**
+  The wiring of the derived gather target is held by a SOURCE gate (string, order, count) and its VALUE
+  at the call site is declared UNGATED in the gate's own doc comment. A blind PE broke the value arm
+  three ways in ten minutes, each compiling and each leaving every arm green — `var effByz bool = true`
+  in an enclosing block (one token off the gated spelling, and it re-opens a validity-lowering blocker
+  verbatim), a plain reassignment, and a widened condition. Which binding an identifier resolves to is a
+  scope property and a substring search cannot decide it, so more arms would advertise coverage they
+  lack. The cover that kills every spelling at once: drive the daemon and assert the "gather target
+  derived to" console line is ABSENT under `-byzantine-quorum=false` and present with sizing on
+  (machinery at `e2e/e2e_test.go`; e2e tier, since it is skipped under `-short`). Tester; Lane TAIL.
 - **CPU-time O(depth) regression CI gate — #616.** The shipped O(depth) gate (#613) measures
   baseline-subtracted `HeapObjects`, so it catches allocation-shaped depth blow-ups but NOT
   CPU-time-shaped ones (the #528 per-height CPU burn). Needed: a companion wall-time slope-vs-depth

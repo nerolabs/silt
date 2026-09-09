@@ -93,13 +93,13 @@ func cmdDaemon(args []string) error {
 	privacyFlag := fs.String("privacy", privacyModeName(privacyDefaultWithheld), "on|off (D-UI-PRIVACY-FLAG). on: node-wide serve counters (stats, durability.balance, /api/economy/self revenue) and library link keys are withheld from readers that do not present the API token; the operator's own tokened reads are unchanged. off: publish them to any reader the guard admits — the node is then labelled as publishing PRE-RELEASE information on every response and on the dashboard. Any other value refuses to start")
 	debugAddr := fs.String("debug-addr", "", "serve Go pprof (heap/goroutine/profile) at this address (e.g. 127.0.0.1:6060) — diagnostic only, off by default. Used to attribute the MATURING consensus-node memory footprint (`go tool pprof http://addr/debug/pprof/heap`). Also dumps a heap profile to <store>/heap-<pid>.pprof on SIGUSR1 for cloud nodes without a reachable port.")
 	attesters := fs.String("attesters", "", "comma-separated validator IDs to gather attestations from")
-	anchorList := fs.String("anchors", "", "launch-window training wheels: comma-separated anchor validator IDs whose sign-off an immature-network commit also requires (empty = no training wheels)")
+	anchorList := fs.String("anchors", "", "launch-window training wheels (AT LEAST TWO on an objective launch — one anchor commits alone with zero attestations and those blocks read as final, so the daemon refuses it): comma-separated anchor validator IDs whose sign-off an immature-network commit also requires (empty = no training wheels)")
 	anchorQuorum := fs.Int("anchor-quorum", 0, "LEGACY (non-objective) only: anchor attestations an immature-network commit needs (0 = off). In OBJECTIVE mode this is IGNORED — the launch gate is a DERIVED strict anchor majority ⌊A/2⌋+1 (#402), so config cannot disable quorum intersection")
 	matureValidators := fs.Int("mature-validators", 0, "required NAKAMOTO COEFFICIENT (M0 H4): the anchor requirement sheds only once this many bond-DISTINCT operators are needed to reach ⅓ of the bonded weight — cost-to-corrupt, not a head-count, so one operator with many keys can't trip the wheels off (0 = never require anchors)")
 	lambdaHFloor := fs.Float64("lambda-h-floor", 0, "honest-arrival floor λ_H (CT-1 conditional theorem, research cert C1-maturity-before-capture-CONDITIONAL-THEOREM-LIFT-2026-08-27): the minimum operator/domain-distinct bonded-arrival RATE (distinct arrivals per block-height, measured over -lambda-h-window) the launch was certified against. Below this floor — while the network is still YOUNG (pre-maturity latch) — the deployment has LEFT the theorem's hypothesis H (T_mature→∞, maturity-precedes-capture no longer proven) and a LOUD λ_H FLOOR-EXIT marker is surfaced to the log. OBSERVABILITY ONLY: it changes no validity predicate, no consensus rule, no security parameter — it reads the committed C2 metric and narrates. 0 = disabled (default; existing deployments and sims unaffected). Set it to the floor you certified your adversary budget W_A / shed threshold M_req against (P2: M_req > W_A/(2·w_min))")
 	lambdaHWindow := fs.Uint64("lambda-h-window", 20, "trailing window (block-heights) the honest-arrival rate λ_H is averaged over for the -lambda-h-floor alarm. λ_H = Δ(min-Nakamoto-coefficient)/Δheight over this many committed heights — the realized net operator/domain-distinct arrival rate. Widen it to smooth per-block churn (TTL lapses can transiently drop the coefficient), narrow it to react faster. Observability only")
 	operatorMargin := fs.Int("operator-margin", 1, "operator margin M (M0 C2 / D-C2): the maturity shed discounts the bond-distinct Nakamoto coefficient by M (⌊k̂/M⌋) — since on-chain data carries no operator label, one operator may split a stake across ~M keys, so a splitter must clear mature-validators×M distinct bonds to shed the wheels. LEFT UNSET it defaults to a conservative M>1 for an untrusted objective swarm (safe-by-default, like -min-bond-floor); an explicit 1 = no split margin (single-operator/trusted). M stays a heuristic — unverifiable on-chain (#182)")
-	quorum := fs.Int("quorum", 3, "proposer-side GATHER TARGET: the attestations (excluding the proposer) this node collects before committing a block it proposes. In objective mode with -byzantine-quorum (the untrusted default) it is NOT a validity floor — ValidateCommit demands the DERIVED Byzantine bar (bftThreshold over the validator set; the >⅔ frozen-weight rule in a mature epoch) and the gather rises to at least that (#380, D-CONSENSUS-ARMING (20)); with -byzantine-quorum=false or in legacy mode it is also the commit floor. Lower only for a trusted/one-box swarm")
+	quorum := fs.Int("quorum", 3, "proposer-side GATHER TARGET (DERIVED when unset on an untrusted objective launch: the Byzantine bar over the launch set, e.g. 2 at four anchors — the shipped 3 asked every peer to attest and tolerated f=0): the attestations (excluding the proposer) this node collects before committing a block it proposes. In objective mode with -byzantine-quorum (the untrusted default) it is NOT a validity floor — ValidateCommit demands the DERIVED Byzantine bar (bftThreshold over the validator set; the >⅔ frozen-weight rule in a mature epoch) and the gather rises to at least that (#380, D-CONSENSUS-ARMING (20)); with -byzantine-quorum=false or in legacy mode it is also the commit floor. Lower only for a trusted/one-box swarm")
 	byzantineQuorum := fs.Bool("byzantine-quorum", false, "size the commit quorum at the Byzantine threshold (M0 H4): the support set becomes a supermajority n−f of the qualified bonded set, so two quorums always share an honest validator (safety as the set grows). LEFT UNSET it defaults ON for an untrusted objective validator; an explicit =false opts out (trusted swarm). With it on, the local -quorum is no longer a validity term (#380): the bar is the derived one, which may sit BELOW -quorum (3 → 2 at four anchors; 0 in a mature epoch, where weight is the bar), and -quorum stays the proposer-side gather target")
 	objective := fs.Bool("objective", true, "DEFAULT-ON for an untrusted validator: consensus by OBJECTIVE on-chain bond (F6), so eligibility and quorum are a function of verifiable on-chain bond registrations — identical on every replica — and honest replicas can't diverge under a partition (the M0 consensus denial). Bootstrap a multi-validator quorum with -anchors (the launch set); validators register their real bonds live as they propose. Auto-off for a trusted swarm (-min-rep 0). Pass -objective=false to run the legacy subjective path, which does NOT hold the M0 denial under an adversarial partition")
 	minBond := fs.String("min-bond", "1M", "objective mode: the minimum bonded size a validator must prove on-chain to qualify (its -bond must clear this)")
@@ -357,7 +357,7 @@ func cmdDaemon(args []string) error {
 	// NOT the transport -request-timeout — build-immutable #3/#4), else it can be
 	// released and recomputed just-in-time. At bond.PlotSealThroughput (~270 MB/s)
 	// and the ~2s compute window that is ~540 MiB, so the default carries ~2x margin.
-	floorSet, ttlSet, byzSet, marginSet, epochSet := false, false, false, false, false
+	floorSet, ttlSet, byzSet, marginSet, epochSet, quorumSet := false, false, false, false, false, false
 	fs.Visit(func(f *flag.Flag) {
 		switch f.Name {
 		case "min-bond-floor":
@@ -366,6 +366,8 @@ func cmdDaemon(args []string) error {
 			ttlSet = true
 		case "byzantine-quorum":
 			byzSet = true
+		case "quorum":
+			quorumSet = true
 		case "operator-margin":
 			marginSet = true
 		case "epoch-blocks":
@@ -809,6 +811,20 @@ func cmdDaemon(args []string) error {
 		// need it, so it auto-disables there rather than forcing anchor config on a
 		// single trusted box.
 		useObjective := *objective && *minRep > 0
+		// The proposer-side GATHER TARGET gets the same safe-by-default treatment as the
+		// bond floor, the TTL, the Byzantine sizing and the operator margin — except this
+		// one derives DOWNWARD. Since #380 the shipped literal 3 is no longer a validity
+		// term on the objective path, but it is still a floor on the gather, so a
+		// four-anchor launch asked for all three peers and tolerated f = 0 while the
+		// project publishes its liveness bound at f = 1. Assigned through the pointer so
+		// every consumer (the chain config, the registry line, the revocation proposer)
+		// reads ONE value — a second copy is how the gather target went path-dependent
+		// once already (#380, the PE's C1 finding).
+		if q, quorumDefaulted := effectiveQuorum(quorumSet, *quorum, useObjective, effByz, len(anchorSet)); quorumDefaulted {
+			fmt.Printf("consensus: gather target derived to %d for this untrusted (objective) launch of %d anchor(s) — the shipped default %d would have asked every peer to attest, tolerating NO fault while the published liveness bound is stated at f=1 (#380). It never sits below the derived Byzantine bar the commit already demands; set -quorum explicitly to override\n",
+				q, len(anchorSet), *quorum)
+			*quorum = q
+		}
 		var minBondBytes int64
 		if useObjective {
 			mb, perr := parseSize(*minBond)
@@ -829,7 +845,7 @@ func cmdDaemon(args []string) error {
 			// mature one with a weak-subjectivity checkpoint. Asserted safe-by-default
 			// in invariant_b_test.go (S6).
 			if !coldStartScaffoldOK(useObjective, len(anchorSet), *matureValidators, *wsCheckpoint) {
-				return fmt.Errorf("consensus: refusing to start — an untrusted objective validator with no cold-start scaffolding would treat itself as mature from genesis (no anchor co-sign), letting a young or Sybil quorum self-certify and capture. Launch a fresh network with -anchors ID,... and -mature-validators N (the training-wheels launch set), OR join an already-mature network with -ws-checkpoint HEIGHT:HASH; alternatively -min-rep 0 for a trusted swarm, or -objective=false for the legacy (non-M0) path")
+				return fmt.Errorf("consensus: refusing to start — an untrusted objective validator with no cold-start scaffolding would treat itself as mature from genesis (no anchor co-sign), letting a young or Sybil quorum self-certify and capture. Launch a fresh network with -anchors ID,... and -mature-validators N (the training-wheels launch set), OR join an already-mature network with -ws-checkpoint HEIGHT:HASH; alternatively -min-rep 0 for a trusted swarm, or -objective=false for the legacy (non-M0) path (a launch set needs at least 2 anchors: at 1 the Byzantine threshold is 0, the anchor majority is self-satisfied by the proposer, and finality engages at 0 — the sole anchor commits alone and those blocks read as final)")
 			}
 		}
 		// The objective anti-release floor and re-challenge cadence (retest G4)
@@ -2074,6 +2090,22 @@ const AntiReleaseComputeWindow = 2 * time.Second
 // measured seal rate bond.PlotSealThroughput: 2s × ~270 MB/s ≈ 540 MiB × 2 ≈ 1 GiB.
 const DerivedBondFloor = int64(2) * (int64(AntiReleaseComputeWindow/time.Second) * bond.PlotSealThroughput)
 
+// MinObjectiveAnchors is the smallest launch set an untrusted objective validator may
+// start from (owner call, delegated 2026-09-08; blind PE finding on the #380 review).
+//
+// At A = 1 no count gate holds anything. bftThreshold(1) = 0, so the sole anchor commits
+// on its own signature with zero attestations; requiredLaunchAnchors is ⌊1/2⌋+1 = 1 and
+// countAnchorSupport credits the proposer itself, so the #402 anchor gate is
+// self-satisfied; and finalityQuorumActive is true (0 >= 0), so those zero-attestation
+// blocks are treated as final. What actually holds at A = 1 is f = 0 plus the fact that
+// one qualified proposer never signs twice at a height (#397) — a property of there being
+// nobody else, not a quorum. Two anchors is the smallest set where the launch gate is a
+// gate: the majority is 2, so a commit needs the other anchor's signature.
+//
+// This refuses a config that used to start. That is the point: it was starting into a
+// posture where the consensus gates were decorative.
+const MinObjectiveAnchors = 2
+
 // coldStartScaffoldOK reports whether an untrusted objective validator has the
 // cold-start scaffolding it needs to be safe from genesis (red-team seam-2 /
 // Invariant B S6). Either satisfies it: the anchor LAUNCH set (anchors +
@@ -2087,9 +2119,62 @@ func coldStartScaffoldOK(useObjective bool, anchorCount, matureValidators int, w
 	if !useObjective {
 		return true
 	}
-	hasLaunchSet := anchorCount > 0 && matureValidators > 0
+	hasLaunchSet := anchorCount >= MinObjectiveAnchors && matureValidators > 0
 	hasCheckpoint := wsCheckpoint != ""
 	return hasLaunchSet || hasCheckpoint
+}
+
+// effectiveQuorum decides the proposer-side GATHER TARGET, mirroring the bond-floor,
+// TTL, Byzantine and operator-margin derivations: an explicit -quorum always wins, and
+// the untrusted objective path DERIVES one when the operator sets none.
+//
+// Why a derived default at all (owner call, delegated 2026-09-08; blind PE finding on
+// the #380 review). The shipped literal is 3. Since #380 (D-CONSENSUS-ARMING (20))
+// -quorum is no longer a validity term on the objective path — ValidateCommit reads the
+// DERIVED bar — but it is still a FLOOR on the gather, so at a four-anchor launch the
+// literal asks for all three peers and the swarm tolerates f = 0. The published liveness
+// bound (≤ f′+1 rounds after GST) is stated at f = 1, so the shipped default contradicted
+// the number the project publishes. Deriving it to chain.ByzantineThreshold over the
+// launch set gives 2 at four anchors: exactly the bar validity already demands, so the
+// gather stops asking for more than the commit needs, and f = 1 is tolerated.
+//
+// It applies ONLY where Byzantine sizing is on, because that is the only regime where
+// validity reads a DERIVED bar; with -byzantine-quorum=false the local floor is itself the
+// validity term and lowering it would widen what the node accepts.
+//
+// It can only ever LOWER the ask, never raise it: gatherTwoPhase gathers
+// max(caller floor, ConfigQuorum(), RequiredQuorum()), so the derived Byzantine bar is a
+// floor underneath this whatever the operator sets. Safety is untouched — it is not a
+// validity term here — and a trusted or one-box swarm still sets -quorum explicitly.
+//
+// Sized over the LAUNCH SET (the anchors), which is what validatorSetSize itself uses
+// while the network is young; once the network hands off, RequiredQuorum re-sizes over
+// the frozen epoch set at runtime and this default stops mattering.
+func effectiveQuorum(quorumSet bool, explicit int, objectivePath, byzantineSizing bool, anchorCount int) (q int, defaulted bool) {
+	if quorumSet {
+		return explicit, false // an explicit choice always wins, including a raised one
+	}
+	// byzantineSizing is NOT optional here, and its absence was a real defect caught in
+	// review. With -byzantine-quorum=false, RequiredQuorum returns cfg.Quorum VERBATIM
+	// (chain.go leg (c)) — the local floor IS the validity bar in that regime, so deriving
+	// it downward would make the node ACCEPT a block it previously refused. That is exactly
+	// the boundary #380's ratification drew: "the trusted opt-out (-byzantine-quorum=false)
+	// and legacy mode keep cfg.Quorum unchanged" (D-CONSENSUS-ARMING (20), as amended).
+	// The derivation is sound ONLY where the bar is derived elsewhere.
+	if !objectivePath || !byzantineSizing {
+		return explicit, false
+	}
+	if anchorCount < 2 {
+		// Dead today because MinObjectiveAnchors = 2 refuses a smaller launch set, and
+		// bftThreshold(n) < 1 exactly when n < 2. Kept, and kept explicit: narrow that
+		// refusal later and this guard silently becomes load-bearing again.
+		return explicit, false
+	}
+	derived := chain.ByzantineThreshold(anchorCount)
+	if derived < 1 {
+		return explicit, false // never derive a self-commit; keep the shipped literal
+	}
+	return derived, true
 }
 
 // effectiveBondFloor decides the anti-release floor (M0 retest G4-residual).
