@@ -41,10 +41,76 @@ const (
 // c2DerivedIdleFloor is the smallest window whose GUARANTEED survival clears the bound.
 // Ceiling division: nothing below this can be sized "above" the bound in the sense the
 // ratified sentence uses, because a quarter of the window is spent by the stamp coarsening.
+// The closed form is bound × divisor/(divisor−1); the exact answer is one step lower
+// whenever integer truncation of window/divisor rounds in the window's favour, so the
+// floor is settled against the PREDICATE itself rather than against the closed form.
 func c2DerivedIdleFloor() time.Duration {
 	num := int64(c2GoverningBound) * c2StampDivisor
 	den := int64(c2StampDivisor - 1)
-	return time.Duration((num + den - 1) / den)
+	w := time.Duration((num + den - 1) / den)
+	for w > 0 && c2ClearsBound(w-1) {
+		w--
+	}
+	return w
+}
+
+// c2ClearsBound is the ONE predicate all three gates below judge on: does a configured
+// window's guaranteed survival dominate the worst admitted stall?
+func c2ClearsBound(window time.Duration) bool {
+	return window-window/c2StampDivisor >= c2GoverningBound
+}
+
+// c2DefaultLiteral extracts the -delivery-idle-window default expression from daemon.go
+// source. Factored out so G-C2-11 can exercise the same extraction at both polarities.
+func c2DefaultLiteral(src []byte) (string, bool) {
+	m := regexp.MustCompile(`fs\.Duration\("delivery-idle-window",\s*([^,]+),`).FindSubmatch(src)
+	if m == nil {
+		return "", false
+	}
+	return strings.TrimSpace(string(m[1])), true
+}
+
+// G-C2-11 — BOTH POLARITIES of the predicate and of the extraction the three gates below
+// judge on. A gate that has only ever been observed RED is a gate whose GREEN is a guess;
+// this is the arm that shows what the Builder's one line has to reach. It carries no
+// dependency on a product value, so it stays GREEN before and after the fix.
+func TestC2GatePredicateFlipsAtTheDerivedFloor(t *testing.T) {
+	want := c2DerivedIdleFloor()
+	for _, tc := range []struct {
+		window time.Duration
+		clears bool
+		why    string
+	}{
+		{time.Second, false, "today's deliveryIdleFloor"},
+		{90 * time.Second, false, "today's cloudtest harness value"},
+		{190 * time.Second, false, "the window sized at the MODAL tier"},
+		{430 * time.Second, false, "the window sized naively AT the governing bound"},
+		{want - time.Nanosecond, false, "one nanosecond under the derived floor"},
+		{want, true, "the derived floor exactly"},
+		{want + time.Nanosecond, true, "one nanosecond over the derived floor"},
+		{10 * time.Minute, true, "candidate A (tight)"},
+		{24 * time.Minute, true, "candidate B (margin)"},
+	} {
+		if got := c2ClearsBound(tc.window); got != tc.clears {
+			t.Fatalf("c2ClearsBound(%v) = %v, want %v (%s); guaranteed survival %v vs bound %v, derived floor %v",
+				tc.window, got, tc.clears, tc.why, tc.window-tc.window/c2StampDivisor, c2GoverningBound, want)
+		}
+		t.Logf("G-C2-11 %-46s window=%-12v guaranteed=%-12v clears=%v", tc.why, tc.window, tc.window-tc.window/c2StampDivisor, tc.clears)
+	}
+	// The source extraction, both polarities.
+	for _, tc := range []struct{ src, want string }{
+		{`x := fs.Duration("delivery-idle-window", 0, "help")`, "0"},
+		{`x := fs.Duration("delivery-idle-window", 24*time.Minute, "help")`, "24*time.Minute"},
+		{`x := fs.Duration("delivery-idle-window", deliveryIdleDefault, "help")`, "deliveryIdleDefault"},
+	} {
+		got, ok := c2DefaultLiteral([]byte(tc.src))
+		if !ok || got != tc.want {
+			t.Fatalf("c2DefaultLiteral(%q) = %q/%v, want %q", tc.src, got, ok, tc.want)
+		}
+	}
+	if _, ok := c2DefaultLiteral([]byte("no flag here")); ok {
+		t.Fatal("c2DefaultLiteral matched a source with no flag declaration")
+	}
 }
 
 // G-C2-8 — the daemon's ACCEPTED FLOOR must clear the derived floor. RED today:
@@ -54,7 +120,7 @@ func c2DerivedIdleFloor() time.Duration {
 func TestC2AcceptedIdleFloorClearsTheLivenessBound(t *testing.T) {
 	want := c2DerivedIdleFloor()
 	survives := deliveryIdleFloor - deliveryIdleFloor/c2StampDivisor
-	if deliveryIdleFloor < want {
+	if !c2ClearsBound(deliveryIdleFloor) {
 		t.Fatalf("deliveryIdleFloor = %v: the daemon accepts a -delivery-idle-window whose GUARANTEED survival is %v, "+
 			"against a worst admitted stall of %v (D-H43-WORKLESS-DESIGNEE (21)). Derived floor = bound × %d/%d = %v. "+
 			"Owner call 4 of D-TRUE-UP-CALLS-2026-09-07 sets the window ABOVE the bound; a floor of %v does not enforce that.",
@@ -71,12 +137,10 @@ func TestC2DeliveryIdleWindowDefaultIsSet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	re := regexp.MustCompile(`fs\.Duration\("delivery-idle-window",\s*([^,]+),`)
-	m := re.FindSubmatch(src)
-	if m == nil {
+	got, ok := c2DefaultLiteral(src)
+	if !ok {
 		t.Fatal("daemon.go no longer declares -delivery-idle-window with fs.Duration — this gate has lost its subject")
 	}
-	got := strings.TrimSpace(string(m[1]))
 	if got == "0" {
 		t.Fatalf("-delivery-idle-window default is still %q (REFUSE-UNTIL-SET). Owner call 4 of "+
 			"D-TRUE-UP-CALLS-2026-09-07 releases it now that the bound is field-confirmed "+
@@ -121,7 +185,7 @@ func TestC2CloudtestIdleWindowClearsTheLivenessBound(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: -delivery-idle-window %q does not parse: %v", f, found[f], err)
 		}
-		if d < want {
+		if !c2ClearsBound(d) {
 			bad++
 			t.Errorf("%s sets -delivery-idle-window %v: guaranteed survival %v, against a worst admitted stall of %v "+
 				"(and a 190 s modal tier the SAME run confirms). Derived floor %v.",
@@ -130,5 +194,14 @@ func TestC2CloudtestIdleWindowClearsTheLivenessBound(t *testing.T) {
 	}
 	if bad > 0 {
 		t.Fatalf("%d of %d cloudtest sites set a -delivery-idle-window below the derived floor %v", bad, len(files), want)
+	}
+}
+
+// G-C2-12 — the epoch cadence core/node's relay arithmetic is derived against. core/node
+// cannot import package main, so its c2EpochBlocks literal is pinned here.
+func TestC2DerivedEpochBlocksIsEight(t *testing.T) {
+	if DerivedEpochBlocks != 8 {
+		t.Fatalf("DerivedEpochBlocks = %d, want 8 — core/node's c2EpochBlocks and every relay "+
+			"settle-inside-one-epoch figure derived from it move with this", DerivedEpochBlocks)
 	}
 }

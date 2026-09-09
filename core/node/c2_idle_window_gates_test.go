@@ -54,6 +54,16 @@ const (
 	c2BoundHarnessHardCap = 380 * ports.Second
 	c2FieldStallObserved  = 1040 * ports.Second
 
+	// c2EpochBlocks mirrors cmd/silt DerivedEpochBlocks (pinned there by
+	// TestC2DerivedEpochBlocksIsEight); core/node cannot import package main.
+	c2EpochBlocks = 8
+	// c2MeasuredTbMillis is the MEASURED block interval, in milliseconds:
+	// integration/cloudtest/report-97e3101-deep.md row 12-deep-heights, h93 → h130
+	// (37 heights) in 1697 s = 45.865 s/height. A measurement on a 4-validator GCP
+	// cohort, not a constant of the protocol — every figure derived from it is a figure
+	// about that cohort.
+	c2MeasuredTbMillis = 45865
+
 	// The two candidate defaults the derivation lands on. Both are DURATIONS, because
 	// the flag is a duration and the liveness bound is denominated in seconds
 	// (ChainSyncInterval), not in blocks: an epoch-denominated default would drift with
@@ -355,6 +365,7 @@ func TestC2RelaySessionReapedByTheEpochSweepSettlesZero(t *testing.T) {
 
 	const S = 8
 	ch, _ := relaypay.BuildChain([]byte("c2-relay-settle-inside-one-epoch-tip!"), S)
+	ch2, _ := relaypay.BuildChain([]byte("c2-relay-the-open-that-triggers-it!!"), S)
 	epoch = 0
 	sess, err := openAnchored(t, nd, 9, ch.Root(), S)
 	if err != nil {
@@ -379,16 +390,49 @@ func TestC2RelaySessionReapedByTheEpochSweepSettlesZero(t *testing.T) {
 	if _, ok := nd.RelaySessionForTest(handle); !ok {
 		t.Fatalf("the session was reaped one epoch after admission — the retention window is shorter than relayRetentionEpochs claims")
 	}
-	// Epoch 2: reaped, unsettled.
+	// Epoch 2: the reap is LAZY. sweepRelaySeen has exactly ONE production call site —
+	// inside OpenRelaySession (relayrole.go:366) — and there is no periodic caller: the
+	// relay lane has no SweepDeliverySessions twin, and the daemon tickers only the
+	// DELIVERY sweep (daemon.go:1160). So on a quiet relay the epoch passes and NOTHING
+	// fires. Drive that first, then drive the real trigger: another open.
 	epoch = 2
-	nd.sweepRelaySeen(epoch)
+	if _, ok := nd.RelaySessionForTest(handle); !ok {
+		t.Fatalf("fixture: the session was already gone before epoch 2 was swept")
+	}
+	if _, err := openAnchored(t, nd, 11, ch2.Root(), S); err != nil {
+		t.Fatalf("the second open (the only production trigger for the relay sweep) failed: %v", err)
+	}
 	if _, ok := nd.RelaySessionForTest(handle); ok {
 		t.Fatalf("the session survived to epoch admitEpoch+2 — the epoch reaper did not fire")
 	}
 	if paid := nd.SettleRelaySession(handle); paid != 0 {
 		t.Fatalf("a reaped relay session settled %d credits; the reap deletes the handle, so the settle is a no-op and the earned credit is FORFEIT", paid)
 	}
+	// The owed number, computed from SHIPPED constants and the MEASURED block interval,
+	// never hand-typed: what sustained relay throughput must a single session hold to
+	// settle a whole anchor face before the epoch reap drops it unsettled?
+	//
+	//   relaypay.MaxSessionBytes           the bytes ONE face funds (S_max × increment bytes)
+	//   c2EpochBlocks = 8                  cmd/silt DerivedEpochBlocks, pinned by
+	//                                      cmd/silt TestC2DerivedEpochBlocksIsEight
+	//   c2MeasuredTbMillis = 45865         report-97e3101-deep.md row 12-deep-heights:
+	//                                      h93 → h130 (37 heights) in 1697 s
+	//
+	// Lifetime in blocks: admitted at block b in [8E, 8E+7], reaped when the head reaches
+	// 8(E+2). WORST = 9 blocks (admitted at the last block of E), BEST = 16 blocks.
+	worstS := float64(9*c2MeasuredTbMillis) / 1000
+	bestS := float64(16*c2MeasuredTbMillis) / 1000
 	t.Logf("G-C2-7 RESULT: a relay session admitted at epoch E survives E and E+1 and is reaped UNSETTLED at E+2. "+
-		"It forwarded %d increments and was paid 0. The relay lane's session lifetime is 1 epoch + 1 block (worst case: "+
-		"admitted at the last block of E) to 2 epochs (best case), and the settle must land inside it.", S)
+		"It forwarded %d increments and was paid 0 — the reap deletes the handle, so 100%% of the earned credit is forfeit "+
+		"(the fetcher's face was already spent at open). The reap is LAZY: its only production "+
+		"caller is OpenRelaySession, so on a quiet relay it does not fire at all — the relay lane "+
+		"has no periodic sweep, unlike the delivery lane's SweepDeliverySessions ticker.", S)
+	t.Logf("G-C2-7 SETTLE-INSIDE-ONE-EPOCH (the owed measurement): lifetime = 9 blocks (worst: admitted at the last block "+
+		"of E) to 16 blocks (best), = %.0f s to %.0f s at the measured T_b = %.3f s/height. One face funds %d B (%.3f GiB), "+
+		"so settling a WHOLE face inside the lifetime needs %.1f Mbit/s sustained (worst) / %.1f Mbit/s (best) on ONE session. "+
+		"At a 100 Mbit/s edge uplink a session forwards %.2f GiB of the face's %.2f GiB before the reap — and because the "+
+		"settle is single-at-close, an over-running session is paid ZERO, not a fraction.",
+		worstS, bestS, float64(c2MeasuredTbMillis)/1000, relaypay.MaxSessionBytes, float64(relaypay.MaxSessionBytes)/(1<<30),
+		float64(relaypay.MaxSessionBytes)*8/worstS/1e6, float64(relaypay.MaxSessionBytes)*8/bestS/1e6,
+		100e6/8*worstS/(1<<30), float64(relaypay.MaxSessionBytes)/(1<<30))
 }
