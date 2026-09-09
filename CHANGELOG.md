@@ -8,6 +8,23 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
 
 ## [Unreleased]
 
+### Graded
+- **Cloud field test `97e3101-deep` (2026-09-09, main `97e3101`; Lane A3, launched on the owner's standing go): REVIEW — 31 pass /
+  1 gap / 0 fail / 3 skip** (`integration/cloudtest/report-97e3101-deep.md`, results/rss/console/flow-evidence force-added). The
+  first fleet carrying #380 direction (1) (PR #779), the v2 flat-delivery retirement (PR #780) and the R2.7 detectors (PR #781).
+  **`6-fault-tolerance` PASSES**, which is the row that matters: a publish still committed with one validator down **within the
+  computed 190 s down-designee escape bound** — the re-priced tier from `D-CONSENSUS-ARMING` (19)/(21) met in the field, on the
+  head-reading wait from #774. It GAPped on the previous run as a harness artifact, so the gap count falls 2 → 1 and the pass count
+  rises 30 → 31. The derived quorum floor changed nothing a uniform swarm commits, as certified: the whole consensus sheet passes,
+  including the stall and capture drills, the partition heal, the equivocation island, the forged-block refusal and WS cold-sync.
+  Deep drive h93 → h130 at ~45 s/height inside the 7200 s wall; retention prune engaged at depth and all validators converged on the
+  pruned chain. The S7 repair economy closed on the wire again with the flat path GONE — killed three columns' holders, the caretaker
+  reconstructed from parity, a verified-repair bounty drew the reserve down — and the dark delivery lane still refuses at the
+  withdrawal, banking nothing. The one gap is the known `184-low-bond` premise (#350): the adversary holds a qualifying bond and is
+  correctly accepted, so the under-bond REJECTION property needs a dedicated sub-min-bond identity in the harness; the property
+  itself is certified in-process. No OOM-kill and no crash-loop across the cohort, so the sheet was graded on a healthy network.
+  Teardown verified: 40 resources destroyed, no instance left running.
+
 ### Removed
 - **The `core/demand` v2 flat primitive (C1, the B-9 tail).** B-9 (#764) retired the flat receipt at the
   node; the primitive behind it stayed callable because ~25 unit tests pinned properties on it. Those
