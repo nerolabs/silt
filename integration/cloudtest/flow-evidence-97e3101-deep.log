@@ -1,0 +1,1150 @@
+
+######## 184-low-bond — gap @ 2026-09-08T23:10:09Z (nodes: adversary)
+======== adversary ========
+-- systemctl status --
+● silt.service - silt field-test node (adversary)
+     Loaded: loaded (/etc/systemd/system/silt.service; enabled; preset: enabled)
+     Active: active (running) since Tue 2026-09-08 23:08:18 UTC; 1min 58s ago
+   Main PID: 1620 (silt)
+      Tasks: 5 (limit: 2278)
+     Memory: 800.0M
+        CPU: 9.308s
+     CGroup: /system.slice/silt.service
+             └─1620 /usr/local/bin/silt daemon -id-seed 6901 -listen 0.0.0.0:4001 -store /var/lib/silt -mdns=false -log info -request-timeout 8s -mem-limit 1500M -advertise 10.20.0.91:4001 -bootstrap d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480@10.20.0.11:4001 -validator -objective -min-bond 1M -min-bond-floor 0 -mature-validators 2 -operator-margin 1 -anchors d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480,62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24,e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb,3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda -attesters d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480,62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24,e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb,3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda -quorum 2 -bond 64M -bond-audit 30s -capacity 2G -lowbond-propose d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480
+
+Sep 08 23:09:39 silt-ft-adversary-97e3101-deep silt[1620]: chain: committed block 42 (0 entries, 1 bond-regs, 10 attestations)
+Sep 08 23:09:39 silt-ft-adversary-97e3101-deep silt[1620]:   C2: nakamoto 2 bonds → 2 operators (margin ×1) → 2 domains of 6 distinct | cost-to-corrupt 108 MiB of 324 MiB bonded across 9 | concentration HHI 0.20 Gini 0.43 top 20% uniformity 57% | wheels shed permanently (network matured — F-1 one-way latch)
+-- journalctl -u silt (this boot, ≤4000 lines) --
+Sep 08 22:50:10 silt-ft-adversary-97e3101-deep systemd[1]: Started silt.service - silt field-test node (adversary).
+Sep 08 22:50:10 silt-ft-adversary-97e3101-deep silt[1016]: mem-limit: soft heap ceiling 1500M (GC reclaims before this — prevents OOM crash-loops on a small box)
+Sep 08 22:50:10 silt-ft-adversary-97e3101-deep silt[1016]: inbound-cap: 256M in-flight message budget (backpressure over cap; a flood stalls, doesn't OOM)
+Sep 08 22:50:10 silt-ft-adversary-97e3101-deep silt[1016]: pledge: 0 / 2147483648 bytes used
+Sep 08 22:50:10 silt-ft-adversary-97e3101-deep silt[1016]: bond: objective re-challenge TTL defaulted to 32 blocks for this untrusted (objective) swarm — standing lapses this many blocks after a validator's latest bond proof unless it renews, so a released plot can't keep voting. Override with -bond-ttl (0 disables; safe only for a trusted/demo swarm).
+Sep 08 22:50:10 silt-ft-adversary-97e3101-deep silt[1016]: consensus: Byzantine quorum sizing defaulted ON for this untrusted (objective) swarm — a commit needs a supermajority of the qualified bonded set so two quorums always share an honest validator. Override with -byzantine-quorum=false (safe only for a trusted swarm).
+Sep 08 22:50:10 silt-ft-adversary-97e3101-deep silt[1016]: consensus: epoch-blocks defaulted to 8 for this untrusted (objective) swarm — after the young→mature handoff the finality quorum and validator set are frozen per epoch (rotated at finalized boundary blocks), so churning bonds cannot let two conflicting commits finalize against two different sets. Override with -epoch-blocks, identically across the swarm (0 disables; safe only for a trusted/demo swarm).
+Sep 08 22:50:10 silt-ft-adversary-97e3101-deep silt[1016]: dht-address-cap: shadow — cap_direct=2 cap_relay=2 reserve=4 (K=8): eclipse floor per bucket = 2 paid /24 prefixes + 4 free slots; IPv6 /32; loopback/link-local exempt, RFC1918 classified (shadow: counting would-be refusals, refusing nothing)
+Sep 08 22:50:10 silt-ft-adversary-97e3101-deep silt[1016]: log: info and above → /var/lib/silt/debug.log
+Sep 08 22:50:10 silt-ft-adversary-97e3101-deep silt[1016]: proof-cache: 64M hot-proof RAM budget (rest page from disk to serve/audit)
+Sep 08 22:50:10 silt-ft-adversary-97e3101-deep silt[1016]: training wheels: 4 anchor(s), strict majority 3 required (objective; derived #402), shed at 2 independent validators
+Sep 08 22:50:10 silt-ft-adversary-97e3101-deep silt[1016]: genesis: silt:v1:_Onu6yOsAFGXLZnmfpQjgh_tyWB8u7SMUqQDAXHjINY:1-O2hkdHgz3S-1ewAWKyXrFQUI5Ed16PzMlyoNnBfEA
+Sep 08 22:50:14 silt-ft-adversary-97e3101-deep silt[1016]: bond: sealed a 64M storage bond for consensus standing
+Sep 08 22:50:14 silt-ft-adversary-97e3101-deep silt[1016]: consensus: OBJECTIVE fork-choice (default; on-chain bond ≥ 1M); 4 anchor(s) bootstrap the launch set, shed at maturity
+Sep 08 22:50:14 silt-ft-adversary-97e3101-deep silt[1016]: peer: f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689@[::]:4001
+Sep 08 22:50:14 silt-ft-adversary-97e3101-deep silt[1016]: store: /var/lib/silt
+Sep 08 22:50:14 silt-ft-adversary-97e3101-deep silt[1016]: discovery: 1 peer(s) via -bootstrap
+Sep 08 22:50:14 silt-ft-adversary-97e3101-deep silt[1016]: serving; Ctrl-C to stop
+Sep 08 22:50:15 silt-ft-adversary-97e3101-deep silt[1016]: bootstrapped (13 table entries)
+Sep 08 22:50:15 silt-ft-adversary-97e3101-deep silt[1016]: reachability: public — peers can dial this node directly
+Sep 08 22:50:41 silt-ft-adversary-97e3101-deep silt[1016]: re-announced 7 held chunks
+Sep 08 22:50:44 silt-ft-adversary-97e3101-deep silt[1016]: chain: committed block 1 (0 entries, 1 bond-regs, 3 attestations)
+Sep 08 22:50:44 silt-ft-adversary-97e3101-deep silt[1016]:   C2: nakamoto 0 bonds → 0 operators (margin ×1) → 0 domains of 0 distinct | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+Sep 08 22:50:44 silt-ft-adversary-97e3101-deep silt[1016]:   checkpoint: 1:07f3927f432687bfceb770114355dd02f5b3df4c07e99084216244bd445b6dd4
+Sep 08 22:50:44 silt-ft-adversary-97e3101-deep silt[1016]:   λ_H: window filling (A=0) — arrival rate reported once ≥2 heights are trailed
+Sep 08 22:50:44 silt-ft-adversary-97e3101-deep silt[1016]: chain: saved 2 block(s) [commit] head=1:07f3927f432687bfceb770114355dd02f5b3df4c07e99084216244bd445b6dd4 (everMature=false matureEpoch=false seen=2 bonded=1 epochStart=0 epochSet=0)
+Sep 08 22:51:08 silt-ft-adversary-97e3101-deep silt[1016]: chain: committed block 2 (0 entries, 1 bond-regs, 3 attestations)
+Sep 08 22:51:08 silt-ft-adversary-97e3101-deep silt[1016]:   C2: nakamoto 0 bonds → 0 operators (margin ×1) → 0 domains of 0 distinct | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+Sep 08 22:51:08 silt-ft-adversary-97e3101-deep silt[1016]:   checkpoint: 2:2e52484c73792ca2cacd061cea1ed53d01dd525bcde0e562efb6ceb86fc920b2
+Sep 08 22:51:08 silt-ft-adversary-97e3101-deep silt[1016]:   λ_H: 0.000 distinct arrivals/height (A=0 over 1 heights) | shed at 2
+Sep 08 22:51:09 silt-ft-adversary-97e3101-deep silt[1016]: chain: saved 3 block(s) [commit] head=2:2e52484c73792ca2cacd061cea1ed53d01dd525bcde0e562efb6ceb86fc920b2 (everMature=false matureEpoch=false seen=3 bonded=2 epochStart=0 epochSet=0)
+Sep 08 22:51:09 silt-ft-adversary-97e3101-deep silt[1016]: chain: committed block 3 (0 entries, 1 bond-regs, 3 attestations)
+Sep 08 22:51:09 silt-ft-adversary-97e3101-deep silt[1016]:   C2: nakamoto 0 bonds → 0 operators (margin ×1) → 0 domains of 0 distinct | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+Sep 08 22:51:09 silt-ft-adversary-97e3101-deep silt[1016]:   checkpoint: 3:fcaa7fe729539ed8c9c66a395788d77ae8bb3ba22b349c52e8f979a03470cd92
+Sep 08 22:51:09 silt-ft-adversary-97e3101-deep silt[1016]:   λ_H: 0.000 distinct arrivals/height (A=0 over 2 heights) | shed at 2
+Sep 08 22:51:09 silt-ft-adversary-97e3101-deep silt[1016]: chain: saved 4 block(s) [commit] head=3:fcaa7fe729539ed8c9c66a395788d77ae8bb3ba22b349c52e8f979a03470cd92 (everMature=false matureEpoch=false seen=4 bonded=3 epochStart=0 epochSet=0)
+Sep 08 22:51:18 silt-ft-adversary-97e3101-deep silt[1016]: chain: caught up 1 block(s) from peers
+Sep 08 22:51:18 silt-ft-adversary-97e3101-deep silt[1016]: chain: saved 5 block(s) [catch-up] head=4:6e09004ea989bef9f751468ac5c2d380bd1d5d52d8b63a00474a01578545b377 (everMature=false matureEpoch=false seen=4 bonded=4 epochStart=0 epochSet=0)
+Sep 08 22:51:46 silt-ft-adversary-97e3101-deep silt[1016]: chain: committed block 5 (0 entries, 1 bond-regs, 3 attestations)
+Sep 08 22:51:46 silt-ft-adversary-97e3101-deep silt[1016]:   C2: nakamoto 0 bonds → 0 operators (margin ×1) → 0 domains of 0 distinct | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+Sep 08 22:51:46 silt-ft-adversary-97e3101-deep silt[1016]:   checkpoint: 5:b9423c2ae1b66e7570f7310ba2e5d6f661418b5cfbe67d6c2de40004753068a1
+Sep 08 22:51:46 silt-ft-adversary-97e3101-deep silt[1016]:   λ_H: 0.000 distinct arrivals/height (A=0 over 4 heights) | shed at 2
+Sep 08 22:51:46 silt-ft-adversary-97e3101-deep silt[1016]: chain: saved 6 block(s) [commit] head=5:b9423c2ae1b66e7570f7310ba2e5d6f661418b5cfbe67d6c2de40004753068a1 (everMature=false matureEpoch=false seen=4 bonded=5 epochStart=0 epochSet=0)
+Sep 08 22:52:11 silt-ft-adversary-97e3101-deep silt[1016]: chain: committed block 6 (0 entries, 1 bond-regs, 3 attestations)
+Sep 08 22:52:11 silt-ft-adversary-97e3101-deep silt[1016]:   C2: nakamoto 0 bonds → 0 operators (margin ×1) → 0 domains of 0 distinct | cost-to-corrupt 0 MiB of 0 MiB bonded across 0 | concentration HHI 0.00 Gini 0.00 top 0% uniformity 0% | wheels engaged (young network — strict anchor majority still required)
+Sep 08 22:52:11 silt-ft-adversary-97e3101-deep silt[1016]:   checkpoint: 6:029e36d0dcac627b035529007d3929a73e0a31084ad075abc3ec84d7d09c9f04
+Sep 08 22:52:11 silt-ft-adversary-97e3101-deep silt[1016]:   λ_H: 0.000 distinct arrivals/height (A=0 over 5 heights) | shed at 2
+Sep 08 22:52:12 silt-ft-adversary-97e3101-deep silt[1016]: chain: saved 7 block(s) [commit] head=6:029e36d0dcac627b035529007d3929a73e0a31084ad075abc3ec84d7d09c9f04 (everMature=false matureEpoch=false seen=4 bonded=6 epochStart=0 epochSet=0)
+Sep 08 22:52:41 silt-ft-adversary-97e3101-deep silt[1016]: chain: committed block 7 (0 entries, 1 bond-regs, 4 attestations)
+Sep 08 22:52:41 silt-ft-adversary-97e3101-deep silt[1016]:   C2: nakamoto 1 bonds → 1 operators (margin ×1) → 1 domains of 1 distinct | cost-to-corrupt 21 MiB of 64 MiB bonded across 1 | concentration HHI 1.00 Gini 0.00 top 100% uniformity 100% | wheels engaged (young network — strict anchor majority still required)
+Sep 08 22:52:41 silt-ft-adversary-97e3101-deep silt[1016]:   ⚠ CONCENTRATION ALARM: one bond holds 100% of bonded weight (≥ the ⅓ capture fraction) — real standing is concentrating; this is the honest-whale residual C2 measures but cannot close on-chain. Act out-of-band.
+Sep 08 22:52:41 silt-ft-adversary-97e3101-deep silt[1016]:   checkpoint: 7:b13658f61b247f54a2bd73176b6f42f9676b8874bcf57f48ca377db6bbd48557
+Sep 08 22:52:41 silt-ft-adversary-97e3101-deep silt[1016]:   λ_H: 0.167 distinct arrivals/height (A=1 over 6 heights) | shed at 2
+Sep 08 22:52:41 silt-ft-adversary-97e3101-deep silt[1016]: chain: saved 8 block(s) [commit] head=7:b13658f61b247f54a2bd73176b6f42f9676b8874bcf57f48ca377db6bbd48557 (everMature=false matureEpoch=false seen=5 bonded=6 epochStart=0 epochSet=0)
+Sep 08 22:52:48 silt-ft-adversary-97e3101-deep silt[1016]: chain: caught up 1 block(s) from peers
+Sep 08 22:52:48 silt-ft-adversary-97e3101-deep silt[1016]: chain: saved 9 block(s) [catch-up] head=8:9daf86d2eb20b2b8f437bbfa75a1622e69afdd62de078f8b977e74c01bf4ab8c (everMature=false matureEpoch=false seen=5 bonded=6 epochStart=8 epochSet=0)
+Sep 08 22:53:18 silt-ft-adversary-97e3101-deep silt[1016]: chain: caught up 1 block(s) from peers
+Sep 08 22:53:18 silt-ft-adversary-97e3101-deep silt[1016]: chain: saved 10 block(s) [catch-up] head=9:ac216d60ccdfffb4762e6959b2b26554b59be720b38c1384fd7dd5403897c85e (everMature=false matureEpoch=false seen=6 bonded=7 epochStart=8 epochSet=0)
+Sep 08 22:53:43 silt-ft-adversary-97e3101-deep silt[1016]: chain: committed block 10 (1 entries, 1 bond-regs, 4 attestations)
+Sep 08 22:53:43 silt-ft-adversary-97e3101-deep silt[1016]:   C2: nakamoto 1 bonds → 1 operators (margin ×1) → 1 domains of 2 distinct | cost-to-corrupt 21 MiB of 65 MiB bonded across 2 | concentration HHI 0.97 Gini 0.48 top 98% uniformity 52% | wheels engaged (young network — strict anchor majority still required)
+Sep 08 22:53:43 silt-ft-adversary-97e3101-deep silt[1016]:   ⚠ CONCENTRATION ALARM: one bond holds 98% of bonded weight (≥ the ⅓ capture fraction) — real standing is concentrating; this is the honest-whale residual C2 measures but cannot close on-chain. Act out-of-band.
+Sep 08 22:53:43 silt-ft-adversary-97e3101-deep silt[1016]:   checkpoint: 10:dbd9036f1435a9a166e338d987213958b29b8a557201ea04724e11786a8851a3
+Sep 08 22:53:43 silt-ft-adversary-97e3101-deep silt[1016]:   λ_H: 0.111 distinct arrivals/height (A=1 over 9 heights) | shed at 2
+Sep 08 22:53:44 silt-ft-adversary-97e3101-deep silt[1016]: chain: saved 11 block(s) [commit] head=10:dbd9036f1435a9a166e338d987213958b29b8a557201ea04724e11786a8851a3 (everMature=false matureEpoch=false seen=6 bonded=7 epochStart=8 epochSet=0)
+Sep 08 22:54:12 silt-ft-adversary-97e3101-deep silt[1016]: chain: committed block 11 (1 entries, 1 bond-regs, 4 attestations)
+Sep 08 22:54:12 silt-ft-adversary-97e3101-deep silt[1016]:   C2: nakamoto 1 bonds → 1 operators (margin ×1) → 1 domains of 2 distinct | cost-to-corrupt 21 MiB of 65 MiB bonded across 2 | concentration HHI 0.97 Gini 0.48 top 98% uniformity 52% | wheels engaged (young network — strict anchor majority still required)
+Sep 08 22:54:12 silt-ft-adversary-97e3101-deep silt[1016]:   ⚠ CONCENTRATION ALARM: one bond holds 98% of bonded weight (≥ the ⅓ capture fraction) — real standing is concentrating; this is the honest-whale residual C2 measures but cannot close on-chain. Act out-of-band.
+Sep 08 22:54:12 silt-ft-adversary-97e3101-deep silt[1016]:   checkpoint: 11:af5058623bbe50b5dd035916fba6d1a538313a120f79e41693153bc75ca899ab
+Sep 08 22:54:12 silt-ft-adversary-97e3101-deep silt[1016]:   λ_H: 0.100 distinct arrivals/height (A=1 over 10 heights) | shed at 2
+Sep 08 22:54:12 silt-ft-adversary-97e3101-deep silt[1016]: chain: saved 12 block(s) [commit] head=11:af5058623bbe50b5dd035916fba6d1a538313a120f79e41693153bc75ca899ab (everMature=false matureEpoch=false seen=6 bonded=7 epochStart=8 epochSet=0)
+Sep 08 22:54:19 silt-ft-adversary-97e3101-deep silt[1016]: chain: caught up 1 block(s) from peers
+Sep 08 22:54:20 silt-ft-adversary-97e3101-deep silt[1016]: chain: saved 13 block(s) [catch-up] head=12:d735943116fbd31c471eeaaaf07e06c10643c7e65766cf0855a5d6d3baf97eb7 (everMature=false matureEpoch=false seen=6 bonded=8 epochStart=8 epochSet=0)
+Sep 08 22:54:48 silt-ft-adversary-97e3101-deep silt[1016]: chain: caught up 1 block(s) from peers
+Sep 08 22:54:48 silt-ft-adversary-97e3101-deep silt[1016]: chain: saved 14 block(s) [catch-up] head=13:185cfd8869161b36e56e7b756a1afc3e2caf685f617e43ab1c6077eca2f0a5ed (everMature=false matureEpoch=false seen=8 bonded=8 epochStart=8 epochSet=0)
+Sep 08 22:55:14 silt-ft-adversary-97e3101-deep silt[1016]: chain: committed block 14 (0 entries, 1 bond-regs, 4 attestations)
+Sep 08 22:55:14 silt-ft-adversary-97e3101-deep silt[1016]:   C2: nakamoto 1 bonds → 1 operators (margin ×1) → 1 domains of 2 distinct | cost-to-corrupt 22 MiB of 67 MiB bonded across 4 | concentration HHI 0.91 Gini 0.71 top 96% uniformity 27% | wheels engaged (young network — strict anchor majority still required)
+Sep 08 22:55:14 silt-ft-adversary-97e3101-deep silt[1016]:   ⚠ CONCENTRATION ALARM: one bond holds 96% of bonded weight (≥ the ⅓ capture fraction) — real standing is concentrating; this is the honest-whale residual C2 measures but cannot close on-chain. Act out-of-band.
+Sep 08 22:55:14 silt-ft-adversary-97e3101-deep silt[1016]:   checkpoint: 14:af979c68503853d2589de21d0c98c7fcf49db7ea61fd8d8c59bd8e39dfee727a
+Sep 08 22:55:14 silt-ft-adversary-97e3101-deep silt[1016]:   λ_H: 0.077 distinct arrivals/height (A=1 over 13 heights) | shed at 2
+Sep 08 22:55:14 silt-ft-adversary-97e3101-deep silt[1016]: chain: saved 15 block(s) [commit] head=14:af979c68503853d2589de21d0c98c7fcf49db7ea61fd8d8c59bd8e39dfee727a (everMature=false matureEpoch=false seen=8 bonded=8 epochStart=8 epochSet=0)
+Sep 08 22:55:42 silt-ft-adversary-97e3101-deep silt[1016]: chain: committed block 15 (0 entries, 1 bond-regs, 6 attestations)
+Sep 08 22:55:42 silt-ft-adversary-97e3101-deep silt[1016]:   C2: nakamoto 1 bonds → 1 operators (margin ×1) → 1 domains of 2 distinct | cost-to-corrupt 22 MiB of 67 MiB bonded across 4 | concentration HHI 0.91 Gini 0.71 top 96% uniformity 27% | wheels engaged (young network — strict anchor majority still required)
+Sep 08 22:55:42 silt-ft-adversary-97e3101-deep silt[1016]:   ⚠ CONCENTRATION ALARM: one bond holds 96% of bonded weight (≥ the ⅓ capture fraction) — real standing is concentrating; this is the honest-whale residual C2 measures but cannot close on-chain. Act out-of-band.
+Sep 08 22:55:42 silt-ft-adversary-97e3101-deep silt[1016]:   checkpoint: 15:dfc76a8ba3b007e049a31ff36e5fe682bd9b71b47a3e7dc0e115521b18d287a6
+Sep 08 22:55:42 silt-ft-adversary-97e3101-deep silt[1016]:   λ_H: 0.071 distinct arrivals/height (A=1 over 14 heights) | shed at 2
+Sep 08 22:55:43 silt-ft-adversary-97e3101-deep silt[1016]: chain: saved 16 block(s) [commit] head=15:dfc76a8ba3b007e049a31ff36e5fe682bd9b71b47a3e7dc0e115521b18d287a6 (everMature=false matureEpoch=false seen=8 bonded=8 epochStart=8 epochSet=0)
+Sep 08 22:55:48 silt-ft-adversary-97e3101-deep silt[1016]: chain: caught up 1 block(s) from peers
+Sep 08 22:55:48 silt-ft-adversary-97e3101-deep silt[1016]: chain: saved 17 block(s) [catch-up] head=16:67318074991d133d0ff1eea6fb27abb070a70448617f55c007119604b56ebd49 (everMature=false matureEpoch=false seen=8 bonded=9 epochStart=16 epochSet=0)
+Sep 08 22:56:18 silt-ft-adversary-97e3101-deep silt[1016]: chain: caught up 1 block(s) from peers
+Sep 08 22:56:18 silt-ft-adversary-97e3101-deep silt[1016]: chain: saved 18 block(s) [catch-up] head=17:2c09ca4e93902eefd903562a75070eb1afde59d896930fceb468abee8d399fcb (everMature=false matureEpoch=false seen=8 bonded=10 epochStart=16 epochSet=0)
+Sep 08 22:56:44 silt-ft-adversary-97e3101-deep silt[1016]: chain: committed block 18 (0 entries, 1 bond-regs, 4 attestations)
+Sep 08 22:56:44 silt-ft-adversary-97e3101-deep silt[1016]:   C2: nakamoto 1 bonds → 1 operators (margin ×1) → 1 domains of 2 distinct | cost-to-corrupt 22 MiB of 67 MiB bonded across 4 | concentration HHI 0.91 Gini 0.71 top 96% uniformity 27% | wheels engaged (young network — strict anchor majority still required)
+Sep 08 22:56:44 silt-ft-adversary-97e3101-deep silt[1016]:   ⚠ CONCENTRATION ALARM: one bond holds 96% of bonded weight (≥ the ⅓ capture fraction) — real standing is concentrating; this is the honest-whale residual C2 measures but cannot close on-chain. Act out-of-band.
+Sep 08 22:56:44 silt-ft-adversary-97e3101-deep silt[1016]:   checkpoint: 18:a7154f32bc5c132e8a0f90f915ea83ba94ef91c27455e15862c3b6b0b37f3806
+Sep 08 22:56:44 silt-ft-adversary-97e3101-deep silt[1016]:   λ_H: 0.059 distinct arrivals/height (A=1 over 17 heights) | shed at 2
+Sep 08 22:56:44 silt-ft-adversary-97e3101-deep silt[1016]: chain: saved 19 block(s) [commit] head=18:a7154f32bc5c132e8a0f90f915ea83ba94ef91c27455e15862c3b6b0b37f3806 (everMature=false matureEpoch=false seen=8 bonded=10 epochStart=16 epochSet=0)
+Sep 08 22:57:30 silt-ft-adversary-97e3101-deep silt[1016]: chain: committed block 19 (0 entries, 1 bond-regs, 5 attestations)
+Sep 08 22:57:30 silt-ft-adversary-97e3101-deep silt[1016]:   C2: nakamoto 1 bonds → 1 operators (margin ×1) → 1 domains of 2 distinct | cost-to-corrupt 22 MiB of 67 MiB bonded across 4 | concentration HHI 0.91 Gini 0.71 top 96% uniformity 27% | wheels engaged (young network — strict anchor majority still required)
+Sep 08 22:57:30 silt-ft-adversary-97e3101-deep silt[1016]:   ⚠ CONCENTRATION ALARM: one bond holds 96% of bonded weight (≥ the ⅓ capture fraction) — real standing is concentrating; this is the honest-whale residual C2 measures but cannot close on-chain. Act out-of-band.
+Sep 08 22:57:30 silt-ft-adversary-97e3101-deep silt[1016]:   checkpoint: 19:ae59470414c1cb7cf7df64af8a19c87a6672c746678818af12889d21a211db37
+Sep 08 22:57:30 silt-ft-adversary-97e3101-deep silt[1016]:   λ_H: 0.056 distinct arrivals/height (A=1 over 18 heights) | shed at 2
+Sep 08 22:57:31 silt-ft-adversary-97e3101-deep silt[1016]: chain: saved 20 block(s) [commit] head=19:ae59470414c1cb7cf7df64af8a19c87a6672c746678818af12889d21a211db37 (everMature=false matureEpoch=false seen=8 bonded=11 epochStart=16 epochSet=0)
+Sep 08 22:57:48 silt-ft-adversary-97e3101-deep silt[1016]: chain: caught up 1 block(s) from peers
+Sep 08 22:57:49 silt-ft-adversary-97e3101-deep silt[1016]: chain: saved 21 block(s) [catch-up] head=20:333d57214ed15c2191b827a0911ba9c7a540400a704677a9abffc25b98b19ec6 (everMature=false matureEpoch=false seen=8 bonded=11 epochStart=16 epochSet=0)
+Sep 08 22:58:22 silt-ft-adversary-97e3101-deep silt[1016]: chain: caught up 1 block(s) from peers
+Sep 08 22:58:23 silt-ft-adversary-97e3101-deep silt[1016]: chain: saved 22 block(s) [catch-up] head=21:cece03388191363bd6e1a966e1dc602919b7d0e037df894bb93495a91c2a80f3 (everMature=false matureEpoch=false seen=8 bonded=12 epochStart=16 epochSet=0)
+Sep 08 22:58:44 silt-ft-adversary-97e3101-deep silt[1016]: chain: committed block 22 (0 entries, 1 bond-regs, 4 attestations)
+Sep 08 22:58:44 silt-ft-adversary-97e3101-deep silt[1016]:   C2: nakamoto 1 bonds → 1 operators (margin ×1) → 1 domains of 2 distinct | cost-to-corrupt 22 MiB of 67 MiB bonded across 4 | concentration HHI 0.91 Gini 0.71 top 96% uniformity 27% | wheels engaged (young network — strict anchor majority still required)
+Sep 08 22:58:44 silt-ft-adversary-97e3101-deep silt[1016]:   ⚠ CONCENTRATION ALARM: one bond holds 96% of bonded weight (≥ the ⅓ capture fraction) — real standing is concentrating; this is the honest-whale residual C2 measures but cannot close on-chain. Act out-of-band.
+Sep 08 22:58:44 silt-ft-adversary-97e3101-deep silt[1016]:   checkpoint: 22:d5cd186ffbbd99fcc5cf84e1bf8dbc650e4e99fd4e3df40900108f999daf8b1d
+Sep 08 22:58:44 silt-ft-adversary-97e3101-deep silt[1016]:   λ_H: 0.050 distinct arrivals/height (A=1 over 20 heights) | shed at 2
+Sep 08 22:58:44 silt-ft-adversary-97e3101-deep silt[1016]: chain: saved 23 block(s) [commit] head=22:d5cd186ffbbd99fcc5cf84e1bf8dbc650e4e99fd4e3df40900108f999daf8b1d (everMature=false matureEpoch=false seen=8 bonded=12 epochStart=16 epochSet=0)
+Sep 08 22:59:18 silt-ft-adversary-97e3101-deep silt[1016]: chain: caught up 1 block(s) from peers
+Sep 08 22:59:19 silt-ft-adversary-97e3101-deep silt[1016]: chain: saved 24 block(s) [catch-up] head=23:7916fc9621d15d423f1cd923ef443974b28d5ee0d50668353a5ce25402cd9b34 (everMature=false matureEpoch=false seen=8 bonded=12 epochStart=16 epochSet=0)
+Sep 08 22:59:49 silt-ft-adversary-97e3101-deep silt[1016]: chain: caught up 1 block(s) from peers
+Sep 08 22:59:49 silt-ft-adversary-97e3101-deep silt[1016]: chain: saved 25 block(s) [catch-up] head=24:d1eae31e61e657b0234a67583d57c0555ef21ab1fcad09f37faa58bb7e88d3ae (everMature=false matureEpoch=false seen=8 bonded=12 epochStart=24 epochSet=0)
+Sep 08 23:00:22 silt-ft-adversary-97e3101-deep silt[1016]: chain: caught up 1 block(s) from peers
+Sep 08 23:00:22 silt-ft-adversary-97e3101-deep silt[1016]: chain: saved 26 block(s) [catch-up] head=25:9ac65c12a53265b9e7519d323cfad247d1c89bd5b648235afc0c236c6f232ef9 (everMature=false matureEpoch=false seen=8 bonded=13 epochStart=24 epochSet=0)
+Sep 08 23:00:44 silt-ft-adversary-97e3101-deep silt[1016]: chain: committed block 26 (0 entries, 1 bond-regs, 4 attestations)
+Sep 08 23:00:44 silt-ft-adversary-97e3101-deep silt[1016]:   C2: nakamoto 1 bonds → 1 operators (margin ×1) → 1 domains of 2 distinct | cost-to-corrupt 22 MiB of 67 MiB bonded across 4 | concentration HHI 0.91 Gini 0.71 top 96% uniformity 27% | wheels engaged (young network — strict anchor majority still required)
+Sep 08 23:00:44 silt-ft-adversary-97e3101-deep silt[1016]:   ⚠ CONCENTRATION ALARM: one bond holds 96% of bonded weight (≥ the ⅓ capture fraction) — real standing is concentrating; this is the honest-whale residual C2 measures but cannot close on-chain. Act out-of-band.
+Sep 08 23:00:44 silt-ft-adversary-97e3101-deep silt[1016]:   checkpoint: 26:754ec7aa9e665c394bb7fd625a63f092e82b630e61779468f77278f5e73bd639
+Sep 08 23:00:44 silt-ft-adversary-97e3101-deep silt[1016]:   λ_H: 0.050 distinct arrivals/height (A=1 over 20 heights) | shed at 2
+Sep 08 23:00:45 silt-ft-adversary-97e3101-deep silt[1016]: chain: saved 27 block(s) [commit] head=26:754ec7aa9e665c394bb7fd625a63f092e82b630e61779468f77278f5e73bd639 (everMature=false matureEpoch=false seen=8 bonded=13 epochStart=24 epochSet=0)
+Sep 08 23:00:47 silt-ft-adversary-97e3101-deep silt[1016]: chain: committed block 27 (0 entries, 1 bond-regs, 9 attestations)
+Sep 08 23:00:47 silt-ft-adversary-97e3101-deep silt[1016]:   C2: nakamoto 2 bonds → 2 operators (margin ×1) → 2 domains of 6 distinct | cost-to-corrupt 108 MiB of 324 MiB bonded across 9 | concentration HHI 0.20 Gini 0.43 top 20% uniformity 57% | wheels shed permanently (network matured — F-1 one-way latch)
+Sep 08 23:00:47 silt-ft-adversary-97e3101-deep silt[1016]:   checkpoint: 27:f180c44ffdebbc322a3515f98050ef01d6b2c9cb5167d531ac21bbaa7e29472a
+Sep 08 23:00:47 silt-ft-adversary-97e3101-deep silt[1016]:   λ_H: 0.050 distinct arrivals/height (A=2 over 20 heights) | shed at 2
+Sep 08 23:00:47 silt-ft-adversary-97e3101-deep silt[1016]: chain: saved 28 block(s) [commit] head=27:f180c44ffdebbc322a3515f98050ef01d6b2c9cb5167d531ac21bbaa7e29472a (everMature=true matureEpoch=false seen=13 bonded=13 epochStart=24 epochSet=0)
+Sep 08 23:00:53 silt-ft-adversary-97e3101-deep silt[1016]: chain: caught up 1 block(s) from peers
+Sep 08 23:00:54 silt-ft-adversary-97e3101-deep silt[1016]: chain: saved 29 block(s) [catch-up] head=28:00905a3da8934323aa7b5871cb32dfa7ab07cda265b9967025aaa8f3f23f11e0 (everMature=true matureEpoch=false seen=13 bonded=13 epochStart=24 epochSet=0)
+Sep 08 23:01:21 silt-ft-adversary-97e3101-deep silt[1016]: chain: caught up 1 block(s) from peers
+Sep 08 23:01:22 silt-ft-adversary-97e3101-deep silt[1016]: chain: saved 30 block(s) [catch-up] head=29:92e1e0e3f818e9a8170652ac062de44d418d211188dffd4f6b2012650fb088ed (everMature=true matureEpoch=false seen=13 bonded=13 epochStart=24 epochSet=0)
+Sep 08 23:01:45 silt-ft-adversary-97e3101-deep silt[1016]: chain: committed block 30 (0 entries, 1 bond-regs, 6 attestations)
+Sep 08 23:01:45 silt-ft-adversary-97e3101-deep silt[1016]:   C2: nakamoto 2 bonds → 2 operators (margin ×1) → 2 domains of 6 distinct | cost-to-corrupt 108 MiB of 324 MiB bonded across 9 | concentration HHI 0.20 Gini 0.43 top 20% uniformity 57% | wheels shed permanently (network matured — F-1 one-way latch)
+Sep 08 23:01:45 silt-ft-adversary-97e3101-deep silt[1016]:   checkpoint: 30:da8d8d9c18c7a6812b4e12a2c0b72c6789603b17e003a11811d5535f569b535a
+Sep 08 23:01:45 silt-ft-adversary-97e3101-deep silt[1016]:   λ_H: 0.050 distinct arrivals/height (A=2 over 20 heights) | shed at 2
+Sep 08 23:01:46 silt-ft-adversary-97e3101-deep silt[1016]: chain: saved 31 block(s) [commit] head=30:da8d8d9c18c7a6812b4e12a2c0b72c6789603b17e003a11811d5535f569b535a (everMature=true matureEpoch=false seen=13 bonded=13 epochStart=24 epochSet=0)
+Sep 08 23:02:16 silt-ft-adversary-97e3101-deep silt[1016]: chain: committed block 31 (0 entries, 1 bond-regs, 10 attestations)
+Sep 08 23:02:16 silt-ft-adversary-97e3101-deep silt[1016]:   C2: nakamoto 2 bonds → 2 operators (margin ×1) → 2 domains of 6 distinct | cost-to-corrupt 108 MiB of 324 MiB bonded across 9 | concentration HHI 0.20 Gini 0.43 top 20% uniformity 57% | wheels shed permanently (network matured — F-1 one-way latch)
+Sep 08 23:02:16 silt-ft-adversary-97e3101-deep silt[1016]:   checkpoint: 31:934b7d039e428e4ad3f4fa03237f4367b4315ec5f4f93074dd6c8fc9cd4098a5
+Sep 08 23:02:16 silt-ft-adversary-97e3101-deep silt[1016]:   λ_H: 0.050 distinct arrivals/height (A=2 over 20 heights) | shed at 2
+Sep 08 23:02:17 silt-ft-adversary-97e3101-deep silt[1016]: chain: saved 32 block(s) [commit] head=31:934b7d039e428e4ad3f4fa03237f4367b4315ec5f4f93074dd6c8fc9cd4098a5 (everMature=true matureEpoch=false seen=13 bonded=13 epochStart=24 epochSet=0)
+Sep 08 23:02:37 silt-ft-adversary-97e3101-deep silt[1016]: chain: committed block 32 (0 entries, 1 bond-regs, 12 attestations)
+Sep 08 23:02:37 silt-ft-adversary-97e3101-deep silt[1016]:   C2: nakamoto 2 bonds → 2 operators (margin ×1) → 2 domains of 6 distinct | cost-to-corrupt 108 MiB of 324 MiB bonded across 9 | concentration HHI 0.20 Gini 0.43 top 20% uniformity 57% | wheels shed permanently (network matured — F-1 one-way latch)
+Sep 08 23:02:37 silt-ft-adversary-97e3101-deep silt[1016]:   checkpoint: 32:5c7af22013221e139b44396a1387f732807a7c5c29d2921963a98d1402134503
+Sep 08 23:02:37 silt-ft-adversary-97e3101-deep silt[1016]:   λ_H: 0.056 distinct arrivals/height (A=2 over 18 heights) | shed at 2
+Sep 08 23:02:38 silt-ft-adversary-97e3101-deep silt[1016]: chain: saved 33 block(s) [commit] head=32:5c7af22013221e139b44396a1387f732807a7c5c29d2921963a98d1402134503 (everMature=true matureEpoch=true seen=13 bonded=13 epochStart=32 epochSet=13)
+Sep 08 23:04:57 silt-ft-adversary-97e3101-deep silt[1016]: chain: caught up 1 block(s) from peers
+Sep 08 23:04:58 silt-ft-adversary-97e3101-deep silt[1016]: chain: saved 36 block(s) [catch-up] head=35:c6cb7d19426107dfe9aa66ac59ac516b93468c32fe47021e7c5a4d3953b859d1 (everMature=true matureEpoch=true seen=13 bonded=13 epochStart=32 epochSet=13)
+Sep 08 23:05:56 silt-ft-adversary-97e3101-deep silt[1016]: chain: caught up 1 block(s) from peers
+Sep 08 23:05:57 silt-ft-adversary-97e3101-deep silt[1016]: chain: saved 36 block(s) [catch-up] head=35:c6cb7d19426107dfe9aa66ac59ac516b93468c32fe47021e7c5a4d3953b859d1 (everMature=true matureEpoch=true seen=13 bonded=13 epochStart=32 epochSet=13)
+Sep 08 23:06:37 silt-ft-adversary-97e3101-deep silt[1016]: chain: committed block 36 (1 entries, 1 bond-regs, 10 attestations)
+Sep 08 23:06:37 silt-ft-adversary-97e3101-deep silt[1016]:   C2: nakamoto 2 bonds → 2 operators (margin ×1) → 2 domains of 6 distinct | cost-to-corrupt 108 MiB of 324 MiB bonded across 9 | concentration HHI 0.20 Gini 0.43 top 20% uniformity 57% | wheels shed permanently (network matured — F-1 one-way latch)
+Sep 08 23:06:37 silt-ft-adversary-97e3101-deep silt[1016]:   checkpoint: 36:9788ff61362d07d59d1bacb99234476637e326e18636a360c7e6a396d7512c6f
+Sep 08 23:06:37 silt-ft-adversary-97e3101-deep silt[1016]:   λ_H: 0.056 distinct arrivals/height (A=2 over 18 heights) | shed at 2
+Sep 08 23:06:38 silt-ft-adversary-97e3101-deep silt[1016]: chain: saved 37 block(s) [commit] head=36:9788ff61362d07d59d1bacb99234476637e326e18636a360c7e6a396d7512c6f (everMature=true matureEpoch=true seen=13 bonded=13 epochStart=32 epochSet=13)
+Sep 08 23:06:57 silt-ft-adversary-97e3101-deep silt[1016]: chain: caught up 1 block(s) from peers
+Sep 08 23:06:58 silt-ft-adversary-97e3101-deep silt[1016]: chain: saved 37 block(s) [catch-up] head=36:9788ff61362d07d59d1bacb99234476637e326e18636a360c7e6a396d7512c6f (everMature=true matureEpoch=true seen=13 bonded=13 epochStart=32 epochSet=13)
+Sep 08 23:07:15 silt-ft-adversary-97e3101-deep silt[1016]: chain: committed block 37 (0 entries, 1 bond-regs, 9 attestations)
+Sep 08 23:07:15 silt-ft-adversary-97e3101-deep silt[1016]:   C2: nakamoto 2 bonds → 2 operators (margin ×1) → 2 domains of 6 distinct | cost-to-corrupt 108 MiB of 324 MiB bonded across 9 | concentration HHI 0.20 Gini 0.43 top 20% uniformity 57% | wheels shed permanently (network matured — F-1 one-way latch)
+Sep 08 23:07:15 silt-ft-adversary-97e3101-deep silt[1016]:   checkpoint: 37:1e8cc61787a0f79b7fa82d006296c196519d85fa7fab48e233e4aa94668cb257
+Sep 08 23:07:15 silt-ft-adversary-97e3101-deep silt[1016]:   λ_H: 0.053 distinct arrivals/height (A=2 over 19 heights) | shed at 2
+Sep 08 23:07:15 silt-ft-adversary-97e3101-deep silt[1016]: chain: saved 38 block(s) [commit] head=37:1e8cc61787a0f79b7fa82d006296c196519d85fa7fab48e233e4aa94668cb257 (everMature=true matureEpoch=true seen=13 bonded=13 epochStart=32 epochSet=13)
+Sep 08 23:07:25 silt-ft-adversary-97e3101-deep systemd[1]: Stopping silt.service - silt field-test node (adversary)...
+Sep 08 23:07:25 silt-ft-adversary-97e3101-deep systemd[1]: silt.service: Deactivated successfully.
+Sep 08 23:07:25 silt-ft-adversary-97e3101-deep systemd[1]: Stopped silt.service - silt field-test node (adversary).
+Sep 08 23:07:25 silt-ft-adversary-97e3101-deep systemd[1]: silt.service: Consumed 52.533s CPU time.
+Sep 08 23:07:25 silt-ft-adversary-97e3101-deep systemd[1]: Started silt.service - silt field-test node (adversary).
+Sep 08 23:07:25 silt-ft-adversary-97e3101-deep silt[1477]: mem-limit: soft heap ceiling 1500M (GC reclaims before this — prevents OOM crash-loops on a small box)
+Sep 08 23:07:25 silt-ft-adversary-97e3101-deep silt[1477]: inbound-cap: 256M in-flight message budget (backpressure over cap; a flood stalls, doesn't OOM)
+Sep 08 23:07:25 silt-ft-adversary-97e3101-deep silt[1477]: pledge: 788016 / 2147483648 bytes used
+Sep 08 23:07:25 silt-ft-adversary-97e3101-deep silt[1477]: bond: objective re-challenge TTL defaulted to 32 blocks for this untrusted (objective) swarm — standing lapses this many blocks after a validator's latest bond proof unless it renews, so a released plot can't keep voting. Override with -bond-ttl (0 disables; safe only for a trusted/demo swarm).
+Sep 08 23:07:25 silt-ft-adversary-97e3101-deep silt[1477]: consensus: Byzantine quorum sizing defaulted ON for this untrusted (objective) swarm — a commit needs a supermajority of the qualified bonded set so two quorums always share an honest validator. Override with -byzantine-quorum=false (safe only for a trusted swarm).
+Sep 08 23:07:25 silt-ft-adversary-97e3101-deep silt[1477]: consensus: epoch-blocks defaulted to 8 for this untrusted (objective) swarm — after the young→mature handoff the finality quorum and validator set are frozen per epoch (rotated at finalized boundary blocks), so churning bonds cannot let two conflicting commits finalize against two different sets. Override with -epoch-blocks, identically across the swarm (0 disables; safe only for a trusted/demo swarm).
+Sep 08 23:07:25 silt-ft-adversary-97e3101-deep silt[1477]: dht-address-cap: shadow — cap_direct=2 cap_relay=2 reserve=4 (K=8): eclipse floor per bucket = 2 paid /24 prefixes + 4 free slots; IPv6 /32; loopback/link-local exempt, RFC1918 classified (shadow: counting would-be refusals, refusing nothing)
+Sep 08 23:07:25 silt-ft-adversary-97e3101-deep silt[1477]: log: info and above → /var/lib/silt/debug.log
+Sep 08 23:07:25 silt-ft-adversary-97e3101-deep silt[1477]: proof-cache: 64M hot-proof RAM budget (rest page from disk to serve/audit)
+Sep 08 23:07:25 silt-ft-adversary-97e3101-deep silt[1477]: training wheels: 4 anchor(s), strict majority 3 required (objective; derived #402), shed at 2 independent validators
+Sep 08 23:07:25 silt-ft-adversary-97e3101-deep silt[1477]: chain: restored 38 block(s) from disk (everMature=true matureEpoch=true seen=13 bonded=13 epochStart=32 epochSet=13)
+Sep 08 23:07:26 silt-ft-adversary-97e3101-deep silt[1477]: bond: reloaded the 64M storage bond for consensus standing (no re-plot)
+Sep 08 23:07:26 silt-ft-adversary-97e3101-deep silt[1477]: consensus: OBJECTIVE fork-choice (default; on-chain bond ≥ 1M); 4 anchor(s) bootstrap the launch set, shed at maturity
+Sep 08 23:07:26 silt-ft-adversary-97e3101-deep silt[1477]: peer: f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689@[::]:4001
+Sep 08 23:07:26 silt-ft-adversary-97e3101-deep silt[1477]: store: /var/lib/silt
+Sep 08 23:07:26 silt-ft-adversary-97e3101-deep silt[1477]: discovery: 1 peer(s) via -bootstrap
+Sep 08 23:07:26 silt-ft-adversary-97e3101-deep silt[1477]: discovery: 20 peer(s) via peers.json (warm restart)
+Sep 08 23:07:26 silt-ft-adversary-97e3101-deep silt[1477]: serving; Ctrl-C to stop
+Sep 08 23:07:26 silt-ft-adversary-97e3101-deep silt[1477]: bootstrapped (15 table entries)
+Sep 08 23:07:26 silt-ft-adversary-97e3101-deep silt[1477]: ⚠ ADVERSARY: -forge-block set — sending a bad proposal to prove honest rejection (red-team harness, never honest)
+Sep 08 23:07:26 silt-ft-adversary-97e3101-deep silt[1477]: reachability: public — peers can dial this node directly
+Sep 08 23:07:28 silt-ft-adversary-97e3101-deep silt[1477]: adversary: forge-block proposal correctly REJECTED by d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480
+Sep 08 23:07:43 silt-ft-adversary-97e3101-deep silt[1477]: re-announced 16 held chunks
+Sep 08 23:07:59 silt-ft-adversary-97e3101-deep systemd[1]: Stopping silt.service - silt field-test node (adversary)...
+Sep 08 23:07:59 silt-ft-adversary-97e3101-deep systemd[1]: silt.service: Deactivated successfully.
+Sep 08 23:07:59 silt-ft-adversary-97e3101-deep systemd[1]: Stopped silt.service - silt field-test node (adversary).
+Sep 08 23:07:59 silt-ft-adversary-97e3101-deep systemd[1]: silt.service: Consumed 2.525s CPU time.
+Sep 08 23:07:59 silt-ft-adversary-97e3101-deep systemd[1]: Started silt.service - silt field-test node (adversary).
+Sep 08 23:07:59 silt-ft-adversary-97e3101-deep silt[1569]: mem-limit: soft heap ceiling 1500M (GC reclaims before this — prevents OOM crash-loops on a small box)
+Sep 08 23:07:59 silt-ft-adversary-97e3101-deep silt[1569]: inbound-cap: 256M in-flight message budget (backpressure over cap; a flood stalls, doesn't OOM)
+Sep 08 23:07:59 silt-ft-adversary-97e3101-deep silt[1569]: pledge: 788016 / 2147483648 bytes used
+Sep 08 23:07:59 silt-ft-adversary-97e3101-deep silt[1569]: bond: objective re-challenge TTL defaulted to 32 blocks for this untrusted (objective) swarm — standing lapses this many blocks after a validator's latest bond proof unless it renews, so a released plot can't keep voting. Override with -bond-ttl (0 disables; safe only for a trusted/demo swarm).
+Sep 08 23:07:59 silt-ft-adversary-97e3101-deep silt[1569]: consensus: Byzantine quorum sizing defaulted ON for this untrusted (objective) swarm — a commit needs a supermajority of the qualified bonded set so two quorums always share an honest validator. Override with -byzantine-quorum=false (safe only for a trusted swarm).
+Sep 08 23:07:59 silt-ft-adversary-97e3101-deep silt[1569]: consensus: epoch-blocks defaulted to 8 for this untrusted (objective) swarm — after the young→mature handoff the finality quorum and validator set are frozen per epoch (rotated at finalized boundary blocks), so churning bonds cannot let two conflicting commits finalize against two different sets. Override with -epoch-blocks, identically across the swarm (0 disables; safe only for a trusted/demo swarm).
+Sep 08 23:07:59 silt-ft-adversary-97e3101-deep silt[1569]: dht-address-cap: shadow — cap_direct=2 cap_relay=2 reserve=4 (K=8): eclipse floor per bucket = 2 paid /24 prefixes + 4 free slots; IPv6 /32; loopback/link-local exempt, RFC1918 classified (shadow: counting would-be refusals, refusing nothing)
+Sep 08 23:07:59 silt-ft-adversary-97e3101-deep silt[1569]: log: info and above → /var/lib/silt/debug.log
+Sep 08 23:07:59 silt-ft-adversary-97e3101-deep silt[1569]: proof-cache: 64M hot-proof RAM budget (rest page from disk to serve/audit)
+Sep 08 23:07:59 silt-ft-adversary-97e3101-deep silt[1569]: training wheels: 4 anchor(s), strict majority 3 required (objective; derived #402), shed at 2 independent validators
+Sep 08 23:08:00 silt-ft-adversary-97e3101-deep silt[1569]: chain: restored 38 block(s) from disk (everMature=true matureEpoch=true seen=13 bonded=13 epochStart=32 epochSet=13)
+Sep 08 23:08:00 silt-ft-adversary-97e3101-deep silt[1569]: bond: reloaded the 64M storage bond for consensus standing (no re-plot)
+Sep 08 23:08:00 silt-ft-adversary-97e3101-deep silt[1569]: consensus: OBJECTIVE fork-choice (default; on-chain bond ≥ 1M); 4 anchor(s) bootstrap the launch set, shed at maturity
+Sep 08 23:08:00 silt-ft-adversary-97e3101-deep silt[1569]: peer: f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689@[::]:4001
+Sep 08 23:08:00 silt-ft-adversary-97e3101-deep silt[1569]: store: /var/lib/silt
+Sep 08 23:08:00 silt-ft-adversary-97e3101-deep silt[1569]: discovery: 1 peer(s) via -bootstrap
+Sep 08 23:08:00 silt-ft-adversary-97e3101-deep silt[1569]: discovery: 20 peer(s) via peers.json (warm restart)
+Sep 08 23:08:00 silt-ft-adversary-97e3101-deep silt[1569]: serving; Ctrl-C to stop
+Sep 08 23:08:01 silt-ft-adversary-97e3101-deep silt[1569]: bootstrapped (15 table entries)
+Sep 08 23:08:01 silt-ft-adversary-97e3101-deep silt[1569]: reachability: public — peers can dial this node directly
+Sep 08 23:08:02 silt-ft-adversary-97e3101-deep silt[1569]: chain: caught up 1 block(s) from peers
+Sep 08 23:08:03 silt-ft-adversary-97e3101-deep silt[1569]: chain: saved 39 block(s) [catch-up] head=38:158a28d66bdbe2ea3380a89b25e209849bb2b1c5ee5d9fefc6c402c20dc434e7 (everMature=true matureEpoch=true seen=13 bonded=13 epochStart=32 epochSet=13)
+Sep 08 23:08:18 silt-ft-adversary-97e3101-deep systemd[1]: Stopping silt.service - silt field-test node (adversary)...
+Sep 08 23:08:18 silt-ft-adversary-97e3101-deep systemd[1]: silt.service: Deactivated successfully.
+Sep 08 23:08:18 silt-ft-adversary-97e3101-deep systemd[1]: Stopped silt.service - silt field-test node (adversary).
+Sep 08 23:08:18 silt-ft-adversary-97e3101-deep systemd[1]: silt.service: Consumed 2.296s CPU time.
+Sep 08 23:08:18 silt-ft-adversary-97e3101-deep systemd[1]: Started silt.service - silt field-test node (adversary).
+Sep 08 23:08:18 silt-ft-adversary-97e3101-deep silt[1620]: mem-limit: soft heap ceiling 1500M (GC reclaims before this — prevents OOM crash-loops on a small box)
+Sep 08 23:08:18 silt-ft-adversary-97e3101-deep silt[1620]: inbound-cap: 256M in-flight message budget (backpressure over cap; a flood stalls, doesn't OOM)
+Sep 08 23:08:18 silt-ft-adversary-97e3101-deep silt[1620]: pledge: 788016 / 2147483648 bytes used
+Sep 08 23:08:18 silt-ft-adversary-97e3101-deep silt[1620]: bond: objective re-challenge TTL defaulted to 32 blocks for this untrusted (objective) swarm — standing lapses this many blocks after a validator's latest bond proof unless it renews, so a released plot can't keep voting. Override with -bond-ttl (0 disables; safe only for a trusted/demo swarm).
+Sep 08 23:08:18 silt-ft-adversary-97e3101-deep silt[1620]: consensus: Byzantine quorum sizing defaulted ON for this untrusted (objective) swarm — a commit needs a supermajority of the qualified bonded set so two quorums always share an honest validator. Override with -byzantine-quorum=false (safe only for a trusted swarm).
+Sep 08 23:08:18 silt-ft-adversary-97e3101-deep silt[1620]: consensus: epoch-blocks defaulted to 8 for this untrusted (objective) swarm — after the young→mature handoff the finality quorum and validator set are frozen per epoch (rotated at finalized boundary blocks), so churning bonds cannot let two conflicting commits finalize against two different sets. Override with -epoch-blocks, identically across the swarm (0 disables; safe only for a trusted/demo swarm).
+Sep 08 23:08:18 silt-ft-adversary-97e3101-deep silt[1620]: dht-address-cap: shadow — cap_direct=2 cap_relay=2 reserve=4 (K=8): eclipse floor per bucket = 2 paid /24 prefixes + 4 free slots; IPv6 /32; loopback/link-local exempt, RFC1918 classified (shadow: counting would-be refusals, refusing nothing)
+Sep 08 23:08:18 silt-ft-adversary-97e3101-deep silt[1620]: log: info and above → /var/lib/silt/debug.log
+Sep 08 23:08:18 silt-ft-adversary-97e3101-deep silt[1620]: proof-cache: 64M hot-proof RAM budget (rest page from disk to serve/audit)
+Sep 08 23:08:18 silt-ft-adversary-97e3101-deep silt[1620]: training wheels: 4 anchor(s), strict majority 3 required (objective; derived #402), shed at 2 independent validators
+Sep 08 23:08:18 silt-ft-adversary-97e3101-deep silt[1620]: chain: restored 39 block(s) from disk (everMature=true matureEpoch=true seen=13 bonded=13 epochStart=32 epochSet=13)
+Sep 08 23:08:18 silt-ft-adversary-97e3101-deep silt[1620]: bond: reloaded the 64M storage bond for consensus standing (no re-plot)
+Sep 08 23:08:18 silt-ft-adversary-97e3101-deep silt[1620]: consensus: OBJECTIVE fork-choice (default; on-chain bond ≥ 1M); 4 anchor(s) bootstrap the launch set, shed at maturity
+Sep 08 23:08:18 silt-ft-adversary-97e3101-deep silt[1620]: peer: f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689@[::]:4001
+Sep 08 23:08:18 silt-ft-adversary-97e3101-deep silt[1620]: store: /var/lib/silt
+Sep 08 23:08:18 silt-ft-adversary-97e3101-deep silt[1620]: discovery: 1 peer(s) via -bootstrap
+Sep 08 23:08:18 silt-ft-adversary-97e3101-deep silt[1620]: discovery: 20 peer(s) via peers.json (warm restart)
+Sep 08 23:08:18 silt-ft-adversary-97e3101-deep silt[1620]: serving; Ctrl-C to stop
+Sep 08 23:08:19 silt-ft-adversary-97e3101-deep silt[1620]: bootstrapped (15 table entries)
+Sep 08 23:08:19 silt-ft-adversary-97e3101-deep silt[1620]: ⚠ ADVERSARY: -lowbond-propose set — sending a bad proposal to prove honest rejection (red-team harness, never honest)
+Sep 08 23:08:19 silt-ft-adversary-97e3101-deep silt[1620]: reachability: public — peers can dial this node directly
+Sep 08 23:08:21 silt-ft-adversary-97e3101-deep silt[1620]: chain: caught up 1 block(s) from peers
+Sep 08 23:08:22 silt-ft-adversary-97e3101-deep silt[1620]: chain: saved 40 block(s) [catch-up] head=39:825174178792f2be0ce6283de6ed9f6141394924d635cbc439449e73617a18a4 (everMature=true matureEpoch=true seen=13 bonded=13 epochStart=32 epochSet=13)
+Sep 08 23:08:22 silt-ft-adversary-97e3101-deep silt[1620]: adversary: lowbond-propose proposal UNEXPECTEDLY ACCEPTED by d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 (DEFECT)
+Sep 08 23:08:40 silt-ft-adversary-97e3101-deep silt[1620]: re-announced 16 held chunks
+Sep 08 23:08:44 silt-ft-adversary-97e3101-deep silt[1620]: chain: committed block 40 (0 entries, 1 bond-regs, 9 attestations)
+Sep 08 23:08:44 silt-ft-adversary-97e3101-deep silt[1620]:   C2: nakamoto 2 bonds → 2 operators (margin ×1) → 2 domains of 6 distinct | cost-to-corrupt 108 MiB of 324 MiB bonded across 9 | concentration HHI 0.20 Gini 0.43 top 20% uniformity 57% | wheels shed permanently (network matured — F-1 one-way latch)
+Sep 08 23:08:44 silt-ft-adversary-97e3101-deep silt[1620]:   checkpoint: 40:3548acde14b5b0cc4c5fdebfa0b21bd5c08e270d807bcaf7eccf227d2182559f
+Sep 08 23:08:44 silt-ft-adversary-97e3101-deep silt[1620]:   λ_H: window filling (A=2) — arrival rate reported once ≥2 heights are trailed
+Sep 08 23:08:45 silt-ft-adversary-97e3101-deep silt[1620]: chain: saved 41 block(s) [commit] head=40:3548acde14b5b0cc4c5fdebfa0b21bd5c08e270d807bcaf7eccf227d2182559f (everMature=true matureEpoch=true seen=13 bonded=13 epochStart=40 epochSet=13)
+Sep 08 23:09:22 silt-ft-adversary-97e3101-deep silt[1620]: chain: caught up 1 block(s) from peers
+Sep 08 23:09:24 silt-ft-adversary-97e3101-deep silt[1620]: chain: saved 42 block(s) [catch-up] head=41:fd981e7e8f4f930042acc8c75d459828e21c2c3660c85d07eef9bac44a48a7c6 (everMature=true matureEpoch=true seen=13 bonded=13 epochStart=40 epochSet=13)
+Sep 08 23:09:39 silt-ft-adversary-97e3101-deep silt[1620]: chain: committed block 42 (0 entries, 1 bond-regs, 10 attestations)
+Sep 08 23:09:39 silt-ft-adversary-97e3101-deep silt[1620]:   C2: nakamoto 2 bonds → 2 operators (margin ×1) → 2 domains of 6 distinct | cost-to-corrupt 108 MiB of 324 MiB bonded across 9 | concentration HHI 0.20 Gini 0.43 top 20% uniformity 57% | wheels shed permanently (network matured — F-1 one-way latch)
+Sep 08 23:09:39 silt-ft-adversary-97e3101-deep silt[1620]:   checkpoint: 42:69dfba08aa717648347437f8f6e094cf19217af9fad7038b7de50b0abaaf61e2
+Sep 08 23:09:39 silt-ft-adversary-97e3101-deep silt[1620]:   λ_H: 0.000 distinct arrivals/height (A=2 over 2 heights) | shed at 2
+Sep 08 23:09:40 silt-ft-adversary-97e3101-deep silt[1620]: chain: saved 43 block(s) [commit] head=42:69dfba08aa717648347437f8f6e094cf19217af9fad7038b7de50b0abaaf61e2 (everMature=true matureEpoch=true seen=13 bonded=13 epochStart=40 epochSet=13)
+Sep 08 23:09:48 silt-ft-adversary-97e3101-deep silt[1620]: chain: committed block 43 (0 entries, 1 bond-regs, 8 attestations)
+Sep 08 23:09:48 silt-ft-adversary-97e3101-deep silt[1620]:   C2: nakamoto 2 bonds → 2 operators (margin ×1) → 2 domains of 6 distinct | cost-to-corrupt 108 MiB of 324 MiB bonded across 9 | concentration HHI 0.20 Gini 0.43 top 20% uniformity 57% | wheels shed permanently (network matured — F-1 one-way latch)
+Sep 08 23:09:48 silt-ft-adversary-97e3101-deep silt[1620]:   checkpoint: 43:64c333eb0520dd5514cf1bab3a2014c9c48fb99052ec00387d54b15cb63364a5
+Sep 08 23:09:48 silt-ft-adversary-97e3101-deep silt[1620]:   λ_H: 0.000 distinct arrivals/height (A=2 over 3 heights) | shed at 2
+Sep 08 23:09:49 silt-ft-adversary-97e3101-deep silt[1620]: chain: saved 44 block(s) [commit] head=43:64c333eb0520dd5514cf1bab3a2014c9c48fb99052ec00387d54b15cb63364a5 (everMature=true matureEpoch=true seen=13 bonded=13 epochStart=40 epochSet=13)
+-- debug.log (last 2000) --
+2026-09-08T22:50:14.354Z info discovery peers=1 source=-bootstrap
+2026-09-08T22:50:14.354Z warn eventloop task waited (thread saturated) kind=timer wait_ms=3777
+2026-09-08T22:50:15.238Z info bootstrapped table=13
+2026-09-08T22:50:15.239Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T22:50:15.264Z info bond renewal submitted signed_next_height=1 size=67108864 peers=7
+2026-09-08T22:50:15.315Z warn dial failed to=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 addr=10.22.0.12:4001 err="dial tcp 10.22.0.12:4001: connect: connection refused" budget=2s elapsed=73.019814ms
+2026-09-08T22:50:15.364Z warn dial failed to=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 addr=10.22.0.12:4001 err="dial tcp 10.22.0.12:4001: connect: connection refused" budget=2s elapsed=81.106003ms
+2026-09-08T22:50:15.411Z info reachability verdict reach=public helpers=3
+2026-09-08T22:50:15.451Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T22:50:15.481Z warn dial failed to=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 addr=10.22.0.12:4001 err="dial tcp 10.22.0.12:4001: connect: connection refused" budget=2s elapsed=68.690438ms
+2026-09-08T22:50:15.834Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=false standing=16
+2026-09-08T22:50:16.329Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-09-08T22:50:16.353Z info bond challenge peer=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb passed=true late=false standing=1024
+2026-09-08T22:50:16.398Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-09-08T22:50:16.437Z warn dial failed to=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 addr=10.22.0.12:4001 err="dial tcp 10.22.0.12:4001: connect: connection refused" budget=2s elapsed=68.901767ms
+2026-09-08T22:50:23.575Z warn dial failed to=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 addr=10.22.0.12:4001 err="dial tcp 10.22.0.12:4001: connect: connection refused" budget=2s elapsed=83.610828ms
+2026-09-08T22:50:23.745Z warn dial failed to=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 addr=10.22.0.12:4001 err="dial tcp 10.22.0.12:4001: connect: connection refused" budget=2s elapsed=81.263217ms
+2026-09-08T22:50:24.700Z warn dial failed to=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 addr=10.22.0.12:4001 err="dial tcp 10.22.0.12:4001: connect: connection refused" budget=2s elapsed=81.093603ms
+2026-09-08T22:50:27.883Z info issuer-key submit REFUSED (unbonded) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 epoch=0
+2026-09-08T22:50:27.883Z info issuer-key submit REFUSED (unbonded) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 epoch=1
+2026-09-08T22:50:27.883Z info issuer-key submit REFUSED (unbonded) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 epoch=2
+2026-09-08T22:50:27.884Z info issuer-key submit REFUSED (unbonded) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 epoch=3
+2026-09-08T22:50:27.884Z info issuer-key submit REFUSED (unbonded) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 epoch=4
+2026-09-08T22:50:29.608Z warn dial failed to=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 addr=10.22.0.12:4001 err="dial tcp 10.22.0.12:4001: connect: connection refused" budget=2s elapsed=80.548285ms
+2026-09-08T22:50:44.045Z info block committed height=1 entries=0 regs=1 attestations=3 via=broadcast
+2026-09-08T22:50:45.239Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T22:50:45.292Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+2026-09-08T22:50:45.314Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T22:50:45.332Z info bond renewal submitted signed_next_height=2 size=67108864 peers=12
+2026-09-08T22:50:45.589Z info bond challenge peer=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 passed=true late=false standing=1024
+2026-09-08T22:50:45.807Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=false standing=16
+2026-09-08T22:50:45.856Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=false standing=16
+2026-09-08T22:50:45.879Z info bond challenge peer=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 passed=true late=false standing=16
+2026-09-08T22:50:46.235Z info bond challenge peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 passed=true late=false standing=1024
+2026-09-08T22:50:46.257Z info bond challenge peer=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 passed=true late=false standing=16
+2026-09-08T22:50:46.318Z info bond challenge peer=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b passed=true late=false standing=1024
+2026-09-08T22:50:46.338Z info bond challenge peer=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb passed=true late=false standing=1024
+2026-09-08T22:50:46.366Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-09-08T22:50:46.408Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-09-08T22:50:57.945Z info issuer-key submit REFUSED (unbonded) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 epoch=0
+2026-09-08T22:50:57.945Z info issuer-key submit REFUSED (unbonded) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 epoch=1
+2026-09-08T22:50:57.945Z info issuer-key submit REFUSED (unbonded) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 epoch=2
+2026-09-08T22:50:57.946Z info issuer-key submit REFUSED (unbonded) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 epoch=3
+2026-09-08T22:50:57.946Z info issuer-key submit REFUSED (unbonded) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 epoch=4
+2026-09-08T22:51:04.411Z info bond-reg submit REFUSED from=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 validator=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 size=1048576 next_height=2 err="chain: invalid on-chain bond registration: validator 421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 signature"
+2026-09-08T22:51:08.368Z info bond-reg submit REFUSED from=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda validator=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda size=67108864 next_height=2 err="chain: invalid on-chain bond registration: validator 3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda signature"
+2026-09-08T22:51:08.542Z info bond-reg submit REFUSED from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 validator=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 size=1048576 next_height=2 err="chain: invalid on-chain bond registration: validator 725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 signature"
+2026-09-08T22:51:08.990Z info block committed height=2 entries=0 regs=1 attestations=3 via=broadcast
+2026-09-08T22:51:09.875Z info block committed height=3 entries=0 regs=1 attestations=3 via=broadcast
+2026-09-08T22:51:15.240Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T22:51:15.285Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T22:51:15.304Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+2026-09-08T22:51:15.398Z info bond renewal submitted signed_next_height=4 size=67108864 peers=12
+2026-09-08T22:51:15.810Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=false standing=16
+2026-09-08T22:51:15.835Z info bond challenge peer=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 passed=true late=false standing=1024
+2026-09-08T22:51:15.860Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=false standing=16
+2026-09-08T22:51:15.885Z info bond challenge peer=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 passed=true late=false standing=16
+2026-09-08T22:51:16.242Z info bond challenge peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 passed=true late=false standing=1024
+2026-09-08T22:51:16.267Z info bond challenge peer=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 passed=true late=false standing=16
+2026-09-08T22:51:16.327Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-09-08T22:51:16.349Z info bond challenge peer=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb passed=true late=false standing=1024
+2026-09-08T22:51:16.397Z info bond challenge peer=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b passed=true late=false standing=1024
+2026-09-08T22:51:16.420Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-09-08T22:51:16.568Z info chain caught up from peer (suffix append) peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 appended=1 len=5
+2026-09-08T22:51:45.241Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T22:51:45.292Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+2026-09-08T22:51:45.404Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T22:51:45.453Z info bond renewal submitted signed_next_height=5 size=67108864 peers=12
+2026-09-08T22:51:45.803Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=false standing=16
+2026-09-08T22:51:45.827Z info bond challenge peer=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 passed=true late=false standing=1024
+2026-09-08T22:51:45.849Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=false standing=16
+2026-09-08T22:51:45.867Z info bond challenge peer=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 passed=true late=false standing=16
+2026-09-08T22:51:46.242Z info bond challenge peer=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 passed=true late=false standing=16
+2026-09-08T22:51:46.264Z info bond challenge peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 passed=true late=false standing=1024
+2026-09-08T22:51:46.316Z info bond challenge peer=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b passed=true late=false standing=1024
+2026-09-08T22:51:46.336Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-09-08T22:51:46.357Z info bond challenge peer=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb passed=true late=false standing=1024
+2026-09-08T22:51:46.406Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-09-08T22:51:46.474Z info block committed height=5 entries=0 regs=1 attestations=3 via=broadcast
+2026-09-08T22:51:46.730Z warn eventloop task slow (node thread blocked) kind=CommitBlock ms=288
+2026-09-08T22:51:47.909Z warn chain sync sweep made NO progress while behind (#572) our-next=6 max-peer-head=5 peers=12 probe-fails=0 head-matches=11 windows=1 suffix-appends=0 reconciles=1 last-err=
+2026-09-08T22:52:08.714Z info bond-reg submit REFUSED from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 validator=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 size=1048576 next_height=6 err="chain: invalid on-chain bond registration: validator 725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 signature"
+2026-09-08T22:52:11.977Z info block committed height=6 entries=0 regs=1 attestations=3 via=broadcast
+2026-09-08T22:52:12.234Z warn eventloop task slow (node thread blocked) kind=CommitBlock ms=287
+2026-09-08T22:52:15.241Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T22:52:15.289Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+2026-09-08T22:52:15.307Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T22:52:15.799Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=false standing=16
+2026-09-08T22:52:15.824Z info bond challenge peer=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 passed=true late=false standing=1024
+2026-09-08T22:52:15.844Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=false standing=16
+2026-09-08T22:52:15.873Z info bond challenge peer=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 passed=true late=false standing=16
+2026-09-08T22:52:16.240Z info bond challenge peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 passed=true late=false standing=1024
+2026-09-08T22:52:16.258Z info bond challenge peer=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 passed=true late=false standing=16
+2026-09-08T22:52:16.312Z info bond challenge peer=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb passed=true late=false standing=1024
+2026-09-08T22:52:16.331Z info bond challenge peer=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b passed=true late=false standing=1024
+2026-09-08T22:52:16.350Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-09-08T22:52:16.403Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-09-08T22:52:38.802Z info bond-reg submit REFUSED from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 validator=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 size=1048576 next_height=7 err="chain: invalid on-chain bond registration: validator 725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 signature"
+2026-09-08T22:52:41.082Z info block committed height=7 entries=0 regs=1 attestations=4 via=broadcast
+2026-09-08T22:52:41.374Z warn eventloop task slow (node thread blocked) kind=CommitBlock ms=322
+2026-09-08T22:52:45.242Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T22:52:45.294Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+2026-09-08T22:52:45.319Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T22:52:45.801Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=false standing=16
+2026-09-08T22:52:45.823Z info bond challenge peer=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 passed=true late=false standing=1024
+2026-09-08T22:52:45.852Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=false standing=16
+2026-09-08T22:52:45.895Z info bond challenge peer=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 passed=true late=false standing=16
+2026-09-08T22:52:46.241Z info bond challenge peer=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 passed=true late=false standing=16
+2026-09-08T22:52:46.262Z info bond challenge peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 passed=true late=false standing=1024
+2026-09-08T22:52:46.318Z info bond challenge peer=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb passed=true late=false standing=1024
+2026-09-08T22:52:46.341Z info bond challenge peer=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b passed=true late=false standing=1024
+2026-09-08T22:52:46.375Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-09-08T22:52:46.394Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-09-08T22:52:46.588Z info chain caught up from peer (suffix append) peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 appended=1 len=9
+2026-09-08T22:52:48.796Z warn eventloop task slow (node thread blocked) kind=ChainReply ms=273
+2026-09-08T22:53:15.243Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T22:53:15.297Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+2026-09-08T22:53:15.318Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T22:53:15.807Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=false standing=16
+2026-09-08T22:53:15.830Z info bond challenge peer=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 passed=true late=false standing=1024
+2026-09-08T22:53:15.852Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=false standing=16
+2026-09-08T22:53:15.887Z info bond challenge peer=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 passed=true late=false standing=16
+2026-09-08T22:53:16.257Z info bond challenge peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 passed=true late=false standing=1024
+2026-09-08T22:53:16.292Z info bond challenge peer=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 passed=true late=false standing=16
+2026-09-08T22:53:16.324Z info bond challenge peer=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb passed=true late=false standing=1024
+2026-09-08T22:53:16.350Z info bond challenge peer=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b passed=true late=false standing=1024
+2026-09-08T22:53:16.385Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-09-08T22:53:16.578Z info chain caught up from peer (suffix append) peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 appended=1 len=10
+2026-09-08T22:53:16.597Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-09-08T22:53:18.393Z warn eventloop task slow (node thread blocked) kind=ChainHeadReply ms=341
+2026-09-08T22:53:43.822Z info block committed height=10 entries=1 regs=1 attestations=4 via=broadcast
+2026-09-08T22:53:44.245Z warn eventloop task slow (node thread blocked) kind=CommitBlock ms=450
+2026-09-08T22:53:45.243Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T22:53:45.290Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+2026-09-08T22:53:45.308Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T22:53:45.800Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=false standing=16
+2026-09-08T22:53:45.822Z info bond challenge peer=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 passed=true late=false standing=1024
+2026-09-08T22:53:45.847Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=false standing=16
+2026-09-08T22:53:45.892Z info bond challenge peer=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 passed=true late=false standing=16
+2026-09-08T22:53:46.240Z info bond challenge peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 passed=true late=false standing=1024
+2026-09-08T22:53:46.257Z info bond challenge peer=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 passed=true late=false standing=16
+2026-09-08T22:53:46.323Z info bond challenge peer=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb passed=true late=false standing=1024
+2026-09-08T22:53:46.350Z info bond challenge peer=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b passed=true late=false standing=1024
+2026-09-08T22:53:46.370Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-09-08T22:53:46.389Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-09-08T22:54:09.368Z info bond-reg submit REFUSED from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 validator=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 size=1048576 next_height=11 err="chain: invalid on-chain bond registration: validator 725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 signature"
+2026-09-08T22:54:12.349Z info block committed height=11 entries=1 regs=1 attestations=4 via=broadcast
+2026-09-08T22:54:12.776Z warn eventloop task slow (node thread blocked) kind=CommitBlock ms=455
+2026-09-08T22:54:15.244Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T22:54:15.290Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+2026-09-08T22:54:15.309Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T22:54:15.803Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=false standing=16
+2026-09-08T22:54:15.830Z info bond challenge peer=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 passed=true late=false standing=1024
+2026-09-08T22:54:15.850Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=false standing=16
+2026-09-08T22:54:16.248Z info bond challenge peer=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 passed=true late=false standing=16
+2026-09-08T22:54:16.268Z info bond challenge peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 passed=true late=false standing=1024
+2026-09-08T22:54:16.304Z info bond challenge peer=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 passed=true late=false standing=16
+2026-09-08T22:54:16.325Z info bond challenge peer=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb passed=true late=false standing=1024
+2026-09-08T22:54:16.348Z info bond challenge peer=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b passed=true late=false standing=1024
+2026-09-08T22:54:16.375Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-09-08T22:54:16.393Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-09-08T22:54:16.588Z info chain caught up from peer (suffix append) peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 appended=1 len=13
+2026-09-08T22:54:17.975Z warn eventloop task slow (node thread blocked) kind=ChainReply ms=265
+2026-09-08T22:54:20.027Z warn eventloop task slow (node thread blocked) kind=ChainReply ms=372
+2026-09-08T22:54:45.245Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T22:54:45.294Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+2026-09-08T22:54:45.316Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T22:54:45.810Z info bond challenge peer=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 passed=true late=false standing=1024
+2026-09-08T22:54:45.832Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=false standing=16
+2026-09-08T22:54:45.854Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=false standing=16
+2026-09-08T22:54:45.895Z info bond challenge peer=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 passed=true late=false standing=16
+2026-09-08T22:54:46.253Z info bond challenge peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 passed=true late=false standing=1024
+2026-09-08T22:54:46.272Z info bond challenge peer=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 passed=true late=false standing=16
+2026-09-08T22:54:46.320Z info bond challenge peer=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b passed=true late=false standing=1024
+2026-09-08T22:54:46.349Z info bond challenge peer=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb passed=true late=false standing=1024
+2026-09-08T22:54:46.374Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-09-08T22:54:46.396Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-09-08T22:54:46.579Z info chain caught up from peer (suffix append) peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 appended=1 len=14
+2026-09-08T22:54:48.610Z warn eventloop task slow (node thread blocked) kind=ChainReply ms=411
+2026-09-08T22:55:09.889Z info bond-reg submit REFUSED from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 validator=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 size=1048576 next_height=14 err="chain: invalid on-chain bond registration: validator 725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 signature"
+2026-09-08T22:55:14.027Z info block committed height=14 entries=0 regs=1 attestations=4 via=broadcast
+2026-09-08T22:55:14.480Z warn eventloop task slow (node thread blocked) kind=CommitBlock ms=482
+2026-09-08T22:55:15.246Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T22:55:15.301Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+2026-09-08T22:55:15.324Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T22:55:15.809Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=false standing=16
+2026-09-08T22:55:15.836Z info bond challenge peer=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 passed=true late=false standing=1024
+2026-09-08T22:55:15.865Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=false standing=16
+2026-09-08T22:55:15.902Z info bond challenge peer=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 passed=true late=false standing=16
+2026-09-08T22:55:16.251Z info bond challenge peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 passed=true late=false standing=1024
+2026-09-08T22:55:16.272Z info bond challenge peer=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 passed=true late=false standing=16
+2026-09-08T22:55:16.331Z info bond challenge peer=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b passed=true late=false standing=1024
+2026-09-08T22:55:16.358Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-09-08T22:55:16.378Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-09-08T22:55:16.398Z info bond challenge peer=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb passed=true late=false standing=1024
+2026-09-08T22:55:39.992Z info bond-reg submit REFUSED from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 validator=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 size=1048576 next_height=15 err="chain: invalid on-chain bond registration: validator 725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 signature"
+2026-09-08T22:55:42.599Z info block committed height=15 entries=0 regs=1 attestations=6 via=broadcast
+2026-09-08T22:55:43.104Z warn eventloop task slow (node thread blocked) kind=CommitBlock ms=540
+2026-09-08T22:55:45.246Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T22:55:45.311Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+2026-09-08T22:55:45.333Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T22:55:45.791Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=false standing=16
+2026-09-08T22:55:45.818Z info bond challenge peer=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 passed=true late=false standing=1024
+2026-09-08T22:55:45.858Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=false standing=16
+2026-09-08T22:55:45.925Z info bond challenge peer=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 passed=true late=false standing=16
+2026-09-08T22:55:46.250Z info bond challenge peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 passed=true late=false standing=1024
+2026-09-08T22:55:46.267Z info bond challenge peer=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 passed=true late=false standing=16
+2026-09-08T22:55:46.324Z info bond challenge peer=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb passed=true late=false standing=1024
+2026-09-08T22:55:46.344Z info bond challenge peer=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b passed=true late=false standing=1024
+2026-09-08T22:55:46.364Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-09-08T22:55:46.415Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-09-08T22:55:46.575Z info chain caught up from peer (suffix append) peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 appended=1 len=17
+2026-09-08T22:55:48.978Z warn eventloop task slow (node thread blocked) kind=ChainReply ms=486
+2026-09-08T22:56:15.247Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T22:56:15.301Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+2026-09-08T22:56:15.323Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T22:56:15.813Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=false standing=16
+2026-09-08T22:56:15.837Z info bond challenge peer=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 passed=true late=false standing=1024
+2026-09-08T22:56:15.900Z info bond challenge peer=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 passed=true late=false standing=16
+2026-09-08T22:56:16.128Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=false standing=16
+2026-09-08T22:56:16.258Z info bond challenge peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 passed=true late=false standing=1024
+2026-09-08T22:56:16.286Z info bond challenge peer=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 passed=true late=false standing=16
+2026-09-08T22:56:16.332Z info bond challenge peer=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b passed=true late=false standing=1024
+2026-09-08T22:56:16.353Z info bond challenge peer=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb passed=true late=false standing=1024
+2026-09-08T22:56:16.379Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-09-08T22:56:16.424Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-09-08T22:56:16.580Z info chain caught up from peer (suffix append) peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 appended=1 len=18
+2026-09-08T22:56:18.873Z warn eventloop task slow (node thread blocked) kind=ChainReply ms=445
+2026-09-08T22:56:40.309Z info bond-reg submit REFUSED from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 validator=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 size=1048576 next_height=18 err="chain: invalid on-chain bond registration: validator 725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 signature"
+2026-09-08T22:56:44.177Z info block committed height=18 entries=0 regs=1 attestations=4 via=broadcast
+2026-09-08T22:56:44.713Z warn eventloop task slow (node thread blocked) kind=CommitBlock ms=565
+2026-09-08T22:56:45.248Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T22:56:45.295Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T22:56:45.315Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+2026-09-08T22:56:45.798Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=false standing=16
+2026-09-08T22:56:45.818Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=false standing=16
+2026-09-08T22:56:45.838Z info bond challenge peer=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 passed=true late=false standing=1024
+2026-09-08T22:56:45.895Z info bond challenge peer=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 passed=true late=false standing=16
+2026-09-08T22:56:46.250Z info bond challenge peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 passed=true late=false standing=1024
+2026-09-08T22:56:46.267Z info bond challenge peer=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 passed=true late=false standing=16
+2026-09-08T22:56:46.337Z info bond challenge peer=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb passed=true late=false standing=1024
+2026-09-08T22:56:46.358Z info bond challenge peer=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b passed=true late=false standing=1024
+2026-09-08T22:56:46.380Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-09-08T22:56:46.412Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-09-08T22:57:08.380Z info round-change: recorded (#432 view-change) from=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda height=19 round=1 carries_lock=false
+2026-09-08T22:57:15.249Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T22:57:15.294Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+2026-09-08T22:57:15.313Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T22:57:15.510Z info round-change: advancing (#432 view-change) height=19 round=1 via=timeout locked=false pending=12 pending_entries=0
+2026-09-08T22:57:15.514Z info round-change: recorded (#432 view-change) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 height=19 round=1 carries_lock=false
+2026-09-08T22:57:15.802Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=false standing=16
+2026-09-08T22:57:15.802Z info round-change: recorded (#432 view-change) from=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 height=19 round=1 carries_lock=false
+2026-09-08T22:57:15.825Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=false standing=16
+2026-09-08T22:57:15.825Z info round-change: recorded (#432 view-change) from=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 height=19 round=1 carries_lock=false
+2026-09-08T22:57:15.895Z info bond challenge peer=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 passed=true late=false standing=1024
+2026-09-08T22:57:15.895Z info round-change: recorded (#432 view-change) from=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 height=19 round=1 carries_lock=false
+2026-09-08T22:57:15.896Z info round-cert: sent (h43 transferable certificate) height=19 round=1 envelopes=6 to=5 designee=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda
+2026-09-08T22:57:15.914Z info bond challenge peer=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 passed=true late=false standing=16
+2026-09-08T22:57:15.914Z info round-change: recorded (#432 view-change) from=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 height=19 round=1 carries_lock=false
+2026-09-08T22:57:16.252Z info bond challenge peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 passed=true late=false standing=1024
+2026-09-08T22:57:16.270Z info bond challenge peer=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 passed=true late=false standing=16
+2026-09-08T22:57:16.326Z info bond challenge peer=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb passed=true late=false standing=1024
+2026-09-08T22:57:16.326Z info round-cert: recorded (h43 transferable certificate) from=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb height=19 round=1 envelopes=3 our_round=1
+2026-09-08T22:57:16.326Z info round-change: recorded (#432 view-change) from=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb height=19 round=1 carries_lock=false
+2026-09-08T22:57:16.348Z info bond challenge peer=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b passed=true late=false standing=1024
+2026-09-08T22:57:16.370Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-09-08T22:57:16.370Z info round-change: recorded (#432 view-change) from=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a height=19 round=1 carries_lock=false
+2026-09-08T22:57:16.416Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-09-08T22:57:16.416Z info round-change: recorded (#432 view-change) from=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 height=19 round=1 carries_lock=false
+2026-09-08T22:57:30.526Z info bond-reg submit REFUSED from=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 validator=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 size=67108864 next_height=19 err="chain: invalid on-chain bond registration: validator 2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 signature"
+2026-09-08T22:57:30.790Z info block committed height=19 entries=0 regs=1 attestations=5 via=broadcast
+2026-09-08T22:57:31.392Z warn eventloop task slow (node thread blocked) kind=CommitBlock ms=640
+2026-09-08T22:57:45.250Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T22:57:45.300Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+2026-09-08T22:57:45.320Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T22:57:45.528Z info bond renewal submitted signed_next_height=20 size=67108864 peers=12
+2026-09-08T22:57:45.815Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=false standing=16
+2026-09-08T22:57:45.837Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=false standing=16
+2026-09-08T22:57:45.872Z info bond challenge peer=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 passed=true late=false standing=1024
+2026-09-08T22:57:45.894Z info bond challenge peer=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 passed=true late=false standing=16
+2026-09-08T22:57:46.258Z info bond challenge peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 passed=true late=false standing=1024
+2026-09-08T22:57:46.276Z info bond challenge peer=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 passed=true late=false standing=16
+2026-09-08T22:57:46.331Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-09-08T22:57:46.352Z info bond challenge peer=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb passed=true late=false standing=1024
+2026-09-08T22:57:46.376Z info bond challenge peer=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b passed=true late=false standing=1024
+2026-09-08T22:57:46.415Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-09-08T22:57:46.696Z info chain caught up from peer (suffix append) peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 appended=1 len=21
+2026-09-08T22:57:49.186Z warn eventloop task slow (node thread blocked) kind=ChainReply ms=538
+2026-09-08T22:58:15.250Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T22:58:15.300Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+2026-09-08T22:58:15.321Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T22:58:15.605Z info bond renewal submitted signed_next_height=21 size=67108864 peers=12
+2026-09-08T22:58:15.840Z info bond challenge peer=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 passed=true late=false standing=1024
+2026-09-08T22:58:15.872Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=false standing=16
+2026-09-08T22:58:15.906Z info bond challenge peer=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 passed=true late=false standing=16
+2026-09-08T22:58:16.264Z info bond challenge peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 passed=true late=false standing=1024
+2026-09-08T22:58:16.289Z info bond challenge peer=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 passed=true late=false standing=16
+2026-09-08T22:58:16.330Z info bond challenge peer=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb passed=true late=false standing=1024
+2026-09-08T22:58:16.353Z info bond challenge peer=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b passed=true late=false standing=1024
+2026-09-08T22:58:16.380Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-09-08T22:58:16.432Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-09-08T22:58:16.765Z info chain caught up from peer (suffix append) peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 appended=1 len=22
+2026-09-08T22:58:18.929Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=true standing=16
+2026-09-08T22:58:22.572Z warn eventloop task slow (node thread blocked) kind=ChainReply ms=576
+2026-09-08T22:58:23.425Z warn eventloop task slow (node thread blocked) kind=ChainReply ms=563
+2026-09-08T22:58:38.468Z info bond-reg submit REFUSED from=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda validator=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda size=67108864 next_height=22 err="chain: invalid on-chain bond registration: validator 3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda signature"
+2026-09-08T22:58:44.381Z info block committed height=22 entries=0 regs=1 attestations=4 via=broadcast
+2026-09-08T22:58:44.962Z warn eventloop task slow (node thread blocked) kind=CommitBlock ms=612
+2026-09-08T22:58:45.251Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T22:58:45.297Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T22:58:45.332Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+2026-09-08T22:58:45.674Z info bond renewal submitted signed_next_height=23 size=67108864 peers=12
+2026-09-08T22:58:45.828Z info bond challenge peer=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 passed=true late=false standing=1024
+2026-09-08T22:58:45.845Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=false standing=16
+2026-09-08T22:58:45.910Z info bond challenge peer=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 passed=true late=false standing=16
+2026-09-08T22:58:46.252Z info bond challenge peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 passed=true late=false standing=1024
+2026-09-08T22:58:46.269Z info bond challenge peer=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 passed=true late=false standing=16
+2026-09-08T22:58:46.338Z info bond challenge peer=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b passed=true late=false standing=1024
+2026-09-08T22:58:46.359Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-09-08T22:58:46.380Z info bond challenge peer=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb passed=true late=false standing=1024
+2026-09-08T22:58:46.414Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-09-08T22:58:48.021Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=true standing=16
+2026-09-08T22:59:08.556Z info round-change: recorded (#432 view-change) from=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda height=23 round=1 carries_lock=false
+2026-09-08T22:59:09.646Z info round-change: recorded (#432 view-change) from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 height=23 round=1 carries_lock=false
+2026-09-08T22:59:09.647Z info round-change: advancing (#432 view-change) height=23 round=1 via=catch-up locked=false pending=12 pending_entries=0
+2026-09-08T22:59:09.648Z info round-change: recorded (#432 view-change) from=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb height=23 round=1 carries_lock=false
+2026-09-08T22:59:09.649Z info round-change: recorded (#432 view-change) from=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a height=23 round=1 carries_lock=false
+2026-09-08T22:59:09.651Z info round-change: recorded (#432 view-change) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 height=23 round=1 carries_lock=false
+2026-09-08T22:59:09.652Z info round-cert: sent (h43 transferable certificate) height=23 round=1 envelopes=6 to=7 designee=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda
+2026-09-08T22:59:09.652Z info round-change: recorded (#432 view-change) from=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b height=23 round=1 carries_lock=false
+2026-09-08T22:59:09.652Z info round-cert: recorded (h43 transferable certificate) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 height=23 round=1 envelopes=5 our_round=1
+2026-09-08T22:59:09.653Z info round-cert: recorded (h43 transferable certificate) from=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda height=23 round=1 envelopes=6 our_round=1
+2026-09-08T22:59:09.663Z info round-change: recorded (#432 view-change) from=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 height=23 round=1 carries_lock=false
+2026-09-08T22:59:09.666Z info round-change: recorded (#432 view-change) from=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 height=23 round=1 carries_lock=false
+2026-09-08T22:59:09.669Z info round-change: recorded (#432 view-change) from=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 height=23 round=1 carries_lock=false
+2026-09-08T22:59:09.673Z info round-change: recorded (#432 view-change) from=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 height=23 round=1 carries_lock=false
+2026-09-08T22:59:09.684Z info round-cert: recorded (h43 transferable certificate) from=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 height=23 round=1 envelopes=9 our_round=1
+2026-09-08T22:59:09.685Z info round-cert: recorded (h43 transferable certificate) from=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 height=23 round=1 envelopes=9 our_round=1
+2026-09-08T22:59:09.687Z info round-cert: recorded (h43 transferable certificate) from=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 height=23 round=1 envelopes=8 our_round=1
+2026-09-08T22:59:09.752Z info round-cert: recorded (h43 transferable certificate) from=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 height=23 round=1 envelopes=7 our_round=1
+2026-09-08T22:59:09.753Z info round-cert: recorded (h43 transferable certificate) from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 height=23 round=1 envelopes=7 our_round=1
+2026-09-08T22:59:09.754Z info round-cert: recorded (h43 transferable certificate) from=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb height=23 round=1 envelopes=8 our_round=1
+2026-09-08T22:59:09.754Z info round-cert: recorded (h43 transferable certificate) from=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b height=23 round=1 envelopes=8 our_round=1
+2026-09-08T22:59:09.755Z info round-cert: recorded (h43 transferable certificate) from=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a height=23 round=1 envelopes=9 our_round=1
+2026-09-08T22:59:09.778Z info round-change: recorded (#432 view-change) from=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 height=23 round=1 carries_lock=false
+2026-09-08T22:59:09.791Z info round-cert: recorded (h43 transferable certificate) from=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 height=23 round=1 envelopes=7 our_round=1
+2026-09-08T22:59:15.252Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T22:59:15.299Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T22:59:15.319Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+2026-09-08T22:59:15.725Z info bond renewal submitted signed_next_height=23 size=67108864 peers=12
+2026-09-08T22:59:15.823Z info bond challenge peer=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 passed=true late=false standing=1024
+2026-09-08T22:59:15.848Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=false standing=16
+2026-09-08T22:59:16.217Z info bond challenge peer=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 passed=true late=false standing=16
+2026-09-08T22:59:16.254Z info bond challenge peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 passed=true late=false standing=1024
+2026-09-08T22:59:16.273Z info bond challenge peer=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 passed=true late=false standing=16
+2026-09-08T22:59:16.327Z info bond challenge peer=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb passed=true late=false standing=1024
+2026-09-08T22:59:16.349Z info bond challenge peer=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b passed=true late=false standing=1024
+2026-09-08T22:59:16.370Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-09-08T22:59:16.417Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-09-08T22:59:17.020Z info chain caught up from peer (suffix append) peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 appended=1 len=24
+2026-09-08T22:59:17.134Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=true standing=16
+2026-09-08T22:59:19.489Z warn eventloop task slow (node thread blocked) kind=ChainReply ms=584
+2026-09-08T22:59:45.253Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T22:59:45.304Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+2026-09-08T22:59:45.327Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T22:59:45.776Z info bond renewal submitted signed_next_height=24 size=67108864 peers=12
+2026-09-08T22:59:45.845Z info bond challenge peer=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 passed=true late=false standing=1024
+2026-09-08T22:59:45.867Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=false standing=16
+2026-09-08T22:59:45.905Z info bond challenge peer=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 passed=true late=false standing=16
+2026-09-08T22:59:46.258Z info bond challenge peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 passed=true late=false standing=1024
+2026-09-08T22:59:46.277Z info bond challenge peer=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 passed=true late=false standing=16
+2026-09-08T22:59:46.332Z info bond challenge peer=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb passed=true late=false standing=1024
+2026-09-08T22:59:46.352Z info bond challenge peer=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b passed=true late=false standing=1024
+2026-09-08T22:59:46.375Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-09-08T22:59:46.419Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-09-08T22:59:46.792Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=true standing=16
+2026-09-08T22:59:47.063Z info chain caught up from peer (suffix append) peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 appended=1 len=25
+2026-09-08T22:59:49.756Z warn eventloop task slow (node thread blocked) kind=ChainReply ms=594
+2026-09-08T23:00:15.254Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T23:00:15.305Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T23:00:15.325Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+2026-09-08T23:00:15.833Z info bond renewal submitted signed_next_height=25 size=67108864 peers=12
+2026-09-08T23:00:15.891Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=false standing=16
+2026-09-08T23:00:16.261Z info bond challenge peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 passed=true late=false standing=1024
+2026-09-08T23:00:16.279Z info bond challenge peer=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 passed=true late=false standing=16
+2026-09-08T23:00:16.334Z info bond challenge peer=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb passed=true late=false standing=1024
+2026-09-08T23:00:16.355Z info bond challenge peer=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b passed=true late=false standing=1024
+2026-09-08T23:00:16.426Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-09-08T23:00:16.447Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-09-08T23:00:17.117Z info chain caught up from peer (suffix append) peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 appended=1 len=26
+2026-09-08T23:00:18.429Z info bond challenge peer=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 passed=true late=true standing=1024
+2026-09-08T23:00:18.535Z info bond challenge peer=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 passed=true late=true standing=16
+2026-09-08T23:00:19.160Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=true standing=16
+2026-09-08T23:00:22.809Z warn eventloop task slow (node thread blocked) kind=ChainReply ms=618
+2026-09-08T23:00:44.457Z info block committed height=26 entries=0 regs=1 attestations=4 via=broadcast
+2026-09-08T23:00:45.050Z warn eventloop task slow (node thread blocked) kind=CommitBlock ms=624
+2026-09-08T23:00:45.255Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T23:00:45.307Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T23:00:45.344Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+2026-09-08T23:00:45.890Z info bond renewal submitted signed_next_height=27 size=67108864 peers=12
+2026-09-08T23:00:45.951Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=false standing=16
+2026-09-08T23:00:46.260Z info bond challenge peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 passed=true late=false standing=1024
+2026-09-08T23:00:46.281Z info bond challenge peer=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 passed=true late=false standing=16
+2026-09-08T23:00:46.311Z info bond challenge peer=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb passed=true late=false standing=1024
+2026-09-08T23:00:46.338Z info bond challenge peer=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b passed=true late=false standing=1024
+2026-09-08T23:00:46.365Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-09-08T23:00:46.420Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-09-08T23:00:47.017Z info block committed height=27 entries=0 regs=1 attestations=9 via=broadcast
+2026-09-08T23:00:47.723Z warn eventloop task slow (node thread blocked) kind=CommitBlock ms=741
+2026-09-08T23:00:47.748Z info bond challenge peer=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 passed=true late=true standing=16
+2026-09-08T23:00:47.768Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=true standing=16
+2026-09-08T23:00:47.790Z info bond challenge peer=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 passed=true late=true standing=1024
+2026-09-08T23:00:48.681Z info chain reconciled from peer peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 len=29
+2026-09-08T23:00:48.681Z warn eventloop task slow (node thread blocked) kind=ChainReply ms=675
+2026-09-08T23:00:52.034Z warn eventloop task slow (node thread blocked) kind=ChainReply ms=655
+2026-09-08T23:00:54.535Z warn eventloop task slow (node thread blocked) kind=ChainReply ms=655
+2026-09-08T23:01:15.255Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T23:01:15.301Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+2026-09-08T23:01:15.322Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T23:01:15.876Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=false standing=16
+2026-09-08T23:01:15.942Z info bond renewal submitted signed_next_height=29 size=67108864 peers=12
+2026-09-08T23:01:16.259Z info bond challenge peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 passed=true late=false standing=1024
+2026-09-08T23:01:16.278Z info bond challenge peer=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 passed=true late=false standing=16
+2026-09-08T23:01:16.299Z info bond challenge peer=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb passed=true late=false standing=1024
+2026-09-08T23:01:16.340Z info bond challenge peer=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b passed=true late=false standing=1024
+2026-09-08T23:01:16.419Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-09-08T23:01:16.685Z info bond challenge peer=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 passed=true late=false standing=16
+2026-09-08T23:01:16.774Z info bond challenge peer=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 passed=true late=true standing=1024
+2026-09-08T23:01:16.808Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=true standing=16
+2026-09-08T23:01:17.062Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=true standing=1024
+2026-09-08T23:01:17.368Z info chain caught up from peer (suffix append) peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 appended=1 len=30
+2026-09-08T23:01:22.066Z warn eventloop task slow (node thread blocked) kind=ChainHeadReply ms=719
+2026-09-08T23:01:45.256Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T23:01:45.303Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+2026-09-08T23:01:45.322Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T23:01:45.826Z info block committed height=30 entries=0 regs=1 attestations=6 via=broadcast
+2026-09-08T23:01:46.568Z warn eventloop task slow (node thread blocked) kind=CommitBlock ms=775
+2026-09-08T23:01:46.596Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=false standing=16
+2026-09-08T23:01:46.617Z info bond renewal submitted signed_next_height=31 size=67108864 peers=12
+2026-09-08T23:01:46.678Z info bond challenge peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 passed=true late=false standing=1024
+2026-09-08T23:01:46.699Z info bond challenge peer=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b passed=true late=false standing=1024
+2026-09-08T23:01:46.719Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-09-08T23:01:46.738Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-09-08T23:01:46.754Z info bond challenge peer=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 passed=true late=false standing=16
+2026-09-08T23:01:46.773Z info bond challenge peer=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb passed=true late=true standing=1024
+2026-09-08T23:01:46.798Z info bond challenge peer=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 passed=true late=true standing=16
+2026-09-08T23:01:46.815Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=true standing=16
+2026-09-08T23:01:46.835Z info bond challenge peer=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 passed=true late=true standing=1024
+2026-09-08T23:02:10.657Z info round-change: recorded (#432 view-change) from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 height=31 round=1 carries_lock=true
+2026-09-08T23:02:15.257Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T23:02:15.301Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+2026-09-08T23:02:15.478Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T23:02:15.774Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=false standing=16
+2026-09-08T23:02:15.811Z info bond challenge peer=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 passed=true late=false standing=16
+2026-09-08T23:02:15.836Z info bond challenge peer=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 passed=true late=false standing=1024
+2026-09-08T23:02:15.860Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=false standing=16
+2026-09-08T23:02:16.261Z info bond challenge peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 passed=true late=false standing=1024
+2026-09-08T23:02:16.281Z info bond challenge peer=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb passed=true late=false standing=1024
+2026-09-08T23:02:16.299Z info bond challenge peer=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 passed=true late=false standing=16
+2026-09-08T23:02:16.319Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-09-08T23:02:16.347Z info bond challenge peer=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b passed=true late=false standing=1024
+2026-09-08T23:02:16.370Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-09-08T23:02:16.399Z info block committed height=31 entries=0 regs=1 attestations=10 via=broadcast
+2026-09-08T23:02:17.236Z warn eventloop task slow (node thread blocked) kind=CommitBlock ms=865
+2026-09-08T23:02:17.252Z info bond renewal submitted signed_next_height=32 size=67108864 peers=12
+2026-09-08T23:02:25.780Z info bond-reg submit REFUSED from=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 validator=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 size=1048576 next_height=32 err="chain: invalid on-chain bond registration: validator 26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 signature"
+2026-09-08T23:02:35.135Z info bond-reg submit REFUSED from=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 validator=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 size=1048576 next_height=32 err="chain: invalid on-chain bond registration: validator 421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 signature"
+2026-09-08T23:02:37.966Z info block committed height=32 entries=0 regs=1 attestations=12 via=broadcast
+2026-09-08T23:02:38.865Z warn eventloop task slow (node thread blocked) kind=CommitBlock ms=931
+2026-09-08T23:02:45.258Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T23:02:45.306Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+2026-09-08T23:02:45.325Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T23:02:45.799Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=false standing=16
+2026-09-08T23:02:45.828Z info bond challenge peer=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 passed=true late=false standing=1024
+2026-09-08T23:02:45.849Z info bond challenge peer=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 passed=true late=false standing=16
+2026-09-08T23:02:45.872Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=false standing=16
+2026-09-08T23:02:46.260Z info bond challenge peer=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b passed=true late=false standing=1024
+2026-09-08T23:02:46.278Z info bond challenge peer=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 passed=true late=false standing=16
+2026-09-08T23:02:46.298Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-09-08T23:02:46.318Z info bond challenge peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 passed=true late=false standing=1024
+2026-09-08T23:02:46.337Z info bond challenge peer=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb passed=true late=false standing=1024
+2026-09-08T23:02:46.356Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-09-08T23:02:47.299Z info bond renewal submitted signed_next_height=33 size=67108864 peers=12
+2026-09-08T23:02:49.107Z info chain caught up from peer (suffix append) peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 appended=1 len=34
+2026-09-08T23:03:15.260Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T23:03:15.315Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T23:03:15.335Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+2026-09-08T23:03:15.806Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=false standing=16
+2026-09-08T23:03:15.834Z info bond challenge peer=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 passed=true late=false standing=1024
+2026-09-08T23:03:15.856Z info bond challenge peer=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 passed=true late=false standing=16
+2026-09-08T23:03:15.877Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=false standing=16
+2026-09-08T23:03:16.260Z info bond challenge peer=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 passed=true late=false standing=16
+2026-09-08T23:03:16.287Z info bond challenge peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 passed=true late=false standing=1024
+2026-09-08T23:03:16.318Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-09-08T23:03:16.343Z info bond challenge peer=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b passed=true late=false standing=1024
+2026-09-08T23:03:16.367Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-09-08T23:03:18.652Z info round-change: recorded (#432 view-change) from=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 height=34 round=1 carries_lock=false
+2026-09-08T23:03:25.385Z info round-change: recorded (#432 view-change) from=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 height=34 round=1 carries_lock=false
+2026-09-08T23:03:28.200Z info round-change: recorded (#432 view-change) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 height=34 round=1 carries_lock=false
+2026-09-08T23:03:28.304Z info round-change: recorded (#432 view-change) from=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 height=34 round=1 carries_lock=false
+2026-09-08T23:03:29.974Z info round-change: recorded (#432 view-change) from=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 height=34 round=1 carries_lock=false
+2026-09-08T23:03:29.975Z info round-change: advancing (#432 view-change) height=34 round=1 via=catch-up locked=false pending=12 pending_entries=0
+2026-09-08T23:03:29.977Z info round-change: recorded (#432 view-change) from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 height=34 round=1 carries_lock=false
+2026-09-08T23:03:29.978Z info round-change: recorded (#432 view-change) from=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a height=34 round=1 carries_lock=false
+2026-09-08T23:03:29.980Z info round-change: recorded (#432 view-change) from=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b height=34 round=1 carries_lock=false
+2026-09-08T23:03:29.982Z info round-cert: sent (h43 transferable certificate) height=34 round=1 envelopes=9 to=5 designee=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1
+2026-09-08T23:03:29.982Z info round-change: recorded (#432 view-change) from=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda height=34 round=1 carries_lock=false
+2026-09-08T23:03:29.982Z info round-cert: recorded (h43 transferable certificate) from=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda height=34 round=1 envelopes=9 our_round=1
+2026-09-08T23:03:29.982Z info round-cert: recorded (h43 transferable certificate) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 height=34 round=1 envelopes=9 our_round=1
+2026-09-08T23:03:30.005Z info round-change: recorded (#432 view-change) from=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 height=34 round=1 carries_lock=false
+2026-09-08T23:03:30.009Z info round-cert: recorded (h43 transferable certificate) from=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 height=34 round=1 envelopes=9 our_round=1
+2026-09-08T23:03:30.010Z info round-change: recorded (#432 view-change) from=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 height=34 round=1 carries_lock=false
+2026-09-08T23:03:30.010Z info round-cert: recorded (h43 transferable certificate) from=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 height=34 round=1 envelopes=9 our_round=1
+2026-09-08T23:03:30.014Z info round-cert: recorded (h43 transferable certificate) from=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 height=34 round=1 envelopes=10 our_round=1
+2026-09-08T23:03:30.015Z info round-cert: recorded (h43 transferable certificate) from=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 height=34 round=1 envelopes=10 our_round=1
+2026-09-08T23:03:30.095Z info round-cert: recorded (h43 transferable certificate) from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 height=34 round=1 envelopes=9 our_round=1
+2026-09-08T23:03:30.095Z info round-cert: recorded (h43 transferable certificate) from=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 height=34 round=1 envelopes=9 our_round=1
+2026-09-08T23:03:30.095Z info round-cert: recorded (h43 transferable certificate) from=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 height=34 round=1 envelopes=9 our_round=1
+2026-09-08T23:03:30.098Z info round-cert: recorded (h43 transferable certificate) from=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a height=34 round=1 envelopes=9 our_round=1
+2026-09-08T23:03:30.886Z info round-cert: recorded (h43 transferable certificate) from=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b height=34 round=1 envelopes=9 our_round=1
+2026-09-08T23:03:45.261Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T23:03:45.309Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+2026-09-08T23:03:45.329Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T23:03:45.804Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=false standing=16
+2026-09-08T23:03:45.832Z info bond challenge peer=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 passed=true late=false standing=1024
+2026-09-08T23:03:45.858Z info bond challenge peer=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 passed=true late=false standing=16
+2026-09-08T23:03:45.880Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=false standing=16
+2026-09-08T23:03:46.261Z info bond challenge peer=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 passed=true late=false standing=16
+2026-09-08T23:03:46.283Z info bond challenge peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 passed=true late=false standing=1024
+2026-09-08T23:03:46.303Z info bond challenge peer=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b passed=true late=false standing=1024
+2026-09-08T23:03:46.323Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-09-08T23:03:46.342Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-09-08T23:03:48.196Z info chain caught up from peer (suffix append) peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 appended=1 len=35
+2026-09-08T23:04:08.558Z info round-change: recorded (#432 view-change) from=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda height=35 round=1 carries_lock=false
+2026-09-08T23:04:15.261Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T23:04:15.305Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+2026-09-08T23:04:15.324Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T23:04:15.799Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=false standing=16
+2026-09-08T23:04:15.825Z info bond challenge peer=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 passed=true late=false standing=1024
+2026-09-08T23:04:15.848Z info bond challenge peer=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 passed=true late=false standing=16
+2026-09-08T23:04:15.878Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=false standing=16
+2026-09-08T23:04:16.262Z info bond challenge peer=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 passed=true late=false standing=16
+2026-09-08T23:04:16.284Z info bond challenge peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 passed=true late=false standing=1024
+2026-09-08T23:04:16.305Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-09-08T23:04:16.325Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-09-08T23:04:16.344Z info bond challenge peer=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b passed=true late=false standing=1024
+2026-09-08T23:04:18.759Z info round-change: recorded (#432 view-change) from=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 height=35 round=1 carries_lock=false
+2026-09-08T23:04:25.516Z info round-change: recorded (#432 view-change) from=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 height=35 round=1 carries_lock=false
+2026-09-08T23:04:28.231Z info round-change: recorded (#432 view-change) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 height=35 round=1 carries_lock=false
+2026-09-08T23:04:28.313Z info round-change: recorded (#432 view-change) from=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 height=35 round=1 carries_lock=false
+2026-09-08T23:04:28.314Z info round-change: advancing (#432 view-change) height=35 round=1 via=catch-up locked=false pending=12 pending_entries=0
+2026-09-08T23:04:28.389Z info round-change: recorded (#432 view-change) from=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 height=35 round=1 carries_lock=false
+2026-09-08T23:04:28.392Z info round-change: recorded (#432 view-change) from=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 height=35 round=1 carries_lock=false
+2026-09-08T23:04:28.453Z info round-change: recorded (#432 view-change) from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 height=35 round=1 carries_lock=false
+2026-09-08T23:04:28.455Z info round-change: recorded (#432 view-change) from=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b height=35 round=1 carries_lock=false
+2026-09-08T23:04:28.457Z info round-cert: sent (h43 transferable certificate) height=35 round=1 envelopes=10 to=4 designee=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480
+2026-09-08T23:04:28.457Z info round-change: recorded (#432 view-change) from=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a height=35 round=1 carries_lock=false
+2026-09-08T23:04:28.459Z info round-cert: recorded (h43 transferable certificate) from=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a height=35 round=1 envelopes=8 our_round=1
+2026-09-08T23:04:28.465Z info round-change: recorded (#432 view-change) from=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 height=35 round=1 carries_lock=false
+2026-09-08T23:04:28.466Z info round-cert: recorded (h43 transferable certificate) from=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 height=35 round=1 envelopes=8 our_round=1
+2026-09-08T23:04:40.947Z info bond-reg submit REFUSED from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 validator=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 size=1048576 next_height=35 err="chain: invalid on-chain bond registration: validator 725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 signature"
+2026-09-08T23:04:45.262Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T23:04:45.310Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T23:04:45.329Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+2026-09-08T23:04:45.823Z info bond challenge peer=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 passed=true late=false standing=1024
+2026-09-08T23:04:45.849Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=false standing=16
+2026-09-08T23:04:45.881Z info bond challenge peer=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 passed=true late=false standing=16
+2026-09-08T23:04:45.907Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=false standing=16
+2026-09-08T23:04:46.268Z info bond challenge peer=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 passed=true late=false standing=16
+2026-09-08T23:04:46.290Z info bond challenge peer=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b passed=true late=false standing=1024
+2026-09-08T23:04:46.346Z info bond challenge peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 passed=true late=false standing=1024
+2026-09-08T23:04:46.369Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-09-08T23:04:47.287Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=true standing=1024
+2026-09-08T23:04:48.269Z info chain caught up from peer (suffix append) peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 appended=1 len=36
+2026-09-08T23:04:58.263Z warn eventloop task slow (node thread blocked) kind=timer ms=826
+2026-09-08T23:05:08.562Z info round-change: recorded (#432 view-change) from=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda height=36 round=1 carries_lock=false
+2026-09-08T23:05:10.906Z info round-change: recorded (#432 view-change) from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 height=36 round=1 carries_lock=false
+2026-09-08T23:05:15.263Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T23:05:15.312Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+2026-09-08T23:05:15.332Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T23:05:15.809Z info bond challenge peer=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 passed=true late=false standing=1024
+2026-09-08T23:05:15.828Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=false standing=16
+2026-09-08T23:05:15.849Z info bond challenge peer=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 passed=true late=false standing=16
+2026-09-08T23:05:15.877Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=false standing=16
+2026-09-08T23:05:16.264Z info bond challenge peer=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b passed=true late=false standing=1024
+2026-09-08T23:05:16.284Z info bond challenge peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 passed=true late=false standing=1024
+2026-09-08T23:05:16.303Z info bond challenge peer=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 passed=true late=false standing=16
+2026-09-08T23:05:16.361Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-09-08T23:05:17.305Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=true standing=1024
+2026-09-08T23:05:18.850Z info round-change: recorded (#432 view-change) from=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 height=36 round=1 carries_lock=false
+2026-09-08T23:05:26.127Z info round-change: recorded (#432 view-change) from=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 height=36 round=1 carries_lock=false
+2026-09-08T23:05:28.235Z info round-change: recorded (#432 view-change) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 height=36 round=1 carries_lock=false
+2026-09-08T23:05:28.319Z info round-change: recorded (#432 view-change) from=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 height=36 round=1 carries_lock=false
+2026-09-08T23:05:28.321Z info round-change: advancing (#432 view-change) height=36 round=1 via=catch-up locked=false pending=12 pending_entries=0
+2026-09-08T23:05:28.340Z info round-change: recorded (#432 view-change) from=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 height=36 round=1 carries_lock=false
+2026-09-08T23:05:28.342Z info round-cert: sent (h43 transferable certificate) height=36 round=1 envelopes=8 to=5 designee=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb
+2026-09-08T23:05:28.344Z info round-change: recorded (#432 view-change) from=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 height=36 round=1 carries_lock=false
+2026-09-08T23:05:28.373Z info round-change: recorded (#432 view-change) from=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b height=36 round=1 carries_lock=false
+2026-09-08T23:05:28.373Z info round-change: recorded (#432 view-change) from=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a height=36 round=1 carries_lock=false
+2026-09-08T23:05:28.375Z info round-cert: recorded (h43 transferable certificate) from=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a height=36 round=1 envelopes=8 our_round=1
+2026-09-08T23:05:28.375Z info round-cert: recorded (h43 transferable certificate) from=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b height=36 round=1 envelopes=8 our_round=1
+2026-09-08T23:05:28.376Z info round-cert: recorded (h43 transferable certificate) from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 height=36 round=1 envelopes=8 our_round=1
+2026-09-08T23:05:28.377Z info round-change: recorded (#432 view-change) from=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 height=36 round=1 carries_lock=false
+2026-09-08T23:05:28.377Z info round-cert: recorded (h43 transferable certificate) from=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 height=36 round=1 envelopes=8 our_round=1
+2026-09-08T23:05:28.389Z info round-cert: recorded (h43 transferable certificate) from=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 height=36 round=1 envelopes=8 our_round=1
+2026-09-08T23:05:45.264Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T23:05:45.310Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+2026-09-08T23:05:45.329Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T23:05:45.820Z info bond challenge peer=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 passed=true late=false standing=1024
+2026-09-08T23:05:45.841Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=false standing=16
+2026-09-08T23:05:45.875Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=false standing=16
+2026-09-08T23:05:45.985Z info bond challenge peer=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 passed=true late=false standing=16
+2026-09-08T23:05:46.262Z info bond challenge peer=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b passed=true late=false standing=1024
+2026-09-08T23:05:46.280Z info bond challenge peer=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 passed=true late=false standing=16
+2026-09-08T23:05:46.299Z info bond challenge peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 passed=true late=false standing=1024
+2026-09-08T23:05:46.491Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-09-08T23:05:46.734Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-09-08T23:05:57.580Z warn eventloop task slow (node thread blocked) kind=timer ms=786
+2026-09-08T23:06:15.264Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T23:06:15.309Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+2026-09-08T23:06:15.328Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T23:06:15.811Z info bond challenge peer=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 passed=true late=false standing=1024
+2026-09-08T23:06:15.830Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=false standing=16
+2026-09-08T23:06:15.850Z info bond challenge peer=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 passed=true late=false standing=16
+2026-09-08T23:06:15.878Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=false standing=16
+2026-09-08T23:06:16.268Z info bond challenge peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 passed=true late=false standing=1024
+2026-09-08T23:06:16.287Z info bond challenge peer=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b passed=true late=false standing=1024
+2026-09-08T23:06:16.305Z info bond challenge peer=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 passed=true late=false standing=16
+2026-09-08T23:06:16.355Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-09-08T23:06:16.582Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-09-08T23:06:29.994Z info round-change: recorded (#432 view-change) from=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 height=36 round=2 carries_lock=false
+2026-09-08T23:06:31.271Z info round-change: recorded (#432 view-change) from=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b height=36 round=2 carries_lock=false
+2026-09-08T23:06:35.097Z info round-change: recorded (#432 view-change) from=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a height=36 round=2 carries_lock=false
+2026-09-08T23:06:35.503Z info round-change: recorded (#432 view-change) from=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 height=36 round=2 carries_lock=false
+2026-09-08T23:06:35.504Z info round-change: advancing (#432 view-change) height=36 round=2 via=catch-up locked=false pending=12 pending_entries=1
+2026-09-08T23:06:35.505Z info entry submit REFUSED from=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 root=56c1d05f242e9dae607c358885be861bc78e64a9abfa97b1a5ebb6ebb60c8286 next_height=36 err="chain: root already registered: 56c1d05f242e9dae607c358885be861bc78e64a9abfa97b1a5ebb6ebb60c8286"
+2026-09-08T23:06:35.506Z info entry submit REFUSED from=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 root=f680480990f157f2f64cbc42672b95d2c065acfed6266a567ef39328768341e0 next_height=36 err="chain: root already registered: f680480990f157f2f64cbc42672b95d2c065acfed6266a567ef39328768341e0"
+2026-09-08T23:06:35.507Z info round-change: recorded (#432 view-change) from=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 height=36 round=2 carries_lock=false
+2026-09-08T23:06:35.509Z info round-change: recorded (#432 view-change) from=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 height=36 round=2 carries_lock=false
+2026-09-08T23:06:35.511Z info round-change: recorded (#432 view-change) from=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda height=36 round=2 carries_lock=false
+2026-09-08T23:06:35.512Z info entry submit REFUSED from=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda root=f680480990f157f2f64cbc42672b95d2c065acfed6266a567ef39328768341e0 next_height=36 err="chain: root already registered: f680480990f157f2f64cbc42672b95d2c065acfed6266a567ef39328768341e0"
+2026-09-08T23:06:35.513Z info round-change: recorded (#432 view-change) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 height=36 round=2 carries_lock=false
+2026-09-08T23:06:35.515Z info round-cert: sent (h43 transferable certificate) height=36 round=2 envelopes=9 to=4 designee=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689
+2026-09-08T23:06:35.515Z info new-view proposal (#432 view-change) height=36 round=2 forced=false
+2026-09-08T23:06:35.727Z info entry submit REFUSED from=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda root=56c1d05f242e9dae607c358885be861bc78e64a9abfa97b1a5ebb6ebb60c8286 next_height=36 err="chain: root already registered: 56c1d05f242e9dae607c358885be861bc78e64a9abfa97b1a5ebb6ebb60c8286"
+2026-09-08T23:06:35.727Z info round-cert: recorded (h43 transferable certificate) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 height=36 round=2 envelopes=9 our_round=2
+2026-09-08T23:06:35.727Z info round-cert: recorded (h43 transferable certificate) from=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda height=36 round=2 envelopes=9 our_round=2
+2026-09-08T23:06:35.748Z info round-change: recorded (#432 view-change) from=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 height=36 round=2 carries_lock=false
+2026-09-08T23:06:35.748Z info round-cert: recorded (h43 transferable certificate) from=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 height=36 round=2 envelopes=9 our_round=2
+2026-09-08T23:06:35.748Z info round-cert: recorded (h43 transferable certificate) from=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 height=36 round=2 envelopes=9 our_round=2
+2026-09-08T23:06:35.748Z info round-change: recorded (#432 view-change) from=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 height=36 round=2 carries_lock=false
+2026-09-08T23:06:35.748Z info entry submit REFUSED from=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 root=56c1d05f242e9dae607c358885be861bc78e64a9abfa97b1a5ebb6ebb60c8286 next_height=36 err="chain: root already registered: 56c1d05f242e9dae607c358885be861bc78e64a9abfa97b1a5ebb6ebb60c8286"
+2026-09-08T23:06:35.748Z info round-cert: recorded (h43 transferable certificate) from=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 height=36 round=2 envelopes=9 our_round=2
+2026-09-08T23:06:35.749Z info round-change: recorded (#432 view-change) from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 height=36 round=2 carries_lock=false
+2026-09-08T23:06:35.749Z info round-cert: recorded (h43 transferable certificate) from=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 height=36 round=2 envelopes=8 our_round=2
+2026-09-08T23:06:35.749Z info round-cert: recorded (h43 transferable certificate) from=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a height=36 round=2 envelopes=8 our_round=2
+2026-09-08T23:06:35.749Z info round-cert: recorded (h43 transferable certificate) from=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 height=36 round=2 envelopes=8 our_round=2
+2026-09-08T23:06:35.749Z info round-cert: recorded (h43 transferable certificate) from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 height=36 round=2 envelopes=8 our_round=2
+2026-09-08T23:06:35.749Z info round-cert: recorded (h43 transferable certificate) from=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b height=36 round=2 envelopes=8 our_round=2
+2026-09-08T23:06:35.892Z info round-cert: recorded (h43 transferable certificate) from=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 height=36 round=2 envelopes=9 our_round=2
+2026-09-08T23:06:37.254Z info block committed height=36 round=2 entries=1 regs=1 attestations=10 via=proposal
+2026-09-08T23:06:38.113Z warn eventloop task slow (node thread blocked) kind=PrecommitReply ms=880
+2026-09-08T23:06:45.266Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T23:06:45.312Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+2026-09-08T23:06:45.341Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T23:06:45.805Z info bond challenge peer=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 passed=true late=false standing=1024
+2026-09-08T23:06:45.822Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=false standing=16
+2026-09-08T23:06:45.842Z info bond challenge peer=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 passed=true late=false standing=16
+2026-09-08T23:06:45.877Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=false standing=16
+2026-09-08T23:06:46.274Z info bond challenge peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 passed=true late=false standing=1024
+2026-09-08T23:06:46.322Z info bond challenge peer=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b passed=true late=false standing=1024
+2026-09-08T23:06:46.345Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-09-08T23:06:46.473Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-09-08T23:06:46.492Z info bond challenge peer=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 passed=true late=false standing=16
+2026-09-08T23:06:58.581Z warn eventloop task slow (node thread blocked) kind=timer ms=809
+2026-09-08T23:07:03.071Z info bond challenge peer=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb passed=true late=true standing=1024
+2026-09-08T23:07:04.221Z warn eventloop task slow (node thread blocked) kind=ChainReply ms=751
+2026-09-08T23:07:06.832Z info bond-reg submit REFUSED from=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 validator=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 size=1048576 next_height=37 err="chain: invalid on-chain bond registration: validator 421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 signature"
+2026-09-08T23:07:08.671Z info bond-reg submit REFUSED from=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda validator=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda size=67108864 next_height=37 err="chain: invalid on-chain bond registration: validator 3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda signature"
+2026-09-08T23:07:10.952Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=37 round=0 mark_height=37 mark_round=0 pending=6 pending_entries=1 issuer_keys_due=false
+2026-09-08T23:07:10.952Z warn eventloop task slow (node thread blocked) kind=ChainReply ms=796
+2026-09-08T23:07:11.154Z info bond-reg submit REFUSED from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 validator=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 size=1048576 next_height=37 err="chain: invalid on-chain bond registration: validator 725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 signature"
+2026-09-08T23:07:15.029Z info block committed height=37 entries=0 regs=1 attestations=9 via=broadcast
+2026-09-08T23:07:15.892Z warn eventloop task slow (node thread blocked) kind=CommitBlock ms=891
+2026-09-08T23:07:15.899Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T23:07:15.943Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+2026-09-08T23:07:16.442Z info bond challenge peer=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 passed=true late=false standing=1024
+2026-09-08T23:07:16.459Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=false standing=16
+2026-09-08T23:07:16.478Z info bond challenge peer=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 passed=true late=false standing=16
+2026-09-08T23:07:16.510Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=false standing=16
+2026-09-08T23:07:16.671Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T23:07:16.938Z info bond challenge peer=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb passed=true late=false standing=1024
+2026-09-08T23:07:16.958Z info bond challenge peer=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 passed=true late=false standing=16
+2026-09-08T23:07:16.982Z info bond challenge peer=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b passed=true late=false standing=1024
+2026-09-08T23:07:17.002Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-09-08T23:07:17.021Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-09-08T23:07:18.284Z warn eventloop task slow (node thread blocked) kind=ChainReply ms=955
+2026-09-08T23:07:18.459Z info bond challenge peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 passed=true late=true standing=1024
+2026-09-08T23:07:20.339Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=38 round=0 mark_height=38 mark_round=0 pending=4 pending_entries=0 issuer_keys_due=false
+2026-09-08T23:07:26.267Z info discovery peers=1 source=-bootstrap
+2026-09-08T23:07:26.267Z info discovery peers=20 source="peers.json (warm restart)"
+2026-09-08T23:07:26.268Z info reloaded storage proofs (lazy) count=6
+2026-09-08T23:07:26.703Z info bootstrapped table=15
+2026-09-08T23:07:26.703Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T23:07:26.817Z info reachability verdict reach=public helpers=3
+2026-09-08T23:07:26.850Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T23:07:26.924Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=false standing=16
+2026-09-08T23:07:27.218Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=false standing=16
+2026-09-08T23:07:27.700Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-09-08T23:07:27.775Z info bond challenge peer=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb passed=true late=false standing=1024
+2026-09-08T23:07:28.707Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=38 round=0 mark_height=38 mark_round=0 pending=1 pending_entries=0 issuer_keys_due=false
+2026-09-08T23:07:30.277Z info round-change: recorded (#432 view-change) from=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 height=38 round=1 carries_lock=false
+2026-09-08T23:07:36.381Z info round-change: recorded (#432 view-change) from=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 height=38 round=1 carries_lock=false
+2026-09-08T23:07:38.741Z info round-change: recorded (#432 view-change) from=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda height=38 round=1 carries_lock=false
+2026-09-08T23:07:41.211Z info round-change: recorded (#432 view-change) from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 height=38 round=1 carries_lock=false
+2026-09-08T23:07:49.174Z info round-change: recorded (#432 view-change) from=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 height=38 round=1 carries_lock=false
+2026-09-08T23:07:56.334Z info round-change: recorded (#432 view-change) from=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 height=38 round=1 carries_lock=false
+2026-09-08T23:07:56.704Z info round-change: advancing (#432 view-change) height=38 round=1 via=timeout locked=false pending=5 pending_entries=0
+2026-09-08T23:07:56.705Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T23:07:56.710Z info round-change: recorded (#432 view-change) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 height=38 round=1 carries_lock=false
+2026-09-08T23:07:56.752Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+2026-09-08T23:07:56.772Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T23:07:56.793Z info round-change: recorded (#432 view-change) from=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 height=38 round=1 carries_lock=false
+2026-09-08T23:07:56.843Z info round-change: recorded (#432 view-change) from=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb height=38 round=1 carries_lock=false
+2026-09-08T23:07:56.845Z info round-cert: sent (h43 transferable certificate) height=38 round=1 envelopes=10 to=4 designee=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053
+2026-09-08T23:07:56.845Z info round-change: recorded (#432 view-change) from=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 height=38 round=1 carries_lock=false
+2026-09-08T23:07:56.845Z info round-change: recorded (#432 view-change) from=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b height=38 round=1 carries_lock=false
+2026-09-08T23:07:56.870Z info round-cert: recorded (h43 transferable certificate) from=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 height=38 round=1 envelopes=10 our_round=1
+2026-09-08T23:07:56.871Z info round-change: recorded (#432 view-change) from=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a height=38 round=1 carries_lock=false
+2026-09-08T23:07:56.901Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=false standing=16
+2026-09-08T23:07:57.213Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=false standing=16
+2026-09-08T23:07:57.233Z info bond challenge peer=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 passed=true late=false standing=16
+2026-09-08T23:07:57.380Z info bond challenge peer=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 passed=true late=false standing=1024
+2026-09-08T23:07:57.702Z info bond challenge peer=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb passed=true late=false standing=1024
+2026-09-08T23:07:57.726Z info bond challenge peer=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b passed=true late=false standing=1024
+2026-09-08T23:07:57.746Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-09-08T23:07:57.791Z info bond challenge peer=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 passed=true late=false standing=16
+2026-09-08T23:07:57.811Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-09-08T23:07:58.173Z info bond challenge peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 passed=true late=false standing=1024
+2026-09-08T23:07:59.014Z info bond-reg drain blocked at own sign slot — awaiting round advance (#432) height=38 round=1 mark_height=38 mark_round=1 pending=5 pending_entries=0 issuer_keys_due=false
+2026-09-08T23:08:00.701Z info discovery peers=1 source=-bootstrap
+2026-09-08T23:08:00.701Z info discovery peers=20 source="peers.json (warm restart)"
+2026-09-08T23:08:00.701Z info reloaded storage proofs (lazy) count=6
+2026-09-08T23:08:01.182Z info bootstrapped table=15
+2026-09-08T23:08:01.182Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T23:08:01.290Z info reachability verdict reach=public helpers=3
+2026-09-08T23:08:01.326Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T23:08:01.794Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=false standing=16
+2026-09-08T23:08:02.175Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-09-08T23:08:02.195Z info bond challenge peer=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb passed=true late=false standing=1024
+2026-09-08T23:08:02.499Z info chain caught up from peer (suffix append) peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 appended=1 len=39
+2026-09-08T23:08:03.832Z warn eventloop task slow (node thread blocked) kind=ChainReply ms=1043
+2026-09-08T23:08:18.787Z info discovery peers=1 source=-bootstrap
+2026-09-08T23:08:18.787Z info discovery peers=20 source="peers.json (warm restart)"
+2026-09-08T23:08:18.788Z info reloaded storage proofs (lazy) count=6
+2026-09-08T23:08:19.713Z info bootstrapped table=15
+2026-09-08T23:08:19.713Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T23:08:19.821Z info reachability verdict reach=public helpers=3
+2026-09-08T23:08:19.860Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T23:08:19.916Z info chain caught up from peer (suffix append) peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda appended=1 len=40
+2026-09-08T23:08:20.322Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=false standing=16
+2026-09-08T23:08:20.709Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-09-08T23:08:20.733Z info bond challenge peer=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb passed=true late=false standing=1024
+2026-09-08T23:08:20.766Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-09-08T23:08:22.591Z warn eventloop task slow (node thread blocked) kind=ChainReply ms=953
+2026-09-08T23:08:36.954Z info bond-reg submit REFUSED from=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 validator=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 size=1048576 next_height=40 err="chain: invalid on-chain bond registration: validator 421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 signature"
+2026-09-08T23:08:38.872Z info bond-reg submit REFUSED from=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda validator=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda size=67108864 next_height=40 err="chain: invalid on-chain bond registration: validator 3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda signature"
+2026-09-08T23:08:41.265Z info bond-reg submit REFUSED from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 validator=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 size=1048576 next_height=40 err="chain: invalid on-chain bond registration: validator 725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 signature"
+2026-09-08T23:08:44.304Z info block committed height=40 entries=0 regs=1 attestations=9 via=broadcast
+2026-09-08T23:08:45.385Z warn eventloop task slow (node thread blocked) kind=CommitBlock ms=1117
+2026-09-08T23:08:49.713Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T23:08:49.767Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T23:08:49.794Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+2026-09-08T23:08:50.265Z info bond challenge peer=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 passed=true late=false standing=1024
+2026-09-08T23:08:50.301Z info bond challenge peer=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 passed=true late=false standing=16
+2026-09-08T23:08:50.326Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=false standing=16
+2026-09-08T23:08:50.349Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=false standing=16
+2026-09-08T23:08:50.708Z info bond challenge peer=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 passed=true late=false standing=16
+2026-09-08T23:08:50.745Z info bond challenge peer=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b passed=true late=false standing=1024
+2026-09-08T23:08:50.769Z info bond challenge peer=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb passed=true late=false standing=1024
+2026-09-08T23:08:50.797Z info bond challenge peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 passed=true late=false standing=1024
+2026-09-08T23:08:50.823Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-09-08T23:08:50.847Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-09-08T23:09:00.803Z info round-change: recorded (#432 view-change) from=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 height=41 round=1 carries_lock=false
+2026-09-08T23:09:06.266Z info round-change: recorded (#432 view-change) from=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 height=41 round=1 carries_lock=false
+2026-09-08T23:09:07.037Z info round-change: recorded (#432 view-change) from=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 height=41 round=1 carries_lock=false
+2026-09-08T23:09:08.890Z info round-change: recorded (#432 view-change) from=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda height=41 round=1 carries_lock=false
+2026-09-08T23:09:10.495Z info round-change: recorded (#432 view-change) from=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b height=41 round=1 carries_lock=false
+2026-09-08T23:09:10.497Z info round-change: advancing (#432 view-change) height=41 round=1 via=catch-up locked=false pending=5 pending_entries=0
+2026-09-08T23:09:10.499Z info round-change: recorded (#432 view-change) from=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb height=41 round=1 carries_lock=false
+2026-09-08T23:09:10.502Z info round-cert: recorded (h43 transferable certificate) from=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb height=41 round=1 envelopes=8 our_round=1
+2026-09-08T23:09:10.502Z info round-change: recorded (#432 view-change) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 height=41 round=1 carries_lock=false
+2026-09-08T23:09:10.503Z info round-change: recorded (#432 view-change) from=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a height=41 round=1 carries_lock=false
+2026-09-08T23:09:10.503Z info round-cert: recorded (h43 transferable certificate) from=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b height=41 round=1 envelopes=9 our_round=1
+2026-09-08T23:09:10.503Z info round-cert: recorded (h43 transferable certificate) from=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 height=41 round=1 envelopes=9 our_round=1
+2026-09-08T23:09:10.504Z info round-change: recorded (#432 view-change) from=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 height=41 round=1 carries_lock=false
+2026-09-08T23:09:10.505Z info round-cert: recorded (h43 transferable certificate) from=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a height=41 round=1 envelopes=8 our_round=1
+2026-09-08T23:09:10.505Z info round-cert: recorded (h43 transferable certificate) from=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 height=41 round=1 envelopes=8 our_round=1
+2026-09-08T23:09:10.525Z info round-change: recorded (#432 view-change) from=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 height=41 round=1 carries_lock=false
+2026-09-08T23:09:10.528Z info round-cert: recorded (h43 transferable certificate) from=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 height=41 round=1 envelopes=9 our_round=1
+2026-09-08T23:09:10.529Z info round-cert: recorded (h43 transferable certificate) from=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 height=41 round=1 envelopes=8 our_round=1
+2026-09-08T23:09:10.534Z info round-cert: recorded (h43 transferable certificate) from=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 height=41 round=1 envelopes=9 our_round=1
+2026-09-08T23:09:10.536Z info round-change: recorded (#432 view-change) from=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 height=41 round=1 carries_lock=false
+2026-09-08T23:09:10.538Z info round-cert: recorded (h43 transferable certificate) from=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 height=41 round=1 envelopes=9 our_round=1
+2026-09-08T23:09:11.359Z info round-change: recorded (#432 view-change) from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 height=41 round=1 carries_lock=false
+2026-09-08T23:09:11.360Z info round-cert: recorded (h43 transferable certificate) from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 height=41 round=1 envelopes=9 our_round=1
+2026-09-08T23:09:19.714Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T23:09:19.798Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+2026-09-08T23:09:19.871Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T23:09:20.330Z info bond challenge peer=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 passed=true late=false standing=16
+2026-09-08T23:09:20.369Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=false standing=16
+2026-09-08T23:09:20.432Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=false standing=16
+2026-09-08T23:09:20.491Z info bond challenge peer=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 passed=true late=false standing=1024
+2026-09-08T23:09:20.741Z info bond challenge peer=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb passed=true late=false standing=1024
+2026-09-08T23:09:20.800Z info bond challenge peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 passed=true late=false standing=1024
+2026-09-08T23:09:20.843Z info bond challenge peer=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b passed=true late=false standing=1024
+2026-09-08T23:09:20.870Z info bond challenge peer=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 passed=true late=false standing=16
+2026-09-08T23:09:20.908Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-09-08T23:09:20.937Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-09-08T23:09:21.000Z info chain caught up from peer (suffix append) peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 appended=1 len=42
+2026-09-08T23:09:24.020Z warn eventloop task slow (node thread blocked) kind=ChainReply ms=1310
+2026-09-08T23:09:39.021Z info bond-reg submit REFUSED from=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda validator=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda size=67108864 next_height=42 err="chain: invalid on-chain bond registration: validator 3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda signature"
+2026-09-08T23:09:39.893Z info block committed height=42 entries=0 regs=1 attestations=10 via=broadcast
+2026-09-08T23:09:40.961Z warn eventloop task slow (node thread blocked) kind=CommitBlock ms=1118
+2026-09-08T23:09:48.537Z info block committed height=43 entries=0 regs=1 attestations=8 via=broadcast
+2026-09-08T23:09:49.855Z warn eventloop task slow (node thread blocked) kind=CommitBlock ms=1367
+2026-09-08T23:09:49.855Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T23:09:49.931Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T23:09:49.969Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+2026-09-08T23:09:50.431Z info bond challenge peer=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 passed=true late=false standing=1024
+2026-09-08T23:09:50.476Z info bond challenge peer=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 passed=true late=false standing=16
+2026-09-08T23:09:50.508Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=false standing=16
+2026-09-08T23:09:50.539Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=false standing=16
+2026-09-08T23:09:50.900Z info bond challenge peer=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb passed=true late=false standing=1024
+2026-09-08T23:09:50.928Z info bond challenge peer=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 passed=true late=false standing=16
+2026-09-08T23:09:50.957Z info bond challenge peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 passed=true late=false standing=1024
+2026-09-08T23:09:50.987Z info bond challenge peer=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b passed=true late=false standing=1024
+2026-09-08T23:09:51.025Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-09-08T23:09:51.481Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=true standing=1024
+2026-09-08T23:10:19.714Z info round-change: recorded (#432 view-change) from=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 height=44 round=1 carries_lock=false
+2026-09-08T23:10:19.856Z info standing self=f9008cefefae1cc44138c9603cd0177b832e0417290b83dbf387ed69ef841689 reputation=1024
+2026-09-08T23:10:19.856Z info round-change: advancing (#432 view-change) height=44 round=1 via=timeout locked=false pending=7 pending_entries=0
+2026-09-08T23:10:19.909Z info bond challenge peer=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 passed=true late=false standing=1024
+2026-09-08T23:10:19.931Z info bond challenge peer=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda passed=true late=false standing=1024
+2026-09-08T23:10:20.422Z info bond challenge peer=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 passed=true late=false standing=1024
+2026-09-08T23:10:20.443Z info bond challenge peer=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 passed=true late=false standing=16
+2026-09-08T23:10:20.463Z info bond challenge peer=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 passed=true late=false standing=16
+2026-09-08T23:10:20.481Z info bond challenge peer=b775a9e27e8e2da37a796bf11f873801125aac01be21910ee47f9b6191f00c54 passed=true late=false standing=16
+2026-09-08T23:10:20.863Z info bond challenge peer=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb passed=true late=false standing=1024
+2026-09-08T23:10:20.886Z info bond challenge peer=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 passed=true late=false standing=16
+2026-09-08T23:10:20.908Z info bond challenge peer=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 passed=true late=false standing=1024
+2026-09-08T23:10:20.928Z info bond challenge peer=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b passed=true late=false standing=1024
+2026-09-08T23:10:20.948Z info bond challenge peer=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a passed=true late=false standing=1024
+2026-09-08T23:10:21.190Z info bond challenge peer=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 passed=true late=false standing=1024
+2026-09-08T23:10:25.903Z info round-change: recorded (#432 view-change) from=26cb145a8062ec1ce694fcafd562b0fbb9813e451f0ce42b80ade8725976e3d9 height=44 round=1 carries_lock=false
+2026-09-08T23:10:27.691Z info round-change: recorded (#432 view-change) from=e5bb6816c2da1b40df7753339d4243ddc2fdea4aedba03756bda867870cc6bcb height=44 round=1 carries_lock=false
+2026-09-08T23:10:28.270Z info round-change: recorded (#432 view-change) from=d4f5ec0d0b437cd2713419f844ba8bf76a227968f28c1e49743b943db864b480 height=44 round=1 carries_lock=false
+2026-09-08T23:10:28.276Z info round-change: recorded (#432 view-change) from=3247042e93d99ca6709468fe0803eca589085935cf57df3b645c86b721950fda height=44 round=1 carries_lock=false
+2026-09-08T23:10:28.319Z info round-change: recorded (#432 view-change) from=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009 height=44 round=1 carries_lock=false
+2026-09-08T23:10:28.321Z info round-change: recorded (#432 view-change) from=2265ff9b47775aa0b96d88b2f386863d242bc8fabcaafc8d7313bdccfde65053 height=44 round=1 carries_lock=false
+2026-09-08T23:10:28.322Z info round-change: recorded (#432 view-change) from=4c540f18f4140ce26e76e6be166cca412ccdb0187787fb4d6a9665d2e320f68b height=44 round=1 carries_lock=false
+2026-09-08T23:10:28.324Z info round-cert: sent (h43 transferable certificate) height=44 round=1 envelopes=9 to=5 designee=725bf532572512f19fd4222bb1e36cdc1a1f574f31a968f13ee494d5663e4009
+2026-09-08T23:10:28.324Z info round-change: recorded (#432 view-change) from=cd9940e719855d4dc99a2deee7fa628a393d4c96c505a8ae6d4d7b2eff4a01f1 height=44 round=1 carries_lock=false
+2026-09-08T23:10:28.326Z info round-change: recorded (#432 view-change) from=7c3789475207caa84f363701ad0595b178b8e9325ccaed2270b40a9f7767cb4a height=44 round=1 carries_lock=false
+2026-09-08T23:10:28.343Z info round-change: recorded (#432 view-change) from=62a960b7617dcd1c7347e03bdd6a3854667e6e92d01291ee14239208d62f1b24 height=44 round=1 carries_lock=false
+2026-09-08T23:10:28.349Z info round-change: recorded (#432 view-change) from=421ff68bb40f0056781916885086f8f63a698097ce94c3d49d13bb3bf90c4f23 height=44 round=1 carries_lock=false
