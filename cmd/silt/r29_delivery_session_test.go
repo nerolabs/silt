@@ -82,8 +82,11 @@ func TestAffordabilityLineIsAnnounced(t *testing.T) {
 // naming the flag and the floor, and (ii) CALL grantFundsThePinInWholeFaces on the
 // ledger's own grant and fee (never a literal). This gate sees STRINGS and ORDER only.
 // RUNTIME GATE: TestDeliveryIdleWindowFloorIsEnforcedAtStartUp (e2e: the daemon exits
-// with the refusal naming the flag, one second under the derived floor and sub-second);
-// its other polarity is TestDeliveryIdleWindowDefaultBootsThePaidLane. The whole-face pin refusal's
+// with the refusal naming the flag, under the derived floor and sub-second); its other
+// polarity is TestDeliveryIdleWindowDefaultBootsThePaidLane, which asserts the ANNOUNCED
+// window — and since daemon.go announces what it read back out of the reaper, that e2e
+// arm is also the runtime cover for G-C2-18: an install that diverges from the checked
+// flag is announced as what it is, and the arm reddens. The whole-face pin refusal's
 // runtime arm is UNGATED: R-G-LAMBDA-8-2-RUNTIME (it cannot fire at the shipped constants
 // — 9 of 10 faces fit — so no launch can reach it without moving a ratified price).
 func TestR29DaemonRefusalsAreWiredAtStartup_Source(t *testing.T) {
@@ -98,6 +101,21 @@ func TestR29DaemonRefusalsAreWiredAtStartup_Source(t *testing.T) {
 	line := lineContaining(body, "-accept-delivery-receipts: refusing to start — set -delivery-idle-window")
 	if line == "" {
 		t.Fatal("SOURCE GATE: the idle-window refusal line (naming the flag and 'refusing to start') is gone from daemon.go")
+	}
+	// G-C2-18 — the window the daemon INSTALLS in the reaper and the window it ANNOUNCES
+	// are one value, read back out of the node. Two independent reads of *deliveryIdle
+	// would let the daemon refuse a non-compliant window at start-up, install a different
+	// one, and announce a third; only the refusal is gated on the floor.
+	if !strings.Contains(body, "nd.EnableDeliverySessions(ports.Duration(*deliveryIdle))") {
+		t.Fatal("SOURCE GATE: daemon.go no longer installs the CHECKED flag value in the reaper — the string `nd.EnableDeliverySessions(ports.Duration(*deliveryIdle))` is gone, so the value the floor check judged and the value the reaper runs on may differ")
+	}
+	if !strings.Contains(body, "installedIdle := time.Duration(nd.DeliveryIdleWindow())") {
+		t.Fatal("SOURCE GATE: daemon.go no longer reads the window BACK OUT of the reaper (`installedIdle := time.Duration(nd.DeliveryIdleWindow())`) — the sweep cadence and the announced window would go back to re-reading the flag, and an install that diverges from it would be silent")
+	}
+	for _, consumer := range []string{"deliverySweepInterval(installedIdle)", "installedIdle.String()"} {
+		if !strings.Contains(body, consumer) {
+			t.Fatalf("SOURCE GATE: daemon.go does not pass the installed window to %s — a consumer reading the flag instead of the reaper breaks the tie between what is announced and what is installed", consumer)
+		}
 	}
 	if !strings.Contains(body, "grantFundsThePinInWholeFaces(ledger.Grant(), ledger.Fee(), relaypay.RelayIncrementBytes/relaypay.RelayIncrementCredit)") {
 		t.Fatal("SOURCE GATE: daemon.go does not call grantFundsThePinInWholeFaces on the ledger's grant and fee — G-λ-8-2 is a pure function nobody reads at start-up")

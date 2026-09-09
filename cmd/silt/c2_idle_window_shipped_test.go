@@ -70,6 +70,48 @@ func TestC2ShippedDefaultClearsTheFloorAndTheObservedFieldStall(t *testing.T) {
 		t.Fatalf("the shipped default guarantees %v of survival, under the %v stall the field actually produced — the tighter candidate (10m, guaranteed 7m30s) was rejected for exactly this",
 			got, deliveryIdleFieldStall)
 	}
+	// The margin datum itself, pinned two ways. It is the ENTIRE justification for 24m
+	// over 10m, and an unpinned datum can be zeroed: at deliveryIdleFieldStall = 0 the
+	// clause above is vacuously satisfied by any window, guard 3 in numeraire.go becomes
+	// uint(default − default/4), and a later drop to 10m would pass everything here
+	// except the bare literal below.
+	//
+	// (i) the VALUE, with its provenance.
+	if deliveryIdleFieldStall != 1040*time.Second {
+		t.Fatalf("deliveryIdleFieldStall = %v, want 1040 s = 17m20s — block 43 committed 17 min 20 s after block 42 on run c450985-deep "+
+			"(evidence: integration/cloudtest/h43-stall-evidence-c450985-deep/README.md; the same figure is core/node's c2FieldStallObserved, "+
+			"a separate literal in a package cmd/silt cannot import, so the two are held together by this pin and its twin there)",
+			deliveryIdleFieldStall)
+	}
+	// (ii) the JOB the datum does: it must reject the tighter candidate. This is the arm
+	// that reddens when the datum is zeroed, because zero rejects nothing.
+	const tighter = 10 * time.Minute
+	if tighter-tighter/deliveryIdleStampDivisor >= deliveryIdleFieldStall {
+		t.Fatalf("the 10m candidate guarantees %v and deliveryIdleFieldStall is %v, so the datum no longer rejects it — 24m over 10m rests on this comparison and nothing else",
+			tighter-tighter/deliveryIdleStampDivisor, deliveryIdleFieldStall)
+	}
+}
+
+// G-C2-19 — the daemon's periodic sweep cadence, derived from the INSTALLED window.
+// The interval must stay strictly positive at every window the daemon can accept: at the
+// old 1 s floor `idle/2` was 500 ms and at anything sub-second it rounds toward zero,
+// which panics time.NewTicker.
+// UNGATED: R-DELIVERY-SWEEP-TICKER-UNFIRED — this pins the arithmetic, not the firing.
+// No tier observes the goroutine in cmd/silt/daemon.go actually posting a sweep; at the
+// shipped 24m window it fires at 12m, longer than any graded cloud flow lives.
+func TestC2SweepIntervalIsHalfTheInstalledWindow(t *testing.T) {
+	for _, w := range []time.Duration{deliveryIdleFloor, deliveryIdleDefault, time.Hour, 100 * time.Hour} {
+		if got, want := deliverySweepInterval(w), w/2; got != want {
+			t.Fatalf("deliverySweepInterval(%v) = %v, want %v", w, got, want)
+		}
+		if deliverySweepInterval(w) <= 0 {
+			t.Fatalf("deliverySweepInterval(%v) is not positive — time.NewTicker panics", w)
+		}
+	}
+	// The floor is what keeps this true: one nanosecond of window rounds to zero.
+	if deliverySweepInterval(time.Nanosecond) > 0 {
+		t.Fatal("fixture: a 1 ns window no longer rounds the sweep interval to zero, so the floor's ticker rationale has lost its subject")
+	}
 }
 
 // G-C2-15 — the flag hands the node the DERIVED CONSTANT, not a literal that happens to

@@ -225,6 +225,20 @@ const (
 	_ = uint(deliveryIdleFloor/2 - time.Second)                                                           // the idle/2 ticker interval stays positive (PE item 3)
 )
 
+// deliverySweepInterval is the wall-clock cadence of the daemon's periodic delivery
+// sweep: half the INSTALLED window, so a silent server still closes an idle session
+// within 1.5× the window. The half is why deliveryIdleFloor may never fall to a
+// sub-second value — time.NewTicker panics on a non-positive interval (blind PE item 3),
+// and at the derived floor the interval is 4m46.67s.
+//
+// UNGATED: R-DELIVERY-SWEEP-TICKER-UNFIRED. This function's ARITHMETIC is gated
+// (TestC2SweepIntervalIsHalfTheInstalledWindow); the goroutine that FIRES it
+// (cmd/silt/daemon.go) is observed at no tier. Every test caller of
+// SweepDeliverySessions invokes it directly, and at the shipped 24m window the ticker
+// fires at 12m, which no graded cloud flow lives long enough to see — before Lane C2 the
+// cloudtest close poll was the only observation that the shipped daemon ever swept.
+func deliverySweepInterval(installed time.Duration) time.Duration { return installed / 2 }
+
 // deliverySessionCeiling is C3 (G-R212-8 cert §3.1): D_max = ⌊f/p⌋·U bytes per anchor
 // and k_max_delivery = ⌈D_max·p/(U·f)⌉ = 1 anchor per open, DERIVED from the face this
 // ledger charges (the ONE fee constant), never pinned. A ceiling pinned independently of

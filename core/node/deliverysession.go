@@ -156,6 +156,15 @@ func (n *Node) EnableDeliverySessions(idle ports.Duration) {
 	n.deliveryByFetcher = make(map[ports.NodeID]uint64)
 }
 
+// DeliveryIdleWindow reports the idle window the REAPER is actually running on — the
+// value EnableDeliverySessions installed, read back out of the node. It exists so a
+// caller that has to state the window (a boot banner, a status surface) states what is
+// installed rather than re-reading whatever input it thinks was used: the daemon's flag
+// check and the daemon's install are two reads of one variable, and only the check is
+// gated, so the announcement is what ties the second read to the first (G-C2-18).
+// Zero when the lane is off.
+func (n *Node) DeliveryIdleWindow() ports.Duration { return n.deliveryIdle }
+
 // SweepDeliverySessions closes every session idle for at least the window, on the
 // node's clock, for a periodic caller. Loop-only (touches the session table).
 func (n *Node) SweepDeliverySessions() {

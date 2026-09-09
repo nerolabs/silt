@@ -1160,15 +1160,24 @@ func cmdDaemon(args []string) error {
 						// reaper sweeps lazily on activity and here on a wall-clock ticker at
 						// idle/2 so a silent server still closes idle sessions.
 						nd.EnableDeliverySessions(ports.Duration(*deliveryIdle))
+						// Every consumer below reads the window BACK OUT of the reaper
+						// (nd.DeliveryIdleWindow()), never the flag a second time. The
+						// floor check above and this install are two reads of one
+						// variable and only the check is gated, so an install that
+						// diverges from the checked value would otherwise be silent:
+						// reading back makes the daemon ANNOUNCE what it installed, and
+						// e2e TestDeliveryIdleWindowDefaultBootsThePaidLane asserts the
+						// announced window. G-C2-18 pins the identifier at both sites.
+						installedIdle := time.Duration(nd.DeliveryIdleWindow())
 						go func() {
-							t := time.NewTicker(*deliveryIdle / 2)
+							t := time.NewTicker(deliverySweepInterval(installedIdle))
 							defer t.Stop()
 							for range t.C {
 								loop.Post("delivery-sweep", nd.SweepDeliverySessions)
 							}
 						}()
 						fmt.Println("delivery receipts: ACCEPTING — banking witnessed deliveries and settling the conserved delivery credit (balance only, never standing)")
-						fmt.Println(deliveryAffordabilityLine(ledger.Grant(), ledger.Fee(), relaypay.RelayIncrementBytes/relaypay.RelayIncrementCredit, deliveryIdle.String()))
+						fmt.Println(deliveryAffordabilityLine(ledger.Grant(), ledger.Fee(), relaypay.RelayIncrementBytes/relaypay.RelayIncrementCredit, installedIdle.String()))
 					}
 					fmt.Printf("demand keys: token validity window = %d epochs; per-epoch demand keys pre-published to epoch %d; key_E is resolved against the committed E→key binding (needs an era-4/v5 chain)\n",
 						demand.DefaultWindow, demandEpoch+demand.DefaultWindow)

@@ -14,6 +14,9 @@ import (
 	"testing"
 
 	"github.com/nerolabs/silt/adapters/identity"
+	"github.com/nerolabs/silt/adapters/memstore"
+	"github.com/nerolabs/silt/adapters/simclock"
+	"github.com/nerolabs/silt/adapters/simnet"
 	"github.com/nerolabs/silt/core/demand"
 	"github.com/nerolabs/silt/ports"
 )
@@ -127,4 +130,62 @@ func TestC2ForwardStepDoesNotSpareTheBusiestSession(t *testing.T) {
 			st.PendingRefundCredits, st.BurnedCredits)
 	}
 	t.Logf("G-C2-17 RESULT: a session that settled 1 s before a %v forward step is reaped; %d credits booked as a DEPOSIT, %d burned", idle, st.PendingRefundCredits, st.BurnedCredits)
+}
+
+// G-C2-18 (core half) — DeliveryIdleWindow reports the window the REAPER runs on, not a
+// remembered input. The daemon announces this value, so it is the tie between the window
+// the floor check judged and the window actually installed: cmd/silt reads it back out
+// (`installedIdle := time.Duration(nd.DeliveryIdleWindow())`) and prints it, and e2e
+// TestDeliveryIdleWindowDefaultBootsThePaidLane asserts the printed figure.
+//
+// Three polarities: off reports zero, an install reports itself, and the number reported
+// is the one the reap boundary is computed from (a session settled on a bucket boundary
+// lives one nanosecond short of it and dies at it).
+func TestC2DeliveryIdleWindowReportsWhatTheReaperRunsOn(t *testing.T) {
+	const E = 1
+	sched := simclock.New()
+	net := simnet.New(sched, 2, simnet.DefaultConfig())
+	ident := identity.FromSeed(7940)
+	off := New(ident.NodeID(), DefaultConfig(), sched, net.Endpoint(ident.NodeID()), memstore.New())
+	if got := off.DeliveryIdleWindow(); got != 0 {
+		t.Fatalf("a node with the delivery lane OFF reports an idle window of %v, want 0 — a daemon would announce a window it is not running", got)
+	}
+
+	for _, w := range []ports.Duration{c2CandidateTight, c2CandidateMargin, 90 * ports.Second} {
+		nd, keyE, _, ledger, sched := c2Server(t, w, E)
+		if got := nd.DeliveryIdleWindow(); got != w {
+			t.Fatalf("EnableDeliverySessions(%v) then DeliveryIdleWindow() = %v — the announced window would not be the installed one", w, got)
+		}
+		// And the reported number IS the reap boundary: at stamp phase 0 the stamp is the
+		// settlement itself, so the session dies at exactly the reported window.
+		reported := nd.DeliveryIdleWindow()
+		h, at := c2OpenAndSettleAt(t, nd, keyE, ledger, sched, E, 7941+int64(w%83), 0)
+		if !c2AliveAfter(nd, sched, h, at, reported-1) {
+			t.Fatalf("window %v: reaped one nanosecond before the REPORTED window elapsed — the reaper is not running on the number the daemon announces", w)
+		}
+		if c2AliveAfter(nd, sched, h, at, reported) {
+			t.Fatalf("window %v: still alive AT the reported window — the reaper is not running on the number the daemon announces", w)
+		}
+	}
+}
+
+// G-C2-20 — the twin of cmd/silt's deliveryIdleFieldStall pin. The 1040 s margin datum
+// lives as a literal in both packages (cmd/silt cannot import core/node's test constants
+// and core/node cannot import package main), so each side pins its own copy to the
+// evidence and names the other. Zeroing either is RED here or there.
+func TestC2FieldStallDatumMatchesTheEvidence(t *testing.T) {
+	if c2FieldStallObserved != 1040*ports.Second {
+		t.Fatalf("c2FieldStallObserved = %v, want 1040 s = 17m20s — block 43 committed 17 min 20 s after block 42 on run c450985-deep "+
+			"(evidence: integration/cloudtest/h43-stall-evidence-c450985-deep/README.md). cmd/silt's deliveryIdleFieldStall is the same figure and is pinned there",
+			c2FieldStallObserved)
+	}
+	// The datum's job, driven rather than asserted: the tight candidate is reaped by a gap
+	// this long and the shipped one is not. That is the whole reason 24m was chosen.
+	if c2GuaranteedSurvival(c2CandidateTight) >= c2FieldStallObserved {
+		t.Fatalf("the 10m candidate guarantees %v, which no longer falls short of the %v field stall — the choice of 24m over 10m rests on this comparison",
+			c2GuaranteedSurvival(c2CandidateTight), c2FieldStallObserved)
+	}
+	if c2GuaranteedSurvival(c2CandidateMargin) < c2FieldStallObserved {
+		t.Fatalf("the shipped 24m window guarantees %v, under the %v field stall", c2GuaranteedSurvival(c2CandidateMargin), c2FieldStallObserved)
+	}
 }
