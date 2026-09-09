@@ -46,6 +46,25 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   of silt's derived parameters for the same defect shape, partitioned by whether a parameter FREEZES at D3.
 
 ### Fixed
+- **G-1 CLOSED: the floor box's entry assertion covers BOTH arms of `objective()`, unblocking the v5 digest 5 → 3
+  retirement (freeze-manifest item 2; cert §4.11).** `objective() = cfg.MinBond > 0 && verifyBond != nil`, but the box
+  entry asserted only `verifyBond == nil`. So a box with a **wired** verifier and `cfg.MinBond == 0` passed the entry,
+  and its maturity recompute then reproduced the **objective** branch unconditionally — `floorbox_recompute_maturity_v5.go`
+  documents that assumption in its own header — while a full node at the **same config** took `matureNow`'s **legacy**
+  branch, counting non-anchor `validatorsSeen` against `MatureValidators` instead of `MatureCoefficient()`. One config,
+  two verdicts, silently: the #572 replay shape the assertion exists to name. The entry now asserts `!c.objective()` and
+  `ErrRecomputeBoxWiring` names both arms. **Not itself a format change** — a stall-more assertion on a never-Accept box —
+  but it is the certified precondition on a leaf REMOVAL, which is format-deadline: missing it means the box carries two
+  grow-only whole-set folds for era-4's entire life. Driven red-first
+  (`TestColdBox_G1_WiredVerifierWithZeroMinBondStallsAtEntry`), and the ablation is recorded honestly: the class-A screen
+  caught the mid-epoch fixture, so that row proves **the entry**, which fires before any screen and therefore covers every
+  path in — while a DRIVEN post-latch maturity row is owed and filed as `R-G1-POSTLATCH-DRIVEN` rather than claimed.
+  The fold-live-state pin caught the edit (its `verifyBond` site allowance went stale) and the scope moved with the
+  assertion; because `objective` is blanket-allowed there and that file rightly refuses a name being both blanket-allowed
+  and site-scoped, the "entry assertion still exists" property is **re-homed to the driven gate** — a runtime observation
+  where the pin could only ever see a read site. Stated in place so no one restores a vacuous scope to fill the absence.
+
+### Fixed
 - **`SlashesBytesCap` keeps its value and loses its route: a configuration can no longer defeat slash evidence
   (`D-SLASHCAP-ROUTE`; owner call 2026-09-09, "CLOSE THE ROUTE. Not a re-ratification."; gates G-SLASHCAP-1..4).**
   The constant is unchanged at 16 MiB. What changed is that its derivation is now true by CONSTRUCTION. The cap is a
