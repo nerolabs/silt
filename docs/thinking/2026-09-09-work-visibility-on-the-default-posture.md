@@ -1,6 +1,11 @@
 # 2026-09-09 — silt can see who is present, never who does the work
 
-**Status: an open decision for the owner, with the alternatives priced.** Not a build item. The
+**Status: DECIDED 2026-09-09 — see `docs/decisions.md` `D-WORK-VISIBILITY`.** Alternative (4),
+harness-only, is ratified for the RC; alternative (3), the committed-ledger route, is DEFERRED to as
+late as possible before the cut, deliberately, because it is research territory that may spin while
+well-defined work remains. The body below is the deliberation as written before the call, unedited.
+
+**Status when written: an open decision for the owner, with the alternatives priced.** Not a build item. The
 ratified position (`D-UI-PRIVACY-FLAG`, extended 2026-09-09) is the *starting* point of this
 deliberation, not its conclusion: the extension was correct on the evidence, and it has a
 consequence nobody chose deliberately because nobody had measured it yet.
