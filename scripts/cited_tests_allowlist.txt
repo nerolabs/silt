@@ -119,3 +119,15 @@ TestRedeemWithNoKeysetRefuses
 # TestEpochWatermark_InWindowAnchorIsUnaffected).
 TestSerialGuard_EmptySerialUnguarded
 TestEpochWatermark_UnguardedRedeemIsUnaffected
+
+# ---------------------------------------------------------------------------
+# (H) HISTORICAL — Lane C3 / R2.2 concentration gates, 2026-09-09.
+# The serve provenance pin was renamed when the Economist's re-derivation
+# (silt-reviews/economist/ADVISORY-c3-concentration-gate-thresholds-redderived-2026-09-09.md)
+# showed its original diagnosis was the symptom: the honest Gini's fall with n is an
+# integer-floor artifact on the rarest tier, so the alarm is MIX-dependent, not
+# sample-size-dependent. The pin's finding is re-founded, not discharged. The old name is
+# cited by the 2026-09-07 advisory and appears once, in the rename note on the live pin
+# TestGateC3_1_ServeGiniHonestNullIsMixDependentNotSampleSizeDependent, so a reader
+# arriving from that advisory can find where it went.
+TestGateC3_1_ThresholdProvenanceIsUnreachableUnderDiskWeighting

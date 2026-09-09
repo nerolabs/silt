@@ -64,3 +64,10 @@ input[type=text], select {
 
 /* PRE-RELEASE banner: a node running -privacy=off says so on its own pages (D-UI-PRIVACY-FLAG). */
 .banner { background: var(--warn); color: #000; padding: .6rem .9rem; border-radius: 6px; margin-bottom: 1rem; font-weight: 600; }
+
+/* Economy panels (R2.2). "cliff" is the funding-cliff warning; "unknown" is the
+   not-yet-measurable state, which is deliberately NOT green — an unmeasured burn is
+   not a proven-safe one. */
+td.cliff { color: #e05252; font-weight: 600; }
+td.ok { color: #4caf7d; }
+td.unknown { color: #8a8f98; font-style: italic; }

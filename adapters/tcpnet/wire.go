@@ -60,6 +60,12 @@ type wireMsg struct {
 	// per-publish fee link is severed. Without this on the wire, an ephemeral or
 	// credit-paying withdrawal only worked in the in-process sim.
 	Credit *wireCredit `cbor:"28,keyasint,omitempty"`
+	// Work gossip (R2.2 rows 8-9), riding beside the capacity pledge at 13/14.
+	// omitempty, so a node that has served nothing and repaired nothing adds no
+	// bytes; an old peer decoding a new frame ignores keys it does not know
+	// (cbor.Unmarshal into a struct skips unknown keys), so this is additive.
+	ServedBytes int64 `cbor:"29,keyasint,omitempty"`
+	RepairsDone int64 `cbor:"30,keyasint,omitempty"`
 }
 
 // wireCredit mirrors ports.PublishCredit for the wire.
@@ -146,6 +152,7 @@ func toWire(m ports.Message) wireMsg {
 	}
 	w.Nonce = m.Nonce
 	w.CapUsed, w.CapTotal = m.CapUsed, m.CapTotal
+	w.ServedBytes, w.RepairsDone = m.ServedBytes, m.RepairsDone
 	w.Height = m.Height
 	w.Domain = m.Domain
 	w.Lease = m.Lease
@@ -215,6 +222,7 @@ func fromWire(w wireMsg) ports.Message {
 	}
 	m.Nonce = w.Nonce
 	m.CapUsed, m.CapTotal = w.CapUsed, w.CapTotal
+	m.ServedBytes, m.RepairsDone = w.ServedBytes, w.RepairsDone
 	m.Height = w.Height
 	m.Domain = w.Domain
 	m.Lease = w.Lease

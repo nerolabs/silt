@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Silt — economy</title>
+<link rel="stylesheet" href="style.css">
+<script src="app.js"></script>
+<script src="render.js"></script>
+</head>
+<body>
+<nav>
+  <div class="logo">si<span>lt</span></div>
+  <a href="library.html">Library</a>
+  <a href="/">Daemon</a>
+  <a href="economy.html" class="active">Economy</a>
+  <a href="publish.html">Publish</a>
+  <a href="fetch.html">Fetch</a>
+  <a href="observatory.html">Observatory</a>
+  <span id="ident" class="mono dim" style="margin-left:auto"></span>
+</nav>
+<main>
+  <div id="banner" class="banner" hidden></div>
+  <h1>This node's economy</h1>
+  <p class="note">Every number below carries its <b>knowability tier</b>. <span class="mono">local-exact</span>
+    is read from this node's own ledger. <span class="mono">committed-global</span> is read from the chain every
+    node holds. <span class="mono">gossip-estimated</span> is a local peer sample and never renders without its
+    sample size. What this node cannot know is named as absent, never guessed.</p>
+
+  <div class="grid">
+    <div class="card"><h2>Am I profitable <span class="pill">local-exact</span></h2>
+      <div class="big" id="margin">—</div><div class="sub" id="marginsub"></div></div>
+    <div class="card"><h2>Is durability self-funding <span class="pill">local-exact</span></h2>
+      <div class="big" id="net">—</div><div class="sub" id="netsub"></div></div>
+    <div class="card"><h2>Wash self-check <span class="pill">shape only</span></h2>
+      <div class="big" id="wash">—</div><div class="sub" id="washsub"></div></div>
+    <div class="card"><h2>Serve-work Gini <span class="pill">gossip-estimated</span></h2>
+      <div class="big" id="servegini">—</div><div class="sub" id="serveginisub"></div></div>
+    <div class="card"><h2>Repair-work Gini <span class="pill">gossip-estimated</span></h2>
+      <div class="big" id="repairgini">—</div><div class="sub" id="repairginisub"></div></div>
+    <div class="card"><h2>Standing concentration <span class="pill">committed-global</span></h2>
+      <div class="big" id="c2">—</div><div class="sub" id="c2sub"></div></div>
+  </div>
+
+  <h2>My solvency — every object I caretake <span class="pill">local-exact</span></h2>
+  <p class="dim" style="margin-bottom:0.6rem;font-size:0.85rem">
+    A horizon reads <b>not yet measurable</b> until this object has funded a repair. That is not a promise of
+    permanence: silt funds a finite, renewable horizon and asks you to re-endow before it runs out (D-S7).</p>
+  <table id="objects"><thead><tr><th>root</th><th>reserve</th><th>skim in</th><th>bounty out</th>
+    <th>repairs</th><th>funded horizon</th><th>g</th></tr></thead><tbody></tbody></table>
+  <p class="note" id="objnote"></p>
+
+  <h2>The reachable crowd <span class="pill">gossip-estimated</span></h2>
+  <p class="dim" style="margin-bottom:0.6rem;font-size:0.85rem">
+    Tier classes are derived from the storage pledge each peer already gossips, against published bands — a peer
+    does not declare its class. Everything here is self-reported and advisory; none of it is a consensus,
+    standing, or payment input.</p>
+  <table id="mix"><thead><tr><th>class</th><th>sampled</th><th>share</th><th>vs 10000:100:1</th></tr></thead><tbody></tbody></table>
+  <p class="note" id="mixnote"></p>
+</main>
+<script>
+async function j(path) { try { return await (await fetch(path)).json(); } catch (e) { return null; } }
+
+async function refresh() {
+  const [self, flows, g, conc, net, status] = await Promise.all([
+    j("/api/economy/self"), j("/api/economy/flows"), j("/api/economy/g"),
+    j("/api/economy/concentration"), j("/api/economy/network"), j("/api/status")]);
+
+  if (status && status.id) document.getElementById("ident").textContent = status.id.slice(0, 16) + "…";
+  const banner = document.getElementById("banner");
+  const bannerText = siltRender.prereleaseBanner(status);
+  banner.textContent = bannerText; banner.hidden = !bannerText;
+
+  const m = siltRender.marginCard(self);
+  document.getElementById("margin").textContent = m.margin;
+  document.getElementById("marginsub").textContent = m.sub;
+
+  const sf = siltRender.selfFundingCard(flows);
+  document.getElementById("net").textContent = sf.net;
+  document.getElementById("netsub").textContent = sf.sub;
+
+  const w = siltRender.washCard(self);
+  document.getElementById("wash").textContent = w.light;
+  document.getElementById("washsub").textContent = w.sub;
+
+  const sg = siltRender.gossipCell(conc, conc && conc.serveGini);
+  document.getElementById("servegini").textContent = sg.text;
+  document.getElementById("serveginisub").textContent = sg.sub;
+  const rg = siltRender.gossipCell(conc, conc && conc.repairGini);
+  document.getElementById("repairgini").textContent = rg.text;
+  document.getElementById("repairginisub").textContent =
+    rg.sub + ((conc && conc.repairGini) ? " · " + conc.repairGini.scope : " · the repair-capable subset alone carries signal");
+
+  const c2 = conc && conc.c2;
+  document.getElementById("c2").textContent = c2 ? "k̂ " + c2.nakamotoBonds : "—";
+  document.getElementById("c2sub").textContent = c2
+    ? c2.participants + " bonds · top share " + Number(c2.topShare).toFixed(3) + " · Gini " + Number(c2.gini).toFixed(3)
+    : ((conc && conc.c2Absent) || "");
+
+  const objs = siltRender.economyObjects(self);
+  const gRows = {};
+  if (g && g.objects) for (const r of g.objects) gRows[r.root] = r;
+  document.querySelector("#objects tbody").innerHTML = objs.rows.map(o => {
+    const cell = siltRender.solvencyCell(o);
+    const gr = gRows[o.root];
+    const gTxt = !gr ? "—" : (gr.known ? Number(gr.g).toFixed(3) + (gr.perpetualEarnable ? " ↑" : " ↓") : "unknown");
+    return `<tr><td class="mono">${o.root}</td><td>${o.reserve}</td><td>${o.skimIn}</td><td>${o.bountyOut}</td>` +
+      `<td>${o.repairs}</td><td title="${cell.title || ""}" class="${cell.state}">${cell.text}</td><td title="${gr ? (gr.reason || "") : ""}">${gTxt}</td></tr>`;
+  }).join("") || `<tr><td colspan=7 class="dim">${objs.note}</td></tr>`;
+  document.getElementById("objnote").textContent = objs.rows.length ? objs.note : "";
+
+  const mixNote = document.getElementById("mixnote");
+  const rows = (net && net.mix) || [];
+  const ratio = {};
+  if (net && net.observedRatio) for (const r of net.observedRatio) ratio[r.class] = r.ratio;
+  const mixEmpty = net && net.countersWithheld
+    ? "withheld by this node's privacy setting"
+    : ((net && net.sample && net.sample.note) || "no sample");
+  document.querySelector("#mix tbody").innerHTML = rows.map(r =>
+    `<tr><td>${r.class}</td><td>${r.sampled}</td><td>${(Number(r.share) * 100).toFixed(1)}%</td>` +
+    `<td>${ratio[r.class] !== undefined ? Number(ratio[r.class]).toFixed(1) : "—"}</td></tr>`).join("")
+    || `<tr><td colspan=4 class="dim">${mixEmpty}</td></tr>`;
+  mixNote.textContent = (net && net.observedRatioAbsent) || (net ? net.note : "");
+}
+refresh(); setInterval(refresh, 5000);
+</script>
+</body>
+</html>

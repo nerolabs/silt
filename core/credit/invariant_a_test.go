@@ -95,6 +95,7 @@ var standingClassification = map[string]standingClass{
 	"EscrowRepairs":       neutral, // observability (cost-per-repair denominator)
 	"DurabilitySnapshot":  neutral, // observability (finite-but-renewable instrument input)
 	"RepairsDone":         neutral, // observability (per-node repair-work count; no standing)
+	"WorkSample":          neutral, // observability (the gossip stamp's NON-registering read; moves nothing, creates nothing)
 	"BountyEarned":        neutral, // observability (repair revenue split; no standing)
 	// A4-3 (R2.7): a node-wide count of bounties released to a prior fetcher. Reads
 	// account state, writes two counters, touches no bond and no balance.

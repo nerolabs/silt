@@ -2096,7 +2096,7 @@ object's funded figure (red-team F2's shape).
   17-minute liveness stall at h43 under f=1 down (`R-H43-ROUND-LADDER-DESYNC`), so the steady-state figure is not
   the worst case.
 
-## D-UI-PRIVACY-FLAG — node-wide counters and the library link key go behind an operator flag; exposed in beta, withheld at release
+## D-UI-PRIVACY-FLAG — node-wide counters and the library link key go behind an operator flag; exposed in beta, withheld at release · EXTENDED 2026-09-09 to the WIRE
 
 **Ratified 2026-09-05** by the owner, closing `R-BB-SIBLING-AGGREGATES` and the `/api/library`
 link-key flag as decisions (the build is owed). Owner, on the counters: *"I actually am OKAY
@@ -2173,6 +2173,46 @@ pre-release label is a banner on the dashboard and the observatory when `privacy
 `off`, plus `privacy.{mode,default}` on every status response. (6) Compatibility: an OLDER
 observatory page pointed at a NEW `privacy=on` daemon aborts its render (the old inline
 dereference); upgrade the observing daemon.
+
+
+### EXTENSION, ratified 2026-09-09 — the flag governs the WIRE, not only the reader
+
+**Ratified by the owner 2026-09-09**, on the Researcher's certification
+`/Users/andrewedmond/Claude/claude/silt-reviews/research/research-outcome/C3-GOSSIP-DISCLOSURE-vs-D-UI-PRIVACY-FLAG-RESEARCH-CERTIFICATION-2026-09-09.md`
+(verdict GATED, certifiable only as alternative A; ratification required in every alternative).
+The sentence ratified, verbatim:
+
+> **`D-UI-PRIVACY-FLAG` is extended from a reader containment to a disclosure containment:
+> `-privacy` governs the node-wide serve and repair counters on the WIRE as well as on the
+> HTTP surface. With `-privacy` on (the compiled default in every build) a node gossips
+> neither `ServedBytes` nor `RepairsDone`; with `-privacy=off` it gossips both, labelled
+> pre-release as the HTTP surface already is. The accepted cost, stated: on the default
+> posture the network serve- and repair-inequality series render as a named absence
+> ("sample too small") on most nodes; the tier mix, the published bands, the target ratio
+> and the committed `C2` block are unaffected.**
+
+**Why the extension was needed rather than assumed.** Lane C3 added the two counters to peer
+gossip. The Researcher found the original containment survives on the letter and is voided in
+substance: the gossiped value is not the same CLASS as the withheld counter, it is the SAME
+INTEGER; `D-STATUS-SNAPSHOT-INTERVAL` ratified the 5 s snapshot as a security parameter
+precisely because a reader picks its own poll rate, and a reply-carried counter hands that rate
+back; and the audience widens to nodes with no HTTP surface at all — the exact node this flag
+was ratified to protect. A blind PE and a blind red-team independently confirmed a working
+break on the route side (free identities let an attacker supply n−1 of a published aggregate's
+terms and solve for the last one exactly), which is fixed separately by the route clause.
+
+**What was refuted, so it is not re-proposed.** A coarsened form — a band, a rate or a rank —
+is REFUTED: a band still yields a monotone step sequence under repeated probing, a rate
+publishes the derivative the attack has to work for, and a rank cannot be a wire form.
+
+**The consequence, accepted with the ratification and NOT a surprise.** The publish flag is
+welded to the privacy default, so on the shipped default no node gossips work counters, the
+non-reporting exclusion drops everyone, and both concentration series are structurally empty:
+**silt can see who is PRESENT and never who does the WORK.** Every concentration-based abort in
+the R2.4 canary is therefore inoperative on a default fleet, and every concentration baseline
+measured to date is measured on an opted-out topology. Recorded on `ROADMAP.md` row C6 as an
+owner/Researcher call before that canary runs; the alternatives and their costs are laid out in
+`docs/thinking/2026-09-09-work-visibility-on-the-default-posture.md`.
 
 ## D-R2.12-EMPTY-BUCKET — an empty faucet bucket ADVANCES one publish fee; deny is opt-in
 
