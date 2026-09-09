@@ -16,11 +16,26 @@ SCAR (third-time rule fired; count 5 as of 2026-09-02):
   This is the same family as check_claims.py, which already enforces the linkage
   for docs/design/claims-ledger.md ONLY. That narrow scope is exactly why the
   delivery.go comment and the certification both got through. This lint widens the
-  net to Go comments, CHANGELOG, ROADMAP, docs/**, and the external review trees.
+  net to Go comments and string literals, CHANGELOG, ROADMAP, docs/**, and the
+  external review trees.
+
+SECOND INSTANCE (2026-09-09) — WHY STRING LITERALS ARE IN SCOPE:
+  The scan covered Go COMMENTS only, and said so in its own docstring. But two
+  registries in this tree make their citations in STRING LITERALS, and both are
+  exactly the "this property is verified by that test" shape:
+    - core/chain/floorbox_coldauditor_v5_test.go's coverage meta-test, whose every
+      undriven-field excuse row names the gate that covers the field;
+    - cmd/silt/observable_contract.go's Asserter column, naming the e2e test that
+      asserts each announced operator string.
+  A blind PE renamed a cited test everywhere EXCEPT inside the map value; this lint
+  reported zero in-repo hits and EXITED 0. The row survived only incidentally,
+  because the name also sat in three '//' comments. Delete a test through its doc
+  comment — the ordinary way a test disappears — and the row rots in silence, which
+  is the precise hole those rows were written to close.
 
 WHAT IS CHECKED
   A name matching \\bTest[A-Z][A-Za-z0-9_]*\\b, appearing in:
-    - Go COMMENTS (not code, not string literals) under the source roots below
+    - Go COMMENTS and STRING LITERALS (not bare code) under the source roots below
     - CHANGELOG.md, ROADMAP.md, docs/**/*.md
     - optionally the external certification/ruling trees (see --external-root)
   must resolve to a `func TestX(` declaration in some *_test.go in this repo.
@@ -28,8 +43,10 @@ WHAT IS CHECKED
 SCOPE NOTES (deliberate limits)
   - METASYNTACTIC PLACEHOLDERS (TestFoo, TestXxx, ...) are never citations.
   - SUBTESTS ARE OUT OF SCOPE. A `t.Run("name", ...)` subtest is not a top-level
-    func, so a comment citing only a subtest name resolves only via its parent
-    Test func (see FAMILY below). Cite the parent, or use the allowlist.
+    func, so a citation naming only a subtest resolves only via its parent Test
+    func (see FAMILY below). Cite the parent, or use the allowlist. Because string
+    literals are now scanned, the FIRST argument of any `.Run(` call is masked, so
+    a subtest literally named TestX is not read as a citation of one.
   - FAMILY citations resolve by PREFIX. `TestOpenBreak_*Locked...`,
     `TestFoo_{A,B}Bar` and `TestFoo_A/_B` name a family, not one func; a citation
     immediately followed by * { / ... or a unicode ellipsis resolves if ANY
@@ -118,14 +135,34 @@ FAMILY_MARKERS = ("*", "{", "/", "\u2026", "...")
 CONT_LEAD_RE = re.compile(r"^[\s/*>#`\-]*")
 
 
-def go_comment_mask(src: str) -> str:
-    """Return `src` with every NON-comment character replaced by a space and all
+RUN_CALL_RE = re.compile(r"\.Run\(\s*$")
+
+
+def go_citation_mask(src: str) -> str:
+    """Return `src` with everything that is not a CITATION SITE replaced by spaces,
     newlines preserved, so regex offsets still map to real line numbers.
 
-    A real (small) Go scanner is needed here rather than a naive '//' split:
-    without tracking string state, a test name inside a string literal — e.g.
-    t.Run("TestFoo") or a fixture path — would be mis-read as a citation, and a
-    '//' inside a string would swallow the rest of the line.
+    A citation site is a Go COMMENT or the body of a STRING LITERAL. Both are read by a
+    human as "this property is verified by that test"; neither is executed, so neither
+    can go stale loudly on its own.
+
+    STRING LITERALS WERE ADDED 2026-09-09, and the reason is a measured hole rather than
+    a tidy-up. The floor box's coverage meta-test excuses each undriven Block field with a
+    prose row naming the gate that covers it, and every row is a string literal in a map.
+    A blind PE renamed a cited test everywhere except inside the map value: this lint
+    reported zero in-repo hits and EXITED 0. The row was protected only incidentally,
+    because the same name also appeared in three `//` comments — so deleting a test
+    through its doc comment, which is how a test ordinarily disappears, would have left
+    the row citing a phantom in silence. The same shape holds cmd/silt/observable_contract.go's
+    Asserter column, which names the e2e test asserting each announced marker.
+    Measured before widening: 62 citations in *_test.go literals across 23 files and 29 in
+    observable_contract.go, with ZERO phantoms — the widening is exact today, and it is what
+    makes those two registries rot loudly from here.
+
+    A real (small) Go scanner is needed rather than a naive '//' split: a '//' inside a
+    string would otherwise swallow the rest of the line, and the first argument of
+    `t.Run(` must stay masked because SUBTEST NAMES ARE OUT OF SCOPE (see the scope notes)
+    — a subtest is not a `func TestX(`, so citing one is not a resolvable claim.
     """
     out = []
     i, n = 0, len(src)
@@ -152,13 +189,16 @@ def go_comment_mask(src: str) -> str:
                     break
                 j += 1
             j = min(j + 1, n)
-            out.append(" " * (j - i))
+            # A t.Run("...") subtest name is not a citation; everything else is.
+            keep = not RUN_CALL_RE.search(src[max(0, i - 64) : i])
+            out.append(src[i:j] if keep else " " * (j - i))
             i = j
         elif c == "`":
             j = src.find("`", i + 1)
             j = n if j == -1 else j + 1
             # Raw strings may span lines; keep the newlines for line accuracy.
-            out.append("".join("\n" if ch == "\n" else " " for ch in src[i:j]))
+            keep = not RUN_CALL_RE.search(src[max(0, i - 64) : i])
+            out.append(src[i:j] if keep else "".join("\n" if ch == "\n" else " " for ch in src[i:j]))
             i = j
         elif c == "'":
             j = i + 1
@@ -242,8 +282,8 @@ def read_text(path: Path) -> str:
 
 
 def citations_in_go(path: Path):
-    """Citations appearing in a Go COMMENT (never in code or a string literal)."""
-    return scan_lines(go_comment_mask(read_text(path)).splitlines())
+    """Citations appearing in a Go COMMENT or a STRING LITERAL (never in bare code)."""
+    return scan_lines(go_citation_mask(read_text(path)).splitlines())
 
 
 def citations_in_md(path: Path):
