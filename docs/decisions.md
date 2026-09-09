@@ -2580,3 +2580,80 @@ showing the one-byte value IS committed).
   exactness is red-team finding F4 — so a short shard under an unchanged committed size makes the
   auditor refuse every HONEST holder and every sub-frame object silently read as lost. The frame size
   actually used therefore travels in the EXISTING committed field: no format change, F4 intact.
+
+## D-C2-IDLE-WINDOW-VALUE — the delivery idle window is 24m; and the route that reached it is under audit
+
+- **Status:** ✅ RATIFIED — 2026-09-09 (owner: *"C2 idle window — RATIFY at 24m. Agreed. Cost is zero
+  (deposit release at 30m35s binds first either way), precondition met, blind PE re-derived
+  independently."*). This closes the value `D-TRUE-UP-CALLS-2026-09-07` reserved as *"the delivery
+  idle-window VALUE (owed after A3)"*; the precondition was met by the graded run `97e3101-deep`.
+- **The value.** `deliveryIdleDefault` = **24m**, with the start-up floor `deliveryIdleFloor` =
+  `430 × 4/3` = 9m33.33s (`cmd/silt/numeraire.go`), so the daemon refuses a window that cannot
+  survive the worst stall the model admits. Guaranteed survival is `0.75 × idle` because the
+  last-settle stamp is floored into `idle/4` buckets (measured at 0.751× —
+  `core/node/TestC2GuaranteedSurvivalIsThreeQuartersOfTheWindow`).
+- **The cost is zero.** `CloseDeliverySession` releases the deposit at
+  `max(close, maxAnchorEpoch + W + 1)`, `W = 4`, = 1834 s = 30m35s. The release epoch binds at both
+  candidate windows, so the longer window adds no deposit-lock latency.
+- **The owner's second question, recorded because the answer is owed to the freeze.** The magnitude
+  did not move but the reasoning did: ratified call (4) was EPOCH-denominated against the 190 s modal
+  tier; the shipped value is a DURATION against the 430 s re-keyed-takeover envelope. The owner asked
+  whether the original derivation was wrong and, if so, *"what else was derived the same way — right
+  answer by the wrong route once is fine; twice is a pattern I want found now, not at the freeze."*
+  A blind PE audit of silt's derived parameters is commissioned against three faces: **F1** sized
+  against a modal or published bound where the purpose requires the worst bound the model admits;
+  **F2** a quantization/flooring step between the knob and the guarantee that the derivation did not
+  carry through; **F3** resting on a coupling premise no driven test ever exercised. Suspects are
+  partitioned by **whether the parameter freezes at D3**, because after the freeze a wrong value costs
+  a new era. The audit's findings are an input to D1's content.
+- **What this does NOT decide:** the RELAY half of `R-REAPER-FORFEIT` (see `D-RELAY-EDGE-UNFIT`); the
+  disposition of any parameter the audit names — each is its own call at its own tier.
+
+## D-RC-POSTURE-2026-09-09 — relay settlement is unfit for the edge tier; unexercised lanes are labelled as such; and five governance calls
+
+- **Status:** ✅ DECIDED — 2026-09-09 (owner, in one message; quoted per clause below).
+- **(1) The relay lane is default-OFF at EVERY tier, and the docs say why.** The owner went further
+  than the recommendation (which was "disable at edge tiers"): *"A lane needing 286–508 Mbit/s
+  sustained to settle, that pays zero on a reap, is structurally a horse-and-above lane. That means
+  relay revenue concentrates on the few while the pony tier — the tier the entire 10000/100/1 thesis
+  depends on — gets a lane that punishes participation. That's not a bad default; it's an
+  economic-recentralization vector."* So: **built, default-OFF at every tier, with the settlement math
+  stated plainly in the operator docs, framed as "the relay settlement model is unfit for the edge
+  tier" — not as a disabled feature.** A horse operator with the bandwidth opts in knowingly; a pony
+  is never silently enrolled in a losing game. **As-built note:** `-accept-relay-payments` is already
+  `false` (`cmd/silt/daemon.go:78`), so this call costs no default flip; what it buys is the
+  DISCLOSURE and the routed design debt below.
+- **(2) The real fix is design debt with an owner, not a v1 default.** *"While settlement is
+  all-or-nothing at session end, relay stays horse-and-above permanently, and I want that tracked as a
+  design debt with an owner."* A periodic relay sweep, or settling incrementally rather than at close,
+  moves an economic rule and is therefore research-gated. Filed as a named Boulder-2-successor item;
+  the owner affirmed it was correct NOT to build it inside C2.
+- **(3) The RC labels every lane that has never run in the field — as a checklist rule, not a
+  per-lane judgment.** *"Ship the RC stating the lane is built, sim-proven, never exercised on a real
+  network, and grade it at E5 after the stamp raise… I don't want it deferred to D3 — omission decides
+  these by default, and the default is always the over-claim. We've been here once already with M0."*
+  The rule is generalized into [`release-checklist.md`](release-checklist.md) under honest labeling, so
+  the next lane needs no fresh honesty call.
+- **(4) The owner-call list carries only calls whose evidence exists.** *"Don't list a call again
+  until its evidence exists; a list carrying not-yet-ready items trains me to skim, so a real call gets
+  waved through."* `ROADMAP.md`'s owner-question block drops its GATED section: a call re-appears when
+  its evidence lands, and is tracked meanwhile as ordinary lane work.
+- **(5) Call 12 is decoupled — procurement starts now, ratification stays at D3.** *"The procurement
+  has no code dependency and is the longest-lead item on the roadmap… Only the artifact they attack has
+  to wait for the freeze."* Finding and contracting the external B8 seat begins immediately; the owner
+  ratifies the engagement at D3. B8 is what lifts M0 from *built + internally-clean* to *held*, so it
+  is on the CALENDAR critical path even though it is not on the code one.
+- **(6) Delegation excludes the format surface.** The 2026-09-08 overnight grant is confirmed for this
+  session with one carve-out: *"no format-surface change lands under delegation. D1 is a format train —
+  every FORMAT item comes to me before it merges, even if it's green and reviewed."*
+- **(7) One page in plain English before D3.** The owner reads, before signing the freeze act, a single
+  page saying **what is frozen and what can never change without a new era** — the doors that close, not
+  the 22-item manifest. Owed by D1, addressed to the owner, not to a seat.
+- **(8) A scheduling call made unprompted: the sub-frame privacy surface is red-teamed BEFORE the
+  economy flip.** *"Privacy is a Part-0 corner — an immutable, not a tunable — and the fix window
+  narrows once the format freezes."* `R-SUBFRAME-SIZE-ORACLE` (an exact byte-length oracle plus the loss
+  of chunk size as salt against the confirmation attack) moves ahead of C6. The repair-statistic
+  normalization and node-level granularity WAIT: *"it's a measurement, it doesn't hold a corner."*
+- **What this does NOT decide:** the relay successor's MECHANISM (periodic sweep vs incremental
+  settlement — the Researcher certifies, the owner ratifies); which external party takes the B8
+  engagement; the freeze act itself (D3).

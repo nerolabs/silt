@@ -86,6 +86,16 @@ signing is wired up; V1 is not cut until signing/notarization is in place.)
   - Checksum/signing claims match reality for the stage: RC builds ship
     checksums; **`1.0.0` is signed + notarized + checksummed** — claim signing
     only once it is actually in place.
+  - **Every lane that has never run in the field is labelled as such.** A lane
+    whose mechanism is built and proven only in simulation carries the sentence
+    *"built, sim-proven, never exercised on a real network"* wherever the release
+    claims it — README, website, release notes, and the flag's own help text. This
+    is a RULE, not a per-lane judgment call (`D-RC-POSTURE-2026-09-09` (3)):
+    omission decides these by default, and the default is always the over-claim.
+    A lane earns the sentence's removal by a green graded field run that exercises
+    it end to end, not by a passing simulation. **Open at the RC: the paid delivery
+    lane** — no delivery session has ever settled on a real network, so every C2
+    number is sim-driven; it is graded at E5 after the stamp raise.
 - [ ] **`CHANGELOG.md` `[Unreleased]` is accurate** — it becomes the release
       notes verbatim. For `1.0.0` it should read like an honest first-release
       summary.
