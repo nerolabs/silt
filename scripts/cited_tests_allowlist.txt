@@ -146,3 +146,19 @@ TestGateC3_1_ThresholdProvenanceIsUnreachableUnderDiskWeighting
 # reflects over Block so a new payload class cannot escape the sweep.
 TestWitnessValidateV5_NeverAccepts
 TestWitnessValidateV5_NeverAcceptsWhileRecomputeGated
+
+# ---------------------------------------------------------------------------
+# (H) HISTORICAL — Lane D0, the WitnessValidateV5 deletion, 2026-09-09.
+# Four per-increment "STOP boundary" guards, each named once by the pointer comment left in the
+# increment file it used to live in, so a reader who grepped for the old name lands on where the
+# guard went. All four called Chain.WitnessValidateV5 — deleted on the blind PE's simplicity
+# ruling — and each passed Block{Version: 5, Height: 3} with no roots and no signatures to a
+# function that short-circuited before reading anything, so none could have caught a flip in the
+# increment it sat beside. The property they stood for (the box is never flipped to Accept before
+# R1.8) is now held ONCE, at the only place a flip can happen — the downgrade in (*Box).Validate —
+# and driven on real node-accepted blocks of every v5 class by
+# TestColdAuditor_NeverAcceptsAnyV5BlockClass.
+TestRecomputeDeMatureSuperQuorum_NeverFlipsWitnessValidateAccept
+TestRecomputeQualifiedCount_NeverFlipsWitnessValidateAccept
+TestRecomputeMatureNow_NeverFlipsWitnessValidateAccept
+TestRecomputeEpochWeightQuorum_NeverFlipsWitnessValidateAccept

@@ -17,11 +17,16 @@ import (
 // exportedBoxDoors is the EXACT set of exported *Chain methods a floor-box file may declare. Main
 // had nine; eight were second doors — a caller could reach one reproduced predicate with none of
 // P1–P4 in front of it (N1 is exactly that shape). The box's door is (*Box).Validate, which is not
-// a *Chain method and runs the ONE composition. The two that stay:
-//   - WitnessValidateV5: the pre-structure never-Accept scaffold (delta certification §6; D0 took
-//     its RecoveryDirective parameter away with the knob);
+// a *Chain method and runs the ONE composition. ONE stays:
 //   - WitnessReadSetV5: the read-set PRODUCER, which expresses no verdict (readset_v5.go).
-var exportedBoxDoors = []string{"WitnessReadSetV5", "WitnessValidateV5"}
+//
+// WitnessValidateV5 was the second, and D0 DELETED it. Its row here, and its line in the P-table
+// delta certification §6, were an ENUMERATION of the surface as it stood; this list exists to make
+// a NEW door a reviewed event, and a list of today's doors does not oblige keeping one. The
+// substantive reason it went: it held no head, so it could not key its #535 recovery posture on
+// anything it owned, which is the defect B-1 fixed at the door and could not fix there. Keeping it
+// would have shipped two exported box entries with two different recovery semantics.
+var exportedBoxDoors = []string{"WitnessReadSetV5"}
 
 // boxDoorFiles are the files the inventory is derived over: every non-test floorbox_*.go plus the
 // read-set producer's file.
@@ -191,16 +196,15 @@ var exportedPackageSurface = map[string]string{
 	"func ByteBudget":         "the only bounded Budget constructor; refuses a non-positive ceiling (M-4)",
 	"func UnlimitedBudget":    "the node's Budget; only liveView returns it (G-D10)",
 	// ---- methods on exported receivers ----
-	"method Box.Validate":            "THE DOOR: budget → the unconditional #535 recovery stall → pruned stall → ValidateCommitV5(provenView) → the one-line R1.8 downgrade",
-	"method Box.Head":                "the box's own head record, read-only",
-	"method Budget.Check":            "the ONE budget comparison; the zero Budget stalls by name",
-	"method Budget.Unlimited":        "accessor",
-	"method Budget.IsZero":           "accessor",
-	"method Budget.MaxBytes":         "accessor",
-	"method FloorBoxOutcome.String":  "rendering",
-	"method Availability.String":     "rendering",
-	"method Chain.WitnessValidateV5": "the pre-structure never-Accept scaffold (G-6; delta certification §6). D0 dropped its third parameter with the RecoveryDirective",
-	"method Chain.WitnessReadSetV5":  "the read-set PRODUCER, fenced to objective mode; expresses no verdict (G-6)",
+	"method Box.Validate":           "THE DOOR: budget → the unconditional #535 recovery stall → pruned stall → ValidateCommitV5(provenView) → the one-line R1.8 downgrade",
+	"method Box.Head":               "the box's own head record, read-only",
+	"method Budget.Check":           "the ONE budget comparison; the zero Budget stalls by name",
+	"method Budget.Unlimited":       "accessor",
+	"method Budget.IsZero":          "accessor",
+	"method Budget.MaxBytes":        "accessor",
+	"method FloorBoxOutcome.String": "rendering",
+	"method Availability.String":    "rendering",
+	"method Chain.WitnessReadSetV5": "the read-set PRODUCER, fenced to objective mode; expresses no verdict (G-6)",
 	// ---- types ----
 	"type Box":             "the box: config-bearing chain, derived head, derived budget, delivery seam",
 	"type BoxConfig":       "box-owned operator config: the byte ceiling. D0 deleted its Recovery field and the RecoveryDirective type with it — the #535 stall is unconditional, so there is nothing left to configure",

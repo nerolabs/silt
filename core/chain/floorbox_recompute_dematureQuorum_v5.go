@@ -56,7 +56,7 @@ import (
 // need = ⌈2·total/3⌉; met = committed >= need.
 //
 // STOP BOUNDARY (this increment). It reproduces ONE predicate. It does NOT flip #657
-// WitnessValidateV5 to Accept — that is the final increment, only after ALL predicates are
+// the box to Accept — that is the final increment, only after ALL predicates are
 // reproduced. The box STILL never-Accepts. requireDeMatureSuperQuorum folds the WHOLE bonded map
 // directly — it does NOT consult effectiveEpochSet/liveQualifiedSet, so the #535 recovery
 // boundary does NOT change this fold (there is no boundary case to carve out for it). The
@@ -126,7 +126,7 @@ type BondedSetWitness struct {
 // reproduces the whole-bonded fold; requireDeMatureSuperQuorum consults no epoch set, so the #535
 // recovery boundary does not change it (no boundary carve-out for this predicate).
 //
-// This does NOT flip WitnessValidateV5 to Accept (the STOP boundary): it reproduces ONE predicate.
+// This does NOT flip the box to Accept (the STOP boundary is the R1.8 downgrade in (*Box).Validate): it reproduces ONE predicate.
 //
 // ⚠ PARTIAL GATE — the accept-flip assembler (#657) MUST re-add everMature && objective().
 // The full-node caller gate is `everMature && objective() && !matureNow()` (chain.go:2827). This

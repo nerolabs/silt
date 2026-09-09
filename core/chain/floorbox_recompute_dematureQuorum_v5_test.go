@@ -24,7 +24,7 @@ import (
 //     attacker shift the bar. The correct fixed-constant fold is INVARIANT to any witness-carried
 //     threshold; the negative control demonstrates the shift the real fold forecloses.
 //
-// The recompute NEVER flips WitnessValidateV5 to Accept (the STOP boundary); it reproduces ONE
+// The recompute NEVER flips the box to Accept (the STOP boundary); it reproduces ONE
 // predicate.
 
 // dematureFixture is an objective v5 chain that has MATURED (everMature latched) but whose live
@@ -516,12 +516,11 @@ func TestRecomputeDeMatureSuperQuorum_MissingMemberWeightStalls(t *testing.T) {
 	}
 }
 
-// TestRecomputeDeMatureSuperQuorum_NeverFlipsWitnessValidateAccept pins the STOP boundary: this
-// increment reproduces ONE predicate; it must NOT have flipped WitnessValidateV5 to Accept.
-func TestRecomputeDeMatureSuperQuorum_NeverFlipsWitnessValidateAccept(t *testing.T) {
-	f := buildDematureFixture(t, 6, diverseBondsBig())
-	got, _ := f.c.WitnessValidateV5(v5Block(3), f.root)
-	if got == Accept {
-		t.Fatal("STOP boundary violated: WitnessValidateV5 returned ACCEPT — the accept flip (#657) must wait until ALL predicates are reproduced")
-	}
-}
+// THE STOP-BOUNDARY GUARD FOR THIS INCREMENT MOVED (D0). It was TestRecomputeDeMatureSuperQuorum_NeverFlipsWitnessValidateAccept
+// here: a call to Chain.WitnessValidateV5 asserting the box had not been flipped to Accept. That
+// scaffold is deleted, and the guard it stood for is now held ONCE, at the only place a flip can
+// happen — the R1.8 downgrade in (*Box).Validate — driven on real, node-accepted blocks of every
+// v5 class by TestColdAuditor_NeverAcceptsAnyV5BlockClass. The old form could not have caught a
+// flip in this increment anyway: it passed Block{Version: 5, Height: 3} with no roots and no
+// signatures, and the scaffold short-circuited before reading anything. Four copies of one guard,
+// none of which reached the code it guarded.

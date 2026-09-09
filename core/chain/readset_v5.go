@@ -92,7 +92,8 @@ import (
 // producer: it names the keys a box will ask for. It is not a validity predicate, it decides
 // nothing about b, and a caller must never read a non-empty read-set as "this block is
 // acceptable". It is one of exactly two exported box-adjacent `*Chain` surfaces (with
-// WitnessValidateV5; G-6 pins the inventory), and the only one that is not a door. It carries
+// the deleted WitnessValidateV5 scaffold; G-6 pins the inventory), and the only one that is not a
+// door. It carries
 // the S2 mode fence all the same: a read-set produced under legacy rules names keys that mean
 // nothing to a box — in legacy mode qualification is rep(id), which has no committed leaf.
 func (c *Chain) WitnessReadSetV5(b Block) []statehash.ReadEntry {

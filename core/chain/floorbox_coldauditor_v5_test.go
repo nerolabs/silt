@@ -155,7 +155,7 @@ var coldAuditorUndriven = map[string]string{
 	"Prev":        "position, not a payload class; bound to the box's own head at P1 (same gate)",
 	"Proposer":    "identity, not a payload class; NewBox refuses a parent whose proposer signature does not verify, and the proposer screens run in the composition",
 	"ProposerSig": "the signature over the class payloads above; every arm here re-signs after forging, so it is exercised by all of them",
-	"Version":     "the class SELECTOR, not a class: TestWitnessValidateV5_SubV5BlockRejected drives every sub-v5 version to Reject",
+	"Version":     "the class SELECTOR, not a class: TestFloorBox_SubV5BlockRejectedAtTheDoor drives every sub-v5 version, and an above-era version, to Reject through the door",
 	"CommitRound": "excluded from Hash — a certificate slot a replica may hold differently, not committed state",
 	"PrepareQC":   "excluded from Hash; the quorum stacks C1..C5 read it, and every arm here carries a real one",
 	"Atts":        "excluded from Hash; same as PrepareQC, and the carrier arm drives the parent's copy as committed state",
@@ -481,9 +481,7 @@ func TestColdAuditor_TheBoundaryPostureIsThePositionOfTheBoxNotTheClaimOfTheBloc
 // (§2.5, chain.go's pruned leg). The box refuses rather than taking a trust floor from its caller.
 //
 // ABLATION: delete the b.IsPruned() stall from (*Box).Validate ⇒ the door arm lands on another
-// reason ⇒ RED; delete it from WitnessValidateV5 ⇒ the scaffold arm reports ErrRecomputeGated ⇒ RED
-// (that arm is in floorbox_v5_test.go); delete the parent.IsPruned() refusal from NewBox ⇒ the
-// construction arm ⇒ RED.
+// reason ⇒ RED; delete the parent.IsPruned() refusal from NewBox ⇒ the construction arm ⇒ RED.
 func TestColdAuditor_RefusesPrunedBlocks(t *testing.T) {
 	f := buildStructFixture(t)
 	src := newProverSource(t, f.c)
@@ -609,12 +607,13 @@ func TestColdAuditor_NoTrustFloorOnTheContractSurface(t *testing.T) {
 // being one.
 //
 // ABLATION: re-add a Recovery field to BoxConfig, or a bool field to Box, or a third parameter to
-// WitnessValidateV5 ⇒ RED.
-// SOURCE GATE: none — reflection over the BoxConfig and Box TYPES and the WitnessValidateV5 METHOD
+// (*Box).Validate ⇒ RED.
+// SOURCE GATE: none — reflection over the BoxConfig and Box TYPES and the (*Box).Validate METHOD
 // VALUE, so it sees field names, types and arity only. RUNTIME GATE:
-// TestColdAuditor_StallsUnconditionallyAtARecoveryBoundary (the door) and
-// TestWitnessValidateV5_RecoveryBoundaryStallsUnconditionally (the scaffold), which drive the
-// boundary and watch the stall fire with no input able to lift it.
+// TestColdAuditor_StallsUnconditionallyAtARecoveryBoundary and
+// TestColdAuditor_TheBoundaryPostureIsThePositionOfTheBoxNotTheClaimOfTheBlock, which drive the
+// boundary at the door and watch the stall fire with no input able to lift it, and
+// TestRecoveryBoundaryDecision_StallsUnconditionally on the policy unit itself.
 func TestColdAuditor_TheKnobIsGoneFromTheTypeSystem(t *testing.T) {
 	f := buildStructFixture(t)
 	src := newProverSource(t, f.c)
@@ -639,13 +638,15 @@ func TestColdAuditor_TheKnobIsGoneFromTheTypeSystem(t *testing.T) {
 				"mode flag is one flip from not being one.", bt.Field(i).Name)
 		}
 	}
-	// WitnessValidateV5 takes (Block, [32]byte) — no directive.
-	mt := reflect.TypeOf((*Chain).WitnessValidateV5)
+	// (*Box).Validate takes (Block, StateRootWitness) — no directive, no floor, no authorization.
+	// It is now the ONLY entry that yields a verdict: Chain.WitnessValidateV5, which used to take
+	// the directive as a third parameter, is deleted, so the knob has nowhere left to be passed.
+	mt := reflect.TypeOf((*Box).Validate)
 	if mt.NumIn() != 3 { // receiver + 2
-		t.Fatalf("WitnessValidateV5 must take (b Block, parentStateRoot [32]byte); got %d parameters "+
-			"including the receiver — the RecoveryDirective parameter is deleted", mt.NumIn())
+		t.Fatalf("(*Box).Validate must take (b Block, w StateRootWitness); got %d parameters including "+
+			"the receiver — a third parameter is where a recovery authorization would come back", mt.NumIn())
 	}
-	if mt.In(1) != reflect.TypeOf(Block{}) || mt.In(2) != reflect.TypeOf([32]byte{}) {
-		t.Fatalf("WitnessValidateV5's parameter types drifted: (%s, %s)", mt.In(1), mt.In(2))
+	if mt.In(1) != reflect.TypeOf(Block{}) || mt.In(2) != reflect.TypeOf(StateRootWitness{}) {
+		t.Fatalf("(*Box).Validate's parameter types drifted: (%s, %s)", mt.In(1), mt.In(2))
 	}
 }

@@ -129,14 +129,41 @@ on the interface, and a `0` that means "reject everything" is a value standing i
 
 `(*Box).Validate` already stalls on `b.IsPruned()`, and `NewBox` already refuses a pruned PARENT
 (its `Hash()` is a stored token bound to no field, including `StateRoot` — the §2.4 finding).
-`WitnessValidateV5`, the other exported box entry, does not. It never Accepts either, so this is
-not a live break; but "the box refuses pruned blocks" should be true of the box rather than of one
-of its two functions. Three lines, and it gets a driven arm. Taken.
+`WitnessValidateV5`, the other exported box entry, did not. The first cut ADDED the check there so
+that "the box refuses pruned blocks" would be true of the box rather than of one of its two
+functions. The blind PE named that as the tell: adding a third copy of one check, in the same PR
+that deletes a duplicated predicate on drift-hazard grounds, is the signal that the right
+subtraction was the ENTRY. The second entry is deleted below and the check exists once, at the
+door, plus `NewBox`'s refusal of a pruned PARENT (§2.4 — a pruned parent's hash binds no
+`StateRoot`).
 
-`WitnessValidateV5` itself is NOT deleted, though the certification establishes it has zero
-non-test callers. The owner ratified a specific list and deletion of the scaffold is not on it;
-the P-table delta certification §6 lists the function, and `TestG6_ExportedBoxDoorInventory` pins
-it as one of exactly two permitted exported `*Chain` methods in the box files. Flagged, not taken.
+**`WitnessValidateV5` is DELETED — reversed after the blind PE review.** The first cut kept it and
+flagged the deletion, reasoning that owner call 2 ratified a specific list, that the P-table delta
+certification §6 lists the function, and that `TestG6_ExportedBoxDoorInventory` pins it. The PE's
+counter-argument is a correctness one and it holds:
+
+1. It holds no head, so B-1 — key the recovery posture on something the box owns — is structurally
+   unfixable there. Keeping it ships TWO exported box entries with TWO recovery semantics, one
+   fixable and one not, on the RC's last floor-box item.
+2. This round made it WORSE, not inert: the pruned refusal was newly ADDED to it to make "the box
+   refuses pruned blocks" true of the box. That is a third copy of one check, added in the same PR
+   that removes a duplicated boundary predicate at `rotateOps` because "two copies of one
+   consensus-adjacent predicate agreeing by reachability is a drift hazard". Both cannot be right,
+   and the resolution is to subtract the entry rather than add the check.
+3. The door inventory is an in-repo allow-list built to make a NEW door a reviewed event. A list
+   that ENUMERATES today's surface does not oblige preserving it; removing an entry is a one-line
+   diff and the gate is unharmed. The same reading applies to the certification's §6 line.
+
+Cost, paid: five test call sites. Four were per-increment "STOP boundary" guards that passed
+`Block{Version: 5, Height: 3}` — no roots, no signatures — to a function that short-circuits before
+reading anything, so they could not have caught a flip in the increment they sat beside; the guard
+they stood for is now held once, at the only place a flip can happen, driven on real node-accepted
+blocks of every class. The fifth was a tier in the R0.4b split gate whose only assertion was
+"did not Accept"; that gate's actual invariant is the box/full-node split, which both remaining
+tiers carry. This file's policy tests re-home onto the policy unit itself and onto the door.
+
+The deletion is off the ratified owner-call-2 list. It is recorded here and in the CHANGELOG as a
+scope decision taken by the coordinator on the PE's ruling, not as something owner call 2 covered.
 
 ### (5) H-2 — the re-anchor contract
 
@@ -178,11 +205,11 @@ composition through the door to the downgrade. A box that stalled on everything 
 | arm | ablation |
 |---|---|
 | every payload class, never-Accept | remove the door's R1.8 downgrade (`out == Accept` ⇒ Indeterminate) |
+| the boundary posture is the box's position | key the door's recovery decision on `b.Height` again (both directions) |
 | issuer keys | remove the scope gate's `len(b.IssuerKeys) > 0` clause |
 | carrier / bond regs / slashes | remove the digest pre-set requirement |
 | recovery boundary | restore an escape past `recoveryBoundaryDecision` |
 | pruned block | remove the door's `b.IsPruned()` stall |
-| pruned block, second entry | remove the same stall from `WitnessValidateV5` |
 | no floor on the surface | re-add a floor-shaped method to `StateView` |
 | class coverage | add a payload field to `Block` and leave it undriven |
 

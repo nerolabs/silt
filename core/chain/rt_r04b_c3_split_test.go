@@ -14,7 +14,7 @@ package chain
 //
 // This gate drives the identical scenario through every validation tier and requires the
 // tiers to AGREE. It is the entry-criteria gate for the R1.8 accept-flip: the split was
-// latent only because WitnessValidateV5 never returns Accept.
+// latent only because the box never returns Accept.
 
 import (
 	"errors"
@@ -25,17 +25,23 @@ import (
 
 // tierVerdicts is one block's verdict at each validation tier the R1.8 flip spans.
 type tierVerdicts struct {
-	box      error           // the O(payload) floor-box recompute — the R1.8 accept surface
-	fullNode error           // the LIVE full-node path (validateEra3Roots)
-	coldBox  FloorBoxOutcome // WitnessValidateV5 — the cold auditor, which is now the only posture
-	coldWhy  error
+	box      error // the O(payload) floor-box recompute — the R1.8 accept surface
+	fullNode error // the LIVE full-node path (validateEra3Roots)
 }
 
-// D0 collapsed the two box tiers into one. There used to be a coldBox tier and a liveBox tier
-// (WitnessValidateV5 with RecoveryDirective{LiveFollower: true}), because a box could be told to
-// proceed past an ambiguous recovery boundary. Owner call 2 deleted the directive: there is one
-// posture and it is cold, so a second tier would be a copy of the first. The gate's substance is
-// unchanged — the tiers must agree, and the box must never Accept.
+// D0 REDUCED THIS GATE FROM FOUR TIERS TO TWO, and the two that remain are the two that carry its
+// invariant. There used to be a coldBox tier and a liveBox tier — Chain.WitnessValidateV5 with and
+// without RecoveryDirective{LiveFollower: true} — because a box could be TOLD to proceed past an
+// ambiguous recovery boundary. Owner call 2 deleted the directive, which collapsed those two into
+// one; the PE's simplicity ruling then deleted the scaffold itself, which removed the last.
+//
+// Nothing this gate exists for is lost. Its invariant is the SPLIT invariant — the box's recompute
+// may stall where the node decides, but must never agree with a block the node rejects, nor report a
+// forged root for one the node accepts — and both directions live in the box/fullNode pair. The
+// deleted tiers asserted only "the box did not return Accept", on a function with four returns and
+// no Accept among them; that property is now held where a flip could actually happen, at the R1.8
+// downgrade in (*Box).Validate, driven on real node-accepted blocks of every v5 class by
+// TestColdAuditor_NeverAcceptsAnyV5BlockClass.
 
 // eachTier runs one candidate block through every tier against the same fixture pre-state.
 // The chain is cloned per tier so no tier's dry-run apply can leak into another's.
@@ -46,8 +52,6 @@ func eachTier(t *testing.T, f rotateFixture, b Block, committed ports.Hash) tier
 	live := f.c.cloneForDryRun()
 	blk := b
 	v.fullNode = live.validateEra3Roots(&blk)
-	cold := f.c.cloneForDryRun()
-	v.coldBox, v.coldWhy = cold.WitnessValidateV5(b, f.prevRoot)
 	return v
 }
 
@@ -64,10 +68,6 @@ func assertTiersAgree(t *testing.T, label string, v tierVerdicts) {
 	case v.box != nil && v.fullNode == nil && !errors.Is(v.box, ErrRecomputeStateRootScopeStall):
 		t.Fatalf("%s: SPLIT (false-forgery direction) — the full node ACCEPTS the block and "+
 			"the box reports %v, which is not an out-of-scope stall", label, v.box)
-	}
-	if v.coldBox == Accept {
-		t.Fatalf("%s: WitnessValidateV5 returned Accept (%s) — the box is never-Accept until "+
-			"R1.8 flips it (reason %v)", label, v.coldBox, v.coldWhy)
 	}
 }
 

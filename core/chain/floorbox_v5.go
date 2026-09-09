@@ -11,18 +11,17 @@ import "errors"
 // file is the ADDITIVE validation MODE — a SEPARATE path a root-only client calls INSTEAD of
 // holding the tree. It does NOT modify apply(), validateEra3Roots, postApplyRoots, any
 // validity predicate, or any consensus invariant I1–I5. A full node's acceptance path is
-// unchanged; a full node never calls WitnessValidateV5.
+// unchanged; a full node never constructs a Box.
 //
-// WHAT THIS INCREMENT SHIPS (the sound, non-gated slice — see the PACE deliberation,
-// docs/thinking/2026-08-30-lane1-partB-witness-validation-options.md):
-//   - the #535 cold-auditor recovery-boundary policy (RATIFIED, decisions.md 2026-08-30
-//     item 3): box-LOCAL directive drives recovery-boundary validation; a directive ABSENT
-//     at an ambiguous recovery boundary yields a LOUD IndeterminateTrustlessly (default =
-//     do NOT accept, never trust the proposer); live-follower is an OPT-IN flip;
-//   - the additive entry point WitnessValidateV5, wired to apply the #535 decision FIRST and
-//     then — on the trustless path — return IndeterminateTrustlessly with ErrRecomputeGated,
-//     because the bounded witnessable RECOMPUTE (the accept core) is research-gated and does
-//     NOT yet exist.
+// WHAT THIS FILE HOLDS, as D0 leaves it: the three-valued verdict type, its sentinels, and the
+// #535 cold-auditor recovery-boundary POLICY UNIT — isAmbiguousRecoveryBoundary and
+// recoveryBoundaryDecision. The policy is an UNCONDITIONAL loud stall at an ambiguous boundary
+// (owner call 2 of D-TRUE-UP-CALLS-2026-09-07, direction (a')): the box-local directive, the
+// live-follower opt-in and the un-gated fall-through that used to sit between are all deleted.
+//
+// The ENTRY POINT that used to live here — Chain.WitnessValidateV5 — is deleted too. There is one
+// door and it is (*Box).Validate (floorbox_box_v5.go), which consults this policy over the BOX'S
+// OWN head height. See the re-anchor contract at the foot of this file.
 //
 // WHAT THIS INCREMENT DELIBERATELY DOES NOT SHIP (routed to the research gate): the bounded
 // witnessable recompute that decides Accept/Reject. The PE ruling confirms this recompute
@@ -35,14 +34,15 @@ import "errors"
 // statehash.go:224), not the typed data apply iterates, so the box cannot enumerate the
 // expiring members from the witness. A correct bounded recompute is a NEW, soundness-critical
 // computation that must provably match apply()'s v5 post-state root — a research-gated
-// consensus/published-claim surface. This increment REFUSES to guess it: WitnessValidateV5
+// consensus/published-claim surface. The box REFUSES to guess it: (*Box).Validate
 // never returns Accept. The safe default (stall/indeterminate) holds until a certified
 // recompute lands, at which point its verdict slots into the marked seam below.
 //
 // CERTIFIED / RATIFIED basis:
-//   - decisions.md 2026-08-30 (lane-1 increment 3): the #535 recovery directive is box-LOCAL,
-//     default cold-auditor, live-follower opt-in; the read-set identity is the 23-keyspace
-//     amended form (cited in readset_v5.go).
+//   - decisions.md 2026-08-30 (lane-1 increment 3), SUPERSEDED on the directive by
+//     D-TRUE-UP-CALLS-2026-09-07 (2): the recovery directive and the live-follower opt-in are
+//     deleted and the stall is unconditional. The read-set identity is the 23-keyspace amended
+//     form (cited in readset_v5.go), unchanged.
 //   - era4-witness-floor-box-readset-v5-AMENDED-RESEARCH-CERTIFICATION-2026-08-30 (R2: the
 //     recovery-boundary observable keys on cfg.LivenessRecoveryHeight, a non-committed
 //     operator config the box cannot witness — the exact ambiguity this policy governs).
@@ -110,7 +110,7 @@ var (
 	// state root for H+1, and its only source is H's committed StateRoot — the exact quantity it
 	// declined to reproduce at H. Recovery is the operator's, out of band: a fresh
 	// -ws-checkpoint-class H+1:HASH pin, on which the box cold-starts. See the four-clause
-	// re-anchor contract on WitnessValidateV5 and docs/design/owned-residuals.md.
+	// re-anchor contract at the foot of this file and docs/design/owned-residuals.md E2a.
 	ErrRecoveryBoundaryStall = errors.New("chain: floor-box v5 height is an ambiguous #535 recovery boundary (cold auditor: indeterminate-trustlessly, terminal until the operator re-anchors, will not trust the proposer)")
 
 	// ErrNotWitnessableVersion marks a Reject for a sub-v5 block handed to the v5 floor-box
@@ -160,33 +160,15 @@ func (c *Chain) recoveryBoundaryDecision(h uint64) (proceed bool, reason error) 
 	return true, nil
 }
 
-// WitnessValidateV5 is the PRE-STRUCTURE floor-box scaffold, retained under Round 1A (P-table delta
-// certification §6). It NEVER returns Accept and it reaches NO recompute: after the version gate,
-// the #535 recovery decision and the pruned-block refusal it returns IndeterminateTrustlessly /
-// ErrRecomputeGated unconditionally.
-//
-// THE DOOR IS (*Box).Validate (floorbox_box_v5.go), NOT this function. Do NOT build the trustless
-// recompute here. This signature — a bare parentStateRoot PARAMETER and no head record of its own
-// — is the RT2-CARRIER-13 shape: a recompute entry with no position lets the block's author choose
-// the parent everything downstream is verified against (the carrier over b.Prev, the class-A
-// fold's excluded proposer). Round 1A closed that by deriving the head from a parent BLOCK the box
-// holds (NewBox → HeadRef) and binding (b.Prev, b.Height) to it at P1 before any other read; the
-// recompute is reached only through P13 of the ONE composition (ValidateCommitV5 over provenView).
-// A caller that wants a trustless verdict constructs a Box.
-//
-// What stays here, and why: the version gate (a sub-v5 block is Reject, ErrNotWitnessableVersion),
-// the #535 recovery-boundary stall, and the pruned-block refusal — all three of which the door also
-// performs, in the same order, so "the box refuses X" is true of the BOX and not of one of its two
-// exported entries. parentStateRoot is accepted and ignored so the exported signature stays stable;
-// it is NOT a seam for the recompute (M-1A-2, R-SECOND-DOOR-COMMENT).
-//
 // THE RE-ANCHOR CONTRACT — the four clauses of the certification's §2.3, which the box's operator
 // (the S7 driver) is held to. It is the Ethereum weak-subjectivity checkpoint schema, which silt
 // already ships as -ws-checkpoint HEIGHT:HASH (cmd/silt/daemon.go), so this is not a new trust
 // class:
 //
 //  1. At an ambiguous recovery boundary the box's role is COLD AUDITOR: it stalls, unconditionally
-//     and loudly, and never trusts the proposer.
+//     and loudly, and never trusts the proposer. "Unconditionally" is load-bearing in a way the
+//     first cut of D0 got wrong: the posture is keyed on the BOX'S OWN head height, never on the
+//     block's self-declared Height, or a peer could invoke clause 3 on any box with one integer.
 //  2. Recovery is an OPERATOR ACTION, out of band: supply a fresh H+1:HASH pin over the existing
 //     -ws-checkpoint channel.
 //  3. An UNREACHABLE pin is a CRITICAL AND IRRECOVERABLE FAILURE. The box must not silently
@@ -196,30 +178,12 @@ func (c *Chain) recoveryBoundaryDecision(h uint64) (proceed bool, reason error) 
 //
 // The pin binds StateRoot only for a NON-PRUNED block (certification §2.4): Hash() short-circuits
 // on a pruned block and returns a stored token bound to no struct field at all, StateRoot included.
-// That is why the pruned refusal below, and NewBox's refusal of a pruned parent, are part of the
-// same decision and not a separate hardening.
-func (c *Chain) WitnessValidateV5(b Block, parentStateRoot [32]byte) (FloorBoxOutcome, error) {
-	// (1) Version gate — v5-only mode.
-	if b.Version < BlockVersionWitnessable {
-		return Reject, ErrNotWitnessableVersion
-	}
-
-	// (2) #535 recovery-boundary decision, FIRST. At an ambiguous boundary the box stalls loudly
-	// here, never trusting the proposer, never reaching the recompute seam.
-	if proceed, reason := c.recoveryBoundaryDecision(b.Height); !proceed {
-		return IndeterminateTrustlessly, reason
-	}
-
-	// (3) A pruned block's Hash() is a linkage token, not a commitment: it binds no StateRoot, so
-	// nothing downstream could be anchored to it. The box refuses rather than taking a trust floor
-	// from its caller (certification §2.5 — a raised floor makes the box skip proof verification).
-	if b.IsPruned() {
-		return IndeterminateTrustlessly, ErrPrunedBlockUnreproducible
-	}
-
-	// (4) NO recompute here. The recompute runs behind P1 in the ONE composition, reached only
-	// through (*Box).Validate — a function with a bare parent-root parameter has no position
-	// of its own and must not verify anything against it (the doc comment above). Never Accept.
-	_ = parentStateRoot // ignored; kept so the exported signature is stable. Not a seam.
-	return IndeterminateTrustlessly, ErrRecomputeGated
-}
+// That is why (*Box).Validate's pruned refusal, and NewBox's refusal of a pruned parent, are part
+// of the same decision and not a separate hardening.
+//
+// THERE IS ONE DOOR, AND IT IS (*Box).Validate. Chain.WitnessValidateV5 — the pre-structure
+// scaffold that used to sit here, taking a bare parentStateRoot and returning
+// IndeterminateTrustlessly unconditionally — is DELETED (D0, on the blind PE's simplicity ruling).
+// It held no head, so it could not key its recovery posture on anything it owned; keeping it meant
+// shipping two exported box entries with two different recovery semantics, one fixable and one not,
+// on the last floor-box item before the freeze. It had zero non-test callers.

@@ -43,6 +43,29 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   already launches with three or four anchors, checked before the change.
 
 ### Removed
+- **`Chain.WitnessValidateV5`, the pre-structure floor-box scaffold — the box now has exactly ONE
+  door, `(*Box).Validate`.** Deleted on the blind PE's simplicity ruling
+  (`/Users/andrewedmond/Claude/claude/silt-reviews/principle-engineer/RULING-d0-cold-auditor-3539b2a-2026-09-09.md`),
+  as a scope decision taken by the coordinator: it is OFF the ratified owner-call-2 list and is
+  recorded as such rather than folded in silently. The argument is correctness, not tidiness. The
+  scaffold held no head record, so it could not key its `#535` recovery posture on anything it
+  owned — the defect fixed at the door in this same round — which meant keeping it would ship two
+  exported box entries with two different recovery semantics, one fixable and one not, on the last
+  floor-box item before the era-4/v5 freeze. It had zero non-test callers. Full caller sweep, all
+  five in tests: four per-increment "STOP boundary" guards
+  (`TestRecompute{DeMatureSuperQuorum,QualifiedCount,MatureNow,EpochWeightQuorum}_NeverFlipsWitnessValidateAccept`),
+  each of which passed a `Block{Version: 5, Height: 3}` carrying no roots and no signatures to a
+  function that short-circuits before reading anything — so none could have caught a flip in the
+  increment it sat beside — plus one tier in the R0.4b C3 split gate whose only assertion was
+  "did not Accept". All five are subsumed by `TestColdAuditor_NeverAcceptsAnyV5BlockClass`, which
+  holds the same property at the only place a flip can occur, on real node-accepted blocks of every
+  v5 class; each increment file keeps a comment naming where its guard went. The split gate keeps
+  the two tiers that carry its actual invariant (the box/full-node split). The policy tests re-home
+  onto the policy unit itself (`recoveryBoundaryDecision`, `isAmbiguousRecoveryBoundary`, including
+  a five-row table pinning H-1's stricter form) and onto the door
+  (`TestFloorBox_SubV5BlockRejectedAtTheDoor`, which now also drives the above-era version).
+  `exportedBoxDoors` and `exportedPackageSurface` drop their rows: those allow-lists exist to make a
+  NEW door a reviewed event, and enumerating today's surface does not oblige preserving it.
 - **The floor box's recovery knob — `RecoveryDirective`, its `Heights` set and its `LiveFollower`
   opt-in (D0, the cold auditor; owner call 2 of `D-TRUE-UP-CALLS-2026-09-07`, ratified 2026-09-07 on
   direction (a′) of the recovery-boundary certification).** At an ambiguous `#535` recovery
