@@ -116,7 +116,22 @@ type EconomySample struct {
 	// in the other field is a genuine measured zero that COUNTS — which is why "repair
 	// concentrated on one of six capable nodes" still reddens the repair Gini instead of
 	// collapsing to a one-element series. Only the all-zero peer is truly ambiguous, and it
-	// is excluded.
+	// is excluded. Membership is all-or-nothing: a peer cannot be in one series and out of
+	// the other, because escaping either requires reporting zero in both.
+	//
+	// SHOULD IT BE PER-SERIES INSTEAD? No, and the blind PE re-ruling at 81d39c0 measured
+	// the case for asking: a peer reporting ONLY repairs is admitted as reporting and lands
+	// a zero in the SERVE series, so 20 free identities moved a perfectly even network's
+	// serveGini from 0.0000 to 0.8696. Per-series membership — drop any peer with a zero in
+	// THAT series — would close that particular lever, and it would cost the repair alarm
+	// outright: repair concentrated on one of six capable nodes becomes a one-element
+	// series, falls under the floor and renders "sample too small", so the capture case
+	// reads as no-data. That is the worse failure. And it buys nothing real, because a
+	// sybil does not need the repairs-only trick — it can declare any positive servedBytes
+	// and steer the same number just as freely. The lever is not the discriminator, it is
+	// that every term is self-reported. Which is why both figures are disclosed as
+	// Sybil-settable IN EITHER DIRECTION on the wire, and may never become an input to
+	// anything (research certification §3, standing constraint).
 	//
 	// WHY THE SUBSET (advisory §2.1, and it is a correction to this track's own design
 	// doc). Under D-TIERING transient ponies serve and relay but do not do durability

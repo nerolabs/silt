@@ -14,6 +14,11 @@ package node
 // "bounded by the poll rate" non-bound D-STATUS-SNAPSHOT-INTERVAL was ratified to close.
 
 import (
+	"io/fs"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/nerolabs/silt/adapters/memstore"
@@ -117,6 +122,53 @@ func TestR22M3SelfsWorkTermsStayOutOfTheSampleOnTheWithholdingPosture(t *testing
 	}
 }
 
+// TestR22RepairsOnlySybilsSteerTheServeGiniUpwards encodes the blind PE's re-ruling
+// measurement (register row R-C3-SERVEGINI-STEERABLE) as a KNOWN, DISCLOSED behaviour rather
+// than leaving it to be rediscovered as a surprise.
+//
+// The pair discriminator admits a peer that reports ONLY repairs, and that peer lands a ZERO
+// in the serve series. So free identities move the serve figure UP, not only down — which
+// refuted the sentence the scope string used to carry ("excluding UNDERSTATES inequality,
+// which is the safe direction"). That sentence is now corrected on the wire, and this test is
+// what keeps the correction honest: if the number ever stops being steerable, the caveat is
+// overclaiming and should be re-read; if it stays steerable, the caveat must stay.
+//
+// IT IS NOT A REGRESSION and the fix is not to change the discriminator. Before M-2 the same
+// twenty sybils reported 0,0 and achieved the same reading. A sybil does not need the
+// repairs-only trick at all — it can declare any positive servedBytes. The lever is that
+// every term is self-reported, which is why both figures are labelled Sybil-settable in
+// either direction and may never become an input to anything (research certification §3).
+// Per-series membership would close this particular lever and would cost the repair alarm
+// outright — see EconomySample's doc comment for that trade.
+func TestR22RepairsOnlySybilsSteerTheServeGiniUpwards(t *testing.T) {
+	honest := func() *Node {
+		n := r22Node(t)
+		for i := 0; i < 3; i++ {
+			gossip(n, i, 32<<30, 1_000_000, 1)
+		}
+		return n
+	}
+	before := honest().EconomySample()
+	if before.ServeGini != 0 || before.ServeSampleSize != 3 {
+		t.Fatalf("baseline serveGini %.4f over %d — want 0 over 3 (three identical reporters)", before.ServeGini, before.ServeSampleSize)
+	}
+
+	steered := honest()
+	const sybils = 20
+	for i := 0; i < sybils; i++ {
+		gossip(steered, 1000+i, 32<<30, 0, 1) // repairs only: REPORTING, zero in the serve series
+	}
+	after := steered.EconomySample()
+	if after.ServeSampleSize != 3+sybils {
+		t.Fatalf("the repairs-only peers did not enter the serve series (%d); this test measures what happens when they do", after.ServeSampleSize)
+	}
+	if after.ServeGini <= before.ServeGini {
+		t.Fatalf("serveGini did not move (%.4f -> %.4f). The scope string on the wire claims free identities can drive this number UP as well as down; if that is no longer true the caveat is overclaiming and must be re-read", before.ServeGini, after.ServeGini)
+	}
+	t.Logf("R-C3-SERVEGINI-STEERABLE: %d repairs-only sybils moved serveGini %.4f -> %.4f over a perfectly even network. Disclosed on the wire, never an input to anything.",
+		sybils, before.ServeGini, after.ServeGini)
+}
+
 // TestR22GossipSampleIsExactlyGiniOverSampledValues is what lets cmd/silt's reconstruction
 // gate build its sample BY HAND and still be a gate about the real thing: it pins that
 // EconomySample publishes exactly credit.Gini over the values it sampled, with no smoothing,
@@ -208,5 +260,92 @@ func TestR22M2ANonReportingPeerIsExcludedNotCountedAsZero(t *testing.T) {
 	// Gini of 1.0 over five silent nodes is not.
 	if got.ServeSampleSize >= 3 {
 		t.Fatalf("a one-reporter series (%d) is at or above the consumer's floor; it must fall below it and render as a named absence", got.ServeSampleSize)
+	}
+}
+
+// TestR22TheWorkStampHasExactlyOneProductionWriter closes register row
+// R-C3-WIRE-SINGLE-WRITER.
+//
+// The M-1 gate is a COMPOSITION across two packages: adapters/tcpnet proves a Message with
+// both work fields at zero emits neither CBOR key, and TestR22M1... above proves send stamps
+// zero on the withholding posture. The joint that makes the composition sound is that NOTHING
+// ELSE writes the field — a second writer, or a toWire that derived the value from somewhere
+// other than the Message, would break the composition silently, with both halves still green.
+// Nothing asserted that, so this does.
+//
+// RUNTIME GATE: TestR22M1WorkCountersAreGossipedOnlyWhenTheOperatorPublishesThem observes the
+// behaviour (the stamped value under each posture); this gate only pins that there is one
+// place where the behaviour can be changed.
+func TestR22TheWorkStampHasExactlyOneProductionWriter(t *testing.T) {
+	root := filepath.Join("..", "..")
+	assign := regexp.MustCompile(`(?m)^[^/]*\b\w+\.(ServedBytes|RepairsDone)\s*(,[^=]*)?=[^=]`)
+	writers := map[string][]string{}
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			switch d.Name() {
+			case ".git", "archive", "vendor", "testdata", "website", "docs":
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		for _, line := range strings.Split(string(b), "\n") {
+			if assign.MatchString(line) {
+				rel, _ := filepath.Rel(root, path)
+				writers[rel] = append(writers[rel], strings.TrimSpace(line))
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// THE AUDITED SET, enumerated as exact source lines rather than as counts per file.
+	// Counting per file would let one assignment be swapped for another silently, and the
+	// receiver's NAME is not what makes an assignment safe — what it is assigning to is.
+	// Each line below is here because someone read it against the posture guard.
+	audited := map[string]string{
+		// The stamp itself, and the only place the wire value is produced. Guarded by
+		// Config.PublishWorkCounters (M-1).
+		"msg.ServedBytes, msg.RepairsDone = n.selfWork()": "core/node/node.go",
+		// The CBOR boundary, both directions. Pure copies; they add no source of value.
+		"w.ServedBytes, w.RepairsDone = m.ServedBytes, m.RepairsDone": "adapters/tcpnet/wire.go",
+		"m.ServedBytes, m.RepairsDone = w.ServedBytes, w.RepairsDone": "adapters/tcpnet/wire.go",
+		// EconomySelf's LOCAL-EXACT read: a different object entirely — this node's own
+		// ledger counters for its own /api/economy/self document, never the wire. Listed
+		// so the gate's set is the whole truth rather than a filtered view.
+		"es.ServedBytes = r.ServedBytes(n.id)": "core/node/node.go",
+		"es.RepairsDone = r.RepairsDone(n.id)": "core/node/node.go",
+	}
+	for file, lines := range writers {
+		for _, line := range lines {
+			want, ok := audited[line]
+			if !ok {
+				t.Fatalf("SOURCE GATE: %s assigns ServedBytes/RepairsDone on a line that is not in the audited set:\n\t%s\nThe M-1 privacy composition (core/node stamps zero on the withholding posture; adapters/tcpnet emits no CBOR key for a zero) rests on there being ONE place the wire value is produced — a second producer breaks it with BOTH halves still green. Read the new line against Config.PublishWorkCounters, then add it here", file, line)
+			}
+			if want != file {
+				t.Fatalf("SOURCE GATE: the audited line\n\t%s\nmoved from %s to %s. Re-read it against the posture guard in its new home", line, want, file)
+			}
+		}
+	}
+	for line, file := range audited {
+		found := false
+		for _, got := range writers[file] {
+			if got == line {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("SOURCE GATE: the audited assignment\n\t%s\nis gone from %s. Either the stamp or a wire mapping was removed or rewritten, so this gate is no longer watching what its name claims", line, file)
+		}
 	}
 }

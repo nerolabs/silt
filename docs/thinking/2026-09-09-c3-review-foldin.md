@@ -183,7 +183,93 @@ consumes them today — the Researcher re-grepped and confirmed — and the stan
 is that a future monitor or C6 canary reading either Gini as a health signal is an `m0.md` §7
 seam-1 regression and must be blocked at review.
 
-## 9. What is still owed before this merges
+## 9. The re-ruling round (`81d39c0` → `2fbd7...`): the gate that lied about itself
+
+The blind PE returned **MERGEABLE-WITH-ONE-CHANGE** and the one change was mine, not the
+product's: **the reconstruction gate made a claim about its own coverage that it did not
+hold.** Its docstring said "a future edit that republishes the same information under a
+different name must redden here"; `solveFromDocument` decoded exactly two keys by NAME. The PE
+republished the identical Gini on the same unauthenticated document under `workConcentration`,
+changed nothing else, solved the secret exactly — and the suite stayed green while the
+document still said `countersWithheld:true`.
+
+That is the **third instance in this repo of a privacy gate keyed on a field name or a fixture
+value rather than on the property**, and it is worth stating as a rule rather than a fix:
+**a gate against a RECONSTRUCTION cannot read key names.** The quantity is not in a field; it
+is in the numbers.
+
+**The solve is now value-shaped.** It walks every numeric leaf of the served JSON at any depth
+and tries the recovery against each, reading no key at all — not even the sample size, because
+the ADVERSARY KNOWS n: it planted n−1 of the terms itself. A rename, a re-nesting, an added
+sibling, or a move to another route all fail to evade it. Three evasions are now encoded as
+their own arms rather than trusted to prose:
+
+- **the rename** (the shape that slipped — `workConcentration` on the withheld document);
+- **self-exclusion** (the H2 measurement from the previous round, promoted from a hand-run
+  revert to a permanent arm, so "dropping self is not a fix" survives without anyone re-running
+  it);
+- **the whole GET surface**, since a value can move to another route as easily as another key —
+  and the two existing whole-surface scans cannot see this one, because they match integer
+  equality against fixture constants and a Gini is a fraction (finding N2, its third instance).
+
+I also wrote down what that last arm does **not** cover, because overclaiming coverage is the
+mistake being corrected: the fixture's node has an empty peer sample (memstore is not a
+`CapacityReporter` and `peerCaps` is package-private), so the two gossip routes publish no Gini
+there whatever the posture, and that walk does not redden under the `gossipWithheld` ablation.
+Its sibling does, on a stuffed sample. The walk buys breadth, not depth.
+
+### 9.1 `R-C3-KNOWNPEERS-SIZE-OPEN` — pinned, not withheld
+
+The withhold drops `sample.size` calling it "half of the equation" — and that half is already
+open two routes over, as `/api/status`'s `network.KnownPeers`. I pinned it rather than
+withholding it, on the shape of the attack rather than the sensitivity of the number: size
+alone is not an equation; **the only party who could use n already knows it**, having supplied
+n−1 of the terms; and `/api/status` publishes a peer count openly by design already, so a
+second withhold beside it would be a withhold in name only. The honest invariant is the PAIR,
+so the gate asserts both halves — the size may stay open exactly as long as no Gini does — and
+reddens if a withheld document ever regains its sample block.
+
+### 9.2 `R-C3-SERVEGINI-STEERABLE` — the sentence was wrong; the discriminator is not
+
+The scope string claimed excluding a peer "UNDERSTATES inequality, which is the safe direction
+for a capture alarm". True of the exclusion rule alone, **false of the composite under an
+adversary**: a peer reporting ONLY repairs is admitted as reporting and lands a zero in the
+SERVE series, so 20 free identities moved a perfectly even network from `0.0000` to `0.8696`.
+Reproduced here exactly, and encoded as a test so the disclosure and the behaviour cannot
+drift apart.
+
+**Should the discriminator be per-series? No.** Per-series membership would close that one
+lever and would cost the repair alarm outright — repair concentrated on one of six capable
+nodes becomes a one-element series, falls under the floor, and renders "sample too small", so
+the capture case reads as no-data. That is the worse failure. And it buys nothing real: a
+sybil does not need the repairs-only trick, it can declare any positive `servedBytes` and steer
+the same number just as freely. **The lever is not the discriminator, it is that every term is
+self-reported** — which is why both figures are now labelled Sybil-settable IN EITHER DIRECTION
+and may never become an input to anything.
+
+### 9.3 `R-C3-WIRE-SINGLE-WRITER` — taken, because the composition rests on it
+
+The M-1 gate is a composition across two packages, and its joint is that nothing else produces
+the wire value. Nothing asserted that, so a future `toWire` deriving the field from elsewhere
+would break the composition with **both halves still green**. The new source gate enumerates
+every production assignment to either field as an EXACT SOURCE LINE — counts per file would let
+one assignment be swapped for another silently, and the receiver's name is not what makes an
+assignment safe. The two `EconomySelf` local-exact reads are listed too, so the set is the
+whole truth rather than a filtered view.
+
+`R-C3-EPHEMERAL-BEACON` needs no code: it is already named in `ports/net.go` and carried to the
+R2.4 flip.
+
+### 9.4 Reverts run this round
+
+| # | revert | reddens |
+|---|---|---|
+| K1 | the PE's rename: republish the Gini as `workConcentration` on the withheld document | `recovered 987654321 from the UNAUTHENTICATED … document` |
+| K2 | the withheld document keeps its `sample` block | `carries "sample" while the sample size stays open on /api/status` |
+| K3 | a second production writer of `msg.ServedBytes` | `assigns … on a line that is not in the audited set` |
+| H1 | `gossipWithheld` → false (re-run) | same recovery message |
+
+## 10. What is still owed before this merges
 
 The owner's ratification of the sentence in §7 of the research certification: that
 `D-UI-PRIVACY-FLAG` is extended from a reader containment to a **disclosure** containment, so
