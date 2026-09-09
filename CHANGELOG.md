@@ -59,7 +59,12 @@ This log is published at [silthq.com/changelog](https://silthq.com/changelog.htm
   measured, silencing the five horses that serve 80 % of the bytes — 0.49 % of the sample — turned a measured EDGE-MINORITY of
   0.1998 into a PASS of 0.9940 while that fraction stayed at 0.9951. The gate is now an interval, `φ·s ≤ s_true ≤ s/φ` under a
   named assumption, with three exhaustive verdicts, and the coverage floor falls out as a theorem (a PASS needs `φ ≥ F`, endpoints
-  run at 4/5/6 of ten horses). And a per-tier REPORTERS floor, because a tier share over one reporter IS that peer's counter:
+  run at 4/5/6 of ten horses). **That interval PRICES the attack rather than closing it, and the price is one node** — its purchase
+  price is the assumption that within a tier silence is uncorrelated with work rate, and a deliberate silencer violates that by
+  construction. Measured and driven: the attack is refused by only 0.0030, and ONE decoy the same operator runs in its own band
+  raises `φ` from 0.5000 to 0.5455 while dragging the conditioned floor from 0.5000 to 0.4969, so the gate PASSES a network whose
+  edge tier truly serves 0.1997. The gate is named for what it proves — `..._TheConcentratingTierMustBuyDecoysToBuyAPass` — and
+  carries the `d = 0/1/2` table as an asserted arm, because a stated limit that nothing executes decays. And a per-tier REPORTERS floor, because a tier share over one reporter IS that peer's counter:
   measured, a document whose `serveGini` was suppressed for being over two peers published a tier share of 0.230769231 that
   inverts in ONE DIVISION to the withheld counter, 300. The floor is `minGossipSample` unchanged, reaching a population it had not
   been applied to; it buys parity with the Gini beside it, not closure. **The 0.20 repair margin is WITHDRAWN** as an additive

@@ -57,7 +57,7 @@ const (
 	// The struck claim was that with the literal 0.80 the fixed-point row would be "decided
 	// by a rounding mode". MEASURED, and two blind seats measured it independently before
 	// this seat re-ran it: fl(0.8) = 0x3fe999999999999a, the exact product 0.625*fl(0.8) is
-	// 0.5 + 2^-55 -- a QUARTER ulp above 0.5, where half an ulp is 2^-53 -- so it rounds to
+	// 0.5 + 2^-55 -- a QUARTER ulp above 0.5, since ulp(0.5) upward is 2^-53 -- so it rounds to
 	// exactly 0.5 under round-to-nearest, which Go mandates and exposes no mode for. Both
 	// forms give bits 0x3fe0000000000000 at k = 10, substituting the literal leaves every
 	// arm in this file GREEN, and the assertion that claimed to drive it drove nothing.
@@ -170,11 +170,18 @@ func ptExpectedPonyShareDiskWeighted(nw c3NetworkWire) float64 {
 // THAN A NEW PARAMETER. Its first form was the SAMPLE-WIDE reporting fraction against
 // c3ServeReportingMin (0.85), and the Economist measured that structurally incapable of the
 // job it was standing in for: see
-// TestGateC3_3g_TheConcentratingTierCannotBuyAPassBySayingNothing, where five nodes of 1,011
+// TestGateC3_3g_TheConcentratingTierMustBuyDecoysToBuyAPass, where five nodes of 1,011
 // -- 0.49 % of the sample -- turn a measured EDGE-MINORITY of 0.1998 into a PASS of 0.9940
 // while the sample-wide fraction stays at 0.9951. Under the ratified 10000:100:1 target the
 // non-edge tiers ARE the sample's one percent, so a COUNT-WEIGHTED coverage measure is blind
 // to exactly the tiers whose silence matters -- and the target ratio is what makes it so.
+//
+// WHAT THE REPLACEMENT BUYS, STATED HERE BECAUSE THIS IS WHERE THE CLAUSE LIVES: it PRICES
+// that attack, it does not close it. The bound's purchase price is the assumption below, and
+// a deliberate silencer violates that assumption by construction. MEASURED: the d = 0 arm
+// refuses by 0.0030, and ONE decoy the adversary runs in its own band raises phi past the
+// floor while also dragging the floor down. The price is one node per silenced band, and the
+// same gate drives it.
 //
 // WHY A TIER SHARE NEEDS AN INTERVAL WHERE THE GINI GETS AN IDENTITY. For the Gini,
 // silence-means-idle yields the two-sided identity G_adj = (1-c) + c*G_pub. For a tier SHARE
@@ -349,7 +356,7 @@ func TestGateC3_3_EdgeMajorityOfServeWorkIsTheTenetNotTheNodeShare(t *testing.T)
 		t.Fatalf("the two arms must share a floor (%.6f vs %.6f) for the comparison to isolate the WORK: they were built with the same mix on purpose", rC.Floor, rH.Floor)
 	}
 	if rC.WorstTierCoverage != 1 {
-		t.Fatalf("CONCENTRATED ARM: worst-tier coverage %.4f, want 1.0000 — a graded arm short of full coverage is a fixture defect, and the silence case has its own gate (TestGateC3_3g_TheConcentratingTierCannotBuyAPassBySayingNothing)", rC.WorstTierCoverage)
+		t.Fatalf("CONCENTRATED ARM: worst-tier coverage %.4f, want 1.0000 — a graded arm short of full coverage is a fixture defect, and the silence case has its own gate (TestGateC3_3g_TheConcentratingTierMustBuyDecoysToBuyAPass)", rC.WorstTierCoverage)
 	}
 	// The fixture's OWN assigned share: 1000 ponies x 200 units of
 	// 5*160000 + 1000*200 + 5*200 + 200 = 1,001,200.
@@ -537,7 +544,7 @@ func TestGateC3_3a_ATierWithNoReportingPeerIsANamedAbsenceNeverAZero(t *testing.
 // share is not a bound on the truth in general. The coverage clause is what stands in for
 // the bound the Gini gets from its identity.
 //
-// CONTROLLED REVERT (G-PT-10, shared with TestGateC3_3f_ThePerTierCoverageFloorIsATheoremOfTheTenetFloor and TestGateC3_3g_TheConcentratingTierCannotBuyAPassBySayingNothing): gate the raw
+// CONTROLLED REVERT (G-PT-10, shared with TestGateC3_3f_ThePerTierCoverageFloorIsATheoremOfTheTenetFloor and TestGateC3_3g_TheConcentratingTierMustBuyDecoysToBuyAPass): gate the raw
 // observation instead of the interval's lower bound. MEASURED: arm B goes to PASS at 0.8449.
 //
 // CONTROLLED REVERT (G-PT-3): scale the pony numerator by population/reporting — the obvious
@@ -1195,16 +1202,33 @@ func TestGateC3_3e_CapableSizeClosesTheCrossDocumentRepairCoverageJoin(t *testin
 // ---- the two silence holes, and the two floors that close them -------------------------
 
 // ptConcentratedPeersTop5Silent is ptConcentratedPeers with the FIVE HORSES DOING THE
-// CONCENTRATING withholding their counters. Nothing else changes: same pledges, same mix,
-// same everything the composition answer sees.
-func ptConcentratedPeersTop5Silent() []c3Peer {
+// CONCENTRATING withholding their counters, plus `decoys` extra reporting horses the same
+// operator runs IN ITS OWN BAND. Nothing else changes: same pledges from the concentrators,
+// same true edge share, same everything the composition answer sees.
+//
+// THE DECOYS ARE THE PRICE OF DEFEATING THE COVERAGE FLOOR, and they are why this fixture is
+// parameterised rather than fixed. phi is a COUNT ratio inside a band the adversary already
+// populates, so adding a reporting node in that band raises it -- and the decoy also enlarges
+// the tier, which drags the mix-conditioned floor DOWN. The attack is helped twice.
+func ptConcentratedPeersTop5Silent(decoys int) []c3Peer {
 	const ponies = 1000
-	return []c3Peer{
+	peers := []c3Peer{
 		{capTotal: c3HorseCap, served: 0, repairs: 0, n: 5}, // the concentrating horses WITHHOLD
 		{capTotal: c3PonyCap, served: (200_000 / ponies) * c3Unit, repairs: 0, n: ponies},
 		{capTotal: c3HorseCap, served: (200_000 / ponies) * c3Unit, repairs: 10, n: 5},
 		{capTotal: c3ArchivalCap, served: (200_000 / ponies) * c3Unit, repairs: 10, n: 1},
 	}
+	if decoys > 0 {
+		peers = append(peers, c3Peer{capTotal: c3HorseCap, served: (200_000 / ponies) * c3Unit, repairs: 10, n: decoys})
+	}
+	return peers
+}
+
+// ptTrueEdgeShare is the fixture's OWN assignment: what the edge tier really serves, decoys
+// and silence included. Computed from the fixture's definition, never from a product figure —
+// it is the ground truth the published number is compared against.
+func ptTrueEdgeShare(decoys int) float64 {
+	return 200_000.0 / float64(5*160_000+200_000+5*200+200+decoys*200)
 }
 
 // TestGateC3_3f_ThePerTierCoverageFloorIsATheoremOfTheTenetFloor pins the coverage floor the
@@ -1233,7 +1257,7 @@ func ptConcentratedPeersTop5Silent() []c3Peer {
 //	5   0.5    0.5                 0.50   PASS          <- the boundary; 5/10 is exact in binary
 //	6   0.6    0.6                 0.50   PASS
 //
-// CONTROLLED REVERT (G-PT-10, shared with TestGateC3_3g_TheConcentratingTierCannotBuyAPassBySayingNothing and TestGateC3_3b_EdgeSilenceDepressesTheEdgesOwnShare): change the PASS
+// CONTROLLED REVERT (G-PT-10, shared with TestGateC3_3g_TheConcentratingTierMustBuyDecoysToBuyAPass and TestGateC3_3b_EdgeSilenceDepressesTheEdgesOwnShare): change the PASS
 // test in ptEdgeMajorityGate from `r.Lower >= r.Floor` to `r.Observed >= r.Floor`, dropping
 // the interval and gating the raw observation. MEASURED, the m = 4 row then PASSES.
 func TestGateC3_3f_ThePerTierCoverageFloorIsATheoremOfTheTenetFloor(t *testing.T) {
@@ -1281,13 +1305,14 @@ func TestGateC3_3f_ThePerTierCoverageFloorIsATheoremOfTheTenetFloor(t *testing.T
 	}
 }
 
-// TestGateC3_3g_TheConcentratingTierCannotBuyAPassBySayingNothing is the Economist's
-// addendum Part 1 §4 arm, encoded permanently.
+// TestGateC3_3g_TheConcentratingTierMustBuyDecoysToBuyAPass encodes the Economist's addendum
+// Part 1 §4 attack permanently, AND the price of defeating the fix — because the fix does not
+// close the attack, it prices it, and an earlier name for this gate ("CannotBuyAPass")
+// asserted a universal that one node defeats.
 //
-// THE ATTACK COSTS NOTHING: the party doing the concentrating simply stops reporting, which
-// is the compiled default (D-WORK-VISIBILITY). No Sybils, no forged counters, five nodes.
-//
-// MEASURED, BEFORE THE FIX, on this exact fixture pair:
+// THE ATTACK COSTS NOTHING AT FIRST. The party doing the concentrating simply stops
+// reporting, which is the compiled default (D-WORK-VISIBILITY). No Sybils, no forged
+// counters, five nodes. MEASURED, before the per-tier coverage clause existed:
 //
 //	all report:        EDGE-MINORITY  edge share 0.1998  sample-wide coverage 1.0000
 //	top-5 horses mute: PASS           edge share 0.9940  sample-wide coverage 0.9951
@@ -1298,20 +1323,81 @@ func TestGateC3_3f_ThePerTierCoverageFloorIsATheoremOfTheTenetFloor(t *testing.T
 // whose silence matters are structurally invisible to a count-weighted measure, and the
 // target ratio is what makes it so.
 //
-// CONTROLLED REVERT (G-PT-10): see TestGateC3_3f_ThePerTierCoverageFloorIsATheoremOfTheTenetFloor.
-func TestGateC3_3g_TheConcentratingTierCannotBuyAPassBySayingNothing(t *testing.T) {
+// AND HERE IS WHAT THE INTERVAL BUYS, AND WHAT IT COSTS THE ADVERSARY TO BUY BACK. The bound
+// phi*s_obs <= s_true <= s_obs/phi is sound and its floor is a theorem, but its PURCHASE
+// PRICE is the named assumption that within a tier silence is uncorrelated with work rate —
+// and this attack is DEFINED by silencing the highest-work members of a tier, so it violates
+// the assumption by construction. phi is a COUNT ratio inside a band the adversary already
+// populates. MEASURED on this fixture family, and the arm below drives it:
+//
+//	decoys=0  horses=10 ( 5 reporting)  phi=0.5000  interval [0.4970, 1.9881]  floor=0.5000 -> INDETERMINATE  (TRUE 0.1998)
+//	decoys=1  horses=11 ( 6 reporting)  phi=0.5455  interval [0.5417, 1.8206]  floor=0.4969 -> PASS           (TRUE 0.1997)
+//	decoys=2  horses=12 ( 7 reporting)  phi=0.5833  interval [0.5787, 1.7007]  floor=0.4938 -> PASS           (TRUE 0.1997)
+//	decoys=5  horses=15 (10 reporting)  phi=0.6667  interval [0.6594, 1.4837]  floor=0.4848 -> PASS           (TRUE 0.1996)
+//
+// ONE NODE. The d = 0 arm refuses by 0.0030 (lower bound 0.4970 against a floor of 0.5000),
+// and a single decoy in the adversary's own band raises phi past the floor — while ALSO
+// enlarging the tier, which drags the mix-conditioned floor down from 0.5000 to 0.4969. The
+// attack is helped twice, and the true edge share never moves off 0.1997.
+//
+// SO THE HONEST STATEMENT IS "PRICED, NOT CLOSED", the same shape as the reporters floor's
+// "parity, not closure" and the four limits on ptWorstRepairExcess. The interval defends
+// against INNOCENT under-reporting, which is the common case, and against a deliberate
+// silencer it costs one node per silenced band. That is a real price and it is not zero — the
+// adversary must now run and maintain nodes in the band it is hiding in, and every one of them
+// is a node it must keep reporting plausibly. It is not a closure and this gate does not
+// claim one.
+//
+// CONTROLLED REVERT (G-PT-10): see
+// TestGateC3_3f_ThePerTierCoverageFloorIsATheoremOfTheTenetFloor.
+func TestGateC3_3g_TheConcentratingTierMustBuyDecoysToBuyAPass(t *testing.T) {
 	concC, nwC := c3Fixture(t, 52, ptConcentratedPeers())
 	rC := ptEdgeMajorityGate(concC, nwC)
-	concS, nwS := c3Fixture(t, 53, ptConcentratedPeersTop5Silent())
-	rS := ptEdgeMajorityGate(concS, nwS)
-	t.Logf("all report:        %s  edge share %.4f  worst-tier coverage %.4f on %q", rC.Verdict, rC.Observed, rC.WorstTierCoverage, rC.WorstTier)
-	t.Logf("top-5 horses mute: %s  edge share %.4f  worst-tier coverage %.4f on %q  interval [%.4f, %.4f] against floor %.4f",
-		rS.Verdict, rS.Observed, rS.WorstTierCoverage, rS.WorstTier, rS.Lower, rS.Upper, rS.Floor)
 	if rC.Verdict != ptEdgeMinority {
 		t.Fatalf("the control arm reads %s; it must be EDGE-MINORITY or this gate has no subject", rC.Verdict)
 	}
+
+	// THE ATTACK AND ITS PRICE, driven together. d = 0 is what the coverage clause catches;
+	// d = 1 is what it does not, and recording the second is the whole reason this gate was
+	// renamed. Both are asserted, so if either verdict ever moves the limit must be re-priced
+	// rather than silently re-described.
+	type arm struct {
+		decoys int
+		want   ptVerdict
+	}
+	readings := map[int]ptReading{}
+	for _, a := range []arm{{0, ptIndeterminate}, {1, ptPass}, {2, ptPass}} {
+		conc, nw := c3Fixture(t, int64(52+10*a.decoys+1), ptConcentratedPeersTop5Silent(a.decoys))
+		r := ptEdgeMajorityGate(conc, nw)
+		readings[a.decoys] = r
+		trueShare := ptTrueEdgeShare(a.decoys)
+		t.Logf("decoys=%d  phi=%.4f  interval [%.4f, %.4f]  floor=%.4f -> %-13s (published %.4f, TRUE %.4f)",
+			a.decoys, r.WorstTierCoverage, r.Lower, r.Upper, r.Floor, r.Verdict, r.Observed, trueShare)
+		if trueShare >= tarEdgeMajorityFloor {
+			t.Fatalf("decoys=%d: the TRUE edge share is %.4f, which is not a minority — the fixture stopped being an attack", a.decoys, trueShare)
+		}
+		if r.Verdict != a.want {
+			t.Fatalf("decoys=%d reads %s at a published %.4f against a TRUE %.4f (phi %.4f, interval [%.4f, %.4f], floor %.4f), want %s.\n  d=0 is what the per-tier coverage clause CATCHES; d=1 is the price of defeating it. If either has moved, the limit recorded in this gate's doc block must be RE-PRICED, not re-worded.",
+				a.decoys, r.Verdict, r.Observed, trueShare, r.WorstTierCoverage, r.Lower, r.Upper, r.Floor, a.want)
+		}
+	}
+
+	// The margin the attack has to cross, stated as a number so nobody has to re-derive how
+	// close d = 0 was. 0.4970 against 0.5000.
+	r0, r1 := readings[0], readings[1]
+	if margin := r0.Floor - r0.Lower; margin <= 0 || margin > 0.01 {
+		t.Fatalf("the d=0 arm refuses by %.4f. This gate's doc block records 0.0030, and the whole reason one decoy suffices is that the margin is thin; if it has moved, re-measure the price before trusting the recorded table.", margin)
+	} else {
+		t.Logf("PRICED, NOT CLOSED: d=0 refuses by only %.4f (lower %.4f against floor %.4f). ONE decoy in the adversary's own band raises phi %.4f -> %.4f AND drags the floor %.4f -> %.4f, and the gate passes a network whose edge tier truly serves %.4f.",
+			margin, r0.Lower, r0.Floor, r0.WorstTierCoverage, r1.WorstTierCoverage, r0.Floor, r1.Floor, ptTrueEdgeShare(1))
+	}
+	if !(r1.Floor < r0.Floor) {
+		t.Fatalf("the decoy did NOT drag the conditioned floor down (%.6f then %.6f). The doc block says the attack is helped twice; if only one of the two effects is live, say so.", r0.Floor, r1.Floor)
+	}
+
 	// The sample-wide fraction the first version of this clause used. Asserted so the reason
 	// the clause was replaced cannot rot into a claim nobody re-runs.
+	concS, _ := c3Fixture(t, 53, ptConcentratedPeersTop5Silent(0))
 	if concS.ServeGini == nil || concS.Sample == nil {
 		t.Fatalf("the silent arm publishes no serve series; the sample-wide comparison below has no terms")
 	}
@@ -1320,10 +1406,6 @@ func TestGateC3_3g_TheConcentratingTierCannotBuyAPassBySayingNothing(t *testing.
 	} else {
 		t.Logf("the sample-wide fraction the old clause read is %.4f, clear of its %.2f floor: 5 silent nodes of %d is %.2f %% of the sample, and a count-weighted measure cannot see it",
 			wide, c3ServeReportingMin, concS.Sample.Size, 100*5.0/float64(concS.Sample.Size))
-	}
-	if rS.Verdict != ptIndeterminate {
-		t.Fatalf("silencing FIVE nodes of %d turned a measured EDGE-MINORITY of %.4f into %s at %.4f. The party doing the concentrating bought a clean bill by saying nothing, at zero cost and with no Sybils.",
-			concS.Sample.Size, rC.Observed, rS.Verdict, rS.Observed)
 	}
 }
 
@@ -1349,11 +1431,14 @@ func TestGateC3_3g_TheConcentratingTierCannotBuyAPassBySayingNothing(t *testing.
 // Strictly easier than the two-term Gini inversion that floor exists to stop, reaching the
 // same reader it still defends.
 //
-// THE FLOOR IS DERIVED, AND IT IS minGossipSample UNCHANGED. That constant's derivation is
-// about how many terms a reader does not already know: at n = 1 the aggregate IS the value,
-// at n = 2 it resolves to two named peers, 3 is the smallest where neither holds. Applied to
-// a tier's REPORTER count the same three cases give the same answer — the same constant
-// reaching a population it had not been applied to, not a second parameter.
+// THE FLOOR IS minGossipSample UNCHANGED, AND THE REASON IS PARITY RATHER THAN INFORMATION.
+// That constant's own derivation is exact for a GINI: at n = 1 the aggregate is the value, at
+// n = 2 it inverts to two named peers' ratio, and 3 is the smallest sample where neither
+// holds. It does NOT carry over exactly to a share -- R_t / SIGMA R resolves to a named peer
+// at ANY n once the reader supplies the other n-1 terms, which is the whole threat model. So
+// the share does not get a NEW answer from that derivation; it gets the same constant because
+// the requirement is that this figure not be MORE exposed than the aggregate published two
+// inches from it. Parity is the argument, and the next paragraph is what parity costs.
 //
 // AND IT BUYS PARITY, NOT CLOSURE: at three reporters an adversary holding two sybils IN THAT
 // BAND still recovers the third, exactly as four sybils recover the Gini's secret

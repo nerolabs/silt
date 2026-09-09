@@ -131,16 +131,25 @@ k = 11 row).
 The disagreement is also driven through the real routes: an honest 554-node disk-weighted sample
 publishes `0.499089` — below the bare floor, above the conditioned floor `0.3993`.
 
-**Four sentences on this branch were false, every one of them found by EXECUTING the claim, and three of
-the four were mine.** The advisory's `n ≈ 560`; my ordering claim in §1; my three revert descriptions
-naming a reddening point they had not been run at; and my `4/5` rounding-mode rationale, which two blind
-seats caught before I re-ran it. Every gate was green through every draft, which is the signal rather
-than the exception: **a gate checks the code and nothing checks the sentence.**
+**Six sentences on this branch were false, every one found by EXECUTING the claim, five of them mine.**
+The advisory's `n ≈ 560`; my ordering claim in §1; my three revert descriptions naming a reddening point
+they had not been run at; my `4/5` rounding-mode rationale; and the universal in §4a — *"cannot buy a
+pass"* — which one decoy node defeats. Every gate was green through every draft, which is the signal
+rather than the exception: **a gate checks the code and nothing checks the sentence.**
 
-The fourth is the instructive one, because I had already written that rule into this document and then
-shipped another instance of it three sections later. The defence is not care, it is a habit: if a sentence
-names a number, a boundary, or a reddening point, run it before publishing it — and if an ablation comes
-back GREEN, the sentence is wrong, not the ablation.
+**And the pattern is now fully general, which it was not after four.** Every one of the six was a claim
+about what a mechanism *defeats* or *covers*, and every one fell to someone RUNNING THE ADVERSARY rather
+than reading the argument. So:
+
+> A bound is a theorem and can be proved on paper. **"This defeats X" is a MEASUREMENT against X, and you
+> do not have it until you have run X.**
+
+The `4/5` and the `cannot buy a pass` sentences are the two worth dwelling on, because in both cases the
+underlying mathematics was sound and independently re-derived by two other seats — the interval bound
+holds, the fixed point is exact — and the false part was the sentence about what that mathematics *bought*.
+Correct code and a correct derivation are no protection at all against an overclaimed consequence. The
+defence is the habit: if a sentence names a number, a boundary, a reddening point, or an adversary, run it
+before publishing it. And if an ablation comes back GREEN, the sentence is wrong, not the ablation.
 
 ### 3. Which direction the figure errs, derived rather than asserted
 
@@ -163,7 +172,7 @@ the round. See §4.
 
 ## 4. Two silence floors, both derived, and neither implies the other
 
-### 4a. Per-tier COVERAGE — the concentrating tier cannot buy a pass by saying nothing
+### 4a. Per-tier COVERAGE — the concentrating tier must buy decoys to buy a pass
 
 `[MEASURED]` on this file's own `ptConcentratedPeers()` fixture (1000 : 10 : 1, top-5 horses serve 80 %):
 
@@ -196,6 +205,36 @@ reporting horses, where the boundary sits at `φ = F = 0.50` exactly.
 The sample-wide clause is **removed rather than kept as a belt**: it is dominated, and where the two
 disagree it is wrong — every tier at coverage 0.6 with `s_obs = 0.95` gives a lower bound of 0.57, a sound
 PASS, which the 0.85 fraction refuses.
+
+#### And the interval PRICES this attack; it does not close it. The price is one node.
+
+The heading of this section used to say *cannot buy a pass*, and that was a universal proved on one
+fixture. The blind PE ran the same attack with the concentrating operator also running decoy nodes **in
+its own band** — nothing else changed, same silenced horses, same true edge share. `[MEASURED]`, and this
+table is now an asserted arm of the gate rather than a sentence:
+
+| decoys | horses (reporting) | φ | interval | floor | verdict | TRUE edge share |
+|---|---|---|---|---|---|---|
+| 0 | 10 (5) | 0.5000 | [0.4970, 1.9881] | 0.5000 | **INDETERMINATE** | 0.1998 |
+| 1 | 11 (6) | 0.5455 | [0.5417, 1.8206] | 0.4969 | **PASS** | 0.1997 |
+| 2 | 12 (7) | 0.5833 | [0.5787, 1.7007] | 0.4938 | **PASS** | 0.1997 |
+| 5 | 15 (10) | 0.6667 | [0.6594, 1.4837] | 0.4848 | **PASS** | 0.1996 |
+
+**One node.** The `d = 0` arm refuses by 0.0030, and a single decoy raises `φ` past the floor while *also*
+enlarging the tier, which drags the mix-conditioned floor down. The attack is helped twice.
+
+**This is not a defect in the derivation** — the PE re-derived both ends and the `φ ≥ F` theorem
+independently and they hold. The defect was in what I claimed the mechanism *defeats*. The bound's
+purchase price is the named assumption — within a tier, silence is uncorrelated with work rate — and this
+attack is *defined* by silencing the highest-work members of a tier, so it violates the assumption by
+construction. Under that violation `φ·s_obs` is not a lower bound at all. **The interval defends against
+INNOCENT under-reporting, which is the common case, and against a deliberate silencer it costs one node
+per silenced band.**
+
+That price is real and not zero: the adversary must now run and keep reporting plausibly from nodes in the
+band it is hiding in. But it is a price, not a closure, and the gate is named and asserted for what it
+proves. This is the same shape as the reporters floor's *"parity, not closure"* and the four limits on
+`ptWorstRepairExcess` — it is the one place I had not applied it.
 
 ### 4b. Per-tier REPORTERS — a share over one reporter is that peer's counter
 
@@ -274,6 +313,13 @@ building it: **the coding job on this branch was the two PE blockers and the edg
 **What ships now** is the doc block on `ptWorstRepairExcess` recording all four limits, and the constant
 renamed `ptWithdrawnMargin` so its name refuses the promotion the Economist warns about: a later seat
 reads a passing test and adds an "archival capture" arm to it.
+
+**Owed elsewhere, filed here so it is not lost:** a graded harness run must seat **≥ 3 archival nodes**,
+or the repair alarm refuses the topology (§4b). That is a fixture contract discovered by this gate, and it
+belongs where the harness is configured rather than only in a test comment — the blind PE files it as a
+residual row (N-9). Two further non-blocking PE items are fixed in this branch: the `minGossipSample`
+derivation paragraph now argues parity rather than restating the Gini's cases as though they carried over
+(N-7), and `ulp(0.5)` is labelled correctly (N-8).
 
 **OWED, filed, not built here:**
 
